@@ -132,10 +132,6 @@ opcodePushSymbol
 	bhs.w fail
 	moveq #1, d4
 	moveq #0, d6
-	move.w ExprvmCurrentPass, d6
-	cmpi.w #1, d6
-	beq.s pushSymbolUnstable
-	moveq #0, d6
 	move.w d3, d6
 	tst.b 0(a6, d6.l)
 	bne.s pushSymbolStable

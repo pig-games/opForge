@@ -18,7 +18,7 @@ NATIVE_STATEMENT_TABLE_CAPACITY = 160
 NATIVE_LABEL_TABLE_CAPACITY     = 16
 NATIVE_IMAGE_BUFFER_CAPACITY    = 4096
 OPASM_ENGINE_CONTEXT_LONGS      = 10
-OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = (5 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + NATIVE_LABEL_TABLE_CAPACITY + NATIVE_IMAGE_BUFFER_CAPACITY
+OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = (5 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + NATIVE_LABEL_TABLE_CAPACITY + NATIVE_IMAGE_BUFFER_CAPACITY
 
 	.section code
 
@@ -131,6 +131,32 @@ copyCpuDone
 	moveq #0, d0
 	rts
 	.bend  ; initSessionV1
+
+; Update the opasm-owned session CPU name without resetting statement state.
+;
+; Inputs:
+; - A0: null-terminated CPU name to copy into the session.
+;
+; Outputs:
+; - D0: 0 on success.
+setSessionCpuNameV1	.block
+	movem.l d1/a0-a1, -(sp)
+	lea OpasmEngineSessionCpuName.l, a1
+	move.l #TOKEN_BUFFER_CAPACITY - 1, d0
+
+copyCpuLoop
+	move.b (a0)+, d1
+	move.b d1, (a1)+
+	beq.s copyCpuDone
+	subq.l #1, d0
+	bne.s copyCpuLoop
+	clr.b -(a1)
+
+copyCpuDone
+	movem.l (sp)+, d1/a0-a1
+	moveq #0, d0
+	rts
+	.bend  ; setSessionCpuNameV1
 
 ; Reset statement collection state before parsing input.
 ;
@@ -867,6 +893,19 @@ done
 	rts
 	.bend  ; prepareEvaluateExpressionExtensionV1
 
+; Prepare the base expression-evaluation environment extension without selected-shape metadata.
+;
+; Inputs:
+; - A1: extension buffer base.
+;
+; Outputs:
+; - D0: 0 on success.
+prepareDirectiveEvaluateExpressionExtensionV1	.block
+	jsr opasmEngineWriteEvaluateExpressionExtensionBaseV1
+	moveq #0, d0
+	rts
+	.bend  ; prepareDirectiveEvaluateExpressionExtensionV1
+
 ; Return the stored source line number for one statement.
 ;
 ; Inputs:
@@ -1162,96 +1201,45 @@ fail
 ; - D0: 0 on success, non-zero on failure.
 ; - D1: request byte length when successful.
 prepareEvaluateExpressionRequestV1	.block
-	movem.l d2-d7/a0-a5, -(sp)
-	suba.l #OPASM_ENGINE_EVAL_REQ_SCRATCH_BYTES, sp
+	movem.l d2-d4/a0-a2, -(sp)
 	movea.l a0, a2
 	move.l d0, d4
-	move.w d1, d7
-	movea.l a1, a5
-	lea OPASM_ENGINE_EVAL_REQ_TEXT_META(sp), a0
+	beq.s fail
 	moveq #0, d0
-	move.w d7, d0
-	jsr opasmEngineGetStatementTextMetadataV1
-	bne.w fail
-	move.l OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d6
-	cmpi.l #255, d6
-	bhi.w fail
-	lea OPASM_ENGINE_EVAL_REQ_EXPR_META(sp), a0
-	moveq #0, d0
-	move.w d7, d0
-	jsr opasmEngineGetStatementExprMetadataV1
-	move.l d0, d5
-	movea.l a5, a1
-	tst.l d5
-	beq.s useStatementLine
-	move.l OPASM_ENGINE_EVAL_REQ_EXPR_SPAN_LINE(sp), d2
-	bne.s writeLine
-
-useStatementLine
-	moveq #0, d0
-	move.w d7, d0
+	move.w d1, d0
 	jsr opasmEngineGetStatementLineNumberV1
 	move.l d0, d2
-
-writeLine
-	move.l d2, d3
-	move.b d3, (a1)+
-	lsr.l #8, d3
-	move.b d3, (a1)+
-	lsr.l #8, d3
-	move.b d3, (a1)+
-	lsr.l #8, d3
-	move.b d3, (a1)+
-	tst.l d5
-	beq.s syntheticSpan
-	move.l OPASM_ENGINE_EVAL_REQ_EXPR_SPAN_START(sp), d2
-	move.l OPASM_ENGINE_EVAL_REQ_EXPR_SPAN_END(sp), d3
-	bra.s writeSpan
-
-syntheticSpan
-	tst.l d4
-	bne.s syntheticNonEmptySpan
-	clr.l d2
-	clr.l d3
-	bra.s writeSpan
-
-syntheticNonEmptySpan
-	moveq #1, d2
-	move.l d4, d3
-	addq.l #1, d3
-
-writeSpan
-	move.w d2, d0
+	move.l d2, d0
 	move.b d0, (a1)+
-	lsr.w #8, d0
+	lsr.l #8, d0
 	move.b d0, (a1)+
+	lsr.l #8, d0
+	move.b d0, (a1)+
+	lsr.l #8, d0
+	move.b d0, (a1)+
+	moveq #1, d3
 	move.w d3, d0
 	move.b d0, (a1)+
 	lsr.w #8, d0
 	move.b d0, (a1)+
-	move.l d6, d3
-	move.b d6, (a1)+
-	tst.l d6
-	beq.s copyOperand
-	movea.l OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
-	move.w d6, d0
-	bsr.w copyFixedString
-
-copyOperand
+	move.l d4, d3
+	addq.l #1, d3
+	move.w d3, d0
+	move.b d0, (a1)+
+	lsr.w #8, d0
+	move.b d0, (a1)+
+	clr.b (a1)+
 	movea.l a2, a0
 	move.w d4, d0
 	bsr.w copyFixedString
 	move.w d4, d1
-	add.w d3, d1
 	addi.w #9, d1
-	adda.l #OPASM_ENGINE_EVAL_REQ_SCRATCH_BYTES, sp
-	movem.l (sp)+, d2-d7/a0-a5
+	movem.l (sp)+, d2-d4/a0-a2
 	moveq #0, d0
 	rts
 
 fail
-	adda.l #OPASM_ENGINE_EVAL_REQ_SCRATCH_BYTES, sp
-	movem.l (sp)+, d2-d7/a0-a5
+	movem.l (sp)+, d2-d4/a0-a2
 	moveq #1, d0
 	rts
 	.bend  ; prepareEvaluateExpressionRequestV1
@@ -1280,20 +1268,9 @@ prepareSelectedEvaluateRequestV1	.block
 	bhi.w fail
 	movea.l OPASM_ENGINE_SELECTED_REQ_OPERAND_PTR(sp), a2
 	move.l OPASM_ENGINE_SELECTED_REQ_OPERAND_LEN(sp), d4
-	lea OPASM_ENGINE_SELECTED_REQ_EXPR_META(sp), a0
-	moveq #0, d0
-	move.w d7, d0
-	jsr opasmEngineGetStatementExprMetadataV1
-	moveq #0, d5
 
 buildRequest
 	movea.l a5, a1
-	tst.l d5
-	beq.s useStatementLine
-	move.l OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_LINE(sp), d2
-	bne.s writeLine
-
-useStatementLine
 	moveq #0, d0
 	move.w d7, d0
 	jsr opasmEngineGetStatementLineNumberV1
@@ -1308,13 +1285,6 @@ writeLine
 	move.b d3, (a1)+
 	lsr.l #8, d3
 	move.b d3, (a1)+
-	tst.l d5
-	beq.s syntheticSpan
-	move.l OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_START(sp), d2
-	move.l OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_END(sp), d3
-	bra.s writeSpan
-
-syntheticSpan
 	tst.l d4
 	bne.s syntheticNonEmptySpan
 	clr.l d2
@@ -1361,6 +1331,36 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; prepareSelectedEvaluateRequestV1
+
+; Return the one-based operand span for one stored statement.
+;
+; Inputs:
+; - D0: statement index.
+;
+; Outputs:
+; - D0: operand start column, or 0 when unavailable.
+; - D1: operand end column, one-based exclusive, on success.
+statementOperandSpanV1	.block
+	movem.l d2-d3/a0, -(sp)
+	moveq #0, d2
+	move.w d0, d2
+	lsl.l #2, d2
+	lea OpasmEngineStmtOperandStartTable.l, a0
+	move.l 0(a0, d2.l), d0
+	beq.s fail
+	lea OpasmEngineStmtOperandEndTable.l, a0
+	move.l 0(a0, d2.l), d1
+	cmp.l d0, d1
+	bls.s fail
+	movem.l (sp)+, d2-d3/a0
+	rts
+
+fail
+	moveq #0, d0
+	moveq #0, d1
+	movem.l (sp)+, d2-d3/a0
+	rts
+	.bend  ; statementOperandSpanV1
 
 ; Prepare an encode-instruction request for a mnemonic.
 ;
@@ -1597,9 +1597,7 @@ immediate
 	bra.s return
 
 direct
-	lea OpasmEngineSelectedShapeDirectText, a0
-	moveq #6, d0
-	bra.s return
+	bra.w none
 
 directX
 	lea OpasmEngineSelectedShapeDirectXText, a0
@@ -1996,6 +1994,10 @@ storeStatementRecord	.block
 	move.w OPASM_ENGINE_STMT_REQ_DIRECTIVE_KIND(a5), 0(a0, d2.l)
 	lea OpasmEngineStmtOutputAddrTable.l, a0
 	clr.l 0(a0, d1.l)
+	lea OpasmEngineStmtOperandStartTable.l, a0
+	move.l OPASM_ENGINE_STMT_REQ_OPERAND_START(a5), 0(a0, d1.l)
+	lea OpasmEngineStmtOperandEndTable.l, a0
+	move.l OPASM_ENGINE_STMT_REQ_OPERAND_END(a5), 0(a0, d1.l)
 	lea OpasmEngineStmtOutputOffsetTable.l, a0
 	clr.l 0(a0, d1.l)
 	lea OpasmEngineStmtOutputByteCountTable.l, a0
@@ -2297,6 +2299,10 @@ OpasmEngineStmtOperandLenTable
 OpasmEngineStmtDirectiveKindTable
 	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
 OpasmEngineStmtOutputAddrTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtOperandStartTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtOperandEndTable
 	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
 OpasmEngineStmtOutputOffsetTable
 	.res long, NATIVE_STATEMENT_TABLE_CAPACITY

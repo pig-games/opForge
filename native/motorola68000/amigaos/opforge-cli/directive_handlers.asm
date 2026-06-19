@@ -13,7 +13,11 @@
 	.use opforge.cli.dos
 	.use opforge.cli.line_text
 	.use opforge.cli.module_use
+	.use opforge.cli.path
+	.use opforge.cli.package_pipeline
 	.use opforge.cli.token_util
+	.use opasm.amigaos.engine
+	.use tkpkg.amigaos.buffers
 
 	.section code, kind=code
 	.pub
@@ -83,7 +87,7 @@ opforgeNativeCliParserTailFallbackEnd	.block
 	lea strings.OutputDirectiveText, a1
 	moveq #7, d1
 	bsr.w line_text.opforgeNativeCliLineStartsWith
-	bne.s output
+	bne.w output
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
@@ -91,7 +95,7 @@ opforgeNativeCliParserTailFallbackEnd	.block
 	lea strings.ModuleDirectiveText, a1
 	moveq #7, d1
 	bsr.w line_text.opforgeNativeCliLineStartsWith
-	bne.s module
+	bne.w module
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
@@ -99,7 +103,7 @@ opforgeNativeCliParserTailFallbackEnd	.block
 	lea strings.EndmoduleDirectiveText, a1
 	moveq #10, d1
 	bsr.w line_text.opforgeNativeCliLineStartsWith
-	bne.s endmodule
+	bne.w endmodule
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
@@ -107,7 +111,15 @@ opforgeNativeCliParserTailFallbackEnd	.block
 	lea strings.UseDirectiveText, a1
 	moveq #4, d1
 	bsr.w line_text.opforgeNativeCliLineStartsWith
-	bne.s use
+	bne.w use
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	lea strings.CpuMnemonicText, a1
+	moveq #4, d1
+	bsr.w line_text.opforgeNativeCliLineStartsWith
+	bne.w cpu
 	moveq #0, d6
 	rts
 
@@ -122,6 +134,11 @@ endmodule
 	rts
 
 use
+	move.l d5, d6
+	addq.l #4, d6
+	rts
+
+cpu
 	move.l d5, d6
 	addq.l #4, d6
 	rts
@@ -306,6 +323,48 @@ fail
 	rts
 	.bend  ; opforgeNativeCliParseUseLine
 
+; Parse one `.cpu` directive from the current source line and switch the active native pipeline.
+; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the line text.
+; Outputs: D0 = 0 on success, nonzero on malformed or unavailable CPU selection.
+; Clobbers: A0-A1/D1/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliParseCpuLine	.block
+	bsr.w opforgeNativeCliParserTailPtr
+	tst.l d1
+	bne.w fail
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	lea state.NativeCliArgToken, a1
+	bsr.w line_text.opforgeNativeCliCopyLineWord
+	bne.w fail
+	tst.b state.NativeCliArgToken
+	beq.w fail
+	lea state.NativeCliArgToken, a0
+	lea state.NativeCliCpuName, a1
+	jsr token_util.opforgeNativeCliCanonicalizeCpuName
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s switchPipeline
+	cmpi.b #';', (a0)
+	bne.w fail
+
+switchPipeline
+	jsr package_pipeline.opforgeNativeCliApplyCurrentPipeline
+	tst.l d0
+	bne.w fail
+	move.w #1, state.NativeCliPackagePipelineReady
+
+updateSession
+	lea buffers.ActiveCpuBuffer, a0
+	jsr engine.setSessionCpuNameV1
+	moveq #0, d0
+	rts
+
+fail
+	move.l #strings.ParserFailureText, d1
+	jsr dos.putStr
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliParseCpuLine
+
 ; Parse one first-run `.output` directive for native `.bin`/`.prg`/`.hex` request selection.
 ; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the line text.
 ; Outputs: D0 = 0 on supported `format=bin`, `format=prg`, or `format=hex`; nonzero on malformed or unsupported output.
@@ -405,7 +464,7 @@ selectBin
 	beq.s defaultBinPath
 	lea state.NativeCliOutputPathScratch, a0
 	lea state.NativeCliBinPath, a1
-	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	bsr.w opforgeNativeCliResolveOutputPath
 	bra.s binPathReady
 
 defaultBinPath
@@ -429,7 +488,7 @@ selectPrg
 	beq.s defaultPrgPath
 	lea state.NativeCliOutputPathScratch, a0
 	lea state.NativeCliPrgPath, a1
-	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	bsr.w opforgeNativeCliResolveOutputPath
 	bra.s prgPathReady
 
 defaultPrgPath
@@ -454,7 +513,7 @@ selectHex
 	beq.s defaultHexPath
 	lea state.NativeCliOutputPathScratch, a0
 	lea state.NativeCliHexPath, a1
-	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	bsr.w opforgeNativeCliResolveOutputPath
 	bra.s hexPathReady
 
 defaultHexPath
@@ -479,7 +538,7 @@ selectLst
 	beq.s defaultLstPath
 	lea state.NativeCliOutputPathScratch, a0
 	lea state.NativeCliLstPath, a1
-	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	bsr.w opforgeNativeCliResolveOutputPath
 	bra.s lstPathReady
 
 defaultLstPath
@@ -506,6 +565,37 @@ fail
 	movem.l (sp)+, d6-d7/a3
 	rts
 	.bend  ; opforgeNativeCliParseOutputLine
+
+; Resolve a source `.output` path against the current source file when relative.
+; Inputs: A0 = source path token; A1 = destination path buffer.
+; Outputs: D0 = 0 on success, 1 on capacity failure; destination is NUL-terminated.
+; Clobbers: D0/D2/A0-A2/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliResolveOutputPath	.block
+	movem.l d2/a2, -(sp)
+	movea.l a0, a2
+	jsr path.opforgeNativeCliPathHasVolumePrefix
+	tst.l d0
+	bne.s absolute
+	lea state.NativeCliCurrentPath, a0
+	jsr path.opforgeNativeCliCopyPathRoot
+	bne.s fail
+	movea.l a2, a0
+	jsr path.opforgeNativeCliAppendPathSegmentBuffer
+	bra.s return
+
+absolute
+	movea.l a2, a0
+	jsr path.opforgeNativeCliCopyPathBuffer
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d2/a2
+	rts
+	.bend  ; opforgeNativeCliResolveOutputPath
 
 ; Classify one `.output` option token.
 ; Inputs: state.NativeCliArgToken contains the copied token.

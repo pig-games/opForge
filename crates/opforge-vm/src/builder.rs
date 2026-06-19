@@ -127,6 +127,7 @@ pub fn build_hierarchy_chunks_from_registry(
     }
 
     let cpu_ids = registry.cpu_ids();
+    let cpu_name_list = registry.cpu_name_list();
     let mut cpus = Vec::with_capacity(cpu_ids.len());
     for cpu in cpu_ids {
         let family_id =
@@ -139,8 +140,20 @@ pub fn build_hierarchy_chunks_from_registry(
         cpus.push(CpuDescriptor {
             id: cpu.as_str().to_string(),
             family_id: family_id.as_str().to_string(),
-            default_dialect,
+            default_dialect: default_dialect.clone(),
+            canonical_cpu_id: None,
         });
+        for alias in cpu_name_list.iter().filter(|name| {
+            registry.resolve_cpu_name(name.as_str()) == Some(cpu)
+                && !name.eq_ignore_ascii_case(cpu.as_str())
+        }) {
+            cpus.push(CpuDescriptor {
+                id: alias.clone(),
+                family_id: family_id.as_str().to_string(),
+                default_dialect: None,
+                canonical_cpu_id: Some(cpu.as_str().to_string()),
+            });
+        }
     }
 
     let mut dialects = Vec::new();

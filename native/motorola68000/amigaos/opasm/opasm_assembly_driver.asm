@@ -129,7 +129,7 @@ recordPcLabel
 	moveq #0, d0
 	move.w d7, d0
 	jsr eng.opasmEngineRecordStatementLabelV1
-	bra.s handleLabelEvent
+	bra.w handleLabelEvent
 
 recordConstSymbol
 	moveq #0, d6
@@ -909,8 +909,10 @@ readOperandValueForStatement	.block
 	moveq #0, d0
 	move.w d7, d0
 	jsr eng.statementHasExprMetadataV1
-	clr.w d6
-	bra.w storedText
+	tst.l d0
+	beq.s storedText
+	moveq #1, d6
+	bra.w loadExprSlice
 
 loadExprSlice
 	suba.l #eng.OPASM_ENGINE_EXPR_META_BYTES, sp
@@ -937,6 +939,7 @@ exprSliceFail
 	bra.w return
 
 storedText
+	clr.w d6
 	clr.l d3
 	moveq #0, d0
 	move.w d7, d0
@@ -961,39 +964,42 @@ prepareRequest
 	move.l a0, OpasmDriverEvalFallbackPtr
 	move.l d0, OpasmDriverEvalFallbackLen
 	bsr.w parseDirectiveLiteralValue
-	beq.s checkWidth
+	beq.w checkWidth
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w skipLineWhitespace
 	bsr.w trimLiteralFallbackTrailing
 	jsr eng.opasmEngineResolveLabelValueV1
-	beq.s checkWidth
+	beq.w checkWidth
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w resolveDottedLabelSuffixValue
-	beq.s checkWidth
+	beq.w checkWidth
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w prepareEvaluateExpressionRequest
-	beq.s prepareExtension
-	bra.s evalFallback
+	beq.w prepareExtension
+	bra.w evalFallback
 
 prepareExtension
 	bsr.w prepareEvaluateExpressionExtension
 	bsr.w serviceFramePtr
 	move.w OpasmDriverEvalRequestLen, d0
 	jsr tkpkg.dispatchEvaluateExpressionV1
-	beq.s readValue
-	bra.s evalFallback
+	move.w d0, d4
+	beq.w readValue
+	tst.w d2
+	beq.w evalFallback
+	bsr.w serviceFramePtr
+	jsr tkpkg.readLastErrorPtrV1
+	move.w d2, d1
+	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
+	bsr.w appendTextEvent
+	bra.w evalFallback
 
 readValue
 	bsr.w readEvaluateExpressionValue
-	tst.l d3
-	bne.s checkWidth
-	movea.l OpasmDriverEvalFallbackPtr, a0
-	move.l OpasmDriverEvalFallbackLen, d0
-	bsr.w parseDirectiveLiteralValue
-	bne.w fail
+	bra.w checkWidth
 
 checkWidth
 	cmpi.b #1, d5
@@ -1015,11 +1021,11 @@ evalFallback
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w parseDirectiveLiteralValue
-	beq.s ok
+	beq.w ok
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w resolveDottedLabelSuffixValue
-	beq.s ok
+	beq.w ok
 
 return
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
@@ -1818,16 +1824,10 @@ readCommaNameForStatement	.block
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
-	moveq #0, d0
-	move.w d7, d0
-	jsr eng.getStatementSourceLineTextV1
-	tst.l d0
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
 	beq.w fail
 	bsr.w skipLineWhitespace
-	bsr.w skipSourceHeadToken
-	bsr.w skipLineWhitespace
-	tst.l d0
-	beq.w fail
 	movea.l a0, a2
 	move.l d0, d2
 	moveq #1, d4
@@ -1888,16 +1888,10 @@ readAlignOptionForStatement	.block
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w defaultAlign
-	moveq #0, d0
-	move.w d7, d0
-	jsr eng.getStatementSourceLineTextV1
-	tst.l d0
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
 	beq.w defaultAlign
 	bsr.w skipLineWhitespace
-	bsr.w skipSourceHeadToken
-	bsr.w skipLineWhitespace
-	tst.l d0
-	beq.w defaultAlign
 	movea.l a0, a2
 	move.l d0, d2
 	moveq #1, d4
@@ -1958,16 +1952,10 @@ parsePlaceDirectiveNamesForStatement	.block
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
-	moveq #0, d0
-	move.w d7, d0
-	jsr eng.getStatementSourceLineTextV1
-	tst.l d0
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
 	beq.w fail
 	bsr.w skipLineWhitespace
-	bsr.w skipSourceHeadToken
-	bsr.w skipLineWhitespace
-	tst.l d0
-	beq.w fail
 	movea.l a0, a2
 	move.l d0, d2
 	lea OpasmLayoutPlaceSectionName.l, a1
@@ -2220,16 +2208,10 @@ readCommaOperandValueForStatement	.block
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
-	moveq #0, d0
-	move.w d7, d0
-	jsr eng.getStatementSourceLineTextV1
-	tst.l d0
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
 	beq.w fail
 	bsr.w skipLineWhitespace
-	bsr.w skipSourceHeadToken
-	bsr.w skipLineWhitespace
-	tst.l d0
-	beq.w fail
 	movea.l a0, a2
 	move.l d0, d2
 
@@ -2269,15 +2251,15 @@ evaluatePart
 	move.l d0, OpasmDriverEvalFallbackLen
 	beq.w fail
 	bsr.w parseDirectiveLiteralValue
-	beq.s evalPartOk
+	beq.w evalPartOk
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	jsr eng.opasmEngineResolveLabelValueV1
-	beq.s evalPartOk
+	beq.w evalPartOk
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w resolveDottedLabelSuffixValue
-	beq.s evalPartOk
+	beq.w evalPartOk
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w prepareEvaluateExpressionRequest
@@ -2289,7 +2271,7 @@ evaluatePart
 	bne.s evalPartFallback
 	bsr.w readEvaluateExpressionValue
 	tst.l d3
-	bne.s evalPartOk
+	bne.w evalPartOk
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w parseDirectiveLiteralValue
@@ -2303,11 +2285,11 @@ evalPartFallback
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w parseDirectiveLiteralValue
-	beq.s return
+	beq.w return
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w resolveDottedLabelSuffixValue
-	beq.s return
+	beq.w return
 
 fail
 	moveq #1, d0
@@ -2449,7 +2431,14 @@ partLoop
 	moveq #1, d5
 
 readPart
+	cmpi.w #1, d2
+	bne.s readSplitPart
+	bsr.w readOperandValueForStatement
+	bra.s havePartValue
+
+readSplitPart
 	bsr.w readCommaOperandValueForStatement
+havePartValue
 	bne.w fail
 	cmpi.w #1, d4
 	beq.s emitOne
@@ -2528,16 +2517,10 @@ countCommaPartsForStatement	.block
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
-	moveq #0, d0
-	move.w d7, d0
-	jsr eng.getStatementSourceLineTextV1
-	tst.l d0
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
 	beq.w fail
 	bsr.w skipLineWhitespace
-	bsr.w skipSourceHeadToken
-	bsr.w skipLineWhitespace
-	tst.l d0
-	beq.w fail
 	movea.l a0, a2
 	move.l d0, d2
 	moveq #1, d3
@@ -2684,16 +2667,10 @@ parseTextDirectiveForStatement	.block
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
-	moveq #0, d0
-	move.w d7, d0
-	jsr eng.getStatementSourceLineTextV1
-	tst.l d0
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
 	beq.w fail
 	bsr.w skipLineWhitespace
-	bsr.w skipSourceHeadToken
-	bsr.w skipLineWhitespace
-	tst.l d0
-	beq.w fail
 	movea.l a0, a2
 	move.l d0, d2
 
@@ -3116,13 +3093,106 @@ prepareEvaluateExpressionExtension	.block
 	rts
 	.bend  ; prepareEvaluateExpressionExtension
 
-readEvaluateExpressionValue	.block
+prepareDirectiveEvaluateExpressionExtension	.block
 	movem.l a0, -(sp)
 	bsr.w serviceEvalExtensionPtr
-	move.l 16(a0), d3
+	jsr eng.prepareDirectiveEvaluateExpressionExtensionV1
 	movem.l (sp)+, a0
 	rts
+	.bend  ; prepareDirectiveEvaluateExpressionExtension
+
+readEvaluateExpressionValue	.block
+	movem.l d0-d1/a0, -(sp)
+	bsr.w serviceEvalExtensionPtr
+	move.l 16(a0), d3
+	bne.s return
+	bsr.w serviceFramePtr
+	jsr tkpkg.readOutputLenV1
+	move.w d0, d1
+	beq.s return
+	move.l d1, -(sp)
+	bsr.w serviceFramePtr
+	jsr tkpkg.readOutputPtrV1
+	move.l (sp)+, d0
+	bsr.w parseEvaluateExpressionOutputValue
+
+return
+	movem.l (sp)+, d0-d1/a0
+	rts
 	.bend  ; readEvaluateExpressionValue
+
+; Parse a tkpkg evaluate-expression textual result of the form `VALUE <signed-decimal>`.
+; Inputs: A0 = output text pointer; D0.W = byte length.
+; Outputs: D0.L = 0 on success, 1 on malformed text; D3.L = parsed value on success.
+; Clobbers: D0-D3/A0/CCR.
+; CCR: reflects D0.L on return.
+parseEvaluateExpressionOutputValue	.block
+	movem.l d1-d2/a0, -(sp)
+	moveq #6, d1
+	cmp.w d1, d0
+	blo.s fail
+	cmpi.b #'V', (a0)+
+	bne.s fail
+	cmpi.b #'A', (a0)+
+	bne.s fail
+	cmpi.b #'L', (a0)+
+	bne.s fail
+	cmpi.b #'U', (a0)+
+	bne.s fail
+	cmpi.b #'E', (a0)+
+	bne.s fail
+	cmpi.b #' ', (a0)+
+	bne.s fail
+	subq.w #6, d0
+	clr.l d3
+	clr.l d2
+	tst.w d0
+	beq.s fail
+	cmpi.b #'-', (a0)
+	bne.s digits
+	moveq #1, d2
+	addq.l #1, a0
+	subq.w #1, d0
+	beq.s fail
+
+digits
+	moveq #0, d1
+
+digitLoop
+	tst.w d0
+	beq.s done
+	move.b (a0)+, d1
+	subi.b #'0', d1
+	bcs.s fail
+	cmpi.b #9, d1
+	bhi.s fail
+	move.l d3, -(sp)
+	lsl.l #3, d3
+	move.l (sp)+, d1
+	add.l d1, d3
+	add.l d1, d3
+	moveq #0, d1
+	move.b -1(a0), d1
+	subi.b #'0', d1
+	add.l d1, d3
+	subq.w #1, d0
+	bra.s digitLoop
+
+done
+	tst.l d2
+	beq.s ok
+	neg.l d3
+
+ok
+	moveq #0, d0
+	movem.l (sp)+, d1-d2/a0
+	rts
+
+fail
+	moveq #1, d0
+	movem.l (sp)+, d1-d2/a0
+	rts
+	.bend  ; parseEvaluateExpressionOutputValue
 
 serviceFramePtr	.block
 	movea.l OpasmActiveAssembleReqPtr, a0

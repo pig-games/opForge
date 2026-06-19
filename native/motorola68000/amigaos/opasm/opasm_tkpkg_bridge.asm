@@ -63,9 +63,11 @@ dispatchServiceV1	.block
 	move.w d1, d5
 	bsr.w writeInputWindow
 	bsr.w writeExtensionWindow
+	move.l a2, -(sp)
 	movea.l abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a2), a0
 	move.w d4, d0
 	jsr service.dispatchV1
+	movea.l (sp)+, a2
 	movea.l a2, a0
 	bsr.w readStatusV1
 	move.w d0, d3

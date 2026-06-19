@@ -35,6 +35,7 @@ pub struct CpuDescriptor {
     pub id: String,
     pub family_id: String,
     pub default_dialect: Option<String>,
+    pub canonical_cpu_id: Option<String>,
 }
 
 /// Dialect descriptor from package metadata.
@@ -159,6 +160,10 @@ pub enum HierarchyError {
         cpu_id: String,
         family_id: String,
     },
+    MissingCanonicalCpu {
+        cpu_id: String,
+        canonical_cpu_id: String,
+    },
     MissingDialectRef {
         owner_kind: &'static str,
         owner_id: String,
@@ -202,6 +207,14 @@ impl std::fmt::Display for HierarchyError {
                 f,
                 "cpu '{}' references missing family '{}'",
                 cpu_id, family_id
+            ),
+            Self::MissingCanonicalCpu {
+                cpu_id,
+                canonical_cpu_id,
+            } => write!(
+                f,
+                "cpu '{}' references missing canonical cpu '{}'",
+                cpu_id, canonical_cpu_id
             ),
             Self::MissingDialectRef {
                 owner_kind,
@@ -352,12 +365,22 @@ impl HierarchyPackage {
         HierarchyError,
     > {
         let cpu_key = NormalizedId::new(cpu_id);
-        let cpu = self
+        let requested_cpu = self
             .cpus
             .get(&cpu_key)
             .ok_or_else(|| HierarchyError::MissingCpu {
                 cpu_id: cpu_id.to_string(),
             })?;
+        let cpu = if let Some(canonical_cpu_id) = requested_cpu.canonical_cpu_id.as_deref() {
+            self.cpus
+                .get(&NormalizedId::new(canonical_cpu_id))
+                .ok_or_else(|| HierarchyError::MissingCanonicalCpu {
+                    cpu_id: requested_cpu.id.clone(),
+                    canonical_cpu_id: canonical_cpu_id.to_string(),
+                })?
+        } else {
+            requested_cpu
+        };
 
         let family_key = NormalizedId::new(&cpu.family_id);
         let family =
@@ -424,6 +447,14 @@ impl HierarchyPackage {
                     cpu_id: cpu.id.clone(),
                     family_id: cpu.family_id.clone(),
                 });
+            }
+            if let Some(canonical_cpu_id) = cpu.canonical_cpu_id.as_deref() {
+                if !self.cpus.contains_key(&NormalizedId::new(canonical_cpu_id)) {
+                    return Err(HierarchyError::MissingCanonicalCpu {
+                        cpu_id: cpu.id.clone(),
+                        canonical_cpu_id: canonical_cpu_id.to_string(),
+                    });
+                }
             }
             if let Some(default_dialect) = cpu.default_dialect.as_deref() {
                 self.validate_dialect_ref(

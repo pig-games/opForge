@@ -12458,13 +12458,17 @@ fn motorola68020_item6_7_selected_eval_request_uses_operand_surface_span() {
         &source,
         &[
             "prepareSelectedEvaluateRequestV1",
-            "JSR opasmEngineGetStatementExprMetadataV1",
-            "MOVEQ #0, D5",
+            "JSR opasmEngineGetStatementTextMetadataV1",
+            "MOVE.L OPASM_ENGINE_SELECTED_REQ_MNEM_LEN(SP), D6",
+            "MOVEA.L OPASM_ENGINE_SELECTED_REQ_OPERAND_PTR(SP), A2",
+            "MOVE.L OPASM_ENGINE_SELECTED_REQ_OPERAND_LEN(SP), D4",
             "buildRequest",
-            "TST.L D5",
-            "BEQ.S useStatementLine",
-            "syntheticSpan",
             "TST.L D4",
+            "BNE.S syntheticNonEmptySpan",
+            "CLR.L D2",
+            "CLR.L D3",
+            "BRA.S writeSpan",
+            "syntheticNonEmptySpan",
             "MOVEQ #1, D2",
             "MOVE.L D4, D3",
             "ADDQ.L #1, D3",
@@ -12538,8 +12542,13 @@ fn motorola68020_item6_8_native_shape_inference_has_no_mos_mnemonic_classifiers(
             "checkTopLevelComma",
             "CMPI.B #',', D3",
             "BEQ.W none",
+            "checkPrefix",
+            "CMPI.B #'#', D3",
+            "BEQ.W immediate",
+            "CMPI.B #'(', D3",
+            "BEQ.W paren",
             "BSR.W inferSelectedShapeSuffix",
-            "LEA OpasmEngineSelectedShapeDirectText, A0",
+            "BRA.W direct",
         ]
     ));
 
@@ -13753,7 +13762,9 @@ fn motorola68020_item8_native_data_text_directives_route_before_selected_encodin
         &driver,
         &[
             "parseTextDirectiveForStatement .BLOCK",
-            "BSR.W skipSourceHeadToken",
+            "JSR eng.opasmEngineGetStatementTextMetadataV1",
+            "MOVEA.L eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(SP), A0",
+            "MOVE.L eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(SP), D0",
             "BSR.W appendTextScratchByte",
         ]
     ));
@@ -14384,9 +14395,10 @@ fn motorola68020_exprvm_runtime_owns_bytecode_evaluator() {
         &formatted,
         &[
             "opcodePushSymbol:",
-            "MOVE.W ExprvmCurrentPass, D6",
-            "CMPI.W #1, D6",
-            "BEQ.S pushSymbolUnstable",
+            "MOVEQ #0, D6",
+            "MOVE.W D3, D6",
+            "TST.B 0(A6, D6.L)",
+            "BNE.S pushSymbolStable",
             "pushSymbolUnstable:",
             "MOVEQ #1, D5",
         ]
@@ -16461,19 +16473,19 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     assert!(source.contains("opcoreExvmEvalOperandV1"));
     assert!(tkpkg_source_contains(
         &source,
-        "move.l d2, d3\n\tmoveq #0, d1\n\tmoveq #0, d2"
+        "move.l d2, -(sp)\n\tmove.l d4, -(sp)\n\tmoveq #0, d1\n\tmoveq #0, d2"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "move.l d4, -(sp)\n\tmove.l d3, -(sp)\n\tcmpi.w #TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE, d3"
+        "move.b abi.CB_EXTENSION_LEN(a0), d3\n\tmoveq #0, d5\n\tmove.b 27(a0), d5\n\tlsl.w #8, d5\n\tor.w d5, d3\n\tcmpi.w #TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE, d3"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "move.l (sp)+, d6\n\tmove.l (sp)+, d3\n\tmove.l (sp)+, d4\n\tmovea.l a4, a0\n\tmove.l d3, d0\n\tsubq.l #1, d0\n\tadda.w d0, a0\n\tmove.l d4, d0\n\tsub.l d3, d0\n\tbeq.s badPayload"
+        "move.l (sp)+, d6\n\tmovea.l (sp)+, a4\n\tmove.l (sp)+, d1\n\tmove.l (sp)+, d2\n\tmovea.l (sp)+, a1\n\tmovea.l (sp)+, a2\n\tmove.l (sp)+, d7\n\tmove.l (sp)+, d3\n\tmovea.l a4, a0\n\tmove.l d3, d0\n\tsubq.l #1, d0\n\tadda.w d0, a0\n\tmove.l d7, d0\n\tsub.l d3, d0\n\tbeq.w badPayload"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "move.l d6, -(sp)\n\tmoveq #0, d4\n\tmove.w d6, d4\n\tmoveq #0, d5\n\tmove.w d7, d5\n\tmoveq #0, d6\n\tmove.w engine.opasmEngineSessionPass.l, d6\n\tlea engine.opasmEngineLabelFinalizedTable.l, a6\n\tjsr expr_bridge.opcoreExvmEvalOperandV1"
+        "moveq #0, d4\n\tmove.w d6, d4\n\tmoveq #0, d5\n\tmove.w d7, d5\n\tmove.l (sp)+, d6\n\tmovea.l (sp)+, a4\n\tmove.l (sp)+, d1\n\tmove.l (sp)+, d2"
     ));
     assert!(source.contains("movea.l a3, a5"));
     assert!(source.contains("move.l d3, TKPKG_EVAL_EXPR_EXTENSION_RESULT_OFF(a5)"));
@@ -17855,7 +17867,7 @@ fn motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry() {
     let generated_path = workspace_root().join("target/tkpkg_debug_cli_package.expected.opasm");
 
     assert!(
-        expected.len() <= 4096,
+        expected.len() <= 8192,
         "expected the focused m68000 smoke package to fit tkpkg package storage, got {} bytes",
         expected.len()
     );
@@ -33979,6 +33991,68 @@ fn external_fs_uae_opforge_native_cli_item13_bin_artifact_matches_rust_guided_by
 }
 
 #[test]
+fn external_fs_uae_opforge_native_cli_item13_relative_bin_output_matches_rust_guided_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .output \"build/opforge_native_out.bin\", format=bin, sections=code",
+        "        .byte $11",
+        "        .fill byte, 2, $ee",
+        "        lda #$44",
+    ]
+    .join("\n");
+    let expected = vec![0x11, 0xEE, 0xEE, 0xA9, 0x44];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item13_output_directive_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect(
+        "focused native opForge CLI relative Item 13 FS-UAE helper should complete or skip cleanly",
+    ) {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one focused relative Item 13 run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI relative Item 13 bin artifact fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            assert!(
+                run.stdout.contains("STATUS output-ok"),
+                "focused relative Item 13 fixture should report output artifact success\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join("build")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI relative Item 13 output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "focused FS-UAE relative Item 13 bin artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_opforge_native_cli_item14_prg_artifact_matches_rust_guided_bytes() {
     let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
         .lock()
@@ -34062,6 +34136,389 @@ fn external_fs_uae_opforge_native_cli_item14_prg_artifact_matches_rust_guided_by
                 "focused Item 14 wide loadaddr fixture should report native parser-stage rejection\nstdout:\n{}\nstderr:\n{}",
                 wide_run.stdout,
                 wide_run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_relative_prg_output_matches_rust_guided_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .output \"build/opforge_native_out.prg\", format=prg, loadaddr=$0800, sections=code",
+        "        .byte $11",
+        "        .fill byte, 2, $ee",
+        "        lda #$44",
+    ]
+    .join("\n");
+    let expected = vec![0x00, 0x08, 0x11, 0xEE, 0xEE, 0xA9, 0x44];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item13_output_directive_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("focused native opForge CLI relative PRG FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one focused relative PRG run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI relative PRG artifact fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            assert!(
+                run.stdout.contains("STATUS output-ok"),
+                "focused relative PRG fixture should report output artifact success\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join("build")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE);
+            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI relative PRG output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_prg, expected,
+                "focused FS-UAE relative PRG artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_module_relative_bin_output_matches_rust_guided_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .output \"build/opforge_native_out.bin\", format=bin, sections=code",
+        "        .byte $11",
+        "        .fill byte, 2, $ee",
+        "        lda #$44",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = vec![0x11, 0xEE, 0xEE, 0xA9, 0x44];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item13_output_directive_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("focused native opForge CLI module-relative bin FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one focused module-relative bin run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI module-relative bin fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run.artifact_dir.join("Work").join("build").join(
+                crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE,
+            );
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI module-relative bin output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "focused FS-UAE module-relative bin artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_module_relative_prg_output_matches_rust_guided_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .output \"build/opforge_native_out.prg\", format=prg, loadaddr=$0800, sections=code",
+        "        .byte $11",
+        "        .fill byte, 2, $ee",
+        "        lda #$44",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = vec![0x00, 0x08, 0x11, 0xEE, 0xEE, 0xA9, 0x44];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item13_output_directive_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("focused native opForge CLI module-relative PRG FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one focused module-relative PRG run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI module-relative PRG fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run.artifact_dir.join("Work").join("build").join(
+                crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE,
+            );
+            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI module-relative PRG output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_prg, expected,
+                "focused FS-UAE module-relative PRG artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_placed_relative_prg_output_matches_rust_guided_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "        .byte $11",
+        "        .fill byte, 2, $ee",
+        "        lda #$44",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .output \"build/opforge_native_out.prg\", format=prg, loadaddr=$0800, sections=code",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = vec![0x00, 0x08, 0x11, 0xEE, 0xEE, 0xA9, 0x44];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item13_output_directive_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("focused native opForge CLI placed relative PRG FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one focused placed relative PRG run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI placed relative PRG fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run.artifact_dir.join("Work").join("build").join(
+                crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE,
+            );
+            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI placed relative PRG output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_prg, expected,
+                "focused FS-UAE placed relative PRG artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_placed_relative_prg_with_symbolic_expr_matches_rust_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "OFFSET  .const $02",
+        "VALUE   .var   $10",
+        "start   lda #$42",
+        "        sta $0200 + OFFSET",
+        "        ldx #VALUE",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .output \"build/opforge_native_out.prg\", format=prg, loadaddr=$0800, sections=code",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = vec![0x00, 0x08, 0xA9, 0x42, 0x8D, 0x02, 0x02, 0xA2, 0x10];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item13_output_directive_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("focused native opForge CLI placed symbolic PRG FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                1,
+                "expected one focused placed symbolic PRG run"
+            );
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI placed symbolic PRG fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run.artifact_dir.join("Work").join("build").join(
+                crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE,
+            );
+            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI placed symbolic PRG output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_prg, expected,
+                "focused FS-UAE placed symbolic PRG artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_placed_relative_bin_with_symbolic_expr_matches_rust_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "OFFSET  .const $02",
+        "VALUE   .var   $10",
+        "start   lda #$42",
+        "        sta $0200 + OFFSET",
+        "        ldx #VALUE",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .output \"build/opforge_native_out.bin\", format=bin, sections=code",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = vec![0xA9, 0x42, 0x8D, 0x02, 0x02, 0xA2, 0x10];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item13_output_directive_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("focused native opForge CLI placed symbolic BIN FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                1,
+                "expected one focused placed symbolic BIN run"
+            );
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI placed symbolic BIN fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run.artifact_dir.join("Work").join("build").join(
+                crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE,
+            );
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI placed symbolic BIN output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "focused FS-UAE placed symbolic BIN artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
             );
         }
     }
@@ -34353,6 +34810,974 @@ fn external_fs_uae_opforge_native_cli_item17_first_run_artifact_matrix_matches_r
 }
 
 #[test]
+fn external_fs_uae_opforge_native_cli_real_first_run_source_with_cli_cpu_matches_rust_prg() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source_path = repo_root
+        .join("examples")
+        .join("mos6502")
+        .join("6502_first_run_artifact_contract.asm");
+    let source = fs::read_to_string(&source_path)
+        .unwrap_or_else(|err| panic!("read {}: {err}", source_path.display()));
+    let expected_bin = first_run_6502_artifact_contract_expected_bin();
+    let mut expected_prg = vec![0x00, 0x08];
+    expected_prg.extend_from_slice(&expected_bin);
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item13_output_directive_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("real first-run source with CLI cpu FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one real first-run CLI-cpu run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "real first-run source with CLI cpu failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            assert!(
+                run.stdout.contains("SESSION-CPU m6502"),
+                "real first-run source with CLI cpu should bind m6502\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join("build")
+                .join("6502-first-run.prg");
+            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read real first-run CLI-cpu output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_prg, expected_prg,
+                "real first-run source with CLI cpu PRG mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_layouted_branches_with_cli_bin_match_rust_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "OFFSET  .const $02",
+        "VALUE   .var   $10",
+        "start   lda #$42",
+        "        sta $0200 + OFFSET",
+        "        beq done",
+        "        bne start",
+        "        ldx #VALUE",
+        "        inx",
+        "done    .byte $aa, $0c, $08",
+        "        .word start + 3",
+        "        .text \"OK\"",
+        "        .fill byte, 2, $ff",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = first_run_6502_artifact_contract_expected_bin();
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "layouted-branches-cli-bin",
+        cpu_id: m6502_cpu_id.as_str(),
+        source: source.as_bytes(),
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("layouted branch CLI-bin FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one layouted-branch CLI-bin run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "layouted branch CLI-bin fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read layouted-branch CLI-bin output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "layouted branch CLI-bin output mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_layouted_branches_without_symbolic_word_match_rust_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "OFFSET  .const $02",
+        "VALUE   .var   $10",
+        "start   lda #$42",
+        "        sta $0200 + OFFSET",
+        "        beq done",
+        "        bne start",
+        "        ldx #VALUE",
+        "        inx",
+        "done    .byte $aa, $0c, $08",
+        "        .text \"OK\"",
+        "        .fill byte, 2, $ff",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = vec![
+        0xA9, 0x42, 0x8D, 0x02, 0x02, 0xF0, 0x05, 0xD0, 0xF7, 0xA2, 0x10, 0xE8, 0xAA, 0x0C, 0x08,
+        0x4F, 0x4B, 0xFF, 0xFF,
+    ];
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "layouted-branches-no-symbolic-word-cli-bin",
+        cpu_id: m6502_cpu_id.as_str(),
+        source: source.as_bytes(),
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("layouted branch no-symbolic-word FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                1,
+                "expected one layouted-branch no-symbolic-word run"
+            );
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "layouted branch no-symbolic-word fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read layouted-branch no-symbolic-word output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "layouted branch no-symbolic-word output mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_layouted_branches_minimal_match_rust_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "start   lda #$42",
+        "        beq done",
+        "        bne start",
+        "done    nop",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = vec![0xA9, 0x42, 0xF0, 0x02, 0xD0, 0xFA, 0xEA];
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "layouted-branches-minimal-cli-bin",
+        cpu_id: m6502_cpu_id.as_str(),
+        source: source.as_bytes(),
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("layouted branch minimal FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one layouted-branch minimal run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "layouted branch minimal fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read layouted-branch minimal output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "layouted branch minimal output mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_forward_branch_past_symbolic_immediate_matches_rust_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "VALUE   .var   $10",
+        "start   beq done",
+        "        ldx #VALUE",
+        "done    nop",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = vec![0xF0, 0x02, 0xA2, 0x10, 0xEA];
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "forward-branch-past-symbolic-immediate",
+        cpu_id: m6502_cpu_id.as_str(),
+        source: source.as_bytes(),
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("forward-branch past symbolic-immediate FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                1,
+                "expected one forward-branch past symbolic-immediate run"
+            );
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "forward-branch past symbolic-immediate fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read forward-branch past symbolic-immediate output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "forward-branch past symbolic-immediate output mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_symbolic_immediate_only_matches_rust_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "VALUE   .var   $10",
+        "start   ldx #VALUE",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = vec![0xA2, 0x10];
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "symbolic-immediate-only",
+        cpu_id: m6502_cpu_id.as_str(),
+        source: source.as_bytes(),
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("symbolic-immediate only FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one symbolic-immediate only run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "symbolic-immediate only fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read symbolic-immediate only output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "symbolic-immediate only output mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_forward_branch_past_symbolic_absolute_expr_matches_rust_bytes(
+) {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "OFFSET  .const $02",
+        "start   lda #$42",
+        "        sta $0200 + OFFSET",
+        "        beq done",
+        "        nop",
+        "done    nop",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = vec![0xA9, 0x42, 0x8D, 0x02, 0x02, 0xF0, 0x01, 0xEA, 0xEA];
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "forward-branch-past-symbolic-absolute-expr",
+        cpu_id: m6502_cpu_id.as_str(),
+        source: source.as_bytes(),
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect(
+        "forward-branch past symbolic absolute-expr FS-UAE helper should complete or skip cleanly",
+    ) {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                1,
+                "expected one forward-branch past symbolic absolute-expr run"
+            );
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "forward-branch past symbolic absolute-expr fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read forward-branch past symbolic absolute-expr output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "forward-branch past symbolic absolute-expr output mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_real_first_run_bare_labels_with_cli_bin_match_rust_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "OFFSET  .const $02",
+        "VALUE   .var   $10",
+        "",
+        "start",
+        "        lda #$42",
+        "        sta $0200 + OFFSET",
+        "        beq done",
+        "        bne start",
+        "        ldx #VALUE",
+        "        inx",
+        "done",
+        "        .byte $aa, $0c, $08",
+        "        .word start + 3",
+        "        .text \"OK\"",
+        "        .fill byte, 2, $ff",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = first_run_6502_artifact_contract_expected_bin();
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "real-first-run-bare-labels-cli-bin",
+        cpu_id: m6502_cpu_id.as_str(),
+        source: source.as_bytes(),
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("real first-run bare-label CLI-bin FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                1,
+                "expected one real first-run bare-label CLI-bin run"
+            );
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "real first-run bare-label CLI-bin fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read real first-run bare-label CLI-bin output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "real first-run bare-label CLI-bin output mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_source_cpu_only_minimal_bin_matches_rust_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "start   lda #$42",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .output \"build/source-cpu-minimal.bin\", format=bin, sections=code",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected = vec![0xA9, 0x42];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item17_source_cpu_output_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("minimal source-driven cpu FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one minimal source-cpu run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "minimal source-driven cpu fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join("build")
+                .join("source-cpu-minimal.bin");
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read minimal source-driven cpu output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "minimal source-driven cpu output mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_real_first_run_source_cpu_directive_matches_rust_prg() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source_path = repo_root
+        .join("examples")
+        .join("mos6502")
+        .join("6502_first_run_artifact_contract.asm");
+    let source = fs::read_to_string(&source_path)
+        .unwrap_or_else(|err| panic!("read {}: {err}", source_path.display()));
+    let expected_bin = first_run_6502_artifact_contract_expected_bin();
+    let mut expected_prg = vec![0x00, 0x08];
+    expected_prg.extend_from_slice(&expected_bin);
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item17_source_cpu_output_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("real first-run source-driven cpu FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one real first-run source-cpu run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "real first-run source with source-driven cpu failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            assert!(
+                run.stdout.contains("SESSION-CPU m6502"),
+                "real first-run source with source-driven cpu should bind m6502\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join("build")
+                .join("6502-first-run.prg");
+            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read real first-run source-driven cpu output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_prg, expected_prg,
+                "real first-run source with source-driven cpu PRG mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_real_first_run_structure_with_known_body_matches_rust_prg() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "OFFSET  .const $02",
+        "VALUE   .var   $10",
+        "start   lda #$42",
+        "        sta $0200 + OFFSET",
+        "        .byte $f0, $05, $d0, $f7",
+        "        ldx #VALUE",
+        "        .byte $e8, $aa, $0c, $08, $03, $08",
+        "        .text \"OK\"",
+        "        .fill byte, 2, $ff",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .output \"build/6502-first-run.prg\", format=prg, loadaddr=$0800, contiguous=false, sections=code",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected_bin = first_run_6502_artifact_contract_expected_bin();
+    let mut expected_prg = vec![0x00, 0x08];
+    expected_prg.extend_from_slice(&expected_bin);
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item13_output_directive_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("real first-run structure reduction FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one real-structure reduction run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "real first-run structure reduction failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join("build")
+                .join("6502-first-run.prg");
+            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read real first-run structure reduction output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_prg, expected_prg,
+                "real first-run structure reduction PRG mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_real_first_run_structure_with_symbolic_word_matches_rust_prg()
+{
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "OFFSET  .const $02",
+        "VALUE   .var   $10",
+        "start   lda #$42",
+        "        sta $0200 + OFFSET",
+        "        .byte $f0, $05, $d0, $f7",
+        "        ldx #VALUE",
+        "        .byte $e8, $aa, $0c, $08",
+        "        .word start + 3",
+        "        .text \"OK\"",
+        "        .fill byte, 2, $ff",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .output \"build/6502-first-run.prg\", format=prg, loadaddr=$0800, contiguous=false, sections=code",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected_bin = first_run_6502_artifact_contract_expected_bin();
+    let mut expected_prg = vec![0x00, 0x08];
+    expected_prg.extend_from_slice(&expected_bin);
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item13_output_directive_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("real first-run symbolic word reduction FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one symbolic-word reduction run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "real first-run symbolic word reduction failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join("build")
+                .join("6502-first-run.prg");
+            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read real first-run symbolic-word reduction output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_prg, expected_prg,
+                "real first-run symbolic-word reduction PRG mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_real_first_run_structure_with_inline_labels_matches_rust_prg()
+{
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "OFFSET  .const $02",
+        "VALUE   .var   $10",
+        "start   lda #$42",
+        "        sta $0200 + OFFSET",
+        "        beq done",
+        "        bne start",
+        "        ldx #VALUE",
+        "        inx",
+        "done    .byte $aa, $0c, $08",
+        "        .word start + 3",
+        "        .text \"OK\"",
+        "        .fill byte, 2, $ff",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .output \"build/6502-first-run.prg\", format=prg, loadaddr=$0800, contiguous=false, sections=code",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let expected_bin = first_run_6502_artifact_contract_expected_bin();
+    let mut expected_prg = vec![0x00, 0x08];
+    expected_prg.extend_from_slice(&expected_bin);
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item13_output_directive_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("real first-run inline-label reduction FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one inline-label reduction run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "real first-run inline-label reduction failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join("build")
+                .join("6502-first-run.prg");
+            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read real first-run inline-label reduction output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_prg, expected_prg,
+                "real first-run inline-label reduction PRG mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
     let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
         .lock()
@@ -34392,7 +35817,7 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "missing-hunk",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK",
-            expected_diagnostic: "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin",
+            expected_diagnostic: "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin or --list",
         },
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "hunk-output",

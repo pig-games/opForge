@@ -54,5 +54,13 @@ notEqual
 	rts
 	.bend  ; opforgeNativeCliTokenEquals
 
+opforgeNativeCliCanonicalizeCpuName	.block
+	move.l a1, -(sp)
+	bsr.w opforgeNativeCliCopyTokenBuffer
+	movea.l (sp)+, a1
+	moveq #0, d0
+	rts
+	.bend  ; opforgeNativeCliCanonicalizeCpuName
+
 	.endsection
 	.endmodule

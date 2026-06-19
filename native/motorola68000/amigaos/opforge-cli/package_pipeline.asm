@@ -51,16 +51,11 @@ opforgeNativeCliInitPackagePipeline	.block
 	jsr tkpkg_control_block.opforgeNativeCliReadStatus
 	bne.s fail
 
-	bsr.w opforgeNativeCliPreparePipelineRequest
-
-	lea buffers.ControlBlockV1, a0
-	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
-	move.w state.NativeCliPipelineRequestLen, d1
-	jsr tkpkg_control_block.opforgeNativeCliWriteInputWindow
-	moveq #abi.ENTRY_ORD_SET_PIPELINE, d0
-	jsr service.dispatchV1
-	jsr tkpkg_control_block.opforgeNativeCliReadStatus
-	bne.s pipelineUnavailable
+	bsr.w opforgeNativeCliApplyCurrentPipeline
+	cmpi.l #2, d0
+	beq.s pipelineUnavailable
+	tst.l d0
+	bne.s fail
 	moveq #0, d0
 	rts
 
@@ -72,6 +67,32 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliInitPackagePipeline
+
+; Inputs:
+;   state.NativeCliCpuName = optional requested CPU name
+; Outputs:
+;   D0.L = 0 on success, 2 when the requested pipeline is unavailable, 1 on write/dispatch failure
+; Clobbers:
+;   D0-D1/A0/CCR
+; CCR:
+;   Reflects D0.L on return
+opforgeNativeCliApplyCurrentPipeline	.block
+	bsr.w opforgeNativeCliPreparePipelineRequest
+	lea buffers.ControlBlockV1, a0
+	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
+	move.w state.NativeCliPipelineRequestLen, d1
+	jsr tkpkg_control_block.opforgeNativeCliWriteInputWindow
+	moveq #abi.ENTRY_ORD_SET_PIPELINE, d0
+	jsr service.dispatchV1
+	jsr tkpkg_control_block.opforgeNativeCliReadStatus
+	bne.s unavailable
+	moveq #0, d0
+	rts
+
+unavailable
+	moveq #2, d0
+	rts
+	.bend  ; opforgeNativeCliApplyCurrentPipeline
 
 	.priv
 

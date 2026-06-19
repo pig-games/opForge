@@ -397,6 +397,9 @@ impl SimpleSchemaEntry for CpuDescriptor {
         FieldSpec::OptionalString {
             label: "default_dialect",
         },
+        FieldSpec::OptionalString {
+            label: "canonical_cpu_id",
+        },
     ];
 
     fn field_values(&self) -> Vec<FieldValue<'_>> {
@@ -404,6 +407,7 @@ impl SimpleSchemaEntry for CpuDescriptor {
             FieldValue::String(&self.id),
             FieldValue::String(&self.family_id),
             FieldValue::OptionalString(self.default_dialect.as_deref()),
+            FieldValue::OptionalString(self.canonical_cpu_id.as_deref()),
         ]
     }
 
@@ -412,6 +416,7 @@ impl SimpleSchemaEntry for CpuDescriptor {
             id: fields.next_string(Self::CHUNK)?,
             family_id: fields.next_string(Self::CHUNK)?,
             default_dialect: fields.next_optional_string(Self::CHUNK)?,
+            canonical_cpu_id: fields.next_optional_string(Self::CHUNK)?,
         })
     }
 }

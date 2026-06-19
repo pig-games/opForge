@@ -114,14 +114,14 @@ labelStored
 	move.l abi.OPASM_EVENT_VALUE(a2), d0
 	jsr text_output.opforgeNativeCliPutHexU32
 	move.l #strings.NewlineText, d1
-	bra.s reportText
+	bra.w reportText
 
 labelDuplicate
 	move.l #strings.NativeDuplicateLabelText, d1
 	jsr dos.putStr
 	bsr.w reportEventText
 	move.l #strings.NewlineText, d1
-	bra.s reportText
+	bra.w reportText
 
 imageCapacity
 	move.l #strings.NativeImageCapacityText, d1
@@ -133,19 +133,19 @@ imageCapacity
 	move.l abi.OPASM_EVENT_VALUE(a2), d0
 	jsr text_output.opforgeNativeCliPutU16Decimal
 	move.l #strings.NewlineText, d1
-	bra.s reportText
+	bra.w reportText
 
 selectorOk
 	move.l #strings.NativeSelectorStatusOkText, d1
-	bra.s reportText
+	bra.w reportText
 
 unknownMnemonic
 	move.l #strings.NativeUnknownMnemonicText, d1
-	bra.s reportText
+	bra.w reportText
 
 unsupportedAddressing
 	move.l #strings.NativeUnsupportedAddressingText, d1
-	bra.s reportText
+	bra.w reportText
 
 unresolvedLabel
 	move.l #strings.NativeUnresolvedLabelText, d1
@@ -182,20 +182,24 @@ reportEventText	.block
 	movea.l abi.OPASM_EVENT_TEXT_PTR(a2), a0
 	move.w abi.OPASM_EVENT_TEXT_LEN(a2), d2
 	beq.s done
-	lea EventCharBuffer, a2
+	cmpi.w #255, d2
+	bls.s sizeOk
+	move.w #255, d2
 
-loop
-	move.l a0, -(sp)
-	move.w d2, -(sp)
-	move.b (a0)+, (a2)
-	clr.b 1(a2)
-	move.l #EventCharBuffer, d1
+sizeOk
+	lea EventTextBuffer, a1
+	move.w d2, d0
+	beq.s emit
+	subq.w #1, d0
+
+copyLoop
+	move.b (a0)+, (a1)+
+	dbf d0, copyLoop
+
+emit
+	clr.b (a1)
+	move.l #EventTextBuffer, d1
 	jsr dos.putStr
-	move.w (sp)+, d2
-	movea.l (sp)+, a0
-	addq.l #1, a0
-	subq.w #1, d2
-	bne.s loop
 
 done
 	movem.l (sp)+, d0-d2/a0-a2
@@ -204,10 +208,10 @@ done
 
 	.endsection
 
-	.section data, kind=data
+	.section bss, kind=bss
 
-EventCharBuffer
-	.byte 0, 0
+EventTextBuffer
+	.res byte, 256
 
 	.endsection
 	.endmodule

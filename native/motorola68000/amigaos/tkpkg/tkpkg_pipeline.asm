@@ -270,11 +270,21 @@ cpuLoop
 	bne.w cpuMissing
 	lea buffers.PendingDefaultDialectOffsetLo, a3
 	bsr.w storeOptionalPackageStringLocatorV1
+	bsr.w locateOptionalStringV1
+	bne.w cpuMissing
+	tst.w d0
+	beq.s cpuFound
+	lea buffers.PendingCpuOffsetLo, a3
+	bsr.w storePackageStringLocatorV1
+
+cpuFound
 	moveq #0, d0
 	rts
 
 skipCpuEntry
 	bsr.w skipStringV1
+	bne.w cpuMissing
+	bsr.w skipOptionalStringV1
 	bne.w cpuMissing
 	bsr.w skipOptionalStringV1
 	bne.w cpuMissing

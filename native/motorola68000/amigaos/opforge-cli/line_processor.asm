@@ -53,16 +53,7 @@ record
 checkPackage
 	tst.w state.NativeCliPackagePipelineReady
 	beq.w parseOnly
-	bsr.w opforgeNativeCliPrepareLineServiceRequest
-
-	lea buffers.ControlBlockV1, a0
-	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
-	move.w state.NativeCliLineRequestLen, d1
-	jsr tkpkg_control_block.opforgeNativeCliWriteInputWindow
-	moveq #abi.ENTRY_ORD_TOKENIZE_LINE, d0
-	jsr service.dispatchV1
-	lea buffers.ControlBlockV1, a0
-	jsr tkpkg_control_block.opforgeNativeCliReadStatus
+	jsr prvm_bridge.opforgeNativeCliDispatchParseLineUntilReady
 	bne.w fail
 
 ok
@@ -85,7 +76,7 @@ parseOnly
 	jsr line_text.opforgeNativeCliLineStartsWith
 	beq.w parseOnlyCheckModule
 	jsr directive_handlers.opforgeNativeCliParseEndmoduleLine
-	bra.s parseOnlyStatus
+	bra.w parseOnlyStatus
 
 parseOnlyCheckModule
 	movea.l a4, a0
@@ -95,7 +86,7 @@ parseOnlyCheckModule
 	jsr line_text.opforgeNativeCliLineStartsWith
 	beq.w parseOnlyCheckUse
 	jsr directive_handlers.opforgeNativeCliParseModuleLine
-	bra.s parseOnlyStatus
+	bra.w parseOnlyStatus
 
 parseOnlyCheckUse
 	movea.l a4, a0
@@ -103,7 +94,7 @@ parseOnlyCheckUse
 	lea strings.UseDirectiveText, a1
 	moveq #4, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	beq.w parseOnlyOk
+	beq.s parseOnlyCheckCpu
 	move.w state.NativeCliImportCount, d6
 	jsr directive_handlers.opforgeNativeCliParseUseLine
 	tst.l d0
@@ -117,6 +108,21 @@ parseOnlyCheckUse
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	moveq #1, d0
+
+parseOnlyCheckCpu
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.CpuMnemonicText, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.w parseOnlyOk
+	jsr directive_handlers.opforgeNativeCliParseCpuLine
+	tst.l d0
+	bne.s parseOnlyStatus
+	moveq #-1, d0
+	move.l d0, state.NativeCliPrvmRouteStatus
+	clr.w state.NativeCliPrvmResultCount
+	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
 
 parseOnlyStatus
 	tst.l d0
@@ -217,9 +223,27 @@ checkUseDirective
 	lea strings.UseDirectiveText, a1
 	moveq #4, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	beq.s checkOrgDirective
+	beq.s checkCpuDirective
 	jsr directive_handlers.opforgeNativeCliParseUseLine
 	bra.w return
+
+checkCpuDirective
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.CpuMnemonicText, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s checkOrgDirective
+	jsr directive_handlers.opforgeNativeCliParseCpuLine
+	tst.l d0
+	bne.w return
+	moveq #-1, d0
+	move.l d0, state.NativeCliPrvmRouteStatus
+	clr.w state.NativeCliPrvmResultCount
+	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
+	tst.l d0
+	bne.w fail
+	bra.w done
 
 checkOrgDirective
 	movea.l a4, a0

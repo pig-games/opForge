@@ -7,6 +7,7 @@
 	.module opforge.cli.source_reader
 	.cpu 68020
 
+	.use opasm.amigaos.engine
 	.use opforge.cli.state
 	.use opforge.cli.constants
 	.use opforge.cli.strings
@@ -19,6 +20,8 @@
 	.use opforge.cli.package_pipeline
 	.use opforge.cli.line_processor
 	.use opforge.cli.include_use
+	.use opforge.cli.line_text
+	.use opforge.cli.token_util
 	.use opforge.cli.tkpkg_control_block
 
 	.section code, kind=code
@@ -41,6 +44,15 @@
 ; ---------------------------------------------------------------------------
 opforgeNativeCliTokenizeFrontend	.block
 	movem.l d2-d7/a2-a6, -(sp)
+	tst.b state.NativeCliCpuName
+	bne.w bootstrapDone
+	bsr.w opforgeNativeCliBootstrapSourceCpuNameFromInput
+	bne.w bootstrapMiss
+	bra.w bootstrapDone
+
+bootstrapMiss
+
+bootstrapDone
 	clr.w state.NativeCliPackagePipelineReady
 	bsr.w package_pipeline.opforgeNativeCliInitPackagePipeline
 	beq.s packageReady
@@ -50,6 +62,8 @@ opforgeNativeCliTokenizeFrontend	.block
 
 packageReady
 	move.w #1, state.NativeCliPackagePipelineReady
+	lea buffers.ActiveCpuBuffer, a0
+	jsr engine.setSessionCpuNameV1
 	move.l #strings.TokenizerOkText, d1
 	jsr dos.putStr
 packageUnavailable
@@ -226,6 +240,139 @@ return
 	movem.l (sp)+, d5
 	rts
 	.bend  ; opforgeNativeCliTokenizePendingUseModule
+
+; Bootstrap one source-driven `.cpu` selection before the full tokenize pass.
+; Inputs: state.NativeCliInputPath holds the primary source path.
+; Outputs: D0 = 0 when a `.cpu` line was found and applied; 1 otherwise.
+; Clobbers: D0-D5/A0-A1/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliBootstrapSourceCpuNameFromInput	.block
+	lea state.NativeCliInputPath, a0
+	jsr dos.openInput
+	tst.l d0
+	bne.s openOk
+	moveq #1, d0
+	rts
+
+openOk
+	move.l d0, d5
+	clr.w state.NativeCliSourceLineLen
+	clr.w state.NativeCliSawCr
+
+loop
+	lea state.NativeCliInputChar, a0
+	moveq #1, d0
+	move.l d5, d1
+	jsr dos.readInput
+	cmp.l #-1, d0
+	beq.w closeFail
+	tst.l d0
+	beq.w fileEof
+
+	move.b state.NativeCliInputChar, d0
+	tst.w state.NativeCliSawCr
+	beq.s checkBreak
+	clr.w state.NativeCliSawCr
+	cmpi.b #10, d0
+	beq.w loop
+
+checkBreak
+	cmpi.b #10, d0
+	beq.s lineDone
+	cmpi.b #13, d0
+	beq.s crDone
+
+	move.w state.NativeCliSourceLineLen, d1
+	cmpi.w #constants.SOURCE_LINE_BUFFER_CAPACITY, d1
+	bhs.w closeFail
+	lea state.NativeCliSourceLine, a1
+	move.b d0, 0(a1, d1.W)
+	addq.w #1, d1
+	move.w d1, state.NativeCliSourceLineLen
+	bra.w loop
+
+crDone
+	move.w #1, state.NativeCliSawCr
+	bra.w lineDone
+
+lineDone
+	move.l d5, -(sp)
+	bsr.w opforgeNativeCliBootstrapCurrentCpuNameLine
+	move.l (sp)+, d5
+	beq.s closeOk
+	clr.w state.NativeCliSourceLineLen
+	bra.w loop
+
+fileEof
+	tst.w state.NativeCliSourceLineLen
+	beq.w closeFail
+	move.l d5, -(sp)
+	bsr.w opforgeNativeCliBootstrapCurrentCpuNameLine
+	move.l (sp)+, d5
+	bne.w closeFail
+
+closeOk
+	move.l d5, d1
+	jsr dos.close
+	moveq #0, d0
+	rts
+
+closeFail
+	move.l d5, d1
+	jsr dos.close
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliBootstrapSourceCpuNameFromInput
+
+; Try to parse the current source line as `.cpu`.
+; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen hold one logical line.
+; Outputs: D0 = 0 when `.cpu` matched and updated state.NativeCliCpuName; 1 otherwise.
+; Clobbers: D0-D1/A0-A1/CCR.
+opforgeNativeCliBootstrapCurrentCpuNameLine	.block
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s noMatch
+	move.l d0, -(sp)
+	move.l a0, -(sp)
+	lea strings.CpuMnemonicText, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s noMatchRestore
+	movea.l (sp)+, a0
+	move.l (sp)+, d0
+	addq.l #4, a0
+	subq.l #4, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	lea state.NativeCliArgToken, a1
+	bsr.w line_text.opforgeNativeCliCopyLineWord
+	bne.s fail
+	tst.b state.NativeCliArgToken
+	beq.s fail
+	lea state.NativeCliArgToken, a0
+	lea state.NativeCliCpuName, a1
+	jsr token_util.opforgeNativeCliCanonicalizeCpuName
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s ok
+	cmpi.b #';', (a0)
+	bne.s fail
+
+ok
+	moveq #0, d0
+	rts
+
+noMatchRestore
+	addq.l #8, sp
+
+noMatch
+	moveq #1, d0
+	rts
+
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliBootstrapCurrentCpuNameLine
 
 ; Tokenize the file for the currently resolved `.use` module and restore caller state.
 ; Inputs: state.NativeCliIncludePath and module-saved path/line state.

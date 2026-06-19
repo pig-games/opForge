@@ -151,6 +151,9 @@ checkMnemonicFound
 maybeLabelOnly
 trySourceFallback
 	bsr.w opforgeNativeCliRecordSourceStatementFallback
+	tst.w state.NativeCliStmtExprFound
+	beq.s checkStore
+	bsr.w opforgeNativeCliRecordSourceStatementFallback
 	tst.w state.NativeCliStmtMnemFound
 	bne.s checkStore
 	tst.l state.NativeCliStmtLabelLen

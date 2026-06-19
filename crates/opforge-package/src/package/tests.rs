@@ -20,16 +20,19 @@ fn sample_cpus() -> Vec<CpuDescriptor> {
             id: "z80".to_string(),
             family_id: "intel8080".to_string(),
             default_dialect: Some("zilog".to_string()),
+            canonical_cpu_id: None,
         },
         CpuDescriptor {
             id: "8085".to_string(),
             family_id: "intel8080".to_string(),
             default_dialect: Some("intel".to_string()),
+            canonical_cpu_id: None,
         },
         CpuDescriptor {
             id: "6502".to_string(),
             family_id: "mos6502".to_string(),
             default_dialect: Some("mos".to_string()),
+            canonical_cpu_id: None,
         },
     ]
 }
@@ -187,6 +190,7 @@ fn sample_cpus_with_optional_default() -> Vec<CpuDescriptor> {
         id: "6510".to_string(),
         family_id: "mos6502".to_string(),
         default_dialect: None,
+        canonical_cpu_id: None,
     });
     cpus
 }
@@ -223,6 +227,17 @@ fn simple_chunk_schema_round_trip_cpus() {
         encode_cpus_chunk,
         decode_cpus_chunk,
     );
+}
+
+#[test]
+fn simple_chunk_schema_round_trip_cpu_canonical_alias() {
+    let entries = vec![CpuDescriptor {
+        id: "6502".to_string(),
+        family_id: "mos6502".to_string(),
+        default_dialect: Some("mos".to_string()),
+        canonical_cpu_id: Some("m6502".to_string()),
+    }];
+    assert_scoped_schema_round_trip(&entries, encode_cpus_chunk, decode_cpus_chunk);
 }
 
 #[test]
@@ -746,12 +761,12 @@ fn toc_snapshot_is_stable() {
             "STRS@166+4",
             "DIAG@170+4",
             "FAMS@174+44",
-            "CPUS@218+92",
-            "DIAL@310+80",
-            "REGS@390+57",
-            "FORM@447+57",
-            "TABL@504+43",
-            "MSEL@547+4"
+            "CPUS@218+95",
+            "DIAL@313+80",
+            "REGS@393+57",
+            "FORM@450+57",
+            "TABL@507+43",
+            "MSEL@550+4"
         ]
     );
 }
@@ -948,6 +963,7 @@ fn load_rejects_cross_reference_errors() {
         id: "8085".to_string(),
         family_id: "missing".to_string(),
         default_dialect: Some("intel".to_string()),
+        canonical_cpu_id: None,
     }];
     let dials = vec![DialectDescriptor {
         id: "intel".to_string(),

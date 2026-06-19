@@ -422,28 +422,15 @@ impl RuntimeModelCore {
             return None;
         }
 
-        let cpus = self.package().cpu_descriptors();
-        if let Some(found) = cpus
+        self.package()
+            .cpu_descriptors()
             .iter()
             .find(|cpu| cpu.id.eq_ignore_ascii_case(requested))
-            .map(|cpu| cpu.id.clone())
-        {
-            return Some(found);
-        }
-
-        let alias_target = match requested.to_ascii_lowercase().as_str() {
-            "8080" => Some("8085"),
-            "6502" => Some("m6502"),
-            "65c816" => Some("65816"),
-            "mega65" => Some("45gs02"),
-            "6809" => Some("m6809"),
-            "6309" => Some("hd6309"),
-            _ => None,
-        }?;
-
-        cpus.iter()
-            .find(|cpu| cpu.id.eq_ignore_ascii_case(alias_target))
-            .map(|cpu| cpu.id.clone())
+            .map(|cpu| {
+                cpu.canonical_cpu_id
+                    .clone()
+                    .unwrap_or_else(|| cpu.id.clone())
+            })
     }
 
     pub fn token_policy_for_resolved(&self, resolved: &ResolvedHierarchy) -> RuntimeTokenPolicy {

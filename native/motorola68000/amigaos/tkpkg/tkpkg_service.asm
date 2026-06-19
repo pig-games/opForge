@@ -40,6 +40,18 @@ EVAL_EXPR_MISSING_EXPR_TEXT_LEN      = 45
 EVAL_EXPR_MISSING_EXVM_TEXT_LEN      = 42
 EVAL_EXPR_BAD_EXPR_VERSION_TEXT_LEN  = 46
 EVAL_EXPR_BAD_EXVM_VERSION_TEXT_LEN  = 44
+EVAL_EXPR_ZERO_OUTPUT_TEXT_LEN       = 39
+EVAL_EXPR_OK_ZERO_LEN_TEXT_LEN       = 40
+EVAL_EXPR_BRIDGE_CODE1_TEXT_LEN      = 41
+EVAL_EXPR_BRIDGE_CODE3_TEXT_LEN      = 50
+EVAL_EXPR_BRIDGE_CODE4_TEXT_LEN      = 51
+EVAL_EXPR_BRIDGE_CODE5_TEXT_LEN      = 49
+EVAL_EXPR_BRIDGE_CODE33_TEXT_LEN     = 48
+EVAL_EXPR_BRIDGE_CODE34_TEXT_LEN     = 47
+EVAL_EXPR_NO_LABEL_CONTEXT_TEXT_LEN  = 49
+EVAL_EXPR_ZERO_LABEL_COUNT_TEXT_LEN  = 48
+EVAL_EXPR_SLICE_START_TEXT_LEN       = 55
+EVAL_EXPR_SLICE_OTHER_TEXT_LEN       = 59
 SELECTED_SELECTOR_UNKNOWN_TEXT_LEN   = 33
 SELECTED_SELECTOR_UNSUPPORTED_TEXT_LEN = 36
 SELECTED_SELECTOR_OPERAND_TEXT_LEN   = 30
@@ -87,6 +99,36 @@ EvaluateExprBadExprVersionText
 
 EvaluateExprBadExvmVersionText
 	.byte "OTR901: unsupported expression parser opcode", 0
+
+EvaluateExprZeroOutputText
+	.byte "OTR904: evaluate expression returned no output", 0
+
+EvaluateExprOkZeroLenText
+	.byte "OTR905: evaluate expression ok saw zero len", 0
+
+EvaluateExprBridgeCode1Text
+	.byte "OTR920: expression bridge returned code 1", 0
+
+EvaluateExprBridgeCode3Text
+	.byte "OTR923: expression bridge reported compile failure", 0
+
+EvaluateExprBridgeCode4Text
+	.byte "OTR924: expression bridge reported finalize failure", 0
+
+EvaluateExprBridgeCode5Text
+	.byte "OTR925: expression bridge reported exprvm failure", 0
+
+EvaluateExprBridgeCode33Text
+	.byte "OTR921: expression bridge reported trailing text", 0
+
+EvaluateExprBridgeCode34Text
+	.byte "OTR922: expression bridge reported missing term", 0
+
+EvaluateExprNoLabelContextText
+	.byte "OTR930: evaluate expression had no label context", 0
+
+EvaluateExprZeroLabelCountText
+	.byte "OTR931: evaluate expression saw zero label count", 0
 
 EvaluateExprValuePrefixText
 	.byte "VALUE ", 0
@@ -269,6 +311,8 @@ EncodeSelectedMselUnstable
 	.res byte, 1
 	.align 2
 EncodeSelectedMselMatchFlags
+	.res word, 1
+EvaluateExpressionOutputLen
 	.res word, 1
 EncodeSelectedOutputLen
 	.res word, 1
@@ -591,11 +635,20 @@ evaluateExpressionBadRequest
 	rts
 
 evaluateExpressionOk
+	move.w d1, EvaluateExpressionOutputLen.l
 	bsr.w tkpkgServiceWriteClearInputFieldsV1
 	bsr.w tkpkgServiceClearStoredLastErrorV1
 	bsr.w tkpkgServiceWriteClearLastErrorFieldsV1
 	bsr.w tkpkgServiceSetStatusOkV1
 	bsr.w tkpkgServiceWriteClearOutputFieldsV1
+	move.w EvaluateExpressionOutputLen.l, d1
+	bne.s haveEvaluateExpressionOutput
+	lea EvaluateExprOkZeroLenText, a1
+	moveq #EVAL_EXPR_OK_ZERO_LEN_TEXT_LEN, d1
+	bsr.w tkpkgServiceSetRuntimeErrorMessageV1
+	rts
+
+haveEvaluateExpressionOutput
 	tst.w d1
 	beq.s evaluateExpressionDone
 	bsr.w tkpkgServiceWriteOutputBufferOffsetV1
@@ -693,7 +746,8 @@ havePipeline
 	subq.w #1, d1
 	cmp.w d7, d1
 	bhi.w badPayload
-	move.l d2, d3
+	move.l d2, -(sp)
+	move.l d4, -(sp)
 	moveq #0, d1
 	moveq #0, d2
 	moveq #0, d6
@@ -710,8 +764,6 @@ havePipeline
 	move.b 27(a0), d5
 	lsl.w #8, d5
 	or.w d5, d3
-	move.l d4, -(sp)
-	move.l d3, -(sp)
 	cmpi.w #TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE, d3
 	bcs.s noExtension
 	lea 0(a0, d0.W), a3
@@ -723,24 +775,50 @@ havePipeline
 	bset #0, d6
 
 noExtension
+	move.l a2, -(sp)
+	move.l a1, -(sp)
+	move.l d2, -(sp)
+	move.l d1, -(sp)
+	move.l a4, -(sp)
 	move.l d6, -(sp)
 	bsr.w resolveExpressionContractVersionsV1
-	bne.s resolveFail
-	move.l (sp)+, d6
-	move.l (sp)+, d3
-	move.l (sp)+, d4
-	movea.l a4, a0
-	move.l d3, d0
-	subq.l #1, d0
-	adda.w d0, a0
-	move.l d4, d0
-	sub.l d3, d0
-	beq.s badPayload
-	move.l d6, -(sp)
+	bne.w resolveFail
 	moveq #0, d4
 	move.w d6, d4
 	moveq #0, d5
 	move.w d7, d5
+	move.l (sp)+, d6
+	movea.l (sp)+, a4
+	move.l (sp)+, d1
+	move.l (sp)+, d2
+	movea.l (sp)+, a1
+	movea.l (sp)+, a2
+	move.l (sp)+, d7
+	move.l (sp)+, d3
+	movea.l a4, a0
+	move.l d3, d0
+	subq.l #1, d0
+	adda.w d0, a0
+	move.l d7, d0
+	sub.l d3, d0
+	beq.w badPayload
+	btst #0, d6
+	bne.w haveLabelContext
+	lea EvaluateExprNoLabelContextText, a1
+	moveq #EVAL_EXPR_NO_LABEL_CONTEXT_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
+	bra.w return
+
+haveLabelContext
+	tst.l d1
+	bne.w haveLabelCount
+	lea EvaluateExprZeroLabelCountText, a1
+	moveq #EVAL_EXPR_ZERO_LABEL_COUNT_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
+	bra.w return
+
+haveLabelCount
+	move.l d6, -(sp)
 	moveq #0, d6
 	move.w engine.opasmEngineSessionPass.l, d6
 	lea engine.opasmEngineLabelFinalizedTable.l, a6
@@ -754,22 +832,77 @@ noExtension
 
 noExtensionWrite
 	bsr.w writeExpressionValueOutputV1
+	tst.w d1
+	bne.s evalOk
+	lea EvaluateExprZeroOutputText, a1
+	moveq #EVAL_EXPR_ZERO_OUTPUT_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
+	bra.w return
+
+evalOk
 	moveq #0, d0
-	bra.s return
+	bra.w return
 
 badPayload
 	moveq #abi.STATUS_BAD_REQUEST_V1, d0
 	moveq #0, d1
-	bra.s return
+	bra.w return
 
 resolveFail
-	addq.l #4, sp
-	addq.l #8, sp
-	bra.s return
+	adda.l #28, sp
+	bra.w return
 
 bridgeFail
+	cmpi.b #5, d0
+	beq.w bridgeFail5
+	cmpi.b #4, d0
+	beq.w bridgeFail4
+	cmpi.b #3, d0
+	beq.w bridgeFail3
+	cmpi.b #33, d0
+	beq.w bridgeFail33
+	cmpi.b #34, d0
+	beq.w bridgeFail34
+	cmpi.b #1, d0
+	beq.w bridgeFail1
 	lea EvaluateExprFailedText, a1
 	moveq #EVAL_EXPR_FAILED_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
+	bra.w return
+
+bridgeFail1
+	lea EvaluateExprBridgeCode1Text, a1
+	moveq #EVAL_EXPR_BRIDGE_CODE1_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
+	bra.w return
+
+bridgeFail3
+	lea EvaluateExprBridgeCode3Text, a1
+	moveq #EVAL_EXPR_BRIDGE_CODE3_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
+	bra.w return
+
+bridgeFail4
+	lea EvaluateExprBridgeCode4Text, a1
+	moveq #EVAL_EXPR_BRIDGE_CODE4_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
+	bra.w return
+
+bridgeFail5
+	lea EvaluateExprBridgeCode5Text, a1
+	moveq #EVAL_EXPR_BRIDGE_CODE5_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
+	bra.w return
+
+bridgeFail33
+	lea EvaluateExprBridgeCode33Text, a1
+	moveq #EVAL_EXPR_BRIDGE_CODE33_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
+	bra.w return
+
+bridgeFail34
+	lea EvaluateExprBridgeCode34Text, a1
+	moveq #EVAL_EXPR_BRIDGE_CODE34_TEXT_LEN, d1
 	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 
 return

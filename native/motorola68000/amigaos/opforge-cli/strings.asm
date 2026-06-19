@@ -248,7 +248,7 @@ defaultFsUaeArgTail
 	.byte "Work:opforge_missing_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK
-	.byte "Work:opforge_fsuae_smoke_input.asm --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_HUNK_OUTPUT
 	.byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
@@ -301,7 +301,11 @@ defaultFsUaeArgTail
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM17_ARTIFACT_MATRIX
 	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
 .else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM17_SOURCE_CPU_ONLY
+	.byte "Work:opforge_6502_native_cli_smoke.asm --opasm-package Work:opforge_cli_package.opasm", 0
+.else
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b", 0
+.endif
 .endif
 .endif
 .endif
@@ -386,8 +390,16 @@ DefaultCpuName
 DefaultFamilyName
 	.byte "motorola68k"
 DefaultFamilyNameEnd
+Cpu6502AliasText
+	.byte "6502", 0
 M6502CpuNameText
 	.byte "m6502", 0
+CpuM65C02AliasText
+	.byte "m65c02", 0
+Cpu65C02AliasText
+	.byte "65c02", 0
+Cpu65C02CanonicalText
+	.byte "65c02", 0
 Mos6502FamilyName
 	.byte "mos6502"
 Mos6502FamilyNameEnd

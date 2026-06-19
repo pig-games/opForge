@@ -201,6 +201,9 @@ cpu
 	lea state.NativeCliCpuName, a1
 	bsr.w opforgeNativeCliCopyRequiredValue
 	bne.w missingValue
+	lea state.NativeCliCpuName, a0
+	lea state.NativeCliCpuName, a1
+	jsr token_util.opforgeNativeCliCanonicalizeCpuName
 	bra.w parseLoop
 
 package

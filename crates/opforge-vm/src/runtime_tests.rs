@@ -862,16 +862,19 @@ fn sample_package() -> HierarchyPackage {
                 id: "8085".to_string(),
                 family_id: "intel8080".to_string(),
                 default_dialect: Some("intel".to_string()),
+                canonical_cpu_id: None,
             },
             CpuDescriptor {
                 id: "z80".to_string(),
                 family_id: "intel8080".to_string(),
                 default_dialect: Some("zilog".to_string()),
+                canonical_cpu_id: None,
             },
             CpuDescriptor {
                 id: "6502".to_string(),
                 family_id: "mos6502".to_string(),
                 default_dialect: Some("mos".to_string()),
+                canonical_cpu_id: None,
             },
         ],
         vec![
@@ -914,6 +917,7 @@ fn intel_only_chunks() -> HierarchyChunks {
             id: "8085".to_string(),
             family_id: "intel8080".to_string(),
             default_dialect: Some("intel".to_string()),
+            canonical_cpu_id: None,
         }],
         dialects: vec![DialectDescriptor {
             id: "intel".to_string(),
@@ -7369,6 +7373,35 @@ fn execution_model_loads_from_encoded_package_bytes() {
         .expect("vm encode should succeed")
         .expect("m6502 vm program should be available");
     assert_eq!(bytes, vec![0xA9, 0x42]);
+}
+
+#[test]
+fn execution_model_resolves_registry_cpu_aliases_from_package_bytes() {
+    let registry = mos6502_family_registry();
+
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("package bytes build");
+    let model = HierarchyExecutionModel::from_package_bytes(package_bytes.as_slice())
+        .expect("execution model build from package bytes");
+
+    assert_eq!(
+        model.canonical_cpu_id_for_input("6502"),
+        Some("m6502".to_string())
+    );
+    assert_eq!(
+        model.canonical_cpu_id_for_input("65c816"),
+        Some("65816".to_string())
+    );
+
+    let m6502 = model
+        .resolve_pipeline("6502", None)
+        .expect("6502 alias pipeline should resolve");
+    assert_eq!(m6502.cpu_id, "m6502");
+
+    let m65816 = model
+        .resolve_pipeline("65c816", None)
+        .expect("65c816 alias pipeline should resolve");
+    assert_eq!(m65816.cpu_id, "65816");
 }
 
 #[test]

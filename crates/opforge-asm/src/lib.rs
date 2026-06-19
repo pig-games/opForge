@@ -7,6 +7,8 @@ mod external_oracle;
 #[cfg(test)]
 mod fs_uae_smoke;
 #[cfg(test)]
+mod native_reference_parity;
+#[cfg(test)]
 mod normalization;
 #[cfg(test)]
 mod oracle;

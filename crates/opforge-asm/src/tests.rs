@@ -2,6 +2,10 @@ use crate::engine::Assembler;
 use crate::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, Severity};
 use crate::line::{set_host_expr_eval_failpoint_for_tests, AsmLine};
 use crate::listing::ListingWriter;
+use crate::native_reference_parity::{
+    account_native_reference_path, NativeReferenceAccounting, NativeReferenceSourceMode,
+    NATIVE_REFERENCE_CASES,
+};
 use crate::normalization::{normalize_opforge_diagnostics, NormalizedErrorClass};
 use crate::output::{
     build_export_sections_payloads, build_linker_output_payload, build_mapfile_text,
@@ -11135,6 +11139,98 @@ fn item6_source_without_native_cli_setup_directives(source: &str) -> String {
         }
     }
     stripped
+}
+
+#[test]
+fn native_reference_manifest_seed_matches_current_mos_item6_slice() {
+    let manifest_paths = NATIVE_REFERENCE_CASES
+        .iter()
+        .filter(|case| case.source_mode == NativeReferenceSourceMode::StrippedBinFromSource)
+        .map(|case| (case.asm_path, case.cpu_id))
+        .collect::<Vec<_>>();
+    let item6_paths = item6_mos_fixture_allowlist()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    for entry in item6_paths {
+        assert!(
+            manifest_paths.contains(&entry),
+            "expected stripped-bin manifest slice to retain Item 6 seed case {:?}",
+            entry
+        );
+    }
+    assert!(
+        manifest_paths.len() >= 5,
+        "expected stripped-bin manifest slice to be at least the original Item 6 size"
+    );
+}
+
+#[test]
+fn native_reference_manifest_carries_current_focused_non_seed_cases() {
+    let current_focused_cases = [
+        (
+            "examples/mos6502/6502_first_run_artifact_contract.asm",
+            "m6502",
+            NativeReferenceSourceMode::SourceCpuPrgFromExample,
+        ),
+        (
+            "examples/mos6502/65c02_simple.asm",
+            "65c02",
+            NativeReferenceSourceMode::StrippedBinFromSource,
+        ),
+        (
+            "examples/mos6502/65c02_allmodes.asm",
+            "65c02",
+            NativeReferenceSourceMode::StrippedBinFromSource,
+        ),
+    ];
+
+    for (asm_path, cpu_id, source_mode) in current_focused_cases {
+        let case = NATIVE_REFERENCE_CASES
+            .iter()
+            .find(|case| case.asm_path == asm_path)
+            .unwrap_or_else(|| panic!("missing focused native reference case {asm_path}"));
+        assert_eq!(case.cpu_id, cpu_id);
+        assert_eq!(case.source_mode, source_mode);
+    }
+}
+
+#[test]
+fn native_reference_manifest_accounts_for_current_example_corpus() {
+    let repo_root = workspace_root();
+    let examples_dir = repo_root.join("examples");
+    let asm_files = collect_example_asm_files(&examples_dir);
+    let mut case_count = 0usize;
+    let mut exclusion_count = 0usize;
+
+    for asm_path in asm_files {
+        let relative_path = asm_path
+            .strip_prefix(&repo_root)
+            .unwrap_or_else(|_| panic!("strip repo root for {}", asm_path.display()))
+            .display()
+            .to_string();
+        match account_native_reference_path(relative_path.as_str())
+            .unwrap_or_else(|err| panic!("account native reference path {relative_path}: {err}"))
+        {
+            NativeReferenceAccounting::Case(case) => {
+                case_count += 1;
+                assert_eq!(case.asm_path, relative_path);
+            }
+            NativeReferenceAccounting::Excluded(rule) => {
+                exclusion_count += 1;
+                assert!(
+                    !rule.reason.trim().is_empty(),
+                    "native reference exclusion reason must be concrete for {relative_path}"
+                );
+            }
+        }
+    }
+
+    assert_eq!(case_count, NATIVE_REFERENCE_CASES.len());
+    assert!(
+        exclusion_count > 0,
+        "native reference completeness guard should exercise explicit exclusions"
+    );
 }
 
 fn item6_65c02_focused_fs_uae_source(case: &str) -> Option<&'static str> {

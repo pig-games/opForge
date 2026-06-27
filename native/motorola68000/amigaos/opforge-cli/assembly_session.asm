@@ -67,7 +67,7 @@ routeOk
 	move.w #constants.PRVM_RESULT_RECORD_COUNT, d7
 
 haveCount
-	beq.w done
+	beq.w finalize
 	subq.w #1, d7
 	lea state.OpforgeNativeCliPrvmResultBuffer, a2
 

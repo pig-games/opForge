@@ -111,6 +111,11 @@ inputOpened
 	move.l d0, d1
 	jsr dos.close
 	tst.w state.NativeCliOutputFormat
+	bne.s maybeHunkRequested
+	jsr source_reader.opforgeNativeCliBootstrapSourceOutputFromInput
+
+maybeHunkRequested
+	tst.w state.NativeCliOutputFormat
 	beq.s outputFormatReady
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
 	bne.s outputFormatReady
@@ -120,6 +125,14 @@ inputOpened
 	bra.w closeDos
 
 outputFormatReady
+	tst.w state.NativeCliOutputFormat
+	bne.s headerReady
+	move.l #strings.HunkRequiredText, d1
+	jsr dos.putStr
+	move.l #constants.RETURN_USAGE, state.NativeCliReturnCode
+	bra.w closeDos
+
+headerReady
 	move.l #strings.StubHeaderText, d1
 	jsr dos.putStr
 	move.l #strings.InputLabelText, d1
@@ -144,14 +157,6 @@ outputFormatReady
 	bra.w closeDos
 
 tokenizerOk
-	tst.w state.NativeCliOutputFormat
-	bne.s haveOutputRequest
-	move.l #strings.HunkRequiredText, d1
-	jsr dos.putStr
-	move.l #constants.RETURN_USAGE, state.NativeCliReturnCode
-	bra.w closeDos
-
-haveOutputRequest
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
 	bne.s outputRequestReady
 	move.l #strings.NativeHunkNotImplementedText, d1

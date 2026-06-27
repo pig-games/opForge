@@ -15,7 +15,7 @@ UNEXPECTED_EOF_TEXT_LEN              = 30
 DUPLICATE_CHUNK_TEXT_LEN             = 33
 MISSING_CHUNK_TEXT_LEN               = 30
 CHUNK_BOUNDS_TEXT_LEN                = 27
-PACKAGE_STATE_CLEAR_LONGWORD_LAST    = buffers.PACKAGE_STATE_CLEAR_LONGWORD_COUNT - 1
+PACKAGE_STATE_CLEAR_BYTE_LAST        = buffers.PACKAGE_STATE_CLEAR_BYTE_COUNT - 1
 
 	.section data, kind=data
 
@@ -65,15 +65,59 @@ tkpkgPackageLoaderLoadV1	.block
 	bsr.w clearLoadedState
 	bsr.w readInputLen
 	beq.w invalidMagic
-	cmpi.w #buffers.PACKAGE_STORAGE_CAPACITY, d0
+	cmpi.l #buffers.PACKAGE_STORAGE_CAPACITY, d0
 	bhi.w chunkBounds
-	move.b d0, buffers.PackageStorageLen  ; store low byte of package length for later bounded TOC walks
-	lsr.w #8, d0
-	move.b d0, buffers.PackageStorageLenHi  ; high byte keeps package length portable in byte-addressed state
+	bsr.w storePackageStorageLen
 	bsr.w readInputOffset
 	lea 0(a0, d1.W), a1  ; A1: caller package bytes inside the control-block window
 	lea buffers.PackageStorage, a2  ; A2: native package storage used by later locator reads
 	bsr.w copyInputBytes
+	moveq #0, d0
+	move.b buffers.PackageStorageLen, d0
+	moveq #0, d1
+	move.b buffers.PackageStorageLenMidLo, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b buffers.PackageStorageLenMidHi, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b buffers.PackageStorageLenHi, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	bsr.w validateStagedPackageV1
+	rts
+	.bend  ; tkpkgPackageLoaderLoadV1
+
+; ---------------------------------------------------------------------------
+; Validate a package that has already been copied into PackageStorage.
+;
+; Inputs:
+; - D0.L: staged package byte length.
+;
+; Outputs:
+; - D0: 0 on success, nonzero STATUS/runtime code on failure.
+; - A1/D1: failure message pointer/length on runtime failure paths.
+; - package chunk locators are updated on success.
+; ---------------------------------------------------------------------------
+tkpkgPackageLoaderLoadStagedV1	.block
+	bsr.w clearLoadedState
+	bsr.w validateStagedPackageV1
+	rts
+	.bend  ; tkpkgPackageLoaderLoadStagedV1
+
+	.priv
+
+validateStagedPackageV1	.block
+	tst.l d0
+	beq.w invalidMagic
+	cmpi.l #buffers.PACKAGE_STORAGE_CAPACITY, d0
+	bhi.w chunkBounds
+	bsr.w storePackageStorageLen
 	lea buffers.PackageStorage, a1
 	bsr.w validateHeader
 	bne.s done
@@ -84,9 +128,7 @@ tkpkgPackageLoaderLoadV1	.block
 
 done
 	rts
-	.bend  ; tkpkgPackageLoaderLoadV1
-
-	.priv
+	.bend  ; validateStagedPackageV1
 
 ; ---------------------------------------------------------------------------
 ; Clear all package-derived state before loading a new package.
@@ -100,10 +142,10 @@ done
 ; ---------------------------------------------------------------------------
 clearLoadedState	.block
 	lea buffers.PackageStateFlags, a3
-	move.w #PACKAGE_STATE_CLEAR_LONGWORD_LAST, d0
+	move.w #PACKAGE_STATE_CLEAR_BYTE_LAST, d0
 
 loop
-	clr.l (a3)+
+	clr.b (a3)+
 	dbf d0, loop
 	rts
 	.bend  ; clearLoadedState
@@ -145,14 +187,25 @@ copyInputBytes	.block
 	moveq #0, d2
 	move.b buffers.PackageStorageLen, d2
 	moveq #0, d3
+	move.b buffers.PackageStorageLenMidLo, d3
+	lsl.l #8, d3
+	or.l d3, d2
+	moveq #0, d3
+	move.b buffers.PackageStorageLenMidHi, d3
+	lsl.l #8, d3
+	lsl.l #8, d3
+	or.l d3, d2
+	moveq #0, d3
 	move.b buffers.PackageStorageLenHi, d3
-	lsl.w #8, d3
-	or.w d3, d2
+	lsl.l #8, d3
+	lsl.l #8, d3
+	lsl.l #8, d3
+	or.l d3, d2
 	beq.s done
 
 loop
 	move.b (a1)+, (a2)+
-	subq.w #1, d2
+	subq.l #1, d2
 	bne.s loop
 
 done
@@ -209,44 +262,55 @@ validateToc	.block
 	moveq #0, d7
 	move.b buffers.PackageStorageLen, d7
 	moveq #0, d6
+	move.b buffers.PackageStorageLenMidLo, d6
+	lsl.l #8, d6
+	or.l d6, d7
+	moveq #0, d6
+	move.b buffers.PackageStorageLenMidHi, d6
+	lsl.l #8, d6
+	lsl.l #8, d6
+	or.l d6, d7
+	moveq #0, d6
 	move.b buffers.PackageStorageLenHi, d6
-	lsl.w #8, d6
-	or.w d6, d7
+	lsl.l #8, d6
+	lsl.l #8, d6
+	lsl.l #8, d6
+	or.l d6, d7
 	moveq #0, d0
 	move.b 8(a1), d0
 	moveq #0, d1
 	move.b 9(a1), d1
-	lsl.w #8, d1
-	or.w d1, d0
-	move.w d0, d2
-	lsl.w #2, d2
-	move.w d0, d3
-	lsl.w #3, d3
-	add.w d3, d2
-	addi.w #OPASM_HEADER_SIZE, d2
-	cmp.w d7, d2
+	lsl.l #8, d1
+	or.l d1, d0
+	move.l d0, d2
+	lsl.l #2, d2
+	move.l d0, d3
+	lsl.l #3, d3
+	add.l d3, d2
+	addi.l #OPASM_HEADER_SIZE, d2
+	cmp.l d7, d2
 	bhi.w unexpectedEof
 	lea OPASM_HEADER_SIZE(a1), a2
-	tst.w d0
+	tst.l d0
 	beq.w missingChunk
 	move.w d0, d2
 	subq.w #1, d2
 
 tocLoop
 	lea 4(a2), a3
-	bsr.w readU32LeLow16
+	bsr.w readU32Le
 	tst.b d1
 	bne.w chunkBounds
-	move.w d0, d4
+	move.l d0, d4
 	lea 8(a2), a3
-	bsr.w readU32LeLow16
+	bsr.w readU32Le
 	tst.b d1
 	bne.w chunkBounds
-	move.w d0, d5
-	move.w d4, d6
-	add.w d5, d6
+	move.l d0, d5
+	move.l d4, d6
+	add.l d5, d6
 	bcs.w chunkBounds
-	cmp.w d7, d6
+	cmp.l d7, d6
 	bhi.w chunkBounds
 
 	cmpi.b #'F', (a2)
@@ -419,6 +483,39 @@ nextTocEntry
 	rts
 	.bend  ; validateToc
 
+storePackageStorageLen	.block
+	move.b d0, buffers.PackageStorageLen
+	lsr.l #8, d0
+	move.b d0, buffers.PackageStorageLenMidLo
+	lsr.l #8, d0
+	move.b d0, buffers.PackageStorageLenMidHi
+	lsr.l #8, d0
+	move.b d0, buffers.PackageStorageLenHi
+	rts
+	.bend  ; storePackageStorageLen
+
+readU32Le	.block
+	moveq #0, d0
+	move.b (a3), d0
+	moveq #0, d1
+	move.b 1(a3), d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b 2(a3), d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b 3(a3), d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	rts
+	.bend  ; readU32Le
+
 readU32LeLow16	.block
 	moveq #0, d0
 	move.b (a3), d0
@@ -427,23 +524,23 @@ readU32LeLow16	.block
 	lsl.w #8, d1
 	or.w d1, d0
 	moveq #0, d1
-	tst.b 2(a3)
-	bne.s highBits
-	tst.b 3(a3)
-	bne.s highBits
-	rts
-
-highBits
-	moveq #1, d1
 	rts
 	.bend  ; readU32LeLow16
 
 storeLocator	.block
 	move.b d4, (a3)+
-	lsr.w #8, d4
+	lsr.l #8, d4
+	move.b d4, (a3)+
+	lsr.l #8, d4
+	move.b d4, (a3)+
+	lsr.l #8, d4
 	move.b d4, (a3)+
 	move.b d5, (a3)+
-	lsr.w #8, d5
+	lsr.l #8, d5
+	move.b d5, (a3)+
+	lsr.l #8, d5
+	move.b d5, (a3)+
+	lsr.l #8, d5
 	move.b d5, (a3)+
 	rts
 	.bend  ; storeLocator

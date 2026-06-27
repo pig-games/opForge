@@ -20,6 +20,7 @@
 	.use opforge.cli.package_pipeline
 	.use opforge.cli.line_processor
 	.use opforge.cli.include_use
+	.use opforge.cli.directive_handlers
 	.use opforge.cli.line_text
 	.use opforge.cli.token_util
 	.use opforge.cli.tkpkg_control_block
@@ -78,6 +79,89 @@ return
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 	.bend  ; opforgeNativeCliTokenizeFrontend
+
+; Bootstrap one source-driven `.output` selection before the full tokenize pass.
+; Inputs: state.NativeCliInputPath holds the primary source path.
+; Outputs: D0 = 0 when a `.output` line was found and applied; 1 otherwise.
+; Clobbers: D0-D5/A0-A1/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliBootstrapSourceOutputFromInput	.block
+	lea state.NativeCliInputPath, a0
+	jsr dos.openInput
+	tst.l d0
+	bne.s openOk
+	moveq #1, d0
+	rts
+
+openOk
+	move.l d0, d5
+	clr.w state.NativeCliSourceLineLen
+	clr.w state.NativeCliSawCr
+
+loop
+	lea state.NativeCliInputChar, a0
+	moveq #1, d0
+	move.l d5, d1
+	jsr dos.readInput
+	cmp.l #-1, d0
+	beq.w closeFail
+	tst.l d0
+	beq.w fileEof
+
+	move.b state.NativeCliInputChar, d0
+	tst.w state.NativeCliSawCr
+	beq.s checkBreak
+	clr.w state.NativeCliSawCr
+	cmpi.b #10, d0
+	beq.w loop
+
+checkBreak
+	cmpi.b #10, d0
+	beq.s lineDone
+	cmpi.b #13, d0
+	beq.s crDone
+
+	move.w state.NativeCliSourceLineLen, d1
+	cmpi.w #constants.SOURCE_LINE_BUFFER_CAPACITY, d1
+	bhs.w closeFail
+	lea state.NativeCliSourceLine, a1
+	move.b d0, 0(a1, d1.W)
+	addq.w #1, d1
+	move.w d1, state.NativeCliSourceLineLen
+	bra.w loop
+
+crDone
+	move.w #1, state.NativeCliSawCr
+	bra.w lineDone
+
+lineDone
+	move.l d5, -(sp)
+	bsr.w opforgeNativeCliBootstrapCurrentOutputLine
+	move.l (sp)+, d5
+	beq.s closeOk
+	clr.w state.NativeCliSourceLineLen
+	bra.w loop
+
+fileEof
+	tst.w state.NativeCliSourceLineLen
+	beq.w closeFail
+	move.l d5, -(sp)
+	bsr.w opforgeNativeCliBootstrapCurrentOutputLine
+	move.l (sp)+, d5
+	bne.w closeFail
+
+closeOk
+	move.l d5, d1
+	jsr dos.close
+	moveq #0, d0
+	rts
+
+closeFail
+	move.l d5, d1
+	jsr dos.close
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliBootstrapSourceOutputFromInput
 
 	.priv
 
@@ -229,8 +313,16 @@ opforgeNativeCliTokenizePendingUseModule	.block
 	movem.l d5, -(sp)
 	cmpi.w #-1, state.NativeCliResolvedModuleId
 	beq.s ok
+	move.w state.NativeCliResolvedModuleId, d0
+	cmp.w state.NativeCliModuleCount, d0
+	blo.s loaded
 	move.w #-1, state.NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliTokenizeResolvedUseModule
+	bra.s return
+
+loaded
+	move.w #-1, state.NativeCliResolvedModuleId
+	moveq #0, d0
 	bra.s return
 
 ok
@@ -373,6 +465,31 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliBootstrapCurrentCpuNameLine
+
+; Try to parse the current source line as `.output`.
+; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen hold one logical line.
+; Outputs: D0 = 0 when `.output` matched and updated output state; 1 otherwise.
+; Clobbers: D0-D1/A0-A1/CCR.
+opforgeNativeCliBootstrapCurrentOutputLine	.block
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s noMatch
+	lea strings.OutputDirectiveText, a1
+	moveq #7, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s noMatch
+	jsr directive_handlers.opforgeNativeCliParseOutputLine
+	tst.l d0
+	bne.s noMatch
+	moveq #0, d0
+	rts
+
+noMatch
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliBootstrapCurrentOutputLine
 
 ; Tokenize the file for the currently resolved `.use` module and restore caller state.
 ; Inputs: state.NativeCliIncludePath and module-saved path/line state.

@@ -9,6 +9,7 @@
 
 	.use opforge.cli.constants
 	.use opforge.cli.copy
+	.use tkpkg.amigaos.package_loader
 	.use tkpkg.amigaos.service
 	.use tkpkg.amigaos.buffers
 
@@ -18,6 +19,8 @@
 	.use opforge.cli.strings
 	.use opforge.cli.dos
 	.use opforge.cli.state
+	.use opforge.cli.text_output
+	.use opforge.cli.prvm_bridge
 
 	.section code, kind=code
 	.pub
@@ -44,18 +47,32 @@ opforgeNativeCliInitPackagePipeline	.block
 
 	lea buffers.ControlBlockV1, a0
 	move.w #constants.PACKAGE_INPUT_PTR_V1, d0
-	move.w state.NativeCliPackageLenActive, d1
+	move.l state.NativeCliPackageLenActive, d1
+	swap d1
+	tst.w d1
+	bne.s loadStagedPayload
+	swap d1
 	jsr tkpkg_control_block.opforgeNativeCliWriteInputWindow
 	moveq #abi.ENTRY_ORD_LOAD_PACKAGE, d0
 	jsr service.dispatchV1
 	jsr tkpkg_control_block.opforgeNativeCliReadStatus
 	bne.s fail
+	bra.s packageLoaded
 
+loadStagedPayload
+	move.l state.NativeCliPackageLenActive, d0
+	jsr package_loader.tkpkgPackageLoaderLoadStagedV1
+	tst.l d0
+	bne.s fail
+
+packageLoaded
 	bsr.w opforgeNativeCliApplyCurrentPipeline
 	cmpi.l #2, d0
 	beq.s pipelineUnavailable
 	tst.l d0
 	bne.s fail
+	jsr prvm_bridge.opforgeNativeCliSampleActivePrvmLengthField
+	move.l d0, state.NativeCliPrvmPipelineDetail
 	moveq #0, d0
 	rts
 
@@ -85,7 +102,14 @@ opforgeNativeCliApplyCurrentPipeline	.block
 	moveq #abi.ENTRY_ORD_SET_PIPELINE, d0
 	jsr service.dispatchV1
 	jsr tkpkg_control_block.opforgeNativeCliReadStatus
-	bne.s unavailable
+	beq.s ok
+	bsr.w opforgeNativeCliEmitPipelineLastError
+	cmpi.b #abi.STATUS_RUNTIME_ERROR_V1, d0
+	beq.s unavailable
+	moveq #1, d0
+	rts
+
+ok
 	moveq #0, d0
 	rts
 
@@ -109,12 +133,20 @@ opforgeNativeCliStagePackage	.block
 	tst.b state.NativeCliPackagePath
 	bne.s externalPackage
 
-	lea opforgeNativeCliPackageData, a1
+	move.l #OPFORGE_NATIVE_CLI_PACKAGE_LEN, d0
+	cmpi.l #buffers.PACKAGE_STORAGE_CAPACITY, d0
+	bhi.s embeddedPackageTooLarge
+	lea opforgeNativeCliPackageData.l, a1
 	lea buffers.packageStorage, a2
-	move.w OpforgeNativeCliPackageLen, d0
-	move.w d0, state.NativeCliPackageLenActive
+	move.l d0, state.NativeCliPackageLenActive
 	jsr copy.copyBytes
 	moveq #0, d0
+	rts
+
+embeddedPackageTooLarge
+	move.l #strings.PackageTooLargeText, d1
+	jsr dos.putStr
+	moveq #1, d0
 	rts
 
 externalPackage
@@ -155,7 +187,7 @@ externalOpenOk
 externalReadOk
 	move.l d5, d1
 	jsr dos.close
-	move.w d6, state.NativeCliPackageLenActive
+	move.l d6, state.NativeCliPackageLenActive
 	moveq #0, d0
 	rts
 
@@ -189,6 +221,24 @@ haveCpu
 	moveq #0, d0
 	rts
 	.bend  ; opforgeNativeCliPreparePipelineRequest
+
+opforgeNativeCliEmitPipelineLastError	.block
+	movem.l d0-d1/a0-a1, -(sp)
+	lea buffers.ControlBlockV1, a0
+	jsr tkpkg_control_block.opforgeNativeCliReadLastErrorLen
+	tst.w d0
+	beq.s done
+	lea buffers.LastErrorBuffer, a1
+	clr.b 0(a1, d0.W)
+	move.l a1, d1
+	jsr dos.putStr
+	move.l #strings.NewlineText, d1
+	jsr dos.putStr
+
+done
+	movem.l (sp)+, d0-d1/a0-a1
+	rts
+	.bend  ; opforgeNativeCliEmitPipelineLastError
 
 	.endsection
 

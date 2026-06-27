@@ -12,12 +12,12 @@
 
 ; Copy D0 bytes from A1 to A2.
 copyBytes	.block
-	move.w d0, d2
+	tst.l d0
 	beq.s done
 
 loop
 	move.b (a1)+, (a2)+
-	subq.w #1, d2
+	subq.l #1, d0
 	bne.s loop
 
 done

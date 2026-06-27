@@ -380,17 +380,39 @@ readProgram	.block
 	move.b (a1)+, d0
 	moveq #0, d1
 	move.b (a1)+, d1
-	lsl.w #8, d1
-	or.w d1, d0
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
 	moveq #0, d2
 	move.b (a1)+, d2
 	moveq #0, d1
 	move.b (a1)+, d1
-	lsl.w #8, d1
-	or.w d1, d2
+	lsl.l #8, d1
+	or.l d1, d2
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d2
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d2
 	beq.w invalidProgram
 	lea buffers.PackageStorage, a2
-	lea 0(a2, d0.W), a2
+	lea 0(a2, d0.l), a2
 	movea.l a2, a6
 	adda.l d2, a6
 	moveq #1, d0

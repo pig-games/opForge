@@ -65,6 +65,8 @@ parseLoop
 	beq.w parseDone
 	cmpi.b #'"', (a3)
 	beq.w quoted
+	cmpi.b #'-', (a3)
+	bne.w positionalInputPath
 	lea state.NativeCliArgToken, a1
 	bsr.w opforgeNativeCliCopyToken
 	bne.w usage
@@ -147,10 +149,7 @@ parseLoop
 	bne.w modulePath
 	bsr.w opforgeNativeCliIsUnsupportedFlag
 	bne.w unsupported
-	lea state.NativeCliArgToken, a0
-	cmpi.b #'-', (a0)
-	beq.w unknownFlag
-	bra.w positionalInput
+	bra.w unknownFlag
 
 infile
 	tst.w state.NativeCliInputStyle
@@ -162,24 +161,31 @@ infile
 infileFirst
 	move.w #2, state.NativeCliInputStyle
 	lea state.NativeCliInputPath, a1
-	bsr.w opforgeNativeCliCopyRequiredValue
-	bne.w missingValue
+	bsr.w opforgeNativeCliCopyRequiredPathValue
+	cmpi.l #1, d0
+	beq.w missingValue
+	tst.l d0
+	bne.w usage
 	bra.w parseLoop
 
 hunk
 	move.w #1, state.NativeCliHunkRequested
 	move.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
 	lea state.NativeCliHunkPath, a1
-	bsr.w opforgeNativeCliCopyOptionalValue
+	bsr.w opforgeNativeCliCopyOptionalPathValue
 	bmi.w quoted
+	tst.l d0
+	bne.w usage
 	bra.w parseLoop
 
 bin
 	move.w #1, state.NativeCliBinRequested
 	move.w #constants.NATIVE_OUTPUT_FORMAT_BIN, state.NativeCliOutputFormat
 	lea state.NativeCliBinPath, a1
-	bsr.w opforgeNativeCliCopyOptionalValue
+	bsr.w opforgeNativeCliCopyOptionalPathValue
 	bmi.w quoted
+	tst.l d0
+	bne.w usage
 	bra.w parseLoop
 
 list
@@ -187,14 +193,19 @@ list
 	move.w #1, state.NativeCliLstRequested
 	move.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat
 	lea state.NativeCliLstPath, a1
-	bsr.w opforgeNativeCliCopyOptionalValue
+	bsr.w opforgeNativeCliCopyOptionalPathValue
 	bmi.w quoted
+	tst.l d0
+	bne.w usage
 	bra.w parseLoop
 
 outfile
 	lea state.NativeCliOutfileBase, a1
-	bsr.w opforgeNativeCliCopyRequiredValue
-	bne.w missingValue
+	bsr.w opforgeNativeCliCopyRequiredPathValue
+	cmpi.l #1, d0
+	beq.w missingValue
+	tst.l d0
+	bne.w usage
 	bra.w parseLoop
 
 cpu
@@ -208,8 +219,11 @@ cpu
 
 package
 	lea state.NativeCliPackagePath, a1
-	bsr.w opforgeNativeCliCopyRequiredValue
-	bne.w missingValue
+	bsr.w opforgeNativeCliCopyRequiredPathValue
+	cmpi.l #1, d0
+	beq.w missingValue
+	tst.l d0
+	bne.w usage
 	bra.w parseLoop
 
 includePath
@@ -234,18 +248,21 @@ modulePath
 	bne.w modulePathCapacity
 	bra.w parseLoop
 
-positionalInput
+positionalInputPath
 	tst.w state.NativeCliInputStyle
-	beq.s positionalInputFirst
+	beq.s positionalInputPathFirst
 	cmpi.w #2, state.NativeCliInputStyle
 	beq.w mixedInput
 	bra.w multiplePositional
 
-positionalInputFirst
+positionalInputPathFirst
 	move.w #1, state.NativeCliInputStyle
-	lea state.NativeCliArgToken, a0
 	lea state.NativeCliInputPath, a1
-	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	bsr.w opforgeNativeCliCopyRequiredPathValue
+	cmpi.l #1, d0
+	beq.w noInput
+	tst.l d0
+	bne.w usage
 	bra.w parseLoop
 
 parseDone
@@ -541,6 +558,32 @@ optionalQuoted
 	moveq #-1, d0
 	rts
 	.bend  ; opforgeNativeCliCopyOptionalValue
+
+; Copy one optional CLI path value when the next token is a value, not another flag.
+; Inputs: A3 = current argument-tail pointer; A1 = destination path buffer.
+; Outputs: D0 = 0 when no value or a copied value is accepted, 1 when the path exceeds the path buffer, -1 when a quoted value would be required; destination buffer cleared when no value is consumed.
+; Clobbers: D0/D6/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliCopyOptionalPathValue	.block
+	bsr.w opforgeNativeCliSkipWhitespace
+	tst.b (a3)
+	beq.s optionalPathNone
+	cmpi.b #'"', (a3)
+	beq.s optionalPathQuoted
+	cmpi.b #'-', (a3)
+	beq.s optionalPathNone
+	bsr.w opforgeNativeCliCopyRequiredPathValue
+	rts
+
+optionalPathNone
+	clr.b (a1)
+	moveq #0, d0
+	rts
+
+optionalPathQuoted
+	moveq #-1, d0
+	rts
+	.bend  ; opforgeNativeCliCopyOptionalPathValue
 
 ; Check whether the current parsed flag is one of the known-but-unsupported CLI options.
 ; Inputs: state.NativeCliArgToken = current parsed flag token.

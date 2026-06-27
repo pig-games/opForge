@@ -577,7 +577,17 @@ opforgeNativeCliResolveOutputPath	.block
 	jsr path.opforgeNativeCliPathHasVolumePrefix
 	tst.l d0
 	bne.s absolute
+	tst.w state.NativeCliIncludeDepth
+	bne.s resolveCurrentPath
+	tst.w state.NativeCliModuleResolveDepth
+	bne.s resolveCurrentPath
+	lea state.NativeCliInputPath, a0
+	bra.s resolveBasePath
+
+resolveCurrentPath
 	lea state.NativeCliCurrentPath, a0
+
+resolveBasePath
 	jsr path.opforgeNativeCliCopyPathRoot
 	bne.s fail
 	movea.l a2, a0

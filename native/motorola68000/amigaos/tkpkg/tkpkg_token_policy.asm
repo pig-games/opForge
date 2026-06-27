@@ -65,6 +65,7 @@ findOwner	.block
 	move.l a3, -(sp)
 	lea buffers.PendingTokenPolicyOffsetLo, a3
 	clr.l (a3)+
+	clr.l (a3)+
 	clr.b (a3)
 	movea.l (sp)+, a3
 	bsr.w readLocatorPtrLen
@@ -210,10 +211,18 @@ storeRecordLocator	.block
 	lea buffers.PackageStorage, a6
 	sub.l a6, d2
 	move.b d2, (a3)+
-	lsr.w #8, d2
+	lsr.l #8, d2
+	move.b d2, (a3)+
+	lsr.l #8, d2
+	move.b d2, (a3)+
+	lsr.l #8, d2
 	move.b d2, (a3)+
 	move.b d0, (a3)+
-	lsr.w #8, d0
+	lsr.l #8, d0
+	move.b d0, (a3)+
+	lsr.l #8, d0
+	move.b d0, (a3)+
+	lsr.l #8, d0
 	move.b d0, (a3)+
 	movea.l (sp)+, a6
 	rts
@@ -224,16 +233,38 @@ readLocatorPtrLen	.block
 	move.b (a3)+, d2
 	moveq #0, d1
 	move.b (a3)+, d1
-	lsl.w #8, d1
-	or.w d1, d2
+	lsl.l #8, d1
+	or.l d1, d2
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d2
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d2
 	moveq #0, d3
 	move.b (a3)+, d3
 	moveq #0, d1
 	move.b (a3)+, d1
-	lsl.w #8, d1
-	or.w d1, d3
+	lsl.l #8, d1
+	or.l d1, d3
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d3
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d3
 	lea buffers.PackageStorage, a6
-	lea 0(a6, d2.W), a1
+	lea 0(a6, d2.l), a1
 	rts
 	.bend  ; readLocatorPtrLen
 
@@ -242,17 +273,39 @@ chunkPtrFromLocator	.block
 	move.b (a3)+, d0
 	moveq #0, d1
 	move.b (a3)+, d1
-	lsl.w #8, d1
-	or.w d1, d0
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
 	moveq #0, d7
 	move.b (a3)+, d7
 	moveq #0, d1
 	move.b (a3)+, d1
-	lsl.w #8, d1
-	or.w d1, d7
+	lsl.l #8, d1
+	or.l d1, d7
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d7
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d7
 	lea buffers.PackageStorage, a6
-	lea 0(a6, d0.W), a2
-	lea 0(a2, d7.W), a6
+	lea 0(a6, d0.l), a2
+	lea 0(a2, d7.l), a6
 	rts
 	.bend  ; chunkPtrFromLocator
 

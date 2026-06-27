@@ -26,6 +26,7 @@
 
 	.use opforge.cli.report
 	.use opforge.cli.line_text
+	.use opforge.cli.text_output
 	.use opforge.cli.copy
 
 	.section code, kind=code
@@ -43,6 +44,8 @@ record
 	move.w state.NativeCliSourceLineLen, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
 	beq.s checkPackage
+	cmpi.b #';', (a0)
+	beq.w commentOnly
 	lea strings.UseDirectiveText, a1
 	moveq #4, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
@@ -53,6 +56,10 @@ record
 checkPackage
 	tst.w state.NativeCliPackagePipelineReady
 	beq.w parseOnly
+	bsr.w opforgeNativeCliDispatchTokenizeLineEnvelope
+	bne.w fail
+	jsr prvm_bridge.opforgeNativeCliSampleActivePrvmLengthField
+	move.l d0, state.NativeCliPrvmTokenizerDetail
 	jsr prvm_bridge.opforgeNativeCliDispatchParseLineUntilReady
 	bne.w fail
 
@@ -60,6 +67,7 @@ ok
 	bsr.w opforgeNativeCliParseCurrentLine
 	tst.l d0
 	bne.w fail
+commentOnly
 	moveq #0, d0
 	rts
 
@@ -94,13 +102,13 @@ parseOnlyCheckUse
 	lea strings.UseDirectiveText, a1
 	moveq #4, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	beq.s parseOnlyCheckCpu
+	beq.w parseOnlyCheckCpu
 	move.w state.NativeCliImportCount, d6
 	jsr directive_handlers.opforgeNativeCliParseUseLine
 	tst.l d0
-	bne.s parseOnlyStatus
+	bne.w parseOnlyStatus
 	cmp.w state.NativeCliImportCount, d6
-	bne.s parseOnlyOk
+	bne.w parseOnlyOk
 	move.l #strings.ModuleResolveFailureText, d1
 	jsr dos.putStr
 	move.l #state.NativeCliArgToken, d1
@@ -115,10 +123,36 @@ parseOnlyCheckCpu
 	lea strings.CpuMnemonicText, a1
 	moveq #4, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	beq.w parseOnlyOk
+	beq.w parseOnlyCheckInclude
 	jsr directive_handlers.opforgeNativeCliParseCpuLine
 	tst.l d0
-	bne.s parseOnlyStatus
+	bne.w parseOnlyStatus
+	moveq #-1, d0
+	move.l d0, state.NativeCliPrvmRouteStatus
+	clr.w state.NativeCliPrvmResultCount
+	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
+	bra.w parseOnlyStatus
+
+parseOnlyCheckInclude
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.IncludeDirectiveText, a1
+	moveq #8, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.w parseOnlyCheckOutput
+	jsr include_use.opforgeNativeCliParseIncludeLine
+	bra.w parseOnlyStatus
+
+parseOnlyCheckOutput
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.OutputDirectiveText, a1
+	moveq #7, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.w parseOnlyRecordSourceStatement
+	bra.w parseOnlyOk
+
+parseOnlyRecordSourceStatement
 	moveq #-1, d0
 	move.l d0, state.NativeCliPrvmRouteStatus
 	clr.w state.NativeCliPrvmResultCount
@@ -134,8 +168,50 @@ parseOnlyOk
 
 fail
 	lea buffers.ControlBlockV1, a0
+	jsr tkpkg_control_block.opforgeNativeCliReadLastErrorLen
+	tst.w d0
+	bne.w haveMessage
+	tst.l state.NativeCliPrvmRouteStatus
+	beq.w readOutput
+	move.l #strings.PrvmRouteStatusText, d1
+	jsr dos.putStr
+	move.l state.NativeCliPrvmRouteStatus, d0
+	jsr text_output.opforgeNativeCliPutHexU32
+	move.l #strings.NewlineText, d1
+	jsr dos.putStr
+	tst.l state.NativeCliPrvmPipelineDetail
+	beq.s maybeTokenizerDetail
+	move.l #strings.PrvmPipelineDetailText, d1
+	jsr dos.putStr
+	move.l state.NativeCliPrvmPipelineDetail, d0
+	jsr text_output.opforgeNativeCliPutHexU32
+	move.l #strings.NewlineText, d1
+	jsr dos.putStr
+maybeTokenizerDetail
+	tst.l state.NativeCliPrvmTokenizerDetail
+	beq.w maybeRouteDetail
+	move.l #strings.PrvmTokenizerDetailText, d1
+	jsr dos.putStr
+	move.l state.NativeCliPrvmTokenizerDetail, d0
+	jsr text_output.opforgeNativeCliPutHexU32
+	move.l #strings.NewlineText, d1
+	jsr dos.putStr
+maybeRouteDetail
+	tst.l state.NativeCliPrvmRouteDetail
+	beq.w readOutput
+	move.l #strings.PrvmRouteDetailText, d1
+	jsr dos.putStr
+	move.l state.NativeCliPrvmRouteDetail, d0
+	jsr text_output.opforgeNativeCliPutHexU32
+	move.l #strings.NewlineText, d1
+	jsr dos.putStr
+
+readOutput
+	lea buffers.ControlBlockV1, a0
 	jsr tkpkg_control_block.opforgeNativeCliReadOutputLen
-	beq.s return
+	beq.w return
+
+haveMessage
 	lea buffers.lastErrorBuffer, a1
 	clr.b 0(a1, d0.W)
 	move.l #buffers.lastErrorBuffer, d1
@@ -347,6 +423,26 @@ return
 	movem.l (sp)+, d1-d7/a0-a3
 	rts
 	.bend  ; opforgeNativeCliRouteParserModuleUseLine
+
+; Dispatch the shared tkpkg tokenizer service for the current logical line.
+; Inputs: current line state is already staged in state.NativeCliSourceLine*.
+; Outputs: D0 = tkpkg STATUS_*_V1.
+; Clobbers: D0-D1/A0/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliDispatchTokenizeLineEnvelope	.block
+	bsr.w opforgeNativeCliPrepareLineServiceRequest
+	bne.s done
+	lea buffers.ControlBlockV1, a0
+	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
+	move.w state.NativeCliLineRequestLen, d1
+	jsr tkpkg_control_block.opforgeNativeCliWriteInputWindow
+	moveq #abi.ENTRY_ORD_TOKENIZE_LINE, d0
+	jsr service.dispatchV1
+	jsr tkpkg_control_block.opforgeNativeCliReadStatus
+
+done
+	rts
+	.bend  ; opforgeNativeCliDispatchTokenizeLineEnvelope
 
 ; Build the tokenizer request payload: u32 line number plus source bytes.
 ; Build the tokenizer request payload: u32 line number plus source bytes.

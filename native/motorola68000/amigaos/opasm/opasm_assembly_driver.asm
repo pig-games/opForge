@@ -702,6 +702,18 @@ opasmDriverAdvancePc	.block
 	moveq #5, d1
 	bsr.w lineStartsWith
 	bne.w ptext
+	jsr eng.opasmEngineGetSessionPassV1
+	cmpi.w #2, d0
+	bne.s selectedSizeDispatch
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementOutputByteCountV1
+	move.l d0, d1
+	beq.s selectedSizeDispatch
+	moveq #0, d0
+	bra.s selectedSizeOk
+
+selectedSizeDispatch
 	moveq #0, d0
 	move.w d7, d0
 	bsr.w trySelectedEncodeSizeForStatement

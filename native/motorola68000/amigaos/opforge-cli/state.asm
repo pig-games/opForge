@@ -64,7 +64,7 @@ NativeCliSourceLineLen
 NativeCliParserTailLen
 	.res word, 1
 NativeCliPackageLenActive
-	.res word, 1
+	.res long, 1
 NativeCliPipelineRequestLen
 	.res word, 1
 NativeCliLineRequestLen
@@ -167,6 +167,12 @@ NativeCliIncludeRootPath
 OpforgeNativeCliPrvmRouteFrame
 	.res byte, constants.PRVM_ROUTE_FRAME_SIZE
 NativeCliPrvmRouteStatus
+	.res long, 1
+NativeCliPrvmRouteDetail
+	.res long, 1
+NativeCliPrvmPipelineDetail
+	.res long, 1
+NativeCliPrvmTokenizerDetail
 	.res long, 1
 NativeCliPrvmResultCount
 	.res word, 1

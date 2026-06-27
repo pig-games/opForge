@@ -3089,18 +3089,40 @@ tkpkgServiceChunkPtrFromLocatorV1	.block
 	move.b (a3)+, d0
 	moveq #0, d1
 	move.b (a3)+, d1
-	lsl.w #8, d1
-	or.w d1, d0
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
 	moveq #0, d7
 	move.b (a3)+, d7
 	moveq #0, d1
 	move.b (a3)+, d1
-	lsl.w #8, d1
-	or.w d1, d7
+	lsl.l #8, d1
+	or.l d1, d7
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d7
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d7
 	beq.s missing
 	lea buffers.PackageStorage, a6
-	lea 0(a6, d0.W), a2
-	lea 0(a2, d7.W), a6
+	lea 0(a6, d0.l), a2
+	lea 0(a2, d7.l), a6
 	moveq #0, d1
 	rts
 
@@ -3445,12 +3467,23 @@ tkpkgEncodeFindAndExecuteTableProgram	.block
 	moveq #0, d0
 	move.b buffers.TablChunkOffsetLo, d0
 	moveq #0, d1
+	move.b buffers.TablChunkOffsetMidLo, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b buffers.TablChunkOffsetMidHi, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
 	move.b buffers.TablChunkOffsetHi, d1
-	lsl.w #8, d1
-	or.w d1, d0
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
 	beq.w fail
 	lea buffers.PackageStorage, a0
-	adda.w d0, a0
+	adda.l d0, a0
 	bsr.w tkpkgEncodeReadU32Low16
 	beq.w noMatch
 	move.w d0, d7

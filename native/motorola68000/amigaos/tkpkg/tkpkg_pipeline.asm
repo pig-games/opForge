@@ -150,9 +150,13 @@ separatorFound
 	move.b d4, (a3)+
 	lsr.w #8, d4
 	move.b d4, (a3)+
+	clr.b (a3)+
+	clr.b (a3)+
 	move.b d5, (a3)+
 	lsr.w #8, d5
 	move.b d5, (a3)+
+	clr.b (a3)+
+	clr.b (a3)+
 	move.w d6, d0
 	move.w d3, d1
 	sub.w d1, d0
@@ -169,14 +173,19 @@ separatorFound
 	move.b d2, (a3)+
 	lsr.w #8, d2
 	move.b d2, (a3)+
+	clr.b (a3)+
+	clr.b (a3)+
 	move.b d0, (a3)+
 	lsr.w #8, d0
 	move.b d0, (a3)+
+	clr.b (a3)+
+	clr.b (a3)+
 	moveq #0, d0
 	rts
 
 noDialect
 	lea buffers.PendingDialectOffsetLo, a3
+	clr.l (a3)+
 	clr.l (a3)
 	moveq #0, d0
 	rts
@@ -859,7 +868,7 @@ commitDone
 
 copyLocatorToBufferV1	.block
 	bsr.w readLocatorPtrLenV1
-	cmpi.w #buffers.PIPELINE_ID_BUFFER_CAPACITY, d3
+	cmpi.l #buffers.PIPELINE_ID_BUFFER_CAPACITY, d3
 	bhs.s copyBufferTooLong
 	move.w d3, d2
 	beq.s copyBufferDone
@@ -883,19 +892,29 @@ copyBufferTooLong
 
 copyRecordLocatorV1	.block
 	move.l (a3), (a2)
+	move.l 4(a3), 4(a2)
 	rts
 	.bend  ; copyRecordLocatorV1
 
 storePackageStringLocatorV1	.block
 	move.l a6, -(sp)
 	move.l a1, d2
+	andi.l #$0000ffff, d0
 	lea buffers.PackageStorage, a6
 	sub.l a6, d2
 	move.b d2, (a3)+
-	lsr.w #8, d2
+	lsr.l #8, d2
+	move.b d2, (a3)+
+	lsr.l #8, d2
+	move.b d2, (a3)+
+	lsr.l #8, d2
 	move.b d2, (a3)+
 	move.b d0, (a3)+
-	lsr.w #8, d0
+	lsr.l #8, d0
+	move.b d0, (a3)+
+	lsr.l #8, d0
+	move.b d0, (a3)+
+	lsr.l #8, d0
 	move.b d0, (a3)+
 	movea.l (sp)+, a6
 	rts
@@ -908,6 +927,7 @@ storeOptionalPackageStringLocatorV1	.block
 	rts
 
 clearOptionalLocator
+	clr.l (a3)+
 	clr.l (a3)
 	rts
 	.bend  ; storeOptionalPackageStringLocatorV1
@@ -918,10 +938,18 @@ storeRecordLocatorV1	.block
 	lea buffers.PackageStorage, a6
 	sub.l a6, d2
 	move.b d2, (a3)+
-	lsr.w #8, d2
+	lsr.l #8, d2
+	move.b d2, (a3)+
+	lsr.l #8, d2
+	move.b d2, (a3)+
+	lsr.l #8, d2
 	move.b d2, (a3)+
 	move.b d0, (a3)+
-	lsr.w #8, d0
+	lsr.l #8, d0
+	move.b d0, (a3)+
+	lsr.l #8, d0
+	move.b d0, (a3)+
+	lsr.l #8, d0
 	move.b d0, (a3)+
 	movea.l (sp)+, a6
 	rts
@@ -932,16 +960,38 @@ readLocatorPtrLenV1	.block
 	move.b (a3)+, d2
 	moveq #0, d1
 	move.b (a3)+, d1
-	lsl.w #8, d1
-	or.w d1, d2
+	lsl.l #8, d1
+	or.l d1, d2
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d2
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d2
 	moveq #0, d3
 	move.b (a3)+, d3
 	moveq #0, d1
 	move.b (a3)+, d1
-	lsl.w #8, d1
-	or.w d1, d3
+	lsl.l #8, d1
+	or.l d1, d3
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d3
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d3
 	lea buffers.PackageStorage, a6
-	lea 0(a6, d2.W), a1
+	lea 0(a6, d2.l), a1
 	rts
 	.bend  ; readLocatorPtrLenV1
 
@@ -950,15 +1000,37 @@ readRequestLocatorPtrLenV1	.block
 	move.b (a3)+, d2
 	moveq #0, d1
 	move.b (a3)+, d1
-	lsl.w #8, d1
-	or.w d1, d2
+	lsl.l #8, d1
+	or.l d1, d2
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d2
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d2
 	moveq #0, d3
 	move.b (a3)+, d3
 	moveq #0, d1
 	move.b (a3)+, d1
-	lsl.w #8, d1
-	or.w d1, d3
-	lea 0(a0, d2.W), a1
+	lsl.l #8, d1
+	or.l d1, d3
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d3
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d3
+	lea 0(a0, d2.l), a1
 	rts
 	.bend  ; readRequestLocatorPtrLenV1
 
@@ -967,17 +1039,39 @@ chunkPtrFromLocatorV1	.block
 	move.b (a3)+, d0
 	moveq #0, d1
 	move.b (a3)+, d1
-	lsl.w #8, d1
-	or.w d1, d0
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
 	moveq #0, d7
 	move.b (a3)+, d7
 	moveq #0, d1
 	move.b (a3)+, d1
-	lsl.w #8, d1
-	or.w d1, d7
+	lsl.l #8, d1
+	or.l d1, d7
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d7
+	moveq #0, d1
+	move.b (a3)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d7
 	lea buffers.PackageStorage, a6
-	lea 0(a6, d0.W), a2
-	lea 0(a2, d7.W), a6
+	lea 0(a6, d0.l), a2
+	lea 0(a2, d7.l), a6
 	rts
 	.bend  ; chunkPtrFromLocatorV1
 

@@ -7,7 +7,7 @@
 
 LAST_ERROR_BUFFER_CAPACITY           = 4096
 LAST_ERROR_BUFFER_PTR_V1             = abi.NATIVE_CONTROL_BLOCK_SIZE_V1
-PACKAGE_STORAGE_CAPACITY             = 32768
+PACKAGE_STORAGE_CAPACITY             = 262144
 PIPELINE_ID_BUFFER_CAPACITY          = 32
 TOKEN_RECORD_SIZE                    = 20
 TOKEN_BUFFER_CAPACITY                = 64
@@ -27,7 +27,6 @@ PACKAGE_CHUNK_EXVM                   = 128
 PACKAGE_CHUNK_MSEL                   = 1
 PACKAGE_CHUNK_PRVM                   = 2
 PACKAGE_REQUIRED_CHUNK_FLAGS         = 31
-PACKAGE_STATE_CLEAR_LONGWORD_COUNT   = 44
 SCOPED_OWNER_FAMILY                  = 0
 SCOPED_OWNER_CPU                     = 1
 SCOPED_OWNER_DIALECT                 = 2
@@ -79,6 +78,7 @@ LastLexemeLen
 	.res word, 1
 
 	.align 2
+PackageStateClearStart
 PackageStateFlags
 	.res byte, 1
 
@@ -91,10 +91,22 @@ PackageChunkFlagsHi
 PackageStorageLen
 	.res byte, 1
 
+PackageStorageLenMidLo
+	.res byte, 1
+
+PackageStorageLenMidHi
+	.res byte, 1
+
 PackageStorageLenHi
 	.res byte, 1
 
 FamsChunkOffsetLo
+	.res byte, 1
+
+FamsChunkOffsetMidLo
+	.res byte, 1
+
+FamsChunkOffsetMidHi
 	.res byte, 1
 
 FamsChunkOffsetHi
@@ -103,10 +115,22 @@ FamsChunkOffsetHi
 FamsChunkLenLo
 	.res byte, 1
 
+FamsChunkLenMidLo
+	.res byte, 1
+
+FamsChunkLenMidHi
+	.res byte, 1
+
 FamsChunkLenHi
 	.res byte, 1
 
 CpusChunkOffsetLo
+	.res byte, 1
+
+CpusChunkOffsetMidLo
+	.res byte, 1
+
+CpusChunkOffsetMidHi
 	.res byte, 1
 
 CpusChunkOffsetHi
@@ -115,10 +139,22 @@ CpusChunkOffsetHi
 CpusChunkLenLo
 	.res byte, 1
 
+CpusChunkLenMidLo
+	.res byte, 1
+
+CpusChunkLenMidHi
+	.res byte, 1
+
 CpusChunkLenHi
 	.res byte, 1
 
 DialChunkOffsetLo
+	.res byte, 1
+
+DialChunkOffsetMidLo
+	.res byte, 1
+
+DialChunkOffsetMidHi
 	.res byte, 1
 
 DialChunkOffsetHi
@@ -127,10 +163,22 @@ DialChunkOffsetHi
 DialChunkLenLo
 	.res byte, 1
 
+DialChunkLenMidLo
+	.res byte, 1
+
+DialChunkLenMidHi
+	.res byte, 1
+
 DialChunkLenHi
 	.res byte, 1
 
 ToksChunkOffsetLo
+	.res byte, 1
+
+ToksChunkOffsetMidLo
+	.res byte, 1
+
+ToksChunkOffsetMidHi
 	.res byte, 1
 
 ToksChunkOffsetHi
@@ -139,10 +187,22 @@ ToksChunkOffsetHi
 ToksChunkLenLo
 	.res byte, 1
 
+ToksChunkLenMidLo
+	.res byte, 1
+
+ToksChunkLenMidHi
+	.res byte, 1
+
 ToksChunkLenHi
 	.res byte, 1
 
 TkvmChunkOffsetLo
+	.res byte, 1
+
+TkvmChunkOffsetMidLo
+	.res byte, 1
+
+TkvmChunkOffsetMidHi
 	.res byte, 1
 
 TkvmChunkOffsetHi
@@ -151,10 +211,22 @@ TkvmChunkOffsetHi
 TkvmChunkLenLo
 	.res byte, 1
 
+TkvmChunkLenMidLo
+	.res byte, 1
+
+TkvmChunkLenMidHi
+	.res byte, 1
+
 TkvmChunkLenHi
 	.res byte, 1
 
 TablChunkOffsetLo
+	.res byte, 1
+
+TablChunkOffsetMidLo
+	.res byte, 1
+
+TablChunkOffsetMidHi
 	.res byte, 1
 
 TablChunkOffsetHi
@@ -163,10 +235,22 @@ TablChunkOffsetHi
 TablChunkLenLo
 	.res byte, 1
 
+TablChunkLenMidLo
+	.res byte, 1
+
+TablChunkLenMidHi
+	.res byte, 1
+
 TablChunkLenHi
 	.res byte, 1
 
 MselChunkOffsetLo
+	.res byte, 1
+
+MselChunkOffsetMidLo
+	.res byte, 1
+
+MselChunkOffsetMidHi
 	.res byte, 1
 
 MselChunkOffsetHi
@@ -175,10 +259,22 @@ MselChunkOffsetHi
 MselChunkLenLo
 	.res byte, 1
 
+MselChunkLenMidLo
+	.res byte, 1
+
+MselChunkLenMidHi
+	.res byte, 1
+
 MselChunkLenHi
 	.res byte, 1
 
 ExprChunkOffsetLo
+	.res byte, 1
+
+ExprChunkOffsetMidLo
+	.res byte, 1
+
+ExprChunkOffsetMidHi
 	.res byte, 1
 
 ExprChunkOffsetHi
@@ -187,10 +283,22 @@ ExprChunkOffsetHi
 ExprChunkLenLo
 	.res byte, 1
 
+ExprChunkLenMidLo
+	.res byte, 1
+
+ExprChunkLenMidHi
+	.res byte, 1
+
 ExprChunkLenHi
 	.res byte, 1
 
 ExvmChunkOffsetLo
+	.res byte, 1
+
+ExvmChunkOffsetMidLo
+	.res byte, 1
+
+ExvmChunkOffsetMidHi
 	.res byte, 1
 
 ExvmChunkOffsetHi
@@ -199,16 +307,34 @@ ExvmChunkOffsetHi
 ExvmChunkLenLo
 	.res byte, 1
 
+ExvmChunkLenMidLo
+	.res byte, 1
+
+ExvmChunkLenMidHi
+	.res byte, 1
+
 ExvmChunkLenHi
 	.res byte, 1
 
 PrvmChunkOffsetLo
 	.res byte, 1
 
+PrvmChunkOffsetMidLo
+	.res byte, 1
+
+PrvmChunkOffsetMidHi
+	.res byte, 1
+
 PrvmChunkOffsetHi
 	.res byte, 1
 
 PrvmChunkLenLo
+	.res byte, 1
+
+PrvmChunkLenMidLo
+	.res byte, 1
+
+PrvmChunkLenMidHi
 	.res byte, 1
 
 PrvmChunkLenHi
@@ -227,10 +353,22 @@ ActiveFamilyBuffer
 ActiveTokenPolicyOffsetLo
 	.res byte, 1
 
+ActiveTokenPolicyOffsetMidLo
+	.res byte, 1
+
+ActiveTokenPolicyOffsetMidHi
+	.res byte, 1
+
 ActiveTokenPolicyOffsetHi
 	.res byte, 1
 
 ActiveTokenPolicyLenLo
+	.res byte, 1
+
+ActiveTokenPolicyLenMidLo
+	.res byte, 1
+
+ActiveTokenPolicyLenMidHi
 	.res byte, 1
 
 ActiveTokenPolicyLenHi
@@ -243,10 +381,22 @@ ActiveTokenPolicyOwnerTag
 ActiveTokenizerVmOffsetLo
 	.res byte, 1
 
+ActiveTokenizerVmOffsetMidLo
+	.res byte, 1
+
+ActiveTokenizerVmOffsetMidHi
+	.res byte, 1
+
 ActiveTokenizerVmOffsetHi
 	.res byte, 1
 
 ActiveTokenizerVmLenLo
+	.res byte, 1
+
+ActiveTokenizerVmLenMidLo
+	.res byte, 1
+
+ActiveTokenizerVmLenMidHi
 	.res byte, 1
 
 ActiveTokenizerVmLenHi
@@ -259,10 +409,22 @@ ActiveTokenizerVmOwnerTag
 ActiveParserVmOffsetLo
 	.res byte, 1
 
+ActiveParserVmOffsetMidLo
+	.res byte, 1
+
+ActiveParserVmOffsetMidHi
+	.res byte, 1
+
 ActiveParserVmOffsetHi
 	.res byte, 1
 
 ActiveParserVmLenLo
+	.res byte, 1
+
+ActiveParserVmLenMidLo
+	.res byte, 1
+
+ActiveParserVmLenMidHi
 	.res byte, 1
 
 ActiveParserVmLenHi
@@ -329,10 +491,22 @@ ActiveTokenizerVmErrorLimitDiagCode
 PendingFamilyOffsetLo
 	.res byte, 1
 
+PendingFamilyOffsetMidLo
+	.res byte, 1
+
+PendingFamilyOffsetMidHi
+	.res byte, 1
+
 PendingFamilyOffsetHi
 	.res byte, 1
 
 PendingFamilyLenLo
+	.res byte, 1
+
+PendingFamilyLenMidLo
+	.res byte, 1
+
+PendingFamilyLenMidHi
 	.res byte, 1
 
 PendingFamilyLenHi
@@ -341,10 +515,22 @@ PendingFamilyLenHi
 PendingCpuOffsetLo
 	.res byte, 1
 
+PendingCpuOffsetMidLo
+	.res byte, 1
+
+PendingCpuOffsetMidHi
+	.res byte, 1
+
 PendingCpuOffsetHi
 	.res byte, 1
 
 PendingCpuLenLo
+	.res byte, 1
+
+PendingCpuLenMidLo
+	.res byte, 1
+
+PendingCpuLenMidHi
 	.res byte, 1
 
 PendingCpuLenHi
@@ -353,10 +539,22 @@ PendingCpuLenHi
 PendingDialectOffsetLo
 	.res byte, 1
 
+PendingDialectOffsetMidLo
+	.res byte, 1
+
+PendingDialectOffsetMidHi
+	.res byte, 1
+
 PendingDialectOffsetHi
 	.res byte, 1
 
 PendingDialectLenLo
+	.res byte, 1
+
+PendingDialectLenMidLo
+	.res byte, 1
+
+PendingDialectLenMidHi
 	.res byte, 1
 
 PendingDialectLenHi
@@ -365,10 +563,22 @@ PendingDialectLenHi
 PendingDefaultDialectOffsetLo
 	.res byte, 1
 
+PendingDefaultDialectOffsetMidLo
+	.res byte, 1
+
+PendingDefaultDialectOffsetMidHi
+	.res byte, 1
+
 PendingDefaultDialectOffsetHi
 	.res byte, 1
 
 PendingDefaultDialectLenLo
+	.res byte, 1
+
+PendingDefaultDialectLenMidLo
+	.res byte, 1
+
+PendingDefaultDialectLenMidHi
 	.res byte, 1
 
 PendingDefaultDialectLenHi
@@ -377,10 +587,22 @@ PendingDefaultDialectLenHi
 PendingCanonicalDialectOffsetLo
 	.res byte, 1
 
+PendingCanonicalDialectOffsetMidLo
+	.res byte, 1
+
+PendingCanonicalDialectOffsetMidHi
+	.res byte, 1
+
 PendingCanonicalDialectOffsetHi
 	.res byte, 1
 
 PendingCanonicalDialectLenLo
+	.res byte, 1
+
+PendingCanonicalDialectLenMidLo
+	.res byte, 1
+
+PendingCanonicalDialectLenMidHi
 	.res byte, 1
 
 PendingCanonicalDialectLenHi
@@ -389,10 +611,22 @@ PendingCanonicalDialectLenHi
 PendingTokenPolicyOffsetLo
 	.res byte, 1
 
+PendingTokenPolicyOffsetMidLo
+	.res byte, 1
+
+PendingTokenPolicyOffsetMidHi
+	.res byte, 1
+
 PendingTokenPolicyOffsetHi
 	.res byte, 1
 
 PendingTokenPolicyLenLo
+	.res byte, 1
+
+PendingTokenPolicyLenMidLo
+	.res byte, 1
+
+PendingTokenPolicyLenMidHi
 	.res byte, 1
 
 PendingTokenPolicyLenHi
@@ -405,10 +639,22 @@ PendingTokenPolicyOwnerTag
 PendingTokenizerVmOffsetLo
 	.res byte, 1
 
+PendingTokenizerVmOffsetMidLo
+	.res byte, 1
+
+PendingTokenizerVmOffsetMidHi
+	.res byte, 1
+
 PendingTokenizerVmOffsetHi
 	.res byte, 1
 
 PendingTokenizerVmLenLo
+	.res byte, 1
+
+PendingTokenizerVmLenMidLo
+	.res byte, 1
+
+PendingTokenizerVmLenMidHi
 	.res byte, 1
 
 PendingTokenizerVmLenHi
@@ -421,10 +667,22 @@ PendingTokenizerVmOwnerTag
 PendingParserVmOffsetLo
 	.res byte, 1
 
+PendingParserVmOffsetMidLo
+	.res byte, 1
+
+PendingParserVmOffsetMidHi
+	.res byte, 1
+
 PendingParserVmOffsetHi
 	.res byte, 1
 
 PendingParserVmLenLo
+	.res byte, 1
+
+PendingParserVmLenMidLo
+	.res byte, 1
+
+PendingParserVmLenMidHi
 	.res byte, 1
 
 PendingParserVmLenHi
@@ -447,6 +705,10 @@ NextRequestIdLo
 
 NextRequestIdHi
 	.res byte, 1
+
+PACKAGE_STATE_CLEAR_END
+
+PACKAGE_STATE_CLEAR_BYTE_COUNT = PACKAGE_STATE_CLEAR_END - PackageStateClearStart
 
 	.endsection
 	.endmodule

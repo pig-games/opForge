@@ -39,16 +39,13 @@ loop
 	bne.s done
 	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, state.NativeCliPrvmRouteStatus
 	bne.s finalize
-	bsr.w opforgeNativeCliAccumulatePrvmResultRows
-	bne.s done
 	bsr.w opforgeNativeCliServicePrvmExpressionRequest
 	bne.s done
 	bra.s loop
 
 finalize
-	bsr.w opforgeNativeCliFinalizePrvmResultRows
-
 done
+	tst.l d0
 	rts
 	.bend  ; opforgeNativeCliDispatchParseLineUntilReady
 
@@ -89,7 +86,7 @@ fallback
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
-	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
 	lea strings.ModuleDirectiveText, a1
 	moveq #7, d1
 	bsr.w opforgeNativeCliParserMnemonicEquals
@@ -97,7 +94,7 @@ fallback
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
-	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
 	lea strings.EndmoduleDirectiveText, a1
 	moveq #10, d1
 	bsr.w opforgeNativeCliParserMnemonicEquals
@@ -105,7 +102,7 @@ fallback
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
-	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
 	lea strings.UseDirectiveText, a1
 	moveq #4, d1
 	bsr.w opforgeNativeCliParserMnemonicEquals
@@ -125,6 +122,58 @@ use
 	moveq #constants.NCLI_PARSER_DIRECTIVE_USE, d0
 	rts
 	.bend  ; opforgeNativeCliParserDirectiveKind
+
+opforgeNativeCliSampleActivePrvmLengthField	.block
+	movem.l d1-d2/a1-a2, -(sp)
+	moveq #0, d0
+	lea buffers.ActiveParserVmOffsetLo.l, a1
+	move.b (a1)+, d0
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d2
+	move.b (a1)+, d2
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	or.l d1, d2
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d2
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d2
+	cmpi.l #5, d2
+	blo.s sampleFail
+	lea buffers.packageStorage.l, a2
+	lea 0(a2, d0.l), a2
+	move.l 1(a2), d0
+	bra.s sampleReturn
+
+sampleFail
+	moveq #0, d0
+
+sampleReturn
+	movem.l (sp)+, d1-d2/a1-a2
+	rts
+	.bend  ; opforgeNativeCliSampleActivePrvmLengthField
 
 	.priv
 
@@ -146,13 +195,13 @@ opforgeNativeCliDispatchPreparedParseLineEnvelope	.block
 	lea buffers.ControlBlockV1, a0
 	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
 	move.w state.NativeCliLineRequestLen, d1
-	bsr.w tkpkg_control_block.opforgeNativeCliWriteInputWindow
+	jsr tkpkg_control_block.opforgeNativeCliWriteInputWindow
 	moveq #abi.ENTRY_ORD_PARSE_LINE, d0
 	jsr service.dispatchV1
 	move.l d0, state.NativeCliPrvmRouteStatus
 	move.w d1, state.NativeCliPrvmResultCount
 	lea buffers.ControlBlockV1, a0
-	bsr.w tkpkg_control_block.opforgeNativeCliReadStatus
+	jsr tkpkg_control_block.opforgeNativeCliReadStatus
 
 done
 	rts
@@ -160,7 +209,12 @@ done
 
 opforgeNativeCliPrepareParseLineServiceRequest	.block
 	bsr.w opforgeNativeCliBuildPrvmRouteFrame
+	beq.s writeFrame
+	tst.l state.NativeCliPrvmRouteStatus
 	bne.s done
+	move.l #$FFFFFFFF, state.NativeCliPrvmRouteStatus
+	bra.s done
+writeFrame
 	bsr.w opforgeNativeCliWritePrvmRouteFrameInput
 
 done
@@ -181,7 +235,7 @@ opforgeNativeCliWritePrvmRouteFrameInput	.block
 	lea state.OpforgeNativeCliPrvmRouteFrame, a1
 	lea buffers.lastErrorBuffer, a2
 	move.w #constants.PRVM_ROUTE_FRAME_SIZE, d0
-	bsr.w copy.copyBytes
+	jsr copy.copyBytes
 	move.w #constants.PRVM_ROUTE_FRAME_SIZE, state.NativeCliLineRequestLen
 	moveq #0, d0
 	rts
@@ -266,12 +320,12 @@ opforgeNativeCliBuildPrvmRouteFrame	.block
 	clr.l d0
 	move.w buffers.lastLexemeLen, d0
 	move.l d0, 52(a0)
-	bsr.w opforgeNativeCliLoadActivePrvmProgram
+	jsr opforgeNativeCliLoadActivePrvmProgram
 	bne.w done
 	lea state.OpforgeNativeCliPrvmResultBuffer, a1
 	movea.l a1, a0
 	move.l #constants.PRVM_ROUTE_RESULT_CAPACITY, d0
-	bsr.w copy.clearBytes
+	jsr copy.clearBytes
 	lea state.OpforgeNativeCliPrvmRouteFrame, a0
 	lea state.OpforgeNativeCliPrvmResultBuffer, a1
 	move.l a1, 64(a0)
@@ -307,39 +361,71 @@ done
 ;   Reflects D0.L on return
 opforgeNativeCliLoadActivePrvmProgram	.block
 	movem.l d1-d4/a1-a4, -(sp)
+	move.l #$FFFFFFE1, d4
 	movea.l a0, a4
-	lea buffers.ActiveParserVmOffsetLo, a1
+	clr.l state.NativeCliPrvmRouteDetail
+	lea buffers.ActiveParserVmOffsetLo.l, a1
 	moveq #0, d0
 	move.b (a1)+, d0
 	moveq #0, d1
 	move.b (a1)+, d1
-	lsl.w #8, d1
-	or.w d1, d0
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	move.l d0, state.NativeCliPrvmRouteStatus
 	moveq #0, d2
 	move.b (a1)+, d2
 	moveq #0, d1
 	move.b (a1)+, d1
-	lsl.w #8, d1
-	or.w d1, d2
-	beq.s fail
-	lea buffers.packageStorage, a2
-	lea 0(a2, d0.W), a2
+	lsl.l #8, d1
+	or.l d1, d2
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d2
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d2
+	beq.w fail
+	lea buffers.packageStorage.l, a2
+	lea 0(a2, d0.l), a2
 	movea.l a2, a3
 	adda.l d2, a3
+	move.l #$FFFFFFE2, d4
 	moveq #1, d0
 	bsr.w opforgeNativeCliActivePrvmRequireBytes
-	bne.s fail
+	bne.w fail
 	addq.w #1, a2
+	move.l #$FFFFFFE3, d4
 	bsr.w opforgeNativeCliActivePrvmReadU32
 	tst.l d1
-	bne.s fail
+	bne.w fail
+	move.l -4(a2), state.NativeCliPrvmRouteDetail
 	move.l d0, d3
+	move.l state.NativeCliPrvmRouteStatus, d4
+	swap d4
+	move.w d3, d4
 	bsr.w opforgeNativeCliActivePrvmRequireBytes
-	bne.s fail
+	bne.w fail
 	adda.l d3, a2
+	move.l #$FFFFFFE5, d4
 	moveq #2, d0
 	bsr.w opforgeNativeCliActivePrvmRequireBytes
-	bne.s fail
+	bne.w fail
 	moveq #0, d0
 	move.b (a2)+, d0
 	moveq #0, d1
@@ -347,21 +433,24 @@ opforgeNativeCliLoadActivePrvmProgram	.block
 	lsl.w #8, d1
 	or.w d1, d0
 	cmpi.w #constants.PRVM_PARSER_CONTRACT_VERSION_V2, d0
-	bne.s fail
+	bne.w fail
+	move.l #$FFFFFFE6, d4
 	bsr.w opforgeNativeCliActivePrvmReadU32
 	tst.l d1
-	bne.s fail
+	bne.w fail
 	tst.l d0
-	beq.s fail
+	beq.w fail
 	move.l d0, d3
+	move.l #$FFFFFFE7, d4
 	bsr.w opforgeNativeCliActivePrvmRequireBytes
-	bne.s fail
+	bne.w fail
 	move.l a2, 56(a4)
 	move.l d3, 60(a4)
 	moveq #0, d0
 	bra.s return
 
 fail
+	move.l d4, state.NativeCliPrvmRouteStatus
 	moveq #1, d0
 
 return
@@ -412,7 +501,7 @@ fail
 	.bend  ; opforgeNativeCliActivePrvmRequireBytes
 
 opforgeNativeCliParserMnemonicEquals	.block
-	bsr.w line_text.opforgeNativeCliLineStartsWith
+	jsr line_text.opforgeNativeCliLineStartsWith
 	rts
 	.bend  ; opforgeNativeCliParserMnemonicEquals
 

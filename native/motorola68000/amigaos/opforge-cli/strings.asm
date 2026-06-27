@@ -133,6 +133,14 @@ EmitterStubText
 	.byte "ERROR OPC-NCLI009: native emitter VM not implemented", 10, 0
 ParserFailureText
 	.byte "ERROR OPC-NCLI013: native module/use parser stage failed", 10, 0
+PrvmRouteStatusText
+	.byte "PRVM-STATUS $", 0
+PrvmRouteDetailText
+	.byte "PRVM-DETAIL $", 0
+PrvmPipelineDetailText
+	.byte "PRVM-PIPELINE $", 0
+PrvmTokenizerDetailText
+	.byte "PRVM-TOKENIZE $", 0
 ModuleDepthFailureText
 	.byte "ERROR OPC-NCLI016: native module depth mismatch", 10, 0
 IncludeStageText
@@ -224,37 +232,37 @@ EndifDirectiveText
 .ifdef OPFORGE_FS_UAE_SMOKE
 defaultFsUaeArgTail
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT
-	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_65C02_OUTPUT
-	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu 65c02 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu 65c02", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC
-	.byte "Work:opforge_6502_unknown_mnemonic.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_unknown_mnemonic.asm --bin Work:opforge_native_out.bin --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING
-	.byte "Work:opforge_6502_unsupported_addressing.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_unsupported_addressing.asm --bin Work:opforge_native_out.bin --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL
-	.byte "Work:opforge_6502_unresolved_label.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_unresolved_label.asm --bin Work:opforge_native_out.bin --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG
-	.byte "Work:opforge_6502_bad_org.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_bad_org.asm --bin Work:opforge_native_out.bin --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT
-	.byte "Work:opforge_6502_native_cli_smoke.asm --srec Work:opforge_native_out.srec --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --srec Work:opforge_native_out.srec --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT
-	.byte "Work:opforge_missing_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_missing_input.asm --bin Work:opforge_native_out.bin --cpu m68020", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK
-	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_HUNK_OUTPUT
-	.byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT
-	.byte "Work:opforge_fsuae_smoke_input.asm --infile Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_fsuae_smoke_input.asm --infile Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_missing_package.opasm", 0
@@ -263,48 +271,48 @@ defaultFsUaeArgTail
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package_oversized.opasm", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNMATCHED_ENDMODULE
-	.byte "Work:opforge_fsuae_unmatched_endmodule.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_fsuae_unmatched_endmodule.asm --bin Work:opforge_native_out.bin --cpu m68020", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNTERMINATED_MODULE
-	.byte "Work:opforge_fsuae_unterminated_module.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_fsuae_unterminated_module.asm --bin Work:opforge_native_out.bin --cpu m68020", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE
-	.byte "Work:opforge_fsuae_bad_use.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_fsuae_bad_use.asm --bin Work:opforge_native_out.bin --cpu m68020", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE
-	.byte "Work:opforge_fsuae_missing_module.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_fsuae_missing_module.asm --bin Work:opforge_native_out.bin --cpu m68020", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH
-	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M", 0
+	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 -M", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW
-	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8", 0
+	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM10_INCLUDE_OUTPUT
-	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -I Work:opforge_include_root_b -I Work:opforge_include_root_a", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 -I Work:opforge_include_root_b -I Work:opforge_include_root_a", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INCLUDE
-	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -I Work:opforge_include_root_a", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 -I Work:opforge_include_root_a", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM13_OUTPUT_DIRECTIVE
-	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM14_OUTPUT_DIRECTIVE
-	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM15_OUTPUT_DIRECTIVE
-	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM16_LIST_OUTPUT
-	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM17_ARTIFACT_MATRIX
-	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM17_SOURCE_CPU_ONLY
-	.byte "Work:opforge_6502_native_cli_smoke.asm --opasm-package Work:opforge_cli_package.opasm", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm", 0
 .else
-	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b", 0
+	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m6502 -M Work:opforge_module_a --module-path Work:opforge_module_b", 0
 .endif
 .endif
 .endif

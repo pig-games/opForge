@@ -1,0 +1,4 @@
+status: PASS
+gate: plan-quality
+artifact: documentation/plans/opforge-native-cli-reference-parity-expansion-plan-v0_1.md
+summary: single-agent `plan-quality-reviewer` PASS: source and mode are explicit, AGENTS binding is stated, work items are ordered and commit-sized, each item requires full gates plus `plan-compliance-reviewer` and one commit before advancing, source requirements map into every item, and the revised scope is tightly controlled by making `6502`/`65c02` plus opcore-on-MOS the only active path while placing `motorola68000`, `motorola6800`/`6809`, `intel8080`/`z80`, and other non-`6502`/non-`65c02` families on hold

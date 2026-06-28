@@ -14,7 +14,6 @@ use types::lockstep::ContinuationHead;
 use vm::builder::{build_hierarchy_chunks_from_registry, build_hierarchy_package_from_registry};
 use vm::output_model::BinOutputSpec;
 
-const FS_UAE_OPT_IN_ENV: &str = "OPFORGE_FS_UAE_SMOKE";
 const FS_UAE_BIN_ENV: &str = "OPFORGE_FS_UAE_BIN";
 const FS_UAE_ARGS_ENV: &str = "OPFORGE_FS_UAE_ARGS";
 const FS_UAE_CONFIG_TEMPLATE_ENV: &str = "OPFORGE_FS_UAE_CONFIG_TEMPLATE";
@@ -125,6 +124,7 @@ const FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH: &str = "native/motorola68000/amigao
 const FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE: &str = "opforge_cli_package.opasm";
 const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE: &str =
     "opforge_cli_package_oversized.opasm";
+const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_BYTES: usize = 262_145;
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_ARTIFACTS_DIR: &str = "case_artifacts";
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDOUT_FILE: &str = "opforge_fsuae_smoke.stdout";
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_EXITCODE_FILE: &str = "opforge_fsuae_smoke.exitcode";
@@ -216,6 +216,7 @@ pub(crate) struct OpforgeNativeCliParityCase<'a> {
     pub(crate) cpu_override: &'a str,
     pub(crate) extra_assembly_defines: &'a [&'a str],
     pub(crate) source_override: Option<&'a [u8]>,
+    pub(crate) command_template: Option<&'a str>,
     pub(crate) package_mode: OpforgeNativeCliPackageMode<'a>,
     pub(crate) extra_guest_files: &'a [OpforgeNativeCliGuestFile<'a>],
 }
@@ -232,12 +233,6 @@ struct GitHeadProvenance {
 }
 
 pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmokeOutcome, String> {
-    if std::env::var(FS_UAE_OPT_IN_ENV).is_err() {
-        return Ok(FsUaeSmokeOutcome::Skipped(format!(
-            "set {FS_UAE_OPT_IN_ENV}=1 to enable the opt-in FS-UAE smoke test"
-        )));
-    }
-
     let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
@@ -273,6 +268,7 @@ pub(crate) fn run_opforge_native_cli_stub_from_env(
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: None,
+        command_template: None,
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
     }];
@@ -286,6 +282,7 @@ pub(crate) fn run_opforge_native_cli_6502_output_from_env(
         cpu_override: "68020",
         extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE],
         source_override: None,
+        command_template: None,
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
     }];
@@ -298,11 +295,6 @@ pub(crate) fn run_opforge_native_cli_parity_cases_from_env(
 ) -> Result<FsUaeSmokeOutcome, String> {
     if cases.is_empty() {
         return Err("native opForge CLI parity mode requires at least one case".to_string());
-    }
-    if std::env::var(FS_UAE_OPT_IN_ENV).is_err() {
-        return Ok(FsUaeSmokeOutcome::Skipped(format!(
-            "set {FS_UAE_OPT_IN_ENV}=1 to enable the opt-in FS-UAE smoke test"
-        )));
     }
 
     let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
@@ -347,6 +339,7 @@ pub(crate) fn run_opforge_native_cli_mos_fixture_outputs_from_env(
             cpu_override: "68020",
             extra_assembly_defines: defines.as_slice(),
             source_override: Some(case.source),
+            command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
         })
@@ -366,6 +359,7 @@ pub(crate) fn run_opforge_native_cli_item10_include_from_env(
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE],
             source_override: Some(include_source.as_bytes()),
+            command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
         },
@@ -373,6 +367,7 @@ pub(crate) fn run_opforge_native_cli_item10_include_from_env(
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_MISSING_INCLUDE_DEFINE],
             source_override: Some(missing_include_source.as_bytes()),
+            command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
         },
@@ -389,6 +384,7 @@ pub(crate) fn run_opforge_native_cli_item13_output_directive_from_env(
         cpu_override: "68020",
         extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM13_OUTPUT_DIRECTIVE_DEFINE],
         source_override: Some(source),
+        command_template: None,
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
     }];
@@ -406,6 +402,7 @@ pub(crate) fn run_opforge_native_cli_item14_prg_output_from_env(
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM14_OUTPUT_DIRECTIVE_DEFINE],
             source_override: Some(success_source),
+            command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
         },
@@ -413,6 +410,7 @@ pub(crate) fn run_opforge_native_cli_item14_prg_output_from_env(
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM14_OUTPUT_DIRECTIVE_DEFINE],
             source_override: Some(wide_loadaddr_source),
+            command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
         },
@@ -429,6 +427,7 @@ pub(crate) fn run_opforge_native_cli_item15_hex_output_from_env(
         cpu_override: "68020",
         extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM15_OUTPUT_DIRECTIVE_DEFINE],
         source_override: Some(source),
+        command_template: None,
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
     }];
@@ -444,6 +443,7 @@ pub(crate) fn run_opforge_native_cli_item16_listing_output_from_env(
         cpu_override: "68020",
         extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM16_LIST_OUTPUT_DEFINE],
         source_override: Some(source),
+        command_template: None,
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
     }];
@@ -461,6 +461,7 @@ pub(crate) fn run_opforge_native_cli_item17_artifact_matrix_from_env(
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM17_ARTIFACT_MATRIX_DEFINE],
             source_override: Some(*source),
+            command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
         })
@@ -475,8 +476,9 @@ pub(crate) fn run_opforge_native_cli_item17_source_cpu_output_from_env(
 ) -> Result<FsUaeSmokeOutcome, String> {
     let cases = [OpforgeNativeCliParityCase {
         cpu_override: "68020",
-        extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM17_SOURCE_CPU_ONLY_DEFINE],
+        extra_assembly_defines: &[],
         source_override: Some(source),
+        command_template: Some("{input}"),
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
     }];
@@ -683,6 +685,19 @@ fn opforge_native_cli_case_command(
         FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_FILE.trim_end_matches("/defs.inc")
     );
     let default_package_args = |args: &str| args.to_string();
+
+    if let Some(template) = case.command_template {
+        return template
+            .replace("{input}", &source_path)
+            .replace("{bin}", &bin_path)
+            .replace("{prg}", &_prg_path)
+            .replace("{hex}", &_hex_path)
+            .replace("{list}", &_list_path)
+            .replace("{hunk}", &hunk_path)
+            .replace("{guest_work_dir}", &paths.guest_work_dir)
+            .replace("{include_a}", &include_a)
+            .replace("{include_b}", &include_b);
+    }
 
     if case.source_override.is_some() && opforge_native_cli_case_define(case).is_none() {
         return default_package_args(
@@ -895,7 +910,7 @@ fn run_opforge_native_cli_parity_batch_cases(
     }
     stage_guest_script(&mounted_work_dir, batch_script.as_str())?;
 
-    let assembly_defines: Vec<String> = Vec::new();
+    let assembly_defines = opforge_native_cli_fixture_assembly_defines();
     let include_paths =
         example_include_paths(workspace_root, FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME);
     let module_paths = example_module_paths(workspace_root, FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME);
@@ -1008,6 +1023,7 @@ fn run_opforge_native_cli_parity_batch_cases(
         })
         .collect::<Vec<_>>();
 
+    terminate_preexisting_fs_uae_processes()?;
     let baseline_process_ids = snapshot_fs_uae_process_ids()?;
     let launcher_stdout_path = artifact_dir.join(FS_UAE_LAUNCHER_STDOUT_FILE);
     let launcher_stderr_path = artifact_dir.join(FS_UAE_LAUNCHER_STDERR_FILE);
@@ -1078,7 +1094,11 @@ fn run_opforge_native_cli_parity_batch_cases(
     for (case, case_paths) in cases.iter().zip(batch_paths.iter()) {
         let exit_code = read_optional_exit_code(&case_paths.exit_code_path)?;
         let stdout = read_optional_text(&case_paths.stdout_path)?.unwrap_or_default();
-        let success = determine_smoke_success(exit_code, launcher_success);
+        let success = determine_batch_case_success(
+            case_paths.done_path.is_file(),
+            exit_code,
+            launcher_success,
+        );
         runs.push(FsUaeSmokeRun {
             example_name: FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
             source_path: case_paths
@@ -1099,6 +1119,13 @@ fn run_opforge_native_cli_parity_batch_cases(
     Ok(FsUaeSmokeOutcome::Completed { runs })
 }
 
+fn opforge_native_cli_fixture_assembly_defines() -> Vec<String> {
+    // Fixture-backed native CLI parity must build the real CLI entrypoint without
+    // FS-UAE-specific test defines. The guest startup script provides the actual
+    // CLI arguments for every case.
+    Vec::new()
+}
+
 pub(crate) fn run_opforge_native_cli_failure_cases_from_env(
     workspace_root: &Path,
     cases: &[OpforgeNativeCliFailureCase<'_>],
@@ -1116,6 +1143,7 @@ pub(crate) fn run_opforge_native_cli_failure_cases_from_env(
             cpu_override: "68020",
             extra_assembly_defines: defines.as_slice(),
             source_override: None,
+            command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
         });
@@ -1187,12 +1215,6 @@ fn run_tkpkg_debug_cli_input_mode_with_optional_package_from_env<'a>(
     cpu_id: &str,
     package_bytes: Option<&'a [u8]>,
 ) -> Result<FsUaeSmokeOutcome, String> {
-    if std::env::var(FS_UAE_OPT_IN_ENV).is_err() {
-        return Ok(FsUaeSmokeOutcome::Skipped(format!(
-            "set {FS_UAE_OPT_IN_ENV}=1 to enable the opt-in FS-UAE smoke test"
-        )));
-    }
-
     let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
@@ -1508,7 +1530,8 @@ fn stage_opforge_native_cli_common_guest_inputs(
             package_bytes,
         )?;
     }
-    let oversized_package = vec![0u8; 32_769];
+    // This must exceed native tkpkg PACKAGE_STORAGE_CAPACITY (262144 bytes).
+    let oversized_package = vec![0u8; FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_BYTES];
     stage_guest_input_bytes(
         mounted_work_dir,
         FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE,
@@ -1837,6 +1860,31 @@ fn cleanup_spawned_fs_uae_processes(baseline_process_ids: &BTreeSet<u32>) -> Res
     Ok(())
 }
 
+fn terminate_preexisting_fs_uae_processes() -> Result<(), String> {
+    let existing_process_ids = snapshot_fs_uae_process_ids()?;
+    if existing_process_ids.is_empty() {
+        return Ok(());
+    }
+
+    for process_id in &existing_process_ids {
+        terminate_process_id(*process_id)?;
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        if snapshot_fs_uae_process_ids()?.is_empty() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(
+                "FS-UAE preflight cleanup timed out waiting for existing emulator processes to exit"
+                    .to_string(),
+            );
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+}
+
 fn wait_for_spawned_fs_uae_processes_to_exit(
     baseline_process_ids: &BTreeSet<u32>,
 ) -> Result<(), String> {
@@ -2022,6 +2070,16 @@ fn determine_smoke_success(guest_exit_code: Option<i32>, launcher_success: bool)
     guest_exit_code
         .map(|code| code == 0)
         .unwrap_or(launcher_success)
+}
+
+fn determine_batch_case_success(
+    case_done: bool,
+    guest_exit_code: Option<i32>,
+    launcher_success: bool,
+) -> bool {
+    case_done
+        && guest_exit_code.is_some()
+        && determine_smoke_success(guest_exit_code, launcher_success)
 }
 
 fn fs_uae_launcher_status_text(status: ExitStatus) -> String {
@@ -2341,6 +2399,7 @@ fn run_example_smoke_with_request(
                 )
         })
         .collect::<Vec<_>>();
+    terminate_preexisting_fs_uae_processes()?;
     let baseline_process_ids = snapshot_fs_uae_process_ids()?;
     let launcher_stdout_path = artifact_dir.join(FS_UAE_LAUNCHER_STDOUT_FILE);
     let launcher_stderr_path = artifact_dir.join(FS_UAE_LAUNCHER_STDERR_FILE);
@@ -2581,6 +2640,7 @@ fn run_example_smoke_with_guest_input(
                 )
         })
         .collect::<Vec<_>>();
+    terminate_preexisting_fs_uae_processes()?;
     let baseline_process_ids = snapshot_fs_uae_process_ids()?;
     let launcher_stdout_path = artifact_dir.join(FS_UAE_LAUNCHER_STDOUT_FILE);
     let launcher_stderr_path = artifact_dir.join(FS_UAE_LAUNCHER_STDERR_FILE);
@@ -2782,6 +2842,14 @@ mod tests {
     }
 
     #[test]
+    fn batch_case_success_requires_done_marker_and_zero_exit() {
+        assert!(determine_batch_case_success(true, Some(0), false));
+        assert!(!determine_batch_case_success(false, Some(0), true));
+        assert!(!determine_batch_case_success(true, None, true));
+        assert!(!determine_batch_case_success(true, Some(7), true));
+    }
+
+    #[test]
     fn cleanup_only_targets_new_process_ids() {
         let baseline = BTreeSet::from([10_u32, 20_u32]);
         let current = BTreeSet::from([10_u32, 20_u32, 30_u32, 40_u32]);
@@ -2835,6 +2903,14 @@ mod tests {
             vec!["OPFORGE_FS_UAE_SMOKE".to_string()]
         );
         assert!(example_assembly_defines("helloworld").is_empty());
+    }
+
+    #[test]
+    fn native_cli_fixture_batch_assembles_without_fs_uae_smoke_define() {
+        assert!(
+            opforge_native_cli_fixture_assembly_defines().is_empty(),
+            "fixture-backed native CLI parity must not compile OPFORGE_FS_UAE_SMOKE into opforge_cli"
+        );
     }
 
     #[test]
@@ -2981,6 +3057,7 @@ mod tests {
                 cpu_override: "68020",
                 extra_assembly_defines: &[define],
                 source_override: Some(b"        .include \"defs.inc\"\n"),
+                command_template: None,
                 package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
                 extra_guest_files: &[],
             };
@@ -2999,6 +3076,7 @@ mod tests {
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE],
             source_override: Some(b"        .include \"defs.inc\"\n"),
+            command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
         };
@@ -3016,6 +3094,7 @@ mod tests {
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(b"        .module app\n"),
+            command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
         };
@@ -3032,11 +3111,12 @@ mod tests {
     }
 
     #[test]
-    fn source_cpu_only_native_cli_command_uses_embedded_default_package() {
+    fn source_cpu_only_command_template_runs_input_only() {
         let case = OpforgeNativeCliParityCase {
             cpu_override: "68020",
-            extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM17_SOURCE_CPU_ONLY_DEFINE],
+            extra_assembly_defines: &[],
             source_override: Some(b"        .cpu 6502\n"),
+            command_template: Some("{input}"),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
         };
@@ -3045,6 +3125,24 @@ mod tests {
         assert_eq!(
             opforge_native_cli_case_command(&case, &paths),
             "Work:case_artifacts/case_0000/Work/opforge_6502_native_cli_smoke.asm"
+        );
+    }
+
+    #[test]
+    fn explicit_command_template_interpolates_guest_paths() {
+        let case = OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(b"        lda #$42\n"),
+            command_template: Some("{input} --list {list} --cpu m6502 -I {include_a}"),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        };
+        let paths = opforge_native_cli_batch_case_paths(Path::new("/tmp/opforge-fsuae"), 0);
+
+        assert_eq!(
+            opforge_native_cli_case_command(&case, &paths),
+            "Work:case_artifacts/case_0000/Work/opforge_6502_native_cli_smoke.asm --list Work:case_artifacts/case_0000/Work/build/opforge_native_out.lst --cpu m6502 -I Work:case_artifacts/case_0000/Work/opforge_include_root_a"
         );
     }
 
@@ -3077,6 +3175,7 @@ mod tests {
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE],
             source_override: Some(b"        lda #$42\n"),
+            command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
         };
@@ -3115,6 +3214,7 @@ mod tests {
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE],
             source_override: Some(b"        .include \"defs.inc\"\n"),
+            command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
         };

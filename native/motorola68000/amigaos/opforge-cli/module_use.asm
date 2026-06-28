@@ -195,6 +195,8 @@ return
 
 opforgeNativeCliEmitImportRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)
+	tst.w state.NativeCliDebugEnabled
+	beq.w done
 	move.l #strings.UseImportText, d1
 	jsr dos.putStr
 	moveq #0, d0
@@ -248,12 +250,15 @@ opforgeNativeCliEmitImportRecord	.block
 newline
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
+done
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
 	.bend  ; opforgeNativeCliEmitImportRecord
 
 opforgeNativeCliEmitImportSelectRecord	.block
 	movem.l d0-d4/d6-d7/a0-a1, -(sp)
+	tst.w state.NativeCliDebugEnabled
+	beq.w done
 	move.l #strings.UseSelectText, d1
 	jsr dos.putStr
 	moveq #0, d0
@@ -296,12 +301,15 @@ flags
 	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
+done
 	movem.l (sp)+, d0-d4/d6-d7/a0-a1
 	rts
 	.bend  ; opforgeNativeCliEmitImportSelectRecord
 
 opforgeNativeCliEmitImportWildcardRecord	.block
 	movem.l d0-d4, -(sp)
+	tst.w state.NativeCliDebugEnabled
+	beq.s done
 	move.l #strings.UseWildcardText, d1
 	jsr dos.putStr
 	moveq #0, d0
@@ -312,6 +320,7 @@ opforgeNativeCliEmitImportWildcardRecord	.block
 	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
+done
 	movem.l (sp)+, d0-d4
 	rts
 	.bend  ; opforgeNativeCliEmitImportWildcardRecord
@@ -404,6 +413,8 @@ return
 
 opforgeNativeCliEmitModuleRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)
+	tst.w state.NativeCliDebugEnabled
+	beq.w done
 	move.w d0, d4
 	cmp.w state.NativeCliRootModuleId, d4
 	bne.s def
@@ -456,12 +467,15 @@ def
 	jsr dos.putStr
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
+done
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
 	.bend  ; opforgeNativeCliEmitModuleRecord
 
 opforgeNativeCliEmitModuleCompatibility	.block
 	movem.l d0/d4/a0, -(sp)
+	tst.w state.NativeCliDebugEnabled
+	beq.s done
 	move.w d0, d4
 	move.l #strings.ModuleFoundText, d1
 	jsr dos.putStr
@@ -470,6 +484,7 @@ opforgeNativeCliEmitModuleCompatibility	.block
 	jsr dos.putStr
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
+done
 	movem.l (sp)+, d0/d4/a0
 	rts
 	.bend  ; opforgeNativeCliEmitModuleCompatibility
@@ -511,6 +526,8 @@ return
 
 opforgeNativeCliEmitModuleEndRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)
+	tst.w state.NativeCliDebugEnabled
+	beq.s done
 	move.w d0, d4
 	move.l #strings.ModEndText, d1
 	jsr dos.putStr
@@ -529,6 +546,7 @@ opforgeNativeCliEmitModuleEndRecord	.block
 	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
+done
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
 	.bend  ; opforgeNativeCliEmitModuleEndRecord

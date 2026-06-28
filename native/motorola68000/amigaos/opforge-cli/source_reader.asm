@@ -65,6 +65,8 @@ packageReady
 	move.w #1, state.NativeCliPackagePipelineReady
 	lea buffers.ActiveCpuBuffer, a0
 	jsr engine.setSessionCpuNameV1
+	tst.w state.NativeCliDebugEnabled
+	beq.s packageUnavailable
 	move.l #strings.TokenizerOkText, d1
 	jsr dos.putStr
 packageUnavailable

@@ -327,7 +327,6 @@ checkOrgDirective
 	lea strings.OrgMnemonicText, a1
 	moveq #4, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	bne.w badOrgLine
 
 	tst.w state.NativeCliPackagePipelineReady
 	beq.w sourceDirectiveFallback
@@ -392,12 +391,6 @@ done
 
 conditionalLine
 	move.l #strings.ConditionalFailureText, d1
-	jsr dos.putStr
-	moveq #1, d0
-	bra.w return
-
-badOrgLine
-	move.l #strings.NativeBadOrgText, d1
 	jsr dos.putStr
 	moveq #1, d0
 	bra.w return

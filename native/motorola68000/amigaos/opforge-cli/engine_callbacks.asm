@@ -41,9 +41,16 @@ opforgeNativeCliRunTwoPassEngine	.block
 	clr.w NativeCliOpasmEventCount
 	jsr driver.assembleSessionV1
 	move.l d0, d7
+	bne.s renderEvents
+	tst.w state.NativeCliDebugEnabled
+	beq.s returnStatus
+
+renderEvents
 	lea NativeCliOpasmEventBuffer, a0
 	move.w NativeCliOpasmEventCount, d0
 	jsr opasm_event_report.opforgeNativeCliRenderOpasmEventsV1
+
+returnStatus
 	move.l d7, d0
 	adda.l #abi.OPASM_ASSEMBLE_REQ_BYTES + abi.OPASM_SERVICE_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a2

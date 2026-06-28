@@ -145,7 +145,7 @@ finally mandatory gating for that active scope only.
     - exclusions carry concrete blocking reasons rather than “future work” placeholders
     - the guard fails deterministically when new reference-backed examples are added without native parity accounting
 
-- [ ] Item 2: generalize the FS-UAE native CLI harness into a schema-driven native-vs-Rust parity runner
+- [x] Item 2: generalize the FS-UAE native CLI harness into a schema-driven native-vs-Rust parity runner
   - Source requirement or finding IDs: user requirement that native tests behave “just like a user would do it” through the CLI; existing focused helpers in `crates/opforge-asm/src/fs_uae_smoke.rs`; Rust authority in `run_with_cli_with_context` and `examples_match_reference_outputs()`
   - Expected files:
     - `crates/opforge-asm/src/fs_uae_smoke.rs`
@@ -164,9 +164,11 @@ finally mandatory gating for that active scope only.
     - listing normalization matches the current Rust reference-harness policy where banner/profile-only differences are already intentionally normalized
     - the native runner can stage full file trees, module roots, and artifact outputs as needed per case
 
-- [ ] Item 3: cover the full applicable `6502` and `65c02` reference corpus through native CLI parity shards
-  - Source requirement or finding IDs: current `6502` and `65c02` examples and references under `examples/mos6502/**` and `examples/reference/mos6502/**`; existing first-run/native CLI focused tests; user request to add as much reference-backed native coverage as possible while prioritizing `6502` first
+- [x] Item 3: cover the full applicable `6502` and `65c02` reference corpus through native CLI parity shards
+  - Source requirement or finding IDs: current `6502` and `65c02` examples and references under `examples/mos6502/**` and `examples/reference/mos6502/**`; existing first-run/native CLI focused tests; user request to add as much reference-backed native coverage as possible while prioritizing `6502` first; user requirement that parity must be measured from actual `opforge_cli` CLI-argument invocations issued from a script or command prompt, with emulation allowed, and that only the artifacts written by `opforge_cli` itself are valid comparison inputs against the Rust outputs for this scope
   - Expected files:
+    - `native/motorola68000/amigaos/opforge-cli/**`
+    - `native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm`
     - `crates/opforge-asm/src/tests.rs`
     - `crates/opforge-asm/src/fs_uae_smoke.rs`
     - `crates/opforge-asm/src/native_reference_parity.rs` or equivalent helper module if extracted
@@ -179,11 +181,14 @@ finally mandatory gating for that active scope only.
   - Plan-compliance review evidence:
     - `plan-compliance-reviewer` returns `PASS` for a slice limited to `6502`/`65c02` parity expansion with no expansion into `65816`, `45gs02`, `motorola68000`, `motorola6800`/`6809`, or `intel8080`/`z80`
   - Commit outcome:
-    - all applicable `6502` and `65c02` examples are represented by native CLI parity tests or reviewed exclusions, and that shard becomes the stable baseline native gate candidate
+    - all applicable `6502` and `65c02` examples are represented by native CLI parity tests or reviewed exclusions, the native CLI accepts and honors the Rust CLI argument surface needed by that shard when invoked through actual CLI arguments from a script or command prompt under FS-UAE or equivalent emulation, and that shard becomes the stable baseline native gate candidate
   - Definition of done:
     - success examples compare exact native-vs-Rust payloads for the declared artifact types
     - error examples compare exact native-vs-Rust deterministic diagnostics where the native CLI can reach the same path
     - first-run, artifact-matrix, and broader `6502`/`65c02` examples live under one shard structure instead of a loose mix of one-off tests
+    - prompt-driven or script-driven native CLI invocations can assemble the active shard examples under emulation when explicit output arguments are supplied, rather than only through harness-injected source cases
+    - the native CLI accepts and honors the Rust CLI argument surface required by the active shard scope, including input selection, CPU override, include/module roots, and declared output arguments for byte and text artifacts
+    - parity comparisons for this item use only the files and text artifacts written by `opforge_cli` from those actual CLI-argument invocations as the native side of the comparison
     - `65816` and `45gs02` examples remain explicit on-hold exclusions in the applicability manifest rather than being silently folded into the active shard
 
 - [ ] Item 4: create `6502`/`65c02`-backed opForge Core parity fixtures and cover the applicable opcore reference corpus

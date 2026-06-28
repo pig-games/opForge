@@ -1,14 +1,35 @@
+use std::collections::HashSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+pub(crate) const NATIVE_REFERENCE_FIXTURE_PATH: &str =
+    "crates/opforge-asm/tests/fixtures/native_cli_reference_parity_schema.json";
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NativeReferenceSourceMode {
     StrippedBinFromSource,
     SourceCpuPrgFromExample,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+impl NativeReferenceSourceMode {
+    fn from_fixture_str(value: &str) -> Result<Self, String> {
+        match value {
+            "stripped-bin-from-source" => Ok(Self::StrippedBinFromSource),
+            "source-cpu-prg-from-example" => Ok(Self::SourceCpuPrgFromExample),
+            other => Err(format!(
+                "unsupported native reference source_mode '{other}'; expected 'stripped-bin-from-source' or 'source-cpu-prg-from-example'"
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct NativeReferenceCase {
-    pub(crate) asm_path: &'static str,
-    pub(crate) cpu_id: &'static str,
+    pub(crate) asm_path: String,
+    pub(crate) cpu_id: String,
     pub(crate) source_mode: NativeReferenceSourceMode,
+    pub(crate) command_template: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -50,44 +71,6 @@ pub(crate) enum NativeReferenceAccounting<'a> {
     Case(&'a NativeReferenceCase),
     Excluded(&'a NativeReferenceExclusionRule),
 }
-
-pub(crate) const NATIVE_REFERENCE_CASES: &[NativeReferenceCase] = &[
-    NativeReferenceCase {
-        asm_path: "examples/mos6502/6502_native_cli_smoke.asm",
-        cpu_id: "m6502",
-        source_mode: NativeReferenceSourceMode::StrippedBinFromSource,
-    },
-    NativeReferenceCase {
-        asm_path: "examples/mos6502/6502_simple.asm",
-        cpu_id: "m6502",
-        source_mode: NativeReferenceSourceMode::StrippedBinFromSource,
-    },
-    NativeReferenceCase {
-        asm_path: "examples/mos6502/6502_allmodes.asm",
-        cpu_id: "m6502",
-        source_mode: NativeReferenceSourceMode::StrippedBinFromSource,
-    },
-    NativeReferenceCase {
-        asm_path: "examples/mos6502/6502_first_run_artifact_contract.asm",
-        cpu_id: "m6502",
-        source_mode: NativeReferenceSourceMode::SourceCpuPrgFromExample,
-    },
-    NativeReferenceCase {
-        asm_path: "examples/mos6502/mos6502_modes.asm",
-        cpu_id: "m6502",
-        source_mode: NativeReferenceSourceMode::StrippedBinFromSource,
-    },
-    NativeReferenceCase {
-        asm_path: "examples/mos6502/65c02_simple.asm",
-        cpu_id: "65c02",
-        source_mode: NativeReferenceSourceMode::StrippedBinFromSource,
-    },
-    NativeReferenceCase {
-        asm_path: "examples/mos6502/65c02_allmodes.asm",
-        cpu_id: "65c02",
-        source_mode: NativeReferenceSourceMode::StrippedBinFromSource,
-    },
-];
 
 pub(crate) const NATIVE_REFERENCE_EXCLUSION_RULES: &[NativeReferenceExclusionRule] = &[
     NativeReferenceExclusionRule {
@@ -134,8 +117,135 @@ pub(crate) const NATIVE_REFERENCE_EXCLUSION_RULES: &[NativeReferenceExclusionRul
     },
 ];
 
-pub(crate) fn native_reference_case_for_path(path: &str) -> Option<&'static NativeReferenceCase> {
+static NATIVE_REFERENCE_CASES: OnceLock<Vec<NativeReferenceCase>> = OnceLock::new();
+
+fn native_reference_fixture_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join(NATIVE_REFERENCE_FIXTURE_PATH)
+}
+
+fn fixture_string_field(
+    case_index: usize,
+    entry: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    fixture_path: &Path,
+) -> Result<String, String> {
+    let value = entry.get(field).ok_or_else(|| {
+        format!(
+            "native reference fixture {} entry {} is missing required field '{}'",
+            fixture_path.display(),
+            case_index,
+            field
+        )
+    })?;
+    let text = value.as_str().ok_or_else(|| {
+        format!(
+            "native reference fixture {} entry {} field '{}' must be a string",
+            fixture_path.display(),
+            case_index,
+            field
+        )
+    })?;
+    if text.trim().is_empty() {
+        return Err(format!(
+            "native reference fixture {} entry {} field '{}' must not be empty",
+            fixture_path.display(),
+            case_index,
+            field
+        ));
+    }
+    Ok(text.to_string())
+}
+
+fn load_native_reference_cases_from_fixture() -> Result<Vec<NativeReferenceCase>, String> {
+    let fixture_path = native_reference_fixture_path();
+    let fixture_text = fs::read_to_string(&fixture_path).map_err(|err| {
+        format!(
+            "read native reference fixture {}: {err}",
+            fixture_path.display()
+        )
+    })?;
+    let parsed: serde_json::Value = serde_json::from_str(&fixture_text).map_err(|err| {
+        format!(
+            "parse native reference fixture {} as JSON: {err}",
+            fixture_path.display()
+        )
+    })?;
+    let entries = parsed.as_array().ok_or_else(|| {
+        format!(
+            "native reference fixture {} must contain a top-level JSON array",
+            fixture_path.display()
+        )
+    })?;
+    if entries.is_empty() {
+        return Err(format!(
+            "native reference fixture {} must declare at least one case",
+            fixture_path.display()
+        ));
+    }
+
+    let mut seen_paths = HashSet::new();
+    let mut cases = Vec::with_capacity(entries.len());
+    for (case_index, value) in entries.iter().enumerate() {
+        let entry = value.as_object().ok_or_else(|| {
+            format!(
+                "native reference fixture {} entry {} must be an object",
+                fixture_path.display(),
+                case_index
+            )
+        })?;
+        let asm_path = fixture_string_field(case_index, entry, "asm_path", &fixture_path)?;
+        let cpu_id = fixture_string_field(case_index, entry, "cpu_id", &fixture_path)?;
+        let source_mode_text =
+            fixture_string_field(case_index, entry, "source_mode", &fixture_path)?;
+        let command_template =
+            fixture_string_field(case_index, entry, "command_template", &fixture_path)?;
+        let source_mode = NativeReferenceSourceMode::from_fixture_str(source_mode_text.as_str())
+            .map_err(|err| {
+                format!(
+                    "native reference fixture {} entry {}: {err}",
+                    fixture_path.display(),
+                    case_index
+                )
+            })?;
+        if !asm_path.starts_with("examples/") {
+            return Err(format!(
+                "native reference fixture {} entry {} asm_path '{}' must stay under examples/",
+                fixture_path.display(),
+                case_index,
+                asm_path
+            ));
+        }
+        if !seen_paths.insert(asm_path.clone()) {
+            return Err(format!(
+                "native reference fixture {} contains duplicate asm_path '{}'",
+                fixture_path.display(),
+                asm_path
+            ));
+        }
+        cases.push(NativeReferenceCase {
+            asm_path,
+            cpu_id,
+            source_mode,
+            command_template,
+        });
+    }
+
+    Ok(cases)
+}
+
+pub(crate) fn native_reference_cases() -> &'static [NativeReferenceCase] {
     NATIVE_REFERENCE_CASES
+        .get_or_init(|| {
+            load_native_reference_cases_from_fixture().unwrap_or_else(|err| panic!("{err}"))
+        })
+        .as_slice()
+}
+
+pub(crate) fn native_reference_case_for_path(path: &str) -> Option<&'static NativeReferenceCase> {
+    native_reference_cases()
         .iter()
         .find(|case| case.asm_path == path)
 }
@@ -179,13 +289,13 @@ mod tests {
 
     #[test]
     fn native_reference_case_paths_are_unique() {
-        let mut paths = NATIVE_REFERENCE_CASES
+        let mut paths = native_reference_cases()
             .iter()
-            .map(|case| case.asm_path)
+            .map(|case| case.asm_path.as_str())
             .collect::<Vec<_>>();
         paths.sort_unstable();
         paths.dedup();
-        assert_eq!(paths.len(), NATIVE_REFERENCE_CASES.len());
+        assert_eq!(paths.len(), native_reference_cases().len());
     }
 
     #[test]

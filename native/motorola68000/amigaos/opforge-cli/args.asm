@@ -46,6 +46,7 @@ opforgeNativeCliParseArgs	.block
 	clr.w state.NativeCliOutputFormat
 	clr.w state.NativeCliPrgLoadAddrSet
 	clr.w state.NativeCliParseStatus
+	clr.w state.NativeCliDebugEnabled
 	clr.b state.NativeCliInputPath
 	clr.b state.NativeCliHunkPath
 	clr.b state.NativeCliBinPath
@@ -147,6 +148,10 @@ parseLoop
 	lea strings.FlagModuleLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
 	bne.w modulePath
+	lea state.NativeCliArgToken, a0
+	lea strings.FlagNativeDebugLong, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	bne.w nativeDebug
 	bsr.w opforgeNativeCliIsUnsupportedFlag
 	bne.w unsupported
 	bra.w unknownFlag
@@ -246,6 +251,10 @@ modulePath
 	bne.w modulePathCapacity
 	bsr.w opforgeNativeCliRecordModulePathValue
 	bne.w modulePathCapacity
+	bra.w parseLoop
+
+nativeDebug
+	move.w #1, state.NativeCliDebugEnabled
 	bra.w parseLoop
 
 positionalInputPath

@@ -17,7 +17,7 @@ VersionText
 	.byte "opForge native AmigaOS CLI 0.1", 10, 0
 HelpText
 	.byte "Usage: opForge [OPTIONS] [INPUT]", 10
-	.byte "Native subset: INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, -M/--module-path", 10, 0
+	.byte "Native subset: INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, -M/--module-path, --native-debug", 10, 0
 UsageText
 	.byte "OPC-NCLI001: Usage: opForge [OPTIONS] [INPUT]", 10, 0
 QuotedText
@@ -25,7 +25,7 @@ QuotedText
 UnsupportedText
 	.byte "OPC-NCLI003: recognized Rust CLI option is not implemented by native AmigaOS CLI yet: ", 0
 NativeSubsetHelpText
-	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, and -M/--module-path; --hunk is not implemented yet.", 10, 0
+	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, -M/--module-path, and --native-debug; --hunk is not implemented yet.", 10, 0
 UnknownFlagText
 	.byte "OPC-NCLI004: unknown CLI flag: ", 0
 MissingValueText
@@ -392,6 +392,8 @@ FlagModuleShort
 	.byte "-M", 0
 FlagModuleLong
 	.byte "--module-path", 0
+FlagNativeDebugLong
+	.byte "--native-debug", 0
 
 DefaultCpuName
 	.byte "m68020", 0

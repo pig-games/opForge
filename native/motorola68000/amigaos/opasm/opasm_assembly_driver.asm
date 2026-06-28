@@ -933,7 +933,7 @@ loadExprSlice
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementExprMetadataV1
 	tst.l d0
-	beq.s exprSliceFail
+	beq.s exprSliceStoredTextFallback
 	move.l eng.OPASM_ENGINE_EXPR_META_SPAN_START(a0), d1
 	move.l eng.OPASM_ENGINE_EXPR_META_SPAN_END(a0), d2
 	adda.l #eng.OPASM_ENGINE_EXPR_META_BYTES, sp
@@ -941,14 +941,12 @@ loadExprSlice
 	move.w d7, d0
 	jsr eng.opasmEngineGetStatementExprTextSliceV1
 	tst.l d0
-	bne.s haveText
-	moveq #1, d0
-	bra.w return
+	beq.w storedText
+	bra.s haveText
 
-exprSliceFail
+exprSliceStoredTextFallback
 	adda.l #eng.OPASM_ENGINE_EXPR_META_BYTES, sp
-	moveq #1, d0
-	bra.w return
+	bra.w storedText
 
 storedText
 	clr.w d6

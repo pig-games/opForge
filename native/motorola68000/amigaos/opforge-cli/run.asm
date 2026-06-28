@@ -133,6 +133,8 @@ outputFormatReady
 	bra.w closeDos
 
 headerReady
+	tst.w state.NativeCliDebugEnabled
+	beq.s tokenizerStage
 	move.l #strings.StubHeaderText, d1
 	jsr dos.putStr
 	move.l #strings.InputLabelText, d1
@@ -147,8 +149,14 @@ headerReady
 	jsr dos.putStr
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
+
+tokenizerStage
 	jsr session_init.opforgeNativeCliInitAssemblySession
+	tst.w state.NativeCliDebugEnabled
+	beq.s tokenizeFrontend
 	jsr args.opforgeNativeCliEmitModulePathRecords
+
+tokenizeFrontend
 	jsr source_reader.opforgeNativeCliTokenizeFrontend
 	beq.s tokenizerOk
 	move.l #strings.TokenizerFailureText, d1
@@ -165,10 +173,14 @@ tokenizerOk
 	bra.w closeDos
 
 outputRequestReady
+	tst.w state.NativeCliDebugEnabled
+	beq.s runEngine
 	move.l #strings.ParserStageText, d1
 	jsr dos.putStr
 	move.l #strings.SessionStageText, d1
 	jsr dos.putStr
+
+runEngine
 	jsr engine_callbacks.opforgeNativeCliRunTwoPassEngine
 	tst.l d0
 	beq.s passesOk
@@ -178,7 +190,11 @@ outputRequestReady
 	bra.w closeDos
 
 passesOk
+	tst.w state.NativeCliDebugEnabled
+	beq.s checkImage
 	jsr report.opforgeNativeCliEmitAssemblySessionSummary
+
+checkImage
 	jsr engine.opasmEngineGetImageByteCountV1
 	tst.l d0
 	beq.s emitStub
@@ -190,8 +206,11 @@ passesOk
 	bra.w closeDos
 
 outputOk
+	tst.w state.NativeCliDebugEnabled
+	beq.s outputOkReturn
 	move.l #strings.NativeOutputOkText, d1
 	jsr dos.putStr
+outputOkReturn
 	move.l #constants.RETURN_OK, state.NativeCliReturnCode
 	bra.w closeDos
 

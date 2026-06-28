@@ -338,9 +338,16 @@ opforgeNativeCliParseCpuLine	.block
 	bne.w fail
 	tst.b state.NativeCliArgToken
 	beq.w fail
+	move.l d0, -(sp)
+	move.l a0, -(sp)
+	bsr.w opforgeNativeCliNormalizeQuotedCpuToken
+	tst.l d0
+	bne.w parseCpuRestoreFail
 	lea state.NativeCliArgToken, a0
 	lea state.NativeCliCpuName, a1
 	jsr token_util.opforgeNativeCliCanonicalizeCpuName
+	movea.l (sp)+, a0
+	move.l (sp)+, d0
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
 	beq.s switchPipeline
 	cmpi.b #';', (a0)
@@ -358,12 +365,55 @@ updateSession
 	moveq #0, d0
 	rts
 
+parseCpuRestoreFail
+	addq.l #8, sp
+	bra.w fail
+
 fail
 	move.l #strings.ParserFailureText, d1
 	jsr dos.putStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliParseCpuLine
+
+; Strip one optional surrounding quote pair from state.NativeCliArgToken in place.
+; Inputs: state.NativeCliArgToken contains one `.cpu` token.
+; Outputs: D0 = 0 on success, 1 on malformed quoted token.
+; Clobbers: D0-D1/A0-A1/CCR.
+opforgeNativeCliNormalizeQuotedCpuToken	.block
+	lea state.NativeCliArgToken, a0
+	cmpi.b #'"', (a0)
+	bne.s done
+	jsr token_util.opforgeNativeCliTokenLen
+	cmpi.w #2, d0
+	blo.s fail
+	lea state.NativeCliArgToken, a0
+	movea.l a0, a1
+	adda.l d0, a1
+	subq.l #1, a1
+	cmpi.b #'"', (a1)
+	bne.s fail
+	addq.l #1, a0
+	lea state.NativeCliArgToken, a1
+
+copyLoop
+	move.b (a0)+, d1
+	cmpi.b #'"', d1
+	beq.s quotedDone
+	move.b d1, (a1)+
+	bra.s copyLoop
+
+quotedDone
+	clr.b (a1)
+
+done
+	moveq #0, d0
+	rts
+
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliNormalizeQuotedCpuToken
 
 ; Parse one first-run `.output` directive for native `.bin`/`.prg`/`.hex` request selection.
 ; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the line text.

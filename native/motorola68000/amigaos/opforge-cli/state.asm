@@ -36,6 +36,8 @@ NativeCliPrgLoadAddrSet
 	.res word, 1
 NativeCliParseStatus
 	.res word, 1
+NativeCliDebugEnabled
+	.res word, 1
 NativeCliPackagePipelineReady
 	.res word, 1
 

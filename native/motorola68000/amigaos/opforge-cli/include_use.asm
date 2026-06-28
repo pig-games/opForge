@@ -72,6 +72,8 @@ opforgeNativeCliPreparePendingInclude	.block
 	jsr path.opforgeNativeCliCopyPathBuffer
 	bne.w fail
 
+	tst.w state.NativeCliDebugEnabled
+	beq.w stageReady
 	move.l #strings.IncludeStageText, d1
 	jsr dos.putStr
 	move.l #strings.IncludeRootText, d1
@@ -97,6 +99,7 @@ opforgeNativeCliPreparePendingInclude	.block
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 
+stageReady
 	move.w #constants.NATIVE_INCLUDE_DEPTH_LIMIT, state.NativeCliIncludeDepth
 	lea state.NativeCliIncludePath, a0
 	lea state.NativeCliCurrentPath, a1
@@ -122,10 +125,13 @@ opforgeNativeCliFinishPendingInclude	.block
 	movem.l d1/a0-a1, -(sp)
 	tst.l d0
 	bne.s restoreFail
+	tst.w state.NativeCliDebugEnabled
+	beq.s restoreOk
 	move.l #strings.IncludeLeaveText, d1
 	jsr dos.putStr
 	move.l #strings.IncludeOkText, d1
 	jsr dos.putStr
+restoreOk
 	moveq #0, d1
 	bra.s restore
 

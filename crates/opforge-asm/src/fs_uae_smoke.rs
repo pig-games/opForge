@@ -121,6 +121,9 @@ const FS_UAE_TKPKG_DEBUG_CLI_SOURCE_PATH: &str =
     "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME: &str = "opforge_cli";
 const FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH: &str = "native/motorola68000/amigaos/main.asm";
+const FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME: &str = "debug_contract_harness";
+const FS_UAE_DEBUG_CONTRACT_SOURCE_PATH: &str =
+    "native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE: &str = "opforge_cli_package.opasm";
 const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE: &str =
     "opforge_cli_package_oversized.opasm";
@@ -259,6 +262,32 @@ pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmok
     }
 
     Ok(FsUaeSmokeOutcome::Completed { runs })
+}
+
+pub(crate) fn run_native_debug_contract_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set; configure FS-UAE to execute the native debug-contract harness"
+            )))
+        }
+    };
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    match run_example_smoke_with_extra_defines(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME,
+        FS_UAE_DEBUG_CONTRACT_SOURCE_PATH,
+        "68020",
+        &["OPFORGE_DEBUG_CONTRACTS"],
+    )? {
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
+    }
 }
 
 pub(crate) fn run_opforge_native_cli_stub_from_env(
@@ -1378,6 +1407,14 @@ fn example_assembly_defines(example_name: &str) -> Vec<String> {
 }
 
 fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBuf> {
+    if example_name == FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME {
+        let amigaos_dir = workspace_root
+            .join("native")
+            .join("motorola68000")
+            .join("amigaos");
+        return vec![amigaos_dir.join("debug")];
+    }
+
     if example_name == FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME {
         let amigaos_dir = workspace_root
             .join("native")
@@ -1420,6 +1457,14 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
 }
 
 fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBuf> {
+    if example_name == FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME {
+        let amigaos_dir = workspace_root
+            .join("native")
+            .join("motorola68000")
+            .join("amigaos");
+        return vec![amigaos_dir.join("debug")];
+    }
+
     if example_name == "tkpkg_debug_cli" {
         let amigaos_dir = workspace_root
             .join("native")

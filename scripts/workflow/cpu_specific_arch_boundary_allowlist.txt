@@ -40,6 +40,7 @@ native/motorola68000/amigaos/tkpkg/tkpkg_service.asm | accumulator,branch_offset
 native/motorola68000/amigaos/prvm/*.asm | 68000 | PRVM host-native runtime surfaces intentionally retain stable 68000 ABI names.
 native/motorola68000/amigaos/tkvm/tkvm_control.asm | 68000 | TKVM control API intentionally retains stable 68000 ABI helper names for host-native callers.
 native/motorola68000/amigaos/tkvm/tkvm_runtime.asm | 68000 | TKVM runtime entrypoint intentionally retains the stable 68000 ABI name for host-native callers.
+native/motorola68000/amigaos/debug/debug_readme.md | 68000,68020,ccr | Native debug-module README documents the host architecture and user-visible flag-preservation ABI without adding generic CPU semantics.
 
 # Host-native smoke harnesses may name the exercised expression form directly.
 native/motorola68000/amigaos/test-harnesses/prvm/prvm_smoke.asm | immediate,dec | PRVM smoke harness intentionally names the immediate-decimal expression case it validates.

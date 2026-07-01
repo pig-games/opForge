@@ -97,6 +97,199 @@ fn capabilities_report() -> String {
     engine_capabilities_report(&default_registry(), VERSION, BUILD_PROFILE_SUMMARY)
 }
 
+#[test]
+fn native_debug_contract_assert_predicates_cover_positive_negative_and_boundaries() {
+    fn span_is_valid(text_len: u32, start: u32, end: u32) -> bool {
+        start >= 1
+            && end >= start
+            && text_len
+                .checked_add(1)
+                .is_some_and(|exclusive_limit| end <= exclusive_limit)
+    }
+
+    fn ranges_do_not_overlap(first: u32, first_len: u32, second: u32, second_len: u32) -> bool {
+        if first_len == 0 || second_len == 0 {
+            return true;
+        }
+        let Some(first_end) = first.checked_add(first_len) else {
+            return false;
+        };
+        let Some(second_end) = second.checked_add(second_len) else {
+            return false;
+        };
+        first_end <= second || second_end <= first
+    }
+
+    assert!(span_is_valid(0, 1, 1), "zero-length text boundary");
+    assert!(span_is_valid(u32::MAX - 1, 1, u32::MAX));
+    assert!(span_is_valid(8, 2, 9));
+    assert!(!span_is_valid(8, 0, 1));
+    assert!(!span_is_valid(8, 3, 2));
+    assert!(!span_is_valid(8, 1, 10));
+    assert!(!span_is_valid(u32::MAX, 1, u32::MAX));
+
+    assert!(ranges_do_not_overlap(0x1000, 8, 0x1008, 4));
+    assert!(ranges_do_not_overlap(0x1008, 4, 0x1000, 8));
+    assert!(ranges_do_not_overlap(0x1000, 0, 0x1000, 0));
+    assert!(ranges_do_not_overlap(0x1004, 0, 0x1000, 8));
+    assert!(!ranges_do_not_overlap(0x1000, 9, 0x1008, 4));
+    assert!(!ranges_do_not_overlap(u32::MAX - 1, 4, 0x1000, 4));
+}
+
+#[test]
+fn native_debug_contract_event_records_cover_four_arguments_and_capacity() {
+    const CAPACITY: usize = 8;
+    let mut records = Vec::new();
+
+    for index in 0..=CAPACITY {
+        if records.len() < CAPACITY {
+            records.push((0x10ff_u16, 0x0101_u16, 1_u16, [index as u32, 2, 3, 4]));
+        }
+    }
+
+    assert_eq!(records.len(), CAPACITY);
+    assert_eq!(records[0], (0x10ff, 0x0101, 1, [0, 2, 3, 4]));
+    assert_eq!(records[CAPACITY - 1], (0x10ff, 0x0101, 1, [7, 2, 3, 4]));
+
+    let source = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/debug/debug_events.asm"),
+    )
+    .expect("read native debug event module");
+    for required in [
+        "DEBUG_EVENT_RECORD_BYTES = 28",
+        "DEBUG_EVENT_CAPACITY = 8",
+        "move.l d3, DEBUG_EVENT_ARG0(a1)",
+        "move.l d4, DEBUG_EVENT_ARG1(a1)",
+        "move.l d5, DEBUG_EVENT_ARG2(a1)",
+        "move.l d6, DEBUG_EVENT_ARG3(a1)",
+        "bhs.s done",
+    ] {
+        assert!(
+            source.contains(required),
+            "debug event source must contain {required:?}"
+        );
+    }
+}
+
+#[test]
+fn native_debug_contract_routines_lock_preservation_and_failure_records() {
+    let repo_root = workspace_root();
+    let assert_source =
+        fs::read_to_string(repo_root.join("native/motorola68000/amigaos/debug/debug_assert.asm"))
+            .expect("read native debug assert module");
+    let event_source =
+        fs::read_to_string(repo_root.join("native/motorola68000/amigaos/debug/debug_events.asm"))
+            .expect("read native debug event module");
+    let harness_source = fs::read_to_string(
+        repo_root
+            .join("native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm"),
+    )
+    .expect("read native debug contract harness");
+
+    for source in [&assert_source, &event_source] {
+        assert_eq!(
+            source.matches("move.w ccr, -(sp)").count(),
+            source.matches("move.w (sp)+, ccr").count(),
+            "CCR saves and restores must stay balanced"
+        );
+        assert_eq!(
+            source.matches("movem.l d0-d7/a0-a6, -(sp)").count(),
+            source.matches("movem.l (sp)+, d0-d7/a0-a6").count(),
+            "register saves and restores must stay balanced"
+        );
+    }
+
+    assert_eq!(
+        assert_source.matches("jsr events.debugEventU32x4").count(),
+        2,
+        "each failing predicate must emit one structured record"
+    );
+    assert!(harness_source.contains("runPreservationChecks"));
+    assert!(harness_source.contains("captureAndCompare"));
+    assert!(harness_source.contains("jsr debug_assert.debugAssertSpanInText"));
+    assert!(harness_source.contains("jsr debug_assert.debugAssertNoBufferOverlap"));
+    assert!(harness_source.contains("jsr debug_events.debugEventU32x4"));
+}
+
+#[test]
+fn native_debug_contract_build_modes_emit_fixed_or_zero_byte_call_sites() {
+    fn symbol_address(listing: &str, symbol: &str) -> u32 {
+        let line = listing
+            .lines()
+            .find(|line| line.starts_with(symbol))
+            .unwrap_or_else(|| panic!("listing must contain symbol {symbol}"));
+        let address = line
+            .split_whitespace()
+            .nth(1)
+            .unwrap_or_else(|| panic!("symbol {symbol} must have an address"));
+        u32::from_str_radix(address, 16)
+            .unwrap_or_else(|err| panic!("parse address for {symbol}: {err}"))
+    }
+
+    let repo_root = workspace_root();
+    let asm_path = repo_root
+        .join("native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm");
+
+    let enabled_out = create_temp_dir("native-debug-contract-enabled");
+    assemble_example_with_base_and_defines(
+        &asm_path,
+        &enabled_out,
+        "debug_contract_enabled",
+        false,
+        &["OPFORGE_DEBUG_CONTRACTS".to_string()],
+    )
+    .unwrap_or_else(|err| panic!("assemble enabled native debug contract harness: {err}"));
+    let enabled_listing = fs::read_to_string(enabled_out.join("debug_contract_enabled.lst"))
+        .expect("read enabled native debug contract listing");
+
+    let disabled_out = create_temp_dir("native-debug-contract-disabled");
+    assemble_example_with_base_and_defines(
+        &asm_path,
+        &disabled_out,
+        "debug_contract_disabled",
+        false,
+        &[],
+    )
+    .unwrap_or_else(|err| panic!("assemble disabled native debug contract harness: {err}"));
+    let disabled_listing = fs::read_to_string(disabled_out.join("debug_contract_disabled.lst"))
+        .expect("read disabled native debug contract listing");
+
+    let start_symbol = "debug.contract.harness.debugContractMacroStart";
+    let end_symbol = "debug.contract.harness.debugContractMacroStart.debugContractMacroEnd";
+    assert_eq!(
+        symbol_address(&enabled_listing, end_symbol)
+            - symbol_address(&enabled_listing, start_symbol),
+        56,
+        "two 18-byte assertions plus one 20-byte event must occupy 56 bytes"
+    );
+    assert_eq!(
+        symbol_address(&disabled_listing, end_symbol)
+            - symbol_address(&disabled_listing, start_symbol),
+        0,
+        "release-mode macro block must emit zero bytes"
+    );
+}
+
+#[test]
+fn native_debug_contract_fs_uae_executes_asserts_events_and_preservation() {
+    match crate::fs_uae_smoke::run_native_debug_contract_from_env(&workspace_root())
+        .expect("native debug-contract FS-UAE harness should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native debug-contract harness failed under FS-UAE\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+        }
+    }
+}
+
 fn cpusupport_report() -> String {
     engine_cpusupport_report(&default_registry())
 }
@@ -1698,6 +1891,14 @@ fn example_requests_hunk_output(asm_path: &Path) -> bool {
 }
 
 fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
+    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("debug_contract_harness") {
+        let amigaos_dir = workspace_root()
+            .join("native")
+            .join("motorola68000")
+            .join("amigaos");
+        return vec![amigaos_dir.join("debug")];
+    }
+
     if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("main")
         && asm_path
             .components()
@@ -1779,6 +1980,14 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
 }
 
 fn example_include_paths(asm_path: &Path) -> Vec<PathBuf> {
+    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("debug_contract_harness") {
+        return vec![workspace_root()
+            .join("native")
+            .join("motorola68000")
+            .join("amigaos")
+            .join("debug")];
+    }
+
     if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("tkpkg_debug_cli") {
         let amigaos_dir = workspace_root()
             .join("native")
@@ -1938,6 +2147,16 @@ fn assemble_example_with_base(
     base: &str,
     allow_error_outputs: bool,
 ) -> Result<Vec<(String, Vec<u8>)>, String> {
+    assemble_example_with_base_and_defines(asm_path, out_dir, base, allow_error_outputs, &[])
+}
+
+fn assemble_example_with_base_and_defines(
+    asm_path: &Path,
+    out_dir: &Path,
+    base: &str,
+    allow_error_outputs: bool,
+    defines: &[String],
+) -> Result<Vec<(String, Vec<u8>)>, String> {
     let out_dir = out_dir.to_path_buf();
     let header_title = format!("opForge Assembler v{VERSION}");
     let use_srec = example_uses_srec_reference(asm_path);
@@ -1952,7 +2171,7 @@ fn assemble_example_with_base(
             continuation_head: ContinuationHead::Vm,
         },
         input_base: base,
-        defines: &[],
+        defines,
         include_paths: &include_paths,
         module_paths: &module_paths,
         pp_macro_depth: 64,

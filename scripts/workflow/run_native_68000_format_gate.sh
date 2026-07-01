@@ -58,6 +58,8 @@ args=(
   -M native/motorola68000/amigaos/exprvm
   -M native/motorola68000/amigaos/opcore
   -M native/motorola68000/amigaos/opasm
+  -M native/motorola68000/amigaos/debug
+  -I native/motorola68000/amigaos/debug
   -i native/motorola68000/amigaos/main.asm
   -i native/motorola68000/amigaos/test-harnesses/prvm/prvm_debug_cli.asm
   -i native/motorola68000/amigaos/test-harnesses/prvm/prvm_line_iterator_smoke.asm
@@ -65,6 +67,7 @@ args=(
   -i native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_entry.asm
   -i native/motorola68000/amigaos/test-harnesses/tkvm/tokvm_interpreter.asm
   -i native/motorola68000/amigaos/test-harnesses/tkvm/tokvm_test_input.asm
+  -i native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm
   "${mode}"
   --fmt-config "${config_path}"
 )

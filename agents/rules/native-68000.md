@@ -17,6 +17,13 @@ read, safe to change, and difficult for agents to subtly damage.
   implementation layers.
 - Validate formatting before treating native assembly work as complete.
 
+## Debug and diagnostic instrumentation
+
+Before adding debug output, assertions, traces, events, or diagnostics, load
+`agents/rules/native-68000-safe-instrumentation.md`. Ad-hoc instrumentation is
+forbidden. Instrumentation must use the approved native debug/assert framework
+and prove its register, SR/CCR, stack, buffer, and branch-behavior safety.
+
 ## Formatter
 
 - Run `scripts/workflow/run_native_68000_format_gate.sh` or

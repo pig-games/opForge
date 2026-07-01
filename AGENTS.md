@@ -140,6 +140,23 @@ prefer:
 2. renaming accidental generic identifiers,
 3. adding a narrow reviewed allowlist entry with a concrete reason.
 
+## Native Rust-to-68000 porting work
+
+When modifying native 68000/AmigaOS code to match Rust VM or CLI behavior, load
+the native parity workflow rule packs listed below. Before changing production
+code, identify both the Rust reference boundary and the native boundary.
+
+Hard requirements:
+
+- Do not use ad-hoc native instrumentation. Use the approved native
+  debug/assert framework.
+- Classify every test used as evidence by its proof level.
+- Treat FS-UAE as a confirmation gate, not the default inner-loop debugger.
+- Treat reduced fixtures and prefix scans as localization probes unless their
+  semantic completeness is explicitly documented.
+- A moved failure is not a fix. Name the corrected invariant and prove it with a
+  focused test.
+
 ## Workflow skills
 
 Use workflow skills only for workflow artifact work, not ordinary feature coding:
@@ -174,6 +191,12 @@ the finding-closure reviewer passes.
 
 Load only the rule packs relevant to the current task:
 
+- `agents/rules/native-rust-parity-porting.md` when porting Rust VM or CLI
+  behavior to native 68000/AmigaOS
+- `agents/rules/native-parity-failure-triage.md` when a native parity test or
+  FS-UAE run fails
+- `agents/rules/native-68000-safe-instrumentation.md` before adding native
+  68000 debug output, assertions, traces, events, or diagnostics
 - `agents/rules/native-68000.md` when touching `native/motorola68000/**/*.asm`;
   this is also the agent guide for good opForge 680x0 assembly style
 - `agents/rules/fs-uae.md` when running or debugging FS-UAE tests

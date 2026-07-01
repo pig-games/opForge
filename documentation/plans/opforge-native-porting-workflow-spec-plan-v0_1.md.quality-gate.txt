@@ -1,0 +1,1 @@
+PASS: The plan states source, implementation mode, and binding AGENTS rules; maps the requested workflow, mandatory test matrices, validator checks, diagnostic adoption, and 65c02 follow-on into ordered commit-sized checkbox items; and defines per-item gates, plan-compliance evidence, commit outcomes, done criteria, and blocking rules.

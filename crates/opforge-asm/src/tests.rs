@@ -290,6 +290,63 @@ fn native_debug_contract_fs_uae_executes_asserts_events_and_preservation() {
     }
 }
 
+#[test]
+fn native_debug_contract_cli_header_site_uses_one_safe_structured_event() {
+    let root = workspace_root();
+    let source = fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/run.asm"))
+        .expect("read native CLI run module");
+    let docs = fs::read_to_string(
+        root.join("documentation/architecture/native-instrumentation-framework.md"),
+    )
+    .expect("read native instrumentation documentation");
+
+    let site = source
+        .split("\nheaderReady\n")
+        .nth(1)
+        .and_then(|tail| tail.split("\ntokenizerStage\n").next())
+        .expect("locate converted CLI debug-header site");
+    for required in [
+        ".DEBUG_EVENT_U32X4 debug_contracts.EVENT_CLI_DEBUG_HEADER",
+        "move.w state.NativeCliDebugEnabled, d3",
+        "move.w state.NativeCliOutputFormat, d4",
+        "move.l #state.NativeCliInputPath, d5",
+        "move.l #state.NativeCliBinPath, d6",
+        "move.w ccr, -(sp)",
+        "move.w (sp)+, ccr",
+        "movem.l d1-d6, -(sp)",
+        "movem.l (sp)+, d1-d6",
+    ] {
+        assert!(
+            site.contains(required),
+            "converted site requires {required:?}"
+        );
+    }
+    assert!(site.contains(".else\n\tmove.l #strings.StubHeaderText, d1"));
+    assert!(docs.contains("Proof level: D"));
+    assert!(docs.contains("This test proves native event emission"));
+    assert!(docs.contains("This test does not prove unrelated CLI parity"));
+}
+
+#[test]
+fn native_debug_contract_cli_header_fs_uae_proves_real_site_behavior() {
+    match crate::fs_uae_smoke::run_native_cli_debug_event_from_env(&workspace_root())
+        .expect("native CLI debug-event FS-UAE harness should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native CLI debug-event harness failed under FS-UAE\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+        }
+    }
+}
+
 fn cpusupport_report() -> String {
     engine_cpusupport_report(&default_registry())
 }

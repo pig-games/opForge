@@ -40,6 +40,16 @@ Each 28-byte record contains:
 The initial buffer holds eight records. Capacity is a safety boundary, not a
 diagnostic tuning knob.
 
+`EVENT_CLI_DEBUG_HEADER` is the first adopted production event. At the native
+CLI debug-header boundary it records debug-enabled state, output format, input
+path storage, and binary-output path storage. It replaces only the free-form
+header line in debug-contract builds; release builds retain the existing text.
+
+Proof level: D. The FS-UAE harness executes the real CLI branch and validates
+the event ID and four arguments. This test proves native event emission and
+preservation at this site. This test does not prove unrelated CLI parity or any
+later tokenizer, parser, selector, encoder, or output boundary.
+
 ## Build modes
 
 `OPFORGE_DEBUG_CONTRACTS` enables the fixed-size stubs. Without it, macros

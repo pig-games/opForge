@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_native_porting_slice import parse_metadata, validate_metadata
+from check_native_porting_slice import discover_metadata, parse_metadata, validate_metadata
 
 
 class NativePortingSliceTests(unittest.TestCase):
@@ -24,6 +24,11 @@ class NativePortingSliceTests(unittest.TestCase):
 
     def test_all_proof_levels_pass(self):
         self.assertEqual(validate_metadata(self.valid()), [])
+
+    def test_single_staged_slice_metadata_is_discovered(self):
+        path = "documentation/plans/slices/native-porting-slice-test.toml"
+        self.assertEqual(discover_metadata(["native/motorola68000/x.asm", path]), path)
+        self.assertIsNone(discover_metadata([path, path.replace("test", "other")]))
 
     def test_missing_and_malformed_fields_fail(self):
         for data in ({}, {"slice": {}, "tests": []}):

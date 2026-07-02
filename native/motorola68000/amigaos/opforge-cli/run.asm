@@ -19,6 +19,11 @@
 	.use opforge.cli.session_init
 	.use opforge.cli.output
 	.use opforge.cli.engine_callbacks
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	.use opforge.debug.contracts as debug_contracts
+	.use opforge.debug.events as debug_events
+	.include "../debug/debug_macros.i"
+.endif
 
 	.section code, kind=code
 	.pub
@@ -134,9 +139,35 @@ outputFormatReady
 
 headerReady
 	tst.w state.NativeCliDebugEnabled
-	beq.s tokenizerStage
+	beq.w tokenizerStage
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: CLI debug header emission.
+	; Macro/routine used: DEBUG_EVENT_U32X4 / debugEventU32x4.
+	; Registers preserved: D0-D7/A0-A6.
+	; SR/CCR preserved: CCR preserved exactly; supervisor state untouched.
+	; Stack delta at return: zero.
+	; Shared buffers touched: dedicated debug event buffer only.
+	; Why this cannot change branch decisions: the debug-enabled branch has
+	; already resolved, and CCR is restored before the next instruction.
+	; Removal/stabilization plan: stable passive event replacing this one
+	; free-form debug header; retain while the native CLI debug flag exists.
+	move.w ccr, -(sp)
+	movem.l d1-d6, -(sp)
+	moveq #0, d1
+	moveq #1, d2
+	moveq #0, d3
+	move.w state.NativeCliDebugEnabled, d3
+	moveq #0, d4
+	move.w state.NativeCliOutputFormat, d4
+	move.l #state.NativeCliInputPath, d5
+	move.l #state.NativeCliBinPath, d6
+	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_CLI_DEBUG_HEADER
+	movem.l (sp)+, d1-d6
+	move.w (sp)+, ccr
+.else
 	move.l #strings.StubHeaderText, d1
 	jsr dos.putStr
+.endif
 	move.l #strings.InputLabelText, d1
 	jsr dos.putStr
 	move.l #state.NativeCliInputPath, d1

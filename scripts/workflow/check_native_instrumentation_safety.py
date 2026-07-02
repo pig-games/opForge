@@ -31,7 +31,11 @@ def validate_text(path: str, text: str) -> list[str]:
             errors.append(f"{path}:{index + 1}: raw debug/diagnostic call is forbidden")
         if PROHIBITED.search(line) and ("debug" in line.lower() or "diag" in line.lower()):
             errors.append(f"{path}:{index + 1}: instrumentation touches a prohibited buffer")
-        label = re.match(r"^\s*([A-Za-z_.$?][\w.$?]*(?:Debug|Diag)[\w.$?]*)\s*(?:$|\.block)", line, re.I)
+        label = re.match(
+            r"^\s*((?:Debug|Diag)[\w.$?]*|[A-Za-z_.$?][\w.$?]*(?:Debug|Diag))\s*(?:$|\.block)",
+            line,
+            re.I,
+        )
         if label:
             errors.append(f"{path}:{index + 1}: unknown instrumentation label `{label.group(1)}`")
         macro = re.search(r"\.?(DEBUG_(?:ASSERT|EVENT)_[A-Z0-9_]+)", line)

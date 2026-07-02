@@ -1,0 +1,22 @@
+[slice]
+name = "native CLI debug header structured event"
+kind = "native-instrumentation"
+rust_reference = [
+  "crates/opforge-cli-core/src/cli.rs::Cli::native_debug"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/run.asm::headerReady"
+]
+invariant = "Debug-contract builds emit one structured CLI header event without changing registers, CCR, stack balance, or the already-resolved debug branch."
+
+[[tests]]
+name = "native_debug_contract_cli_header_site_uses_one_safe_structured_event"
+proof_level = "B"
+proves = "Host-side source and assembly checks lock the approved macro, event arguments, preservation wrapper, release fallback, and proof declaration."
+does_not_prove = "Real 68020 execution or later native CLI stages."
+
+[[tests]]
+name = "native_debug_contract_cli_header_fs_uae_proves_real_site_behavior"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI branch and validates the event ID, routine ID, and all four event arguments."
+does_not_prove = "Tokenizer, parser, selector, encoder, output parity, or success of later CLI stages."

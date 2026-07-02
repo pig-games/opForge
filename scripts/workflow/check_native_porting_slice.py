@@ -20,6 +20,15 @@ def parse_metadata(text: str) -> tuple[dict | None, list[str]]:
         return None, [f"malformed native slice metadata: {err}"]
 
 
+def discover_metadata(paths: list[str]) -> str | None:
+    candidates = [
+        path
+        for path in paths
+        if path.startswith("documentation/plans/slices/") and path.endswith(".toml")
+    ]
+    return candidates[0] if len(candidates) == 1 else None
+
+
 def validate_metadata(data: dict) -> list[str]:
     errors: list[str] = []
     section = data.get("slice")
@@ -68,11 +77,14 @@ def main() -> int:
     if not native:
         print("PASS: native porting slice metadata not required")
         return 0
-    if not args.metadata:
+    metadata_path = args.metadata
+    if not metadata_path:
+        metadata_path = discover_metadata(paths)
+    if not metadata_path:
         print("FAIL: native assembly changes require --metadata", file=sys.stderr)
         return 1
     try:
-        text = (root / args.metadata).read_text(encoding="utf-8")
+        text = (root / metadata_path).read_text(encoding="utf-8")
     except OSError as err:
         print(f"FAIL: missing native slice metadata: {err}", file=sys.stderr)
         return 1

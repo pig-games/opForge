@@ -68,6 +68,7 @@ args=(
   -i native/motorola68000/amigaos/test-harnesses/tkvm/tokvm_interpreter.asm
   -i native/motorola68000/amigaos/test-harnesses/tkvm/tokvm_test_input.asm
   -i native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm
+  -i native/motorola68000/amigaos/test-harnesses/debug/cli_debug_event_harness.asm
   "${mode}"
   --fmt-config "${config_path}"
 )

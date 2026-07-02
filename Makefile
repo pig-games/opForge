@@ -72,6 +72,8 @@ workflow-gate:
 	python3 scripts/workflow/check_agent_symlinks.py
 	python3 scripts/workflow/check_supply_chain_ban.py
 	python3 scripts/workflow/check_cpu_specific_arch_boundary.py
+	python3 -m unittest discover -s scripts/workflow/tests -p 'test_*.py'
+	python3 scripts/workflow/run_native_porting_quality_gate.py --staged
 	find documentation dev-docs -name '*.quality-gate.txt' -print0 | xargs -0 python3 scripts/workflow/check_quality_gate_evidence.py
 	python3 scripts/workflow/check_reference_update_scope.py
 	python3 scripts/workflow/check_release_notes_policy.py

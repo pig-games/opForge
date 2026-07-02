@@ -143,7 +143,7 @@ opcodeParseExpression
 	tst.l d4
 	bne.w programFail
 	movem.l d1/d4/a1, -(sp)
-	bsr.w compileAdditive
+	bsr.w compileExpression
 	move.l d0, d2
 	beq.s compileOk
 	cmpi.l #2, d2
@@ -206,21 +206,113 @@ failWithCode
 	rts
 	.bend  ; runEvalProgram
 
-compileAdditive	.block
+compileExpression	.block
 	bsr.w resetProgram
-	bsr.w compileSingleTerm
+	bsr.w compileTernary
+	move.l d5, d0
+	rts
+	.bend  ; compileExpression
+
+compileTernary	.block
+	bsr.w compileLogicalOr
 	tst.l d5
-	bne.s fail
+	bne.w fail
+	bsr.w skipWhitespace
+	beq.w ok
+	cmpi.b #'?', (a0)
+	bne.w ok
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w compileTernary
+	tst.l d5
+	bne.w fail
+	bsr.w skipWhitespace
+	beq.w missingSeparator
+	cmpi.b #':', (a0)
+	bne.w missingSeparator
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w compileTernary
+	tst.l d5
+	bne.w fail
+	moveq #runtime.EXPRVM_TERNARY_SELECT, d6
+	move.l d0, -(sp)
+	bsr.w emitApplyBinaryD6
+	move.l d0, d5
+	move.l (sp)+, d0
+	tst.l d5
+	bne.w fail
+
+ok
+	moveq #0, d5
+	rts
+
+missingSeparator
+	moveq #33, d5
+	rts
+
+fail
+	rts
+	.bend  ; compileTernary
+
+compileLogicalOr	.block
+	bsr.w compileAdditive
+	tst.l d5
+	bne.w fail
 
 loop
 	bsr.w skipWhitespace
-	beq.s ok
+	cmpi.l #2, d0
+	bcs.w ok
+	cmpi.b #'|', (a0)
+	bne.w ok
+	cmpi.b #'|', 1(a0)
+	bne.w ok
+	addq.l #2, a0
+	subq.l #2, d0
+	bsr.w compileAdditive
+	tst.l d5
+	bne.w fail
+	moveq #runtime.EXPRVM_BINARY_LOGIC_OR, d6
+	move.l d0, -(sp)
+	bsr.w emitApplyBinaryD6
+	move.l d0, d5
+	move.l (sp)+, d0
+	tst.l d5
+	bne.w fail
+	bra.w loop
+
+ok
+	moveq #0, d5
+	rts
+
+fail
+	rts
+	.bend  ; compileLogicalOr
+
+compileAdditive	.block
+	bsr.w compileSingleTerm
+	tst.l d5
+	bne.w fail
+
+loop
+	bsr.w skipWhitespace
+	beq.w ok
 	moveq #0, d6
 	move.b (a0), d6
 	cmpi.b #'+', d6
-	beq.s operator
+	beq.w operator
 	cmpi.b #'-', d6
-	bne.s trailingFail
+	beq.w operator
+	cmpi.b #'|', d6
+	beq.w ok
+	cmpi.b #'?', d6
+	beq.w ok
+	cmpi.b #':', d6
+	beq.w ok
+	cmpi.b #')', d6
+	beq.w ok
+	bra.w trailingFail
 
 operator
 	move.l d6, -(sp)
@@ -229,36 +321,42 @@ operator
 	bsr.w compileSingleTerm
 	move.l (sp)+, d6
 	tst.l d5
-	bne.s fail
+	bne.w fail
 	cmpi.b #'+', d6
-	beq.s add
+	beq.w add
 	moveq #runtime.EXPRVM_BINARY_SUBTRACT, d6
+	move.l d0, -(sp)
 	bsr.w emitApplyBinaryD6
-	bne.s fail
-	bra.s loop
+	move.l d0, d5
+	move.l (sp)+, d0
+	tst.l d5
+	bne.w fail
+	bra.w loop
 
 add
 	moveq #runtime.EXPRVM_BINARY_ADD, d6
+	move.l d0, -(sp)
 	bsr.w emitApplyBinaryD6
-	bne.s fail
-	bra.s loop
+	move.l d0, d5
+	move.l (sp)+, d0
+	tst.l d5
+	bne.w fail
+	bra.w loop
 
 trailingFail
 	moveq #33, d5
-	bra.s fail
+	bra.w fail
 
 ok
-	moveq #0, d0
+	moveq #0, d5
 	rts
 
 fail
 	tst.l d5
-	beq.s genericFail
-	move.l d5, d0
-	rts
+	bne.w failReady
+	moveq #1, d5
 
-genericFail
-	moveq #1, d0
+failReady
 	rts
 	.bend  ; compileAdditive
 
@@ -269,23 +367,28 @@ compileSingleTerm	.block
 	bsr.w skipWhitespace
 	beq.w fail
 	cmpi.b #'+', (a0)
-	beq.s unaryPlus
+	beq.w unaryPlus
 	cmpi.b #'-', (a0)
-	beq.s unaryMinus
+	beq.w unaryMinus
 
 body
 	tst.l d0
 	beq.w fail
+	cmpi.b #'(', (a0)
+	bne.s notParenthesized
+	bra.w parenthesized
+
+notParenthesized
 	cmpi.b #'*', (a0)
-	beq.s currentPc
+	beq.w currentPc
 	cmpi.b #'$', (a0)
 	beq.w dollar
 	cmpi.b #'%', (a0)
 	beq.w binaryLiteral
 	cmpi.b #'0', (a0)
-	bne.s numberOrLabel
+	bne.w numberOrLabel
 	cmpi.l #2, d0
-	bcs.s numberOrLabel
+	bcs.w numberOrLabel
 	cmpi.b #'x', 1(a0)
 	beq.w hex0x
 	cmpi.b #'X', 1(a0)
@@ -303,13 +406,29 @@ numberOrLabel
 unaryPlus
 	addq.l #1, a0
 	subq.l #1, d0
-	bra.s body
+	bra.w body
 
 unaryMinus
 	addq.l #1, a0
 	subq.l #1, d0
 	moveq #1, d4
-	bra.s body
+	bra.w body
+
+parenthesized
+	addq.l #1, a0
+	subq.l #1, d0
+	move.l d4, -(sp)
+	bsr.w compileTernary
+	move.l (sp)+, d4
+	tst.l d5
+	bne.w return
+	bsr.w skipWhitespace
+	beq.w fail
+	cmpi.b #')', (a0)
+	bne.w fail
+	addq.l #1, a0
+	subq.l #1, d0
+	bra.w maybeApplyUnary
 
 currentPc
 	addq.l #1, a0
@@ -326,13 +445,13 @@ dollar
 	moveq #0, d1
 	move.b 1(a0), d1
 	cmpi.b #'0', d1
-	blo.s dollarUpperHex
+	blo.w dollarUpperHex
 	cmpi.b #'9', d1
 	bls.w hex
 
 dollarUpperHex
 	cmpi.b #'A', d1
-	blo.s dollarLowerHex
+	blo.w dollarLowerHex
 	cmpi.b #'F', d1
 	bls.w hex
 
@@ -759,6 +878,14 @@ loop
 	beq.s endBeforeOperator
 	cmpi.b #'-', d1
 	beq.s endBeforeOperator
+	cmpi.b #'|', d1
+	beq.s endBeforeOperator
+	cmpi.b #'?', d1
+	beq.s endBeforeOperator
+	cmpi.b #':', d1
+	beq.s endBeforeOperator
+	cmpi.b #')', d1
+	beq.s endBeforeOperator
 	cmpi.b #' ', d1
 	beq.s ok
 	cmpi.b #9, d1
@@ -868,6 +995,14 @@ loop
 	cmpi.b #'+', d1
 	beq.s endBeforeOperator
 	cmpi.b #'-', d1
+	beq.s endBeforeOperator
+	cmpi.b #'|', d1
+	beq.s endBeforeOperator
+	cmpi.b #'?', d1
+	beq.s endBeforeOperator
+	cmpi.b #':', d1
+	beq.s endBeforeOperator
+	cmpi.b #')', d1
 	beq.s endBeforeOperator
 	cmpi.b #' ', d1
 	beq.s ok

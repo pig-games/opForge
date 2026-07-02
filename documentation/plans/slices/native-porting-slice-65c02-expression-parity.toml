@@ -1,0 +1,34 @@
+[slice]
+name = "65c02 expression syntax directive span parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-vm/src/vm_opasm_parse.rs::parse_portable_line_for_assembler",
+  "crates/opforge-vm/src/vm_opcore.rs::evaluate_expression_for_assembler",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::prepareEvaluateExpressionRequestV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm::evaluateExpressionV1",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::compileExpression",
+  "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm::exprvmEvalProgramV1",
+]
+invariant = "Directive expression requests retain the complete 1-based exclusive-end operand and evaluate literal-only parenthesized logical-or ternaries without requiring pre-existing labels."
+
+[[tests]]
+name = "motorola68020_native_cli_parse_line_keeps_full_ternary_const_expression"
+proof_level = "B"
+proves = "Rust-side native parse-line harness keeps the complete ternary expression and exclusive-end span."
+does_not_prove = "Real Amiga-native session storage or pass evaluation."
+
+[[tests]]
+name = "motorola68020_native_cli_parse_line_rejects_truncated_ternary_const_expression"
+proof_level = "B"
+proves = "Rust-side native parse-line harness rejects a truncated ternary expression."
+does_not_prove = "Real Amiga-native request decoding."
+semantic_completeness_justification = "The intentionally malformed fixture is complete for the closing-parenthesis boundary and must produce an error AST."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_65c02_expr_syntax_matches_rust_bin"
+proof_level = "D"
+proves = "Real native opforge_cli evaluates the unchanged 65C02 expression fixture and emits bytes matching Rust."
+does_not_prove = "Unrelated expression operators or CPU packages."
+semantic_completeness_justification = "The unchanged fixture contains every syntax element in the governed invariant and compares complete emitted output with Rust."

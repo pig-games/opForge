@@ -28,6 +28,8 @@ EXPRVM_UNARY_HIGH               = 4
 EXPRVM_UNARY_LOW                = 5
 EXPRVM_BINARY_ADD               = 6
 EXPRVM_BINARY_SUBTRACT          = 7
+EXPRVM_BINARY_LOGIC_OR          = 8
+EXPRVM_TERNARY_SELECT           = 9
 EXPRVM_STACK_CAPACITY           = 8
 
 	.section code, kind=code
@@ -219,6 +221,10 @@ opcodeApplyBinary
 	beq.s applyBinaryAdd
 	cmpi.b #EXPRVM_BINARY_SUBTRACT, d6
 	beq.s applyBinarySubtract
+	cmpi.b #EXPRVM_BINARY_LOGIC_OR, d6
+	beq.s applyBinaryLogicOr
+	cmpi.b #EXPRVM_TERNARY_SELECT, d6
+	beq.s applyTernarySelect
 	bra.w fail
 
 applyBinaryRestoreFail
@@ -231,6 +237,29 @@ applyBinaryAdd
 
 applyBinarySubtract
 	sub.l d2, d3
+	bra.s applyBinaryDone
+
+applyBinaryLogicOr
+	or.l d2, d3
+	beq.s applyBinaryLogicOrDone
+	moveq #1, d3
+
+applyBinaryLogicOrDone
+	bra.s applyBinaryDone
+
+applyTernarySelect
+	move.l d3, -(sp)
+	bsr.w popD3
+	bmi.s applyTernaryRestoreFail
+	tst.l d3
+	move.l (sp)+, d3
+	bne.s applyBinaryDone
+	move.l d2, d3
+	bra.s applyBinaryDone
+
+applyTernaryRestoreFail
+	addq.l #4, sp
+	bra.w fail
 
 applyBinaryDone
 	bsr.w pushD3

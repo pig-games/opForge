@@ -49,7 +49,6 @@ EVAL_EXPR_BRIDGE_CODE5_TEXT_LEN      = 49
 EVAL_EXPR_BRIDGE_CODE33_TEXT_LEN     = 48
 EVAL_EXPR_BRIDGE_CODE34_TEXT_LEN     = 47
 EVAL_EXPR_NO_LABEL_CONTEXT_TEXT_LEN  = 49
-EVAL_EXPR_ZERO_LABEL_COUNT_TEXT_LEN  = 48
 EVAL_EXPR_SLICE_START_TEXT_LEN       = 55
 EVAL_EXPR_SLICE_OTHER_TEXT_LEN       = 59
 SELECTED_SELECTOR_UNKNOWN_TEXT_LEN   = 33
@@ -126,9 +125,6 @@ EvaluateExprBridgeCode34Text
 
 EvaluateExprNoLabelContextText
 	.byte "OTR930: evaluate expression had no label context", 0
-
-EvaluateExprZeroLabelCountText
-	.byte "OTR931: evaluate expression saw zero label count", 0
 
 EvaluateExprValuePrefixText
 	.byte "VALUE ", 0
@@ -277,7 +273,7 @@ EncodeSelectedExvmOpcodeVersion
 	.res word, 1
 EncodeSelectedExprOpcodeVersion
 	.res word, 1
-EncodeSelectedOperandDiag
+EncodeSelectedOperandStatus
 	.res word, 1
 EncodeSelectedMselShapePtr
 	.res long, 1
@@ -810,14 +806,6 @@ noExtension
 	bra.w return
 
 haveLabelContext
-	tst.l d1
-	bne.w haveLabelCount
-	lea EvaluateExprZeroLabelCountText, a1
-	moveq #EVAL_EXPR_ZERO_LABEL_COUNT_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
-	bra.w return
-
-haveLabelCount
 	move.l d6, -(sp)
 	moveq #0, d6
 	move.w engine.opasmEngineSessionPass.l, d6
@@ -1180,7 +1168,7 @@ unsupportedAddress
 	bra.w return
 
 operandError
-	move.w EncodeSelectedOperandDiag, d0
+	move.w EncodeSelectedOperandStatus, d0
 	cmpi.w #1, d0
 	beq.w operandBadExvm
 	cmpi.w #2, d0
@@ -2553,7 +2541,7 @@ decimal
 ; Outputs:
 ; - D0: 0 on success, nonzero on operand parse/eval failure.
 ; - D3: evaluated operand value on success.
-; - EncodeSelectedOperandDiag updated on failure.
+; - EncodeSelectedOperandStatus updated on failure.
 ;
 ; Clobbers:
 ; - D0-D2/D4-D7/A0-A2/A6/CCR
@@ -2562,7 +2550,7 @@ decimal
 ; - Reflects D0 on return.
 encodeSelectedOperandV1	.block
 	movem.l d1-d2/d6-d7/a1-a2/a6, -(sp)
-	clr.w EncodeSelectedOperandDiag
+	clr.w EncodeSelectedOperandStatus
 	movea.l EncodeSelectedLabelNamePtr, a1
 	movea.l EncodeSelectedLabelValuePtr, a2
 	move.l EncodeSelectedLabelCount, d1
@@ -2571,14 +2559,14 @@ encodeSelectedOperandV1	.block
 	move.w EncodeSelectedExvmOpcodeVersion, d4
 	cmpi.w #1, d4
 	beq.s haveExvm
-	move.w #1, EncodeSelectedOperandDiag
+	move.w #1, EncodeSelectedOperandStatus
 	moveq #1, d0
 	bra.w return
 
 haveExvm
 	tst.l d0
 	bne.s haveText
-	move.w #2, EncodeSelectedOperandDiag
+	move.w #2, EncodeSelectedOperandStatus
 	moveq #1, d0
 	bra.w return
 
@@ -2613,7 +2601,7 @@ maybeLetter
 	bls.s textOk
 
 unexpectedText
-	move.w #3, EncodeSelectedOperandDiag
+	move.w #3, EncodeSelectedOperandStatus
 	moveq #1, d0
 	bra.w return
 
@@ -2644,39 +2632,39 @@ textOk
 	beq.s singleFail
 	cmpi.b #51, d0
 	bhs.s exprVmFail
-	move.w #4, EncodeSelectedOperandDiag
+	move.w #4, EncodeSelectedOperandStatus
 	bra.w return
 
 compileFail
-	move.w #6, EncodeSelectedOperandDiag
+	move.w #6, EncodeSelectedOperandStatus
 	bra.w return
 
 finalizeFail
-	move.w #7, EncodeSelectedOperandDiag
+	move.w #7, EncodeSelectedOperandStatus
 	bra.w return
 
 evalFail
-	move.w #8, EncodeSelectedOperandDiag
+	move.w #8, EncodeSelectedOperandStatus
 	bra.w return
 
 hexParseFail
-	move.w #31, EncodeSelectedOperandDiag
+	move.w #31, EncodeSelectedOperandStatus
 	bra.w return
 
 literalEmitFail
-	move.w #32, EncodeSelectedOperandDiag
+	move.w #32, EncodeSelectedOperandStatus
 	bra.w return
 
 trailingFail
-	move.w #33, EncodeSelectedOperandDiag
+	move.w #33, EncodeSelectedOperandStatus
 	bra.w return
 
 singleFail
-	move.w #34, EncodeSelectedOperandDiag
+	move.w #34, EncodeSelectedOperandStatus
 	bra.w return
 
 exprVmFail
-	move.w d0, EncodeSelectedOperandDiag
+	move.w d0, EncodeSelectedOperandStatus
 
 return
 	movem.l (sp)+, d1-d2/d6-d7/a1-a2/a6

@@ -14814,7 +14814,7 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
         &[
             "cmpi.b #EXVM_OPCODE_PARSE_EXPRESSION, d6",
             "opcodeParseExpression",
-            "bsr.w compileAdditive",
+            "bsr.w compileExpression",
             "bsr.w finalizeProgram",
         ]
     ));
@@ -14830,9 +14830,13 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
     ));
     assert!(routine_contains_in_order(
         &source,
+        "compileExpression",
+        &["bsr.w resetProgram", "bsr.w compileTernary"]
+    ));
+    assert!(routine_contains_in_order(
+        &source,
         "compileAdditive",
         &[
-            "bsr.w resetProgram",
             "bsr.w compileSingleTerm",
             "cmpi.b #'+', d6",
             "moveq #runtime.EXPRVM_BINARY_SUBTRACT, d6",
@@ -14846,7 +14850,7 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
         &[
             "body",
             "cmpi.b #'*', (a0)",
-            "beq.s currentPc",
+            "beq.w currentPc",
             "cmpi.b #'$', (a0)",
             "beq.w dollar",
             "cmpi.b #'%', (a0)",
@@ -34312,6 +34316,186 @@ fn external_fs_uae_opforge_native_cli_item6_65c02_allmodes_matches_rust_bin() {
                 native_bin, rust_bin,
                 "focused FS-UAE Item 6 stripped fixture byte mismatch for {fixture_label}\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn motorola68020_native_cli_parse_line_keeps_full_ternary_const_expression() {
+    // Proof level B. This test proves the Rust-side native parse-line harness
+    // keeps the full ternary directive expression and its exclusive-end span.
+    // This test does not prove the real Amiga-native session store or evaluator.
+    let mut harness = vm::native6502::Native6502Harness::new();
+    let mut control_block = vm::native6502::Native6502ControlBlockV1::new_v1();
+    item5_prepare_expression_parse_harness(&mut harness, &mut control_block);
+    let line = "value .const (0 || 1) ? (2 + 3) : (4 + 5)";
+    let ast = item6_native_cli_parse_line(&mut harness, &mut control_block, line, 1);
+    let PortableLineAst::Statement { operands, .. } = ast else {
+        panic!("expected statement AST");
+    };
+    assert_eq!(operands.len(), 1);
+    let expression = operands[0].to_core_expr();
+    let Expr::Ternary {
+        cond,
+        then_expr,
+        else_expr,
+        ..
+    } = expression
+    else {
+        panic!("expected full ternary AST, got {expression:?}");
+    };
+    assert!(matches!(
+        *cond,
+        Expr::Binary {
+            op: BinaryOp::LogicOr,
+            ..
+        }
+    ));
+    assert!(matches!(
+        *then_expr,
+        Expr::Binary {
+            op: BinaryOp::Add,
+            ..
+        }
+    ));
+    assert!(matches!(
+        *else_expr,
+        Expr::Binary {
+            op: BinaryOp::Add,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn motorola68020_native_cli_parse_line_rejects_truncated_ternary_const_expression() {
+    // Proof level B. This test proves the Rust-side native parse-line harness
+    // rejects a truncated ternary expression instead of shrinking its span.
+    // This test does not prove the real Amiga-native request decoder.
+    let mut harness = vm::native6502::Native6502Harness::new();
+    let mut control_block = vm::native6502::Native6502ControlBlockV1::new_v1();
+    item5_prepare_expression_parse_harness(&mut harness, &mut control_block);
+    let parse = harness.invoke_v1(
+        &mut control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_PARSE_LINE_V1,
+        vm::native6502::Native6502HarnessRequest::ParseLine {
+            source_line: "value .const (0 || 1) ? (2 + 3) : (4 + 5",
+            line_num: 1,
+        },
+    );
+    assert_eq!(parse.status_code, vm::native6502::NATIVE_6502_STATUS_OK_V1);
+    let vm::native6502::Native6502HarnessOutput::LineAst(PortableLineAst::Statement {
+        operands,
+        ..
+    }) = parse.output
+    else {
+        panic!("expected statement AST with an error operand");
+    };
+    let expression = operands
+        .first()
+        .expect("truncated expression should retain an error AST")
+        .to_core_expr();
+    assert!(
+        matches!(expression, Expr::Error(..)),
+        "expected an error AST for the truncated expression, got {expression:?}"
+    );
+}
+
+fn item5_prepare_expression_parse_harness(
+    harness: &mut vm::native6502::Native6502Harness,
+    control_block: &mut vm::native6502::Native6502ControlBlockV1,
+) {
+    let init = harness.invoke_v1(
+        control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_INIT_V1,
+        vm::native6502::Native6502HarnessRequest::Init,
+    );
+    assert_eq!(init.status_code, vm::native6502::NATIVE_6502_STATUS_OK_V1);
+    let package_bytes = item6_mos_package_bytes();
+    let load = harness.invoke_v1(
+        control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1,
+        vm::native6502::Native6502HarnessRequest::LoadPackage {
+            package_bytes: package_bytes.as_slice(),
+        },
+    );
+    assert_eq!(load.status_code, vm::native6502::NATIVE_6502_STATUS_OK_V1);
+    let pipeline = harness.invoke_v1(
+        control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_SET_PIPELINE_V1,
+        vm::native6502::Native6502HarnessRequest::SetPipeline {
+            cpu_id: "65c02",
+            dialect_override: None,
+        },
+    );
+    assert_eq!(
+        pipeline.status_code,
+        vm::native6502::NATIVE_6502_STATUS_OK_V1
+    );
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_65c02_expr_syntax_matches_rust_bin() {
+    // Proof level D. This test proves the real native 680x0 CLI evaluates the
+    // unchanged expression fixture to the same emitted bytes as Rust.
+    // This test does not prove unrelated expression operators or CPU packages.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = b"value .const (0 || 1) ? (2 + 3) : (4 + 5)\nstart lda #value\nrts\n";
+    let (rust_entries, rust_diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[
+            ".cpu 65c02",
+            ".org $0800",
+            "value .const (0 || 1) ? (2 + 3) : (4 + 5)",
+            "start lda #value",
+            "rts",
+        ],
+        true,
+    )
+    .expect("Rust reference assembly should run");
+    assert!(
+        rust_diagnostics.is_empty(),
+        "Rust reference diagnostics: {rust_diagnostics:?}"
+    );
+    let rust_bin = rust_entries
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect::<Vec<_>>();
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "65c02-expr-syntax",
+        cpu_id: m65c02_cpu_id.as_str(),
+        source,
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root, &cases,
+    )
+    .expect("65C02 expression syntax FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native 65C02 expression syntax fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            let native_bin = fs::read(
+                run.artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read native expression syntax output");
+            assert_eq!(
+                native_bin, rust_bin,
+                "native 65C02 expression syntax bytes differ from Rust\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
             );
         }
     }

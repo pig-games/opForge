@@ -11442,6 +11442,9 @@ fn item6_source_without_native_cli_setup_directives(source: &str) -> String {
 
 #[test]
 fn native_reference_manifest_seed_matches_current_mos_item6_slice() {
+    // Proof level A. This test proves the governed manifest retains every
+    // original stripped-source MOS seed case. This test does not prove native
+    // execution or semantic parity for those cases.
     let manifest_paths = native_reference_cases()
         .iter()
         .filter(|case| case.source_mode == NativeReferenceSourceMode::StrippedBinFromSource)
@@ -11466,6 +11469,9 @@ fn native_reference_manifest_seed_matches_current_mos_item6_slice() {
 
 #[test]
 fn native_reference_manifest_carries_current_focused_non_seed_cases() {
+    // Proof level A. This test proves focused non-seed cases retain their
+    // intended CPU and source-mode metadata. This test does not prove the
+    // command template or native output is correct.
     let current_focused_cases = [
         (
             "examples/mos6502/6502_first_run_artifact_contract.asm",
@@ -11496,6 +11502,10 @@ fn native_reference_manifest_carries_current_focused_non_seed_cases() {
 
 #[test]
 fn native_reference_manifest_accounts_for_current_example_corpus() {
+    // Proof level A. This test proves every currently checked-in example is
+    // represented by a case or a non-empty reviewed exclusion. This test does
+    // not prove broad-prefix exclusions are semantically applicable to every
+    // member or that any native CLI path executed.
     let repo_root = workspace_root();
     let examples_dir = repo_root.join("examples");
     let asm_files = collect_example_asm_files(&examples_dir);

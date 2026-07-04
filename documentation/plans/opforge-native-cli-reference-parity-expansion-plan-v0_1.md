@@ -146,8 +146,10 @@ finally mandatory gating for that active scope only.
   `2cd2378a`, but they are not closed under the current native-porting quality
   framework.
 - Item 4 is complete: RQ-001 through RQ-010 classify the retrospective gaps,
-  and Items 4.1 through 4.8 provide the ordered closure path. Item 4.1 is the
-  next active item.
+  and Items 4.1 through 4.8 provide the ordered closure path.
+- Item 4.1 is complete: manifest evidence is classified at Level A and its
+  duplicate, unknown-scope, prefix-precedence, and broad-prefix limitations are
+  protected. Item 4.2 is the next active item.
 - The remaining opForge Core expansion has been decomposed into Items 5 through
   9 so each coverage commit owns one coherent corpus surface. Item 10 promotes
   only the framework-closed active scope into the mandatory native completion
@@ -197,8 +199,8 @@ landed” is not equivalent to “framework-closed.”
 
 | ID | Historical claim | Current evidence | Status | Required closure |
 |---|---|---|---|---|
-| RQ-001 | Item 1 has an explicit applicability manifest and deterministic completeness guard. | `native_reference_manifest_*` tests exercise manifest uniqueness, seed retention, and corpus accounting. | Proven behavior; evidence contract incomplete. | Item 4.1 adds proof levels and explicit proves/does-not-prove text without changing behavior. |
-| RQ-002 | Item 1 exclusions are concrete and every current example is accounted for. | The guard rejects unaccounted paths and requires non-empty reasons; several exclusions are broad prefixes. | Partially proven. | Item 4.1 records that this proves current accounting, not semantic applicability of every prefix member, and adds boundary cases for precedence and newly added files. |
+| RQ-001 | Item 1 has an explicit applicability manifest and deterministic completeness guard. | Level A `native_reference_manifest_*` and module tests exercise uniqueness, seed retention, and corpus accounting with explicit proof limitations. | Closed by Item 4.1. | No further retrospective work. |
+| RQ-002 | Item 1 exclusions are concrete and every current example is accounted for. | Level A tests cover unknown new scope, duplicate paths, overlapping-prefix precedence, and the fact that broad-prefix accounting is not semantic applicability proof. | Closed by Item 4.1. | Semantic applicability remains a reviewed planning decision, not an inferred test result. |
 | RQ-003 | Item 2 compares native outputs with Rust as the authority. | The schema Level D test decodes checked-in `.hex` references into expected bytes; it does not invoke the Rust CLI oracle for each schema case. | Unproven as stated. | Item 4.2 supplies a live Rust CLI oracle and retains references only as a separate corpus contract. |
 | RQ-004 | Item 2’s generic runner covers bytes, text artifacts, maps, and deterministic errors. | `NativeCliSchemaExpectedArtifact` currently has only a binary variant and the manifest schema contains successful binary/PRG cases. | Unproven beyond successful binary payloads. | Items 4.3 and 4.4 add text/map and deterministic-error schema contracts separately. |
 | RQ-005 | Item 3 covers the applicable `6502`/`65c02` corpus through the real CLI. | Seven manifest cases execute real CLI commands under FS-UAE when configured; other families and mixed-CPU input are explicitly excluded. | Partially proven at Level D. | Item 4.2 makes Rust/native comparison live; Item 4.7 records the exact applicable case set and justified exclusions. |
@@ -302,7 +304,7 @@ landed” is not equivalent to “framework-closed.”
     - the historical combined Item 2/3 commit is recorded as immutable history and is not treated as precedent for future multi-item commits
     - no code, native assembly, fixture, or reference change is included in this audit commit
 
-- [ ] Item 4.1: classify Item 1 manifest evidence and harden its accounting boundaries
+- [x] Item 4.1: classify Item 1 manifest evidence and harden its accounting boundaries
   - Source requirement or finding IDs: RQ-001 and RQ-002; fully closes proof-declaration and accounting-boundary gaps while preserving manifest behavior
   - Expected files:
     - `crates/opforge-asm/src/native_reference_parity.rs`

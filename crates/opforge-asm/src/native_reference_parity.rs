@@ -167,6 +167,13 @@ fn load_native_reference_cases_from_fixture() -> Result<Vec<NativeReferenceCase>
             fixture_path.display()
         )
     })?;
+    parse_native_reference_cases_fixture(&fixture_path, &fixture_text)
+}
+
+fn parse_native_reference_cases_fixture(
+    fixture_path: &Path,
+    fixture_text: &str,
+) -> Result<Vec<NativeReferenceCase>, String> {
     let parsed: serde_json::Value = serde_json::from_str(&fixture_text).map_err(|err| {
         format!(
             "parse native reference fixture {} as JSON: {err}",
@@ -289,6 +296,9 @@ mod tests {
 
     #[test]
     fn native_reference_case_paths_are_unique() {
+        // Proof level A. This test proves the checked-in manifest has one
+        // canonical record per source path. This test does not prove that two
+        // different source paths cannot describe semantically duplicate cases.
         let mut paths = native_reference_cases()
             .iter()
             .map(|case| case.asm_path.as_str())
@@ -300,6 +310,9 @@ mod tests {
 
     #[test]
     fn native_reference_accounting_prefers_more_specific_prefixes() {
+        // Proof level A. This test proves overlapping exclusion prefixes select
+        // the most specific rule. This test does not prove that the selected
+        // exclusion is semantically appropriate for every matching source.
         let accounted =
             account_native_reference_path("examples/motorola68000/amigaos/helloworld.asm")
                 .expect("amigaos example should be excluded");
@@ -314,5 +327,55 @@ mod tests {
                 panic!("expected exclusion, got case {}", case.asm_path)
             }
         }
+    }
+
+    #[test]
+    fn native_reference_fixture_rejects_duplicate_case_paths() {
+        // Proof level A. This test proves duplicate canonical paths are rejected
+        // while loading schema metadata. This test does not prove filesystem
+        // aliases or equivalent source contents are duplicates.
+        let fixture = r#"[
+            {
+                "asm_path": "examples/mos6502/duplicate.asm",
+                "cpu_id": "m6502",
+                "source_mode": "stripped-bin-from-source",
+                "command_template": "{input} --bin {bin} --cpu m6502"
+            },
+            {
+                "asm_path": "examples/mos6502/duplicate.asm",
+                "cpu_id": "m6502",
+                "source_mode": "stripped-bin-from-source",
+                "command_template": "{input} --bin {bin} --cpu m6502"
+            }
+        ]"#;
+        let error = parse_native_reference_cases_fixture(Path::new("duplicate.json"), fixture)
+            .expect_err("duplicate paths must fail");
+        assert!(error.contains("duplicate asm_path 'examples/mos6502/duplicate.asm'"));
+    }
+
+    #[test]
+    fn native_reference_accounting_rejects_unknown_new_scope() {
+        // Proof level A. This test proves a newly added path outside every case
+        // and reviewed exclusion fails accounting. This test does not prove an
+        // existing broad-prefix exclusion is semantically valid.
+        let error = account_native_reference_path("examples/new-family/new.asm")
+            .expect_err("unreviewed scope must fail");
+        assert!(error.contains("not represented by a parity case or exclusion rule"));
+    }
+
+    #[test]
+    fn native_reference_broad_prefix_is_accounting_not_applicability_proof() {
+        // Proof level A. This test proves the current opcore prefix is accounted
+        // for by its reviewed exclusion rule. This test does not prove that a
+        // hypothetical member is truly inapplicable to native parity.
+        let accounted = account_native_reference_path("examples/opcore/future-example.asm")
+            .expect("broad opcore prefix should remain explicitly accounted for");
+        let NativeReferenceAccounting::Excluded(rule) = accounted else {
+            panic!("broad opcore prefix unexpectedly resolved to a parity case");
+        };
+        assert_eq!(
+            rule.matcher,
+            NativeReferencePathMatcher::Prefix("examples/opcore/")
+        );
     }
 }

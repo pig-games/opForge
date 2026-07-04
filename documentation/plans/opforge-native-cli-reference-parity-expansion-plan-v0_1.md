@@ -7,6 +7,8 @@
 - Mode: implementation
 - Owner: Codex
 - AGENTS binding: The active worktree `AGENTS.md` rules remain binding during execution.
+- Workflow revision source: Native porting workflow and quality framework implemented by `opforge-native-porting-workflow-spec-plan-v0_1.md`.
+- Validation status: Deterministic plan validators and `make workflow-gate` pass; fresh single-agent `plan-quality-reviewer` returned `PASS` on 2026-07-04.
 
 ## Goal
 
@@ -59,10 +61,34 @@ implementation readiness is established by separate follow-on planning.
   same failure path. Their native tests must compare deterministic diagnostic
   text against the Rust result, and keep checked-in `.err` references aligned
   when behavior intentionally changes.
+- Items that add or refresh `.hex`, `.lst`, `.map`, or `.err` files must load
+  `agents/rules/reference-refresh.md` and use the available
+  `opforge-golden-reference-maintainer` implementation skill.
 - Native 68000 implementation items must load `agents/rules/native-68000.md`
   and run the native formatter gate before completion.
 - FS-UAE-backed items must load `agents/rules/fs-uae.md` and use the one-shot
   `cargo test` invocation style documented there.
+- Native Rust-to-68000 parity items must load
+  `agents/rules/native-rust-parity-porting.md`. When a parity failure is under
+  investigation they must also load
+  `agents/rules/native-parity-failure-triage.md`, and before adding temporary or
+  permanent instrumentation they must load
+  `agents/rules/native-68000-safe-instrumentation.md`.
+- Every native behavior fix must be one named invariant in one focused commit.
+  Before production edits, record the required Rust/native boundary contract
+  and add a machine-readable `native-rust-parity` slice metadata file under
+  `documentation/plans/slices/`.
+- Every test or observation used as parity evidence must declare proof Level
+  A–E and state “This test proves” and “This test does not prove.” Level A–C
+  evidence is the mandatory fast proof where technically possible; Level D is
+  the real FS-UAE confirmation; Level E is localization only.
+- A reduced or truncated fixture is Level E unless its semantic completeness is
+  explicitly justified. Prefix progress, moved failures, and temporary probes
+  do not establish parity.
+- The deterministic staged native-porting gate must remain local and must not
+  launch FS-UAE or use the network. Required Level D execution is a separate
+  named, one-shot completion gate and must fail rather than silently skip when
+  the configured native completion workflow requires it.
 - Full native parity gating introduced by this plan must become mandatory for
   native implementation work, not an opt-in follow-up.
 - `6502` and `65c02` are the only active family targets in this plan. No work
@@ -116,16 +142,76 @@ finally mandatory gating for that active scope only.
 
 ## Current Status
 
-- Item 1 is complete: implementation landed in a focused manifest/completeness
-  slice, all listed executable quality gates pass locally, and
-  `plan-compliance-reviewer` returned `PASS` for the Item 1 boundary.
-- Items 2 through 5 remain in progress or blocked by the still-red real
-  FS-UAE native CLI failure-path shard, so they are not eligible to be checked
-  off yet.
+- Items 1 through 3 are historically implemented in commits `9d29ed41` and
+  `2cd2378a`, but they are not closed under the current native-porting quality
+  framework.
+- Item 4 is complete: RQ-001 through RQ-010 classify the retrospective gaps,
+  and Items 4.1 through 4.8 provide the ordered closure path. Item 4.1 is the
+  next active item.
+- The remaining opForge Core expansion has been decomposed into Items 5 through
+  9 so each coverage commit owns one coherent corpus surface. Item 10 promotes
+  only the framework-closed active scope into the mandatory native completion
+  gate.
+- If an Item 6–9 coverage shard reveals a native/Rust divergence, that coverage
+  item pauses. A new one-invariant remediation item must be inserted into this
+  plan and completed under the native porting workflow before the coverage
+  shard resumes.
+
+## Native Porting Execution Contract
+
+For every remaining item that changes native behavior:
+
+1. Create the boundary contract required by
+   `agents/rules/native-rust-parity-porting.md`, naming the Rust reference
+   functions, native boundary, inputs, outputs, known non-equivalences, fast
+   proof, and FS-UAE proof.
+2. Create one slice metadata file under `documentation/plans/slices/` with the
+   named invariant, approved production paths, and every evidence-bearing test
+   classified at proof Level A–E.
+3. Reproduce a real failure once at Level D, then maintain a hypothesis ledger
+   and locate the first divergent boundary in the prescribed source-to-output
+   order.
+4. Add the mandatory Level B or C host-side contract regression before patching
+   the first divergent native boundary. If a host proof is technically
+   impossible, stop and amend this plan with the concrete reason and replacement
+   proof.
+5. Use only the safe debug-contract framework for instrumentation. Temporary
+   probes remain Level E and must be removed; stable assertions must use a
+   canonical contract ID and document preservation of registers, SR/CCR, stack,
+   branch behavior, and non-overlapping buffers.
+6. Run focused host proofs, applicable negative or boundary cases, the native
+   formatter gate, the full Rust quality gate, the staged native-porting gate,
+   and the exact named FS-UAE test with `--test-threads=1`.
+7. Obtain `plan-compliance-reviewer` `PASS`, commit exactly the named invariant,
+   and only then resume corpus expansion.
+
+Coverage-only commits may batch already-green manifest cases within one
+coherent shard. They must not contain speculative native fixes. Any discovered
+behavior fix follows the seven-step contract above as a separate plan item and
+commit.
+
+## Retrospective Items 1–3 Closure Matrix
+
+The statuses below describe evidence under the current framework. “Historically
+landed” is not equivalent to “framework-closed.”
+
+| ID | Historical claim | Current evidence | Status | Required closure |
+|---|---|---|---|---|
+| RQ-001 | Item 1 has an explicit applicability manifest and deterministic completeness guard. | `native_reference_manifest_*` tests exercise manifest uniqueness, seed retention, and corpus accounting. | Proven behavior; evidence contract incomplete. | Item 4.1 adds proof levels and explicit proves/does-not-prove text without changing behavior. |
+| RQ-002 | Item 1 exclusions are concrete and every current example is accounted for. | The guard rejects unaccounted paths and requires non-empty reasons; several exclusions are broad prefixes. | Partially proven. | Item 4.1 records that this proves current accounting, not semantic applicability of every prefix member, and adds boundary cases for precedence and newly added files. |
+| RQ-003 | Item 2 compares native outputs with Rust as the authority. | The schema Level D test decodes checked-in `.hex` references into expected bytes; it does not invoke the Rust CLI oracle for each schema case. | Unproven as stated. | Item 4.2 supplies a live Rust CLI oracle and retains references only as a separate corpus contract. |
+| RQ-004 | Item 2’s generic runner covers bytes, text artifacts, maps, and deterministic errors. | `NativeCliSchemaExpectedArtifact` currently has only a binary variant and the manifest schema contains successful binary/PRG cases. | Unproven beyond successful binary payloads. | Items 4.3 and 4.4 add text/map and deterministic-error schema contracts separately. |
+| RQ-005 | Item 3 covers the applicable `6502`/`65c02` corpus through the real CLI. | Seven manifest cases execute real CLI commands under FS-UAE when configured; other families and mixed-CPU input are explicitly excluded. | Partially proven at Level D. | Item 4.2 makes Rust/native comparison live; Item 4.7 records the exact applicable case set and justified exclusions. |
+| RQ-006 | Item 3’s native changes preserve expression operand fallback semantics. | Commit `2cd2378a` changed `readOperandValueForStatement` fallback behavior without current-framework slice metadata, boundary contract, or a focused fast proof. | Not framework-closed. | Item 4.5 creates one metadata-backed invariant with Level B/C proof and named Level D confirmation. |
+| RQ-007 | Item 3’s source `.cpu` and parser-routing changes match Rust. | Commit `2cd2378a` added quoted CPU normalization and altered directive routing; focused historical tests exist but lack current boundary/evidence contracts. | Not framework-closed. | Item 4.6 closes exactly the source CPU/parser-routing invariant. |
+| RQ-008 | Item 3 suppresses implementation/debug progress during normal CLI use without changing control flow. | Ordinary output assertions exist; the safe debug event framework and one header event were added later in `9ea4b98e`, but the historical debug-gating sites were not closed as one reviewed invariant. | Partially superseded; closure incomplete. | Item 4.7 audits all historical debug-gating sites, reuses the stable framework only where needed, and proves release/debug preservation. |
+| RQ-009 | Items 2 and 3 ended in separate focused commits with plan-compliance evidence. | Both landed together in `2cd2378a`; no matching retained plan-compliance artifact was found. | Historical process non-compliance; immutable. | Record the exception permanently; all Items 4.1 onward remain one item and one commit. Do not rewrite history or treat the combined commit as precedent. |
+| RQ-010 | Required Level D evidence cannot silently skip. | FS-UAE helpers may return `Skipped` when environment configuration is absent. | Suitable for optional local tests, not mandatory completion evidence. | Item 4.8 adds a closure command/wrapper that requires configuration and fails closed for the named completion run. |
 
 ## Work Items
 
 - [x] Item 1: add a governed native reference applicability manifest and completeness guard
+  - Historical implementation status: landed in `9d29ed41`; current-framework closure remains blocked on Item 4 and its resulting remediation items
   - Source requirement or finding IDs: user request for “each applicable test” coverage; current `examples_match_reference_outputs()` corpus definition in `crates/opforge-asm/src/tests.rs`; existing native CLI FS-UAE tests in `crates/opforge-asm/src/tests.rs`; existing helper surface in `crates/opforge-asm/src/fs_uae_smoke.rs`
   - Expected files:
     - `crates/opforge-asm/src/tests.rs`
@@ -146,6 +232,7 @@ finally mandatory gating for that active scope only.
     - the guard fails deterministically when new reference-backed examples are added without native parity accounting
 
 - [x] Item 2: generalize the FS-UAE native CLI harness into a schema-driven native-vs-Rust parity runner
+  - Historical implementation status: landed together with Item 3 in `2cd2378a`; current-framework closure remains blocked on Item 4 and its resulting remediation items
   - Source requirement or finding IDs: user requirement that native tests behave “just like a user would do it” through the CLI; existing focused helpers in `crates/opforge-asm/src/fs_uae_smoke.rs`; Rust authority in `run_with_cli_with_context` and `examples_match_reference_outputs()`
   - Expected files:
     - `crates/opforge-asm/src/fs_uae_smoke.rs`
@@ -165,6 +252,7 @@ finally mandatory gating for that active scope only.
     - the native runner can stage full file trees, module roots, and artifact outputs as needed per case
 
 - [x] Item 3: cover the full applicable `6502` and `65c02` reference corpus through native CLI parity shards
+  - Historical implementation status: landed together with Item 2 in `2cd2378a`; current-framework closure remains blocked on Item 4 and its resulting remediation items
   - Source requirement or finding IDs: current `6502` and `65c02` examples and references under `examples/mos6502/**` and `examples/reference/mos6502/**`; existing first-run/native CLI focused tests; user request to add as much reference-backed native coverage as possible while prioritizing `6502` first; user requirement that parity must be measured from actual `opforge_cli` CLI-argument invocations issued from a script or command prompt, with emulation allowed, and that only the artifacts written by `opforge_cli` itself are valid comparison inputs against the Rust outputs for this scope
   - Expected files:
     - `native/motorola68000/amigaos/opforge-cli/**`
@@ -191,32 +279,304 @@ finally mandatory gating for that active scope only.
     - parity comparisons for this item use only the files and text artifacts written by `opforge_cli` from those actual CLI-argument invocations as the native side of the comparison
     - `65816` and `45gs02` examples remain explicit on-hold exclusions in the applicability manifest rather than being silently folded into the active shard
 
-- [ ] Item 4: create `6502`/`65c02`-backed opForge Core parity fixtures and cover the applicable opcore reference corpus
-  - Source requirement or finding IDs: user note that some opForge Core cases currently use 8080/Z80 spellings and may need `6502`-adapted copies first; existing `examples/opcore/**` and `examples/reference/opcore/**` corpora; current Rust-side reference harness behavior
+- [x] Item 4: audit and decompose the retrospective quality closure for Items 1–3
+  - Source requirement or finding IDs: historical commits `9d29ed41` and `2cd2378a`; current `agents/rules/native-rust-parity-porting.md`; current `agents/rules/native-parity-failure-triage.md`; missing proof-level declarations and slice metadata; schema-driven Level D test currently sourcing expected payloads from checked-in `.hex` references; Items 2 and 3 sharing one historical commit
   - Expected files:
-    - `examples/opcore/**` or a parallel native-targeted fixture directory if additive copies are used
-    - `examples/reference/opcore/**` for any newly introduced native-targeted copies
+    - this plan
+    - `documentation/plans/opforge-native-cli-reference-parity-expansion-plan-v0_1.md.quality-gate.txt`
+  - Full quality gates:
+    - `python3 scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-native-cli-reference-parity-expansion-plan-v0_1.md`
+    - `python3 scripts/workflow/check_workflow_artifact_bundle.py plan documentation/plans/opforge-native-cli-reference-parity-expansion-plan-v0_1.md`
+    - `make workflow-gate`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for a documentation-only audit that makes no retroactive proof claims and maps each gap to one bounded remediation item
+  - Commit outcome:
+    - Items 1–3 have an explicit claim-by-claim closure matrix and the plan contains one ordered, commit-sized remediation item for every unmet current-framework requirement
+  - Definition of done:
+    - each original Item 1–3 definition-of-done claim is classified as proven, partially proven, unproven, or superseded
+    - ordinary Rust assertions are distinguished from native debug-contract assertions
+    - the audit identifies where a live Rust CLI oracle must replace or supplement checked-in reference payloads
+    - every evidence-bearing test is assigned a target proof level and required “This test proves” / “This test does not prove” text
+    - every historical native behavior change is mapped to a Rust/native boundary contract and a focused host proof, or to a concrete documented reason that such proof is impossible
+    - stable `DEBUG_ASSERT_*` or `DEBUG_EVENT_*` additions are requested only where they protect a named boundary invariant; assertions are not added decoratively
+    - the historical combined Item 2/3 commit is recorded as immutable history and is not treated as precedent for future multi-item commits
+    - no code, native assembly, fixture, or reference change is included in this audit commit
+
+- [ ] Item 4.1: classify Item 1 manifest evidence and harden its accounting boundaries
+  - Source requirement or finding IDs: RQ-001 and RQ-002; fully closes proof-declaration and accounting-boundary gaps while preserving manifest behavior
+  - Expected files:
+    - `crates/opforge-asm/src/native_reference_parity.rs`
+    - `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - `cargo test -p asm native_reference_ -- --nocapture`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for Item 1 evidence classification and accounting boundary tests only
+  - Commit outcome:
+    - manifest tests declare Level A, what they prove, and what they do not prove; precedence, duplicate, newly added unaccounted path, and broad-prefix limitations are explicit
+  - Definition of done:
+    - no native production path or FS-UAE helper changes
+    - current corpus accounting remains green
+    - semantic applicability is not inferred merely from a prefix match
+
+- [ ] Item 4.2: replace reference-derived schema expectations with a live Rust CLI binary oracle
+  - Source requirement or finding IDs: RQ-003 and the binary portion of RQ-005; fully closes live-oracle parity for successful binary/PRG schema cases
+  - Expected files:
+    - `crates/opforge-asm/src/tests.rs`
+    - `crates/opforge-asm/src/fs_uae_smoke.rs` only if the existing result surface cannot carry the required CLI artifacts
+  - Full quality gates:
+    - focused Level A Rust-oracle test
+    - focused Level B schema contract test
+    - exact named Level D FS-UAE schema binary test with `--nocapture --test-threads=1`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for live Rust CLI oracle replacement on successful binary/PRG cases only
+  - Commit outcome:
+    - each native schema binary is compared with output produced during the same test by the Rust CLI authority; checked-in references remain an independent corpus check
+  - Definition of done:
+    - tests declare Levels A, B, and D and their limitations
+    - no checked-in `.hex` decoding is used as the native-vs-Rust oracle
+    - FS-UAE still exercises actual native CLI argument strings and CLI-written artifacts
+
+- [ ] Item 4.3: add schema contracts for text and map artifact parity
+  - Source requirement or finding IDs: text/map portion of RQ-004; fully closes the advertised successful artifact surface
+  - Expected files:
     - `crates/opforge-asm/src/tests.rs`
     - `crates/opforge-asm/src/fs_uae_smoke.rs`
+    - `crates/opforge-asm/tests/fixtures/native_cli_reference_parity_schema.json` if the schema gains explicit artifact kinds
   - Full quality gates:
-    - `cargo test -p asm native_reference_opcore_ -- --nocapture`
-    - `cargo test -p asm examples_match_reference_outputs -- --nocapture`
-    - `cargo test -p asm external_fs_uae_opforge_native_cli_ -- --nocapture --test-threads=1`
+    - focused Level A/B artifact-schema tests
+    - exact named Level D FS-UAE text/map artifact test with `--nocapture --test-threads=1`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for text/map schema support without diagnostics or native behavior fixes
+  - Commit outcome:
+    - the generic schema runner supports exact normalized text and map comparison using live Rust outputs
+  - Definition of done:
+    - every normalization is named and justified
+    - missing, extra, and mismatched artifacts fail deterministically
+    - native comparison inputs are only artifacts written by `opforge_cli`
+
+- [ ] Item 4.4: add schema contracts for deterministic failure parity
+  - Source requirement or finding IDs: diagnostic portion of RQ-004; fully closes the advertised error surface
+  - Expected files:
+    - `crates/opforge-asm/src/tests.rs`
+    - `crates/opforge-asm/src/fs_uae_smoke.rs`
+    - `crates/opforge-asm/tests/fixtures/native_cli_reference_parity_schema.json`
+  - Full quality gates:
+    - focused Level A/B diagnostic-schema tests
+    - exact named Level D FS-UAE diagnostic schema test with `--nocapture --test-threads=1`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for deterministic status/stdout/stderr comparison without a native behavior fix
+  - Commit outcome:
+    - expected-failure schema cases compare Rust/native exit status and normalized deterministic diagnostics
+  - Definition of done:
+    - host launcher failures remain distinguishable from guest CLI failures
+    - at least one positive and one intentionally mismatched schema unit test protect the comparator
+    - any discovered native divergence pauses this item for a new one-invariant remediation item
+
+- [ ] Item 4.5: close the expression metadata fallback invariant from Item 3
+  - Source requirement or finding IDs: RQ-006; fully closes only stored-expression metadata fallback parity
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - `native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm`
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - focused Level B/C fallback contract tests including missing and malformed metadata boundaries
+    - exact named Level D FS-UAE expression fallback confirmation with `--nocapture --test-threads=1`
+    - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
     - `scripts/workflow/run_native_68000_format_gate.sh`
     - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
   - Plan-compliance review evidence:
-    - `plan-compliance-reviewer` returns `PASS` for a slice limited to opForge Core fixture adaptation and native parity coverage, with additive `6502`/`65c02` copies where required and no unrelated corpus migration
+    - `plan-compliance-reviewer` returns `PASS` for one expression fallback invariant and no parser, selector, or output expansion
   - Commit outcome:
-    - opForge Core behavior covered by the Rust example/reference corpus is also represented by native CLI parity tests, using `6502`/`65c02`-backed copies where CPU-specific original fixtures are not directly applicable
+    - the historical fallback behavior has a Rust/native boundary contract, focused fast proof, justified assertion decision, and Level D confirmation
   - Definition of done:
-    - CPU-neutral opcore cases run without unnecessary duplication
-    - CPU-bound 8080/Z80 opcore cases that are still relevant to core functionality gain explicit MOS-backed parity fixtures first
-    - original canonical examples remain intact unless a reviewed change is clearly safer than additive copies
+    - one first divergent boundary is named
+    - any stable assertion uses a canonical contract ID and proves preservation; otherwise the metadata records why no runtime assertion is appropriate
+    - no unrelated expression grammar support is added
 
-- [ ] Item 5: promote `6502`/`65c02` native reference parity into the standard mandatory gate for native implementation work
+- [ ] Item 4.6: close the source CPU normalization and parser-routing invariant from Item 3
+  - Source requirement or finding IDs: RQ-007; fully closes quoted `.cpu` token normalization and routing to the package-backed parser
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - narrowly required files under `native/motorola68000/amigaos/opforge-cli/`
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - focused Level B/C source CPU and directive-routing contract tests
+    - exact named Level D FS-UAE source CPU test with `--nocapture --test-threads=1`
+    - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
+    - `scripts/workflow/run_native_68000_format_gate.sh`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for one source CPU/parser-routing invariant and no output or module behavior changes
+  - Commit outcome:
+    - quoted and bare source CPU forms reach the same Rust-authoritative pipeline selection with malformed/trailing-token boundaries protected
+  - Definition of done:
+    - the boundary contract names tokenizer/parser/session transitions
+    - tests declare proof levels and limitations
+    - assertion placement, if any, protects the normalized token or route result without encoding CPU semantics in generic paths
+
+- [ ] Item 4.7: close normal-output isolation from native debug progress
+  - Source requirement or finding IDs: RQ-008; fully closes debug-output isolation while recognizing `9ea4b98e` as partial superseding evidence
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - narrowly required files under `native/motorola68000/amigaos/opforge-cli/`
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - focused enabled/disabled Level B/C preservation tests
+    - exact named Level D FS-UAE normal-output and `--native-debug` confirmation with `--nocapture --test-threads=1`
+    - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
+    - `scripts/workflow/run_native_68000_format_gate.sh`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for output isolation only, with no CLI feature or parity expansion
+  - Commit outcome:
+    - normal successful CLI output contains no implementation progress records; debug mode uses only the approved safe framework where structured events are retained
+  - Definition of done:
+    - all historical debug-gating sites are inventoried
+    - release and debug paths preserve registers, SR/CCR, stack balance, and following branch behavior
+    - free-form probes are removed or documented as product diagnostics rather than instrumentation
+
+- [ ] Item 4.8: record fail-closed Level D closure for Items 1–3
+  - Source requirement or finding IDs: RQ-005, RQ-009, and RQ-010; closes retrospective evidence only after Items 4.1–4.7 pass
+  - Expected files:
+    - this plan
+    - the repository-native completion wrapper or workflow evidence selected for fail-closed Level D execution
+  - Full quality gates:
+    - all focused tests from Items 4.1–4.7
+    - exact configured Level D schema and boundary tests with `--test-threads=1`
+    - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+    - `make workflow-gate`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for retrospective closure evidence and gate wiring only
+  - Commit outcome:
+    - Items 1–3 are explicitly framework-closed, the historical combined commit exception is recorded, and missing FS-UAE configuration fails the required completion command
+  - Definition of done:
+    - every RQ finding is marked closed with named evidence
+    - no historical commit is rewritten
+    - Item 5 remains blocked until this item commits
+
+- [ ] Item 5: classify the opForge Core corpus into commit-sized native parity shards
+  - Source requirement or finding IDs: user note that some opForge Core cases currently use 8080/Z80 spellings and may need `6502`-adapted copies first; existing `examples/opcore/**` and `examples/reference/opcore/**` corpora; current Rust-side reference harness behavior; native porting workflow requirement that one active slice own one coherent invariant
+  - Expected files:
+    - `crates/opforge-asm/src/native_reference_parity.rs`
+    - this plan, if the inventory requires narrower shard boundaries or new one-invariant remediation items
+  - Full quality gates:
+    - `cargo test -p asm native_reference_ -- --nocapture`
+    - `python3 scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-native-cli-reference-parity-expansion-plan-v0_1.md`
+    - `python3 scripts/workflow/check_workflow_artifact_bundle.py plan documentation/plans/opforge-native-cli-reference-parity-expansion-plan-v0_1.md`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+    - `make workflow-gate`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for inventory, applicability accounting, and shard assignment only, with no fixture adaptation or native behavior changes
+  - Commit outcome:
+    - every applicable opcore source/reference entry is assigned to exactly one of Items 6–9 or has a reviewed exclusion with a concrete blocker
+  - Definition of done:
+    - the manifest distinguishes direct CPU-neutral staging from additive MOS-backed adaptation
+    - no entry is assigned through a prefix-only assumption
+    - each shard has a bounded artifact surface and named Level D test
+    - any already-known red parity case is represented by a separate inserted remediation item rather than hidden inside a coverage shard
+
+- [ ] Item 6: add the CPU-neutral syntax and expression opcore parity shard
+  - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
+  - Expected files:
+    - additive opcore MOS-backed fixtures and matching references assigned by Item 4
+    - `crates/opforge-asm/src/native_reference_parity.rs`
+    - `crates/opforge-asm/src/tests.rs`
+    - `crates/opforge-asm/src/fs_uae_smoke.rs`
+  - Full quality gates:
+    - focused Level A/B tests named by the Item 5 shard
+    - `cargo test -p asm examples_match_reference_outputs -- --nocapture`
+    - exact named Level D FS-UAE shard test with `--nocapture --test-threads=1`
+    - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
+    - `scripts/workflow/run_native_68000_format_gate.sh`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for one syntax/expression coverage shard, classified proof levels, complete fixture semantics, and no bundled native parity fix
+  - Commit outcome:
+    - the assigned CPU-neutral syntax/expression cases compare exact native CLI artifacts with the Rust authority
+  - Definition of done:
+    - every assigned case is green or the item pauses for a separately inserted one-invariant remediation item
+    - additive fixtures preserve the complete semantics of their canonical source and document why adaptation is necessary
+    - tests state what they prove and do not prove
+
+- [ ] Item 7: add the module, macro, and statement opcore parity shard
+  - Source requirement or finding IDs: Item 5 assignments for modules, imports, visibility, macros, statement definitions/expansion, and multi-file roots
+  - Expected files:
+    - additive opcore MOS-backed fixtures and matching references assigned by Item 4
+    - `crates/opforge-asm/src/native_reference_parity.rs`
+    - `crates/opforge-asm/src/tests.rs`
+    - `crates/opforge-asm/src/fs_uae_smoke.rs`
+  - Full quality gates:
+    - focused Level A/B tests named by the Item 5 shard
+    - `cargo test -p asm examples_match_reference_outputs -- --nocapture`
+    - exact named Level D FS-UAE shard test with `--nocapture --test-threads=1`
+    - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
+    - `scripts/workflow/run_native_68000_format_gate.sh`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for one module/macro/statement coverage shard, including complete staged file trees and no bundled native parity fix
+  - Commit outcome:
+    - assigned single- and multi-file module, macro, and statement cases compare only CLI-written native artifacts with Rust
+  - Definition of done:
+    - staged module roots and auxiliary files match real CLI usage
+    - every assigned case is green or pauses for a separate remediation item
+    - no harness-injected shortcut substitutes for the CLI path
+
+- [ ] Item 8: add the section, region, linker, and output opcore parity shard
+  - Source requirement or finding IDs: Item 5 assignments for sections, segments, regions, maps, metadata, alignment, linker placement, and CLI-selected output artifacts
+  - Expected files:
+    - additive opcore MOS-backed fixtures and matching references assigned by Item 4
+    - `crates/opforge-asm/src/native_reference_parity.rs`
+    - `crates/opforge-asm/src/tests.rs`
+    - `crates/opforge-asm/src/fs_uae_smoke.rs`
+  - Full quality gates:
+    - focused Level A/B artifact-contract tests named by the Item 5 shard
+    - `cargo test -p asm examples_match_reference_outputs -- --nocapture`
+    - exact named Level D FS-UAE shard test with `--nocapture --test-threads=1`
+    - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
+    - `scripts/workflow/run_native_68000_format_gate.sh`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for one section/linker/output coverage shard and exact declared artifact comparisons without bundled native fixes
+  - Commit outcome:
+    - assigned layout and output cases compare exact CLI-written payloads, listings, maps, metadata, and other declared artifacts with Rust
+  - Definition of done:
+    - normalization is limited to already-reviewed nondeterministic banner/profile fields
+    - every assigned artifact is checked for both presence and exact normalized content
+    - every red case pauses for a separate remediation item
+
+- [ ] Item 9: add the deterministic opcore diagnostic parity shard
+  - Source requirement or finding IDs: Item 5 assignments for applicable `*_error.asm` and deterministic CLI failure cases
+  - Expected files:
+    - additive opcore MOS-backed error fixtures and matching `.err` references assigned by Item 4
+    - `crates/opforge-asm/src/native_reference_parity.rs`
+    - `crates/opforge-asm/src/tests.rs`
+    - `crates/opforge-asm/src/fs_uae_smoke.rs`
+  - Full quality gates:
+    - focused Level A/B diagnostic-contract tests named by the Item 5 shard
+    - `cargo test -p asm examples_match_reference_outputs -- --nocapture`
+    - exact named Level D FS-UAE diagnostic shard test with `--nocapture --test-threads=1`
+    - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
+    - `scripts/workflow/run_native_68000_format_gate.sh`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for one deterministic diagnostic shard, exact Rust/native failure equivalence, and no bundled native behavior fix
+  - Commit outcome:
+    - every assigned reachable error case compares deterministic native CLI diagnostics with Rust and its checked-in `.err` contract
+  - Definition of done:
+    - host launch failures are distinguished from Amiga-side diagnostic failures
+    - error ordering, exit status, and normalized text are compared
+    - unreachable error paths remain reviewed exclusions with concrete native blockers
+
+- [ ] Item 10: promote the completed active native reference scope into the mandatory native completion gate
   - Source requirement or finding IDs: user request that these tests “must become part of the standard test run for any native implementation work”; the explicit user reprioritization to make `6502`/`65c02` the only active family scope before anything else advances; existing `scripts/workflow/run_rust_quality_gate.sh`; native rule-pack requirements from `AGENTS.md`
   - Expected files:
-    - `scripts/workflow/run_rust_quality_gate.sh`
+    - `scripts/workflow/run_native_porting_quality_gate.py`
+    - the repository-native completion wrapper or CI workflow selected for required Level D execution
     - `scripts/workflow/render_quality_gate_preset.py` if needed
     - `crates/opforge-asm/src/tests.rs`
     - `crates/opforge-asm/src/fs_uae_smoke.rs`
@@ -226,16 +586,20 @@ finally mandatory gating for that active scope only.
     - `cargo test -p asm native_reference_6502_ -- --nocapture`
     - `cargo test -p asm native_reference_65c02_ -- --nocapture`
     - `cargo test -p asm native_reference_opcore_ -- --nocapture`
-    - `cargo test -p asm external_fs_uae_opforge_native_cli_ -- --nocapture --test-threads=1`
+    - exact named Level D FS-UAE shard tests with `--nocapture --test-threads=1`
+    - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
     - `scripts/workflow/run_native_68000_format_gate.sh`
     - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+    - `make workflow-gate`
   - Plan-compliance review evidence:
-    - `plan-compliance-reviewer` returns `PASS` for a slice limited to gate promotion, native change-scope enforcement, and deterministic mandatory-parity execution rules for the active `6502`/`65c02` plus opcore-on-`6502`/`65c02` scope only
+    - `plan-compliance-reviewer` returns `PASS` for gate promotion only, with deterministic staged checks separated from configured Level D completion execution and no corpus or native behavior changes
   - Commit outcome:
     - native implementation work can no longer bypass the declared `6502`/`65c02` and opcore-on-`6502`/`65c02` parity shards during the standard required workflow
   - Definition of done:
     - the standard native-quality path runs the active native reference parity surface for native-relevant changes
-    - the repo’s required workflow clearly fails on parity regressions instead of silently skipping them
+    - the deterministic staged gate does not launch FS-UAE or use the network
+    - the configured native completion gate fails on missing Level D
+      configuration or parity regressions instead of silently skipping them
     - no on-hold family scope is pulled into the required gate through this plan
     - optional local filtering for iteration remains possible without weakening the required gate
 
@@ -261,9 +625,19 @@ rather than speculative test scaffolding.
 ## Blocking Rules
 
 - the active worktree `AGENTS.md` rules remain binding during execution
+- the plan must retain a fresh plan-quality `PASS` matching the current
+  structure; the 2026-07-04 single-agent review authorizes Item 4
+- only one work item or inserted one-invariant remediation item may be active at a time
 - no commit before all quality gates pass
 - `plan-compliance-reviewer` must return `PASS` before commit
 - each work item or phase must end in exactly one new commit before the next item starts
+- native behavior edits require approved slice metadata and
+  `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
+- Level D FS-UAE evidence must use the exact named one-shot test with
+  `--test-threads=1`; broad filters and silent skips do not satisfy completion
+- a failing coverage case pauses its shard and becomes a separate
+  one-invariant remediation item before any production fix
+- Item 5 cannot begin until Items 4.1–4.8 close every RQ finding
 - no advancing to the next item on failed validation
 - checkbox updates are mandatory bookkeeping
 - archive completed plans with `scripts/workflow/archive_completed_plan.sh`

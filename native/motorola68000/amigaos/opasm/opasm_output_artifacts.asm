@@ -167,7 +167,8 @@ fail
 	rts
 	.bend  ; opasmOutputBuildHexArtifactV1
 
-; Build a first-run Rust-style `.lst` artifact from opasm statement/image data.
+; Build a Rust-style `.lst` artifact from every preserved source record,
+; attaching statement/image data when the source line produced a statement.
 ; Outputs:
 ; - D0.L = 0 on success.
 ; - A0 = opasm-owned listing artifact buffer pointer.
@@ -179,7 +180,7 @@ opasmOutputBuildListingArtifactV1	.block
 	bsr.w opasmOutputAppendCString
 	lea OpasmListingHeader.l, a0
 	bsr.w opasmOutputAppendCString
-	jsr engine.opasmEngineGetStatementCountV1
+	jsr engine.opasmEngineGetSourceRecordCountV1
 	move.l d0, d6
 	moveq #0, d7
 
@@ -187,17 +188,39 @@ lineLoop
 	cmp.l d6, d7
 	bhs.w footer
 	move.l d7, d0
+	jsr engine.opasmEngineGetSourceRecordLineNumberV1
+	move.l d0, d5
+	bsr.w opasmOutputFindStatementForLineV1
+	move.l d0, d2
+	bmi.s noLineBytes
+	move.l d2, d0
 	jsr engine.opasmEngineGetStatementOutputByteCountV1
 	move.l d0, d5
-	beq.s noLineBytes
-	move.l d7, d0
+	beq.s checkOrg
+	move.l d2, d0
 	jsr engine.opasmEngineGetStatementOutputAddrV1
 	bsr.w opasmOutputAppendHexWord
 	moveq #2, d0
 	bsr.w opasmOutputAppendSpaces
 	bra.s locDone
 
+checkOrg
+	move.l d2, d0
+	jsr engine.opasmEngineStatementIsOrgV1
+	beq.s noLineBytes
+	lea OpasmListingNoLocation.l, a0
+	bsr.w opasmOutputAppendCString
+	moveq #2, d0
+	bsr.w opasmOutputAppendSpaces
+	lea OpasmListingEquPrefix.l, a0
+	bsr.w opasmOutputAppendCString
+	jsr engine.opasmEngineGetSessionOriginV1
+	bsr.w opasmOutputAppendHexWord
+	moveq #8, d4
+	bra.s bytesDone
+
 noLineBytes
+	moveq #0, d5
 	lea OpasmListingNoLocation.l, a0
 	bsr.w opasmOutputAppendCString
 
@@ -207,7 +230,7 @@ locDone
 	moveq #0, d4
 	tst.l d5
 	beq.s bytesDone
-	move.l d7, d0
+	move.l d2, d0
 	jsr engine.opasmEngineGetStatementOutputOffsetV1
 	move.l d0, d3
 	jsr engine.opasmEngineGetImageBufferPtrV1
@@ -241,12 +264,12 @@ byteColumnDone
 	moveq #2, d0
 	bsr.w opasmOutputAppendSpaces
 	move.l d7, d0
-	jsr engine.opasmEngineGetStatementLineNumberV1
+	jsr engine.opasmEngineGetSourceRecordLineNumberV1
 	bsr.w opasmOutputAppendRight4Decimal
 	moveq #2, d0
 	bsr.w opasmOutputAppendSpaces
 	move.l d7, d0
-	jsr engine.getStatementSourceLineTextV1
+	jsr engine.opasmEngineGetSourceRecordTextV1
 	tst.l d0
 	beq.s sourceDone
 	move.l d0, d3
@@ -268,8 +291,45 @@ footer
 	bsr.w opasmOutputAppendU16Decimal
 	lea OpasmListingCountsSuffix.l, a0
 	bsr.w opasmOutputAppendCString
+	jsr engine.opasmEngineGetLabelCountV1
+	move.l d0, d3
+	beq.s symbolNone
+	lea OpasmListingSymbolHeader.l, a0
+	bsr.w opasmOutputAppendCString
+	moveq #0, d2
+
+symbolLoop
+	move.l d2, d0
+	jsr engine.opasmEngineGetLabelNameV1
+	moveq #0, d4
+
+symbolNameLoop
+	tst.b (a0)
+	beq.s symbolNameDone
+	move.b (a0)+, (a2)+
+	addq.l #1, d4
+	cmpi.l #15, d4
+	blo.s symbolNameLoop
+
+symbolNameDone
+	move.l #17, d0
+	sub.l d4, d0
+	bsr.w opasmOutputAppendSpaces
+	move.l d2, d0
+	jsr engine.opasmEngineGetLabelValueV1
+	bsr.w opasmOutputAppendHexWord
+	lea OpasmListingSymbolSuffix.l, a0
+	bsr.w opasmOutputAppendCString
+	addq.l #1, d2
+	cmp.l d3, d2
+	blo.s symbolLoop
+	bra.s symbolsDone
+
+symbolNone
 	lea OpasmListingSymbolNone.l, a0
 	bsr.w opasmOutputAppendCString
+
+symbolsDone
 	jsr engine.opasmEngineGetImageByteCountV1
 	move.l d0, d5
 	lea OpasmListingMemoryPrefix.l, a0
@@ -282,23 +342,34 @@ footer
 	bsr.w opasmOutputAppendCString
 	tst.l d5
 	beq.s generatedNone
+	jsr engine.opasmEngineGetImageBufferPtrV1
+	movea.l a0, a3
 	jsr engine.opasmEngineGetSessionOriginV1
+	move.l d0, d4
+	move.l d5, d3
+
+generatedLoop
+	move.l d4, d0
 	bsr.w opasmOutputAppendHexWord
 	moveq #4, d0
 	bsr.w opasmOutputAppendSpaces
-	jsr engine.opasmEngineGetImageBufferPtrV1
-	movea.l a0, a3
-	move.l d5, d3
-	subq.l #1, d3
+	moveq #16, d2
 
-generatedLoop
+generatedByteLoop
 	moveq #0, d0
 	move.b (a3)+, d0
 	bsr.w opasmOutputEmitHexByte
+	subq.l #1, d3
+	addq.l #1, d4
 	tst.l d3
 	beq.s generatedDone
+	subq.l #1, d2
+	beq.s generatedNextLine
 	move.b #' ', (a2)+
-	subq.l #1, d3
+	bra.s generatedByteLoop
+
+generatedNextLine
+	move.b #10, (a2)+
 	bra.s generatedLoop
 
 generatedDone
@@ -318,6 +389,36 @@ finish
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 	.bend  ; opasmOutputBuildListingArtifactV1
+
+; Find the statement associated with one source line.
+; Inputs: D5 = source line number.
+; Outputs: D0 = statement index, or -1 when the line has no statement.
+opasmOutputFindStatementForLineV1	.block
+	movem.l d1-d3, -(sp)
+	jsr engine.opasmEngineGetStatementCountV1
+	move.l d0, d3
+	moveq #0, d2
+
+scan
+	cmp.l d3, d2
+	bhs.s absent
+	move.l d2, d0
+	jsr engine.opasmEngineGetStatementLineNumberV1
+	cmp.l d5, d0
+	beq.s found
+	addq.l #1, d2
+	bra.s scan
+
+found
+	move.l d2, d0
+	movem.l (sp)+, d1-d3
+	rts
+
+absent
+	moveq #-1, d0
+	movem.l (sp)+, d1-d3
+	rts
+	.bend  ; opasmOutputFindStatementForLineV1
 
 ; Append one byte as two uppercase hexadecimal characters.
 ; Inputs: D0.B = byte; A2 = destination cursor.
@@ -451,18 +552,25 @@ OpasmHexDigits
 OpasmHexEofRecord
 	.byte ":00000001FF", 10
 OpasmListingTitle
-	.byte "opForge Assembler native", 10, 0
+	.byte 0
 OpasmListingHeader
 	.byte "ADDR    BYTES                    LINE  SOURCE", 10
 	.byte "------  -----------------------  ----  ------", 10, 0
 OpasmListingNoLocation
 	.byte "----  ", 0
+OpasmListingEquPrefix
+	.byte "EQU ", 0
 OpasmListingLinesPrefix
 	.byte 10, "Lines: ", 0
 OpasmListingCountsSuffix
 	.byte "  Errors: 0  Warnings: 0", 10, 10, "SYMBOL TABLE", 10, 10, 0
+OpasmListingSymbolHeader
+	.byte "NAME             VALUE     VIS  KIND", 10
+	.byte "---------------  --------  ---  ----", 10, 0
 OpasmListingSymbolNone
 	.byte "(none)", 10, 0
+OpasmListingSymbolSuffix
+	.byte "      prv  lbl ", 10, 0
 OpasmListingMemoryPrefix
 	.byte 10, "Total memory is ", 0
 OpasmListingMemorySuffix

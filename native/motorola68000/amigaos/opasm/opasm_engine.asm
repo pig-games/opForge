@@ -17,8 +17,9 @@ NATIVE_SOURCE_RECORD_CAPACITY   = 512
 NATIVE_STATEMENT_TABLE_CAPACITY = 160
 NATIVE_LABEL_TABLE_CAPACITY     = 16
 NATIVE_IMAGE_BUFFER_CAPACITY    = 4096
+NATIVE_SOURCE_TEXT_BYTES        = NATIVE_SOURCE_RECORD_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY
 OPASM_ENGINE_CONTEXT_LONGS      = 10
-OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = (5 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + NATIVE_LABEL_TABLE_CAPACITY + NATIVE_IMAGE_BUFFER_CAPACITY
+OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = (5 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + NATIVE_SOURCE_TEXT_BYTES + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + NATIVE_LABEL_TABLE_CAPACITY + NATIVE_IMAGE_BUFFER_CAPACITY
 
 	.section code
 
@@ -171,13 +172,21 @@ resetStatementCollectionV1	.block
 ; Record one logical source line in opasm-owned session tables.
 ;
 ; Inputs:
+; - A0: source line bytes.
 ; - D0: source line number.
 ; - D1: source line length.
 ;
 ; Outputs:
 ; - D0: 0 on success.
 opasmEngineRecordSourceLineV1	.block
-	movem.l d2/a0, -(sp)
+	movem.l d2-d4/a0-a2, -(sp)
+	movea.l a0, a2
+	move.l d1, d4
+	cmp.l #SOURCE_LINE_BUFFER_CAPACITY - 1, d4
+	bls.s lengthReady
+	move.l #SOURCE_LINE_BUFFER_CAPACITY - 1, d4
+
+lengthReady
 	moveq #0, d2
 	move.w OpasmEngineSourceRecordCount.l, d2
 	cmpi.w #NATIVE_SOURCE_RECORD_CAPACITY, d2
@@ -189,11 +198,30 @@ opasmEngineRecordSourceLineV1	.block
 	move.w OpasmEngineSourceRecordCount.l, d2
 	add.w d2, d2
 	lea OpasmEngineSourceLineLenTable.l, a0
-	move.w d1, 0(a0, d2.l)
+	move.w d4, 0(a0, d2.l)
+	moveq #0, d2
+	move.w OpasmEngineSourceRecordCount.l, d2
+	lsl.l #8, d2
+	add.l d2, d2
+	lea OpasmEngineSourceLineTextTable.l, a1
+	adda.l d2, a1
+	move.l d4, d3
+
+copyReady
+	move.l d3, d1
+	beq.s copyDone
+	subq.l #1, d1
+
+copyLoop
+	move.b (a2)+, (a1)+
+	dbra d1, copyLoop
+
+copyDone
+	clr.b (a1)
 	addq.w #1, OpasmEngineSourceRecordCount.l
 
 done
-	movem.l (sp)+, d2/a0
+	movem.l (sp)+, d2-d4/a0-a2
 	moveq #0, d0
 	rts
 	.bend  ; opasmEngineRecordSourceLineV1
@@ -810,6 +838,40 @@ opasmEngineGetSourceRecordCountV1	.block
 	rts
 	.bend  ; opasmEngineGetSourceRecordCountV1
 
+; Return the source line number for one source record.
+; Inputs: D0 = source record index.
+; Outputs: D0 = source line number.
+opasmEngineGetSourceRecordLineNumberV1	.block
+	move.l d1, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	lsl.l #2, d1
+	lea OpasmEngineSourceLineNumTable.l, a0
+	move.l 0(a0, d1.l), d0
+	move.l (sp)+, d1
+	rts
+	.bend  ; opasmEngineGetSourceRecordLineNumberV1
+
+; Return exact text for one source record.
+; Inputs: D0 = source record index.
+; Outputs: D0 = text length; A0 = text pointer.
+opasmEngineGetSourceRecordTextV1	.block
+	movem.l d1-d2, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	move.l d1, d2
+	add.w d2, d2
+	lea OpasmEngineSourceLineLenTable.l, a0
+	moveq #0, d0
+	move.w 0(a0, d2.l), d0
+	lsl.l #8, d1
+	add.l d1, d1
+	lea OpasmEngineSourceLineTextTable.l, a0
+	adda.l d1, a0
+	movem.l (sp)+, d1-d2
+	rts
+	.bend  ; opasmEngineGetSourceRecordTextV1
+
 ; Return the statement count.
 ;
 ; Outputs:
@@ -1188,6 +1250,79 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; opasmEngineGetStatementTextMetadataV1
+
+; Report whether one stored statement is the generic `.org` directive.
+; Inputs: D0 = statement index.
+; Outputs: D0 = 1 for `.org`, 0 otherwise.
+; CCR: reflects D0 on return.
+opasmEngineStatementIsOrgV1	.block
+	movem.l d1-d3/a0, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	move.l d1, d2
+	add.w d2, d2
+	lea OpasmEngineStmtMnemLenTable.l, a0
+	move.w 0(a0, d2.l), d3
+	cmpi.w #3, d3
+	beq.s haveLength
+	cmpi.w #4, d3
+	bne.s no
+
+haveLength
+	lsl.l #6, d1
+	lea OpasmEngineStmtMnemNameTable.l, a0
+	adda.l d1, a0
+	cmpi.w #4, d3
+	bne.s firstLetter
+	cmpi.b #'.', (a0)+
+	bne.s no
+
+firstLetter
+	move.b (a0)+, d3
+	ori.b #$20, d3
+	cmpi.b #'o', d3
+	bne.s no
+	move.b (a0)+, d3
+	ori.b #$20, d3
+	cmpi.b #'r', d3
+	bne.s no
+	move.b (a0), d3
+	ori.b #$20, d3
+	cmpi.b #'g', d3
+	bne.s no
+	moveq #1, d0
+	movem.l (sp)+, d1-d3/a0
+	rts
+
+no
+	moveq #0, d0
+	movem.l (sp)+, d1-d3/a0
+	rts
+	.bend  ; opasmEngineStatementIsOrgV1
+
+; Return one native label name.
+; Inputs: D0 = label index.
+; Outputs: A0 = NUL-terminated label name.
+opasmEngineGetLabelNameV1	.block
+	lsl.l #6, d0
+	lea OpasmEngineLabelNameTable.l, a0
+	adda.l d0, a0
+	rts
+	.bend  ; opasmEngineGetLabelNameV1
+
+; Return one native label value.
+; Inputs: D0 = label index.
+; Outputs: D0 = label value.
+opasmEngineGetLabelValueV1	.block
+	move.l d1, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	lsl.l #2, d1
+	lea OpasmEngineLabelValueTable.l, a0
+	move.l 0(a0, d1.l), d0
+	move.l (sp)+, d1
+	rts
+	.bend  ; opasmEngineGetLabelValueV1
 
 ; Prepare an evaluate-expression request for statement text.
 ;
@@ -2284,6 +2419,8 @@ OpasmEngineSourceLineNumTable
 	.res long, NATIVE_SOURCE_RECORD_CAPACITY
 OpasmEngineSourceLineLenTable
 	.res word, NATIVE_SOURCE_RECORD_CAPACITY
+OpasmEngineSourceLineTextTable
+	.res byte, NATIVE_SOURCE_TEXT_BYTES
 OpasmEngineStmtLineTable
 	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
 OpasmEngineStmtSourceLineLenTable

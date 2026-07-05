@@ -1,0 +1,30 @@
+[slice]
+name = "native CLI listing source-row parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-vm/src/listing.rs::ListingWriter",
+  "crates/opforge-asm/src/engine.rs::Assembler::pass2_line"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineRecordSourceLineV1",
+  "native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm::opasmOutputBuildListingArtifactV1"
+]
+invariant = "The native CLI preserves every exact source line, including .org, and emits the same listing rows, symbols, addresses, bytes, and generated-output grouping as the unchanged Rust CLI authority."
+
+[[tests]]
+name = "native_reference_schema_live_rust_cli_listing_oracle_uses_exact_example_source"
+proof_level = "A"
+proves = "The live Rust CLI oracle consumes the exact checked-in example source and produces a listing."
+does_not_prove = "Amiga-native listing generation."
+
+[[tests]]
+name = "native_reference_schema_listing_comparator_accepts_match_and_rejects_mismatch"
+proof_level = "B"
+proves = "The schema comparator accepts only the reviewed banner normalization and rejects listing payload changes."
+does_not_prove = "Real 68020 execution."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_schema_listing_parity_matches_live_rust_cli"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI and its CLI-written listing matches the live Rust CLI listing."
+does_not_prove = "Map or diagnostic parity."

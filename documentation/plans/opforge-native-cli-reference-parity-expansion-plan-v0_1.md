@@ -82,7 +82,7 @@ implementation readiness is established by separate follow-on planning.
   A–E and state “This test proves” and “This test does not prove.” Level A–C
   evidence is the mandatory fast proof where technically possible; Level D is
   the real FS-UAE confirmation; Level E is localization only.
-- A reduced or truncated fixture is Level E unless its semantic completeness is
+- A reduced or truncated fixture is a localization probe with proof Level E unless its semantic completeness is
   explicitly justified. Prefix progress, moved failures, and temporary probes
   do not establish parity.
 - The deterministic staged native-porting gate must remain local and must not
@@ -205,7 +205,7 @@ landed” is not equivalent to “framework-closed.”
 | RQ-001 | Item 1 has an explicit applicability manifest and deterministic completeness guard. | Level A `native_reference_manifest_*` and module tests exercise uniqueness, seed retention, and corpus accounting with explicit proof limitations. | Closed by Item 4.1. | No further retrospective work. |
 | RQ-002 | Item 1 exclusions are concrete and every current example is accounted for. | Level A tests cover unknown new scope, duplicate paths, overlapping-prefix precedence, and the fact that broad-prefix accounting is not semantic applicability proof. | Closed by Item 4.1. | Semantic applicability remains a reviewed planning decision, not an inferred test result. |
 | RQ-003 | Item 2 compares native outputs with Rust as the authority. | Level A/B tests build every schema case from exact example source bytes, and the named Level D test compares native CLI binary/PRG artifacts with artifacts emitted by the live Rust CLI in the same run. | Closed for successful binary/PRG cases by Item 4.2. | Text, map, and deterministic failures remain RQ-004. |
-| RQ-004 | Item 2’s generic runner covers bytes, text artifacts, maps, and deterministic errors. | `NativeCliSchemaExpectedArtifact` currently has only a binary variant and the manifest schema contains successful binary/PRG cases. | Unproven beyond successful binary payloads. | Items 4.3 and 4.4 add text/map and deterministic-error schema contracts separately. |
+| RQ-004 | Item 2’s generic runner covers bytes, text artifacts, maps, and deterministic errors. | Item 4.3 adds a live-Rust listing oracle, a strict normalized-text comparator, and Level D FS-UAE listing parity. The native CLI has no map-output mode, so map parity cannot be claimed without adding a new feature outside this retrospective plan. | Listing text closed; maps explicitly on hold; deterministic failures remain open. | Item 4.4 adds deterministic-error schema contracts. Map parity requires a separately authorized native map-output feature plan. |
 | RQ-005 | Item 3 covers the applicable `6502`/`65c02` corpus through the real CLI. | Seven manifest cases execute real CLI commands under FS-UAE when configured; other families and mixed-CPU input are explicitly excluded. | Partially proven at Level D. | Item 4.2 makes Rust/native comparison live; Item 4.7 records the exact applicable case set and justified exclusions. |
 | RQ-006 | Item 3’s native changes preserve expression operand fallback semantics. | Commit `2cd2378a` changed `readOperandValueForStatement` fallback behavior without current-framework slice metadata, boundary contract, or a focused fast proof. | Not framework-closed. | Item 4.5 creates one metadata-backed invariant with Level B/C proof and named Level D confirmation. |
 | RQ-007 | Item 3’s source `.cpu` and parser-routing changes match Rust. | Commit `2cd2378a` added quoted CPU normalization and altered directive routing; focused historical tests exist but lack current boundary/evidence contracts. | Not framework-closed. | Item 4.6 closes exactly the source CPU/parser-routing invariant. |
@@ -346,24 +346,30 @@ landed” is not equivalent to “framework-closed.”
     - exact files under `examples/**` and `examples/reference/**` remain unchanged and are passed unmodified to the Rust CLI
     - FS-UAE still exercises actual native CLI argument strings and CLI-written artifacts
 
-- [ ] Item 4.3: add schema contracts for text and map artifact parity
-  - Source requirement or finding IDs: text/map portion of RQ-004; fully closes the advertised successful artifact surface
+- [x] Item 4.3: add schema contracts and native remediation for listing-text parity
+  - Source requirement or finding IDs: listing-text portion of RQ-004; map parity is explicitly on hold because the native CLI exposes no map-output mode
   - Expected files:
     - `crates/opforge-asm/src/tests.rs`
-    - `crates/opforge-asm/src/fs_uae_smoke.rs`
-    - `crates/opforge-asm/tests/fixtures/native_cli_reference_parity_schema.json` if the schema gains explicit artifact kinds
+    - `native/motorola68000/amigaos/opasm/opasm_engine.asm`
+    - `native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm`
+    - `native/motorola68000/amigaos/opforge-cli/assembly_session.asm`
+    - `native/motorola68000/amigaos/opforge-cli/constants.asm`
+    - `documentation/plans/slices/native-porting-slice-cli-listing-parity.toml`
   - Full quality gates:
     - focused Level A/B artifact-schema tests
-    - exact named Level D FS-UAE text/map artifact test with `--nocapture --test-threads=1`
+    - exact named Level D FS-UAE listing artifact test with `--nocapture --test-threads=1`
     - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
   - Plan-compliance review evidence:
-    - `plan-compliance-reviewer` returns `PASS` for text/map schema support without diagnostics or native behavior fixes
+    - `plan-compliance-reviewer` returns `PASS` for listing schema support and the bounded native listing remediation
   - Commit outcome:
-    - the generic schema runner supports exact normalized text and map comparison using live Rust outputs
+    - the generic schema runner supports exact normalized listing comparison using live Rust output
   - Definition of done:
     - every normalization is named and justified
     - missing, extra, and mismatched artifacts fail deterministically
     - native comparison inputs are only artifacts written by `opforge_cli`
+    - exact files under `examples/**` and `examples/reference/**` remain unchanged
+    - `.org` remains present in both authority input and native listing output
+    - map parity is not claimed or simulated; it remains on hold until native map output is separately authorized
 
 - [ ] Item 4.4: add schema contracts for deterministic failure parity
   - Source requirement or finding IDs: diagnostic portion of RQ-004; fully closes the advertised error surface

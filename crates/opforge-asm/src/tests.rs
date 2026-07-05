@@ -13883,10 +13883,12 @@ fn motorola68020_item16_native_listing_output_routes_through_artifact_layer() {
         &[
             "opasmOutputBuildListingArtifactV1 .block",
             "OpasmListingTitle",
-            "jsr engine.opasmEngineGetStatementCountV1",
+            "jsr engine.opasmEngineGetSourceRecordCountV1",
+            "jsr engine.opasmEngineGetSourceRecordLineNumberV1",
+            "bsr.w opasmOutputFindStatementForLineV1",
             "jsr engine.opasmEngineGetStatementOutputByteCountV1",
             "jsr engine.opasmEngineGetStatementOutputAddrV1",
-            "jsr engine.getStatementSourceLineTextV1",
+            "jsr engine.opasmEngineGetSourceRecordTextV1",
             "OpasmListingGeneratedHeader",
             "lea OpasmListingArtifactBuffer.l, a0",
         ]
@@ -33602,6 +33604,17 @@ enum NativeCliSchemaExpectedArtifact {
         file_name: &'static str,
         expected: Vec<u8>,
     },
+    Text {
+        location: NativeCliSchemaArtifactLocation,
+        file_name: &'static str,
+        expected: String,
+        normalization: NativeCliSchemaTextNormalization,
+    },
+}
+
+#[derive(Clone, Copy)]
+enum NativeCliSchemaTextNormalization {
+    Listing,
 }
 
 struct NativeCliSchemaCase {
@@ -33725,6 +33738,47 @@ fn native_cli_schema_cases_with_live_rust_oracle(repo_root: &Path) -> Vec<Native
         .collect()
 }
 
+fn native_cli_schema_listing_case_with_live_rust_oracle(repo_root: &Path) -> NativeCliSchemaCase {
+    let asm_path = repo_root.join("examples/mos6502/6502_simple.asm");
+    let source = fs::read_to_string(&asm_path)
+        .unwrap_or_else(|err| panic!("read listing schema source {}: {err}", asm_path.display()));
+    let case_dir = create_temp_dir("native-reference-live-rust-listing-oracle");
+    let input_path = case_dir.join("input.asm");
+    let list_path = case_dir.join("rust-schema.lst");
+    fs::write(&input_path, &source).unwrap_or_else(|err| {
+        panic!(
+            "write listing schema source {}: {err}",
+            input_path.display()
+        )
+    });
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--list",
+        list_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+    ]);
+    run_with_cli_with_context(&cli)
+        .unwrap_or_else(|err| panic!("run Rust CLI listing oracle: {err:?}"));
+    let expected = fs::read_to_string(&list_path)
+        .unwrap_or_else(|err| panic!("read Rust CLI listing {}: {err}", list_path.display()));
+    NativeCliSchemaCase {
+        name: "examples/mos6502/6502_simple.asm#listing",
+        defines: vec![],
+        source: Some(source),
+        command_template: Some("{input} --list {list} --cpu m6502"),
+        expected_success: true,
+        stdout_contains: vec![],
+        artifact: NativeCliSchemaExpectedArtifact::Text {
+            location: NativeCliSchemaArtifactLocation::CaseWorkBuild,
+            file_name: crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_LST_OUTPUT_FILE,
+            expected,
+            normalization: NativeCliSchemaTextNormalization::Listing,
+        },
+    }
+}
+
 fn native_cli_schema_artifact_path(
     run: &crate::fs_uae_smoke::FsUaeSmokeRun,
     location: NativeCliSchemaArtifactLocation,
@@ -33758,27 +33812,71 @@ fn assert_native_cli_schema_case(
         );
     }
 
-    match &schema_case.artifact {
+    let (location, file_name) = match &schema_case.artifact {
         NativeCliSchemaExpectedArtifact::Binary {
             location,
             file_name,
+            ..
+        }
+        | NativeCliSchemaExpectedArtifact::Text {
+            location,
+            file_name,
+            ..
+        } => (*location, *file_name),
+    };
+    let output_path = native_cli_schema_artifact_path(run, location, file_name);
+    let actual = fs::read(&output_path).unwrap_or_else(|err| {
+        panic!(
+            "read schema-driven native CLI artifact {} for {}: {err}",
+            output_path.display(),
+            schema_case.name
+        )
+    });
+    native_cli_schema_compare_artifact(&schema_case.artifact, &actual).unwrap_or_else(|message| {
+        panic!(
+            "schema-driven native CLI artifact mismatch for {}: {message}\nstdout:\n{}\nstderr:\n{}",
+            schema_case.name, run.stdout, run.stderr,
+        )
+    });
+}
+
+fn native_cli_schema_compare_artifact(
+    expected_artifact: &NativeCliSchemaExpectedArtifact,
+    actual: &[u8],
+) -> Result<(), String> {
+    match expected_artifact {
+        NativeCliSchemaExpectedArtifact::Binary { expected, .. } => {
+            if actual == expected {
+                Ok(())
+            } else {
+                Err(format!(
+                    "binary bytes differ: actual {} byte(s), expected {}",
+                    actual.len(),
+                    expected.len()
+                ))
+            }
+        }
+        NativeCliSchemaExpectedArtifact::Text {
             expected,
+            normalization,
+            ..
         } => {
-            let output_path = native_cli_schema_artifact_path(run, *location, file_name);
-            let actual = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read schema-driven native CLI artifact {} for {}: {err}",
-                    output_path.display(),
-                    schema_case.name
-                )
-            });
-            assert_eq!(
-                actual, *expected,
-                "schema-driven native CLI binary artifact mismatch for {}\nstdout:\n{}\nstderr:\n{}",
-                schema_case.name,
-                run.stdout,
-                run.stderr,
-            );
+            let actual = String::from_utf8(actual.to_vec())
+                .map_err(|err| format!("text artifact is not UTF-8: {err}"))?;
+            let (actual, expected) = match normalization {
+                NativeCliSchemaTextNormalization::Listing => (
+                    normalize_listing_for_reference_compare(&actual),
+                    normalize_listing_for_reference_compare(expected),
+                ),
+            };
+            if actual == expected {
+                Ok(())
+            } else {
+                Err(format!(
+                    "text differs\n{}",
+                    diff_text(&expected, &actual, 20)
+                ))
+            }
         }
     }
 }
@@ -33818,7 +33916,9 @@ fn native_reference_schema_live_rust_cli_oracle_covers_binary_manifest_cases() {
     let schema_cases = native_cli_schema_cases_with_live_rust_oracle(&workspace_root());
     assert_eq!(schema_cases.len(), native_reference_cases().len());
     for case in schema_cases {
-        let NativeCliSchemaExpectedArtifact::Binary { expected, .. } = case.artifact;
+        let NativeCliSchemaExpectedArtifact::Binary { expected, .. } = case.artifact else {
+            panic!("binary manifest case unexpectedly used a text artifact");
+        };
         assert!(
             !expected.is_empty(),
             "Rust CLI oracle should emit bytes for {}",
@@ -33844,6 +33944,40 @@ fn native_reference_schema_contract_preserves_native_cli_command_shapes() {
             NativeCliSchemaExpectedArtifact::Binary { .. }
         ));
     }
+}
+
+#[test]
+fn native_reference_schema_listing_comparator_accepts_match_and_rejects_mismatch() {
+    // Proof level B. This test proves the Rust-side schema comparator applies
+    // only the reviewed listing normalization and rejects changed listing
+    // content. This test does not prove native listing generation.
+    let expected = NativeCliSchemaExpectedArtifact::Text {
+        location: NativeCliSchemaArtifactLocation::CaseWorkBuild,
+        file_name: "probe.lst",
+        expected: "opForge Assembler v0\n0000 AA".to_string(),
+        normalization: NativeCliSchemaTextNormalization::Listing,
+    };
+    native_cli_schema_compare_artifact(&expected, b"opForge Assembler v99\n0000 AA")
+        .expect("banner-only listing difference should normalize");
+    let error = native_cli_schema_compare_artifact(&expected, b"opForge Assembler v99\n0000 BB")
+        .expect_err("listing payload difference must fail");
+    assert!(error.contains("text differs"));
+}
+
+#[test]
+fn native_reference_schema_live_rust_cli_listing_oracle_uses_exact_example_source() {
+    // Proof level A. This test proves the Rust CLI listing oracle consumes the
+    // exact checked-in example source and emits a non-empty listing. This test
+    // does not prove Amiga-native listing parity.
+    let repo_root = workspace_root();
+    let schema_case = native_cli_schema_listing_case_with_live_rust_oracle(&repo_root);
+    let exact_source =
+        fs::read_to_string(repo_root.join("examples/mos6502/6502_simple.asm")).unwrap();
+    assert_eq!(schema_case.source.as_deref(), Some(exact_source.as_str()));
+    let NativeCliSchemaExpectedArtifact::Text { expected, .. } = schema_case.artifact else {
+        panic!("listing schema must use a text artifact");
+    };
+    assert!(!expected.is_empty());
 }
 
 #[test]
@@ -33887,6 +34021,47 @@ fn external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli
                 schema_cases.len(),
                 "expected one native opForge CLI run per schema case inside a single batch"
             );
+            for (schema_case, run) in schema_cases.iter().zip(runs.iter()) {
+                assert_native_cli_schema_case(schema_case, run);
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_schema_listing_parity_matches_live_rust_cli() {
+    // Proof level D. This test proves a real Amiga-native CLI listing matches
+    // the live Rust CLI listing under the reviewed normalization. This test
+    // does not prove map or diagnostic parity.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let repo_root = workspace_root();
+    let schema_cases = [native_cli_schema_listing_case_with_live_rust_oracle(
+        &repo_root,
+    )];
+    let parity_cases = schema_cases
+        .iter()
+        .map(
+            |schema_case| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                cpu_override: "68020",
+                extra_assembly_defines: schema_case.defines.as_slice(),
+                source_override: schema_case.source.as_deref().map(str::as_bytes),
+                command_template: schema_case.command_template,
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+                extra_guest_files: &[],
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &repo_root,
+        parity_cases.as_slice(),
+    )
+    .expect("schema listing FS-UAE shard should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), schema_cases.len());
             for (schema_case, run) in schema_cases.iter().zip(runs.iter()) {
                 assert_native_cli_schema_case(schema_case, run);
             }

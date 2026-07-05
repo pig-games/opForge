@@ -23,12 +23,13 @@
 
 ; Record the current logical source line in the session tables.
 opforgeNativeCliRecordSourceLine	.block
-	movem.l d0-d1, -(sp)
+	movem.l d0-d1/a0, -(sp)
 	move.l state.NativeCliSourceLineNum, d0
 	moveq #0, d1
 	move.w state.NativeCliSourceLineLen, d1
+	lea state.NativeCliSourceLine, a0
 	jsr engine.opasmEngineRecordSourceLineV1
-	movem.l (sp)+, d0-d1
+	movem.l (sp)+, d0-d1/a0
 	rts
 	.bend  ; opforgeNativeCliRecordSourceLine
 

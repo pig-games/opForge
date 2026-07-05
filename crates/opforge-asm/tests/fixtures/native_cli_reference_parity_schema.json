@@ -2,19 +2,19 @@
   {
     "asm_path": "examples/mos6502/6502_native_cli_smoke.asm",
     "cpu_id": "m6502",
-    "source_mode": "stripped-bin-from-source",
+    "source_mode": "source-bin-from-example",
     "command_template": "{input} --bin {bin} --cpu m6502"
   },
   {
     "asm_path": "examples/mos6502/6502_simple.asm",
     "cpu_id": "m6502",
-    "source_mode": "stripped-bin-from-source",
+    "source_mode": "source-bin-from-example",
     "command_template": "{input} --bin {bin} --cpu m6502"
   },
   {
     "asm_path": "examples/mos6502/6502_allmodes.asm",
     "cpu_id": "m6502",
-    "source_mode": "stripped-bin-from-source",
+    "source_mode": "source-bin-from-example",
     "command_template": "{input} --bin {bin} --cpu m6502"
   },
   {
@@ -26,19 +26,19 @@
   {
     "asm_path": "examples/mos6502/mos6502_modes.asm",
     "cpu_id": "m6502",
-    "source_mode": "stripped-bin-from-source",
+    "source_mode": "source-bin-from-example",
     "command_template": "{input} --bin {bin} --cpu m6502"
   },
   {
     "asm_path": "examples/mos6502/65c02_simple.asm",
     "cpu_id": "65c02",
-    "source_mode": "stripped-bin-from-source",
+    "source_mode": "source-bin-from-example",
     "command_template": "{input} --bin {bin} --cpu 65c02"
   },
   {
     "asm_path": "examples/mos6502/65c02_allmodes.asm",
     "cpu_id": "65c02",
-    "source_mode": "stripped-bin-from-source",
+    "source_mode": "source-bin-from-example",
     "command_template": "{input} --bin {bin} --cpu 65c02"
   }
 ]

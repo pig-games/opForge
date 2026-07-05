@@ -11447,7 +11447,7 @@ fn native_reference_manifest_seed_matches_current_mos_item6_slice() {
     // execution or semantic parity for those cases.
     let manifest_paths = native_reference_cases()
         .iter()
-        .filter(|case| case.source_mode == NativeReferenceSourceMode::StrippedBinFromSource)
+        .filter(|case| case.source_mode == NativeReferenceSourceMode::SourceBinFromExample)
         .map(|case| (case.asm_path.as_str(), case.cpu_id.as_str()))
         .collect::<Vec<_>>();
     let item6_paths = item6_mos_fixture_allowlist()
@@ -11481,12 +11481,12 @@ fn native_reference_manifest_carries_current_focused_non_seed_cases() {
         (
             "examples/mos6502/65c02_simple.asm",
             "65c02",
-            NativeReferenceSourceMode::StrippedBinFromSource,
+            NativeReferenceSourceMode::SourceBinFromExample,
         ),
         (
             "examples/mos6502/65c02_allmodes.asm",
             "65c02",
-            NativeReferenceSourceMode::StrippedBinFromSource,
+            NativeReferenceSourceMode::SourceBinFromExample,
         ),
     ];
 
@@ -33614,115 +33614,115 @@ struct NativeCliSchemaCase {
     artifact: NativeCliSchemaExpectedArtifact,
 }
 
-fn native_cli_schema_decode_intel_hex_reference(path: &Path) -> (u32, Vec<u8>) {
-    let text = fs::read_to_string(path)
-        .unwrap_or_else(|err| panic!("read schema reference payload {}: {err}", path.display()));
-    let mut base_address = 0u32;
-    let mut bytes_by_address = std::collections::BTreeMap::<u32, u8>::new();
-
-    for (line_index, raw_line) in text.lines().enumerate() {
-        let line = raw_line.trim();
-        if line.is_empty() {
-            continue;
+fn native_cli_schema_live_rust_binary_oracle(
+    case: &crate::native_reference_parity::NativeReferenceCase,
+    source: &str,
+) -> (NativeCliSchemaArtifactLocation, &'static str, Vec<u8>) {
+    let case_dir = create_temp_dir("native-reference-live-rust-oracle");
+    let input_path = case_dir.join("input.asm");
+    let rust_bin_path = case_dir.join("rust-schema.bin");
+    let mut prg_guard = None;
+    let (oracle_source, output_path, location, file_name, cli) = match case.source_mode {
+        NativeReferenceSourceMode::SourceBinFromExample => {
+            let cli = Cli::parse_from([
+                "opForge",
+                input_path.to_string_lossy().as_ref(),
+                "--bin",
+                rust_bin_path.to_string_lossy().as_ref(),
+                "--cpu",
+                case.cpu_id.as_str(),
+            ]);
+            (
+                source.to_string(),
+                rust_bin_path,
+                NativeCliSchemaArtifactLocation::CaseWork,
+                crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE,
+                cli,
+            )
         }
-        assert!(
-            line.starts_with(':'),
-            "schema reference payload {} line {} is not Intel HEX: {}",
-            path.display(),
-            line_index + 1,
-            line
-        );
-        assert!(
-            line.len() >= 11 && line.len() % 2 == 1,
-            "schema reference payload {} line {} has invalid HEX width: {}",
-            path.display(),
-            line_index + 1,
-            line
-        );
-
-        let parse_byte = |start: usize| -> u8 {
-            u8::from_str_radix(&line[start..start + 2], 16).unwrap_or_else(|err| {
-                panic!(
-                    "parse Intel HEX byte in {} line {} at {start}: {err}",
-                    path.display(),
-                    line_index + 1
-                )
-            })
-        };
-
-        let byte_count = parse_byte(1) as usize;
-        let address = u16::from_str_radix(&line[3..7], 16).unwrap_or_else(|err| {
+        NativeReferenceSourceMode::SourceCpuPrgFromExample => {
+            prg_guard = Some(
+                native_cli_schema_rust_prg_lock()
+                    .lock()
+                    .expect("Rust schema PRG oracle lock poisoned"),
+            );
+            let output_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("build")
+                .join("6502-first-run.prg");
+            assert!(
+                !output_path.exists(),
+                "Rust schema oracle output must not pre-exist: {}",
+                output_path.display()
+            );
+            let cli = Cli::parse_from(["opForge", input_path.to_string_lossy().as_ref()]);
+            (
+                source.to_string(),
+                output_path,
+                NativeCliSchemaArtifactLocation::CaseWorkBuild,
+                "6502-first-run.prg",
+                cli,
+            )
+        }
+    };
+    fs::write(&input_path, oracle_source)
+        .unwrap_or_else(|err| panic!("write Rust schema oracle {}: {err}", input_path.display()));
+    run_with_cli_with_context(&cli)
+        .unwrap_or_else(|err| panic!("run Rust CLI oracle for {}: {err:?}", case.asm_path));
+    let expected = fs::read(&output_path).unwrap_or_else(|err| {
+        panic!(
+            "read Rust CLI oracle output {} for {}: {err}",
+            output_path.display(),
+            case.asm_path
+        )
+    });
+    if prg_guard.is_some() {
+        fs::remove_file(&output_path).unwrap_or_else(|err| {
             panic!(
-                "parse Intel HEX address in {} line {}: {err}",
-                path.display(),
-                line_index + 1
+                "remove Rust CLI oracle output {}: {err}",
+                output_path.display()
             )
         });
-        let record_type = parse_byte(7);
-        let data_start = 9;
-        let data_end = data_start + byte_count * 2;
-        assert!(
-            line.len() == data_end + 2,
-            "schema reference payload {} line {} has mismatched byte count: {}",
-            path.display(),
-            line_index + 1,
-            line
-        );
-
-        let data = (0..byte_count)
-            .map(|index| parse_byte(data_start + index * 2))
-            .collect::<Vec<_>>();
-
-        match record_type {
-            0x00 => {
-                let absolute_start = base_address + u32::from(address);
-                for (offset, byte) in data.iter().copied().enumerate() {
-                    bytes_by_address.insert(absolute_start + offset as u32, byte);
-                }
-            }
-            0x01 => break,
-            0x02 => {
-                assert!(
-                    data.len() == 2,
-                    "schema reference payload {} line {} has invalid extended segment record",
-                    path.display(),
-                    line_index + 1
-                );
-                base_address = u32::from(u16::from_be_bytes([data[0], data[1]])) << 4;
-            }
-            0x04 => {
-                assert!(
-                    data.len() == 2,
-                    "schema reference payload {} line {} has invalid extended linear record",
-                    path.display(),
-                    line_index + 1
-                );
-                base_address = u32::from(u16::from_be_bytes([data[0], data[1]])) << 16;
-            }
-            _ => {}
-        }
+        let output_dir = output_path.parent().expect("Rust PRG output parent");
+        fs::remove_dir(output_dir).unwrap_or_else(|err| {
+            panic!(
+                "remove Rust CLI oracle output directory {}: {err}",
+                output_dir.display()
+            )
+        });
     }
+    (location, file_name, expected)
+}
 
-    let Some((&origin, _)) = bytes_by_address.first_key_value() else {
-        panic!(
-            "schema reference payload {} did not contain any data records",
-            path.display()
-        );
-    };
-    let mut expected = Vec::with_capacity(bytes_by_address.len());
-    let mut expected_address = origin;
-    for (address, byte) in bytes_by_address {
-        assert_eq!(
-            address,
-            expected_address,
-            "schema reference payload {} is not contiguous at ${expected_address:04X}",
-            path.display()
-        );
-        expected.push(byte);
-        expected_address += 1;
-    }
+fn native_cli_schema_rust_prg_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
 
-    (origin, expected)
+fn native_cli_schema_cases_with_live_rust_oracle(repo_root: &Path) -> Vec<NativeCliSchemaCase> {
+    native_reference_cases()
+        .iter()
+        .map(|case| {
+            let asm_path = repo_root.join(&case.asm_path);
+            let source = fs::read_to_string(&asm_path).unwrap_or_else(|err| {
+                panic!("read native reference source {}: {err}", asm_path.display())
+            });
+            let (location, file_name, expected) =
+                native_cli_schema_live_rust_binary_oracle(case, &source);
+            NativeCliSchemaCase {
+                name: case.asm_path.as_str(),
+                defines: vec![],
+                source: Some(source),
+                command_template: Some(case.command_template.as_str()),
+                expected_success: true,
+                stdout_contains: vec![],
+                artifact: NativeCliSchemaExpectedArtifact::Binary {
+                    location,
+                    file_name,
+                    expected,
+                },
+            }
+        })
+        .collect()
 }
 
 fn native_cli_schema_artifact_path(
@@ -33811,79 +33811,52 @@ fn assert_native_cli_run_omits_debug_progress(
 }
 
 #[test]
-fn external_fs_uae_opforge_native_cli_schema_driven_parity_shard_matches_rust() {
+fn native_reference_schema_live_rust_cli_oracle_covers_binary_manifest_cases() {
+    // Proof level A. This test proves every governed binary/PRG schema case can
+    // produce a non-empty oracle artifact through the Rust CLI in the same
+    // test run. This test does not prove native execution or parity.
+    let schema_cases = native_cli_schema_cases_with_live_rust_oracle(&workspace_root());
+    assert_eq!(schema_cases.len(), native_reference_cases().len());
+    for case in schema_cases {
+        let NativeCliSchemaExpectedArtifact::Binary { expected, .. } = case.artifact;
+        assert!(
+            !expected.is_empty(),
+            "Rust CLI oracle should emit bytes for {}",
+            case.name
+        );
+    }
+}
+
+#[test]
+fn native_reference_schema_contract_preserves_native_cli_command_shapes() {
+    // Proof level B. This test proves the Rust-side schema contract retains the
+    // actual native CLI command template and a live Rust oracle for every
+    // governed case. This test does not prove Amiga-native argument parsing.
+    let schema_cases = native_cli_schema_cases_with_live_rust_oracle(&workspace_root());
+    for (case, schema_case) in native_reference_cases().iter().zip(schema_cases) {
+        assert_eq!(schema_case.name, case.asm_path);
+        assert_eq!(
+            schema_case.command_template,
+            Some(case.command_template.as_str())
+        );
+        assert!(matches!(
+            schema_case.artifact,
+            NativeCliSchemaExpectedArtifact::Binary { .. }
+        ));
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli() {
+    // Proof level D. This test proves real Amiga-native CLI binary/PRG
+    // artifacts match artifacts generated by the Rust CLI during this test.
+    // This test does not prove text, map, or deterministic diagnostic parity.
     let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");
 
     let repo_root = workspace_root();
-    let examples_dir = repo_root.join("examples");
-    let reference_dir = examples_dir.join("reference");
-    let schema_cases = native_reference_cases()
-        .iter()
-        .map(|case| {
-            let asm_path = repo_root.join(&case.asm_path);
-            let reference_stem = example_reference_stem(&examples_dir, &asm_path);
-            let reference_payload_path = reference_dir.join(&reference_stem).with_extension("hex");
-            assert!(
-                reference_payload_path.is_file(),
-                "schema-driven native CLI manifest case {} must retain its checked-in reference payload {}",
-                case.asm_path,
-                reference_payload_path.display()
-            );
-
-            match case.source_mode {
-                NativeReferenceSourceMode::StrippedBinFromSource => {
-                    let source = fs::read_to_string(&asm_path).unwrap_or_else(|err| {
-                        panic!("read native reference source {}: {err}", asm_path.display())
-                    });
-                    let (_origin, expected) =
-                        native_cli_schema_decode_intel_hex_reference(&reference_payload_path);
-                    NativeCliSchemaCase {
-                        name: case.asm_path.as_str(),
-                        defines: vec![],
-                        source: Some(source),
-                        command_template: Some(case.command_template.as_str()),
-                        expected_success: true,
-                        stdout_contains: vec![],
-                        artifact: NativeCliSchemaExpectedArtifact::Binary {
-                            location: NativeCliSchemaArtifactLocation::CaseWork,
-                            file_name:
-                                crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE,
-                            expected,
-                        },
-                    }
-                }
-                NativeReferenceSourceMode::SourceCpuPrgFromExample => {
-                    let source = fs::read_to_string(&asm_path).unwrap_or_else(|err| {
-                        panic!("read native reference source {}: {err}", asm_path.display())
-                    });
-                    let (origin, expected_image) =
-                        native_cli_schema_decode_intel_hex_reference(&reference_payload_path);
-                    assert!(
-                        origin <= u16::MAX as u32,
-                        "schema reference payload {} origin ${origin:08X} does not fit PRG load address",
-                        reference_payload_path.display()
-                    );
-                    let mut expected_prg = (origin as u16).to_le_bytes().to_vec();
-                    expected_prg.extend_from_slice(&expected_image);
-                    NativeCliSchemaCase {
-                        name: case.asm_path.as_str(),
-                        defines: vec![],
-                        source: Some(source),
-                        command_template: Some(case.command_template.as_str()),
-                        expected_success: true,
-                        stdout_contains: vec![],
-                        artifact: NativeCliSchemaExpectedArtifact::Binary {
-                            location: NativeCliSchemaArtifactLocation::CaseWorkBuild,
-                            file_name: "6502-first-run.prg",
-                            expected: expected_prg,
-                        },
-                    }
-                }
-            }
-        })
-        .collect::<Vec<_>>();
+    let schema_cases = native_cli_schema_cases_with_live_rust_oracle(&repo_root);
 
     let parity_cases = schema_cases
         .iter()

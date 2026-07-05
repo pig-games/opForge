@@ -8,17 +8,17 @@ pub(crate) const NATIVE_REFERENCE_FIXTURE_PATH: &str =
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NativeReferenceSourceMode {
-    StrippedBinFromSource,
+    SourceBinFromExample,
     SourceCpuPrgFromExample,
 }
 
 impl NativeReferenceSourceMode {
     fn from_fixture_str(value: &str) -> Result<Self, String> {
         match value {
-            "stripped-bin-from-source" => Ok(Self::StrippedBinFromSource),
+            "source-bin-from-example" => Ok(Self::SourceBinFromExample),
             "source-cpu-prg-from-example" => Ok(Self::SourceCpuPrgFromExample),
             other => Err(format!(
-                "unsupported native reference source_mode '{other}'; expected 'stripped-bin-from-source' or 'source-cpu-prg-from-example'"
+                "unsupported native reference source_mode '{other}'; expected 'source-bin-from-example' or 'source-cpu-prg-from-example'"
             )),
         }
     }
@@ -338,13 +338,13 @@ mod tests {
             {
                 "asm_path": "examples/mos6502/duplicate.asm",
                 "cpu_id": "m6502",
-                "source_mode": "stripped-bin-from-source",
+                "source_mode": "source-bin-from-example",
                 "command_template": "{input} --bin {bin} --cpu m6502"
             },
             {
                 "asm_path": "examples/mos6502/duplicate.asm",
                 "cpu_id": "m6502",
-                "source_mode": "stripped-bin-from-source",
+                "source_mode": "source-bin-from-example",
                 "command_template": "{input} --bin {bin} --cpu m6502"
             }
         ]"#;

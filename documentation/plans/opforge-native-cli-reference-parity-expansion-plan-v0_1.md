@@ -149,7 +149,10 @@ finally mandatory gating for that active scope only.
   and Items 4.1 through 4.8 provide the ordered closure path.
 - Item 4.1 is complete: manifest evidence is classified at Level A and its
   duplicate, unknown-scope, prefix-precedence, and broad-prefix limitations are
-  protected. Item 4.2 is the next active item.
+  protected.
+- Item 4.2 is complete: the Rust CLI receives exact example source bytes and
+  generates the live binary/PRG oracle used by Level D parity. Item 4.3 is the
+  next active item.
 - The remaining opForge Core expansion has been decomposed into Items 5 through
   9 so each coverage commit owns one coherent corpus surface. Item 10 promotes
   only the framework-closed active scope into the mandatory native completion
@@ -201,7 +204,7 @@ landed” is not equivalent to “framework-closed.”
 |---|---|---|---|---|
 | RQ-001 | Item 1 has an explicit applicability manifest and deterministic completeness guard. | Level A `native_reference_manifest_*` and module tests exercise uniqueness, seed retention, and corpus accounting with explicit proof limitations. | Closed by Item 4.1. | No further retrospective work. |
 | RQ-002 | Item 1 exclusions are concrete and every current example is accounted for. | Level A tests cover unknown new scope, duplicate paths, overlapping-prefix precedence, and the fact that broad-prefix accounting is not semantic applicability proof. | Closed by Item 4.1. | Semantic applicability remains a reviewed planning decision, not an inferred test result. |
-| RQ-003 | Item 2 compares native outputs with Rust as the authority. | The schema Level D test decodes checked-in `.hex` references into expected bytes; it does not invoke the Rust CLI oracle for each schema case. | Unproven as stated. | Item 4.2 supplies a live Rust CLI oracle and retains references only as a separate corpus contract. |
+| RQ-003 | Item 2 compares native outputs with Rust as the authority. | Level A/B tests build every schema case from exact example source bytes, and the named Level D test compares native CLI binary/PRG artifacts with artifacts emitted by the live Rust CLI in the same run. | Closed for successful binary/PRG cases by Item 4.2. | Text, map, and deterministic failures remain RQ-004. |
 | RQ-004 | Item 2’s generic runner covers bytes, text artifacts, maps, and deterministic errors. | `NativeCliSchemaExpectedArtifact` currently has only a binary variant and the manifest schema contains successful binary/PRG cases. | Unproven beyond successful binary payloads. | Items 4.3 and 4.4 add text/map and deterministic-error schema contracts separately. |
 | RQ-005 | Item 3 covers the applicable `6502`/`65c02` corpus through the real CLI. | Seven manifest cases execute real CLI commands under FS-UAE when configured; other families and mixed-CPU input are explicitly excluded. | Partially proven at Level D. | Item 4.2 makes Rust/native comparison live; Item 4.7 records the exact applicable case set and justified exclusions. |
 | RQ-006 | Item 3’s native changes preserve expression operand fallback semantics. | Commit `2cd2378a` changed `readOperandValueForStatement` fallback behavior without current-framework slice metadata, boundary contract, or a focused fast proof. | Not framework-closed. | Item 4.5 creates one metadata-backed invariant with Level B/C proof and named Level D confirmation. |
@@ -321,11 +324,13 @@ landed” is not equivalent to “framework-closed.”
     - current corpus accounting remains green
     - semantic applicability is not inferred merely from a prefix match
 
-- [ ] Item 4.2: replace reference-derived schema expectations with a live Rust CLI binary oracle
+- [x] Item 4.2: replace reference-derived schema expectations with a live Rust CLI binary oracle
   - Source requirement or finding IDs: RQ-003 and the binary portion of RQ-005; fully closes live-oracle parity for successful binary/PRG schema cases
   - Expected files:
+    - `crates/opforge-asm/src/native_reference_parity.rs`
     - `crates/opforge-asm/src/tests.rs`
     - `crates/opforge-asm/src/fs_uae_smoke.rs` only if the existing result surface cannot carry the required CLI artifacts
+    - `crates/opforge-asm/tests/fixtures/native_cli_reference_parity_schema.json`
   - Full quality gates:
     - focused Level A Rust-oracle test
     - focused Level B schema contract test
@@ -338,6 +343,7 @@ landed” is not equivalent to “framework-closed.”
   - Definition of done:
     - tests declare Levels A, B, and D and their limitations
     - no checked-in `.hex` decoding is used as the native-vs-Rust oracle
+    - exact files under `examples/**` and `examples/reference/**` remain unchanged and are passed unmodified to the Rust CLI
     - FS-UAE still exercises actual native CLI argument strings and CLI-written artifacts
 
 - [ ] Item 4.3: add schema contracts for text and map artifact parity

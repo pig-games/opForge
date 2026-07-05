@@ -1,0 +1,29 @@
+[slice]
+name = "native expression metadata stored-text fallback"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/engine.rs::Assembler::pass2_line"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::readOperandValueForStatement"
+]
+invariant = "Absent, unreadable, or unusable expression metadata falls back to the complete stored operand text instead of rejecting an otherwise resolvable statement."
+assertion_decision = "No runtime assertion: missing or malformed optional metadata is the recovery condition itself, so asserting would destroy the required fallback behavior."
+
+[[tests]]
+name = "native_expression_metadata_fallback_contract_covers_missing_and_malformed_boundaries"
+proof_level = "C"
+proves = "A host-side boundary model covers absent metadata, failed metadata load, failed slice extraction, and valid slice selection."
+does_not_prove = "The native assembly branches or real 68020 execution."
+
+[[tests]]
+name = "native_expression_metadata_fallback_source_routes_failures_to_stored_text"
+proof_level = "B"
+proves = "The native source routes both metadata-load and expression-slice failures to the stored-text fallback."
+does_not_prove = "Runtime branch execution."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_expression_metadata_fallback_matches_live_rust_cli"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI on exact source and its output bytes match the live Rust CLI."
+does_not_prove = "Synthetic corruption of native session metadata."

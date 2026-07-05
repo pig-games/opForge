@@ -34081,6 +34081,74 @@ fn native_reference_schema_live_rust_cli_diagnostic_oracle_classifies_unknown_mn
     assert!(schema_case.artifact.is_none());
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum NativeExpressionTextPath {
+    ExpressionSlice,
+    StoredText,
+}
+
+fn native_expression_text_path(
+    has_metadata: bool,
+    metadata_loads: bool,
+    expression_slice_loads: bool,
+) -> NativeExpressionTextPath {
+    if has_metadata && metadata_loads && expression_slice_loads {
+        NativeExpressionTextPath::ExpressionSlice
+    } else {
+        NativeExpressionTextPath::StoredText
+    }
+}
+
+#[test]
+fn native_expression_metadata_fallback_contract_covers_missing_and_malformed_boundaries() {
+    // Proof level C. This test proves the boundary decision for absent,
+    // unreadable, unusable, and valid expression metadata. This test does not
+    // prove the native branch implementation or real 68020 execution.
+    assert_eq!(
+        native_expression_text_path(false, false, false),
+        NativeExpressionTextPath::StoredText
+    );
+    assert_eq!(
+        native_expression_text_path(true, false, false),
+        NativeExpressionTextPath::StoredText
+    );
+    assert_eq!(
+        native_expression_text_path(true, true, false),
+        NativeExpressionTextPath::StoredText
+    );
+    assert_eq!(
+        native_expression_text_path(true, true, true),
+        NativeExpressionTextPath::ExpressionSlice
+    );
+}
+
+#[test]
+fn native_expression_metadata_fallback_source_routes_failures_to_stored_text() {
+    // Proof level B. This test proves the native source routes failed metadata
+    // loads and failed slice extraction to storedText. This test does not prove
+    // either branch executes on real hardware.
+    let source = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm assembly driver");
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "readOperandValueForStatement\t.block",
+            "jsr eng.statementHasExprMetadataV1",
+            "beq.s storedText",
+            "jsr eng.opasmEngineGetStatementExprMetadataV1",
+            "beq.s exprSliceStoredTextFallback",
+            "jsr eng.opasmEngineGetStatementExprTextSliceV1",
+            "beq.w storedText",
+            "exprSliceStoredTextFallback",
+            "bra.w storedText",
+            "storedText",
+            "jsr eng.opasmEngineGetStatementTextMetadataV1",
+        ]
+    ));
+}
+
 #[test]
 fn external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli() {
     // Proof level D. This test proves real Amiga-native CLI binary/PRG
@@ -34206,6 +34274,65 @@ fn external_fs_uae_opforge_native_cli_schema_diagnostic_parity_matches_live_rust
             for (schema_case, run) in schema_cases.iter().zip(runs.iter()) {
                 assert_native_cli_schema_case(schema_case, run);
             }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_expression_metadata_fallback_matches_live_rust_cli() {
+    // Proof level D. This test proves the real native CLI resolves an exact,
+    // unmodified operand-expression source to the same bytes as the live Rust
+    // CLI. This test does not inject malformed native session metadata.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        .org $1000\nstart   lda #$40 + 2\n        sta $20\n";
+    let case_dir = create_temp_dir("native-expression-metadata-fallback");
+    let input_path = case_dir.join("input.asm");
+    let rust_bin_path = case_dir.join("rust.bin");
+    fs::write(&input_path, source).expect("write expression fallback source");
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--bin",
+        rust_bin_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+    ]);
+    run_with_cli_with_context(&cli).expect("run live Rust expression fallback oracle");
+    let rust_bin = fs::read(&rust_bin_path).expect("read live Rust expression fallback bytes");
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m6502"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("expression metadata fallback FS-UAE shard should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native expression fallback run failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            let native_bin = fs::read(
+                run.artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read native expression fallback bytes");
+            assert_eq!(native_bin, rust_bin);
         }
     }
 }

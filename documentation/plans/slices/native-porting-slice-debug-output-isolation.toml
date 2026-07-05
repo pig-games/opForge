@@ -1,0 +1,30 @@
+[slice]
+name = "native CLI debug progress output isolation"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-cli-core/src/cli.rs::Cli::native_debug"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/run.asm::opforgeNativeCliRun",
+  "native/motorola68000/amigaos/opforge-cli/source_reader.asm::opforgeNativeCliTokenizeFrontend"
+]
+invariant = "Implementation progress records are absent from normal successful output and enabled only by --native-debug without changing assembly bytes or success control flow."
+assertion_decision = "No new assertion: the existing structured header event and checked debug branches already protect the stable instrumentation boundary; this slice audits and proves output isolation."
+
+[[tests]]
+name = "native_debug_output_isolation_contract_models_enabled_and_disabled_markers"
+proof_level = "C"
+proves = "The host boundary model emits no progress markers when disabled and the full reviewed marker set when enabled."
+does_not_prove = "Native branch preservation or DOS output."
+
+[[tests]]
+name = "native_debug_output_sites_are_gated_before_progress_emission"
+proof_level = "B"
+proves = "Every historical progress site is dominated by a NativeCliDebugEnabled branch; ungated output sites are product help/version/error diagnostics."
+does_not_prove = "Real 68020 execution."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_debug_output_isolation_preserves_normal_output"
+proof_level = "D"
+proves = "FS-UAE executes normal and --native-debug modes, both produce identical bytes, and only debug mode contains progress markers."
+does_not_prove = "Failure-path diagnostic routing."

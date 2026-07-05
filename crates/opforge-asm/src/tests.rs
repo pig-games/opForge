@@ -34214,6 +34214,82 @@ fn native_source_cpu_bootstrap_preserves_tail_and_normalizes_before_routing() {
     ));
 }
 
+fn native_debug_output_isolation_contract(enabled: bool) -> Vec<&'static str> {
+    if enabled {
+        vec![
+            "OPFORGE-NATIVE 1",
+            "STAGE parser",
+            "STAGE session",
+            "STATUS output-ok",
+            "SESSION-CPU ",
+        ]
+    } else {
+        Vec::new()
+    }
+}
+
+#[test]
+fn native_debug_output_isolation_contract_models_enabled_and_disabled_markers() {
+    // Proof level C. This test proves the marker-set decision for normal and
+    // debug mode. This test does not prove native branches or DOS output.
+    assert!(native_debug_output_isolation_contract(false).is_empty());
+    assert_eq!(
+        native_debug_output_isolation_contract(true),
+        vec![
+            "OPFORGE-NATIVE 1",
+            "STAGE parser",
+            "STAGE session",
+            "STATUS output-ok",
+            "SESSION-CPU ",
+        ]
+    );
+}
+
+#[test]
+fn native_debug_output_sites_are_gated_before_progress_emission() {
+    // Proof level B. This test proves every historical progress emission site
+    // is reached only after a NativeCliDebugEnabled check. This test does not
+    // prove real branch preservation or output bytes.
+    let run = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/run.asm"),
+    )
+    .expect("read native CLI run source");
+    let reader = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/source_reader.asm"),
+    )
+    .expect("read native CLI source reader");
+    assert!(source_contains_in_order(
+        &run,
+        &[
+            "tst.w state.NativeCliDebugEnabled",
+            "beq.w tokenizerStage",
+            "StubHeaderText",
+            "tokenizerStage",
+            "tst.w state.NativeCliDebugEnabled",
+            "beq.s tokenizeFrontend",
+            "opforgeNativeCliEmitModulePathRecords",
+            "tst.w state.NativeCliDebugEnabled",
+            "beq.s runEngine",
+            "ParserStageText",
+            "SessionStageText",
+            "tst.w state.NativeCliDebugEnabled",
+            "beq.s checkImage",
+            "opforgeNativeCliEmitAssemblySessionSummary",
+            "tst.w state.NativeCliDebugEnabled",
+            "beq.s outputOkReturn",
+            "NativeOutputOkText",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &reader,
+        &[
+            "tst.w state.NativeCliDebugEnabled",
+            "beq.s packageUnavailable",
+            "TokenizerOkText",
+        ]
+    ));
+}
+
 #[test]
 fn external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli() {
     // Proof level D. This test proves real Amiga-native CLI binary/PRG
@@ -34484,6 +34560,73 @@ fn external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust
                 "trailing source CPU token must fail\nstdout:\n{}\nstderr:\n{}",
                 runs[1].stdout, runs[1].stderr
             );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_debug_output_isolation_preserves_normal_output() {
+    // Proof level D. This test proves normal and --native-debug modes execute
+    // the same real native assembly and produce identical bytes, while only
+    // debug mode emits progress markers. This test does not prove error output.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        .cpu 6502\n        .org $1000\nstart   lda #$42\n";
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some("{input} --bin {bin}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --native-debug"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("debug output isolation FS-UAE shard should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 2);
+            assert!(runs.iter().all(|run| run.success));
+            assert_native_cli_run_omits_debug_progress(&runs[0], "normal output isolation");
+            for marker in native_debug_output_isolation_contract(true) {
+                assert!(
+                    runs[1].stdout.contains(marker),
+                    "debug output missing marker '{marker}'\nstdout:\n{}\nstderr:\n{}",
+                    runs[1].stdout,
+                    runs[1].stderr
+                );
+            }
+            let normal_bin = fs::read(
+                runs[0]
+                    .artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read normal-mode native bytes");
+            let debug_bin = fs::read(
+                runs[1]
+                    .artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read debug-mode native bytes");
+            assert_eq!(normal_bin, debug_bin);
         }
     }
 }

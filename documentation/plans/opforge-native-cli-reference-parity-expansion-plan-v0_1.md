@@ -210,8 +210,8 @@ landed” is not equivalent to “framework-closed.”
 | RQ-006 | Item 3’s native changes preserve expression operand fallback semantics. | Item 4.5 records the boundary, locks both fallback branches, covers missing/malformed metadata decisions at Level C, and confirms exact-source output parity under FS-UAE. | Closed. | No runtime assertion is used because the recovery condition must remain non-fatal. |
 | RQ-007 | Item 3’s source `.cpu` and parser-routing changes match Rust. | Item 4.6 corrected bootstrap quote normalization/tail preservation, locks the native routing order, covers quote/trailing boundaries at Level C, and confirms quoted success plus malformed rejection in FS-UAE. | Closed. | The Rust authority and examples remain unchanged. |
 | RQ-008 | Item 3 suppresses implementation/debug progress during normal CLI use without changing control flow. | Item 4.7 inventories all progress sites, locks their debug-flag dominance, models enabled/disabled markers, and proves identical native bytes with isolated output under paired FS-UAE runs. | Closed. | Product help/version/error diagnostics remain intentionally ungated. |
-| RQ-009 | Items 2 and 3 ended in separate focused commits with plan-compliance evidence. | Both landed together in `2cd2378a`; no matching retained plan-compliance artifact was found. | Historical process non-compliance; immutable. | Record the exception permanently; all Items 4.1 onward remain one item and one commit. Do not rewrite history or treat the combined commit as precedent. |
-| RQ-010 | Required Level D evidence cannot silently skip. | FS-UAE helpers may return `Skipped` when environment configuration is absent. | Suitable for optional local tests, not mandatory completion evidence. | Item 4.8 adds a closure command/wrapper that requires configuration and fails closed for the named completion run. |
+| RQ-009 | Items 2 and 3 ended in separate focused commits with plan-compliance evidence. | Both landed together in `2cd2378a`; no matching retained plan-compliance artifact was found. Item 4.8 permanently records this immutable exception; Items 4.1–4.8 each end in their own reviewed commit. | Closed as a recorded historical exception. | Do not rewrite history or treat the combined commit as precedent. |
+| RQ-010 | Required Level D evidence cannot silently skip. | `scripts/workflow/run_native_reference_retrospective_completion.sh` requires explicit FS-UAE opt-in, binary, config, and arguments, then runs every retrospective Level D proof serially. Its focused test proves missing configuration fails. | Closed. | Optional individual tests may still skip; the completion wrapper may not. |
 
 ## Work Items
 
@@ -453,7 +453,7 @@ landed” is not equivalent to “framework-closed.”
     - release and debug paths preserve registers, SR/CCR, stack balance, and following branch behavior
     - free-form probes are removed or documented as product diagnostics rather than instrumentation
 
-- [ ] Item 4.8: record fail-closed Level D closure for Items 1–3
+- [x] Item 4.8: record fail-closed Level D closure for Items 1–3
   - Source requirement or finding IDs: RQ-005, RQ-009, and RQ-010; closes retrospective evidence only after Items 4.1–4.7 pass
   - Expected files:
     - this plan
@@ -468,6 +468,7 @@ landed” is not equivalent to “framework-closed.”
     - `plan-compliance-reviewer` returns `PASS` for retrospective closure evidence and gate wiring only
   - Commit outcome:
     - Items 1–3 are explicitly framework-closed, the historical combined commit exception is recorded, and missing FS-UAE configuration fails the required completion command
+    - required command: `scripts/workflow/run_native_reference_retrospective_completion.sh`
   - Definition of done:
     - every RQ finding is marked closed with named evidence
     - no historical commit is rewritten

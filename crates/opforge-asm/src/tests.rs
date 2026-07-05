@@ -33617,6 +33617,11 @@ enum NativeCliSchemaTextNormalization {
     Listing,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NativeCliSchemaDiagnosticKind {
+    UnknownMnemonic,
+}
+
 struct NativeCliSchemaCase {
     name: &'static str,
     defines: Vec<&'static str>,
@@ -33624,7 +33629,8 @@ struct NativeCliSchemaCase {
     command_template: Option<&'static str>,
     expected_success: bool,
     stdout_contains: Vec<&'static str>,
-    artifact: NativeCliSchemaExpectedArtifact,
+    expected_diagnostic: Option<NativeCliSchemaDiagnosticKind>,
+    artifact: Option<NativeCliSchemaExpectedArtifact>,
 }
 
 fn native_cli_schema_live_rust_binary_oracle(
@@ -33728,11 +33734,12 @@ fn native_cli_schema_cases_with_live_rust_oracle(repo_root: &Path) -> Vec<Native
                 command_template: Some(case.command_template.as_str()),
                 expected_success: true,
                 stdout_contains: vec![],
-                artifact: NativeCliSchemaExpectedArtifact::Binary {
+                expected_diagnostic: None,
+                artifact: Some(NativeCliSchemaExpectedArtifact::Binary {
                     location,
                     file_name,
                     expected,
-                },
+                }),
             }
         })
         .collect()
@@ -33770,12 +33777,51 @@ fn native_cli_schema_listing_case_with_live_rust_oracle(repo_root: &Path) -> Nat
         command_template: Some("{input} --list {list} --cpu m6502"),
         expected_success: true,
         stdout_contains: vec![],
-        artifact: NativeCliSchemaExpectedArtifact::Text {
+        expected_diagnostic: None,
+        artifact: Some(NativeCliSchemaExpectedArtifact::Text {
             location: NativeCliSchemaArtifactLocation::CaseWorkBuild,
             file_name: crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_LST_OUTPUT_FILE,
             expected,
             normalization: NativeCliSchemaTextNormalization::Listing,
-        },
+        }),
+    }
+}
+
+fn native_cli_schema_unknown_mnemonic_case_with_live_rust_oracle() -> NativeCliSchemaCase {
+    let source = "start   wat #$42\n".to_string();
+    let case_dir = create_temp_dir("native-reference-live-rust-diagnostic-oracle");
+    let input_path = case_dir.join("input.asm");
+    let bin_path = case_dir.join("rust-schema.bin");
+    fs::write(&input_path, &source).expect("write diagnostic schema source");
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--bin",
+        bin_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+    ]);
+    let error = run_with_cli_with_context(&cli).expect_err("unknown mnemonic must fail");
+    let expected_diagnostic = match error {
+        CliRunError::Assembler { error, .. }
+            if error
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.error.message().contains("No instruction found")) =>
+        {
+            NativeCliSchemaDiagnosticKind::UnknownMnemonic
+        }
+        other => panic!("unexpected Rust diagnostic oracle result: {other:?}"),
+    };
+    NativeCliSchemaCase {
+        name: "schema#unknown-mnemonic",
+        defines: vec![],
+        source: Some(source),
+        command_template: Some("{input} --bin {bin} --cpu m6502"),
+        expected_success: false,
+        stdout_contains: vec![],
+        expected_diagnostic: Some(expected_diagnostic),
+        artifact: None,
     }
 }
 
@@ -33812,7 +33858,21 @@ fn assert_native_cli_schema_case(
         );
     }
 
-    let (location, file_name) = match &schema_case.artifact {
+    if let Some(expected) = schema_case.expected_diagnostic {
+        assert_eq!(
+            native_cli_schema_normalize_native_diagnostic(&run.stdout),
+            Some(expected),
+            "schema-driven native CLI diagnostic mismatch for {}\nstdout:\n{}\nstderr:\n{}",
+            schema_case.name,
+            run.stdout,
+            run.stderr,
+        );
+    }
+
+    let Some(artifact) = &schema_case.artifact else {
+        return;
+    };
+    let (location, file_name) = match artifact {
         NativeCliSchemaExpectedArtifact::Binary {
             location,
             file_name,
@@ -33832,12 +33892,22 @@ fn assert_native_cli_schema_case(
             schema_case.name
         )
     });
-    native_cli_schema_compare_artifact(&schema_case.artifact, &actual).unwrap_or_else(|message| {
+    native_cli_schema_compare_artifact(artifact, &actual).unwrap_or_else(|message| {
         panic!(
             "schema-driven native CLI artifact mismatch for {}: {message}\nstdout:\n{}\nstderr:\n{}",
             schema_case.name, run.stdout, run.stderr,
         )
     });
+}
+
+fn native_cli_schema_normalize_native_diagnostic(
+    output: &str,
+) -> Option<NativeCliSchemaDiagnosticKind> {
+    if output.contains("unknown native mnemonic") {
+        Some(NativeCliSchemaDiagnosticKind::UnknownMnemonic)
+    } else {
+        None
+    }
 }
 
 fn native_cli_schema_compare_artifact(
@@ -33916,7 +33986,7 @@ fn native_reference_schema_live_rust_cli_oracle_covers_binary_manifest_cases() {
     let schema_cases = native_cli_schema_cases_with_live_rust_oracle(&workspace_root());
     assert_eq!(schema_cases.len(), native_reference_cases().len());
     for case in schema_cases {
-        let NativeCliSchemaExpectedArtifact::Binary { expected, .. } = case.artifact else {
+        let Some(NativeCliSchemaExpectedArtifact::Binary { expected, .. }) = case.artifact else {
             panic!("binary manifest case unexpectedly used a text artifact");
         };
         assert!(
@@ -33941,7 +34011,7 @@ fn native_reference_schema_contract_preserves_native_cli_command_shapes() {
         );
         assert!(matches!(
             schema_case.artifact,
-            NativeCliSchemaExpectedArtifact::Binary { .. }
+            Some(NativeCliSchemaExpectedArtifact::Binary { .. })
         ));
     }
 }
@@ -33974,10 +34044,41 @@ fn native_reference_schema_live_rust_cli_listing_oracle_uses_exact_example_sourc
     let exact_source =
         fs::read_to_string(repo_root.join("examples/mos6502/6502_simple.asm")).unwrap();
     assert_eq!(schema_case.source.as_deref(), Some(exact_source.as_str()));
-    let NativeCliSchemaExpectedArtifact::Text { expected, .. } = schema_case.artifact else {
+    let Some(NativeCliSchemaExpectedArtifact::Text { expected, .. }) = schema_case.artifact else {
         panic!("listing schema must use a text artifact");
     };
     assert!(!expected.is_empty());
+}
+
+#[test]
+fn native_reference_schema_diagnostic_comparator_accepts_match_and_rejects_mismatch() {
+    // Proof level B. This test proves deterministic native diagnostic text is
+    // classified into the reviewed schema class and unrelated text is rejected.
+    // This test does not prove Rust CLI or real Amiga-native behavior.
+    assert_eq!(
+        native_cli_schema_normalize_native_diagnostic(
+            "ERROR OPC-NCLI025: unknown native mnemonic\n"
+        ),
+        Some(NativeCliSchemaDiagnosticKind::UnknownMnemonic)
+    );
+    assert_eq!(
+        native_cli_schema_normalize_native_diagnostic("ERROR: unrelated failure\n"),
+        None
+    );
+}
+
+#[test]
+fn native_reference_schema_live_rust_cli_diagnostic_oracle_classifies_unknown_mnemonic() {
+    // Proof level A. This test proves the live Rust CLI rejects the schema
+    // source and exposes the stable unknown-mnemonic semantic class. This test
+    // does not prove Amiga-native status or diagnostic output.
+    let schema_case = native_cli_schema_unknown_mnemonic_case_with_live_rust_oracle();
+    assert!(!schema_case.expected_success);
+    assert_eq!(
+        schema_case.expected_diagnostic,
+        Some(NativeCliSchemaDiagnosticKind::UnknownMnemonic)
+    );
+    assert!(schema_case.artifact.is_none());
 }
 
 #[test]
@@ -34060,6 +34161,46 @@ fn external_fs_uae_opforge_native_cli_schema_listing_parity_matches_live_rust_cl
     .expect("schema listing FS-UAE shard should complete or skip cleanly")
     {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), schema_cases.len());
+            for (schema_case, run) in schema_cases.iter().zip(runs.iter()) {
+                assert_native_cli_schema_case(schema_case, run);
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_schema_diagnostic_parity_matches_live_rust_cli() {
+    // Proof level D. This test proves the real Amiga-native CLI returns failure
+    // and emits the same normalized unknown-mnemonic class as the live Rust CLI.
+    // This test does not prove other diagnostic classes or exact wording parity.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let schema_cases = [native_cli_schema_unknown_mnemonic_case_with_live_rust_oracle()];
+    let parity_cases = schema_cases
+        .iter()
+        .map(
+            |schema_case| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                cpu_override: "68020",
+                extra_assembly_defines: schema_case.defines.as_slice(),
+                source_override: schema_case.source.as_deref().map(str::as_bytes),
+                command_template: schema_case.command_template,
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+                extra_guest_files: &[],
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        parity_cases.as_slice(),
+    )
+    .expect("schema diagnostic FS-UAE shard should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
             assert_eq!(runs.len(), schema_cases.len());
             for (schema_case, run) in schema_cases.iter().zip(runs.iter()) {

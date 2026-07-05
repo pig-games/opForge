@@ -205,7 +205,7 @@ landed” is not equivalent to “framework-closed.”
 | RQ-001 | Item 1 has an explicit applicability manifest and deterministic completeness guard. | Level A `native_reference_manifest_*` and module tests exercise uniqueness, seed retention, and corpus accounting with explicit proof limitations. | Closed by Item 4.1. | No further retrospective work. |
 | RQ-002 | Item 1 exclusions are concrete and every current example is accounted for. | Level A tests cover unknown new scope, duplicate paths, overlapping-prefix precedence, and the fact that broad-prefix accounting is not semantic applicability proof. | Closed by Item 4.1. | Semantic applicability remains a reviewed planning decision, not an inferred test result. |
 | RQ-003 | Item 2 compares native outputs with Rust as the authority. | Level A/B tests build every schema case from exact example source bytes, and the named Level D test compares native CLI binary/PRG artifacts with artifacts emitted by the live Rust CLI in the same run. | Closed for successful binary/PRG cases by Item 4.2. | Text, map, and deterministic failures remain RQ-004. |
-| RQ-004 | Item 2’s generic runner covers bytes, text artifacts, maps, and deterministic errors. | Item 4.3 adds a live-Rust listing oracle, a strict normalized-text comparator, and Level D FS-UAE listing parity. The native CLI has no map-output mode, so map parity cannot be claimed without adding a new feature outside this retrospective plan. | Listing text closed; maps explicitly on hold; deterministic failures remain open. | Item 4.4 adds deterministic-error schema contracts. Map parity requires a separately authorized native map-output feature plan. |
+| RQ-004 | Item 2’s generic runner covers bytes, text artifacts, maps, and deterministic errors. | Item 4.3 adds live-Rust listing parity. Item 4.4 adds a live-Rust unknown-mnemonic oracle, stable semantic diagnostic normalization, negative comparator coverage, and Level D native status/diagnostic parity. The native CLI has no map-output mode. | Closed for the implemented binary, PRG, listing, and deterministic-error surface; maps explicitly on hold. | Map parity requires a separately authorized native map-output feature plan. |
 | RQ-005 | Item 3 covers the applicable `6502`/`65c02` corpus through the real CLI. | Seven manifest cases execute real CLI commands under FS-UAE when configured; other families and mixed-CPU input are explicitly excluded. | Partially proven at Level D. | Item 4.2 makes Rust/native comparison live; Item 4.7 records the exact applicable case set and justified exclusions. |
 | RQ-006 | Item 3’s native changes preserve expression operand fallback semantics. | Commit `2cd2378a` changed `readOperandValueForStatement` fallback behavior without current-framework slice metadata, boundary contract, or a focused fast proof. | Not framework-closed. | Item 4.5 creates one metadata-backed invariant with Level B/C proof and named Level D confirmation. |
 | RQ-007 | Item 3’s source `.cpu` and parser-routing changes match Rust. | Commit `2cd2378a` added quoted CPU normalization and altered directive routing; focused historical tests exist but lack current boundary/evidence contracts. | Not framework-closed. | Item 4.6 closes exactly the source CPU/parser-routing invariant. |
@@ -371,7 +371,7 @@ landed” is not equivalent to “framework-closed.”
     - `.org` remains present in both authority input and native listing output
     - map parity is not claimed or simulated; it remains on hold until native map output is separately authorized
 
-- [ ] Item 4.4: add schema contracts for deterministic failure parity
+- [x] Item 4.4: add schema contracts for deterministic failure parity
   - Source requirement or finding IDs: diagnostic portion of RQ-004; fully closes the advertised error surface
   - Expected files:
     - `crates/opforge-asm/src/tests.rs`
@@ -384,7 +384,7 @@ landed” is not equivalent to “framework-closed.”
   - Plan-compliance review evidence:
     - `plan-compliance-reviewer` returns `PASS` for deterministic status/stdout/stderr comparison without a native behavior fix
   - Commit outcome:
-    - expected-failure schema cases compare Rust/native exit status and normalized deterministic diagnostics
+    - an expected-failure schema case compares Rust/native failure status and the normalized unknown-mnemonic semantic class
   - Definition of done:
     - host launcher failures remain distinguishable from guest CLI failures
     - at least one positive and one intentionally mismatched schema unit test protect the comparator

@@ -34149,6 +34149,71 @@ fn native_expression_metadata_fallback_source_routes_failures_to_stored_text() {
     ));
 }
 
+fn native_source_cpu_normalization_contract(token: &str, trailing: &str) -> Result<String, ()> {
+    let normalized = if let Some(inner) = token.strip_prefix('"') {
+        inner.strip_suffix('"').ok_or(())?
+    } else {
+        token
+    };
+    if normalized.is_empty()
+        || (!trailing.trim().is_empty() && !trailing.trim_start().starts_with(';'))
+    {
+        return Err(());
+    }
+    Ok(match normalized.to_ascii_lowercase().as_str() {
+        "6502" => "m6502".to_string(),
+        "m65c02" => "65c02".to_string(),
+        other => other.to_string(),
+    })
+}
+
+#[test]
+fn native_source_cpu_normalization_contract_covers_bare_quoted_and_malformed_tokens() {
+    // Proof level C. This test proves the intended normalization/rejection
+    // decision. This test does not prove native execution or package selection.
+    assert_eq!(
+        native_source_cpu_normalization_contract("6502", ""),
+        Ok("m6502".to_string())
+    );
+    assert_eq!(
+        native_source_cpu_normalization_contract("\"6502\"", " ; comment"),
+        Ok("m6502".to_string())
+    );
+    assert_eq!(
+        native_source_cpu_normalization_contract("\"6502", ""),
+        Err(())
+    );
+    assert_eq!(
+        native_source_cpu_normalization_contract("\"6502\"", " trailing"),
+        Err(())
+    );
+}
+
+#[test]
+fn native_source_cpu_bootstrap_preserves_tail_and_normalizes_before_routing() {
+    // Proof level B. This test proves the bootstrap source preserves/restores
+    // its parser tail around normalization before validating trailing input.
+    // This test does not prove real 68020 execution.
+    let source = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/source_reader.asm"),
+    )
+    .expect("read native CLI source reader");
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "bsr.w line_text.opforgeNativeCliCopyLineWord",
+            "move.l d0, -(sp)",
+            "move.l a0, -(sp)",
+            "jsr directive_handlers.opforgeNativeCliNormalizeQuotedCpuToken",
+            "jsr token_util.opforgeNativeCliCanonicalizeCpuName",
+            "movea.l (sp)+, a0",
+            "move.l (sp)+, d0",
+            "bsr.w line_text.opforgeNativeCliSkipLineWhitespace",
+            "cmpi.b #';', (a0)",
+        ]
+    ));
+}
+
 #[test]
 fn external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli() {
     // Proof level D. This test proves real Amiga-native CLI binary/PRG
@@ -34333,6 +34398,92 @@ fn external_fs_uae_opforge_native_cli_expression_metadata_fallback_matches_live_
             )
             .expect("read native expression fallback bytes");
             assert_eq!(native_bin, rust_bin);
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust_cli() {
+    // Proof level D. This test proves quoted source CPU selection reaches the
+    // real native pipeline and matches live Rust bytes, while trailing input
+    // fails. This test does not prove other CPU identifiers.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let valid_source = "        .cpu \"6502\"\n        .org $1000\nstart   lda #$42\n";
+    let invalid_source = "        .cpu \"6502\" trailing\nstart   lda #$42\n";
+    let case_dir = create_temp_dir("native-source-cpu-normalization");
+    let input_path = case_dir.join("input.asm");
+    let rust_bin_path = case_dir.join("rust.bin");
+    fs::write(&input_path, valid_source).expect("write quoted source CPU oracle");
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--bin",
+        rust_bin_path.to_string_lossy().as_ref(),
+    ]);
+    run_with_cli_with_context(&cli).expect("run live Rust quoted source CPU oracle");
+    let rust_bin = fs::read(&rust_bin_path).expect("read live Rust quoted source CPU bytes");
+    let invalid_path = case_dir.join("invalid.asm");
+    let invalid_bin_path = case_dir.join("invalid.bin");
+    fs::write(&invalid_path, invalid_source).expect("write invalid source CPU oracle");
+    let invalid_cli = Cli::parse_from([
+        "opForge",
+        invalid_path.to_string_lossy().as_ref(),
+        "--bin",
+        invalid_bin_path.to_string_lossy().as_ref(),
+    ]);
+    assert!(
+        run_with_cli_with_context(&invalid_cli).is_err(),
+        "live Rust authority must reject trailing source CPU tokens"
+    );
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(valid_source.as_bytes()),
+            command_template: Some("{input} --bin {bin}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(invalid_source.as_bytes()),
+            command_template: Some("{input} --bin {bin}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("source CPU normalization FS-UAE shard should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 2);
+            assert!(
+                runs[0].success,
+                "quoted source CPU run failed\nstdout:\n{}\nstderr:\n{}",
+                runs[0].stdout, runs[0].stderr
+            );
+            let native_bin = fs::read(
+                runs[0]
+                    .artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read quoted source CPU native bytes");
+            assert_eq!(native_bin, rust_bin);
+            assert!(
+                !runs[1].success,
+                "trailing source CPU token must fail\nstdout:\n{}\nstderr:\n{}",
+                runs[1].stdout, runs[1].stderr
+            );
         }
     }
 }

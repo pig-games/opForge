@@ -1,0 +1,30 @@
+[slice]
+name = "native source CPU token normalization and routing"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/line/asmline_directives.rs::.cpu handling"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/source_reader.asm::opforgeNativeCliBootstrapCurrentCpuNameLine",
+  "native/motorola68000/amigaos/opforge-cli/directive_handlers.asm::opforgeNativeCliParseCpuLine"
+]
+invariant = "Bare and quoted source CPU tokens normalize to the same package-backed pipeline, while unmatched quotes and trailing non-comment tokens are rejected."
+assertion_decision = "No extra runtime assertion: quote normalization and pipeline application already return checked status at both bootstrap and full-parser boundaries."
+
+[[tests]]
+name = "native_source_cpu_normalization_contract_covers_bare_quoted_and_malformed_tokens"
+proof_level = "C"
+proves = "The host boundary model accepts equivalent bare/quoted tokens and rejects unmatched quotes or trailing tokens."
+does_not_prove = "Native branch implementation or package selection."
+
+[[tests]]
+name = "native_source_cpu_bootstrap_preserves_tail_and_normalizes_before_routing"
+proof_level = "B"
+proves = "The native bootstrap source preserves the parser tail, normalizes quotes, canonicalizes, validates trailing input, and only then returns success."
+does_not_prove = "Real 68020 execution."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust_cli"
+proof_level = "D"
+proves = "FS-UAE executes quoted source CPU selection without a CLI CPU override, matches live Rust bytes, and rejects a trailing-token form."
+does_not_prove = "Other CPU identifiers or later CPU changes within included modules."

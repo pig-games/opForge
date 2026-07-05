@@ -334,8 +334,11 @@ opforgeNativeCliParseCpuLine	.block
 	bne.w fail
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
 	lea state.NativeCliArgToken, a1
+	move.l d0, -(sp)
 	bsr.w line_text.opforgeNativeCliCopyLineWord
-	bne.w fail
+	bne.w parseCpuCopyRestoreFail
+	move.l (sp)+, d0
+	sub.l d5, d0
 	tst.b state.NativeCliArgToken
 	beq.w fail
 	move.l d0, -(sp)
@@ -368,6 +371,9 @@ updateSession
 parseCpuRestoreFail
 	addq.l #8, sp
 	bra.w fail
+
+parseCpuCopyRestoreFail
+	addq.l #4, sp
 
 fail
 	move.l #strings.ParserFailureText, d1

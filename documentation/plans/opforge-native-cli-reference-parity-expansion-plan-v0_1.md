@@ -474,7 +474,7 @@ landed” is not equivalent to “framework-closed.”
     - no historical commit is rewritten
     - Item 5 remains blocked until this item commits
 
-- [ ] Item 5: classify the opForge Core corpus into commit-sized native parity shards
+- [x] Item 5: classify the opForge Core corpus into commit-sized native parity shards
   - Source requirement or finding IDs: user note that some opForge Core cases currently use 8080/Z80 spellings and may need `6502`-adapted copies first; existing `examples/opcore/**` and `examples/reference/opcore/**` corpora; current Rust-side reference harness behavior; native porting workflow requirement that one active slice own one coherent invariant
   - Expected files:
     - `crates/opforge-asm/src/native_reference_parity.rs`
@@ -494,6 +494,11 @@ landed” is not equivalent to “framework-closed.”
     - no entry is assigned through a prefix-only assumption
     - each shard has a bounded artifact surface and named Level D test
     - any already-known red parity case is represented by a separate inserted remediation item rather than hidden inside a coverage shard
+  - Inventory outcome:
+    - every checked-in `.asm` and `.inc` path is assigned explicitly; support files name their owning root and must share its shard
+    - every checked-in reference artifact is owned by one root; `README.md` and the shared diagnostic schema are exact-path exclusions with concrete reasons
+    - the four bounded Level D tests are named `native_reference_opcore_syntax_expression_fs_uae`, `native_reference_opcore_module_macro_statement_fs_uae`, `native_reference_opcore_layout_output_fs_uae`, and `native_reference_opcore_diagnostic_fs_uae`
+    - additive adaptation is required where a canonical source embeds non-MOS CPU selection, mnemonics, or operand syntax; canonical Rust examples and references remain immutable
 
 - [ ] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures

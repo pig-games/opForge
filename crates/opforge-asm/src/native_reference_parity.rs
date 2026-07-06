@@ -69,8 +69,361 @@ pub(crate) struct NativeReferenceExclusionRule {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NativeReferenceAccounting<'a> {
     Case(&'a NativeReferenceCase),
+    Opcore(&'a NativeOpcoreAssignment),
     Excluded(&'a NativeReferenceExclusionRule),
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NativeOpcoreShard {
+    SyntaxExpression,
+    ModuleMacroStatement,
+    LayoutOutput,
+    Diagnostic,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NativeOpcoreStaging {
+    DirectCpuNeutral,
+    AdditiveMosAdaptation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NativeOpcoreRole {
+    Root { reference_stem: &'static str },
+    Support { owner: &'static str },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct NativeOpcoreAssignment {
+    pub(crate) source_path: &'static str,
+    pub(crate) shard: NativeOpcoreShard,
+    pub(crate) staging: NativeOpcoreStaging,
+    pub(crate) role: NativeOpcoreRole,
+}
+
+macro_rules! opcore_root {
+    ($path:literal, $shard:ident, $staging:ident) => {
+        NativeOpcoreAssignment {
+            source_path: concat!("examples/opcore/", $path, ".asm"),
+            shard: NativeOpcoreShard::$shard,
+            staging: NativeOpcoreStaging::$staging,
+            role: NativeOpcoreRole::Root {
+                reference_stem: $path,
+            },
+        }
+    };
+    ($source:literal => $stem:literal, $shard:ident, $staging:ident) => {
+        NativeOpcoreAssignment {
+            source_path: concat!("examples/opcore/", $source),
+            shard: NativeOpcoreShard::$shard,
+            staging: NativeOpcoreStaging::$staging,
+            role: NativeOpcoreRole::Root {
+                reference_stem: $stem,
+            },
+        }
+    };
+}
+
+macro_rules! opcore_support {
+    ($path:literal => $owner:literal, $shard:ident, $staging:ident) => {
+        NativeOpcoreAssignment {
+            source_path: concat!("examples/opcore/", $path),
+            shard: NativeOpcoreShard::$shard,
+            staging: NativeOpcoreStaging::$staging,
+            role: NativeOpcoreRole::Support {
+                owner: concat!("examples/opcore/", $owner),
+            },
+        }
+    };
+}
+
+// This is intentionally an exact-path inventory. Adding a source under
+// examples/opcore must fail the inventory test until its applicability,
+// staging mode, owning root, and one Item 6-9 shard have been reviewed.
+pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
+    opcore_root!(
+        "bfor_labeled_struct_basic",
+        SyntaxExpression,
+        DirectCpuNeutral
+    ),
+    opcore_root!("cond_syntax", SyntaxExpression, DirectCpuNeutral),
+    opcore_root!("expr_syntax", SyntaxExpression, AdditiveMosAdaptation),
+    opcore_root!("for_collection_basic", SyntaxExpression, DirectCpuNeutral),
+    opcore_root!("for_counter_basic", SyntaxExpression, DirectCpuNeutral),
+    opcore_root!("grouping", SyntaxExpression, AdditiveMosAdaptation),
+    opcore_root!("ranges_lists_basic", SyntaxExpression, DirectCpuNeutral),
+    opcore_root!("scopes", SyntaxExpression, DirectCpuNeutral),
+    opcore_root!("scopes_namespace", SyntaxExpression, DirectCpuNeutral),
+    opcore_root!(
+        "struct_literal_instance_basic",
+        SyntaxExpression,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "struct_var_instance_basic",
+        SyntaxExpression,
+        DirectCpuNeutral
+    ),
+    opcore_root!("syntax", SyntaxExpression, AdditiveMosAdaptation),
+    opcore_root!("testexpr", SyntaxExpression, AdditiveMosAdaptation),
+    opcore_root!("text_encoding", SyntaxExpression, DirectCpuNeutral),
+    opcore_root!(
+        "text_encoding_definitions",
+        SyntaxExpression,
+        DirectCpuNeutral
+    ),
+    opcore_root!("while_basic", SyntaxExpression, DirectCpuNeutral),
+    opcore_root!(
+        "macro_cross_module_ok",
+        ModuleMacroStatement,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "macro_segment_syntax",
+        ModuleMacroStatement,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!("macro_syntax", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_root!("module_basics", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_root!("module_use", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_root!(
+        "module_use_autoload",
+        ModuleMacroStatement,
+        DirectCpuNeutral
+    ),
+    opcore_root!("module_use_include", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_root!("module_visibility", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_root!("preproc_syntax", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_root!("project_root/main.asm" => "project_root-main", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_root!(
+        "statement_boundary_span",
+        ModuleMacroStatement,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "statement_capture_types",
+        ModuleMacroStatement,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "statement_cross_module_ok",
+        ModuleMacroStatement,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "statement_expansion",
+        ModuleMacroStatement,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "statement_signatures",
+        ModuleMacroStatement,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "use_wildcard_import",
+        ModuleMacroStatement,
+        AdditiveMosAdaptation
+    ),
+    opcore_support!("lib/example_autoload_lib.asm" => "module_use_autoload.asm", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_support!("lib/macro_export_lib.asm" => "macro_cross_module_ok.asm", ModuleMacroStatement, AdditiveMosAdaptation),
+    opcore_support!("lib/statement_export_lib.asm" => "statement_cross_module_ok.asm", ModuleMacroStatement, AdditiveMosAdaptation),
+    opcore_support!("module_use_lib.inc" => "module_use_include.asm", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_support!("preproc_syntax.inc" => "preproc_syntax.asm", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_support!("project_root/util.asm" => "project_root/main.asm", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_root!("align_simple", LayoutOutput, DirectCpuNeutral),
+    opcore_root!("cli_json_outputs", LayoutOutput, DirectCpuNeutral),
+    opcore_root!("led1", LayoutOutput, AdditiveMosAdaptation),
+    opcore_root!("linker_regions_full", LayoutOutput, DirectCpuNeutral),
+    opcore_root!("linker_regions_minimal", LayoutOutput, DirectCpuNeutral),
+    opcore_root!("linker_regions_no_dsection", LayoutOutput, DirectCpuNeutral),
+    opcore_root!(
+        "linker_regions_pack_no_dsection",
+        LayoutOutput,
+        DirectCpuNeutral
+    ),
+    opcore_root!("module_metadata_block", LayoutOutput, DirectCpuNeutral),
+    opcore_root!("module_metadata_output", LayoutOutput, DirectCpuNeutral),
+    opcore_root!("module_metadata_outputs", LayoutOutput, DirectCpuNeutral),
+    opcore_root!(
+        "module_qualified_section_map",
+        LayoutOutput,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "section_module_use_autoload",
+        LayoutOutput,
+        DirectCpuNeutral
+    ),
+    opcore_root!("section_module_use_include", LayoutOutput, DirectCpuNeutral),
+    opcore_root!("section_simple", LayoutOutput, DirectCpuNeutral),
+    opcore_root!(
+        "segment_cross_module_ok",
+        LayoutOutput,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!("sertest", LayoutOutput, AdditiveMosAdaptation),
+    opcore_support!("cli_json_outputs.inc" => "cli_json_outputs.asm", LayoutOutput, DirectCpuNeutral),
+    opcore_support!("lib/example_section_lib.asm" => "section_module_use_autoload.asm", LayoutOutput, DirectCpuNeutral),
+    opcore_support!("lib/segment_export_lib.asm" => "segment_cross_module_ok.asm", LayoutOutput, AdditiveMosAdaptation),
+    opcore_support!("section_module_use_lib.inc" => "section_module_use_include.asm", LayoutOutput, DirectCpuNeutral),
+    opcore_root!(
+        "conditional_missing_endif_fixit_error",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "conditional_unmatched_endif_error",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "dialect_mnemonic_fixit_error",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "dialect_parser_fixit_error",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "directive_typo_elseif_fixit_error",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "directive_typo_endif_fixit_error",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "directive_typo_endmatch_fixit_error",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "directive_typo_endmodule_fixit_error",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "directive_typo_endsection_fixit_error",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!("errors", Diagnostic, AdditiveMosAdaptation),
+    opcore_root!("for_unscoped_label_error", Diagnostic, DirectCpuNeutral),
+    opcore_root!("index_out_of_bounds_error", Diagnostic, DirectCpuNeutral),
+    opcore_root!(
+        "linker_regions_phase6_contiguous_gap",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "linker_regions_phase6_emit_overflow",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "linker_regions_phase6_fill_in_bss_error",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "linker_regions_phase6_image_span_overflow",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "linker_regions_phase6_invalid_section_option_key",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "linker_regions_phase6_missing_section_option_equals",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "linker_regions_phase6_region_binding_conflict",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "linker_regions_phase6_region_overlap",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "linker_regions_phase6_unknown_region",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "linker_regions_phase6_unknown_section",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!("loop_pass_instability_error", Diagnostic, DirectCpuNeutral),
+    opcore_root!(
+        "macro_cross_module_error",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "module_missing_endmodule_error",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!("module_use_private_error", Diagnostic, DirectCpuNeutral),
+    opcore_root!(
+        "multi_error_reporting_error",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!("range_step_direction_error", Diagnostic, DirectCpuNeutral),
+    opcore_root!("range_step_zero_error", Diagnostic, DirectCpuNeutral),
+    opcore_root!(
+        "section_missing_endsection_error",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!(
+        "segment_cross_module_error",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "statement_cross_module_error",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
+        "statement_private_import_error",
+        Diagnostic,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!("statement_signature_error", Diagnostic, DirectCpuNeutral),
+    opcore_root!(
+        "statement_unquoted_comma_error",
+        Diagnostic,
+        DirectCpuNeutral
+    ),
+    opcore_root!("while_unscoped_label_error", Diagnostic, DirectCpuNeutral),
+    opcore_support!("lib/statement_private_export_lib.asm" => "statement_private_import_error.asm", Diagnostic, AdditiveMosAdaptation),
+];
+
+pub(crate) const NATIVE_OPCORE_REFERENCE_EXCLUSIONS: &[(&str, &str)] = &[
+    (
+        "README.md",
+        "documentation only; it is not a CLI-written artifact",
+    ),
+    (
+        "diagnostics_v2_schema.json",
+        "shared diagnostic schema authority rather than the output of one source root",
+    ),
+];
 
 pub(crate) const NATIVE_REFERENCE_EXCLUSION_RULES: &[NativeReferenceExclusionRule] = &[
     NativeReferenceExclusionRule {
@@ -89,11 +442,6 @@ pub(crate) const NATIVE_REFERENCE_EXCLUSION_RULES: &[NativeReferenceExclusionRul
         ),
         reason:
             "this example mixes 6502 and 65c02 source in one file, and the current native reference runner executes one native CLI session per case, so it cannot compare both CPU slices honestly yet",
-    },
-    NativeReferenceExclusionRule {
-        matcher: NativeReferencePathMatcher::Prefix("examples/opcore/"),
-        reason:
-            "opcore examples are CPU-neutral reference fixtures; they need reviewed MOS-backed native parity copies or direct CPU-backed staging before the native CLI can assemble them through the real package path",
     },
     NativeReferenceExclusionRule {
         matcher: NativeReferencePathMatcher::Prefix("examples/motorola6800/"),
@@ -263,6 +611,12 @@ pub(crate) fn account_native_reference_path(
     if let Some(case) = native_reference_case_for_path(path) {
         return Ok(NativeReferenceAccounting::Case(case));
     }
+    if let Some(assignment) = NATIVE_OPCORE_ASSIGNMENTS
+        .iter()
+        .find(|assignment| assignment.source_path == path)
+    {
+        return Ok(NativeReferenceAccounting::Opcore(assignment));
+    }
 
     let mut matches = NATIVE_REFERENCE_EXCLUSION_RULES
         .iter()
@@ -326,6 +680,9 @@ mod tests {
             NativeReferenceAccounting::Case(case) => {
                 panic!("expected exclusion, got case {}", case.asm_path)
             }
+            NativeReferenceAccounting::Opcore(assignment) => {
+                panic!("expected exclusion, got opcore {}", assignment.source_path)
+            }
         }
     }
 
@@ -364,18 +721,119 @@ mod tests {
     }
 
     #[test]
-    fn native_reference_broad_prefix_is_accounting_not_applicability_proof() {
-        // Proof level A. This test proves the current opcore prefix is accounted
-        // for by its reviewed exclusion rule. This test does not prove that a
-        // hypothetical member is truly inapplicable to native parity.
-        let accounted = account_native_reference_path("examples/opcore/future-example.asm")
-            .expect("broad opcore prefix should remain explicitly accounted for");
-        let NativeReferenceAccounting::Excluded(rule) = accounted else {
-            panic!("broad opcore prefix unexpectedly resolved to a parity case");
-        };
-        assert_eq!(
-            rule.matcher,
-            NativeReferencePathMatcher::Prefix("examples/opcore/")
-        );
+    fn native_reference_opcore_inventory_is_exact_and_complete() {
+        // Proof level A. This test proves every checked-in opcore source/support
+        // file has exactly one reviewed assignment and a future file fails
+        // closed. It does not prove the assigned case is native-compatible.
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let opcore_root = repo_root.join("examples/opcore");
+        let mut actual = Vec::new();
+        fn collect_sources(root: &Path, directory: &Path, paths: &mut Vec<String>) {
+            for entry in fs::read_dir(directory).expect("read opcore directory") {
+                let path = entry.expect("read opcore entry").path();
+                if path.is_dir() {
+                    collect_sources(root, &path, paths);
+                } else if matches!(
+                    path.extension().and_then(|extension| extension.to_str()),
+                    Some("asm" | "inc")
+                ) {
+                    paths.push(
+                        path.strip_prefix(root)
+                            .expect("opcore path below repository")
+                            .to_string_lossy()
+                            .replace('\\', "/"),
+                    );
+                }
+            }
+        }
+        collect_sources(&repo_root, &opcore_root, &mut actual);
+        actual.sort();
+
+        let mut assigned = NATIVE_OPCORE_ASSIGNMENTS
+            .iter()
+            .map(|assignment| assignment.source_path.to_string())
+            .collect::<Vec<_>>();
+        assigned.sort();
+        let assigned_len = assigned.len();
+        assigned.dedup();
+        assert_eq!(assigned.len(), assigned_len, "duplicate opcore assignment");
+        assert_eq!(assigned, actual);
+        assert!(account_native_reference_path("examples/opcore/future-example.asm").is_err());
+    }
+
+    #[test]
+    fn native_reference_opcore_roots_own_all_reference_artifacts() {
+        // Proof level A. This test proves every checked-in opcore reference
+        // artifact is owned by exactly one Item 6-9 root and each root has at
+        // least one artifact. It does not prove artifact semantic parity.
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let reference_root = repo_root.join("examples/reference/opcore");
+        let roots = NATIVE_OPCORE_ASSIGNMENTS
+            .iter()
+            .filter_map(|assignment| match assignment.role {
+                NativeOpcoreRole::Root { reference_stem } => {
+                    Some((reference_stem, assignment.shard))
+                }
+                NativeOpcoreRole::Support { .. } => None,
+            })
+            .collect::<Vec<_>>();
+        let mut seen_stems = HashSet::new();
+        for entry in fs::read_dir(reference_root).expect("read opcore references") {
+            let path = entry.expect("read opcore reference entry").path();
+            let file_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("UTF-8 opcore reference name");
+            if let Some((_, reason)) = NATIVE_OPCORE_REFERENCE_EXCLUSIONS
+                .iter()
+                .find(|(excluded, _)| *excluded == file_name)
+            {
+                assert!(!reason.trim().is_empty());
+                continue;
+            }
+            let artifact_stem = file_name.split('.').next().expect("reference stem");
+            let owners = roots
+                .iter()
+                .filter(|(reference_stem, _)| *reference_stem == artifact_stem)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                owners.len(),
+                1,
+                "reference artifact {file_name} must have exactly one root owner"
+            );
+            seen_stems.insert(artifact_stem.to_string());
+        }
+        for (reference_stem, _) in roots {
+            assert!(
+                seen_stems.contains(reference_stem),
+                "opcore root {reference_stem} has no reference artifact"
+            );
+        }
+        for (excluded, _) in NATIVE_OPCORE_REFERENCE_EXCLUSIONS {
+            assert!(
+                repo_root
+                    .join("examples/reference/opcore")
+                    .join(excluded)
+                    .is_file(),
+                "stale opcore reference exclusion {excluded}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_reference_opcore_support_files_match_their_shard_owner() {
+        // Proof level A. This test proves every auxiliary file names an existing
+        // root in the same shard. It does not prove the staged tree is complete.
+        for support in NATIVE_OPCORE_ASSIGNMENTS {
+            let NativeOpcoreRole::Support { owner } = support.role else {
+                continue;
+            };
+            let owner = NATIVE_OPCORE_ASSIGNMENTS
+                .iter()
+                .find(|assignment| assignment.source_path == owner)
+                .unwrap_or_else(|| panic!("missing opcore support owner {owner}"));
+            assert!(matches!(owner.role, NativeOpcoreRole::Root { .. }));
+            assert_eq!(support.shard, owner.shard);
+        }
     }
 }

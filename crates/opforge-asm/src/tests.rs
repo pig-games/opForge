@@ -11503,13 +11503,13 @@ fn native_reference_manifest_carries_current_focused_non_seed_cases() {
 #[test]
 fn native_reference_manifest_accounts_for_current_example_corpus() {
     // Proof level A. This test proves every currently checked-in example is
-    // represented by a case or a non-empty reviewed exclusion. This test does
-    // not prove broad-prefix exclusions are semantically applicable to every
-    // member or that any native CLI path executed.
+    // represented by a case, an exact opcore shard assignment, or a non-empty
+    // reviewed exclusion. This test does not prove any native CLI path executed.
     let repo_root = workspace_root();
     let examples_dir = repo_root.join("examples");
     let asm_files = collect_example_asm_files(&examples_dir);
     let mut case_count = 0usize;
+    let mut opcore_count = 0usize;
     let mut exclusion_count = 0usize;
 
     for asm_path in asm_files {
@@ -11525,6 +11525,10 @@ fn native_reference_manifest_accounts_for_current_example_corpus() {
                 case_count += 1;
                 assert_eq!(case.asm_path, relative_path);
             }
+            NativeReferenceAccounting::Opcore(assignment) => {
+                opcore_count += 1;
+                assert_eq!(assignment.source_path, relative_path);
+            }
             NativeReferenceAccounting::Excluded(rule) => {
                 exclusion_count += 1;
                 assert!(
@@ -11536,6 +11540,10 @@ fn native_reference_manifest_accounts_for_current_example_corpus() {
     }
 
     assert_eq!(case_count, native_reference_cases().len());
+    assert!(
+        opcore_count > 0,
+        "native reference completeness guard should exercise opcore assignments"
+    );
     assert!(
         exclusion_count > 0,
         "native reference completeness guard should exercise explicit exclusions"

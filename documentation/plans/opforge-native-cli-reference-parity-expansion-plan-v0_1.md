@@ -521,7 +521,7 @@ landed” is not equivalent to “framework-closed.”
     - Level D no longer emits `LABEL .cpu`
     - no directive-specific semantics are added to generic native paths
 
-- [ ] Item 5.2: add native counted-repetition source expansion
+- [x] Item 5.2: add native counted-repetition source expansion
   - Source requirement or finding IDs: Item 6 Level D failure on canonical `for_counter_basic.asm`; Rust authority in `repetition.rs::evaluate_for_plan` and `repetition_driver.rs`; native first divergence is between parsed statement storage and pass-one execution because `.for` blocks remain unexpanded
   - Expected files:
     - one `documentation/plans/slices/*.toml` metadata record

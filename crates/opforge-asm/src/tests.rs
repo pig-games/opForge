@@ -14075,13 +14075,13 @@ fn motorola68020_opasm_driver_uses_tkpkg_output_and_error_pointers() {
             "serviceFail",
             "jsr tkpkg.readLastErrorPtrV1",
             "clr.b 0(a0, d4.W)",
-            "bsr.w emitSelectorDiagnostic",
+            "bsr.w emitSelectorFailureEvent",
         ]
     ));
     assert!(source_contains_in_order(
         &driver,
         &[
-            "emitSelectorDiagnostic\t.block",
+            "emitSelectorFailureEvent\t.block",
             "jsr tkpkg.readLastErrorPtrV1",
             "lea DriverSelectorUnknownRawText, a1",
         ]
@@ -34220,6 +34220,111 @@ fn native_column_one_directive_fallback_routes_mnemonic_before_expression_label_
     ));
 }
 
+fn native_counted_for_contract(lines: &[&str], iteration_limit: u32) -> Result<Vec<String>, ()> {
+    fn expand(
+        lines: &[&str],
+        start: usize,
+        end: usize,
+        iteration_limit: u32,
+    ) -> Result<Vec<String>, ()> {
+        let mut output = Vec::new();
+        let mut index = start;
+        while index < end {
+            let trimmed = lines[index].trim();
+            if let Some(operand) = trimmed.strip_prefix(".for ") {
+                let count = operand.trim().parse::<u32>().map_err(|_| ())?;
+                if count > iteration_limit {
+                    return Err(());
+                }
+                let mut depth = 1usize;
+                let mut close = index + 1;
+                while close < end && depth != 0 {
+                    let candidate = lines[close].trim();
+                    if candidate.starts_with(".for ") {
+                        depth += 1;
+                    } else if candidate == ".endfor" {
+                        depth -= 1;
+                    }
+                    close += 1;
+                }
+                if depth != 0 {
+                    return Err(());
+                }
+                let body = expand(lines, index + 1, close - 1, iteration_limit)?;
+                for _ in 0..count {
+                    output.extend(body.iter().cloned());
+                }
+                index = close;
+                continue;
+            }
+            if trimmed == ".endfor" {
+                return Err(());
+            }
+            output.push(lines[index].to_string());
+            index += 1;
+        }
+        Ok(output)
+    }
+    expand(lines, 0, lines.len(), iteration_limit)
+}
+
+#[test]
+fn native_counted_for_contract_covers_zero_one_nested_and_limit() {
+    // Proof level C. This host boundary model proves counted block replacement,
+    // matching, nesting, and the iteration limit expected at the native flow
+    // callback. It does not execute the 68020 callback or statement tables.
+    assert_eq!(
+        native_counted_for_contract(&[".for 0", ".byte 1", ".endfor"], 8).unwrap(),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        native_counted_for_contract(&[".for 1", ".byte 1", ".endfor"], 8).unwrap(),
+        vec![".byte 1"]
+    );
+    assert_eq!(
+        native_counted_for_contract(
+            &[".for 2", ".byte 1", ".for 2", ".byte 2", ".endfor", ".endfor",],
+            8,
+        )
+        .unwrap(),
+        vec![".byte 1", ".byte 2", ".byte 2", ".byte 1", ".byte 2", ".byte 2",]
+    );
+    assert!(native_counted_for_contract(&[".for 9", ".byte 1", ".endfor"], 8).is_err());
+}
+
+#[test]
+fn native_counted_for_flow_callback_precedes_pass_processing() {
+    // Proof level B. This test proves both engine passes invoke the counted
+    // flow callback before label, emission, or PC callbacks and that the driver
+    // resets repetition state per pass. It does not execute native code.
+    let engine = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_engine.asm"),
+    )
+    .expect("read native opasm engine");
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    assert_eq!(
+        engine
+            .matches("movea.l OPASM_ENGINE_CTX_FLOW_CONTROL_CB(a5), a0")
+            .count(),
+        2
+    );
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "movea.l OPASM_ENGINE_CTX_FLOW_CONTROL_CB(a5), a0",
+            "jsr (a0)",
+            "tst.w d1",
+            "beq.s process",
+            "move.w d2, d7",
+        ]
+    ));
+    assert_eq!(driver.matches("clr.w OpasmRepeatDepth").count(), 2);
+    assert!(driver.contains("cmpi.l #OPASM_REPEAT_ITERATION_LIMIT, d3"));
+}
+
 #[test]
 fn native_source_cpu_bootstrap_preserves_tail_and_normalizes_before_routing() {
     // Proof level B. This test proves the bootstrap source preserves/restores
@@ -34559,6 +34664,60 @@ fn native_column_one_directive_routing_fs_uae() {
                     .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
             )
             .expect("read native column-one directive bytes");
+            assert_eq!(native_bin, rust_bin);
+        }
+    }
+}
+
+#[test]
+fn native_opcore_counted_for_fs_uae() {
+    // Proof level D. This test proves the canonical counted `.for` opcore
+    // source reaches the real Amiga-native CLI and writes the same flat bytes
+    // as the live Rust CLI. It does not prove iterable `.for` or `.bfor`.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let repo_root = workspace_root();
+    let source_path = repo_root.join("examples/opcore/for_counter_basic.asm");
+    let source = fs::read(&source_path).expect("read canonical counted-for source");
+    let case_dir = create_temp_dir("native-opcore-counted-for");
+    let rust_bin_path = case_dir.join("rust.bin");
+    let cli = Cli::parse_from([
+        "opForge",
+        source_path.to_string_lossy().as_ref(),
+        "--bin",
+        rust_bin_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+    ]);
+    run_with_cli_with_context(&cli).expect("run live Rust counted-for oracle");
+    let rust_bin = fs::read(&rust_bin_path).expect("read live Rust counted-for bytes");
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_slice()),
+        command_template: Some("{input} --bin {bin} --cpu m6502"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&repo_root, &cases)
+        .expect("counted-for FS-UAE case should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native counted-for run failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            let native_bin = fs::read(
+                run.artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read native counted-for bytes");
             assert_eq!(native_bin, rust_bin);
         }
     }

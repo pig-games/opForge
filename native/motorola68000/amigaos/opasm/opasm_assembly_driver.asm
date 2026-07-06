@@ -13,6 +13,8 @@ OPASM_LAYOUT_REGION_CAPACITY = 8
 OPASM_LAYOUT_SECTION_CAPACITY = 16
 OPASM_LAYOUT_INDEX_NONE = $ffff
 OPASM_TEXT_SCRATCH_CAPACITY = 512
+OPASM_REPEAT_STACK_CAPACITY = 8
+OPASM_REPEAT_ITERATION_LIMIT = 1024
 
 	.section code, kind=code
 	.pub
@@ -44,6 +46,7 @@ buildContext
 	move.l #opasmDriverPassTwoOk, eng.OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB(a0)
 	move.l #opasmDriverRecordLabel, eng.OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB(a0)
 	move.l #opasmDriverAdvancePc, eng.OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB(a0)
+	move.l #opasmDriverApplyFlowControl, eng.OPASM_ENGINE_CALLBACK_REQ_FLOW_CONTROL_CB(a0)
 	move.l #opasmDriverEmitImageBytes, eng.OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB(a0)
 	jsr eng.opasmEngineBuildCallbackContextV1
 	adda.l #eng.OPASM_ENGINE_CALLBACK_REQ_BYTES, sp
@@ -61,6 +64,7 @@ opasmDriverPassOneBegin	.block
 	bsr.w appendPassEvent
 	jsr eng.opasmEngineBeginPassOneV1
 	bsr.w resetLayoutState
+	clr.w OpasmRepeatDepth
 	rts
 	.bend  ; opasmDriverPassOneBegin
 
@@ -78,9 +82,205 @@ opasmDriverPassTwoBegin	.block
 	bsr.w appendPassEvent
 	jsr eng.opasmEngineBeginPassTwoV1
 	clr.w OpasmLayoutSectionActive
+	clr.w OpasmRepeatDepth
 	moveq #0, d0
 	rts
 	.bend  ; opasmDriverPassTwoBegin
+
+; Apply counted-repetition control before one statement reaches pass logic.
+; Inputs: D0.W = current statement index.
+; Outputs: D0 = status; D1 = 0 to process or 1 to skip; D2.W = next index when skipped.
+; Clobbers: D0-D2/CCR.
+; CCR: reflects D0 on return.
+opasmDriverApplyFlowControl	.block
+	movem.l d3-d7/a0-a2, -(sp)
+	move.w d0, d7
+	move.w d7, d2
+	addq.w #1, d2
+	clr.w d1
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movea.l sp, a0
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w processStatement
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	cmpi.l #3, d4
+	beq.s compareFor
+	cmpi.l #4, d4
+	bne.s checkEndfor
+
+compareFor
+	moveq #0, d0
+	move.w d4, d0
+	lea ForMnemonicText, a1
+	moveq #3, d1
+	bsr.w lineStartsWith
+	bne.w beginFor
+
+checkEndfor
+	cmpi.l #6, d4
+	beq.s compareEndfor
+	cmpi.l #7, d4
+	bne.w processStatement
+
+compareEndfor
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	moveq #0, d0
+	move.w d4, d0
+	lea EndforMnemonicText, a1
+	moveq #6, d1
+	bsr.w lineStartsWith
+	beq.w processStatement
+	tst.w OpasmRepeatDepth
+	beq.w fail
+	moveq #0, d3
+	move.w OpasmRepeatDepth, d3
+	subq.w #1, d3
+	move.l d3, d4
+	lsl.l #2, d4
+	lea OpasmRepeatRemaining, a0
+	move.l 0(a0, d4.l), d5
+	subq.l #1, d5
+	move.l d5, 0(a0, d4.l)
+	beq.s finishFor
+	move.l d3, d4
+	add.w d4, d4
+	lea OpasmRepeatBodyStart, a0
+	move.w 0(a0, d4.l), d2
+	moveq #1, d1
+	bra.w success
+
+finishFor
+	move.w OpasmRepeatDepth, d3
+	subq.w #1, d3
+	move.w d3, OpasmRepeatDepth
+	moveq #1, d1
+	bra.w success
+
+beginFor
+	moveq #4, d5
+	bsr.w readOperandValueForStatement
+	bne.s fail
+	cmpi.l #OPASM_REPEAT_ITERATION_LIMIT, d3
+	bhi.s fail
+	tst.l d3
+	beq.s zeroFor
+	moveq #0, d4
+	move.w OpasmRepeatDepth, d4
+	cmpi.w #OPASM_REPEAT_STACK_CAPACITY, d4
+	bhs.s fail
+	move.l d4, d5
+	lsl.l #2, d5
+	lea OpasmRepeatRemaining, a0
+	move.l d3, 0(a0, d5.l)
+	move.l d4, d5
+	add.w d5, d5
+	lea OpasmRepeatBodyStart, a0
+	move.w d7, d6
+	addq.w #1, d6
+	move.w d6, 0(a0, d5.l)
+	move.w OpasmRepeatDepth, d4
+	addq.w #1, d4
+	move.w d4, OpasmRepeatDepth
+	moveq #1, d1
+	bra.s success
+
+zeroFor
+	bsr.w findMatchingEndfor
+	bne.s fail
+	moveq #1, d1
+	addq.w #1, d2
+	bra.s success
+
+processStatement
+	clr.w d1
+
+success
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d3-d7/a0-a2
+	rts
+	.bend  ; opasmDriverApplyFlowControl
+
+; Find the matching `.endfor` for a zero-count `.for`.
+; Inputs: D7.W = opening statement index.
+; Outputs: D0 = status; D2.W = matching end statement on success.
+; Clobbers: D0-D6/A0-A1/CCR.
+; CCR: reflects D0 on return.
+findMatchingEndfor	.block
+	movem.l d1/d3-d6/a0-a1, -(sp)
+	move.w d7, d2
+	moveq #1, d6
+
+scan
+	addq.w #1, d2
+	jsr eng.opasmEngineGetStatementCountV1
+	cmp.w d0, d2
+	bhs.s fail
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movea.l sp, a0
+	moveq #0, d0
+	move.w d2, d0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.s next
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	cmpi.l #3, d4
+	beq.s compareNestedFor
+	cmpi.l #4, d4
+	bne.s maybeEnd
+
+compareNestedFor
+	moveq #0, d0
+	move.w d4, d0
+	lea ForMnemonicText, a1
+	moveq #3, d1
+	bsr.w lineStartsWith
+	beq.s maybeEnd
+	addq.w #1, d6
+	bra.s next
+
+maybeEnd
+	cmpi.l #6, d4
+	beq.s compareNestedEnd
+	cmpi.l #7, d4
+	bne.s next
+
+compareNestedEnd
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	moveq #0, d0
+	move.w d4, d0
+	lea EndforMnemonicText, a1
+	moveq #6, d1
+	bsr.w lineStartsWith
+	beq.s next
+	subq.w #1, d6
+	beq.s found
+
+next
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	bra.s scan
+
+found
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1/d3-d6/a0-a1
+	rts
+	.bend  ; findMatchingEndfor
 
 opasmDriverPassTwoOk	.block
 	moveq #abi.OPASM_EVENT_PASS_OK, d0
@@ -405,7 +605,7 @@ serviceFail
 	bsr.w serviceFramePtr
 	jsr tkpkg.readLastErrorPtrV1
 	clr.b 0(a0, d4.W)
-	bsr.w emitSelectorDiagnostic
+	bsr.w emitSelectorFailureEvent
 	bne.s serviceFailReturn
 	bsr.w serviceFramePtr
 	jsr tkpkg.readLastErrorPtrV1
@@ -889,7 +1089,7 @@ fail
 	bsr.w serviceFramePtr
 	jsr tkpkg.readLastErrorPtrV1
 	clr.b 0(a0, d4.W)
-	bsr.w emitSelectorDiagnostic
+	bsr.w emitSelectorFailureEvent
 	bne.w failReturn
 	bsr.w serviceFramePtr
 	jsr tkpkg.readLastErrorPtrV1
@@ -3222,7 +3422,7 @@ serviceEvalExtensionPtr	.block
 	rts
 	.bend  ; serviceEvalExtensionPtr
 
-emitSelectorDiagnostic	.block
+emitSelectorFailureEvent	.block
 	bsr.w serviceFramePtr
 	jsr tkpkg.readLastErrorPtrV1
 	lea DriverSelectorUnknownRawText, a1
@@ -3263,7 +3463,7 @@ operandError
 	bsr.w appendKindEvent
 	moveq #1, d0
 	rts
-	.bend  ; emitSelectorDiagnostic
+	.bend  ; emitSelectorFailureEvent
 
 appendKindEvent	.block
 	movem.l d1/a0-a2, -(sp)
@@ -3556,6 +3756,12 @@ NullMnemonicText
 PtextMnemonicText
 	.byte "ptext", 0
 
+ForMnemonicText
+	.byte "for", 0
+
+EndforMnemonicText
+	.byte "endfor", 0
+
 DriverSelectorUnknownRawText
 	.byte "OTR901: selector unknown mnemonic", 0
 
@@ -3592,6 +3798,15 @@ OpasmTextScratchLen
 
 OpasmTextScratch
 	.res byte, OPASM_TEXT_SCRATCH_CAPACITY
+
+OpasmRepeatDepth
+	.res word, 1
+
+OpasmRepeatBodyStart
+	.res word, OPASM_REPEAT_STACK_CAPACITY
+
+OpasmRepeatRemaining
+	.res long, OPASM_REPEAT_STACK_CAPACITY
 
 OpasmLayoutNameDestPtr
 	.res long, 1

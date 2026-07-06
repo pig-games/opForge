@@ -1,0 +1,32 @@
+[slice]
+name = "native counted repetition expansion"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/repetition.rs::evaluate_for_plan",
+  "crates/opforge-asm/src/repetition_driver.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::runPassOne",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::runPassTwo",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl"
+]
+invariant = "A matched `.for <count>` block is skipped at its control records and its complete body is processed exactly count times in both passes, with bounded nesting and iteration count."
+assertion_decision = "No runtime assertion: valid zero-count and repeated control flow are external source semantics; explicit status returns fail closed on unmatched blocks, stack capacity, invalid count, and iteration overflow."
+
+[[tests]]
+name = "native_counted_for_contract_covers_zero_one_nested_and_limit"
+proof_level = "C"
+proves = "The host boundary model covers zero, one, nested repetition, matching, and the configured iteration limit."
+does_not_prove = "Native statement-table traversal or 68020 execution."
+
+[[tests]]
+name = "native_counted_for_flow_callback_precedes_pass_processing"
+proof_level = "B"
+proves = "Both native passes invoke flow control before ordinary statement callbacks and reset repeat state per pass."
+does_not_prove = "Callback execution or emitted bytes."
+
+[[tests]]
+name = "native_opcore_counted_for_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes canonical `for_counter_basic.asm` and the native CLI-written binary matches the live Rust CLI."
+does_not_prove = "Iterable `.for`, `.bfor`, or `.while` semantics."

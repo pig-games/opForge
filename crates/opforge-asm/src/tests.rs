@@ -34198,6 +34198,29 @@ fn native_source_cpu_normalization_contract_covers_bare_quoted_and_malformed_tok
 }
 
 #[test]
+fn native_column_one_directive_fallback_routes_mnemonic_before_expression_label_heuristic() {
+    // Proof level B. This test locks the native routing order that prevents an
+    // expression-bearing column-one directive from becoming a label. It does
+    // not execute the 68020 implementation or prove directive semantics.
+    let source = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/assembly_session.asm"),
+    )
+    .expect("read native assembly-session source");
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "firstToken",
+            "cmpi.l #1, d4",
+            "bne.w firstTokenMnemonic",
+            "cmpi.b #'.', (a2)",
+            "beq.w firstTokenMnemonic",
+            "tst.w state.NativeCliStmtExprFound",
+            "bne.w firstTokenLabel",
+        ]
+    ));
+}
+
+#[test]
 fn native_source_cpu_bootstrap_preserves_tail_and_normalizes_before_routing() {
     // Proof level B. This test proves the bootstrap source preserves/restores
     // its parser tail around normalization before validating trailing input.
@@ -34481,6 +34504,61 @@ fn external_fs_uae_opforge_native_cli_expression_metadata_fallback_matches_live_
                     .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
             )
             .expect("read native expression fallback bytes");
+            assert_eq!(native_bin, rust_bin);
+        }
+    }
+}
+
+#[test]
+fn native_column_one_directive_routing_fs_uae() {
+    // Proof level D. This test proves a source-side CPU directive in column one
+    // reaches the real Amiga-native CLI without becoming a label and writes
+    // the same bytes as the live Rust CLI. It does not prove .for semantics.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let repo_root = workspace_root();
+    let source = b".cpu 6502\n.org 0\n.byte $aa\n";
+    let case_dir = create_temp_dir("native-column-one-directive");
+    let source_path = case_dir.join("input.asm");
+    let rust_bin_path = case_dir.join("rust.bin");
+    fs::write(&source_path, source).expect("write column-one directive source");
+    let cli = Cli::parse_from([
+        "opForge",
+        source_path.to_string_lossy().as_ref(),
+        "--bin",
+        rust_bin_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+    ]);
+    run_with_cli_with_context(&cli).expect("run live Rust column-one directive oracle");
+    let rust_bin = fs::read(&rust_bin_path).expect("read live Rust column-one directive bytes");
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source),
+        command_template: Some("{input} --bin {bin} --cpu m6502"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&repo_root, &cases)
+        .expect("column-one directive FS-UAE case should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native column-one directive run failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            let native_bin = fs::read(
+                run.artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read native column-one directive bytes");
             assert_eq!(native_bin, rust_bin);
         }
     }

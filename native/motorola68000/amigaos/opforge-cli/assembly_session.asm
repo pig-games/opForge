@@ -283,6 +283,8 @@ opforgeNativeCliRecordSourceStatementFallback	.block
 firstToken
 	cmpi.l #1, d4
 	bne.w firstTokenMnemonic
+	cmpi.b #'.', (a2)
+	beq.w firstTokenMnemonic
 	tst.w state.NativeCliStmtExprFound
 	bne.w firstTokenLabel
 	tst.w state.NativeCliStmtMnemFound

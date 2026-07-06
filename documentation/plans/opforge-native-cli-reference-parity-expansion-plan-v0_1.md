@@ -500,6 +500,27 @@ landed” is not equivalent to “framework-closed.”
     - the four bounded Level D tests are named `native_reference_opcore_syntax_expression_fs_uae`, `native_reference_opcore_module_macro_statement_fs_uae`, `native_reference_opcore_layout_output_fs_uae`, and `native_reference_opcore_diagnostic_fs_uae`
     - additive adaptation is required where a canonical source embeds non-MOS CPU selection, mnemonics, or operand syntax; canonical Rust examples and references remain immutable
 
+- [x] Item 5.1: remediate column-one native directive routing
+  - Source requirement or finding IDs: Item 6 Level D red case on `examples/opcore/for_counter_basic.asm`; native fallback recorded `.cpu` as a label when PRVM also exposed its operand expression
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - `native/motorola68000/amigaos/opforge-cli/assembly_session.asm`
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - focused Level B source-lock test
+    - exact named Level D `native_column_one_directive_routing_fs_uae` with `--nocapture --test-threads=1`
+    - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
+    - `scripts/workflow/run_native_68000_format_gate.sh`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for column-one directive routing only
+  - Commit outcome:
+    - dot-prefixed column-one tokens route as directive mnemonics before expression-bearing bare-label heuristics
+  - Definition of done:
+    - the canonical opcore source and all Rust examples/references remain unchanged
+    - Level D no longer emits `LABEL .cpu`
+    - no directive-specific semantics are added to generic native paths
+
 - [ ] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

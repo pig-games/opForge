@@ -1,0 +1,23 @@
+[slice]
+name = "native column-one directive routing"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/line/asmline_directives.rs::directive routing"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/assembly_session.asm::opforgeNativeCliRecordSourceStatementFallback"
+]
+invariant = "A dot-prefixed token in source column one is recorded as the statement mnemonic even when PRVM also reports an expression request; it is never reclassified as a bare label."
+assertion_decision = "No runtime assertion: column-one directive syntax is valid external input, and the corrected branch directly selects the mnemonic route; Level B source-lock and Level D emulator evidence guard the invariant."
+
+[[tests]]
+name = "native_column_one_directive_fallback_routes_mnemonic_before_expression_label_heuristic"
+proof_level = "B"
+proves = "The native fallback checks the leading dot and selects the mnemonic path before expression-bearing bare-label heuristics."
+does_not_prove = "Real PRVM/native execution or directive semantics."
+
+[[tests]]
+name = "native_column_one_directive_routing_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes a source whose .cpu directive begins in column one without storing .cpu as a label and matches live Rust bytes."
+does_not_prove = "The Item 6 syntax/expression roots or .for semantics."

@@ -521,6 +521,161 @@ landed” is not equivalent to “framework-closed.”
     - Level D no longer emits `LABEL .cpu`
     - no directive-specific semantics are added to generic native paths
 
+- [ ] Item 5.2: add native counted-repetition source expansion
+  - Source requirement or finding IDs: Item 6 Level D failure on canonical `for_counter_basic.asm`; Rust authority in `repetition.rs::evaluate_for_plan` and `repetition_driver.rs`; native first divergence is between parsed statement storage and pass-one execution because `.for` blocks remain unexpanded
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - narrowly required native source-expansion/session files under `native/motorola68000/amigaos/opforge-cli/`
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - focused Level A/B/C tests for zero, one, and bounded counted repetition
+    - exact Level D `native_opcore_counted_for_fs_uae` with `--nocapture --test-threads=1`
+    - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
+    - `scripts/workflow/run_native_68000_format_gate.sh`
+    - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for counted `.for` expansion only
+  - Commit outcome:
+    - native source expansion consumes a matched `.for <count>` / `.endfor` block and presents the repeated body to the ordinary statement pipeline
+  - Definition of done:
+    - zero-count and nested-boundary behavior match Rust
+    - the iteration limit fails closed
+    - `.org` and body source text are never stripped or rewritten
+
+- [ ] Item 5.3: add native iterable repetition values and loop-variable binding
+  - Source requirement or finding IDs: Item 6 assignments `for_collection_basic.asm` and `ranges_lists_basic.asm`; Rust authority in `repetition.rs::evaluate_for_plan`, `AsmValue::List`, and `AsmValue::Range`
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - narrowly required native opcore expression/value and source-expansion files
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - focused Level A/B/C list, inclusive-range, stepped-range, and loop-binding tests
+    - exact Level D `native_opcore_iterable_for_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, and full Rust quality gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for iterable `.for` values and binding only
+  - Commit outcome:
+    - native `.for <name> in <list-or-range>` binds each scalar iteration value and expands the complete body
+  - Definition of done:
+    - list indexing, `.len`, inclusive ranges, and explicit steps used by the assigned sources match Rust
+    - zero steps and direction mismatches fail deterministically
+    - no CPU semantics enter the generic value layer
+
+- [ ] Item 5.4: add native condition-based repetition
+  - Source requirement or finding IDs: Item 6 assignment `while_basic.asm`; Rust authority in `repetition.rs::evaluate_while_condition` and `repetition_driver.rs`
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - native source-expansion and expression-session files
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - focused Level A/B/C false-first, current-address, and iteration-limit tests
+    - exact Level D `native_opcore_while_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, and full Rust quality gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for `.while` expansion only
+  - Commit outcome:
+    - native `.while` reevaluates its condition at each body boundary against current session state
+  - Definition of done:
+    - `$` observes the same current address as Rust
+    - false-first loops emit nothing
+    - the iteration limit prevents non-terminating expansion
+
+- [ ] Item 5.5: add native conditional and match branch selection
+  - Source requirement or finding IDs: Item 6 assignment `cond_syntax.asm`; Rust authority in `asmline_conditionals.rs`
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - native conditional/source-routing files
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - focused Level A/B/C nested `.if`/`.elseif`/`.else` and `.match`/`.case`/`.default` tests
+    - exact Level D `native_opcore_conditionals_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, and full Rust quality gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for conditional branch selection only
+  - Commit outcome:
+    - native processing records and assembles only the selected conditional branches while preserving nesting
+  - Definition of done:
+    - skipped branches cannot define symbols or emit bytes
+    - labelled conditional directives preserve Rust label behavior
+    - unmatched/unterminated blocks fail deterministically
+
+- [ ] Item 5.6: add native block and namespace symbol qualification
+  - Source requirement or finding IDs: Item 6 assignments `scopes.asm` and `scopes_namespace.asm`; Rust authority in `asmline_directives_scope.rs::route_scope_directive_ast`
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - native symbol/session and directive-routing files
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - focused Level A/B/C nested qualification, shadowing, `.bend`, and `.endn` tests
+    - exact Level D `native_opcore_scopes_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, and full Rust quality gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for generic scope qualification only
+  - Commit outcome:
+    - native symbol definition and lookup use the same active block/namespace qualification order as Rust
+  - Definition of done:
+    - local shadowing and fully qualified lookup match Rust bytes
+    - close aliases are equivalent
+    - scope state is reset between sessions and passes
+
+- [ ] Item 5.7: add native struct values, instances, and scoped repetition
+  - Source requirement or finding IDs: Item 6 assignments `struct_literal_instance_basic.asm`, `struct_var_instance_basic.asm`, and `bfor_labeled_struct_basic.asm`; Rust authority in `asmline_directives_scope.rs::process_struct_mode_statement_ast` and scoped repetition handling
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - native generic value/symbol/source-expansion files
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - focused Level A/B/C field layout, literal instance, mutable instance, member access, and `.bfor` scope tests
+    - exact Level D `native_opcore_structs_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, and full Rust quality gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for struct/value semantics and `.bfor` ownership only
+  - Commit outcome:
+    - native compile-time values represent struct definitions and instances with deterministic field offsets and scoped repeated labels
+  - Definition of done:
+    - `.byte ?`/`.word ?` fields affect layout without emitting definition bytes
+    - `.const`, `.var`, and `.set` instance behavior matches Rust
+    - indexed `.bfor` member access matches the canonical artifact
+
+- [ ] Item 5.8: add native text-encoding definition and emission semantics
+  - Source requirement or finding IDs: Item 6 assignments `text_encoding.asm` and `text_encoding_definitions.asm`; Rust authority in `asmline_directives_text.rs`
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - native text-encoding/value/output files
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - focused Level A/B/C built-in selection, `.encode` cloning, `.cdef`, `.tdef`, `.edef`, `.text`, `.null`, and `.ptext` tests
+    - exact Level D `native_opcore_text_encoding_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, and full Rust quality gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for text encoding only
+  - Commit outcome:
+    - native text emission and source-defined encoding tables match Rust byte-for-byte
+  - Definition of done:
+    - ASCII and PETSCII switching matches Rust
+    - cloned encodings and escape sequences are session-local
+    - unknown encodings and malformed definitions fail deterministically
+
+- [ ] Item 5.9: add complete additive MOS adaptations for mixed-CPU syntax roots
+  - Source requirement or finding IDs: Item 5 `AdditiveMosAdaptation` assignments `expr_syntax.asm`, `grouping.asm`, `syntax.asm`, and `testexpr.asm`; user prohibition on modifying Rust examples/reference code
+  - Expected files:
+    - additive fixtures outside `examples/**`
+    - `crates/opforge-asm/src/native_reference_parity.rs`
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - Level A semantic-completeness accounting for every canonical statement
+    - Level B additive-fixture artifact checks
+    - exact Level D `native_opcore_adapted_syntax_fs_uae` with `--nocapture --test-threads=1`
+    - reference-scope validator, native formatter, staged native porting gate, and full Rust quality gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for additive adaptation only, with no native parity fix bundled
+  - Commit outcome:
+    - reviewed MOS-backed copies preserve the complete CPU-neutral syntax/expression intent while replacing only non-MOS instruction and operand spellings
+  - Definition of done:
+    - every canonical line is mapped, retained unchanged, or explicitly justified as CPU-spelling adaptation
+    - no canonical file or canonical reference changes
+    - every `.org` remains present and semantically equivalent
+
 - [ ] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

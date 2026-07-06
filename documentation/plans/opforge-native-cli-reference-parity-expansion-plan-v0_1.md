@@ -542,7 +542,26 @@ landed” is not equivalent to “framework-closed.”
     - the iteration limit fails closed
     - `.org` and body source text are never stripped or rewritten
 
-- [ ] Item 5.3: add native iterable repetition values and loop-variable binding
+- [ ] Item 5.3a: add native compile-time sequence assignment storage
+  - Source requirement or finding IDs: Level E localization of `for_collection_basic.asm` showed `nums = {1, 3, 5, 7}` stored as label `nums` plus unknown mnemonic `=` before iterable planning
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - a bounded generic native compile-time-value module and session wiring
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - focused Level B/C assignment parsing, capacity, and session-reset tests
+    - exact Level D `native_opcore_sequence_assignment_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for sequence assignment storage only
+  - Commit outcome:
+    - native list assignments are consumed as compile-time value definitions rather than pass-engine mnemonics
+  - Definition of done:
+    - identifier and numeric element bounds fail closed
+    - stored values reset for each pass/session
+    - no iterable control, indexing, or `.len` behavior is bundled
+
+- [ ] Item 5.3b: add native iterable repetition values and loop-variable binding
   - Source requirement or finding IDs: Item 6 assignments `for_collection_basic.asm` and `ranges_lists_basic.asm`; Rust authority in `repetition.rs::evaluate_for_plan`, `AsmValue::List`, and `AsmValue::Range`
   - Expected files:
     - one `documentation/plans/slices/*.toml` metadata record

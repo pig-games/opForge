@@ -6,6 +6,7 @@
 SEQUENCE_CAPACITY = 8
 SEQUENCE_NAME_CAPACITY = 32
 SEQUENCE_ELEMENT_CAPACITY = 16
+BINDING_CAPACITY = 8
 
 	.section code, kind=code
 	.pub
@@ -16,9 +17,20 @@ SEQUENCE_ELEMENT_CAPACITY = 16
 ; CCR: reflects D0 on return.
 resetV1	.block
 	clr.w SequenceCount
+	clr.w BindingDepth
 	moveq #0, d0
 	rts
 	.bend  ; resetV1
+
+; Reset loop-variable bindings at one assembly-pass boundary.
+; Outputs: D0 = 0.
+; Clobbers: D0/CCR.
+; CCR: reflects D0 on return.
+resetBindingsV1	.block
+	clr.w BindingDepth
+	moveq #0, d0
+	rts
+	.bend  ; resetBindingsV1
 
 ; Capture `name = {number, ...}` from one complete source line.
 ; Inputs: A0 = source text; D0 = source length.
@@ -221,6 +233,426 @@ return
 	rts
 	.bend  ; findSequenceV1
 
+; Resolve `.for <name> in <sequence>` into a bounded iterable plan.
+; Inputs: A0/D0 = operand text/length.
+; Outputs: D0 = status; A0/D4 = variable text/length; A1 = values;
+;          D1 = element count; D2 = first value; D3 = 0 for list.
+; Clobbers: D0-D7/A0-A4/CCR.
+; CCR: reflects D0 on return.
+planListForOperandV1	.block
+	movem.l d6-d7/a2-a4, -(sp)
+	move.l d0, d7
+	bsr.w skipWhitespace
+	movea.l a0, a2
+	clr.l d6
+variableLoop
+	tst.l d7
+	beq.w fail
+	cmpi.b #' ', (a0)
+	beq.s variableDone
+	cmpi.b #9, (a0)
+	beq.s variableDone
+	addq.l #1, a0
+	subq.l #1, d7
+	addq.l #1, d6
+	cmpi.l #SEQUENCE_NAME_CAPACITY, d6
+	bhs.w fail
+	bra.s variableLoop
+variableDone
+	tst.l d6
+	beq.w fail
+	bsr.w skipWhitespace
+	cmpi.l #2, d7
+	bcs.w fail
+	cmpi.b #'i', (a0)
+	bne.w fail
+	cmpi.b #'n', 1(a0)
+	bne.w fail
+	addq.l #2, a0
+	subq.l #2, d7
+	tst.l d7
+	beq.w fail
+	cmpi.b #' ', (a0)
+	beq.s iterable
+	cmpi.b #9, (a0)
+	bne.w fail
+iterable
+	bsr.w skipWhitespace
+	movea.l a0, a3
+	move.l d7, d5
+iterableEnd
+	tst.l d5
+	beq.s lookup
+	cmpi.b #' ', (a0)
+	beq.s lookup
+	cmpi.b #9, (a0)
+	beq.s lookup
+	cmpi.b #';', (a0)
+	beq.s lookup
+	addq.l #1, a0
+	subq.l #1, d5
+	bra.s iterableEnd
+lookup
+	move.l d7, d0
+	sub.l d5, d0
+	beq.s fail
+	movea.l a3, a0
+	bsr.w findSequenceV1
+	bne.s fail
+	move.l d2, d1
+	clr.l d2
+	tst.l d1
+	beq.s planned
+	move.l (a1), d2
+planned
+	clr.l d3
+	movea.l a2, a0
+	move.l d6, d4
+	moveq #0, d0
+	bra.s return
+fail
+	moveq #1, d0
+return
+	movem.l (sp)+, d6-d7/a2-a4
+	rts
+	.bend  ; planListForOperandV1
+
+; Resolve `.for <name> in <start>..<end>[:step]` into an ascending range plan.
+; Inputs: A0/D0 = operand text/length.
+; Outputs: D0 = status; A0/D4 = variable text/length; A1 = 0;
+;          D1 = element count; D2 = first value; D3 = positive step.
+; Clobbers: D0-D7/A0-A4/CCR.
+; CCR: reflects D0 on return.
+planRangeForOperandV1	.block
+	movem.l d6-d7/a2-a4, -(sp)
+	move.l d0, d7
+	bsr.w skipWhitespace
+	movea.l a0, a2
+	clr.l d4
+variableLoop
+	tst.l d7
+	beq.w fail
+	cmpi.b #' ', (a0)
+	beq.s variableDone
+	cmpi.b #9, (a0)
+	beq.s variableDone
+	addq.l #1, a0
+	subq.l #1, d7
+	addq.l #1, d4
+	cmpi.l #SEQUENCE_NAME_CAPACITY, d4
+	bhs.w fail
+	bra.s variableLoop
+variableDone
+	tst.l d4
+	beq.w fail
+	bsr.w skipWhitespace
+	cmpi.l #2, d7
+	bcs.w fail
+	cmpi.b #'i', (a0)
+	bne.w fail
+	cmpi.b #'n', 1(a0)
+	bne.w fail
+	addq.l #2, a0
+	subq.l #2, d7
+	tst.l d7
+	beq.w fail
+	cmpi.b #' ', (a0)
+	beq.s range
+	cmpi.b #9, (a0)
+	bne.w fail
+range
+	bsr.w skipWhitespace
+	movea.l a0, a4
+	bsr.w parseNumber
+	bne.w fail
+	cmpa.l a4, a0
+	beq.w fail
+	move.l d3, d2
+	cmpi.l #2, d7
+	bcs.w fail
+	cmpi.b #'.', (a0)
+	bne.w fail
+	cmpi.b #'.', 1(a0)
+	bne.w fail
+	addq.l #2, a0
+	subq.l #2, d7
+	moveq #0, d1
+	tst.l d7
+	beq.w fail
+	cmpi.b #'=', (a0)
+	bne.s rangeEnd
+	moveq #1, d1
+	addq.l #1, a0
+	subq.l #1, d7
+rangeEnd
+	movea.l a0, a4
+	bsr.w parseNumber
+	bne.w fail
+	cmpa.l a4, a0
+	beq.w fail
+	move.l d3, d5
+	moveq #1, d6
+	tst.l d7
+	beq.s count
+	cmpi.b #':', (a0)
+	bne.s trailing
+	addq.l #1, a0
+	subq.l #1, d7
+	movea.l a0, a4
+	bsr.w parseNumber
+	bne.w fail
+	cmpa.l a4, a0
+	beq.w fail
+	tst.l d3
+	beq.w fail
+	move.l d3, d6
+trailing
+	bsr.w skipWhitespace
+	tst.l d7
+	beq.s count
+	cmpi.b #';', (a0)
+	bne.w fail
+count
+	cmp.l d2, d5
+	blo.w fail
+	tst.l d1
+	bne.s inclusiveCount
+	move.l d2, d0
+	clr.l d1
+exclusiveLoop
+	cmp.l d5, d0
+	bhs.s planned
+	addq.l #1, d1
+	cmpi.l #1024, d1
+	bhi.w fail
+	add.l d6, d0
+	bcs.w fail
+	bra.s exclusiveLoop
+inclusiveCount
+	move.l d2, d0
+	clr.l d1
+inclusiveLoop
+	cmp.l d5, d0
+	bhi.s planned
+	addq.l #1, d1
+	cmpi.l #1024, d1
+	bhi.w fail
+	add.l d6, d0
+	bcs.w fail
+	bra.s inclusiveLoop
+planned
+	move.l d6, d3
+	movea.l a2, a0
+	suba.l a1, a1
+	moveq #0, d0
+	bra.s return
+fail
+	moveq #1, d0
+return
+	movem.l (sp)+, d6-d7/a2-a4
+	rts
+	.bend  ; planRangeForOperandV1
+
+; Push a loop-variable binding.
+; Inputs: A0/D0 = name text/length; D1 = value.
+; Outputs: D0 = status.
+; Clobbers: D0-D4/A0-A2/CCR.
+; CCR: reflects D0 on return.
+pushBindingV1	.block
+	moveq #0, d2
+	move.w BindingDepth, d2
+	cmpi.w #BINDING_CAPACITY, d2
+	bhs.s fail
+	tst.l d0
+	beq.s fail
+	cmpi.l #SEQUENCE_NAME_CAPACITY, d0
+	bhs.s fail
+	move.l d2, d3
+	lsl.l #5, d3
+	lea BindingNames, a1
+	adda.l d3, a1
+	move.l d0, d4
+copy
+	move.b (a0)+, (a1)+
+	subq.l #1, d4
+	bne.s copy
+	clr.b (a1)
+	lsl.l #2, d2
+	lea BindingValues, a2
+	move.l d1, 0(a2, d2.l)
+	move.w BindingDepth, d2
+	addq.w #1, d2
+	move.w d2, BindingDepth
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; pushBindingV1
+
+; Update the innermost loop-variable binding.
+; Inputs: D1 = value.
+; Outputs: D0 = status.
+; Clobbers: D0-D2/A0/CCR.
+; CCR: reflects D0 on return.
+updateTopBindingV1	.block
+	moveq #0, d2
+	move.w BindingDepth, d2
+	beq.s fail
+	subq.w #1, d2
+	lsl.l #2, d2
+	lea BindingValues, a0
+	move.l d1, 0(a0, d2.l)
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; updateTopBindingV1
+
+; Pop the innermost loop-variable binding.
+; Outputs: D0 = status.
+; Clobbers: D0/CCR.
+; CCR: reflects D0 on return.
+popBindingV1	.block
+	tst.w BindingDepth
+	beq.s fail
+	move.w BindingDepth, d0
+	subq.w #1, d0
+	move.w d0, BindingDepth
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; popBindingV1
+
+; Resolve the innermost exact loop-variable binding.
+; Inputs: A0/D0 = name text/length.
+; Outputs: D0 = status; D3 = value.
+; Clobbers: D0-D5/A0-A2/CCR.
+; CCR: reflects D0 on return.
+resolveBindingV1	.block
+	movem.l d1-d2/d4-d5/a0-a2, -(sp)
+	movea.l a0, a2
+	move.l d0, d5
+	moveq #0, d1
+	move.w BindingDepth, d1
+scanBinding
+	tst.w d1
+	beq.s notFound
+	subq.w #1, d1
+	move.l d1, d2
+	lsl.l #5, d2
+	lea BindingNames, a1
+	adda.l d2, a1
+	movea.l a2, a0
+	move.l d5, d0
+	bsr.w nameEquals
+	beq.s scanBinding
+	move.l d1, d2
+	lsl.l #2, d2
+	lea BindingValues, a0
+	move.l 0(a0, d2.l), d3
+	moveq #0, d0
+	bra.s resolveReturn
+notFound
+	moveq #1, d0
+resolveReturn
+	movem.l (sp)+, d1-d2/d4-d5/a0-a2
+	rts
+	.bend  ; resolveBindingV1
+
+; Resolve `.len(sequence)` or `sequence[index]`.
+; Inputs: A0/D0 = trimmed expression text/length.
+; Outputs: D0 = status; D3 = scalar value.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0 on return.
+resolveSequenceExpressionV1	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	move.l d0, d7
+	cmpi.l #6, d7
+	bcs.w indexExpression
+	cmpi.b #'.', (a0)
+	bne.w indexExpression
+	cmpi.b #'l', 1(a0)
+	bne.w indexExpression
+	cmpi.b #'e', 2(a0)
+	bne.w indexExpression
+	cmpi.b #'n', 3(a0)
+	bne.w indexExpression
+	cmpi.b #'(', 4(a0)
+	bne.w indexExpression
+	addq.l #5, a0
+	subq.l #5, d7
+	movea.l a0, a2
+	clr.l d5
+lenName
+	tst.l d7
+	beq.w fail
+	cmpi.b #')', (a0)
+	beq.s lenLookup
+	addq.l #1, a0
+	subq.l #1, d7
+	addq.l #1, d5
+	bra.s lenName
+lenLookup
+	tst.l d5
+	beq.w fail
+	cmpi.l #1, d7
+	bne.w fail
+	movea.l a2, a0
+	move.l d5, d0
+	bsr.w findSequenceV1
+	bne.w fail
+	move.l d2, d3
+	bra.w ok
+
+indexExpression
+	movea.l a0, a2
+	clr.l d5
+findBracket
+	tst.l d7
+	beq.w fail
+	cmpi.b #'[', (a0)
+	beq.s indexStart
+	addq.l #1, a0
+	subq.l #1, d7
+	addq.l #1, d5
+	bra.s findBracket
+indexStart
+	tst.l d5
+	beq.w fail
+	addq.l #1, a0
+	subq.l #1, d7
+	movea.l a0, a3
+	bsr.w parseNumber
+	bne.w fail
+	cmpa.l a3, a0
+	beq.w fail
+	move.l d3, d6
+	cmpi.l #1, d7
+	bne.w fail
+	cmpi.b #']', (a0)
+	bne.w fail
+	movea.l a2, a0
+	move.l d5, d0
+	bsr.w findSequenceV1
+	bne.w fail
+	cmp.l d2, d6
+	bhs.w fail
+	lsl.l #2, d6
+	move.l 0(a1, d6.l), d3
+ok
+	moveq #0, d0
+	bra.s return
+fail
+	moveq #1, d0
+return
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; resolveSequenceExpressionV1
+
 	.priv
 
 skipWhitespace	.block
@@ -341,5 +773,11 @@ SequenceNames
 	.res byte, SEQUENCE_CAPACITY * SEQUENCE_NAME_CAPACITY
 SequenceValues
 	.res long, SEQUENCE_CAPACITY * SEQUENCE_ELEMENT_CAPACITY
+BindingDepth
+	.res word, 1
+BindingNames
+	.res byte, BINDING_CAPACITY * SEQUENCE_NAME_CAPACITY
+BindingValues
+	.res long, BINDING_CAPACITY
 	.endsection
 	.endmodule

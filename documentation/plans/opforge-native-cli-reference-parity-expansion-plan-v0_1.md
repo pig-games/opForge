@@ -561,7 +561,7 @@ landed” is not equivalent to “framework-closed.”
     - stored values reset once per session and remain stable across both passes
     - no iterable control, indexing, or `.len` behavior is bundled
 
-- [ ] Item 5.3b: add native iterable repetition values and loop-variable binding
+- [x] Item 5.3b: add native iterable repetition values and loop-variable binding
   - Source requirement or finding IDs: Item 6 assignments `for_collection_basic.asm` and `ranges_lists_basic.asm`; Rust authority in `repetition.rs::evaluate_for_plan`, `AsmValue::List`, and `AsmValue::Range`
   - Expected files:
     - one `documentation/plans/slices/*.toml` metadata record

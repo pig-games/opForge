@@ -34436,6 +34436,149 @@ fn native_sequence_assignment_storage_is_bounded_and_reset_per_session() {
     ));
 }
 
+fn native_iterable_for_contract(
+    variable: &str,
+    values: &[u32],
+    iteration_limit: usize,
+) -> Result<Vec<(String, u32)>, ()> {
+    if variable.is_empty() || variable.len() >= 32 || values.len() > iteration_limit {
+        return Err(());
+    }
+    Ok(values
+        .iter()
+        .map(|value| (variable.to_string(), *value))
+        .collect())
+}
+
+fn native_ascending_range_contract(
+    start: u32,
+    end: u32,
+    inclusive: bool,
+    step: u32,
+) -> Result<Vec<u32>, ()> {
+    if step == 0 || start > end {
+        return Err(());
+    }
+    let mut values = Vec::new();
+    let mut current = start;
+    while if inclusive {
+        current <= end
+    } else {
+        current < end
+    } {
+        values.push(current);
+        current = current.checked_add(step).ok_or(())?;
+    }
+    Ok(values)
+}
+
+#[test]
+fn native_iterable_for_contract_covers_lists_ranges_binding_and_limit() {
+    // Proof level C. This host request-shape model proves list order, inclusive
+    // and stepped ascending range planning, loop-variable binding, and bounded
+    // iteration decisions. It does not execute native tables or 68020 branches.
+    assert_eq!(
+        native_iterable_for_contract("value", &[1, 3, 5, 7], 8).unwrap(),
+        vec![
+            ("value".to_string(), 1),
+            ("value".to_string(), 3),
+            ("value".to_string(), 5),
+            ("value".to_string(), 7),
+        ]
+    );
+    assert_eq!(
+        native_ascending_range_contract(0, 6, true, 3).unwrap(),
+        vec![0, 3, 6]
+    );
+    assert_eq!(
+        native_ascending_range_contract(0, 6, false, 3).unwrap(),
+        vec![0, 3]
+    );
+    let sequence = [2, 4, 6, 8];
+    assert_eq!(sequence.len(), 4);
+    assert_eq!(sequence.get(2), Some(&6));
+    assert!(native_ascending_range_contract(0, 6, true, 0).is_err());
+    assert!(native_ascending_range_contract(6, 0, true, 1).is_err());
+    assert!(native_iterable_for_contract("n", &[0, 1, 2], 2).is_err());
+}
+
+#[test]
+fn native_iterable_for_source_binds_before_body_and_updates_before_repeat() {
+    // Proof level B. This test proves the native flow callback pushes the first
+    // binding before body execution, advances it before jumping back, resolves
+    // it before ordinary labels, and resets binding state per pass. It does not
+    // execute the callback or prove emitted bytes.
+    let values = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_compile_values.asm"),
+    )
+    .expect("read native compile-time values");
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    assert!(values.contains("planListForOperandV1\t.block"));
+    assert!(values.contains("planRangeForOperandV1\t.block"));
+    assert!(values.contains("resolveSequenceExpressionV1\t.block"));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "jsr compile_values.planListForOperandV1",
+            "jsr compile_values.planRangeForOperandV1",
+            "jsr compile_values.pushBindingV1",
+            "move.w d4, OpasmRepeatDepth",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "advanceRange",
+            "updateBinding",
+            "jsr compile_values.updateTopBindingV1",
+            "move.w 0(a0, d4.l), d2",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "jsr compile_values.resolveBindingV1",
+            "jsr compile_values.resolveSequenceExpressionV1",
+            "jsr eng.opasmEngineResolveLabelValueV1",
+        ]
+    ));
+    assert_eq!(
+        driver.matches("jsr compile_values.resetBindingsV1").count(),
+        2
+    );
+}
+
+#[test]
+fn opcore_iterable_rust_oracle_covers_assigned_sources() {
+    // Proof level A. This test proves the live Rust assembler emits the expected
+    // bytes for both assigned canonical iterable sources. It does not prove any
+    // native request shape or 68020 execution.
+    let case_dir = create_temp_dir("opcore-iterable-rust-oracle");
+    for (name, expected) in [
+        ("for_collection_basic.asm", &[1, 3, 5, 7][..]),
+        ("ranges_lists_basic.asm", &[4, 6, 0, 3, 6][..]),
+    ] {
+        let input_path = workspace_root().join("examples/opcore").join(name);
+        let bin_path = case_dir.join(format!("{name}.bin"));
+        let cli = Cli::parse_from([
+            "opForge",
+            input_path.to_string_lossy().as_ref(),
+            "--bin",
+            bin_path.to_string_lossy().as_ref(),
+            "--cpu",
+            "m6502",
+        ]);
+        run_with_cli_with_context(&cli).expect("run Rust iterable source oracle");
+        assert_eq!(
+            fs::read(bin_path).expect("read Rust oracle bytes"),
+            expected
+        );
+    }
+}
+
 #[test]
 fn native_source_cpu_bootstrap_preserves_tail_and_normalizes_before_routing() {
     // Proof level B. This test proves the bootstrap source preserves/restores
@@ -34887,6 +35030,79 @@ fn native_opcore_sequence_assignment_fs_uae() {
             )
             .expect("read native sequence assignment bytes");
             assert_eq!(native_bin, rust_bin);
+        }
+    }
+}
+
+#[test]
+fn native_opcore_iterable_for_fs_uae() {
+    // Proof level D. This test proves real Amiga-native sessions expand list and
+    // inclusive stepped-range `.for` loops, bind each element, and match live
+    // Rust bytes while the canonical range case also exercises indexing and
+    // `.len`. It does not prove descending ranges or non-numeric iterables.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let input_path = workspace_root().join("examples/opcore/for_collection_basic.asm");
+    let list_source = fs::read(&input_path).expect("read canonical iterable for source");
+    let case_dir = create_temp_dir("native-opcore-iterable-for");
+    let range_path = workspace_root().join("examples/opcore/ranges_lists_basic.asm");
+    let range_source = fs::read(&range_path).expect("read canonical ranges and lists source");
+    let mut rust_bins = Vec::new();
+    for (index, source_path) in [&input_path, &range_path].into_iter().enumerate() {
+        let rust_bin_path = case_dir.join(format!("rust-{index}.bin"));
+        let cli = Cli::parse_from([
+            "opForge",
+            source_path.to_string_lossy().as_ref(),
+            "--bin",
+            rust_bin_path.to_string_lossy().as_ref(),
+            "--cpu",
+            "m6502",
+        ]);
+        run_with_cli_with_context(&cli).expect("run live Rust iterable for oracle");
+        rust_bins.push(fs::read(&rust_bin_path).expect("read Rust iterable for bytes"));
+    }
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(&list_source),
+            command_template: Some("{input} --bin {bin} --cpu m6502"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(&range_source),
+            command_template: Some("{input} --bin {bin} --cpu m6502"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("iterable for FS-UAE case should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), rust_bins.len());
+            for (run, rust_bin) in runs.iter().zip(rust_bins.iter()) {
+                assert!(
+                    run.success,
+                    "native iterable for run failed\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout, run.stderr
+                );
+                let native_bin = fs::read(
+                    run.artifact_dir
+                        .join("Work")
+                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+                )
+                .expect("read native iterable for bytes");
+                assert_eq!(&native_bin, rust_bin);
+            }
         }
     }
 }

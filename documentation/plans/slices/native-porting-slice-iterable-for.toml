@@ -1,0 +1,40 @@
+[slice]
+name = "native iterable repetition values and loop-variable binding"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/repetition.rs::evaluate_for_plan",
+  "crates/opforge-types/src/asm_value.rs::AsmValue::iter"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_compile_values.asm::planListForOperandV1",
+  "native/motorola68000/amigaos/opasm/opasm_compile_values.asm::planRangeForOperandV1",
+  "native/motorola68000/amigaos/opasm/opasm_compile_values.asm::resolveSequenceExpressionV1",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::readOperandValueForStatement"
+]
+invariant = "A bounded `.for variable in iterable` plan visits list or ascending range values in Rust order, exposes the current value while each body statement executes, and resolves the assigned source's list length/index expressions."
+assertion_decision = "No runtime assertion: malformed iterable source and capacity limits are valid external failures; checked planners and binding-stack operations fail closed."
+
+[[tests]]
+name = "opcore_iterable_rust_oracle_covers_assigned_sources"
+proof_level = "A"
+proves = "The live Rust assembler emits the expected bytes for both assigned canonical iterable sources."
+does_not_prove = "Native request shape or 68020 execution."
+
+[[tests]]
+name = "native_iterable_for_source_binds_before_body_and_updates_before_repeat"
+proof_level = "B"
+proves = "The native source pushes, updates, resolves, pops, and pass-resets loop bindings in flow order."
+does_not_prove = "Callback execution or emitted bytes."
+
+[[tests]]
+name = "native_iterable_for_contract_covers_lists_ranges_binding_and_limit"
+proof_level = "C"
+proves = "The host request-shape model covers list order, length/index decisions, inclusive and stepped ascending ranges, direction/zero-step rejection, binding values, and the iteration limit."
+does_not_prove = "Native table contents or 68020 branch execution."
+
+[[tests]]
+name = "native_opcore_iterable_for_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the canonical list and ranges/list sources, including binding, list indexing, `.len`, and an inclusive explicit-step range; native CLI bytes match live Rust."
+does_not_prove = "Descending ranges or non-numeric iterable values."

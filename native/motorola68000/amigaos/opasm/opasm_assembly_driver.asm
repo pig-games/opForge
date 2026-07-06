@@ -4,6 +4,7 @@
 	.cpu 68020
 
 	.use opasm.amigaos.callback_abi as abi
+	.use opasm.amigaos.compile_values as compile_values
 	.use opasm.amigaos.engine as eng
 	.use opasm.amigaos.events
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
@@ -65,6 +66,7 @@ opasmDriverPassOneBegin	.block
 	jsr eng.opasmEngineBeginPassOneV1
 	bsr.w resetLayoutState
 	clr.w OpasmRepeatDepth
+	jsr compile_values.resetBindingsV1
 	rts
 	.bend  ; opasmDriverPassOneBegin
 
@@ -83,6 +85,7 @@ opasmDriverPassTwoBegin	.block
 	jsr eng.opasmEngineBeginPassTwoV1
 	clr.w OpasmLayoutSectionActive
 	clr.w OpasmRepeatDepth
+	jsr compile_values.resetBindingsV1
 	moveq #0, d0
 	rts
 	.bend  ; opasmDriverPassTwoBegin
@@ -155,6 +158,29 @@ compareEndfor
 	subq.l #1, d5
 	move.l d5, 0(a0, d4.l)
 	beq.s finishFor
+	lea OpasmRepeatHasBinding, a0
+	tst.b 0(a0, d3.l)
+	beq.s repeatBody
+	move.l d3, d4
+	lsl.l #2, d4
+	lea OpasmRepeatStep, a0
+	move.l 0(a0, d4.l), d1
+	bne.s advanceRange
+	lea OpasmRepeatValuePtr, a0
+	movea.l 0(a0, d4.l), a1
+	addq.l #4, a1
+	move.l a1, 0(a0, d4.l)
+	move.l (a1), d1
+	bra.s updateBinding
+advanceRange
+	lea OpasmRepeatCurrentValue, a0
+	add.l 0(a0, d4.l), d1
+updateBinding
+	lea OpasmRepeatCurrentValue, a0
+	move.l d1, 0(a0, d4.l)
+	jsr compile_values.updateTopBindingV1
+	bne.w fail
+repeatBody
 	move.l d3, d4
 	add.w d4, d4
 	lea OpasmRepeatBodyStart, a0
@@ -165,44 +191,95 @@ compareEndfor
 finishFor
 	move.w OpasmRepeatDepth, d3
 	subq.w #1, d3
+	lea OpasmRepeatHasBinding, a0
+	tst.b 0(a0, d3.l)
+	beq.s finishPop
+	jsr compile_values.popBindingV1
+	bne.w fail
+finishPop
 	move.w d3, OpasmRepeatDepth
 	moveq #1, d1
 	bra.w success
 
 beginFor
+	moveq #0, d5
+	move.w OpasmRepeatDepth, d5
+	cmpi.w #OPASM_REPEAT_STACK_CAPACITY, d5
+	bhs.w fail
+	move.l d5, d6
+	add.w d6, d6
+	lea OpasmRepeatBodyStart, a0
+	move.w d7, d0
+	addq.w #1, d0
+	move.w d0, 0(a0, d6.l)
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
+	jsr compile_values.planListForOperandV1
+	beq.w beginIterableFor
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
+	jsr compile_values.planRangeForOperandV1
+	beq.w beginIterableFor
 	moveq #4, d5
 	bsr.w readOperandValueForStatement
-	bne.s fail
+	bne.w fail
 	cmpi.l #OPASM_REPEAT_ITERATION_LIMIT, d3
-	bhi.s fail
+	bhi.w fail
 	tst.l d3
-	beq.s zeroFor
+	beq.w zeroFor
 	moveq #0, d4
 	move.w OpasmRepeatDepth, d4
-	cmpi.w #OPASM_REPEAT_STACK_CAPACITY, d4
-	bhs.s fail
 	move.l d4, d5
 	lsl.l #2, d5
 	lea OpasmRepeatRemaining, a0
 	move.l d3, 0(a0, d5.l)
-	move.l d4, d5
-	add.w d5, d5
-	lea OpasmRepeatBodyStart, a0
-	move.w d7, d6
-	addq.w #1, d6
-	move.w d6, 0(a0, d5.l)
+	lea OpasmRepeatHasBinding, a0
+	clr.b 0(a0, d4.l)
 	move.w OpasmRepeatDepth, d4
 	addq.w #1, d4
 	move.w d4, OpasmRepeatDepth
+	move.w d7, d2
+	addq.w #1, d2
 	moveq #1, d1
-	bra.s success
+	bra.w success
+
+beginIterableFor
+	cmpi.l #OPASM_REPEAT_ITERATION_LIMIT, d1
+	bhi.w fail
+	tst.l d1
+	beq.w zeroFor
+	moveq #0, d5
+	move.w OpasmRepeatDepth, d5
+	move.l d5, d6
+	lsl.l #2, d6
+	lea OpasmRepeatRemaining, a2
+	move.l d1, 0(a2, d6.l)
+	lea OpasmRepeatValuePtr, a2
+	move.l a1, 0(a2, d6.l)
+	lea OpasmRepeatCurrentValue, a2
+	move.l d2, 0(a2, d6.l)
+	lea OpasmRepeatStep, a2
+	move.l d3, 0(a2, d6.l)
+	lea OpasmRepeatHasBinding, a2
+	move.b #1, 0(a2, d5.l)
+	move.l d4, d0
+	move.l d2, d1
+	jsr compile_values.pushBindingV1
+	bne.w fail
+	move.w OpasmRepeatDepth, d4
+	addq.w #1, d4
+	move.w d4, OpasmRepeatDepth
+	move.w d7, d2
+	addq.w #1, d2
+	moveq #1, d1
+	bra.w success
 
 zeroFor
 	bsr.w findMatchingEndfor
-	bne.s fail
+	bne.w fail
 	moveq #1, d1
 	addq.w #1, d2
-	bra.s success
+	bra.w success
 
 processStatement
 	clr.w d1
@@ -234,7 +311,7 @@ scan
 	addq.w #1, d2
 	jsr eng.opasmEngineGetStatementCountV1
 	cmp.w d0, d2
-	bhs.s fail
+	bhs.w fail
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
 	moveq #0, d0
@@ -277,7 +354,7 @@ compareNestedEnd
 
 next
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	bra.s scan
+	bra.w scan
 
 found
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
@@ -1184,6 +1261,18 @@ prepareRequest
 	move.l a0, OpasmDriverEvalFallbackPtr
 	move.l d0, OpasmDriverEvalFallbackLen
 	bsr.w parseDirectiveLiteralValue
+	beq.w checkWidth
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w skipLineWhitespace
+	bsr.w trimLiteralFallbackTrailing
+	jsr compile_values.resolveBindingV1
+	beq.w checkWidth
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w skipLineWhitespace
+	bsr.w trimLiteralFallbackTrailing
+	jsr compile_values.resolveSequenceExpressionV1
 	beq.w checkWidth
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
@@ -3817,6 +3906,18 @@ OpasmRepeatBodyStart
 
 OpasmRepeatRemaining
 	.res long, OPASM_REPEAT_STACK_CAPACITY
+
+OpasmRepeatValuePtr
+	.res long, OPASM_REPEAT_STACK_CAPACITY
+
+OpasmRepeatCurrentValue
+	.res long, OPASM_REPEAT_STACK_CAPACITY
+
+OpasmRepeatStep
+	.res long, OPASM_REPEAT_STACK_CAPACITY
+
+OpasmRepeatHasBinding
+	.res byte, OPASM_REPEAT_STACK_CAPACITY
 
 OpasmLayoutNameDestPtr
 	.res long, 1

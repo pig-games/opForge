@@ -4,6 +4,7 @@
 	.cpu 68020
 
 	.use opasm.amigaos.engine
+	.use opasm.amigaos.compile_values as compile_values
 	.use opforge.cli.constants
 	.use opforge.cli.state
 	.use opforge.cli.strings
@@ -21,6 +22,7 @@ opforgeNativeCliInitAssemblySession	.block
 
 haveCpu
 	jsr engine.initSessionV1
+	jsr compile_values.resetV1
 	rts
 	.bend  ; opforgeNativeCliInitAssemblySession
 

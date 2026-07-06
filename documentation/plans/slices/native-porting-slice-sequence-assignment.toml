@@ -1,0 +1,32 @@
+[slice]
+name = "native compile-time sequence assignment storage"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/line.rs::process_assignment_ast",
+  "crates/opforge-types/src/asm_value.rs::AsmValue::List"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_compile_values.asm::captureSourceListAssignmentV1",
+  "native/motorola68000/amigaos/opforge-cli/assembly_session.asm::opforgeNativeCliRecordCurrentStatement",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl"
+]
+invariant = "A bounded `name = {numeric elements}` statement creates compile-time sequence storage once per session, retains it across both passes, and is not processed as a label plus mnemonic."
+assertion_decision = "No runtime assertion: malformed source and capacity limits are valid external failures; the capture routine returns checked status and the pass driver fails closed."
+
+[[tests]]
+name = "native_sequence_assignment_contract_covers_parsing_bounds_and_session_reset"
+proof_level = "C"
+proves = "The host request-shape model covers numeric list parsing, malformed values, identifier/element/table bounds, and session reset."
+does_not_prove = "Native parser execution or stored 68020 memory contents."
+
+[[tests]]
+name = "native_sequence_assignment_storage_is_bounded_and_reset_per_session"
+proof_level = "B"
+proves = "The native implementation declares explicit bounds, resets once per session, captures exact source during statement collection, and consumes assignment records before pass processing."
+does_not_prove = "Real parsing, storage contents, or 68020 execution."
+
+[[tests]]
+name = "native_opcore_sequence_assignment_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes a list assignment followed by `.org` and `.byte`, and native CLI bytes match live Rust without an unknown-mnemonic failure."
+does_not_prove = "List lookup, indexing, `.len`, or iterable repetition."

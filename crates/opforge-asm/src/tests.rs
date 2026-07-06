@@ -34325,6 +34325,117 @@ fn native_counted_for_flow_callback_precedes_pass_processing() {
     assert!(driver.contains("cmpi.l #OPASM_REPEAT_ITERATION_LIMIT, d3"));
 }
 
+#[derive(Default)]
+struct NativeSequenceAssignmentContract {
+    values: Vec<(String, Vec<u32>)>,
+}
+
+impl NativeSequenceAssignmentContract {
+    fn reset(&mut self) {
+        self.values.clear();
+    }
+
+    fn capture(&mut self, source: &str) -> Result<(), ()> {
+        let (name, operand) = source.split_once('=').ok_or(())?;
+        let name = name.trim();
+        if name.is_empty() || name.len() >= 32 || self.values.len() >= 8 {
+            return Err(());
+        }
+        let operand = operand.trim();
+        let list = operand
+            .strip_prefix('{')
+            .and_then(|text| text.strip_suffix('}'))
+            .ok_or(())?;
+        let mut values = Vec::new();
+        if !list.trim().is_empty() {
+            for element in list.split(',') {
+                if values.len() >= 16 {
+                    return Err(());
+                }
+                values.push(element.trim().parse::<u32>().map_err(|_| ())?);
+            }
+        }
+        self.values.push((name.to_string(), values));
+        Ok(())
+    }
+}
+
+#[test]
+fn native_sequence_assignment_contract_covers_parsing_bounds_and_session_reset() {
+    // Proof level C. This host request-shape model proves the intended list
+    // parsing, fixed-capacity rejection, and session-reset decisions. It does
+    // not execute the native parser or prove stored 68020 memory contents.
+    let mut contract = NativeSequenceAssignmentContract::default();
+    contract.capture("values = {1, 2, 3}").unwrap();
+    assert_eq!(contract.values, vec![("values".to_string(), vec![1, 2, 3])]);
+    assert!(contract.capture("broken = {1, nope}").is_err());
+    assert!(NativeSequenceAssignmentContract::default()
+        .capture(&format!("{} = {{1}}", "n".repeat(32)))
+        .is_err());
+    assert!(NativeSequenceAssignmentContract::default()
+        .capture(&format!(
+            "values = {{{}}}",
+            (0..17)
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        ))
+        .is_err());
+    let mut full = NativeSequenceAssignmentContract::default();
+    for index in 0..8 {
+        full.capture(&format!("v{index} = {{{index}}}")).unwrap();
+    }
+    assert!(full.capture("overflow = {9}").is_err());
+    contract.reset();
+    assert!(contract.values.is_empty());
+}
+
+#[test]
+fn native_sequence_assignment_storage_is_bounded_and_reset_per_session() {
+    // Proof level B. This test proves the native sequence store has explicit
+    // name/element/table bounds, is reset once at session initialization, is
+    // populated while the exact source line is available, and consumes assignment
+    // statements before ordinary pass processing. It does not execute the native
+    // parser or prove iterable lookup.
+    let values = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_compile_values.asm"),
+    )
+    .expect("read native compile-time values");
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    let session_init = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/session_init.asm"),
+    )
+    .expect("read native CLI session initialization");
+    let assembly_session = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/assembly_session.asm"),
+    )
+    .expect("read native CLI assembly session");
+    assert!(values.contains("SEQUENCE_CAPACITY = 8"));
+    assert!(values.contains("SEQUENCE_NAME_CAPACITY = 32"));
+    assert!(values.contains("SEQUENCE_ELEMENT_CAPACITY = 16"));
+    assert_eq!(
+        session_init.matches("jsr compile_values.resetV1").count(),
+        1
+    );
+    assert!(!driver.contains("compile_values.resetV1"));
+    assert!(source_contains_in_order(
+        &assembly_session,
+        &[
+            "cmpi.b #'=', buffers.tokenScratchBuffer",
+            "lea state.NativeCliSourceLine, a0",
+            "jsr compile_values.captureSourceListAssignmentV1",
+            "bsr.w opforgeNativeCliStoreStatementRecord",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &["cmpi.b #'=', (a0)", "moveq #1, d1", "bra.w success"]
+    ));
+}
+
 #[test]
 fn native_source_cpu_bootstrap_preserves_tail_and_normalizes_before_routing() {
     // Proof level B. This test proves the bootstrap source preserves/restores
@@ -34718,6 +34829,63 @@ fn native_opcore_counted_for_fs_uae() {
                     .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
             )
             .expect("read native counted-for bytes");
+            assert_eq!(native_bin, rust_bin);
+        }
+    }
+}
+
+#[test]
+fn native_opcore_sequence_assignment_fs_uae() {
+    // Proof level D. This test proves a real Amiga-native session consumes a
+    // bounded list assignment as compile-time storage rather than an unknown
+    // mnemonic. It does not prove list lookup, indexing, `.len`, or iteration.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = b"values = {1, 2, 3}\n.org 0\n.byte $44\n";
+    let case_dir = create_temp_dir("native-opcore-sequence-assignment");
+    let input_path = case_dir.join("input.asm");
+    let rust_bin_path = case_dir.join("rust.bin");
+    fs::write(&input_path, source).expect("write sequence assignment source");
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--bin",
+        rust_bin_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+    ]);
+    run_with_cli_with_context(&cli).expect("run live Rust sequence assignment oracle");
+    let rust_bin = fs::read(&rust_bin_path).expect("read Rust sequence assignment bytes");
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source),
+        command_template: Some("{input} --bin {bin} --cpu m6502"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("sequence assignment FS-UAE case should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native sequence assignment run failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            let native_bin = fs::read(
+                run.artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read native sequence assignment bytes");
             assert_eq!(native_bin, rust_bin);
         }
     }

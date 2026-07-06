@@ -542,7 +542,7 @@ landed” is not equivalent to “framework-closed.”
     - the iteration limit fails closed
     - `.org` and body source text are never stripped or rewritten
 
-- [ ] Item 5.3a: add native compile-time sequence assignment storage
+- [x] Item 5.3a: add native compile-time sequence assignment storage
   - Source requirement or finding IDs: Level E localization of `for_collection_basic.asm` showed `nums = {1, 3, 5, 7}` stored as label `nums` plus unknown mnemonic `=` before iterable planning
   - Expected files:
     - one `documentation/plans/slices/*.toml` metadata record
@@ -558,7 +558,7 @@ landed” is not equivalent to “framework-closed.”
     - native list assignments are consumed as compile-time value definitions rather than pass-engine mnemonics
   - Definition of done:
     - identifier and numeric element bounds fail closed
-    - stored values reset for each pass/session
+    - stored values reset once per session and remain stable across both passes
     - no iterable control, indexing, or `.len` behavior is bundled
 
 - [ ] Item 5.3b: add native iterable repetition values and loop-variable binding

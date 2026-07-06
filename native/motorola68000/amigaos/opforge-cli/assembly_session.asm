@@ -8,6 +8,7 @@
 	.cpu 68020
 
 	.use opasm.amigaos.engine
+	.use opasm.amigaos.compile_values as compile_values
 	.use tkpkg.amigaos.buffers
 
 	.use opforge.cli.state
@@ -160,6 +161,17 @@ trySourceFallback
 	tst.l state.NativeCliStmtLabelLen
 	beq.w done
 checkStore
+	cmpi.l #1, state.NativeCliStmtMnemLen
+	bne.s store
+	cmpi.b #'=', buffers.tokenScratchBuffer
+	bne.s store
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	jsr compile_values.captureSourceListAssignmentV1
+	bne.w fail
+
+store
 	bsr.w opforgeNativeCliStoreStatementRecord
 	bne.w fail
 	jsr engine.opasmEngineCommitStatementRecordV1

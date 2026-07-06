@@ -106,6 +106,16 @@ opasmDriverApplyFlowControl	.block
 	bne.w processStatement
 	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	cmpi.l #1, d4
+	bne.s checkFor
+	cmpi.b #'=', (a0)
+	bne.s checkFor
+	move.w d7, d2
+	addq.w #1, d2
+	moveq #1, d1
+	bra.w success
+
+checkFor
 	cmpi.l #3, d4
 	beq.s compareFor
 	cmpi.l #4, d4

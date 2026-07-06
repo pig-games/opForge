@@ -580,7 +580,7 @@ landed” is not equivalent to “framework-closed.”
     - zero steps and direction mismatches fail deterministically
     - no CPU semantics enter the generic value layer
 
-- [ ] Item 5.4: add native condition-based repetition
+- [x] Item 5.4: add native condition-based repetition
   - Source requirement or finding IDs: Item 6 assignment `while_basic.asm`; Rust authority in `repetition.rs::evaluate_while_condition` and `repetition_driver.rs`
   - Expected files:
     - one `documentation/plans/slices/*.toml` metadata record

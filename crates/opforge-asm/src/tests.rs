@@ -34580,6 +34580,81 @@ fn opcore_iterable_rust_oracle_covers_assigned_sources() {
 }
 
 #[test]
+fn opcore_while_rust_oracle_covers_canonical_current_address() {
+    // Proof level A. This test proves the live Rust assembler emits five bytes
+    // for canonical `.while $ < 4`. It does not prove native loop control.
+    let case_dir = create_temp_dir("opcore-while-rust-oracle");
+    let input_path = workspace_root().join("examples/opcore/while_basic.asm");
+    let bin_path = case_dir.join("while.bin");
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--bin",
+        bin_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+    ]);
+    run_with_cli_with_context(&cli).expect("run Rust while oracle");
+    assert_eq!(
+        fs::read(bin_path).expect("read Rust while bytes"),
+        [0xff; 5]
+    );
+}
+
+fn native_while_current_address_contract(limit: u32, max_iterations: usize) -> Result<usize, ()> {
+    let mut current_pc = 0u32;
+    let mut iterations = 0usize;
+    while if iterations == 0 {
+        current_pc < limit
+    } else {
+        current_pc.saturating_sub(1) < limit
+    } {
+        if iterations >= max_iterations {
+            return Err(());
+        }
+        iterations += 1;
+        current_pc += 1;
+    }
+    Ok(iterations)
+}
+
+#[test]
+fn native_while_contract_covers_false_first_current_address_and_limit() {
+    // Proof level C. This host boundary model proves false-first behavior,
+    // Rust-compatible current-address phase, and iteration-limit rejection. It
+    // does not execute native statement tables or 68020 branches.
+    assert_eq!(native_while_current_address_contract(0, 8), Ok(0));
+    assert_eq!(native_while_current_address_contract(4, 8), Ok(5));
+    assert!(native_while_current_address_contract(u32::MAX, 4).is_err());
+}
+
+#[test]
+fn native_while_source_reevaluates_opening_and_preserves_status() {
+    // Proof level B. This test proves the native source stores the opening
+    // statement, reevaluates it at `.endwhile`, preserves evaluator status
+    // across index restoration, and enforces the iteration limit. It does not
+    // execute the callback or prove current-PC values.
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "lea OpasmRepeatOpening, a0",
+            "move.w 0(a0, d4.l), d0",
+            "move.w #1, OpasmDriverWhileReevaluation",
+            "bsr.w readWhileConditionForStatement",
+            "move.l d0, d5",
+            "move.w d6, d7",
+            "tst.l d5",
+        ]
+    ));
+    assert!(driver.contains("cmpi.l #OPASM_REPEAT_ITERATION_LIMIT, d5"));
+    assert!(driver.contains("subq.l #1, d0"));
+}
+
+#[test]
 fn native_source_cpu_bootstrap_preserves_tail_and_normalizes_before_routing() {
     // Proof level B. This test proves the bootstrap source preserves/restores
     // its parser tail around normalization before validating trailing input.
@@ -35103,6 +35178,62 @@ fn native_opcore_iterable_for_fs_uae() {
                 .expect("read native iterable for bytes");
                 assert_eq!(&native_bin, rust_bin);
             }
+        }
+    }
+}
+
+#[test]
+fn native_opcore_while_fs_uae() {
+    // Proof level D. This test proves a real Amiga-native session reevaluates
+    // canonical `.while $ < 4` against the advancing current address and
+    // matches live Rust bytes. It does not prove arbitrary condition syntax.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let input_path = workspace_root().join("examples/opcore/while_basic.asm");
+    let source = fs::read(&input_path).expect("read canonical while source");
+    let case_dir = create_temp_dir("native-opcore-while");
+    let rust_bin_path = case_dir.join("rust.bin");
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--bin",
+        rust_bin_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+    ]);
+    run_with_cli_with_context(&cli).expect("run live Rust while oracle");
+    let rust_bin = fs::read(&rust_bin_path).expect("read Rust while bytes");
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(&source),
+        command_template: Some("{input} --bin {bin} --cpu m6502"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("while FS-UAE case should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native while run failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            let native_bin = fs::read(
+                run.artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read native while bytes");
+            assert_eq!(native_bin, rust_bin);
         }
     }
 }

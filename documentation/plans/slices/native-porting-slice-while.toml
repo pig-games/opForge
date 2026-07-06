@@ -1,0 +1,37 @@
+[slice]
+name = "native condition-based repetition"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/repetition.rs::evaluate_while_condition",
+  "crates/opforge-asm/src/repetition_driver.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::readWhileConditionForStatement"
+]
+invariant = "A bounded `.while` reevaluates its stored opening condition at each body boundary using the Rust-compatible current-address phase."
+assertion_decision = "No runtime assertion: false conditions and iteration-limit failures are normal checked control outcomes; flow status is preserved explicitly across statement-index restoration."
+
+[[tests]]
+name = "opcore_while_rust_oracle_covers_canonical_current_address"
+proof_level = "A"
+proves = "The live Rust assembler emits five bytes for canonical `.while $ < 4`."
+does_not_prove = "Native loop control."
+
+[[tests]]
+name = "native_while_source_reevaluates_opening_and_preserves_status"
+proof_level = "B"
+proves = "Native flow stores and reevaluates the opening statement, preserves status, and checks the iteration limit."
+does_not_prove = "Callback execution or current-PC values."
+
+[[tests]]
+name = "native_while_contract_covers_false_first_current_address_and_limit"
+proof_level = "C"
+proves = "The host model covers false-first, Rust-compatible current-address phase, and iteration-limit behavior."
+does_not_prove = "Native table contents or 68020 execution."
+
+[[tests]]
+name = "native_opcore_while_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes untouched canonical `while_basic.asm` and native CLI bytes match live Rust."
+does_not_prove = "Arbitrary comparison syntax beyond the current-PC boundary."

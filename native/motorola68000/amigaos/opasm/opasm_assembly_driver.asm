@@ -16,6 +16,8 @@ OPASM_LAYOUT_INDEX_NONE = $ffff
 OPASM_TEXT_SCRATCH_CAPACITY = 512
 OPASM_REPEAT_STACK_CAPACITY = 8
 OPASM_REPEAT_ITERATION_LIMIT = 1024
+OPASM_REPEAT_KIND_FOR = 1
+OPASM_REPEAT_KIND_WHILE = 2
 
 	.section code, kind=code
 	.pub
@@ -136,7 +138,7 @@ checkEndfor
 	cmpi.l #6, d4
 	beq.s compareEndfor
 	cmpi.l #7, d4
-	bne.w processStatement
+	bne.w checkWhile
 
 compareEndfor
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
@@ -145,12 +147,15 @@ compareEndfor
 	lea EndforMnemonicText, a1
 	moveq #6, d1
 	bsr.w lineStartsWith
-	beq.w processStatement
+	beq.w checkWhile
 	tst.w OpasmRepeatDepth
 	beq.w fail
 	moveq #0, d3
 	move.w OpasmRepeatDepth, d3
 	subq.w #1, d3
+	lea OpasmRepeatKind, a0
+	cmpi.b #OPASM_REPEAT_KIND_FOR, 0(a0, d3.l)
+	bne.w fail
 	move.l d3, d4
 	lsl.l #2, d4
 	lea OpasmRepeatRemaining, a0
@@ -201,6 +206,117 @@ finishPop
 	moveq #1, d1
 	bra.w success
 
+checkWhile
+	cmpi.l #5, d4
+	beq.w compareWhile
+	cmpi.l #6, d4
+	beq.w compareWhile
+	cmpi.l #8, d4
+	beq.s compareEndwhile
+	cmpi.l #9, d4
+	bne.w processStatement
+compareEndwhile
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	moveq #0, d0
+	move.w d4, d0
+	lea EndwhileMnemonicText, a1
+	moveq #8, d1
+	bsr.w lineStartsWith
+	beq.w processStatement
+	tst.w OpasmRepeatDepth
+	beq.w fail
+	moveq #0, d3
+	move.w OpasmRepeatDepth, d3
+	subq.w #1, d3
+	lea OpasmRepeatKind, a0
+	cmpi.b #OPASM_REPEAT_KIND_WHILE, 0(a0, d3.l)
+	bne.w fail
+	move.l d3, d4
+	add.w d4, d4
+	lea OpasmRepeatOpening, a0
+	moveq #0, d0
+	move.w 0(a0, d4.l), d0
+	move.w d7, d6
+	move.w d0, d7
+	moveq #4, d5
+	move.w #1, OpasmDriverWhileReevaluation
+	bsr.w readWhileConditionForStatement
+	move.l d0, d5
+	clr.w OpasmDriverWhileReevaluation
+	move.w d6, d7
+	tst.l d5
+	bne.w fail
+	tst.l d3
+	beq.w finishWhile
+	moveq #0, d3
+	move.w OpasmRepeatDepth, d3
+	subq.w #1, d3
+	move.l d3, d4
+	lsl.l #2, d4
+	lea OpasmRepeatRemaining, a0
+	move.l 0(a0, d4.l), d5
+	addq.l #1, d5
+	cmpi.l #OPASM_REPEAT_ITERATION_LIMIT, d5
+	bhi.w fail
+	move.l d5, 0(a0, d4.l)
+	move.l d3, d4
+	add.w d4, d4
+	lea OpasmRepeatBodyStart, a0
+	move.w 0(a0, d4.l), d2
+	moveq #1, d1
+	bra.w success
+finishWhile
+	move.w OpasmRepeatDepth, d3
+	subq.w #1, d3
+	move.w d3, OpasmRepeatDepth
+	moveq #1, d1
+	bra.w success
+
+compareWhile
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	moveq #0, d0
+	move.w d4, d0
+	lea WhileMnemonicText, a1
+	moveq #5, d1
+	bsr.w lineStartsWith
+	beq.w processStatement
+	moveq #4, d5
+	bsr.w readWhileConditionForStatement
+	bne.w fail
+	tst.l d3
+	beq.w zeroWhile
+	moveq #0, d4
+	move.w OpasmRepeatDepth, d4
+	cmpi.w #OPASM_REPEAT_STACK_CAPACITY, d4
+	bhs.w fail
+	move.l d4, d5
+	add.w d5, d5
+	lea OpasmRepeatBodyStart, a0
+	move.w d7, d6
+	addq.w #1, d6
+	move.w d6, 0(a0, d5.l)
+	lea OpasmRepeatOpening, a0
+	move.w d7, 0(a0, d5.l)
+	move.l d4, d5
+	lsl.l #2, d5
+	lea OpasmRepeatRemaining, a0
+	moveq #1, d6
+	move.l d6, 0(a0, d5.l)
+	lea OpasmRepeatKind, a0
+	move.b #OPASM_REPEAT_KIND_WHILE, 0(a0, d4.l)
+	addq.w #1, d4
+	move.w d4, OpasmRepeatDepth
+	move.w d7, d2
+	addq.w #1, d2
+	moveq #1, d1
+	bra.w success
+zeroWhile
+	bsr.w findMatchingEndwhile
+	bne.w fail
+	moveq #1, d1
+	addq.w #1, d2
+	bra.w success
+
 beginFor
 	moveq #0, d5
 	move.w OpasmRepeatDepth, d5
@@ -235,6 +351,8 @@ beginFor
 	move.l d3, 0(a0, d5.l)
 	lea OpasmRepeatHasBinding, a0
 	clr.b 0(a0, d4.l)
+	lea OpasmRepeatKind, a0
+	move.b #OPASM_REPEAT_KIND_FOR, 0(a0, d4.l)
 	move.w OpasmRepeatDepth, d4
 	addq.w #1, d4
 	move.w d4, OpasmRepeatDepth
@@ -262,6 +380,8 @@ beginIterableFor
 	move.l d3, 0(a2, d6.l)
 	lea OpasmRepeatHasBinding, a2
 	move.b #1, 0(a2, d5.l)
+	lea OpasmRepeatKind, a2
+	move.b #OPASM_REPEAT_KIND_FOR, 0(a2, d5.l)
 	move.l d4, d0
 	move.l d2, d1
 	jsr compile_values.pushBindingV1
@@ -368,6 +488,70 @@ return
 	movem.l (sp)+, d1/d3-d6/a0-a1
 	rts
 	.bend  ; findMatchingEndfor
+
+; Find the matching `.endwhile` for a false-first `.while`.
+; Inputs: D7.W = opening statement index.
+; Outputs: D0 = status; D2.W = matching end statement on success.
+; Clobbers: D0-D6/A0-A1/CCR.
+; CCR: reflects D0 on return.
+findMatchingEndwhile	.block
+	movem.l d1/d3-d6/a0-a1, -(sp)
+	move.w d7, d2
+	moveq #1, d6
+scan
+	addq.w #1, d2
+	jsr eng.opasmEngineGetStatementCountV1
+	cmp.w d0, d2
+	bhs.w fail
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movea.l sp, a0
+	moveq #0, d0
+	move.w d2, d0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.s next
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	cmpi.l #5, d4
+	beq.s compareNestedWhile
+	cmpi.l #6, d4
+	bne.s maybeEnd
+compareNestedWhile
+	moveq #0, d0
+	move.w d4, d0
+	lea WhileMnemonicText, a1
+	moveq #5, d1
+	bsr.w lineStartsWith
+	beq.s maybeEnd
+	addq.w #1, d6
+	bra.s next
+maybeEnd
+	cmpi.l #8, d4
+	beq.s compareNestedEndwhile
+	cmpi.l #9, d4
+	bne.s next
+compareNestedEndwhile
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	moveq #0, d0
+	move.w d4, d0
+	lea EndwhileMnemonicText, a1
+	moveq #8, d1
+	bsr.w lineStartsWith
+	beq.s next
+	subq.w #1, d6
+	beq.s found
+next
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	bra.w scan
+found
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	moveq #0, d0
+	bra.s return
+fail
+	moveq #1, d0
+return
+	movem.l (sp)+, d1/d3-d6/a0-a1
+	rts
+	.bend  ; findMatchingEndwhile
 
 opasmDriverPassTwoOk	.block
 	moveq #abi.OPASM_EVENT_PASS_OK, d0
@@ -1205,6 +1389,8 @@ return
 readOperandValueForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a2, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	tst.w OpasmDriverForceStoredOperand
+	bne.w storedText
 	moveq #0, d0
 	move.w d7, d0
 	jsr eng.statementHasExprMetadataV1
@@ -1341,6 +1527,93 @@ return
 	movem.l (sp)+, d1-d2/d4-d7/a0-a2
 	rts
 	.bend  ; readOperandValueForStatement
+
+; Evaluate one `.while` condition from its complete stored operand.
+; Inputs/outputs/clobbers match readOperandValueForStatement.
+readWhileConditionForStatement	.block
+	bsr.w readCurrentPcWhileCondition
+	beq.s return
+	move.w #1, OpasmDriverForceStoredOperand
+	bsr.w readOperandValueForStatement
+	move.l d0, -(sp)
+	clr.w OpasmDriverForceStoredOperand
+	move.l (sp)+, d0
+return
+	rts
+	.bend  ; readWhileConditionForStatement
+
+; Evaluate `$ < literal` or `$ <= literal` against the current session PC.
+; Inputs: D7.W = statement index.
+; Outputs: D0 = status; D3 = 0 or 1 on success.
+; Clobbers: D0-D7/A0-A2/CCR.
+; CCR: reflects D0 on return.
+readCurrentPcWhileCondition	.block
+	movem.l d1-d2/d4-d7/a0-a2, -(sp)
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	moveq #0, d0
+	move.w d7, d0
+	movea.l sp, a0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w fail
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
+	bsr.w skipLineWhitespace
+	tst.l d0
+	beq.w fail
+	cmpi.b #'$', (a0)
+	bne.w fail
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w skipLineWhitespace
+	tst.l d0
+	beq.w fail
+	cmpi.b #'<', (a0)
+	bne.w fail
+	addq.l #1, a0
+	subq.l #1, d0
+	clr.w d6
+	tst.l d0
+	beq.w fail
+	cmpi.b #'=', (a0)
+	bne.s right
+	moveq #1, d6
+	addq.l #1, a0
+	subq.l #1, d0
+right
+	bsr.w skipLineWhitespace
+	bsr.w parseDirectiveLiteralValue
+	bne.w fail
+	move.l d3, d4
+	jsr eng.opasmEngineGetSessionCurrentPcV1
+	tst.w OpasmDriverWhileReevaluation
+	beq.s comparePc
+	tst.l d0
+	beq.s comparePc
+	subq.l #1, d0
+comparePc
+	clr.l d3
+	tst.w d6
+	bne.s lessEqual
+	cmp.l d4, d0
+	bcs.s true
+	bra.s ok
+lessEqual
+	cmp.l d4, d0
+	bls.s true
+	bra.s ok
+true
+	moveq #1, d3
+ok
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d1-d2/d4-d7/a0-a2
+	moveq #0, d0
+	rts
+fail
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d1-d2/d4-d7/a0-a2
+	moveq #1, d0
+	rts
+	.bend  ; readCurrentPcWhileCondition
 
 ; Reset native layout directive state for one assembly session.
 ; Outputs: D0.L = 0.
@@ -3861,6 +4134,12 @@ ForMnemonicText
 EndforMnemonicText
 	.byte "endfor", 0
 
+WhileMnemonicText
+	.byte "while", 0
+
+EndwhileMnemonicText
+	.byte "endwhile", 0
+
 DriverSelectorUnknownRawText
 	.byte "OTR901: selector unknown mnemonic", 0
 
@@ -3889,6 +4168,12 @@ OpasmDriverEvalFallbackPtr
 OpasmDriverEvalFallbackLen
 	.res long, 1
 
+OpasmDriverForceStoredOperand
+	.res word, 1
+
+OpasmDriverWhileReevaluation
+	.res word, 1
+
 OpasmDataScratch
 	.res byte, 4
 
@@ -3904,6 +4189,9 @@ OpasmRepeatDepth
 OpasmRepeatBodyStart
 	.res word, OPASM_REPEAT_STACK_CAPACITY
 
+OpasmRepeatOpening
+	.res word, OPASM_REPEAT_STACK_CAPACITY
+
 OpasmRepeatRemaining
 	.res long, OPASM_REPEAT_STACK_CAPACITY
 
@@ -3917,6 +4205,9 @@ OpasmRepeatStep
 	.res long, OPASM_REPEAT_STACK_CAPACITY
 
 OpasmRepeatHasBinding
+	.res byte, OPASM_REPEAT_STACK_CAPACITY
+
+OpasmRepeatKind
 	.res byte, OPASM_REPEAT_STACK_CAPACITY
 
 OpasmLayoutNameDestPtr

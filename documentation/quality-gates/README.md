@@ -10,6 +10,13 @@ already-tested implementation source identity and must not claim that an older
 historical implementation commit was tested unless that exact source identity
 is recorded.
 
+Use a source-identity filename when creating a new receipt:
+
+```sh
+scripts/workflow/run_native_cli_expansion_completion.sh \
+  --manifest "documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-$(git rev-parse --short HEAD).json"
+```
+
 Validate a receipt with:
 
 ```sh

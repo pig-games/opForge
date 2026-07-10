@@ -1,4 +1,5 @@
 [slice]
+schema_version = 2
 name = "native source CPU token normalization and routing"
 kind = "native-rust-parity"
 rust_reference = [
@@ -10,6 +11,12 @@ native_boundary = [
 ]
 invariant = "Bare and quoted source CPU tokens normalize to the same package-backed pipeline, while unmatched quotes and trailing non-comment tokens are rejected."
 assertion_decision = "No extra runtime assertion: quote normalization and pipeline application already return checked status at both bootstrap and full-parser boundaries."
+expected_inputs = "Bare and quoted source CPU tokens, plus unmatched-quote and trailing-token rejection forms."
+expected_outputs = "Equivalent valid CPU forms select the same package-backed pipeline and native bytes match Rust; invalid tails fail."
+known_non_equivalences = "Other CPU identifiers and later CPU changes within modules are outside this slice."
+fast_proof_command = "cargo test -p asm native_source_cpu_ -- --nocapture"
+level_d_command = "scripts/workflow/run_native_reference_retrospective_completion.sh"
+level_d_fail_closed = true
 
 [[tests]]
 name = "native_source_cpu_normalization_contract_covers_bare_quoted_and_malformed_tokens"

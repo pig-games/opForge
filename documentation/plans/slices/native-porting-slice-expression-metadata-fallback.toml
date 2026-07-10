@@ -1,4 +1,5 @@
 [slice]
+schema_version = 2
 name = "native expression metadata stored-text fallback"
 kind = "native-rust-parity"
 rust_reference = [
@@ -9,6 +10,12 @@ native_boundary = [
 ]
 invariant = "Absent, unreadable, or unusable expression metadata falls back to the complete stored operand text instead of rejecting an otherwise resolvable statement."
 assertion_decision = "No runtime assertion: missing or malformed optional metadata is the recovery condition itself, so asserting would destroy the required fallback behavior."
+expected_inputs = "Exact source whose optional expression metadata is absent, unreadable, or unusable while stored operand text remains resolvable."
+expected_outputs = "The complete stored operand is evaluated and native CLI bytes match the live Rust CLI."
+known_non_equivalences = "Synthetic corruption of native session metadata is outside this recovery slice."
+fast_proof_command = "cargo test -p asm native_expression_metadata_fallback_ -- --nocapture"
+level_d_command = "scripts/workflow/run_native_reference_retrospective_completion.sh"
+level_d_fail_closed = true
 
 [[tests]]
 name = "native_expression_metadata_fallback_contract_covers_missing_and_malformed_boundaries"

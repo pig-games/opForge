@@ -1,4 +1,5 @@
 [slice]
+schema_version = 2
 name = "native condition-based repetition"
 kind = "native-rust-parity"
 rust_reference = [
@@ -11,6 +12,12 @@ native_boundary = [
 ]
 invariant = "A bounded `.while` reevaluates its stored opening condition at each body boundary using the Rust-compatible current-address phase."
 assertion_decision = "No runtime assertion: false conditions and iteration-limit failures are normal checked control outcomes; flow status is preserved explicitly across statement-index restoration."
+expected_inputs = "Canonical `while_basic.asm`, false-first, current-address, and iteration-limit boundary inputs."
+expected_outputs = "The opening condition is reevaluated at each body boundary and canonical native bytes equal live Rust bytes."
+known_non_equivalences = "Arbitrary comparison syntax beyond the current-address boundary is outside this slice."
+fast_proof_command = "cargo test -p asm native_while_ -- --nocapture"
+level_d_command = "scripts/workflow/run_native_cli_expansion_completion.sh --manifest documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-$(git rev-parse --short HEAD).json"
+level_d_fail_closed = true
 
 [[tests]]
 name = "opcore_while_rust_oracle_covers_canonical_current_address"

@@ -1,4 +1,5 @@
 [slice]
+schema_version = 2
 name = "native counted repetition expansion"
 kind = "native-rust-parity"
 rust_reference = [
@@ -12,6 +13,12 @@ native_boundary = [
 ]
 invariant = "A matched `.for <count>` block is skipped at its control records and its complete body is processed exactly count times in both passes, with bounded nesting and iteration count."
 assertion_decision = "No runtime assertion: valid zero-count and repeated control flow are external source semantics; explicit status returns fail closed on unmatched blocks, stack capacity, invalid count, and iteration overflow."
+expected_inputs = "Canonical `for_counter_basic.asm` plus zero, nested, and bounded-count host contract inputs."
+expected_outputs = "Each complete `.for` body is visited exactly the selected count in both passes and canonical native bytes equal Rust."
+known_non_equivalences = "Does not cover iterable `.for`, `.bfor`, or `.while` semantics."
+fast_proof_command = "cargo test -p asm native_counted_for_ -- --nocapture"
+level_d_command = "scripts/workflow/run_native_cli_expansion_completion.sh --manifest documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-$(git rev-parse --short HEAD).json"
+level_d_fail_closed = true
 
 [[tests]]
 name = "native_counted_for_contract_covers_zero_one_nested_and_limit"

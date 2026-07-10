@@ -1,4 +1,5 @@
 [slice]
+schema_version = 2
 name = "native column-one directive routing"
 kind = "native-rust-parity"
 rust_reference = [
@@ -9,6 +10,12 @@ native_boundary = [
 ]
 invariant = "A dot-prefixed token in source column one is recorded as the statement mnemonic even when PRVM also reports an expression request; it is never reclassified as a bare label."
 assertion_decision = "No runtime assertion: column-one directive syntax is valid external input, and the corrected branch directly selects the mnemonic route; Level B source-lock and Level D emulator evidence guard the invariant."
+expected_inputs = "A column-one `.cpu 6502` directive followed by `.org 0` and `.byte $aa`."
+expected_outputs = "The directive is stored as a mnemonic, no `.cpu` label exists, and native bytes equal the live Rust bytes."
+known_non_equivalences = "Does not cover `.for` semantics or the wider syntax/expression corpus."
+fast_proof_command = "cargo test -p asm native_column_one_directive_fallback_routes_mnemonic_before_expression_label_heuristic -- --nocapture"
+level_d_command = "scripts/workflow/run_native_cli_expansion_completion.sh --manifest documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-$(git rev-parse --short HEAD).json"
+level_d_fail_closed = true
 
 [[tests]]
 name = "native_column_one_directive_fallback_routes_mnemonic_before_expression_label_heuristic"

@@ -1,0 +1,29 @@
+[slice]
+schema_version = 2
+name = "native CLI binary and PRG artifact parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/tests.rs::native_reference_schema_live_rust_cli_oracle_covers_binary_manifest_cases"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/run.asm::opforgeNativeCliRun"
+]
+invariant = "The real native CLI writes binary and PRG artifacts equal to live Rust artifacts for the governed schema cases."
+expected_inputs = "The reviewed native CLI binary/PRG schema cases and their live Rust oracle invocations."
+expected_outputs = "Native CLI binary and PRG artifacts exactly match live Rust artifacts."
+known_non_equivalences = "Text, map, and deterministic diagnostic artifact parity are outside this binary/PRG slice."
+fast_proof_command = "cargo test -p asm native_reference_schema_live_rust_cli_oracle_covers_binary_manifest_cases -- --nocapture"
+level_d_command = "scripts/workflow/run_native_reference_retrospective_completion.sh"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_reference_schema_live_rust_cli_oracle_covers_binary_manifest_cases"
+proof_level = "A"
+proves = "The live Rust CLI emits the reviewed binary and PRG schema artifacts."
+does_not_prove = "Real native CLI artifact generation."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI and its binary/PRG artifacts match live Rust."
+does_not_prove = "Listing, map, or diagnostic parity."

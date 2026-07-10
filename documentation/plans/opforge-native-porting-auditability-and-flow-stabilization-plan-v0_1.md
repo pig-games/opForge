@@ -75,7 +75,7 @@ This remediation has three outcomes:
   - Commit outcome: schema versioning makes the required contract fields deterministic for new/modified native parity slices while giving existing artifacts one explicit reviewed migration path.
   - Definition of done: validation rejects an incomplete v2 slice; validation explains the missing field; migration does not silently weaken currently governed artifacts; expected inputs/outputs and known non-equivalences are distinct fields rather than prose inference.
 
-- [ ] Item 4: migrate the active native parity slice records to complete contracts
+- [x] Item 4: migrate the active native parity slice records to complete contracts
   - Source requirement or finding IDs: RPO-002; fully closes missing contract detail for the active native parity slices, while leaving unrelated historical artifacts unchanged.
   - Expected files: active `documentation/plans/slices/native-porting-slice-*.toml` records for Items 5.1–5.6 and other currently enforced native parity slices; narrow validator fixtures/tests; this plan.
   - Full quality gates: validate every migrated TOML record; run the fast proof command declared by each migrated slice; run the Item 1 fail-closed Level D completion wrapper for the Items 5.1–5.6 aggregate; `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`; `make workflow-gate`.

@@ -1,4 +1,5 @@
 [slice]
+schema_version = 2
 name = "native compile-time sequence assignment storage"
 kind = "native-rust-parity"
 rust_reference = [
@@ -12,6 +13,12 @@ native_boundary = [
 ]
 invariant = "A bounded `name = {numeric elements}` statement creates compile-time sequence storage once per session, retains it across both passes, and is not processed as a label plus mnemonic."
 assertion_decision = "No runtime assertion: malformed source and capacity limits are valid external failures; the capture routine returns checked status and the pass driver fails closed."
+expected_inputs = "A bounded numeric list assignment followed by `.org` and byte emission."
+expected_outputs = "The assignment becomes session-scoped compile-time storage and canonical native bytes equal live Rust bytes."
+known_non_equivalences = "This slice does not prove list lookup, indexing, `.len`, or iterable repetition."
+fast_proof_command = "cargo test -p asm native_sequence_assignment_ -- --nocapture"
+level_d_command = "scripts/workflow/run_native_cli_expansion_completion.sh --manifest documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-$(git rev-parse --short HEAD).json"
+level_d_fail_closed = true
 
 [[tests]]
 name = "native_sequence_assignment_contract_covers_parsing_bounds_and_session_reset"

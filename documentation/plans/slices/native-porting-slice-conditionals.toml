@@ -1,4 +1,5 @@
 [slice]
+schema_version = 2
 name = "native conditional and match branch selection"
 kind = "native-rust-parity"
 rust_reference = [
@@ -10,6 +11,12 @@ native_boundary = [
 ]
 invariant = "Native source records conditional statements, and flow selects only the first matching `.if`/`.elseif`/`.else` or `.match`/`.case`/`.default` body at the current nesting level."
 assertion_decision = "No runtime assertion: unmatched or unterminated conditional blocks are checked flow failures; selectors return status and fail closed."
+expected_inputs = "Untouched canonical conditional source containing nested `.if`/`.elseif`/`.else` and `.match`/`.case`/`.default` branches."
+expected_outputs = "Only selected branch statements define symbols or emit bytes, and native CLI bytes equal the live Rust oracle."
+known_non_equivalences = "Preprocessor-only `ifdef`/`ifndef` behavior is outside this assigned source."
+fast_proof_command = "cargo test -p asm native_conditional_ -- --nocapture"
+level_d_command = "scripts/workflow/run_native_cli_expansion_completion.sh --manifest documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-$(git rev-parse --short HEAD).json"
+level_d_fail_closed = true
 
 [[tests]]
 name = "opcore_conditionals_rust_oracle_covers_canonical_branches"

@@ -1,4 +1,5 @@
 [slice]
+schema_version = 2
 name = "native iterable repetition values and loop-variable binding"
 kind = "native-rust-parity"
 rust_reference = [
@@ -14,6 +15,12 @@ native_boundary = [
 ]
 invariant = "A bounded `.for variable in iterable` plan visits list or ascending range values in Rust order, exposes the current value while each body statement executes, and resolves the assigned source's list length/index expressions."
 assertion_decision = "No runtime assertion: malformed iterable source and capacity limits are valid external failures; checked planners and binding-stack operations fail closed."
+expected_inputs = "Canonical assigned list/range sources with loop binding, indexing, `.len`, and inclusive explicit-step range use."
+expected_outputs = "Bound values appear in Rust order and native CLI bytes match live Rust for the assigned sources."
+known_non_equivalences = "Descending ranges and non-numeric iterable values remain outside this bounded slice."
+fast_proof_command = "cargo test -p asm native_iterable_for_ -- --nocapture"
+level_d_command = "scripts/workflow/run_native_cli_expansion_completion.sh --manifest documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-$(git rev-parse --short HEAD).json"
+level_d_fail_closed = true
 
 [[tests]]
 name = "opcore_iterable_rust_oracle_covers_assigned_sources"

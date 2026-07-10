@@ -1,0 +1,17 @@
+{
+  "manifest_version": 1,
+  "kind": "native-cli-expansion-level-d",
+  "scope": "aggregate-baseline-items-5.1-to-5.6",
+  "status": "PASS",
+  "completed_at_utc": "2026-07-10T15:40:53Z",
+  "source": {"commit": "be2b658c6e48e0935b2f98b8f98606986d3e4993", "tree": "703de481cfd10497963aca74bec7e60f9f13589f"},
+  "tests": [
+    {"name": "native_column_one_directive_routing_fs_uae", "command": "cargo test -p asm native_column_one_directive_routing_fs_uae -- --nocapture --test-threads=1", "result": "PASS"},
+    {"name": "native_opcore_counted_for_fs_uae", "command": "cargo test -p asm native_opcore_counted_for_fs_uae -- --nocapture --test-threads=1", "result": "PASS"},
+    {"name": "native_opcore_sequence_assignment_fs_uae", "command": "cargo test -p asm native_opcore_sequence_assignment_fs_uae -- --nocapture --test-threads=1", "result": "PASS"},
+    {"name": "native_opcore_iterable_for_fs_uae", "command": "cargo test -p asm native_opcore_iterable_for_fs_uae -- --nocapture --test-threads=1", "result": "PASS"},
+    {"name": "native_opcore_while_fs_uae", "command": "cargo test -p asm native_opcore_while_fs_uae -- --nocapture --test-threads=1", "result": "PASS"},
+    {"name": "native_opcore_conditionals_fs_uae", "command": "cargo test -p asm native_opcore_conditionals_fs_uae -- --nocapture --test-threads=1", "result": "PASS"},
+    {"name": "native_opcore_scopes_fs_uae", "command": "cargo test -p asm native_opcore_scopes_fs_uae -- --nocapture --test-threads=1", "result": "PASS"}
+  ]
+}

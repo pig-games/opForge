@@ -59,7 +59,7 @@ This remediation has three outcomes:
   - Commit outcome: a wrapper fails closed unless explicit configured FS-UAE execution completes every declared test and writes a schema-validated retained record naming the tested source identity, commands, tests, results, and timestamp.
   - Definition of done: a current implementation commit can be represented without self-referential SHA claims by an evidence-only follow-up record that names the already-tested source commit/tree; no wrapper success path accepts a skipped Level D test; historical commits remain unmodified.
 
-- [ ] Item 2: establish an honest aggregate Level D baseline for native expansion Items 5.1–5.6
+- [x] Item 2: establish an honest aggregate Level D baseline for native expansion Items 5.1–5.6
   - Source requirement or finding IDs: RPO-001; partially closes historical auditability by recording a new aggregate baseline only, not inventing per-commit proof for prior work.
   - Expected files: the Item 1 completion wrapper configuration; `crates/opforge-asm/src/tests.rs` only if a named Level D test is missing; `documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-*.json` (or the approved equivalent evidence-only manifest); this plan.
   - Full quality gates: exact configured FS-UAE command for each named Level D test covering column-one directives, counted repetition, sequence assignment, iterable repetition, while, conditionals/match, and scopes; verify every outcome is `Completed` rather than `Skipped`; focused Rust test selection; `python3 scripts/workflow/check_native_level_d_manifest.py <manifest>`; `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`; `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`.

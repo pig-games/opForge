@@ -35296,10 +35296,132 @@ fn native_opcore_conditionals_fs_uae() {
 }
 
 #[test]
+fn opcore_scopes_rust_oracle_covers_canonical_qualification() {
+    // Proof level A. Live Rust establishes canonical bytes for nested block
+    // shadowing and namespace close aliases; it does not execute native code.
+    let case_dir = create_temp_dir("opcore-scopes-rust-oracle");
+    for (index, (source, expected)) in [
+        ("examples/opcore/scopes.asm", vec![2, 0, 1, 0, 5, 0]),
+        (
+            "examples/opcore/scopes_namespace.asm",
+            vec![1, 0, 5, 0, 9, 0],
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let input_path = workspace_root().join(source);
+        let bin_path = case_dir.join(format!("scope-{index}.bin"));
+        let cli = Cli::parse_from([
+            "opForge",
+            input_path.to_string_lossy().as_ref(),
+            "--bin",
+            bin_path.to_string_lossy().as_ref(),
+            "--cpu",
+            "m6502",
+        ]);
+        run_with_cli_with_context(&cli).expect("run Rust scope oracle");
+        assert_eq!(fs::read(bin_path).expect("read Rust scope bytes"), expected);
+    }
+}
+
+#[test]
+fn native_scope_source_tracks_stack_and_qualified_symbols() {
+    // Proof level B. Native source owns bounded scope push/pop, pass reset,
+    // definition qualification, and innermost-to-outer lookup. It does not
+    // execute the 68020 callback path.
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    let engine = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_engine.asm"),
+    )
+    .expect("read native opasm engine");
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "opasmDriverPassOneBegin",
+            "bsr.w resetScopeState",
+            "opasmDriverPassTwoBegin",
+            "bsr.w resetScopeState",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "beginBlockScope",
+            "bsr.w pushScopeFromStatementLabel",
+            "move.w d7, d2",
+            "beginNamespaceScope",
+            "bsr.w pushScopeFromStatementOperand",
+            "endScopeDirective",
+            "bsr.w popScope",
+        ]
+    ));
+    assert!(driver.contains("qualifyStatementLabelIfScoped\t.block"));
+    assert!(driver.contains("resolveScopedLabelValue\t.block"));
+    assert!(driver.contains("subq.w #1, d2"));
+    assert!(engine.contains("opasmEngineSetStatementLabelTextV1\t.block"));
+}
+
+fn native_scope_contract(stack: &[&str], raw: &str, defined: &[&str]) -> Option<String> {
+    (0..=stack.len()).rev().find_map(|depth| {
+        let candidate = if depth == 0 {
+            raw.to_string()
+        } else {
+            format!("{}.{}", stack[..depth].join("."), raw)
+        };
+        defined.contains(&candidate.as_str()).then_some(candidate)
+    })
+}
+
+fn native_scope_close_contract(stack: &mut Vec<&str>, directive: &str) -> Result<(), ()> {
+    match directive {
+        ".endblock" | ".bend" | ".endnamespace" | ".endn" => stack.pop().map(|_| ()).ok_or(()),
+        _ => Err(()),
+    }
+}
+
+#[test]
+fn native_scope_contract_covers_nested_shadowing_and_close_aliases() {
+    // Proof level C. This host model proves inner-first qualification and
+    // block/namespace close equivalence; it does not inspect native tables.
+    let stack = ["OUTER", "INNER"];
+    assert_eq!(
+        native_scope_contract(&stack, "VAL", &["VAL", "OUTER.INNER.VAL"]),
+        Some("OUTER.INNER.VAL".to_string())
+    );
+    assert_eq!(
+        native_scope_contract(&stack, "VALUE", &["VALUE", "OUTER.VALUE"]),
+        Some("OUTER.VALUE".to_string())
+    );
+    assert_eq!(
+        native_scope_contract(&["SHADOW"], "GLOBAL", &["GLOBAL", "SHADOW.GLOBAL"]),
+        Some("SHADOW.GLOBAL".to_string())
+    );
+    assert_eq!(
+        native_scope_contract(&stack, "GLOBAL", &["GLOBAL"]),
+        Some("GLOBAL".to_string())
+    );
+    let mut endblock_stack = vec!["OUTER", "INNER"];
+    let mut bend_stack = endblock_stack.clone();
+    native_scope_close_contract(&mut endblock_stack, ".endblock").expect("endblock pops");
+    native_scope_close_contract(&mut bend_stack, ".bend").expect("bend pops");
+    assert_eq!(endblock_stack, bend_stack);
+    let mut endnamespace_stack = vec!["outer", "inner"];
+    let mut endn_stack = endnamespace_stack.clone();
+    native_scope_close_contract(&mut endnamespace_stack, ".endnamespace")
+        .expect("endnamespace pops");
+    native_scope_close_contract(&mut endn_stack, ".endn").expect("endn pops");
+    assert_eq!(endnamespace_stack, endn_stack);
+}
+
+#[test]
 fn native_opcore_scopes_fs_uae() {
-    // Proof level D. This localization test compares both assigned scope
-    // sources with live Rust. It does not prove a native scope invariant until
-    // the first divergent boundary is corrected.
+    // Proof level D. FS-UAE executes both untouched canonical scope sources
+    // through the native CLI and compares output bytes with the live Rust
+    // oracle. It does not prove unassigned struct or scoped-repeat semantics.
     let _guard = fs_uae_native_cli_smoke_lock()
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");

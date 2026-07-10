@@ -1,0 +1,37 @@
+[slice]
+name = "native block and namespace symbol qualification"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/asmline_directives_scope.rs::route_scope_directive_ast"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverRecordLabel",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineSetStatementLabelTextV1"
+]
+invariant = "Each pass resets a bounded active scope stack; scoped definitions are stored with their full prefix, and unqualified lookups resolve from innermost active scope to global."
+assertion_decision = "No runtime assertion: malformed scope nesting and capacity exhaustion fail through the native flow callback; scoped resolution fails closed before the global fallback."
+
+[[tests]]
+name = "opcore_scopes_rust_oracle_covers_canonical_qualification"
+proof_level = "A"
+proves = "The live Rust assembler emits canonical bytes for block shadowing and namespace aliases."
+does_not_prove = "Native routing or 68020 execution."
+
+[[tests]]
+name = "native_scope_source_tracks_stack_and_qualified_symbols"
+proof_level = "B"
+proves = "Native source resets scope per pass, owns push/pop routing, qualifies definitions, and searches scoped names."
+does_not_prove = "Native execution or table contents."
+
+[[tests]]
+name = "native_scope_contract_covers_nested_shadowing_and_close_aliases"
+proof_level = "C"
+proves = "The host model covers innermost-first lookup, global fallback, shadowing, and close-alias equivalence."
+does_not_prove = "Native 68020 behavior."
+
+[[tests]]
+name = "native_opcore_scopes_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes untouched canonical scope sources and native CLI bytes match live Rust."
+does_not_prove = "Struct values or scoped repetition beyond this item."

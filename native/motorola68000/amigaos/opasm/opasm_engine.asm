@@ -1254,6 +1254,55 @@ fail
 	rts
 	.bend  ; opasmEngineGetStatementTextMetadataV1
 
+; Return or replace one stored statement label name.
+; Inputs: D0 = statement index; A0/D1 = replacement text/length for setter.
+; Outputs: getter returns A0 = label text and D0 = label length.
+; Clobbers: D0-D3/A0-A2/CCR.
+; CCR: reflects D0 on return.
+opasmEngineGetStatementLabelTextV1	.block
+	moveq #0, d1
+	move.w d0, d1
+	move.l d1, d2
+	add.w d2, d2
+	lea OpasmEngineStmtLabelLenTable.l, a0
+	moveq #0, d0
+	move.w 0(a0, d2.l), d0
+	lsl.l #6, d1
+	lea OpasmEngineStmtLabelNameTable.l, a0
+	adda.l d1, a0
+	rts
+	.bend  ; opasmEngineGetStatementLabelTextV1
+
+; Inputs: D0 = statement index; A0/D1 = replacement label text/length.
+; Outputs: D0 = 0 on success, 1 on capacity failure.
+; Clobbers: D0-D4/A0-A2/CCR.
+; CCR: reflects D0 on return.
+opasmEngineSetStatementLabelTextV1	.block
+	cmpi.l #TOKEN_BUFFER_CAPACITY - 1, d1
+	bhs.s fail
+	move.l d0, d2
+	lsl.l #6, d2
+	lea OpasmEngineStmtLabelNameTable.l, a1
+	adda.l d2, a1
+	move.l d1, d3
+copy
+	tst.l d3
+	beq.s terminate
+	move.b (a0)+, (a1)+
+	subq.l #1, d3
+	bra.s copy
+terminate
+	clr.b (a1)
+	add.w d0, d0
+	lea OpasmEngineStmtLabelLenTable.l, a2
+	move.w d1, 0(a2, d0.l)
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opasmEngineSetStatementLabelTextV1
+
 ; Report whether one stored statement is the generic `.org` directive.
 ; Inputs: D0 = statement index.
 ; Outputs: D0 = 1 for `.org`, 0 otherwise.

@@ -618,7 +618,7 @@ landed” is not equivalent to “framework-closed.”
     - labelled conditional directives preserve Rust label behavior
     - unmatched/unterminated blocks fail deterministically
 
-- [ ] Item 5.6: add native block and namespace symbol qualification
+- [x] Item 5.6: add native block and namespace symbol qualification
   - Source requirement or finding IDs: Item 6 assignments `scopes.asm` and `scopes_namespace.asm`; Rust authority in `asmline_directives_scope.rs::route_scope_directive_ast`
   - Expected files:
     - one `documentation/plans/slices/*.toml` metadata record

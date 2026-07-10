@@ -67,7 +67,7 @@ This remediation has three outcomes:
   - Commit outcome: one evidence-only commit retains a completed, exact-command Level D receipt for the currently tested aggregate source identity and lists every included test/result.
   - Definition of done: the required wrapper cannot pass with an omitted, skipped, failing, or source-mismatched test; all named Items 5.1–5.6 have one retained baseline result; no existing implementation commit is rewritten or relabelled as historically proven.
 
-- [ ] Item 3: version the native slice metadata contract and make omitted evidence fields fail validation
+- [x] Item 3: version the native slice metadata contract and make omitted evidence fields fail validation
   - Source requirement or finding IDs: RPO-002 (machine-enforced slice contract is weaker than the normative contract); fully closes validator-schema enforcement.
   - Expected files: `scripts/workflow/check_native_porting_slice.py`; `scripts/workflow/tests/test_native_porting_slice.py` (or its existing focused test module); any schema/documentation helper consumed by the validator; `documentation/plans/slices/*.toml` only where the new versioned fields are introduced.
   - Full quality gates: focused validator tests for missing/empty expected inputs, expected outputs, known non-equivalences, fast proof command, exact Level D command, and Level D fail-closed declaration; backward-compatibility/reviewed migration test; `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`; `make workflow-gate`; `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh` if Rust tests change.

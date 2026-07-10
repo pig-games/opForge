@@ -11,6 +11,15 @@ from pathlib import Path
 from native_porting_common import native_asm_paths, selected_paths
 
 LEVELS = {"A", "B", "C", "D", "E"}
+CURRENT_SCHEMA_VERSION = 2
+V2_REQUIRED_SLICE_FIELDS = (
+    "expected_inputs",
+    "expected_outputs",
+    "known_non_equivalences",
+    "fast_proof_command",
+    "level_d_command",
+    "level_d_fail_closed",
+)
 
 
 def parse_metadata(text: str) -> tuple[dict | None, list[str]]:
@@ -37,6 +46,26 @@ def validate_metadata(data: dict) -> list[str]:
     for field in ("name", "kind", "rust_reference", "native_boundary", "invariant"):
         if not section.get(field):
             errors.append(f"slice metadata requires non-empty `{field}`")
+    schema_version = section.get("schema_version")
+    if schema_version is None:
+        # Existing records remain readable until the explicit Item 4 migration.
+        # New or migrated records must opt into a versioned schema.
+        pass
+    elif schema_version == 1:
+        if not section.get("legacy_contract_migration"):
+            errors.append("schema_version 1 requires non-empty `legacy_contract_migration`")
+    elif schema_version == CURRENT_SCHEMA_VERSION:
+        for field in V2_REQUIRED_SLICE_FIELDS:
+            value = section.get(field)
+            if field == "level_d_fail_closed":
+                if value is not True:
+                    errors.append("schema_version 2 requires `level_d_fail_closed = true`")
+            elif not value:
+                errors.append(f"schema_version 2 requires non-empty `{field}`")
+    else:
+        errors.append(
+            f"unsupported schema_version `{schema_version}`; expected 1 or {CURRENT_SCHEMA_VERSION}"
+        )
     tests = data.get("tests")
     if not isinstance(tests, list) or not tests:
         errors.append("slice metadata requires at least one [[tests]] entry")

@@ -57,6 +57,43 @@ class NativePortingSliceTests(unittest.TestCase):
         data["slice"]["host_proof_absence_justification"] = "hardware-only boundary"
         self.assertEqual(validate_metadata(data), [])
 
+    def test_version_two_requires_complete_execution_contract(self):
+        data = self.valid()
+        data["slice"]["schema_version"] = 2
+        errors = "\n".join(validate_metadata(data))
+        for field in (
+            "expected_inputs",
+            "expected_outputs",
+            "known_non_equivalences",
+            "fast_proof_command",
+            "level_d_command",
+            "level_d_fail_closed",
+        ):
+            self.assertIn(field, errors)
+        data["slice"].update(
+            {
+                "expected_inputs": "canonical source and configured FS-UAE environment",
+                "expected_outputs": "native output exactly matches live Rust output",
+                "known_non_equivalences": "none for the assigned fixture",
+                "fast_proof_command": "cargo test -p asm level-a -- --nocapture",
+                "level_d_command": "cargo test -p asm level-d -- --nocapture --test-threads=1",
+                "level_d_fail_closed": True,
+            }
+        )
+        self.assertEqual(validate_metadata(data), [])
+
+    def test_version_one_requires_explicit_migration_note(self):
+        data = self.valid()
+        data["slice"]["schema_version"] = 1
+        self.assertIn("legacy_contract_migration", "\n".join(validate_metadata(data)))
+        data["slice"]["legacy_contract_migration"] = "Awaiting Item 4 v2 migration."
+        self.assertEqual(validate_metadata(data), [])
+
+    def test_unsupported_schema_version_fails(self):
+        data = self.valid()
+        data["slice"]["schema_version"] = 99
+        self.assertIn("unsupported schema_version", "\n".join(validate_metadata(data)))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -35296,6 +35296,77 @@ fn native_opcore_conditionals_fs_uae() {
 }
 
 #[test]
+fn native_opcore_scopes_fs_uae() {
+    // Proof level D. This localization test compares both assigned scope
+    // sources with live Rust. It does not prove a native scope invariant until
+    // the first divergent boundary is corrected.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let case_dir = create_temp_dir("native-opcore-scopes");
+    let source_paths = [
+        workspace_root().join("examples/opcore/scopes.asm"),
+        workspace_root().join("examples/opcore/scopes_namespace.asm"),
+    ];
+    let mut sources = Vec::new();
+    let mut rust_bins = Vec::new();
+    for (index, input_path) in source_paths.iter().enumerate() {
+        let source = fs::read(input_path).expect("read canonical scope source");
+        let bin_path = case_dir.join(format!("rust-{index}.bin"));
+        let cli = Cli::parse_from([
+            "opForge",
+            input_path.to_string_lossy().as_ref(),
+            "--bin",
+            bin_path.to_string_lossy().as_ref(),
+            "--cpu",
+            "m6502",
+        ]);
+        run_with_cli_with_context(&cli).expect("run live Rust scope oracle");
+        sources.push(source);
+        rust_bins.push(fs::read(bin_path).expect("read Rust scope bytes"));
+    }
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(&sources[0]),
+            command_template: Some("{input} --bin {bin} --cpu m6502"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(&sources[1]),
+            command_template: Some("{input} --bin {bin} --cpu m6502"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("scope FS-UAE cases should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), rust_bins.len());
+            for (run, rust_bin) in runs.iter().zip(rust_bins.iter()) {
+                assert!(run.success, "native scope run failed\n{}", run.stdout);
+                let native_bin = fs::read(
+                    run.artifact_dir
+                        .join("Work")
+                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+                )
+                .expect("read native scope bytes");
+                assert_eq!(&native_bin, rust_bin);
+            }
+        }
+    }
+}
+
+#[test]
 fn opcore_conditionals_rust_oracle_covers_canonical_branches() {
     // Proof level A. This test proves live Rust selects the canonical if and
     // match branches. It does not prove native routing or 68020 execution.

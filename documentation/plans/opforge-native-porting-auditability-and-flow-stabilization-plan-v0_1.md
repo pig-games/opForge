@@ -51,7 +51,7 @@ This remediation has three outcomes:
 
 ## Work Items
 
-- [ ] Item 1: define and validate a retained fail-closed Level D completion-record format
+- [x] Item 1: define and validate a retained fail-closed Level D completion-record format
   - Source requirement or finding IDs: RPO-001 (recent Level D completion is not retained as a fail-closed standard gate); fully closes the record-format and fail-closed invocation portion, not historical execution evidence.
   - Expected files: `scripts/workflow/run_native_cli_expansion_completion.sh`; `scripts/workflow/check_native_level_d_manifest.py`; `scripts/workflow/tests/test_native_cli_expansion_completion.py`; `scripts/workflow/tests/test_native_level_d_manifest.py`; a documented `documentation/quality-gates/` manifest convention; narrowly required workflow documentation.
   - Full quality gates: focused workflow Python tests; a negative test for missing FS-UAE configuration, missing required test, skipped outcome, malformed/absent manifest, and source-identity mismatch; `make workflow-gate`; `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`; formatter gate if native assembly changes (not expected).

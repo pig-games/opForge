@@ -8,6 +8,7 @@
 	.use opasm.amigaos.engine as eng
 	.use opasm.amigaos.events
 	.use opasm.amigaos.flow_navigation as navigation
+	.use opasm.amigaos.flow_scopes as scopes
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
 
 OPASM_LAYOUT_NAME_CAPACITY = 32
@@ -70,7 +71,7 @@ opasmDriverPassOneBegin	.block
 	bsr.w resetLayoutState
 	clr.w OpasmRepeatDepth
 	clr.w OpasmIfDepth
-	jsr navigation.resetScopeStateV1
+	jsr scopes.resetStateV1
 	jsr compile_values.resetBindingsV1
 	rts
 	.bend  ; opasmDriverPassOneBegin
@@ -91,7 +92,7 @@ opasmDriverPassTwoBegin	.block
 	clr.w OpasmLayoutSectionActive
 	clr.w OpasmRepeatDepth
 	clr.w OpasmIfDepth
-	jsr navigation.resetScopeStateV1
+	jsr scopes.resetStateV1
 	jsr compile_values.resetBindingsV1
 	moveq #0, d0
 	rts
@@ -135,7 +136,7 @@ compareBlock
 	lea BlockMnemonicText, a1
 	moveq #5, d1
 	bsr.w lineStartsWith
-	bne.w navigation.beginBlockScopeV1
+	bne.w scopes.beginBlockScopeV1
 
 checkEndblock
 	cmpi.l #8, d4
@@ -148,7 +149,7 @@ compareEndblock
 	lea EndblockMnemonicText, a1
 	moveq #8, d1
 	bsr.w lineStartsWith
-	bne.w navigation.endScopeDirectiveV1
+	bne.w scopes.endScopeDirectiveV1
 
 checkBend
 	cmpi.l #4, d4
@@ -161,7 +162,7 @@ compareBend
 	lea BendMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	bne.w navigation.endScopeDirectiveV1
+	bne.w scopes.endScopeDirectiveV1
 
 checkNamespace
 	cmpi.l #9, d4
@@ -174,7 +175,7 @@ compareNamespace
 	lea NamespaceMnemonicText, a1
 	moveq #9, d1
 	bsr.w lineStartsWith
-	bne.w navigation.beginNamespaceScopeV1
+	bne.w scopes.beginNamespaceScopeV1
 
 checkEndnamespace
 	cmpi.l #12, d4
@@ -187,7 +188,7 @@ compareEndnamespace
 	lea EndnamespaceMnemonicText, a1
 	moveq #12, d1
 	bsr.w lineStartsWith
-	bne.w navigation.endScopeDirectiveV1
+	bne.w scopes.endScopeDirectiveV1
 
 checkEndn
 	cmpi.l #4, d4
@@ -200,7 +201,7 @@ compareEndn
 	lea EndnMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	bne.w navigation.endScopeDirectiveV1
+	bne.w scopes.endScopeDirectiveV1
 
 checkMatch
 	cmpi.l #5, d4
@@ -1285,7 +1286,7 @@ recordSymbolValue
 	tst.l d5
 	bne.w symbolValueFail
 	move.l d3, -(sp)
-	jsr navigation.qualifyStatementLabelIfScopedV1
+	jsr scopes.qualifyStatementLabelIfScopedV1
 	move.l d0, d5
 	move.l (sp)+, d3
 	tst.l d5
@@ -2141,7 +2142,7 @@ prepareRequest
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w skipLineWhitespace
 	bsr.w trimLiteralFallbackTrailing
-	jsr navigation.resolveLabelValueV1
+	jsr scopes.resolveLabelValueV1
 	beq.w checkWidth
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0

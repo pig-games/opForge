@@ -1,6 +1,15 @@
+; Native opasm scope-flow and scoped-symbol helpers.
+
+	.module opasm.amigaos.flow_scopes
+	.cpu 68020
+	.use opasm.amigaos.engine as eng
+
 OPASM_SCOPE_DEPTH_CAPACITY = 8
 OPASM_SCOPE_NAME_CAPACITY = 32
 OPASM_SCOPE_TEXT_CAPACITY = 64
+
+	.section code, kind=code
+	.pub
 
 ; Reset bounded block/namespace state for one assembly pass.
 ; Outputs: D0 = 0.
@@ -330,6 +339,8 @@ done
 	rts
 	.bend  ; skipWhitespace
 
+	.endsection
+
 	.section bss, kind=bss
 
 ScopeDepth
@@ -340,3 +351,6 @@ ScopeNames
 
 ScopeScratch
 	.res byte, OPASM_SCOPE_TEXT_CAPACITY
+
+	.endsection
+	.endmodule

@@ -2,7 +2,6 @@
 
 	.module opasm.amigaos.flow_navigation
 	.cpu 68020
-	.use opasm.amigaos.engine as eng
 
 	.section code, kind=code
 	.pub
@@ -20,4 +19,5 @@ initializeStatementFlowV1	.block
 	rts
 	.bend  ; initializeStatementFlowV1
 
-	.include "opasm_flow_scopes.asm"
+	.endsection
+	.endmodule

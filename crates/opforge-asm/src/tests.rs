@@ -34358,7 +34358,8 @@ fn native_flow_navigation_initializes_default_callback_contract() {
             "moveq #0, d0",
         ]
     ));
-    assert!(navigation.contains(".include \"opasm_flow_scopes.asm\""));
+    assert!(navigation.contains(".endsection"));
+    assert!(navigation.contains(".endmodule"));
 }
 
 #[derive(Default)]
@@ -35369,10 +35370,6 @@ fn native_scope_source_tracks_stack_and_qualified_symbols() {
         workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
     )
     .expect("read native opasm driver");
-    let navigation = fs::read_to_string(
-        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm"),
-    )
-    .expect("read native flow navigation module");
     let scope_flow = fs::read_to_string(
         workspace_root().join("native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm"),
     )
@@ -35385,22 +35382,22 @@ fn native_scope_source_tracks_stack_and_qualified_symbols() {
         &driver,
         &[
             "opasmDriverPassOneBegin",
-            "jsr navigation.resetScopeStateV1",
+            "jsr scopes.resetStateV1",
             "opasmDriverPassTwoBegin",
-            "jsr navigation.resetScopeStateV1",
+            "jsr scopes.resetStateV1",
         ]
     ));
     assert!(source_contains_in_order(
         &driver,
         &[
-            ".use opasm.amigaos.flow_navigation as navigation",
-            "bne.w navigation.beginBlockScopeV1",
-            "bne.w navigation.beginNamespaceScopeV1",
-            "bne.w navigation.endScopeDirectiveV1",
+            ".use opasm.amigaos.flow_scopes as scopes",
+            "bne.w scopes.beginBlockScopeV1",
+            "bne.w scopes.beginNamespaceScopeV1",
+            "bne.w scopes.endScopeDirectiveV1",
         ]
     ));
-    assert!(driver.contains("jsr navigation.qualifyStatementLabelIfScopedV1"));
-    assert!(driver.contains("jsr navigation.resolveLabelValueV1"));
+    assert!(driver.contains("jsr scopes.qualifyStatementLabelIfScopedV1"));
+    assert!(driver.contains("jsr scopes.resolveLabelValueV1"));
     assert!(source_contains_in_order(
         &scope_flow,
         &[
@@ -35415,7 +35412,9 @@ fn native_scope_source_tracks_stack_and_qualified_symbols() {
             "subq.w #1, d2",
         ]
     ));
-    assert!(navigation.contains(".include \"opasm_flow_scopes.asm\""));
+    assert!(scope_flow.contains(".module opasm.amigaos.flow_scopes"));
+    assert!(scope_flow.contains(".endsection"));
+    assert!(scope_flow.contains(".endmodule"));
     assert!(engine.contains("opasmEngineSetStatementLabelTextV1\t.block"));
 }
 

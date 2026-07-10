@@ -14461,7 +14461,8 @@ fn motorola68020_item9_native_symbol_config_directives_route_before_selected_enc
             "LEA strings.IfDirectiveText, A1",
             "BNE.W conditionalLine",
             "conditionalLine",
-            "MOVE.L #strings.ConditionalFailureText, D1",
+            "JSR assembly_session.opforgeNativeCliRecordPrvmStatementLine",
+            "BRA.W done",
         ]
     ));
 }
@@ -35236,6 +35237,146 @@ fn native_opcore_while_fs_uae() {
             assert_eq!(native_bin, rust_bin);
         }
     }
+}
+
+#[test]
+fn native_opcore_conditionals_fs_uae() {
+    // Proof level D. This test proves a real native CLI session chooses the
+    // selected canonical `.if` branches and matches live Rust bytes. It does
+    // not prove `.match` branch selection.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let input_path = workspace_root().join("examples/opcore/cond_syntax.asm");
+    let source = fs::read(&input_path).expect("read canonical conditional source");
+    let case_dir = create_temp_dir("native-opcore-conditionals");
+    let rust_bin_path = case_dir.join("rust.bin");
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--bin",
+        rust_bin_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+    ]);
+    run_with_cli_with_context(&cli).expect("run live Rust conditional oracle");
+    let rust_bin = fs::read(&rust_bin_path).expect("read Rust conditional bytes");
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(&source),
+        command_template: Some("{input} --bin {bin} --cpu m6502"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("conditional FS-UAE case should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native conditional run failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            let native_bin = fs::read(
+                run.artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read native conditional bytes");
+            assert_eq!(native_bin, rust_bin);
+        }
+    }
+}
+
+#[test]
+fn opcore_conditionals_rust_oracle_covers_canonical_branches() {
+    // Proof level A. This test proves live Rust selects the canonical if and
+    // match branches. It does not prove native routing or 68020 execution.
+    let case_dir = create_temp_dir("opcore-conditionals-rust-oracle");
+    let input_path = workspace_root().join("examples/opcore/cond_syntax.asm");
+    let bin_path = case_dir.join("conditional.bin");
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--bin",
+        bin_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+    ]);
+    run_with_cli_with_context(&cli).expect("run Rust conditional oracle");
+    assert_eq!(
+        fs::read(bin_path).expect("read Rust conditional bytes"),
+        [1, 5, 8, 10, 13, 16]
+    );
+}
+
+fn native_if_branch_contract(levels: &[&[bool]]) -> Option<Vec<usize>> {
+    levels
+        .iter()
+        .map(|branches| branches.iter().position(|selected| *selected))
+        .collect()
+}
+
+fn native_match_case_contract(value: u32, cases: &[&[u32]], default_index: usize) -> usize {
+    cases
+        .iter()
+        .position(|case_values| case_values.contains(&value))
+        .unwrap_or(default_index)
+}
+
+#[test]
+fn native_conditional_contract_covers_nested_if_and_match_selection() {
+    // Proof level C. This host request-shape model proves first-matching branch
+    // selection, else/default fallback, and nesting-local decisions. It does
+    // not execute native statement scans or 68020 branches.
+    assert_eq!(
+        native_if_branch_contract(&[&[true, false], &[false, true]]),
+        Some(vec![0, 1])
+    );
+    assert_eq!(native_if_branch_contract(&[&[false, false]]), None);
+    assert_eq!(native_match_case_contract(2, &[&[1], &[2, 3]], 2), 1);
+    assert_eq!(native_match_case_contract(9, &[&[1, 2]], 1), 1);
+}
+
+#[test]
+fn native_conditional_source_records_then_skips_unselected_statement_ranges() {
+    // Proof level B. This test proves source routing records conditionals and
+    // native flow owns bounded if/match scans before ordinary processing. It
+    // does not prove the scans execute on real hardware.
+    let parser = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read native line processor");
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    assert!(source_contains_in_order(
+        &parser,
+        &[
+            "conditionalLine",
+            "jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine",
+            "bra.w done",
+        ]
+    ));
+    assert!(driver.contains("findNextIfBranch\t.block"));
+    assert!(driver.contains("findSelectedMatchBranch\t.block"));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "beginIfBranch",
+            "bsr.w findNextIfBranch",
+            "handleElseifBranch",
+            "finishIfBranch",
+        ]
+    ));
 }
 
 #[test]

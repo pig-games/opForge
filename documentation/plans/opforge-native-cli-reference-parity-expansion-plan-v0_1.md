@@ -599,7 +599,7 @@ landed” is not equivalent to “framework-closed.”
     - false-first loops emit nothing
     - the iteration limit prevents non-terminating expansion
 
-- [ ] Item 5.5: add native conditional and match branch selection
+- [x] Item 5.5: add native conditional and match branch selection
   - Source requirement or finding IDs: Item 6 assignment `cond_syntax.asm`; Rust authority in `asmline_conditionals.rs`
   - Expected files:
     - one `documentation/plans/slices/*.toml` metadata record

@@ -390,10 +390,10 @@ done
 	bra.w return
 
 conditionalLine
-	move.l #strings.ConditionalFailureText, d1
-	jsr dos.putStr
-	moveq #1, d0
-	bra.w return
+	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
+	tst.l d0
+	bne.w fail
+	bra.w done
 
 fail
 	move.l #strings.ParserFailureText, d1

@@ -1,0 +1,36 @@
+[slice]
+name = "native conditional and match branch selection"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/asmline_conditionals.rs::AsmLine::process_conditional_ast"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliParseCurrentLine",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl"
+]
+invariant = "Native source records conditional statements, and flow selects only the first matching `.if`/`.elseif`/`.else` or `.match`/`.case`/`.default` body at the current nesting level."
+assertion_decision = "No runtime assertion: unmatched or unterminated conditional blocks are checked flow failures; selectors return status and fail closed."
+
+[[tests]]
+name = "opcore_conditionals_rust_oracle_covers_canonical_branches"
+proof_level = "A"
+proves = "The live Rust assembler emits the expected canonical conditional bytes."
+does_not_prove = "Native routing or 68020 execution."
+
+[[tests]]
+name = "native_conditional_source_records_then_skips_unselected_statement_ranges"
+proof_level = "B"
+proves = "Native source records conditional directives and flow owns if/match branch scans."
+does_not_prove = "Real statement scan execution."
+
+[[tests]]
+name = "native_conditional_contract_covers_nested_if_and_match_selection"
+proof_level = "C"
+proves = "The host model covers first-match selection, fallback, and nested-local branch decisions."
+does_not_prove = "Native table contents or 68020 execution."
+
+[[tests]]
+name = "native_opcore_conditionals_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes untouched canonical conditional source and native CLI bytes match live Rust."
+does_not_prove = "Preprocessor-only ifdef/ifndef semantics outside the assigned source."

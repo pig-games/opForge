@@ -7,6 +7,7 @@
 	.use opasm.amigaos.compile_values as compile_values
 	.use opasm.amigaos.engine as eng
 	.use opasm.amigaos.events
+	.use opasm.amigaos.flow_navigation as navigation
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
 
 OPASM_LAYOUT_NAME_CAPACITY = 32
@@ -18,9 +19,6 @@ OPASM_REPEAT_STACK_CAPACITY = 8
 OPASM_REPEAT_ITERATION_LIMIT = 1024
 OPASM_REPEAT_KIND_FOR = 1
 OPASM_REPEAT_KIND_WHILE = 2
-OPASM_SCOPE_DEPTH_CAPACITY = 8
-OPASM_SCOPE_NAME_CAPACITY = 32
-OPASM_SCOPE_TEXT_CAPACITY = 64
 
 	.section code, kind=code
 	.pub
@@ -72,7 +70,7 @@ opasmDriverPassOneBegin	.block
 	bsr.w resetLayoutState
 	clr.w OpasmRepeatDepth
 	clr.w OpasmIfDepth
-	bsr.w resetScopeState
+	jsr navigation.resetScopeStateV1
 	jsr compile_values.resetBindingsV1
 	rts
 	.bend  ; opasmDriverPassOneBegin
@@ -93,7 +91,7 @@ opasmDriverPassTwoBegin	.block
 	clr.w OpasmLayoutSectionActive
 	clr.w OpasmRepeatDepth
 	clr.w OpasmIfDepth
-	bsr.w resetScopeState
+	jsr navigation.resetScopeStateV1
 	jsr compile_values.resetBindingsV1
 	moveq #0, d0
 	rts
@@ -107,9 +105,8 @@ opasmDriverPassTwoBegin	.block
 opasmDriverApplyFlowControl	.block
 	movem.l d3-d7/a0-a2, -(sp)
 	move.w d0, d7
-	move.w d7, d2
-	addq.w #1, d2
-	clr.w d1
+	move.w d7, d0
+	jsr navigation.initializeStatementFlowV1
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
 	moveq #0, d0
@@ -138,7 +135,7 @@ compareBlock
 	lea BlockMnemonicText, a1
 	moveq #5, d1
 	bsr.w lineStartsWith
-	bne.w beginBlockScope
+	bne.w navigation.beginBlockScopeV1
 
 checkEndblock
 	cmpi.l #8, d4
@@ -151,7 +148,7 @@ compareEndblock
 	lea EndblockMnemonicText, a1
 	moveq #8, d1
 	bsr.w lineStartsWith
-	bne.w endScopeDirective
+	bne.w navigation.endScopeDirectiveV1
 
 checkBend
 	cmpi.l #4, d4
@@ -164,7 +161,7 @@ compareBend
 	lea BendMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	bne.w endScopeDirective
+	bne.w navigation.endScopeDirectiveV1
 
 checkNamespace
 	cmpi.l #9, d4
@@ -177,7 +174,7 @@ compareNamespace
 	lea NamespaceMnemonicText, a1
 	moveq #9, d1
 	bsr.w lineStartsWith
-	bne.w beginNamespaceScope
+	bne.w navigation.beginNamespaceScopeV1
 
 checkEndnamespace
 	cmpi.l #12, d4
@@ -190,7 +187,7 @@ compareEndnamespace
 	lea EndnamespaceMnemonicText, a1
 	moveq #12, d1
 	bsr.w lineStartsWith
-	bne.w endScopeDirective
+	bne.w navigation.endScopeDirectiveV1
 
 checkEndn
 	cmpi.l #4, d4
@@ -203,7 +200,7 @@ compareEndn
 	lea EndnMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	bne.w endScopeDirective
+	bne.w navigation.endScopeDirectiveV1
 
 checkMatch
 	cmpi.l #5, d4
@@ -583,30 +580,6 @@ finishIfBranch
 	move.w OpasmIfDepth, d4
 	subq.w #1, d4
 	move.w d4, OpasmIfDepth
-	moveq #1, d1
-	bra.w success
-
-beginBlockScope
-	bsr.w pushScopeFromStatementLabel
-	bne.w fail
-	move.w d7, d2
-	addq.w #1, d2
-	moveq #1, d1
-	bra.w success
-
-beginNamespaceScope
-	bsr.w pushScopeFromStatementOperand
-	bne.w fail
-	move.w d7, d2
-	addq.w #1, d2
-	moveq #1, d1
-	bra.w success
-
-endScopeDirective
-	bsr.w popScope
-	bne.w fail
-	move.w d7, d2
-	addq.w #1, d2
 	moveq #1, d1
 	bra.w success
 
@@ -1312,7 +1285,7 @@ recordSymbolValue
 	tst.l d5
 	bne.w symbolValueFail
 	move.l d3, -(sp)
-	bsr.w qualifyStatementLabelIfScoped
+	jsr navigation.qualifyStatementLabelIfScopedV1
 	move.l d0, d5
 	move.l (sp)+, d3
 	tst.l d5
@@ -2168,7 +2141,7 @@ prepareRequest
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w skipLineWhitespace
 	bsr.w trimLiteralFallbackTrailing
-	bsr.w resolveScopedLabelValue
+	jsr navigation.resolveLabelValueV1
 	beq.w checkWidth
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
@@ -2251,258 +2224,6 @@ readWhileConditionForStatement	.block
 return
 	rts
 	.bend  ; readWhileConditionForStatement
-
-; Reset bounded block/namespace scope state for one assembly pass.
-; Outputs: D0 = 0.
-; Clobbers: D0/CCR.
-; CCR: reflects D0 on return.
-resetScopeState	.block
-	clr.w OpasmScopeDepth
-	moveq #0, d0
-	rts
-	.bend  ; resetScopeState
-
-; Push the label attached to the current `.block` as one scope component.
-; Inputs: D7.W = statement index.
-; Outputs: D0 = 0 on success, 1 on missing/over-capacity name.
-; Clobbers: D0-D5/A0-A2/CCR.
-; CCR: reflects D0 on return.
-pushScopeFromStatementLabel	.block
-	moveq #0, d0
-	move.w d7, d0
-	jsr eng.opasmEngineGetStatementLabelTextV1
-	bsr.w pushScopeText
-	rts
-	.bend  ; pushScopeFromStatementLabel
-
-; Push the first operand token of the current `.namespace` as one scope component.
-; Inputs: D7.W = statement index.
-; Outputs: D0 = 0 on success, 1 on missing/over-capacity name.
-; Clobbers: D0-D5/A0-A2/CCR.
-; CCR: reflects D0 on return.
-pushScopeFromStatementOperand	.block
-	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
-	movea.l sp, a0
-	jsr eng.opasmEngineGetStatementTextMetadataV1
-	bne.s fail
-	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
-	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
-	bsr.w pushScopeText
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	rts
-fail
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #1, d0
-	rts
-	.bend  ; pushScopeFromStatementOperand
-
-; Push one identifier token onto the bounded scope stack.
-; Inputs: A0/D0 = name text/length.
-; Outputs: D0 = 0 on success, 1 on malformed/capacity failure.
-; Clobbers: D0-D5/A0-A2/CCR.
-; CCR: reflects D0 on return.
-pushScopeText	.block
-	bsr.w skipLineWhitespace
-	tst.l d0
-	beq.s fail
-	moveq #0, d2
-	move.w OpasmScopeDepth, d2
-	cmpi.w #OPASM_SCOPE_DEPTH_CAPACITY, d2
-	bhs.s fail
-	move.l d2, d3
-	lsl.l #5, d3
-	lea OpasmScopeNames, a1
-	adda.l d3, a1
-	moveq #OPASM_SCOPE_NAME_CAPACITY - 1, d4
-copy
-	tst.l d0
-	beq.s finish
-	move.b (a0), d1
-	cmpi.b #' ', d1
-	beq.s finish
-	cmpi.b #9, d1
-	beq.s finish
-	cmpi.b #';', d1
-	beq.s finish
-	tst.w d4
-	beq.s fail
-	move.b (a0)+, (a1)+
-	subq.l #1, d0
-	subq.w #1, d4
-	bra.s copy
-finish
-	cmpi.w #OPASM_SCOPE_NAME_CAPACITY - 1, d4
-	beq.w fail
-	clr.b (a1)
-	move.w OpasmScopeDepth, d2
-	addq.w #1, d2
-	move.w d2, OpasmScopeDepth
-	moveq #0, d0
-	rts
-fail
-	moveq #1, d0
-	rts
-	.bend  ; pushScopeText
-
-; Pop one active scope component.
-; Outputs: D0 = 0 on success, 1 when no scope is active.
-; Clobbers: D0-D1/CCR.
-; CCR: reflects D0 on return.
-popScope	.block
-	tst.w OpasmScopeDepth
-	beq.s fail
-	move.w OpasmScopeDepth, d1
-	subq.w #1, d1
-	move.w d1, OpasmScopeDepth
-	moveq #0, d0
-	rts
-fail
-	moveq #1, d0
-	rts
-	.bend  ; popScope
-
-; Rewrite the current symbol directive's label with active scope prefixes.
-; Inputs: D7.W = statement index.
-; Outputs: D0 = 0 on success, 1 on qualification failure.
-; Clobbers: D0-D5/A0-A2/CCR.
-; CCR: reflects D0 on return.
-qualifyStatementLabelIfScoped	.block
-	tst.w OpasmScopeDepth
-	beq.s ok
-	moveq #0, d0
-	move.w d7, d0
-	jsr eng.opasmEngineGetStatementLabelTextV1
-	move.l d0, d5
-	movea.l a0, a2
-	moveq #0, d2
-	move.w OpasmScopeDepth, d2
-	movea.l a2, a0
-	move.l d5, d0
-	bsr.w buildScopedTextAtDepth
-	bne.s fail
-	move.l d1, d5
-	movea.l a0, a1
-	moveq #0, d0
-	move.w d7, d0
-	movea.l a1, a0
-	move.l d5, d1
-	jsr eng.opasmEngineSetStatementLabelTextV1
-	rts
-ok
-	moveq #0, d0
-	rts
-fail
-	moveq #1, d0
-	rts
-	.bend  ; qualifyStatementLabelIfScoped
-
-; Resolve an unqualified token through active scope prefixes before globals.
-; Inputs: A0/D0 = trimmed token text/length.
-; Outputs: D0 = 0 on success, 1 when no scoped value matches; D3 on success.
-; Clobbers: D0-D6/A0-A2/CCR.
-; CCR: reflects D0 on return.
-resolveScopedLabelValue	.block
-	movem.l d1-d2/d4-d6/a0-a2, -(sp)
-	tst.w OpasmScopeDepth
-	beq.s fail
-	movea.l a0, a2
-	move.l d0, d6
-	movea.l a0, a1
-	move.l d0, d4
-dotScan
-	tst.l d4
-	beq.s noDot
-	cmpi.b #'.', (a1)+
-	beq.s fail
-	subq.l #1, d4
-	bra.s dotScan
-noDot
-	moveq #0, d2
-	move.w OpasmScopeDepth, d2
-scan
-	tst.w d2
-	beq.s fail
-	movea.l a2, a0
-	move.l d6, d0
-	bsr.w buildScopedTextAtDepth
-	bne.s next
-	move.l d1, d0
-	jsr eng.opasmEngineResolveLabelValueV1
-	beq.s ok
-next
-	subq.w #1, d2
-	bra.s scan
-ok
-	movem.l (sp)+, d1-d2/d4-d6/a0-a2
-	moveq #0, d0
-	rts
-fail
-	movem.l (sp)+, d1-d2/d4-d6/a0-a2
-	moveq #1, d0
-	rts
-	.bend  ; resolveScopedLabelValue
-
-; Build `scope[0]....scope[depth-1].name` into the fixed scratch buffer.
-; Inputs: A0/D0 = raw name; D2.W = requested scope depth.
-; Outputs: D0 = 0 on success; A0/D1 = scratch text/length.
-; Clobbers: D0-D6/A0-A2/CCR.
-; CCR: reflects D0 on return.
-buildScopedTextAtDepth	.block
-	movea.l a0, a2
-	move.l d0, d6
-	lea OpasmScopeScratch, a1
-	movea.l a1, a0
-	moveq #OPASM_SCOPE_TEXT_CAPACITY - 1, d4
-	clr.l d1
-	clr.w d3
-scopeLoop
-	cmp.w d2, d3
-	bhs.s rawName
-	move.l d3, d5
-	lsl.l #5, d5
-	lea OpasmScopeNames, a1
-	adda.l d5, a1
-scopeChar
-	move.b (a1)+, d5
-	beq.s scopeEnd
-	tst.w d4
-	beq.s fail
-	move.b d5, (a0)+
-	addq.l #1, d1
-	subq.w #1, d4
-	bra.s scopeChar
-scopeEnd
-	tst.w d4
-	beq.s fail
-	move.b #'.', (a0)+
-	addq.l #1, d1
-	subq.w #1, d4
-	addq.w #1, d3
-	bra.s scopeLoop
-rawName
-	tst.l d6
-	beq.s fail
-rawLoop
-	tst.l d6
-	beq.s done
-	tst.w d4
-	beq.s fail
-	move.b (a2)+, (a0)+
-	addq.l #1, d1
-	subq.w #1, d4
-	subq.l #1, d6
-	bra.s rawLoop
-done
-	clr.b (a0)
-	lea OpasmScopeScratch, a0
-	moveq #0, d0
-	rts
-fail
-	moveq #1, d0
-	rts
-	.bend  ; buildScopedTextAtDepth
 
 ; Evaluate `$ < literal` or `$ <= literal` against the current session PC.
 ; Inputs: D7.W = statement index.
@@ -5233,15 +4954,6 @@ OpasmIfDepth
 
 OpasmIfMatched
 	.res byte, OPASM_REPEAT_STACK_CAPACITY
-
-OpasmScopeDepth
-	.res word, 1
-
-OpasmScopeNames
-	.res byte, OPASM_SCOPE_DEPTH_CAPACITY * OPASM_SCOPE_NAME_CAPACITY
-
-OpasmScopeScratch
-	.res byte, OPASM_SCOPE_TEXT_CAPACITY
 
 OpasmLayoutNameDestPtr
 	.res long, 1

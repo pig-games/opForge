@@ -7,6 +7,12 @@ rust_reference = [
 ]
 native_boundary = [
   "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm::initializeStatementFlowV1",
+  "native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm::beginBlockScopeV1",
+  "native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm::beginNamespaceScopeV1",
+  "native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm::endScopeDirectiveV1",
+  "native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm::qualifyStatementLabelIfScopedV1",
+  "native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm::resolveLabelValueV1",
   "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverRecordLabel",
   "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineSetStatementLabelTextV1"
 ]

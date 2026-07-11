@@ -83,13 +83,14 @@ This remediation has three outcomes:
   - Commit outcome: each active slice exposes concrete expected input/output, limitations, and reproducible fast/Level D commands in machine-readable form.
   - Definition of done: no migrated record relies on an ambiguous “run FS-UAE” instruction; bounded limits (where applicable) are stated as known non-equivalences; no Rust examples, reference fixtures, or implementation behavior changes.
 
-- [ ] Item 5: extract statement navigation and scope-flow ownership from the monolithic native dispatcher
+- [x] Item 5: extract statement navigation and scope-flow ownership from the monolithic native dispatcher
   - Source requirement or finding IDs: RPO-003 (flow-control complexity is concentrating in `opasmDriverApplyFlowControl`); partially closes the architectural hotspot without moving conditional or repetition semantics yet.
   - Expected files: `native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm`; new narrowly named native flow/navigation and scope modules; native module wiring; `crates/opforge-asm/src/tests.rs`; one updated slice metadata record if the native boundary identifier changes.
   - Full quality gates: focused Level B source/order and callback-contract tests; Level C model/ABI preservation tests where a host contract exists; exact Level D aggregate wrapper for Items 5.1–5.6; native formatter; `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`; `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`.
   - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for ownership-only navigation/scope extraction and confirms no new assembler behavior or CPU-specific generic logic.
   - Commit outcome: the root dispatcher delegates navigation and scope directives through explicit module boundaries while retaining its existing callback ABI and observable behavior.
   - Definition of done: statement index/skip status are preserved across every delegated path; scope reset/push/pop and qualified lookup retain canonical bytes; no production test changes merely to accommodate a changed behavior.
+  - Completion evidence: `22adf8d4` retains the fail-closed aggregate Level D receipt at `documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-22adf8d4.json`; all seven required FS-UAE tests completed with `PASS` on 2026-07-11.
 
 - [ ] Item 6: extract conditional and match branch-selection ownership
   - Source requirement or finding IDs: RPO-003; partially closes the dispatcher hotspot by isolating conditional flow after Item 5 provides shared navigation ownership.

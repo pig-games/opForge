@@ -101,13 +101,14 @@ This remediation has three outcomes:
   - Definition of done: canonical conditional bytes remain identical; selected/unselected statement ranges, depth bookkeeping, and malformed-block failures retain their prior observed behavior; no new conditional feature is added.
   - Completion evidence: `ccaa9a7b` passed the exact fail-closed aggregate Level D wrapper; `documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-ccaa9a7b.json` records all seven FS-UAE tests as `PASS` on 2026-07-11.
 
-- [ ] Item 7: extract repetition ownership and certify the stabilized dispatcher boundary
+- [x] Item 7: extract repetition ownership and certify the stabilized dispatcher boundary
   - Source requirement or finding IDs: RPO-003; fully closes the planned ownership split for the existing repetition/while surface.
   - Expected files: native opasm driver and dedicated repetition-flow module; module wiring; `crates/opforge-asm/src/tests.rs`; affected sequence/iterable/while slice metadata records if boundary names change; this plan.
   - Full quality gates: existing focused Level A/B/C counted-for, sequence, iterable-for, and while tests plus return-register/CCR preservation checks; exact Level D tests for those slices and the aggregate wrapper; native formatter; `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`; `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`.
   - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for repetition ownership extraction only and confirms no range/list/while semantic expansion is bundled.
   - Commit outcome: the root flow dispatcher is a small router over navigation, scope, conditional, and repetition owners; existing bounded repetition behavior remains unchanged.
   - Definition of done: `.for`, iterable `.for`, sequence assignment support, and `.while` retain current canonical and failure-path behavior; module boundaries document ownership and callback contracts; every completed extraction has its own focused commit.
+  - Completion evidence: `26b801e3` passed the exact fail-closed aggregate Level D wrapper; `documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-26b801e3.json` records all seven FS-UAE tests as `PASS` on 2026-07-11.
 
 ## Blocking Rules
 

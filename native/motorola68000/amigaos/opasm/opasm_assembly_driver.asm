@@ -136,7 +136,10 @@ compareBlock
 	lea BlockMnemonicText, a1
 	moveq #5, d1
 	bsr.w lineStartsWith
-	bne.w scopes.beginBlockScopeV1
+	beq.s checkEndblock
+	bsr.w scopes.beginBlockScopeV1
+	bne.w fail
+	bra.w success
 
 checkEndblock
 	cmpi.l #8, d4
@@ -149,7 +152,10 @@ compareEndblock
 	lea EndblockMnemonicText, a1
 	moveq #8, d1
 	bsr.w lineStartsWith
-	bne.w scopes.endScopeDirectiveV1
+	beq.s checkBend
+	bsr.w scopes.endScopeDirectiveV1
+	bne.w fail
+	bra.w success
 
 checkBend
 	cmpi.l #4, d4
@@ -162,7 +168,10 @@ compareBend
 	lea BendMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	bne.w scopes.endScopeDirectiveV1
+	beq.s checkNamespace
+	bsr.w scopes.endScopeDirectiveV1
+	bne.w fail
+	bra.w success
 
 checkNamespace
 	cmpi.l #9, d4
@@ -175,7 +184,10 @@ compareNamespace
 	lea NamespaceMnemonicText, a1
 	moveq #9, d1
 	bsr.w lineStartsWith
-	bne.w scopes.beginNamespaceScopeV1
+	beq.s checkEndnamespace
+	bsr.w scopes.beginNamespaceScopeV1
+	bne.w fail
+	bra.w success
 
 checkEndnamespace
 	cmpi.l #12, d4
@@ -188,7 +200,10 @@ compareEndnamespace
 	lea EndnamespaceMnemonicText, a1
 	moveq #12, d1
 	bsr.w lineStartsWith
-	bne.w scopes.endScopeDirectiveV1
+	beq.s checkEndn
+	bsr.w scopes.endScopeDirectiveV1
+	bne.w fail
+	bra.w success
 
 checkEndn
 	cmpi.l #4, d4
@@ -201,7 +216,10 @@ compareEndn
 	lea EndnMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	bne.w scopes.endScopeDirectiveV1
+	beq.s checkMatch
+	bsr.w scopes.endScopeDirectiveV1
+	bne.w fail
+	bra.w success
 
 checkMatch
 	cmpi.l #5, d4

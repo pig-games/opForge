@@ -35391,11 +35391,12 @@ fn native_scope_source_tracks_stack_and_qualified_symbols() {
         &driver,
         &[
             ".use opasm.amigaos.flow_scopes as scopes",
-            "bne.w scopes.beginBlockScopeV1",
-            "bne.w scopes.beginNamespaceScopeV1",
-            "bne.w scopes.endScopeDirectiveV1",
+            "bsr.w scopes.beginBlockScopeV1",
+            "bsr.w scopes.beginNamespaceScopeV1",
+            "bsr.w scopes.endScopeDirectiveV1",
         ]
     ));
+    assert!(!driver.contains("bne.w scopes."));
     assert!(driver.contains("jsr scopes.qualifyStatementLabelIfScopedV1"));
     assert!(driver.contains("jsr scopes.resolveLabelValueV1"));
     assert!(source_contains_in_order(

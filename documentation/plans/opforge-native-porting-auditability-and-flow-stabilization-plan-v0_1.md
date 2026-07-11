@@ -92,13 +92,14 @@ This remediation has three outcomes:
   - Definition of done: statement index/skip status are preserved across every delegated path; scope reset/push/pop and qualified lookup retain canonical bytes; no production test changes merely to accommodate a changed behavior.
   - Completion evidence: `22adf8d4` retains the fail-closed aggregate Level D receipt at `documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-22adf8d4.json`; all seven required FS-UAE tests completed with `PASS` on 2026-07-11.
 
-- [ ] Item 6: extract conditional and match branch-selection ownership
+- [x] Item 6: extract conditional and match branch-selection ownership
   - Source requirement or finding IDs: RPO-003; partially closes the dispatcher hotspot by isolating conditional flow after Item 5 provides shared navigation ownership.
   - Expected files: native opasm driver and a dedicated conditional-flow module; module wiring; `crates/opforge-asm/src/tests.rs`; conditional slice metadata only if its native boundary path changes.
   - Full quality gates: existing focused Level A/B/C conditional tests plus new module-boundary/return-contract tests; exact `native_opcore_conditionals_fs_uae` and aggregate Level D wrapper; native formatter; `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`; `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`.
   - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for conditional ownership extraction only and confirms skipped branch, nesting, and failure semantics are unchanged.
   - Commit outcome: `.if`/`.elseif`/`.else` and `.match`/`.case`/`.default` navigation has one named native owner, with the root dispatcher limited to routing and common callback framing.
   - Definition of done: canonical conditional bytes remain identical; selected/unselected statement ranges, depth bookkeeping, and malformed-block failures retain their prior observed behavior; no new conditional feature is added.
+  - Completion evidence: `ccaa9a7b` passed the exact fail-closed aggregate Level D wrapper; `documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-ccaa9a7b.json` records all seven FS-UAE tests as `PASS` on 2026-07-11.
 
 - [ ] Item 7: extract repetition ownership and certify the stabilized dispatcher boundary
   - Source requirement or finding IDs: RPO-003; fully closes the planned ownership split for the existing repetition/while surface.

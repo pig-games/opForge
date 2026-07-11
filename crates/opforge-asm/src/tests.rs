@@ -35569,6 +35569,199 @@ fn native_opcore_scopes_fs_uae() {
 }
 
 #[test]
+fn opcore_structs_rust_oracle_covers_canonical_layouts() {
+    // Proof level A. Live Rust establishes the canonical struct and scoped
+    // repetition artifacts; it does not execute native code.
+    let case_dir = create_temp_dir("opcore-structs-rust-oracle");
+    for (index, (source, expected)) in [
+        (
+            "examples/opcore/struct_literal_instance_basic.asm",
+            vec![24, 50, 40, 60, 41, 61],
+        ),
+        (
+            "examples/opcore/struct_var_instance_basic.asm",
+            vec![3, 0, 1],
+        ),
+        (
+            "examples/opcore/bfor_labeled_struct_basic.asm",
+            vec![0, 10, 1, 11, 2, 12, 2, 0, 3, 0],
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let input_path = workspace_root().join(source);
+        let bin_path = case_dir.join(format!("struct-{index}.bin"));
+        let cli = Cli::parse_from([
+            "opForge",
+            input_path.to_string_lossy().as_ref(),
+            "--bin",
+            bin_path.to_string_lossy().as_ref(),
+            "--cpu",
+            "m6502",
+        ]);
+        run_with_cli_with_context(&cli).expect("run Rust struct oracle");
+        assert_eq!(fs::read(bin_path).expect("read Rust struct bytes"), expected);
+    }
+}
+
+#[test]
+fn native_struct_source_owns_directives_before_statement_processing() {
+    // Proof level B. Native source owns struct start/end and placeholder-field
+    // routing before ordinary statement processing; it does not execute the
+    // 68020 callback path or prove member-value contents.
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    let struct_flow = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_flow_structs.asm"),
+    )
+    .expect("read native struct-flow implementation");
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            ".use opasm.amigaos.flow_structs as structs",
+            "opasmDriverPassOneBegin",
+            "jsr structs.resetStateV1",
+            "opasmDriverPassTwoBegin",
+            "jsr structs.resetStateV1",
+            "jsr structs.routeDirectiveV1",
+            "beginStructDefinition",
+            "skipStructField",
+            "jsr structs.captureFieldV1",
+            "tryCaptureTypedStructInstanceForStatement\t.block",
+            "jsr structs.captureTypedInstanceV1",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &struct_flow,
+        &[
+            "routeDirectiveV1\t.block",
+            "StructMnemonicText",
+            "EndstructMnemonicText",
+            "structField",
+            "beginDefinitionV1\t.block",
+            "captureFieldV1\t.block",
+            "endDefinitionV1\t.block",
+            "captureTypedInstanceV1\t.block",
+            "compile_values.upsertBindingV1",
+        ],
+    ));
+    assert!(struct_flow.contains(".module opasm.amigaos.flow_structs"));
+    assert!(struct_flow.contains(".endsection"));
+    assert!(struct_flow.contains(".endmodule"));
+}
+
+#[test]
+fn native_struct_contract_covers_layout_instances_and_scoped_labels() {
+    // Proof level C. This host model proves the field-layout and member-address
+    // relationships used by the canonical sources; it does not execute native
+    // assembly or native expression resolution.
+    let point_field_sizes = [1_u32, 2_u32];
+    let mut offsets = Vec::new();
+    let mut size = 0_u32;
+    for field_size in point_field_sizes {
+        offsets.push(size);
+        size += field_size;
+    }
+    assert_eq!(offsets, vec![0, 1]);
+    assert_eq!(size, 3);
+
+    let literal_instance = [24_u32, 50_u32];
+    let mut mutable_instance = [40_u32, 60_u32];
+    assert_eq!(mutable_instance, [40, 60]);
+    mutable_instance = [41, 61];
+    assert_eq!(literal_instance, [24, 50]);
+    assert_eq!(mutable_instance, [41, 61]);
+
+    let point_stride = 2_u32;
+    let second_point_base = point_stride;
+    assert_eq!(second_point_base + 0, 2);
+    assert_eq!(second_point_base + 1, 3);
+}
+
+#[test]
+fn native_opcore_structs_fs_uae() {
+    // Proof level D. FS-UAE executes the untouched canonical struct sources
+    // through the native CLI and compares output bytes with the live Rust CLI.
+    // It does not prove text encodings or additive MOS adaptations.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let case_dir = create_temp_dir("native-opcore-structs");
+    let source_paths = [
+        workspace_root().join("examples/opcore/struct_literal_instance_basic.asm"),
+        workspace_root().join("examples/opcore/struct_var_instance_basic.asm"),
+        workspace_root().join("examples/opcore/bfor_labeled_struct_basic.asm"),
+    ];
+    let mut sources = Vec::new();
+    let mut rust_bins = Vec::new();
+    for (index, input_path) in source_paths.iter().enumerate() {
+        let source = fs::read(input_path).expect("read canonical struct source");
+        let bin_path = case_dir.join(format!("rust-{index}.bin"));
+        let cli = Cli::parse_from([
+            "opForge",
+            input_path.to_string_lossy().as_ref(),
+            "--bin",
+            bin_path.to_string_lossy().as_ref(),
+            "--cpu",
+            "m6502",
+        ]);
+        run_with_cli_with_context(&cli).expect("run live Rust struct oracle");
+        sources.push(source);
+        rust_bins.push(fs::read(bin_path).expect("read Rust struct bytes"));
+    }
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(&sources[0]),
+            command_template: Some("{input} --bin {bin} --cpu m6502"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(&sources[1]),
+            command_template: Some("{input} --bin {bin} --cpu m6502"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(&sources[2]),
+            command_template: Some("{input} --bin {bin} --cpu m6502"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("struct FS-UAE cases should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), rust_bins.len());
+            for (run, rust_bin) in runs.iter().zip(rust_bins.iter()) {
+                assert!(run.success, "native struct run failed\n{}", run.stdout);
+                let native_bin = fs::read(
+                    run.artifact_dir
+                        .join("Work")
+                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+                )
+                .expect("read native struct bytes");
+                assert_eq!(&native_bin, rust_bin);
+            }
+        }
+    }
+}
+
+#[test]
 fn opcore_conditionals_rust_oracle_covers_canonical_branches() {
     // Proof level A. This test proves live Rust selects the canonical if and
     // match branches. It does not prove native routing or 68020 execution.

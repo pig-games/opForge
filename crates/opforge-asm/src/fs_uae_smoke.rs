@@ -34,6 +34,7 @@ const FS_UAE_DEFAULT_TIMEOUT_MS: u64 = 300_000;
 const FS_UAE_DEFAULT_POLL_MS: u64 = 250;
 const FS_UAE_DEFAULT_POST_START_TIMEOUT_MS: u64 = 300_000;
 const FS_UAE_CAPTURE_EXIT_GRACE_MS: u64 = 30_000;
+const FS_UAE_LAUNCHER_HANDOFF_GRACE_MS: u64 = 5_000;
 const FS_UAE_LAUNCHER_STDOUT_FILE: &str = "fs_uae_launcher.stdout.log";
 const FS_UAE_LAUNCHER_STDERR_FILE: &str = "fs_uae_launcher.stderr.log";
 const FS_UAE_CONFIG_FILE_NAME: &str = "fs-uae-smoke.fs-uae";
@@ -1120,6 +1121,7 @@ fn run_opforge_native_cli_parity_batch_cases(
         &mut child,
         &capture,
         FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+        &baseline_process_ids,
     ) {
         Ok(wait_outcome) => wait_outcome,
         Err(err) => {
@@ -2188,13 +2190,25 @@ fn fs_uae_launcher_status_text(status: ExitStatus) -> String {
     format!("FS-UAE launcher exit status: {status}\n")
 }
 
+fn launcher_exit_is_terminal(
+    launcher_exited_at: Instant,
+    now: Instant,
+    spawned_emulator_present: bool,
+) -> bool {
+    !spawned_emulator_present
+        && now.duration_since(launcher_exited_at)
+            >= Duration::from_millis(FS_UAE_LAUNCHER_HANDOFF_GRACE_MS)
+}
+
 fn wait_for_capture_or_exit(
     child: &mut std::process::Child,
     capture: &FsUaeCaptureConfig,
     example_name: &str,
+    baseline_process_ids: &BTreeSet<u32>,
 ) -> Result<FsUaeWaitOutcome, String> {
     let deadline = Instant::now() + capture.timeout;
     let mut smoke_started_at = None;
+    let mut launcher_exited_at = None;
     loop {
         if capture_path_exists(&capture.ready_paths) {
             return Ok(FsUaeWaitOutcome::Captured);
@@ -2209,7 +2223,15 @@ fn wait_for_capture_or_exit(
             .map_err(|err| format!("poll FS-UAE process for {example_name}: {err}"))?
             .is_some()
         {
-            return Ok(FsUaeWaitOutcome::Exited);
+            let now = Instant::now();
+            let exited_at = *launcher_exited_at.get_or_insert(now);
+            let spawned_emulator_present = snapshot_fs_uae_process_ids()?
+                .difference(baseline_process_ids)
+                .next()
+                .is_some();
+            if launcher_exit_is_terminal(exited_at, now, spawned_emulator_present) {
+                return Ok(FsUaeWaitOutcome::Exited);
+            }
         }
 
         if Instant::now() >= deadline {
@@ -2529,14 +2551,15 @@ fn run_example_smoke_with_request(
         }
     };
 
-    let wait_outcome = match wait_for_capture_or_exit(&mut child, &capture, example_name) {
-        Ok(wait_outcome) => wait_outcome,
-        Err(err) => {
-            let _ = cleanup_spawned_fs_uae_processes(&baseline_process_ids);
-            let _ = wait_for_spawned_fs_uae_processes_to_exit(&baseline_process_ids);
-            return Err(err);
-        }
-    };
+    let wait_outcome =
+        match wait_for_capture_or_exit(&mut child, &capture, example_name, &baseline_process_ids) {
+            Ok(wait_outcome) => wait_outcome,
+            Err(err) => {
+                let _ = cleanup_spawned_fs_uae_processes(&baseline_process_ids);
+                let _ = wait_for_spawned_fs_uae_processes_to_exit(&baseline_process_ids);
+                return Err(err);
+            }
+        };
     if wait_outcome == FsUaeWaitOutcome::Captured {
         wait_for_process_exit_after_capture(&mut child, example_name)?;
     }
@@ -2770,7 +2793,12 @@ fn run_example_smoke_with_guest_input(
         }
     };
 
-    let wait_outcome = match wait_for_capture_or_exit(&mut child, &capture, spec.example_name) {
+    let wait_outcome = match wait_for_capture_or_exit(
+        &mut child,
+        &capture,
+        spec.example_name,
+        &baseline_process_ids,
+    ) {
         Ok(wait_outcome) => wait_outcome,
         Err(err) => {
             let _ = cleanup_spawned_fs_uae_processes(&baseline_process_ids);
@@ -2868,6 +2896,29 @@ fn materialize_tkpkg_debug_cli_package_override_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launcher_handoff_waits_for_a_spawned_emulator() {
+        let launcher_exited_at = Instant::now();
+        let after_grace =
+            launcher_exited_at + Duration::from_millis(FS_UAE_LAUNCHER_HANDOFF_GRACE_MS + 1);
+
+        assert!(!launcher_exit_is_terminal(
+            launcher_exited_at,
+            after_grace,
+            true
+        ));
+        assert!(!launcher_exit_is_terminal(
+            launcher_exited_at,
+            launcher_exited_at,
+            false
+        ));
+        assert!(launcher_exit_is_terminal(
+            launcher_exited_at,
+            after_grace,
+            false
+        ));
+    }
 
     #[test]
     fn capture_config_defaults_to_standard_smoke_files() {

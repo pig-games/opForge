@@ -11,6 +11,7 @@
 	.use opasm.amigaos.flow_navigation as navigation
 	.use opasm.amigaos.flow_repetition as repetition
 	.use opasm.amigaos.flow_scopes as scopes
+	.use opasm.amigaos.flow_structs as structs
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
 
 OPASM_LAYOUT_NAME_CAPACITY = 32
@@ -74,6 +75,7 @@ opasmDriverPassOneBegin	.block
 	clr.w OpasmRepeatDepth
 	clr.w OpasmIfDepth
 	jsr scopes.resetStateV1
+	jsr structs.resetStateV1
 	jsr compile_values.resetBindingsV1
 	rts
 	.bend  ; opasmDriverPassOneBegin
@@ -95,6 +97,7 @@ opasmDriverPassTwoBegin	.block
 	clr.w OpasmRepeatDepth
 	clr.w OpasmIfDepth
 	jsr scopes.resetStateV1
+	jsr structs.resetStateV1
 	jsr compile_values.resetBindingsV1
 	moveq #0, d0
 	rts
@@ -224,6 +227,56 @@ compareEndn
 	bra.w success
 
 checkConditional
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.l d4, d0
+	jsr structs.routeDirectiveV1
+	bne.w fail
+	tst.w d3
+	beq.w checkConditionalDirective
+	cmpi.w #1, d3
+	beq.w beginStructDefinition
+	cmpi.w #2, d3
+	beq.w endStructDefinition
+	cmpi.w #3, d3
+	beq.w skipStructField
+	bra.w fail
+
+beginStructDefinition
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementLabelTextV1
+	jsr structs.beginDefinitionV1
+	bne.w fail
+	move.w d7, d2
+	addq.w #1, d2
+	moveq #1, d1
+	bra.w success
+
+endStructDefinition
+	jsr structs.endDefinitionV1
+	bne.w fail
+	move.w d7, d2
+	addq.w #1, d2
+	moveq #1, d1
+	bra.w success
+
+skipStructField
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementLabelTextV1
+	movea.l a0, a1
+	move.l d0, d2
+	move.l d4, d1
+	movea.l a1, a0
+	move.l d2, d0
+	jsr structs.captureFieldV1
+	bne.w fail
+	move.w d7, d2
+	addq.w #1, d2
+	moveq #1, d1
+	bra.w success
+
+checkConditionalDirective
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
 	move.l d4, d0
 	jsr conditionals.routeDirectiveV1
@@ -1236,6 +1289,9 @@ recordMutableSymbol
 	moveq #1, d6
 
 recordSymbolValue
+	bsr.w tryCaptureTypedStructInstanceForStatement
+	tst.l d0
+	beq.s recordCapturedStructSymbol
 	moveq #2, d5
 	move.l d7, -(sp)
 	bsr.w readOperandValueForStatement
@@ -1243,6 +1299,12 @@ recordSymbolValue
 	move.l (sp)+, d7
 	tst.l d5
 	bne.w symbolValueFail
+	bra.s recordResolvedSymbolValue
+
+recordCapturedStructSymbol
+	moveq #0, d5
+
+recordResolvedSymbolValue
 	move.l d3, -(sp)
 	jsr scopes.qualifyStatementLabelIfScopedV1
 	move.l d0, d5
@@ -1292,6 +1354,58 @@ symbolValueFail
 	moveq #1, d0
 	bra.s return
 	.bend  ; opasmDriverRecordLabel
+
+; Capture a typed struct instance from a const, var, or set statement.
+; Inputs: D7.W = statement index.
+; Outputs: D0 = 0 when captured and D3 = struct size; D0 = 1 otherwise.
+; Clobbers: D0-D3/A0-A2/CCR.
+; CCR: reflects D0 on return.
+tryCaptureTypedStructInstanceForStatement	.block
+	movem.l d1-d2/d4-d6/a0-a2, -(sp)
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movea.l sp, a0
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.s fail
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d0
+	lea ConstMnemonicText, a1
+	moveq #5, d1
+	bsr.w lineStartsWith
+	bne.s capture
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d0
+	lea VarMnemonicText, a1
+	moveq #3, d1
+	bsr.w lineStartsWith
+	bne.s capture
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d0
+	lea SetMnemonicText, a1
+	moveq #3, d1
+	bsr.w lineStartsWith
+	beq.s fail
+capture
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementLabelTextV1
+	movea.l a0, a2
+	move.l d0, d2
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a1
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d1
+	movea.l a2, a0
+	move.l d2, d0
+	jsr structs.captureTypedInstanceV1
+	bra.s return
+fail
+	moveq #1, d0
+return
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d1-d2/d4-d6/a0-a2
+	tst.l d0
+	rts
+	.bend  ; tryCaptureTypedStructInstanceForStatement
 
 opasmDriverEmitImageBytes	.block
 	movem.l d1-d6/a0-a4, -(sp)

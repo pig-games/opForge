@@ -1,0 +1,48 @@
+[slice]
+schema_version = 2
+name = "native struct values, instances, and scoped repetition"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/asmline_directives_scope.rs::route_scope_directive_ast",
+  "crates/opforge-asm/src/asmline_directives_scope.rs::process_struct_mode_statement_ast",
+  "crates/opforge-asm/src/asmline_eval.rs::eval_expr",
+  "crates/opforge-asm/src/repetition.rs::evaluate_for_plan"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_flow_repetition.asm::routeDirectiveV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::runPassOne",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::runPassTwo"
+]
+invariant = "Native statement flow consumes struct definitions without emitting them, stores deterministic field offsets and instance values, and expands `.bfor` with iteration-scoped labels before ordinary statement processing."
+assertion_decision = "No runtime assertion: malformed struct bodies, duplicate fields, unmatched repetition, and capacity exhaustion return failure status before output emission."
+expected_inputs = "Untouched canonical `struct_literal_instance_basic.asm`, `struct_var_instance_basic.asm`, and `bfor_labeled_struct_basic.asm` sources."
+expected_outputs = "Struct layout, member access, mutable instance replacement, and indexed `.bfor` member references produce native bytes equal to the live Rust CLI."
+known_non_equivalences = "Text-encoding definitions and mixed-CPU additive adaptations remain outside this item."
+fast_proof_command = "cargo test -p asm native_struct_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_opcore_structs_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "opcore_structs_rust_oracle_covers_canonical_layouts"
+proof_level = "A"
+proves = "The live Rust assembler emits the canonical struct and scoped-repetition artifacts."
+does_not_prove = "Native directive routing or 68020 execution."
+
+[[tests]]
+name = "native_struct_source_owns_directives_before_statement_processing"
+proof_level = "B"
+proves = "Native source flow recognizes struct and scoped-repetition directives before ordinary statement processing."
+does_not_prove = "Native table contents or emitted bytes."
+
+[[tests]]
+name = "native_struct_contract_covers_layout_instances_and_scoped_labels"
+proof_level = "C"
+proves = "The host model covers field offsets, literal and mutable instance values, and indexed scoped labels."
+does_not_prove = "Native 68020 behavior."
+
+[[tests]]
+name = "native_opcore_structs_fs_uae"
+proof_level = "D"
+proves = "FS-UAE runs the untouched canonical struct sources through the native CLI and compares their binary artifacts with the live Rust CLI."
+does_not_prove = "Text-encoding or additive MOS-adaptation behavior outside this item."

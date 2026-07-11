@@ -490,6 +490,40 @@ fail
 	rts
 	.bend  ; pushBindingV1
 
+; Store a named binding or replace its innermost existing value.
+; Inputs: A0/D0 = name text/length; D1 = value.
+; Outputs: D0 = status.
+; Clobbers: D0-D5/A0-A2/CCR.
+; CCR: reflects D0 on return.
+upsertBindingV1	.block
+	movea.l a0, a2
+	move.l d0, d5
+	moveq #0, d2
+	move.w BindingDepth, d2
+scan
+	tst.w d2
+	beq.s push
+	subq.w #1, d2
+	move.l d2, d3
+	lsl.l #5, d3
+	lea BindingNames, a1
+	adda.l d3, a1
+	movea.l a2, a0
+	move.l d5, d0
+	bsr.w nameEquals
+	beq.s scan
+	move.l d2, d3
+	lsl.l #2, d3
+	lea BindingValues, a0
+	move.l d1, 0(a0, d3.l)
+	moveq #0, d0
+	rts
+push
+	movea.l a2, a0
+	move.l d5, d0
+	bra.w pushBindingV1
+	.bend  ; upsertBindingV1
+
 ; Update the innermost loop-variable binding.
 ; Inputs: D1 = value.
 ; Outputs: D0 = status.

@@ -7,7 +7,8 @@ rust_reference = [
 ]
 native_boundary = [
   "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliParseCurrentLine",
-  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl"
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_flow_conditionals.asm::routeDirectiveV1"
 ]
 invariant = "Native source records conditional statements, and flow selects only the first matching `.if`/`.elseif`/`.else` or `.match`/`.case`/`.default` body at the current nesting level."
 assertion_decision = "No runtime assertion: unmatched or unterminated conditional blocks are checked flow failures; selectors return status and fail closed."

@@ -35605,6 +35605,10 @@ fn native_conditional_source_records_then_skips_unselected_statement_ranges() {
         workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
     )
     .expect("read native opasm driver");
+    let conditional_flow = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_flow_conditionals.asm"),
+    )
+    .expect("read native conditional-flow implementation");
     assert!(source_contains_in_order(
         &parser,
         &[
@@ -35613,17 +35617,30 @@ fn native_conditional_source_records_then_skips_unselected_statement_ranges() {
             "bra.w done",
         ]
     ));
-    assert!(driver.contains("findNextIfBranch\t.block"));
-    assert!(driver.contains("findSelectedMatchBranch\t.block"));
+    assert!(driver.contains(".use opasm.amigaos.flow_conditionals as conditionals"));
     assert!(source_contains_in_order(
         &driver,
         &[
-            "beginIfBranch",
-            "bsr.w findNextIfBranch",
-            "handleElseifBranch",
-            "finishIfBranch",
+            "checkConditional",
+            "jsr conditionals.routeDirectiveV1",
+            "tst.w d3",
+            "beq.w checkForMnemonic",
+            "beq.w beginMatchBranch",
+            "beq.w finishIfBranch",
+            "checkForMnemonic",
         ]
     ));
+    assert!(source_contains_in_order(
+        &conditional_flow,
+        &[
+            "routeDirectiveV1\t.block",
+            "ConditionalMatchMnemonicText",
+            "conditionalMatchedMatch",
+            "conditionalMatchedEndif",
+            "moveq #7, d3",
+        ]
+    ));
+    assert!(conditional_flow.contains(".endmodule"));
 }
 
 #[test]

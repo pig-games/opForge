@@ -7,6 +7,7 @@
 	.use opasm.amigaos.compile_values as compile_values
 	.use opasm.amigaos.engine as eng
 	.use opasm.amigaos.events
+	.use opasm.amigaos.flow_conditionals as conditionals
 	.use opasm.amigaos.flow_navigation as navigation
 	.use opasm.amigaos.flow_scopes as scopes
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
@@ -209,124 +210,40 @@ checkEndn
 	cmpi.l #4, d4
 	beq.s compareEndn
 	cmpi.l #5, d4
-	bne.s checkMatch
+	bne.s checkConditional
 compareEndn
 	moveq #0, d0
 	move.w d4, d0
 	lea EndnMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	beq.s checkMatch
+	beq.s checkConditional
 	bsr.w scopes.endScopeDirectiveV1
 	bne.w fail
 	bra.w success
 
-checkMatch
-	cmpi.l #5, d4
-	beq.s compareMatch
-	cmpi.l #6, d4
-	bne.s checkCase
-compareMatch
-	moveq #0, d0
-	move.w d4, d0
-	lea MatchMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	bne.w beginMatchBranch
-
-checkCase
-	cmpi.l #4, d4
-	beq.s compareCase
-	cmpi.l #5, d4
-	bne.s checkDefault
-compareCase
-	moveq #0, d0
-	move.w d4, d0
-	lea CaseMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w skipSelectedMatchBranch
-
-checkDefault
-	cmpi.l #7, d4
-	beq.s compareDefault
-	cmpi.l #8, d4
-	bne.s checkEndmatch
-compareDefault
-	moveq #0, d0
-	move.w d4, d0
-	lea DefaultMnemonicText, a1
-	moveq #7, d1
-	bsr.w lineStartsWith
-	bne.w skipSelectedMatchBranch
-
-checkEndmatch
-	cmpi.l #8, d4
-	beq.s compareEndmatch
-	cmpi.l #9, d4
-	bne.s checkIf
-compareEndmatch
-	moveq #0, d0
-	move.w d4, d0
-	lea EndmatchMnemonicText, a1
-	moveq #8, d1
-	bsr.w lineStartsWith
-	beq.s checkIf
-	moveq #1, d1
-	bra.w success
-
-checkIf
-	cmpi.l #2, d4
-	beq.s compareIf
-	cmpi.l #3, d4
-	bne.s checkElseif
-compareIf
-	moveq #0, d0
-	move.w d4, d0
-	lea IfMnemonicText, a1
-	moveq #2, d1
-	bsr.w lineStartsWith
-	bne.w beginIfBranch
-
-checkElseif
-	cmpi.l #6, d4
-	beq.s compareElseif
-	cmpi.l #7, d4
-	bne.s checkElse
-compareElseif
-	moveq #0, d0
-	move.w d4, d0
-	lea ElseifMnemonicText, a1
-	moveq #6, d1
-	bsr.w lineStartsWith
-	bne.w handleElseifBranch
-
-checkElse
-	cmpi.l #4, d4
-	beq.s compareElse
-	cmpi.l #5, d4
-	bne.s checkEndif
-compareElse
-	moveq #0, d0
-	move.w d4, d0
-	lea ElseMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w handleElseBranch
-
-checkEndif
-	cmpi.l #5, d4
-	beq.s compareEndif
-	cmpi.l #6, d4
-	bne.s checkForMnemonic
-compareEndif
-	moveq #0, d0
-	move.w d4, d0
-	lea EndifMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	beq.s checkForMnemonic
-	bne.w finishIfBranch
+checkConditional
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.l d4, d0
+	jsr conditionals.routeDirectiveV1
+	bne.w fail
+	tst.w d3
+	beq.w checkForMnemonic
+	cmpi.w #1, d3
+	beq.w beginMatchBranch
+	cmpi.w #2, d3
+	beq.w skipSelectedMatchBranch
+	cmpi.w #3, d3
+	beq.w finishEndmatchBranch
+	cmpi.w #4, d3
+	beq.w beginIfBranch
+	cmpi.w #5, d3
+	beq.w handleElseifBranch
+	cmpi.w #6, d3
+	beq.w handleElseBranch
+	cmpi.w #7, d3
+	beq.w finishIfBranch
+	bra.w fail
 
 checkForMnemonic
 	cmpi.l #3, d4
@@ -617,6 +534,10 @@ skipSelectedMatchBranch
 	bsr.w findMatchingEndmatch
 	bne.w fail
 	addq.w #1, d2
+	moveq #1, d1
+	bra.w success
+
+finishEndmatchBranch
 	moveq #1, d1
 	bra.w success
 

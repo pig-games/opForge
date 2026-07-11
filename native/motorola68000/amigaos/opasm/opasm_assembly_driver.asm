@@ -9,6 +9,7 @@
 	.use opasm.amigaos.events
 	.use opasm.amigaos.flow_conditionals as conditionals
 	.use opasm.amigaos.flow_navigation as navigation
+	.use opasm.amigaos.flow_repetition as repetition
 	.use opasm.amigaos.flow_scopes as scopes
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
 
@@ -246,6 +247,24 @@ checkConditional
 	bra.w fail
 
 checkForMnemonic
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.l d4, d0
+	jsr repetition.routeDirectiveV1
+	bne.w fail
+	tst.w d3
+	beq.w processStatement
+	cmpi.w #1, d3
+	beq.w beginFor
+	cmpi.w #2, d3
+	beq.w compareEndfor
+	cmpi.w #3, d3
+	beq.w compareWhile
+	cmpi.w #4, d3
+	beq.w compareEndwhile
+	bra.w fail
+
+	; Legacy fall-through routing retained below as dead compatibility labels for
+	; the existing repetition state transitions until their next focused move.
 	cmpi.l #3, d4
 	beq.s compareFor
 	cmpi.l #4, d4

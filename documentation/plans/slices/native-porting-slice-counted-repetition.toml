@@ -9,7 +9,8 @@ rust_reference = [
 native_boundary = [
   "native/motorola68000/amigaos/opasm/opasm_engine.asm::runPassOne",
   "native/motorola68000/amigaos/opasm/opasm_engine.asm::runPassTwo",
-  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl"
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_flow_repetition.asm::routeDirectiveV1"
 ]
 invariant = "A matched `.for <count>` block is skipped at its control records and its complete body is processed exactly count times in both passes, with bounded nesting and iteration count."
 assertion_decision = "No runtime assertion: valid zero-count and repeated control flow are external source semantics; explicit status returns fail closed on unmatched blocks, stack capacity, invalid count, and iteration overflow."

@@ -34306,6 +34306,10 @@ fn native_counted_for_flow_callback_precedes_pass_processing() {
         workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
     )
     .expect("read native opasm driver");
+    let repetition_flow = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_flow_repetition.asm"),
+    )
+    .expect("read native repetition-flow implementation");
     assert_eq!(
         engine
             .matches("movea.l OPASM_ENGINE_CTX_FLOW_CONTROL_CB(a5), a0")
@@ -34324,6 +34328,28 @@ fn native_counted_for_flow_callback_precedes_pass_processing() {
     ));
     assert_eq!(driver.matches("clr.w OpasmRepeatDepth").count(), 2);
     assert!(driver.contains("cmpi.l #OPASM_REPEAT_ITERATION_LIMIT, d3"));
+    assert!(driver.contains(".use opasm.amigaos.flow_repetition as repetition"));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "checkForMnemonic",
+            "jsr repetition.routeDirectiveV1",
+            "beq.w beginFor",
+            "beq.w compareEndfor",
+            "beq.w compareWhile",
+            "beq.w compareEndwhile",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &repetition_flow,
+        &[
+            "routeDirectiveV1\t.block",
+            "RepetitionForMnemonicText",
+            "repetitionEndfor",
+            "repetitionEndwhile",
+            "moveq #4, d3",
+        ]
+    ));
 }
 
 #[test]

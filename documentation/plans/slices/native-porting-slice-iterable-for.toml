@@ -11,6 +11,7 @@ native_boundary = [
   "native/motorola68000/amigaos/opasm/opasm_compile_values.asm::planRangeForOperandV1",
   "native/motorola68000/amigaos/opasm/opasm_compile_values.asm::resolveSequenceExpressionV1",
   "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_flow_repetition.asm::routeDirectiveV1",
   "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::readOperandValueForStatement"
 ]
 invariant = "A bounded `.for variable in iterable` plan visits list or ascending range values in Rust order, exposes the current value while each body statement executes, and resolves the assigned source's list length/index expressions."

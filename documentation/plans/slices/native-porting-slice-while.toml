@@ -8,6 +8,7 @@ rust_reference = [
 ]
 native_boundary = [
   "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_flow_repetition.asm::routeDirectiveV1",
   "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::readWhileConditionForStatement"
 ]
 invariant = "A bounded `.while` reevaluates its stored opening condition at each body boundary using the Rust-compatible current-address phase."

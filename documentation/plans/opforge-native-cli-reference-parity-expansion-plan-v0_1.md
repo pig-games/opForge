@@ -637,7 +637,7 @@ landed” is not equivalent to “framework-closed.”
     - close aliases are equivalent
     - scope state is reset between sessions and passes
 
-- [ ] Item 5.7: add native struct values, instances, and scoped repetition
+- [x] Item 5.7: add native struct values, instances, and scoped repetition
   - Source requirement or finding IDs: Item 6 assignments `struct_literal_instance_basic.asm`, `struct_var_instance_basic.asm`, and `bfor_labeled_struct_basic.asm`; Rust authority in `asmline_directives_scope.rs::process_struct_mode_statement_ast` and scoped repetition handling
   - Expected files:
     - one `documentation/plans/slices/*.toml` metadata record

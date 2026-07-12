@@ -227,7 +227,7 @@ captureTypedInstanceV1	.block
 	clr.l d2
 typeNameLoop
 	tst.l d7
-	beq.w fail
+	beq.s typeNameDone
 	move.b (a0), d4
 	cmpi.b #' ', d4
 	beq.s typeNameDone
@@ -285,14 +285,18 @@ fieldNameDone
 	addq.l #1, a0
 	subq.l #1, d7
 	bsr.w skipWhitespace
+	move.l d5, -(sp)
 	bsr.w parseNumber
-	bne.w fail
+	bne.w fieldParseFail
 	move.l d3, -(sp)
+	move.l a0, -(sp)
 	movea.l a3, a0
-	move.l d5, d0
+	move.l 8(sp), d0
 	bsr.w findFieldOffset
 	bne.w discardFail
+	movea.l (sp)+, a0
 	move.l (sp)+, d1
+	move.l (sp)+, d5
 	move.l a0, -(sp)
 	movea.l a4, a0
 	move.l d6, d0
@@ -311,8 +315,11 @@ fieldNameDone
 	addq.l #1, a0
 	subq.l #1, d7
 	bra.w fieldLoop
+fieldParseFail
+	adda.l #4, sp
+	bra.w fail
 discardFail
-	addq.l #4, sp
+	adda.l #12, sp
 	bra.w fail
 finishLiteral
 	addq.l #1, a0
@@ -335,12 +342,15 @@ offsetLoop
 	movea.l a4, a0
 	move.l d6, d0
 	movea.l a1, a2
+	movea.l a1, a0
 	bsr.w tokenLen
 	move.l d0, d2
 	move.l d5, d4
 	lsl.l #2, d4
 	lea StructFieldOffsets.l, a3
 	move.l 0(a3, d4.l), d1
+	movea.l a4, a0
+	move.l d6, d0
 	movea.l a2, a1
 	bsr.w bindMemberValue
 	bne.w fail
@@ -547,6 +557,12 @@ nameLoop
 	bhi.s compare
 	addi.b #32, d3
 compare
+	cmpi.b #'A', d4
+	bcs.s compareNormalized
+	cmpi.b #'Z', d4
+	bhi.s compareNormalized
+	addi.b #32, d4
+compareNormalized
 	cmp.b d4, d3
 	bne.s nameNo
 	subq.l #1, d0

@@ -34569,8 +34569,10 @@ fn native_iterable_for_contract_covers_lists_ranges_binding_and_limit() {
 fn native_iterable_for_source_binds_before_body_and_updates_before_repeat() {
     // Proof level B. This test proves the native flow callback pushes the first
     // binding before body execution, advances it before jumping back, resolves
-    // it before ordinary labels, and resets binding state per pass. It does not
-    // execute the callback or prove emitted bytes.
+    // it before ordinary labels, and resets binding state at session start.
+    // Pass-two retention is required for source definitions the engine does not
+    // replay before first emission. It does not execute the callback or prove
+    // emitted bytes.
     let values = fs::read_to_string(
         workspace_root().join("native/motorola68000/amigaos/opasm/opasm_compile_values.asm"),
     )
@@ -34610,7 +34612,7 @@ fn native_iterable_for_source_binds_before_body_and_updates_before_repeat() {
     ));
     assert_eq!(
         driver.matches("jsr compile_values.resetBindingsV1").count(),
-        2
+        1
     );
 }
 
@@ -35601,7 +35603,10 @@ fn opcore_structs_rust_oracle_covers_canonical_layouts() {
             "m6502",
         ]);
         run_with_cli_with_context(&cli).expect("run Rust struct oracle");
-        assert_eq!(fs::read(bin_path).expect("read Rust struct bytes"), expected);
+        assert_eq!(
+            fs::read(bin_path).expect("read Rust struct bytes"),
+            expected
+        );
     }
 }
 

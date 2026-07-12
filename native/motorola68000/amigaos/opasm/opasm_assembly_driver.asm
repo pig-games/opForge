@@ -98,7 +98,6 @@ opasmDriverPassTwoBegin	.block
 	clr.w OpasmIfDepth
 	jsr scopes.resetStateV1
 	jsr structs.resetStateV1
-	jsr compile_values.resetBindingsV1
 	moveq #0, d0
 	rts
 	.bend  ; opasmDriverPassTwoBegin
@@ -722,6 +721,7 @@ zeroFor
 	bra.w success
 
 processStatement
+	bsr.w tryCaptureTypedStructInstanceForStatement
 	clr.w d1
 
 success

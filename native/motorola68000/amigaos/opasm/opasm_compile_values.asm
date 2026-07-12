@@ -782,6 +782,12 @@ loop
 	bhi.s compare
 	ori.b #32, d3
 compare
+	cmpi.b #'A', d4
+	bcs.s compareNormalized
+	cmpi.b #'Z', d4
+	bhi.s compareNormalized
+	ori.b #32, d4
+compareNormalized
 	cmp.b d4, d3
 	bne.s no
 	subq.l #1, d0

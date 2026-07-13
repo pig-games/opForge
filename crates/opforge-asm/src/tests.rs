@@ -35687,6 +35687,218 @@ fn native_struct_contract_covers_layout_instances_and_scoped_labels() {
 }
 
 #[test]
+fn native_text_encoding_source_owns_builtin_selectors_before_statement_processing() {
+    // Proof level B. The native driver resets and routes text-encoding
+    // selectors before other directive handlers. This does not execute the
+    // 68020 path or prove source-defined table contents.
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    let text_flow = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_flow_text_encoding.asm"),
+    )
+    .expect("read native text-encoding flow");
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            ".use opasm.amigaos.flow_text_encoding as text_encoding",
+            "opasmDriverPassOneBegin",
+            "jsr text_encoding.resetStateV1",
+            "opasmDriverPassTwoBegin",
+            "jsr text_encoding.resetStateV1",
+            "checkConditional",
+            "jsr text_encoding.routeDirectiveV1",
+            "skipTextEncodingDirective",
+            "jsr text_encoding.encodeBytesV1",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &text_flow,
+        &[
+            "routeDirectiveV1\t.block",
+            "EncMnemonicText",
+            "EncodingMnemonicText",
+            "EncodeMnemonicText",
+            "CdefMnemonicText",
+            "TdefMnemonicText",
+            "EdefMnemonicText",
+            "selector",
+            "AsciiText",
+            "PetsciiText",
+            "encodeBytesV1\t.block",
+            "beginDefinitionV1\t.block",
+            "defineCdefV1\t.block",
+            "defineTdefV1\t.block",
+            "defineEdefV1\t.block",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "byteDirectiveSizeForStatement\t.block",
+            "parseTextDirectiveForStatement",
+            "emitByteDirectiveForStatement\t.block",
+            "parseTextDirectiveForStatement",
+        ],
+    ));
+}
+
+#[test]
+fn native_text_encoding_contract_covers_builtin_ascii_and_petscii_mapping() {
+    // Proof level C. This host model proves the byte mapping used by the
+    // initial native built-in selector path; it does not execute 68020 code
+    // or prove clone, character-range, token, and escape definitions.
+    let petscii = |byte: u8| match byte {
+        b'A'..=b'Z' => byte | 0x80,
+        b'a'..=b'z' => byte - 0x20,
+        _ => byte,
+    };
+    assert_eq!(b"Az", b"Az");
+    assert_eq!(
+        b"Az".iter().copied().map(petscii).collect::<Vec<_>>(),
+        [0xC1, 0x5A]
+    );
+}
+
+#[test]
+fn native_opcore_text_encoding_fs_uae() {
+    // Proof level D. FS-UAE executes the untouched canonical text-encoding
+    // sources through the native CLI and compares their bytes with live Rust.
+    // It does not prove unrelated syntax adaptation.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let case_dir = create_temp_dir("native-opcore-text-encoding");
+    let source_paths = [
+        workspace_root().join("examples/opcore/text_encoding.asm"),
+        workspace_root().join("examples/opcore/text_encoding_definitions.asm"),
+    ];
+    let mut sources = Vec::new();
+    let mut rust_bins = Vec::new();
+    for (index, input_path) in source_paths.iter().enumerate() {
+        let source = fs::read(input_path).expect("read canonical text source");
+        let bin_path = case_dir.join(format!("rust-{index}.bin"));
+        let cli = Cli::parse_from([
+            "opForge",
+            input_path.to_string_lossy().as_ref(),
+            "--bin",
+            bin_path.to_string_lossy().as_ref(),
+            "--cpu",
+            "m6502",
+        ]);
+        run_with_cli_with_context(&cli).expect("run live Rust text oracle");
+        sources.push(source);
+        rust_bins.push(fs::read(bin_path).expect("read Rust text bytes"));
+    }
+    let command_template = if std::env::var_os("OPFORGE_TEXT_ENCODING_NATIVE_DEBUG").is_some() {
+        "{input} --bin {bin} --cpu m6502 --native-debug"
+    } else {
+        "{input} --bin {bin} --cpu m6502"
+    };
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(&sources[0]),
+            command_template: Some(command_template),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(&sources[1]),
+            command_template: Some(command_template),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("text-encoding FS-UAE cases should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), rust_bins.len());
+            for (run, rust_bin) in runs.iter().zip(rust_bins.iter()) {
+                assert!(run.success, "native text run failed\n{}", run.stdout);
+                let native_bin = fs::read(
+                    run.artifact_dir
+                        .join("Work")
+                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+                )
+                .expect("read native text bytes");
+                assert_eq!(&native_bin, rust_bin);
+            }
+        }
+    }
+}
+
+#[test]
+fn native_text_encoding_definition_steps_fs_uae() {
+    // Proof level E. These reduced, self-contained sources localize the first
+    // native definition boundary; they do not replace canonical Level D parity.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let sources: Vec<Vec<u8>> = vec![
+        b".module main\n.org $1200\n.encode gamefont\n.endencode\n.byte 0\n.endmodule\n".to_vec(),
+        b".module main\n.org $1200\n.encode gamefont\n.cdef \"A\", \"Z\", 1\n.endencode\n.enc gamefont\n.byte \"AZ\", 0\n.endmodule\n".to_vec(),
+        b".module main\n.org $1200\n.encode gamefont\n.tdef \"xy\", $40\n.endencode\n.enc gamefont\n.byte \"xy\", 0\n.endmodule\n".to_vec(),
+        b".module main\n.org $1200\n.encode gamefont\n.tdef \"!?\", $80, $81\n.endencode\n.enc gamefont\n.byte \"!?\", 0\n.endmodule\n".to_vec(),
+        b".module main\n.org $1200\n.encode gamefont\n.edef \"{cr}\", 13\n.endencode\n.enc gamefont\n.byte \"{cr}\", 0\n.endmodule\n".to_vec(),
+        b".module main\n.org $1200\n.encode shifted,petscii\n.edef \"{home}\", 19\n.endencode\n.enc shifted\n.byte \"Az{home}\", 0\n.endmodule\n".to_vec(),
+    ];
+    let expected = [
+        vec![0],
+        vec![1, 26, 0],
+        vec![64, 65, 0],
+        vec![128, 129, 0],
+        vec![13, 0],
+        vec![0xC1, 0x5A, 19, 0],
+    ];
+    let cases = sources
+        .iter()
+        .map(|source| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source),
+            command_template: Some("{input} --bin {bin} --cpu m6502 --native-debug"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        })
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("text-definition FS-UAE cases should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), expected.len());
+            for (index, (run, expected)) in runs.iter().zip(expected.iter()).enumerate() {
+                assert!(
+                    run.success,
+                    "definition step {index} failed\n{}",
+                    run.stdout
+                );
+                let bytes = fs::read(
+                    run.artifact_dir
+                        .join("Work")
+                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+                )
+                .expect("read native definition bytes");
+                assert_eq!(&bytes, expected, "definition step {index}");
+            }
+        }
+    }
+}
+
+#[test]
 fn native_opcore_structs_fs_uae() {
     // Proof level D. FS-UAE executes the untouched canonical struct sources
     // through the native CLI and compares output bytes with the live Rust CLI.

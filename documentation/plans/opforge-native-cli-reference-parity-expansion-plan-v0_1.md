@@ -656,7 +656,7 @@ landed” is not equivalent to “framework-closed.”
     - `.const`, `.var`, and `.set` instance behavior matches Rust
     - indexed `.bfor` member access matches the canonical artifact
 
-- [ ] Item 5.8: add native text-encoding definition and emission semantics
+- [x] Item 5.8: add native text-encoding definition and emission semantics
   - Source requirement or finding IDs: Item 6 assignments `text_encoding.asm` and `text_encoding_definitions.asm`; Rust authority in `asmline_directives_text.rs`
   - Expected files:
     - one `documentation/plans/slices/*.toml` metadata record

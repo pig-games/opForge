@@ -1,0 +1,54 @@
+[slice]
+schema_version = 2
+name = "native text-encoding definition and emission semantics"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/asmline_directives_text.rs::begin_encode_directive_ast",
+  "crates/opforge-asm/src/asmline_directives_text.rs::cdef_directive_ast",
+  "crates/opforge-asm/src/asmline_directives_text.rs::tdef_directive_ast",
+  "crates/opforge-asm/src/asmline_directives_text.rs::edef_directive_ast",
+  "crates/opforge-asm/src/asmline_directives_text.rs::encode_text_bytes"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::parseTextDirectiveForStatement",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::emitTextDirectiveForStatement"
+]
+invariant = "Native statement flow owns text-encoding directives before ordinary encoding, applies session-local ASCII, PETSCII, cloned, character-range, token, and escape definitions to quoted data and text directives, and emits the same bytes as Rust."
+assertion_decision = "No runtime assertion: malformed or unknown encoding definitions return failure before output emission."
+expected_inputs = "Untouched canonical `text_encoding.asm` and `text_encoding_definitions.asm` sources."
+expected_outputs = "Native CLI output bytes equal the live Rust CLI for built-in and source-defined text encodings."
+known_non_equivalences = "Additive MOS adaptation remains outside this item."
+fast_proof_command = "cargo test -p asm native_text_encoding_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_opcore_text_encoding_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "opcore_text_encoding_rust_oracle_covers_canonical_outputs"
+proof_level = "A"
+proves = "The live Rust CLI emits the canonical built-in and defined-encoding outputs."
+does_not_prove = "Native directive routing or 68020 execution."
+
+[[tests]]
+name = "native_text_encoding_source_owns_directives_before_statement_processing"
+proof_level = "B"
+proves = "Native statement flow recognizes text-encoding directives before ordinary processing."
+does_not_prove = "Native table contents or emitted bytes."
+
+[[tests]]
+name = "native_text_encoding_contract_covers_builtin_ascii_and_petscii_mapping"
+proof_level = "C"
+proves = "The host model covers the built-in ASCII and PETSCII byte mapping contract."
+does_not_prove = "Native 68020 behavior, source-defined tables, clones, or escapes."
+
+[[tests]]
+name = "native_text_encoding_definition_steps_fs_uae"
+proof_level = "E"
+proves = "Reduced FS-UAE sources localize bare definitions, cdef ranges, tdef incrementing and explicit values, edef escapes, and cloned base encodings."
+does_not_prove = "Canonical source parity; the Level D canonical fixture remains authoritative."
+
+[[tests]]
+name = "native_opcore_text_encoding_fs_uae"
+proof_level = "D"
+proves = "FS-UAE runs untouched canonical text-encoding sources through the native CLI and compares their binary artifacts with the live Rust CLI."
+does_not_prove = "Additive MOS-adaptation behavior outside this item."

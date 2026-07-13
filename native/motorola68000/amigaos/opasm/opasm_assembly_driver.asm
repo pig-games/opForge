@@ -12,6 +12,7 @@
 	.use opasm.amigaos.flow_repetition as repetition
 	.use opasm.amigaos.flow_scopes as scopes
 	.use opasm.amigaos.flow_structs as structs
+	.use opasm.amigaos.flow_text_encoding as text_encoding
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
 
 OPASM_LAYOUT_NAME_CAPACITY = 32
@@ -76,6 +77,7 @@ opasmDriverPassOneBegin	.block
 	clr.w OpasmIfDepth
 	jsr scopes.resetStateV1
 	jsr structs.resetStateV1
+	jsr text_encoding.resetStateV1
 	jsr compile_values.resetBindingsV1
 	rts
 	.bend  ; opasmDriverPassOneBegin
@@ -98,6 +100,7 @@ opasmDriverPassTwoBegin	.block
 	clr.w OpasmIfDepth
 	jsr scopes.resetStateV1
 	jsr structs.resetStateV1
+	jsr text_encoding.resetStateV1
 	moveq #0, d0
 	rts
 	.bend  ; opasmDriverPassTwoBegin
@@ -228,6 +231,14 @@ compareEndn
 checkConditional
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
 	move.l d4, d0
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a1
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d1
+	jsr text_encoding.routeDirectiveV1
+	bne.w fail
+	tst.w d3
+	bne.w skipTextEncodingDirective
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.l d4, d0
 	jsr structs.routeDirectiveV1
 	bne.w fail
 	tst.w d3
@@ -270,6 +281,12 @@ skipStructField
 	move.l d2, d0
 	jsr structs.captureFieldV1
 	bne.w fail
+	move.w d7, d2
+	addq.w #1, d2
+	moveq #1, d1
+	bra.w success
+
+skipTextEncodingDirective
 	move.w d7, d2
 	addq.w #1, d2
 	moveq #1, d1
@@ -1686,8 +1703,7 @@ emitFill
 
 emitByte
 	move.w d6, d7
-	moveq #1, d5
-	bsr.w emitDataDirectiveForStatement
+	bsr.w emitByteDirectiveForStatement
 	bne.w emitLayoutFail
 	moveq #0, d0
 	bra.w return
@@ -2022,8 +2038,7 @@ advanceLayoutD3
 	bra.w done
 
 byte
-	moveq #1, d5
-	bsr.w dataDirectiveSizeForStatement
+	bsr.w byteDirectiveSizeForStatement
 	beq.s advanceLayoutD3
 	bra.w orgBad
 
@@ -3392,7 +3407,7 @@ layoutNamesMatch	.block
 
 loop
 	tst.l d2
-	beq.s ok
+	beq.w ok
 	move.b (a0)+, d3
 	move.b (a1)+, d4
 	bsr.w lowerD3
@@ -3500,7 +3515,7 @@ alignLayoutCursor	.block
 	move.l d1, d2
 	divu.l d4, d3:d2
 	tst.l d3
-	beq.s ok
+	beq.w ok
 	move.l d4, d2
 	sub.l d3, d2
 	move.l d1, d3
@@ -3672,7 +3687,7 @@ scanned
 	sub.l d4, d0
 	beq.s fail
 	jsr eng.opasmEngineResolveLabelValueV1
-	beq.s ok
+	beq.w ok
 
 fail
 	movem.l (sp)+, d1-d2/d4/a0-a2
@@ -3746,6 +3761,28 @@ return
 	movem.l (sp)+, d1-d2/d4-d7/a0-a3
 	rts
 	.bend  ; dataDirectiveSizeForStatement
+
+; Return the byte size of a `.byte`/`.db` list, including quoted operands.
+; Inputs: D7.W = statement index.
+; Outputs: D0.L = 0 on success, 1 on malformed data; D3.L = byte size.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0.L on return.
+byteDirectiveSizeForStatement	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	moveq #3, d5
+	bsr.w parseTextDirectiveForStatement
+	bne.s fail
+	move.l OpasmTextScratchLen, d3
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; byteDirectiveSizeForStatement
 
 ; Emit a numeric data directive in first-run MOS little-endian order.
 ; Inputs: D7.W = statement index; D5.W = unit size (1, 2, or 4).
@@ -3841,6 +3878,34 @@ return
 	movem.l (sp)+, d1-d7/a0-a3
 	rts
 	.bend  ; emitDataDirectiveForStatement
+
+; Emit a `.byte`/`.db` list whose quoted operands use the active encoding.
+; Inputs: D7.W = statement index.
+; Outputs: D0.L = 0 on success, 1 on malformed data or image overflow.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0.L on return.
+emitByteDirectiveForStatement	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	moveq #3, d5
+	bsr.w parseTextDirectiveForStatement
+	bne.s fail
+	move.l OpasmTextScratchLen, d0
+	beq.s ok
+	lea OpasmTextScratch.l, a0
+	jsr eng.opasmEngineAppendImageBytesV1
+	bne.s fail
+
+ok
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; emitByteDirectiveForStatement
 
 ; Count comma-delimited operands after the directive mnemonic.
 ; Inputs: D7.W = statement index.
@@ -3999,6 +4064,7 @@ return
 parseTextDirectiveForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
 	clr.l OpasmTextScratchLen
+	clr.w d6
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	moveq #0, d0
 	move.w d7, d0
@@ -4015,9 +4081,16 @@ parseTextDirectiveForStatement	.block
 operandStart
 	bsr.w skipPartWhitespace
 	tst.l d2
-	beq.s ok
+	beq.w ok
+	addq.w #1, d6
 	cmpi.b #'"', (a2)
+	beq.s quotedOperand
+	cmpi.w #3, d5
 	bne.w fail
+	bra.w numericOperand
+
+quotedOperand
+	move.l OpasmTextScratchLen, d4
 	addq.l #1, a2
 	subq.l #1, d2
 
@@ -4042,16 +4115,62 @@ appendChar
 	bra.s charLoop
 
 operandEnd
+	cmpi.w #3, d5
+	bne.w operandSeparator
+	movem.l d2/d4-d6/a2, -(sp)
+	lea OpasmTextScratch.l, a0
+	adda.l d4, a0
+	move.l OpasmTextScratchLen, d0
+	sub.l d4, d0
+	jsr text_encoding.encodeBytesV1
+	movem.l (sp)+, d2/d4-d6/a2
+	beq.s quotedEncodeOk
+	bra.w fail
+quotedEncodeOk
+	add.l d4, d1
+	move.l d1, OpasmTextScratchLen
+operandSeparator
 	bsr.w skipPartWhitespace
 	tst.l d2
-	beq.s ok
+	beq.w ok
 	cmpi.b #',', (a2)
 	bne.w fail
 	addq.l #1, a2
 	subq.l #1, d2
-	bra.s operandStart
+	bra.w operandStart
+
+numericOperand
+	tst.l d2
+	beq.s numericEnd
+	cmpi.b #',', (a2)
+	beq.s numericEnd
+	addq.l #1, a2
+	subq.l #1, d2
+	bra.s numericOperand
+
+numericEnd
+	bsr.w readCommaOperandValueForStatement
+	bne.w fail
+	cmpi.l #$000000ff, d3
+	bhi.w fail
+	move.b d3, d1
+	bsr.w appendTextScratchByte
+	bne.w fail
+	tst.l d2
+	beq.w ok
+	addq.l #1, a2
+	subq.l #1, d2
+	bra.w operandStart
 
 ok
+	cmpi.w #3, d5
+	beq.s parsedOk
+	lea OpasmTextScratch.l, a0
+	move.l OpasmTextScratchLen, d0
+	jsr text_encoding.encodeBytesV1
+	bne.s fail
+	move.l d1, OpasmTextScratchLen
+parsedOk
 	moveq #0, d0
 	bra.s return
 

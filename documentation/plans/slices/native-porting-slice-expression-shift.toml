@@ -1,0 +1,26 @@
+[slice]
+schema_version = 2
+name = "native shift expression parity"
+kind = "native-rust-parity"
+rust_reference = ["crates/opforge-vm/src/runtime_expr_parser.rs::parse_shift", "crates/opforge-core/src/expr.rs::apply_binary"]
+native_boundary = ["native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::compileShift", "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm::opcodeApplyBinary"]
+invariant = "Native scalar expressions evaluate left and logical-right shifts above addition/subtraction, masking the count to 31 bits like Rust."
+assertion_decision = "No runtime assertion: malformed expressions return checked parser/evaluator failure status."
+expected_inputs = "Adjacent-token scalar shifts with additive operands and counts above 31."
+expected_outputs = "Native CLI bytes equal live Rust bytes for left shift, logical right shift, and count masking."
+known_non_equivalences = "Comparison, bitwise, logical, and ternary tiers remain outside this slice."
+fast_proof_command = "cargo test -p asm native_expression_shift_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_expression_shift_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_expression_shift_rust_oracle"
+proof_level = "A"
+proves = "Rust establishes shift precedence and 32-bit count masking bytes."
+does_not_prove = "Native execution."
+
+[[tests]]
+name = "native_expression_shift_fs_uae"
+proof_level = "D"
+proves = "FS-UAE real native CLI output equals Rust for all shift fixtures."
+does_not_prove = "Comparison and higher expression tiers."

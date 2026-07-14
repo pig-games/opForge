@@ -733,6 +733,24 @@ landed” is not equivalent to “framework-closed.”
     - `*`, `/`, and `%` evaluate with Rust-compatible values and token boundaries
     - later shift, comparison, bitwise, logical, and ternary gaps remain separate remediation items
 
+- [x] Item 5.9.3: restore native shift expression parity
+  - Source requirement or finding IDs: Item 6 native/Rust divergence rule; `runtime_expr_parser.rs::parse_shift`; `opforge-core/src/expr.rs::apply_binary`
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - native ExprVM parser/evaluator files
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - Level A Rust shift oracle
+    - exact Level D native shift FS-UAE proof with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, and full Rust quality gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for shift expression parity only
+  - Commit outcome:
+    - native scalar expressions preserve Rust left/right shift precedence, logical right shift, and 32-bit shift-count masking
+  - Definition of done:
+    - `<<` and `>>` evaluate with Rust-compatible values and token boundaries above addition/subtraction and beneath comparisons
+    - comparison, bitwise, logical, and ternary gaps remain separate remediation items
+
 - [ ] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

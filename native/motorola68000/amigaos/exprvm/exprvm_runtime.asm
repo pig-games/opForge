@@ -33,6 +33,8 @@ EXPRVM_TERNARY_SELECT           = 9
 EXPRVM_BINARY_MULTIPLY          = 10
 EXPRVM_BINARY_DIVIDE            = 11
 EXPRVM_BINARY_MOD               = 12
+EXPRVM_BINARY_SHIFT_LEFT        = 13
+EXPRVM_BINARY_SHIFT_RIGHT       = 14
 EXPRVM_STACK_CAPACITY           = 8
 
 	.section code, kind=code
@@ -234,6 +236,10 @@ opcodeApplyBinary
 	beq.s applyBinaryDivide
 	cmpi.b #EXPRVM_BINARY_MOD, d6
 	beq.s applyBinaryMod
+	cmpi.b #EXPRVM_BINARY_SHIFT_LEFT, d6
+	beq.s applyBinaryShiftLeft
+	cmpi.b #EXPRVM_BINARY_SHIFT_RIGHT, d6
+	beq.s applyBinaryShiftRight
 	bra.w fail
 
 applyBinaryRestoreFail
@@ -275,6 +281,18 @@ applyBinaryMod
 	swap d2
 	ext.l d2
 	divs.l d3, d2:d1
+	move.l d2, d3
+	bra.s applyBinaryDone
+
+applyBinaryShiftLeft
+	andi.l #31, d3
+	lsl.l d3, d2
+	move.l d2, d3
+	bra.s applyBinaryDone
+
+applyBinaryShiftRight
+	andi.l #31, d3
+	lsr.l d3, d2
 	move.l d2, d3
 	bra.s applyBinaryDone
 

@@ -697,6 +697,24 @@ landed” is not equivalent to “framework-closed.”
   - Dependency note:
     - fixture adaptation and source-mapping evidence may be prepared in this item, but Item 5.9 is finalized only after Item 6 supplies the required native expression-semantics parity for the retained CPU-neutral expressions and its Level D shard is green
 
+- [ ] Item 5.9.1: restore native numeric suffix-literal expression parity
+  - Source requirement or finding IDs: Item 5.9 Level D failure on retained `0a6h`, `1010b`, and `17o` literals; Item 6 native/Rust divergence rule
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - `native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm`
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - Level B native request-shape/literal-cursor proof
+    - exact Level D FS-UAE suffix-literal proof with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, and full Rust quality gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for numeric suffix-literal parity only
+  - Commit outcome:
+    - native ExprVM consumes `h`, `b`, `o`/`q`, and `d` suffix literals without consuming adjacent expression text
+  - Definition of done:
+    - suffix literal values and surrounding additive cursor semantics match Rust for the supported scalar bridge grammar
+    - remaining Item 6 operator-precedence gaps remain separate remediation items
+
 - [ ] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

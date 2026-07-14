@@ -1,0 +1,28 @@
+[slice]
+schema_version = 2
+name = "native preprocessor macro substitution and re-entry"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/macro_processor_args_subst.rs::substitute_line",
+  "crates/opforge-core/src/macro_processor_definitions.rs::format_macro_block_start",
+  "crates/opforge-core/src/macro_processor.rs::MacroProcessor::expand_lines"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliSubstituteMacroBodyLineV1",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliExpandActiveMacroV1",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliProcessExpandedLineV1"
+]
+invariant = "Each active macro body line is substituted into one bounded expansion buffer and routed through the ordinary native CLI path; a caller label attaches to the generated .block, and a nested frame fails without overwriting the caller frame."
+assertion_decision = "No runtime assertion: fixed output capacity and the active-frame sentinel return deterministic failure before source recording can continue."
+expected_inputs = "An active bounded macro invocation frame with captured body lines and positional, full-list, and named parameter bindings."
+expected_outputs = "Ordinary .block, substituted body, and .endblock lines, each processed through the existing source/tokenizer/PRVM/session path while restoring the caller line."
+known_non_equivalences = "The macro-only fixture, artifact parity, FS-UAE confirmation, segments, and statements remain outside this slice."
+fast_proof_command = "cargo test -p asm native_preprocessor_macro_substitution_and_reentry_are_bounded -- --nocapture"
+level_d_command = "Not applicable to this intermediate re-entry slice: Phase 7.3e provides the first named macro fixture and Phase 7.3f the required FS-UAE artifact proof."
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_preprocessor_macro_substitution_and_reentry_are_bounded"
+proof_level = "C"
+proves = "Rust confirms positional, at-positional, full-list, named, and label-scope semantics while the native source contract proves bounded substitution helpers and ordinary-path re-entry with caller restoration."
+does_not_prove = "Native 68020 execution, complete artifact parity, or FS-UAE behavior."

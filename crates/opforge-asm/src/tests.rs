@@ -34560,7 +34560,7 @@ fn native_preprocessor_macro_invocation_frame_is_bounded_and_resettable() {
 
     assert!(constants.contains("NATIVE_PREPROCESS_MACRO_ARG_CAPACITY = 9"));
     assert!(constants.contains("NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT = 1"));
-    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 36"));
+    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 38"));
     assert!(
         constants.contains("(NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY)")
     );
@@ -34642,7 +34642,7 @@ fn native_preprocessor_macro_invocations_bind_before_prvm_routing() {
     )
     .expect("read native line processor");
 
-    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 36"));
+    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 38"));
     assert!(source_contains_in_order(
         &state,
         &[
@@ -34686,6 +34686,71 @@ fn native_preprocessor_macro_invocations_bind_before_prvm_routing() {
             "jsr preprocessor.opforgeNativeCliParseMacroInvocationV1",
             "invocationPass",
             "jsr assembly_session.opforgeNativeCliRecordSourceLine",
+        ]
+    ));
+}
+
+#[test]
+fn native_preprocessor_macro_substitution_and_reentry_are_bounded() {
+    // Proof levels B/C. Rust supplies the substitution/scope oracle; the
+    // native source contract proves that a bounded substituted line re-enters
+    // the ordinary processor and restores the caller line after each route.
+    // It does not prove native 68020 execution or emitted artifact bytes.
+    let mut rust_oracle = MacroProcessor::new();
+    let lines = vec![
+        "LOCAL .macro value=2".to_string(),
+        "local .const .value".to_string(),
+        "    .byte @1, .@, .{value}".to_string(),
+        ".endmacro".to_string(),
+        "scope .LOCAL 7".to_string(),
+    ];
+    let expanded = rust_oracle.expand(&lines).expect("Rust macro oracle");
+    assert!(expanded.iter().any(|line| line == "scope .block"));
+    assert!(expanded.iter().any(|line| line == "local .const 7"));
+    assert!(expanded.iter().any(|line| line.contains(".byte 7, 7, 7")));
+    assert!(expanded.iter().any(|line| line.trim() == ".endblock"));
+
+    let root = workspace_root();
+    let state = fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/state.asm"))
+        .expect("read native state");
+    let preprocessor =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"))
+            .expect("read native preprocessor");
+    let line_processor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read native line processor");
+
+    assert!(state.contains("NativeCliPreprocessExpansionLineLen"));
+    for routine in [
+        "opforgeNativeCliSubstituteMacroBodyLineV1\t.block",
+        "appendInvocationPositional\t.block",
+        "appendInvocationFullList\t.block",
+        "appendInvocationNamed\t.block",
+        "appendExpansionBytes\t.block",
+    ] {
+        assert!(preprocessor.contains(routine), "missing {routine}");
+    }
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "opforgeNativeCliExpandActiveMacroV1\t.block",
+            "bsr.w emitMacroBlockStart",
+            "bsr.w opforgeNativeCliProcessExpandedLineV1",
+            "jsr preprocessor.opforgeNativeCliSubstituteMacroBodyLineV1",
+            "bsr.w emitMacroBlockEnd",
+            "move.w #-1, state.NativeCliPreprocessInvocationDefinition",
+        ]
+    ));
+    assert!(line_processor.contains("emitMacroBlockStart\t.block"));
+    assert!(line_processor.contains("emitMacroBlockEnd\t.block"));
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "opforgeNativeCliProcessExpandedLineV1\t.block",
+            "jsr preprocessor.opforgeNativeCliBeginExpandedLineV1",
+            "bsr.w opforgeNativeCliTokenizeCurrentLine",
+            "jsr preprocessor.opforgeNativeCliEndExpandedLineV1",
         ]
     ));
 }

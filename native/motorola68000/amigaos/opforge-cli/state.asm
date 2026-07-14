@@ -234,6 +234,8 @@ NativeCliPreprocessSavedLine
 	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
 NativeCliPreprocessExpansionLine
 	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
+NativeCliPreprocessExpansionLineLen
+	.res word, 1
 NativeCliPreprocessStateEnd
 
 NativeCliModuleUseStateStart

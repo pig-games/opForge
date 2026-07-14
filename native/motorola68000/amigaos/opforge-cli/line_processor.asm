@@ -46,7 +46,7 @@ preprocessPass
 	tst.l d0
 	beq.s invocationPass
 	bmi.w fail
-	moveq #0, d0
+	bsr.w opforgeNativeCliExpandActiveMacroV1
 	rts
 
 invocationPass
@@ -265,6 +265,125 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliProcessExpandedLineV1
+
+; Drain the active bounded macro frame through the ordinary CLI line path.
+; Inputs: a complete preprocessor invocation frame is active.
+; Outputs: D0 = 0 on success, 1 on substitution, recursion, or pipeline failure.
+; Clobbers: D0-D7/A0-A2/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliExpandActiveMacroV1	.block
+	tst.w state.NativeCliPreprocessInvocationDefinition
+	bmi.w fail
+	bsr.w emitMacroBlockStart
+	bne.w fail
+	lea state.NativeCliPreprocessExpansionLine, a0
+	moveq #0, d0
+	move.w state.NativeCliPreprocessExpansionLineLen, d0
+	bsr.w opforgeNativeCliProcessExpandedLineV1
+	bne.w fail
+	clr.w state.NativeCliPreprocessInvocationBodyIndex
+
+bodyLoop
+	move.w state.NativeCliPreprocessInvocationDefinition, d2
+	moveq #0, d0
+	move.w state.NativeCliPreprocessInvocationBodyIndex, d0
+	lea state.NativeCliPreprocessDefinitionBodyCount, a0
+	moveq #0, d4
+	add.w d2, d2
+	move.w 0(a0, d2.w), d4
+	cmp.w d4, d0
+	bcc.s close
+	jsr preprocessor.opforgeNativeCliSubstituteMacroBodyLineV1
+	bne.w fail
+	move.w d1, state.NativeCliPreprocessExpansionLineLen
+	lea state.NativeCliPreprocessExpansionLine, a0
+	move.l d1, d0
+	bsr.w opforgeNativeCliProcessExpandedLineV1
+	bne.w fail
+	addq.w #1, state.NativeCliPreprocessInvocationBodyIndex
+	bra.s bodyLoop
+
+close
+	bsr.w emitMacroBlockEnd
+	bne.s fail
+	lea state.NativeCliPreprocessExpansionLine, a0
+	moveq #0, d0
+	move.w state.NativeCliPreprocessExpansionLineLen, d0
+	bsr.w opforgeNativeCliProcessExpandedLineV1
+	bne.s fail
+	move.w #-1, state.NativeCliPreprocessInvocationDefinition
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliExpandActiveMacroV1
+
+; Build the Rust-compatible macro scope start line in ExpansionLine.
+; A caller label attaches to `.block`; an indented call keeps its indentation.
+emitMacroBlockStart	.block
+	lea state.NativeCliPreprocessExpansionLine, a2
+	moveq #0, d2
+	moveq #0, d0
+	move.w state.NativeCliPreprocessInvocationLabelLen, d0
+	beq.s indent
+	lea state.NativeCliPreprocessInvocationLabel, a1
+	jsr copy.copyBytes
+	move.w state.NativeCliPreprocessInvocationLabelLen, d2
+	lea MacroBlockWithLabelText, a1
+	moveq #7, d0
+	jsr copy.copyBytes
+	addq.w #7, d2
+	bra.s done
+indent
+	lea state.NativeCliSourceLine, a1
+indentLoop
+	move.b 0(a1, d2.w), d0
+	cmpi.b #' ', d0
+	beq.s copyIndent
+	cmpi.b #9, d0
+	bne.s block
+copyIndent
+	move.b d0, 0(a2, d2.w)
+	addq.w #1, d2
+	bra.s indentLoop
+block
+	lea MacroBlockText, a1
+	moveq #6, d0
+	adda.l d2, a2
+	jsr copy.copyBytes
+	addq.w #6, d2
+done
+	move.w d2, state.NativeCliPreprocessExpansionLineLen
+	moveq #0, d0
+	rts
+	.bend  ; emitMacroBlockStart
+
+; Build the matching indented `.endblock` line in ExpansionLine.
+emitMacroBlockEnd	.block
+	lea state.NativeCliPreprocessExpansionLine, a2
+	lea state.NativeCliSourceLine, a1
+	clr.w d2
+indentLoop
+	move.b 0(a1, d2.w), d0
+	cmpi.b #' ', d0
+	beq.s copyIndent
+	cmpi.b #9, d0
+	bne.s endblock
+copyIndent
+	move.b d0, 0(a2, d2.w)
+	addq.w #1, d2
+	bra.s indentLoop
+endblock
+	lea MacroEndblockText, a1
+	moveq #9, d0
+	adda.l d2, a2
+	jsr copy.copyBytes
+	addq.w #9, d2
+	move.w d2, state.NativeCliPreprocessExpansionLineLen
+	moveq #0, d0
+	rts
+	.bend  ; emitMacroBlockEnd
 
 opforgeNativeCliParseCurrentLine	.block
 	movem.l d2-d7/a2-a4, -(sp)
@@ -556,5 +675,14 @@ opforgeNativeCliPrepareLineServiceRequest	.block
 	rts
 	.bend  ; opforgeNativeCliPrepareLineServiceRequest
 
+	.endsection
+
+	.section data, kind=data
+MacroBlockText
+	.byte ".block", 0
+MacroBlockWithLabelText
+	.byte " .block", 0
+MacroEndblockText
+	.byte ".endblock", 0
 	.endsection
 	.endmodule

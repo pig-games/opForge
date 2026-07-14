@@ -208,6 +208,12 @@ NativeCliPreprocessInvocationArgCount
 	.res word, 1
 NativeCliPreprocessInvocationBodyIndex
 	.res word, 1
+NativeCliPreprocessInvocationArgLen
+	.res word, constants.NATIVE_PREPROCESS_MACRO_ARG_CAPACITY
+NativeCliPreprocessInvocationFullArgsLen
+	.res word, 1
+NativeCliPreprocessInvocationLabelLen
+	.res word, 1
 NativeCliPreprocessDefinitionBodyCount
 	.res word, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY
 NativeCliPreprocessDefinitionHeaderLen

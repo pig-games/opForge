@@ -1,0 +1,28 @@
+[slice]
+schema_version = 2
+name = "native preprocessor macro invocation binding"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/macro_processor_definitions.rs::parse_macro_invocation",
+  "crates/opforge-core/src/macro_processor_args_subst.rs::parse_macro_args",
+  "crates/opforge-core/src/macro_processor_args_subst.rs::parse_macro_params",
+  "crates/opforge-core/src/macro_processor_definitions.rs::build_macro_args"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliParseMacroInvocationV1",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliTokenizeCurrentLine"
+]
+invariant = "A recognized captured macro invocation produces one complete bounded frame before source recording or tokenizer dispatch; ordinary directives pass through unchanged, while malformed or overflowing recognized invocations fail deterministically."
+assertion_decision = "No runtime assertion: the parser returns the existing deterministic frontend failure status before the source-recording boundary."
+expected_inputs = "Label-attached or indented dotted macro invocations using parenthesized or comma-leading argument lists."
+expected_outputs = "A selected definition, positional argument slots with explicit lengths, a canonical full-list buffer, and an optional caller-label buffer."
+known_non_equivalences = "This slice captures but does not substitute or route macro body lines. Scope wrapping, recursion, segments, statements, artifact parity, and FS-UAE proof remain later Item 7.3 work."
+fast_proof_command = "cargo test -p asm native_preprocessor_macro_invocations_bind_before_prvm_routing -- --nocapture"
+level_d_command = "Not applicable to binding alone: no body is expanded or artifact emitted until Phase 7.3d/e."
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_preprocessor_macro_invocations_bind_before_prvm_routing"
+proof_level = "C"
+proves = "Rust establishes COPY, PAIR default, and quoted/nested-list invocation semantics while the native source contract proves bounded frame fields, parser stages, and pre-recording routing."
+does_not_prove = "Native 68020 execution, byte substitution, macro scope wrapping, body re-entry, emitted artifacts, or FS-UAE behavior."

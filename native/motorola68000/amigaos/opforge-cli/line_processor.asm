@@ -42,6 +42,14 @@ opforgeNativeCliTokenizeCurrentLine	.block
 	rts
 
 preprocessPass
+	jsr preprocessor.opforgeNativeCliParseMacroInvocationV1
+	tst.l d0
+	beq.s invocationPass
+	bmi.w fail
+	moveq #0, d0
+	rts
+
+invocationPass
 	tst.w state.NativeCliIncludeDepth
 	beq.s record
 	jsr report.opforgeNativeCliEmitIncludeLineRecord

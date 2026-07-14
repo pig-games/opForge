@@ -34411,14 +34411,12 @@ fn native_preprocessor_reentry_source_contract_is_bounded_and_restores_caller_li
     // routes its staged line through the ordinary CLI line processor. It does
     // not prove macro syntax, substitution, or native 68020 execution.
     let root = workspace_root();
-    let constants = fs::read_to_string(
-        root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"),
-    )
-    .expect("read native CLI constants");
-    let preprocessor = fs::read_to_string(
-        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"),
-    )
-    .expect("read native preprocessor");
+    let constants =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"))
+            .expect("read native CLI constants");
+    let preprocessor =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"))
+            .expect("read native preprocessor");
     let line_processor = fs::read_to_string(
         root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
     )
@@ -34562,8 +34560,10 @@ fn native_preprocessor_macro_invocation_frame_is_bounded_and_resettable() {
 
     assert!(constants.contains("NATIVE_PREPROCESS_MACRO_ARG_CAPACITY = 9"));
     assert!(constants.contains("NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT = 1"));
-    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 14"));
-    assert!(constants.contains("(NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY)"));
+    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 36"));
+    assert!(
+        constants.contains("(NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY)")
+    );
     assert!(constants.contains("+ (4 * SOURCE_LINE_BUFFER_CAPACITY)"));
     assert!(source_contains_in_order(
         &state,
@@ -34596,6 +34596,96 @@ fn native_preprocessor_macro_invocation_frame_is_bounded_and_resettable() {
             "move.w d0, state.NativeCliPreprocessInvocationDefinition",
             "clr.w state.NativeCliPreprocessInvocationArgCount",
             "clr.w state.NativeCliPreprocessInvocationBodyIndex",
+        ]
+    ));
+}
+
+#[test]
+fn native_preprocessor_macro_invocations_bind_before_prvm_routing() {
+    // Proof level C. This host-side request-shape model covers the bounded
+    // native invocation frame contract and checks that the native source puts
+    // recognized calls ahead of source recording. It does not prove native
+    // 68020 execution, substitution, or expansion re-entry.
+    let mut rust_oracle = MacroProcessor::new();
+    let lines = vec![
+        "COPY .macro src, dst".to_string(),
+        "    .byte .src, .dst".to_string(),
+        ".endmacro".to_string(),
+        "PAIR .macro left, right=2".to_string(),
+        "    .byte .left, .right".to_string(),
+        ".endmacro".to_string(),
+        "TEXT .macro value".to_string(),
+        "    .byte .value".to_string(),
+        ".endmacro".to_string(),
+        "    .COPY $12, $34".to_string(),
+        "    .PAIR 1".to_string(),
+        "    .TEXT {1, 2}".to_string(),
+        "label .TEXT \"a,b\"".to_string(),
+    ];
+    let expanded = rust_oracle.expand(&lines).expect("Rust macro oracle");
+    assert!(expanded.iter().any(|line| line.contains(".byte $12, $34")));
+    assert!(expanded.iter().any(|line| line.contains(".byte 1, 2")));
+    assert!(expanded.iter().any(|line| line.contains(".byte {1, 2}")));
+    assert!(expanded.iter().any(|line| line.contains(".byte \"a,b\"")));
+
+    let root = workspace_root();
+    let constants =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"))
+            .expect("read native constants");
+    let state = fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/state.asm"))
+        .expect("read native state");
+    let preprocessor =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"))
+            .expect("read native preprocessor");
+    let line_processor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read native line processor");
+
+    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 36"));
+    assert!(source_contains_in_order(
+        &state,
+        &[
+            "NativeCliPreprocessInvocationArgLen",
+            "NativeCliPreprocessInvocationFullArgsLen",
+            "NativeCliPreprocessInvocationLabelLen",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &preprocessor,
+        &[
+            "opforgeNativeCliParseMacroInvocationV1\t.block",
+            "opforgeNativeCliBeginMacroInvocationFrameV1",
+            "parseInvocationArguments",
+        ]
+    ));
+    for routine in [
+        "captureInvocationLabel\t.block",
+        "findCapturedMacroDefinition\t.block",
+        "splitInvocationArgumentList\t.block",
+        "bindMacroParameterDefaults\t.block",
+    ] {
+        assert!(preprocessor.contains(routine), "missing {routine}");
+    }
+    assert!(source_contains_in_order(
+        &preprocessor,
+        &[
+            "cmpi.b #'\\'', d3",
+            "cmpi.b #'\"', d3",
+            "cmpi.b #'(', d3",
+            "cmpi.b #'[', d3",
+            "cmpi.b #'{', d3",
+            "cmpi.b #',', d3",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "jsr preprocessor.opforgeNativeCliCaptureMacroDefinitionLineV1",
+            "preprocessPass",
+            "jsr preprocessor.opforgeNativeCliParseMacroInvocationV1",
+            "invocationPass",
+            "jsr assembly_session.opforgeNativeCliRecordSourceLine",
         ]
     ));
 }
@@ -37475,6 +37565,71 @@ fn native_expression_shift_fs_uae() {
                 )
                 .expect("read native output");
                 assert_eq!(native, rust_bin, "native bytes differ for {name}");
+            }
+        }
+    }
+}
+
+#[test]
+fn native_reference_opcore_module_macro_statement_fs_uae() {
+    // Proof level D. Rust uses the full module/preprocessor authority; FS-UAE
+    // runs the exact canonical roots through the native CLI.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let root = workspace_root();
+    let package = item6_mos_package_bytes();
+    let paths = [
+        "module_basics.asm",
+        "macro_syntax.asm",
+        "statement_expansion.asm",
+    ];
+    let sources = paths
+        .iter()
+        .map(|name| {
+            let path = root.join("examples/opcore").join(name);
+            let bytes = fs::read(&path).expect("read canonical Item 7 root");
+            let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&path, true)
+                .expect("full Rust Item 7 authority");
+            assert!(
+                diagnostics.is_empty(),
+                "Rust diagnostics for {name}: {diagnostics:?}"
+            );
+            (
+                name,
+                bytes,
+                entries
+                    .into_iter()
+                    .map(|(_, byte)| byte)
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let cases = sources
+        .iter()
+        .map(
+            |(name, bytes, _)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+                name,
+                cpu_id: "65c02",
+                source: bytes.as_slice(),
+                package_bytes: package.as_slice(),
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
+        .expect("Item 7 FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            for (run, (name, _, rust)) in runs.iter().zip(sources.iter()) {
+                assert!(run.success, "native {name} failed: {}", run.stdout);
+                let native = fs::read(
+                    run.artifact_dir
+                        .join("Work")
+                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+                )
+                .expect("read native output");
+                assert_eq!(native, *rust, "native bytes differ for {name}");
             }
         }
     }

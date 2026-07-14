@@ -751,7 +751,7 @@ landed” is not equivalent to “framework-closed.”
     - `<<` and `>>` evaluate with Rust-compatible values and token boundaries above addition/subtraction and beneath comparisons
     - comparison, bitwise, logical, and ternary gaps remain separate remediation items
 
-- [ ] Item 6: add the CPU-neutral syntax and expression opcore parity shard
+- [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:
     - additive opcore MOS-backed fixtures and matching references assigned by Item 4

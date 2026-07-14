@@ -510,7 +510,7 @@ binaryLiteral
 	bra.s maybeApplyUnary
 
 decimal
-	bsr.w parseDecimal
+	bsr.w parseSuffixedNumber
 	tst.l d5
 	bne.w maybeApplyUnary
 	move.l d0, -(sp)
@@ -981,6 +981,145 @@ return
 	movem.l (sp)+, d1
 	rts
 	.bend  ; parseBinary
+
+; Parse a digit-led scalar token with an optional 64tass-style base suffix.
+; Inputs: A0/D0 = token text and remaining expression length.
+; Outputs: A0/D0 advanced past exactly one token; D3 = value; D5 = status.
+; Clobbers: D1-D2/A1/CCR.
+; CCR: reflects D5 on return.
+parseSuffixedNumber	.block
+	movem.l d1-d2/a1, -(sp)
+	movea.l a0, a1
+	move.l d0, d2
+
+scanToken
+	tst.l d2
+	beq.s tokenScanned
+	moveq #0, d1
+	move.b (a1)+, d1
+	subq.l #1, d2
+	cmpi.b #'+', d1
+	beq.s tokenDelimiter
+	cmpi.b #'-', d1
+	beq.s tokenDelimiter
+	cmpi.b #'|', d1
+	beq.s tokenDelimiter
+	cmpi.b #'?', d1
+	beq.s tokenDelimiter
+	cmpi.b #':', d1
+	beq.s tokenDelimiter
+	cmpi.b #')', d1
+	beq.s tokenDelimiter
+	cmpi.b #' ', d1
+	beq.s tokenDelimiter
+	cmpi.b #9, d1
+	beq.s tokenDelimiter
+	bra.s scanToken
+
+tokenDelimiter
+	subq.l #1, a1
+
+tokenScanned
+	move.b -1(a1), d1
+	ori.b #32, d1
+	cmpi.b #'h', d1
+	beq.s parseHexSuffix
+	cmpi.b #'b', d1
+	beq.s parseBinarySuffix
+	cmpi.b #'o', d1
+	beq.s parseOctalSuffix
+	cmpi.b #'q', d1
+	beq.s parseOctalSuffix
+	cmpi.b #'d', d1
+	beq.s parseDecimalSuffix
+	bsr.w parseDecimal
+	bra.s return
+
+parseHexSuffix
+	move.l d0, d1
+	sub.l d2, d1
+	subq.l #1, d1
+	move.l d2, -(sp)
+	move.l d1, d0
+	bsr.w parseHex
+	move.l (sp)+, d2
+	bra.s consumeSuffix
+
+parseBinarySuffix
+	move.l d0, d1
+	sub.l d2, d1
+	subq.l #1, d1
+	move.l d2, -(sp)
+	move.l d1, d0
+	bsr.w parseBinary
+	move.l (sp)+, d2
+	bra.s consumeSuffix
+
+parseOctalSuffix
+	move.l d0, d1
+	sub.l d2, d1
+	subq.l #1, d1
+	move.l d2, -(sp)
+	move.l d1, d0
+	bsr.w parseOctal
+	move.l (sp)+, d2
+	bra.s consumeSuffix
+
+parseDecimalSuffix
+	move.l d0, d1
+	sub.l d2, d1
+	subq.l #1, d1
+	move.l d2, -(sp)
+	move.l d1, d0
+	bsr.w parseDecimal
+	move.l (sp)+, d2
+
+consumeSuffix
+	tst.l d5
+	bne.s return
+	addq.l #1, a0
+	move.l d2, d0
+
+return
+	movem.l (sp)+, d1-d2/a1
+	rts
+	.bend  ; parseSuffixedNumber
+
+; Parse an octal literal body with its suffix already removed.
+; Inputs: A0/D0 = octal digits and remaining expression length.
+; Outputs: A0/D0 advanced; D3 = value; D5 = status.
+; Clobbers: D1/CCR.
+; CCR: reflects D5 on return.
+parseOctal	.block
+	movem.l d1, -(sp)
+	clr.l d3
+
+scanDigit
+	tst.l d0
+	beq.s ok
+	moveq #0, d1
+	move.b (a0)+, d1
+	subq.l #1, d0
+	cmpi.b #'0', d1
+	bcs.s fail
+	cmpi.b #'7', d1
+	bhi.s fail
+	subi.b #'0', d1
+	lsl.l #3, d3
+	or.b d1, d3
+	bra.s scanDigit
+
+ok
+	moveq #0, d5
+	bra.s return
+
+fail
+	moveq #1, d5
+
+return
+	movem.l (sp)+, d1
+	rts
+	.bend  ; parseOctal
 
 parseDecimal	.block
 	movem.l d1-d2, -(sp)

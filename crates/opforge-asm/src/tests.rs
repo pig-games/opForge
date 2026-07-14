@@ -36823,6 +36823,133 @@ fn external_fs_uae_opforge_native_cli_65c02_expr_syntax_matches_rust_bin() {
 }
 
 #[test]
+fn native_expression_suffix_literals_rust_oracle() {
+    // Proof level A. This test proves the Rust authority's suffix literal
+    // values and additive token boundaries. It does not prove native execution.
+    let cases = [
+        ("hex", "0a6h", 0xa6),
+        ("binary", "1010b", 10),
+        ("octal", "17o", 15),
+        ("octal-q", "17q", 15),
+        ("decimal", "42d", 42),
+    ];
+    for (name, literal, expected) in cases {
+        let value_line = format!("value .const {literal}");
+        let immediate_line = format!("start lda #value+1");
+        let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+            &[
+                ".cpu 65c02",
+                value_line.as_str(),
+                immediate_line.as_str(),
+                "rts",
+            ],
+            true,
+        )
+        .unwrap_or_else(|err| panic!("assemble suffix oracle {name}: {err}"));
+        assert!(
+            diagnostics.is_empty(),
+            "Rust diagnostics for {name}: {diagnostics:?}"
+        );
+        assert_eq!(
+            entries[1].1,
+            (expected + 1) as u8,
+            "suffix value for {name}"
+        );
+    }
+}
+
+#[test]
+fn native_expression_suffix_literals_fs_uae() {
+    // Proof level D. This test proves the real native CLI parses each supported
+    // suffix literal without consuming adjacent additive expression text.
+    // This test does not prove other Item 6 operator-precedence tiers.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let sources = [
+        (
+            "suffix-hex",
+            b"value .const 0a6h\nstart lda #value+1\nrts\n".as_slice(),
+        ),
+        (
+            "suffix-binary",
+            b"value .const 1010b\nstart lda #value+1\nrts\n".as_slice(),
+        ),
+        (
+            "suffix-octal",
+            b"value .const 17o\nstart lda #value+1\nrts\n".as_slice(),
+        ),
+        (
+            "suffix-octal-q",
+            b"value .const 17q\nstart lda #value+1\nrts\n".as_slice(),
+        ),
+        (
+            "suffix-decimal",
+            b"value .const 42d\nstart lda #value+1\nrts\n".as_slice(),
+        ),
+    ];
+    let mut rust_bins = Vec::with_capacity(sources.len());
+    for (name, source) in &sources {
+        let source = std::str::from_utf8(source).expect("fixture is UTF-8");
+        let mut lines = vec![".cpu 65c02"];
+        lines.extend(source.lines());
+        let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&lines, true)
+            .unwrap_or_else(|err| panic!("assemble Rust suffix authority {name}: {err}"));
+        assert!(
+            diagnostics.is_empty(),
+            "Rust diagnostics for {name}: {diagnostics:?}"
+        );
+        rust_bins.push(
+            entries
+                .into_iter()
+                .map(|(_, byte)| byte)
+                .collect::<Vec<_>>(),
+        );
+    }
+    let cases = sources
+        .iter()
+        .map(
+            |(name, source)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+                name,
+                cpu_id: "65c02",
+                source,
+                package_bytes: package_bytes.as_slice(),
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("suffix-literal FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), sources.len());
+            for ((run, (name, _)), rust_bin) in runs.iter().zip(sources.iter()).zip(rust_bins) {
+                assert!(
+                    run.success,
+                    "native suffix fixture {name} failed: {}",
+                    run.stdout
+                );
+                let native_bin = fs::read(
+                    run.artifact_dir
+                        .join("Work")
+                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+                )
+                .unwrap_or_else(|err| panic!("read native suffix output for {name}: {err}"));
+                assert_eq!(
+                    native_bin, rust_bin,
+                    "native suffix bytes differ for {name}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_bytes() {
     let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
         .lock()

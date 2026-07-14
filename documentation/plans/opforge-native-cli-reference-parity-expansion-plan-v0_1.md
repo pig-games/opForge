@@ -697,7 +697,7 @@ landed” is not equivalent to “framework-closed.”
   - Dependency note:
     - fixture adaptation and source-mapping evidence may be prepared in this item, but Item 5.9 is finalized only after Item 6 supplies the required native expression-semantics parity for the retained CPU-neutral expressions and its Level D shard is green
 
-- [ ] Item 5.9.1: restore native numeric suffix-literal expression parity
+- [x] Item 5.9.1: restore native numeric suffix-literal expression parity
   - Source requirement or finding IDs: Item 5.9 Level D failure on retained `0a6h`, `1010b`, and `17o` literals; Item 6 native/Rust divergence rule
   - Expected files:
     - one `documentation/plans/slices/*.toml` metadata record

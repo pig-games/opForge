@@ -1,0 +1,32 @@
+[slice]
+schema_version = 2
+name = "native expression suffix-literal parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-vm/src/runtime_expr_parser.rs::parse_expression",
+  "crates/opforge-asm/src/asmline_directives_data.rs::const_var_set_directive_ast",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::compileSingleTerm",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::parseSuffixedNumber",
+]
+invariant = "A native digit-led scalar token with an h, b, o, q, or d suffix is parsed in its Rust-compatible base, consumes exactly that token, and leaves the following additive expression text available to the caller."
+assertion_decision = "No runtime assertion: malformed numeric tokens return the existing expression compile failure without emitting output."
+expected_inputs = "65C02 source using suffix literals in .const and immediate additive expressions."
+expected_outputs = "Native CLI binary equals the live Rust artifact."
+known_non_equivalences = "Other Item 6 operator-precedence tiers are explicitly outside this remediation item."
+fast_proof_command = "cargo test -p asm native_expression_suffix_literals_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_expression_suffix_literals_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_expression_suffix_literals_rust_oracle"
+proof_level = "A"
+proves = "The Rust authority resolves h, b, o, q, and d suffix literal values and adjacent additive expressions."
+does_not_prove = "Native expression-bridge execution."
+
+[[tests]]
+name = "native_expression_suffix_literals_fs_uae"
+proof_level = "D"
+proves = "The real native CLI resolves suffix literals and emits the same bytes as Rust."
+does_not_prove = "Other expression-precedence tiers."

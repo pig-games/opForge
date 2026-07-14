@@ -36950,6 +36950,119 @@ fn native_expression_suffix_literals_fs_uae() {
 }
 
 #[test]
+fn native_expression_multiplicative_rust_oracle() {
+    // Proof level A. Establish the Rust reference bytes for the native
+    // multiplicative-expression fixtures without requiring an emulator.
+    let cases = [
+        (
+            "multiply",
+            "value .const 3*4+1\nstart lda #value\nrts",
+            vec![0xa9, 13],
+        ),
+        (
+            "divide",
+            "value .const -20/-5+1\nstart lda #value\nrts",
+            vec![0xa9, 5],
+        ),
+        (
+            "modulo",
+            "value .const -23%-5+5\nstart lda #value\nrts",
+            vec![0xa9, 2],
+        ),
+    ];
+    for (name, source, expected) in cases {
+        let mut lines = vec![".cpu 65c02"];
+        lines.extend(source.lines());
+        let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&lines, true)
+            .unwrap_or_else(|err| panic!("Rust authority {name}: {err}"));
+        assert!(
+            diagnostics.is_empty(),
+            "Rust diagnostics for {name}: {diagnostics:?}"
+        );
+        assert_eq!(
+            entries
+                .into_iter()
+                .map(|(_, byte)| byte)
+                .collect::<Vec<_>>(),
+            expected,
+            "Rust output for {name}"
+        );
+    }
+}
+
+#[test]
+fn native_expression_multiplicative_fs_uae() {
+    // Proof level D. This test proves the real native CLI emits the same bytes
+    // as Rust for multiplication, signed division, and modulo expressions.
+    // This test does not prove later precedence tiers.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let root = workspace_root();
+    let package = item6_mos_package_bytes();
+    let sources = [
+        (
+            "multiply",
+            b"value .const 3*4+1\nstart lda #value\nrts\n".as_slice(),
+        ),
+        (
+            "divide",
+            b"value .const -20/-5+1\nstart lda #value\nrts\n".as_slice(),
+        ),
+        (
+            "modulo",
+            b"value .const -23%-5+5\nstart lda #value\nrts\n".as_slice(),
+        ),
+    ];
+    let rust_bins = sources
+        .iter()
+        .map(|(name, source)| {
+            let text = std::str::from_utf8(source).expect("fixture UTF-8");
+            let mut lines = vec![".cpu 65c02"];
+            lines.extend(text.lines());
+            let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&lines, true)
+                .unwrap_or_else(|err| panic!("Rust authority {name}: {err}"));
+            assert!(
+                diagnostics.is_empty(),
+                "Rust diagnostics for {name}: {diagnostics:?}"
+            );
+            entries
+                .into_iter()
+                .map(|(_, byte)| byte)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let cases = sources
+        .iter()
+        .map(
+            |(name, source)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+                name,
+                cpu_id: "65c02",
+                source,
+                package_bytes: package.as_slice(),
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
+        .expect("multiplicative FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            for ((run, (name, _)), rust_bin) in runs.iter().zip(sources.iter()).zip(rust_bins) {
+                assert!(run.success, "native {name} failed: {}", run.stdout);
+                let native = fs::read(
+                    run.artifact_dir
+                        .join("Work")
+                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+                )
+                .expect("read native output");
+                assert_eq!(native, rust_bin, "native bytes differ for {name}");
+            }
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_bytes() {
     let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
         .lock()

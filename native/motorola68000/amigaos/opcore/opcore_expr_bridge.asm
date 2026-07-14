@@ -291,7 +291,7 @@ fail
 	.bend  ; compileLogicalOr
 
 compileAdditive	.block
-	bsr.w compileSingleTerm
+	bsr.w compileMultiplicative
 	tst.l d5
 	bne.w fail
 
@@ -318,7 +318,7 @@ operator
 	move.l d6, -(sp)
 	addq.l #1, a0
 	subq.l #1, d0
-	bsr.w compileSingleTerm
+	bsr.w compileMultiplicative
 	move.l (sp)+, d6
 	tst.l d5
 	bne.w fail
@@ -359,6 +359,68 @@ fail
 failReady
 	rts
 	.bend  ; compileAdditive
+
+compileMultiplicative	.block
+	bsr.w compileSingleTerm
+	tst.l d5
+	bne.w fail
+
+loop
+	bsr.w skipWhitespace
+	beq.w ok
+	moveq #0, d6
+	move.b (a0), d6
+	cmpi.b #'*', d6
+	beq.s operator
+	cmpi.b #'/', d6
+	beq.s operator
+	cmpi.b #'%', d6
+	beq.s operator
+	bra.w ok
+
+operator
+	move.l d6, -(sp)
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w compileSingleTerm
+	move.l (sp)+, d6
+	tst.l d5
+	bne.w fail
+	cmpi.b #'*', d6
+	beq.s multiply
+	cmpi.b #'/', d6
+	beq.s divide
+	moveq #runtime.EXPRVM_BINARY_MOD, d6
+	bra.s apply
+
+multiply
+	moveq #runtime.EXPRVM_BINARY_MULTIPLY, d6
+	bra.s apply
+
+divide
+	moveq #runtime.EXPRVM_BINARY_DIVIDE, d6
+
+apply
+	move.l d0, -(sp)
+	bsr.w emitApplyBinaryD6
+	move.l d0, d5
+	move.l (sp)+, d0
+	tst.l d5
+	bne.w fail
+	bra.w loop
+
+ok
+	moveq #0, d5
+	rts
+
+fail
+	tst.l d5
+	bne.s return
+	moveq #1, d5
+
+return
+	rts
+	.bend  ; compileMultiplicative
 
 compileSingleTerm	.block
 	movem.l d4, -(sp)
@@ -1002,6 +1064,12 @@ scanToken
 	beq.s tokenDelimiter
 	cmpi.b #'-', d1
 	beq.s tokenDelimiter
+	cmpi.b #'*', d1
+	beq.s tokenDelimiter
+	cmpi.b #'/', d1
+	beq.s tokenDelimiter
+	cmpi.b #'%', d1
+	beq.s tokenDelimiter
 	cmpi.b #'|', d1
 	beq.s tokenDelimiter
 	cmpi.b #'?', d1
@@ -1134,6 +1202,12 @@ loop
 	cmpi.b #'+', d1
 	beq.s endBeforeOperator
 	cmpi.b #'-', d1
+	beq.s endBeforeOperator
+	cmpi.b #'*', d1
+	beq.s endBeforeOperator
+	cmpi.b #'/', d1
+	beq.s endBeforeOperator
+	cmpi.b #'%', d1
 	beq.s endBeforeOperator
 	cmpi.b #'|', d1
 	beq.s endBeforeOperator

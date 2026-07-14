@@ -1,0 +1,26 @@
+[slice]
+schema_version = 2
+name = "native multiplicative expression parity"
+kind = "native-rust-parity"
+rust_reference = ["crates/opforge-vm/src/runtime_expr_parser.rs::parse_expression"]
+native_boundary = ["native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::compileMultiplicative", "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm::opcodeApplyBinary"]
+invariant = "Native scalar expressions evaluate multiplication, signed division, and modulo before addition/subtraction with Rust-compatible values."
+assertion_decision = "No runtime assertion: expression evaluation failures are valid external diagnostics; parser and evaluator status returns fail closed."
+expected_inputs = "Scalar 65c02 constant expressions using `*`, `/`, or `%` followed by additive syntax."
+expected_outputs = "Native CLI emits the same immediate-load bytes as the live Rust assembler for multiplication, signed division, and modulo fixtures."
+known_non_equivalences = "Shift, comparison, equality, bitwise, logical, and ternary precedence tiers remain outside this slice."
+fast_proof_command = "cargo test -p asm native_expression_multiplicative_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_expression_multiplicative_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_expression_multiplicative_rust_oracle"
+proof_level = "A"
+proves = "The live Rust assembler emits the expected bytes for the multiplication, signed-division, and modulo fixtures."
+does_not_prove = "Native parser/evaluator execution."
+
+[[tests]]
+name = "native_expression_multiplicative_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI and its output bytes match live Rust for multiplication, signed division, and modulo fixtures."
+does_not_prove = "Later expression-precedence tiers or divide-by-zero diagnostics."

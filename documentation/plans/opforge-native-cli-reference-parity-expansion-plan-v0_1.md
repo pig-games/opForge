@@ -694,6 +694,8 @@ landed” is not equivalent to “framework-closed.”
     - every canonical line is mapped, retained unchanged, or explicitly justified as CPU-spelling adaptation
     - no canonical file or canonical reference changes
     - every `.org` remains present and semantically equivalent
+  - Dependency note:
+    - fixture adaptation and source-mapping evidence may be prepared in this item, but Item 5.9 is finalized only after Item 6 supplies the required native expression-semantics parity for the retained CPU-neutral expressions and its Level D shard is green
 
 - [ ] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures

@@ -1254,6 +1254,32 @@ fail
 	rts
 	.bend  ; opasmEngineGetStatementTextMetadataV1
 
+; Return the original source text captured for one statement.
+;
+; Inputs:
+; - D0: statement index.
+;
+; Outputs:
+; - D0: source-text byte length (zero when unavailable).
+; - A0: source-text pointer when D0 is non-zero.
+; Clobbers: D1-D2/A0/CCR.
+opasmEngineGetStatementSourceTextV1	.block
+	moveq #0, d1
+	move.w d0, d1
+	add.w d1, d1
+	lea OpasmEngineStmtSourceLineLenTable.l, a0
+	moveq #0, d0
+	move.w 0(a0, d1.l), d0
+	beq.s done
+	move.l d1, d2
+	lsl.l #8, d2
+	lea OpasmEngineStmtSourceLineTextTable.l, a0
+	adda.l d2, a0
+
+done
+	rts
+	.bend  ; opasmEngineGetStatementSourceTextV1
+
 ; Return or replace one stored statement label name.
 ; Inputs: D0 = statement index; A0/D1 = replacement text/length for setter.
 ; Outputs: getter returns A0 = label text and D0 = label length.

@@ -216,12 +216,46 @@ checkEndn
 	cmpi.l #4, d4
 	beq.s compareEndn
 	cmpi.l #5, d4
-	bne.s checkConditional
+	bne.s checkModule
 compareEndn
 	moveq #0, d0
 	move.w d4, d0
 	lea EndnMnemonicText, a1
 	moveq #4, d1
+	bsr.w lineStartsWith
+	beq.s checkModule
+	bsr.w scopes.endScopeDirectiveV1
+	bne.w fail
+	bra.w success
+
+; A module owns an independent local symbol root so identical labels in
+; separate modules remain distinct in both passes.
+checkModule
+	cmpi.l #6, d4
+	beq.s compareModule
+	cmpi.l #7, d4
+	bne.s checkEndmodule
+compareModule
+	moveq #0, d0
+	move.w d4, d0
+	lea ModuleMnemonicText, a1
+	moveq #6, d1
+	bsr.w lineStartsWith
+	beq.s checkEndmodule
+	bsr.w scopes.beginModuleScopeV1
+	bne.w fail
+	bra.w success
+
+checkEndmodule
+	cmpi.l #9, d4
+	beq.s compareEndmodule
+	cmpi.l #10, d4
+	bne.s checkConditional
+compareEndmodule
+	moveq #0, d0
+	move.w d4, d0
+	lea EndmoduleMnemonicText, a1
+	moveq #9, d1
 	bsr.w lineStartsWith
 	beq.s checkConditional
 	bsr.w scopes.endScopeDirectiveV1
@@ -1973,6 +2007,24 @@ selectedSizeOk
 	bra.w done
 
 org
+	; Origin literals do not require an expression-service round trip.  Resolve
+	; the statement's already captured operand before falling back to the
+	; general evaluator, keeping consecutive module origins independent.
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
+	bsr.w parseDirectiveLiteralValue
+	beq.s orgOk
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementSourceTextV1
+	beq.s orgGeneralExpression
+	bsr.w skipLineWhitespace
+	bsr.w skipSourceHeadToken
+	bsr.w skipLineWhitespace
+	bsr.w parseDirectiveLiteralValue
+	beq.s orgOk
+
+orgGeneralExpression
 	moveq #2, d5
 	bsr.w readOperandValueForStatement
 	beq.s orgOk
@@ -2217,6 +2269,12 @@ prepareRequest
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w skipLineWhitespace
 	bsr.w trimLiteralFallbackTrailing
+	jsr scopes.resolveLabelValueV1
+	beq.w checkWidth
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w skipLineWhitespace
+	bsr.w trimLiteralFallbackTrailing
 	jsr compile_values.resolveBindingV1
 	beq.w checkWidth
 	movea.l OpasmDriverEvalFallbackPtr, a0
@@ -2224,12 +2282,6 @@ prepareRequest
 	bsr.w skipLineWhitespace
 	bsr.w trimLiteralFallbackTrailing
 	jsr compile_values.resolveSequenceExpressionV1
-	beq.w checkWidth
-	movea.l OpasmDriverEvalFallbackPtr, a0
-	move.l OpasmDriverEvalFallbackLen, d0
-	bsr.w skipLineWhitespace
-	bsr.w trimLiteralFallbackTrailing
-	jsr scopes.resolveLabelValueV1
 	beq.w checkWidth
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
@@ -3604,6 +3656,10 @@ evaluatePart
 	move.l d0, OpasmDriverEvalFallbackLen
 	beq.w fail
 	bsr.w parseDirectiveLiteralValue
+	beq.w evalPartOk
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w scopes.resolveLabelValueV1
 	beq.w evalPartOk
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
@@ -5064,6 +5120,12 @@ EndnamespaceMnemonicText
 
 EndnMnemonicText
 	.byte "endn", 0
+
+ModuleMnemonicText
+	.byte "module", 0
+
+EndmoduleMnemonicText
+	.byte "endmodule", 0
 
 DriverSelectorUnknownRawText
 	.byte "OTR901: selector unknown mnemonic", 0

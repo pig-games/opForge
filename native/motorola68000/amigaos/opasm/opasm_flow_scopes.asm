@@ -57,6 +57,18 @@ fail
 	rts
 	.bend  ; beginNamespaceScopeV1
 
+; Begin one top-level module-local scope.  Native CLI modules are independent
+; compilation roots, so a preceding module cannot contribute a prefix to the
+; next module's local symbols.
+; Inputs: D7.W = current statement index.
+; Outputs: D0 = 0 on success, 1 on malformed/capacity failure.
+; Clobbers: D0-D5/A0-A2/CCR.
+; CCR: reflects D0 on return.
+beginModuleScopeV1	.block
+	clr.w ScopeDepth
+	bra.w beginNamespaceScopeV1
+	.bend  ; beginModuleScopeV1
+
 ; Apply a scope close directive and skip it.
 ; Inputs: D7.W = current statement index.
 ; Outputs: D0 = status; D1 = 1; D2.W = next statement index.

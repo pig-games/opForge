@@ -774,6 +774,24 @@ landed” is not equivalent to “framework-closed.”
     - additive fixtures preserve the complete semantics of their canonical source and document why adaptation is necessary
     - tests state what they prove and do not prove
 
+- [x] Item 6.1: restore native module-local symbol scoping parity
+  - Source requirement or finding IDs: Item 7 Level D `module_basics.asm` failure: native pass one rejects the second module-local `VALUE` as a duplicate label
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - native module/symbol storage and lookup files
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - Level A full Rust CLI/module-preprocessor oracle for `module_basics.asm`
+    - exact Level D FS-UAE module-local symbol proof with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, and full Rust quality gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for module-local symbol scoping only
+  - Commit outcome:
+    - identical local labels in distinct modules do not collide in native CLI passes and match Rust output
+  - Definition of done:
+    - `module_basics.asm` matches Rust through the real native CLI
+    - macro tokenizer and statement-parser divergences remain separate remediation items
+
 - [ ] Item 7: add the module, macro, and statement opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for modules, imports, visibility, macros, statement definitions/expansion, and multi-file roots
   - Expected files:

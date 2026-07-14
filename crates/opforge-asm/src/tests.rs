@@ -34361,6 +34361,10 @@ fn native_flow_navigation_initializes_default_callback_contract() {
         workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
     )
     .expect("read native opasm driver");
+    let line_processor = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read native CLI line processor");
     let navigation = fs::read_to_string(
         workspace_root().join("native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm"),
     )
@@ -34372,6 +34376,19 @@ fn native_flow_navigation_initializes_default_callback_contract() {
             "move.w d0, d7",
             "move.w d7, d0",
             "jsr navigation.initializeStatementFlowV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "jsr directive_handlers.opforgeNativeCliParseModuleLine",
+            "move.l d0, state.NativeCliPrvmRouteStatus",
+            "clr.w state.NativeCliPrvmResultCount",
+            "jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine",
+            "jsr directive_handlers.opforgeNativeCliParseEndmoduleLine",
+            "move.l d0, state.NativeCliPrvmRouteStatus",
+            "clr.w state.NativeCliPrvmResultCount",
+            "jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine",
         ]
     ));
     assert!(source_contains_in_order(
@@ -35390,6 +35407,29 @@ fn opcore_scopes_rust_oracle_covers_canonical_qualification() {
 }
 
 #[test]
+fn opcore_module_basics_rust_oracle_covers_module_local_symbols() {
+    // Proof level A. The live Rust CLI establishes that equal local names in
+    // separate modules are legal and emit their module-local values. It does
+    // not execute the native 68020 implementation.
+    let input_path = workspace_root().join("examples/opcore/module_basics.asm");
+    let bin_path = create_temp_dir("opcore-module-basics-rust-oracle").join("module-basics.bin");
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--bin",
+        bin_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+    ]);
+    run_with_cli_with_context(&cli).expect("run Rust module-local symbol oracle");
+    let bytes = fs::read(bin_path).expect("read Rust module bytes");
+    assert_eq!(bytes.len(), 0x1001, "Rust preserves the module .org gap");
+    assert_eq!(bytes.first(), Some(&1));
+    assert!(bytes[1..0x1000].iter().all(|byte| *byte == 0));
+    assert_eq!(bytes.last(), Some(&2));
+}
+
+#[test]
 fn native_scope_source_tracks_stack_and_qualified_symbols() {
     // Proof level B. Native source owns bounded scope push/pop, pass reset,
     // definition qualification, and innermost-to-outer lookup. It does not
@@ -35424,6 +35464,17 @@ fn native_scope_source_tracks_stack_and_qualified_symbols() {
             "bsr.w scopes.endScopeDirectiveV1",
         ]
     ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "checkModule",
+            "lea ModuleMnemonicText, a1",
+            "bsr.w scopes.beginModuleScopeV1",
+            "checkEndmodule",
+            "lea EndmoduleMnemonicText, a1",
+            "bsr.w scopes.endScopeDirectiveV1",
+        ]
+    ));
     assert!(!driver.contains("bne.w scopes."));
     assert!(driver.contains("jsr scopes.qualifyStatementLabelIfScopedV1"));
     assert!(driver.contains("jsr scopes.resolveLabelValueV1"));
@@ -35434,6 +35485,8 @@ fn native_scope_source_tracks_stack_and_qualified_symbols() {
             "bsr.w pushFromStatementLabel",
             "beginNamespaceScopeV1\t.block",
             "bsr.w pushFromStatementOperand",
+            "beginModuleScopeV1\t.block",
+            "clr.w ScopeDepth",
             "endScopeDirectiveV1\t.block",
             "bsr.w popScope",
             "qualifyStatementLabelIfScopedV1\t.block",
@@ -35445,6 +35498,7 @@ fn native_scope_source_tracks_stack_and_qualified_symbols() {
     assert!(scope_flow.contains(".endsection"));
     assert!(scope_flow.contains(".endmodule"));
     assert!(engine.contains("opasmEngineSetStatementLabelTextV1\t.block"));
+    assert!(engine.contains("opasmEngineGetStatementSourceTextV1\t.block"));
 }
 
 fn native_scope_contract(stack: &[&str], raw: &str, defined: &[&str]) -> Option<String> {
@@ -35460,7 +35514,9 @@ fn native_scope_contract(stack: &[&str], raw: &str, defined: &[&str]) -> Option<
 
 fn native_scope_close_contract(stack: &mut Vec<&str>, directive: &str) -> Result<(), ()> {
     match directive {
-        ".endblock" | ".bend" | ".endnamespace" | ".endn" => stack.pop().map(|_| ()).ok_or(()),
+        ".endblock" | ".bend" | ".endnamespace" | ".endn" | ".endmodule" => {
+            stack.pop().map(|_| ()).ok_or(())
+        }
         _ => Err(()),
     }
 }
@@ -35497,6 +35553,64 @@ fn native_scope_contract_covers_nested_shadowing_and_close_aliases() {
         .expect("endnamespace pops");
     native_scope_close_contract(&mut endn_stack, ".endn").expect("endn pops");
     assert_eq!(endnamespace_stack, endn_stack);
+    assert_eq!(
+        native_scope_contract(&["alpha"], "VALUE", &["alpha.VALUE", "beta.VALUE"]),
+        Some("alpha.VALUE".to_string())
+    );
+    assert_eq!(
+        native_scope_contract(&["beta"], "VALUE", &["alpha.VALUE", "beta.VALUE"]),
+        Some("beta.VALUE".to_string())
+    );
+    let mut module_stack = vec!["alpha"];
+    native_scope_close_contract(&mut module_stack, ".endmodule").expect("endmodule pops");
+    assert!(module_stack.is_empty());
+}
+
+#[test]
+fn native_module_local_symbol_fs_uae() {
+    // Proof level D. FS-UAE runs the canonical module-basics source through
+    // the real native CLI. It proves module-local symbol separation only; it
+    // does not prove macro tokenization or statement expansion.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let root = workspace_root();
+    let source_path = root.join("examples/opcore/module_basics.asm");
+    let source = fs::read(&source_path).expect("read canonical module source");
+    let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&source_path, true)
+        .expect("full Rust module authority");
+    assert!(
+        diagnostics.is_empty(),
+        "Rust module diagnostics: {diagnostics:?}"
+    );
+    let rust = entries
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "module-basics",
+        cpu_id: "65c02",
+        source: source.as_slice(),
+        package_bytes: package.as_slice(),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
+        .expect("module-local symbol FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one module-local native run");
+            let run = &runs[0];
+            assert!(run.success, "native module-basics failed: {}", run.stdout);
+            let native = fs::read(
+                run.artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read native module bytes");
+            assert_eq!(native, rust, "native module-local bytes differ");
+        }
+    }
 }
 
 #[test]

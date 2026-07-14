@@ -1,0 +1,48 @@
+[slice]
+schema_version = 2
+name = "native module-local symbol scoping"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/preprocessor.rs::module preprocessing through the Rust CLI",
+  "examples/opcore/module_basics.asm"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliParseCurrentLine",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm::beginNamespaceScopeV1",
+  "native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm::endScopeDirectiveV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineRecordStatementLabelValueV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineResolveLabelValueV1"
+]
+invariant = "A module name scopes its local labels for storage and lookup, so equal local names in different modules do not collide."
+assertion_decision = "No runtime assertion: unmatched module closes and scope capacity exhaustion fail through the existing flow callback."
+expected_inputs = "The untouched canonical examples/opcore/module_basics.asm source with alpha.VALUE and beta.VALUE."
+expected_outputs = "The real native CLI accepts both VALUE definitions and emits bytes equal to the live Rust CLI."
+known_non_equivalences = "Macro tokenizer and statement-parser behavior remain outside this slice."
+fast_proof_command = "cargo test -p asm opcore_module_basics_rust_oracle_covers_module_local_symbols native_scope_contract_covers_nested_shadowing_and_close_aliases -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_module_local_symbol_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "opcore_module_basics_rust_oracle_covers_module_local_symbols"
+proof_level = "A"
+proves = "The live Rust CLI accepts duplicate local VALUE names in separate modules and emits canonical bytes."
+does_not_prove = "Native routing or 68020 execution."
+
+[[tests]]
+name = "native_scope_source_tracks_stack_and_qualified_symbols"
+proof_level = "B"
+proves = "Native source routes module open/close through the existing scoped storage and lookup path."
+does_not_prove = "Native execution or table contents."
+
+[[tests]]
+name = "native_scope_contract_covers_nested_shadowing_and_close_aliases"
+proof_level = "C"
+proves = "The host model distinguishes alpha.VALUE from beta.VALUE and treats endmodule as a scope close."
+does_not_prove = "Native 68020 behavior."
+
+[[tests]]
+name = "native_module_local_symbol_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the canonical module source through the native CLI with module-local symbol parity."
+does_not_prove = "Macro tokenizer or statement-expansion parity."

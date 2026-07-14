@@ -84,6 +84,9 @@ parseOnly
 	jsr line_text.opforgeNativeCliLineStartsWith
 	beq.w parseOnlyCheckModule
 	jsr directive_handlers.opforgeNativeCliParseEndmoduleLine
+	tst.l d0
+	bne.w parseOnlyStatus
+	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
 	bra.w parseOnlyStatus
 
 parseOnlyCheckModule
@@ -94,6 +97,9 @@ parseOnlyCheckModule
 	jsr line_text.opforgeNativeCliLineStartsWith
 	beq.w parseOnlyCheckUse
 	jsr directive_handlers.opforgeNativeCliParseModuleLine
+	tst.l d0
+	bne.w parseOnlyStatus
+	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
 	bra.w parseOnlyStatus
 
 parseOnlyCheckUse
@@ -330,8 +336,39 @@ checkOrgDirective
 
 	tst.w state.NativeCliPackagePipelineReady
 	beq.w sourceDirectiveFallback
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.EndmoduleDirectiveText, a1
+	moveq #10, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	bne.s routeModuleDirective
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.ModuleDirectiveText, a1
+	moveq #7, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	bne.s routeModuleDirective
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.UseDirectiveText, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	bne.s routeModuleDirective
+	tst.w state.NativeCliModuleDepth
+	bne.s recordActiveModuleSourceStatement
+
+routeModuleDirective
 	bsr.w opforgeNativeCliRouteParserModuleUseLine
 	bra.s haveDirectiveKind
+
+recordActiveModuleSourceStatement
+	moveq #-1, d0
+	move.l d0, state.NativeCliPrvmRouteStatus
+	clr.w state.NativeCliPrvmResultCount
+	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
+	tst.l d0
+	bne.w fail
+	bra.w done
 
 sourceDirectiveFallback
 	movea.l a4, a0
@@ -366,12 +403,18 @@ haveDirectiveKind
 	cmpi.w #constants.NCLI_PARSER_DIRECTIVE_MODULE, d0
 	bne.s checkEndmodule
 	jsr directive_handlers.opforgeNativeCliParseModuleLine
+	tst.l d0
+	bne.w return
+	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
 	bra.w return
 
 checkEndmodule
 	cmpi.w #constants.NCLI_PARSER_DIRECTIVE_ENDMODULE, d0
 	bne.s checkUse
 	jsr directive_handlers.opforgeNativeCliParseEndmoduleLine
+	tst.l d0
+	bne.w return
+	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
 	bra.w return
 
 checkUse
@@ -381,6 +424,20 @@ checkUse
 	bra.w return
 
 recordStatement
+	; `.org` is evaluated directly by opasm.  Preserve its source span rather
+	; than a parser result from a preceding module transition so each module's
+	; origin is evaluated from its own literal text.
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.OrgMnemonicText, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s recordParsedStatement
+	moveq #-1, d0
+	move.l d0, state.NativeCliPrvmRouteStatus
+	clr.w state.NativeCliPrvmResultCount
+
+recordParsedStatement
 	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
 	tst.l d0
 	bne.w fail

@@ -1,0 +1,27 @@
+[slice]
+schema_version = 2
+name = "native preprocessor bounded source re-entry"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/macro_processor.rs::MacroProcessor::expand_lines",
+  "crates/opforge-asm/src/preprocess.rs::AsmMacroProcessor::expand"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliBeginExpandedLineV1",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliEndExpandedLineV1",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliProcessExpandedLineV1"
+]
+invariant = "One bounded expanded source line can traverse the ordinary native CLI pipeline and then restore the caller's logical line exactly."
+assertion_decision = "No runtime assertion: this foundation reports bounded-frame failure through its status return; syntax-specific diagnostics are deferred to later preprocessor items."
+expected_inputs = "A caller-provided ordinary expanded line no longer than SOURCE_LINE_BUFFER_CAPACITY - 1 bytes."
+expected_outputs = "The existing line pipeline observes the expanded line; the original source bytes and length are restored after processing."
+known_non_equivalences = "Macro, segment, and statement syntax, recursive expansion, and exports are deferred to Items 7.2 through 7.7."
+fast_proof_command = "cargo test -p asm native_preprocessor_reentry_source_contract_is_bounded_and_restores_caller_line -- --nocapture"
+level_d_command = "Not applicable to this foundation: Item 7.1 exposes no CLI syntax before later items call the re-entry seam; the first semantic caller must provide a fail-closed FS-UAE proof in Item 7.2."
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_preprocessor_reentry_source_contract_is_bounded_and_restores_caller_line"
+proof_level = "B"
+proves = "The native implementation has a resettable one-frame preprocessor state and routes a staged expansion through the ordinary line processor before restoring the caller line."
+does_not_prove = "Macro, segment, statement, substitution, or FS-UAE behavior."

@@ -826,7 +826,7 @@ tables, bounded text, recursion depth, and AmigaOS calling conventions) must
 produce deterministic diagnostics rather than silently truncate. The active
 `AGENTS.md` remains binding during every item below.
 
-- [ ] Item 7.1: establish bounded native preprocessor storage and source re-entry
+- [x] Item 7.1: establish bounded native preprocessor storage and source re-entry
   - Source requirement or finding IDs: Item 7 macro and statement Level D failures; Rust `MacroProcessor::expand_lines` ownership boundary.
   - Expected files: `native/motorola68000/amigaos/opforge-cli/{state,session_init,line_processor,preprocessor}.asm`; one slice record; focused host tests.
   - Full quality gates: focused Level B/C storage and re-entry contract tests; native formatter; staged native-porting gate; full Rust quality gate.

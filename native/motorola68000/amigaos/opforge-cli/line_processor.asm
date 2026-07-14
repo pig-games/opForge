@@ -28,6 +28,7 @@
 	.use opforge.cli.line_text
 	.use opforge.cli.text_output
 	.use opforge.cli.copy
+	.use opforge.cli.preprocessor
 
 	.section code, kind=code
 	.pub
@@ -229,6 +230,25 @@ return
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliTokenizeCurrentLine
+
+; Re-enter the ordinary native line pipeline for one bounded expanded line.
+; Inputs: A0/D0 = expansion text/length; current source line is the caller frame.
+; Outputs: D0 = 0 on success, 1 on length/depth or pipeline failure.
+; Clobbers: D0-D1/A0-A1/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliProcessExpandedLineV1	.block
+	jsr preprocessor.opforgeNativeCliBeginExpandedLineV1
+	bne.s fail
+	bsr.w opforgeNativeCliTokenizeCurrentLine
+	move.l d0, d1
+	jsr preprocessor.opforgeNativeCliEndExpandedLineV1
+	move.l d1, d0
+	rts
+
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliProcessExpandedLineV1
 
 opforgeNativeCliParseCurrentLine	.block
 	movem.l d2-d7/a2-a4, -(sp)

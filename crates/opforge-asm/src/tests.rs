@@ -34405,6 +34405,48 @@ fn native_flow_navigation_initializes_default_callback_contract() {
     assert!(navigation.contains(".endmodule"));
 }
 
+#[test]
+fn native_preprocessor_reentry_source_contract_is_bounded_and_restores_caller_line() {
+    // Proof level B. Native source owns a single bounded expansion frame and
+    // routes its staged line through the ordinary CLI line processor. It does
+    // not prove macro syntax, substitution, or native 68020 execution.
+    let root = workspace_root();
+    let constants = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"),
+    )
+    .expect("read native CLI constants");
+    let preprocessor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"),
+    )
+    .expect("read native preprocessor");
+    let line_processor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read native CLI line processor");
+    assert!(constants.contains("NATIVE_PREPROCESS_EXPANSION_DEPTH_LIMIT = 1"));
+    assert!(source_contains_in_order(
+        &preprocessor,
+        &[
+            "opforgeNativeCliResetPreprocessorV1\t.block",
+            "opforgeNativeCliBeginExpandedLineV1\t.block",
+            "tst.w state.NativeCliPreprocessExpansionDepth",
+            "move.w #1, state.NativeCliPreprocessExpansionDepth",
+            "opforgeNativeCliEndExpandedLineV1\t.block",
+            "move.w d3, state.NativeCliSourceLineLen",
+            "clr.w state.NativeCliPreprocessExpansionDepth",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "opforgeNativeCliProcessExpandedLineV1\t.block",
+            "jsr preprocessor.opforgeNativeCliBeginExpandedLineV1",
+            "bsr.w opforgeNativeCliTokenizeCurrentLine",
+            "jsr preprocessor.opforgeNativeCliEndExpandedLineV1",
+        ]
+    ));
+}
+
 #[derive(Default)]
 struct NativeSequenceAssignmentContract {
     values: Vec<(String, Vec<u32>)>,

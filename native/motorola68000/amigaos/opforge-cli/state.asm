@@ -193,6 +193,17 @@ OpforgeNativeCliPrvmExprRequest
 OpforgeNativeCliPrvmExprResultSlot
 	.res byte, constants.PRVM_ROUTE_EXPR_RESULT_SIZE * constants.PRVM_ROUTE_EXPR_RESULT_CAPACITY
 
+NativeCliPreprocessStateStart
+NativeCliPreprocessExpansionDepth
+	.res word, 1
+NativeCliPreprocessSavedLineLen
+	.res word, 1
+NativeCliPreprocessSavedLine
+	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
+NativeCliPreprocessExpansionLine
+	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
+NativeCliPreprocessStateEnd
+
 NativeCliModuleUseStateStart
 NativeCliModuleCount
 	.res word, 1

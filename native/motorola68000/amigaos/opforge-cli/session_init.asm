@@ -9,6 +9,7 @@
 	.use opforge.cli.state
 	.use opforge.cli.strings
 	.use opforge.cli.copy
+	.use opforge.cli.preprocessor
 
 	.section code, kind=code
 	.pub
@@ -32,6 +33,7 @@ opforgeNativeCliInitModuleUseState	.block
 	lea state.NativeCliModuleUseStateStart, a0
 	move.l #constants.NATIVE_MODULE_USE_STATE_BYTES, d0
 	jsr copy.clearBytes
+	jsr preprocessor.opforgeNativeCliResetPreprocessorV1
 	jsr engine.resetStatementCollectionV1
 	movem.l (sp)+, d0-d1/a0
 	rts

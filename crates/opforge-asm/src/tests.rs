@@ -34447,6 +34447,104 @@ fn native_preprocessor_reentry_source_contract_is_bounded_and_restores_caller_li
     ));
 }
 
+#[test]
+fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
+    // Proof levels A/B/C. Rust establishes definition consumption; the native
+    // source contract verifies bounded header/body retention before ordinary
+    // tokenization. This does not prove invocation or 68020 execution.
+    let lines = vec![
+        "COPY .macro src, dst".to_string(),
+        "    lda .src".to_string(),
+        "    sta .dst".to_string(),
+        ".endmacro".to_string(),
+        "    .byte 7".to_string(),
+    ];
+    let mut rust_oracle = MacroProcessor::new();
+    assert_eq!(
+        rust_oracle.expand(&lines).expect("expand macro definition"),
+        vec!["    .byte 7"]
+    );
+
+    let root = workspace_root();
+    let constants =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"))
+            .expect("read native CLI constants");
+    let state = fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/state.asm"))
+        .expect("read native CLI state");
+    let preprocessor =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"))
+            .expect("read native preprocessor");
+    let line_processor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read native CLI line processor");
+    let source_reader =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/source_reader.asm"))
+            .expect("read native CLI source reader");
+
+    assert!(constants.contains("NATIVE_PREPROCESS_DEFINITION_CAPACITY = 8"));
+    assert!(constants.contains("NATIVE_PREPROCESS_BODY_LINE_CAPACITY = 8"));
+    assert!(source_contains_in_order(
+        &state,
+        &[
+            "NativeCliPreprocessDefinitionCount",
+            "NativeCliPreprocessActiveDefinition",
+            "NativeCliPreprocessDefinitionBodyCount",
+            "NativeCliPreprocessDefinitionHeaderLen",
+            "NativeCliPreprocessDefinitionBodyLen",
+            "NativeCliPreprocessDefinitionHeader",
+            "NativeCliPreprocessDefinitionBody",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &preprocessor,
+        &[
+            "opforgeNativeCliCaptureMacroDefinitionLineV1\t.block",
+            "jsr lineContainsDirective",
+            "cmpi.w #constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY, d2",
+            "move.w d3, 0(a2, d2.l)",
+            "opforgeNativeCliFinishMacroDefinitionsV1\t.block",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &preprocessor,
+        &[
+            "appendBodyLine\t.block",
+            "cmpi.w #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d3",
+            "move.w d4, 0(a2, d2.l)",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &preprocessor,
+        &[
+            "lineContainsDirective\t.block",
+            "movem.l d5/a3, -(sp)",
+            "yes",
+            "movem.l (sp)+, d5/a3",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "opforgeNativeCliTokenizeCurrentLine\t.block",
+            "jsr preprocessor.opforgeNativeCliCaptureMacroDefinitionLineV1",
+            "bmi.w fail",
+            "moveq #0, d0",
+            "rts",
+            "preprocessPass",
+            "jsr assembly_session.opforgeNativeCliRecordSourceLine",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source_reader,
+        &[
+            "checkModuleDepth",
+            "jsr preprocessor.opforgeNativeCliFinishMacroDefinitionsV1",
+            "bne.s close",
+        ]
+    ));
+}
+
 #[derive(Default)]
 struct NativeSequenceAssignmentContract {
     values: Vec<(String, Vec<u32>)>,

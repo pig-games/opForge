@@ -34,6 +34,14 @@
 	.pub
 
 opforgeNativeCliTokenizeCurrentLine	.block
+	jsr preprocessor.opforgeNativeCliCaptureMacroDefinitionLineV1
+	tst.l d0
+	beq.s preprocessPass
+	bmi.w fail
+	moveq #0, d0
+	rts
+
+preprocessPass
 	tst.w state.NativeCliIncludeDepth
 	beq.s record
 	jsr report.opforgeNativeCliEmitIncludeLineRecord

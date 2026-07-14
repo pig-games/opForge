@@ -834,7 +834,7 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: definition and expansion buffers reset per CLI run; an expanded ordinary line re-enters the existing pipeline without harness injection.
   - Definition of done: no macro or statement semantics are implemented yet; capacity/depth failure is deterministic and no source line is silently dropped.
 
-- [ ] Item 7.2: consume and store native macro definitions
+- [x] Item 7.2: consume and store native macro definitions
   - Source requirement or finding IDs: `macro_syntax.asm` tokenizer failure at macro-only `@` body text.
   - Expected files: native preprocessor/state/source routing; one slice record; focused macro-definition tests.
   - Full quality gates: Level A Rust macro-definition oracle; Level B/C native definition-boundary tests; native formatter; staged native-porting gate; full Rust quality gate.

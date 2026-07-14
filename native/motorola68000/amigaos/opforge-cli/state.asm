@@ -198,6 +198,20 @@ NativeCliPreprocessExpansionDepth
 	.res word, 1
 NativeCliPreprocessSavedLineLen
 	.res word, 1
+NativeCliPreprocessDefinitionCount
+	.res word, 1
+NativeCliPreprocessActiveDefinition
+	.res word, 1
+NativeCliPreprocessDefinitionBodyCount
+	.res word, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY
+NativeCliPreprocessDefinitionHeaderLen
+	.res word, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY
+NativeCliPreprocessDefinitionBodyLen
+	.res word, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY * constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY
+NativeCliPreprocessDefinitionHeader
+	.res byte, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY * constants.SOURCE_LINE_BUFFER_CAPACITY
+NativeCliPreprocessDefinitionBody
+	.res byte, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY * constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY * constants.SOURCE_LINE_BUFFER_CAPACITY
 NativeCliPreprocessSavedLine
 	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
 NativeCliPreprocessExpansionLine

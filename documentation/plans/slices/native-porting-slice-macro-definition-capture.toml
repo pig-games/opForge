@@ -1,0 +1,27 @@
+[slice]
+schema_version = 2
+name = "native preprocessor macro-definition capture"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/macro_processor.rs::MacroProcessor::expand_lines",
+  "examples/opcore/macro_syntax.asm::COPY/PAIR/TEXT/LOCAL definitions"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliCaptureMacroDefinitionLineV1",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliFinishMacroDefinitionsV1",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliTokenizeCurrentLine"
+]
+invariant = "A bounded `.macro` definition captures its full header and ordered body lines, consumes every definition line before source recording/tokenization, and rejects nested/mismatched, unterminated, or capacity-exceeding definitions."
+assertion_decision = "No runtime assertion: malformed and capacity cases return the existing deterministic frontend failure status; invocation diagnostics remain Item 7.3 work."
+expected_inputs = "A `.macro` header located at a token boundary, followed by at most eight source lines and a standalone `.endmacro`."
+expected_outputs = "Definition bytes and explicit lengths remain in bounded preprocessor state; only non-definition lines reach the existing native line pipeline."
+known_non_equivalences = "Macro name/parameter parsing, invocation, substitution, scope wrapping, recursive expansion, segments, and statements remain deferred to Items 7.3 through 7.7."
+fast_proof_command = "cargo test -p asm native_preprocessor_macro_definitions_are_consumed_and_bounded -- --nocapture"
+level_d_command = "Not applicable to definition capture alone: Item 7.2 intentionally has no macro invocation or native artifact output; Item 7.3 must supply the first fail-closed FS-UAE macro invocation proof."
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_preprocessor_macro_definitions_are_consumed_and_bounded"
+proof_level = "B"
+proves = "Rust consumes a simple macro definition before ordinary lines, while the native source captures bounded headers/body lengths, consumes definition lines before source recording, and fails an unterminated definition at EOF."
+does_not_prove = "Native macro invocation, substitution, scope wrapping, artifact parity, or FS-UAE execution."

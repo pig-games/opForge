@@ -845,6 +845,40 @@ produce deterministic diagnostics rather than silently truncate. The active
 - [ ] Item 7.3: expand macro invocations with Rust-compatible substitution and scope wrapping
   - Source requirement or finding IDs: `macro_syntax.asm` COPY/PAIR/TEXT/LOCAL forms; Rust `parse_macro_invocation`, `build_macro_args`, and `substitute_line`.
   - Expected files: a new macro-only MOS fixture and reference artifact that contains COPY/PAIR/TEXT/LOCAL but no `.segment`; native preprocessor/state/line routing; focused macro artifact and contract tests; one slice record.
+  - Execution phases (each phase is one focused commit; do not begin the next phase until the current phase has its focused proof and plan-compliance review):
+    - Phase 7.3a: add bounded invocation-frame state and reset semantics
+      - Rust reference: `MacroInvocation`, `MacroArgs`, and `MacroProcessor::expand_lines` invocation-frame lifetime.
+      - Native boundary: `opforge.cli.state` and `opforgeNativeCliResetPreprocessorV1`.
+      - Implement fixed-capacity selected-definition, body cursor, positional argument, full-list, and label buffers. Size the reset range exactly, initialize sentinel fields, and reject an active/nested frame rather than overwriting it.
+      - Focused proof: Level B state-layout/reset contract, including byte-count coverage and a no-silent-truncation capacity assertion.
+      - Commit outcome: every invocation attempt has one resettable, bounded frame; no macro lookup or expansion is added yet.
+    - Phase 7.3b: parse macro invocations and bind arguments
+      - Rust reference: `parse_macro_invocation`, `parse_macro_args`, `parse_macro_params`, and `build_macro_args`.
+      - Native boundary: a preprocessor-only invocation parser called before source recording/tokenization.
+      - Implement label-attached and indented `.NAME` forms, case-insensitive lookup of captured definitions, parenthesized and comma-leading argument lists, parameter defaults, named parameter slots, `.1` through `.9` positional slots, and a canonical full-list buffer. Preserve nested expression/quoted comma handling or fail deterministically before expansion; never let a recognized macro invocation fall through to PRVM.
+      - Focused proof: Level C host substitution-model cases for COPY, PAIR default binding, empty/extra/malformed arguments, and recognized-versus-ordinary directive routing.
+      - Commit outcome: a complete validated invocation frame is available to the expansion step, without emitting source lines.
+    - Phase 7.3c: substitute one captured macro body line into a bounded expansion buffer
+      - Rust reference: `substitute_line` in `macro_processor_args_subst.rs`.
+      - Native boundary: preprocessor-owned byte scanner and `NativeCliPreprocessExpansionLine`.
+      - Implement `.name`, `.{name}`, `.1` through `.9`, `@1` through `@9`, and `.@` replacement with Rust-compatible case-insensitive name lookup. Preserve non-matching text byte-for-byte; reject unterminated braced names, unknown required bindings, and output overflow deterministically.
+      - Focused proof: Level C table-driven substitution model covering named, braced, positional, at-positional, full-list, defaults, quoted commas, and capacity failure.
+      - Commit outcome: every stored body line can become one bounded ordinary source line, but is not yet routed through the frontend.
+    - Phase 7.3d: expand body lines through the ordinary native CLI path and wrap labeled calls
+      - Rust reference: `format_macro_block_start`, macro-body expansion, and nested `expand_lines` behavior.
+      - Native boundary: `opforgeNativeCliProcessExpandedLineV1` only; do not add macro semantics to PRVM, opasm, or the generic CLI parser.
+      - Emit `.block`/`.endblock` around macro expansion, attaching a caller label to `.block` exactly as Rust does. Route each substituted body line through the existing line processor, restore the caller line after each route, and enforce the declared recursion limit with a deterministic failure status.
+      - Focused proof: Level B/C re-entry and label-scope contract for LOCAL; recursion/second-frame failure must prove the caller frame and session state remain intact.
+      - Commit outcome: a recognized macro call is consumed and its ordinary expanded lines enter the existing source → tokenizer → PRVM → session path.
+    - Phase 7.3e: add and prove the macro-only MOS fixture
+      - Fixture: `examples/opcore/macro_invocation_native.asm`, containing COPY, PAIR, TEXT, and LOCAL only; `.segment` remains excluded for Item 7.4.
+      - References: matching `examples/reference/opcore/macro_invocation_native.{hex,lst}` generated solely from the live Rust CLI/reference workflow after a baseline reference-gate failure identifies the missing fixture files.
+      - Tests: Level A live Rust artifact oracle, exact named Level D FS-UAE test using the macro-only fixture and CLI-written native artifact comparison, with `--nocapture --test-threads=1`.
+      - Commit outcome: the isolated fixture produces byte-for-byte native CLI output matching Rust; this proof does not claim canonical `macro_syntax.asm` or segment support.
+    - Phase 7.3f: run closure gates and commit only the completed invocation slice
+      - Required gates: focused Level A/B/C tests; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; exact Item 7.3 Level D FS-UAE test; `scripts/workflow/run_native_68000_format_gate.sh`; `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`; `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`.
+      - Review evidence: `plan-compliance-reviewer` returns `PASS` for lookup, defaults, positional/named/full-list substitution, label wrapping, recursion failure, macro-only fixture scope, and no segment/statement/module-export semantics.
+      - Commit outcome: one focused Item 7.3 commit, excluding the canonical segment fixture, statement work, module/import export work, unrelated reference rewrites, and any harness-injected shortcut.
   - Full quality gates: Level A live Rust artifact oracle for the macro-only fixture; Level C substitution model; exact Level D FS-UAE proof for the macro-only fixture; native formatter; staged native-porting gate; full Rust quality gate.
   - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for invocation, defaults, positional/named/full-list substitution, and `.block` wrapping only.
   - Commit outcome: macro expansions re-enter ordinary native CLI processing and the macro-only fixture matches Rust.

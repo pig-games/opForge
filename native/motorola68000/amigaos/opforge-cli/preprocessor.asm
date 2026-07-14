@@ -21,9 +21,31 @@ opforgeNativeCliResetPreprocessorV1	.block
 	move.l #constants.NATIVE_PREPROCESS_STATE_BYTES, d0
 	jsr copy.clearBytes
 	move.w #-1, state.NativeCliPreprocessActiveDefinition
+	move.w #-1, state.NativeCliPreprocessInvocationDefinition
 	moveq #0, d0
 	rts
 	.bend  ; opforgeNativeCliResetPreprocessorV1
+
+; Reserve the one bounded macro invocation frame for a captured definition.
+; Inputs: D0 = zero-based definition index.
+; Outputs: D0 = 0 on success, 1 when the index is out of range or a frame is active.
+; Clobbers: D0/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliBeginMacroInvocationFrameV1	.block
+	cmpi.w #constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY, d0
+	bcc.s fail
+	tst.w state.NativeCliPreprocessInvocationDefinition
+	bpl.s fail
+	move.w d0, state.NativeCliPreprocessInvocationDefinition
+	clr.w state.NativeCliPreprocessInvocationArgCount
+	clr.w state.NativeCliPreprocessInvocationBodyIndex
+	moveq #0, d0
+	rts
+
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliBeginMacroInvocationFrameV1
 
 ; Consume one `.macro` definition line before tokenizer dispatch.
 ; Outputs: D0 = 0 passthrough, 1 consumed, -1 malformed/capacity failure.

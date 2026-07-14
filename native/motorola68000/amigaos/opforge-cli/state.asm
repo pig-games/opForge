@@ -202,6 +202,12 @@ NativeCliPreprocessDefinitionCount
 	.res word, 1
 NativeCliPreprocessActiveDefinition
 	.res word, 1
+NativeCliPreprocessInvocationDefinition
+	.res word, 1
+NativeCliPreprocessInvocationArgCount
+	.res word, 1
+NativeCliPreprocessInvocationBodyIndex
+	.res word, 1
 NativeCliPreprocessDefinitionBodyCount
 	.res word, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY
 NativeCliPreprocessDefinitionHeaderLen
@@ -212,6 +218,12 @@ NativeCliPreprocessDefinitionHeader
 	.res byte, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY * constants.SOURCE_LINE_BUFFER_CAPACITY
 NativeCliPreprocessDefinitionBody
 	.res byte, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY * constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY * constants.SOURCE_LINE_BUFFER_CAPACITY
+NativeCliPreprocessInvocationArgs
+	.res byte, constants.NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * constants.SOURCE_LINE_BUFFER_CAPACITY
+NativeCliPreprocessInvocationFullArgs
+	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
+NativeCliPreprocessInvocationLabel
+	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
 NativeCliPreprocessSavedLine
 	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
 NativeCliPreprocessExpansionLine

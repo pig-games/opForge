@@ -1,0 +1,26 @@
+[slice]
+schema_version = 2
+name = "native preprocessor bounded macro invocation frame"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/macro_processor.rs::MacroInvocation",
+  "crates/opforge-core/src/macro_processor.rs::MacroArgs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/state.asm::NativeCliPreprocessInvocationDefinition",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliResetPreprocessorV1"
+]
+invariant = "One native CLI session owns at most one resettable bounded macro invocation frame; a stale selected definition cannot survive into the next session, and an active or out-of-range frame request fails before any state is overwritten."
+assertion_decision = "No runtime assertion: the selected-definition sentinel and fixed capacity provide deterministic frame ownership; lookup and recursion diagnostics are deferred to later Item 7.3 phases."
+expected_inputs = "A newly initialized native CLI session before macro invocation lookup."
+expected_outputs = "A zeroed frame with a -1 selected-definition sentinel, nine positional argument buffers, one full-list buffer, and one label buffer."
+known_non_equivalences = "Invocation lookup, argument parsing/defaults, substitution, re-entry, scope wrapping, recursion diagnostics, artifact parity, and FS-UAE execution remain deferred to later Item 7.3 phases."
+fast_proof_command = "cargo test -p asm native_preprocessor_macro_invocation_frame_is_bounded_and_resettable -- --nocapture"
+level_d_command = "Not applicable to invocation-frame storage alone: this phase exposes no macro invocation syntax or artifact output; Phase 7.3e supplies the first fail-closed FS-UAE macro invocation proof."
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_preprocessor_macro_invocation_frame_is_bounded_and_resettable"
+proof_level = "B"
+proves = "The native source reserves exact bounded invocation-frame storage, resets its selected-definition sentinel with the preprocessor state, and rejects an active or out-of-range frame request before overwriting it."
+does_not_prove = "Macro lookup, arguments, substitution, source re-entry, scope wrapping, artifact parity, or FS-UAE behavior."

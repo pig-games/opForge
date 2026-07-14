@@ -34545,6 +34545,61 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
     ));
 }
 
+#[test]
+fn native_preprocessor_macro_invocation_frame_is_bounded_and_resettable() {
+    // Proof level B. The native state owns one bounded invocation frame whose
+    // selected definition sentinel is reset for every CLI session. This does
+    // not prove lookup, substitution, expansion, or native 68020 execution.
+    let root = workspace_root();
+    let constants =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"))
+            .expect("read native CLI constants");
+    let state = fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/state.asm"))
+        .expect("read native CLI state");
+    let preprocessor =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"))
+            .expect("read native preprocessor");
+
+    assert!(constants.contains("NATIVE_PREPROCESS_MACRO_ARG_CAPACITY = 9"));
+    assert!(constants.contains("NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT = 1"));
+    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 14"));
+    assert!(constants.contains("(NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY)"));
+    assert!(constants.contains("+ (4 * SOURCE_LINE_BUFFER_CAPACITY)"));
+    assert!(source_contains_in_order(
+        &state,
+        &[
+            "NativeCliPreprocessInvocationDefinition",
+            "NativeCliPreprocessInvocationArgCount",
+            "NativeCliPreprocessInvocationBodyIndex",
+            "NativeCliPreprocessInvocationArgs",
+            "NativeCliPreprocessInvocationFullArgs",
+            "NativeCliPreprocessInvocationLabel",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &preprocessor,
+        &[
+            "opforgeNativeCliResetPreprocessorV1\t.block",
+            "move.l #constants.NATIVE_PREPROCESS_STATE_BYTES, d0",
+            "jsr copy.clearBytes",
+            "move.w #-1, state.NativeCliPreprocessActiveDefinition",
+            "move.w #-1, state.NativeCliPreprocessInvocationDefinition",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &preprocessor,
+        &[
+            "opforgeNativeCliBeginMacroInvocationFrameV1\t.block",
+            "cmpi.w #constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY, d0",
+            "tst.w state.NativeCliPreprocessInvocationDefinition",
+            "bpl.s fail",
+            "move.w d0, state.NativeCliPreprocessInvocationDefinition",
+            "clr.w state.NativeCliPreprocessInvocationArgCount",
+            "clr.w state.NativeCliPreprocessInvocationBodyIndex",
+        ]
+    ));
+}
+
 #[derive(Default)]
 struct NativeSequenceAssignmentContract {
     values: Vec<(String, Vec<u32>)>,

@@ -815,6 +815,73 @@ landed” is not equivalent to “framework-closed.”
     - every assigned case is green or pauses for a separate remediation item
     - no harness-injected shortcut substitutes for the CLI path
 
+### Native preprocessor subsystem boundary
+
+The native preprocessor owns source-structure directives only: `.macro`,
+`.segment`, `.statement`, their matching end directives, argument substitution,
+and expansion back into the existing source-line → tokenizer → PRVM → session
+path. PRVM and opasm remain owners of ordinary statement parsing, expression
+evaluation, selection, encoding, scopes, and output. Native limits (fixed
+tables, bounded text, recursion depth, and AmigaOS calling conventions) must
+produce deterministic diagnostics rather than silently truncate. The active
+`AGENTS.md` remains binding during every item below.
+
+- [ ] Item 7.1: establish bounded native preprocessor storage and source re-entry
+  - Source requirement or finding IDs: Item 7 macro and statement Level D failures; Rust `MacroProcessor::expand_lines` ownership boundary.
+  - Expected files: `native/motorola68000/amigaos/opforge-cli/{state,session_init,line_processor,preprocessor}.asm`; one slice record; focused host tests.
+  - Full quality gates: focused Level B/C storage and re-entry contract tests; native formatter; staged native-porting gate; full Rust quality gate.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for bounded state/reset/re-entry only.
+  - Commit outcome: definition and expansion buffers reset per CLI run; an expanded ordinary line re-enters the existing pipeline without harness injection.
+  - Definition of done: no macro or statement semantics are implemented yet; capacity/depth failure is deterministic and no source line is silently dropped.
+
+- [ ] Item 7.2: consume and store native macro definitions
+  - Source requirement or finding IDs: `macro_syntax.asm` tokenizer failure at macro-only `@` body text.
+  - Expected files: native preprocessor/state/source routing; one slice record; focused macro-definition tests.
+  - Full quality gates: Level A Rust macro-definition oracle; Level B/C native definition-boundary tests; native formatter; staged native-porting gate; full Rust quality gate.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for `.macro/.endmacro` definition consumption only.
+  - Commit outcome: validated macro definition bodies never reach tokenizer or PRVM before invocation.
+  - Definition of done: names, parameter declarations, body order, comments, mismatch/unterminated errors, and capacity bounds are retained; invocation remains a later item.
+
+- [ ] Item 7.3: expand macro invocations with Rust-compatible substitution and scope wrapping
+  - Source requirement or finding IDs: `macro_syntax.asm` COPY/PAIR/TEXT/LOCAL forms; Rust `parse_macro_invocation`, `build_macro_args`, and `substitute_line`.
+  - Expected files: a new macro-only MOS fixture and reference artifact that contains COPY/PAIR/TEXT/LOCAL but no `.segment`; native preprocessor/state/line routing; focused macro artifact and contract tests; one slice record.
+  - Full quality gates: Level A live Rust artifact oracle for the macro-only fixture; Level C substitution model; exact Level D FS-UAE proof for the macro-only fixture; native formatter; staged native-porting gate; full Rust quality gate.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for invocation, defaults, positional/named/full-list substitution, and `.block` wrapping only.
+  - Commit outcome: macro expansions re-enter ordinary native CLI processing and the macro-only fixture matches Rust.
+  - Definition of done: `.name`, `.1`…`.9`, `@1`…`@9`, `.@`, label-attached calls, default values, recursion bounds, and deterministic errors match the declared Rust subset; canonical `macro_syntax.asm` remains reserved for Item 7.4.
+
+- [ ] Item 7.4: add native segment definition and expansion semantics
+  - Source requirement or finding IDs: `macro_syntax.asm` INLINE `.segment` form; Rust segment branch in `MacroProcessor::expand_lines`.
+  - Expected files: native preprocessor and tests; one slice record.
+  - Full quality gates: Level A live Rust `macro_syntax.asm` artifact oracle; focused Level C source model; exact Level D `macro_syntax.asm` FS-UAE proof; native formatter; staged native-porting gate; full Rust quality gate.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for segment expansion only.
+  - Commit outcome: `.segment/.endsegment` expands without macro scope wrapping and preserves label attachment semantics.
+  - Definition of done: the canonical INLINE segment output matches Rust; no statement-definition behavior is added.
+
+- [ ] Item 7.5: consume and store native statement definitions
+  - Source requirement or finding IDs: `statement_expansion.asm` parser failure at `.statement`.
+  - Expected files: native preprocessor/state; statement-signature representation; focused tests; one slice record.
+  - Full quality gates: Level A Rust statement-definition oracle; Level B/C signature-storage tests; native formatter; staged native-porting gate; full Rust quality gate.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for definition storage only.
+  - Commit outcome: `.statement/.endstatement` definitions are consumed before PRVM and retain literal/boundary/capture signature data.
+  - Definition of done: no invocation matching yet; malformed, nested, mismatched, unterminated, and capacity cases are deterministic.
+
+- [ ] Item 7.6: match and expand native statement invocations
+  - Source requirement or finding IDs: canonical LOAD, bracketed lda, move, and addi statement forms; Rust `asm_expand_statement_invocation`.
+  - Expected files: native preprocessor/statement matcher/routing; focused tests; one slice record.
+  - Full quality gates: Level A live Rust statement artifact oracle; Level C signature/capture model; exact Level D statement FS-UAE proof; native formatter; staged native-porting gate; full Rust quality gate.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for longest-keyword selection, literal/boundary/capture matching, substitution, and re-entry only.
+  - Commit outcome: matching statement invocations expand to ordinary native source statements with exact Rust bytes.
+  - Definition of done: `statement_expansion.asm` matches Rust through the real native CLI; unsupported signatures fail deterministically without corrupting the session.
+
+- [ ] Item 7.7: integrate preprocessor exports with native module/import flow
+  - Source requirement or finding IDs: Item 7 module/import/visibility and multi-file requirements; Rust `AsmMacroProcessor::{take_native_exports,inject_*}`.
+  - Expected files: native preprocessor, module/use flow, source graph tests, slice record.
+  - Full quality gates: Level A multi-file Rust oracle; Level C export/import model; exact Level D multi-file FS-UAE proof; native formatter; staged native-porting gate; full Rust quality gate.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for public/private export injection and aliases only.
+  - Commit outcome: module macro and statement exports are injected according to native `.use` selection and visibility rules.
+  - Definition of done: Item 7’s declared multi-file roots run through real native CLI usage; no generic CLI path gains CPU-specific semantics.
+
 - [ ] Item 8: add the section, region, linker, and output opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for sections, segments, regions, maps, metadata, alignment, linker placement, and CLI-selected output artifacts
   - Expected files:

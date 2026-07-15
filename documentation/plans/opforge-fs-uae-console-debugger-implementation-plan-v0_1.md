@@ -150,7 +150,7 @@ assembler semantics. Those are separate follow-on scopes.
     grammar, exits cleanly, and writes a deterministic transcript report. This
     proves console capture plumbing, not macro parity (Level E).
 
-- [ ] Item 5: Apply the console debugger to the macro hang and publish a reproducible report.
+- [x] Item 5: Apply the console debugger to the macro hang and publish a reproducible report.
   - Source requirement or finding IDs: Native macro fixture
     `examples/opcore/macro_invocation_native.asm`; Item 2 runner; Item 3
     controlled stop harness.
@@ -161,15 +161,16 @@ assembler semantics. Those are separate follow-on scopes.
     `scripts/workflow/run_native_68000_format_gate.sh` if native sources
     change; `scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`
     for report/workflow artifact changes.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns PASS
-    before commit.
-  - Commit outcome: One diagnostic-evidence commit containing no speculative
-    semantic fix.
-  - Definition of done: The report records FS-UAE version/configuration,
-    transcript hash/path, stop reason, PC/SR/D0-D7/A0-A7, stack words,
-    disassembly, and the exact source/session fixture. It identifies the first
-    non-returning routine or explicitly documents why the stock debugger cannot
-    do so.
+  - Plan-compliance review evidence: pending single-agent
+    `plan-compliance-reviewer` PASS before commit.
+  - Commit outcome: `documentation/plans/slices/opforge-fs-uae-macro-hang-console-report-v0_1.md`
+    records the reproducible stock-console result with no semantic fix.
+  - Definition of done: Complete. The report records FS-UAE
+    version/configuration, transcript hash/path, stop reason, PC/SR/D0-D7/A0-A7,
+    stack words, disassembly, and the exact source/session fixture. `Zl` found
+    zero segment lists, so the report explicitly explains why this stock
+    debugger cannot attribute the idle-loop PC to the first non-returning macro
+    routine.
 
 - [ ] Item 6: Fix the identified native invariant and confirm full macro parity.
   - Source requirement or finding IDs: Item 4 stop report; Rust

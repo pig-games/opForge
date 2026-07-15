@@ -84,7 +84,7 @@ assembler semantics. Those are separate follow-on scopes.
     debugger commands for register, stack, disassembly, continue/break, and
     quit; unsupported commands and terminal/GUI prerequisites are explicit.
 
-- [ ] Item 2: Prove or reject stock console activation through a PTY.
+- [x] Item 2: Prove or reject stock console activation through a PTY.
   - Source requirement or finding IDs: Item 1 command grammar; official
     `console_debugger` terminal prerequisite; explicit no-GUI-automation
     constraint.
@@ -93,15 +93,18 @@ assembler semantics. Those are separate follow-on scopes.
     and no native guest production sources.
   - Full quality gates: focused host test; `scripts/workflow/run_rust_quality_gate.sh`
     if Rust changes; `make workflow-gate` if workflow/docs change.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns PASS
-    before commit.
-  - Commit outcome: One feasibility-only commit. It records either a stable
-    terminal/PTY activation exchange or a reproducible finding that stock
-    FS-UAE requires manual `Cmd+D` entry in this environment.
-  - Definition of done: The result is explicit and machine-recorded. A failed
-    PTY activation does not block manual console use, but it blocks automated
-    command injection and redirects later items to transcript capture after
-    documented manual entry.
+  - Plan-compliance review evidence: pending single-agent
+    `plan-compliance-reviewer` PASS before commit.
+  - Commit outcome: `scripts/workflow/probe_fs_uae_console_debugger.py` creates
+    an opt-in PTY launch, generated config, raw and normalized transcript, and
+    JSON report. The 2026-07-15 eight-second run reports FS-UAE 3.1.66,
+    `manual-debugger-entry-required`, timeout, and complete cleanup; its raw
+    transcript SHA-256 is
+    `ba0d39ca261ba7d68de88eeaf2b995586981c15a864cd709946003ac507f9261`.
+  - Definition of done: Complete. The result is explicit and machine-recorded.
+    PTY startup is confirmed, but automatic command injection is rejected until
+    manual `Cmd+D` console entry; later items must preserve that manual outcome
+    rather than synthesize GUI input.
 
 - [ ] Item 3: Add an opt-in PTY FS-UAE console-debugger runner with bounded artifacts.
   - Source requirement or finding IDs: Item 1 debugger contract; existing

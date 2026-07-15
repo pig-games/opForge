@@ -34,6 +34,35 @@ The binary contains the UAE debugger help text and accepts the
 PTY runner must record the exact FS-UAE version and live transcript for every
 capture.
 
+## PTY feasibility result
+
+On 2026-07-15, `scripts/workflow/probe_fs_uae_console_debugger.py` launched
+the installed stock binary through a PTY for eight seconds with an otherwise
+unchanged smoke template and `console_debugger = 1`. Its generated Level E
+report recorded FS-UAE `3.1.66`, `entry = manual-debugger-entry-required`,
+`stop_reason = timeout`, and `cleanup = complete` (raw transcript SHA-256
+`ba0d39ca261ba7d68de88eeaf2b995586981c15a864cd709946003ac507f9261`).
+
+The transcript reached normal emulator initialization but did not show a UAE
+debugger prompt. This confirms the terminal/PTY launch path and rejects
+automatic command injection before macOS `Cmd+D` entry. The v0.1 runner must
+therefore preserve its manual-entry outcome and must not infer debugger access
+from startup output.
+
+The probe is explicitly gated:
+
+```sh
+OPFORGE_FS_UAE_CONSOLE_DEBUGGER_PROBE=1 \
+python3 scripts/workflow/probe_fs_uae_console_debugger.py \
+  --artifact-dir target/fs-uae-console-debugger-probe \
+  --timeout-seconds 8
+```
+
+It saves the generated config, raw PTY bytes, normalized transcript, and JSON
+report in the requested artifact directory. Raw capture is capped at 1 MiB; a
+cap hit reports `artifact-limit` and still performs process cleanup. It neither
+sends debugger commands nor automates `Cmd+D`.
+
 ## Launch contract
 
 The generated debug configuration is the existing smoke configuration plus:

@@ -106,7 +106,7 @@ assembler semantics. Those are separate follow-on scopes.
     manual `Cmd+D` console entry; later items must preserve that manual outcome
     rather than synthesize GUI input.
 
-- [ ] Item 3: Add an opt-in PTY FS-UAE console-debugger runner with bounded artifacts.
+- [x] Item 3: Add an opt-in PTY FS-UAE console-debugger runner with bounded artifacts.
   - Source requirement or finding IDs: Item 1 debugger contract; existing
     `FsUaeSmokeRun` lifecycle and cleanup contract.
   - Expected files: `crates/opforge-asm/src/fs_uae_smoke.rs`, focused tests in
@@ -114,15 +114,18 @@ assembler semantics. Those are separate follow-on scopes.
     `scripts/workflow/` only if Rust cannot safely own PTY lifecycle.
   - Full quality gates: focused host tests; `scripts/workflow/run_rust_quality_gate.sh`;
     `make workflow-gate` if workflow helper/docs change.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns PASS
-    before commit.
-  - Commit outcome: One host-tooling commit adding a separate environment gate,
-    unique per-run PTY/log paths, timeouts, raw and normalized transcript files,
-    and mandatory process-tree cleanup.
-  - Definition of done: The runner refuses to run without explicit opt-in,
-    launches FS-UAE with a generated config containing `console_debugger = 1`,
-    returns a structured result for completed/timeout/manual-intervention, and
-    never changes the normal smoke invocation.
+  - Plan-compliance review evidence: pending single-agent
+    `plan-compliance-reviewer` PASS before commit.
+  - Commit outcome: `scripts/workflow/run_fs_uae_console_debugger.py` adds a
+    separate `OPFORGE_FS_UAE_CONSOLE_DEBUGGER=1` gate, 1 MiB raw capture cap,
+    generated config, structured manual-entry/command-capture result, and
+    process-group cleanup. Its 2026-07-15 headless validation correctly reports
+    manual-entry timeout with no commands sent and complete cleanup.
+  - Definition of done: Complete. The runner refuses to run without explicit
+    opt-in, launches FS-UAE with a generated config containing
+    `console_debugger = 1`, bounds raw capture at 1 MiB, reports manual entry
+    separately from command capture, and never changes the normal smoke
+    invocation.
 
 - [ ] Item 4: Add a minimal native debug-contract stop harness and command script.
   - Source requirement or finding IDs: Item 1 grammar; approved native debug

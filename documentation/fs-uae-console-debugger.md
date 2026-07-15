@@ -151,6 +151,28 @@ console-debugger.report.json
 The report must never claim a PC/register value that was not parsed from the
 saved transcript. Missing values are represented by omitted fields, not zero.
 
+## Opt-in runner
+
+`scripts/workflow/run_fs_uae_console_debugger.py` is the bounded capture
+runner. It is separately gated by `OPFORGE_FS_UAE_CONSOLE_DEBUGGER=1`, requires
+a reviewed command file, and launches no normal smoke tests. It waits for the
+operator to focus FS-UAE and enter its console with `Cmd+D`; only after seeing
+the UAE debugger banner in the PTY transcript does it inject the command file.
+If entry never happens, the report retains
+`manual-debugger-entry-required`, `manual-entry-timeout`, and
+`commands_sent: false`.
+
+The parser accepts only read-only command forms: bare `r`, `fl`, `fd`, `z`,
+`Zl`, and `q`; bounded `g`, `t`, `H`, and `HH`; and `m`, `d`, and `Za` with
+their required address arguments. Write, register-mutation, breakpoint-add,
+watchpoint, disk-debug, and arbitrary monitor commands are rejected before
+FS-UAE is started. `scripts/workflow/fs_uae_console_debugger_readonly.commands`
+is the initial reviewed capture sequence. Its 2026-07-15 headless validation
+ran for eight seconds and wrote a complete-cleanup report with
+`manual-debugger-entry-required`, `manual-entry-timeout`, and
+`commands_sent: false`; this is the expected outcome without an operator
+pressing `Cmd+D`.
+
 ## Macro-hang investigation script
 
 Once a controlled stop can be entered, the first macro-hang collection is:

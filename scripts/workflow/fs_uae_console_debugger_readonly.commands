@@ -1,4 +1,7 @@
 # Safe diagnostic command sequence for a manually entered UAE debugger prompt.
 r
+d {pc} 16
+m {a7} 16
 fl
 H 32
+q

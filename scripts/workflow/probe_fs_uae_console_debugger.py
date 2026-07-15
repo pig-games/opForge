@@ -43,7 +43,10 @@ def normalized_transcript(raw: bytes) -> str:
 def entry_from_transcript(transcript: str) -> str:
     # A real debugger prompt would permit automation.  Otherwise the documented
     # macOS Cmd+D entry remains the only supported outcome for this probe.
-    return "pty-command" if "uae debugger" in transcript.lower() else "manual-debugger-entry-required"
+    lowered = transcript.lower()
+    if "uae debugger" in lowered or "activated debugger" in lowered or "\n> " in transcript:
+        return "pty-command"
+    return "manual-debugger-entry-required"
 
 
 def fs_uae_version(transcript: str) -> str:

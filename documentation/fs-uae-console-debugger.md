@@ -73,10 +73,19 @@ console_debugger = 1
 
 FS-UAE documents that the console debugger works only when FS-UAE is launched
 from a terminal. On macOS, `Cmd+D` (`Mod+D`) enters the console debugger. The
-first implementation must not synthesize this GUI shortcut. It should first
+default implementation must not synthesize this GUI shortcut. It should first
 attempt terminal/PTY command interaction; if interactive entry is still
 required, it must emit `manual-debugger-entry-required` and retain the PTY
 transcript rather than pretending the run was automated.
+
+An explicit user-authorized exception is available for a local diagnostic run:
+set `OPFORGE_FS_UAE_CONSOLE_DEBUGGER_AUTOMATE=1` and pass
+`--send-mod-d-after-seconds <n>` to the runner. It sends only `Cmd+D` using
+macOS Accessibility after the specified delay, records `automation: sent` or
+the system error in the report, and remains prohibited from CI and ordinary
+smoke runs. It requires macOS permission for `osascript` to send keystrokes;
+without it, the report records the failed Accessibility request and sends no
+debugger commands.
 
 The controller must also:
 
@@ -150,6 +159,24 @@ console-debugger.report.json
 
 The report must never claim a PC/register value that was not parsed from the
 saved transcript. Missing values are represented by omitted fields, not zero.
+
+## Controlled native harness proof
+
+The opt-in preparer assembles `debug_contract_harness` with
+`OPFORGE_DEBUG_CONTRACTS` and `OPFORGE_FS_UAE_CONSOLE_DEBUGGER_HARNESS`, mounts
+the Hunk at `Work:build/opforge_fsuae_smoke.hunk`, and creates the normal
+`Work:build/tkpkg_debug_cli.hunk` startup script. After its ordinary behavior
+and preservation checks pass, the test-only build emits
+`EVENT_CONSOLE_DEBUGGER_READY` and loops at `consoleDebuggerStopLoop`.
+
+On 2026-07-15, an authorized local capture stopped in that loop at
+`PC=0x078E7A54`; it recorded D0-D7/A0-A7, a PC disassembly, A7 stack dump,
+empty breakpoint list, one CPU-history entry (`BT.B -2` at the loop), and a
+clean debugger quit. The report recorded `entry=pty-command`,
+`commands_sent=true`, `automation=sent`, `cleanup=complete`, and raw
+transcript SHA-256
+`e4a92099cdc75c31649ff394a408e47bef46c69018f60b863161d24844519d50`.
+This is Level E plumbing proof only; it does not prove macro parity.
 
 ## Opt-in runner
 

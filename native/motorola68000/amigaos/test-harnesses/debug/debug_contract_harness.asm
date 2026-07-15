@@ -38,6 +38,21 @@ start	.block
 	jsr runPreservationChecks
 	tst.l d0
 	bne.s fail
+.ifdef OPFORGE_FS_UAE_CONSOLE_DEBUGGER_HARNESS
+	; Instrumentation point: controlled console-debugger test harness stop.
+	; Macro/routine used: DEBUG_EVENT_U32X4 / debugEventU32x4.
+	; Registers preserved: D0-D7/A0-A6 by the macro; this harness then loops.
+	; SR/CCR preserved: not relied on by the loop.
+	; Stack delta at return: zero; the loop has no stack traffic.
+	; Shared buffers touched: dedicated debug event buffer only.
+	; Why this cannot change branch decisions: test-harness-only build gate,
+	; reached only after all behavior and preservation checks have passed.
+	; Removal/stabilization plan: retain as the controlled FS-UAE console target.
+	moveq #0, d0
+	.DEBUG_EVENT_U32X4 contracts.EVENT_CONSOLE_DEBUGGER_READY
+consoleDebuggerStopLoop
+	bra.s consoleDebuggerStopLoop
+.endif
 	moveq #HARNESS_RETURN_OK, d0
 	rts
 

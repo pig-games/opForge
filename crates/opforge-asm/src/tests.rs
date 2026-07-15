@@ -291,6 +291,32 @@ fn native_debug_contract_fs_uae_executes_asserts_events_and_preservation() {
 }
 
 #[test]
+fn native_debug_contract_console_capture_prepares_mounted_harness() {
+    let Some(launch) =
+        crate::fs_uae_smoke::prepare_native_debug_contract_console_from_env(&workspace_root())
+            .expect("console debug-contract preparation should complete or skip")
+    else {
+        eprintln!("SKIP: OPFORGE_FS_UAE_CONSOLE_DEBUGGER is not set");
+        return;
+    };
+    assert!(launch.artifact_dir.is_dir());
+    assert!(launch.config_path.is_file());
+    assert!(launch.hunk_path.is_file());
+    assert!(launch.descriptor_path.is_file());
+    let harness_source = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm"),
+    )
+    .expect("read console debug-contract harness");
+    assert!(harness_source.contains("OPFORGE_FS_UAE_CONSOLE_DEBUGGER_HARNESS"));
+    assert!(harness_source.contains("EVENT_CONSOLE_DEBUGGER_READY"));
+    assert!(harness_source.contains("consoleDebuggerStopLoop"));
+    println!(
+        "OPFORGE_FS_UAE_CONSOLE_LAUNCH={}",
+        launch.descriptor_path.display()
+    );
+}
+
+#[test]
 fn native_debug_contract_cli_header_site_uses_one_safe_structured_event() {
     let root = workspace_root();
     let source = fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/run.asm"))

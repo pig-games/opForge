@@ -93,8 +93,9 @@ assembler semantics. Those are separate follow-on scopes.
     and no native guest production sources.
   - Full quality gates: focused host test; `scripts/workflow/run_rust_quality_gate.sh`
     if Rust changes; `make workflow-gate` if workflow/docs change.
-  - Plan-compliance review evidence: pending single-agent
-    `plan-compliance-reviewer` PASS before commit.
+  - Plan-compliance review evidence: single-agent
+    `plan-compliance-reviewer` PASS on 2026-07-15 after full-frame PC/SR/register
+    parser validation.
   - Commit outcome: `scripts/workflow/probe_fs_uae_console_debugger.py` creates
     an opt-in PTY launch, generated config, raw and normalized transcript, and
     JSON report. The 2026-07-15 eight-second run reports FS-UAE 3.1.66,
@@ -127,7 +128,7 @@ assembler semantics. Those are separate follow-on scopes.
     separately from command capture, and never changes the normal smoke
     invocation.
 
-- [ ] Item 4: Add a minimal native debug-contract stop harness and command script.
+- [x] Item 4: Add a minimal native debug-contract stop harness and command script.
   - Source requirement or finding IDs: Item 1 grammar; approved native debug
     framework; macro completed-definition hang.
   - Expected files: `native/motorola68000/amigaos/test-harnesses/debug/`,
@@ -135,13 +136,18 @@ assembler semantics. Those are separate follow-on scopes.
     required, `crates/opforge-asm/src/fs_uae_smoke.rs`, and focused tests.
   - Full quality gates: `scripts/workflow/run_native_68000_format_gate.sh`;
     focused harness assembly test; `scripts/workflow/run_rust_quality_gate.sh`.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns PASS
-    before commit.
-  - Commit outcome: One native diagnostic-harness commit that reaches a known
-    shared debug-contract event without changing production CLI control flow.
-  - Definition of done: The console script can stop on the controlled harness,
-    collect registers/stack/disassembly through the verified Item 1 grammar,
-    exit cleanly, and write a deterministic transcript fixture. This test
+  - Plan-compliance review evidence: pending single-agent
+    `plan-compliance-reviewer` PASS before commit.
+  - Commit outcome: The debug-only harness emits
+    `EVENT_CONSOLE_DEBUGGER_READY` after its ordinary contract checks, then
+    loops at `consoleDebuggerStopLoop`. The opt-in preparer mounts the real
+    Hunk and normal startup script. The 2026-07-15 authorized capture stopped
+    at `PC=0x078E7A54`, recorded registers/disassembly/A7 stack/history and an
+    empty breakpoint list, then quit cleanly; raw SHA-256 is
+    `e4a92099cdc75c31649ff394a408e47bef46c69018f60b863161d24844519d50`.
+  - Definition of done: Complete. The console script stops on the controlled
+    harness, collects registers/stack/disassembly through the verified command
+    grammar, exits cleanly, and writes a deterministic transcript report. This
     proves console capture plumbing, not macro parity (Level E).
 
 - [ ] Item 5: Apply the console debugger to the macro hang and publish a reproducible report.

@@ -3,6 +3,7 @@ use engine::OutputFormat as EngineOutputFormat;
 use engine::{default_cpu, run_assembly, AssemblyExecutionRequest, ExecutionMode};
 use package::encode_hierarchy_chunks_from_chunks;
 use registry::registry::ModuleRegistry;
+use serde_json::json;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -189,6 +190,13 @@ pub(crate) struct TkpkgDebugCliManifestCase<'a> {
     pub(crate) source: &'a [u8],
 }
 
+pub(crate) struct FsUaeConsoleLaunch {
+    pub(crate) artifact_dir: PathBuf,
+    pub(crate) config_path: PathBuf,
+    pub(crate) hunk_path: PathBuf,
+    pub(crate) descriptor_path: PathBuf,
+}
+
 pub(crate) struct OpforgeNativeCliFailureCase<'a> {
     pub(crate) name: &'a str,
     pub(crate) define: &'a str,
@@ -305,6 +313,123 @@ pub(crate) fn run_native_cli_debug_event_from_env(
             )))
         }
     };
+/// Assemble and mount the debug-contract harness without launching FS-UAE.
+/// The returned config is consumed only by the separately opt-in PTY runner.
+pub(crate) fn prepare_native_debug_contract_console_from_env(
+    workspace_root: &Path,
+) -> Result<Option<FsUaeConsoleLaunch>, String> {
+    if std::env::var("OPFORGE_FS_UAE_CONSOLE_DEBUGGER").as_deref() != Ok("1") {
+        return Ok(None);
+    }
+    if std::env::var(FS_UAE_CONFIG_TEMPLATE_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .is_none()
+    {
+        return Err(format!(
+            "{FS_UAE_CONFIG_TEMPLATE_ENV} must name the normal FS-UAE template before preparing a console capture"
+        ));
+    }
+
+    let source_path = workspace_root.join(FS_UAE_DEBUG_CONTRACT_SOURCE_PATH);
+    let artifact_dir = create_artifact_dir(workspace_root, "fs-uae-console-debug-contract")?;
+    let mounted_work_dir = artifact_dir.join(FS_UAE_MOUNTED_WORK_DIR_NAME);
+    fs::create_dir_all(mounted_work_dir.join("build")).map_err(|err| {
+        format!(
+            "create console harness Work directory {}: {err}",
+            mounted_work_dir.display()
+        )
+    })?;
+    let defines = [
+        "OPFORGE_DEBUG_CONTRACTS".to_string(),
+        "OPFORGE_FS_UAE_CONSOLE_DEBUGGER_HARNESS".to_string(),
+    ];
+    let include_paths = example_include_paths(workspace_root, FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME);
+    let module_paths = example_module_paths(workspace_root, FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME);
+    run_assembly(AssemblyExecutionRequest {
+        root_path: &source_path,
+        input_base: FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME,
+        defines: &defines,
+        include_paths: &include_paths,
+        module_paths: &module_paths,
+        pp_macro_depth: 64,
+        cpu_override: Some("68020"),
+        default_cpu: default_cpu(),
+        max_loop_iterations: 1000,
+        opasm_package_path: None,
+        out_dir: Some(&artifact_dir),
+        debug_conditionals: false,
+        tab_size: None,
+        output_format: EngineOutputFormat::Text,
+        go_addr: None,
+        bin_specs: &[] as &[BinOutputSpec],
+        fill_byte: 0xff,
+        fill_byte_set: false,
+        default_outputs: false,
+        labels_file: None,
+        label_output_format: CliLabelOutputFormat::Default,
+        dependency_output: None,
+        outfile_override: None,
+        list_name_override: None,
+        hex_name_override: None,
+        srec_name_override: None,
+        hunk_name_override: None,
+        header_title: "opForge FS-UAE console debugger harness",
+        output_sink: None,
+        source_provider: None,
+        execution_mode: ExecutionMode::Lockstep {
+            continuation_head: ContinuationHead::Vm,
+        },
+        collect_runtime_traces: true,
+        suppress_outputs: false,
+    })
+    .map_err(|err| format!("assemble console debug-contract harness: {}", err.summary()))?;
+    let hunk_path = generated_hunk_artifact_path(&artifact_dir, FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME);
+    if !hunk_path.is_file() {
+        return Err(format!(
+            "expected console harness Hunk at {}",
+            hunk_path.display()
+        ));
+    }
+    let mounted_hunk_path = mounted_work_dir.join(FS_UAE_MOUNTED_HUNK_ALIAS);
+    fs::copy(&hunk_path, &mounted_hunk_path).map_err(|err| {
+        format!(
+            "mount console harness {} at {}: {err}",
+            hunk_path.display(),
+            mounted_hunk_path.display()
+        )
+    })?;
+    stage_guest_script(
+        &mounted_work_dir,
+        format!("FailAt 999\nWork:{FS_UAE_MOUNTED_HUNK_ALIAS}\n").as_str(),
+    )?;
+    let config_path = maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir)?
+        .ok_or_else(|| "console harness requires generated FS-UAE config".to_string())?;
+    let descriptor_path = artifact_dir.join("console-debugger-launch.json");
+    let descriptor = serde_json::to_vec_pretty(&json!({
+        "schema_version": 1,
+        "mode": "fs-uae-console-debug-contract",
+        "proof_level": "E",
+        "fs_uae_binary": std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string()),
+        "config": config_path,
+        "hunk": hunk_path,
+        "work_mount": mounted_work_dir,
+    }))
+    .map_err(|err| format!("serialize console launch descriptor: {err}"))?;
+    fs::write(&descriptor_path, descriptor).map_err(|err| {
+        format!(
+            "write console launch descriptor {}: {err}",
+            descriptor_path.display()
+        )
+    })?;
+    Ok(Some(FsUaeConsoleLaunch {
+        artifact_dir,
+        config_path,
+        hunk_path,
+        descriptor_path,
+    }))
+}
+
     let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
     match run_example_smoke_with_extra_defines(
         workspace_root,

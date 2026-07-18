@@ -29,6 +29,7 @@
 	.use opforge.cli.text_output
 	.use opforge.cli.copy
 	.use opforge.cli.preprocessor
+	.use opforge.cli.preprocessor_expansion
 	.use opforge.cli.preprocessor_definitions
 	.use opforge.cli.preprocessor_invocation
 	.use opforge.cli.preprocessor_substitution
@@ -361,7 +362,7 @@ no
 ; Clobbers: D0-D1/A0-A1/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliProcessExpandedLineV1	.block
-	jsr preprocessor.opforgeNativeCliBeginExpandedLineV1.l
+	jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1.l
 	bne.w fail
 	; The substituted source must follow the ordinary frontend path.  In
 	; particular, a nested `.NAME` call re-enters macro recognition and fails
@@ -415,7 +416,7 @@ opforgeNativeCliProcessExpandedLineV1	.block
 	movem.l (sp)+, d1-d6/a0
 	move.w (sp)+, ccr
 .endif
-	jsr preprocessor.opforgeNativeCliEndExpandedLineV1.l
+	jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1.l
 	move.l (sp)+, d0
 	rts
 
@@ -433,7 +434,7 @@ fail
 ; Clobbers: D0-D1/A0-A1/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliProcessExpandedScopeLineV1	.block
-	jsr preprocessor.opforgeNativeCliBeginExpandedLineV1.l
+	jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1.l
 	bne.s fail
 	; `.block` and `.endblock` are frontend flow records, not package mnemonics.
 	; Preserve them through the existing source/session flow fallback; substituted
@@ -444,7 +445,7 @@ opforgeNativeCliProcessExpandedScopeLineV1	.block
 	clr.w state.NativeCliPrvmResultCount
 	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
 	move.l d0, -(sp)
-	jsr preprocessor.opforgeNativeCliEndExpandedLineV1.l
+	jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1.l
 	move.l (sp)+, d0
 	rts
 

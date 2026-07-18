@@ -34502,15 +34502,18 @@ fn native_preprocessor_reentry_source_contract_is_bounded_and_restores_caller_li
     let preprocessor =
         fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"))
             .expect("read native preprocessor");
+    let expansion = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_expansion.asm"),
+    )
+    .expect("read native expansion owner");
     let line_processor = fs::read_to_string(
         root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
     )
     .expect("read native CLI line processor");
     assert!(constants.contains("NATIVE_PREPROCESS_EXPANSION_DEPTH_LIMIT = 1"));
     assert!(source_contains_in_order(
-        &preprocessor,
+        &expansion,
         &[
-            "opforgeNativeCliResetPreprocessorV1\t.block",
             "opforgeNativeCliBeginExpandedLineV1\t.block",
             "tst.w state.NativeCliPreprocessExpansionDepth",
             "move.w #1, state.NativeCliPreprocessExpansionDepth",
@@ -34519,13 +34522,27 @@ fn native_preprocessor_reentry_source_contract_is_bounded_and_restores_caller_li
             "clr.w state.NativeCliPreprocessExpansionDepth",
         ]
     ));
+    assert!(preprocessor.contains("opforgeNativeCliResetPreprocessorV1\t.block"));
+    for routine in [
+        "opforgeNativeCliBeginExpandedLineV1\t.block",
+        "opforgeNativeCliEndExpandedLineV1\t.block",
+    ] {
+        assert!(
+            expansion.contains(routine),
+            "missing expansion routine: {routine}"
+        );
+        assert!(
+            !preprocessor.contains(routine),
+            "expansion routine must have exactly one owner: {routine}"
+        );
+    }
     assert!(source_contains_in_order(
         &line_processor,
         &[
             "opforgeNativeCliProcessExpandedLineV1\t.block",
-            "jsr preprocessor.opforgeNativeCliBeginExpandedLineV1",
+            "jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1",
             "jsr opforgeNativeCliTokenizeCurrentLine",
-            "jsr preprocessor.opforgeNativeCliEndExpandedLineV1",
+            "jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1",
             "opforgeNativeCliProcessExpandedScopeLineV1\t.block",
             "jsr assembly_session.opforgeNativeCliRecordSourceLine",
             "jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine",
@@ -34890,9 +34907,9 @@ fn native_preprocessor_macro_substitution_and_reentry_are_bounded() {
         &line_processor,
         &[
             "opforgeNativeCliProcessExpandedLineV1\t.block",
-            "jsr preprocessor.opforgeNativeCliBeginExpandedLineV1",
+            "jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1",
             "jsr opforgeNativeCliTokenizeCurrentLine",
-            "jsr preprocessor.opforgeNativeCliEndExpandedLineV1",
+            "jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1",
         ]
     ));
     assert!(!line_processor.contains("qualifyExpandedMacroLocalLabel"));

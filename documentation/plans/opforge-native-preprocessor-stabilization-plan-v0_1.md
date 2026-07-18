@@ -157,7 +157,7 @@ only in this artifact; it requires its own activated item/slice contracts.
   - Commit outcome: one ownership-only scanner module commit.
   - Definition of done: current token-boundary acceptance and malformed cases are unchanged; SP-002 remains partially closed.
 
-- [ ] Item 2.4: extract expansion staging into its owner module without semantic change
+- [x] Item 2.4: extract expansion staging into its owner module without semantic change
   - Source requirement or finding IDs: SP-002 and SP-003; existing macro expansion slice contract.
   - Expected files: `preprocessor.asm`, new `preprocessor_expansion.asm`, `line_processor.asm` only for changed imports/calls, module references, focused tests/slice metadata.
   - Full quality gates: `cargo test -p asm native_preprocessor_macro_substitution_and_reentry_are_bounded -- --nocapture`; Item 1 macro wrapper/validator; native formatter; staged native-porting; Rust quality; workflow gate.

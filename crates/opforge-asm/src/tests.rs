@@ -34572,23 +34572,109 @@ fn native_preprocessor_expanded_line_frontend_contract_routes_and_restores() {
         &[
             "opforgeNativeCliProcessExpandedLineV1\t.block",
             "jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1",
+            "jsr engine.opasmEngineGetSourceRecordCountV1",
+            "jsr engine.opasmEngineGetStatementCountV1",
             "jsr opforgeNativeCliTokenizeCurrentLine",
             "move.l d0, -(sp)",
             "jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1",
-            "move.l (sp)+, d0",
+            "or.l (sp)+, d0",
+            "jsr engine.opasmEngineRollbackCollectionV1",
             "opforgeNativeCliProcessExpandedScopeLineV1\t.block",
             "jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1",
+            "jsr engine.opasmEngineGetSourceRecordCountV1",
+            "jsr engine.opasmEngineGetStatementCountV1",
             "jsr assembly_session.opforgeNativeCliRecordSourceLine",
             "jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine",
             "move.l d0, -(sp)",
             "jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1",
-            "move.l (sp)+, d0",
+            "or.l (sp)+, d0",
+            "jsr engine.opasmEngineRollbackCollectionV1",
         ]
     ));
     assert!(line_processor
         .contains("moveq #1, d0\n\trts\n\t.bend  ; opforgeNativeCliProcessExpandedLineV1"));
     assert!(line_processor
         .contains("moveq #1, d0\n\trts\n\t.bend  ; opforgeNativeCliProcessExpandedScopeLineV1"));
+}
+
+#[test]
+fn native_preprocessor_expanded_line_failure_restores_caller_state() {
+    // Proof level B. This source contract proves the expanded-body route
+    // checkpoints engine-owned observable state and rolls it back after a
+    // route or cleanup failure. It does not inject a native tokenizer fault.
+    let root = workspace_root();
+    let engine =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm"))
+            .expect("read opasm engine");
+    let line_processor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read line processor");
+    let expansion = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_expansion.asm"),
+    )
+    .expect("read expansion owner");
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "opasmEngineRollbackCollectionV1\t.block",
+            "cmp.w OpasmEngineSourceRecordCount.l, d0",
+            "cmp.w OpasmEngineStmtCount.l, d1",
+            "cmp.w OpasmEngineImageByteCount.l, d2",
+            "move.w d0, OpasmEngineSourceRecordCount.l",
+            "move.w d1, OpasmEngineStmtCount.l",
+            "move.w d2, OpasmEngineImageByteCount.l",
+            "move.l d3, OpasmEngineSessionCurrentPc.l",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "opforgeNativeCliProcessExpandedLineV1\t.block",
+            "jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1",
+            "jsr engine.opasmEngineGetSourceRecordCountV1",
+            "jsr engine.opasmEngineGetStatementCountV1",
+            "jsr engine.opasmEngineGetImageByteCountV1",
+            "jsr engine.opasmEngineGetSessionCurrentPcV1",
+            "jsr opforgeNativeCliTokenizeCurrentLine",
+            "jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1",
+            "jsr preprocessor_expansion.opforgeNativeCliAbortExpandedLineV1",
+            "jsr engine.opasmEngineRollbackCollectionV1",
+            "movem.l (sp)+, d4-d7",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &expansion,
+        &[
+            "opforgeNativeCliAbortExpandedLineV1\t.block",
+            "move.w d3, state.NativeCliSourceLineLen",
+            "clr.w state.NativeCliPreprocessExpansionDepth",
+        ]
+    ));
+}
+
+#[test]
+fn native_preprocessor_generated_scope_failure_is_transactional() {
+    // Proof level B. Generated `.block`/`.endblock` recording shares the same
+    // engine checkpoint and restores its caller staging before exposing a
+    // failure. It does not prove a guest-side parser fault injection.
+    let root = workspace_root();
+    let line_processor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read line processor");
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "opforgeNativeCliProcessExpandedScopeLineV1\t.block",
+            "jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1",
+            "jsr engine.opasmEngineGetSourceRecordCountV1",
+            "jsr assembly_session.opforgeNativeCliRecordSourceLine",
+            "jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine",
+            "jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1",
+            "jsr engine.opasmEngineRollbackCollectionV1",
+        ]
+    ));
 }
 
 #[test]

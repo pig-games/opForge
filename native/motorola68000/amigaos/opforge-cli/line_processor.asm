@@ -23,6 +23,7 @@
 	.use opforge.cli.prvm_bridge
 
 	.use opforge.cli.assembly_session
+	.use opasm.amigaos.engine as engine
 
 	.use opforge.cli.report
 	.use opforge.cli.line_text
@@ -359,11 +360,21 @@ no
 ; Re-enter the ordinary native line pipeline for one bounded expanded line.
 ; Inputs: A0/D0 = expansion text/length; current source line is the caller frame.
 ; Outputs: D0 = 0 on success, 1 on length/depth or pipeline failure.
-; Clobbers: D0-D1/A0-A1/CCR.
+; Clobbers: D0-D3/A0-A1/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliProcessExpandedLineV1	.block
+	movem.l d4-d7, -(sp)
 	jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1.l
 	bne.w fail
+	jsr engine.opasmEngineGetSourceRecordCountV1
+	move.l d0, d4
+	jsr engine.opasmEngineGetStatementCountV1
+	move.l d0, d5
+	jsr engine.opasmEngineGetImageByteCountV1
+	move.l d0, d6
+	jsr engine.opasmEngineGetSessionCurrentPcV1
+	move.l d0, d7
+	movem.l d4-d7, -(sp)
 	; The substituted source must follow the ordinary frontend path.  In
 	; particular, a nested `.NAME` call re-enters macro recognition and fails
 	; against the active bounded frame instead of becoming a silent statement.
@@ -417,10 +428,27 @@ opforgeNativeCliProcessExpandedLineV1	.block
 	move.w (sp)+, ccr
 .endif
 	jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1.l
-	move.l (sp)+, d0
+	move.l d0, d2
+	or.l (sp)+, d0
+	movem.l (sp)+, d4-d7
+	tst.l d0
+	beq.s done
+	tst.l d2
+	beq.s rollback
+	jsr preprocessor_expansion.opforgeNativeCliAbortExpandedLineV1.l
+rollback
+	move.l d4, d0
+	move.l d5, d1
+	move.l d6, d2
+	move.l d7, d3
+	jsr engine.opasmEngineRollbackCollectionV1
+	moveq #1, d0
+done
+	movem.l (sp)+, d4-d7
 	rts
 
 fail
+	movem.l (sp)+, d4-d7
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliProcessExpandedLineV1
@@ -431,11 +459,21 @@ fail
 ; the source-only statement fallback.
 ; Inputs: A0/D0 = scope text/length; current source line is the caller frame.
 ; Outputs: D0 = 0 on success, 1 on staging or source-recording failure.
-; Clobbers: D0-D1/A0-A1/CCR.
+; Clobbers: D0-D3/A0-A1/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliProcessExpandedScopeLineV1	.block
+	movem.l d4-d7, -(sp)
 	jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1.l
 	bne.s fail
+	jsr engine.opasmEngineGetSourceRecordCountV1
+	move.l d0, d4
+	jsr engine.opasmEngineGetStatementCountV1
+	move.l d0, d5
+	jsr engine.opasmEngineGetImageByteCountV1
+	move.l d0, d6
+	jsr engine.opasmEngineGetSessionCurrentPcV1
+	move.l d0, d7
+	movem.l d4-d7, -(sp)
 	; `.block` and `.endblock` are frontend flow records, not package mnemonics.
 	; Preserve them through the existing source/session flow fallback; substituted
 	; macro body lines still use the full tokenizer → PRVM path above.
@@ -446,10 +484,27 @@ opforgeNativeCliProcessExpandedScopeLineV1	.block
 	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
 	move.l d0, -(sp)
 	jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1.l
-	move.l (sp)+, d0
+	move.l d0, d2
+	or.l (sp)+, d0
+	movem.l (sp)+, d4-d7
+	tst.l d0
+	beq.s done
+	tst.l d2
+	beq.s rollback
+	jsr preprocessor_expansion.opforgeNativeCliAbortExpandedLineV1.l
+rollback
+	move.l d4, d0
+	move.l d5, d1
+	move.l d6, d2
+	move.l d7, d3
+	jsr engine.opasmEngineRollbackCollectionV1
+	moveq #1, d0
+done
+	movem.l (sp)+, d4-d7
 	rts
 
 fail
+	movem.l (sp)+, d4-d7
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliProcessExpandedScopeLineV1

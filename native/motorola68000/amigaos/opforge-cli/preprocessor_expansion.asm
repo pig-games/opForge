@@ -71,5 +71,23 @@ fail
 	rts
 	.bend  ; opforgeNativeCliEndExpandedLineV1
 
+; Force restoration of the caller line after a failed normal cleanup.
+; Inputs: the saved-line slot produced by BeginExpandedLineV1.
+; Outputs: D0 = 0.
+; Clobbers: D0-D3/A0-A2/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliAbortExpandedLineV1	.block
+	lea state.NativeCliPreprocessSavedLine, a1
+	lea state.NativeCliSourceLine, a2
+	moveq #0, d0
+	move.w state.NativeCliPreprocessSavedLineLen, d0
+	move.l d0, d3
+	jsr copy.copyBytes
+	move.w d3, state.NativeCliSourceLineLen
+	clr.w state.NativeCliPreprocessExpansionDepth
+	moveq #0, d0
+	rts
+	.bend  ; opforgeNativeCliAbortExpandedLineV1
+
 	.endsection
 	.endmodule

@@ -198,7 +198,7 @@ only in this artifact; it requires its own activated item/slice contracts.
   - Commit outcome: one scanner-migration commit.
   - Definition of done: malformed input fails deterministically, macro CLI output is unchanged, and SP-005 fully closes.
 
-- [ ] Item 5: establish transactional expanded-line failure behavior
+- [x] Item 5: establish transactional expanded-line failure behavior
   - Source requirement or finding IDs: SP-007 (partial-frame/session corruption risk); SP-008 (fixed capacities lack one coherent contract).
   - Invariant: expanded-line staging/re-entry either commits a complete record or restores caller source, invocation frame, expansion depth, scope depth, recorded statement count, and output position before returning a deterministic failure.
   - Rust authority / native boundary: macro processor error behavior where comparable; preprocessor state, expansion route, scope/session state, and reset paths.

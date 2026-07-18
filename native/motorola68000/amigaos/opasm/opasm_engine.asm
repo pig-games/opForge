@@ -841,6 +841,30 @@ opasmEngineGetSourceRecordCountV1	.block
 	rts
 	.bend  ; opasmEngineGetSourceRecordCountV1
 
+; Restore the observable collection state to an earlier bounded checkpoint.
+; Inputs: D0.W = source records; D1.W = statements; D2.W = image bytes;
+;         D3.L = current PC. Each count must not exceed its current value.
+; Outputs: D0 = 0 on success, 1 when the checkpoint is not a rollback.
+; Clobbers: D0-D2/CCR.
+; CCR: reflects D0 on return.
+opasmEngineRollbackCollectionV1	.block
+	cmp.w OpasmEngineSourceRecordCount.l, d0
+	bhi.s fail
+	cmp.w OpasmEngineStmtCount.l, d1
+	bhi.s fail
+	cmp.w OpasmEngineImageByteCount.l, d2
+	bhi.s fail
+	move.w d0, OpasmEngineSourceRecordCount.l
+	move.w d1, OpasmEngineStmtCount.l
+	move.w d2, OpasmEngineImageByteCount.l
+	move.l d3, OpasmEngineSessionCurrentPc.l
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opasmEngineRollbackCollectionV1
+
 ; Return the source line number for one source record.
 ; Inputs: D0 = source record index.
 ; Outputs: D0 = source line number.

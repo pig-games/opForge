@@ -29,6 +29,7 @@
 	.use opforge.cli.text_output
 	.use opforge.cli.copy
 	.use opforge.cli.preprocessor
+	.use opforge.cli.preprocessor_definitions
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opforge.debug.contracts as debug_contracts
 	.use opforge.debug.events as debug_events
@@ -39,7 +40,7 @@
 	.pub
 
 opforgeNativeCliTokenizeCurrentLine	.block
-	jsr preprocessor.opforgeNativeCliCaptureMacroDefinitionLineV1
+	jsr preprocessor_definitions.opforgeNativeCliCaptureMacroDefinitionLineV1
 	tst.l d0
 	beq.s preprocessPass
 	bmi.w fail

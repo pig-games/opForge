@@ -34565,6 +34565,10 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
     let preprocessor =
         fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"))
             .expect("read native preprocessor");
+    let definitions = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm"),
+    )
+    .expect("read native preprocessor definition owner");
     let line_processor = fs::read_to_string(
         root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
     )
@@ -34588,17 +34592,22 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
         ]
     ));
     assert!(source_contains_in_order(
-        &preprocessor,
+        &definitions,
         &[
             "opforgeNativeCliCaptureMacroDefinitionLineV1\t.block",
-            "jsr lineContainsMacroDirective",
+            "jsr preprocessor.lineContainsMacroDirective",
             "cmpi.w #constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY, d2",
             "move.w d3, 0(a2, d2.l)",
             "opforgeNativeCliFinishMacroDefinitionsV1\t.block",
         ]
     ));
+    assert!(
+        !preprocessor.contains("opforgeNativeCliCaptureMacroDefinitionLineV1\t.block")
+            && !preprocessor.contains("opforgeNativeCliFinishMacroDefinitionsV1\t.block"),
+        "macro-definition capture must have exactly one owner"
+    );
     assert!(source_contains_in_order(
-        &preprocessor,
+        &definitions,
         &[
             "appendBodyLine\t.block",
             "cmpi.w #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d3",
@@ -34618,7 +34627,7 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
         &line_processor,
         &[
             "opforgeNativeCliTokenizeCurrentLine\t.block",
-            "jsr preprocessor.opforgeNativeCliCaptureMacroDefinitionLineV1",
+            "jsr preprocessor_definitions.opforgeNativeCliCaptureMacroDefinitionLineV1",
             "bmi.w fail",
             "moveq #0, d0",
             "rts",
@@ -34630,7 +34639,7 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
         &source_reader,
         &[
             "checkModuleDepth",
-            "jsr preprocessor.opforgeNativeCliFinishMacroDefinitionsV1",
+            "jsr preprocessor_definitions.opforgeNativeCliFinishMacroDefinitionsV1",
             "bne.s close",
         ]
     ));
@@ -34774,7 +34783,7 @@ fn native_preprocessor_macro_invocations_bind_before_prvm_routing() {
     assert!(source_contains_in_order(
         &line_processor,
         &[
-            "jsr preprocessor.opforgeNativeCliCaptureMacroDefinitionLineV1",
+            "jsr preprocessor_definitions.opforgeNativeCliCaptureMacroDefinitionLineV1",
             "preprocessPass",
             "jsr preprocessor.opforgeNativeCliParseMacroInvocationV1",
             "invocationPass",

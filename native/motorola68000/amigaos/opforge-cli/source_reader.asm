@@ -23,6 +23,7 @@
 	.use opforge.cli.directive_handlers
 	.use opforge.cli.line_text
 	.use opforge.cli.preprocessor
+	.use opforge.cli.preprocessor_definitions
 	.use opforge.cli.token_util
 	.use opforge.cli.tkpkg_control_block
 
@@ -282,7 +283,7 @@ fileEofRestoreClose
 	bra.s close
 
 checkModuleDepth
-	jsr preprocessor.opforgeNativeCliFinishMacroDefinitionsV1
+	jsr preprocessor_definitions.opforgeNativeCliFinishMacroDefinitionsV1
 	bne.s close
 	tst.w state.NativeCliIncludeDepth
 	bne.s successClose

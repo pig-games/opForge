@@ -121,7 +121,7 @@ only in this artifact; it requires its own activated item/slice contracts.
   - Commit outcome: one receipt-only follow-up commit naming the exact tested Item-1 source identity.
   - Definition of done: SP-001 fully closes and every later macro-affecting item consumes the retained receipt/wrapper rather than an optional individual Level D run.
 
-- [ ] Item 2: extract macro-definition capture into its owner module without semantic change
+- [x] Item 2: extract macro-definition capture into its owner module without semantic change
   - Source requirement or finding IDs: SP-002 (avoid a preprocessor god module); SP-003 (make shared frontend ownership visible).
   - Invariant: exactly the existing macro definitions, binding/substitution, scanner behaviour, expansion bytes, errors, capacity limits, and register/CCR/stack effects remain unchanged while code moves behind stable public entrypoints.
   - Rust authority / native boundary: existing macro processor subset; `preprocessor.asm` and `line_processor.asm` exports.

@@ -7,9 +7,10 @@ rust_reference = [
   "examples/opcore/macro_syntax.asm::COPY/PAIR/TEXT/LOCAL definitions"
 ]
 native_boundary = [
-  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliCaptureMacroDefinitionLineV1",
-  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliFinishMacroDefinitionsV1",
-  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliTokenizeCurrentLine"
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm::opforgeNativeCliCaptureMacroDefinitionLineV1",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm::opforgeNativeCliFinishMacroDefinitionsV1",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliTokenizeCurrentLine",
+  "native/motorola68000/amigaos/opforge-cli/source_reader.asm::checkModuleDepth"
 ]
 invariant = "A bounded `.macro` definition captures its full header and ordered body lines, consumes every definition line before source recording/tokenization, and rejects nested/mismatched, unterminated, or capacity-exceeding definitions."
 assertion_decision = "No runtime assertion: malformed and capacity cases return the existing deterministic frontend failure status; invocation diagnostics remain Item 7.3 work."
@@ -17,11 +18,19 @@ expected_inputs = "A `.macro` header located at a token boundary, followed by at
 expected_outputs = "Definition bytes and explicit lengths remain in bounded preprocessor state; only non-definition lines reach the existing native line pipeline."
 known_non_equivalences = "Macro name/parameter parsing, invocation, substitution, scope wrapping, recursive expansion, segments, and statements remain deferred to Items 7.3 through 7.7."
 fast_proof_command = "cargo test -p asm native_preprocessor_macro_definitions_are_consumed_and_bounded -- --nocapture"
-level_d_command = "Not applicable to definition capture alone: Item 7.2 intentionally has no macro invocation or native artifact output; Item 7.3 must supply the first fail-closed FS-UAE macro invocation proof."
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN=/Applications/FS-UAE.app/Contents/MacOS/fs-uae OPFORGE_FS_UAE_CONFIG_TEMPLATE=/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_TIMEOUT_MS=120000 OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=60000 scripts/workflow/run_native_macro_completion.sh --verify"
 level_d_fail_closed = true
+level_d_completion_wrapper = "scripts/workflow/run_native_macro_completion.sh --verify"
+level_d_manifest_validator = "scripts/workflow/check_native_macro_level_d_manifest.py"
 
 [[tests]]
 name = "native_preprocessor_macro_definitions_are_consumed_and_bounded"
 proof_level = "B"
-proves = "Rust consumes a simple macro definition before ordinary lines, while the native source captures bounded headers/body lengths, consumes definition lines before source recording, and fails an unterminated definition at EOF."
-does_not_prove = "Native macro invocation, substitution, scope wrapping, artifact parity, or FS-UAE execution."
+proves = "Rust consumes a simple macro definition before ordinary lines, while the native source proves the definition owner alone captures bounded headers/body lengths and its callers route capture before source recording and EOF completion through that owner."
+does_not_prove = "Native 68020 execution, semantic equivalence beyond the inspected ownership path, or artifact parity."
+
+[[tests]]
+name = "native_macro_completion_wrapper"
+proof_level = "D"
+proves = "The real native CLI under FS-UAE still passes the canonical macro fixture and nested-frame rejection harness after the ownership-only extraction."
+does_not_prove = "Segments, statements, recursive macro expansion, or diagnostics outside the macro completion boundary."

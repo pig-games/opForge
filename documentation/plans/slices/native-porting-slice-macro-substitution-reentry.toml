@@ -18,7 +18,8 @@ native_boundary = [
   "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliTokenizeCurrentLine",
   "native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm::beginBlockScopeV1"
 ]
-invariant = "Each active macro invocation emits Rust-compatible `.block`/`.endblock` scope records, routes each substituted body line through the ordinary native CLI tokenizer/PRVM/session path, and rejects a nested frame without overwriting the caller frame."
+invariant = "Each active macro invocation emits Rust-compatible `.block`/`.endblock` scope records. Substituted body lines route through tokenizer → PRVM → session; generated scope lines route through the documented source/session fallback. Both routes save the caller source in the expansion owner, close that frame before returning the route status, and reject a nested frame without overwriting the caller frame."
+frontend_contract = "preprocessor_expansion owns current-source replacement, saved-source bytes, current/saved line lengths, and expansion depth. line_processor owns route selection and statement-index advancement through the existing session APIs: ordinary lines invoke tokenizer → PRVM → session, while generated scope lines invoke source/session fallback. The route status is saved before EndExpandedLine and restored after it, so staging cleanup cannot hide tokenizer, PRVM, source-record, or statement-record failure. Output position and recorded-statement effects remain owned by the existing session/output APIs; this contract does not claim transactional rollback of those effects."
 assertion_decision = "No runtime assertion: fixed output capacity and the active-frame sentinel return deterministic failure before source recording can continue."
 expected_inputs = "An active bounded macro invocation frame with captured body lines and positional, full-list, named, and default parameter bindings, including a leading-dot macro call and a source .cpu 65c02 directive."
 expected_outputs = "A caller label attaches to the generated `.block`, anonymous blocks balance without a synthetic symbol prefix, substituted body lines use the existing source/tokenizer/PRVM/session path while restoring the caller line, and the macro fixture emits A5 12 85 34 01 02 03 03 00 09 00."
@@ -34,6 +35,12 @@ name = "native_preprocessor_macro_substitution_and_reentry_are_bounded"
 proof_level = "C"
 proves = "Rust confirms positional, at-positional, full-list, named, and label-scope semantics while the native source contract proves bounded substitution helpers and ordinary-path re-entry with caller restoration."
 does_not_prove = "Native 68020 execution, complete artifact parity, or FS-UAE behavior."
+
+[[tests]]
+name = "native_preprocessor_expanded_line_frontend_contract_routes_and_restores"
+proof_level = "B"
+proves = "The native source contract keeps ordinary tokenizer routing and structural source/session routing distinct, and restores the staged caller line before returning either route status."
+does_not_prove = "Native execution, tokenizer/session fault injection, or transactional rollback beyond the staged source frame."
 
 [[tests]]
 name = "examples_match_reference_outputs"

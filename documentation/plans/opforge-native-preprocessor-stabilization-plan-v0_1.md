@@ -165,7 +165,7 @@ only in this artifact; it requires its own activated item/slice contracts.
   - Commit outcome: one ownership-only expansion module commit.
   - Definition of done: source save/restore, depth rejection, ABI, and fixture bytes are unchanged; SP-002/SP-003 fully close.
 
-- [ ] Item 3: formalize the expanded-line frontend contract
+- [x] Item 3: formalize the expanded-line frontend contract
   - Source requirement or finding IDs: SP-004 (ordinary versus structural expanded-line routing is implicit).
   - Invariant: ordinary substituted lines use tokenizer → PRVM → session; generated structural lines use the documented source/session flow; each route restores caller source on every success/failure return and reports one deterministic status.
   - Rust authority / native boundary: `MacroProcessor::expand_lines` and block formatting; `opforgeNativeCliProcessExpandedLineV1`, `opforgeNativeCliProcessExpandedScopeLineV1`, begin/end staging, and session record APIs.

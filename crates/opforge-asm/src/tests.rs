@@ -34556,6 +34556,42 @@ fn native_preprocessor_reentry_source_contract_is_bounded_and_restores_caller_li
 }
 
 #[test]
+fn native_preprocessor_expanded_line_frontend_contract_routes_and_restores() {
+    // Proof level B. Ordinary substituted lines and generated scope lines have
+    // distinct frontend routes, but both must close the staged source frame
+    // before returning the route status. This is a source/ABI contract only;
+    // it does not prove native execution or rollback of later session state.
+    let root = workspace_root();
+    let line_processor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read native CLI line processor");
+
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "opforgeNativeCliProcessExpandedLineV1\t.block",
+            "jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1",
+            "jsr opforgeNativeCliTokenizeCurrentLine",
+            "move.l d0, -(sp)",
+            "jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1",
+            "move.l (sp)+, d0",
+            "opforgeNativeCliProcessExpandedScopeLineV1\t.block",
+            "jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1",
+            "jsr assembly_session.opforgeNativeCliRecordSourceLine",
+            "jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine",
+            "move.l d0, -(sp)",
+            "jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1",
+            "move.l (sp)+, d0",
+        ]
+    ));
+    assert!(line_processor
+        .contains("moveq #1, d0\n\trts\n\t.bend  ; opforgeNativeCliProcessExpandedLineV1"));
+    assert!(line_processor
+        .contains("moveq #1, d0\n\trts\n\t.bend  ; opforgeNativeCliProcessExpandedScopeLineV1"));
+}
+
+#[test]
 fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
     // Proof levels A/B/C. Rust establishes definition consumption; the native
     // source contract verifies bounded header/body retention before ordinary

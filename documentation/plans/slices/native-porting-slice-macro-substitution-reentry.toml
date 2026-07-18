@@ -23,6 +23,8 @@ known_non_equivalences = "This macro-only fixture deliberately excludes segments
 fast_proof_command = "cargo test -p asm native_preprocessor_macro_substitution_and_reentry_are_bounded -- --nocapture && cargo test examples_match_reference_outputs -- --nocapture"
 level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN=/Applications/FS-UAE.app/Contents/MacOS/fs-uae OPFORGE_FS_UAE_CONFIG_TEMPLATE=/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_TIMEOUT_MS=120000 OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=60000 cargo test -p asm native_macro_invocation_fixture_fs_uae -- --nocapture --test-threads=1"
 level_d_fail_closed = true
+level_d_completion_wrapper = "scripts/workflow/run_native_macro_completion.sh --verify"
+level_d_manifest_validator = "scripts/workflow/check_native_macro_level_d_manifest.py"
 
 [[tests]]
 name = "native_preprocessor_macro_substitution_and_reentry_are_bounded"

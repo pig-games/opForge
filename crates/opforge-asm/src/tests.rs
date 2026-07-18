@@ -34831,6 +34831,10 @@ fn native_preprocessor_macro_substitution_and_reentry_are_bounded() {
     let preprocessor =
         fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"))
             .expect("read native preprocessor");
+    let substitution = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_substitution.asm"),
+    )
+    .expect("read native substitution owner");
     let line_processor = fs::read_to_string(
         root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
     )
@@ -34844,7 +34848,11 @@ fn native_preprocessor_macro_substitution_and_reentry_are_bounded() {
         "appendInvocationNamed\t.block",
         "appendExpansionBytes\t.block",
     ] {
-        assert!(preprocessor.contains(routine), "missing {routine}");
+        assert!(substitution.contains(routine), "missing {routine}");
+        assert!(
+            !preprocessor.contains(routine),
+            "substitution helper must have exactly one owner: {routine}"
+        );
     }
     assert!(source_contains_in_order(
         &line_processor,
@@ -34852,7 +34860,7 @@ fn native_preprocessor_macro_substitution_and_reentry_are_bounded() {
             "opforgeNativeCliExpandActiveMacroV1\t.block",
             "bsr.w emitMacroBlockStart",
             "bsr.w opforgeNativeCliProcessExpandedScopeLineV1",
-            "jsr preprocessor.opforgeNativeCliSubstituteMacroBodyLineV1",
+            "jsr preprocessor_substitution.opforgeNativeCliSubstituteMacroBodyLineV1",
             "bsr.w opforgeNativeCliProcessExpandedLineV1",
             "bsr.w emitMacroBlockEnd",
             "bsr.w opforgeNativeCliProcessExpandedScopeLineV1",

@@ -7,6 +7,7 @@
 	.use opforge.cli.constants
 	.use opforge.cli.line_processor
 	.use opforge.cli.preprocessor
+	.use opforge.cli.preprocessor_substitution
 	.use opforge.cli.preprocessor_invocation
 	.use opforge.cli.state
 
@@ -204,7 +205,7 @@ localInvocationStatusOk
 	cmpi.b #' ', d2
 	bne.w pairBodyPayloadFail
 	moveq #0, d0
-	jsr preprocessor.opforgeNativeCliSubstituteMacroBodyLineV1
+	jsr preprocessor_substitution.opforgeNativeCliSubstituteMacroBodyLineV1
 	tst.l d0
 	bne.w pairSubstitutionFail
 	cmpi.l #18, d1
@@ -233,7 +234,7 @@ verifyPairSubstitutionLoop
 	cmpi.w #3, state.NativeCliPreprocessInvocationArgLen
 	bne.w invocationArgumentLengthFail
 	moveq #0, d0
-	jsr preprocessor.opforgeNativeCliSubstituteMacroBodyLineV1
+	jsr preprocessor_substitution.opforgeNativeCliSubstituteMacroBodyLineV1
 	tst.l d0
 	bne.w substitutionFail
 	cmpi.l #15, d1

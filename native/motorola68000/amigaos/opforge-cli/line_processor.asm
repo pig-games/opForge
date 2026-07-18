@@ -31,6 +31,7 @@
 	.use opforge.cli.preprocessor
 	.use opforge.cli.preprocessor_definitions
 	.use opforge.cli.preprocessor_invocation
+	.use opforge.cli.preprocessor_substitution
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opforge.debug.contracts as debug_contracts
 	.use opforge.debug.events as debug_events
@@ -525,7 +526,7 @@ bodyLoop
 	bhi.w fail
 	cmp.w d4, d0
 	bcc.s close
-	jsr preprocessor.opforgeNativeCliSubstituteMacroBodyLineV1.l
+	jsr preprocessor_substitution.opforgeNativeCliSubstituteMacroBodyLineV1.l
 	bne.w fail
 	move.w d1, state.NativeCliPreprocessExpansionLineLen
 	lea state.NativeCliPreprocessExpansionLine, a0

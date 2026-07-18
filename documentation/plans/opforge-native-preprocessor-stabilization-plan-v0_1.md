@@ -141,7 +141,7 @@ only in this artifact; it requires its own activated item/slice contracts.
   - Commit outcome: one ownership-only invocation module commit.
   - Definition of done: public parse result, fixed frame, errors, ABI, and macro Level D outputs are unchanged; SP-002 remains partially closed.
 
-- [ ] Item 2.2: extract macro substitution into its owner module without semantic change
+- [x] Item 2.2: extract macro substitution into its owner module without semantic change
   - Source requirement or finding IDs: SP-002; macro substitution/reentry slice contract.
   - Expected files: `preprocessor.asm`, new `preprocessor_substitution.asm`, module references, focused tests/slice metadata.
   - Full quality gates: `cargo test -p asm native_preprocessor_macro_substitution_and_reentry_are_bounded -- --nocapture`; Item 1 macro wrapper/validator; native formatter; staged native-porting; Rust quality; workflow gate.

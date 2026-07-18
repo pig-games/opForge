@@ -545,41 +545,54 @@ done
 	.bend  ; opforgeNativeCliFirstTokenLabelNeedsSourceFallback
 
 opforgeNativeCliRecordSourceStatementMnemonic	.block
+	; Callers may have used D3 while deriving label/operand state. Recompute the
+	; mnemonic width from the bounded source slice here so the stored token can
+	; never absorb operand text through a stale register value.
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	sub.l d4, d0
+	addq.l #1, d0
+	movea.l a2, a0
+	bsr.w opforgeNativeCliFallbackTokenLen
+	move.w d0, d3
 	move.l d4, state.NativeCliStmtMnemStart
 	move.l d4, d0
 	add.w d3, d0
 	move.l d0, state.NativeCliStmtMnemEnd
 	clr.l state.NativeCliStmtMnemOff
 	move.l d3, state.NativeCliStmtMnemLen
+	; The assembly driver dispatches directives by their canonical name (for
+	; example `byte`), while the source fallback sees the leading dot.  Keep
+	; source columns intact for operand spans but omit that sigil from stored
+	; mnemonic text and its logical token span.
+	cmpi.b #'.', (a2)
+	bne.s copyMnemonic
+	cmpi.w #1, d3
+	beq.s copyMnemonic
+	addq.l #1, state.NativeCliStmtMnemStart
+	subq.l #1, state.NativeCliStmtMnemLen
+	addq.l #1, a2
+	subq.w #1, d3
+
+copyMnemonic
 	lea buffers.tokenScratchBuffer, a1
 	movea.l a2, a0
 	move.w d3, d0
 	jsr copy.copyFixedString
 	clr.b (a1)
 	move.w #1, state.NativeCliStmtMnemFound
-	movea.l a2, a0
-	adda.w d3, a0
-	move.l d2, d0
-	sub.w d3, d0
-	jsr line_text.opforgeNativeCliSkipLineWhitespace
-	beq.s done
-	tst.b (a0)
-	beq.s done
-	cmpi.b #10, (a0)
-	beq.s done
-	cmpi.b #13, (a0)
-	beq.s done
-	cmpi.b #';', (a0)
-	beq.s done
-	moveq #0, d5
-	move.w state.NativeCliSourceLineLen, d5
-	sub.w d0, d5
-	addq.w #1, d5
+	; Source fallback has already identified the mnemonic span.  The remainder
+	; of the bounded line is its operand; the engine's operand copier owns
+	; whitespace/comment trimming.  Preserve this explicit one-based span.
+	move.l state.NativeCliStmtMnemEnd, d5
+	addq.l #1, d5
 	move.l d5, state.NativeCliStmtOperandStart
-	bsr.w opforgeNativeCliFallbackOperandLen
-	beq.s done
-	add.w d0, d5
-	move.l d5, state.NativeCliStmtOperandEnd
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	addq.l #1, d0
+	cmp.l d5, d0
+	bls.s done
+	move.l d0, state.NativeCliStmtOperandEnd
 
 done
 	rts

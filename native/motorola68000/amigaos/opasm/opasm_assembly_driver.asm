@@ -14,6 +14,11 @@
 	.use opasm.amigaos.flow_structs as structs
 	.use opasm.amigaos.flow_text_encoding as text_encoding
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	.use opforge.debug.contracts as debug_contracts
+	.use opforge.debug.events as debug_events
+	.include "debug_macros.i"
+.endif
 
 OPASM_LAYOUT_NAME_CAPACITY = 32
 OPASM_LAYOUT_REGION_CAPACITY = 8
@@ -2246,6 +2251,26 @@ storedText
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
+	.ifdef OPFORGE_MACRO_EXPR_EVAL_PROBE
+	; Instrumentation point: `.byte` text parser immediately after retrieving
+	; the statement's bounded operand metadata.
+	; Macro/routine used: DEBUG_EVENT_U32X4 / debugEventU32x4.
+	; Registers preserved: D0-D7/A0-A3 by the routine's existing save/restore.
+	; SR/CCR preserved: no branch consumes flags across this diagnostic block.
+	; Stack delta at return: zero.
+	; Shared buffers touched: dedicated debug event buffer only.
+	; Why this cannot change branch decisions: it is diagnostic-only and the
+	; metadata fetch status has already been consumed by the branch above.
+	; Removal/stabilization plan: remove after the byte-list input invariant is
+	; confirmed by the authoritative macro fixture.
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d3
+	moveq #0, d4
+	move.w d7, d4
+	moveq #0, d5
+	move.w d5, d5
+	moveq #0, d6
+	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_EXPR_REQUEST
+	.endif
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
 	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
 	bne.s haveText
@@ -3677,6 +3702,33 @@ evaluatePart
 	bsr.w serviceFramePtr
 	move.w OpasmDriverEvalRequestLen, d0
 	jsr tkpkg.dispatchEvaluateExpressionV1
+.ifdef OPFORGE_MACRO_EXPR_EVAL_PROBE
+	; Instrumentation point: expression service dispatch after the request is
+	; complete and before its status is consumed by the fallback branch.
+	; Macro/routine used: DEBUG_EVENT_U32X4 / debugEventU32x4.
+	; Registers preserved: D0-D6/A0 by the balanced save/restore below.
+	; SR/CCR preserved: restored before the following BNE consumes dispatch status.
+	; Stack delta at return: zero.
+	; Shared buffers touched: dedicated debug event buffer only.
+	; Why this cannot change branch decisions: the saved CCR is restored before
+	; the original branch, and this code exists only in the diagnostic build.
+	; Removal/stabilization plan: remove after the expression-return invariant is
+	; established by the authoritative FS-UAE fixture.
+	move.w ccr, -(sp)
+	movem.l d1-d6/a0, -(sp)
+	move.l d0, d4
+	move.l d1, d5
+	move.l d2, d6
+	moveq #0, d1
+	move.w OpasmDriverEvalRequestLen, d1
+	moveq #0, d2
+	move.w d5, d2
+	moveq #0, d3
+	move.w d6, d3
+	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_EXPR_REQUEST
+	movem.l (sp)+, d1-d6/a0
+	move.w (sp)+, ccr
+.endif
 	bne.s evalPartFallback
 	bsr.w readEvaluateExpressionValue
 	tst.l d3
@@ -4206,6 +4258,31 @@ numericOperand
 
 numericEnd
 	bsr.w readCommaOperandValueForStatement
+.ifdef OPFORGE_MACRO_EXPR_EVAL_PROBE
+	; Instrumentation point: numeric `.byte` operand parsed from the bounded
+	; statement metadata, before the original failure branch consumes D0.
+	; Macro/routine used: DEBUG_EVENT_U32X4 / debugEventU32x4.
+	; Registers preserved: D0-D6/A0 by the balanced save/restore below; D3 is
+	; preserved by debugEventU32x4 while carrying the parsed value.
+	; SR/CCR preserved: restored before the following BNE consumes parse status.
+	; Stack delta at return: zero.
+	; Shared buffers touched: dedicated debug event buffer only.
+	; Why this cannot change branch decisions: the saved CCR is restored before
+	; the original branch, and this code exists only in the diagnostic build.
+	; Removal/stabilization plan: remove after the numeric list boundary is
+	; confirmed by the authoritative macro fixture.
+	move.w ccr, -(sp)
+	movem.l d0-d2/d4-d6/a0, -(sp)
+	move.l d6, d1
+	move.l d0, d4
+	moveq #0, d5
+	move.w d7, d5
+	moveq #0, d6
+	move.w d1, d6
+	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_EXPR_RESULT
+	movem.l (sp)+, d0-d2/d4-d6/a0
+	move.w (sp)+, ccr
+.endif
 	bne.w fail
 	cmpi.l #$000000ff, d3
 	bhi.w fail
@@ -4626,6 +4703,28 @@ readEvaluateExpressionValue	.block
 	movem.l d0-d1/a0, -(sp)
 	bsr.w serviceEvalExtensionPtr
 	move.l 16(a0), d3
+.ifdef OPFORGE_MACRO_EXPR_EVAL_PROBE
+	; Instrumentation point: expression result read from the service extension.
+	; Macro/routine used: DEBUG_EVENT_U32X4 / debugEventU32x4.
+	; Registers preserved: D0-D6/A0 by the balanced save/restore below; D3 is
+	; restored by debugEventU32x4 after being copied into the event payload.
+	; SR/CCR preserved: restored before the following BNE consumes D3's result.
+	; Stack delta at return: zero.
+	; Shared buffers touched: dedicated debug event buffer only.
+	; Why this cannot change branch decisions: the saved CCR is restored before
+	; the original branch, and this code exists only in the diagnostic build.
+	; Removal/stabilization plan: remove after the expression-return invariant is
+	; established by the authoritative FS-UAE fixture.
+	move.w ccr, -(sp)
+	movem.l d0-d2/d4-d6/a0, -(sp)
+	move.l d3, d1
+	moveq #0, d2
+	moveq #0, d3
+	moveq #0, d4
+	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_EXPR_RESULT
+	movem.l (sp)+, d0-d2/d4-d6/a0
+	move.w (sp)+, ccr
+.endif
 	bne.s return
 	bsr.w serviceFramePtr
 	jsr tkpkg.readOutputLenV1
@@ -4782,6 +4881,7 @@ appendKindEvent	.block
 	movea.l sp, a0
 	bsr.w clearEventFrame
 	move.w d0, abi.OPASM_EVENT_KIND(a0)
+	move.w d7, abi.OPASM_EVENT_STMT_INDEX(a0)
 	movea.l a0, a2
 	bsr.w appendEventFrame
 	adda.l #abi.OPASM_EVENT_BYTES, sp

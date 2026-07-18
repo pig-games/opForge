@@ -1,0 +1,45 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Native macro invocation subset: no segment or statement definitions.
+----                                2  
+----                                3  	.cpu 65c02
+----    EQU 0800                    4  	.org $0800
+----                                5  
+----                                6  
+----                                7  
+----                                8  
+----                                9  
+----                               10  	.block
+0800    A5 12                      11  	lda $12
+0802    85 34                      12  	sta $34
+----                               13  	.endblock
+----                               14  	.block
+0804    01 02                      15  	.byte 1, 2
+----                               16  	.endblock
+----                               17  	.block
+0806    03                         18  	.byte 1+2
+0807    03 00                      19  	.word 1+2
+----                               20  	.endblock
+----                               21  foo .block
+----    EQU 0009                   22  local	.const 9
+----                               23  .endblock
+0809    09 00                      24  	.word foo.local
+----                               25  	.end
+
+Lines: 25  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+foo              0809      prv  lbl 
+foo.local        0009      prv  lbl 
+
+Total memory is 11 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+0800    A5 12 85 34 01 02 03 03 00 09 00

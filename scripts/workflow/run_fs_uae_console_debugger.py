@@ -152,6 +152,22 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--config", type=Path, help="prepared FS-UAE config with its Work mount")
     result.add_argument("--commands", type=Path, required=False)
     result.add_argument("--artifact-dir", type=Path, required=False)
+    result.add_argument(
+        "--start-file",
+        type=Path,
+        help="guest start marker; Cmd+D automation waits for a marker written after launch",
+    )
+    result.add_argument(
+        "--clear-start-file",
+        action="store_true",
+        help="remove the explicit stale guest start marker before launch",
+    )
+    result.add_argument(
+        "--after-start-delay-seconds",
+        type=float,
+        default=0.0,
+        help="additional wait after observing a fresh guest start marker before Cmd+D",
+    )
     result.add_argument("--manual-entry-timeout-seconds", type=float, default=60.0)
     result.add_argument("--post-command-timeout-seconds", type=float, default=10.0)
     result.add_argument("--send-mod-d-after-seconds", type=float)
@@ -179,6 +195,9 @@ def main() -> int:
     if min(args.manual_entry_timeout_seconds, args.post_command_timeout_seconds) <= 0:
         print("timeouts must be positive", file=sys.stderr)
         return 2
+    if args.after_start_delay_seconds < 0:
+        print("--after-start-delay-seconds cannot be negative", file=sys.stderr)
+        return 2
     if args.send_mod_d_after_seconds is not None:
         if args.send_mod_d_after_seconds < 0:
             print("--send-mod-d-after-seconds cannot be negative", file=sys.stderr)
@@ -190,6 +209,15 @@ def main() -> int:
     if not args.binary.is_file() or not os.access(args.binary, os.X_OK) or not source_config.is_file():
         print("FS-UAE binary or config template is unavailable", file=sys.stderr)
         return 2
+    if args.clear_start_file:
+        if args.start_file is None:
+            print("--clear-start-file requires --start-file", file=sys.stderr)
+            return 2
+        try:
+            args.start_file.unlink(missing_ok=True)
+        except OSError as error:
+            print(f"remove stale guest start marker {args.start_file}: {error}", file=sys.stderr)
+            return 2
 
     artifact_dir = args.artifact_dir or Path("target") / f"fs-uae-console-debugger-{int(time.time())}"
     artifact_dir.mkdir(parents=True, exist_ok=False)
@@ -207,6 +235,8 @@ def main() -> int:
     stop_reason = "manual-entry-timeout"
     commands_sent = False
     automation = "not-requested"
+    guest_start_observed = False
+    guest_start_observed_at: float | None = None
     received_signal: int | None = None
 
     def record_signal(signum: int, _frame: object) -> None:
@@ -218,17 +248,60 @@ def main() -> int:
     automation_deadline = (time.monotonic() + args.send_mod_d_after_seconds
                            if args.send_mod_d_after_seconds is not None else None)
     deadline = time.monotonic() + args.manual_entry_timeout_seconds
+    # Mounted Amiga volumes commonly have coarse (and sometimes rounded-down)
+    # timestamps. A marker removed immediately before launch is therefore
+    # authoritative once it reappears; comparing it to host nanoseconds is not.
+    start_file_was_absent = args.start_file is not None and not args.start_file.exists()
+    launch_wall_time_ns = time.time_ns()
     try:
         child = subprocess.Popen([str(args.binary), str(config_path)], stdin=slave_fd, stdout=slave_fd,
                                  stderr=slave_fd, start_new_session=True)
         os.close(slave_fd)
         slave_fd = -1
         while received_signal is None and time.monotonic() < deadline:
-            if automation_deadline is not None and time.monotonic() >= automation_deadline:
+            if args.start_file is not None and not guest_start_observed:
+                try:
+                    guest_start_observed = start_file_was_absent or (
+                        args.start_file.stat().st_mtime_ns >= launch_wall_time_ns
+                    )
+                    if guest_start_observed:
+                        guest_start_observed_at = time.monotonic()
+                except FileNotFoundError:
+                    pass
+            automation_ready = (
+                args.start_file is None
+                or (guest_start_observed_at is not None
+                    and time.monotonic() >= guest_start_observed_at + args.after_start_delay_seconds)
+            )
+            if (automation_deadline is not None and automation_ready
+                    and time.monotonic() >= automation_deadline):
                 try:
                     subprocess.run(
-                        ["osascript", "-e", 'tell application "FS-UAE" to activate',
-                         "-e", 'tell application "System Events" to key code 2 using command down'],
+                        [
+                            "osascript",
+                            "-e",
+                            'tell application "FS-UAE" to activate',
+                            "-e",
+                            "delay 0.5",
+                            "-e",
+                            'tell application "System Events"',
+                            "-e",
+                            'tell process "FS-UAE"',
+                            "-e",
+                            "try",
+                            "-e",
+                            "click window 1",
+                            "-e",
+                            "end try",
+                            "-e",
+                            "end tell",
+                            "-e",
+                            "delay 0.2",
+                            "-e",
+                            "key code 2 using command down",
+                            "-e",
+                            "end tell",
+                        ],
                         check=True,
                         capture_output=True,
                         text=True,
@@ -320,6 +393,9 @@ def main() -> int:
         "stop_reason": stop_reason,
         "commands_sent": commands_sent,
         "automation": automation,
+        "guest_start_file": None if args.start_file is None else str(args.start_file),
+        "guest_start_observed": guest_start_observed,
+        "after_start_delay_seconds": args.after_start_delay_seconds,
         "host_signal": received_signal,
         "config": config_path.name,
         "raw_transcript": raw_path.name,

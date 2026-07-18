@@ -125,7 +125,6 @@ copyName
 	clr.w StructFieldCount.l
 	clr.l StructSize.l
 	moveq #0, d0
-	bra.s return
 fail
 	moveq #1, d0
 return

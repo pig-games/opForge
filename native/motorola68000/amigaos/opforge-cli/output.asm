@@ -45,7 +45,7 @@ openPrg
 openSelected
 	jsr dos.openOutput
 	tst.l d0
-	beq.s fail
+	beq.w fail
 	move.l d0, d4
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, state.NativeCliOutputFormat
 	beq.s buildHex

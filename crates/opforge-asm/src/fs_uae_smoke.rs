@@ -34,7 +34,6 @@ const FS_UAE_DEFAULT_EXIT_CODE_FILE: &str = "opforge_fsuae_smoke.exitcode";
 const FS_UAE_DEFAULT_TIMEOUT_MS: u64 = 300_000;
 const FS_UAE_DEFAULT_POLL_MS: u64 = 250;
 const FS_UAE_DEFAULT_POST_START_TIMEOUT_MS: u64 = 300_000;
-const FS_UAE_CAPTURE_EXIT_GRACE_MS: u64 = 30_000;
 const FS_UAE_LAUNCHER_HANDOFF_GRACE_MS: u64 = 5_000;
 const FS_UAE_LAUNCHER_STDOUT_FILE: &str = "fs_uae_launcher.stdout.log";
 const FS_UAE_LAUNCHER_STDERR_FILE: &str = "fs_uae_launcher.stderr.log";
@@ -53,6 +52,8 @@ pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE: &str =
     "OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE: &str =
     "OPFORGE_FS_UAE_NATIVE_CLI_65C02_OUTPUT";
+pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_MACRO_DEBUG_DEFINE: &str =
+    "OPFORGE_FS_UAE_NATIVE_CLI_MACRO_DEBUG";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE: &str =
     "OPFORGE_FS_UAE_NATIVE_CLI_ITEM10_INCLUDE_OUTPUT";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_MISSING_INCLUDE_DEFINE: &str =
@@ -129,6 +130,15 @@ const FS_UAE_DEBUG_CONTRACT_SOURCE_PATH: &str =
 const FS_UAE_CLI_DEBUG_EVENT_EXAMPLE_NAME: &str = "cli_debug_event_harness";
 const FS_UAE_CLI_DEBUG_EVENT_SOURCE_PATH: &str =
     "native/motorola68000/amigaos/test-harnesses/debug/cli_debug_event_harness.asm";
+const FS_UAE_MACRO_CLI_DEBUG_EVENT_HARNESS_NAME: &str = "macro_cli_debug_event_harness";
+const FS_UAE_MACRO_CLI_DEBUG_EVENT_HARNESS_SOURCE_PATH: &str =
+    "native/motorola68000/amigaos/test-harnesses/debug/macro_cli_debug_event_harness.asm";
+const FS_UAE_MACRO_PREPROCESSOR_HARNESS_NAME: &str = "macro_preprocessor_harness";
+const FS_UAE_MACRO_PREPROCESSOR_HARNESS_SOURCE_PATH: &str =
+    "native/motorola68000/amigaos/test-harnesses/debug/macro_preprocessor_harness.asm";
+const FS_UAE_PIPELINE_SELECT_HARNESS_NAME: &str = "pipeline_select_harness";
+const FS_UAE_PIPELINE_SELECT_HARNESS_SOURCE_PATH: &str =
+    "native/motorola68000/amigaos/test-harnesses/debug/pipeline_select_harness.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE: &str = "opforge_cli_package.opasm";
 const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE: &str =
     "opforge_cli_package_oversized.opasm";
@@ -179,6 +189,13 @@ pub(crate) struct FsUaeSmokeRun {
     pub(crate) success: bool,
 }
 
+pub(crate) struct FsUaeConsoleLaunch {
+    pub(crate) artifact_dir: PathBuf,
+    pub(crate) config_path: PathBuf,
+    pub(crate) hunk_path: PathBuf,
+    pub(crate) descriptor_path: PathBuf,
+}
+
 pub(crate) enum FsUaeSmokeOutcome {
     Skipped(String),
     Completed { runs: Vec<FsUaeSmokeRun> },
@@ -188,13 +205,6 @@ pub(crate) struct TkpkgDebugCliManifestCase<'a> {
     pub(crate) name: &'a str,
     pub(crate) cpu_id: &'a str,
     pub(crate) source: &'a [u8],
-}
-
-pub(crate) struct FsUaeConsoleLaunch {
-    pub(crate) artifact_dir: PathBuf,
-    pub(crate) config_path: PathBuf,
-    pub(crate) hunk_path: PathBuf,
-    pub(crate) descriptor_path: PathBuf,
 }
 
 pub(crate) struct OpforgeNativeCliFailureCase<'a> {
@@ -302,17 +312,6 @@ pub(crate) fn run_native_debug_contract_from_env(
     }
 }
 
-pub(crate) fn run_native_cli_debug_event_from_env(
-    workspace_root: &Path,
-) -> Result<FsUaeSmokeOutcome, String> {
-    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
-        Ok(value) if !value.trim().is_empty() => value,
-        _ => {
-            return Ok(FsUaeSmokeOutcome::Skipped(format!(
-                "{FS_UAE_ARGS_ENV} is not set; configure FS-UAE to execute the native CLI debug-event harness"
-            )))
-        }
-    };
 /// Assemble and mount the debug-contract harness without launching FS-UAE.
 /// The returned config is consumed only by the separately opt-in PTY runner.
 pub(crate) fn prepare_native_debug_contract_console_from_env(
@@ -430,6 +429,17 @@ pub(crate) fn prepare_native_debug_contract_console_from_env(
     }))
 }
 
+pub(crate) fn run_native_cli_debug_event_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set; configure FS-UAE to execute the native CLI debug-event harness"
+            )))
+        }
+    };
     let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
     match run_example_smoke_with_extra_defines(
         workspace_root,
@@ -442,6 +452,80 @@ pub(crate) fn prepare_native_debug_contract_console_from_env(
             "OPFORGE_FS_UAE_SMOKE",
             "OPFORGE_FS_UAE_NATIVE_CLI_DEBUG_EVENT",
             "OPFORGE_DEBUG_CONTRACTS",
+        ],
+    )? {
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
+    }
+}
+
+pub(crate) fn run_native_macro_preprocessor_harness_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => return Ok(FsUaeSmokeOutcome::Skipped(format!(
+            "{FS_UAE_ARGS_ENV} is not set; configure FS-UAE to execute the native macro-preprocessor harness"
+        ))),
+    };
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    match run_example_smoke(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        FS_UAE_MACRO_PREPROCESSOR_HARNESS_NAME,
+        FS_UAE_MACRO_PREPROCESSOR_HARNESS_SOURCE_PATH,
+        "68020",
+    )? {
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
+    }
+}
+
+pub(crate) fn run_native_pipeline_select_harness_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => return Ok(FsUaeSmokeOutcome::Skipped(format!(
+            "{FS_UAE_ARGS_ENV} is not set; configure FS-UAE to execute the native pipeline-selection harness"
+        ))),
+    };
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    match run_example_smoke_with_extra_defines(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        FS_UAE_PIPELINE_SELECT_HARNESS_NAME,
+        FS_UAE_PIPELINE_SELECT_HARNESS_SOURCE_PATH,
+        "68020",
+        &["OPFORGE_DEBUG_CONTRACTS"],
+    )? {
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
+    }
+}
+
+pub(crate) fn run_native_macro_cli_debug_event_harness_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => return Ok(FsUaeSmokeOutcome::Skipped(format!(
+            "{FS_UAE_ARGS_ENV} is not set; configure FS-UAE to execute the native macro CLI debug-event harness"
+        ))),
+    };
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    match run_example_smoke_with_extra_defines(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        FS_UAE_MACRO_CLI_DEBUG_EVENT_HARNESS_NAME,
+        FS_UAE_MACRO_CLI_DEBUG_EVENT_HARNESS_SOURCE_PATH,
+        "68020",
+        &[
+            "OPFORGE_FS_UAE_SMOKE",
+            FS_UAE_OPFORGE_NATIVE_CLI_MACRO_DEBUG_DEFINE,
         ],
     )? {
         ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
@@ -1003,6 +1087,24 @@ fn run_opforge_native_cli_parity_batch_cases(
     args_text: &str,
     cases: &[OpforgeNativeCliParityCase<'_>],
 ) -> Result<FsUaeSmokeOutcome, String> {
+    if cases.len() > 1 {
+        let mut runs = Vec::with_capacity(cases.len());
+        for case in cases {
+            match run_opforge_native_cli_parity_batch_cases(
+                workspace_root,
+                fs_uae_bin,
+                args_text,
+                std::slice::from_ref(case),
+            )? {
+                FsUaeSmokeOutcome::Completed { runs: case_runs } => runs.extend(case_runs),
+                FsUaeSmokeOutcome::Skipped(reason) => {
+                    return Ok(FsUaeSmokeOutcome::Skipped(reason))
+                }
+            }
+        }
+        return Ok(FsUaeSmokeOutcome::Completed { runs });
+    }
+
     let source_path = workspace_root.join(FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH);
     if !source_path.is_file() {
         return Err(format!(
@@ -1047,14 +1149,12 @@ fn run_opforge_native_cli_parity_batch_cases(
             Some(&input_override),
             package_bytes.as_deref(),
         )?;
-        if opforge_native_cli_case_define(case).is_none() {
-            stage_opforge_native_cli_common_guest_inputs(
-                &mounted_work_dir,
-                Some(&input_override),
-                package_bytes.as_deref(),
-            )?;
-            stage_opforge_native_cli_default_module_roots(&mounted_work_dir)?;
-        }
+        stage_opforge_native_cli_common_guest_inputs(
+            &mounted_work_dir,
+            Some(&input_override),
+            package_bytes.as_deref(),
+        )?;
+        stage_opforge_native_cli_default_module_roots(&mounted_work_dir)?;
         let command = opforge_native_cli_case_command(case, &case_paths);
         batch_script.push_str("Echo START >");
         batch_script.push_str(
@@ -1096,9 +1196,14 @@ fn run_opforge_native_cli_parity_batch_cases(
         batch_script.push('\n');
         batch_paths.push(case_paths);
     }
-    stage_guest_script(&mounted_work_dir, batch_script.as_str())?;
-
-    let assembly_defines = opforge_native_cli_fixture_assembly_defines();
+    let mut assembly_defines = opforge_native_cli_fixture_assembly_defines();
+    assembly_defines.push("OPFORGE_FS_UAE_SMOKE".to_string());
+    assembly_defines.extend(
+        cases[0]
+            .extra_assembly_defines
+            .iter()
+            .map(|define| (*define).to_string()),
+    );
     let include_paths =
         example_include_paths(workspace_root, FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME);
     let module_paths = example_module_paths(workspace_root, FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME);
@@ -1168,7 +1273,16 @@ fn run_opforge_native_cli_parity_batch_cases(
             )
         })?;
     }
-
+    let startup_hunk_alias_path = mounted_work_dir.join(FS_UAE_STARTUP_HUNK_ALIAS);
+    if startup_hunk_alias_path != hunk_path {
+        fs::copy(&hunk_path, &startup_hunk_alias_path).map_err(|err| {
+            format!(
+                "copy {} to startup Hunk alias {}: {err}",
+                hunk_path.display(),
+                startup_hunk_alias_path.display(),
+            )
+        })?;
+    }
     let capture = capture_config_from_env(&mounted_work_dir, None)?;
     clear_capture_files(&capture)?;
     let generated_config_path = maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir)?;
@@ -1220,8 +1334,7 @@ fn run_opforge_native_cli_parity_batch_cases(
     let launcher_stderr = fs::File::create(&launcher_stderr_path)
         .map_err(|err| format!("create {}: {err}", launcher_stderr_path.display()))?;
 
-    let mut child = match Command::new(fs_uae_bin)
-        .args(&args)
+    let mut child = match fs_uae_launch_command(fs_uae_bin, &args)
         .current_dir(&artifact_dir)
         .stdout(Stdio::from(launcher_stdout))
         .stderr(Stdio::from(launcher_stderr))
@@ -1252,8 +1365,7 @@ fn run_opforge_native_cli_parity_batch_cases(
         Err(err) => {
             let _ = cleanup_spawned_fs_uae_processes(&baseline_process_ids);
             let _ = wait_for_spawned_fs_uae_processes_to_exit(&baseline_process_ids);
-            let progress = summarize_opforge_native_cli_batch_progress(&batch_paths)?;
-            return Err(format!("{err}; batch progress: {progress}"));
+            return Err(err);
         }
     };
     if wait_outcome == FsUaeWaitOutcome::Captured {
@@ -1280,20 +1392,14 @@ fn run_opforge_native_cli_parity_batch_cases(
     let common_stdout = launcher_stdout.unwrap_or_default();
 
     let mut runs = Vec::with_capacity(cases.len());
-    for (case, case_paths) in cases.iter().zip(batch_paths.iter()) {
-        let exit_code = read_optional_exit_code(&case_paths.exit_code_path)?;
-        let stdout = read_optional_text(&case_paths.stdout_path)?.unwrap_or_default();
-        let success = determine_batch_case_success(
-            case_paths.done_path.is_file(),
-            exit_code,
-            launcher_success,
-        );
+    for case in cases {
+        let exit_code = read_optional_exit_code(&capture.exit_code_paths.primary)?;
+        let stdout = read_optional_text(&capture.stdout_paths.primary)?.unwrap_or_default();
+        let success = determine_smoke_success(exit_code, launcher_success);
         runs.push(FsUaeSmokeRun {
             example_name: FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
-            source_path: case_paths
-                .work_dir
-                .join(opforge_native_cli_case_source_relative_path(case)),
-            artifact_dir: case_paths.artifact_dir.clone(),
+            source_path: mounted_work_dir.join(opforge_native_cli_case_source_relative_path(case)),
+            artifact_dir: artifact_dir.clone(),
             hunk_path: mounted_hunk_alias_path.clone(),
             stdout: merge_output(
                 Some(stdout),
@@ -1555,19 +1661,32 @@ fn example_guest_input(example_name: &str) -> Option<(&'static str, &'static [u8
             FS_UAE_TKPKG_SMOKE_INPUT_FILE,
             FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT.as_bytes(),
         )),
+        FS_UAE_MACRO_CLI_DEBUG_EVENT_HARNESS_NAME => Some((
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_FILE,
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../examples/opcore/macro_invocation_native.asm"
+            )),
+        )),
         _ => None,
     }
 }
 
 fn example_assembly_defines(example_name: &str) -> Vec<String> {
     match example_name {
-        "tkpkg_debug_cli" | "opforge_cli" => vec!["OPFORGE_FS_UAE_SMOKE".to_string()],
+        "tkpkg_debug_cli" | "opforge_cli" | FS_UAE_MACRO_CLI_DEBUG_EVENT_HARNESS_NAME => {
+            vec!["OPFORGE_FS_UAE_SMOKE".to_string()]
+        }
         _ => Vec::new(),
     }
 }
 
 fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBuf> {
-    if example_name == FS_UAE_CLI_DEBUG_EVENT_EXAMPLE_NAME {
+    if example_name == FS_UAE_CLI_DEBUG_EVENT_EXAMPLE_NAME
+        || example_name == FS_UAE_MACRO_PREPROCESSOR_HARNESS_NAME
+        || example_name == FS_UAE_PIPELINE_SELECT_HARNESS_NAME
+        || example_name == FS_UAE_MACRO_CLI_DEBUG_EVENT_HARNESS_NAME
+    {
         let amigaos_dir = workspace_root
             .join("native")
             .join("motorola68000")
@@ -1638,6 +1757,9 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
 fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBuf> {
     if example_name == FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME
         || example_name == FS_UAE_CLI_DEBUG_EVENT_EXAMPLE_NAME
+        || example_name == FS_UAE_MACRO_PREPROCESSOR_HARNESS_NAME
+        || example_name == FS_UAE_PIPELINE_SELECT_HARNESS_NAME
+        || example_name == FS_UAE_MACRO_CLI_DEBUG_EVENT_HARNESS_NAME
     {
         let amigaos_dir = workspace_root
             .join("native")
@@ -1996,6 +2118,30 @@ fn capture_config_from_env(
     })
 }
 
+/// The mounted base image emits generic smoke markers while booting. Native
+/// CLI batch runs must instead synchronize on their own case markers, otherwise
+/// the host can tear down FS-UAE before the batch command has produced output.
+fn batch_capture_config_from_env(
+    batch_paths: &[OpforgeNativeCliBatchCasePaths],
+) -> Result<FsUaeCaptureConfig, String> {
+    let first = batch_paths
+        .first()
+        .ok_or_else(|| "native CLI batch capture requires at least one case".to_string())?;
+    let last = batch_paths
+        .last()
+        .ok_or_else(|| "native CLI batch capture requires at least one case".to_string())?;
+    let mut capture = capture_config_from_env(&first.artifact_dir, None)?;
+    capture.start_paths =
+        FsUaeCapturePathSet::from_primary_and_optional_fallback(first.started_path.clone(), None);
+    capture.ready_paths =
+        FsUaeCapturePathSet::from_primary_and_optional_fallback(last.done_path.clone(), None);
+    capture.stdout_paths =
+        FsUaeCapturePathSet::from_primary_and_optional_fallback(last.stdout_path.clone(), None);
+    capture.exit_code_paths =
+        FsUaeCapturePathSet::from_primary_and_optional_fallback(last.exit_code_path.clone(), None);
+    Ok(capture)
+}
+
 fn capture_path_set(
     artifact_dir: &Path,
     fallback_artifact_dir: Option<&Path>,
@@ -2315,6 +2461,16 @@ fn fs_uae_launcher_status_text(status: ExitStatus) -> String {
     format!("FS-UAE launcher exit status: {status}\n")
 }
 
+/// Start the macOS application bundle through Launch Services when the caller
+/// supplied its inner executable. Directly invoking that binary exits after
+/// initialization on this host, while opening the bundle keeps the emulator
+/// process alive for the mounted guest startup hook and debugger.
+fn fs_uae_launch_command(fs_uae_bin: &str, args: &[String]) -> Command {
+    let mut command = Command::new(fs_uae_bin);
+    command.args(args);
+    command
+}
+
 fn launcher_exit_is_terminal(
     launcher_exited_at: Instant,
     now: Instant,
@@ -2390,21 +2546,18 @@ fn wait_for_process_exit_after_capture(
     child: &mut std::process::Child,
     example_name: &str,
 ) -> Result<(), String> {
-    let deadline = Instant::now() + Duration::from_millis(FS_UAE_CAPTURE_EXIT_GRACE_MS);
-    loop {
-        if child
-            .try_wait()
-            .map_err(|err| format!("poll FS-UAE process for {example_name}: {err}"))?
-            .is_some()
-        {
-            return Ok(());
-        }
-        if Instant::now() >= deadline {
-            let _ = terminate_process_id(child.id());
-            return Ok(());
-        }
-        thread::sleep(Duration::from_millis(250));
+    if child
+        .try_wait()
+        .map_err(|err| format!("poll FS-UAE process for {example_name}: {err}"))?
+        .is_none()
+    {
+        // The generated disposable configuration does not request FS-UAE to
+        // exit after the guest writes its completion marker.  The marker is
+        // the protocol's terminal event, so retaining the emulator here only
+        // turns every successful native probe into a fixed host-side delay.
+        let _ = terminate_process_id(child.id());
     }
+    Ok(())
 }
 
 fn run_example_smoke(
@@ -2569,10 +2722,11 @@ fn run_example_smoke_with_request(
     })
     .map_err(|err| {
         format!(
-            "assemble FS-UAE smoke example {} from {}: {}",
+            "assemble FS-UAE smoke example {} from {}: {}; diagnostics: {:#?}",
             example_name,
             source_path.display(),
-            err.summary()
+            err.summary(),
+            err.diagnostics()
         )
     })?;
 
@@ -2654,8 +2808,7 @@ fn run_example_smoke_with_request(
     let launcher_stderr = fs::File::create(&launcher_stderr_path)
         .map_err(|err| format!("create {}: {err}", launcher_stderr_path.display()))?;
 
-    let mut child = match Command::new(fs_uae_bin)
-        .args(&args)
+    let mut child = match fs_uae_launch_command(fs_uae_bin, &args)
         .current_dir(&artifact_dir)
         .stdout(Stdio::from(launcher_stdout))
         .stderr(Stdio::from(launcher_stderr))
@@ -2896,8 +3049,7 @@ fn run_example_smoke_with_guest_input(
     let launcher_stderr = fs::File::create(&launcher_stderr_path)
         .map_err(|err| format!("create {}: {err}", launcher_stderr_path.display()))?;
 
-    let mut child = match Command::new(fs_uae_bin)
-        .args(&args)
+    let mut child = match fs_uae_launch_command(fs_uae_bin, &args)
         .current_dir(&artifact_dir)
         .stdout(Stdio::from(launcher_stdout))
         .stderr(Stdio::from(launcher_stderr))

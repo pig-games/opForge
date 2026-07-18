@@ -2286,8 +2286,6 @@ operandText
 	lea OpasmEngineStmtOperandNameTable.l, a1
 	adda.l d3, a1
 	clr.b (a1)
-	move.l OPASM_ENGINE_STMT_REQ_MNEM_START(a5), d0
-	bne.s operandFallback
 	move.l OPASM_ENGINE_STMT_REQ_OPERAND_START(a5), d0
 	beq.s operandFallback
 	move.l OPASM_ENGINE_STMT_REQ_OPERAND_END(a5), d1

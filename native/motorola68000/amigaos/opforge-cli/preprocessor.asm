@@ -7,6 +7,11 @@
 	.use opforge.cli.copy
 	.use opforge.cli.state
 	.use opforge.cli.line_text
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	.use opforge.debug.contracts as debug_contracts
+	.use opforge.debug.events as debug_events
+	.include "debug_macros.i"
+.endif
 
 	.section code, kind=code
 	.pub
@@ -59,10 +64,25 @@ opforgeNativeCliParseMacroInvocationV1	.block
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
 	beq.w pass
 	clr.w state.NativeCliPreprocessInvocationLabelLen
+	; A comment is never a label-attached macro invocation.  The ordinary line
+	; pipeline owns comment recording, so leave it untouched for that stage.
+	cmpi.b #';', (a0)
+	beq.w pass
 	cmpi.b #'.', (a0)
 	beq.s directive
 	bsr.w captureInvocationLabel
 	bne.w malformed
+	; captureInvocationLabel reports success in D0, so reconstruct the bounded
+	; remainder from its advanced source pointer before trimming the separator.
+	; Without this, every label-attached invocation (for example `foo .LOCAL`)
+	; is mistaken for an empty non-macro line.
+	move.l a0, d0
+	lea state.NativeCliSourceLine, a1
+	sub.l a1, d0
+	moveq #0, d1
+	move.w state.NativeCliSourceLineLen, d1
+	sub.l d0, d1
+	move.l d1, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
 	beq.w pass
 
@@ -86,7 +106,7 @@ directive
 	bne.w malformed
 	movea.l a3, a0
 	move.l d3, d0
-	add.l d4, a0
+	adda.l d4, a0
 	sub.l d4, d0
 	bsr.w parseInvocationArguments
 	bne.w clearFrameAndFail
@@ -100,6 +120,10 @@ malformed
 	rts
 
 pass
+	; A non-macro line may have been provisionally scanned as a label followed
+	; by an instruction.  It must not leak that provisional label into a later
+	; macro close, where it would synthesize an unmatched `.endblock`.
+	clr.w state.NativeCliPreprocessInvocationLabelLen
 	moveq #0, d0
 	rts
 	.bend  ; opforgeNativeCliParseMacroInvocationV1
@@ -125,7 +149,15 @@ loop
 	cmpi.b #';', d1
 	beq.s fail
 	cmpi.b #'.', d1
+	bne.s checkFirst
+	; Dotted labels (for example `foo.local`) are ordinary source syntax.
+	; A leading dot remains reserved for a directive/macro invocation, but a
+	; later dot belongs to the label token and must reach the normal parser.
+	tst.w d3
 	beq.s fail
+	bne.s copy
+
+checkFirst
 	tst.w d3
 	bne.s copy
 	cmpi.b #'A', d1
@@ -144,7 +176,7 @@ copy
 	subq.l #1, d0
 	addq.w #1, d3
 	subq.l #1, d2
-	bra.s loop
+	bra.w loop
 colon
 	addq.l #1, a0
 	subq.l #1, d0
@@ -328,28 +360,51 @@ splitInvocationArgumentList	.block
 	clr.l d6
 loop
 	tst.l d0
-	beq.s endOfLine
+	bne.s splitHasInput
+	bra.w endOfLine
+splitHasInput
 	move.b (a0), d3
 	tst.l d4
-	bne.s quoted
+	beq.s splitUnquoted
+	bra.w quoted
+splitUnquoted
 	cmpi.b #'\'', d3
-	beq.s singleQuote
+	bne.s splitAfterSingleQuote
+	bra.w singleQuote
+splitAfterSingleQuote
 	cmpi.b #'"', d3
-	beq.s doubleQuote
+	bne.s splitAfterDoubleQuote
+	bra.w doubleQuote
+splitAfterDoubleQuote
 	tst.l d7
-	beq.s structural
+	bne.s splitParenthesized
+	bra.w structural
+splitParenthesized
 	cmpi.b #')', d3
-	bne.s structural
+	beq.s splitCloseParen
+	bra.w structural
+splitCloseParen
 	tst.l d5
-	bne.s structural
+	beq.s splitNoNestedParen
+	bra.w structural
+splitNoNestedParen
 	tst.l d6
-	bne.s structural
+	beq.s splitCloseList
+	bra.w structural
+splitCloseList
 	tst.w state.NativeCliPreprocessInvocationArgCount
-	beq.s closeEmpty
+	bne.s hasArguments
+	bra.s close
+hasArguments
 	tst.l d1
-	beq.s fail
+	bne.s splitHasArgumentValue
+	bra.w fail
+splitHasArgumentValue
 	bsr.w finishInvocationArgument
-	bne.s fail
+	tst.l d0
+	beq.s splitArgumentCommitted
+	bra.w fail
+splitArgumentCommitted
 	bra.s close
 closeEmpty
 	tst.l d1
@@ -357,7 +412,9 @@ closeEmpty
 	bra.s close
 finishClose
 	bsr.w finishInvocationArgument
-	bne.s fail
+	tst.l d0
+	beq.s close
+	bra.w fail
 close
 	clr.b 0(a2, d2.l)
 	move.w d2, state.NativeCliPreprocessInvocationFullArgsLen
@@ -368,38 +425,44 @@ structural
 	cmpi.b #'(', d3
 	bne.s closeParen
 	addq.l #1, d5
-	bra.s copy
+	bra.w copy
 closeParen
 	cmpi.b #')', d3
 	bne.s openBracket
 	tst.l d5
-	beq.s fail
+	bne.s splitNestedParen
+	bra.w fail
+splitNestedParen
 	subq.l #1, d5
-	bra.s copy
+	bra.w copy
 openBracket
 	cmpi.b #'[', d3
 	bne.s closeBracket
 	addq.l #1, d6
-	bra.s copy
+	bra.w copy
 closeBracket
 	cmpi.b #']', d3
 	bne.s openBrace
 	tst.l d6
-	beq.s fail
+	bne.s splitNestedBracket
+	bra.w fail
+splitNestedBracket
 	subq.l #1, d6
-	bra.s copy
+	bra.w copy
 openBrace
 	cmpi.b #'{', d3
 	bne.s closeBrace
 	addq.l #1, d6
-	bra.s copy
+	bra.w copy
 closeBrace
 	cmpi.b #'}', d3
 	bne.s comma
 	tst.l d6
-	beq.s fail
+	bne.s splitNestedBrace
+	bra.w fail
+splitNestedBrace
 	subq.l #1, d6
-	bra.s copy
+	bra.w copy
 comma
 	cmpi.b #',', d3
 	bne.s copy
@@ -409,16 +472,24 @@ comma
 	bne.s copy
 	tst.l d4
 	bne.s copy
+	move.l d0, -(sp)
 	bsr.w finishInvocationArgument
-	bne.s fail
+	move.l d0, d3
+	move.l (sp)+, d0
+	tst.l d3
+	beq.s splitCommaCommitted
+	bra.w fail
+splitCommaCommitted
 	addq.l #1, a0
 	subq.l #1, d0
 	addq.l #1, d2
 	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY - 1, d2
-	bcc.s fail
+	bcs.s splitCommaCapacity
+	bra.w fail
+splitCommaCapacity
 	move.b #',', -1(a2, d2.l)
 	moveq #0, d1
-	bra.s loop
+	bra.w loop
 
 singleQuote
 	moveq #1, d4
@@ -442,9 +513,13 @@ quotedDouble
 
 copy
 	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY - 1, d1
-	bcc.s fail
+	bcs.s splitArgumentCapacity
+	bra.w fail
+splitArgumentCapacity
 	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY - 1, d2
-	bcc.s fail
+	bcs.s splitFullListCapacity
+	bra.w fail
+splitFullListCapacity
 	move.b d3, 0(a1, d1.l)
 	move.b d3, 0(a2, d2.l)
 	addq.l #1, a0
@@ -462,13 +537,16 @@ endOfLine
 	bne.s fail
 	tst.l d6
 	bne.s fail
+	tst.l d1
+	bne.s finishCurrent
 	tst.w state.NativeCliPreprocessInvocationArgCount
 	beq.s emptyList
-	tst.l d1
-	beq.s fail
+	bra.s fail
+
+finishCurrent
 	bsr.w finishInvocationArgument
 	bne.s fail
-	emptylist
+emptyList
 	clr.b 0(a2, d2.l)
 	move.w d2, state.NativeCliPreprocessInvocationFullArgsLen
 	moveq #0, d0
@@ -483,6 +561,7 @@ fail
 ; Outputs: D0 = 0 on success, 1 on empty/overflow; A1 = next slot base.
 ; Clobbers: D0-D3/A0-A2/CCR.
 finishInvocationArgument	.block
+	movem.l d2/a0/a2, -(sp)
 	bsr.w trimInvocationArgument
 	tst.l d1
 	beq.s fail
@@ -501,9 +580,11 @@ finishInvocationArgument	.block
 	mulu #constants.SOURCE_LINE_BUFFER_CAPACITY, d3
 	adda.l d3, a1
 	moveq #0, d0
+	movem.l (sp)+, d2/a0/a2
 	rts
 fail
 	moveq #1, d0
+	movem.l (sp)+, d2/a0/a2
 	rts
 	.bend  ; finishInvocationArgument
 
@@ -539,7 +620,7 @@ trailing
 	tst.l d1
 	beq.s done
 	movea.l a1, a0
-	add.l d1, a0
+	adda.l d1, a0
 trimLoop
 	subq.l #1, a0
 	move.b (a0), d0
@@ -575,11 +656,17 @@ bindMacroParameterDefaults	.block
 	; Skip the label-attached macro name and the `.macro` directive.
 findDirective
 	tst.l d0
-	beq.s done
+	bne.s bindHasHeader
+	bra.w done
+bindHasHeader
 	cmpi.b #'.', (a0)
-	bne.s nextByte
+	beq.s bindSawDot
+	bra.w nextByte
+bindSawDot
 	cmpi.l #6, d0
-	bcs.s nextByte
+	bcc.s bindDirectiveFits
+	bra.w nextByte
+bindDirectiveFits
 	move.b 1(a0), d1
 	cmpi.b #'A', d1
 	bcs.s directiveNext
@@ -588,7 +675,9 @@ findDirective
 	addi.b #32, d1
 directiveNext
 	cmpi.b #'m', d1
-	bne.s nextByte
+	beq.s bindMacroM
+	bra.w nextByte
+bindMacroM
 	move.b 2(a0), d1
 	cmpi.b #'A', d1
 	bcs.s directiveA
@@ -597,7 +686,9 @@ directiveNext
 	addi.b #32, d1
 directiveA
 	cmpi.b #'a', d1
-	bne.s nextByte
+	beq.s bindMacroA
+	bra.w nextByte
+bindMacroA
 	move.b 3(a0), d1
 	cmpi.b #'A', d1
 	bcs.s directiveC
@@ -606,7 +697,9 @@ directiveA
 	addi.b #32, d1
 directiveC
 	cmpi.b #'c', d1
-	bne.s nextByte
+	beq.s bindMacroC
+	bra.w nextByte
+bindMacroC
 	move.b 4(a0), d1
 	cmpi.b #'A', d1
 	bcs.s directiveR
@@ -615,7 +708,9 @@ directiveC
 	addi.b #32, d1
 directiveR
 	cmpi.b #'r', d1
-	bne.s nextByte
+	beq.s bindMacroR
+	bra.w nextByte
+bindMacroR
 	move.b 5(a0), d1
 	cmpi.b #'A', d1
 	bcs.s directiveO
@@ -624,7 +719,9 @@ directiveR
 	addi.b #32, d1
 directiveO
 	cmpi.b #'o', d1
-	bne.s nextByte
+	beq.s bindMacroO
+	bra.w nextByte
+bindMacroO
 	move.b 6(a0), d1
 	cmpi.b #'A', d1
 	bcs.s directiveDone
@@ -633,19 +730,24 @@ directiveO
 	addi.b #32, d1
 directiveDone
 	cmpi.b #' ', d1
-	bne.s nextByte
+	beq.s bindMacroDirectiveDone
+	bra.w nextByte
+bindMacroDirectiveDone
 	addq.l #6, a0
 	subq.l #6, d0
-	bra.s parameters
+	bra.s initParameters
 nextByte
 	addq.l #1, a0
 	subq.l #1, d0
-	bra.s findDirective
+	bra.w findDirective
 
-parameters
+initParameters
 	clr.w d7
+parameters
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
-	beq.s done
+	bne.s bindHasParameters
+	bra.w done
+bindHasParameters
 	movea.l a0, a2
 	moveq #-1, d6
 	clr.l d5
@@ -716,6 +818,7 @@ fail
 ; Clobbers: D0-D7/A0-A4/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliSubstituteMacroBodyLineV1	.block
+	moveq #0, d2
 	move.w state.NativeCliPreprocessInvocationDefinition, d2
 	bmi.w fail
 	cmpi.w #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d0
@@ -738,12 +841,22 @@ opforgeNativeCliSubstituteMacroBodyLineV1	.block
 
 scan
 	tst.l d6
-	beq.s complete
+	bne.s substitutionHasInput
+	bra.w complete
+substitutionHasInput
 	move.b (a0), d4
+	; Captured source lines are NUL-padded storage.  A source NUL terminates
+	; substitution even if a stale length slot extends into the padding.
+	tst.b d4
+	beq.w complete
 	cmpi.b #'.', d4
-	beq.s dot
+	bne.s substitutionNotDot
+	bra.w dot
+substitutionNotDot
 	cmpi.b #'@', d4
-	beq.s at
+	bne.s substitutionLiteral
+	bra.w at
+substitutionLiteral
 	bsr.w appendExpansionByte
 	bne.w fail
 	addq.l #1, a0
@@ -752,10 +865,14 @@ scan
 
 dot
 	cmpi.l #1, d6
-	beq.s literal
+	bne.s substitutionHasDotTail
+	bra.w literal
+substitutionHasDotTail
 	move.b 1(a0), d4
 	cmpi.b #'@', d4
-	beq.s fullList
+	bne.s substitutionNotFullList
+	bra.w fullList
+substitutionNotFullList
 	cmpi.b #'1', d4
 	bcs.s bracedOrNamed
 	cmpi.b #'9', d4
@@ -800,31 +917,58 @@ bracedDone
 bracedBound
 	move.l (sp)+, d3
 	movea.l a4, a0
-	add.l d3, a0
+	adda.l d3, a0
 	addq.l #1, a0
 	sub.l d3, d6
 	subq.l #1, d6
-	bra.s scan
+	bra.w scan
 named
-	move.b d4, d7
+	; Skip the sigil, then capture the complete identifier and retain its
+	; length for appendInvocationNamed's header comparison.
 	addq.l #1, a0
 	subq.l #1, d6
 	bsr.w copyInvocationIdentifier
-	bne.s literal
+	bne.w literal
 	movea.l a0, a4
 	move.l d0, d3
+	move.l d0, d7
+	move.l d6, -(sp)
 	move.l d3, -(sp)
 	bsr.w appendInvocationNamed
 	tst.l d0
 	beq.s namedBound
-	addq.l #4, sp
+	bmi.s namedLiteral
+	adda.l #8, sp
+	bra.w fail
+namedLiteral
+	move.l (sp)+, d3
+	move.l (sp)+, d6
+	move.b #'.', d4
+	bsr.w appendExpansionByte
+	bne.w fail
+	movea.l a4, a2
+	; appendExpansionBytes consumes D3 as its loop counter. Keep the identifier
+	; width so the input cursor advances beyond a literal dotted directive (for
+	; example `.byte`) instead of rescanning its first identifier byte.
+	move.l d3, -(sp)
+	bsr.w appendExpansionBytes
+	tst.l d0
+	bne.s namedLiteralAppendFail
+	move.l (sp)+, d3
+	movea.l a4, a0
+	adda.l d3, a0
+	sub.l d3, d6
+	bra.w scan
+namedLiteralAppendFail
+	adda.l #4, sp
 	bra.w fail
 namedBound
 	move.l (sp)+, d3
+	move.l (sp)+, d6
 	movea.l a4, a0
-	add.l d3, a0
+	adda.l d3, a0
 	sub.l d3, d6
-	bra.s scan
+	bra.w scan
 
 at
 	cmpi.l #1, d6
@@ -928,7 +1072,6 @@ fail
 ; Inputs: A0 = first identifier byte; D6 = remaining input.
 ; Outputs: D0 = identifier length, D1 = 0 on success / 1 otherwise.
 copyInvocationIdentifier	.block
-	lea state.NativeCliPreprocessSavedLine, a2
 	clr.l d0
 loop
 	cmp.l d6, d0
@@ -950,13 +1093,11 @@ digit
 	cmpi.b #'9', d4
 	bhi.s done
 copy
-	move.b d4, 0(a2, d0.l)
 	addq.l #1, d0
 	bra.s loop
 done
 	tst.l d0
 	beq.s fail
-	clr.b 0(a2, d0.l)
 	moveq #0, d1
 	rts
 fail
@@ -967,7 +1108,7 @@ fail
 ; Resolve and append a named parameter. The captured header keeps parameter
 ; names in definition order, so the result is the corresponding positional slot.
 ; Inputs: A0 = name bytes; D0 = name length; A1/D5 = expansion output.
-; Outputs: D0 = 0 on success, 1 when the required binding is absent.
+; Outputs: D0 = 0 on success, -1 when the named binding is absent.
 appendInvocationNamed	.block
 	movea.l a0, a3
 	move.l d0, d7
@@ -983,7 +1124,9 @@ appendInvocationNamed	.block
 	; Find the macro directive, then compare each comma-delimited parameter name.
 findMacro
 	tst.l d6
-	beq.s fail
+	bne.s namedHeaderRemaining
+	bra.w fail
+namedHeaderRemaining
 	cmpi.b #'.', (a0)
 	bne.s next
 	cmpi.l #6, d6
@@ -993,19 +1136,22 @@ findMacro
 	bne.s next
 	addq.l #6, a0
 	subq.l #6, d6
-	bra.s params
+	bra.s initParams
 next
 	addq.l #1, a0
 	subq.l #1, d6
 	bra.s findMacro
+initParams
+	clr.l d2
 params
 	move.l d6, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
 	move.l d0, d6
-	clr.l d2
 paramStart
 	tst.l d6
-	beq.s fail
+	bne.s namedParameterRemaining
+	bra.w fail
+namedParameterRemaining
 	movea.l a0, a2
 	clr.l d3
 paramName
@@ -1066,9 +1212,9 @@ skipToComma
 	addq.l #1, d2
 	cmpi.w #constants.NATIVE_PREPROCESS_MACRO_ARG_CAPACITY, d2
 	bcc.s fail
-	bra.s params
+	bra.w params
 fail
-	moveq #1, d0
+	moveq #-1, d0
 	rts
 	.bend  ; appendInvocationNamed
 
@@ -1078,33 +1224,42 @@ fail
 ; CCR: reflects D0 on return.
 opforgeNativeCliCaptureMacroDefinitionLineV1	.block
 	tst.w state.NativeCliPreprocessActiveDefinition
-	bmi.s checkOpen
+	bmi.w checkOpen
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
-	lea EndmacroText, a1
-	moveq #9, d1
-	jsr lineStartsWithDirective
+	jsr lineStartsWithEndmacroDirective
 	bne.s close
-	lea MacroText, a1
-	moveq #6, d1
-	jsr lineContainsDirective
-	bne.s fail
-	lea EndsegmentText, a1
+	jsr lineContainsMacroDirective
+	beq.s captureNoNestedMacro
+	bra.w fail
+captureNoNestedMacro
+	lea EndsegmentText.l, a1
 	moveq #11, d1
 	jsr lineStartsWithDirective
-	bne.s fail
-	lea EndstatementText, a1
+	beq.s captureNoEndsegment
+	bra.w fail
+captureNoEndsegment
+	lea EndstatementText.l, a1
 	moveq #13, d1
 	jsr lineStartsWithDirective
-	bne.s fail
+	beq.s captureNoEndstatement
+	bra.w fail
+captureNoEndstatement
 	bsr.w appendBodyLine
-	bne.s fail
+	tst.l d0
+	beq.s captureBodyStored
+	bra.w fail
+captureBodyStored
 	moveq #1, d0
 	rts
 
 close
-	move.w #-1, state.NativeCliPreprocessActiveDefinition
+	; Use the same register-to-state form as definition opening.  Apart from
+	; keeping the state transition symmetric, this avoids an immediate absolute
+	; write in the close path while native relocation diagnostics are active.
+	moveq #-1, d0
+	move.w d0, state.NativeCliPreprocessActiveDefinition
 	moveq #1, d0
 	rts
 
@@ -1112,26 +1267,24 @@ checkOpen
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
-	lea EndmacroText, a1
-	moveq #9, d1
-	jsr lineStartsWithDirective
-	bne.s fail
+	jsr lineStartsWithEndmacroDirective
+	beq.s captureNoUnexpectedEnd
+	bra.w fail
+captureNoUnexpectedEnd
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
-	lea MacroText, a1
-	moveq #6, d1
-	jsr lineContainsDirective
-	beq.s pass
+	jsr lineContainsMacroDirective
+	beq.w pass
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
 	bsr.w macroHeaderHasName
-	beq.s fail
+	beq.w fail
 	moveq #0, d2
 	move.w state.NativeCliPreprocessDefinitionCount, d2
 	cmpi.w #constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY, d2
-	bcc.s fail
+	bcc.w fail
 	lea state.NativeCliPreprocessDefinitionHeader, a2
 	mulu #constants.SOURCE_LINE_BUFFER_CAPACITY, d2
 	adda.l d2, a2
@@ -1145,8 +1298,37 @@ checkOpen
 	add.l d2, d2
 	lea state.NativeCliPreprocessDefinitionHeaderLen, a2
 	move.w d3, 0(a2, d2.l)
-	move.w state.NativeCliPreprocessDefinitionCount, state.NativeCliPreprocessActiveDefinition
+	move.w state.NativeCliPreprocessDefinitionCount, d0
+	move.w d0, state.NativeCliPreprocessActiveDefinition
 	addq.w #1, state.NativeCliPreprocessDefinitionCount
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: first successfully captured macro definition.
+	; Macro/routine used: DEBUG_EVENT_U32X4 / debugEventU32x4.
+	; Registers preserved: D0-D7/A0-A6.
+	; SR/CCR preserved: restored before the diagnostic-only return.
+	; Stack delta at return: zero.
+	; Shared buffers touched: dedicated debug event buffer only.
+	; Why this cannot change branch decisions: the capture completed before the
+	; event, and the saved frontend status is not consumed at this point.
+	; Removal/stabilization plan: retain as the macro-definition contract.
+	move.w ccr, -(sp)
+	movem.l d1-d6/a0, -(sp)
+	moveq #0, d1
+	moveq #6, d2
+	moveq #0, d3
+	move.w state.NativeCliPreprocessActiveDefinition, d3
+	moveq #0, d4
+	move.l d3, -(sp)
+	move.l d3, d4
+	move.w state.NativeCliPreprocessDefinitionHeaderLen, d4
+	move.l (sp)+, d3
+	moveq #0, d5
+	moveq #0, d6
+	move.w state.NativeCliPreprocessDefinitionCount, d6
+	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_MACRO_DEFINITION
+	movem.l (sp)+, d1-d6/a0
+	move.w (sp)+, ccr
+.endif
 	moveq #1, d0
 	rts
 
@@ -1184,6 +1366,10 @@ appendBodyLine	.block
 	move.w (a2), d3
 	cmpi.w #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d3
 	bcc.s fail
+	; D2 was doubled to address the word-sized body-count table. Reload the
+	; definition index before deriving the byte-addressed body-slot offset.
+	moveq #0, d2
+	move.w state.NativeCliPreprocessActiveDefinition, d2
 	mulu #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d2
 	add.l d3, d2
 	mulu #constants.SOURCE_LINE_BUFFER_CAPACITY, d2
@@ -1201,7 +1387,10 @@ appendBodyLine	.block
 	add.l d3, d2
 	add.l d2, d2
 	lea state.NativeCliPreprocessDefinitionBodyLen, a2
-	move.w d4, 0(a2, d2.l)
+	moveq #0, d4
+	move.w state.NativeCliSourceLineLen, d4
+	adda.l d2, a2
+	move.w d4, (a2)
 	addq.w #1, d3
 	move.w state.NativeCliPreprocessActiveDefinition, d2
 	lea state.NativeCliPreprocessDefinitionBodyCount, a2
@@ -1219,6 +1408,52 @@ lineStartsWithDirective	.block
 	jsr line_text.opforgeNativeCliLineStartsWith
 	rts
 	.bend  ; lineStartsWithDirective
+
+; Match `.endmacro` as the first non-whitespace directive.
+lineStartsWithEndmacroDirective	.block
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	cmpi.l #9, d0
+	bcs.s no
+	cmpi.b #'.', (a0)
+	bne.s no
+	move.b 1(a0), d1
+	ori.b #32, d1
+	cmpi.b #'e', d1
+	bne.s no
+	move.b 2(a0), d1
+	ori.b #32, d1
+	cmpi.b #'n', d1
+	bne.s no
+	move.b 3(a0), d1
+	ori.b #32, d1
+	cmpi.b #'d', d1
+	bne.s no
+	move.b 4(a0), d1
+	ori.b #32, d1
+	cmpi.b #'m', d1
+	bne.s no
+	move.b 5(a0), d1
+	ori.b #32, d1
+	cmpi.b #'a', d1
+	bne.s no
+	move.b 6(a0), d1
+	ori.b #32, d1
+	cmpi.b #'c', d1
+	bne.s no
+	move.b 7(a0), d1
+	ori.b #32, d1
+	cmpi.b #'r', d1
+	bne.s no
+	move.b 8(a0), d1
+	ori.b #32, d1
+	cmpi.b #'o', d1
+	bne.s no
+	moveq #1, d0
+	rts
+no
+	moveq #0, d0
+	rts
+	.bend  ; lineStartsWithEndmacroDirective
 
 ; Require the first non-whitespace token of a macro header to be a name.
 ; Inputs: A0 = line bytes; D0 = line length.
@@ -1240,13 +1475,79 @@ no
 	rts
 	.bend  ; macroHeaderHasName
 
+; Match a standalone `.macro` directive without relying on a data-section
+; pointer. Inputs are the source line in A0/D0; D0 is 1 on match, else 0.
+lineContainsMacroDirective	.block
+	movem.l d1-d4/a0, -(sp)
+	cmpi.l #6, d0
+	bcs.w no
+	move.l d0, d3
+	subi.l #6, d3
+	clr.l d2
+scan
+	cmp.l d3, d2
+	bhi.w no
+	tst.l d2
+	beq.s candidate
+	move.b -1(a0, d2.l), d1
+	cmpi.b #' ', d1
+	beq.s candidate
+	cmpi.b #9, d1
+	bne.w next
+candidate
+	cmpi.b #'.', 0(a0, d2.l)
+	bne.w next
+	move.b 1(a0, d2.l), d1
+	ori.b #32, d1
+	cmpi.b #'m', d1
+	bne.w next
+	move.b 2(a0, d2.l), d1
+	ori.b #32, d1
+	cmpi.b #'a', d1
+	bne.w next
+	move.b 3(a0, d2.l), d1
+	ori.b #32, d1
+	cmpi.b #'c', d1
+	bne.w next
+	move.b 4(a0, d2.l), d1
+	ori.b #32, d1
+	cmpi.b #'r', d1
+	bne.w next
+	move.b 5(a0, d2.l), d1
+	ori.b #32, d1
+	cmpi.b #'o', d1
+	bne.w next
+	cmp.l d3, d2
+	beq.s yes
+	move.b 6(a0, d2.l), d1
+	cmpi.b #' ', d1
+	beq.s yes
+	cmpi.b #9, d1
+	beq.s yes
+	cmpi.b #';', d1
+	beq.s yes
+next
+	addq.l #1, d2
+	bra.w scan
+yes
+	movem.l (sp)+, d1-d4/a0
+	moveq #1, d0
+	rts
+no
+	movem.l (sp)+, d1-d4/a0
+	moveq #0, d0
+	rts
+	.bend  ; lineContainsMacroDirective
+
 lineContainsDirective	.block
 	movem.l d5/a3, -(sp)
 	movea.l a0, a2
 	movea.l a1, a3
 	move.l d1, d3
 	cmp.l d3, d0
-	bcs.s no
+	bcc.s containsLongEnough
+	bra.w no
+containsLongEnough
 	sub.l d3, d0
 	move.l d0, d5
 	clr.l d4

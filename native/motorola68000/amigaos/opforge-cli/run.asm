@@ -19,10 +19,11 @@
 	.use opforge.cli.session_init
 	.use opforge.cli.output
 	.use opforge.cli.engine_callbacks
+	.use opforge.cli.preprocessor
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opforge.debug.contracts as debug_contracts
 	.use opforge.debug.events as debug_events
-	.include "../debug/debug_macros.i"
+	.include "debug_macros.i"
 .endif
 
 	.section code, kind=code
@@ -196,6 +197,9 @@ tokenizeFrontend
 	bra.w closeDos
 
 tokenizerOk
+	; Macro definitions and invocation frames are frontend-only. The engine must
+	; begin from a clean preprocessor frame after all source expansion is done.
+	jsr preprocessor.opforgeNativeCliResetPreprocessorV1
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
 	bne.s outputRequestReady
 	move.l #strings.NativeHunkNotImplementedText, d1

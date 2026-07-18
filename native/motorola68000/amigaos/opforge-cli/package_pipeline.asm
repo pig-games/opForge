@@ -21,6 +21,11 @@
 	.use opforge.cli.state
 	.use opforge.cli.text_output
 	.use opforge.cli.prvm_bridge
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	.use opforge.debug.contracts as debug_contracts
+	.use opforge.debug.events as debug_events
+	.include "debug_macros.i"
+.endif
 
 	.section code, kind=code
 	.pub
@@ -102,6 +107,32 @@ opforgeNativeCliApplyCurrentPipeline	.block
 	moveq #abi.ENTRY_ORD_SET_PIPELINE, d0
 	jsr service.dispatchV1
 	jsr tkpkg_control_block.opforgeNativeCliReadStatus
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: native package pipeline selection result.
+	; Macro/routine used: DEBUG_EVENT_U32X4 / debugEventU32x4.
+	; Registers preserved: D0-D7/A0-A6.
+	; SR/CCR preserved: CCR restored before the status branch.
+	; Stack delta at return: zero.
+	; Shared buffers touched: dedicated debug event buffer only.
+	; Why this cannot change branch decisions: the saved status and CCR are
+	; restored immediately before the following BEQ.
+	; Removal/stabilization plan: retain as the stable source-CPU pipeline
+	; selection contract while runtime pipeline switching is supported.
+	move.w ccr, -(sp)
+	movem.l d1/d3-d6, -(sp)
+	move.l d0, d4
+	moveq #2, d1
+	moveq #0, d3
+	move.w state.NativeCliPipelineRequestLen, d3
+	moveq #0, d5
+	lea state.NativeCliCpuName, a0
+	move.b (a0), d5
+	moveq #0, d6
+	move.w state.NativeCliPackageLenActive, d6
+	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_PIPELINE_SELECT
+	movem.l (sp)+, d1/d3-d6
+	move.w (sp)+, ccr
+.endif
 	beq.s ok
 	bsr.w opforgeNativeCliEmitPipelineLastError
 	cmpi.b #abi.STATUS_RUNTIME_ERROR_V1, d0

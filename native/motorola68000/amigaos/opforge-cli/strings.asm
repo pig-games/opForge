@@ -237,6 +237,9 @@ defaultFsUaeArgTail
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT
 	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502", 0
 .else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MACRO_DEBUG
+	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu 65c02 --native-debug", 0
+.else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_65C02_OUTPUT
 	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu 65c02", 0
 .else
@@ -316,6 +319,7 @@ defaultFsUaeArgTail
 	.byte "Work:opforge_6502_native_cli_smoke.asm", 0
 .else
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m6502 -M Work:opforge_module_a --module-path Work:opforge_module_b", 0
+.endif
 .endif
 .endif
 .endif

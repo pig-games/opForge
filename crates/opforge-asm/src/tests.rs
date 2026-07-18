@@ -304,7 +304,8 @@ fn native_debug_contract_console_capture_prepares_mounted_harness() {
     assert!(launch.hunk_path.is_file());
     assert!(launch.descriptor_path.is_file());
     let harness_source = fs::read_to_string(
-        workspace_root().join("native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm"),
+        workspace_root()
+            .join("native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm"),
     )
     .expect("read console debug-contract harness");
     assert!(harness_source.contains("OPFORGE_FS_UAE_CONSOLE_DEBUGGER_HARNESS"));
@@ -368,6 +369,61 @@ fn native_debug_contract_cli_header_fs_uae_proves_real_site_behavior() {
                 run.success,
                 "native CLI debug-event harness failed under FS-UAE\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
+            );
+        }
+    }
+}
+
+#[test]
+fn native_macro_preprocessor_harness_fs_uae_proves_capture_close_and_lookup() {
+    match crate::fs_uae_smoke::run_native_macro_preprocessor_harness_from_env(&workspace_root())
+        .expect("native macro-preprocessor FS-UAE harness should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(
+                runs[0].success,
+                "native macro-preprocessor harness failed: {}",
+                runs[0].stdout
+            );
+        }
+    }
+}
+
+#[test]
+fn native_pipeline_select_harness_fs_uae_proves_embedded_65c02_selection() {
+    // Proof level D. This isolates the embedded package service selection path;
+    // it does not prove the source CPU directive or macro expansion paths.
+    match crate::fs_uae_smoke::run_native_pipeline_select_harness_from_env(&workspace_root())
+        .expect("native pipeline-selection FS-UAE harness should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(
+                runs[0].success,
+                "native pipeline-selection harness failed: {}",
+                runs[0].stdout
+            );
+        }
+    }
+}
+
+#[test]
+fn native_macro_cli_debug_event_harness_proves_complete_macro_fixture_image() {
+    // Proof level D diagnostic. This test proves the full guest CLI expands
+    // the macro fixture into its complete 11-byte native image.
+    match crate::fs_uae_smoke::run_native_macro_cli_debug_event_harness_from_env(&workspace_root())
+        .expect("native macro CLI debug-event harness should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(
+                runs[0].success,
+                "diagnostic harness should emit the complete macro fixture image: {}",
+                runs[0].stdout
             );
         }
     }
@@ -34524,7 +34580,7 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
         &preprocessor,
         &[
             "opforgeNativeCliCaptureMacroDefinitionLineV1\t.block",
-            "jsr lineContainsDirective",
+            "jsr lineContainsMacroDirective",
             "cmpi.w #constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY, d2",
             "move.w d3, 0(a2, d2.l)",
             "opforgeNativeCliFinishMacroDefinitionsV1\t.block",
@@ -34719,8 +34775,9 @@ fn native_preprocessor_macro_invocations_bind_before_prvm_routing() {
 #[test]
 fn native_preprocessor_macro_substitution_and_reentry_are_bounded() {
     // Proof levels B/C. Rust supplies the substitution/scope oracle; the
-    // native source contract proves that a bounded substituted line re-enters
-    // the ordinary processor and restores the caller line after each route.
+    // native source contract proves that a bounded substituted line enters the
+    // assembly-session source bridge and restores the caller line after each
+    // route.
     // It does not prove native 68020 execution or emitted artifact bytes.
     let mut rust_oracle = MacroProcessor::new();
     let lines = vec![
@@ -34762,8 +34819,8 @@ fn native_preprocessor_macro_substitution_and_reentry_are_bounded() {
         &[
             "opforgeNativeCliExpandActiveMacroV1\t.block",
             "bsr.w emitMacroBlockStart",
-            "bsr.w opforgeNativeCliProcessExpandedLineV1",
             "jsr preprocessor.opforgeNativeCliSubstituteMacroBodyLineV1",
+            "bsr.w opforgeNativeCliProcessExpandedLineV1",
             "bsr.w emitMacroBlockEnd",
             "move.w #-1, state.NativeCliPreprocessInvocationDefinition",
         ]
@@ -34775,7 +34832,9 @@ fn native_preprocessor_macro_substitution_and_reentry_are_bounded() {
         &[
             "opforgeNativeCliProcessExpandedLineV1\t.block",
             "jsr preprocessor.opforgeNativeCliBeginExpandedLineV1",
-            "bsr.w opforgeNativeCliTokenizeCurrentLine",
+            "jsr assembly_session.opforgeNativeCliRecordSourceLine",
+            "move.l d0, state.NativeCliPrvmRouteStatus",
+            "jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine",
             "jsr preprocessor.opforgeNativeCliEndExpandedLineV1",
         ]
     ));
@@ -36577,7 +36636,8 @@ fn external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust
     let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");
-    let valid_source = "        .cpu \"6502\"\n        .org $1000\nstart   lda #$42\n";
+    let valid_source =
+        "        .cpu \"65c02\"\n        .org $1000\nstart   lda $12\n        sta $34\n";
     let invalid_source = "        .cpu \"6502\" trailing\nstart   lda #$42\n";
     let case_dir = create_temp_dir("native-source-cpu-normalization");
     let input_path = case_dir.join("input.asm");
@@ -37722,6 +37782,53 @@ fn native_reference_opcore_module_macro_statement_fs_uae() {
                 .expect("read native output");
                 assert_eq!(native, *rust, "native bytes differ for {name}");
             }
+        }
+    }
+}
+
+#[test]
+fn native_macro_invocation_fixture_fs_uae() {
+    // Proof level D. The isolated macro-only fixture exercises COPY, PAIR,
+    // TEXT, and LOCAL through the real native CLI and compares its bytes with
+    // the live Rust authority. It deliberately excludes segments/statements.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let root = workspace_root();
+    let source_path = root.join("examples/opcore/macro_invocation_native.asm");
+    let source = fs::read(&source_path).expect("read macro invocation fixture");
+    let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&source_path, true)
+        .expect("Rust macro fixture authority");
+    assert!(
+        diagnostics.is_empty(),
+        "Rust macro fixture diagnostics: {diagnostics:?}"
+    );
+    let rust = entries
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "macro-invocation-native",
+        cpu_id: "65c02",
+        source: source.as_slice(),
+        package_bytes: package.as_slice(),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
+        .expect("macro invocation FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one macro native run");
+            let run = &runs[0];
+            assert!(run.success, "native macro fixture failed: {}", run.stdout);
+            let native = fs::read(
+                run.artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read native macro bytes");
+            assert_eq!(native, rust, "native macro fixture bytes differ");
         }
     }
 }

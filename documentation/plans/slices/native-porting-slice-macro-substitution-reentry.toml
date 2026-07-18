@@ -1,6 +1,6 @@
 [slice]
 schema_version = 2
-name = "native preprocessor macro substitution and re-entry"
+name = "native macro invocation expansion and artifact parity"
 kind = "native-rust-parity"
 rust_reference = [
   "crates/opforge-core/src/macro_processor_args_subst.rs::substitute_line",
@@ -10,15 +10,16 @@ rust_reference = [
 native_boundary = [
   "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliSubstituteMacroBodyLineV1",
   "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliExpandActiveMacroV1",
-  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliProcessExpandedLineV1"
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliProcessExpandedLineV1",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliTokenizeCurrentLine"
 ]
-invariant = "Each active macro body line is substituted into one bounded expansion buffer and routed through the ordinary native CLI path; a caller label attaches to the generated .block, and a nested frame fails without overwriting the caller frame."
+invariant = "Each active macro body line is substituted into one bounded expansion buffer and routed through the ordinary native CLI path; a caller label uses its direct qualified local name, and a nested frame fails without overwriting the caller frame."
 assertion_decision = "No runtime assertion: fixed output capacity and the active-frame sentinel return deterministic failure before source recording can continue."
-expected_inputs = "An active bounded macro invocation frame with captured body lines and positional, full-list, and named parameter bindings."
-expected_outputs = "Ordinary .block, substituted body, and .endblock lines, each processed through the existing source/tokenizer/PRVM/session path while restoring the caller line."
-known_non_equivalences = "The macro-only fixture, artifact parity, FS-UAE confirmation, segments, and statements remain outside this slice."
-fast_proof_command = "cargo test -p asm native_preprocessor_macro_substitution_and_reentry_are_bounded -- --nocapture"
-level_d_command = "Not applicable to this intermediate re-entry slice: Phase 7.3e provides the first named macro fixture and Phase 7.3f the required FS-UAE artifact proof."
+expected_inputs = "An active bounded macro invocation frame with captured body lines and positional, full-list, named, and default parameter bindings, including a leading-dot macro call and a source .cpu 65c02 directive."
+expected_outputs = "Substituted body lines processed through the existing source/tokenizer/PRVM/session path while restoring the caller line, with the macro fixture emitting A5 12 85 34 01 02 03 03 00 09 00."
+known_non_equivalences = "This macro-only fixture deliberately excludes segments, statements, recursion diagnostics, and semantic errors outside the named invocation path."
+fast_proof_command = "cargo test -p asm native_preprocessor_macro_substitution_and_reentry_are_bounded -- --nocapture && cargo test examples_match_reference_outputs -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN=/Applications/FS-UAE.app/Contents/MacOS/fs-uae OPFORGE_FS_UAE_CONFIG_TEMPLATE=/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_TIMEOUT_MS=120000 OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=60000 cargo test -p asm native_macro_invocation_fixture_fs_uae -- --nocapture --test-threads=1"
 level_d_fail_closed = true
 
 [[tests]]
@@ -26,3 +27,15 @@ name = "native_preprocessor_macro_substitution_and_reentry_are_bounded"
 proof_level = "C"
 proves = "Rust confirms positional, at-positional, full-list, named, and label-scope semantics while the native source contract proves bounded substitution helpers and ordinary-path re-entry with caller restoration."
 does_not_prove = "Native 68020 execution, complete artifact parity, or FS-UAE behavior."
+
+[[tests]]
+name = "examples_match_reference_outputs"
+proof_level = "C"
+proves = "The Rust authority and checked-in macro fixture references agree on the 11-byte output and listing artifacts."
+does_not_prove = "Native execution or FS-UAE behavior."
+
+[[tests]]
+name = "native_macro_invocation_fixture_fs_uae"
+proof_level = "D"
+proves = "The real native CLI under FS-UAE selects the embedded 65c02 pipeline and emits bytes equal to the Rust authority for COPY, PAIR defaults, TEXT expressions, and a labeled leading-dot LOCAL call."
+does_not_prove = "Segments, statements, recursive macros, or diagnostics outside this intentionally macro-only fixture."

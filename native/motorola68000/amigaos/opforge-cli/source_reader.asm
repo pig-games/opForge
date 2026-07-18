@@ -241,27 +241,45 @@ crDone
 	move.w #1, state.NativeCliSawCr
 
 lineDone
+	; The line processor and pending include/module drainers use D5 as scratch.
+	; Keep this file's DOS handle intact so the next read continues the same
+	; source stream rather than issuing Read against a clobbered handle.
+	move.l d5, -(sp)
 	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
-	bne.s close
+	bne.s lineDoneRestoreClose
 	bsr.w opforgeNativeCliTokenizePendingInclude
-	bne.s close
+	bne.s lineDoneRestoreClose
 	bsr.w opforgeNativeCliTokenizePendingUseModule
-	bne.s close
+	bne.s lineDoneRestoreClose
+	move.l (sp)+, d5
 	move.l state.NativeCliSourceLineNum, d0
 	addq.l #1, d0
 	move.l d0, state.NativeCliSourceLineNum
 	clr.w state.NativeCliSourceLineLen
 	bra.w loop
 
+lineDoneRestoreClose
+	move.l (sp)+, d5
+	bra.w close
+
 fileEof
 	tst.w state.NativeCliSourceLineLen
 	beq.s checkModuleDepth
+	; See lineDone: the active source-file handle must survive every per-line
+	; callback before the EOF close path consumes it.
+	move.l d5, -(sp)
 	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
-	bne.s close
+	bne.s fileEofRestoreClose
 	bsr.w opforgeNativeCliTokenizePendingInclude
-	bne.s close
+	bne.s fileEofRestoreClose
 	bsr.w opforgeNativeCliTokenizePendingUseModule
-	bne.s close
+	bne.s fileEofRestoreClose
+	move.l (sp)+, d5
+	bra.s checkModuleDepth
+
+fileEofRestoreClose
+	move.l (sp)+, d5
+	bra.s close
 
 checkModuleDepth
 	jsr preprocessor.opforgeNativeCliFinishMacroDefinitionsV1

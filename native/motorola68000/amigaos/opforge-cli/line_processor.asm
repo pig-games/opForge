@@ -29,6 +29,11 @@
 	.use opforge.cli.text_output
 	.use opforge.cli.copy
 	.use opforge.cli.preprocessor
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	.use opforge.debug.contracts as debug_contracts
+	.use opforge.debug.events as debug_events
+	.include "debug_macros.i"
+.endif
 
 	.section code, kind=code
 	.pub
@@ -45,11 +50,50 @@ preprocessPass
 	jsr preprocessor.opforgeNativeCliParseMacroInvocationV1
 	tst.l d0
 	beq.s invocationPass
+
+invocationObserved
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: a recognized or malformed macro invocation.
+	; Macro/routine used: DEBUG_EVENT_U32X4 / debugEventU32x4.
+	; Registers preserved: D0-D7/A0-A6.
+	; SR/CCR preserved: restored before the invocation status is tested again.
+	; Stack delta at return: zero.
+	; Shared buffers touched: dedicated debug event buffer only.
+	; Why this cannot change branch decisions: the parser status is saved and
+	; re-tested after the event before the existing malformed/expand branches.
+	; Removal/stabilization plan: retain as the native macro invocation contract.
+	move.l d0, -(sp)
+	move.w ccr, -(sp)
+	movem.l d1-d6/a0, -(sp)
+	moveq #0, d1
+	moveq #4, d2
+	move.l 30(sp), d3
+	moveq #0, d4
+	move.w state.NativeCliPreprocessDefinitionCount, d4
+	moveq #0, d5
+	move.w state.NativeCliPreprocessInvocationDefinition, d5
+	moveq #0, d6
+	move.w state.NativeCliPreprocessInvocationArgCount, d6
+	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_MACRO_INVOCATION
+	movem.l (sp)+, d1-d6/a0
+	move.w (sp)+, ccr
+	move.l (sp)+, d0
+.endif
+	tst.l d0
 	bmi.w fail
 	bsr.w opforgeNativeCliExpandActiveMacroV1
 	rts
 
 invocationPass
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s record
+	lea strings.EndMnemonicText, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	bne.w commentOnly
 	tst.w state.NativeCliIncludeDepth
 	beq.s record
 	jsr report.opforgeNativeCliEmitIncludeLineRecord
@@ -60,9 +104,13 @@ record
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
-	beq.s checkPackage
+	beq.w commentOnly
 	cmpi.b #';', (a0)
 	beq.w commentOnly
+	lea strings.EndMnemonicText, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	bne.w commentOnly
 	lea strings.UseDirectiveText, a1
 	moveq #4, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
@@ -71,6 +119,24 @@ record
 	rts
 
 checkPackage
+	bsr.w opforgeNativeCliHasDottedLeadingLabelV1
+	tst.l d0
+	beq.s packageRoute
+
+sourceFallback
+	; The packaged parser has no label token form for a leading dotted name.
+	; Preserve this ordinary source statement through the bounded fallback used
+	; by macro-expanded lines so qualified local constants and their `.word`
+	; references retain real symbol/operand text.
+	moveq #-1, d0
+	move.l d0, state.NativeCliPrvmRouteStatus
+	clr.w state.NativeCliPrvmResultCount
+	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
+	tst.l d0
+	bne.w fail
+	bra.w commentOnly
+
+packageRoute
 	tst.w state.NativeCliPackagePipelineReady
 	beq.w parseOnly
 	bsr.w opforgeNativeCliDispatchTokenizeLineEnvelope
@@ -247,24 +313,148 @@ return
 	rts
 	.bend  ; opforgeNativeCliTokenizeCurrentLine
 
+; Detect a dotted identifier in the leading label token, excluding directives.
+; Outputs: D0 = 1 for a dotted leading label, otherwise 0.
+; Clobbers: D0-D2/A0/CCR.
+opforgeNativeCliHasDottedLeadingLabelV1	.block
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s no
+	cmpi.b #'.', (a0)
+	beq.s no
+	moveq #0, d1
+
+scan
+	tst.l d0
+	beq.s no
+	move.b (a0)+, d2
+	subq.l #1, d0
+	cmpi.b #' ', d2
+	beq.s found
+	cmpi.b #9, d2
+	beq.s found
+	cmpi.b #':', d2
+	beq.s found
+	cmpi.b #';', d2
+	beq.s no
+	cmpi.b #'.', d2
+	bne.s scan
+	moveq #1, d1
+	bra.s scan
+
+found
+	move.l d1, d0
+	rts
+no
+	moveq #0, d0
+	rts
+	.bend  ; opforgeNativeCliHasDottedLeadingLabelV1
+
 ; Re-enter the ordinary native line pipeline for one bounded expanded line.
 ; Inputs: A0/D0 = expansion text/length; current source line is the caller frame.
 ; Outputs: D0 = 0 on success, 1 on length/depth or pipeline failure.
 ; Clobbers: D0-D1/A0-A1/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliProcessExpandedLineV1	.block
-	jsr preprocessor.opforgeNativeCliBeginExpandedLineV1
-	bne.s fail
-	bsr.w opforgeNativeCliTokenizeCurrentLine
-	move.l d0, d1
-	jsr preprocessor.opforgeNativeCliEndExpandedLineV1
-	move.l d1, d0
+	jsr preprocessor.opforgeNativeCliBeginExpandedLineV1.l
+	bne.w fail
+	; The source reader has already consumed the invocation. Record the
+	; substituted body text and create its bounded source-backed statement.
+	; Macro expansion must not re-enter invocation recognition here: that route
+	; records source text but does not commit the expanded statement.
+	jsr assembly_session.opforgeNativeCliRecordSourceLine
+	moveq #-1, d0
+	move.l d0, state.NativeCliPrvmRouteStatus
+	clr.w state.NativeCliPrvmResultCount
+	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
+	move.l d0, -(sp)
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: one expanded body line after ordinary tokenization.
+	; Macro/routine used: DEBUG_EVENT_U32X4 / debugEventU32x4.
+	; Registers preserved: D0-D7/A0-A6.
+	; SR/CCR preserved: restored before the saved tokenizer status is consumed.
+	; Stack delta at return: zero.
+	; Shared buffers touched: dedicated debug event buffer only.
+	; Why this cannot change branch decisions: the tokenizer result remains saved
+	; on the stack and is restored after the event before EndExpandedLineV1.
+	; Removal/stabilization plan: retain as the expanded-line bridge contract.
+	move.w ccr, -(sp)
+	movem.l d1-d6/a0, -(sp)
+	moveq #0, d1
+	moveq #3, d2
+	.ifdef OPFORGE_MACRO_EXPR_EVAL_PROBE
+	; The expression probe repurposes this diagnostic-only event payload to
+	; capture the expanded source bytes at the record boundary. The ordinary
+	; stable event retains its status/depth/body-index payload below.
+	; Instrumentation point: expanded source is active after statement recording.
+	; Macro/routine used: DEBUG_EVENT_U32X4 / debugEventU32x4.
+	; Registers preserved: D0-D7/A0-A6 by the surrounding save/restore.
+	; SR/CCR preserved: restored before the saved record status is consumed.
+	; Stack delta at return: zero.
+	; Shared buffers touched: dedicated debug event buffer only.
+	; Why this cannot change branch decisions: it runs only in the diagnostic
+	; build and the original record status remains saved on the stack.
+	; Removal/stabilization plan: remove when macro-expanded statement shape is
+	; confirmed against the authoritative fixture.
+	lea state.NativeCliSourceLine, a0
+	move.l (a0), d3
+	move.l 4(a0), d4
+	move.l 8(a0), d5
+	moveq #0, d6
+	move.w state.NativeCliSourceLineLen, d6
+	.else
+	move.l 30(sp), d3
+	moveq #0, d4
+	move.w state.NativeCliSourceLineLen, d4
+	moveq #0, d5
+	move.w state.NativeCliPreprocessExpansionDepth, d5
+	moveq #0, d6
+	move.w state.NativeCliPreprocessInvocationBodyIndex, d6
+	.endif
+	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_MACRO_EXPANDED_LINE
+	movem.l (sp)+, d1-d6/a0
+	move.w (sp)+, ccr
+.endif
+	jsr preprocessor.opforgeNativeCliEndExpandedLineV1.l
+	move.l (sp)+, d0
 	rts
 
 fail
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliProcessExpandedLineV1
+
+; Re-enter the ordinary parser path for one generated macro scope line.
+; Label-attached `.block` / `.endblock` lines need the package parser's label
+; and flow-control metadata; unlike a substituted body line, they must not use
+; the source-only statement fallback.
+; Inputs: A0/D0 = scope text/length; current source line is the caller frame.
+; Outputs: D0 = 0 on success, 1 on staging or source-recording failure.
+; Clobbers: D0-D1/A0-A1/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliProcessExpandedScopeLineV1	.block
+	jsr preprocessor.opforgeNativeCliBeginExpandedLineV1.l
+	bne.s fail
+	; Generated `.block` / `.endblock` directives must bypass macro recognition:
+	; otherwise their dotted mnemonics are mistaken for nested macro calls. The
+	; normal source-statement fallback still records label and mnemonic metadata
+	; for the assembly driver's scope-flow pass.
+	jsr assembly_session.opforgeNativeCliRecordSourceLine
+	moveq #-1, d0
+	move.l d0, state.NativeCliPrvmRouteStatus
+	clr.w state.NativeCliPrvmResultCount
+	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
+	move.l d0, -(sp)
+	jsr preprocessor.opforgeNativeCliEndExpandedLineV1.l
+	move.l (sp)+, d0
+	rts
+
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliProcessExpandedScopeLineV1
 
 ; Drain the active bounded macro frame through the ordinary CLI line path.
 ; Inputs: a complete preprocessor invocation frame is active.
@@ -274,26 +464,68 @@ fail
 opforgeNativeCliExpandActiveMacroV1	.block
 	tst.w state.NativeCliPreprocessInvocationDefinition
 	bmi.w fail
-	bsr.w emitMacroBlockStart
-	bne.w fail
-	lea state.NativeCliPreprocessExpansionLine, a0
-	moveq #0, d0
-	move.w state.NativeCliPreprocessExpansionLineLen, d0
-	bsr.w opforgeNativeCliProcessExpandedLineV1
-	bne.w fail
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: macro expansion entry, after the complete invocation
+	; frame has been selected and before its body is consumed.
+	; Macro/routine used: DEBUG_EVENT_U32X4 / debugEventU32x4.
+	; Registers preserved: D0-D7/A0-A6.
+	; SR/CCR preserved: not relied upon by the diagnostic-only return below.
+	; Stack delta at return: zero.
+	; Shared buffers touched: dedicated debug event buffer only.
+	; Why this cannot change release branch decisions: this entire probe is absent
+	; outside the explicit debug-contract diagnostic build.
+	; Removal/stabilization plan: remove after the expansion-frame hang is fixed.
+	move.w ccr, -(sp)
+	movem.l d1-d6/a0, -(sp)
+	moveq #0, d1
+	moveq #5, d2
+	moveq #0, d3
+	move.w state.NativeCliPreprocessInvocationDefinition, d3
+	moveq #0, d4
+	move.w state.NativeCliPreprocessInvocationArgCount, d4
+	moveq #0, d5
+	move.w state.NativeCliPreprocessInvocationBodyIndex, d5
+	moveq #0, d6
+	move.w state.NativeCliPreprocessInvocationLabelLen, d6
+	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_MACRO_EXPANSION_ENTRY
+	movem.l (sp)+, d1-d6/a0
+	move.w (sp)+, ccr
+	; Only the frame probe stops before release expansion. Other debug-contract
+	; builds execute the body so route checkpoints can localize the failure.
+.ifdef OPFORGE_MACRO_EXPANSION_FRAME_PROBE
+	; Deliberately terminate this diagnostic-only expansion after recording the
+	; frame. This lets the guest harness inspect the imported invocation frame
+	; without entering the known non-returning body path.
+	moveq #1, d0
+	rts
+.endif
+.endif
 	clr.w state.NativeCliPreprocessInvocationBodyIndex
 
 bodyLoop
 	move.w state.NativeCliPreprocessInvocationDefinition, d2
 	moveq #0, d0
 	move.w state.NativeCliPreprocessInvocationBodyIndex, d0
+	; The capture path is bounded to this many body slots.  Keep expansion
+	; bounded independently of the per-definition count table so corrupted or
+	; stale metadata cannot make the native CLI iterate unboundedly.
+	cmpi.w #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d0
+	bcc.s close
 	lea state.NativeCliPreprocessDefinitionBodyCount, a0
 	moveq #0, d4
 	add.w d2, d2
 	move.w 0(a0, d2.w), d4
+	cmpi.w #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d4
+	bhi.w fail
 	cmp.w d4, d0
 	bcc.s close
-	jsr preprocessor.opforgeNativeCliSubstituteMacroBodyLineV1
+	jsr preprocessor.opforgeNativeCliSubstituteMacroBodyLineV1.l
+	bne.w fail
+	; Lower a label-attached macro-local definition into the source statement
+	; stream as its Rust-visible qualified symbol (for example `foo.local`).
+	; The emitted body remains source-backed, so this must happen before the
+	; bounded line is recorded by the assembly session.
+	bsr.w qualifyExpandedMacroLocalLabel
 	bne.w fail
 	move.w d1, state.NativeCliPreprocessExpansionLineLen
 	lea state.NativeCliPreprocessExpansionLine, a0
@@ -304,13 +536,6 @@ bodyLoop
 	bra.s bodyLoop
 
 close
-	bsr.w emitMacroBlockEnd
-	bne.s fail
-	lea state.NativeCliPreprocessExpansionLine, a0
-	moveq #0, d0
-	move.w state.NativeCliPreprocessExpansionLineLen, d0
-	bsr.w opforgeNativeCliProcessExpandedLineV1
-	bne.s fail
 	move.w #-1, state.NativeCliPreprocessInvocationDefinition
 	moveq #0, d0
 	rts
@@ -318,6 +543,75 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliExpandActiveMacroV1
+
+; Qualify an unindented macro-body label with the invocation label.  Native
+; scope directives are not yet represented by the source parser package, so
+; retain Rust-visible names such as `foo.local` directly in the statement
+; stream.  Indented body lines remain instructions/directives and are unchanged.
+; Inputs: D1 = expansion byte length.
+; Outputs: D0 = 0 on success; D1 updated when a label is qualified.
+; Clobbers: D0-D6/A0-A2/CCR.
+qualifyExpandedMacroLocalLabel	.block
+	moveq #0, d0
+	move.w state.NativeCliPreprocessInvocationLabelLen, d0
+	beq.w done
+	tst.l d1
+	beq.w done
+	lea state.NativeCliPreprocessExpansionLine, a0
+	move.b (a0), d2
+	cmpi.b #' ', d2
+	beq.w done
+	cmpi.b #9, d2
+	beq.w done
+	cmpi.b #'.', d2
+	beq.w done
+	; A local declaration has a first token followed by whitespace. Preserve
+	; any unindented bare instruction rather than rewriting it as a label.
+	clr.l d3
+findTokenEnd
+	cmp.l d1, d3
+	bcc.w done
+	move.b 0(a0, d3.l), d2
+	cmpi.b #' ', d2
+	beq.s haveLabel
+	cmpi.b #9, d2
+	beq.s haveLabel
+	addq.l #1, d3
+	bra.s findTokenEnd
+
+haveLabel
+	move.l d0, d4
+	addq.l #1, d4
+	move.l d1, d5
+	add.l d4, d5
+	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY - 1, d5
+	bcc.w fail
+	lea 0(a0, d4.l), a2
+	move.l d1, d6
+shiftRight
+	tst.l d6
+	beq.s copyPrefix
+	subq.l #1, d6
+	move.b 0(a0, d6.l), d2
+	move.b d2, 0(a2, d6.l)
+	bra.s shiftRight
+
+copyPrefix
+	lea state.NativeCliPreprocessInvocationLabel, a1
+	move.l d0, d6
+copyLabel
+	move.b (a1)+, (a0)+
+	subq.l #1, d6
+	bne.s copyLabel
+	move.b #'.', (a0)
+	move.l d5, d1
+done
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; qualifyExpandedMacroLocalLabel
 
 ; Build the Rust-compatible macro scope start line in ExpansionLine.
 ; A caller label attaches to `.block`; an indented call keeps its indentation.
@@ -330,9 +624,13 @@ emitMacroBlockStart	.block
 	lea state.NativeCliPreprocessInvocationLabel, a1
 	jsr copy.copyBytes
 	move.w state.NativeCliPreprocessInvocationLabelLen, d2
-	lea MacroBlockWithLabelText, a1
-	moveq #7, d0
-	jsr copy.copyBytes
+	move.b #' ', (a2)+
+	move.b #'.', (a2)+
+	move.b #'b', (a2)+
+	move.b #'l', (a2)+
+	move.b #'o', (a2)+
+	move.b #'c', (a2)+
+	move.b #'k', (a2)+
 	addq.w #7, d2
 	bra.s done
 indent
@@ -348,10 +646,13 @@ copyIndent
 	addq.w #1, d2
 	bra.s indentLoop
 block
-	lea MacroBlockText, a1
-	moveq #6, d0
 	adda.l d2, a2
-	jsr copy.copyBytes
+	move.b #'.', (a2)+
+	move.b #'b', (a2)+
+	move.b #'l', (a2)+
+	move.b #'o', (a2)+
+	move.b #'c', (a2)+
+	move.b #'k', (a2)+
 	addq.w #6, d2
 done
 	move.w d2, state.NativeCliPreprocessExpansionLineLen
@@ -375,11 +676,17 @@ copyIndent
 	addq.w #1, d2
 	bra.s indentLoop
 endblock
-	lea MacroEndblockText, a1
-	moveq #9, d0
 	adda.l d2, a2
-	jsr copy.copyBytes
-	addq.w #9, d2
+	move.b #'.', (a2)+
+	move.b #'e', (a2)+
+	move.b #'n', (a2)+
+	move.b #'d', (a2)+
+	move.b #'b', (a2)+
+	move.b #'l', (a2)+
+	move.b #'o', (a2)+
+	move.b #'c', (a2)+
+	move.b #'k', (a2)+
+	addi.w #9, d2
 	move.w d2, state.NativeCliPreprocessExpansionLineLen
 	moveq #0, d0
 	rts
@@ -677,12 +984,4 @@ opforgeNativeCliPrepareLineServiceRequest	.block
 
 	.endsection
 
-	.section data, kind=data
-MacroBlockText
-	.byte ".block", 0
-MacroBlockWithLabelText
-	.byte " .block", 0
-MacroEndblockText
-	.byte ".endblock", 0
-	.endsection
 	.endmodule

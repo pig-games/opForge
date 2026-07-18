@@ -4,6 +4,7 @@
 	.cpu 68020
 
 	.use opasm.amigaos.callback_abi as abi
+	.use opasm.amigaos.engine as engine
 
 	.use opforge.cli.dos
 	.use opforge.cli.text_output
@@ -141,6 +142,23 @@ selectorOk
 
 unknownMnemonic
 	move.l #strings.NativeUnknownMnemonicText, d1
+	jsr dos.putStr
+	moveq #0, d0
+	move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0
+	jsr text_output.opforgeNativeCliPutU16Decimal
+	jsr text_output.opforgeNativeCliPutSpace
+	suba.l #engine.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movea.l sp, a0
+	moveq #0, d0
+	move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0
+	jsr engine.opasmEngineGetStatementTextMetadataV1
+	bne.s unknownMnemonicDone
+	move.l engine.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), d1
+	jsr dos.putStr
+
+unknownMnemonicDone
+	adda.l #engine.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	move.l #strings.NewlineText, d1
 	bra.w reportText
 
 unsupportedAddressing
@@ -153,6 +171,11 @@ unresolvedLabel
 
 badOrg
 	move.l #strings.NativeBadOrgText, d1
+	jsr dos.putStr
+	moveq #0, d0
+	move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0
+	jsr text_output.opforgeNativeCliPutU16Decimal
+	move.l #strings.NewlineText, d1
 	bra.s reportText
 
 serviceFailure

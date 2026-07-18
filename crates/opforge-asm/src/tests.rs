@@ -14943,7 +14943,7 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
         &source,
         "compileAdditive",
         &[
-            "bsr.w compileSingleTerm",
+            "bsr.w compileMultiplicative",
             "cmpi.b #'+', d6",
             "moveq #runtime.EXPRVM_BINARY_SUBTRACT, d6",
             "bsr.w emitApplyBinaryD6",
@@ -14986,7 +14986,7 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
         "compileSingleTerm",
         &[
             "decimal",
-            "bsr.w parseDecimal",
+            "bsr.w parseSuffixedNumber",
             "move.l d0, -(sp)",
             "bsr.w emitPushLiteralD3",
             "move.l d0, d5",

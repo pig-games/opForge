@@ -34716,6 +34716,47 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
 }
 
 #[test]
+fn native_preprocessor_structural_definition_record_is_inert_and_macro_backed() {
+    // Proof levels B/C. This locks the shared fixed record layout and proves
+    // that only the existing macro kind is routable; it does not enable segment
+    // or statement parsing or prove native execution.
+    let root = workspace_root();
+    let constants =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"))
+            .expect("read native constants");
+    let state = fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/state.asm"))
+        .expect("read native state");
+    let definitions = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm"),
+    )
+    .expect("read definition owner");
+
+    assert!(source_contains_in_order(
+        &constants,
+        &[
+            "NATIVE_PREPROCESS_DEFINITION_KIND_MACRO = 0",
+            "NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT = 1",
+            "NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT = 2",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &state,
+        &[
+            "Shared structural-definition record contract",
+            "DefinitionHeader is the captured name/signature",
+            "Segment/statement kinds have",
+            "NativeCliPreprocessDefinitionBodyCount",
+            "NativeCliPreprocessDefinitionHeaderLen",
+            "NativeCliPreprocessDefinitionBodyLen",
+            "NativeCliPreprocessDefinitionHeader",
+            "NativeCliPreprocessDefinitionBody",
+        ]
+    ));
+    assert!(!definitions.contains("DEFINITION_KIND_SEGMENT"));
+    assert!(!definitions.contains("DEFINITION_KIND_STATEMENT"));
+}
+
+#[test]
 fn native_preprocessor_macro_invocation_frame_is_bounded_and_resettable() {
     // Proof level B. The native state owns one bounded invocation frame whose
     // selected definition sentinel is reset for every CLI session. This does

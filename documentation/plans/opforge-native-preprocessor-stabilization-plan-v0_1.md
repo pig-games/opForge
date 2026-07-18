@@ -177,7 +177,7 @@ only in this artifact; it requires its own activated item/slice contracts.
   - Commit outcome: one explicit frontend contract can be used by later segments/statements without direct `line_processor` branching or partial-state leakage.
   - Definition of done: SP-004 is fully closed.
 
-- [ ] Item 4: define an inert shared structural-definition record contract
+- [x] Item 4: define an inert shared structural-definition record contract
   - Source requirement or finding IDs: SP-005 (one-off directive/name loops); SP-006 (macro/segment/statement storage must not diverge accidentally).
   - Invariant: one inert definition header/body contract expresses kind, name/signature, body span/count, owner module, visibility, label attachment, expansion policy, and scope-wrapping policy without enabling segment/statement behavior or changing existing macro storage.
   - Rust authority / native boundary: Rust macro processor definition parsing; native scan/definition modules and fixed state representation.

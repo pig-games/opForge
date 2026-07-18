@@ -202,6 +202,13 @@ NativeCliPreprocessDefinitionCount
 	.res word, 1
 NativeCliPreprocessActiveDefinition
 	.res word, 1
+; Shared structural-definition record contract (currently macro-only):
+; DefinitionHeader is the captured name/signature; DefinitionBody and
+; DefinitionBodyCount describe the bounded body span; HeaderLen/BodyLen own
+; exact byte lengths. preprocessor_definitions owns macro capture and the
+; macro kind; preprocessor_invocation owns attached caller-label state; and
+; line_processor owns expansion/scope policy. Segment/statement kinds have no
+; active record or route in this layout-only slice.
 NativeCliPreprocessInvocationDefinition
 	.res word, 1
 NativeCliPreprocessInvocationArgCount

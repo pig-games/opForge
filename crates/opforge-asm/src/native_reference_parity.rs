@@ -179,6 +179,11 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
         AdditiveMosAdaptation
     ),
     opcore_root!(
+        "macro_invocation_native",
+        ModuleMacroStatement,
+        AdditiveMosAdaptation
+    ),
+    opcore_root!(
         "macro_segment_syntax",
         ModuleMacroStatement,
         AdditiveMosAdaptation

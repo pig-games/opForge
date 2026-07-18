@@ -27,7 +27,10 @@ resetStateV1	.block
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 beginBlockScopeV1	.block
-	bsr.w pushFromStatementLabel
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementLabelTextV1
+	bsr.w pushText
 	bne.s fail
 	move.w d7, d2
 	addq.w #1, d2
@@ -197,6 +200,7 @@ pushFromStatementOperand	.block
 	bne.s fail
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
 	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
+	beq.s fail
 	bsr.w pushText
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	rts
@@ -213,8 +217,6 @@ fail
 ; CCR: reflects D0 on return.
 pushText	.block
 	bsr.w skipWhitespace
-	tst.l d0
-	beq.s fail
 	moveq #0, d2
 	move.w ScopeDepth, d2
 	cmpi.w #OPASM_SCOPE_DEPTH_CAPACITY, d2
@@ -241,8 +243,6 @@ copy
 	subq.w #1, d4
 	bra.s copy
 finish
-	cmpi.w #OPASM_SCOPE_NAME_CAPACITY - 1, d4
-	beq.w fail
 	clr.b (a1)
 	move.w ScopeDepth, d2
 	addq.w #1, d2
@@ -291,6 +291,8 @@ scopeLoop
 	lsl.l #5, d5
 	lea ScopeNames, a1
 	adda.l d5, a1
+	tst.b (a1)
+	beq.s nextScope
 scopeChar
 	move.b (a1)+, d5
 	beq.s scopeEnd
@@ -306,6 +308,9 @@ scopeEnd
 	move.b #'.', (a0)+
 	addq.l #1, d1
 	subq.w #1, d4
+	addq.w #1, d3
+	bra.s scopeLoop
+nextScope
 	addq.w #1, d3
 	bra.s scopeLoop
 rawName

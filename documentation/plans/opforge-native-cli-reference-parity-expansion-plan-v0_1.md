@@ -842,7 +842,7 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: validated macro definition bodies never reach tokenizer or PRVM before invocation.
   - Definition of done: names, parameter declarations, body order, comments, mismatch/unterminated errors, and capacity bounds are retained; invocation remains a later item.
 
-- [ ] Item 7.3: expand macro invocations with Rust-compatible substitution and scope wrapping
+- [x] Item 7.3: expand macro invocations with Rust-compatible substitution and scope wrapping
   - Source requirement or finding IDs: `macro_syntax.asm` COPY/PAIR/TEXT/LOCAL forms; Rust `parse_macro_invocation`, `build_macro_args`, and `substitute_line`.
   - Expected files: a new macro-only MOS fixture and reference artifact that contains COPY/PAIR/TEXT/LOCAL but no `.segment`; native preprocessor/state/line routing; focused macro artifact and contract tests; one slice record.
   - Execution phases (each phase is one focused commit; do not begin the next phase until the current phase has its focused proof and plan-compliance review):

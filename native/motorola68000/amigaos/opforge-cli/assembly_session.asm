@@ -221,7 +221,13 @@ haveDirective
 	bra.s haveMnemonic
 
 haveOperandText
+	; PRVM can return one operand-text row per comma-delimited part.  Preserve
+	; the first start and extend the end through the final row so opasm receives
+	; the complete source list (`1, 2`), not only its trailing operand.
+	tst.l state.NativeCliStmtOperandStart
+	bne.s haveOperandEnd
 	move.l 8(a2), state.NativeCliStmtOperandStart
+haveOperandEnd
 	move.l 12(a2), state.NativeCliStmtOperandEnd
 	bra.w next
 

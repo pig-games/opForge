@@ -11,12 +11,14 @@ native_boundary = [
   "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliSubstituteMacroBodyLineV1",
   "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliExpandActiveMacroV1",
   "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliProcessExpandedLineV1",
-  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliTokenizeCurrentLine"
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliProcessExpandedScopeLineV1",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliTokenizeCurrentLine",
+  "native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm::beginBlockScopeV1"
 ]
-invariant = "Each active macro body line is substituted into one bounded expansion buffer and routed through the ordinary native CLI path; a caller label uses its direct qualified local name, and a nested frame fails without overwriting the caller frame."
+invariant = "Each active macro invocation emits Rust-compatible `.block`/`.endblock` scope records, routes each substituted body line through the ordinary native CLI tokenizer/PRVM/session path, and rejects a nested frame without overwriting the caller frame."
 assertion_decision = "No runtime assertion: fixed output capacity and the active-frame sentinel return deterministic failure before source recording can continue."
 expected_inputs = "An active bounded macro invocation frame with captured body lines and positional, full-list, named, and default parameter bindings, including a leading-dot macro call and a source .cpu 65c02 directive."
-expected_outputs = "Substituted body lines processed through the existing source/tokenizer/PRVM/session path while restoring the caller line, with the macro fixture emitting A5 12 85 34 01 02 03 03 00 09 00."
+expected_outputs = "A caller label attaches to the generated `.block`, anonymous blocks balance without a synthetic symbol prefix, substituted body lines use the existing source/tokenizer/PRVM/session path while restoring the caller line, and the macro fixture emits A5 12 85 34 01 02 03 03 00 09 00."
 known_non_equivalences = "This macro-only fixture deliberately excludes segments, statements, recursion diagnostics, and semantic errors outside the named invocation path."
 fast_proof_command = "cargo test -p asm native_preprocessor_macro_substitution_and_reentry_are_bounded -- --nocapture && cargo test examples_match_reference_outputs -- --nocapture"
 level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN=/Applications/FS-UAE.app/Contents/MacOS/fs-uae OPFORGE_FS_UAE_CONFIG_TEMPLATE=/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_TIMEOUT_MS=120000 OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=60000 cargo test -p asm native_macro_invocation_fixture_fs_uae -- --nocapture --test-threads=1"
@@ -39,3 +41,9 @@ name = "native_macro_invocation_fixture_fs_uae"
 proof_level = "D"
 proves = "The real native CLI under FS-UAE selects the embedded 65c02 pipeline and emits bytes equal to the Rust authority for COPY, PAIR defaults, TEXT expressions, and a labeled leading-dot LOCAL call."
 does_not_prove = "Segments, statements, recursive macros, or diagnostics outside this intentionally macro-only fixture."
+
+[[tests]]
+name = "native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection"
+proof_level = "D"
+proves = "A real 68020 harness proves a recognized nested macro call fails while the active caller frame, bound arguments, and restored caller source line remain intact."
+does_not_prove = "Recursive macro expansion beyond the declared one-frame native limit."

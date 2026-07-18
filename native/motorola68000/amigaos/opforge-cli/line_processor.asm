@@ -360,15 +360,10 @@ no
 opforgeNativeCliProcessExpandedLineV1	.block
 	jsr preprocessor.opforgeNativeCliBeginExpandedLineV1.l
 	bne.w fail
-	; The source reader has already consumed the invocation. Record the
-	; substituted body text and create its bounded source-backed statement.
-	; Macro expansion must not re-enter invocation recognition here: that route
-	; records source text but does not commit the expanded statement.
-	jsr assembly_session.opforgeNativeCliRecordSourceLine
-	moveq #-1, d0
-	move.l d0, state.NativeCliPrvmRouteStatus
-	clr.w state.NativeCliPrvmResultCount
-	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
+	; The substituted source must follow the ordinary frontend path.  In
+	; particular, a nested `.NAME` call re-enters macro recognition and fails
+	; against the active bounded frame instead of becoming a silent statement.
+	jsr opforgeNativeCliTokenizeCurrentLine
 	move.l d0, -(sp)
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	; Instrumentation point: one expanded body line after ordinary tokenization.
@@ -437,10 +432,9 @@ fail
 opforgeNativeCliProcessExpandedScopeLineV1	.block
 	jsr preprocessor.opforgeNativeCliBeginExpandedLineV1.l
 	bne.s fail
-	; Generated `.block` / `.endblock` directives must bypass macro recognition:
-	; otherwise their dotted mnemonics are mistaken for nested macro calls. The
-	; normal source-statement fallback still records label and mnemonic metadata
-	; for the assembly driver's scope-flow pass.
+	; `.block` and `.endblock` are frontend flow records, not package mnemonics.
+	; Preserve them through the existing source/session flow fallback; substituted
+	; macro body lines still use the full tokenizer → PRVM path above.
 	jsr assembly_session.opforgeNativeCliRecordSourceLine
 	moveq #-1, d0
 	move.l d0, state.NativeCliPrvmRouteStatus
@@ -501,6 +495,16 @@ opforgeNativeCliExpandActiveMacroV1	.block
 .endif
 .endif
 	clr.w state.NativeCliPreprocessInvocationBodyIndex
+	; Rust macro expansion wraps every `.macro` invocation in a lexical block.
+	; Process the generated start line before body substitution so a caller label
+	; belongs to this scope rather than to a rewritten body declaration.
+	bsr.w emitMacroBlockStart
+	bne.w fail
+	lea state.NativeCliPreprocessExpansionLine, a0
+	moveq #0, d0
+	move.w state.NativeCliPreprocessExpansionLineLen, d0
+	bsr.w opforgeNativeCliProcessExpandedScopeLineV1
+	bne.w fail
 
 bodyLoop
 	move.w state.NativeCliPreprocessInvocationDefinition, d2
@@ -521,12 +525,6 @@ bodyLoop
 	bcc.s close
 	jsr preprocessor.opforgeNativeCliSubstituteMacroBodyLineV1.l
 	bne.w fail
-	; Lower a label-attached macro-local definition into the source statement
-	; stream as its Rust-visible qualified symbol (for example `foo.local`).
-	; The emitted body remains source-backed, so this must happen before the
-	; bounded line is recorded by the assembly session.
-	bsr.w qualifyExpandedMacroLocalLabel
-	bne.w fail
 	move.w d1, state.NativeCliPreprocessExpansionLineLen
 	lea state.NativeCliPreprocessExpansionLine, a0
 	move.l d1, d0
@@ -536,6 +534,13 @@ bodyLoop
 	bra.s bodyLoop
 
 close
+	bsr.w emitMacroBlockEnd
+	bne.w fail
+	lea state.NativeCliPreprocessExpansionLine, a0
+	moveq #0, d0
+	move.w state.NativeCliPreprocessExpansionLineLen, d0
+	bsr.w opforgeNativeCliProcessExpandedScopeLineV1
+	bne.w fail
 	move.w #-1, state.NativeCliPreprocessInvocationDefinition
 	moveq #0, d0
 	rts
@@ -543,75 +548,6 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliExpandActiveMacroV1
-
-; Qualify an unindented macro-body label with the invocation label.  Native
-; scope directives are not yet represented by the source parser package, so
-; retain Rust-visible names such as `foo.local` directly in the statement
-; stream.  Indented body lines remain instructions/directives and are unchanged.
-; Inputs: D1 = expansion byte length.
-; Outputs: D0 = 0 on success; D1 updated when a label is qualified.
-; Clobbers: D0-D6/A0-A2/CCR.
-qualifyExpandedMacroLocalLabel	.block
-	moveq #0, d0
-	move.w state.NativeCliPreprocessInvocationLabelLen, d0
-	beq.w done
-	tst.l d1
-	beq.w done
-	lea state.NativeCliPreprocessExpansionLine, a0
-	move.b (a0), d2
-	cmpi.b #' ', d2
-	beq.w done
-	cmpi.b #9, d2
-	beq.w done
-	cmpi.b #'.', d2
-	beq.w done
-	; A local declaration has a first token followed by whitespace. Preserve
-	; any unindented bare instruction rather than rewriting it as a label.
-	clr.l d3
-findTokenEnd
-	cmp.l d1, d3
-	bcc.w done
-	move.b 0(a0, d3.l), d2
-	cmpi.b #' ', d2
-	beq.s haveLabel
-	cmpi.b #9, d2
-	beq.s haveLabel
-	addq.l #1, d3
-	bra.s findTokenEnd
-
-haveLabel
-	move.l d0, d4
-	addq.l #1, d4
-	move.l d1, d5
-	add.l d4, d5
-	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY - 1, d5
-	bcc.w fail
-	lea 0(a0, d4.l), a2
-	move.l d1, d6
-shiftRight
-	tst.l d6
-	beq.s copyPrefix
-	subq.l #1, d6
-	move.b 0(a0, d6.l), d2
-	move.b d2, 0(a2, d6.l)
-	bra.s shiftRight
-
-copyPrefix
-	lea state.NativeCliPreprocessInvocationLabel, a1
-	move.l d0, d6
-copyLabel
-	move.b (a1)+, (a0)+
-	subq.l #1, d6
-	bne.s copyLabel
-	move.b #'.', (a0)
-	move.l d5, d1
-done
-	moveq #0, d0
-	rts
-fail
-	moveq #1, d0
-	rts
-	.bend  ; qualifyExpandedMacroLocalLabel
 
 ; Build the Rust-compatible macro scope start line in ExpansionLine.
 ; A caller label attaches to `.block`; an indented call keeps its indentation.

@@ -375,7 +375,10 @@ fn native_debug_contract_cli_header_fs_uae_proves_real_site_behavior() {
 }
 
 #[test]
-fn native_macro_preprocessor_harness_fs_uae_proves_capture_close_and_lookup() {
+fn native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection() {
+    // Proof level D. The guest harness captures COPY/PAIR/TEXT/LOCAL, validates
+    // bounded substitution, and proves a nested macro call fails without
+    // overwriting the active caller frame or its restored source line.
     match crate::fs_uae_smoke::run_native_macro_preprocessor_harness_from_env(&workspace_root())
         .expect("native macro-preprocessor FS-UAE harness should complete or skip cleanly")
     {
@@ -34521,8 +34524,16 @@ fn native_preprocessor_reentry_source_contract_is_bounded_and_restores_caller_li
         &[
             "opforgeNativeCliProcessExpandedLineV1\t.block",
             "jsr preprocessor.opforgeNativeCliBeginExpandedLineV1",
-            "bsr.w opforgeNativeCliTokenizeCurrentLine",
+            "jsr opforgeNativeCliTokenizeCurrentLine",
             "jsr preprocessor.opforgeNativeCliEndExpandedLineV1",
+            "opforgeNativeCliProcessExpandedScopeLineV1\t.block",
+            "jsr assembly_session.opforgeNativeCliRecordSourceLine",
+            "jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine",
+            "opforgeNativeCliExpandActiveMacroV1\t.block",
+            "bsr.w emitMacroBlockStart",
+            "bsr.w opforgeNativeCliProcessExpandedScopeLineV1",
+            "bsr.w opforgeNativeCliProcessExpandedLineV1",
+            "bsr.w emitMacroBlockEnd",
         ]
     ));
 }
@@ -34591,7 +34602,7 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
         &[
             "appendBodyLine\t.block",
             "cmpi.w #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d3",
-            "move.w d4, 0(a2, d2.l)",
+            "move.w d3, 0(a2, d2.l)",
         ]
     ));
     assert!(source_contains_in_order(
@@ -34642,7 +34653,7 @@ fn native_preprocessor_macro_invocation_frame_is_bounded_and_resettable() {
 
     assert!(constants.contains("NATIVE_PREPROCESS_MACRO_ARG_CAPACITY = 9"));
     assert!(constants.contains("NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT = 1"));
-    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 38"));
+    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 36"));
     assert!(
         constants.contains("(NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY)")
     );
@@ -34724,7 +34735,7 @@ fn native_preprocessor_macro_invocations_bind_before_prvm_routing() {
     )
     .expect("read native line processor");
 
-    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 38"));
+    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 36"));
     assert!(source_contains_in_order(
         &state,
         &[
@@ -34819,9 +34830,11 @@ fn native_preprocessor_macro_substitution_and_reentry_are_bounded() {
         &[
             "opforgeNativeCliExpandActiveMacroV1\t.block",
             "bsr.w emitMacroBlockStart",
+            "bsr.w opforgeNativeCliProcessExpandedScopeLineV1",
             "jsr preprocessor.opforgeNativeCliSubstituteMacroBodyLineV1",
             "bsr.w opforgeNativeCliProcessExpandedLineV1",
             "bsr.w emitMacroBlockEnd",
+            "bsr.w opforgeNativeCliProcessExpandedScopeLineV1",
             "move.w #-1, state.NativeCliPreprocessInvocationDefinition",
         ]
     ));
@@ -34832,12 +34845,11 @@ fn native_preprocessor_macro_substitution_and_reentry_are_bounded() {
         &[
             "opforgeNativeCliProcessExpandedLineV1\t.block",
             "jsr preprocessor.opforgeNativeCliBeginExpandedLineV1",
-            "jsr assembly_session.opforgeNativeCliRecordSourceLine",
-            "move.l d0, state.NativeCliPrvmRouteStatus",
-            "jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine",
+            "jsr opforgeNativeCliTokenizeCurrentLine",
             "jsr preprocessor.opforgeNativeCliEndExpandedLineV1",
         ]
     ));
+    assert!(!line_processor.contains("qualifyExpandedMacroLocalLabel"));
 }
 
 #[derive(Default)]
@@ -35917,7 +35929,8 @@ fn native_scope_source_tracks_stack_and_qualified_symbols() {
         &scope_flow,
         &[
             "beginBlockScopeV1\t.block",
-            "bsr.w pushFromStatementLabel",
+            "jsr eng.opasmEngineGetStatementLabelTextV1",
+            "bsr.w pushText",
             "beginNamespaceScopeV1\t.block",
             "bsr.w pushFromStatementOperand",
             "beginModuleScopeV1\t.block",
@@ -35927,6 +35940,15 @@ fn native_scope_source_tracks_stack_and_qualified_symbols() {
             "qualifyStatementLabelIfScopedV1\t.block",
             "resolveLabelValueV1\t.block",
             "subq.w #1, d2",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &scope_flow,
+        &[
+            "buildTextAtDepth\t.block",
+            "tst.b (a1)",
+            "beq.s nextScope",
+            "nextScope",
         ]
     ));
     assert!(scope_flow.contains(".module opasm.amigaos.flow_scopes"));

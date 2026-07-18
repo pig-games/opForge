@@ -219,12 +219,6 @@ verifyPairSubstitutionLoop
 	bne.s verifyPairSubstitutionLoop
 	move.w #-1, state.NativeCliPreprocessInvocationDefinition
 
-	lea BodyText.l, a0
-	moveq #16, d0
-	jsr line_processor.opforgeNativeCliProcessExpandedLineV1
-	tst.l d0
-	bne.w expandedBodyFail
-
 	lea InvocationText.l, a1
 	lea state.NativeCliSourceLine, a2
 	moveq #15, d0
@@ -237,11 +231,6 @@ verifyPairSubstitutionLoop
 	bne.w invocationParseFail
 	cmpi.w #3, state.NativeCliPreprocessInvocationArgLen
 	bne.w invocationArgumentLengthFail
-	lea BlockText.l, a0
-	moveq #6, d0
-	jsr line_processor.opforgeNativeCliProcessExpandedLineV1
-	tst.l d0
-	bne.w blockStartFail
 	moveq #0, d0
 	jsr preprocessor.opforgeNativeCliSubstituteMacroBodyLineV1
 	tst.l d0
@@ -257,27 +246,29 @@ verifySubstitutionLoop
 	bne.w substitutionTextFail
 	subq.l #1, d0
 	bne.s verifySubstitutionLoop
-	lea state.NativeCliPreprocessExpansionLine, a0
-	move.l d1, d0
+	; A substituted nested invocation must fail while the COPY frame and caller
+	; source line remain intact.  It is rejected before source/session recording.
+	lea NestedInvocationText.l, a0
+	moveq #7, d0
 	jsr line_processor.opforgeNativeCliProcessExpandedLineV1
 	tst.l d0
-	bne.w substitutedBodyFail
-	lea EndblockText.l, a0
-	moveq #9, d0
-	jsr line_processor.opforgeNativeCliProcessExpandedLineV1
-	tst.l d0
-	bne.w blockEndFail
-	move.w #-1, state.NativeCliPreprocessInvocationDefinition
-
+	beq.w nestedInvocationAcceptedFail
+	cmpi.w #0, state.NativeCliPreprocessInvocationDefinition
+	bne.w nestedFrameCorruptFail
+	cmpi.w #3, state.NativeCliPreprocessInvocationArgLen
+	bne.w nestedFrameCorruptFail
+	cmpi.w #15, state.NativeCliSourceLineLen
+	bne.w nestedCallerRestoreFail
 	lea InvocationText.l, a1
 	lea state.NativeCliSourceLine, a2
-	moveq #22, d0
-	jsr copy.copyBytes
-	move.w #22, state.NativeCliSourceLineLen
-	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
-	bne.w invocationFail
-	tst.w state.NativeCliPreprocessInvocationDefinition
-	bpl.w invocationDefinitionFail
+	moveq #15, d0
+verifyNestedCallerRestoreLoop
+	move.b (a1)+, d2
+	cmp.b (a2)+, d2
+	bne.w nestedCallerRestoreFail
+	subq.l #1, d0
+	bne.s verifyNestedCallerRestoreLoop
+	move.w #-1, state.NativeCliPreprocessInvocationDefinition
 	moveq #0, d0
 	rts
 fail
@@ -289,9 +280,6 @@ headerFail
 bodyCaptureFail
 	moveq #27, d0
 	rts
-expandedBodyFail
-	moveq #28, d0
-	rts
 invocationParseFail
 	moveq #29, d0
 	rts
@@ -302,9 +290,6 @@ invocationArgumentLengthFail
 	moveq #0, d0
 	move.w state.NativeCliPreprocessInvocationArgLen, d0
 	addi.l #60, d0
-	rts
-blockStartFail
-	moveq #30, d0
 	rts
 substitutionFail
 	moveq #31, d0
@@ -319,26 +304,23 @@ substitutionLengthFail
 	move.l d1, d0
 	addi.l #36, d0
 	rts
-substitutedBodyFail
-	moveq #32, d0
+nestedInvocationAcceptedFail
+	moveq #47, d0
 	rts
-blockEndFail
-	moveq #33, d0
+nestedFrameCorruptFail
+	moveq #48, d0
+	rts
+nestedCallerRestoreFail
+	moveq #51, d0
 	rts
 closeFail
 	moveq #22, d0
-	rts
-invocationFail
-	moveq #23, d0
 	rts
 definitionCountFail
 	moveq #24, d0
 	rts
 activeDefinitionFail
 	moveq #25, d0
-	rts
-invocationDefinitionFail
-	moveq #26, d0
 	rts
 pairInvocationFail
 	moveq #49, d0
@@ -446,10 +428,8 @@ InvocationText
 	.byte 9, ".COPY $12, $34"
 PairInvocationText
 	.byte 9, ".PAIR 1"
-BlockText
-	.byte ".block"
-EndblockText
-	.byte ".endblock"
+NestedInvocationText
+	.byte ".PAIR 1"
 ExpandedCopyText
 	.byte "        lda $12"
 ExpandedPairText

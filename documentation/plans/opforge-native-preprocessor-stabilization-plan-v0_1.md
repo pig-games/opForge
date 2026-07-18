@@ -109,7 +109,7 @@ only in this artifact; it requires its own activated item/slice contracts.
   - Commit outcome: one workflow-only producer/validator commit, with clean-tree receipt instructions and no receipt or product semantic change.
   - Definition of done: the producer is proven to fail closed for missing config, skips, missing/reordered tests, dirty tree, and malformed/source-mismatched receipts; SP-001 remains partially open pending Item 1.1.
 
-- [ ] Item 1.1: record the macro completion receipt as an evidence-only follow-up
+- [x] Item 1.1: record the macro completion receipt as an evidence-only follow-up
   - Source requirement or finding IDs: SP-001; Item 1’s producer/validator contract; `documentation/quality-gates/README.md`.
   - Invariant: a receipt is generated from a clean post-Item-1 HEAD, identifies that implementation commit/tree, and is committed without changing the tested source.
   - Rust authority / native boundary: Item 1 macro boundary; `run_native_macro_completion.sh` and its JSON validator.

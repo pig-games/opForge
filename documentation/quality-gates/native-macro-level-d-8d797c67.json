@@ -1,0 +1,12 @@
+{
+  "manifest_version": 1,
+  "kind": "native-macro-preprocessor-level-d",
+  "scope": "macro-substitution-reentry",
+  "status": "PASS",
+  "completed_at_utc": "2026-07-18T10:10:30Z",
+  "source": {"commit": "8d797c670fd0eeccf1ea040c4a6e86e426c15ce6", "tree": "dfbcdcdec8f2b13db3febdc19d37ffe86cb24e93"},
+  "tests": [
+    {"name": "native_macro_invocation_fixture_fs_uae", "command": "cargo test -p asm native_macro_invocation_fixture_fs_uae -- --nocapture --test-threads=1", "result": "PASS"},
+    {"name": "native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection", "command": "cargo test -p asm native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection -- --nocapture --test-threads=1", "result": "PASS"}
+  ]
+}

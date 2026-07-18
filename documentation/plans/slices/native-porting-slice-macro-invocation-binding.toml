@@ -9,8 +9,9 @@ rust_reference = [
   "crates/opforge-core/src/macro_processor_definitions.rs::build_macro_args"
 ]
 native_boundary = [
-  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliParseMacroInvocationV1",
-  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliTokenizeCurrentLine"
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_invocation.asm::opforgeNativeCliParseMacroInvocationV1",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliTokenizeCurrentLine",
+  "native/motorola68000/amigaos/test-harnesses/debug/macro_preprocessor_harness.asm::start"
 ]
 invariant = "A recognized captured macro invocation produces one complete bounded frame before source recording or tokenizer dispatch; ordinary directives pass through unchanged, while malformed or overflowing recognized invocations fail deterministically."
 assertion_decision = "No runtime assertion: the parser returns the existing deterministic frontend failure status before the source-recording boundary."
@@ -18,11 +19,19 @@ expected_inputs = "Label-attached or indented dotted macro invocations using par
 expected_outputs = "A selected definition, positional argument slots with explicit lengths, a canonical full-list buffer, and an optional caller-label buffer."
 known_non_equivalences = "This slice captures but does not substitute or route macro body lines. Scope wrapping, recursion, segments, statements, artifact parity, and FS-UAE proof remain later Item 7.3 work."
 fast_proof_command = "cargo test -p asm native_preprocessor_macro_invocations_bind_before_prvm_routing -- --nocapture"
-level_d_command = "Not applicable to binding alone: no body is expanded or artifact emitted until Phase 7.3d/e."
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN=/Applications/FS-UAE.app/Contents/MacOS/fs-uae OPFORGE_FS_UAE_CONFIG_TEMPLATE=/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_TIMEOUT_MS=120000 OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=60000 scripts/workflow/run_native_macro_completion.sh --verify"
 level_d_fail_closed = true
+level_d_completion_wrapper = "scripts/workflow/run_native_macro_completion.sh --verify"
+level_d_manifest_validator = "scripts/workflow/check_native_macro_level_d_manifest.py"
 
 [[tests]]
 name = "native_preprocessor_macro_invocations_bind_before_prvm_routing"
 proof_level = "C"
-proves = "Rust establishes COPY, PAIR default, and quoted/nested-list invocation semantics while the native source contract proves bounded frame fields, parser stages, and pre-recording routing."
-does_not_prove = "Native 68020 execution, byte substitution, macro scope wrapping, body re-entry, emitted artifacts, or FS-UAE behavior."
+proves = "Rust establishes COPY, PAIR default, and quoted/nested-list invocation semantics while the native source contract proves the invocation owner alone contains lookup, bounded argument binding, and pre-recording routing."
+does_not_prove = "Native 68020 execution, byte substitution, macro scope wrapping, body re-entry, or emitted artifacts."
+
+[[tests]]
+name = "native_macro_completion_wrapper"
+proof_level = "D"
+proves = "The real native CLI under FS-UAE preserves the canonical macro fixture and nested-frame rejection harness after invocation-binding ownership extraction."
+does_not_prove = "Segments, statements, recursive expansion, or diagnostics beyond the macro completion boundary."

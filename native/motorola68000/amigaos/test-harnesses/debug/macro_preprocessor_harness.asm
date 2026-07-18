@@ -7,6 +7,7 @@
 	.use opforge.cli.constants
 	.use opforge.cli.line_processor
 	.use opforge.cli.preprocessor
+	.use opforge.cli.preprocessor_invocation
 	.use opforge.cli.state
 
 HARNESS_FAIL = 20
@@ -146,7 +147,7 @@ start	.block
 	moveq #6, d0
 	jsr copy.copyBytes
 	move.w #6, state.NativeCliSourceLineLen
-	jsr preprocessor.opforgeNativeCliParseMacroInvocationV1
+	jsr preprocessor_invocation.opforgeNativeCliParseMacroInvocationV1
 	cmpi.l #1, d0
 	bne.w bareLocalInvocationFail
 	cmpi.w #3, state.NativeCliPreprocessInvocationDefinition
@@ -157,7 +158,7 @@ start	.block
 	moveq #10, d0
 	jsr copy.copyBytes
 	move.w #10, state.NativeCliSourceLineLen
-	jsr preprocessor.opforgeNativeCliParseMacroInvocationV1
+	jsr preprocessor_invocation.opforgeNativeCliParseMacroInvocationV1
 	cmpi.l #1, d0
 	beq.s localInvocationStatusOk
 	tst.l d0
@@ -174,7 +175,7 @@ localInvocationStatusOk
 	moveq #8, d0
 	jsr copy.copyBytes
 	move.w #8, state.NativeCliSourceLineLen
-	jsr preprocessor.opforgeNativeCliParseMacroInvocationV1
+	jsr preprocessor_invocation.opforgeNativeCliParseMacroInvocationV1
 	cmpi.l #1, d0
 	bne.w pairInvocationFail
 	cmpi.w #1, state.NativeCliPreprocessInvocationDefinition
@@ -224,7 +225,7 @@ verifyPairSubstitutionLoop
 	moveq #15, d0
 	jsr copy.copyBytes
 	move.w #15, state.NativeCliSourceLineLen
-	jsr preprocessor.opforgeNativeCliParseMacroInvocationV1
+	jsr preprocessor_invocation.opforgeNativeCliParseMacroInvocationV1
 	tst.l d0
 	bmi.w invocationMalformed
 	cmpi.l #1, d0

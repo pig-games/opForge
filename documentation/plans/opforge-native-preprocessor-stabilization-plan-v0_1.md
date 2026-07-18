@@ -133,7 +133,7 @@ only in this artifact; it requires its own activated item/slice contracts.
   - Commit outcome: one ownership-only definition module commit.
   - Definition of done: no new directive semantics and capture behavior is unchanged; SP-002 partially closes.
 
-- [ ] Item 2.1: extract invocation binding into its owner module without semantic change
+- [x] Item 2.1: extract invocation binding into its owner module without semantic change
   - Source requirement or finding IDs: SP-002; existing invocation-frame and binding slice contracts.
   - Expected files: `preprocessor.asm`, new `preprocessor_invocation.asm`, module references, focused tests/slice metadata.
   - Full quality gates: `cargo test -p asm native_preprocessor_macro_invocation_frame_is_bounded_and_resettable -- --nocapture`; `cargo test -p asm native_preprocessor_macro_invocations_bind_before_prvm_routing -- --nocapture`; Item 1 macro wrapper/validator; native formatter; staged native-porting; Rust quality; workflow gate.

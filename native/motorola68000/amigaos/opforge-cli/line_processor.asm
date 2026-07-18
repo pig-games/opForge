@@ -30,6 +30,7 @@
 	.use opforge.cli.copy
 	.use opforge.cli.preprocessor
 	.use opforge.cli.preprocessor_definitions
+	.use opforge.cli.preprocessor_invocation
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opforge.debug.contracts as debug_contracts
 	.use opforge.debug.events as debug_events
@@ -48,7 +49,7 @@ opforgeNativeCliTokenizeCurrentLine	.block
 	rts
 
 preprocessPass
-	jsr preprocessor.opforgeNativeCliParseMacroInvocationV1
+	jsr preprocessor_invocation.opforgeNativeCliParseMacroInvocationV1
 	tst.l d0
 	beq.s invocationPass
 

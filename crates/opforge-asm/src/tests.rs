@@ -34739,6 +34739,10 @@ fn native_preprocessor_macro_invocations_bind_before_prvm_routing() {
     let preprocessor =
         fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"))
             .expect("read native preprocessor");
+    let invocation = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_invocation.asm"),
+    )
+    .expect("read native preprocessor invocation owner");
     let line_processor = fs::read_to_string(
         root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
     )
@@ -34754,23 +34758,31 @@ fn native_preprocessor_macro_invocations_bind_before_prvm_routing() {
         ]
     ));
     assert!(source_contains_in_order(
-        &preprocessor,
+        &invocation,
         &[
             "opforgeNativeCliParseMacroInvocationV1\t.block",
-            "opforgeNativeCliBeginMacroInvocationFrameV1",
-            "parseInvocationArguments",
+            "jsr preprocessor.opforgeNativeCliBeginMacroInvocationFrameV1",
+            "bsr.w parseInvocationArguments",
         ]
     ));
+    assert!(
+        !preprocessor.contains("opforgeNativeCliParseMacroInvocationV1\t.block"),
+        "macro invocation parsing must have exactly one owner"
+    );
     for routine in [
         "captureInvocationLabel\t.block",
         "findCapturedMacroDefinition\t.block",
         "splitInvocationArgumentList\t.block",
         "bindMacroParameterDefaults\t.block",
     ] {
-        assert!(preprocessor.contains(routine), "missing {routine}");
+        assert!(invocation.contains(routine), "missing {routine}");
+        assert!(
+            !preprocessor.contains(routine),
+            "invocation helper must have exactly one owner: {routine}"
+        );
     }
     assert!(source_contains_in_order(
-        &preprocessor,
+        &invocation,
         &[
             "cmpi.b #'\\'', d3",
             "cmpi.b #'\"', d3",
@@ -34785,7 +34797,7 @@ fn native_preprocessor_macro_invocations_bind_before_prvm_routing() {
         &[
             "jsr preprocessor_definitions.opforgeNativeCliCaptureMacroDefinitionLineV1",
             "preprocessPass",
-            "jsr preprocessor.opforgeNativeCliParseMacroInvocationV1",
+            "jsr preprocessor_invocation.opforgeNativeCliParseMacroInvocationV1",
             "invocationPass",
             "jsr assembly_session.opforgeNativeCliRecordSourceLine",
         ]

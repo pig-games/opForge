@@ -37,8 +37,8 @@ portable and useful:
 
 - The active worktree `AGENTS.md` workflow and execution rules remain binding at
   all times during roadmap execution.
-- This roadmap must not become active until `plan-quality-reviewer` or
-  `plan-quality-orchestrator` returns `PASS`.
+- This roadmap must not become active until `plan-quality-reviewer` returns
+  `PASS`.
 - One active work item at a time.
 - Each work item or phase must end in exactly one new commit before the next
   item begins.

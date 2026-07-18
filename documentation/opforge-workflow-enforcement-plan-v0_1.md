@@ -289,10 +289,10 @@ reinforce them.
 
 Desired alignment:
 
-- `plan-quality-orchestrator`
-  - performs the preferred plan-quality gate review
+- `plan-quality-reviewer`
+  - performs the required plan-quality gate review
   - `scripts/workflow/run_plan_workflow.sh` drives the artifact through the
-    structural checker and requires orchestrator `PASS`
+    structural checker and requires reviewer `PASS`
 - `spec-quality-orchestrator`
   - performs the preferred spec-quality gate review
   - `scripts/workflow/run_spec_workflow.sh` drives the artifact through the

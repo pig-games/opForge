@@ -72,8 +72,8 @@ other items from the review are explicitly deferred to later plans.
 - This plan must not change the FS-UAE smoke harness's CPU selection surface
   or default CPU. The 68080 build remains opt-in via Rust-side test gates
   only, with no change to default CI behavior.
-- This plan must not become active until `plan-quality-reviewer` (or the
-  multi-agent `plan-quality-orchestrator`) returns `PASS`.
+- This plan must not become active until `plan-quality-reviewer` returns
+  `PASS`.
 
 ## Planning Decisions Captured Up Front
 
@@ -498,4 +498,3 @@ This plan implements only the bitmap-only portion of #1 (no AMMX), as the
 narrowest vertical slice that proves the conditional-assembly scaffolding
 and parity gates. Every other item above requires its own plan with its
 own plan-quality and execution-compliance gates.
-

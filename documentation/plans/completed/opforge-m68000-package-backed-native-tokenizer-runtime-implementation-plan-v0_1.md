@@ -97,7 +97,7 @@ slice extracts it without collapsing the fixture/runtime split.
 
 ## Planned Module Structure
 
-- `native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_entry.asm`: AmigaOS entry path and
+- `examples/motorola68000/amigaos/tkpkg/tkpkg_entry.asm`: AmigaOS entry path and
   executable glue only.
 - `examples/motorola68000/amigaos/tkpkg/tkpkg_abi.asm`: control-block layout,
   entry ordinals, capability flags, status codes, and shared offsets/constants.
@@ -141,7 +141,7 @@ slice extracts it without collapsing the fixture/runtime split.
     - `crates/opforge-vm/src/native6502.rs` request lifecycle, `status_code`, and `last_error` authority
     - `crates/opforge-vm/src/native6502.rs` wire payload helpers and response round-trip authority
   - Expected files:
-    - `native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_entry.asm`
+    - `examples/motorola68000/amigaos/tkpkg/tkpkg_entry.asm`
     - `examples/motorola68000/amigaos/tkpkg/tkpkg_abi.asm`
     - `examples/motorola68000/amigaos/tkpkg/tkpkg_service.asm`
     - `examples/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm`
@@ -255,10 +255,6 @@ slice extracts it without collapsing the fixture/runtime split.
     - `cargo test -p asm motorola68020_tkpkg_smoke_ -- --nocapture`
     - `cargo test -p asm examples_match_reference_outputs -- --nocapture`
     - `cargo test --manifest-path crates/opforge-asm/Cargo.toml external_fs_uae_tkpkg_native_motorola68000_family_corpus_matches_vm_authoritative_rows -- --nocapture`
-    - The FS-UAE family-corpus gate can be narrowed during debugging without changing the default full-corpus behavior:
-      - `OPFORGE_FS_UAE_TKPKG_CORPUS_FILE=68020_later_families.asm` runs one source from the selected corpus scope by file name or relative path.
-      - `OPFORGE_FS_UAE_TKPKG_CORPUS_CPU=68020` or `OPFORGE_FS_UAE_TKPKG_CORPUS_CPU=m68020` runs only that CPU bucket.
-      - `OPFORGE_FS_UAE_TKPKG_CORPUS_SCOPE=small-nested` broadens the default `top-level` corpus to include nested `examples/motorola68000/**/*.asm` sources that fit the current native debug input buffer and declare a supported `.cpu`; file and CPU filters still apply inside the selected scope.
   - Definition of done:
     - Phase 5a for this commit is a thin AmigaOS executable path that established `init -> load_package -> set_pipeline -> last_error` against the package-backed tokenizer runtime without folding CLI/report code into the core tokenizer modules
     - after Work item 4 lands, that same wrapper extends to a focused `tokenize_line` smoke over a fixed sample line while keeping CLI/report code out of the core tokenizer modules

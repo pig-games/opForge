@@ -10,7 +10,7 @@ Behavior:
   - Creates the plan artifact from the template if it does not exist.
   - Prints the exact branch-local plan workflow instructions.
   - Validates the plan artifact bundle.
-  - Requires a companion gate result file with PASS from Plan Quality Orchestrator.
+  - Requires a companion gate result file with PASS from Plan Quality Reviewer.
   - Allows at most 3 failed re-check cycles, then halts and asks the user to resolve the blockage.
 
 Companion gate file:
@@ -96,17 +96,16 @@ Plan source summary: $plan_source_summary
 Quality gate file: $gate_path
 
 Required workflow:
-1. Run the branch-local Plan Quality Orchestrator and review:
+1. Run the branch-local plan-quality-reviewer and review:
    - AGENTS.md
    - $plan_path
    - source: $plan_source_summary
    - templates/plan-template.md
    - references/workflow/plan-slice-rules.md
    - references/workflow/definition-of-done-matrix.md
-2. Run the orchestrator in an environment that can launch its configured reviewer agents.
-3. Save the final orchestrator result to:
+2. Save the reviewer result to:
    $gate_path
-4. The gate file must begin with:
+3. The gate file must begin with:
    PASS: <short technical explanation>
 EOF
 

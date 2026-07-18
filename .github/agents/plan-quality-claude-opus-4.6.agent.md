@@ -1,1 +1,0 @@
-../../agents/plan-quality-claude-opus-4.6.agent.md

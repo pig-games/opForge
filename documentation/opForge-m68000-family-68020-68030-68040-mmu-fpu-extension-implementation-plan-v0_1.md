@@ -18,9 +18,8 @@ execution semantics, full PMMU support, or non-listed CPU variants.
 - This plan is not active until
   `documentation/opForge-m68000-family-68020-68030-68040-mmu-fpu-extension-spec-v0_1.md`
   passes the spec-quality gate.
-- No execution may begin until the branch-local plan-quality gate passes for
-  this plan. Prefer `agents/plan-quality-orchestrator.agent.md`; at minimum,
-  `agents/plan-quality-reviewer.agent.md` must return `PASS`.
+- No execution may begin until the branch-local `plan-quality-reviewer` returns
+  `PASS` for this plan.
 - If the source specification changes materially in the `.fpu` host matrix,
   MMU support matrix, FPU instruction matrix, diagnostics contract, or scope
   boundary, update this plan and re-run the plan-quality gate before execution

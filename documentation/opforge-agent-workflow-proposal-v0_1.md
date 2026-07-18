@@ -359,11 +359,9 @@ Output:
 Current repository execution note:
 
 - the direct reviewer remains the narrow gate definition
-- the preferred runnable entry point is `scripts/workflow/run_plan_workflow.sh`
+- the required runnable entry point is `scripts/workflow/run_plan_workflow.sh`
 - that workflow script requires a `PASS` result from
-  `agents/plan-quality-orchestrator.agent.md`, which uses the branch-local
-  multi-agent review path when the environment supports nested reviewer-agent
-  launch
+  `agents/plan-quality-reviewer.agent.md`
 
 ### New sub-agent D: finding-closure-reviewer.agent.md
 
@@ -458,7 +456,7 @@ Recommended division of labor:
 - review-report-quality-reviewer: review artifact quality
 - spec-quality-orchestrator plus `run_spec_workflow.sh`: preferred spec-quality
   gate entry point
-- plan-quality-orchestrator plus `run_plan_workflow.sh`: preferred plan-quality
+- plan-quality-reviewer plus `run_plan_workflow.sh`: required plan-quality
   gate entry point
 - finding-closure-reviewer: proof that a claimed fix actually closes a prior finding
 - plan-compliance-reviewer: execution compliance
@@ -472,7 +470,7 @@ Recommended division of labor:
   `Spec Quality Orchestrator`
 3. Build plan with `opforge-plan-authoring` in implementation mode
 4. Run `scripts/workflow/run_plan_workflow.sh`, which requires `PASS` from
-  `Plan Quality Orchestrator`
+  `Plan Quality Reviewer`
 5. Execute slices
 6. Before each commit run all quality gates and `plan-compliance-reviewer`
 7. Ensure each plan work item or phase lands as its own new commit
@@ -485,7 +483,7 @@ Recommended division of labor:
 3. Run `review-report-quality-reviewer`
 4. Build plan with `opforge-plan-authoring` in remediation mode
 5. Run `scripts/workflow/run_plan_workflow.sh`, which requires `PASS` from
-  `Plan Quality Orchestrator`
+  `Plan Quality Reviewer`
 6. Execute slices with full quality gates and `plan-compliance-reviewer` before
    each commit
 7. Ensure each plan work item or phase lands as its own new commit
@@ -547,11 +545,10 @@ Recommended phase 1:
    - `opforge-plan-authoring`
    - `opforge-spec-authoring`
    - `opforge-review-closure`
-3. add six spec or plan review agents:
+3. add five spec or plan review agents:
   - `spec-quality-reviewer.agent.md`
   - `spec-quality-orchestrator.agent.md`
   - `plan-quality-reviewer.agent.md`
-  - `plan-quality-orchestrator.agent.md`
   - `review-report-quality-reviewer.agent.md`
   - `finding-closure-reviewer.agent.md`
 4. add four templates:
@@ -582,7 +579,6 @@ agents/
   artifact-traceability-reviewer.agent.md
   plan-compliance-reviewer.agent.md
   finding-closure-reviewer.agent.md
-  plan-quality-orchestrator.agent.md
   plan-quality-reviewer.agent.md
   review-report-quality-reviewer.agent.md
   spec-quality-orchestrator.agent.md

@@ -20,6 +20,7 @@ native_boundary = [
   "native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm::beginBlockScopeV1"
 ]
 structural_definition_contract = "The existing fixed definition header/body/count/length arrays are the shared inert record representation. preprocessor_definitions owns current macro name/signature, bounded body span, and macro-kind capture; preprocessor_invocation owns the attached caller-label state; line_processor owns macro expansion and scope policy. Segment and statement kind values are declared but have no allocated active record, scanner route, capture path, invocation path, or export behavior."
+scanner_contract = "preprocessor_scan owns the bounded token-boundary recognizers. Macro scanning accepts mixed-case standalone `.macro` tokens only at whitespace boundaries, accepts a trailing comment boundary, stops at comments, and ignores quoted text; truncated/prefixed forms fail. Segment and statement directives remain inactive."
 invariant = "Each active macro invocation emits Rust-compatible `.block`/`.endblock` scope records. Substituted body lines route through tokenizer → PRVM → session; generated scope lines route through the documented source/session fallback. Both routes save the caller source in the expansion owner, close that frame before returning the route status, and reject a nested frame without overwriting the caller frame."
 frontend_contract = "preprocessor_expansion owns current-source replacement, saved-source bytes, current/saved line lengths, and expansion depth. line_processor owns route selection and statement-index advancement through the existing session APIs: ordinary lines invoke tokenizer → PRVM → session, while generated scope lines invoke source/session fallback. The route status is saved before EndExpandedLine and restored after it, so staging cleanup cannot hide tokenizer, PRVM, source-record, or statement-record failure. Output position and recorded-statement effects remain owned by the existing session/output APIs; this contract does not claim transactional rollback of those effects."
 assertion_decision = "No runtime assertion: fixed output capacity and the active-frame sentinel return deterministic failure before source recording can continue."
@@ -43,6 +44,12 @@ name = "native_preprocessor_expanded_line_frontend_contract_routes_and_restores"
 proof_level = "B"
 proves = "The native source contract keeps ordinary tokenizer routing and structural source/session routing distinct, and restores the staged caller line before returning either route status."
 does_not_prove = "Native execution, tokenizer/session fault injection, or transactional rollback beyond the staged source frame."
+
+[[tests]]
+name = "native_preprocessor_structural_scanner_boundary_matrix_is_bounded"
+proof_level = "C"
+proves = "The bounded scanner contract accepts only complete, mixed-case macro and endmacro directive tokens at declared boundaries; comments outside quotes terminate scanning, quoted text is ignored, and segment/statement behavior remains inactive."
+does_not_prove = "Native 68020 execution of every malformed source line, macro expansion semantics, or activation of segment and statement definitions."
 
 [[tests]]
 name = "examples_match_reference_outputs"

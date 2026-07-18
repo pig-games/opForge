@@ -188,7 +188,7 @@ only in this artifact; it requires its own activated item/slice contracts.
   - Commit outcome: one record-layout commit, or a documented no-layout-change commit that records the existing structure as the shared contract.
   - Definition of done: unimplemented kinds cannot route through normal processing and existing macro state is identical; SP-006 fully closes.
 
-- [ ] Item 4.1: replace duplicated structural scanners with the bounded scanner contract
+- [x] Item 4.1: replace duplicated structural scanners with the bounded scanner contract
   - Source requirement or finding IDs: SP-005; Item 4’s shared record contract.
   - Expected files: `preprocessor_scan.asm`, affected definition/invocation modules, scanner tests, slice metadata.
   - Invariant: one bounded scanner recognizes complete structural directives and names at token boundaries while preserving current macro acceptance/rejection and leaving segment/statement behavior inactive.

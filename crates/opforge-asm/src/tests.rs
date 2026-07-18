@@ -34757,6 +34757,116 @@ fn native_preprocessor_structural_definition_record_is_inert_and_macro_backed() 
 }
 
 #[test]
+fn native_preprocessor_structural_scanner_boundary_matrix_is_bounded() {
+    // Proof level C. This table models the declared bounded scanner contract
+    // and locks its native quote/boundary implementation. It does not prove
+    // native execution or activate segment/statement behavior.
+    fn contains_macro(line: &str) -> bool {
+        let bytes = line.as_bytes();
+        let mut quote = None;
+        let mut index = 0;
+        while index + 6 <= bytes.len() {
+            let byte = bytes[index];
+            if let Some(delimiter) = quote {
+                if byte == delimiter {
+                    quote = None;
+                }
+                index += 1;
+                continue;
+            }
+            if matches!(byte, b'\'' | b'"') {
+                quote = Some(byte);
+                index += 1;
+                continue;
+            }
+            if byte == b';' {
+                return false;
+            }
+            let left = index == 0 || matches!(bytes[index - 1], b' ' | b'\t');
+            let spelling = bytes[index..index + 6].eq_ignore_ascii_case(b".macro");
+            let right = index + 6 == bytes.len() || matches!(bytes[index + 6], b' ' | b'\t' | b';');
+            if left && spelling && right {
+                return true;
+            }
+            index += 1;
+        }
+        false
+    }
+
+    fn starts_with_endmacro(line: &str) -> bool {
+        let trimmed = line.trim_start_matches([' ', '\t']);
+        let bytes = trimmed.as_bytes();
+        bytes.len() >= 9
+            && bytes[..9].eq_ignore_ascii_case(b".endmacro")
+            && (bytes.len() == 9 || matches!(bytes[9], b' ' | b'\t' | b';'))
+    }
+
+    for (line, expected) in [
+        ("NAME .macro arg", true),
+        ("NAME .MACRO arg", true),
+        ("NAME .MaCrO arg", true),
+        ("NAME .macro; comment", true),
+        ("NAME .macrox", false),
+        ("prefix.macro arg", false),
+        ("; .macro ignored", false),
+        ("\".macro\"", false),
+        ("' .macro '", false),
+        ("NAME .mac", false),
+        (&"x".repeat(255), false),
+    ] {
+        assert_eq!(contains_macro(line), expected, "scanner matrix: {line:?}");
+    }
+    for (line, expected) in [
+        (".endmacro", true),
+        (" .ENDMACRO ; close", true),
+        (".endmacrox", false),
+        (".endmac", false),
+    ] {
+        assert_eq!(
+            starts_with_endmacro(line),
+            expected,
+            "end-kind matrix: {line:?}"
+        );
+    }
+
+    let root = workspace_root();
+    let scan = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_scan.asm"),
+    )
+    .expect("read scanner owner");
+    assert!(source_contains_in_order(
+        &scan,
+        &[
+            "lineContainsMacroDirective\t.block",
+            "clr.l d4",
+            "tst.b d4",
+            "cmpi.b #';', d1",
+            "cmpi.b #'\\\'', d1",
+            "cmpi.b #'\"', d1",
+            "move.b d1, d4",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &scan,
+        &[
+            "lineStartsWithEndmacroDirective\t.block",
+            "cmpi.l #9, d0",
+            "cmpi.b #'e', d1",
+            "cmpi.b #'n', d1",
+            "cmpi.b #'d', d1",
+            "cmpi.b #'m', d1",
+            "cmpi.b #'a', d1",
+            "cmpi.b #'c', d1",
+            "cmpi.b #'r', d1",
+            "cmpi.b #'o', d1",
+            "cmpi.l #9, d0",
+            "move.b 9(a0), d1",
+            "cmpi.b #';', d1",
+        ]
+    ));
+}
+
+#[test]
 fn native_preprocessor_macro_invocation_frame_is_bounded_and_resettable() {
     // Proof level B. The native state owns one bounded invocation frame whose
     // selected definition sentinel is reset for every CLI session. This does

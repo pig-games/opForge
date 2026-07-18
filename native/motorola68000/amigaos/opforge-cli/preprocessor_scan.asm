@@ -18,41 +18,51 @@ lineStartsWithDirective	.block
 lineStartsWithEndmacroDirective	.block
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
 	cmpi.l #9, d0
-	bcs.s no
+	bcs.w no
 	cmpi.b #'.', (a0)
-	bne.s no
+	bne.w no
 	move.b 1(a0), d1
 	ori.b #32, d1
 	cmpi.b #'e', d1
-	bne.s no
+	bne.w no
 	move.b 2(a0), d1
 	ori.b #32, d1
 	cmpi.b #'n', d1
-	bne.s no
+	bne.w no
 	move.b 3(a0), d1
 	ori.b #32, d1
 	cmpi.b #'d', d1
-	bne.s no
+	bne.w no
 	move.b 4(a0), d1
 	ori.b #32, d1
 	cmpi.b #'m', d1
-	bne.s no
+	bne.w no
 	move.b 5(a0), d1
 	ori.b #32, d1
 	cmpi.b #'a', d1
-	bne.s no
+	bne.w no
 	move.b 6(a0), d1
 	ori.b #32, d1
 	cmpi.b #'c', d1
-	bne.s no
+	bne.w no
 	move.b 7(a0), d1
 	ori.b #32, d1
 	cmpi.b #'r', d1
-	bne.s no
+	bne.w no
 	move.b 8(a0), d1
 	ori.b #32, d1
 	cmpi.b #'o', d1
 	bne.s no
+	cmpi.l #9, d0
+	beq.s yes
+	move.b 9(a0), d1
+	cmpi.b #' ', d1
+	beq.s yes
+	cmpi.b #9, d1
+	beq.s yes
+	cmpi.b #';', d1
+	bne.s no
+yes
 	moveq #1, d0
 	rts
 no
@@ -89,9 +99,28 @@ lineContainsMacroDirective	.block
 	move.l d0, d3
 	subi.l #6, d3
 	clr.l d2
+	clr.l d4
 scan
 	cmp.l d3, d2
 	bhi.w no
+	move.b 0(a0, d2.l), d1
+	tst.b d4
+	beq.s outsideQuote
+	cmp.b d4, d1
+	bne.w next
+	clr.l d4
+	bra.w next
+outsideQuote
+	cmpi.b #';', d1
+	beq.w no
+	cmpi.b #'\'', d1
+	beq.s enterQuote
+	cmpi.b #'"', d1
+	bne.s candidateStart
+enterQuote
+	move.b d1, d4
+	bra.w next
+candidateStart
 	tst.l d2
 	beq.s candidate
 	move.b -1(a0, d2.l), d1

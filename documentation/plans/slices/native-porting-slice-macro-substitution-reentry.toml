@@ -9,6 +9,7 @@ rust_reference = [
 ]
 native_boundary = [
   "native/motorola68000/amigaos/opforge-cli/preprocessor_substitution.asm::opforgeNativeCliSubstituteMacroBodyLineV1",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_scan.asm::lineContainsMacroDirective",
   "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliExpandActiveMacroV1",
   "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliProcessExpandedLineV1",
   "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliProcessExpandedScopeLineV1",

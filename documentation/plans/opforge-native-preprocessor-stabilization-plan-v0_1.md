@@ -149,7 +149,7 @@ only in this artifact; it requires its own activated item/slice contracts.
   - Commit outcome: one ownership-only substitution module commit.
   - Definition of done: named/positional/full-list/default behavior and deterministic failures remain identical; SP-002 remains partially closed.
 
-- [ ] Item 2.3: extract bounded scanning into its owner module without semantic change
+- [x] Item 2.3: extract bounded scanning into its owner module without semantic change
   - Source requirement or finding IDs: SP-002 and SP-005; existing macro definition/invocation tests.
   - Expected files: `preprocessor.asm`, new `preprocessor_scan.asm`, module references, focused tests/slice metadata.
   - Full quality gates: definition and invocation focused commands from Items 2/2.1; Item 1 macro wrapper/validator; native formatter; staged native-porting; Rust quality; workflow gate.

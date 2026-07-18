@@ -6,7 +6,7 @@
 	.use opforge.cli.constants
 	.use opforge.cli.copy
 	.use opforge.cli.state
-	.use opforge.cli.preprocessor
+	.use opforge.cli.preprocessor_scan
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opforge.debug.contracts as debug_contracts
 	.use opforge.debug.events as debug_events
@@ -27,21 +27,21 @@ opforgeNativeCliCaptureMacroDefinitionLineV1	.block
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
-	jsr preprocessor.lineStartsWithEndmacroDirective
+	jsr preprocessor_scan.lineStartsWithEndmacroDirective
 	bne.s close
-	jsr preprocessor.lineContainsMacroDirective
+	jsr preprocessor_scan.lineContainsMacroDirective
 	beq.s captureNoNestedMacro
 	bra.w fail
 captureNoNestedMacro
 	lea EndsegmentText.l, a1
 	moveq #11, d1
-	jsr preprocessor.lineStartsWithDirective
+	jsr preprocessor_scan.lineStartsWithDirective
 	beq.s captureNoEndsegment
 	bra.w fail
 captureNoEndsegment
 	lea EndstatementText.l, a1
 	moveq #13, d1
-	jsr preprocessor.lineStartsWithDirective
+	jsr preprocessor_scan.lineStartsWithDirective
 	beq.s captureNoEndstatement
 	bra.w fail
 captureNoEndstatement
@@ -61,19 +61,19 @@ checkOpen
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
-	jsr preprocessor.lineStartsWithEndmacroDirective
+	jsr preprocessor_scan.lineStartsWithEndmacroDirective
 	beq.s noUnexpectedEnd
 	bra.w fail
 noUnexpectedEnd
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
-	jsr preprocessor.lineContainsMacroDirective
+	jsr preprocessor_scan.lineContainsMacroDirective
 	beq.w pass
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
-	jsr preprocessor.macroHeaderHasName
+	jsr preprocessor_scan.macroHeaderHasName
 	beq.w fail
 	moveq #0, d2
 	move.w state.NativeCliPreprocessDefinitionCount, d2

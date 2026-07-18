@@ -34569,6 +34569,10 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
         root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm"),
     )
     .expect("read native preprocessor definition owner");
+    let scan = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_scan.asm"),
+    )
+    .expect("read native preprocessor scan owner");
     let line_processor = fs::read_to_string(
         root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
     )
@@ -34595,7 +34599,7 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
         &definitions,
         &[
             "opforgeNativeCliCaptureMacroDefinitionLineV1\t.block",
-            "jsr preprocessor.lineContainsMacroDirective",
+            "jsr preprocessor_scan.lineContainsMacroDirective",
             "cmpi.w #constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY, d2",
             "move.w d3, 0(a2, d2.l)",
             "opforgeNativeCliFinishMacroDefinitionsV1\t.block",
@@ -34615,7 +34619,7 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
         ]
     ));
     assert!(source_contains_in_order(
-        &preprocessor,
+        &scan,
         &[
             "lineContainsDirective\t.block",
             "movem.l d5/a3, -(sp)",
@@ -34623,6 +34627,19 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
             "movem.l (sp)+, d5/a3",
         ]
     ));
+    for routine in [
+        "lineStartsWithDirective\t.block",
+        "lineStartsWithEndmacroDirective\t.block",
+        "macroHeaderHasName\t.block",
+        "lineContainsMacroDirective\t.block",
+        "lineContainsDirective\t.block",
+    ] {
+        assert!(scan.contains(routine), "missing scanner routine: {routine}");
+        assert!(
+            !preprocessor.contains(routine),
+            "scanner routine must have exactly one owner: {routine}"
+        );
+    }
     assert!(source_contains_in_order(
         &line_processor,
         &[

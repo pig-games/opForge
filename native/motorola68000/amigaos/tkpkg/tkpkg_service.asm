@@ -5,6 +5,7 @@
 	.pub
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
+	.use tkpkg.amigaos.service_request as request
 	.use tkpkg.amigaos.service_status as status
 	.use opasm.amigaos.engine
 	.use opcore.amigaos.expr_bridge
@@ -3700,90 +3701,30 @@ return
 	rts
 	.bend  ; tkpkgEncodeStringEqIgnoreCase
 
+; Compatibility delegates are the Item 5.4.1 facade-to-request adapter. They
+; contain no lifecycle implementation and are deleted when callers migrate.
 tkpkgServicePrepareRequestV1	.block
-	bsr.w tkpkgServiceIncrementRequestIdV1
-	bsr.w tkpkgServiceWriteClearOutputFieldsV1
-	rts
+	jmp request.prepareRequestV1
 	.bend  ; tkpkgServicePrepareRequestV1
 
-; Validate the native service control block header.
-; Inputs: A0 = candidate control block.
-; Outputs: D1 = 0 when the header is valid, 1 when the control block is rejected.
-; Clobbers: D1/CCR.
-; CCR: reflects D1 on return.
 tkpkgServiceValidateHeaderV1	.block
-	moveq #0, d1
-	cmpi.b #$4f, (a0)
-	bne.s badControlBlock
-	cmpi.b #$54, 1(a0)
-	bne.s badControlBlock
-	cmpi.b #$36, 2(a0)
-	bne.s badControlBlock
-	cmpi.b #$35, 3(a0)
-	bne.s badControlBlock
-	cmpi.b #$01, abi.CB_ABI_VERSION(a0)
-	bne.s badControlBlock
-	tst.b 5(a0)
-	bne.s badControlBlock
-	cmpi.b #abi.NATIVE_CONTROL_BLOCK_SIZE_V1, abi.CB_STRUCT_SIZE(a0)
-	bne.s badControlBlock
-	tst.b 7(a0)
-	bne.s badControlBlock
-	moveq #0, d1
-	rts
-
-badControlBlock
-	bsr.w tkpkgServiceSetBadControlBlockV1
-	moveq #1, d1
-	rts
+	jmp request.validateHeaderV1
 	.bend  ; tkpkgServiceValidateHeaderV1
 
 tkpkgServiceWriteHeaderV1	.block
-	move.b #$4f, (a0)
-	move.b #$54, 1(a0)
-	move.b #$36, 2(a0)
-	move.b #$35, 3(a0)
-	move.b #$01, abi.CB_ABI_VERSION(a0)
-	clr.b 5(a0)
-	move.b #abi.NATIVE_CONTROL_BLOCK_SIZE_V1, abi.CB_STRUCT_SIZE(a0)
-	clr.b 7(a0)
-	move.b #abi.CAPABILITY_FLAGS_V1, abi.CB_CAPABILITY_FLAGS(a0)
-	clr.b 9(a0)
-	clr.b abi.CB_RESERVED0(a0)
-	clr.b 15(a0)
-	bsr.w tkpkgServiceSetStatusOkV1
-	rts
+	jmp request.writeHeaderV1
 	.bend  ; tkpkgServiceWriteHeaderV1
 
 tkpkgServiceIncrementRequestIdV1	.block
-	move.b buffers.NextRequestIdLo, d1
-	addq.b #1, d1
-	move.b d1, buffers.NextRequestIdLo
-	bne.s done
-	move.b buffers.NextRequestIdHi, d2
-	addq.b #1, d2
-	move.b d2, buffers.NextRequestIdHi
-
-done
-	move.b buffers.NextRequestIdLo, abi.CB_REQUEST_ID(a0)
-	move.b buffers.NextRequestIdHi, 13(a0)
-	rts
+	jmp request.incrementRequestIdV1
 	.bend  ; tkpkgServiceIncrementRequestIdV1
 
 tkpkgServiceWriteClearExtensionFieldsV1	.block
-	clr.b abi.CB_EXTENSION_PTR(a0)
-	clr.b 25(a0)
-	clr.b abi.CB_EXTENSION_LEN(a0)
-	clr.b 27(a0)
-	rts
+	jmp request.writeClearExtensionFieldsV1
 	.bend  ; tkpkgServiceWriteClearExtensionFieldsV1
 
 tkpkgServiceWriteClearInputFieldsV1	.block
-	clr.b abi.CB_INPUT_PTR(a0)
-	clr.b 17(a0)
-	clr.b abi.CB_INPUT_LEN(a0)
-	clr.b 19(a0)
-	rts
+	jmp request.writeClearInputFieldsV1
 	.bend  ; tkpkgServiceWriteClearInputFieldsV1
 
 ; Compatibility delegates are the Item 5.4 facade-to-status adapter.  They

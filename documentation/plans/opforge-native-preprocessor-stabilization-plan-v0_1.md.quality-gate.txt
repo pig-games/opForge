@@ -32,3 +32,10 @@ Reviewer: `plan-compliance-reviewer`.
 Decision: PASS. Item 5.4 is ownership splitting only, with CPU/family/dialect support explicitly unchanged; the retained 65C02 macro completion wrapper is the sole production Level D evidence.
 
 Full Rust quality gate: PASS (`RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`).
+
+PASS: Item 5.4.1 request-lifecycle extraction passed deterministic validation and the retained native 65C02 CLI Level D completion wrapper. CPU/family/dialect support is explicitly unchanged.
+
+Evidence: inventory validator PASS; staged native-porting gate PASS; focused header/ownership/last-error/native-CLI assembly tests PASS; `scripts/workflow/run_native_macro_completion.sh --verify` PASS with both exact FS-UAE tests (`native_macro_invocation_fixture_fs_uae`, `native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection`).
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. Full Rust quality gate and workflow gate passed; Item 5.4.1 remains an ownership-only lifecycle extraction with CPU/family/dialect support unchanged.

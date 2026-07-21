@@ -17085,19 +17085,32 @@ fn motorola68020_tkpkg_native_abi_payloads_lock_preserved_wire_shapes() {
 #[test]
 fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     let source = tkpkg_amigaos_source("tkpkg_service.asm");
+    let request = tkpkg_amigaos_source("tkpkg_service_request.asm");
     let status = tkpkg_amigaos_source("tkpkg_service_status.asm");
 
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceWriteHeaderV1\t.block\n        MOVE.B #$4f,(A0)\n        MOVE.B #$54,1(A0)\n        MOVE.B #$36,2(A0)\n        MOVE.B #$35,3(A0)\n        MOVE.B #$01,abi.CB_ABI_VERSION(A0)\n        CLR.B 5(A0)\n        MOVE.B #abi.NATIVE_CONTROL_BLOCK_SIZE_V1,abi.CB_STRUCT_SIZE(A0)\n        CLR.B 7(A0)\n        MOVE.B #abi.CAPABILITY_FLAGS_V1,abi.CB_CAPABILITY_FLAGS(A0)\n        CLR.B 9(A0)"
+        "tkpkgServiceWriteHeaderV1\t.block\n        JMP request.writeHeaderV1"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceIncrementRequestIdV1\t.block\n        MOVE.B buffers.NextRequestIdLo,D1\n        ADDQ.B #1,D1\n        MOVE.B D1,buffers.NextRequestIdLo"
+        "tkpkgServiceIncrementRequestIdV1\t.block\n        JMP request.incrementRequestIdV1"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceValidateHeaderV1\t.block\n        MOVEQ #0,D1\n        CMPI.B #$4f,(A0)\n        BNE.S badControlBlock\n        CMPI.B #$54,1(A0)"
+        "tkpkgServiceValidateHeaderV1\t.block\n        JMP request.validateHeaderV1"
+    ));
+    assert!(tkpkg_source_contains(
+        &request,
+        "writeHeaderV1\t.block\n        MOVE.B #$4f,(A0)\n        MOVE.B #$54,1(A0)\n        MOVE.B #$36,2(A0)\n        MOVE.B #$35,3(A0)\n        MOVE.B #$01,abi.CB_ABI_VERSION(A0)\n        CLR.B 5(A0)\n        MOVE.B #abi.NATIVE_CONTROL_BLOCK_SIZE_V1,abi.CB_STRUCT_SIZE(A0)\n        CLR.B 7(A0)\n        MOVE.B #abi.CAPABILITY_FLAGS_V1,abi.CB_CAPABILITY_FLAGS(A0)\n        CLR.B 9(A0)"
+    ));
+    assert!(tkpkg_source_contains(
+        &request,
+        "incrementRequestIdV1\t.block\n        MOVE.B buffers.NextRequestIdLo,D1\n        ADDQ.B #1,D1\n        MOVE.B D1,buffers.NextRequestIdLo"
+    ));
+    assert!(tkpkg_source_contains(
+        &request,
+        "validateHeaderV1\t.block\n        MOVEQ #0,D1\n        CMPI.B #$4f,(A0)\n        BNE.S badControlBlock\n        CMPI.B #$54,1(A0)"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -17324,6 +17337,41 @@ fn motorola68020_tkpkg_status_projection_has_one_implementation_owner() {
     }
     assert!(facade.contains(".use tkpkg.amigaos.service_status as status"));
     assert!(status.contains(".module tkpkg.amigaos.service_status"));
+}
+
+#[test]
+fn motorola68020_tkpkg_request_lifecycle_has_one_implementation_owner() {
+    let facade = tkpkg_amigaos_source("tkpkg_service.asm");
+    let request = tkpkg_amigaos_source("tkpkg_service_request.asm");
+
+    for (facade_entry, request_entry) in [
+        ("tkpkgServicePrepareRequestV1", "prepareRequestV1"),
+        ("tkpkgServiceValidateHeaderV1", "validateHeaderV1"),
+        ("tkpkgServiceWriteHeaderV1", "writeHeaderV1"),
+        ("tkpkgServiceIncrementRequestIdV1", "incrementRequestIdV1"),
+        (
+            "tkpkgServiceWriteClearExtensionFieldsV1",
+            "writeClearExtensionFieldsV1",
+        ),
+        (
+            "tkpkgServiceWriteClearInputFieldsV1",
+            "writeClearInputFieldsV1",
+        ),
+    ] {
+        assert!(
+            tkpkg_source_contains(
+                &facade,
+                format!("{facade_entry}\t.block\n        JMP request.{request_entry}").as_str(),
+            ),
+            "{facade_entry} must delegate to request.{request_entry}"
+        );
+        assert!(
+            routine_body(&request, request_entry).is_some(),
+            "request owner must implement {request_entry}"
+        );
+    }
+    assert!(facade.contains(".use tkpkg.amigaos.service_request as request"));
+    assert!(request.contains(".module tkpkg.amigaos.service_request"));
 }
 
 #[test]

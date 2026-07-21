@@ -285,13 +285,13 @@ its own activated item/slice contract.
   - Commit outcome: one ownership-only status-projection commit.
   - Definition of done: the façade no longer owns reusable status/error implementation.
 
-- [ ] Item 5.4.1: extract tkpkg service request lifecycle
+- [x] Item 5.4.1: extract tkpkg service request lifecycle
   - Source requirement or finding IDs: NR-002; Item 5.4.
   - Invariant: bootstrap, control-block validation, and request bookkeeping move behind one request owner without changing any service ordinal result.
   - Expected files: `tkpkg_service.asm`, `tkpkg_service_request.asm` or repository-style equivalent, and focused ABI/request-transition tests.
   - Proof: B ABI/entrypoint contracts; C request-lifecycle model; D exact affected service fixtures.
   - Full quality gates: focused request contracts and D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
-  - Plan-compliance review evidence: PASS for request-lifecycle extraction only.
+  - Plan-compliance review evidence: PASS for request-lifecycle extraction only. Evidence: `native/motorola68000/amigaos/tkpkg/tkpkg_service_request.asm`; `documentation/plans/slices/native-porting-slice-tkpkg-request-lifecycle.toml`; focused header/ownership/last-error/native-CLI assembly tests PASS; staged native-porting gate PASS; retained 65C02 macro Level D wrapper PASS (both exact FS-UAE tests); full Rust quality gate PASS; CPU/family/dialect scope unchanged.
   - Commit outcome: one ownership-only request-lifecycle commit.
   - Definition of done: the façade no longer decodes reusable request/control-block implementation details.
 

@@ -250,14 +250,14 @@ its own activated item/slice contract.
   - Commit outcome: one capacity-contract commit.
   - Definition of done: capacity failures never truncate/fall through and SP-008 fully closes; no segment/statement capacity is activated.
 
-- [ ] Item 5.2: inventory native runtime responsibilities and dependency direction
+- [x] Item 5.2: inventory native runtime responsibilities and dependency direction
   - Source requirement or finding IDs: NR-001 through NR-008.
   - Invariant: every routine, mutable-state block, public export, imported subsystem, and diagnostic path in the eight audited files has one declared responsibility without changing production behavior.
   - Expected files: repository-grounded inventories for routines, mutable state, inbound/outbound calls, public/private entries, dependency findings, candidate extraction groups, and explicit retain-as-cohesive decisions.
   - Mandatory findings: distinguish orchestration from semantic implementation; identify direct cross-subsystem state access, duplicated string/scanner/operand helpers, package/CPU/family/dialect/selector/expression/layout/output/diagnostic owners, and safe segment/statement landing points.
   - Proof: Level B source inventory checked against labels and imports; no C/D semantic claim.
   - Full quality gates: focused inventory validator; `make workflow-gate`.
-  - Plan-compliance review evidence: PASS for evidence and architecture inventory only.
+  - Plan-compliance review evidence: PASS for evidence and architecture inventory only. Evidence: `documentation/architecture/native-runtime-boundary-inventory-v0_1.md`; `python3 scripts/workflow/check_native_runtime_boundary_inventory.py --report` complete manifest PASS; `python3 -m unittest scripts/workflow/tests/test_check_native_runtime_boundary_inventory.py` PASS; plan-compliance review PASS after complete routine/import/state/diagnostic manifest audit.
   - Commit outcome: one evidence-and-architecture inventory commit.
   - Definition of done: no mandatory or conditional target proceeds to decomposition without a repository-grounded ownership decision.
 

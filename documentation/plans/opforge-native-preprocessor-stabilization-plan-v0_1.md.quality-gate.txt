@@ -7,3 +7,12 @@ PASS: `plan-quality-reviewer` re-reviewed the 2026-07-21 native runtime-boundary
 
 Reviewer: `plan-quality-reviewer`.
 Decision: PASS. The amended next implementation slice is Item 5.2 runtime responsibility/dependency inventory; CLI diagnostic remediation remains after the stabilization readiness gate and before segment capture.
+
+PASS: Item 5.2 runtime responsibility/dependency inventory is source-grounded and complete for all eight NR-001 through NR-008 targets.
+
+Evidence: `documentation/architecture/native-runtime-boundary-inventory-v0_1.md`; `python3 scripts/workflow/check_native_runtime_boundary_inventory.py` PASS; `python3 -m unittest scripts/workflow/tests/test_check_native_runtime_boundary_inventory.py` PASS.
+
+PASS: Item 5.2 plan-compliance review confirmed the validator derives every `.block` routine, `.use` import, `.section` state block, and diagnostic/status/event path for all eight audited sources; source hash/count drift fails closed.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. This is a Level B evidence-and-architecture inventory only; no native production behavior changed.

@@ -5,6 +5,7 @@
 	.pub
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
+	.use tkpkg.amigaos.service_status as status
 	.use opasm.amigaos.engine
 	.use opcore.amigaos.expr_bridge
 	.use tkpkg.amigaos.package_loader
@@ -3769,76 +3770,6 @@ done
 	rts
 	.bend  ; tkpkgServiceIncrementRequestIdV1
 
-tkpkgServiceSetBadRequestV1	.block
-	bsr.w tkpkgServiceSetStatusBadRequestV1
-	bsr.w tkpkgServiceWriteClearOutputFieldsV1
-	lea buffers.BadRequestText, a1
-	moveq #buffers.BAD_REQUEST_TEXT_LEN, d1
-	bsr.w tkpkgServiceCopyLastErrorMessageV1
-	bsr.w tkpkgServiceWriteLastErrorBufferOffsetV1
-	move.b #buffers.BAD_REQUEST_TEXT_LEN, abi.CB_LAST_ERROR_LEN(a0)
-	clr.b 31(a0)
-	move.b #buffers.BAD_REQUEST_TEXT_LEN, buffers.StoredLastErrorLen
-	clr.b buffers.StoredLastErrorLenHi
-	move.b #buffers.LAST_ERROR_KIND_BAD_REQUEST, buffers.StoredLastErrorKind
-	rts
-	.bend  ; tkpkgServiceSetBadRequestV1
-
-tkpkgServiceSetBadControlBlockV1	.block
-	bsr.w tkpkgServiceSetStatusBadControlBlockV1
-	bsr.w tkpkgServiceWriteClearOutputFieldsV1
-	lea buffers.ControlBlockErrorText, a1
-	moveq #buffers.CONTROL_BLOCK_ERROR_TEXT_LEN, d1
-	bsr.w tkpkgServiceCopyLastErrorMessageV1
-	bsr.w tkpkgServiceWriteLastErrorBufferOffsetV1
-	move.b #buffers.CONTROL_BLOCK_ERROR_TEXT_LEN, abi.CB_LAST_ERROR_LEN(a0)
-	clr.b 31(a0)
-	move.b #buffers.CONTROL_BLOCK_ERROR_TEXT_LEN, buffers.StoredLastErrorLen
-	clr.b buffers.StoredLastErrorLenHi
-	move.b #buffers.LAST_ERROR_KIND_BAD_CONTROL, buffers.StoredLastErrorKind
-	rts
-	.bend  ; tkpkgServiceSetBadControlBlockV1
-
-tkpkgServiceSetRuntimeErrorV1	.block
-	bsr.w tkpkgServiceSetStatusRuntimeErrorV1
-	bsr.w tkpkgServiceWriteClearOutputFieldsV1
-	lea buffers.RuntimeErrorText, a1
-	moveq #buffers.RUNTIME_ERROR_TEXT_LEN, d1
-	bsr.w tkpkgServiceSetRuntimeErrorMessageV1
-	move.b #buffers.LAST_ERROR_KIND_RUNTIME, buffers.StoredLastErrorKind
-	move.b #buffers.RUNTIME_ERROR_TEXT_LEN, buffers.StoredLastErrorLen
-	clr.b buffers.StoredLastErrorLenHi
-	rts
-	.bend  ; tkpkgServiceSetRuntimeErrorV1
-
-tkpkgServiceSetRuntimeErrorMessageV1	.block
-	bsr.w tkpkgServiceSetStatusRuntimeErrorV1
-	bsr.w tkpkgServiceWriteClearOutputFieldsV1
-	bsr.w tkpkgServiceCopyLastErrorMessageV1
-	bsr.w tkpkgServiceWriteLastErrorBufferOffsetV1
-	move.b d1, abi.CB_LAST_ERROR_LEN(a0)
-	clr.b 31(a0)
-	move.b d1, buffers.StoredLastErrorLen
-	clr.b buffers.StoredLastErrorLenHi
-	move.b #buffers.LAST_ERROR_KIND_RUNTIME, buffers.StoredLastErrorKind
-	rts
-	.bend  ; tkpkgServiceSetRuntimeErrorMessageV1
-
-tkpkgServiceClearStoredLastErrorV1	.block
-	clr.b buffers.StoredLastErrorLen
-	clr.b buffers.StoredLastErrorLenHi
-	move.b #buffers.LAST_ERROR_KIND_NONE, buffers.StoredLastErrorKind
-	rts
-	.bend  ; tkpkgServiceClearStoredLastErrorV1
-
-tkpkgServiceWriteClearOutputFieldsV1	.block
-	clr.b abi.CB_OUTPUT_PTR(a0)
-	clr.b 21(a0)
-	clr.b abi.CB_OUTPUT_LEN(a0)
-	clr.b 23(a0)
-	rts
-	.bend  ; tkpkgServiceWriteClearOutputFieldsV1
-
 tkpkgServiceWriteClearExtensionFieldsV1	.block
 	clr.b abi.CB_EXTENSION_PTR(a0)
 	clr.b 25(a0)
@@ -3855,63 +3786,62 @@ tkpkgServiceWriteClearInputFieldsV1	.block
 	rts
 	.bend  ; tkpkgServiceWriteClearInputFieldsV1
 
+; Compatibility delegates are the Item 5.4 facade-to-status adapter.  They
+; contain no status/error implementation and are deleted when callers migrate.
+tkpkgServiceSetBadRequestV1	.block
+	jmp status.setBadRequestV1
+	.bend  ; tkpkgServiceSetBadRequestV1
+
+tkpkgServiceSetBadControlBlockV1	.block
+	jmp status.setBadControlBlockV1
+	.bend  ; tkpkgServiceSetBadControlBlockV1
+
+tkpkgServiceSetRuntimeErrorV1	.block
+	jmp status.setRuntimeErrorV1
+	.bend  ; tkpkgServiceSetRuntimeErrorV1
+
+tkpkgServiceSetRuntimeErrorMessageV1	.block
+	jmp status.setRuntimeErrorMessageV1
+	.bend  ; tkpkgServiceSetRuntimeErrorMessageV1
+
+tkpkgServiceClearStoredLastErrorV1	.block
+	jmp status.clearStoredLastErrorV1
+	.bend  ; tkpkgServiceClearStoredLastErrorV1
+
+tkpkgServiceWriteClearOutputFieldsV1	.block
+	jmp status.writeClearOutputFieldsV1
+	.bend  ; tkpkgServiceWriteClearOutputFieldsV1
+
 tkpkgServiceWriteClearLastErrorFieldsV1	.block
-	clr.b abi.CB_LAST_ERROR_PTR(a0)
-	clr.b 29(a0)
-	clr.b abi.CB_LAST_ERROR_LEN(a0)
-	clr.b 31(a0)
-	rts
+	jmp status.writeClearLastErrorFieldsV1
 	.bend  ; tkpkgServiceWriteClearLastErrorFieldsV1
 
 tkpkgServiceWriteLastErrorBufferOffsetV1	.block
-	move.b #buffers.LAST_ERROR_BUFFER_PTR_V1, abi.CB_LAST_ERROR_PTR(a0)
-	clr.b 29(a0)
-	rts
+	jmp status.writeLastErrorBufferOffsetV1
 	.bend  ; tkpkgServiceWriteLastErrorBufferOffsetV1
 
 tkpkgServiceWriteOutputBufferOffsetV1	.block
-	move.b #buffers.LAST_ERROR_BUFFER_PTR_V1, abi.CB_OUTPUT_PTR(a0)
-	clr.b 21(a0)
-	rts
+	jmp status.writeOutputBufferOffsetV1
 	.bend  ; tkpkgServiceWriteOutputBufferOffsetV1
 
 tkpkgServiceCopyLastErrorMessageV1	.block
-	lea buffers.LastErrorBuffer, a2
-	move.w d1, d2
-	beq.s done
-
-loop
-	move.b (a1)+, (a2)+
-	subq.w #1, d2
-	bne.s loop
-
-done
-	clr.b (a2)
-	rts
+	jmp status.copyLastErrorMessageV1
 	.bend  ; tkpkgServiceCopyLastErrorMessageV1
 
 tkpkgServiceSetStatusOkV1	.block
-	clr.b abi.CB_STATUS_CODE(a0)
-	clr.b 11(a0)
-	rts
+	jmp status.setStatusOkV1
 	.bend  ; tkpkgServiceSetStatusOkV1
 
 tkpkgServiceSetStatusBadControlBlockV1	.block
-	move.b #abi.STATUS_BAD_CONTROL_BLOCK_V1, abi.CB_STATUS_CODE(a0)
-	clr.b 11(a0)
-	rts
+	jmp status.setStatusBadControlBlockV1
 	.bend  ; tkpkgServiceSetStatusBadControlBlockV1
 
 tkpkgServiceSetStatusBadRequestV1	.block
-	move.b #abi.STATUS_BAD_REQUEST_V1, abi.CB_STATUS_CODE(a0)
-	clr.b 11(a0)
-	rts
+	jmp status.setStatusBadRequestV1
 	.bend  ; tkpkgServiceSetStatusBadRequestV1
 
 tkpkgServiceSetStatusRuntimeErrorV1	.block
-	move.b #abi.STATUS_RUNTIME_ERROR_V1, abi.CB_STATUS_CODE(a0)
-	clr.b 11(a0)
-	rts
+	jmp status.setStatusRuntimeErrorV1
 	.bend  ; tkpkgServiceSetStatusRuntimeErrorV1
 
 	.endsection

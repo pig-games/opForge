@@ -50,6 +50,7 @@ export/import semantics. Those remain deferred follow-on vertical slices.
 ## Constraints
 
 - Every native behavior item loads `agents/rules/native-rust-parity-porting.md`, creates/upgrades a `documentation/plans/slices/*.toml` boundary contract, and uses Levels A–E honestly. Assembly changes also load `agents/rules/native-68000.md`; FS-UAE execution loads `agents/rules/fs-uae.md`; investigation/instrumentation loads the applicable triage/safe-instrumentation rules.
+- Every documented FS-UAE `cargo test` invocation is single-instance and uses `--test-threads=1`.
 - The macro fixture is a permanent Level D CLI-artifact regression during every preprocessor ownership change. The real-68020 nested-frame harness is a separate Level D focused-negative proof, not CLI-artifact parity; other internal harnesses are B/C/E only and never substitute for CLI parity.
 - Ownership-only items must preserve ABI, register/CCR/stack contracts, state layout, capacities, accepted source, diagnostics, and exact Rust/native fixture artifacts. No segment, statement, export, or unrelated macro feature may be bundled into them.
 - The preprocessor must not contain CPU/family/dialect, selector, operand-plan, mnemonic encoding, or output-format decisions. Run the CPU-boundary guard; do not mix the independent Rust selector-boundary remediation into this plan.
@@ -273,14 +274,14 @@ its own activated item/slice contract.
   - Commit outcome: one architecture-contract commit.
   - Definition of done: every later extraction names source owner, destination owner, temporary adapter, and adapter deletion criterion.
 
-- [ ] Item 5.4: extract tkpkg service status projection
+- [x] Item 5.4: extract tkpkg service status projection
   - Source requirement or finding IDs: NR-002; Item 5.3 target contract.
   - Invariant: status projection, output-window setup, and stored last-error handling move behind one focused owner without changing a service-ordinal result.
   - Expected files: `tkpkg_service.asm`, `tkpkg_service_status.asm`, or repository-style equivalents. `tkpkg_service.asm` remains the public façade.
-  - Scope boundary: no bootstrap, request decoding, expression, selection, encoding, or package semantics change.
-  - Proof: B ABI layout/entrypoint/source-order contracts; C service status-transition model; D all existing real CLI/package service fixtures affected by the route.
-  - Full quality gates: affected focused contracts and exact established Level D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
-  - Plan-compliance review evidence: PASS for one ownership-only phase at a time.
+  - Scope boundary: no bootstrap, request decoding, expression, selection, encoding, package semantics, or CPU/family/dialect support change. The only production Level D target is the retained native 65C02 CLI path; generic tokenizer debug corpora may confirm status routing only and never establish target-CPU support.
+  - Proof: B ABI layout/entrypoint/source-order contracts; C service status-transition model; D retained native 65C02 CLI completion wrapper. The generic 68000 debug-CLI corpus is supplementary route evidence only, not CPU parity.
+  - Full quality gates: affected focused contracts; `scripts/workflow/run_native_macro_completion.sh --verify` under the configured FS-UAE environment; native formatter; staged native-porting; Rust quality; workflow gate.
+  - Plan-compliance review evidence: scoped review PASS for one ownership-only phase. Evidence: `native/motorola68000/amigaos/tkpkg/tkpkg_service_status.asm`; `documentation/plans/slices/native-porting-slice-tkpkg-status-projection.toml`; staged native-porting gate PASS; focused ownership/roundtrip/native-CLI assembly tests PASS; retained 65C02 macro Level D wrapper PASS (both exact tests); full Rust quality gate PASS; CPU/family/dialect scope explicitly unchanged.
   - Commit outcome: one ownership-only status-projection commit.
   - Definition of done: the façade no longer owns reusable status/error implementation.
 

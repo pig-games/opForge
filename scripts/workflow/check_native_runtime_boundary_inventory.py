@@ -56,7 +56,7 @@ TARGETS = {
 }
 SNAPSHOTS = {
     "opasm.amigaos.assembly_driver": ("56301044ea7e1abdcc890bfc3ffbfcc8580609e079e237676e991d211578d672", 97, 13, ("code", "data", "bss"), 142),
-    "tkpkg.amigaos.service": ("f7688655805a6a2608173860fd079c1cf7bd8ec1ec1744984f84701624b57d94", 74, 8, ("data", "bss", "code"), 260),
+    "tkpkg.amigaos.service": ("3ba178c587a5c117b54ebb33076f7e7a4a851f7646cbe531e63127370857316e", 74, 9, ("data", "bss", "code"), 235),
     "opasm.amigaos.engine": ("c02905ed84f2cb5267efc83ce0fb603d9f68fd8431f74c1993aed05e7ac1460e", 67, 1, ("code", "bss"), 21),
     "tkpkg.amigaos.tokenizer_vm": ("7bbafa635dcded0236c9a65368db47e0e10aded6b328d4389e580654125e5b65", 31, 5, ("data", "code"), 124),
     "opcore.amigaos.expr_bridge": ("77ad85c7f0d65a017e7d2678b58007bac935564be8cee741058ceb8c9731e972", 30, 1, ("code", "bss"), 4),

@@ -23,3 +23,12 @@ Evidence: `documentation/architecture/native-runtime-boundary-contract-v0_1.md`;
 
 Reviewer: `plan-compliance-reviewer`.
 Decision: PASS. Required owners, neutral context fields, prohibited/transitional edges, and lifecycle ledger are explicit; this remains B/C architecture evidence with no semantic or Level D claim.
+
+PASS: Item 5.4 status-projection extraction passed deterministic and scoped validation, including the retained native 65C02 CLI Level D completion wrapper and the full Rust quality gate. CPU/family/dialect support is explicitly unchanged; the supplementary Motorola 68000 debug-CLI corpus is tokenizer/status-route evidence only and is not cited as CPU parity.
+
+Evidence: staged native-porting gate PASS; focused ownership/roundtrip/native-CLI assembly tests PASS; `scripts/workflow/run_native_macro_completion.sh --verify` PASS with both exact FS-UAE tests (`native_macro_invocation_fixture_fs_uae`, `native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection`).
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. Item 5.4 is ownership splitting only, with CPU/family/dialect support explicitly unchanged; the retained 65C02 macro completion wrapper is the sole production Level D evidence.
+
+Full Rust quality gate: PASS (`RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`).

@@ -63,8 +63,9 @@ than a package runtime addressing engine-owned mutable tables.
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`.
 - Public entries: `bootstrapV1` and `dispatchV1`.
-- Imports/outbound dependencies: tkpkg ABI/buffers, engine, expression bridge,
-  package loader, pipeline, tokenizer VM, and PRVM line router.
+- Imports/outbound dependencies: tkpkg ABI/buffers, the dedicated status
+  projection owner, engine, expression bridge, package loader, pipeline,
+  tokenizer VM, and PRVM line router.
 - Mutable state: request/control-block pointers, output and last-error
   buffers, selected-envelope/candidate scratch, and service result fields.
 - Routine responsibility groups: bootstrap/request validation; status and
@@ -73,11 +74,14 @@ than a package runtime addressing engine-owned mutable tables.
   interpretation; package encoding/output construction; locator/string helpers.
 - Inbound users: the opasm tkpkg bridge is the principal facade caller.
 - Decision: retain only ABI dispatch, lifecycle, output projection, and
-  last-error entry in the facade.  Extract status (5.4), request lifecycle
-  (5.4.1), parser (5.5), expression adapter (5.5.1), selection (5.6), operand
-  plans (5.6.1), and encoding (5.6.2).  The repeated package-string/locator
-  helpers overlap pipeline-style utilities and require an ownership decision
-  before consolidation; no unproven helper merge is authorized here.
+  last-error entry in the facade.  Item 5.4 has extracted status/error and
+  output-window implementation to `tkpkg.amigaos.service_status`; the facade
+  keeps only explicit compatibility delegates pending caller migration. Request
+  lifecycle (5.4.1), parser (5.5), expression adapter (5.5.1), selection
+  (5.6), operand plans (5.6.1), and encoding (5.6.2) remain. The repeated
+  package-string/locator helpers overlap pipeline-style utilities and require
+  an ownership decision before consolidation; no unproven helper merge is
+  authorized here.
 
 ### `opasm.amigaos.engine` (NR-001, conditional decomposition)
 

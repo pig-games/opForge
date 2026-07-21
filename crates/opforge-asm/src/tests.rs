@@ -3109,12 +3109,12 @@ fn run_with_cli_reports_unknown_cpu_override() {
         "--cpu",
         "nope999",
     ]);
-    let err = match run_with_cli_with_context(&cli) {
+    let error = match run_with_cli_with_context(&cli) {
         Ok(_) => panic!("unknown cpu should fail"),
-        Err(CliRunError::Assembler { error, .. }) => error,
-        Err(other) => panic!("expected assembler failure, got {other:?}"),
+        Err(CliRunError::Workflow { error, .. }) => error,
+        Err(other) => panic!("expected workflow validation failure, got {other:?}"),
     };
-    assert!(err.to_string().contains("Unknown CPU: nope999"));
+    assert!(error.to_string().contains("Unknown CPU: nope999"));
 }
 
 #[test]
@@ -17085,6 +17085,7 @@ fn motorola68020_tkpkg_native_abi_payloads_lock_preserved_wire_shapes() {
 #[test]
 fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     let source = tkpkg_amigaos_source("tkpkg_service.asm");
+    let status = tkpkg_amigaos_source("tkpkg_service_status.asm");
 
     assert!(tkpkg_source_contains(
         &source,
@@ -17183,22 +17184,35 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceSetStatusRuntimeErrorV1\t.block\n        MOVE.B #abi.STATUS_RUNTIME_ERROR_V1,abi.CB_STATUS_CODE(A0)\n        CLR.B 11(A0)"
+        "tkpkgServiceSetStatusRuntimeErrorV1\t.block\n        JMP status.setStatusRuntimeErrorV1"
+    ));
+    assert!(tkpkg_source_contains(
+        &status,
+        "setStatusRuntimeErrorV1\t.block\n        MOVE.B #abi.STATUS_RUNTIME_ERROR_V1,abi.CB_STATUS_CODE(A0)\n        CLR.B 11(A0)"
     ));
 }
 
 #[test]
 fn motorola68020_tkpkg_service_preserves_last_error_roundtrip_contract() {
     let source = tkpkg_amigaos_source("tkpkg_service.asm");
+    let status = tkpkg_amigaos_source("tkpkg_service_status.asm");
     let buffers = tkpkg_amigaos_source("tkpkg_buffers.asm");
 
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceSetBadRequestV1\t.block\n        BSR.W tkpkgServiceSetStatusBadRequestV1\n        BSR.W tkpkgServiceWriteClearOutputFieldsV1\n        LEA buffers.BadRequestText,A1\n        MOVEQ #buffers.BAD_REQUEST_TEXT_LEN,D1\n        BSR.W tkpkgServiceCopyLastErrorMessageV1\n        BSR.W tkpkgServiceWriteLastErrorBufferOffsetV1\n        MOVE.B #buffers.BAD_REQUEST_TEXT_LEN,abi.CB_LAST_ERROR_LEN(A0)"
+        "tkpkgServiceSetBadRequestV1\t.block\n        JMP status.setBadRequestV1"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceSetBadControlBlockV1\t.block\n        BSR.W tkpkgServiceSetStatusBadControlBlockV1\n        BSR.W tkpkgServiceWriteClearOutputFieldsV1\n        LEA buffers.ControlBlockErrorText,A1\n        MOVEQ #buffers.CONTROL_BLOCK_ERROR_TEXT_LEN,D1\n        BSR.W tkpkgServiceCopyLastErrorMessageV1\n        BSR.W tkpkgServiceWriteLastErrorBufferOffsetV1\n        MOVE.B #buffers.CONTROL_BLOCK_ERROR_TEXT_LEN,abi.CB_LAST_ERROR_LEN(A0)"
+        "tkpkgServiceSetBadControlBlockV1\t.block\n        JMP status.setBadControlBlockV1"
+    ));
+    assert!(tkpkg_source_contains(
+        &status,
+        "setBadRequestV1\t.block\n        BSR.W setStatusBadRequestV1\n        BSR.W writeClearOutputFieldsV1\n        LEA buffers.BadRequestText,A1\n        MOVEQ #buffers.BAD_REQUEST_TEXT_LEN,D1\n        BSR.W copyLastErrorMessageV1\n        BSR.W writeLastErrorBufferOffsetV1\n        MOVE.B #buffers.BAD_REQUEST_TEXT_LEN,abi.CB_LAST_ERROR_LEN(A0)"
+    ));
+    assert!(tkpkg_source_contains(
+        &status,
+        "setBadControlBlockV1\t.block\n        BSR.W setStatusBadControlBlockV1\n        BSR.W writeClearOutputFieldsV1\n        LEA buffers.ControlBlockErrorText,A1\n        MOVEQ #buffers.CONTROL_BLOCK_ERROR_TEXT_LEN,D1\n        BSR.W copyLastErrorMessageV1\n        BSR.W writeLastErrorBufferOffsetV1\n        MOVE.B #buffers.CONTROL_BLOCK_ERROR_TEXT_LEN,abi.CB_LAST_ERROR_LEN(A0)"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -17213,12 +17227,12 @@ fn motorola68020_tkpkg_service_preserves_last_error_roundtrip_contract() {
         "handleInitEntry:\n        BSR.W tkpkgServicePrepareRequestV1\n        BSR.W tkpkgServiceWriteHeaderV1\n        BSR.W tkpkgServiceWriteClearInputFieldsV1"
     ));
     assert!(tkpkg_source_contains(
-        &source,
-        "tkpkgServiceWriteLastErrorBufferOffsetV1\t.block\n        MOVE.B #buffers.LAST_ERROR_BUFFER_PTR_V1,abi.CB_LAST_ERROR_PTR(A0)\n        CLR.B 29(A0)"
+        &status,
+        "writeLastErrorBufferOffsetV1\t.block\n        MOVE.B #buffers.LAST_ERROR_BUFFER_PTR_V1,abi.CB_LAST_ERROR_PTR(A0)\n        CLR.B 29(A0)"
     ));
     assert!(tkpkg_source_contains(
-        &source,
-        "tkpkgServiceWriteOutputBufferOffsetV1\t.block\n        MOVE.B #buffers.LAST_ERROR_BUFFER_PTR_V1,abi.CB_OUTPUT_PTR(A0)\n        CLR.B 21(A0)"
+        &status,
+        "writeOutputBufferOffsetV1\t.block\n        MOVE.B #buffers.LAST_ERROR_BUFFER_PTR_V1,abi.CB_OUTPUT_PTR(A0)\n        CLR.B 21(A0)"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -17252,6 +17266,64 @@ fn motorola68020_tkpkg_service_preserves_last_error_roundtrip_contract() {
         &buffers,
         "RuntimeErrorText:\n        .byte \"OTR901: unimplemented\",0"
     ));
+}
+
+#[test]
+fn motorola68020_tkpkg_status_projection_has_one_implementation_owner() {
+    let facade = tkpkg_amigaos_source("tkpkg_service.asm");
+    let status = tkpkg_amigaos_source("tkpkg_service_status.asm");
+
+    for (facade_entry, status_entry) in [
+        ("tkpkgServiceSetBadRequestV1", "setBadRequestV1"),
+        ("tkpkgServiceSetBadControlBlockV1", "setBadControlBlockV1"),
+        ("tkpkgServiceSetRuntimeErrorV1", "setRuntimeErrorV1"),
+        (
+            "tkpkgServiceSetRuntimeErrorMessageV1",
+            "setRuntimeErrorMessageV1",
+        ),
+        (
+            "tkpkgServiceClearStoredLastErrorV1",
+            "clearStoredLastErrorV1",
+        ),
+        (
+            "tkpkgServiceWriteClearOutputFieldsV1",
+            "writeClearOutputFieldsV1",
+        ),
+        (
+            "tkpkgServiceWriteClearLastErrorFieldsV1",
+            "writeClearLastErrorFieldsV1",
+        ),
+        (
+            "tkpkgServiceWriteLastErrorBufferOffsetV1",
+            "writeLastErrorBufferOffsetV1",
+        ),
+        (
+            "tkpkgServiceWriteOutputBufferOffsetV1",
+            "writeOutputBufferOffsetV1",
+        ),
+        (
+            "tkpkgServiceCopyLastErrorMessageV1",
+            "copyLastErrorMessageV1",
+        ),
+        ("tkpkgServiceSetStatusOkV1", "setStatusOkV1"),
+        (
+            "tkpkgServiceSetStatusBadControlBlockV1",
+            "setStatusBadControlBlockV1",
+        ),
+        ("tkpkgServiceSetStatusBadRequestV1", "setStatusBadRequestV1"),
+        (
+            "tkpkgServiceSetStatusRuntimeErrorV1",
+            "setStatusRuntimeErrorV1",
+        ),
+    ] {
+        assert!(tkpkg_source_contains(
+            &facade,
+            format!("{facade_entry}\t.block\n        JMP status.{status_entry}").as_str(),
+        ));
+        assert!(status.contains(format!("{status_entry}\t.block").as_str()));
+    }
+    assert!(facade.contains(".use tkpkg.amigaos.service_status as status"));
+    assert!(status.contains(".module tkpkg.amigaos.service_status"));
 }
 
 #[test]
@@ -17550,6 +17622,7 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
 #[test]
 fn motorola68020_tkpkg_error_namespace_preserves_package_failures() {
     let service = tkpkg_amigaos_source("tkpkg_service.asm");
+    let status = tkpkg_amigaos_source("tkpkg_service_status.asm");
     let loader = tkpkg_amigaos_source("tkpkg_package_loader.asm");
 
     assert!(tkpkg_source_contains(
@@ -17558,7 +17631,11 @@ fn motorola68020_tkpkg_error_namespace_preserves_package_failures() {
     ));
     assert!(tkpkg_source_contains(
         &service,
-        "tkpkgServiceSetRuntimeErrorMessageV1\t.block\n        BSR.W tkpkgServiceSetStatusRuntimeErrorV1\n        BSR.W tkpkgServiceWriteClearOutputFieldsV1\n        BSR.W tkpkgServiceCopyLastErrorMessageV1\n        BSR.W tkpkgServiceWriteLastErrorBufferOffsetV1"
+        "tkpkgServiceSetRuntimeErrorMessageV1\t.block\n        JMP status.setRuntimeErrorMessageV1"
+    ));
+    assert!(tkpkg_source_contains(
+        &status,
+        "setRuntimeErrorMessageV1\t.block\n        BSR.W setStatusRuntimeErrorV1\n        BSR.W writeClearOutputFieldsV1\n        BSR.W copyLastErrorMessageV1\n        BSR.W writeLastErrorBufferOffsetV1"
     ));
     assert!(tkpkg_source_contains(
         &loader,

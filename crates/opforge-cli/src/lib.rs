@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 use serde_json::json;
 
+use api::asm::AssemblerWorkflowError;
 use api::diagnostics::{build_context_lines, AsmRunError, Diagnostic, Severity};
 use cli_core::{
     resolve_formatter_input_paths, resolve_formatter_project_paths, run_with_cli_with_context,
@@ -829,6 +830,41 @@ fn process_werror_reports(
     }
 }
 
+fn emit_workflow_fatal(
+    sink: &mut DiagnosticsSink,
+    cli_config: &CliConfig,
+    error: &AssemblerWorkflowError,
+    input_path: Option<&Path>,
+) -> Result<(), String> {
+    let kind = format!("{:?}", error.kind()).to_ascii_lowercase();
+    let line = if cli_config.output_format == OutputFormat::Json {
+        json!({
+            "type": "fatal",
+            "code": error.code(),
+            "kind": kind,
+            "message": error.summary(),
+            "input": input_path.map(|path| path.to_string_lossy().to_string()),
+        })
+        .to_string()
+    } else {
+        match input_path {
+            Some(path) => format!(
+                "{}: error [{}] ({kind})\nerror: {}",
+                path.display(),
+                error.code(),
+                error.summary()
+            ),
+            None => format!(
+                "error [{}] ({kind})\nerror: {}",
+                error.code(),
+                error.summary()
+            ),
+        }
+    };
+    sink.emit_line(&line)
+        .map_err(|err| format!("diagnostics sink write failed: {err}"))
+}
+
 fn process_run_failure(
     sink: &mut DiagnosticsSink,
     cli_config: &CliConfig,
@@ -851,6 +887,9 @@ fn process_run_failure(
         CliRunError::WarningsAsErrors { reports } => {
             process_werror_reports(sink, cli_config, reports, use_color)
         }
+        CliRunError::Workflow {
+            input_path, error, ..
+        } => emit_workflow_fatal(sink, cli_config, error, input_path.as_deref()),
     }
 }
 
@@ -1046,6 +1085,7 @@ pub fn run_main() {
 #[cfg(test)]
 mod tests {
     use super::{process_run_failure, process_successful_reports, Cli, DiagnosticsSink};
+    use api::asm::{AssemblerWorkflowError, HostIoError};
     use api::diagnostics::{
         AsmError, AsmErrorKind, AsmRunError, AsmRunReport, Diagnostic, Severity,
     };
@@ -1098,6 +1138,9 @@ mod tests {
             CliRunError::Assembler { error, .. } => *error,
             CliRunError::WarningsAsErrors { .. } => {
                 panic!("synthetic fixit report should come from assembler failure")
+            }
+            CliRunError::Workflow { .. } => {
+                panic!("synthetic fixit report should not come from workflow failure")
             }
         };
         cli_core::CliRunReport {
@@ -1494,6 +1537,84 @@ mod tests {
     }
 
     #[test]
+    fn workflow_failure_renders_its_stable_code_and_input_path() {
+        let temp_dir = unique_temp_dir("cli-workflow-failure-text");
+        let source_path = temp_dir.join("input.asm");
+        let diagnostics_path = temp_dir.join("diagnostics.txt");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let run_error = CliRunError::Workflow {
+            reports: Vec::new(),
+            input_path: Some(source_path.clone()),
+            error: Box::new(AssemblerWorkflowError::Io(HostIoError::new(
+                "asm.workflow.io",
+                "workflow I/O failure",
+            ))),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(
+                fs::File::create(&diagnostics_path).expect("create diagnostics file"),
+            )),
+        };
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("workflow fatal should render");
+        drop(sink);
+
+        let output = fs::read_to_string(&diagnostics_path).expect("read diagnostics");
+        assert!(output.contains("asm.workflow.io"), "{output}");
+        assert!(output.contains("workflow I/O failure"), "{output}");
+        assert!(
+            output.contains(source_path.to_string_lossy().as_ref()),
+            "{output}"
+        );
+    }
+
+    #[test]
+    fn workflow_failure_emits_a_json_fatal_record() {
+        let temp_dir = unique_temp_dir("cli-workflow-failure-json");
+        let source_path = temp_dir.join("input.asm");
+        let diagnostics_path = temp_dir.join("diagnostics.jsonl");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--format",
+            "json",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let run_error = CliRunError::Workflow {
+            reports: Vec::new(),
+            input_path: Some(source_path.clone()),
+            error: Box::new(AssemblerWorkflowError::Io(HostIoError::new(
+                "asm.workflow.io",
+                "workflow JSON failure",
+            ))),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(
+                fs::File::create(&diagnostics_path).expect("create diagnostics file"),
+            )),
+        };
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("workflow fatal JSON should render");
+        drop(sink);
+
+        let output = fs::read_to_string(&diagnostics_path).expect("read diagnostics");
+        let payload: Value = serde_json::from_str(output.trim()).expect("valid workflow JSON");
+        assert_eq!(payload["type"], "fatal");
+        assert_eq!(payload["code"], "asm.workflow.io");
+        assert_eq!(payload["kind"], "io");
+        assert_eq!(payload["message"], "workflow JSON failure");
+        assert_eq!(payload["input"], source_path.to_string_lossy().as_ref());
+    }
+
+    #[test]
     fn quiet_processing_does_not_require_diagnostics_to_write_fixit_report() {
         let temp_dir = unique_temp_dir("cli-quiet-empty-report");
         let source_path = temp_dir.join("main.asm");
@@ -1883,6 +2004,9 @@ mod tests {
             CliRunError::Assembler { error, .. } => *error,
             CliRunError::WarningsAsErrors { .. } => {
                 panic!("synthetic failure should be an assembler error")
+            }
+            CliRunError::Workflow { .. } => {
+                panic!("synthetic failure should not be a workflow error")
             }
         };
         let run_error = CliRunError::Assembler {

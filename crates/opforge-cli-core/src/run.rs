@@ -3,8 +3,8 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use api::asm::Assembler;
-use api::diagnostics::{AsmError, AsmErrorKind, AsmRunError, AsmRunReport, Severity};
+use api::asm::{Assembler, AssemblerWorkflowError};
+use api::diagnostics::{AsmRunError, AsmRunReport, Severity};
 
 use crate::{
     input_base_from_path, validate_cli, Cli, CliConfig, OutputFormat, BUILD_PROFILE_SUMMARY,
@@ -33,6 +33,11 @@ pub enum CliRunError {
     },
     WarningsAsErrors {
         reports: Vec<CliRunReport>,
+    },
+    Workflow {
+        reports: Vec<CliRunReport>,
+        input_path: Option<PathBuf>,
+        error: Box<AssemblerWorkflowError>,
     },
 }
 
@@ -69,12 +74,19 @@ pub fn run_with_cli_with_context(cli: &Cli) -> Result<Vec<CliRunReport>, CliRunE
             };
         let report = match run_one(cli, &asm_name, &input_base, &config) {
             Ok(report) => report,
-            Err(error) => {
+            Err(AssemblerWorkflowError::Assemble(error)) => {
                 return Err(CliRunError::assembler(
                     reports,
                     Some(input_path.clone()),
                     error,
                 ));
+            }
+            Err(error) => {
+                return Err(CliRunError::Workflow {
+                    reports,
+                    input_path: Some(input_path.clone()),
+                    error: Box::new(error),
+                });
             }
         };
         reports.push(CliRunReport {
@@ -102,38 +114,12 @@ pub fn has_werror_violations(reports: &[CliRunReport]) -> bool {
     })
 }
 
-fn workflow_error_to_asm_run_error(error: api::asm::AssemblerWorkflowError) -> AsmRunError {
-    match error {
-        api::asm::AssemblerWorkflowError::Assemble(error) => error,
-        api::asm::AssemblerWorkflowError::InvalidArgument(error) => AsmRunError::new(
-            AsmError::new(AsmErrorKind::Cli, error.summary(), None),
-            Vec::new(),
-            Vec::new(),
-        ),
-        api::asm::AssemblerWorkflowError::InvalidRequest(error) => AsmRunError::new(
-            AsmError::new(AsmErrorKind::Cli, error.summary(), None),
-            Vec::new(),
-            Vec::new(),
-        ),
-        api::asm::AssemblerWorkflowError::Io(error) => AsmRunError::new(
-            AsmError::new(AsmErrorKind::Io, error.summary(), None),
-            Vec::new(),
-            Vec::new(),
-        ),
-        api::asm::AssemblerWorkflowError::Internal(error) => AsmRunError::new(
-            AsmError::new(AsmErrorKind::Assembler, error.summary(), None),
-            Vec::new(),
-            Vec::new(),
-        ),
-    }
-}
-
 fn run_one(
     cli: &Cli,
     asm_name: &str,
     output_base: &str,
     config: &CliConfig,
-) -> Result<AsmRunReport, AsmRunError> {
+) -> Result<AsmRunReport, AssemblerWorkflowError> {
     let root_path = Path::new(asm_name);
     let output_format = match config.output_format {
         OutputFormat::Text => api::asm::OutputFormat::Text,
@@ -195,7 +181,7 @@ fn run_one(
         builder = builder.tab_size(tab_size);
     }
 
-    builder.assemble().map_err(workflow_error_to_asm_run_error)
+    builder.assemble()
 }
 
 #[cfg(test)]

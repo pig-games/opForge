@@ -100,16 +100,16 @@ this plan.
   - Commit outcome: one focused CLI I/O/error-propagation commit.
   - Definition of done: Complete — CLI-DIAG-004 and CLI-DIAG-005 fully close without changing intentional diagnostic suppression. Evidence: failing-writer and `--no-error` focused tests; `cargo test -p cli`, `scripts/workflow/run_rust_quality_gate.sh`, and `make workflow-gate` (2026-07-21).
 
-- [ ] Item 3: retain workflow failure identity through the CLI boundary
+- [x] Item 3: retain workflow failure identity through the CLI boundary
   - Source requirement or finding IDs: CLI-DIAG-006 (workflow failures are flattened into empty-diagnostic `AsmRunError` values); CLI-DIAG-007 (JSON error output is incomplete).
   - Invariant: non-assembler `AssemblerWorkflowError` variants retain a stable category/code and summary until terminal rendering. Every workflow failure produces at least one human-readable error and, under `--format json`, one valid fatal JSON object containing type, code, kind, message, and input when known.
   - Expected files: `crates/opforge-cli-core/src/run.rs`, `crates/opforge-cli/src/lib.rs`, and focused tests in the owning crates.
   - Design constraint: prefer extending `CliRunError` with a small CLI-owned fatal/workflow payload over manufacturing source diagnostics in the engine. Keep source diagnostics separate from workflow-fatal metadata.
   - Required focused tests: invalid argument, invalid request, I/O, and internal workflow variants each preserve category/summary; JSON serializes stable fields; normal assembler errors retain Item 1’s no-duplicate behavior.
   - Full quality gates: `cargo test -p opforge-cli-core`; `cargo test -p opforge-cli`; `scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`.
-  - Plan-compliance review evidence: PASS for workflow metadata preservation and JSON schema behavior.
+  - Plan-compliance review evidence: PASS (2026-07-21) for workflow metadata preservation and JSON schema behavior.
   - Commit outcome: one CLI-core/CLI workflow-error contract commit.
-  - Definition of done: CLI-DIAG-006 and CLI-DIAG-007 fully close for every current workflow-error variant.
+  - Definition of done: Complete — CLI-DIAG-006 and CLI-DIAG-007 fully close for every current workflow-error variant. Evidence: `cargo test -p cli-core`, `cargo test -p cli`, `scripts/workflow/run_rust_quality_gate.sh`, and `make workflow-gate` (2026-07-21).
 
 - [ ] Item 4: pass validated CLI configuration through the runner once
   - Source requirement or finding IDs: CLI-DIAG-008 (duplicate CLI validation permits a second failure after `run_main` has already validated configuration).

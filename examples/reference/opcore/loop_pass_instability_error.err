@@ -1,4 +1,7 @@
 Assembly failed:
 2: ERROR [asm202]
+    1 | ; Pass1/pass2 loop iteration mismatch.
     2 | .for target
+    3 |     .byte 1
+    4 | .endfor
 ERROR: loop iteration count changed between passes (pass1: 0, pass2: 2)

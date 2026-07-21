@@ -1,7 +1,10 @@
 Assembly failed:
 5: ERROR [asm202]
+    3 |         .org 2000h
+    4 | start   mvi a,11h
     5 |         .endsectio
-        ^
+      |         ^
+    6 |         .endmodule
 help: did you mean .endsection?
 suggestion: replace 5:9-19 with ".ENDSECTION"
 ERROR: Unknown directive .ENDSECTIO

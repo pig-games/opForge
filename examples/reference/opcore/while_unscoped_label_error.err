@@ -1,5 +1,8 @@
 Assembly failed:
 4: ERROR [asm202]
+    2 | .org 0
+    3 | .while $ < 1
     4 | item .byte 1
-^
+      | ^
+    5 | .endwhile
 ERROR: label 'item' not allowed inside .while (use .bwhile for scoped repetition)

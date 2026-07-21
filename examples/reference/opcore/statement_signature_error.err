@@ -1,5 +1,9 @@
 Assembly failed:
 3: ERROR [asm102]
+    1 | ; Statement signature error scenario.
+    2 | 
     3 | .statement sta "[" byte:a ","[{char:reg}
-                                       ^
+      |                                        ^
+    4 | 
+    5 | start
 ERROR: Missing closing }]

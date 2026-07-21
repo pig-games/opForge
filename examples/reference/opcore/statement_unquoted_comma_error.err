@@ -1,5 +1,9 @@
 Assembly failed:
 3: ERROR [asm102]
+    1 | ; Statement signature error for unquoted commas.
+    2 | 
     3 | .statement move.b char:dst, char:src
-                          ^
+      |                           ^
+    4 |     nop
+    5 | .endstatement
 ERROR: Commas must be quoted in statement signatures

@@ -1,5 +1,9 @@
 Assembly failed:
 5: ERROR [asm402]
+    3 | .org $1000
+    4 | 
     5 |     BCHG #1,4(PC)
-            ^
+      |             ^
+    6 | 
+    7 | .end
 ERROR: invalid destination effective address for BCHG

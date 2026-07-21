@@ -1,5 +1,9 @@
 Assembly failed:
 8: ERROR [asm402]
+    6 |     .org $0000
+    7 |     mvi a, LIBVAL
     8 |     PUSHB $AA
-             ^
+      |              ^
+    9 |     hlt
+   10 | .endmodule
 ERROR: No instruction found for PUSHB

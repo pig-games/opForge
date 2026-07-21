@@ -1,5 +1,9 @@
 Assembly failed:
 5: ERROR [asm202]
+    3 | .region ram, $1000, $10ff
+    4 | 
     5 | .place missing in ram
- ^
+      |  ^
+    6 | 
+    7 | .endmodule
 ERROR: Unknown section in placement directive: missing

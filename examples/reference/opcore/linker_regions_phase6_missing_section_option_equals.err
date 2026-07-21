@@ -1,5 +1,9 @@
 Assembly failed:
 3: ERROR [asm202]
+    1 | .module main
+    2 | 
     3 | .section code, align
-               ^
+      |                ^
+    4 |     .byte 1
+    5 | .endsection
 ERROR: Expected section option in key=value form

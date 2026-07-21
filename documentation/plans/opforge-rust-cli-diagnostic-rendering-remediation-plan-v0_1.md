@@ -89,16 +89,16 @@ this plan.
   - Commit outcome: one Rust CLI renderer commit with production code written before its focused tests.
   - Definition of done: Complete — CLI-DIAG-001 through CLI-DIAG-003 are fully closed for `AsmRunError` paths, including an empty diagnostics vector and a misleading warning-only vector. Evidence: `cargo test -p cli`, `scripts/workflow/run_rust_quality_gate.sh`, and `make workflow-gate` (2026-07-21).
 
-- [ ] Item 2: make diagnostic emission fallible and preserve a last-resort failure path
+- [x] Item 2: make diagnostic emission fallible and preserve a last-resort failure path
   - Source requirement or finding IDs: CLI-DIAG-004 (sink write errors are discarded); CLI-DIAG-005 (`run_main` discards reporting/post-processing failures).
   - Invariant: each diagnostics-sink write returns `io::Result`; reporting functions propagate write/fixit/report failures; `run_main` reports a concise direct stderr fallback with both the sink failure and original fatal summary when output was not deliberately disabled.
   - Expected files: `crates/opforge-cli/src/lib.rs` and its tests; no engine changes.
   - Required behavior: `--no-error` stays silent by design. For a failed `--error FILE` sink, do not recursively attempt that sink; write one direct stderr fallback. Successful assembly followed by fixit/report-processing failure must also produce an explanation before exit 1.
   - Required focused tests: custom failing writer returns an error; failing redirected diagnostics sink produces stderr fallback; failure reporting result reaches top level; `--no-error` remains non-emitting; successful assembly plus post-processing failure is visible.
   - Full quality gates: `cargo test -p opforge-cli`; `scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`.
-  - Plan-compliance review evidence: PASS for fallible reporting and explicit fallback only.
+  - Plan-compliance review evidence: PASS (2026-07-21) for fallible reporting and explicit fallback only.
   - Commit outcome: one focused CLI I/O/error-propagation commit.
-  - Definition of done: CLI-DIAG-004 and CLI-DIAG-005 fully close without changing intentional diagnostic suppression.
+  - Definition of done: Complete — CLI-DIAG-004 and CLI-DIAG-005 fully close without changing intentional diagnostic suppression. Evidence: failing-writer and `--no-error` focused tests; `cargo test -p cli`, `scripts/workflow/run_rust_quality_gate.sh`, and `make workflow-gate` (2026-07-21).
 
 - [ ] Item 3: retain workflow failure identity through the CLI boundary
   - Source requirement or finding IDs: CLI-DIAG-006 (workflow failures are flattened into empty-diagnostic `AsmRunError` values); CLI-DIAG-007 (JSON error output is incomplete).

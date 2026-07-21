@@ -44,10 +44,11 @@ impl DiagnosticsSink {
         }
     }
 
-    fn emit_line(&mut self, line: &str) {
+    fn emit_line(&mut self, line: &str) -> io::Result<()> {
         if let Some(writer) = &mut self.writer {
-            let _ = writeln!(writer, "{line}");
+            writeln!(writer, "{line}")?;
         }
+        Ok(())
     }
 
     fn emit_diagnostics(
@@ -57,7 +58,7 @@ impl DiagnosticsSink {
         use_color: bool,
         format: OutputFormat,
         style: DiagnosticsStyle,
-    ) {
+    ) -> io::Result<()> {
         for diag in diagnostics {
             self.emit_line(&format_diagnostic_line(
                 diag,
@@ -65,8 +66,9 @@ impl DiagnosticsSink {
                 use_color,
                 format,
                 style,
-            ));
+            ))?;
         }
+        Ok(())
     }
 }
 
@@ -222,17 +224,20 @@ fn write_fixit_report_with_failure_tracking(
     planned: &[PlannedFixit],
     applied: bool,
     failure: &mut Option<String>,
-) {
+) -> Result<(), String> {
     let Some(path) = cli_config.fixits_output.as_deref() else {
-        return;
+        return Ok(());
     };
     if let Err(err) = write_fixit_report(path, planned, applied) {
         let message = format!("fixits: failed to write report: {err}");
-        sink.emit_line(&message);
+        sink.emit_line(&message).map_err(|sink_err| {
+            format!("diagnostics sink write failed while reporting `{message}`: {sink_err}")
+        })?;
         if failure.is_none() {
             *failure = Some(message);
         }
     }
+    Ok(())
 }
 
 fn collect_machine_applicable_fixits(
@@ -349,14 +354,15 @@ fn emit_recoverable_diagnostics(
     diagnostics: &[Diagnostic],
     cli_config: &CliConfig,
     use_color: bool,
-) {
+) -> Result<(), String> {
     sink.emit_diagnostics(
         Some(source_lines),
         diagnostics,
         use_color,
         cli_config.output_format,
         cli_config.diagnostics_style,
-    );
+    )
+    .map_err(|err| format!("diagnostics sink write failed: {err}"))
 }
 
 fn fixits_have_overlaps(fixits: &[PlannedFixit]) -> bool {
@@ -582,14 +588,14 @@ fn handle_fixits(
     cli_config: &CliConfig,
     diagnostics: &[Diagnostic],
     fallback: Option<&Path>,
-) -> FixitActionResult {
+) -> Result<FixitActionResult, String> {
     if !(cli_config.apply_fixits || cli_config.fixits_dry_run || cli_config.fixits_output.is_some())
     {
-        return FixitActionResult {
+        return Ok(FixitActionResult {
             planned: Vec::new(),
             applied: false,
             failure: None,
-        };
+        });
     }
 
     let planned = collect_machine_applicable_fixits(diagnostics, fallback);
@@ -598,31 +604,33 @@ fn handle_fixits(
 
     if fixits_have_overlaps(&planned) {
         let message = "fixits: overlap detected; aborting fixit application".to_string();
-        sink.emit_line(&message);
+        sink.emit_line(&message).map_err(|err| err.to_string())?;
         failure = Some(message);
     } else if cli_config.apply_fixits {
         match capture_fixit_guards(&planned)
             .and_then(|guards| apply_fixits_in_place(&planned, Some(&guards)))
         {
             Ok(applied_count) => {
-                sink.emit_line(&format!("fixits: applied {applied_count} edits"));
+                sink.emit_line(&format!("fixits: applied {applied_count} edits"))
+                    .map_err(|err| err.to_string())?;
                 applied = applied_count > 0;
             }
             Err(err) => {
                 let message = format!("fixits: apply failed: {err}");
-                sink.emit_line(&message);
+                sink.emit_line(&message).map_err(|err| err.to_string())?;
                 failure = Some(message);
             }
         }
     } else if cli_config.fixits_dry_run {
-        sink.emit_line(&format!("fixits: dry-run planned {} edits", planned.len()));
+        sink.emit_line(&format!("fixits: dry-run planned {} edits", planned.len()))
+            .map_err(|err| err.to_string())?;
     }
 
-    FixitActionResult {
+    Ok(FixitActionResult {
         planned,
         applied,
         failure,
-    }
+    })
 }
 
 fn promote_warning_diagnostics(run_report: &CliRunReport) -> Vec<Diagnostic> {
@@ -682,9 +690,9 @@ fn process_successful_reports(
                 &diagnostics,
                 cli_config,
                 use_color,
-            );
+            )?;
         }
-        let result = handle_fixits(sink, cli_config, &diagnostics, fallback);
+        let result = handle_fixits(sink, cli_config, &diagnostics, fallback)?;
         merge_fixit_action_result(
             result,
             &mut planned,
@@ -698,7 +706,7 @@ fn process_successful_reports(
         applied = false;
     }
 
-    write_fixit_report_with_failure_tracking(sink, cli_config, &planned, applied, &mut failure);
+    write_fixit_report_with_failure_tracking(sink, cli_config, &planned, applied, &mut failure)?;
 
     match failure {
         Some(message) => Err(message),
@@ -730,9 +738,9 @@ fn process_failed_assembly_run(
                 &diagnostics,
                 cli_config,
                 use_color,
-            );
+            )?;
         }
-        let result = handle_fixits(sink, cli_config, &diagnostics, fallback);
+        let result = handle_fixits(sink, cli_config, &diagnostics, fallback)?;
         merge_fixit_action_result(
             result,
             &mut planned,
@@ -750,8 +758,8 @@ fn process_failed_assembly_run(
         &diagnostics,
         cli_config,
         use_color,
-    );
-    let result = handle_fixits(sink, cli_config, &diagnostics, fallback);
+    )?;
+    let result = handle_fixits(sink, cli_config, &diagnostics, fallback)?;
     merge_fixit_action_result(
         result,
         &mut planned,
@@ -764,7 +772,7 @@ fn process_failed_assembly_run(
         applied = false;
     }
 
-    write_fixit_report_with_failure_tracking(sink, cli_config, &planned, applied, &mut failure);
+    write_fixit_report_with_failure_tracking(sink, cli_config, &planned, applied, &mut failure)?;
     match failure {
         Some(message) => Err(message),
         None => Ok(()),
@@ -793,13 +801,13 @@ fn process_werror_reports(
             &promoted,
             cli_config,
             use_color,
-        );
+        )?;
         let result = handle_fixits(
             sink,
             cli_config,
             &promoted,
             Some(run_report.input_path.as_path()),
-        );
+        )?;
         merge_fixit_action_result(
             result,
             &mut planned,
@@ -813,7 +821,7 @@ fn process_werror_reports(
         applied = false;
     }
 
-    write_fixit_report_with_failure_tracking(sink, cli_config, &planned, applied, &mut failure);
+    write_fixit_report_with_failure_tracking(sink, cli_config, &planned, applied, &mut failure)?;
 
     match failure {
         Some(message) => Err(message),
@@ -938,6 +946,12 @@ fn run_formatter_mode(cli_config: &CliConfig) -> Result<i32, String> {
     }
 }
 
+fn emit_last_resort_failure(cli_config: &CliConfig, message: &str) {
+    if !matches!(cli_config.diagnostics_sink, DiagnosticsSinkConfig::Disabled) {
+        eprintln!("opForge: {message}");
+    }
+}
+
 pub fn run_main() {
     let cli = Cli::parse();
     let registry = if cli.print_cpusupport || cli.print_capabilities {
@@ -1012,12 +1026,18 @@ pub fn run_main() {
     let use_color = std::env::var("NO_COLOR").is_err();
     match run_with_cli_with_context(&cli) {
         Ok(reports) => {
-            if process_successful_reports(&mut sink, &cli_config, &reports, use_color).is_err() {
+            if let Err(message) =
+                process_successful_reports(&mut sink, &cli_config, &reports, use_color)
+            {
+                emit_last_resort_failure(&cli_config, &message);
                 std::process::exit(1);
             }
         }
         Err(run_error) => {
-            let _ = process_run_failure(&mut sink, &cli_config, &run_error, use_color);
+            if let Err(message) = process_run_failure(&mut sink, &cli_config, &run_error, use_color)
+            {
+                emit_last_resort_failure(&cli_config, &message);
+            }
             std::process::exit(1);
         }
     }
@@ -1033,6 +1053,7 @@ mod tests {
     use cli_core::{run_with_cli_with_context, validate_cli, CliRunError};
     use serde_json::Value;
     use std::fs;
+    use std::io::{self, Write};
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
@@ -1041,6 +1062,18 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     static TEMP_DIR_SEQ: AtomicU64 = AtomicU64::new(1);
+
+    struct FailingWriter;
+
+    impl Write for FailingWriter {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::other("synthetic diagnostics sink failure"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
 
     fn unique_temp_dir(prefix: &str) -> PathBuf {
         let now = SystemTime::now()
@@ -1399,6 +1432,65 @@ mod tests {
         assert_eq!(payload["code"], "asm501");
         assert_eq!(payload["message"], "json terminal failure");
         assert_eq!(payload["file"], source_path.to_string_lossy().as_ref());
+    }
+
+    #[test]
+    fn failed_diagnostics_sink_propagates_the_write_failure() {
+        let temp_dir = unique_temp_dir("cli-failing-diagnostics-sink");
+        let source_path = temp_dir.join("input.asm");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let run_error = CliRunError::Assembler {
+            reports: Vec::new(),
+            input_path: Some(source_path),
+            error: Box::new(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, "terminal output failure", None),
+                Vec::new(),
+                Vec::new(),
+            )),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(FailingWriter)),
+        };
+
+        let error = process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect_err("diagnostics sink failure should propagate");
+        assert!(error.contains("diagnostics sink write failed"), "{error}");
+        assert!(
+            error.contains("synthetic diagnostics sink failure"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn no_error_keeps_terminal_failure_output_intentionally_suppressed() {
+        let temp_dir = unique_temp_dir("cli-no-error-terminal-failure");
+        let source_path = temp_dir.join("input.asm");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--no-error",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let run_error = CliRunError::Assembler {
+            reports: Vec::new(),
+            input_path: Some(source_path),
+            error: Box::new(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, "terminal output failure", None),
+                Vec::new(),
+                Vec::new(),
+            )),
+        };
+        let mut sink = DiagnosticsSink::from_config(&cli_config.diagnostics_sink)
+            .expect("disabled diagnostics sink");
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("disabled diagnostics should not create a reporting failure");
     }
 
     #[test]

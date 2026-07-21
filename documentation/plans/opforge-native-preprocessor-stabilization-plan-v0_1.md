@@ -328,14 +328,14 @@ its own activated item/slice contract.
   - Commit outcome: one ownership-only selection-service commit.
   - Definition of done: `tkpkg_service.asm` has no selected-instruction decoding or candidate-traversal logic.
 
-- [ ] Item 5.6.1: extract the tkpkg operand-plan runtime
+- [x] Item 5.6.1: extract the tkpkg operand-plan runtime
   - Source requirement or finding IDs: NR-004; Item 5.6.
   - Invariant: operand-plan interpretation moves behind one focused owner without changing request envelopes or emitted bytes.
   - Expected files: `tkpkg_operand_runtime.asm` or repository-style equivalent and focused plan-dispatch tests.
   - Scope boundary: retain existing plan tags unchanged; no CPU/family knowledge or plan generalization.
   - Proof: B plan-dispatch ownership; C operand-plan model; D affected encode parity corpus.
   - Full quality gates: focused plan contracts and D corpus; native formatter; staged native-porting; Rust quality; CPU-boundary guard; workflow gate.
-  - Plan-compliance review evidence: PASS for operand-runtime extraction only.
+  - Plan-compliance review evidence: PASS for operand-runtime extraction only. Evidence: `tkpkg_selection_service.asm` now delegates unchanged plan dispatch to `tkpkg_operand_runtime.asm`; `tkpkg_selection_state.asm` preserves the former scratch layout without semantic change. Focused ownership, plan-dispatch, branch/pair-plan, control-block, and native-CLI assembly checks pass; inventory, staged native-porting, CPU-boundary, retained macro Level D wrapper, Rust quality, and workflow gates pass. CPU/family/dialect support remains unchanged.
   - Commit outcome: one ownership-only operand-runtime commit.
   - Definition of done: service façade and selection owner do not interpret operand plans directly.
 

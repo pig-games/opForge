@@ -12441,19 +12441,19 @@ fn motorola68020_item6_3_covers_generic_single_operand_selected_emission_plans()
 
 #[test]
 fn motorola68020_item6_3_native_tkpkg_implements_rel8_as_generic_plan() {
-    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
 
-    assert!(selection.contains("TkpkgMselPlanBranch8Text"));
+    assert!(operand.contains("TkpkgMselPlanBranch8Text"));
     assert!(source_contains_in_order(
-        &selection,
+        &operand,
         &[
             "TkpkgMselPlanBranch8Text",
             ".byte \"rel8\", 0",
             "tryBranchOffset8",
             "bsr.w tkpkgMselEvalOperandV1",
-            "tst.b EncodeSelectedMselUnstable",
-            "move.l EncodeSelectedMselValue, d3",
-            "move.l EncodeSelectedCurrentPc, d4",
+            "tst.b state.EncodeSelectedMselUnstable",
+            "move.l state.EncodeSelectedMselValue, d3",
+            "move.l state.EncodeSelectedCurrentPc, d4",
             "addq.l #2, d4",
             "sub.l d4, d3",
             "cmpi.l #-128, d3",
@@ -12466,10 +12466,10 @@ fn motorola68020_item6_3_native_tkpkg_implements_rel8_as_generic_plan() {
 
 #[test]
 fn motorola68020_item6_3_native_tkpkg_dispatches_plan_tags_through_table() {
-    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
 
     assert!(source_contains_in_order(
-        &selection,
+        &operand,
         &[
             "tkpkgMselTryBuildCandidateV1\t.block",
             "lea planDispatchTable(pc), a4",
@@ -12849,22 +12849,22 @@ fn motorola68020_item6_7_full_indicated_fixture_native_cli_parity_matches_rust_b
 #[test]
 fn motorola68020_item6_7_native_branch_plan_emits_adjusted_rel8_value() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm");
-    let source = fs::read_to_string(&asm_path).expect("read native tkpkg selection service source");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native tkpkg operand runtime source");
     let source = format_tokvm_asm_fragment(&source);
 
     assert!(source_contains_in_order(
         &source,
         &[
             "tryBranchStable",
-            "MOVE.L EncodeSelectedMselValue, D3",
-            "MOVE.L EncodeSelectedCurrentPc, D4",
+            "MOVE.L state.EncodeSelectedMselValue, D3",
+            "MOVE.L state.EncodeSelectedCurrentPc, D4",
             "ADDQ.L #2, D4",
             "SUB.L D4, D3",
             "CMPI.L #-128, D3",
             "CMPI.L #127, D3",
             "tryBranchFits",
-            "MOVE.L D3, EncodeSelectedMselValue",
+            "MOVE.L D3, state.EncodeSelectedMselValue",
             "MOVEQ #1, D6",
             "BRA.W buildOperand",
         ]
@@ -12874,8 +12874,8 @@ fn motorola68020_item6_7_native_branch_plan_emits_adjusted_rel8_value() {
 #[test]
 fn motorola68020_item6_7_native_pair_u8_rel8_plan_matches_rust_selector_shape() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm");
-    let source = fs::read_to_string(&asm_path).expect("read native tkpkg selection service source");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native tkpkg operand runtime source");
     let source = format_tokvm_asm_fragment(&source);
 
     assert!(source_contains_in_order(
@@ -12889,11 +12889,11 @@ fn motorola68020_item6_7_native_pair_u8_rel8_plan_matches_rust_selector_shape() 
             "pairFoundComma",
             "pairFirstTrimStartLoop",
             "pairFirstTrimOk",
-            "MOVE.L A0, PairAPtr",
-            "MOVE.W D2, PairALen",
+            "MOVE.L A0, state.PairAPtr",
+            "MOVE.W D2, state.PairALen",
             "pairSecondTrimStartLoop",
             "pairSecondTrimOk",
-            "MOVE.W D2, PairBLen",
+            "MOVE.W D2, state.PairBLen",
         ]
     ));
     assert!(source_contains_in_order(
@@ -12910,7 +12910,7 @@ fn motorola68020_item6_7_native_pair_u8_rel8_plan_matches_rust_selector_shape() 
             "PairBLen",
             "EncodeSelectedMselExprLen",
             "BSR.W tkpkgMselEvalPairPartOperandV1",
-            "MOVE.L EncodeSelectedCurrentPc, D4",
+            "MOVE.L state.EncodeSelectedCurrentPc, D4",
             "ADDQ.L #3, D4",
             "SUB.L D4, D3",
             "PairBVal",
@@ -12921,19 +12921,19 @@ fn motorola68020_item6_7_native_pair_u8_rel8_plan_matches_rust_selector_shape() 
         &source,
         &[
             "tkpkgMselEvalPairPartOperandV1 .BLOCK",
-            "MOVE.L EncodeSelectedMselModePtr, -(SP)",
-            "MOVE.W EncodeSelectedMselModeLen, -(SP)",
-            "MOVE.L EncodeSelectedCurrentShapePtr, -(SP)",
-            "MOVE.W EncodeSelectedCurrentShapeLen, -(SP)",
-            "CLR.L EncodeSelectedCurrentShapePtr",
-            "CLR.W EncodeSelectedCurrentShapeLen",
-            "CLR.L EncodeSelectedMselModePtr",
-            "CLR.W EncodeSelectedMselModeLen",
+            "MOVE.L state.EncodeSelectedMselModePtr, -(SP)",
+            "MOVE.W state.EncodeSelectedMselModeLen, -(SP)",
+            "MOVE.L state.EncodeSelectedCurrentShapePtr, -(SP)",
+            "MOVE.W state.EncodeSelectedCurrentShapeLen, -(SP)",
+            "CLR.L state.EncodeSelectedCurrentShapePtr",
+            "CLR.W state.EncodeSelectedCurrentShapeLen",
+            "CLR.L state.EncodeSelectedMselModePtr",
+            "CLR.W state.EncodeSelectedMselModeLen",
             "BSR.W tkpkgMselEvalOperandV1",
-            "MOVE.W D1, EncodeSelectedCurrentShapeLen",
-            "MOVE.L D1, EncodeSelectedCurrentShapePtr",
-            "MOVE.W D1, EncodeSelectedMselModeLen",
-            "MOVE.L D1, EncodeSelectedMselModePtr",
+            "MOVE.W D1, state.EncodeSelectedCurrentShapeLen",
+            "MOVE.L D1, state.EncodeSelectedCurrentShapePtr",
+            "MOVE.W D1, state.EncodeSelectedMselModeLen",
+            "MOVE.L D1, state.EncodeSelectedMselModePtr",
         ]
     ));
     assert!(source_contains_in_order(
@@ -12954,8 +12954,8 @@ fn motorola68020_item6_7_native_pair_u8_rel8_plan_matches_rust_selector_shape() 
 #[test]
 fn motorola68020_item6_7_native_tkpkg_surface_lookup_stays_isolated_behind_tables() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm");
-    let source = fs::read_to_string(&asm_path).expect("read native tkpkg selection service source");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native tkpkg operand runtime source");
     let source = format_tokvm_asm_fragment(&source);
 
     assert!(source_contains_in_order(
@@ -12999,8 +12999,8 @@ fn motorola68020_item6_7_native_tkpkg_surface_lookup_stays_isolated_behind_table
             "TkpkgMselModeIndexedIndirectXText",
             "TkpkgMselModeIndirectIndexedYText",
             "tkpkgMselCurrentModeIndexSuffixV1 .BLOCK",
-            "MOVEA.L EncodeSelectedMselModePtr, A1",
-            "MOVE.W EncodeSelectedMselModeLen, D0",
+            "MOVEA.L state.EncodeSelectedMselModePtr, A1",
+            "MOVE.W state.EncodeSelectedMselModeLen, D0",
             "CMPI.B #'X', D0",
             "CMPI.B #'Y', D0",
         ]
@@ -17089,6 +17089,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     let expression = tkpkg_amigaos_source("tkpkg_expression_service.asm");
     let expression_context = tkpkg_amigaos_source("tkpkg_expression_context.asm");
     let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
     let request = tkpkg_amigaos_source("tkpkg_service_request.asm");
     let status = tkpkg_amigaos_source("tkpkg_service_status.asm");
 
@@ -17166,7 +17167,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     assert!(source.contains("jsr selection.buildSelectedEnvelopeV1"));
     assert!(selection.contains("buildSelectedEnvelopeV1"));
     assert!(source.contains("writeCandidateOutputV1"));
-    assert!(selection.contains("encodeSelectedOperandV1"));
+    assert!(operand.contains("encodeSelectedOperandV1"));
     assert!(source.contains("resolveExpressionContractVersionsV1"));
     assert!(source.contains("resolveExprOpcodeVersionV1"));
     assert!(source.contains("resolveExvmOpcodeVersionV1"));
@@ -17207,6 +17208,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
 fn motorola68020_tkpkg_selection_service_has_one_implementation_owner() {
     let facade = tkpkg_amigaos_source("tkpkg_service.asm");
     let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
 
     assert!(facade.contains(".use tkpkg.amigaos.selection_service as selection"));
     assert!(tkpkg_source_contains(
@@ -17223,8 +17225,11 @@ fn motorola68020_tkpkg_selection_service_has_one_implementation_owner() {
     assert!(!facade.contains("EncodeSelectedMselShapePtr"));
     assert!(selection.contains("buildSelectedEnvelopeV1\t.block"));
     assert!(selection.contains("tkpkgBuildSelectedEnvelopeFromMselV1\t.block"));
-    assert!(selection.contains("tkpkgMselTryBuildCandidateV1\t.block"));
-    assert!(selection.contains("encodeSelectedOperandV1\t.block"));
+    assert!(selection.contains("jsr operand.tkpkgMselTryBuildCandidateV1"));
+    assert!(!selection.contains("tkpkgMselTryBuildCandidateV1\t.block"));
+    assert!(!selection.contains("encodeSelectedOperandV1\t.block"));
+    assert!(operand.contains("tkpkgMselTryBuildCandidateV1\t.block"));
+    assert!(operand.contains("encodeSelectedOperandV1\t.block"));
     assert!(selection.contains("noOutputErrorV1\t.block"));
 }
 
@@ -17683,13 +17688,14 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
 
     let service = tkpkg_amigaos_source("tkpkg_service.asm");
     let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
 
     assert!(service.contains("tkpkgEncodeFindAndExecuteTableProgram"));
     assert!(service.contains("TablChunkOffsetLo"));
     assert!(selection.contains("tkpkgBuildSelectedEnvelopeFromMselV1"));
-    assert!(selection.contains("tkpkgMselTryBuildCandidateV1"));
-    assert!(selection.contains("TkpkgMselPlanU8Text"));
-    assert!(selection.contains("TkpkgMselPlanU16Text"));
+    assert!(operand.contains("tkpkgMselTryBuildCandidateV1"));
+    assert!(operand.contains("TkpkgMselPlanU8Text"));
+    assert!(operand.contains("TkpkgMselPlanU16Text"));
     assert!(selection.contains("TKPKG_SELECTED_EXTENSION_INPUT_SIZE"));
     assert!(selection.contains("TKPKG_SELECTED_STATUS_OK"));
     assert!(selection.contains("TKPKG_SELECTED_STATUS_NO_OUTPUT"));
@@ -17698,8 +17704,8 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
         &selection,
         &[
             "cmpi.w #TKPKG_SELECTED_EXTENSION_INPUT_SIZE, d5",
-            "move.l a1, EncodeSelectedMselShapePtr",
-            "move.w d0, EncodeSelectedMselShapeLen",
+            "move.l a1, state.EncodeSelectedMselShapePtr",
+            "move.w d0, state.EncodeSelectedMselShapeLen",
         ]
     ));
     assert!(source_contains_in_order(
@@ -17708,21 +17714,21 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
             "lea buffers.MselChunkOffsetLo, a3",
             "tst.b d5",
             "beq.s skipShapeCompare",
-            "move.l a1, EncodeSelectedCurrentShapePtr",
-            "move.w d0, EncodeSelectedCurrentShapeLen",
-            "tst.w EncodeSelectedMselShapeLen",
+            "move.l a1, state.EncodeSelectedCurrentShapePtr",
+            "move.w d0, state.EncodeSelectedCurrentShapeLen",
+            "tst.w state.EncodeSelectedMselShapeLen",
             "beq.s skipShapeCompare",
-            "tst.l EncodeSelectedMselShapePtr",
+            "tst.l state.EncodeSelectedMselShapePtr",
             "beq.s skipShapeCompare",
         ]
     ));
     assert!(source_contains_in_order(
         &selection,
         &[
-            "move.w d0, EncodeSelectedMselPlanLen",
+            "move.w d0, state.EncodeSelectedMselPlanLen",
             "move.l a2, -(sp)",
             "move.w d7, -(sp)",
-            "bsr.w tkpkgMselTryBuildCandidateV1",
+            "jsr operand.tkpkgMselTryBuildCandidateV1",
         ]
     ));
     assert!(source_contains_in_order(

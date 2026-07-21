@@ -87,29 +87,44 @@ than a package runtime addressing engine-owned mutable tables.
   `tkpkg.amigaos.expression_context`. The facade retains package-contract
   validation only until the neutral-context migration. Item 5.6 moves selection
   decoding and candidate traversal to `tkpkg.amigaos.selection_service`; Item
-  5.6.1 will split its retained operand-plan runtime, and Item 5.6.2 will split
-  encoding. This is an ownership-only file split: it does not add, broaden, or
+  5.6.1 moves the unchanged operand-plan runtime to
+  `tkpkg.amigaos.operand_runtime`, and Item 5.6.2 will split encoding. This is
+  an ownership-only file split: it does not add, broaden, or
   validate support for any CPU, family, dialect, plan tag, or instruction. The
   repeated package-string/locator helpers overlap pipeline-style utilities and
   require an ownership decision before consolidation; no unproven helper merge
   is authorized here.
 
-### `tkpkg.amigaos.selection_service` (NR-004, Item 5.6 ownership split)
+### `tkpkg.amigaos.selection_service` (NR-004, Items 5.6–5.6.1 ownership split)
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm`.
 - Public entries: `selectInstructionV1`, `buildSelectedEnvelopeV1`, and
   `noOutputErrorV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers plus the existing engine and
   expression bridge transition boundaries.
-- Mutable state: selected request envelope, candidate traversal cursor, current
-  plan/shape fields, operand status/value, and pair-plan scratch.
+- Mutable state: selected request envelope and candidate traversal cursor; the
+  unchanged operand scratch state is shared through the internal selection-state
+  module.
 - Routine responsibility groups: selected-request decoding; package MSEL
-  traversal; candidate construction; existing operand-plan interpretation and
-  expression evaluation; selected-output diagnostic selection.
-- Decision: this module owns the unchanged selection behavior after Item 5.6.
-  Item 5.6.1 will extract the operand-plan runtime from it, and Item 5.7.2 will
-  replace its direct engine reads with the neutral runtime context. Neither item
-  expands CPU support or changes package semantics.
+  traversal; candidate construction; selected-output diagnostic selection.
+- Decision: this module delegates existing plan interpretation to
+  `tkpkg.amigaos.operand_runtime`. Item 5.7.2 will replace remaining direct
+  engine reads with the neutral runtime context. Neither item expands CPU
+  support or changes package semantics.
+
+### `tkpkg.amigaos.operand_runtime` (NR-004, Item 5.6.1 ownership split)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm`.
+- Public entry: `tkpkgMselTryBuildCandidateV1`.
+- Imports/outbound dependencies: tkpkg buffers and private selection state, plus
+  the existing engine and expression bridge transition boundaries.
+- Mutable state: reads and writes the preserved selection-state scratch layout;
+  it does not own package selection or selected-output diagnostics.
+- Routine responsibility groups: unchanged plan-tag dispatch, operand-span
+  normalization, expression evaluation, and candidate-envelope construction.
+- Decision: this is a file-boundary extraction only. Existing plan tags and
+  emitted bytes are retained exactly; no CPU, family, dialect, or instruction
+  support is added or generalized.
 
 ### `opasm.amigaos.engine` (NR-001, conditional decomposition)
 

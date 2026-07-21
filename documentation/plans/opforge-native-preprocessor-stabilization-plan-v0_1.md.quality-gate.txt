@@ -60,3 +60,10 @@ Evidence: `tkpkg_selection_service.asm` owns selected-request decoding, MSEL can
 
 Reviewer: `plan-compliance-reviewer`.
 Decision: PASS. Item 5.6 is an ownership-only selection-service extraction: the facade delegates selected-request decoding and candidate traversal to `tkpkg_selection_service.asm`; the existing operand-plan runtime remains there for Item 5.6.1; the narrow allowlist relocates existing package-selector metadata only. CPU/family/dialect semantics are unchanged.
+
+PASS: Item 5.6.1 operand-plan runtime extraction preserves the prior plan interpreter and scratch layout while moving it out of the selection owner. CPU/family/dialect support is explicitly unchanged.
+
+Evidence: `tkpkg_selection_service.asm` delegates to `tkpkg_operand_runtime.asm`; `tkpkg_selection_state.asm` retains the exact former operand scratch storage. Focused ownership, plan-dispatch, branch/pair-plan, control-block, and native-CLI assembly checks PASS; native formatter, inventory, staged native-porting, CPU-boundary, retained macro Level D wrapper, full Rust quality, and workflow gates PASS.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. This is a file-boundary extraction only: package plan tags, request envelopes, emitted bytes, and CPU/family/dialect semantics are unchanged.

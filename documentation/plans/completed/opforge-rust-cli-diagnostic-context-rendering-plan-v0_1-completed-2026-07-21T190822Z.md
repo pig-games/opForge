@@ -77,12 +77,12 @@ M1 Context-window primitive -> M2 related spans/guidance -> M3 executable CLI pr
   - Commit outcome: one executable contract-test/integration commit.
   - Definition of done: CLI-CONTEXT-005 fully closes with source-backed executable evidence for line, column, range, and bounded context.
 
-- [ ] Item 4: document the rendering contract and close the plan
+- [x] Item 4: document the rendering contract and close the plan
   - Source requirement or finding IDs: CLI-CONTEXT-006 (published guide lacks text-rendering contract); closure evidence for CLI-CONTEXT-001 through CLI-CONTEXT-005.
   - Invariant: the diagnostics guide distinguishes bounded human text context from structured JSON and documents source maps, spans, related spans, notes, help, fixits, and graceful no-source behavior.
   - Expected files: `documentation/libopforge-diagnostics-and-fixits-guide.md` and plan bookkeeping only.
   - Full quality gates: `cargo test -p types`; `cargo test -p cli --test diagnostic_contract`; `scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`; `scripts/workflow/run_plan_workflow.sh`.
-  - Plan-compliance review evidence: PASS for documentation/closure scope only.
+  - Plan-compliance review evidence: PASS — the guide states the implemented bounded human-text behavior, classic/JSON distinction, related-span source-identity rule, and no-fabricated-context fallback. Focused `types` and CLI contract tests, Rust quality gate, and workflow gate passed.
   - Commit outcome: one documentation and completion-evidence commit, then archive the completed plan.
   - Definition of done: CLI-CONTEXT-006 fully closes; the guide and executable behavior state the same rendering contract.
 

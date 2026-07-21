@@ -66,6 +66,30 @@ can carry:
 
 Preserve that structure as long as possible in the host. Do not flatten everything to plain text early if the UI or CI system can carry richer data.
 
+### Human CLI rendering
+
+The Rust CLI's human-readable diagnostic formats render source-backed primary
+diagnostics as a bounded window: up to two source lines before and after the
+reported line, followed by a separate caret row. When both `col_start` and
+`col_end` are available, the caret row uses a run of carets to mark the span;
+otherwise it marks one position. Tabs are expanded deterministically for
+alignment, and malformed or unavailable positions degrade to an explicit
+source-unavailable or end-of-file line rather than inventing a location.
+
+`--diagnostics-style classic` uses the same bounded window and marker. The
+normal text format additionally renders related spans with a file-qualified
+line/column identity. It includes a related span's bounded source context only
+when the span belongs to the same source file as the primary diagnostic; a span
+in another file remains a precise location and label until that file's source
+is available. Notes, help, and fixits remain ordered after span information.
+
+`--format json` deliberately remains structured: it emits fields such as
+`file`, `line`, `col_start`, `col_end`, `related_spans`, `notes`, `help`, and
+`fixits` instead of embedding terminal context text. Hosts that need a
+compiler-style display should use the structured spans with their own source
+buffers, or use the CLI's human-readable format. Infrastructure and workflow
+failures without a valid source span do not receive fabricated source context.
+
 ## 6. Fixit handling
 
 Use fixits when the host can present a precise corrective action or staged edit.

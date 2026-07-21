@@ -111,15 +111,15 @@ this plan.
   - Commit outcome: one CLI-core/CLI workflow-error contract commit.
   - Definition of done: Complete — CLI-DIAG-006 and CLI-DIAG-007 fully close for every current workflow-error variant. Evidence: `cargo test -p cli-core`, `cargo test -p cli`, `scripts/workflow/run_rust_quality_gate.sh`, and `make workflow-gate` (2026-07-21).
 
-- [ ] Item 4: pass validated CLI configuration through the runner once
+- [x] Item 4: pass validated CLI configuration through the runner once
   - Source requirement or finding IDs: CLI-DIAG-008 (duplicate CLI validation permits a second failure after `run_main` has already validated configuration).
   - Invariant: the executable validates exactly once for an assembly invocation, and the runner consumes the resulting `CliConfig` or a deliberately named validated-run entrypoint. Any validation failure is rendered through the same selected output contract where practical.
   - Expected files: `crates/opforge-cli-core/src/run.rs`, `crates/opforge-cli-core/src/lib.rs` if re-export changes are needed, `crates/opforge-cli/src/lib.rs`, and focused tests.
   - Required focused tests: validation is not re-run by the normal main-to-runner path; existing direct caller API remains coherent or is migrated in the same focused commit; validation failure output remains nonempty outside intentional suppression.
   - Full quality gates: `cargo test -p opforge-cli-core`; `cargo test -p opforge-cli`; `scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`.
-  - Plan-compliance review evidence: PASS for the validation-boundary change only.
+  - Plan-compliance review evidence: PASS (2026-07-21) for the validation-boundary change only.
   - Commit outcome: one narrow validated-configuration handoff commit.
-  - Definition of done: CLI-DIAG-008 fully closes and no second validation can enter a diagnostic-loss path.
+  - Definition of done: Complete — CLI-DIAG-008 fully closes and no second validation can enter a diagnostic-loss path. Evidence: validated-runner focused test, `cargo test -p cli`, `scripts/workflow/run_rust_quality_gate.sh`, and `make workflow-gate` (2026-07-21).
 
 - [ ] Item 5: add executable-level CLI diagnostic contract coverage and complete the remediation
   - Source requirement or finding IDs: CLI-DIAG-009 (no black-box CLI output contract); acceptance evidence for CLI-DIAG-001 through CLI-DIAG-008.

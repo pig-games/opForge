@@ -58,7 +58,13 @@ impl CliRunError {
 pub fn run_with_cli_with_context(cli: &Cli) -> Result<Vec<CliRunReport>, CliRunError> {
     let config =
         validate_cli(cli).map_err(|error| CliRunError::assembler(Vec::new(), None, error))?;
+    run_with_validated_cli_with_context(cli, &config)
+}
 
+pub fn run_with_validated_cli_with_context(
+    cli: &Cli,
+    config: &CliConfig,
+) -> Result<Vec<CliRunReport>, CliRunError> {
     let mut reports = Vec::new();
     for input_path in &config.input_paths {
         let (asm_name, input_base) =
@@ -72,7 +78,7 @@ pub fn run_with_cli_with_context(cli: &Cli) -> Result<Vec<CliRunReport>, CliRunE
                     ));
                 }
             };
-        let report = match run_one(cli, &asm_name, &input_base, &config) {
+        let report = match run_one(cli, &asm_name, &input_base, config) {
             Ok(report) => report,
             Err(AssemblerWorkflowError::Assemble(error)) => {
                 return Err(CliRunError::assembler(
@@ -186,8 +192,11 @@ fn run_one(
 
 #[cfg(test)]
 mod tests {
-    use super::{has_werror_violations, run_with_cli_with_context, CliRunError};
-    use crate::Cli;
+    use super::{
+        has_werror_violations, run_with_cli_with_context, run_with_validated_cli_with_context,
+        CliRunError,
+    };
+    use crate::{validate_cli, Cli};
     use api::diagnostics::Severity;
     use clap::Parser;
     use std::fs;
@@ -212,6 +221,24 @@ mod tests {
 
     fn write_text(path: &PathBuf, text: &str) {
         fs::write(path, text).expect("write file");
+    }
+
+    #[test]
+    fn validated_runner_uses_the_supplied_configuration() {
+        let temp_dir = unique_temp_dir("cli-core-validated-runner");
+        let source_path = temp_dir.join("main.asm");
+        write_text(&source_path, ".module main\nnop\n.endmodule\n");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let config = validate_cli(&cli).expect("validate cli once");
+
+        let reports = run_with_validated_cli_with_context(&cli, &config)
+            .expect("validated runner should assemble source");
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].input_path, source_path);
     }
 
     #[test]

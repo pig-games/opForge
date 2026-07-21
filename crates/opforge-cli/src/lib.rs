@@ -12,10 +12,10 @@ use serde_json::json;
 use api::asm::AssemblerWorkflowError;
 use api::diagnostics::{build_context_lines, AsmRunError, Diagnostic, Severity};
 use cli_core::{
-    resolve_formatter_input_paths, resolve_formatter_project_paths, run_with_cli_with_context,
-    validate_cli, Cli, CliConfig, CliRunError, CliRunReport, DiagnosticsSinkConfig,
-    DiagnosticsStyle, FormatterMode as CliFormatterMode, OutputFormat, BUILD_PROFILE_SUMMARY,
-    VERSION,
+    resolve_formatter_input_paths, resolve_formatter_project_paths,
+    run_with_validated_cli_with_context, validate_cli, Cli, CliConfig, CliRunError, CliRunReport,
+    DiagnosticsSinkConfig, DiagnosticsStyle, FormatterMode as CliFormatterMode, OutputFormat,
+    BUILD_PROFILE_SUMMARY, VERSION,
 };
 
 struct DiagnosticsSink {
@@ -1063,7 +1063,7 @@ pub fn run_main() {
     };
 
     let use_color = std::env::var("NO_COLOR").is_err();
-    match run_with_cli_with_context(&cli) {
+    match run_with_validated_cli_with_context(&cli, &cli_config) {
         Ok(reports) => {
             if let Err(message) =
                 process_successful_reports(&mut sink, &cli_config, &reports, use_color)

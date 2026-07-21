@@ -306,14 +306,14 @@ its own activated item/slice contract.
   - Commit outcome: one focused ownership-only parser-adapter commit.
   - Definition of done: service dispatch delegates to an independently owned parser adapter.
 
-- [ ] Item 5.5.1: extract the tkpkg expression service adapter
+- [x] Item 5.5.1: extract the tkpkg expression service adapter
   - Source requirement or finding IDs: NR-003; Items 5.3–5.5.
   - Invariant: expression request execution moves to one focused owner while context, output text, status codes, and diagnostics remain exact.
   - Expected files: `tkpkg_expression_service.asm` or repository-style equivalent, any named transitional context adapter, and focused expression-service tests.
   - Scope boundary: direct opasm mutable-table access is permitted only through the named transitional adapter with a deletion item; no expression-language or diagnostic wording change.
   - Proof: B expression-envelope/register contracts; C expression-adapter model; D existing expression parity fixtures.
   - Full quality gates: focused expression contracts and D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
-  - Plan-compliance review evidence: PASS for expression-adapter extraction only.
+  - Plan-compliance review evidence: PASS for expression-adapter extraction only. Evidence: `tkpkg_expression_service.asm` owns request preparation and bridge execution; `tkpkg_expression_context.asm` contains the named temporary engine-state adapter; the facade retains package-contract validation and D4/D5 version handoff only. Focused ownership/control-block/native-CLI tests, staged native-porting, retained 65C02 macro Level D wrapper (both exact FS-UAE tests), full Rust quality, and workflow gates PASS; CPU/family/dialect scope unchanged.
   - Commit outcome: one focused ownership-only expression-adapter commit.
   - Definition of done: service dispatch delegates to an independently owned expression adapter.
 

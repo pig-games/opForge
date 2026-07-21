@@ -17086,6 +17086,8 @@ fn motorola68020_tkpkg_native_abi_payloads_lock_preserved_wire_shapes() {
 fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     let source = tkpkg_amigaos_source("tkpkg_service.asm");
     let parser = tkpkg_amigaos_source("tkpkg_parse_service.asm");
+    let expression = tkpkg_amigaos_source("tkpkg_expression_service.asm");
+    let expression_context = tkpkg_amigaos_source("tkpkg_expression_context.asm");
     let request = tkpkg_amigaos_source("tkpkg_service_request.asm");
     let status = tkpkg_amigaos_source("tkpkg_service_status.asm");
 
@@ -17120,10 +17122,9 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     assert!(source.contains(".use tkpkg.amigaos.parse_service as parser"));
     assert!(parser.contains(".use prvm.amigaos.line_router"));
     assert!(!source.contains(".use opasm.amigaos.selector_stage"));
-    assert!(tkpkg_source_contains(
-        &source,
-        ".use opcore.amigaos.expr_bridge"
-    ));
+    assert!(source.contains(".use tkpkg.amigaos.expression_service as expression"));
+    assert!(expression.contains(".use tkpkg.amigaos.expression_context as context"));
+    assert!(expression_context.contains(".use opasm.amigaos.engine"));
     assert!(tkpkg_source_contains(
         &source,
         "handleParseLine:\n        MOVE.L A0,-(SP)\n        BSR.W tkpkgServiceParseLineV1"
@@ -17142,7 +17143,15 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        BTST #1,buffers.PackageStateFlags"
+        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        JSR expression.prepareV1\n        BNE.S return\n        BSR.W resolveExpressionContractVersionsV1\n        BNE.S return\n        MOVEQ #0,D4\n        MOVE.W D6,D4\n        MOVEQ #0,D5\n        MOVE.W D7,D5\n        JSR expression.executePreparedV1\n\nreturn\n        MOVEM.L (SP)+,D2-D7/A2-A6\n        RTS"
+    ));
+    assert!(tkpkg_source_contains(
+        &expression,
+        "prepareV1\t.block\n        BTST #1,buffers.PackageStateFlags"
+    ));
+    assert!(tkpkg_source_contains(
+        &expression,
+        "executePreparedV1\t.block\n        BTST #0,PreparedFlags\n        BNE.S haveLabelContext"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -17160,28 +17169,15 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     assert!(source.contains("resolveExvmOpcodeVersionV1"));
     assert!(source.contains("EvaluateExprMissingExprText"));
     assert!(source.contains("EvaluateExprMissingExvmText"));
-    assert!(source.contains("opasmEngineSessionPass"));
-    assert!(source.contains("opasmEngineLabelFinalizedTable"));
-    assert!(source.contains("opcoreExvmEvalOperandV1"));
+    assert!(expression.contains("opcoreExvmEvalOperandV1"));
+    assert!(expression.contains("PreparedOperandPtr"));
     assert!(tkpkg_source_contains(
-        &source,
-        "move.l d2, -(sp)\n\tmove.l d4, -(sp)\n\tmoveq #0, d1\n\tmoveq #0, d2"
+        &expression,
+        "move.l d3, TKPKG_EVAL_EXPR_EXTENSION_RESULT_OFF(a5)"
     ));
-    assert!(tkpkg_source_contains(
-        &source,
-        "move.b abi.CB_EXTENSION_LEN(a0), d3\n\tmoveq #0, d5\n\tmove.b 27(a0), d5\n\tlsl.w #8, d5\n\tor.w d5, d3\n\tcmpi.w #TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE, d3"
-    ));
-    assert!(tkpkg_source_contains(
-        &source,
-        "move.l (sp)+, d6\n\tmovea.l (sp)+, a4\n\tmove.l (sp)+, d1\n\tmove.l (sp)+, d2\n\tmovea.l (sp)+, a1\n\tmovea.l (sp)+, a2\n\tmove.l (sp)+, d7\n\tmove.l (sp)+, d3\n\tmovea.l a4, a0\n\tmove.l d3, d0\n\tsubq.l #1, d0\n\tadda.w d0, a0\n\tmove.l d7, d0\n\tsub.l d3, d0\n\tbeq.w badPayload"
-    ));
-    assert!(tkpkg_source_contains(
-        &source,
-        "moveq #0, d4\n\tmove.w d6, d4\n\tmoveq #0, d5\n\tmove.w d7, d5\n\tmove.l (sp)+, d6\n\tmovea.l (sp)+, a4\n\tmove.l (sp)+, d1\n\tmove.l (sp)+, d2"
-    ));
-    assert!(source.contains("movea.l a3, a5"));
-    assert!(source.contains("move.l d3, TKPKG_EVAL_EXPR_EXTENSION_RESULT_OFF(a5)"));
-    assert!(source.contains("EvaluateExprValuePrefixText"));
+    assert!(expression.contains("ValuePrefixText"));
+    assert!(expression_context.contains("opasmEngineSessionPass"));
+    assert!(expression_context.contains("opasmEngineLabelFinalizedTable"));
     assert!(tkpkg_source_contains(
         &source,
         "tkpkgServiceParseLineV1\t.block\n        JMP parser.parseLineV1"
@@ -17392,6 +17388,39 @@ fn motorola68020_tkpkg_parser_adapter_has_one_implementation_owner() {
     ));
     assert!(facade.contains(".use tkpkg.amigaos.parse_service as parser"));
     assert!(parser.contains(".module tkpkg.amigaos.parse_service"));
+}
+
+#[test]
+fn motorola68020_tkpkg_expression_service_has_one_implementation_owner() {
+    let facade = tkpkg_amigaos_source("tkpkg_service.asm");
+    let expression = tkpkg_amigaos_source("tkpkg_expression_service.asm");
+    let context = tkpkg_amigaos_source("tkpkg_expression_context.asm");
+
+    assert!(tkpkg_source_contains(
+        &facade,
+        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        JSR expression.prepareV1\n        BNE.S return\n        BSR.W resolveExpressionContractVersionsV1\n        BNE.S return\n        MOVEQ #0,D4\n        MOVE.W D6,D4\n        MOVEQ #0,D5\n        MOVE.W D7,D5\n        JSR expression.executePreparedV1\n\nreturn\n        MOVEM.L (SP)+,D2-D7/A2-A6\n        RTS"
+    ));
+    assert!(!facade.contains("evaluateExpressionLegacyV1"));
+    assert!(tkpkg_source_contains(
+        &expression,
+        "prepareV1\t.block\n        BTST #1,buffers.PackageStateFlags"
+    ));
+    assert!(expression.contains("opcoreExvmEvalOperandV1"));
+    assert!(expression.contains("PreparedOperandPtr"));
+    assert!(expression.contains("PreparedExtensionPtr"));
+    assert!(tkpkg_source_contains(
+        &expression,
+        "LEA 0(A0,D0.W),A5\n        MOVE.L A5,PreparedExtensionPtr\n        MOVEA.L (A5)+,A1\n        MOVEA.L (A5)+,A2\n        MOVE.L (A5)+,D2\n        MOVE.L (A5)+,D3"
+    ));
+    assert!(tkpkg_source_contains(
+        &expression,
+        "badPayload\n        MOVEQ #abi.STATUS_BAD_REQUEST_V1,D0\n        MOVEQ #0,D1\n        TST.B D0\n        RTS"
+    ));
+    assert!(!expression.contains("opasmEngineLabelFinalizedTable"));
+    assert!(!expression.contains("opasmEngineSessionPass"));
+    assert!(context.contains(".use opasm.amigaos.engine"));
+    assert!(context.contains("opasmEngineSessionPass"));
+    assert!(context.contains("opasmEngineLabelFinalizedTable"));
 }
 
 #[test]

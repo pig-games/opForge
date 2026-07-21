@@ -46,3 +46,10 @@ Evidence: native formatter and inventory validator PASS; staged native-porting g
 
 Reviewer: `plan-compliance-reviewer`.
 Decision: PASS. The workflow gate and full Rust quality gate passed; Item 5.5 is an ownership-only parser-adapter extraction. The `tkpkg_service` facade tail-jumps to the parser owner, with parser semantics, diagnostics, and CPU/family/dialect support unchanged.
+
+PASS: Item 5.5.1 expression-service extraction passed deterministic validation and the retained native 65C02 CLI Level D completion wrapper. CPU/family/dialect support is explicitly unchanged.
+
+Evidence: expression envelope preparation and bridge execution now reside in `tkpkg_expression_service.asm`; the facade retains exact package-contract validation and forwards the validated EXVM/EXPR versions in D4/D5. Direct engine reads are isolated in `tkpkg_expression_context.asm` pending Item 5.7.1. Focused ownership, control-block, and native-CLI assembly tests PASS; inventory validator and staged native-porting gate PASS; both exact FS-UAE macro tests PASS; full Rust quality gate PASS.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. Full Rust and workflow gates passed; Item 5.5.1 is an ownership-only expression-service extraction. The facade retains only contract-version validation and the D4/D5 bridge-version handoff; direct engine-state reads are isolated in the named temporary context adapter pending Item 5.7.1. CPU/family/dialect support is unchanged.

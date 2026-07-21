@@ -64,12 +64,15 @@ than a package runtime addressing engine-owned mutable tables.
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`.
 - Public entries: `bootstrapV1` and `dispatchV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers, dedicated request-lifecycle,
-  status-projection, and parser-adapter owners, engine, expression bridge,
-  package loader, pipeline, and tokenizer VM.
+  status-projection, parser-adapter, and expression-service owners; engine,
+  expression bridge, package loader, pipeline, and tokenizer VM. The expression
+  service reaches the temporary engine-state boundary only through its named
+  `tkpkg.amigaos.expression_context` adapter.
 - Mutable state: request/control-block pointers, output and last-error
   buffers, selected-envelope/candidate scratch, and service result fields.
 - Routine responsibility groups: bootstrap/request validation; status and
-  diagnostic projection; parser route adaptation; expression adaptation;
+  diagnostic projection; parser route adaptation; transitional expression
+  contract validation; selected-instruction decoding/candidate traversal;
   selected-instruction decoding/candidate traversal; operand-plan
   interpretation; package encoding/output construction; locator/string helpers.
 - Inbound users: the opasm tkpkg bridge is the principal facade caller.
@@ -79,8 +82,12 @@ than a package runtime addressing engine-owned mutable tables.
   bootstrap, header validation, and request bookkeeping to
   `tkpkg.amigaos.service_request`. The facade keeps only explicit compatibility
   delegates pending caller migration. Item 5.5 extracts the fixed PRVM route
-  frame adapter to `tkpkg.amigaos.parse_service`. Expression adapter (5.5.1),
-  selection (5.6), operand plans (5.6.1), and encoding (5.6.2) remain. The
+  frame adapter to `tkpkg.amigaos.parse_service`; Item 5.5.1 moves expression
+  envelope preparation and bridge execution to
+  `tkpkg.amigaos.expression_service` and places the temporary engine read behind
+  `tkpkg.amigaos.expression_context`. The facade retains package-contract
+  validation only until the neutral-context migration. Selection (5.6), operand
+  plans (5.6.1), and encoding (5.6.2) remain. The
   repeated package-string/locator helpers overlap pipeline-style utilities and
   require an ownership decision before consolidation; no unproven helper merge
   is authorized here.

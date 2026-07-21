@@ -9,6 +9,7 @@
 	.use tkpkg.amigaos.service_status as status
 	.use opasm.amigaos.engine
 	.use opcore.amigaos.expr_bridge
+	.use tkpkg.amigaos.expression_service as expression
 	.use tkpkg.amigaos.package_loader
 	.use tkpkg.amigaos.parse_service as parser
 	.use tkpkg.amigaos.pipeline
@@ -683,216 +684,20 @@ evaluateExpressionDone
 ;   failure.
 ; - A1: runtime failure message pointer when D0 is STATUS_RUNTIME_ERROR_V1.
 ; ---------------------------------------------------------------------------
+; Compatibility transition for Item 5.5.1. The expression service owns the
+; request envelope and bridge execution; this facade step retains only package
+; contract validation until the neutral context and contract owners land.
 evaluateExpressionV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
-	btst #1, buffers.PackageStateFlags
-	bne.s havePipeline
-	lea EvaluateExprNeedsPipelineText, a1
-	moveq #EVAL_EXPR_NEEDS_PIPELINE_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
-	bra.w return
-
-havePipeline
-	moveq #0, d0
-	move.b abi.CB_INPUT_PTR(a0), d0
-	moveq #0, d1
-	move.b 17(a0), d1
-	lsl.w #8, d1
-	or.w d1, d0
-	lea 0(a0, d0.W), a4
-	moveq #0, d7
-	move.b abi.CB_INPUT_LEN(a0), d7
-	moveq #0, d0
-	move.b 19(a0), d0
-	lsl.w #8, d0
-	or.w d0, d7
-	cmpi.w #TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE, d7
-	bcs.w badPayload
-	adda.w #4, a4
-	subi.w #4, d7
-	moveq #0, d2
-	move.b (a4)+, d2
-	moveq #0, d3
-	move.b (a4)+, d3
-	lsl.w #8, d3
-	or.w d3, d2
-	moveq #0, d4
-	move.b (a4)+, d4
-	moveq #0, d5
-	move.b (a4)+, d5
-	lsl.w #8, d5
-	or.w d5, d4
-	subi.w #4, d7
-	moveq #0, d6
-	move.b (a4)+, d6
-	subq.w #1, d7
-	cmp.w d7, d6
-	bhi.w badPayload
-	adda.w d6, a4
-	sub.w d6, d7
-	beq.w badPayload
-	tst.w d2
-	beq.w badPayload
-	cmp.w d2, d4
-	bls.w badPayload
-	move.w d2, d0
-	subq.w #1, d0
-	cmp.w d7, d0
-	bhs.w badPayload
-	move.w d4, d1
-	subq.w #1, d1
-	cmp.w d7, d1
-	bhi.w badPayload
-	move.l d2, -(sp)
-	move.l d4, -(sp)
-	moveq #0, d1
-	moveq #0, d2
-	moveq #0, d6
-	moveq #0, d5
-	moveq #0, d0
-	move.b abi.CB_EXTENSION_PTR(a0), d0
-	moveq #0, d3
-	move.b 25(a0), d3
-	lsl.w #8, d3
-	or.w d3, d0
-	moveq #0, d3
-	move.b abi.CB_EXTENSION_LEN(a0), d3
-	moveq #0, d5
-	move.b 27(a0), d5
-	lsl.w #8, d5
-	or.w d5, d3
-	cmpi.w #TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE, d3
-	bcs.s noExtension
-	lea 0(a0, d0.W), a3
-	movea.l a3, a5
-	movea.l (a3)+, a1
-	movea.l (a3)+, a2
-	move.l (a3)+, d1
-	move.l (a3)+, d2
-	bset #0, d6
-
-noExtension
-	move.l a2, -(sp)
-	move.l a1, -(sp)
-	move.l d2, -(sp)
-	move.l d1, -(sp)
-	move.l a4, -(sp)
-	move.l d6, -(sp)
+	jsr expression.prepareV1
+	bne.s return
 	bsr.w resolveExpressionContractVersionsV1
-	bne.w resolveFail
+	bne.s return
 	moveq #0, d4
 	move.w d6, d4
 	moveq #0, d5
 	move.w d7, d5
-	move.l (sp)+, d6
-	movea.l (sp)+, a4
-	move.l (sp)+, d1
-	move.l (sp)+, d2
-	movea.l (sp)+, a1
-	movea.l (sp)+, a2
-	move.l (sp)+, d7
-	move.l (sp)+, d3
-	movea.l a4, a0
-	move.l d3, d0
-	subq.l #1, d0
-	adda.w d0, a0
-	move.l d7, d0
-	sub.l d3, d0
-	beq.w badPayload
-	btst #0, d6
-	bne.w haveLabelContext
-	lea EvaluateExprNoLabelContextText, a1
-	moveq #EVAL_EXPR_NO_LABEL_CONTEXT_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
-	bra.w return
-
-haveLabelContext
-	move.l d6, -(sp)
-	moveq #0, d6
-	move.w engine.opasmEngineSessionPass.l, d6
-	lea engine.opasmEngineLabelFinalizedTable.l, a6
-	jsr expr_bridge.opcoreExvmEvalOperandV1
-	move.l (sp)+, d6
-	tst.b d0
-	bne.s bridgeFail
-	btst #0, d6
-	beq.s noExtensionWrite
-	move.l d3, TKPKG_EVAL_EXPR_EXTENSION_RESULT_OFF(a5)
-
-noExtensionWrite
-	bsr.w writeExpressionValueOutputV1
-	tst.w d1
-	bne.s evalOk
-	lea EvaluateExprZeroOutputText, a1
-	moveq #EVAL_EXPR_ZERO_OUTPUT_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
-	bra.w return
-
-evalOk
-	moveq #0, d0
-	bra.w return
-
-badPayload
-	moveq #abi.STATUS_BAD_REQUEST_V1, d0
-	moveq #0, d1
-	bra.w return
-
-resolveFail
-	adda.l #28, sp
-	bra.w return
-
-bridgeFail
-	cmpi.b #5, d0
-	beq.w bridgeFail5
-	cmpi.b #4, d0
-	beq.w bridgeFail4
-	cmpi.b #3, d0
-	beq.w bridgeFail3
-	cmpi.b #33, d0
-	beq.w bridgeFail33
-	cmpi.b #34, d0
-	beq.w bridgeFail34
-	cmpi.b #1, d0
-	beq.w bridgeFail1
-	lea EvaluateExprFailedText, a1
-	moveq #EVAL_EXPR_FAILED_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
-	bra.w return
-
-bridgeFail1
-	lea EvaluateExprBridgeCode1Text, a1
-	moveq #EVAL_EXPR_BRIDGE_CODE1_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
-	bra.w return
-
-bridgeFail3
-	lea EvaluateExprBridgeCode3Text, a1
-	moveq #EVAL_EXPR_BRIDGE_CODE3_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
-	bra.w return
-
-bridgeFail4
-	lea EvaluateExprBridgeCode4Text, a1
-	moveq #EVAL_EXPR_BRIDGE_CODE4_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
-	bra.w return
-
-bridgeFail5
-	lea EvaluateExprBridgeCode5Text, a1
-	moveq #EVAL_EXPR_BRIDGE_CODE5_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
-	bra.w return
-
-bridgeFail33
-	lea EvaluateExprBridgeCode33Text, a1
-	moveq #EVAL_EXPR_BRIDGE_CODE33_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
-	bra.w return
-
-bridgeFail34
-	lea EvaluateExprBridgeCode34Text, a1
-	moveq #EVAL_EXPR_BRIDGE_CODE34_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
+	jsr expression.executePreparedV1
 
 return
 	movem.l (sp)+, d2-d7/a2-a6

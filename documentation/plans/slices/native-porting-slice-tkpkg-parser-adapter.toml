@@ -1,0 +1,37 @@
+[slice]
+schema_version = 2
+name = "tkpkg parser service adapter ownership"
+kind = "native-rust-parity"
+rust_reference = [
+  "existing Rust CLI/package parser request results and diagnostics remain the behavioral authority"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm::dispatchV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_parse_service.asm::parseLineV1",
+  "native/motorola68000/amigaos/prvm/prvm_line_router.asm::prvmRouteLine68000"
+]
+invariant = "For an unchanged parse-line request, fixed route-frame validation, PRVM route invocation, D0/D1 parser result, D2 malformed-payload indication, service status, output text, and diagnostics remain exact while parser adaptation has one owner. The facade delegates only; it does not implement reusable parser request-envelope logic."
+expected_inputs = "Existing valid and malformed tkpkg parse-line control-block input windows."
+expected_outputs = "The same parser request acceptance/rejection, route frame, service result, status code, output text, and diagnostics as before the ownership-only move."
+known_non_equivalences = "No expression request execution, expression language, diagnostics wording, package semantics, or CPU/family/dialect support changes. The retained native 65C02 path is the only production Level D target for this ownership slice."
+fast_proof_command = "cargo test -p asm motorola68020_tkpkg_parser_adapter_has_one_implementation_owner -- --nocapture && cargo test -p asm motorola68020_tkpkg_service_writes_little_endian_control_block_bytes -- --nocapture && cargo test -p asm motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallback -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' scripts/workflow/run_native_macro_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_tkpkg_parser_adapter_has_one_implementation_owner"
+proof_level = "B"
+proves = "The facade has one explicit parser delegate and the adapter owns the fixed route-envelope implementation."
+does_not_prove = "Guest execution of every parser-dependent CLI route."
+
+[[tests]]
+name = "motorola68020_tkpkg_service_writes_little_endian_control_block_bytes"
+proof_level = "C"
+proves = "The host-side source contract preserves the parser dispatch envelope and PRVM route handoff."
+does_not_prove = "Real native execution of every parser-dependent service ordinal."
+
+[[tests]]
+name = "native_macro_completion_wrapper"
+proof_level = "D"
+proves = "The established real native 65C02 CLI path retains its exact macro fixture bytes and nested-frame rejection behavior after parser-adapter extraction."
+does_not_prove = "New CPU/family/dialect support, generic tokenizer CPU parity, or any parser semantic outside the retained 65C02 CLI path and named adapter contracts."

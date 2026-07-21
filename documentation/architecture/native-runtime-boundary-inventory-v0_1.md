@@ -63,9 +63,9 @@ than a package runtime addressing engine-owned mutable tables.
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`.
 - Public entries: `bootstrapV1` and `dispatchV1`.
-- Imports/outbound dependencies: tkpkg ABI/buffers, dedicated request-lifecycle
-  and status-projection owners, engine, expression bridge, package loader,
-  pipeline, tokenizer VM, and PRVM line router.
+- Imports/outbound dependencies: tkpkg ABI/buffers, dedicated request-lifecycle,
+  status-projection, and parser-adapter owners, engine, expression bridge,
+  package loader, pipeline, and tokenizer VM.
 - Mutable state: request/control-block pointers, output and last-error
   buffers, selected-envelope/candidate scratch, and service result fields.
 - Routine responsibility groups: bootstrap/request validation; status and
@@ -78,7 +78,8 @@ than a package runtime addressing engine-owned mutable tables.
   implementation to `tkpkg.amigaos.service_status`; Item 5.4.1 extracts
   bootstrap, header validation, and request bookkeeping to
   `tkpkg.amigaos.service_request`. The facade keeps only explicit compatibility
-  delegates pending caller migration. Parser (5.5), expression adapter (5.5.1),
+  delegates pending caller migration. Item 5.5 extracts the fixed PRVM route
+  frame adapter to `tkpkg.amigaos.parse_service`. Expression adapter (5.5.1),
   selection (5.6), operand plans (5.6.1), and encoding (5.6.2) remain. The
   repeated package-string/locator helpers overlap pipeline-style utilities and
   require an ownership decision before consolidation; no unproven helper merge

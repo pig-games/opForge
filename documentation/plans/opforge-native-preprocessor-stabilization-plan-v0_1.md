@@ -295,14 +295,14 @@ its own activated item/slice contract.
   - Commit outcome: one ownership-only request-lifecycle commit.
   - Definition of done: the façade no longer decodes reusable request/control-block implementation details.
 
-- [ ] Item 5.5: extract the tkpkg parser service adapter
+- [x] Item 5.5: extract the tkpkg parser service adapter
   - Source requirement or finding IDs: NR-003; Items 5.2–5.4.
   - Invariant: parser route adaptation moves to a focused owner while request envelopes, opcode-version handling, output text, status codes, and diagnostics remain exact.
   - Expected files: `tkpkg_parse_service.asm` or repository-style equivalent.
   - Scope boundary: no expression request execution, expression-language, or diagnostic wording change.
   - Proof: B parser request-envelope/register contracts; C parser-adapter model; D existing parser-dependent parity fixtures.
   - Full quality gates: exact focused and established D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
-  - Plan-compliance review evidence: PASS for parser-adapter extraction only.
+  - Plan-compliance review evidence: PASS for parser-adapter extraction only. Evidence: `native/motorola68000/amigaos/tkpkg/tkpkg_parse_service.asm`; `documentation/plans/slices/native-porting-slice-tkpkg-parser-adapter.toml`; focused parser-owner/header/native-CLI assembly tests PASS; native formatter, inventory, staged native-porting, retained 65C02 macro Level D wrapper, and full Rust quality gates PASS; CPU/family/dialect scope unchanged.
   - Commit outcome: one focused ownership-only parser-adapter commit.
   - Definition of done: service dispatch delegates to an independently owned parser adapter.
 

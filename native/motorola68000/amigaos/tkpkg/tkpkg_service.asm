@@ -10,11 +10,10 @@
 	.use opasm.amigaos.engine
 	.use opcore.amigaos.expr_bridge
 	.use tkpkg.amigaos.package_loader
+	.use tkpkg.amigaos.parse_service as parser
 	.use tkpkg.amigaos.pipeline
 	.use tkpkg.amigaos.tokenizer_vm
-	.use prvm.amigaos.line_router
 
-TKPKG_PARSE_ROUTE_FRAME_SIZE         = 116
 TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE   = 9
 TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE = 16
 TKPKG_SELECTED_EXTENSION_INPUT_SIZE  = 24
@@ -3269,47 +3268,10 @@ done
 	rts
 	.bend  ; tkpkgServiceFoldAsciiLowerV1
 
-; ---------------------------------------------------------------------------
-; Route one parser request frame through PRVM.
-;
-; Current implementation note: this entry accepts only the fixed
-; TKPKG_PARSE_ROUTE_FRAME_SIZE route frame built by the native CLI. It is the
-; intended service boundary for parse-line behavior even while the CLI still
-; owns some transitional parser/assembler state.
-;
-; Inputs:
-; - A0: validated control block whose input window points at a PRVM route frame.
-;
-; Outputs:
-; - D0/D1: PRVM status/result-count values.
-; - D2: 0 on accepted request, 1 on malformed service payload.
-; ---------------------------------------------------------------------------
+; Compatibility delegate for the Item 5.5 facade-to-parser adapter. It contains
+; no parser request-envelope implementation and is deleted when callers migrate.
 tkpkgServiceParseLineV1	.block
-	moveq #0, d0
-	move.b abi.CB_INPUT_PTR(a0), d0  ; low byte of CB-relative route-frame offset
-	moveq #0, d1
-	move.b 17(a0), d1  ; high byte of CB_INPUT_PTR; direct offset avoids a temp struct
-	lsl.w #8, d1
-	or.w d1, d0
-	lea 0(a0, d0.W), a1  ; A1 now points at the caller-supplied PRVM route frame
-	moveq #0, d0
-	move.b abi.CB_INPUT_LEN(a0), d0  ; low byte of route-frame byte length
-	moveq #0, d1
-	move.b 19(a0), d1  ; high byte of CB_INPUT_LEN
-	lsl.w #8, d1
-	or.w d1, d0
-	cmpi.w #TKPKG_PARSE_ROUTE_FRAME_SIZE, d0
-	bne.s badRequest
-	movea.l a1, a0  ; PRVM router ABI expects its route frame in A0
-	jsr line_router.prvmRouteLine68000  ; D0/D1 become the parser service's immediate return pair
-	moveq #0, d2
-	rts
-
-badRequest
-	moveq #1, d2
-	moveq #0, d0
-	moveq #0, d1
-	rts
+	jmp parser.parseLineV1
 	.bend  ; tkpkgServiceParseLineV1
 
 ; ---------------------------------------------------------------------------

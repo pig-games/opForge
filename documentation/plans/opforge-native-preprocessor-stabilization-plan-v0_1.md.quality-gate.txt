@@ -39,3 +39,10 @@ Evidence: inventory validator PASS; staged native-porting gate PASS; focused hea
 
 Reviewer: `plan-compliance-reviewer`.
 Decision: PASS. Full Rust quality gate and workflow gate passed; Item 5.4.1 remains an ownership-only lifecycle extraction with CPU/family/dialect support unchanged.
+
+PASS: Item 5.5 parser-adapter extraction passed deterministic validation and the retained native 65C02 CLI Level D completion wrapper. CPU/family/dialect support is explicitly unchanged.
+
+Evidence: native formatter and inventory validator PASS; staged native-porting gate PASS; focused parser-owner, service-header, and native-CLI assembly tests PASS; `scripts/workflow/run_native_macro_completion.sh --verify` PASS with both exact FS-UAE tests (`native_macro_invocation_fixture_fs_uae`, `native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection`); full Rust quality gate PASS.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. The workflow gate and full Rust quality gate passed; Item 5.5 is an ownership-only parser-adapter extraction. The `tkpkg_service` facade tail-jumps to the parser owner, with parser semantics, diagnostics, and CPU/family/dialect support unchanged.

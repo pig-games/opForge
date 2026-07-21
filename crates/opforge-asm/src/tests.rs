@@ -17085,6 +17085,7 @@ fn motorola68020_tkpkg_native_abi_payloads_lock_preserved_wire_shapes() {
 #[test]
 fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     let source = tkpkg_amigaos_source("tkpkg_service.asm");
+    let parser = tkpkg_amigaos_source("tkpkg_parse_service.asm");
     let request = tkpkg_amigaos_source("tkpkg_service_request.asm");
     let status = tkpkg_amigaos_source("tkpkg_service_status.asm");
 
@@ -17116,10 +17117,8 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
         &source,
         "CMPI.B #abi.ENTRY_ORD_PARSE_LINE,D0\n        BEQ.W handleParseLine\n        CMPI.B #abi.ENTRY_ORD_ENCODE_INSTRUCTION,D0\n        BEQ.W handleEncodeInstruction\n        CMPI.B #abi.ENTRY_ORD_EVALUATE_EXPRESSION,D0\n        BEQ.W handleEvaluateExpression\n        CMPI.B #abi.ENTRY_ORD_SELECT_INSTRUCTION,D0\n        BEQ.W handleSelectInstruction\n        CMPI.B #abi.ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION,D0\n        BEQ.W handleEncodeSelectedInstruction"
     ));
-    assert!(tkpkg_source_contains(
-        &source,
-        ".use prvm.amigaos.line_router"
-    ));
+    assert!(source.contains(".use tkpkg.amigaos.parse_service as parser"));
+    assert!(parser.contains(".use prvm.amigaos.line_router"));
     assert!(!source.contains(".use opasm.amigaos.selector_stage"));
     assert!(tkpkg_source_contains(
         &source,
@@ -17185,10 +17184,10 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     assert!(source.contains("EvaluateExprValuePrefixText"));
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceParseLineV1\t.block\n        MOVEQ #0,D0\n        MOVE.B abi.CB_INPUT_PTR(A0),D0"
+        "tkpkgServiceParseLineV1\t.block\n        JMP parser.parseLineV1"
     ));
     assert!(tkpkg_source_contains(
-        &source,
+        &parser,
         "CMPI.W #TKPKG_PARSE_ROUTE_FRAME_SIZE,D0\n        BNE.S badRequest\n        MOVEA.L A1,A0\n        JSR line_router.prvmRouteLine68000"
     ));
     assert!(tkpkg_source_contains(
@@ -17372,6 +17371,27 @@ fn motorola68020_tkpkg_request_lifecycle_has_one_implementation_owner() {
     }
     assert!(facade.contains(".use tkpkg.amigaos.service_request as request"));
     assert!(request.contains(".module tkpkg.amigaos.service_request"));
+}
+
+#[test]
+fn motorola68020_tkpkg_parser_adapter_has_one_implementation_owner() {
+    let facade = tkpkg_amigaos_source("tkpkg_service.asm");
+    let parser = tkpkg_amigaos_source("tkpkg_parse_service.asm");
+
+    assert!(tkpkg_source_contains(
+        &facade,
+        "tkpkgServiceParseLineV1\t.block\n        JMP parser.parseLineV1"
+    ));
+    assert!(tkpkg_source_contains(
+        &parser,
+        "parseLineV1\t.block\n        MOVEQ #0,D0\n        MOVE.B abi.CB_INPUT_PTR(A0),D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &parser,
+        "CMPI.W #TKPKG_PARSE_ROUTE_FRAME_SIZE,D0\n        BNE.S badRequest\n        MOVEA.L A1,A0\n        JSR line_router.prvmRouteLine68000"
+    ));
+    assert!(facade.contains(".use tkpkg.amigaos.parse_service as parser"));
+    assert!(parser.contains(".module tkpkg.amigaos.parse_service"));
 }
 
 #[test]

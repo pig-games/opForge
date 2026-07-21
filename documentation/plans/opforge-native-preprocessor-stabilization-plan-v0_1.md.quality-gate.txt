@@ -53,3 +53,10 @@ Evidence: expression envelope preparation and bridge execution now reside in `tk
 
 Reviewer: `plan-compliance-reviewer`.
 Decision: PASS. Full Rust and workflow gates passed; Item 5.5.1 is an ownership-only expression-service extraction. The facade retains only contract-version validation and the D4/D5 bridge-version handoff; direct engine-state reads are isolated in the named temporary context adapter pending Item 5.7.1. CPU/family/dialect support is unchanged.
+
+PASS: Item 5.6 selection-service extraction passed deterministic validation and the retained native 65C02 CLI Level D completion wrapper. CPU/family/dialect support is explicitly unchanged.
+
+Evidence: `tkpkg_selection_service.asm` owns selected-request decoding, MSEL candidate traversal, selected-output diagnostics, and the retained operand-plan runtime; `tkpkg_service.asm` delegates selection and retains selected-envelope encoding only. Focused ownership/control-block/plan-dispatch/native-CLI assembly tests PASS; inventory, staged native-porting, CPU-boundary, and workflow gates PASS; both exact FS-UAE macro tests PASS. Rust formatter, clippy, audit, and the locked Rust suite PASS.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. Item 5.6 is an ownership-only selection-service extraction: the facade delegates selected-request decoding and candidate traversal to `tkpkg_selection_service.asm`; the existing operand-plan runtime remains there for Item 5.6.1; the narrow allowlist relocates existing package-selector metadata only. CPU/family/dialect semantics are unchanged.

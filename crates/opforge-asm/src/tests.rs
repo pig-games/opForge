@@ -12441,11 +12441,11 @@ fn motorola68020_item6_3_covers_generic_single_operand_selected_emission_plans()
 
 #[test]
 fn motorola68020_item6_3_native_tkpkg_implements_rel8_as_generic_plan() {
-    let service = tkpkg_amigaos_source("tkpkg_service.asm");
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
 
-    assert!(service.contains("TkpkgMselPlanBranch8Text"));
+    assert!(selection.contains("TkpkgMselPlanBranch8Text"));
     assert!(source_contains_in_order(
-        &service,
+        &selection,
         &[
             "TkpkgMselPlanBranch8Text",
             ".byte \"rel8\", 0",
@@ -12466,10 +12466,10 @@ fn motorola68020_item6_3_native_tkpkg_implements_rel8_as_generic_plan() {
 
 #[test]
 fn motorola68020_item6_3_native_tkpkg_dispatches_plan_tags_through_table() {
-    let service = tkpkg_amigaos_source("tkpkg_service.asm");
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
 
     assert!(source_contains_in_order(
-        &service,
+        &selection,
         &[
             "tkpkgMselTryBuildCandidateV1\t.block",
             "lea planDispatchTable(pc), a4",
@@ -12849,8 +12849,8 @@ fn motorola68020_item6_7_full_indicated_fixture_native_cli_parity_matches_rust_b
 #[test]
 fn motorola68020_item6_7_native_branch_plan_emits_adjusted_rel8_value() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_service.asm");
-    let source = fs::read_to_string(&asm_path).expect("read native tkpkg service source");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native tkpkg selection service source");
     let source = format_tokvm_asm_fragment(&source);
 
     assert!(source_contains_in_order(
@@ -12874,8 +12874,8 @@ fn motorola68020_item6_7_native_branch_plan_emits_adjusted_rel8_value() {
 #[test]
 fn motorola68020_item6_7_native_pair_u8_rel8_plan_matches_rust_selector_shape() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_service.asm");
-    let source = fs::read_to_string(&asm_path).expect("read native tkpkg service source");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native tkpkg selection service source");
     let source = format_tokvm_asm_fragment(&source);
 
     assert!(source_contains_in_order(
@@ -12954,8 +12954,8 @@ fn motorola68020_item6_7_native_pair_u8_rel8_plan_matches_rust_selector_shape() 
 #[test]
 fn motorola68020_item6_7_native_tkpkg_surface_lookup_stays_isolated_behind_tables() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_service.asm");
-    let source = fs::read_to_string(&asm_path).expect("read native tkpkg service source");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native tkpkg selection service source");
     let source = format_tokvm_asm_fragment(&source);
 
     assert!(source_contains_in_order(
@@ -17088,6 +17088,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     let parser = tkpkg_amigaos_source("tkpkg_parse_service.asm");
     let expression = tkpkg_amigaos_source("tkpkg_expression_service.asm");
     let expression_context = tkpkg_amigaos_source("tkpkg_expression_context.asm");
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
     let request = tkpkg_amigaos_source("tkpkg_service_request.asm");
     let status = tkpkg_amigaos_source("tkpkg_service_status.asm");
 
@@ -17123,6 +17124,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     assert!(parser.contains(".use prvm.amigaos.line_router"));
     assert!(!source.contains(".use opasm.amigaos.selector_stage"));
     assert!(source.contains(".use tkpkg.amigaos.expression_service as expression"));
+    assert!(source.contains(".use tkpkg.amigaos.selection_service as selection"));
     assert!(expression.contains(".use tkpkg.amigaos.expression_context as context"));
     assert!(expression_context.contains(".use opasm.amigaos.engine"));
     assert!(tkpkg_source_contains(
@@ -17135,7 +17137,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "handleSelectInstruction:\n        MOVE.L A0,-(SP)\n        BSR.W selectInstructionV1"
+        "handleSelectInstruction:\n        MOVE.L A0,-(SP)\n        JSR selection.selectInstructionV1"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -17154,16 +17156,17 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
         "executePreparedV1\t.block\n        BTST #0,PreparedFlags\n        BNE.S haveLabelContext"
     ));
     assert!(tkpkg_source_contains(
-        &source,
+        &selection,
         "selectInstructionV1\t.block\n\tmovem.l d2-d7/a2-a6, -(sp)\n\tbtst #1, buffers.PackageStateFlags"
     ));
     assert!(tkpkg_source_contains(
         &source,
         "encodeSelectedInstructionV1\t.block\n\tmovem.l d2-d7/a2-a6, -(sp)\n\tbtst #1, buffers.PackageStateFlags"
     ));
-    assert!(source.contains("buildSelectedEnvelopeV1"));
+    assert!(source.contains("jsr selection.buildSelectedEnvelopeV1"));
+    assert!(selection.contains("buildSelectedEnvelopeV1"));
     assert!(source.contains("writeCandidateOutputV1"));
-    assert!(source.contains("encodeSelectedOperandV1"));
+    assert!(selection.contains("encodeSelectedOperandV1"));
     assert!(source.contains("resolveExpressionContractVersionsV1"));
     assert!(source.contains("resolveExprOpcodeVersionV1"));
     assert!(source.contains("resolveExvmOpcodeVersionV1"));
@@ -17198,6 +17201,31 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
         &status,
         "setStatusRuntimeErrorV1\t.block\n        MOVE.B #abi.STATUS_RUNTIME_ERROR_V1,abi.CB_STATUS_CODE(A0)\n        CLR.B 11(A0)"
     ));
+}
+
+#[test]
+fn motorola68020_tkpkg_selection_service_has_one_implementation_owner() {
+    let facade = tkpkg_amigaos_source("tkpkg_service.asm");
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+
+    assert!(facade.contains(".use tkpkg.amigaos.selection_service as selection"));
+    assert!(tkpkg_source_contains(
+        &facade,
+        "handleSelectInstruction:\n        MOVE.L A0,-(SP)\n        JSR selection.selectInstructionV1"
+    ));
+    assert!(tkpkg_source_contains(
+        &facade,
+        "havePipeline:\n        JSR selection.buildSelectedEnvelopeV1"
+    ));
+    assert!(!facade.contains("buildSelectedEnvelopeV1\t.block"));
+    assert!(!facade.contains("tkpkgBuildSelectedEnvelopeFromMselV1\t.block"));
+    assert!(!facade.contains("tkpkgMselTryBuildCandidateV1\t.block"));
+    assert!(!facade.contains("EncodeSelectedMselShapePtr"));
+    assert!(selection.contains("buildSelectedEnvelopeV1\t.block"));
+    assert!(selection.contains("tkpkgBuildSelectedEnvelopeFromMselV1\t.block"));
+    assert!(selection.contains("tkpkgMselTryBuildCandidateV1\t.block"));
+    assert!(selection.contains("encodeSelectedOperandV1\t.block"));
+    assert!(selection.contains("noOutputErrorV1\t.block"));
 }
 
 #[test]
@@ -17654,19 +17682,20 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
     }
 
     let service = tkpkg_amigaos_source("tkpkg_service.asm");
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
 
     assert!(service.contains("tkpkgEncodeFindAndExecuteTableProgram"));
     assert!(service.contains("TablChunkOffsetLo"));
-    assert!(service.contains("tkpkgBuildSelectedEnvelopeFromMselV1"));
-    assert!(service.contains("tkpkgMselTryBuildCandidateV1"));
-    assert!(service.contains("TkpkgMselPlanU8Text"));
-    assert!(service.contains("TkpkgMselPlanU16Text"));
-    assert!(service.contains("TKPKG_SELECTED_EXTENSION_INPUT_SIZE"));
-    assert!(service.contains("TKPKG_SELECTED_STATUS_OK"));
-    assert!(service.contains("TKPKG_SELECTED_STATUS_NO_OUTPUT"));
-    assert!(service.contains("MselChunkOffsetLo"));
+    assert!(selection.contains("tkpkgBuildSelectedEnvelopeFromMselV1"));
+    assert!(selection.contains("tkpkgMselTryBuildCandidateV1"));
+    assert!(selection.contains("TkpkgMselPlanU8Text"));
+    assert!(selection.contains("TkpkgMselPlanU16Text"));
+    assert!(selection.contains("TKPKG_SELECTED_EXTENSION_INPUT_SIZE"));
+    assert!(selection.contains("TKPKG_SELECTED_STATUS_OK"));
+    assert!(selection.contains("TKPKG_SELECTED_STATUS_NO_OUTPUT"));
+    assert!(selection.contains("MselChunkOffsetLo"));
     assert!(source_contains_in_order(
-        &service,
+        &selection,
         &[
             "cmpi.w #TKPKG_SELECTED_EXTENSION_INPUT_SIZE, d5",
             "move.l a1, EncodeSelectedMselShapePtr",
@@ -17674,7 +17703,7 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
         ]
     ));
     assert!(source_contains_in_order(
-        &service,
+        &selection,
         &[
             "lea buffers.MselChunkOffsetLo, a3",
             "tst.b d5",
@@ -17688,7 +17717,7 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
         ]
     ));
     assert!(source_contains_in_order(
-        &service,
+        &selection,
         &[
             "move.w d0, EncodeSelectedMselPlanLen",
             "move.l a2, -(sp)",
@@ -17697,7 +17726,7 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
         ]
     ));
     assert!(source_contains_in_order(
-        &service,
+        &selection,
         &[
             "bsr.w tkpkgBuildSelectedEnvelopeFromMselV1",
             "cmpi.l #TKPKG_SELECTED_STATUS_OK, d0",

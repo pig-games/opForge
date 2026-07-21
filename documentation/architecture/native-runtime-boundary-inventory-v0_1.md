@@ -64,17 +64,16 @@ than a package runtime addressing engine-owned mutable tables.
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`.
 - Public entries: `bootstrapV1` and `dispatchV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers, dedicated request-lifecycle,
-  status-projection, parser-adapter, and expression-service owners; engine,
-  expression bridge, package loader, pipeline, and tokenizer VM. The expression
-  service reaches the temporary engine-state boundary only through its named
-  `tkpkg.amigaos.expression_context` adapter.
-- Mutable state: request/control-block pointers, output and last-error
-  buffers, selected-envelope/candidate scratch, and service result fields.
+  status-projection, parser-adapter, expression-service, and selection-service
+  owners; engine, expression bridge, package loader, pipeline, and tokenizer VM.
+  The expression service reaches the temporary engine-state boundary only through
+  its named `tkpkg.amigaos.expression_context` adapter.
+- Mutable state: request/control-block pointers, output and last-error buffers,
+  and service result fields.
 - Routine responsibility groups: bootstrap/request validation; status and
   diagnostic projection; parser route adaptation; transitional expression
-  contract validation; selected-instruction decoding/candidate traversal;
-  selected-instruction decoding/candidate traversal; operand-plan
-  interpretation; package encoding/output construction; locator/string helpers.
+  contract validation; selected-envelope encoding/output construction; and the
+  retained package contract/locator helpers.
 - Inbound users: the opasm tkpkg bridge is the principal facade caller.
 - Decision: retain only ABI dispatch, output projection, and last-error entry
   in the facade. Item 5.4 extracted status/error and output-window
@@ -86,11 +85,31 @@ than a package runtime addressing engine-owned mutable tables.
   envelope preparation and bridge execution to
   `tkpkg.amigaos.expression_service` and places the temporary engine read behind
   `tkpkg.amigaos.expression_context`. The facade retains package-contract
-  validation only until the neutral-context migration. Selection (5.6), operand
-  plans (5.6.1), and encoding (5.6.2) remain. The
+  validation only until the neutral-context migration. Item 5.6 moves selection
+  decoding and candidate traversal to `tkpkg.amigaos.selection_service`; Item
+  5.6.1 will split its retained operand-plan runtime, and Item 5.6.2 will split
+  encoding. This is an ownership-only file split: it does not add, broaden, or
+  validate support for any CPU, family, dialect, plan tag, or instruction. The
   repeated package-string/locator helpers overlap pipeline-style utilities and
   require an ownership decision before consolidation; no unproven helper merge
   is authorized here.
+
+### `tkpkg.amigaos.selection_service` (NR-004, Item 5.6 ownership split)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm`.
+- Public entries: `selectInstructionV1`, `buildSelectedEnvelopeV1`, and
+  `noOutputErrorV1`.
+- Imports/outbound dependencies: tkpkg ABI/buffers plus the existing engine and
+  expression bridge transition boundaries.
+- Mutable state: selected request envelope, candidate traversal cursor, current
+  plan/shape fields, operand status/value, and pair-plan scratch.
+- Routine responsibility groups: selected-request decoding; package MSEL
+  traversal; candidate construction; existing operand-plan interpretation and
+  expression evaluation; selected-output diagnostic selection.
+- Decision: this module owns the unchanged selection behavior after Item 5.6.
+  Item 5.6.1 will extract the operand-plan runtime from it, and Item 5.7.2 will
+  replace its direct engine reads with the neutral runtime context. Neither item
+  expands CPU support or changes package semantics.
 
 ### `opasm.amigaos.engine` (NR-001, conditional decomposition)
 

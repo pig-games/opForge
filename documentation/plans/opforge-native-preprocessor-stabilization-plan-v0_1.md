@@ -317,14 +317,14 @@ its own activated item/slice contract.
   - Commit outcome: one focused ownership-only expression-adapter commit.
   - Definition of done: service dispatch delegates to an independently owned expression adapter.
 
-- [ ] Item 5.6: extract the tkpkg selection service
+- [x] Item 5.6: extract the tkpkg selection service
   - Source requirement or finding IDs: NR-004; Items 5.2–5.5.
   - Invariant: selected-instruction decoding and candidate traversal move behind a focused owner without changing selector ordering or emitted bytes.
   - Expected files: `tkpkg_selection_service.asm` or repository-style equivalent.
   - Scope boundary: ownership-only movement may retain current plan tags such as `rel8` and `pair_u8_rel8`; hardcoded-plan generalization and all new CPU/family knowledge are deferred to a separate semantic-remediation plan.
   - Proof: B selector/plan-dispatch ownership; C package-candidate model; D current instruction-selection and encode parity corpus.
   - Full quality gates: exact affected parity corpus; native formatter; staged native-porting; Rust quality; CPU-boundary guard; workflow gate.
-  - Plan-compliance review evidence: PASS for unchanged selection ownership only.
+  - Plan-compliance review evidence: PASS for unchanged selection ownership only. Evidence: `tkpkg_selection_service.asm` owns selected-request decoding, MSEL candidate traversal, selected-output diagnostics, and the retained operand-plan runtime; `tkpkg_service.asm` delegates selection and retains selected-envelope encoding only. The Item 5.6.1 operand-runtime split remains deferred. Focused ownership/control-block/plan-dispatch/native-CLI tests, staged native-porting, inventory, CPU-boundary, retained 65C02 macro Level D wrapper (both exact FS-UAE tests), Rust formatter/clippy/audit/locked suite, and workflow gate PASS; CPU/family/dialect semantics are unchanged.
   - Commit outcome: one ownership-only selection-service commit.
   - Definition of done: `tkpkg_service.asm` has no selected-instruction decoding or candidate-traversal logic.
 

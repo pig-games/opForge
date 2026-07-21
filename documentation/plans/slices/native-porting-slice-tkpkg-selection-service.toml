@@ -1,0 +1,39 @@
+[slice]
+schema_version = 2
+name = "tkpkg selection service ownership"
+kind = "native-rust-parity"
+rust_reference = [
+  "existing package-backed selector ordering, candidate outcomes, and emitted bytes remain the behavioral authority"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm::handleSelectInstruction",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm::encodeSelectedInstructionV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::selectInstructionV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::buildSelectedEnvelopeV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildSelectedEnvelopeFromMselV1"
+]
+invariant = "For an unchanged selected-instruction request and package, candidate decoding, traversal ordering, plan dispatch, candidate result, status, diagnostics, and emitted bytes remain exact while the service facade delegates selection to one owner. The retained operand-plan runtime is intentionally still inside that owner until Item 5.6.1."
+expected_inputs = "Existing selected-instruction and encode-selected control-block requests against the established package-backed fixtures."
+expected_outputs = "The same selected-envelope availability, unknown-versus-unsupported diagnostic, selected candidate, encoded output, status code, and diagnostic text as before the ownership-only move."
+known_non_equivalences = "No CPU, family, dialect, instruction, plan-tag, selector-order, encoding, diagnostic-wording, or expression-language change. The retained native 65C02 macro CLI wrapper is the only production Level D target for this ownership slice."
+fast_proof_command = "cargo test -p asm motorola68020_tkpkg_selection_service_has_one_implementation_owner -- --nocapture && cargo test -p asm motorola68020_tkpkg_service_writes_little_endian_control_block_bytes -- --nocapture && cargo test -p asm motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallback -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' scripts/workflow/run_native_macro_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_tkpkg_selection_service_has_one_implementation_owner"
+proof_level = "B"
+proves = "The facade delegates selected-instruction processing, and the new selection service exclusively owns request decoding, MSEL traversal, candidate construction, and the retained operand-plan runtime."
+does_not_prove = "Guest execution of every package, CPU target, or instruction form."
+
+[[tests]]
+name = "motorola68020_tkpkg_service_writes_little_endian_control_block_bytes"
+proof_level = "C"
+proves = "The service dispatch and selected-envelope transition retain the expected control-block and diagnostic projection contract."
+does_not_prove = "Real native execution of every selected-instruction request."
+
+[[tests]]
+name = "native_macro_completion_wrapper"
+proof_level = "D"
+proves = "The established real native 65C02 CLI macro path retains exact fixture bytes and nested-frame rejection after the ownership split."
+does_not_prove = "New CPU/family/dialect support or generic target-CPU parity."

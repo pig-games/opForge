@@ -12,8 +12,8 @@ use types::processing::LineProcessingTrace;
 
 pub use types::assembler::{LineStatus, PassCounts};
 pub use types::diagnostics::{
-    build_context_lines, AsmError, AsmErrorKind, Diagnostic, DiagnosticCode, DiagnosticLevel,
-    Fixit, LabeledSpan, ParseDiagnostic, Severity, SourceLocation,
+    build_context_lines, build_context_lines_with_range, AsmError, AsmErrorKind, Diagnostic,
+    DiagnosticCode, DiagnosticLevel, Fixit, LabeledSpan, ParseDiagnostic, Severity, SourceLocation,
 };
 
 /// Convert parser errors into a stable diagnostic payload without coupling

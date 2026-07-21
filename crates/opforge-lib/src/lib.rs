@@ -80,8 +80,8 @@ use crate::lockstep::ExecutionMode;
 /// It does not own source loading, CPU discovery, or orchestration policy.
 pub mod diagnostics {
     pub use ::asm::error::{
-        build_context_lines, AsmError, AsmErrorKind, AsmRunError, AsmRunReport, Diagnostic,
-        Severity,
+        build_context_lines, build_context_lines_with_range, AsmError, AsmErrorKind, AsmRunError,
+        AsmRunReport, Diagnostic, Severity,
     };
 }
 

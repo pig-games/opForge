@@ -10,7 +10,7 @@ use clap::Parser;
 use serde_json::json;
 
 use api::asm::AssemblerWorkflowError;
-use api::diagnostics::{build_context_lines, AsmRunError, Diagnostic, Severity};
+use api::diagnostics::{build_context_lines_with_range, AsmRunError, Diagnostic, Severity};
 use cli_core::{
     resolve_formatter_input_paths, resolve_formatter_project_paths,
     run_with_validated_cli_with_context, validate_cli, Cli, CliConfig, CliRunError, CliRunReport,
@@ -157,7 +157,14 @@ fn format_diagnostic_line_classic(
     let mut out = String::new();
     out.push_str(&header);
     out.push('\n');
-    for line in build_context_lines(diag.line(), diag.column(), source_lines, None, use_color) {
+    for line in build_context_lines_with_range(
+        diag.line(),
+        diag.column(),
+        diag.col_end(),
+        source_lines,
+        None,
+        use_color,
+    ) {
         out.push_str(&line);
         out.push('\n');
     }

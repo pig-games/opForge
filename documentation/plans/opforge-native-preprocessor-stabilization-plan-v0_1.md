@@ -210,7 +210,7 @@ only in this artifact; it requires its own activated item/slice contracts.
   - Commit outcome: one transactional expansion-route commit.
   - Definition of done: no partial expanded line reaches later CLI processing and SP-007 fully closes for the named observable failures.
 
-- [ ] Item 5.1: publish and enforce the native preprocessor resource budget
+- [x] Item 5.1: publish and enforce the native preprocessor resource budget
   - Source requirement or finding IDs: SP-008; Item 5 transaction contract.
   - Expected files: `constants.asm`, `state.asm`, affected owner modules, slice metadata, focused capacity tests/documentation.
   - Invariant: every declared definition/body/header/name/signature/argument/full-list/source/expansion/saved-line/depth capacity has one owner, lifetime/reset policy, and deterministic pre-mutation failure outcome.

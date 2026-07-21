@@ -16,7 +16,7 @@
 ; Clobbers: D0-D3/A0-A3/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliBeginExpandedLineV1	.block
-	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY, d0
+	cmpi.l #constants.NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY, d0
 	bcc.s fail
 	tst.w state.NativeCliPreprocessExpansionDepth
 	bne.s fail

@@ -34969,11 +34969,11 @@ fn native_preprocessor_macro_invocation_frame_is_bounded_and_resettable() {
 
     assert!(constants.contains("NATIVE_PREPROCESS_MACRO_ARG_CAPACITY = 9"));
     assert!(constants.contains("NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT = 1"));
-    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 36"));
-    assert!(
-        constants.contains("(NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY)")
-    );
-    assert!(constants.contains("+ (4 * SOURCE_LINE_BUFFER_CAPACITY)"));
+    assert!(constants.contains("NATIVE_PREPROCESS_STATE_FIXED_BYTES = 36"));
+    assert!(constants.contains(
+        "(NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY)"
+    ));
+    assert!(constants.contains("+ NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY"));
     assert!(source_contains_in_order(
         &state,
         &[
@@ -35007,6 +35007,164 @@ fn native_preprocessor_macro_invocation_frame_is_bounded_and_resettable() {
             "clr.w state.NativeCliPreprocessInvocationBodyIndex",
         ]
     ));
+}
+
+#[test]
+fn native_preprocessor_capacity_matrix_is_deterministic() {
+    // Proof level C. This host-side source matrix names every fixed native
+    // preprocessor allocation and verifies that its owner checks capacity
+    // before writing. It does not execute 68020 code or claim Rust's dynamic
+    // macro storage is capacity-equivalent.
+    let root = workspace_root();
+    let constants =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"))
+            .expect("read native constants");
+    let state = fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/state.asm"))
+        .expect("read native state");
+    let definitions = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm"),
+    )
+    .expect("read definition owner");
+    let invocation = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_invocation.asm"),
+    )
+    .expect("read invocation owner");
+    let substitution = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_substitution.asm"),
+    )
+    .expect("read substitution owner");
+    let expansion = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_expansion.asm"),
+    )
+    .expect("read expansion owner");
+    let preprocessor =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"))
+            .expect("read preprocessor reset owner");
+    let source_reader =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/source_reader.asm"))
+            .expect("read source reader owner");
+
+    for capacity in [
+        "NATIVE_PREPROCESS_DEFINITION_CAPACITY = 8",
+        "NATIVE_PREPROCESS_BODY_LINE_CAPACITY = 8",
+        "NATIVE_PREPROCESS_MACRO_ARG_CAPACITY = 9",
+        "NATIVE_PREPROCESS_EXPANSION_DEPTH_LIMIT = 1",
+        "NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT = 1",
+        "NATIVE_PREPROCESS_DEFINITION_HEADER_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY",
+        "NATIVE_PREPROCESS_BODY_LINE_TEXT_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY",
+        "NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY",
+        "NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY",
+        "NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY",
+        "NATIVE_PREPROCESS_SAVED_LINE_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY",
+        "NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY",
+        "NATIVE_PREPROCESS_STATE_FIXED_BYTES = 36",
+    ] {
+        assert!(constants.contains(capacity), "missing capacity: {capacity}");
+    }
+    assert!(source_contains_in_order(
+        &constants,
+        &[
+            "NATIVE_PREPROCESS_STATE_BYTES   = NATIVE_PREPROCESS_STATE_FIXED_BYTES",
+            "NATIVE_PREPROCESS_DEFINITION_HEADER_CAPACITY",
+            "NATIVE_PREPROCESS_BODY_LINE_TEXT_CAPACITY",
+            "NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY",
+            "NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY",
+            "NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY",
+            "NATIVE_PREPROCESS_SAVED_LINE_CAPACITY",
+            "NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &state,
+        &[
+            "Resource budget/lifetime: ResetPreprocessorV1 clears this whole contiguous",
+            "NativeCliPreprocessDefinitionHeader",
+            "constants.NATIVE_PREPROCESS_DEFINITION_HEADER_CAPACITY",
+            "NativeCliPreprocessDefinitionBody",
+            "constants.NATIVE_PREPROCESS_BODY_LINE_TEXT_CAPACITY",
+            "NativeCliPreprocessInvocationArgs",
+            "constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY",
+            "NativeCliPreprocessInvocationFullArgs",
+            "constants.NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY",
+            "NativeCliPreprocessInvocationLabel",
+            "constants.NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY",
+            "NativeCliPreprocessSavedLine",
+            "constants.NATIVE_PREPROCESS_SAVED_LINE_CAPACITY",
+            "NativeCliPreprocessExpansionLine",
+            "constants.NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &definitions,
+        &[
+            "cmpi.w #constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY, d2",
+            "mulu #constants.NATIVE_PREPROCESS_DEFINITION_HEADER_CAPACITY, d2",
+            "jsr copy.copyBytes",
+            "cmpi.w #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d3",
+            "mulu #constants.NATIVE_PREPROCESS_BODY_LINE_TEXT_CAPACITY, d2",
+            "jsr copy.copyBytes",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &invocation,
+        &[
+            "move.l #constants.NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY - 1, d2",
+            "tst.l d2",
+            "beq.s fail",
+            "cmpi.l #constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY - 1, d1",
+            "cmpi.l #constants.NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY - 1, d2",
+            "cmpi.w #constants.NATIVE_PREPROCESS_MACRO_ARG_CAPACITY, d0",
+            "addq.w #1, state.NativeCliPreprocessInvocationArgCount",
+            "move.l a0, d3",
+            "sub.l a3, d3",
+            "cmpi.l #constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY - 1, d3",
+            "bcc.s fail",
+            "jsr copy.copyBytes",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &substitution,
+        &[
+            "appendExpansionByte\t.block",
+            "cmpi.l #constants.NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY - 1, d5",
+            "move.b d4, 0(a1, d5.l)",
+            "appendExpansionBytes\t.block",
+            "add.l d3, d0",
+            "cmpi.l #constants.NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY, d0",
+            "move.b d4, 0(a1, d5.l)",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &expansion,
+        &[
+            "opforgeNativeCliBeginExpandedLineV1\t.block",
+            "cmpi.l #constants.NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY, d0",
+            "bcc.s fail",
+            "tst.w state.NativeCliPreprocessExpansionDepth",
+            "bne.s fail",
+            "jsr copy.copyBytes",
+            "move.w #1, state.NativeCliPreprocessExpansionDepth",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &preprocessor,
+        &[
+            "opforgeNativeCliResetPreprocessorV1\t.block",
+            "move.l #constants.NATIVE_PREPROCESS_STATE_BYTES, d0",
+            "jsr copy.clearBytes",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source_reader,
+        &[
+            "move.w state.NativeCliSourceLineLen, d1",
+            "cmpi.w #constants.SOURCE_LINE_BUFFER_CAPACITY, d1",
+            "bhs.w closeFail",
+            "move.b d0, 0(a1, d1.W)",
+        ]
+    ));
+    assert!(!constants.contains("NATIVE_PREPROCESS_SEGMENT_CAPACITY"));
+    assert!(!constants.contains("NATIVE_PREPROCESS_STATEMENT_CAPACITY"));
 }
 
 #[test]
@@ -35055,7 +35213,7 @@ fn native_preprocessor_macro_invocations_bind_before_prvm_routing() {
     )
     .expect("read native line processor");
 
-    assert!(constants.contains("NATIVE_PREPROCESS_STATE_BYTES   = 36"));
+    assert!(constants.contains("NATIVE_PREPROCESS_STATE_FIXED_BYTES = 36"));
     assert!(source_contains_in_order(
         &state,
         &[

@@ -320,6 +320,29 @@ fn prepare_recoverable_diagnostics(
     with_fallback_file(diagnostics, fallback)
 }
 
+fn fatal_error_is_represented(diagnostics: &[Diagnostic], error: &AsmRunError) -> bool {
+    diagnostics.iter().any(|diagnostic| {
+        diagnostic.severity() == Severity::Error && diagnostic.message() == error.summary()
+    })
+}
+
+fn prepare_terminal_failure_diagnostics(
+    error: &AsmRunError,
+    cli_config: &CliConfig,
+    fallback: Option<&Path>,
+) -> Vec<Diagnostic> {
+    let mut diagnostics =
+        prepare_recoverable_diagnostics(error.diagnostics(), cli_config, fallback);
+    if !fatal_error_is_represented(&diagnostics, error) {
+        let line = error.source_lines().len().saturating_add(1) as u32;
+        diagnostics.push(
+            Diagnostic::new(line, Severity::Error, error.error().clone())
+                .with_file(fallback.map(|path| path.to_string_lossy().to_string())),
+        );
+    }
+    diagnostics
+}
+
 fn emit_recoverable_diagnostics(
     sink: &mut DiagnosticsSink,
     source_lines: &[String],
@@ -720,7 +743,7 @@ fn process_failed_assembly_run(
     }
 
     let fallback = input_path;
-    let diagnostics = prepare_recoverable_diagnostics(error.diagnostics(), cli_config, fallback);
+    let diagnostics = prepare_terminal_failure_diagnostics(error, cli_config, fallback);
     emit_recoverable_diagnostics(
         sink,
         error.source_lines(),
@@ -1219,6 +1242,163 @@ mod tests {
         let payload: Value = serde_json::from_str(&report).expect("parse fixit report");
         assert_eq!(payload["applied"], false, "{report}");
         assert_eq!(payload["fixits"], Value::Array(Vec::new()), "{report}");
+    }
+
+    #[test]
+    fn terminal_failure_with_no_diagnostics_renders_the_fatal_summary() {
+        let temp_dir = unique_temp_dir("cli-terminal-fatal-empty-diagnostics");
+        let source_path = temp_dir.join("missing.asm");
+        let diagnostics_path = temp_dir.join("diagnostics.txt");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let run_error = CliRunError::Assembler {
+            reports: Vec::new(),
+            input_path: Some(source_path.clone()),
+            error: Box::new(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, "output write failed", None),
+                Vec::new(),
+                Vec::new(),
+            )),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(
+                fs::File::create(&diagnostics_path).expect("create diagnostics file"),
+            )),
+        };
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("fatal summary should render");
+        drop(sink);
+
+        let output = fs::read_to_string(&diagnostics_path).expect("read diagnostics");
+        assert!(output.contains("output write failed"), "{output}");
+        assert!(
+            output.contains(source_path.to_string_lossy().as_ref()),
+            "{output}"
+        );
+    }
+
+    #[test]
+    fn terminal_failure_is_rendered_after_unrelated_warnings() {
+        let temp_dir = unique_temp_dir("cli-terminal-fatal-warning");
+        let source_path = temp_dir.join("input.asm");
+        let diagnostics_path = temp_dir.join("diagnostics.txt");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let warning = Diagnostic::new(
+            1,
+            Severity::Warning,
+            AsmError::new(AsmErrorKind::Assembler, "unrelated warning", None),
+        );
+        let run_error = CliRunError::Assembler {
+            reports: Vec::new(),
+            input_path: Some(source_path),
+            error: Box::new(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, "terminal output failure", None),
+                vec![warning],
+                vec!["nop".to_string()],
+            )),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(
+                fs::File::create(&diagnostics_path).expect("create diagnostics file"),
+            )),
+        };
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("fatal summary should render");
+        drop(sink);
+
+        let output = fs::read_to_string(&diagnostics_path).expect("read diagnostics");
+        assert!(output.contains("unrelated warning"), "{output}");
+        assert!(output.contains("terminal output failure"), "{output}");
+    }
+
+    #[test]
+    fn terminal_failure_does_not_duplicate_matching_error_diagnostic() {
+        let temp_dir = unique_temp_dir("cli-terminal-fatal-dedup");
+        let source_path = temp_dir.join("input.asm");
+        let diagnostics_path = temp_dir.join("diagnostics.txt");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let message = "already represented terminal failure";
+        let run_error = CliRunError::Assembler {
+            reports: Vec::new(),
+            input_path: Some(source_path),
+            error: Box::new(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, message, None),
+                vec![Diagnostic::new(
+                    1,
+                    Severity::Error,
+                    AsmError::new(AsmErrorKind::Io, message, None),
+                )],
+                vec!["nop".to_string()],
+            )),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(
+                fs::File::create(&diagnostics_path).expect("create diagnostics file"),
+            )),
+        };
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("matching diagnostic should render");
+        drop(sink);
+
+        let output = fs::read_to_string(&diagnostics_path).expect("read diagnostics");
+        assert_eq!(output.matches(message).count(), 1, "{output}");
+    }
+
+    #[test]
+    fn terminal_failure_with_no_diagnostics_emits_json() {
+        let temp_dir = unique_temp_dir("cli-terminal-fatal-json");
+        let source_path = temp_dir.join("missing.asm");
+        let diagnostics_path = temp_dir.join("diagnostics.jsonl");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--format",
+            "json",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let run_error = CliRunError::Assembler {
+            reports: Vec::new(),
+            input_path: Some(source_path.clone()),
+            error: Box::new(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, "json terminal failure", None),
+                Vec::new(),
+                Vec::new(),
+            )),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(
+                fs::File::create(&diagnostics_path).expect("create diagnostics file"),
+            )),
+        };
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("fatal JSON should render");
+        drop(sink);
+
+        let output = fs::read_to_string(&diagnostics_path).expect("read diagnostics");
+        let payload: Value = serde_json::from_str(output.trim()).expect("valid fatal JSON");
+        assert_eq!(payload["severity"], "error");
+        assert_eq!(payload["code"], "asm501");
+        assert_eq!(payload["message"], "json terminal failure");
+        assert_eq!(payload["file"], source_path.to_string_lossy().as_ref());
     }
 
     #[test]

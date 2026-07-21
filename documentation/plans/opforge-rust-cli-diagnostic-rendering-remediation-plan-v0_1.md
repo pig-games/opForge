@@ -78,16 +78,16 @@ this plan.
 
 ## Work Items
 
-- [ ] Item 1: add the authoritative terminal `AsmRunError` renderer
+- [x] Item 1: add the authoritative terminal `AsmRunError` renderer
   - Source requirement or finding IDs: CLI-DIAG-001 (fatal summary is never rendered); CLI-DIAG-002 (empty diagnostic vectors cause silent input/folder/module/output failures); CLI-DIAG-003 (warnings can mask the terminal failure).
   - Invariant: for an `AsmRunError`, render all eligible attached diagnostics, then render one synthetic fatal error record only if no emitted error diagnostic represents `error.summary()`. The synthetic record carries the fatal error kind/code, summary, known input path, and available source context; warning diagnostics never suppress it.
   - Expected files: `crates/opforge-cli/src/lib.rs` and its focused unit tests; only add shared API changes if the renderer cannot build a `Diagnostic` from the existing public `AsmError`/diagnostic model.
   - Implementation boundary: replace the terminal portion of `process_failed_assembly_run` with an `emit_asm_run_error`-style helper. Use the existing diagnostic formatting path for classic/contextual output; define the fatal JSON object/record at this one boundary so JSON never has zero records on an assembly failure.
   - Required focused tests: zero-diagnostic fatal error; fatal error plus unrelated warning; matching error diagnostic without duplicate fatal summary; fileless fatal error with input fallback; classic/contextual and JSON formatting assertions. Test captured sink contents, not only helper return values.
   - Full quality gates: `cargo test -p opforge-cli`; focused CLI test filters introduced by this item; `scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`.
-  - Plan-compliance review evidence: PASS limited to the central terminal-rendering contract; no constructor-by-constructor behavior expansion.
+  - Plan-compliance review evidence: PASS (2026-07-21): diff is limited to the central terminal-rendering contract and focused regressions; no constructor-by-constructor behavior expansion.
   - Commit outcome: one Rust CLI renderer commit with production code written before its focused tests.
-  - Definition of done: CLI-DIAG-001 through CLI-DIAG-003 are fully closed for `AsmRunError` paths, including an empty diagnostics vector and a misleading warning-only vector.
+  - Definition of done: Complete — CLI-DIAG-001 through CLI-DIAG-003 are fully closed for `AsmRunError` paths, including an empty diagnostics vector and a misleading warning-only vector. Evidence: `cargo test -p cli`, `scripts/workflow/run_rust_quality_gate.sh`, and `make workflow-gate` (2026-07-21).
 
 - [ ] Item 2: make diagnostic emission fallible and preserve a last-resort failure path
   - Source requirement or finding IDs: CLI-DIAG-004 (sink write errors are discarded); CLI-DIAG-005 (`run_main` discards reporting/post-processing failures).

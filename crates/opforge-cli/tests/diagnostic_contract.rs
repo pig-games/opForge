@@ -44,6 +44,12 @@ fn assert_failed_with_output(output: &Output) -> String {
     format!("{stderr}{stdout}")
 }
 
+fn write_source(temp_dir: &std::path::Path, name: &str, source: &str) -> PathBuf {
+    let input = temp_dir.join(name);
+    fs::write(&input, source).expect("write source");
+    input
+}
+
 #[test]
 fn missing_input_reports_the_path_and_not_found() {
     let temp_dir = unique_temp_dir("opforge-cli-missing-input");
@@ -167,6 +173,72 @@ fn no_error_intentionally_suppresses_failure_output() {
         output.stderr.is_empty(),
         "unexpected stderr: {:?}",
         output.stderr
+    );
+}
+
+#[test]
+fn source_failures_render_bounded_context_in_default_and_classic_styles() {
+    let temp_dir = unique_temp_dir("opforge-cli-source-context");
+    let tokenizer = write_source(
+        &temp_dir,
+        "tokenizer.asm",
+        ".cpu \"68020\"\n.org $1000\n.bogus\nnop\n.end\n",
+    );
+    let parser = write_source(
+        &temp_dir,
+        "parser.asm",
+        ".cpu \"68020\"\n.org $1000\nmove ???\nnop\n.end\n",
+    );
+    let semantic = write_source(
+        &temp_dir,
+        "semantic.asm",
+        ".cpu \"68020\"\n.org $1000\n.byte missing_symbol\nnop\n.end\n",
+    );
+
+    let tokenizer_rendered =
+        assert_failed_with_output(&opforge(&["--infile".to_string(), arg(&tokenizer)]));
+    assert!(
+        tokenizer_rendered.contains("    3 | .bogus"),
+        "{tokenizer_rendered}"
+    );
+    assert!(
+        tokenizer_rendered.contains("      |       ^"),
+        "{tokenizer_rendered}"
+    );
+    assert!(
+        tokenizer_rendered.contains("    5 | .end"),
+        "{tokenizer_rendered}"
+    );
+
+    let parser_rendered =
+        assert_failed_with_output(&opforge(&["--infile".to_string(), arg(&parser)]));
+    assert!(
+        parser_rendered.contains("    3 | move ???"),
+        "{parser_rendered}"
+    );
+    assert!(parser_rendered.contains("      | ^"), "{parser_rendered}");
+    assert!(
+        parser_rendered.contains("    5 | .end"),
+        "{parser_rendered}"
+    );
+
+    let semantic_rendered = assert_failed_with_output(&opforge(&[
+        "--diagnostics-style".to_string(),
+        "classic".to_string(),
+        "--infile".to_string(),
+        arg(&semantic),
+    ]));
+    assert!(
+        semantic_rendered.contains("    3 | .byte missing_symbol"),
+        "{semantic_rendered}"
+    );
+    assert!(
+        semantic_rendered.contains("      |       ^"),
+        "{semantic_rendered}"
+    );
+    assert!(
+        semantic_rendered.contains("    5 | .end"),
+        "{semantic_rendered}"
     );
 }
 

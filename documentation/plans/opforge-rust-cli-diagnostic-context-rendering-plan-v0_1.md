@@ -68,12 +68,12 @@ M1 Context-window primitive -> M2 related spans/guidance -> M3 executable CLI pr
   - Commit outcome: one related-span/guidance rendering commit.
   - Definition of done: CLI-CONTEXT-003 and CLI-CONTEXT-004 fully close without changing diagnostic meaning or JSON fields.
 
-- [ ] Item 3: prove CLI default and classic context with real source failures
+- [x] Item 3: prove CLI default and classic context with real source failures
   - Source requirement or finding IDs: CLI-CONTEXT-005 (no executable proof of multi-line source presentation); CLI-DIAG-009 follow-on coverage.
   - Invariant: `opforge` default and `--diagnostics-style classic` output show shared bounded context for representative tokenizer, parser, and semantic failures. JSON remains structured; `--no-error` remains intentionally silent.
   - Expected files: `crates/opforge-cli/tests/diagnostic_contract.rs` and minimal test fixtures only.
   - Full quality gates: `cargo test -p cli --test diagnostic_contract`; `cargo test -p cli`; `cargo test -p types`; `scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`.
-  - Plan-compliance review evidence: PASS confirming executable public assertions and no fixture-only product branches.
+  - Plan-compliance review evidence: PASS — public binary tests cover instruction/tokenizer, parser, and semantic source failures, including default and classic styles; existing JSON and `--no-error` contracts remain executable. Focused contract test, `cli`, `types`, Rust quality gate, and workflow gate passed.
   - Commit outcome: one executable contract-test/integration commit.
   - Definition of done: CLI-CONTEXT-005 fully closes with source-backed executable evidence for line, column, range, and bounded context.
 

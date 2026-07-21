@@ -67,3 +67,10 @@ Evidence: `tkpkg_selection_service.asm` delegates to `tkpkg_operand_runtime.asm`
 
 Reviewer: `plan-compliance-reviewer`.
 Decision: PASS. This is a file-boundary extraction only: package plan tags, request envelopes, emitted bytes, and CPU/family/dialect semantics are unchanged.
+
+PASS: Item 5.6.2 encoding-service extraction preserves the prior package-table encoder and encoded-output construction while moving them out of the service facade. CPU/family/dialect support is explicitly unchanged.
+
+Evidence: `tkpkg_service.asm` delegates both encoding entry paths to `tkpkg_encode_service.asm`; focused ownership, Item 6 package-backed parity, native formatter, inventory, staged native-porting, CPU-boundary, retained macro Level D wrapper, full Rust quality, and workflow gates PASS.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. This is an ownership-only file split: selector ordering, package data, plan tags, status/diagnostic paths, and emitted bytes remain unchanged.

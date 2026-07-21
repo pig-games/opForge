@@ -88,7 +88,8 @@ than a package runtime addressing engine-owned mutable tables.
   validation only until the neutral-context migration. Item 5.6 moves selection
   decoding and candidate traversal to `tkpkg.amigaos.selection_service`; Item
   5.6.1 moves the unchanged operand-plan runtime to
-  `tkpkg.amigaos.operand_runtime`, and Item 5.6.2 will split encoding. This is
+  `tkpkg.amigaos.operand_runtime`, and Item 5.6.2 moves package-table encoding
+  to `tkpkg.amigaos.encode_service`. This is
   an ownership-only file split: it does not add, broaden, or
   validate support for any CPU, family, dialect, plan tag, or instruction. The
   repeated package-string/locator helpers overlap pipeline-style utilities and
@@ -125,6 +126,20 @@ than a package runtime addressing engine-owned mutable tables.
 - Decision: this is a file-boundary extraction only. Existing plan tags and
   emitted bytes are retained exactly; no CPU, family, dialect, or instruction
   support is added or generalized.
+
+### `tkpkg.amigaos.encode_service` (NR-004, Item 5.6.2 ownership split)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm`.
+- Public entries: `encodeInstructionV1` and `encodeSelectedInstructionV1`.
+- Imports/outbound dependencies: tkpkg ABI/buffers and the existing selection
+  service boundary.
+- Mutable state: writes the same existing package-service output buffer; it does
+  not own pipeline selection, package loading, or status projection.
+- Routine responsibility groups: selected-envelope encoding, package-table
+  lookup, encoding-program execution, and encoded-output construction.
+- Decision: this is an ownership-only file split. Package data, selector
+  ordering, plan tags, status/diagnostic paths, and emitted bytes remain
+  unchanged; no CPU, family, dialect, or instruction support is added.
 
 ### `opasm.amigaos.engine` (NR-001, conditional decomposition)
 

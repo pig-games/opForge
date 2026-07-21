@@ -37,6 +37,7 @@ native/motorola68000/amigaos/opasm/opasm_engine.asm | accumulator,direct,immedia
 native/motorola68000/amigaos/tkpkg/tkpkg_service.asm | accumulator,branch_offset,direct,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Native tkpkg selector bridge owns reviewed generic operand-shape and rel8 plan metadata while target semantics remain package-defined.
 native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm | accumulator,branch_offset,direct,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Item 5.6 moved the reviewed generic package-selector ownership unchanged from the service facade; target semantics remain package-defined.
 native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm | accumulator,branch_offset,direct,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Item 5.6.1 moved the existing package-selected operand-plan interpreter unchanged out of the selection owner; target semantics remain package-defined.
+native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm | accumulator,branch_offset,direct,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Item 5.6.2 moved the existing package-table encoder unchanged out of the service facade; target semantics remain package-defined.
 
 # Host-native ABI entrypoints intentionally retain stable 68000 surface names.
 native/motorola68000/amigaos/prvm/*.asm | 68000 | PRVM host-native runtime surfaces intentionally retain stable 68000 ABI names.

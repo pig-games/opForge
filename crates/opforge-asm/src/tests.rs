@@ -12607,7 +12607,7 @@ fn motorola68020_item6_4_rejects_malformed_tabl_programs_and_operand_indexes() {
 
 #[test]
 fn motorola68020_item6_4_native_tkpkg_walks_tabl_operand_records_by_index() {
-    let service = tkpkg_amigaos_source("tkpkg_service.asm");
+    let service = tkpkg_amigaos_source("tkpkg_encode_service.asm");
 
     assert!(source_contains_in_order(
         &service,
@@ -17089,6 +17089,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     let expression = tkpkg_amigaos_source("tkpkg_expression_service.asm");
     let expression_context = tkpkg_amigaos_source("tkpkg_expression_context.asm");
     let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let encoding = tkpkg_amigaos_source("tkpkg_encode_service.asm");
     let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
     let request = tkpkg_amigaos_source("tkpkg_service_request.asm");
     let status = tkpkg_amigaos_source("tkpkg_service_status.asm");
@@ -17142,7 +17143,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "handleEncodeSelectedInstruction:\n        MOVE.L A0,-(SP)\n        BSR.W encodeSelectedInstructionV1"
+        "handleEncodeSelectedInstruction:\n        MOVE.L A0,-(SP)\n        JSR encoding.encodeSelectedInstructionV1"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -17161,12 +17162,12 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
         "selectInstructionV1\t.block\n\tmovem.l d2-d7/a2-a6, -(sp)\n\tbtst #1, buffers.PackageStateFlags"
     ));
     assert!(tkpkg_source_contains(
-        &source,
+        &encoding,
         "encodeSelectedInstructionV1\t.block\n\tmovem.l d2-d7/a2-a6, -(sp)\n\tbtst #1, buffers.PackageStateFlags"
     ));
-    assert!(source.contains("jsr selection.buildSelectedEnvelopeV1"));
+    assert!(encoding.contains("jsr selection.buildSelectedEnvelopeV1"));
     assert!(selection.contains("buildSelectedEnvelopeV1"));
-    assert!(source.contains("writeCandidateOutputV1"));
+    assert!(encoding.contains("writeCandidateOutputV1"));
     assert!(operand.contains("encodeSelectedOperandV1"));
     assert!(source.contains("resolveExpressionContractVersionsV1"));
     assert!(source.contains("resolveExprOpcodeVersionV1"));
@@ -17191,8 +17192,8 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
         "CMPI.W #TKPKG_PARSE_ROUTE_FRAME_SIZE,D0\n        BNE.S badRequest\n        MOVEA.L A1,A0\n        JSR line_router.prvmRouteLine68000"
     ));
     assert!(tkpkg_source_contains(
-        &source,
-        "tkpkgServiceEncodeInstructionV1\t.block"
+        &encoding,
+        "encodeInstructionV1\t.block"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -17209,6 +17210,7 @@ fn motorola68020_tkpkg_selection_service_has_one_implementation_owner() {
     let facade = tkpkg_amigaos_source("tkpkg_service.asm");
     let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
     let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
+    let encoding = tkpkg_amigaos_source("tkpkg_encode_service.asm");
 
     assert!(facade.contains(".use tkpkg.amigaos.selection_service as selection"));
     assert!(tkpkg_source_contains(
@@ -17216,7 +17218,7 @@ fn motorola68020_tkpkg_selection_service_has_one_implementation_owner() {
         "handleSelectInstruction:\n        MOVE.L A0,-(SP)\n        JSR selection.selectInstructionV1"
     ));
     assert!(tkpkg_source_contains(
-        &facade,
+        &encoding,
         "havePipeline:\n        JSR selection.buildSelectedEnvelopeV1"
     ));
     assert!(!facade.contains("buildSelectedEnvelopeV1\t.block"));
@@ -17231,6 +17233,24 @@ fn motorola68020_tkpkg_selection_service_has_one_implementation_owner() {
     assert!(operand.contains("tkpkgMselTryBuildCandidateV1\t.block"));
     assert!(operand.contains("encodeSelectedOperandV1\t.block"));
     assert!(selection.contains("noOutputErrorV1\t.block"));
+}
+
+#[test]
+fn motorola68020_tkpkg_encode_service_has_one_implementation_owner() {
+    let facade = tkpkg_amigaos_source("tkpkg_service.asm");
+    let encoding = tkpkg_amigaos_source("tkpkg_encode_service.asm");
+
+    assert!(facade.contains(".use tkpkg.amigaos.encode_service as encoding"));
+    assert!(facade.contains("jsr encoding.encodeInstructionV1"));
+    assert!(facade.contains("jsr encoding.encodeSelectedInstructionV1"));
+    assert!(!facade.contains("tkpkgEncodeFindAndExecuteTableProgram\t.block"));
+    assert!(!facade.contains("tkpkgEncodeExecuteProgram\t.block"));
+    assert!(!facade.contains("writeCandidateOutputV1\t.block"));
+    assert!(encoding.contains("encodeInstructionV1\t.block"));
+    assert!(encoding.contains("encodeSelectedInstructionV1\t.block"));
+    assert!(encoding.contains("tkpkgEncodeFindAndExecuteTableProgram\t.block"));
+    assert!(encoding.contains("tkpkgEncodeExecuteProgram\t.block"));
+    assert!(encoding.contains("writeCandidateOutputV1\t.block"));
 }
 
 #[test]
@@ -17689,9 +17709,11 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
     let service = tkpkg_amigaos_source("tkpkg_service.asm");
     let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
     let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
+    let encoding = tkpkg_amigaos_source("tkpkg_encode_service.asm");
 
-    assert!(service.contains("tkpkgEncodeFindAndExecuteTableProgram"));
-    assert!(service.contains("TablChunkOffsetLo"));
+    assert!(!service.contains("tkpkgEncodeFindAndExecuteTableProgram"));
+    assert!(encoding.contains("tkpkgEncodeFindAndExecuteTableProgram"));
+    assert!(encoding.contains("TablChunkOffsetLo"));
     assert!(selection.contains("tkpkgBuildSelectedEnvelopeFromMselV1"));
     assert!(operand.contains("tkpkgMselTryBuildCandidateV1"));
     assert!(operand.contains("TkpkgMselPlanU8Text"));
@@ -17742,7 +17764,7 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
         ]
     ));
     assert!(source_contains_in_order(
-        &service,
+        &encoding,
         &[
             "encodeCandidate",
             "bsr.w tkpkgEncodeFindAndExecuteTableProgram",

@@ -339,13 +339,13 @@ its own activated item/slice contract.
   - Commit outcome: one ownership-only operand-runtime commit.
   - Definition of done: service façade and selection owner do not interpret operand plans directly.
 
-- [ ] Item 5.6.2: extract the tkpkg encoding service
+- [x] Item 5.6.2: extract the tkpkg encoding service
   - Source requirement or finding IDs: NR-004; Items 5.6–5.6.1.
   - Invariant: package-table lookup, encoding-program execution, and encoded-output construction move to one focused owner without changing selector ordering or emitted bytes.
   - Expected files: `tkpkg_encode_service.asm` or repository-style equivalent and focused encode-service tests.
   - Proof: B encode-dispatch ownership; C encoding-program model; D current encode parity corpus.
   - Full quality gates: focused encoding contracts and D corpus; native formatter; staged native-porting; Rust quality; CPU-boundary guard; workflow gate.
-  - Plan-compliance review evidence: PASS for encoding-service extraction only.
+  - Plan-compliance review evidence: PASS for encoding-service extraction only. Evidence: `tkpkg_service.asm` delegates both encode entry paths to `tkpkg_encode_service.asm`, which now exclusively owns package-table lookup, encoding-program execution, and encoded-output construction. Focused ownership and Item 6 parity tests, staged native-porting, CPU-boundary, retained macro Level D wrapper, Rust quality, and workflow gates pass. CPU/family/dialect support remains unchanged.
   - Commit outcome: one ownership-only encoding-service commit.
   - Definition of done: `tkpkg_service.asm` contains no package-table interpreter, label lookup, or encoding logic.
 

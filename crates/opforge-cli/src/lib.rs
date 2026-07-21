@@ -759,7 +759,8 @@ fn process_failed_assembly_run(
         &diagnostics,
         cli_config,
         use_color,
-    )?;
+    )
+    .map_err(|write_failure| format!("{write_failure}; original error: {}", error.summary()))?;
     let result = handle_fixits(sink, cli_config, &diagnostics, fallback)?;
     merge_fixit_action_result(
         result,

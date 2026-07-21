@@ -121,16 +121,16 @@ this plan.
   - Commit outcome: one narrow validated-configuration handoff commit.
   - Definition of done: Complete — CLI-DIAG-008 fully closes and no second validation can enter a diagnostic-loss path. Evidence: validated-runner focused test, `cargo test -p cli`, `scripts/workflow/run_rust_quality_gate.sh`, and `make workflow-gate` (2026-07-21).
 
-- [ ] Item 5: add executable-level CLI diagnostic contract coverage and complete the remediation
+- [x] Item 5: add executable-level CLI diagnostic contract coverage and complete the remediation
   - Source requirement or finding IDs: CLI-DIAG-009 (no black-box CLI output contract); acceptance evidence for CLI-DIAG-001 through CLI-DIAG-008.
   - Invariant: each tested nonzero executable invocation has nonempty diagnostic output and identifies the terminal cause, unless `--no-error` was supplied. Tests assert exit status and public stdout/stderr/JSON, rather than internal helper state.
   - Expected files: CLI integration-test target(s), temporary input/output fixtures, Cargo manifest only if an existing workspace facility cannot launch `CARGO_BIN_EXE_opforge`, and no production semantic files beyond test-support seams strictly needed for capture.
   - Required matrix: missing `.asm` input with path and “not found”; unsupported extension with accepted-extension guidance; directory with zero/multiple `main.*`; ambiguous module with module name/candidates; output-open/permission failure with output path; failed diagnostics-file write with stderr fallback; `--quiet` fatal visibility; JSON fatal parseability; multi-input terminal input naming; and intentionally silent `--no-error`.
   - Proof discipline: use deterministic temporary paths and a portable failing-output mechanism; if permission denial is not portable, use an existing injectable writer or an OS-neutral invalid target and document the exact guarantee tested. Avoid asserting color/control-sequence layout.
   - Full quality gates: complete integration matrix; `cargo test -p opforge-cli`; `cargo test -p opforge-cli-core`; `scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`; `scripts/workflow/run_plan_workflow.sh` against this plan.
-  - Plan-compliance review evidence: PASS confirming every CLI-DIAG finding has direct executable evidence and no broad constructor churn entered the scope.
+  - Plan-compliance review evidence: PASS (2026-07-21) confirming every CLI-DIAG finding has direct executable evidence and no broad constructor churn entered the scope. The terminal sink-write propagation now includes the original fatal summary, as required by the executable fallback contract.
   - Commit outcome: one executable-contract-test commit, followed only by a documentation/plan checkbox update if required by the repository workflow.
-  - Definition of done: CLI-DIAG-009 fully closes; all nine findings have passing evidence; the plan can be archived with `scripts/workflow/archive_completed_plan.sh` only after the implementation commits and completion evidence exist.
+  - Definition of done: Complete — CLI-DIAG-009 fully closes; all nine findings have passing evidence. `crates/opforge-cli/tests/diagnostic_contract.rs` covers public output for missing/unsupported inputs, zero/multiple-root folders, output failure, quiet, JSON, multi-input, and `--no-error`; Linux also covers the post-open diagnostics-write fallback. Evidence: focused integration suite, `cargo test -p cli-core`, `cargo test -p cli`, `scripts/workflow/run_rust_quality_gate.sh`, and `make workflow-gate` (2026-07-21). The plan is ready for archival after this item’s commit.
 
 ## Blocking Rules
 

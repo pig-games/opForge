@@ -59,12 +59,12 @@ M1 Context-window primitive -> M2 related spans/guidance -> M3 executable CLI pr
   - Commit outcome: one shared diagnostic-rendering primitive commit.
   - Definition of done: CLI-CONTEXT-001 and CLI-CONTEXT-002 fully close with deterministic bounded output.
 
-- [ ] Item 2: render related spans and preserve structured guidance in text layout
+- [x] Item 2: render related spans and preserve structured guidance in text layout
   - Source requirement or finding IDs: CLI-CONTEXT-003 (related-span context is not actionable); CLI-CONTEXT-004 (notes/help/fixits must survive richer text output).
   - Invariant: primary context remains visually dominant; every related span renders its own file/line/column identity and bounded context when available, followed by its label. Notes, help, and fixits preserve order; JSON stays schema-compatible.
   - Expected files: `crates/opforge-types/src/diagnostics.rs` and focused diagnostic tests.
   - Full quality gates: focused `cargo test -p types`; `cargo test -p cli`; `scripts/workflow/run_rust_quality_gate.sh`; `make workflow-gate`.
-  - Plan-compliance review evidence: PASS for presentation-only metadata preservation.
+  - Plan-compliance review evidence: PASS — text rendering adds file-qualified related-span locations and same-file context only; related spans, notes, help, fixits, and JSON fields retain their existing meaning. Focused `types` and `cli` tests, Rust quality gate, and workflow gate passed.
   - Commit outcome: one related-span/guidance rendering commit.
   - Definition of done: CLI-CONTEXT-003 and CLI-CONTEXT-004 fully close without changing diagnostic meaning or JSON fields.
 

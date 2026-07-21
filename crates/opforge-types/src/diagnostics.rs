@@ -270,18 +270,30 @@ impl Diagnostic {
         }
 
         for related in self.related_spans.iter().filter(|span| !span.is_primary) {
-            let ctx = build_context_lines_with_range(
+            let related_file = related.file.as_deref().or(self.file());
+            out.push_str("      = ");
+            out.push_str(&format_span_location(
+                related_file,
                 related.line,
                 related.col_start,
                 related.col_end,
-                lines,
-                None,
-                use_color,
-            );
-            for line in ctx {
-                out.push_str("      = ");
-                out.push_str(line.trim_start());
-                out.push('\n');
+            ));
+            out.push('\n');
+
+            if related.file == self.file {
+                let ctx = build_context_lines_with_range(
+                    related.line,
+                    related.col_start,
+                    related.col_end,
+                    lines,
+                    None,
+                    use_color,
+                );
+                for line in ctx {
+                    out.push_str("      = ");
+                    out.push_str(line.trim_start());
+                    out.push('\n');
+                }
             }
             if let Some(label) = &related.label {
                 out.push_str("      = note: ");
@@ -486,6 +498,24 @@ fn marker_width(source: &str, column: usize, col_end: Option<usize>) -> usize {
         .max(1)
 }
 
+fn format_span_location(
+    file: Option<&str>,
+    line: u32,
+    col_start: Option<usize>,
+    col_end: Option<usize>,
+) -> String {
+    let mut location = file.map_or_else(|| line.to_string(), |file| format!("{file}:{line}"));
+    if let Some(col_start) = col_start {
+        location.push(':');
+        location.push_str(&col_start.to_string());
+        if let Some(col_end) = col_end.filter(|col_end| *col_end > col_start) {
+            location.push_str("..");
+            location.push_str(&col_end.to_string());
+        }
+    }
+    location
+}
+
 fn split_prefixed_diagnostic(message: &str) -> Option<(&str, &str)> {
     let (code, tail) = message.split_once(':')?;
     let code = code.trim();
@@ -621,5 +651,60 @@ mod tests {
         let unicode_context =
             build_context_lines_with_range(1, Some(3), None, Some(&unicode), None, false);
         assert_eq!(unicode_context[1], "      |  ^");
+    }
+
+    #[test]
+    fn related_spans_keep_file_identity_and_preserve_guidance_order() {
+        let lines = vec![
+            "first".to_string(),
+            "duplicate".to_string(),
+            "third".to_string(),
+        ];
+        let diagnostic = Diagnostic::new(
+            2,
+            Severity::Error,
+            AsmError::new(AsmErrorKind::Symbol, "duplicate symbol", None),
+        )
+        .with_file(Some("main.asm".to_string()))
+        .with_column(Some(1))
+        .with_related_span(LabeledSpan {
+            file: Some("main.asm".to_string()),
+            line: 1,
+            col_start: Some(1),
+            col_end: Some(4),
+            label: Some("first defined here".to_string()),
+            is_primary: false,
+        })
+        .with_related_span(LabeledSpan {
+            file: Some("include.asm".to_string()),
+            line: 8,
+            col_start: Some(2),
+            col_end: None,
+            label: Some("included from here".to_string()),
+            is_primary: false,
+        })
+        .with_note("symbols are case-insensitive")
+        .with_help("rename one definition")
+        .with_fixit(Fixit {
+            file: Some("main.asm".to_string()),
+            line: 2,
+            col_start: Some(1),
+            col_end: Some(10),
+            replacement: "unique_name".to_string(),
+            applicability: "machine-applicable".to_string(),
+        });
+
+        let text = diagnostic.format_with_context(Some(&lines), false);
+        assert!(text.contains("      = main.asm:1:1..4"), "{text}");
+        assert!(text.contains("      = 1 | first"), "{text}");
+        assert!(text.contains("      = include.asm:8:2"), "{text}");
+        assert!(!text.contains("      = 8 | <end of file>"), "{text}");
+        assert!(text.contains("      = note: first defined here"), "{text}");
+        assert!(text.contains("      = note: included from here"), "{text}");
+
+        let note = text.find("note: symbols are case-insensitive").unwrap();
+        let help = text.find("help: rename one definition").unwrap();
+        let fixit = text.find("suggestion: replace 2:1-10").unwrap();
+        assert!(note < help && help < fixit, "{text}");
     }
 }

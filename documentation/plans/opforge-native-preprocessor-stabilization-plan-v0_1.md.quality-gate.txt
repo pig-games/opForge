@@ -2,3 +2,8 @@ PASS: `plan-quality-reviewer` found the stabilization plan commit-sized, Rust-au
 
 Reviewer: `plan-quality-reviewer`.
 Decision: PASS. The plan requires a non-writing fail-closed macro `--verify` before each macro-affecting source commit, followed by a clean-tree, source-identity-bound evidence-only receipt commit before the next implementation item.
+
+PASS: `plan-quality-reviewer` re-reviewed the 2026-07-21 native runtime-boundary amendment. Milestones now match execution order, and each extraction is a separately numbered, one-commit ownership-only item with dependencies, gates, review evidence, and a done criterion; completed Items 1–5.1 remain historically unchanged.
+
+Reviewer: `plan-quality-reviewer`.
+Decision: PASS. The amended next implementation slice is Item 5.2 runtime responsibility/dependency inventory; CLI diagnostic remediation remains after the stabilization readiness gate and before segment capture.

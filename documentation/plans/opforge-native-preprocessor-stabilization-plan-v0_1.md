@@ -261,7 +261,7 @@ its own activated item/slice contract.
   - Commit outcome: one evidence-and-architecture inventory commit.
   - Definition of done: no mandatory or conditional target proceeds to decomposition without a repository-grounded ownership decision.
 
-- [ ] Item 5.3: define the target native runtime boundary contract
+- [x] Item 5.3: define the target native runtime boundary contract
   - Source requirement or finding IDs: NR-009; Item 5.2 inventory.
   - Invariant: one-way ownership and stable service contracts are explicit for CLI frontend, preprocessor, opasm driver/engine, tkpkg façade and runtimes, expression service, and diagnostic/event projection.
   - Expected files: runtime-boundary architecture record, affected slice metadata, focused architecture/dependency contract tests, and this plan.
@@ -269,7 +269,7 @@ its own activated item/slice contract.
   - Required neutral runtime context: current pass, current address, symbol lookup, symbol stability/finalization, and diagnostic sink.
   - Proof: B architecture/API contracts; C dependency model proving prohibited reverse edges.
   - Full quality gates: focused architecture/dependency checks; `make workflow-gate`.
-  - Plan-compliance review evidence: PASS for target contracts only.
+  - Plan-compliance review evidence: PASS for target contracts only. Evidence: `documentation/architecture/native-runtime-boundary-contract-v0_1.md`; `documentation/plans/slices/native-porting-slice-runtime-boundary-contract.toml`; `python3 scripts/workflow/check_native_runtime_boundary_contract.py` PASS; `python3 -m unittest scripts/workflow/tests/test_check_native_runtime_boundary_contract.py` PASS; plan-compliance review PASS for B/C architecture evidence only.
   - Commit outcome: one architecture-contract commit.
   - Definition of done: every later extraction names source owner, destination owner, temporary adapter, and adapter deletion criterion.
 

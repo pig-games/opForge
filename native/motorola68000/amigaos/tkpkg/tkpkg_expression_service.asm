@@ -5,7 +5,7 @@
 	.pub
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
-	.use tkpkg.amigaos.expression_context as context
+	.use tkpkg.amigaos.runtime_context as context
 	.use opcore.amigaos.expr_bridge
 
 TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE = 9
@@ -240,7 +240,13 @@ executePreparedV1	.block
 	rts
 
 haveLabelContext
-	jsr context.loadV1
+	jsr context.getPassV1
+	move.l d0, d6
+	move.l PreparedLabelCount, d0
+	jsr context.getSymbolStabilityTableV1
+	tst.b d0
+	bne.s missingContext
+	movea.l a0, a6
 	movea.l PreparedOperandPtr, a0
 	move.l PreparedOperandLen, d0
 	movea.l PreparedLabelNamePtr, a1
@@ -262,6 +268,12 @@ haveLabelContext
 
 ok
 	moveq #0, d0
+	rts
+
+missingContext
+	lea NoLabelContextText, a1
+	moveq #EVAL_EXPR_NO_LABEL_CONTEXT_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 bridgeFail

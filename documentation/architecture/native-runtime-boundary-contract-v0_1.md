@@ -68,7 +68,7 @@ family, dialect, instruction, selector, plan, or encoding support.
 | current pass | engine adapter | resolve pass-sensitive expression/selection behavior | reading engine globals |
 | current address | engine adapter | form neutral evaluation requests | reading engine PC storage |
 | symbol lookup | engine adapter | resolve a named symbol | scanning engine label tables |
-| symbol stability/finalization | engine adapter | distinguish unresolved/final symbol state | inferring from label-table representation |
+| symbol stability/finalization | runtime-context façade over engine adapter | obtain a bounded neutral stability snapshot | inferring from engine label-table representation |
 | diagnostic sink | runtime-context façade | report a neutral code/message/span result | writing service or engine diagnostic buffers directly |
 
 The ABI must be pointer/register explicit, read-only to package consumers, and
@@ -92,7 +92,7 @@ adapter, and deletion criterion.  “None” means no adapter is authorized.
 | 5.6.1 | selection/facade operand-plan handling | tkpkg operand runtime | selection-to-operand call | neither prior owner interprets plans |
 | 5.6.2 | selection/facade package encoding | tkpkg encoding service | selection-to-encoding call | prior owners contain no encoding interpreter |
 | 5.7 | direct service/engine context access | neutral context plus engine adapter | engine context adapter | consumers use the context ABI only |
-| 5.7.1 | expression consumer direct context | expression service/context ABI | Item 5.7 adapter | service-to-engine import removed |
+| 5.7.1 | expression consumer direct context | expression service/context ABI | Item 5.7 adapter | expression service imports only neutral context; temporary context adapter deleted |
 | 5.7.2 | selection/encoding consumer direct context | selection/encoding context ABI | Item 5.7 adapter | no tkpkg engine-table import/address remains |
 | 5.8 | driver directive routing | directive router | driver-to-router dispatch | driver has no directive/mnemonic string chains |
 | 5.8.1 | driver structural scans | structural-flow owner | driver-to-flow dispatch | driver has no domain terminator scans |

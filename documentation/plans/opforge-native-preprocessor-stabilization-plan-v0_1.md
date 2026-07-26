@@ -360,7 +360,7 @@ its own activated item/slice contract.
   - Commit outcome: one context-contract commit.
   - Definition of done: the ABI and adapter expose all required neutral fields without migrating consumers.
 
-- [ ] Item 5.7.1: migrate the tkpkg expression consumer to neutral context
+- [x] Item 5.7.1: migrate the tkpkg expression consumer to neutral context
   - Source requirement or finding IDs: NR-005; Items 5.5.1 and 5.7.
   - Invariant: expression service uses only the neutral context for pass, address, symbols, stability, and diagnostics.
   - Expected files: tkpkg expression consumer, opasm context adapter, focused context-field contracts, and slice metadata.

@@ -69,6 +69,12 @@ return
 	rts
 	.bend  ; lookupSymbolV1
 
+; Inputs: D0 = symbol index.
+; Outputs: D0 = 1 when the symbol is finalized, 0 otherwise.
+isSymbolFinalV1	.block
+	jmp engine.opasmEngineIsLabelFinalV1
+	.bend  ; isSymbolFinalV1
+
 ; Inputs: A0 = first text, A1 = NUL-terminated second text, D0 = first length.
 ; Outputs: D0 = 1 when equal case-insensitively, 0 otherwise.
 stringEqualsCasefoldV1	.block

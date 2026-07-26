@@ -81,3 +81,10 @@ Evidence: `tkpkg_runtime_context.asm`; `tkpkg_engine_context_adapter.asm`; `opas
 
 Reviewer: `plan-compliance-reviewer` (`/root/item57_compliance`).
 Decision: PASS. The staged Item 5.7 diff is a neutral runtime-context/engine-adapter ownership split only. It adds no CPU, family, dialect, instruction, encoding, or production-consumer migration; existing direct consumers remain untouched for Items 5.7.1–5.7.2.
+
+PASS: Item 5.7.1 migrates `tkpkg_expression_service.asm` from the deleted temporary engine-table adapter to `tkpkg_runtime_context.asm`. The service now receives pass and a bounded finalization snapshot through the neutral ABI while retaining the expression-bridge register contract. Selection and encoding remain untouched; CPU/family/dialect behavior is unchanged.
+
+Evidence: `documentation/plans/slices/native-porting-slice-tkpkg-expression-context.toml`; focused expression/context, composed-runtime, Item 6 parity, inventory, and runtime-boundary checks PASS; staged native-porting gate PASS; full Rust quality gate PASS; workflow validators PASS; real FS-UAE `native_expression_context_forward_label_fs_uae` PASS (one test, no skip), proving the forward label through pass-one instability and pass-two finalization with exact Rust-matching bytes.
+
+Reviewer: `plan-compliance-reviewer` (`/root/item571_recheck`).
+Decision: PASS. The staged migration deletes only the temporary expression context and moves expression to the neutral runtime-context ABI; selection/encoding and CPU behavior remain untouched. The affected real FS-UAE forward-label fixture closes the prior Level D evidence gap.

@@ -17087,7 +17087,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     let source = tkpkg_amigaos_source("tkpkg_service.asm");
     let parser = tkpkg_amigaos_source("tkpkg_parse_service.asm");
     let expression = tkpkg_amigaos_source("tkpkg_expression_service.asm");
-    let expression_context = tkpkg_amigaos_source("tkpkg_expression_context.asm");
+    let runtime_context = tkpkg_amigaos_source("tkpkg_runtime_context.asm");
     let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
     let encoding = tkpkg_amigaos_source("tkpkg_encode_service.asm");
     let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
@@ -17127,8 +17127,8 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     assert!(!source.contains(".use opasm.amigaos.selector_stage"));
     assert!(source.contains(".use tkpkg.amigaos.expression_service as expression"));
     assert!(source.contains(".use tkpkg.amigaos.selection_service as selection"));
-    assert!(expression.contains(".use tkpkg.amigaos.expression_context as context"));
-    assert!(expression_context.contains(".use opasm.amigaos.engine"));
+    assert!(expression.contains(".use tkpkg.amigaos.runtime_context as context"));
+    assert!(!runtime_context.contains(".use opasm.amigaos.engine"));
     assert!(tkpkg_source_contains(
         &source,
         "handleParseLine:\n        MOVE.L A0,-(SP)\n        BSR.W tkpkgServiceParseLineV1"
@@ -17181,8 +17181,11 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
         "move.l d3, TKPKG_EVAL_EXPR_EXTENSION_RESULT_OFF(a5)"
     ));
     assert!(expression.contains("ValuePrefixText"));
-    assert!(expression_context.contains("opasmEngineSessionPass"));
-    assert!(expression_context.contains("opasmEngineLabelFinalizedTable"));
+    assert!(tkpkg_source_contains(&expression, "JSR context.getPassV1"));
+    assert!(tkpkg_source_contains(
+        &expression,
+        "JSR context.getSymbolStabilityTableV1"
+    ));
     assert!(tkpkg_source_contains(
         &source,
         "tkpkgServiceParseLineV1\t.block\n        JMP parser.parseLineV1"
@@ -17447,7 +17450,7 @@ fn motorola68020_tkpkg_parser_adapter_has_one_implementation_owner() {
 fn motorola68020_tkpkg_expression_service_has_one_implementation_owner() {
     let facade = tkpkg_amigaos_source("tkpkg_service.asm");
     let expression = tkpkg_amigaos_source("tkpkg_expression_service.asm");
-    let context = tkpkg_amigaos_source("tkpkg_expression_context.asm");
+    let context = tkpkg_amigaos_source("tkpkg_runtime_context.asm");
 
     assert!(tkpkg_source_contains(
         &facade,
@@ -17469,11 +17472,14 @@ fn motorola68020_tkpkg_expression_service_has_one_implementation_owner() {
         &expression,
         "badPayload\n        MOVEQ #abi.STATUS_BAD_REQUEST_V1,D0\n        MOVEQ #0,D1\n        TST.B D0\n        RTS"
     ));
-    assert!(!expression.contains("opasmEngineLabelFinalizedTable"));
-    assert!(!expression.contains("opasmEngineSessionPass"));
-    assert!(context.contains(".use opasm.amigaos.engine"));
-    assert!(context.contains("opasmEngineSessionPass"));
-    assert!(context.contains("opasmEngineLabelFinalizedTable"));
+    assert!(expression.contains(".use tkpkg.amigaos.runtime_context as context"));
+    assert!(!expression.contains(".use opasm.amigaos.engine"));
+    assert!(tkpkg_source_contains(
+        &expression,
+        "haveLabelContext\n        JSR context.getPassV1\n        MOVE.L D0,D6\n        MOVE.L PreparedLabelCount,D0\n        JSR context.getSymbolStabilityTableV1\n        TST.B D0\n        BNE.S missingContext\n        MOVEA.L A0,A6"
+    ));
+    assert!(!context.contains(".use opasm.amigaos.engine"));
+    assert!(context.contains("getSymbolStabilityTableV1"));
 }
 
 #[test]
@@ -17501,6 +17507,7 @@ fn motorola68020_tkpkg_runtime_context_exposes_neutral_file_split_contract() {
     assert!(adapter.contains("engine.opasmEngineGetLabelNameV1"));
     assert!(adapter.contains("engine.opasmEngineGetLabelValueV1"));
     assert!(adapter.contains("engine.opasmEngineIsLabelFinalV1"));
+    assert!(adapter.contains("isSymbolFinalV1\t.block"));
     assert!(engine.contains("opasmEngineIsLabelFinalV1\t.block"));
 }
 
@@ -17530,6 +17537,29 @@ fn motorola68020_tkpkg_runtime_context_models_symbol_status_transitions() {
     assert!(tkpkg_source_contains(
         &adapter,
         "MOVEQ #RUNTIME_CONTEXT_SYMBOL_FOUND,D0\n        BRA.S return"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_runtime_context_materializes_stability_snapshot() {
+    let context = tkpkg_amigaos_source("tkpkg_runtime_context.asm");
+    let adapter = tkpkg_amigaos_source("tkpkg_engine_context_adapter.asm");
+
+    assert!(tkpkg_source_contains(
+        &context,
+        "getSymbolStabilityTableV1\t.block\n        MOVEM.L D1-D3/A1,-(SP)\n        CMPI.W #RUNTIME_CONTEXT_STABILITY_CAPACITY,D0\n        BHI.S tooLarge"
+    ));
+    assert!(tkpkg_source_contains(
+        &context,
+        "copyLoop\n        MOVE.L D3,D0\n        JSR adapter.isSymbolFinalV1\n        MOVE.B D0,(A1)+"
+    ));
+    assert!(tkpkg_source_contains(
+        &context,
+        "ready\n        LEA RuntimeContextStabilityTable,A0\n        MOVEQ #0,D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &adapter,
+        "isSymbolFinalV1\t.block\n        JMP engine.opasmEngineIsLabelFinalV1"
     ));
 }
 
@@ -38172,6 +38202,73 @@ fn external_fs_uae_opforge_native_cli_65c02_expr_syntax_matches_rust_bin() {
             assert_eq!(
                 native_bin, rust_bin,
                 "native 65C02 expression syntax bytes differ from Rust\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+        }
+    }
+}
+
+#[test]
+fn native_expression_context_forward_label_fs_uae() {
+    // Proof level D. The real native CLI evaluates the forward label once while
+    // it is unstable in pass one and again after finalization in pass two. This
+    // directly exercises the expression service's neutral context snapshot.
+    // It does not prove other expression operators or CPU packages.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = b"start lda #forward\nrts\nforward .const 42\n";
+    let (rust_entries, rust_diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[
+            ".cpu 65c02",
+            ".org $0800",
+            "start lda #forward",
+            "rts",
+            "forward .const 42",
+        ],
+        true,
+    )
+    .expect("Rust forward-label expression assembly should run");
+    assert!(
+        rust_diagnostics.is_empty(),
+        "Rust reference diagnostics: {rust_diagnostics:?}"
+    );
+    let rust_bin = rust_entries
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect::<Vec<_>>();
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "65c02-expression-forward-label",
+        cpu_id: m65c02_cpu_id.as_str(),
+        source,
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root, &cases,
+    )
+    .expect("forward-label expression FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native forward-label expression fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            let native_bin = fs::read(
+                run.artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read native forward-label expression output");
+            assert_eq!(
+                native_bin, rust_bin,
+                "native forward-label expression bytes differ from Rust\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
         }

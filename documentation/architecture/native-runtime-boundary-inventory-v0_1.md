@@ -66,8 +66,8 @@ than a package runtime addressing engine-owned mutable tables.
 - Imports/outbound dependencies: tkpkg ABI/buffers, dedicated request-lifecycle,
   status-projection, parser-adapter, expression-service, and selection-service
   owners; engine, expression bridge, package loader, pipeline, and tokenizer VM.
-  The expression service reaches the temporary engine-state boundary only through
-  its named `tkpkg.amigaos.expression_context` adapter.
+  The expression service now reaches pass/finalization state only through the
+  neutral `tkpkg.amigaos.runtime_context` façade.
 - Mutable state: request/control-block pointers, output and last-error buffers,
   and service result fields.
 - Routine responsibility groups: bootstrap/request validation; status and
@@ -83,9 +83,10 @@ than a package runtime addressing engine-owned mutable tables.
   delegates pending caller migration. Item 5.5 extracts the fixed PRVM route
   frame adapter to `tkpkg.amigaos.parse_service`; Item 5.5.1 moves expression
   envelope preparation and bridge execution to
-  `tkpkg.amigaos.expression_service` and places the temporary engine read behind
-  `tkpkg.amigaos.expression_context`. The facade retains package-contract
-  validation only until the neutral-context migration. Item 5.6 moves selection
+  `tkpkg.amigaos.expression_service`; Item 5.7.1 then migrates its pass and
+  finalized-label access to `tkpkg.amigaos.runtime_context` and deletes the
+  temporary adapter. The facade retains package-contract validation only until
+  the neutral-context migration. Item 5.6 moves selection
   decoding and candidate traversal to `tkpkg.amigaos.selection_service`; Item
   5.6.1 moves the unchanged operand-plan runtime to
   `tkpkg.amigaos.operand_runtime`, and Item 5.6.2 moves package-table encoding
@@ -149,11 +150,12 @@ than a package runtime addressing engine-owned mutable tables.
 - Imports/outbound dependencies: only the engine-context adapter.
 - Mutable state: one private neutral diagnostic record; it is not an engine,
   CLI, or package-service buffer.
-- Routine responsibility groups: versioned read-only context projection and
-  bounded diagnostic handoff.
-- Decision: this is a file-boundary split that establishes the future consumer
-  contract. It neither migrates a production consumer nor changes CPU, family,
-  dialect, instruction, selector, plan-tag, or encoding support.
+- Routine responsibility groups: versioned read-only context projection,
+  bounded diagnostic handoff, and bounded stability snapshot materialization.
+- Decision: Item 5.7.1 migrates the expression consumer to this façade through
+  a bounded stability snapshot. Selection and encoding migration remain for
+  Item 5.7.2. Neither change adds CPU, family, dialect, instruction, selector,
+  plan-tag, or encoding support.
 
 ### `tkpkg.amigaos.engine_context_adapter` (NR-005, Item 5.7 ownership split)
 
@@ -165,8 +167,9 @@ than a package runtime addressing engine-owned mutable tables.
   the runtime-context ABI and never exposes engine table layout.
 - Routine responsibility groups: the sole transitional engine access point for
   future tkpkg context consumers.
-- Decision: this is a file-boundary split only. Items 5.7.1 and 5.7.2 migrate
-  existing consumers; this item adds no CPU or package semantics.
+- Decision: this adapter remains the sole engine-state reader. Item 5.7.1 has
+  migrated expression; Item 5.7.2 migrates selection and encoding. This work
+  adds no CPU or package semantics.
 
 ### `opasm.amigaos.engine` (NR-001, conditional decomposition)
 

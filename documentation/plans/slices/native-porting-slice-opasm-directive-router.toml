@@ -1,0 +1,38 @@
+[slice]
+schema_version = 2
+name = "opasm directive-router ownership"
+kind = "native-rust-parity"
+rust_reference = [
+  "existing native CLI directive behavior and current Rust CLI fixture bytes remain the behavioral authority"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_directive_router.asm::classifyV1",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverRecordLabel",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverAdvancePc",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverEmitImageBytes"
+]
+invariant = "One focused owner classifies existing non-structural directives while the assembly driver keeps callback orchestration, traversal, and handler semantics."
+expected_inputs = "Existing mnemonic pointer and length from the engine statement metadata, including optional leading dot and case-insensitive spelling."
+expected_outputs = "The same existing numeric handler route or no route; identical label, PC, image, diagnostic, and selected-encoding behavior."
+known_non_equivalences = "Structural-flow terminator scans remain in the driver for Item 5.8.1. No CPU, family, dialect, instruction, segment, statement, selector, operand-plan, encoding, or source-acceptance change."
+fast_proof_command = "cargo test -p asm motorola68020_opasm_directive_router_ -- --nocapture && cargo test -p asm motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label_layout -- --nocapture && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_opasm_directive_router_owns_non_structural_mnemonic_classification"
+proof_level = "B"
+proves = "The router is the sole text-classification owner used by the driver callback routines."
+does_not_prove = "Guest execution or any new CPU support."
+
+[[tests]]
+name = "motorola68020_item7_native_layout_directives_route_before_selected_encoding"
+proof_level = "C"
+proves = "The existing layout/data dispatch routes from router result codes before selected encoding."
+does_not_prove = "Structural-flow behavior or a new directive feature."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_bytes"
+proof_level = "D"
+proves = "The affected existing native directive path produces the established Rust-guided bytes in FS-UAE."
+does_not_prove = "New CPU, family, dialect, instruction, segment, or statement support."

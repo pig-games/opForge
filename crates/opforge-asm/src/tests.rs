@@ -375,6 +375,31 @@ fn native_debug_contract_cli_header_fs_uae_proves_real_site_behavior() {
 }
 
 #[test]
+fn external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture() {
+    match crate::fs_uae_smoke::run_native_cli_directive_router_from_env(&workspace_root())
+        .expect("native directive-router FS-UAE fixture should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native directive-router fixture failed under FS-UAE\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            let bytes = fs::read(
+                run.artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read native directive-router output");
+            assert_eq!(bytes, vec![0xa9, 0x42, 0x99]);
+        }
+    }
+}
+
+#[test]
 fn native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection() {
     // Proof level D. The guest harness captures COPY/PAIR/TEXT/LOCAL, validates
     // bounded substitution, and proves a nested macro call fails without
@@ -14195,17 +14220,13 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &driver,
         &[
             "opasmDriverEmitImageBytes .BLOCK",
-            "LEA RegionMnemonicText, A1",
-            "LEA SectionMnemonicText, A1",
-            "LEA EndsectionMnemonicText, A1",
-            "LEA PlaceMnemonicText, A1",
-            "LEA AlignMnemonicText, A1",
-            "BNE.W emitAlign",
-            "LEA DsMnemonicText, A1",
-            "BNE.W emitDs",
-            "LEA ResMnemonicText, A1",
-            "LEA FillMnemonicText, A1",
-            "BNE.W emitFill",
+            "JSR directives.classifyV1",
+            "CMPI.W #directives.OPASM_DIRECTIVE_ALIGN, D3",
+            "BEQ.W emitAlign",
+            "CMPI.W #directives.OPASM_DIRECTIVE_DS, D3",
+            "BEQ.W emitDs",
+            "CMPI.W #directives.OPASM_DIRECTIVE_FILL, D3",
+            "BEQ.W emitFill",
             "BSR.W prepareEncodeSelectedRequestForStatement",
         ]
     ));
@@ -14213,22 +14234,23 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &driver,
         &[
             "opasmDriverAdvancePc .BLOCK",
-            "LEA RegionMnemonicText, A1",
-            "BNE.W region",
-            "LEA SectionMnemonicText, A1",
-            "BNE.W section",
-            "LEA EndsectionMnemonicText, A1",
-            "BNE.W endsection",
-            "LEA PlaceMnemonicText, A1",
-            "BNE.W place",
-            "LEA AlignMnemonicText, A1",
-            "BNE.W align",
-            "LEA DsMnemonicText, A1",
-            "BNE.W ds",
-            "LEA ResMnemonicText, A1",
-            "BNE.W res",
-            "LEA FillMnemonicText, A1",
-            "BNE.W fill",
+            "JSR directives.classifyV1",
+            "CMPI.W #directives.OPASM_DIRECTIVE_REGION, D3",
+            "BEQ.W region",
+            "CMPI.W #directives.OPASM_DIRECTIVE_SECTION, D3",
+            "BEQ.W section",
+            "CMPI.W #directives.OPASM_DIRECTIVE_ENDSECTION, D3",
+            "BEQ.W endsection",
+            "CMPI.W #directives.OPASM_DIRECTIVE_PLACE, D3",
+            "BEQ.W place",
+            "CMPI.W #directives.OPASM_DIRECTIVE_ALIGN, D3",
+            "BEQ.W align",
+            "CMPI.W #directives.OPASM_DIRECTIVE_DS, D3",
+            "BEQ.W ds",
+            "CMPI.W #directives.OPASM_DIRECTIVE_RES, D3",
+            "BEQ.W res",
+            "CMPI.W #directives.OPASM_DIRECTIVE_FILL, D3",
+            "BEQ.W fill",
             "BSR.W trySelectedEncodeSizeForStatement",
         ]
     ));
@@ -14385,22 +14407,19 @@ fn motorola68020_item8_native_data_text_directives_route_before_selected_encodin
         &driver,
         &[
             "opasmDriverEmitImageBytes .BLOCK",
-            "LEA ByteMnemonicText, A1",
-            "BNE.W emitByte",
-            "LEA DbMnemonicText, A1",
-            "BNE.W emitByte",
-            "LEA WordMnemonicText, A1",
-            "BNE.W emitWord",
-            "LEA DwMnemonicText, A1",
-            "BNE.W emitWord",
-            "LEA LongMnemonicText, A1",
-            "BNE.W emitLong",
-            "LEA TextMnemonicText, A1",
-            "BNE.W emitText",
-            "LEA NullMnemonicText, A1",
-            "BNE.W emitNull",
-            "LEA PtextMnemonicText, A1",
-            "BNE.W emitPtext",
+            "JSR directives.classifyV1",
+            "CMPI.W #directives.OPASM_DIRECTIVE_BYTE, D3",
+            "BEQ.W emitByte",
+            "CMPI.W #directives.OPASM_DIRECTIVE_WORD, D3",
+            "BEQ.W emitWord",
+            "CMPI.W #directives.OPASM_DIRECTIVE_LONG, D3",
+            "BEQ.W emitLong",
+            "CMPI.W #directives.OPASM_DIRECTIVE_TEXT, D3",
+            "BEQ.W emitText",
+            "CMPI.W #directives.OPASM_DIRECTIVE_NULL, D3",
+            "BEQ.W emitNull",
+            "CMPI.W #directives.OPASM_DIRECTIVE_PTEXT, D3",
+            "BEQ.W emitPtext",
             "BSR.W prepareEncodeSelectedRequestForStatement",
         ]
     ));
@@ -14408,18 +14427,19 @@ fn motorola68020_item8_native_data_text_directives_route_before_selected_encodin
         &driver,
         &[
             "opasmDriverAdvancePc .BLOCK",
-            "LEA ByteMnemonicText, A1",
-            "BNE.W byte",
-            "LEA WordMnemonicText, A1",
-            "BNE.W word",
-            "LEA LongMnemonicText, A1",
-            "BNE.W long",
-            "LEA TextMnemonicText, A1",
-            "BNE.W text",
-            "LEA NullMnemonicText, A1",
-            "BNE.W null",
-            "LEA PtextMnemonicText, A1",
-            "BNE.W ptext",
+            "JSR directives.classifyV1",
+            "CMPI.W #directives.OPASM_DIRECTIVE_BYTE, D3",
+            "BEQ.W byte",
+            "CMPI.W #directives.OPASM_DIRECTIVE_WORD, D3",
+            "BEQ.W word",
+            "CMPI.W #directives.OPASM_DIRECTIVE_LONG, D3",
+            "BEQ.W long",
+            "CMPI.W #directives.OPASM_DIRECTIVE_TEXT, D3",
+            "BEQ.W text",
+            "CMPI.W #directives.OPASM_DIRECTIVE_NULL, D3",
+            "BEQ.W null",
+            "CMPI.W #directives.OPASM_DIRECTIVE_PTEXT, D3",
+            "BEQ.W ptext",
             "BSR.W trySelectedEncodeSizeForStatement",
         ]
     ));
@@ -14468,12 +14488,13 @@ fn motorola68020_item9_native_symbol_config_directives_route_before_selected_enc
         &driver,
         &[
             "opasmDriverRecordLabel .BLOCK",
-            "LEA ConstMnemonicText, A1",
-            "BNE.W recordConstSymbol",
-            "LEA VarMnemonicText, A1",
-            "BNE.W recordMutableSymbol",
-            "LEA SetMnemonicText, A1",
-            "BNE.W recordMutableSymbol",
+            "JSR directives.classifyV1",
+            "CMPI.W #directives.OPASM_DIRECTIVE_CONST, D3",
+            "BEQ.W recordConstSymbol",
+            "CMPI.W #directives.OPASM_DIRECTIVE_VAR, D3",
+            "BEQ.W recordMutableSymbol",
+            "CMPI.W #directives.OPASM_DIRECTIVE_SET, D3",
+            "BEQ.W recordMutableSymbol",
             "recordSymbolValue",
             "BSR.W readOperandValueForStatement",
             "JSR eng.opasmEngineRecordStatementLabelValueV1",
@@ -14483,13 +14504,10 @@ fn motorola68020_item9_native_symbol_config_directives_route_before_selected_enc
         &driver,
         &[
             "opasmDriverEmitImageBytes .BLOCK",
-            "LEA CpuMnemonicText, A1",
-            "BNE.W ok",
-            "LEA ConstMnemonicText, A1",
-            "BNE.W ok",
-            "LEA VarMnemonicText, A1",
-            "BNE.W ok",
-            "LEA SetMnemonicText, A1",
+            "JSR directives.classifyV1",
+            "CMPI.W #directives.OPASM_DIRECTIVE_PTEXT, D3",
+            "BEQ.W emitPtext",
+            "TST.W D3",
             "BNE.W ok",
             "BSR.W prepareEncodeSelectedRequestForStatement",
         ]
@@ -14498,13 +14516,10 @@ fn motorola68020_item9_native_symbol_config_directives_route_before_selected_enc
         &driver,
         &[
             "opasmDriverAdvancePc .BLOCK",
-            "LEA CpuMnemonicText, A1",
-            "BNE.W done",
-            "LEA ConstMnemonicText, A1",
-            "BNE.W done",
-            "LEA VarMnemonicText, A1",
-            "BNE.W done",
-            "LEA SetMnemonicText, A1",
+            "JSR directives.classifyV1",
+            "CMPI.W #directives.OPASM_DIRECTIVE_PTEXT, D3",
+            "BEQ.W ptext",
+            "TST.W D3",
             "BNE.W done",
             "BSR.W trySelectedEncodeSizeForStatement",
         ]
@@ -14550,6 +14565,52 @@ fn motorola68020_item9_native_symbol_config_directives_route_before_selected_enc
             "BRA.W done",
         ]
     ));
+}
+
+#[test]
+fn motorola68020_opasm_directive_router_owns_non_structural_mnemonic_classification() {
+    let repo_root = workspace_root();
+    let driver = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read opasm assembly driver source");
+    let router = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_directive_router.asm"),
+    )
+    .expect("read opasm directive router source");
+
+    assert!(driver.contains(".use opasm.amigaos.directive_router as directives"));
+    for routine in [
+        "opasmDriverRecordLabel\t.block",
+        "tryCaptureTypedStructInstanceForStatement\t.block",
+        "opasmDriverEmitImageBytes\t.block",
+        "opasmDriverAdvancePc\t.block",
+    ] {
+        let body = driver
+            .split(routine)
+            .nth(1)
+            .expect("driver routine should exist")
+            .split("\t.bend")
+            .next()
+            .expect("driver routine should terminate");
+        assert!(body.contains("jsr directives.classifyV1"));
+        assert!(!body.contains("MnemonicText"));
+        assert!(!body.contains("lineStartsWith"));
+    }
+    assert!(source_contains_in_order(
+        &router,
+        &[
+            ".module opasm.amigaos.directive_router",
+            "classifyV1 .BLOCK",
+            "DirectiveOrgText",
+            "DirectiveEndsectionText",
+            "DirectivePtextText",
+            "directiveLineStartsWith .BLOCK",
+        ]
+    ));
+    assert!(router.contains("OPASM_DIRECTIVE_BYTE = 15"));
+    assert!(router.contains("OPASM_DIRECTIVE_WORD = 16"));
+    assert!(router.contains("OPASM_DIRECTIVE_PTEXT = 20"));
 }
 
 #[test]

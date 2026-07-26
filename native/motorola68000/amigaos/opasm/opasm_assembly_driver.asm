@@ -5,6 +5,7 @@
 
 	.use opasm.amigaos.callback_abi as abi
 	.use opasm.amigaos.compile_values as compile_values
+	.use opasm.amigaos.directive_router as directives
 	.use opasm.amigaos.engine as eng
 	.use opasm.amigaos.events
 	.use opasm.amigaos.flow_conditionals as conditionals
@@ -1312,24 +1313,13 @@ opasmDriverRecordLabel	.block
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d4, d0
-	lea ConstMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	bne.w recordConstSymbol
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea VarMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.w recordMutableSymbol
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea SetMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.w recordMutableSymbol
+	jsr directives.classifyV1
+	cmpi.w #directives.OPASM_DIRECTIVE_CONST, d3
+	beq.w recordConstSymbol
+	cmpi.w #directives.OPASM_DIRECTIVE_VAR, d3
+	beq.w recordMutableSymbol
+	cmpi.w #directives.OPASM_DIRECTIVE_SET, d3
+	beq.w recordMutableSymbol
 
 recordPcLabel
 	moveq #0, d0
@@ -1426,22 +1416,13 @@ tryCaptureTypedStructInstanceForStatement	.block
 	bne.s fail
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
 	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d0
-	lea ConstMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	bne.s capture
-	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
-	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d0
-	lea VarMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.s capture
-	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
-	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d0
-	lea SetMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	beq.s fail
+	jsr directives.classifyV1
+	cmpi.w #directives.OPASM_DIRECTIVE_CONST, d3
+	beq.s capture
+	cmpi.w #directives.OPASM_DIRECTIVE_VAR, d3
+	beq.s capture
+	cmpi.w #directives.OPASM_DIRECTIVE_SET, d3
+	bne.s fail
 capture
 	moveq #0, d0
 	move.w d7, d0
@@ -1485,157 +1466,27 @@ opasmDriverEmitImageBytes	.block
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d4, d0
-	lea OrgMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
+	jsr directives.classifyV1
+	cmpi.w #directives.OPASM_DIRECTIVE_ALIGN, d3
+	beq.w emitAlign
+	cmpi.w #directives.OPASM_DIRECTIVE_DS, d3
+	beq.w emitDs
+	cmpi.w #directives.OPASM_DIRECTIVE_FILL, d3
+	beq.w emitFill
+	cmpi.w #directives.OPASM_DIRECTIVE_BYTE, d3
+	beq.w emitByte
+	cmpi.w #directives.OPASM_DIRECTIVE_WORD, d3
+	beq.w emitWord
+	cmpi.w #directives.OPASM_DIRECTIVE_LONG, d3
+	beq.w emitLong
+	cmpi.w #directives.OPASM_DIRECTIVE_TEXT, d3
+	beq.w emitText
+	cmpi.w #directives.OPASM_DIRECTIVE_NULL, d3
+	beq.w emitNull
+	cmpi.w #directives.OPASM_DIRECTIVE_PTEXT, d3
+	beq.w emitPtext
+	tst.w d3
 	bne.w ok
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea CpuMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.w ok
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea ConstMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	bne.w ok
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea VarMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.w ok
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea SetMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.w ok
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea EndMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.w ok
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea RegionMnemonicText, a1
-	moveq #6, d1
-	bsr.w lineStartsWith
-	bne.w ok
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea SectionMnemonicText, a1
-	moveq #7, d1
-	bsr.w lineStartsWith
-	bne.w ok
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea EndsectionMnemonicText, a1
-	moveq #10, d1
-	bsr.w lineStartsWith
-	bne.w ok
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea PlaceMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	bne.w ok
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea AlignMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	bne.w emitAlign
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea DsMnemonicText, a1
-	moveq #2, d1
-	bsr.w lineStartsWith
-	bne.w emitDs
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea ResMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.w ok
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea FillMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w emitFill
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea ByteMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w emitByte
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea DbMnemonicText, a1
-	moveq #2, d1
-	bsr.w lineStartsWith
-	bne.w emitByte
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea WordMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w emitWord
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea DwMnemonicText, a1
-	moveq #2, d1
-	bsr.w lineStartsWith
-	bne.w emitWord
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea LongMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w emitLong
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea TextMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w emitText
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea NullMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w emitNull
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	lea PtextMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	bne.w emitPtext
 	bsr.w prepareEncodeSelectedRequestForStatement
 	bne.w return
 	tst.w OpasmDriverEvalRequestLen
@@ -1827,157 +1678,39 @@ opasmDriverAdvancePc	.block
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d6, d0
-	lea OrgMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.w org
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea CpuMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
+	jsr directives.classifyV1
+	cmpi.w #directives.OPASM_DIRECTIVE_ORG, d3
+	beq.w org
+	cmpi.w #directives.OPASM_DIRECTIVE_REGION, d3
+	beq.w region
+	cmpi.w #directives.OPASM_DIRECTIVE_SECTION, d3
+	beq.w section
+	cmpi.w #directives.OPASM_DIRECTIVE_ENDSECTION, d3
+	beq.w endsection
+	cmpi.w #directives.OPASM_DIRECTIVE_PLACE, d3
+	beq.w place
+	cmpi.w #directives.OPASM_DIRECTIVE_ALIGN, d3
+	beq.w align
+	cmpi.w #directives.OPASM_DIRECTIVE_DS, d3
+	beq.w ds
+	cmpi.w #directives.OPASM_DIRECTIVE_RES, d3
+	beq.w res
+	cmpi.w #directives.OPASM_DIRECTIVE_FILL, d3
+	beq.w fill
+	cmpi.w #directives.OPASM_DIRECTIVE_BYTE, d3
+	beq.w byte
+	cmpi.w #directives.OPASM_DIRECTIVE_WORD, d3
+	beq.w word
+	cmpi.w #directives.OPASM_DIRECTIVE_LONG, d3
+	beq.w long
+	cmpi.w #directives.OPASM_DIRECTIVE_TEXT, d3
+	beq.w text
+	cmpi.w #directives.OPASM_DIRECTIVE_NULL, d3
+	beq.w null
+	cmpi.w #directives.OPASM_DIRECTIVE_PTEXT, d3
+	beq.w ptext
+	tst.w d3
 	bne.w done
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea ConstMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	bne.w done
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea VarMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.w done
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea SetMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.w done
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea EndMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.w done
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea RegionMnemonicText, a1
-	moveq #6, d1
-	bsr.w lineStartsWith
-	bne.w region
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea SectionMnemonicText, a1
-	moveq #7, d1
-	bsr.w lineStartsWith
-	bne.w section
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea EndsectionMnemonicText, a1
-	moveq #10, d1
-	bsr.w lineStartsWith
-	bne.w endsection
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea PlaceMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	bne.w place
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea AlignMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	bne.w align
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea DsMnemonicText, a1
-	moveq #2, d1
-	bsr.w lineStartsWith
-	bne.w ds
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea ResMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	bne.w res
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea FillMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w fill
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea ByteMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w byte
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea DbMnemonicText, a1
-	moveq #2, d1
-	bsr.w lineStartsWith
-	bne.w byte
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea WordMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w word
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea DwMnemonicText, a1
-	moveq #2, d1
-	bsr.w lineStartsWith
-	bne.w word
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea LongMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w long
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea TextMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w text
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea NullMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	bne.w null
-	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	lea PtextMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	bne.w ptext
 	jsr eng.opasmEngineGetSessionPassV1
 	cmpi.w #2, d0
 	bne.s selectedSizeDispatch
@@ -5098,74 +4831,11 @@ done
 
 	.section data, kind=data
 
-OrgMnemonicText
-	.byte "org", 0
-
-CpuMnemonicText
-	.byte "cpu", 0
-
-ConstMnemonicText
-	.byte "const", 0
-
-VarMnemonicText
-	.byte "var", 0
-
-SetMnemonicText
-	.byte "set", 0
-
-EndMnemonicText
-	.byte "end", 0
-
-RegionMnemonicText
-	.byte "region", 0
-
-SectionMnemonicText
-	.byte "section", 0
-
-EndsectionMnemonicText
-	.byte "endsection", 0
-
-PlaceMnemonicText
-	.byte "place", 0
-
 InText
 	.byte "in", 0
 
 AlignMnemonicText
 	.byte "align", 0
-
-DsMnemonicText
-	.byte "ds", 0
-
-ResMnemonicText
-	.byte "res", 0
-
-FillMnemonicText
-	.byte "fill", 0
-
-ByteMnemonicText
-	.byte "byte", 0
-
-DbMnemonicText
-	.byte "db", 0
-
-WordMnemonicText
-	.byte "word", 0
-
-DwMnemonicText
-	.byte "dw", 0
-
-LongMnemonicText
-	.byte "long", 0
-
-TextMnemonicText
-	.byte "text", 0
-
-NullMnemonicText
-	.byte "null", 0
-
-PtextMnemonicText
-	.byte "ptext", 0
 
 ForMnemonicText
 	.byte "for", 0

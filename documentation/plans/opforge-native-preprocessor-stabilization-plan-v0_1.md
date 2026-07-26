@@ -380,7 +380,7 @@ its own activated item/slice contract.
   - Commit outcome: one context-consumer migration commit.
   - Definition of done: tkpkg modules do not import or address opasm mutable label-table storage directly.
 
-- [ ] Item 5.8: extract opasm assembly-driver directive routing
+- [x] Item 5.8: extract opasm assembly-driver directive routing
   - Source requirement or finding IDs: NR-006; Items 5.2–5.3.
   - Invariant: `opasm_assembly_driver.asm` retains session callback orchestration while directive classification moves to one focused owner without changing statement traversal.
   - Expected files: `opasm_directive_router.asm` and shared bounded token/directive comparison utilities only where justified.

@@ -40,22 +40,39 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Source: `native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm`.
 - Public entry: `assembleSessionV1`; it builds the engine callback context and
   runs the two-pass session.
-- Imports/outbound dependencies: callback ABI, compile values, engine, events,
-  conditional/navigation/repetition/scope/struct flow modules, text encoding,
-  tkpkg bridge, and approved debug contracts/events.
+- Imports/outbound dependencies: callback ABI, compile values, directive router,
+  engine, events, conditional/navigation/repetition/scope/struct flow modules,
+  text encoding, tkpkg bridge, and approved debug contracts/events.
 - Mutable state: module-local pass/session request pointers, flow/repetition
   scratch, layout region/section tables, and text scratch/output state.
-- Routine responsibility groups: pass callback orchestration; directive and
-  mnemonic routing; structural-flow matching scans; operand/evaluation request
+- Routine responsibility groups: pass callback orchestration; router-result
+  dispatch; structural-flow matching scans; operand/evaluation request
   construction; selector/encoding adaptation; data/text sizing and emission;
   layout/region/section/place handling; event projection.
 - Inbound users: the CLI engine-callback adapter imports this driver; the
   driver is the session orchestration boundary, not a package or CPU owner.
-- Decision: orchestration stays here.  The semantic groups are mandatory
-  future owners: directive router (5.8), structural flow (5.8.1), operand
+- Decision: orchestration stays here. Item 5.8 moves non-structural directive
+  text classification to `opasm.amigaos.directive_router`; the driver consumes
+  only its numeric result. Structural flow remains a mandatory future owner in
+  Item 5.8.1, followed by operand
   evaluation (5.9), selector adaptation (5.9.1), data (5.9.2), text (5.9.3),
   and layout (5.9.4).  Repeated directive/scanner comparisons are candidates
   for one bounded shared utility only after the router extraction proves need.
+
+### `opasm.amigaos.directive_router` (Item 5.8 ownership split)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_directive_router.asm`.
+- Public entry: `classifyV1`; it maps existing non-structural directive text to
+  a numeric route code.
+- Imports/outbound dependencies: none.
+- Mutable state: none.
+- Routine responsibility groups: case-insensitive bounded directive comparison
+  and aliases for existing data directives.
+- Inbound users: the assembly driver, which retains all callback orchestration,
+  traversal, and handler execution.
+- Decision: this is a routing-only split. It neither owns structural-flow
+  terminator scans nor enables CPU, family, dialect, instruction, segment, or
+  statement semantics.
 
 ### `tkpkg.amigaos.service` (NR-002/003/004, mandatory decomposition)
 

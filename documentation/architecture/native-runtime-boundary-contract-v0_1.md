@@ -48,11 +48,10 @@ The following edges are prohibited once the named migration is complete:
    storage except through the Item 5.7 neutral-context adapter.
 5. CLI/preprocessor -> package internals, bypassing the facade/bridge.
 
-The existing `tkpkg.amigaos.service -> opasm.amigaos.engine` import is a
-documented temporary edge, not an exception to the target model.  It exists
-only until Items 5.5.1, 5.7, and 5.7.1 introduce and migrate the neutral
-context.  Item 5.7.1 deletes it for expression; Item 5.7.2 removes remaining
-tkpkg engine-table consumers.  Any new reverse edge fails this contract.
+Item 5.7.2 removes the obsolete `tkpkg.amigaos.service ->
+opasm.amigaos.engine` import and all selection/operand direct engine-table
+consumers. The engine-context adapter is the sole tkpkg engine reader; any new
+reverse edge fails this contract.
 
 ## Neutral runtime-context contract
 
@@ -69,6 +68,7 @@ family, dialect, instruction, selector, plan, or encoding support.
 | current address | engine adapter | form neutral evaluation requests | reading engine PC storage |
 | symbol lookup | engine adapter | resolve a named symbol | scanning engine label tables |
 | symbol stability/finalization | runtime-context façade over engine adapter | obtain a bounded neutral stability snapshot | inferring from engine label-table representation |
+| symbol-table compatibility snapshot | runtime-context façade over engine adapter | supply bounded copied names/values to a retained legacy bridge | passing engine label-table pointers |
 | diagnostic sink | runtime-context façade | report a neutral code/message/span result | writing service or engine diagnostic buffers directly |
 
 The ABI must be pointer/register explicit, read-only to package consumers, and

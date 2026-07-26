@@ -10,7 +10,7 @@
 	.use tkpkg.amigaos.buffers
 	.use tkpkg.amigaos.selection_state as state
 	.use tkpkg.amigaos.operand_runtime as operand
-	.use opasm.amigaos.engine
+	.use tkpkg.amigaos.runtime_context as context
 	.use opcore.amigaos.expr_bridge
 
 TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE = 9
@@ -307,8 +307,7 @@ buildSelectedEnvelopeV1	.block
 	move.l a2, state.EncodeSelectedLabelValuePtr
 	move.l d1, state.EncodeSelectedLabelCount
 	move.l d2, state.EncodeSelectedCurrentPc
-	moveq #0, d0
-	move.w engine.opasmEngineSessionPass.l, d0
+	jsr context.getPassV1
 	move.w d0, state.EncodeSelectedSessionPass
 	clr.l state.EncodeSelectedMselShapePtr
 	clr.w state.EncodeSelectedMselShapeLen
@@ -329,8 +328,7 @@ noExtension
 	clr.l state.EncodeSelectedLabelValuePtr
 	clr.l state.EncodeSelectedLabelCount
 	clr.l state.EncodeSelectedCurrentPc
-	moveq #0, d0
-	move.w engine.opasmEngineSessionPass.l, d0
+	jsr context.getPassV1
 	move.w d0, state.EncodeSelectedSessionPass
 	clr.l state.EncodeSelectedMselShapePtr
 	clr.w state.EncodeSelectedMselShapeLen

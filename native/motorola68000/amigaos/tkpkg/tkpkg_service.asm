@@ -7,7 +7,6 @@
 	.use tkpkg.amigaos.buffers
 	.use tkpkg.amigaos.service_request as request
 	.use tkpkg.amigaos.service_status as status
-	.use opasm.amigaos.engine
 	.use opcore.amigaos.expr_bridge
 	.use tkpkg.amigaos.expression_service as expression
 	.use tkpkg.amigaos.selection_service as selection

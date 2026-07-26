@@ -6,7 +6,7 @@
 	.pub
 	.use tkpkg.amigaos.buffers
 	.use tkpkg.amigaos.selection_state as state
-	.use opasm.amigaos.engine
+	.use tkpkg.amigaos.runtime_context as context
 	.use opcore.amigaos.expr_bridge
 
 TKPKG_SELECTED_STATUS_OK = 0
@@ -120,7 +120,8 @@ tryU16Fits
 	bra.w buildOperand
 
 tryBranchOffset8
-	cmpi.w #1, engine.opasmEngineSessionPass.l
+	jsr context.getPassV1
+	cmpi.w #1, d0
 	bne.s tryBranchEvaluate
 	moveq #1, d6
 	bra.w tryUnstablePassOneOperand
@@ -279,7 +280,8 @@ pairSecondTrimOk
 	move.l d0, state.PairBPtr.l
 	move.w d2, state.PairBLen.l
 	moveq #0, d6
-	cmpi.w #1, engine.opasmEngineSessionPass.l
+	jsr context.getPassV1
+	cmpi.w #1, d0
 	beq.s pairPassCaptured
 	moveq #1, d6
 
@@ -335,7 +337,8 @@ tryPairSecondFits
 	bra.w buildPairOperand
 
 tryUnstablePassOneOperand
-	cmpi.w #1, engine.opasmEngineSessionPass.l
+	jsr context.getPassV1
+	cmpi.w #1, d0
 	bne.w noOutput
 	clr.l state.EncodeSelectedMselValue
 	bra.w buildOperand
@@ -946,11 +949,28 @@ done
 	.bend  ; tkpkgMselCopyBytesV1
 
 encodeSelectedOperandV1	.block
-	movem.l d1-d2/d6-d7/a1-a2/a6, -(sp)
+	movem.l d1-d2/d6-d7/a1-a2/a5-a6, -(sp)
 	clr.w state.EncodeSelectedOperandStatus
+	move.l d0, d5
+	movea.l a0, a5
 	movea.l state.EncodeSelectedLabelNamePtr, a1
 	movea.l state.EncodeSelectedLabelValuePtr, a2
 	move.l state.EncodeSelectedLabelCount, d1
+	bne.s haveSymbolTables
+	jsr context.getSymbolTableSnapshotV1
+	tst.b d0
+	bne.w contextUnavailable
+	movea.l a1, a2
+	movea.l a0, a1
+
+haveSymbolTables
+	move.l d1, d0
+	jsr context.getSymbolStabilityTableV1
+	tst.b d0
+	bne.w contextUnavailable
+	movea.l a0, a6
+	move.l d5, d0
+	movea.l a5, a0
 	move.l state.EncodeSelectedCurrentPc, d2
 	moveq #0, d4
 	move.w state.EncodeSelectedExvmOpcodeVersion, d4
@@ -1002,6 +1022,11 @@ unexpectedText
 	moveq #1, d0
 	bra.w return
 
+contextUnavailable
+	move.w #4, state.EncodeSelectedOperandStatus
+	moveq #1, d0
+	bra.w return
+
 textOk
 	bsr.w encodeSelectedOperandTryLabelV1
 	tst.l d7
@@ -1010,7 +1035,6 @@ textOk
 	moveq #1, d5
 	moveq #0, d6
 	move.w state.EncodeSelectedSessionPass.l, d6
-	lea engine.opasmEngineLabelFinalizedTable.l, a6
 	jsr expr_bridge.opcoreExvmEvalOperandV1
 	beq.w return
 	cmpi.b #3, d0
@@ -1064,7 +1088,7 @@ exprVmFail
 	move.w d0, state.EncodeSelectedOperandStatus
 
 return
-	movem.l (sp)+, d1-d2/d6-d7/a1-a2/a6
+	movem.l (sp)+, d1-d2/d6-d7/a1-a2/a5-a6
 	tst.l d0
 	rts
 	.bend  ; encodeSelectedOperandV1
@@ -1073,15 +1097,7 @@ encodeSelectedOperandTryLabelV1	.block
 	movem.l d0-d2/d4/d6/a0-a2/a6, -(sp)
 	moveq #0, d7
 	tst.l d1
-	bne.s haveContext
-	lea engine.opasmEngineLabelNameTable.l, a1
-	lea engine.opasmEngineLabelValueTable.l, a2
-	moveq #0, d1
-	move.w engine.opasmEngineLabelCount.l, d1
-	tst.l d1
 	beq.s return
-
-haveContext
 	moveq #0, d6
 
 loop

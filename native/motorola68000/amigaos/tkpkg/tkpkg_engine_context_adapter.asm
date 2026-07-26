@@ -75,6 +75,22 @@ isSymbolFinalV1	.block
 	jmp engine.opasmEngineIsLabelFinalV1
 	.bend  ; isSymbolFinalV1
 
+getSymbolCountV1	.block
+	jmp engine.opasmEngineGetLabelCountV1
+	.bend  ; getSymbolCountV1
+
+; Inputs: D0 = symbol index.
+; Outputs: A0 = NUL-terminated symbol name.
+getSymbolNameV1	.block
+	jmp engine.opasmEngineGetLabelNameV1
+	.bend  ; getSymbolNameV1
+
+; Inputs: D0 = symbol index.
+; Outputs: D0 = symbol value.
+getSymbolValueV1	.block
+	jmp engine.opasmEngineGetLabelValueV1
+	.bend  ; getSymbolValueV1
+
 ; Inputs: A0 = first text, A1 = NUL-terminated second text, D0 = first length.
 ; Outputs: D0 = 1 when equal case-insensitively, 0 otherwise.
 stringEqualsCasefoldV1	.block

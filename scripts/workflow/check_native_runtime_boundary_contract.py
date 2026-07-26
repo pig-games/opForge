@@ -27,7 +27,7 @@ REQUIRED_TEXT = (
     "symbol stability/finalization",
     "diagnostic sink",
     "The following edges are prohibited",
-    "The existing `tkpkg.amigaos.service -> opasm.amigaos.engine` import is a",
+    "Item 5.7.2 removes the obsolete `tkpkg.amigaos.service ->",
 )
 LEDGER_ITEMS = ("5.4", "5.4.1", "5.5", "5.5.1", "5.6", "5.6.1", "5.6.2", "5.7", "5.7.1", "5.7.2", "5.8", "5.8.1", "5.9", "5.9.1", "5.9.2", "5.9.3", "5.9.4", "5.10", "5.11")
 FORBIDDEN_IMPORTS = {
@@ -67,8 +67,8 @@ def validate(root: Path = ROOT) -> list[str]:
             if any(imported.startswith(edge) for imported in found):
                 errors.append(f"prohibited current reverse import: {relative} -> {edge}")
     service_imports = imports(root / "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm")
-    if "opasm.amigaos.engine" not in service_imports:
-        errors.append("expected documented transitional service-to-engine import is missing")
+    if "opasm.amigaos.engine" in service_imports:
+        errors.append("obsolete service-to-engine import remains after Item 5.7.2")
     return errors
 
 

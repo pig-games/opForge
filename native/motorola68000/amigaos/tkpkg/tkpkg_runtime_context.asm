@@ -14,6 +14,7 @@ RUNTIME_CONTEXT_SYMBOL_UNRESOLVED = 1
 RUNTIME_CONTEXT_SYMBOL_ABSENT = 2
 RUNTIME_CONTEXT_DIAGNOSTIC_CAPACITY = 96
 RUNTIME_CONTEXT_STABILITY_CAPACITY = 16
+RUNTIME_CONTEXT_SYMBOL_NAME_BYTES = 64
 
 	.section code, kind=code
 	.pub
@@ -69,6 +70,57 @@ return
 	rts
 	.bend  ; getSymbolStabilityTableV1
 
+; Materialize a bounded, read-only symbol-table snapshot for legacy bridge
+; consumers.  The returned tables are context-owned copies, never engine
+; storage.
+; Outputs: D0 = 0/A0 = names/A1 = values/D1 = count on success;
+;          D0 = 1/A0/A1 = 0 on capacity failure.
+getSymbolTableSnapshotV1	.block
+	jsr adapter.getSymbolCountV1
+	cmpi.w #RUNTIME_CONTEXT_STABILITY_CAPACITY, d0
+	bhi.s tableTooLarge
+	move.w d0, d4
+	beq.s tableReady
+	moveq #0, d3
+
+tableLoop
+	move.l d3, d0
+	jsr adapter.getSymbolNameV1
+	movea.l a0, a2
+	move.l d3, d2
+	lsl.l #6, d2
+	lea RuntimeContextSymbolNames, a1
+	adda.l d2, a1
+	moveq #RUNTIME_CONTEXT_SYMBOL_NAME_BYTES - 1, d2
+
+copyNameLoop
+	move.b (a2)+, (a1)+
+	dbf d2, copyNameLoop
+	move.l d3, d0
+	jsr adapter.getSymbolValueV1
+	move.l d3, d2
+	lsl.l #2, d2
+	lea RuntimeContextSymbolValues, a1
+	move.l d0, 0(a1, d2.l)
+	addq.w #1, d3
+	cmp.w d4, d3
+	blo.s tableLoop
+
+tableReady
+	lea RuntimeContextSymbolNames, a0
+	lea RuntimeContextSymbolValues, a1
+	move.l d4, d1
+	moveq #0, d0
+	rts
+
+tableTooLarge
+	suba.l a0, a0
+	suba.l a1, a1
+	moveq #0, d1
+	moveq #1, d0
+	rts
+	.bend  ; getSymbolTableSnapshotV1
+
 ; Record one neutral diagnostic without exposing engine or service buffers.
 ; Inputs: D0 = code, A0 = message, D1 = message length, D2 = source span.
 ; Outputs: D0 = 0.
@@ -108,6 +160,10 @@ LastDiagnosticSpan
 	.res long, 1
 RuntimeContextStabilityTable
 	.res byte, RUNTIME_CONTEXT_STABILITY_CAPACITY
+RuntimeContextSymbolNames
+	.res byte, RUNTIME_CONTEXT_STABILITY_CAPACITY * RUNTIME_CONTEXT_SYMBOL_NAME_BYTES
+RuntimeContextSymbolValues
+	.res long, RUNTIME_CONTEXT_STABILITY_CAPACITY
 
 	.endsection
 	.endmodule

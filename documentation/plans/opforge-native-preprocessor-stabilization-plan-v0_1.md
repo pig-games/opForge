@@ -370,13 +370,13 @@ its own activated item/slice contract.
   - Commit outcome: one context-consumer migration commit.
   - Definition of done: expression service has no direct opasm mutable-table access.
 
-- [ ] Item 5.7.2: migrate the tkpkg selection consumer to neutral context
+- [x] Item 5.7.2: migrate the tkpkg selection consumer to neutral context
   - Source requirement or finding IDs: NR-005; Items 5.6–5.7.1.
   - Invariant: selection and encoding services use only the neutral context for pass, address, symbols, stability, and diagnostics.
   - Expected files: tkpkg selection/encoding consumers, opasm context adapter, focused context-field contracts, and slice metadata.
   - Proof: B register/context contracts; C candidate/context model; D affected selection and encode fixtures.
   - Full quality gates: focused contracts and D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
-  - Plan-compliance review evidence: PASS for selection-consumer migration only.
+  - Plan-compliance review evidence: PASS for selection/operand context-consumer migration only. Evidence: `tkpkg_selection_service.asm` and `tkpkg_operand_runtime.asm` obtain pass and fallback symbol context from `tkpkg_runtime_context.asm`; `tkpkg_engine_context_adapter.asm` is the sole tkpkg importer of opasm engine label storage. Focused boundary/composed-runtime tests, inventory, native formatter, staged native-porting, full Rust quality, workflow, and real affected Level D selection plus MOS 6502 selection/encoding corpus FS-UAE fixtures pass. No CPU/family/dialect/instruction/plan/encoding behavior is added or broadened.
   - Commit outcome: one context-consumer migration commit.
   - Definition of done: tkpkg modules do not import or address opasm mutable label-table storage directly.
 

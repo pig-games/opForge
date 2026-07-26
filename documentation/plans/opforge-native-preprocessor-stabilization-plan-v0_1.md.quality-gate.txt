@@ -88,3 +88,10 @@ Evidence: `documentation/plans/slices/native-porting-slice-tkpkg-expression-cont
 
 Reviewer: `plan-compliance-reviewer` (`/root/item571_recheck`).
 Decision: PASS. The staged migration deletes only the temporary expression context and moves expression to the neutral runtime-context ABI; selection/encoding and CPU behavior remain untouched. The affected real FS-UAE forward-label fixture closes the prior Level D evidence gap.
+
+PASS: Item 5.7.2 migrates the selection and operand-runtime consumers to the neutral runtime context. This is an ownership/dependency split only: CPU/family/dialect/instruction/operand-plan/encoding behavior remains unchanged.
+
+Evidence: `documentation/plans/slices/native-porting-slice-tkpkg-selection-context.toml`; focused tkpkg boundary and composed-runtime tests PASS; inventory and native formatter PASS; staged native-porting gate PASS; full Rust quality gate PASS; real affected FS-UAE selection fixture (`native_pipeline_select_harness_fs_uae_proves_embedded_65c02_selection`) and MOS 6502 selection/encoding corpus (`external_fs_uae_tkpkg_native_mos6502_family_corpus_matches_vm_authoritative_rows`) PASS with no skip.
+
+Reviewer: `plan-compliance-reviewer` (`/root/item572_compliance`).
+Decision: PASS. The staged Item 5.7.2 diff preserves the extension-supplied pass and MSEL shape length, removes the obsolete service engine import, and leaves the engine-context adapter as the sole tkpkg engine reader. The change is limited to ownership/dependency separation; it adds no CPU/family/dialect/instruction/operand-plan/encoding semantics.

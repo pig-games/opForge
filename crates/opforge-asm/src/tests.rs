@@ -17125,6 +17125,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     assert!(source.contains(".use tkpkg.amigaos.parse_service as parser"));
     assert!(parser.contains(".use prvm.amigaos.line_router"));
     assert!(!source.contains(".use opasm.amigaos.selector_stage"));
+    assert!(!source.contains(".use opasm.amigaos.engine"));
     assert!(source.contains(".use tkpkg.amigaos.expression_service as expression"));
     assert!(source.contains(".use tkpkg.amigaos.selection_service as selection"));
     assert!(expression.contains(".use tkpkg.amigaos.runtime_context as context"));
@@ -17561,6 +17562,38 @@ fn motorola68020_tkpkg_runtime_context_materializes_stability_snapshot() {
         &adapter,
         "isSymbolFinalV1\t.block\n        JMP engine.opasmEngineIsLabelFinalV1"
     ));
+}
+
+#[test]
+fn motorola68020_tkpkg_selection_and_operand_use_context_owned_symbol_snapshots() {
+    let context = tkpkg_amigaos_source("tkpkg_runtime_context.asm");
+    let adapter = tkpkg_amigaos_source("tkpkg_engine_context_adapter.asm");
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
+
+    assert!(tkpkg_source_contains(
+        &context,
+        "getSymbolTableSnapshotV1\t.block\n        JSR adapter.getSymbolCountV1\n        CMPI.W #RUNTIME_CONTEXT_STABILITY_CAPACITY,D0"
+    ));
+    assert!(context.contains("RuntimeContextSymbolNames"));
+    assert!(context.contains("RuntimeContextSymbolValues"));
+    for entry in ["getSymbolCountV1", "getSymbolNameV1", "getSymbolValueV1"] {
+        assert!(adapter.contains(format!("{entry}\t.block").as_str()));
+    }
+
+    assert!(selection.contains(".use tkpkg.amigaos.runtime_context as context"));
+    assert!(!selection.contains(".use opasm.amigaos.engine"));
+    assert!(!selection.contains("engine.opasmEngine"));
+    assert!(tkpkg_source_contains(
+        &selection,
+        "MOVEA.L (A5)+,A1\n        MOVE.L (A5)+,D0\n        MOVE.L A1,state.EncodeSelectedMselShapePtr\n        MOVE.W D0,state.EncodeSelectedMselShapeLen"
+    ));
+    assert!(operand.contains(".use tkpkg.amigaos.runtime_context as context"));
+    assert!(!operand.contains(".use opasm.amigaos.engine"));
+    assert!(!operand.contains("engine.opasmEngine"));
+    assert!(operand.contains("encodeSelectedOperandV1\t.block"));
+    assert!(operand.contains("jsr context.getSymbolTableSnapshotV1"));
+    assert!(operand.contains("jsr context.getSymbolStabilityTableV1"));
 }
 
 #[test]

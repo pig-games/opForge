@@ -29,11 +29,9 @@ pipeline -> package hierarchy / CPU-family-dialect locators
 expression bridge -> expression VM runtime
 ```
 
-The desired direction is toward narrow service or runtime contracts.  The
-current `tkpkg.amigaos.service -> opasm.amigaos.engine` import is a direct
-cross-subsystem dependency and is a transitional finding for Items 5.5.1,
-5.7, and 5.7.1; it must become a named neutral runtime-context adapter rather
-than a package runtime addressing engine-owned mutable tables.
+The desired direction is toward narrow service or runtime contracts. Item
+5.7.2 removes the obsolete `tkpkg.amigaos.service -> opasm.amigaos.engine`
+import; the engine-context adapter is now the sole tkpkg engine reader.
 
 ## Audited modules
 
@@ -102,29 +100,31 @@ than a package runtime addressing engine-owned mutable tables.
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm`.
 - Public entries: `selectInstructionV1`, `buildSelectedEnvelopeV1`, and
   `noOutputErrorV1`.
-- Imports/outbound dependencies: tkpkg ABI/buffers plus the existing engine and
-  expression bridge transition boundaries.
+- Imports/outbound dependencies: tkpkg ABI/buffers, operand runtime, neutral
+  runtime context, and the expression bridge transition boundary.
 - Mutable state: selected request envelope and candidate traversal cursor; the
   unchanged operand scratch state is shared through the internal selection-state
   module.
 - Routine responsibility groups: selected-request decoding; package MSEL
   traversal; candidate construction; selected-output diagnostic selection.
 - Decision: this module delegates existing plan interpretation to
-  `tkpkg.amigaos.operand_runtime`. Item 5.7.2 will replace remaining direct
-  engine reads with the neutral runtime context. Neither item expands CPU
-  support or changes package semantics.
+  `tkpkg.amigaos.operand_runtime` and reads the session pass through the neutral
+  runtime context. Neither item expands CPU support or changes package
+  semantics.
 
 ### `tkpkg.amigaos.operand_runtime` (NR-004, Item 5.6.1 ownership split)
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm`.
 - Public entry: `tkpkgMselTryBuildCandidateV1`.
-- Imports/outbound dependencies: tkpkg buffers and private selection state, plus
-  the existing engine and expression bridge transition boundaries.
+- Imports/outbound dependencies: tkpkg buffers, private selection state, neutral
+  runtime context, and the expression bridge transition boundary.
 - Mutable state: reads and writes the preserved selection-state scratch layout;
   it does not own package selection or selected-output diagnostics.
 - Routine responsibility groups: unchanged plan-tag dispatch, operand-span
   normalization, expression evaluation, and candidate-envelope construction.
-- Decision: this is a file-boundary extraction only. Existing plan tags and
+- Decision: this is a file-boundary extraction only. Its legacy expression
+  bridge receives context-owned copies of symbol names, values, and stability;
+  it no longer receives engine label-table storage. Existing plan tags and
   emitted bytes are retained exactly; no CPU, family, dialect, or instruction
   support is added or generalized.
 
@@ -146,29 +146,31 @@ than a package runtime addressing engine-owned mutable tables.
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm`.
 - Public entries: `getAbiVersionV1`, `getPassV1`, `getAddressV1`,
-  `lookupSymbolV1`, `reportDiagnosticV1`, and `getLastDiagnosticV1`.
+  `lookupSymbolV1`, `getSymbolStabilityTableV1`, `getSymbolTableSnapshotV1`,
+  `reportDiagnosticV1`, and `getLastDiagnosticV1`.
 - Imports/outbound dependencies: only the engine-context adapter.
-- Mutable state: one private neutral diagnostic record; it is not an engine,
-  CLI, or package-service buffer.
+- Mutable state: private neutral diagnostic, symbol-stability, and bounded
+  copied symbol-table records; none is engine, CLI, or package-service storage.
 - Routine responsibility groups: versioned read-only context projection,
   bounded diagnostic handoff, and bounded stability snapshot materialization.
-- Decision: Item 5.7.1 migrates the expression consumer to this façade through
-  a bounded stability snapshot. Selection and encoding migration remain for
-  Item 5.7.2. Neither change adds CPU, family, dialect, instruction, selector,
-  plan-tag, or encoding support.
+- Decision: Items 5.7.1 and 5.7.2 migrate expression, selection, and operand
+  consumers through bounded context snapshots. Neither change adds CPU, family,
+  dialect, instruction, selector, plan-tag, or encoding support.
 
 ### `tkpkg.amigaos.engine_context_adapter` (NR-005, Item 5.7 ownership split)
 
 - Source:
   `native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm`.
-- Public entries: `getPassV1`, `getAddressV1`, and `lookupSymbolV1`.
+- Public entries: `getPassV1`, `getAddressV1`, `lookupSymbolV1`,
+  `isSymbolFinalV1`, `getSymbolCountV1`, `getSymbolNameV1`, and
+  `getSymbolValueV1`.
 - Imports/outbound dependencies: documented engine getter APIs only.
 - Mutable state: none; it translates engine-owned label/pass/address state to
   the runtime-context ABI and never exposes engine table layout.
 - Routine responsibility groups: the sole transitional engine access point for
   future tkpkg context consumers.
-- Decision: this adapter remains the sole engine-state reader. Item 5.7.1 has
-  migrated expression; Item 5.7.2 migrates selection and encoding. This work
+- Decision: this adapter remains the sole engine-state reader. Items 5.7.1 and
+  5.7.2 have migrated expression, selection, and operand consumers. This work
   adds no CPU or package semantics.
 
 ### `opasm.amigaos.engine` (NR-001, conditional decomposition)

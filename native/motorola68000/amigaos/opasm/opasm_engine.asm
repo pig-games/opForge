@@ -1426,6 +1426,27 @@ opasmEngineGetLabelValueV1	.block
 	rts
 	.bend  ; opasmEngineGetLabelValueV1
 
+; Return whether one native label is finalized.
+; Inputs: D0 = label index.
+; Outputs: D0 = 1 when finalized, 0 otherwise.
+opasmEngineIsLabelFinalV1	.block
+	move.l d1, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	cmp.w OpasmEngineLabelCount.l, d1
+	bhs.s notFinal
+	lea OpasmEngineLabelFinalizedTable.l, a0
+	moveq #0, d0
+	move.b 0(a0, d1.l), d0
+	move.l (sp)+, d1
+	rts
+
+notFinal
+	moveq #0, d0
+	move.l (sp)+, d1
+	rts
+	.bend  ; opasmEngineIsLabelFinalV1
+
 ; Prepare an evaluate-expression request for statement text.
 ;
 ; Inputs:

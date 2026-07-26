@@ -9,6 +9,7 @@
 	.pub
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
+	.use tkpkg.amigaos.runtime_context as runtime_context
 	.use tkpkg.amigaos.service
 
 	.section entry, kind=code
@@ -20,6 +21,7 @@ start	.block
 	tst.b (a0)
 	lea abi.WireContractMarker, a0
 	tst.b (a0)
+	jsr runtime_context.getAbiVersionV1
 	clr.l d0
 	rts
 	.bend  ; start

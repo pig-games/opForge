@@ -141,6 +141,33 @@ than a package runtime addressing engine-owned mutable tables.
   ordering, plan tags, status/diagnostic paths, and emitted bytes remain
   unchanged; no CPU, family, dialect, or instruction support is added.
 
+### `tkpkg.amigaos.runtime_context` (NR-005, Item 5.7 ownership split)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm`.
+- Public entries: `getAbiVersionV1`, `getPassV1`, `getAddressV1`,
+  `lookupSymbolV1`, `reportDiagnosticV1`, and `getLastDiagnosticV1`.
+- Imports/outbound dependencies: only the engine-context adapter.
+- Mutable state: one private neutral diagnostic record; it is not an engine,
+  CLI, or package-service buffer.
+- Routine responsibility groups: versioned read-only context projection and
+  bounded diagnostic handoff.
+- Decision: this is a file-boundary split that establishes the future consumer
+  contract. It neither migrates a production consumer nor changes CPU, family,
+  dialect, instruction, selector, plan-tag, or encoding support.
+
+### `tkpkg.amigaos.engine_context_adapter` (NR-005, Item 5.7 ownership split)
+
+- Source:
+  `native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm`.
+- Public entries: `getPassV1`, `getAddressV1`, and `lookupSymbolV1`.
+- Imports/outbound dependencies: documented engine getter APIs only.
+- Mutable state: none; it translates engine-owned label/pass/address state to
+  the runtime-context ABI and never exposes engine table layout.
+- Routine responsibility groups: the sole transitional engine access point for
+  future tkpkg context consumers.
+- Decision: this is a file-boundary split only. Items 5.7.1 and 5.7.2 migrate
+  existing consumers; this item adds no CPU or package semantics.
+
 ### `opasm.amigaos.engine` (NR-001, conditional decomposition)
 
 - Source: `native/motorola68000/amigaos/opasm/opasm_engine.asm`.
@@ -237,10 +264,11 @@ than a package runtime addressing engine-owned mutable tables.
 - Orchestration versus semantics: driver session callbacks and service ABI
   dispatch are orchestration; package selection/encoding, expression parsing,
   flow scans, text encoding, and layout are semantic owners.
-- Direct cross-subsystem state: the service imports the engine today.  The
-  neutral runtime-context ABI in Item 5.7 must carry pass, address, symbol
-  lookup/stability, and diagnostics; later migration removes direct engine
-  mutable-table access.
+- Direct cross-subsystem state: the service imports the engine today. Item 5.7
+  adds a neutral runtime-context ABI and the sole transitional engine adapter
+  for pass, address, symbol lookup/stability, and diagnostics; later migration
+  removes direct engine mutable-table access. This is only a large-file split,
+  not CPU-support work.
 - Diagnostics/output: service owns ABI-facing status/last-error projection;
   engine owns event/session state; driver only projects events through the
   approved event boundary.

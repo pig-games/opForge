@@ -1,0 +1,44 @@
+[slice]
+schema_version = 2
+name = "tkpkg runtime-context ownership"
+kind = "native-rust-parity"
+rust_reference = [
+  "existing pass, address, label, stability, and diagnostic behavior remains the behavioral authority"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm::getAbiVersionV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm::lookupSymbolV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm::lookupSymbolV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineIsLabelFinalV1"
+]
+invariant = "A versioned neutral context owns the future package-consumer contract, and one adapter is the sole transitional owner of engine pass/address/label reads, without migrating an existing consumer."
+expected_inputs = "Existing engine pass, PC, label name/value/finalization state and a neutral diagnostic code/message/span record."
+expected_outputs = "The same pass/address values and defined found, unresolved, or absent symbol result; no consumer route, source acceptance, diagnostic wording, or emitted byte changes."
+known_non_equivalences = "No CPU, family, dialect, instruction, selector, operand-plan, encoding, package, or consumer-migration change."
+fast_proof_command = "cargo test -p asm motorola68020_tkpkg_runtime_context_ -- --nocapture && cargo test -p asm motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary -- --nocapture && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' scripts/workflow/run_native_macro_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_tkpkg_runtime_context_exposes_neutral_file_split_contract"
+proof_level = "B"
+proves = "The public context ABI delegates engine state only through the one adapter, and the adapter consumes documented engine getters."
+does_not_prove = "A migrated consumer, arbitrary symbol semantics, or any new CPU support."
+
+[[tests]]
+name = "motorola68020_tkpkg_runtime_context_models_symbol_status_transitions"
+proof_level = "C"
+proves = "The adapter's defined found, unresolved, and absent status paths follow the documented label lookup/finalization sequence."
+does_not_prove = "A migrated package consumer or any CPU behavior."
+
+[[tests]]
+name = "motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary"
+proof_level = "B"
+proves = "The context and adapter compose into the native 68020 runtime harness."
+does_not_prove = "Guest CLI parity for any CPU target."
+
+[[tests]]
+name = "native_macro_completion_wrapper"
+proof_level = "D"
+proves = "The established real native 65C02 CLI macro path remains unchanged after the ownership-only split."
+does_not_prove = "New CPU/family/dialect support or a new macro feature."

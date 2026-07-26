@@ -17477,6 +17477,63 @@ fn motorola68020_tkpkg_expression_service_has_one_implementation_owner() {
 }
 
 #[test]
+fn motorola68020_tkpkg_runtime_context_exposes_neutral_file_split_contract() {
+    let context = tkpkg_amigaos_source("tkpkg_runtime_context.asm");
+    let adapter = tkpkg_amigaos_source("tkpkg_engine_context_adapter.asm");
+    let engine = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_engine.asm"),
+    )
+    .expect("read opasm engine");
+
+    assert!(context.contains(".module tkpkg.amigaos.runtime_context"));
+    assert!(context.contains("RUNTIME_CONTEXT_ABI_VERSION = 1"));
+    assert!(context.contains("adapter.getPassV1"));
+    assert!(context.contains("adapter.getAddressV1"));
+    assert!(context.contains("adapter.lookupSymbolV1"));
+    assert!(context.contains("reportDiagnosticV1"));
+    assert!(!context.contains(".use opasm.amigaos.engine"));
+
+    assert!(adapter.contains(".module tkpkg.amigaos.engine_context_adapter"));
+    assert!(adapter.contains(".use opasm.amigaos.engine"));
+    assert!(adapter.contains("engine.opasmEngineGetSessionPassV1"));
+    assert!(adapter.contains("engine.opasmEngineGetSessionCurrentPcV1"));
+    assert!(adapter.contains("engine.opasmEngineGetLabelCountV1"));
+    assert!(adapter.contains("engine.opasmEngineGetLabelNameV1"));
+    assert!(adapter.contains("engine.opasmEngineGetLabelValueV1"));
+    assert!(adapter.contains("engine.opasmEngineIsLabelFinalV1"));
+    assert!(engine.contains("opasmEngineIsLabelFinalV1\t.block"));
+}
+
+#[test]
+fn motorola68020_tkpkg_runtime_context_models_symbol_status_transitions() {
+    let adapter = tkpkg_amigaos_source("tkpkg_engine_context_adapter.asm");
+
+    assert!(source_contains_in_order(
+        &adapter,
+        &[
+            "lookupSymbolV1\t.block",
+            "JSR engine.opasmEngineGetLabelCountV1",
+            "JSR engine.opasmEngineGetLabelNameV1",
+            "BSR.W stringEqualsCasefoldV1",
+            "JSR engine.opasmEngineGetLabelValueV1",
+            "JSR engine.opasmEngineIsLabelFinalV1",
+        ]
+    ));
+    assert!(tkpkg_source_contains(
+        &adapter,
+        "unresolved\n        MOVEQ #RUNTIME_CONTEXT_SYMBOL_UNRESOLVED,D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &adapter,
+        "absent\n        MOVEQ #RUNTIME_CONTEXT_SYMBOL_ABSENT,D0\n        MOVEQ #0,D1"
+    ));
+    assert!(tkpkg_source_contains(
+        &adapter,
+        "MOVEQ #RUNTIME_CONTEXT_SYMBOL_FOUND,D0\n        BRA.S return"
+    ));
+}
+
+#[test]
 fn motorola68020_tkpkg_load_package_validates_little_endian_container_header() {
     let service = tkpkg_amigaos_source("tkpkg_service.asm");
     let loader = tkpkg_amigaos_source("tkpkg_package_loader.asm");
@@ -18346,6 +18403,8 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
     assert!(listing.contains("tkpkg.amigaos.service.dispatchV1"));
     assert!(listing.contains("tkpkg.amigaos.service.tkpkgServicePrepareRequestV1"));
     assert!(listing.contains("tkpkg.amigaos.service.tkpkgServiceSetRuntimeErrorV1"));
+    assert!(listing.contains("tkpkg.amigaos.runtime_context.getAbiVersionV1"));
+    assert!(listing.contains("tkpkg.amigaos.engine_context_adapter.lookupSymbolV1"));
     assert!(listing.contains("tkpkg.amigaos.buffers.ControlBlockV1"));
     assert!(listing.contains("tkpkg.amigaos.buffers.LastErrorBuffer"));
     assert!(listing.contains("tkpkg.amigaos.buffers.StoredLastErrorLen"));

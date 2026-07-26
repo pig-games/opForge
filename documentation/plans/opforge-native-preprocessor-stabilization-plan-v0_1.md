@@ -349,11 +349,11 @@ its own activated item/slice contract.
   - Commit outcome: one ownership-only encoding-service commit.
   - Definition of done: `tkpkg_service.asm` contains no package-table interpreter, label lookup, or encoding logic.
 
-- [ ] Item 5.7: define the neutral tkpkg runtime-context ABI
+- [x] Item 5.7: define the neutral tkpkg runtime-context ABI
   - Source requirement or finding IDs: NR-005; Items 5.3 and 5.6.
   - Invariant: package selection/expression code obtains pass, address, symbol, stability, and diagnostics through one neutral context contract rather than direct opasm-table access.
   - Expected files: runtime-context ABI/module, opasm context adapter, and focused contract tests.
-  - Scope boundary: internal calling conventions may change; observable assembler behavior may not.
+  - Scope boundary: this is a file-ownership and dependency split only. Internal calling conventions may change; observable assembler behavior may not. It does not add, enable, broaden, or validate support for any CPU, family, dialect, instruction, operand plan, or encoding.
   - Proof: B ABI/register/context-field contracts; C symbol/pass/address transition models; D affected CLI parity fixtures.
   - Full quality gates: focused context contracts and established D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
   - Plan-compliance review evidence: PASS for context introduction and named adapter deletion criteria.

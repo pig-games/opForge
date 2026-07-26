@@ -56,7 +56,12 @@ tkpkg engine-table consumers.  Any new reverse edge fails this contract.
 
 ## Neutral runtime-context contract
 
-Item 5.7 implements this contract; Item 5.3 fixes its required shape.
+Item 5.7 implements this contract as an ownership-only file split; Item 5.3
+fixes its required shape. `tkpkg.amigaos.runtime_context` is the versioned
+consumer façade, while `tkpkg.amigaos.engine_context_adapter` is the sole
+transitional reader of documented engine getters. Consumer migration remains
+deferred to Items 5.7.1 and 5.7.2. This contract does not add or validate CPU,
+family, dialect, instruction, selector, plan, or encoding support.
 
 | Field/service | Provider | Consumer meaning | Prohibited substitute |
 | --- | --- | --- | --- |
@@ -64,7 +69,7 @@ Item 5.7 implements this contract; Item 5.3 fixes its required shape.
 | current address | engine adapter | form neutral evaluation requests | reading engine PC storage |
 | symbol lookup | engine adapter | resolve a named symbol | scanning engine label tables |
 | symbol stability/finalization | engine adapter | distinguish unresolved/final symbol state | inferring from label-table representation |
-| diagnostic sink | engine adapter | report a neutral code/message/span result | writing service or engine diagnostic buffers directly |
+| diagnostic sink | runtime-context façade | report a neutral code/message/span result | writing service or engine diagnostic buffers directly |
 
 The ABI must be pointer/register explicit, read-only to package consumers, and
 versioned.  It returns defined absence/unresolved status rather than exposing

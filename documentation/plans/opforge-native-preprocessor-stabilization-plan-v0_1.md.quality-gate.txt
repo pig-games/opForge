@@ -74,3 +74,10 @@ Evidence: `tkpkg_service.asm` delegates both encoding entry paths to `tkpkg_enco
 
 Reviewer: `plan-compliance-reviewer`.
 Decision: PASS. This is an ownership-only file split: selector ordering, package data, plan tags, status/diagnostic paths, and emitted bytes remain unchanged.
+
+PASS: Item 5.7 defines the versioned neutral tkpkg runtime-context ABI and the sole transitional engine-context adapter. This is a large-file ownership/dependency split only: no production consumer migrates yet, and no CPU, family, dialect, instruction, selector, operand-plan, encoding, package, source-acceptance, diagnostic-wording, or emitted-byte behavior changes.
+
+Evidence: `tkpkg_runtime_context.asm`; `tkpkg_engine_context_adapter.asm`; `opasmEngineIsLabelFinalV1`; `documentation/plans/slices/native-porting-slice-tkpkg-runtime-context.toml`; focused Level B/C context and composed-runtime tests PASS; inventory and runtime-boundary contract validators PASS; staged native-porting gate PASS; full Rust quality gate PASS; workflow validators PASS; retained FS-UAE macro tests (`native_macro_invocation_fixture_fs_uae` and `native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection`) PASS.
+
+Reviewer: `plan-compliance-reviewer` (`/root/item57_compliance`).
+Decision: PASS. The staged Item 5.7 diff is a neutral runtime-context/engine-adapter ownership split only. It adds no CPU, family, dialect, instruction, encoding, or production-consumer migration; existing direct consumers remain untouched for Items 5.7.1–5.7.2.

@@ -420,7 +420,7 @@ its own activated item/slice contract.
     semantics.
   - Definition of done: the Level D fixture passes and its proof claim accurately names the structural paths it exercises.
 
-- [ ] Item 5.9: extract opasm operand/evaluation request construction
+- [x] Item 5.9: extract opasm operand/evaluation request construction
   - Source requirement or finding IDs: NR-007; Item 5.8.
   - Invariant: operand/expression request construction moves to one focused owner while two-pass size, PC, diagnostics, and package requests remain exact.
   - Expected files: `opasm_operand_eval.asm` or repository-style equivalent.
@@ -429,6 +429,11 @@ its own activated item/slice contract.
   - Full quality gates: exact affected D fixtures; native formatter; staged native-porting; Rust quality; CPU-boundary guard; workflow gate.
   - Plan-compliance review evidence: PASS for operand-request extraction only.
   - Commit outcome: one focused operand-request commit.
+  - Completion evidence (2026-07-26): `opasm.amigaos.operand_eval` owns the
+    selected and textual expression request envelopes plus extension adapters;
+    the driver supplies only the existing service frame and retains dispatch,
+    diagnostics, fallback policy, and request-length state. Level B ownership
+    and focused real-CLI FS-UAE flow proofs pass.
   - Definition of done: the driver no longer constructs operand/expression requests.
 
 - [ ] Item 5.9.1: extract opasm selector-encode adaptation

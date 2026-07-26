@@ -79,6 +79,17 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   terminator scans nor enables CPU, family, dialect, instruction, segment, or
   statement semantics.
 
+### `opasm.amigaos.operand_eval` (Item 5.9 ownership split)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_operand_eval.asm`.
+- Public entries: selected-instruction request construction, textual expression
+  request construction, and their evaluation-extension adapters.
+- Imports/outbound dependencies: callback ABI and engine request builders.
+- Mutable state: none; the driver supplies its existing service frame and owns
+  request-length state, dispatch, diagnostics, and fallback policy.
+- Decision: this owner constructs engine request envelopes only. It does not
+  select, encode, emit, resolve operands, or own layout behavior.
+
 ### `tkpkg.amigaos.service` (NR-002/003/004, mandatory decomposition)
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`.

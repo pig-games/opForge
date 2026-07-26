@@ -14,6 +14,7 @@
 	.use opasm.amigaos.flow_scopes as scopes
 	.use opasm.amigaos.flow_structs as structs
 	.use opasm.amigaos.flow_text_encoding as text_encoding
+	.use opasm.amigaos.operand_eval as operand_eval
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opforge.debug.contracts as debug_contracts
@@ -3922,9 +3923,8 @@ prepareEncodeSelectedRequestForStatement	.block
 	clr.w OpasmDriverEvalRequestLen
 	moveq #0, d0
 	move.w d6, d0
-	bsr.w serviceIoBufferPtr
-	movea.l a0, a1
-	jsr eng.prepareSelectedEvaluateRequestV1
+	bsr.w serviceFramePtr
+	jsr operand_eval.prepareSelectedRequestV1
 	bne.s return
 	move.w d1, OpasmDriverEvalRequestLen
 	tst.l d0
@@ -3949,11 +3949,11 @@ prepareEvaluateExpressionRequest	.block
 	movem.l d1/a0-a2, -(sp)
 	movea.l a0, a2
 	clr.w OpasmDriverEvalRequestLen
-	bsr.w serviceIoBufferPtr
+	bsr.w serviceFramePtr
 	movea.l a0, a1
 	movea.l a2, a0
 	move.w d7, d1
-	jsr eng.prepareEvaluateExpressionRequestV1
+	jsr operand_eval.prepareExpressionRequestV1
 	bne.s return
 	move.w d1, OpasmDriverEvalRequestLen
 	tst.l d0
@@ -3965,22 +3965,18 @@ return
 
 prepareEvaluateExpressionExtension	.block
 	movem.l d0-d1/a0-a2, -(sp)
-	bsr.w serviceIoBufferPtr
+	bsr.w serviceFramePtr
 	moveq #0, d0
 	move.w OpasmDriverEvalRequestLen, d0
-	movea.l a0, a2
-	bsr.w serviceEvalExtensionPtr
-	movea.l a0, a1
-	movea.l a2, a0
-	jsr eng.prepareEvaluateExpressionExtensionV1
+	jsr operand_eval.prepareExpressionExtensionV1
 	movem.l (sp)+, d0-d1/a0-a2
 	rts
 	.bend  ; prepareEvaluateExpressionExtension
 
 prepareDirectiveEvaluateExpressionExtension	.block
 	movem.l a0, -(sp)
-	bsr.w serviceEvalExtensionPtr
-	jsr eng.prepareDirectiveEvaluateExpressionExtensionV1
+	bsr.w serviceFramePtr
+	jsr operand_eval.prepareDirectiveExpressionExtensionV1
 	movem.l (sp)+, a0
 	rts
 	.bend  ; prepareDirectiveEvaluateExpressionExtension

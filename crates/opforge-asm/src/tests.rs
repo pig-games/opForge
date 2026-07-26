@@ -14692,6 +14692,41 @@ fn motorola68020_opasm_flow_navigation_owns_structural_future_scans() {
 }
 
 #[test]
+fn motorola68020_opasm_operand_eval_owns_request_construction() {
+    // Proof level B. This asserts the ownership boundary only; it does not
+    // substitute for native CLI parity evidence.
+    let repo_root = workspace_root();
+    let driver = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read opasm assembly driver source");
+    let owner = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_operand_eval.asm"),
+    )
+    .expect("read opasm operand/evaluation owner source");
+
+    assert!(driver.contains(".use opasm.amigaos.operand_eval as operand_eval"));
+    for call in [
+        "jsr operand_eval.prepareSelectedRequestV1",
+        "jsr operand_eval.prepareExpressionRequestV1",
+        "jsr operand_eval.prepareExpressionExtensionV1",
+        "jsr operand_eval.prepareDirectiveExpressionExtensionV1",
+    ] {
+        assert!(driver.contains(call), "driver should delegate {call}");
+    }
+    assert!(source_contains_in_order(
+        &owner,
+        &[
+            ".module opasm.amigaos.operand_eval",
+            "prepareSelectedRequestV1 .BLOCK",
+            "prepareExpressionRequestV1 .BLOCK",
+            "prepareExpressionExtensionV1 .BLOCK",
+            "prepareDirectiveExpressionExtensionV1 .BLOCK",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_item10_native_include_roots_expand_before_tokenization() {
     let repo_root = workspace_root();
     let args_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/args.asm");

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -591,14 +592,14 @@ def scan_native_asm_file(
 
 def all_repo_files() -> list[Path]:
     files: list[Path] = []
-    for path in REPO_ROOT.rglob("*"):
-        if not path.is_file():
-            continue
-        if is_under_skipped_dir(path.relative_to(REPO_ROOT)):
-            continue
-        if path.suffix.lower() not in TEXT_EXTENSIONS:
-            continue
-        files.append(path)
+    for root, dirnames, filenames in os.walk(REPO_ROOT):
+        dirnames[:] = sorted(
+            name for name in dirnames if name not in SKIP_DIR_NAMES
+        )
+        for filename in sorted(filenames):
+            path = Path(root, filename)
+            if path.suffix.lower() in TEXT_EXTENSIONS:
+                files.append(path)
     return files
 
 

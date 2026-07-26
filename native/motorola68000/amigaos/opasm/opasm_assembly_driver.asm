@@ -7,6 +7,7 @@
 	.use opasm.amigaos.compile_values as compile_values
 	.use opasm.amigaos.directive_router as directives
 	.use opasm.amigaos.directive_data as data_directives
+	.use opasm.amigaos.directive_text as text_directives
 	.use opasm.amigaos.engine as eng
 	.use opasm.amigaos.events
 	.use opasm.amigaos.flow_conditionals as conditionals
@@ -3301,29 +3302,9 @@ return
 ; CCR: reflects D0.L on return.
 textDirectiveSizeForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
-	bsr.w parseTextDirectiveForStatement
-	bne.s fail
-	move.l OpasmTextScratchLen, d3
-	cmpi.w #0, d5
-	beq.s ok
-	cmpi.w #1, d5
-	beq.s nullSize
-	cmpi.l #255, d3
-	bhi.s fail
-	addq.l #1, d3
-	bra.s ok
-
-nullSize
-	bsr.w textScratchContainsZero
-	bne.s fail
-	addq.l #1, d3
-
-ok
-	moveq #0, d0
-	bra.s return
-
-fail
-	moveq #1, d0
+	lea parseTextDirectiveForOwner, a0
+	lea textScratchContainsZero, a1
+	jsr text_directives.sizeTextDirectiveV1
 
 return
 	movem.l (sp)+, d1-d2/d4-d7/a0-a3
@@ -3337,53 +3318,27 @@ return
 ; CCR: reflects D0.L on return.
 emitTextDirectiveForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
-	bsr.w parseTextDirectiveForStatement
-	bne.s fail
-	cmpi.w #0, d5
-	beq.s emitTextBytes
-	cmpi.w #1, d5
-	beq.s emitNullBytes
-	move.l OpasmTextScratchLen, d0
-	cmpi.l #255, d0
-	bhi.s fail
-	lea OpasmDataScratch.l, a0
-	move.b d0, (a0)
-	moveq #1, d0
-	jsr eng.opasmEngineAppendImageBytesV1
-	bne.s fail
-	bra.s emitTextBytes
-
-emitNullBytes
-	bsr.w textScratchContainsZero
-	bne.s fail
-
-emitTextBytes
-	move.l OpasmTextScratchLen, d0
-	beq.s suffix
-	lea OpasmTextScratch.l, a0
-	jsr eng.opasmEngineAppendImageBytesV1
-	bne.s fail
-
-suffix
-	cmpi.w #1, d5
-	bne.s ok
-	lea OpasmDataScratch.l, a0
-	clr.b (a0)
-	moveq #1, d0
-	jsr eng.opasmEngineAppendImageBytesV1
-	bne.s fail
-
-ok
-	moveq #0, d0
-	bra.s return
-
-fail
-	moveq #1, d0
+	lea parseTextDirectiveForOwner, a0
+	lea textScratchContainsZero, a1
+	lea OpasmTextScratch.l, a2
+	jsr text_directives.emitTextDirectiveV1
 
 return
 	movem.l (sp)+, d1-d2/d4-d7/a0-a3
 	rts
 	.bend  ; emitTextDirectiveForStatement
+
+; Parse text and expose its current scratch length to the text owner.
+; Inputs: D7.W = statement; D5.W = text mode.
+; Outputs: D0.L = status; D3.L = parsed text length.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0 on return.
+parseTextDirectiveForOwner	.block
+	bsr.w parseTextDirectiveForStatement
+	move.l OpasmTextScratchLen, d3
+	tst.l d0
+	rts
+	.bend  ; parseTextDirectiveForOwner
 
 ; Parse quoted text operands into the scratch buffer.
 ; Inputs: D7.W = statement index.

@@ -108,6 +108,13 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   emits structured `EVENT_DIRECTIVE_DATA` records after resolution and append;
   release builds do not execute that instrumentation.
 
+### `opasm.amigaos.directive_text` (Item 5.9.3 ownership split)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_directive_text.asm`.
+- Public entries: `sizeTextDirectiveV1` and `emitTextDirectiveV1`.
+- Decision: owns text-mode size, prefix/suffix, and image emission while the
+  driver supplies existing parsed scratch and encoding callbacks.
+
 ### `tkpkg.amigaos.service` (NR-002/003/004, mandatory decomposition)
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`.

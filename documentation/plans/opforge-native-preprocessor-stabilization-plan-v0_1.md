@@ -467,7 +467,7 @@ its own activated item/slice contract.
     extended real-CLI FS-UAE `.byte`/`.word`/`.long` fixture pass.
   - Definition of done: the driver does not implement numeric-data sizing or byte emission.
 
-- [ ] Item 5.9.3: extract opasm text sizing and emission
+- [x] Item 5.9.3: extract opasm text sizing and emission
   - Source requirement or finding IDs: NR-007; Item 5.9.
   - Invariant: text sizing/emission moves to one owner while two-pass size, PC, image, and diagnostics remain exact.
   - Expected files: `opasm_directive_text.asm` or repository-style equivalent and focused text-encoding/two-pass tests.
@@ -475,6 +475,10 @@ its own activated item/slice contract.
   - Full quality gates: focused text contracts and D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
   - Plan-compliance review evidence: PASS for text-service extraction only.
   - Commit outcome: one focused text-service commit.
+  - Completion evidence (2026-07-26): `opasm.amigaos.directive_text` owns
+    text mode sizing, prefix/suffix bytes, and image append while the driver
+    retains parsing and encoding callbacks. The real CLI FS-UAE fixture proves
+    `.text`, `.null`, and `.ptext` bytes together with numeric directive bytes.
   - Definition of done: the driver does not implement text sizing or emission.
 
 - [ ] Item 5.9.4: extract opasm layout ownership

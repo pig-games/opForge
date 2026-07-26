@@ -1,0 +1,25 @@
+[slice]
+schema_version = 2
+name = "opasm text sizing and emission ownership"
+kind = "native-rust-parity"
+rust_reference = ["crates/opforge-asm/src/asmline.rs"]
+native_boundary = ["native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::textDirectiveSizeForStatement", "native/motorola68000/amigaos/opasm/opasm_directive_text.asm::emitTextDirectiveV1"]
+invariant = "One owner computes text-mode size and emits text, null, and Pascal prefixes/suffixes while driver parsing and active encoding remain unchanged."
+expected_inputs = "Existing statement, text mode, bounded parsed scratch, and zero-check callbacks."
+expected_outputs = "The same two-pass size, PC, image bytes, and malformed-text status."
+known_non_equivalences = "No numeric data, layout, CPU, family, dialect, instruction, segment, or statement support changes."
+fast_proof_command = "cargo test -p asm motorola68020_opasm_directive_text_owns_text_size_and_emission -- --nocapture && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_opasm_directive_text_owns_text_size_and_emission"
+proof_level = "B"
+proves = "The driver delegates text sizing and output to the text owner."
+does_not_prove = "New text syntax or guest execution."
+
+[[tests]]
+name = "external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture"
+proof_level = "D"
+proves = "The real native CLI emits established text and numeric fixture bytes."
+does_not_prove = "New CPU support."

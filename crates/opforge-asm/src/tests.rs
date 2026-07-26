@@ -396,7 +396,10 @@ fn external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture() {
             .expect("read native directive-router output");
             assert_eq!(
                 bytes,
-                vec![0xa9, 0x42, 0x99, 0x34, 0x12, 0x78, 0x56, 0x04, 0x03, 0x02, 0x01]
+                vec![
+                    0xa9, 0x42, 0x99, 0x34, 0x12, 0x78, 0x56, 0x04, 0x03, 0x02, 0x01, b'O', b'K',
+                    b'A', 0x00, 0x02, b'B', b'C',
+                ]
             );
         }
     }
@@ -14497,7 +14500,9 @@ fn motorola68020_item8_native_data_text_directives_route_before_selected_encodin
         &driver,
         &[
             "emitTextDirectiveForStatement .BLOCK",
-            "JSR eng.opasmEngineAppendImageBytesV1",
+            "LEA parseTextDirectiveForOwner, A0",
+            "LEA textScratchContainsZero, A1",
+            "JSR text_directives.emitTextDirectiveV1",
         ]
     ));
 }
@@ -14801,6 +14806,41 @@ fn motorola68020_opasm_directive_data_owns_numeric_size_calculation() {
             "BSR.W readOperandValueForStatement",
             "splitPart",
             "BSR.W readCommaOperandValueForStatement",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_opasm_directive_text_owns_text_size_and_emission() {
+    // Proof level B. This checks the text sizing and emission ownership boundary only.
+    let repo_root = workspace_root();
+    let driver = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read opasm assembly driver source");
+    let text_owner = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_directive_text.asm"),
+    )
+    .expect("read opasm text owner source");
+
+    assert!(driver.contains(".use opasm.amigaos.directive_text as text_directives"));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "textDirectiveSizeForStatement .BLOCK",
+            "LEA parseTextDirectiveForOwner, A0",
+            "JSR text_directives.sizeTextDirectiveV1",
+            "emitTextDirectiveForStatement .BLOCK",
+            "JSR text_directives.emitTextDirectiveV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &text_owner,
+        &[
+            ".module opasm.amigaos.directive_text",
+            "sizeTextDirectiveV1 .BLOCK",
+            "emitTextDirectiveV1 .BLOCK",
+            "JSR eng.opasmEngineAppendImageBytesV1",
         ]
     ));
 }

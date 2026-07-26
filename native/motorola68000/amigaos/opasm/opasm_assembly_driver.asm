@@ -74,6 +74,7 @@ buildContext
 	.priv
 
 opasmDriverPassOneBegin	.block
+	movem.l a4-a5, -(sp)
 	moveq #abi.OPASM_EVENT_PASS_BEGIN, d0
 	moveq #1, d1
 	bsr.w appendPassEvent
@@ -85,18 +86,23 @@ opasmDriverPassOneBegin	.block
 	jsr structs.resetStateV1
 	jsr text_encoding.resetStateV1
 	jsr compile_values.resetBindingsV1
+	movem.l (sp)+, a4-a5
+	moveq #0, d0
 	rts
 	.bend  ; opasmDriverPassOneBegin
 
 opasmDriverPassOneOk	.block
+	movem.l a4-a5, -(sp)
 	moveq #abi.OPASM_EVENT_PASS_OK, d0
 	moveq #1, d1
 	bsr.w appendPassEvent
+	movem.l (sp)+, a4-a5
 	moveq #0, d0
 	rts
 	.bend  ; opasmDriverPassOneOk
 
 opasmDriverPassTwoBegin	.block
+	movem.l a4-a5, -(sp)
 	moveq #abi.OPASM_EVENT_PASS_BEGIN, d0
 	moveq #2, d1
 	bsr.w appendPassEvent
@@ -107,6 +113,7 @@ opasmDriverPassTwoBegin	.block
 	jsr scopes.resetStateV1
 	jsr structs.resetStateV1
 	jsr text_encoding.resetStateV1
+	movem.l (sp)+, a4-a5
 	moveq #0, d0
 	rts
 	.bend  ; opasmDriverPassTwoBegin
@@ -117,7 +124,7 @@ opasmDriverPassTwoBegin	.block
 ; Clobbers: D0-D2/CCR.
 ; CCR: reflects D0 on return.
 opasmDriverApplyFlowControl	.block
-	movem.l d3-d7/a0-a2, -(sp)
+	movem.l d3-d7/a0-a2/a4-a5, -(sp)
 	move.w d0, d7
 	move.w d7, d0
 	jsr navigation.initializeStatementFlowV1
@@ -270,6 +277,7 @@ compareEndmodule
 
 checkConditional
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
 	move.l d4, d0
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a1
 	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d1
@@ -278,6 +286,7 @@ checkConditional
 	tst.w d3
 	bne.w skipTextEncodingDirective
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
 	move.l d4, d0
 	jsr structs.routeDirectiveV1
 	bne.w fail
@@ -334,6 +343,7 @@ skipTextEncodingDirective
 
 checkConditionalDirective
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
 	move.l d4, d0
 	jsr conditionals.routeDirectiveV1
 	bne.w fail
@@ -357,6 +367,7 @@ checkConditionalDirective
 
 checkForMnemonic
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
 	move.l d4, d0
 	jsr repetition.routeDirectiveV1
 	bne.w fail
@@ -564,7 +575,7 @@ compareWhile
 	moveq #1, d1
 	bra.w success
 zeroWhile
-	bsr.w findMatchingEndwhile
+	jsr navigation.findMatchingEndwhileV1
 	bne.w fail
 	moveq #1, d1
 	addq.w #1, d2
@@ -591,7 +602,7 @@ beginIfBranch
 	move.b #1, 0(a0, d4.l)
 	bra.w selectIfBranch
 ifFalse
-	bsr.w findNextIfBranch
+	jsr navigation.findNextIfBranchV1
 	bne.w fail
 	cmpi.w #1, d1
 	beq.w selectIfBranchAtD2
@@ -617,7 +628,7 @@ handleElseifBranch
 	move.b #1, 0(a0, d4.l)
 	bra.w selectIfBranch
 elseifFalse
-	bsr.w findNextIfBranch
+	jsr navigation.findNextIfBranchV1
 	bne.w fail
 	cmpi.w #1, d1
 	beq.w selectIfBranchAtD2
@@ -644,6 +655,11 @@ finishIfBranch
 	move.w OpasmIfDepth, d4
 	subq.w #1, d4
 	move.w d4, OpasmIfDepth
+	; `.endif` is a structural statement: skip it and resume at the following
+	; statement. Directive routing may have used D2 as scratch, so do not rely
+	; on the callback's incoming default next-index value here.
+	move.w d7, d2
+	addq.w #1, d2
 	moveq #1, d1
 	bra.w success
 
@@ -652,14 +668,15 @@ beginMatchBranch
 	bsr.w readOperandValueForStatement
 	bne.w fail
 	move.l d3, OpasmMatchValue
-	bsr.w findSelectedMatchBranch
+	lea caseMatchesCurrentValue, a0
+	jsr navigation.findSelectedMatchBranchV1
 	bne.w fail
 	addq.w #1, d2
 	moveq #1, d1
 	bra.w success
 
 skipSelectedMatchBranch
-	bsr.w findMatchingEndmatch
+	jsr navigation.findMatchingEndmatchV1
 	bne.w fail
 	addq.w #1, d2
 	moveq #1, d1
@@ -687,7 +704,7 @@ selectElseIfBranchAtD2
 	bra.w success
 
 skipSelectedIfBranch
-	bsr.w findMatchingEndif
+	jsr navigation.findMatchingEndifV1
 	bne.w fail
 	addq.w #1, d2
 	moveq #1, d1
@@ -771,7 +788,7 @@ beginIterableFor
 	bra.w success
 
 zeroFor
-	bsr.w findMatchingEndfor
+	jsr navigation.findMatchingEndforV1
 	bne.w fail
 	moveq #1, d1
 	addq.w #1, d2
@@ -790,274 +807,9 @@ fail
 
 return
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movem.l (sp)+, d3-d7/a0-a2
+	movem.l (sp)+, d3-d7/a0-a2/a4-a5
 	rts
 	.bend  ; opasmDriverApplyFlowControl
-
-; Find the next same-level `.elseif`, `.else`, or `.endif` after an `.if` branch.
-; Inputs: D7.W = current conditional statement index.
-; Outputs: D0 = status; D1 = 1 elseif, 2 else, 3 endif; D2.W = statement index.
-; Clobbers: D0-D6/A0-A1/CCR.
-; CCR: reflects D0 on return.
-findNextIfBranch	.block
-	movem.l d3-d6/a0-a1, -(sp)
-	move.w d7, d2
-	moveq #1, d6
-scan
-	addq.w #1, d2
-	jsr eng.opasmEngineGetStatementCountV1
-	cmp.w d0, d2
-	bhs.w fail
-	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movea.l sp, a0
-	moveq #0, d0
-	move.w d2, d0
-	jsr eng.opasmEngineGetStatementTextMetadataV1
-	bne.w next
-	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
-	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
-	cmpi.l #2, d4
-	beq.s maybeIf
-	cmpi.l #3, d4
-	bne.s maybeEndif
-maybeIf
-	moveq #0, d0
-	move.w d4, d0
-	lea IfMnemonicText, a1
-	moveq #2, d1
-	bsr.w lineStartsWith
-	beq.s maybeEndif
-	addq.w #1, d6
-	bra.w next
-maybeEndif
-	cmpi.l #5, d4
-	beq.s compareEndif
-	cmpi.l #6, d4
-	bne.s outerBranch
-compareEndif
-	moveq #0, d0
-	move.w d4, d0
-	lea EndifMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	beq.s outerBranch
-	subq.w #1, d6
-	beq.w foundEndif
-	bra.w next
-outerBranch
-	cmpi.w #1, d6
-	bne.w next
-	cmpi.l #6, d4
-	beq.s compareElseif
-	cmpi.l #7, d4
-	bne.s maybeElse
-compareElseif
-	moveq #0, d0
-	move.w d4, d0
-	lea ElseifMnemonicText, a1
-	moveq #6, d1
-	bsr.w lineStartsWith
-	beq.s maybeElse
-	moveq #1, d1
-	bra.w found
-maybeElse
-	cmpi.l #4, d4
-	beq.s compareElse
-	cmpi.l #5, d4
-	bne.w next
-compareElse
-	moveq #0, d0
-	move.w d4, d0
-	lea ElseMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	beq.w next
-	moveq #2, d1
-	bra.w found
-foundEndif
-	moveq #3, d1
-found
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	bra.s return
-next
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	bra.w scan
-fail
-	moveq #1, d0
-return
-	movem.l (sp)+, d3-d6/a0-a1
-	rts
-	.bend  ; findNextIfBranch
-
-; Find the matching same-level `.endif` after one selected branch marker.
-; Inputs: D7.W = current `.elseif` or `.else` statement index.
-; Outputs: D0 = status; D2.W = matching endif index.
-; Clobbers: D0-D6/A0-A1/CCR.
-; CCR: reflects D0 on return.
-findMatchingEndif	.block
-	movem.l d1/d3-d6/a0-a1, -(sp)
-	move.w d7, d2
-	moveq #1, d6
-scan
-	addq.w #1, d2
-	jsr eng.opasmEngineGetStatementCountV1
-	cmp.w d0, d2
-	bhs.w fail
-	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movea.l sp, a0
-	moveq #0, d0
-	move.w d2, d0
-	jsr eng.opasmEngineGetStatementTextMetadataV1
-	bne.s next
-	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
-	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
-	cmpi.l #2, d4
-	beq.s maybeIf
-	cmpi.l #3, d4
-	bne.s maybeEndif
-maybeIf
-	moveq #0, d0
-	move.w d4, d0
-	lea IfMnemonicText, a1
-	moveq #2, d1
-	bsr.w lineStartsWith
-	beq.s maybeEndif
-	addq.w #1, d6
-	bra.s next
-maybeEndif
-	cmpi.l #5, d4
-	beq.s compareEndif
-	cmpi.l #6, d4
-	bne.s next
-compareEndif
-	moveq #0, d0
-	move.w d4, d0
-	lea EndifMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	beq.s next
-	subq.w #1, d6
-	beq.s found
-next
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	bra.w scan
-found
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	bra.s return
-fail
-	moveq #1, d0
-return
-	movem.l (sp)+, d1/d3-d6/a0-a1
-	rts
-	.bend  ; findMatchingEndif
-
-; Find the first same-level matching `.case`, otherwise `.default`, for `.match`.
-; Inputs: D7.W = match statement index; OpasmMatchValue = scalar match value.
-; Outputs: D0 = status; D2.W = selected case/default/endmatch statement index.
-; Clobbers: D0-D6/A0-A1/CCR.
-; CCR: reflects D0 on return.
-findSelectedMatchBranch	.block
-	movem.l d1/d3-d6/a0-a1, -(sp)
-	move.w d7, d5
-	move.w #$ffff, OpasmMatchDefaultIndex
-	move.w d7, d2
-	moveq #1, d6
-scan
-	addq.w #1, d2
-	jsr eng.opasmEngineGetStatementCountV1
-	cmp.w d0, d2
-	bhs.w fail
-	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movea.l sp, a0
-	moveq #0, d0
-	move.w d2, d0
-	jsr eng.opasmEngineGetStatementTextMetadataV1
-	bne.w next
-	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
-	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
-	cmpi.l #5, d4
-	beq.s maybeMatch
-	cmpi.l #6, d4
-	bne.s maybeEndmatch
-maybeMatch
-	moveq #0, d0
-	move.w d4, d0
-	lea MatchMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	beq.s maybeEndmatch
-	addq.w #1, d6
-	bra.w next
-maybeEndmatch
-	cmpi.l #8, d4
-	beq.s compareEndmatch
-	cmpi.l #9, d4
-	bne.s outerBranch
-compareEndmatch
-	moveq #0, d0
-	move.w d4, d0
-	lea EndmatchMnemonicText, a1
-	moveq #8, d1
-	bsr.w lineStartsWith
-	beq.s outerBranch
-	subq.w #1, d6
-	beq.w chooseDefault
-	bra.w next
-outerBranch
-	cmpi.w #1, d6
-	bne.w next
-	cmpi.l #4, d4
-	beq.s compareCase
-	cmpi.l #5, d4
-	bne.s maybeDefault
-compareCase
-	moveq #0, d0
-	move.w d4, d0
-	lea CaseMnemonicText, a1
-	moveq #4, d1
-	bsr.w lineStartsWith
-	beq.s maybeDefault
-	move.w d2, d7
-	bsr.w caseMatchesCurrentValue
-	move.l d0, d4
-	move.w d5, d7
-	tst.l d4
-	bne.w next
-	bra.w found
-maybeDefault
-	cmpi.l #7, d4
-	beq.s compareDefault
-	cmpi.l #8, d4
-	bne.w next
-compareDefault
-	moveq #0, d0
-	move.w d4, d0
-	lea DefaultMnemonicText, a1
-	moveq #7, d1
-	bsr.w lineStartsWith
-	beq.w next
-	move.w d2, OpasmMatchDefaultIndex
-	bra.w next
-chooseDefault
-	move.w OpasmMatchDefaultIndex, d0
-	cmpi.w #$ffff, d0
-	beq.s found
-	move.w d0, d2
-found
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	bra.s return
-next
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	bra.w scan
-fail
-	moveq #1, d0
-return
-	movem.l (sp)+, d1/d3-d6/a0-a1
-	rts
-	.bend  ; findSelectedMatchBranch
 
 ; Return whether any comma-separated `.case` value matches OpasmMatchValue.
 ; Inputs: D7.W = case statement index.
@@ -1090,205 +842,6 @@ return
 	rts
 	.bend  ; caseMatchesCurrentValue
 
-; Find a matching same-level `.endmatch` after a selected case/default.
-; Inputs: D7.W = current case/default statement index.
-; Outputs: D0 = status; D2.W = matching endmatch index.
-; Clobbers: D0-D6/A0-A1/CCR.
-; CCR: reflects D0 on return.
-findMatchingEndmatch	.block
-	movem.l d1/d3-d6/a0-a1, -(sp)
-	move.w d7, d2
-	moveq #1, d6
-scan
-	addq.w #1, d2
-	jsr eng.opasmEngineGetStatementCountV1
-	cmp.w d0, d2
-	bhs.w fail
-	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movea.l sp, a0
-	moveq #0, d0
-	move.w d2, d0
-	jsr eng.opasmEngineGetStatementTextMetadataV1
-	bne.s next
-	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
-	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
-	cmpi.l #5, d4
-	beq.s maybeMatch
-	cmpi.l #6, d4
-	bne.s maybeEndmatch
-maybeMatch
-	moveq #0, d0
-	move.w d4, d0
-	lea MatchMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	beq.s maybeEndmatch
-	addq.w #1, d6
-	bra.s next
-maybeEndmatch
-	cmpi.l #8, d4
-	beq.s compareEndmatch
-	cmpi.l #9, d4
-	bne.s next
-compareEndmatch
-	moveq #0, d0
-	move.w d4, d0
-	lea EndmatchMnemonicText, a1
-	moveq #8, d1
-	bsr.w lineStartsWith
-	beq.s next
-	subq.w #1, d6
-	beq.s found
-next
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	bra.w scan
-found
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	bra.s return
-fail
-	moveq #1, d0
-return
-	movem.l (sp)+, d1/d3-d6/a0-a1
-	rts
-	.bend  ; findMatchingEndmatch
-
-; Find the matching `.endfor` for a zero-count `.for`.
-; Inputs: D7.W = opening statement index.
-; Outputs: D0 = status; D2.W = matching end statement on success.
-; Clobbers: D0-D6/A0-A1/CCR.
-; CCR: reflects D0 on return.
-findMatchingEndfor	.block
-	movem.l d1/d3-d6/a0-a1, -(sp)
-	move.w d7, d2
-	moveq #1, d6
-
-scan
-	addq.w #1, d2
-	jsr eng.opasmEngineGetStatementCountV1
-	cmp.w d0, d2
-	bhs.w fail
-	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movea.l sp, a0
-	moveq #0, d0
-	move.w d2, d0
-	jsr eng.opasmEngineGetStatementTextMetadataV1
-	bne.s next
-	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
-	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
-	cmpi.l #3, d4
-	beq.s compareNestedFor
-	cmpi.l #4, d4
-	bne.s maybeEnd
-
-compareNestedFor
-	moveq #0, d0
-	move.w d4, d0
-	lea ForMnemonicText, a1
-	moveq #3, d1
-	bsr.w lineStartsWith
-	beq.s maybeEnd
-	addq.w #1, d6
-	bra.s next
-
-maybeEnd
-	cmpi.l #6, d4
-	beq.s compareNestedEnd
-	cmpi.l #7, d4
-	bne.s next
-
-compareNestedEnd
-	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
-	moveq #0, d0
-	move.w d4, d0
-	lea EndforMnemonicText, a1
-	moveq #6, d1
-	bsr.w lineStartsWith
-	beq.s next
-	subq.w #1, d6
-	beq.s found
-
-next
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	bra.w scan
-
-found
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	bra.s return
-
-fail
-	moveq #1, d0
-
-return
-	movem.l (sp)+, d1/d3-d6/a0-a1
-	rts
-	.bend  ; findMatchingEndfor
-
-; Find the matching `.endwhile` for a false-first `.while`.
-; Inputs: D7.W = opening statement index.
-; Outputs: D0 = status; D2.W = matching end statement on success.
-; Clobbers: D0-D6/A0-A1/CCR.
-; CCR: reflects D0 on return.
-findMatchingEndwhile	.block
-	movem.l d1/d3-d6/a0-a1, -(sp)
-	move.w d7, d2
-	moveq #1, d6
-scan
-	addq.w #1, d2
-	jsr eng.opasmEngineGetStatementCountV1
-	cmp.w d0, d2
-	bhs.w fail
-	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movea.l sp, a0
-	moveq #0, d0
-	move.w d2, d0
-	jsr eng.opasmEngineGetStatementTextMetadataV1
-	bne.s next
-	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
-	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
-	cmpi.l #5, d4
-	beq.s compareNestedWhile
-	cmpi.l #6, d4
-	bne.s maybeEnd
-compareNestedWhile
-	moveq #0, d0
-	move.w d4, d0
-	lea WhileMnemonicText, a1
-	moveq #5, d1
-	bsr.w lineStartsWith
-	beq.s maybeEnd
-	addq.w #1, d6
-	bra.s next
-maybeEnd
-	cmpi.l #8, d4
-	beq.s compareNestedEndwhile
-	cmpi.l #9, d4
-	bne.s next
-compareNestedEndwhile
-	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
-	moveq #0, d0
-	move.w d4, d0
-	lea EndwhileMnemonicText, a1
-	moveq #8, d1
-	bsr.w lineStartsWith
-	beq.s next
-	subq.w #1, d6
-	beq.s found
-next
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	bra.w scan
-found
-	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	bra.s return
-fail
-	moveq #1, d0
-return
-	movem.l (sp)+, d1/d3-d6/a0-a1
-	rts
-	.bend  ; findMatchingEndwhile
-
 opasmDriverPassTwoOk	.block
 	moveq #abi.OPASM_EVENT_PASS_OK, d0
 	moveq #2, d1
@@ -1298,7 +851,7 @@ opasmDriverPassTwoOk	.block
 	.bend  ; opasmDriverPassTwoOk
 
 opasmDriverRecordLabel	.block
-	movem.l d1-d7/a0-a1, -(sp)
+	movem.l d1-d7/a0-a1/a5, -(sp)
 	move.w d0, d7
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
@@ -1393,7 +946,7 @@ duplicate
 
 return
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movem.l (sp)+, d1-d7/a0-a1
+	movem.l (sp)+, d1-d7/a0-a1/a5
 	rts
 
 symbolValueFail
@@ -1655,7 +1208,7 @@ return
 ; Clobbers: D1-D7/A0-A3/CCR.
 ; CCR: reflects D0 on return.
 opasmDriverAdvancePc	.block
-	movem.l d0-d7/a0-a3, -(sp)
+	movem.l d0-d7/a0-a5, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	move.l d0, d7
 	movea.l sp, a0
@@ -1731,7 +1284,7 @@ selectedSizeDispatch
 	jsr eng.opasmEngineStatementLooksBareColumnOneV1
 	bne.w done
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movem.l (sp)+, d0-d7/a0-a3
+	movem.l (sp)+, d0-d7/a0-a5
 	moveq #1, d0
 	rts
 
@@ -1771,7 +1324,7 @@ orgBad
 	moveq #abi.OPASM_EVENT_BAD_ORG, d0
 	bsr.w appendKindEvent
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movem.l (sp)+, d0-d7/a0-a3
+	movem.l (sp)+, d0-d7/a0-a5
 	moveq #1, d0
 	rts
 
@@ -1879,7 +1432,7 @@ advanceThree
 
 done
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movem.l (sp)+, d0-d7/a0-a3
+	movem.l (sp)+, d0-d7/a0-a5
 	moveq #0, d0
 	rts
 	.bend  ; opasmDriverAdvancePc
@@ -4969,9 +4522,6 @@ OpasmRepeatKind
 
 OpasmMatchValue
 	.res long, 1
-
-OpasmMatchDefaultIndex
-	.res word, 1
 
 OpasmIfDepth
 	.res word, 1

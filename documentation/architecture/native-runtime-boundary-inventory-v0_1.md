@@ -46,18 +46,23 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Mutable state: module-local pass/session request pointers, flow/repetition
   scratch, layout region/section tables, and text scratch/output state.
 - Routine responsibility groups: pass callback orchestration; router-result
-  dispatch; structural-flow matching scans; operand/evaluation request
+  dispatch; structural-flow state transitions and explicit `.case` evaluation
+  callback; operand/evaluation request
   construction; selector/encoding adaptation; data/text sizing and emission;
   layout/region/section/place handling; event projection.
 - Inbound users: the CLI engine-callback adapter imports this driver; the
   driver is the session orchestration boundary, not a package or CPU owner.
 - Decision: orchestration stays here. Item 5.8 moves non-structural directive
   text classification to `opasm.amigaos.directive_router`; the driver consumes
-  only its numeric result. Structural flow remains a mandatory future owner in
-  Item 5.8.1, followed by operand
+  only its numeric result. Item 5.8.1 moves future-statement structural scans
+  to `opasm.amigaos.flow_navigation`; the driver retains only the explicit
+  `.case` operand-evaluation callback pending Item 5.9. This is an
+  ownership-only extraction, followed by operand
   evaluation (5.9), selector adaptation (5.9.1), data (5.9.2), text (5.9.3),
   and layout (5.9.4).  Repeated directive/scanner comparisons are candidates
   for one bounded shared utility only after the router extraction proves need.
+  Callback routes that skip structural statements must explicitly return their
+  next statement index; no callback may rely on router scratch-register state.
 
 ### `opasm.amigaos.directive_router` (Item 5.8 ownership split)
 

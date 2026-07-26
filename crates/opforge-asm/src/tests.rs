@@ -400,6 +400,34 @@ fn external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture() {
 }
 
 #[test]
+fn external_fs_uae_native_cli_flow_navigation_preserves_nested_structural_skips() {
+    // Proof level D. This runs the native CLI through false `.if`, zero `.for`,
+    // `.match` default selection, and zero `.while` navigation. It does not
+    // add or prove support for a new source CPU.
+    match crate::fs_uae_smoke::run_native_cli_flow_navigation_from_env(&workspace_root())
+        .expect("native flow-navigation FS-UAE fixture should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native flow-navigation fixture failed under FS-UAE\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            let bytes = fs::read(
+                run.artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+            )
+            .expect("read native flow-navigation output");
+            assert_eq!(bytes, vec![0x42]);
+        }
+    }
+}
+
+#[test]
 fn native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection() {
     // Proof level D. The guest harness captures COPY/PAIR/TEXT/LOCAL, validates
     // bounded substitution, and proves a nested macro call fails without
@@ -14611,6 +14639,56 @@ fn motorola68020_opasm_directive_router_owns_non_structural_mnemonic_classificat
     assert!(router.contains("OPASM_DIRECTIVE_BYTE = 15"));
     assert!(router.contains("OPASM_DIRECTIVE_WORD = 16"));
     assert!(router.contains("OPASM_DIRECTIVE_PTEXT = 20"));
+}
+
+#[test]
+fn motorola68020_opasm_flow_navigation_owns_structural_future_scans() {
+    // Proof level B. This test proves that the driver delegates every
+    // future-statement scan to the navigation owner. It does not execute the
+    // native callback or prove conditional/repetition semantics in FS-UAE.
+    let repo_root = workspace_root();
+    let driver = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read opasm assembly driver source");
+    let navigation = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm"),
+    )
+    .expect("read opasm flow-navigation source");
+
+    for call in [
+        "jsr navigation.findNextIfBranchV1",
+        "jsr navigation.findMatchingEndifV1",
+        "jsr navigation.findSelectedMatchBranchV1",
+        "jsr navigation.findMatchingEndmatchV1",
+        "jsr navigation.findMatchingEndforV1",
+        "jsr navigation.findMatchingEndwhileV1",
+    ] {
+        assert!(driver.contains(call), "driver should delegate {call}");
+    }
+    for retired in [
+        "findNextIfBranch\t.block",
+        "findMatchingEndif\t.block",
+        "findSelectedMatchBranch\t.block",
+        "findMatchingEndmatch\t.block",
+        "findMatchingEndfor\t.block",
+        "findMatchingEndwhile\t.block",
+    ] {
+        assert!(
+            !driver.contains(retired),
+            "driver should not retain {retired}"
+        );
+    }
+    assert!(source_contains_in_order(
+        &navigation,
+        &[
+            ".module opasm.amigaos.flow_navigation",
+            "findNextIfBranchV1 .BLOCK",
+            "findSelectedMatchBranchV1 .BLOCK",
+            "FlowCaseMatcher",
+            "findMatchingPairV1 .BLOCK",
+        ]
+    ));
 }
 
 #[test]

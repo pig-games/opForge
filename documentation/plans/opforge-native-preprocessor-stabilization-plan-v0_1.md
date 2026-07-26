@@ -391,7 +391,7 @@ its own activated item/slice contract.
   - Commit outcome: one independently revertible directive-router commit.
   - Definition of done: the driver implements no mnemonic/directive string chains.
 
-- [ ] Item 5.8.1: extract opasm structural-flow coordination
+- [x] Item 5.8.1: extract opasm structural-flow coordination
   - Source requirement or finding IDs: NR-006; Item 5.8.
   - Invariant: matching-end and selected-branch scans move to a domain-flow or structural-navigation owner without changing statement traversal.
   - Expected files: flow-owner extension or `opasm_flow_dispatch.asm`, focused navigation contracts, and slice metadata.
@@ -401,6 +401,24 @@ its own activated item/slice contract.
   - Plan-compliance review evidence: PASS for structural-flow extraction only.
   - Commit outcome: one independently revertible flow-coordination commit.
   - Definition of done: the driver does not scan future statements for domain-specific terminators.
+
+- [x] Item 5.8.1.a: remediate the native false-conditional structural-scan invariant
+  - Source requirement or finding IDs: Item 5.8.1 Level D failure on 2026-07-26; `external_fs_uae_native_cli_flow_navigation_preserves_nested_structural_skips`.
+  - Invariant: a false `.if` locates its selected `.else` or matching `.endif` during native pass one without changing traversal, PC, diagnostics, or image bytes.
+  - Expected files: only the proven navigation/driver boundary, a focused false-conditional Level B/C contract where needed, updated slice metadata, and retained failure evidence.
+  - Scope boundary: correct exactly the first divergent structural-navigation boundary. Do not begin Item 5.9, enable segment/statement semantics, or bundle unrelated flow, selector, operand, encoding, data, text, or layout work.
+  - Proof: B source/register/CCR contract; C false-conditional traversal model; D `external_fs_uae_native_cli_flow_navigation_preserves_nested_structural_skips` using one FS-UAE instance.
+  - Full quality gates: focused invariant proof and Level D fixture; native formatter; staged native-porting; Rust quality; CPU-boundary guard; workflow gate.
+  - Plan-compliance review evidence: PASS for this single invariant remediation only, after the Level D fixture passes.
+  - Commit outcome: one focused remediation commit before resuming Item 5.8.1 completion.
+  - Completion evidence (2026-07-26): `opasmDriverApplyFlowControl` now returns
+    `D2 = current statement + 1` when skipping `.endif`, instead of reusing a
+    directive-router scratch value. Level D
+    `external_fs_uae_native_cli_flow_navigation_preserves_nested_structural_skips`
+    passes with the real native CLI and one FS-UAE instance; its fixture proves
+    false conditional selection and terminator traversal, not new language
+    semantics.
+  - Definition of done: the Level D fixture passes and its proof claim accurately names the structural paths it exercises.
 
 - [ ] Item 5.9: extract opasm operand/evaluation request construction
   - Source requirement or finding IDs: NR-007; Item 5.8.

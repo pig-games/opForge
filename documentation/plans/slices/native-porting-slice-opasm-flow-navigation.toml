@@ -1,0 +1,41 @@
+[slice]
+schema_version = 2
+name = "opasm structural-flow navigation ownership"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/asmline_conditionals.rs",
+  "crates/opforge-asm/src/repetition.rs",
+  "crates/opforge-asm/src/repetition_driver.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm::findNextIfBranchV1",
+  "native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm::findSelectedMatchBranchV1",
+  "native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm::findMatchingPairV1"
+]
+invariant = "The navigation owner performs every future-statement scan for conditional, match, for, and while terminators; the driver retains traversal callbacks and `.case` operand evaluation through one explicit callback."
+expected_inputs = "Existing stored statement indexes and mnemonic metadata; the selected-match entry receives the existing driver callback for `.case` operand evaluation."
+expected_outputs = "The same selected branch or matching terminator index, status, pass flow, emitted bytes, and diagnostics as before the ownership move."
+remediation_evidence = "2026-07-26: false `.if` traversal returned a router-clobbered D2 at `.endif`; the driver now explicitly returns current statement + 1. The real-CLI FS-UAE flow-navigation fixture passes without instrumentation."
+known_non_equivalences = "No CPU, family, dialect, instruction, segment, statement, selector, encoding, operand-evaluation, or source-acceptance behavior is added. The `.case` evaluator remains in the driver until Item 5.9."
+fast_proof_command = "cargo test -p asm motorola68020_opasm_flow_navigation_owns_structural_future_scans -- --nocapture && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_native_cli_flow_navigation_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_opasm_flow_navigation_owns_structural_future_scans"
+proof_level = "B"
+proves = "The driver has no local future-statement structural scan routines and delegates each existing scan to the navigation owner."
+does_not_prove = "Native execution or new CPU support."
+
+[[tests]]
+name = "motorola68020_item7_native_layout_directives_route_before_selected_encoding"
+proof_level = "C"
+proves = "Existing statement-routing shape remains compatible with the navigation delegation boundary."
+does_not_prove = "Nested flow execution on a native guest."
+
+[[tests]]
+name = "external_fs_uae_native_cli_flow_navigation_preserves_nested_structural_skips"
+proof_level = "D"
+proves = "The existing native CLI traverses false conditionals, zero repetitions, match default selection, and false while blocks through the extracted navigation owner."
+does_not_prove = "New CPU, family, dialect, instruction, segment, or statement support."

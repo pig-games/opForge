@@ -52,6 +52,10 @@ const FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT: &str =
     ".org $0800\nstart   lda #$42\n.byte $99\n";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE: &str =
     "OPFORGE_FS_UAE_NATIVE_CLI_ITEM5_DIRECTIVE_ROUTER";
+const FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_INPUT_TEXT: &str =
+    ".org $0800\n.if 0\n.byte $11\n.else\n.byte $42\n.endif\n";
+pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_DEFINE: &str =
+    "OPFORGE_FS_UAE_NATIVE_CLI_ITEM5_FLOW_NAVIGATION";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE: &str =
     "OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE: &str =
@@ -488,6 +492,39 @@ pub(crate) fn run_native_cli_directive_router_from_env(
         &[
             "OPFORGE_FS_UAE_SMOKE",
             FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE,
+        ],
+        Some(&input),
+    )? {
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
+    }
+}
+
+pub(crate) fn run_native_cli_flow_navigation_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => return Ok(FsUaeSmokeOutcome::Skipped(format!(
+            "{FS_UAE_ARGS_ENV} is not set; configure FS-UAE to execute the native flow-navigation fixture"
+        ))),
+    };
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    let input = OpforgeNativeCliStagedInputs {
+        source: Some(FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_INPUT_TEXT.as_bytes()),
+        package_bytes: None,
+        extra_guest_files: &[],
+    };
+    match run_example_smoke_with_extra_defines_and_native_cli_input(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+        FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH,
+        "68020",
+        &[
+            "OPFORGE_FS_UAE_SMOKE",
+            FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_DEFINE,
         ],
         Some(&input),
     )? {

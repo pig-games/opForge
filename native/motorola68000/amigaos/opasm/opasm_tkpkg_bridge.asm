@@ -21,10 +21,16 @@
 ; - D1: tkpkg output byte length.
 ; - D2: tkpkg last-error byte length.
 ; - Clobbers D3-D5.
-dispatchEncodeSelectedV1	.block
+adaptSelectedEncodeRequestV1	.block
 	move.w d0, d1
 	moveq #tkabi.ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0
 	bra.w dispatchServiceV1
+	.bend  ; adaptSelectedEncodeRequestV1
+
+; Compatibility delegate retained while callers migrate to the explicit
+; selector-adaptation name.
+dispatchEncodeSelectedV1	.block
+	bra.w adaptSelectedEncodeRequestV1
 	.bend  ; dispatchEncodeSelectedV1
 
 ; Dispatch the expression evaluator service using an opasm service frame.

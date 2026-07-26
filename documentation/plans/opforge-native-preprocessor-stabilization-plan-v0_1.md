@@ -436,7 +436,7 @@ its own activated item/slice contract.
     and focused real-CLI FS-UAE flow proofs pass.
   - Definition of done: the driver no longer constructs operand/expression requests.
 
-- [ ] Item 5.9.1: extract opasm selector-encode adaptation
+- [x] Item 5.9.1: extract opasm selector-encode adaptation
   - Source requirement or finding IDs: NR-007; Item 5.9.
   - Invariant: selector-encode adaptation moves to one owner while package requests, diagnostics, and emitted bytes remain exact.
   - Expected files: `opasm_selector_encode.asm` or repository-style equivalent and focused selector-adapter tests.
@@ -444,6 +444,11 @@ its own activated item/slice contract.
   - Full quality gates: focused contracts and D fixtures; native formatter; staged native-porting; Rust quality; CPU-boundary guard; workflow gate.
   - Plan-compliance review evidence: PASS for selector-adapter extraction only.
   - Commit outcome: one focused selector-adapter commit.
+  - Completion evidence (2026-07-26): the existing tkpkg bridge now exposes
+    `adaptSelectedEncodeRequestV1`; both driver encode paths delegate their
+    prepared request through it. The driver retains output-image writes and
+    diagnostics. Level B ownership and the focused real-CLI FS-UAE flow proof
+    pass.
   - Definition of done: the driver does not adapt selector results into encoding operations.
 
 - [ ] Item 5.9.2: extract opasm numeric-data sizing and emission

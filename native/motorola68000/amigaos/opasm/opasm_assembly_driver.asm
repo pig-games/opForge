@@ -1048,7 +1048,7 @@ opasmDriverEmitImageBytes	.block
 	bsr.w prepareEvaluateExpressionExtension
 	bsr.w serviceFramePtr
 	move.w OpasmDriverEvalRequestLen, d0
-	jsr tkpkg.dispatchEncodeSelectedV1
+	jsr tkpkg.adaptSelectedEncodeRequestV1
 	move.w d2, d4
 	tst.b d0
 	bne.w serviceFail
@@ -1449,7 +1449,7 @@ trySelectedEncodeSizeForStatement	.block
 	bsr.w prepareEvaluateExpressionExtension
 	bsr.w serviceFramePtr
 	move.w OpasmDriverEvalRequestLen, d0
-	jsr tkpkg.dispatchEncodeSelectedV1
+	jsr tkpkg.adaptSelectedEncodeRequestV1
 	move.w d2, d4
 	tst.b d0
 	bne.w fail

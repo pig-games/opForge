@@ -14727,6 +14727,37 @@ fn motorola68020_opasm_operand_eval_owns_request_construction() {
 }
 
 #[test]
+fn motorola68020_opasm_tkpkg_bridge_owns_selector_encode_adaptation() {
+    // Proof level B. This asserts ownership only, not selector semantics.
+    let repo_root = workspace_root();
+    let driver = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read opasm assembly driver source");
+    let bridge = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_tkpkg_bridge.asm"),
+    )
+    .expect("read opasm tkpkg bridge source");
+
+    assert_eq!(
+        driver
+            .matches("jsr tkpkg.adaptSelectedEncodeRequestV1")
+            .count(),
+        2,
+        "both selected-encode paths should delegate to the bridge"
+    );
+    assert!(source_contains_in_order(
+        &bridge,
+        &[
+            "adaptSelectedEncodeRequestV1 .BLOCK",
+            "ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION",
+            "dispatchEncodeSelectedV1 .BLOCK",
+            "BRA.W adaptSelectedEncodeRequestV1",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_item10_native_include_roots_expand_before_tokenization() {
     let repo_root = workspace_root();
     let args_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/args.asm");

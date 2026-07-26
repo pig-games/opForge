@@ -6,6 +6,7 @@
 	.use opasm.amigaos.callback_abi as abi
 	.use opasm.amigaos.compile_values as compile_values
 	.use opasm.amigaos.directive_router as directives
+	.use opasm.amigaos.directive_data as data_directives
 	.use opasm.amigaos.engine as eng
 	.use opasm.amigaos.events
 	.use opasm.amigaos.flow_conditionals as conditionals
@@ -3141,12 +3142,8 @@ return
 ; CCR: reflects D0.L on return.
 dataDirectiveSizeForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
-	bsr.w countCommaPartsForStatement
-	bne.s fail
-	moveq #0, d2
-	move.w d5, d2
-	mulu.l d2, d3
-	moveq #0, d0
+	lea countCommaPartsForStatement, a0
+	jsr data_directives.sizeNumericDirectiveV1
 	bra.s return
 
 fail
@@ -3186,93 +3183,30 @@ return
 ; CCR: reflects D0.L on return.
 emitDataDirectiveForStatement	.block
 	movem.l d1-d7/a0-a3, -(sp)
-	move.w d5, d4
-	bsr.w countCommaPartsForStatement
-	bne.w fail
-	move.w d3, d2
-	moveq #1, d6
-
-partLoop
-	cmp.w d2, d6
-	bhi.w ok
-	move.w d4, d5
-	cmpi.w #1, d4
-	bne.s readPart
-	moveq #1, d5
-
-readPart
-	cmpi.w #1, d2
-	bne.s readSplitPart
-	bsr.w readOperandValueForStatement
-	bra.s havePartValue
-
-readSplitPart
-	bsr.w readCommaOperandValueForStatement
-havePartValue
-	bne.w fail
-	cmpi.w #1, d4
-	beq.s emitOne
-	cmpi.w #2, d4
-	beq.s emitTwo
-	cmpi.w #4, d4
-	beq.s emitFour
-	bra.w fail
-
-emitOne
-	cmpi.l #$000000FF, d3
-	bhi.w fail
-	lea OpasmDataScratch.l, a0
-	move.b d3, (a0)
-	moveq #1, d0
-	jsr eng.opasmEngineAppendImageBytesV1
-	bne.w fail
-	bra.s nextPart
-
-emitTwo
-	lea OpasmDataScratch.l, a0
-	move.b d3, (a0)
-	move.l d3, d0
-	lsr.l #8, d0
-	move.b d0, 1(a0)
-	moveq #2, d0
-	jsr eng.opasmEngineAppendImageBytesV1
-	bne.w fail
-	bra.s nextPart
-
-emitFour
-	lea OpasmDataScratch.l, a0
-	move.b d3, (a0)
-	move.l d3, d0
-	lsr.l #8, d0
-	move.b d0, 1(a0)
-	move.l d3, d0
-	lsr.l #8, d0
-	lsr.l #8, d0
-	move.b d0, 2(a0)
-	move.l d3, d0
-	lsr.l #8, d0
-	lsr.l #8, d0
-	lsr.l #8, d0
-	move.b d0, 3(a0)
-	moveq #4, d0
-	jsr eng.opasmEngineAppendImageBytesV1
-	bne.w fail
-
-nextPart
-	addq.w #1, d6
-	bra.w partLoop
-
-ok
-	moveq #0, d0
-	bra.w return
-
-fail
-	moveq #1, d0
+	lea countCommaPartsForStatement, a0
+	lea resolveNumericDataPartForOwner, a1
+	jsr data_directives.emitNumericDirectiveV1
 
 return
 	movem.l (sp)+, d1-d7/a0-a3
 	rts
 	.bend  ; emitDataDirectiveForStatement
+
+; Resolve the current numeric-data part for the directive-data owner.
+; Inputs: D7.W = statement; D2.W = part count; D5.W = unit bytes; D6.W = part.
+; Outputs: D0.L = status; D3.L = resolved value.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0 on return.
+resolveNumericDataPartForOwner	.block
+	cmpi.w #1, d2
+	bne.s splitPart
+	bsr.w readOperandValueForStatement
+	rts
+
+splitPart
+	bsr.w readCommaOperandValueForStatement
+	rts
+	.bend  ; resolveNumericDataPartForOwner
 
 ; Emit a `.byte`/`.db` list whose quoted operands use the active encoding.
 ; Inputs: D7.W = statement index.

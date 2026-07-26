@@ -1,0 +1,30 @@
+[slice]
+schema_version = 2
+name = "opasm numeric-data sizing and emission ownership"
+kind = "native-rust-parity"
+rust_reference = ["crates/opforge-asm/src/asmline.rs"]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::dataDirectiveSizeForStatement",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::emitDataDirectiveForStatement",
+  "native/motorola68000/amigaos/opasm/opasm_directive_data.asm::sizeNumericDirectiveV1",
+  "native/motorola68000/amigaos/opasm/opasm_directive_data.asm::emitNumericDirectiveV1"
+]
+invariant = "One owner counts numeric list elements, computes first-pass size, validates byte values, packs values in MOS little-endian order, and appends image bytes; driver-owned statement parsing and operand evaluation remain unchanged."
+expected_inputs = "Existing statement indexes, numeric-data unit widths of 1, 2, or 4 bytes, and the driver's bounded list-count and operand-resolution callbacks."
+expected_outputs = "The same two-pass byte size, PC progression, image bytes, and failure status for existing numeric directives."
+known_non_equivalences = "No text directives, layout ownership, CPU, family, dialect, instruction, segment, or statement support is added. Debug-contract builds additionally record structured directive-data events without changing release behavior."
+fast_proof_command = "cargo test -p asm motorola68020_opasm_directive_data_owns_numeric_size_calculation -- --nocapture && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_opasm_directive_data_owns_numeric_size_calculation"
+proof_level = "B"
+proves = "The driver delegates numeric sizing and emission to the data owner."
+does_not_prove = "Guest execution or new directive syntax."
+
+[[tests]]
+name = "external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture"
+proof_level = "D"
+proves = "The real native CLI emits the established byte, word, and long little-endian fixture bytes."
+does_not_prove = "Text directives, layout directives, or new CPU support."

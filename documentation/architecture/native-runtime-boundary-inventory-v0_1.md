@@ -41,8 +41,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Public entry: `assembleSessionV1`; it builds the engine callback context and
   runs the two-pass session.
 - Imports/outbound dependencies: callback ABI, compile values, directive router,
-  engine, events, conditional/navigation/repetition/scope/struct flow modules,
-  text encoding, tkpkg bridge, and approved debug contracts/events.
+  numeric-data owner, engine, events, conditional/navigation/repetition/scope/struct
+  flow modules, text encoding, tkpkg bridge, and approved debug contracts/events.
 - Mutable state: module-local pass/session request pointers, flow/repetition
   scratch, layout region/section tables, and text scratch/output state.
 - Routine responsibility groups: pass callback orchestration; router-result
@@ -58,8 +58,10 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   to `opasm.amigaos.flow_navigation`; the driver retains only the explicit
   `.case` operand-evaluation callback pending Item 5.9. This is an
   ownership-only extraction, followed by operand
-  evaluation (5.9), selector adaptation (5.9.1), data (5.9.2), text (5.9.3),
-  and layout (5.9.4).  Repeated directive/scanner comparisons are candidates
+  evaluation (5.9), selector adaptation (5.9.1), text (5.9.3), and layout
+  (5.9.4). Numeric directive sizing, little-endian byte packing, and image
+  append now belong to `opasm.amigaos.directive_data`; the driver supplies only
+  statement-aware count and evaluation callbacks. Repeated directive/scanner comparisons are candidates
   for one bounded shared utility only after the router extraction proves need.
   Callback routes that skip structural statements must explicitly return their
   next statement index; no callback may rely on router scratch-register state.
@@ -89,6 +91,22 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   request-length state, dispatch, diagnostics, and fallback policy.
 - Decision: this owner constructs engine request envelopes only. It does not
   select, encode, emit, resolve operands, or own layout behavior.
+
+### `opasm.amigaos.directive_data` (Item 5.9.2 ownership split)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_directive_data.asm`.
+- Public entries: `sizeNumericDirectiveV1` and `emitNumericDirectiveV1`.
+- Imports/outbound dependencies: engine image append; the driver supplies its
+  existing comma-count and statement-aware operand-resolution callbacks.
+- Mutable state: per-session callback pointers, unit-width scratch, and a
+  four-byte packing buffer.
+- Routine responsibility groups: numeric list sizing, byte range validation,
+  MOS little-endian packing, and image append.
+- Decision: this is an ownership-only split. Existing directive classification,
+  two-pass orchestration, expression evaluation, diagnostic status, and CPU
+  semantics stay at their existing boundaries. In debug-contract builds it
+  emits structured `EVENT_DIRECTIVE_DATA` records after resolution and append;
+  release builds do not execute that instrumentation.
 
 ### `tkpkg.amigaos.service` (NR-002/003/004, mandatory decomposition)
 

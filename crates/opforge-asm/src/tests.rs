@@ -394,7 +394,10 @@ fn external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture() {
                     .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
             )
             .expect("read native directive-router output");
-            assert_eq!(bytes, vec![0xa9, 0x42, 0x99]);
+            assert_eq!(
+                bytes,
+                vec![0xa9, 0x42, 0x99, 0x34, 0x12, 0x78, 0x56, 0x04, 0x03, 0x02, 0x01]
+            );
         }
     }
 }
@@ -14475,9 +14478,9 @@ fn motorola68020_item8_native_data_text_directives_route_before_selected_encodin
         &driver,
         &[
             "emitDataDirectiveForStatement .BLOCK",
-            "BSR.W countCommaPartsForStatement",
-            "BSR.W readCommaOperandValueForStatement",
-            "JSR eng.opasmEngineAppendImageBytesV1",
+            "LEA countCommaPartsForStatement, A0",
+            "LEA resolveNumericDataPartForOwner, A1",
+            "JSR data_directives.emitNumericDirectiveV1",
         ]
     ));
     assert!(source_contains_in_order(
@@ -14753,6 +14756,51 @@ fn motorola68020_opasm_tkpkg_bridge_owns_selector_encode_adaptation() {
             "ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION",
             "dispatchEncodeSelectedV1 .BLOCK",
             "BRA.W adaptSelectedEncodeRequestV1",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_opasm_directive_data_owns_numeric_size_calculation() {
+    // Proof level B. This checks the numeric sizing and emission ownership boundary only.
+    let repo_root = workspace_root();
+    let driver = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read opasm assembly driver source");
+    let data_owner = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_directive_data.asm"),
+    )
+    .expect("read opasm numeric-data owner source");
+
+    assert!(driver.contains(".use opasm.amigaos.directive_data as data_directives"));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "dataDirectiveSizeForStatement .BLOCK",
+            "LEA countCommaPartsForStatement, A0",
+            "JSR data_directives.sizeNumericDirectiveV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &data_owner,
+        &[
+            ".module opasm.amigaos.directive_data",
+            "sizeNumericDirectiveV1 .BLOCK",
+            "JSR (A1)",
+            "MULU.L D2, D3",
+            "emitNumericDirectiveV1 .BLOCK",
+            "JSR eng.opasmEngineAppendImageBytesV1",
+            "EVENT_DIRECTIVE_DATA",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "resolveNumericDataPartForOwner .BLOCK",
+            "BSR.W readOperandValueForStatement",
+            "splitPart",
+            "BSR.W readCommaOperandValueForStatement",
         ]
     ));
 }

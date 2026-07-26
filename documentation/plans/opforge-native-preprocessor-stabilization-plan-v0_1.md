@@ -451,7 +451,7 @@ its own activated item/slice contract.
     pass.
   - Definition of done: the driver does not adapt selector results into encoding operations.
 
-- [ ] Item 5.9.2: extract opasm numeric-data sizing and emission
+- [x] Item 5.9.2: extract opasm numeric-data sizing and emission
   - Source requirement or finding IDs: NR-007; Item 5.9.
   - Invariant: numeric-data sizing/emission moves to one owner while two-pass size, PC, image, and diagnostics remain exact.
   - Expected files: `opasm_directive_data.asm` or repository-style equivalent and focused two-pass data tests.
@@ -459,6 +459,12 @@ its own activated item/slice contract.
   - Full quality gates: focused data contracts and D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
   - Plan-compliance review evidence: PASS for data-service extraction only.
   - Commit outcome: one focused data-service commit.
+  - Completion evidence (2026-07-26): `opasm.amigaos.directive_data` owns
+    numeric list sizing, byte validation, MOS little-endian packing, and image
+    append; the driver retains only statement-aware count and evaluation
+    callbacks. Structured `EVENT_DIRECTIVE_DATA` diagnostics are enabled only
+    in debug-contract builds. Level B ownership/inventory proof and the
+    extended real-CLI FS-UAE `.byte`/`.word`/`.long` fixture pass.
   - Definition of done: the driver does not implement numeric-data sizing or byte emission.
 
 - [ ] Item 5.9.3: extract opasm text sizing and emission

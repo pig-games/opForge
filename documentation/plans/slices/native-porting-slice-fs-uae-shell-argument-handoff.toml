@@ -1,0 +1,31 @@
+[slice]
+schema_version = 2
+name = "FS-UAE native CLI shell-argument handoff remediation"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/fs_uae_smoke.rs guest command template and live Rust artifact oracle"
+]
+native_boundary = [
+  "crates/opforge-asm/src/fs_uae_smoke.rs",
+  "native/motorola68000/amigaos/opforge-cli/run.asm GetArgStr path (unchanged)"
+]
+invariant = "The generated guest script command reaches the normal native CLI GetArgStr path and is never replaced by an embedded FS-UAE fallback argument tail."
+assertion_decision = "The batch helper asserts bounded Work: command paths and excludes OPFORGE_FS_UAE_SMOKE from the parity Hunk build defines."
+expected_inputs = "A staged per-case source, generated shell command, and normal native CLI Hunk."
+expected_outputs = "The exact declared source is assembled and its binary matches the live Rust result."
+known_non_equivalences = "This repairs Level D test authority only; it does not change native parser, selector, encoder, expression, diagnostic, or output semantics."
+fast_proof_command = "cargo test -p asm native_cli_batch_commands_use_bounded_guest_alias -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_opforge_native_cli_example_org_cli_bin_debug_matches_rust_bytes -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_cli_batch_commands_use_bounded_guest_alias"
+proof_level = "B"
+proves = "Per-case commands use bounded real shell arguments and the Hunk build does not activate embedded fallback arguments."
+does_not_prove = "Guest execution or artifact parity."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_example_org_cli_bin_debug_matches_rust_bytes"
+proof_level = "D"
+proves = "The generated guest command runs the declared canonical MOS6502 source through the real CLI argument path and emits Rust-matching bytes."
+does_not_prove = "The remaining native reference schema corpus."

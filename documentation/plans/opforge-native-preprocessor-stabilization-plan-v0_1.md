@@ -558,6 +558,24 @@ its own activated item/slice contract.
     no native production source changed.
   - Definition of done: every audited large module has a retained cohesion/decomposition decision.
 
+- [x] Item 5.11.1: remediate FS-UAE shell-argument handoff
+  - Source requirement or finding IDs: Item 5.12 first-divergence finding; the complete established Level D corpus must execute the command and source declared by each case.
+  - Invariant: the staged guest script invokes the real native CLI argument path; the parity Hunk must not discard `GetArgStr` and substitute an embedded FS-UAE fallback command.
+  - Expected files: `fs_uae_smoke.rs`, focused batch-command/build-define contract, slice metadata, and this plan item.
+  - First divergence: the parity batch runner staged and executed a per-case guest script but still compiled the Hunk with `OPFORGE_FS_UAE_SMOKE`; `run.asm` consequently ignored the script arguments and assembled the embedded `opforge_fsuae_smoke_input.asm` module fixture instead of the declared source.
+  - Proof: B bounded real-command and build-define contract; D focused real native CLI `.org`/binary fixture through the guest script.
+  - Full quality gates: focused helper contract and affected D fixture; Rust quality; workflow gate.
+  - Plan-compliance review evidence: PASS; the correction is limited to test authority and guest argument delivery, with no production assembler or CLI semantics changed.
+  - Commit outcome: one independently revertible FS-UAE parity-authority remediation commit before Item 5.12 resumes.
+  - Completion evidence (2026-07-28): each isolated batch case now builds the
+    normal CLI `GetArgStr` path and supplies bounded `Work:` arguments from its
+    generated guest script. The focused source/build-define contract and the
+    real `.org`/binary debug fixture pass without skip and match Rust bytes.
+    The newly authoritative schema run proceeds past the former embedded
+    `math.foo` fixture and exposes the next independent selector divergence in
+    `6502_first_run_artifact_contract.asm`, which is not included in this fix.
+  - Definition of done: a guest command-template source cannot be replaced by the embedded smoke fallback.
+
 - [ ] Item 5.12: enforce no-growth and ownership boundaries
   - Source requirement or finding IDs: NR-009; all prior runtime-boundary items.
   - Invariant: deterministic source guards reject new private semantic routines in the three transitional hotspot files, permit declared façade/delegation entries, detect direct tkpkg access to opasm mutable tables, detect CPU/family terms outside approved owners, and require new semantic modules to name their owner and slice contract.

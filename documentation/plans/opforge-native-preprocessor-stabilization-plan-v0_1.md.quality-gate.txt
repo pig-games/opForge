@@ -116,3 +116,10 @@ Evidence: runtime-boundary inventory PASS; dependency contract and exact retaine
 
 Reviewer: `plan-compliance-reviewer` rubric.
 Decision: PASS. The diff is limited to retained-cohesion decisions, a B/C slice, and deterministic current-dependency evidence. It introduces no assembly, ABI, CPU/family/dialect, selector, package, diagnostic, or output behavior and does not pre-empt Item 5.12's broader no-growth guards.
+
+PASS: Item 5.11.1 restores authority to the generated FS-UAE guest command by compiling the parity Hunk without the embedded smoke-argument override. The normal native CLI `GetArgStr` path now consumes the exact staged source and output arguments; no production assembler or CLI semantics change.
+
+Evidence: all 24 focused FS-UAE helper unit tests PASS; the real native CLI `.org`/binary debug fixture PASS without skip and matches Rust bytes; metadata-aware staged native-porting PASS; serial full Rust quality PASS; aggregate workflow gate PASS. The newly authoritative schema run proceeds beyond the former embedded `math.foo` source and independently exposes the next selector divergence in `6502_first_run_artifact_contract.asm`.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The staged diff is an independently revertible test-authority correction limited to guest command/build-define handoff, its B/D proof, slice metadata, and plan bookkeeping. It adds no CPU/family/dialect, parser, selector, encoder, expression, diagnostic, or output behavior.

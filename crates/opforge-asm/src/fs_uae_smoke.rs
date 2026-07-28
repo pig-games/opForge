@@ -896,7 +896,7 @@ struct OpforgeNativeCliBatchCasePaths {
     started_path: PathBuf,
     done_path: PathBuf,
     guest_artifact_dir: String,
-    guest_work_dir: String,
+    command_guest_work_dir: String,
 }
 
 fn opforge_native_cli_batch_case_name(index: usize) -> String {
@@ -918,7 +918,6 @@ fn opforge_native_cli_batch_case_paths(
     let done_path = artifact_dir.join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_DONE_FILE);
     let guest_artifact_dir =
         format!("Work:{FS_UAE_OPFORGE_NATIVE_CLI_CASE_ARTIFACTS_DIR}/{case_name}");
-    let guest_work_dir = format!("{guest_artifact_dir}/{FS_UAE_MOUNTED_WORK_DIR_NAME}");
     OpforgeNativeCliBatchCasePaths {
         artifact_dir,
         work_dir,
@@ -927,7 +926,7 @@ fn opforge_native_cli_batch_case_paths(
         started_path,
         done_path,
         guest_artifact_dir,
-        guest_work_dir,
+        command_guest_work_dir: "Work:".to_string(),
     }
 }
 
@@ -994,42 +993,22 @@ fn opforge_native_cli_case_command(
     case: &OpforgeNativeCliParityCase<'_>,
     paths: &OpforgeNativeCliBatchCasePaths,
 ) -> String {
-    let source_path = format!(
-        "{}/{}",
-        paths.guest_work_dir,
-        opforge_native_cli_case_source_relative_path(case)
-    );
-    let bin_path = format!(
-        "{}/{}",
-        paths.guest_work_dir, FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE
-    );
-    let _prg_path = format!(
-        "{}/build/{}",
-        paths.guest_work_dir, FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE
-    );
-    let _hex_path = format!(
-        "{}/build/{}",
-        paths.guest_work_dir, FS_UAE_OPFORGE_NATIVE_CLI_HEX_OUTPUT_FILE
-    );
-    let _list_path = format!(
-        "{}/build/{}",
-        paths.guest_work_dir, FS_UAE_OPFORGE_NATIVE_CLI_LST_OUTPUT_FILE
-    );
-    let hunk_path = format!("{}/build/opforge_native_out.hunk", paths.guest_work_dir);
-    let oversized_package_path = format!(
-        "{}/{}",
-        paths.guest_work_dir, FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE
-    );
-    let include_a = format!(
-        "{}/{}",
-        paths.guest_work_dir,
-        FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_FILE.trim_end_matches("/defs.inc")
-    );
-    let include_b = format!(
-        "{}/{}",
-        paths.guest_work_dir,
-        FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_FILE.trim_end_matches("/defs.inc")
-    );
+    let guest_work_dir = paths.command_guest_work_dir.as_str();
+    let guest_path = |relative: &str| format!("{guest_work_dir}{relative}");
+    let source_path = guest_path(opforge_native_cli_case_source_relative_path(case));
+    let bin_path = guest_path(FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+    let _prg_path =
+        guest_path(format!("build/{FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE}").as_str());
+    let _hex_path =
+        guest_path(format!("build/{FS_UAE_OPFORGE_NATIVE_CLI_HEX_OUTPUT_FILE}").as_str());
+    let _list_path =
+        guest_path(format!("build/{FS_UAE_OPFORGE_NATIVE_CLI_LST_OUTPUT_FILE}").as_str());
+    let hunk_path = guest_path("build/opforge_native_out.hunk");
+    let oversized_package_path = guest_path(FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE);
+    let include_a =
+        guest_path(FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_FILE.trim_end_matches("/defs.inc"));
+    let include_b =
+        guest_path(FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_FILE.trim_end_matches("/defs.inc"));
     let default_package_args = |args: &str| args.to_string();
 
     if let Some(template) = case.command_template {
@@ -1040,7 +1019,7 @@ fn opforge_native_cli_case_command(
             .replace("{hex}", &_hex_path)
             .replace("{list}", &_list_path)
             .replace("{hunk}", &hunk_path)
-            .replace("{guest_work_dir}", &paths.guest_work_dir)
+            .replace("{guest_work_dir}", guest_work_dir)
             .replace("{include_a}", &include_a)
             .replace("{include_b}", &include_b);
     }
@@ -1067,8 +1046,8 @@ fn opforge_native_cli_case_command(
         Some("OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT") => {
             default_package_args(
                 format!(
-                    "{source_path} --srec {}/build/opforge_native_out.srec --cpu m6502",
-                    paths.guest_work_dir
+                    "{source_path} --srec {} --cpu m6502",
+                    guest_path("build/opforge_native_out.srec")
                 )
                 .as_str(),
             )
@@ -1090,7 +1069,7 @@ fn opforge_native_cli_case_command(
             )
         }
         Some("OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE") => {
-            format!("{source_path} --bin {bin_path} --cpu m68020 --opasm-package {}/opforge_missing_package.opasm", paths.guest_work_dir)
+            format!("{source_path} --bin {bin_path} --cpu m68020 --opasm-package {}", guest_path("opforge_missing_package.opasm"))
         }
         Some("OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE") => {
             format!("{source_path} --bin {bin_path} --cpu m68020 --opasm-package {oversized_package_path}")
@@ -1105,15 +1084,15 @@ fn opforge_native_cli_case_command(
             default_package_args(format!("{source_path} --bin {bin_path} --cpu m68020 -M").as_str())
         }
         Some("OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW") => {
-            default_package_args(format!("{source_path} --bin {bin_path} --cpu m68020 -M {}/mod1 -M {}/mod2 -M {}/mod3 -M {}/mod4 -M {}/mod5 -M {}/mod6 -M {}/mod7 -M {}/mod8",
-                paths.guest_work_dir,
-                paths.guest_work_dir,
-                paths.guest_work_dir,
-                paths.guest_work_dir,
-                paths.guest_work_dir,
-                paths.guest_work_dir,
-                paths.guest_work_dir,
-                paths.guest_work_dir,
+            default_package_args(format!("{source_path} --bin {bin_path} --cpu m68020 -M {} -M {} -M {} -M {} -M {} -M {} -M {} -M {}",
+                guest_path("mod1"),
+                guest_path("mod2"),
+                guest_path("mod3"),
+                guest_path("mod4"),
+                guest_path("mod5"),
+                guest_path("mod6"),
+                guest_path("mod7"),
+                guest_path("mod8"),
             ).as_str())
         }
         Some(FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE) => {
@@ -1270,14 +1249,7 @@ fn run_opforge_native_cli_parity_batch_cases(
         batch_script.push('\n');
         batch_paths.push(case_paths);
     }
-    let mut assembly_defines = opforge_native_cli_fixture_assembly_defines();
-    assembly_defines.push("OPFORGE_FS_UAE_SMOKE".to_string());
-    assembly_defines.extend(
-        cases[0]
-            .extra_assembly_defines
-            .iter()
-            .map(|define| (*define).to_string()),
-    );
+    let assembly_defines = opforge_native_cli_case_assembly_defines(&cases[0]);
     let include_paths =
         example_include_paths(workspace_root, FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME);
     let module_paths = example_module_paths(workspace_root, FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME);
@@ -1490,6 +1462,16 @@ fn opforge_native_cli_fixture_assembly_defines() -> Vec<String> {
     // FS-UAE-specific test defines. The guest startup script provides the actual
     // CLI arguments for every case.
     Vec::new()
+}
+
+fn opforge_native_cli_case_assembly_defines(case: &OpforgeNativeCliParityCase<'_>) -> Vec<String> {
+    let mut defines = opforge_native_cli_fixture_assembly_defines();
+    defines.extend(
+        case.extra_assembly_defines
+            .iter()
+            .map(|define| (*define).to_string()),
+    );
+    defines
 }
 
 pub(crate) fn run_opforge_native_cli_failure_cases_from_env(
@@ -3348,6 +3330,33 @@ mod tests {
     }
 
     #[test]
+    fn native_cli_batch_commands_use_bounded_guest_alias() {
+        let mounted_work_dir = Path::new("/tmp/opforge-fsuae-smoke/Work");
+        let paths = opforge_native_cli_batch_case_paths(mounted_work_dir, 0);
+        let case = OpforgeNativeCliParityCase {
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(b"lda #1\n"),
+            command_template: Some("{input} --bin {bin} --cpu m6502"),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+        };
+
+        let command = opforge_native_cli_case_command(&case, &paths);
+
+        assert!(command.contains("Work:opforge_6502_native_cli_smoke.asm"));
+        assert!(command.contains("Work:opforge_native_out.bin"));
+        assert!(!command.contains("case_artifacts"));
+        assert_eq!(
+            paths.artifact_dir,
+            mounted_work_dir.join("case_artifacts/case_0000")
+        );
+        assert!(!opforge_native_cli_case_assembly_defines(&case)
+            .iter()
+            .any(|define| define == "OPFORGE_FS_UAE_SMOKE"));
+    }
+
+    #[test]
     fn cleanup_only_targets_new_process_ids() {
         let baseline = BTreeSet::from([10_u32, 20_u32]);
         let current = BTreeSet::from([10_u32, 20_u32, 30_u32, 40_u32]);
@@ -3582,7 +3591,7 @@ mod tests {
 
         assert_eq!(
             opforge_native_cli_case_command(&case, &paths),
-            "Work:case_artifacts/case_0000/Work/opforge_6502_native_cli_smoke.asm --bin Work:case_artifacts/case_0000/Work/opforge_native_out.bin --cpu m6502 -I Work:case_artifacts/case_0000/Work/opforge_include_root_b -I Work:case_artifacts/case_0000/Work/opforge_include_root_a"
+            "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 -I Work:opforge_include_root_b -I Work:opforge_include_root_a"
         );
     }
 
@@ -3604,7 +3613,7 @@ mod tests {
         );
         assert_eq!(
             opforge_native_cli_case_command(&case, &paths),
-            "Work:case_artifacts/case_0000/Work/opforge_6502_native_cli_smoke.asm --bin Work:case_artifacts/case_0000/Work/opforge_native_out.bin --cpu m6502"
+            "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502"
         );
     }
 
@@ -3622,7 +3631,7 @@ mod tests {
 
         assert_eq!(
             opforge_native_cli_case_command(&case, &paths),
-            "Work:case_artifacts/case_0000/Work/opforge_6502_native_cli_smoke.asm"
+            "Work:opforge_6502_native_cli_smoke.asm"
         );
     }
 
@@ -3640,7 +3649,7 @@ mod tests {
 
         assert_eq!(
             opforge_native_cli_case_command(&case, &paths),
-            "Work:case_artifacts/case_0000/Work/opforge_6502_native_cli_smoke.asm --list Work:case_artifacts/case_0000/Work/build/opforge_native_out.lst --cpu m6502 -I Work:case_artifacts/case_0000/Work/opforge_include_root_a"
+            "Work:opforge_6502_native_cli_smoke.asm --list Work:build/opforge_native_out.lst --cpu m6502 -I Work:opforge_include_root_a"
         );
     }
 

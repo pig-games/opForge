@@ -282,19 +282,26 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Decision: retain cohesive.  This is one package-runtime adapter; no direct
   opasm state import or semantic ownership split was found.
 
-### `opcore.amigaos.expr_bridge` (NR-008, explicit later decision)
+### `opcore.amigaos.expr_bridge` (NR-008, retained cohesive frontend)
 
 - Source: `native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm`.
 - Public entries: `opcoreExprEvalOperandV1` and `opcoreExvmEvalOperandV1`.
 - Imports/outbound dependencies: expression VM runtime.
-- Mutable state: expression bytecode/program buffer, parser cursor, literal
-  scratch, and evaluation result state.
-- Routine responsibility groups: expression program selection, expression
-  parsing/bytecode compilation, symbol/literal handling, and VM execution.
-- Inbound users: tkpkg service and expression-oriented native paths.
-- Decision: Item 5.10 must decide retain, split, or reduce it to a narrow
-  adapter based on ownership evidence.  Its source does not itself import
-  opasm state, but its callers currently supply opasm-derived context.
+- Mutable state: selected opcode version plus the private ExprVM program length
+  and byte buffer. Parser cursor, literal value, and symbol index are bounded
+  call-local register state; evaluator state belongs to the ExprVM runtime.
+- Routine responsibility groups: bounded scalar grammar/literal/symbol-index
+  compilation into versioned ExprVM bytecode, default EXVM program selection,
+  and invocation of the ExprVM runtime.
+- Inbound users: the tkpkg expression service and operand runtime through the
+  two documented public entries.
+- Decision: retain cohesive. This module is the sole native scalar
+  text-to-ExprVM frontend; its parser and emitter share one cursor/register ABI
+  and private program buffer. It owns no request-envelope, diagnostic, evaluator,
+  package-selection, or engine-context policy and imports only the ExprVM
+  runtime. All compiler helpers are private after Item 5.10. The long-term owner
+  remains this bridge until a package parser supplies ExprVM bytecode directly;
+  that future replacement, not a line-count split, is its deletion criterion.
 
 ### `prvm.amigaos.runtime` (NR-005, retain cohesive)
 

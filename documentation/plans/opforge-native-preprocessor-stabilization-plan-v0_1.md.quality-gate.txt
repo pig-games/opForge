@@ -102,3 +102,10 @@ Evidence: focused Rust-oracle and source-contract tests PASS; exact real-native-
 
 Reviewer: `plan-compliance-reviewer` rubric.
 Decision: PASS. The diff is an independently activated, revertible semantic remediation limited to the first divergence and its exact contracts/metadata. No Item 5.10 expression-bridge ownership change or unrelated cleanup is staged.
+
+PASS: Item 5.10 retains `opcore.amigaos.expr_bridge` as the cohesive native scalar text-to-ExprVM frontend and narrows its public surface to the two established service entries. Compiler state, sole dependency, callers, prohibited responsibilities, long-term owner, and replacement criterion are explicit.
+
+Evidence: focused bridge/runtime ownership tests PASS; runtime-boundary inventory and contract validators PASS; the declared 11-test expression corpus PASS, including exact real-native-CLI FS-UAE forward-label, multiplicative, shift, and suffix-literal parity without skip; native formatter PASS; metadata-aware staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The diff is limited to a documented retain-cohesive decision, private-helper ABI narrowing, exact contracts, snapshot, and slice metadata. The semantic operand-order correction is isolated in the preceding Item 5.9.5 commit; no parser, evaluator, diagnostic, package, CPU/family/dialect, or output behavior is mixed into Item 5.10.

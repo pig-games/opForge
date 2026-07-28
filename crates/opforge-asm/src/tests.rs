@@ -15211,6 +15211,32 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
     assert!(source.contains("runtime.ExprvmCurrentPass"));
     assert!(source.contains("OpcoreExprVmProgramBuffer"));
     assert!(!source.contains("BSR.W opcoreExprBridgeEvalAdditive"));
+    assert!(source.contains("one cohesive responsibility"));
+    assert!(source.contains("retain this frontend intact"));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            ".section code, kind=code",
+            ".pub",
+            "opcoreExprEvalOperandV1 .BLOCK",
+            "opcoreExvmEvalOperandV1 .BLOCK",
+            ".priv",
+            "selectProgram .BLOCK",
+        ]
+    ));
+    let imports = source
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with(".use "))
+        .collect::<Vec<_>>();
+    assert_eq!(imports, vec![".use exprvm.amigaos.runtime"]);
+    for prohibited_owner in [
+        "opasm.amigaos.engine",
+        "tkpkg.amigaos.expression_service",
+        "tkpkg.amigaos.runtime_context",
+    ] {
+        assert!(!source.contains(prohibited_owner));
+    }
     for routine_name in [
         "selectProgram",
         "runEvalProgram",

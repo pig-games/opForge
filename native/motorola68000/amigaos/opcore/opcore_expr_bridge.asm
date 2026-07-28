@@ -1,4 +1,16 @@
-; Native opcore/EXVM-style scalar operand expression bridge.
+; Native scalar-expression frontend for the ExprVM runtime.
+;
+; This module has one cohesive responsibility: compile the established bounded
+; scalar-expression text grammar into versioned ExprVM bytecode and execute that
+; bytecode through exprvm.amigaos.runtime. The tkpkg expression service owns
+; request envelopes and diagnostic projection; the ExprVM runtime owns bytecode
+; evaluation. Literal parsing and symbol-name-to-index resolution stay here as
+; compiler work and are not duplicated by either boundary.
+;
+; Ownership decision (Item 5.10): retain this frontend intact. Its parser,
+; bytecode emitter, and private program buffer share one cursor/register ABI and
+; no independent state or dependency boundary justifies a split. It remains the
+; long-term owner until a package parser supplies ExprVM bytecode directly.
 
 	.module opcore.amigaos.expr_bridge
 	.cpu 68020
@@ -105,6 +117,7 @@ return
 	movem.l (sp)+, d1-d2/d6-d7/a0-a5
 	rts
 	.bend  ; opcoreExvmEvalOperandV1
+	.priv
 
 selectProgram	.block
 	moveq #0, d0

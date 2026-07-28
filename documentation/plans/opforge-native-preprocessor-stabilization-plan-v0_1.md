@@ -518,7 +518,7 @@ its own activated item/slice contract.
     serial full Rust quality gate, and the aggregate workflow gate all pass.
   - Definition of done: division/modulo check and consume the right divisor, preserve the left dividend, and shifts apply the masked right count to the left value.
 
-- [ ] Item 5.10: audit and narrow the expression bridge
+- [x] Item 5.10: audit and narrow the expression bridge
   - Source requirement or finding IDs: NR-008; Items 5.2–5.3.
   - Invariant: `opcore_expr_bridge.asm` has one documented responsibility and does not duplicate parser, evaluator, literal, symbol, diagnostic, or service-adapter policy owned elsewhere.
   - Expected files: `opcore_expr_bridge.asm`, any proven destination module or narrow adapter, retained ownership decision, slice metadata, and focused expression-boundary tests.
@@ -527,6 +527,15 @@ its own activated item/slice contract.
   - Full quality gates: focused bridge/dependency checks and exact affected D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
   - Plan-compliance review evidence: PASS for the retained ownership decision or one ownership-only extraction.
   - Commit outcome: one documented no-change decision or independently revertible narrowing/extraction commit.
+  - Completion evidence (2026-07-28): retained cohesive as the sole native
+    bounded scalar text-to-ExprVM frontend. The bridge now documents its compiler
+    state, sole ExprVM dependency, callers, prohibited policy, long-term owner,
+    and replacement criterion; only its two service entries remain public.
+    Focused ownership/runtime tests and boundary inventory/contract validators
+    pass. The declared expression corpus passes all 11 tests, including exact
+    real-CLI FS-UAE forward-label, multiplicative, shift, and suffix-literal
+    parity with live Rust. Native formatting, metadata-aware staged porting,
+    serial full Rust quality, and aggregate workflow gates pass.
   - Definition of done: bridge responsibilities, state, imports, and long-term owner are explicit.
 
 - [ ] Item 5.11: conditionally remediate opasm engine and tkpkg pipeline ownership

@@ -1347,17 +1347,8 @@ fn run_opforge_native_cli_parity_batch_cases(
             )
         })?;
     }
-    let startup_hunk_alias_path = mounted_work_dir.join(FS_UAE_STARTUP_HUNK_ALIAS);
-    if startup_hunk_alias_path != hunk_path {
-        fs::copy(&hunk_path, &startup_hunk_alias_path).map_err(|err| {
-            format!(
-                "copy {} to startup Hunk alias {}: {err}",
-                hunk_path.display(),
-                startup_hunk_alias_path.display(),
-            )
-        })?;
-    }
-    let capture = capture_config_from_env(&mounted_work_dir, None)?;
+    stage_guest_script(&mounted_work_dir, batch_script.as_str())?;
+    let capture = batch_capture_config_from_env(&batch_paths)?;
     clear_capture_files(&capture)?;
     let generated_config_path = maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir)?;
 
@@ -1466,13 +1457,19 @@ fn run_opforge_native_cli_parity_batch_cases(
     let common_stdout = launcher_stdout.unwrap_or_default();
 
     let mut runs = Vec::with_capacity(cases.len());
-    for case in cases {
-        let exit_code = read_optional_exit_code(&capture.exit_code_paths.primary)?;
-        let stdout = read_optional_text(&capture.stdout_paths.primary)?.unwrap_or_default();
-        let success = determine_smoke_success(exit_code, launcher_success);
+    for (case, case_paths) in cases.iter().zip(batch_paths.iter()) {
+        let exit_code = read_optional_exit_code(&case_paths.exit_code_path)?;
+        let stdout = read_optional_text(&case_paths.stdout_path)?.unwrap_or_default();
+        let success = determine_batch_case_success(
+            case_paths.done_path.is_file(),
+            exit_code,
+            launcher_success,
+        );
         runs.push(FsUaeSmokeRun {
             example_name: FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
-            source_path: mounted_work_dir.join(opforge_native_cli_case_source_relative_path(case)),
+            source_path: case_paths
+                .work_dir
+                .join(opforge_native_cli_case_source_relative_path(case)),
             artifact_dir: artifact_dir.clone(),
             hunk_path: mounted_hunk_alias_path.clone(),
             stdout: merge_output(

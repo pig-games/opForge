@@ -44,12 +44,13 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   numeric-data owner, engine, events, conditional/navigation/repetition/scope/struct
   flow modules, text encoding, tkpkg bridge, and approved debug contracts/events.
 - Mutable state: module-local pass/session request pointers, flow/repetition
-  scratch, layout region/section tables, and text scratch/output state.
+  scratch, and text scratch/output state. Layout region/section/place storage
+  is owned by `opasm.amigaos.layout`.
 - Routine responsibility groups: pass callback orchestration; router-result
   dispatch; structural-flow state transitions and explicit `.case` evaluation
   callback; operand/evaluation request
   construction; selector/encoding adaptation; data/text sizing and emission;
-  layout/region/section/place handling; event projection.
+  remaining layout/region/section/place dispatch; event projection.
 - Inbound users: the CLI engine-callback adapter imports this driver; the
   driver is the session orchestration boundary, not a package or CPU owner.
 - Decision: orchestration stays here. Item 5.8 moves non-structural directive
@@ -71,7 +72,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Source: `native/motorola68000/amigaos/opasm/opasm_directive_router.asm`.
 - Public entry: `classifyV1`; it maps existing non-structural directive text to
   a numeric route code.
-- Imports/outbound dependencies: none.
+- Imports/outbound dependencies: the opasm engine only, for the existing
+  session-pass and current-PC callbacks used by section transitions.
 - Mutable state: none.
 - Routine responsibility groups: case-insensitive bounded directive comparison
   and aliases for existing data directives.
@@ -114,6 +116,24 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Public entries: `sizeTextDirectiveV1` and `emitTextDirectiveV1`.
 - Decision: owns text-mode size, prefix/suffix, and image emission while the
   driver supplies existing parsed scratch and encoding callbacks.
+
+### `opasm.amigaos.layout` (Item 5.9.4 ownership split)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_layout.asm`.
+- Public entries: region/section/place state transitions, bounded layout-name
+  request APIs, `alignCursorV1`, and `alignPadV1`.
+- Imports/outbound dependencies: none.
+- Mutable state: region/section/place counters, names, bounds, cursors,
+  alignment values, placement indices, and scratch storage.
+- Routine responsibility groups: overflow-safe positive alignment,
+  power-of-two padding arithmetic, bounded layout-name copy/comparison,
+  region/section/place validation and transitions, and word/long table-index
+  calculation. The driver retains statement tokenization, callback dispatch,
+  and engine/image projection only.
+- Decision: layout state and all region/section/place transitions are owned by
+  this module. The completed transfer preserves existing arithmetic and adds no
+  layout syntax or semantics; the assembly driver has no direct layout-state
+  access.
 
 ### `tkpkg.amigaos.service` (NR-002/003/004, mandatory decomposition)
 

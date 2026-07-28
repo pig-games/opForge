@@ -1,0 +1,32 @@
+[slice]
+schema_version = 2
+name = "opasm layout ownership"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/asmline.rs",
+  "existing Rust-guided layout fixture bytes"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::layout directive dispatch",
+  "native/motorola68000/amigaos/opasm/opasm_layout.asm::alignCursorV1",
+  "native/motorola68000/amigaos/opasm/opasm_layout.asm::alignPadV1"
+]
+invariant = "Layout arithmetic and mutable region/section/place state are owned by the layout module while the driver retains only existing statement/session callbacks; the completed extraction will move region, section, and placement transitions without changing existing two-pass PC, image, or diagnostic behavior."
+expected_inputs = "Existing `.align`, `.region`, `.section`, `.endsection`, and `.place` statement metadata, evaluated operands, session PC, and image state."
+expected_outputs = "The same accepted layout directives, two-pass sizes, PC progression, image bytes, and failure status."
+known_non_equivalences = "This is ownership-only work. It adds no layout syntax or semantics, CPU/family/dialect/instruction behavior, segment support, or statement support. Region/section/place state and transitions are layout-owned; the driver retains only statement tokenization, callbacks, and engine/image projection."
+fast_proof_command = "cargo test -p asm motorola68020_item7_native_layout_directives_route_before_selected_encoding -- --nocapture && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_bytes -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_item7_native_layout_directives_route_before_selected_encoding"
+proof_level = "B"
+proves = "The driver routes the existing layout directive result before selected encoding, delegates region/section/place transitions and alignment to the layout owner, and does not directly access layout state."
+does_not_prove = "Real native execution or new layout semantics."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_bytes"
+proof_level = "D"
+proves = "The real native CLI preserves the established Rust-guided `.align`, region, section, and placement fixture bytes."
+does_not_prove = "New layout syntax or non-layout behavior."

@@ -10,13 +10,14 @@ class NativeRuntimeBoundaryInventoryTests(unittest.TestCase):
     def test_inventory_matches_all_audited_sources(self):
         self.assertEqual(validate(), [])
 
-    def test_audit_set_covers_exactly_seventeen_modules(self):
-        self.assertEqual(len(TARGETS), 17)
+    def test_audit_set_covers_exactly_eighteen_modules(self):
+        self.assertEqual(len(TARGETS), 18)
         self.assertIn("opasm.amigaos.assembly_driver", TARGETS)
         self.assertIn("opasm.amigaos.directive_router", TARGETS)
         self.assertIn("opasm.amigaos.operand_eval", TARGETS)
         self.assertIn("opasm.amigaos.directive_data", TARGETS)
         self.assertIn("opasm.amigaos.directive_text", TARGETS)
+        self.assertIn("opasm.amigaos.layout", TARGETS)
         self.assertIn("tkpkg.amigaos.service", TARGETS)
         self.assertIn("tkpkg.amigaos.selection_service", TARGETS)
         self.assertIn("tkpkg.amigaos.operand_runtime", TARGETS)

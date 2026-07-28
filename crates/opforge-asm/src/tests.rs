@@ -14203,7 +14203,7 @@ fn motorola68020_opasm_driver_uses_tkpkg_output_and_error_pointers() {
     assert!(source_contains_in_order(
         &driver,
         &[
-            "jsr tkpkg.dispatchEncodeSelectedV1",
+            "jsr tkpkg.adaptSelectedEncodeRequestV1",
             "move.w d2, d4",
             "tst.b d0",
             "move.w d1, d6",
@@ -14249,6 +14249,21 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
     let driver_path =
         repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
     let driver = fs::read_to_string(&driver_path).expect("read opasm assembly driver source");
+    let layout =
+        fs::read_to_string(repo_root.join("native/motorola68000/amigaos/opasm/opasm_layout.asm"))
+            .expect("read opasm layout owner source");
+
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "opasmDriverPassOneBegin .BLOCK",
+            "JSR eng.opasmEngineBeginPassOneV1",
+            "JSR layout.resetStateV1",
+            "opasmDriverPassTwoBegin .BLOCK",
+            "JSR eng.opasmEngineBeginPassTwoV1",
+            "JSR layout.beginPassTwoV1",
+        ]
+    ));
 
     assert!(source_contains_in_order(
         &driver,
@@ -14325,25 +14340,20 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &[
             "processPlaceDirectiveForStatement .BLOCK",
             "BSR.W parsePlaceDirectiveNamesForStatement",
-            "BSR.W findSectionByPlaceName",
-            "MOVE.W D5, OpasmLayoutPlaceSectionIndex",
-            "BSR.W findRegionByPlaceName",
-            "MOVE.W D5, OpasmLayoutPlaceRegionIndex",
+            "JSR layout.findPlaceNameV1",
+            "JSR layout.sectionPlacedPtrV1",
+            "JSR layout.findPlaceNameV1",
             "BSR.W readAlignOptionForStatement",
-            "BSR.W layoutRegionCursorPtr",
-            "BSR.W alignLayoutCursor",
-            "BSR.W layoutSectionSizePtr",
-            "BSR.W layoutSectionBasePtr",
-            "MOVE.W #1, (A0)",
+            "JSR layout.placeSectionV1",
         ]
     ));
     assert!(source_contains_in_order(
         &driver,
         &[
             "processSectionDirectiveForStatement .BLOCK",
-            "BSR.W findSectionByScratchName",
-            "BSR.W layoutSectionPlacedPtr",
-            "BSR.W layoutSectionBasePtr",
+            "JSR layout.findScratchNameV1",
+            "JSR layout.sectionPlacedPtrV1",
+            "JSR layout.sectionBasePtrV1",
             "BSR.W setPlacedSectionOriginWithImageGap",
         ]
     ));
@@ -14361,10 +14371,10 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &[
             "processRegionDirectiveForStatement .BLOCK",
             "BSR.W readCommaNameForStatement",
-            "MOVE.W D3, OpasmLayoutScratchNameLen",
+            "JSR layout.setScratchNameLenV1",
             "BSR.W readAlignOptionForStatement",
-            "LEA OpasmLayoutRegionAligns.L, A0",
-            "MOVE.L D3, (A0)",
+            "JSR layout.getScratchRegionRequestV1",
+            "JSR layout.appendRegionV1",
         ]
     ));
     assert!(source_contains_in_order(
@@ -14372,20 +14382,52 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &[
             "processSectionDirectiveForStatement .BLOCK",
             "BSR.W readCommaNameForStatement",
-            "MOVE.W D3, OpasmLayoutScratchNameLen",
+            "JSR layout.setScratchNameLenV1",
             "BSR.W readAlignOptionForStatement",
-            "BSR.W findSectionByScratchName",
-            "LEA OpasmLayoutSectionAligns.L, A0",
-            "MOVE.L D3, (A0)",
+            "JSR layout.findScratchNameV1",
+            "JSR layout.appendSectionV1",
         ]
     ));
     assert!(source_contains_in_order(
         &driver,
         &[
-            "alignLayoutCursor .BLOCK",
+            "readAlignPadForStatement .BLOCK",
+            "BSR.W readOperandValueForStatement",
+            "BNE.W fail",
+            "JSR eng.opasmEngineGetSessionCurrentPcV1",
+            "JSR layout.alignPadV1",
+            "BRA.S return",
+            "fail",
+            "MOVEQ #1, D0",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &layout,
+        &[
+            "resetStateV1 .BLOCK",
+            "beginPassTwoV1 .BLOCK",
+            "appendRegionV1 .BLOCK",
+            "appendSectionV1 .BLOCK",
+            "beginSectionPassTwoV1 .BLOCK",
+            "placeSectionV1 .BLOCK",
+            "alignCursorV1 .BLOCK",
             "DIVU.L D4, D3:D2",
             "SUB.L D3, D2",
             "ADD.L D2, D3",
+            "alignPadV1 .BLOCK",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &layout,
+        &[
+            "copyNameBytesV1 .BLOCK",
+            "wordTablePtrV1 .BLOCK",
+            "longTablePtrV1 .BLOCK",
+            "namesMatchV1 .BLOCK",
+            "lowerD3 .BLOCK",
+            ".section bss, kind=bss",
+            "OpasmLayoutRegionCount",
+            "OpasmLayoutSectionCount",
         ]
     ));
 }
@@ -14396,6 +14438,9 @@ fn motorola68020_item7_native_layout_operand_eval_uses_tkpkg_expr_service() {
     let driver_path =
         repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
     let driver = fs::read_to_string(&driver_path).expect("read opasm assembly driver source");
+    let layout =
+        fs::read_to_string(repo_root.join("native/motorola68000/amigaos/opasm/opasm_layout.asm"))
+            .expect("read opasm layout owner source");
 
     assert!(source_contains_in_order(
         &driver,
@@ -14417,9 +14462,12 @@ fn motorola68020_item7_native_layout_operand_eval_uses_tkpkg_expr_service() {
             "readAlignPadForStatement .BLOCK",
             "BSR.W readOperandValueForStatement",
             "JSR eng.opasmEngineGetSessionCurrentPcV1",
-            "AND.L D5, D0",
-            "SUB.L D0, D3",
+            "JSR layout.alignPadV1",
         ]
+    ));
+    assert!(source_contains_in_order(
+        &layout,
+        &["alignPadV1 .BLOCK", "AND.L D5, D0", "SUB.L D0, D3",]
     ));
     assert!(source_contains_in_order(
         &driver,
@@ -39075,6 +39123,7 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
         "        .region alt, $1011, $10ff, align=5",
         "        .section code, align=5",
         "        lda #$01",
+        "        .align 4",
         "        .endsection",
         "        .section tail, align=7",
         "        nop",

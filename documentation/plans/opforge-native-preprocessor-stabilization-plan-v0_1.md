@@ -481,7 +481,7 @@ its own activated item/slice contract.
     `.text`, `.null`, and `.ptext` bytes together with numeric directive bytes.
   - Definition of done: the driver does not implement text sizing or emission.
 
-- [ ] Item 5.9.4: extract opasm layout ownership
+- [x] Item 5.9.4: extract opasm layout ownership
   - Source requirement or finding IDs: NR-007; Items 5.2–5.3.
   - Invariant: layout/region/section/place/alignment ownership moves to one owner without adding layout semantics or changing two-pass size, PC, image, or diagnostics.
   - Expected files: `opasm_layout.asm` or repository-style equivalent and focused layout/two-pass tests.
@@ -489,6 +489,15 @@ its own activated item/slice contract.
   - Full quality gates: focused layout contracts and D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
   - Plan-compliance review evidence: PASS for layout-owner extraction only.
   - Commit outcome: one focused layout-owner commit.
+  - Completion evidence (2026-07-28): `opasm.amigaos.layout` owns all
+    region/section/place state, bounded layout-name handling, cursor alignment,
+    and power-of-two padding. The driver retains statement parsing plus the
+    established engine/image callbacks and delegates every layout transition.
+    The focused ownership contract and boundary inventory pass; the real CLI
+    FS-UAE fixture proves `.align`, region, section, placement, name-mismatch,
+    and duplicate-placement behavior while preserving the exact 19-byte
+    Rust-guided image. Per-case guest scripts and capture markers now make that
+    Level-D proof fail closed without overwriting the startup script/Hunk.
   - Definition of done: the driver does not implement layout, region, section, placement, or alignment behavior.
 
 - [ ] Item 5.10: audit and narrow the expression bridge

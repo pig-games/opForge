@@ -38,6 +38,11 @@ TARGETS = {
         "emitTextDirectiveV1",
         ("opasm.amigaos.engine",),
     ),
+    "opasm.amigaos.layout": (
+        "native/motorola68000/amigaos/opasm/opasm_layout.asm",
+        "alignCursorV1",
+        ("opasm.amigaos.engine",),
+    ),
     "tkpkg.amigaos.service": (
         "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm",
         "dispatchV1",
@@ -109,11 +114,12 @@ TARGETS = {
     ),
 }
 SNAPSHOTS = {
-    "opasm.amigaos.assembly_driver": ("edea6cf8df095742787d4851f091602507e7f866790300a978da0b740a559c0a", 93, 17, ("code", "data", "bss"), 138),
+    "opasm.amigaos.assembly_driver": ("c51480dca83bf4b2b6cc42aaa55edb1c5b72b81439b29a862477e43ace9fa25b", 69, 18, ("code", "data", "bss"), 138),
     "opasm.amigaos.directive_router": ("ff74d2d29df6e4636f5a35480a48d0275b6cda16313ccda3934106973cfc8d81", 3, 0, ("code", "data"), 1),
     "opasm.amigaos.operand_eval": ("feafe6d97757b6c0c8ddfc27706b07a8cbee850bac8429052347c7782499ccdb", 4, 2, ("code",), 4),
     "opasm.amigaos.directive_data": ("ae827acedfad611d1d57ff93783edda61b6eb4de332c2907521343d6f9fdf3bc", 2, 3, ("code", "bss"), 19),
     "opasm.amigaos.directive_text": ("98d283b9678f051c68787dc915b841559ee1a3647e597b44d966492a931ff0c8", 2, 1, ("code", "bss"), 2),
+    "opasm.amigaos.layout": ("f4487a72d0d068bfcd239e22086d3f20bb9c7977d770d07e3467c793dd6986e3", 31, 1, ("code", "bss"), 2),
     "tkpkg.amigaos.service": ("747a6baf9f9a99ae135799ccd8147deb9ce1f23c5218634cf292e78c2318dfda", 42, 12, ("data", "bss", "code"), 112),
     "tkpkg.amigaos.selection_service": ("1e3658e9d2fa6108fca7443b48cbd2cf1688950846236c652faf6e2c4e21f052", 21, 6, ("data", "code"), 61),
     "tkpkg.amigaos.operand_runtime": ("3346eb8faa08eae748b0ab14681665f8244c92be467cd8bc0e810f14453f8803", 18, 4, ("data", "code"), 56),

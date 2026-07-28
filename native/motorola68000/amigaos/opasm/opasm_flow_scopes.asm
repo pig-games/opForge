@@ -171,6 +171,60 @@ fail
 	rts
 	.bend  ; resolveLabelValueV1
 
+; Return the unqualified alias of a label owned by the complete active scope.
+; Inputs: A0/D0 = null-terminated qualified label text/length.
+; Outputs: A0/D0 = alias text/length, or D0 = 0 when the label is not owned by
+;          the complete active scope.
+; Clobbers: D0-D6/A0-A2/CCR.
+; CCR: reflects D0 on return.
+activeLabelAliasV1	.block
+	movem.l d1-d6/a1-a2, -(sp)
+	movea.l a0, a1
+	move.l d0, d5
+	moveq #0, d6
+	moveq #0, d4
+	move.w ScopeDepth, d4
+	beq.s none
+
+scopeLoop
+	move.l d6, d3
+	lsl.l #5, d3
+	lea ScopeNames.l, a2
+	adda.l d3, a2
+
+scopeChar
+	move.b (a2)+, d1
+	beq.s scopeEnd
+	tst.l d5
+	beq.s none
+	cmp.b (a1)+, d1
+	bne.s none
+	subq.l #1, d5
+	bra.s scopeChar
+
+scopeEnd
+	tst.l d5
+	beq.s none
+	cmpi.b #'.', (a1)+
+	bne.s none
+	subq.l #1, d5
+	addq.w #1, d6
+	cmp.w d4, d6
+	blo.s scopeLoop
+	tst.l d5
+	beq.s none
+	movea.l a1, a0
+	move.l d5, d0
+	bra.s return
+
+none
+	moveq #0, d0
+
+return
+	movem.l (sp)+, d1-d6/a1-a2
+	rts
+	.bend  ; activeLabelAliasV1
+
 	.priv
 
 ; Push the label attached to the current `.block` as one scope component.

@@ -576,6 +576,22 @@ its own activated item/slice contract.
     `6502_first_run_artifact_contract.asm`, which is not included in this fix.
   - Definition of done: a guest command-template source cannot be replaced by the embedded smoke fallback.
 
+- [x] Item 5.11.2: remediate scoped instruction-expression context
+  - Source requirement or finding IDs: Item 5.12 established-corpus first divergence after Item 5.11.1.
+  - Invariant: instruction operands resolve unqualified symbols through the complete active module/block scope before globals, matching Rust, without exposing opasm scope state to tkpkg or changing package selector/encoder ownership.
+  - Expected files: `opasm_flow_scopes.asm`, `opasm_operand_eval.asm`, focused B/C contracts, real scoped-expression fixtures, slice metadata, and this plan item.
+  - First divergence: the newly authoritative `6502_first_run_artifact_contract.asm` run stored `main.OFFSET` and `main.VALUE`, but the tkpkg expression bridge received only the qualified engine table while the instruction operands used `OFFSET` and `VALUE`; selection therefore exhausted its candidates and reported unsupported addressing in pass two.
+  - Proof: B/C active-scope alias and bounded snapshot contracts; D symbolic instruction encoding, two-module local-symbol shadowing, and the canonical first-run PRG fixture in FS-UAE.
+  - Full quality gates: focused contracts and exact affected D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
+  - Plan-compliance review evidence: PASS; opasm projects a read-only per-call symbol snapshot, tkpkg and the cohesive expression bridge remain unchanged, and no selector/encoder or CPU semantics are added.
+  - Commit outcome: one independently revertible scoped-expression context remediation commit before Item 5.12 resumes.
+  - Completion evidence (2026-07-28): `flow_scopes` exposes only the alias of
+    labels owned by the complete active scope; `operand_eval` prepends those
+    aliases to a bounded 32-entry snapshot before the unchanged expression
+    bridge consumes it. Exact symbolic `sta`/`ldx`, two-module shadowing, and
+    canonical first-run PRG fixtures pass in FS-UAE with Rust-matching bytes.
+  - Definition of done: scoped instruction expressions resolve local constants/variables without neutral-layer reverse dependencies.
+
 - [ ] Item 5.12: enforce no-growth and ownership boundaries
   - Source requirement or finding IDs: NR-009; all prior runtime-boundary items.
   - Invariant: deterministic source guards reject new private semantic routines in the three transitional hotspot files, permit declared façade/delegation entries, detect direct tkpkg access to opasm mutable tables, detect CPU/family terms outside approved owners, and require new semantic modules to name their owner and slice contract.

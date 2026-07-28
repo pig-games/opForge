@@ -37291,6 +37291,66 @@ fn native_scope_contract_covers_nested_shadowing_and_close_aliases() {
 }
 
 #[test]
+fn native_scoped_expression_snapshot_preserves_local_shadowing_contract() {
+    // Proof level C. This models the alias projection supplied to the existing
+    // expression bridge; real native execution is proved separately.
+    fn active_alias<'a>(scope: &[&str], qualified: &'a str) -> Option<&'a str> {
+        let prefix = format!("{}.", scope.join("."));
+        qualified
+            .strip_prefix(&prefix)
+            .filter(|name| !name.is_empty())
+    }
+
+    assert_eq!(active_alias(&["alpha"], "alpha.VALUE"), Some("VALUE"));
+    assert_eq!(active_alias(&["alpha"], "beta.VALUE"), None);
+    assert_eq!(
+        active_alias(&["main", "inner"], "main.inner.OFFSET"),
+        Some("OFFSET")
+    );
+    assert_eq!(active_alias(&[], "VALUE"), None);
+}
+
+#[test]
+fn native_scoped_expression_snapshot_source_stays_in_opasm_adapter() {
+    // Proof level B. Scope ownership projects aliases into an opasm-owned
+    // snapshot before tkpkg consumes the unchanged expression extension.
+    let root = workspace_root();
+    let scopes =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm"))
+            .expect("read scope owner");
+    let operand =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_operand_eval.asm"))
+            .expect("read operand adapter");
+
+    assert!(source_contains_in_order(
+        &scopes,
+        &[
+            "activeLabelAliasV1\t.block",
+            "move.w ScopeDepth, d4",
+            "scopeLoop",
+            "cmpi.b #'.', (a1)+",
+            "movea.l a1, a0",
+            "move.l d5, d0",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &operand,
+        &[
+            "jsr eng.prepareEvaluateExpressionExtensionV1",
+            "bsr.w materializeScopedSnapshot",
+            "materializeScopedSnapshot\t.block",
+            "aliasLoop",
+            "jsr scopes.activeLabelAliasV1",
+            "copyOriginalBegin",
+            "move.l #ScopedSnapshotNames, 0(a3)",
+            "move.l #ScopedSnapshotValues, 4(a3)",
+        ]
+    ));
+    assert!(operand.contains("SCOPED_SNAPSHOT_SOURCE_CAPACITY = 16"));
+    assert!(operand.contains("SCOPED_SNAPSHOT_CAPACITY = 32"));
+}
+
+#[test]
 fn native_module_local_symbol_fs_uae() {
     // Proof level D. FS-UAE runs the canonical module-basics source through
     // the real native CLI. It proves module-local symbol separation only; it

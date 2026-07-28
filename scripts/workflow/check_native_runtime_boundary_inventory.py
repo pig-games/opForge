@@ -26,7 +26,7 @@ TARGETS = {
     "opasm.amigaos.operand_eval": (
         "native/motorola68000/amigaos/opasm/opasm_operand_eval.asm",
         "prepareSelectedRequestV1",
-        ("opasm.amigaos.callback_abi", "opasm.amigaos.engine"),
+        ("opasm.amigaos.callback_abi", "opasm.amigaos.engine", "opasm.amigaos.flow_scopes"),
     ),
     "opasm.amigaos.directive_data": (
         "native/motorola68000/amigaos/opasm/opasm_directive_data.asm",
@@ -116,7 +116,7 @@ TARGETS = {
 SNAPSHOTS = {
     "opasm.amigaos.assembly_driver": ("c51480dca83bf4b2b6cc42aaa55edb1c5b72b81439b29a862477e43ace9fa25b", 69, 18, ("code", "data", "bss"), 138),
     "opasm.amigaos.directive_router": ("ff74d2d29df6e4636f5a35480a48d0275b6cda16313ccda3934106973cfc8d81", 3, 0, ("code", "data"), 1),
-    "opasm.amigaos.operand_eval": ("feafe6d97757b6c0c8ddfc27706b07a8cbee850bac8429052347c7782499ccdb", 4, 2, ("code",), 4),
+    "opasm.amigaos.operand_eval": ("fdc20bce4027658b5db8871eae5bd3c3bad19be7ff073c9f2ffd89151e1b18e6", 7, 3, ("code", "bss"), 4),
     "opasm.amigaos.directive_data": ("ae827acedfad611d1d57ff93783edda61b6eb4de332c2907521343d6f9fdf3bc", 2, 3, ("code", "bss"), 19),
     "opasm.amigaos.directive_text": ("98d283b9678f051c68787dc915b841559ee1a3647e597b44d966492a931ff0c8", 2, 1, ("code", "bss"), 2),
     "opasm.amigaos.layout": ("f4487a72d0d068bfcd239e22086d3f20bb9c7977d770d07e3467c793dd6986e3", 31, 1, ("code", "bss"), 2),

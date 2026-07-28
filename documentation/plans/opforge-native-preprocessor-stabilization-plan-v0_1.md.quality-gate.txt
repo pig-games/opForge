@@ -123,3 +123,10 @@ Evidence: all 24 focused FS-UAE helper unit tests PASS; the real native CLI `.or
 
 Reviewer: `plan-compliance-reviewer` rubric.
 Decision: PASS. The staged diff is an independently revertible test-authority correction limited to guest command/build-define handoff, its B/D proof, slice metadata, and plan bookkeeping. It adds no CPU/family/dialect, parser, selector, encoder, expression, diagnostic, or output behavior.
+
+PASS: Item 5.11.2 restores active module/block scope for native instruction expressions. The flow-scope owner exposes only aliases belonging to the complete active prefix, and the opasm operand adapter prepends those aliases to a bounded read-only evaluation snapshot ahead of qualified/global labels. The expression bridge, tkpkg selector, operand plans, encoder, and CPU/family/dialect semantics remain unchanged.
+
+Evidence: focused scoped-snapshot B/C contracts PASS; the runtime-boundary inventory and refreshed exact source manifest PASS; exact real-native-CLI FS-UAE symbolic-placement, module-local-shadowing, and canonical first-run artifact fixtures PASS without skip and match live Rust bytes; native formatter PASS; metadata-aware staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The diff is an independently revertible first-divergence remediation limited to active-scope alias projection at the opasm request boundary, its bounded scratch snapshot, exact contracts, inventory refresh, slice metadata, and plan bookkeeping. It adds no expression grammar, package row, addressing mode, encoding, diagnostic, or output-format behavior.

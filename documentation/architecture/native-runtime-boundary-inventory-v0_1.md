@@ -88,11 +88,14 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Source: `native/motorola68000/amigaos/opasm/opasm_operand_eval.asm`.
 - Public entries: selected-instruction request construction, textual expression
   request construction, and their evaluation-extension adapters.
-- Imports/outbound dependencies: callback ABI and engine request builders.
-- Mutable state: none; the driver supplies its existing service frame and owns
-  request-length state, dispatch, diagnostics, and fallback policy.
-- Decision: this owner constructs engine request envelopes only. It does not
-  select, encode, emit, resolve operands, or own layout behavior.
+- Imports/outbound dependencies: callback ABI, engine request builders, and the
+  flow-scope owner's bounded active-label alias query.
+- Mutable state: a bounded evaluation-only snapshot of label names and values;
+  the driver still supplies its service frame and owns request-length state,
+  dispatch, diagnostics, and fallback policy.
+- Decision: this owner constructs engine request envelopes and projects
+  active-scope aliases ahead of the unchanged qualified/global label snapshot.
+  It does not select, encode, emit, resolve operands, or own layout behavior.
 
 ### `opasm.amigaos.directive_data` (Item 5.9.2 ownership split)
 

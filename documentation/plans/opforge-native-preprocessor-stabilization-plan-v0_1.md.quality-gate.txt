@@ -109,3 +109,10 @@ Evidence: focused bridge/runtime ownership tests PASS; runtime-boundary inventor
 
 Reviewer: `plan-compliance-reviewer` rubric.
 Decision: PASS. The diff is limited to a documented retain-cohesive decision, private-helper ABI narrowing, exact contracts, snapshot, and slice metadata. The semantic operand-order correction is isolated in the preceding Item 5.9.5 commit; no parser, evaluator, diagnostic, package, CPU/family/dialect, or output behavior is mixed into Item 5.10.
+
+PASS: Item 5.11 records the conditional no-change decision for `opasm.amigaos.engine` and `tkpkg.amigaos.pipeline`. The engine retains one assembly-session state aggregate and imports only event projection; the pipeline retains one atomic package-hierarchy selection transaction and imports only tkpkg ABI, buffers, and token policy. Neither owner has a prohibited reverse edge or independent extraction boundary.
+
+Evidence: runtime-boundary inventory PASS; dependency contract and exact retained-import validation PASS; six focused workflow unit tests PASS; focused engine two-pass ownership test PASS; staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS. No Level D claim is made because no native production source changed.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The diff is limited to retained-cohesion decisions, a B/C slice, and deterministic current-dependency evidence. It introduces no assembly, ABI, CPU/family/dialect, selector, package, diagnostic, or output behavior and does not pre-empt Item 5.12's broader no-growth guards.

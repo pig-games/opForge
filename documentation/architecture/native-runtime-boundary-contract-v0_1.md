@@ -104,7 +104,18 @@ adapter, and deletion criterion.  “None” means no adapter is authorized.
 | 5.9.3 | driver text work | text directive owner | driver-to-text dispatch | driver has no text size/emission implementation |
 | 5.9.4 | driver layout work | layout owner | driver-to-layout dispatch | driver has no region/section/place/alignment implementation |
 | 5.10 | expression bridge audit | retained cohesive scalar frontend | none | only two public entries remain; compiler state, dependency, callers, long-term owner, and replacement criterion are explicit |
-| 5.11 | engine/pipeline conditional audit | retained owner or one proved owner | none unless a violation is proved | audit records no-change or isolated extraction |
+| 5.11 | engine/pipeline conditional audit | retained `opasm.amigaos.engine` and `tkpkg.amigaos.pipeline` owners | none | exact imports and retained responsibility decisions are recorded; no prohibited edge or independent extraction boundary exists |
+
+## Item 5.11 retained-owner audit
+
+| Audited owner | Retained responsibility | Exact dependency evidence | Why no extraction is authorized |
+| --- | --- | --- | --- |
+| `opasm.amigaos.engine` | one assembly-session aggregate: statement collection, pass/PC/image/label state, callback context, and bounded serialization of that owned state | imports only `opasm.amigaos.events`; no tkpkg, opcore, or CLI edge | request writers access the same private statement/session tables and neither select packages nor encode output; moving them would split state access without removing a prohibited edge |
+| `tkpkg.amigaos.pipeline` | one atomic package-hierarchy selection transaction from request parsing through complete-selection commit | imports only tkpkg ABI, buffers, and token policy; no opasm engine or CLI edge | all private locator/string helpers share the pipeline traversal cursor/register contract; consolidating similar readers elsewhere would add a cross-runtime utility dependency without an independent owner |
+
+This is a documented no-change decision. It does not validate or alter CPU,
+family, dialect, selector, tokenizer, parser, request, diagnostic, or emitted
+byte semantics. Any later CPU/selector remediation remains a separate programme.
 
 ## Verification and evolution rules
 

@@ -264,9 +264,14 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   runner; label/image/PC ownership; callback API; request preparation.
 - Inbound users: CLI session/source/report components, assembly driver, tkpkg
   service, and test/debug harnesses import the engine API.
-- Decision: retain cohesively pending Item 5.11.  It is the documented owner
-  of statement/pass/image state; only a proved mixed responsibility or a
-  prohibited dependency direction permits decomposition.
+- Decision: retain cohesive after the Item 5.11 conditional audit. It imports
+  only event projection and owns one assembly-session aggregate: collected
+  statements, pass/PC/image/label state, callback context, and bounded request
+  serialization over that state. The request writers do not select packages or
+  encode output, and the selected-shape helper has no mnemonic classifier or
+  package dependency. Moving these routines would split access to the same
+  state without removing a prohibited edge. Later CPU/selector semantic
+  remediation remains separately governed and is not authorized by this audit.
 
 ### `tkpkg.amigaos.tokenizer_vm` (NR-005, retain cohesive)
 
@@ -329,10 +334,14 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   CPU/family/dialect selection, tokenizer/parser locator resolution, and
   selection commit.
 - Inbound users: tkpkg service and package-facing setup paths.
-- Decision: retain cohesive pending Item 5.11.  CPU/family/dialect terms are
-  package data resolution responsibilities here, not generic opasm behavior.
-  Locator/string helpers are a duplicated-helper audit finding shared with
-  service, not permission to move package semantics into the facade.
+- Decision: retain cohesive after the Item 5.11 conditional audit. The sole
+  public transaction parses one request, resolves the package-owned CPU,
+  family, dialect, token-policy, tokenizer, and parser hierarchy, and commits
+  only a complete selection. It imports no engine or CLI state. Its locator and
+  string helpers are private and share the traversal cursor/register contract
+  used by every resolution stage. Similar low-level readers elsewhere remain a
+  duplication finding, but consolidating them now would add a cross-runtime
+  utility dependency without an independent state or semantic boundary.
 
 ### `opasm.amigaos.flow_text_encoding` (NR-007, retain cohesive)
 

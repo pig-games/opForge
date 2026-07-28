@@ -538,7 +538,7 @@ its own activated item/slice contract.
     serial full Rust quality, and aggregate workflow gates pass.
   - Definition of done: bridge responsibilities, state, imports, and long-term owner are explicit.
 
-- [ ] Item 5.11: conditionally remediate opasm engine and tkpkg pipeline ownership
+- [x] Item 5.11: conditionally remediate opasm engine and tkpkg pipeline ownership
   - Source requirement or finding IDs: NR-001, NR-004, NR-009; audit findings from Items 5.2–5.3.
   - Invariant: `opasm_engine.asm` and `tkpkg_pipeline.asm` change only if the audit proves mixed ownership or prohibited dependency direction; tokenizer VM, PRVM runtime, and text-encoding flow remain intact unless an independently testable responsibility violation is found.
   - Expected files: only audited targets and retained cohesion/decomposition decisions.
@@ -546,6 +546,16 @@ its own activated item/slice contract.
   - Full quality gates: no-change decision validation or exact affected gates; native formatter if assembly changes; staged native-porting; Rust quality; workflow gate.
   - Plan-compliance review evidence: PASS limited to the proved condition.
   - Commit outcome: one documented no-change decision or one focused conditional extraction/remediation commit.
+  - Completion evidence (2026-07-28): both conditional targets retain cohesive
+    ownership. `opasm.amigaos.engine` imports only event projection and owns one
+    assembly-session state aggregate plus bounded serialization of that state;
+    `tkpkg.amigaos.pipeline` imports only tkpkg ABI, buffers, and token policy
+    and owns one atomic package-hierarchy selection transaction. Neither has a
+    prohibited reverse edge or an independent state boundary that authorizes
+    extraction. Inventory, exact-import dependency validation, focused Python
+    tests, engine two-pass ownership, staged native-porting, serial Rust
+    quality, and aggregate workflow gates pass. No Level D claim is made because
+    no native production source changed.
   - Definition of done: every audited large module has a retained cohesion/decomposition decision.
 
 - [ ] Item 5.12: enforce no-growth and ownership boundaries

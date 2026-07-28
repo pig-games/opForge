@@ -28,6 +28,8 @@ REQUIRED_TEXT = (
     "diagnostic sink",
     "The following edges are prohibited",
     "Item 5.7.2 removes the obsolete `tkpkg.amigaos.service ->",
+    "## Item 5.11 retained-owner audit",
+    "documented no-change decision",
 )
 LEDGER_ITEMS = ("5.4", "5.4.1", "5.5", "5.5.1", "5.6", "5.6.1", "5.6.2", "5.7", "5.7.1", "5.7.2", "5.8", "5.8.1", "5.9", "5.9.1", "5.9.2", "5.9.3", "5.9.4", "5.10", "5.11")
 FORBIDDEN_IMPORTS = {
@@ -37,6 +39,16 @@ FORBIDDEN_IMPORTS = {
     "native/motorola68000/amigaos/tkpkg/tkpkg_tokenizer_vm.asm": ("opasm.amigaos.engine",),
     "native/motorola68000/amigaos/prvm/prvm_runtime.asm": ("opasm.amigaos.engine",),
     "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm": ("opasm.amigaos.engine",),
+}
+RETAINED_ITEM_511_IMPORTS = {
+    "native/motorola68000/amigaos/opasm/opasm_engine.asm": (
+        "opasm.amigaos.events",
+    ),
+    "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": (
+        "tkpkg.amigaos.abi",
+        "tkpkg.amigaos.buffers",
+        "tkpkg.amigaos.token_policy",
+    ),
 }
 
 
@@ -66,6 +78,13 @@ def validate(root: Path = ROOT) -> list[str]:
         for edge in forbidden:
             if any(imported.startswith(edge) for imported in found):
                 errors.append(f"prohibited current reverse import: {relative} -> {edge}")
+    for relative, expected in RETAINED_ITEM_511_IMPORTS.items():
+        found = tuple(imports(root / relative))
+        if found != expected:
+            errors.append(
+                f"Item 5.11 retained-owner imports changed: {relative}: "
+                f"expected {expected}, found {found}"
+            )
     service_imports = imports(root / "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm")
     if "opasm.amigaos.engine" in service_imports:
         errors.append("obsolete service-to-engine import remains after Item 5.7.2")

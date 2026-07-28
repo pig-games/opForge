@@ -3,7 +3,12 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_native_runtime_boundary_contract import FORBIDDEN_IMPORTS, LEDGER_ITEMS, validate
+from check_native_runtime_boundary_contract import (
+    FORBIDDEN_IMPORTS,
+    LEDGER_ITEMS,
+    RETAINED_ITEM_511_IMPORTS,
+    validate,
+)
 
 
 class NativeRuntimeBoundaryContractTests(unittest.TestCase):
@@ -18,6 +23,25 @@ class NativeRuntimeBoundaryContractTests(unittest.TestCase):
     def test_reverse_edge_scope_covers_engine_driver_and_runtime_consumers(self):
         self.assertEqual(len(FORBIDDEN_IMPORTS), 6)
         self.assertIn("native/motorola68000/amigaos/opasm/opasm_engine.asm", FORBIDDEN_IMPORTS)
+
+    def test_item_511_pins_exact_retained_owner_imports(self):
+        self.assertEqual(len(RETAINED_ITEM_511_IMPORTS), 2)
+        self.assertEqual(
+            RETAINED_ITEM_511_IMPORTS[
+                "native/motorola68000/amigaos/opasm/opasm_engine.asm"
+            ],
+            ("opasm.amigaos.events",),
+        )
+        self.assertEqual(
+            RETAINED_ITEM_511_IMPORTS[
+                "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm"
+            ],
+            (
+                "tkpkg.amigaos.abi",
+                "tkpkg.amigaos.buffers",
+                "tkpkg.amigaos.token_policy",
+            ),
+        )
 
 
 if __name__ == "__main__":

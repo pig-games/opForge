@@ -15426,6 +15426,59 @@ fn motorola68020_exprvm_runtime_owns_bytecode_evaluator() {
 }
 
 #[test]
+fn native_expression_multiplicative_runtime_operand_order_contract() {
+    let source = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/exprvm/exprvm_runtime.asm"),
+    )
+    .expect("read exprvm runtime source");
+    let formatted = format_tokvm_asm_fragment(&source);
+
+    assert!(source_contains_in_order(
+        &formatted,
+        &[
+            "applyBinaryDivide:",
+            "TST.L D2",
+            "BEQ.W fail",
+            "MOVE.L D3, D1",
+            "DIVS.L D2, D1",
+            "MOVE.L D1, D3",
+            "applyBinaryMod:",
+            "TST.L D2",
+            "BEQ.W fail",
+            "MOVE.L D2, D6",
+            "MOVE.L D3, D1",
+            "SWAP D3",
+            "EXT.L D3",
+            "DIVS.L D6, D3:D1",
+            "BRA.S applyBinaryDone",
+        ]
+    ));
+}
+
+#[test]
+fn native_expression_shift_runtime_operand_order_contract() {
+    let source = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/exprvm/exprvm_runtime.asm"),
+    )
+    .expect("read exprvm runtime source");
+    let formatted = format_tokvm_asm_fragment(&source);
+
+    assert!(source_contains_in_order(
+        &formatted,
+        &[
+            "applyBinaryShiftLeft:",
+            "ANDI.L #31, D2",
+            "LSL.L D2, D3",
+            "BRA.S applyBinaryDone",
+            "applyBinaryShiftRight:",
+            "ANDI.L #31, D2",
+            "LSR.L D2, D3",
+            "BRA.S applyBinaryDone",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_opasm_selector_stage_module_removed_after_package_backed_cli() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_selector_stage.asm");

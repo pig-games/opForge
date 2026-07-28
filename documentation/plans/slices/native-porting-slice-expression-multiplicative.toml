@@ -14,6 +14,12 @@ level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-U
 level_d_fail_closed = true
 
 [[tests]]
+name = "native_expression_multiplicative_runtime_operand_order_contract"
+proof_level = "B"
+proves = "ExprVM division and modulo consume the left operand as dividend and the right operand as the checked divisor, including signed modulo remainder placement."
+does_not_prove = "End-to-end native execution or later expression-precedence tiers."
+
+[[tests]]
 name = "native_expression_multiplicative_rust_oracle"
 proof_level = "A"
 proves = "The live Rust assembler emits the expected bytes for the multiplication, signed-division, and modulo fixtures."

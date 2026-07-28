@@ -500,6 +500,24 @@ its own activated item/slice contract.
     Level-D proof fail closed without overwriting the startup script/Hunk.
   - Definition of done: the driver does not implement layout, region, section, placement, or alignment behavior.
 
+- [x] Item 5.9.5: remediate ExprVM noncommutative operand order
+  - Source requirement or finding IDs: NR-008; Item 5.10 first-divergence finding.
+  - Invariant: native division, modulo, and shifts consistently use `d3` as the left operand and `d2` as the right operand, matching the Rust expression runtime.
+  - Expected files: `exprvm_runtime.asm`, focused operand-order contracts, multiplicative/shift slice metadata, and this plan item.
+  - First divergence: `opcodeApplyBinary` pops the right operand into `d2` and the left operand into `d3`, but division/modulo reversed those roles; adjacent Level-D validation proved the shift branches made the same reversal.
+  - Proof: A live Rust multiplicative/shift oracles; B register-order source contracts; D real native CLI multiplication/division/modulo/shift parity in FS-UAE.
+  - Full quality gates: focused expression contracts and exact multiplicative/shift D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
+  - Plan-compliance review evidence: PASS; the independently revertible semantic correction is limited to the first divergence exposed by Item 5.10, and no expression-bridge ownership work is included.
+  - Commit outcome: one focused ExprVM operand-order remediation commit before Item 5.10 resumes.
+  - Completion evidence (2026-07-28): the evaluator now checks `d2` as
+    the divisor/count, applies it to the left value in `d3`, and leaves the
+    signed modulo remainder in `d3`. Focused A/B contracts pass; the exact
+    multiplicative and shift Level-D FS-UAE fixtures complete without skip and
+    match live Rust bytes; the suffix-literal Level-D regression also passes.
+    Native formatting, the metadata-aware staged native-porting gate, the
+    serial full Rust quality gate, and the aggregate workflow gate all pass.
+  - Definition of done: division/modulo check and consume the right divisor, preserve the left dividend, and shifts apply the masked right count to the left value.
+
 - [ ] Item 5.10: audit and narrow the expression bridge
   - Source requirement or finding IDs: NR-008; Items 5.2–5.3.
   - Invariant: `opcore_expr_bridge.asm` has one documented responsibility and does not duplicate parser, evaluator, literal, symbol, diagnostic, or service-adapter policy owned elsewhere.

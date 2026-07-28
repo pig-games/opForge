@@ -1,0 +1,50 @@
+[slice]
+schema_version = 2
+name = "ExprVM noncommutative binary operand-order remediation"
+kind = "native-rust-parity"
+rust_reference = ["crates/opforge-vm/src/runtime_expr_parser.rs::parse_expression", "crates/opforge-core/src/expr.rs::apply_binary"]
+native_boundary = ["native/motorola68000/amigaos/exprvm/exprvm_runtime.asm::opcodeApplyBinary"]
+invariant = "ExprVM division, modulo, and shifts apply the right operand in d2 to the left operand in d3 exactly as the Rust expression authority does."
+assertion_decision = "No new runtime assertion: divide-by-zero and expression failures retain their checked evaluator status; focused contracts pin internal register roles."
+expected_inputs = "Scalar constant expressions using signed division, signed modulo, left shift, or logical right shift."
+expected_outputs = "The real native CLI emits the same bytes as the live Rust assembler for multiplicative and shift fixtures."
+known_non_equivalences = "This remediation changes only operand order in existing ExprVM branches; parser precedence, diagnostics, and other binary operators remain outside the slice."
+fast_proof_command = "cargo test -p asm native_expression_multiplicative_ -- --nocapture && cargo test -p asm native_expression_shift_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_expression_multiplicative_fs_uae -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_expression_shift_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_expression_multiplicative_rust_oracle"
+proof_level = "A"
+proves = "The live Rust assembler establishes multiplication, signed-division, and modulo output bytes."
+does_not_prove = "Native execution."
+
+[[tests]]
+name = "native_expression_shift_rust_oracle"
+proof_level = "A"
+proves = "The live Rust assembler establishes shift direction and masked-count output bytes."
+does_not_prove = "Native execution."
+
+[[tests]]
+name = "native_expression_multiplicative_runtime_operand_order_contract"
+proof_level = "B"
+proves = "Division and modulo check d2 as divisor and consume d3 as dividend, returning the signed remainder in d3."
+does_not_prove = "End-to-end native execution."
+
+[[tests]]
+name = "native_expression_shift_runtime_operand_order_contract"
+proof_level = "B"
+proves = "Left and right shifts mask d2 as the count and shift the value in d3."
+does_not_prove = "End-to-end native execution."
+
+[[tests]]
+name = "native_expression_multiplicative_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI and matches live Rust for multiplication, signed division, and modulo."
+does_not_prove = "Shift execution."
+
+[[tests]]
+name = "native_expression_shift_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI and matches live Rust for left shift, logical right shift, and count masking."
+does_not_prove = "Other expression tiers."

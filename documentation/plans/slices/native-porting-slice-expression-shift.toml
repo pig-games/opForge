@@ -14,6 +14,12 @@ level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-U
 level_d_fail_closed = true
 
 [[tests]]
+name = "native_expression_shift_runtime_operand_order_contract"
+proof_level = "B"
+proves = "ExprVM shifts mask the right operand as the count and shift the left operand value."
+does_not_prove = "End-to-end native execution or later expression-precedence tiers."
+
+[[tests]]
 name = "native_expression_shift_rust_oracle"
 proof_level = "A"
 proves = "Rust establishes shift precedence and 32-bit count masking bytes."

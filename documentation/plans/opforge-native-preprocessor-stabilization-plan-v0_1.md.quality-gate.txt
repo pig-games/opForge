@@ -95,3 +95,10 @@ Evidence: `documentation/plans/slices/native-porting-slice-tkpkg-selection-conte
 
 Reviewer: `plan-compliance-reviewer` (`/root/item572_compliance`).
 Decision: PASS. The staged Item 5.7.2 diff preserves the extension-supplied pass and MSEL shape length, removes the obsolete service engine import, and leaves the engine-context adapter as the sole tkpkg engine reader. The change is limited to ownership/dependency separation; it adds no CPU/family/dialect/instruction/operand-plan/encoding semantics.
+
+PASS: Item 5.9.5 corrects the single ExprVM noncommutative operand-order defect exposed while validating Item 5.10. Division, modulo, left shift, and right shift now consistently consume `d3` as the left value and `d2` as the right divisor/count.
+
+Evidence: focused Rust-oracle and source-contract tests PASS; exact real-native-CLI FS-UAE multiplicative and shift fixtures PASS without skip and match live Rust bytes; the suffix-literal FS-UAE regression PASS; native formatter PASS; metadata-aware staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The diff is an independently activated, revertible semantic remediation limited to the first divergence and its exact contracts/metadata. No Item 5.10 expression-bridge ownership change or unrelated cleanup is staged.

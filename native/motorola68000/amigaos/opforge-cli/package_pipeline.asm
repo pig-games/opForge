@@ -176,7 +176,7 @@ opforgeNativeCliStagePackage	.block
 
 embeddedPackageTooLarge
 	move.l #strings.PackageTooLargeText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 	rts
 
@@ -211,7 +211,7 @@ externalOpenOk
 	move.l d5, d1
 	jsr dos.close
 	move.l #strings.PackageTooLargeText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 	rts
 
@@ -262,9 +262,9 @@ opforgeNativeCliEmitPipelineLastError	.block
 	lea buffers.LastErrorBuffer, a1
 	clr.b 0(a1, d0.W)
 	move.l a1, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #strings.NewlineText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 
 done
 	movem.l (sp)+, d0-d1/a0-a1

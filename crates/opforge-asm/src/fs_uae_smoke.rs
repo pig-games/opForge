@@ -153,6 +153,7 @@ const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE: &str =
 const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_BYTES: usize = 262_145;
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_ARTIFACTS_DIR: &str = "case_artifacts";
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDOUT_FILE: &str = "opforge_fsuae_smoke.stdout";
+const FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDERR_FILE: &str = "opforge_fsuae_smoke.stderr";
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_EXITCODE_FILE: &str = "opforge_fsuae_smoke.exitcode";
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_STARTED_FILE: &str = "opforge_fsuae_smoke.started";
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_DONE_FILE: &str = "opforge_fsuae_smoke.done";
@@ -194,6 +195,7 @@ pub(crate) struct FsUaeSmokeRun {
     pub(crate) hunk_path: PathBuf,
     pub(crate) stdout: String,
     pub(crate) stderr: String,
+    pub(crate) exit_code: Option<i32>,
     pub(crate) success: bool,
 }
 
@@ -895,6 +897,7 @@ struct OpforgeNativeCliBatchCasePaths {
     artifact_dir: PathBuf,
     work_dir: PathBuf,
     stdout_path: PathBuf,
+    stderr_path: PathBuf,
     exit_code_path: PathBuf,
     started_path: PathBuf,
     done_path: PathBuf,
@@ -916,6 +919,7 @@ fn opforge_native_cli_batch_case_paths(
         .join(case_name.as_str());
     let work_dir = artifact_dir.join(FS_UAE_MOUNTED_WORK_DIR_NAME);
     let stdout_path = artifact_dir.join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDOUT_FILE);
+    let stderr_path = artifact_dir.join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDERR_FILE);
     let exit_code_path = artifact_dir.join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_EXITCODE_FILE);
     let started_path = artifact_dir.join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_STARTED_FILE);
     let done_path = artifact_dir.join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_DONE_FILE);
@@ -925,6 +929,7 @@ fn opforge_native_cli_batch_case_paths(
         artifact_dir,
         work_dir,
         stdout_path,
+        stderr_path,
         exit_code_path,
         started_path,
         done_path,
@@ -1231,6 +1236,14 @@ fn run_opforge_native_cli_parity_batch_cases(
             )
             .as_str(),
         );
+        batch_script.push_str(" *>");
+        batch_script.push_str(
+            format!(
+                "{}/{}",
+                case_paths.guest_artifact_dir, FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDERR_FILE
+            )
+            .as_str(),
+        );
         batch_script.push('\n');
         batch_script.push_str("Echo $RC >");
         batch_script.push_str(
@@ -1435,6 +1448,7 @@ fn run_opforge_native_cli_parity_batch_cases(
     for (case, case_paths) in cases.iter().zip(batch_paths.iter()) {
         let exit_code = read_optional_exit_code(&case_paths.exit_code_path)?;
         let stdout = read_optional_text(&case_paths.stdout_path)?.unwrap_or_default();
+        let stderr = read_optional_text(&case_paths.stderr_path)?.unwrap_or_default();
         let success = determine_batch_case_success(
             case_paths.done_path.is_file(),
             exit_code,
@@ -1452,7 +1466,12 @@ fn run_opforge_native_cli_parity_batch_cases(
                 Some(common_stdout.clone()),
                 "FS-UAE launcher stdout",
             ),
-            stderr: common_stderr.clone(),
+            stderr: merge_output(
+                Some(stderr),
+                Some(common_stderr.clone()),
+                "FS-UAE launcher stderr",
+            ),
+            exit_code,
             success,
         });
     }
@@ -2193,6 +2212,8 @@ fn batch_capture_config_from_env(
         FsUaeCapturePathSet::from_primary_and_optional_fallback(last.done_path.clone(), None);
     capture.stdout_paths =
         FsUaeCapturePathSet::from_primary_and_optional_fallback(last.stdout_path.clone(), None);
+    capture.stderr_paths =
+        FsUaeCapturePathSet::from_primary_and_optional_fallback(last.stderr_path.clone(), None);
     capture.exit_code_paths =
         FsUaeCapturePathSet::from_primary_and_optional_fallback(last.exit_code_path.clone(), None);
     Ok(capture)
@@ -2925,6 +2946,7 @@ fn run_example_smoke_with_request(
             )),
             "FS-UAE launcher",
         ),
+        exit_code: guest_exit_code,
         success: determine_smoke_success(guest_exit_code, launcher_status.success()),
     }))
 }
@@ -3170,6 +3192,7 @@ fn run_example_smoke_with_guest_input(
             )),
             "FS-UAE launcher",
         ),
+        exit_code: guest_exit_code,
         success: determine_smoke_success(guest_exit_code, launcher_status.success()),
     }))
 }

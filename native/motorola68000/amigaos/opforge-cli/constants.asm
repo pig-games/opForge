@@ -14,6 +14,8 @@ SYS_BASE                        = 4
 
 PR_CLI                          = 172
 PR_MSG_PORT                     = 92
+PR_COS                          = 160
+PR_CES                          = 224
 
 OPEN_LIBRARY                    = -552
 CLOSE_LIBRARY                   = -414
@@ -28,16 +30,17 @@ CLOSE                           = -36
 READ                            = -42
 WRITE                           = -48
 PUT_STR                         = -948
+FPUTS                           = -342
 GET_ARG_STR                     = -534
 
 MODE_OLDFILE                    = 1005
 MODE_NEWFILE                    = 1006
 
 RETURN_OK                       = 0
-RETURN_USAGE                    = 20
-RETURN_FILE_FAILURE             = 21
-RETURN_RUNTIME_FAILURE          = 22
-RETURN_NOT_IMPLEMENTED          = 30
+RETURN_USAGE                    = 1
+RETURN_FILE_FAILURE             = 1
+RETURN_RUNTIME_FAILURE          = 1
+RETURN_NOT_IMPLEMENTED          = 1
 RETURN_WORKBENCH_UNSUPPORTED    = 31
 
 NCLI_PARSE_OK                   = 0

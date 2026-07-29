@@ -43,8 +43,12 @@
 ;
 ; Outputs:
 ; - D0: AmigaDOS return code.
-; - textual OPFORGE-NATIVE report is written to stdout.
+; - normal textual OPFORGE-NATIVE report is written to stdout.
+; - deterministic failure diagnostics are written to ErrorOutput.
 ; - flat `.bin` output is written when selected and image bytes exist.
+;
+; Clobbers: D0-D1/A0-A1/CCR; D2-D7/A2-A6 are preserved.
+; CCR: unspecified on return.
 ; ---------------------------------------------------------------------------
 opforgeNativeCliRun	.block
 	movem.l d2-d7/a2-a6, -(sp)
@@ -105,11 +109,11 @@ parsed
 	tst.l d0
 	bne.s inputOpened
 	move.l #strings.InputOpenErrorText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #state.NativeCliInputPath, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #strings.NewlineText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #constants.RETURN_FILE_FAILURE, state.NativeCliReturnCode
 	bra.w closeDos
 
@@ -126,7 +130,7 @@ maybeHunkRequested
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
 	bne.s outputFormatReady
 	move.l #strings.NativeHunkNotImplementedText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #constants.RETURN_NOT_IMPLEMENTED, state.NativeCliReturnCode
 	bra.w closeDos
 
@@ -134,7 +138,7 @@ outputFormatReady
 	tst.w state.NativeCliOutputFormat
 	bne.s headerReady
 	move.l #strings.HunkRequiredText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #constants.RETURN_USAGE, state.NativeCliReturnCode
 	bra.w closeDos
 
@@ -192,7 +196,7 @@ tokenizeFrontend
 	jsr source_reader.opforgeNativeCliTokenizeFrontend
 	beq.s tokenizerOk
 	move.l #strings.TokenizerFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #constants.RETURN_RUNTIME_FAILURE, state.NativeCliReturnCode
 	bra.w closeDos
 
@@ -203,7 +207,7 @@ tokenizerOk
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
 	bne.s outputRequestReady
 	move.l #strings.NativeHunkNotImplementedText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #constants.RETURN_NOT_IMPLEMENTED, state.NativeCliReturnCode
 	bra.w closeDos
 
@@ -220,7 +224,7 @@ runEngine
 	tst.l d0
 	beq.s passesOk
 	move.l #strings.NativePassFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #constants.RETURN_RUNTIME_FAILURE, state.NativeCliReturnCode
 	bra.w closeDos
 
@@ -236,7 +240,7 @@ checkImage
 	jsr output.opforgeNativeCliWriteFlatOutput
 	beq.s outputOk
 	move.l #strings.NativeOutputFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #constants.RETURN_FILE_FAILURE, state.NativeCliReturnCode
 	bra.w closeDos
 
@@ -251,7 +255,7 @@ outputOkReturn
 
 emitStub
 	move.l #strings.EmitterStubText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #constants.RETURN_NOT_IMPLEMENTED, state.NativeCliReturnCode
 
 closeDos

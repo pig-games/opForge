@@ -177,6 +177,35 @@ fn no_error_intentionally_suppresses_failure_output() {
 }
 
 #[test]
+fn native_cli_unknown_mnemonic_uses_stderr_and_failure_status_one() {
+    // Proof level A. This test proves the live Rust CLI's governed failure
+    // routes its diagnostic only to stderr and returns status 1. This test does
+    // not prove Amiga-native routing or status.
+    let temp_dir = unique_temp_dir("opforge-cli-native-diagnostic-oracle");
+    let input = write_source(&temp_dir, "input.asm", "start   wat #$42\n");
+    let output_path = temp_dir.join("output.bin");
+    let output = opforge(&[
+        arg(&input),
+        "--bin".to_string(),
+        arg(&output_path),
+        "--cpu".to_string(),
+        "m6502".to_string(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(1), "Rust CLI failure status");
+    assert!(
+        output.stdout.is_empty(),
+        "Rust CLI failure must not write stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr is UTF-8");
+    assert!(
+        stderr.contains("No instruction found"),
+        "Rust CLI stderr must contain the unknown-mnemonic diagnostic: {stderr}"
+    );
+}
+
+#[test]
 fn source_failures_render_bounded_context_in_default_and_classic_styles() {
     let temp_dir = unique_temp_dir("opforge-cli-source-context");
     let tokenizer = write_source(

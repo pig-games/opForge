@@ -884,7 +884,7 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: macro expansions re-enter ordinary native CLI processing and the macro-only fixture matches Rust.
   - Definition of done: `.name`, `.1`…`.9`, `@1`…`@9`, `.@`, label-attached calls, default values, recursion bounds, and deterministic errors match the declared Rust subset; canonical `macro_syntax.asm` remains reserved for Item 7.4.
 
-- [ ] Item 7.3g: remediate native CLI error-output routing before new preprocessor semantics
+- [x] Item 7.3g: remediate native CLI error-output routing before new preprocessor semantics
   - Source requirement or finding IDs: stabilization-plan Item 7 ordering; deterministic CLI failure parity assigned by this plan.
   - Invariant: native failure text, exit status, and stdout/stderr routing match the declared live Rust CLI and checked-in `.err` authority; successful output routing remains unchanged.
   - Expected files: focused native DOS/error-sink adapter and migrated error call sites; Level A/B/D tests; one slice record.

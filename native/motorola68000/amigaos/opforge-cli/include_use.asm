@@ -42,7 +42,7 @@ opforgeNativeCliParseIncludeLine	.block
 
 fail
 	move.l #strings.IncludeFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliParseIncludeLine
@@ -116,7 +116,7 @@ none
 
 fail
 	move.l #strings.IncludeFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliPreparePendingInclude
@@ -137,7 +137,7 @@ restoreOk
 
 restoreFail
 	move.l #strings.IncludeFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d1
 
 restore

@@ -369,7 +369,7 @@ fn assert_native_cli_schema_case(
 
     if let Some(expected) = schema_case.expected_diagnostic {
         assert_eq!(
-            native_cli_schema_normalize_native_diagnostic(&run.stdout),
+            native_cli_schema_normalize_native_diagnostic(&run.stderr),
             Some(expected),
             "schema-driven native CLI diagnostic mismatch for {}\nstdout:\n{}\nstderr:\n{}",
             schema_case.name,
@@ -2403,6 +2403,20 @@ fn external_fs_uae_opforge_native_cli_schema_diagnostic_parity_matches_live_rust
             assert_eq!(runs.len(), schema_cases.len());
             for (schema_case, run) in schema_cases.iter().zip(runs.iter()) {
                 assert_native_cli_schema_case(schema_case, run);
+                assert_eq!(
+                    run.exit_code,
+                    Some(1),
+                    "native CLI diagnostic exit status must match Rust\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout,
+                    run.stderr,
+                );
+                assert!(
+                    !run.stdout.contains("unknown native mnemonic")
+                        && !run.stdout.contains("native pass engine failed"),
+                    "native CLI failure diagnostics must not leak to stdout\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout,
+                    run.stderr,
+                );
             }
         }
     }
@@ -7508,6 +7522,10 @@ fn external_fs_uae_opforge_native_cli_real_first_run_structure_with_inline_label
 
 #[test]
 fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
+    // Proof level D. This test proves every established real native CLI failure
+    // path emits its deterministic diagnostic through ErrorOutput and returns
+    // the Rust CLI failure status. This test does not prove deferred diagnostic
+    // semantics or exact Rust rendering beyond the established native texts.
     let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");
@@ -7625,10 +7643,25 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
                     run.stderr,
                 );
                 assert!(
-                    run.stdout.contains(case.expected_diagnostic),
+                    run.stderr.contains(case.expected_diagnostic),
                     "native opForge CLI failure case {} did not report expected diagnostic '{}'\nstdout:\n{}\nstderr:\n{}",
                     case.name,
                     case.expected_diagnostic,
+                    run.stdout,
+                    run.stderr,
+                );
+                assert!(
+                    !run.stdout.contains(case.expected_diagnostic),
+                    "native opForge CLI failure case {} leaked its diagnostic to stdout\nstdout:\n{}\nstderr:\n{}",
+                    case.name,
+                    run.stdout,
+                    run.stderr,
+                );
+                assert_eq!(
+                    run.exit_code,
+                    Some(1),
+                    "native opForge CLI failure case {} status must match Rust\nstdout:\n{}\nstderr:\n{}",
+                    case.name,
                     run.stdout,
                     run.stderr,
                 );

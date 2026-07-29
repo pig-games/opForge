@@ -1,0 +1,38 @@
+[slice]
+schema_version = 2
+name = "native CLI error-output routing"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-cli/src/lib.rs::DiagnosticsSink::from_config",
+  "crates/opforge-cli/src/lib.rs::main"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/dos.asm::putErrStr",
+  "native/motorola68000/amigaos/opforge-cli/run.asm::opforgeNativeCliRun",
+  "crates/opforge-asm/src/fs_uae_smoke.rs::run_opforge_native_cli_parity_cases_from_env"
+]
+invariant = "The real native CLI writes deterministic failure diagnostics to the process error-output stream, leaves successful stdout routing unchanged, and returns the same governed failure status as the live Rust CLI."
+expected_inputs = "A real native CLI invocation that reaches the governed unknown-mnemonic failure, with independently redirected AmigaDOS Output and ErrorOutput streams."
+expected_outputs = "Stdout contains no failure diagnostic, stderr contains the normalized Rust-authoritative unknown-mnemonic diagnostic, and the process returns status 1."
+known_non_equivalences = "Native diagnostic rendering remains the established normalized OPC-NCLI form; segment, statement, export, linker, output-format, CPU, selector, and other diagnostic semantics remain unchanged. Classic AmigaOS falls back to Output when the process has no distinct ErrorOutput handle."
+fast_proof_command = "cargo test -p cli --test diagnostic_contract native_cli_unknown_mnemonic_uses_stderr_and_failure_status_one -- --nocapture && cargo test -p asm native_cli_error_output_routing_contract -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_opforge_native_cli_schema_diagnostic_parity_matches_live_rust_cli -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_cli_unknown_mnemonic_uses_stderr_and_failure_status_one"
+proof_level = "A"
+proves = "The live Rust CLI routes the governed unknown-mnemonic diagnostic to stderr, keeps stdout empty, and exits with status 1."
+does_not_prove = "Amiga-native routing or status."
+
+[[tests]]
+name = "native_cli_error_output_routing_contract"
+proof_level = "B"
+proves = "The native DOS adapter targets the Process ErrorOutput handle with Output fallback, every governed failure call site uses that adapter, and the FS-UAE batch runner captures stdout and stderr separately."
+does_not_prove = "Real AmigaOS execution or diagnostic semantics outside the governed failure path."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_schema_diagnostic_parity_matches_live_rust_cli"
+proof_level = "D"
+proves = "A real 68020/AmigaOS native CLI unknown-mnemonic failure keeps stdout free of failure text, emits the normalized diagnostic on stderr, and returns status 1 like the live Rust CLI."
+does_not_prove = "Other diagnostic classes or any deferred assembler semantics."

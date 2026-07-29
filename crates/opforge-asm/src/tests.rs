@@ -93,6 +93,8 @@ use vm::rollout::{
     FamilyRuntimeMode,
 };
 
+#[path = "tests/native_cli_diagnostic_routing.rs"]
+mod native_cli_diagnostic_routing;
 #[path = "tests/native_fs_uae_parity.rs"]
 mod native_fs_uae_parity;
 #[path = "tests/native_harness_evidence.rs"]

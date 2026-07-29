@@ -145,6 +145,11 @@ done
 	rts
 	.bend  ; opforgeNativeCliEmitAssemblySessionStatementDump
 
+; Render the current argument-parser failure through ErrorOutput.
+; Inputs: NativeCliParseStatus and NativeCliArgToken describe the failure.
+; Outputs: deterministic diagnostic text is written to ErrorOutput.
+; Clobbers: D0-D2/A0-A1/A6/CCR.
+; CCR: unspecified on return.
 opforgeNativeCliReportParseError	.block
 	move.w state.NativeCliParseStatus, d0
 	cmpi.w #constants.NCLI_PARSE_QUOTED, d0
@@ -176,25 +181,25 @@ quoted
 
 unsupported
 	move.l #strings.UnsupportedText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #state.NativeCliArgToken, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #strings.NativeSubsetHelpText, d1
 	bra.s reportText
 
 unknown
 	move.l #strings.UnknownFlagText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #state.NativeCliArgToken, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #strings.NewlineText, d1
 	bra.s reportText
 
 missing
 	move.l #strings.MissingValueText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #state.NativeCliArgToken, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #strings.NewlineText, d1
 	bra.s reportText
 
@@ -222,7 +227,7 @@ includePathCapacity
 	move.l #strings.IncludePathCapacityText, d1
 
 reportText
-	jsr dos.putStr
+	jsr dos.putErrStr
 	rts
 	.bend  ; opforgeNativeCliReportParseError
 

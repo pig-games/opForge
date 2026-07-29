@@ -292,7 +292,7 @@ checkModuleDepth
 	tst.w state.NativeCliModuleDepth
 	beq.s successClose
 	move.l #strings.ModuleDepthFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	bra.s close
 
 successClose

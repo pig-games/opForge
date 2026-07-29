@@ -201,7 +201,7 @@ record
 
 fail
 	move.l #strings.ParserFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliParseModuleLine
@@ -228,13 +228,13 @@ close
 
 moduleDepthFail
 	move.l #strings.ModuleDepthFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 	rts
 
 fail
 	move.l #strings.ParserFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliParseEndmoduleLine
@@ -306,18 +306,18 @@ done
 
 resolveFail
 	move.l #strings.ModuleResolveFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #state.NativeCliArgToken, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #strings.NewlineText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 	movem.l (sp)+, d5
 	rts
 
 fail
 	move.l #strings.ParserFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 	movem.l (sp)+, d5
 	rts
@@ -377,7 +377,7 @@ parseCpuCopyRestoreFail
 
 fail
 	move.l #strings.ParserFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliParseCpuLine
@@ -616,7 +616,7 @@ lstPathReady
 
 fail
 	move.l #strings.ParserFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 	movem.l (sp)+, d6-d7/a3
 	rts

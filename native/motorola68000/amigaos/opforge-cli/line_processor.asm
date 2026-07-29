@@ -204,11 +204,11 @@ parseOnlyCheckUse
 	cmp.w state.NativeCliImportCount, d6
 	bne.w parseOnlyOk
 	move.l #strings.ModuleResolveFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #state.NativeCliArgToken, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #strings.NewlineText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 
 parseOnlyCheckCpu
@@ -309,9 +309,9 @@ haveMessage
 	lea buffers.lastErrorBuffer, a1
 	clr.b 0(a1, d0.W)
 	move.l #buffers.lastErrorBuffer, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	move.l #strings.NewlineText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 
 return
 	moveq #1, d0
@@ -911,7 +911,7 @@ conditionalLine
 
 fail
 	move.l #strings.ParserFailureText, d1
-	jsr dos.putStr
+	jsr dos.putErrStr
 	moveq #1, d0
 
 return

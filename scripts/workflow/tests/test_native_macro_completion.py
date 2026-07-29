@@ -38,7 +38,7 @@ class NativeMacroCompletionTests(unittest.TestCase):
             wrapper = root / "scripts/workflow/run_native_macro_completion.sh"
             wrapper.parent.mkdir(parents=True)
             shutil.copy2(self.wrapper, wrapper)
-            test_source = root / "crates/opforge-asm/src/tests.rs"
+            test_source = root / "crates/opforge-asm/src/tests/native_macro_completion.rs"
             test_source.parent.mkdir(parents=True)
             test_source.write_text("\n".join(f"fn {name}() {{}}" for name in self.tests), encoding="utf-8")
             fake_bin = root / "bin"; fake_bin.mkdir()

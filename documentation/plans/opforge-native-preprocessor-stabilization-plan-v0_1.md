@@ -714,7 +714,7 @@ its own activated item/slice contract.
     pass.
   - Definition of done: production versus debug evidence is unambiguous and SP-009 fully closes.
 
-- [ ] Item 6.1: split native-parity Rust test ownership mechanically
+- [x] Item 6.1: split native-parity Rust test ownership mechanically
   - Source requirement or finding IDs: SP-010; Item 6 classifications.
   - Expected files: `crates/opforge-asm/src/tests.rs` and extracted subsystem-owned test modules following existing crate conventions.
   - Invariant: test functions, filters, results, and proof declarations are unchanged while preprocessor/macro/FS-UAE/reference-shard tests move to owning modules.
@@ -722,6 +722,17 @@ its own activated item/slice contract.
   - Full quality gates: exact proof commands; Rust quality; workflow gate; native formatter only if native harness assembly is touched.
   - Plan-compliance review evidence: PASS for test-file ownership only.
   - Commit outcome: one mechanical Rust test-module refactor commit.
+  - Completion evidence (2026-07-29): 139 unchanged native harness,
+    reference-accounting, preprocessor, and FS-UAE/reference-parity test
+    functions move from the 42,569-line parent into three owning child modules;
+    `tests.rs` falls to 34,122 lines. A pre-move ledger and deterministic checker
+    preserve exact function names, order, uniqueness, parent-module ownership
+    of `examples_match_reference_outputs`, and every completion-wrapper filter.
+    All 1,046 parent/extracted-module test functions remain unique. The 11
+    focused `native_preprocessor_` filters, `examples_match_reference_outputs`,
+    both fail-closed macro Level D filters, ownership checker/unit tests, Rust
+    formatting, staged native-porting, serial Rust quality, and workflow gates
+    pass.
   - Definition of done: completion wrappers retain their exact test names and SP-010 fully closes with no product code change.
 
 - [ ] Item 7: certify native runtime stabilization and amend the parent parity plan

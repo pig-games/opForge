@@ -172,3 +172,10 @@ Evidence: the canonical 12-artifact classification ledger and five focused negat
 
 Reviewer: `plan-compliance-reviewer` rubric.
 Decision: PASS. The macro preprocessor harness is Level D focused-negative evidence, the pipeline helper is a focused Level D package-selection contract, and the macro CLI debug-event plus console-debugger tools/reports are Level E localization only. Level E cannot close completion, every retained artifact has a permanent lifecycle, and the untouched macro CLI fixture remains the sole macro artifact parity authority. No production source semantics, CLI behavior, diagnostics, or output artifacts change.
+
+PASS: Item 6.1 mechanically moves native harness, reference-accounting, preprocessor, and FS-UAE/reference-parity Rust tests into three owning child modules without changing product or test behavior.
+
+Evidence: the pre-move ledger records 139 exact function names; the deterministic ownership checker and three focused checker tests PASS; 1,046 parent/extracted-module test functions remain unique; all 11 `native_preprocessor_` filters PASS; `examples_match_reference_outputs` PASSes under its unchanged exact filter; both macro completion wrapper filters run once and PASS under FS-UAE; Rust formatting, staged native-porting, serial full Rust quality, and aggregate workflow gates PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The diff is a mechanical test-code ownership split plus the minimum wrapper source-discovery update. Test bodies, names, cargo filters, proof declarations, fixtures, expected results, and production sources are unchanged; no native, parser, expression, CPU/family/dialect, package, diagnostic, or output behavior is added.

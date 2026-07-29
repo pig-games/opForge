@@ -1,0 +1,39 @@
+[slice]
+schema_version = 2
+name = "native parity Rust test ownership split"
+kind = "native-rust-parity"
+rust_reference = [
+  "the 139 exact pre-move test function names recorded in scripts/workflow/native_parity_test_names.txt"
+]
+native_boundary = [
+  "crates/opforge-asm/src/tests.rs",
+  "crates/opforge-asm/src/tests/native_harness_evidence.rs",
+  "crates/opforge-asm/src/tests/native_reference_shards.rs",
+  "crates/opforge-asm/src/tests/native_fs_uae_parity.rs"
+]
+invariant = "Test bodies, function names, cargo filters, results, and proof declarations remain unchanged while native harness, reference-shard, preprocessor, and FS-UAE parity tests move to owning child modules."
+assertion_decision = "A deterministic source-list assertion is required so a mechanical move cannot silently rename, duplicate, omit, or leave behind a governed test filter."
+expected_inputs = "The pre-move 139-test ledger, the parent tests module, three extracted child modules, and both completion wrappers."
+expected_outputs = "The same exact governed test-name sequence, unique across modules, with every completion-wrapper filter still resolvable."
+known_non_equivalences = "This is test-code ownership only; it changes no production behavior, proof level, fixture, expected result, or native execution contract."
+fast_proof_command = "python3 scripts/workflow/check_native_test_module_ownership.py && cargo test -p asm native_preprocessor_ -- --nocapture && cargo test -p asm examples_match_reference_outputs -- --nocapture"
+level_d_command = "scripts/workflow/run_native_macro_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_test_module_ownership"
+proof_level = "B"
+proves = "All 139 moved functions retain their exact names, order, uniqueness, and completion-wrapper reachability."
+does_not_prove = "Rust or native runtime behavior."
+
+[[tests]]
+name = "native_preprocessor_focused_filters"
+proof_level = "C"
+proves = "Every pre-existing focused preprocessor test filter still executes after the module move."
+does_not_prove = "Real 68020 execution."
+
+[[tests]]
+name = "native_macro_completion_wrapper"
+proof_level = "D"
+proves = "Both exact macro completion filters still execute once and pass under FS-UAE."
+does_not_prove = "Segments, statements, exports, or unrelated future semantics."

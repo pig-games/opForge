@@ -16,6 +16,7 @@ class NativePortingGateTests(unittest.TestCase):
         joined = "\n".join(" ".join(command) for command in result)
         self.assertIn("check_native_runtime_no_growth.py", CHECKS)
         self.assertIn("check_native_debug_evidence_classification.py", CHECKS)
+        self.assertIn("check_native_test_module_ownership.py", CHECKS)
         self.assertNotIn("fs-uae", joined.lower())
         self.assertNotIn("curl", joined.lower())
         self.assertEqual(result[-1], ["make", "native-68000-format-check"])

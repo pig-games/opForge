@@ -1,7 +1,9 @@
 Assembly failed:
 4: ERROR [asm202]
+    2 |         .org 2000h
+    3 | 
     4 |         .endmatc
-        ^
+      |         ^
 help: did you mean .endmatch?
 suggestion: replace 4:9-17 with ".ENDMATCH"
 ERROR: Unknown directive .ENDMATC

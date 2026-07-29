@@ -1,5 +1,7 @@
 # FS-UAE Console Debugger Contract
 
+<!-- @opforge-evidence: level=E; role=diagnostic-contract; authority=none; lifecycle=permanent -->
+
 This document defines the first, deliberately narrow contract for opForge's
 opt-in FS-UAE console-debugger tooling. It applies to the stock FS-UAE binary
 used by the native smoke harness; it is not a general remote-debugging API.

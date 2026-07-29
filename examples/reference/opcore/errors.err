@@ -1,5 +1,9 @@
 Assembly failed:
 7: ERROR [asm401]
+    5 | ; constants
+    6 | symd1   .const 55          ; decimal constant
     7 | symd2   .const 5X5         ; ERR: bad decimal constant
-               ^
+      |                ^
+    8 | symd3   .const 55X         ; ERR: bad decimal constant
+    9 | symh1   .const 5A5h        ; hex constant
 ERROR: ope005: invalid number: 5X5

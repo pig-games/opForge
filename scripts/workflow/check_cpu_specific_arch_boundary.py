@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -591,14 +592,14 @@ def scan_native_asm_file(
 
 def all_repo_files() -> list[Path]:
     files: list[Path] = []
-    for path in REPO_ROOT.rglob("*"):
-        if not path.is_file():
-            continue
-        if is_under_skipped_dir(path.relative_to(REPO_ROOT)):
-            continue
-        if path.suffix.lower() not in TEXT_EXTENSIONS:
-            continue
-        files.append(path)
+    for root, dirnames, filenames in os.walk(REPO_ROOT):
+        dirnames[:] = sorted(
+            name for name in dirnames if name not in SKIP_DIR_NAMES
+        )
+        for filename in sorted(filenames):
+            path = Path(root, filename)
+            if path.suffix.lower() in TEXT_EXTENSIONS:
+                files.append(path)
     return files
 
 
@@ -731,7 +732,7 @@ def clear_report(path: Path) -> None:
         path.unlink()
 
 
-def print_violations(violations: list[Violation]) -> None:
+def print_violations(violations: list[Violation], *, reports_enabled: bool = True) -> None:
     enforced_errors = [
         violation
         for violation in violations
@@ -747,15 +748,16 @@ def print_violations(violations: list[Violation]) -> None:
     ]
     enforced_findings = enforced_errors + enforced_warnings
 
-    if enforced_findings:
-        write_enforced_report(enforced_findings)
-    else:
-        clear_report(ENFORCED_REPORT)
+    if reports_enabled:
+        if enforced_findings:
+            write_enforced_report(enforced_findings)
+        else:
+            clear_report(ENFORCED_REPORT)
 
-    if warning_scope_findings:
-        write_warning_scan_report(warning_scope_findings)
-    else:
-        clear_report(WARNING_SCAN_REPORT)
+        if warning_scope_findings:
+            write_warning_scan_report(warning_scope_findings)
+        else:
+            clear_report(WARNING_SCAN_REPORT)
 
     print("CPU-specific architecture boundary summary.\n")
 
@@ -779,11 +781,12 @@ def print_violations(violations: list[Violation]) -> None:
         print(f"FAIL: {len(enforced_errors)} enforced-scope leak(s)")
     if enforced_warnings:
         print(f"WARN: {len(enforced_warnings)} warning-only term finding(s) in enforced scope")
-    if enforced_findings:
+    if enforced_findings and reports_enabled:
         print(f"REPORT: {ENFORCED_REPORT.relative_to(REPO_ROOT).as_posix()}")
     if warning_scope_findings:
         print(f"WARN: {len(warning_scope_findings)} warning-scan finding(s) outside enforced scope")
-        print(f"REPORT: {WARNING_SCAN_REPORT.relative_to(REPO_ROOT).as_posix()}")
+        if reports_enabled:
+            print(f"REPORT: {WARNING_SCAN_REPORT.relative_to(REPO_ROOT).as_posix()}")
 
 
 def main() -> int:
@@ -794,6 +797,11 @@ def main() -> int:
         "--staged",
         action="store_true",
         help="Scan only staged files. Full scan is the default.",
+    )
+    parser.add_argument(
+        "--no-report",
+        action="store_true",
+        help="Enforce findings without writing or clearing report files.",
     )
     args = parser.parse_args()
 
@@ -809,11 +817,12 @@ def main() -> int:
         violations.extend(scan_file(path, regex, native_terms, allowlist))
 
     if violations:
-        print_violations(violations)
+        print_violations(violations, reports_enabled=not args.no_report)
         return 1 if any(violation.scan_scope == "enforced" and violation.severity == "error" for violation in violations) else 0
 
-    clear_report(ENFORCED_REPORT)
-    clear_report(WARNING_SCAN_REPORT)
+    if not args.no_report:
+        clear_report(ENFORCED_REPORT)
+        clear_report(WARNING_SCAN_REPORT)
     print("PASS: CPU-specific architecture boundary clean.")
     return 0
 

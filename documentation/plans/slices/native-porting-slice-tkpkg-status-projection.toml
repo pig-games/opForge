@@ -1,0 +1,37 @@
+[slice]
+schema_version = 2
+name = "tkpkg service status projection ownership"
+kind = "native-rust-parity"
+rust_reference = [
+  "existing Rust CLI/package request results and diagnostic projection remain the behavioral authority"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm::dispatchV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_service_status.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm::LastErrorBuffer"
+]
+invariant = "For an unchanged service request, status code, output-window pointer/length, last-error pointer/length, stored last-error kind, and service ordinal result remain exact while status/error implementation has one owner. The facade delegates only; it does not implement reusable status/error logic."
+expected_inputs = "Every existing tkpkg ABI ordinal, including init, last-error retrieval, bad-control, bad-request, and runtime-error paths."
+expected_outputs = "The same caller-visible control-block bytes and stored last-error roundtrip as before the ownership-only move."
+known_non_equivalences = "No request lifecycle, parser, expression, package selection, operand plan, encoding, package-data semantics, or CPU/family/dialect support changes. The retained native 65C02 path is the only production Level D target for this ownership slice."
+fast_proof_command = "cargo test -p asm motorola68020_tkpkg_service_writes_little_endian_control_block_bytes -- --nocapture && cargo test -p asm motorola68020_tkpkg_service_preserves_last_error_roundtrip_contract -- --nocapture && cargo test -p asm motorola68020_tkpkg_status_projection_has_one_implementation_owner -- --nocapture && cargo test -p asm motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallback -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' scripts/workflow/run_native_macro_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_tkpkg_status_projection_has_one_implementation_owner"
+proof_level = "B"
+proves = "Every former facade status/error helper is an explicit tail-call adapter and each implementation is owned by the status module."
+does_not_prove = "Guest execution or preservation of every service ordinal's bytes."
+
+[[tests]]
+name = "motorola68020_tkpkg_service_preserves_last_error_roundtrip_contract"
+proof_level = "C"
+proves = "The host-side source contract preserves bad-request, bad-control, output-window, and last-error roundtrip field transitions."
+does_not_prove = "Real native execution of every package service route."
+
+[[tests]]
+name = "native_macro_completion_wrapper"
+proof_level = "D"
+proves = "The established real native 65C02 CLI path retains its exact macro fixture bytes and nested-frame rejection behavior after the shared status-owner extraction."
+does_not_prove = "New CPU/family/dialect support, generic tokenizer CPU parity, or any service semantic outside the retained 65C02 CLI path and named status contracts."

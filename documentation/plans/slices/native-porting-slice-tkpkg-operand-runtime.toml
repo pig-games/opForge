@@ -1,0 +1,37 @@
+[slice]
+schema_version = 2
+name = "tkpkg operand-plan runtime ownership"
+kind = "native-rust-parity"
+rust_reference = [
+  "existing package-backed selection plans, candidate envelopes, and emitted bytes remain the behavioral authority"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildSelectedEnvelopeFromMselV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm::tkpkgMselTryBuildCandidateV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm::encodeSelectedOperandV1"
+]
+invariant = "The existing operand-plan dispatcher, operand evaluator, and candidate-envelope writer move behind one owner while preserving package plan tags, request envelopes, scratch layout, statuses, diagnostics, and emitted bytes exactly."
+expected_inputs = "Existing selected-instruction and encode-selected control-block requests against the established package-backed fixtures."
+expected_outputs = "The same selected candidate, plan result, status code, diagnostic text, and emitted bytes as before the ownership-only move."
+known_non_equivalences = "No CPU, family, dialect, instruction, plan-tag, selector-order, encoding, diagnostic-wording, or expression-language change."
+fast_proof_command = "cargo test -p asm motorola68020_tkpkg_selection_service_has_one_implementation_owner -- --nocapture && cargo test -p asm motorola68020_item6_3_native -- --nocapture && cargo test -p asm motorola68020_item6_7_native -- --nocapture && cargo test -p asm motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallback -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' scripts/workflow/run_native_macro_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_tkpkg_selection_service_has_one_implementation_owner"
+proof_level = "B"
+proves = "The selection owner delegates plan interpretation and the operand runtime is the sole implementation owner."
+does_not_prove = "Guest execution of every package, CPU target, or instruction form."
+
+[[tests]]
+name = "motorola68020_item6_7_native_pair_u8_rel8_plan_matches_rust_selector_shape"
+proof_level = "C"
+proves = "Existing branch and pair-plan source contracts retain their package-plan interpretation and output construction boundaries."
+does_not_prove = "New plan tags or target-CPU support."
+
+[[tests]]
+name = "native_macro_completion_wrapper"
+proof_level = "D"
+proves = "The established real native 65C02 CLI macro path retains its exact fixture behavior after this file-boundary extraction."
+does_not_prove = "New CPU/family/dialect support or generic target-CPU parity."

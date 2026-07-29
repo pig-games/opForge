@@ -1,0 +1,45 @@
+[slice]
+schema_version = 2
+name = "tkpkg selection neutral-context migration"
+kind = "native-rust-parity"
+rust_reference = [
+  "existing native selection, operand-plan, expression-bridge, and emitted-byte behavior remains the behavioral authority"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::buildSelectedEnvelopeV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm::tkpkgMselTryBuildCandidateV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm::getPassV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm::getSymbolTableSnapshotV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm::getSymbolCountV1"
+]
+invariant = "Selection and operand-runtime consumers read pass and fallback label context through the neutral runtime context; only the engine-context adapter imports engine label storage."
+expected_inputs = "Existing selected-instruction control blocks, label name/value/count/current-PC extension, and the current native engine session state."
+expected_outputs = "The same selection result, operand candidate, status, diagnostics, and output bytes as before this ownership-only dependency migration."
+known_non_equivalences = "No CPU, family, dialect, instruction, selector ordering, operand-plan, encoding, package, source-acceptance, or diagnostic-wording behavior changes. The retained macro Level-D fixtures confirm preprocessor behavior but do not prove a new CPU capability."
+fast_proof_command = "cargo test -p asm motorola68020_tkpkg_ -- --nocapture && python3 scripts/workflow/check_native_runtime_boundary_inventory.py && scripts/workflow/run_native_68000_format_gate.sh --check"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_pipeline_select_harness_fs_uae_proves_embedded_65c02_selection -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_tkpkg_native_mos6502_family_corpus_matches_vm_authoritative_rows -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_tkpkg_selection_and_operand_use_context_owned_symbol_snapshots"
+proof_level = "B"
+proves = "Selection and operand-runtime modules import the neutral context rather than the engine, while the adapter remains the sole direct engine reader."
+does_not_prove = "A changed selection algorithm, new instruction or CPU support, or end-to-end CLI bytes."
+
+[[tests]]
+name = "motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary"
+proof_level = "B"
+proves = "The revised module dependency graph composes into the native 68020 runtime harness."
+does_not_prove = "Guest CLI parity for any target CPU."
+
+[[tests]]
+name = "native_pipeline_select_harness_fs_uae_proves_embedded_65c02_selection"
+proof_level = "D"
+proves = "The real native package-selection harness continues to select the established embedded 65C02 package path after the context migration."
+does_not_prove = "New CPU/family/dialect support, a changed selector algorithm, or full encoding-corpus parity."
+
+[[tests]]
+name = "external_fs_uae_tkpkg_native_mos6502_family_corpus_matches_vm_authoritative_rows"
+proof_level = "D"
+proves = "Real native package selection and encoding retain the established VM-authoritative MOS 6502 corpus outputs after the context migration."
+does_not_prove = "New CPU/family/dialect support or broad native CLI parity outside this existing corpus."

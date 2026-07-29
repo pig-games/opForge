@@ -1,5 +1,9 @@
 Assembly failed:
 4: ERROR [asm202]
+    2 | 
+    3 | .region low, $1000, $10ff
     4 | .region high, $10f0, $11ff
-                          ^
+      |                           ^
+    5 | 
+    6 | .endmodule
 ERROR: Region range overlaps existing region 'low' at $10F0..$10FF: high

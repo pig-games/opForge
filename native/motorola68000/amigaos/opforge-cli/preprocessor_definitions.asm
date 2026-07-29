@@ -80,7 +80,7 @@ noUnexpectedEnd
 	cmpi.w #constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY, d2
 	bcc.w fail
 	lea state.NativeCliPreprocessDefinitionHeader, a2
-	mulu #constants.SOURCE_LINE_BUFFER_CAPACITY, d2
+	mulu #constants.NATIVE_PREPROCESS_DEFINITION_HEADER_CAPACITY, d2
 	adda.l d2, a2
 	lea state.NativeCliSourceLine, a1
 	moveq #0, d0
@@ -153,7 +153,7 @@ appendBodyLine	.block
 	move.w state.NativeCliPreprocessActiveDefinition, d2
 	mulu #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d2
 	add.l d3, d2
-	mulu #constants.SOURCE_LINE_BUFFER_CAPACITY, d2
+	mulu #constants.NATIVE_PREPROCESS_BODY_LINE_TEXT_CAPACITY, d2
 	lea state.NativeCliPreprocessDefinitionBody, a2
 	adda.l d2, a2
 	lea state.NativeCliSourceLine, a0

@@ -1,6 +1,8 @@
 <!-- workflow-provenance: skill=opforge-plan-authoring; entrypoint=run_plan_workflow.sh -->
 # FS-UAE Macro-Hang Console Report v0.1
 
+<!-- @opforge-evidence: level=E; role=diagnostic-report; authority=none; lifecycle=permanent -->
+
 ## Scope
 
 This is a Level E diagnostic report for the native macro fixture

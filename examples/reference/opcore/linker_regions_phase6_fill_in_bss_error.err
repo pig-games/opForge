@@ -1,5 +1,9 @@
 Assembly failed:
 4: ERROR [asm202]
+    2 | 
+    3 | .section zero, kind=bss
     4 |     .fill byte, 1, $ff
-                      ^
+      |                       ^
+    5 | .endsection
+    6 | 
 ERROR: .fill is not allowed in kind=bss section (current kind=bss)

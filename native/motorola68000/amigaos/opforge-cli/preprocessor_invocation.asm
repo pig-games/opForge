@@ -94,7 +94,7 @@ pass
 ; Clobbers: D1-D3/A1/CCR.
 captureInvocationLabel	.block
 	lea state.NativeCliPreprocessInvocationLabel, a1
-	move.l #constants.SOURCE_LINE_BUFFER_CAPACITY - 1, d2
+	move.l #constants.NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY - 1, d2
 	clr.w d3
 loop
 	tst.l d0
@@ -198,7 +198,7 @@ loop
 	cmp.w state.NativeCliPreprocessDefinitionCount, d7
 	bcc.s no
 	move.l d7, d5
-	mulu #constants.SOURCE_LINE_BUFFER_CAPACITY, d5
+	mulu #constants.NATIVE_PREPROCESS_DEFINITION_HEADER_CAPACITY, d5
 	lea state.NativeCliPreprocessDefinitionHeader, a0
 	adda.l d5, a0
 	move.l d7, d6
@@ -439,7 +439,7 @@ splitCommaCommitted
 	addq.l #1, a0
 	subq.l #1, d0
 	addq.l #1, d2
-	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY - 1, d2
+	cmpi.l #constants.NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY - 1, d2
 	bcs.s splitCommaCapacity
 	bra.w fail
 splitCommaCapacity
@@ -468,11 +468,11 @@ quotedDouble
 	clr.l d4
 
 copy
-	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY - 1, d1
+	cmpi.l #constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY - 1, d1
 	bcs.s splitArgumentCapacity
 	bra.w fail
 splitArgumentCapacity
-	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY - 1, d2
+	cmpi.l #constants.NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY - 1, d2
 	bcs.s splitFullListCapacity
 	bra.w fail
 splitFullListCapacity
@@ -532,7 +532,7 @@ finishInvocationArgument	.block
 	lea state.NativeCliPreprocessInvocationArgs, a1
 	moveq #0, d3
 	move.w state.NativeCliPreprocessInvocationArgCount, d3
-	mulu #constants.SOURCE_LINE_BUFFER_CAPACITY, d3
+	mulu #constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY, d3
 	adda.l d3, a1
 	moveq #0, d0
 	movem.l (sp)+, d2/a0/a2
@@ -598,7 +598,7 @@ done
 bindMacroParameterDefaults	.block
 	moveq #0, d7
 	move.w state.NativeCliPreprocessInvocationDefinition, d7
-	mulu #constants.SOURCE_LINE_BUFFER_CAPACITY, d7
+	mulu #constants.NATIVE_PREPROCESS_DEFINITION_HEADER_CAPACITY, d7
 	lea state.NativeCliPreprocessDefinitionHeader, a0
 	adda.l d7, a0
 	moveq #0, d0
@@ -728,11 +728,13 @@ parameterEnd
 	tst.l d6
 	bmi.s advance
 	move.l d7, d2
-	mulu #constants.SOURCE_LINE_BUFFER_CAPACITY, d2
+	mulu #constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY, d2
 	lea state.NativeCliPreprocessInvocationArgs, a2
 	adda.l d2, a2
 	move.l a0, d3
 	sub.l a3, d3
+	cmpi.l #constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY - 1, d3
+	bcc.s fail
 	movea.l a3, a1
 	move.l d3, d0
 	jsr copy.copyBytes

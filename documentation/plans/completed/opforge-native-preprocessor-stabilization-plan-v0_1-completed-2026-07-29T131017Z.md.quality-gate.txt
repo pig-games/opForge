@@ -1,0 +1,188 @@
+PASS: `plan-quality-reviewer` found the stabilization plan commit-sized, Rust-authoritative, fail-closed for macro Level D evidence, and explicitly deferred segment/statement/export semantics.
+
+Reviewer: `plan-quality-reviewer`.
+Decision: PASS. The plan requires a non-writing fail-closed macro `--verify` before each macro-affecting source commit, followed by a clean-tree, source-identity-bound evidence-only receipt commit before the next implementation item.
+
+PASS: `plan-quality-reviewer` re-reviewed the 2026-07-21 native runtime-boundary amendment. Milestones now match execution order, and each extraction is a separately numbered, one-commit ownership-only item with dependencies, gates, review evidence, and a done criterion; completed Items 1–5.1 remain historically unchanged.
+
+Reviewer: `plan-quality-reviewer`.
+Decision: PASS. The amended next implementation slice is Item 5.2 runtime responsibility/dependency inventory; CLI diagnostic remediation remains after the stabilization readiness gate and before segment capture.
+
+PASS: Item 5.2 runtime responsibility/dependency inventory is source-grounded and complete for all eight NR-001 through NR-008 targets.
+
+Evidence: `documentation/architecture/native-runtime-boundary-inventory-v0_1.md`; `python3 scripts/workflow/check_native_runtime_boundary_inventory.py` PASS; `python3 -m unittest scripts/workflow/tests/test_check_native_runtime_boundary_inventory.py` PASS.
+
+PASS: Item 5.2 plan-compliance review confirmed the validator derives every `.block` routine, `.use` import, `.section` state block, and diagnostic/status/event path for all eight audited sources; source hash/count drift fails closed.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. This is a Level B evidence-and-architecture inventory only; no native production behavior changed.
+
+PASS: Item 5.3 target native runtime-boundary contract validation and plan-compliance review passed.
+
+Evidence: `documentation/architecture/native-runtime-boundary-contract-v0_1.md`; `documentation/plans/slices/native-porting-slice-runtime-boundary-contract.toml`; `python3 scripts/workflow/check_native_runtime_boundary_contract.py` PASS; `python3 -m unittest scripts/workflow/tests/test_check_native_runtime_boundary_contract.py` PASS.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. Required owners, neutral context fields, prohibited/transitional edges, and lifecycle ledger are explicit; this remains B/C architecture evidence with no semantic or Level D claim.
+
+PASS: Item 5.4 status-projection extraction passed deterministic and scoped validation, including the retained native 65C02 CLI Level D completion wrapper and the full Rust quality gate. CPU/family/dialect support is explicitly unchanged; the supplementary Motorola 68000 debug-CLI corpus is tokenizer/status-route evidence only and is not cited as CPU parity.
+
+Evidence: staged native-porting gate PASS; focused ownership/roundtrip/native-CLI assembly tests PASS; `scripts/workflow/run_native_macro_completion.sh --verify` PASS with both exact FS-UAE tests (`native_macro_invocation_fixture_fs_uae`, `native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection`).
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. Item 5.4 is ownership splitting only, with CPU/family/dialect support explicitly unchanged; the retained 65C02 macro completion wrapper is the sole production Level D evidence.
+
+Full Rust quality gate: PASS (`RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`).
+
+PASS: Item 5.4.1 request-lifecycle extraction passed deterministic validation and the retained native 65C02 CLI Level D completion wrapper. CPU/family/dialect support is explicitly unchanged.
+
+Evidence: inventory validator PASS; staged native-porting gate PASS; focused header/ownership/last-error/native-CLI assembly tests PASS; `scripts/workflow/run_native_macro_completion.sh --verify` PASS with both exact FS-UAE tests (`native_macro_invocation_fixture_fs_uae`, `native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection`).
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. Full Rust quality gate and workflow gate passed; Item 5.4.1 remains an ownership-only lifecycle extraction with CPU/family/dialect support unchanged.
+
+PASS: Item 5.5 parser-adapter extraction passed deterministic validation and the retained native 65C02 CLI Level D completion wrapper. CPU/family/dialect support is explicitly unchanged.
+
+Evidence: native formatter and inventory validator PASS; staged native-porting gate PASS; focused parser-owner, service-header, and native-CLI assembly tests PASS; `scripts/workflow/run_native_macro_completion.sh --verify` PASS with both exact FS-UAE tests (`native_macro_invocation_fixture_fs_uae`, `native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection`); full Rust quality gate PASS.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. The workflow gate and full Rust quality gate passed; Item 5.5 is an ownership-only parser-adapter extraction. The `tkpkg_service` facade tail-jumps to the parser owner, with parser semantics, diagnostics, and CPU/family/dialect support unchanged.
+
+PASS: Item 5.5.1 expression-service extraction passed deterministic validation and the retained native 65C02 CLI Level D completion wrapper. CPU/family/dialect support is explicitly unchanged.
+
+Evidence: expression envelope preparation and bridge execution now reside in `tkpkg_expression_service.asm`; the facade retains exact package-contract validation and forwards the validated EXVM/EXPR versions in D4/D5. Direct engine reads are isolated in `tkpkg_expression_context.asm` pending Item 5.7.1. Focused ownership, control-block, and native-CLI assembly tests PASS; inventory validator and staged native-porting gate PASS; both exact FS-UAE macro tests PASS; full Rust quality gate PASS.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. Full Rust and workflow gates passed; Item 5.5.1 is an ownership-only expression-service extraction. The facade retains only contract-version validation and the D4/D5 bridge-version handoff; direct engine-state reads are isolated in the named temporary context adapter pending Item 5.7.1. CPU/family/dialect support is unchanged.
+
+PASS: Item 5.6 selection-service extraction passed deterministic validation and the retained native 65C02 CLI Level D completion wrapper. CPU/family/dialect support is explicitly unchanged.
+
+Evidence: `tkpkg_selection_service.asm` owns selected-request decoding, MSEL candidate traversal, selected-output diagnostics, and the retained operand-plan runtime; `tkpkg_service.asm` delegates selection and retains selected-envelope encoding only. Focused ownership/control-block/plan-dispatch/native-CLI assembly tests PASS; inventory, staged native-porting, CPU-boundary, and workflow gates PASS; both exact FS-UAE macro tests PASS. Rust formatter, clippy, audit, and the locked Rust suite PASS.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. Item 5.6 is an ownership-only selection-service extraction: the facade delegates selected-request decoding and candidate traversal to `tkpkg_selection_service.asm`; the existing operand-plan runtime remains there for Item 5.6.1; the narrow allowlist relocates existing package-selector metadata only. CPU/family/dialect semantics are unchanged.
+
+PASS: Item 5.6.1 operand-plan runtime extraction preserves the prior plan interpreter and scratch layout while moving it out of the selection owner. CPU/family/dialect support is explicitly unchanged.
+
+Evidence: `tkpkg_selection_service.asm` delegates to `tkpkg_operand_runtime.asm`; `tkpkg_selection_state.asm` retains the exact former operand scratch storage. Focused ownership, plan-dispatch, branch/pair-plan, control-block, and native-CLI assembly checks PASS; native formatter, inventory, staged native-porting, CPU-boundary, retained macro Level D wrapper, full Rust quality, and workflow gates PASS.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. This is a file-boundary extraction only: package plan tags, request envelopes, emitted bytes, and CPU/family/dialect semantics are unchanged.
+
+PASS: Item 5.6.2 encoding-service extraction preserves the prior package-table encoder and encoded-output construction while moving them out of the service facade. CPU/family/dialect support is explicitly unchanged.
+
+Evidence: `tkpkg_service.asm` delegates both encoding entry paths to `tkpkg_encode_service.asm`; focused ownership, Item 6 package-backed parity, native formatter, inventory, staged native-porting, CPU-boundary, retained macro Level D wrapper, full Rust quality, and workflow gates PASS.
+
+Reviewer: `plan-compliance-reviewer`.
+Decision: PASS. This is an ownership-only file split: selector ordering, package data, plan tags, status/diagnostic paths, and emitted bytes remain unchanged.
+
+PASS: Item 5.7 defines the versioned neutral tkpkg runtime-context ABI and the sole transitional engine-context adapter. This is a large-file ownership/dependency split only: no production consumer migrates yet, and no CPU, family, dialect, instruction, selector, operand-plan, encoding, package, source-acceptance, diagnostic-wording, or emitted-byte behavior changes.
+
+Evidence: `tkpkg_runtime_context.asm`; `tkpkg_engine_context_adapter.asm`; `opasmEngineIsLabelFinalV1`; `documentation/plans/slices/native-porting-slice-tkpkg-runtime-context.toml`; focused Level B/C context and composed-runtime tests PASS; inventory and runtime-boundary contract validators PASS; staged native-porting gate PASS; full Rust quality gate PASS; workflow validators PASS; retained FS-UAE macro tests (`native_macro_invocation_fixture_fs_uae` and `native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection`) PASS.
+
+Reviewer: `plan-compliance-reviewer` (`/root/item57_compliance`).
+Decision: PASS. The staged Item 5.7 diff is a neutral runtime-context/engine-adapter ownership split only. It adds no CPU, family, dialect, instruction, encoding, or production-consumer migration; existing direct consumers remain untouched for Items 5.7.1–5.7.2.
+
+PASS: Item 5.7.1 migrates `tkpkg_expression_service.asm` from the deleted temporary engine-table adapter to `tkpkg_runtime_context.asm`. The service now receives pass and a bounded finalization snapshot through the neutral ABI while retaining the expression-bridge register contract. Selection and encoding remain untouched; CPU/family/dialect behavior is unchanged.
+
+Evidence: `documentation/plans/slices/native-porting-slice-tkpkg-expression-context.toml`; focused expression/context, composed-runtime, Item 6 parity, inventory, and runtime-boundary checks PASS; staged native-porting gate PASS; full Rust quality gate PASS; workflow validators PASS; real FS-UAE `native_expression_context_forward_label_fs_uae` PASS (one test, no skip), proving the forward label through pass-one instability and pass-two finalization with exact Rust-matching bytes.
+
+Reviewer: `plan-compliance-reviewer` (`/root/item571_recheck`).
+Decision: PASS. The staged migration deletes only the temporary expression context and moves expression to the neutral runtime-context ABI; selection/encoding and CPU behavior remain untouched. The affected real FS-UAE forward-label fixture closes the prior Level D evidence gap.
+
+PASS: Item 5.7.2 migrates the selection and operand-runtime consumers to the neutral runtime context. This is an ownership/dependency split only: CPU/family/dialect/instruction/operand-plan/encoding behavior remains unchanged.
+
+Evidence: `documentation/plans/slices/native-porting-slice-tkpkg-selection-context.toml`; focused tkpkg boundary and composed-runtime tests PASS; inventory and native formatter PASS; staged native-porting gate PASS; full Rust quality gate PASS; real affected FS-UAE selection fixture (`native_pipeline_select_harness_fs_uae_proves_embedded_65c02_selection`) and MOS 6502 selection/encoding corpus (`external_fs_uae_tkpkg_native_mos6502_family_corpus_matches_vm_authoritative_rows`) PASS with no skip.
+
+Reviewer: `plan-compliance-reviewer` (`/root/item572_compliance`).
+Decision: PASS. The staged Item 5.7.2 diff preserves the extension-supplied pass and MSEL shape length, removes the obsolete service engine import, and leaves the engine-context adapter as the sole tkpkg engine reader. The change is limited to ownership/dependency separation; it adds no CPU/family/dialect/instruction/operand-plan/encoding semantics.
+
+PASS: Item 5.9.5 corrects the single ExprVM noncommutative operand-order defect exposed while validating Item 5.10. Division, modulo, left shift, and right shift now consistently consume `d3` as the left value and `d2` as the right divisor/count.
+
+Evidence: focused Rust-oracle and source-contract tests PASS; exact real-native-CLI FS-UAE multiplicative and shift fixtures PASS without skip and match live Rust bytes; the suffix-literal FS-UAE regression PASS; native formatter PASS; metadata-aware staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The diff is an independently activated, revertible semantic remediation limited to the first divergence and its exact contracts/metadata. No Item 5.10 expression-bridge ownership change or unrelated cleanup is staged.
+
+PASS: Item 5.10 retains `opcore.amigaos.expr_bridge` as the cohesive native scalar text-to-ExprVM frontend and narrows its public surface to the two established service entries. Compiler state, sole dependency, callers, prohibited responsibilities, long-term owner, and replacement criterion are explicit.
+
+Evidence: focused bridge/runtime ownership tests PASS; runtime-boundary inventory and contract validators PASS; the declared 11-test expression corpus PASS, including exact real-native-CLI FS-UAE forward-label, multiplicative, shift, and suffix-literal parity without skip; native formatter PASS; metadata-aware staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The diff is limited to a documented retain-cohesive decision, private-helper ABI narrowing, exact contracts, snapshot, and slice metadata. The semantic operand-order correction is isolated in the preceding Item 5.9.5 commit; no parser, evaluator, diagnostic, package, CPU/family/dialect, or output behavior is mixed into Item 5.10.
+
+PASS: Item 5.11 records the conditional no-change decision for `opasm.amigaos.engine` and `tkpkg.amigaos.pipeline`. The engine retains one assembly-session state aggregate and imports only event projection; the pipeline retains one atomic package-hierarchy selection transaction and imports only tkpkg ABI, buffers, and token policy. Neither owner has a prohibited reverse edge or independent extraction boundary.
+
+Evidence: runtime-boundary inventory PASS; dependency contract and exact retained-import validation PASS; six focused workflow unit tests PASS; focused engine two-pass ownership test PASS; staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS. No Level D claim is made because no native production source changed.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The diff is limited to retained-cohesion decisions, a B/C slice, and deterministic current-dependency evidence. It introduces no assembly, ABI, CPU/family/dialect, selector, package, diagnostic, or output behavior and does not pre-empt Item 5.12's broader no-growth guards.
+
+PASS: Item 5.11.1 restores authority to the generated FS-UAE guest command by compiling the parity Hunk without the embedded smoke-argument override. The normal native CLI `GetArgStr` path now consumes the exact staged source and output arguments; no production assembler or CLI semantics change.
+
+Evidence: all 24 focused FS-UAE helper unit tests PASS; the real native CLI `.org`/binary debug fixture PASS without skip and matches Rust bytes; metadata-aware staged native-porting PASS; serial full Rust quality PASS; aggregate workflow gate PASS. The newly authoritative schema run proceeds beyond the former embedded `math.foo` source and independently exposes the next selector divergence in `6502_first_run_artifact_contract.asm`.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The staged diff is an independently revertible test-authority correction limited to guest command/build-define handoff, its B/D proof, slice metadata, and plan bookkeeping. It adds no CPU/family/dialect, parser, selector, encoder, expression, diagnostic, or output behavior.
+
+PASS: Item 5.11.2 restores active module/block scope for native instruction expressions. The flow-scope owner exposes only aliases belonging to the complete active prefix, and the opasm operand adapter prepends those aliases to a bounded read-only evaluation snapshot ahead of qualified/global labels. The expression bridge, tkpkg selector, operand plans, encoder, and CPU/family/dialect semantics remain unchanged.
+
+Evidence: focused scoped-snapshot B/C contracts PASS; the runtime-boundary inventory and refreshed exact source manifest PASS; exact real-native-CLI FS-UAE symbolic-placement, module-local-shadowing, and canonical first-run artifact fixtures PASS without skip and match live Rust bytes; native formatter PASS; metadata-aware staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The diff is an independently revertible first-divergence remediation limited to active-scope alias projection at the opasm request boundary, its bounded scratch snapshot, exact contracts, inventory refresh, slice metadata, and plan bookkeeping. It adds no expression grammar, package row, addressing mode, encoding, diagnostic, or output-format behavior.
+
+PASS: Item 5.11.3 restores terminal source-line listing parity by routing `.end` through the existing source-record label before the existing terminal non-statement check. The listing builder, parser, symbols, emitted bytes, and CPU/family/dialect semantics remain unchanged.
+
+Evidence: focused source-order contract PASS; exact real-native-CLI FS-UAE listing comparison against the live Rust CLI oracle PASS without skip; native formatter PASS; metadata-aware staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The independently revertible diff changes one branch target so the exact terminal source line is recorded once and counted. It adds no new routine, parser/directive behavior, listing-format text, symbol behavior, diagnostic, or output bytes.
+
+PASS: Item 5.11.4 restores active loop bindings and assigned-sequence expressions to numeric `.byte`/`.db` parts and restores an explicit post-closing next index for completed `.for` and `.while` callbacks.
+
+Evidence: focused comma-resolution and completed-repetition contracts PASS; runtime-boundary inventory and native formatter PASS; exact real-native-CLI FS-UAE iterable and `.while` fixtures PASS without skip, with iterable bytes matching the live Rust CLI; metadata-aware staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The independently revertible remediation delegates to the established compile-value owner and repairs callback control state after existing routers. It adds no parser, expression grammar, sequence/binding storage, directive owner, package row, CPU/family/dialect behavior, diagnostic wording, or output format.
+
+PASS: Item 5.11.5 stabilizes the existing native structural-flow callback boundary. Flow destinations are engine-owned and consumed once, the pass cursor is preserved around callbacks, sequential versus redirected conditional arrivals remain explicit, and `.endif`/`.endmatch` compute their post-marker destinations directly.
+
+Evidence: focused transition and navigation ownership contracts PASS; exact untouched canonical conditional/match FS-UAE parity PASS without skip and matches live Rust bytes; the broader nested structural-flow FS-UAE fixture PASS; runtime-boundary inventory and native formatter PASS; metadata-aware staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The independently revertible remediation is limited to callback-state stabilization and existing structural navigation. It adds no conditional or match syntax, parser/evaluator ownership, CPU/family/dialect behavior, diagnostic wording, or output format.
+
+PASS: Item 5.12 converts the certified native runtime ownership boundaries into deterministic no-growth enforcement without using file size as a semantic proxy.
+
+Evidence: sixteen focused positive/negative workflow tests PASS; the repository baseline, refreshed runtime-boundary inventory, staged no-growth guard, and native formatter PASS; the fail-closed established Level D completion wrapper runs 34 exact tests serially with no skip or zero-test filter and PASSes, including conditionals/match, loops, repaired structs/`.bfor`, expressions, text, module-local symbols, layout, package selection/encoding, and CLI/reference artifacts; metadata-aware staged native-porting, serial full Rust quality, and aggregate workflow gates PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The independently revertible workflow slice records certified routine sets, permits only slice-backed façade/delegation entries, rejects tkpkg-to-opasm mutable-state reads, composes the existing CPU-specific boundary without report mutation, and requires owner/slice provenance for new production semantic modules. It adds no parser, evaluator, directive, CPU/family/dialect, package, diagnostic, or output behavior. The future `.INLINE` macro/statement fixture is explicitly excluded because it belongs to open Items 7.4–7.7, not the established pre-amendment corpus.
+
+PASS: Item 5.13 records the complete established native parity closure against a clean committed source identity. No production or test behavior changes in this evidence-only slice.
+
+Evidence: `run_native_existing_parity_completion.sh --verify` executed all 34 exact Level D filters against clean commit `504817568047e8a2d68d8bc9547ab999e2d46de4` and tree `a0128b62b8a33e6598a183dcc1357ca5cbbe4cda`; every filter ran once and PASSed with no `SKIP:`. The retained JSON receipt, closure review, no-growth guard, CPU/package boundary audit, serial full Rust quality gate, and aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The closure is evidence-only and explicitly excludes future segment, statement, export, linker, and selector-remediation semantics. The deleted expression-context adapter remains absent; the sole neutral engine-context transition is isolated and scheduled for deletion in parent Item 7.7 when module/import integration can provide the neutral context without a tkpkg-to-opasm import.
+
+PASS: Item 6 makes native preprocessor/debug evidence authority explicit and machine checked without changing production behavior or reference artifacts.
+
+Evidence: the canonical 12-artifact classification ledger and five focused negative-policy unit tests PASS; the integrated classification checker PASSes; both fail-closed macro Level D wrapper tests and the retained macro manifest validator PASS; the focused pipeline-selection Level D harness PASSes; the macro CLI debug-event harness runs successfully but is retained only as Level E diagnostic evidence; native formatting, metadata-aware staged native-porting, serial full Rust quality, and aggregate workflow gates PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The macro preprocessor harness is Level D focused-negative evidence, the pipeline helper is a focused Level D package-selection contract, and the macro CLI debug-event plus console-debugger tools/reports are Level E localization only. Level E cannot close completion, every retained artifact has a permanent lifecycle, and the untouched macro CLI fixture remains the sole macro artifact parity authority. No production source semantics, CLI behavior, diagnostics, or output artifacts change.
+
+PASS: Item 6.1 mechanically moves native harness, reference-accounting, preprocessor, and FS-UAE/reference-parity Rust tests into three owning child modules without changing product or test behavior.
+
+Evidence: the pre-move ledger records 139 exact function names; the deterministic ownership checker and three focused checker tests PASS; 1,046 parent/extracted-module test functions remain unique; all 11 `native_preprocessor_` filters PASS; `examples_match_reference_outputs` PASSes under its unchanged exact filter; both macro completion wrapper filters run once and PASS under FS-UAE; Rust formatting, staged native-porting, serial full Rust quality, and aggregate workflow gates PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The diff is a mechanical test-code ownership split plus the minimum wrapper source-discovery update. Test bodies, names, cargo filters, proof declarations, fixtures, expected results, and production sources are unchanged; no native, parser, expression, CPU/family/dialect, package, diagnostic, or output behavior is added.
+
+PASS: Item 7 certifies the completed native runtime stabilization boundary and amends the parent parity plan without changing production or test behavior.
+
+Evidence: all Items 1-6.1 have focused green commits and retained evidence; the established 34-test clean-source Level D receipt and macro Level D receipt remain valid; runtime no-growth, dependency, debug-evidence, and test-ownership checks PASS; the parent plan now orders CLI error-output remediation before segment capture, retains segment/statement/export sequencing, assigns the sole transitional engine-context adapter deletion to Item 7.7, and gates Item 8 on separate CPU/selector remediation.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The closure is limited to evidence, architecture records, parent-plan ordering, and archival bookkeeping. It implements no CLI diagnostic, segment, statement, export/import, linker/output, CPU/family/dialect, selector, package, or output semantics. No release-note entry is required.

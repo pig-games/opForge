@@ -7,6 +7,8 @@ does not synthesize Cmd+D or send debugger commands: the stock macOS build may
 require manual console entry after its window is focused.
 """
 
+# @opforge-evidence: level=E; role=diagnostic-tool; authority=none; lifecycle=permanent
+
 from __future__ import annotations
 
 import argparse

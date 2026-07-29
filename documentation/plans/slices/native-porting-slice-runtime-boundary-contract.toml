@@ -1,0 +1,32 @@
+[slice]
+schema_version = 2
+name = "native runtime boundary ownership contract"
+kind = "native-rust-parity"
+rust_reference = [
+  "existing Rust CLI/package boundaries remain behavioral authority; no Rust behavior is changed by this architecture slice"
+]
+native_boundary = [
+  "documentation/architecture/native-runtime-boundary-contract-v0_1.md",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm"
+]
+invariant = "Ownership is one-way: CLI/frontend stages source; driver orchestrates; engine owns statement/pass/image state; the tkpkg facade owns ABI lifecycle/status; package/expression runtimes use a neutral context rather than engine mutable tables. This slice changes no native production behavior."
+expected_inputs = "Current native source imports and the Item 5.2 runtime inventory."
+expected_outputs = "A checked architecture contract, prohibited reverse-edge model, neutral context shape, and one owner/destination/adapter/deletion entry for every later extraction."
+known_non_equivalences = "No assembly module, ABI, instruction selection, diagnostics, or real CLI output changes in this architecture-only slice."
+fast_proof_command = "python3 scripts/workflow/check_native_runtime_boundary_contract.py && python3 -m unittest scripts/workflow/tests/test_check_native_runtime_boundary_contract.py"
+level_d_command = "not applicable: Item 5.3 is Level B/C architecture evidence only"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_runtime_boundary_contract"
+proof_level = "B"
+proves = "The required owners, prohibited edges, neutral-context fields, and extraction lifecycle entries are explicit and current imports obey the declared transitional model."
+does_not_prove = "Native execution, ABI compatibility, semantic parity, or removal of the temporary service-to-engine dependency."
+
+[[tests]]
+name = "native_runtime_boundary_dependency_model"
+proof_level = "C"
+proves = "The source dependency model rejects prohibited reverse imports while allowing only the named service-to-engine transitional edge."
+does_not_prove = "Guest-side execution or the correctness of a future runtime-context ABI implementation."

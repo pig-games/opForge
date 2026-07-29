@@ -59,7 +59,7 @@ tests=(
   native_macro_invocation_fixture_fs_uae
   native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection
 )
-test_source="crates/opforge-asm/src/tests.rs"
+test_source="crates/opforge-asm/src/tests"
 for test_name in "${tests[@]}"; do
   rg -q "^fn ${test_name}\\(\\)" "${test_source}" || { echo "error: required Level D test is missing: ${test_name}" >&2; exit 2; }
 done

@@ -1,5 +1,9 @@
 Assembly failed:
 9: ERROR [asm202]
+    7 | .endsection
+    8 | 
     9 | .place code in nowhere
- ^
+      |  ^
+   10 | 
+   11 | .endmodule
 ERROR: Unknown region in placement directive: nowhere

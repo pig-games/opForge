@@ -1,0 +1,39 @@
+[slice]
+schema_version = 2
+name = "native runtime no-growth and ownership enforcement"
+kind = "native-rust-parity"
+rust_reference = [
+  "existing Rust and native parity corpora remain behavioral authority; the guard enforces only certified source ownership"
+]
+native_boundary = [
+  "scripts/workflow/check_native_runtime_no_growth.py",
+  "scripts/workflow/native_runtime_ownership_baseline.toml",
+  "scripts/workflow/check_cpu_specific_arch_boundary.py",
+  "documentation/architecture/native-runtime-no-growth-guard-v0_1.md"
+]
+invariant = "Certified hotspots cannot gain undeclared semantic routines, tkpkg cannot address opasm mutable tables, CPU/family vocabulary remains in approved owners, and every new production semantic module names its owner and slice contract."
+assertion_decision = "Deterministic workflow assertions are required: structural and dependency violations fail before native formatting or runtime validation."
+expected_inputs = "Current production native assembly sources, the certified structural baseline, staged additions, slice records, and the reviewed CPU allowlist."
+expected_outputs = "PASS only when routine growth is declared as a facade/delegation, dependency direction is neutral, CPU ownership is valid, and new semantic modules have provenance."
+known_non_equivalences = "The guard does not prove runtime behavior, diagnostics, accepted source, or emitted bytes; established Level D completion remains mandatory and separate."
+fast_proof_command = "python3 scripts/workflow/check_native_runtime_no_growth.py && python3 -m unittest scripts/workflow/tests/test_check_native_runtime_no_growth.py scripts/workflow/tests/test_run_native_porting_quality_gate.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_runtime_no_growth_guard"
+proof_level = "B"
+proves = "Certified routine sets, declared delegation exceptions, mutable-table direction, and new-module provenance are enforced deterministically."
+does_not_prove = "Native execution or semantic parity."
+
+[[tests]]
+name = "cpu_specific_architecture_boundary"
+proof_level = "B"
+proves = "CPU/family vocabulary remains outside generic owners unless covered by a narrow reviewed allowlist rule."
+does_not_prove = "Correctness of package-defined CPU semantics."
+
+[[tests]]
+name = "established_native_level_d_corpus"
+proof_level = "D"
+proves = "The separately executed real native CLI corpus retains all established observable behavior after guard integration."
+does_not_prove = "Future segment, statement, export, linker, or selector-remediation semantics."

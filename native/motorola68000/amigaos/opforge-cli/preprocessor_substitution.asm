@@ -32,7 +32,7 @@ opforgeNativeCliSubstituteMacroBodyLineV1	.block
 	move.l d2, d3
 	mulu #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d3
 	add.l d0, d3
-	mulu #constants.SOURCE_LINE_BUFFER_CAPACITY, d3
+	mulu #constants.NATIVE_PREPROCESS_BODY_LINE_TEXT_CAPACITY, d3
 	lea state.NativeCliPreprocessDefinitionBody, a0
 	adda.l d3, a0
 	lea state.NativeCliPreprocessExpansionLine, a1
@@ -198,7 +198,7 @@ fail
 
 ; Append D4 to the active bounded expansion line.
 appendExpansionByte	.block
-	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY - 1, d5
+	cmpi.l #constants.NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY - 1, d5
 	bcc.s fail
 	move.b d4, 0(a1, d5.l)
 	addq.l #1, d5
@@ -222,7 +222,7 @@ appendInvocationPositional	.block
 	lea state.NativeCliPreprocessInvocationArgs, a2
 	moveq #0, d0
 	move.b d4, d0
-	mulu #constants.SOURCE_LINE_BUFFER_CAPACITY, d0
+	mulu #constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY, d0
 	adda.l d0, a2
 	bra.w appendExpansionBytes
 fail
@@ -244,7 +244,7 @@ appendExpansionBytes	.block
 	beq.s success
 	move.l d5, d0
 	add.l d3, d0
-	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY, d0
+	cmpi.l #constants.NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY, d0
 	bcc.s fail
 loop
 	move.b (a2)+, d4
@@ -300,7 +300,7 @@ appendInvocationNamed	.block
 	movea.l a0, a3
 	move.l d0, d7
 	move.w state.NativeCliPreprocessInvocationDefinition, d2
-	mulu #constants.SOURCE_LINE_BUFFER_CAPACITY, d2
+	mulu #constants.NATIVE_PREPROCESS_DEFINITION_HEADER_CAPACITY, d2
 	lea state.NativeCliPreprocessDefinitionHeader, a0
 	adda.l d2, a0
 	moveq #0, d6

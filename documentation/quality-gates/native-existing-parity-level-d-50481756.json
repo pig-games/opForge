@@ -1,0 +1,56 @@
+{
+  "manifest_version": 1,
+  "kind": "native-existing-parity-level-d",
+  "scope": "native-runtime-stabilization-pre-amendment",
+  "status": "PASS",
+  "completed_at_utc": "2026-07-29T12:31:16Z",
+  "source": {
+    "commit": "504817568047e8a2d68d8bc9547ab999e2d46de4",
+    "tree": "a0128b62b8a33e6598a183dcc1357ca5cbbe4cda"
+  },
+  "command": "scripts/workflow/run_native_existing_parity_completion.sh --verify",
+  "test_count": 34,
+  "result": "PASS",
+  "tests": [
+    "external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli",
+    "external_fs_uae_opforge_native_cli_schema_listing_parity_matches_live_rust_cli",
+    "external_fs_uae_opforge_native_cli_schema_diagnostic_parity_matches_live_rust_cli",
+    "external_fs_uae_opforge_native_cli_expression_metadata_fallback_matches_live_rust_cli",
+    "external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust_cli",
+    "external_fs_uae_opforge_native_cli_debug_output_isolation_preserves_normal_output",
+    "external_fs_uae_opforge_native_cli_65c02_expr_syntax_matches_rust_bin",
+    "native_column_one_directive_routing_fs_uae",
+    "native_opcore_counted_for_fs_uae",
+    "native_opcore_sequence_assignment_fs_uae",
+    "native_opcore_iterable_for_fs_uae",
+    "native_opcore_while_fs_uae",
+    "native_opcore_conditionals_fs_uae",
+    "native_opcore_scopes_fs_uae",
+    "native_macro_invocation_fixture_fs_uae",
+    "native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection",
+    "external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture",
+    "external_fs_uae_native_cli_flow_navigation_preserves_nested_structural_skips",
+    "native_module_local_symbol_fs_uae",
+    "native_opcore_text_encoding_fs_uae",
+    "native_text_encoding_definition_steps_fs_uae",
+    "native_opcore_structs_fs_uae",
+    "native_expression_context_forward_label_fs_uae",
+    "native_expression_suffix_literals_fs_uae",
+    "native_expression_multiplicative_fs_uae",
+    "native_expression_shift_fs_uae",
+    "external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_bytes",
+    "native_pipeline_select_harness_fs_uae_proves_embedded_65c02_selection",
+    "external_fs_uae_tkpkg_native_motorola68000_family_corpus_matches_vm_authoritative_rows",
+    "external_fs_uae_tkpkg_native_operator_surface_matches_vm_authoritative_rows",
+    "external_fs_uae_tkpkg_native_percent_prefix_context_matches_vm_authoritative_rows",
+    "external_fs_uae_tkpkg_native_mos6502_family_corpus_matches_vm_authoritative_rows",
+    "external_fs_uae_tkpkg_native_intel8080_family_corpus_matches_vm_authoritative_rows",
+    "external_fs_uae_tkpkg_native_motorola6800_family_corpus_matches_vm_authoritative_rows"
+  ],
+  "excluded_future_scope": [
+    {
+      "test": "native_reference_opcore_module_macro_statement_fs_uae",
+      "reason": "The canonical INLINE segment form and statement/export behavior belong to open parent-plan Items 7.4-7.7."
+    }
+  ]
+}

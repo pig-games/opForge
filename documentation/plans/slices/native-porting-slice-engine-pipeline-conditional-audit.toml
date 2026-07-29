@@ -1,0 +1,38 @@
+[slice]
+schema_version = 2
+name = "opasm engine and tkpkg pipeline conditional ownership audit"
+kind = "native-rust-parity"
+rust_reference = [
+  "existing Rust assembly-session and package-hierarchy behavior remains authoritative; this audit changes no production behavior"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm",
+  "documentation/architecture/native-runtime-boundary-contract-v0_1.md"
+]
+invariant = "The engine retains one assembly-session state aggregate and the pipeline retains one atomic package-hierarchy selection transaction; neither owner gains a prohibited reverse dependency or shares mutable state."
+assertion_decision = "No runtime assertion: Item 5.11 is a documented no-change ownership decision; deterministic inventory and contract validators pin source identity, exact imports, responsibilities, and prohibited edges."
+expected_inputs = "The current engine and pipeline source surfaces, Item 5.2 inventory, and Item 5.3 dependency contract."
+expected_outputs = "A retained-cohesion decision for each conditional target with exact import evidence and an explicit reason no extraction is authorized."
+known_non_equivalences = "No assembly, ABI, accepted source, diagnostics, package selection, selector ordering, CPU/family/dialect behavior, or emitted bytes change in this B/C audit slice."
+fast_proof_command = "python3 scripts/workflow/check_native_runtime_boundary_inventory.py && python3 scripts/workflow/check_native_runtime_boundary_contract.py && python3 -m unittest scripts/workflow/tests/test_check_native_runtime_boundary_inventory.py scripts/workflow/tests/test_check_native_runtime_boundary_contract.py && cargo test -p asm motorola68020_opasm_engine_module_owns_two_pass_loop -- --nocapture"
+level_d_command = "not applicable: Item 5.11 changes no native production source and makes only a Level B/C ownership decision"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_runtime_boundary_inventory"
+proof_level = "B"
+proves = "The complete engine and pipeline routine/import/section/diagnostic surfaces match their source-identity snapshots."
+does_not_prove = "Runtime semantics or parity."
+
+[[tests]]
+name = "native_runtime_boundary_dependency_model"
+proof_level = "C"
+proves = "The retained owners have exactly their documented imports and no prohibited reverse edge."
+does_not_prove = "Guest-side execution or future CPU/selector remediation."
+
+[[tests]]
+name = "motorola68020_opasm_engine_module_owns_two_pass_loop"
+proof_level = "B"
+proves = "The engine remains the owner of two-pass iteration, callback context, and assembly-session state."
+does_not_prove = "End-to-end native execution or package-pipeline semantics."

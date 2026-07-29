@@ -9,12 +9,13 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 use serde_json::json;
 
-use api::diagnostics::{build_context_lines, AsmRunError, Diagnostic, Severity};
+use api::asm::AssemblerWorkflowError;
+use api::diagnostics::{build_context_lines_with_range, AsmRunError, Diagnostic, Severity};
 use cli_core::{
-    resolve_formatter_input_paths, resolve_formatter_project_paths, run_with_cli_with_context,
-    validate_cli, Cli, CliConfig, CliRunError, CliRunReport, DiagnosticsSinkConfig,
-    DiagnosticsStyle, FormatterMode as CliFormatterMode, OutputFormat, BUILD_PROFILE_SUMMARY,
-    VERSION,
+    resolve_formatter_input_paths, resolve_formatter_project_paths,
+    run_with_validated_cli_with_context, validate_cli, Cli, CliConfig, CliRunError, CliRunReport,
+    DiagnosticsSinkConfig, DiagnosticsStyle, FormatterMode as CliFormatterMode, OutputFormat,
+    BUILD_PROFILE_SUMMARY, VERSION,
 };
 
 struct DiagnosticsSink {
@@ -44,10 +45,11 @@ impl DiagnosticsSink {
         }
     }
 
-    fn emit_line(&mut self, line: &str) {
+    fn emit_line(&mut self, line: &str) -> io::Result<()> {
         if let Some(writer) = &mut self.writer {
-            let _ = writeln!(writer, "{line}");
+            writeln!(writer, "{line}")?;
         }
+        Ok(())
     }
 
     fn emit_diagnostics(
@@ -57,7 +59,7 @@ impl DiagnosticsSink {
         use_color: bool,
         format: OutputFormat,
         style: DiagnosticsStyle,
-    ) {
+    ) -> io::Result<()> {
         for diag in diagnostics {
             self.emit_line(&format_diagnostic_line(
                 diag,
@@ -65,8 +67,9 @@ impl DiagnosticsSink {
                 use_color,
                 format,
                 style,
-            ));
+            ))?;
         }
+        Ok(())
     }
 }
 
@@ -154,7 +157,14 @@ fn format_diagnostic_line_classic(
     let mut out = String::new();
     out.push_str(&header);
     out.push('\n');
-    for line in build_context_lines(diag.line(), diag.column(), source_lines, None, use_color) {
+    for line in build_context_lines_with_range(
+        diag.line(),
+        diag.column(),
+        diag.col_end(),
+        source_lines,
+        None,
+        use_color,
+    ) {
         out.push_str(&line);
         out.push('\n');
     }
@@ -222,17 +232,20 @@ fn write_fixit_report_with_failure_tracking(
     planned: &[PlannedFixit],
     applied: bool,
     failure: &mut Option<String>,
-) {
+) -> Result<(), String> {
     let Some(path) = cli_config.fixits_output.as_deref() else {
-        return;
+        return Ok(());
     };
     if let Err(err) = write_fixit_report(path, planned, applied) {
         let message = format!("fixits: failed to write report: {err}");
-        sink.emit_line(&message);
+        sink.emit_line(&message).map_err(|sink_err| {
+            format!("diagnostics sink write failed while reporting `{message}`: {sink_err}")
+        })?;
         if failure.is_none() {
             *failure = Some(message);
         }
     }
+    Ok(())
 }
 
 fn collect_machine_applicable_fixits(
@@ -320,20 +333,44 @@ fn prepare_recoverable_diagnostics(
     with_fallback_file(diagnostics, fallback)
 }
 
+fn fatal_error_is_represented(diagnostics: &[Diagnostic], error: &AsmRunError) -> bool {
+    diagnostics.iter().any(|diagnostic| {
+        diagnostic.severity() == Severity::Error && diagnostic.message() == error.summary()
+    })
+}
+
+fn prepare_terminal_failure_diagnostics(
+    error: &AsmRunError,
+    cli_config: &CliConfig,
+    fallback: Option<&Path>,
+) -> Vec<Diagnostic> {
+    let mut diagnostics =
+        prepare_recoverable_diagnostics(error.diagnostics(), cli_config, fallback);
+    if !fatal_error_is_represented(&diagnostics, error) {
+        let line = error.source_lines().len().saturating_add(1) as u32;
+        diagnostics.push(
+            Diagnostic::new(line, Severity::Error, error.error().clone())
+                .with_file(fallback.map(|path| path.to_string_lossy().to_string())),
+        );
+    }
+    diagnostics
+}
+
 fn emit_recoverable_diagnostics(
     sink: &mut DiagnosticsSink,
     source_lines: &[String],
     diagnostics: &[Diagnostic],
     cli_config: &CliConfig,
     use_color: bool,
-) {
+) -> Result<(), String> {
     sink.emit_diagnostics(
         Some(source_lines),
         diagnostics,
         use_color,
         cli_config.output_format,
         cli_config.diagnostics_style,
-    );
+    )
+    .map_err(|err| format!("diagnostics sink write failed: {err}"))
 }
 
 fn fixits_have_overlaps(fixits: &[PlannedFixit]) -> bool {
@@ -559,14 +596,14 @@ fn handle_fixits(
     cli_config: &CliConfig,
     diagnostics: &[Diagnostic],
     fallback: Option<&Path>,
-) -> FixitActionResult {
+) -> Result<FixitActionResult, String> {
     if !(cli_config.apply_fixits || cli_config.fixits_dry_run || cli_config.fixits_output.is_some())
     {
-        return FixitActionResult {
+        return Ok(FixitActionResult {
             planned: Vec::new(),
             applied: false,
             failure: None,
-        };
+        });
     }
 
     let planned = collect_machine_applicable_fixits(diagnostics, fallback);
@@ -575,31 +612,33 @@ fn handle_fixits(
 
     if fixits_have_overlaps(&planned) {
         let message = "fixits: overlap detected; aborting fixit application".to_string();
-        sink.emit_line(&message);
+        sink.emit_line(&message).map_err(|err| err.to_string())?;
         failure = Some(message);
     } else if cli_config.apply_fixits {
         match capture_fixit_guards(&planned)
             .and_then(|guards| apply_fixits_in_place(&planned, Some(&guards)))
         {
             Ok(applied_count) => {
-                sink.emit_line(&format!("fixits: applied {applied_count} edits"));
+                sink.emit_line(&format!("fixits: applied {applied_count} edits"))
+                    .map_err(|err| err.to_string())?;
                 applied = applied_count > 0;
             }
             Err(err) => {
                 let message = format!("fixits: apply failed: {err}");
-                sink.emit_line(&message);
+                sink.emit_line(&message).map_err(|err| err.to_string())?;
                 failure = Some(message);
             }
         }
     } else if cli_config.fixits_dry_run {
-        sink.emit_line(&format!("fixits: dry-run planned {} edits", planned.len()));
+        sink.emit_line(&format!("fixits: dry-run planned {} edits", planned.len()))
+            .map_err(|err| err.to_string())?;
     }
 
-    FixitActionResult {
+    Ok(FixitActionResult {
         planned,
         applied,
         failure,
-    }
+    })
 }
 
 fn promote_warning_diagnostics(run_report: &CliRunReport) -> Vec<Diagnostic> {
@@ -659,9 +698,9 @@ fn process_successful_reports(
                 &diagnostics,
                 cli_config,
                 use_color,
-            );
+            )?;
         }
-        let result = handle_fixits(sink, cli_config, &diagnostics, fallback);
+        let result = handle_fixits(sink, cli_config, &diagnostics, fallback)?;
         merge_fixit_action_result(
             result,
             &mut planned,
@@ -675,7 +714,7 @@ fn process_successful_reports(
         applied = false;
     }
 
-    write_fixit_report_with_failure_tracking(sink, cli_config, &planned, applied, &mut failure);
+    write_fixit_report_with_failure_tracking(sink, cli_config, &planned, applied, &mut failure)?;
 
     match failure {
         Some(message) => Err(message),
@@ -707,9 +746,9 @@ fn process_failed_assembly_run(
                 &diagnostics,
                 cli_config,
                 use_color,
-            );
+            )?;
         }
-        let result = handle_fixits(sink, cli_config, &diagnostics, fallback);
+        let result = handle_fixits(sink, cli_config, &diagnostics, fallback)?;
         merge_fixit_action_result(
             result,
             &mut planned,
@@ -720,15 +759,16 @@ fn process_failed_assembly_run(
     }
 
     let fallback = input_path;
-    let diagnostics = prepare_recoverable_diagnostics(error.diagnostics(), cli_config, fallback);
+    let diagnostics = prepare_terminal_failure_diagnostics(error, cli_config, fallback);
     emit_recoverable_diagnostics(
         sink,
         error.source_lines(),
         &diagnostics,
         cli_config,
         use_color,
-    );
-    let result = handle_fixits(sink, cli_config, &diagnostics, fallback);
+    )
+    .map_err(|write_failure| format!("{write_failure}; original error: {}", error.summary()))?;
+    let result = handle_fixits(sink, cli_config, &diagnostics, fallback)?;
     merge_fixit_action_result(
         result,
         &mut planned,
@@ -741,7 +781,7 @@ fn process_failed_assembly_run(
         applied = false;
     }
 
-    write_fixit_report_with_failure_tracking(sink, cli_config, &planned, applied, &mut failure);
+    write_fixit_report_with_failure_tracking(sink, cli_config, &planned, applied, &mut failure)?;
     match failure {
         Some(message) => Err(message),
         None => Ok(()),
@@ -770,13 +810,13 @@ fn process_werror_reports(
             &promoted,
             cli_config,
             use_color,
-        );
+        )?;
         let result = handle_fixits(
             sink,
             cli_config,
             &promoted,
             Some(run_report.input_path.as_path()),
-        );
+        )?;
         merge_fixit_action_result(
             result,
             &mut planned,
@@ -790,12 +830,47 @@ fn process_werror_reports(
         applied = false;
     }
 
-    write_fixit_report_with_failure_tracking(sink, cli_config, &planned, applied, &mut failure);
+    write_fixit_report_with_failure_tracking(sink, cli_config, &planned, applied, &mut failure)?;
 
     match failure {
         Some(message) => Err(message),
         None => Ok(()),
     }
+}
+
+fn emit_workflow_fatal(
+    sink: &mut DiagnosticsSink,
+    cli_config: &CliConfig,
+    error: &AssemblerWorkflowError,
+    input_path: Option<&Path>,
+) -> Result<(), String> {
+    let kind = format!("{:?}", error.kind()).to_ascii_lowercase();
+    let line = if cli_config.output_format == OutputFormat::Json {
+        json!({
+            "type": "fatal",
+            "code": error.code(),
+            "kind": kind,
+            "message": error.summary(),
+            "input": input_path.map(|path| path.to_string_lossy().to_string()),
+        })
+        .to_string()
+    } else {
+        match input_path {
+            Some(path) => format!(
+                "{}: error [{}] ({kind})\nerror: {}",
+                path.display(),
+                error.code(),
+                error.summary()
+            ),
+            None => format!(
+                "error [{}] ({kind})\nerror: {}",
+                error.code(),
+                error.summary()
+            ),
+        }
+    };
+    sink.emit_line(&line)
+        .map_err(|err| format!("diagnostics sink write failed: {err}"))
 }
 
 fn process_run_failure(
@@ -820,6 +895,9 @@ fn process_run_failure(
         CliRunError::WarningsAsErrors { reports } => {
             process_werror_reports(sink, cli_config, reports, use_color)
         }
+        CliRunError::Workflow {
+            input_path, error, ..
+        } => emit_workflow_fatal(sink, cli_config, error, input_path.as_deref()),
     }
 }
 
@@ -915,6 +993,12 @@ fn run_formatter_mode(cli_config: &CliConfig) -> Result<i32, String> {
     }
 }
 
+fn emit_last_resort_failure(cli_config: &CliConfig, message: &str) {
+    if !matches!(cli_config.diagnostics_sink, DiagnosticsSinkConfig::Disabled) {
+        eprintln!("opForge: {message}");
+    }
+}
+
 pub fn run_main() {
     let cli = Cli::parse();
     let registry = if cli.print_cpusupport || cli.print_capabilities {
@@ -987,14 +1071,20 @@ pub fn run_main() {
     };
 
     let use_color = std::env::var("NO_COLOR").is_err();
-    match run_with_cli_with_context(&cli) {
+    match run_with_validated_cli_with_context(&cli, &cli_config) {
         Ok(reports) => {
-            if process_successful_reports(&mut sink, &cli_config, &reports, use_color).is_err() {
+            if let Err(message) =
+                process_successful_reports(&mut sink, &cli_config, &reports, use_color)
+            {
+                emit_last_resort_failure(&cli_config, &message);
                 std::process::exit(1);
             }
         }
         Err(run_error) => {
-            let _ = process_run_failure(&mut sink, &cli_config, &run_error, use_color);
+            if let Err(message) = process_run_failure(&mut sink, &cli_config, &run_error, use_color)
+            {
+                emit_last_resort_failure(&cli_config, &message);
+            }
             std::process::exit(1);
         }
     }
@@ -1003,6 +1093,7 @@ pub fn run_main() {
 #[cfg(test)]
 mod tests {
     use super::{process_run_failure, process_successful_reports, Cli, DiagnosticsSink};
+    use api::asm::{AssemblerWorkflowError, HostIoError};
     use api::diagnostics::{
         AsmError, AsmErrorKind, AsmRunError, AsmRunReport, Diagnostic, Severity,
     };
@@ -1010,6 +1101,7 @@ mod tests {
     use cli_core::{run_with_cli_with_context, validate_cli, CliRunError};
     use serde_json::Value;
     use std::fs;
+    use std::io::{self, Write};
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
@@ -1018,6 +1110,18 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     static TEMP_DIR_SEQ: AtomicU64 = AtomicU64::new(1);
+
+    struct FailingWriter;
+
+    impl Write for FailingWriter {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::other("synthetic diagnostics sink failure"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
 
     fn unique_temp_dir(prefix: &str) -> PathBuf {
         let now = SystemTime::now()
@@ -1042,6 +1146,9 @@ mod tests {
             CliRunError::Assembler { error, .. } => *error,
             CliRunError::WarningsAsErrors { .. } => {
                 panic!("synthetic fixit report should come from assembler failure")
+            }
+            CliRunError::Workflow { .. } => {
+                panic!("synthetic fixit report should not come from workflow failure")
             }
         };
         cli_core::CliRunReport {
@@ -1219,6 +1326,300 @@ mod tests {
         let payload: Value = serde_json::from_str(&report).expect("parse fixit report");
         assert_eq!(payload["applied"], false, "{report}");
         assert_eq!(payload["fixits"], Value::Array(Vec::new()), "{report}");
+    }
+
+    #[test]
+    fn terminal_failure_with_no_diagnostics_renders_the_fatal_summary() {
+        let temp_dir = unique_temp_dir("cli-terminal-fatal-empty-diagnostics");
+        let source_path = temp_dir.join("missing.asm");
+        let diagnostics_path = temp_dir.join("diagnostics.txt");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let run_error = CliRunError::Assembler {
+            reports: Vec::new(),
+            input_path: Some(source_path.clone()),
+            error: Box::new(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, "output write failed", None),
+                Vec::new(),
+                Vec::new(),
+            )),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(
+                fs::File::create(&diagnostics_path).expect("create diagnostics file"),
+            )),
+        };
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("fatal summary should render");
+        drop(sink);
+
+        let output = fs::read_to_string(&diagnostics_path).expect("read diagnostics");
+        assert!(output.contains("output write failed"), "{output}");
+        assert!(
+            output.contains(source_path.to_string_lossy().as_ref()),
+            "{output}"
+        );
+    }
+
+    #[test]
+    fn terminal_failure_is_rendered_after_unrelated_warnings() {
+        let temp_dir = unique_temp_dir("cli-terminal-fatal-warning");
+        let source_path = temp_dir.join("input.asm");
+        let diagnostics_path = temp_dir.join("diagnostics.txt");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let warning = Diagnostic::new(
+            1,
+            Severity::Warning,
+            AsmError::new(AsmErrorKind::Assembler, "unrelated warning", None),
+        );
+        let run_error = CliRunError::Assembler {
+            reports: Vec::new(),
+            input_path: Some(source_path),
+            error: Box::new(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, "terminal output failure", None),
+                vec![warning],
+                vec!["nop".to_string()],
+            )),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(
+                fs::File::create(&diagnostics_path).expect("create diagnostics file"),
+            )),
+        };
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("fatal summary should render");
+        drop(sink);
+
+        let output = fs::read_to_string(&diagnostics_path).expect("read diagnostics");
+        assert!(output.contains("unrelated warning"), "{output}");
+        assert!(output.contains("terminal output failure"), "{output}");
+    }
+
+    #[test]
+    fn terminal_failure_does_not_duplicate_matching_error_diagnostic() {
+        let temp_dir = unique_temp_dir("cli-terminal-fatal-dedup");
+        let source_path = temp_dir.join("input.asm");
+        let diagnostics_path = temp_dir.join("diagnostics.txt");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let message = "already represented terminal failure";
+        let run_error = CliRunError::Assembler {
+            reports: Vec::new(),
+            input_path: Some(source_path),
+            error: Box::new(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, message, None),
+                vec![Diagnostic::new(
+                    1,
+                    Severity::Error,
+                    AsmError::new(AsmErrorKind::Io, message, None),
+                )],
+                vec!["nop".to_string()],
+            )),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(
+                fs::File::create(&diagnostics_path).expect("create diagnostics file"),
+            )),
+        };
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("matching diagnostic should render");
+        drop(sink);
+
+        let output = fs::read_to_string(&diagnostics_path).expect("read diagnostics");
+        assert_eq!(output.matches(message).count(), 1, "{output}");
+    }
+
+    #[test]
+    fn terminal_failure_with_no_diagnostics_emits_json() {
+        let temp_dir = unique_temp_dir("cli-terminal-fatal-json");
+        let source_path = temp_dir.join("missing.asm");
+        let diagnostics_path = temp_dir.join("diagnostics.jsonl");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--format",
+            "json",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let run_error = CliRunError::Assembler {
+            reports: Vec::new(),
+            input_path: Some(source_path.clone()),
+            error: Box::new(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, "json terminal failure", None),
+                Vec::new(),
+                Vec::new(),
+            )),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(
+                fs::File::create(&diagnostics_path).expect("create diagnostics file"),
+            )),
+        };
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("fatal JSON should render");
+        drop(sink);
+
+        let output = fs::read_to_string(&diagnostics_path).expect("read diagnostics");
+        let payload: Value = serde_json::from_str(output.trim()).expect("valid fatal JSON");
+        assert_eq!(payload["severity"], "error");
+        assert_eq!(payload["code"], "asm501");
+        assert_eq!(payload["message"], "json terminal failure");
+        assert_eq!(payload["file"], source_path.to_string_lossy().as_ref());
+    }
+
+    #[test]
+    fn failed_diagnostics_sink_propagates_the_write_failure() {
+        let temp_dir = unique_temp_dir("cli-failing-diagnostics-sink");
+        let source_path = temp_dir.join("input.asm");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let run_error = CliRunError::Assembler {
+            reports: Vec::new(),
+            input_path: Some(source_path),
+            error: Box::new(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, "terminal output failure", None),
+                Vec::new(),
+                Vec::new(),
+            )),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(FailingWriter)),
+        };
+
+        let error = process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect_err("diagnostics sink failure should propagate");
+        assert!(error.contains("diagnostics sink write failed"), "{error}");
+        assert!(
+            error.contains("synthetic diagnostics sink failure"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn no_error_keeps_terminal_failure_output_intentionally_suppressed() {
+        let temp_dir = unique_temp_dir("cli-no-error-terminal-failure");
+        let source_path = temp_dir.join("input.asm");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--no-error",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let run_error = CliRunError::Assembler {
+            reports: Vec::new(),
+            input_path: Some(source_path),
+            error: Box::new(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, "terminal output failure", None),
+                Vec::new(),
+                Vec::new(),
+            )),
+        };
+        let mut sink = DiagnosticsSink::from_config(&cli_config.diagnostics_sink)
+            .expect("disabled diagnostics sink");
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("disabled diagnostics should not create a reporting failure");
+    }
+
+    #[test]
+    fn workflow_failure_renders_its_stable_code_and_input_path() {
+        let temp_dir = unique_temp_dir("cli-workflow-failure-text");
+        let source_path = temp_dir.join("input.asm");
+        let diagnostics_path = temp_dir.join("diagnostics.txt");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let run_error = CliRunError::Workflow {
+            reports: Vec::new(),
+            input_path: Some(source_path.clone()),
+            error: Box::new(AssemblerWorkflowError::Io(HostIoError::new(
+                "asm.workflow.io",
+                "workflow I/O failure",
+            ))),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(
+                fs::File::create(&diagnostics_path).expect("create diagnostics file"),
+            )),
+        };
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("workflow fatal should render");
+        drop(sink);
+
+        let output = fs::read_to_string(&diagnostics_path).expect("read diagnostics");
+        assert!(output.contains("asm.workflow.io"), "{output}");
+        assert!(output.contains("workflow I/O failure"), "{output}");
+        assert!(
+            output.contains(source_path.to_string_lossy().as_ref()),
+            "{output}"
+        );
+    }
+
+    #[test]
+    fn workflow_failure_emits_a_json_fatal_record() {
+        let temp_dir = unique_temp_dir("cli-workflow-failure-json");
+        let source_path = temp_dir.join("input.asm");
+        let diagnostics_path = temp_dir.join("diagnostics.jsonl");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--format",
+            "json",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let cli_config = validate_cli(&cli).expect("validate cli");
+        let run_error = CliRunError::Workflow {
+            reports: Vec::new(),
+            input_path: Some(source_path.clone()),
+            error: Box::new(AssemblerWorkflowError::Io(HostIoError::new(
+                "asm.workflow.io",
+                "workflow JSON failure",
+            ))),
+        };
+        let mut sink = DiagnosticsSink {
+            writer: Some(Box::new(
+                fs::File::create(&diagnostics_path).expect("create diagnostics file"),
+            )),
+        };
+
+        process_run_failure(&mut sink, &cli_config, &run_error, false)
+            .expect("workflow fatal JSON should render");
+        drop(sink);
+
+        let output = fs::read_to_string(&diagnostics_path).expect("read diagnostics");
+        let payload: Value = serde_json::from_str(output.trim()).expect("valid workflow JSON");
+        assert_eq!(payload["type"], "fatal");
+        assert_eq!(payload["code"], "asm.workflow.io");
+        assert_eq!(payload["kind"], "io");
+        assert_eq!(payload["message"], "workflow JSON failure");
+        assert_eq!(payload["input"], source_path.to_string_lossy().as_ref());
     }
 
     #[test]
@@ -1611,6 +2012,9 @@ mod tests {
             CliRunError::Assembler { error, .. } => *error,
             CliRunError::WarningsAsErrors { .. } => {
                 panic!("synthetic failure should be an assembler error")
+            }
+            CliRunError::Workflow { .. } => {
+                panic!("synthetic failure should not be a workflow error")
             }
         };
         let run_error = CliRunError::Assembler {

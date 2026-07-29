@@ -6,6 +6,8 @@ FS-UAE and pressed Cmd+D, it observes the PTY debugger banner and sends only a
 reviewed, read-only command file through that same terminal.
 """
 
+# @opforge-evidence: level=E; role=diagnostic-tool; authority=none; lifecycle=permanent
+
 from __future__ import annotations
 
 import argparse

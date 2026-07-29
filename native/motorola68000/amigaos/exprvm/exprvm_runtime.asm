@@ -267,33 +267,31 @@ applyBinaryMultiply
 	bra.s applyBinaryDone
 
 applyBinaryDivide
-	tst.l d3
+	tst.l d2
 	beq.w fail
-	move.l d2, d1
-	divs.l d3, d1
+	move.l d3, d1
+	divs.l d2, d1
 	move.l d1, d3
 	bra.s applyBinaryDone
 
 applyBinaryMod
-	tst.l d3
+	tst.l d2
 	beq.w fail
-	move.l d2, d1
-	swap d2
-	ext.l d2
-	divs.l d3, d2:d1
-	move.l d2, d3
+	move.l d2, d6
+	move.l d3, d1
+	swap d3
+	ext.l d3
+	divs.l d6, d3:d1
 	bra.s applyBinaryDone
 
 applyBinaryShiftLeft
-	andi.l #31, d3
-	lsl.l d3, d2
-	move.l d2, d3
+	andi.l #31, d2
+	lsl.l d2, d3
 	bra.s applyBinaryDone
 
 applyBinaryShiftRight
-	andi.l #31, d3
-	lsr.l d3, d2
-	move.l d2, d3
+	andi.l #31, d2
+	lsr.l d2, d3
 	bra.s applyBinaryDone
 
 applyTernarySelect

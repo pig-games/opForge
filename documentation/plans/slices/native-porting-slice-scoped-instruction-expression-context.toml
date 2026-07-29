@@ -1,0 +1,40 @@
+[slice]
+schema_version = 2
+name = "native scoped instruction expression context remediation"
+kind = "native-rust-parity"
+rust_reference = [
+  "Rust module/block symbol lookup resolves the complete active scope before globals"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm",
+  "native/motorola68000/amigaos/opasm/opasm_operand_eval.asm",
+  "scripts/workflow/check_native_runtime_boundary_inventory.py",
+  "documentation/architecture/native-runtime-boundary-inventory-v0_1.md",
+  "opcore expression bridge and tkpkg selection consumers remain unchanged"
+]
+invariant = "Unqualified instruction-expression symbols are projected from the complete active scope into a bounded read-only snapshot ahead of globals."
+assertion_decision = "The scope owner recognizes only its complete prefix; the opasm request adapter owns the snapshot and keeps tkpkg free of opasm scope dependencies."
+expected_inputs = "Qualified engine labels, active module/block scope, and an instruction expression using local names."
+expected_outputs = "The unchanged expression bridge resolves local aliases first while qualified and global labels remain available."
+known_non_equivalences = "No package selector row, operand plan, encoder, CPU behavior, expression grammar, or diagnostic wording changes."
+fast_proof_command = "cargo test -p asm native_scoped_expression_snapshot_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_opforge_native_cli_placed_relative_bin_with_symbolic_expr_matches_rust_bytes -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_module_local_symbol_fs_uae -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_opforge_native_cli_real_first_run_source_with_cli_cpu_matches_rust_prg -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_scoped_expression_snapshot_preserves_local_shadowing_contract"
+proof_level = "C"
+proves = "Only labels owned by the complete active scope gain an unqualified alias, preserving local shadowing."
+does_not_prove = "Native snapshot construction or guest execution."
+
+[[tests]]
+name = "native_scoped_expression_snapshot_source_stays_in_opasm_adapter"
+proof_level = "B"
+proves = "Scope aliases are materialized in an opasm-owned bounded snapshot before original global entries and without a tkpkg reverse dependency."
+does_not_prove = "Expression results or bytes."
+
+[[tests]]
+name = "scoped_instruction_expression_fs_uae_corpus"
+proof_level = "D"
+proves = "Symbolic instruction operands, module-local shadowing, and the canonical first-run artifact execute in the real native CLI and match Rust bytes."
+does_not_prove = "Unrelated package families or future preprocessor semantics."

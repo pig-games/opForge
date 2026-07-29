@@ -1,0 +1,40 @@
+[slice]
+schema_version = 2
+name = "native preprocessor debug evidence classification"
+kind = "native-rust-parity"
+rust_reference = [
+  "the untouched examples/opcore/macro_invocation_native.asm CLI fixture remains the sole macro artifact parity authority"
+]
+native_boundary = [
+  "scripts/workflow/native_debug_evidence_classification.toml",
+  "scripts/workflow/check_native_debug_evidence_classification.py",
+  "native/motorola68000/amigaos/test-harnesses/debug",
+  "scripts/workflow/probe_fs_uae_console_debugger.py",
+  "scripts/workflow/run_fs_uae_console_debugger.py"
+]
+invariant = "Every retained preprocessor/debug harness, helper, console tool, and report declares its proof level, role, authority, and lifecycle; Level E evidence cannot close parity."
+assertion_decision = "A deterministic source/manifest check is required because prose-only labels can drift into contradictory completion claims."
+expected_inputs = "The permanent debug-evidence ledger and exact classification markers in every governed artifact."
+expected_outputs = "PASS only when the complete canonical artifact set is classified and the macro CLI fixture remains sole macro artifact parity authority."
+known_non_equivalences = "The macro preprocessor harness is focused-negative Level D evidence, pipeline selection is a focused Level D contract, and console/debug-event captures are Level E localization; none substitutes for the untouched macro CLI artifact fixture."
+fast_proof_command = "python3 scripts/workflow/check_native_debug_evidence_classification.py && python3 -m unittest scripts/workflow/tests/test_check_native_debug_evidence_classification.py"
+level_d_command = "scripts/workflow/run_native_macro_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_debug_evidence_classification"
+proof_level = "B"
+proves = "The complete governed evidence inventory has deterministic proof-level, authority, and lifecycle declarations."
+does_not_prove = "Native runtime behavior or parity."
+
+[[tests]]
+name = "native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection"
+proof_level = "D"
+proves = "The real guest preserves the active caller frame and source when nested macro expansion is rejected."
+does_not_prove = "Macro artifact parity, which remains owned by the untouched CLI fixture."
+
+[[tests]]
+name = "native_macro_cli_debug_event_harness_proves_complete_macro_fixture_image"
+proof_level = "E"
+proves = "The diagnostic harness localizes whether the integrated guest reached an 11-byte image."
+does_not_prove = "Macro artifact parity or completion."

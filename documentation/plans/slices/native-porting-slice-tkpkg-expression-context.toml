@@ -1,0 +1,38 @@
+[slice]
+schema_version = 2
+name = "tkpkg expression neutral-context migration"
+kind = "native-rust-parity"
+rust_reference = [
+  "existing native expression pass, symbol-value, symbol-finalization, current-address, diagnostic, and output behavior remains the behavioral authority"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_expression_service.asm::executePreparedV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm::getPassV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm::getSymbolStabilityTableV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm::isSymbolFinalV1"
+]
+invariant = "The expression service receives current pass and symbol finalization only through the neutral runtime context; the temporary engine-table context module is deleted while expression bridge inputs and observable results remain unchanged."
+expected_inputs = "Existing validated evaluate-expression control blocks, their label name/value/count/current-PC extension, and the current engine session pass/finalization state."
+expected_outputs = "The same expression value, referenced/unstable-symbol result, output text, status, and diagnostic behavior as before the ownership-only context migration."
+known_non_equivalences = "No CPU, family, dialect, instruction, selector, operand-plan, encoding, package, source-acceptance, diagnostic-wording, or consumer other than expression changes."
+fast_proof_command = "cargo test -p asm motorola68020_tkpkg_expression_service_has_one_implementation_owner -- --nocapture && cargo test -p asm motorola68020_tkpkg_runtime_context_ -- --nocapture && cargo test -p asm motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary -- --nocapture && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_expression_context_forward_label_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_tkpkg_expression_service_has_one_implementation_owner"
+proof_level = "B"
+proves = "Expression service imports only neutral runtime context and passes the bounded stability snapshot through the preserved bridge register contract."
+does_not_prove = "A new expression language feature, a changed bridge contract, or any CPU support."
+
+[[tests]]
+name = "motorola68020_tkpkg_runtime_context_materializes_stability_snapshot"
+proof_level = "C"
+proves = "The context uses the sole engine adapter to derive a bounded per-call finalized/unstable snapshot without exposing engine table storage."
+does_not_prove = "Migration of selection or encoding consumers."
+
+[[tests]]
+name = "native_expression_context_forward_label_fs_uae"
+proof_level = "D"
+proves = "The real native 65C02 CLI resolves a forward label through the migrated expression-context path across pass-one instability and pass-two finalization, with exact Rust-matching output bytes."
+does_not_prove = "New CPU/family/dialect support, unrelated expression operators, or selection/encoding migration."

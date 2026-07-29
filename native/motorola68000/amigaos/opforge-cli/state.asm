@@ -209,6 +209,11 @@ NativeCliPreprocessActiveDefinition
 ; macro kind; preprocessor_invocation owns attached caller-label state; and
 ; line_processor owns expansion/scope policy. Segment/statement kinds have no
 ; active record or route in this layout-only slice.
+; Resource budget/lifetime: ResetPreprocessorV1 clears this whole contiguous
+; region before each CLI session. Every owner rejects an over-capacity request
+; before writing its slot: definition headers (including name/signature), body
+; lines, positional arguments, full argument lists, labels, saved caller lines,
+; and expansion lines are separate fixed buffers despite equal byte capacities.
 NativeCliPreprocessInvocationDefinition
 	.res word, 1
 NativeCliPreprocessInvocationArgCount
@@ -228,19 +233,19 @@ NativeCliPreprocessDefinitionHeaderLen
 NativeCliPreprocessDefinitionBodyLen
 	.res word, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY * constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY
 NativeCliPreprocessDefinitionHeader
-	.res byte, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY * constants.SOURCE_LINE_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY * constants.NATIVE_PREPROCESS_DEFINITION_HEADER_CAPACITY
 NativeCliPreprocessDefinitionBody
-	.res byte, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY * constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY * constants.SOURCE_LINE_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY * constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY * constants.NATIVE_PREPROCESS_BODY_LINE_TEXT_CAPACITY
 NativeCliPreprocessInvocationArgs
-	.res byte, constants.NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * constants.SOURCE_LINE_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY
 NativeCliPreprocessInvocationFullArgs
-	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY
 NativeCliPreprocessInvocationLabel
-	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY
 NativeCliPreprocessSavedLine
-	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_PREPROCESS_SAVED_LINE_CAPACITY
 NativeCliPreprocessExpansionLine
-	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY
 NativeCliPreprocessExpansionLineLen
 	.res word, 1
 NativeCliPreprocessStateEnd

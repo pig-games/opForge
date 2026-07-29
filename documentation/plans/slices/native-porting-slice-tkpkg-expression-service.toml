@@ -1,0 +1,38 @@
+[slice]
+schema_version = 2
+name = "tkpkg expression service ownership"
+kind = "native-rust-parity"
+rust_reference = [
+  "existing Rust expression request results and diagnostics remain the behavioral authority"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm::evaluateExpressionV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_expression_service.asm::prepareV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_expression_service.asm::executePreparedV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_expression_context.asm::loadV1"
+]
+invariant = "For an unchanged expression request, malformed-envelope precedence, package-contract validation, label context, bridge status, extension result, output text, status code, and diagnostics remain exact while envelope preparation and bridge execution have one owner. The facade retains only the temporary package-contract validation step; direct engine-state reads are isolated in the named context adapter pending Item 5.7.1."
+expected_inputs = "Existing valid, malformed, missing-context, and missing-contract tkpkg expression control-block requests."
+expected_outputs = "The same request acceptance/rejection, contract failure precedence, expression value output, extension result, service status, and diagnostics as before the ownership-only move."
+known_non_equivalences = "No expression-language, package-selection, diagnostic wording, CPU/family/dialect support, or instruction behavior change. The retained native 65C02 macro CLI path is the only production Level D target for this ownership slice."
+fast_proof_command = "cargo test -p asm motorola68020_tkpkg_expression_service_has_one_implementation_owner -- --nocapture && cargo test -p asm motorola68020_tkpkg_service_writes_little_endian_control_block_bytes -- --nocapture && cargo test -p asm motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallback -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' scripts/workflow/run_native_macro_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_tkpkg_expression_service_has_one_implementation_owner"
+proof_level = "B"
+proves = "The facade retains only the documented transition orchestration, the expression owner contains preparation and bridge execution, and engine reads occur only in the named context adapter."
+does_not_prove = "Guest execution of every expression request shape."
+
+[[tests]]
+name = "motorola68020_tkpkg_service_writes_little_endian_control_block_bytes"
+proof_level = "C"
+proves = "The source-level service contract preserves the expression dispatch envelope, package-contract transition, expression bridge handoff, and exact result projection shape."
+does_not_prove = "Real native execution of every expression request and diagnostic."
+
+[[tests]]
+name = "native_macro_completion_wrapper"
+proof_level = "D"
+proves = "The established real native 65C02 CLI macro path retains exact fixture bytes and nested-frame rejection after the ownership split."
+does_not_prove = "New CPU/family/dialect support, generic tokenizer CPU parity, or expression semantic coverage outside the named adapter contracts."

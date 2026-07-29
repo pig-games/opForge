@@ -1,0 +1,34 @@
+[slice]
+schema_version = 2
+name = "native conditional flow transition stabilization"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/asmline_conditionals.rs::AsmLine::process_conditional_ast"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::runPassOne",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::runPassTwo",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
+  "native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm::findSelectedMatchBranchV1"
+]
+invariant = "Flow destinations and the pass statement cursor survive callback clobbers, and each redirect is consumed exactly once."
+assertion_decision = "No runtime assertion: the engine-owned pending bit is cleared when consumed, and existing navigation failures remain fail-closed callback errors."
+expected_inputs = "Untouched canonical nested if/elseif/else and match/case/default source."
+expected_outputs = "Only selected bodies emit bytes; endif and endmatch advance once; native CLI bytes equal the live Rust oracle."
+remediation_evidence = "2026-07-29: the canonical FS-UAE corpus exposed a correct navigation destination being replaced by callback scratch state. Engine-owned one-shot transitions, callback cursor preservation, explicit closing-marker destinations, and case-scan cursor preservation restore parity."
+known_non_equivalences = "Preprocessor-only ifdef/ifndef behavior and new conditional or match syntax are outside this remediation."
+fast_proof_command = "cargo test -p asm native_conditional_flow_transitions_survive_callback_register_clobbers -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_opcore_conditionals_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_conditional_flow_transitions_survive_callback_register_clobbers"
+proof_level = "B"
+proves = "The native source retains engine-owned one-shot destinations, pass-cursor preservation, explicit closing-marker advances, and case-scan cursor preservation."
+does_not_prove = "68020 execution or emitted-byte parity."
+
+[[tests]]
+name = "native_opcore_conditionals_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the untouched canonical conditional/match source and native CLI bytes match the live Rust oracle."
+does_not_prove = "Preprocessor-only ifdef/ifndef behavior or new syntax."

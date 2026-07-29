@@ -3,8 +3,8 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use api::asm::Assembler;
-use api::diagnostics::{AsmError, AsmErrorKind, AsmRunError, AsmRunReport, Severity};
+use api::asm::{Assembler, AssemblerWorkflowError};
+use api::diagnostics::{AsmRunError, AsmRunReport, Severity};
 
 use crate::{
     input_base_from_path, validate_cli, Cli, CliConfig, OutputFormat, BUILD_PROFILE_SUMMARY,
@@ -34,6 +34,11 @@ pub enum CliRunError {
     WarningsAsErrors {
         reports: Vec<CliRunReport>,
     },
+    Workflow {
+        reports: Vec<CliRunReport>,
+        input_path: Option<PathBuf>,
+        error: Box<AssemblerWorkflowError>,
+    },
 }
 
 impl CliRunError {
@@ -53,7 +58,13 @@ impl CliRunError {
 pub fn run_with_cli_with_context(cli: &Cli) -> Result<Vec<CliRunReport>, CliRunError> {
     let config =
         validate_cli(cli).map_err(|error| CliRunError::assembler(Vec::new(), None, error))?;
+    run_with_validated_cli_with_context(cli, &config)
+}
 
+pub fn run_with_validated_cli_with_context(
+    cli: &Cli,
+    config: &CliConfig,
+) -> Result<Vec<CliRunReport>, CliRunError> {
     let mut reports = Vec::new();
     for input_path in &config.input_paths {
         let (asm_name, input_base) =
@@ -67,14 +78,21 @@ pub fn run_with_cli_with_context(cli: &Cli) -> Result<Vec<CliRunReport>, CliRunE
                     ));
                 }
             };
-        let report = match run_one(cli, &asm_name, &input_base, &config) {
+        let report = match run_one(cli, &asm_name, &input_base, config) {
             Ok(report) => report,
-            Err(error) => {
+            Err(AssemblerWorkflowError::Assemble(error)) => {
                 return Err(CliRunError::assembler(
                     reports,
                     Some(input_path.clone()),
                     error,
                 ));
+            }
+            Err(error) => {
+                return Err(CliRunError::Workflow {
+                    reports,
+                    input_path: Some(input_path.clone()),
+                    error: Box::new(error),
+                });
             }
         };
         reports.push(CliRunReport {
@@ -102,38 +120,12 @@ pub fn has_werror_violations(reports: &[CliRunReport]) -> bool {
     })
 }
 
-fn workflow_error_to_asm_run_error(error: api::asm::AssemblerWorkflowError) -> AsmRunError {
-    match error {
-        api::asm::AssemblerWorkflowError::Assemble(error) => error,
-        api::asm::AssemblerWorkflowError::InvalidArgument(error) => AsmRunError::new(
-            AsmError::new(AsmErrorKind::Cli, error.summary(), None),
-            Vec::new(),
-            Vec::new(),
-        ),
-        api::asm::AssemblerWorkflowError::InvalidRequest(error) => AsmRunError::new(
-            AsmError::new(AsmErrorKind::Cli, error.summary(), None),
-            Vec::new(),
-            Vec::new(),
-        ),
-        api::asm::AssemblerWorkflowError::Io(error) => AsmRunError::new(
-            AsmError::new(AsmErrorKind::Io, error.summary(), None),
-            Vec::new(),
-            Vec::new(),
-        ),
-        api::asm::AssemblerWorkflowError::Internal(error) => AsmRunError::new(
-            AsmError::new(AsmErrorKind::Assembler, error.summary(), None),
-            Vec::new(),
-            Vec::new(),
-        ),
-    }
-}
-
 fn run_one(
     cli: &Cli,
     asm_name: &str,
     output_base: &str,
     config: &CliConfig,
-) -> Result<AsmRunReport, AsmRunError> {
+) -> Result<AsmRunReport, AssemblerWorkflowError> {
     let root_path = Path::new(asm_name);
     let output_format = match config.output_format {
         OutputFormat::Text => api::asm::OutputFormat::Text,
@@ -195,13 +187,16 @@ fn run_one(
         builder = builder.tab_size(tab_size);
     }
 
-    builder.assemble().map_err(workflow_error_to_asm_run_error)
+    builder.assemble()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{has_werror_violations, run_with_cli_with_context, CliRunError};
-    use crate::Cli;
+    use super::{
+        has_werror_violations, run_with_cli_with_context, run_with_validated_cli_with_context,
+        CliRunError,
+    };
+    use crate::{validate_cli, Cli};
     use api::diagnostics::Severity;
     use clap::Parser;
     use std::fs;
@@ -226,6 +221,24 @@ mod tests {
 
     fn write_text(path: &PathBuf, text: &str) {
         fs::write(path, text).expect("write file");
+    }
+
+    #[test]
+    fn validated_runner_uses_the_supplied_configuration() {
+        let temp_dir = unique_temp_dir("cli-core-validated-runner");
+        let source_path = temp_dir.join("main.asm");
+        write_text(&source_path, ".module main\nnop\n.endmodule\n");
+        let cli = Cli::parse_from([
+            "opforge",
+            "--infile",
+            source_path.to_str().expect("source path"),
+        ]);
+        let config = validate_cli(&cli).expect("validate cli once");
+
+        let reports = run_with_validated_cli_with_context(&cli, &config)
+            .expect("validated runner should assemble source");
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].input_path, source_path);
     }
 
     #[test]

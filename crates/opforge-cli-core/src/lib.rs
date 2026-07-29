@@ -6,4 +6,7 @@ mod cli;
 mod run;
 
 pub use cli::*;
-pub use run::{has_werror_violations, run_with_cli_with_context, CliRunError, CliRunReport};
+pub use run::{
+    has_werror_violations, run_with_cli_with_context, run_with_validated_cli_with_context,
+    CliRunError, CliRunReport,
+};

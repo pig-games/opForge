@@ -1,0 +1,31 @@
+[slice]
+schema_version = 2
+name = "native runtime stabilization existing-parity closure"
+kind = "native-rust-parity"
+rust_reference = [
+  "live Rust CLI and VM-authoritative package rows used by the established 34-test corpus"
+]
+native_boundary = [
+  "scripts/workflow/run_native_existing_parity_completion.sh",
+  "documentation/quality-gates/native-existing-parity-level-d-50481756.json",
+  "documentation/reviews/native-existing-parity-closure-v0_1.md"
+]
+invariant = "Every established pre-amendment native observable remains green after runtime decomposition, with no skipped or empty test filter."
+assertion_decision = "No runtime assertion is added; the retained receipt records exact clean-source Level D execution and the structural guards remain separate Level B evidence."
+expected_inputs = "Clean commit 504817568047e8a2d68d8bc9547ab999e2d46de4, its exact tree, configured FS-UAE, the real native CLI, and live Rust/package authorities."
+expected_outputs = "One source-identity receipt recording PASS for all 34 established exact Level D filters."
+known_non_equivalences = "Future canonical segment, statement, and export behavior in parent-plan Items 7.4-7.7 is excluded; debugger output is Level E and cannot substitute for parity."
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "established_native_level_d_corpus"
+proof_level = "D"
+proves = "All 34 established native CLI/reference, flow, struct, expression, text, layout, and package tests pass on the recorded clean source identity."
+does_not_prove = "Future segment, statement, export, linker, or selector-remediation semantics."
+
+[[tests]]
+name = "native_runtime_no_growth_guard"
+proof_level = "B"
+proves = "No certified hotspot or neutral dependency boundary silently regressed at closure."
+does_not_prove = "Runtime behavior or output parity."

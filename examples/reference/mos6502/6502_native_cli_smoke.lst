@@ -1,4 +1,4 @@
-opForge Assembler v0.9.7 | full-runtime | bundled
+opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Native AmigaOS CLI 6502 small-assembly contract.

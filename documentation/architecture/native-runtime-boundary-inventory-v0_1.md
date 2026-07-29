@@ -1,0 +1,387 @@
+# Native Runtime Boundary Inventory v0.1
+
+## Scope and method
+
+This is the Item 5.2 Level B inventory for the eight modules named by
+NR-001 through NR-008.  It records static ownership evidence only: module
+imports, `.pub` entry surfaces, `.block` routine groups, module-local state
+sections, and diagnostic/status/event paths.  It does not claim semantic
+parity, authorize an extraction, or alter a production path.
+
+The companion validator is the machine-readable complete manifest.  It
+derives and prints **every** `.block` routine, `.use` import, `.section` state
+block, and diagnostic/status/event source line with `--report`; a source hash
+and counts for every audited source fail closed on drift.  Therefore an edit
+cannot silently make this human ownership record incomplete: it must refresh
+the manifest and its decision in a later scoped item.  The routine-group
+descriptions below assign each derived routine to its module's declared
+responsibility group; they do not declare every private routine a public API.
+
+## Dependency direction
+
+```text
+CLI/session frontend -> assembly driver -> engine callback API
+                                    -> flow owners / text-encoding owner
+                                    -> tkpkg bridge -> tkpkg service facade
+tkpkg service facade -> pipeline, tokenizer VM, PRVM line router,
+                        expression bridge, package loader
+pipeline -> package hierarchy / CPU-family-dialect locators
+expression bridge -> expression VM runtime
+```
+
+The desired direction is toward narrow service or runtime contracts. Item
+5.7.2 removes the obsolete `tkpkg.amigaos.service -> opasm.amigaos.engine`
+import; the engine-context adapter is now the sole tkpkg engine reader.
+
+## Audited modules
+
+### `opasm.amigaos.assembly_driver` (NR-006, mandatory decomposition)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm`.
+- Public entry: `assembleSessionV1`; it builds the engine callback context and
+  runs the two-pass session.
+- Imports/outbound dependencies: callback ABI, compile values, directive router,
+  numeric-data owner, engine, events, conditional/navigation/repetition/scope/struct
+  flow modules, text encoding, tkpkg bridge, and approved debug contracts/events.
+- Mutable state: module-local pass/session request pointers, flow/repetition
+  scratch, and text scratch/output state. Layout region/section/place storage
+  is owned by `opasm.amigaos.layout`.
+- Routine responsibility groups: pass callback orchestration; router-result
+  dispatch; structural-flow state transitions and explicit `.case` evaluation
+  callback; scoped-struct repeat-label qualification callback; operand/evaluation request
+  construction; selector/encoding adaptation; data/text sizing and emission;
+  remaining layout/region/section/place dispatch; event projection.
+- Inbound users: the CLI engine-callback adapter imports this driver; the
+  driver is the session orchestration boundary, not a package or CPU owner.
+- Decision: orchestration stays here. Item 5.8 moves non-structural directive
+  text classification to `opasm.amigaos.directive_router`; the driver consumes
+  only its numeric result. Item 5.8.1 moves future-statement structural scans
+  to `opasm.amigaos.flow_navigation`; the driver retains only the explicit
+  `.case` operand-evaluation callback pending Item 5.9. This is an
+  ownership-only extraction, followed by operand
+  evaluation (5.9), selector adaptation (5.9.1), text (5.9.3), and layout
+  (5.9.4). Numeric directive sizing, little-endian byte packing, and image
+  append now belong to `opasm.amigaos.directive_data`; the driver supplies only
+  statement-aware count and evaluation callbacks. Repeated directive/scanner comparisons are candidates
+  for one bounded shared utility only after the router extraction proves need.
+  Callback routes that skip structural statements must explicitly return their
+  next statement index; no callback may rely on router scratch-register state.
+
+### `opasm.amigaos.directive_router` (Item 5.8 ownership split)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_directive_router.asm`.
+- Public entry: `classifyV1`; it maps existing non-structural directive text to
+  a numeric route code.
+- Imports/outbound dependencies: the opasm engine only, for the existing
+  session-pass and current-PC callbacks used by section transitions.
+- Mutable state: none.
+- Routine responsibility groups: case-insensitive bounded directive comparison
+  and aliases for existing data directives.
+- Inbound users: the assembly driver, which retains all callback orchestration,
+  traversal, and handler execution.
+- Decision: this is a routing-only split. It neither owns structural-flow
+  terminator scans nor enables CPU, family, dialect, instruction, segment, or
+  statement semantics.
+
+### `opasm.amigaos.operand_eval` (Item 5.9 ownership split)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_operand_eval.asm`.
+- Public entries: selected-instruction request construction, textual expression
+  request construction, and their evaluation-extension adapters.
+- Imports/outbound dependencies: callback ABI, engine request builders, and the
+  flow-scope owner's bounded active-label alias query.
+- Mutable state: a bounded evaluation-only snapshot of label names and values;
+  the driver still supplies its service frame and owns request-length state,
+  dispatch, diagnostics, and fallback policy.
+- Decision: this owner constructs engine request envelopes and projects
+  active-scope aliases ahead of the unchanged qualified/global label snapshot.
+  It does not select, encode, emit, resolve operands, or own layout behavior.
+
+### `opasm.amigaos.directive_data` (Item 5.9.2 ownership split)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_directive_data.asm`.
+- Public entries: `sizeNumericDirectiveV1` and `emitNumericDirectiveV1`.
+- Imports/outbound dependencies: engine image append; the driver supplies its
+  existing comma-count and statement-aware operand-resolution callbacks.
+- Mutable state: per-session callback pointers, unit-width scratch, and a
+  four-byte packing buffer.
+- Routine responsibility groups: numeric list sizing, byte range validation,
+  MOS little-endian packing, and image append.
+- Decision: this is an ownership-only split. Existing directive classification,
+  two-pass orchestration, expression evaluation, diagnostic status, and CPU
+  semantics stay at their existing boundaries. In debug-contract builds it
+  emits structured `EVENT_DIRECTIVE_DATA` records after resolution and append;
+  release builds do not execute that instrumentation.
+
+### `opasm.amigaos.directive_text` (Item 5.9.3 ownership split)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_directive_text.asm`.
+- Public entries: `sizeTextDirectiveV1` and `emitTextDirectiveV1`.
+- Decision: owns text-mode size, prefix/suffix, and image emission while the
+  driver supplies existing parsed scratch and encoding callbacks.
+
+### `opasm.amigaos.layout` (Item 5.9.4 ownership split)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_layout.asm`.
+- Public entries: region/section/place state transitions, bounded layout-name
+  request APIs, `alignCursorV1`, and `alignPadV1`.
+- Imports/outbound dependencies: none.
+- Mutable state: region/section/place counters, names, bounds, cursors,
+  alignment values, placement indices, and scratch storage.
+- Routine responsibility groups: overflow-safe positive alignment,
+  power-of-two padding arithmetic, bounded layout-name copy/comparison,
+  region/section/place validation and transitions, and word/long table-index
+  calculation. The driver retains statement tokenization, callback dispatch,
+  and engine/image projection only.
+- Decision: layout state and all region/section/place transitions are owned by
+  this module. The completed transfer preserves existing arithmetic and adds no
+  layout syntax or semantics; the assembly driver has no direct layout-state
+  access.
+
+### `tkpkg.amigaos.service` (NR-002/003/004, mandatory decomposition)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`.
+- Public entries: `bootstrapV1` and `dispatchV1`.
+- Imports/outbound dependencies: tkpkg ABI/buffers, dedicated request-lifecycle,
+  status-projection, parser-adapter, expression-service, and selection-service
+  owners; engine, expression bridge, package loader, pipeline, and tokenizer VM.
+  The expression service now reaches pass/finalization state only through the
+  neutral `tkpkg.amigaos.runtime_context` façade.
+- Mutable state: request/control-block pointers, output and last-error buffers,
+  and service result fields.
+- Routine responsibility groups: bootstrap/request validation; status and
+  diagnostic projection; parser route adaptation; transitional expression
+  contract validation; selected-envelope encoding/output construction; and the
+  retained package contract/locator helpers.
+- Inbound users: the opasm tkpkg bridge is the principal facade caller.
+- Decision: retain only ABI dispatch, output projection, and last-error entry
+  in the facade. Item 5.4 extracted status/error and output-window
+  implementation to `tkpkg.amigaos.service_status`; Item 5.4.1 extracts
+  bootstrap, header validation, and request bookkeeping to
+  `tkpkg.amigaos.service_request`. The facade keeps only explicit compatibility
+  delegates pending caller migration. Item 5.5 extracts the fixed PRVM route
+  frame adapter to `tkpkg.amigaos.parse_service`; Item 5.5.1 moves expression
+  envelope preparation and bridge execution to
+  `tkpkg.amigaos.expression_service`; Item 5.7.1 then migrates its pass and
+  finalized-label access to `tkpkg.amigaos.runtime_context` and deletes the
+  temporary adapter. The facade retains package-contract validation only until
+  the neutral-context migration. Item 5.6 moves selection
+  decoding and candidate traversal to `tkpkg.amigaos.selection_service`; Item
+  5.6.1 moves the unchanged operand-plan runtime to
+  `tkpkg.amigaos.operand_runtime`, and Item 5.6.2 moves package-table encoding
+  to `tkpkg.amigaos.encode_service`. This is
+  an ownership-only file split: it does not add, broaden, or
+  validate support for any CPU, family, dialect, plan tag, or instruction. The
+  repeated package-string/locator helpers overlap pipeline-style utilities and
+  require an ownership decision before consolidation; no unproven helper merge
+  is authorized here.
+
+### `tkpkg.amigaos.selection_service` (NR-004, Items 5.6–5.6.1 ownership split)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm`.
+- Public entries: `selectInstructionV1`, `buildSelectedEnvelopeV1`, and
+  `noOutputErrorV1`.
+- Imports/outbound dependencies: tkpkg ABI/buffers, operand runtime, neutral
+  runtime context, and the expression bridge transition boundary.
+- Mutable state: selected request envelope and candidate traversal cursor; the
+  unchanged operand scratch state is shared through the internal selection-state
+  module.
+- Routine responsibility groups: selected-request decoding; package MSEL
+  traversal; candidate construction; selected-output diagnostic selection.
+- Decision: this module delegates existing plan interpretation to
+  `tkpkg.amigaos.operand_runtime` and reads the session pass through the neutral
+  runtime context. Neither item expands CPU support or changes package
+  semantics.
+
+### `tkpkg.amigaos.operand_runtime` (NR-004, Item 5.6.1 ownership split)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm`.
+- Public entry: `tkpkgMselTryBuildCandidateV1`.
+- Imports/outbound dependencies: tkpkg buffers, private selection state, neutral
+  runtime context, and the expression bridge transition boundary.
+- Mutable state: reads and writes the preserved selection-state scratch layout;
+  it does not own package selection or selected-output diagnostics.
+- Routine responsibility groups: unchanged plan-tag dispatch, operand-span
+  normalization, expression evaluation, and candidate-envelope construction.
+- Decision: this is a file-boundary extraction only. Its legacy expression
+  bridge receives context-owned copies of symbol names, values, and stability;
+  it no longer receives engine label-table storage. Existing plan tags and
+  emitted bytes are retained exactly; no CPU, family, dialect, or instruction
+  support is added or generalized.
+
+### `tkpkg.amigaos.encode_service` (NR-004, Item 5.6.2 ownership split)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm`.
+- Public entries: `encodeInstructionV1` and `encodeSelectedInstructionV1`.
+- Imports/outbound dependencies: tkpkg ABI/buffers and the existing selection
+  service boundary.
+- Mutable state: writes the same existing package-service output buffer; it does
+  not own pipeline selection, package loading, or status projection.
+- Routine responsibility groups: selected-envelope encoding, package-table
+  lookup, encoding-program execution, and encoded-output construction.
+- Decision: this is an ownership-only file split. Package data, selector
+  ordering, plan tags, status/diagnostic paths, and emitted bytes remain
+  unchanged; no CPU, family, dialect, or instruction support is added.
+
+### `tkpkg.amigaos.runtime_context` (NR-005, Item 5.7 ownership split)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm`.
+- Public entries: `getAbiVersionV1`, `getPassV1`, `getAddressV1`,
+  `lookupSymbolV1`, `getSymbolStabilityTableV1`, `getSymbolTableSnapshotV1`,
+  `reportDiagnosticV1`, and `getLastDiagnosticV1`.
+- Imports/outbound dependencies: only the engine-context adapter.
+- Mutable state: private neutral diagnostic, symbol-stability, and bounded
+  copied symbol-table records; none is engine, CLI, or package-service storage.
+- Routine responsibility groups: versioned read-only context projection,
+  bounded diagnostic handoff, and bounded stability snapshot materialization.
+- Decision: Items 5.7.1 and 5.7.2 migrate expression, selection, and operand
+  consumers through bounded context snapshots. Neither change adds CPU, family,
+  dialect, instruction, selector, plan-tag, or encoding support.
+
+### `tkpkg.amigaos.engine_context_adapter` (NR-005, Item 5.7 ownership split)
+
+- Source:
+  `native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm`.
+- Public entries: `getPassV1`, `getAddressV1`, `lookupSymbolV1`,
+  `isSymbolFinalV1`, `getSymbolCountV1`, `getSymbolNameV1`, and
+  `getSymbolValueV1`.
+- Imports/outbound dependencies: documented engine getter APIs only.
+- Mutable state: none; it translates engine-owned label/pass/address state to
+  the runtime-context ABI and never exposes engine table layout.
+- Routine responsibility groups: the sole transitional engine access point for
+  future tkpkg context consumers.
+- Decision: this adapter remains the sole transitional engine-state reader.
+  Items 5.7.1 and 5.7.2 have migrated expression, selection, and operand
+  consumers. Parent native parity Item 7.7 is the latest permitted removal
+  milestone: module/import integration must provide the neutral context without
+  a tkpkg-to-opasm import, then delete this adapter and its inventory/no-growth
+  allowance. This work adds no CPU or package semantics.
+
+### `opasm.amigaos.engine` (NR-001, conditional decomposition)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_engine.asm`.
+- Public surface: session initialization, source/statement collection,
+  callback-context construction, pass execution, labels, PC/image access, and
+  selector/expression request preparation APIs.
+- Imports/outbound dependencies: event projection only.
+- Mutable state: assembly session allocation, source/statement records, label
+  table, pass/PC/image state, callback context, and diagnostic/event state.
+- Routine responsibility groups: session collection and lifecycle; two-pass
+  runner; label/image/PC ownership; callback API; request preparation.
+- Inbound users: CLI session/source/report components, assembly driver, tkpkg
+  service, and test/debug harnesses import the engine API.
+- Decision: retain cohesive after the Item 5.11 conditional audit. It imports
+  only event projection and owns one assembly-session aggregate: collected
+  statements, pass/PC/image/label state, callback context, and bounded request
+  serialization over that state. The request writers do not select packages or
+  encode output, and the selected-shape helper has no mnemonic classifier or
+  package dependency. Moving these routines would split access to the same
+  state without removing a prohibited edge. Later CPU/selector semantic
+  remediation remains separately governed and is not authorized by this audit.
+
+### `tkpkg.amigaos.tokenizer_vm` (NR-005, retain cohesive)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_tokenizer_vm.asm`.
+- Public entry: `tkpkgTokenizerVmTokenizeLineV1`.
+- Imports/outbound dependencies: tkpkg ABI/buffers and TKVM runtime/control/
+  state.
+- Mutable state: tokenizer request/result and diagnostic/output rendering
+  scratch.
+- Routine responsibility groups: request/program parsing, TKVM invocation,
+  result validation, diagnostic construction, and bounded token rendering.
+- Inbound users: tkpkg service.
+- Decision: retain cohesive.  This is one package-runtime adapter; no direct
+  opasm state import or semantic ownership split was found.
+
+### `opcore.amigaos.expr_bridge` (NR-008, retained cohesive frontend)
+
+- Source: `native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm`.
+- Public entries: `opcoreExprEvalOperandV1` and `opcoreExvmEvalOperandV1`.
+- Imports/outbound dependencies: expression VM runtime.
+- Mutable state: selected opcode version plus the private ExprVM program length
+  and byte buffer. Parser cursor, literal value, and symbol index are bounded
+  call-local register state; evaluator state belongs to the ExprVM runtime.
+- Routine responsibility groups: bounded scalar grammar/literal/symbol-index
+  compilation into versioned ExprVM bytecode, default EXVM program selection,
+  and invocation of the ExprVM runtime.
+- Inbound users: the tkpkg expression service and operand runtime through the
+  two documented public entries.
+- Decision: retain cohesive. This module is the sole native scalar
+  text-to-ExprVM frontend; its parser and emitter share one cursor/register ABI
+  and private program buffer. It owns no request-envelope, diagnostic, evaluator,
+  package-selection, or engine-context policy and imports only the ExprVM
+  runtime. All compiler helpers are private after Item 5.10. The long-term owner
+  remains this bridge until a package parser supplies ExprVM bytecode directly;
+  that future replacement, not a line-count split, is its deletion criterion.
+
+### `prvm.amigaos.runtime` (NR-005, retain cohesive)
+
+- Source: `native/motorola68000/amigaos/prvm/prvm_runtime.asm`.
+- Public entry: `prvmRun68000`.
+- Imports/outbound dependencies: PRVM ABI/state/bytecode support and the
+  package line-router boundary.
+- Mutable state: VM token cursor, checkpoint stack, result records, emitted
+  statement fields, and expression resume state.
+- Routine responsibility groups: bytecode execution, token access,
+  checkpointing, statement-result construction, and expression suspension/
+  resume.
+- Inbound users: tkpkg service through the line router.
+- Decision: retain cohesive.  Its parser-VM state is internally coupled and
+  does not own CLI orchestration, package selection, or opasm tables.
+
+### `tkpkg.amigaos.pipeline` (NR-004, conditional decomposition)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm`.
+- Public entry: `tkpkgPipelineSetActiveV1`.
+- Imports/outbound dependencies: tkpkg ABI/buffers and token policy.
+- Mutable state: active package selection and CPU/family/dialect/tokenizer/
+  parser locator buffers.
+- Routine responsibility groups: request parsing, package hierarchy lookup,
+  CPU/family/dialect selection, tokenizer/parser locator resolution, and
+  selection commit.
+- Inbound users: tkpkg service and package-facing setup paths.
+- Decision: retain cohesive after the Item 5.11 conditional audit. The sole
+  public transaction parses one request, resolves the package-owned CPU,
+  family, dialect, token-policy, tokenizer, and parser hierarchy, and commits
+  only a complete selection. It imports no engine or CLI state. Its locator and
+  string helpers are private and share the traversal cursor/register contract
+  used by every resolution stage. Similar low-level readers elsewhere remain a
+  duplication finding, but consolidating them now would add a cross-runtime
+  utility dependency without an independent state or semantic boundary.
+
+### `opasm.amigaos.flow_text_encoding` (NR-007, retain cohesive)
+
+- Source: `native/motorola68000/amigaos/opasm/opasm_flow_text_encoding.asm`.
+- Public entries: `resetStateV1`, `routeDirectiveV1`, `encodeBytesV1`, custom
+  selection, and CDEF/TDEF/EDEF definition entries.
+- Imports/outbound dependencies: none; it is session-local flow state.
+- Mutable state: active encoding, custom definition table/name/map, definition
+  cursor, and escaping scratch.
+- Routine responsibility groups: encoding lifecycle, directive routing,
+  custom-definition parsing, character mapping, escaping, and byte emission.
+- Inbound users: assembly driver.
+- Decision: retain cohesive as the text-encoding domain owner.  Item 5.9.3
+  moves driver-side text sizing/emission adaptation to this domain boundary;
+  it does not split or add text semantics here.
+
+## Cross-cutting findings and safe future landing points
+
+- Orchestration versus semantics: driver session callbacks and service ABI
+  dispatch are orchestration; package selection/encoding, expression parsing,
+  flow scans, text encoding, and layout are semantic owners.
+- Direct cross-subsystem state: the service imports the engine today. Item 5.7
+  adds a neutral runtime-context ABI and the sole transitional engine adapter
+  for pass, address, symbol lookup/stability, and diagnostics; later migration
+  removes direct engine mutable-table access. This is only a large-file split,
+  not CPU-support work.
+- Diagnostics/output: service owns ABI-facing status/last-error projection;
+  engine owns event/session state; driver only projects events through the
+  approved event boundary.
+- Segment and statement landing points: neither feature is activated by this
+  plan.  A later segment capture route belongs above the decomposed directive
+  router and below CLI source staging; a later statement route belongs at the
+  engine statement-record/callback boundary.  Neither may be implemented in
+  driver string chains, package runtimes, or macro transaction state.
+- No routine is moved by this document.  Each mandatory or conditional target
+  has a stated retain/decomposition decision before Item 5.3 contracts and
+  subsequent ownership-only commits begin.

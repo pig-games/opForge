@@ -256,9 +256,10 @@ impl Diagnostic {
         out.push_str(&header);
         out.push('\n');
 
-        let context = build_context_lines(
+        let context = build_context_lines_with_range(
             self.line,
             self.column,
+            self.col_end,
             lines,
             self.source.as_deref(),
             use_color,
@@ -269,11 +270,30 @@ impl Diagnostic {
         }
 
         for related in self.related_spans.iter().filter(|span| !span.is_primary) {
-            let ctx = build_context_lines(related.line, related.col_start, lines, None, use_color);
-            for line in ctx {
-                out.push_str("      = ");
-                out.push_str(line.trim_start());
-                out.push('\n');
+            let related_file = related.file.as_deref().or(self.file());
+            out.push_str("      = ");
+            out.push_str(&format_span_location(
+                related_file,
+                related.line,
+                related.col_start,
+                related.col_end,
+            ));
+            out.push('\n');
+
+            if related.file == self.file {
+                let ctx = build_context_lines_with_range(
+                    related.line,
+                    related.col_start,
+                    related.col_end,
+                    lines,
+                    None,
+                    use_color,
+                );
+                for line in ctx {
+                    out.push_str("      = ");
+                    out.push_str(line.trim_start());
+                    out.push('\n');
+                }
             }
             if let Some(label) = &related.label {
                 out.push_str("      = note: ");
@@ -363,20 +383,27 @@ pub fn build_context_lines(
     source_override: Option<&str>,
     use_color: bool,
 ) -> Vec<String> {
-    let mut out = Vec::new();
+    build_context_lines_with_range(line_num, column, None, lines, source_override, use_color)
+}
+
+pub fn build_context_lines_with_range(
+    line_num: u32,
+    column: Option<usize>,
+    col_end: Option<usize>,
+    lines: Option<&[String]>,
+    source_override: Option<&str>,
+    use_color: bool,
+) -> Vec<String> {
     let line_idx = line_num.saturating_sub(1) as usize;
 
     if let Some(source) = source_override {
-        let highlighted = highlight_line(source, column, use_color);
-        out.push(format!("{:>5} | {}", line_num, highlighted));
-        return out;
+        return render_context_window(line_num, column, col_end, [(line_num, source)], use_color);
     }
 
     let lines = match lines {
         Some(lines) if !lines.is_empty() => lines,
         _ => {
-            out.push(format!("{:>5} | <source unavailable>", line_num));
-            return out;
+            return vec![format!("{:>5} | <source unavailable>", line_num)];
         }
     };
 
@@ -386,38 +413,107 @@ pub fn build_context_lines(
         } else {
             "<source unavailable>"
         };
-        out.push(format!("{:>5} | {marker}", line_num));
-        return out;
+        return vec![format!("{:>5} | {marker}", line_num)];
     }
 
-    let line = &lines[line_idx];
-    let display = highlight_line(line, column, use_color);
-    out.push(format!("{:>5} | {}", line_num, display));
+    let start = line_idx.saturating_sub(2);
+    let end = line_idx
+        .saturating_add(2)
+        .min(lines.len().saturating_sub(1));
+    render_context_window(
+        line_num,
+        column,
+        col_end,
+        lines[start..=end]
+            .iter()
+            .enumerate()
+            .map(|(offset, source)| ((start + offset + 1) as u32, source.as_str())),
+        use_color,
+    )
+}
 
+fn render_context_window<'a>(
+    primary_line: u32,
+    column: Option<usize>,
+    col_end: Option<usize>,
+    context: impl IntoIterator<Item = (u32, &'a str)>,
+    use_color: bool,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for (line_num, source) in context {
+        out.push(format!("{:>5} | {}", line_num, expand_tabs(source)));
+        if line_num == primary_line {
+            if let Some(column) = column.filter(|column| *column > 0) {
+                let marker_start = visual_column(source, column);
+                let marker_width = marker_width(source, column, col_end);
+                let marker = "^".repeat(marker_width);
+                let marker = if use_color {
+                    format!("\x1b[31m{marker}\x1b[0m")
+                } else {
+                    marker
+                };
+                out.push(format!("      | {}{marker}", " ".repeat(marker_start)));
+            }
+        }
+    }
     out
 }
 
-fn highlight_line(line: &str, column: Option<usize>, use_color: bool) -> String {
-    match column {
-        Some(col) if col > 0 => {
-            let idx = col - 1;
-            if idx >= line.len() {
-                if use_color {
-                    return format!("{line}\x1b[31m^\x1b[0m");
-                }
-                return format!("{line}\n{}^", " ".repeat(line.len()));
-            }
-            let (head, tail) = line.split_at(idx);
-            let ch = tail.chars().next().unwrap_or(' ');
-            let rest = &tail[ch.len_utf8()..];
-            if use_color {
-                format!("{head}\x1b[31m{ch}\x1b[0m{rest}")
-            } else {
-                format!("{head}{ch}{rest}\n{}^", " ".repeat(idx))
-            }
+fn expand_tabs(source: &str) -> String {
+    let mut expanded = String::new();
+    let mut width = 0usize;
+    for ch in source.chars() {
+        if ch == '\t' {
+            let spaces = 4 - (width % 4);
+            expanded.push_str(&" ".repeat(spaces));
+            width += spaces;
+        } else {
+            expanded.push(ch);
+            width += 1;
         }
-        _ => line.to_string(),
     }
+    expanded
+}
+
+fn visual_column(source: &str, column: usize) -> usize {
+    let byte_offset = column.saturating_sub(1).min(source.len());
+    let mut prefix_end = 0usize;
+    for (index, ch) in source.char_indices() {
+        let next = index + ch.len_utf8();
+        if next > byte_offset {
+            break;
+        }
+        prefix_end = next;
+    }
+    let prefix = &source[..prefix_end];
+    expand_tabs(prefix).chars().count()
+}
+
+fn marker_width(source: &str, column: usize, col_end: Option<usize>) -> usize {
+    let Some(col_end) = col_end.filter(|end| *end > column) else {
+        return 1;
+    };
+    visual_column(source, col_end)
+        .saturating_sub(visual_column(source, column))
+        .max(1)
+}
+
+fn format_span_location(
+    file: Option<&str>,
+    line: u32,
+    col_start: Option<usize>,
+    col_end: Option<usize>,
+) -> String {
+    let mut location = file.map_or_else(|| line.to_string(), |file| format!("{file}:{line}"));
+    if let Some(col_start) = col_start {
+        location.push(':');
+        location.push_str(&col_start.to_string());
+        if let Some(col_end) = col_end.filter(|col_end| *col_end > col_start) {
+            location.push_str("..");
+            location.push_str(&col_end.to_string());
+        }
+    }
+    location
 }
 
 fn split_prefixed_diagnostic(message: &str) -> Option<(&str, &str)> {
@@ -526,5 +622,89 @@ mod tests {
         assert_eq!(diag.code(), "otp002");
         assert_eq!(diag.message(), "expected expression");
         assert_eq!(diag.fixits().len(), 1);
+    }
+
+    #[test]
+    fn context_window_renders_surrounding_lines_and_a_range_marker() {
+        let lines = (1..=7)
+            .map(|line| format!("line {line}"))
+            .collect::<Vec<_>>();
+        let context =
+            build_context_lines_with_range(4, Some(3), Some(6), Some(&lines), None, false);
+
+        assert_eq!(context[0], "    2 | line 2");
+        assert_eq!(context[2], "    4 | line 4");
+        assert_eq!(context[3], "      |   ^^^");
+        assert_eq!(context[5], "    6 | line 6");
+        assert_eq!(context.len(), 6);
+    }
+
+    #[test]
+    fn context_marker_expands_tabs_and_handles_utf8_boundaries() {
+        let tabbed = vec!["\tbad".to_string()];
+        let tabbed_context =
+            build_context_lines_with_range(1, Some(2), None, Some(&tabbed), None, false);
+        assert_eq!(tabbed_context[0], "    1 |     bad");
+        assert_eq!(tabbed_context[1], "      |     ^");
+
+        let unicode = vec!["ébad".to_string()];
+        let unicode_context =
+            build_context_lines_with_range(1, Some(3), None, Some(&unicode), None, false);
+        assert_eq!(unicode_context[1], "      |  ^");
+    }
+
+    #[test]
+    fn related_spans_keep_file_identity_and_preserve_guidance_order() {
+        let lines = vec![
+            "first".to_string(),
+            "duplicate".to_string(),
+            "third".to_string(),
+        ];
+        let diagnostic = Diagnostic::new(
+            2,
+            Severity::Error,
+            AsmError::new(AsmErrorKind::Symbol, "duplicate symbol", None),
+        )
+        .with_file(Some("main.asm".to_string()))
+        .with_column(Some(1))
+        .with_related_span(LabeledSpan {
+            file: Some("main.asm".to_string()),
+            line: 1,
+            col_start: Some(1),
+            col_end: Some(4),
+            label: Some("first defined here".to_string()),
+            is_primary: false,
+        })
+        .with_related_span(LabeledSpan {
+            file: Some("include.asm".to_string()),
+            line: 8,
+            col_start: Some(2),
+            col_end: None,
+            label: Some("included from here".to_string()),
+            is_primary: false,
+        })
+        .with_note("symbols are case-insensitive")
+        .with_help("rename one definition")
+        .with_fixit(Fixit {
+            file: Some("main.asm".to_string()),
+            line: 2,
+            col_start: Some(1),
+            col_end: Some(10),
+            replacement: "unique_name".to_string(),
+            applicability: "machine-applicable".to_string(),
+        });
+
+        let text = diagnostic.format_with_context(Some(&lines), false);
+        assert!(text.contains("      = main.asm:1:1..4"), "{text}");
+        assert!(text.contains("      = 1 | first"), "{text}");
+        assert!(text.contains("      = include.asm:8:2"), "{text}");
+        assert!(!text.contains("      = 8 | <end of file>"), "{text}");
+        assert!(text.contains("      = note: first defined here"), "{text}");
+        assert!(text.contains("      = note: included from here"), "{text}");
+
+        let note = text.find("note: symbols are case-insensitive").unwrap();
+        let help = text.find("help: rename one definition").unwrap();
+        let fixit = text.find("suggestion: replace 2:1-10").unwrap();
+        assert!(note < help && help < fixit, "{text}");
     }
 }

@@ -39,3 +39,11 @@ scripts/workflow/run_native_macro_completion.sh \
   --manifest "documentation/quality-gates/native-macro-level-d-$(git rev-parse --short HEAD).json"
 python3 scripts/workflow/check_native_macro_level_d_manifest.py <receipt.json>
 ```
+
+## Native runtime stabilization existing-parity closure
+
+`run_native_existing_parity_completion.sh --verify` runs the complete
+established 34-test Level D corpus without writing source files. Item 5.13 runs
+it from a clean committed tree and retains a JSON receipt naming that exact
+commit and tree. The receipt also records the canonical ordered test list and
+the future-scope exclusion for parent-plan Items 7.4–7.7.

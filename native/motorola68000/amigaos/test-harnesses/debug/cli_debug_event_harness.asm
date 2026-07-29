@@ -1,4 +1,5 @@
 ; FS-UAE regression harness for the converted native CLI debug-header event.
+; @opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent
 
 	.module cli.debug.event.harness
 	.cpu 68020

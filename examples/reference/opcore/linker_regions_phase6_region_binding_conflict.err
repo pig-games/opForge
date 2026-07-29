@@ -1,5 +1,9 @@
 Assembly failed:
 10: ERROR [asm202]
+    8 | .endsection
+    9 | 
    10 | .place code in rom
- ^
+      |  ^
+   11 | 
+   12 | .endmodule
 ERROR: Section is bound to region 'ram' but was placed in region 'rom': code

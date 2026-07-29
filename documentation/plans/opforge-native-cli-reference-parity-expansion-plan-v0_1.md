@@ -884,8 +884,19 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: macro expansions re-enter ordinary native CLI processing and the macro-only fixture matches Rust.
   - Definition of done: `.name`, `.1`…`.9`, `@1`…`@9`, `.@`, label-attached calls, default values, recursion bounds, and deterministic errors match the declared Rust subset; canonical `macro_syntax.asm` remains reserved for Item 7.4.
 
+- [ ] Item 7.3g: remediate native CLI error-output routing before new preprocessor semantics
+  - Source requirement or finding IDs: stabilization-plan Item 7 ordering; deterministic CLI failure parity assigned by this plan.
+  - Invariant: native failure text, exit status, and stdout/stderr routing match the declared live Rust CLI and checked-in `.err` authority; successful output routing remains unchanged.
+  - Expected files: focused native DOS/error-sink adapter and migrated error call sites; Level A/B/D tests; one slice record.
+  - Activation dependency: the archived native preprocessor stabilization plan is the required baseline; record the first divergent diagnostic boundary before changing behavior.
+  - Full quality gates: focused Level A Rust diagnostic oracle; Level B routing contract; exact Level D native CLI failure proof; native formatter; staged native-porting gate; full Rust quality gate.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for error-output routing and exit-status parity only.
+  - Commit outcome: one independently revertible CLI diagnostic-routing remediation commit.
+  - Definition of done: deterministic failure output reaches the Rust-authoritative sink with matching normalized text and exit status; no segment, statement, export, linker, output-format, CPU, or selector semantics are added.
+
 - [ ] Item 7.4: add native segment definition and expansion semantics
   - Source requirement or finding IDs: `macro_syntax.asm` INLINE `.segment` form; Rust segment branch in `MacroProcessor::expand_lines`.
+  - Activation dependency: the native preprocessor stabilization plan is archived and Item 7.3g CLI error-output remediation is complete and green.
   - Expected files: native preprocessor and tests; one slice record.
   - Full quality gates: Level A live Rust `macro_syntax.asm` artifact oracle; focused Level C source model; exact Level D `macro_syntax.asm` FS-UAE proof; native formatter; staged native-porting gate; full Rust quality gate.
   - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for segment expansion only.
@@ -910,7 +921,7 @@ produce deterministic diagnostics rather than silently truncate. The active
 
 - [ ] Item 7.7: integrate preprocessor exports with native module/import flow
   - Source requirement or finding IDs: Item 7 module/import/visibility and multi-file requirements; Rust `AsmMacroProcessor::{take_native_exports,inject_*}`.
-  - Expected files: native preprocessor, module/use flow, source graph tests, slice record.
+  - Expected files: native preprocessor, module/use flow, source graph tests, slice record; deletion of `tkpkg_engine_context_adapter.asm` and its inventory/no-growth allowance once neutral context is supplied without a tkpkg-to-opasm import.
   - Full quality gates: Level A multi-file Rust oracle; Level C export/import model; exact Level D multi-file FS-UAE proof; native formatter; staged native-porting gate; full Rust quality gate.
   - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for public/private export injection and aliases only.
   - Commit outcome: module macro and statement exports are injected according to native `.use` selection and visibility rules.
@@ -918,6 +929,7 @@ produce deterministic diagnostics rather than silently truncate. The active
 
 - [ ] Item 8: add the section, region, linker, and output opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for sections, segments, regions, maps, metadata, alignment, linker placement, and CLI-selected output artifacts
+  - Activation dependency: a separate CPU/selector semantic-remediation programme is complete and green. That programme does not block Items 7.3g–7.7 source-preprocessor work.
   - Expected files:
     - additive opcore MOS-backed fixtures and matching references assigned by Item 4
     - `crates/opforge-asm/src/native_reference_parity.rs`

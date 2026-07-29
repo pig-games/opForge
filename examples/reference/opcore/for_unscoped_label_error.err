@@ -1,5 +1,8 @@
 Assembly failed:
 3: ERROR [asm202]
+    1 | ; Labels inside unscoped .for are rejected.
+    2 | .for 1
     3 | item .byte 1
-^
+      | ^
+    4 | .endfor
 ERROR: label 'item' not allowed inside .for (use .bfor for scoped repetition)

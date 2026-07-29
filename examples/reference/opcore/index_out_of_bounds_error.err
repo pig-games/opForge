@@ -1,5 +1,6 @@
 Assembly failed:
 2: ERROR [asm401]
+    1 | ; Index is outside the list bounds.
     2 | .byte {1, 2}[3]
-      ^
+      |       ^
 ERROR: Index out of bounds

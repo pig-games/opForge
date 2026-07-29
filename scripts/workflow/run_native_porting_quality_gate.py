@@ -13,6 +13,9 @@ CHECKS = (
     "check_native_instrumentation_safety.py",
     "check_native_contract_asserts.py",
     "check_fsuae_invocation_policy.py",
+    "check_native_runtime_no_growth.py",
+    "check_native_debug_evidence_classification.py",
+    "check_native_test_module_ownership.py",
 )
 
 

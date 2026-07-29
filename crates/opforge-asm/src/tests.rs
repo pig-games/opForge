@@ -35199,9 +35199,13 @@ fn native_counted_for_flow_callback_precedes_pass_processing() {
         &engine,
         &[
             "movea.l OPASM_ENGINE_CTX_FLOW_CONTROL_CB(a5), a0",
+            "move.l d7, -(sp)",
             "jsr (a0)",
-            "tst.w d1",
-            "beq.s process",
+            "move.l (sp)+, d7",
+            "tst.w OpasmEngineFlowPending.l",
+            "beq.w process",
+            "move.w OpasmEngineFlowNext.l, d2",
+            "clr.w OpasmEngineFlowPending.l",
             "move.w d2, d7",
         ]
     ));
@@ -38057,6 +38061,69 @@ fn native_conditional_source_records_then_skips_unselected_statement_ranges() {
         ]
     ));
     assert!(conditional_flow.contains(".endmodule"));
+}
+
+#[test]
+fn native_conditional_flow_transitions_survive_callback_register_clobbers() {
+    // Proof level B. This test locks the explicit engine-owned transition and
+    // cursor-preservation contract. It does not execute the 68020 callback.
+    let repo_root = workspace_root();
+    let engine =
+        fs::read_to_string(repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm"))
+            .expect("read native opasm engine");
+    let driver = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    let navigation = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_flow_navigation.asm"),
+    )
+    .expect("read native opasm flow navigation");
+
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "opasmEngineSetFlowNextV1\t.block",
+            "move.w d0, OpasmEngineFlowNext.l",
+            "move.w #1, OpasmEngineFlowPending.l",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "tst.w OpasmEngineFlowPending.l",
+            "move.w OpasmEngineFlowNext.l, d2",
+            "clr.w OpasmEngineFlowPending.l",
+            "move.w d2, d7",
+        ]
+    ));
+    assert!(engine.matches("move.l d7, -(sp)").count() >= 7);
+    assert!(engine.matches("move.l (sp)+, d7").count() >= 7);
+
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "finishIfBranch",
+            "ori.w #$8000, d2",
+            "finishEndmatchBranch",
+            "move.w d7, d2",
+            "addq.w #1, d2",
+            "success",
+            "jsr eng.opasmEngineSetFlowNextV1",
+        ]
+    ));
+    assert!(driver.contains("jsr eng.opasmEngineGetFlowRedirectedV1"));
+    assert!(!driver.contains("OpasmIfDepth"));
+    assert!(!driver.contains("OpasmIfMatched"));
+    assert!(source_contains_in_order(
+        &navigation,
+        &[
+            "move.w d2, d7",
+            "move.l d2, -(sp)",
+            "jsr (a2)",
+            "move.l (sp)+, d2",
+        ]
+    ));
 }
 
 #[test]

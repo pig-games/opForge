@@ -813,6 +813,23 @@ opasmEngineGetSessionPassV1	.block
 	rts
 	.bend  ; opasmEngineGetSessionPassV1
 
+; Return whether the current statement was reached by a flow-control redirect.
+; Outputs: D0.W = 1 after a skipped/jumped callback transition, 0 after ordinary
+; sequential processing.
+opasmEngineGetFlowRedirectedV1	.block
+	moveq #0, d0
+	move.w OpasmEngineFlowRedirected.l, d0
+	rts
+	.bend  ; opasmEngineGetFlowRedirectedV1
+
+; Record the next statement selected by the flow-control callback.
+; Inputs: D0.W = next statement index.
+opasmEngineSetFlowNextV1	.block
+	move.w d0, OpasmEngineFlowNext.l
+	move.w #1, OpasmEngineFlowPending.l
+	rts
+	.bend  ; opasmEngineSetFlowNextV1
+
 ; Return the current opasm session origin.
 ;
 ; Outputs:
@@ -2420,40 +2437,59 @@ runPassOne	.block
 	movea.l OPASM_ENGINE_CTX_PASS1_BEGIN_CB(a5), a0
 	jsr (a0)
 	tst.l d0
-	bne.s return
+	bne.w return
 	clr.w d7
+	clr.w OpasmEngineFlowRedirected.l
+	clr.w OpasmEngineFlowPending.l
 
 loop
 	movea.l OPASM_ENGINE_CTX_STMT_COUNT_PTR(a5), a0
 	move.w (a0), d0
 	cmp.w d0, d7
-	bhs.s ok
+	bhs.w ok
 	moveq #0, d0
 	move.w d7, d0
 	movea.l OPASM_ENGINE_CTX_FLOW_CONTROL_CB(a5), a0
+	move.l d7, -(sp)
 	jsr (a0)
+	move.l (sp)+, d7
 	tst.l d0
-	bne.s return
-	tst.w d1
-	beq.s process
+	bne.w return
+	tst.w OpasmEngineFlowPending.l
+	beq.w process
+	move.w OpasmEngineFlowNext.l, d2
+	clr.w OpasmEngineFlowPending.l
+	tst.w d2
+	bpl.s redirected
+	andi.w #$7fff, d2
+	clr.w OpasmEngineFlowRedirected.l
+	bra.s setNext
+redirected
+	move.w #1, OpasmEngineFlowRedirected.l
+setNext
 	move.w d2, d7
-	bra.s loop
+	bra.w loop
 
 process
+	clr.w OpasmEngineFlowRedirected.l
 	moveq #0, d0
 	move.w d7, d0
 	movea.l OPASM_ENGINE_CTX_RECORD_LABEL_CB(a5), a0
+	move.l d7, -(sp)
 	jsr (a0)
+	move.l (sp)+, d7
 	tst.l d0
-	bne.s return
+	bne.w return
 	moveq #0, d0
 	move.w d7, d0
 	movea.l OPASM_ENGINE_CTX_ADVANCE_PC_CB(a5), a0
+	move.l d7, -(sp)
 	jsr (a0)
+	move.l (sp)+, d7
 	tst.l d0
-	bne.s return
+	bne.w return
 	addq.w #1, d7
-	bra.s loop
+	bra.w loop
 
 ok
 	movea.l OPASM_ENGINE_CTX_PASS1_OK_CB(a5), a0
@@ -2480,51 +2516,74 @@ runPassTwo	.block
 	movea.l OPASM_ENGINE_CTX_PASS2_BEGIN_CB(a5), a0
 	jsr (a0)
 	tst.l d0
-	bne.s return
+	bne.w return
 	clr.w d7
+	clr.w OpasmEngineFlowRedirected.l
+	clr.w OpasmEngineFlowPending.l
 
 loop
 	movea.l OPASM_ENGINE_CTX_STMT_COUNT_PTR(a5), a0
 	move.w (a0), d0
 	cmp.w d0, d7
-	bhs.s ok
+	bhs.w ok
 	moveq #0, d0
 	move.w d7, d0
 	movea.l OPASM_ENGINE_CTX_FLOW_CONTROL_CB(a5), a0
+	move.l d7, -(sp)
 	jsr (a0)
+	move.l (sp)+, d7
 	tst.l d0
-	bne.s return
-	tst.w d1
-	beq.s process
+	bne.w return
+	tst.w OpasmEngineFlowPending.l
+	beq.w process
+	move.w OpasmEngineFlowNext.l, d2
+	clr.w OpasmEngineFlowPending.l
+	tst.w d2
+	bpl.s redirected
+	andi.w #$7fff, d2
+	clr.w OpasmEngineFlowRedirected.l
+	bra.s setNext
+redirected
+	move.w #1, OpasmEngineFlowRedirected.l
+setNext
 	move.w d2, d7
-	bra.s loop
+	bra.w loop
 
 process
+	clr.w OpasmEngineFlowRedirected.l
 	movea.l OPASM_ENGINE_CTX_BIN_REQUESTED_PTR(a5), a0
 	tst.w (a0)
 	beq.s advanceOnly
 	moveq #0, d0
 	move.w d7, d0
+	move.l d7, -(sp)
 	jsr opasmEngineBeginStatementOutputV1
+	move.l (sp)+, d7
 	moveq #0, d0
 	move.w d7, d0
 	movea.l OPASM_ENGINE_CTX_EMIT_IMAGE_CB(a5), a0
+	move.l d7, -(sp)
 	jsr (a0)
+	move.l (sp)+, d7
 	tst.l d0
-	bne.s return
+	bne.w return
 	moveq #0, d0
 	move.w d7, d0
+	move.l d7, -(sp)
 	jsr opasmEngineEndStatementOutputV1
+	move.l (sp)+, d7
 
 advanceOnly
 	moveq #0, d0
 	move.w d7, d0
 	movea.l OPASM_ENGINE_CTX_ADVANCE_PC_CB(a5), a0
+	move.l d7, -(sp)
 	jsr (a0)
+	move.l (sp)+, d7
 	tst.l d0
-	bne.s return
+	bne.w return
 	addq.w #1, d7
-	bra.s loop
+	bra.w loop
 
 ok
 	movea.l OPASM_ENGINE_CTX_PASS2_OK_CB(a5), a0
@@ -2543,6 +2602,12 @@ return
 
 OpasmEngineContext
 	.res long, OPASM_ENGINE_CONTEXT_LONGS
+OpasmEngineFlowRedirected
+	.res word, 1
+OpasmEngineFlowNext
+	.res word, 1
+OpasmEngineFlowPending
+	.res word, 1
 OpasmEngineAssemblySessionStart
 OpasmEngineStmtCount
 	.res word, 1

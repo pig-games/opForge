@@ -85,7 +85,6 @@ opasmDriverPassOneBegin	.block
 	jsr eng.opasmEngineBeginPassOneV1
 	jsr layout.resetStateV1
 	clr.w OpasmRepeatDepth
-	clr.w OpasmIfDepth
 	jsr scopes.resetStateV1
 	jsr structs.resetStateV1
 	jsr text_encoding.resetStateV1
@@ -113,7 +112,6 @@ opasmDriverPassTwoBegin	.block
 	jsr eng.opasmEngineBeginPassTwoV1
 	jsr layout.beginPassTwoV1
 	clr.w OpasmRepeatDepth
-	clr.w OpasmIfDepth
 	jsr scopes.resetStateV1
 	jsr structs.resetStateV1
 	jsr text_encoding.resetStateV1
@@ -590,24 +588,11 @@ zeroWhile
 	bra.w success
 
 beginIfBranch
-	moveq #0, d4
-	move.w OpasmIfDepth, d4
-	cmpi.w #OPASM_REPEAT_STACK_CAPACITY, d4
-	bhs.w fail
-	lea OpasmIfMatched, a0
-	clr.b 0(a0, d4.l)
-	addq.w #1, d4
-	move.w d4, OpasmIfDepth
 	moveq #4, d5
 	bsr.w readOperandValueForStatement
 	bne.w fail
 	tst.l d3
 	beq.s ifFalse
-	moveq #0, d4
-	move.w OpasmIfDepth, d4
-	subq.w #1, d4
-	lea OpasmIfMatched, a0
-	move.b #1, 0(a0, d4.l)
 	bra.w selectIfBranch
 ifFalse
 	jsr navigation.findNextIfBranchV1
@@ -620,20 +605,14 @@ ifFalse
 	bra.w finishIfBranch
 
 handleElseifBranch
-	tst.w OpasmIfDepth
-	beq.w fail
-	moveq #0, d4
-	move.w OpasmIfDepth, d4
-	subq.w #1, d4
-	lea OpasmIfMatched, a0
-	tst.b 0(a0, d4.l)
-	bne.w skipSelectedIfBranch
+	jsr eng.opasmEngineGetFlowRedirectedV1
+	tst.w d0
+	beq.w skipSelectedIfBranch
 	moveq #4, d5
 	bsr.w readOperandValueForStatement
 	bne.w fail
 	tst.l d3
 	beq.s elseifFalse
-	move.b #1, 0(a0, d4.l)
 	bra.w selectIfBranch
 elseifFalse
 	jsr navigation.findNextIfBranchV1
@@ -646,28 +625,14 @@ elseifFalse
 	bra.w finishIfBranch
 
 handleElseBranch
-	tst.w OpasmIfDepth
-	beq.w fail
-	moveq #0, d4
-	move.w OpasmIfDepth, d4
-	subq.w #1, d4
-	lea OpasmIfMatched, a0
-	tst.b 0(a0, d4.l)
-	bne.w skipSelectedIfBranch
-	move.b #1, 0(a0, d4.l)
-	bra.w selectIfBranch
+	bra.w skipSelectedIfBranch
 
 finishIfBranch
-	tst.w OpasmIfDepth
-	beq.w fail
-	move.w OpasmIfDepth, d4
-	subq.w #1, d4
-	move.w d4, OpasmIfDepth
-	; `.endif` is a structural statement: skip it and resume at the following
-	; statement. Directive routing may have used D2 as scratch, so do not rely
-	; on the callback's incoming default next-index value here.
+	; Skip the zero-width marker while marking the next statement as a sequential
+	; arrival, so an outer `.elseif` is not mistaken for a false-branch target.
 	move.w d7, d2
 	addq.w #1, d2
+	ori.w #$8000, d2
 	moveq #1, d1
 	bra.w success
 
@@ -691,6 +656,8 @@ skipSelectedMatchBranch
 	bra.w success
 
 finishEndmatchBranch
+	move.w d7, d2
+	addq.w #1, d2
 	moveq #1, d1
 	bra.w success
 
@@ -702,11 +669,6 @@ selectIfBranchAtD2
 	bra.w success
 
 selectElseIfBranchAtD2
-	moveq #0, d4
-	move.w OpasmIfDepth, d4
-	subq.w #1, d4
-	lea OpasmIfMatched, a0
-	move.b #1, 0(a0, d4.l)
 	addq.w #1, d2
 	moveq #1, d1
 	bra.w success
@@ -807,6 +769,11 @@ processStatement
 	clr.w d1
 
 success
+	tst.w d1
+	beq.s successStatus
+	move.w d2, d0
+	jsr eng.opasmEngineSetFlowNextV1
+successStatus
 	moveq #0, d0
 	bra.s return
 
@@ -3781,12 +3748,6 @@ OpasmRepeatKind
 
 OpasmMatchValue
 	.res long, 1
-
-OpasmIfDepth
-	.res word, 1
-
-OpasmIfMatched
-	.res byte, OPASM_REPEAT_STACK_CAPACITY
 
 	.endsection
 	.endmodule

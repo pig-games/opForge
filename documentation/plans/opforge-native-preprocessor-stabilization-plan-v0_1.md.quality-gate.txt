@@ -144,3 +144,10 @@ Evidence: focused comma-resolution and completed-repetition contracts PASS; runt
 
 Reviewer: `plan-compliance-reviewer` rubric.
 Decision: PASS. The independently revertible remediation delegates to the established compile-value owner and repairs callback control state after existing routers. It adds no parser, expression grammar, sequence/binding storage, directive owner, package row, CPU/family/dialect behavior, diagnostic wording, or output format.
+
+PASS: Item 5.11.5 stabilizes the existing native structural-flow callback boundary. Flow destinations are engine-owned and consumed once, the pass cursor is preserved around callbacks, sequential versus redirected conditional arrivals remain explicit, and `.endif`/`.endmatch` compute their post-marker destinations directly.
+
+Evidence: focused transition and navigation ownership contracts PASS; exact untouched canonical conditional/match FS-UAE parity PASS without skip and matches live Rust bytes; the broader nested structural-flow FS-UAE fixture PASS; runtime-boundary inventory and native formatter PASS; metadata-aware staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The independently revertible remediation is limited to callback-state stabilization and existing structural navigation. It adds no conditional or match syntax, parser/evaluator ownership, CPU/family/dialect behavior, diagnostic wording, or output format.

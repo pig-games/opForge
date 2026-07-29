@@ -626,6 +626,25 @@ its own activated item/slice contract.
     `.while` fixtures pass without skip; iterable bytes match the live Rust CLI.
   - Definition of done: `.byte value`, `.byte .len(values)`, and `.byte values[index]` resolve through the established compile-time value owner, completed repetition cannot revisit its closing directive, and the canonical iterable fixture matches Rust.
 
+- [x] Item 5.11.5: stabilize native conditional-flow transitions
+  - Source requirement or finding IDs: Item 5.12 established-corpus first divergence after Item 5.11.4; `.else` blocker exposed by the canonical conditional corpus.
+  - Invariant: flow-control destinations and the pass-loop statement cursor survive callback register clobbers; nested `.if`/`.elseif`/`.else` and `.match`/`.case`/`.default` select exactly the Rust branch without retaining a separate conditional-state stack.
+  - Expected files: `opasm_engine.asm`, `opasm_assembly_driver.asm`, `opasm_flow_navigation.asm`, focused B contract, canonical conditional FS-UAE fixture, slice metadata, and this plan item.
+  - First divergence: navigation computed the correct false-branch destination, but callback return restored scratch D2 and later processing callbacks changed the D7 pass cursor. A sequential `.endif` transition could consequently revisit the adjacent `.else`; the default-match path also returned a router-clobbered `.endmatch` destination.
+  - Proof: B engine-owned one-shot transition, pass-cursor preservation, and match-scan cursor contracts; D untouched canonical conditional/match source through the real native CLI in FS-UAE against live Rust bytes.
+  - Full quality gates: focused transition contract and affected D fixtures; native formatter; staged native-porting; Rust quality; workflow gate.
+  - Plan-compliance review evidence: PASS; the remediation stabilizes the existing callback boundary and structural navigation only, without adding conditional, expression, parser, match, or emission semantics.
+  - Commit outcome: one independently revertible conditional-flow stabilization commit before Item 5.12 resumes.
+  - Completion evidence (2026-07-29): the engine now consumes one-shot
+    flow destinations from engine-owned state, distinguishes redirected from
+    sequential marker arrivals, and preserves its statement cursor around
+    callbacks. The driver removes the transient conditional stack, computes
+    `.endif` and `.endmatch` destinations explicitly, and the match navigator
+    preserves its scan cursor around `.case` evaluation. The focused B contract
+    and untouched canonical real-CLI FS-UAE conditional/match corpus pass with
+    exact live-Rust bytes.
+  - Definition of done: nested `.else` cannot be revisited through clobbered callback state, selected `.default` advances beyond `.endmatch`, and the canonical conditional/match fixture matches Rust.
+
 - [ ] Item 5.12: enforce no-growth and ownership boundaries
   - Source requirement or finding IDs: NR-009; all prior runtime-boundary items.
   - Invariant: deterministic source guards reject new private semantic routines in the three transitional hotspot files, permit declared façade/delegation entries, detect direct tkpkg access to opasm mutable tables, detect CPU/family terms outside approved owners, and require new semantic modules to name their owner and slice contract.

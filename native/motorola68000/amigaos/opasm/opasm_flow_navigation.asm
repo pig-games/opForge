@@ -182,7 +182,9 @@ outerBranch
 	beq.s maybeDefault
 	move.w d2, d7
 	movea.l FlowCaseMatcher, a2
+	move.l d2, -(sp)
 	jsr (a2)
+	move.l (sp)+, d2
 	tst.l d0
 	bne.w next
 	bra.w found

@@ -114,7 +114,7 @@ TARGETS = {
     ),
 }
 SNAPSHOTS = {
-    "opasm.amigaos.assembly_driver": ("ad0e8b4e28aa7073e37ea99545f2d260be9541155643b389391ee203fd834bb1", 69, 18, ("code", "data", "bss"), 138),
+    "opasm.amigaos.assembly_driver": ("9880c977de2ece1509fd44dcf3a91ca4a592c000cfcaacd7dc63c5bd9673b701", 69, 18, ("code", "data", "bss"), 140),
     "opasm.amigaos.directive_router": ("ff74d2d29df6e4636f5a35480a48d0275b6cda16313ccda3934106973cfc8d81", 3, 0, ("code", "data"), 1),
     "opasm.amigaos.operand_eval": ("fdc20bce4027658b5db8871eae5bd3c3bad19be7ff073c9f2ffd89151e1b18e6", 7, 3, ("code", "bss"), 4),
     "opasm.amigaos.directive_data": ("ae827acedfad611d1d57ff93783edda61b6eb4de332c2907521343d6f9fdf3bc", 2, 3, ("code", "bss"), 19),
@@ -126,7 +126,7 @@ SNAPSHOTS = {
     "tkpkg.amigaos.encode_service": ("c6da4d60d638389ed0088dac042dc29fcddc48313eabaf5d4004c59d8f32cd34", 12, 3, ("data", "code"), 11),
     "tkpkg.amigaos.runtime_context": ("74e4740aa15b27262a3e643cc46452eb7fb047a0b2df8f4e554d78058b83da1a", 8, 1, ("code", "bss"), 19),
     "tkpkg.amigaos.engine_context_adapter": ("a06328ca23472b6f624f579ffd24e09d51d3373acd0c2e825e2596086461ea54", 9, 1, ("code",), 0),
-    "opasm.amigaos.engine": ("162671ccf1cfa1eba37dc81625484e2b216dd3d95852285a4fe70230867fef86", 68, 1, ("code", "bss"), 21),
+    "opasm.amigaos.engine": ("8152793bd0728248d35b2a517bbd14c8ca12da549a8d54e588fd3c4e404d9353", 70, 1, ("code", "bss"), 21),
     "tkpkg.amigaos.tokenizer_vm": ("7bbafa635dcded0236c9a65368db47e0e10aded6b328d4389e580654125e5b65", 31, 5, ("data", "code"), 124),
     "opcore.amigaos.expr_bridge": ("ba608c38fa67b91360bd2098447976c8cf5f36de0bae1f2f382b6ad5712fa94a", 30, 1, ("code", "bss"), 5),
     "prvm.amigaos.runtime": ("d49fad6cedf4807ffed62932c3e55b8f1adbfba0ff93bd8085d66b4e42efb74b", 20, 0, ("data", "code"), 37),

@@ -13,6 +13,7 @@ CHECKS = (
     "check_native_instrumentation_safety.py",
     "check_native_contract_asserts.py",
     "check_fsuae_invocation_policy.py",
+    "check_native_runtime_no_growth.py",
 )
 
 

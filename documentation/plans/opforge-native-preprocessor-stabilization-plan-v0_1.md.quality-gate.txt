@@ -151,3 +151,10 @@ Evidence: focused transition and navigation ownership contracts PASS; exact unto
 
 Reviewer: `plan-compliance-reviewer` rubric.
 Decision: PASS. The independently revertible remediation is limited to callback-state stabilization and existing structural navigation. It adds no conditional or match syntax, parser/evaluator ownership, CPU/family/dialect behavior, diagnostic wording, or output format.
+
+PASS: Item 5.12 converts the certified native runtime ownership boundaries into deterministic no-growth enforcement without using file size as a semantic proxy.
+
+Evidence: sixteen focused positive/negative workflow tests PASS; the repository baseline, refreshed runtime-boundary inventory, staged no-growth guard, and native formatter PASS; the fail-closed established Level D completion wrapper runs 34 exact tests serially with no skip or zero-test filter and PASSes, including conditionals/match, loops, repaired structs/`.bfor`, expressions, text, module-local symbols, layout, package selection/encoding, and CLI/reference artifacts; metadata-aware staged native-porting, serial full Rust quality, and aggregate workflow gates PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The independently revertible workflow slice records certified routine sets, permits only slice-backed façade/delegation entries, rejects tkpkg-to-opasm mutable-state reads, composes the existing CPU-specific boundary without report mutation, and requires owner/slice provenance for new production semantic modules. It adds no parser, evaluator, directive, CPU/family/dialect, package, diagnostic, or output behavior. The future `.INLINE` macro/statement fixture is explicitly excluded because it belongs to open Items 7.4–7.7, not the established pre-amendment corpus.

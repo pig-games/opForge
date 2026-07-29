@@ -48,7 +48,7 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   is owned by `opasm.amigaos.layout`.
 - Routine responsibility groups: pass callback orchestration; router-result
   dispatch; structural-flow state transitions and explicit `.case` evaluation
-  callback; operand/evaluation request
+  callback; scoped-struct repeat-label qualification callback; operand/evaluation request
   construction; selector/encoding adaptation; data/text sizing and emission;
   remaining layout/region/section/place dispatch; event projection.
 - Inbound users: the CLI engine-callback adapter imports this driver; the

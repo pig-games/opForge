@@ -645,7 +645,7 @@ its own activated item/slice contract.
     exact live-Rust bytes.
   - Definition of done: nested `.else` cannot be revisited through clobbered callback state, selected `.default` advances beyond `.endmatch`, and the canonical conditional/match fixture matches Rust.
 
-- [ ] Item 5.12: enforce no-growth and ownership boundaries
+- [x] Item 5.12: enforce no-growth and ownership boundaries
   - Source requirement or finding IDs: NR-009; all prior runtime-boundary items.
   - Invariant: deterministic source guards reject new private semantic routines in the three transitional hotspot files, permit declared façade/delegation entries, detect direct tkpkg access to opasm mutable tables, detect CPU/family terms outside approved owners, and require new semantic modules to name their owner and slice contract.
   - Expected files: deterministic workflow guard(s), positive/negative workflow tests, guard documentation, and this plan.
@@ -654,6 +654,19 @@ its own activated item/slice contract.
   - Full quality gates: focused workflow tests; complete established D corpus; Rust quality; workflow gate.
   - Plan-compliance review evidence: PASS for deterministic guard scope and allowances.
   - Commit outcome: one workflow-guard commit.
+  - Completion evidence (2026-07-29): the guard snapshots certified routine
+    sets for the three transitional hotspots, admits only slice-backed façade or
+    delegation declarations, rejects direct tkpkg reads of mutable opasm state,
+    composes the CPU-specific architecture boundary without mutating reports,
+    and requires owner/slice provenance on new production semantic modules.
+    Sixteen focused positive/negative workflow tests pass. The fail-closed
+    completion wrapper verifies all 34 established native Level D tests,
+    including the prerequisite scoped-struct/`.bfor` repair in `ced0773d`, with
+    no skip or zero-test result. The combined macro/statement fixture remains
+    explicitly excluded because its `.INLINE` behavior belongs to open Items
+    7.4–7.7 rather than the pre-amendment parity corpus. Native formatting,
+    refreshed runtime-boundary inventory, metadata-aware staged porting, serial
+    Rust quality, and aggregate workflow gates pass.
   - Definition of done: later segment/statement work cannot silently regrow decomposed hotspots or reverse neutral dependency edges.
 
 - [ ] Item 5.13: run complete existing-parity closure

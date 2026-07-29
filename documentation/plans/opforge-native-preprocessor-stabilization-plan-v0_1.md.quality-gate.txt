@@ -137,3 +137,10 @@ Evidence: focused source-order contract PASS; exact real-native-CLI FS-UAE listi
 
 Reviewer: `plan-compliance-reviewer` rubric.
 Decision: PASS. The independently revertible diff changes one branch target so the exact terminal source line is recorded once and counted. It adds no new routine, parser/directive behavior, listing-format text, symbol behavior, diagnostic, or output bytes.
+
+PASS: Item 5.11.4 restores active loop bindings and assigned-sequence expressions to numeric `.byte`/`.db` parts and restores an explicit post-closing next index for completed `.for` and `.while` callbacks.
+
+Evidence: focused comma-resolution and completed-repetition contracts PASS; runtime-boundary inventory and native formatter PASS; exact real-native-CLI FS-UAE iterable and `.while` fixtures PASS without skip, with iterable bytes matching the live Rust CLI; metadata-aware staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The independently revertible remediation delegates to the established compile-value owner and repairs callback control state after existing routers. It adds no parser, expression grammar, sequence/binding storage, directive owner, package row, CPU/family/dialect behavior, diagnostic wording, or output format.

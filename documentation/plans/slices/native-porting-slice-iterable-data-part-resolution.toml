@@ -1,0 +1,39 @@
+[slice]
+schema_version = 2
+name = "native iterable numeric data-part resolution remediation"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/repetition.rs::evaluate_for_plan",
+  "crates/opforge-types/src/asm_value.rs::AsmValue::iter"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::readCommaOperandValueForStatement",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::finishFor/finishWhile",
+  "native/motorola68000/amigaos/opasm/opasm_compile_values.asm remains the binding and assigned-sequence owner"
+]
+invariant = "Numeric data-list parts resolve active bindings and assigned-sequence expressions before global labels and general expression evaluation, and completed repetition advances past its closing directive."
+assertion_decision = "The existing comma-part adapter calls the existing compile-value owner in the established scalar-operand order; completed loop paths restore the callback's explicit next index after routing; no new state, parser, evaluator, or directive owner is introduced."
+expected_inputs = "Canonical assigned list and inclusive stepped-range loops whose bodies and prelude use .byte binding, .len, and index expressions."
+expected_outputs = "The real native CLI emits the same bytes as live Rust for binding values, list length/index access, and range iteration."
+known_non_equivalences = "Descending ranges and non-numeric iterable values remain outside the existing bounded iterable slice."
+fast_proof_command = "cargo test -p asm native_iterable_data_parts_resolve_bindings_and_sequences_before_engine_labels -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_opcore_iterable_for_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_iterable_data_parts_resolve_bindings_and_sequences_before_engine_labels"
+proof_level = "B"
+proves = "The bounded numeric data-part adapter consults active bindings and assigned sequences before global labels and the general expression bridge."
+does_not_prove = "Native execution or emitted bytes."
+
+[[tests]]
+name = "native_opcore_iterable_for_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the canonical assigned-list and ranges/list sources and native CLI bytes match live Rust."
+does_not_prove = "Descending ranges or non-numeric iterable values."
+
+[[tests]]
+name = "native_completed_repetition_advances_past_closing_directive"
+proof_level = "B"
+proves = "Completed native for/while paths set the next statement to the instruction after the closing directive."
+does_not_prove = "Native execution or emitted bytes."

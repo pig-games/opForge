@@ -36369,6 +36369,67 @@ fn native_iterable_for_source_binds_before_body_and_updates_before_repeat() {
 }
 
 #[test]
+fn native_iterable_data_parts_resolve_bindings_and_sequences_before_engine_labels() {
+    // Proof level B. This proves numeric `.byte`/`.db` list parts use the same
+    // compile-time binding and assigned-sequence resolution order as scalar
+    // directive operands. It does not execute the native parser or guest.
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    let start = driver
+        .find("readCommaOperandValueForStatement\t.block")
+        .expect("comma operand evaluator block");
+    let block = &driver[start..];
+    let end = block
+        .find("\t.bend  ; readCommaOperandValueForStatement")
+        .expect("comma operand evaluator end");
+    let block = &block[..end];
+    assert!(source_contains_in_order(
+        block,
+        &[
+            "bsr.w scopes.resolveLabelValueV1",
+            "jsr compile_values.resolveBindingV1",
+            "jsr compile_values.resolveSequenceExpressionV1",
+            "jsr eng.opasmEngineResolveLabelValueV1",
+            "bsr.w prepareEvaluateExpressionRequest",
+        ]
+    ));
+}
+
+#[test]
+fn native_completed_repetition_advances_past_closing_directive() {
+    // Proof level B. This proves completed `.for` and `.while` paths replace
+    // router-clobbered next-index state with the statement after the closing
+    // directive. It does not execute the native callback or prove loop bytes.
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    for (start_label, end_label) in [
+        ("finishFor\n", "checkWhile\n"),
+        ("finishWhile\n", "compareWhile\n"),
+    ] {
+        let start = driver
+            .find(start_label)
+            .expect("completed repetition label");
+        let tail = &driver[start..];
+        let end = tail
+            .find(end_label)
+            .expect("completed repetition block end");
+        assert!(source_contains_in_order(
+            &tail[..end],
+            &[
+                "move.w d7, d2",
+                "addq.w #1, d2",
+                "moveq #1, d1",
+                "bra.w success"
+            ],
+        ));
+    }
+}
+
+#[test]
 fn opcore_iterable_rust_oracle_covers_assigned_sources() {
     // Proof level A. This test proves the live Rust assembler emits the expected
     // bytes for both assigned canonical iterable sources. It does not prove any

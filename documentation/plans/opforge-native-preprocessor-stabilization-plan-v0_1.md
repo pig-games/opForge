@@ -608,6 +608,24 @@ its own activated item/slice contract.
     table, total memory, and generated-output rows.
   - Definition of done: terminal `.end` source text, line count, symbol table, and generated-output sections match the normalized Rust listing exactly.
 
+- [x] Item 5.11.4: restore iterable values in numeric data parts
+  - Source requirement or finding IDs: Item 5.12 established-corpus first divergence after Item 5.11.3.
+  - Invariant: numeric `.byte`/`.db` list parts resolve active loop bindings and assigned sequence expressions in the same order as scalar directive operands before global labels and the general expression bridge.
+  - Expected files: `opasm_assembly_driver.asm`, focused B contract, exact canonical iterable FS-UAE fixture, slice metadata, inventory refresh, and this plan item.
+  - First divergence: `.for value in nums` established its binding, but `.byte value` used `readCommaOperandValueForStatement`, whose resolution chain skipped both `resolveBindingV1` and `resolveSequenceExpressionV1`; pass one consequently projected the generic bad-directive-expression event at statement 3. Once that chain was restored, the first completed `.endfor` exposed a stale router-clobbered next index and revisited itself after popping the binding; completed `.for` and `.while` paths now explicitly advance past their closing directive.
+  - Proof: B bounded comma-part resolution-order and completed-repetition next-index contracts; D canonical assigned-list and inclusive stepped-range sources in the real native CLI against live Rust bytes.
+  - Full quality gates: focused contract and affected D fixture; runtime-boundary inventory; native formatter; staged native-porting; Rust quality; workflow gate.
+  - Plan-compliance review evidence: PASS; the remediation reuses the established compile-value owner and restores explicit callback next-index state without adding parser, evaluator, sequence, binding, or directive ownership.
+  - Commit outcome: one independently revertible compile-time data-part resolution remediation commit before Item 5.12 resumes.
+  - Completion evidence (2026-07-29): numeric comma parts now consult active
+    bindings and assigned-sequence expressions in the established scalar order.
+    Completed `.for` and `.while` paths explicitly advance beyond their closing
+    directive after router scratch use. Focused B contracts, the runtime-boundary
+    inventory, native formatter, staged native-porting gate, serial Rust quality
+    gate, and aggregate workflow gate pass. Exact real-CLI FS-UAE iterable and
+    `.while` fixtures pass without skip; iterable bytes match the live Rust CLI.
+  - Definition of done: `.byte value`, `.byte .len(values)`, and `.byte values[index]` resolve through the established compile-time value owner, completed repetition cannot revisit its closing directive, and the canonical iterable fixture matches Rust.
+
 - [ ] Item 5.12: enforce no-growth and ownership boundaries
   - Source requirement or finding IDs: NR-009; all prior runtime-boundary items.
   - Invariant: deterministic source guards reject new private semantic routines in the three transitional hotspot files, permit declared façade/delegation entries, detect direct tkpkg access to opasm mutable tables, detect CPU/family terms outside approved owners, and require new semantic modules to name their owner and slice contract.

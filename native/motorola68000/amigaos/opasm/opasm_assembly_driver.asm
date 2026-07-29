@@ -471,6 +471,8 @@ finishFor
 	bne.w fail
 finishPop
 	move.w d3, OpasmRepeatDepth
+	move.w d7, d2
+	addq.w #1, d2
 	moveq #1, d1
 	bra.w success
 
@@ -537,6 +539,8 @@ finishWhile
 	move.w OpasmRepeatDepth, d3
 	subq.w #1, d3
 	move.w d3, OpasmRepeatDepth
+	move.w d7, d2
+	addq.w #1, d2
 	moveq #1, d1
 	bra.w success
 
@@ -2353,6 +2357,14 @@ evaluatePart
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w scopes.resolveLabelValueV1
+	beq.w evalPartOk
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	jsr compile_values.resolveBindingV1
+	beq.w evalPartOk
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	jsr compile_values.resolveSequenceExpressionV1
 	beq.w evalPartOk
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0

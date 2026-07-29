@@ -8,12 +8,19 @@
 
 ; Classify `.for`, `.endfor`, `.while`, and `.endwhile` directives.
 ; Inputs: A0/D0 = mnemonic text.
-; Outputs: D0 = 0; D3.W = 0 unhandled, 1 for, 2 endfor, 3 while, 4 endwhile.
+; Outputs: D0 = 0; D3.W = 0 unhandled, 1 for, 2 endfor, 3 while,
+;          4 endwhile, or 5 bfor.
 ; Clobbers: D0-D6/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 routeDirectiveV1	.block
 	movea.l a0, a2
 	move.l d0, d6
+	movea.l a2, a0
+	move.l d6, d0
+	lea RepetitionBforMnemonicText, a1
+	moveq #4, d1
+	bsr.w repetitionLineStartsWith
+	bne.w repetitionBfor
 	movea.l a2, a0
 	move.l d6, d0
 	lea RepetitionForMnemonicText, a1
@@ -52,6 +59,9 @@ repetitionWhile
 	bra.w repetitionDone
 repetitionEndwhile
 	moveq #4, d3
+	bra.s repetitionDone
+repetitionBfor
+	moveq #5, d3
 repetitionDone
 	moveq #0, d0
 	rts
@@ -109,6 +119,8 @@ repetitionYes
 	.section data, kind=data
 RepetitionForMnemonicText
 	.byte "for", 0
+RepetitionBforMnemonicText
+	.byte "bfor", 0
 RepetitionEndforMnemonicText
 	.byte "endfor", 0
 RepetitionWhileMnemonicText

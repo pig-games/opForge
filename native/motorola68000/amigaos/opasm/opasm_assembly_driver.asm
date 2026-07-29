@@ -383,6 +383,8 @@ checkForMnemonic
 	beq.w compareWhile
 	cmpi.w #4, d3
 	beq.w compareEndwhile
+	cmpi.w #5, d3
+	beq.w beginBfor
 	bra.w fail
 
 	; Legacy fall-through routing retained below as dead compatibility labels for
@@ -429,6 +431,10 @@ compareEndfor
 	subq.l #1, d5
 	move.l d5, 0(a0, d4.l)
 	beq.s finishFor
+	moveq #0, d2
+	move.w d3, d2
+	jsr structs.advanceScopedRepeatV1
+	bne.w fail
 	lea OpasmRepeatHasBinding, a0
 	tst.b 0(a0, d3.l)
 	beq.s repeatBody
@@ -462,6 +468,10 @@ repeatBody
 finishFor
 	move.w OpasmRepeatDepth, d3
 	subq.w #1, d3
+	moveq #0, d2
+	move.w d3, d2
+	jsr structs.clearScopedRepeatV1
+	bne.w fail
 	lea OpasmRepeatHasBinding, a0
 	tst.b 0(a0, d3.l)
 	beq.s finishPop
@@ -685,6 +695,31 @@ beginFor
 	move.w OpasmRepeatDepth, d5
 	cmpi.w #OPASM_REPEAT_STACK_CAPACITY, d5
 	bhs.w fail
+	moveq #0, d2
+	move.w d5, d2
+	jsr structs.clearScopedRepeatV1
+	bne.w fail
+	bra.s beginForShared
+
+beginBfor
+	moveq #0, d5
+	move.w OpasmRepeatDepth, d5
+	cmpi.w #OPASM_REPEAT_STACK_CAPACITY, d5
+	bhs.w fail
+	jsr eng.opasmEngineGetSessionCurrentPcV1
+	move.l d5, d6
+	lsl.l #2, d6
+	lea OpasmRepeatBforBasePc.l, a0
+	move.l d0, 0(a0, d6.l)
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementLabelTextV1
+	moveq #0, d2
+	move.w d5, d2
+	jsr structs.beginScopedRepeatV1
+	bne.w fail
+
+beginForShared
 	move.l d5, d6
 	add.w d6, d6
 	lea OpasmRepeatBodyStart, a0
@@ -829,6 +864,9 @@ opasmDriverRecordLabel	.block
 	movem.l d1-d7/a0-a1/a5, -(sp)
 	move.w d0, d7
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	clr.w OpasmDriverScopedRepeatLabel.l
+	bsr.w qualifyScopedRepeatLabelForStatement
+	bne.w return
 	movea.l sp, a0
 	moveq #0, d0
 	move.w d7, d0
@@ -850,6 +888,16 @@ opasmDriverRecordLabel	.block
 	beq.w recordMutableSymbol
 
 recordPcLabel
+	tst.w OpasmDriverScopedRepeatLabel.l
+	beq.s recordAbsolutePcLabel
+	move.l OpasmDriverScopedRepeatValue.l, d3
+	moveq #0, d4
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineRecordStatementLabelValueV1
+	bra.w handleLabelEvent
+
+recordAbsolutePcLabel
 	moveq #0, d0
 	move.w d7, d0
 	jsr eng.opasmEngineRecordStatementLabelV1
@@ -928,6 +976,54 @@ symbolValueFail
 	moveq #1, d0
 	bra.s return
 	.bend  ; opasmDriverRecordLabel
+
+; Replace a label inside `.bfor` with its zero-based scoped name before the
+; ordinary label table sees it. Repeated visits use the final component of the
+; prior replacement, so the shared statement table remains reusable.
+; @opforge-owner: opasm.amigaos.flow_structs
+; @opforge-slice: documentation/plans/slices/native-porting-slice-structs.toml
+; @opforge-role: delegation
+; Inputs: D7.W = statement index.
+; Outputs: D0 = 0 on success/no active `.bfor`, 1 on capacity failure.
+qualifyScopedRepeatLabelForStatement	.block
+	tst.w OpasmRepeatDepth
+	beq.s scopedLabelOk
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementLabelTextV1
+	movea.l a0, a1
+	move.l d0, d4
+	moveq #0, d2
+	move.w OpasmRepeatDepth, d2
+	subq.w #1, d2
+	movea.l a1, a0
+	move.l d4, d0
+	jsr structs.qualifyScopedRepeatLabelV1
+	bne.s scopedLabelFail
+	tst.w d3
+	beq.s scopedLabelOk
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineSetStatementLabelTextV1
+	bne.s scopedLabelFail
+	jsr eng.opasmEngineGetSessionCurrentPcV1
+	moveq #0, d2
+	move.w OpasmRepeatDepth, d2
+	subq.w #1, d2
+	lsl.l #2, d2
+	lea OpasmRepeatBforBasePc.l, a0
+	sub.l 0(a0, d2.l), d0
+	move.l d0, OpasmDriverScopedRepeatValue.l
+	move.w #1, OpasmDriverScopedRepeatLabel.l
+	moveq #0, d0
+	rts
+scopedLabelOk
+	moveq #0, d0
+	rts
+scopedLabelFail
+	moveq #1, d0
+	rts
+	.bend  ; qualifyScopedRepeatLabelForStatement
 
 ; Capture a typed struct instance from a const, var, or set statement.
 ; Inputs: D7.W = statement index.
@@ -1562,6 +1658,12 @@ prepareRequest
 	bsr.w skipLineWhitespace
 	bsr.w trimLiteralFallbackTrailing
 	jsr compile_values.resolveBindingV1
+	beq.w checkWidth
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w skipLineWhitespace
+	bsr.w trimLiteralFallbackTrailing
+	jsr compile_values.resolveBindingExpressionV1
 	beq.w checkWidth
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
@@ -2328,6 +2430,10 @@ evaluatePart
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	jsr compile_values.resolveBindingV1
+	beq.w evalPartOk
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	jsr compile_values.resolveBindingExpressionV1
 	beq.w evalPartOk
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
@@ -3745,6 +3851,12 @@ OpasmRepeatHasBinding
 
 OpasmRepeatKind
 	.res byte, OPASM_REPEAT_STACK_CAPACITY
+OpasmRepeatBforBasePc
+	.res long, OPASM_REPEAT_STACK_CAPACITY
+OpasmDriverScopedRepeatLabel
+	.res word, 1
+OpasmDriverScopedRepeatValue
+	.res long, 1
 
 OpasmMatchValue
 	.res long, 1

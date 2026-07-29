@@ -37624,6 +37624,19 @@ fn native_struct_source_owns_directives_before_statement_processing() {
         ],
     ));
     assert!(source_contains_in_order(
+        &driver,
+        &[
+            "jsr structs.advanceScopedRepeatV1",
+            "beginBfor",
+            "jsr structs.beginScopedRepeatV1",
+            "qualifyScopedRepeatLabelForStatement\t.block",
+            "jsr structs.qualifyScopedRepeatLabelV1",
+            "jsr compile_values.resolveBindingExpressionV1",
+            "OpasmRepeatBforBasePc",
+            "OpasmDriverScopedRepeatValue",
+        ],
+    ));
+    assert!(source_contains_in_order(
         &struct_flow,
         &[
             "routeDirectiveV1\t.block",
@@ -37631,10 +37644,21 @@ fn native_struct_source_owns_directives_before_statement_processing() {
             "EndstructMnemonicText",
             "structField",
             "beginDefinitionV1\t.block",
+            "moveq #0, d0",
+            "bra.s return",
             "captureFieldV1\t.block",
             "endDefinitionV1\t.block",
             "captureTypedInstanceV1\t.block",
             "compile_values.upsertBindingV1",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &struct_flow,
+        &[
+            "beginScopedRepeatV1\t.block",
+            "advanceScopedRepeatV1\t.block",
+            "qualifyScopedRepeatLabelV1\t.block",
+            "StructScopedRepeatIteration",
         ],
     ));
     assert!(struct_flow.contains(".module opasm.amigaos.flow_structs"));

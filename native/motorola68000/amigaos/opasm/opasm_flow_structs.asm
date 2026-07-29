@@ -7,6 +7,8 @@
 
 STRUCT_NAME_CAPACITY = 32
 STRUCT_FIELD_CAPACITY = 8
+STRUCT_SCOPED_REPEAT_CAPACITY = 8
+STRUCT_LABEL_CAPACITY = 64
 
 	.section code, kind=code
 	.pub
@@ -16,12 +18,228 @@ STRUCT_FIELD_CAPACITY = 8
 ; Clobbers: D0/CCR.
 ; CCR: reflects D0 on return.
 resetStateV1	.block
+	movem.l d0/a0, -(sp)
 	clr.w StructDefinitionActive.l
 	clr.w StructFieldCount.l
 	clr.l StructSize.l
+	lea StructScopedRepeatActive.l, a0
+	moveq #STRUCT_SCOPED_REPEAT_CAPACITY - 1, d0
+clearScopedRepeats
+	clr.b (a0)+
+	dbra d0, clearScopedRepeats
+	movem.l (sp)+, d0/a0
 	moveq #0, d0
 	rts
 	.bend  ; resetStateV1
+
+; Start one labeled scoped repetition.
+; Inputs: D2.W = repetition depth; A0/D0 = base label.
+; Outputs: D0 = 0 on success, 1 for malformed/capacity input.
+beginScopedRepeatV1	.block
+	movem.l d1-d4/a0-a2, -(sp)
+	cmpi.w #STRUCT_SCOPED_REPEAT_CAPACITY, d2
+	bhs.s scopedBeginFail
+	tst.l d0
+	beq.s scopedBeginFail
+	cmpi.l #STRUCT_NAME_CAPACITY, d0
+	bhs.s scopedBeginFail
+	move.l d2, d3
+	lsl.l #5, d3
+	lea StructScopedRepeatNames.l, a1
+	adda.l d3, a1
+	move.l d0, d1
+scopedBeginCopy
+	move.b (a0)+, (a1)+
+	subq.l #1, d1
+	bne.s scopedBeginCopy
+	clr.b (a1)
+	lea StructScopedRepeatActive.l, a2
+	move.b #1, 0(a2, d2.w)
+	move.l d2, d3
+	add.w d3, d3
+	lea StructScopedRepeatIteration.l, a2
+	clr.w 0(a2, d3.l)
+	moveq #0, d0
+	bra.s scopedBeginReturn
+scopedBeginFail
+	moveq #1, d0
+scopedBeginReturn
+	movem.l (sp)+, d1-d4/a0-a2
+	rts
+	.bend  ; beginScopedRepeatV1
+
+; Clear one repetition slot before reuse or after completion.
+; Inputs: D2.W = repetition depth.
+; Outputs: D0 = 0 on success, 1 for an invalid depth.
+clearScopedRepeatV1	.block
+	cmpi.w #STRUCT_SCOPED_REPEAT_CAPACITY, d2
+	bhs.s scopedClearFail
+	lea StructScopedRepeatActive.l, a0
+	clr.b 0(a0, d2.w)
+	moveq #0, d0
+	rts
+scopedClearFail
+	moveq #1, d0
+	rts
+	.bend  ; clearScopedRepeatV1
+
+; Advance the zero-based ordinal for one active scoped repetition.
+; Inputs: D2.W = repetition depth.
+; Outputs: D0 = 0 on success, 1 for an invalid/inactive depth.
+advanceScopedRepeatV1	.block
+	cmpi.w #STRUCT_SCOPED_REPEAT_CAPACITY, d2
+	bhs.s scopedAdvanceFail
+	lea StructScopedRepeatActive.l, a0
+	tst.b 0(a0, d2.w)
+	beq.s scopedAdvanceDone
+	move.l d2, d0
+	add.w d0, d0
+	lea StructScopedRepeatIteration.l, a0
+	addq.w #1, 0(a0, d0.l)
+scopedAdvanceDone
+	moveq #0, d0
+	rts
+scopedAdvanceFail
+	moveq #1, d0
+	rts
+	.bend  ; advanceScopedRepeatV1
+
+; Build `base[ordinal].member` for the active repetition at D2.
+; Inputs: D2.W = repetition depth; A0/D0 = current statement label.
+; Outputs: D0 = status; D3.W = 1 and A0/D1 = replacement when active,
+;          otherwise D3.W = 0.
+qualifyScopedRepeatLabelV1	.block
+	movem.l d2/d4-d7/a1-a4, -(sp)
+	clr.w d3
+	cmpi.w #STRUCT_SCOPED_REPEAT_CAPACITY, d2
+	bhs.w scopedQualifyFail
+	tst.l d0
+	beq.w scopedQualifyOk
+	lea StructScopedRepeatActive.l, a1
+	tst.b 0(a1, d2.w)
+	beq.w scopedQualifyOk
+	movea.l a0, a3
+	move.l d0, d6
+	movea.l a0, a4
+	move.l d0, d7
+scopedSuffixLoop
+	tst.l d7
+	beq.s scopedSuffixReady
+	cmpi.b #'.', (a0)+
+	bne.s scopedSuffixNext
+	movea.l a0, a3
+	move.l d7, d6
+	subq.l #1, d6
+scopedSuffixNext
+	subq.l #1, d7
+	bra.s scopedSuffixLoop
+scopedSuffixReady
+	move.l d2, d4
+	lsl.l #5, d4
+	lea StructScopedRepeatNames.l, a0
+	adda.l d4, a0
+	lea StructScopedRepeatLabelScratch.l, a1
+	clr.l d5
+scopedCopyBase
+	move.b (a0)+, d4
+	beq.s scopedOpenIndex
+	cmpi.l #STRUCT_LABEL_CAPACITY - 1, d5
+	bhs.w scopedQualifyFail
+	move.b d4, (a1)+
+	addq.l #1, d5
+	bra.s scopedCopyBase
+scopedOpenIndex
+	move.b #'[', (a1)+
+	addq.l #1, d5
+	move.l d2, d4
+	add.w d4, d4
+	lea StructScopedRepeatIteration.l, a0
+	moveq #0, d7
+	move.w 0(a0, d4.l), d7
+	moveq #0, d4
+	moveq #0, d2
+scopedThousands
+	cmpi.w #1000, d7
+	blo.s scopedHundreds
+	subi.w #1000, d7
+	addq.w #1, d4
+	bra.s scopedThousands
+scopedHundreds
+	tst.w d4
+	beq.s scopedHundredsCount
+	move.b d4, d0
+	addi.b #'0', d0
+	move.b d0, (a1)+
+	addq.l #1, d5
+	moveq #1, d2
+	moveq #0, d4
+scopedHundredsCount
+	cmpi.w #100, d7
+	blo.s scopedHundredsWrite
+	subi.w #100, d7
+	addq.w #1, d4
+	bra.s scopedHundredsCount
+scopedHundredsWrite
+	tst.w d4
+	bne.s scopedWriteHundreds
+	tst.w d2
+	beq.s scopedTensCount
+scopedWriteHundreds
+	move.b d4, d0
+	addi.b #'0', d0
+	move.b d0, (a1)+
+	addq.l #1, d5
+	moveq #1, d2
+	moveq #0, d4
+scopedTensCount
+	cmpi.w #10, d7
+	blo.s scopedTensWrite
+	subi.w #10, d7
+	addq.w #1, d4
+	bra.s scopedTensCount
+scopedTensWrite
+	tst.w d4
+	bne.s scopedWriteTens
+	tst.w d2
+	beq.s scopedWriteOnes
+scopedWriteTens
+	move.b d4, d0
+	addi.b #'0', d0
+	move.b d0, (a1)+
+	addq.l #1, d5
+scopedWriteOnes
+	addi.b #'0', d7
+	move.b d7, (a1)+
+	addq.l #1, d5
+	move.b #']', (a1)+
+	move.b #'.', (a1)+
+	addq.l #2, d5
+	add.l d6, d5
+	cmpi.l #STRUCT_LABEL_CAPACITY, d5
+	bhs.s scopedQualifyFail
+	move.l d6, d7
+scopedCopySuffix
+	tst.l d7
+	beq.s scopedQualifyDone
+	move.b (a3)+, (a1)+
+	subq.l #1, d7
+	bra.s scopedCopySuffix
+scopedQualifyDone
+	clr.b (a1)
+	lea StructScopedRepeatLabelScratch.l, a0
+	move.l d5, d1
+	moveq #1, d3
+	moveq #0, d0
+	bra.s scopedQualifyReturn
+scopedQualifyOk
+	moveq #0, d0
+	bra.s scopedQualifyReturn
+scopedQualifyFail
+	moveq #1, d0
+scopedQualifyReturn
+	movem.l (sp)+, d2/d4-d7/a1-a4
+	rts
+	.bend  ; qualifyScopedRepeatLabelV1
 
 ; Classify one struct directive or struct-body field.
 ; Inputs: A0/D0 = mnemonic text.
@@ -125,6 +343,7 @@ copyName
 	clr.w StructFieldCount.l
 	clr.l StructSize.l
 	moveq #0, d0
+	bra.s return
 fail
 	moveq #1, d0
 return
@@ -606,5 +825,13 @@ StructFieldOffsets
 	.res long, STRUCT_FIELD_CAPACITY
 StructMemberNameScratch
 	.res byte, (STRUCT_NAME_CAPACITY * 2) + 2
+StructScopedRepeatActive
+	.res byte, STRUCT_SCOPED_REPEAT_CAPACITY
+StructScopedRepeatIteration
+	.res word, STRUCT_SCOPED_REPEAT_CAPACITY
+StructScopedRepeatNames
+	.res byte, STRUCT_NAME_CAPACITY * STRUCT_SCOPED_REPEAT_CAPACITY
+StructScopedRepeatLabelScratch
+	.res byte, STRUCT_LABEL_CAPACITY
 	.endsection
 	.endmodule

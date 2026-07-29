@@ -597,6 +597,80 @@ resolveReturn
 	rts
 	.bend  ; resolveBindingV1
 
+; Resolve a bounded loop binding with one numeric addition or subtraction.
+; Inputs: A0/D0 = trimmed expression text/length.
+; Outputs: D0 = status; D3 = value on success.
+resolveBindingExpressionV1	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	move.l d0, d7
+	bsr.w skipWhitespace
+	movea.l a0, a2
+	clr.l d6
+bindingNameLoop
+	tst.l d7
+	beq.s bindingNameDone
+	move.b (a0), d4
+	cmpi.b #' ', d4
+	beq.s bindingNameDone
+	cmpi.b #9, d4
+	beq.s bindingNameDone
+	cmpi.b #'+', d4
+	beq.s bindingNameDone
+	cmpi.b #'-', d4
+	beq.s bindingNameDone
+	addq.l #1, a0
+	subq.l #1, d7
+	addq.l #1, d6
+	bra.s bindingNameLoop
+bindingNameDone
+	tst.l d6
+	beq.w bindingExprFail
+	movea.l a0, a3
+	move.l d7, d2
+	movea.l a2, a0
+	move.l d6, d0
+	bsr.w resolveBindingV1
+	bne.w bindingExprFail
+	move.l d3, d5
+	movea.l a3, a0
+	move.l d2, d7
+	bsr.w skipWhitespace
+	tst.l d7
+	beq.w bindingExprFail
+	moveq #0, d4
+	move.b (a0)+, d4
+	subq.l #1, d7
+	cmpi.b #'+', d4
+	beq.s bindingHaveOperator
+	cmpi.b #'-', d4
+	bne.w bindingExprFail
+bindingHaveOperator
+	bsr.w skipWhitespace
+	movea.l a0, a3
+	bsr.w parseNumber
+	bne.w bindingExprFail
+	cmpa.l a3, a0
+	beq.w bindingExprFail
+	bsr.w skipWhitespace
+	tst.l d7
+	bne.w bindingExprFail
+	cmpi.b #'+', d4
+	beq.s bindingAdd
+	sub.l d3, d5
+	bra.s bindingExprOk
+bindingAdd
+	add.l d3, d5
+bindingExprOk
+	move.l d5, d3
+	moveq #0, d0
+	bra.s bindingExprReturn
+bindingExprFail
+	moveq #1, d0
+bindingExprReturn
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; resolveBindingExpressionV1
+
 ; Resolve `.len(sequence)` or `sequence[index]`.
 ; Inputs: A0/D0 = trimmed expression text/length.
 ; Outputs: D0 = status; D3 = scalar value.

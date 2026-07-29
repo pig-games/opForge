@@ -1,4 +1,5 @@
 ; FS-UAE runtime harness for native parameterized macro capture and dotted lookup.
+; @opforge-evidence: level=D; role=focused-negative; authority=focused-contract; lifecycle=permanent
 
 	.module macro.preprocessor.harness
 	.cpu 68020

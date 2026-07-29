@@ -1,4 +1,5 @@
 ; FS-UAE diagnostic harness for stored macro-expanded statement spans.
+; @opforge-evidence: level=E; role=diagnostic; authority=none; lifecycle=permanent
 
 	.module macro.cli.debug.event.harness
 	.cpu 68020

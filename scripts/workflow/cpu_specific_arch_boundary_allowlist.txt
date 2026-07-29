@@ -25,6 +25,7 @@ scripts/workflow/check_cpu_specific_arch_boundary.py | * | The checker implement
 scripts/workflow/cpu_specific_terms.txt | * | The checker term list intentionally enumerates CPU-specific vocabulary.
 scripts/workflow/cpu_specific_arch_boundary_allowlist.txt | * | The checker allowlist intentionally documents reviewed exceptions.
 scripts/workflow/native_runtime_ownership_baseline.toml | motorola68000 | The structural no-growth baseline names exact host-native module paths but does not implement target CPU semantics.
+scripts/workflow/native_debug_evidence_classification.toml | motorola68000 | The evidence ledger names exact host-native harness paths but does not implement target CPU semantics.
 
 # These parser-surface files intentionally enumerate target mnemonics as syntax or compatibility data without owning runtime semantics.
 crates/opforge-core/src/parser_compat_mixed.rs | * | Mixed parser compatibility helpers intentionally recognize target-specific syntactic forms.

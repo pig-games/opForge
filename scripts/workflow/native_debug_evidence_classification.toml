@@ -1,0 +1,124 @@
+[policy]
+schema_version = 1
+macro_artifact_parity_authority = "examples/opcore/macro_invocation_native.asm"
+level_e_can_close_completion = false
+
+[[artifacts]]
+id = "debug-contract-harness"
+path = "native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm"
+marker = "@opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent"
+proof_level = "D"
+role = "permanent-contract"
+authority = "focused-contract"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
+id = "cli-debug-event-harness"
+path = "native/motorola68000/amigaos/test-harnesses/debug/cli_debug_event_harness.asm"
+marker = "@opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent"
+proof_level = "D"
+role = "permanent-contract"
+authority = "focused-contract"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
+id = "macro-preprocessor-harness"
+path = "native/motorola68000/amigaos/test-harnesses/debug/macro_preprocessor_harness.asm"
+marker = "@opforge-evidence: level=D; role=focused-negative; authority=focused-contract; lifecycle=permanent"
+proof_level = "D"
+role = "focused-negative"
+authority = "focused-contract"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
+id = "macro-preprocessor-helper"
+path = "crates/opforge-asm/src/fs_uae_smoke.rs"
+marker = "@opforge-evidence: level=D; role=focused-negative; authority=focused-contract; lifecycle=permanent"
+proof_level = "D"
+role = "focused-negative"
+authority = "focused-contract"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
+id = "pipeline-select-harness"
+path = "native/motorola68000/amigaos/test-harnesses/debug/pipeline_select_harness.asm"
+marker = "@opforge-evidence: level=D; role=focused-contract; authority=focused-contract; lifecycle=permanent"
+proof_level = "D"
+role = "focused-contract"
+authority = "focused-contract"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
+id = "pipeline-select-helper"
+path = "crates/opforge-asm/src/fs_uae_smoke.rs"
+marker = "@opforge-evidence: level=D; role=focused-contract; authority=focused-contract; lifecycle=permanent"
+proof_level = "D"
+role = "focused-contract"
+authority = "focused-contract"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
+id = "macro-cli-debug-event-harness"
+path = "native/motorola68000/amigaos/test-harnesses/debug/macro_cli_debug_event_harness.asm"
+marker = "@opforge-evidence: level=E; role=diagnostic; authority=none; lifecycle=permanent"
+proof_level = "E"
+role = "diagnostic"
+authority = "none"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
+id = "macro-cli-debug-event-helper"
+path = "crates/opforge-asm/src/fs_uae_smoke.rs"
+marker = "@opforge-evidence: level=E; role=diagnostic; authority=none; lifecycle=permanent"
+proof_level = "E"
+role = "diagnostic"
+authority = "none"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
+id = "console-debugger-probe"
+path = "scripts/workflow/probe_fs_uae_console_debugger.py"
+marker = "@opforge-evidence: level=E; role=diagnostic-tool; authority=none; lifecycle=permanent"
+proof_level = "E"
+role = "diagnostic-tool"
+authority = "none"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
+id = "console-debugger-runner"
+path = "scripts/workflow/run_fs_uae_console_debugger.py"
+marker = "@opforge-evidence: level=E; role=diagnostic-tool; authority=none; lifecycle=permanent"
+proof_level = "E"
+role = "diagnostic-tool"
+authority = "none"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
+id = "console-debugger-contract"
+path = "documentation/fs-uae-console-debugger.md"
+marker = "@opforge-evidence: level=E; role=diagnostic-contract; authority=none; lifecycle=permanent"
+proof_level = "E"
+role = "diagnostic-contract"
+authority = "none"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
+id = "macro-hang-console-report"
+path = "documentation/plans/slices/opforge-fs-uae-macro-hang-console-report-v0_1.md"
+marker = "@opforge-evidence: level=E; role=diagnostic-report; authority=none; lifecycle=permanent"
+proof_level = "E"
+role = "diagnostic-report"
+authority = "none"
+lifecycle = "permanent"
+deletion_condition = ""

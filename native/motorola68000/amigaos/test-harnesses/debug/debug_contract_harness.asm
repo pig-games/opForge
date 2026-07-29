@@ -1,4 +1,5 @@
 ; Executable FS-UAE harness for native debug-contract behavior and preservation.
+; @opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent
 
 	.module debug.contract.harness
 	.cpu 68020

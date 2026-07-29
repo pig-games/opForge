@@ -165,3 +165,10 @@ Evidence: `run_native_existing_parity_completion.sh --verify` executed all 34 ex
 
 Reviewer: `plan-compliance-reviewer` rubric.
 Decision: PASS. The closure is evidence-only and explicitly excludes future segment, statement, export, linker, and selector-remediation semantics. The deleted expression-context adapter remains absent; the sole neutral engine-context transition is isolated and scheduled for deletion in parent Item 7.7 when module/import integration can provide the neutral context without a tkpkg-to-opasm import.
+
+PASS: Item 6 makes native preprocessor/debug evidence authority explicit and machine checked without changing production behavior or reference artifacts.
+
+Evidence: the canonical 12-artifact classification ledger and five focused negative-policy unit tests PASS; the integrated classification checker PASSes; both fail-closed macro Level D wrapper tests and the retained macro manifest validator PASS; the focused pipeline-selection Level D harness PASSes; the macro CLI debug-event harness runs successfully but is retained only as Level E diagnostic evidence; native formatting, metadata-aware staged native-porting, serial full Rust quality, and aggregate workflow gates PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The macro preprocessor harness is Level D focused-negative evidence, the pipeline helper is a focused Level D package-selection contract, and the macro CLI debug-event plus console-debugger tools/reports are Level E localization only. Level E cannot close completion, every retained artifact has a permanent lifecycle, and the untouched macro CLI fixture remains the sole macro artifact parity authority. No production source semantics, CLI behavior, diagnostics, or output artifacts change.

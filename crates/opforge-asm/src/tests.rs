@@ -474,8 +474,9 @@ fn native_pipeline_select_harness_fs_uae_proves_embedded_65c02_selection() {
 
 #[test]
 fn native_macro_cli_debug_event_harness_proves_complete_macro_fixture_image() {
-    // Proof level D diagnostic. This test proves the full guest CLI expands
-    // the macro fixture into its complete 11-byte native image.
+    // Proof level E diagnostic. This localizes whether the full guest CLI
+    // reached an 11-byte image; only native_macro_invocation_fixture_fs_uae is
+    // macro artifact parity authority.
     match crate::fs_uae_smoke::run_native_macro_cli_debug_event_harness_from_env(&workspace_root())
         .expect("native macro CLI debug-event harness should complete or skip cleanly")
     {

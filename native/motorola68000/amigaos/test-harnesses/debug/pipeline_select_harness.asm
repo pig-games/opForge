@@ -1,4 +1,5 @@
 ; FS-UAE harness for embedded 65C02 pipeline selection.
+; @opforge-evidence: level=D; role=focused-contract; authority=focused-contract; lifecycle=permanent
 
 	.module pipeline.select.harness
 	.cpu 68020

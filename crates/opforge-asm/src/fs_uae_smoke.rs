@@ -533,6 +533,7 @@ pub(crate) fn run_native_cli_flow_navigation_from_env(
     }
 }
 
+// @opforge-evidence: level=D; role=focused-negative; authority=focused-contract; lifecycle=permanent
 pub(crate) fn run_native_macro_preprocessor_harness_from_env(
     workspace_root: &Path,
 ) -> Result<FsUaeSmokeOutcome, String> {
@@ -556,6 +557,7 @@ pub(crate) fn run_native_macro_preprocessor_harness_from_env(
     }
 }
 
+// @opforge-evidence: level=D; role=focused-contract; authority=focused-contract; lifecycle=permanent
 pub(crate) fn run_native_pipeline_select_harness_from_env(
     workspace_root: &Path,
 ) -> Result<FsUaeSmokeOutcome, String> {
@@ -580,6 +582,7 @@ pub(crate) fn run_native_pipeline_select_harness_from_env(
     }
 }
 
+// @opforge-evidence: level=E; role=diagnostic; authority=none; lifecycle=permanent
 pub(crate) fn run_native_macro_cli_debug_event_harness_from_env(
     workspace_root: &Path,
 ) -> Result<FsUaeSmokeOutcome, String> {

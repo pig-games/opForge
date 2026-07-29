@@ -689,7 +689,7 @@ its own activated item/slice contract.
     to parent Item 7.7; the no-growth and CPU/package boundary guards pass.
   - Definition of done: all extraction adapters are removed or have named later deletion items, all no-growth guards pass, and no CPU/package boundary regression remains.
 
-- [ ] Item 6: classify preprocessor debugging evidence
+- [x] Item 6: classify preprocessor debugging evidence
   - Source requirement or finding IDs: SP-009 (debug harnesses must not become parity substitutes); SP-010 (oversized `tests.rs` obscures subsystem ownership).
   - Invariant: each harness declares permanent B/C/D proof, Level E diagnostic tooling, or removal, and the macro CLI fixture remains the only macro artifact parity authority.
   - Expected files: harness comments/metadata, debug reports, macro slice metadata, and focused classification tests if needed.
@@ -698,6 +698,20 @@ its own activated item/slice contract.
   - Full quality gates: focused classification check; Item 1 macro wrapper/validator; native formatter if harness assembly changes; staged native-porting where applicable; Rust quality; workflow gate.
   - Plan-compliance review evidence: PASS for evidence classification only.
   - Commit outcome: one harness-evidence classification commit.
+  - Completion evidence (2026-07-29): a deterministic ledger classifies all 12
+    governed harnesses, Rust launch helpers, console-debugger tools/contracts,
+    and the retained macro-hang report by proof level, role, authority, and
+    lifecycle. The macro preprocessor harness is permanent Level D
+    focused-negative evidence; pipeline selection is a permanent focused Level
+    D contract; the macro CLI debug-event path and all console-debugger
+    artifacts are permanent Level E localization only. The contradictory
+    `Proof level D diagnostic` label is removed, Level E is mechanically barred
+    from completion authority, and the untouched macro CLI fixture remains the
+    sole macro artifact parity authority. Focused classification tests, both
+    fail-closed macro wrapper tests, the retained manifest validator, the
+    pipeline harness, the diagnostic-only macro debug harness, native
+    formatting, staged native-porting, serial Rust quality, and workflow gates
+    pass.
   - Definition of done: production versus debug evidence is unambiguous and SP-009 fully closes.
 
 - [ ] Item 6.1: split native-parity Rust test ownership mechanically

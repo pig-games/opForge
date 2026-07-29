@@ -669,7 +669,7 @@ its own activated item/slice contract.
     Rust quality, and aggregate workflow gates pass.
   - Definition of done: later segment/statement work cannot silently regrow decomposed hotspots or reverse neutral dependency edges.
 
-- [ ] Item 5.13: run complete existing-parity closure
+- [x] Item 5.13: run complete existing-parity closure
   - Source requirement or finding IDs: NR-001 through NR-009; all prior runtime-boundary items.
   - Invariant: every observable feature green before this amendment remains green after decomposition.
   - Expected files: retained clean-source completion receipt, affected slice records/evidence, parity closure report, and this plan.
@@ -678,6 +678,15 @@ its own activated item/slice contract.
   - Full quality gates: all named parity groups; retained macro receipt validation; no-growth/dependency guards; Rust quality; workflow gate.
   - Plan-compliance review evidence: PASS for evidence-only closure and any remaining adapter deletion schedule.
   - Commit outcome: one clean-source-identity evidence-only completion receipt; no feature implementation.
+  - Completion evidence (2026-07-29): the fail-closed completion wrapper ran
+    all 34 exact established Level D filters from clean commit `50481756` / tree
+    `a0128b62b8a33e6598a183dcc1357ca5cbbe4cda`; every filter ran once and
+    passed with no `SKIP:`. The retained receipt and closure review cover CLI,
+    flow, macro, scope, struct/`.bfor`, expression, text, layout, and package
+    groups. The future combined segment/statement fixture remains assigned to
+    parent Items 7.4–7.7. The sole transitional engine-context adapter is
+    isolated behind the neutral runtime context and has its deletion assigned
+    to parent Item 7.7; the no-growth and CPU/package boundary guards pass.
   - Definition of done: all extraction adapters are removed or have named later deletion items, all no-growth guards pass, and no CPU/package boundary regression remains.
 
 - [ ] Item 6: classify preprocessor debugging evidence

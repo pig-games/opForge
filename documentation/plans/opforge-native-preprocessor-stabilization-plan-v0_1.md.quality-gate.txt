@@ -158,3 +158,10 @@ Evidence: sixteen focused positive/negative workflow tests PASS; the repository 
 
 Reviewer: `plan-compliance-reviewer` rubric.
 Decision: PASS. The independently revertible workflow slice records certified routine sets, permits only slice-backed façade/delegation entries, rejects tkpkg-to-opasm mutable-state reads, composes the existing CPU-specific boundary without report mutation, and requires owner/slice provenance for new production semantic modules. It adds no parser, evaluator, directive, CPU/family/dialect, package, diagnostic, or output behavior. The future `.INLINE` macro/statement fixture is explicitly excluded because it belongs to open Items 7.4–7.7, not the established pre-amendment corpus.
+
+PASS: Item 5.13 records the complete established native parity closure against a clean committed source identity. No production or test behavior changes in this evidence-only slice.
+
+Evidence: `run_native_existing_parity_completion.sh --verify` executed all 34 exact Level D filters against clean commit `504817568047e8a2d68d8bc9547ab999e2d46de4` and tree `a0128b62b8a33e6598a183dcc1357ca5cbbe4cda`; every filter ran once and PASSed with no `SKIP:`. The retained JSON receipt, closure review, no-growth guard, CPU/package boundary audit, serial full Rust quality gate, and aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The closure is evidence-only and explicitly excludes future segment, statement, export, linker, and selector-remediation semantics. The deleted expression-context adapter remains absent; the sole neutral engine-context transition is isolated and scheduled for deletion in parent Item 7.7 when module/import integration can provide the neutral context without a tkpkg-to-opasm import.

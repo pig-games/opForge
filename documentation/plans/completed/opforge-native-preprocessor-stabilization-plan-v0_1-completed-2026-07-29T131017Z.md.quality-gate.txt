@@ -179,3 +179,10 @@ Evidence: the pre-move ledger records 139 exact function names; the deterministi
 
 Reviewer: `plan-compliance-reviewer` rubric.
 Decision: PASS. The diff is a mechanical test-code ownership split plus the minimum wrapper source-discovery update. Test bodies, names, cargo filters, proof declarations, fixtures, expected results, and production sources are unchanged; no native, parser, expression, CPU/family/dialect, package, diagnostic, or output behavior is added.
+
+PASS: Item 7 certifies the completed native runtime stabilization boundary and amends the parent parity plan without changing production or test behavior.
+
+Evidence: all Items 1-6.1 have focused green commits and retained evidence; the established 34-test clean-source Level D receipt and macro Level D receipt remain valid; runtime no-growth, dependency, debug-evidence, and test-ownership checks PASS; the parent plan now orders CLI error-output remediation before segment capture, retains segment/statement/export sequencing, assigns the sole transitional engine-context adapter deletion to Item 7.7, and gates Item 8 on separate CPU/selector remediation.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The closure is limited to evidence, architecture records, parent-plan ordering, and archival bookkeeping. It implements no CLI diagnostic, segment, statement, export/import, linker/output, CPU/family/dialect, selector, package, or output semantics. No release-note entry is required.

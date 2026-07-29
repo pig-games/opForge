@@ -75,9 +75,12 @@ family, dialect, instruction, selector, plan, or encoding support.
 
 The ABI must be pointer/register explicit, read-only to package consumers, and
 versioned.  It returns defined absence/unresolved status rather than exposing
-table layout.  The adapter is the only Item 5.7 transitional owner and is
-deleted only after Items 5.7.1 and 5.7.2 prove no tkpkg consumer imports or
-addresses engine mutable label-table storage.
+table layout. The adapter is the only Item 5.7 transitional owner. Items 5.7.1
+and 5.7.2 proved that consumers use the context ABI rather than engine
+mutable-table storage. Parent native parity Item 7.7 is the latest permitted
+removal milestone: module/import integration must supply the neutral context
+without a tkpkg-to-opasm import, then delete the adapter and its
+inventory/no-growth allowance in the same focused slice.
 
 ## Extraction ledger
 
@@ -93,7 +96,7 @@ adapter, and deletion criterion.  “None” means no adapter is authorized.
 | 5.6 | tkpkg facade selection traversal | tkpkg selection service | facade-to-selection call | facade has no selected-instruction/candidate traversal |
 | 5.6.1 | selection/facade operand-plan handling | tkpkg operand runtime | selection-to-operand call | neither prior owner interprets plans |
 | 5.6.2 | selection/facade package encoding | tkpkg encoding service | selection-to-encoding call | prior owners contain no encoding interpreter |
-| 5.7 | direct service/engine context access | neutral context plus engine adapter | engine context adapter | consumers use the context ABI only |
+| 5.7 | direct service/engine context access | neutral context plus engine adapter | engine context adapter | parent parity Item 7.7 supplies neutral context without a tkpkg-to-opasm import, then deletes the adapter and its inventory/no-growth allowance |
 | 5.7.1 | expression consumer direct context | expression service/context ABI | Item 5.7 adapter | expression service imports only neutral context; temporary context adapter deleted |
 | 5.7.2 | selection/encoding consumer direct context | selection/encoding context ABI | Item 5.7 adapter | no tkpkg engine-table import/address remains |
 | 5.8 | driver directive routing | directive router | driver-to-router dispatch | driver has no directive/mnemonic string chains |

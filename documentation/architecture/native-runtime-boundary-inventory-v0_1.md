@@ -250,9 +250,12 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   the runtime-context ABI and never exposes engine table layout.
 - Routine responsibility groups: the sole transitional engine access point for
   future tkpkg context consumers.
-- Decision: this adapter remains the sole engine-state reader. Items 5.7.1 and
-  5.7.2 have migrated expression, selection, and operand consumers. This work
-  adds no CPU or package semantics.
+- Decision: this adapter remains the sole transitional engine-state reader.
+  Items 5.7.1 and 5.7.2 have migrated expression, selection, and operand
+  consumers. Parent native parity Item 7.7 is the latest permitted removal
+  milestone: module/import integration must provide the neutral context without
+  a tkpkg-to-opasm import, then delete this adapter and its inventory/no-growth
+  allowance. This work adds no CPU or package semantics.
 
 ### `opasm.amigaos.engine` (NR-001, conditional decomposition)
 

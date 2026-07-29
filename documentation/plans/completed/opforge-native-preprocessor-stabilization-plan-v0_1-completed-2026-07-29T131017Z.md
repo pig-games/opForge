@@ -735,7 +735,7 @@ its own activated item/slice contract.
     pass.
   - Definition of done: completion wrappers retain their exact test names and SP-010 fully closes with no product code change.
 
-- [ ] Item 7: certify native runtime stabilization and amend the parent parity plan
+- [x] Item 7: certify native runtime stabilization and amend the parent parity plan
   - Source requirement or finding IDs: SP-011; NR-001 through NR-009.
   - Invariant: parent parity Item 7.4 segment work cannot begin until all original preprocessor items, the resource budget, debug evidence, Rust test ownership, native responsibility/dependency audit, mandatory tkpkg-service and opasm-driver decomposition, expression-boundary decision, conditional audit decisions, neutral runtime context, no-growth/dependency guards, established parity, and a clean source-identity completion receipt are green.
   - Expected files: this plan; `documentation/plans/opforge-native-cli-reference-parity-expansion-plan-v0_1.md`; runtime-boundary architecture records; affected slice records; retained receipts; plan-quality and plan-compliance evidence.
@@ -746,6 +746,7 @@ its own activated item/slice contract.
   - Plan-compliance review evidence: PASS confirms all stabilization prerequisites are complete and no segment, statement, export, linker, or new selector semantics were implemented prematurely.
   - Commit outcome: one stabilization-closure and parent-plan amendment commit after preceding items are independently committed and green.
   - Definition of done: the next active programme is CLI error-output remediation; segment capture follows only after that remediation completes.
+  - Completion evidence: `documentation/reviews/native-runtime-stabilization-closure-v0_1.md` records the PASS boundary; the parent plan now adds Item 7.3g CLI error-output remediation, makes Item 7.4 depend on it and this plan's archive, assigns transitional engine-context adapter deletion to Item 7.7, and gates Item 8 on separate CPU/selector remediation. The retained existing-parity and macro receipts, no-growth/dependency guards, debug-evidence and test-ownership checks remain green; no production or test semantics changed.
 
 ## Blocking Rules
 

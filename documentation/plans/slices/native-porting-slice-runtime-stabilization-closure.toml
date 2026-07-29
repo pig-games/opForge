@@ -1,0 +1,32 @@
+[slice]
+schema_version = 2
+name = "native runtime stabilization closure and parent handoff"
+kind = "native-rust-parity"
+rust_reference = [
+  "live Rust CLI diagnostic routing and established native parity authorities"
+]
+native_boundary = [
+  "completed native preprocessor stabilization plan",
+  "documentation/plans/opforge-native-cli-reference-parity-expansion-plan-v0_1.md",
+  "documentation/architecture/native-runtime-boundary-contract-v0_1.md",
+  "documentation/architecture/native-runtime-boundary-inventory-v0_1.md"
+]
+invariant = "Stabilization closes without new native semantics; the parent plan starts with CLI error-output remediation, then segment, statement, and export/import work."
+assertion_decision = "No production assertion is added; deterministic plan, ownership, receipt, and workflow validators certify the handoff."
+expected_inputs = "Completed stabilization Items 1-6.1, retained clean-source parity receipts, no-growth boundaries, and the parent parity plan."
+expected_outputs = "An archived stabilization plan, an explicit parent-plan dependency chain, and a bound deletion milestone for the sole transitional engine-context adapter."
+known_non_equivalences = "CLI diagnostic routing, segment, statement, export/import, linker/output, and CPU/selector remediation remain future parent-plan work."
+level_d_command = "scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "retained_existing_native_parity_receipt"
+proof_level = "D"
+proves = "The established 34-test native parity corpus passed against its recorded clean source identity."
+does_not_prove = "Future CLI diagnostic, segment, statement, export/import, linker, or selector behavior."
+
+[[tests]]
+name = "stabilization_handoff_contract"
+proof_level = "B"
+proves = "The parent ordering and remaining transitional-adapter deletion milestone are explicit and machine-reviewable."
+does_not_prove = "Runtime behavior for any future parent-plan item."

@@ -130,3 +130,10 @@ Evidence: focused scoped-snapshot B/C contracts PASS; the runtime-boundary inven
 
 Reviewer: `plan-compliance-reviewer` rubric.
 Decision: PASS. The diff is an independently revertible first-divergence remediation limited to active-scope alias projection at the opasm request boundary, its bounded scratch snapshot, exact contracts, inventory refresh, slice metadata, and plan bookkeeping. It adds no expression grammar, package row, addressing mode, encoding, diagnostic, or output-format behavior.
+
+PASS: Item 5.11.3 restores terminal source-line listing parity by routing `.end` through the existing source-record label before the existing terminal non-statement check. The listing builder, parser, symbols, emitted bytes, and CPU/family/dialect semantics remain unchanged.
+
+Evidence: focused source-order contract PASS; exact real-native-CLI FS-UAE listing comparison against the live Rust CLI oracle PASS without skip; native formatter PASS; metadata-aware staged native-porting gate PASS; serial full Rust quality gate PASS; aggregate workflow gate PASS.
+
+Reviewer: `plan-compliance-reviewer` rubric.
+Decision: PASS. The independently revertible diff changes one branch target so the exact terminal source line is recorded once and counted. It adds no new routine, parser/directive behavior, listing-format text, symbol behavior, diagnostic, or output bytes.

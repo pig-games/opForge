@@ -592,6 +592,22 @@ its own activated item/slice contract.
     canonical first-run PRG fixtures pass in FS-UAE with Rust-matching bytes.
   - Definition of done: scoped instruction expressions resolve local constants/variables without neutral-layer reverse dependencies.
 
+- [x] Item 5.11.3: restore terminal source-line listing parity
+  - Source requirement or finding IDs: Item 5.12 established-corpus first divergence after Item 5.11.2.
+  - Invariant: `.end` remains a terminal non-statement while its exact source line is preserved in the listing and counted identically to Rust.
+  - Expected files: `opforge-cli/line_processor.asm`, a focused source-order contract, the exact live-Rust listing fixture, slice metadata, and this plan item.
+  - First divergence: the authoritative listing case omitted source line 48 (`.end`) from the native source-record table, so the footer reported 47 lines and every following listing row shifted despite identical assembled bytes and symbol values.
+  - Proof: B source-record-before-terminal-routing contract; D exact real native CLI listing comparison against a live Rust CLI oracle.
+  - Full quality gates: focused contract and affected D fixture; native formatter; staged native-porting; Rust quality; workflow gate.
+  - Plan-compliance review evidence: PASS; the change targets the existing source-record path and retains the existing terminal non-statement route, with no parser, listing builder, symbol, or byte-emission semantics added.
+  - Commit outcome: one independently revertible listing source-record remediation commit before Item 5.12 resumes.
+  - Completion evidence (2026-07-29): the pre-routing `.end` branch now targets
+    the ordinary source-record label; the later terminal check still suppresses
+    statement routing. The focused ordering contract and exact live-Rust
+    FS-UAE listing fixture pass, including source line 48, `Lines: 48`, symbol
+    table, total memory, and generated-output rows.
+  - Definition of done: terminal `.end` source text, line count, symbol table, and generated-output sections match the normalized Rust listing exactly.
+
 - [ ] Item 5.12: enforce no-growth and ownership boundaries
   - Source requirement or finding IDs: NR-009; all prior runtime-boundary items.
   - Invariant: deterministic source guards reject new private semantic routines in the three transitional hotspot files, permit declared façade/delegation entries, detect direct tkpkg access to opasm mutable tables, detect CPU/family terms outside approved owners, and require new semantic modules to name their owner and slice contract.

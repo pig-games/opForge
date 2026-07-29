@@ -34918,6 +34918,27 @@ fn native_reference_schema_live_rust_cli_listing_oracle_uses_exact_example_sourc
 }
 
 #[test]
+fn native_listing_records_end_line_before_terminal_routing() {
+    // Proof level B. This proves the native frontend records `.end` in the
+    // source table before treating it as a terminal non-statement. It does not
+    // prove the emitted listing text or real guest execution.
+    let source = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read native CLI line processor");
+    assert!(
+        source.contains(
+            "\tlea strings.EndMnemonicText, a1\n\tmoveq #4, d1\n\tjsr line_text.opforgeNativeCliLineStartsWith\n\tbne.w record\n\ttst.w state.NativeCliIncludeDepth"
+        ),
+        "`.end` must enter the ordinary source-record path before terminal routing"
+    );
+    assert!(
+        source.contains("record\n\tjsr assembly_session.opforgeNativeCliRecordSourceLine"),
+        "the terminal branch target must record the exact source line"
+    );
+}
+
+#[test]
 fn native_reference_schema_diagnostic_comparator_accepts_match_and_rejects_mismatch() {
     // Proof level B. This test proves deterministic native diagnostic text is
     // classified into the reviewed schema class and unrelated text is rejected.

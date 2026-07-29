@@ -1,0 +1,31 @@
+[slice]
+schema_version = 2
+name = "native terminal source-line listing parity remediation"
+kind = "native-rust-parity"
+rust_reference = [
+  "Rust listing counts and writes every input source line, including terminal .end"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm",
+  "native opasm listing artifact builder and assembly semantics remain unchanged"
+]
+invariant = "The terminal .end line is recorded once before terminal routing, remains a non-statement, and appears in the listing footer count and source rows."
+assertion_decision = "The frontend branch target changes from pre-record suppression to the existing ordinary record path; no new parser or listing-format routine is introduced."
+expected_inputs = "A source ending in .end and a native CLI --list request."
+expected_outputs = "The exact .end source row and total line count match the live Rust listing while assembled bytes and symbols remain unchanged."
+known_non_equivalences = "No instruction, directive, macro, include, module, diagnostic, symbol, byte-emission, or output-format semantics change."
+fast_proof_command = "cargo test -p asm native_listing_records_end_line_before_terminal_routing -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_opforge_native_cli_schema_listing_parity_matches_live_rust_cli -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_listing_records_end_line_before_terminal_routing"
+proof_level = "B"
+proves = "The terminal line enters the existing source-record path before it is suppressed from statement routing."
+does_not_prove = "Artifact text or guest execution."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_schema_listing_parity_matches_live_rust_cli"
+proof_level = "D"
+proves = "The real native CLI listing for the exact checked-in source matches a live Rust CLI oracle after reviewed banner normalization."
+does_not_prove = "Unrelated diagnostics, package families, or future listing options."

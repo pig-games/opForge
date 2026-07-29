@@ -98,7 +98,7 @@ invocationPass
 	lea strings.EndMnemonicText, a1
 	moveq #4, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	bne.w commentOnly
+	bne.w record
 	tst.w state.NativeCliIncludeDepth
 	beq.s record
 	jsr report.opforgeNativeCliEmitIncludeLineRecord

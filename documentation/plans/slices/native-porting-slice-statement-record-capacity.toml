@@ -1,0 +1,32 @@
+[slice]
+schema_version = 2
+name = "native statement-record capacity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/tests/native_statement_capacity.rs::native_statement_capacity_over_160_fs_uae",
+  "crates/opforge-asm/src/lib.rs::assemble_source_entries_with_runtime_mode"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/constants.asm::NATIVE_STATEMENT_TABLE_CAPACITY",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::NATIVE_STATEMENT_TABLE_CAPACITY",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineStoreStatementRecordV1"
+]
+invariant = "The native CLI accepts every statement that fits the existing bounded 512-record source/session domain, including complete sources beyond the former 160-statement transitional limit, and checks capacity before storage."
+expected_inputs = "A 65C02 source with one origin directive and 161 ordinary one-byte NOP statements, plus the same live MOS package used by native parity tests."
+expected_outputs = "The real native CLI succeeds and emits exactly the same 161 bytes as the live Rust authority."
+known_non_equivalences = "Label, expression, source-line-width, image, and package capacities are unchanged; this slice does not claim that the complete additive syntax fixtures are otherwise green."
+fast_proof_command = "cargo test -p asm native_statement_capacity_tracks_bounded_source_record_capacity -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_statement_capacity_over_160_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_statement_capacity_tracks_bounded_source_record_capacity"
+proof_level = "B"
+proves = "Both native capacity owners share the explicit 512-record bound and opasm checks that bound before storing a statement."
+does_not_prove = "Real AmigaOS execution or behavior of other capacity domains."
+
+[[tests]]
+name = "native_statement_capacity_over_160_fs_uae"
+proof_level = "D"
+proves = "A real 68020/AmigaOS native CLI run crosses the former 160-statement limit and exactly matches 161 Rust-authoritative output bytes."
+does_not_prove = "Complete additive-fixture parity or unrelated label, expression, source-line, image, and package capacities."

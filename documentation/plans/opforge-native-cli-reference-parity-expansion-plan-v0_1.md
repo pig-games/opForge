@@ -751,6 +751,26 @@ landed” is not equivalent to “framework-closed.”
     - `<<` and `>>` evaluate with Rust-compatible values and token boundaries above addition/subtraction and beneath comparisons
     - comparison, bitwise, logical, and ternary gaps remain separate remediation items
 
+- [x] Item 5.9.4: restore native complete-source statement capacity
+  - Source requirement or finding IDs: Item 5.9 Level D failure on complete additive `expr_syntax.asm`; valid guest artifacts report `OPC-NCLI013`/`OPC-NCLI010` after the native statement table reaches its fixed 160-record limit
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - native CLI and opasm capacity declarations
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+    - the audited native-runtime boundary inventory snapshot
+  - Full quality gates:
+    - Level B capacity-boundary/source-lock proof
+    - exact Level D `native_statement_capacity_over_160_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for statement-record capacity only
+  - Commit outcome:
+    - native statement storage accepts the complete bounded source-record domain instead of failing at the former 160-statement transitional limit
+  - Definition of done:
+    - a real native source containing more than 160 ordinary statements assembles byte-for-byte with Rust
+    - statement storage remains bounded by the existing 512-record source/session limit and rejects overflow
+    - label, expression, image, and source-line capacities remain separate invariants
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

@@ -101,6 +101,8 @@ mod native_fs_uae_parity;
 mod native_harness_evidence;
 #[path = "tests/native_reference_shards.rs"]
 mod native_reference_shards;
+#[path = "tests/native_statement_capacity.rs"]
+mod native_statement_capacity;
 
 fn capabilities_report() -> String {
     engine_capabilities_report(&default_registry(), VERSION, BUILD_PROFILE_SUMMARY)
@@ -14890,7 +14892,7 @@ fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
     );
 
     assert!(source.contains(".module opasm.amigaos.engine"));
-    assert!(source.contains("NATIVE_STATEMENT_TABLE_CAPACITY = 160"));
+    assert!(source.contains("NATIVE_STATEMENT_TABLE_CAPACITY = NATIVE_SOURCE_RECORD_CAPACITY"));
     assert!(source.contains("opasmEngineRunTwoPassV1\t.block"));
     assert!(source_contains_in_order(
         &source,

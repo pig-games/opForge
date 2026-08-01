@@ -276,7 +276,7 @@ fail
 	.bend  ; compileTernary
 
 compileLogicalOr	.block
-	bsr.w compileShift
+	bsr.w compare
 	tst.l d5
 	bne.w fail
 
@@ -290,7 +290,7 @@ loop
 	bne.w ok
 	addq.l #2, a0
 	subq.l #2, d0
-	bsr.w compileShift
+	bsr.w compare
 	tst.l d5
 	bne.w fail
 	moveq #runtime.EXPRVM_BINARY_LOGIC_OR, d6
@@ -307,6 +307,108 @@ ok
 	rts
 
 fail
+	rts
+
+compare
+	bsr.w compileShift
+	tst.l d5
+	bne.w compareFail
+
+compareLoop
+	bsr.w skipWhitespace
+	beq.w compareOk
+	cmpi.b #'=', (a0)
+	beq.w compareEq
+	cmpi.b #'!', (a0)
+	beq.w compareNe
+	cmpi.b #'<', (a0)
+	beq.w compareLt
+	cmpi.b #'>', (a0)
+	beq.w compareGt
+	bra.w compareOk
+
+compareEq
+	cmpi.l #2, d0
+	bcs.w compareOk
+	cmpi.b #'=', 1(a0)
+	bne.w compareOk
+	moveq #runtime.EXPRVM_BINARY_EQ, d6
+	moveq #2, d4
+	bra.w compareApply
+
+compareNe
+	cmpi.l #2, d0
+	bcs.w compareOk
+	cmpi.b #'=', 1(a0)
+	bne.w compareOk
+	moveq #runtime.EXPRVM_BINARY_NE, d6
+	moveq #2, d4
+	bra.w compareApply
+
+compareLt
+	moveq #runtime.EXPRVM_BINARY_LT, d6
+	moveq #1, d4
+	cmpi.l #2, d0
+	bcs.w compareApply
+	cmpi.b #'=', 1(a0)
+	beq.s compareLe
+	cmpi.b #'>', 1(a0)
+	beq.s compareNeAlt
+	cmpi.b #'<', 1(a0)
+	beq.w compareOk
+	bra.w compareApply
+
+compareLe
+	moveq #runtime.EXPRVM_BINARY_LE, d6
+	moveq #2, d4
+	bra.w compareApply
+
+compareNeAlt
+	moveq #runtime.EXPRVM_BINARY_NE, d6
+	moveq #2, d4
+	bra.w compareApply
+
+compareGt
+	moveq #runtime.EXPRVM_BINARY_GT, d6
+	moveq #1, d4
+	cmpi.l #2, d0
+	bcs.w compareApply
+	cmpi.b #'=', 1(a0)
+	beq.s compareGe
+	cmpi.b #'>', 1(a0)
+	beq.w compareOk
+	bra.w compareApply
+
+compareGe
+	moveq #runtime.EXPRVM_BINARY_GE, d6
+	moveq #2, d4
+
+compareApply
+	adda.l d4, a0
+	sub.l d4, d0
+	move.l d6, -(sp)
+	bsr.w compileShift
+	move.l (sp)+, d6
+	tst.l d5
+	bne.w compareFail
+	move.l d0, -(sp)
+	bsr.w emitApplyBinaryD6
+	move.l d0, d5
+	move.l (sp)+, d0
+	tst.l d5
+	bne.w compareFail
+	bra.w compareLoop
+
+compareOk
+	moveq #0, d5
+	rts
+
+compareFail
+	tst.l d5
+	bne.s compareReturn
+	moveq #1, d5
+
+compareReturn
 	rts
 	.bend  ; compileLogicalOr
 
@@ -335,6 +437,10 @@ loop
 	cmpi.b #'<', d6
 	beq.w ok
 	cmpi.b #'>', d6
+	beq.w ok
+	cmpi.b #'=', d6
+	beq.w ok
+	cmpi.b #'!', d6
 	beq.w ok
 	bra.w trailingFail
 
@@ -401,13 +507,13 @@ loop
 
 left
 	cmpi.b #'<', 1(a0)
-	bne.w fail
+	bne.w ok
 	moveq #runtime.EXPRVM_BINARY_SHIFT_LEFT, d6
 	bra.s operator
 
 right
 	cmpi.b #'>', 1(a0)
-	bne.w fail
+	bne.w ok
 	moveq #runtime.EXPRVM_BINARY_SHIFT_RIGHT, d6
 
 operator

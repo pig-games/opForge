@@ -36,6 +36,12 @@ EXPRVM_BINARY_DIVIDE            = 11
 EXPRVM_BINARY_MOD               = 12
 EXPRVM_BINARY_SHIFT_LEFT        = 13
 EXPRVM_BINARY_SHIFT_RIGHT       = 14
+EXPRVM_BINARY_EQ                = 15
+EXPRVM_BINARY_NE                = 16
+EXPRVM_BINARY_GE                = 17
+EXPRVM_BINARY_GT                = 18
+EXPRVM_BINARY_LE                = 19
+EXPRVM_BINARY_LT                = 20
 EXPRVM_STACK_CAPACITY           = 8
 
 	.section code, kind=code
@@ -221,7 +227,7 @@ opcodeApplyBinary
 	bmi.w fail
 	move.l d3, -(sp)
 	bsr.w popD3
-	bmi.s applyBinaryRestoreFail
+	bmi.w applyBinaryRestoreFail
 	move.l (sp)+, d2
 	cmpi.b #EXPRVM_BINARY_ADD, d6
 	beq.w applyBinaryAdd
@@ -243,6 +249,18 @@ opcodeApplyBinary
 	beq.w applyBinaryShiftLeft
 	cmpi.b #EXPRVM_BINARY_SHIFT_RIGHT, d6
 	beq.w applyBinaryShiftRight
+	cmpi.b #EXPRVM_BINARY_EQ, d6
+	beq.w applyBinaryEq
+	cmpi.b #EXPRVM_BINARY_NE, d6
+	beq.w applyBinaryNe
+	cmpi.b #EXPRVM_BINARY_GE, d6
+	beq.w applyBinaryGe
+	cmpi.b #EXPRVM_BINARY_GT, d6
+	beq.w applyBinaryGt
+	cmpi.b #EXPRVM_BINARY_LE, d6
+	beq.w applyBinaryLe
+	cmpi.b #EXPRVM_BINARY_LT, d6
+	beq.w applyBinaryLt
 	bra.w fail
 
 applyBinaryRestoreFail
@@ -286,7 +304,7 @@ applyBinaryPowerSquare
 
 applyBinaryMultiply
 	muls.l d2, d3
-	bra.s applyBinaryDone
+	bra.w applyBinaryDone
 
 applyBinaryDivide
 	tst.l d2
@@ -294,7 +312,7 @@ applyBinaryDivide
 	move.l d3, d1
 	divs.l d2, d1
 	move.l d1, d3
-	bra.s applyBinaryDone
+	bra.w applyBinaryDone
 
 applyBinaryMod
 	tst.l d2
@@ -304,17 +322,53 @@ applyBinaryMod
 	swap d3
 	ext.l d3
 	divs.l d6, d3:d1
-	bra.s applyBinaryDone
+	bra.w applyBinaryDone
 
 applyBinaryShiftLeft
 	andi.l #31, d2
 	lsl.l d2, d3
-	bra.s applyBinaryDone
+	bra.w applyBinaryDone
 
 applyBinaryShiftRight
 	andi.l #31, d2
 	lsr.l d2, d3
-	bra.s applyBinaryDone
+	bra.w applyBinaryDone
+
+applyBinaryEq
+	cmp.l d2, d3
+	seq d3
+	andi.l #1, d3
+	bra.w applyBinaryDone
+
+applyBinaryNe
+	cmp.l d2, d3
+	sne d3
+	andi.l #1, d3
+	bra.w applyBinaryDone
+
+applyBinaryGe
+	cmp.l d2, d3
+	sge d3
+	andi.l #1, d3
+	bra.w applyBinaryDone
+
+applyBinaryGt
+	cmp.l d2, d3
+	sgt d3
+	andi.l #1, d3
+	bra.w applyBinaryDone
+
+applyBinaryLe
+	cmp.l d2, d3
+	sle d3
+	andi.l #1, d3
+	bra.w applyBinaryDone
+
+applyBinaryLt
+	cmp.l d2, d3
+	slt d3
+	andi.l #1, d3
+	bra.w applyBinaryDone
 
 applyTernarySelect
 	move.l d3, -(sp)
@@ -322,9 +376,9 @@ applyTernarySelect
 	bmi.s applyTernaryRestoreFail
 	tst.l d3
 	move.l (sp)+, d3
-	bne.s applyBinaryDone
+	bne.w applyBinaryDone
 	move.l d2, d3
-	bra.s applyBinaryDone
+	bra.w applyBinaryDone
 
 applyTernaryRestoreFail
 	addq.l #4, sp

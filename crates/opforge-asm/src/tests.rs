@@ -95,6 +95,8 @@ use vm::rollout::{
 
 #[path = "tests/native_cli_diagnostic_routing.rs"]
 mod native_cli_diagnostic_routing;
+#[path = "tests/native_expression_comparison.rs"]
+mod native_expression_comparison;
 #[path = "tests/native_expression_digit_separators.rs"]
 mod native_expression_digit_separators;
 #[path = "tests/native_expression_power.rs"]
@@ -15250,7 +15252,7 @@ fn native_expression_multiplicative_runtime_operand_order_contract() {
             "SWAP D3",
             "EXT.L D3",
             "DIVS.L D6, D3:D1",
-            "BRA.S applyBinaryDone",
+            "BRA.W applyBinaryDone",
         ]
     ));
 }
@@ -15269,11 +15271,11 @@ fn native_expression_shift_runtime_operand_order_contract() {
             "applyBinaryShiftLeft:",
             "ANDI.L #31, D2",
             "LSL.L D2, D3",
-            "BRA.S applyBinaryDone",
+            "BRA.W applyBinaryDone",
             "applyBinaryShiftRight:",
             "ANDI.L #31, D2",
             "LSR.L D2, D3",
-            "BRA.S applyBinaryDone",
+            "BRA.W applyBinaryDone",
         ]
     ));
 }

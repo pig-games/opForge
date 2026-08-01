@@ -2481,15 +2481,10 @@ evaluatePart
 	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_EXPR_REQUEST
 	movem.l (sp)+, d1-d6/a0
 	move.w (sp)+, ccr
-.endif
+	.endif
 	bne.s evalPartFallback
 	bsr.w readEvaluateExpressionValue
-	tst.l d3
-	bne.w evalPartOk
-	movea.l OpasmDriverEvalFallbackPtr, a0
-	move.l OpasmDriverEvalFallbackLen, d0
-	bsr.w parseDirectiveLiteralValue
-	bne.w fail
+	bra.w evalPartOk
 
 evalPartOk
 	moveq #0, d0

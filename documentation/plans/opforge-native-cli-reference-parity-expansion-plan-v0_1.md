@@ -976,6 +976,29 @@ landed” is not equivalent to “framework-closed.”
     - empty, unterminated, and wider literals fail through the checked compiler path
     - later complete-fixture failures remain separate remediation items rather than being excluded
 
+- [x] Item 5.9.15: restore native zero-valued data-expression parity
+  - Source requirement or finding IDs: Item 5.9 valid Level D failure in complete additive `expr_syntax.asm` at `.byte (TABLE & $ff)`, where the expression service succeeds with zero but the native comma-list path reclassifies that value as unresolved
+  - Expected files:
+    - `documentation/plans/slices/native-porting-slice-data-expression-zero.toml`
+    - native opasm comma-operand evaluation path
+    - focused tests in `crates/opforge-asm/src/tests/native_data_expression_zero.rs`
+    - refreshed complete native runtime boundary inventory hash without expanding the certified routine surface
+  - Full quality gates:
+    - focused Level A Rust zero-valued data-expression oracle
+    - focused Level B expression-service status/value contract
+    - exact positive and unresolved-negative Level D `native_data_expression_` tests with `--nocapture --test-threads=1`
+    - complete unrestricted Level D `native_opcore_adapted_expr_syntax_fs_uae` rerun
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for successful zero-valued comma-list expressions only
+  - Commit outcome:
+    - native numeric data-list evaluation uses expression-service status, rather than result truthiness, to distinguish success from failure
+  - Definition of done:
+    - bitwise and logical expressions resolving to zero in first, middle, and final list positions match Rust under real AmigaOS execution
+    - an unresolved expression still produces a completed nonzero guest result with diagnostics
+    - complete `expr_syntax.asm` matches Rust without a fixture-count or prefix limit
+    - symbolic subtraction-to-zero and long string data remain separate remediation items rather than being bundled or excluded
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

@@ -105,6 +105,8 @@ mod native_expression_digit_separators;
 mod native_expression_logical;
 #[path = "tests/native_expression_power.rs"]
 mod native_expression_power;
+#[path = "tests/native_expression_ternary.rs"]
+mod native_expression_ternary;
 #[path = "tests/native_fs_uae_parity.rs"]
 mod native_fs_uae_parity;
 #[path = "tests/native_harness_evidence.rs"]

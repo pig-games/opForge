@@ -1,0 +1,38 @@
+[slice]
+schema_version = 2
+name = "native ternary selection parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/parser.rs::parse_ternary",
+  "crates/opforge-core/src/expr.rs::eval_expr_with_depth",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::compileTernary",
+  "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm::applyTernarySelect",
+]
+invariant = "The native ExprVM preserves both compiled arms while popping the condition, branches on the condition before any flag-changing arm restore, selects the then arm for nonzero and the else arm for zero, and leaves one scalar result."
+assertion_decision = "No new assertion: ExprVM stack underflow already fails closed; valid ternary selection has a checked three-input stack contract."
+expected_inputs = "Scalar 65c02 ternary expressions with zero and nonzero conditions, nested right-associative ternaries, and a logical condition."
+expected_outputs = "Native CLI emits the same five selected bytes as the live Rust assembler."
+known_non_equivalences = "Unary high/low operators inside ternary arms and later complete-fixture failures remain outside this slice."
+fast_proof_command = "cargo test -p asm native_expression_ternary_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_expression_ternary_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_expression_ternary_rust_oracle"
+proof_level = "A"
+proves = "Live Rust establishes true/false selection, nested right associativity, logical-condition precedence, and all five expected bytes."
+does_not_prove = "Native compiler, ExprVM, or real guest execution."
+
+[[tests]]
+name = "native_expression_ternary_runtime_contract"
+proof_level = "B"
+proves = "The native runtime preserves the false arm outside popD3's D2 clobber and branches on the condition before restoring either arm."
+does_not_prove = "Real 68020 execution or final native CLI bytes."
+
+[[tests]]
+name = "native_expression_ternary_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes all five cases in the real native CLI and their bytes match live Rust."
+does_not_prove = "Unary operators inside ternary arms or malformed-ternary diagnostic text."

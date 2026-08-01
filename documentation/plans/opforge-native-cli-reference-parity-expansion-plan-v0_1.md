@@ -915,6 +915,25 @@ landed” is not equivalent to “framework-closed.”
     - logical-AND precedence, shared left-associative OR/XOR precedence, and bitwise-before-logical precedence are proven with discriminating cases
     - all nine focused cases execute; later complete-fixture failures remain separate remediation items rather than being excluded
 
+- [x] Item 5.9.13: restore native ternary arm selection parity
+  - Source requirement or finding IDs: Item 5.9.12 expanded Level D proof showed `0 ? >$1234 : <$1234` selecting the true arm; the earlier complete `expr_syntax.asm` trace likewise recorded `ternary1 .const 0 ? 1 : 2` as `1`
+  - Expected files:
+    - `documentation/plans/slices/native-porting-slice-expression-ternary.toml`
+    - native ExprVM runtime
+    - focused tests in `crates/opforge-asm/src/tests/native_expression_ternary.rs`
+  - Full quality gates:
+    - focused Level A Rust true/false/nested ternary oracle
+    - focused Level B runtime register/condition-code preservation contract
+    - exact Level D `native_expression_ternary_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for ternary selection only
+  - Commit outcome:
+    - native ExprVM preserves the false arm across condition pop and branches before arm restoration changes condition codes
+  - Definition of done:
+    - zero and nonzero conditions, nested right-associative ternaries, and logical-condition precedence match all five Rust bytes under real AmigaOS execution
+    - the focused test executes every case; unary-in-arm coverage remains in Item 5.9.12 rather than being excluded
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

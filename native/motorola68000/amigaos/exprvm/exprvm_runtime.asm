@@ -420,13 +420,18 @@ applyBinaryLogicXor
 	bra.w applyBinaryDone
 
 applyTernarySelect
+	move.l d2, d1
 	move.l d3, -(sp)
 	bsr.w popD3
 	bmi.s applyTernaryRestoreFail
 	tst.l d3
+	beq.s applyTernaryFalse
 	move.l (sp)+, d3
-	bne.w applyBinaryDone
-	move.l d2, d3
+	bra.w applyBinaryDone
+
+applyTernaryFalse
+	addq.l #4, sp
+	move.l d1, d3
 	bra.w applyBinaryDone
 
 applyTernaryRestoreFail

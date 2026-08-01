@@ -955,6 +955,27 @@ landed” is not equivalent to “framework-closed.”
     - recursive unary including plus, outer and parenthesized high/low, unary-before-power, parenthesized immediate behavior, and high/low in both ternary arms are proven with discriminating cases
     - later complete-fixture failures, including string literals, remain separate remediation items rather than being excluded
 
+- [x] Item 5.9.14: restore native scalar string-literal expression parity
+  - Source requirement or finding IDs: Item 5.9 complete `expr_syntax.asm` Level D artifact records `char_a` and `char_ab` as zero although Rust and the retained source require `$41` and `$4142`
+  - Expected files:
+    - `documentation/plans/slices/native-porting-slice-expression-string-literal.toml`
+    - native selected-operand runtime and opcore expression compiler files
+    - focused tests in `crates/opforge-asm/src/tests/native_expression_string_literal.rs`
+    - refreshed complete native runtime boundary inventory hashes without expanding either certified routine surface
+  - Full quality gates:
+    - focused Level A Rust scalar string-literal oracle
+    - focused Level B selected-operand/compiler source contract
+    - exact positive and negative Level D `native_expression_string_literal_` tests with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for scalar string-literal expression parity only
+  - Commit outcome:
+    - native scalar expressions decode one/two-byte quoted literals and pack them with Rust-compatible values
+  - Definition of done:
+    - single and double quotes, simple and hexadecimal escapes, direct selected operands, low/high extraction, and packed word emission match Rust under real AmigaOS execution
+    - empty, unterminated, and wider literals fail through the checked compiler path
+    - later complete-fixture failures remain separate remediation items rather than being excluded
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

@@ -888,6 +888,10 @@ body
 notParenthesized
 	cmpi.b #'*', (a0)
 	beq.w currentPc
+	cmpi.b #39, (a0)
+	beq.w stringLiteral
+	cmpi.b #'"', (a0)
+	beq.w stringLiteral
 	cmpi.b #'$', (a0)
 	beq.w dollar
 	cmpi.b #'%', (a0)
@@ -1019,12 +1023,98 @@ binaryLiteral
 	subq.l #1, d0
 	bsr.w parseBinary
 	tst.l d5
-	bne.s maybeApplyUnary
+	bne.w maybeApplyUnary
 	move.l d0, -(sp)
 	bsr.w emitPushLiteralD3
 	move.l d0, d5
 	move.l (sp)+, d0
-	bra.s maybeApplyUnary
+	bra.w maybeApplyUnary
+
+stringLiteral
+	moveq #0, d6
+	move.b (a0)+, d6
+	subq.l #1, d0
+	clr.l d3
+	clr.l d2
+
+stringScan
+	tst.l d0
+	beq.w stringFail
+	moveq #0, d1
+	move.b (a0)+, d1
+	subq.l #1, d0
+	cmp.b d6, d1
+	beq.w stringClose
+	cmpi.b #92, d1
+	bne.w stringAppend
+	tst.l d0
+	beq.w stringFail
+	moveq #0, d1
+	move.b (a0)+, d1
+	subq.l #1, d0
+	cmpi.b #'n', d1
+	beq.w stringEscapedNewline
+	cmpi.b #'r', d1
+	beq.w stringEscapedReturn
+	cmpi.b #'t', d1
+	beq.w stringEscapedTab
+	cmpi.b #'0', d1
+	beq.w stringEscapedZero
+	cmpi.b #'x', d1
+	beq.w stringEscapedHex
+	bra.w stringAppend
+
+stringEscapedNewline
+	moveq #10, d1
+	bra.w stringAppend
+
+stringEscapedReturn
+	moveq #13, d1
+	bra.w stringAppend
+
+stringEscapedTab
+	moveq #9, d1
+	bra.w stringAppend
+
+stringEscapedZero
+	moveq #0, d1
+	bra.w stringAppend
+
+stringEscapedHex
+	cmpi.l #2, d0
+	bcs.w stringFail
+	move.l d0, -(sp)
+	move.l d3, -(sp)
+	moveq #2, d0
+	bsr.w parseHex
+	move.l d3, d1
+	move.l (sp)+, d3
+	move.l (sp)+, d0
+	tst.l d5
+	bne.w stringFail
+	subq.l #2, d0
+
+stringAppend
+	cmpi.l #2, d2
+	bhs.w stringFail
+	lsl.l #8, d3
+	or.l d1, d3
+	addq.l #1, d2
+	bra.w stringScan
+
+stringClose
+	tst.l d2
+	beq.w stringFail
+	moveq #0, d5
+	move.l d0, -(sp)
+	bsr.w emitPushLiteralD3
+	move.l d0, d5
+	move.l (sp)+, d0
+	bra.w maybeApplyUnary
+
+stringFail
+	moveq #1, d5
+	bra.w maybeApplyUnary
 
 decimal
 	bsr.w parseSuffixedNumber
@@ -1046,21 +1136,21 @@ label
 	moveq #0, d3
 	move.w runtime.ExprvmCurrentPass, d3
 	cmpi.w #1, d3
-	bne.s maybeApplyUnary
+	bne.w maybeApplyUnary
 	move.b #1, OpcoreExvmSawUnresolvedSymbol
 	clr.l d3
 	bsr.w emitPushLiteralD3
 	move.l d0, d5
-	bne.s maybeApplyUnary
+	bne.w maybeApplyUnary
 	adda.l d2, a0
 	move.l d6, d0
 	sub.l d2, d0
-	bra.s maybeApplyUnary
+	bra.w maybeApplyUnary
 
 labelResolved
 	bsr.w emitPushSymbolD3
 	move.l d0, d5
-	bne.s maybeApplyUnary
+	bne.w maybeApplyUnary
 	adda.l d2, a0
 	move.l d6, d0
 	sub.l d2, d0
@@ -1089,7 +1179,6 @@ return
 	movem.l (sp)+, d4
 	rts
 	.bend  ; compileSingleTerm
-
 resetProgram	.block
 	clr.w OpcoreExprVmProgramLen
 	rts

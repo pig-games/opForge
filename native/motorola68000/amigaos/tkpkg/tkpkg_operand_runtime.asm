@@ -1008,6 +1008,10 @@ checkPercent
 	beq.w textOk
 	cmpi.b #'!', d7
 	beq.w textOk
+	cmpi.b #39, d7
+	beq.w textOk
+	cmpi.b #'"', d7
+	beq.w textOk
 	cmpi.b #'<', d7
 	beq.w textOk
 	cmpi.b #'>', d7

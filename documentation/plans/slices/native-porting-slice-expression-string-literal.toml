@@ -1,0 +1,45 @@
+[slice]
+schema_version = 2
+name = "native scalar string-literal expression parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/tokenizer.rs::Tokenizer::scan_string",
+  "crates/opforge-core/src/expr.rs::eval_expr_with_depth::Expr::String",
+  "crates/opforge-core/src/expr_vm.rs::PortableExprEvalContext::eval_string_literal",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm::encodeSelectedOperandV1",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::compileSingleTerm",
+]
+invariant = "Quote-leading scalar operands reach the native expression compiler; one decoded byte evaluates to that byte, two decoded bytes pack big-endian, and malformed, empty, or wider literals fail through the checked compiler path."
+assertion_decision = "No runtime assertion: the bounded parser explicitly rejects unterminated, empty, and wider-than-two-byte scalar literals before emitting ExprVM bytecode."
+expected_inputs = "Single- or double-quoted scalar expression literals containing one or two bytes, including Rust-compatible \\n, \\r, \\t, \\0, and \\xNN escapes."
+expected_outputs = "Native CLI values and emitted bytes exactly match the live Rust assembler for direct operands, constants, low/high extraction, and packed word emission."
+known_non_equivalences = "Longer string data directives and the remaining complete-fixture failures are separate invariants."
+fast_proof_command = "cargo test -p asm native_expression_string_literal_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_expression_string_literal_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_expression_string_literal_rust_oracle"
+proof_level = "A"
+proves = "Live Rust establishes one/two-byte scalar packing, both quote styles, \\n/\\r/\\t/\\0/\\xNN escape decoding, direct selected-operand use, and the exact byte sequence."
+does_not_prove = "Native parsing, selector admission, or real guest execution."
+
+[[tests]]
+name = "native_expression_string_literal_parser_contract"
+proof_level = "B"
+proves = "Quote-leading operands reach the native compiler, which decodes at most two bytes and emits the packed value through the existing scalar literal opcode."
+does_not_prove = "Real 68020 execution or final CLI artifacts."
+
+[[tests]]
+name = "native_expression_string_literal_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI and its complete output matches live Rust for one/two-byte packing, both quote styles, and \\n/\\r/\\t/\\0/\\xNN escapes."
+does_not_prove = "Longer string directives or later complete-corpus failures."
+
+[[tests]]
+name = "native_expression_string_literal_invalid_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI and empty, over-width, and unterminated scalar literals each produce a guest completion marker, a nonzero guest exit code, and diagnostics."
+does_not_prove = "Exact Rust/native diagnostic wording parity or longer string data directives."

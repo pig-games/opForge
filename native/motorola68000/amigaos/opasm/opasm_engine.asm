@@ -1797,10 +1797,6 @@ commaScan
 	beq.s commaOpen
 	cmpi.b #')', d3
 	beq.s commaClose
-	cmpi.b #',', d3
-	bne.s commaNext
-	tst.w d5
-	beq.w none
 	bra.s commaNext
 
 commaOpen

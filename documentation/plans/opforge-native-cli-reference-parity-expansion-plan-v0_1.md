@@ -792,20 +792,21 @@ landed” is not equivalent to “framework-closed.”
     - tokenizer-invalid underscore-only literals still fail deterministically; placements accepted by the Rust tokenizer remain accepted
     - later expression and pass-layout failures remain separate remediation items
 
-- [ ] Item 5.9.6: restore native implied-instruction forward-reference stability
+- [x] Item 5.9.6: restore native direct forward-reference sizing stability
   - Source requirement or finding IDs: user-reported actual-Amiga divergence in canonical `examples/mos6502/mos_forward_ref_stability.asm`; standalone Level D emitted `AD 00 01` and `9C 00 02` where source comments and Rust authority require `AD 01 01` and `9C 01 02`
   - Expected files:
     - one `documentation/plans/slices/*.toml` metadata record
-    - narrowly required native opasm pass-one sizing files
-    - the standalone canonical-source proof in `crates/opforge-asm/src/tests/native_opcore_adapted_syntax.rs`
+    - narrowly required native opcore unresolved-symbol, opasm shape-inference, and tkpkg selector-stability files
+    - the standalone canonical-source proof in `crates/opforge-asm/src/tests/native_mos_forward_ref_stability.rs`
   - Full quality gates:
-    - focused Level B pass-one implied-size contract
+    - focused Level B pass-one unresolved-symbol and unstable-widen contract
     - exact Level D `native_mos_forward_ref_stability_fs_uae` with `--nocapture --test-threads=1`
+    - exact Level D `native_mos_unstable_widen_no_wider_fallback_fs_uae` with `--nocapture --test-threads=1`
     - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
   - Plan-compliance review evidence:
-    - `plan-compliance-reviewer` returns `PASS` for implied-instruction pass-one sizing only
+    - `plan-compliance-reviewer` returns `PASS` for direct forward-reference pass-one sizing only
   - Commit outcome:
-    - pass one advances across implied instructions before recording a following forward label, matching the emitted pass-two byte count
+    - pass one marks an absent forward symbol unstable and defers a narrowing selector when package metadata requires widening, matching the emitted pass-two byte count
   - Definition of done:
     - the unchanged mixed-CPU canonical source emits `AD 01 01 EA 60` and `9C 01 02 EA 60` on real AmigaOS
     - its live Rust HEX remains equal to the checked-in reference and source comments

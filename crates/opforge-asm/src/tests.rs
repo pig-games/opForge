@@ -101,6 +101,8 @@ mod native_expression_digit_separators;
 mod native_fs_uae_parity;
 #[path = "tests/native_harness_evidence.rs"]
 mod native_harness_evidence;
+#[path = "tests/native_mos_forward_ref_stability.rs"]
+mod native_mos_forward_ref_stability;
 #[path = "tests/native_reference_shards.rs"]
 mod native_reference_shards;
 #[path = "tests/native_statement_capacity.rs"]
@@ -12993,9 +12995,10 @@ fn motorola68020_item6_7_selected_shape_inference_uses_request_span_slice() {
             "ADDQ.W #1, D2",
             "trimLeading",
             "checkTopLevelComma",
-            "CMPI.B #',', D3",
-            "TST.W D5",
-            "BEQ.W none",
+            "commaScan",
+            "CMPI.B #'(', D3",
+            "CMPI.B #')', D3",
+            "BRA.S commaNext",
             "ready",
         ]
     ));
@@ -13017,8 +13020,9 @@ fn motorola68020_item6_8_native_shape_inference_has_no_mos_mnemonic_classifiers(
             "LEA 9(A0, D0.W), A0",
             "CMPI.B #'#', D3",
             "checkTopLevelComma",
-            "CMPI.B #',', D3",
-            "BEQ.W none",
+            "commaScan",
+            "BRA.S commaNext",
+            "ready",
             "checkPrefix",
             "CMPI.B #'#', D3",
             "BEQ.W immediate",

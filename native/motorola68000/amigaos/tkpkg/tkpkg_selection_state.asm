@@ -62,6 +62,9 @@ EncodeSelectedMselUnstable
 	.res byte, 1
 	.align 2
 EncodeSelectedMselMatchFlags
+	.res word, 1
+EncodeSelectedMselFallbackLen
+	.res word, 1
 
 PairAPtr
 	.res long, 1

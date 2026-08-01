@@ -84,6 +84,7 @@ opcoreExvmEvalOperandV1	.block
 selectedVersionReady
 	move.w d5, runtime.ExprvmSelectedOpcodeVersion
 	clr.l d5
+	clr.b OpcoreExvmSawUnresolvedSymbol
 	move.w d6, runtime.ExprvmCurrentPass
 	movea.l a1, a3  ; label-name table base kept stable across parse helpers
 	movea.l a2, a4  ; label-value table base kept stable across parse helpers
@@ -108,6 +109,12 @@ operandPrefixDone
 	tst.l d2
 	bne.w fail
 	bsr.w runEvalProgram
+	tst.l d0
+	bne.w return
+	tst.b OpcoreExvmSawUnresolvedSymbol
+	beq.w return
+	moveq #1, d4
+	moveq #1, d5
 	bra.w return
 
 fail
@@ -664,6 +671,7 @@ label
 	move.w runtime.ExprvmCurrentPass, d3
 	cmpi.w #1, d3
 	bne.s maybeApplyUnary
+	move.b #1, OpcoreExvmSawUnresolvedSymbol
 	clr.l d3
 	bsr.w emitPushLiteralD3
 	move.l d0, d5
@@ -1421,6 +1429,9 @@ OPCORE_EXVM_DEFAULT_PROGRAM_LEN = OPCORE_EXVM_DEFAULT_PROGRAM_END - OpcoreExvmDe
 
 OpcoreExvmSelectedOpcodeVersion
 	.res word, 1
+OpcoreExvmSawUnresolvedSymbol
+	.res byte, 1
+	.align 2
 OpcoreExprVmProgramLen
 	.res word, 1
 OpcoreExprVmProgramBuffer

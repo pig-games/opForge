@@ -605,6 +605,7 @@ return
 tkpkgBuildSelectedEnvelopeFromMselV1	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	clr.w state.EncodeSelectedMselMatchFlags
+	clr.w state.EncodeSelectedMselFallbackLen
 	movea.l a0, a5
 	move.w d0, d2
 	move.w d2, state.EncodeSelectedMselMnemonicLen
@@ -681,6 +682,11 @@ skipShapeCompare
 	move.w d0, state.EncodeSelectedMselPlanLen
 	move.l 2(sp), d0
 	move.l d0, state.EncodeSelectedMselPlanPtr
+	moveq #4, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w skipPlanStoreWithPlanFrame
+	moveq #0, d4
+	move.b 2(a2), d4
 	move.l a2, -(sp)
 	move.w d7, -(sp)
 	jsr operand.tkpkgMselTryBuildCandidateV1
@@ -689,7 +695,16 @@ skipShapeCompare
 	addq.l #6, sp
 	addq.l #6, sp
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.s candidateNotOk
+	tst.b d4
 	beq.w return
+	tst.b state.EncodeSelectedMselUnstable
+	beq.w return
+	bset #1, state.EncodeSelectedMselMatchFlags
+	move.w d1, state.EncodeSelectedMselFallbackLen
+	bra.w skipPlanRecordNoFrame
+
+candidateNotOk
 	cmpi.l #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
 	beq.w maybeReturnOperandError
 	bra.w skipPlanRecordNoFrame
@@ -715,6 +730,15 @@ skipPlanRecordNoFrame
 	dbf d7, entryLoop
 
 noOutput
+	btst #1, state.EncodeSelectedMselMatchFlags
+	beq.s noFallback
+	moveq #0, d1
+	move.w state.EncodeSelectedMselFallbackLen, d1
+	moveq #0, d2
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s return
+
+noFallback
 	moveq #0, d1
 	btst #0, state.EncodeSelectedMselMatchFlags
 	beq.s unknownMnemonic

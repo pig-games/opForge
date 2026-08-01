@@ -1,0 +1,39 @@
+[slice]
+schema_version = 2
+name = "native direct forward-reference stability"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-types/src/symbol_stability.rs::is_symbol_unstable",
+  "crates/opforge-vm/src/execution_model/selector_bridge.rs::select_instruction"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::compileSingleTerm",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::opcoreExvmEvalOperandV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildSelectedEnvelopeFromMselV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineInferSelectedShapeForEvalRequestV1"
+]
+invariant = "An identifier absent during pass one is unstable, indexed suffixes preserve their selected shape, and a selector carrying unstable_widen is deferred only when a wider matching-shape candidate succeeds; otherwise the deferred candidate remains the fallback."
+expected_inputs = "The unchanged mixed-CPU examples/mos6502/mos_forward_ref_stability.asm source, with direct forward references crossing the $00FF and $01FF page boundaries."
+expected_outputs = "The real native CLI selects stable absolute forms and emits AD 01 01 EA 60 followed by 9C 01 02 EA 60, exactly matching Rust and the canonical source comments."
+known_non_equivalences = "This slice does not claim BIN origin-gap materialization, other operand shapes, or complete additive opcore fixture parity."
+fast_proof_command = "cargo test -p asm native_mos_forward_ref_stability_pass_one_contract -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_mos_forward_ref_stability_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_mos_forward_ref_stability_pass_one_contract"
+proof_level = "B"
+proves = "The native expression boundary reports absent pass-one symbols as unstable and the selector defers unstable-widen candidates while retaining a no-wider fallback."
+does_not_prove = "Real 68020 execution or final emitted bytes."
+
+[[tests]]
+name = "native_mos_forward_ref_stability_fs_uae"
+proof_level = "D"
+proves = "The unchanged canonical mixed-CPU source emits both exact Rust-authoritative forward-reference sequences through the real 68020/AmigaOS CLI."
+does_not_prove = "BIN origin-gap layout, unrelated operand shapes, or the complete additive fixture batch."
+
+[[tests]]
+name = "native_mos_unstable_widen_no_wider_fallback_fs_uae"
+proof_level = "D"
+proves = "The real 68020/AmigaOS selector retains the deferred narrow candidate when no wider candidate exists for the active operand shape."
+does_not_prove = "The canonical page-crossing widening case, which is proved separately."

@@ -894,6 +894,27 @@ landed” is not equivalent to “framework-closed.”
     - comparison-before-bitwise precedence and logical-token yielding are proven
     - later complete-fixture failures remain separate remediation items rather than being excluded
 
+- [x] Item 5.9.11: restore native logical expression parity
+  - Source requirement or finding IDs: Item 5.9 valid Level D failure in complete additive `expr_syntax.asm` at the first retained logical expression, `log_and .const (2 && 3)`
+  - Expected files:
+    - `documentation/plans/slices/native-porting-slice-expression-logical.toml`
+    - native opcore expression compiler and ExprVM runtime files
+    - focused tests in `crates/opforge-asm/src/tests/native_expression_logical.rs`
+    - refreshed complete native runtime boundary inventory hash without expanding the certified opcore routine surface
+  - Full quality gates:
+    - focused Level A Rust logical value/precedence oracle
+    - focused Level B parser/runtime source contract
+    - exact Level D `native_expression_logical_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for logical parsing/evaluation only
+  - Commit outcome:
+    - native scalar expressions parse logical AND, OR, and XOR with Rust truthiness, precedence, and associativity
+  - Definition of done:
+    - all three logical operators emit canonical zero/one bytes matching Rust under real AmigaOS execution
+    - logical-AND precedence, shared left-associative OR/XOR precedence, and bitwise-before-logical precedence are proven with discriminating cases
+    - all nine focused cases execute; later complete-fixture failures remain separate remediation items rather than being excluded
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

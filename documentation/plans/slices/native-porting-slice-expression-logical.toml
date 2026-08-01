@@ -1,0 +1,40 @@
+[slice]
+schema_version = 2
+name = "native logical expression parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/parser.rs::parse_logical_and",
+  "crates/opforge-core/src/parser.rs::parse_logical_or",
+  "crates/opforge-core/src/expr.rs::apply_binary",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::compileLogicalOr/logicalAnd",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::bitOr",
+  "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm::opcodeApplyBinary",
+]
+invariant = "Native scalar logical AND binds more tightly than the shared left-associative logical OR/XOR tier, all bitwise operators bind more tightly than logical operators, and every logical result is canonical zero or one using zero/nonzero truthiness."
+assertion_decision = "No runtime assertion: malformed logical syntax returns checked parser failure; valid logical operations are total over the native scalar domain."
+expected_inputs = "Scalar 65c02 constant expressions using `&&`, `||`, and `^^`, including zero/nonzero operands and discriminating mixed-precedence cases."
+expected_outputs = "Native CLI emits the same canonical zero/one bytes as the live Rust assembler for logical values and precedence."
+known_non_equivalences = "Ternary expressions and later complete-fixture failures remain outside this slice."
+fast_proof_command = "cargo test -p asm native_expression_logical_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_expression_logical_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_expression_logical_rust_oracle"
+proof_level = "A"
+proves = "Live Rust establishes zero/nonzero truthiness, logical-AND precedence, shared left-associative OR/XOR precedence, and bitwise-before-logical behavior."
+does_not_prove = "Native parser or evaluator execution."
+
+[[tests]]
+name = "native_expression_logical_parser_runtime_contract"
+proof_level = "B"
+proves = "The native scoped tiers delegate in Rust precedence order and dispatch normalized AND, OR, and XOR runtime operations."
+does_not_prove = "Real 68020 execution or final native CLI bytes."
+
+[[tests]]
+name = "native_expression_logical_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI and its bytes match live Rust for all nine logical truthiness and precedence cases."
+does_not_prove = "Ternary semantics or malformed-logical diagnostic text."

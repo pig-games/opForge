@@ -45,6 +45,8 @@ EXPRVM_BINARY_LT                = 20
 EXPRVM_BINARY_BIT_AND           = 21
 EXPRVM_BINARY_BIT_OR            = 22
 EXPRVM_BINARY_BIT_XOR           = 23
+EXPRVM_BINARY_LOGIC_AND         = 24
+EXPRVM_BINARY_LOGIC_XOR         = 25
 EXPRVM_STACK_CAPACITY           = 8
 
 	.section code, kind=code
@@ -270,6 +272,10 @@ opcodeApplyBinary
 	beq.w applyBinaryBitOr
 	cmpi.b #EXPRVM_BINARY_BIT_XOR, d6
 	beq.w applyBinaryBitXor
+	cmpi.b #EXPRVM_BINARY_LOGIC_AND, d6
+	beq.w applyBinaryLogicAnd
+	cmpi.b #EXPRVM_BINARY_LOGIC_XOR, d6
+	beq.w applyBinaryLogicXor
 	bra.w fail
 
 applyBinaryRestoreFail
@@ -388,6 +394,28 @@ applyBinaryBitOr
 	bra.w applyBinaryDone
 
 applyBinaryBitXor
+	eor.l d2, d3
+	bra.w applyBinaryDone
+
+applyBinaryLogicAnd
+	tst.l d3
+	beq.s applyBinaryLogicFalse
+	tst.l d2
+	beq.s applyBinaryLogicFalse
+	moveq #1, d3
+	bra.w applyBinaryDone
+
+applyBinaryLogicFalse
+	moveq #0, d3
+	bra.w applyBinaryDone
+
+applyBinaryLogicXor
+	tst.l d3
+	sne d3
+	andi.l #1, d3
+	tst.l d2
+	sne d2
+	andi.l #1, d2
 	eor.l d2, d3
 	bra.w applyBinaryDone
 

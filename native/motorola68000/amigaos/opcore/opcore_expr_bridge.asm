@@ -276,7 +276,7 @@ fail
 	.bend  ; compileTernary
 
 compileLogicalOr	.block
-	bsr.w bitOr
+	bsr.w logicalAnd
 	tst.l d5
 	bne.w fail
 
@@ -285,15 +285,30 @@ loop
 	cmpi.l #2, d0
 	bcs.w ok
 	cmpi.b #'|', (a0)
-	bne.w ok
+	beq.s logicalOr
+	cmpi.b #'^', (a0)
+	beq.s logicalXor
+	bra.w ok
+
+logicalOr
 	cmpi.b #'|', 1(a0)
 	bne.w ok
+	moveq #runtime.EXPRVM_BINARY_LOGIC_OR, d6
+	bra.s operator
+
+logicalXor
+	cmpi.b #'^', 1(a0)
+	bne.w ok
+	moveq #runtime.EXPRVM_BINARY_LOGIC_XOR, d6
+
+operator
+	move.l d6, -(sp)
 	addq.l #2, a0
 	subq.l #2, d0
-	bsr.w bitOr
+	bsr.w logicalAnd
+	move.l (sp)+, d6
 	tst.l d5
 	bne.w fail
-	moveq #runtime.EXPRVM_BINARY_LOGIC_OR, d6
 	move.l d0, -(sp)
 	bsr.w emitApplyBinaryD6
 	move.l d0, d5
@@ -307,6 +322,45 @@ ok
 	rts
 
 fail
+	rts
+
+logicalAnd
+	bsr.w bitOr
+	tst.l d5
+	bne.w logicalAndFail
+
+logicalAndLoop
+	bsr.w skipWhitespace
+	cmpi.l #2, d0
+	bcs.w logicalAndOk
+	cmpi.b #'&', (a0)
+	bne.w logicalAndOk
+	cmpi.b #'&', 1(a0)
+	bne.w logicalAndOk
+	addq.l #2, a0
+	subq.l #2, d0
+	bsr.w bitOr
+	tst.l d5
+	bne.w logicalAndFail
+	moveq #runtime.EXPRVM_BINARY_LOGIC_AND, d6
+	move.l d0, -(sp)
+	bsr.w emitApplyBinaryD6
+	move.l d0, d5
+	move.l (sp)+, d0
+	tst.l d5
+	bne.w logicalAndFail
+	bra.w logicalAndLoop
+
+logicalAndOk
+	moveq #0, d5
+	rts
+
+logicalAndFail
+	tst.l d5
+	bne.s logicalAndReturn
+	moveq #1, d5
+
+logicalAndReturn
 	rts
 
 bitOr

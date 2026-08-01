@@ -107,6 +107,8 @@ mod native_expression_logical;
 mod native_expression_power;
 #[path = "tests/native_expression_ternary.rs"]
 mod native_expression_ternary;
+#[path = "tests/native_expression_unary.rs"]
+mod native_expression_unary;
 #[path = "tests/native_fs_uae_parity.rs"]
 mod native_fs_uae_parity;
 #[path = "tests/native_harness_evidence.rs"]
@@ -15086,7 +15088,7 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
     assert!(routine_contains_in_order(
         &source,
         "compileExpression",
-        &["bsr.w resetProgram", "bsr.w compileTernary"]
+        &["bsr.w resetProgram", "bsr.w compileHighLow"]
     ));
     assert!(routine_contains_in_order(
         &source,
@@ -15119,7 +15121,9 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
         "compileSingleTerm",
         &[
             "unaryMinus",
-            "moveq #1, d4",
+            "moveq #runtime.EXPRVM_UNARY_MINUS + 1, d4",
+            "unaryOperator",
+            "bsr.w compileSingleTerm",
             "currentPc",
             "move.l d0, -(sp)",
             "bsr.w emitPushCurrent",
@@ -15147,7 +15151,8 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
         &source,
         "compileSingleTerm",
         &[
-            "moveq #runtime.EXPRVM_UNARY_MINUS, d6",
+            "move.l d4, d6",
+            "subq.l #1, d6",
             "move.l d0, -(sp)",
             "bsr.w emitApplyUnaryD6",
             "move.l d0, d5",

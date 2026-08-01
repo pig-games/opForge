@@ -991,31 +991,41 @@ haveText
 	moveq #0, d7
 	move.b (a0), d7
 	cmpi.b #'$', d7
-	beq.s textOk
+	beq.w textOk
 
 checkPercent
 	cmpi.b #'%', d7
-	beq.s textOk
+	beq.w textOk
 	cmpi.b #'*', d7
-	beq.s textOk
+	beq.w textOk
+	cmpi.b #'(', d7
+	beq.w textOk
 	cmpi.b #'+', d7
-	beq.s textOk
+	beq.w textOk
 	cmpi.b #'-', d7
-	beq.s textOk
+	beq.w textOk
+	cmpi.b #'~', d7
+	beq.w textOk
+	cmpi.b #'!', d7
+	beq.w textOk
+	cmpi.b #'<', d7
+	beq.w textOk
+	cmpi.b #'>', d7
+	beq.w textOk
 	cmpi.b #'0', d7
-	bcs.s maybeLetter
+	bcs.w maybeLetter
 	cmpi.b #'9', d7
-	bls.s textOk
+	bls.w textOk
 
 maybeLetter
 	cmpi.b #'A', d7
-	bcs.s unexpectedText
+	bcs.w unexpectedText
 	cmpi.b #'Z', d7
-	bls.s textOk
+	bls.w textOk
 	cmpi.b #'a', d7
-	bcs.s unexpectedText
+	bcs.w unexpectedText
 	cmpi.b #'z', d7
-	bls.s textOk
+	bls.w textOk
 
 unexpectedText
 	move.w #3, state.EncodeSelectedOperandStatus

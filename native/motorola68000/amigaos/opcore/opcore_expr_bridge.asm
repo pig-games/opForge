@@ -228,10 +228,46 @@ failWithCode
 
 compileExpression	.block
 	bsr.w resetProgram
-	bsr.w compileTernary
+	bsr.w compileHighLow
 	move.l d5, d0
 	rts
 	.bend  ; compileExpression
+
+compileHighLow
+	bsr.w skipWhitespace
+	beq.s highLowFail
+	cmpi.b #'<', (a0)
+	beq.s low
+	cmpi.b #'>', (a0)
+	beq.s high
+	bra.w compileTernary
+
+low
+	moveq #runtime.EXPRVM_UNARY_LOW, d6
+	bra.s highLowOperator
+
+high
+	moveq #runtime.EXPRVM_UNARY_HIGH, d6
+
+highLowOperator
+	move.l d6, -(sp)
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w compileHighLow
+	move.l (sp)+, d6
+	tst.l d5
+	bne.s highLowReturn
+	move.l d0, -(sp)
+	bsr.w emitApplyUnaryD6
+	move.l d0, d5
+	move.l (sp)+, d0
+
+highLowReturn
+	rts
+
+highLowFail
+	moveq #1, d5
+	rts
 
 compileTernary	.block
 	bsr.w compileLogicalOr
@@ -243,7 +279,7 @@ compileTernary	.block
 	bne.w ok
 	addq.l #1, a0
 	subq.l #1, d0
-	bsr.w compileTernary
+	bsr.w compileHighLow
 	tst.l d5
 	bne.w fail
 	bsr.w skipWhitespace
@@ -252,7 +288,7 @@ compileTernary	.block
 	bne.w missingSeparator
 	addq.l #1, a0
 	subq.l #1, d0
-	bsr.w compileTernary
+	bsr.w compileHighLow
 	tst.l d5
 	bne.w fail
 	moveq #runtime.EXPRVM_TERNARY_SELECT, d6
@@ -837,6 +873,10 @@ compileSingleTerm	.block
 	beq.w unaryPlus
 	cmpi.b #'-', (a0)
 	beq.w unaryMinus
+	cmpi.b #'~', (a0)
+	beq.w unaryBitNot
+	cmpi.b #'!', (a0)
+	beq.w unaryLogicNot
 
 body
 	tst.l d0
@@ -871,21 +911,31 @@ numberOrLabel
 	bra.w decimal
 
 unaryPlus
-	addq.l #1, a0
-	subq.l #1, d0
-	bra.w body
+	moveq #runtime.EXPRVM_UNARY_PLUS + 1, d4
+	bra.s unaryOperator
 
 unaryMinus
+	moveq #runtime.EXPRVM_UNARY_MINUS + 1, d4
+	bra.s unaryOperator
+
+unaryBitNot
+	moveq #runtime.EXPRVM_UNARY_BIT_NOT + 1, d4
+	bra.s unaryOperator
+
+unaryLogicNot
+	moveq #runtime.EXPRVM_UNARY_LOGIC_NOT + 1, d4
+
+unaryOperator
 	addq.l #1, a0
 	subq.l #1, d0
-	moveq #1, d4
-	bra.w body
+	bsr.w compileSingleTerm
+	bra.w maybeApplyUnary
 
 parenthesized
 	addq.l #1, a0
 	subq.l #1, d0
 	move.l d4, -(sp)
-	bsr.w compileTernary
+	bsr.w compileHighLow
 	move.l (sp)+, d4
 	tst.l d5
 	bne.w return
@@ -1020,7 +1070,8 @@ maybeApplyUnary
 	bne.w return
 	tst.l d4
 	beq.s ok
-	moveq #runtime.EXPRVM_UNARY_MINUS, d6
+	move.l d4, d6
+	subq.l #1, d6
 	move.l d0, -(sp)
 	bsr.w emitApplyUnaryD6
 	move.l d0, d5

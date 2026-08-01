@@ -1,0 +1,41 @@
+[slice]
+schema_version = 2
+name = "native unary expression parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/parser.rs::parse_expr",
+  "crates/opforge-core/src/parser.rs::parse_unary",
+  "crates/opforge-core/src/expr.rs::apply_unary",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm::encodeSelectedOperandV1",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::compileExpression/compileHighLow",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::compileSingleTerm",
+  "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm::opcodeApplyUnary",
+]
+invariant = "Valid unary-leading selected operands reach the native expression compiler; plus, minus, bitwise-not, and logical-not recurse at Rust's unary tier before power, while low/high wrap a complete expression and every parenthesized expression re-enters that outer tier."
+assertion_decision = "No runtime assertion: malformed unary text flows through the checked compiler failure path; every valid unary operation is total over the native 32-bit scalar domain."
+expected_inputs = "Scalar 65c02 immediate expressions beginning with `+`, `-`, `~`, `!`, `<`, `>`, or `(`, including nested operators and discriminating power/high-low precedence."
+expected_outputs = "Native CLI instruction bytes exactly match the live Rust assembler for all fifteen unary, grouping, and ternary-arm cases."
+known_non_equivalences = "String-literal expressions and later complete-fixture failures remain outside this slice."
+fast_proof_command = "cargo test -p asm native_expression_unary_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_expression_unary_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_expression_unary_rust_oracle"
+proof_level = "A"
+proves = "Live Rust establishes all fifteen instruction bytes, recursive unary behavior including plus, outer and parenthesized high/low precedence, unary-before-power precedence, and high/low in both ternary arms."
+does_not_prove = "Native selector, compiler, evaluator, or real guest execution."
+
+[[tests]]
+name = "native_expression_unary_parser_runtime_contract"
+proof_level = "B"
+proves = "Unary/grouping leading characters reach opcore; high/low wrap full expressions and both ternary arms; recursive unary operators emit existing ExprVM unary tags."
+does_not_prove = "Real 68020 execution or final native CLI bytes."
+
+[[tests]]
+name = "native_expression_unary_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI and its bytes match live Rust for all fifteen unary/grouping/ternary-arm cases."
+does_not_prove = "String-literal expression semantics or malformed-unary diagnostic text."

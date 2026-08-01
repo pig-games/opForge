@@ -1001,6 +1001,7 @@ done
 parseHex	.block
 	movem.l d1-d2, -(sp)
 	clr.l d3
+	clr.l d2
 
 loop
 	tst.l d0
@@ -1024,6 +1025,8 @@ loop
 	beq.s ok
 	cmpi.b #9, d1
 	beq.s ok
+	cmpi.b #'_', d1
+	beq.s loop
 	cmpi.b #'0', d1
 	bcs.s fail
 	cmpi.b #'9', d1
@@ -1047,19 +1050,21 @@ digit
 	subi.b #'0', d1
 
 haveDigit
+	moveq #1, d2
 	lsl.l #4, d3
 	or.b d1, d3
 	bra.s loop
 
 ok
+	tst.l d2
+	beq.s fail
 	moveq #0, d5
 	bra.s return
 
 endBeforeOperator
 	subq.l #1, a0
 	addq.l #1, d0
-	moveq #0, d5
-	bra.s return
+	bra.s ok
 
 fail
 	moveq #1, d5
@@ -1070,8 +1075,9 @@ return
 	.bend  ; parseHex
 
 parseBinary	.block
-	movem.l d1, -(sp)
+	movem.l d1-d2, -(sp)
 	clr.l d3
+	clr.l d2
 
 loop
 	tst.l d0
@@ -1087,6 +1093,8 @@ loop
 	beq.s ok
 	cmpi.b #9, d1
 	beq.s ok
+	cmpi.b #'_', d1
+	beq.s loop
 	cmpi.b #'0', d1
 	beq.s digit
 	cmpi.b #'1', d1
@@ -1094,25 +1102,27 @@ loop
 
 digit
 	subi.b #'0', d1
+	moveq #1, d2
 	lsl.l #1, d3
 	or.b d1, d3
 	bra.s loop
 
 ok
+	tst.l d2
+	beq.s fail
 	moveq #0, d5
 	bra.s return
 
 endBeforeOperator
 	subq.l #1, a0
 	addq.l #1, d0
-	moveq #0, d5
-	bra.s return
+	bra.s ok
 
 fail
 	moveq #1, d5
 
 return
-	movem.l (sp)+, d1
+	movem.l (sp)+, d1-d2
 	rts
 	.bend  ; parseBinary
 
@@ -1231,8 +1241,9 @@ return
 ; Clobbers: D1/CCR.
 ; CCR: reflects D5 on return.
 parseOctal	.block
-	movem.l d1, -(sp)
+	movem.l d1-d2, -(sp)
 	clr.l d3
+	clr.l d2
 
 scanDigit
 	tst.l d0
@@ -1240,16 +1251,21 @@ scanDigit
 	moveq #0, d1
 	move.b (a0)+, d1
 	subq.l #1, d0
+	cmpi.b #'_', d1
+	beq.s scanDigit
 	cmpi.b #'0', d1
 	bcs.s fail
 	cmpi.b #'7', d1
 	bhi.s fail
 	subi.b #'0', d1
+	moveq #1, d2
 	lsl.l #3, d3
 	or.b d1, d3
 	bra.s scanDigit
 
 ok
+	tst.l d2
+	beq.s fail
 	moveq #0, d5
 	bra.s return
 
@@ -1257,13 +1273,14 @@ fail
 	moveq #1, d5
 
 return
-	movem.l (sp)+, d1
+	movem.l (sp)+, d1-d2
 	rts
 	.bend  ; parseOctal
 
 parseDecimal	.block
-	movem.l d1-d2, -(sp)
+	movem.l d1-d2/d4, -(sp)
 	clr.l d3
+	clr.l d4
 
 loop
 	tst.l d0
@@ -1297,11 +1314,14 @@ loop
 	beq.s ok
 	cmpi.b #9, d1
 	beq.s ok
+	cmpi.b #'_', d1
+	beq.s loop
 	cmpi.b #'0', d1
 	bcs.s fail
 	cmpi.b #'9', d1
 	bhi.s fail
 	subi.b #'0', d1
+	moveq #1, d4
 	move.l d3, d2
 	lsl.l #3, d3
 	add.l d2, d3
@@ -1310,20 +1330,21 @@ loop
 	bra.s loop
 
 ok
+	tst.l d4
+	beq.s fail
 	moveq #0, d5
 	bra.s return
 
 endBeforeOperator
 	subq.l #1, a0
 	addq.l #1, d0
-	moveq #0, d5
-	bra.s return
+	bra.s ok
 
 fail
 	moveq #1, d5
 
 return
-	movem.l (sp)+, d1-d2
+	movem.l (sp)+, d1-d2/d4
 	rts
 	.bend  ; parseDecimal
 

@@ -1,0 +1,45 @@
+[slice]
+schema_version = 2
+name = "native expression digit separators"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/expr.rs::parse_number",
+  "crates/opforge-core/src/tokenizer.rs::Tokenizer::scan_prefixed_number"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::parseHex",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::parseBinary",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::parseOctal",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::parseDecimal"
+]
+invariant = "Native scalar literal parsers ignore underscore visual separators accepted by the Rust tokenizer without shifting, accumulating, or consuming adjacent expression text."
+expected_inputs = "Decimal, prefixed hexadecimal, prefixed binary, and suffix binary scalar literals containing underscores, plus an underscore-only invalid prefixed literal followed by adjacent expression text."
+expected_outputs = "The real native CLI emits the same scalar bytes as Rust for every valid form; the Rust tokenizer continues rejecting an underscore-only prefixed literal."
+known_non_equivalences = "This slice does not claim later comparison, bitwise, logical, ternary, pass-layout, or complete additive-fixture parity."
+fast_proof_command = "cargo test -p asm native_expression_digit_separator -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_expression_digit_separators_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_expression_digit_separators_rust_oracle"
+proof_level = "A"
+proves = "Rust scalar values for every retained digit-separator form and rejection of an underscore-only prefixed literal."
+does_not_prove = "Native implementation or execution."
+
+[[tests]]
+name = "native_expression_digit_separator_parser_contract"
+proof_level = "B"
+proves = "Every native scalar radix parser explicitly recognizes the underscore separator."
+does_not_prove = "Runtime register preservation or real AmigaOS execution."
+
+[[tests]]
+name = "native_expression_digit_separators_fs_uae"
+proof_level = "D"
+proves = "The real 68020/AmigaOS native CLI evaluates decimal, prefixed hexadecimal/binary, and suffix-binary separators to exact Rust-authoritative bytes."
+does_not_prove = "Later expression tiers, pass-layout behavior, or complete additive-fixture parity."
+
+[[tests]]
+name = "native_expression_digit_separator_invalid_fs_uae"
+proof_level = "D"
+proves = "The real 68020/AmigaOS native CLI rejects an underscore-only hexadecimal literal followed by `+1` instead of evaluating it as zero and consuming adjacent expression text."
+does_not_prove = "Other malformed-token diagnostic classes."

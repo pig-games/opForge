@@ -685,6 +685,7 @@ landed” is not equivalent to “framework-closed.”
     - Level A semantic-completeness accounting for every canonical statement
     - Level B additive-fixture artifact checks
     - exact Level D `native_opcore_adapted_syntax_fs_uae` with `--nocapture --test-threads=1`
+    - separate exact Level D `native_mos_forward_ref_stability_fs_uae` against the unchanged canonical mixed-CPU source and live Rust CLI artifact
     - reference-scope validator, native formatter, staged native porting gate, and full Rust quality gate
   - Plan-compliance review evidence:
     - `plan-compliance-reviewer` returns `PASS` for additive adaptation only, with no native parity fix bundled
@@ -770,6 +771,45 @@ landed” is not equivalent to “framework-closed.”
     - a real native source containing more than 160 ordinary statements assembles byte-for-byte with Rust
     - statement storage remains bounded by the existing 512-record source/session limit and rejects overflow
     - label, expression, image, and source-line capacities remain separate invariants
+
+- [x] Item 5.9.5: restore native digit-separator expression parity
+  - Source requirement or finding IDs: Item 5.9 valid Level D failure in complete additive `expr_syntax.asm` at the first retained underscore-separated literal, `1_000_000`
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - native ExprVM parser/compiler files
+    - focused tests in `crates/opforge-asm/src/tests.rs`
+  - Full quality gates:
+    - Level A Rust digit-separator oracle
+    - exact Level D `native_expression_digit_separators_fs_uae` with `--nocapture --test-threads=1`
+    - exact negative Level D `native_expression_digit_separator_invalid_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for digit separators only
+  - Commit outcome:
+    - native scalar literal scanning accepts Rust-compatible underscores without changing the literal value or consuming adjacent expression text
+  - Definition of done:
+    - decimal, prefixed hexadecimal/binary, and suffix-form binary separators used by `expr_syntax.asm` match Rust
+    - tokenizer-invalid underscore-only literals still fail deterministically; placements accepted by the Rust tokenizer remain accepted
+    - later expression and pass-layout failures remain separate remediation items
+
+- [ ] Item 5.9.6: restore native implied-instruction forward-reference stability
+  - Source requirement or finding IDs: user-reported actual-Amiga divergence in canonical `examples/mos6502/mos_forward_ref_stability.asm`; standalone Level D emitted `AD 00 01` and `9C 00 02` where source comments and Rust authority require `AD 01 01` and `9C 01 02`
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - narrowly required native opasm pass-one sizing files
+    - the standalone canonical-source proof in `crates/opforge-asm/src/tests/native_opcore_adapted_syntax.rs`
+  - Full quality gates:
+    - focused Level B pass-one implied-size contract
+    - exact Level D `native_mos_forward_ref_stability_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for implied-instruction pass-one sizing only
+  - Commit outcome:
+    - pass one advances across implied instructions before recording a following forward label, matching the emitted pass-two byte count
+  - Definition of done:
+    - the unchanged mixed-CPU canonical source emits `AD 01 01 EA 60` and `9C 01 02 EA 60` on real AmigaOS
+    - its live Rust HEX remains equal to the checked-in reference and source comments
+    - BIN gap-layout behavior and other sizing forms remain separate invariants
 
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures

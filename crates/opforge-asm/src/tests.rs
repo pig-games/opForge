@@ -97,6 +97,8 @@ use vm::rollout::{
 mod native_cli_diagnostic_routing;
 #[path = "tests/native_expression_digit_separators.rs"]
 mod native_expression_digit_separators;
+#[path = "tests/native_expression_power.rs"]
+mod native_expression_power;
 #[path = "tests/native_fs_uae_parity.rs"]
 mod native_fs_uae_parity;
 #[path = "tests/native_harness_evidence.rs"]

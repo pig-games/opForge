@@ -440,7 +440,7 @@ return
 	.bend  ; compileShift
 
 compileMultiplicative	.block
-	bsr.w compileSingleTerm
+	bsr.w power
 	tst.l d5
 	bne.w fail
 
@@ -461,7 +461,7 @@ operator
 	move.l d6, -(sp)
 	addq.l #1, a0
 	subq.l #1, d0
-	bsr.w compileSingleTerm
+	bsr.w power
 	move.l (sp)+, d6
 	tst.l d5
 	bne.w fail
@@ -498,6 +498,42 @@ fail
 	moveq #1, d5
 
 return
+	rts
+
+power
+	bsr.w compileSingleTerm
+	tst.l d5
+	bne.w powerFail
+	bsr.w skipWhitespace
+	cmpi.l #2, d0
+	bcs.s powerOk
+	cmpi.b #'*', (a0)
+	bne.s powerOk
+	cmpi.b #'*', 1(a0)
+	bne.s powerOk
+	addq.l #2, a0
+	subq.l #2, d0
+	bsr.w power
+	tst.l d5
+	bne.s powerFail
+	moveq #runtime.EXPRVM_BINARY_POWER, d6
+	move.l d0, -(sp)
+	bsr.w emitApplyBinaryD6
+	move.l d0, d5
+	move.l (sp)+, d0
+	tst.l d5
+	bne.s powerFail
+
+powerOk
+	moveq #0, d5
+	rts
+
+powerFail
+	tst.l d5
+	bne.s powerReturn
+	moveq #1, d5
+
+powerReturn
 	rts
 	.bend  ; compileMultiplicative
 

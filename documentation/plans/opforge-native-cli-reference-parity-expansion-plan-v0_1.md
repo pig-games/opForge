@@ -831,6 +831,27 @@ landed” is not equivalent to “framework-closed.”
     - scoped alias storage remains bounded for the corresponding source-label domain
     - behavior beyond the existing 512-record source/session bound remains a separate invariant
 
+- [x] Item 5.9.8: restore native exponentiation expression parity
+  - Source requirement or finding IDs: Item 5.9 valid Level D failure in complete additive `expr_syntax.asm` at the first retained exponentiation expression, `pow1 .const 2 ** 3`
+  - Expected files:
+    - `documentation/plans/slices/native-porting-slice-expression-power.toml`
+    - native opcore expression compiler and ExprVM runtime files
+    - focused tests in `crates/opforge-asm/src/tests/native_expression_power.rs`
+    - refreshed complete native runtime boundary inventory hash without expanding the certified opcore routine surface
+  - Full quality gates:
+    - focused Level A Rust value/precedence/right-associativity oracle
+    - focused Level B parser/runtime source contract
+    - exact Level D `native_expression_power_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for exponentiation parsing/evaluation only
+  - Commit outcome:
+    - native scalar expressions parse `**` above multiplication, associate it to the right, and evaluate nonnegative exponents with wrapping 32-bit multiplication
+  - Definition of done:
+    - `2 ** 3`, `3 ** 2 ** 2`, multiplication/power precedence on both sides, and `0 ** 0` emit the same bytes as Rust under real AmigaOS execution
+    - negative exponents fail through the existing checked evaluator path
+    - every later failure in the complete additive fixture remains a separate remediation item rather than being excluded
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

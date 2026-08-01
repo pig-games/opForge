@@ -26,6 +26,7 @@ EXPRVM_UNARY_BIT_NOT            = 2
 EXPRVM_UNARY_LOGIC_NOT          = 3
 EXPRVM_UNARY_HIGH               = 4
 EXPRVM_UNARY_LOW                = 5
+EXPRVM_BINARY_POWER             = 3
 EXPRVM_BINARY_ADD               = 6
 EXPRVM_BINARY_SUBTRACT          = 7
 EXPRVM_BINARY_LOGIC_OR          = 8
@@ -223,23 +224,25 @@ opcodeApplyBinary
 	bmi.s applyBinaryRestoreFail
 	move.l (sp)+, d2
 	cmpi.b #EXPRVM_BINARY_ADD, d6
-	beq.s applyBinaryAdd
+	beq.w applyBinaryAdd
 	cmpi.b #EXPRVM_BINARY_SUBTRACT, d6
-	beq.s applyBinarySubtract
+	beq.w applyBinarySubtract
 	cmpi.b #EXPRVM_BINARY_LOGIC_OR, d6
-	beq.s applyBinaryLogicOr
+	beq.w applyBinaryLogicOr
 	cmpi.b #EXPRVM_TERNARY_SELECT, d6
-	beq.s applyTernarySelect
+	beq.w applyTernarySelect
+	cmpi.b #EXPRVM_BINARY_POWER, d6
+	beq.w applyBinaryPower
 	cmpi.b #EXPRVM_BINARY_MULTIPLY, d6
-	beq.s applyBinaryMultiply
+	beq.w applyBinaryMultiply
 	cmpi.b #EXPRVM_BINARY_DIVIDE, d6
-	beq.s applyBinaryDivide
+	beq.w applyBinaryDivide
 	cmpi.b #EXPRVM_BINARY_MOD, d6
-	beq.s applyBinaryMod
+	beq.w applyBinaryMod
 	cmpi.b #EXPRVM_BINARY_SHIFT_LEFT, d6
-	beq.s applyBinaryShiftLeft
+	beq.w applyBinaryShiftLeft
 	cmpi.b #EXPRVM_BINARY_SHIFT_RIGHT, d6
-	beq.s applyBinaryShiftRight
+	beq.w applyBinaryShiftRight
 	bra.w fail
 
 applyBinaryRestoreFail
@@ -248,11 +251,11 @@ applyBinaryRestoreFail
 
 applyBinaryAdd
 	add.l d2, d3
-	bra.s applyBinaryDone
+	bra.w applyBinaryDone
 
 applyBinarySubtract
 	sub.l d2, d3
-	bra.s applyBinaryDone
+	bra.w applyBinaryDone
 
 applyBinaryLogicOr
 	or.l d2, d3
@@ -260,7 +263,26 @@ applyBinaryLogicOr
 	moveq #1, d3
 
 applyBinaryLogicOrDone
-	bra.s applyBinaryDone
+	bra.w applyBinaryDone
+
+applyBinaryPower
+	tst.l d2
+	bmi.w fail
+	move.l d3, d1
+	moveq #1, d3
+
+applyBinaryPowerLoop
+	tst.l d2
+	beq.w applyBinaryDone
+	btst #0, d2
+	beq.s applyBinaryPowerSquare
+	mulu.l d1, d3
+
+applyBinaryPowerSquare
+	lsr.l #1, d2
+	beq.w applyBinaryDone
+	mulu.l d1, d1
+	bra.s applyBinaryPowerLoop
 
 applyBinaryMultiply
 	muls.l d2, d3

@@ -276,7 +276,7 @@ fail
 	.bend  ; compileTernary
 
 compileLogicalOr	.block
-	bsr.w compare
+	bsr.w bitOr
 	tst.l d5
 	bne.w fail
 
@@ -290,7 +290,7 @@ loop
 	bne.w ok
 	addq.l #2, a0
 	subq.l #2, d0
-	bsr.w compare
+	bsr.w bitOr
 	tst.l d5
 	bne.w fail
 	moveq #runtime.EXPRVM_BINARY_LOGIC_OR, d6
@@ -307,6 +307,132 @@ ok
 	rts
 
 fail
+	rts
+
+bitOr
+	bsr.w bitXor
+	tst.l d5
+	bne.w bitOrFail
+
+bitOrLoop
+	bsr.w skipWhitespace
+	beq.w bitOrOk
+	cmpi.b #'|', (a0)
+	bne.w bitOrOk
+	cmpi.l #2, d0
+	bcs.s bitOrApply
+	cmpi.b #'|', 1(a0)
+	beq.w bitOrOk
+
+bitOrApply
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w bitXor
+	tst.l d5
+	bne.w bitOrFail
+	moveq #runtime.EXPRVM_BINARY_BIT_OR, d6
+	move.l d0, -(sp)
+	bsr.w emitApplyBinaryD6
+	move.l d0, d5
+	move.l (sp)+, d0
+	tst.l d5
+	bne.w bitOrFail
+	bra.w bitOrLoop
+
+bitOrOk
+	moveq #0, d5
+	rts
+
+bitOrFail
+	tst.l d5
+	bne.s bitOrReturn
+	moveq #1, d5
+
+bitOrReturn
+	rts
+
+bitXor
+	bsr.w bitAnd
+	tst.l d5
+	bne.w bitXorFail
+
+bitXorLoop
+	bsr.w skipWhitespace
+	beq.w bitXorOk
+	cmpi.b #'^', (a0)
+	bne.w bitXorOk
+	cmpi.l #2, d0
+	bcs.s bitXorApply
+	cmpi.b #'^', 1(a0)
+	beq.w bitXorOk
+
+bitXorApply
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w bitAnd
+	tst.l d5
+	bne.w bitXorFail
+	moveq #runtime.EXPRVM_BINARY_BIT_XOR, d6
+	move.l d0, -(sp)
+	bsr.w emitApplyBinaryD6
+	move.l d0, d5
+	move.l (sp)+, d0
+	tst.l d5
+	bne.w bitXorFail
+	bra.w bitXorLoop
+
+bitXorOk
+	moveq #0, d5
+	rts
+
+bitXorFail
+	tst.l d5
+	bne.s bitXorReturn
+	moveq #1, d5
+
+bitXorReturn
+	rts
+
+bitAnd
+	bsr.w compare
+	tst.l d5
+	bne.w bitAndFail
+
+bitAndLoop
+	bsr.w skipWhitespace
+	beq.w bitAndOk
+	cmpi.b #'&', (a0)
+	bne.w bitAndOk
+	cmpi.l #2, d0
+	bcs.s bitAndApply
+	cmpi.b #'&', 1(a0)
+	beq.w bitAndOk
+
+bitAndApply
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w compare
+	tst.l d5
+	bne.w bitAndFail
+	moveq #runtime.EXPRVM_BINARY_BIT_AND, d6
+	move.l d0, -(sp)
+	bsr.w emitApplyBinaryD6
+	move.l d0, d5
+	move.l (sp)+, d0
+	tst.l d5
+	bne.w bitAndFail
+	bra.w bitAndLoop
+
+bitAndOk
+	moveq #0, d5
+	rts
+
+bitAndFail
+	tst.l d5
+	bne.s bitAndReturn
+	moveq #1, d5
+
+bitAndReturn
 	rts
 
 compare
@@ -441,6 +567,10 @@ loop
 	cmpi.b #'=', d6
 	beq.w ok
 	cmpi.b #'!', d6
+	beq.w ok
+	cmpi.b #'&', d6
+	beq.w ok
+	cmpi.b #'^', d6
 	beq.w ok
 	bra.w trailingFail
 

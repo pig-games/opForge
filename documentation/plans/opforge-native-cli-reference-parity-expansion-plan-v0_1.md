@@ -873,6 +873,27 @@ landed” is not equivalent to “framework-closed.”
     - true and false results, signed ordering, and shift/comparison precedence are proven
     - later complete-fixture failures remain separate remediation items rather than being excluded
 
+- [x] Item 5.9.10: restore native bitwise expression parity
+  - Source requirement or finding IDs: Item 5.9 valid Level D failure in complete additive `expr_syntax.asm` at the first retained bitwise expression, `bit_and .const ($f0 & $0f)`
+  - Expected files:
+    - `documentation/plans/slices/native-porting-slice-expression-bitwise.toml`
+    - native opcore expression compiler and ExprVM runtime files
+    - focused tests in `crates/opforge-asm/src/tests/native_expression_bitwise.rs`
+    - refreshed complete native runtime boundary inventory hash without expanding the certified opcore routine surface
+  - Full quality gates:
+    - focused Level A Rust bitwise value/precedence oracle
+    - focused Level B parser/runtime source contract
+    - exact Level D `native_expression_bitwise_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for bitwise parsing/evaluation only
+  - Commit outcome:
+    - native scalar expressions parse AND, XOR, and OR in the Rust precedence order and yield doubled tokens to the logical tier
+  - Definition of done:
+    - `&`, `^`, and `|` values and mixed precedence emit the same bytes as Rust under real AmigaOS execution
+    - comparison-before-bitwise precedence and logical-token yielding are proven
+    - later complete-fixture failures remain separate remediation items rather than being excluded
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

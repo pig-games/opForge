@@ -3088,8 +3088,8 @@ fn native_scoped_expression_snapshot_source_stays_in_opasm_adapter() {
             "move.l #ScopedSnapshotValues, 4(a3)",
         ]
     ));
-    assert!(operand.contains("SCOPED_SNAPSHOT_SOURCE_CAPACITY = 16"));
-    assert!(operand.contains("SCOPED_SNAPSHOT_CAPACITY = 32"));
+    assert!(operand.contains("SCOPED_SNAPSHOT_SOURCE_CAPACITY = 512"));
+    assert!(operand.contains("SCOPED_SNAPSHOT_CAPACITY = 1024"));
 }
 
 #[test]

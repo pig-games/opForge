@@ -7,8 +7,8 @@
 	.use opasm.amigaos.engine as eng
 	.use opasm.amigaos.flow_scopes as scopes
 
-SCOPED_SNAPSHOT_SOURCE_CAPACITY = 16
-SCOPED_SNAPSHOT_CAPACITY = 32
+SCOPED_SNAPSHOT_SOURCE_CAPACITY = 512
+SCOPED_SNAPSHOT_CAPACITY = 1024
 SCOPED_SNAPSHOT_NAME_BYTES = 64
 
 	.section code, kind=code

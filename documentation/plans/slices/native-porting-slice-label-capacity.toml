@@ -1,0 +1,32 @@
+[slice]
+schema_version = 2
+name = "native label and symbol snapshot capacity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/session.rs::AssemblySession",
+  "crates/opforge-types/src/symbol_stability.rs::is_symbol_unstable"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::NATIVE_LABEL_TABLE_CAPACITY",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm::RUNTIME_CONTEXT_STABILITY_CAPACITY",
+  "native/motorola68000/amigaos/opasm/opasm_operand_eval.asm::SCOPED_SNAPSHOT_SOURCE_CAPACITY"
+]
+invariant = "Native label storage and every read-only symbol snapshot accept the complete bounded 512-record source domain instead of failing at the former 16-label transitional limit."
+expected_inputs = "A native source defining more than sixteen labels and then referencing the final label through a selected instruction."
+expected_outputs = "The real native CLI retains and resolves every label through the final reference, producing the exact live Rust bytes."
+known_non_equivalences = "This slice does not claim behavior beyond the existing 512-record source/session bound or complete additive fixture parity."
+fast_proof_command = "cargo test -p asm native_label_capacity_tracks_complete_source_record_domain -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_label_capacity_over_16_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_label_capacity_tracks_complete_source_record_domain"
+proof_level = "B"
+proves = "Label storage, stability tables, and scoped snapshot sources share the existing 512-record bounded domain."
+does_not_prove = "Real 68020 allocation or execution."
+
+[[tests]]
+name = "native_label_capacity_over_16_fs_uae"
+proof_level = "D"
+proves = "The real 68020/AmigaOS native CLI stores more than sixteen labels and resolves the final one through selected-instruction evaluation."
+does_not_prove = "Overflow diagnostics beyond the 512-record source/session bound or complete additive fixture parity."

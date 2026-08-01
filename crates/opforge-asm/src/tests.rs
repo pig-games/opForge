@@ -101,6 +101,8 @@ mod native_expression_digit_separators;
 mod native_fs_uae_parity;
 #[path = "tests/native_harness_evidence.rs"]
 mod native_harness_evidence;
+#[path = "tests/native_label_capacity.rs"]
+mod native_label_capacity;
 #[path = "tests/native_mos_forward_ref_stability.rs"]
 mod native_mos_forward_ref_stability;
 #[path = "tests/native_reference_shards.rs"]

@@ -812,6 +812,25 @@ landed” is not equivalent to “framework-closed.”
     - its live Rust HEX remains equal to the checked-in reference and source comments
     - BIN gap-layout behavior and other sizing forms remain separate invariants
 
+- [x] Item 5.9.7: remove the native 16-label transitional limit
+  - Source requirement or finding IDs: Item 5.9 valid Level D failure in complete additive `expr_syntax.asm` when defining `num_sep_suf`, the seventeenth retained label
+  - Expected files:
+    - one `documentation/plans/slices/*.toml` metadata record
+    - native opasm label storage and dependent read-only symbol snapshot files
+    - focused tests in `crates/opforge-asm/src/tests/native_label_capacity.rs`
+  - Full quality gates:
+    - focused Level B label/snapshot capacity contract
+    - exact Level D `native_label_capacity_over_16_fs_uae` with `--nocapture --test-threads=1`
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for label and symbol-snapshot capacity only
+  - Commit outcome:
+    - native label storage and dependent read-only snapshots cover the complete existing 512-record source/session domain instead of stopping at sixteen labels
+  - Definition of done:
+    - a real native source defining more than sixteen labels resolves its final label byte-for-byte with Rust
+    - scoped alias storage remains bounded for the corresponding source-label domain
+    - behavior beyond the existing 512-record source/session bound remains a separate invariant
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

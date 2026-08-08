@@ -174,7 +174,7 @@ no
 	.bend  ; lineContainsMacroDirective
 
 lineContainsDirective	.block
-	movem.l d5/a3, -(sp)
+	movem.l d5-d6/a3, -(sp)
 	movea.l a0, a2
 	movea.l a1, a3
 	move.l d1, d3
@@ -185,13 +185,29 @@ containsLongEnough
 	sub.l d3, d0
 	move.l d0, d5
 	clr.l d4
+	clr.l d6
 
 scan
 	cmp.l d5, d4
-	bhi.s no
+	bhi.w no
 	move.b 0(a2, d4.l), d0
+	tst.l d6
+	beq.s outsideQuote
+	cmp.b d6, d0
+	bne.s next
+	clr.l d6
+	bra.s next
+outsideQuote
 	cmpi.b #';', d0
 	beq.s no
+	cmpi.b #'\'', d0
+	beq.s enterQuote
+	cmpi.b #'"', d0
+	bne.s candidate
+enterQuote
+	move.b d0, d6
+	bra.s next
+candidate
 	tst.l d4
 	beq.s compare
 	move.b -1(a2, d4.l), d0
@@ -238,15 +254,15 @@ boundary
 
 next
 	addq.l #1, d4
-	bra.s scan
+	bra.w scan
 
 yes
-	movem.l (sp)+, d5/a3
+	movem.l (sp)+, d5-d6/a3
 	moveq #1, d0
 	rts
 
 no
-	movem.l (sp)+, d5/a3
+	movem.l (sp)+, d5-d6/a3
 	moveq #0, d0
 	rts
 	.bend  ; lineContainsDirective

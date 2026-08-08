@@ -1,0 +1,43 @@
+[slice]
+schema_version = 2
+name = "native preprocessor segment definition and expansion"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/macro_processor.rs::MacroProcessor::expand_lines",
+  "crates/opforge-core/src/macro_processor_definitions.rs::parse_macro_def_line",
+  "crates/opforge-core/src/macro_processor_args_subst.rs::build_macro_args",
+  "crates/opforge-core/src/macro_processor_args_subst.rs::substitute_line",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_scan.asm::lineContainsDirective",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm::opforgeNativeCliCaptureMacroDefinitionLineV1",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_invocation.asm::bindMacroParameterDefaults",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_substitution.asm::appendInvocationNamed",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliExpandActiveMacroV1",
+]
+invariant = "A captured segment uses the shared bounded macro argument and body machinery but is distinguished by its stored definition kind: its invocation expands inline without .block/.endblock, substitutes named/default arguments, and attaches a caller label to the first body line with overlap-safe byte movement."
+assertion_decision = "No new runtime assertion: bounded kind lookup, capacity checks, deterministic frontend failure, independent source-policy tests, and exact real-guest artifacts prove this slice."
+expected_inputs = "Named .segment/.endsegment definitions and dotted invocations using explicit or default arguments, with or without a caller label."
+expected_outputs = "Ordinary expanded frontend lines whose exact emitted bytes match the live Rust assembly of the same source and 65C02 selection."
+known_non_equivalences = "Statement definitions/invocations, preprocessor export visibility, and module/import integration remain Items 7.5 through 7.7."
+fast_proof_command = "cargo test -p asm native_segment_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_macro_syntax_segment_fs_uae -- --nocapture"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_segment_expansion_source_model_matches_rust_scope_and_label_rules"
+proof_level = "C"
+proves = "The independent transition model and native source contract distinguish macro scope wrapping from segment inline expansion and keep statement routing inactive."
+does_not_prove = "Real 68020 execution or emitted artifact parity."
+
+[[tests]]
+name = "native_macro_syntax_segment_fs_uae"
+proof_level = "D"
+proves = "The complete canonical macro_syntax.asm runs through the real native CLI and emits a fresh artifact byte-for-byte equal to the live Rust graph assembled with the same 65C02 selection."
+does_not_prove = "Caller-label attachment, statement behavior, or export visibility."
+
+[[tests]]
+name = "native_segment_label_attachment_fs_uae"
+proof_level = "D"
+proves = "A defaulted segment invocation with a caller label attaches that label to the first inline body line and emits exact live Rust bytes under FS-UAE."
+does_not_prove = "Statement behavior, preprocessor exports, or module/import visibility."

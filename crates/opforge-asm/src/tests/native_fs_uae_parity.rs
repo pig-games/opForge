@@ -1249,9 +1249,9 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
         &scan,
         &[
             "lineContainsDirective\t.block",
-            "movem.l d5/a3, -(sp)",
+            "movem.l d5-d6/a3, -(sp)",
             "yes",
-            "movem.l (sp)+, d5/a3",
+            "movem.l (sp)+, d5-d6/a3",
         ]
     ));
     for routine in [
@@ -1290,10 +1290,10 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
 }
 
 #[test]
-fn native_preprocessor_structural_definition_record_is_inert_and_macro_backed() {
+fn native_preprocessor_structural_definition_record_routes_macro_and_segment_only() {
     // Proof levels B/C. This locks the shared fixed record layout and proves
-    // that only the existing macro kind is routable; it does not enable segment
-    // or statement parsing or prove native execution.
+    // that macro and segment definitions have distinct expansion policies while
+    // the statement kind remains inactive. It does not prove native execution.
     let root = workspace_root();
     let constants =
         fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"))
@@ -1316,9 +1316,10 @@ fn native_preprocessor_structural_definition_record_is_inert_and_macro_backed() 
     assert!(source_contains_in_order(
         &state,
         &[
-            "Shared structural-definition record contract",
+            "Shared structural-definition record contract (macro and segment)",
             "DefinitionHeader is the captured name/signature",
-            "Segment/statement kinds have",
+            "DefinitionKind selects macro scope wrapping or segment",
+            "NativeCliPreprocessDefinitionKind",
             "NativeCliPreprocessDefinitionBodyCount",
             "NativeCliPreprocessDefinitionHeaderLen",
             "NativeCliPreprocessDefinitionBodyLen",
@@ -1326,15 +1327,94 @@ fn native_preprocessor_structural_definition_record_is_inert_and_macro_backed() 
             "NativeCliPreprocessDefinitionBody",
         ]
     ));
-    assert!(!definitions.contains("DEFINITION_KIND_SEGMENT"));
+    assert!(definitions.contains("NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT"));
+    assert!(definitions.contains("NativeCliPreprocessDefinitionKind"));
     assert!(!definitions.contains("DEFINITION_KIND_STATEMENT"));
+}
+
+#[test]
+fn native_segment_expansion_source_model_matches_rust_scope_and_label_rules() {
+    // Proof level C. Model the kind-owned expansion policy independently of the
+    // native implementation: macros wrap scope; segments inline and attach a
+    // caller label to only the first expanded line.
+    fn expand(kind: &str, label: Option<&str>, body: &[&str]) -> Vec<String> {
+        let mut out = body
+            .iter()
+            .map(|line| (*line).to_string())
+            .collect::<Vec<_>>();
+        if kind == "macro" {
+            out.insert(
+                0,
+                label.map_or(".block".to_string(), |name| format!("{name} .block")),
+            );
+            out.push(".endblock".to_string());
+        } else if let Some(label) = label {
+            if let Some(first) = out.first_mut() {
+                let trimmed = first.trim_start();
+                *first = if trimmed.is_empty() {
+                    label.to_string()
+                } else {
+                    format!("{label} {trimmed}")
+                };
+            } else {
+                out.push(label.to_string());
+            }
+        }
+        out
+    }
+
+    assert_eq!(
+        expand("segment", None, &["        .byte 7"]),
+        ["        .byte 7"]
+    );
+    assert_eq!(
+        expand("segment", Some("placed"), &["        .byte 7", " .byte 8"]),
+        ["placed .byte 7", " .byte 8"]
+    );
+    assert_eq!(
+        expand("macro", Some("placed"), &["        .byte 7"]),
+        ["placed .block", "        .byte 7", ".endblock"]
+    );
+
+    let root = workspace_root();
+    let definitions = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm"),
+    )
+    .expect("read definition owner");
+    let line_processor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read line processor");
+    assert!(source_contains_in_order(
+        &definitions,
+        &[
+            "SegmentText",
+            "jsr preprocessor_scan.lineContainsDirective",
+            "NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT",
+            "NativeCliPreprocessDefinitionKind",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "NativeCliPreprocessDefinitionKind",
+            "NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT",
+            "beq.s bodyLoop",
+            "attachSegmentInvocationLabel",
+            "close",
+            "NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT",
+            "beq.s finish",
+        ]
+    ));
+    assert!(!definitions.contains("NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT"));
+    assert!(!line_processor.contains("NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT"));
 }
 
 #[test]
 fn native_preprocessor_structural_scanner_boundary_matrix_is_bounded() {
     // Proof level C. This table models the declared bounded scanner contract
     // and locks its native quote/boundary implementation. It does not prove
-    // native execution or activate segment/statement behavior.
+    // native execution or activate statement behavior.
     fn contains_macro(line: &str) -> bool {
         let bytes = line.as_bytes();
         let mut quote = None;
@@ -1375,6 +1455,38 @@ fn native_preprocessor_structural_scanner_boundary_matrix_is_bounded() {
             && (bytes.len() == 9 || matches!(bytes[9], b' ' | b'\t' | b';'))
     }
 
+    fn contains_segment(line: &str) -> bool {
+        let bytes = line.as_bytes();
+        let mut quote = None;
+        let mut index = 0;
+        while index + 8 <= bytes.len() {
+            let byte = bytes[index];
+            if let Some(delimiter) = quote {
+                if byte == delimiter {
+                    quote = None;
+                }
+                index += 1;
+                continue;
+            }
+            if matches!(byte, b'\'' | b'"') {
+                quote = Some(byte);
+                index += 1;
+                continue;
+            }
+            if byte == b';' {
+                return false;
+            }
+            let left = index == 0 || matches!(bytes[index - 1], b' ' | b'\t');
+            let spelling = bytes[index..index + 8].eq_ignore_ascii_case(b".segment");
+            let right = index + 8 == bytes.len() || matches!(bytes[index + 8], b' ' | b'\t' | b';');
+            if left && spelling && right {
+                return true;
+            }
+            index += 1;
+        }
+        false
+    }
+
     for (line, expected) in [
         ("NAME .macro arg", true),
         ("NAME .MACRO arg", true),
@@ -1402,6 +1514,21 @@ fn native_preprocessor_structural_scanner_boundary_matrix_is_bounded() {
             "end-kind matrix: {line:?}"
         );
     }
+    for (line, expected) in [
+        ("INLINE .segment val", true),
+        ("INLINE .SEGMENT val", true),
+        ("INLINE .segment; comment", true),
+        ("INLINE .segmentx", false),
+        ("prefix.segment val", false),
+        ("; INLINE .segment val", false),
+        ("label .byte \" .segment \"", false),
+        ("label .byte ' .segment '", false),
+        ("label .byte \"x\" ; .segment", false),
+        ("INLINE .seg", false),
+        (&"x".repeat(255), false),
+    ] {
+        assert_eq!(contains_segment(line), expected, "segment matrix: {line:?}");
+    }
 
     let root = workspace_root();
     let scan = fs::read_to_string(
@@ -1418,6 +1545,19 @@ fn native_preprocessor_structural_scanner_boundary_matrix_is_bounded() {
             "cmpi.b #'\\\'', d1",
             "cmpi.b #'\"', d1",
             "move.b d1, d4",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &scan,
+        &[
+            "lineContainsDirective\t.block",
+            "clr.l d6",
+            "tst.l d6",
+            "cmp.b d6, d0",
+            "cmpi.b #';', d0",
+            "cmpi.b #'\\\'', d0",
+            "cmpi.b #'\"', d0",
+            "move.b d0, d6",
         ]
     ));
     assert!(source_contains_in_order(
@@ -5125,6 +5265,114 @@ fn native_macro_invocation_fixture_fs_uae() {
             assert!(run.success, "native macro fixture failed: {}", run.stdout);
             let native = verified_fs_uae_output(run);
             assert_eq!(native, rust, "native macro fixture bytes differ");
+        }
+    }
+}
+
+#[test]
+fn native_macro_syntax_segment_fs_uae() {
+    // Proof level D. This dedicated canonical proof includes the INLINE segment
+    // and compares the exact native bytes with a live Rust assembly of the same
+    // source. Statement and module-export behavior are not exercised here.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock is infallible");
+    let root = workspace_root();
+    let source_path = root.join("examples/opcore/macro_syntax.asm");
+    let source = fs::read(&source_path).expect("read canonical macro syntax source");
+    let root_lines = expand_source_file(&source_path, &[], &[], 64)
+        .expect("preprocess canonical macro syntax for Rust authority");
+    let module_paths = example_module_paths(&source_path);
+    let graph = load_module_graph(&source_path, root_lines, &[], &[], &module_paths, 64)
+        .expect("expand canonical macro syntax graph for Rust authority");
+    let mut rust_lines = vec![".cpu 65c02".to_string()];
+    rust_lines.extend(graph.lines);
+    let rust_line_refs = rust_lines.iter().map(String::as_str).collect::<Vec<_>>();
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&rust_line_refs, true)
+        .expect("Rust canonical macro syntax authority");
+    assert!(
+        diagnostics.is_empty(),
+        "Rust macro syntax diagnostics: {diagnostics:?}"
+    );
+    let rust = entries
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "macro-syntax-segment",
+        cpu_id: "65c02",
+        source: source.as_slice(),
+        package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
+        .expect("canonical macro syntax FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one canonical segment run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native canonical segment failed: {}",
+                run.stdout
+            );
+            let native = verified_fs_uae_output(run);
+            assert_eq!(native, rust, "native canonical segment bytes differ");
+        }
+    }
+}
+
+#[test]
+fn native_segment_label_attachment_fs_uae() {
+    // Proof level D. A caller label on a segment invocation must attach to the
+    // first expanded body line without synthesizing a macro scope block.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock is infallible");
+    let root = workspace_root();
+    let source = b".org $2000\nINLINE .segment val=7\n        .byte .val\n.endsegment\nEMPTY .segment\n.endsegment\nplaced  .INLINE\n        .word placed\nempty   .EMPTY\n        .word empty\n        .end\n";
+    let source_lines = std::str::from_utf8(source)
+        .expect("segment label source UTF-8")
+        .lines()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let mut rust_lines = vec![".cpu 65c02".to_string()];
+    rust_lines.extend(
+        MacroProcessor::new()
+            .expand(&source_lines)
+            .expect("expand Rust segment label authority"),
+    );
+    let rust_line_refs = rust_lines.iter().map(String::as_str).collect::<Vec<_>>();
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&rust_line_refs, true)
+        .expect("assemble Rust segment label authority");
+    assert!(
+        diagnostics.is_empty(),
+        "Rust segment label diagnostics: {diagnostics:?}"
+    );
+    let rust = entries
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "segment-label-attachment",
+        cpu_id: "65c02",
+        source,
+        package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
+        .expect("segment label FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one segment label run");
+            let run = &runs[0];
+            assert!(run.success, "native segment label failed: {}", run.stdout);
+            let native = verified_fs_uae_output(run);
+            assert_eq!(native, rust, "native segment label bytes differ");
         }
     }
 }

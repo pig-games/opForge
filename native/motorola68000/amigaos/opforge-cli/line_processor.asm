@@ -554,6 +554,10 @@ opforgeNativeCliExpandActiveMacroV1	.block
 .endif
 .endif
 	clr.w state.NativeCliPreprocessInvocationBodyIndex
+	move.w state.NativeCliPreprocessInvocationDefinition, d0
+	lea state.NativeCliPreprocessDefinitionKind, a0
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT, 0(a0, d0.w)
+	beq.s bodyLoop
 	; Rust macro expansion wraps every `.macro` invocation in a lexical block.
 	; Process the generated start line before body substitution so a caller label
 	; belongs to this scope rather than to a rewritten body declaration.
@@ -585,6 +589,15 @@ bodyLoop
 	jsr preprocessor_substitution.opforgeNativeCliSubstituteMacroBodyLineV1.l
 	bne.w fail
 	move.w d1, state.NativeCliPreprocessExpansionLineLen
+	move.w state.NativeCliPreprocessInvocationDefinition, d2
+	lea state.NativeCliPreprocessDefinitionKind, a0
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT, 0(a0, d2.w)
+	bne.s processBodyLine
+	tst.w state.NativeCliPreprocessInvocationBodyIndex
+	bne.s processBodyLine
+	bsr.w attachSegmentInvocationLabel
+	bne.w fail
+processBodyLine
 	lea state.NativeCliPreprocessExpansionLine, a0
 	move.l d1, d0
 	bsr.w opforgeNativeCliProcessExpandedLineV1
@@ -593,6 +606,24 @@ bodyLoop
 	bra.s bodyLoop
 
 close
+	move.w state.NativeCliPreprocessInvocationDefinition, d0
+	lea state.NativeCliPreprocessDefinitionKind, a0
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT, 0(a0, d0.w)
+	bne.s closeMacro
+	tst.w state.NativeCliPreprocessInvocationBodyIndex
+	bne.s finish
+	tst.w state.NativeCliPreprocessInvocationLabelLen
+	beq.s finish
+	clr.w state.NativeCliPreprocessExpansionLineLen
+	bsr.w attachSegmentInvocationLabel
+	bne.w fail
+	lea state.NativeCliPreprocessExpansionLine, a0
+	moveq #0, d0
+	move.w state.NativeCliPreprocessExpansionLineLen, d0
+	bsr.w opforgeNativeCliProcessExpandedLineV1
+	bne.w fail
+	bra.s finish
+closeMacro
 	bsr.w emitMacroBlockEnd
 	bne.w fail
 	lea state.NativeCliPreprocessExpansionLine, a0
@@ -600,6 +631,7 @@ close
 	move.w state.NativeCliPreprocessExpansionLineLen, d0
 	bsr.w opforgeNativeCliProcessExpandedScopeLineV1
 	bne.w fail
+finish
 	move.w #-1, state.NativeCliPreprocessInvocationDefinition
 	moveq #0, d0
 	rts
@@ -607,6 +639,88 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliExpandActiveMacroV1
+
+; Attach a segment caller label to the first non-whitespace body text, matching
+; Rust's no-scope segment expansion. ExpansionLineLen is updated in place.
+attachSegmentInvocationLabel	.block
+	moveq #0, d0
+	move.w state.NativeCliPreprocessInvocationLabelLen, d0
+	beq.w success
+	lea state.NativeCliPreprocessExpansionLine, a0
+	moveq #0, d2
+	move.w state.NativeCliPreprocessExpansionLineLen, d2
+	moveq #0, d3
+trim
+	cmp.w d2, d3
+	bcc.s contentReady
+	move.b 0(a0, d3.w), d4
+	cmpi.b #' ', d4
+	beq.s trimNext
+	cmpi.b #9, d4
+	bne.s contentReady
+trimNext
+	addq.w #1, d3
+	bra.s trim
+contentReady
+	sub.w d3, d2
+	beq.s labelOnly
+	move.w d0, d4
+	addq.w #1, d4
+	add.w d2, d4
+	cmpi.w #constants.NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY, d4
+	bcc.s fail
+	move.w d0, d6
+	addq.w #1, d6
+	cmp.w d3, d6
+	bcs.s forwardBody
+	move.w d2, d5
+reverseBody
+	tst.w d5
+	beq.s copyLabel
+	subq.w #1, d5
+	move.w d5, d6
+	add.w d3, d6
+	move.b 0(a0, d6.w), d6
+	move.w d5, d7
+	add.w d0, d7
+	addq.w #1, d7
+	move.b d6, 0(a0, d7.w)
+	bra.s reverseBody
+forwardBody
+	moveq #0, d5
+forwardLoop
+	cmp.w d2, d5
+	bcc.s copyLabel
+	move.w d5, d6
+	add.w d3, d6
+	move.b 0(a0, d6.w), d6
+	move.w d5, d7
+	add.w d0, d7
+	addq.w #1, d7
+	move.b d6, 0(a0, d7.w)
+	addq.w #1, d5
+	bra.s forwardLoop
+labelOnly
+	move.w d0, d4
+copyLabel
+	lea state.NativeCliPreprocessInvocationLabel, a1
+	move.w d0, d2
+	movea.l a0, a2
+	move.l d2, d0
+	jsr copy.copyBytes
+	cmp.w d2, d4
+	beq.s copied
+	move.b #' ', 0(a0, d2.w)
+copied
+	move.w d4, state.NativeCliPreprocessExpansionLineLen
+	move.w d4, d1
+success
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; attachSegmentInvocationLabel
 
 ; Build the Rust-compatible macro scope start line in ExpansionLine.
 ; A caller label attaches to `.block`; an indented call keeps its indentation.

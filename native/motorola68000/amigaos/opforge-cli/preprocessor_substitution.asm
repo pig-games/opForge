@@ -308,25 +308,42 @@ appendInvocationNamed	.block
 	add.w d2, d2
 	lea state.NativeCliPreprocessDefinitionHeaderLen, a2
 	move.w 0(a2, d2.w), d6
-findMacro
+	move.w state.NativeCliPreprocessInvocationDefinition, d2
+	lea state.NativeCliPreprocessDefinitionKind, a2
+	moveq #0, d1
+	move.b 0(a2, d2.w), d1
+findDefinition
 	tst.l d6
 	bne.s namedHeaderRemaining
 	bra.w fail
 namedHeaderRemaining
 	cmpi.b #'.', (a0)
 	bne.s next
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT, d1
+	beq.s findSegment
 	cmpi.l #6, d6
 	bcs.s next
 	move.b 1(a0), d4
+	ori.b #32, d4
 	cmpi.b #'m', d4
 	bne.s next
 	addq.l #6, a0
 	subq.l #6, d6
 	bra.s initParams
+findSegment
+	cmpi.l #8, d6
+	bcs.s next
+	move.b 1(a0), d4
+	ori.b #32, d4
+	cmpi.b #'s', d4
+	bne.s next
+	addq.l #8, a0
+	subq.l #8, d6
+	bra.s initParams
 next
 	addq.l #1, a0
 	subq.l #1, d6
-	bra.s findMacro
+	bra.s findDefinition
 initParams
 	clr.l d2
 params

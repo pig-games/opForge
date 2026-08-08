@@ -202,13 +202,13 @@ NativeCliPreprocessDefinitionCount
 	.res word, 1
 NativeCliPreprocessActiveDefinition
 	.res word, 1
-; Shared structural-definition record contract (currently macro-only):
+; Shared structural-definition record contract (macro and segment):
 ; DefinitionHeader is the captured name/signature; DefinitionBody and
 ; DefinitionBodyCount describe the bounded body span; HeaderLen/BodyLen own
-; exact byte lengths. preprocessor_definitions owns macro capture and the
-; macro kind; preprocessor_invocation owns attached caller-label state; and
-; line_processor owns expansion/scope policy. Segment/statement kinds have no
-; active record or route in this layout-only slice.
+; exact byte lengths. DefinitionKind selects macro scope wrapping or segment
+; inline expansion. preprocessor_definitions owns capture and kind assignment;
+; preprocessor_invocation owns attached caller-label state; and line_processor
+; owns expansion/scope policy. The statement kind remains inactive.
 ; Resource budget/lifetime: ResetPreprocessorV1 clears this whole contiguous
 ; region before each CLI session. Every owner rejects an over-capacity request
 ; before writing its slot: definition headers (including name/signature), body
@@ -226,6 +226,8 @@ NativeCliPreprocessInvocationFullArgsLen
 	.res word, 1
 NativeCliPreprocessInvocationLabelLen
 	.res word, 1
+NativeCliPreprocessDefinitionKind
+	.res byte, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY
 NativeCliPreprocessDefinitionBodyCount
 	.res word, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY
 NativeCliPreprocessDefinitionHeaderLen

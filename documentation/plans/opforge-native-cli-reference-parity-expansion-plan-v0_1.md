@@ -1299,7 +1299,7 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: one independently revertible CLI diagnostic-routing remediation commit.
   - Definition of done: deterministic failure output reaches the Rust-authoritative sink with matching normalized text and exit status; no segment, statement, export, linker, output-format, CPU, or selector semantics are added.
 
-- [ ] Item 7.4: add native segment definition and expansion semantics
+- [x] Item 7.4: add native segment definition and expansion semantics
   - Source requirement or finding IDs: `macro_syntax.asm` INLINE `.segment` form; Rust segment branch in `MacroProcessor::expand_lines`.
   - Activation dependency: the native preprocessor stabilization plan is archived and Item 7.3g CLI error-output remediation is complete and green.
   - Expected files: native preprocessor and tests; one slice record.

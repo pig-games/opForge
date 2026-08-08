@@ -16,7 +16,7 @@
 	.section code, kind=code
 	.pub
 
-; Consume one `.macro` definition line before tokenizer dispatch.
+; Consume one `.macro` or `.segment` definition line before tokenizer dispatch.
 ; Inputs: state.NativeCliSourceLine contains the logical source line.
 ; Outputs: D0 = 0 passthrough, 1 consumed, -1 malformed/capacity failure.
 ; Clobbers: D0-D4/A0-A2/CCR.
@@ -24,21 +24,55 @@
 opforgeNativeCliCaptureMacroDefinitionLineV1	.block
 	tst.w state.NativeCliPreprocessActiveDefinition
 	bmi.w checkOpen
+	move.w state.NativeCliPreprocessActiveDefinition, d2
+	lea state.NativeCliPreprocessDefinitionKind, a2
+	move.b 0(a2, d2.w), d2
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT, d2
+	beq.w checkSegmentClose
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
 	jsr preprocessor_scan.lineStartsWithEndmacroDirective
-	bne.s close
+	bne.w close
+	bra.s rejectWrongClose
+checkSegmentClose
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	lea EndsegmentText.l, a1
+	moveq #11, d1
+	jsr preprocessor_scan.lineStartsWithDirective
+	bne.w close
+rejectWrongClose
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	jsr preprocessor_scan.lineStartsWithEndmacroDirective
+	bne.w fail
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	lea EndsegmentText.l, a1
+	moveq #11, d1
+	jsr preprocessor_scan.lineStartsWithDirective
+	bne.w fail
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
 	jsr preprocessor_scan.lineContainsMacroDirective
 	beq.s captureNoNestedMacro
 	bra.w fail
 captureNoNestedMacro
-	lea EndsegmentText.l, a1
-	moveq #11, d1
-	jsr preprocessor_scan.lineStartsWithDirective
-	beq.s captureNoEndsegment
-	bra.w fail
-captureNoEndsegment
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	lea SegmentText.l, a1
+	moveq #8, d1
+	jsr preprocessor_scan.lineContainsDirective
+	bne.w fail
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
 	lea EndstatementText.l, a1
 	moveq #13, d1
 	jsr preprocessor_scan.lineStartsWithDirective
@@ -68,8 +102,27 @@ noUnexpectedEnd
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
+	lea EndsegmentText.l, a1
+	moveq #11, d1
+	jsr preprocessor_scan.lineStartsWithDirective
+	bne.w fail
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
 	jsr preprocessor_scan.lineContainsMacroDirective
+	bne.s openMacro
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	lea SegmentText.l, a1
+	moveq #8, d1
+	jsr preprocessor_scan.lineContainsDirective
 	beq.w pass
+	moveq #constants.NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT, d4
+	bra.s validateOpen
+openMacro
+	moveq #constants.NATIVE_PREPROCESS_DEFINITION_KIND_MACRO, d4
+validateOpen
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
@@ -94,6 +147,8 @@ noUnexpectedEnd
 	move.w d3, 0(a2, d2.l)
 	move.w state.NativeCliPreprocessDefinitionCount, d0
 	move.w d0, state.NativeCliPreprocessActiveDefinition
+	lea state.NativeCliPreprocessDefinitionKind, a2
+	move.b d4, 0(a2, d0.w)
 	addq.w #1, state.NativeCliPreprocessDefinitionCount
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	move.w ccr, -(sp)
@@ -124,9 +179,9 @@ fail
 	rts
 	.bend  ; opforgeNativeCliCaptureMacroDefinitionLineV1
 
-; Verify that no macro definition remained open at end of the source stream.
+; Verify that no macro or segment definition remained open at end of the source stream.
 ; Inputs: none.
-; Outputs: D0 = 0 when complete, 1 when an `.endmacro` is missing.
+; Outputs: D0 = 0 when complete, 1 when a matching end directive is missing.
 ; Clobbers: D0/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliFinishMacroDefinitionsV1	.block
@@ -188,6 +243,8 @@ fail
 	.section data, kind=data
 EndsegmentText
 	.byte ".endsegment", 0
+SegmentText
+	.byte ".segment", 0
 EndstatementText
 	.byte ".endstatement", 0
 	.endsection

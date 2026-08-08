@@ -606,6 +606,10 @@ bindMacroParameterDefaults	.block
 	add.w d7, d7
 	lea state.NativeCliPreprocessDefinitionHeaderLen, a1
 	move.w 0(a1, d7.w), d0
+	move.w state.NativeCliPreprocessInvocationDefinition, d7
+	lea state.NativeCliPreprocessDefinitionKind, a1
+	moveq #0, d4
+	move.b 0(a1, d7.w), d4
 findDirective
 	tst.l d0
 	bne.s bindHasHeader
@@ -615,6 +619,8 @@ bindHasHeader
 	beq.s bindSawDot
 	bra.w nextByte
 bindSawDot
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT, d4
+	beq.w bindSegmentCandidate
 	cmpi.l #6, d0
 	bcc.s bindDirectiveFits
 	bra.w nextByte
@@ -687,6 +693,16 @@ directiveDone
 bindMacroDirectiveDone
 	addq.l #6, a0
 	subq.l #6, d0
+	bra.s initParameters
+bindSegmentCandidate
+	cmpi.l #8, d0
+	bcs.w nextByte
+	move.b 1(a0), d1
+	ori.b #32, d1
+	cmpi.b #'s', d1
+	bne.w nextByte
+	addq.l #8, a0
+	subq.l #8, d0
 	bra.s initParameters
 nextByte
 	addq.l #1, a0

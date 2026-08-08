@@ -90,6 +90,47 @@ no
 	rts
 	.bend  ; macroHeaderHasName
 
+; Require a directive-first `.statement` header with a keyword token.
+; Inputs: A0 = line bytes; D0 = line length.
+; Outputs: D0 = 1 when a keyword follows `.statement`, else 0.
+; Clobbers: D0-D4/A0-A3/CCR.
+statementHeaderHasKeyword	.block
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	move.l a0, -(sp)
+	move.l d0, -(sp)
+	lea StatementText.l, a1
+	moveq #10, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s noPop
+	move.l (sp)+, d0
+	movea.l (sp)+, a0
+	adda.l #10, a0
+	subi.l #10, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s no
+	move.b (a0), d1
+	cmpi.b #';', d1
+	beq.s no
+	cmpi.b #'_', d1
+	beq.s yes
+	cmpi.b #'A', d1
+	bcs.s no
+	cmpi.b #'Z', d1
+	bls.s yes
+	cmpi.b #'a', d1
+	bcs.s no
+	cmpi.b #'z', d1
+	bhi.s no
+yes
+	moveq #1, d0
+	rts
+noPop
+	addq.l #8, sp
+no
+	moveq #0, d0
+	rts
+	.bend  ; statementHeaderHasKeyword
+
 ; Match a standalone `.macro` directive without relying on a data-section
 ; pointer. Inputs are the source line in A0/D0; D0 is 1 on match, else 0.
 lineContainsMacroDirective	.block
@@ -267,5 +308,9 @@ no
 	rts
 	.bend  ; lineContainsDirective
 
+	.endsection
+	.section data, kind=data
+StatementText
+	.byte ".statement", 0
 	.endsection
 	.endmodule

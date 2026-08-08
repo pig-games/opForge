@@ -1308,7 +1308,7 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: `.segment/.endsegment` expands without macro scope wrapping and preserves label attachment semantics.
   - Definition of done: the canonical INLINE segment output matches Rust; no statement-definition behavior is added.
 
-- [ ] Item 7.5: consume and store native statement definitions
+- [x] Item 7.5: consume and store native statement definitions
   - Source requirement or finding IDs: `statement_expansion.asm` parser failure at `.statement`.
   - Expected files: native preprocessor/state; statement-signature representation; focused tests; one slice record.
   - Full quality gates: Level A Rust statement-definition oracle; Level B/C signature-storage tests; native formatter; staged native-porting gate; full Rust quality gate.

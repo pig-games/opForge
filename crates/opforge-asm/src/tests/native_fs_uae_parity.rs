@@ -1290,10 +1290,10 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
 }
 
 #[test]
-fn native_preprocessor_structural_definition_record_routes_macro_and_segment_only() {
+fn native_preprocessor_structural_definition_record_stores_all_kinds() {
     // Proof levels B/C. This locks the shared fixed record layout and proves
-    // that macro and segment definitions have distinct expansion policies while
-    // the statement kind remains inactive. It does not prove native execution.
+    // that macro, segment, and statement definitions receive distinct stored
+    // kinds. It does not prove native invocation or execution.
     let root = workspace_root();
     let constants =
         fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"))
@@ -1316,9 +1316,9 @@ fn native_preprocessor_structural_definition_record_routes_macro_and_segment_onl
     assert!(source_contains_in_order(
         &state,
         &[
-            "Shared structural-definition record contract (macro and segment)",
+            "Shared structural-definition record contract (macro, segment, and statement)",
             "DefinitionHeader is the captured name/signature",
-            "DefinitionKind selects macro scope wrapping or segment",
+            "DefinitionKind selects macro scope wrapping or segment\n; inline expansion",
             "NativeCliPreprocessDefinitionKind",
             "NativeCliPreprocessDefinitionBodyCount",
             "NativeCliPreprocessDefinitionHeaderLen",
@@ -1328,8 +1328,8 @@ fn native_preprocessor_structural_definition_record_routes_macro_and_segment_onl
         ]
     ));
     assert!(definitions.contains("NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT"));
+    assert!(definitions.contains("NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT"));
     assert!(definitions.contains("NativeCliPreprocessDefinitionKind"));
-    assert!(!definitions.contains("DEFINITION_KIND_STATEMENT"));
 }
 
 #[test]
@@ -1406,8 +1406,246 @@ fn native_segment_expansion_source_model_matches_rust_scope_and_label_rules() {
             "beq.s finish",
         ]
     ));
-    assert!(!definitions.contains("NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT"));
+    assert!(definitions.contains("NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT"));
     assert!(!line_processor.contains("NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT"));
+}
+
+#[test]
+fn native_statement_definition_rust_oracle_consumes_bodies_and_rejects_structure_errors() {
+    // Proof level A. Rust owns statement definition parsing and structural
+    // diagnostics; this does not claim native invocation matching.
+    let mut processor = crate::preprocess::AsmMacroProcessor::new(64);
+    let output = processor
+        .expand(&[
+            ".statement LOAD byte:val".to_string(),
+            "    .byte .val".to_string(),
+            ".endstatement".to_string(),
+            "    .byte 9".to_string(),
+        ])
+        .expect("Rust statement definition");
+    assert_eq!(output, ["    .byte 9"]);
+
+    for (lines, expected) in [
+        (
+            vec![".statement".to_string(), ".endstatement".to_string()],
+            "Expected statement keyword",
+        ),
+        (
+            vec![
+                ".statement LOAD byte:val".to_string(),
+                ".statement INNER byte:v".to_string(),
+                ".endstatement".to_string(),
+            ],
+            "Nested .statement definitions are not supported",
+        ),
+        (
+            vec![
+                ".statement LOAD byte:val".to_string(),
+                ".endmacro".to_string(),
+            ],
+            ".endmacro found without matching .macro",
+        ),
+        (
+            vec![".statement LOAD byte:val".to_string()],
+            "Missing .endstatement for statement definition",
+        ),
+    ] {
+        let error = crate::preprocess::AsmMacroProcessor::new(64)
+            .expand(&lines)
+            .expect_err("Rust must reject malformed statement structure");
+        assert!(
+            error.message().contains(expected),
+            "expected {expected:?}, got {:?}",
+            error.message()
+        );
+    }
+}
+
+#[test]
+fn native_statement_definition_storage_is_bounded_and_not_invokable() {
+    // Proof levels B/C. The native record retains exact statement header and
+    // body bytes under the shared definition capacity, but no statement kind
+    // reaches invocation parsing or expansion in Item 7.5.
+    let root = workspace_root();
+    let constants =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"))
+            .expect("read constants");
+    let state = fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/state.asm"))
+        .expect("read state");
+    let definitions = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm"),
+    )
+    .expect("read definition owner");
+    let scan = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_scan.asm"),
+    )
+    .expect("read scanner owner");
+    let invocation = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_invocation.asm"),
+    )
+    .expect("read invocation owner");
+    let line_processor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read line processor");
+
+    assert!(constants.contains("NATIVE_PREPROCESS_DEFINITION_CAPACITY = 8"));
+    assert!(source_contains_in_order(
+        &state,
+        &[
+            "Shared structural-definition record contract (macro, segment, and statement)",
+            "NativeCliPreprocessDefinitionKind",
+            "NativeCliPreprocessDefinitionBodyCount",
+            "NativeCliPreprocessDefinitionHeaderLen",
+            "NativeCliPreprocessDefinitionBodyLen",
+            "NativeCliPreprocessDefinitionHeader",
+            "NativeCliPreprocessDefinitionBody",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &definitions,
+        &[
+            "checkStatementClose",
+            "EndstatementText",
+            "StatementText",
+            "NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT",
+            "statementHeaderHasKeyword",
+            "NativeCliPreprocessDefinitionHeader",
+            "NativeCliPreprocessDefinitionKind",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &scan,
+        &[
+            "statementHeaderHasKeyword\t.block",
+            "StatementText",
+            "opforgeNativeCliSkipLineWhitespace",
+            "cmpi.b #';', d1",
+        ]
+    ));
+    assert!(!invocation.contains("NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT"));
+    assert!(!line_processor.contains("NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT"));
+
+    let capacity = 8usize;
+    let canonical = fs::read_to_string(root.join("examples/opcore/statement_expansion.asm"))
+        .expect("read canonical statement source");
+    let headers = canonical
+        .lines()
+        .filter(|line| line.trim_start().starts_with(".statement "))
+        .collect::<Vec<_>>();
+    assert_eq!(headers.len(), 5);
+    assert!(headers.len() <= capacity);
+    assert!(headers.iter().any(|line| line.contains("byte:val")));
+    assert!(headers.iter().any(|line| line.contains("\"[\"")));
+    assert!(headers.iter().any(|line| line.contains("[{byte:dstnum}]")));
+
+    fn capture_statement_records(
+        lines: &[String],
+        capacity: usize,
+    ) -> Result<Vec<(String, Vec<String>)>, &'static str> {
+        let mut records: Vec<(String, Vec<String>)> = Vec::new();
+        let mut open: Option<usize> = None;
+        for line in lines {
+            let trimmed = line.trim_start();
+            if let Some(index) = open {
+                if trimmed.starts_with(".endstatement") {
+                    open = None;
+                    continue;
+                }
+                if trimmed.starts_with(".statement") {
+                    return Err("nested");
+                }
+                if trimmed.starts_with(".macro")
+                    || trimmed.contains(" .macro")
+                    || trimmed.starts_with(".segment")
+                    || trimmed.contains(" .segment")
+                    || trimmed.starts_with(".endmacro")
+                    || trimmed.starts_with(".endsegment")
+                {
+                    return Err("mismatched");
+                }
+                records[index].1.push(line.clone());
+                continue;
+            }
+            if trimmed.starts_with(".endstatement")
+                || trimmed.starts_with(".endmacro")
+                || trimmed.starts_with(".endsegment")
+            {
+                return Err("unexpected-end");
+            }
+            if trimmed.starts_with(".statement") {
+                let keyword = trimmed
+                    .strip_prefix(".statement")
+                    .expect("prefix checked")
+                    .trim_start()
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("");
+                if keyword.is_empty() {
+                    return Err("missing-keyword");
+                }
+                if records.len() >= capacity {
+                    return Err("capacity");
+                }
+                records.push((line.clone(), Vec::new()));
+                open = Some(records.len() - 1);
+            }
+        }
+        if open.is_some() {
+            return Err("unterminated");
+        }
+        Ok(records)
+    }
+
+    let stored = capture_statement_records(
+        &[
+            ".statement LOAD byte:val".to_string(),
+            "    .byte .val".to_string(),
+            ".endstatement".to_string(),
+        ],
+        capacity,
+    )
+    .expect("valid statement capture model");
+    assert_eq!(stored[0].0, ".statement LOAD byte:val");
+    assert_eq!(stored[0].1, ["    .byte .val"]);
+    for (lines, expected) in [
+        (
+            vec![".statement".to_string(), ".endstatement".to_string()],
+            "missing-keyword",
+        ),
+        (
+            vec![
+                ".statement LOAD byte:v".to_string(),
+                ".statement INNER byte:v".to_string(),
+            ],
+            "nested",
+        ),
+        (
+            vec![
+                ".statement LOAD byte:v".to_string(),
+                ".endmacro".to_string(),
+            ],
+            "mismatched",
+        ),
+        (vec![".statement LOAD byte:v".to_string()], "unterminated"),
+        (
+            (0..9)
+                .flat_map(|index| {
+                    [
+                        format!(".statement S{index} byte:v"),
+                        ".endstatement".to_string(),
+                    ]
+                })
+                .collect::<Vec<_>>(),
+            "capacity",
+        ),
+    ] {
+        assert_eq!(
+            capture_statement_records(&lines, capacity),
+            Err(expected),
+            "statement transition matrix: {expected}"
+        );
+    }
 }
 
 #[test]
@@ -5373,6 +5611,66 @@ fn native_segment_label_attachment_fs_uae() {
             assert!(run.success, "native segment label failed: {}", run.stdout);
             let native = verified_fs_uae_output(run);
             assert_eq!(native, rust, "native segment label bytes differ");
+        }
+    }
+}
+
+#[test]
+fn native_statement_definition_storage_fs_uae() {
+    // Proof level D. Complex canonical signature text and bodies are consumed
+    // by the real native CLI without invocation matching; the sole ordinary
+    // output line must match a live Rust expansion of this exact source.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock is infallible");
+    let root = workspace_root();
+    let source = b".org $2000\n.statement LOAD byte:val\n    .byte .val\n.endstatement\n.statement lda \"[\"[{byte:val}]\"],y\"\n    .byte .val\n.endstatement\n.statement move.b char:dst[{byte:dstnum}] \",\" char:src[{byte:srcnum}]\n    .byte '.dst', .dstnum\n.endstatement\n        .byte 9\n        .end\n";
+    let source_lines = std::str::from_utf8(source)
+        .expect("statement storage source UTF-8")
+        .lines()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let mut rust_processor = crate::preprocess::AsmMacroProcessor::new(64);
+    let mut rust_lines = vec![".cpu 65c02".to_string()];
+    rust_lines.extend(
+        rust_processor
+            .expand(&source_lines)
+            .expect("expand Rust statement storage authority"),
+    );
+    let rust_line_refs = rust_lines.iter().map(String::as_str).collect::<Vec<_>>();
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&rust_line_refs, true)
+        .expect("assemble Rust statement storage authority");
+    assert!(
+        diagnostics.is_empty(),
+        "Rust statement storage diagnostics: {diagnostics:?}"
+    );
+    let rust = entries
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect::<Vec<_>>();
+    assert_eq!(rust, [9]);
+    let package = item6_mos_package_bytes();
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "statement-definition-storage",
+        cpu_id: "65c02",
+        source,
+        package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
+        .expect("statement storage FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one statement storage run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native statement storage failed: {}",
+                run.stdout
+            );
+            let native = verified_fs_uae_output(run);
+            assert_eq!(native, rust, "native statement storage bytes differ");
         }
     }
 }

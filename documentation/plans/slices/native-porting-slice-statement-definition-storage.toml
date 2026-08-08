@@ -1,0 +1,40 @@
+[slice]
+schema_version = 2
+name = "native statement definition and signature storage"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/macro_processor.rs::MacroProcessor::expand_lines",
+  "crates/opforge-core/src/macro_processor_statements.rs::parse_statement_def_line",
+  "crates/opforge-core/src/parser.rs::StatementSignature",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_scan.asm::statementHeaderHasKeyword",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm::opforgeNativeCliCaptureMacroDefinitionLineV1",
+  "native/motorola68000/amigaos/opforge-cli/state.asm::NativeCliPreprocessDefinitionKind",
+]
+invariant = "A directive-first .statement definition is consumed before PRVM, stored with an explicit statement kind, exact bounded signature header bytes, and exact bounded body lines; nested, mismatched, unterminated, missing-keyword, and over-capacity structure fails before invocation routing."
+assertion_decision = "No runtime assertion: the shared bounded definition record, explicit kind transitions, Rust structural oracle, and independent transition matrix prove storage without activating matching."
+expected_inputs = "Canonical statement headers containing keyword, literal, boundary, and typed capture signature text followed by a matching .endstatement."
+expected_outputs = "One typed definition record retaining exact header/signature and body bytes; definition lines produce no ordinary frontend statements."
+known_non_equivalences = "Statement invocation selection, signature matching, substitution, body re-entry, artifacts, and exports remain Items 7.6 and 7.7."
+fast_proof_command = "cargo test -p asm native_statement_definition_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_statement_definition_storage_fs_uae -- --nocapture"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_statement_definition_rust_oracle_consumes_bodies_and_rejects_structure_errors"
+proof_level = "A"
+proves = "Rust consumes statement definitions and reports missing keyword, nesting, mismatched close, and unterminated structure deterministically."
+does_not_prove = "Native storage or invocation behavior."
+
+[[tests]]
+name = "native_statement_definition_storage_is_bounded_and_not_invokable"
+proof_level = "C"
+proves = "The native record owns exact canonical signature/body bytes under the shared capacity and the transition model rejects all Item 7.5 structural failures while statement routing remains absent."
+does_not_prove = "Real statement matching, substitution, frontend re-entry, or emitted bytes."
+
+[[tests]]
+name = "native_statement_definition_storage_fs_uae"
+proof_level = "D"
+proves = "The real native CLI consumes complex statement signature/body records and emits only the same-case ordinary byte, exactly matching live Rust."
+does_not_prove = "Statement invocation matching, substitution, or expansion."

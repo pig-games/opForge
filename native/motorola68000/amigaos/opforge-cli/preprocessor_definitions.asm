@@ -29,6 +29,8 @@ opforgeNativeCliCaptureMacroDefinitionLineV1	.block
 	move.b 0(a2, d2.w), d2
 	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT, d2
 	beq.w checkSegmentClose
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT, d2
+	beq.w checkStatementClose
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
@@ -41,6 +43,15 @@ checkSegmentClose
 	move.w state.NativeCliSourceLineLen, d0
 	lea EndsegmentText.l, a1
 	moveq #11, d1
+	jsr preprocessor_scan.lineStartsWithDirective
+	bne.w close
+	bra.s rejectWrongClose
+checkStatementClose
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	lea EndstatementText.l, a1
+	moveq #13, d1
 	jsr preprocessor_scan.lineStartsWithDirective
 	bne.w close
 rejectWrongClose
@@ -68,6 +79,13 @@ captureNoNestedMacro
 	move.w state.NativeCliSourceLineLen, d0
 	lea SegmentText.l, a1
 	moveq #8, d1
+	jsr preprocessor_scan.lineContainsDirective
+	bne.w fail
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	lea StatementText.l, a1
+	moveq #10, d1
 	jsr preprocessor_scan.lineContainsDirective
 	bne.w fail
 	lea state.NativeCliSourceLine, a0
@@ -109,6 +127,13 @@ noUnexpectedEnd
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
+	lea EndstatementText.l, a1
+	moveq #13, d1
+	jsr preprocessor_scan.lineStartsWithDirective
+	bne.w fail
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
 	jsr preprocessor_scan.lineContainsMacroDirective
 	bne.s openMacro
 	lea state.NativeCliSourceLine, a0
@@ -117,7 +142,17 @@ noUnexpectedEnd
 	lea SegmentText.l, a1
 	moveq #8, d1
 	jsr preprocessor_scan.lineContainsDirective
+	bne.s openSegment
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	lea StatementText.l, a1
+	moveq #10, d1
+	jsr preprocessor_scan.lineContainsDirective
 	beq.w pass
+	moveq #constants.NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT, d4
+	bra.s validateOpen
+openSegment
 	moveq #constants.NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT, d4
 	bra.s validateOpen
 openMacro
@@ -126,8 +161,18 @@ validateOpen
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT, d4
+	beq.s validateStatement
 	jsr preprocessor_scan.macroHeaderHasName
 	beq.w fail
+	bra.s validated
+validateStatement
+	move.l d4, -(sp)
+	jsr preprocessor_scan.statementHeaderHasKeyword
+	move.l (sp)+, d4
+	tst.l d0
+	beq.w fail
+validated
 	moveq #0, d2
 	move.w state.NativeCliPreprocessDefinitionCount, d2
 	cmpi.w #constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY, d2
@@ -245,6 +290,8 @@ EndsegmentText
 	.byte ".endsegment", 0
 SegmentText
 	.byte ".segment", 0
+StatementText
+	.byte ".statement", 0
 EndstatementText
 	.byte ".endstatement", 0
 	.endsection

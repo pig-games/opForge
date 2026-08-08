@@ -1463,6 +1463,8 @@ loop
 	beq.s done
 	cmpi.b #'-', d1
 	beq.s done
+	cmpi.b #')', d1
+	beq.s done
 	addq.l #1, d2
 	bra.s loop
 

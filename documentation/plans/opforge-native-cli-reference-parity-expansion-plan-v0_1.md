@@ -1068,6 +1068,28 @@ landed” is not equivalent to “framework-closed.”
     - complete additive `testexpr.asm` matches Rust with no mismatch
     - the later `$-label` expression failure in complete `syntax.asm` remains a separate remediation item rather than being bundled or excluded
 
+- [x] Item 5.9.19: preserve parenthesized label-term boundaries in native expressions
+  - Source requirement or finding IDs: Item 5.9.16 complete `syntax.asm` Level D failure at `entries .const ($-jump_tab) / 3`; native `termLength` consumes the closing parenthesis as part of `jump_tab)` and the expression bridge reports `OTR922`
+  - Expected files:
+    - `documentation/plans/slices/native-porting-slice-expression-label-boundary.toml`
+    - native opcore expression compiler label-term scanner
+    - focused tests in `crates/opforge-asm/src/tests/native_expression_label_boundary.rs`
+    - refreshed complete native runtime boundary inventory hash without expanding the certified routine surface
+  - Full quality gates:
+    - focused Level A live Rust current-address/label arithmetic oracle
+    - focused Level B native label-token boundary contract
+    - exact positive and unresolved-negative Level D `native_expression_label_boundary_` tests with `--nocapture --test-threads=1`
+    - independent complete-source Level D `native_opcore_adapted_syntax_fs_uae` rerun
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for label-term delimiter ownership only
+  - Commit outcome:
+    - the native expression compiler stops a label term before `)` so the enclosing parser can close the group and continue with following operators
+  - Definition of done:
+    - `($-label) / 3` and a label followed by `)` evaluate with Rust-compatible values under real AmigaOS execution
+    - an actually unresolved parenthesized label still produces a completed nonzero guest result with diagnostics
+    - complete additive `syntax.asm` advances beyond `entries .const ($-jump_tab) / 3`; every later failure remains a separate remediation item rather than being bundled or excluded
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

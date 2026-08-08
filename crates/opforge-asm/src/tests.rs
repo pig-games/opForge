@@ -107,6 +107,8 @@ mod native_expression_bitwise;
 mod native_expression_comparison;
 #[path = "tests/native_expression_digit_separators.rs"]
 mod native_expression_digit_separators;
+#[path = "tests/native_expression_label_boundary.rs"]
+mod native_expression_label_boundary;
 #[path = "tests/native_expression_logical.rs"]
 mod native_expression_logical;
 #[path = "tests/native_expression_power.rs"]

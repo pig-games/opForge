@@ -1,0 +1,38 @@
+[slice]
+schema_version = 2
+name = "native parenthesized label-term boundary parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/expr.rs::parse_primary",
+  "crates/opforge-core/src/expr_vm.rs::PortableExprVmCompiler",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::termLength",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::compileSingleTerm",
+]
+invariant = "A native label term ends before the enclosing closing parenthesis; the label resolver consumes only the identifier and the group parser retains the delimiter."
+assertion_decision = "No runtime assertion: the scanner has an explicit delimiter branch, and positive plus unresolved-negative guest cases prove correct consumption and fail-closed resolution."
+expected_inputs = "Parenthesized expressions containing current-address subtraction from an underscore-bearing label, followed by division, plus an unresolved-label control."
+expected_outputs = "Resolved expressions emit the exact live Rust byte; unresolved labels complete with nonzero guest exit and diagnostics."
+known_non_equivalences = "Any later complete syntax.asm failure after the entries constant is a separate invariant."
+fast_proof_command = "cargo test -p asm native_expression_label_boundary_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_expression_label_boundary_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_expression_label_boundary_rust_oracle"
+proof_level = "A"
+proves = "Live Rust evaluates grouped current-address subtraction from an underscore-bearing label and subsequent division."
+does_not_prove = "Native token consumption or guest execution."
+
+[[tests]]
+name = "native_expression_label_boundary_source_contract"
+proof_level = "B"
+proves = "Native termLength stops before a closing parenthesis and compileSingleTerm leaves the delimiter for the group parser."
+does_not_prove = "Real 68020 execution or final CLI artifacts."
+
+[[tests]]
+name = "native_expression_label_boundary_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the resolved and unresolved grouped-label cases through the real native CLI with exact Rust bytes or completed diagnostics."
+does_not_prove = "Later unrelated complete-source expression or directive behavior."

@@ -101,6 +101,8 @@ mod native_data_expression_zero;
 mod native_data_string;
 #[path = "tests/native_default_origin.rs"]
 mod native_default_origin;
+#[path = "tests/native_ds_reservation.rs"]
+mod native_ds_reservation;
 #[path = "tests/native_expression_bitwise.rs"]
 mod native_expression_bitwise;
 #[path = "tests/native_expression_comparison.rs"]
@@ -14147,8 +14149,8 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
             "BSR.W readAlignPadForStatement",
             "BSR.W appendRepeatedByte",
             "emitDs",
-            "BSR.W readOperandValueForStatement",
-            "BSR.W appendRepeatedByte",
+            "materialize reservation bytes in the emitted-entry artifact",
+            "MOVEQ #0, D0",
             "emitFill",
             "MOVEQ #2, D6",
             "BSR.W readCommaOperandValueForStatement",

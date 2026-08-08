@@ -1,0 +1,37 @@
+[slice]
+schema_version = 2
+name = "native ds non-emitting reservation parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/line/asmline_directives.rs::process_ds",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverAdvancePc.ds",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverEmitImageBytes.emitDs",
+]
+invariant = ".ds changes the current assembly address but contributes no bytes to the emitted-entry artifact."
+assertion_decision = "No runtime assertion: the advance path evaluates and applies the reservation while the emit path explicitly succeeds without appending bytes; exact guest output proves both effects together."
+expected_inputs = "A bounded .ds expression between emitted bytes with a following label reference, plus an unresolved reservation control."
+expected_outputs = "The following label reflects the reserved address, the artifact omits the gap, and unresolved input completes with diagnostics."
+known_non_equivalences = "The later bitwise-expression failure in complete syntax.asm is a separate invariant."
+fast_proof_command = "cargo test -p asm native_ds_reservation_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_ds_reservation_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_ds_reservation_rust_oracle"
+proof_level = "A"
+proves = "Live Rust omits .ds bytes while retaining the following label's advanced address."
+does_not_prove = "Native branch ownership or guest execution."
+
+[[tests]]
+name = "native_ds_reservation_source_contract"
+proof_level = "B"
+proves = "Native sizing evaluates and advances .ds while pass-two emission appends no bytes."
+does_not_prove = "Real 68020 execution or final CLI artifacts."
+
+[[tests]]
+name = "native_ds_reservation_fs_uae"
+proof_level = "D"
+proves = "FS-UAE emits exact sparse-entry bytes with the advanced label value and completes an unresolved reservation with diagnostics."
+does_not_prove = "Later unrelated complete-source expression behavior."

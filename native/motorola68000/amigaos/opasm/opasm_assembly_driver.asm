@@ -1187,14 +1187,8 @@ emitAlign
 	bra.w return
 
 emitDs
-	move.w d6, d7
-	moveq #2, d5
-	bsr.w readOperandValueForStatement
-	bne.w emitLayoutFail
-	move.l d3, d0
-	moveq #0, d1
-	bsr.w appendRepeatedByte
-	bne.w emitLayoutFail
+	; `.ds` reserves address space during opasmDriverAdvancePc. Rust does not
+	; materialize reservation bytes in the emitted-entry artifact.
 	moveq #0, d0
 	bra.w return
 

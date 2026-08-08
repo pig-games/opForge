@@ -1,0 +1,44 @@
+[slice]
+schema_version = 2
+name = "native string-data directive parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/tokenizer.rs::Tokenizer::scan_string",
+  "crates/opforge-asm/src/line.rs::AsmLine::store_arg_list_ast",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineGetStatementTextMetadataV1",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::parseTextDirectiveForStatement",
+]
+invariant = "String-data operands retain their complete source span, use either matching quote delimiter, decode Rust-compatible escapes, and emit every decoded byte through the active encoding path."
+assertion_decision = "No runtime assertion: the engine validates source spans against the captured line length, the parser bounds every byte against its 512-byte scratch, and focused malformed cases prove fail-closed guest behavior."
+expected_inputs = "Single- or double-quoted .byte/.db strings, including exactly-64-byte operands, simple and xNN escapes, multiple strings, and mixed numeric/string lists."
+expected_outputs = "Native size and emit passes preserve all decoded/encoded bytes and produce the exact live Rust artifact; malformed or incomplete escapes fail with guest-produced diagnostics."
+known_non_equivalences = "Default-origin behavior and later complete syntax expression failures are separate invariants."
+fast_proof_command = "cargo test -p asm native_data_string_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_data_string_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_data_string_rust_oracle"
+proof_level = "A"
+proves = "Live Rust fixes exact bytes for both quote styles, an exactly-64-byte operand, simple/xNN escapes, mixed lists, and final instruction emission."
+does_not_prove = "Native parsing or real guest execution."
+
+[[tests]]
+name = "native_data_string_parser_contract"
+proof_level = "B"
+proves = "Filled compact operand snapshots route through a validated full source span, while ordinary operands keep their copied path, and the parser admits both delimiters plus checked xNN decoding."
+does_not_prove = "Real 68020 execution or final CLI artifacts."
+
+[[tests]]
+name = "native_data_string_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI and exact output matches live Rust for the complete focused string-data matrix."
+does_not_prove = "Default-origin behavior or later complete-source expression forms."
+
+[[tests]]
+name = "native_data_string_invalid_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes the real native CLI and unterminated, bad-hex, and short-hex strings each produce a guest completion marker, nonzero guest exit code, and diagnostics."
+does_not_prove = "Exact Rust/native diagnostic wording parity."

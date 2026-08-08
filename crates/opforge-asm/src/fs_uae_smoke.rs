@@ -786,10 +786,11 @@ fn verify_native_cli_case_proof(
                 })?;
             if actual != rust_oracle {
                 return Err(format!(
-                    "FS-UAE byte parity failed for {}: native output ({} bytes) is not byte-for-byte equal to the in-memory Rust oracle ({} bytes)",
+                    "FS-UAE byte parity failed for {}: native output ({} bytes) is not byte-for-byte equal to the in-memory Rust oracle ({} bytes); {}",
                     case.name,
                     actual.len(),
-                    rust_oracle.len()
+                    rust_oracle.len(),
+                    describe_first_byte_mismatch(&actual, rust_oracle)
                 ));
             }
             run.verified_output = Some(actual);
@@ -821,6 +822,50 @@ fn verify_native_cli_case_proof(
             Ok(())
         }
     }
+}
+
+fn describe_first_byte_mismatch(actual: &[u8], expected: &[u8]) -> String {
+    let shared_len = actual.len().min(expected.len());
+    if let Some(offset) = (0..shared_len).find(|&offset| actual[offset] != expected[offset]) {
+        let last_offset = (0..shared_len)
+            .rfind(|&candidate| actual[candidate] != expected[candidate])
+            .expect("a first mismatch implies a last mismatch");
+        let difference_count = actual
+            .iter()
+            .zip(expected.iter())
+            .filter(|(native, rust)| native != rust)
+            .count();
+        let count_text = if actual.len() == expected.len() {
+            format!("{difference_count} differing byte(s); ")
+        } else {
+            String::new()
+        };
+        let last_text = if last_offset == offset {
+            String::new()
+        } else {
+            format!(
+                "; last mismatch at offset {last_offset}: native={:#04x}, Rust={:#04x}",
+                actual[last_offset], expected[last_offset]
+            )
+        };
+        return format!(
+            "{count_text}first mismatch at offset {offset}: native={:#04x}, Rust={:#04x}{last_text}",
+            actual[offset], expected[offset],
+        );
+    }
+    if actual.len() < expected.len() {
+        return format!(
+            "native output ends at offset {shared_len}; next Rust byte is {:#04x}",
+            expected[shared_len]
+        );
+    }
+    if expected.len() < actual.len() {
+        return format!(
+            "Rust output ends at offset {shared_len}; next native byte is {:#04x}",
+            actual[shared_len]
+        );
+    }
+    "outputs are equal".to_string()
 }
 
 pub(crate) fn run_opforge_native_cli_item10_include_from_env(
@@ -3669,6 +3714,26 @@ mod tests {
         assert!(require_completed_guest_protocol("expected-failure", true, Some(7)).is_ok());
         assert!(require_completed_guest_protocol("missing-marker", false, Some(7)).is_err());
         assert!(require_completed_guest_protocol("missing-exit", true, None).is_err());
+    }
+
+    #[test]
+    fn byte_mismatch_description_reports_the_exact_first_divergence() {
+        assert_eq!(
+            describe_first_byte_mismatch(&[0x10, 0x22], &[0x10, 0x33]),
+            "1 differing byte(s); first mismatch at offset 1: native=0x22, Rust=0x33"
+        );
+        assert_eq!(
+            describe_first_byte_mismatch(&[0x10, 0x22, 0x30, 0x44], &[0x10, 0x33, 0x30, 0x55]),
+            "2 differing byte(s); first mismatch at offset 1: native=0x22, Rust=0x33; last mismatch at offset 3: native=0x44, Rust=0x55"
+        );
+        assert_eq!(
+            describe_first_byte_mismatch(&[0x10], &[0x10, 0x33]),
+            "native output ends at offset 1; next Rust byte is 0x33"
+        );
+        assert_eq!(
+            describe_first_byte_mismatch(&[0x10, 0x22], &[0x10]),
+            "Rust output ends at offset 1; next native byte is 0x22"
+        );
     }
 
     #[test]

@@ -999,6 +999,52 @@ landed” is not equivalent to “framework-closed.”
     - complete `expr_syntax.asm` matches Rust without a fixture-count or prefix limit
     - symbolic subtraction-to-zero and long string data remain separate remediation items rather than being bundled or excluded
 
+- [x] Item 5.9.16: restore native string-data directive parity
+  - Source requirement or finding IDs: Item 5.9 valid Level D failures in complete additive `testexpr.asm` at `.byte 'abcd'` and `syntax.asm` at an exactly-64-byte quoted operand whose closing delimiter was truncated from the native statement snapshot
+  - Expected files:
+    - `documentation/plans/slices/native-porting-slice-data-string.toml`
+    - native opasm statement-text and string-data parsing paths
+    - focused tests in `crates/opforge-asm/src/tests/native_data_string.rs`
+    - refreshed complete native runtime boundary inventory hashes without expanding either certified routine surface
+  - Full quality gates:
+    - focused Level A Rust string-data byte oracle
+    - focused Level B source-span and quote/escape parser contract
+    - exact positive and malformed-negative Level D `native_data_string_` tests with `--nocapture --test-threads=1`
+    - independent complete-source Level D reruns for `syntax.asm` and `testexpr.asm` to classify the next boundaries
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for string-data operands only
+  - Commit outcome:
+    - native `.byte`/`.db` parsing retains full source-backed operands when the compact snapshot fills, accepts both quote styles, and decodes hexadecimal escapes exactly like Rust
+  - Definition of done:
+    - single/double-quoted long strings, an exactly-64-byte operand, simple and hexadecimal escapes, and mixed numeric/string lists match Rust under real AmigaOS execution
+    - malformed, bad-hex, and short-hex strings each produce a completed nonzero guest result with diagnostics
+    - `testexpr.asm` emits its final `abcd` bytes before exposing only the separate default-origin mismatch
+    - `syntax.asm` advances beyond all string-data sections before exposing a later expression boundary
+    - default-origin and later expression failures remain separate remediation items rather than being bundled or excluded
+
+- [x] Item 5.9.17: make Level D FS-UAE parity proof fail closed and ephemeral
+  - Source requirement or finding IDs: user requirement that crashes, timeouts, stale outputs, mismatched case evidence, and evidence-name oracle aliases can never pass as native parity
+  - Expected files:
+    - `crates/opforge-asm/src/fs_uae_smoke.rs` and all native parity callers
+    - the canonical native parity and FS-UAE rule packs plus active `AGENTS.md`
+    - `scripts/workflow/check_native_fs_uae_proof_contract.py` and focused validator tests
+  - Full quality gates:
+    - adversarial host tests for absent/wrong/stale markers, absent/nonzero exit, missing output, byte mismatch, case-identity mismatch, and cleanup-on-drop
+    - exact real Level D `native_mos_forward_ref_stability_fs_uae` under the fortified protocol
+    - deterministic FS-UAE proof-contract validator, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` only when the final staged state has no persistent last-green evidence and no MOS parity case can omit its proof mode
+  - Commit outcome:
+    - one focused workflow/harness commit makes the proof contract intrinsic to native parity execution rather than a caller-side optional assertion
+  - Definition of done:
+    - the actual CPU/source/command/package case carries its Rust oracle directly in memory; no evidence filename or case-name alias resolves the oracle
+    - exact fresh start/done challenge responses, explicit guest exit, and byte-for-byte Rust equivalence are mandatory for positive parity
+    - all on-disk case evidence is cleared before launch and removed before the runner returns on success, failure, timeout, crash, or unwind
+    - non-parity FS-UAE smoke and diagnostic runs also require guest completion plus explicit exit status and remove their artifact trees; launcher success alone never passes
+    - one failed case or subcase cannot poison the serial coordinator or prevent every later discovered case from being attempted; failures are aggregated only after the supplied case set runs
+    - legacy persistent FS-UAE artifacts and last-green records are removed, and the workflow gate rejects their reintroduction
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

@@ -2809,7 +2809,11 @@ operandStart
 	tst.l d2
 	beq.w ok
 	addq.w #1, d6
-	cmpi.b #'"', (a2)
+	moveq #0, d3
+	move.b (a2), d3
+	cmpi.b #'"', d3
+	beq.s quotedOperand
+	cmpi.b #39, d3
 	beq.s quotedOperand
 	cmpi.w #3, d5
 	bne.w fail
@@ -2825,7 +2829,7 @@ charLoop
 	beq.w fail
 	move.b (a2)+, d1
 	subq.l #1, d2
-	cmpi.b #'"', d1
+	cmp.b d3, d1
 	beq.s operandEnd
 	cmpi.b #92, d1
 	bne.s appendChar
@@ -2833,6 +2837,29 @@ charLoop
 	beq.w fail
 	move.b (a2)+, d1
 	subq.l #1, d2
+	cmpi.b #'x', d1
+	bne.s simpleEscape
+	cmpi.l #2, d2
+	blo.w fail
+	move.b (a2)+, d1
+	subq.l #1, d2
+	bsr.w hexNibbleValue
+	bmi.w fail
+	move.l d1, -(sp)
+	move.b (a2)+, d1
+	subq.l #1, d2
+	bsr.w hexNibbleValue
+	bmi.s hexEscapeFail
+	move.l (sp)+, d0
+	lsl.b #4, d0
+	or.b d0, d1
+	bra.s appendChar
+
+hexEscapeFail
+	addq.l #4, sp
+	bra.w fail
+
+simpleEscape
 	bsr.w decodeTextEscape
 
 appendChar

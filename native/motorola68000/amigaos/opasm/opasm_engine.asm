@@ -1277,6 +1277,36 @@ haveMnemLen
 	tst.w d0
 	beq.s fail
 	move.l d0, OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a2)
+	; Prefer the original statement source span for operands.  The legacy token
+	; snapshot remains the fallback for synthesized records, but source-backed
+	; operands must retain the full 511-byte line contract instead of silently
+	; losing byte 64 and any closing quote stored there.
+	move.l d1, d3
+	add.w d3, d3
+	lea OpasmEngineStmtOperandLenTable.l, a1
+	cmpi.w #TOKEN_BUFFER_CAPACITY - 1, 0(a1, d3.l)
+	blo.s copiedOperand
+	move.l d1, -(sp)
+	move.l d1, d3
+	lsl.l #2, d3
+	lea OpasmEngineStmtOperandStartTable.l, a1
+	move.l 0(a1, d3.l), d1
+	lea OpasmEngineStmtOperandEndTable.l, a1
+	move.l 0(a1, d3.l), d2
+	move.l (sp), d0
+	bsr.w opasmEngineGetStatementExprTextSliceV1
+	move.l (sp)+, d1
+	tst.l d0
+	beq.s copiedOperand
+	move.l d0, OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(a2)
+	move.l a0, OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(a2)
+	bra.s textReady
+
+copiedOperand
+	move.l d1, d3
+	add.w d3, d3
+	move.l d1, d2
+	lsl.l #6, d2
 	lea OpasmEngineStmtOperandLenTable.l, a1
 	moveq #0, d0
 	move.w 0(a1, d3.l), d0
@@ -1285,6 +1315,8 @@ haveMnemLen
 	adda.l d2, a1
 	move.l a1, d0
 	move.l d0, OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(a2)
+
+textReady
 	movem.l (sp)+, d1-d3/a0-a2
 	moveq #0, d0
 	rts

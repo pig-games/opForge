@@ -1,0 +1,5 @@
+# canonical=examples/opcore/grouping.asm
+# adapted=crates/opforge-asm/fixtures/native-opcore-adapted/grouping.asm
+# Unlisted source lines must remain byte-identical.
+4	instruction	Map grouped 8-bit immediate expression to the MOS accumulator-immediate form.
+5	instruction	Map grouped immediate addition to the MOS accumulator-immediate form.

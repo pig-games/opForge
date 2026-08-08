@@ -1,0 +1,40 @@
+# canonical=examples/opcore/syntax.asm
+# adapted=crates/opforge-asm/fixtures/native-opcore-adapted/syntax.asm
+# Unlisted source lines must remain byte-identical.
+20	instruction	Map the stack-pop syntax example to the MOS accumulator stack form.
+21	instruction	Map the label-attached stack-push syntax example to the MOS accumulator stack form.
+62	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+63	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+64	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+69	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+70	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+71	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+72	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+117	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+118	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+119	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+121	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+122	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+184	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+185	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+186	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+200	instruction	Map the register-transfer syntax example to a MOS register-transfer spelling.
+206	instruction	Map the register-transfer syntax example to a MOS register-transfer spelling.
+213	instruction	Map the register-transfer syntax example to a MOS register-transfer spelling.
+215	instruction	Map the register-transfer syntax example to a MOS register-transfer spelling.
+217	instruction	Map the register-transfer syntax example to a MOS register-transfer spelling.
+219	instruction	Map the register-transfer syntax example to a MOS register-transfer spelling.
+221	instruction	Map the register-transfer syntax example to a MOS register-transfer spelling.
+228	instruction	Map immediate addition to the MOS accumulator-immediate form.
+230	instruction	Map immediate addition to the MOS accumulator-immediate form.
+232	instruction	Map immediate addition to the MOS accumulator-immediate form.
+240	instruction	Map immediate bitwise OR to the MOS accumulator-immediate form.
+243	instruction	Map immediate bitwise OR to the MOS accumulator-immediate form.
+256	instruction	Map the register-transfer syntax example to a MOS register-transfer spelling.
+259	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+260	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+265	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+266	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+268	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+269	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+284	instruction	Map the register-transfer syntax example to a MOS register-transfer spelling.

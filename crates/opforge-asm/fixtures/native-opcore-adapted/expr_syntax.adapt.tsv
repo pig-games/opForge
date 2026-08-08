@@ -1,0 +1,50 @@
+# canonical=examples/opcore/expr_syntax.asm
+# adapted=crates/opforge-asm/fixtures/native-opcore-adapted/expr_syntax.asm
+# Unlisted source lines must remain byte-identical.
+7	cpu-target	Use the active MOS target for the first mixed-CPU section.
+77	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+78	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+79	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+80	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+81	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+82	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+83	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+84	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+85	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+86	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+87	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+88	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+89	operand-form	Map the 8-bit immediate expression to MOS syntax and make the canonical byte-width truncation explicit.
+90	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+91	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+93	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+94	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+95	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+96	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+103	operand-form	Retain the full 16-bit expression through the CPU-neutral word form because MOS has no 16-bit immediate register pair.
+114	instruction	Map direct-address expression use to a MOS load form.
+115	instruction	Map direct-address expression use to a MOS load form.
+116	instruction	Map direct-address expression use to a MOS store form.
+122	instruction	Map absolute subroutine target expressions to the MOS spelling.
+123	instruction	Map absolute subroutine target expressions to the MOS spelling.
+128	instruction	Map subroutine return to the MOS spelling.
+145	operand-form	Retain each literal vector value as emitted data because MOS has no restart-vector operand form.
+146	operand-form	Retain each literal vector value as emitted data because MOS has no restart-vector operand form.
+147	operand-form	Retain each literal vector value as emitted data because MOS has no restart-vector operand form.
+148	operand-form	Retain each literal vector value as emitted data because MOS has no restart-vector operand form.
+149	operand-form	Retain each literal vector value as emitted data because MOS has no restart-vector operand form.
+150	operand-form	Retain each literal vector value as emitted data because MOS has no restart-vector operand form.
+151	operand-form	Retain each literal vector value as emitted data because MOS has no restart-vector operand form.
+152	operand-form	Retain each literal vector value as emitted data because MOS has no restart-vector operand form.
+163	operand-form	Retain each I/O address expression as emitted data because MOS has no port-immediate instruction form.
+164	operand-form	Retain each I/O address expression as emitted data because MOS has no port-immediate instruction form.
+165	operand-form	Retain each I/O address expression as emitted data because MOS has no port-immediate instruction form.
+166	operand-form	Retain each I/O address expression as emitted data because MOS has no port-immediate instruction form.
+409	cpu-target	Use the active MOS target for the final expression-only section.
+428	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+429	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+430	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+431	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+432	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+433	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.
+434	instruction	Map 8-bit immediate expression use to the MOS accumulator-immediate form.

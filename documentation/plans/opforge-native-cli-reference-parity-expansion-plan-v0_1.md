@@ -675,16 +675,16 @@ landed” is not equivalent to “framework-closed.”
     - cloned encodings and escape sequences are session-local
     - unknown encodings and malformed definitions fail deterministically
 
-- [ ] Item 5.9: add complete additive MOS adaptations for mixed-CPU syntax roots
+- [x] Item 5.9: add complete additive MOS adaptations for mixed-CPU syntax roots
   - Source requirement or finding IDs: Item 5 `AdditiveMosAdaptation` assignments `expr_syntax.asm`, `grouping.asm`, `syntax.asm`, and `testexpr.asm`; user prohibition on modifying Rust examples/reference code
   - Expected files:
     - additive fixtures outside `examples/**`
     - `crates/opforge-asm/src/native_reference_parity.rs`
-    - focused tests in `crates/opforge-asm/src/tests.rs`
+    - focused tests in `crates/opforge-asm/src/tests/native_opcore_adapted_syntax.rs`
   - Full quality gates:
     - Level A semantic-completeness accounting for every canonical statement
     - Level B additive-fixture artifact checks
-    - exact Level D `native_opcore_adapted_syntax_fs_uae` with `--nocapture --test-threads=1`
+    - separate exact Level D `native_opcore_adapted_{expr_syntax,grouping,syntax,testexpr}_fs_uae` tests with `--nocapture --test-threads=1`
     - separate exact Level D `native_mos_forward_ref_stability_fs_uae` against the unchanged canonical mixed-CPU source and live Rust CLI artifact
     - reference-scope validator, native formatter, staged native porting gate, and full Rust quality gate
   - Plan-compliance review evidence:

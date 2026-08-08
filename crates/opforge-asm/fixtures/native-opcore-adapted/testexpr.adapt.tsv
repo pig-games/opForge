@@ -1,0 +1,5 @@
+# canonical=examples/opcore/testexpr.asm
+# adapted=crates/opforge-asm/fixtures/native-opcore-adapted/testexpr.asm
+# Unlisted source lines must remain byte-identical.
+1	operand-form	Retain the 16-bit label arithmetic through the CPU-neutral word form.
+6	instruction	Map subroutine return to the MOS spelling.

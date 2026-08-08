@@ -99,6 +99,8 @@ mod native_cli_diagnostic_routing;
 mod native_data_expression_zero;
 #[path = "tests/native_data_string.rs"]
 mod native_data_string;
+#[path = "tests/native_default_origin.rs"]
+mod native_default_origin;
 #[path = "tests/native_expression_bitwise.rs"]
 mod native_expression_bitwise;
 #[path = "tests/native_expression_comparison.rs"]

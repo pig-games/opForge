@@ -1045,6 +1045,29 @@ landed” is not equivalent to “framework-closed.”
     - one failed case or subcase cannot poison the serial coordinator or prevent every later discovered case from being attempted; failures are aggregated only after the supplied case set runs
     - legacy persistent FS-UAE artifacts and last-green records are removed, and the workflow gate rejects their reintroduction
 
+- [x] Item 5.9.18: restore native implicit-origin parity
+  - Source requirement or finding IDs: Item 5.9.16 complete `testexpr.asm` Level D artifact has exactly two differing bytes, offsets 1 and 5, where the native hard-coded `$0800` implicit origin produces `$08` and Rust's zero implicit origin produces `$00`
+  - Expected files:
+    - `documentation/plans/slices/native-porting-slice-default-origin.toml`
+    - native opasm session initialization
+    - focused tests in `crates/opforge-asm/src/tests/native_default_origin.rs`
+    - refreshed complete native runtime boundary inventory hash without expanding the certified routine surface
+  - Full quality gates:
+    - focused Level A live Rust implicit-origin and explicit-`.org` byte oracle
+    - focused Level B native pass-one/pass-two origin initialization contract
+    - exact Level D `native_default_origin_` tests with `--nocapture --test-threads=1`
+    - independent complete-source Level D `native_opcore_adapted_testexpr_fs_uae`
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for implicit session origin only
+  - Commit outcome:
+    - native sessions without `.org` begin both passes at zero like Rust, while explicit `.org` remains authoritative
+  - Definition of done:
+    - label arithmetic and absolute instruction operands before any `.org` match live Rust bytes under real AmigaOS execution
+    - explicit nonzero `.org` behavior remains byte-for-byte unchanged
+    - complete additive `testexpr.asm` matches Rust with no mismatch
+    - the later `$-label` expression failure in complete `syntax.asm` remains a separate remediation item rather than being bundled or excluded
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

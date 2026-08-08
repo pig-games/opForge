@@ -1,0 +1,37 @@
+[slice]
+schema_version = 2
+name = "native implicit-origin parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/line.rs::AsmLine::with_cpu_and_metadata",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineBeginPassOneV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineBeginPassTwoV1",
+]
+invariant = "An assembly session without an explicit .org begins both passes at address zero, while an explicit .org remains authoritative for origin and current PC."
+assertion_decision = "No runtime assertion: focused source contracts lock the pass initialization relationship, and exact guest artifacts discriminate implicit zero from explicit nonzero origin."
+expected_inputs = "Sources with label arithmetic and absolute operands before any .org, plus a control source with an explicit nonzero .org."
+expected_outputs = "Native implicit-origin and explicit-origin artifacts are byte-for-byte equal to the corresponding live Rust artifacts."
+known_non_equivalences = "Current-address subtraction involving a retained label in complete syntax.asm is a separate expression-bridge invariant."
+fast_proof_command = "cargo test -p asm native_default_origin_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_default_origin_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_default_origin_rust_oracle"
+proof_level = "A"
+proves = "Live Rust starts an implicit-origin session at zero and preserves an explicit nonzero .org."
+does_not_prove = "Native session initialization or guest execution."
+
+[[tests]]
+name = "native_default_origin_source_contract"
+proof_level = "B"
+proves = "Native pass one initializes origin and current PC to zero and pass two restarts from the retained session origin."
+does_not_prove = "Real 68020 execution or final CLI artifacts."
+
+[[tests]]
+name = "native_default_origin_fs_uae"
+proof_level = "D"
+proves = "FS-UAE executes implicit- and explicit-origin sources through the real native CLI and both exact artifacts match live Rust."
+does_not_prove = "Unrelated current-address expression forms."

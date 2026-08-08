@@ -312,7 +312,7 @@ clearLoop
 	clr.b (a0)+
 	dbf d0, clearLoop
 	clr.w OpasmEngineImageByteCount.l
-	move.l #$00000800, OpasmEngineSessionOrigin.l
+	clr.l OpasmEngineSessionOrigin.l
 	move.l OpasmEngineSessionOrigin.l, d1
 	move.l d1, OpasmEngineSessionCurrentPc.l
 	movem.l (sp)+, d1/a0

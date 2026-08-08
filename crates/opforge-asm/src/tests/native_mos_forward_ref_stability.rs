@@ -136,6 +136,7 @@ fn native_mos_forward_ref_stability_fs_uae() {
         cpu_id: "m6502",
         source: source.as_slice(),
         package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust_bytes),
     };
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &[case])
         .expect("forward-reference FS-UAE helper")
@@ -151,12 +152,7 @@ fn native_mos_forward_ref_stability_fs_uae() {
                 "native canonical forward-reference source failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native canonical forward-reference BIN");
+            let native = verified_fs_uae_output(run);
             assert_eq!(native, rust_bytes, "native forward-reference bytes differ");
         }
     }
@@ -198,6 +194,7 @@ fn native_mos_unstable_widen_no_wider_fallback_fs_uae() {
         cpu_id: "m6502",
         source,
         package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust_bytes),
     };
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &[case])
         .expect("no-wider fallback FS-UAE helper")
@@ -213,12 +210,7 @@ fn native_mos_unstable_widen_no_wider_fallback_fs_uae() {
                 "native no-wider fallback source failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native no-wider fallback BIN");
+            let native = verified_fs_uae_output(run);
             assert_eq!(native, rust_bytes, "native no-wider fallback bytes differ");
         }
     }

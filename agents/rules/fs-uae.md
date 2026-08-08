@@ -12,6 +12,23 @@ source/request/session evidence, move the discriminator to a focused host-side
 boundary test when possible, and return to FS-UAE after the focused proof and
 required quality gates pass.
 
+## Native parity authority
+
+The singular Level D contract is defined in
+`agents/rules/native-rust-parity-porting.md` and is mandatory here: the actual test case
+supplies its oracle directly, a fresh per-run challenge binds guest completion to
+that case, success requires byte-for-byte Rust equivalence, and all case evidence
+files are removed before the runner returns. None of these checks is optional. A crash,
+timeout, launcher exit, missing or stale marker, missing output, mismatch, or
+persisted previous result cannot pass or count as confirmation.
+A failed case must not prevent later cases from executing; lock-poison fallout is
+not FS-UAE evidence for those later cases.
+Every FS-UAE success requires guest completion and an explicit zero guest exit;
+launcher success never substitutes for guest completion. Non-parity smoke and
+diagnostic run trees are ephemeral under the same cleanup rule. No test result is
+valid unless its fresh guest protocol completed and supplied an explicit exit
+code, including tests that expect failure.
+
 ## Environment
 
 FS-UAE tests launch the macOS FS-UAE application and need GUI/process access.
@@ -38,10 +55,12 @@ For a focused check, replace `external_fs_uae_` with a specific filter such as
 
 - First distinguish host launch failures from Amiga-side payload failures.
 - Host launch failures usually stop before guest output is captured.
-- Amiga-side failures normally leave `Work/opforge_fsuae_*` files under the
-  generated `target/fs-uae-*` directory. Inspect those before changing production code.
+- Amiga-side failures return captured stdout, stderr, exit status, and protocol
+  details in memory. The runner removes their on-disk `target/fs-uae-*` tree
+  before returning; persistent files are never an evidence channel.
 - Run focused parity confirmations with `--test-threads=1`.
 - Classify FS-UAE results as proof Level D and state what each test proves and
   does not prove.
-- Do not treat a moved failure, a reduced fixture, or a prefix scan as proof of
-  the corrected invariant.
+- Do not treat a moved failure as proof of the corrected invariant. A reduced
+  fixture or prefix scan is localization only and is proof Level E, never the
+  Level D confirmation.

@@ -76,6 +76,7 @@ fn native_expression_ternary_fs_uae() {
         cpu_id: "65c02",
         source: TERNARY_SOURCE,
         package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust_ternary_bytes()),
     };
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &[case])
         .expect("ternary FS-UAE helper")
@@ -89,12 +90,7 @@ fn native_expression_ternary_fs_uae() {
                 "native ternary fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native ternary output");
+            let native = verified_fs_uae_output(run);
             assert_eq!(native, rust_ternary_bytes(), "native ternary bytes differ");
         }
     }

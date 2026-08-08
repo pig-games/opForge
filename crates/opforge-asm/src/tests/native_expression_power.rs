@@ -105,6 +105,7 @@ fn native_expression_power_fs_uae() {
         cpu_id: "65c02",
         source: POWER_SOURCE,
         package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust_power_bytes()),
     };
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &[case])
         .expect("power FS-UAE helper")
@@ -118,12 +119,7 @@ fn native_expression_power_fs_uae() {
                 "native power fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native power output");
+            let native = verified_fs_uae_output(run);
             assert_eq!(native, rust_power_bytes(), "native power bytes differ");
         }
     }

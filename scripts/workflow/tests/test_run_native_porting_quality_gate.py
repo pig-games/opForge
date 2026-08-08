@@ -17,6 +17,7 @@ class NativePortingGateTests(unittest.TestCase):
         self.assertIn("check_native_runtime_no_growth.py", CHECKS)
         self.assertIn("check_native_debug_evidence_classification.py", CHECKS)
         self.assertIn("check_native_test_module_ownership.py", CHECKS)
+        self.assertIn("check_native_fs_uae_proof_contract.py", CHECKS)
         self.assertNotIn("fs-uae", joined.lower())
         self.assertNotIn("curl", joined.lower())
         self.assertEqual(result[-1], ["make", "native-68000-format-check"])

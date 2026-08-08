@@ -16,6 +16,7 @@ CHECKS = (
     "check_native_runtime_no_growth.py",
     "check_native_debug_evidence_classification.py",
     "check_native_test_module_ownership.py",
+    "check_native_fs_uae_proof_contract.py",
 )
 
 

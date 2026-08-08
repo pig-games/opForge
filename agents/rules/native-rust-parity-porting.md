@@ -75,3 +75,37 @@ This test does not prove:
 
 Levels A-C can provide fast boundary proof but cannot replace a required Level D
 confirmation. Level E never proves production behavior.
+
+## Singular Level D parity proof contract
+
+There is one authoritative rule for using FS-UAE to prove native parity. The
+actual test case is the CPU, exact source bytes, command surface, package bytes,
+and the Rust oracle held directly by that case in memory. A stored evidence file,
+display name, manifest alias, or output filename must never select or resolve the
+Rust oracle.
+
+A positive Level D parity result exists only when all of these are true in the
+same run:
+
+1. The host removed all prior capture and output files before launch.
+2. The guest returned the exact start and done messages for a fresh per-run challenge
+   bound to a fingerprint of the actual test case.
+3. The guest wrote an explicit exit code of exactly zero.
+4. The expected output exists and is byte-for-byte equal to the Rust oracle
+   carried by that test case.
+5. Every on-disk case input, output, marker, log, and derived evidence artifact is
+   removed before the runner returns, whether the run passes, fails, times out,
+   crashes, or unwinds.
+6. A failed case must not prevent later cases from executing. The serial test
+   coordinator recovers from a poisoned lock, and a case counts only when that
+   case itself reaches the emulator proof contract.
+
+There is no fallback success condition and no optional confirmation. Launcher
+success, marker existence without exact contents, partial output, a previous
+green record, a diagnostic probe, or a caller-side comparison cannot promote a
+run to Level D parity. Negative cases use the same fresh completion protocol and
+must additionally return a nonzero guest exit with the required diagnostic.
+Outside byte parity, launcher success never substitutes for guest completion and
+an explicit guest exit, and the same ephemeral artifact cleanup remains mandatory.
+No test result is valid unless its fresh guest protocol completed and supplied an
+explicit exit code, including tests that expect failure.

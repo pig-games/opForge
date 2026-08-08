@@ -82,6 +82,9 @@ fn native_expression_digit_separator_invalid_fs_uae() {
         cpu_id: "65c02",
         source: b"value .const $___+1\nstart lda #value\nrts\n",
         package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExpectedFailureContaining(
+            "OTR921: expression bridge reported trailing text",
+        ),
     };
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &[case])
         .expect("invalid digit-separator FS-UAE helper")
@@ -154,12 +157,14 @@ fn native_expression_digit_separators_fs_uae() {
     }
     let cases = sources
         .iter()
+        .zip(rust_bins.iter())
         .map(
-            |(name, source)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+            |((name, source), rust_bin)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
                 name,
                 cpu_id: "65c02",
                 source,
                 package_bytes: package_bytes.as_slice(),
+                proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(rust_bin),
             },
         )
         .collect::<Vec<_>>();
@@ -172,18 +177,15 @@ fn native_expression_digit_separators_fs_uae() {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
             assert_eq!(runs.len(), sources.len());
-            for ((run, (name, _)), rust_bin) in runs.iter().zip(sources.iter()).zip(rust_bins) {
+            for ((run, (name, _)), rust_bin) in
+                runs.iter().zip(sources.iter()).zip(rust_bins.iter())
+            {
                 assert!(
                     run.success,
                     "native separator fixture {name} failed\nstdout:\n{}\nstderr:\n{}",
                     run.stdout, run.stderr
                 );
-                let native_bin = fs::read(
-                    run.artifact_dir
-                        .join("Work")
-                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-                )
-                .unwrap_or_else(|err| panic!("read native separator output for {name}: {err}"));
+                let native_bin = verified_fs_uae_output(run);
                 assert_eq!(
                     native_bin, rust_bin,
                     "native separator bytes differ for {name}"

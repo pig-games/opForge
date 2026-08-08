@@ -90,6 +90,9 @@ fn native_data_expression_zero_fs_uae() {
         cpu_id: "65c02",
         source: ZERO_DATA_SOURCE,
         package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(
+            &rust_zero_data_bytes(),
+        ),
     };
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &[case])
         .expect("zero-data FS-UAE helper")
@@ -103,12 +106,7 @@ fn native_data_expression_zero_fs_uae() {
                 "native zero-data fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native zero-data output");
+            let native = verified_fs_uae_output(run);
             assert_eq!(
                 native,
                 rust_zero_data_bytes(),
@@ -136,6 +134,7 @@ fn native_data_expression_unresolved_fs_uae() {
         cpu_id: "65c02",
         source,
         package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExpectedFailureWithDiagnostic,
     };
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &[case])
         .expect("unresolved data-expression FS-UAE helper")
@@ -151,15 +150,9 @@ fn native_data_expression_unresolved_fs_uae() {
                 )
             });
             assert_ne!(guest_exit_code, 0, "unresolved expression must fail");
-            let completion_marker = run
-                .source_path
-                .parent()
-                .and_then(|work_dir| work_dir.parent())
-                .expect("native CLI case source must be inside its case Work directory")
-                .join("opforge_fsuae_smoke.done");
             assert!(
-                completion_marker.is_file(),
-                "unresolved expression must produce a guest completion marker"
+                run.protocol_completed,
+                "unresolved expression must complete the exact fresh guest protocol"
             );
             assert!(
                 !run.stderr.trim().is_empty(),

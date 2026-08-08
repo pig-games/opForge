@@ -94,6 +94,7 @@ fn native_expression_string_literal_invalid_fs_uae() {
                 cpu_id: "65c02",
                 source,
                 package_bytes: package.as_slice(),
+                proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExpectedFailureWithDiagnostic,
             },
         )
         .collect::<Vec<_>>();
@@ -114,16 +115,9 @@ fn native_expression_string_literal_invalid_fs_uae() {
                     guest_exit_code, 0,
                     "native malformed string-literal case {name} must return a nonzero guest exit code"
                 );
-                let case_artifact_dir = run
-                    .source_path
-                    .parent()
-                    .and_then(|work_dir| work_dir.parent())
-                    .expect("native CLI case source must be inside its case Work directory");
-                let completion_marker = case_artifact_dir.join("opforge_fsuae_smoke.done");
                 assert!(
-                    completion_marker.is_file(),
-                    "native malformed string-literal case {name} must produce its guest completion marker at {}",
-                    completion_marker.display()
+                    run.protocol_completed,
+                    "native malformed string-literal case {name} must complete the exact fresh guest protocol"
                 );
                 assert!(
                     !run.success,
@@ -202,6 +196,9 @@ fn native_expression_string_literal_fs_uae() {
         cpu_id: "65c02",
         source: STRING_LITERAL_SOURCE,
         package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(
+            &rust_string_literal_bytes(),
+        ),
     };
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &[case])
         .expect("string-literal FS-UAE helper")
@@ -215,12 +212,7 @@ fn native_expression_string_literal_fs_uae() {
                 "native string-literal fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native string-literal output");
+            let native = verified_fs_uae_output(run);
             assert_eq!(
                 native,
                 rust_string_literal_bytes(),

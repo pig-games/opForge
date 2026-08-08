@@ -156,6 +156,22 @@ Hard requirements:
   semantic completeness is explicitly documented.
 - A moved failure is not a fix. Name the corrected invariant and prove it with a
   focused test.
+- Level D native parity has one fail-closed proof contract. The actual test case
+  (CPU, source bytes, command, and in-memory Rust oracle) is authoritative; no
+  evidence filename or stored case name may select an oracle. Every successful
+  case requires a fresh per-run challenge, exact guest start and completion
+  responses, an explicit zero guest exit, and byte-for-byte equality with that
+  case's Rust output. All case-specific files are ephemeral and are removed
+  before the runner returns. A crash, timeout, missing marker, stale marker,
+  absent output, or mismatch is never proof.
+- One failed FS-UAE case must not prevent later cases from executing. The serial
+  coordinator must recover after a test panic so every discovered case produces
+  its own valid result; lock-poison failures are not emulator evidence.
+- Every FS-UAE success requires guest completion and an explicit zero guest exit;
+  launcher success never substitutes for guest completion. Every run artifact
+  tree is ephemeral, including non-parity smoke and diagnostic runs. No test
+  result is valid unless its fresh guest protocol completed and supplied an
+  explicit exit code, including tests that expect failure.
 
 ## Workflow skills
 

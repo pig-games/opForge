@@ -4,7 +4,7 @@ use engine::{default_cpu, run_assembly, AssemblyExecutionRequest, ExecutionMode}
 use package::encode_hierarchy_chunks_from_chunks;
 use registry::registry::ModuleRegistry;
 use serde_json::json;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
@@ -38,8 +38,6 @@ const FS_UAE_LAUNCHER_HANDOFF_GRACE_MS: u64 = 5_000;
 const FS_UAE_LAUNCHER_STDOUT_FILE: &str = "fs_uae_launcher.stdout.log";
 const FS_UAE_LAUNCHER_STDERR_FILE: &str = "fs_uae_launcher.stderr.log";
 const FS_UAE_CONFIG_FILE_NAME: &str = "fs-uae-smoke.fs-uae";
-const FS_UAE_LAST_GREEN_DIR_NAME: &str = "fs-uae-last-green";
-const FS_UAE_LAST_GREEN_FILE_NAME: &str = "last_green.txt";
 const FS_UAE_MOUNTED_WORK_DIR_NAME: &str = "Work";
 const FS_UAE_MOUNTED_HUNK_ALIAS: &str = "build/opforge_fsuae_smoke.hunk";
 const FS_UAE_STARTUP_HUNK_ALIAS: &str = "build/tkpkg_debug_cli.hunk";
@@ -196,7 +194,10 @@ pub(crate) struct FsUaeSmokeRun {
     pub(crate) stdout: String,
     pub(crate) stderr: String,
     pub(crate) exit_code: Option<i32>,
+    pub(crate) protocol_completed: bool,
     pub(crate) success: bool,
+    pub(crate) verified_output: Option<Vec<u8>>,
+    pub(crate) captured_artifacts: BTreeMap<PathBuf, Vec<u8>>,
 }
 
 pub(crate) struct FsUaeConsoleLaunch {
@@ -227,8 +228,14 @@ pub(crate) struct OpforgeNativeCliMosFixtureCase<'a> {
     pub(crate) name: &'a str,
     pub(crate) cpu_id: &'a str,
     pub(crate) source: &'a [u8],
-    #[allow(dead_code)]
     pub(crate) package_bytes: &'a [u8],
+    pub(crate) proof: OpforgeNativeCliMosProof<'a>,
+}
+
+pub(crate) enum OpforgeNativeCliMosProof<'a> {
+    ExactRustBytes(&'a [u8]),
+    ExpectedFailureWithDiagnostic,
+    ExpectedFailureContaining(&'a str),
 }
 
 #[derive(Clone, Copy)]
@@ -248,23 +255,30 @@ pub(crate) struct OpforgeNativeCliGuestFile<'a> {
 
 #[derive(Clone, Copy)]
 pub(crate) struct OpforgeNativeCliParityCase<'a> {
+    pub(crate) name: &'a str,
     pub(crate) cpu_override: &'a str,
     pub(crate) extra_assembly_defines: &'a [&'a str],
     pub(crate) source_override: Option<&'a [u8]>,
     pub(crate) command_template: Option<&'a str>,
     pub(crate) package_mode: OpforgeNativeCliPackageMode<'a>,
     pub(crate) extra_guest_files: &'a [OpforgeNativeCliGuestFile<'a>],
+    pub(crate) proof: OpforgeNativeCliProof<'a>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum OpforgeNativeCliProof<'a> {
+    ExactArtifact {
+        relative_path: &'a str,
+        rust_oracle: &'a [u8],
+    },
+    ExpectedFailureWithDiagnostic,
+    ExpectedFailureContaining(&'a str),
 }
 
 struct OpforgeNativeCliStagedInputs<'a> {
     source: Option<&'a [u8]>,
     package_bytes: Option<&'a [u8]>,
     extra_guest_files: &'a [OpforgeNativeCliGuestFile<'a>],
-}
-
-struct GitHeadProvenance {
-    commit: String,
-    commit_unix_seconds: String,
 }
 
 pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmokeOutcome, String> {
@@ -612,30 +626,22 @@ pub(crate) fn run_native_macro_cli_debug_event_harness_from_env(
     }
 }
 
-pub(crate) fn run_opforge_native_cli_stub_from_env(
-    workspace_root: &Path,
-) -> Result<FsUaeSmokeOutcome, String> {
-    let cases = [OpforgeNativeCliParityCase {
-        cpu_override: "68020",
-        extra_assembly_defines: &[],
-        source_override: None,
-        command_template: None,
-        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-        extra_guest_files: &[],
-    }];
-    run_opforge_native_cli_parity_cases_from_env(workspace_root, &cases)
-}
-
 pub(crate) fn run_opforge_native_cli_6502_output_from_env(
     workspace_root: &Path,
+    rust_oracle: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
     let cases = [OpforgeNativeCliParityCase {
+        name: "native-cli-6502-output",
         cpu_override: "68020",
         extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE],
         source_override: None,
         command_template: None,
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle,
+        },
     }];
     run_opforge_native_cli_parity_cases_from_env(workspace_root, &cases)
 }
@@ -675,52 +681,180 @@ pub(crate) fn run_opforge_native_cli_mos_fixture_outputs_from_env(
     workspace_root: &Path,
     cases: &[OpforgeNativeCliMosFixtureCase<'_>],
 ) -> Result<FsUaeSmokeOutcome, String> {
-    let mut define_slices = Vec::with_capacity(cases.len());
-    for case in cases {
-        define_slices.push(vec![native_cli_output_define_for_cpu(
-            case.cpu_id,
-            case.name,
-        )?]);
+    if cases.is_empty() {
+        return Err("native opForge CLI MOS proof requires at least one case".to_string());
     }
 
-    let parity_cases = cases
-        .iter()
-        .zip(define_slices.iter())
-        .map(|(case, defines)| OpforgeNativeCliParityCase {
+    let mut verified_runs = Vec::with_capacity(cases.len());
+    let mut proof_errors = Vec::new();
+    for case in cases {
+        let defines = [native_cli_output_define_for_cpu(case.cpu_id, case.name)?];
+        let parity_case = OpforgeNativeCliParityCase {
+            name: case.name,
             cpu_override: "68020",
             extra_assembly_defines: defines.as_slice(),
             source_override: Some(case.source),
             command_template: None,
-            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            package_mode: OpforgeNativeCliPackageMode::Explicit(case.package_bytes),
             extra_guest_files: &[],
-        })
-        .collect::<Vec<_>>();
+            proof: match case.proof {
+                OpforgeNativeCliMosProof::ExactRustBytes(rust_oracle) => {
+                    OpforgeNativeCliProof::ExactArtifact {
+                        relative_path: "Work/opforge_native_out.bin",
+                        rust_oracle,
+                    }
+                }
+                OpforgeNativeCliMosProof::ExpectedFailureWithDiagnostic => {
+                    OpforgeNativeCliProof::ExpectedFailureWithDiagnostic
+                }
+                OpforgeNativeCliMosProof::ExpectedFailureContaining(diagnostic) => {
+                    OpforgeNativeCliProof::ExpectedFailureContaining(diagnostic)
+                }
+            },
+        };
+        let outcome = match run_opforge_native_cli_parity_cases_from_env(
+            workspace_root,
+            std::slice::from_ref(&parity_case),
+        ) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                proof_errors.push(format!("{}: {error}", case.name));
+                continue;
+            }
+        };
+        let mut runs = match outcome {
+            FsUaeSmokeOutcome::Skipped(reason) => return Ok(FsUaeSmokeOutcome::Skipped(reason)),
+            FsUaeSmokeOutcome::Completed { runs } => runs,
+        };
+        if runs.len() != 1 {
+            return Err(format!(
+                "FS-UAE MOS proof for {} returned {} runs instead of exactly one",
+                case.name,
+                runs.len()
+            ));
+        }
+        verified_runs.push(runs.remove(0));
+    }
 
-    run_opforge_native_cli_parity_cases_from_env(workspace_root, parity_cases.as_slice())
+    if !proof_errors.is_empty() {
+        return Err(format!(
+            "{} of {} MOS FS-UAE cases failed their proof contract after every case was attempted:\n{}",
+            proof_errors.len(),
+            cases.len(),
+            proof_errors.join("\n")
+        ));
+    }
+
+    Ok(FsUaeSmokeOutcome::Completed {
+        runs: verified_runs,
+    })
+}
+
+fn verify_native_cli_case_proof(
+    case: &OpforgeNativeCliParityCase<'_>,
+    run: &mut FsUaeSmokeRun,
+) -> Result<(), String> {
+    if !run.protocol_completed {
+        return Err(format!(
+            "FS-UAE proof for {} is invalid: the exact fresh start/done challenge and guest exit evidence were not all present",
+            case.name
+        ));
+    }
+
+    match case.proof {
+        OpforgeNativeCliProof::ExactArtifact {
+            relative_path,
+            rust_oracle,
+        } => {
+            if !run.success || run.exit_code != Some(0) {
+                return Err(format!(
+                    "FS-UAE proof for {} is invalid: guest exit was {:?}, expected exactly 0\nstdout:\n{}\nstderr:\n{}",
+                    case.name, run.exit_code, run.stdout, run.stderr
+                ));
+            }
+            let relative_output_path = PathBuf::from(relative_path);
+            let actual = run
+                .captured_artifacts
+                .get(&relative_output_path)
+                .cloned()
+                .ok_or_else(|| {
+                    format!(
+                        "FS-UAE proof for {} did not produce the required output {}",
+                        case.name,
+                        relative_output_path.display()
+                    )
+                })?;
+            if actual != rust_oracle {
+                return Err(format!(
+                    "FS-UAE byte parity failed for {}: native output ({} bytes) is not byte-for-byte equal to the in-memory Rust oracle ({} bytes)",
+                    case.name,
+                    actual.len(),
+                    rust_oracle.len()
+                ));
+            }
+            run.verified_output = Some(actual);
+            Ok(())
+        }
+        OpforgeNativeCliProof::ExpectedFailureWithDiagnostic
+        | OpforgeNativeCliProof::ExpectedFailureContaining(_) => {
+            if run.exit_code == Some(0) || run.exit_code.is_none() {
+                return Err(format!(
+                    "FS-UAE negative proof for {} is invalid: guest exit was {:?}, expected a completed nonzero exit",
+                    case.name, run.exit_code
+                ));
+            }
+            let combined = format!("{}\n{}", run.stdout, run.stderr);
+            if combined.trim().is_empty() {
+                return Err(format!(
+                    "FS-UAE negative proof for {} is invalid: completed guest failure produced no diagnostic output",
+                    case.name
+                ));
+            }
+            if let OpforgeNativeCliProof::ExpectedFailureContaining(diagnostic) = case.proof {
+                if !combined.contains(diagnostic) {
+                    return Err(format!(
+                        "FS-UAE negative proof for {} is invalid: completed guest output did not contain required diagnostic {diagnostic:?}\nstdout:\n{}\nstderr:\n{}",
+                        case.name, run.stdout, run.stderr
+                    ));
+                }
+            }
+            Ok(())
+        }
+    }
 }
 
 pub(crate) fn run_opforge_native_cli_item10_include_from_env(
     workspace_root: &Path,
     _package_bytes: &[u8],
+    rust_oracle: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
     let include_source = "        .include \"defs.inc\"\n        lda #$44\n";
     let missing_include_source = "        .include \"missing.inc\"\n        lda #$44\n";
     let cases = [
         OpforgeNativeCliParityCase {
+            name: "item10-include-success",
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE],
             source_override: Some(include_source.as_bytes()),
             command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle,
+            },
         },
         OpforgeNativeCliParityCase {
+            name: "item10-missing-include",
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_MISSING_INCLUDE_DEFINE],
             source_override: Some(missing_include_source.as_bytes()),
             command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExpectedFailureContaining(
+                "ERROR OPC-NCLI014: native include expansion failed",
+            ),
         },
     ];
     run_opforge_native_cli_parity_cases_from_env(workspace_root, &cases)
@@ -730,14 +864,21 @@ pub(crate) fn run_opforge_native_cli_item13_output_directive_from_env(
     workspace_root: &Path,
     source: &[u8],
     _package_bytes: &[u8],
+    proof_relative_path: &str,
+    rust_oracle: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
     let cases = [OpforgeNativeCliParityCase {
+        name: "item13-output-directive",
         cpu_override: "68020",
         extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM13_OUTPUT_DIRECTIVE_DEFINE],
         source_override: Some(source),
         command_template: None,
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: proof_relative_path,
+            rust_oracle,
+        },
     }];
     run_opforge_native_cli_parity_cases_from_env(workspace_root, &cases)
 }
@@ -747,23 +888,31 @@ pub(crate) fn run_opforge_native_cli_item14_prg_output_from_env(
     success_source: &[u8],
     wide_loadaddr_source: &[u8],
     _package_bytes: &[u8],
+    success_oracle: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
     let cases = [
         OpforgeNativeCliParityCase {
+            name: "item14-prg-success",
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM14_OUTPUT_DIRECTIVE_DEFINE],
             source_override: Some(success_source),
             command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.prg",
+                rust_oracle: success_oracle,
+            },
         },
         OpforgeNativeCliParityCase {
+            name: "item14-wide-load-address",
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM14_OUTPUT_DIRECTIVE_DEFINE],
             source_override: Some(wide_loadaddr_source),
             command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
         },
     ];
     run_opforge_native_cli_parity_cases_from_env(workspace_root, &cases)
@@ -773,14 +922,20 @@ pub(crate) fn run_opforge_native_cli_item15_hex_output_from_env(
     workspace_root: &Path,
     source: &[u8],
     _package_bytes: &[u8],
+    rust_oracle: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
     let cases = [OpforgeNativeCliParityCase {
+        name: "item15-hex-output",
         cpu_override: "68020",
         extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM15_OUTPUT_DIRECTIVE_DEFINE],
         source_override: Some(source),
         command_template: None,
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.hex",
+            rust_oracle,
+        },
     }];
     run_opforge_native_cli_parity_cases_from_env(workspace_root, &cases)
 }
@@ -789,14 +944,20 @@ pub(crate) fn run_opforge_native_cli_item16_listing_output_from_env(
     workspace_root: &Path,
     source: &[u8],
     _package_bytes: &[u8],
+    rust_oracle: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
     let cases = [OpforgeNativeCliParityCase {
+        name: "item16-listing-output",
         cpu_override: "68020",
         extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM16_LIST_OUTPUT_DEFINE],
         source_override: Some(source),
         command_template: None,
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.lst",
+            rust_oracle,
+        },
     }];
     run_opforge_native_cli_parity_cases_from_env(workspace_root, &cases)
 }
@@ -805,17 +966,32 @@ pub(crate) fn run_opforge_native_cli_item17_artifact_matrix_from_env(
     workspace_root: &Path,
     sources: [&[u8]; 4],
     _package_bytes: &[u8],
+    rust_oracles: [&[u8]; 4],
 ) -> Result<FsUaeSmokeOutcome, String> {
     let cases = sources
         .iter()
-        .map(|source| OpforgeNativeCliParityCase {
-            cpu_override: "68020",
-            extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM17_ARTIFACT_MATRIX_DEFINE],
-            source_override: Some(*source),
-            command_template: None,
-            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-            extra_guest_files: &[],
-        })
+        .zip(rust_oracles)
+        .enumerate()
+        .map(
+            |(index, (source, rust_oracle))| OpforgeNativeCliParityCase {
+                name: ["item17-bin", "item17-prg", "item17-hex", "item17-lst"][index],
+                cpu_override: "68020",
+                extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM17_ARTIFACT_MATRIX_DEFINE],
+                source_override: Some(*source),
+                command_template: None,
+                package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+                extra_guest_files: &[],
+                proof: OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: [
+                        "Work/opforge_native_out.bin",
+                        "Work/opforge_native_out.prg",
+                        "Work/opforge_native_out.hex",
+                        "Work/opforge_native_out.lst",
+                    ][index],
+                    rust_oracle,
+                },
+            },
+        )
         .collect::<Vec<_>>();
     run_opforge_native_cli_parity_cases_from_env(workspace_root, cases.as_slice())
 }
@@ -824,14 +1000,21 @@ pub(crate) fn run_opforge_native_cli_item17_source_cpu_output_from_env(
     workspace_root: &Path,
     source: &[u8],
     _package_bytes: &[u8],
+    proof_relative_path: &str,
+    rust_oracle: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
     let cases = [OpforgeNativeCliParityCase {
+        name: "item17-source-cpu-output",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(source),
         command_template: Some("{input}"),
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: proof_relative_path,
+            rust_oracle,
+        },
     }];
     run_opforge_native_cli_parity_cases_from_env(workspace_root, &cases)
 }
@@ -901,6 +1084,8 @@ struct OpforgeNativeCliBatchCasePaths {
     exit_code_path: PathBuf,
     started_path: PathBuf,
     done_path: PathBuf,
+    expected_started: String,
+    expected_done: String,
     guest_artifact_dir: String,
     command_guest_work_dir: String,
 }
@@ -912,6 +1097,8 @@ fn opforge_native_cli_batch_case_name(index: usize) -> String {
 fn opforge_native_cli_batch_case_paths(
     mounted_work_dir: &Path,
     index: usize,
+    run_challenge: &str,
+    case_identity: &str,
 ) -> OpforgeNativeCliBatchCasePaths {
     let case_name = opforge_native_cli_batch_case_name(index);
     let artifact_dir = mounted_work_dir
@@ -925,6 +1112,8 @@ fn opforge_native_cli_batch_case_paths(
     let done_path = artifact_dir.join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_DONE_FILE);
     let guest_artifact_dir =
         format!("Work:{FS_UAE_OPFORGE_NATIVE_CLI_CASE_ARTIFACTS_DIR}/{case_name}");
+    let expected_started = format!("OPFORGE-FS-UAE-PROOF-V1 START {run_challenge} {case_identity}");
+    let expected_done = format!("OPFORGE-FS-UAE-PROOF-V1 DONE {run_challenge} {case_identity}");
     OpforgeNativeCliBatchCasePaths {
         artifact_dir,
         work_dir,
@@ -933,9 +1122,75 @@ fn opforge_native_cli_batch_case_paths(
         exit_code_path,
         started_path,
         done_path,
+        expected_started,
+        expected_done,
         guest_artifact_dir,
         command_guest_work_dir: "Work:".to_string(),
     }
+}
+
+fn fnv1a64_update(mut state: u64, bytes: &[u8]) -> u64 {
+    for byte in bytes {
+        state ^= u64::from(*byte);
+        state = state.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    state
+}
+
+fn opforge_native_cli_case_identity(
+    case: &OpforgeNativeCliParityCase<'_>,
+    resolved_package_bytes: Option<&[u8]>,
+) -> String {
+    let mut state = 0xcbf2_9ce4_8422_2325;
+    state = fnv1a64_update(state, case.cpu_override.as_bytes());
+    state = fnv1a64_update(state, &[0]);
+    state = fnv1a64_update(state, case.source_override.unwrap_or_default());
+    state = fnv1a64_update(state, &[0]);
+    if let Some(command_template) = case.command_template {
+        state = fnv1a64_update(state, command_template.as_bytes());
+    }
+    for define in case.extra_assembly_defines {
+        state = fnv1a64_update(state, &[0]);
+        state = fnv1a64_update(state, define.as_bytes());
+    }
+    state = fnv1a64_update(state, &[0]);
+    state = fnv1a64_update(state, resolved_package_bytes.unwrap_or_default());
+    for file in case.extra_guest_files {
+        state = fnv1a64_update(state, &[0]);
+        state = fnv1a64_update(state, file.relative_path.as_bytes());
+        state = fnv1a64_update(state, &[0]);
+        state = fnv1a64_update(state, file.bytes);
+    }
+    state = fnv1a64_update(state, &[0]);
+    match case.proof {
+        OpforgeNativeCliProof::ExactArtifact {
+            relative_path,
+            rust_oracle,
+        } => {
+            state = fnv1a64_update(state, b"exact-artifact");
+            state = fnv1a64_update(state, &[0]);
+            state = fnv1a64_update(state, relative_path.as_bytes());
+            state = fnv1a64_update(state, &[0]);
+            state = fnv1a64_update(state, rust_oracle);
+        }
+        OpforgeNativeCliProof::ExpectedFailureWithDiagnostic => {
+            state = fnv1a64_update(state, b"failure-with-diagnostic");
+        }
+        OpforgeNativeCliProof::ExpectedFailureContaining(diagnostic) => {
+            state = fnv1a64_update(state, b"failure-containing");
+            state = fnv1a64_update(state, &[0]);
+            state = fnv1a64_update(state, diagnostic.as_bytes());
+        }
+    }
+    format!("{state:016x}")
+}
+
+fn opforge_native_cli_run_challenge() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{:x}-{nanos:x}", std::process::id())
 }
 
 fn opforge_native_cli_case_define<'a>(case: &'a OpforgeNativeCliParityCase<'a>) -> Option<&'a str> {
@@ -1150,18 +1405,28 @@ fn run_opforge_native_cli_parity_batch_cases(
 ) -> Result<FsUaeSmokeOutcome, String> {
     if cases.len() > 1 {
         let mut runs = Vec::with_capacity(cases.len());
+        let mut proof_errors = Vec::new();
         for case in cases {
             match run_opforge_native_cli_parity_batch_cases(
                 workspace_root,
                 fs_uae_bin,
                 args_text,
                 std::slice::from_ref(case),
-            )? {
-                FsUaeSmokeOutcome::Completed { runs: case_runs } => runs.extend(case_runs),
-                FsUaeSmokeOutcome::Skipped(reason) => {
-                    return Ok(FsUaeSmokeOutcome::Skipped(reason))
+            ) {
+                Err(error) => proof_errors.push(format!("{}: {error}", case.name)),
+                Ok(FsUaeSmokeOutcome::Completed { runs: case_runs }) => runs.extend(case_runs),
+                Ok(FsUaeSmokeOutcome::Skipped(reason)) => {
+                    return Ok(FsUaeSmokeOutcome::Skipped(reason));
                 }
             }
+        }
+        if !proof_errors.is_empty() {
+            return Err(format!(
+                "{} of {} FS-UAE cases failed their proof contract after every case was attempted:\n{}",
+                proof_errors.len(),
+                cases.len(),
+                proof_errors.join("\n")
+            ));
         }
         return Ok(FsUaeSmokeOutcome::Completed { runs });
     }
@@ -1175,6 +1440,7 @@ fn run_opforge_native_cli_parity_batch_cases(
     }
 
     let artifact_dir = create_artifact_dir(workspace_root, "fs-uae-hunk-smoke-opforge_cli")?;
+    let ephemeral_artifact_dir = EphemeralArtifactDir(artifact_dir.clone());
     let mounted_work_dir = artifact_dir.join(FS_UAE_MOUNTED_WORK_DIR_NAME);
     fs::create_dir_all(mounted_work_dir.join("build")).map_err(|err| {
         format!(
@@ -1185,6 +1451,7 @@ fn run_opforge_native_cli_parity_batch_cases(
 
     let mut batch_script = String::from("FailAt 999\n");
     let mut batch_paths = Vec::with_capacity(cases.len());
+    let run_challenge = opforge_native_cli_run_challenge();
     for (index, case) in cases.iter().enumerate() {
         if case.cpu_override != "68020" {
             return Err(format!(
@@ -1192,14 +1459,20 @@ fn run_opforge_native_cli_parity_batch_cases(
                 case.cpu_override
             ));
         }
-        let case_paths = opforge_native_cli_batch_case_paths(&mounted_work_dir, index);
+        let package_bytes = resolve_opforge_native_cli_package_bytes(workspace_root, case)?;
+        let case_identity = opforge_native_cli_case_identity(case, package_bytes.as_deref());
+        let case_paths = opforge_native_cli_batch_case_paths(
+            &mounted_work_dir,
+            index,
+            run_challenge.as_str(),
+            case_identity.as_str(),
+        );
         fs::create_dir_all(case_paths.work_dir.join("build")).map_err(|err| {
             format!(
                 "create native CLI batch case work directory {}: {err}",
                 case_paths.work_dir.display()
             )
         })?;
-        let package_bytes = resolve_opforge_native_cli_package_bytes(workspace_root, case)?;
         let input_override = OpforgeNativeCliStagedInputs {
             source: case.source_override,
             package_bytes: package_bytes.as_deref(),
@@ -1217,7 +1490,9 @@ fn run_opforge_native_cli_parity_batch_cases(
         )?;
         stage_opforge_native_cli_default_module_roots(&mounted_work_dir)?;
         let command = opforge_native_cli_case_command(case, &case_paths);
-        batch_script.push_str("Echo START >");
+        batch_script.push_str("Echo \"");
+        batch_script.push_str(case_paths.expected_started.as_str());
+        batch_script.push_str("\" >");
         batch_script.push_str(
             format!(
                 "{}/{}",
@@ -1254,7 +1529,9 @@ fn run_opforge_native_cli_parity_batch_cases(
             .as_str(),
         );
         batch_script.push('\n');
-        batch_script.push_str("Echo DONE >");
+        batch_script.push_str("Echo \"");
+        batch_script.push_str(case_paths.expected_done.as_str());
+        batch_script.push_str("\" >");
         batch_script.push_str(
             format!(
                 "{}/{}",
@@ -1338,6 +1615,7 @@ fn run_opforge_native_cli_parity_batch_cases(
     stage_guest_script(&mounted_work_dir, batch_script.as_str())?;
     let capture = batch_capture_config_from_env(&batch_paths)?;
     clear_capture_files(&capture)?;
+    clear_native_cli_output_artifacts(&mounted_work_dir)?;
     let generated_config_path = maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir)?;
 
     let args = args_text
@@ -1444,17 +1722,24 @@ fn run_opforge_native_cli_parity_batch_cases(
     );
     let common_stdout = launcher_stdout.unwrap_or_default();
 
+    let captured_artifacts = capture_artifact_files(&artifact_dir)?;
     let mut runs = Vec::with_capacity(cases.len());
     for (case, case_paths) in cases.iter().zip(batch_paths.iter()) {
         let exit_code = read_optional_exit_code(&case_paths.exit_code_path)?;
         let stdout = read_optional_text(&case_paths.stdout_path)?.unwrap_or_default();
         let stderr = read_optional_text(&case_paths.stderr_path)?.unwrap_or_default();
+        let started_matches = read_optional_text(&case_paths.started_path)?
+            .is_some_and(|value| value.trim() == case_paths.expected_started);
+        let done_matches = read_optional_text(&case_paths.done_path)?
+            .is_some_and(|value| value.trim() == case_paths.expected_done);
         let success = determine_batch_case_success(
-            case_paths.done_path.is_file(),
+            started_matches,
+            done_matches,
             exit_code,
             launcher_success,
         );
-        runs.push(FsUaeSmokeRun {
+        let protocol_completed = started_matches && done_matches && exit_code.is_some();
+        let mut run = FsUaeSmokeRun {
             example_name: FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
             source_path: case_paths
                 .work_dir
@@ -1472,10 +1757,22 @@ fn run_opforge_native_cli_parity_batch_cases(
                 "FS-UAE launcher stderr",
             ),
             exit_code,
+            protocol_completed,
             success,
-        });
+            verified_output: None,
+            captured_artifacts: captured_artifacts.clone(),
+        };
+        verify_native_cli_case_proof(case, &mut run)?;
+        runs.push(run);
     }
 
+    drop(ephemeral_artifact_dir);
+    if artifact_dir.exists() {
+        return Err(format!(
+            "FS-UAE proof artifact directory still exists after cleanup: {}",
+            artifact_dir.display()
+        ));
+    }
     Ok(FsUaeSmokeOutcome::Completed { runs })
 }
 
@@ -1508,14 +1805,16 @@ pub(crate) fn run_opforge_native_cli_failure_cases_from_env(
         .map(|case| vec![case.define])
         .collect::<Vec<_>>();
     let mut parity_cases = Vec::with_capacity(cases.len());
-    for (_case, defines) in cases.iter().zip(define_slices.iter()) {
+    for (case, defines) in cases.iter().zip(define_slices.iter()) {
         parity_cases.push(OpforgeNativeCliParityCase {
+            name: case.name,
             cpu_override: "68020",
             extra_assembly_defines: defines.as_slice(),
             source_override: None,
             command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExpectedFailureContaining(case.expected_diagnostic),
         });
     }
     run_opforge_native_cli_parity_cases_from_env(workspace_root, parity_cases.as_slice())
@@ -1623,107 +1922,51 @@ fn create_artifact_dir(workspace_root: &Path, label: &str) -> Result<PathBuf, St
     Ok(dir)
 }
 
-pub(crate) fn record_last_green_fs_uae_test_run(
-    workspace_root: &Path,
-    test_name: &str,
-    artifact_dir: &Path,
-) -> Result<PathBuf, String> {
-    let provenance = read_git_head_provenance(workspace_root)?;
-    let green_run_unix_seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-        .to_string();
-    let record = format_last_green_record(
-        test_name,
-        artifact_dir,
-        provenance.commit.as_str(),
-        provenance.commit_unix_seconds.as_str(),
-        green_run_unix_seconds.as_str(),
-    );
+struct EphemeralArtifactDir(PathBuf);
 
-    let target_dir = workspace_root
-        .join("target")
-        .join(FS_UAE_LAST_GREEN_DIR_NAME);
-    fs::create_dir_all(&target_dir).map_err(|err| {
-        format!(
-            "create last-green directory {}: {err}",
-            target_dir.display()
-        )
-    })?;
-
-    let stable_marker_path = target_dir.join(format!("{test_name}.txt"));
-    fs::write(&stable_marker_path, record.as_bytes()).map_err(|err| {
-        format!(
-            "write stable last-green marker {}: {err}",
-            stable_marker_path.display()
-        )
-    })?;
-
-    let artifact_marker_path = artifact_dir.join(FS_UAE_LAST_GREEN_FILE_NAME);
-    fs::write(&artifact_marker_path, record.as_bytes()).map_err(|err| {
-        format!(
-            "write artifact last-green marker {}: {err}",
-            artifact_marker_path.display()
-        )
-    })?;
-
-    Ok(stable_marker_path)
+impl Drop for EphemeralArtifactDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
 }
 
-fn format_last_green_record(
-    test_name: &str,
-    artifact_dir: &Path,
-    git_head_commit: &str,
-    git_head_commit_unix_seconds: &str,
-    green_run_unix_seconds: &str,
-) -> String {
-    format!(
-        "test={test_name}\n\
-git_head_commit={git_head_commit}\n\
-git_head_commit_unix_seconds={git_head_commit_unix_seconds}\n\
-green_run_unix_seconds={green_run_unix_seconds}\n\
-artifact_dir={}\n",
-        artifact_dir.display()
-    )
-}
-
-fn read_git_head_provenance(workspace_root: &Path) -> Result<GitHeadProvenance, String> {
-    let commit = run_git_stdout(workspace_root, &["rev-parse", "HEAD"])?;
-    let commit_unix_seconds =
-        run_git_stdout(workspace_root, &["show", "-s", "--format=%ct", "HEAD"])?;
-    Ok(GitHeadProvenance {
-        commit,
-        commit_unix_seconds,
-    })
-}
-
-fn run_git_stdout(workspace_root: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(workspace_root)
-        .output()
-        .map_err(|err| {
-            format!(
-                "run git {} in {}: {err}",
-                args.join(" "),
-                workspace_root.display()
-            )
-        })?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "git {} failed in {} with status {}: {}",
-            args.join(" "),
-            workspace_root.display(),
-            output.status,
-            stderr.trim()
-        ));
+fn capture_artifact_files(root: &Path) -> Result<BTreeMap<PathBuf, Vec<u8>>, String> {
+    fn visit(
+        root: &Path,
+        dir: &Path,
+        captured: &mut BTreeMap<PathBuf, Vec<u8>>,
+    ) -> Result<(), String> {
+        for entry in fs::read_dir(dir)
+            .map_err(|err| format!("read ephemeral artifact directory {}: {err}", dir.display()))?
+        {
+            let entry = entry.map_err(|err| {
+                format!(
+                    "read entry in ephemeral artifact directory {}: {err}",
+                    dir.display()
+                )
+            })?;
+            let path = entry.path();
+            if path.is_dir() {
+                visit(root, &path, captured)?;
+            } else if path.is_file() {
+                let relative = path.strip_prefix(root).map_err(|err| {
+                    format!(
+                        "make ephemeral artifact {} relative to {}: {err}",
+                        path.display(),
+                        root.display()
+                    )
+                })?;
+                let bytes = fs::read(&path)
+                    .map_err(|err| format!("read ephemeral artifact {}: {err}", path.display()))?;
+                captured.insert(relative.to_path_buf(), bytes);
+            }
+        }
+        Ok(())
     }
 
-    let stdout = String::from_utf8(output.stdout)
-        .map_err(|err| format!("decode git {} stdout as UTF-8: {err}", args.join(" ")))?;
-    Ok(stdout.trim().to_string())
+    let mut captured = BTreeMap::new();
+    visit(root, root, &mut captured)?;
+    Ok(captured)
 }
 
 fn example_guest_input(example_name: &str) -> Option<(&'static str, &'static [u8])> {
@@ -2272,6 +2515,34 @@ fn clear_capture_files(capture: &FsUaeCaptureConfig) -> Result<(), String> {
     Ok(())
 }
 
+fn clear_native_cli_output_artifacts(mounted_work_dir: &Path) -> Result<(), String> {
+    for path in [
+        mounted_work_dir.join(FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+        mounted_work_dir.join(FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE),
+        mounted_work_dir
+            .join("build")
+            .join(FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE),
+        mounted_work_dir
+            .join("build")
+            .join(FS_UAE_OPFORGE_NATIVE_CLI_HEX_OUTPUT_FILE),
+        mounted_work_dir
+            .join("build")
+            .join(FS_UAE_OPFORGE_NATIVE_CLI_LST_OUTPUT_FILE),
+    ] {
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => {
+                return Err(format!(
+                    "remove stale native CLI output {}: {err}",
+                    path.display()
+                ))
+            }
+        }
+    }
+    Ok(())
+}
+
 fn capture_path_exists(paths: &FsUaeCapturePathSet) -> bool {
     paths.candidates().any(Path::is_file)
 }
@@ -2515,18 +2786,31 @@ fn summarize_opforge_native_cli_batch_progress(
     }
 }
 
-fn determine_smoke_success(guest_exit_code: Option<i32>, launcher_success: bool) -> bool {
-    guest_exit_code
-        .map(|code| code == 0)
-        .unwrap_or(launcher_success)
+fn determine_smoke_success(guest_exit_code: Option<i32>, _launcher_success: bool) -> bool {
+    guest_exit_code == Some(0)
+}
+
+fn require_completed_guest_protocol(
+    example_name: &str,
+    protocol_completed: bool,
+    guest_exit_code: Option<i32>,
+) -> Result<(), String> {
+    if protocol_completed && guest_exit_code.is_some() {
+        return Ok(());
+    }
+    Err(format!(
+        "FS-UAE guest proof did not complete for {example_name}; no test result is valid without the fresh completion marker and explicit guest exit code"
+    ))
 }
 
 fn determine_batch_case_success(
+    case_started: bool,
     case_done: bool,
     guest_exit_code: Option<i32>,
     launcher_success: bool,
 ) -> bool {
-    case_done
+    case_started
+        && case_done
         && guest_exit_code.is_some()
         && determine_smoke_success(guest_exit_code, launcher_success)
 }
@@ -2733,6 +3017,7 @@ fn run_example_smoke_with_request(
 
     let artifact_dir =
         create_artifact_dir(workspace_root, &format!("fs-uae-hunk-smoke-{example_name}"))?;
+    let ephemeral_artifact_dir = EphemeralArtifactDir(artifact_dir.clone());
     let mounted_work_dir = artifact_dir.join(FS_UAE_MOUNTED_WORK_DIR_NAME);
     fs::create_dir_all(mounted_work_dir.join("build")).map_err(|err| {
         format!(
@@ -2931,10 +3216,13 @@ fn run_example_smoke_with_request(
     let captured_stdout = read_optional_text_from_paths(&capture.stdout_paths)?;
     let captured_stderr = read_optional_text_from_paths(&capture.stderr_paths)?;
 
-    Ok(ExampleSmokeResult::Run(FsUaeSmokeRun {
+    let protocol_completed =
+        capture.ready_paths.candidates().any(Path::is_file) && guest_exit_code.is_some();
+    let captured_artifacts = capture_artifact_files(&artifact_dir)?;
+    let run = FsUaeSmokeRun {
         example_name,
         source_path,
-        artifact_dir,
+        artifact_dir: artifact_dir.clone(),
         hunk_path,
         stdout: merge_output(captured_stdout, launcher_stdout, "FS-UAE launcher stdout"),
         stderr: merge_output(
@@ -2947,8 +3235,20 @@ fn run_example_smoke_with_request(
             "FS-UAE launcher",
         ),
         exit_code: guest_exit_code,
-        success: determine_smoke_success(guest_exit_code, launcher_status.success()),
-    }))
+        protocol_completed,
+        success: protocol_completed && guest_exit_code == Some(0),
+        verified_output: None,
+        captured_artifacts,
+    };
+    drop(ephemeral_artifact_dir);
+    if artifact_dir.exists() {
+        return Err(format!(
+            "FS-UAE smoke artifact directory still exists after cleanup: {}",
+            artifact_dir.display()
+        ));
+    }
+    require_completed_guest_protocol(example_name, run.protocol_completed, run.exit_code)?;
+    Ok(ExampleSmokeResult::Run(run))
 }
 
 fn run_example_smoke_with_guest_input(
@@ -2969,6 +3269,7 @@ fn run_example_smoke_with_guest_input(
         workspace_root,
         &format!("fs-uae-hunk-smoke-{}", spec.example_name),
     )?;
+    let ephemeral_artifact_dir = EphemeralArtifactDir(artifact_dir.clone());
     let mounted_work_dir = artifact_dir.join(FS_UAE_MOUNTED_WORK_DIR_NAME);
     fs::create_dir_all(mounted_work_dir.join("build")).map_err(|err| {
         format!(
@@ -3177,10 +3478,13 @@ fn run_example_smoke_with_guest_input(
     let captured_stdout = read_optional_text_from_paths(&capture.stdout_paths)?;
     let captured_stderr = read_optional_text_from_paths(&capture.stderr_paths)?;
 
-    Ok(ExampleSmokeResult::Run(FsUaeSmokeRun {
+    let protocol_completed =
+        capture.ready_paths.candidates().any(Path::is_file) && guest_exit_code.is_some();
+    let captured_artifacts = capture_artifact_files(&artifact_dir)?;
+    let run = FsUaeSmokeRun {
         example_name: spec.example_name,
         source_path,
-        artifact_dir,
+        artifact_dir: artifact_dir.clone(),
         hunk_path,
         stdout: merge_output(captured_stdout, launcher_stdout, "FS-UAE launcher stdout"),
         stderr: merge_output(
@@ -3193,8 +3497,20 @@ fn run_example_smoke_with_guest_input(
             "FS-UAE launcher",
         ),
         exit_code: guest_exit_code,
-        success: determine_smoke_success(guest_exit_code, launcher_status.success()),
-    }))
+        protocol_completed,
+        success: protocol_completed && guest_exit_code == Some(0),
+        verified_output: None,
+        captured_artifacts,
+    };
+    drop(ephemeral_artifact_dir);
+    if artifact_dir.exists() {
+        return Err(format!(
+            "FS-UAE smoke artifact directory still exists after cleanup: {}",
+            artifact_dir.display()
+        ));
+    }
+    require_completed_guest_protocol(spec.example_name, run.protocol_completed, run.exit_code)?;
+    Ok(ExampleSmokeResult::Run(run))
 }
 
 fn generated_hunk_artifact_path(artifact_dir: &Path, example_name: &str) -> PathBuf {
@@ -3343,29 +3659,233 @@ mod tests {
     fn guest_exit_code_takes_precedence_over_launcher_status() {
         assert!(determine_smoke_success(Some(0), false));
         assert!(!determine_smoke_success(Some(5), true));
-        assert!(determine_smoke_success(None, true));
+        assert!(!determine_smoke_success(None, true));
         assert!(!determine_smoke_success(None, false));
     }
 
     #[test]
-    fn batch_case_success_requires_done_marker_and_zero_exit() {
-        assert!(determine_batch_case_success(true, Some(0), false));
-        assert!(!determine_batch_case_success(false, Some(0), true));
-        assert!(!determine_batch_case_success(true, None, true));
-        assert!(!determine_batch_case_success(true, Some(7), true));
+    fn every_generic_run_requires_fresh_guest_completion_even_for_expected_failure() {
+        assert!(require_completed_guest_protocol("positive", true, Some(0)).is_ok());
+        assert!(require_completed_guest_protocol("expected-failure", true, Some(7)).is_ok());
+        assert!(require_completed_guest_protocol("missing-marker", false, Some(7)).is_err());
+        assert!(require_completed_guest_protocol("missing-exit", true, None).is_err());
     }
 
     #[test]
-    fn native_cli_batch_commands_use_bounded_guest_alias() {
-        let mounted_work_dir = Path::new("/tmp/opforge-fsuae-smoke/Work");
-        let paths = opforge_native_cli_batch_case_paths(mounted_work_dir, 0);
+    fn batch_case_success_requires_done_marker_and_zero_exit() {
+        assert!(determine_batch_case_success(true, true, Some(0), false));
+        assert!(!determine_batch_case_success(false, true, Some(0), true));
+        assert!(!determine_batch_case_success(true, false, Some(0), true));
+        assert!(!determine_batch_case_success(true, true, None, true));
+        assert!(!determine_batch_case_success(true, true, Some(7), true));
+    }
+
+    fn proof_test_run(
+        protocol_completed: bool,
+        exit_code: Option<i32>,
+        output: Option<&[u8]>,
+    ) -> FsUaeSmokeRun {
+        let mut captured_artifacts = BTreeMap::new();
+        if let Some(output) = output {
+            captured_artifacts.insert(
+                PathBuf::from(FS_UAE_MOUNTED_WORK_DIR_NAME)
+                    .join(FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
+                output.to_vec(),
+            );
+        }
+        FsUaeSmokeRun {
+            example_name: FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+            source_path: PathBuf::from("/ephemeral/Work/input.asm"),
+            artifact_dir: PathBuf::from("/ephemeral"),
+            hunk_path: PathBuf::from("/ephemeral/opforge_cli"),
+            stdout: String::new(),
+            stderr: "diagnostic".to_string(),
+            exit_code,
+            protocol_completed,
+            success: protocol_completed && exit_code == Some(0),
+            verified_output: None,
+            captured_artifacts,
+        }
+    }
+
+    #[test]
+    fn mos_byte_proof_rejects_incomplete_nonzero_missing_and_mismatched_runs() {
+        let expected = [0xa9, 0x42];
         let case = OpforgeNativeCliParityCase {
+            name: "proof-case",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(b"lda #$42\n"),
+            command_template: Some("{input} --bin {bin} --cpu m6502"),
+            package_mode: OpforgeNativeCliPackageMode::Explicit(b"package"),
+            extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &expected,
+            },
+        };
+
+        for mut run in [
+            proof_test_run(false, Some(0), Some(&expected)),
+            proof_test_run(true, Some(5), Some(&expected)),
+            proof_test_run(true, Some(0), None),
+            proof_test_run(true, Some(0), Some(&[0xa9, 0x43])),
+        ] {
+            assert!(verify_native_cli_case_proof(&case, &mut run).is_err());
+        }
+
+        let mut run = proof_test_run(true, Some(0), Some(&expected));
+        verify_native_cli_case_proof(&case, &mut run).expect("exact fresh byte proof");
+        assert_eq!(run.verified_output.as_deref(), Some(expected.as_slice()));
+    }
+
+    #[test]
+    fn native_cli_case_identity_is_derived_from_actual_cpu_source_and_command() {
+        let base = OpforgeNativeCliParityCase {
+            name: "identity",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(b"lda #1\n"),
             command_template: Some("{input} --bin {bin} --cpu m6502"),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
+        };
+        let mut changed_source = base;
+        changed_source.source_override = Some(b"lda #2\n");
+        let mut changed_command = base;
+        changed_command.command_template = Some("{input} --bin {bin} --cpu 65c02");
+        let mut changed_oracle = base;
+        changed_oracle.proof = OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: b"different-rust-oracle",
+        };
+        let mut renamed = base;
+        renamed.name = "display-name-must-not-select-oracle";
+
+        assert_ne!(
+            opforge_native_cli_case_identity(&base, None),
+            opforge_native_cli_case_identity(&changed_source, None)
+        );
+        assert_ne!(
+            opforge_native_cli_case_identity(&base, None),
+            opforge_native_cli_case_identity(&changed_command, None)
+        );
+        assert_ne!(
+            opforge_native_cli_case_identity(&base, Some(b"package-a")),
+            opforge_native_cli_case_identity(&base, Some(b"package-b"))
+        );
+        assert_ne!(
+            opforge_native_cli_case_identity(&base, None),
+            opforge_native_cli_case_identity(&changed_oracle, None)
+        );
+        assert_eq!(
+            opforge_native_cli_case_identity(&base, None),
+            opforge_native_cli_case_identity(&renamed, None)
+        );
+    }
+
+    #[test]
+    fn fresh_marker_protocol_rejects_stale_or_wrong_case_text() {
+        let dir = std::env::temp_dir().join(format!(
+            "opforge-fsuae-proof-marker-{}",
+            opforge_native_cli_run_challenge()
+        ));
+        let paths = opforge_native_cli_batch_case_paths(&dir, 0, "fresh", "actual-case");
+        fs::create_dir_all(&paths.artifact_dir).expect("create marker test directory");
+        fs::write(
+            &paths.started_path,
+            "OPFORGE-FS-UAE-PROOF-V1 START stale actual-case",
+        )
+        .expect("write stale start marker");
+        fs::write(
+            &paths.done_path,
+            "OPFORGE-FS-UAE-PROOF-V1 DONE fresh wrong-case",
+        )
+        .expect("write wrong-case done marker");
+
+        assert_ne!(
+            read_optional_text(&paths.started_path)
+                .expect("read start marker")
+                .as_deref()
+                .map(str::trim),
+            Some(paths.expected_started.as_str())
+        );
+        assert_ne!(
+            read_optional_text(&paths.done_path)
+                .expect("read done marker")
+                .as_deref()
+                .map(str::trim),
+            Some(paths.expected_done.as_str())
+        );
+        fs::remove_dir_all(&dir).expect("remove marker test directory");
+    }
+
+    #[test]
+    fn ephemeral_artifact_guard_removes_all_case_evidence_on_drop() {
+        let dir = std::env::temp_dir().join(format!(
+            "opforge-fsuae-proof-cleanup-{}",
+            opforge_native_cli_run_challenge()
+        ));
+        fs::create_dir_all(dir.join("Work/case_artifacts/case_0000"))
+            .expect("create ephemeral proof tree");
+        fs::write(
+            dir.join("Work/case_artifacts/case_0000/opforge_fsuae_smoke.done"),
+            "stale",
+        )
+        .expect("write ephemeral proof marker");
+        {
+            let _guard = EphemeralArtifactDir(dir.clone());
+        }
+        assert!(!dir.exists(), "all stored case evidence must be removed");
+    }
+
+    #[test]
+    fn proof_failure_still_removes_all_case_evidence() {
+        let expected = [0xa9, 0x42];
+        let case = OpforgeNativeCliParityCase {
+            name: "cleanup-on-proof-failure",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(b"lda #$42\n"),
+            command_template: Some("{input} --bin {bin} --cpu m6502"),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &expected,
+            },
+        };
+        let dir = std::env::temp_dir().join(format!(
+            "opforge-fsuae-proof-failure-cleanup-{}",
+            opforge_native_cli_run_challenge()
+        ));
+        fs::create_dir_all(&dir).expect("create proof-failure directory");
+        fs::write(dir.join("stale-output.bin"), b"wrong").expect("write wrong proof output");
+        let mut run = proof_test_run(true, Some(0), Some(b"wrong"));
+
+        let result = {
+            let _guard = EphemeralArtifactDir(dir.clone());
+            verify_native_cli_case_proof(&case, &mut run)
+        };
+
+        assert!(result.is_err());
+        assert!(!dir.exists(), "failed proof evidence must be removed");
+    }
+
+    #[test]
+    fn native_cli_batch_commands_use_bounded_guest_alias() {
+        let mounted_work_dir = Path::new("/tmp/opforge-fsuae-smoke/Work");
+        let paths = opforge_native_cli_batch_case_paths(mounted_work_dir, 0, "challenge", "case");
+        let case = OpforgeNativeCliParityCase {
+            name: "bounded-guest-alias",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(b"lda #1\n"),
+            command_template: Some("{input} --bin {bin} --cpu m6502"),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
         };
 
         let command = opforge_native_cli_case_command(&case, &paths);
@@ -3444,24 +3964,6 @@ mod tests {
             opforge_native_cli_fixture_assembly_defines().is_empty(),
             "fixture-backed native CLI parity must not compile OPFORGE_FS_UAE_SMOKE into opforge_cli"
         );
-    }
-
-    #[test]
-    fn format_last_green_record_captures_commit_timestamp_and_artifact_dir() {
-        let record = format_last_green_record(
-            "external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin",
-            Path::new("/tmp/opforge-fsuae-smoke"),
-            "abc123def456",
-            "1717152000",
-            "1717152600",
-        );
-
-        assert!(record
-            .contains("test=external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin"));
-        assert!(record.contains("git_head_commit=abc123def456"));
-        assert!(record.contains("git_head_commit_unix_seconds=1717152000"));
-        assert!(record.contains("green_run_unix_seconds=1717152600"));
-        assert!(record.contains("artifact_dir=/tmp/opforge-fsuae-smoke"));
     }
 
     #[test]
@@ -3587,12 +4089,14 @@ mod tests {
             FS_UAE_OPFORGE_NATIVE_CLI_MISSING_INCLUDE_DEFINE,
         ] {
             let case = OpforgeNativeCliParityCase {
+                name: "item10-source-routing",
                 cpu_override: "68020",
                 extra_assembly_defines: &[define],
                 source_override: Some(b"        .include \"defs.inc\"\n"),
                 command_template: None,
                 package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
                 extra_guest_files: &[],
+                proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
             };
 
             assert_eq!(
@@ -3606,14 +4110,21 @@ mod tests {
     #[test]
     fn item10_native_cli_command_uses_include_roots_and_6502_override_source() {
         let case = OpforgeNativeCliParityCase {
+            name: "item10-command",
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE],
             source_override: Some(b"        .include \"defs.inc\"\n"),
             command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
         };
-        let paths = opforge_native_cli_batch_case_paths(Path::new("/tmp/opforge-fsuae"), 0);
+        let paths = opforge_native_cli_batch_case_paths(
+            Path::new("/tmp/opforge-fsuae"),
+            0,
+            "challenge",
+            "case",
+        );
 
         assert_eq!(
             opforge_native_cli_case_command(&case, &paths),
@@ -3624,14 +4135,21 @@ mod tests {
     #[test]
     fn source_override_without_define_uses_case_specific_6502_input_and_command() {
         let case = OpforgeNativeCliParityCase {
+            name: "source-override-command",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(b"        .module app\n"),
             command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
         };
-        let paths = opforge_native_cli_batch_case_paths(Path::new("/tmp/opforge-fsuae"), 0);
+        let paths = opforge_native_cli_batch_case_paths(
+            Path::new("/tmp/opforge-fsuae"),
+            0,
+            "challenge",
+            "case",
+        );
 
         assert_eq!(
             opforge_native_cli_case_source_relative_path(&case),
@@ -3646,14 +4164,21 @@ mod tests {
     #[test]
     fn source_cpu_only_command_template_runs_input_only() {
         let case = OpforgeNativeCliParityCase {
+            name: "source-cpu-only-command",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(b"        .cpu 6502\n"),
             command_template: Some("{input}"),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
         };
-        let paths = opforge_native_cli_batch_case_paths(Path::new("/tmp/opforge-fsuae"), 0);
+        let paths = opforge_native_cli_batch_case_paths(
+            Path::new("/tmp/opforge-fsuae"),
+            0,
+            "challenge",
+            "case",
+        );
 
         assert_eq!(
             opforge_native_cli_case_command(&case, &paths),
@@ -3664,14 +4189,21 @@ mod tests {
     #[test]
     fn explicit_command_template_interpolates_guest_paths() {
         let case = OpforgeNativeCliParityCase {
+            name: "explicit-command-template",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(b"        lda #$42\n"),
             command_template: Some("{input} --list {list} --cpu m6502 -I {include_a}"),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
         };
-        let paths = opforge_native_cli_batch_case_paths(Path::new("/tmp/opforge-fsuae"), 0);
+        let paths = opforge_native_cli_batch_case_paths(
+            Path::new("/tmp/opforge-fsuae"),
+            0,
+            "challenge",
+            "case",
+        );
 
         assert_eq!(
             opforge_native_cli_case_command(&case, &paths),
@@ -3705,14 +4237,21 @@ mod tests {
         use clap::Parser;
 
         let case = OpforgeNativeCliParityCase {
+            name: "default-bin-command",
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE],
             source_override: Some(b"        lda #$42\n"),
             command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
         };
-        let paths = opforge_native_cli_batch_case_paths(Path::new("/tmp/opforge-fsuae"), 0);
+        let paths = opforge_native_cli_batch_case_paths(
+            Path::new("/tmp/opforge-fsuae"),
+            0,
+            "challenge",
+            "case",
+        );
         let native_tokens = opforge_native_cli_case_command(&case, &paths)
             .split_whitespace()
             .map(str::to_string)
@@ -3744,14 +4283,21 @@ mod tests {
         use clap::Parser;
 
         let case = OpforgeNativeCliParityCase {
+            name: "include-root-cli-surface",
             cpu_override: "68020",
             extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE],
             source_override: Some(b"        .include \"defs.inc\"\n"),
             command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
         };
-        let paths = opforge_native_cli_batch_case_paths(Path::new("/tmp/opforge-fsuae"), 0);
+        let paths = opforge_native_cli_batch_case_paths(
+            Path::new("/tmp/opforge-fsuae"),
+            0,
+            "challenge",
+            "case",
+        );
         let native_tokens = opforge_native_cli_case_command(&case, &paths)
             .split_whitespace()
             .map(str::to_string)

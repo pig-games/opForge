@@ -96,9 +96,20 @@ fn external_fs_uae_hunk_smoke() {
     }
 }
 
-fn fs_uae_native_cli_smoke_lock() -> &'static std::sync::Mutex<()> {
-    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+struct FsUaeNativeCliSmokeLock(std::sync::Mutex<()>);
+
+impl FsUaeNativeCliSmokeLock {
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, ()>, std::convert::Infallible> {
+        Ok(match self.0.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        })
+    }
+}
+
+fn fs_uae_native_cli_smoke_lock() -> &'static FsUaeNativeCliSmokeLock {
+    static LOCK: std::sync::OnceLock<FsUaeNativeCliSmokeLock> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| FsUaeNativeCliSmokeLock(std::sync::Mutex::new(())))
 }
 
 #[derive(Clone, Copy)]
@@ -335,15 +346,52 @@ fn native_cli_schema_unknown_mnemonic_case_with_live_rust_oracle() -> NativeCliS
 }
 
 fn native_cli_schema_artifact_path(
-    run: &crate::fs_uae_smoke::FsUaeSmokeRun,
     location: NativeCliSchemaArtifactLocation,
     file_name: &str,
 ) -> PathBuf {
     match location {
-        NativeCliSchemaArtifactLocation::CaseWork => run.artifact_dir.join("Work").join(file_name),
+        NativeCliSchemaArtifactLocation::CaseWork => PathBuf::from("Work").join(file_name),
         NativeCliSchemaArtifactLocation::CaseWorkBuild => {
-            run.artifact_dir.join("Work").join("build").join(file_name)
+            PathBuf::from("Work").join("build").join(file_name)
         }
+    }
+}
+
+fn native_cli_schema_runner_proof(
+    case: &NativeCliSchemaCase,
+) -> crate::fs_uae_smoke::OpforgeNativeCliProof<'_> {
+    match case.artifact.as_ref() {
+        Some(NativeCliSchemaExpectedArtifact::Binary {
+            location,
+            file_name,
+            expected,
+        }) => crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: match (*location, *file_name) {
+                (NativeCliSchemaArtifactLocation::CaseWork, "opforge_native_out.bin") => {
+                    "Work/opforge_native_out.bin"
+                }
+                (NativeCliSchemaArtifactLocation::CaseWorkBuild, "6502-first-run.prg") => {
+                    "Work/build/6502-first-run.prg"
+                }
+                _ => panic!("unsupported schema binary proof artifact for {}", case.name),
+            },
+            rust_oracle: expected,
+        },
+        Some(NativeCliSchemaExpectedArtifact::Text {
+            location,
+            file_name,
+            expected,
+            ..
+        }) => crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: match (*location, *file_name) {
+                (NativeCliSchemaArtifactLocation::CaseWorkBuild, "opforge_native_out.lst") => {
+                    "Work/build/opforge_native_out.lst"
+                }
+                _ => panic!("unsupported schema text proof artifact for {}", case.name),
+            },
+            rust_oracle: expected.as_bytes(),
+        },
+        None => crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
     }
 }
 
@@ -393,10 +441,10 @@ fn assert_native_cli_schema_case(
             ..
         } => (*location, *file_name),
     };
-    let output_path = native_cli_schema_artifact_path(run, location, file_name);
-    let actual = fs::read(&output_path).unwrap_or_else(|err| {
+    let output_path = native_cli_schema_artifact_path(location, file_name);
+    let actual = run.captured_artifacts.get(&output_path).unwrap_or_else(|| {
         panic!(
-            "read schema-driven native CLI artifact {} for {}: {err}",
+            "schema-driven native CLI run did not capture {} for {}",
             output_path.display(),
             schema_case.name
         )
@@ -2295,12 +2343,14 @@ fn external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli
         .iter()
         .map(
             |schema_case| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name: schema_case.name,
                 cpu_override: "68020",
                 extra_assembly_defines: schema_case.defines.as_slice(),
                 source_override: schema_case.source.as_deref().map(str::as_bytes),
                 command_template: schema_case.command_template,
                 package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
                 extra_guest_files: &[],
+                proof: native_cli_schema_runner_proof(schema_case),
             },
         )
         .collect::<Vec<_>>();
@@ -2343,12 +2393,14 @@ fn external_fs_uae_opforge_native_cli_schema_listing_parity_matches_live_rust_cl
         .iter()
         .map(
             |schema_case| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name: schema_case.name,
                 cpu_override: "68020",
                 extra_assembly_defines: schema_case.defines.as_slice(),
                 source_override: schema_case.source.as_deref().map(str::as_bytes),
                 command_template: schema_case.command_template,
                 package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
                 extra_guest_files: &[],
+                proof: native_cli_schema_runner_proof(schema_case),
             },
         )
         .collect::<Vec<_>>();
@@ -2381,12 +2433,14 @@ fn external_fs_uae_opforge_native_cli_schema_diagnostic_parity_matches_live_rust
         .iter()
         .map(
             |schema_case| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name: schema_case.name,
                 cpu_override: "68020",
                 extra_assembly_defines: schema_case.defines.as_slice(),
                 source_override: schema_case.source.as_deref().map(str::as_bytes),
                 command_template: schema_case.command_template,
                 package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
                 extra_guest_files: &[],
+                proof: native_cli_schema_runner_proof(schema_case),
             },
         )
         .collect::<Vec<_>>();
@@ -2446,12 +2500,17 @@ fn external_fs_uae_opforge_native_cli_expression_metadata_fallback_matches_live_
     run_with_cli_with_context(&cli).expect("run live Rust expression fallback oracle");
     let rust_bin = fs::read(&rust_bin_path).expect("read live Rust expression fallback bytes");
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "expression-metadata-fallback",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(source.as_bytes()),
         command_template: Some("{input} --bin {bin} --cpu m6502"),
         package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_bin,
+        },
     }];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
         &workspace_root(),
@@ -2470,12 +2529,7 @@ fn external_fs_uae_opforge_native_cli_expression_metadata_fallback_matches_live_
                 "native expression fallback run failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native_bin = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native expression fallback bytes");
+            let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
             assert_eq!(native_bin, rust_bin);
         }
     }
@@ -2506,12 +2560,17 @@ fn native_column_one_directive_routing_fs_uae() {
     run_with_cli_with_context(&cli).expect("run live Rust column-one directive oracle");
     let rust_bin = fs::read(&rust_bin_path).expect("read live Rust column-one directive bytes");
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "column-one-directives",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(source),
         command_template: Some("{input} --bin {bin} --cpu m6502"),
         package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_bin,
+        },
     }];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&repo_root, &cases)
         .expect("column-one directive FS-UAE case should complete or skip cleanly")
@@ -2525,12 +2584,7 @@ fn native_column_one_directive_routing_fs_uae() {
                 "native column-one directive run failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native_bin = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native column-one directive bytes");
+            let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
             assert_eq!(native_bin, rust_bin);
         }
     }
@@ -2560,12 +2614,17 @@ fn native_opcore_counted_for_fs_uae() {
     run_with_cli_with_context(&cli).expect("run live Rust counted-for oracle");
     let rust_bin = fs::read(&rust_bin_path).expect("read live Rust counted-for bytes");
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "opcore-counted-for",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(source.as_slice()),
         command_template: Some("{input} --bin {bin} --cpu m6502"),
         package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_bin,
+        },
     }];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&repo_root, &cases)
         .expect("counted-for FS-UAE case should complete or skip cleanly")
@@ -2579,12 +2638,7 @@ fn native_opcore_counted_for_fs_uae() {
                 "native counted-for run failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native_bin = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native counted-for bytes");
+            let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
             assert_eq!(native_bin, rust_bin);
         }
     }
@@ -2614,12 +2668,17 @@ fn native_opcore_sequence_assignment_fs_uae() {
     run_with_cli_with_context(&cli).expect("run live Rust sequence assignment oracle");
     let rust_bin = fs::read(&rust_bin_path).expect("read Rust sequence assignment bytes");
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "opcore-sequence-assignment",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(source),
         command_template: Some("{input} --bin {bin} --cpu m6502"),
         package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_bin,
+        },
     }];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
         &workspace_root(),
@@ -2636,12 +2695,7 @@ fn native_opcore_sequence_assignment_fs_uae() {
                 "native sequence assignment run failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native_bin = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native sequence assignment bytes");
+            let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
             assert_eq!(native_bin, rust_bin);
         }
     }
@@ -2677,20 +2731,30 @@ fn native_opcore_iterable_for_fs_uae() {
     }
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "opcore-iterable-list",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(&list_source),
             command_template: Some("{input} --bin {bin} --cpu m6502"),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_bins[0],
+            },
         },
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "opcore-iterable-range",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(&range_source),
             command_template: Some("{input} --bin {bin} --cpu m6502"),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_bins[1],
+            },
         },
     ];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
@@ -2708,12 +2772,7 @@ fn native_opcore_iterable_for_fs_uae() {
                     "native iterable for run failed\nstdout:\n{}\nstderr:\n{}",
                     run.stdout, run.stderr
                 );
-                let native_bin = fs::read(
-                    run.artifact_dir
-                        .join("Work")
-                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-                )
-                .expect("read native iterable for bytes");
+                let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
                 assert_eq!(&native_bin, rust_bin);
             }
         }
@@ -2743,12 +2802,17 @@ fn native_opcore_while_fs_uae() {
     run_with_cli_with_context(&cli).expect("run live Rust while oracle");
     let rust_bin = fs::read(&rust_bin_path).expect("read Rust while bytes");
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "opcore-while",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(&source),
         command_template: Some("{input} --bin {bin} --cpu m6502"),
         package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_bin,
+        },
     }];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
         &workspace_root(),
@@ -2765,12 +2829,7 @@ fn native_opcore_while_fs_uae() {
                 "native while run failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native_bin = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native while bytes");
+            let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
             assert_eq!(native_bin, rust_bin);
         }
     }
@@ -2799,12 +2858,17 @@ fn native_opcore_conditionals_fs_uae() {
     run_with_cli_with_context(&cli).expect("run live Rust conditional oracle");
     let rust_bin = fs::read(&rust_bin_path).expect("read Rust conditional bytes");
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "opcore-conditionals",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(&source),
         command_template: Some("{input} --bin {bin} --cpu m6502"),
         package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_bin,
+        },
     }];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
         &workspace_root(),
@@ -2821,12 +2885,7 @@ fn native_opcore_conditionals_fs_uae() {
                 "native conditional run failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native_bin = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native conditional bytes");
+            let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
             assert_eq!(native_bin, rust_bin);
         }
     }
@@ -3119,6 +3178,7 @@ fn native_module_local_symbol_fs_uae() {
         cpu_id: "65c02",
         source: source.as_slice(),
         package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust),
     }];
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
         .expect("module-local symbol FS-UAE helper")
@@ -3128,12 +3188,7 @@ fn native_module_local_symbol_fs_uae() {
             assert_eq!(runs.len(), 1, "expected one module-local native run");
             let run = &runs[0];
             assert!(run.success, "native module-basics failed: {}", run.stdout);
-            let native = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native module bytes");
+            let native = verified_fs_uae_output(run);
             assert_eq!(native, rust, "native module-local bytes differ");
         }
     }
@@ -3171,20 +3226,30 @@ fn native_opcore_scopes_fs_uae() {
     }
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "opcore-scopes",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(&sources[0]),
             command_template: Some("{input} --bin {bin} --cpu m6502"),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_bins[0],
+            },
         },
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "opcore-scopes-namespace",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(&sources[1]),
             command_template: Some("{input} --bin {bin} --cpu m6502"),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_bins[1],
+            },
         },
     ];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
@@ -3198,12 +3263,7 @@ fn native_opcore_scopes_fs_uae() {
             assert_eq!(runs.len(), rust_bins.len());
             for (run, rust_bin) in runs.iter().zip(rust_bins.iter()) {
                 assert!(run.success, "native scope run failed\n{}", run.stdout);
-                let native_bin = fs::read(
-                    run.artifact_dir
-                        .join("Work")
-                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-                )
-                .expect("read native scope bytes");
+                let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
                 assert_eq!(&native_bin, rust_bin);
             }
         }
@@ -3462,20 +3522,30 @@ fn native_opcore_text_encoding_fs_uae() {
     };
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "opcore-text-encoding",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(&sources[0]),
             command_template: Some(command_template),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_bins[0],
+            },
         },
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "opcore-text-encoding-definitions",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(&sources[1]),
             command_template: Some(command_template),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_bins[1],
+            },
         },
     ];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
@@ -3489,12 +3559,7 @@ fn native_opcore_text_encoding_fs_uae() {
             assert_eq!(runs.len(), rust_bins.len());
             for (run, rust_bin) in runs.iter().zip(rust_bins.iter()) {
                 assert!(run.success, "native text run failed\n{}", run.stdout);
-                let native_bin = fs::read(
-                    run.artifact_dir
-                        .join("Work")
-                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-                )
-                .expect("read native text bytes");
+                let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
                 assert_eq!(&native_bin, rust_bin);
             }
         }
@@ -3526,14 +3591,30 @@ fn native_text_encoding_definition_steps_fs_uae() {
     ];
     let cases = sources
         .iter()
-        .map(|source| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
-            cpu_override: "68020",
-            extra_assembly_defines: &[],
-            source_override: Some(source),
-            command_template: Some("{input} --bin {bin} --cpu m6502 --native-debug"),
-            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
-            extra_guest_files: &[],
-        })
+        .zip(expected.iter())
+        .enumerate()
+        .map(
+            |(index, (source, rust_oracle))| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name: [
+                    "text-definition-empty",
+                    "text-definition-cdef",
+                    "text-definition-tdef-range",
+                    "text-definition-tdef-list",
+                    "text-definition-edef",
+                    "text-definition-clone",
+                ][index],
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(source),
+                command_template: Some("{input} --bin {bin} --cpu m6502 --native-debug"),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+                extra_guest_files: &[],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle,
+                },
+            },
+        )
         .collect::<Vec<_>>();
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
         &workspace_root(),
@@ -3550,12 +3631,7 @@ fn native_text_encoding_definition_steps_fs_uae() {
                     "definition step {index} failed\n{}",
                     run.stdout
                 );
-                let bytes = fs::read(
-                    run.artifact_dir
-                        .join("Work")
-                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-                )
-                .expect("read native definition bytes");
+                let bytes = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
                 assert_eq!(&bytes, expected, "definition step {index}");
             }
         }
@@ -3595,28 +3671,43 @@ fn native_opcore_structs_fs_uae() {
     }
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "opcore-struct-literal",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(&sources[0]),
             command_template: Some("{input} --bin {bin} --cpu m6502"),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_bins[0],
+            },
         },
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "opcore-struct-var",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(&sources[1]),
             command_template: Some("{input} --bin {bin} --cpu m6502"),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_bins[1],
+            },
         },
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "opcore-struct-bfor",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(&sources[2]),
             command_template: Some("{input} --bin {bin} --cpu m6502"),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_bins[2],
+            },
         },
     ];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
@@ -3630,12 +3721,7 @@ fn native_opcore_structs_fs_uae() {
             assert_eq!(runs.len(), rust_bins.len());
             for (run, rust_bin) in runs.iter().zip(rust_bins.iter()) {
                 assert!(run.success, "native struct run failed\n{}", run.stdout);
-                let native_bin = fs::read(
-                    run.artifact_dir
-                        .join("Work")
-                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-                )
-                .expect("read native struct bytes");
+                let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
                 assert_eq!(&native_bin, rust_bin);
             }
         }
@@ -3844,20 +3930,27 @@ fn external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust
     );
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "source-cpu-valid",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(valid_source.as_bytes()),
             command_template: Some("{input} --bin {bin}"),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_bin,
+            },
         },
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "source-cpu-invalid-trailing-input",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(invalid_source.as_bytes()),
             command_template: Some("{input} --bin {bin}"),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
         },
     ];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
@@ -3876,13 +3969,7 @@ fn external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust
                 "quoted source CPU run failed\nstdout:\n{}\nstderr:\n{}",
                 runs[0].stdout, runs[0].stderr
             );
-            let native_bin = fs::read(
-                runs[0]
-                    .artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read quoted source CPU native bytes");
+            let native_bin = captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin");
             assert_eq!(native_bin, rust_bin);
             assert!(
                 !runs[1].success,
@@ -3902,22 +3989,44 @@ fn external_fs_uae_opforge_native_cli_debug_output_isolation_preserves_normal_ou
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");
     let source = "        .cpu 6502\n        .org $1000\nstart   lda #$42\n";
+    let case_dir = create_temp_dir("native-debug-output-isolation");
+    let input_path = case_dir.join("input.asm");
+    let rust_bin_path = case_dir.join("rust.bin");
+    fs::write(&input_path, source).expect("write debug-isolation Rust oracle source");
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--bin",
+        rust_bin_path.to_string_lossy().as_ref(),
+    ]);
+    run_with_cli_with_context(&cli).expect("run debug-isolation Rust oracle");
+    let rust_bin = fs::read(&rust_bin_path).expect("read debug-isolation Rust oracle bytes");
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "debug-isolation-normal",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(source.as_bytes()),
             command_template: Some("{input} --bin {bin}"),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_bin,
+            },
         },
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "debug-isolation-enabled",
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(source.as_bytes()),
             command_template: Some("{input} --bin {bin} --native-debug"),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_bin,
+            },
         },
     ];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
@@ -3941,20 +4050,8 @@ fn external_fs_uae_opforge_native_cli_debug_output_isolation_preserves_normal_ou
                     runs[1].stderr
                 );
             }
-            let normal_bin = fs::read(
-                runs[0]
-                    .artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read normal-mode native bytes");
-            let debug_bin = fs::read(
-                runs[1]
-                    .artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read debug-mode native bytes");
+            let normal_bin = captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin");
+            let debug_bin = captured_fs_uae_artifact(&runs[1], "Work/opforge_native_out.bin");
             assert_eq!(normal_bin, debug_bin);
         }
     }
@@ -3967,7 +4064,9 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
         .expect("native CLI FS-UAE smoke lock poisoned");
 
     let repo_root = workspace_root();
+    let rust_oracle = native_cli_6502_contract_expected_bin();
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "module-use-parser-status",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: None,
@@ -3976,6 +4075,10 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
         ),
         package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&repo_root, &cases)
@@ -4149,13 +4252,16 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
 
 #[test]
 fn external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin() {
-    const TEST_NAME: &str = "external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin";
     let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");
 
-    match crate::fs_uae_smoke::run_opforge_native_cli_6502_output_from_env(&workspace_root())
-        .expect("native opForge CLI 6502 output FS-UAE helper should complete or skip cleanly")
+    let rust_oracle = native_cli_6502_contract_expected_bin();
+    match crate::fs_uae_smoke::run_opforge_native_cli_6502_output_from_env(
+        &workspace_root(),
+        &rust_oracle,
+    )
+    .expect("native opForge CLI 6502 output FS-UAE helper should complete or skip cleanly")
     {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
             eprintln!("SKIP: {reason}");
@@ -4173,25 +4279,11 @@ fn external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin() {
                 run.stdout, run.stderr,
             );
             assert_native_cli_run_omits_debug_progress(run, "native opForge CLI 6502 output smoke");
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let actual = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!("read native CLI output {}: {err}", output_path.display())
-            });
+            let actual = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
             assert_eq!(actual, native_cli_6502_contract_expected_bin());
-            let last_green_marker = crate::fs_uae_smoke::record_last_green_fs_uae_test_run(
-                &workspace_root(),
-                TEST_NAME,
-                &run.artifact_dir,
-            )
-            .unwrap_or_else(|err| panic!("record FS-UAE last-green marker for {TEST_NAME}: {err}"));
             eprintln!(
-                "FS-UAE native opForge CLI 6502 output smoke wrote {} under {} (last green marker: {})",
-                output_path.display(),
-                run.artifact_dir.display(),
-                last_green_marker.display()
+                "FS-UAE native opForge CLI 6502 output smoke verified {} bytes in memory",
+                actual.len()
             );
         }
     }
@@ -4232,12 +4324,13 @@ fn external_fs_uae_opforge_native_cli_item6_stripped_fixtures_match_rust_bins() 
 
     let cases = staged_fixtures
         .iter()
-        .map(|(fixture, cpu_id, stripped_source, _rust_bin)| {
+        .map(|(fixture, cpu_id, stripped_source, rust_bin)| {
             crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
                 name: fixture,
                 cpu_id,
                 source: stripped_source.as_bytes(),
                 package_bytes: package_bytes.as_slice(),
+                proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(rust_bin),
             }
         })
         .collect::<Vec<_>>();
@@ -4269,20 +4362,11 @@ fn external_fs_uae_opforge_native_cli_item6_stripped_fixtures_match_rust_bins() 
                     run,
                     format!("native opForge CLI Item 6 fixture {fixture}").as_str(),
                 );
-                let output_path = run
-                    .artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-                let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                    panic!(
-                        "read native CLI Item 6 output {}: {err}",
-                        output_path.display()
-                    )
-                });
+                let native_bin = verified_fs_uae_output(run);
                 println!(
                     "FS-UAE Item 6 stripped fixture {fixture} ({cpu_id})\nrust bin: {}\nnative bin: {}\nstdout:\n{}\nstderr:\n{}",
                     item6_hex_bytes(rust_bin.as_slice()),
-                    item6_hex_bytes(native_bin.as_slice()),
+                    item6_hex_bytes(native_bin),
                     run.stdout,
                     run.stderr
                 );
@@ -4332,6 +4416,7 @@ fn external_fs_uae_opforge_native_cli_item6_65c02_allmodes_matches_rust_bin() {
         cpu_id,
         source: stripped_source.as_bytes(),
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust_bin),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -4351,16 +4436,7 @@ fn external_fs_uae_opforge_native_cli_item6_65c02_allmodes_matches_rust_bin() {
                 "focused native opForge CLI Item 6 fixture {fixture_label} failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI Item 6 output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, rust_bin,
                 "focused FS-UAE Item 6 stripped fixture byte mismatch for {fixture_label}\nstdout:\n{}\nstderr:\n{}",
@@ -4519,6 +4595,7 @@ fn external_fs_uae_opforge_native_cli_65c02_expr_syntax_matches_rust_bin() {
         cpu_id: m65c02_cpu_id.as_str(),
         source,
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust_bin),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -4535,12 +4612,7 @@ fn external_fs_uae_opforge_native_cli_65c02_expr_syntax_matches_rust_bin() {
                 "native 65C02 expression syntax fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native_bin = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native expression syntax output");
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, rust_bin,
                 "native 65C02 expression syntax bytes differ from Rust\nstdout:\n{}\nstderr:\n{}",
@@ -4586,6 +4658,7 @@ fn native_expression_context_forward_label_fs_uae() {
         cpu_id: m65c02_cpu_id.as_str(),
         source,
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust_bin),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -4602,12 +4675,7 @@ fn native_expression_context_forward_label_fs_uae() {
                 "native forward-label expression fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let native_bin = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native forward-label expression output");
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, rust_bin,
                 "native forward-label expression bytes differ from Rust\nstdout:\n{}\nstderr:\n{}",
@@ -4705,12 +4773,14 @@ fn native_expression_suffix_literals_fs_uae() {
     }
     let cases = sources
         .iter()
+        .zip(rust_bins.iter())
         .map(
-            |(name, source)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+            |((name, source), rust_bin)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
                 name,
                 cpu_id: "65c02",
                 source,
                 package_bytes: package_bytes.as_slice(),
+                proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(rust_bin),
             },
         )
         .collect::<Vec<_>>();
@@ -4729,12 +4799,7 @@ fn native_expression_suffix_literals_fs_uae() {
                     "native suffix fixture {name} failed: {}",
                     run.stdout
                 );
-                let native_bin = fs::read(
-                    run.artifact_dir
-                        .join("Work")
-                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-                )
-                .unwrap_or_else(|err| panic!("read native suffix output for {name}: {err}"));
+                let native_bin = verified_fs_uae_output(run);
                 assert_eq!(
                     native_bin, rust_bin,
                     "native suffix bytes differ for {name}"
@@ -4829,12 +4894,14 @@ fn native_expression_multiplicative_fs_uae() {
         .collect::<Vec<_>>();
     let cases = sources
         .iter()
+        .zip(rust_bins.iter())
         .map(
-            |(name, source)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+            |((name, source), rust_bin)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
                 name,
                 cpu_id: "65c02",
                 source,
                 package_bytes: package.as_slice(),
+                proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(rust_bin),
             },
         )
         .collect::<Vec<_>>();
@@ -4845,12 +4912,7 @@ fn native_expression_multiplicative_fs_uae() {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
             for ((run, (name, _)), rust_bin) in runs.iter().zip(sources.iter()).zip(rust_bins) {
                 assert!(run.success, "native {name} failed: {}", run.stdout);
-                let native = fs::read(
-                    run.artifact_dir
-                        .join("Work")
-                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-                )
-                .expect("read native output");
+                let native = verified_fs_uae_output(run);
                 assert_eq!(native, rust_bin, "native bytes differ for {name}");
             }
         }
@@ -4938,12 +5000,14 @@ fn native_expression_shift_fs_uae() {
         .collect::<Vec<_>>();
     let cases = sources
         .iter()
+        .zip(rust_bins.iter())
         .map(
-            |(name, source)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+            |((name, source), rust_bin)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
                 name,
                 cpu_id: "65c02",
                 source,
                 package_bytes: package.as_slice(),
+                proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(rust_bin),
             },
         )
         .collect::<Vec<_>>();
@@ -4954,12 +5018,7 @@ fn native_expression_shift_fs_uae() {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
             for ((run, (name, _)), rust_bin) in runs.iter().zip(sources.iter()).zip(rust_bins) {
                 assert!(run.success, "native {name} failed: {}", run.stdout);
-                let native = fs::read(
-                    run.artifact_dir
-                        .join("Work")
-                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-                )
-                .expect("read native output");
+                let native = verified_fs_uae_output(run);
                 assert_eq!(native, rust_bin, "native bytes differ for {name}");
             }
         }
@@ -5004,11 +5063,12 @@ fn native_reference_opcore_module_macro_statement_fs_uae() {
     let cases = sources
         .iter()
         .map(
-            |(name, bytes, _)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+            |(name, bytes, rust)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
                 name,
                 cpu_id: "65c02",
                 source: bytes.as_slice(),
                 package_bytes: package.as_slice(),
+                proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(rust),
             },
         )
         .collect::<Vec<_>>();
@@ -5019,12 +5079,7 @@ fn native_reference_opcore_module_macro_statement_fs_uae() {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
             for (run, (name, _, rust)) in runs.iter().zip(sources.iter()) {
                 assert!(run.success, "native {name} failed: {}", run.stdout);
-                let native = fs::read(
-                    run.artifact_dir
-                        .join("Work")
-                        .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-                )
-                .expect("read native output");
+                let native = verified_fs_uae_output(run);
                 assert_eq!(native, *rust, "native bytes differ for {name}");
             }
         }
@@ -5058,6 +5113,7 @@ fn native_macro_invocation_fixture_fs_uae() {
         cpu_id: "65c02",
         source: source.as_slice(),
         package_bytes: package.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust),
     }];
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
         .expect("macro invocation FS-UAE helper")
@@ -5067,12 +5123,7 @@ fn native_macro_invocation_fixture_fs_uae() {
             assert_eq!(runs.len(), 1, "expected one macro native run");
             let run = &runs[0];
             assert!(run.success, "native macro fixture failed: {}", run.stdout);
-            let native = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native macro bytes");
+            let native = verified_fs_uae_output(run);
             assert_eq!(native, rust, "native macro fixture bytes differ");
         }
     }
@@ -5131,18 +5182,21 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
             cpu_id: m6502_cpu_id.as_str(),
             source: source.as_bytes(),
             package_bytes: package_bytes.as_slice(),
+            proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
         },
         crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
             name: "item7-layout-name-mismatch",
             cpu_id: m6502_cpu_id.as_str(),
             source: mismatch_source.as_bytes(),
             package_bytes: package_bytes.as_slice(),
+            proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExpectedFailureWithDiagnostic,
         },
         crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
             name: "item7-layout-duplicate-place",
             cpu_id: m6502_cpu_id.as_str(),
             source: duplicate_place_source.as_bytes(),
             package_bytes: package_bytes.as_slice(),
+            proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExpectedFailureWithDiagnostic,
         },
     ];
 
@@ -5167,16 +5221,7 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
                 run,
                 "focused native opForge CLI Item 7 layout fixture",
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI Item 7 output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, expected,
                 "focused FS-UAE Item 7 layout byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5228,6 +5273,7 @@ fn external_fs_uae_opforge_native_cli_item8_data_text_directives_match_rust_guid
         cpu_id: m6502_cpu_id.as_str(),
         source: source.as_bytes(),
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -5247,16 +5293,7 @@ fn external_fs_uae_opforge_native_cli_item8_data_text_directives_match_rust_guid
                 "focused native opForge CLI Item 8 data/text fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI Item 8 output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, expected,
                 "focused FS-UAE Item 8 data/text byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5290,6 +5327,7 @@ fn external_fs_uae_opforge_native_cli_item9_symbol_config_directives_match_rust_
         cpu_id: m6502_cpu_id.as_str(),
         source: source.as_bytes(),
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -5313,16 +5351,7 @@ fn external_fs_uae_opforge_native_cli_item9_symbol_config_directives_match_rust_
                 run,
                 "focused native opForge CLI Item 9 fixture",
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI Item 9 output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, expected,
                 "focused FS-UAE Item 9 symbol/config byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5345,6 +5374,7 @@ fn external_fs_uae_opforge_native_cli_item10_include_roots_match_rust_guided_byt
     match crate::fs_uae_smoke::run_opforge_native_cli_item10_include_from_env(
         &repo_root,
         package_bytes.as_slice(),
+        &expected,
     )
     .expect("focused native opForge CLI Item 10 FS-UAE helper should complete or skip cleanly")
     {
@@ -5367,16 +5397,7 @@ fn external_fs_uae_opforge_native_cli_item10_include_roots_match_rust_guided_byt
                 run,
                 "focused native opForge CLI Item 10 include fixture",
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI Item 10 output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
             assert_eq!(
                 native_bin, expected,
                 "focused FS-UAE Item 10 include byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5392,7 +5413,7 @@ fn external_fs_uae_opforge_native_cli_item10_include_roots_match_rust_guided_byt
             );
             assert!(
                 missing_run
-                    .stdout
+                    .stderr
                     .contains("ERROR OPC-NCLI014: native include expansion failed"),
                 "focused Item 10 missing include fixture should report the include diagnostic\nstdout:\n{}\nstderr:\n{}",
                 missing_run.stdout,
@@ -5423,6 +5444,7 @@ fn external_fs_uae_opforge_native_cli_item11_module_root_resolution_matches_rust
         cpu_id: m6502_cpu_id.as_str(),
         source: source.as_bytes(),
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -5446,16 +5468,7 @@ fn external_fs_uae_opforge_native_cli_item11_module_root_resolution_matches_rust
                 run,
                 "focused native opForge CLI Item 11 module fixture",
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI Item 11 output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, expected,
                 "focused FS-UAE Item 11 module byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5494,12 +5507,14 @@ fn external_fs_uae_opforge_native_cli_item12_import_alias_resolves_guided_bytes(
             cpu_id: m6502_cpu_id.as_str(),
             source: selective_source.as_bytes(),
             package_bytes: package_bytes.as_slice(),
+            proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
         },
         crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
             name: "item12-alias-import-resolution",
             cpu_id: m6502_cpu_id.as_str(),
             source: alias_source.as_bytes(),
             package_bytes: package_bytes.as_slice(),
+            proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
         },
     ];
 
@@ -5526,16 +5541,7 @@ fn external_fs_uae_opforge_native_cli_item12_import_alias_resolves_guided_bytes(
                 selective_run,
                 "focused native opForge CLI Item 12 selected-import fixture",
             );
-            let selective_output_path = selective_run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let selective_bin = fs::read(&selective_output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI Item 12 selected output {}: {err}",
-                    selective_output_path.display()
-                )
-            });
+            let selective_bin = verified_fs_uae_output(selective_run);
             assert_eq!(
                 selective_bin, expected,
                 "focused FS-UAE Item 12 selected-import byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5553,16 +5559,7 @@ fn external_fs_uae_opforge_native_cli_item12_import_alias_resolves_guided_bytes(
                 alias_run,
                 "focused native opForge CLI Item 12 alias-import fixture",
             );
-            let alias_output_path = alias_run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let alias_bin = fs::read(&alias_output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI Item 12 alias output {}: {err}",
-                    alias_output_path.display()
-                )
-            });
+            let alias_bin = verified_fs_uae_output(alias_run);
             assert_eq!(
                 alias_bin, expected,
                 "focused FS-UAE Item 12 alias-import byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5593,6 +5590,8 @@ fn external_fs_uae_opforge_native_cli_item13_bin_artifact_matches_rust_guided_by
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/opforge_native_out.bin",
+        &expected,
     )
     .expect("focused native opForge CLI Item 13 FS-UAE helper should complete or skip cleanly")
     {
@@ -5611,19 +5610,7 @@ fn external_fs_uae_opforge_native_cli_item13_bin_artifact_matches_rust_guided_by
                 run,
                 "focused native opForge CLI Item 13 bin artifact fixture",
             );
-            let mounted_work_dir = run
-                .artifact_dir
-                .parent()
-                .and_then(|dir| dir.parent())
-                .expect("Item 13 absolute-output run should live under Work/case_artifacts/<case>");
-            let output_path = mounted_work_dir
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI Item 13 output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
             assert_eq!(
                 native_bin, expected,
                 "focused FS-UAE Item 13 bin artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5654,6 +5641,8 @@ fn external_fs_uae_opforge_native_cli_item13_relative_bin_output_matches_rust_gu
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/opforge_native_out.bin",
+        &expected,
     )
     .expect(
         "focused native opForge CLI relative Item 13 FS-UAE helper should complete or skip cleanly",
@@ -5673,17 +5662,7 @@ fn external_fs_uae_opforge_native_cli_item13_relative_bin_output_matches_rust_gu
                 run,
                 "focused native opForge CLI relative Item 13 bin artifact fixture",
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join("build")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI relative Item 13 output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = captured_fs_uae_artifact(run, "Work/build/opforge_native_out.bin");
             assert_eq!(
                 native_bin, expected,
                 "focused FS-UAE relative Item 13 bin artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5720,6 +5699,7 @@ fn external_fs_uae_opforge_native_cli_item14_prg_artifact_matches_rust_guided_by
         success_source.as_bytes(),
         wide_loadaddr_source.as_bytes(),
         package_bytes.as_slice(),
+        &expected,
     )
     .expect("focused native opForge CLI Item 14 FS-UAE helper should complete or skip cleanly")
     {
@@ -5742,19 +5722,7 @@ fn external_fs_uae_opforge_native_cli_item14_prg_artifact_matches_rust_guided_by
                 success_run,
                 "focused native opForge CLI Item 14 PRG artifact fixture",
             );
-            let mounted_work_dir = success_run
-                .artifact_dir
-                .parent()
-                .and_then(|dir| dir.parent())
-                .expect("Item 14 absolute-output run should live under Work/case_artifacts/<case>");
-            let output_path = mounted_work_dir
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE);
-            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI Item 14 output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_prg = captured_fs_uae_artifact(success_run, "Work/opforge_native_out.prg");
             assert_eq!(
                 native_prg, expected,
                 "focused FS-UAE Item 14 PRG artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5770,10 +5738,10 @@ fn external_fs_uae_opforge_native_cli_item14_prg_artifact_matches_rust_guided_by
             );
             assert!(
                 wide_run
-                    .stdout
+                    .stderr
                     .contains("ERROR OPC-NCLI013: native module/use parser stage failed")
                     && wide_run
-                        .stdout
+                        .stderr
                         .contains("OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin or --list"),
                 "focused Item 14 wide loadaddr fixture should report native parser-stage rejection\nstdout:\n{}\nstderr:\n{}",
                 wide_run.stdout,
@@ -5804,6 +5772,8 @@ fn external_fs_uae_opforge_native_cli_relative_prg_output_matches_rust_guided_by
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/opforge_native_out.prg",
+        &expected,
     )
     .expect("focused native opForge CLI relative PRG FS-UAE helper should complete or skip cleanly")
     {
@@ -5822,17 +5792,7 @@ fn external_fs_uae_opforge_native_cli_relative_prg_output_matches_rust_guided_by
                 run,
                 "focused native opForge CLI relative PRG artifact fixture",
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join("build")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE);
-            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI relative PRG output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_prg = captured_fs_uae_artifact(run, "Work/build/opforge_native_out.prg");
             assert_eq!(
                 native_prg, expected,
                 "focused FS-UAE relative PRG artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5866,6 +5826,8 @@ fn external_fs_uae_opforge_native_cli_module_relative_bin_output_matches_rust_gu
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/opforge_native_out.bin",
+        &expected,
     )
     .expect("focused native opForge CLI module-relative bin FS-UAE helper should complete or skip cleanly")
     {
@@ -5880,15 +5842,7 @@ fn external_fs_uae_opforge_native_cli_module_relative_bin_output_matches_rust_gu
                 "focused native opForge CLI module-relative bin fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run.artifact_dir.join("Work").join("build").join(
-                crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE,
-            );
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI module-relative bin output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = captured_fs_uae_artifact(run, "Work/build/opforge_native_out.bin");
             assert_eq!(
                 native_bin, expected,
                 "focused FS-UAE module-relative bin artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5922,6 +5876,8 @@ fn external_fs_uae_opforge_native_cli_module_relative_prg_output_matches_rust_gu
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/opforge_native_out.prg",
+        &expected,
     )
     .expect("focused native opForge CLI module-relative PRG FS-UAE helper should complete or skip cleanly")
     {
@@ -5936,15 +5892,7 @@ fn external_fs_uae_opforge_native_cli_module_relative_prg_output_matches_rust_gu
                 "focused native opForge CLI module-relative PRG fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run.artifact_dir.join("Work").join("build").join(
-                crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE,
-            );
-            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI module-relative PRG output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_prg = captured_fs_uae_artifact(run, "Work/build/opforge_native_out.prg");
             assert_eq!(
                 native_prg, expected,
                 "focused FS-UAE module-relative PRG artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -5988,6 +5936,8 @@ fn external_fs_uae_opforge_native_cli_placed_relative_prg_output_matches_rust_gu
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/opforge_native_out.prg",
+        &expected,
     )
     .expect("focused native opForge CLI placed relative PRG FS-UAE helper should complete or skip cleanly")
     {
@@ -6002,15 +5952,7 @@ fn external_fs_uae_opforge_native_cli_placed_relative_prg_output_matches_rust_gu
                 "focused native opForge CLI placed relative PRG fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run.artifact_dir.join("Work").join("build").join(
-                crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE,
-            );
-            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI placed relative PRG output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_prg = captured_fs_uae_artifact(run, "Work/build/opforge_native_out.prg");
             assert_eq!(
                 native_prg, expected,
                 "focused FS-UAE placed relative PRG artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -6056,6 +5998,8 @@ fn external_fs_uae_opforge_native_cli_placed_relative_prg_with_symbolic_expr_mat
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/opforge_native_out.prg",
+        &expected,
     )
     .expect("focused native opForge CLI placed symbolic PRG FS-UAE helper should complete or skip cleanly")
     {
@@ -6074,15 +6018,7 @@ fn external_fs_uae_opforge_native_cli_placed_relative_prg_with_symbolic_expr_mat
                 "focused native opForge CLI placed symbolic PRG fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run.artifact_dir.join("Work").join("build").join(
-                crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE,
-            );
-            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI placed symbolic PRG output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_prg = captured_fs_uae_artifact(run, "Work/build/opforge_native_out.prg");
             assert_eq!(
                 native_prg, expected,
                 "focused FS-UAE placed symbolic PRG artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -6128,6 +6064,8 @@ fn external_fs_uae_opforge_native_cli_placed_relative_bin_with_symbolic_expr_mat
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/opforge_native_out.bin",
+        &expected,
     )
     .expect("focused native opForge CLI placed symbolic BIN FS-UAE helper should complete or skip cleanly")
     {
@@ -6146,15 +6084,7 @@ fn external_fs_uae_opforge_native_cli_placed_relative_bin_with_symbolic_expr_mat
                 "focused native opForge CLI placed symbolic BIN fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run.artifact_dir.join("Work").join("build").join(
-                crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE,
-            );
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI placed symbolic BIN output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = captured_fs_uae_artifact(run, "Work/build/opforge_native_out.bin");
             assert_eq!(
                 native_bin, expected,
                 "focused FS-UAE placed symbolic BIN artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -6185,6 +6115,7 @@ fn external_fs_uae_opforge_native_cli_item15_hex_artifact_matches_rust_guided_te
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        expected.as_bytes(),
     )
     .expect("focused native opForge CLI Item 15 FS-UAE helper should complete or skip cleanly")
     {
@@ -6203,19 +6134,9 @@ fn external_fs_uae_opforge_native_cli_item15_hex_artifact_matches_rust_guided_te
                 run,
                 "focused native opForge CLI Item 15 HEX artifact fixture",
             );
-            let mounted_work_dir = run
-                .artifact_dir
-                .parent()
-                .and_then(|dir| dir.parent())
-                .expect("Item 15 absolute-output run should live under Work/case_artifacts/<case>");
-            let output_path = mounted_work_dir
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_HEX_OUTPUT_FILE);
-            let native_hex = fs::read_to_string(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI Item 15 output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_hex =
+                std::str::from_utf8(captured_fs_uae_artifact(run, "Work/opforge_native_out.hex"))
+                    .expect("Item 15 HEX output must be UTF-8");
             assert_eq!(
                 native_hex, expected,
                 "focused FS-UAE Item 15 HEX artifact text mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -6241,11 +6162,35 @@ fn external_fs_uae_opforge_native_cli_item16_listing_artifact_matches_rust_guide
         "        .byte $11",
     ]
     .join("\n");
+    let expected_listing = concat!(
+        "opForge Assembler native\n",
+        "ADDR    BYTES                    LINE  SOURCE\n",
+        "------  -----------------------  ----  ------\n",
+        "0800    A9 44                       2  start   lda #$44\n",
+        "0802    A9 01                       1          lda #$01\n",
+        "0804    EE EE                       4          .fill byte, 2, $ee\n",
+        "0806    11                          5          .byte $11\n",
+        "\n",
+        "Lines: 4  Errors: 0  Warnings: 0\n",
+        "\n",
+        "SYMBOL TABLE\n",
+        "\n",
+        "(none)\n",
+        "\n",
+        "Total memory is 7 bytes\n",
+        "\n",
+        "GENERATED OUTPUT\n",
+        "\n",
+        "ADDR    BYTES\n",
+        "------  -----------------------\n",
+        "0800    A9 44 A9 01 EE EE 11\n",
+    );
 
     match crate::fs_uae_smoke::run_opforge_native_cli_item16_listing_output_from_env(
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        expected_listing.as_bytes(),
     )
     .expect("focused native opForge CLI Item 16 FS-UAE helper should complete or skip cleanly")
     {
@@ -6264,42 +6209,9 @@ fn external_fs_uae_opforge_native_cli_item16_listing_artifact_matches_rust_guide
                 run,
                 "focused native opForge CLI Item 16 listing artifact fixture",
             );
-            let mounted_work_dir = run
-                .artifact_dir
-                .parent()
-                .and_then(|dir| dir.parent())
-                .expect("Item 16 absolute-output run should live under Work/case_artifacts/<case>");
-            let output_path = mounted_work_dir
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_LST_OUTPUT_FILE);
-            let native_listing = fs::read_to_string(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI Item 16 output {}: {err}",
-                    output_path.display()
-                )
-            });
-            let expected_listing = concat!(
-                "opForge Assembler native\n",
-                "ADDR    BYTES                    LINE  SOURCE\n",
-                "------  -----------------------  ----  ------\n",
-                "0800    A9 44                       2  start   lda #$44\n",
-                "0802    A9 01                       1          lda #$01\n",
-                "0804    EE EE                       4          .fill byte, 2, $ee\n",
-                "0806    11                          5          .byte $11\n",
-                "\n",
-                "Lines: 4  Errors: 0  Warnings: 0\n",
-                "\n",
-                "SYMBOL TABLE\n",
-                "\n",
-                "(none)\n",
-                "\n",
-                "Total memory is 7 bytes\n",
-                "\n",
-                "GENERATED OUTPUT\n",
-                "\n",
-                "ADDR    BYTES\n",
-                "------  -----------------------\n",
-                "0800    A9 44 A9 01 EE EE 11\n",
-            );
+            let native_listing =
+                std::str::from_utf8(captured_fs_uae_artifact(run, "Work/opforge_native_out.lst"))
+                    .expect("Item 16 listing output must be UTF-8");
             assert_eq!(
                 native_listing, expected_listing,
                 "focused FS-UAE Item 16 listing text mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -6345,6 +6257,39 @@ fn external_fs_uae_opforge_native_cli_item17_first_run_artifact_matrix_matches_r
     let lst_source = source_with_output(
         "        .output \"Work:opforge_native_out.lst\", format=lst, sections=code",
     );
+    let expected_bin = first_run_6502_artifact_contract_expected_bin();
+    let mut expected_prg = vec![0x00, 0x08];
+    expected_prg.extend_from_slice(&expected_bin);
+    let expected_hex = ":15080000A9428D0202F005D0F7A210E8AA0C0803084F4BFFFFB0\n:00000001FF\n";
+    let expected_listing = concat!(
+        "opForge Assembler native\n",
+        "ADDR    BYTES                    LINE  SOURCE\n",
+        "------  -----------------------  ----  ------\n",
+        "----                                1          .cpu 6502\n",
+        "----                                2  OFFSET  .const $02\n",
+        "----                                3  VALUE   .var   $10\n",
+        "0800    A9 42                       4  start   lda #$42\n",
+        "0802    8D 02 02                    5          sta $0200 + OFFSET\n",
+        "0805    F0 05 D0 F7                 6          .byte $f0, $05, $d0, $f7\n",
+        "0809    A2 10                       7          ldx #VALUE\n",
+        "080B    E8 AA 0C 08 03 08           8          .byte $e8, $aa, $0c, $08, $03, $08\n",
+        "0811    4F 4B                       9          .text \"OK\"\n",
+        "0813    FF FF                      10          .fill byte, 2, $ff\n",
+        "\n",
+        "Lines: 10  Errors: 0  Warnings: 0\n",
+        "\n",
+        "SYMBOL TABLE\n",
+        "\n",
+        "(none)\n",
+        "\n",
+        "Total memory is 21 bytes\n",
+        "\n",
+        "GENERATED OUTPUT\n",
+        "\n",
+        "ADDR    BYTES\n",
+        "------  -----------------------\n",
+        "0800    A9 42 8D 02 02 F0 05 D0 F7 A2 10 E8 AA 0C 08 03 08 4F 4B FF FF\n",
+    );
 
     match crate::fs_uae_smoke::run_opforge_native_cli_item17_artifact_matrix_from_env(
         &repo_root,
@@ -6355,6 +6300,12 @@ fn external_fs_uae_opforge_native_cli_item17_first_run_artifact_matrix_matches_r
             lst_source.as_bytes(),
         ],
         package_bytes.as_slice(),
+        [
+            &expected_bin,
+            &expected_prg,
+            expected_hex.as_bytes(),
+            expected_listing.as_bytes(),
+        ],
     )
     .expect("focused native opForge CLI Item 17 FS-UAE helper should complete or skip cleanly")
     {
@@ -6376,53 +6327,29 @@ fn external_fs_uae_opforge_native_cli_item17_first_run_artifact_matrix_matches_r
             }
 
             let expected_bin = first_run_6502_artifact_contract_expected_bin();
-            let bin_work_root = runs[0]
-                .artifact_dir
-                .parent()
-                .and_then(|dir| dir.parent())
-                .expect("Item 17 BIN run should live under Work/case_artifacts/<case>");
-            let bin_path =
-                bin_work_root.join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&bin_path)
-                .unwrap_or_else(|err| panic!("read Item 17 bin {}: {err}", bin_path.display()));
+            let native_bin = captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin");
             assert_eq!(native_bin, expected_bin, "Item 17 BIN artifact mismatch");
 
-            let prg_work_root = runs[1]
-                .artifact_dir
-                .parent()
-                .and_then(|dir| dir.parent())
-                .expect("Item 17 PRG run should live under Work/case_artifacts/<case>");
-            let prg_path =
-                prg_work_root.join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE);
-            let native_prg = fs::read(&prg_path)
-                .unwrap_or_else(|err| panic!("read Item 17 PRG {}: {err}", prg_path.display()));
+            let native_prg = captured_fs_uae_artifact(&runs[1], "Work/opforge_native_out.prg");
             let mut expected_prg = vec![0x00, 0x08];
             expected_prg.extend_from_slice(&expected_bin);
             assert_eq!(native_prg, expected_prg, "Item 17 PRG artifact mismatch");
 
-            let hex_work_root = runs[2]
-                .artifact_dir
-                .parent()
-                .and_then(|dir| dir.parent())
-                .expect("Item 17 HEX run should live under Work/case_artifacts/<case>");
-            let hex_path =
-                hex_work_root.join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_HEX_OUTPUT_FILE);
-            let native_hex = fs::read_to_string(&hex_path)
-                .unwrap_or_else(|err| panic!("read Item 17 HEX {}: {err}", hex_path.display()));
+            let native_hex = std::str::from_utf8(captured_fs_uae_artifact(
+                &runs[2],
+                "Work/opforge_native_out.hex",
+            ))
+            .expect("Item 17 HEX output must be UTF-8");
             assert_eq!(
                 native_hex, ":15080000A9428D0202F005D0F7A210E8AA0C0803084F4BFFFFB0\n:00000001FF\n",
                 "Item 17 HEX artifact mismatch"
             );
 
-            let lst_work_root = runs[3]
-                .artifact_dir
-                .parent()
-                .and_then(|dir| dir.parent())
-                .expect("Item 17 LST run should live under Work/case_artifacts/<case>");
-            let lst_path =
-                lst_work_root.join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_LST_OUTPUT_FILE);
-            let native_listing = fs::read_to_string(&lst_path)
-                .unwrap_or_else(|err| panic!("read Item 17 LST {}: {err}", lst_path.display()));
+            let native_listing = std::str::from_utf8(captured_fs_uae_artifact(
+                &runs[3],
+                "Work/opforge_native_out.lst",
+            ))
+            .expect("Item 17 listing output must be UTF-8");
             let expected_listing = concat!(
                 "opForge Assembler native\n",
                 "ADDR    BYTES                    LINE  SOURCE\n",
@@ -6483,6 +6410,8 @@ fn external_fs_uae_opforge_native_cli_real_first_run_source_with_cli_cpu_matches
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/6502-first-run.prg",
+        &expected_prg,
     )
     .expect("real first-run source with CLI cpu FS-UAE helper should complete or skip cleanly")
     {
@@ -6498,17 +6427,7 @@ fn external_fs_uae_opforge_native_cli_real_first_run_source_with_cli_cpu_matches
                 run.stdout, run.stderr,
             );
             assert_native_cli_run_omits_debug_progress(run, "real first-run source with CLI cpu");
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join("build")
-                .join("6502-first-run.prg");
-            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read real first-run CLI-cpu output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_prg = captured_fs_uae_artifact(run, "Work/build/6502-first-run.prg");
             assert_eq!(
                 native_prg, expected_prg,
                 "real first-run source with CLI cpu PRG mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -6559,6 +6478,7 @@ fn external_fs_uae_opforge_native_cli_layouted_branches_with_cli_bin_match_rust_
         cpu_id: m6502_cpu_id.as_str(),
         source: source.as_bytes(),
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -6578,16 +6498,7 @@ fn external_fs_uae_opforge_native_cli_layouted_branches_with_cli_bin_match_rust_
                 "layouted branch CLI-bin fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read layouted-branch CLI-bin output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, expected,
                 "layouted branch CLI-bin output mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -6640,6 +6551,7 @@ fn external_fs_uae_opforge_native_cli_layouted_branches_without_symbolic_word_ma
         cpu_id: m6502_cpu_id.as_str(),
         source: source.as_bytes(),
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -6663,16 +6575,7 @@ fn external_fs_uae_opforge_native_cli_layouted_branches_without_symbolic_word_ma
                 "layouted branch no-symbolic-word fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read layouted-branch no-symbolic-word output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, expected,
                 "layouted branch no-symbolic-word output mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -6715,6 +6618,7 @@ fn external_fs_uae_opforge_native_cli_layouted_branches_minimal_match_rust_bytes
         cpu_id: m6502_cpu_id.as_str(),
         source: source.as_bytes(),
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -6734,16 +6638,7 @@ fn external_fs_uae_opforge_native_cli_layouted_branches_minimal_match_rust_bytes
                 "layouted branch minimal fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read layouted-branch minimal output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, expected,
                 "layouted branch minimal output mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -6786,6 +6681,7 @@ fn external_fs_uae_opforge_native_cli_forward_branch_past_symbolic_immediate_mat
         cpu_id: m6502_cpu_id.as_str(),
         source: source.as_bytes(),
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -6809,16 +6705,7 @@ fn external_fs_uae_opforge_native_cli_forward_branch_past_symbolic_immediate_mat
                 "forward-branch past symbolic-immediate fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read forward-branch past symbolic-immediate output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, expected,
                 "forward-branch past symbolic-immediate output mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -6859,6 +6746,7 @@ fn external_fs_uae_opforge_native_cli_symbolic_immediate_only_matches_rust_bytes
         cpu_id: m6502_cpu_id.as_str(),
         source: source.as_bytes(),
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -6878,16 +6766,7 @@ fn external_fs_uae_opforge_native_cli_symbolic_immediate_only_matches_rust_bytes
                 "symbolic-immediate only fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read symbolic-immediate only output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, expected,
                 "symbolic-immediate only output mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -6933,6 +6812,7 @@ fn external_fs_uae_opforge_native_cli_forward_branch_past_symbolic_absolute_expr
         cpu_id: m6502_cpu_id.as_str(),
         source: source.as_bytes(),
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -6957,16 +6837,7 @@ fn external_fs_uae_opforge_native_cli_forward_branch_past_symbolic_absolute_expr
                 "forward-branch past symbolic absolute-expr fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read forward-branch past symbolic absolute-expr output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, expected,
                 "forward-branch past symbolic absolute-expr output mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -7020,6 +6891,7 @@ fn external_fs_uae_opforge_native_cli_real_first_run_bare_labels_with_cli_bin_ma
         cpu_id: m6502_cpu_id.as_str(),
         source: source.as_bytes(),
         package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
@@ -7043,16 +6915,7 @@ fn external_fs_uae_opforge_native_cli_real_first_run_bare_labels_with_cli_bin_ma
                 "real first-run bare-label CLI-bin fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read real first-run bare-label CLI-bin output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = verified_fs_uae_output(run);
             assert_eq!(
                 native_bin, expected,
                 "real first-run bare-label CLI-bin output mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -7077,12 +6940,17 @@ fn external_fs_uae_opforge_native_cli_example_org_cli_bin_debug_matches_rust_byt
         .unwrap_or_else(|err| panic!("read {}: {err}", source_path.display()));
     let expected = native_cli_6502_contract_expected_bin();
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "example-org-cli-bin-debug",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(source.as_bytes()),
         command_template: Some("{input} --bin {bin} --cpu m6502 --native-debug"),
         package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &expected,
+        },
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&repo_root, &cases)
@@ -7099,16 +6967,7 @@ fn external_fs_uae_opforge_native_cli_example_org_cli_bin_debug_matches_rust_byt
                 "focused native CLI .org debug fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read focused native CLI .org debug output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
             assert_eq!(
                 native_bin, expected,
                 "focused native CLI .org debug output mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -7150,6 +7009,8 @@ fn external_fs_uae_opforge_native_cli_source_cpu_only_minimal_bin_matches_rust_b
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/source-cpu-minimal.bin",
+        &expected,
     )
     .expect("minimal source-driven cpu FS-UAE helper should complete or skip cleanly")
     {
@@ -7164,17 +7025,7 @@ fn external_fs_uae_opforge_native_cli_source_cpu_only_minimal_bin_matches_rust_b
                 "minimal source-driven cpu fixture failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join("build")
-                .join("source-cpu-minimal.bin");
-            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read minimal source-driven cpu output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_bin = captured_fs_uae_artifact(run, "Work/build/source-cpu-minimal.bin");
             assert_eq!(
                 native_bin, expected,
                 "minimal source-driven cpu output mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -7206,6 +7057,8 @@ fn external_fs_uae_opforge_native_cli_real_first_run_source_cpu_directive_matche
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/6502-first-run.prg",
+        &expected_prg,
     )
     .expect("real first-run source-driven cpu FS-UAE helper should complete or skip cleanly")
     {
@@ -7224,17 +7077,7 @@ fn external_fs_uae_opforge_native_cli_real_first_run_source_cpu_directive_matche
                 run,
                 "real first-run source with source-driven cpu",
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join("build")
-                .join("6502-first-run.prg");
-            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read real first-run source-driven cpu output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_prg = captured_fs_uae_artifact(run, "Work/build/6502-first-run.prg");
             assert_eq!(
                 native_prg, expected_prg,
                 "real first-run source with source-driven cpu PRG mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -7258,13 +7101,20 @@ fn external_fs_uae_opforge_native_cli_real_first_run_source_cpu_directive_debug_
         .join("6502_first_run_artifact_contract.asm");
     let source = fs::read_to_string(&source_path)
         .unwrap_or_else(|err| panic!("read {}: {err}", source_path.display()));
+    let mut rust_oracle = vec![0x00, 0x08];
+    rust_oracle.extend_from_slice(&first_run_6502_artifact_contract_expected_bin());
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "first-run-source-cpu-debug",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(source.as_bytes()),
         command_template: Some("{input} --native-debug"),
         package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/build/6502-first-run.prg",
+            rust_oracle: &rust_oracle,
+        },
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&repo_root, &cases)
@@ -7328,6 +7178,8 @@ fn external_fs_uae_opforge_native_cli_real_first_run_structure_with_known_body_m
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/6502-first-run.prg",
+        &expected_prg,
     )
     .expect("real first-run structure reduction FS-UAE helper should complete or skip cleanly")
     {
@@ -7342,17 +7194,7 @@ fn external_fs_uae_opforge_native_cli_real_first_run_structure_with_known_body_m
                 "real first-run structure reduction failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join("build")
-                .join("6502-first-run.prg");
-            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read real first-run structure reduction output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_prg = captured_fs_uae_artifact(run, "Work/build/6502-first-run.prg");
             assert_eq!(
                 native_prg, expected_prg,
                 "real first-run structure reduction PRG mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -7406,6 +7248,8 @@ fn external_fs_uae_opforge_native_cli_real_first_run_structure_with_symbolic_wor
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/6502-first-run.prg",
+        &expected_prg,
     )
     .expect("real first-run symbolic word reduction FS-UAE helper should complete or skip cleanly")
     {
@@ -7420,17 +7264,7 @@ fn external_fs_uae_opforge_native_cli_real_first_run_structure_with_symbolic_wor
                 "real first-run symbolic word reduction failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join("build")
-                .join("6502-first-run.prg");
-            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read real first-run symbolic-word reduction output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_prg = captured_fs_uae_artifact(run, "Work/build/6502-first-run.prg");
             assert_eq!(
                 native_prg, expected_prg,
                 "real first-run symbolic-word reduction PRG mismatch\nstdout:\n{}\nstderr:\n{}",
@@ -7486,6 +7320,8 @@ fn external_fs_uae_opforge_native_cli_real_first_run_structure_with_inline_label
         &repo_root,
         source.as_bytes(),
         package_bytes.as_slice(),
+        "Work/build/6502-first-run.prg",
+        &expected_prg,
     )
     .expect("real first-run inline-label reduction FS-UAE helper should complete or skip cleanly")
     {
@@ -7500,17 +7336,7 @@ fn external_fs_uae_opforge_native_cli_real_first_run_structure_with_inline_label
                 "real first-run inline-label reduction failed\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
-            let output_path = run
-                .artifact_dir
-                .join("Work")
-                .join("build")
-                .join("6502-first-run.prg");
-            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
-                panic!(
-                    "read real first-run inline-label reduction output {}: {err}",
-                    output_path.display()
-                )
-            });
+            let native_prg = captured_fs_uae_artifact(run, "Work/build/6502-first-run.prg");
             assert_eq!(
                 native_prg, expected_prg,
                 "real first-run inline-label reduction PRG mismatch\nstdout:\n{}\nstderr:\n{}",

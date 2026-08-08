@@ -2503,6 +2503,32 @@ fn workspace_root() -> PathBuf {
         .expect("workspace root")
 }
 
+fn verified_fs_uae_output(run: &crate::fs_uae_smoke::FsUaeSmokeRun) -> &[u8] {
+    assert!(
+        !run.artifact_dir.exists(),
+        "FS-UAE parity returned while on-disk case evidence still exists at {}",
+        run.artifact_dir.display()
+    );
+    run.verified_output
+        .as_deref()
+        .expect("FS-UAE byte-parity helper must return its verified output in memory")
+}
+
+fn captured_fs_uae_artifact<'a>(
+    run: &'a crate::fs_uae_smoke::FsUaeSmokeRun,
+    relative_path: &str,
+) -> &'a [u8] {
+    assert!(
+        !run.artifact_dir.exists(),
+        "FS-UAE execution returned while on-disk case evidence still exists at {}",
+        run.artifact_dir.display()
+    );
+    run.captured_artifacts
+        .get(Path::new(relative_path))
+        .map(Vec::as_slice)
+        .unwrap_or_else(|| panic!("FS-UAE run did not capture ephemeral artifact {relative_path}"))
+}
+
 fn unix_nanos() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

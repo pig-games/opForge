@@ -1,0 +1,49 @@
+[slice]
+schema_version = 2
+name = "fail-closed ephemeral FS-UAE parity proof"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/fs_uae_smoke.rs::verify_native_cli_case_proof",
+]
+native_boundary = [
+  "crates/opforge-asm/src/fs_uae_smoke.rs::run_opforge_native_cli_parity_batch_cases",
+  "crates/opforge-asm/src/fs_uae_smoke.rs::run_opforge_native_cli_mos_fixture_outputs_from_env",
+]
+invariant = "Every FS-UAE success requires guest completion and an explicit guest exit, never launcher success alone; a Level D parity case additionally requires fresh source-bound guest start/done responses and exact byte equality with the in-memory Rust oracle; all on-disk run evidence is ephemeral."
+assertion_decision = "The invariant is enforced by the production test runner and a deterministic workflow validator; no optional caller-side assertion or persistent last-green record is authoritative."
+expected_inputs = "The actual CPU, source bytes, command surface, package bytes, extra guest files, proof artifact target, and direct in-memory Rust oracle for one case."
+expected_outputs = "An in-memory verified byte vector after exact parity, or an aggregate hard failure after every supplied case is attempted; each per-run artifact directory no longer exists when control returns."
+known_non_equivalences = "Diagnostic-only and localization harnesses are not positive byte-parity authority, but they still require guest completion, explicit exit status, and ephemeral cleanup."
+fast_proof_command = "cargo test -p asm fs_uae_smoke::tests:: -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_mos_forward_ref_stability_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "mos_byte_proof_rejects_incomplete_nonzero_missing_and_mismatched_runs"
+proof_level = "B"
+proves = "Incomplete protocol, nonzero exit, missing output, and byte mismatch cannot produce a verified positive parity result."
+does_not_prove = "Real guest execution."
+
+[[tests]]
+name = "fresh_marker_protocol_rejects_stale_or_wrong_case_text"
+proof_level = "B"
+proves = "Marker existence is insufficient; stale challenges and wrong case identities are rejected."
+does_not_prove = "Real guest execution."
+
+[[tests]]
+name = "ephemeral_artifact_guard_removes_all_case_evidence_on_drop"
+proof_level = "B"
+proves = "The scoped artifact owner removes the complete on-disk case tree on every Rust return or unwind path."
+does_not_prove = "Host termination by an uncatchable process abort."
+
+[[tests]]
+name = "proof_failure_still_removes_all_case_evidence"
+proof_level = "B"
+proves = "A byte mismatch returns an error while scoped cleanup still removes the complete case evidence tree."
+does_not_prove = "Real guest execution."
+
+[[tests]]
+name = "native_mos_forward_ref_stability_fs_uae"
+proof_level = "D"
+proves = "A real FS-UAE run completes the fresh case-bound protocol and produces the exact Rust bytes before its evidence tree is removed."
+does_not_prove = "Unrelated native CLI semantics."

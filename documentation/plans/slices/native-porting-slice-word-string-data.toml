@@ -1,0 +1,37 @@
+[slice]
+schema_version = 2
+name = "native quoted word string-data parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/line/asmline_directives.rs::process_data_directive",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverAdvancePc.word",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverEmitImageBytes.emitWord",
+]
+invariant = "A quoted-only .word operand follows the Rust string-data branch and emits decoded source bytes; a numeric expression follows numeric MOS little-endian packing."
+assertion_decision = "No runtime assertion: explicit quoted-first/fallback branches and positive plus malformed-negative guest cases prove the ownership boundary."
+expected_inputs = "Single- and double-quoted two-byte .word operands, an equivalent numeric literal, an equivalent character expression, and a malformed escape."
+expected_outputs = "Quoted operands emit source-order bytes, numeric controls emit little-endian words, and malformed quoted input completes with diagnostics."
+known_non_equivalences = "The later .ds output mismatch and complete syntax.asm expression failure are separate invariants."
+fast_proof_command = "cargo test -p asm native_word_string_data_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_word_string_data_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_word_string_data_rust_oracle"
+proof_level = "A"
+proves = "Live Rust distinguishes decoded quoted .word bytes from numerically packed word expressions."
+does_not_prove = "Native branch selection or guest execution."
+
+[[tests]]
+name = "native_word_string_data_source_contract"
+proof_level = "B"
+proves = "Native word sizing and emission try the quoted-data owner before falling back to the numeric owner."
+does_not_prove = "Real 68020 execution or final CLI artifacts."
+
+[[tests]]
+name = "native_word_string_data_fs_uae"
+proof_level = "D"
+proves = "FS-UAE emits the exact live Rust bytes for quoted and numeric controls and completes malformed input with diagnostics."
+does_not_prove = "Later unrelated complete-source layout or expression behavior."

@@ -131,6 +131,8 @@ mod native_mos_forward_ref_stability;
 mod native_reference_shards;
 #[path = "tests/native_statement_capacity.rs"]
 mod native_statement_capacity;
+#[path = "tests/native_word_string_data.rs"]
+mod native_word_string_data;
 
 fn capabilities_report() -> String {
     engine_capabilities_report(&default_registry(), VERSION, BUILD_PROFILE_SUMMARY)

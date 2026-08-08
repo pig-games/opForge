@@ -1224,9 +1224,20 @@ emitByte
 
 emitWord
 	move.w d6, d7
+	moveq #0, d5
+	bsr.w parseTextDirectiveForStatement
+	bne.s emitWordNumeric
+	move.l OpasmTextScratchLen, d0
+	beq.s emitWordOk
+	lea OpasmTextScratch.l, a0
+	jsr eng.opasmEngineAppendImageBytesV1
+	bne.w emitLayoutFail
+	bra.s emitWordOk
+emitWordNumeric
 	moveq #2, d5
 	bsr.w emitDataDirectiveForStatement
 	bne.w emitLayoutFail
+emitWordOk
 	moveq #0, d0
 	bra.w return
 
@@ -1457,6 +1468,12 @@ byte
 	bra.w orgBad
 
 word
+	moveq #0, d5
+	bsr.w parseTextDirectiveForStatement
+	bne.s wordNumeric
+	move.l OpasmTextScratchLen, d3
+	bra.s advanceLayoutD3
+wordNumeric
 	moveq #2, d5
 	bsr.w dataDirectiveSizeForStatement
 	beq.s advanceLayoutD3

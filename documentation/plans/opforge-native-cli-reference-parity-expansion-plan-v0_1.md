@@ -1090,6 +1090,28 @@ landed” is not equivalent to “framework-closed.”
     - an actually unresolved parenthesized label still produces a completed nonzero guest result with diagnostics
     - complete additive `syntax.asm` advances beyond `entries .const ($-jump_tab) / 3`; every later failure remains a separate remediation item rather than being bundled or excluded
 
+- [x] Item 5.9.20: match Rust quoted `.word` byte emission
+  - Source requirement or finding IDs: Item 5.9.19 complete `syntax.asm` Level D rerun; the first byte mismatch is at `.word 'AB'`, where Rust emits decoded source bytes `41 42` while native incorrectly numerically packs `$4142` as `42 41`
+  - Expected files:
+    - `documentation/plans/slices/native-porting-slice-word-string-data.toml`
+    - native opasm assembly-driver quoted-data sizing and emission path
+    - focused tests in `crates/opforge-asm/src/tests/native_word_string_data.rs`
+    - refreshed complete native runtime boundary inventory hash without expanding the certified routine surface
+  - Full quality gates:
+    - focused Level A live Rust quoted-word and numeric-expression oracle
+    - focused Level B native branch-order contract
+    - exact positive and malformed-negative Level D `native_word_string_data_` tests with `--nocapture --test-threads=1`
+    - independent complete-source Level D `native_opcore_adapted_syntax_fs_uae` rerun
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for quoted `.word` ownership only
+  - Commit outcome:
+    - quoted-only `.word` operands use decoded source-byte emission while numeric word expressions retain MOS little-endian packing
+  - Definition of done:
+    - the four complete `.word` controls from `syntax.asm` emit `42 41 41 42 41 42 42 41` under Rust and real AmigaOS execution
+    - malformed quoted `.word` input remains a completed diagnostic failure
+    - complete additive `syntax.asm` advances beyond byte offset 106; every later failure remains a separate remediation item rather than being bundled or excluded
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

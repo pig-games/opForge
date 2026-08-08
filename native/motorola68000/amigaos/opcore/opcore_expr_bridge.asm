@@ -1628,7 +1628,11 @@ scanToken
 	beq.s tokenDelimiter
 	cmpi.b #'%', d1
 	beq.s tokenDelimiter
+	cmpi.b #'&', d1
+	beq.s tokenDelimiter
 	cmpi.b #'|', d1
+	beq.s tokenDelimiter
+	cmpi.b #'^', d1
 	beq.s tokenDelimiter
 	cmpi.b #'?', d1
 	beq.s tokenDelimiter
@@ -1644,6 +1648,7 @@ scanToken
 
 tokenDelimiter
 	subq.l #1, a1
+	addq.l #1, d2
 
 tokenScanned
 	move.b -1(a1), d1

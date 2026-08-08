@@ -128,7 +128,7 @@ SNAPSHOTS = {
     "tkpkg.amigaos.engine_context_adapter": ("a06328ca23472b6f624f579ffd24e09d51d3373acd0c2e825e2596086461ea54", 9, 1, ("code",), 0),
     "opasm.amigaos.engine": ("3603f77b6e1db5f7eb5a82b0aff7061e0da33f3193695277eacd7c4afb1db2db", 70, 1, ("code", "bss"), 21),
     "tkpkg.amigaos.tokenizer_vm": ("7bbafa635dcded0236c9a65368db47e0e10aded6b328d4389e580654125e5b65", 31, 5, ("data", "code"), 124),
-    "opcore.amigaos.expr_bridge": ("e2deea918aab8a38795b55ca1644aad4e64566b73a3f429ed2e6a2d7c8c04495", 30, 1, ("code", "bss"), 5),
+    "opcore.amigaos.expr_bridge": ("1ee19dbd7cc1249921e0bb006f2bfb67b04d21c0a0c6b126e042b08b3b9f705a", 30, 1, ("code", "bss"), 5),
     "prvm.amigaos.runtime": ("d49fad6cedf4807ffed62932c3e55b8f1adbfba0ff93bd8085d66b4e42efb74b", 20, 0, ("data", "code"), 37),
     "tkpkg.amigaos.pipeline": ("d161f2cad5c379e2610c7c44294ef170538beceae92790019f559e6b0550b9ab", 35, 3, ("data", "code"), 19),
     "opasm.amigaos.flow_text_encoding": ("414552b245dd166016789b43d0fb6f0a0a72bdff720ce67f653968127951781c", 16, 0, ("code", "bss", "data"), 0),

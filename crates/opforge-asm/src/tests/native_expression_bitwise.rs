@@ -8,7 +8,9 @@ const BITWISE_SOURCE: &[u8] = b"bit_and .const $f0 & $0f\
 \nprecedence .const 1 | 2 ^ 3 & 1\
 \ncompare_first .const 2 == 2 & 1\
 \nlogical_yield .const 0 || 3\
-\n        .byte bit_and,bit_or,bit_xor,precedence,compare_first,logical_yield\n";
+\nsuffix_and .const 23H & 0FH\
+\nsuffix_or_xor .const 23H | 0FH ^ 0FFH\
+\n        .byte bit_and,bit_or,bit_xor,precedence,compare_first,logical_yield,suffix_and,suffix_or_xor\n";
 
 fn rust_bitwise_bytes() -> Vec<u8> {
     let text = std::str::from_utf8(BITWISE_SOURCE).expect("bitwise fixture UTF-8");
@@ -28,7 +30,7 @@ fn native_expression_bitwise_rust_oracle() {
     // Proof level A. This proves live Rust values and the comparison/AND/XOR/OR
     // precedence ladder, including yielding `||` to the logical tier. It does
     // not prove native parser or evaluator execution.
-    assert_eq!(rust_bitwise_bytes(), [0, 0xff, 0xff, 3, 1, 1]);
+    assert_eq!(rust_bitwise_bytes(), [0, 0xff, 0xff, 3, 1, 1, 3, 0xf3]);
 }
 
 #[test]
@@ -60,6 +62,24 @@ fn native_expression_bitwise_parser_runtime_contract() {
             "BSR.W compare",
             "CMPI.B #'&', 1(A0)",
             "BEQ.W bitAndOk",
+        ]
+    ));
+    let suffix_start = compiler
+        .find("parseSuffixedNumber .block")
+        .expect("suffixed-number parser");
+    let suffix = &compiler[suffix_start..];
+    let suffix_end = suffix
+        .find("parseOctal .block")
+        .expect("suffixed-number parser end");
+    assert!(source_contains_in_order(
+        &suffix[..suffix_end],
+        &[
+            "CMPI.B #'&', D1",
+            "CMPI.B #'|', D1",
+            "CMPI.B #'^', D1",
+            "tokenDelimiter",
+            "SUBQ.L #1, A1",
+            "ADDQ.L #1, D2",
         ]
     ));
 

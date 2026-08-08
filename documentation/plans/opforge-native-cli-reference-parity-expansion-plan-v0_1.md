@@ -1134,6 +1134,28 @@ landed” is not equivalent to “framework-closed.”
     - an unresolved reservation remains a completed diagnostic failure
     - complete additive `syntax.asm` no longer has the 128-byte reservation surplus; every later failure remains separate rather than being bundled or excluded
 
+- [x] Item 5.9.22: preserve suffixed-number boundaries before bitwise operators
+  - Source requirement or finding IDs: exhaustive all-19 precedence-expression FS-UAE matrix; only `23H & 0FH` and `23H | 0FH ^ 0FFH` fail compilation after earlier byte-parity corrections because `parseSuffixedNumber` neither delimits `&`/`^` nor restores remaining length when backing up over any delimiter
+  - Expected files:
+    - `documentation/plans/slices/native-porting-slice-suffixed-bitwise-boundary.toml`
+    - native opcore suffixed-number scanner
+    - expanded focused tests in `crates/opforge-asm/src/tests/native_expression_bitwise.rs`
+    - refreshed complete native runtime boundary inventory hash without expanding the certified routine surface
+  - Full quality gates:
+    - expanded Level A live Rust bitwise oracle with `H`-suffix operands
+    - expanded Level B native delimiter/tier contract
+    - exact Level D `native_expression_bitwise_` tests with `--nocapture --test-threads=1`
+    - independent complete-source Level D `native_opcore_adapted_syntax_fs_uae` rerun
+    - native formatter, staged native porting gate, full Rust quality gate, and workflow gate
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for suffixed-number delimiter ownership only
+  - Commit outcome:
+    - the suffixed-number scanner backs up its pointer and remaining length together, then yields `&`, `|`, and `^` to the established bitwise precedence tiers
+  - Definition of done:
+    - both suffixed-hex bitwise expressions match live Rust under real AmigaOS execution
+    - the existing `$`-prefixed bitwise and logical-yield controls remain exact
+    - complete additive `syntax.asm` advances beyond both bitwise expressions; every later failure remains separate rather than being bundled or excluded
+
 - [x] Item 6: add the CPU-neutral syntax and expression opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for parsing, expression, conditional, range/list, grouping, scope, and text-encoding examples that can run directly or through additive `6502`/`65c02` fixtures
   - Expected files:

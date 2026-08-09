@@ -44,7 +44,7 @@ const FS_UAE_STARTUP_HUNK_ALIAS: &str = "build/tkpkg_debug_cli.hunk";
 const FS_UAE_STARTUP_HUNK_ALIAS_UAEM: &str = "build/tkpkg_debug_cli.hunk.uaem";
 const FS_UAE_TKPKG_SMOKE_INPUT_FILE: &str = "opforge_fsuae_smoke_input.asm";
 const FS_UAE_TKPKG_SMOKE_INPUT_TEXT: &str = "move.b d0,d1\nmove.w d2,d3\n";
-const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str =
+pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str =
     ".module main\n.use math\n.use math as m\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT: &str =
     ".org $0800\nstart   lda #$42\n.byte $99\n.word $1234, $5678\n.long $01020304\n.text \"OK\"\n.null \"A\"\n.ptext \"BC\"\n";
@@ -96,11 +96,11 @@ const FS_UAE_OPFORGE_NATIVE_CLI_6502_BAD_ORG_FILE: &str = "opforge_6502_bad_org.
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_BAD_ORG_TEXT: &str =
     "        .org missing\n        lda #$42\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_FILE: &str = "math.asm";
-const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_TEXT: &str =
+pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_TEXT: &str =
     ".module math\n.use helper\nfoo     sta $0200\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_FILE: &str = "helper.asm";
-const FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_TEXT: &str =
-    ".module helper\n        lda #$00\n.endmodule\n";
+pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_TEXT: &str =
+    ".module helper\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_ROOT_A_FILE: &str = "opforge_module_a/math.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_ROOT_B_FILE: &str = "opforge_module_b/helper.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_FILE: &str = "opforge_fsuae_include.inc";
@@ -756,8 +756,8 @@ fn verify_native_cli_case_proof(
 ) -> Result<(), String> {
     if !run.protocol_completed {
         return Err(format!(
-            "FS-UAE proof for {} is invalid: the exact fresh start/done challenge and guest exit evidence were not all present",
-            case.name
+            "FS-UAE proof for {} is invalid: the exact fresh start/done challenge and guest exit evidence were not all present\nstdout:\n{}\nstderr:\n{}",
+            case.name, run.stdout, run.stderr
         ));
     }
 
@@ -2804,30 +2804,6 @@ fn merge_output(
         (Some(captured), None) => captured,
         (None, Some(launcher)) => launcher,
         (None, None) => String::new(),
-    }
-}
-
-fn summarize_opforge_native_cli_batch_progress(
-    batch_paths: &[OpforgeNativeCliBatchCasePaths],
-) -> Result<String, String> {
-    let mut entries = Vec::new();
-    for (index, case_paths) in batch_paths.iter().enumerate() {
-        let started = case_paths.started_path.is_file();
-        let done = case_paths.done_path.is_file();
-        let exit_code = read_optional_exit_code(&case_paths.exit_code_path)?;
-        if started || done || exit_code.is_some() {
-            let exit_text = exit_code
-                .map(|code| code.to_string())
-                .unwrap_or_else(|| "none".to_string());
-            entries.push(format!(
-                "case_{index:04}[started={started},done={done},exit={exit_text}]"
-            ));
-        }
-    }
-    if entries.is_empty() {
-        Ok("no per-case progress markers captured".to_string())
-    } else {
-        Ok(entries.join(", "))
     }
 }
 

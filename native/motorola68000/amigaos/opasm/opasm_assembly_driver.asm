@@ -273,7 +273,7 @@ compareEndmodule
 	moveq #9, d1
 	bsr.w lineStartsWith
 	beq.s checkConditional
-	bsr.w scopes.endScopeDirectiveV1
+	bsr.w scopes.endModuleScopeV1
 	bne.w fail
 	bra.w success
 

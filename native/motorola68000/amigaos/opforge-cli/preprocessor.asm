@@ -23,13 +23,53 @@
 ; CCR: reflects D0 on return.
 opforgeNativeCliResetPreprocessorV1	.block
 	lea state.NativeCliPreprocessStateStart, a0
-	move.l #constants.NATIVE_PREPROCESS_STATE_BYTES, d0
+	move.l #state.NATIVE_CLI_PREPROCESS_STATE_BYTES, d0
 	jsr copy.clearBytes
 	move.w #-1, state.NativeCliPreprocessActiveDefinition
 	move.w #-1, state.NativeCliPreprocessInvocationDefinition
+	move.w #constants.NATIVE_PREPROCESS_VISIBILITY_PRIVATE, state.NativeCliPreprocessCurrentVisibility
 	moveq #0, d0
 	rts
 	.bend  ; opforgeNativeCliResetPreprocessorV1
+
+; Consume and track Rust-compatible `.pub`/`.priv` before definition capture.
+; Inputs: current source line and module state.
+; Outputs: D0 = 1 when a visibility directive was consumed, 0 otherwise.
+opforgeNativeCliTrackVisibilityV1	.block
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	lea PubText.l, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s checkPrivate
+	move.w #constants.NATIVE_PREPROCESS_VISIBILITY_PUBLIC, d0
+	bra.s update
+checkPrivate
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	lea PrivText.l, a1
+	moveq #5, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s noDirective
+	move.w #constants.NATIVE_PREPROCESS_VISIBILITY_PRIVATE, d0
+update
+	move.w d0, state.NativeCliPreprocessCurrentVisibility
+	tst.w state.NativeCliModuleDepth
+	beq.s consumed
+	moveq #0, d1
+	move.w state.NativeCliCurrentModuleId, d1
+	add.w d1, d1
+	lea state.NativeCliModuleVisibilityTable, a0
+	move.w d0, 0(a0, d1.l)
+consumed
+	moveq #1, d0
+	rts
+noDirective
+	moveq #0, d0
+	rts
+	.bend  ; opforgeNativeCliTrackVisibilityV1
 
 ; Reserve the one bounded macro invocation frame for a captured definition.
 ; Inputs: D0 = zero-based definition index.
@@ -69,5 +109,9 @@ EndsegmentText
 	.byte ".endsegment", 0
 EndstatementText
 	.byte ".endstatement", 0
+PubText
+	.byte ".pub", 0
+PrivText
+	.byte ".priv", 0
 	.endsection
 	.endmodule

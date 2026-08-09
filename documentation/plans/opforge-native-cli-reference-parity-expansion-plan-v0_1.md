@@ -1324,11 +1324,12 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: matching statement invocations expand to ordinary native source statements with exact Rust bytes.
   - Definition of done: `statement_expansion.asm` matches Rust through the real native CLI; unsupported signatures fail deterministically without corrupting the session.
 
-- [ ] Item 7.7: integrate preprocessor exports with native module/import flow
+- [x] Item 7.7: integrate preprocessor exports with native module/import flow
   - Source requirement or finding IDs: Item 7 module/import/visibility and multi-file requirements; Rust `AsmMacroProcessor::{take_native_exports,inject_*}`.
   - Expected files: native preprocessor, module/use flow, source graph tests, slice record; deletion of `tkpkg_engine_context_adapter.asm` and its inventory/no-growth allowance once neutral context is supplied without a tkpkg-to-opasm import.
   - Full quality gates: Level A multi-file Rust oracle; Level C export/import model; exact Level D multi-file FS-UAE proof; native formatter; staged native-porting gate; full Rust quality gate.
   - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for public/private export injection and aliases only.
+  - Validation evidence: six independent fail-closed FS-UAE roots complete and match their exact live Rust oracle bytes; wildcard-requested private macro, segment, and statement names resolve to later local shadows; the separately requested `mos_forward_ref_stability.asm` FS-UAE proof, staged native-porting gate, and full Rust quality gate pass.
   - Commit outcome: module macro and statement exports are injected according to native `.use` selection and visibility rules.
   - Definition of done: Item 7’s declared multi-file roots run through real native CLI usage; no generic CLI path gains CPU-specific semantics.
 

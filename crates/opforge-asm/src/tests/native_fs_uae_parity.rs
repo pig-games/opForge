@@ -1772,6 +1772,170 @@ fn native_statement_expansion_source_model_matches_rust_and_bounds() {
     ));
 }
 
+const NATIVE_PREPROCESS_EXPORT_LIBRARY: &str = ".module native.exports.lib\n.pub\nPUBMAC .macro v\n .byte .v\n.endmacro\nPUBSEG .segment v\n .byte .v\n.endsegment\n.statement PUBSTMT byte:v\n .byte .v\n.endstatement\n.priv\nPRIVMAC .macro v\n .byte .v\n.endmacro\nPRIVSEG .segment v\n .byte .v\n.endsegment\n.statement PRIVSTMT byte:v\n .byte .v\n.endstatement\n.endmodule\n";
+const NATIVE_PREPROCESS_EXPORT_SELECTIVE: &str = ".module native.exports.selective\n.cpu 65c02\n.use native.exports.lib (PUBMAC, PUBSEG, PUBSTMT)\n.org $2000\n.PUBMAC $11\n.PUBSEG $12\n PUBSTMT $22\n.endmodule\n.end\n";
+const NATIVE_PREPROCESS_EXPORT_WILDCARD: &str = ".module native.exports.wildcard\n.cpu 65c02\n.use native.exports.lib (*)\n.org $2000\n.PUBMAC $33\n.PUBSEG $34\n PUBSTMT $44\n.endmodule\n.end\n";
+const NATIVE_PREPROCESS_EXPORT_QUALIFIED: &str = ".module native.exports.qualified\n.cpu 65c02\n.use native.exports.lib as L\n.org $2000\n.L.PUBMAC $55\n.L.PUBSEG $56\n.native.exports.lib.PUBMAC $77\n.native.exports.lib.PUBSEG $78\n.endmodule\n.end\n";
+const NATIVE_PREPROCESS_PRIVATE_MACRO_SHADOW: &str = ".module native.exports.private.macro\n.cpu 65c02\n.use native.exports.lib (*)\n.priv\nPRIVMAC .macro\n .byte $91\n.endmacro\n.org $2000\n.PRIVMAC\n.endmodule\n.end\n";
+const NATIVE_PREPROCESS_PRIVATE_SEGMENT_SHADOW: &str = ".module native.exports.private.segment\n.cpu 65c02\n.use native.exports.lib (*)\n.priv\nPRIVSEG .segment\n .byte $92\n.endsegment\n.org $2000\n.PRIVSEG\n.endmodule\n.end\n";
+const NATIVE_PREPROCESS_PRIVATE_STATEMENT_SHADOW: &str = ".module native.exports.private.statement\n.cpu 65c02\n.use native.exports.lib (*)\n.priv\n.statement PRIVSTMT byte:v\n .byte $93\n.endstatement\n.org $2000\n PRIVSTMT $00\n.endmodule\n.end\n";
+
+fn rust_module_preprocessor_export_bytes(root_source: &str, case_name: &str) -> Vec<u8> {
+    let case_dir = create_temp_dir(&format!("native-preprocessor-export-{case_name}"));
+    let root_path = case_dir.join("app.asm");
+    let library_path = case_dir.join("native.exports.lib.asm");
+    fs::write(&root_path, root_source).expect("write export root");
+    fs::write(&library_path, NATIVE_PREPROCESS_EXPORT_LIBRARY).expect("write export library");
+    let root_lines = expand_source_file(&root_path, &[], &[], 64).expect("expand export root");
+    let graph = load_module_graph(
+        &root_path,
+        root_lines,
+        &[],
+        &[],
+        std::slice::from_ref(&case_dir),
+        64,
+    )
+    .expect("load export module graph");
+    let mut assembler = Assembler::new();
+    assembler.set_runtime_line_router(Some(make_test_runtime_line_router(
+        runtime_enabled_execution_mode(true),
+    )));
+    assembler.root_metadata.root_module_id = Some(
+        root_module_id_from_lines(
+            &root_path,
+            &fs::read_to_string(&root_path)
+                .unwrap()
+                .lines()
+                .map(str::to_string)
+                .collect::<Vec<_>>(),
+        )
+        .expect("root module id"),
+    );
+    assembler.module_macro_names = graph.module_macro_names;
+    let pass1 = assembler.pass1(&graph.lines);
+    let mut listing_bytes = Vec::new();
+    let mut listing = ListingWriter::new(&mut listing_bytes, false);
+    let pass2 = assembler
+        .pass2(&graph.lines, &mut listing)
+        .expect("Rust export pass2");
+    let diagnostics = assembler
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == Severity::Error)
+        .map(|diagnostic| format!("{}:{}", diagnostic.line, diagnostic.error.message()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        (pass1.errors, pass2.errors),
+        (0, 0),
+        "Rust export diagnostics: {diagnostics:?}\n{:#?}",
+        graph.lines
+    );
+    assembler
+        .image()
+        .entries()
+        .expect("Rust export bytes")
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect()
+}
+
+#[test]
+fn native_module_preprocessor_export_model_matches_rust_visibility_and_aliases() {
+    // Proof levels A/C. The live Rust source graph proves selected, wildcard,
+    // module-qualified, and module-alias injection. Native source assertions
+    // lock owner/visibility capture and importer-owned binding lookup.
+    assert_eq!(
+        rust_module_preprocessor_export_bytes(NATIVE_PREPROCESS_EXPORT_SELECTIVE, "selective"),
+        [0x11, 0x12, 0x22]
+    );
+    assert_eq!(
+        rust_module_preprocessor_export_bytes(NATIVE_PREPROCESS_EXPORT_WILDCARD, "wildcard"),
+        [0x33, 0x34, 0x44]
+    );
+    assert_eq!(
+        rust_module_preprocessor_export_bytes(NATIVE_PREPROCESS_EXPORT_QUALIFIED, "qualified"),
+        [0x55, 0x56, 0x77, 0x78]
+    );
+    assert_eq!(
+        rust_module_preprocessor_export_bytes(
+            NATIVE_PREPROCESS_PRIVATE_MACRO_SHADOW,
+            "private-macro-shadow"
+        ),
+        [0x91]
+    );
+    assert_eq!(
+        rust_module_preprocessor_export_bytes(
+            NATIVE_PREPROCESS_PRIVATE_SEGMENT_SHADOW,
+            "private-segment-shadow"
+        ),
+        [0x92]
+    );
+    assert_eq!(
+        rust_module_preprocessor_export_bytes(
+            NATIVE_PREPROCESS_PRIVATE_STATEMENT_SHADOW,
+            "private-statement-shadow"
+        ),
+        [0x93]
+    );
+
+    let root = workspace_root();
+    let definitions = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm"),
+    )
+    .expect("read native definition capture");
+    let module_use =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/module_use.asm"))
+            .expect("read native module/use bindings");
+    let invocation = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_invocation.asm"),
+    )
+    .expect("read native macro lookup");
+    let statement = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_statement.asm"),
+    )
+    .expect("read native statement lookup");
+    let line_processor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read native visibility routing");
+    assert!(source_contains_in_order(
+        &definitions,
+        &[
+            "NativeCliPreprocessDefinitionOwner",
+            "MOVE.W state.NativeCliPreprocessCurrentVisibility, D1",
+            "NativeCliPreprocessDefinitionVisibility",
+            "MOVE.B D1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &module_use,
+        &[
+            "opforgeNativeCliBindImportDefinitionsV1",
+            "NATIVE_PREPROCESS_VISIBILITY_PUBLIC",
+            "NativeCliImportSelectFlagsTable",
+            "appendQualifiedBinding",
+            "opforgeNativeCliDefinitionInvocationNameMatchesV1",
+        ]
+    ));
+    assert!(invocation.contains("module_use.opforgeNativeCliDefinitionInvocationNameMatchesV1"));
+    assert!(
+        statement
+            .matches("module_use.opforgeNativeCliDefinitionInvocationNameMatchesV1")
+            .count()
+            >= 2
+    );
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "TST.W state.NativeCliPreprocessActiveDefinition",
+            "BPL.S visibilityPass",
+            "JSR preprocessor.opforgeNativeCliTrackVisibilityV1",
+            "visibilityPass",
+            "JSR preprocessor_definitions.opforgeNativeCliCaptureMacroDefinitionLineV1",
+        ]
+    ));
+}
+
 #[test]
 fn native_statement_capture_type_model_matches_rust_ranges_and_tokens() {
     // Proof levels A/C. Rust establishes capture token/range behavior and the
@@ -2158,11 +2322,6 @@ fn native_preprocessor_macro_invocation_frame_is_bounded_and_resettable() {
 
     assert!(constants.contains("NATIVE_PREPROCESS_MACRO_ARG_CAPACITY = 9"));
     assert!(constants.contains("NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT = 1"));
-    assert!(constants.contains("NATIVE_PREPROCESS_STATE_FIXED_BYTES = 36"));
-    assert!(constants.contains(
-        "(NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY)"
-    ));
-    assert!(constants.contains("+ NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY"));
     assert!(source_contains_in_order(
         &state,
         &[
@@ -2178,7 +2337,7 @@ fn native_preprocessor_macro_invocation_frame_is_bounded_and_resettable() {
         &preprocessor,
         &[
             "opforgeNativeCliResetPreprocessorV1\t.block",
-            "move.l #constants.NATIVE_PREPROCESS_STATE_BYTES, d0",
+            "move.l #state.NATIVE_CLI_PREPROCESS_STATE_BYTES, d0",
             "jsr copy.clearBytes",
             "move.w #-1, state.NativeCliPreprocessActiveDefinition",
             "move.w #-1, state.NativeCliPreprocessInvocationDefinition",
@@ -2246,21 +2405,15 @@ fn native_preprocessor_capacity_matrix_is_deterministic() {
         "NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY",
         "NATIVE_PREPROCESS_SAVED_LINE_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY",
         "NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY",
-        "NATIVE_PREPROCESS_STATE_FIXED_BYTES = 36",
     ] {
         assert!(constants.contains(capacity), "missing capacity: {capacity}");
     }
     assert!(source_contains_in_order(
-        &constants,
+        &state,
         &[
-            "NATIVE_PREPROCESS_STATE_BYTES   = NATIVE_PREPROCESS_STATE_FIXED_BYTES",
-            "NATIVE_PREPROCESS_DEFINITION_HEADER_CAPACITY",
-            "NATIVE_PREPROCESS_BODY_LINE_TEXT_CAPACITY",
-            "NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY",
-            "NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY",
-            "NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY",
-            "NATIVE_PREPROCESS_SAVED_LINE_CAPACITY",
-            "NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY",
+            "NativeCliPreprocessStateStart",
+            "NATIVE_CLI_PREPROCESS_STATE_END",
+            "NATIVE_CLI_PREPROCESS_STATE_BYTES = NATIVE_CLI_PREPROCESS_STATE_END - NativeCliPreprocessStateStart",
         ]
     ));
     assert!(source_contains_in_order(
@@ -2339,7 +2492,7 @@ fn native_preprocessor_capacity_matrix_is_deterministic() {
         &preprocessor,
         &[
             "opforgeNativeCliResetPreprocessorV1\t.block",
-            "move.l #constants.NATIVE_PREPROCESS_STATE_BYTES, d0",
+            "move.l #state.NATIVE_CLI_PREPROCESS_STATE_BYTES, d0",
             "jsr copy.clearBytes",
         ]
     ));
@@ -2385,9 +2538,6 @@ fn native_preprocessor_macro_invocations_bind_before_prvm_routing() {
     assert!(expanded.iter().any(|line| line.contains(".byte \"a,b\"")));
 
     let root = workspace_root();
-    let constants =
-        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"))
-            .expect("read native constants");
     let state = fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/state.asm"))
         .expect("read native state");
     let preprocessor =
@@ -2402,7 +2552,9 @@ fn native_preprocessor_macro_invocations_bind_before_prvm_routing() {
     )
     .expect("read native line processor");
 
-    assert!(constants.contains("NATIVE_PREPROCESS_STATE_FIXED_BYTES = 36"));
+    assert!(state.contains(
+        "NATIVE_CLI_PREPROCESS_STATE_BYTES = NATIVE_CLI_PREPROCESS_STATE_END - NativeCliPreprocessStateStart"
+    ));
     assert!(source_contains_in_order(
         &state,
         &[
@@ -3688,7 +3840,7 @@ fn native_scope_source_tracks_stack_and_qualified_symbols() {
             "bsr.w scopes.beginModuleScopeV1",
             "checkEndmodule",
             "lea EndmoduleMnemonicText, a1",
-            "bsr.w scopes.endScopeDirectiveV1",
+            "bsr.w scopes.endModuleScopeV1",
         ]
     ));
     assert!(!driver.contains("bne.w scopes."));
@@ -3704,6 +3856,11 @@ fn native_scope_source_tracks_stack_and_qualified_symbols() {
             "bsr.w pushFromStatementOperand",
             "beginModuleScopeV1\t.block",
             "clr.w ScopeDepth",
+            "move.w d7, ActiveModuleStatementIndex.l",
+            "endModuleScopeV1\t.block",
+            "tst.w ModuleParentDepth.l",
+            "move.w ParentModuleStatementIndex.l, d7",
+            "bsr.w pushFromStatementOperand",
             "endScopeDirectiveV1\t.block",
             "bsr.w popScope",
             "qualifyStatementLabelIfScopedV1\t.block",
@@ -4765,7 +4922,42 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
         .expect("native CLI FS-UAE smoke lock poisoned");
 
     let repo_root = workspace_root();
-    let rust_oracle = native_cli_6502_contract_expected_bin();
+    let oracle_dir = create_temp_dir("module-use-parser-status-oracle");
+    let oracle_root_a = oracle_dir.join("module-a");
+    let oracle_root_b = oracle_dir.join("module-b");
+    fs::create_dir_all(&oracle_root_a).expect("create Rust module root A");
+    fs::create_dir_all(&oracle_root_b).expect("create Rust module root B");
+    let oracle_input = oracle_dir.join("input.asm");
+    let oracle_bin = oracle_dir.join("oracle.bin");
+    fs::write(
+        &oracle_input,
+        crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT,
+    )
+    .expect("write Rust module-use root");
+    fs::write(
+        oracle_root_a.join("math.asm"),
+        crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_MODULE_TEXT,
+    )
+    .expect("write Rust math module");
+    fs::write(
+        oracle_root_b.join("helper.asm"),
+        crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_TEXT,
+    )
+    .expect("write Rust helper module");
+    let rust_cli = Cli::parse_from([
+        "opForge",
+        oracle_input.to_string_lossy().as_ref(),
+        "--bin",
+        oracle_bin.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+        "-M",
+        oracle_root_a.to_string_lossy().as_ref(),
+        "--module-path",
+        oracle_root_b.to_string_lossy().as_ref(),
+    ]);
+    run_with_cli_with_context(&rust_cli).expect("run same-case Rust module-use oracle");
+    let rust_oracle = fs::read(&oracle_bin).expect("read same-case Rust module-use oracle");
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "module-use-parser-status",
         cpu_override: "68020",
@@ -5782,6 +5974,85 @@ fn native_reference_opcore_module_macro_statement_fs_uae() {
                 assert!(run.success, "native {name} failed: {}", run.stdout);
                 let native = verified_fs_uae_output(run);
                 assert_eq!(native, *rust, "native bytes differ for {name}");
+            }
+        }
+    }
+}
+
+#[test]
+fn native_module_preprocessor_exports_fs_uae() {
+    // Proof level D. Every root is a separate real CLI run with a freshly
+    // staged module file and an in-memory Rust oracle for that exact root.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock is infallible");
+    let root = workspace_root();
+    let package = item6_mos_package_bytes();
+    let roots = [
+        (
+            "module-export-selective",
+            NATIVE_PREPROCESS_EXPORT_SELECTIVE,
+        ),
+        ("module-export-wildcard", NATIVE_PREPROCESS_EXPORT_WILDCARD),
+        (
+            "module-export-qualified",
+            NATIVE_PREPROCESS_EXPORT_QUALIFIED,
+        ),
+        (
+            "module-private-macro-shadow",
+            NATIVE_PREPROCESS_PRIVATE_MACRO_SHADOW,
+        ),
+        (
+            "module-private-segment-shadow",
+            NATIVE_PREPROCESS_PRIVATE_SEGMENT_SHADOW,
+        ),
+        (
+            "module-private-statement-shadow",
+            NATIVE_PREPROCESS_PRIVATE_STATEMENT_SHADOW,
+        ),
+    ];
+    let rust_bins = roots
+        .iter()
+        .map(|(name, source)| rust_module_preprocessor_export_bytes(source, name))
+        .collect::<Vec<_>>();
+    let guest_files = [crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+        relative_path: "native.exports.lib.asm",
+        bytes: NATIVE_PREPROCESS_EXPORT_LIBRARY.as_bytes(),
+    }];
+    let cases = roots
+        .iter()
+        .zip(rust_bins.iter())
+        .map(
+            |((name, source), rust)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(source.as_bytes()),
+                command_template: Some("{input} --bin {bin} --cpu 65c02 -M {guest_work_dir}"),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(
+                    package.as_slice(),
+                ),
+                extra_guest_files: &guest_files,
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: rust,
+                },
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&root, &cases)
+        .expect("module preprocessor export FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len(), "every export root must complete");
+            for ((run, (name, _)), rust) in runs.iter().zip(roots.iter()).zip(rust_bins) {
+                assert!(run.success, "native {name} failed: {}", run.stdout);
+                assert_eq!(
+                    verified_fs_uae_output(run),
+                    rust,
+                    "native export bytes differ for {name}"
+                );
             }
         }
     }

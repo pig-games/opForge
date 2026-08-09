@@ -45,6 +45,13 @@
 	.pub
 
 opforgeNativeCliTokenizeCurrentLine	.block
+	tst.w state.NativeCliPreprocessActiveDefinition
+	bpl.s visibilityPass
+	jsr preprocessor.opforgeNativeCliTrackVisibilityV1
+	beq.s visibilityPass
+	moveq #0, d0
+	rts
+visibilityPass
 	jsr preprocessor_definitions.opforgeNativeCliCaptureMacroDefinitionLineV1
 	tst.l d0
 	beq.s preprocessPass

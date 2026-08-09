@@ -1,0 +1,39 @@
+[slice]
+schema_version = 2
+name = "native preprocessor module exports"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/preprocess.rs::AsmMacroProcessor::take_native_exports",
+  "crates/opforge-asm/src/preprocess.rs::AsmMacroProcessor::inject_from",
+  "crates/opforge-asm/src/preprocess.rs::AsmMacroProcessor::inject_all",
+  "crates/opforge-asm/src/preprocess.rs::AsmMacroProcessor::inject_qualified",
+  "crates/opforge-engine/src/source_graph.rs::load_module_graph",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliTrackVisibilityV1",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm::opforgeNativeCliCaptureMacroDefinitionLineV1",
+  "native/motorola68000/amigaos/opforge-cli/module_use.asm::opforgeNativeCliBindImportDefinitionsV1",
+  "native/motorola68000/amigaos/opforge-cli/module_use.asm::opforgeNativeCliDefinitionInvocationNameMatchesV1",
+  "native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm::beginModuleScopeV1",
+  "native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm::endModuleScopeV1",
+]
+invariant = "Every structural preprocessor definition retains its defining module and capture-time visibility; only public definitions receive importer-owned bindings, invocation lookup admits local definitions or names explicitly injected by the current module's selective, wildcard, bare-qualified, or aliased .use record, and dependency module flow temporarily replaces then restores the importer module root during recursive tokenization."
+assertion_decision = "No runtime assertion is added: every metadata and binding table write is capacity checked, private definitions have no cross-module binding path, focused source-model tests lock the Rust/native ownership rules, and the real guest proof must finish and produce fresh exact bytes for every independent root."
+expected_inputs = "Multi-file roots with public and private macro, segment, and statement definitions imported selectively, by wildcard, and through full-module and explicit module-alias qualification, plus local same-name definitions proving private imports do not leak."
+expected_outputs = "Only Rust-visible definitions expand in the importing module, and each successful root writes a fresh binary byte-for-byte equal to the live Rust oracle for that same root."
+known_non_equivalences = "Per-item aliases are not preprocessor aliases in the Rust AsmMacroProcessor inject_from boundary. Qualified statement names are retained by Rust export injection but are not scanned as dotted statement mnemonics by the current Rust invocation scanner, so this slice's qualified alias proof is macro-only. The transitional tkpkg_engine_context_adapter.asm remains because tkpkg_runtime_context still consumes its opasm-backed service; its deletion prerequisite is not yet true."
+fast_proof_command = "cargo test -p asm native_module_preprocessor_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_module_preprocessor_exports_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_module_preprocessor_export_model_matches_rust_visibility_and_aliases"
+proof_level = "C"
+proves = "Live Rust multi-file selected, wildcard, full-module-qualified, and module-alias macro/segment/statement expansion, plus wildcard-requested private same-name shadowing for all three definition kinds so any erroneous canonical private binding would beat the later local definition; native source locks definition ownership, visibility filtering, binding construction, and shared lookup routing."
+does_not_prove = "Real 68020 execution or emitted artifact parity."
+
+[[tests]]
+name = "native_module_preprocessor_exports_fs_uae"
+proof_level = "D"
+proves = "Six independent real native CLI runs stage their own module source, complete the fresh challenge protocol, and emit exact same-root Rust bytes for selective macro/segment/statement, wildcard macro/segment/statement, qualified/aliased macro/segment imports, and wildcard-requested private macro/segment/statement non-leakage through local same-name shadowing."
+does_not_prove = "Qualified dotted statement invocation, which the current Rust statement scanner does not recognize."

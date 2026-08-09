@@ -114,7 +114,7 @@ TARGETS = {
     ),
 }
 SNAPSHOTS = {
-    "opasm.amigaos.assembly_driver": ("ce30d881dbcf48c01ca2525b58b8ff6b6a73cb8825f3d0cf84a50eccd92b0f23", 70, 18, ("code", "data", "bss"), 141),
+    "opasm.amigaos.assembly_driver": ("2521636611671de128a22f38edd33a1eed8805f2c3f7d54e7cf8b220320adce0", 70, 18, ("code", "data", "bss"), 141),
     "opasm.amigaos.directive_router": ("ff74d2d29df6e4636f5a35480a48d0275b6cda16313ccda3934106973cfc8d81", 3, 0, ("code", "data"), 1),
     "opasm.amigaos.operand_eval": ("aa7e70a620296b1de1198bf677b9c69d9418b6dd039f03a6b0f1de32c61b90d8", 7, 3, ("code", "bss"), 4),
     "opasm.amigaos.directive_data": ("ae827acedfad611d1d57ff93783edda61b6eb4de332c2907521343d6f9fdf3bc", 2, 3, ("code", "bss"), 19),

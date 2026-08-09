@@ -21,6 +21,7 @@
 	.use opforge.cli.line_processor
 	.use opforge.cli.include_use
 	.use opforge.cli.directive_handlers
+	.use opforge.cli.module_use
 	.use opforge.cli.line_text
 	.use opforge.cli.preprocessor
 	.use opforge.cli.preprocessor_definitions
@@ -334,26 +335,34 @@ return
 ; Clobbers: D0/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliTokenizePendingUseModule	.block
-	movem.l d5, -(sp)
+	movem.l d5-d6, -(sp)
 	cmpi.w #-1, state.NativeCliResolvedModuleId
 	beq.s ok
+	move.w state.NativeCliImportCount, d6
+	subq.w #1, d6
 	move.w state.NativeCliResolvedModuleId, d0
 	cmp.w state.NativeCliModuleCount, d0
 	blo.s loaded
 	move.w #-1, state.NativeCliResolvedModuleId
+	move.l d6, -(sp)
 	bsr.w opforgeNativeCliTokenizeResolvedUseModule
+	move.l d0, d5
+	move.l (sp)+, d6
+	tst.l d5
+	bne.s return
+	jsr module_use.opforgeNativeCliBindImportDefinitionsV1
 	bra.s return
 
 loaded
 	move.w #-1, state.NativeCliResolvedModuleId
-	moveq #0, d0
+	jsr module_use.opforgeNativeCliBindImportDefinitionsV1
 	bra.s return
 
 ok
 	moveq #0, d0
 
 return
-	movem.l (sp)+, d5
+	movem.l (sp)+, d5-d6
 	rts
 	.bend  ; opforgeNativeCliTokenizePendingUseModule
 

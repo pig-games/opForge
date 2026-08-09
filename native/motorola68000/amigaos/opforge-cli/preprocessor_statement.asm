@@ -10,6 +10,7 @@
 	.use opforge.cli.state
 	.use opforge.cli.line_text
 	.use opforge.cli.preprocessor
+	.use opforge.cli.module_use
 
 	.section code, kind=code
 	.pub
@@ -60,9 +61,13 @@ keywordLoop
 	cmp.l StatementMnemonicLen.l, d0
 	bhi.w keywordNext
 	movea.l StatementKeywordPtr.l, a0
+	move.l StatementKeywordLen.l, d0
 	movea.l StatementMnemonicPtr.l, a1
-	bsr.w compareFoldedBytes
-	bne.w keywordNext
+	move.l StatementKeywordLen.l, d1
+	jsr module_use.opforgeNativeCliDefinitionInvocationNameMatchesV1
+	tst.l d0
+	beq.w keywordNext
+	move.l StatementKeywordLen.l, d0
 	cmp.w StatementBestKeywordLen.l, d0
 	bls.w keywordNext
 	move.w d0, StatementBestKeywordLen.l
@@ -87,9 +92,12 @@ matchLoop
 	cmp.w StatementBestKeywordLen.l, d0
 	bne.w matchNext
 	movea.l StatementKeywordPtr.l, a0
+	move.l StatementKeywordLen.l, d0
 	movea.l StatementMnemonicPtr.l, a1
-	bsr.w compareFoldedBytes
-	bne.w matchNext
+	move.l StatementKeywordLen.l, d1
+	jsr module_use.opforgeNativeCliDefinitionInvocationNameMatchesV1
+	tst.l d0
+	beq.w matchNext
 	bsr.w matchLoadedStatement
 	bne.w matchNext
 	move.w StatementMatchLiteralScore.l, d0

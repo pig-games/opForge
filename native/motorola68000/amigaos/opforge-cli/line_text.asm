@@ -340,6 +340,13 @@ opforgeNativeCliParseUseWildcard
 	subq.l #1, d0
 	moveq #0, d3
 	move.w d5, d4
+	lea state.NativeCliArgToken, a1
+	move.b #'*', (a1)+
+	clr.b (a1)
+	clr.b state.NativeCliIncludeTarget
+	moveq #2, d3
+	jsr module_use.opforgeNativeCliRecordImportSelect
+	bne.s opforgeNativeCliParseUseItemsFail
 	bsr.w module_use.opforgeNativeCliEmitImportWildcardRecord
 	moveq #0, d1
 	rts

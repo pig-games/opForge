@@ -202,6 +202,8 @@ NativeCliPreprocessDefinitionCount
 	.res word, 1
 NativeCliPreprocessActiveDefinition
 	.res word, 1
+NativeCliPreprocessCurrentVisibility
+	.res word, 1
 ; Shared structural-definition record contract (macro, segment, and statement):
 ; DefinitionHeader is the captured name/signature; DefinitionBody and
 ; DefinitionBodyCount describe the bounded body span; HeaderLen/BodyLen own
@@ -228,6 +230,10 @@ NativeCliPreprocessInvocationLabelLen
 	.res word, 1
 NativeCliPreprocessDefinitionKind
 	.res byte, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY
+NativeCliPreprocessDefinitionOwner
+	.res word, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY
+NativeCliPreprocessDefinitionVisibility
+	.res byte, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY
 NativeCliPreprocessDefinitionBodyCount
 	.res word, constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY
 NativeCliPreprocessDefinitionHeaderLen
@@ -250,7 +256,8 @@ NativeCliPreprocessExpansionLine
 	.res byte, constants.NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY
 NativeCliPreprocessExpansionLineLen
 	.res word, 1
-NativeCliPreprocessStateEnd
+NATIVE_CLI_PREPROCESS_STATE_END
+NATIVE_CLI_PREPROCESS_STATE_BYTES = NATIVE_CLI_PREPROCESS_STATE_END - NativeCliPreprocessStateStart
 
 NativeCliModuleUseStateStart
 NativeCliModuleCount
@@ -269,6 +276,8 @@ NativeCliCurrentModuleId
 	.res word, 1
 NativeCliModuleDepth
 	.res word, 1
+NativeCliPreprocessImportBindingCount
+	.res word, 1
 NativeCliModuleNameTable
 	.res byte, constants.NATIVE_MODULE_TABLE_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
 NativeCliModuleFileIdTable
@@ -276,6 +285,8 @@ NativeCliModuleFileIdTable
 NativeCliModuleLineTable
 	.res long, constants.NATIVE_MODULE_TABLE_CAPACITY
 NativeCliModuleDepthTable
+	.res word, constants.NATIVE_MODULE_TABLE_CAPACITY
+NativeCliModuleVisibilityTable
 	.res word, constants.NATIVE_MODULE_TABLE_CAPACITY
 NativeCliImportOwnerModuleTable
 	.res word, constants.NATIVE_IMPORT_TABLE_CAPACITY
@@ -295,11 +306,18 @@ NativeCliImportSelectAliasTable
 	.res byte, constants.NATIVE_IMPORT_SELECT_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
 NativeCliImportSelectFlagsTable
 	.res word, constants.NATIVE_IMPORT_SELECT_CAPACITY
+NativeCliPreprocessImportBindingOwnerTable
+	.res word, constants.NATIVE_PREPROCESS_IMPORT_BINDING_CAPACITY
+NativeCliPreprocessImportBindingDefinitionTable
+	.res word, constants.NATIVE_PREPROCESS_IMPORT_BINDING_CAPACITY
+NativeCliPreprocessImportBindingNameTable
+	.res byte, constants.NATIVE_PREPROCESS_IMPORT_BINDING_CAPACITY * constants.NATIVE_PREPROCESS_IMPORT_BINDING_NAME_CAPACITY
 NativeCliModulePathTable
 	.res byte, constants.NATIVE_MODULE_PATH_CAPACITY * constants.PATH_BUFFER_CAPACITY
 NativeCliIncludePathTable
 	.res byte, constants.NATIVE_INCLUDE_PATH_CAPACITY * constants.PATH_BUFFER_CAPACITY
-nativeCliModuleUseStateEnd
+NATIVE_CLI_MODULE_USE_STATE_END
+NATIVE_CLI_MODULE_USE_STATE_BYTES = NATIVE_CLI_MODULE_USE_STATE_END - NativeCliModuleUseStateStart
 
 	.endsection
 

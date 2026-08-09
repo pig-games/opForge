@@ -8,6 +8,7 @@
 	.use opforge.cli.line_text
 	.use opforge.cli.preprocessor
 	.use opforge.cli.state
+	.use opforge.cli.module_use
 
 	.section code, kind=code
 	.pub
@@ -169,6 +170,8 @@ loop
 maybeDigit
 	cmpi.b #'_', d1
 	beq.s next
+	cmpi.b #'.', d1
+	beq.s next
 	cmpi.b #'0', d1
 	bcs.s done
 	cmpi.b #'9', d1
@@ -206,39 +209,26 @@ loop
 	lea state.NativeCliPreprocessDefinitionHeaderLen, a1
 	moveq #0, d5
 	move.w 0(a1, d6.l), d5
-	move.l d4, d0
-	cmp.l d5, d0
-	bhi.s next
-	moveq #0, d1
-compare
-	cmp.l d4, d1
-	beq.s matched
-	move.b 0(a0, d1.l), d2
-	move.b 0(a3, d1.l), d5
-	cmpi.b #'A', d2
-	bcs.s headerFolded
-	cmpi.b #'Z', d2
-	bhi.s headerFolded
-	addi.b #32, d2
-headerFolded
-	cmpi.b #'A', d5
-	bcs.s invocationFolded
-	cmpi.b #'Z', d5
-	bhi.s invocationFolded
-	addi.b #32, d5
-invocationFolded
-	cmp.b d5, d2
-	bne.s next
-	addq.l #1, d1
-	bra.s compare
-matched
-	move.b 0(a0, d4.l), d2
+	moveq #0, d6
+nameLen
+	cmp.l d5, d6
+	bcc.s next
+	move.b 0(a0, d6.l), d2
 	cmpi.b #' ', d2
-	beq.s yes
+	beq.s nameReady
 	cmpi.b #9, d2
-	beq.s yes
+	beq.s nameReady
 	cmpi.b #':', d2
-	beq.s yes
+	beq.s nameReady
+	addq.l #1, d6
+	bra.s nameLen
+nameReady
+	move.l d6, d0
+	movea.l a3, a1
+	move.l d4, d1
+	jsr module_use.opforgeNativeCliDefinitionInvocationNameMatchesV1
+	tst.l d0
+	bne.s yes
 next
 	addq.w #1, d7
 	bra.s loop

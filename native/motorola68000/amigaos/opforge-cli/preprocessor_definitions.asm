@@ -194,6 +194,20 @@ validated
 	move.w d0, state.NativeCliPreprocessActiveDefinition
 	lea state.NativeCliPreprocessDefinitionKind, a2
 	move.b d4, 0(a2, d0.w)
+	moveq #-1, d1
+	tst.w state.NativeCliModuleDepth
+	beq.s storeOwner
+	moveq #0, d1
+	move.w state.NativeCliCurrentModuleId, d1
+storeOwner
+	move.l d0, d2
+	add.l d2, d2
+	lea state.NativeCliPreprocessDefinitionOwner, a2
+	move.w d1, 0(a2, d2.l)
+	moveq #0, d1
+	move.w state.NativeCliPreprocessCurrentVisibility, d1
+	lea state.NativeCliPreprocessDefinitionVisibility, a2
+	move.b d1, 0(a2, d0.w)
 	addq.w #1, state.NativeCliPreprocessDefinitionCount
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	move.w ccr, -(sp)

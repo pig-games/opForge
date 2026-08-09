@@ -31,7 +31,7 @@ haveCpu
 opforgeNativeCliInitModuleUseState	.block
 	movem.l d0-d1/a0, -(sp)
 	lea state.NativeCliModuleUseStateStart, a0
-	move.l #constants.NATIVE_MODULE_USE_STATE_BYTES, d0
+	move.l #state.NATIVE_CLI_MODULE_USE_STATE_BYTES, d0
 	jsr copy.clearBytes
 	jsr preprocessor.opforgeNativeCliResetPreprocessorV1
 	jsr engine.resetStatementCollectionV1

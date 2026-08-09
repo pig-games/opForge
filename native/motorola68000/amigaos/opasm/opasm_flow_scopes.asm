@@ -5,7 +5,7 @@
 	.use opasm.amigaos.engine as eng
 
 OPASM_SCOPE_DEPTH_CAPACITY = 8
-OPASM_SCOPE_NAME_CAPACITY = 32
+OPASM_SCOPE_NAME_CAPACITY = 64
 OPASM_SCOPE_TEXT_CAPACITY = 64
 
 	.section code, kind=code
@@ -17,6 +17,8 @@ OPASM_SCOPE_TEXT_CAPACITY = 64
 ; CCR: reflects D0 on return.
 resetStateV1	.block
 	clr.w ScopeDepth
+	clr.w ModuleParentDepth.l
+	move.w #-1, ActiveModuleStatementIndex.l
 	moveq #0, d0
 	rts
 	.bend  ; resetStateV1
@@ -68,9 +70,58 @@ fail
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 beginModuleScopeV1	.block
+	move.w ScopeDepth, d0
+	beq.s begin
+	cmpi.w #1, d0
+	bne.s moduleFail
+	tst.w ModuleParentDepth.l
+	bne.s moduleFail
+	move.w ActiveModuleStatementIndex.l, d3
+	move.w d3, ParentModuleStatementIndex.l
+	move.w #1, ModuleParentDepth.l
+begin
 	clr.w ScopeDepth
+	move.w d7, ActiveModuleStatementIndex.l
 	bra.w beginNamespaceScopeV1
+moduleFail
+	moveq #1, d0
+	rts
 	.bend  ; beginModuleScopeV1
+
+; Close one module root and restore the importer module root when recursive
+; `.use` tokenization interleaved a dependency into the statement stream.
+; Inputs: D7.W = current statement index.
+; Outputs: D0 = status; D1 = 1; D2.W = next statement index.
+; Clobbers: D0-D3/A0-A1/CCR.
+; CCR: reflects D0 on return.
+endModuleScopeV1	.block
+	cmpi.w #1, ScopeDepth
+	bne.s moduleEndFail
+	move.w d7, -(sp)
+	clr.w ScopeDepth
+	tst.w ModuleParentDepth.l
+	beq.s moduleEndRoot
+	subq.w #1, ModuleParentDepth.l
+	move.w ParentModuleStatementIndex.l, d7
+	move.w d7, ActiveModuleStatementIndex.l
+	bsr.w pushFromStatementOperand
+	move.w (sp)+, d7
+	tst.l d0
+	bne.s moduleEndFail
+	bra.s moduleEndDone
+moduleEndRoot
+	move.w (sp)+, d7
+	move.w #-1, ActiveModuleStatementIndex.l
+moduleEndDone
+	move.w d7, d2
+	addq.w #1, d2
+	moveq #1, d1
+	moveq #0, d0
+	rts
+moduleEndFail
+	moveq #1, d0
+	rts
+	.bend  ; endModuleScopeV1
 
 ; Apply a scope close directive and skip it.
 ; Inputs: D7.W = current statement index.
@@ -188,7 +239,7 @@ activeLabelAliasV1	.block
 
 scopeLoop
 	move.l d6, d3
-	lsl.l #5, d3
+	lsl.l #6, d3
 	lea ScopeNames.l, a2
 	adda.l d3, a2
 
@@ -276,7 +327,7 @@ pushText	.block
 	cmpi.w #OPASM_SCOPE_DEPTH_CAPACITY, d2
 	bhs.s fail
 	move.l d2, d3
-	lsl.l #5, d3
+	lsl.l #6, d3
 	lea ScopeNames, a1
 	adda.l d3, a1
 	moveq #OPASM_SCOPE_NAME_CAPACITY - 1, d4
@@ -342,7 +393,7 @@ scopeLoop
 	cmp.w d2, d3
 	bhs.s rawName
 	move.l d3, d5
-	lsl.l #5, d5
+	lsl.l #6, d5
 	lea ScopeNames, a1
 	adda.l d5, a1
 	tst.b (a1)
@@ -417,11 +468,21 @@ done
 ScopeDepth
 	.res word, 1
 
+ModuleParentDepth
+	.res word, 1
+
+ActiveModuleStatementIndex
+	.res word, 1
+
 ScopeNames
 	.res byte, OPASM_SCOPE_DEPTH_CAPACITY * OPASM_SCOPE_NAME_CAPACITY
+
+ParentModuleStatementIndex
+	.res word, 1
 
 ScopeScratch
 	.res byte, OPASM_SCOPE_TEXT_CAPACITY
 
 	.endsection
+
 	.endmodule

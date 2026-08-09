@@ -10765,7 +10765,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "NATIVE_IMPORT_TABLE_CAPACITY",
         "NATIVE_MODULE_PATH_CAPACITY",
         "NATIVE_IMPORT_SELECT_CAPACITY",
-        "NATIVE_MODULE_USE_STATE_BYTES",
+        "NATIVE_CLI_MODULE_USE_STATE_BYTES",
         "PACKAGE_STORAGE_CAPACITY",
         "PRVM_ROUTE_FRAME_SIZE",
         "PRVM_STATUS_EXPR_REQUEST",
@@ -14815,9 +14815,10 @@ fn motorola68020_item11_native_use_module_recursion_preserves_root_reader() {
         &source_reader,
         &[
             "opforgeNativeCliTokenizePendingUseModule .BLOCK",
-            "MOVEM.L D5, -(SP)",
+            "MOVEM.L D5-D6, -(SP)",
             "BSR.W opforgeNativeCliTokenizeResolvedUseModule",
-            "MOVEM.L (SP)+, D5",
+            "JSR module_use.opforgeNativeCliBindImportDefinitionsV1",
+            "MOVEM.L (SP)+, D5-D6",
         ]
     ));
     assert!(source_contains_in_order(

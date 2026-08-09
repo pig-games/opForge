@@ -67,7 +67,8 @@ implementation readiness is established by separate follow-on planning.
 - Native 68000 implementation items must load `agents/rules/native-68000.md`
   and run the native formatter gate before completion.
 - FS-UAE-backed items must load `agents/rules/fs-uae.md` and use the one-shot
-  `cargo test` invocation style documented there.
+  known-good invocation (`opt-in-allowed`) style documented there; the explicit
+  opt-in is permitted only for these configured fail-closed Level D commands.
 - Native Rust-to-68000 parity items must load
   `agents/rules/native-rust-parity-porting.md`. When a parity failure is under
   investigation they must also load
@@ -1213,6 +1214,10 @@ landed” is not equivalent to “framework-closed.”
     - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
   - Plan-compliance review evidence:
     - `plan-compliance-reviewer` returns `PASS` for one module/macro/statement coverage shard, including complete staged file trees and no bundled native parity fix
+  - Discovery evidence and pause condition:
+    - the uncapped `native_reference_opcore_module_macro_statement_fs_uae` discovery run on 2026-08-09 attempted all 17 assigned roots, produced 7 passes and 10 fresh completed-guest failures, and classified those failures as `I7-D-01` through `I7-D-04`
+    - Item 7 remains paused until Items 7.8–7.11 are each committed and green; Item 8 must not begin while Item 7 is paused
+    - after Items 7.8–7.11, `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_reference_opcore_module_macro_statement_fs_uae -- --nocapture --test-threads=1` must attempt and pass all 17 assigned roots before this parent can close
   - Commit outcome:
     - assigned single- and multi-file module, macro, and statement cases compare only CLI-written native artifacts with Rust
   - Definition of done:
@@ -1332,6 +1337,45 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Validation evidence: six independent fail-closed FS-UAE roots complete and match their exact live Rust oracle bytes; wildcard-requested private macro, segment, and statement names resolve to later local shadows; the separately requested `mos_forward_ref_stability.asm` FS-UAE proof, staged native-porting gate, and full Rust quality gate pass.
   - Commit outcome: module macro and statement exports are injected according to native `.use` selection and visibility rules.
   - Definition of done: Item 7’s declared multi-file roots run through real native CLI usage; no generic CLI path gains CPU-specific semantics.
+
+- [ ] Item 7.8: accept directive-first native macro and segment definitions
+  - Source requirement or finding IDs: `I7-D-01`, parent Item 7 complete-corpus Level D failure for `macro_segment_syntax.asm`; the native preprocessor currently recognizes name-first definitions but lets `.macro FILL(value)` and `.segment INLINE(v)` reach tokenization. This item fully closes `I7-D-01`.
+  - Invariant: directive-first and name-first definition headers produce the same bounded native definition record and consume the complete definition before tokenizer/PRVM routing.
+  - Expected files: native preprocessor definition/header parsing only; focused Level A/C header model; exact `macro_segment_syntax.asm` Level D proof; one slice record; this plan’s checkbox/evidence only after closure.
+  - Full quality gates: live Rust directive-first oracle; focused native header-routing and bound tests; `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_macro_segment_directive_first_fs_uae -- --nocapture --test-threads=1`; native formatter; staged native-porting gate; full Rust quality gate; `make workflow-gate`.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for directive-first definition recognition only, with no module visibility, autoload, conditional, linker, output, or CPU behavior.
+  - Commit outcome: one independently revertible definition-header remediation commit.
+  - Definition of done: `macro_segment_syntax.asm` completes through the real native CLI and matches the exact same-case live Rust bytes; malformed directive-first headers fail deterministically without falling through.
+
+- [ ] Item 7.9: consume ordinary native module visibility directives
+  - Source requirement or finding IDs: `I7-D-02`, parent Item 7 complete-corpus Level D failures for `module_use.asm`, `module_use_include.asm`, `module_visibility.asm`, and `use_wildcard_import.asm`; native pass one currently reports `.pub/.priv` as unknown mnemonics outside preprocessor-export capture. This item fully closes `I7-D-02`.
+  - Activation dependency: Item 7.8 is committed and green.
+  - Invariant: `.pub` and `.priv` are consumed as module visibility state before ordinary statement dispatch, and visibility applies consistently to constants/labels and preprocessor exports without emitting bytes.
+  - Expected files: native module/use visibility owner and the narrow opasm/source-routing seam; focused Level A/C visibility model; exact affected-root Level D proof; one slice record; this plan’s checkbox/evidence only after closure.
+  - Full quality gates: live Rust public/private symbol oracle; focused native routing/state/reset tests including private non-leakage; `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_module_visibility_roots_fs_uae -- --nocapture --test-threads=1`; native formatter; staged native-porting gate; full Rust quality gate; `make workflow-gate`.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for ordinary module visibility directives only, with no autoload search, conditional, linker, output, or CPU behavior.
+  - Commit outcome: one independently revertible ordinary-visibility remediation commit.
+  - Definition of done: all four visibility-bearing Item 7 roots complete through the real native CLI and match their exact same-case live Rust bytes; private ordinary symbols cannot be imported by wildcard, selective, qualified, or aliased access.
+
+- [ ] Item 7.10: resolve native module declarations from configured module roots
+  - Source requirement or finding IDs: `I7-D-03`, parent Item 7 complete-corpus Level D failures for `macro_cross_module_ok.asm`, `module_use_autoload.asm`, `project_root/main.asm`, and `statement_cross_module_ok.asm`; each fresh guest run reports `OPC-NCLI018` for a module whose exact support file is present under a configured `-M` root. This item fully closes `I7-D-03`.
+  - Activation dependency: Item 7.9 is committed and green.
+  - Invariant: native `.use` resolution searches configured module roots deterministically for source files whose declared `.module` name matches the requested name, while preserving explicit root order, cycle handling, and bounded storage.
+  - Expected files: native CLI module resolver/source graph boundary only; focused Level A/C root-order and declaration-name model; exact four-root Level D proof; one slice record; this plan’s checkbox/evidence only after closure.
+  - Full quality gates: live Rust multi-root oracle; focused native search-order, missing-module, duplicate-name, and capacity tests; `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_module_autoload_roots_fs_uae -- --nocapture --test-threads=1`; native formatter; staged native-porting gate; full Rust quality gate; `make workflow-gate`.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for module-root declaration discovery only, with no visibility, conditional, linker, output, or CPU behavior.
+  - Commit outcome: one independently revertible module-resolution remediation commit.
+  - Definition of done: all four autoloaded/cross-file Item 7 roots resolve only their staged support trees and match exact same-case live Rust bytes; missing and ambiguous modules remain deterministic failures.
+
+- [ ] Item 7.11: consume native `.ifdef/.ifndef` conditionals before statement dispatch
+  - Source requirement or finding IDs: `I7-D-04`, parent Item 7 complete-corpus Level D failure for `preproc_syntax.asm`; native pass one currently reports `.ifdef` as an unknown mnemonic after include expansion. This item fully closes `I7-D-04`.
+  - Activation dependency: Item 7.10 is committed and green.
+  - Invariant: `.ifdef/.ifndef` select branches from the same command-line/preprocessor symbol environment as Rust, using the existing bounded conditional stack and never dispatching structural directives as ordinary statements.
+  - Expected files: native conditional/source-routing boundary only; focused Level A/C defined/undefined branch model; exact `preproc_syntax.asm` Level D proof; one slice record; this plan’s checkbox/evidence only after closure.
+  - Full quality gates: live Rust defined/undefined oracle; focused native nesting, else, mismatch, reset, and capacity tests; `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_preproc_ifdef_fs_uae -- --nocapture --test-threads=1`; native formatter; staged native-porting gate; full Rust quality gate; `make workflow-gate`.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for `.ifdef/.ifndef` selection only, with no module resolution, linker, output, or CPU behavior.
+  - Commit outcome: one independently revertible preprocessor-conditional remediation commit.
+  - Definition of done: `preproc_syntax.asm` and both defined/undefined focused variants complete through the real native CLI and match exact same-case live Rust bytes; malformed nesting fails deterministically.
 
 - [ ] Item 8: add the section, region, linker, and output opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for sections, segments, regions, maps, metadata, alignment, linker placement, and CLI-selected output artifacts

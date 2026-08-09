@@ -4,3 +4,6 @@ artifact: documentation/plans/opforge-native-cli-reference-parity-expansion-plan
 review-date: 2026-07-14
 reviewers: Plan Quality GPT-5.4; Plan Quality Claude Opus 4.6; Plan Quality Gemini 3.1 Pro
 summary: PASS after a three-reviewer adjudication of the Item 7 native-preprocessor expansion. The first review cycle found one scope/evidence conflict: Item 7.3 deferred `.segment` semantics but claimed canonical `macro_syntax.asm` completion. The plan now assigns a macro-only fixture to Item 7.3 and reserves canonical `macro_syntax.asm` for Item 7.4. All reviewers then passed source mapping, sequencing, validation, done criteria, and commit boundaries.
+amendment-review-date: 2026-08-09
+amendment-reviewer: plan-compliance-reviewer
+amendment-summary: PASS for Items 7.8-7.11 after the uncapped 17-root Item 7 Level D discovery. The amendment maps all 10 failures to four ordered one-invariant remediation commits with concrete fail-closed FS-UAE commands and full gates, keeps parent Item 7 paused, blocks Item 8, and requires an uncapped 17/17 rerun before parent closure.

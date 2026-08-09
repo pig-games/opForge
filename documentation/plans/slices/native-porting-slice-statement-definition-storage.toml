@@ -28,10 +28,10 @@ proves = "Rust consumes statement definitions and reports missing keyword, nesti
 does_not_prove = "Native storage or invocation behavior."
 
 [[tests]]
-name = "native_statement_definition_storage_is_bounded_and_not_invokable"
+name = "native_statement_definition_storage_is_bounded"
 proof_level = "C"
-proves = "The native record owns exact canonical signature/body bytes under the shared capacity and the transition model rejects all Item 7.5 structural failures while statement routing remains absent."
-does_not_prove = "Real statement matching, substitution, frontend re-entry, or emitted bytes."
+proves = "The native record owns exact canonical signature/body bytes under the shared capacity and the transition model rejects all Item 7.5 structural failures."
+does_not_prove = "Real statement matching, substitution, frontend re-entry, or emitted bytes; those are covered by the later Item 7.6 slice."
 
 [[tests]]
 name = "native_statement_definition_storage_fs_uae"

@@ -33,6 +33,7 @@
 	.use opforge.cli.preprocessor_expansion
 	.use opforge.cli.preprocessor_definitions
 	.use opforge.cli.preprocessor_invocation
+	.use opforge.cli.preprocessor_statement
 	.use opforge.cli.preprocessor_substitution
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opforge.debug.contracts as debug_contracts
@@ -52,6 +53,13 @@ opforgeNativeCliTokenizeCurrentLine	.block
 	rts
 
 preprocessPass
+	jsr preprocessor_statement.opforgeNativeCliParseStatementInvocationV1
+	tst.l d0
+	beq.s statementPass
+	bmi.w fail
+	bra.s invocationObserved
+
+statementPass
 	jsr preprocessor_invocation.opforgeNativeCliParseMacroInvocationV1
 	tst.l d0
 	beq.s invocationPass
@@ -558,6 +566,8 @@ opforgeNativeCliExpandActiveMacroV1	.block
 	lea state.NativeCliPreprocessDefinitionKind, a0
 	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT, 0(a0, d0.w)
 	beq.s bodyLoop
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT, 0(a0, d0.w)
+	beq.s bodyLoop
 	; Rust macro expansion wraps every `.macro` invocation in a lexical block.
 	; Process the generated start line before body substitution so a caller label
 	; belongs to this scope rather than to a rewritten body declaration.
@@ -592,7 +602,10 @@ bodyLoop
 	move.w state.NativeCliPreprocessInvocationDefinition, d2
 	lea state.NativeCliPreprocessDefinitionKind, a0
 	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT, 0(a0, d2.w)
+	beq.s attachInlineLabel
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT, 0(a0, d2.w)
 	bne.s processBodyLine
+attachInlineLabel
 	tst.w state.NativeCliPreprocessInvocationBodyIndex
 	bne.s processBodyLine
 	bsr.w attachSegmentInvocationLabel
@@ -603,13 +616,16 @@ processBodyLine
 	bsr.w opforgeNativeCliProcessExpandedLineV1
 	bne.w fail
 	addq.w #1, state.NativeCliPreprocessInvocationBodyIndex
-	bra.s bodyLoop
+	bra.w bodyLoop
 
 close
 	move.w state.NativeCliPreprocessInvocationDefinition, d0
 	lea state.NativeCliPreprocessDefinitionKind, a0
 	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT, 0(a0, d0.w)
+	beq.s closeInline
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT, 0(a0, d0.w)
 	bne.s closeMacro
+closeInline
 	tst.w state.NativeCliPreprocessInvocationBodyIndex
 	bne.s finish
 	tst.w state.NativeCliPreprocessInvocationLabelLen

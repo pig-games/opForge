@@ -1,0 +1,41 @@
+[slice]
+schema_version = 2
+name = "native statement invocation matching and expansion"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-asm/src/preprocess.rs::asm_expand_statement_invocation",
+  "crates/opforge-core/src/parser_statement_signature.rs::select_statement_signature",
+  "crates/opforge-core/src/parser_statement_signature.rs::match_statement_signature",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_statement.asm::opforgeNativeCliParseStatementInvocationV1",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_statement.asm::opforgeNativeCliFindStatementCaptureV1",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_substitution.asm::appendInvocationNamed",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliExpandActiveMacroV1",
+]
+invariant = "The longest matching stored statement keyword is selected, its quoted literals, adjacent boundaries, typed captures, and significant signature whitespace are matched without shifting input, named captures bind to bounded positional slots, and each substituted body line re-enters the ordinary native frontend without macro scope wrapping."
+assertion_decision = "No new runtime assertion: every matcher write is capacity-checked, unsupported or ambiguous signatures fail deterministically, the independent Rust/source model locks the selection and whitespace invariant, and the real guest proves fresh exact bytes."
+expected_inputs = "Stored statement definitions and invocations covering LOAD, bracketed lda, move.b/move.l adjacent captures, addi.l literals, optional inter-atom whitespace, labels, and scalar constants."
+expected_outputs = "Ordinary expanded native source statements whose fresh CLI-written binary is byte-for-byte equal to the live Rust assembly of the identical case."
+known_non_equivalences = "Preprocessor export visibility and cross-module injection remain Item 7.7."
+fast_proof_command = "cargo test -p asm native_statement_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_statement_expansion_fs_uae -- --nocapture"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_statement_expansion_source_model_matches_rust_and_bounds"
+proof_level = "C"
+proves = "Live Rust longest-keyword/whitespace expansion and the native bounded selection, literal, boundary, typed-capture, named-substitution, scalar-normalization, and frontend re-entry source contract."
+does_not_prove = "Real 68020 execution or emitted artifact parity."
+
+[[tests]]
+name = "native_statement_capture_type_model_matches_rust_ranges_and_tokens"
+proof_level = "C"
+proves = "Live Rust and the native matcher agree on byte/word/long signed and unsigned ranges, case-insensitive capture types, identifier/register acceptance including dollar continuations and trailing prime, char width, escaped quoted byte width, string token kind, and overflow rejection before overload scoring."
+does_not_prove = "Real 68020 execution or emitted artifact parity."
+
+[[tests]]
+name = "native_statement_expansion_fs_uae"
+proof_level = "D"
+proves = "All focused statement forms and the complete canonical statement_expansion.asm run independently through the real native CLI and emit fresh artifacts exactly equal to same-case live Rust bytes."
+does_not_prove = "Cross-module statement export visibility, which remains Item 7.7."

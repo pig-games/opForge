@@ -1318,7 +1318,7 @@ fn native_preprocessor_structural_definition_record_stores_all_kinds() {
         &[
             "Shared structural-definition record contract (macro, segment, and statement)",
             "DefinitionHeader is the captured name/signature",
-            "DefinitionKind selects macro scope wrapping or segment\n; inline expansion",
+            "DefinitionKind selects macro scope wrapping or inline\n; segment/statement expansion",
             "NativeCliPreprocessDefinitionKind",
             "NativeCliPreprocessDefinitionBodyCount",
             "NativeCliPreprocessDefinitionHeaderLen",
@@ -1399,15 +1399,17 @@ fn native_segment_expansion_source_model_matches_rust_scope_and_label_rules() {
         &[
             "NativeCliPreprocessDefinitionKind",
             "NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT",
-            "beq.s bodyLoop",
+            "beq.s attachInlineLabel",
+            "NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT",
             "attachSegmentInvocationLabel",
             "close",
             "NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT",
-            "beq.s finish",
+            "beq.s closeInline",
+            "NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT",
+            "closeInline",
         ]
     ));
     assert!(definitions.contains("NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT"));
-    assert!(!line_processor.contains("NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT"));
 }
 
 #[test]
@@ -1462,10 +1464,10 @@ fn native_statement_definition_rust_oracle_consumes_bodies_and_rejects_structure
 }
 
 #[test]
-fn native_statement_definition_storage_is_bounded_and_not_invokable() {
+fn native_statement_definition_storage_is_bounded() {
     // Proof levels B/C. The native record retains exact statement header and
-    // body bytes under the shared definition capacity, but no statement kind
-    // reaches invocation parsing or expansion in Item 7.5.
+    // body bytes under the shared definition capacity. Invocation behavior is
+    // proved separately by the Item 7.6 model and real-guest tests.
     let root = workspace_root();
     let constants =
         fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/constants.asm"))
@@ -1524,7 +1526,8 @@ fn native_statement_definition_storage_is_bounded_and_not_invokable() {
         ]
     ));
     assert!(!invocation.contains("NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT"));
-    assert!(!line_processor.contains("NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT"));
+    assert!(line_processor
+        .contains("preprocessor_statement.opforgeNativeCliParseStatementInvocationV1"));
 
     let capacity = 8usize;
     let canonical = fs::read_to_string(root.join("examples/opcore/statement_expansion.asm"))
@@ -1646,6 +1649,326 @@ fn native_statement_definition_storage_is_bounded_and_not_invokable() {
             "statement transition matrix: {expected}"
         );
     }
+}
+
+#[test]
+fn native_statement_expansion_source_model_matches_rust_and_bounds() {
+    // Proof levels A/C. Rust establishes longest-keyword and whitespace-aware
+    // statement expansion. The native source contract locks the same bounded
+    // selection, capture, substitution, and ordinary-frontend re-entry path.
+    // Real 68020 execution and emitted bytes are proved separately at Level D.
+    let expanded = crate::preprocess::AsmMacroProcessor::new(64)
+        .expand(&[
+            ".statement move char:value".to_string(),
+            "    .byte 1".to_string(),
+            ".endstatement".to_string(),
+            ".statement move.l char:dst[{byte:dstnum}] \",\" char:src[{byte:srcnum}]".to_string(),
+            "    .byte 'l'".to_string(),
+            "    .byte '.dst', .dstnum".to_string(),
+            "    .byte '.src', .srcnum".to_string(),
+            ".endstatement".to_string(),
+            "    move.l d0, d2".to_string(),
+        ])
+        .expect("Rust longest statement keyword and whitespace matching");
+    assert_eq!(
+        expanded,
+        ["    .byte 'l'", "    .byte 'd', 0", "    .byte 'd', 2",]
+    );
+
+    let root = workspace_root();
+    let statement = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_statement.asm"),
+    )
+    .expect("read statement matcher");
+    let substitution = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_substitution.asm"),
+    )
+    .expect("read statement substitution route");
+    let line_processor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read statement expansion route");
+
+    assert!(source_contains_in_order(
+        &statement,
+        &[
+            "keywordLoop",
+            "StatementBestKeywordLen",
+            "matchLoop",
+            "matchLoadedStatement",
+            "StatementBestLiteralScore",
+            "StatementBestAtomScore",
+            "opforgeNativeCliBeginMacroInvocationFrameV1",
+            "matchLoadedStatement",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &statement,
+        &[
+            "matchLoadedStatement\t.block",
+            "matchQuotedLiteral",
+            "boundary",
+            "captureAtom",
+            "validateCaptureType",
+            "NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &statement,
+        &[
+            "skipSignatureWhitespace\t.block",
+            "moveq #0, d0",
+            "scan",
+            "moveq #1, d0",
+            "bra.s scan",
+        ]
+    ));
+    for capture_type in ["byteType", "wordType", "longType", "charType", "strType"] {
+        assert!(
+            statement.contains(capture_type),
+            "missing bounded type {capture_type}"
+        );
+    }
+    assert!(source_contains_in_order(
+        &substitution,
+        &[
+            "NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT",
+            "findStatementCapture",
+            "opforgeNativeCliFindStatementCaptureV1",
+            "appendInvocationPositional",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "opforgeNativeCliParseStatementInvocationV1",
+            "invocationObserved",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "opforgeNativeCliProcessExpandedLineV1\t.block",
+            "opforgeNativeCliTokenizeCurrentLine",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "opforgeNativeCliExpandActiveMacroV1",
+            "NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT",
+            "opforgeNativeCliProcessExpandedLineV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &statement,
+        &[
+            "normalizeScalarAssignment\t.block",
+            "checkSequence",
+            "cmpi.b #'{', (a1)",
+            "SOURCE_LINE_BUFFER_CAPACITY",
+            "writeDirective",
+        ]
+    ));
+}
+
+#[test]
+fn native_statement_capture_type_model_matches_rust_ranges_and_tokens() {
+    // Proof levels A/C. Rust establishes capture token/range behavior and the
+    // native source contract implements the same checks before a signature can
+    // participate in overload scoring. Real guest execution is Level D.
+    fn expand(lines: &[&str]) -> Vec<String> {
+        crate::preprocess::AsmMacroProcessor::new(64)
+            .expand(
+                &lines
+                    .iter()
+                    .map(|line| (*line).to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .expect("Rust capture-type model")
+    }
+
+    assert_eq!(
+        expand(&[
+            ".statement SIZE byte:v",
+            " .byte 1",
+            ".endstatement",
+            ".statement SIZE word:v",
+            " .byte 2",
+            ".endstatement",
+            " SIZE 256",
+        ]),
+        [" .byte 2"]
+    );
+    assert_eq!(
+        expand(&[
+            ".statement BYTEONLY byte:v",
+            " .byte 1",
+            ".endstatement",
+            " BYTEONLY 256",
+        ]),
+        [" BYTEONLY 256"]
+    );
+    assert_eq!(
+        expand(&[
+            ".statement CHAR char:v",
+            " .byte '.v'",
+            ".endstatement",
+            " CHAR d",
+            " CHAR d0",
+        ]),
+        [" .byte 'd'", " CHAR d0"]
+    );
+    assert_eq!(
+        expand(&[
+            ".statement TEXT str:v",
+            " .byte 1",
+            ".endstatement",
+            " TEXT name",
+            " TEXT \"name\"",
+        ]),
+        [" TEXT name", " .byte 1"]
+    );
+    assert_eq!(
+        expand(&[
+            ".statement LONG long:v",
+            " .long .v",
+            ".endstatement",
+            " LONG label",
+            " LONG $100000000",
+        ]),
+        [" .long label", " LONG $100000000"]
+    );
+    assert_eq!(
+        expand(&[
+            ".statement ESCBYTE ByTe:v",
+            " .byte 1",
+            ".endstatement",
+            ".statement ESCCHAR cHaR:v",
+            " .byte 2",
+            ".endstatement",
+            " ESCBYTE \"\\x41\"",
+            " ESCCHAR '\\x41'",
+        ]),
+        [" .byte 1", " .byte 2"]
+    );
+    assert_eq!(
+        expand(&[
+            ".statement IDENT LoNg:v",
+            " .byte 1",
+            ".endstatement",
+            " IDENT name$part",
+            " IDENT af'",
+        ]),
+        [" .byte 1", " .byte 1"]
+    );
+    assert_eq!(
+        expand(&[
+            ".statement BYTEESC byte:v",
+            " .byte 1",
+            ".endstatement",
+            ".statement CHARESC char:v",
+            " .byte 2",
+            ".endstatement",
+            " BYTEESC \"\\x41A\"",
+            " CHARESC '\\x41A'",
+            " BYTEESC \"\\X41\"",
+        ]),
+        [
+            " BYTEESC \"\\x41A\"",
+            " CHARESC '\\x41A'",
+            " BYTEESC \"\\X41\"",
+        ]
+    );
+    let malformed_hex = crate::preprocess::AsmMacroProcessor::new(64)
+        .expand(&[
+            ".statement BYTEESC byte:v".to_string(),
+            " .byte 1".to_string(),
+            ".endstatement".to_string(),
+            " BYTEESC \"\\x4G\"".to_string(),
+        ])
+        .expect_err("Rust rejects malformed hex string escapes");
+    assert!(malformed_hex.message().contains("Bad hex escape"));
+    let malformed_str_hex = crate::preprocess::AsmMacroProcessor::new(64)
+        .expand(&[
+            ".statement TEXT str:v".to_string(),
+            " .byte 1".to_string(),
+            ".endstatement".to_string(),
+            " TEXT \"\\x4G\"".to_string(),
+        ])
+        .expect_err("Rust rejects malformed hex escapes before str matching");
+    assert!(malformed_str_hex.message().contains("Bad hex escape"));
+
+    let root = workspace_root();
+    let statement = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_statement.asm"),
+    )
+    .expect("read native statement capture matcher");
+    assert!(source_contains_in_order(
+        &statement,
+        &[
+            "captureAtom\t.block",
+            "validateCaptureType",
+            "validateCapturedValue",
+            "store",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &statement,
+        &[
+            "strValue",
+            "validateString",
+            "countQuotedValueBytes",
+            "bne.w fail",
+            "bra.w success",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &statement,
+        &[
+            "countQuotedValueBytes\t.block",
+            "cmpi.b #'x', d1",
+            "move.l d0, -(sp)",
+            "isHexDigitByte",
+            "move.b 2(a1, d0.l), d1",
+            "isHexDigitByte",
+            "addq.l #3, d0",
+        ]
+    ));
+    assert!(statement.contains("cmpi.b #'$', d0"));
+    assert!(statement.contains("cmpi.b #'\\'', d0"));
+    for folded_type_byte in ["move.b 1(a2), d0", "move.b 2(a2), d0", "move.b 3(a2), d0"] {
+        assert!(statement.contains(folded_type_byte));
+    }
+    assert!(source_contains_in_order(
+        &statement,
+        &[
+            "validateCapturedValue\t.block",
+            "parseCapturedNumber",
+            "validateIdentifierToken",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &statement,
+        &[
+            "positiveByte",
+            "cmpi.l #$000000ff, d3",
+            "negativeByte",
+            "cmpi.l #$00000080, d3",
+        ]
+    ));
+    assert!(statement.contains("cmpi.l #$0000ffff, d3"));
+    assert!(statement.contains("cmpi.l #$00008000, d3"));
+    assert!(statement.contains("cmpi.l #$80000000, d3"));
+    assert!(source_contains_in_order(
+        &statement,
+        &[
+            "charValue",
+            "countQuotedValueBytes",
+            "strValue",
+            "validateIdentifierToken",
+        ]
+    ));
 }
 
 #[test]
@@ -5671,6 +5994,115 @@ fn native_statement_definition_storage_fs_uae() {
             );
             let native = verified_fs_uae_output(run);
             assert_eq!(native, rust, "native statement storage bytes differ");
+        }
+    }
+}
+
+#[test]
+fn native_statement_expansion_fs_uae() {
+    // Proof level D. The exact canonical statement source is assembled by the
+    // live Rust authority and by the real native CLI; fresh bytes must match.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock is infallible");
+    let root = workspace_root();
+    let path = root.join("examples/opcore/statement_expansion.asm");
+    let canonical = fs::read(&path).expect("read canonical statement expansion source");
+    let sources = vec![
+        (
+            "statement-load",
+            b".org $2000\n.statement LOAD byte:val\n .byte .val\n.endstatement\n LOAD 7\n .end\n"
+                .to_vec(),
+        ),
+        (
+            "statement-lda-boundary",
+            b".org $2000\n.statement lda \"[\"[{byte:val}]\"],y\"\n .byte .val\n.endstatement\n lda [$05],y\n .end\n"
+                .to_vec(),
+        ),
+        (
+            "statement-move-byte",
+            b".org $2000\n.statement move.b char:dst[{byte:dstnum}] \",\" char:src[{byte:srcnum}]\n .byte '.dst', .dstnum, '.src', .srcnum\n.endstatement\n move.b d0,d2\n .end\n"
+                .to_vec(),
+        ),
+        (
+            "statement-addi-long",
+            b".org $2000\n.statement addi.l \"#\"[{long:dst}] \",\" char:src[{byte:srcnum}]\n .long .dst\n .byte '.src', .srcnum\n.endstatement\n addi.l #$12345678,d0\n .end\n"
+                .to_vec(),
+        ),
+        (
+            "statement-width-overload",
+            b".org $2000\n.statement SIZE byte:val\n .byte 1\n.endstatement\n.statement SIZE word:val\n .word .val\n.endstatement\n SIZE 256\n .end\n"
+                .to_vec(),
+        ),
+        (
+            "statement-string-token",
+            b".org $2000\n.statement TEXT str:val\n .byte 3\n.endstatement\n TEXT \"abc\"\n .end\n"
+                .to_vec(),
+        ),
+        (
+            "statement-capture-token-edges",
+            b".org $2000\n.statement ESCBYTE ByTe:val\n .byte 1\n.endstatement\n.statement ESCCHAR cHaR:val\n .byte 2\n.endstatement\n.statement IDENT LoNg:val\n .byte 3\n.endstatement\n ESCBYTE \"\\x41\"\n ESCCHAR '\\x41'\n IDENT name$part\n IDENT af'\n .end\n"
+                .to_vec(),
+        ),
+        ("statement-canonical", canonical),
+    ];
+    let rust_bins = sources
+        .iter()
+        .map(|(name, source)| {
+            let source_lines = std::str::from_utf8(source)
+                .expect("statement source UTF-8")
+                .lines()
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            let mut processor = crate::preprocess::AsmMacroProcessor::new(64);
+            let mut rust_lines = vec![".cpu 65c02".to_string()];
+            rust_lines.extend(
+                processor
+                    .expand(&source_lines)
+                    .unwrap_or_else(|err| panic!("expand Rust authority {name}: {err:?}")),
+            );
+            let refs = rust_lines.iter().map(String::as_str).collect::<Vec<_>>();
+            let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&refs, true)
+                .unwrap_or_else(|err| panic!("assemble Rust authority {name}: {err}"));
+            assert!(
+                diagnostics.is_empty(),
+                "Rust diagnostics for {name}: {diagnostics:?}"
+            );
+            entries
+                .into_iter()
+                .map(|(_, byte)| byte)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let cases = sources
+        .iter()
+        .zip(rust_bins.iter())
+        .map(
+            |((name, source), rust)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+                name,
+                cpu_id: "65c02",
+                source: source.as_slice(),
+                package_bytes: package.as_slice(),
+                proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(rust),
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
+        .expect("statement expansion FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                cases.len(),
+                "expected every statement expansion run"
+            );
+            for ((run, (name, _)), rust) in runs.iter().zip(sources.iter()).zip(rust_bins) {
+                assert!(run.success, "native {name} failed: {}", run.stdout);
+                let native = verified_fs_uae_output(run);
+                assert_eq!(native, rust, "native statement bytes differ for {name}");
+            }
         }
     }
 }

@@ -95,8 +95,8 @@ NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY
 ; Expansion depth, saved-line length, definition/invocation state, and the
 ; full set of length/count tables occupy 36 scalar bytes before their arrays.
 NATIVE_PREPROCESS_STATE_FIXED_BYTES = 36
-; Structural-definition record kinds. Only MACRO is routable in this slice;
-; SEGMENT and STATEMENT remain inert layout values until separate vertical slices.
+; Structural-definition record kinds. MACRO expands with lexical scope;
+; SEGMENT and STATEMENT expand inline through their dedicated matchers.
 NATIVE_PREPROCESS_DEFINITION_KIND_MACRO = 0
 NATIVE_PREPROCESS_DEFINITION_KIND_SEGMENT = 1
 NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT = 2

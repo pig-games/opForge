@@ -1316,7 +1316,7 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: `.statement/.endstatement` definitions are consumed before PRVM and retain literal/boundary/capture signature data.
   - Definition of done: no invocation matching yet; malformed, nested, mismatched, unterminated, and capacity cases are deterministic.
 
-- [ ] Item 7.6: match and expand native statement invocations
+- [x] Item 7.6: match and expand native statement invocations
   - Source requirement or finding IDs: canonical LOAD, bracketed lda, move, and addi statement forms; Rust `asm_expand_statement_invocation`.
   - Expected files: native preprocessor/statement matcher/routing; focused tests; one slice record.
   - Full quality gates: Level A live Rust statement artifact oracle; Level C signature/capture model; exact Level D statement FS-UAE proof; native formatter; staged native-porting gate; full Rust quality gate.

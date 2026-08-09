@@ -6,6 +6,7 @@
 	.use opforge.cli.constants
 	.use opforge.cli.state
 	.use opforge.cli.line_text
+	.use opforge.cli.preprocessor_statement
 
 	.section code, kind=code
 	.pub
@@ -312,6 +313,8 @@ appendInvocationNamed	.block
 	lea state.NativeCliPreprocessDefinitionKind, a2
 	moveq #0, d1
 	move.b 0(a2, d2.w), d1
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT, d1
+	beq.w findStatementCapture
 findDefinition
 	tst.l d6
 	bne.s namedHeaderRemaining
@@ -403,19 +406,31 @@ found
 	bra.w appendInvocationPositional
 skip
 	tst.l d6
-	beq.s fail
+	beq.w fail
 skipToComma
 	tst.l d6
-	beq.s fail
+	beq.w fail
 	move.b (a0), d4
 	addq.l #1, a0
 	subq.l #1, d6
 	cmpi.b #',', d4
-	bne.s skipToComma
+	bne.w skipToComma
 	addq.l #1, d2
 	cmpi.w #constants.NATIVE_PREPROCESS_MACRO_ARG_CAPACITY, d2
-	bcc.s fail
+	bcc.w fail
 	bra.w params
+findStatementCapture
+	movea.l a3, a0
+	move.l d7, d0
+	move.l d5, -(sp)
+	move.l a1, -(sp)
+	jsr preprocessor_statement.opforgeNativeCliFindStatementCaptureV1
+	movea.l (sp)+, a1
+	move.l (sp)+, d5
+	tst.l d0
+	bmi.w fail
+	move.b d0, d4
+	bra.w appendInvocationPositional
 fail
 	moveq #-1, d0
 	rts

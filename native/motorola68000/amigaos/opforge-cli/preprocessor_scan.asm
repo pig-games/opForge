@@ -70,19 +70,26 @@ no
 	rts
 	.bend  ; lineStartsWithEndmacroDirective
 
-; Require the first non-whitespace token of a macro header to be a name.
-; Inputs: A0 = line bytes; D0 = line length.
-; Outputs: D0 = 1 when a non-directive name token begins the header, else 0.
-; Clobbers: D0/CCR.
+; Accept either a name-first header or the exact expected directive-first
+; header.  A stray dot-prefixed token must not be captured merely because a
+; macro/segment directive occurs later in the line.
+; Inputs: A0/D0 = line slice; A1/D1 = expected directive bytes/length.
+; Outputs: D0 = 1 when a name or the expected directive begins the header.
+; Clobbers: D0-D4/A0/A2-A3/CCR.
 ; CCR: reflects D0 on return.
 macroHeaderHasName	.block
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
 	beq.s no
 	cmpi.b #'.', (a0)
-	beq.s no
+	beq.s directive
 	cmpi.b #';', (a0)
 	beq.s no
+yes
 	moveq #1, d0
+	rts
+
+directive
+	jsr line_text.opforgeNativeCliLineStartsWith
 	rts
 
 no

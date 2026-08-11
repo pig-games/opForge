@@ -172,6 +172,8 @@ maybeDigit
 	beq.s next
 	cmpi.b #'.', d1
 	beq.s next
+	cmpi.b #'$', d1
+	beq.s next
 	cmpi.b #'0', d1
 	bcs.s done
 	cmpi.b #'9', d1
@@ -258,6 +260,7 @@ parseInvocationArguments	.block
 list
 	moveq #0, d7
 	bsr.w splitInvocationArgumentList
+	tst.l d1
 	bne.s fail
 	bra.s bind
 paren
@@ -265,6 +268,7 @@ paren
 	subq.l #1, d0
 	moveq #1, d7
 	bsr.w splitInvocationArgumentList
+	tst.l d1
 	bne.s fail
 	cmpi.b #')', (a0)
 	bne.s fail
@@ -275,6 +279,8 @@ paren
 bind
 	bsr.w bindMacroParameterDefaults
 	bne.s fail
+	bsr.w refreshInvocationArgumentLengths
+	bne.s fail
 	moveq #0, d0
 	rts
 empty
@@ -282,6 +288,8 @@ empty
 	clr.w state.NativeCliPreprocessInvocationFullArgsLen
 	clr.b state.NativeCliPreprocessInvocationFullArgs
 	bsr.w bindMacroParameterDefaults
+	bne.s fail
+	bsr.w refreshInvocationArgumentLengths
 	bne.s fail
 	moveq #0, d0
 	rts
@@ -293,7 +301,7 @@ fail
 ; Split a macro argument list while preserving quoted and nested commas.
 ; Inputs: A0 = first argument byte; D0 = remaining bytes; D7 = 1 for a
 ; parenthesized list, 0 for a line-rest list.
-; Outputs: A0/D0 stop at the closing ')' or end; D0 = 0 on success, 1 on failure.
+; Outputs: A0/D0 stop at the closing ')' or end; D1 = 0 success/1 failure.
 ; Clobbers: D0-D7/A0-A2/CCR.
 splitInvocationArgumentList	.block
 	lea state.NativeCliPreprocessInvocationArgs, a1
@@ -346,8 +354,11 @@ hasArguments
 	bne.s splitHasArgumentValue
 	bra.w fail
 splitHasArgumentValue
+	move.l d0, -(sp)
 	bsr.w finishInvocationArgument
-	tst.l d0
+	move.l d0, d3
+	move.l (sp)+, d0
+	tst.l d3
 	beq.s splitArgumentCommitted
 	bra.w fail
 splitArgumentCommitted
@@ -357,14 +368,17 @@ closeEmpty
 	bne.s finishClose
 	bra.s close
 finishClose
+	move.l d0, -(sp)
 	bsr.w finishInvocationArgument
-	tst.l d0
+	move.l d0, d3
+	move.l (sp)+, d0
+	tst.l d3
 	beq.s close
 	bra.w fail
 close
 	clr.b 0(a2, d2.l)
 	move.w d2, state.NativeCliPreprocessInvocationFullArgsLen
-	moveq #0, d0
+	moveq #0, d1
 	rts
 
 structural
@@ -494,10 +508,10 @@ finishCurrent
 emptyList
 	clr.b 0(a2, d2.l)
 	move.w d2, state.NativeCliPreprocessInvocationFullArgsLen
-	moveq #0, d0
+	moveq #0, d1
 	rts
 fail
-	moveq #1, d0
+	moveq #1, d1
 	rts
 	.bend  ; splitInvocationArgumentList
 
@@ -532,6 +546,54 @@ fail
 	movem.l (sp)+, d2/a0/a2
 	rts
 	.bend  ; finishInvocationArgument
+
+; Reconcile the bounded argument-length table with its owned NUL-terminated
+; text slots before defaults or substitution can consume the frame.
+; Inputs: invocation argument count and slots in state.
+; Outputs: D0 = 0 success/1 malformed, empty, or unterminated slot.
+; Clobbers: D0-D5/A0-A1/CCR.
+refreshInvocationArgumentLengths	.block
+	moveq #0, d1
+	move.w state.NativeCliPreprocessInvocationArgCount, d1
+	cmpi.w #constants.NATIVE_PREPROCESS_MACRO_ARG_CAPACITY, d1
+	bhi.s fail
+	moveq #0, d2
+
+slotLoop
+	cmp.w d1, d2
+	bcc.s success
+	move.l d2, d3
+	mulu #constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY, d3
+	lea state.NativeCliPreprocessInvocationArgs, a0
+	adda.l d3, a0
+	moveq #0, d4
+
+byteLoop
+	cmpi.l #constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY - 1, d4
+	bcc.s fail
+	tst.b 0(a0, d4.l)
+	beq.s storeLength
+	addq.l #1, d4
+	bra.s byteLoop
+
+storeLength
+	tst.l d4
+	beq.s fail
+	move.l d2, d5
+	add.l d5, d5
+	lea state.NativeCliPreprocessInvocationArgLen, a1
+	adda.l d5, a1
+	move.w d4, (a1)
+	addq.w #1, d2
+	bra.s slotLoop
+
+success
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; refreshInvocationArgumentLengths
 
 ; Remove leading/trailing spaces and tabs from one in-place argument buffer.
 ; Inputs: A1 = buffer; D1 = raw byte length.

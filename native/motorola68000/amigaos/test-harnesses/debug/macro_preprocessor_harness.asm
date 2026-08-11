@@ -8,6 +8,7 @@
 	.use opforge.cli.constants
 	.use opforge.cli.line_processor
 	.use opforge.cli.preprocessor
+	.use opforge.cli.preprocessor_definitions
 	.use opforge.cli.preprocessor_substitution
 	.use opforge.cli.preprocessor_invocation
 	.use opforge.cli.state
@@ -17,6 +18,80 @@ HARNESS_FAIL = 20
 	.pub
 
 start	.block
+	jsr preprocessor.opforgeNativeCliResetPreprocessorV1
+	lea WrongDirectiveFirstHeaderText.l, a1
+	lea state.NativeCliSourceLine, a2
+	moveq #16, d0
+	jsr copy.copyBytes
+	move.w #16, state.NativeCliSourceLineLen
+	jsr preprocessor_definitions.opforgeNativeCliCaptureMacroDefinitionLineV1
+	cmpi.l #-1, d0
+	bne.w wrongDirectiveFirstHeaderFail
+	tst.w state.NativeCliPreprocessDefinitionCount
+	bne.w wrongDirectiveFirstHeaderFail
+	lea DirectiveFirstHeaderText.l, a1
+	lea state.NativeCliSourceLine, a2
+	moveq #24, d0
+	jsr copy.copyBytes
+	move.w #24, state.NativeCliSourceLineLen
+	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
+	bne.w directiveFirstHeaderFail
+	cmpi.w #1, state.NativeCliPreprocessDefinitionCount
+	bne.w directiveFirstHeaderFail
+	cmpi.w #23, state.NativeCliPreprocessDefinitionHeaderLen
+	bne.w directiveFirstHeaderLengthFail
+	lea DirectiveFirstCanonicalHeaderText.l, a1
+	lea state.NativeCliPreprocessDefinitionHeader, a2
+	moveq #23, d0
+verifyDirectiveFirstHeaderLoop
+	move.b (a1)+, d2
+	cmp.b (a2)+, d2
+	bne.w directiveFirstHeaderTextFail
+	subq.l #1, d0
+	bne.s verifyDirectiveFirstHeaderLoop
+	lea DirectiveFirstBodyText.l, a1
+	lea state.NativeCliSourceLine, a2
+	moveq #20, d0
+	jsr copy.copyBytes
+	move.w #20, state.NativeCliSourceLineLen
+	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
+	bne.w directiveFirstBodyFail
+	lea EndmacroText.l, a1
+	lea state.NativeCliSourceLine, a2
+	moveq #9, d0
+	jsr copy.copyBytes
+	move.w #9, state.NativeCliSourceLineLen
+	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
+	bne.w directiveFirstCloseFail
+	lea DirectiveFirstInvocationText.l, a1
+	lea state.NativeCliSourceLine, a2
+	moveq #15, d0
+	jsr copy.copyBytes
+	move.w #15, state.NativeCliSourceLineLen
+	jsr preprocessor_invocation.opforgeNativeCliParseMacroInvocationV1
+	cmpi.l #1, d0
+	bne.w directiveFirstInvocationFail
+	tst.w state.NativeCliPreprocessInvocationDefinition
+	bne.w directiveFirstInvocationFail
+	cmpi.w #1, state.NativeCliPreprocessInvocationArgCount
+	bne.w directiveFirstArgumentCountFail
+	cmpi.w #1, state.NativeCliPreprocessInvocationArgLen
+	bne.w directiveFirstArgumentLengthFail
+	moveq #0, d0
+	jsr preprocessor_substitution.opforgeNativeCliSubstituteMacroBodyLineV1
+	bne.w directiveFirstSubstitutionFail
+	cmpi.l #15, d1
+	bne.w directiveFirstSubstitutionLengthFail
+	lea DirectiveFirstExpandedText.l, a1
+	lea state.NativeCliPreprocessExpansionLine, a2
+	moveq #15, d0
+verifyDirectiveFirstExpansionLoop
+	move.b (a1)+, d2
+	cmp.b (a2)+, d2
+	bne.w directiveFirstSubstitutionTextFail
+	subq.l #1, d0
+	bne.s verifyDirectiveFirstExpansionLoop
+
 	jsr preprocessor.opforgeNativeCliResetPreprocessorV1
 	lea HeaderText.l, a1
 	lea state.NativeCliSourceLine, a2
@@ -400,6 +475,48 @@ pairSubstitutionTextFail
 	addi.l #100, d1
 	move.l d1, d0
 	rts
+directiveFirstHeaderFail
+	moveq #66, d0
+	rts
+wrongDirectiveFirstHeaderFail
+	moveq #65, d0
+	rts
+directiveFirstHeaderLengthFail
+	moveq #67, d0
+	rts
+directiveFirstHeaderTextFail
+	moveq #68, d0
+	rts
+directiveFirstBodyFail
+	moveq #69, d0
+	rts
+directiveFirstCloseFail
+	moveq #70, d0
+	rts
+directiveFirstInvocationFail
+	moveq #71, d0
+	rts
+directiveFirstArgumentCountFail
+	moveq #72, d0
+	rts
+directiveFirstArgumentLengthFail
+	moveq #0, d0
+	move.w state.NativeCliPreprocessInvocationArgLen, d0
+	addi.l #100, d0
+	rts
+directiveFirstSubstitutionFail
+	moveq #73, d0
+	rts
+directiveFirstSubstitutionLengthFail
+	move.l d1, d0
+	addi.l #74, d0
+	rts
+directiveFirstSubstitutionTextFail
+	moveq #15, d1
+	sub.l d0, d1
+	addi.l #90, d1
+	move.l d1, d0
+	rts
 	.bend  ; start
 	.endsection
 	.section data, kind=data
@@ -437,6 +554,18 @@ ExpandedCopyText
 	.byte "        lda $12"
 ExpandedPairText
 	.byte "        .byte 1, 2"
+DirectiveFirstHeaderText
+	.byte ".macro FILL.PART$(value)"
+DirectiveFirstCanonicalHeaderText
+	.byte "FILL.PART$ .macro value"
+DirectiveFirstBodyText
+	.byte "        .byte .value"
+DirectiveFirstInvocationText
+	.byte 9, ".FILL.PART$(3)"
+DirectiveFirstExpandedText
+	.byte "        .byte 3"
+WrongDirectiveFirstHeaderText
+	.byte ".foo .macro NAME"
 	.endsection
 	.output "build/macro_preprocessor_harness", format=hunk, sections=entry, code, data, bss
 	.endmodule

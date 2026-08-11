@@ -1,0 +1,50 @@
+[slice]
+schema_version = 2
+name = "native directive-first macro and segment definitions"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/macro_processor_definitions.rs::parse_macro_def_line",
+  "crates/opforge-core/src/macro_processor_args_subst.rs::extract_paren_list",
+  "crates/opforge-core/src/text_utils.rs::is_ident_char",
+  "crates/opforge-core/src/macro_processor.rs::MacroProcessor::expand_lines",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_scan.asm::macroHeaderHasName",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm::opforgeNativeCliCaptureMacroDefinitionLineV1",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm::storeDefinitionHeader",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_invocation.asm::parseInvocationArguments",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_invocation.asm::splitInvocationArgumentList",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor_invocation.asm::refreshInvocationArgumentLengths",
+]
+invariant = "Only an exact, case-insensitive leading `.macro` or `.segment` token may enter directive-first capture; a later directive behind another dot-prefixed token is rejected. A valid Rust identifier (ASCII letter/underscore start, then alphanumeric/underscore/dot/dollar) is canonicalized into the same bounded `NAME .macro params` or `NAME .segment params` record consumed by existing lookup, binding, and expansion before the line can reach tokenizer/PRVM routing. Parenthesized invocation parsing returns its cursor and remaining length independently from status, and the final post-default-binding frame reconciles every bounded NUL-terminated argument slot with its length entry before substitution."
+assertion_decision = "No new runtime assertion: the capture and invocation owners reject malformed syntax or capacity overflow before mutation, focused source-policy checks lock the owner boundaries, and the fail-closed real-guest test requires fresh exact artifacts for every case."
+expected_inputs = "Name-first definitions plus exact directive-first macro/segment definitions with bare or parenthesized parameter lists, Rust-compatible dot/dollar identifier continuations, and matching parenthesized macro calls."
+expected_outputs = "A single bounded canonical definition representation and native output bytes exactly equal to the live Rust CLI oracle generated from each actual test source and CPU selection."
+known_non_equivalences = "Module visibility directives, configured-root module autoload, and `.ifdef`/`.ifndef` remain Items 7.9 through 7.11. Fixed native definition and argument capacities remain deterministic native resource limits."
+fast_proof_command = "cargo test -p asm native_directive_first_definition_header_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_macro_segment_directive_first_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_directive_first_definition_header_model_matches_rust"
+proof_level = "C"
+proves = "An independent model matches Rust's directive-first name/parameter normalization, dot/dollar identifier continuation, nested/quoted parenthesis handling, and malformed/wrong-directive rejection."
+does_not_prove = "Native 68020 execution or emitted bytes."
+
+[[tests]]
+name = "native_directive_first_definition_header_source_is_owned_before_tokenization"
+proof_level = "B"
+proves = "The native scanner and definition owner both require the exact leading definition directive, definition/invocation identifiers admit Rust's dot/dollar continuations, and parenthesized invocation status is separate from the preserved cursor/remaining-length result."
+does_not_prove = "Native execution or exact artifact parity."
+
+[[tests]]
+name = "native_macro_segment_directive_first_fs_uae"
+proof_level = "D"
+proves = "The complete adapted macro_segment_syntax.asm root plus focused macro capture, Rust dot/dollar identifier invocation, parenthesized invocation, and segment cases each require fresh real-guest completion and exact bytes from their own live Rust CLI oracle."
+does_not_prove = "Module visibility, module autoload, preprocessor conditionals, or unrelated output formats."
+
+[[tests]]
+name = "native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection"
+proof_level = "D"
+proves = "A real 68020 focused harness rejects a wrong leading dot directive without capture, verifies slot-zero dot/dollar directive-first canonical header bytes, invokes that exact name, checks parenthesized argument count/final length and exact substituted `.byte 3`, and retains the pre-existing nested-frame rejection contract."
+does_not_prove = "Complete CLI artifact parity; that authority remains native_macro_segment_directive_first_fs_uae."

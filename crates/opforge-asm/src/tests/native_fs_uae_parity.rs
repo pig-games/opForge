@@ -2306,6 +2306,356 @@ fn native_preprocessor_structural_scanner_boundary_matrix_is_bounded() {
 }
 
 #[test]
+fn native_directive_first_definition_header_model_matches_rust() {
+    // Proof level C. This models the canonical native definition record for
+    // Rust's directive-first macro/segment syntax, including outer-parenthesis
+    // removal and deterministic malformed-header rejection. It does not
+    // execute the 68020 implementation or prove body expansion.
+    fn canonicalize(line: &str) -> Result<Option<String>, ()> {
+        let code = line.split_once(';').map_or(line, |(code, _)| code).trim();
+        let lower = code.to_ascii_lowercase();
+        let (directive, mut rest) = if lower.starts_with(".macro")
+            && lower.as_bytes().get(6).is_none_or(u8::is_ascii_whitespace)
+        {
+            (".macro", &code[6..])
+        } else if lower.starts_with(".segment")
+            && lower.as_bytes().get(8).is_none_or(u8::is_ascii_whitespace)
+        {
+            (".segment", &code[8..])
+        } else {
+            return Ok(None);
+        };
+        rest = rest.trim_start();
+        let name_len = rest
+            .bytes()
+            .take_while(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(*byte, b'_' | b'.' | b'$')
+            })
+            .count();
+        if name_len == 0
+            || !rest
+                .as_bytes()
+                .first()
+                .is_some_and(|byte| byte.is_ascii_alphabetic() || *byte == b'_')
+        {
+            return Err(());
+        }
+        let name = &rest[..name_len];
+        rest = rest[name_len..].trim_start();
+        let params = if let Some(inner) = rest.strip_prefix('(') {
+            let mut quote = None;
+            let mut depth = 1usize;
+            let mut close = None;
+            for (index, byte) in inner.bytes().enumerate() {
+                if let Some(delimiter) = quote {
+                    if byte == delimiter {
+                        quote = None;
+                    }
+                    continue;
+                }
+                match byte {
+                    b'\'' | b'"' => quote = Some(byte),
+                    b'(' => depth += 1,
+                    b')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            close = Some(index);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let close = close.ok_or(())?;
+            if !inner[close + 1..].trim().is_empty() {
+                return Err(());
+            }
+            inner[..close].trim()
+        } else {
+            rest.trim()
+        };
+        Ok(Some(if params.is_empty() {
+            format!("{name} {directive}")
+        } else {
+            format!("{name} {directive} {params}")
+        }))
+    }
+
+    for (source, expected) in [
+        (".macro COPY(src, dst)", "COPY .macro src, dst"),
+        ("  .MaCrO FILL(value)", "FILL .macro value"),
+        (".segment INLINE(v)", "INLINE .segment v"),
+        (".segment INLINE v", "INLINE .segment v"),
+        (
+            ".macro MIX(value=(1 + 2), text=\"a)b\")",
+            "MIX .macro value=(1 + 2), text=\"a)b\"",
+        ),
+        (".macro EMPTY()", "EMPTY .macro"),
+        (
+            ".macro FILL.PART$(value)",
+            "FILL.PART$ .macro value",
+        ),
+    ] {
+        assert_eq!(canonicalize(source), Ok(Some(expected.to_string())));
+    }
+    assert_eq!(canonicalize("COPY .macro src, dst"), Ok(None));
+    assert_eq!(canonicalize(".macrox NAME(value)"), Ok(None));
+    assert_eq!(canonicalize(".foo .macro NAME(value)"), Ok(None));
+    for malformed in [
+        ".macro",
+        ".macro 1BAD(value)",
+        ".macro NAME(value",
+        ".segment NAME(value) trailing",
+    ] {
+        assert_eq!(canonicalize(malformed), Err(()), "{malformed}");
+    }
+}
+
+#[test]
+fn native_directive_first_definition_header_source_is_owned_before_tokenization() {
+    // Proof level B. The scanner admits directive-first macro/segment headers,
+    // and the definition owner canonicalizes them into the existing bounded
+    // name-first record before any line can reach tokenizer/opasm routing. This
+    // does not execute the 68020 implementation or prove expansion bytes.
+    let root = workspace_root();
+    let scan = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_scan.asm"),
+    )
+    .expect("read native preprocessor scanner");
+    let definitions = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_definitions.asm"),
+    )
+    .expect("read native preprocessor definition owner");
+    let invocation = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/preprocessor_invocation.asm"),
+    )
+    .expect("read native preprocessor invocation owner");
+
+    assert!(source_contains_in_order(
+        &scan,
+        &[
+            "macroHeaderHasName\t.block",
+            "cmpi.b #'.', (a0)",
+            "beq.s directive",
+            "cmpi.b #';', (a0)",
+            "directive",
+            "jsr line_text.opforgeNativeCliLineStartsWith",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &definitions,
+        &[
+            "opforgeNativeCliCaptureMacroDefinitionLineV1\t.block",
+            "bsr.w storeDefinitionHeader",
+            "tst.l d0",
+            "bne.w fail",
+            "move.w d3, 0(a2, d2.l)",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &definitions,
+        &[
+            "storeDefinitionHeader\t.block",
+            "cmpi.b #'.', (a0)",
+            "beq.s directiveFirst",
+            "directiveFirst",
+            "validateDirective",
+            "jsr line_text.opforgeNativeCliLineStartsWith",
+            "tst.l d0",
+            "beq.w fail",
+            "bsr.w isHeaderIdentifierStart",
+            "copyName",
+            "bsr.w appendHeaderByte",
+            "copyDirective",
+            "parenthesized",
+            "parenthesizedDone",
+        ]
+    ));
+    assert!(
+        definitions.contains("cmpi.l #constants.NATIVE_PREPROCESS_DEFINITION_HEADER_CAPACITY, d3")
+    );
+    assert!(source_contains_in_order(
+        &definitions,
+        &[
+            "isHeaderIdentifierContinue\t.block",
+            "cmpi.b #'.', d1",
+            "cmpi.b #'$', d1",
+            "cmpi.b #'0', d1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &invocation,
+        &[
+            "takeInvocationName\t.block",
+            "cmpi.b #'_', d1",
+            "cmpi.b #'.', d1",
+            "cmpi.b #'$', d1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &invocation,
+        &[
+            "paren",
+            "bsr.w splitInvocationArgumentList",
+            "tst.l d1",
+            "bne.s fail",
+            "cmpi.b #')', (a0)",
+            "addq.l #1, a0",
+            "subq.l #1, d0",
+            "bind",
+            "bsr.w bindMacroParameterDefaults",
+            "bne.s fail",
+            "bsr.w refreshInvocationArgumentLengths",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &invocation,
+        &[
+            "splitInvocationArgumentList\t.block",
+            "splitHasArgumentValue",
+            "move.l d0, -(sp)",
+            "bsr.w finishInvocationArgument",
+            "move.l d0, d3",
+            "move.l (sp)+, d0",
+            "tst.l d3",
+            "splitArgumentCommitted",
+            "close",
+            "moveq #0, d1",
+            "rts",
+            "endOfLine",
+            "emptyList",
+            "moveq #0, d1",
+            "rts",
+            "fail",
+            "moveq #1, d1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &invocation,
+        &[
+            "refreshInvocationArgumentLengths\t.block",
+            "cmpi.w #constants.NATIVE_PREPROCESS_MACRO_ARG_CAPACITY, d1",
+            "slotLoop",
+            "mulu #constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY, d3",
+            "byteLoop",
+            "cmpi.l #constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY - 1, d4",
+            "storeLength",
+            "tst.l d4",
+            "adda.l d5, a1",
+            "move.w d4, (a1)",
+        ]
+    ));
+}
+
+struct DirectiveFirstOracleDir(PathBuf);
+
+impl Drop for DirectiveFirstOracleDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn native_macro_segment_directive_first_fs_uae() {
+    // Proof level D. The real native CLI must consume the directive-first
+    // FILL and INLINE definitions and emit byte-for-byte the live Rust CLI
+    // result for this exact adapted canonical test case.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let root = workspace_root();
+    let canonical = fs::read_to_string(root.join("examples/opcore/macro_segment_syntax.asm"))
+        .expect("read macro/segment fixture");
+    assert_eq!(canonical.matches(".cpu 8085").count(), 1);
+    let canonical_source = canonical
+        .replacen(".cpu 8085", ".cpu 65c02", 1)
+        .into_bytes();
+    let sources = [
+        ("macro-segment-directive-first", canonical_source),
+        (
+            "macro-directive-first",
+            b".cpu 65c02\n.org $0800\n.macro FILL(value)\n        .byte .value\n.endmacro\n        .FILL(3)\n.end\n"
+                .to_vec(),
+        ),
+        (
+            "macro-directive-first-rust-ident",
+            b".cpu 65c02\n.org $0800\n.macro FILL.PART$(value)\n        .byte .value\n.endmacro\n        .FILL.PART$(3)\n.end\n"
+                .to_vec(),
+        ),
+        (
+            "macro-directive-first-capture",
+            b".cpu 65c02\n.org $0800\n.macro FILL(value)\n        .byte .value\n.endmacro\n.byte 9\n.end\n"
+                .to_vec(),
+        ),
+        (
+            "segment-directive-first",
+            b".cpu 65c02\n.segment INLINE(v)\nVAL .const .v\n.byte .v\n.endsegment\n.INLINE 7\n.word VAL\n.end\n"
+                .to_vec(),
+        ),
+    ];
+    let mut oracle_guards = Vec::new();
+    let rust_bins = sources
+        .iter()
+        .map(|(name, source)| {
+            let oracle_dir = create_temp_dir(&format!("{name}-live-rust-cli"));
+            let oracle_input = oracle_dir.join("input.asm");
+            let oracle_bin = oracle_dir.join("oracle.bin");
+            fs::write(&oracle_input, source)
+                .unwrap_or_else(|err| panic!("write {name} Rust CLI input: {err}"));
+            let cli = Cli::parse_from([
+                "opForge".to_string(),
+                oracle_input.to_string_lossy().into_owned(),
+                "--bin".to_string(),
+                oracle_bin.to_string_lossy().into_owned(),
+                "--cpu".to_string(),
+                "65c02".to_string(),
+            ]);
+            run_with_cli_with_context(&cli)
+                .unwrap_or_else(|err| panic!("run live Rust CLI oracle for {name}: {err:?}"));
+            let rust = fs::read(&oracle_bin)
+                .unwrap_or_else(|err| panic!("read live Rust CLI oracle for {name}: {err}"));
+            oracle_guards.push(DirectiveFirstOracleDir(oracle_dir));
+            rust
+        })
+        .collect::<Vec<_>>();
+
+    let package = item6_mos_package_bytes();
+    let cases = sources
+        .iter()
+        .zip(rust_bins.iter())
+        .map(
+            |((name, source), rust)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+                name,
+                cpu_id: "65c02",
+                source,
+                package_bytes: package.as_slice(),
+                proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(rust),
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
+        .expect("directive-first macro/segment FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                cases.len(),
+                "every directive-first case must complete"
+            );
+            for ((run, (name, _)), rust) in runs.iter().zip(sources.iter()).zip(rust_bins) {
+                assert!(run.success, "native {name} failed: {}", run.stdout);
+                assert_eq!(
+                    verified_fs_uae_output(run),
+                    rust,
+                    "native {name} bytes differ from its same-case Rust CLI"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn native_preprocessor_macro_invocation_frame_is_bounded_and_resettable() {
     // Proof level B. The native state owns one bounded invocation frame whose
     // selected definition sentinel is reset for every CLI session. This does

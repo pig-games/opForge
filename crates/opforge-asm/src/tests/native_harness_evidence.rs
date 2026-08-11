@@ -94,8 +94,11 @@ fn native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_fra
             assert_eq!(runs.len(), 1);
             assert!(
                 runs[0].success,
-                "native macro-preprocessor harness failed: {}",
-                runs[0].stdout
+                "native macro-preprocessor harness failed: guest exit {:?}, protocol_completed={}\nstdout:\n{}\nstderr:\n{}",
+                runs[0].exit_code,
+                runs[0].protocol_completed,
+                runs[0].stdout,
+                runs[0].stderr
             );
         }
     }

@@ -1338,12 +1338,13 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: module macro and statement exports are injected according to native `.use` selection and visibility rules.
   - Definition of done: Item 7’s declared multi-file roots run through real native CLI usage; no generic CLI path gains CPU-specific semantics.
 
-- [ ] Item 7.8: accept directive-first native macro and segment definitions
+- [x] Item 7.8: accept directive-first native macro and segment definitions
   - Source requirement or finding IDs: `I7-D-01`, parent Item 7 complete-corpus Level D failure for `macro_segment_syntax.asm`; the native preprocessor currently recognizes name-first definitions but lets `.macro FILL(value)` and `.segment INLINE(v)` reach tokenization. This item fully closes `I7-D-01`.
   - Invariant: directive-first and name-first definition headers produce the same bounded native definition record and consume the complete definition before tokenizer/PRVM routing.
   - Expected files: native preprocessor definition/header parsing only; focused Level A/C header model; exact `macro_segment_syntax.asm` Level D proof; one slice record; this plan’s checkbox/evidence only after closure.
   - Full quality gates: live Rust directive-first oracle; focused native header-routing and bound tests; `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_macro_segment_directive_first_fs_uae -- --nocapture --test-threads=1`; native formatter; staged native-porting gate; full Rust quality gate; `make workflow-gate`.
   - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for directive-first definition recognition only, with no module visibility, autoload, conditional, linker, output, or CPU behavior.
+  - Validation evidence: focused Level B/C header tests pass; the permanent 68020 harness rejects a wrong leading dot directive and proves exact dot/dollar definition capture, invocation, binding, and substitution with fresh guest completion and zero exit; all five exact authoritative FS-UAE cases complete and match their same-case live Rust CLI bytes; the native formatter, staged native-porting gate, full Rust quality gate, and `make workflow-gate` pass. The plan-compliance reviewer returned `PASS` for the exact staged Item 7.8 index on 2026-08-11.
   - Commit outcome: one independently revertible definition-header remediation commit.
   - Definition of done: `macro_segment_syntax.asm` completes through the real native CLI and matches the exact same-case live Rust bytes; malformed directive-first headers fail deterministically without falling through.
 

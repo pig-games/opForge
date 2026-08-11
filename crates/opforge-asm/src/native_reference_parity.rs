@@ -84,6 +84,7 @@ pub(crate) enum NativeOpcoreShard {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NativeOpcoreStaging {
     DirectCpuNeutral,
+    DirectMos65c02,
     AdditiveMosAdaptation,
 }
 
@@ -228,7 +229,7 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     opcore_root!(
         "use_wildcard_import",
         ModuleMacroStatement,
-        AdditiveMosAdaptation
+        DirectMos65c02
     ),
     opcore_support!("lib/example_autoload_lib.asm" => "module_use_autoload.asm", ModuleMacroStatement, DirectCpuNeutral),
     opcore_support!("lib/macro_export_lib.asm" => "macro_cross_module_ok.asm", ModuleMacroStatement, AdditiveMosAdaptation),

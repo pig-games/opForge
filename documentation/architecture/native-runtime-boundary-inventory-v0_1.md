@@ -42,14 +42,16 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   runs the two-pass session.
 - Imports/outbound dependencies: callback ABI, compile values, directive router,
   numeric-data owner, engine, events, conditional/navigation/repetition/scope/struct
-  flow modules, text encoding, tkpkg bridge, and approved debug contracts/events.
+  flow modules, text encoding, tkpkg bridge, the CLI-owned imported-label
+  resolver callback, and approved debug contracts/events.
 - Mutable state: module-local pass/session request pointers, flow/repetition
   scratch, and text scratch/output state. Layout region/section/place storage
   is owned by `opasm.amigaos.layout`.
 - Routine responsibility groups: pass callback orchestration; router-result
   dispatch; structural-flow state transitions and explicit `.case` evaluation
   callback; scoped-struct repeat-label qualification callback; operand/evaluation request
-  construction; selector/encoding adaptation; data/text sizing and emission;
+  construction, including delegation of imported-label lookup without owning
+  module visibility; selector/encoding adaptation; data/text sizing and emission;
   remaining layout/region/section/place dispatch; event projection.
 - Inbound users: the CLI engine-callback adapter imports this driver; the
   driver is the session orchestration boundary, not a package or CPU owner.
@@ -87,15 +89,19 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 
 - Source: `native/motorola68000/amigaos/opasm/opasm_operand_eval.asm`.
 - Public entries: selected-instruction request construction, textual expression
-  request construction, and their evaluation-extension adapters.
+  request construction, their evaluation-extension adapters, and bounded
+  materialization of imported aliases supplied through the callback ABI.
 - Imports/outbound dependencies: callback ABI, engine request builders, and the
   flow-scope owner's bounded active-label alias query.
-- Mutable state: a bounded evaluation-only snapshot of label names and values;
+- Mutable state: a bounded evaluation-only snapshot of local, imported, and
+  qualified/global label names and values;
   the driver still supplies its service frame and owns request-length state,
   dispatch, diagnostics, and fallback policy.
 - Decision: this owner constructs engine request envelopes and projects
-  active-scope aliases ahead of the unchanged qualified/global label snapshot.
-  It does not select, encode, emit, resolve operands, or own layout behavior.
+  active-scope and imported aliases ahead of the unchanged qualified/global
+  label snapshot. Imported names are resolved only through the CLI-owned
+  callback; this module does not own module visibility. It does not select,
+  encode, emit, resolve operands, or own layout behavior.
 
 ### `opasm.amigaos.directive_data` (Item 5.9.2 ownership split)
 

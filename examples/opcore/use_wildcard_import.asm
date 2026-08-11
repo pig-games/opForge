@@ -19,15 +19,15 @@ PAIR .macro a, b
 .endmodule
 
 .module wildcard.import.app
-    .cpu 8085
+    .cpu 65c02
     .use wildcard.import.lib (*)
     .org $0000
 
-    mvi a, VAL
+    lda #VAL
     .EMITB $22
     .PAIR $33, $44
     PUSHB $55
-    hlt
+    brk
 .endmodule
 
 .end

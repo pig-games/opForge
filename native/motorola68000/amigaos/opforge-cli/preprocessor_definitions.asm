@@ -275,8 +275,11 @@ storeDefinitionHeader	.block
 	movea.l a2, a3
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
 	beq.w fail
+	cmpi.b #constants.NATIVE_PREPROCESS_DEFINITION_KIND_STATEMENT, d4
+	beq.s copyOriginalHeader
 	cmpi.b #'.', (a0)
 	beq.s directiveFirst
+copyOriginalHeader
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
 	cmpi.l #constants.NATIVE_PREPROCESS_DEFINITION_HEADER_CAPACITY, d0

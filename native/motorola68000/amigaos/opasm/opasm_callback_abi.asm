@@ -22,7 +22,11 @@ OPASM_SERVICE_IO_BUFFER_PTR = 4
 OPASM_SERVICE_IO_BUFFER_CAPACITY = 8
 OPASM_SERVICE_EVAL_EXTENSION_PTR = 10
 OPASM_SERVICE_EVAL_EXTENSION_BYTES = 14
-OPASM_SERVICE_BYTES = 16
+; Optional architecture-neutral name resolver supplied by the embedding CLI.
+; Inputs: A0/D0 token, A1/D1 active module name. Outputs: A0/D0 rewritten
+; fully-qualified name and D1=0, or D1=1 when no import mapping applies.
+OPASM_SERVICE_IMPORT_NAME_RESOLVER_PTR = 16
+OPASM_SERVICE_BYTES = 20
 
 OPASM_STATUS_OK = 0
 OPASM_STATUS_DUPLICATE_LABEL = 1

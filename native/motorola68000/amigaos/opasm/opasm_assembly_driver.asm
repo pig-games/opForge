@@ -1115,7 +1115,7 @@ opasmDriverEmitImageBytes	.block
 	bne.w return
 	tst.w OpasmDriverEvalRequestLen
 	beq.w ok
-	bsr.w prepareEvaluateExpressionExtension
+	bsr.w prepareSelectedEvaluateExpressionExtension
 	bsr.w serviceFramePtr
 	move.w OpasmDriverEvalRequestLen, d0
 	jsr tkpkg.adaptSelectedEncodeRequestV1
@@ -1527,7 +1527,7 @@ trySelectedEncodeSizeForStatement	.block
 	bne.w prepareFail
 	tst.w OpasmDriverEvalRequestLen
 	beq.w empty
-	bsr.w prepareEvaluateExpressionExtension
+	bsr.w prepareSelectedEvaluateExpressionExtension
 	bsr.w serviceFramePtr
 	move.w OpasmDriverEvalRequestLen, d0
 	jsr tkpkg.adaptSelectedEncodeRequestV1
@@ -1687,6 +1687,8 @@ prepareRequest
 	bsr.w skipLineWhitespace
 	bsr.w trimLiteralFallbackTrailing
 	jsr eng.opasmEngineResolveLabelValueV1
+	beq.w checkWidth
+	bsr.w resolveImportedLabelValue
 	beq.w checkWidth
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
@@ -2454,6 +2456,8 @@ evaluatePart
 	move.l OpasmDriverEvalFallbackLen, d0
 	jsr eng.opasmEngineResolveLabelValueV1
 	beq.w evalPartOk
+	bsr.w resolveImportedLabelValue
+	beq.w evalPartOk
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w resolveDottedLabelSuffixValue
@@ -2519,6 +2523,34 @@ return
 	movem.l (sp)+, d1-d2/d4-d7/a0-a3
 	rts
 	.bend  ; readCommaOperandValueForStatement
+
+; Ask the embedding CLI to rewrite one imported ordinary name, then resolve
+; the returned fully-qualified label in the engine-owned pass-one table.
+; @opforge-owner: opasm.amigaos.operand_eval
+; @opforge-slice: documentation/plans/slices/native-porting-slice-module-visibility.toml
+; @opforge-role: delegation
+; Inputs: OpasmDriverEvalFallbackPtr/Len = original token.
+; Outputs: D0 = 0 success/1 unavailable or unresolved; D3 = value on success.
+; Clobbers: D0-D2/A0-A2/CCR.
+resolveImportedLabelValue	.block
+	bsr.w serviceFramePtr
+	movea.l abi.OPASM_SERVICE_IMPORT_NAME_RESOLVER_PTR(a0), a2
+	move.l a2, d0
+	beq.s importedResolveFail
+	jsr scopes.activeModuleNameV1
+	tst.l d1
+	beq.s importedResolveFail
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	jsr (a2)
+	tst.l d1
+	bne.s importedResolveFail
+	jsr eng.opasmEngineResolveLabelValueV1
+	rts
+importedResolveFail
+	moveq #1, d0
+	rts
+	.bend  ; resolveImportedLabelValue
 
 ; Resolve the final segment of an alias-qualified imported symbol token.
 ; Inputs: A0/D0 = trimmed text slice.
@@ -3341,6 +3373,19 @@ prepareEvaluateExpressionExtension	.block
 	movem.l (sp)+, d0-d1/a0-a2
 	rts
 	.bend  ; prepareEvaluateExpressionExtension
+
+; @opforge-owner: opasm.amigaos.operand_eval
+; @opforge-slice: documentation/plans/slices/native-porting-slice-module-visibility.toml
+; @opforge-role: delegation
+prepareSelectedEvaluateExpressionExtension	.block
+	movem.l d0-d1/a0-a2, -(sp)
+	bsr.w serviceFramePtr
+	moveq #0, d0
+	move.w OpasmDriverEvalRequestLen, d0
+	jsr operand_eval.prepareSelectedExtensionV1
+	movem.l (sp)+, d0-d1/a0-a2
+	rts
+	.bend  ; prepareSelectedEvaluateExpressionExtension
 
 prepareDirectiveEvaluateExpressionExtension	.block
 	movem.l a0, -(sp)

@@ -12,18 +12,18 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                9  .endmodule
 ----                               10  
 ----                               11  .module wildcard.import.app
-----                               12      .cpu 8085
+----                               12      .cpu 65c02
 ----                               13      .use wildcard.import.lib (*)
 ----    EQU 0000                   14      .org $0000
 ----                               15  
-0000    3E 11                      16      mvi a, VAL
+0000    A9 11                      16      lda #VAL
 0002    22                         17      .byte $22
 ----                               18      .block
 0003    33                         19      .byte $33
 0004    44                         20      .byte $44
 ----                               21      .endblock
 0005    55                         22      .byte $55
-0006    76                         23      hlt
+0006    00                         23      brk
 ----                               24  .endmodule
 ----                               25  
 ----                               26  .end
@@ -42,4 +42,4 @@ GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-0000    3E 11 22 33 44 55 76
+0000    A9 11 22 33 44 55 00

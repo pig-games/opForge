@@ -312,6 +312,14 @@ NativeCliPreprocessImportBindingDefinitionTable
 	.res word, constants.NATIVE_PREPROCESS_IMPORT_BINDING_CAPACITY
 NativeCliPreprocessImportBindingNameTable
 	.res byte, constants.NATIVE_PREPROCESS_IMPORT_BINDING_CAPACITY * constants.NATIVE_PREPROCESS_IMPORT_BINDING_NAME_CAPACITY
+NativeCliOrdinaryExportCount
+	.res word, 1
+NativeCliOrdinaryExportOwnerTable
+	.res word, constants.NATIVE_ORDINARY_EXPORT_CAPACITY
+NativeCliOrdinaryExportNameTable
+	.res byte, constants.NATIVE_ORDINARY_EXPORT_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
+NativeCliResolvedImportName
+	.res byte, constants.TOKEN_BUFFER_CAPACITY
 NativeCliModulePathTable
 	.res byte, constants.NATIVE_MODULE_PATH_CAPACITY * constants.PATH_BUFFER_CAPACITY
 NativeCliIncludePathTable

@@ -10,3 +10,6 @@ amendment-summary: PASS for Items 7.8-7.11 after the uncapped 17-root Item 7 Lev
 item-7.8-review-date: 2026-08-11
 item-7.8-reviewer: plan-compliance-reviewer
 item-7.8-summary: PASS for exact kind-aware directive-first macro/segment recognition and Rust-compatible dot/dollar identifiers. Focused Level B/C tests, the permanent fresh-protocol 68020 harness, five exact same-case Level D FS-UAE byte comparisons, the staged native gate, full Rust quality gate, and workflow gate passed; Items 7.9-7.11 and parent-corpus work remain out of scope.
+item-7.9-review-date: 2026-08-11
+item-7.9-reviewer: plan-compliance-reviewer
+item-7.9-summary: PASS for ordinary public/private visibility and selective, wildcard, alias-qualified, and full dotted-module-qualified ordinary imports using only CPU-neutral or 6502/65C02 cases. Four exact canonical roots, six focused Level D cases, and the permanent 68020 harness passed the fresh fail-closed protocol and same-case Rust byte comparison; staged native, full serial Rust, reference, and workflow gates passed. Items 7.10-7.11 and parent-corpus closure remain out of scope.

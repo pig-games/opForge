@@ -196,6 +196,304 @@ return
 	rts
 	.bend  ; opforgeNativeCliRecordImportSelect
 
+; Record one public ordinary symbol for later `.use` alias resolution.
+; Inputs: current parsed statement fields, module, and visibility in state.
+; Outputs: D0 = 0 success/not applicable, 1 capacity or malformed name.
+; Clobbers: D0-D4/A0-A1/CCR.
+opforgeNativeCliRecordOrdinaryExportV1	.block
+	movem.l d1-d4/a0-a1, -(sp)
+	cmpi.w #constants.NATIVE_PREPROCESS_VISIBILITY_PUBLIC, state.NativeCliPreprocessCurrentVisibility
+	bne.s ordinaryRecordOk
+	tst.w state.NativeCliModuleDepth
+	beq.s ordinaryRecordOk
+	move.l state.NativeCliStmtLabelLen, d2
+	beq.s ordinaryRecordOk
+	cmpi.l #constants.TOKEN_BUFFER_CAPACITY, d2
+	bcc.s ordinaryRecordFail
+	moveq #0, d0
+	move.w state.NativeCliOrdinaryExportCount, d0
+	cmpi.w #constants.NATIVE_ORDINARY_EXPORT_CAPACITY, d0
+	bhs.s ordinaryRecordFail
+	move.l d0, d1
+	add.l d1, d1
+	lea state.NativeCliOrdinaryExportOwnerTable, a1
+	move.w state.NativeCliCurrentModuleId, 0(a1, d1.l)
+	lsl.l #5, d1
+	lea state.NativeCliOrdinaryExportNameTable, a1
+	adda.l d1, a1
+	lea state.NativeCliSourceLine, a0
+	move.l state.NativeCliStmtLabelStart, d3
+	beq.s ordinaryRecordFail
+	subq.l #1, d3
+	adda.l d3, a0
+ordinaryRecordCopy
+	move.b (a0)+, (a1)+
+	subq.l #1, d2
+	bne.s ordinaryRecordCopy
+	clr.b (a1)
+	addq.w #1, state.NativeCliOrdinaryExportCount
+ordinaryRecordOk
+	moveq #0, d0
+	bra.s ordinaryRecordReturn
+ordinaryRecordFail
+	moveq #1, d0
+ordinaryRecordReturn
+	movem.l (sp)+, d1-d4/a0-a1
+	rts
+	.bend  ; opforgeNativeCliRecordOrdinaryExportV1
+
+; Rewrite one imported ordinary symbol to its fully-qualified exported name.
+; Inputs: A0/D0 = token; A1/D1 = active module name.
+; Outputs: A0/D0 = qualified name and D1 = 0, or D1 = 1 when unmapped.
+; Clobbers: D0-D7/A0-A5/CCR.
+opforgeNativeCliResolveImportedOrdinaryNameV1	.block
+	movem.l d2-d7/a2-a5, -(sp)
+	movea.l a0, a3
+	move.l d0, d6
+	movea.l a1, a4
+	move.l d1, d5
+	tst.l d6
+	beq.w ordinaryResolveNo
+	tst.l d5
+	beq.w ordinaryResolveNo
+	moveq #0, d7
+ordinaryResolveModuleLoop
+	cmp.w state.NativeCliModuleCount, d7
+	bhs.w ordinaryResolveNo
+	move.l d7, d0
+	lsl.l #6, d0
+	lea state.NativeCliModuleNameTable, a0
+	adda.l d0, a0
+	bsr.w token_util.opforgeNativeCliTokenLen
+	movea.l a4, a1
+	move.l d5, d1
+	bsr.w compareFoldedExact
+	tst.l d0
+	bne.s ordinaryResolveHaveOwner
+	addq.w #1, d7
+	bra.s ordinaryResolveModuleLoop
+
+ordinaryResolveHaveOwner
+	move.w d7, d2
+	moveq #0, d7
+ordinaryResolveImportLoop
+	cmp.w state.NativeCliImportCount, d7
+	bhs.w ordinaryResolveNo
+	move.l d7, d0
+	add.l d0, d0
+	lea state.NativeCliImportOwnerModuleTable, a0
+	cmp.w 0(a0, d0.l), d2
+	bne.w ordinaryResolveImportNext
+	lea state.NativeCliImportModuleTable, a0
+	move.w 0(a0, d0.l), d4
+
+	; First resolve `Alias.NAME` and `module.name.NAME` forms.
+	moveq #0, d3
+ordinaryResolveDotScan
+	cmp.l d6, d3
+	bhs.s ordinaryResolveSelections
+	cmpi.b #'.', 0(a3, d3.l)
+	beq.s ordinaryResolveQualifier
+	addq.l #1, d3
+	bra.s ordinaryResolveDotScan
+ordinaryResolveQualifier
+	tst.l d3
+	beq.s ordinaryResolveSelections
+	move.l d3, d5
+	move.l d7, d0
+	lsl.l #6, d0
+	lea state.NativeCliImportAliasTable, a0
+	adda.l d0, a0
+	bsr.w token_util.opforgeNativeCliTokenLen
+	tst.l d0
+	beq.s ordinaryResolveModuleQualifier
+	movea.l a3, a1
+	move.l d5, d1
+	bsr.w compareFoldedExact
+	move.l d5, d3
+	tst.l d0
+	bne.s ordinaryResolveQualifiedExport
+ordinaryResolveModuleQualifier
+	move.l d4, d0
+	lsl.l #6, d0
+	lea state.NativeCliModuleNameTable, a0
+	adda.l d0, a0
+	bsr.w token_util.opforgeNativeCliTokenLen
+	move.l d0, d5
+	cmp.l d5, d6
+	bls.s ordinaryResolveSelections
+	cmpi.b #'.', 0(a3, d5.l)
+	bne.s ordinaryResolveSelections
+	movea.l a3, a1
+	move.l d5, d1
+	bsr.w compareFoldedExact
+	move.l d5, d3
+	tst.l d0
+	beq.s ordinaryResolveSelections
+ordinaryResolveQualifiedExport
+	movea.l a3, a2
+	adda.l d3, a2
+	addq.l #1, a2
+	move.l d6, d0
+	sub.l d3, d0
+	subq.l #1, d0
+	move.l d0, d3
+	bsr.w ordinaryExportIndex
+	tst.l d0
+	bpl.w ordinaryResolveBuild
+
+ordinaryResolveSelections
+	moveq #0, d3
+ordinaryResolveSelectLoop
+	cmp.w state.NativeCliImportSelectCount, d3
+	bhs.w ordinaryResolveImportNext
+	move.l d3, d0
+	add.l d0, d0
+	lea state.NativeCliImportSelectImportTable, a0
+	cmp.w 0(a0, d0.l), d7
+	bne.w ordinaryResolveSelectNext
+	lea state.NativeCliImportSelectFlagsTable, a0
+	move.w 0(a0, d0.l), d0
+	btst #1, d0
+	bne.s ordinaryResolveWildcard
+	move.l d3, d0
+	lsl.l #6, d0
+	lea state.NativeCliImportSelectAliasTable, a0
+	adda.l d0, a0
+	bsr.w token_util.opforgeNativeCliTokenLen
+	tst.l d0
+	bne.s ordinaryResolveCompareSelected
+	move.l d3, d0
+	lsl.l #6, d0
+	lea state.NativeCliImportSelectNameTable, a0
+	adda.l d0, a0
+	bsr.w token_util.opforgeNativeCliTokenLen
+ordinaryResolveCompareSelected
+	move.l d3, d5
+	movea.l a3, a1
+	move.l d6, d1
+	bsr.w compareFoldedExact
+	move.l d5, d3
+	tst.l d0
+	beq.s ordinaryResolveSelectNext
+	move.l d3, d0
+	lsl.l #6, d0
+	lea state.NativeCliImportSelectNameTable, a2
+	adda.l d0, a2
+	movea.l a2, a0
+	bsr.w token_util.opforgeNativeCliTokenLen
+	move.l d0, d3
+	bsr.w ordinaryExportIndex
+	tst.l d0
+	bpl.s ordinaryResolveBuild
+	bra.w ordinaryResolveImportNext
+
+ordinaryResolveWildcard
+	; Wildcard imports expose only names recorded while the target module was
+	; public; local scoped lookup already ran before this callback.
+	movea.l a3, a2
+	move.l d6, d3
+	bsr.w ordinaryExportIndex
+	tst.l d0
+	bpl.s ordinaryResolveBuild
+
+ordinaryResolveSelectNext
+	addq.w #1, d3
+	bra.w ordinaryResolveSelectLoop
+ordinaryResolveImportNext
+	addq.w #1, d7
+	bra.w ordinaryResolveImportLoop
+
+ordinaryResolveBuild
+	; A2/D3 is the public export slice and D4 is its target module.
+	movea.l a2, a5
+	move.l d3, d2
+	move.l d4, d0
+	lsl.l #6, d0
+	lea state.NativeCliModuleNameTable, a1
+	adda.l d0, a1
+	lea state.NativeCliResolvedImportName, a0
+	moveq #0, d1
+	moveq #constants.TOKEN_BUFFER_CAPACITY - 1, d3
+ordinaryResolveBuildModule
+	move.b (a1)+, d0
+	beq.s ordinaryResolveBuildDot
+	tst.w d3
+	beq.w ordinaryResolveNo
+	move.b d0, (a0)+
+	addq.l #1, d1
+	subq.w #1, d3
+	bra.s ordinaryResolveBuildModule
+ordinaryResolveBuildDot
+	tst.w d3
+	beq.w ordinaryResolveNo
+	move.b #'.', (a0)+
+	addq.l #1, d1
+	subq.w #1, d3
+	movea.l a5, a1
+ordinaryResolveBuildName
+	tst.l d2
+	beq.s ordinaryResolveBuilt
+	tst.w d3
+	beq.w ordinaryResolveNo
+	move.b (a1)+, (a0)+
+	addq.l #1, d1
+	subq.l #1, d2
+	subq.w #1, d3
+	bra.s ordinaryResolveBuildName
+ordinaryResolveBuilt
+	clr.b (a0)
+	lea state.NativeCliResolvedImportName, a0
+	move.l d1, d0
+	moveq #0, d1
+	bra.s ordinaryResolveReturn
+
+ordinaryResolveNo
+	moveq #0, d0
+	moveq #1, d1
+ordinaryResolveReturn
+	movem.l (sp)+, d2-d7/a2-a5
+	rts
+	.bend  ; opforgeNativeCliResolveImportedOrdinaryNameV1
+
+; Find public export A2/D3 owned by target module D4.W.
+; Outputs: D0 = row or -1. Clobbers: D0-D3/A0-A1/CCR.
+ordinaryExportIndex	.block
+	movem.l d2-d5/a2-a5, -(sp)
+	movea.l a2, a5
+	move.l d3, d5
+	moveq #0, d2
+ordinaryExportLoop
+	cmp.w state.NativeCliOrdinaryExportCount, d2
+	bhs.s ordinaryExportNo
+	move.l d2, d0
+	add.l d0, d0
+	lea state.NativeCliOrdinaryExportOwnerTable, a0
+	cmp.w 0(a0, d0.l), d4
+	bne.s ordinaryExportNext
+	move.l d2, d0
+	lsl.l #6, d0
+	lea state.NativeCliOrdinaryExportNameTable, a0
+	adda.l d0, a0
+	bsr.w token_util.opforgeNativeCliTokenLen
+	movea.l a5, a1
+	move.l d5, d1
+	bsr.w compareFoldedExact
+	tst.l d0
+	bne.s ordinaryExportYes
+ordinaryExportNext
+	addq.w #1, d2
+	bra.s ordinaryExportLoop
+ordinaryExportYes
+	move.l d2, d0
+	bra.s ordinaryExportReturn
+ordinaryExportNo
+	moveq #-1, d0
+ordinaryExportReturn
+	movem.l (sp)+, d2-d5/a2-a5
+	rts
+	.bend  ; ordinaryExportIndex
+
 ; Materialize the preprocessor names exposed by one completed `.use` import.
 ; Inputs: D6.W = import table index. Outputs: D0 = 0 success, 1 overflow.
 ; Public definitions owned by the imported module become bindings owned by the

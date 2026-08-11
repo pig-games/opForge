@@ -10,6 +10,7 @@
 
 	.use opforge.cli.constants
 	.use opforge.cli.state
+	.use opforge.cli.module_use
 	.use opforge.cli.opasm_event_report
 
 NATIVE_CLI_OPASM_EVENT_CAPACITY = 192
@@ -38,6 +39,7 @@ opforgeNativeCliRunTwoPassEngine	.block
 	adda.w #constants.NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, a2
 	move.l a2, abi.OPASM_SERVICE_EVAL_EXTENSION_PTR(a1)
 	move.w #constants.NATIVE_EVAL_EXPR_EXTENSION_BYTES, abi.OPASM_SERVICE_EVAL_EXTENSION_BYTES(a1)
+	move.l #module_use.opforgeNativeCliResolveImportedOrdinaryNameV1, abi.OPASM_SERVICE_IMPORT_NAME_RESOLVER_PTR(a1)
 	clr.w NativeCliOpasmEventCount
 	jsr driver.assembleSessionV1
 	move.l d0, d7

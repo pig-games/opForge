@@ -18,6 +18,7 @@
 	.use opforge.cli.strings
 	.use opforge.cli.copy
 	.use opforge.cli.line_text
+	.use opforge.cli.module_use
 
 	.section code, kind=code
 	.pub
@@ -172,6 +173,8 @@ checkStore
 	bne.w fail
 
 store
+	jsr module_use.opforgeNativeCliRecordOrdinaryExportV1
+	bne.w fail
 	bsr.w opforgeNativeCliStoreStatementRecord
 	bne.w fail
 	jsr engine.opasmEngineCommitStatementRecordV1

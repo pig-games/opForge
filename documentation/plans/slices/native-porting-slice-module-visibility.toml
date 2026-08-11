@@ -1,0 +1,58 @@
+[slice]
+schema_version = 2
+name = "native ordinary module visibility and imports"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-engine/src/source_graph.rs::load_module_graph",
+  "crates/opforge-asm/src/preprocess.rs::AsmMacroProcessor module visibility/import injection",
+  "examples/opcore/module_use.asm",
+  "examples/opcore/module_use_include.asm",
+  "examples/opcore/module_visibility.asm",
+  "examples/opcore/use_wildcard_import.asm",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliTrackVisibilityV1",
+  "native/motorola68000/amigaos/opforge-cli/assembly_session.asm::opforgeNativeCliAssembleSessionV1",
+  "native/motorola68000/amigaos/opforge-cli/module_use.asm::opforgeNativeCliRecordOrdinaryExportV1",
+  "native/motorola68000/amigaos/opforge-cli/module_use.asm::opforgeNativeCliResolveImportedOrdinaryNameV1",
+  "native/motorola68000/amigaos/opasm/opasm_operand_eval.asm::materializeSelectedImportAliases",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::resolveImportedLabelValue",
+]
+invariant = "Indented .pub and .priv directives are consumed as module visibility state before ordinary dispatch and emit no bytes. Only public ordinary labels/constants are recorded as exports. Selective aliases, module qualification, and wildcard imports resolve through an architecture-neutral callback to the defining module's qualified label; selected CPU instruction text remains unchanged while imported values are added to its evaluation snapshot."
+assertion_decision = "No new runtime assertion: visibility, export, import, and snapshot writes are bounded and fail through the existing native frontend/engine status path. Focused source contracts and the permanent 68020 harness prove private names have no wildcard mapping, while every Level D CLI case must complete a fresh guest protocol, exit zero, and match its own in-memory Rust oracle exactly."
+expected_inputs = "The canonical 6502/65C02 module_use.asm, module_use_include.asm, module_visibility.asm, and use_wildcard_import.asm roots, plus focused selective, wildcard, private-absence, selected compound-expression, full dotted-module-qualified ordinary, and alias-qualified ordinary cases."
+expected_outputs = "Visibility directives produce no bytes; public ordinary symbols resolve exactly as Rust for data directives and selected 65C02 instructions; private ordinary symbols are absent from import resolution; every successful native artifact equals the same case's live Rust bytes."
+known_non_equivalences = "Configured module-root autoload remains Item 7.10 and .ifdef/.ifndef conditional handling remains Item 7.11. No Intel, Motorola, linker, output-format, or CPU-specific semantic behavior is part of this slice."
+fast_proof_command = "cargo test -p asm native_ordinary_visibility_directives_are_trimmed_before_consumption -- --nocapture && cargo test -p asm native_selected_instruction_imports_preserve_operand_text_and_add_alias_values -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_module_visibility_roots_fs_uae -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_item79_wildcard_import_localization_fs_uae -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_ordinary_visibility_directives_are_trimmed_before_consumption"
+proof_level = "C"
+proves = "The native owner consumes indented exact visibility directives before ordinary dispatch and records ordinary exports only while public."
+does_not_prove = "Real 68020 execution or emitted bytes."
+
+[[tests]]
+name = "native_selected_instruction_imports_preserve_operand_text_and_add_alias_values"
+proof_level = "C"
+proves = "Pass-one sizing and pass-two emission share the selected alias snapshot path, which keeps the package operand request unchanged and supplies resolved public values through the generic evaluation snapshot."
+does_not_prove = "Real package execution or byte equality."
+
+[[tests]]
+name = "native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection"
+proof_level = "D"
+proves = "The permanent 68020 harness resolves a public selected alias and wildcard name but rejects an unrecorded private ordinary name."
+does_not_prove = "Complete CLI artifact parity; the exact root and focused CLI cases provide that authority."
+
+[[tests]]
+name = "native_item79_wildcard_import_localization_fs_uae"
+proof_level = "D"
+proves = "Six independent 65C02 CLI cases prove ordinary, segment, macro, statement, and selected compound-expression wildcard imports plus full dotted-module and alias-qualified ordinary imports with fresh exact Rust bytes."
+does_not_prove = "Configured-root autoload, conditional preprocessing, or unrelated corpus roots."
+
+[[tests]]
+name = "native_module_visibility_roots_fs_uae"
+proof_level = "D"
+proves = "The four canonical 6502/65C02 Item 7.9 roots each complete a fresh real guest run, exit zero, and emit bytes identical to that actual root's live Rust CLI oracle."
+does_not_prove = "Items 7.10 or 7.11, linker/output behavior, or non-MOS CPU families."

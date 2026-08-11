@@ -1348,13 +1348,31 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: one independently revertible definition-header remediation commit.
   - Definition of done: `macro_segment_syntax.asm` completes through the real native CLI and matches the exact same-case live Rust bytes; malformed directive-first headers fail deterministically without falling through.
 
-- [ ] Item 7.9: consume ordinary native module visibility directives
+- [x] Item 7.9: consume ordinary native module visibility directives
   - Source requirement or finding IDs: `I7-D-02`, parent Item 7 complete-corpus Level D failures for `module_use.asm`, `module_use_include.asm`, `module_visibility.asm`, and `use_wildcard_import.asm`; native pass one currently reports `.pub/.priv` as unknown mnemonics outside preprocessor-export capture. This item fully closes `I7-D-02`.
   - Activation dependency: Item 7.8 is committed and green.
   - Invariant: `.pub` and `.priv` are consumed as module visibility state before ordinary statement dispatch, and visibility applies consistently to constants/labels and preprocessor exports without emitting bytes.
   - Expected files: native module/use visibility owner and the narrow opasm/source-routing seam; focused Level A/C visibility model; exact affected-root Level D proof; one slice record; this plan’s checkbox/evidence only after closure.
   - Full quality gates: live Rust public/private symbol oracle; focused native routing/state/reset tests including private non-leakage; `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_module_visibility_roots_fs_uae -- --nocapture --test-threads=1`; native formatter; staged native-porting gate; full Rust quality gate; `make workflow-gate`.
   - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for ordinary module visibility directives only, with no autoload search, conditional, linker, output, or CPU behavior.
+  - Validation evidence: both focused Level C source/behavior contracts pass;
+    the four canonical 6502/65C02 visibility roots each complete a fresh
+    fail-closed Level D run and match the exact same-case live Rust CLI bytes;
+    six independent 65C02 focused cases prove ordinary, segment, macro,
+    statement, and selected compound-expression wildcard imports together with
+    full `lib.math.VALUE` and alias-qualified `M.VALUE` ordinary imports; and
+    the permanent 68020 harness proves public selective/wildcard lookup plus
+    private ordinary-name rejection. The focused reference comparison, native
+    formatter, staged native-porting gate, full serial Rust quality gate, and
+    `make workflow-gate` pass. The plan-compliance reviewer returned `PASS` for
+    the exact staged Item 7.9 implementation on 2026-08-11.
+  - Reference-refresh evidence: intentional golden refresh after the user-directed
+    rewrite of the wildcard-import corpus root as an explicit 65C02 opcore case
+    (`.cpu 65c02`, `lda #VAL`, `brk`). Update mode changed only
+    `examples/reference/opcore/use_wildcard_import.hex` and
+    `examples/reference/opcore/use_wildcard_import.lst`; no `.map` or `.err`
+    artifact changed. The focused non-update reference comparison passes, and
+    the same canonical source passes the exact same-case Level D FS-UAE proof.
   - Commit outcome: one independently revertible ordinary-visibility remediation commit.
   - Definition of done: all four visibility-bearing Item 7 roots complete through the real native CLI and match their exact same-case live Rust bytes; private ordinary symbols cannot be imported by wildcard, selective, qualified, or aliased access.
 

@@ -7,6 +7,7 @@
 	.use opforge.cli.copy
 	.use opforge.cli.constants
 	.use opforge.cli.line_processor
+	.use opforge.cli.module_use
 	.use opforge.cli.preprocessor
 	.use opforge.cli.preprocessor_definitions
 	.use opforge.cli.preprocessor_substitution
@@ -18,6 +19,72 @@ HARNESS_FAIL = 20
 	.pub
 
 start	.block
+	move.w #2, state.NativeCliModuleCount
+	lea ResolverAlphaText.l, a1
+	lea state.NativeCliModuleNameTable, a2
+	moveq #5, d0
+	jsr copy.copyBytes
+	lea ResolverBetaText.l, a1
+	lea state.NativeCliModuleNameTable, a2
+	adda.l #constants.TOKEN_BUFFER_CAPACITY, a2
+	moveq #4, d0
+	jsr copy.copyBytes
+	move.w #1, state.NativeCliOrdinaryExportCount
+	clr.w state.NativeCliOrdinaryExportOwnerTable
+	lea ResolverValueText.l, a1
+	lea state.NativeCliOrdinaryExportNameTable, a2
+	moveq #5, d0
+	jsr copy.copyBytes
+	cmpi.b #'V', state.NativeCliOrdinaryExportNameTable
+	bne.w ordinaryImportExportTableFail
+	move.w #1, state.NativeCliImportCount
+	move.w #1, state.NativeCliImportOwnerModuleTable
+	clr.w state.NativeCliImportModuleTable
+	move.w #1, state.NativeCliImportSelectCount
+	clr.w state.NativeCliImportSelectImportTable
+	clr.w state.NativeCliImportSelectFlagsTable
+	lea ResolverValueText.l, a1
+	lea state.NativeCliImportSelectNameTable, a2
+	moveq #5, d0
+	jsr copy.copyBytes
+	lea ResolverAliasText.l, a1
+	lea state.NativeCliImportSelectAliasTable, a2
+	moveq #1, d0
+	jsr copy.copyBytes
+	lea ResolverAliasText.l, a0
+	moveq #1, d0
+	lea ResolverBetaText.l, a1
+	moveq #4, d1
+	jsr module_use.opforgeNativeCliResolveImportedOrdinaryNameV1
+	tst.l d1
+	bne.w ordinaryImportResolverFail
+	cmpi.l #11, d0
+	bne.w ordinaryImportResolverLengthFail
+	lea ResolverQualifiedText.l, a1
+	movea.l a0, a2
+	moveq #11, d0
+verifyOrdinaryImportResolverLoop
+	move.b (a1)+, d2
+	cmp.b (a2)+, d2
+	bne.w ordinaryImportResolverTextFail
+	subq.l #1, d0
+	bne.s verifyOrdinaryImportResolverLoop
+	move.w #2, state.NativeCliImportSelectFlagsTable
+	lea ResolverSecretText.l, a0
+	moveq #6, d0
+	lea ResolverBetaText.l, a1
+	moveq #4, d1
+	jsr module_use.opforgeNativeCliResolveImportedOrdinaryNameV1
+	cmpi.l #1, d1
+	bne.w ordinaryPrivateImportFail
+	lea ResolverValueText.l, a0
+	moveq #5, d0
+	lea ResolverBetaText.l, a1
+	moveq #4, d1
+	jsr module_use.opforgeNativeCliResolveImportedOrdinaryNameV1
+	tst.l d1
+	bne.w ordinaryWildcardImportFail
+
 	jsr preprocessor.opforgeNativeCliResetPreprocessorV1
 	lea WrongDirectiveFirstHeaderText.l, a1
 	lea state.NativeCliSourceLine, a2
@@ -478,6 +545,24 @@ pairSubstitutionTextFail
 directiveFirstHeaderFail
 	moveq #66, d0
 	rts
+ordinaryImportResolverFail
+	moveq #62, d0
+	rts
+ordinaryImportExportTableFail
+	moveq #61, d0
+	rts
+ordinaryImportResolverLengthFail
+	moveq #63, d0
+	rts
+ordinaryImportResolverTextFail
+	moveq #64, d0
+	rts
+ordinaryPrivateImportFail
+	moveq #74, d0
+	rts
+ordinaryWildcardImportFail
+	moveq #75, d0
+	rts
 wrongDirectiveFirstHeaderFail
 	moveq #65, d0
 	rts
@@ -566,6 +651,18 @@ DirectiveFirstExpandedText
 	.byte "        .byte 3"
 WrongDirectiveFirstHeaderText
 	.byte ".foo .macro NAME"
+ResolverAlphaText
+	.byte "alpha", 0
+ResolverBetaText
+	.byte "beta", 0
+ResolverValueText
+	.byte "VALUE", 0
+ResolverAliasText
+	.byte "V", 0
+ResolverQualifiedText
+	.byte "alpha.VALUE"
+ResolverSecretText
+	.byte "SECRET", 0
 	.endsection
 	.output "build/macro_preprocessor_harness", format=hunk, sections=entry, code, data, bss
 	.endmodule

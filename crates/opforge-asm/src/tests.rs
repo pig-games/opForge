@@ -3,8 +3,9 @@ use crate::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, Severity};
 use crate::line::{set_host_expr_eval_failpoint_for_tests, AsmLine};
 use crate::listing::ListingWriter;
 use crate::native_reference_parity::{
-    account_native_reference_path, native_reference_cases, NativeReferenceAccounting,
-    NativeReferenceSourceMode,
+    account_native_reference_path, native_reference_cases, NativeOpcoreRole, NativeOpcoreShard,
+    NativeOpcoreStaging, NativeReferenceAccounting, NativeReferenceSourceMode,
+    NATIVE_OPCORE_ASSIGNMENTS,
 };
 use crate::normalization::{normalize_opforge_diagnostics, NormalizedErrorClass};
 use crate::output::{

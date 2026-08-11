@@ -23,6 +23,26 @@ resetStateV1	.block
 	rts
 	.bend  ; resetStateV1
 
+; Return the active top-level module name without exposing scope storage.
+; Outputs: A1/D1 = name slice, or D1 = 0 when no module is active.
+; Clobbers: D1/A1/CCR.
+activeModuleNameV1	.block
+	lea ScopeNames.l, a1
+	moveq #0, d1
+	tst.w ScopeDepth
+	beq.s activeModuleDone
+activeModuleLen
+	cmpi.l #OPASM_SCOPE_NAME_CAPACITY, d1
+	bhs.s activeModuleDone
+	tst.b 0(a1, d1.l)
+	beq.s activeModuleDone
+	addq.l #1, d1
+	bra.s activeModuleLen
+activeModuleDone
+	tst.l d1
+	rts
+	.bend  ; activeModuleNameV1
+
 ; Apply the current `.block` scope directive and skip it.
 ; Inputs: D7.W = current statement index.
 ; Outputs: D0 = status; D1 = 1; D2.W = next statement index.

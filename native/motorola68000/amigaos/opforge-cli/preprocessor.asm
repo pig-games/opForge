@@ -39,6 +39,8 @@ opforgeNativeCliTrackVisibilityV1	.block
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s noDirective
 	lea PubText.l, a1
 	moveq #4, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
@@ -49,6 +51,8 @@ checkPrivate
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s noDirective
 	lea PrivText.l, a1
 	moveq #5, d1
 	jsr line_text.opforgeNativeCliLineStartsWith

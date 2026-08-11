@@ -114,9 +114,9 @@ TARGETS = {
     ),
 }
 SNAPSHOTS = {
-    "opasm.amigaos.assembly_driver": ("2521636611671de128a22f38edd33a1eed8805f2c3f7d54e7cf8b220320adce0", 70, 18, ("code", "data", "bss"), 141),
+    "opasm.amigaos.assembly_driver": ("20ffb7fc25cbafa5e820830526dd913454dbddfa1504328bf7bf7bd44dc230c9", 72, 18, ("code", "data", "bss"), 141),
     "opasm.amigaos.directive_router": ("ff74d2d29df6e4636f5a35480a48d0275b6cda16313ccda3934106973cfc8d81", 3, 0, ("code", "data"), 1),
-    "opasm.amigaos.operand_eval": ("aa7e70a620296b1de1198bf677b9c69d9418b6dd039f03a6b0f1de32c61b90d8", 7, 3, ("code", "bss"), 4),
+    "opasm.amigaos.operand_eval": ("faf37671068c580047456d94519398dc202b522a56dd97d5e2c2fd42931d5910", 12, 3, ("code", "bss"), 4),
     "opasm.amigaos.directive_data": ("ae827acedfad611d1d57ff93783edda61b6eb4de332c2907521343d6f9fdf3bc", 2, 3, ("code", "bss"), 19),
     "opasm.amigaos.directive_text": ("98d283b9678f051c68787dc915b841559ee1a3647e597b44d966492a931ff0c8", 2, 1, ("code", "bss"), 2),
     "opasm.amigaos.layout": ("f4487a72d0d068bfcd239e22086d3f20bb9c7977d770d07e3467c793dd6986e3", 31, 1, ("code", "bss"), 2),

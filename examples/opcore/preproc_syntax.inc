@@ -1,3 +1,3 @@
-; Included by preproc_syntax.asm
+; 65C02 support included by preproc_syntax.asm
 INCVAL .const 5
-        .byte INCVAL
+        lda #INCVAL

@@ -1,0 +1,46 @@
+[slice]
+schema_version = 2
+name = "native stored-65C02 preprocessor conditionals"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-core/src/preprocess.rs::ConditionalState",
+  "crates/opforge-core/src/preprocess.rs::Preprocessor::handle_ifdef",
+  "crates/opforge-core/src/preprocess.rs::Preprocessor::handle_else",
+  "crates/opforge-engine/src/lib.rs::expand_source_file_with_dependencies_with_provider",
+  "examples/opcore/preproc_syntax.asm",
+  "examples/opcore/preproc_syntax.inc",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/args.asm::opforgeNativeCliParseArgs",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliRecordCommandLineDefineV1",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliRouteConditionalLineV1",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm::opforgeNativeCliFinishConditionalsV1",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::opforgeNativeCliTokenizeCurrentLine",
+  "native/motorola68000/amigaos/opforge-cli/source_reader.asm::opforgeNativeCliTokenizeFrontend",
+]
+invariant = "The actual stored 65C02 source and its stored support file are authoritative. Repeatable -D/--define names populate per-run preprocessor state; .ifdef/.ifndef/.elseif/.else/.endif update one bounded nested state machine before macro, include, source-record, parser, or statement dispatch; inactive ordinary lines are consumed; malformed or unclosed nesting and capacity overflow fail deterministically."
+assertion_decision = "No native debug instrumentation or assertion was added. The frontend returns through OPC-NCLI015 for malformed conditional state, the argument parser reports define-table overflow through OPC-NCLI030, and Level A/C source contracts plus real fail-closed Level D CLI runs prove the selected behavior."
+expected_inputs = "The exact checked-in examples/opcore/preproc_syntax.asm root, which declares .cpu 65c02 and uses LDA/STA/STZ in conditional branches, the exact checked-in preproc_syntax.inc support file, empty/VAL/UNKNOWN define environments, a nested 65C02 conditional, and focused 65C02 duplicate-else, depth-overflow, define-table-overflow, and unclosed-stack cases. The empty stored-source case runs again immediately after VAL to execute per-run reset behavior."
+expected_outputs = "The empty environment emits A9 42 8D 00 02 A9 05 before and after the defined run; VAL emits A9 41 8D 00 02 A9 05; UNKNOWN emits A9 42 9C 00 02 A9 05; nested OUTER emits A9 33. Each positive guest exits zero and its native artifact equals the in-memory Rust CLI oracle for that exact source, support file, CPU, and define command. Duplicate else, conditional-depth overflow, and unclosed state exit nonzero with OPC-NCLI015; define-table overflow exits nonzero with OPC-NCLI030."
+known_non_equivalences = "This slice claims command-line symbol definedness for conditional selection only. It retains NAME[=VALUE] tokens but does not claim Rust-equivalent object-macro value substitution in ordinary source text. No non-6502/65C02 source, linker/output behavior, or other CPU-family behavior is included."
+fast_proof_command = "cargo test -p asm native_preprocessor_ -- --nocapture && cargo test -p asm motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names -- --nocapture && cargo test examples_match_reference_outputs"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_preprocessor_conditionals_stored_65c02_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_preprocessor_conditionals_match_stored_65c02_corpus_contract"
+proof_level = "C"
+proves = "The exact stored root/support assignment is DirectMos65c02, contains no Intel MVI source, live Rust CLI defined/undefined environments emit the reviewed bytes, and native conditional routing precedes macro and statement routing with explicit bounded owners."
+does_not_prove = "Real 68020 execution, AmigaOS CLI argument parsing, guest completion, or native byte equality."
+
+[[tests]]
+name = "native_preprocessor_capacity_matrix_is_deterministic"
+proof_level = "C"
+proves = "The command-line define table and conditional stack have named independent capacities, their owners check bounds before writes, and reset clears the full contiguous per-run state."
+does_not_prove = "Rust dynamic-storage equivalence or real overflow execution on AmigaOS."
+
+[[tests]]
+name = "native_preprocessor_conditionals_stored_65c02_fs_uae"
+proof_level = "D"
+proves = "Five positive guest runs execute stored empty/VAL/UNKNOWN selection, reset-after-defined behavior, and nested selection with fresh case-bound start/done evidence, explicit exit zero, and byte-for-byte equality to their same-case in-memory Rust oracles. Duplicate else, conditional-depth overflow, define-table overflow, and unclosed-state guests independently complete with explicit nonzero exits and their required OPC-NCLI015/030 diagnostics."
+does_not_prove = "Object-macro value substitution from -D, linker/output semantics, or any non-6502/65C02 family."

@@ -210,6 +210,20 @@ NativeCliPreprocessActiveDefinition
 	.res word, 1
 NativeCliPreprocessCurrentVisibility
 	.res word, 1
+NativeCliPreprocessCliDefineCount
+	.res word, 1
+NativeCliPreprocessConditionalDepth
+	.res word, 1
+NativeCliPreprocessConditionalActive
+	.res byte, constants.NATIVE_PREPROCESS_CONDITIONAL_DEPTH_CAPACITY
+NativeCliPreprocessConditionalAnyTrue
+	.res byte, constants.NATIVE_PREPROCESS_CONDITIONAL_DEPTH_CAPACITY
+NativeCliPreprocessConditionalInElse
+	.res byte, constants.NATIVE_PREPROCESS_CONDITIONAL_DEPTH_CAPACITY
+NativeCliPreprocessCliDefines
+	.res byte, constants.NATIVE_PREPROCESS_CLI_DEFINE_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
+NativeCliPreprocessConditionalName
+	.res byte, constants.TOKEN_BUFFER_CAPACITY
 ; Shared structural-definition record contract (macro, segment, and statement):
 ; DefinitionHeader is the captured name/signature; DefinitionBody and
 ; DefinitionBodyCount describe the bounded body span; HeaderLen/BodyLen own

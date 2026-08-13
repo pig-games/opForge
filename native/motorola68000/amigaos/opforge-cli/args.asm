@@ -14,6 +14,7 @@
 	.use opforge.cli.path
 	.use opforge.cli.text_output
 	.use opforge.cli.token_util
+	.use opforge.cli.preprocessor
 
 	.section code, kind=code
 	.pub
@@ -151,7 +152,15 @@ parseLoop
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagNativeDebugLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	bne.w nativeDebug
+	bne.w enableDebugFlag
+	lea state.NativeCliArgToken, a0
+	lea strings.FlagDefineShort, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	bne.w define
+	lea state.NativeCliArgToken, a0
+	lea strings.FlagDefineLong, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	bne.w define
 	bsr.w opforgeNativeCliIsUnsupportedFlag
 	bne.w unsupported
 	bra.w unknownFlag
@@ -253,8 +262,17 @@ modulePath
 	bne.w modulePathCapacity
 	bra.w parseLoop
 
-nativeDebug
+enableDebugFlag
 	move.w #1, state.NativeCliDebugEnabled
+	bra.w parseLoop
+
+define
+	lea state.NativeCliIncludeTarget, a1
+	bsr.w opforgeNativeCliCopyRequiredValue
+	bne.w missingValue
+	lea state.NativeCliIncludeTarget, a0
+	jsr preprocessor.opforgeNativeCliRecordCommandLineDefineV1
+	bne.w defineCapacity
 	bra.w parseLoop
 
 positionalInputPath
@@ -372,6 +390,10 @@ modulePathCapacity
 
 includePathCapacity
 	move.w #constants.NCLI_PARSE_INCLUDE_PATH_CAPACITY, state.NativeCliParseStatus
+	bra.w parseReturn
+
+defineCapacity
+	move.w #constants.NCLI_PARSE_DEFINE_CAPACITY, state.NativeCliParseStatus
 
 parseReturn
 	move.w state.NativeCliParseStatus, d0
@@ -614,14 +636,6 @@ opforgeNativeCliIsUnsupportedFlag	.block
 	bne.w unsupportedYes
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagSrecLong, a1
-	jsr token_util.opforgeNativeCliTokenEquals
-	bne.w unsupportedYes
-	lea state.NativeCliArgToken, a0
-	lea strings.FlagDefineShort, a1
-	jsr token_util.opforgeNativeCliTokenEquals
-	bne.w unsupportedYes
-	lea state.NativeCliArgToken, a0
-	lea strings.FlagDefineLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
 	bne.w unsupportedYes
 	moveq #0, d0

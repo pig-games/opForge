@@ -1,18 +1,20 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; Preprocessor directive coverage (no .define).
+----                                1  ; 65C02 preprocessor branch-selection coverage (no source .define).
 ----                                2  ; Preprocessor symbols are provided via -D/--define.
 ----                                3  
-0000    01                          4          .byte 1
+----                                4  .cpu 65c02
 ----                                5  
-0001    02                          6          .byte 2
+0000    A9 42                       6          lda #$42
 ----                                7  
-----                                8  ; Included by preproc_syntax.asm
-----    EQU 0005                    9  INCVAL .const 5
-0002    05                         10          .byte INCVAL
+0002    8D 00 02                    8          sta $0200
+----                                9
+----                               10  ; 65C02 support included by preproc_syntax.asm
+----    EQU 0005                   11  INCVAL .const 5
+0005    A9 05                      12          lda #INCVAL
 
-Lines: 10  Errors: 0  Warnings: 0
+Lines: 12  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
@@ -20,10 +22,10 @@ NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
 INCVAL           0005      prv  lbl 
 
-Total memory is 3 bytes
+Total memory is 7 bytes
 
 GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-0000    01 02 05
+0000    A9 42 8D 00 02 A9 05

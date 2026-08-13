@@ -17,7 +17,7 @@ VersionText
 	.byte "opForge native AmigaOS CLI 0.1", 10, 0
 HelpText
 	.byte "Usage: opForge [OPTIONS] [INPUT]", 10
-	.byte "Native subset: INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, -M/--module-path, --native-debug", 10, 0
+	.byte "Native subset: INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -D/--define, -I/--include-path, -M/--module-path, --native-debug", 10, 0
 UsageText
 	.byte "OPC-NCLI001: Usage: opForge [OPTIONS] [INPUT]", 10, 0
 QuotedText
@@ -25,7 +25,7 @@ QuotedText
 UnsupportedText
 	.byte "OPC-NCLI003: recognized Rust CLI option is not implemented by native AmigaOS CLI yet: ", 0
 NativeSubsetHelpText
-	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, -M/--module-path, and --native-debug; --hunk is not implemented yet.", 10, 0
+	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -D/--define, -I/--include-path, -M/--module-path, and --native-debug; --hunk is not implemented yet.", 10, 0
 UnknownFlagText
 	.byte "OPC-NCLI004: unknown CLI flag: ", 0
 MissingValueText
@@ -42,6 +42,8 @@ ModulePathCapacityText
 	.byte "OPC-NCLI017: native module path capacity exceeded", 10, 0
 IncludePathCapacityText
 	.byte "OPC-NCLI029: native include path capacity exceeded", 10, 0
+DefineCapacityText
+	.byte "OPC-NCLI030: native command-line define capacity exceeded", 10, 0
 PackageTooLargeText
 	.byte "ERROR OPC-NCLI019: opasm package exceeds native package storage capacity", 10, 0
 InputOpenErrorText
@@ -150,7 +152,7 @@ IncludeOkText
 IncludeFailureText
 	.byte "ERROR OPC-NCLI014: native include expansion failed", 10, 0
 ConditionalFailureText
-	.byte "ERROR OPC-NCLI015: native conditional preprocessing not implemented", 10, 0
+	.byte "ERROR OPC-NCLI015: native conditional preprocessing failed", 10, 0
 ModuleResolveFailureText
 	.byte "ERROR OPC-NCLI018: native module resolution failed: ", 0
 IncludeRootText

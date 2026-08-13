@@ -142,7 +142,9 @@ Embedding documentation:
 - [`crates/opforge-cli`](crates/opforge-cli): command-line frontend
 - [`crates/opforge-ffi`](crates/opforge-ffi): C-facing ABI layer
 - [`native`](native): opForge-built native deliverables that run on opForge
-  targets, including the 68020 AmigaOS native CLI implementation
+  targets, including the 68020 AmigaOS native CLI implementation. Its current
+  6502/65C02 parity subset accepts repeatable `-D/--define NAME[=VALUE]` and
+  consumes `.ifdef`/`.ifndef` branch selection before statement dispatch.
 
 ## Development Shortcuts
 

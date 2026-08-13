@@ -1,16 +1,18 @@
-; Preprocessor directive coverage (no .define).
+; 65C02 preprocessor branch-selection coverage (no source .define).
 ; Preprocessor symbols are provided via -D/--define.
 
+.cpu 65c02
+
 .ifdef VAL
-        .byte 0
+        lda #$41
 .else
-        .byte 1
+        lda #$42
 .endif
 
 .ifndef UNKNOWN
-        .byte 2
+        sta $0200
 .else
-        .byte 0
+        stz $0200
 .endif
 
 .include "preproc_syntax.inc"

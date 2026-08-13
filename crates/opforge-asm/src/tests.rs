@@ -10595,11 +10595,12 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     ));
     assert!(listing.contains("OPC-NCLI017: native module path capacity exceeded"));
     assert!(listing.contains("OPC-NCLI029: native include path capacity exceeded"));
+    assert!(listing.contains("OPC-NCLI030: native command-line define capacity exceeded"));
     assert!(listing
         .contains("ERROR OPC-NCLI019: opasm package exceeds native package storage capacity"));
     assert!(listing.contains("OPC-NCLI008: Input source file not found"));
     assert!(listing.contains(
-        "Native subset supports INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, -M/--module-path, and --native-debug; --hunk is not implemented yet."
+        "Native subset supports INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -D/--define, -I/--include-path, -M/--module-path, and --native-debug; --hunk is not implemented yet."
     ));
     assert!(listing.contains("OPC-NCLI010: native tokenizer stage failed"));
     assert!(listing.contains("STAGE parser"));
@@ -10615,7 +10616,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         .contains("OPC-NCLI028: native Hunk output is not implemented; use --bin for flat output"));
     assert!(listing.contains("OPC-NCLI013: native module/use parser stage failed"));
     assert!(listing.contains("OPC-NCLI014: native include expansion failed"));
-    assert!(listing.contains("OPC-NCLI015: native conditional preprocessing not implemented"));
+    assert!(listing.contains("OPC-NCLI015: native conditional preprocessing failed"));
     assert!(listing.contains("OPC-NCLI018: native module resolution failed"));
     assert!(listing.contains("STATUS include-ok"));
     assert!(listing.contains("MODULE "));

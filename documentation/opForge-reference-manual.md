@@ -948,6 +948,12 @@ Notes:
 - `#` is used for immediate operands; preprocessor directives must use dot form.
 - Preprocessor directives run before macro expansion.
 - Preprocessor symbols are provided via the `-D/--define` command-line option.
+- The native 68020 AmigaOS CLI's current 6502/65C02 parity subset consumes
+  `.ifdef`, `.ifndef`, `.elseif`, `.else`, and `.endif` before macro, include,
+  or statement routing. It accepts repeatable `-D/--define NAME[=VALUE]`; its
+  fixed frontend stores at most 16 distinct command-line names and 16 nested
+  conditional frames, with deterministic failure on overflow or malformed
+  nesting.
 
 ## 4. Pseudo instructions
 

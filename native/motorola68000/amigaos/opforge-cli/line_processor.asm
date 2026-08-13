@@ -45,6 +45,18 @@
 	.pub
 
 opforgeNativeCliTokenizeCurrentLine	.block
+	jsr preprocessor.opforgeNativeCliRouteConditionalLineV1
+	tst.l d0
+	beq.s conditionalPass
+	bmi.s conditionalFail
+	moveq #0, d0
+	rts
+conditionalFail
+	move.l #strings.ConditionalFailureText, d1
+	jsr dos.putErrStr
+	moveq #1, d0
+	rts
+conditionalPass
 	tst.w state.NativeCliPreprocessActiveDefinition
 	bpl.s visibilityPass
 	jsr preprocessor.opforgeNativeCliTrackVisibilityV1

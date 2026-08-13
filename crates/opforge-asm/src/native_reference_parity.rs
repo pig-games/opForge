@@ -195,7 +195,7 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     ),
     opcore_root!("module_use_include", ModuleMacroStatement, DirectCpuNeutral),
     opcore_root!("module_visibility", ModuleMacroStatement, DirectCpuNeutral),
-    opcore_root!("preproc_syntax", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_root!("preproc_syntax", ModuleMacroStatement, DirectMos65c02),
     opcore_root!("project_root/main.asm" => "project_root-main", ModuleMacroStatement, DirectCpuNeutral),
     opcore_root!(
         "statement_boundary_span",
@@ -227,7 +227,7 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     opcore_support!("lib/macro_export_lib.asm" => "macro_cross_module_ok.asm", ModuleMacroStatement, DirectCpuNeutral),
     opcore_support!("lib/statement_export_lib.asm" => "statement_cross_module_ok.asm", ModuleMacroStatement, DirectCpuNeutral),
     opcore_support!("module_use_lib.inc" => "module_use_include.asm", ModuleMacroStatement, DirectCpuNeutral),
-    opcore_support!("preproc_syntax.inc" => "preproc_syntax.asm", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_support!("preproc_syntax.inc" => "preproc_syntax.asm", ModuleMacroStatement, DirectMos65c02),
     opcore_support!("project_root/util.asm" => "project_root/main.asm", ModuleMacroStatement, DirectCpuNeutral),
     opcore_root!("align_simple", LayoutOutput, DirectCpuNeutral),
     opcore_root!("cli_json_outputs", LayoutOutput, DirectCpuNeutral),

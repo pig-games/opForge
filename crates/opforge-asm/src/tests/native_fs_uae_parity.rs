@@ -2837,6 +2837,8 @@ fn native_preprocessor_capacity_matrix_is_deterministic() {
 
     for capacity in [
         "NATIVE_PREPROCESS_DEFINITION_CAPACITY = 8",
+        "NATIVE_PREPROCESS_CLI_DEFINE_CAPACITY = 16",
+        "NATIVE_PREPROCESS_CONDITIONAL_DEPTH_CAPACITY = 16",
         "NATIVE_PREPROCESS_BODY_LINE_CAPACITY = 8",
         "NATIVE_PREPROCESS_MACRO_ARG_CAPACITY = 9",
         "NATIVE_PREPROCESS_EXPANSION_DEPTH_LIMIT = 1",
@@ -2937,6 +2939,17 @@ fn native_preprocessor_capacity_matrix_is_deterministic() {
             "opforgeNativeCliResetPreprocessorV1\t.block",
             "move.l #state.NATIVE_CLI_PREPROCESS_STATE_BYTES, d0",
             "jsr copy.clearBytes",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &preprocessor,
+        &[
+            "opforgeNativeCliRecordCommandLineDefineV1\t.block",
+            "cmpi.w #constants.NATIVE_PREPROCESS_CLI_DEFINE_CAPACITY, d4",
+            "opforgeNativeCliRouteConditionalLineV1\t.block",
+            "opforgeNativeCliFinishConditionalsV1\t.block",
+            "pushConditionalFrame\t.block",
+            "cmpi.w #constants.NATIVE_PREPROCESS_CONDITIONAL_DEPTH_CAPACITY, d2",
         ]
     ));
     assert!(source_contains_in_order(
@@ -6416,6 +6429,7 @@ fn item7_live_rust_cli_binary_oracle(
     source: &[u8],
     guest_files: &[Item7StagedGuestFile],
     cpu_id: &str,
+    defines: &[&str],
 ) -> Vec<u8> {
     let case_dir = create_temp_dir("item7-live-rust-cli-oracle");
     let _case_dir_guard = Item7OracleDir(case_dir.clone());
@@ -6430,7 +6444,7 @@ fn item7_live_rust_cli_binary_oracle(
         fs::write(&path, &guest_file.bytes)
             .unwrap_or_else(|err| panic!("write Item 7 support {}: {err}", path.display()));
     }
-    let args = vec![
+    let mut args = vec![
         "opForge".to_string(),
         input_path.to_string_lossy().into_owned(),
         "--bin".to_string(),
@@ -6442,6 +6456,10 @@ fn item7_live_rust_cli_binary_oracle(
         "-M".to_string(),
         case_dir.to_string_lossy().into_owned(),
     ];
+    for define in defines {
+        args.push("-D".to_string());
+        args.push((*define).to_string());
+    }
     let cli = Cli::parse_from(args);
     run_with_cli_with_context(&cli).unwrap_or_else(|err| {
         panic!("run same-case Rust Item 7 CLI oracle for {case_name}: {err:?}")
@@ -6492,6 +6510,7 @@ fn item7_staged_cases() -> Vec<Item7StagedCase> {
                 &source,
                 &guest_files,
                 "65c02",
+                &[],
             );
             Item7StagedCase {
                 name: assignment.source_path,
@@ -6899,6 +6918,7 @@ fn native_module_discovery_boundaries_fs_uae() {
         root_source,
         &rust_support,
         "65c02",
+        &[],
     );
     assert_eq!(rust_oracle, [0x22]);
 
@@ -7039,7 +7059,7 @@ fn native_item79_wildcard_import_localization_fs_uae() {
     let prepared = sources
         .iter()
         .map(|(name, source)| {
-            let rust_oracle = item7_live_rust_cli_binary_oracle(name, source, &[], "65c02");
+            let rust_oracle = item7_live_rust_cli_binary_oracle(name, source, &[], "65c02", &[]);
             (*name, source.clone(), rust_oracle)
         })
         .collect::<Vec<_>>();
@@ -7076,6 +7096,307 @@ fn native_item79_wildcard_import_localization_fs_uae() {
                 assert!(run.success, "native {name} failed: {}", run.stdout);
                 assert_eq!(verified_fs_uae_output(run), *rust, "native {name} bytes");
             }
+        }
+    }
+}
+
+#[test]
+fn native_preprocessor_conditionals_match_stored_65c02_corpus_contract() {
+    // Proof levels A/C. The exact stored Item 7 root and support file are
+    // 65C02 sources, and live Rust CLI runs prove each selected branch. The
+    // native source checks lock conditional routing ahead of statement
+    // dispatch and deterministic stack/capacity ownership. This does not
+    // execute the 68020 implementation.
+    let root = workspace_root();
+    let assignment = NATIVE_OPCORE_ASSIGNMENTS
+        .iter()
+        .find(|assignment| assignment.source_path == "examples/opcore/preproc_syntax.asm")
+        .expect("stored preprocessor root assignment");
+    assert_eq!(assignment.staging, NativeOpcoreStaging::DirectMos65c02);
+    let support_assignment = NATIVE_OPCORE_ASSIGNMENTS
+        .iter()
+        .find(|assignment| assignment.source_path == "examples/opcore/preproc_syntax.inc")
+        .expect("stored preprocessor support assignment");
+    assert_eq!(
+        support_assignment.staging,
+        NativeOpcoreStaging::DirectMos65c02
+    );
+
+    let source = fs::read(root.join(assignment.source_path)).expect("read stored 65C02 root");
+    let support = fs::read(root.join(support_assignment.source_path))
+        .expect("read stored 65C02 preprocessor support");
+    let source_text = String::from_utf8_lossy(&source).to_ascii_lowercase();
+    let support_text = String::from_utf8_lossy(&support).to_ascii_lowercase();
+    assert!(source_text.contains(".cpu 65c02"));
+    assert!(source_text.contains("lda #$41"));
+    assert!(source_text.contains("sta $0200"));
+    assert!(source_text.contains("stz $0200"));
+    assert!(!source_text.contains("mvi "));
+    assert!(support_text.contains("lda #incval"));
+    assert!(!support_text.contains("mvi "));
+
+    let guest_files = [Item7StagedGuestFile {
+        relative_path: "preproc_syntax.inc".to_string(),
+        bytes: support,
+    }];
+    assert_eq!(
+        item7_live_rust_cli_binary_oracle(
+            "preproc-syntax-undefined",
+            &source,
+            &guest_files,
+            "65c02",
+            &[],
+        ),
+        [0xa9, 0x42, 0x8d, 0x00, 0x02, 0xa9, 0x05]
+    );
+    assert_eq!(
+        item7_live_rust_cli_binary_oracle(
+            "preproc-syntax-val-defined",
+            &source,
+            &guest_files,
+            "65c02",
+            &["VAL"],
+        ),
+        [0xa9, 0x41, 0x8d, 0x00, 0x02, 0xa9, 0x05]
+    );
+    assert_eq!(
+        item7_live_rust_cli_binary_oracle(
+            "preproc-syntax-unknown-defined",
+            &source,
+            &guest_files,
+            "65c02",
+            &["UNKNOWN"],
+        ),
+        [0xa9, 0x42, 0x9c, 0x00, 0x02, 0xa9, 0x05]
+    );
+
+    let preprocessor =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/preprocessor.asm"))
+            .expect("read native conditional owner");
+    let line_processor = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read native line router");
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "opforgeNativeCliTokenizeCurrentLine\t.block",
+            "jsr preprocessor.opforgeNativeCliRouteConditionalLineV1",
+            "conditionalPass",
+            "jsr preprocessor_definitions.opforgeNativeCliCaptureMacroDefinitionLineV1",
+            "jsr assembly_session.opforgeNativeCliRecordSourceLine",
+        ]
+    ));
+    for required in [
+        "opforgeNativeCliRecordCommandLineDefineV1\t.block",
+        "opforgeNativeCliRouteConditionalLineV1\t.block",
+        "opforgeNativeCliFinishConditionalsV1\t.block",
+        "NATIVE_PREPROCESS_CLI_DEFINE_CAPACITY",
+        "NATIVE_PREPROCESS_CONDITIONAL_DEPTH_CAPACITY",
+    ] {
+        assert!(
+            preprocessor.contains(required),
+            "missing native conditional surface {required}"
+        );
+    }
+}
+
+#[test]
+fn native_preprocessor_conditionals_stored_65c02_fs_uae() {
+    // Proof level D. Stored-source and focused nested positive variants compare
+    // native bytes with same-case in-memory Rust CLI oracles. Independent real
+    // CLI runs also execute reset-after-define, duplicate else, conditional
+    // depth, define-table capacity, and unclosed-stack behavior. Every negative
+    // case must complete with a nonzero guest exit and its required diagnostic.
+    const NATIVE_CONDITIONAL_DEPTH_CAPACITY: usize = 16;
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let root = workspace_root();
+    let source = fs::read(root.join("examples/opcore/preproc_syntax.asm"))
+        .expect("read stored preprocessor root");
+    let support = fs::read(root.join("examples/opcore/preproc_syntax.inc"))
+        .expect("read stored preprocessor support");
+    let rust_support = [Item7StagedGuestFile {
+        relative_path: "preproc_syntax.inc".to_string(),
+        bytes: support.clone(),
+    }];
+    let undefined = item7_live_rust_cli_binary_oracle(
+        "preproc-syntax-undefined",
+        &source,
+        &rust_support,
+        "65c02",
+        &[],
+    );
+    let val_defined = item7_live_rust_cli_binary_oracle(
+        "preproc-syntax-val-defined",
+        &source,
+        &rust_support,
+        "65c02",
+        &["VAL"],
+    );
+    let unknown_defined = item7_live_rust_cli_binary_oracle(
+        "preproc-syntax-unknown-defined",
+        &source,
+        &rust_support,
+        "65c02",
+        &["UNKNOWN"],
+    );
+    let nested_source = b".cpu 65c02\n.ifdef OUTER\n.ifndef INNER\n        lda #$33\n.else\n        lda #$44\n.endif\n.else\n        lda #$55\n.endif\n";
+    let nested = item7_live_rust_cli_binary_oracle(
+        "preproc-syntax-nested",
+        nested_source,
+        &[],
+        "65c02",
+        &["OUTER"],
+    );
+    let guest_files = [crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+        relative_path: "preproc_syntax.inc",
+        bytes: &support,
+    }];
+    let package = item6_mos_package_bytes();
+    let assembly_defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let unclosed = b".cpu 65c02\n.ifdef VAL\n        lda #$11\n";
+    let duplicate_else = b".cpu 65c02\n.ifdef VAL\n        lda #$11\n.else\n        lda #$22\n.else\n        lda #$33\n.endif\n";
+    let mut depth_overflow = String::from(".cpu 65c02\n");
+    for _ in 0..=NATIVE_CONDITIONAL_DEPTH_CAPACITY {
+        depth_overflow.push_str(".ifdef NEVER\n");
+    }
+    depth_overflow.push_str("        lda #$11\n");
+    let define_capacity_command = "{input} --bin {bin} --cpu 65c02 -D D00 -D D01 -D D02 -D D03 -D D04 -D D05 -D D06 -D D07 -D D08 -D D09 -D D10 -D D11 -D D12 -D D13 -D D14 -D D15 -D D16";
+    let capacity_source = b".cpu 65c02\n        lda #$11\n";
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "preproc-syntax-undefined",
+            cpu_override: "68020",
+            extra_assembly_defines: &assembly_defines,
+            source_override: Some(&source),
+            command_template: Some("{input} --bin {bin} --cpu 65c02 -I {guest_work_dir}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &guest_files,
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &undefined,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "preproc-syntax-val-defined",
+            cpu_override: "68020",
+            extra_assembly_defines: &assembly_defines,
+            source_override: Some(&source),
+            command_template: Some("{input} --bin {bin} --cpu 65c02 -D VAL -I {guest_work_dir}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &guest_files,
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &val_defined,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "preproc-syntax-undefined-after-defined-reset",
+            cpu_override: "68020",
+            extra_assembly_defines: &assembly_defines,
+            source_override: Some(&source),
+            command_template: Some("{input} --bin {bin} --cpu 65c02 -I {guest_work_dir}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &guest_files,
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &undefined,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "preproc-syntax-unknown-defined",
+            cpu_override: "68020",
+            extra_assembly_defines: &assembly_defines,
+            source_override: Some(&source),
+            command_template: Some(
+                "{input} --bin {bin} --cpu 65c02 --define UNKNOWN -I {guest_work_dir}",
+            ),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &guest_files,
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &unknown_defined,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "preproc-syntax-nested",
+            cpu_override: "68020",
+            extra_assembly_defines: &assembly_defines,
+            source_override: Some(nested_source),
+            command_template: Some("{input} --bin {bin} --cpu 65c02 -D OUTER"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &nested,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "preproc-syntax-duplicate-else",
+            cpu_override: "68020",
+            extra_assembly_defines: &assembly_defines,
+            source_override: Some(duplicate_else),
+            command_template: Some("{input} --bin {bin} --cpu 65c02"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                "OPC-NCLI015",
+            ),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "preproc-syntax-depth-capacity",
+            cpu_override: "68020",
+            extra_assembly_defines: &assembly_defines,
+            source_override: Some(depth_overflow.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu 65c02"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                "OPC-NCLI015",
+            ),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "preproc-syntax-define-capacity",
+            cpu_override: "68020",
+            extra_assembly_defines: &assembly_defines,
+            source_override: Some(capacity_source),
+            command_template: Some(define_capacity_command),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                "OPC-NCLI030",
+            ),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "preproc-syntax-unclosed-65c02",
+            cpu_override: "68020",
+            extra_assembly_defines: &assembly_defines,
+            source_override: Some(unclosed),
+            command_template: Some("{input} --bin {bin} --cpu 65c02"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                "OPC-NCLI015",
+            ),
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&root, &cases)
+        .expect("stored 65C02 conditional FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                cases.len(),
+                "every conditional case must complete"
+            );
+            assert!(runs[..5].iter().all(|run| run.success));
+            assert!(
+                runs[5..].iter().all(|run| !run.success),
+                "every malformed or capacity case must fail"
+            );
         }
     }
 }

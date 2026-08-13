@@ -172,6 +172,8 @@ opforgeNativeCliReportParseError	.block
 	beq.w modulePathCapacity
 	cmpi.w #constants.NCLI_PARSE_INCLUDE_PATH_CAPACITY, d0
 	beq.w includePathCapacity
+	cmpi.w #constants.NCLI_PARSE_DEFINE_CAPACITY, d0
+	beq.w defineCapacity
 	move.l #strings.UsageText, d1
 	bra.w reportText
 
@@ -225,6 +227,10 @@ modulePathCapacity
 
 includePathCapacity
 	move.l #strings.IncludePathCapacityText, d1
+	bra.w reportText
+
+defineCapacity
+	move.l #strings.DefineCapacityText, d1
 
 reportText
 	jsr dos.putErrStr

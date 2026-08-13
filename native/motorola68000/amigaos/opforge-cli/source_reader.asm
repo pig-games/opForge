@@ -76,6 +76,12 @@ packageUnavailable
 	move.w #-1, state.NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliTokenizeFile
 	bne.s return
+	jsr preprocessor.opforgeNativeCliFinishConditionalsV1
+	beq.s success
+	move.l #strings.ConditionalFailureText, d1
+	jsr dos.putErrStr
+	moveq #1, d0
+	bra.s return
 
 success
 	moveq #0, d0

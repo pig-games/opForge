@@ -9,9 +9,9 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                6          .version "2.0.0"
 ----                                7          .output
 ----                                8              .name "meta-block-demo"
-----                                9              .z80
-----                               10                  .name "meta-block-demo-z80"
-----                               11              .endz80
+----                                9              .m6502
+----                               10                  .name "meta-block-demo-6502"
+----                               11              .endm6502
 ----                               12          .endoutput
 ----                               13      .endmeta
 ----                               14  

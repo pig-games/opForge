@@ -4,7 +4,7 @@
     .meta.name "Metadata Demo"
     .meta.version "1.0.0"
     .meta.output.name "meta-demo"
-    .meta.output.z80.name "meta-demo-z80"
+    .meta.output.m6502.name "meta-demo-6502"
 
     .org 0000h
 START

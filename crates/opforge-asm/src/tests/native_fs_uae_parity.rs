@@ -6407,6 +6407,16 @@ impl Drop for Item7OracleDir {
     }
 }
 
+struct Item8RustDeclaredOutputDir(PathBuf);
+
+impl Drop for Item8RustDeclaredOutputDir {
+    fn drop(&mut self) {
+        if self.0.exists() {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
 fn item7_native_source(
     assignment: &crate::native_reference_parity::NativeOpcoreAssignment,
 ) -> Vec<u8> {
@@ -6519,6 +6529,123 @@ fn item7_staged_cases() -> Vec<Item7StagedCase> {
             }
         })
         .collect()
+}
+
+fn item8_staged_cases() -> Vec<Item7StagedCase> {
+    NATIVE_OPCORE_ASSIGNMENTS
+        .iter()
+        .filter(|assignment| {
+            assignment.shard == NativeOpcoreShard::LayoutOutput
+                && matches!(assignment.role, NativeOpcoreRole::Root { .. })
+        })
+        .map(|assignment| {
+            let guest_files = NATIVE_OPCORE_ASSIGNMENTS
+                .iter()
+                .filter_map(|support| match support.role {
+                    NativeOpcoreRole::Support { owner }
+                        if support.shard == NativeOpcoreShard::LayoutOutput
+                            && owner == assignment.source_path =>
+                    {
+                        let relative_path = support
+                            .source_path
+                            .strip_prefix("examples/opcore/")
+                            .expect("Item 8 support is below examples/opcore")
+                            .to_string();
+                        let bytes = fs::read(workspace_root().join(support.source_path))
+                            .unwrap_or_else(|err| {
+                                panic!("read Item 8 support {}: {err}", support.source_path)
+                            });
+                        Some(Item7StagedGuestFile {
+                            relative_path,
+                            bytes,
+                        })
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            let source = item7_native_source(assignment);
+            let declared_output_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("build");
+            let _declared_output_lock = native_cli_schema_rust_prg_lock()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            assert!(
+                !declared_output_dir.exists(),
+                "Item 8 Rust oracle output directory must not pre-exist: {}",
+                declared_output_dir.display()
+            );
+            let declared_output_guard = Item8RustDeclaredOutputDir(declared_output_dir.clone());
+            let rust_oracle = item7_live_rust_cli_binary_oracle(
+                assignment.source_path,
+                &source,
+                &guest_files,
+                "65c02",
+                &[],
+            );
+            drop(declared_output_guard);
+            assert!(
+                !declared_output_dir.exists(),
+                "Item 8 Rust oracle output directory must be removed after {}",
+                assignment.source_path
+            );
+            Item7StagedCase {
+                name: assignment.source_path,
+                source,
+                guest_files,
+                rust_oracle,
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn item8_staging_covers_every_assigned_root_and_support_file() {
+    // Proof levels A/B. This proves the Item 8 shard is derived from every
+    // reviewed layout/output root without a case cap, stages every owned support
+    // file, and obtains a live same-source Rust CLI binary oracle. It does not
+    // execute native code or prove source-declared secondary artifacts.
+    let cases = item8_staged_cases();
+    let expected_roots = NATIVE_OPCORE_ASSIGNMENTS
+        .iter()
+        .filter(|assignment| {
+            assignment.shard == NativeOpcoreShard::LayoutOutput
+                && matches!(assignment.role, NativeOpcoreRole::Root { .. })
+        })
+        .map(|assignment| assignment.source_path)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        cases.iter().map(|case| case.name).collect::<Vec<_>>(),
+        expected_roots,
+        "uncapped Item 8 staging must contain every assigned root in inventory order"
+    );
+    assert!(!cases.is_empty(), "Item 8 must have assigned roots");
+    for case in &cases {
+        let expected_support = NATIVE_OPCORE_ASSIGNMENTS
+            .iter()
+            .filter_map(|assignment| match assignment.role {
+                NativeOpcoreRole::Support { owner }
+                    if assignment.shard == NativeOpcoreShard::LayoutOutput
+                        && owner == case.name =>
+                {
+                    Some(
+                        assignment
+                            .source_path
+                            .strip_prefix("examples/opcore/")
+                            .expect("Item 8 support prefix"),
+                    )
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            case.guest_files
+                .iter()
+                .map(|file| file.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            expected_support,
+            "support tree for {}",
+            case.name
+        );
+    }
 }
 
 #[test]
@@ -7481,6 +7608,89 @@ fn native_reference_opcore_module_macro_statement_fs_uae() {
                 let native = verified_fs_uae_output(run);
                 assert_eq!(
                     native, case.rust_oracle,
+                    "native bytes differ for {}",
+                    case.name
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn native_reference_opcore_layout_output_fs_uae() {
+    // Proof level D. This derives every Item 8 root from the reviewed assignment
+    // without a runtime case cap. Every exact stored CPU-neutral/6502-family
+    // root and owned support tree gets an independent fresh guest protocol,
+    // explicit zero exit, and byte equality with that case's in-memory Rust CLI
+    // binary oracle. Source-declared secondary artifacts are proved separately.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let root = workspace_root();
+    let staged = item8_staged_cases();
+    let assigned_roots = NATIVE_OPCORE_ASSIGNMENTS
+        .iter()
+        .filter(|assignment| {
+            assignment.shard == NativeOpcoreShard::LayoutOutput
+                && matches!(assignment.role, NativeOpcoreRole::Root { .. })
+        })
+        .map(|assignment| assignment.source_path)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        staged.iter().map(|case| case.name).collect::<Vec<_>>(),
+        assigned_roots,
+        "uncapped Item 8 run must contain every assigned root in inventory order"
+    );
+    let guest_files = staged
+        .iter()
+        .map(|case| {
+            case.guest_files
+                .iter()
+                .map(|file| crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+                    relative_path: &file.relative_path,
+                    bytes: &file.bytes,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let cases = staged
+        .iter()
+        .enumerate()
+        .map(
+            |(index, case)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name: case.name,
+                cpu_override: "68020",
+                extra_assembly_defines: &defines,
+                source_override: Some(&case.source),
+                command_template: Some(
+                    "{input} --bin {bin} --cpu 65c02 -I {guest_work_dir} -M {guest_work_dir}",
+                ),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &guest_files[index],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: &case.rust_oracle,
+                },
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&root, &cases)
+        .expect("Item 8 FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                staged.len(),
+                "every assigned Item 8 root must complete"
+            );
+            for (run, case) in runs.iter().zip(staged.iter()) {
+                assert!(run.success, "native {} failed: {}", case.name, run.stdout);
+                assert_eq!(
+                    verified_fs_uae_output(run),
+                    case.rust_oracle,
                     "native bytes differ for {}",
                     case.name
                 );

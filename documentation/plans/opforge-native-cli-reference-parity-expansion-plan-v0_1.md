@@ -1459,6 +1459,39 @@ produce deterministic diagnostics rather than silently truncate. The active
     - every assigned artifact is checked for both presence and exact normalized content
     - every red case pauses for a separate remediation item
 
+- [x] Item 8.0: activate the complete stored 6502/65C02 layout/output shard and record its first native boundaries
+  - Source requirement or finding IDs: Item 8 activation; user correction that Item 8 must not be skipped; user requirement that only 6502/65C02 tests participate and that no arbitrary case cap may exclude tests
+  - Invariant: the shard is derived directly from every `LayoutOutput` root in `NATIVE_OPCORE_ASSIGNMENTS`, stages every owned support file, carries a same-source live Rust CLI binary oracle in memory, and supplies all cases to the fail-closed Level D runner without a runtime limit
+  - Corpus correction: `module_metadata_block.asm` and `module_metadata_output.asm` replace Z80-specific output metadata with equivalent `m6502` output metadata; the permanent active-corpus guard rejects foreign output-target blocks and inline target selectors in addition to foreign CPUs and mnemonics
+  - Full quality gates: controlled reference regeneration for the two owned `.lst` files; non-update reference comparison; focused Level A/B uncapped staging test; first complete Level D shard; staged native-porting gate; workflow gate; full serial Rust quality gate
+  - First red evidence: the complete 16-root Level D run attempted every assigned root in 361.05s. Six roots completed with fresh zero exits and exact Rust bytes; ten failed as real product boundaries: the four `linker_regions_*` roots first expose missing `.pack`/`.mapfile` routing, the three `module_metadata_*` roots expose missing metadata preprocessing/runtime behavior, `module_qualified_section_map` exposes qualified logical-section-map handling, and `section_module_use_{autoload,include}` expose imported section-layout/origin handling. These are not emulator completion failures and no root is removed or capped.
+  - Definition of done: Item 8 has a permanent complete Level D entrypoint and each red frontier has a separately numbered remediation item rather than an exclusion
+
+- [ ] Item 8.1: implement native `.pack` layout parity for stored linker roots
+  - Source requirement or finding IDs: Item 8.0 first red boundary for `linker_regions_full.asm` and `linker_regions_pack_no_dsection.asm`
+  - Invariant: `.pack in REGION : SECTION...` places every named section sequentially using Rust alignment and BSS rules; it is not treated as a mnemonic
+  - Definition of done: focused Level B layout contracts and exact Level D reruns advance both roots beyond `.pack` without weakening the parent shard
+
+- [ ] Item 8.2: implement native `.mapfile` and `.exportsections` artifact parity
+  - Source requirement or finding IDs: Item 8.0 first red boundary for the four `linker_regions_*` roots after layout directives
+  - Invariant: every source-declared map and exported-section artifact is freshly written and byte-for-byte equal to the artifact produced by the same-source Rust CLI case
+  - Definition of done: the four linker roots prove all declared binary/PRG/map/exported-section artifacts; no stored reference filename selects an oracle
+
+- [ ] Item 8.3: implement native root metadata and 6502 output-selection parity
+  - Source requirement or finding IDs: Item 8.0 first red boundary for the three `module_metadata_*` roots
+  - Invariant: block and inline metadata forms select the same m6502 names/list/hex/bin/fill behavior as Rust without foreign target metadata
+  - Definition of done: all three stored metadata roots complete with exact declared artifacts under the parent shard
+
+- [ ] Item 8.4: implement qualified logical-section-map layout parity
+  - Source requirement or finding IDs: Item 8.0 first red boundary for `module_qualified_section_map.asm`
+  - Invariant: qualified imports and logical-section mapping preserve reachability and placement exactly like Rust
+  - Definition of done: the complete stored root reaches a zero guest exit and exact same-source Rust artifact bytes
+
+- [ ] Item 8.5: implement imported section-layout/origin parity
+  - Source requirement or finding IDs: Item 8.0 first red boundary for `section_module_use_autoload.asm` and `section_module_use_include.asm`
+  - Invariant: imported constants do not corrupt section origin or placement state in either autoload or include expansion
+  - Definition of done: both full stored roots, including their exact support trees, match same-source Rust bytes under Level D
+
 - [x] Item 9.1: store the active diagnostic corpus as 6502/65C02 source
   - Source requirement or finding IDs: user requirement that no foreign-CPU test participate in this effort and that each equivalent opcore diagnostic test be a directly stored 6502/65C02 example
   - Invariant: the active opcore inventory has no additive runtime adaptation, every explicit `.cpu` is `6502` or `65c02`, and a permanent inventory test rejects foreign CPU directives plus reviewed Intel, Z80, and 680x0 mnemonic spellings

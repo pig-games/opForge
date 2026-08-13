@@ -7,7 +7,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                4      .meta.name "Metadata Demo"
 ----                                5      .meta.version "1.0.0"
 ----                                6      .meta.output.name "meta-demo"
-----                                7      .meta.output.z80.name "meta-demo-z80"
+----                                7      .meta.output.m6502.name "meta-demo-6502"
 ----                                8  
 ----    EQU 0000                    9      .org 0000h
 ----                               10  START

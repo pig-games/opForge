@@ -798,6 +798,36 @@ mod tests {
                     );
                 }
 
+                let lowercase = trimmed.to_ascii_lowercase();
+                for foreign_target in [
+                    ".8080",
+                    ".8085",
+                    ".z80",
+                    ".65816",
+                    ".68000",
+                    ".68020",
+                    ".end8080",
+                    ".end8085",
+                    ".endz80",
+                    ".end65816",
+                    ".end68000",
+                    ".end68020",
+                    ".meta.output.8080.",
+                    ".meta.output.8085.",
+                    ".meta.output.z80.",
+                    ".meta.output.65816.",
+                    ".meta.output.68000.",
+                    ".meta.output.68020.",
+                ] {
+                    assert!(
+                        !lowercase.starts_with(foreign_target),
+                        "foreign output target '{}' in {}:{}",
+                        foreign_target,
+                        assignment.source_path,
+                        line_index + 1
+                    );
+                }
+
                 if let Some(mnemonic) = reviewed_foreign_mnemonic(source_line) {
                     panic!(
                         "foreign mnemonic '{}' in {}:{}",

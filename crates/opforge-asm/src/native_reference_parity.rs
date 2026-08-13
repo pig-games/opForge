@@ -85,7 +85,6 @@ pub(crate) enum NativeOpcoreShard {
 pub(crate) enum NativeOpcoreStaging {
     DirectCpuNeutral,
     DirectMos65c02,
-    AdditiveMosAdaptation,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -260,49 +259,41 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     opcore_root!(
         "conditional_missing_endif_fixit_error",
         Diagnostic,
-        AdditiveMosAdaptation
+        DirectMos65c02
     ),
     opcore_root!(
         "conditional_unmatched_endif_error",
         Diagnostic,
-        AdditiveMosAdaptation
+        DirectMos65c02
     ),
-    opcore_root!(
-        "dialect_mnemonic_fixit_error",
-        Diagnostic,
-        AdditiveMosAdaptation
-    ),
-    opcore_root!(
-        "dialect_parser_fixit_error",
-        Diagnostic,
-        AdditiveMosAdaptation
-    ),
+    opcore_root!("mos65c02_mnemonic_error", Diagnostic, DirectMos65c02),
+    opcore_root!("mos65c02_parser_error", Diagnostic, DirectMos65c02),
     opcore_root!(
         "directive_typo_elseif_fixit_error",
         Diagnostic,
-        AdditiveMosAdaptation
+        DirectMos65c02
     ),
     opcore_root!(
         "directive_typo_endif_fixit_error",
         Diagnostic,
-        AdditiveMosAdaptation
+        DirectMos65c02
     ),
     opcore_root!(
         "directive_typo_endmatch_fixit_error",
         Diagnostic,
-        AdditiveMosAdaptation
+        DirectMos65c02
     ),
     opcore_root!(
         "directive_typo_endmodule_fixit_error",
         Diagnostic,
-        DirectCpuNeutral
+        DirectMos65c02
     ),
     opcore_root!(
         "directive_typo_endsection_fixit_error",
         Diagnostic,
-        DirectCpuNeutral
+        DirectMos65c02
     ),
-    opcore_root!("errors", Diagnostic, AdditiveMosAdaptation),
+    opcore_root!("errors", Diagnostic, DirectMos65c02),
     opcore_root!("for_unscoped_label_error", Diagnostic, DirectCpuNeutral),
     opcore_root!("index_out_of_bounds_error", Diagnostic, DirectCpuNeutral),
     opcore_root!(
@@ -323,7 +314,7 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     opcore_root!(
         "linker_regions_phase6_image_span_overflow",
         Diagnostic,
-        AdditiveMosAdaptation
+        DirectMos65c02
     ),
     opcore_root!(
         "linker_regions_phase6_invalid_section_option_key",
@@ -356,44 +347,20 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
         DirectCpuNeutral
     ),
     opcore_root!("loop_pass_instability_error", Diagnostic, DirectCpuNeutral),
-    opcore_root!(
-        "macro_cross_module_error",
-        Diagnostic,
-        AdditiveMosAdaptation
-    ),
-    opcore_root!(
-        "module_missing_endmodule_error",
-        Diagnostic,
-        DirectCpuNeutral
-    ),
+    opcore_root!("macro_cross_module_error", Diagnostic, DirectMos65c02),
+    opcore_root!("module_missing_endmodule_error", Diagnostic, DirectMos65c02),
     opcore_root!("module_use_private_error", Diagnostic, DirectCpuNeutral),
-    opcore_root!(
-        "multi_error_reporting_error",
-        Diagnostic,
-        AdditiveMosAdaptation
-    ),
+    opcore_root!("multi_error_reporting_error", Diagnostic, DirectMos65c02),
     opcore_root!("range_step_direction_error", Diagnostic, DirectCpuNeutral),
     opcore_root!("range_step_zero_error", Diagnostic, DirectCpuNeutral),
     opcore_root!(
         "section_missing_endsection_error",
         Diagnostic,
-        DirectCpuNeutral
+        DirectMos65c02
     ),
-    opcore_root!(
-        "segment_cross_module_error",
-        Diagnostic,
-        AdditiveMosAdaptation
-    ),
-    opcore_root!(
-        "statement_cross_module_error",
-        Diagnostic,
-        AdditiveMosAdaptation
-    ),
-    opcore_root!(
-        "statement_private_import_error",
-        Diagnostic,
-        AdditiveMosAdaptation
-    ),
+    opcore_root!("segment_cross_module_error", Diagnostic, DirectMos65c02),
+    opcore_root!("statement_cross_module_error", Diagnostic, DirectMos65c02),
+    opcore_root!("statement_private_import_error", Diagnostic, DirectMos65c02),
     opcore_root!("statement_signature_error", Diagnostic, DirectCpuNeutral),
     opcore_root!(
         "statement_unquoted_comma_error",
@@ -401,7 +368,7 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
         DirectCpuNeutral
     ),
     opcore_root!("while_unscoped_label_error", Diagnostic, DirectCpuNeutral),
-    opcore_support!("lib/statement_private_export_lib.asm" => "statement_private_import_error.asm", Diagnostic, AdditiveMosAdaptation),
+    opcore_support!("lib/statement_private_export_lib.asm" => "statement_private_import_error.asm", Diagnostic, DirectMos65c02),
 ];
 
 pub(crate) const NATIVE_OPCORE_REFERENCE_EXCLUSIONS: &[(&str, &str)] = &[
@@ -638,6 +605,58 @@ pub(crate) fn account_native_reference_path(
 mod tests {
     use super::*;
 
+    const REVIEWED_FOREIGN_MNEMONICS: &[&str] = &[
+        // Intel 8080/8085 instruction spellings that are not also MOS 6502
+        // mnemonics. This includes every Intel spelling retired from the active
+        // opcore corpus, plus the rest of that reviewed instruction family.
+        "aci", "add", "adi", "ana", "ani", "call", "cc", "cm", "cma", "cmc", "cnc", "cnz", "cp",
+        "cpe", "cpi", "cpo", "cz", "daa", "dad", "dcr", "dcx", "di", "ei", "hlt", "in", "inr",
+        "inx", "jc", "jm", "jnc", "jnz", "jp", "jpe", "jpo", "jz", "ldax", "lhld", "lxi", "mov",
+        "mvi", "ori", "out", "pchl", "pop", "push", "ral", "rar", "rc", "ret", "rim", "rlc", "rm",
+        "rnc", "rnz", "rp", "rpe", "rpo", "rrc", "rst", "rz", "sbb", "sbi", "shld", "sim", "sphl",
+        "stax", "stc", "sub", "sui", "xchg", "xra", "xri", "xthl",
+        // Distinctive Z80 spellings and Motorola 680x0 spellings. Mnemonics
+        // shared with MOS (for example ADC, CMP, JMP, LDA, NOP) are valid and
+        // deliberately absent.
+        "djnz", "ex", "exx", "im", "ind", "indr", "ini", "inir", "jr", "ld", "ldd", "lddr", "ldi",
+        "ldir", "neg", "otdr", "otir", "outd", "outi", "res", "reti", "retn", "rl", "rla", "rlca",
+        "rld", "rr", "rra", "rrca", "rrd", "sla", "sll", "sra", "srl", "bsr", "dbcc", "dbcs",
+        "dbeq", "dbf", "dbge", "dbgt", "dbhi", "dble", "dbls", "dblt", "dbmi", "dbne", "dbpl",
+        "dbra", "dbt", "dbvc", "dbvs", "ext", "extb", "illegal", "link", "move", "movea", "movec",
+        "movem", "movep", "moveq", "nbcd", "pea", "reset", "rte", "rtr", "rtm", "sbcd", "stop",
+        "swap", "tas", "trap", "trapv", "unlk",
+    ];
+
+    fn reviewed_foreign_mnemonic(source_line: &str) -> Option<&str> {
+        let code = source_line.split(';').next().unwrap_or("");
+        let tokens = code.split_ascii_whitespace().collect::<Vec<_>>();
+        if tokens.is_empty() {
+            return None;
+        }
+
+        // Indentation makes the first token the instruction. At column one the
+        // grammar permits either an instruction or a label, so examine both the
+        // first token and the possible post-label token. This intentionally
+        // fails closed for a foreign mnemonic used as an ambiguous label.
+        let candidates =
+            if tokens[0].starts_with('.') || code.chars().next().is_some_and(char::is_whitespace) {
+                &tokens[..1]
+            } else {
+                &tokens[..tokens.len().min(2)]
+            };
+        candidates.iter().find_map(|token| {
+            if token.starts_with('.') {
+                return None;
+            }
+            let normalized = token
+                .trim_matches(|ch: char| !ch.is_ascii_alphanumeric())
+                .to_ascii_lowercase();
+            REVIEWED_FOREIGN_MNEMONICS
+                .contains(&normalized.as_str())
+                .then_some(*token)
+        })
+    }
+
     #[test]
     fn native_reference_case_paths_are_unique() {
         // Proof level A. This test proves the checked-in manifest has one
@@ -749,6 +768,81 @@ mod tests {
         assert_eq!(assigned.len(), assigned_len, "duplicate opcore assignment");
         assert_eq!(assigned, actual);
         assert!(account_native_reference_path("examples/opcore/future-example.asm").is_err());
+    }
+
+    #[test]
+    fn native_reference_opcore_scope_contains_only_6502_family_source() {
+        // Proof level A. This permanently enforces the reviewed corpus boundary:
+        // every active opcore source is either CPU-neutral or explicitly selects
+        // 6502/65C02, and no Intel, Z80, or 680x0 instruction spelling is staged.
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        for assignment in NATIVE_OPCORE_ASSIGNMENTS {
+            let source = fs::read_to_string(repo_root.join(assignment.source_path))
+                .unwrap_or_else(|err| panic!("read {}: {err}", assignment.source_path));
+            for (line_index, source_line) in source.lines().enumerate() {
+                let code = source_line.split(';').next().unwrap_or("");
+                let trimmed = code.trim_start();
+                if trimmed.to_ascii_lowercase().starts_with(".cpu ") {
+                    let cpu = trimmed
+                        .split_ascii_whitespace()
+                        .nth(1)
+                        .unwrap_or("")
+                        .trim_matches(['\"', '\''])
+                        .to_ascii_lowercase();
+                    assert!(
+                        matches!(cpu.as_str(), "6502" | "m6502" | "65c02" | "m65c02"),
+                        "foreign CPU '{}' in {}:{}",
+                        cpu,
+                        assignment.source_path,
+                        line_index + 1
+                    );
+                }
+
+                if let Some(mnemonic) = reviewed_foreign_mnemonic(source_line) {
+                    panic!(
+                        "foreign mnemonic '{}' in {}:{}",
+                        mnemonic,
+                        assignment.source_path,
+                        line_index + 1
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn native_reference_foreign_mnemonic_guard_rejects_indented_and_column_one_forms() {
+        for source_line in [
+            "        mvi a,1",
+            "mvi a,1",
+            "label mvi a,1",
+            "        lxi h,$1234",
+            "label lhld $1234",
+            "moveq #1,d0",
+            "label dbra d0,label",
+            "        djnz label",
+            "label sim",
+            "        out $20",
+        ] {
+            assert!(
+                reviewed_foreign_mnemonic(source_line).is_some(),
+                "foreign mnemonic must be rejected: {source_line}"
+            );
+        }
+        for source_line in [
+            "        lda #$11",
+            "lda #$11",
+            "label lda #$11",
+            "        adc #1",
+            "label jmp $2000",
+            ".byte $11",
+        ] {
+            assert_eq!(
+                reviewed_foreign_mnemonic(source_line),
+                None,
+                "MOS source must remain accepted: {source_line}"
+            );
+        }
     }
 
     #[test]

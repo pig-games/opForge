@@ -1,9 +1,9 @@
 Assembly failed:
 18: ERROR [asm402]
    16 | 
-   17 |     mvi a, LIBVAL       ; Works: LIBVAL is explicitly imported
+   17 |     lda #LIBVAL         ; Works: LIBVAL is explicitly imported
    18 |     PUSHB $AA           ; ERROR: PUSHB not imported
       |                         ^
-   19 |     hlt
+   19 |     brk
    20 | .endmodule
 ERROR: No instruction found for PUSHB

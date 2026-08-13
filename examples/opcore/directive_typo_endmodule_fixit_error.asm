@@ -1,4 +1,5 @@
         .module demo
-        .org 2000h
-start   mvi a,11h
+        .cpu 65c02
+        .org $2000
+start   lda #$11
         .endmoduel

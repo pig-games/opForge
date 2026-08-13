@@ -1,5 +1,5 @@
-        .cpu 8085
-        .org 2000h
+        .cpu 65c02
+        .org $2000
 
-        mvi a,11h
+        lda #$11
         .endif

@@ -1,6 +1,6 @@
 Assembly failed:
 4: ERROR [asm202]
-    2 |         .org 2000h
+    2 |         .org $2000
     3 | 
     4 |         .enidf
       |         ^

@@ -8,15 +8,15 @@
 ; invoking it produces an error.
 
 .module macro.cross.app
-    .cpu 8085
+    .cpu 65c02
 
     .use macro.export.lib (LIBVAL)
 
     .org $0000
 
-    mvi a, LIBVAL       ; Works: LIBVAL is explicitly imported
+    lda #LIBVAL         ; Works: LIBVAL is explicitly imported
     .EMIT_PAIR $AA, $BB ; ERROR: EMIT_PAIR not imported
-    hlt
+    brk
 .endmodule
 
 .end

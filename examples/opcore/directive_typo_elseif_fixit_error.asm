@@ -1,4 +1,4 @@
-        .cpu 8085
-        .org 2000h
+        .cpu 65c02
+        .org $2000
 
         .elsefi 1

@@ -1459,11 +1459,20 @@ produce deterministic diagnostics rather than silently truncate. The active
     - every assigned artifact is checked for both presence and exact normalized content
     - every red case pauses for a separate remediation item
 
+- [x] Item 9.1: store the active diagnostic corpus as 6502/65C02 source
+  - Source requirement or finding IDs: user requirement that no foreign-CPU test participate in this effort and that each equivalent opcore diagnostic test be a directly stored 6502/65C02 example
+  - Invariant: the active opcore inventory has no additive runtime adaptation, every explicit `.cpu` is `6502` or `65c02`, and a permanent inventory test rejects foreign CPU directives plus reviewed Intel, Z80, and 680x0 mnemonic spellings
+  - Rewritten roots: `conditional_missing_endif_fixit_error`, `conditional_unmatched_endif_error`, `directive_typo_elseif_fixit_error`, `directive_typo_endif_fixit_error`, `directive_typo_endmatch_fixit_error`, `directive_typo_endmodule_fixit_error`, `directive_typo_endsection_fixit_error`, `errors`, `linker_regions_phase6_image_span_overflow`, `macro_cross_module_error`, `module_missing_endmodule_error`, `multi_error_reporting_error`, `section_missing_endsection_error`, `segment_cross_module_error`, `statement_cross_module_error`, and `statement_private_import_error`; the Intel-only `dialect_mnemonic_fixit_error` and `dialect_parser_fixit_error` cases are replaced one-for-one by `mos65c02_mnemonic_error` and `mos65c02_parser_error`
+  - Expected files: the eighteen directly stored diagnostic roots and owned `.err` artifacts; `crates/opforge-asm/src/native_reference_parity.rs`; this plan
+  - Full quality gates: controlled golden-reference regeneration; non-update `examples_match_reference_outputs`; focused `native_reference_` inventory tests; staged native-porting gate; workflow gate; full serial Rust quality gate
+  - Validation evidence: the controlled refresh retains the same first fail-closed diagnostic category for each rewritten root; all eighteen roots are exact stored source with `DirectMos65c02`; repository search and the permanent inventory test find no active foreign CPU or mnemonic spelling. Bulk reference refresh approved for exactly fourteen changed paths: retired `dialect_mnemonic_fixit_error.err` and `dialect_parser_fixit_error.err`; added `mos65c02_mnemonic_error.err` and `mos65c02_parser_error.err`; and refreshed `directive_typo_elseif_fixit_error.err`, `directive_typo_endif_fixit_error.err`, `directive_typo_endmatch_fixit_error.err`, `directive_typo_endmodule_fixit_error.err`, `directive_typo_endsection_fixit_error.err`, `errors.err`, `macro_cross_module_error.err`, `segment_cross_module_error.err`, `statement_cross_module_error.err`, and `statement_private_import_error.err`. This is ownership-based evidence for the rewritten cases, not a test-count cutoff.
+  - Definition of done: every active opcore source is CPU-neutral or 6502/65C02 source; no runtime adaptation or foreign diagnostic case is included; Item 9 native diagnostic parity remains a separate fail-closed execution requirement
+
 - [ ] Item 9: add the deterministic opcore diagnostic parity shard
   - Source requirement or finding IDs: Item 5 assignments for applicable `*_error.asm` and deterministic CLI failure cases; `I9-D-01`, the corrected 17-case native diagnostic matrix reaches the stored unsupported-addressing source but native emits `OPC-NCLI025` unknown mnemonic for `jmp` instead of the required `OPC-NCLI026` unsupported addressing-mode diagnostic
   - First red evidence: on 2026-08-13 the fail-closed Level D diagnostic matrix attempted every one of its 17 cases in 385.36s; 16 completed with their required diagnostics and only `unsupported-addressing` failed exact diagnostic proof. This is a native diagnostic-routing defect, not an emulator completion or stale-evidence failure, and no fix is bundled into Item 7.12.
   - Expected files:
-    - additive opcore MOS-backed error fixtures and matching `.err` references assigned by Item 4
+    - direct stored 6502/65C02 opcore error fixtures and matching `.err` references assigned by Item 5 and Item 9.1
     - `crates/opforge-asm/src/native_reference_parity.rs`
     - `crates/opforge-asm/src/tests.rs`
     - `crates/opforge-asm/src/fs_uae_smoke.rs`

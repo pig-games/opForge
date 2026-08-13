@@ -1,7 +1,7 @@
 .module main
-.cpu 65816
+.cpu 65c02
 
-.region rom, $fffffe, $ffffff
+.region rom, $fffe, $ffff
 
 .section code
     .byte $ea

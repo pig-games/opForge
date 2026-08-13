@@ -8,15 +8,15 @@
 ; invoking it produces an error.
 
 .module statement.cross.app
-    .cpu 8085
+    .cpu 65c02
 
     .use statement.export.lib (LIBVAL)
 
     .org $0000
 
-    mvi a, LIBVAL       ; Works: LIBVAL is explicitly imported
+    lda #LIBVAL         ; Works: LIBVAL is explicitly imported
     PUSHB $AA           ; ERROR: PUSHB not imported
-    hlt
+    brk
 .endmodule
 
 .end

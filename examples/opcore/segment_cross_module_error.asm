@@ -8,15 +8,15 @@
 ; invoking it produces an error.
 
 .module segment.cross.app
-    .cpu 8085
+    .cpu 65c02
 
     .use segment.export.lib (LIBVAL)
 
     .org $0000
 
-    mvi a, LIBVAL       ; Works: LIBVAL is explicitly imported
+    lda #LIBVAL         ; Works: LIBVAL is explicitly imported
     .EMIT_BYTE $AA      ; ERROR: EMIT_BYTE not imported
-    hlt
+    brk
 .endmodule
 
 .end

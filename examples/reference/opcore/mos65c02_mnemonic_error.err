@@ -1,0 +1,7 @@
+Assembly failed:
+4: ERROR [asm402]
+    2 |         .org $2000
+    3 | 
+    4 |         ldaa #$11
+      |                  ^
+ERROR: No instruction found for LDAA

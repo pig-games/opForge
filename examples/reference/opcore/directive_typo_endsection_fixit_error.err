@@ -1,10 +1,10 @@
 Assembly failed:
-5: ERROR [asm202]
-    3 |         .org 2000h
-    4 | start   mvi a,11h
-    5 |         .endsectio
+6: ERROR [asm202]
+    4 |         .org $2000
+    5 | start   lda #$11
+    6 |         .endsectio
       |         ^
-    6 |         .endmodule
+    7 |         .endmodule
 help: did you mean .endsection?
-suggestion: replace 5:9-19 with ".ENDSECTION"
+suggestion: replace 6:9-19 with ".ENDSECTION"
 ERROR: Unknown directive .ENDSECTIO

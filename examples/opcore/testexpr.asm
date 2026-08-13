@@ -1,9 +1,9 @@
-        LXI  H, TAB2-1
+        .cpu 65c02
+        .word TAB2-1
         nop	
         JMP  EXEC
 
 EXEC   nop
-CHKIO  ret
+CHKIO  rts
 
 TAB2   .byte      'abcd'
-

@@ -1,42 +1,42 @@
-; Test program to bit-bang a single character out SOD as serial async data
+; 65C02 test program to bit-bang one character through a memory-mapped port.
+;
+; The byte is framed with a start bit and stop bits, shifted least-significant
+; bit first, delayed between writes, and sent repeatedly.
 
-        .org     00000H
+        .cpu 65c02
+        .org $0800
 
-BITTIME .const     0113h          ; Time delay for a single bit
-OUTBITS .const	00Bh
+SERIAL_PORT .const $4001
+BITTIME     .const $13
+OUTBITS     .const 11
+TXBYTE      .const $20
 
-START
-        mvi     c,'T'           ; Send a test character
-COUT
-        di
-        mvi     b,OUTBITS       ; Number of output bits
-        xra     a               ; Clear carry for start bit
-CO1
-        mvi     a,080H          ; Set the SDE flag
-        rar                     ; Shift carry into SOD flag
-        cmc                     ;   and invert carry.  Why? (serial is inverted?)
-        sim                     ; Output data bit
-        lxi     h,BITTIME       ; Load the time delay for one bit width
-CO2
-        dcr     l               ; Wait for bit time
-        jnz     CO2
-        dcr     h
-        jnz     CO2
-        stc                     ; Shift in stop bit(s)
-        mov     a,c             ; Get char to send
-        rar                     ; LSB into carry
-        mov     c,a             ; Store rotated data
-        dcr     b
-        jnz     CO1             ; Send next bit
-        ei
+START   lda #'T'
+        sta TXBYTE
+        sei
+        ldx #OUTBITS
+        clc                     ; Start bit
 
-        lxi     h,03fffH        ; Wait a while before sending the character again
-CHILL
-        dcr     l
-        jnz     CHILL
-        dcr     h
-        jnz     CHILL
+SEND_BIT
+        lda #$00
+        ror a                   ; Carry becomes the output bit
+        sta SERIAL_PORT
 
-        jmp     START
+        ldy #BITTIME
+BIT_DELAY
+        dey
+        bne BIT_DELAY
 
+        sec                     ; Shift in stop bits behind the character
+        lda TXBYTE
+        ror a                   ; Next data bit moves into carry
+        sta TXBYTE
+        dex
+        bne SEND_BIT
+        cli
 
+        ldx #$ff
+CHAR_DELAY
+        dex
+        bne CHAR_DELAY
+        bra START

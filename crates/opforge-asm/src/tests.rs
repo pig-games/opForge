@@ -130,8 +130,6 @@ mod native_harness_evidence;
 mod native_label_capacity;
 #[path = "tests/native_mos_forward_ref_stability.rs"]
 mod native_mos_forward_ref_stability;
-#[path = "tests/native_opcore_adapted_syntax.rs"]
-mod native_opcore_adapted_syntax;
 #[path = "tests/native_reference_shards.rs"]
 mod native_reference_shards;
 #[path = "tests/native_statement_capacity.rs"]

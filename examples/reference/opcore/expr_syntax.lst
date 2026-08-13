@@ -2,12 +2,12 @@ opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Expression syntax coverage for 64tass-style operators and literals
-----                                2  ; Tests expressions and labels in all addressing modes for 8080/8085 and 6502/65C02
+----                                2  ; Tests expressions and labels in addressing modes for 6502/65C02.
 ----                                3  
 ----                                4  ; ============================================================================
-----                                5  ; PART 1: 8080/8085 FAMILY - Expressions in addressing modes
+----                                5  ; PART 1: 65C02 expressions in addressing modes
 ----                                6  ; ============================================================================
-----                                7          .cpu 8085
+----                                7          .cpu 65c02
 ----    EQU 0000                    8          .org 0000h
 ----                                9  
 ----                               10  ; --- Constants and labels for expression testing ---
@@ -74,128 +74,128 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 4142                   71  char_ab         .const  'AB'
 ----                               72  
 ----                               73  ; ============================================================================
-----                               74  ; 8085 IMMEDIATE MODE: MVI reg, imm8  /  LXI rp, imm16
+----                               74  ; 65C02 immediate expressions and emitted 16-bit expression values
 ----                               75  ; ============================================================================
-----                               76  i8085_imm
-0000    3E 10                      77          mvi a, BASE             ; label
-0002    3E 15                      78          mvi a, BASE + OFFSET    ; expression with labels
-0004    3E 12                      79          mvi a, >PAGE            ; high byte operator
-0006    3E 00                      80          mvi a, <PAGE            ; low byte operator
-0008    3E 07                      81          mvi a, MASK & $07       ; bitwise AND
-000A    3E 1F                      82          mvi a, MASK | $10       ; bitwise OR
-000C    3E 08                      83          mvi a, 1 << 3           ; shift left
-000E    3E 20                      84          mvi a, $80 >> 2         ; shift right
-0010    3E 0F                      85          mvi a, 10 + 5           ; addition
-0012    3E 0C                      86          mvi a, 20 - 8           ; subtraction
-0014    3E 0C                      87          mvi a, 3 * 4            ; multiplication
-0016    3E 14                      88          mvi a, 100 / 5          ; division
-0018    3E 0F                      89          mvi a, ~$f0             ; bitwise NOT (result: $0f)
-001A    3E FF                      90          mvi a, (-1) & $ff       ; negative masked to byte (result: $ff)
-001C    3E AA                      91          mvi a, (5 > 3) ? $aa : $55  ; ternary
+----                               76  mos_imm
+0000    A9 10                      77          lda #BASE             ; label
+0002    A9 15                      78          lda #BASE + OFFSET    ; expression with labels
+0004    A9 12                      79          lda #>PAGE            ; high byte operator
+0006    A9 00                      80          lda #<PAGE            ; low byte operator
+0008    A9 07                      81          lda #MASK & $07       ; bitwise AND
+000A    A9 1F                      82          lda #MASK | $10       ; bitwise OR
+000C    A9 08                      83          lda #1 << 3           ; shift left
+000E    A9 20                      84          lda #$80 >> 2         ; shift right
+0010    A9 0F                      85          lda #10 + 5           ; addition
+0012    A9 0C                      86          lda #20 - 8           ; subtraction
+0014    A9 0C                      87          lda #3 * 4            ; multiplication
+0016    A9 14                      88          lda #100 / 5          ; division
+0018    A9 0F                      89          lda #(~$f0) & $ff     ; bitwise NOT (result: $0f)
+001A    A9 FF                      90          lda #(-1) & $ff       ; negative masked to byte (result: $ff)
+001C    A9 AA                      91          lda #(5 > 3) ? $aa : $55  ; ternary
 ----                               92          
-001E    21 00 20                   93          lxi h, TABLE            ; 16-bit label
-0021    21 34 12                   94          lxi h, PAGE + $34       ; 16-bit expression
-0024    21 0A 20                   95          lxi h, TABLE + (OFFSET * 2)  ; complex expression
-0027    11 34 12                   96          lxi d, $1000 + $234     ; direct arithmetic
+001E    00 20                      93          .word TABLE            ; 16-bit label
+0020    34 12                      94          .word PAGE + $34       ; 16-bit expression
+0022    0A 20                      95          .word TABLE + (OFFSET * 2)  ; complex expression
+0024    34 12                      96          .word $1000 + $234     ; direct arithmetic
 ----                               97  
 ----                               98  ; Combining hi/lo bytes needs intermediate constants
 ----    EQU 0020                   99  TABLE_HI        .const  >TABLE
 ----    EQU 0000                  100  TABLE_LO        .const  <TABLE
 ----    EQU 2000                  101  TABLE_COMBINED  .const  (TABLE_HI << 8) | TABLE_LO  ; same as TABLE
 ----                              102  
-002A    01 00 20                  103          lxi b, TABLE_COMBINED   ; reconstructed from hi/lo
+0026    00 20                     103          .word TABLE_COMBINED   ; reconstructed from hi/lo
 ----                              104  
 ----                              105  ; ============================================================================
-----                              106  ; 8085 DIRECT/ABSOLUTE MODE: LDA addr / STA addr / LHLD / SHLD / JMP / CALL
+----                              106  ; 65C02 direct/absolute mode: LDA / STA / JMP / JSR
 ----                              107  ; ============================================================================
-----                              108  i8085_direct
-002D    3A 00 20                  109          lda TABLE               ; label
-0030    3A 05 12                  110          lda PAGE + OFFSET       ; expression
-0033    3A 20 20                  111          lda TABLE + (BASE * 2)  ; complex expression
-0036    32 10 20                  112          sta TABLE + $10         ; store with offset
+----                              108  mos_direct
+0028    AD 00 20                  109          lda TABLE               ; label
+002B    AD 05 12                  110          lda PAGE + OFFSET       ; expression
+002E    AD 20 20                  111          lda TABLE + (BASE * 2)  ; complex expression
+0031    8D 10 20                  112          sta TABLE + $10         ; store with offset
 ----                              113          
-0039    2A 00 20                  114          lhld TABLE              ; load HL direct
-003C    2A 80 12                  115          lhld PAGE + $80         ; with expression
-003F    22 00 21                  116          shld TABLE + $100       ; store HL direct
+0034    AD 00 20                  114          lda TABLE              ; load direct
+0037    AD 80 12                  115          lda PAGE + $80         ; with expression
+003A    8D 00 21                  116          sta TABLE + $100       ; store direct
 ----                              117          
-0042    C3 51 00                  118          jmp jump_target         ; forward reference
-0045    C3 00 20                  119          jmp TABLE               ; label as address
-0048    C3 50 12                  120          jmp PAGE + $50          ; expression as address
+003D    4C 4C 00                  118          jmp jump_target         ; forward reference
+0040    4C 00 20                  119          jmp TABLE               ; label as address
+0043    4C 50 12                  120          jmp PAGE + $50          ; expression as address
 ----                              121          
-004B    CD 52 00                  122          call call_target        ; forward reference
-004E    CD 00 22                  123          call TABLE + $200       ; expression as address
+0046    20 4D 00                  122          jsr call_target        ; forward reference
+0049    20 00 22                  123          jsr TABLE + $200       ; expression as address
 ----                              124  
 ----                              125  jump_target
-0051    00                        126          nop
+004C    EA                        126          nop
 ----                              127  call_target
-0052    C9                        128          ret
+004D    60                        128          rts
 ----                              129  
 ----                              130  ; ============================================================================
-----                              131  ; 8085 RELATIVE EXPRESSIONS (using $ for current address)
+----                              131  ; Relative expressions using $ for the current address
 ----                              132  ; ============================================================================
-----                              133  i8085_relative
-0053    C3 56 00                  134          jmp $+3                 ; jump forward 3 bytes (skip next instruction)
-0056    00                        135          nop
-0057    C3 54 00                  136          jmp $-3                 ; jump backward
+----                              133  mos_relative
+004E    4C 51 00                  134          jmp $+3                 ; jump forward 3 bytes (skip next instruction)
+0051    EA                        135          nop
+0052    4C 4F 00                  136          jmp $-3                 ; jump backward
 ----                              137  loop_here
-005A    C3 5A 00                  138          jmp loop_here           ; label reference
-005D    C3 5D 00                  139          jmp $                   ; infinite loop (jump to self)
+0055    4C 55 00                  138          jmp loop_here           ; label reference
+0058    4C 58 00                  139          jmp $                   ; infinite loop (jump to self)
 ----                              140  
 ----                              141  ; ============================================================================
-----                              142  ; 8085 RST VECTORS (RST only takes literal 0-7)
+----                              142  ; Literal vector-index expressions
 ----                              143  ; ============================================================================
-----                              144  i8085_rst
-0060    C7                        145          rst 0                   ; RST 0
-0061    CF                        146          rst 1                   ; RST 1
-0062    D7                        147          rst 2                   ; RST 2
-0063    DF                        148          rst 3                   ; RST 3
-0064    E7                        149          rst 4                   ; RST 4
-0065    EF                        150          rst 5                   ; RST 5
-0066    F7                        151          rst 6                   ; RST 6
-0067    FF                        152          rst 7                   ; RST 7
+----                              144  mos_vectors
+005B    00                        145          .byte 0                 ; vector expression 0
+005C    01                        146          .byte 1                 ; vector expression 1
+005D    02                        147          .byte 2                 ; vector expression 2
+005E    03                        148          .byte 3                 ; vector expression 3
+005F    04                        149          .byte 4                 ; vector expression 4
+0060    05                        150          .byte 5                 ; vector expression 5
+0061    06                        151          .byte 6                 ; vector expression 6
+0062    07                        152          .byte 7                 ; vector expression 7
 ----                              153  
 ----                              154  ; ============================================================================
-----                              155  ; 8085 I/O with expressions
+----                              155  ; Memory-mapped I/O value expressions
 ----                              156  ; ============================================================================
 ----    EQU 0010                  157  IO_BASE         .const  $10
 ----    EQU 0010                  158  IO_DATA         .const  IO_BASE + 0
 ----    EQU 0011                  159  IO_STATUS       .const  IO_BASE + 1
 ----    EQU 0012                  160  IO_CONTROL      .const  IO_BASE + 2
 ----                              161  
-----                              162  i8085_io
-0068    DB 10                     163          in IO_DATA              ; input from label
-006A    DB 11                     164          in IO_BASE + 1          ; input from expression
-006C    D3 11                     165          out IO_STATUS           ; output to label
-006E    D3 12                     166          out IO_BASE + 2         ; output to expression
+----                              162  mos_io
+0063    10                        163          .byte IO_DATA           ; value from label
+0064    11                        164          .byte IO_BASE + 1       ; value from expression
+0065    11                        165          .byte IO_STATUS         ; value from label
+0066    12                        166          .byte IO_BASE + 2       ; value from expression
 ----                              167  
 ----                              168  ; ============================================================================
 ----                              169  ; Data directives with expressions
 ----                              170  ; ============================================================================
-----                              171  i8085_data
-0070    7B A6 1F                  172          .byte num_dec, num_hex, num_hex_pref
-0073    0A 0A F0                  173          .byte num_bin, num_bin_pref, num_bin_long  ; binary formats
-0076    0F 0F                     174          .byte num_oct, num_oct_q
-0078    12 34                     175          .byte hi_byte, lo_byte
-007A    01 00                     176          .byte not_zero, not_one
-007C    10 0F                     177          .byte shift_l, shift_r
-007E    01 01 01 01 01 01         178          .byte cmp_eq, cmp_ne, cmp_le, cmp_lt, cmp_ge, cmp_gt
-0084    00 FF FF                  179          .byte bit_and, bit_or, bit_xor
-0087    01 01 00                  180          .byte log_and, log_or, log_xor
-008A    02 07 05                  181          .byte ternary1, ternary2, ternary3
-008D    41                        182          .byte char_a
-008E    15                        183          .byte BASE + OFFSET     ; expression in .byte
-008F    20                        184          .byte (TABLE >> 8)      ; high byte of word
-0090    00                        185          .byte (TABLE & $ff)     ; low byte of word
-0091    F0                        186          .byte num_sep_bin       ; binary with digit separators
-0092    F0                        187          .byte num_sep_suf       ; suffix binary with separators
+----                              171  mos_data
+0067    7B A6 1F                  172          .byte num_dec, num_hex, num_hex_pref
+006A    0A 0A F0                  173          .byte num_bin, num_bin_pref, num_bin_long  ; binary formats
+006D    0F 0F                     174          .byte num_oct, num_oct_q
+006F    12 34                     175          .byte hi_byte, lo_byte
+0071    01 00                     176          .byte not_zero, not_one
+0073    10 0F                     177          .byte shift_l, shift_r
+0075    01 01 01 01 01 01         178          .byte cmp_eq, cmp_ne, cmp_le, cmp_lt, cmp_ge, cmp_gt
+007B    00 FF FF                  179          .byte bit_and, bit_or, bit_xor
+007E    01 01 00                  180          .byte log_and, log_or, log_xor
+0081    02 07 05                  181          .byte ternary1, ternary2, ternary3
+0084    41                        182          .byte char_a
+0085    15                        183          .byte BASE + OFFSET     ; expression in .byte
+0086    20                        184          .byte (TABLE >> 8)      ; high byte of word
+0087    00                        185          .byte (TABLE & $ff)     ; low byte of word
+0088    F0                        186          .byte num_sep_bin       ; binary with digit separators
+0089    F0                        187          .byte num_sep_suf       ; suffix binary with separators
 ----                              188          
-0093    00 FF FF FF 08 00 51 00   189          .word bit_not, neg_one, pow1, pow2
-009B    42 41                     190          .word char_ab
-009D    00 20                     191          .word TABLE             ; label in .word
-009F    00 13                     192          .word PAGE + $100       ; expression in .word
-00A1    0A 20                     193          .word TABLE + (OFFSET << 1)  ; complex expression
-00A3    40 42                     194          .word num_sep_dec       ; decimal with digit separators (truncated)
-00A5    00 FF                     195          .word num_sep_hex       ; hex with digit separators
+008A    00 FF FF FF 08 00 51 00   189          .word bit_not, neg_one, pow1, pow2
+0092    42 41                     190          .word char_ab
+0094    00 20                     191          .word TABLE             ; label in .word
+0096    00 13                     192          .word PAGE + $100       ; expression in .word
+0098    0A 20                     193          .word TABLE + (OFFSET << 1)  ; complex expression
+009A    40 42                     194          .word num_sep_dec       ; decimal with digit separators (truncated)
+009C    00 FF                     195          .word num_sep_hex       ; hex with digit separators
 ----                              196  
 ----                              197  ; ============================================================================
 ----                              198  ; PART 2: 6502 FAMILY - Expressions in addressing modes
@@ -287,7 +287,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----                              284  m6502_abs
 0462    AD 00 10                  285          lda ABS_BASE            ; label
 0465    AD 00 11                  286          lda ABS_BASE + $100     ; expression
-0468    AD 05 12                  287          lda PAGE + OFFSET       ; labels from 8085 section
+0468    AD 05 12                  287          lda PAGE + OFFSET       ; labels from the first section
 046B    8D 00 12                  288          sta ABS_BASE + $200     ; store
 046E    AE 00 20                  289          ldx TABLE               ; load X absolute
 0471    AC 10 20                  290          ldy TABLE + $10         ; load Y with offset
@@ -409,7 +409,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----                              406  ; ============================================================================
 ----                              407  ; PART 3: Expression edge cases and complex expressions
 ----                              408  ; ============================================================================
-----                              409          .cpu 8085
+----                              409          .cpu 65c02
 ----    EQU 0800                  410          .org $0800
 ----                              411  
 ----                              412  ; Nested expressions
@@ -428,13 +428,13 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 00A5                  425  derived3        .const  derived2 | $80          ; = $a5
 ----                              426  
 ----                              427  ; Using expressions in instructions
-0800    3E 15                     428          mvi a, nested1
-0802    06 0C                     429          mvi b, nested2
-0804    0E 0A                     430          mvi c, nested3
-0806    16 0F                     431          mvi d, chain1
-0808    1E 3F                     432          mvi e, chain2
-080A    26 20                     433          mvi h, derived1
-080C    2E 25                     434          mvi l, derived2
+0800    A9 15                     428          lda #nested1
+0802    A9 0C                     429          lda #nested2
+0804    A9 0A                     430          lda #nested3
+0806    A9 0F                     431          lda #chain1
+0808    A9 3F                     432          lda #chain2
+080A    A9 20                     433          lda #derived1
+080C    A9 25                     434          lda #derived2
 ----                              435  
 ----                              436  ; Address arithmetic with current location
 ----                              437  addr_base
@@ -471,7 +471,7 @@ bit_or           00FF      prv  lbl
 bit_xor          00FF      prv  lbl 
 branch_fwd       04DC      prv  lbl 
 branch_here      04CC      prv  lbl 
-call_target      0052      prv  lbl 
+call_target      004D      prv  lbl 
 chain1           000F      prv  lbl 
 chain2           003F      prv  lbl 
 chain3           0008      prv  lbl 
@@ -488,21 +488,15 @@ derived1         0020      prv  lbl
 derived2         0025      prv  lbl 
 derived3         00A5      prv  lbl 
 hi_byte          0012      prv  lbl 
-i8085_data       0070      prv  lbl 
-i8085_direct     002D      prv  lbl 
-i8085_imm        0000      prv  lbl 
-i8085_io         0068      prv  lbl 
-i8085_relative   0053      prv  lbl 
-i8085_rst        0060      prv  lbl 
 IO_BASE          0010      prv  lbl 
 IO_CONTROL       0012      prv  lbl 
 IO_DATA          0010      prv  lbl 
 IO_STATUS        0011      prv  lbl 
-jump_target      0051      prv  lbl 
+jump_target      004C      prv  lbl 
 log_and          0001      prv  lbl 
 log_or           0001      prv  lbl 
 log_xor          0000      prv  lbl 
-loop_here        005A      prv  lbl 
+loop_here        0055      prv  lbl 
 lo_byte          0034      prv  lbl 
 m6502_abs        0462      prv  lbl 
 m6502_absx       0482      prv  lbl 
@@ -518,6 +512,12 @@ m6502_zpx        0448      prv  lbl
 m6502_zpy        045C      prv  lbl 
 m65c02_modes     04DD      prv  lbl 
 MASK             000F      prv  lbl 
+mos_data         0067      prv  lbl 
+mos_direct       0028      prv  lbl 
+mos_imm          0000      prv  lbl 
+mos_io           0063      prv  lbl 
+mos_relative     004E      prv  lbl 
+mos_vectors      005B      prv  lbl 
 neg_one          FFFFFFFF  prv  lbl 
 nested1          0015      prv  lbl 
 nested2          000C      prv  lbl 
@@ -554,23 +554,22 @@ ZP_BASE          0020      prv  lbl
 ZP_DOUBLED       0010      prv  lbl 
 ZP_OFFSET        0008      prv  lbl 
 
-Total memory is 453 bytes
+Total memory is 444 bytes
 
 GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-0000    3E 10 3E 15 3E 12 3E 00 3E 07 3E 1F 3E 08 3E 20
-0010    3E 0F 3E 0C 3E 0C 3E 14 3E 0F 3E FF 3E AA 21 00
-0020    20 21 34 12 21 0A 20 11 34 12 01 00 20 3A 00 20
-0030    3A 05 12 3A 20 20 32 10 20 2A 00 20 2A 80 12 22
-0040    00 21 C3 51 00 C3 00 20 C3 50 12 CD 52 00 CD 00
-0050    22 00 C9 C3 56 00 00 C3 54 00 C3 5A 00 C3 5D 00
-0060    C7 CF D7 DF E7 EF F7 FF DB 10 DB 11 D3 11 D3 12
-0070    7B A6 1F 0A 0A F0 0F 0F 12 34 01 00 10 0F 01 01
-0080    01 01 01 01 00 FF FF 01 01 00 02 07 05 41 15 20
-0090    00 F0 F0 00 FF FF FF 08 00 51 00 42 41 00 20 00
-00A0    13 0A 20 40 42 00 FF
+0000    A9 10 A9 15 A9 12 A9 00 A9 07 A9 1F A9 08 A9 20
+0010    A9 0F A9 0C A9 0C A9 14 A9 0F A9 FF A9 AA 00 20
+0020    34 12 0A 20 34 12 00 20 AD 00 20 AD 05 12 AD 20
+0030    20 8D 10 20 AD 00 20 AD 80 12 8D 00 21 4C 4C 00
+0040    4C 00 20 4C 50 12 20 4D 00 20 00 22 EA 60 4C 51
+0050    00 EA 4C 4F 00 4C 55 00 4C 58 00 00 01 02 03 04
+0060    05 06 07 10 11 11 12 7B A6 1F 0A 0A F0 0F 0F 12
+0070    34 01 00 10 0F 01 01 01 01 01 01 00 FF FF 01 01
+0080    00 02 07 05 41 15 20 00 F0 F0 00 FF FF FF 08 00
+0090    51 00 42 41 00 20 00 13 0A 20 40 42 00 FF
 0400    A9 10 A9 15 A9 10 A9 00 A9 07 A9 1F A9 08 A9 20
 0410    A9 0F A9 0C A9 0C A9 14 A9 0F A9 FF A9 AA A2 20
 0420    A0 08 A2 20 A0 00 A5 20 A5 28 85 21 A6 22 A4 23
@@ -587,6 +586,6 @@ ADDR    BYTES
 04D0    90 02 B0 08 30 FC 10 F4 50 04 70 00 EA B2 20 B2
 04E0    24 92 28 72 10 7C 00 10 7C 00 21 7C FE FF 20 28
 04F0    10 00 0F 10 0F 00 10 00 11 0A 20 FE FF
-0800    3E 15 06 0C 0E 0A 16 0F 1E 3F 26 20 2E 25 00 01
+0800    A9 15 A9 0C A9 0A A9 0F A9 3F A9 20 A9 25 00 01
 0810    02 03 15 0C 0A 0F 3F 08 20 25 A5 0E 08 12 08 11
 0820    00

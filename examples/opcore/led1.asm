@@ -1,36 +1,33 @@
-; Test program for 8085 SBC.  Blinks an LED on SOD forever.
-; Note the first jump that seems to do nothing.  This is for the power-on jump.
-; The ROM is normally at 8000 and the RAM at 0000.  At reset, the ROM maps to
-; both 0000 and 8000.  This condition persists until the A15 line goes high.
-; The first instruction is located at 8000, but the PC will actually be 0000
-; when it executes.  The jump to 8003 will cause the power-on flip flop to
-; clear and the normal addressing scheme will be activated.  At this point,
-; the RAM and ROM use their normal addressing.
+; 65C02 memory-mapped LED blink example.
+;
+; This keeps the original corpus case's layout purpose: code is assembled at
+; a ROM address, enters through a reset-style jump, toggles an output, uses
+; nested delay loops, and repeats forever.
 
-	.org 8000h
-	
-	JMP START	; Jump to ROM
+        .cpu 65c02
+        .org $8000
 
-START  MVI A, 0C0h	; LED on
-        SIM
+        jmp START
 
-        MVI A, 0FFh	; Delay
-        MOV B, A
-D1PT1  DCR A
-D1PT2  DCR B
-        JNZ D1PT2
-        CPI 00h
-        JNZ D1PT1
+LED_PORT .const $4000
 
-        MVI A, 40h	; LED off
-        SIM
+START   lda #$01        ; LED on
+        sta LED_PORT
 
-        MVI A, 0FFh	; Delay
-        MOV B, A
-D2PT1  DCR A
-D2PT2  DCR B
-        JNZ D2PT2
-        CPI 00h
-        JNZ D2PT1
+        ldx #$ff        ; Delay
+D1_OUT  ldy #$ff
+D1_IN   dey
+        bne D1_IN
+        dex
+        bne D1_OUT
 
-        JMP START	; Loop forever
+        stz LED_PORT    ; LED off
+
+        ldx #$ff        ; Delay
+D2_OUT  ldy #$ff
+D2_IN   dey
+        bne D2_IN
+        dex
+        bne D2_OUT
+
+        bra START       ; Loop forever

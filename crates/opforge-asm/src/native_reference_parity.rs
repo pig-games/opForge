@@ -148,10 +148,10 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
         DirectCpuNeutral
     ),
     opcore_root!("cond_syntax", SyntaxExpression, DirectCpuNeutral),
-    opcore_root!("expr_syntax", SyntaxExpression, AdditiveMosAdaptation),
+    opcore_root!("expr_syntax", SyntaxExpression, DirectMos65c02),
     opcore_root!("for_collection_basic", SyntaxExpression, DirectCpuNeutral),
     opcore_root!("for_counter_basic", SyntaxExpression, DirectCpuNeutral),
-    opcore_root!("grouping", SyntaxExpression, AdditiveMosAdaptation),
+    opcore_root!("grouping", SyntaxExpression, DirectMos65c02),
     opcore_root!("ranges_lists_basic", SyntaxExpression, DirectCpuNeutral),
     opcore_root!("scopes", SyntaxExpression, DirectCpuNeutral),
     opcore_root!("scopes_namespace", SyntaxExpression, DirectCpuNeutral),
@@ -165,8 +165,8 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
         SyntaxExpression,
         DirectCpuNeutral
     ),
-    opcore_root!("syntax", SyntaxExpression, AdditiveMosAdaptation),
-    opcore_root!("testexpr", SyntaxExpression, AdditiveMosAdaptation),
+    opcore_root!("syntax", SyntaxExpression, DirectMos65c02),
+    opcore_root!("testexpr", SyntaxExpression, DirectMos65c02),
     opcore_root!("text_encoding", SyntaxExpression, DirectCpuNeutral),
     opcore_root!(
         "text_encoding_definitions",
@@ -231,7 +231,7 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     opcore_support!("project_root/util.asm" => "project_root/main.asm", ModuleMacroStatement, DirectCpuNeutral),
     opcore_root!("align_simple", LayoutOutput, DirectCpuNeutral),
     opcore_root!("cli_json_outputs", LayoutOutput, DirectCpuNeutral),
-    opcore_root!("led1", LayoutOutput, AdditiveMosAdaptation),
+    opcore_root!("led1", LayoutOutput, DirectMos65c02),
     opcore_root!("linker_regions_full", LayoutOutput, DirectCpuNeutral),
     opcore_root!("linker_regions_minimal", LayoutOutput, DirectCpuNeutral),
     opcore_root!("linker_regions_no_dsection", LayoutOutput, DirectCpuNeutral),
@@ -243,11 +243,7 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     opcore_root!("module_metadata_block", LayoutOutput, DirectCpuNeutral),
     opcore_root!("module_metadata_output", LayoutOutput, DirectCpuNeutral),
     opcore_root!("module_metadata_outputs", LayoutOutput, DirectCpuNeutral),
-    opcore_root!(
-        "module_qualified_section_map",
-        LayoutOutput,
-        AdditiveMosAdaptation
-    ),
+    opcore_root!("module_qualified_section_map", LayoutOutput, DirectMos65c02),
     opcore_root!(
         "section_module_use_autoload",
         LayoutOutput,
@@ -255,15 +251,11 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     ),
     opcore_root!("section_module_use_include", LayoutOutput, DirectCpuNeutral),
     opcore_root!("section_simple", LayoutOutput, DirectCpuNeutral),
-    opcore_root!(
-        "segment_cross_module_ok",
-        LayoutOutput,
-        AdditiveMosAdaptation
-    ),
-    opcore_root!("sertest", LayoutOutput, AdditiveMosAdaptation),
+    opcore_root!("segment_cross_module_ok", LayoutOutput, DirectMos65c02),
+    opcore_root!("sertest", LayoutOutput, DirectMos65c02),
     opcore_support!("cli_json_outputs.inc" => "cli_json_outputs.asm", LayoutOutput, DirectCpuNeutral),
     opcore_support!("lib/example_section_lib.asm" => "section_module_use_autoload.asm", LayoutOutput, DirectCpuNeutral),
-    opcore_support!("lib/segment_export_lib.asm" => "segment_cross_module_ok.asm", LayoutOutput, AdditiveMosAdaptation),
+    opcore_support!("lib/segment_export_lib.asm" => "segment_cross_module_ok.asm", LayoutOutput, DirectMos65c02),
     opcore_support!("section_module_use_lib.inc" => "section_module_use_include.asm", LayoutOutput, DirectCpuNeutral),
     opcore_root!(
         "conditional_missing_endif_fixit_error",

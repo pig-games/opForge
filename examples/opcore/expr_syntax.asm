@@ -1,10 +1,10 @@
 ; Expression syntax coverage for 64tass-style operators and literals
-; Tests expressions and labels in all addressing modes for 8080/8085 and 6502/65C02
+; Tests expressions and labels in addressing modes for 6502/65C02.
 
 ; ============================================================================
-; PART 1: 8080/8085 FAMILY - Expressions in addressing modes
+; PART 1: 65C02 expressions in addressing modes
 ; ============================================================================
-        .cpu 8085
+        .cpu 65c02
         .org 0000h
 
 ; --- Constants and labels for expression testing ---
@@ -71,66 +71,66 @@ char_a          .const  'A'
 char_ab         .const  'AB'
 
 ; ============================================================================
-; 8085 IMMEDIATE MODE: MVI reg, imm8  /  LXI rp, imm16
+; 65C02 immediate expressions and emitted 16-bit expression values
 ; ============================================================================
-i8085_imm
-        mvi a, BASE             ; label
-        mvi a, BASE + OFFSET    ; expression with labels
-        mvi a, >PAGE            ; high byte operator
-        mvi a, <PAGE            ; low byte operator
-        mvi a, MASK & $07       ; bitwise AND
-        mvi a, MASK | $10       ; bitwise OR
-        mvi a, 1 << 3           ; shift left
-        mvi a, $80 >> 2         ; shift right
-        mvi a, 10 + 5           ; addition
-        mvi a, 20 - 8           ; subtraction
-        mvi a, 3 * 4            ; multiplication
-        mvi a, 100 / 5          ; division
-        mvi a, ~$f0             ; bitwise NOT (result: $0f)
-        mvi a, (-1) & $ff       ; negative masked to byte (result: $ff)
-        mvi a, (5 > 3) ? $aa : $55  ; ternary
+mos_imm
+        lda #BASE             ; label
+        lda #BASE + OFFSET    ; expression with labels
+        lda #>PAGE            ; high byte operator
+        lda #<PAGE            ; low byte operator
+        lda #MASK & $07       ; bitwise AND
+        lda #MASK | $10       ; bitwise OR
+        lda #1 << 3           ; shift left
+        lda #$80 >> 2         ; shift right
+        lda #10 + 5           ; addition
+        lda #20 - 8           ; subtraction
+        lda #3 * 4            ; multiplication
+        lda #100 / 5          ; division
+        lda #(~$f0) & $ff     ; bitwise NOT (result: $0f)
+        lda #(-1) & $ff       ; negative masked to byte (result: $ff)
+        lda #(5 > 3) ? $aa : $55  ; ternary
         
-        lxi h, TABLE            ; 16-bit label
-        lxi h, PAGE + $34       ; 16-bit expression
-        lxi h, TABLE + (OFFSET * 2)  ; complex expression
-        lxi d, $1000 + $234     ; direct arithmetic
+        .word TABLE            ; 16-bit label
+        .word PAGE + $34       ; 16-bit expression
+        .word TABLE + (OFFSET * 2)  ; complex expression
+        .word $1000 + $234     ; direct arithmetic
 
 ; Combining hi/lo bytes needs intermediate constants
 TABLE_HI        .const  >TABLE
 TABLE_LO        .const  <TABLE
 TABLE_COMBINED  .const  (TABLE_HI << 8) | TABLE_LO  ; same as TABLE
 
-        lxi b, TABLE_COMBINED   ; reconstructed from hi/lo
+        .word TABLE_COMBINED   ; reconstructed from hi/lo
 
 ; ============================================================================
-; 8085 DIRECT/ABSOLUTE MODE: LDA addr / STA addr / LHLD / SHLD / JMP / CALL
+; 65C02 direct/absolute mode: LDA / STA / JMP / JSR
 ; ============================================================================
-i8085_direct
+mos_direct
         lda TABLE               ; label
         lda PAGE + OFFSET       ; expression
         lda TABLE + (BASE * 2)  ; complex expression
         sta TABLE + $10         ; store with offset
         
-        lhld TABLE              ; load HL direct
-        lhld PAGE + $80         ; with expression
-        shld TABLE + $100       ; store HL direct
+        lda TABLE              ; load direct
+        lda PAGE + $80         ; with expression
+        sta TABLE + $100       ; store direct
         
         jmp jump_target         ; forward reference
         jmp TABLE               ; label as address
         jmp PAGE + $50          ; expression as address
         
-        call call_target        ; forward reference
-        call TABLE + $200       ; expression as address
+        jsr call_target        ; forward reference
+        jsr TABLE + $200       ; expression as address
 
 jump_target
         nop
 call_target
-        ret
+        rts
 
 ; ============================================================================
-; 8085 RELATIVE EXPRESSIONS (using $ for current address)
+; Relative expressions using $ for the current address
 ; ============================================================================
-i8085_relative
+mos_relative
         jmp $+3                 ; jump forward 3 bytes (skip next instruction)
         nop
         jmp $-3                 ; jump backward
@@ -139,36 +139,36 @@ loop_here
         jmp $                   ; infinite loop (jump to self)
 
 ; ============================================================================
-; 8085 RST VECTORS (RST only takes literal 0-7)
+; Literal vector-index expressions
 ; ============================================================================
-i8085_rst
-        rst 0                   ; RST 0
-        rst 1                   ; RST 1
-        rst 2                   ; RST 2
-        rst 3                   ; RST 3
-        rst 4                   ; RST 4
-        rst 5                   ; RST 5
-        rst 6                   ; RST 6
-        rst 7                   ; RST 7
+mos_vectors
+        .byte 0                 ; vector expression 0
+        .byte 1                 ; vector expression 1
+        .byte 2                 ; vector expression 2
+        .byte 3                 ; vector expression 3
+        .byte 4                 ; vector expression 4
+        .byte 5                 ; vector expression 5
+        .byte 6                 ; vector expression 6
+        .byte 7                 ; vector expression 7
 
 ; ============================================================================
-; 8085 I/O with expressions
+; Memory-mapped I/O value expressions
 ; ============================================================================
 IO_BASE         .const  $10
 IO_DATA         .const  IO_BASE + 0
 IO_STATUS       .const  IO_BASE + 1
 IO_CONTROL      .const  IO_BASE + 2
 
-i8085_io
-        in IO_DATA              ; input from label
-        in IO_BASE + 1          ; input from expression
-        out IO_STATUS           ; output to label
-        out IO_BASE + 2         ; output to expression
+mos_io
+        .byte IO_DATA           ; value from label
+        .byte IO_BASE + 1       ; value from expression
+        .byte IO_STATUS         ; value from label
+        .byte IO_BASE + 2       ; value from expression
 
 ; ============================================================================
 ; Data directives with expressions
 ; ============================================================================
-i8085_data
+mos_data
         .byte num_dec, num_hex, num_hex_pref
         .byte num_bin, num_bin_pref, num_bin_long  ; binary formats
         .byte num_oct, num_oct_q
@@ -284,7 +284,7 @@ m6502_zpy
 m6502_abs
         lda ABS_BASE            ; label
         lda ABS_BASE + $100     ; expression
-        lda PAGE + OFFSET       ; labels from 8085 section
+        lda PAGE + OFFSET       ; labels from the first section
         sta ABS_BASE + $200     ; store
         ldx TABLE               ; load X absolute
         ldy TABLE + $10         ; load Y with offset
@@ -406,7 +406,7 @@ m6502_data
 ; ============================================================================
 ; PART 3: Expression edge cases and complex expressions
 ; ============================================================================
-        .cpu 8085
+        .cpu 65c02
         .org $0800
 
 ; Nested expressions
@@ -425,13 +425,13 @@ derived2        .const  derived1 + OFFSET       ; = $25
 derived3        .const  derived2 | $80          ; = $a5
 
 ; Using expressions in instructions
-        mvi a, nested1
-        mvi b, nested2
-        mvi c, nested3
-        mvi d, chain1
-        mvi e, chain2
-        mvi h, derived1
-        mvi l, derived2
+        lda #nested1
+        lda #nested2
+        lda #nested3
+        lda #chain1
+        lda #chain2
+        lda #derived1
+        lda #derived2
 
 ; Address arithmetic with current location
 addr_base

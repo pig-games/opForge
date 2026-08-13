@@ -4,24 +4,24 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                1  ; Qualified module import with logical section map and reference-driven reachability.
 ----                                2  
 ----                                3  .module opasm.amigaos.engine
-----                                4      .cpu 68000
+----                                4      .cpu 65c02
 ----                                5      .pub
 ----                                6      .section code, kind=code, logical  ; [section code]
 ----                                7  sessionPass  ; [section code]
-0000    4E 75                       8      rts  ; [section code]
+0000    60                          8      rts  ; [section code]
 ----                                9  unusedPass  ; [section code]
-0002    4E 75                      10      rts  ; [section code]
+0001    60                         10      rts  ; [section code]
 ----                               11      .endsection
 ----                               12  .endmodule
 ----                               13  
 ----                               14  .module app.main
-----                               15      .cpu 68000
+----                               15      .cpu 65c02
 ----                               16      .region rom, $1000, $10ff
 ----                               17      .use opasm.amigaos.engine as engine map { code -> app_code }
 ----                               18      .section app_code, kind=code  ; [section app_code]
 ----                               19  start  ; [section app_code]
-1000    4E B9 00 00 00 00          20      jsr engine.sessionPass  ; [section app_code]
-1006    4E 75                      21      rts  ; [section app_code]
+1000    20 00 00                   20      jsr engine.sessionPass  ; [section app_code]
+1003    60                         21      rts  ; [section app_code]
 ----                               22      .endsection
 ----                               23      .place app_code in rom
 ----                               24  .endmodule
@@ -36,12 +36,12 @@ NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
 app.main.start   1000      prv  lbl 
 opasm.amigaos.engine.sessionPass  0000      pub  lbl 
-opasm.amigaos.engine.unusedPass  0002      pub  lbl 
+opasm.amigaos.engine.unusedPass  0001      pub  lbl 
 
-Total memory is 10 bytes
+Total memory is 5 bytes
 
 GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-1000    4E B9 00 00 00 00 4E 75 4E 75
+1000    20 00 00 60 60

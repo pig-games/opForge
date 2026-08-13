@@ -491,7 +491,7 @@ landed” is not equivalent to “framework-closed.”
   - Commit outcome:
     - every applicable opcore source/reference entry is assigned to exactly one of Items 6–9 or has a reviewed exclusion with a concrete blocker
   - Definition of done:
-    - the manifest distinguishes direct CPU-neutral staging from additive MOS-backed adaptation
+    - the manifest distinguishes direct CPU-neutral staging from direct stored 6502/65C02 corpus sources
     - no entry is assigned through a prefix-only assumption
     - each shard has a bounded artifact surface and named Level D test
     - any already-known red parity case is represented by a separate inserted remediation item rather than hidden inside a coverage shard
@@ -499,7 +499,7 @@ landed” is not equivalent to “framework-closed.”
     - every checked-in `.asm` and `.inc` path is assigned explicitly; support files name their owning root and must share its shard
     - every checked-in reference artifact is owned by one root; `README.md` and the shared diagnostic schema are exact-path exclusions with concrete reasons
     - the four bounded Level D tests are named `native_reference_opcore_syntax_expression_fs_uae`, `native_reference_opcore_module_macro_statement_fs_uae`, `native_reference_opcore_layout_output_fs_uae`, and `native_reference_opcore_diagnostic_fs_uae`
-    - additive adaptation is required where a canonical source embeds non-MOS CPU selection, mnemonics, or operand syntax; canonical Rust examples and references remain immutable
+    - user reprioritization on 2026-08-13 supersedes runtime additive adaptation: every source actively used by this 6502/65C02 proof effort must itself be stored in the opcore corpus as a direct 6502/65C02 example; foreign-CPU syntax cannot be substituted at runtime
 
 - [x] Item 5.1: remediate column-one native directive routing
   - Source requirement or finding IDs: Item 6 Level D red case on `examples/opcore/for_counter_basic.asm`; native fallback recorded `.cpu` as a label when PRVM also exposed its operand expression
@@ -698,6 +698,14 @@ landed” is not equivalent to “framework-closed.”
     - every `.org` remains present and semantically equivalent
   - Dependency note:
     - fixture adaptation and source-mapping evidence may be prepared in this item, but Item 5.9 is finalized only after Item 6 supplies the required native expression-semantics parity for the retained CPU-neutral expressions and its Level D shard is green
+
+- [x] Item 5.9.23: replace obsolete runtime syntax adaptations with stored 6502/65C02 corpus sources
+  - Source requirement or finding IDs: user requirement that no foreign-CPU test participate in this effort and that equivalent opcore tests be stored directly in the corpus; supersedes Item 5.9's earlier immutability/adaptation constraint
+  - Invariant: `expr_syntax.asm`, `grouping.asm`, `syntax.asm`, and `testexpr.asm` are direct stored 6502/65C02 examples preserving their opcore expression/grouping/syntax purposes; their assignments use `DirectMos65c02`, and the obsolete adapted-syntax test module is not part of the test suite
+  - Expected files: the four `examples/opcore/*.asm` roots and owned references; `crates/opforge-asm/src/native_reference_parity.rs`; `crates/opforge-asm/src/tests.rs`; this plan
+  - Full quality gates: controlled golden-reference regeneration; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; focused native-reference inventory tests; staged native-porting gate; workflow gate; full serial Rust quality gate
+  - Validation evidence: all four roots select 6502/65C02 directly, contain no Intel instruction spellings, and are assigned as `DirectMos65c02`; controlled regeneration changes only their owned `.hex`/`.lst` artifacts; the non-update reference test and native-reference inventory tests pass. Bulk reference refresh approved for the exact sixteen owned `.hex`/`.lst` artifacts of the eight stored corpus roots covered jointly by Items 5.9.23 and 7.13; this is one artifact pair per rewritten test case, not a test-count cutoff or an unscoped repository refresh.
+  - Definition of done: no Intel instruction or foreign `.cpu` directive remains in these four stored roots, and no runtime adaptation chooses their proof source
 
 - [x] Item 5.9.1: restore native numeric suffix-literal expression parity
   - Source requirement or finding IDs: Item 5.9 Level D failure on retained `0a6h`, `1010b`, and `17o` literals; Item 6 native/Rust divergence rule
@@ -1419,6 +1427,13 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Plan-compliance review evidence: exact-index `plan-compliance-reviewer` must confirm the runner cannot share mutable inputs or output evidence across cases and that the rerun supersedes the invalid earlier aggregate evidence.
   - Commit outcome: one independently revertible runner-integrity remediation commit.
   - Definition of done: changing one case's source or output cannot affect any other case's execution or verification; all case-specific files remain ephemeral on success, failure, crash, timeout, and unwind.
+
+- [x] Item 7.13: replace foreign-CPU layout roots with stored 65C02 corpus examples
+  - Source requirement or finding IDs: user requirement that `mvi`/8085/68000 sources cannot participate in this 6502/65C02 proof effort and must be rewritten in the corpus to test the same opcore behavior
+  - Invariant: `led1.asm`, `segment_cross_module_ok.asm`, `sertest.asm`, and `module_qualified_section_map.asm` are stored 65C02 sources preserving respectively ROM layout and loop control, cross-module segment expansion, framed serial control flow, and qualified logical-section mapping
+  - Expected files: the four `examples/opcore/*.asm` roots and owned `.hex`/`.lst` references; `crates/opforge-asm/src/native_reference_parity.rs`; this plan
+  - Validation evidence: all four assignments use `DirectMos65c02`; controlled reference regeneration changes only their owned `.hex`/`.lst` artifacts; non-update reference comparison and native-reference inventory tests pass
+  - Definition of done: the layout shard contains no foreign `.cpu` directive or Intel instruction spelling and never substitutes an adapted source at runtime
 
 - [ ] Item 8: add the section, region, linker, and output opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for sections, segments, regions, maps, metadata, alignment, linker placement, and CLI-selected output artifacts

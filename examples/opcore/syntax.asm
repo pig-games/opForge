@@ -4,6 +4,7 @@
 ; Note that the assembler is case-insensitive for instructions, directives,
 ; register names, and labels.  The labels "label2" and "LABEL2" are the same,
 ; and an error would be thrown if both were defined.
+        .cpu 65c02
  
 ; The .org directive sets the current address for assembly.  A file can
 ; contain more than one .org.  The assembler does not detect overlapping
@@ -17,8 +18,8 @@
 ; Labels can end with a colon, but the colon is optional.
 LABEL1 .byte      123             ; labels can be on the same line as code
 LABEL2
-        POP     PSW             ; or the label can be before the code
-NOSPACE push    D               ; a space is not required after a label
+        pla                     ; or the label can be before the code
+NOSPACE pha                     ; a space is not required after a label
 VeryVeryVeryLongLabel
     .byte  "Labels can be up to 32 characters && must start with an alpha."
 
@@ -59,17 +60,17 @@ str4   .byte      3,"red",4,"blue"; Mixed strings and numerics
 
 ; Note that a single character string can also be used anywhere a numeric
 ; would be allowed.  It evaluates to the ASCII value of the single character.
-        mvi     c, 65           ; Move the letter 'A' into register C.
-        mvi     c, 041H         ; Move the letter 'A' into register C.
-        mvi     c, 'A'          ; Move the letter 'A' into register C.
+        lda #65                 ; Move the letter 'A' into the accumulator.
+        lda #041H               ; Move the letter 'A' into the accumulator.
+        lda #'A'                ; Move the letter 'A' into the accumulator.
 
 ; A two character string can also be used anywhere a numeric would be allowed.
 ; It evaluates to the 16-bit value of ASCII value of the two characters, where
 ; the MSB is the first char and the LSB is the second.
-        lxi     h,04142H        ; All of these evaluate to 4142H
-        lxi     h,'AB'          ; All of these evaluate to 4142H
-        lxi     h,"AB"          ; All of these evaluate to 4142H
-        lxi     h,'A'*256 | 'B' ; All of these evaluate to 4142H
+        .word 04142H            ; All of these evaluate to 4142H
+        .word 'AB'              ; All of these evaluate to 4142H
+        .word "AB"              ; All of these evaluate to 4142H
+        .word 'A'*256 | 'B'     ; All of these evaluate to 4142H
 
 
 ; Some common C-style string escapes are supported: CR, LF, tab, NULL, and
@@ -102,7 +103,7 @@ words3 .word      1010101001010101B ; One word value in binary
 words4 .word      02h, 03h        ; Two word values
 words5 .word      02h, 03, 04ffh  ; Three word values
 
-; Note that .word stores the two octet values in intel (little endian) order, so
+; Note that .word stores the two octet values in 6502 little-endian order, so
 ; the following two declarations are equivalent:
         .word      01234h
         .byte      034h, 012h
@@ -114,12 +115,12 @@ buffer .ds  StrSize * 4     ; Reserve space for 4 strings
 
 ; Expressions can be used in place of any numeric constant.
 t      .word      1024 * 3
-        LXI     SP, 32 * 4 + 2
-        lxi     h, str4 + 5
-        lxi     d, buffer + StrSize
+        .word 32 * 4 + 2
+        .word str4 + 5
+        .word buffer + StrSize
         .byte      7+7*7+7/(7+7-7)
-        mvi     c, 'A' | 020H
-        mvi     c, 'a' & 11011111b
+        lda #'A' | 020H
+        lda #'a' & 11011111b
 
 ; Operators and precedence (highest to lowest):
 ;   unary: + - ~ ! < >
@@ -176,14 +177,12 @@ entries .const     ($-jump_tab) / 3 ; Number of entries in the table
 
 ; It is legal, though probably not wise, to have a label with the same name
 ; as a register.  This looks confusing, but it will work.  All of the examples
-; below load register pair HL with the address of the word at label "SP".  None
-; of these have any relation to the SP register.
-; Labels that match registers are not permitted in Intel85, but this change was
-; added to support some code that was developed with a different assembler.
+; below emit the address of the word at label "SP". None of these have any
+; relation to the 65C02 stack pointer.
 SP     .word      256             ; define a word at location named SP
-        LXI     H,SP            ; laod address of "SP" word into HL pair
-        LXI     H,SP+0
-        LXI     H,0+SP
+        .word SP                ; store address of "SP" word
+        .word SP+0
+        .word 0+SP
 
 
 ; Conditional directives
@@ -197,39 +196,39 @@ FALSE       .const 0
                 .org 4000h               ; all labels, directives, and code included
 EX1AVAR         .const 1234h
 EX1ADATA       .word  EX1AVAR
-EX1A           mov a,b
+EX1A           tax
 
         .else                           ; skip - no code in this block is included
                 .org 8000h               ; all labels, directives, and code skipped
 EX1BVAR         .const 5678h
 EX1BDATA       .word  EX1VAR
-EX1B           mov a,c
+EX1B           tax
         .endif                          ; END conditional block
 
 
 ; .if/.elseif/.else
                 .org 1000h
         .if YES == NO                   ; skip FALSE
-                mov a,b
+                tax
         .elseif !TRUE                   ; skip FALSE
-                mov a,c
+                tax
         .elseif !FALSE                  ; match TRUE
-                mov a,d
+                tax
         .elseif TRUE                    ; skip - already matched a previous block
-                mov a,e
+                tax
         .else                           ; skip - already matched a previous block
-                mov a,h
+                tax
         .endif
 
 
 ; TRUE/FALSE values in conditionals
 ; Any non-zero value is TRUE, zero is FALSE.
         .if 0                           ; FALSE
-                adi 11h
+                adc #11h
         .elseif 4                       ; TRUE
-                adi 22h
+                adc #22h
         .elseif 4-4                     ; skipped (previous branch matched)
-                adi 33h
+                adc #33h
         .endif
 
 
@@ -237,10 +236,10 @@ EX1B           mov a,c
                 .org 0f000h
         .if FALSE                       ; level 1 - skip
           .if 0 != 1                    ; level 2 - skip
-LABEL1         ori 03h                 ; label and code skipped
+LABEL1         ora #03h                ; label and code skipped
                 jmp 45
           .elseif FALSE                 ; level 2 - skip
-LABEL1         ori 30h                 ; label and code included
+LABEL1         ora #30h                ; label and code included
                 jmp 67
           .else                         ; level 2 - skip
                 jmp 12
@@ -253,20 +252,20 @@ LABEL1         ori 30h                 ; label and code included
             .if 0                       ; level 3 - skip
                 jmp 2222
             .else                       ; level 3 match
-                mov c,a
+                tax
                 jmp 3333
             .endif                      ; end level 3
-                mvi a,11h               ; included in level 2 match
-                mvi b,22h               ; included in level 2 match
+                lda #11h                ; included in level 2 match
+                lda #22h                ; included in level 2 match
 
           .else                         ; level 2 - skip
                 jmp 4444
           .endif                        ; end level 2
-                mvi a,66h               ; included in level 1 match
-                mvi b,77h
+                lda #66h                ; included in level 1 match
+                lda #77h
         .else                           ; level 1 - skip
-                mvi a,66h
-                mvi b,77h
+                lda #66h
+                lda #77h
                 jmp 12                  ; skipped from level 1 .else
         .endif                          ; end level 1
 
@@ -281,7 +280,7 @@ LABEL1         ori 30h                 ; label and code included
 IFLAB  .if TRUE                        ; label included
                 jmp 6666
 ELSELAB .else                           ; label included
-                mov c,a
+                tax
 NOLAB1         jmp 3333                ; labels ignored because they are nested in
 NOLAB2   .if YES                       ; the .else above that did not match
 NOLAB3         jmp 1111

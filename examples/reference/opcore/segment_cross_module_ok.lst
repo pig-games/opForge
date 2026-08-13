@@ -7,22 +7,22 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                4  
 ----                                5  
 ----                                6  .endmodule
-----                                7  ; Test: successful cross-module segment import
+----                                7  ; Test: successful cross-module segment import on 65C02.
 ----                                8  ;
-----                                9  ; When EMIT_BYTE is explicitly listed in the .use import list,
-----                               10  ; the segment defined in the library module becomes available.
+----                                9  ; When EMIT_BYTE is explicitly listed in the .use import list, the segment
+----                               10  ; defined in the library module becomes available beside an imported const.
 ----                               11  
 ----                               12  .module segment.cross.ok.app
-----                               13      .cpu 8085
+----                               13      .cpu 65c02
 ----                               14  
 ----                               15      .use segment.export.lib (LIBVAL, EMIT_BYTE)
 ----                               16  
-----    EQU 0000                   17      .org $0000
+----    EQU 0800                   17      .org $0800
 ----                               18  
-0000    3E 42                      19      mvi a, LIBVAL       ; Use the exported const ($42)
-0002    AA                         20      .byte $AA
-0003    BB                         21      .byte $BB
-0004    76                         22      hlt
+0800    A9 42                      19      lda #LIBVAL         ; Use the exported const ($42)
+0802    AA                         20      .byte $AA
+0803    BB                         21      .byte $BB
+0804    00                         22      brk
 ----                               23  .endmodule
 ----                               24  
 ----                               25  .end
@@ -41,4 +41,4 @@ GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-0000    3E 42 AA BB 76
+0800    A9 42 AA BB 00

@@ -4,16 +4,16 @@
 ; the statement defined in the library module becomes available.
 
 .module statement.cross.ok.app
-    .cpu 8085
+    .cpu 65c02
 
     .use statement.export.lib (LIBVAL, PUSHB)
 
     .org $0000
 
-    mvi a, LIBVAL       ; Use the exported const ($42)
+    lda #LIBVAL         ; Use the exported const ($42)
     PUSHB $AA           ; Invoke the exported statement
     PUSHB $BB
-    hlt
+    brk
 .endmodule
 
 .end

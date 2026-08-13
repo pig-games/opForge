@@ -29,12 +29,23 @@ OPEN                            = -30
 CLOSE                           = -36
 READ                            = -42
 WRITE                           = -48
+LOCK                            = -84
+UNLOCK                          = -90
+EXAMINE                         = -102
+EX_NEXT                         = -108
+IO_ERR                          = -132
 PUT_STR                         = -948
 FPUTS                           = -342
 GET_ARG_STR                     = -534
 
 MODE_OLDFILE                    = 1005
 MODE_NEWFILE                    = 1006
+ACCESS_READ                     = -2
+ERROR_NO_MORE_ENTRIES           = 232
+
+FILE_INFO_BLOCK_SIZE            = 260
+FIB_DIR_ENTRY_TYPE              = 4
+FIB_FILE_NAME                   = 8
 
 RETURN_OK                       = 0
 RETURN_USAGE                    = 1
@@ -72,6 +83,8 @@ NATIVE_SOURCE_RECORD_CAPACITY   = 512
 NATIVE_MODULE_TABLE_CAPACITY    = 16
 NATIVE_IMPORT_TABLE_CAPACITY    = 32
 NATIVE_MODULE_PATH_CAPACITY     = 8
+NATIVE_MODULE_SCAN_DEPTH_CAPACITY = 8
+NATIVE_MODULE_RESOLVE_DEPTH_LIMIT = 8
 NATIVE_INCLUDE_PATH_CAPACITY    = 8
 NATIVE_IMPORT_SELECT_CAPACITY   = 64
 NATIVE_ORDINARY_EXPORT_CAPACITY = 64

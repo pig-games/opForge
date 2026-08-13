@@ -2,7 +2,7 @@
 ; Demonstrates directive-first and name-first macro forms,
 ; parenthesized macro calls, and segment symbol visibility.
 
-        .cpu 8085
+        .cpu 65c02
         .org $2000
 
 COPY .macro src, dst

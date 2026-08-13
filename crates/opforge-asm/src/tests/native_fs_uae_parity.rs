@@ -2428,9 +2428,7 @@ fn native_directive_first_definition_header_model_matches_rust() {
         rest = rest.trim_start();
         let name_len = rest
             .bytes()
-            .take_while(|byte| {
-                byte.is_ascii_alphanumeric() || matches!(*byte, b'_' | b'.' | b'$')
-            })
+            .take_while(|byte| byte.is_ascii_alphanumeric() || matches!(*byte, b'_' | b'.' | b'$'))
             .count();
         if name_len == 0
             || !rest
@@ -2491,10 +2489,7 @@ fn native_directive_first_definition_header_model_matches_rust() {
             "MIX .macro value=(1 + 2), text=\"a)b\"",
         ),
         (".macro EMPTY()", "EMPTY .macro"),
-        (
-            ".macro FILL.PART$(value)",
-            "FILL.PART$ .macro value",
-        ),
+        (".macro FILL.PART$(value)", "FILL.PART$ .macro value"),
     ] {
         assert_eq!(canonicalize(source), Ok(Some(expected.to_string())));
     }
@@ -2659,17 +2654,15 @@ impl Drop for DirectiveFirstOracleDir {
 fn native_macro_segment_directive_first_fs_uae() {
     // Proof level D. The real native CLI must consume the directive-first
     // FILL and INLINE definitions and emit byte-for-byte the live Rust CLI
-    // result for this exact adapted canonical test case.
+    // result for this exact canonical 65C02 test case.
     let _guard = fs_uae_native_cli_smoke_lock()
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");
     let root = workspace_root();
     let canonical = fs::read_to_string(root.join("examples/opcore/macro_segment_syntax.asm"))
         .expect("read macro/segment fixture");
-    assert_eq!(canonical.matches(".cpu 8085").count(), 1);
-    let canonical_source = canonical
-        .replacen(".cpu 8085", ".cpu 65c02", 1)
-        .into_bytes();
+    assert_eq!(canonical.matches(".cpu 65c02").count(), 1);
+    let canonical_source = canonical.into_bytes();
     let sources = [
         ("macro-segment-directive-first", canonical_source),
         (
@@ -6388,37 +6381,12 @@ impl Drop for Item7OracleDir {
     }
 }
 
-fn item7_replace_once(source: String, from: &str, to: &str, case_name: &str) -> String {
-    assert_eq!(
-        source.matches(from).count(),
-        1,
-        "Item 7 additive adaptation {case_name} must replace exactly one {from:?}"
-    );
-    source.replacen(from, to, 1)
-}
-
 fn item7_native_source(
     assignment: &crate::native_reference_parity::NativeOpcoreAssignment,
 ) -> Vec<u8> {
     let canonical = fs::read_to_string(workspace_root().join(assignment.source_path))
         .unwrap_or_else(|err| panic!("read Item 7 root {}: {err}", assignment.source_path));
     let adapted = match assignment.source_path {
-        "examples/opcore/macro_cross_module_ok.asm" => {
-            let source =
-                item7_replace_once(canonical, ".cpu 8085", ".cpu 65c02", assignment.source_path);
-            let source = item7_replace_once(
-                source,
-                "mvi a, LIBVAL",
-                "lda #LIBVAL",
-                assignment.source_path,
-            );
-            item7_replace_once(source, "hlt", "brk", assignment.source_path)
-        }
-        "examples/opcore/macro_invocation_native.asm" => canonical,
-        "examples/opcore/macro_segment_syntax.asm"
-        | "examples/opcore/statement_boundary_span.asm" => {
-            item7_replace_once(canonical, ".cpu 8085", ".cpu 65c02", assignment.source_path)
-        }
         "examples/opcore/module_basics.asm" => {
             let mut source = canonical
                 .lines()
@@ -6427,17 +6395,6 @@ fn item7_native_source(
                 .join("\n");
             source.push('\n');
             source
-        }
-        "examples/opcore/statement_cross_module_ok.asm" => {
-            let source =
-                item7_replace_once(canonical, ".cpu 8085", ".cpu 65c02", assignment.source_path);
-            let source = item7_replace_once(
-                source,
-                "mvi a, LIBVAL",
-                "lda #LIBVAL",
-                assignment.source_path,
-            );
-            item7_replace_once(source, "hlt", "brk", assignment.source_path)
         }
         _ => {
             assert!(
@@ -6464,9 +6421,6 @@ fn item7_live_rust_cli_binary_oracle(
     let _case_dir_guard = Item7OracleDir(case_dir.clone());
     let input_path = case_dir.join("input.asm");
     let bin_path = case_dir.join("oracle.bin");
-    fs::create_dir_all(case_dir.join("lib")).expect("create Item 7 Rust module root");
-    fs::create_dir_all(case_dir.join("project_root"))
-        .expect("create Item 7 Rust project module root");
     fs::write(&input_path, source)
         .unwrap_or_else(|err| panic!("write same-case Rust Item 7 root {case_name}: {err}"));
     for guest_file in guest_files {
@@ -6487,10 +6441,6 @@ fn item7_live_rust_cli_binary_oracle(
         case_dir.to_string_lossy().into_owned(),
         "-M".to_string(),
         case_dir.to_string_lossy().into_owned(),
-        "-M".to_string(),
-        case_dir.join("lib").to_string_lossy().into_owned(),
-        "-M".to_string(),
-        case_dir.join("project_root").to_string_lossy().into_owned(),
     ];
     let cli = Cli::parse_from(args);
     run_with_cli_with_context(&cli).unwrap_or_else(|err| {
@@ -6574,6 +6524,27 @@ fn item7_staging_covers_every_assigned_root_and_support_file() {
         expected_roots
     );
     for case in &cases {
+        let mut sources = vec![(case.name, case.source.as_slice())];
+        sources.extend(
+            case.guest_files
+                .iter()
+                .map(|file| (file.relative_path.as_str(), file.bytes.as_slice())),
+        );
+        for (source_name, source_bytes) in sources {
+            let source = String::from_utf8_lossy(source_bytes);
+            let lowercase = source.to_ascii_lowercase();
+            assert!(
+                source.lines().all(|line| {
+                    let line = line.trim_start().to_ascii_lowercase();
+                    !line.starts_with(".cpu ") || line == ".cpu 65c02"
+                }),
+                "Item 7 source must be CPU-neutral or select 65C02: {source_name}"
+            );
+            assert!(
+                !lowercase.contains("mvi "),
+                "Item 7 source must not contain Intel MVI syntax: {source_name}"
+            );
+        }
         let expected_support = NATIVE_OPCORE_ASSIGNMENTS
             .iter()
             .filter_map(|assignment| match assignment.role {
@@ -6607,6 +6578,138 @@ fn item7_staging_covers_every_assigned_root_and_support_file() {
         .expect("module_basics Item 7 case");
     assert!(!String::from_utf8_lossy(&module_basics.source).contains(".org "));
     assert_eq!(module_basics.rust_oracle, [1, 2]);
+}
+
+#[test]
+fn native_module_discovery_matches_rust_declared_id_and_bounded_graph_contract() {
+    // Proof levels A/C. This proves Rust resolves a declared module id whose
+    // nested source filename does not match that id and rejects a distinct
+    // duplicate declaration. It also locks the native recursive scan, declared
+    // id, ambiguity, active-cycle, and bounded-depth implementation surfaces.
+    // It does not execute the native resolver.
+    let root = create_temp_dir("item7-declared-module-discovery");
+    let _root_guard = Item7OracleDir(root.clone());
+    let input_path = root.join("main.asm");
+    let module_root = root.join("modules");
+    let first_module = module_root.join("nested/does_not_match.asm");
+    fs::create_dir_all(first_module.parent().expect("first module parent"))
+        .expect("create first nested module directory");
+    write_file(
+        &input_path,
+        ".module app\n.cpu 65c02\n.use lib.math (VALUE)\n.org 0\nlda #VALUE\nbrk\n.endmodule\n.end\n",
+    );
+    write_file(
+        &first_module,
+        ".module lib.math\n.pub\nVALUE .const $11\n.endmodule\n",
+    );
+    let root_lines =
+        expand_source_file(&input_path, &[], &[], 64).expect("expand declared-module root source");
+    let graph = load_module_graph(
+        &input_path,
+        root_lines,
+        &[],
+        &[],
+        std::slice::from_ref(&module_root),
+        64,
+    )
+    .expect("resolve nested module by declaration rather than filename");
+    let lib_index = graph
+        .lines
+        .iter()
+        .position(|line| line.trim().eq_ignore_ascii_case(".module lib.math"))
+        .expect("declared library module in graph");
+    let app_index = graph
+        .lines
+        .iter()
+        .position(|line| line.trim().eq_ignore_ascii_case(".module app"))
+        .expect("root application module in graph");
+    assert!(
+        lib_index < app_index,
+        "dependency must precede importing root"
+    );
+
+    let second_module = module_root.join("other/also_not_lib_math.inc");
+    fs::create_dir_all(second_module.parent().expect("second module parent"))
+        .expect("create second nested module directory");
+    write_file(&second_module, ".module lib.math\n.endmodule\n");
+    let root_lines = expand_source_file(&input_path, &[], &[], 64)
+        .expect("re-expand ambiguous declared-module root source");
+    let ambiguity = load_module_graph(
+        &input_path,
+        root_lines,
+        &[],
+        &[],
+        std::slice::from_ref(&module_root),
+        64,
+    )
+    .expect_err("distinct declarations of one module id must be ambiguous");
+    assert!(ambiguity.to_string().contains("Ambiguous module"));
+
+    let missing_input = root.join("missing.asm");
+    write_file(
+        &missing_input,
+        ".module missing.app\n.use absent.module\n.endmodule\n.end\n",
+    );
+    let missing_lines =
+        expand_source_file(&missing_input, &[], &[], 64).expect("expand missing-module root");
+    let missing = load_module_graph(
+        &missing_input,
+        missing_lines,
+        &[],
+        &[],
+        std::slice::from_ref(&module_root),
+        64,
+    )
+    .expect_err("missing declared module must fail deterministically");
+    assert!(missing
+        .to_string()
+        .contains("unknown module: absent.module"));
+
+    let discovery = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/module_discovery.asm"),
+    )
+    .expect("read native module discovery source");
+    let module_use = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/module_use.asm"),
+    )
+    .expect("read native module use source");
+    assert!(source_contains_in_order(
+        &discovery,
+        &[
+            "resolveDeclaredModuleV1 .BLOCK",
+            "rootLoop",
+            "BSR.W rootWasAlreadyScanned",
+            "BSR.W scanDirectory",
+            "nextRoot",
+            "ADDQ.W #1, D7",
+            "CMPI.W #1, ModuleScanMatchCount",
+        ]
+    ));
+    let discovery_lower = discovery.to_ascii_lowercase();
+    for required in [
+        "jsr dos.lockread",
+        "jsr dos.examine",
+        "jsr dos.exnext",
+        "moduledirectivetext",
+        "modulescanfibtable",
+        "native_module_scan_depth_capacity",
+        "comparefoldednull",
+        "recordcandidatematch",
+    ] {
+        assert!(
+            discovery_lower.contains(required),
+            "missing native discovery surface: {required}"
+        );
+    }
+    assert!(source_contains_in_order(
+        &module_use,
+        &[
+            "foundLoaded",
+            "BSR.W moduleIsActive",
+            "searchPaths",
+            "JSR module_discovery.resolveDeclaredModuleV1",
+        ]
+    ));
 }
 
 #[test]
@@ -6648,21 +6751,23 @@ fn native_module_visibility_roots_fs_uae() {
     let cases = staged
         .iter()
         .enumerate()
-        .map(|(index, case)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
-            name: case.name,
-            cpu_override: "68020",
-            extra_assembly_defines: &defines,
-            source_override: Some(&case.source),
-            command_template: Some(
-                "{input} --bin {bin} --cpu 65c02 -I {guest_work_dir} -M {guest_work_dir} -M {guest_work_dir}lib -M {guest_work_dir}project_root",
-            ),
-            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
-            extra_guest_files: &guest_files[index],
-            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
-                relative_path: "Work/opforge_native_out.bin",
-                rust_oracle: &case.rust_oracle,
+        .map(
+            |(index, case)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name: case.name,
+                cpu_override: "68020",
+                extra_assembly_defines: &defines,
+                source_override: Some(&case.source),
+                command_template: Some(
+                    "{input} --bin {bin} --cpu 65c02 -I {guest_work_dir} -M {guest_work_dir}",
+                ),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &guest_files[index],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: &case.rust_oracle,
+                },
             },
-        })
+        )
         .collect::<Vec<_>>();
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
         &workspace_root(),
@@ -6682,6 +6787,217 @@ fn native_module_visibility_roots_fs_uae() {
                     case.name
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn native_module_autoload_roots_fs_uae() {
+    // Proof level D. These four stored CPU-neutral/65C02 corpus roots require
+    // declared-module autoload through configured roots. Each actual case has
+    // a fresh guest protocol, explicit zero exit, and byte-for-byte equality
+    // with the in-memory Rust oracle produced from that exact case and support
+    // tree. This test performs no CPU or mnemonic source rewriting.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let selected = [
+        "examples/opcore/macro_cross_module_ok.asm",
+        "examples/opcore/module_use_autoload.asm",
+        "examples/opcore/project_root/main.asm",
+        "examples/opcore/statement_cross_module_ok.asm",
+    ];
+    let staged = item7_staged_cases()
+        .into_iter()
+        .filter(|case| selected.contains(&case.name))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        staged.iter().map(|case| case.name).collect::<Vec<_>>(),
+        selected
+    );
+    let guest_files = staged
+        .iter()
+        .map(|case| {
+            case.guest_files
+                .iter()
+                .map(|file| crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+                    relative_path: &file.relative_path,
+                    bytes: &file.bytes,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let cases = staged
+        .iter()
+        .enumerate()
+        .map(
+            |(index, case)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name: case.name,
+                cpu_override: "68020",
+                extra_assembly_defines: &defines,
+                source_override: Some(&case.source),
+                command_template: Some(
+                    "{input} --bin {bin} --cpu 65c02 -I {guest_work_dir} -M {guest_work_dir}",
+                ),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &guest_files[index],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: &case.rust_oracle,
+                },
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 7.10 configured-root FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), staged.len());
+            for (run, case) in runs.iter().zip(staged.iter()) {
+                assert!(run.success, "native {} failed: {}", case.name, run.stdout);
+                assert_eq!(
+                    verified_fs_uae_output(run),
+                    case.rust_oracle,
+                    "native bytes differ for {}",
+                    case.name
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn native_module_discovery_boundaries_fs_uae() {
+    // Proof level D. The positive case proves that a requested declaration is
+    // extracted from a file containing more than one module. The negative
+    // cases prove missing, ambiguous, and over-capacity native searches.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let root_source = b".module boundary.app\n.cpu 65c02\n.use target.lib (VALUE)\n.org 0\n.byte VALUE\n.endmodule\n.end\n";
+    let multi_module_source = b".module decoy.lib\n.pub\nVALUE .const $11\n.endmodule\n.module target.lib\n.pub\nVALUE .const $22\n.endmodule\n";
+    let unrelated_module_source =
+        b".module unrelated.lib\n.pub\nUNRELATED .const $44\n.endmodule\n";
+    let rust_support = [
+        Item7StagedGuestFile {
+            relative_path: "modules.asm".to_string(),
+            bytes: multi_module_source.to_vec(),
+        },
+        Item7StagedGuestFile {
+            relative_path: "unrelated.asm".to_string(),
+            bytes: unrelated_module_source.to_vec(),
+        },
+    ];
+    let rust_oracle = item7_live_rust_cli_binary_oracle(
+        "module-discovery-multi-declaration",
+        root_source,
+        &rust_support,
+        "65c02",
+    );
+    assert_eq!(rust_oracle, [0x22]);
+
+    // Files are staged in this order so the positive proof also covers a
+    // matching candidate followed by an unrelated source. Candidate-local
+    // discovery state must not leak into the second scan.
+    let multi_files = [
+        crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+            relative_path: "modules.asm",
+            bytes: multi_module_source,
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+            relative_path: "unrelated.asm",
+            bytes: unrelated_module_source,
+        },
+    ];
+    let ambiguous_files = [
+        crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+            relative_path: "first.asm",
+            bytes: b".module target.lib\n.pub\nVALUE .const $22\n.endmodule\n",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+            relative_path: "second.inc",
+            bytes: b".module target.lib\n.pub\nVALUE .const $33\n.endmodule\n",
+        },
+    ];
+    let depth_files = [crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+        relative_path: "d0/d1/d2/d3/d4/d5/d6/d7/target.asm",
+        bytes: b".module target.lib\n.pub\nVALUE .const $22\n.endmodule\n",
+    }];
+    let missing_source = b".module missing.app\n.cpu 65c02\n.use absent.lib\n.endmodule\n.end\n";
+    let package = item6_mos_package_bytes();
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let command = "{input} --bin {bin} --cpu 65c02 -I {guest_work_dir} -M {guest_work_dir}";
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "module-discovery-multi-declaration",
+            cpu_override: "68020",
+            extra_assembly_defines: &defines,
+            source_override: Some(root_source),
+            command_template: Some(command),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &multi_files,
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_oracle,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "module-discovery-missing",
+            cpu_override: "68020",
+            extra_assembly_defines: &defines,
+            source_override: Some(missing_source),
+            command_template: Some(command),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                "OPC-NCLI018",
+            ),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "module-discovery-ambiguous",
+            cpu_override: "68020",
+            extra_assembly_defines: &defines,
+            source_override: Some(root_source),
+            command_template: Some(command),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &ambiguous_files,
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                "OPC-NCLI018",
+            ),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "module-discovery-depth-capacity",
+            cpu_override: "68020",
+            extra_assembly_defines: &defines,
+            source_override: Some(root_source),
+            command_template: Some(command),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &depth_files,
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                "OPC-NCLI018",
+            ),
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 7.10 module-discovery boundary FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len(), "every boundary case must complete");
+            assert!(runs[0].success, "positive boundary case failed");
+            assert!(
+                runs[1..].iter().all(|run| !run.success),
+                "negative boundary cases must have nonzero guest exits"
+            );
         }
     }
 }
@@ -6731,19 +7047,21 @@ fn native_item79_wildcard_import_localization_fs_uae() {
     let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
     let cases = prepared
         .iter()
-        .map(|(name, source, rust)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
-            name,
-            cpu_override: "68020",
-            extra_assembly_defines: &defines,
-            source_override: Some(source),
-            command_template: Some("{input} --bin {bin} --cpu 65c02"),
-            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
-            extra_guest_files: &[],
-            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
-                relative_path: "Work/opforge_native_out.bin",
-                rust_oracle: rust,
+        .map(
+            |(name, source, rust)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &defines,
+                source_override: Some(source),
+                command_template: Some("{input} --bin {bin} --cpu 65c02"),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &[],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: rust,
+                },
             },
-        })
+        )
         .collect::<Vec<_>>();
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
         &workspace_root(),

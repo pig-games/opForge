@@ -77,6 +77,56 @@ readInput	.block
 	rts
 	.bend  ; readInput
 
+; Lock an existing path for shared read access.
+; Inputs: A0 = NUL-terminated path. Outputs: D0 = BCPL lock or zero.
+; Clobbers: D0-D2/A6/CCR. CCR: reflects the dos.library result.
+lockRead	.block
+	move.l a0, d1
+	move.l #constants.ACCESS_READ, d2
+	movea.l state.NativeCliDosBase, a6
+	jsr constants.LOCK(a6)
+	rts
+	.bend  ; lockRead
+
+; Release a BCPL lock.
+; Inputs: D1 = lock. Outputs: none. Clobbers: D0-D1/A6/CCR.
+; CCR: unspecified on return.
+unlock	.block
+	movea.l state.NativeCliDosBase, a6
+	jsr constants.UNLOCK(a6)
+	rts
+	.bend  ; unlock
+
+; Initialize a longword-aligned FileInfoBlock for a directory lock.
+; Inputs: D1 = lock; A0 = FileInfoBlock. Outputs: D0 = nonzero on success.
+; Clobbers: D0-D2/A6/CCR. CCR: reflects the dos.library result.
+examine	.block
+	move.l a0, d2
+	movea.l state.NativeCliDosBase, a6
+	jsr constants.EXAMINE(a6)
+	rts
+	.bend  ; examine
+
+; Read the next directory entry using the same lock/FileInfoBlock pair.
+; Inputs: D1 = lock; A0 = initialized FileInfoBlock.
+; Outputs: D0 = nonzero on success. Clobbers: D0-D2/A6/CCR.
+; CCR: reflects the dos.library result.
+exNext	.block
+	move.l a0, d2
+	movea.l state.NativeCliDosBase, a6
+	jsr constants.EX_NEXT(a6)
+	rts
+	.bend  ; exNext
+
+; Return the last AmigaDOS I/O error.
+; Outputs: D0 = error code. Clobbers: D0/A6/CCR.
+; CCR: reflects the dos.library result.
+ioErr	.block
+	movea.l state.NativeCliDosBase, a6
+	jsr constants.IO_ERR(a6)
+	rts
+	.bend  ; ioErr
+
 ; Open or create an AmigaDOS output file.
 openOutput	.block
 	move.l a0, d1

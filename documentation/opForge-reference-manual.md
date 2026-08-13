@@ -715,9 +715,13 @@ v0.1; requests such as `format=hunklib`, `format=hunk-object`, and
 
 #### 3.10.3 Module resolution
 
-- Search root: **entry file directory** only.
+- Search roots: the **entry file directory**, followed by each `-M/--module-path`
+  directory in CLI order. Duplicate roots are scanned once.
+- Each search root is scanned recursively for module source files.
 - Extensions: fixed to `.asm` and `.inc`.
 - Module id matching is **case-insensitive**.
+- Explicit `.module` declarations define module identity; the filename stem is
+  used only when a file contains no explicit module declaration.
 - If a file defines multiple modules, only the requested module is extracted.
 - Missing or ambiguous module ids are **errors**; errors include an import stack.
 

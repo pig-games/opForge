@@ -265,8 +265,6 @@ opforgeNativeCliParseUseLine	.block
 	move.l d0, d5
 	bsr.w module_use.opforgeNativeCliRecordImport
 	bne.w fail
-	tst.w state.NativeCliModuleResolveDepth
-	bne.s parseTail
 	bsr.w module_use.opforgeNativeCliResolveBareUseModule
 	tst.l d1
 	bne.w resolveFail

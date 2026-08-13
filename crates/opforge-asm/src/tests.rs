@@ -14799,6 +14799,8 @@ fn motorola68020_item11_native_use_module_recursion_preserves_root_reader() {
     let source_reader_path =
         repo_root.join("native/motorola68000/amigaos/opforge-cli/source_reader.asm");
     let module_use_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/module_use.asm");
+    let module_discovery_path =
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/module_discovery.asm");
     let directive_path =
         repo_root.join("native/motorola68000/amigaos/opforge-cli/directive_handlers.asm");
     let line_processor_path =
@@ -14806,6 +14808,8 @@ fn motorola68020_item11_native_use_module_recursion_preserves_root_reader() {
     let line_text_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/line_text.asm");
     let source_reader = fs::read_to_string(&source_reader_path).expect("read native source reader");
     let module_use = fs::read_to_string(&module_use_path).expect("read native module/use source");
+    let module_discovery =
+        fs::read_to_string(&module_discovery_path).expect("read native module discovery source");
     let directives =
         fs::read_to_string(&directive_path).expect("read native directive handlers source");
     let line_processor =
@@ -14826,20 +14830,32 @@ fn motorola68020_item11_native_use_module_recursion_preserves_root_reader() {
         &source_reader,
         &[
             "opforgeNativeCliTokenizeResolvedUseModule .BLOCK",
-            "MOVE.W #1, state.NativeCliModuleResolveDepth",
+            "LEA state.NativeCliModuleSavedLineLen, A1",
+            "LEA state.NativeCliModuleSavedPath, A1",
+            "ADDQ.W #1, state.NativeCliModuleResolveDepth",
             "BSR.W opforgeNativeCliTokenizeFileAtPath",
-            "CLR.W state.NativeCliModuleResolveDepth",
+            "SUBQ.W #1, state.NativeCliModuleResolveDepth",
+            "LEA state.NativeCliModuleSavedPath, A0",
         ]
     ));
     assert!(source_contains_in_order(
         &module_use,
         &[
             "opforgeNativeCliResolveBareUseModule .BLOCK",
-            "LEA state.NativeCliModulePathTable, A0",
-            "JSR path.opforgeNativeCliAppendPathBuffer",
-            "LEA strings.ModuleSourceExtensionText, A0",
-            "JSR dos.openInput",
+            "BSR.W moduleIsActive",
+            "searchPaths",
+            "JSR module_discovery.resolveDeclaredModuleV1",
+            "MOVE.W state.NativeCliModuleCount, D6",
             "MOVE.W D6, state.NativeCliResolvedModuleId",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &module_discovery,
+        &[
+            "resolveDeclaredModuleV1 .BLOCK",
+            "rootLoop",
+            "BSR.W scanDirectory",
+            "CMPI.W #1, ModuleScanMatchCount",
         ]
     ));
     assert!(source_contains_in_order(
@@ -14932,8 +14948,10 @@ fn motorola68020_item12_native_import_resolution_routes_dotted_operands() {
         &[
             "opforgeNativeCliResolveBareUseModule .BLOCK",
             "JSR token_util.opforgeNativeCliTokenEquals",
+            "BSR.W moduleIsActive",
             "MOVE.W D7, state.NativeCliResolvedModuleId",
-            "JSR dos.openInput",
+            "searchPaths",
+            "JSR module_discovery.resolveDeclaredModuleV1",
         ]
     ));
 }

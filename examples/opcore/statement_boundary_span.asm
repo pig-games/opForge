@@ -1,6 +1,6 @@
 ; Boundary span example for .statement signatures
 
-        .cpu 8085
+        .cpu 65c02
         .org $2000
 
 .statement sta "[" byte:a ","[{char:reg}]

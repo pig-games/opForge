@@ -101,8 +101,6 @@ pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_TEXT: &str =
 const FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_FILE: &str = "helper.asm";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_TEXT: &str =
     ".module helper\n.endmodule\n";
-const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_ROOT_A_FILE: &str = "opforge_module_a/math.asm";
-const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_ROOT_B_FILE: &str = "opforge_module_b/helper.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_FILE: &str = "opforge_fsuae_include.inc";
 const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_TEXT: &str = "        lda #$01\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_FILE: &str = "opforge_include_root_a/defs.inc";
@@ -1123,7 +1121,6 @@ fn resolve_opforge_native_cli_package_bytes(
 #[derive(Debug, Clone)]
 struct OpforgeNativeCliBatchCasePaths {
     artifact_dir: PathBuf,
-    work_dir: PathBuf,
     stdout_path: PathBuf,
     stderr_path: PathBuf,
     exit_code_path: PathBuf,
@@ -1149,7 +1146,6 @@ fn opforge_native_cli_batch_case_paths(
     let artifact_dir = mounted_work_dir
         .join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_ARTIFACTS_DIR)
         .join(case_name.as_str());
-    let work_dir = artifact_dir.join(FS_UAE_MOUNTED_WORK_DIR_NAME);
     let stdout_path = artifact_dir.join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDOUT_FILE);
     let stderr_path = artifact_dir.join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDERR_FILE);
     let exit_code_path = artifact_dir.join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_EXITCODE_FILE);
@@ -1161,7 +1157,6 @@ fn opforge_native_cli_batch_case_paths(
     let expected_done = format!("OPFORGE-FS-UAE-PROOF-V1 DONE {run_challenge} {case_identity}");
     OpforgeNativeCliBatchCasePaths {
         artifact_dir,
-        work_dir,
         stdout_path,
         stderr_path,
         exit_code_path,
@@ -1512,10 +1507,10 @@ fn run_opforge_native_cli_parity_batch_cases(
             run_challenge.as_str(),
             case_identity.as_str(),
         );
-        fs::create_dir_all(case_paths.work_dir.join("build")).map_err(|err| {
+        fs::create_dir_all(&case_paths.artifact_dir).map_err(|err| {
             format!(
-                "create native CLI batch case work directory {}: {err}",
-                case_paths.work_dir.display()
+                "create native CLI batch case protocol directory {}: {err}",
+                case_paths.artifact_dir.display()
             )
         })?;
         let input_override = OpforgeNativeCliStagedInputs {
@@ -1524,16 +1519,10 @@ fn run_opforge_native_cli_parity_batch_cases(
             extra_guest_files: case.extra_guest_files,
         };
         stage_opforge_native_cli_common_guest_inputs(
-            &case_paths.work_dir,
-            Some(&input_override),
-            package_bytes.as_deref(),
-        )?;
-        stage_opforge_native_cli_common_guest_inputs(
             &mounted_work_dir,
             Some(&input_override),
             package_bytes.as_deref(),
         )?;
-        stage_opforge_native_cli_default_module_roots(&mounted_work_dir)?;
         let command = opforge_native_cli_case_command(case, &case_paths);
         batch_script.push_str("Echo \"");
         batch_script.push_str(case_paths.expected_started.as_str());
@@ -1786,9 +1775,7 @@ fn run_opforge_native_cli_parity_batch_cases(
         let protocol_completed = started_matches && done_matches && exit_code.is_some();
         let mut run = FsUaeSmokeRun {
             example_name: FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
-            source_path: case_paths
-                .work_dir
-                .join(opforge_native_cli_case_source_relative_path(case)),
+            source_path: mounted_work_dir.join(opforge_native_cli_case_source_relative_path(case)),
             artifact_dir: artifact_dir.clone(),
             hunk_path: mounted_hunk_alias_path.clone(),
             stdout: merge_output(
@@ -2147,6 +2134,27 @@ fn stage_opforge_native_cli_common_guest_inputs(
     native_cli_input_override: Option<&OpforgeNativeCliStagedInputs<'_>>,
     package_bytes: Option<&[u8]>,
 ) -> Result<(), String> {
+    if let Some(input) = native_cli_input_override {
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_FILE,
+            input
+                .source
+                .unwrap_or_else(|| FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_TEXT.as_bytes()),
+        )?;
+        for guest_file in input.extra_guest_files {
+            stage_guest_input_bytes(mounted_work_dir, guest_file.relative_path, guest_file.bytes)?;
+        }
+        if let Some(package_bytes) = package_bytes {
+            stage_guest_input_bytes(
+                mounted_work_dir,
+                FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE,
+                package_bytes,
+            )?;
+        }
+        return Ok(());
+    }
+
     stage_guest_input_bytes(
         mounted_work_dir,
         FS_UAE_TKPKG_SMOKE_INPUT_FILE,
@@ -2251,19 +2259,6 @@ fn stage_opforge_native_cli_common_guest_inputs(
     Ok(())
 }
 
-fn stage_opforge_native_cli_default_module_roots(mounted_work_dir: &Path) -> Result<(), String> {
-    stage_guest_input_bytes(
-        mounted_work_dir,
-        FS_UAE_OPFORGE_NATIVE_CLI_MODULE_ROOT_A_FILE,
-        FS_UAE_OPFORGE_NATIVE_CLI_MODULE_TEXT.as_bytes(),
-    )?;
-    stage_guest_input_bytes(
-        mounted_work_dir,
-        FS_UAE_OPFORGE_NATIVE_CLI_MODULE_ROOT_B_FILE,
-        FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_TEXT.as_bytes(),
-    )
-}
-
 fn stage_example_guest_inputs(
     _workspace_root: &Path,
     example_name: &str,
@@ -2271,6 +2266,15 @@ fn stage_example_guest_inputs(
     _extra_assembly_defines: &[&str],
     native_cli_input_override: Option<&OpforgeNativeCliStagedInputs<'_>>,
 ) -> Result<(), String> {
+    if example_name == FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME && native_cli_input_override.is_some()
+    {
+        return stage_opforge_native_cli_common_guest_inputs(
+            mounted_work_dir,
+            native_cli_input_override,
+            native_cli_input_override.and_then(|input| input.package_bytes),
+        );
+    }
+
     let Some((relative_path, bytes)) = example_guest_input(example_name) else {
         return Ok(());
     };
@@ -4089,6 +4093,16 @@ mod tests {
             fs::read(&staged_source).expect("read staged native CLI source"),
             b"        lda #$42\n"
         );
+        for unrelated in [
+            FS_UAE_TKPKG_SMOKE_INPUT_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE,
+        ] {
+            assert!(
+                !mounted_work_dir.join(unrelated).exists(),
+                "case-specific support staging must exclude unrelated fixture {unrelated}"
+            );
+        }
 
         fs::remove_dir_all(&mounted_work_dir).expect("remove mounted Work directory");
     }

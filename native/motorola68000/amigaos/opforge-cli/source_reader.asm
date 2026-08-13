@@ -203,11 +203,48 @@ opforgeNativeCliTokenizeFileAtPath	.block
 
 openOk
 	move.l d0, d5
+	tst.w state.NativeCliModuleResolveDepth
+	beq.s initializeLineState
+	moveq #0, d3
+	move.w state.NativeCliModuleResolveDepth, d3
+	subq.l #1, d3
+	lsl.l #2, d3
+	move.l state.NativeCliResolvedModuleEndOffset.l, d2
+	sub.l state.NativeCliResolvedModuleStartOffset.l, d2
+	bmi.w close
+	lea state.NativeCliModuleReadRemaining.l, a1
+	move.l d2, 0(a1, d3.l)
+	move.l state.NativeCliResolvedModuleStartOffset.l, d4
+
+skipResolvedPrefix
+	tst.l d4
+	beq.s initializeLineState
+	lea state.NativeCliInputChar, a0
+	moveq #1, d0
+	move.l d5, d1
+	jsr dos.readInput
+	cmpi.l #1, d0
+	bne.w close
+	subq.l #1, d4
+	bra.s skipResolvedPrefix
+
+initializeLineState
 	move.l #1, state.NativeCliSourceLineNum
 	clr.w state.NativeCliSourceLineLen
 	clr.w state.NativeCliSawCr
 
 loop
+	tst.w state.NativeCliModuleResolveDepth
+	beq.s readNextChar
+	moveq #0, d3
+	move.w state.NativeCliModuleResolveDepth, d3
+	subq.l #1, d3
+	lsl.l #2, d3
+	lea state.NativeCliModuleReadRemaining.l, a1
+	tst.l 0(a1, d3.l)
+	beq.w fileEof
+
+readNextChar
 	lea state.NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
@@ -216,7 +253,16 @@ loop
 	beq.w close
 	tst.l d0
 	beq.w fileEof
+	tst.w state.NativeCliModuleResolveDepth
+	beq.s haveInputChar
+	moveq #0, d3
+	move.w state.NativeCliModuleResolveDepth, d3
+	subq.l #1, d3
+	lsl.l #2, d3
+	lea state.NativeCliModuleReadRemaining.l, a1
+	subq.l #1, 0(a1, d3.l)
 
+haveInputChar
 	move.b state.NativeCliInputChar, d0
 	tst.w state.NativeCliSawCr
 	beq.s checkBreak
@@ -548,14 +594,28 @@ noMatch
 ; CCR: reflects D0 on return.
 opforgeNativeCliTokenizeResolvedUseModule	.block
 	movem.l d1-d2/a0-a1, -(sp)
+	moveq #0, d2
+	move.w state.NativeCliModuleResolveDepth, d2
+	cmpi.w #constants.NATIVE_MODULE_RESOLVE_DEPTH_LIMIT, d2
+	bhs.w fail
+	move.l d2, d1
+	add.l d1, d1
+	lea state.NativeCliModuleSavedLineLen, a1
 	move.w state.NativeCliSourceLineLen, d0
-	move.w d0, state.NativeCliModuleSavedLineLen
+	move.w d0, 0(a1, d1.l)
+	lea state.NativeCliModuleSavedSawCr, a1
 	move.w state.NativeCliSawCr, d0
-	move.w d0, state.NativeCliModuleSavedSawCr
+	move.w d0, 0(a1, d1.l)
+	move.l d2, d1
+	lsl.l #2, d1
+	lea state.NativeCliModuleSavedLineNum, a1
 	move.l state.NativeCliSourceLineNum, d0
-	move.l d0, state.NativeCliModuleSavedLineNum
+	move.l d0, 0(a1, d1.l)
 	lea state.NativeCliCurrentPath, a0
 	lea state.NativeCliModuleSavedPath, a1
+	move.l d2, d1
+	lsl.l #8, d1
+	adda.l d1, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
 	bne.w fail
 	lea state.NativeCliIncludePath, a0
@@ -563,9 +623,9 @@ opforgeNativeCliTokenizeResolvedUseModule	.block
 	jsr path.opforgeNativeCliCopyPathBuffer
 	bne.w fail
 	lea state.NativeCliIncludePath, a0
-	move.w #1, state.NativeCliModuleResolveDepth
+	addq.w #1, state.NativeCliModuleResolveDepth
 	bsr.w opforgeNativeCliTokenizeFileAtPath
-	clr.w state.NativeCliModuleResolveDepth
+	subq.w #1, state.NativeCliModuleResolveDepth
 	tst.l d0
 	bne.s restoreFail
 	moveq #0, d1
@@ -575,13 +635,27 @@ restoreFail
 	moveq #1, d1
 
 restore
-	move.w state.NativeCliModuleSavedLineLen, d2
-	move.w d2, state.NativeCliSourceLineLen
-	move.w state.NativeCliModuleSavedSawCr, d2
-	move.w d2, state.NativeCliSawCr
-	move.l state.NativeCliModuleSavedLineNum, d2
-	move.l d2, state.NativeCliSourceLineNum
+	moveq #0, d2
+	move.w state.NativeCliModuleResolveDepth, d2
+	move.l d2, d0
+	add.l d0, d0
+	lea state.NativeCliModuleSavedLineLen, a0
+	move.w 0(a0, d0.l), d0
+	move.w d0, state.NativeCliSourceLineLen
+	move.l d2, d0
+	add.l d0, d0
+	lea state.NativeCliModuleSavedSawCr, a0
+	move.w 0(a0, d0.l), d0
+	move.w d0, state.NativeCliSawCr
+	move.l d2, d0
+	lsl.l #2, d0
+	lea state.NativeCliModuleSavedLineNum, a0
+	move.l 0(a0, d0.l), d0
+	move.l d0, state.NativeCliSourceLineNum
 	lea state.NativeCliModuleSavedPath, a0
+	move.l d2, d0
+	lsl.l #8, d0
+	adda.l d0, a0
 	lea state.NativeCliCurrentPath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
 	bne.s fail

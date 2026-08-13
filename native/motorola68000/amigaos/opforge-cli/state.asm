@@ -90,6 +90,10 @@ NativeCliModuleResolveDepth
 	.res word, 1
 NativeCliResolvedModuleId
 	.res word, 1
+NativeCliResolvedModuleStartOffset
+	.res long, 1
+NativeCliResolvedModuleEndOffset
+	.res long, 1
 NativeCliSavedLineLen
 	.res word, 1
 NativeCliSavedSawCr
@@ -97,11 +101,13 @@ NativeCliSavedSawCr
 NativeCliSavedLineNum
 	.res long, 1
 NativeCliModuleSavedLineLen
-	.res word, 1
+	.res word, constants.NATIVE_MODULE_RESOLVE_DEPTH_LIMIT
 NativeCliModuleSavedSawCr
-	.res word, 1
+	.res word, constants.NATIVE_MODULE_RESOLVE_DEPTH_LIMIT
 NativeCliModuleSavedLineNum
-	.res long, 1
+	.res long, constants.NATIVE_MODULE_RESOLVE_DEPTH_LIMIT
+NativeCliModuleReadRemaining
+	.res long, constants.NATIVE_MODULE_RESOLVE_DEPTH_LIMIT
 NativeCliStmtMnemFound
 	.res word, 1
 NativeCliStmtExprFound
@@ -159,7 +165,7 @@ NativeCliCurrentPath
 NativeCliSavedPath
 	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliModuleSavedPath
-	.res byte, constants.PATH_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_MODULE_RESOLVE_DEPTH_LIMIT * constants.PATH_BUFFER_CAPACITY
 NativeCliIncludeTarget
 	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliIncludePath
@@ -276,6 +282,8 @@ NativeCliCurrentModuleId
 	.res word, 1
 NativeCliModuleDepth
 	.res word, 1
+NativeCliActiveModuleStack
+	.res word, constants.NATIVE_MODULE_TABLE_CAPACITY
 NativeCliPreprocessImportBindingCount
 	.res word, 1
 NativeCliModuleNameTable

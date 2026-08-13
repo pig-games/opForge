@@ -3,7 +3,7 @@ ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Boundary span example for .statement signatures
 ----                                2  
-----                                3          .cpu 8085
+----                                3          .cpu 65c02
 ----    EQU 2000                    4          .org $2000
 ----                                5  
 ----                                6  

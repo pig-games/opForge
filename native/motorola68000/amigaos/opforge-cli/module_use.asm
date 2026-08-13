@@ -13,6 +13,7 @@
 	.use opforge.cli.strings
 	.use opforge.cli.dos
 	.use opforge.cli.path
+	.use opforge.cli.module_discovery
 
 	.section code, kind=code
 	.pub
@@ -66,6 +67,11 @@ opforgeNativeCliRecordModule	.block
 
 haveRoot
 	move.w d3, state.NativeCliCurrentModuleId
+	moveq #0, d1
+	move.w state.NativeCliModuleDepth, d1
+	add.w d1, d1
+	lea state.NativeCliActiveModuleStack, a1
+	move.w d3, 0(a1, d1.l)
 	move.w #constants.NATIVE_PREPROCESS_VISIBILITY_PRIVATE, state.NativeCliPreprocessCurrentVisibility
 	move.w state.NativeCliModuleCount, d0
 	addq.w #1, d0
@@ -819,6 +825,9 @@ reuseLoop
 	bra.w reuseLoop
 
 foundLoaded
+	bsr.w moduleIsActive
+	tst.l d0
+	bne.s fail
 	move.w d7, state.NativeCliResolvedModuleId
 	moveq #0, d0
 	move.w state.NativeCliResolvedModuleId, d0
@@ -826,38 +835,9 @@ foundLoaded
 	bra.w return
 
 searchPaths
-	clr.w d7
-
-loop
-	move.w state.NativeCliModulePathCount, d0
-	cmp.w d0, d7
-	bhs.w fail
-	moveq #0, d0
-	move.w d7, d0
-	lsl.l #8, d0
-	lea state.NativeCliModulePathTable, a0
-	adda.l d0, a0
-	lea state.NativeCliIncludePath, a1
-	jsr path.opforgeNativeCliCopyPathBuffer
-	bne.w fail
-	lea state.NativeCliArgToken, a0
-	lea state.NativeCliIncludePath, a1
-	jsr path.opforgeNativeCliAppendPathBuffer
-	bne.w fail
-	lea strings.ModuleSourceExtensionText, a0
-	lea state.NativeCliIncludePath, a1
-	jsr path.opforgeNativeCliAppendPathBuffer
-	bne.w fail
-	lea state.NativeCliIncludePath, a0
-	jsr dos.openInput
+	jsr module_discovery.resolveDeclaredModuleV1
 	tst.l d0
-	bne.s found
-	addq.w #1, d7
-	bra.w loop
-
-found
-	move.l d0, d1
-	jsr dos.close
+	bne.s fail
 	move.w state.NativeCliModuleCount, d6
 	move.w d6, state.NativeCliResolvedModuleId
 	moveq #0, d0
@@ -985,6 +965,32 @@ return
 	.bend  ; dos.closeModule
 
 	.priv
+
+; Return nonzero when loaded module D7.W is on the active source-module stack.
+; Inputs: D7.W = module id. Outputs: D0 = boolean.
+; Clobbers: D0-D3/A0/CCR. CCR: reflects D0.
+moduleIsActive	.block
+	moveq #0, d2
+
+activeLoop
+	cmp.w state.NativeCliModuleDepth, d2
+	bhs.s activeNo
+	move.l d2, d0
+	add.l d0, d0
+	lea state.NativeCliActiveModuleStack, a0
+	cmp.w 0(a0, d0.l), d7
+	beq.s activeYes
+	addq.w #1, d2
+	bra.s activeLoop
+
+activeNo
+	moveq #0, d0
+	rts
+
+activeYes
+	moveq #1, d0
+	rts
+	.bend  ; moduleIsActive
 
 opforgeNativeCliEmitModuleEndRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)

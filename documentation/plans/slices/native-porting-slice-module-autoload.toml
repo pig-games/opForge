@@ -1,0 +1,59 @@
+[slice]
+schema_version = 2
+name = "native configured-root module declaration discovery"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-engine/src/source_graph.rs::collect_source_files",
+  "crates/opforge-engine/src/source_graph.rs::build_module_index",
+  "crates/opforge-engine/src/source_graph.rs::load_module_recursive",
+  "examples/opcore/macro_cross_module_ok.asm",
+  "examples/opcore/module_use_autoload.asm",
+  "examples/opcore/project_root/main.asm",
+  "examples/opcore/statement_cross_module_ok.asm",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/module_use.asm::opforgeNativeCliResolveBareUseModule",
+  "native/motorola68000/amigaos/opforge-cli/module_discovery.asm::resolveDeclaredModuleV1",
+  "native/motorola68000/amigaos/opforge-cli/module_discovery.asm::recordCandidateMatch",
+  "native/motorola68000/amigaos/opforge-cli/source_reader.asm::opforgeNativeCliTokenizeFileAtPath",
+  "native/motorola68000/amigaos/opforge-cli/source_reader.asm::opforgeNativeCliTokenizeResolvedUseModule",
+  "native/motorola68000/amigaos/opforge-cli/dos.asm::lockRead/examine/exNext/ioErr",
+]
+invariant = "Native .use resolution recursively scans the exact configured module roots in CLI order, indexes .asm/.inc files by their declared .module identifiers, accepts an implicit filename identifier only when the file declares no module, deduplicates the same candidate path, rejects distinct duplicate declarations, detects active import cycles, and fails when bounded path, directory-depth, module-depth, or source-reader storage is exhausted."
+assertion_decision = "No new runtime assertion or instrumentation: AmigaDOS failures, ambiguity, cycles, and bounded storage return through the existing native module-resolution/frontend failure path. Focused Rust/native source contracts cover missing, ambiguous, order, deduplication, cycle, and capacity surfaces; the four real CLI cases supply fail-closed Level D byte parity."
+expected_inputs = "The canonical CPU-neutral or 65C02 macro_cross_module_ok.asm, module_use_autoload.asm, project_root/main.asm, and statement_cross_module_ok.asm roots with only their owned support files, one recursive Work module root, and the exact 65C02 CLI command used by the live Rust oracle."
+expected_outputs = "Each imported declared module is loaded before its importer, native preprocessing and assembly complete with explicit guest exit zero, and the emitted binary equals the in-memory Rust output for that exact source, support tree, CPU, package, and command. Missing and ambiguous modules remain deterministic failures."
+known_non_equivalences = ".ifdef/.ifndef conditional consumption remains Item 7.11. Visibility semantics are owned by committed Item 7.9. No linker, output-selection, Intel/Z80, Motorola, or other CPU-family behavior is part of this slice."
+fast_proof_command = "cargo test -p asm native_module_discovery_matches_rust_declared_id_and_bounded_graph_contract -- --nocapture && cargo test -p asm item7_staging_covers_every_assigned_root_and_support_file -- --nocapture && cargo test -p asm fs_uae_smoke::tests:: -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_module_autoload_roots_fs_uae -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_module_discovery_boundaries_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_module_discovery_matches_rust_declared_id_and_bounded_graph_contract"
+proof_level = "C"
+proves = "Rust resolves a nested file by declared module id, rejects missing and distinct duplicate declarations, and the native resolver owns ordered root traversal, duplicate-root/candidate handling, recursive bounded FileInfoBlock storage, active-cycle rejection, and declared-id scanning."
+does_not_prove = "Real 68020 execution, AmigaDOS enumeration, source-reader re-entry, or emitted byte equality."
+
+[[tests]]
+name = "item7_staging_covers_every_assigned_root_and_support_file"
+proof_level = "B"
+proves = "All 17 Item 7 roots are uncapped, every owned support file is staged, each source is CPU-neutral or explicitly 65C02, no Intel MVI adaptation remains, and each Rust oracle is produced from the exact staged case."
+does_not_prove = "Native execution or module discovery on AmigaOS."
+
+[[tests]]
+name = "fs_uae_smoke::tests"
+proof_level = "B"
+proves = "Parity staging excludes unrelated fixtures and every accepted run requires fresh case-bound start/done evidence, an explicit guest exit, same-case byte equality, and removal of all case artifacts on success, failure, timeout, and unwind."
+does_not_prove = "Native module semantics or real emulator execution."
+
+[[tests]]
+name = "native_module_autoload_roots_fs_uae"
+proof_level = "D"
+proves = "All four canonical configured-root cases independently complete the fresh real guest protocol, exit zero, resolve only their exact staged support tree, and emit bytes identical to that case's live Rust CLI oracle."
+does_not_prove = "Item 7.11 conditionals, linker/output behavior, or any non-6502/65C02 family."
+
+[[tests]]
+name = "native_module_discovery_boundaries_fs_uae"
+proof_level = "D"
+proves = "The requested declaration is extracted byte-for-byte from a multi-module file, a later unrelated source cannot inherit per-candidate match state, and missing, ambiguous, and directory-depth-capacity cases complete the fresh guest protocol with explicit nonzero exits."
+does_not_prove = "Item 7.11 conditionals, linker/output behavior, or any non-6502/65C02 family."

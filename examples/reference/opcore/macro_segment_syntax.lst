@@ -5,7 +5,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                2  ; Demonstrates directive-first and name-first macro forms,
 ----                                3  ; parenthesized macro calls, and segment symbol visibility.
 ----                                4  
-----                                5          .cpu 8085
+----                                5          .cpu 65c02
 ----    EQU 2000                    6          .org $2000
 ----                                7  
 ----                                8  

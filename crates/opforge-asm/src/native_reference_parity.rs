@@ -177,20 +177,16 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     opcore_root!(
         "macro_cross_module_ok",
         ModuleMacroStatement,
-        AdditiveMosAdaptation
+        DirectMos65c02
     ),
     opcore_root!(
         "macro_invocation_native",
         ModuleMacroStatement,
-        AdditiveMosAdaptation
+        DirectMos65c02
     ),
-    opcore_root!(
-        "macro_segment_syntax",
-        ModuleMacroStatement,
-        AdditiveMosAdaptation
-    ),
+    opcore_root!("macro_segment_syntax", ModuleMacroStatement, DirectMos65c02),
     opcore_root!("macro_syntax", ModuleMacroStatement, DirectCpuNeutral),
-    opcore_root!("module_basics", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_root!("module_basics", ModuleMacroStatement, AdditiveMosAdaptation),
     opcore_root!("module_use", ModuleMacroStatement, DirectCpuNeutral),
     opcore_root!(
         "module_use_autoload",
@@ -204,7 +200,7 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     opcore_root!(
         "statement_boundary_span",
         ModuleMacroStatement,
-        AdditiveMosAdaptation
+        DirectMos65c02
     ),
     opcore_root!(
         "statement_capture_types",
@@ -214,7 +210,7 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     opcore_root!(
         "statement_cross_module_ok",
         ModuleMacroStatement,
-        AdditiveMosAdaptation
+        DirectMos65c02
     ),
     opcore_root!(
         "statement_expansion",
@@ -226,14 +222,10 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
         ModuleMacroStatement,
         DirectCpuNeutral
     ),
-    opcore_root!(
-        "use_wildcard_import",
-        ModuleMacroStatement,
-        DirectMos65c02
-    ),
+    opcore_root!("use_wildcard_import", ModuleMacroStatement, DirectMos65c02),
     opcore_support!("lib/example_autoload_lib.asm" => "module_use_autoload.asm", ModuleMacroStatement, DirectCpuNeutral),
-    opcore_support!("lib/macro_export_lib.asm" => "macro_cross_module_ok.asm", ModuleMacroStatement, AdditiveMosAdaptation),
-    opcore_support!("lib/statement_export_lib.asm" => "statement_cross_module_ok.asm", ModuleMacroStatement, AdditiveMosAdaptation),
+    opcore_support!("lib/macro_export_lib.asm" => "macro_cross_module_ok.asm", ModuleMacroStatement, DirectCpuNeutral),
+    opcore_support!("lib/statement_export_lib.asm" => "statement_cross_module_ok.asm", ModuleMacroStatement, DirectCpuNeutral),
     opcore_support!("module_use_lib.inc" => "module_use_include.asm", ModuleMacroStatement, DirectCpuNeutral),
     opcore_support!("preproc_syntax.inc" => "preproc_syntax.asm", ModuleMacroStatement, DirectCpuNeutral),
     opcore_support!("project_root/util.asm" => "project_root/main.asm", ModuleMacroStatement, DirectCpuNeutral),

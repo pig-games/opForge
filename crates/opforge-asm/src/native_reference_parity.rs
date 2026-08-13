@@ -186,7 +186,7 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     ),
     opcore_root!("macro_segment_syntax", ModuleMacroStatement, DirectMos65c02),
     opcore_root!("macro_syntax", ModuleMacroStatement, DirectCpuNeutral),
-    opcore_root!("module_basics", ModuleMacroStatement, AdditiveMosAdaptation),
+    opcore_root!("module_basics", ModuleMacroStatement, DirectCpuNeutral),
     opcore_root!("module_use", ModuleMacroStatement, DirectCpuNeutral),
     opcore_root!(
         "module_use_autoload",

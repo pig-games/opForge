@@ -1198,7 +1198,7 @@ landed” is not equivalent to “framework-closed.”
     - `module_basics.asm` matches Rust through the real native CLI
     - macro tokenizer and statement-parser divergences remain separate remediation items
 
-- [ ] Item 7: add the module, macro, and statement opcore parity shard
+- [x] Item 7: add the module, macro, and statement opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for modules, imports, visibility, macros, statement definitions/expansion, and multi-file roots
   - Expected files:
     - additive opcore MOS-backed fixtures and matching references assigned by Item 4
@@ -1218,6 +1218,15 @@ landed” is not equivalent to “framework-closed.”
     - the uncapped `native_reference_opcore_module_macro_statement_fs_uae` discovery run on 2026-08-09 attempted all 17 assigned roots, produced 7 passes and 10 fresh completed-guest failures, and classified those failures as `I7-D-01` through `I7-D-04`
     - Item 7 remains paused until Items 7.8–7.11 are each committed and green; Item 8 must not begin while Item 7 is paused
     - after Items 7.8–7.11, `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_reference_opcore_module_macro_statement_fs_uae -- --nocapture --test-threads=1` must attempt and pass all 17 assigned roots before this parent can close
+  - Closure evidence:
+    - the parent Level D test now derives its cases from every reviewed Item 7 root assignment without a runtime cap, stages every owned support tree, uses each exact stored root without mutation, and rejects any assigned source that selects a CPU other than 65C02 or contains Intel `mvi` syntax
+    - `examples/opcore/preproc_syntax.asm` and its include are stored `DirectMos65c02` corpus sources using `lda`/`sta`/`stz`; they are explicitly included in the same 17-root run rather than substituted by an ad-hoc fixture
+    - the uncapped `native_reference_opcore_module_macro_statement_fs_uae` run on 2026-08-13 attempted and passed all 17 assigned roots in 383.92s; every case completed its fresh guest protocol with explicit zero exit and matched its exact same-case in-memory Rust CLI bytes, including the unchanged `module_basics.asm` 4097-byte `.org`-spanning binary
+    - cumulative macro invocation exposed a stale header-cursor invariant in native default binding: default copying/trimming clobbered the parameter-loop `A0/D0` cursor. Preserving that cursor and trimming from the owned destination slot restores both canonical macro roots; `native_macro_invocation_fixture_fs_uae` and `native_macro_syntax_segment_fs_uae` each pass unchanged stored-source Level D proofs
+    - ordinary forward `.org` processing now uses the bounded image-gap path and the native image capacity covers the reviewed stored sources; the dedicated module proof compares the true 4097-byte live Rust CLI binary instead of flattening addressed entries
+    - the complete audited native-runtime boundary inventory hashes are refreshed for the assembly-driver and engine changes without expanding their certified routine/import surfaces
+    - the separately requested `native_mos_forward_ref_stability_fs_uae` proof uses the live same-case Rust `--bin` oracle: the 261-byte artifact contains `AD 01 01 EA 60`, the zero-filled origin gap, and `9C 01 02 EA 60`; no temporary localization source or debug event remains in the final change
+    - the focused Item 7 staging and stored-65C02 contracts, native formatter, and complete serial Rust quality gate pass; staged native-porting, workflow, and exact-index plan-compliance results are recorded before commit
   - Commit outcome:
     - assigned single- and multi-file module, macro, and statement cases compare only CLI-written native artifacts with Rust
   - Definition of done:

@@ -2,6 +2,14 @@
 
 use super::*;
 
+struct ForwardRefOracleDir(PathBuf);
+
+impl Drop for ForwardRefOracleDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn native_mos_forward_ref_stability_pass_one_contract() {
     // Proof level B. This proves the native expression boundary marks an
@@ -102,12 +110,16 @@ fn native_mos_forward_ref_stability_fs_uae() {
     let source_path = root.join("examples/mos6502/mos_forward_ref_stability.asm");
     let source = fs::read(&source_path).expect("read canonical forward-reference source");
     let temp = create_temp_dir("native-mos-forward-ref-stability");
+    let _temp_guard = ForwardRefOracleDir(temp.clone());
     let rust_hex = temp.join("mos_forward_ref_stability.hex");
+    let rust_bin = temp.join("mos_forward_ref_stability.bin");
     let cli = Cli::parse_from([
         "opForge".to_string(),
         source_path.to_string_lossy().into_owned(),
         "--hex".to_string(),
         rust_hex.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        rust_bin.to_string_lossy().into_owned(),
         "--cpu".to_string(),
         "6502".to_string(),
     ]);
@@ -118,16 +130,25 @@ fn native_mos_forward_ref_stability_fs_uae() {
             .expect("read checked-in forward-reference HEX"),
         "live Rust HEX must match the checked-in canonical reference"
     );
-    let rust_bytes = [0xad, 0x01, 0x01, 0xea, 0x60, 0x9c, 0x01, 0x02, 0xea, 0x60];
+    let rust_bytes = fs::read(&rust_bin).expect("read live Rust forward-reference BIN");
+    assert_eq!(
+        rust_bytes.len(),
+        0x105,
+        "Rust BIN spans $00FD through $0201"
+    );
     assert_eq!(
         &rust_bytes[..5],
         &[0xad, 0x01, 0x01, 0xea, 0x60],
         "Rust m6502 bytes must agree with the canonical source comment"
     );
     assert_eq!(
-        &rust_bytes[5..],
+        &rust_bytes[0x100..],
         &[0x9c, 0x01, 0x02, 0xea, 0x60],
         "Rust 65C02 bytes must agree with the canonical source comment"
+    );
+    assert!(
+        rust_bytes[5..0x100].iter().all(|byte| *byte == 0),
+        "Rust BIN must materialize the forward .org gap"
     );
 
     let package = item6_mos_package_bytes();

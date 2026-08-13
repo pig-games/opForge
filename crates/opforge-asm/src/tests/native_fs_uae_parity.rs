@@ -4474,27 +4474,37 @@ fn native_module_local_symbol_fs_uae() {
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");
     let root = workspace_root();
-    let source_path = root.join("examples/opcore/module_basics.asm");
-    let source = fs::read(&source_path).expect("read canonical module source");
-    let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&source_path, true)
-        .expect("full Rust module authority");
-    assert!(
-        diagnostics.is_empty(),
-        "Rust module diagnostics: {diagnostics:?}"
-    );
-    let rust = entries
-        .into_iter()
-        .map(|(_, byte)| byte)
+    let staged = item7_staged_cases();
+    let module = staged
+        .iter()
+        .find(|case| case.name == "examples/opcore/module_basics.asm")
+        .expect("stored module-basics Item 7 case");
+    let guest_files = module
+        .guest_files
+        .iter()
+        .map(|file| crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+            relative_path: &file.relative_path,
+            bytes: &file.bytes,
+        })
         .collect::<Vec<_>>();
     let package = item6_mos_package_bytes();
-    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
-        name: "module-basics",
-        cpu_id: "65c02",
-        source: source.as_slice(),
-        package_bytes: package.as_slice(),
-        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust),
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: module.name,
+        cpu_override: "68020",
+        extra_assembly_defines: &defines,
+        source_override: Some(&module.source),
+        command_template: Some(
+            "{input} --bin {bin} --cpu 65c02 -I {guest_work_dir} -M {guest_work_dir}",
+        ),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &guest_files,
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &module.rust_oracle,
+        },
     }];
-    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&root, &cases)
         .expect("module-local symbol FS-UAE helper")
     {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
@@ -4503,7 +4513,10 @@ fn native_module_local_symbol_fs_uae() {
             let run = &runs[0];
             assert!(run.success, "native module-basics failed: {}", run.stdout);
             let native = verified_fs_uae_output(run);
-            assert_eq!(native, rust, "native module-local bytes differ");
+            assert_eq!(
+                native, module.rust_oracle,
+                "native module-local bytes differ"
+            );
         }
     }
 }
@@ -6399,29 +6412,15 @@ fn item7_native_source(
 ) -> Vec<u8> {
     let canonical = fs::read_to_string(workspace_root().join(assignment.source_path))
         .unwrap_or_else(|err| panic!("read Item 7 root {}: {err}", assignment.source_path));
-    let adapted = match assignment.source_path {
-        "examples/opcore/module_basics.asm" => {
-            let mut source = canonical
-                .lines()
-                .filter(|line| !line.trim_start().starts_with(".org "))
-                .collect::<Vec<_>>()
-                .join("\n");
-            source.push('\n');
-            source
-        }
-        _ => {
-            assert!(
-                matches!(
-                    assignment.staging,
-                    NativeOpcoreStaging::DirectCpuNeutral | NativeOpcoreStaging::DirectMos65c02
-                ),
-                "missing explicit Item 7 additive adaptation for {}",
-                assignment.source_path
-            );
-            canonical
-        }
-    };
-    adapted.into_bytes()
+    assert!(
+        matches!(
+            assignment.staging,
+            NativeOpcoreStaging::DirectCpuNeutral | NativeOpcoreStaging::DirectMos65c02
+        ),
+        "Item 7 requires the exact stored source without adaptation: {}",
+        assignment.source_path
+    );
+    canonical.into_bytes()
 }
 
 fn item7_live_rust_cli_binary_oracle(
@@ -6595,8 +6594,14 @@ fn item7_staging_covers_every_assigned_root_and_support_file() {
         .iter()
         .find(|case| case.name.ends_with("/module_basics.asm"))
         .expect("module_basics Item 7 case");
-    assert!(!String::from_utf8_lossy(&module_basics.source).contains(".org "));
-    assert_eq!(module_basics.rust_oracle, [1, 2]);
+    assert!(String::from_utf8_lossy(&module_basics.source).contains(".org 1000h"));
+    assert!(String::from_utf8_lossy(&module_basics.source).contains(".org 2000h"));
+    assert_eq!(module_basics.rust_oracle.len(), 0x1001);
+    assert_eq!(module_basics.rust_oracle.first(), Some(&1));
+    assert_eq!(module_basics.rust_oracle.last(), Some(&2));
+    assert!(module_basics.rust_oracle[1..0x1000]
+        .iter()
+        .all(|byte| *byte == 0));
 }
 
 #[test]
@@ -7403,60 +7408,82 @@ fn native_preprocessor_conditionals_stored_65c02_fs_uae() {
 
 #[test]
 fn native_reference_opcore_module_macro_statement_fs_uae() {
-    // Proof level D. Rust uses the full module/preprocessor authority; FS-UAE
-    // runs the exact canonical roots through the native CLI.
+    // Proof level D. This derives every Item 7 root from the reviewed assignment
+    // without a runtime case cap. Every exact stored CPU-neutral/65C02 root and
+    // its owned support tree gets an independent fresh guest protocol, explicit
+    // zero exit, and byte equality with that case's in-memory Rust CLI oracle.
     let _guard = fs_uae_native_cli_smoke_lock()
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");
     let root = workspace_root();
-    let package = item6_mos_package_bytes();
-    let paths = [
-        "module_basics.asm",
-        "macro_syntax.asm",
-        "statement_expansion.asm",
-    ];
-    let sources = paths
+    let staged = item7_staged_cases();
+    let assigned_roots = NATIVE_OPCORE_ASSIGNMENTS
         .iter()
-        .map(|name| {
-            let path = root.join("examples/opcore").join(name);
-            let bytes = fs::read(&path).expect("read canonical Item 7 root");
-            let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&path, true)
-                .expect("full Rust Item 7 authority");
-            assert!(
-                diagnostics.is_empty(),
-                "Rust diagnostics for {name}: {diagnostics:?}"
-            );
-            (
-                name,
-                bytes,
-                entries
-                    .into_iter()
-                    .map(|(_, byte)| byte)
-                    .collect::<Vec<_>>(),
-            )
+        .filter(|assignment| {
+            assignment.shard == NativeOpcoreShard::ModuleMacroStatement
+                && matches!(assignment.role, NativeOpcoreRole::Root { .. })
+        })
+        .map(|assignment| assignment.source_path)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        staged.iter().map(|case| case.name).collect::<Vec<_>>(),
+        assigned_roots,
+        "uncapped Item 7 run must contain every assigned root in inventory order"
+    );
+    assert_eq!(staged.len(), 17, "reviewed Item 7 inventory size");
+    let guest_files = staged
+        .iter()
+        .map(|case| {
+            case.guest_files
+                .iter()
+                .map(|file| crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+                    relative_path: &file.relative_path,
+                    bytes: &file.bytes,
+                })
+                .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
-    let cases = sources
+    let package = item6_mos_package_bytes();
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let cases = staged
         .iter()
+        .enumerate()
         .map(
-            |(name, bytes, rust)| crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
-                name,
-                cpu_id: "65c02",
-                source: bytes.as_slice(),
-                package_bytes: package.as_slice(),
-                proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(rust),
+            |(index, case)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name: case.name,
+                cpu_override: "68020",
+                extra_assembly_defines: &defines,
+                source_override: Some(&case.source),
+                command_template: Some(
+                    "{input} --bin {bin} --cpu 65c02 -I {guest_work_dir} -M {guest_work_dir}",
+                ),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &guest_files[index],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: &case.rust_oracle,
+                },
             },
         )
         .collect::<Vec<_>>();
-    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &cases)
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&root, &cases)
         .expect("Item 7 FS-UAE helper")
     {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
-            for (run, (name, _, rust)) in runs.iter().zip(sources.iter()) {
-                assert!(run.success, "native {name} failed: {}", run.stdout);
+            assert_eq!(
+                runs.len(),
+                staged.len(),
+                "every assigned root must complete"
+            );
+            for (run, case) in runs.iter().zip(staged.iter()) {
+                assert!(run.success, "native {} failed: {}", case.name, run.stdout);
                 let native = verified_fs_uae_output(run);
-                assert_eq!(native, *rust, "native bytes differ for {name}");
+                assert_eq!(
+                    native, case.rust_oracle,
+                    "native bytes differ for {}",
+                    case.name
+                );
             }
         }
     }

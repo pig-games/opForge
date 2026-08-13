@@ -803,9 +803,18 @@ parameterEnd
 	sub.l a3, d3
 	cmpi.l #constants.NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY - 1, d3
 	bcc.s fail
+	; The parameter loop owns A0/D0 as its header cursor and remaining length.
+	; Default copying/trimming clobbers both, so preserve them independently of
+	; the destination-slot pointer and restore them before advancing parameters.
+	move.l d0, -(sp)
+	move.l a0, -(sp)
 	movea.l a3, a1
 	move.l d3, d0
 	jsr copy.copyBytes
+	; copyBytes advances the destination pointer. Default trimming owns the
+	; complete slot and must start at its first byte, never at stale text left by
+	; a prior invocation with more explicit arguments.
+	suba.l d3, a2
 	movea.l a2, a1
 	move.l d3, d1
 	bsr.w trimInvocationArgument
@@ -813,6 +822,8 @@ parameterEnd
 	add.l d2, d2
 	lea state.NativeCliPreprocessInvocationArgLen, a1
 	move.w d1, 0(a1, d2.l)
+	movea.l (sp)+, a0
+	move.l (sp)+, d0
 advance
 	move.w d7, d1
 	addq.w #1, d1

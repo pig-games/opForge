@@ -1406,7 +1406,11 @@ orgBad
 
 orgOk
 	move.l d3, d0
-	jsr eng.opasmEngineSetOriginV1
+	; The first origin establishes the image base. Later forward origins must
+	; advance the current PC and materialize the binary gap, matching the Rust
+	; CLI's flat --bin artifact rather than concatenating addressed fragments.
+	bsr.w setPlacedSectionOriginWithImageGap
+	bne.s orgBad
 	bra.w done
 
 region

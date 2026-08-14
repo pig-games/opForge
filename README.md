@@ -144,7 +144,10 @@ Embedding documentation:
 - [`native`](native): opForge-built native deliverables that run on opForge
   targets, including the 68020 AmigaOS native CLI implementation. Its current
   6502/65C02 parity subset accepts repeatable `-D/--define NAME[=VALUE]` and
-  consumes `.ifdef`/`.ifndef` branch selection before statement dispatch.
+  consumes `.ifdef`/`.ifndef` branch selection before statement dispatch. The
+  subset also renders root `.output`, `.mapfile`, and `.exportsections`
+  artifacts after final section placement; AmigaDOS paths use native volume
+  and directory semantics rather than Unix path rules.
 
 ## Development Shortcuts
 

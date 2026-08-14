@@ -18,6 +18,7 @@
 	.use opforge.cli.args
 	.use opforge.cli.session_init
 	.use opforge.cli.output
+	.use opforge.cli.source_artifacts
 	.use opforge.cli.engine_callbacks
 	.use opforge.cli.preprocessor
 .ifdef OPFORGE_DEBUG_CONTRACTS
@@ -237,8 +238,16 @@ checkImage
 	jsr engine.opasmEngineGetImageByteCountV1
 	tst.l d0
 	beq.s emitStub
+	tst.w state.NativeCliOutputBootstrapFromSource
+	bne.s writeSourceArtifacts
 	jsr output.opforgeNativeCliWriteFlatOutput
+	bne.s outputFail
+
+writeSourceArtifacts
+	jsr source_artifacts.opforgeNativeCliWriteSourceArtifactsV1
 	beq.s outputOk
+
+outputFail
 	move.l #strings.NativeOutputFailureText, d1
 	jsr dos.putErrStr
 	move.l #constants.RETURN_FILE_FAILURE, state.NativeCliReturnCode

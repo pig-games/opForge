@@ -1,0 +1,34 @@
+[slice]
+schema_version = 2
+name = "source-declared native artifact output"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-vm/src/output_artifacts.rs",
+  "crates/opforge-vm/src/output_components.rs",
+  "crates/opforge-asm/src/asmline_directives_metadata.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::artifact directive routing",
+  "native/motorola68000/amigaos/opforge-cli/directive_handlers.asm::artifact request capture",
+  "native/motorola68000/amigaos/opforge-cli/output.asm::post-assembly artifact rendering",
+  "native/motorola68000/amigaos/opforge-cli/source_artifacts.asm::payload construction and AmigaDOS path rendering"
+]
+invariant = "Every effective root `.output`, `.mapfile`, and `.exportsections` directive is preserved in source order and rendered after assembly from the same native layout, section, symbol, and image state used by the CLI-requested artifact."
+expected_inputs = "The exact effective 6502/65C02 root source, CLI output request, source-declared artifact directives, placed sections, visibility-qualified symbols, and assembled image."
+expected_outputs = "The CLI-requested artifact plus every declared output, map, and exported-section file with paths and bytes equal to the same-source Rust CLI case."
+known_non_equivalences = "This slice does not add foreign CPU behavior, library/object packaging, or metadata-root output selection."
+fast_proof_command = "cargo test -p asm motorola68020_item82_native_source_artifact_requests_are_preserved -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_item82_linker_artifacts_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_item82_native_source_artifact_requests_are_preserved"
+proof_level = "B"
+proves = "Every effective source artifact directive is captured before instruction selection in source order and reset per CLI invocation."
+does_not_prove = "Real native rendering or exact artifact bytes."
+
+[[tests]]
+name = "native_item82_linker_artifacts_fs_uae"
+proof_level = "D"
+proves = "All four assigned linker roots freshly produce every CLI-requested and source-declared artifact byte-for-byte equal to their same-case in-memory Rust CLI oracles."
+does_not_prove = "Metadata-root output selection or unrelated Item 8 roots."

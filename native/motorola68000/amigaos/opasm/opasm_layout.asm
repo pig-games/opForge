@@ -4,13 +4,16 @@
 	.cpu 68020
 	.use opasm.amigaos.engine as eng
 
+	.section code, kind=code
+	.pub
+
 OPASM_LAYOUT_NAME_CAPACITY = 32
 OPASM_LAYOUT_REGION_CAPACITY = 8
 OPASM_LAYOUT_SECTION_CAPACITY = 16
 OPASM_LAYOUT_INDEX_NONE = $ffff
-
-	.section code, kind=code
-	.pub
+OPASM_LAYOUT_SECTION_KIND_CODE = 0
+OPASM_LAYOUT_SECTION_KIND_DATA = 1
+OPASM_LAYOUT_SECTION_KIND_BSS = 2
 
 ; Reset all layout state for a new assembly session.
 ; Outputs: D0.L = 0.
@@ -23,6 +26,7 @@ resetStateV1	.block
 	move.w #OPASM_LAYOUT_INDEX_NONE, OpasmLayoutActiveSectionIndex
 	clr.w OpasmLayoutScratchNameLen
 	clr.b OpasmLayoutScratchName
+	clr.w OpasmLayoutScratchSectionKind
 	clr.w OpasmLayoutPlaceSectionNameLen
 	clr.b OpasmLayoutPlaceSectionName
 	clr.w OpasmLayoutPlaceRegionNameLen
@@ -162,6 +166,14 @@ appendSectionV1	.block
 	move.w d6, d5
 	jsr wordTablePtrV1
 	clr.w (a0)
+	lea OpasmLayoutSectionKinds.l, a0
+	move.w d6, d5
+	jsr wordTablePtrV1
+	move.w OpasmLayoutScratchSectionKind, (a0)
+	lea OpasmLayoutSectionRegionIndices.l, a0
+	move.w d6, d5
+	jsr wordTablePtrV1
+	move.w #OPASM_LAYOUT_INDEX_NONE, (a0)
 	lea OpasmLayoutSectionAligns.l, a0
 	move.w d6, d5
 	jsr longTablePtrV1
@@ -302,6 +314,10 @@ storeBase
 	move.w d4, d5
 	jsr longTablePtrV1
 	move.l d1, (a0)
+	lea OpasmLayoutSectionRegionIndices.l, a0
+	move.w d4, d5
+	jsr wordTablePtrV1
+	move.w d6, (a0)
 	lea OpasmLayoutSectionPlacedFlags.l, a0
 	move.w d4, d5
 	jsr wordTablePtrV1
@@ -473,6 +489,185 @@ setScratchNameLenV1	.block
 	move.w d0, OpasmLayoutScratchNameLen
 	rts
 	.bend  ; setScratchNameLenV1
+
+; Store the parsed section kind for the next pass-one section append.
+; Inputs: D0.W = OPASM_LAYOUT_SECTION_KIND_*.
+; Outputs: D0.L = 0 on success, 1 for an invalid kind.
+; Clobbers: D0/CCR.
+setScratchSectionKindV1	.block
+	cmpi.w #OPASM_LAYOUT_SECTION_KIND_BSS, d0
+	bhi.s fail
+	move.w d0, OpasmLayoutScratchSectionKind
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; setScratchSectionKindV1
+
+; Return the retained region count.
+; Outputs: D0.L = count.
+; Clobbers: D0/CCR.
+getRegionCountV1	.block
+	moveq #0, d0
+	move.w OpasmLayoutRegionCount, d0
+	rts
+	.bend  ; getRegionCountV1
+
+; Return one retained region name.
+; Inputs: D5.W = region index.
+; Outputs: A0 = name; D0.L = length, or zero for invalid index.
+; Clobbers: D0/D2/A0/CCR.
+getRegionNameV1	.block
+	cmp.w OpasmLayoutRegionCount, d5
+	bhs.s invalid
+	move.l d5, d2
+	lsl.l #5, d2
+	lea OpasmLayoutRegionNames.l, a0
+	adda.l d2, a0
+	lea OpasmLayoutRegionNameLens.l, a0
+	jsr wordTablePtrV1
+	moveq #0, d0
+	move.w (a0), d0
+	move.l d5, d2
+	lsl.l #5, d2
+	lea OpasmLayoutRegionNames.l, a0
+	adda.l d2, a0
+	rts
+invalid
+	suba.l a0, a0
+	moveq #0, d0
+	rts
+	.bend  ; getRegionNameV1
+
+; Return one retained region's numeric state.
+; Inputs: D5.W = region index.
+; Outputs: D0=start, D1=end, D2=cursor, D3=alignment.
+; Clobbers: D0-D3/D5/A0/CCR.
+getRegionInfoV1	.block
+	lea OpasmLayoutRegionStarts.l, a0
+	jsr longTablePtrV1
+	move.l (a0), -(sp)
+	lea OpasmLayoutRegionEnds.l, a0
+	jsr longTablePtrV1
+	move.l (a0), -(sp)
+	lea OpasmLayoutRegionCursors.l, a0
+	jsr longTablePtrV1
+	move.l (a0), -(sp)
+	lea OpasmLayoutRegionAligns.l, a0
+	jsr longTablePtrV1
+	move.l (a0), d3
+	move.l (sp)+, d2
+	move.l (sp)+, d1
+	move.l (sp)+, d0
+	rts
+	.bend  ; getRegionInfoV1
+
+; Return the retained section count.
+; Outputs: D0.L = count.
+; Clobbers: D0/CCR.
+getSectionCountV1	.block
+	moveq #0, d0
+	move.w OpasmLayoutSectionCount, d0
+	rts
+	.bend  ; getSectionCountV1
+
+; Return one retained section name.
+; Inputs: D5.W = section index.
+; Outputs: A0 = name; D0.L = length, or zero for invalid index.
+; Clobbers: D0/D2/A0/CCR.
+getSectionNameV1	.block
+	cmp.w OpasmLayoutSectionCount, d5
+	bhs.s invalid
+	lea OpasmLayoutSectionNameLens.l, a0
+	jsr wordTablePtrV1
+	moveq #0, d0
+	move.w (a0), d0
+	move.l d5, d2
+	lsl.l #5, d2
+	lea OpasmLayoutSectionNames.l, a0
+	adda.l d2, a0
+	rts
+invalid
+	suba.l a0, a0
+	moveq #0, d0
+	rts
+	.bend  ; getSectionNameV1
+
+; Return one retained section's numeric state.
+; Inputs: D5.W = section index.
+; Outputs: D0=base, D1=size, D2=kind, D3=region index.
+; Clobbers: D0-D3/D5/A0/CCR.
+getSectionInfoV1	.block
+	lea OpasmLayoutSectionBases.l, a0
+	jsr longTablePtrV1
+	move.l (a0), -(sp)
+	lea OpasmLayoutSectionSizes.l, a0
+	jsr longTablePtrV1
+	move.l (a0), -(sp)
+	lea OpasmLayoutSectionKinds.l, a0
+	jsr wordTablePtrV1
+	moveq #0, d0
+	move.w (a0), d0
+	move.l d0, -(sp)
+	lea OpasmLayoutSectionRegionIndices.l, a0
+	jsr wordTablePtrV1
+	moveq #0, d3
+	move.w (a0), d3
+	move.l (sp)+, d2
+	move.l (sp)+, d1
+	move.l (sp)+, d0
+	rts
+	.bend  ; getSectionInfoV1
+
+; Translate a pass-one PC through the final placed section layout.
+; Inputs: D0 = pass-one PC. Outputs: D0 = placed PC and D1 = 1 when the PC
+; belongs to a placed section; otherwise D0 is unchanged and D1 = 0.
+translatePassOneAddressV1	.block
+	movem.l d2-d7/a0-a2, -(sp)
+	move.l d0, d7
+	moveq #0, d6
+	move.w OpasmLayoutSectionCount, d6
+	subq.w #1, d6
+sectionLoop
+	tst.w d6
+	bmi.s notTranslated
+	move.w d6, d5
+	lea OpasmLayoutSectionStartPcs.l, a0
+	jsr longTablePtrV1
+	move.l (a0), d3
+	cmp.l d3, d7
+	blo.s next
+	lea OpasmLayoutSectionSizes.l, a0
+	jsr longTablePtrV1
+	move.l (a0), d4
+	beq.s next
+	move.l d3, d2
+	add.l d4, d2
+	bcs.s next
+	cmp.l d2, d7
+	bhs.s next
+	lea OpasmLayoutSectionPlacedFlags.l, a0
+	jsr wordTablePtrV1
+	tst.w (a0)
+	beq.s notTranslated
+	lea OpasmLayoutSectionBases.l, a0
+	jsr longTablePtrV1
+	move.l d7, d0
+	sub.l d3, d0
+	add.l (a0), d0
+	moveq #1, d1
+	bra.s return
+next
+	subq.w #1, d6
+	bra.s sectionLoop
+notTranslated
+	move.l d7, d0
+	clr.l d1
+return
+	movem.l (sp)+, d2-d7/a0-a2
+	rts
+	.bend  ; translatePassOneAddressV1
 
 ; Return the current scratch name.
 ; Outputs: A0 = name pointer; D0.L = name length.
@@ -795,6 +990,9 @@ OpasmLayoutScratchEnd
 OpasmLayoutScratchNameLen
 	.res word, 1
 
+OpasmLayoutScratchSectionKind
+	.res word, 1
+
 OpasmLayoutScratchName
 	.res byte, OPASM_LAYOUT_NAME_CAPACITY
 
@@ -823,6 +1021,12 @@ OpasmLayoutSectionNames
 	.res byte, OPASM_LAYOUT_SECTION_CAPACITY * OPASM_LAYOUT_NAME_CAPACITY
 
 OpasmLayoutSectionPlacedFlags
+	.res word, OPASM_LAYOUT_SECTION_CAPACITY
+
+OpasmLayoutSectionKinds
+	.res word, OPASM_LAYOUT_SECTION_CAPACITY
+
+OpasmLayoutSectionRegionIndices
 	.res word, OPASM_LAYOUT_SECTION_CAPACITY
 
 OpasmLayoutSectionStartPcs

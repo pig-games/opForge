@@ -954,6 +954,11 @@ Notes:
   fixed frontend stores at most 16 distinct command-line names and 16 nested
   conditional frames, with deterministic failure on overflow or malformed
   nesting.
+- The native subset renders effective root `.output`, `.mapfile`, and
+  `.exportsections` requests after final section placement. Forward references
+  in placed sections resolve to their final addresses, and artifact paths are
+  composed with AmigaDOS volume/directory semantics (for example,
+  `Work:build/sections/code.bin`).
 
 ## 4. Pseudo instructions
 

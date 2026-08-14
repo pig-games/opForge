@@ -33,6 +33,10 @@ opforgeNativeCliInitModuleUseState	.block
 	lea state.NativeCliModuleUseStateStart, a0
 	move.l #state.NATIVE_CLI_MODULE_USE_STATE_BYTES, d0
 	jsr copy.clearBytes
+	lea state.NativeCliArtifactRequestStateStart, a0
+	move.l #state.NATIVE_CLI_ARTIFACT_REQUEST_STATE_BYTES, d0
+	jsr copy.clearBytes
+	clr.w state.NativeCliOutputBootstrapFromSource
 	jsr preprocessor.opforgeNativeCliResetPreprocessorV1
 	jsr engine.resetStatementCollectionV1
 	movem.l (sp)+, d0-d1/a0

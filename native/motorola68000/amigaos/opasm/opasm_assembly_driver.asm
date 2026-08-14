@@ -110,6 +110,8 @@ opasmDriverPassTwoBegin	.block
 	moveq #2, d1
 	bsr.w appendPassEvent
 	jsr eng.opasmEngineBeginPassTwoV1
+	bsr.w rebasePlacedLabelsForPassTwo
+	bne.s fail
 	jsr layout.beginPassTwoV1
 	clr.w OpasmRepeatDepth
 	jsr scopes.resetStateV1
@@ -118,7 +120,50 @@ opasmDriverPassTwoBegin	.block
 	movem.l (sp)+, a4-a5
 	moveq #0, d0
 	rts
+fail
+	movem.l (sp)+, a4-a5
+	moveq #1, d0
+	rts
 	.bend  ; opasmDriverPassTwoBegin
+
+; Rebase every PC-backed pass-one label through the finalized section layout
+; before pass-two expression evaluation begins. This includes forward
+; references whose defining statement has not yet been revisited in pass two.
+; @opforge-owner: opasm.amigaos.layout
+; @opforge-slice: documentation/plans/slices/native-porting-slice-source-artifact-output.toml
+; @opforge-role: delegation
+rebasePlacedLabelsForPassTwo	.block
+	movem.l d2-d5, -(sp)
+	jsr eng.opasmEngineGetLabelCountV1
+	move.l d0, d5
+	moveq #0, d4
+labelLoop
+	cmp.l d5, d4
+	bhs.s success
+	move.l d4, d0
+	jsr eng.opasmEngineGetPcBackedLabelValueV1
+	tst.l d1
+	beq.s next
+	jsr layout.translatePassOneAddressV1
+	tst.l d1
+	beq.s next
+	move.l d0, d3
+	move.l d4, d0
+	move.l d3, d1
+	jsr eng.opasmEngineSetPcBackedLabelValueV1
+	bne.s fail
+next
+	addq.l #1, d4
+	bra.s labelLoop
+success
+	moveq #0, d0
+	bra.s return
+fail
+	moveq #1, d0
+return
+	movem.l (sp)+, d2-d5
+	rts
+	.bend  ; rebasePlacedLabelsForPassTwo
 
 ; Apply counted-repetition control before one statement reaches pass logic.
 ; Inputs: D0.W = current statement index.
@@ -1831,7 +1876,7 @@ comparePc
 	bne.s lessEqual
 	cmp.l d4, d0
 	bcs.s true
-	bra.s ok
+	bra.w ok
 lessEqual
 	cmp.l d4, d0
 	bls.s true
@@ -1925,6 +1970,11 @@ processSectionDirectiveForStatement	.block
 	bsr.w readAlignOptionForStatement
 	bne.w fail
 	movea.l d3, a3
+	bsr.w readSectionKindForStatement
+	bne.w fail
+	move.l d3, d0
+	jsr layout.setScratchSectionKindV1
+	bne.w fail
 	jsr eng.opasmEngineGetSessionPassV1
 	cmpi.w #2, d0
 	beq.w passTwo
@@ -1937,7 +1987,7 @@ processSectionDirectiveForStatement	.block
 	move.l a3, d1
 	jsr layout.appendSectionV1
 	bne.w fail
-	bra.s ok
+	bra.w ok
 
 passTwo
 	moveq #1, d1
@@ -1945,7 +1995,7 @@ passTwo
 	bne.w fail
 	jsr layout.sectionPlacedPtrV1
 	tst.w (a0)
-	beq.s startSection
+	beq.w startSection
 	jsr layout.sectionBasePtrV1
 	move.l (a0), d0
 	bsr.w setPlacedSectionOriginWithImageGap
@@ -1958,7 +2008,7 @@ startSection
 
 ok
 	moveq #0, d0
-	bra.s return
+	bra.w return
 
 fail
 	moveq #1, d0
@@ -1967,6 +2017,78 @@ return
 	movem.l (sp)+, d1-d7/a0-a3
 	rts
 	.bend  ; processSectionDirectiveForStatement
+
+; Read `kind=bss` from a `.section` option list, defaulting to code.
+; Inputs: D7.W = statement index.
+; Outputs: D0.L = 0 on success; D3.L = OPASM_LAYOUT_SECTION_KIND_*.
+; Clobbers: D0-D6/A0-A3/CCR.
+; CCR: reflects D0.L on return.
+; @opforge-owner: opasm.amigaos.layout
+; @opforge-slice: documentation/plans/slices/native-porting-slice-source-artifact-output.toml
+; @opforge-role: delegation
+readSectionKindForStatement	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	moveq #0, d0
+	move.w d7, d0
+	movea.l sp, a0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w defaultCode
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a2
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d2
+	cmpi.l #8, d2
+	blo.w defaultCode
+
+scan
+	move.b (a2), d3
+	bsr.w lowerD3
+	cmpi.b #'k', d3
+	bne.s next
+	move.b 1(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'i', d3
+	bne.s next
+	move.b 2(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'n', d3
+	bne.s next
+	move.b 3(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'d', d3
+	bne.s next
+	cmpi.b #'=', 4(a2)
+	bne.s next
+	move.b 5(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'b', d3
+	bne.s next
+	move.b 6(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'s', d3
+	bne.s next
+	move.b 7(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'s', d3
+	bne.s next
+	moveq #layout.OPASM_LAYOUT_SECTION_KIND_BSS, d3
+	moveq #0, d0
+	bra.s return
+
+next
+	addq.l #1, a2
+	subq.l #1, d2
+	cmpi.l #8, d2
+	bhs.s scan
+
+defaultCode
+	moveq #layout.OPASM_LAYOUT_SECTION_KIND_CODE, d3
+	moveq #0, d0
+
+return
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; readSectionKindForStatement
 
 ; Leave the active native section slice and record its pass-one size.
 ; Inputs: D7.W = statement index.

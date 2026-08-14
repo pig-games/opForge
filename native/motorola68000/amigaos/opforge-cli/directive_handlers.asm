@@ -22,6 +22,59 @@
 	.section code, kind=code
 	.pub
 
+; Preserve one effective source artifact directive for post-assembly rendering.
+; @opforge-owner: opforge.cli.output
+; @opforge-slice: documentation/plans/slices/native-porting-slice-source-artifact-output.toml
+; @opforge-role: delegation
+; Inputs: D1.W = NATIVE_ARTIFACT_REQUEST_* kind; current source line is authoritative.
+; Outputs: D0.L = 0 on success, 1 on invalid kind or request capacity exhaustion.
+; Clobbers: D0-D7/A0-A2/CCR.
+; CCR: reflects D0.L on return.
+opforgeNativeCliCaptureArtifactRequestLineV1	.block
+	movem.l d1-d7/a0-a2, -(sp)
+	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_OUTPUT, d1
+	blo.w fail
+	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_EXPORTSECTIONS, d1
+	bhi.w fail
+	moveq #0, d7
+	move.w state.NativeCliArtifactRequestCount, d7
+	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_CAPACITY, d7
+	bhs.w fail
+	lea state.NativeCliArtifactRequestKinds, a0
+	move.b d1, 0(a0, d7.l)
+	move.l d7, d6
+	add.l d6, d6
+	lea state.NativeCliArtifactRequestLengths, a0
+	move.w state.NativeCliSourceLineLen, d5
+	move.w d5, 0(a0, d6.l)
+	move.l d7, d6
+	lsl.l #8, d6
+	add.l d6, d6
+	lea state.NativeCliArtifactRequestTexts, a1
+	adda.l d6, a1
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d4
+	move.w d5, d4
+	beq.s stored
+	subq.l #1, d4
+
+copyLoop
+	move.b (a0)+, (a1)+
+	dbra d4, copyLoop
+
+stored
+	addq.w #1, state.NativeCliArtifactRequestCount
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d7/a0-a2
+	rts
+	.bend  ; opforgeNativeCliCaptureArtifactRequestLineV1
+
 ; Build the parser-tail scratch buffer for `.module` / `.endmodule` / `.use`.
 ; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the current source line.
 ; Outputs: D0 = 0 on success, 1 on tail-buffer overflow; state.NativeCliParserTailBuffer/state.NativeCliParserTailLen updated on success.
@@ -430,6 +483,14 @@ opforgeNativeCliParseOutputLine	.block
 	clr.b state.NativeCliOutputPathScratch
 	clr.w state.NativeCliPrgLoadAddrSet
 	clr.l state.NativeCliPrgLoadAddr
+	clr.w state.NativeCliSourceOutputSectionCount
+	clr.w state.NativeCliSourceOutputSectionListActive
+	clr.w state.NativeCliSourceOutputImageSet
+	clr.w state.NativeCliSourceOutputFillSet
+	move.w #1, state.NativeCliSourceOutputContiguous
+	clr.b state.NativeCliSourceOutputFill
+	clr.l state.NativeCliSourceOutputImageStart
+	clr.l state.NativeCliSourceOutputImageEnd
 	bsr.w opforgeNativeCliParserTailPtr
 	tst.l d1
 	bne.w fail
@@ -673,6 +734,27 @@ classifyOutputOptionToken	.block
 
 maybeLoadAddr
 	bsr.w parseOutputLoadAddrToken
+	tst.l d1
+	beq.s return
+	cmpi.l #2, d1
+	beq.s return
+	bsr.w parseOutputImageToken
+	tst.l d1
+	beq.s return
+	cmpi.l #2, d1
+	beq.s return
+	bsr.w parseOutputFillToken
+	tst.l d1
+	beq.s return
+	cmpi.l #2, d1
+	beq.s return
+	bsr.w parseOutputContiguousToken
+	tst.l d1
+	beq.s return
+	cmpi.l #2, d1
+	beq.s return
+	bsr.w parseOutputSectionsToken
+return
 	rts
 	.bend  ; classifyOutputOptionToken
 
@@ -818,6 +900,212 @@ malformed
 	moveq #2, d1
 	rts
 	.bend  ; parseOutputLoadAddrToken
+
+; Parse `image="$START..$END"` from the current output option token.
+; Outputs: D1 = 0 parsed, 1 unrelated, 2 malformed.
+parseOutputImageToken	.block
+	lea state.NativeCliArgToken, a2
+	cmpi.b #'i', (a2)+
+	bne.w unknown
+	cmpi.b #'m', (a2)+
+	bne.w unknown
+	cmpi.b #'a', (a2)+
+	bne.w unknown
+	cmpi.b #'g', (a2)+
+	bne.w unknown
+	cmpi.b #'e', (a2)+
+	bne.w unknown
+	cmpi.b #'=', (a2)+
+	bne.w unknown
+	cmpi.b #'"', (a2)+
+	bne.w malformed
+	bsr.w parseOutputDollarHexAtA2
+	bne.w malformed
+	move.l d2, state.NativeCliSourceOutputImageStart
+	cmpi.b #'.', (a2)+
+	bne.w malformed
+	cmpi.b #'.', (a2)+
+	bne.w malformed
+	bsr.w parseOutputDollarHexAtA2
+	bne.w malformed
+	move.l d2, state.NativeCliSourceOutputImageEnd
+	cmpi.b #'"', (a2)+
+	bne.w malformed
+	tst.b (a2)
+	bne.w malformed
+	move.l state.NativeCliSourceOutputImageStart, d0
+	cmp.l d0, d2
+	blo.w malformed
+	move.w #1, state.NativeCliSourceOutputImageSet
+	clr.w state.NativeCliSourceOutputSectionListActive
+	moveq #0, d1
+	rts
+unknown
+	moveq #1, d1
+	rts
+malformed
+	moveq #2, d1
+	rts
+	.bend  ; parseOutputImageToken
+
+; Parse `fill=$NN` from the current output option token.
+; Outputs: D1 = 0 parsed, 1 unrelated, 2 malformed.
+parseOutputFillToken	.block
+	lea state.NativeCliArgToken, a2
+	cmpi.b #'f', (a2)+
+	bne.s unknown
+	cmpi.b #'i', (a2)+
+	bne.s unknown
+	cmpi.b #'l', (a2)+
+	bne.s unknown
+	cmpi.b #'l', (a2)+
+	bne.s unknown
+	cmpi.b #'=', (a2)+
+	bne.s unknown
+	bsr.w parseOutputDollarHexAtA2
+	bne.s malformed
+	tst.b (a2)
+	bne.s malformed
+	cmpi.l #$FF, d2
+	bhi.s malformed
+	move.b d2, state.NativeCliSourceOutputFill
+	move.w #1, state.NativeCliSourceOutputFillSet
+	clr.w state.NativeCliSourceOutputSectionListActive
+	moveq #0, d1
+	rts
+unknown
+	moveq #1, d1
+	rts
+malformed
+	moveq #2, d1
+	rts
+	.bend  ; parseOutputFillToken
+
+; Parse `contiguous=true|false` from the current output option token.
+; Outputs: D1 = 0 parsed, 1 unrelated, 2 malformed.
+parseOutputContiguousToken	.block
+	lea state.NativeCliArgToken, a2
+	lea OutputContiguousPrefix, a1
+	moveq #10, d4
+prefixLoop
+	move.b (a1)+, d0
+	cmp.b (a2)+, d0
+	bne.s unknown
+	dbra d4, prefixLoop
+	cmpi.b #'f', (a2)
+	beq.s falseValue
+	cmpi.b #'t', (a2)
+	bne.s malformed
+	cmpi.b #'r', 1(a2)
+	bne.s malformed
+	cmpi.b #'u', 2(a2)
+	bne.s malformed
+	cmpi.b #'e', 3(a2)
+	bne.s malformed
+	tst.b 4(a2)
+	bne.s malformed
+	move.w #1, state.NativeCliSourceOutputContiguous
+	bra.s parsed
+falseValue
+	cmpi.b #'a', 1(a2)
+	bne.s malformed
+	cmpi.b #'l', 2(a2)
+	bne.s malformed
+	cmpi.b #'s', 3(a2)
+	bne.s malformed
+	cmpi.b #'e', 4(a2)
+	bne.s malformed
+	tst.b 5(a2)
+	bne.s malformed
+	clr.w state.NativeCliSourceOutputContiguous
+parsed
+	clr.w state.NativeCliSourceOutputSectionListActive
+	moveq #0, d1
+	rts
+unknown
+	moveq #1, d1
+	rts
+malformed
+	moveq #2, d1
+	rts
+	.bend  ; parseOutputContiguousToken
+
+; Parse the first `sections=NAME` token and subsequent comma-delimited names.
+; Outputs: D1 = 0 parsed, 1 unrelated, 2 malformed/capacity.
+parseOutputSectionsToken	.block
+	lea state.NativeCliArgToken, a2
+	tst.w state.NativeCliSourceOutputSectionListActive
+	bne.s copyName
+	lea OutputSectionsPrefix, a1
+	moveq #8, d4
+prefixLoop
+	move.b (a1)+, d0
+	cmp.b (a2)+, d0
+	bne.s unknown
+	dbra d4, prefixLoop
+	move.w #1, state.NativeCliSourceOutputSectionListActive
+copyName
+	tst.b (a2)
+	beq.s malformed
+	moveq #0, d3
+	move.w state.NativeCliSourceOutputSectionCount, d3
+	cmpi.w #constants.NATIVE_SOURCE_OUTPUT_SECTION_CAPACITY, d3
+	bhs.s malformed
+	move.l d3, d4
+	lsl.l #5, d4
+	lea state.NativeCliSourceOutputSectionNames, a1
+	adda.l d4, a1
+	moveq #constants.NATIVE_SOURCE_OUTPUT_SECTION_NAME_CAPACITY - 2, d4
+nameLoop
+	move.b (a2)+, d0
+	beq.s nameDone
+	tst.w d4
+	beq.s malformed
+	move.b d0, (a1)+
+	subq.w #1, d4
+	bra.s nameLoop
+nameDone
+	clr.b (a1)
+	addq.w #1, state.NativeCliSourceOutputSectionCount
+	moveq #0, d1
+	rts
+unknown
+	moveq #1, d1
+	rts
+malformed
+	moveq #2, d1
+	rts
+	.bend  ; parseOutputSectionsToken
+
+; Parse a `$`-prefixed hexadecimal value at A2.
+; Outputs: D0 = 0 success, 1 failure; D2 = value; A2 at first non-hex byte.
+parseOutputDollarHexAtA2	.block
+	cmpi.b #'$', (a2)+
+	bne.s fail
+	clr.l d2
+	clr.l d3
+loop
+	move.b (a2), d0
+	beq.s done
+	bsr.w outputHexDigitToNibble
+	tst.l d1
+	bne.s done
+	cmpi.l #8, d3
+	bhs.s fail
+	lsl.l #4, d2
+	or.l d0, d2
+	addq.l #1, a2
+	addq.l #1, d3
+	bra.s loop
+done
+	tst.l d3
+	beq.s fail
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; parseOutputDollarHexAtA2
 
 ; Convert a hexadecimal ASCII byte to a nibble.
 ; Inputs: D0.B = ASCII character.
@@ -1021,6 +1309,15 @@ ok
 	moveq #0, d1
 	rts
 	.bend  ; outputOptionEndOk
+
+	.endsection
+
+	.section data, kind=data
+
+OutputContiguousPrefix
+	.byte "contiguous=", 0
+OutputSectionsPrefix
+	.byte "sections=", 0
 
 	.endsection
 	.endmodule

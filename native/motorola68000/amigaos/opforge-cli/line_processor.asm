@@ -270,6 +270,18 @@ parseOnlyCheckOutput
 	lea strings.OutputDirectiveText, a1
 	moveq #7, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
+	bne.w parseOnlyOk
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.MapfileDirectiveText, a1
+	moveq #8, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	bne.w parseOnlyOk
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.ExportsectionsDirectiveText, a1
+	moveq #15, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
 	beq.w parseOnlyRecordSourceStatement
 	bra.w parseOnlyOk
 
@@ -901,8 +913,31 @@ checkOrg
 	lea strings.OutputDirectiveText, a1
 	moveq #7, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s checkMapfileDirective
+	moveq #constants.NATIVE_ARTIFACT_REQUEST_OUTPUT, d1
+	jsr directive_handlers.opforgeNativeCliCaptureArtifactRequestLineV1
+	bra.w return
+
+checkMapfileDirective
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.MapfileDirectiveText, a1
+	moveq #8, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s checkExportsectionsDirective
+	moveq #constants.NATIVE_ARTIFACT_REQUEST_MAPFILE, d1
+	jsr directive_handlers.opforgeNativeCliCaptureArtifactRequestLineV1
+	bra.w return
+
+checkExportsectionsDirective
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.ExportsectionsDirectiveText, a1
+	moveq #15, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
 	beq.s checkUseDirective
-	jsr directive_handlers.opforgeNativeCliParseOutputLine
+	moveq #constants.NATIVE_ARTIFACT_REQUEST_EXPORTSECTIONS, d1
+	jsr directive_handlers.opforgeNativeCliCaptureArtifactRequestLineV1
 	bra.w return
 
 checkUseDirective

@@ -80,6 +80,8 @@ NativeCliSourceLineNum
 	.res long, 1
 NativeCliPrgLoadAddr
 	.res long, 1
+NativeCliOutputBootstrapFromSource
+	.res word, 1
 NativeCliSawCr
 	.res word, 1
 NativeCliIncludeDepth
@@ -348,6 +350,44 @@ NativeCliIncludePathTable
 	.res byte, constants.NATIVE_INCLUDE_PATH_CAPACITY * constants.PATH_BUFFER_CAPACITY
 NATIVE_CLI_MODULE_USE_STATE_END
 NATIVE_CLI_MODULE_USE_STATE_BYTES = NATIVE_CLI_MODULE_USE_STATE_END - NativeCliModuleUseStateStart
+
+NativeCliArtifactRequestStateStart
+NativeCliArtifactRequestCount
+	.res word, 1
+NativeCliSourceOutputSectionCount
+	.res word, 1
+NativeCliSourceOutputSectionListActive
+	.res word, 1
+NativeCliSourceOutputImageSet
+	.res word, 1
+NativeCliSourceOutputFillSet
+	.res word, 1
+NativeCliSourceOutputContiguous
+	.res word, 1
+NativeCliSourceOutputFill
+	.res byte, 1
+	.align 4
+NativeCliSourceOutputImageStart
+	.res long, 1
+NativeCliSourceOutputImageEnd
+	.res long, 1
+NativeCliSourceOutputSectionNames
+	.res byte, constants.NATIVE_SOURCE_OUTPUT_SECTION_CAPACITY * constants.NATIVE_SOURCE_OUTPUT_SECTION_NAME_CAPACITY
+NativeCliMapPath
+	.res byte, constants.PATH_BUFFER_CAPACITY
+NativeCliExportDirPath
+	.res byte, constants.PATH_BUFFER_CAPACITY
+NativeCliArtifactPathScratch
+	.res byte, constants.PATH_BUFFER_CAPACITY
+NativeCliArtifactRequestKinds
+	.res byte, constants.NATIVE_ARTIFACT_REQUEST_CAPACITY
+	.align 2
+NativeCliArtifactRequestLengths
+	.res word, constants.NATIVE_ARTIFACT_REQUEST_CAPACITY
+NativeCliArtifactRequestTexts
+	.res byte, constants.NATIVE_ARTIFACT_REQUEST_CAPACITY * constants.SOURCE_LINE_BUFFER_CAPACITY
+NATIVE_CLI_ARTIFACT_REQUEST_STATE_END
+NATIVE_CLI_ARTIFACT_REQUEST_STATE_BYTES = NATIVE_CLI_ARTIFACT_REQUEST_STATE_END - NativeCliArtifactRequestStateStart
 
 	.endsection
 

@@ -705,6 +705,8 @@ landed” is not equivalent to “framework-closed.”
   - Expected files: the four `examples/opcore/*.asm` roots and owned references; `crates/opforge-asm/src/native_reference_parity.rs`; `crates/opforge-asm/src/tests.rs`; this plan
   - Full quality gates: controlled golden-reference regeneration; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; focused native-reference inventory tests; staged native-porting gate; workflow gate; full serial Rust quality gate
   - Validation evidence: all four roots select 6502/65C02 directly, contain no Intel instruction spellings, and are assigned as `DirectMos65c02`; controlled regeneration changes only their owned `.hex`/`.lst` artifacts; the non-update reference test and native-reference inventory tests pass. Bulk reference refresh approved for the exact sixteen owned `.hex`/`.lst` artifacts of the eight stored corpus roots covered jointly by Items 5.9.23 and 7.13; this is one artifact pair per rewritten test case, not a test-count cutoff or an unscoped repository refresh.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` confirms direct stored 6502/65C02 ownership and removal of runtime adaptation without widening the active CPU scope.
+  - Commit outcome: one focused corpus-conversion commit owns the four roots, their references, inventory assignments, and removal of the obsolete adapted test module.
   - Definition of done: no Intel instruction or foreign `.cpu` directive remains in these four stored roots, and no runtime adaptation chooses their proof source
 
 - [x] Item 5.9.1: restore native numeric suffix-literal expression parity
@@ -1432,7 +1434,10 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Source requirement or finding IDs: user requirement that `mvi`/8085/68000 sources cannot participate in this 6502/65C02 proof effort and must be rewritten in the corpus to test the same opcore behavior
   - Invariant: `led1.asm`, `segment_cross_module_ok.asm`, `sertest.asm`, and `module_qualified_section_map.asm` are stored 65C02 sources preserving respectively ROM layout and loop control, cross-module segment expansion, framed serial control flow, and qualified logical-section mapping
   - Expected files: the four `examples/opcore/*.asm` roots and owned `.hex`/`.lst` references; `crates/opforge-asm/src/native_reference_parity.rs`; this plan
+  - Full quality gates: controlled golden-reference regeneration; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; focused native-reference inventory tests; staged native-porting gate; workflow gate; full serial Rust quality gate
   - Validation evidence: all four assignments use `DirectMos65c02`; controlled reference regeneration changes only their owned `.hex`/`.lst` artifacts; non-update reference comparison and native-reference inventory tests pass
+  - Plan-compliance review evidence: `plan-compliance-reviewer` confirms the four stored roots preserve their opcore purposes while removing foreign CPU syntax from the active shard.
+  - Commit outcome: one focused stored-corpus conversion commit owns the four roots, references, and assignment changes.
   - Definition of done: the layout shard contains no foreign `.cpu` directive or Intel instruction spelling and never substitutes an adapted source at runtime
 
 - [ ] Item 8: add the section, region, linker, and output opcore parity shard
@@ -1463,36 +1468,62 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Source requirement or finding IDs: Item 8 activation; user correction that Item 8 must not be skipped; user requirement that only 6502/65C02 tests participate and that no arbitrary case cap may exclude tests
   - Invariant: the shard is derived directly from every `LayoutOutput` root in `NATIVE_OPCORE_ASSIGNMENTS`, stages every owned support file, carries a same-source live Rust CLI binary oracle in memory, and supplies all cases to the fail-closed Level D runner without a runtime limit
   - Corpus correction: `module_metadata_block.asm` and `module_metadata_output.asm` replace Z80-specific output metadata with equivalent `m6502` output metadata; the permanent active-corpus guard rejects foreign output-target blocks and inline target selectors in addition to foreign CPUs and mnemonics
+  - Expected files: `crates/opforge-asm/src/native_reference_parity.rs`; `crates/opforge-asm/src/tests/native_fs_uae_parity.rs`; the two stored metadata roots and owned references; this plan.
   - Full quality gates: controlled reference regeneration for the two owned `.lst` files; non-update reference comparison; focused Level A/B uncapped staging test; first complete Level D shard; staged native-porting gate; workflow gate; full serial Rust quality gate
   - First red evidence: the complete 16-root Level D run attempted every assigned root in 361.05s. Six roots completed with fresh zero exits and exact Rust bytes; ten failed as real product boundaries: the four `linker_regions_*` roots first expose missing `.pack`/`.mapfile` routing, the three `module_metadata_*` roots expose missing metadata preprocessing/runtime behavior, `module_qualified_section_map` exposes qualified logical-section-map handling, and `section_module_use_{autoload,include}` expose imported section-layout/origin handling. These are not emulator completion failures and no root is removed or capped.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` confirms inventory-derived uncapped staging, CPU scope, fresh same-case oracles, and separately numbered red frontiers.
+  - Commit outcome: one focused shard-activation commit adds the permanent complete Level D entrypoint and its 6502/65C02 corpus corrections.
   - Definition of done: Item 8 has a permanent complete Level D entrypoint and each red frontier has a separately numbered remediation item rather than an exclusion
 
 - [x] Item 8.1: implement native `.pack` layout parity for stored linker roots
   - Source requirement or finding IDs: Item 8.0 first red boundary for `linker_regions_full.asm` and `linker_regions_pack_no_dsection.asm`
   - Invariant: `.pack in REGION : SECTION...` places every named section sequentially using Rust alignment and BSS rules; it is not treated as a mnemonic
+  - Expected files: `native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm`; `native/motorola68000/amigaos/opasm/opasm_layout.asm`; focused Rust tests; this plan.
+  - Full quality gates: focused Level B `.pack` routing/placement proof; exact Level D `.pack` proof; uncapped 16-root Item 8 rerun; native formatter; staged native-porting gate; workflow gate; full serial Rust quality gate.
   - Implementation: the native directive router classifies `.pack` before selected-instruction dispatch, and the assembly driver parses the region plus every comma-separated section without a case-count cap and reuses the existing alignment-aware `layout.placeSectionV1` owner in source order
   - Focused proof: `motorola68020_item81_native_pack_reuses_ordered_section_placement` passes the Level A/B routing/ownership contract; `external_fs_uae_opforge_native_cli_item81_pack_matches_live_rust_bytes` completed a fresh unsandboxed FS-UAE run in 22.77s with explicit zero guest exit and exact byte equality against the in-memory Rust CLI oracle for the same whitespace-tight `65c02` source
   - Complete-shard evidence: the uncapped 16-root Level D Item 8 rerun attempted every assigned root in 363.97s. The shard remains honestly red at ten cases, but both stored `.pack` roots advanced through `.pack` and now fail first at the separately scoped `.mapfile` boundary in Item 8.2. One later launcher terminated with `SIGSEGV` only after its guest had supplied a nonzero exit; that case remained a failure and was not accepted as proof.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` confirms the slice is limited to ordered `.pack` placement and does not weaken the parent shard.
+  - Commit outcome: one focused native `.pack` layout-parity commit.
   - Definition of done: focused Level B layout contracts and exact Level D reruns advance both roots beyond `.pack` without weakening the parent shard
 
-- [ ] Item 8.2: implement native `.mapfile` and `.exportsections` artifact parity
+- [x] Item 8.2: implement native `.mapfile` and `.exportsections` artifact parity
   - Source requirement or finding IDs: Item 8.0 first red boundary for the four `linker_regions_*` roots after layout directives
   - Invariant: every source-declared map and exported-section artifact is freshly written and byte-for-byte equal to the artifact produced by the same-source Rust CLI case
+  - Expected files: native opasm layout/engine/driver files; native CLI artifact capture, rendering, DOS, state, and output files; `crates/opforge-asm/src/fs_uae_smoke.rs`; focused Rust tests; the source-artifact slice manifest; README/manual; this plan.
+  - Full quality gates: focused Level B capture and fail-closed verifier tests; mandatory four-root Level D exact-artifact proof; uncapped 16-root Item 8 rerun; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; native formatter; staged native-porting gate; workflow gate; full serial Rust quality gate.
+  - Implementation: source `.output`, `.mapfile`, and `.exportsections` requests are captured in source order and rendered after pass two from the retained image, region, section, visibility, and placed-label state. AmigaDOS child paths use `dos.library/AddPart()` rather than Unix-like string joining, and directory locks are released before child files are opened. PC-backed labels are rebased through final section placement before pass-two expression evaluation, so forward references and rendered maps share one final layout.
+  - Focused proof: `motorola68020_item82_native_source_artifact_requests_are_preserved` and the native CLI assembly-format test pass. The mandatory four-root `native_item82_linker_artifacts_fs_uae` run passed in 92.45s with fresh protocols, explicit zero guest exits, and exact equality for all declared binary, PRG, map, image, and exported-section artifacts against each actual source's in-memory Rust oracle.
+  - Complete-shard evidence: the uncapped 16-root `native_reference_opcore_layout_output_fs_uae` rerun attempted every assigned root in 369.17s. Ten roots passed, including all four Item 8.2 linker roots. Exactly the six separately numbered Item 8.3–8.5 frontiers remained red: three metadata roots, one qualified-section-map root, and both imported-section-layout roots. No root was excluded or accepted without guest completion.
+  - Plan-compliance review evidence: exact-index `plan-compliance-reviewer` must confirm complete same-case artifact ownership, fail-closed protocol/evidence cleanup, AmigaDOS path correctness, and scope limited to Item 8.2 before commit.
+  - Commit outcome: one focused native source-artifact parity commit with its fail-closed multi-artifact proof and documentation.
   - Definition of done: the four linker roots prove all declared binary/PRG/map/exported-section artifacts; no stored reference filename selects an oracle
 
 - [ ] Item 8.3: implement native root metadata and 6502 output-selection parity
   - Source requirement or finding IDs: Item 8.0 first red boundary for the three `module_metadata_*` roots
   - Invariant: block and inline metadata forms select the same m6502 names/list/hex/bin/fill behavior as Rust without foreign target metadata
+  - Expected files: native CLI metadata preprocessing/routing/output owners; focused Rust tests; this plan.
+  - Full quality gates: focused Level B metadata routing/state tests; exact three-root Level D proof; uncapped 16-root Item 8 rerun; native formatter; staged native-porting gate; workflow gate; full serial Rust quality gate.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` must confirm the slice is limited to root metadata and 6502 output selection.
+  - Commit outcome: one focused native metadata/output-selection parity commit.
   - Definition of done: all three stored metadata roots complete with exact declared artifacts under the parent shard
 
 - [ ] Item 8.4: implement qualified logical-section-map layout parity
   - Source requirement or finding IDs: Item 8.0 first red boundary for `module_qualified_section_map.asm`
   - Invariant: qualified imports and logical-section mapping preserve reachability and placement exactly like Rust
+  - Expected files: native module/use and opasm layout owners; focused Rust tests; this plan.
+  - Full quality gates: focused Level B qualified mapping tests; exact stored-root Level D proof; uncapped 16-root Item 8 rerun; native formatter; staged native-porting gate; workflow gate; full serial Rust quality gate.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` must confirm the slice is limited to qualified logical-section mapping.
+  - Commit outcome: one focused qualified-section-map parity commit.
   - Definition of done: the complete stored root reaches a zero guest exit and exact same-source Rust artifact bytes
 
 - [ ] Item 8.5: implement imported section-layout/origin parity
   - Source requirement or finding IDs: Item 8.0 first red boundary for `section_module_use_autoload.asm` and `section_module_use_include.asm`
   - Invariant: imported constants do not corrupt section origin or placement state in either autoload or include expansion
+  - Expected files: native include/module expansion and opasm origin/layout owners; focused Rust tests; this plan.
+  - Full quality gates: focused Level B imported-origin tests; exact two-root Level D proof; uncapped 16-root Item 8 rerun; native formatter; staged native-porting gate; workflow gate; full serial Rust quality gate.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` must confirm the slice is limited to imported section origin/layout behavior.
+  - Commit outcome: one focused imported section-layout/origin parity commit.
   - Definition of done: both full stored roots, including their exact support trees, match same-source Rust bytes under Level D
 
 - [x] Item 9.1: store the active diagnostic corpus as 6502/65C02 source
@@ -1502,6 +1533,8 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Expected files: the eighteen directly stored diagnostic roots and owned `.err` artifacts; `crates/opforge-asm/src/native_reference_parity.rs`; this plan
   - Full quality gates: controlled golden-reference regeneration; non-update `examples_match_reference_outputs`; focused `native_reference_` inventory tests; staged native-porting gate; workflow gate; full serial Rust quality gate
   - Validation evidence: the controlled refresh retains the same first fail-closed diagnostic category for each rewritten root; all eighteen roots are exact stored source with `DirectMos65c02`; repository search and the permanent inventory test find no active foreign CPU or mnemonic spelling. Bulk reference refresh approved for exactly fourteen changed paths: retired `dialect_mnemonic_fixit_error.err` and `dialect_parser_fixit_error.err`; added `mos65c02_mnemonic_error.err` and `mos65c02_parser_error.err`; and refreshed `directive_typo_elseif_fixit_error.err`, `directive_typo_endif_fixit_error.err`, `directive_typo_endmatch_fixit_error.err`, `directive_typo_endmodule_fixit_error.err`, `directive_typo_endsection_fixit_error.err`, `errors.err`, `macro_cross_module_error.err`, `segment_cross_module_error.err`, `statement_cross_module_error.err`, and `statement_private_import_error.err`. This is ownership-based evidence for the rewritten cases, not a test-count cutoff.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` confirms direct stored 6502/65C02 diagnostic ownership, exact reference scope, and no runtime adaptation.
+  - Commit outcome: one focused diagnostic-corpus conversion commit owns the stored sources, references, assignments, and inventory guards.
   - Definition of done: every active opcore source is CPU-neutral or 6502/65C02 source; no runtime adaptation or foreign diagnostic case is included; Item 9 native diagnostic parity remains a separate fail-closed execution requirement
 
 - [ ] Item 9: add the deterministic opcore diagnostic parity shard

@@ -403,6 +403,14 @@ storeLabel
 	moveq #0, d6
 	move.w OpasmEngineLabelCount.l, d6
 	move.l d6, d5
+	add.l d5, d5
+	lea OpasmEngineLabelStatementIndexTable.l, a0
+	move.l d7, d4
+	lsr.l #6, d4
+	move.w d4, 0(a0, d5.l)
+	lea OpasmEngineLabelPcBackedTable.l, a0
+	move.b #1, 0(a0, d6.l)
+	move.l d6, d5
 	lsl.l #2, d5
 	lea OpasmEngineLabelValueTable.l, a0
 	move.l OpasmEngineSessionCurrentPc.l, 0(a0, d5.l)
@@ -520,6 +528,14 @@ storeLabel
 	moveq #0, d6
 	move.w OpasmEngineLabelCount.l, d6
 	move.l d6, d5
+	add.l d5, d5
+	lea OpasmEngineLabelStatementIndexTable.l, a0
+	move.l d7, d4
+	lsr.l #6, d4
+	move.w d4, 0(a0, d5.l)
+	lea OpasmEngineLabelPcBackedTable.l, a0
+	clr.b 0(a0, d6.l)
+	move.l d6, d5
 	lsl.l #2, d5
 	lea OpasmEngineLabelValueTable.l, a0
 	move.l d3, 0(a0, d5.l)
@@ -565,6 +581,14 @@ duplicate
 updateExisting
 	moveq #0, d5
 	move.w d6, d5
+	move.l d5, d0
+	add.l d0, d0
+	lea OpasmEngineLabelStatementIndexTable.l, a0
+	move.l d7, d1
+	lsr.l #6, d1
+	move.w d1, 0(a0, d0.l)
+	lea OpasmEngineLabelPcBackedTable.l, a0
+	clr.b 0(a0, d5.l)
 	lsl.l #2, d5
 	lea OpasmEngineLabelValueTable.l, a0
 	move.l d3, 0(a0, d5.l)
@@ -1474,6 +1498,89 @@ opasmEngineGetLabelValueV1	.block
 	move.l (sp)+, d1
 	rts
 	.bend  ; opasmEngineGetLabelValueV1
+
+; Return a PC-backed label's current value for pass-boundary layout rebasing.
+; Inputs: D0 = label index. Outputs: D0 = value, D1 = 1 when PC-backed;
+; otherwise D0/D1 = 0.
+opasmEngineGetPcBackedLabelValueV1	.block
+	movem.l d2/a0, -(sp)
+	moveq #0, d2
+	move.w d0, d2
+	cmp.w OpasmEngineLabelCount.l, d2
+	bhs.s notPcBacked
+	lea OpasmEngineLabelPcBackedTable.l, a0
+	tst.b 0(a0, d2.l)
+	beq.s notPcBacked
+	move.l d2, d0
+	jsr opasmEngineGetLabelValueV1
+	moveq #1, d1
+	bra.s return
+notPcBacked
+	clr.l d0
+	clr.l d1
+return
+	movem.l (sp)+, d2/a0
+	rts
+	.bend  ; opasmEngineGetPcBackedLabelValueV1
+
+; Replace one PC-backed label value after pass-one layout placement.
+; Inputs: D0 = label index; D1 = final placed value.
+; Outputs: D0 = 0 on success, 1 for invalid/non-PC-backed label.
+opasmEngineSetPcBackedLabelValueV1	.block
+	movem.l d2-d3/a0, -(sp)
+	moveq #0, d2
+	move.w d0, d2
+	cmp.w OpasmEngineLabelCount.l, d2
+	bhs.s fail
+	lea OpasmEngineLabelPcBackedTable.l, a0
+	tst.b 0(a0, d2.l)
+	beq.s fail
+	move.l d2, d3
+	lsl.l #2, d3
+	lea OpasmEngineLabelValueTable.l, a0
+	move.l d1, 0(a0, d3.l)
+	moveq #0, d0
+	bra.s return
+fail
+	moveq #1, d0
+return
+	movem.l (sp)+, d2-d3/a0
+	rts
+	.bend  ; opasmEngineSetPcBackedLabelValueV1
+
+; Return the final placed value for one label. PC-backed labels use the owning
+; statement's pass-two output address; const/var/set labels retain their stored
+; value. This keeps artifact rendering tied to the same assembled statement
+; state without changing expression-resolution ownership.
+; Inputs: D0 = label index. Outputs: D0 = final value.
+opasmEngineGetLabelPlacedValueV1	.block
+	movem.l d1-d2/a0, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	cmp.w OpasmEngineLabelCount.l, d1
+	bhs.s invalid
+	lea OpasmEngineLabelPcBackedTable.l, a0
+	tst.b 0(a0, d1.l)
+	beq.s storedValue
+	move.l d1, d2
+	add.l d2, d2
+	lea OpasmEngineLabelStatementIndexTable.l, a0
+	moveq #0, d1
+	move.w 0(a0, d2.l), d1
+	lsl.l #2, d1
+	lea OpasmEngineStmtOutputAddrTable.l, a0
+	move.l 0(a0, d1.l), d0
+	bra.s return
+storedValue
+	move.l d1, d0
+	jsr opasmEngineGetLabelValueV1
+	bra.s return
+invalid
+	clr.l d0
+return
+	movem.l (sp)+, d1-d2/a0
+	rts
+	.bend  ; opasmEngineGetLabelPlacedValueV1
 
 ; Return whether one native label is finalized.
 ; Inputs: D0 = label index.
@@ -2712,6 +2819,10 @@ OpasmEngineLabelValueTable
 OpasmEngineLabelNameTable
 	.res byte, NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
 OpasmEngineLabelFinalizedTable
+	.res byte, NATIVE_LABEL_TABLE_CAPACITY
+OpasmEngineLabelStatementIndexTable
+	.res word, NATIVE_LABEL_TABLE_CAPACITY
+OpasmEngineLabelPcBackedTable
 	.res byte, NATIVE_LABEL_TABLE_CAPACITY
 OpasmEngineImageBuffer
 	.res byte, NATIVE_IMAGE_BUFFER_CAPACITY

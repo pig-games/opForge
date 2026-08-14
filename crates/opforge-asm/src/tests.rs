@@ -14311,6 +14311,78 @@ fn motorola68020_item81_native_pack_reuses_ordered_section_placement() {
 }
 
 #[test]
+fn motorola68020_item82_native_source_artifact_requests_are_preserved() {
+    let repo_root = workspace_root();
+    let line_processor = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read native line processor");
+    let handlers = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/directive_handlers.asm"),
+    )
+    .expect("read native directive handlers");
+    let artifacts = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/source_artifacts.asm"),
+    )
+    .expect("read native source artifact owner");
+    let run =
+        fs::read_to_string(repo_root.join("native/motorola68000/amigaos/opforge-cli/run.asm"))
+            .expect("read native CLI run owner");
+
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "LEA strings.OutputDirectiveText, A1",
+            "MOVEQ #constants.NATIVE_ARTIFACT_REQUEST_OUTPUT, D1",
+            "JSR directive_handlers.opforgeNativeCliCaptureArtifactRequestLineV1",
+            "LEA strings.MapfileDirectiveText, A1",
+            "MOVEQ #constants.NATIVE_ARTIFACT_REQUEST_MAPFILE, D1",
+            "JSR directive_handlers.opforgeNativeCliCaptureArtifactRequestLineV1",
+            "LEA strings.ExportsectionsDirectiveText, A1",
+            "MOVEQ #constants.NATIVE_ARTIFACT_REQUEST_EXPORTSECTIONS, D1",
+            "JSR directive_handlers.opforgeNativeCliCaptureArtifactRequestLineV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &handlers,
+        &[
+            "opforgeNativeCliCaptureArtifactRequestLineV1 .BLOCK",
+            "CMPI.W #constants.NATIVE_ARTIFACT_REQUEST_CAPACITY, D7",
+            "LEA state.NativeCliArtifactRequestKinds, A0",
+            "LEA state.NativeCliArtifactRequestLengths, A0",
+            "LEA state.NativeCliArtifactRequestTexts, A1",
+            "ADDQ.W #1, state.NativeCliArtifactRequestCount",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &run,
+        &[
+            "writeSourceArtifacts",
+            "JSR source_artifacts.opforgeNativeCliWriteSourceArtifactsV1",
+            "BEQ.S outputOk",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &artifacts,
+        &[
+            "opforgeNativeCliWriteSourceArtifactsV1 .BLOCK",
+            "requestLoop",
+            "BSR.W restoreRequestLineV1",
+            "CMPI.W #constants.NATIVE_ARTIFACT_REQUEST_OUTPUT, D6",
+            "CMPI.W #constants.NATIVE_ARTIFACT_REQUEST_MAPFILE, D6",
+            "CMPI.W #constants.NATIVE_ARTIFACT_REQUEST_EXPORTSECTIONS, D6",
+            "outputRequest",
+            "JSR directive_handlers.opforgeNativeCliParseOutputLine",
+            "JSR output.opforgeNativeCliWriteFlatOutput",
+            "mapRequest",
+            "BSR.W buildMapArtifactV1",
+            "exportRequest",
+            "BSR.W writeExportedSectionsV1",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_item7_native_layout_operand_eval_uses_tkpkg_expr_service() {
     let repo_root = workspace_root();
     let driver_path =

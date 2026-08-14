@@ -264,11 +264,18 @@ pub(crate) struct OpforgeNativeCliParityCase<'a> {
 }
 
 #[derive(Clone, Copy)]
+pub(crate) struct OpforgeNativeCliExpectedArtifact<'a> {
+    pub(crate) relative_path: &'a str,
+    pub(crate) rust_oracle: &'a [u8],
+}
+
+#[derive(Clone, Copy)]
 pub(crate) enum OpforgeNativeCliProof<'a> {
     ExactArtifact {
         relative_path: &'a str,
         rust_oracle: &'a [u8],
     },
+    ExactArtifacts(&'a [OpforgeNativeCliExpectedArtifact<'a>]),
     ExpectedFailureWithDiagnostic,
     ExpectedFailureContaining(&'a str),
 }
@@ -763,36 +770,16 @@ fn verify_native_cli_case_proof(
         OpforgeNativeCliProof::ExactArtifact {
             relative_path,
             rust_oracle,
-        } => {
-            if !run.success || run.exit_code != Some(0) {
-                return Err(format!(
-                    "FS-UAE proof for {} is invalid: guest exit was {:?}, expected exactly 0\nstdout:\n{}\nstderr:\n{}",
-                    case.name, run.exit_code, run.stdout, run.stderr
-                ));
-            }
-            let relative_output_path = PathBuf::from(relative_path);
-            let actual = run
-                .captured_artifacts
-                .get(&relative_output_path)
-                .cloned()
-                .ok_or_else(|| {
-                    format!(
-                        "FS-UAE proof for {} did not produce the required output {}",
-                        case.name,
-                        relative_output_path.display()
-                    )
-                })?;
-            if actual != rust_oracle {
-                return Err(format!(
-                    "FS-UAE byte parity failed for {}: native output ({} bytes) is not byte-for-byte equal to the in-memory Rust oracle ({} bytes); {}",
-                    case.name,
-                    actual.len(),
-                    rust_oracle.len(),
-                    describe_first_byte_mismatch(&actual, rust_oracle)
-                ));
-            }
-            run.verified_output = Some(actual);
-            Ok(())
+        } => verify_exact_native_cli_artifacts(
+            case,
+            run,
+            &[OpforgeNativeCliExpectedArtifact {
+                relative_path,
+                rust_oracle,
+            }],
+        ),
+        OpforgeNativeCliProof::ExactArtifacts(artifacts) => {
+            verify_exact_native_cli_artifacts(case, run, artifacts)
         }
         OpforgeNativeCliProof::ExpectedFailureWithDiagnostic
         | OpforgeNativeCliProof::ExpectedFailureContaining(_) => {
@@ -820,6 +807,67 @@ fn verify_native_cli_case_proof(
             Ok(())
         }
     }
+}
+
+fn verify_exact_native_cli_artifacts(
+    case: &OpforgeNativeCliParityCase<'_>,
+    run: &mut FsUaeSmokeRun,
+    artifacts: &[OpforgeNativeCliExpectedArtifact<'_>],
+) -> Result<(), String> {
+    if artifacts.is_empty() {
+        return Err(format!(
+            "FS-UAE proof for {} is invalid: exact artifact proof declared no artifacts",
+            case.name
+        ));
+    }
+    if !run.success || run.exit_code != Some(0) {
+        let captured = run
+            .captured_artifacts
+            .keys()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "FS-UAE proof for {} is invalid: guest exit was {:?}, expected exactly 0; fresh captured paths: [{}]\nstdout:\n{}\nstderr:\n{}",
+            case.name, run.exit_code, captured, run.stdout, run.stderr
+        ));
+    }
+
+    let mut errors = Vec::new();
+    let mut first_verified = None;
+    for artifact in artifacts {
+        let relative_output_path = PathBuf::from(artifact.relative_path);
+        let Some(actual) = run.captured_artifacts.get(&relative_output_path).cloned() else {
+            errors.push(format!(
+                "did not produce required output {}",
+                relative_output_path.display()
+            ));
+            continue;
+        };
+        if actual != artifact.rust_oracle {
+            errors.push(format!(
+                "{}: native output ({} bytes) differs from the in-memory Rust oracle ({} bytes); {}",
+                relative_output_path.display(),
+                actual.len(),
+                artifact.rust_oracle.len(),
+                describe_first_byte_mismatch(&actual, artifact.rust_oracle)
+            ));
+            continue;
+        }
+        if first_verified.is_none() {
+            first_verified = Some(actual);
+        }
+    }
+    if !errors.is_empty() {
+        return Err(format!(
+            "FS-UAE exact artifact proof failed for {} after checking all {} declared artifacts:\n{}",
+            case.name,
+            artifacts.len(),
+            errors.join("\n")
+        ));
+    }
+    run.verified_output = first_verified;
+    Ok(())
 }
 
 fn describe_first_byte_mismatch(actual: &[u8], expected: &[u8]) -> String {
@@ -1242,6 +1290,15 @@ fn opforge_native_cli_case_identity(
             state = fnv1a64_update(state, relative_path.as_bytes());
             state = fnv1a64_update(state, &[0]);
             state = fnv1a64_update(state, rust_oracle);
+        }
+        OpforgeNativeCliProof::ExactArtifacts(artifacts) => {
+            state = fnv1a64_update(state, b"exact-artifacts");
+            for artifact in artifacts {
+                state = fnv1a64_update(state, &[0]);
+                state = fnv1a64_update(state, artifact.relative_path.as_bytes());
+                state = fnv1a64_update(state, &[0]);
+                state = fnv1a64_update(state, artifact.rust_oracle);
+            }
         }
         OpforgeNativeCliProof::ExpectedFailureWithDiagnostic => {
             state = fnv1a64_update(state, b"failure-with-diagnostic");
@@ -1822,14 +1879,43 @@ fn run_opforge_native_cli_parity_batch_cases(
 
     let captured_artifacts = capture_artifact_files(&artifact_dir)?;
     let mut runs = Vec::with_capacity(cases.len());
+    let mut proof_errors = Vec::new();
     for (case, case_paths) in cases.iter().zip(batch_paths.iter()) {
-        let exit_code = read_optional_exit_code(&case_paths.exit_code_path)?;
-        let stdout = read_optional_text(&case_paths.stdout_path)?.unwrap_or_default();
-        let stderr = read_optional_text(&case_paths.stderr_path)?.unwrap_or_default();
-        let started_matches = read_optional_text(&case_paths.started_path)?
-            .is_some_and(|value| value.trim() == case_paths.expected_started);
-        let done_matches = read_optional_text(&case_paths.done_path)?
-            .is_some_and(|value| value.trim() == case_paths.expected_done);
+        let exit_code = match read_optional_exit_code(&case_paths.exit_code_path) {
+            Ok(value) => value,
+            Err(error) => {
+                proof_errors.push(format!("{} exit evidence: {error}", case.name));
+                None
+            }
+        };
+        let stdout = match read_optional_text(&case_paths.stdout_path) {
+            Ok(value) => value.unwrap_or_default(),
+            Err(error) => {
+                proof_errors.push(format!("{} stdout evidence: {error}", case.name));
+                String::new()
+            }
+        };
+        let stderr = match read_optional_text(&case_paths.stderr_path) {
+            Ok(value) => value.unwrap_or_default(),
+            Err(error) => {
+                proof_errors.push(format!("{} stderr evidence: {error}", case.name));
+                String::new()
+            }
+        };
+        let started_matches = match read_optional_text(&case_paths.started_path) {
+            Ok(value) => value.is_some_and(|text| text.trim() == case_paths.expected_started),
+            Err(error) => {
+                proof_errors.push(format!("{} start evidence: {error}", case.name));
+                false
+            }
+        };
+        let done_matches = match read_optional_text(&case_paths.done_path) {
+            Ok(value) => value.is_some_and(|text| text.trim() == case_paths.expected_done),
+            Err(error) => {
+                proof_errors.push(format!("{} completion evidence: {error}", case.name));
+                false
+            }
+        };
         let success = determine_batch_case_success(
             started_matches,
             done_matches,
@@ -1863,7 +1949,9 @@ fn run_opforge_native_cli_parity_batch_cases(
                 case_paths,
             ),
         };
-        verify_native_cli_case_proof(case, &mut run)?;
+        if let Err(error) = verify_native_cli_case_proof(case, &mut run) {
+            proof_errors.push(error);
+        }
         runs.push(run);
     }
 
@@ -1872,6 +1960,14 @@ fn run_opforge_native_cli_parity_batch_cases(
         return Err(format!(
             "FS-UAE proof artifact directory still exists after cleanup: {}",
             artifact_dir.display()
+        ));
+    }
+    if !proof_errors.is_empty() {
+        return Err(format!(
+            "{} FS-UAE case proof error(s) after all {} cases were evaluated:\n{}",
+            proof_errors.len(),
+            cases.len(),
+            proof_errors.join("\n")
         ));
     }
     Ok(FsUaeSmokeOutcome::Completed { runs })
@@ -3862,6 +3958,48 @@ mod tests {
         let mut run = proof_test_run(true, Some(0), Some(&expected));
         verify_native_cli_case_proof(&case, &mut run).expect("exact fresh byte proof");
         assert_eq!(run.verified_output.as_deref(), Some(expected.as_slice()));
+    }
+
+    #[test]
+    fn exact_artifact_set_requires_every_same_case_path_and_byte() {
+        let primary = [0xa9, 0x42];
+        let map = b"Regions\n";
+        let artifacts = [
+            OpforgeNativeCliExpectedArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &primary,
+            },
+            OpforgeNativeCliExpectedArtifact {
+                relative_path: "Work/build/case.map",
+                rust_oracle: map,
+            },
+        ];
+        let case = OpforgeNativeCliParityCase {
+            name: "complete-artifact-set",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(b".mapfile \"build/case.map\"\n"),
+            command_template: Some("{input} --bin {bin} --cpu 65c02"),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExactArtifacts(&artifacts),
+        };
+
+        let mut missing = proof_test_run(true, Some(0), Some(&primary));
+        assert!(verify_native_cli_case_proof(&case, &mut missing).is_err());
+
+        let mut mismatch = proof_test_run(true, Some(0), Some(&primary));
+        mismatch
+            .captured_artifacts
+            .insert(PathBuf::from("Work/build/case.map"), b"wrong".to_vec());
+        assert!(verify_native_cli_case_proof(&case, &mut mismatch).is_err());
+
+        let mut exact = proof_test_run(true, Some(0), Some(&primary));
+        exact
+            .captured_artifacts
+            .insert(PathBuf::from("Work/build/case.map"), map.to_vec());
+        verify_native_cli_case_proof(&case, &mut exact)
+            .expect("every declared artifact is fresh and exact");
     }
 
     #[test]

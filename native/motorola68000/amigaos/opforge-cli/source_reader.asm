@@ -164,6 +164,7 @@ fileEof
 closeOk
 	move.l d5, d1
 	jsr dos.close
+	move.w #1, state.NativeCliOutputBootstrapFromSource
 	moveq #0, d0
 	rts
 

@@ -219,6 +219,10 @@ IncludeDirectiveText
 	.byte ".include"
 OutputDirectiveText
 	.byte ".output"
+MapfileDirectiveText
+	.byte ".mapfile", 0
+ExportsectionsDirectiveText
+	.byte ".exportsections", 0
 IfDirectiveText
 	.byte ".if"
 IfdefDirectiveText

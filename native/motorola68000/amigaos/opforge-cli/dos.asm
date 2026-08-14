@@ -136,6 +136,29 @@ openOutput	.block
 	rts
 	.bend  ; openOutput
 
+; Create one AmigaDOS directory and return its lock.
+; Inputs: A0 = NUL-terminated path. Outputs: D0 = lock or zero.
+; Clobbers: D0-D1/A6/CCR. CCR: reflects the dos.library result.
+createDir	.block
+	move.l a0, d1
+	movea.l state.NativeCliDosBase, a6
+	jsr constants.CREATE_DIR(a6)
+	rts
+	.bend  ; createDir
+
+; Append one AmigaDOS path component using dos.library path semantics.
+; Inputs: A0 = writable NUL path, A1 = NUL component, D0 = path capacity.
+; Outputs: D0 = nonzero on success.
+; Clobbers: D0-D3/A6/CCR. CCR: reflects the dos.library result.
+addPart	.block
+	move.l a0, d1
+	move.l a1, d2
+	move.l d0, d3
+	movea.l state.NativeCliDosBase, a6
+	jsr constants.ADD_PART(a6)
+	rts
+	.bend  ; addPart
+
 ; Write D0 bytes from buffer A0 to file handle D1.
 writeOutput	.block
 	move.l a0, d2

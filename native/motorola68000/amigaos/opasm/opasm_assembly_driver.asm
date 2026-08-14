@@ -1318,6 +1318,8 @@ opasmDriverAdvancePc	.block
 	beq.w endsection
 	cmpi.w #directives.OPASM_DIRECTIVE_PLACE, d3
 	beq.w place
+	cmpi.w #directives.OPASM_DIRECTIVE_PACK, d3
+	beq.w pack
 	cmpi.w #directives.OPASM_DIRECTIVE_ALIGN, d3
 	beq.w align
 	cmpi.w #directives.OPASM_DIRECTIVE_DS, d3
@@ -1430,6 +1432,11 @@ endsection
 
 place
 	bsr.w processPlaceDirectiveForStatement
+	beq.w done
+	bra.s orgBad
+
+pack
+	bsr.w processPackDirectiveForStatement
 	beq.w done
 	bra.s orgBad
 
@@ -2021,6 +2028,160 @@ return
 	rts
 	.bend  ; processPlaceDirectiveForStatement
 
+; Pack named native section slices into one region in source order.
+; @opforge-owner: opasm.amigaos.layout
+; @opforge-slice: documentation/plans/slices/native-porting-slice-opasm-layout.toml
+; @opforge-role: delegation
+; Inputs: D7.W = statement index.
+; Outputs: D0.L = 0 on success, 1 on malformed, missing, duplicate, or overflowing state.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0.L on return.
+processPackDirectiveForStatement	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	jsr eng.opasmEngineGetSessionPassV1
+	cmpi.w #1, d0
+	bne.w ok
+	jsr layout.sectionActiveV1
+	bne.w fail
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	moveq #0, d0
+	move.w d7, d0
+	movea.l sp, a0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w metadataFail
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
+	beq.w metadataFail
+	bsr.w skipLineWhitespace
+	movea.l a0, a2
+	move.l d0, d2
+	lea InText, a1
+	moveq #2, d1
+	bsr.w lineStartsWith
+	beq.w metadataFail
+	addq.l #2, a2
+	subq.l #2, d2
+	movea.l a2, a0
+	move.l d2, d0
+	bsr.w skipLineWhitespace
+	movea.l a0, a2
+	move.l d0, d2
+	jsr layout.placeRegionNamePtrV1
+	movea.l a0, a1
+	movea.l a2, a0
+	move.l d2, d0
+	bsr.w copyNameTokenSlice
+	bne.w metadataFail
+	moveq #0, d0
+	move.w d3, d0
+	moveq #1, d1
+	jsr layout.setPlaceNameLenV1
+	adda.l d3, a2
+	sub.l d3, d2
+	movea.l a2, a0
+	move.l d2, d0
+	bsr.w skipLineWhitespace
+	movea.l a0, a2
+	move.l d0, d2
+	beq.w metadataFail
+	cmpi.b #':', (a2)
+	bne.w metadataFail
+	addq.l #1, a2
+	subq.l #1, d2
+	movea.l a2, a0
+	move.l d2, d0
+	bsr.w skipLineWhitespace
+	movea.l a0, a2
+	move.l d0, d2
+	beq.w metadataFail
+
+	move.l d2, -(sp)
+	move.l a2, -(sp)
+	moveq #0, d1
+	jsr layout.findPlaceNameV1
+	bne.w regionLookupFail
+	moveq #0, d0
+	move.w d5, d0
+	moveq #1, d1
+	jsr layout.setPlaceIndexV1
+	movea.l (sp)+, a2
+	move.l (sp)+, d2
+
+sectionLoop
+	movea.l a2, a0
+	move.l d2, d0
+	bsr.w skipLineWhitespace
+	movea.l a0, a2
+	move.l d0, d2
+	beq.w metadataFail
+	jsr layout.placeSectionNamePtrV1
+	movea.l a0, a1
+	movea.l a2, a0
+	move.l d2, d0
+	bsr.w copyNameTokenSlice
+	bne.w metadataFail
+	moveq #0, d0
+	move.w d3, d0
+	moveq #0, d1
+	jsr layout.setPlaceNameLenV1
+	adda.l d3, a2
+	sub.l d3, d2
+	movea.l a2, a0
+	move.l d2, d0
+	bsr.w skipLineWhitespace
+	movea.l a0, a2
+	move.l d0, d2
+
+	move.l d2, -(sp)
+	move.l a2, -(sp)
+	moveq #1, d1
+	jsr layout.findPlaceNameV1
+	bne.w sectionLookupFail
+	moveq #0, d0
+	move.w d5, d0
+	moveq #0, d1
+	jsr layout.setPlaceIndexV1
+	moveq #1, d0
+	jsr layout.placeSectionV1
+	bne.w sectionLookupFail
+	movea.l (sp)+, a2
+	move.l (sp)+, d2
+	beq.s metadataOk
+	cmpi.b #',', (a2)
+	bne.w metadataFail
+	addq.l #1, a2
+	subq.l #1, d2
+	bne.w sectionLoop
+	bra.w metadataFail
+
+regionLookupFail
+	addq.l #8, sp
+	bra.s metadataFail
+
+sectionLookupFail
+	addq.l #8, sp
+	bra.s metadataFail
+
+metadataOk
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	bra.s ok
+
+metadataFail
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	bra.s fail
+
+ok
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d7/a0-a3
+	rts
+	.bend  ; processPackDirectiveForStatement
+
 ; Set origin for a placed section, preserving first image origin and filling gaps.
 ; Inputs: D0.L = placed section base.
 ; Outputs: D0.L = 0 on success, 1 on image capacity failure.
@@ -2279,6 +2440,8 @@ loop
 	cmpi.b #9, d1
 	beq.s finish
 	cmpi.b #',', d1
+	beq.s finish
+	cmpi.b #':', d1
 	beq.s finish
 	tst.w d4
 	beq.w fail

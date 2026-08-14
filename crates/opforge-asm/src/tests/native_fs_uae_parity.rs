@@ -8215,6 +8215,54 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
 }
 
 #[test]
+fn external_fs_uae_opforge_native_cli_item81_pack_matches_live_rust_bytes() {
+    // Proof level D. The corrected invariant is that `.pack` places every
+    // named section into its region in source order through the same alignment
+    // path as repeated `.place` directives. The exact source and command below
+    // produce the in-memory Rust oracle used by this fresh native guest run.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let root = workspace_root();
+    let source = b".cpu 65c02\n.region ram, $1201, $12ff, align=2\n.section first, align=4\n.byte $11, $22\n.endsection\n.section second, align=8\n.byte $33\n.endsection\n.pack in ram:first, second\n";
+    let rust_oracle =
+        item7_live_rust_cli_binary_oracle("item81-pack-source-order", source, &[], "65c02", &[]);
+    let package = item6_mos_package_bytes();
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item81-pack-source-order",
+        cpu_override: "68020",
+        extra_assembly_defines: &defines,
+        source_override: Some(source),
+        command_template: Some("{input} --bin {bin} --cpu 65c02"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&root, &cases)
+        .expect("Item 8.1 .pack FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "the focused .pack case must complete");
+            assert!(
+                runs[0].success,
+                "native .pack case failed: {}",
+                runs[0].stdout
+            );
+            assert_eq!(
+                verified_fs_uae_output(&runs[0]),
+                rust_oracle,
+                "native .pack bytes differ from the same-case Rust oracle"
+            );
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_opforge_native_cli_item8_data_text_directives_match_rust_guided_bytes() {
     let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
         .lock()

@@ -1467,9 +1467,12 @@ produce deterministic diagnostics rather than silently truncate. The active
   - First red evidence: the complete 16-root Level D run attempted every assigned root in 361.05s. Six roots completed with fresh zero exits and exact Rust bytes; ten failed as real product boundaries: the four `linker_regions_*` roots first expose missing `.pack`/`.mapfile` routing, the three `module_metadata_*` roots expose missing metadata preprocessing/runtime behavior, `module_qualified_section_map` exposes qualified logical-section-map handling, and `section_module_use_{autoload,include}` expose imported section-layout/origin handling. These are not emulator completion failures and no root is removed or capped.
   - Definition of done: Item 8 has a permanent complete Level D entrypoint and each red frontier has a separately numbered remediation item rather than an exclusion
 
-- [ ] Item 8.1: implement native `.pack` layout parity for stored linker roots
+- [x] Item 8.1: implement native `.pack` layout parity for stored linker roots
   - Source requirement or finding IDs: Item 8.0 first red boundary for `linker_regions_full.asm` and `linker_regions_pack_no_dsection.asm`
   - Invariant: `.pack in REGION : SECTION...` places every named section sequentially using Rust alignment and BSS rules; it is not treated as a mnemonic
+  - Implementation: the native directive router classifies `.pack` before selected-instruction dispatch, and the assembly driver parses the region plus every comma-separated section without a case-count cap and reuses the existing alignment-aware `layout.placeSectionV1` owner in source order
+  - Focused proof: `motorola68020_item81_native_pack_reuses_ordered_section_placement` passes the Level A/B routing/ownership contract; `external_fs_uae_opforge_native_cli_item81_pack_matches_live_rust_bytes` completed a fresh unsandboxed FS-UAE run in 22.77s with explicit zero guest exit and exact byte equality against the in-memory Rust CLI oracle for the same whitespace-tight `65c02` source
+  - Complete-shard evidence: the uncapped 16-root Level D Item 8 rerun attempted every assigned root in 363.97s. The shard remains honestly red at ten cases, but both stored `.pack` roots advanced through `.pack` and now fail first at the separately scoped `.mapfile` boundary in Item 8.2. One later launcher terminated with `SIGSEGV` only after its guest had supplied a nonzero exit; that case remained a failure and was not accepted as proof.
   - Definition of done: focused Level B layout contracts and exact Level D reruns advance both roots beyond `.pack` without weakening the parent shard
 
 - [ ] Item 8.2: implement native `.mapfile` and `.exportsections` artifact parity

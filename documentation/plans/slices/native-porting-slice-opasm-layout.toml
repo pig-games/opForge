@@ -11,12 +11,12 @@ native_boundary = [
   "native/motorola68000/amigaos/opasm/opasm_layout.asm::alignCursorV1",
   "native/motorola68000/amigaos/opasm/opasm_layout.asm::alignPadV1"
 ]
-invariant = "Layout arithmetic and mutable region/section/place state are owned by the layout module while the driver retains only existing statement/session callbacks; the completed extraction will move region, section, and placement transitions without changing existing two-pass PC, image, or diagnostic behavior."
-expected_inputs = "Existing `.align`, `.region`, `.section`, `.endsection`, and `.place` statement metadata, evaluated operands, session PC, and image state."
+invariant = "Layout arithmetic and mutable region/section/place state are owned by the layout module while the driver retains only statement/session parsing callbacks; `.pack` delegates each named section to the same alignment-aware placement transition in source order without changing existing two-pass PC, image, or diagnostic behavior."
+expected_inputs = "`.align`, `.region`, `.section`, `.endsection`, `.place`, and `.pack in REGION : SECTION...` statement metadata, evaluated operands, session PC, and image state."
 expected_outputs = "The same accepted layout directives, two-pass sizes, PC progression, image bytes, and failure status."
-known_non_equivalences = "This is ownership-only work. It adds no layout syntax or semantics, CPU/family/dialect/instruction behavior, segment support, or statement support. Region/section/place state and transitions are layout-owned; the driver retains only statement tokenization, callbacks, and engine/image projection."
-fast_proof_command = "cargo test -p asm motorola68020_item7_native_layout_directives_route_before_selected_encoding -- --nocapture && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
-level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_bytes -- --nocapture --test-threads=1"
+known_non_equivalences = "This slice adds only `.pack` as another layout-owned placement spelling. It adds no CPU/family/dialect/instruction behavior, segment support, statement support, map generation, or exported-section artifact behavior. Region/section/place state and transitions remain layout-owned; the driver retains only statement tokenization, callbacks, and engine/image projection."
+fast_proof_command = "cargo test -p asm motorola68020_item81_native_pack_reuses_ordered_section_placement -- --nocapture && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_opforge_native_cli_item81_pack_matches_live_rust_bytes -- --nocapture --test-threads=1"
 level_d_fail_closed = true
 
 [[tests]]
@@ -30,3 +30,15 @@ name = "external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_gu
 proof_level = "D"
 proves = "The real native CLI preserves the established Rust-guided `.align`, region, section, and placement fixture bytes."
 does_not_prove = "New layout syntax or non-layout behavior."
+
+[[tests]]
+name = "motorola68020_item81_native_pack_reuses_ordered_section_placement"
+proof_level = "B"
+proves = "The driver classifies `.pack` before instruction selection and delegates every parsed section to the existing alignment-aware layout placement owner in source order."
+does_not_prove = "Real native execution, map artifacts, or exported-section artifacts."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_item81_pack_matches_live_rust_bytes"
+proof_level = "D"
+proves = "A fresh real native CLI run of the exact 65C02 `.pack` source completes with zero guest exit and byte-for-byte equality to its in-memory same-source Rust CLI oracle."
+does_not_prove = "Map artifacts, exported-section artifacts, or unrelated layout roots."

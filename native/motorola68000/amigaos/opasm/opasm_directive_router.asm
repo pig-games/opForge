@@ -25,6 +25,7 @@ OPASM_DIRECTIVE_LONG = 17
 OPASM_DIRECTIVE_TEXT = 18
 OPASM_DIRECTIVE_NULL = 19
 OPASM_DIRECTIVE_PTEXT = 20
+OPASM_DIRECTIVE_PACK = 21
 	.section code, kind=code
 
 ; Classify one non-structural assembly directive.
@@ -87,6 +88,10 @@ classifyV1	.block
 	moveq #5, d1
 	bsr.w directiveTry
 	bne.w classifyPlace
+	lea DirectivePackText, a2
+	moveq #4, d1
+	bsr.w directiveTry
+	bne.w classifyPack
 	lea DirectiveAlignText, a2
 	moveq #5, d1
 	bsr.w directiveTry
@@ -169,6 +174,9 @@ classifyEndsection
 	bra.w classifyDone
 classifyPlace
 	moveq #OPASM_DIRECTIVE_PLACE, d3
+	bra.w classifyDone
+classifyPack
+	moveq #OPASM_DIRECTIVE_PACK, d3
 	bra.w classifyDone
 classifyAlign
 	moveq #OPASM_DIRECTIVE_ALIGN, d3
@@ -291,6 +299,8 @@ DirectiveEndsectionText
 	.byte "endsection", 0
 DirectivePlaceText
 	.byte "place", 0
+DirectivePackText
+	.byte "pack", 0
 DirectiveAlignText
 	.byte "align", 0
 DirectiveDsText

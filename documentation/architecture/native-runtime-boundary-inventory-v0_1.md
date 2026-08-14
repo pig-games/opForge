@@ -52,7 +52,7 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   callback; scoped-struct repeat-label qualification callback; operand/evaluation request
   construction, including delegation of imported-label lookup without owning
   module visibility; selector/encoding adaptation; data/text sizing and emission;
-  remaining layout/region/section/place dispatch; event projection.
+  remaining layout/region/section/place/pack dispatch; event projection.
 - Inbound users: the CLI engine-callback adapter imports this driver; the
   driver is the session orchestration boundary, not a package or CPU owner.
 - Decision: orchestration stays here. Item 5.8 moves non-structural directive
@@ -77,8 +77,9 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Imports/outbound dependencies: the opasm engine only, for the existing
   session-pass and current-PC callbacks used by section transitions.
 - Mutable state: none.
-- Routine responsibility groups: case-insensitive bounded directive comparison
-  and aliases for existing data directives.
+- Routine responsibility groups: case-insensitive bounded directive comparison,
+  aliases for existing data directives, and numeric routing for layout-owned
+  `.pack` handling.
 - Inbound users: the assembly driver, which retains all callback orchestration,
   traversal, and handler execution.
 - Decision: this is a routing-only split. It neither owns structural-flow
@@ -136,7 +137,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   alignment values, placement indices, and scratch storage.
 - Routine responsibility groups: overflow-safe positive alignment,
   power-of-two padding arithmetic, bounded layout-name copy/comparison,
-  region/section/place validation and transitions, and word/long table-index
+  region/section/place validation and transitions, including sequential `.pack`
+  placement through the same transition owner, and word/long table-index
   calculation. The driver retains statement tokenization, callback dispatch,
   and engine/image projection only.
 - Decision: layout state and all region/section/place transitions are owned by

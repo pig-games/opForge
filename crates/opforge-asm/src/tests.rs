@@ -14259,6 +14259,58 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
 }
 
 #[test]
+fn motorola68020_item81_native_pack_reuses_ordered_section_placement() {
+    let repo_root = workspace_root();
+    let router = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_directive_router.asm"),
+    )
+    .expect("read opasm directive router source");
+    let driver = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read opasm assembly driver source");
+
+    assert!(source_contains_in_order(
+        &router,
+        &[
+            "OPASM_DIRECTIVE_PACK = 21",
+            "LEA DirectivePackText, A2",
+            "BNE.W classifyPack",
+            "classifyPack",
+            "MOVEQ #OPASM_DIRECTIVE_PACK, D3",
+            "DirectivePackText",
+            ".BYTE \"pack\", 0",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "CMPI.W #directives.OPASM_DIRECTIVE_PLACE, D3",
+            "BEQ.W place",
+            "CMPI.W #directives.OPASM_DIRECTIVE_PACK, D3",
+            "BEQ.W pack",
+            "pack",
+            "BSR.W processPackDirectiveForStatement",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "processPackDirectiveForStatement .BLOCK",
+            "LEA InText, A1",
+            "CMPI.B #':', (A2)",
+            "JSR layout.findPlaceNameV1",
+            "sectionLoop",
+            "JSR layout.findPlaceNameV1",
+            "JSR layout.setPlaceIndexV1",
+            "JSR layout.placeSectionV1",
+            "CMPI.B #',', (A2)",
+            "BNE.W sectionLoop",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_item7_native_layout_operand_eval_uses_tkpkg_expr_service() {
     let repo_root = workspace_root();
     let driver_path =

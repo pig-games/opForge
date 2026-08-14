@@ -147,7 +147,9 @@ Embedding documentation:
   consumes `.ifdef`/`.ifndef` branch selection before statement dispatch. The
   subset also renders root `.output`, `.mapfile`, and `.exportsections`
   artifacts after final section placement; AmigaDOS paths use native volume
-  and directory semantics rather than Unix path rules.
+  and directory semantics rather than Unix path rules. Root `.meta` block and
+  inline forms also select Rust-equivalent 6502-family BIN, listing, and HEX
+  artifacts.
 
 ## Development Shortcuts
 

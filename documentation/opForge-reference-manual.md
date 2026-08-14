@@ -959,6 +959,10 @@ Notes:
   in placed sections resolve to their final addresses, and artifact paths are
   composed with AmigaDOS volume/directory semantics (for example,
   `Work:build/sections/code.bin`).
+- Root `.meta` block and inline forms are consumed before native instruction
+  selection. Metadata `.list`, `.hex`, and `.bin` selections reuse the final
+  native source/symbol/image state, including qualified root symbols in listing
+  output.
 
 ## 4. Pseudo instructions
 

@@ -34,7 +34,7 @@ opforgeNativeCliCaptureArtifactRequestLineV1	.block
 	movem.l d1-d7/a0-a2, -(sp)
 	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_OUTPUT, d1
 	blo.w fail
-	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_EXPORTSECTIONS, d1
+	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_METADATA_BIN, d1
 	bhi.w fail
 	moveq #0, d7
 	move.w state.NativeCliArtifactRequestCount, d7

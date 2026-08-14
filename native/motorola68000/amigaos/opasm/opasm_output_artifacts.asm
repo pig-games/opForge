@@ -4,6 +4,7 @@
 	.cpu 68020
 
 	.use opasm.amigaos.engine
+	.use opasm.amigaos.flow_scopes as scopes
 
 OPASM_OUTPUT_PRG_BUFFER_CAPACITY = 4098
 OPASM_OUTPUT_HEX_BUFFER_CAPACITY = 12000
@@ -38,6 +39,37 @@ opasmOutputBuildBinArtifactV1	.block
 	moveq #0, d0
 	rts
 	.bend  ; opasmOutputBuildBinArtifactV1
+
+; Return one validated byte range from the current engine image. This keeps
+; engine-image ownership inside the artifact layer even when a higher-level
+; writer is composing selected source sections.
+; Inputs: D2.L = image offset; D3.L = byte count.
+; Outputs: D0.L = 0 on success, 1 when offset + count exceeds the image;
+;          A0 = first requested byte on success.
+; Clobbers: D0-D1/A0/CCR.
+opasmOutputGetImageRangeV1	.block
+	move.l d2, d1
+	add.l d3, d1
+	bcs.s fail
+	jsr engine.opasmEngineGetImageByteCountV1
+	cmp.l d0, d1
+	bhi.s fail
+	jsr engine.opasmEngineGetImageBufferPtrV1
+	adda.l d2, a0
+	moveq #0, d0
+	rts
+
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opasmOutputGetImageRangeV1
+
+; Return the origin associated with the current artifact image.
+; Outputs: D0.L = session origin.
+opasmOutputGetSessionOriginV1	.block
+	jsr engine.opasmEngineGetSessionOriginV1
+	rts
+	.bend  ; opasmOutputGetSessionOriginV1
 
 ; Build a Commodore PRG artifact from the current engine image.
 ; Inputs:
@@ -299,9 +331,26 @@ footer
 	moveq #0, d2
 
 symbolLoop
+	moveq #0, d4
+	jsr scopes.rootModuleNameV1
+	tst.l d0
+	beq.s symbolRawName
+	move.l d0, d6
+symbolModuleLoop
+	cmpi.l #15, d4
+	bhs.s symbolRawName
+	move.b (a0)+, (a2)+
+	addq.l #1, d4
+	subq.l #1, d6
+	bne.s symbolModuleLoop
+	cmpi.l #15, d4
+	bhs.s symbolRawName
+	move.b #'.', (a2)+
+	addq.l #1, d4
+
+symbolRawName
 	move.l d2, d0
 	jsr engine.opasmEngineGetLabelNameV1
-	moveq #0, d4
 
 symbolNameLoop
 	tst.b (a0)
@@ -552,7 +601,7 @@ OpasmHexDigits
 OpasmHexEofRecord
 	.byte ":00000001FF", 10
 OpasmListingTitle
-	.byte 0
+	.byte "opForge Assembler v0.9.7 | full-runtime | bundled", 10, 0
 OpasmListingHeader
 	.byte "ADDR    BYTES                    LINE  SOURCE", 10
 	.byte "------  -----------------------  ----  ------", 10, 0

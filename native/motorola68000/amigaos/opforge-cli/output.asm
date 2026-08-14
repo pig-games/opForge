@@ -4,7 +4,6 @@
 	.cpu 68020
 
 	.use opasm.amigaos.output_artifacts as artifacts
-	.use opasm.amigaos.engine as engine
 	.use opasm.amigaos.layout as layout
 	.use opforge.cli.state
 	.use opforge.cli.constants
@@ -185,7 +184,7 @@ firstBaseReady
 	beq.w nextSection
 	move.l d0, -(sp)
 	move.l d1, -(sp)
-	jsr engine.opasmEngineGetSessionOriginV1
+	jsr artifacts.opasmOutputGetSessionOriginV1
 	move.l 4(sp), d2
 	sub.l d0, d2
 	bcs.w sectionFail
@@ -193,11 +192,8 @@ firstBaseReady
 	move.l d2, d4
 	add.l d3, d4
 	bcs.w sectionFail
-	jsr engine.opasmEngineGetImageByteCountV1
-	cmp.l d0, d4
-	bhi.w sectionFail
-	jsr engine.opasmEngineGetImageBufferPtrV1
-	adda.l d2, a0
+	jsr artifacts.opasmOutputGetImageRangeV1
+	bne.w sectionFail
 	tst.w state.NativeCliSourceOutputImageSet
 	beq.s appendSectionBytes
 	move.l 4(sp), d4

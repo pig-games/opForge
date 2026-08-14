@@ -6428,6 +6428,18 @@ impl Drop for Item8RustDeclaredOutputDir {
     }
 }
 
+struct Item83RustMetadataOutputs(Vec<PathBuf>);
+
+impl Drop for Item83RustMetadataOutputs {
+    fn drop(&mut self) {
+        for path in &self.0 {
+            if path.exists() {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+}
+
 fn item7_native_source(
     assignment: &crate::native_reference_parity::NativeOpcoreAssignment,
 ) -> Vec<u8> {
@@ -6481,7 +6493,14 @@ fn item7_live_rust_cli_binary_oracle(
         args.push((*define).to_string());
     }
     let cli = Cli::parse_from(args);
-    run_with_cli_with_context(&cli).unwrap_or_else(|err| {
+    let mut config = validate_cli(&cli).unwrap_or_else(|err| {
+        panic!("validate same-case Rust Item 7 CLI oracle for {case_name}: {err:?}")
+    });
+    // Source-declared relative outputs belong to this case just as they do in
+    // the guest's fresh Work directory. Keeping them below the RAII case root
+    // prevents any later oracle from observing stale evidence.
+    config.out_dir = Some(case_dir.clone());
+    run_with_validated_cli_with_context(&cli, &config).unwrap_or_else(|err| {
         panic!("run same-case Rust Item 7 CLI oracle for {case_name}: {err:?}")
     });
     fs::read(&bin_path).unwrap_or_else(|err| {
@@ -6606,6 +6625,120 @@ fn item82_staged_cases() -> Vec<Item82StagedCase> {
                 artifacts.len(),
                 expected_paths.len(),
                 "every declared Item 8.2 artifact must have a fresh Rust oracle for {name}"
+            );
+            Item82StagedCase {
+                name,
+                source,
+                artifacts,
+            }
+        })
+        .collect()
+}
+
+fn item83_live_rust_cli_artifacts(
+    case_name: &str,
+    source: &[u8],
+    expected_paths: &[&'static str],
+) -> Vec<Item82StagedArtifact> {
+    let _metadata_output_lock = native_cli_schema_rust_prg_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let case_dir = create_temp_dir("item83-live-rust-cli-oracle");
+    let _case_dir_guard = Item7OracleDir(case_dir.clone());
+    let metadata_outputs = vec![
+        case_dir.join("opforge_6502_native_cli_smoke.lst"),
+        case_dir.join("meta-hex.hex"),
+    ];
+    for path in &metadata_outputs {
+        assert!(
+            !path.exists(),
+            "Item 8.3 Rust oracle output must start absent for {case_name}: {}",
+            path.display()
+        );
+    }
+    let _metadata_output_guard = Item83RustMetadataOutputs(metadata_outputs);
+    let input_path = case_dir.join("opforge_6502_native_cli_smoke.asm");
+    let bin_path = case_dir.join("opforge_native_out.bin");
+    fs::write(&input_path, source)
+        .unwrap_or_else(|err| panic!("write same-case Rust Item 8.3 root {case_name}: {err}"));
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        input_path.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        bin_path.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "65c02".to_string(),
+        "-I".to_string(),
+        case_dir.to_string_lossy().into_owned(),
+        "-M".to_string(),
+        case_dir.to_string_lossy().into_owned(),
+    ]);
+    let mut config = validate_cli(&cli).unwrap_or_else(|err| {
+        panic!("validate same-case Rust Item 8.3 CLI oracle for {case_name}: {err:?}")
+    });
+    // The guest command runs from its fresh mounted Work directory. Model that
+    // execution context without changing the authoritative command or process
+    // cwd, so relative metadata outputs remain inside this case's RAII tree.
+    config.out_dir = Some(case_dir.clone());
+    run_with_validated_cli_with_context(&cli, &config).unwrap_or_else(|err| {
+        panic!("run same-case Rust Item 8.3 CLI oracle for {case_name}: {err:?}")
+    });
+
+    expected_paths
+        .iter()
+        .map(|relative_path| {
+            let file_name = relative_path
+                .strip_prefix("Work/")
+                .expect("Item 8.3 artifact uses mounted Work prefix");
+            let host_path = if *relative_path == "Work/opforge_native_out.bin" {
+                bin_path.clone()
+            } else {
+                case_dir.join(file_name)
+            };
+            let rust_oracle = fs::read(&host_path).unwrap_or_else(|err| {
+                panic!(
+                    "read fresh same-case Rust Item 8.3 artifact {} for {case_name}: {err}",
+                    host_path.display()
+                )
+            });
+            Item82StagedArtifact {
+                relative_path,
+                rust_oracle,
+            }
+        })
+        .collect()
+}
+
+fn item83_staged_cases() -> Vec<Item82StagedCase> {
+    const ROOTS: &[(&str, &[&str])] = &[
+        (
+            "examples/opcore/module_metadata_block.asm",
+            &["Work/opforge_native_out.bin"],
+        ),
+        (
+            "examples/opcore/module_metadata_output.asm",
+            &["Work/opforge_native_out.bin"],
+        ),
+        (
+            "examples/opcore/module_metadata_outputs.asm",
+            &[
+                "Work/opforge_native_out.bin",
+                "Work/opforge_6502_native_cli_smoke.lst",
+                "Work/meta-hex.hex",
+            ],
+        ),
+    ];
+
+    ROOTS
+        .iter()
+        .map(|(name, expected_paths)| {
+            let source = fs::read(workspace_root().join(name))
+                .unwrap_or_else(|err| panic!("read Item 8.3 root {name}: {err}"));
+            let artifacts = item83_live_rust_cli_artifacts(name, &source, expected_paths);
+            assert_eq!(
+                artifacts.len(),
+                expected_paths.len(),
+                "every declared Item 8.3 artifact must have a fresh Rust oracle for {name}"
             );
             Item82StagedCase {
                 name,
@@ -8452,6 +8585,78 @@ fn native_item82_linker_artifacts_fs_uae() {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
             assert_eq!(runs.len(), staged.len(), "all four linker roots completed");
+            for ((run, case), expected_artifacts) in
+                runs.iter().zip(staged.iter()).zip(expected.iter())
+            {
+                assert!(run.success, "native {} failed: {}", case.name, run.stdout);
+                for artifact in expected_artifacts {
+                    assert_eq!(
+                        captured_fs_uae_artifact(run, artifact.relative_path),
+                        artifact.rust_oracle,
+                        "native artifact {} differs for {}",
+                        artifact.relative_path,
+                        case.name
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn native_item83_root_metadata_artifacts_fs_uae() {
+    // Proof level D. The three actual stored root-metadata sources each build
+    // their own in-memory Rust artifact set. The native guest must complete
+    // freshly with exit zero and match every same-case BIN/LST/HEX byte.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let root = workspace_root();
+    let staged = item83_staged_cases();
+    assert_eq!(
+        staged.len(),
+        3,
+        "the three assigned root-metadata cases are mandatory"
+    );
+    let package = item6_mos_package_bytes();
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let expected = staged
+        .iter()
+        .map(|case| {
+            case.artifacts
+                .iter()
+                .map(
+                    |artifact| crate::fs_uae_smoke::OpforgeNativeCliExpectedArtifact {
+                        relative_path: artifact.relative_path,
+                        rust_oracle: &artifact.rust_oracle,
+                    },
+                )
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let cases = staged
+        .iter()
+        .enumerate()
+        .map(
+            |(index, case)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name: case.name,
+                cpu_override: "68020",
+                extra_assembly_defines: &defines,
+                source_override: Some(&case.source),
+                command_template: Some("{input} --bin {bin} --cpu 65c02"),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &[],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifacts(&expected[index]),
+            },
+        )
+        .collect::<Vec<_>>();
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&root, &cases)
+        .expect("Item 8.3 exact artifact FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), staged.len(), "all metadata roots completed");
             for ((run, case), expected_artifacts) in
                 runs.iter().zip(staged.iter()).zip(expected.iter())
             {

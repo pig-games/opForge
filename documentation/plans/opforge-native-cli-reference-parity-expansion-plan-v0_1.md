@@ -1499,12 +1499,15 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: one focused native source-artifact parity commit with its fail-closed multi-artifact proof and documentation.
   - Definition of done: the four linker roots prove all declared binary/PRG/map/exported-section artifacts; no stored reference filename selects an oracle
 
-- [ ] Item 8.3: implement native root metadata and 6502 output-selection parity
+- [x] Item 8.3: implement native root metadata and 6502 output-selection parity
   - Source requirement or finding IDs: Item 8.0 first red boundary for the three `module_metadata_*` roots
   - Invariant: block and inline metadata forms select the same m6502 names/list/hex/bin/fill behavior as Rust without foreign target metadata
   - Expected files: native CLI metadata preprocessing/routing/output owners; focused Rust tests; this plan.
   - Full quality gates: focused Level B metadata routing/state tests; exact three-root Level D proof; uncapped 16-root Item 8 rerun; native formatter; staged native-porting gate; workflow gate; full serial Rust quality gate.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` must confirm the slice is limited to root metadata and 6502 output selection.
+  - Implementation: a target-neutral native root-metadata router consumes block and inline forms before instruction selection, records metadata lines for listing output, and captures list/hex/bin selections into the existing post-pass artifact pipeline. The opasm scope owner retains the root module name per pass so listing symbols render with Rust-equivalent qualification. Selected-section image reads remain behind the opasm artifact boundary, and each Rust oracle resolves relative metadata outputs only inside its own RAII-cleaned case directory matching the guest's fresh `Work` context.
+  - Focused proof: `motorola68020_item83_native_root_metadata_routes_output_artifacts` and the complete native CLI assembly test pass. After the target-neutral structural metadata-router, symmetric target-name folding, and RAII oracle-output corrections, the final mandatory `native_item83_root_metadata_artifacts_fs_uae` run passed all three stored roots in 69.27s with fresh guest protocols, explicit zero exits, and exact same-case in-memory Rust BIN artifacts. The stored `module_metadata_block.asm` root explicitly proves mixed-case `.M6502`/`.endM6502`; `module_metadata_outputs.asm` additionally proves exact listing and HEX bytes. The all-features workspace form and full serial Rust quality gate pass without creating a shared oracle output path.
+  - Complete-shard evidence: after the final structural metadata-router correction, the uncapped 16-root parent rerun attempted every assigned root in 371.11s. Thirteen roots passed. Exactly the three separately scoped Item 8.4–8.5 cases remained red: `module_qualified_section_map.asm`, `section_module_use_autoload.asm`, and `section_module_use_include.asm`.
+  - Plan-compliance review evidence: exact-index `plan-compliance-reviewer` must confirm the slice is limited to root metadata and 6502 output selection before commit.
   - Commit outcome: one focused native metadata/output-selection parity commit.
   - Definition of done: all three stored metadata roots complete with exact declared artifacts under the parent shard
 

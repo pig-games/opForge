@@ -18,6 +18,7 @@ OPASM_SCOPE_TEXT_CAPACITY = 64
 resetStateV1	.block
 	clr.w ScopeDepth
 	clr.w ModuleParentDepth.l
+	clr.w RootModuleNameSet.l
 	move.w #-1, ActiveModuleStatementIndex.l
 	moveq #0, d0
 	rts
@@ -42,6 +43,26 @@ activeModuleDone
 	tst.l d1
 	rts
 	.bend  ; activeModuleNameV1
+
+; Return the top-level module name retained for listing/map presentation after
+; the module scope itself has closed at the end of a pass.
+; Outputs: A0/D0 = name slice, or D0 = 0 when the source has no root module.
+rootModuleNameV1	.block
+	lea RootModuleName.l, a0
+	moveq #0, d0
+	tst.w RootModuleNameSet.l
+	beq.s done
+len
+	cmpi.l #OPASM_SCOPE_NAME_CAPACITY, d0
+	bhs.s done
+	tst.b 0(a0, d0.l)
+	beq.s done
+	addq.l #1, d0
+	bra.s len
+done
+	tst.l d0
+	rts
+	.bend  ; rootModuleNameV1
 
 ; Apply the current `.block` scope directive and skip it.
 ; Inputs: D7.W = current statement index.
@@ -102,7 +123,24 @@ beginModuleScopeV1	.block
 begin
 	clr.w ScopeDepth
 	move.w d7, ActiveModuleStatementIndex.l
-	bra.w beginNamespaceScopeV1
+	bsr.w beginNamespaceScopeV1
+	bne.s moduleFail
+	tst.w RootModuleNameSet.l
+	bne.s moduleDone
+	lea ScopeNames.l, a0
+	lea RootModuleName.l, a1
+	moveq #OPASM_SCOPE_NAME_CAPACITY - 1, d3
+copyRoot
+	move.b (a0)+, d0
+	move.b d0, (a1)+
+	beq.s rootCopied
+	dbra d3, copyRoot
+	clr.b -(a1)
+rootCopied
+	move.w #1, RootModuleNameSet.l
+moduleDone
+	moveq #0, d0
+	rts
 moduleFail
 	moveq #1, d0
 	rts
@@ -493,6 +531,12 @@ ModuleParentDepth
 
 ActiveModuleStatementIndex
 	.res word, 1
+
+RootModuleNameSet
+	.res word, 1
+
+RootModuleName
+	.res byte, OPASM_SCOPE_NAME_CAPACITY
 
 ScopeNames
 	.res byte, OPASM_SCOPE_DEPTH_CAPACITY * OPASM_SCOPE_NAME_CAPACITY

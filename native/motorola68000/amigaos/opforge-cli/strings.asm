@@ -223,6 +223,32 @@ MapfileDirectiveText
 	.byte ".mapfile", 0
 ExportsectionsDirectiveText
 	.byte ".exportsections", 0
+MetaDirectiveText
+	.byte ".meta", 0
+EndmetaDirectiveText
+	.byte ".endmeta", 0
+MetaNameDirectiveText
+	.byte ".meta.name", 0
+MetaVersionDirectiveText
+	.byte ".meta.version", 0
+MetaOutputNameDirectiveText
+	.byte ".meta.output.name", 0
+MetaOutputTargetPrefixText
+	.byte ".meta.output.", 0
+EndoutputDirectiveText
+	.byte ".endoutput", 0
+EndTargetPrefixText
+	.byte ".end", 0
+NameDirectiveText
+	.byte ".name", 0
+VersionDirectiveText
+	.byte ".version", 0
+ListDirectiveText
+	.byte ".list", 0
+HexDirectiveText
+	.byte ".hex", 0
+BinDirectiveText
+	.byte ".bin", 0
 IfDirectiveText
 	.byte ".if"
 IfdefDirectiveText

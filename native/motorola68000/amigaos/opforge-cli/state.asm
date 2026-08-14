@@ -354,6 +354,16 @@ NATIVE_CLI_MODULE_USE_STATE_BYTES = NATIVE_CLI_MODULE_USE_STATE_END - NativeCliM
 NativeCliArtifactRequestStateStart
 NativeCliArtifactRequestCount
 	.res word, 1
+NativeCliMetadataDepth
+	.res word, 1
+NativeCliMetadataOutputDepth
+	.res word, 1
+NativeCliMetadataTargetDepth
+	.res word, 1
+NativeCliMetadataTargetNameLen
+	.res word, 1
+NativeCliMetadataTargetName
+	.res byte, constants.TOKEN_BUFFER_CAPACITY
 NativeCliSourceOutputSectionCount
 	.res word, 1
 NativeCliSourceOutputSectionListActive

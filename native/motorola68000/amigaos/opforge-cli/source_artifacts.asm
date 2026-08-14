@@ -44,6 +44,12 @@ requestLoop
 	beq.s mapRequest
 	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_EXPORTSECTIONS, d6
 	beq.s exportRequest
+	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_METADATA_LIST, d6
+	beq.w metadataListRequest
+	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_METADATA_HEX, d6
+	beq.w metadataHexRequest
+	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_METADATA_BIN, d6
+	beq.w nextRequest
 	bra.w fail
 
 outputRequest
@@ -54,7 +60,7 @@ outputRequest
 	bne.w fail
 	jsr output.opforgeNativeCliWriteFlatOutput
 	bne.w fail
-	bra.s nextRequest
+	bra.w nextRequest
 
 mapRequest
 	bsr.w parseMapRequestV1
@@ -67,7 +73,7 @@ mapRequest
 	lea state.NativeCliMapPath, a0
 	bsr.w writeMapArtifactV1
 	bne.w fail
-	bra.s nextRequest
+	bra.w nextRequest
 
 exportRequest
 	bsr.w parseExportRequestV1
@@ -75,6 +81,28 @@ exportRequest
 	bsr.w ensureExportDirectoryV1
 	bne.w fail
 	bsr.w writeExportedSectionsV1
+	bne.w fail
+	bra.w nextRequest
+
+metadataListRequest
+	bsr.w selectMetadataListPathV1
+	bne.w fail
+	move.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat
+	lea state.NativeCliLstPath, a0
+	bsr.w ensureParentDirectoryV1
+	bne.w fail
+	jsr output.opforgeNativeCliWriteFlatOutput
+	bne.w fail
+	bra.w nextRequest
+
+metadataHexRequest
+	bsr.w selectMetadataHexPathV1
+	bne.w fail
+	move.w #constants.NATIVE_OUTPUT_FORMAT_HEX, state.NativeCliOutputFormat
+	lea state.NativeCliHexPath, a0
+	bsr.w ensureParentDirectoryV1
+	bne.w fail
+	jsr output.opforgeNativeCliWriteFlatOutput
 	bne.w fail
 
 nextRequest
@@ -145,6 +173,91 @@ lst
 	lea state.NativeCliLstPath, a0
 	rts
 	.bend  ; selectedOutputPathV1
+
+; Derive Rust's default metadata listing path by replacing the root source
+; suffix with `.lst` while preserving the AmigaDOS volume/directory spelling.
+selectMetadataListPathV1	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	lea state.NativeCliInputPath, a0
+	lea state.NativeCliLstPath, a1
+	movea.l a1, a2
+	moveq #0, d3
+	move.l #constants.PATH_BUFFER_CAPACITY - 1, d2
+copy
+	move.b (a0)+, d1
+	beq.s copied
+	tst.l d2
+	beq.s fail
+	move.b d1, (a1)+
+	subq.l #1, d2
+	cmpi.b #':', d1
+	beq.s resetDot
+	cmpi.b #'/', d1
+	beq.s resetDot
+	cmpi.b #'.', d1
+	bne.s copy
+	movea.l a1, a2
+	subq.l #1, a2
+	bra.s copy
+resetDot
+	movea.l a1, a2
+	bra.s copy
+copied
+	movea.l a2, a1
+	move.b #'.', (a1)+
+	move.b #'l', (a1)+
+	move.b #'s', (a1)+
+	move.b #'t', (a1)+
+	clr.b (a1)
+	moveq #0, d0
+	bra.s return
+fail
+	moveq #1, d0
+return
+	movem.l (sp)+, d1-d3/a0-a2
+	rts
+	.bend  ; selectMetadataListPathV1
+
+; Resolve `.hex "name"` as Rust's `name.hex` artifact next to the root source.
+selectMetadataHexPathV1	.block
+	movem.l d1-d4/a0-a2, -(sp)
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	cmpi.l #4, d0
+	blo.s fail
+	adda.l #4, a0
+	subq.l #4, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	lea state.NativeCliArtifactPathScratch, a1
+	bsr.w copyQuotedValueV1
+	bne.s fail
+	movea.l a1, a2
+	move.l #constants.PATH_BUFFER_CAPACITY - 5, d4
+end
+	tst.b (a2)
+	beq.s append
+	addq.l #1, a2
+	subq.l #1, d4
+	bne.s end
+	bra.s fail
+append
+	move.b #'.', (a2)+
+	move.b #'h', (a2)+
+	move.b #'e', (a2)+
+	move.b #'x', (a2)+
+	clr.b (a2)
+	lea state.NativeCliArtifactPathScratch, a0
+	lea state.NativeCliHexPath, a1
+	jsr directive_handlers.opforgeNativeCliResolveOutputPath
+	bra.s return
+fail
+	moveq #1, d0
+return
+	movem.l (sp)+, d1-d4/a0-a2
+	rts
+	.bend  ; selectMetadataHexPathV1
 
 ; Ensure the one parent directory named by A0 exists. The mounted case root and
 ; any pre-existing ancestors remain authoritative; this creates only the final

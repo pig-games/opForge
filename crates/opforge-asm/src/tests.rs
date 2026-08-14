@@ -16,8 +16,8 @@ use crate::output::{
 };
 use clap::Parser;
 use cli_core::{
-    run_with_cli_with_context, Cli, CliRunError, CliRunReport,
-    LabelOutputFormat as CliLabelOutputFormat, BUILD_PROFILE_SUMMARY, VERSION,
+    run_with_cli_with_context, run_with_validated_cli_with_context, validate_cli, Cli, CliRunError,
+    CliRunReport, LabelOutputFormat as CliLabelOutputFormat, BUILD_PROFILE_SUMMARY, VERSION,
 };
 use engine::{
     capabilities_report as engine_capabilities_report,
@@ -13549,7 +13549,7 @@ fn motorola68020_item13_native_bin_output_routes_through_artifact_layer() {
         &line_processor_source,
         &[
             "lea strings.OutputDirectiveText, a1",
-            "jsr directive_handlers.opforgeNativeCliParseOutputLine",
+            "jsr directive_handlers.opforgeNativeCliCaptureArtifactRequestLineV1",
             "lea strings.UseDirectiveText, a1",
             "jsr directive_handlers.opforgeNativeCliParseUseLine",
             "jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine",
@@ -14380,6 +14380,44 @@ fn motorola68020_item82_native_source_artifact_requests_are_preserved() {
             "BSR.W writeExportedSectionsV1",
         ]
     ));
+}
+
+#[test]
+fn motorola68020_item83_native_root_metadata_routes_output_artifacts() {
+    let repo_root = workspace_root();
+    let metadata =
+        fs::read_to_string(repo_root.join("native/motorola68000/amigaos/opforge-cli/metadata.asm"))
+            .expect("read native metadata router");
+    let source_artifacts = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/source_artifacts.asm"),
+    )
+    .expect("read native source artifact writer");
+    let mixed_case_target =
+        fs::read_to_string(repo_root.join("examples/opcore/module_metadata_block.asm"))
+            .expect("read stored mixed-case metadata target root");
+    assert!(metadata.contains("opforgeNativeCliRouteRootMetadataLineV1"));
+    assert!(metadata.contains("NATIVE_ARTIFACT_REQUEST_METADATA_LIST"));
+    assert!(metadata.contains("NATIVE_ARTIFACT_REQUEST_METADATA_HEX"));
+    assert!(metadata.contains("NATIVE_ARTIFACT_REQUEST_METADATA_BIN"));
+    assert!(metadata.contains("matchesInlineTargetNameV1"));
+    assert!(metadata.contains("routeStructuralTargetBoundaryV1"));
+    assert!(!metadata.to_ascii_lowercase().contains("m6502"));
+    assert!(source_contains_in_order(
+        &metadata,
+        &[
+            "bytesEqualFoldedV1 .BLOCK",
+            "CMPI.B #'A', D2",
+            "ADDI.B #32, D2",
+            "CMPI.B #'A', D3",
+            "ADDI.B #32, D3",
+            "CMP.B D3, D2",
+        ]
+    ));
+    assert!(mixed_case_target.contains(".M6502"));
+    assert!(mixed_case_target.contains(".endM6502"));
+    assert!(source_artifacts.contains("selectMetadataListPathV1"));
+    assert!(source_artifacts.contains("selectMetadataHexPathV1"));
+    assert!(source_artifacts.contains("opforgeNativeCliWriteFlatOutput"));
 }
 
 #[test]
@@ -20094,6 +20132,30 @@ fn read_example_error_reference(path: &Path) -> Option<String> {
 
 #[test]
 fn examples_match_reference_outputs() {
+    struct MetadataArtifactCleanup(Vec<PathBuf>);
+
+    impl Drop for MetadataArtifactCleanup {
+        fn drop(&mut self) {
+            for path in &self.0 {
+                if path.exists() {
+                    let _ = fs::remove_file(path);
+                }
+            }
+        }
+    }
+
+    let metadata_artifacts = vec![
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("opforge_6502_native_cli_smoke.lst"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("meta-hex.hex"),
+    ];
+    for path in &metadata_artifacts {
+        assert!(
+            !path.exists(),
+            "example metadata artifact must start absent: {}",
+            path.display()
+        );
+    }
+    let _metadata_artifact_cleanup = MetadataArtifactCleanup(metadata_artifacts);
     let repo_root = workspace_root();
     let examples_dir = repo_root.join("examples");
     let reference_dir = examples_dir.join("reference");

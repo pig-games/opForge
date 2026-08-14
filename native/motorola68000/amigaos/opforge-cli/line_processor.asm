@@ -20,6 +20,7 @@
 
 	.use opforge.cli.include_use
 	.use opforge.cli.directive_handlers
+	.use opforge.cli.metadata
 	.use opforge.cli.prvm_bridge
 
 	.use opforge.cli.assembly_session
@@ -57,6 +58,14 @@ conditionalFail
 	moveq #1, d0
 	rts
 conditionalPass
+	jsr metadata.opforgeNativeCliRouteRootMetadataLineV1
+	tst.l d0
+	beq.s metadataPass
+	bmi.w fail
+	moveq #0, d0
+	rts
+
+metadataPass
 	tst.w state.NativeCliPreprocessActiveDefinition
 	bpl.s visibilityPass
 	jsr preprocessor.opforgeNativeCliTrackVisibilityV1

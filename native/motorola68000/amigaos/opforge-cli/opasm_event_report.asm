@@ -186,6 +186,12 @@ badOrg
 
 serviceFailure
 	bsr.w reportEventErrorText
+	move.l abi.OPASM_EVENT_VALUE(a2), d0
+	beq.s serviceFailureDone
+	jsr text_output.opforgeNativeCliPutErrSpace
+	move.l abi.OPASM_EVENT_VALUE(a2), d0
+	jsr text_output.opforgeNativeCliPutErrU16Decimal
+serviceFailureDone
 	move.l #strings.NewlineText, d1
 	bra.s reportErrorText
 

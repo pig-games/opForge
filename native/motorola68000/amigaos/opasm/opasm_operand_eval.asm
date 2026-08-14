@@ -35,9 +35,14 @@ prepareExpressionRequestV1	.block
 	movea.l abi.OPASM_SERVICE_IMPORT_NAME_RESOLVER_PTR(a1), a2
 	move.l a2, d1
 	beq.s expressionImportReady
-	jsr scopes.activeModuleNameV1
-	tst.l d1
+	move.l 12(sp), d0
+	jsr eng.opasmEngineGetStatementOwnerTextV1
+	tst.l d0
 	beq.s expressionImportReady
+	movea.l a0, a1
+	move.l d0, d1
+	movea.l 4(sp), a0
+	move.l (sp), d0
 	jsr (a2)
 	tst.l d1
 	beq.s expressionImportMapped
@@ -64,8 +69,11 @@ prepareExpressionExtensionV1	.block
 
 ; Append the evaluation extension and imported aliases for a selected CPU
 ; instruction request. The original operand text remains authoritative.
-; Inputs/outputs match prepareExpressionExtensionV1.
+; Inputs: A0 = OPASM_SERVICE_* frame; D0.W = request bytes;
+;         D1.W = stored statement index.
+; Outputs: D0 = engine status.
 prepareSelectedExtensionV1	.block
+	move.w d1, SelectedStatementIndex.l
 	moveq #1, d1
 	bra.w prepareExtensionCommon
 	.bend  ; prepareSelectedExtensionV1
@@ -127,11 +135,16 @@ materializeSelectedImportAliases	.block
 	movea.l abi.OPASM_SERVICE_IMPORT_NAME_RESOLVER_PTR(a6), a2
 	move.l a2, d0
 	beq.w selectedAliasReturn
-	jsr scopes.activeModuleNameV1
-	tst.l d1
-	beq.w selectedAliasReturn
-	movea.l a1, a4
-	move.l d1, d5
+	suba.l a4, a4
+	moveq #0, d5
+	moveq #0, d0
+	move.w SelectedStatementIndex.l, d0
+	jsr eng.opasmEngineGetStatementOwnerTextV1
+	tst.l d0
+	beq.s selectedAliasOwnerReady
+	movea.l a0, a4
+	move.l d0, d5
+selectedAliasOwnerReady
 	movea.l abi.OPASM_SERVICE_IO_BUFFER_PTR(a6), a3
 	moveq #0, d4
 	move.b 8(a3), d4
@@ -185,6 +198,8 @@ selectedAliasTokenScan
 	bra.s selectedAliasTokenScan
 
 selectedAliasTokenReady
+	tst.l d5
+	beq.s selectedAliasTrySuffix
 	movem.l d2-d7/a2-a5, -(sp)
 	movea.l a3, a0
 	move.l d4, d0
@@ -200,30 +215,51 @@ selectedAliasTokenReady
 	move.l 8(sp), d1
 	adda.l #52, sp
 	tst.l d1
-	bne.w selectedAliasAdvanceToken
+	bne.s selectedAliasTrySuffix
+	move.l d0, -(sp)
+	move.l a0, -(sp)
 	jsr eng.opasmEngineResolveLabelValueV1
 	tst.l d0
-	bne.w selectedAliasAdvanceToken
-	cmpi.l #SCOPED_SNAPSHOT_NAME_BYTES, d4
-	bhs.w selectedAliasAdvanceToken
-	moveq #0, d0
-	move.w ScopedSnapshotCount.l, d0
-	cmpi.w #SCOPED_SNAPSHOT_CAPACITY, d0
-	bhs.w selectedAliasAdvanceToken
-	move.l d3, d6
-	move.l d0, d1
-	lsl.l #6, d1
-	lea ScopedSnapshotNames.l, a1
-	adda.l d1, a1
+	beq.s selectedAliasMappedExact
+	movea.l (sp), a0
+	move.l 4(sp), d0
+	jsr eng.opasmEngineResolveUniqueLabelFinalComponentV1
+	tst.l d0
+	beq.s selectedAliasMappedExact
+	addq.l #8, sp
+	bra.s selectedAliasTrySuffix
+selectedAliasMappedExact
+	addq.l #8, sp
+	bra.s selectedAliasMappedResolved
+selectedAliasTrySuffix
+	moveq #0, d2
 	movea.l a3, a0
 	move.l d4, d0
-	bsr.w copySnapshotName
-	moveq #0, d0
-	move.w ScopedSnapshotCount.l, d0
-	lsl.l #2, d0
-	lea ScopedSnapshotValues.l, a0
-	move.l d6, 0(a0, d0.l)
-	addq.w #1, ScopedSnapshotCount.l
+	bsr.w resolveSelectedLastComponentV1
+	tst.l d0
+	bne.w selectedAliasAdvanceToken
+	bra.s selectedAliasResolved
+selectedAliasMappedResolved
+	moveq #1, d2
+selectedAliasResolved
+	movea.l a3, a0
+	move.l d4, d0
+	bsr.w appendSelectedSnapshotAliasV1
+	tst.l d0
+	bne.w selectedAliasAdvanceToken
+	; A successful qualified import is authoritative for this request. Retain
+	; its final component beside the source spelling so the package's direct
+	; label fast path consumes the same request-local visibility decision.
+	tst.l d2
+	beq.s selectedAliasAdvanceToken
+	movea.l a3, a0
+	move.l d4, d0
+	bsr.w finalIdentifierComponentV1
+	tst.l d0
+	beq.s selectedAliasMappedDone
+	bsr.w appendSelectedSnapshotAliasV1
+selectedAliasMappedDone
+	moveq #0, d2
 
 selectedAliasAdvanceToken
 	adda.l d4, a3
@@ -242,6 +278,95 @@ selectedAliasReturn
 	movem.l (sp)+, d0-d7/a0-a6
 	rts
 	.bend  ; materializeSelectedImportAliases
+
+; Append one already-authorized alias/value to the bounded selected snapshot.
+; Inputs: A0/D0 = alias text/length; D3 = value. Outputs: D0 = status.
+appendSelectedSnapshotAliasV1	.block
+	cmpi.l #SCOPED_SNAPSHOT_NAME_BYTES, d0
+	bhs.s appendAliasFail
+	move.l d0, -(sp)
+	moveq #0, d1
+	move.w ScopedSnapshotCount.l, d1
+	cmpi.w #SCOPED_SNAPSHOT_CAPACITY, d1
+	bhs.s appendAliasStackFail
+	move.l d3, d6
+	lsl.l #6, d1
+	lea ScopedSnapshotNames.l, a1
+	adda.l d1, a1
+	move.l (sp), d0
+	bsr.w copySnapshotName
+	moveq #0, d0
+	move.w ScopedSnapshotCount.l, d0
+	lsl.l #2, d0
+	lea ScopedSnapshotValues.l, a0
+	move.l d6, 0(a0, d0.l)
+	lea ScopedSnapshotCount.l, a0
+	addq.w #1, (a0)
+	addq.l #4, sp
+	moveq #0, d0
+	rts
+appendAliasStackFail
+	addq.l #4, sp
+appendAliasFail
+	moveq #1, d0
+	rts
+	.bend  ; appendSelectedSnapshotAliasV1
+
+; Return the final component of a dotted architecture-neutral identifier.
+; Inputs/outputs: A0/D0 = token slice; D0 = 0 when no suffix exists.
+finalIdentifierComponentV1	.block
+	movea.l a0, a1
+	move.l d0, d1
+	moveq #0, d6
+finalComponentScan
+	tst.l d1
+	beq.s finalComponentReady
+	cmpi.b #'.', (a1)+
+	bne.s finalComponentNext
+	movea.l a1, a0
+	move.l d1, d6
+	subq.l #1, d6
+finalComponentNext
+	subq.l #1, d1
+	bra.s finalComponentScan
+finalComponentReady
+	move.l d6, d0
+	rts
+	.bend  ; finalIdentifierComponentV1
+
+; Resolve the final component of a dotted architecture-neutral identifier.
+; This supports engines whose structural module pass retained an unqualified
+; exported label while the import token itself remains fully qualified.
+; Inputs: A0/D0 = token text/length.
+; Outputs: D0 = engine resolve status; D3 = value on success.
+resolveSelectedLastComponentV1	.block
+	movem.l d1-d2/a0-a1, -(sp)
+	movea.l a0, a1
+	move.l d0, d2
+	moveq #0, d1
+selectedComponentScan
+	tst.l d2
+	beq.s selectedComponentReady
+	cmpi.b #'.', (a1)+
+	bne.s selectedComponentNext
+	movea.l a1, a0
+	move.l d2, d1
+	subq.l #1, d1
+selectedComponentNext
+	subq.l #1, d2
+	bra.s selectedComponentScan
+selectedComponentReady
+	tst.l d1
+	beq.s selectedComponentFail
+	move.l d1, d0
+	jsr eng.opasmEngineResolveLabelValueV1
+	bra.s selectedComponentReturn
+selectedComponentFail
+	moveq #1, d0
+selectedComponentReturn
+	movem.l (sp)+, d1-d2/a0-a1
+	rts
+	.bend  ; resolveSelectedLastComponentV1
 
 ; Architecture-neutral opForge identifier boundaries used only to query the
 ; embedding import resolver. Registers, literals, and unmapped names remain
@@ -320,6 +445,7 @@ aliasLoop
 	jsr scopes.activeLabelAliasV1
 	tst.l d0
 	beq.s aliasNext
+	moveq #0, d1
 	move.w ScopedSnapshotCount.l, d1
 	cmpi.w #SCOPED_SNAPSHOT_CAPACITY, d1
 	bhs.s copyOriginalBegin
@@ -337,7 +463,8 @@ aliasLoop
 	lea ScopedSnapshotValues.l, a0
 	adda.l d1, a0
 	move.l d3, (a0)
-	addq.w #1, ScopedSnapshotCount.l
+	lea ScopedSnapshotCount.l, a0
+	addq.w #1, (a0)
 
 aliasNext
 	addq.w #1, d7
@@ -355,6 +482,7 @@ copyOriginalBegin
 copyOriginalLoop
 	cmp.w ScopedSnapshotSourceCount.l, d7
 	bhs.s publish
+	moveq #0, d1
 	move.w ScopedSnapshotCount.l, d1
 	cmpi.w #SCOPED_SNAPSHOT_CAPACITY, d1
 	bhs.s publish
@@ -376,7 +504,8 @@ copyOriginalLoop
 	lea ScopedSnapshotValues.l, a0
 	adda.l d1, a0
 	move.l d3, (a0)
-	addq.w #1, ScopedSnapshotCount.l
+	lea ScopedSnapshotCount.l, a0
+	addq.w #1, (a0)
 	addq.w #1, d7
 	bra.s copyOriginalLoop
 
@@ -438,6 +567,8 @@ done
 ScopedSnapshotSourceCount
 	.res word, 1
 ScopedSnapshotCount
+	.res word, 1
+SelectedStatementIndex
 	.res word, 1
 ScopedSnapshotNames
 	.res byte, SCOPED_SNAPSHOT_CAPACITY * SCOPED_SNAPSHOT_NAME_BYTES

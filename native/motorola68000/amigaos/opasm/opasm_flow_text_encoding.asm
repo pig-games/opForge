@@ -910,7 +910,7 @@ readDefinitionByteValueV1	.block
 	moveq #10, d2
 	moveq #0, d1
 	tst.l d0
-	beq.s fail
+	beq.w fail
 	cmpi.b #'$', (a0)
 	bne.s digit
 	moveq #16, d2

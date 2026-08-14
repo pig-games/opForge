@@ -16,7 +16,7 @@ OPASM_SCOPE_TEXT_CAPACITY = 64
 ; Clobbers: D0/CCR.
 ; CCR: reflects D0 on return.
 resetStateV1	.block
-	clr.w ScopeDepth
+	clr.w ScopeDepth.l
 	clr.w ModuleParentDepth.l
 	clr.w RootModuleNameSet.l
 	move.w #-1, ActiveModuleStatementIndex.l
@@ -24,20 +24,46 @@ resetStateV1	.block
 	rts
 	.bend  ; resetStateV1
 
-; Return the active top-level module name without exposing scope storage.
+; Return the active top-level module name from its retained source statement.
 ; Outputs: A1/D1 = name slice, or D1 = 0 when no module is active.
-; Clobbers: D1/A1/CCR.
+; Clobbers: D0-D2/A0-A1/CCR.
 activeModuleNameV1	.block
-	lea ScopeNames.l, a1
 	moveq #0, d1
-	tst.w ScopeDepth
+	moveq #0, d0
+	move.w ActiveModuleStatementIndex.l, d0
+	bmi.s activeModuleDone
+	jsr eng.opasmEngineGetStatementSourceTextV1
+	tst.l d0
 	beq.s activeModuleDone
+	bsr.w skipWhitespace
+activeModuleMnemonic
+	tst.l d0
+	beq.s activeModuleDone
+	move.b (a0), d2
+	cmpi.b #' ', d2
+	beq.s activeModuleOperand
+	cmpi.b #9, d2
+	beq.s activeModuleOperand
+	addq.l #1, a0
+	subq.l #1, d0
+	bra.s activeModuleMnemonic
+activeModuleOperand
+	bsr.w skipWhitespace
+	movea.l a0, a1
 activeModuleLen
-	cmpi.l #OPASM_SCOPE_NAME_CAPACITY, d1
+	tst.l d0
+	beq.s activeModuleDone
+	cmpi.l #OPASM_SCOPE_NAME_CAPACITY - 1, d1
 	bhs.s activeModuleDone
-	tst.b 0(a1, d1.l)
+	move.b 0(a1, d1.l), d2
+	cmpi.b #' ', d2
+	beq.s activeModuleDone
+	cmpi.b #9, d2
+	beq.s activeModuleDone
+	cmpi.b #';', d2
 	beq.s activeModuleDone
 	addq.l #1, d1
+	subq.l #1, d0
 	bra.s activeModuleLen
 activeModuleDone
 	tst.l d1
@@ -111,7 +137,7 @@ fail
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 beginModuleScopeV1	.block
-	move.w ScopeDepth, d0
+	move.w ScopeDepth.l, d0
 	beq.s begin
 	cmpi.w #1, d0
 	bne.s moduleFail
@@ -121,7 +147,7 @@ beginModuleScopeV1	.block
 	move.w d3, ParentModuleStatementIndex.l
 	move.w #1, ModuleParentDepth.l
 begin
-	clr.w ScopeDepth
+	clr.w ScopeDepth.l
 	move.w d7, ActiveModuleStatementIndex.l
 	bsr.w beginNamespaceScopeV1
 	bne.s moduleFail
@@ -153,10 +179,10 @@ moduleFail
 ; Clobbers: D0-D3/A0-A1/CCR.
 ; CCR: reflects D0 on return.
 endModuleScopeV1	.block
-	cmpi.w #1, ScopeDepth
+	cmpi.w #1, ScopeDepth.l
 	bne.s moduleEndFail
 	move.w d7, -(sp)
-	clr.w ScopeDepth
+	clr.w ScopeDepth.l
 	tst.w ModuleParentDepth.l
 	beq.s moduleEndRoot
 	subq.w #1, ModuleParentDepth.l
@@ -205,19 +231,68 @@ fail
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 qualifyStatementLabelIfScopedV1	.block
-	tst.w ScopeDepth
-	beq.s ok
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementOwnerTextV1
+	tst.l d0
+	bne.s haveStatementOwner
+	tst.w ScopeDepth.l
+	beq.w ok
+	bra.s statementOwnerReady
+haveStatementOwner
+	cmpi.l #OPASM_SCOPE_NAME_CAPACITY - 1, d0
+	bhi.w ownerCapacityFail
+	move.l d0, d4
+	move.l d0, d3
+	lea ScopeScratch.l, a1
+statementOwnerCopy
+	tst.l d3
+	beq.s statementOwnerCopied
+	move.b (a0)+, (a1)+
+	subq.l #1, d3
+	bra.s statementOwnerCopy
+statementOwnerCopied
+	move.b #'.', (a1)+
 	moveq #0, d0
 	move.w d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
+	tst.l d0
+	beq.w ok
+	move.l d0, d5
+	move.l d4, d1
+	addq.l #1, d1
+	add.l d5, d1
+	cmpi.l #OPASM_SCOPE_NAME_CAPACITY - 1, d1
+	bhi.w ownerCapacityFail
+	movea.l a0, a2
+	lea ScopeScratch.l, a1
+	adda.l d4, a1
+	addq.l #1, a1
+statementLabelCopy
+	tst.l d5
+	beq.s statementLabelCopied
+	move.b (a2)+, (a1)+
+	subq.l #1, d5
+	bra.s statementLabelCopy
+statementLabelCopied
+	clr.b (a1)
+	lea ScopeScratch.l, a0
+	bra.s qualifiedTextReady
+statementOwnerReady
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementLabelTextV1
+	tst.l d0
+	beq.s ok
 	move.l d0, d5
 	movea.l a0, a2
 	moveq #0, d2
-	move.w ScopeDepth, d2
+	move.w ScopeDepth.l, d2
 	movea.l a2, a0
 	move.l d5, d0
 	bsr.w buildTextAtDepth
-	bne.s fail
+	bne.s buildFail
+qualifiedTextReady
 	move.l d1, d5
 	movea.l a0, a1
 	moveq #0, d0
@@ -225,12 +300,41 @@ qualifyStatementLabelIfScopedV1	.block
 	movea.l a1, a0
 	move.l d5, d1
 	jsr eng.opasmEngineSetStatementLabelTextV1
-	rts
+	tst.l d0
+	bne.s setFail
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementLabelTextV1
+	cmp.l d5, d0
+	bne.s lengthFail
+	lea ScopeScratch.l, a1
+verifyQualified
+	tst.l d0
+	beq.s ok
+	cmpm.b (a0)+, (a1)+
+	bne.s verifyFail
+	subq.l #1, d0
+	bra.s verifyQualified
 ok
 	moveq #0, d0
 	rts
 fail
 	moveq #1, d0
+	rts
+ownerCapacityFail
+	moveq #2, d0
+	rts
+buildFail
+	moveq #3, d0
+	rts
+setFail
+	moveq #4, d0
+	rts
+lengthFail
+	moveq #5, d0
+	rts
+verifyFail
+	moveq #6, d0
 	rts
 	.bend  ; qualifyStatementLabelIfScopedV1
 
@@ -241,7 +345,7 @@ fail
 ; CCR: reflects D0 on return.
 resolveLabelValueV1	.block
 	movem.l d1-d2/d4-d6/a0-a2, -(sp)
-	tst.w ScopeDepth
+	tst.w ScopeDepth.l
 	beq.s fail
 	movea.l a0, a2
 	move.l d0, d6
@@ -256,7 +360,7 @@ dotScan
 	bra.s dotScan
 noDot
 	moveq #0, d2
-	move.w ScopeDepth, d2
+	move.w ScopeDepth.l, d2
 scan
 	tst.w d2
 	beq.s fail
@@ -292,7 +396,7 @@ activeLabelAliasV1	.block
 	move.l d0, d5
 	moveq #0, d6
 	moveq #0, d4
-	move.w ScopeDepth, d4
+	move.w ScopeDepth.l, d4
 	beq.s none
 
 scopeLoop
@@ -324,7 +428,7 @@ scopeEnd
 	beq.s none
 	movea.l a1, a0
 	move.l d5, d0
-	bra.s return
+	bra.w return
 
 none
 	moveq #0, d0
@@ -381,12 +485,12 @@ fail
 pushText	.block
 	bsr.w skipWhitespace
 	moveq #0, d2
-	move.w ScopeDepth, d2
+	move.w ScopeDepth.l, d2
 	cmpi.w #OPASM_SCOPE_DEPTH_CAPACITY, d2
 	bhs.s fail
 	move.l d2, d3
 	lsl.l #6, d3
-	lea ScopeNames, a1
+	lea ScopeNames.l, a1
 	adda.l d3, a1
 	moveq #OPASM_SCOPE_NAME_CAPACITY - 1, d4
 copy
@@ -407,9 +511,9 @@ copy
 	bra.s copy
 finish
 	clr.b (a1)
-	move.w ScopeDepth, d2
+	move.w ScopeDepth.l, d2
 	addq.w #1, d2
-	move.w d2, ScopeDepth
+	move.w d2, ScopeDepth.l
 	moveq #0, d0
 	rts
 fail
@@ -422,11 +526,11 @@ fail
 ; Clobbers: D0-D1/CCR.
 ; CCR: reflects D0 on return.
 popScope	.block
-	tst.w ScopeDepth
+	tst.w ScopeDepth.l
 	beq.s fail
-	move.w ScopeDepth, d1
+	move.w ScopeDepth.l, d1
 	subq.w #1, d1
-	move.w d1, ScopeDepth
+	move.w d1, ScopeDepth.l
 	moveq #0, d0
 	rts
 fail
@@ -442,7 +546,7 @@ fail
 buildTextAtDepth	.block
 	movea.l a0, a2
 	move.l d0, d6
-	lea ScopeScratch, a1
+	lea ScopeScratch.l, a1
 	movea.l a1, a0
 	moveq #OPASM_SCOPE_TEXT_CAPACITY - 1, d4
 	clr.l d1
@@ -452,7 +556,7 @@ scopeLoop
 	bhs.s rawName
 	move.l d3, d5
 	lsl.l #6, d5
-	lea ScopeNames, a1
+	lea ScopeNames.l, a1
 	adda.l d5, a1
 	tst.b (a1)
 	beq.s nextScope
@@ -491,7 +595,7 @@ rawLoop
 	bra.s rawLoop
 done
 	clr.b (a0)
-	lea ScopeScratch, a0
+	lea ScopeScratch.l, a0
 	moveq #0, d0
 	rts
 fail

@@ -84,6 +84,14 @@ opasmDriverPassOneBegin	.block
 	bsr.w appendPassEvent
 	jsr eng.opasmEngineBeginPassOneV1
 	jsr layout.resetStateV1
+	movea.l OpasmActiveAssembleReqPtr, a0
+	movea.l abi.OPASM_ASSEMBLE_REQ_LAYOUT_INIT_CB(a0), a0
+	move.l a0, d0
+	beq.s layoutReady
+	jsr (a0)
+	tst.l d0
+	bne.s layoutInitFail
+layoutReady
 	clr.w OpasmRepeatDepth
 	jsr scopes.resetStateV1
 	jsr structs.resetStateV1
@@ -91,6 +99,10 @@ opasmDriverPassOneBegin	.block
 	jsr compile_values.resetBindingsV1
 	movem.l (sp)+, a4-a5
 	moveq #0, d0
+	rts
+layoutInitFail
+	movem.l (sp)+, a4-a5
+	moveq #1, d0
 	rts
 	.bend  ; opasmDriverPassOneBegin
 
@@ -110,8 +122,10 @@ opasmDriverPassTwoBegin	.block
 	moveq #2, d1
 	bsr.w appendPassEvent
 	jsr eng.opasmEngineBeginPassTwoV1
+	jsr layout.finalizeReachableSectionMapsV1
+	bne.s layoutFail
 	bsr.w rebasePlacedLabelsForPassTwo
-	bne.s fail
+	bne.s rebaseFail
 	jsr layout.beginPassTwoV1
 	clr.w OpasmRepeatDepth
 	jsr scopes.resetStateV1
@@ -120,7 +134,47 @@ opasmDriverPassTwoBegin	.block
 	movem.l (sp)+, a4-a5
 	moveq #0, d0
 	rts
+rebaseFail
+	moveq #1, d2
+	bra.w fail
+layoutFail
+	cmpi.w #31, d0
+	beq.s layoutMapEmpty
+	cmpi.w #32, d0
+	blo.s layoutResolveChecks
+	cmpi.w #35, d0
+	bhi.s layoutResolveChecks
+layoutMapRangeFailure
+	lea LayoutMapRangeFailureText, a0
+	bra.s layoutResolveText
+layoutResolveChecks
+	cmpi.w #70, d0
+	beq.s layoutResolveFailure
+	cmpi.w #71, d0
+	beq.s layoutResolveMismatch
+	move.l d0, d2
+	bra.s fail
+layoutMapEmpty
+	lea LayoutMapEmptyFailureText, a0
+	bra.s layoutResolveText
+layoutResolveFailure
+	lea LayoutResolveFailureText, a0
+	bra.s layoutResolveText
+layoutResolveMismatch
+	lea LayoutResolveMismatchText, a0
+layoutResolveText
+	bsr.w tokenLen
+	move.l d0, d1
+	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
+	bsr.w appendTextEvent
+	moveq #0, d2
+	bra.s failDone
 fail
+	suba.l a0, a0
+	moveq #0, d1
+	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
+	bsr.w appendTextValueEvent
+failDone
 	movem.l (sp)+, a4-a5
 	moveq #1, d0
 	rts
@@ -140,6 +194,10 @@ rebasePlacedLabelsForPassTwo	.block
 labelLoop
 	cmp.l d5, d4
 	bhs.s success
+	move.l d4, d0
+	jsr layout.labelIsMappedV1
+	tst.l d0
+	bne.s next
 	move.l d4, d0
 	jsr eng.opasmEngineGetPcBackedLabelValueV1
 	tst.l d1
@@ -858,6 +916,12 @@ successStatus
 	bra.s return
 
 fail
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementSourceTextV1
+	move.l d0, d1
+	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
+	bsr.w appendTextEvent
 	moveq #1, d0
 
 return
@@ -898,10 +962,15 @@ return
 	.bend  ; caseMatchesCurrentValue
 
 opasmDriverPassTwoOk	.block
+	jsr eng.opasmEngineFlushMappedImageV1
+	bne.s fail
 	moveq #abi.OPASM_EVENT_PASS_OK, d0
 	moveq #2, d1
 	bsr.w appendPassEvent
 	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
 	rts
 	.bend  ; opasmDriverPassTwoOk
 
@@ -943,6 +1012,9 @@ recordPcLabel
 	bra.w handleLabelEvent
 
 recordAbsolutePcLabel
+	jsr scopes.qualifyStatementLabelIfScopedV1
+	tst.l d0
+	bne.w symbolValueFail
 	moveq #0, d0
 	move.w d7, d0
 	jsr eng.opasmEngineRecordStatementLabelV1
@@ -1018,6 +1090,13 @@ return
 	rts
 
 symbolValueFail
+	move.l d0, d2
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementOwnerTextV1
+	move.l d0, d1
+	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
+	bsr.w appendTextValueEvent
 	moveq #1, d0
 	bra.s return
 	.bend  ; opasmDriverRecordLabel
@@ -1116,6 +1195,8 @@ return
 opasmDriverEmitImageBytes	.block
 	movem.l d1-d6/a0-a4, -(sp)
 	move.w d0, d6
+	jsr layout.statementImageRouteV1
+	jsr eng.opasmEngineSetImageRouteV1
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
 	moveq #0, d0
@@ -1156,6 +1237,7 @@ opasmDriverEmitImageBytes	.block
 	beq.w emitPtext
 	tst.w d3
 	bne.w ok
+	jsr eng.opasmEngineResetLastResolvedLabelV1
 	bsr.w prepareEncodeSelectedRequestForStatement
 	bne.w return
 	tst.w OpasmDriverEvalRequestLen
@@ -1332,7 +1414,15 @@ opasmDriverAdvancePc	.block
 	movem.l d0-d7/a0-a5, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	move.l d0, d7
+	jsr eng.opasmEngineGetSessionPassV1
+	cmpi.w #1, d0
+	bne.s statementLayoutRecorded
+	move.l d7, d0
+	jsr layout.recordStatementSectionV1
+	bne.w done
+statementLayoutRecorded
 	movea.l sp, a0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w done
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a1
@@ -1412,6 +1502,15 @@ selectedSizeDispatch
 	rts
 
 selectedSizeOk
+	jsr eng.opasmEngineGetSessionPassV1
+	cmpi.w #1, d0
+	bne.s selectedSizeKnown
+	jsr eng.opasmEngineGetLastResolvedLabelV1
+	cmpi.w #$ffff, d0
+	beq.s selectedSizeKnown
+	jsr layout.recordReachableLabelV1
+	bne.w done
+selectedSizeKnown
 	cmpi.w #1, d1
 	beq.w advanceOne
 	cmpi.w #2, d1
@@ -1578,6 +1677,7 @@ done
 trySelectedEncodeSizeForStatement	.block
 	movem.l d2-d7/a0-a2, -(sp)
 	move.w d0, d6
+	jsr eng.opasmEngineResetLastResolvedLabelV1
 	clr.w d4
 	bsr.w prepareEncodeSelectedRequestForStatement
 	bne.w prepareFail
@@ -1975,11 +2075,20 @@ processSectionDirectiveForStatement	.block
 	move.l d3, d0
 	jsr layout.setScratchSectionKindV1
 	bne.w fail
+	bsr.w readSectionLogicalForStatement
+	bne.w fail
+	move.l d3, d0
+	jsr layout.setScratchSectionLogicalV1
+	bne.w fail
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementOwnerTextV1
+	jsr layout.setScratchSectionOwnerV1
+	bne.w fail
 	jsr eng.opasmEngineGetSessionPassV1
 	cmpi.w #2, d0
 	beq.w passTwo
-	moveq #1, d1
-	jsr layout.findScratchNameV1
+	jsr layout.findScratchOwnedSectionV1
 	beq.w fail
 	jsr eng.opasmEngineGetSessionCurrentPcV1
 	move.l d0, d2
@@ -1990,8 +2099,7 @@ processSectionDirectiveForStatement	.block
 	bra.w ok
 
 passTwo
-	moveq #1, d1
-	jsr layout.findScratchNameV1
+	jsr layout.findScratchOwnedSectionV1
 	bne.w fail
 	jsr layout.sectionPlacedPtrV1
 	tst.w (a0)
@@ -2089,6 +2197,69 @@ return
 	movem.l (sp)+, d1-d2/d4-d7/a0-a3
 	rts
 	.bend  ; readSectionKindForStatement
+
+; Read the structural `logical` section option, defaulting to concrete.
+; Inputs: D7.W = statement index. Outputs: D0.L = 0; D3.L = 0 or 1.
+; @opforge-owner: opasm.amigaos.layout
+; @opforge-slice: documentation/plans/slices/native-porting-slice-opasm-layout.toml
+; @opforge-role: delegation
+readSectionLogicalForStatement	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	moveq #0, d0
+	move.w d7, d0
+	movea.l sp, a0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w concrete
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a2
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d2
+	cmpi.l #7, d2
+	blo.w concrete
+scanLogical
+	move.b (a2), d3
+	bsr.w lowerD3
+	cmpi.b #'l', d3
+	bne.w nextLogical
+	move.b 1(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'o', d3
+	bne.w nextLogical
+	move.b 2(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'g', d3
+	bne.w nextLogical
+	move.b 3(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'i', d3
+	bne.w nextLogical
+	move.b 4(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'c', d3
+	bne.w nextLogical
+	move.b 5(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'a', d3
+	bne.w nextLogical
+	move.b 6(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'l', d3
+	beq.w logical
+nextLogical
+	addq.l #1, a2
+	subq.l #1, d2
+	cmpi.l #7, d2
+	bhs.w scanLogical
+concrete
+	moveq #0, d3
+	bra.w logicalReturn
+logical
+	moveq #1, d3
+logicalReturn
+	moveq #0, d0
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; readSectionLogicalForStatement
 
 ; Leave the active native section slice and record its pass-one size.
 ; Inputs: D7.W = statement index.
@@ -3668,9 +3839,12 @@ prepareEvaluateExpressionExtension	.block
 ; @opforge-role: delegation
 prepareSelectedEvaluateExpressionExtension	.block
 	movem.l d0-d1/a0-a2, -(sp)
+	jsr eng.opasmEngineResetLastResolvedLabelV1
 	bsr.w serviceFramePtr
 	moveq #0, d0
 	move.w OpasmDriverEvalRequestLen, d0
+	moveq #0, d1
+	move.w d6, d1
 	jsr operand_eval.prepareSelectedExtensionV1
 	movem.l (sp)+, d0-d1/a0-a2
 	rts
@@ -3735,9 +3909,9 @@ parseEvaluateExpressionOutputValue	.block
 	movem.l d1-d2/a0, -(sp)
 	moveq #6, d1
 	cmp.w d1, d0
-	blo.s fail
+	blo.w fail
 	cmpi.b #'V', (a0)+
-	bne.s fail
+	bne.w fail
 	cmpi.b #'A', (a0)+
 	bne.s fail
 	cmpi.b #'L', (a0)+
@@ -4160,6 +4334,15 @@ DriverSelectorOperandRawText
 
 DriverSelectedOperandCompileRawText
 	.byte "OTR901: selected operand compile failed", 0
+
+LayoutResolveFailureText
+	.byte "layout finalize: mapped label no longer resolves", 0
+LayoutResolveMismatchText
+	.byte "layout finalize: mapped label resolves to the wrong value", 0
+LayoutMapRangeFailureText
+	.byte "layout finalize: reachable label matches no mapped logical PC range", 0
+LayoutMapEmptyFailureText
+	.byte "layout finalize: no structural section map was retained", 0
 
 	.endsection
 

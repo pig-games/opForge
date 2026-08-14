@@ -19,10 +19,11 @@
 	.use opforge.cli.copy
 	.use opforge.cli.line_text
 	.use opforge.cli.module_use
+	.use opforge.cli.prvm_bridge
+	.use opforge.cli.statement_owners as statement_owners
 
 	.section code, kind=code
 	.pub
-
 ; Record the current logical source line in the session tables.
 opforgeNativeCliRecordSourceLine	.block
 	movem.l d0-d1/a0, -(sp)
@@ -62,7 +63,7 @@ routeOk
 	clr.l state.NativeCliStmtExprSpanEnd
 	clr.w state.NativeCliStmtMnemFound
 	clr.w state.NativeCliStmtExprFound
-	moveq #constants.NCLI_PARSER_DIRECTIVE_NONE, d0
+	jsr prvm_bridge.opforgeNativeCliParserDirectiveKind
 	move.w d0, state.NativeCliStmtDirectiveKind
 	move.w state.NativeCliPrvmResultCount, d7
 	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, state.NativeCliPrvmRouteStatus
@@ -220,6 +221,8 @@ haveMnemonic
 	bra.w next
 
 haveDirective
+	tst.w state.NativeCliStmtDirectiveKind
+	bne.s haveMnemonic
 	move.w #constants.NCLI_PARSER_DIRECTIVE_GENERIC, state.NativeCliStmtDirectiveKind
 	bra.s haveMnemonic
 
@@ -702,6 +705,7 @@ done
 ; CCR:
 ; - Reflects D0 on return.
 opforgeNativeCliStoreStatementRecord	.block
+	movem.l d1-d3, -(sp)
 	suba.l #engine.OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES, sp
 	movea.l sp, a2
 	move.l state.NativeCliSourceLineNum, engine.OPASM_ENGINE_STMT_REQ_SOURCE_LINE_NUM(a2)
@@ -722,12 +726,79 @@ opforgeNativeCliStoreStatementRecord	.block
 	move.l state.NativeCliStmtExprSpanLine, engine.OPASM_ENGINE_STMT_REQ_EXPR_SPAN_LINE(a2)
 	move.l state.NativeCliStmtExprSpanStart, engine.OPASM_ENGINE_STMT_REQ_EXPR_SPAN_START(a2)
 	move.l state.NativeCliStmtExprSpanEnd, engine.OPASM_ENGINE_STMT_REQ_EXPR_SPAN_END(a2)
+	moveq #0, d3
+	move.w state.NativeCliStmtDirectiveKind, d3
+	clr.l engine.OPASM_ENGINE_STMT_REQ_OWNER_PTR(a2)
+	clr.l engine.OPASM_ENGINE_STMT_REQ_OWNER_LEN(a2)
+	jsr statement_owners.opforgeNativeCliPrepareStatementOwnerV1
+	tst.l d0
+	bne.s statementOwnerInvalid
+	tst.l d1
+	beq.s statementOwnerReady
+	move.l a1, engine.OPASM_ENGINE_STMT_REQ_OWNER_PTR(a2)
+	move.l d1, engine.OPASM_ENGINE_STMT_REQ_OWNER_LEN(a2)
+statementOwnerReady
 	lea state.NativeCliSourceLine, a0
 	lea buffers.tokenScratchBuffer, a1
 	jsr engine.opasmEngineStoreStatementRecordV1
+	move.l d0, d2
+	bne.s moduleOperandDone
+	cmpi.w #constants.NCLI_PARSER_DIRECTIVE_MODULE, d3
+	bne.s moduleOperandDone
+	bsr.w bindStoredModuleOwnerV1
+	move.l d0, d2
+moduleOperandDone
+	tst.l d2
+	bne.s statementStoreDone
+	cmpi.w #constants.NCLI_PARSER_DIRECTIVE_ENDMODULE, d3
+	bne.s statementStoreDone
+	jsr statement_owners.opforgeNativeCliFinishStatementOwnerV1
+	or.l d0, d2
+statementStoreDone
+	move.l d2, d0
+	bra.s statementStoreReturn
+statementOwnerInvalid
+	moveq #1, d0
+statementStoreReturn
 	adda.l #engine.OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES, sp
+	movem.l (sp)+, d1-d3
 	rts
 	.bend  ; opforgeNativeCliStoreStatementRecord
+
+; Make a retained structural module operand authoritative for the owner stack,
+; then bind that same slice to the just-stored statement owner and operand.
+; Outputs: D0 = 0 on success, 1 on invalid metadata or engine rejection.
+bindStoredModuleOwnerV1	.block
+	movem.l d1-d4/a0-a2, -(sp)
+	suba.l #engine.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movea.l sp, a0
+	jsr engine.opasmEngineGetStatementCountV1
+	move.l d0, d4
+	jsr engine.opasmEngineGetStatementTextMetadataV1
+	bne.s moduleSourceFail
+	movea.l engine.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l engine.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d1
+	beq.s moduleSourceFail
+	jsr statement_owners.opforgeNativeCliOpenStatementOwnerV1
+	bne.s moduleSourceFail
+	jsr statement_owners.opforgeNativeCliPrepareStatementOwnerV1
+	movea.l a1, a0
+	move.l d4, d0
+	jsr engine.opasmEngineSetStatementOwnerTextV1
+	bne.s moduleSourceFail
+	jsr statement_owners.opforgeNativeCliPrepareStatementOwnerV1
+	movea.l a1, a0
+	move.l d4, d0
+	jsr engine.opasmEngineGetStatementCountV1
+	jsr engine.opasmEngineSetStatementOperandTextV1
+	bra.s moduleSourceReturn
+moduleSourceFail
+	moveq #1, d0
+moduleSourceReturn
+	adda.l #engine.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d1-d4/a0-a2
+	rts
+	.bend  ; bindStoredModuleOwnerV1
 
 	.endsection
 	.endmodule

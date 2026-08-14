@@ -1045,6 +1045,9 @@ textOk
 	bsr.w encodeSelectedOperandTryLabelV1
 	tst.l d7
 	bne.w return
+	bsr.w encodeSelectedOperandTryLastComponentV1
+	tst.l d7
+	bne.w return
 	moveq #0, d5
 	moveq #1, d5
 	moveq #0, d6
@@ -1143,6 +1146,42 @@ return
 done
 	rts
 	.bend  ; encodeSelectedOperandTryLabelV1
+
+; Try the final component of a dotted architecture-neutral identifier against
+; the already-authorized selected snapshot. Import materialization owns
+; visibility; this routine only makes the direct-label fast path consume the
+; same retained fallback that expression preparation already accepted.
+; Inputs: A0/D0 = operand token; A1/A2/D1 = snapshot names/values/count.
+; Outputs: D7 = 1 and D3 = value on match, otherwise D7 = 0.
+encodeSelectedOperandTryLastComponentV1	.block
+	movem.l d0-d2/d4/a0/a6, -(sp)
+	movea.l a0, a6
+	move.l d0, d2
+	moveq #0, d4
+lastComponentScan
+	tst.l d2
+	beq.s lastComponentReady
+	cmpi.b #'.', (a6)+
+	bne.s lastComponentNext
+	movea.l a6, a0
+	move.l d2, d4
+	subq.l #1, d4
+lastComponentNext
+	subq.l #1, d2
+	bra.s lastComponentScan
+lastComponentReady
+	tst.l d4
+	beq.s noLastComponent
+	move.l d4, d0
+	bsr.w encodeSelectedOperandTryLabelV1
+	bra.s lastComponentReturn
+noLastComponent
+	moveq #0, d7
+lastComponentReturn
+	movem.l (sp)+, d0-d2/d4/a0/a6
+	tst.l d7
+	rts
+	.bend  ; encodeSelectedOperandTryLastComponentV1
 
 encodeSelectedOperandLabelEqualsV1	.block
 	movem.l d0-d2/a0-a1/a6, -(sp)

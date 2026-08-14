@@ -4441,7 +4441,7 @@ fn native_scoped_expression_snapshot_source_stays_in_opasm_adapter() {
         &scopes,
         &[
             "activeLabelAliasV1\t.block",
-            "move.w ScopeDepth, d4",
+            "move.w ScopeDepth.l, d4",
             "scopeLoop",
             "cmpi.b #'.', (a1)+",
             "movea.l a1, a0",
@@ -8671,6 +8671,135 @@ fn native_item83_root_metadata_artifacts_fs_uae() {
                     );
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn native_item84_imported_pc_label_boundary_fs_uae() {
+    // Proof level D localization. The same-case Rust oracles distinguish
+    // generic imported-PC-label expression resolution from the selected CPU
+    // instruction snapshot without changing the stored Item 8.4 root.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("infallible recovering native CLI FS-UAE smoke lock");
+    let sources = [
+        (
+            "item84-imported-pc-label-word",
+            b".module target\n.cpu 65c02\n.pub\nsessionPass:\n    rts\n.endmodule\n.module app\n.cpu 65c02\n.use target as T\n.word T.sessionPass\n.endmodule\n.end\n".to_vec(),
+        ),
+        (
+            "item84-imported-pc-label-module-qualified-word",
+            b".module target\n.cpu 65c02\n.pub\nsessionPass:\n    rts\n.endmodule\n.module app\n.cpu 65c02\n.use target as T\n.word target.sessionPass\n.endmodule\n.end\n".to_vec(),
+        ),
+        (
+            "item84-imported-pc-label-jsr",
+            b".module target\n.cpu 65c02\n.pub\nsessionPass:\n    rts\n.endmodule\n.module app\n.cpu 65c02\n.use target as T\n    jsr T.sessionPass\n.endmodule\n.end\n".to_vec(),
+        ),
+    ];
+    let rust_oracles = sources
+        .iter()
+        .map(|(name, source)| item7_live_rust_cli_binary_oracle(name, source, &[], "65c02", &[]))
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let cases = sources
+        .iter()
+        .zip(rust_oracles.iter())
+        .map(
+            |((name, source), rust_oracle)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &defines,
+                source_override: Some(source),
+                command_template: Some("{input} --bin {bin} --cpu 65c02"),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &[],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle,
+                },
+            },
+        )
+        .collect::<Vec<_>>();
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 8.4 imported-PC-label boundary FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len(), "all boundary cases completed");
+            for ((run, (name, _)), rust_oracle) in
+                runs.iter().zip(sources.iter()).zip(rust_oracles.iter())
+            {
+                assert!(run.success, "native {name} failed: {}", run.stdout);
+                assert_eq!(
+                    verified_fs_uae_output(run),
+                    rust_oracle,
+                    "native bytes differ for {name}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn native_item84_qualified_section_map_fs_uae() {
+    // Proof level D. The exact stored qualified-section-map root carries its
+    // own live Rust binary oracle into one fresh guest protocol.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("infallible recovering native CLI FS-UAE smoke lock");
+    let root = workspace_root();
+    let staged = item8_staged_cases()
+        .into_iter()
+        .find(|case| case.name == "examples/opcore/module_qualified_section_map.asm")
+        .expect("Item 8.4 stored root is assigned to the Item 8 corpus");
+    let guest_files = staged
+        .guest_files
+        .iter()
+        .map(|file| crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+            relative_path: &file.relative_path,
+            bytes: &file.bytes,
+        })
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: staged.name,
+        cpu_override: "68020",
+        extra_assembly_defines: &defines,
+        source_override: Some(&staged.source),
+        command_template: Some(
+            "{input} --bin {bin} --cpu 65c02 -I {guest_work_dir} -M {guest_work_dir}",
+        ),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &guest_files,
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &staged.rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&root, &cases)
+        .expect("Item 8.4 exact stored-root FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "the Item 8.4 stored root completed");
+            assert!(
+                runs[0].success,
+                "native {} failed: {}",
+                staged.name, runs[0].stdout
+            );
+            assert_eq!(
+                verified_fs_uae_output(&runs[0]),
+                staged.rust_oracle,
+                "native bytes differ for {}",
+                staged.name
+            );
         }
     }
 }

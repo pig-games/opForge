@@ -14177,7 +14177,7 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &driver,
         &[
             "processSectionDirectiveForStatement .BLOCK",
-            "JSR layout.findScratchNameV1",
+            "JSR layout.findScratchOwnedSectionV1",
             "JSR layout.sectionPlacedPtrV1",
             "JSR layout.sectionBasePtrV1",
             "BSR.W setPlacedSectionOriginWithImageGap",
@@ -14210,7 +14210,9 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
             "BSR.W readCommaNameForStatement",
             "JSR layout.setScratchNameLenV1",
             "BSR.W readAlignOptionForStatement",
-            "JSR layout.findScratchNameV1",
+            "JSR eng.opasmEngineGetStatementOwnerTextV1",
+            "JSR layout.setScratchSectionOwnerV1",
+            "JSR layout.findScratchOwnedSectionV1",
             "JSR layout.appendSectionV1",
         ]
     ));
@@ -14418,6 +14420,178 @@ fn motorola68020_item83_native_root_metadata_routes_output_artifacts() {
     assert!(source_artifacts.contains("selectMetadataListPathV1"));
     assert!(source_artifacts.contains("selectMetadataHexPathV1"));
     assert!(source_artifacts.contains("opforgeNativeCliWriteFlatOutput"));
+}
+
+#[test]
+fn motorola68020_item84_native_use_section_map_is_retained_generically() {
+    let repo_root = workspace_root();
+    let handlers = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/directive_handlers.asm"),
+    )
+    .expect("read native directive handlers");
+    let line_text = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/line_text.asm"),
+    )
+    .expect("read native line text parser");
+    let module_use = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/module_use.asm"),
+    )
+    .expect("read native module/use state owner");
+    let state =
+        fs::read_to_string(repo_root.join("native/motorola68000/amigaos/opforge-cli/state.asm"))
+            .expect("read native CLI state");
+    let driver = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    let assembly_session = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/assembly_session.asm"),
+    )
+    .expect("read native assembly session");
+    let statement_owners = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/statement_owners.asm"),
+    )
+    .expect("read retained statement-owner state");
+    let engine_callbacks = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/engine_callbacks.asm"),
+    )
+    .expect("read native opasm embedding callbacks");
+    let engine =
+        fs::read_to_string(repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm"))
+            .expect("read native opasm engine");
+    assert!(source_contains_in_order(
+        &handlers,
+        &[
+            "opforgeNativeCliParseUseLine .BLOCK",
+            "LEA strings.MapKeywordText, A1",
+            "BSR.W line_text.opforgeNativeCliParseUseSectionMapsV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &line_text,
+        &[
+            "opforgeNativeCliParseUseSectionMapsV1 .BLOCK",
+            "CMPI.B #'{', (A0)",
+            "CMPI.B #'-', (A0)",
+            "CMPI.B #'>', 1(A0)",
+            "JSR module_use.opforgeNativeCliRecordImportSectionMapV1",
+            "CMPI.B #'}', (A0)",
+            "CMPI.B #',', (A0)",
+            "BNE.W fail",
+        ]
+    ));
+    assert!(module_use.contains("opforgeNativeCliRecordImportSectionMapV1"));
+    assert!(source_contains_in_order(
+        &module_use,
+        &[
+            "NativeCliOrdinaryExportOwnerTable",
+            "MOVE.L D0, D1",
+            "LSL.L #6, D1",
+            "NativeCliOrdinaryExportNameTable",
+        ]
+    ));
+    assert!(state.contains("NativeCliImportSectionMapImportTable"));
+    assert!(state.contains("NativeCliImportSectionMapLogicalTable"));
+    assert!(state.contains("NativeCliImportSectionMapConcreteTable"));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "recordAbsolutePcLabel",
+            "JSR scopes.qualifyStatementLabelIfScopedV1",
+            "JSR eng.opasmEngineRecordStatementLabelV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &assembly_session,
+        &[
+            "JSR engine.opasmEngineStoreStatementRecordV1",
+            "CMPI.W #constants.NCLI_PARSER_DIRECTIVE_MODULE, D3",
+            "BSR.W bindStoredModuleOwnerV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &assembly_session,
+        &[
+            "bindStoredModuleOwnerV1 .BLOCK",
+            "JSR statement_owners.opforgeNativeCliOpenStatementOwnerV1",
+            "JSR statement_owners.opforgeNativeCliPrepareStatementOwnerV1",
+            "JSR engine.opasmEngineSetStatementOwnerTextV1",
+            "JSR engine.opasmEngineSetStatementOperandTextV1",
+        ]
+    ));
+    assert!(statement_owners.contains("opforgeNativeCliPrepareStatementOwnerV1"));
+    assert!(source_contains_in_order(
+        &engine_callbacks,
+        &[
+            "MOVE.L #seedRetainedSectionMapsV1, abi.OPASM_ASSEMBLE_REQ_LAYOUT_INIT_CB(A0)",
+            "seedRetainedSectionMapsV1 .BLOCK",
+            "NativeCliImportSectionMapImportTable",
+            "NativeCliImportModuleTable",
+            "NativeCliImportOwnerModuleTable",
+            "JSR layout.setScratchMapOwnersV1",
+            "NativeCliImportSectionMapLogicalTable",
+            "NativeCliImportSectionMapConcreteTable",
+            "JSR layout.recordSectionMapV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "JSR eng.opasmEngineGetStatementOwnerTextV1",
+            "JSR layout.setScratchSectionOwnerV1",
+            "JSR layout.findScratchOwnedSectionV1",
+        ]
+    ));
+    let layout =
+        fs::read_to_string(repo_root.join("native/motorola68000/amigaos/opasm/opasm_layout.asm"))
+            .expect("read native owned layout state");
+    assert!(layout.contains("findSectionByOwnedNameV1"));
+    assert!(layout.contains("OpasmLayoutSectionOwnerNames"));
+    assert!(layout.contains("OpasmLayoutMapLogicalOwnerNames"));
+    assert!(layout.contains("OpasmLayoutMapConcreteOwnerNames"));
+    let finalizer = layout
+        .split_once("finalizeReachableSectionMapsV1")
+        .expect("layout map finalizer exists")
+        .1
+        .split_once(".bend  ; finalizeReachableSectionMapsV1")
+        .expect("layout map finalizer closes")
+        .0
+        .to_ascii_uppercase();
+    assert_eq!(
+        finalizer.matches("JSR FINDSECTIONBYOWNEDNAMEV1").count(),
+        2,
+        "both logical and concrete map identities must resolve by owner and name"
+    );
+    assert!(!finalizer.contains("JSR FINDSECTIONBYNAMEV1"));
+    let duplicate_sections = [("left", "code"), ("right", "code")];
+    assert_eq!(
+        duplicate_sections
+            .iter()
+            .position(|(owner, name)| *owner == "right" && *name == "code"),
+        Some(1),
+        "owner-qualified lookup distinguishes duplicate logical section names"
+    );
+    assert_eq!(
+        duplicate_sections
+            .iter()
+            .position(|(_, name)| *name == "code"),
+        Some(0),
+        "the regression case would fail under the removed plain-name first match"
+    );
+    assert!(engine.contains("opasmEngineSetStatementOperandTextV1"));
+    let scopes = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm"),
+    )
+    .expect("read native opasm scope owner");
+    assert!(source_contains_in_order(
+        &scopes,
+        &[
+            "JSR eng.opasmEngineGetStatementLabelTextV1",
+            "TST.L D0",
+            "BEQ.S ok",
+            "BSR.W buildTextAtDepth",
+        ]
+    ));
 }
 
 #[test]
@@ -15031,9 +15205,9 @@ fn motorola68020_item11_native_use_module_recursion_preserves_root_reader() {
         &directives,
         &[
             "opforgeNativeCliParseUseLine .BLOCK",
-            "MOVEM.L D5, -(SP)",
+            "MOVEM.L D5-D6, -(SP)",
             "MOVE.L D0, D5",
-            "MOVEM.L (SP)+, D5",
+            "MOVEM.L (SP)+, D5-D6",
         ]
     ));
     assert!(source_contains_in_order(

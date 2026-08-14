@@ -8,15 +8,18 @@ rust_reference = [
 ]
 native_boundary = [
   "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::layout directive dispatch",
+  "native/motorola68000/amigaos/opasm/opasm_callback_abi.asm::layout initialization callback",
   "native/motorola68000/amigaos/opasm/opasm_layout.asm::alignCursorV1",
-  "native/motorola68000/amigaos/opasm/opasm_layout.asm::alignPadV1"
+  "native/motorola68000/amigaos/opasm/opasm_layout.asm::finalizeReachableSectionMapsV1",
+  "native/motorola68000/amigaos/opforge-cli/engine_callbacks.asm::seedRetainedSectionMapsV1",
+  "native/motorola68000/amigaos/opforge-cli/statement_owners.asm::retained statement ownership"
 ]
-invariant = "Layout arithmetic and mutable region/section/place state are owned by the layout module while the driver retains only statement/session parsing callbacks; `.pack` delegates each named section to the same alignment-aware placement transition in source order without changing existing two-pass PC, image, or diagnostic behavior."
-expected_inputs = "`.align`, `.region`, `.section`, `.endsection`, `.place`, and `.pack in REGION : SECTION...` statement metadata, evaluated operands, session PC, and image state."
-expected_outputs = "The same accepted layout directives, two-pass sizes, PC progression, image bytes, and failure status."
-known_non_equivalences = "This slice adds only `.pack` as another layout-owned placement spelling. It adds no CPU/family/dialect/instruction behavior, segment support, statement support, map generation, or exported-section artifact behavior. Region/section/place state and transitions remain layout-owned; the driver retains only statement tokenization, callbacks, and engine/image projection."
-fast_proof_command = "cargo test -p asm motorola68020_item81_native_pack_reuses_ordered_section_placement -- --nocapture && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
-level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_opforge_native_cli_item81_pack_matches_live_rust_bytes -- --nocapture --test-threads=1"
+invariant = "Layout arithmetic and mutable region/section/place/map state are owned by the layout module while the driver retains statement/session callbacks. Structurally parsed import maps enter through an architecture-neutral initialization callback; section and map identities retain structural module owners and resolve as owner-plus-name so duplicate logical section names cannot collide. Reachable logical units are routed into the concrete output without relocating Rust's logical expression-visible symbol values."
+expected_inputs = "`.align`, `.region`, `.section`, `.endsection`, `.place`, `.pack`, structurally parsed import section maps, retained statement owners, selected references, session PC, and image state."
+expected_outputs = "Rust-equivalent two-pass sizes, logical symbol values, reachability, concrete output ordering, placed-section capacity checks, image bytes, and failure status."
+known_non_equivalences = "This slice adds no CPU/family/dialect/instruction behavior, segment syntax, statement syntax, map-file rendering, or exported-section artifact behavior. Ordinary unsectioned references remain expression-only; only references owned by logical sections participate in section-map reachability."
+fast_proof_command = "cargo test -p asm motorola68020_item84_native_use_section_map_is_retained_generically -- --nocapture && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_item84_qualified_section_map_fs_uae -- --nocapture --test-threads=1"
 level_d_fail_closed = true
 
 [[tests]]
@@ -42,3 +45,21 @@ name = "external_fs_uae_opforge_native_cli_item81_pack_matches_live_rust_bytes"
 proof_level = "D"
 proves = "A fresh real native CLI run of the exact 65C02 `.pack` source completes with zero guest exit and byte-for-byte equality to its in-memory same-source Rust CLI oracle."
 does_not_prove = "Map artifacts, exported-section artifacts, or unrelated layout roots."
+
+[[tests]]
+name = "motorola68020_item84_native_use_section_map_is_retained_generically"
+proof_level = "B"
+proves = "The CLI consumes each map's import owner, retains statement and section owners, rejects missing map-entry commas, and resolves both logical and concrete map identities by owner plus name through the architecture-neutral request callback; the focused duplicate-name regression demonstrates why plain-name first match is invalid."
+does_not_prove = "Real native execution or exact selected output bytes."
+
+[[tests]]
+name = "native_item84_imported_pc_label_boundary_fs_uae"
+proof_level = "D"
+proves = "Directive and selected imported-label references complete with exact same-source Rust bytes, while ordinary unsectioned references remain outside logical-map finalization."
+does_not_prove = "The complete stored logical-section-map root."
+
+[[tests]]
+name = "native_item84_qualified_section_map_fs_uae"
+proof_level = "D"
+proves = "The exact stored qualified logical-section-map root completes with zero guest exit and byte-for-byte equality to its same-source in-memory Rust oracle."
+does_not_prove = "Imported include/autoload origin parity assigned to Item 8.5."

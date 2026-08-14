@@ -202,6 +202,45 @@ return
 	rts
 	.bend  ; opforgeNativeCliRecordImportSelect
 
+; Record one generic logical-to-concrete section mapping owned by an import.
+; Inputs: D4.W = import index; state.NativeCliArgToken = logical name;
+;         state.NativeCliIncludeTarget = concrete name.
+; Outputs: D0.L = 0 on success, 1 on capacity failure.
+; Clobbers: D0-D3/A0-A1/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliRecordImportSectionMapV1	.block
+	movem.l d1-d3/a0-a1, -(sp)
+	moveq #0, d0
+	move.w state.NativeCliImportSectionMapCount, d0
+	cmpi.w #constants.NATIVE_IMPORT_SECTION_MAP_CAPACITY, d0
+	bhs.s fail
+	move.w d0, d3
+	move.l d3, d1
+	add.l d1, d1
+	lea state.NativeCliImportSectionMapImportTable, a1
+	move.w d4, 0(a1, d1.l)
+	move.l d3, d1
+	lsl.l #6, d1
+	lea state.NativeCliImportSectionMapLogicalTable, a1
+	adda.l d1, a1
+	lea state.NativeCliArgToken, a0
+	bsr.w token_util.opforgeNativeCliCopyTokenBuffer
+	move.l d3, d1
+	lsl.l #6, d1
+	lea state.NativeCliImportSectionMapConcreteTable, a1
+	adda.l d1, a1
+	lea state.NativeCliIncludeTarget, a0
+	bsr.w token_util.opforgeNativeCliCopyTokenBuffer
+	addq.w #1, state.NativeCliImportSectionMapCount
+	moveq #0, d0
+	bra.s return
+fail
+	moveq #1, d0
+return
+	movem.l (sp)+, d1-d3/a0-a1
+	rts
+	.bend  ; opforgeNativeCliRecordImportSectionMapV1
+
 ; Record one public ordinary symbol for later `.use` alias resolution.
 ; Inputs: current parsed statement fields, module, and visibility in state.
 ; Outputs: D0 = 0 success/not applicable, 1 capacity or malformed name.
@@ -224,7 +263,8 @@ opforgeNativeCliRecordOrdinaryExportV1	.block
 	add.l d1, d1
 	lea state.NativeCliOrdinaryExportOwnerTable, a1
 	move.w state.NativeCliCurrentModuleId, 0(a1, d1.l)
-	lsl.l #5, d1
+	move.l d0, d1
+	lsl.l #6, d1
 	lea state.NativeCliOrdinaryExportNameTable, a1
 	adda.l d1, a1
 	lea state.NativeCliSourceLine, a0
@@ -346,7 +386,8 @@ ordinaryResolveQualifiedExport
 	move.l d0, d3
 	bsr.w ordinaryExportIndex
 	tst.l d0
-	bpl.w ordinaryResolveBuild
+	bmi.s ordinaryResolveSelections
+	bra.w ordinaryResolveBuild
 
 ordinaryResolveSelections
 	moveq #0, d3
@@ -421,6 +462,7 @@ ordinaryResolveBuild
 	lea state.NativeCliResolvedImportName, a0
 	moveq #0, d1
 	moveq #constants.TOKEN_BUFFER_CAPACITY - 1, d3
+
 ordinaryResolveBuildModule
 	move.b (a1)+, d0
 	beq.s ordinaryResolveBuildDot
@@ -430,6 +472,7 @@ ordinaryResolveBuildModule
 	addq.l #1, d1
 	subq.w #1, d3
 	bra.s ordinaryResolveBuildModule
+
 ordinaryResolveBuildDot
 	tst.w d3
 	beq.w ordinaryResolveNo

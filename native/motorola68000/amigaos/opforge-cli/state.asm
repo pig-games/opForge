@@ -292,6 +292,8 @@ NativeCliIncludePathCount
 	.res word, 1
 NativeCliImportSelectCount
 	.res word, 1
+NativeCliImportSectionMapCount
+	.res word, 1
 NativeCliRootModuleId
 	.res word, 1
 NativeCliCurrentModuleId
@@ -330,6 +332,12 @@ NativeCliImportSelectAliasTable
 	.res byte, constants.NATIVE_IMPORT_SELECT_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
 NativeCliImportSelectFlagsTable
 	.res word, constants.NATIVE_IMPORT_SELECT_CAPACITY
+NativeCliImportSectionMapImportTable
+	.res word, constants.NATIVE_IMPORT_SECTION_MAP_CAPACITY
+NativeCliImportSectionMapLogicalTable
+	.res byte, constants.NATIVE_IMPORT_SECTION_MAP_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
+NativeCliImportSectionMapConcreteTable
+	.res byte, constants.NATIVE_IMPORT_SECTION_MAP_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
 NativeCliPreprocessImportBindingOwnerTable
 	.res word, constants.NATIVE_PREPROCESS_IMPORT_BINDING_CAPACITY
 NativeCliPreprocessImportBindingDefinitionTable

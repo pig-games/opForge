@@ -179,6 +179,8 @@ UseSelectText
 	.byte "USE-SELECT ", 0
 UseWildcardText
 	.byte "USE-WILDCARD ", 0
+MapKeywordText
+	.byte "map", 0
 StatementText
 	.byte "STMT ", 0
 StatementExprText

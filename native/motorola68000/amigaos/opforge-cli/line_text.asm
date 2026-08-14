@@ -358,5 +358,121 @@ opforgeNativeCliParseUseItemsFail
 	moveq #1, d1
 	rts
 
+; Parse a generic `map { logical -> concrete, ... }` tail for one import.
+; Inputs: A0/D0 = current line slice at `map`; D4.W = import index.
+; Outputs: A0/D0 advanced past `}`; D1 = 0 success, 1 malformed/capacity.
+; Clobbers: D0-D3/D6/A0-A1/CCR.
+; CCR: reflects D1 on return.
+opforgeNativeCliParseUseSectionMapsV1	.block
+	move.w d4, d5
+	move.l d0, d6
+	lea strings.MapKeywordText, a1
+	moveq #3, d1
+	bsr.w opforgeNativeCliLineStartsWith
+	beq.w fail
+	move.l d6, d0
+	addq.l #3, a0
+	subq.l #3, d0
+	bsr.w opforgeNativeCliSkipLineWhitespace
+	beq.w fail
+	cmpi.b #'{', (a0)
+	bne.w fail
+	addq.l #1, a0
+	subq.l #1, d0
+entry
+	bsr.w opforgeNativeCliSkipLineWhitespace
+	beq.w fail
+	cmpi.b #'}', (a0)
+	beq.w fail
+	lea state.NativeCliArgToken, a1
+	bsr.w copySectionMapNameV1
+	tst.l d1
+	bne.w fail
+	tst.b state.NativeCliArgToken
+	beq.w fail
+	bsr.w opforgeNativeCliSkipLineWhitespace
+	cmpi.l #2, d0
+	bcs.w fail
+	cmpi.b #'-', (a0)
+	bne.w fail
+	cmpi.b #'>', 1(a0)
+	bne.w fail
+	addq.l #2, a0
+	subq.l #2, d0
+	bsr.w opforgeNativeCliSkipLineWhitespace
+	lea state.NativeCliIncludeTarget, a1
+	bsr.w copySectionMapNameV1
+	tst.l d1
+	bne.w fail
+	tst.b state.NativeCliIncludeTarget
+	beq.w fail
+	move.l d0, -(sp)
+	move.w d5, d4
+	jsr module_use.opforgeNativeCliRecordImportSectionMapV1
+	tst.l d0
+	bne.s recordFailPop
+	move.l (sp)+, d0
+	bsr.w opforgeNativeCliSkipLineWhitespace
+	beq.w fail
+	cmpi.b #'}', (a0)
+	beq.s close
+	cmpi.b #',', (a0)
+	bne.w fail
+	addq.l #1, a0
+	subq.l #1, d0
+	bra.w entry
+close
+	addq.l #1, a0
+	subq.l #1, d0
+	moveq #0, d1
+	rts
+recordFailPop
+	addq.l #4, sp
+fail
+	moveq #1, d1
+	rts
+	.bend  ; opforgeNativeCliParseUseSectionMapsV1
+
+; Copy one section-map identifier into a bounded token buffer.
+; Inputs: A0/D0 = source slice; A1 = destination.
+; Outputs: A0/D0 advanced; D1 = 0 success, 1 overflow/invalid byte.
+; Clobbers: D1-D2/D6/A0-A1/CCR.
+; CCR: reflects D1 on return.
+copySectionMapNameV1	.block
+	move.l #constants.TOKEN_BUFFER_CAPACITY - 1, d6
+copy
+	tst.l d0
+	beq.s done
+	moveq #0, d2
+	move.b (a0), d2
+	cmpi.b #' ', d2
+	beq.s done
+	cmpi.b #9, d2
+	beq.s done
+	cmpi.b #'-', d2
+	beq.s done
+	cmpi.b #'}', d2
+	beq.s done
+	cmpi.b #',', d2
+	beq.s done
+	cmpi.b #';', d2
+	beq.s done
+	tst.l d6
+	beq.s fail
+	move.b d2, (a1)+
+	addq.l #1, a0
+	subq.l #1, d0
+	subq.l #1, d6
+	bra.s copy
+done
+	clr.b (a1)
+	moveq #0, d1
+	rts
+fail
+	clr.b (a1)
+	moveq #1, d1
+	rts
+	.bend  ; copySectionMapNameV1
+
 	.endsection
 	.endmodule

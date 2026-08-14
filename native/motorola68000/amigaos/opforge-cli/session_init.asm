@@ -10,6 +10,7 @@
 	.use opforge.cli.strings
 	.use opforge.cli.copy
 	.use opforge.cli.preprocessor
+	.use opforge.cli.statement_owners as statement_owners
 
 	.section code, kind=code
 	.pub
@@ -39,6 +40,7 @@ opforgeNativeCliInitModuleUseState	.block
 	clr.w state.NativeCliOutputBootstrapFromSource
 	jsr preprocessor.opforgeNativeCliResetPreprocessorV1
 	jsr engine.resetStatementCollectionV1
+	jsr statement_owners.opforgeNativeCliResetStatementOwnersV1
 	movem.l (sp)+, d0-d1/a0
 	rts
 	.bend  ; opforgeNativeCliInitModuleUseState

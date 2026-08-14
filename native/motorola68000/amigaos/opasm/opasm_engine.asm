@@ -19,7 +19,10 @@ NATIVE_LABEL_TABLE_CAPACITY     = NATIVE_SOURCE_RECORD_CAPACITY
 NATIVE_IMAGE_BUFFER_CAPACITY    = 8192
 NATIVE_SOURCE_TEXT_BYTES        = NATIVE_SOURCE_RECORD_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY
 OPASM_ENGINE_CONTEXT_LONGS      = 11
-OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = (5 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + NATIVE_SOURCE_TEXT_BYTES + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + NATIVE_LABEL_TABLE_CAPACITY + NATIVE_IMAGE_BUFFER_CAPACITY
+; Exact byte count from OpasmEngineAssemblySessionStart through the two image
+; buffers. Keep this explicit: the native bootstrap must not depend on a
+; forward label subtraction while forward-reference stability is under proof.
+OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = 747608
 
 	.section code
 
@@ -64,7 +67,10 @@ OPASM_ENGINE_STMT_REQ_EXPR_END_TOKEN  = 52
 OPASM_ENGINE_STMT_REQ_EXPR_SPAN_LINE  = 56
 OPASM_ENGINE_STMT_REQ_EXPR_SPAN_START = 60
 OPASM_ENGINE_STMT_REQ_EXPR_SPAN_END   = 64
-OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES = 68
+OPASM_ENGINE_STMT_REQ_OWNER_PTR        = 68
+OPASM_ENGINE_STMT_REQ_OWNER_LEN        = 72
+OPASM_ENGINE_STMT_REQ_OWNER_LEN_WORD   = 74
+OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES = 76
 OPASM_ENGINE_LABEL_EVENT_NONE      = 0
 OPASM_ENGINE_LABEL_EVENT_STORED    = 1
 OPASM_ENGINE_LABEL_EVENT_DUPLICATE = 2
@@ -245,6 +251,14 @@ opasmEngineStoreStatementRecordV1	.block
 	move.l OPASM_ENGINE_STMT_REQ_MNEM_LEN(a5), d0
 	cmp.l #TOKEN_BUFFER_CAPACITY - 1, d0
 	bhi.w fail
+	move.l OPASM_ENGINE_STMT_REQ_OWNER_LEN(a5), d0
+	cmp.l #TOKEN_BUFFER_CAPACITY - 1, d0
+	bhi.w fail
+	tst.l d0
+	beq.s ownerRequestReady
+	tst.l OPASM_ENGINE_STMT_REQ_OWNER_PTR(a5)
+	beq.w fail
+ownerRequestReady
 	move.w OpasmEngineStmtCount.l, d0
 	cmpi.w #NATIVE_STATEMENT_TABLE_CAPACITY, d0
 	bhs.w fail
@@ -305,6 +319,7 @@ opasmEngineBuildCallbackContextV1	.block
 opasmEngineBeginPassOneV1	.block
 	movem.l d1/a0, -(sp)
 	clr.w OpasmEngineLabelCount.l
+	move.w #-1, OpasmEngineLastResolvedLabelIndex.l
 	lea OpasmEngineLabelFinalizedTable.l, a0
 	move.w #NATIVE_LABEL_TABLE_CAPACITY - 1, d0
 
@@ -338,6 +353,8 @@ finalizeLoop
 
 finalizeDone
 	clr.w OpasmEngineImageByteCount.l
+	clr.w OpasmEngineMappedImageByteCount.l
+	clr.w OpasmEngineImageRoute.l
 	move.l OpasmEngineSessionOrigin.l, d1
 	move.l d1, OpasmEngineSessionCurrentPc.l
 	movem.l (sp)+, d1/a0
@@ -405,9 +422,9 @@ storeLabel
 	move.l d6, d5
 	add.l d5, d5
 	lea OpasmEngineLabelStatementIndexTable.l, a0
-	move.l d7, d4
-	lsr.l #6, d4
-	move.w d4, 0(a0, d5.l)
+	move.l d7, d0
+	lsr.l #6, d0
+	move.w d0, 0(a0, d5.l)
 	lea OpasmEngineLabelPcBackedTable.l, a0
 	move.b #1, 0(a0, d6.l)
 	move.l d6, d5
@@ -530,9 +547,9 @@ storeLabel
 	move.l d6, d5
 	add.l d5, d5
 	lea OpasmEngineLabelStatementIndexTable.l, a0
-	move.l d7, d4
-	lsr.l #6, d4
-	move.w d4, 0(a0, d5.l)
+	move.l d7, d0
+	lsr.l #6, d0
+	move.w d0, 0(a0, d5.l)
 	lea OpasmEngineLabelPcBackedTable.l, a0
 	clr.b 0(a0, d6.l)
 	move.l d6, d5
@@ -651,6 +668,7 @@ loop
 	bra.s loop
 
 found
+	move.w d4, OpasmEngineLastResolvedLabelIndex.l
 	moveq #0, d5
 	move.w d4, d5
 	lsl.l #2, d5
@@ -666,6 +684,103 @@ return
 	movem.l (sp)+, d1-d2/d4-d6/a0-a2
 	rts
 	.bend  ; opasmEngineResolveLabelValueV1
+
+; Resolve exactly one stored label by the final component of an already
+; authorized qualified token. Ambiguity is a hard miss.
+; Inputs: A0/D0 = authorized token. Outputs: D0 = status; D3 = value.
+opasmEngineResolveUniqueLabelFinalComponentV1	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	movea.l a0, a2
+	move.l d0, d6
+	movea.l a0, a1
+	move.l d0, d5
+authorizedComponentScan
+	tst.l d5
+	beq.s authorizedComponentReady
+	cmpi.b #'.', (a1)+
+	bne.s authorizedComponentNext
+	movea.l a1, a2
+	move.l d5, d6
+	subq.l #1, d6
+authorizedComponentNext
+	subq.l #1, d5
+	bra.s authorizedComponentScan
+authorizedComponentReady
+	tst.l d6
+	beq.w uniqueComponentFail
+	moveq #-1, d7
+	moveq #0, d4
+uniqueLabelLoop
+	cmp.w OpasmEngineLabelCount.l, d4
+	bhs.s uniqueLabelDone
+	moveq #0, d0
+	move.w d4, d0
+	lsl.l #6, d0
+	lea OpasmEngineLabelNameTable.l, a0
+	adda.l d0, a0
+	bsr.w tokenLen
+	movea.l a0, a3
+	movea.l a0, a1
+	move.l d0, d2
+	move.l d0, d5
+storedComponentScan
+	tst.l d5
+	beq.s storedComponentReady
+	cmpi.b #'.', (a1)+
+	bne.s storedComponentNext
+	movea.l a1, a3
+	move.l d5, d2
+	subq.l #1, d2
+storedComponentNext
+	subq.l #1, d5
+	bra.s storedComponentScan
+storedComponentReady
+	cmp.l d6, d2
+	bne.s uniqueLabelNext
+	movea.l a2, a0
+	movea.l a3, a1
+	move.l d6, d5
+uniqueComponentCompare
+	move.b (a0)+, d1
+	cmp.b (a1)+, d1
+	bne.s uniqueLabelNext
+	subq.l #1, d5
+	bne.s uniqueComponentCompare
+	tst.l d7
+	bpl.s uniqueComponentFail
+	move.w d4, d7
+uniqueLabelNext
+	addq.w #1, d4
+	bra.s uniqueLabelLoop
+uniqueLabelDone
+	tst.l d7
+	bmi.s uniqueComponentFail
+	move.w d7, OpasmEngineLastResolvedLabelIndex.l
+	move.l d7, d0
+	lsl.l #2, d0
+	lea OpasmEngineLabelValueTable.l, a0
+	move.l 0(a0, d0.l), d3
+	moveq #0, d0
+	bra.s uniqueComponentReturn
+uniqueComponentFail
+	moveq #1, d0
+uniqueComponentReturn
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; opasmEngineResolveUniqueLabelFinalComponentV1
+
+; Reset or read the label index most recently resolved by this session.
+opasmEngineResetLastResolvedLabelV1	.block
+	move.w #-1, OpasmEngineLastResolvedLabelIndex.l
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineResetLastResolvedLabelV1
+
+opasmEngineGetLastResolvedLabelV1	.block
+	moveq #0, d0
+	move.w OpasmEngineLastResolvedLabelIndex.l, d0
+	rts
+	.bend  ; opasmEngineGetLastResolvedLabelV1
 
 ; Set origin and current PC.
 ;
@@ -720,12 +835,17 @@ opasmEngineAppendImageBytesV1	.block
 	moveq #0, d3
 	move.w d0, d3
 	cmpi.l #NATIVE_IMAGE_BUFFER_CAPACITY, d3
-	bhi.s fail
+	bhi.w fail
+	move.w OpasmEngineImageRoute.l, d1
+	cmpi.w #1, d1
+	beq.w success
+	cmpi.w #2, d1
+	beq.w mapped
 	moveq #0, d1
 	move.w OpasmEngineImageByteCount.l, d1
 	add.l d3, d1
 	cmpi.l #NATIVE_IMAGE_BUFFER_CAPACITY, d1
-	bhi.s fail
+	bhi.w fail
 	moveq #0, d1
 	move.w OpasmEngineImageByteCount.l, d1
 	lea OpasmEngineImageBuffer.l, a1
@@ -740,6 +860,30 @@ copyLoop
 
 done
 	add.w d3, OpasmEngineImageByteCount.l
+	bra.w success
+
+mapped
+	moveq #0, d1
+	move.w OpasmEngineMappedImageByteCount.l, d1
+	add.l d3, d1
+	cmpi.l #NATIVE_IMAGE_BUFFER_CAPACITY, d1
+	bhi.w fail
+	moveq #0, d1
+	move.w OpasmEngineMappedImageByteCount.l, d1
+	lea OpasmEngineMappedImageBuffer.l, a1
+	adda.l d1, a1
+	move.w d3, d1
+	beq.s mappedDone
+
+mappedCopyLoop
+	move.b (a0)+, (a1)+
+	subq.w #1, d1
+	bne.s mappedCopyLoop
+
+mappedDone
+	add.w d3, OpasmEngineMappedImageByteCount.l
+
+success
 	movem.l (sp)+, d1-d3/a0-a1
 	moveq #0, d0
 	rts
@@ -749,6 +893,53 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; opasmEngineAppendImageBytesV1
+
+; Select where subsequent statement bytes are emitted.
+;
+; Inputs: D0.W = 0 main image, 1 discard, 2 mapped logical tail.
+; Outputs: D0.L = 0 on success, 1 for an invalid route.
+opasmEngineSetImageRouteV1	.block
+	cmpi.w #2, d0
+	bhi.s fail
+	move.w d0, OpasmEngineImageRoute.l
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opasmEngineSetImageRouteV1
+
+; Append the retained reachable logical-section tail to the main image.
+;
+; Outputs: D0.L = 0 on success, 1 on main-image capacity failure.
+opasmEngineFlushMappedImageV1	.block
+	clr.w OpasmEngineImageRoute.l
+	lea OpasmEngineMappedImageBuffer.l, a0
+	moveq #0, d0
+	move.w OpasmEngineMappedImageByteCount.l, d0
+	jsr opasmEngineAppendImageBytesV1
+	rts
+	.bend  ; opasmEngineFlushMappedImageV1
+
+; Return the defining statement index retained for a label.
+;
+; Inputs: D0.W = label index.
+; Outputs: D0.L = statement index, or $0000ffff for an invalid label index.
+opasmEngineGetLabelStatementIndexV1	.block
+	moveq #0, d1
+	move.w d0, d1
+	cmp.w OpasmEngineLabelCount.l, d1
+	bhs.s invalid
+	add.w d1, d1
+	lea OpasmEngineLabelStatementIndexTable.l, a0
+	moveq #0, d0
+	move.w 0(a0, d1.w), d0
+	rts
+invalid
+	moveq #0, d0
+	move.w #$ffff, d0
+	rts
+	.bend  ; opasmEngineGetLabelStatementIndexV1
 
 ; Mark the image byte offset/address where one statement starts emitting bytes.
 ;
@@ -1396,6 +1587,57 @@ opasmEngineGetStatementLabelTextV1	.block
 	rts
 	.bend  ; opasmEngineGetStatementLabelTextV1
 
+; Return the module/namespace owner captured with one stored statement.
+; Inputs: D0 = statement index.
+; Outputs: A0 = owner text and D0 = owner length.
+; Clobbers: D0-D2/A0/CCR.
+; CCR: reflects D0 on return.
+opasmEngineGetStatementOwnerTextV1	.block
+	moveq #0, d1
+	move.w d0, d1
+	move.l d1, d2
+	add.w d2, d2
+	lea OpasmEngineStmtOwnerLenTable.l, a0
+	moveq #0, d0
+	move.w 0(a0, d2.l), d0
+	lsl.l #6, d1
+	lea OpasmEngineStmtOwnerNameTable.l, a0
+	adda.l d1, a0
+	rts
+	.bend  ; opasmEngineGetStatementOwnerTextV1
+
+; Replace one stored statement owner with an authoritative bounded name.
+; Inputs: D0 = statement index; A0/D1 = owner text/length.
+; Outputs: D0 = 0 on success, 1 on invalid index/capacity failure.
+; Clobbers: D0-D4/A0-A2/CCR.
+opasmEngineSetStatementOwnerTextV1	.block
+	cmpi.l #TOKEN_BUFFER_CAPACITY - 1, d1
+	bhi.s ownerSetFail
+	cmp.w OpasmEngineStmtCount.l, d0
+	bhi.s ownerSetFail
+	move.l d0, d2
+	lsl.l #6, d2
+	lea OpasmEngineStmtOwnerNameTable.l, a1
+	adda.l d2, a1
+	move.l d1, d3
+ownerSetCopy
+	tst.l d3
+	beq.s ownerSetTerminate
+	move.b (a0)+, (a1)+
+	subq.l #1, d3
+	bra.s ownerSetCopy
+ownerSetTerminate
+	clr.b (a1)
+	add.w d0, d0
+	lea OpasmEngineStmtOwnerLenTable.l, a2
+	move.w d1, 0(a2, d0.l)
+	moveq #0, d0
+	rts
+ownerSetFail
+	moveq #1, d0
+	rts
+	.bend  ; opasmEngineSetStatementOwnerTextV1
+
 ; Inputs: D0 = statement index; A0/D1 = replacement label text/length.
 ; Outputs: D0 = 0 on success, 1 on capacity failure.
 ; Clobbers: D0-D4/A0-A2/CCR.
@@ -1425,6 +1667,39 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; opasmEngineSetStatementLabelTextV1
+
+; Replace one stored statement operand with an authoritative bounded token.
+; Inputs: D0 = statement index; A0/D1 = replacement operand text/length.
+; Outputs: D0 = 0 on success, 1 on invalid index/capacity failure.
+; Clobbers: D0-D4/A0-A2/CCR.
+; CCR: reflects D0 on return.
+opasmEngineSetStatementOperandTextV1	.block
+	cmpi.l #TOKEN_BUFFER_CAPACITY - 1, d1
+	bhs.s operandSetFail
+	cmp.w OpasmEngineStmtCount.l, d0
+	bhi.s operandSetFail
+	move.l d0, d2
+	lsl.l #6, d2
+	lea OpasmEngineStmtOperandNameTable.l, a1
+	adda.l d2, a1
+	move.l d1, d3
+operandSetCopy
+	tst.l d3
+	beq.s operandSetTerminate
+	move.b (a0)+, (a1)+
+	subq.l #1, d3
+	bra.s operandSetCopy
+operandSetTerminate
+	clr.b (a1)
+	add.w d0, d0
+	lea OpasmEngineStmtOperandLenTable.l, a2
+	move.w d1, 0(a2, d0.l)
+	moveq #0, d0
+	rts
+operandSetFail
+	moveq #1, d0
+	rts
+	.bend  ; opasmEngineSetStatementOperandTextV1
 
 ; Report whether one stored statement is the generic `.org` directive.
 ; Inputs: D0 = statement index.
@@ -2400,6 +2675,8 @@ storeStatementRecord	.block
 	move.w OPASM_ENGINE_STMT_REQ_MNEM_LEN_WORD(a5), 0(a0, d2.l)
 	lea OpasmEngineStmtOperandLenTable.l, a0
 	clr.w 0(a0, d2.l)
+	lea OpasmEngineStmtOwnerLenTable.l, a0
+	clr.w 0(a0, d2.l)
 	lea OpasmEngineStmtDirectiveKindTable.l, a0
 	move.w OPASM_ENGINE_STMT_REQ_DIRECTIVE_KIND(a5), 0(a0, d2.l)
 	lea OpasmEngineStmtOutputAddrTable.l, a0
@@ -2455,6 +2732,21 @@ sourceLineLenOk
 	move.w d0, 0(a0, d2.l)
 
 sourceLineDone
+	lea OpasmEngineStmtOwnerNameTable.l, a1
+	adda.l d3, a1
+	clr.b (a1)
+	move.l OPASM_ENGINE_STMT_REQ_OWNER_LEN(a5), d0
+	beq.s ownerDone
+	movea.l OPASM_ENGINE_STMT_REQ_OWNER_PTR(a5), a0
+	bsr.w copyFixedString
+	clr.b (a1)
+	moveq #0, d0
+	move.w OpasmEngineStmtCount.l, d0
+	add.w d0, d0
+	lea OpasmEngineStmtOwnerLenTable.l, a0
+	move.w OPASM_ENGINE_STMT_REQ_OWNER_LEN_WORD(a5), 0(a0, d0.l)
+
+ownerDone
 	lea OpasmEngineStmtLabelNameTable.l, a1
 	adda.l d3, a1
 	clr.b (a1)
@@ -2778,6 +3070,8 @@ OpasmEngineStmtMnemLenTable
 	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
 OpasmEngineStmtOperandLenTable
 	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtOwnerLenTable
+	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
 OpasmEngineStmtDirectiveKindTable
 	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
 OpasmEngineStmtOutputAddrTable
@@ -2797,6 +3091,8 @@ OpasmEngineStmtLabelNameTable
 OpasmEngineStmtMnemNameTable
 	.res byte, NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
 OpasmEngineStmtOperandNameTable
+	.res byte, NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
+OpasmEngineStmtOwnerNameTable
 	.res byte, NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
 OpasmEngineStmtExprFlagsTable
 	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
@@ -2824,7 +3120,15 @@ OpasmEngineLabelStatementIndexTable
 	.res word, NATIVE_LABEL_TABLE_CAPACITY
 OpasmEngineLabelPcBackedTable
 	.res byte, NATIVE_LABEL_TABLE_CAPACITY
+OpasmEngineLastResolvedLabelIndex
+	.res word, 1
+OpasmEngineImageRoute
+	.res word, 1
+OpasmEngineMappedImageByteCount
+	.res word, 1
 OpasmEngineImageBuffer
+	.res byte, NATIVE_IMAGE_BUFFER_CAPACITY
+OpasmEngineMappedImageBuffer
 	.res byte, NATIVE_IMAGE_BUFFER_CAPACITY
 opasmEngineAssemblySessionEnd
 

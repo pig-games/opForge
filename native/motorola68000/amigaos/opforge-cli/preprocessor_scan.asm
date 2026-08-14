@@ -247,7 +247,7 @@ scan
 	bra.s next
 outsideQuote
 	cmpi.b #';', d0
-	beq.s no
+	beq.w no
 	cmpi.b #'\'', d0
 	beq.s enterQuote
 	cmpi.b #'"', d0

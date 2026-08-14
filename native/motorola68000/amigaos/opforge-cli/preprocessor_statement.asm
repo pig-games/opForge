@@ -702,6 +702,8 @@ nameDone
 	bne.w fail
 	moveq #0, d0
 	move.w state.NativeCliPreprocessInvocationArgCount, d0
+	cmpi.w #constants.NATIVE_PREPROCESS_MACRO_ARG_CAPACITY, d0
+	bcc.w fail
 	move.l d0, d1
 	lsl.l #2, d1
 	lea StatementCaptureNamePtr.l, a2
@@ -1298,7 +1300,7 @@ no
 ; Inputs: A1/D2 = token. Outputs: D0 = status.
 validateIdentifierToken	.block
 	tst.l d2
-	beq.s fail
+	beq.w fail
 	move.b (a1), d0
 	cmpi.b #'A', d0
 	bcs.s firstLower

@@ -298,7 +298,7 @@ fail
 ; Clobbers: A0-A1/D1/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliParseUseLine	.block
-	movem.l d5, -(sp)
+	movem.l d5-d6, -(sp)
 	move.w #-1, state.NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliParserTailPtr
 	tst.l d1
@@ -334,6 +334,25 @@ parseTail
 	cmpi.b #';', (a0)
 	beq.w bare
 	bsr.w module_use.opforgeNativeCliEmitImportRecord
+	move.l d0, d6
+	lea strings.MapKeywordText, a1
+	moveq #3, d1
+	move.l d4, -(sp)
+	bsr.w line_text.opforgeNativeCliLineStartsWith
+	move.l (sp)+, d4
+	tst.l d0
+	beq.s selective
+	move.l d6, d0
+	bsr.w line_text.opforgeNativeCliParseUseSectionMapsV1
+	tst.l d1
+	bne.w fail
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	beq.w done
+	cmpi.b #';', (a0)
+	bne.w fail
+	bra.w done
+selective
+	move.l d6, d0
 	cmpi.b #'(', (a0)
 	bne.w fail
 	addq.l #1, a0
@@ -352,7 +371,7 @@ bare
 
 done
 	moveq #0, d0
-	movem.l (sp)+, d5
+	movem.l (sp)+, d5-d6
 	rts
 
 resolveFail
@@ -363,14 +382,14 @@ resolveFail
 	move.l #strings.NewlineText, d1
 	jsr dos.putErrStr
 	moveq #1, d0
-	movem.l (sp)+, d5
+	movem.l (sp)+, d5-d6
 	rts
 
 fail
 	move.l #strings.ParserFailureText, d1
 	jsr dos.putErrStr
 	moveq #1, d0
-	movem.l (sp)+, d5
+	movem.l (sp)+, d5-d6
 	rts
 	.bend  ; opforgeNativeCliParseUseLine
 

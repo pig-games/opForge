@@ -117,7 +117,7 @@ const FS_UAE_OPFORGE_NATIVE_CLI_UNTERMINATED_MODULE_FILE: &str =
     "opforge_fsuae_unterminated_module.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_UNTERMINATED_MODULE_TEXT: &str = ".module main\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_FILE: &str = "opforge_fsuae_bad_use.asm";
-const FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_TEXT: &str = ".module main\n.use math ()\n.endmodule\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_TEXT: &str = ".module target\n.cpu 65c02\n.endmodule\n.module main\n.cpu 65c02\n.use target map { code -> app_code data -> app_data }\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_FILE: &str = "opforge_fsuae_missing_module.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_TEXT: &str =
     ".module main\n.use missing\n.endmodule\n";
@@ -1740,10 +1740,11 @@ fn run_opforge_native_cli_parity_batch_cases(
     })
     .map_err(|err| {
         format!(
-            "assemble FS-UAE smoke example {} from {}: {}",
+            "assemble FS-UAE smoke example {} from {}: {}; diagnostics: {:#?}",
             FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
             source_path.display(),
-            err.summary()
+            err.summary(),
+            err.diagnostics()
         )
     })?;
 
@@ -3769,6 +3770,14 @@ fn materialize_tkpkg_debug_cli_package_override_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn malformed_use_map_fixture_is_65c02_and_omits_required_comma() {
+        assert!(FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_TEXT.contains(".cpu 65c02"));
+        assert!(FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_TEXT
+            .contains("map { code -> app_code data -> app_data }"));
+        assert!(!FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_TEXT.contains("app_code,"));
+    }
 
     #[test]
     fn launcher_handoff_waits_for_a_spawned_emulator() {

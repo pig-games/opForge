@@ -325,7 +325,7 @@ footer
 	bsr.w opasmOutputAppendCString
 	jsr engine.opasmEngineGetLabelCountV1
 	move.l d0, d3
-	beq.s symbolNone
+	beq.w symbolNone
 	lea OpasmListingSymbolHeader.l, a0
 	bsr.w opasmOutputAppendCString
 	moveq #0, d2

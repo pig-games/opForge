@@ -8805,6 +8805,85 @@ fn native_item84_qualified_section_map_fs_uae() {
 }
 
 #[test]
+fn native_item85_imported_section_layout_roots_fs_uae() {
+    // Proof level D. The exact autoload and include roots each carry their own
+    // stored support tree and live in-memory Rust binary oracle into a fresh
+    // guest protocol. No root, support file, or result is shared between cases.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("infallible recovering native CLI FS-UAE smoke lock");
+    let selected = [
+        "examples/opcore/section_module_use_autoload.asm",
+        "examples/opcore/section_module_use_include.asm",
+    ];
+    let staged = item8_staged_cases()
+        .into_iter()
+        .filter(|case| selected.contains(&case.name))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        staged.iter().map(|case| case.name).collect::<Vec<_>>(),
+        selected,
+        "both assigned Item 8.5 roots are mandatory"
+    );
+    let guest_files = staged
+        .iter()
+        .map(|case| {
+            case.guest_files
+                .iter()
+                .map(|file| crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+                    relative_path: &file.relative_path,
+                    bytes: &file.bytes,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let cases = staged
+        .iter()
+        .enumerate()
+        .map(
+            |(index, case)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name: case.name,
+                cpu_override: "68020",
+                extra_assembly_defines: &defines,
+                source_override: Some(&case.source),
+                command_template: Some(
+                    "{input} --bin {bin} --cpu 65c02 -I {guest_work_dir} -M {guest_work_dir}",
+                ),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &guest_files[index],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: &case.rust_oracle,
+                },
+            },
+        )
+        .collect::<Vec<_>>();
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 8.5 imported section-layout FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 2, "both Item 8.5 roots completed");
+            for (run, case) in runs.iter().zip(staged.iter()) {
+                assert!(run.success, "native {} failed: {}", case.name, run.stdout);
+                assert_eq!(
+                    verified_fs_uae_output(run),
+                    case.rust_oracle,
+                    "native bytes differ for {}",
+                    case.name
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_opforge_native_cli_item8_data_text_directives_match_rust_guided_bytes() {
     let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
         .lock()

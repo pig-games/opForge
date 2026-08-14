@@ -1,0 +1,41 @@
+[slice]
+schema_version = 2
+name = "imported section layout and origin parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "examples/opcore/section_module_use_autoload.asm",
+  "examples/opcore/section_module_use_include.asm",
+  "crates/opforge-asm/src/tests/native_fs_uae_parity.rs::item8_staged_cases"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/statement_owners.asm::retained statement ownership",
+  "native/motorola68000/amigaos/opforge-cli/module_use.asm::import owner and ordinary-name resolution",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::processSectionDirectiveForStatement",
+  "native/motorola68000/amigaos/opasm/opasm_layout.asm::findSectionByOwnedNameV1"
+]
+invariant = "Imported constants remain bound to their defining module while each section directive retains its structural module owner. Autoload and explicit-include expansion therefore preserve section identity, origin, placement, and output bytes without cross-module section-name collisions."
+assertion_decision = "No new runtime assertion or instrumentation: Item 8.4's owner-qualified production path already implements the invariant. This slice closes Item 8.5 only through a dedicated mandatory two-root proof and the complete uncapped parent shard."
+expected_inputs = "The exact stored 65C02 section_module_use_autoload.asm and section_module_use_include.asm roots, each root's exact owned support tree, the explicit 65C02 package, and the same command used by its live Rust oracle."
+expected_outputs = "Each root independently completes with fresh start/done challenges, explicit guest exit zero, and a binary exactly equal to its own same-source in-memory Rust CLI oracle; all case artifacts are removed before return."
+known_non_equivalences = "This slice adds no CPU/family/dialect/instruction behavior and does not claim diagnostic-matrix, release, or non-layout parity."
+fast_proof_command = "cargo test -p asm item8_staging_covers_every_assigned_root_and_support_file -- --nocapture && cargo test -p asm native_item85_imported_section_layout_roots_fs_uae -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_item85_imported_section_layout_roots_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "item8_staging_covers_every_assigned_root_and_support_file"
+proof_level = "B"
+proves = "The Item 8 inventory is uncapped and both Item 8.5 roots retain their exact stored source and owned support files while constructing live same-case Rust oracles."
+does_not_prove = "Native execution or imported section-layout behavior."
+
+[[tests]]
+name = "native_item85_imported_section_layout_roots_fs_uae"
+proof_level = "D"
+proves = "Both exact stored Item 8.5 roots independently complete the real guest protocol with exit zero and byte-for-byte equality to their own same-source in-memory Rust oracle."
+does_not_prove = "Diagnostic-matrix, release, or non-layout behavior."
+
+[[tests]]
+name = "native_reference_opcore_layout_output_fs_uae"
+proof_level = "D"
+proves = "The uncapped parent attempts all 16 assigned Item 8 roots and accepts each only after fresh guest completion, explicit zero exit, and exact same-case Rust bytes."
+does_not_prove = "Any root outside the reviewed Item 8 6502/65C02 assignment."

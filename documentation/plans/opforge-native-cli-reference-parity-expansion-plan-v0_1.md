@@ -1523,13 +1523,16 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: one focused qualified-section-map parity commit.
   - Definition of done: the complete stored root reaches a zero guest exit and exact same-source Rust artifact bytes
 
-- [ ] Item 8.5: implement imported section-layout/origin parity
+- [x] Item 8.5: implement imported section-layout/origin parity
   - Source requirement or finding IDs: Item 8.0 first red boundary for `section_module_use_autoload.asm` and `section_module_use_include.asm`
   - Invariant: imported constants do not corrupt section origin or placement state in either autoload or include expansion
   - Expected files: native include/module expansion and opasm origin/layout owners; focused Rust tests; this plan.
   - Full quality gates: focused Level B imported-origin tests; exact two-root Level D proof; uncapped 16-root Item 8 rerun; native formatter; staged native-porting gate; workflow gate; full serial Rust quality gate.
+  - Implementation: no additional production change was required after Item 8.4. Its owner-qualified section registration and pass-two lookup corrected the actual invariant: imported constants remain bound to their defining module while each imported or root section retains its structural module owner, so autoload/include expansion cannot select a same-named section from another module and corrupt origin or placement state.
+  - Focused proof: the mandatory `native_item85_imported_section_layout_roots_fs_uae` run passed both exact stored roots in 45.99s. `section_module_use_autoload.asm` and `section_module_use_include.asm` each used only its own stored support tree, fresh guest challenge/completion, explicit zero exit, and exact byte equality to its own same-source in-memory Rust CLI oracle.
+  - Complete-shard evidence: the immediately preceding uncapped 16-root Item 8 run used the same production tree and passed all 16 assigned roots in 361.24s, including both Item 8.5 roots. No root was capped, excluded, or accepted without completed same-case proof.
   - Plan-compliance review evidence: `plan-compliance-reviewer` must confirm the slice is limited to imported section origin/layout behavior.
-  - Commit outcome: one focused imported section-layout/origin parity commit.
+  - Commit outcome: one focused imported section-layout/origin proof-closure commit; production remains in the reviewed Item 8.4 commit that corrected the shared owner-qualified invariant.
   - Definition of done: both full stored roots, including their exact support trees, match same-source Rust bytes under Level D
 
 - [x] Item 9.1: store the active diagnostic corpus as 6502/65C02 source

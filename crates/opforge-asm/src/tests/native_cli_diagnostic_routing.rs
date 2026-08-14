@@ -3,6 +3,53 @@
 use super::*;
 
 #[test]
+fn native_selector_retains_mnemonic_match_before_shape_rejection() {
+    // Proof level B. This locks the generic selector-state invariant that
+    // distinguishes an absent mnemonic from a known mnemonic whose operand
+    // shape has no selectable form. It does not prove real AmigaOS execution.
+    let service = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
+    )
+    .expect("read native package selection service");
+    let selector = service
+        .split_once("tkpkgBuildSelectedEnvelopeFromMselV1\t.block")
+        .and_then(|(_, tail)| tail.split_once("\t.bend  ; tkpkgBuildSelectedEnvelopeFromMselV1"))
+        .map(|(body, _)| body)
+        .expect("selected-envelope MSEL traversal body");
+
+    let mnemonic_match = selector
+        .find("bsr.w tkpkgServiceStringEqAsciiCasefoldV1")
+        .expect("mnemonic comparison");
+    let owner_match = selector[mnemonic_match..]
+        .find("bsr.w tkpkgSelectedMselOwnerMatchesV1")
+        .map(|offset| mnemonic_match + offset)
+        .expect("active-owner comparison");
+    let retained_match = selector[owner_match..]
+        .find("bset #2, state.EncodeSelectedMselMatchFlags")
+        .map(|offset| owner_match + offset)
+        .expect("independent mnemonic-match state");
+    let shape_match = selector[retained_match..]
+        .find("move.w state.EncodeSelectedMselShapeLen, d1")
+        .map(|offset| retained_match + offset)
+        .expect("operand-shape comparison");
+
+    assert!(
+        retained_match < shape_match,
+        "active-owner mnemonic recognition must be retained before shape rejection"
+    );
+    assert!(
+        selector
+            .matches("btst #2, state.EncodeSelectedMselMatchFlags")
+            .count()
+            >= 1
+    );
+    assert!(
+        selector.contains("btst #2, state.EncodeSelectedMselMatchFlags\n\tbeq.s unknownMnemonic"),
+        "final diagnostic routing must classify from the independent mnemonic-match state"
+    );
+}
+
+#[test]
 fn native_cli_error_output_routing_contract() {
     // Proof level B. This test proves the native CLI has a distinct
     // ErrorOutput adapter, composed diagnostics keep every fragment on that

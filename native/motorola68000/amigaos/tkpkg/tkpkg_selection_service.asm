@@ -583,7 +583,7 @@ haveOutput
 noOutput
 	moveq #0, d1
 	moveq #0, d2
-	btst #0, state.EncodeSelectedMselMatchFlags
+	btst #2, state.EncodeSelectedMselMatchFlags
 	sne d2
 	moveq #0, d0
 	bra.w return
@@ -639,6 +639,15 @@ entryLoop
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
 	movea.l (sp)+, a2
 	move.b d0, d5
+	beq.s locateShape
+	move.w state.EncodeSelectedMselOwnerLen, d0
+	movea.l state.EncodeSelectedMselOwnerPtr, a1
+	bsr.w tkpkgSelectedMselOwnerMatchesV1
+	move.b d0, d5
+	beq.s locateShape
+	bset #2, state.EncodeSelectedMselMatchFlags
+
+locateShape
 	bsr.w tkpkgServiceLocateStringV1
 	bne.w unsupported
 	tst.b d5
@@ -668,11 +677,6 @@ skipShapeCompare
 	beq.w skipPlanStore
 	move.l a1, -(sp)
 	move.w d0, -(sp)
-	move.w state.EncodeSelectedMselOwnerLen, d0
-	movea.l state.EncodeSelectedMselOwnerPtr, a1
-	bsr.w tkpkgSelectedMselOwnerMatchesV1
-	tst.b d0
-	beq.w skipPlanStoreWithPlanFrame
 	bset #0, state.EncodeSelectedMselMatchFlags
 	move.w 6(sp), d0
 	move.w d0, state.EncodeSelectedMselModeLen
@@ -740,7 +744,7 @@ noOutput
 
 noFallback
 	moveq #0, d1
-	btst #0, state.EncodeSelectedMselMatchFlags
+	btst #2, state.EncodeSelectedMselMatchFlags
 	beq.s unknownMnemonic
 	moveq #TKPKG_SELECTED_STATUS_UNSUPPORTED_ADDRESS, d0
 	bra.s return

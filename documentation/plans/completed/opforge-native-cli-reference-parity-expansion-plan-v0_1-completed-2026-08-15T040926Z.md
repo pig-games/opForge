@@ -152,9 +152,10 @@ finally mandatory gating for that active scope only.
   `mos_forward_ref_stability.asm` proof are likewise closed.
 - `make native-reference-parity-completion` is the mandatory configured Level D
   completion gate. Its final skip-safe run passed all eleven entrypoints,
-  including the three uncapped sixteen-root positive shards and the diagnostic
-  shard; missing configuration, skips, zero-test results, emulator failures,
-  and parity mismatches fail closed.
+  including the uncapped sixteen-root syntax/expression, seventeen-root
+  module/macro/statement, sixteen-root layout/output, and diagnostic shards;
+  missing configuration, skips, zero-test results, emulator failures, and
+  parity mismatches fail closed.
 - The deterministic staged gate remains emulator- and network-free. On-hold
   foreign-family scope remains outside this completed plan.
 - All required quality gates and exact-index compliance reviews passed. The
@@ -1617,8 +1618,9 @@ produce deterministic diagnostics rather than silently truncate. The active
     - documentation or workflow notes only if the gate surface changes need explicit repo-local guidance
   - Full quality gates:
     - `python3 scripts/workflow/check_workflow_artifact_bundle.py plan documentation/plans/opforge-native-cli-reference-parity-expansion-plan-v0_1.md`
-    - `cargo test -p asm native_reference_6502_ -- --nocapture`
-    - `cargo test -p asm native_reference_65c02_ -- --nocapture`
+    - `cargo test -p asm native_reference_schema_ -- --nocapture`
+    - `cargo test -p asm native_reference_manifest_ -- --nocapture`
+    - `cargo test -p asm native_mos_forward_ref_stability_pass_one_contract -- --nocapture`
     - `cargo test -p asm native_reference_opcore_ -- --nocapture`
     - exact named Level D FS-UAE shard tests with `--nocapture --test-threads=1`
     - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
@@ -1628,7 +1630,7 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Plan-compliance review evidence:
     - `plan-compliance-reviewer` returns `PASS` for gate promotion only, with deterministic staged checks separated from configured Level D completion execution and no corpus or native behavior changes
   - Implementation: `scripts/workflow/run_native_reference_parity_completion.sh --verify`, exposed as `make native-reference-parity-completion`, is the configured standard completion path for native implementation work. It validates all FS-UAE configuration before execution, names exactly the six completed MOS CLI reference/boundary proofs, the separate canonical `native_mos_forward_ref_stability_fs_uae` proof, and the four inventory-derived opcore shards, then requires each cargo filter to run and pass exactly once with no `SKIP`. Its output files live only in one trap-cleaned temporary directory. Failures are accumulated so every later named test is still attempted. The deterministic staged native-porting gate remains emulator- and network-free, and focused filters remain available only for iteration.
-  - Validation evidence: after review strengthened skip detection to reject `SKIP:` anywhere in real prefixed libtest output, the exact configured `make native-reference-parity-completion` command passed all eleven required entrypoints in one continuous final-code run. Schema binary passed in 158.84s; listing in 22.70s; diagnostic schema in 22.64s; expression metadata fallback in 22.72s; source CPU normalization in 45.35s; debug-output isolation in 45.36s; the separate `mos_forward_ref_stability.asm` proof in 22.74s; the uncapped syntax/expression shard passed all sixteen roots in 364.57s; the uncapped module/macro/statement shard passed all sixteen roots in 385.39s; the uncapped layout/output shard passed all sixteen roots in 363.36s; and the diagnostic shard passed in 113.83s. The wrapper then reported `PASS: complete active 6502/65C02 native reference Level D parity verified (11 tests)`; no on-hold family test was present in the gate. A focused wrapper regression reproduces the real `test ... SKIP: ...` output shape, rejects it, and confirms all later entrypoints are still attempted.
+  - Validation evidence: after review strengthened skip detection to reject `SKIP:` anywhere in real prefixed libtest output, the exact configured `make native-reference-parity-completion` command passed all eleven required entrypoints in one continuous final-code run. Schema binary passed in 158.84s; listing in 22.70s; diagnostic schema in 22.64s; expression metadata fallback in 22.72s; source CPU normalization in 45.35s; debug-output isolation in 45.36s; the separate `mos_forward_ref_stability.asm` proof in 22.74s; the uncapped syntax/expression shard passed all sixteen roots in 364.57s; the uncapped module/macro/statement shard passed all seventeen roots in 385.39s; the uncapped layout/output shard passed all sixteen roots in 363.36s; and the diagnostic shard passed in 113.83s. The wrapper then reported `PASS: complete active 6502/65C02 native reference Level D parity verified (11 tests)`; no on-hold family test was present in the gate. A focused wrapper regression reproduces the real `test ... SKIP: ...` output shape, rejects it, and confirms all later entrypoints are still attempted.
   - Commit outcome:
     - native implementation work can no longer bypass the declared `6502`/`65c02` and opcore-on-`6502`/`65c02` parity shards during the standard required workflow
   - Definition of done:

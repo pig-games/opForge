@@ -220,6 +220,7 @@ name = "families"
 version = "0.1.0"
 dependencies = [
  "opcore",
+ "package",
  "registry",
  "types",
 ]
@@ -560,6 +561,7 @@ name = "registry"
 version = "0.1.0"
 dependencies = [
  "opcore",
+ "package",
  "types",
 ]
 

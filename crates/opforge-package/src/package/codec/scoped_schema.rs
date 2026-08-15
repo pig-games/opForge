@@ -639,6 +639,48 @@ impl ScopedSchemaEntry for SemanticProgramDescriptor {
     }
 }
 
+impl ScopedSchemaEntry for ValueProgramDescriptor {
+    const CHUNK: &'static str = "VALP";
+    const ENTRY_KIND: &'static str = "value VM program entry";
+    const COUNT_LABEL: &'static str = "VALP count";
+    const FIELD_SPECS: &'static [FieldSpec] = &[
+        FieldSpec::String,
+        FieldSpec::U16,
+        FieldSpec::Bytes {
+            len_label: "VALP program byte length",
+            value_label: "value vm program",
+        },
+    ];
+
+    fn owner(&self) -> &ScopedOwner {
+        &self.owner
+    }
+
+    fn field_values(&self) -> Vec<FieldValue<'_>> {
+        vec![
+            FieldValue::String(&self.id),
+            FieldValue::U16(self.opcode_version),
+            FieldValue::Bytes(&self.program),
+        ]
+    }
+
+    fn from_decoded(
+        owner: ScopedOwner,
+        mut fields: DecodedFields,
+    ) -> Result<Self, OpcpuCodecError> {
+        Ok(Self {
+            owner,
+            id: fields.next_string(Self::CHUNK)?,
+            opcode_version: fields.next_u16(Self::CHUNK)?,
+            program: fields.next_bytes(Self::CHUNK)?,
+        })
+    }
+
+    fn validate_decoded(entry: &Self) -> Result<(), OpcpuCodecError> {
+        validate_value_program(entry.opcode_version, &entry.program)
+    }
+}
+
 impl ScopedSchemaEntry for ModeSelectorDescriptor {
     const CHUNK: &'static str = "MSEL";
     const ENTRY_KIND: &'static str = "mode selector entry";

@@ -790,6 +790,7 @@ fn ultimate64_abi_header_is_little_endian_v1() {
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
+        value_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -823,6 +824,7 @@ fn ultimate64_abi_toc_payload_layout_is_contiguous() {
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
+        value_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1031,6 +1033,7 @@ fn encode_decode_round_trip_preserves_toks_policy() {
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
+        value_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1091,6 +1094,7 @@ fn encode_decode_round_trip_preserves_parser_contracts() {
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
+        value_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1144,6 +1148,7 @@ fn encode_decode_round_trip_preserves_parser_vm_programs() {
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
+        value_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1247,6 +1252,7 @@ fn encode_decode_round_trip_preserves_expr_contracts() {
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
+        value_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1291,6 +1297,7 @@ fn encode_decode_round_trip_preserves_expr_parser_contracts() {
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
+        value_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1875,6 +1882,7 @@ proptest! {
                 prop_assert_eq!(left.forms.len(), right.forms.len());
                 prop_assert_eq!(left.tables.len(), right.tables.len());
                 prop_assert_eq!(left.selectors.len(), right.selectors.len());
+                prop_assert_eq!(left.value_programs.len(), right.value_programs.len());
             }
             (Err(left), Err(right)) => {
                 prop_assert_eq!(left.code(), right.code());
@@ -1886,6 +1894,15 @@ proptest! {
                 );
             }
         }
+    }
+
+    #[test]
+    fn value_program_validator_is_deterministic_for_arbitrary_bytes(
+        bytes in proptest::collection::vec(any::<u8>(), 0..512)
+    ) {
+        let first = validate_value_program(VALUE_VM_OPCODE_VERSION_V1, &bytes);
+        let second = validate_value_program(VALUE_VM_OPCODE_VERSION_V1, &bytes);
+        prop_assert_eq!(first, second);
     }
 }
 
@@ -1999,4 +2016,136 @@ fn semantic_program_codec_rejects_unknown_versions_and_malformed_opcodes() {
         duplicate_error,
         OpcpuCodecError::InvalidChunkFormat { ref chunk, .. } if chunk == "SEMV"
     ));
+}
+
+#[test]
+fn value_program_round_trip_is_canonical_and_optional_for_legacy_packages() {
+    let legacy = encode_hierarchy_chunks(
+        &sample_families(),
+        &sample_cpus(),
+        &sample_dialects(),
+        &sample_registers(),
+        &sample_forms(),
+        &sample_tables(),
+    )
+    .expect("legacy package encode");
+    let mut chunks = decode_hierarchy_chunks(&legacy).expect("legacy package decode");
+    assert!(chunks.value_programs.is_empty());
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("legacy package re-encode"),
+        legacy,
+        "omitting VALP must preserve the existing package encoding"
+    );
+
+    let unsigned = compile_value_program(
+        ValueProgramSource::Input(0),
+        &[ValueConstraint::UnsignedBits(8)],
+    )
+    .expect("compile unsigned scalar program");
+    chunks.value_programs = vec![
+        ValueProgramDescriptor {
+            owner: ScopedOwner::Family("MOS6502".to_string()),
+            id: "SCALAR.UNSIGNED-BYTE".to_string(),
+            opcode_version: VALUE_VM_OPCODE_VERSION_V1,
+            program: unsigned.clone(),
+        },
+        ValueProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "scalar.unsigned-byte".to_string(),
+            opcode_version: VALUE_VM_OPCODE_VERSION_V1,
+            program: unsigned,
+        },
+        ValueProgramDescriptor {
+            owner: ScopedOwner::Family("intel8080".to_string()),
+            id: "scalar.literal-zero".to_string(),
+            opcode_version: VALUE_VM_OPCODE_VERSION_V1,
+            program: compile_value_program(ValueProgramSource::Literal(0), &[])
+                .expect("compile literal scalar program"),
+        },
+    ];
+
+    let encoded = encode_hierarchy_chunks_from_chunks(&chunks).expect("VALP package encode");
+    let decoded = decode_hierarchy_chunks(&encoded).expect("VALP package decode");
+    assert_eq!(decoded.value_programs.len(), 2);
+    assert_eq!(decoded.value_programs[0].id, "scalar.literal-zero");
+    assert_eq!(decoded.value_programs[1].id, "scalar.unsigned-byte");
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical VALP re-encode"),
+        encoded
+    );
+}
+
+#[test]
+fn value_program_codec_rejects_unknown_versions_and_malformed_values() {
+    let invalid_programs = [
+        ValueProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "unknown-version".to_string(),
+            opcode_version: VALUE_VM_OPCODE_VERSION_V1 + 1,
+            program: vec![VALUE_VM_OP_PUSH_INPUT, 0, VALUE_VM_OP_END],
+        },
+        ValueProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "missing-source".to_string(),
+            opcode_version: VALUE_VM_OPCODE_VERSION_V1,
+            program: vec![VALUE_VM_OP_END],
+        },
+        ValueProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "invalid-width".to_string(),
+            opcode_version: VALUE_VM_OPCODE_VERSION_V1,
+            program: vec![
+                VALUE_VM_OP_PUSH_INPUT,
+                0,
+                VALUE_VM_OP_REQUIRE_UNSIGNED_BITS,
+                0,
+                VALUE_VM_OP_END,
+            ],
+        },
+        ValueProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "invalid-range".to_string(),
+            opcode_version: VALUE_VM_OPCODE_VERSION_V1,
+            program: {
+                let mut program = vec![VALUE_VM_OP_PUSH_INPUT, 0, VALUE_VM_OP_REQUIRE_RANGE_I64];
+                program.extend_from_slice(&2_i64.to_le_bytes());
+                program.extend_from_slice(&1_i64.to_le_bytes());
+                program.push(VALUE_VM_OP_END);
+                program
+            },
+        },
+        ValueProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "trailing-byte".to_string(),
+            opcode_version: VALUE_VM_OPCODE_VERSION_V1,
+            program: vec![VALUE_VM_OP_PUSH_INPUT, 0, VALUE_VM_OP_END, 0],
+        },
+    ];
+    for entry in invalid_programs {
+        let payload = encode_valp_chunk(&[entry]).expect("raw VALP schema encode");
+        let error = decode_valp_chunk(&payload).expect_err("invalid VALP must fail closed");
+        assert!(matches!(
+            error,
+            OpcpuCodecError::InvalidChunkFormat { ref chunk, .. } if chunk == "VALP"
+        ));
+    }
+
+    let valid = compile_value_program(ValueProgramSource::Input(0), &[])
+        .expect("compile duplicate test program");
+    let duplicate_payload = encode_valp_chunk(&[
+        ValueProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "scalar.value".to_string(),
+            opcode_version: VALUE_VM_OPCODE_VERSION_V1,
+            program: valid.clone(),
+        },
+        ValueProgramDescriptor {
+            owner: ScopedOwner::Family("MOS6502".to_string()),
+            id: "SCALAR.VALUE".to_string(),
+            opcode_version: VALUE_VM_OPCODE_VERSION_V1,
+            program: valid,
+        },
+    ])
+    .expect("raw duplicate VALP schema encode");
+    assert!(decode_valp_chunk(&duplicate_payload).is_err());
 }

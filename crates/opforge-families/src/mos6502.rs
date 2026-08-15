@@ -9,6 +9,7 @@ mod handler;
 mod selector;
 
 pub mod module;
+pub mod package_programs;
 
 pub mod operand;
 

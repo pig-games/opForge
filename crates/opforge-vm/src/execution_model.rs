@@ -450,6 +450,17 @@ impl HierarchyExecutionModel {
             .execute_semantic_program(resolved, program_id, operands)
     }
 
+    /// Materialize one scalar using a package-owned, versioned value program.
+    pub fn execute_value_program(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        inputs: &[i64],
+    ) -> Result<i64, RuntimeBridgeError> {
+        self.core
+            .execute_value_program(resolved, program_id, inputs)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn parse_family_operand_surface_expr(
         &self,

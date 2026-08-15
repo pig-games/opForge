@@ -3,6 +3,7 @@
 //! Motorola 68000 family implementation.
 
 pub mod module;
+pub mod package_programs;
 
 mod compatibility;
 mod fpu_capability;

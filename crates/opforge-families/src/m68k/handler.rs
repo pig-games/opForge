@@ -8,6 +8,10 @@ use super::operand::{
     FamilyOperand, FpuControlRegisterKind, FullExtensionBase, FullExtensionIndex, IndexScale,
     IndexSize, MemoryIndirectionKind, Operand, RegisterListRegister, SpecialRegisterKind,
 };
+use super::package_programs::{
+    IMMEDIATE_BYTE_RANGE, IMMEDIATE_LONG_RANGE, IMMEDIATE_WORD_RANGE, SIGNED_BYTE_RANGE,
+    SIGNED_WORD_RANGE, UNSIGNED_BYTE_RANGE,
+};
 use super::table::{
     parse_fpu_mnemonic, parse_m68020_mnemonic, parse_m68080_mnemonic, parse_mnemonic,
     BitFieldMnemonic, BitMnemonic, ConditionCode, FpuMnemonicKind, M68020MnemonicKind,
@@ -634,15 +638,19 @@ impl M68KFamilyHandler {
     }
 
     fn encode_signed_byte(value: i64) -> Option<u8> {
-        (-128..=127).contains(&value).then_some((value as i8) as u8)
+        (SIGNED_BYTE_RANGE.0..=SIGNED_BYTE_RANGE.1)
+            .contains(&value)
+            .then_some((value as i8) as u8)
     }
 
     fn encode_unsigned_byte(value: i64) -> Option<u8> {
-        (0..=u8::MAX as i64).contains(&value).then_some(value as u8)
+        (UNSIGNED_BYTE_RANGE.0..=UNSIGNED_BYTE_RANGE.1)
+            .contains(&value)
+            .then_some(value as u8)
     }
 
     pub(crate) fn encode_signed_word(value: i64) -> Option<u16> {
-        (-32768..=32767)
+        (SIGNED_WORD_RANGE.0..=SIGNED_WORD_RANGE.1)
             .contains(&value)
             .then_some((value as i16) as u16)
     }
@@ -667,19 +675,19 @@ impl M68KFamilyHandler {
         let mut bytes = Vec::new();
         match size {
             OperationSize::Byte => {
-                if !(-128..=255).contains(&value) {
+                if !(IMMEDIATE_BYTE_RANGE.0..=IMMEDIATE_BYTE_RANGE.1).contains(&value) {
                     return None;
                 }
                 Self::emit_word(&mut bytes, value as u8 as u16);
             }
             OperationSize::Word => {
-                if !(-32768..=65535).contains(&value) {
+                if !(IMMEDIATE_WORD_RANGE.0..=IMMEDIATE_WORD_RANGE.1).contains(&value) {
                     return None;
                 }
                 Self::emit_word(&mut bytes, value as u16);
             }
             OperationSize::Long => {
-                if !(-2_147_483_648..=4_294_967_295).contains(&value) {
+                if !(IMMEDIATE_LONG_RANGE.0..=IMMEDIATE_LONG_RANGE.1).contains(&value) {
                     return None;
                 }
                 Self::emit_long(&mut bytes, value as u32);
@@ -728,7 +736,7 @@ impl M68KFamilyHandler {
         )
     }
 
-    fn normalize_wrapped_i32(value: i64) -> i64 {
+    pub(crate) fn normalize_wrapped_i32(value: i64) -> i64 {
         if ((i32::MAX as i64) + 1..=u32::MAX as i64).contains(&value) {
             value as u32 as i32 as i64
         } else {

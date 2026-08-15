@@ -44,6 +44,7 @@ pub mod runtime_portable_types;
 mod runtime_tests;
 pub mod selector_encoding_utils;
 pub mod tokenizer_runtime_utils;
+pub mod value_vm;
 pub mod vm_core;
 pub mod vm_opasm;
 pub(crate) mod vm_opasm_parse;

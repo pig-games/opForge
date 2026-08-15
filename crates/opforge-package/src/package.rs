@@ -15,6 +15,7 @@
 //! - `FORM` (scoped form descriptors)
 //! - `TABL` (scoped VM instruction program descriptors)
 //! - `SEMV` (versioned scoped semantic VM program descriptors)
+//! - `VALP` (versioned scoped scalar-value program descriptors)
 //! - `TKVM` (scoped tokenizer VM program descriptors)
 //! - `PARS` (scoped parser/AST contract descriptors)
 //! - `PRVM` (scoped parser VM program descriptors)
@@ -36,7 +37,7 @@ pub use canonicalize::{
     canonicalize_expr_contracts, canonicalize_expr_parser_contracts,
     canonicalize_hierarchy_metadata, canonicalize_parser_contracts,
     canonicalize_parser_vm_programs, canonicalize_semantic_programs, canonicalize_token_policies,
-    canonicalize_tokenizer_vm_programs,
+    canonicalize_tokenizer_vm_programs, canonicalize_value_programs,
 };
 
 pub const OPASM_MAGIC: [u8; 4] = *b"OPCP";
@@ -58,6 +59,7 @@ const CHUNK_REGS: [u8; 4] = *b"REGS";
 const CHUNK_FORM: [u8; 4] = *b"FORM";
 const CHUNK_TABL: [u8; 4] = *b"TABL";
 const CHUNK_SEMV: [u8; 4] = *b"SEMV";
+const CHUNK_VALP: [u8; 4] = *b"VALP";
 const CHUNK_MSEL: [u8; 4] = *b"MSEL";
 const CHUNK_TKVM: [u8; 4] = *b"TKVM";
 const CHUNK_PARS: [u8; 4] = *b"PARS";
@@ -111,6 +113,8 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 ///   sourced from `core::expr_vm` to keep runtime/package compatibility strict.
 /// - `EXPR_VM_OPCODE_VERSION_V2`: staged expression evaluator VM v2 contract
 ///   payloads.
+/// - `VALUE_VM_OPCODE_VERSION_V1`: scalar value materialization (`VALP`)
+///   payloads.
 ///
 /// Decode/validation policy for all versioned VM payloads:
 /// - exact version match required for the active decoder.
@@ -120,6 +124,14 @@ pub const SEMANTIC_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const SEMANTIC_VM_OP_EMIT_U8: u8 = 0x01;
 pub const SEMANTIC_VM_OP_EMIT_OPERAND: u8 = 0x02;
 pub const SEMANTIC_VM_OP_END: u8 = 0xFF;
+pub const VALUE_VM_OPCODE_VERSION_V1: u16 = 0x0001;
+pub const VALUE_VM_OP_PUSH_LITERAL_I64: u8 = 0x01;
+pub const VALUE_VM_OP_PUSH_INPUT: u8 = 0x02;
+pub const VALUE_VM_OP_NORMALIZE_TWOS_COMPLEMENT: u8 = 0x03;
+pub const VALUE_VM_OP_REQUIRE_SIGNED_BITS: u8 = 0x04;
+pub const VALUE_VM_OP_REQUIRE_UNSIGNED_BITS: u8 = 0x05;
+pub const VALUE_VM_OP_REQUIRE_RANGE_I64: u8 = 0x06;
+pub const VALUE_VM_OP_END: u8 = 0xFF;
 pub const PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT: u16 = 0x0002;
 pub const EXVM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const EXVM_OPCODE_VERSION_V2: u16 = 0x0002;
@@ -183,6 +195,168 @@ pub struct SemanticProgramDescriptor {
     pub id: String,
     pub opcode_version: u16,
     pub program: Vec<u8>,
+}
+
+/// Independently versioned scalar materialization selected by scope and id.
+///
+/// Programs consume only literal values or already-evaluated scalar inputs. CPU
+/// families own program construction; the package and runtime own only the
+/// portable numeric operations and their deterministic bounds behavior.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ValueProgramDescriptor {
+    pub owner: ScopedOwner,
+    pub id: String,
+    pub opcode_version: u16,
+    pub program: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValueProgramSource {
+    Literal(i64),
+    Input(u8),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValueConstraint {
+    NormalizeTwosComplement(u8),
+    SignedBits(u8),
+    UnsignedBits(u8),
+    InclusiveRange { min: i64, max: i64 },
+}
+
+/// Compile a CPU-neutral scalar program from one source and ordered constraints.
+pub fn compile_value_program(
+    source: ValueProgramSource,
+    constraints: &[ValueConstraint],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    let mut program = Vec::new();
+    match source {
+        ValueProgramSource::Literal(value) => {
+            program.push(VALUE_VM_OP_PUSH_LITERAL_I64);
+            program.extend_from_slice(&value.to_le_bytes());
+        }
+        ValueProgramSource::Input(index) => {
+            program.push(VALUE_VM_OP_PUSH_INPUT);
+            program.push(index);
+        }
+    }
+    for constraint in constraints {
+        match *constraint {
+            ValueConstraint::NormalizeTwosComplement(bits) => {
+                program.push(VALUE_VM_OP_NORMALIZE_TWOS_COMPLEMENT);
+                program.push(bits);
+            }
+            ValueConstraint::SignedBits(bits) => {
+                program.push(VALUE_VM_OP_REQUIRE_SIGNED_BITS);
+                program.push(bits);
+            }
+            ValueConstraint::UnsignedBits(bits) => {
+                program.push(VALUE_VM_OP_REQUIRE_UNSIGNED_BITS);
+                program.push(bits);
+            }
+            ValueConstraint::InclusiveRange { min, max } => {
+                program.push(VALUE_VM_OP_REQUIRE_RANGE_I64);
+                program.extend_from_slice(&min.to_le_bytes());
+                program.extend_from_slice(&max.to_le_bytes());
+            }
+        }
+    }
+    program.push(VALUE_VM_OP_END);
+    validate_value_program(VALUE_VM_OPCODE_VERSION_V1, &program)?;
+    Ok(program)
+}
+
+/// Validate one scalar-value program without interpreting family semantics.
+pub fn validate_value_program(opcode_version: u16, program: &[u8]) -> Result<(), OpcpuCodecError> {
+    fn invalid(detail: impl Into<String>) -> OpcpuCodecError {
+        OpcpuCodecError::InvalidChunkFormat {
+            chunk: "VALP".to_string(),
+            detail: detail.into(),
+        }
+    }
+
+    if opcode_version != VALUE_VM_OPCODE_VERSION_V1 {
+        return Err(invalid(format!(
+            "unsupported value VM opcode version {opcode_version}"
+        )));
+    }
+
+    let mut pc = 0usize;
+    let mut has_value = false;
+    loop {
+        let opcode = *program
+            .get(pc)
+            .ok_or_else(|| invalid("value VM program is truncated before END"))?;
+        pc += 1;
+        match opcode {
+            VALUE_VM_OP_PUSH_LITERAL_I64 => {
+                if has_value {
+                    return Err(invalid("value VM program defines more than one source"));
+                }
+                pc = pc
+                    .checked_add(8)
+                    .filter(|end| *end <= program.len())
+                    .ok_or_else(|| invalid("value VM literal is truncated"))?;
+                has_value = true;
+            }
+            VALUE_VM_OP_PUSH_INPUT => {
+                if has_value {
+                    return Err(invalid("value VM program defines more than one source"));
+                }
+                pc = pc
+                    .checked_add(1)
+                    .filter(|end| *end <= program.len())
+                    .ok_or_else(|| invalid("value VM input index is truncated"))?;
+                has_value = true;
+            }
+            VALUE_VM_OP_NORMALIZE_TWOS_COMPLEMENT
+            | VALUE_VM_OP_REQUIRE_SIGNED_BITS
+            | VALUE_VM_OP_REQUIRE_UNSIGNED_BITS => {
+                if !has_value {
+                    return Err(invalid("value VM constraint precedes its source"));
+                }
+                let bits = *program
+                    .get(pc)
+                    .ok_or_else(|| invalid("value VM bit width is truncated"))?;
+                pc += 1;
+                if !(1..=64).contains(&bits) {
+                    return Err(invalid(format!(
+                        "value VM bit width {bits} is outside 1..=64"
+                    )));
+                }
+            }
+            VALUE_VM_OP_REQUIRE_RANGE_I64 => {
+                if !has_value {
+                    return Err(invalid("value VM constraint precedes its source"));
+                }
+                let end = pc
+                    .checked_add(16)
+                    .filter(|end| *end <= program.len())
+                    .ok_or_else(|| invalid("value VM inclusive range is truncated"))?;
+                let min = i64::from_le_bytes(program[pc..pc + 8].try_into().expect("8 bytes"));
+                let max = i64::from_le_bytes(program[pc + 8..end].try_into().expect("8 bytes"));
+                if min > max {
+                    return Err(invalid(format!(
+                        "value VM inclusive range minimum {min} exceeds maximum {max}"
+                    )));
+                }
+                pc = end;
+            }
+            VALUE_VM_OP_END if !has_value => {
+                return Err(invalid("value VM program ends without a source"));
+            }
+            VALUE_VM_OP_END if pc == program.len() => return Ok(()),
+            VALUE_VM_OP_END => {
+                return Err(invalid("value VM program has trailing bytes after END"));
+            }
+            _ => {
+                return Err(invalid(format!(
+                    "invalid value VM opcode 0x{opcode:02X} at pc={}",
+                    pc - 1
+                )));
+            }
+        }
+    }
 }
 
 /// Build the v1 semantic bytecode for a fixed byte sequence.
@@ -814,6 +988,7 @@ pub struct HierarchyChunks {
     pub forms: Vec<ScopedFormDescriptor>,
     pub tables: Vec<VmProgramDescriptor>,
     pub semantic_programs: Vec<SemanticProgramDescriptor>,
+    pub value_programs: Vec<ValueProgramDescriptor>,
     pub selectors: Vec<ModeSelectorDescriptor>,
 }
 

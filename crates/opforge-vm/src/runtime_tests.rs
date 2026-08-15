@@ -40,9 +40,10 @@ use families::{
         ld_indirect_candidate as intel8080_ld_indirect_candidate, Operand as IntelOperand,
     },
     m65816::state,
+    m68k::package_programs as m68k_value_programs,
     mos6502::{
         module::{M6502CpuModule, MOS6502FamilyModule, MOS6502Operands},
-        Operand,
+        package_programs as mos6502_value_programs, Operand,
     },
     register_intel8080_family_stack, register_mos6502_family_stack,
     register_motorola68000_family_stack, register_motorola6800_family_stack,
@@ -934,6 +935,7 @@ fn intel_only_chunks() -> HierarchyChunks {
             program: vec![OP_EMIT_U8, 0x3E, OP_EMIT_OPERAND, 0x00, OP_END],
         }],
         semantic_programs: Vec::new(),
+        value_programs: Vec::new(),
         selectors: Vec::new(),
     }
 }
@@ -8049,6 +8051,118 @@ fn execution_model_runs_fixed_semantics_from_serialized_package_across_families(
             .execute_semantic_program(&mos, "fixed.nop", &[])
             .expect("execute the same neutral semantic primitive for mos6502"),
         vec![0xea]
+    );
+}
+
+#[test]
+fn execution_model_materializes_family_scalar_values_from_serialized_programs() {
+    let mut registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
+    let chunks = build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    assert_eq!(chunks.value_programs.len(), 11);
+    let package_bytes =
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("value package serialization");
+
+    // Only bytes survive this boundary. The family registry and compiler-side
+    // descriptors cannot participate in runtime value materialization.
+    drop(chunks);
+    drop(registry);
+    let model = HierarchyExecutionModel::from_package_bytes(&package_bytes)
+        .expect("runtime should load serialized value package");
+    let m68k = model
+        .resolve_pipeline("m68020", None)
+        .expect("resolve m68020 package hierarchy");
+    let mos = model
+        .resolve_pipeline("m6502", None)
+        .expect("resolve m6502 package hierarchy");
+
+    for value in [i64::MIN, -1, 0, i32::MAX as i64, u32::MAX as i64, i64::MAX] {
+        assert_eq!(
+            model
+                .execute_value_program(&m68k, m68k_value_programs::VALUE_NORMALIZED_INPUT, &[value])
+                .expect("materialize normalized m68k scalar"),
+            m68k_value_programs::oracle_normalize_wrapped_i32(value)
+        );
+    }
+
+    for (program_id, accepted, rejected) in [
+        (m68k_value_programs::VALUE_SIGNED_BYTE, -128, -129),
+        (m68k_value_programs::VALUE_UNSIGNED_BYTE, 255, 256),
+        (m68k_value_programs::VALUE_SIGNED_WORD, 32_767, 32_768),
+        (m68k_value_programs::VALUE_IMMEDIATE_BYTE, 255, 256),
+        (m68k_value_programs::VALUE_IMMEDIATE_WORD, 65_535, 65_536),
+        (
+            m68k_value_programs::VALUE_IMMEDIATE_LONG,
+            u32::MAX as i64,
+            u32::MAX as i64 + 1,
+        ),
+    ] {
+        assert_eq!(
+            model
+                .execute_value_program(&m68k, program_id, &[accepted])
+                .expect("accepted m68k scalar boundary"),
+            m68k_value_programs::oracle_normalize_wrapped_i32(accepted)
+        );
+        assert!(matches!(
+            model.execute_value_program(&m68k, program_id, &[rejected]),
+            Err(RuntimeBridgeError::ValueVm(
+                crate::value_vm::ValueVmError::ConstraintViolation { .. }
+            ))
+        ));
+    }
+
+    assert_eq!(
+        model
+            .execute_value_program(&m68k, m68k_value_programs::VALUE_LITERAL_ZERO, &[])
+            .expect("m68k package literal"),
+        0
+    );
+    assert_eq!(
+        model
+            .execute_value_program(&mos, mos6502_value_programs::VALUE_LITERAL_ZERO, &[])
+            .expect("mos6502 package literal"),
+        0
+    );
+    assert_eq!(
+        model
+            .execute_value_program(&mos, mos6502_value_programs::VALUE_UNSIGNED_BYTE, &[255])
+            .expect("cross-family unsigned byte operation"),
+        255
+    );
+    assert!(model
+        .execute_value_program(&mos, mos6502_value_programs::VALUE_UNSIGNED_BYTE, &[-1])
+        .is_err());
+    assert!(matches!(
+        model.execute_value_program(&mos, mos6502_value_programs::VALUE_UNSIGNED_BYTE, &[]),
+        Err(RuntimeBridgeError::ValueVm(
+            crate::value_vm::ValueVmError::MissingInput { index: 0 }
+        ))
+    ));
+
+    let mut ctx = TestAssemblerContext::new();
+    ctx.values.insert("value".to_string(), 40);
+    let (tokens, end_span) = tokenize_core_expr_tokens("value + 2", 1);
+    let expr_program = model
+        .parse_expression_program_for_assembler("m68020", None, tokens, end_span, None)
+        .expect("compile package expression program");
+    let evaluated = model
+        .evaluate_portable_expression_program_with_contract_for_assembler(
+            "m68020",
+            None,
+            &expr_program,
+            &ctx,
+        )
+        .expect("evaluate package expression program");
+    assert_eq!(
+        model
+            .execute_value_program(
+                &m68k,
+                m68k_value_programs::VALUE_IMMEDIATE_BYTE,
+                &[evaluated.value],
+            )
+            .expect("materialize evaluated expression value"),
+        42
     );
 }
 

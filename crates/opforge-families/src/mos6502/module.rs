@@ -59,6 +59,12 @@ impl FamilyModule for MOS6502FamilyModule {
         family_form_mnemonics()
     }
 
+    fn value_programs(
+        &self,
+    ) -> Result<Vec<package::ValueProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::value_programs()
+    }
+
     fn dialects(&self) -> Vec<Box<dyn DialectModule>> {
         vec![Box::new(TransparentDialect)]
     }

@@ -46,6 +46,12 @@ impl FamilyModule for Motorola68000FamilyModule {
         FAMILY_REGISTER_IDS
     }
 
+    fn value_programs(
+        &self,
+    ) -> Result<Vec<package::ValueProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::value_programs()
+    }
+
     fn dialects(&self) -> Vec<Box<dyn DialectModule>> {
         vec![Box::new(CanonicalDialect)]
     }

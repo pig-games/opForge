@@ -6,7 +6,6 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 opcore = { path = "../opforge-core" }
+package = { path = "../opforge-package" }
 registry = { path = "../opforge-registry" }
-
-[dev-dependencies]
 types = { path = "../opforge-types" }

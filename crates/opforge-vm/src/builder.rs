@@ -44,13 +44,13 @@ use opcore::expr_vm::PortableExprBudgets;
 use package::{
     canonicalize_expr_parser_contracts, canonicalize_hierarchy_metadata,
     canonicalize_parser_contracts, canonicalize_parser_vm_programs, canonicalize_token_policies,
-    canonicalize_tokenizer_vm_programs, default_runtime_diagnostic_catalog,
-    default_token_policy_lexical_defaults, encode_hierarchy_chunks_from_chunks,
-    token_identifier_class, ExprContractDescriptor, ExprDiagnosticMap,
-    ExprParserContractDescriptor, ExprParserDiagnosticMap, HierarchyChunks, ModeSelectorDescriptor,
-    OpcpuCodecError, ParserContractDescriptor, ParserDiagnosticMap, ParserVmOpcodeV2,
-    ParserVmProgramDescriptor, TokenCaseRule, TokenPolicyDescriptor, TokenizerVmDiagnosticMap,
-    TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
+    canonicalize_tokenizer_vm_programs, canonicalize_value_programs,
+    default_runtime_diagnostic_catalog, default_token_policy_lexical_defaults,
+    encode_hierarchy_chunks_from_chunks, token_identifier_class, ExprContractDescriptor,
+    ExprDiagnosticMap, ExprParserContractDescriptor, ExprParserDiagnosticMap, HierarchyChunks,
+    ModeSelectorDescriptor, OpcpuCodecError, ParserContractDescriptor, ParserDiagnosticMap,
+    ParserVmOpcodeV2, ParserVmProgramDescriptor, TokenCaseRule, TokenPolicyDescriptor,
+    TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
     TokenizerVmStreamDescriptor, VmProgramDescriptor, DIAG_EXPR_BUDGET_EXCEEDED,
     DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM,
     DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
@@ -198,6 +198,10 @@ pub fn build_hierarchy_chunks_from_registry(
         .iter()
         .map(|family| default_family_expr_parser_contract(family.as_str()))
         .collect();
+    let mut value_programs = Vec::new();
+    for family in &family_ids {
+        value_programs.extend(registry.family_value_programs(*family)?);
+    }
 
     let mut registers = Vec::new();
     for family in &family_ids {
@@ -728,6 +732,7 @@ pub fn build_hierarchy_chunks_from_registry(
     canonicalize_parser_vm_programs(&mut parser_vm_programs);
     package::canonicalize_expr_contracts(&mut expr_contracts);
     canonicalize_expr_parser_contracts(&mut expr_parser_contracts);
+    canonicalize_value_programs(&mut value_programs);
 
     // Ensure the materialized metadata is coherent before returning.
     HierarchyPackage::new(families.clone(), cpus.clone(), dialects.clone())?;
@@ -749,6 +754,7 @@ pub fn build_hierarchy_chunks_from_registry(
         forms,
         tables,
         semantic_programs: Vec::new(),
+        value_programs,
         selectors,
     })
 }

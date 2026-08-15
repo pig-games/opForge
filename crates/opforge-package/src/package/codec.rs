@@ -50,6 +50,7 @@ pub(super) fn encode_hierarchy_chunks_full(
         forms: forms.to_vec(),
         tables: tables.to_vec(),
         semantic_programs: Vec::new(),
+        value_programs: Vec::new(),
         selectors: selectors.to_vec(),
     };
     encode_hierarchy_chunks_from_chunks(&chunks)
@@ -81,6 +82,7 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
     let mut forms = chunks.forms.to_vec();
     let mut tables = chunks.tables.to_vec();
     let mut semantic_programs = chunks.semantic_programs.to_vec();
+    let mut value_programs = chunks.value_programs.to_vec();
     let mut selectors = chunks.selectors.to_vec();
     canonicalize_hierarchy_metadata(
         &mut fams,
@@ -93,6 +95,8 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
     );
     canonicalize_semantic_programs(&mut semantic_programs);
     validate_semantic_program_set(&semantic_programs)?;
+    canonicalize_value_programs(&mut value_programs);
+    validate_value_program_set(&value_programs)?;
     canonicalize_token_policies(&mut token_policies);
     canonicalize_tokenizer_vm_programs(&mut tokenizer_vm_programs);
     canonicalize_parser_contracts(&mut parser_contracts);
@@ -126,6 +130,9 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
     }
     if !semantic_programs.is_empty() {
         chunks.push((CHUNK_SEMV, encode_semv_chunk(&semantic_programs)?));
+    }
+    if !value_programs.is_empty() {
+        chunks.push((CHUNK_VALP, encode_valp_chunk(&value_programs)?));
     }
     chunks.extend_from_slice(&[
         (CHUNK_FAMS, encode_fams_chunk(&fams)?),
@@ -282,6 +289,7 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
     let expr_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_EXPR)?;
     let exvm_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_EXVM)?;
     let semv_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_SEMV)?;
+    let valp_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_VALP)?;
     let fams_bytes = slice_for_chunk(bytes, &toc, CHUNK_FAMS)?;
     let cpus_bytes = slice_for_chunk(bytes, &toc, CHUNK_CPUS)?;
     let dial_bytes = slice_for_chunk(bytes, &toc, CHUNK_DIAL)?;
@@ -335,6 +343,10 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
         tables: decode_tabl_chunk(tabl_bytes)?,
         semantic_programs: match semv_bytes {
             Some(payload) => decode_semv_chunk(payload)?,
+            None => Vec::new(),
+        },
+        value_programs: match valp_bytes {
+            Some(payload) => decode_valp_chunk(payload)?,
             None => Vec::new(),
         },
         selectors: match msel_bytes {
@@ -747,6 +759,45 @@ fn validate_semantic_program_set(
                 chunk: "SEMV".to_string(),
                 detail: format!(
                     "duplicate semantic VM program id '{}' in one owner scope",
+                    entry.id
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn encode_valp_chunk(
+    programs: &[ValueProgramDescriptor],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    encode_scoped_schema_chunk(programs)
+}
+
+pub(super) fn decode_valp_chunk(
+    bytes: &[u8],
+) -> Result<Vec<ValueProgramDescriptor>, OpcpuCodecError> {
+    let programs = decode_scoped_schema_chunk(bytes)?;
+    validate_value_program_set(&programs)?;
+    Ok(programs)
+}
+
+fn validate_value_program_set(programs: &[ValueProgramDescriptor]) -> Result<(), OpcpuCodecError> {
+    for (index, entry) in programs.iter().enumerate() {
+        if entry.id.is_empty() {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "VALP".to_string(),
+                detail: "value VM program id must not be empty".to_string(),
+            });
+        }
+        validate_value_program(entry.opcode_version, &entry.program)?;
+        if programs[..index].iter().any(|prior| {
+            prior.owner.key_parts_lowercase() == entry.owner.key_parts_lowercase()
+                && prior.id.eq_ignore_ascii_case(&entry.id)
+        }) {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "VALP".to_string(),
+                detail: format!(
+                    "duplicate value VM program id '{}' in one owner scope",
                     entry.id
                 ),
             });

@@ -1,0 +1,43 @@
+[slice]
+schema_version = 1
+name = "versioned portable scalar-value programs"
+kind = "package-runtime"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 2
+requirements = ["N68X0-001", "N68X0-003", "N68X0-004", "N68X0-005", "N68X0-014", "N68X0-015"]
+rust_reference = [
+  "crates/opforge-families/src/m68k/handler.rs::M68KFamilyHandler::normalize_wrapped_i32",
+  "crates/opforge-families/src/m68k/package_programs.rs::value_programs",
+  "crates/opforge-families/src/mos6502/package_programs.rs::value_programs",
+  "crates/opforge-package/src/package.rs::ValueProgramDescriptor",
+  "crates/opforge-vm/src/value_vm.rs::execute_value_program",
+  "crates/opforge-vm/src/runtime_model_core.rs::RuntimeModelCore::execute_value_program"
+]
+boundary = "VALP is an optional, independently versioned, scoped package chunk. Family modules compile their scalar rules through a neutral registry hook. The generic package/runtime owns only literal or indexed scalar sources, two's-complement normalization, signed/unsigned bit constraints, inclusive ranges, scoped lookup, and deterministic termination. It contains no CPU, register, addressing-mode, or instruction dispatch."
+invariant = "The normal registry package builder serializes family-owned scalar programs. After serialization, a reloaded runtime materializes literals and evaluated expression inputs with exact family bounds without invoking a family parser, selector, legality callback, or encoder. Unsupported versions and structurally malformed programs fail closed."
+expected_inputs = "A canonical hierarchy package with zero or more scoped VALP descriptors using value opcode version 1, plus zero or more already-evaluated i64 scalar inputs."
+expected_outputs = "One deterministic i64 scalar or a typed missing-input, constraint, malformed-program, unsupported-version, unknown-program, or missing-scope failure."
+known_non_equivalences = "This slice does not serialize register/address records, structured operands, selector order, legality, target state, instruction encoding, fixups, pass stability, native interpretation, output formats, or CLI behavior. Those remain owned by later plan items."
+fast_proof_command = "cargo test -p package value_program -- --nocapture && cargo test -p vm execution_model_materializes_family_scalar_values_from_serialized_programs -- --nocapture"
+full_gate_command = "cargo test -p package && cargo test -p registry && cargo test -p families && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
+native_proof = "not-applicable: Item 2 changes no native production file and the plan forbids FS-UAE as package-phase proof"
+
+[[tests]]
+name = "value_program_round_trip_is_canonical_and_optional_for_legacy_packages"
+proof_level = "package"
+proves = "VALP round-trips canonically, collapses identical case variants, and packages without VALP retain their existing canonical bytes."
+
+[[tests]]
+name = "value_program_codec_rejects_unknown_versions_and_malformed_values"
+proof_level = "package"
+proves = "Unknown versions, missing sources, invalid widths and ranges, trailing bytes, and duplicate scoped ids fail closed."
+
+[[tests]]
+name = "value_program_validator_is_deterministic_for_arbitrary_bytes"
+proof_level = "package-fuzz"
+proves = "Arbitrary bounded byte streams produce deterministic validation outcomes without panics."
+
+[[tests]]
+name = "execution_model_materializes_family_scalar_values_from_serialized_programs"
+proof_level = "runtime"
+proves = "The normal package builder emits family-owned m68k and MOS value programs; a serialized-only runtime matches the m68k normalization oracle, enforces signed/unsigned and mixed immediate bounds, consumes a package-evaluated expression result, materializes literals, and reuses neutral operations across families after the registry is dropped."

@@ -201,7 +201,7 @@ No work item may start until all of these are true on the execution branch:
   for emulator work, `agents/rules/native-parity-failure-triage.md` after a
   parity failure, and `agents/rules/native-68000-safe-instrumentation.md` before
   adding any diagnostic, trace, assertion, or event.
-- A moved failure, reduced fixture, prefix scan, or debug probe is Level E
+- A moved failure, reduced fixture, prefix scan, or debug probe is proof Level E
   localization only. Each item closes one named invariant with focused Level
   B/C proof; Items 14-40 also require the named Level D confirmation.
 - New portable package opcodes must be versioned, bounded, fuzz/negative tested,
@@ -343,6 +343,11 @@ the same unmodified serialized semantic package.
   `SEMV`, whose payload carries its own exact opcode version. Packages without
   `SEMV` retain their canonical bytes; unknown semantic opcode versions and
   malformed programs fail closed with an `SEMV` package-format diagnostic.
+- Item 2 retains container version 1 and adds optional `VALP`, whose payload
+  carries its own exact opcode version. Packages without `VALP` retain their
+  canonical bytes; unknown value opcode versions and malformed value programs
+  fail closed. The checked-in `.opasm` package fixtures are regenerated exact
+  Rust-builder output and are not a native-only schema or transformation.
 - Owned contract: the 68020/AmigaOS executable exposes the complete
   Rust-supported 680x0 assembler surface and can rebuild itself
 - Rationale: CPU discovery is already present in package metadata, but complete
@@ -359,11 +364,11 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit that serializes, reloads, selects, and emits a package-owned fixed big-endian opcode through the Rust package runtime.
   - Definition of done: freshly serialized bytes are the only execution input; compatible old packages remain supported or fail with the explicitly versioned diagnostic; malformed programs fail closed; no m68k callback executes after construction.
 
-- [ ] Item 2: materialize scalar, literal, and expression-value operand programs
+- [x] Item 2: materialize scalar, literal, and expression-value operand programs
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`-`N68X0-005`, `N68X0-014`, `N68X0-015`.
   - Expected files: neutral scalar/value package schema and Rust interpreter, family-owned compilation adapter, focused tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; signed/unsigned bounds, literal/expression, malformed-value, round-trip, and applicable cross-family value tests.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for scalar/value interpretation only.
+  - Plan-compliance review evidence: `PASS` — the independent `plan-compliance-reviewer` confirmed that `VALP` is optional, independently versioned, scoped, and CPU-neutral; m68k and MOS rules remain family-owned package builders; canonical round-trip, legacy byte identity, malformed/unsupported fail-closed behavior, signed/unsigned/range/normalization/literal/expression behavior, cross-family reuse, and serialized-only execution are proven; refreshed `.opasm` files are exact Rust-built artifacts; no native implementation changed; and the focused, full Rust, architecture-boundary, and workflow gates pass.
   - Commit outcome: one commit replacing runtime scalar/value callbacks with serialized neutral programs.
   - Definition of done: scalar and expression values match the family oracle with zero post-construction family parser calls.
 

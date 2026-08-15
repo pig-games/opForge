@@ -50,14 +50,14 @@ use package::{
     encode_hierarchy_chunks_from_chunks, token_identifier_class, ExprContractDescriptor,
     ExprDiagnosticMap, ExprParserContractDescriptor, ExprParserDiagnosticMap, HierarchyChunks,
     ModeSelectorDescriptor, OpcpuCodecError, ParserContractDescriptor, ParserDiagnosticMap,
-    ParserVmOpcodeV2, ParserVmProgramDescriptor, SelectorProgramDescriptor, TokenCaseRule,
-    TokenPolicyDescriptor, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
-    TokenizerVmProgramDescriptor, TokenizerVmStreamDescriptor, VmProgramDescriptor,
-    DIAG_EXPR_BUDGET_EXCEEDED, DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE,
-    DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW,
-    DIAG_EXPR_UNKNOWN_SYMBOL, DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_PARSER_EXPECTED_EXPRESSION,
-    DIAG_PARSER_EXPECTED_OPERAND, DIAG_PARSER_INVALID_STATEMENT, DIAG_PARSER_UNEXPECTED_TOKEN,
-    DIAG_TOKENIZER_ERROR_LIMIT_EXCEEDED, DIAG_TOKENIZER_INVALID_CHAR,
+    ParserVmOpcodeV2, ParserVmProgramDescriptor, SelectorProgramDescriptor, StateProgramDescriptor,
+    TokenCaseRule, TokenPolicyDescriptor, TokenizerVmDiagnosticMap, TokenizerVmLimits,
+    TokenizerVmOpcode, TokenizerVmProgramDescriptor, TokenizerVmStreamDescriptor,
+    VmProgramDescriptor, DIAG_EXPR_BUDGET_EXCEEDED, DIAG_EXPR_EVAL_FAILURE,
+    DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED,
+    DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL, DIAG_EXPR_UNSUPPORTED_FEATURE,
+    DIAG_PARSER_EXPECTED_EXPRESSION, DIAG_PARSER_EXPECTED_OPERAND, DIAG_PARSER_INVALID_STATEMENT,
+    DIAG_PARSER_UNEXPECTED_TOKEN, DIAG_TOKENIZER_ERROR_LIMIT_EXCEEDED, DIAG_TOKENIZER_INVALID_CHAR,
     DIAG_TOKENIZER_LEXEME_LIMIT_EXCEEDED, DIAG_TOKENIZER_STEP_LIMIT_EXCEEDED,
     DIAG_TOKENIZER_TOKEN_LIMIT_EXCEEDED, DIAG_TOKENIZER_UNTERMINATED_STRING,
     EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1,
@@ -270,11 +270,14 @@ pub fn build_hierarchy_chunks_from_registry(
     let mut tables = Vec::new();
     let mut selectors = Vec::new();
     let mut selector_programs: Vec<SelectorProgramDescriptor> = Vec::new();
+    let mut state_programs: Vec<StateProgramDescriptor> = Vec::new();
     for family in &family_ids {
         selector_programs.extend(registry.family_selector_programs(*family)?);
+        state_programs.extend(registry.family_state_programs(*family)?);
     }
     for cpu in registry.cpu_ids() {
         selector_programs.extend(registry.cpu_selector_programs(cpu)?);
+        state_programs.extend(registry.cpu_state_programs(cpu)?);
     }
     for family in &family_ids {
         for dialect_id in registry.dialect_ids_for_family(*family) {
@@ -766,6 +769,7 @@ pub fn build_hierarchy_chunks_from_registry(
     canonicalize_value_programs(&mut value_programs);
     canonicalize_operand_record_programs(&mut operand_record_programs);
     package::canonicalize_selector_programs(&mut selector_programs);
+    package::canonicalize_state_programs(&mut state_programs);
 
     // Ensure the materialized metadata is coherent before returning.
     HierarchyPackage::new(families.clone(), cpus.clone(), dialects.clone())?;
@@ -790,6 +794,7 @@ pub fn build_hierarchy_chunks_from_registry(
         value_programs,
         operand_record_programs,
         selector_programs,
+        state_programs,
         selectors,
     })
 }

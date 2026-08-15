@@ -10,6 +10,7 @@
 //! - `TOKS` (token policy hints)
 //! - `FAMS` (family descriptors)
 //! - `CPUS` (cpu descriptors)
+//! - `CALS` (compact, losslessly representable canonical-CPU aliases for state-capable packages)
 //! - `DIAL` (dialect descriptors)
 //! - `REGS` (scoped register descriptors)
 //! - `FORM` (scoped form descriptors)
@@ -17,6 +18,7 @@
 //! - `SEMV` (versioned scoped semantic VM program descriptors)
 //! - `VALP` (versioned scoped scalar-value program descriptors)
 //! - `OPRD` (versioned scoped operand-record program descriptors)
+//! - `STVM` (versioned scoped state/capability program descriptors)
 //! - `TKVM` (scoped tokenizer VM program descriptors)
 //! - `PARS` (scoped parser/AST contract descriptors)
 //! - `PRVM` (scoped parser VM program descriptors)
@@ -30,6 +32,7 @@ use types::hierarchy::{
 };
 
 mod canonicalize;
+mod state_program;
 #[cfg(test)]
 mod tests;
 
@@ -38,9 +41,10 @@ pub use canonicalize::{
     canonicalize_expr_contracts, canonicalize_expr_parser_contracts,
     canonicalize_hierarchy_metadata, canonicalize_operand_record_programs,
     canonicalize_parser_contracts, canonicalize_parser_vm_programs, canonicalize_selector_programs,
-    canonicalize_semantic_programs, canonicalize_token_policies,
+    canonicalize_semantic_programs, canonicalize_state_programs, canonicalize_token_policies,
     canonicalize_tokenizer_vm_programs, canonicalize_value_programs,
 };
+pub use state_program::*;
 
 pub const OPASM_MAGIC: [u8; 4] = *b"OPCP";
 pub const OPASM_VERSION_V1: u16 = 0x0001;
@@ -64,6 +68,8 @@ const CHUNK_SEMV: [u8; 4] = *b"SEMV";
 const CHUNK_VALP: [u8; 4] = *b"VALP";
 const CHUNK_OPRD: [u8; 4] = *b"OPRD";
 const CHUNK_SLCT: [u8; 4] = *b"SLCT";
+const CHUNK_STVM: [u8; 4] = *b"STVM";
+const CHUNK_CALS: [u8; 4] = *b"CALS";
 const CHUNK_MSEL: [u8; 4] = *b"MSEL";
 const CHUNK_TKVM: [u8; 4] = *b"TKVM";
 const CHUNK_PARS: [u8; 4] = *b"PARS";
@@ -121,6 +127,8 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 ///   payloads.
 /// - `OPERAND_RECORD_VM_VERSION_V1`: neutral operand-record construction
 ///   (`OPRD`) payloads.
+/// - `STATE_VM_OPCODE_VERSION_V1`: neutral profile/state/capability matrices
+///   (`STVM`) payloads.
 ///
 /// Decode/validation policy for all versioned VM payloads:
 /// - exact version match required for the active decoder.
@@ -1691,6 +1699,7 @@ pub struct HierarchyChunks {
     pub value_programs: Vec<ValueProgramDescriptor>,
     pub operand_record_programs: Vec<OperandRecordProgramDescriptor>,
     pub selector_programs: Vec<SelectorProgramDescriptor>,
+    pub state_programs: Vec<StateProgramDescriptor>,
     pub selectors: Vec<ModeSelectorDescriptor>,
 }
 

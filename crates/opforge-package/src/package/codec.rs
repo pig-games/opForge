@@ -53,6 +53,7 @@ pub(super) fn encode_hierarchy_chunks_full(
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
         selector_programs: Vec::new(),
+        state_programs: Vec::new(),
         selectors: selectors.to_vec(),
     };
     encode_hierarchy_chunks_from_chunks(&chunks)
@@ -87,6 +88,7 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
     let mut value_programs = chunks.value_programs.to_vec();
     let mut operand_record_programs = chunks.operand_record_programs.to_vec();
     let mut selector_programs = chunks.selector_programs.to_vec();
+    let mut state_programs = chunks.state_programs.to_vec();
     let mut selectors = chunks.selectors.to_vec();
     canonicalize_hierarchy_metadata(
         &mut fams,
@@ -105,6 +107,8 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
     validate_operand_record_program_set(&operand_record_programs)?;
     canonicalize_selector_programs(&mut selector_programs);
     validate_selector_program_set(&selector_programs)?;
+    canonicalize_state_programs(&mut state_programs);
+    validate_state_program_set(&state_programs)?;
     canonicalize_token_policies(&mut token_policies);
     canonicalize_tokenizer_vm_programs(&mut tokenizer_vm_programs);
     canonicalize_parser_contracts(&mut parser_contracts);
@@ -148,9 +152,28 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
     if !selector_programs.is_empty() {
         chunks.push((CHUNK_SLCT, encode_slct_chunk(&selector_programs)?));
     }
+    if !state_programs.is_empty() {
+        chunks.push((CHUNK_STVM, encode_stvm_chunk(&state_programs)?));
+    }
+    let compact_cpu_aliases = !state_programs.is_empty();
+    let cpus_chunk = cpus
+        .iter()
+        .filter(|cpu| !compact_cpu_aliases || !is_compact_cals_alias(cpu, &cpus))
+        .cloned()
+        .collect::<Vec<_>>();
+    let cpu_aliases = cpus
+        .iter()
+        .filter(|cpu| compact_cpu_aliases && is_compact_cals_alias(cpu, &cpus))
+        .cloned()
+        .collect::<Vec<_>>();
     chunks.extend_from_slice(&[
         (CHUNK_FAMS, encode_fams_chunk(&fams)?),
-        (CHUNK_CPUS, encode_cpus_chunk(&cpus)?),
+        (CHUNK_CPUS, encode_cpus_chunk(&cpus_chunk)?),
+    ]);
+    if !cpu_aliases.is_empty() {
+        chunks.push((CHUNK_CALS, encode_cals_chunk(&cpus_chunk, &cpu_aliases)?));
+    }
+    chunks.extend_from_slice(&[
         (CHUNK_DIAL, encode_dial_chunk(&dials)?),
         (CHUNK_REGS, encode_regs_chunk(&regs)?),
         (CHUNK_FORM, encode_form_chunk(&forms)?),
@@ -159,6 +182,18 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
     ]);
 
     encode_container(&chunks)
+}
+
+fn is_compact_cals_alias(alias: &CpuDescriptor, cpus: &[CpuDescriptor]) -> bool {
+    let Some(canonical_id) = alias.canonical_cpu_id.as_deref() else {
+        return false;
+    };
+    alias.default_dialect.is_none()
+        && cpus.iter().any(|canonical| {
+            canonical.id.eq_ignore_ascii_case(canonical_id)
+                && canonical.canonical_cpu_id.is_none()
+                && canonical.family_id.eq_ignore_ascii_case(&alias.family_id)
+        })
 }
 
 pub(super) fn default_runtime_diagnostic_catalog() -> Vec<DiagnosticDescriptor> {
@@ -306,13 +341,20 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
     let valp_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_VALP)?;
     let oprd_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_OPRD)?;
     let slct_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_SLCT)?;
+    let stvm_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_STVM)?;
     let fams_bytes = slice_for_chunk(bytes, &toc, CHUNK_FAMS)?;
     let cpus_bytes = slice_for_chunk(bytes, &toc, CHUNK_CPUS)?;
+    let cals_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_CALS)?;
     let dial_bytes = slice_for_chunk(bytes, &toc, CHUNK_DIAL)?;
     let regs_bytes = slice_for_chunk(bytes, &toc, CHUNK_REGS)?;
     let form_bytes = slice_for_chunk(bytes, &toc, CHUNK_FORM)?;
     let tabl_bytes = slice_for_chunk(bytes, &toc, CHUNK_TABL)?;
     let msel_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_MSEL)?;
+
+    let mut cpus = decode_cpus_chunk(cpus_bytes)?;
+    if let Some(payload) = cals_bytes {
+        cpus.extend(decode_cals_chunk(payload, &cpus)?);
+    }
 
     Ok(HierarchyChunks {
         metadata: match meta_bytes {
@@ -352,7 +394,7 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
             None => Vec::new(),
         },
         families: decode_fams_chunk(fams_bytes)?,
-        cpus: decode_cpus_chunk(cpus_bytes)?,
+        cpus,
         dialects: decode_dial_chunk(dial_bytes)?,
         registers: decode_regs_chunk(regs_bytes)?,
         forms: decode_form_chunk(form_bytes)?,
@@ -371,6 +413,10 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
         },
         selector_programs: match slct_bytes {
             Some(payload) => decode_slct_chunk(payload)?,
+            None => Vec::new(),
+        },
+        state_programs: match stvm_bytes {
+            Some(payload) => decode_stvm_chunk(payload)?,
             None => Vec::new(),
         },
         selectors: match msel_bytes {
@@ -706,6 +752,92 @@ pub(super) fn decode_cpus_chunk(bytes: &[u8]) -> Result<Vec<CpuDescriptor>, Opcp
     decode_simple_schema_chunk(bytes)
 }
 
+pub(super) fn encode_cals_chunk(
+    canonical_cpus: &[CpuDescriptor],
+    aliases: &[CpuDescriptor],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    let mut out = Vec::new();
+    write_u32(&mut out, u32_count(aliases.len(), "CALS alias count")?);
+    for alias in aliases {
+        let canonical_id = alias.canonical_cpu_id.as_deref().ok_or_else(|| {
+            OpcpuCodecError::InvalidChunkFormat {
+                chunk: "CALS".to_string(),
+                detail: format!("CPU alias '{}' has no canonical target", alias.id),
+            }
+        })?;
+        let index = canonical_cpus
+            .iter()
+            .position(|cpu| cpu.id.eq_ignore_ascii_case(canonical_id))
+            .ok_or_else(|| OpcpuCodecError::InvalidChunkFormat {
+                chunk: "CALS".to_string(),
+                detail: format!(
+                    "CPU alias '{}' references unknown canonical CPU '{canonical_id}'",
+                    alias.id
+                ),
+            })?;
+        write_string(&mut out, "CALS", &alias.id)?;
+        write_u16(
+            &mut out,
+            u16::try_from(index).map_err(|_| OpcpuCodecError::CountOutOfRange {
+                context: "CALS canonical CPU index exceeds u16".to_string(),
+            })?,
+        );
+    }
+    Ok(out)
+}
+
+pub(super) fn decode_cals_chunk(
+    bytes: &[u8],
+    canonical_cpus: &[CpuDescriptor],
+) -> Result<Vec<CpuDescriptor>, OpcpuCodecError> {
+    let mut cur = Decoder::new(bytes, "CALS");
+    let count = cur.read_u32()? as usize;
+    if count > MAX_DECODE_ENTRY_COUNT {
+        return Err(OpcpuCodecError::CountOutOfRange {
+            context: "CALS alias count exceeds hard limit".to_string(),
+        });
+    }
+    let mut aliases = Vec::with_capacity(count);
+    let mut seen = std::collections::HashSet::new();
+    for _ in 0..count {
+        let id = cur.read_string()?;
+        let index = cur.read_u16()? as usize;
+        let canonical =
+            canonical_cpus
+                .get(index)
+                .ok_or_else(|| OpcpuCodecError::InvalidChunkFormat {
+                    chunk: "CALS".to_string(),
+                    detail: format!("canonical CPU index {index} is out of range"),
+                })?;
+        if canonical.canonical_cpu_id.is_some() {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "CALS".to_string(),
+                detail: format!("CPU alias '{id}' references another alias"),
+            });
+        }
+        if id.is_empty()
+            || id.eq_ignore_ascii_case(&canonical.id)
+            || !seen.insert(id.to_ascii_lowercase())
+            || canonical_cpus
+                .iter()
+                .any(|cpu| cpu.id.eq_ignore_ascii_case(&id))
+        {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "CALS".to_string(),
+                detail: format!("invalid or duplicate CPU alias '{id}'"),
+            });
+        }
+        aliases.push(CpuDescriptor {
+            id,
+            family_id: canonical.family_id.clone(),
+            default_dialect: None,
+            canonical_cpu_id: Some(canonical.id.clone()),
+        });
+    }
+    cur.finish()?;
+    Ok(aliases)
+}
+
 pub(super) fn encode_dial_chunk(
     dialects: &[DialectDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
@@ -904,6 +1036,45 @@ fn validate_selector_program_set(
                 chunk: "SLCT".to_string(),
                 detail: format!(
                     "duplicate selector VM program id '{}' in one owner scope",
+                    entry.id
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn encode_stvm_chunk(
+    programs: &[StateProgramDescriptor],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    encode_scoped_schema_chunk(programs)
+}
+
+pub(super) fn decode_stvm_chunk(
+    bytes: &[u8],
+) -> Result<Vec<StateProgramDescriptor>, OpcpuCodecError> {
+    let programs = decode_scoped_schema_chunk(bytes)?;
+    validate_state_program_set(&programs)?;
+    Ok(programs)
+}
+
+fn validate_state_program_set(programs: &[StateProgramDescriptor]) -> Result<(), OpcpuCodecError> {
+    for (index, entry) in programs.iter().enumerate() {
+        if entry.id.is_empty() {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "STVM".to_string(),
+                detail: "state VM program id must not be empty".to_string(),
+            });
+        }
+        validate_state_program(entry.opcode_version, &entry.program)?;
+        if programs[..index].iter().any(|prior| {
+            prior.owner.key_parts_lowercase() == entry.owner.key_parts_lowercase()
+                && prior.id.eq_ignore_ascii_case(&entry.id)
+        }) {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "STVM".to_string(),
+                detail: format!(
+                    "duplicate state VM program id '{}' in one owner scope",
                     entry.id
                 ),
             });

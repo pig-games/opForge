@@ -32,6 +32,7 @@ use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_model_types::*;
 use crate::runtime_portable_types::*;
 use crate::selector_vm::PortableSelectorOutcome;
+use crate::state_vm::{PortableStateDirectiveOutcome, StateVmError};
 use crate::vm_opasm::{build_bin_output_payload, build_hex_output_payload};
 use crate::vm_opasm_parse::tokenize_parser_tokens_with_model;
 use crate::vm_opcore::{
@@ -47,7 +48,7 @@ use families::{
     },
     m65816::state,
     m68080::package_programs as m68080_record_programs,
-    m68k::package_programs as m68k_value_programs,
+    m68k::{package_programs as m68k_value_programs, state as m68k_state},
     mos6502::{
         module::{M6502CpuModule, MOS6502FamilyModule, MOS6502Operands},
         package_programs as mos6502_value_programs, Operand,
@@ -947,6 +948,7 @@ fn intel_only_chunks() -> HierarchyChunks {
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
         selector_programs: Vec::new(),
+        state_programs: Vec::new(),
         selectors: Vec::new(),
     }
 }
@@ -9198,4 +9200,324 @@ fn execution_model_vm_encode_supports_m65816_cpu_tables() {
         .encode_instruction("65816", None, "JSL", &operands)
         .expect("vm encode should resolve");
     assert_eq!(bytes, Some(vec![0x22, 0x34, 0x12, 0x00]));
+}
+
+#[test]
+fn serialized_m68k_state_program_matches_all_six_cpu_profiles() {
+    let mut registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut registry);
+    let chunks = build_hierarchy_chunks_from_registry(&registry).expect("m68k chunks");
+    assert_eq!(chunks.state_programs.len(), 1);
+    let package_bytes =
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("m68k package serialization");
+    drop(chunks);
+    drop(registry);
+
+    let model = HierarchyExecutionModel::from_package_bytes(&package_bytes)
+        .expect("serialized m68k package load");
+    for (cpu, expected_fpu, expected_apollo) in [
+        ("m68000", 0, 0),
+        ("m68010", 0, 0),
+        ("m68020", 0, 0),
+        ("m68030", 0, 0),
+        ("m68040", 0, 0),
+        ("m68080", 4, 1),
+    ] {
+        let resolved = model.resolve_pipeline(cpu, None).expect("m68k pipeline");
+        let state = model
+            .initial_package_state(&resolved, m68k_value_programs::STATE_RUNTIME, cpu)
+            .expect("serialized initial state");
+        assert_eq!(state.get(m68k_state::FPU_TARGET_KEY), Some(&expected_fpu));
+        assert_eq!(state.get(m68k_state::APOLLO_MODE_KEY), Some(&0));
+        assert_eq!(
+            state.get(m68k_state::CPU_IS_68080_KEY),
+            Some(&expected_apollo)
+        );
+    }
+}
+
+#[test]
+fn serialized_m68k_state_program_owns_transitions_legality_and_reset() {
+    let mut registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut registry);
+    let package_bytes = build_hierarchy_package_from_registry(&registry).expect("m68k package");
+    drop(registry);
+    let model = HierarchyExecutionModel::from_package_bytes(&package_bytes)
+        .expect("serialized m68k package load");
+
+    for (cpu, target, value) in [
+        ("m68020", "68881", 1),
+        ("m68020", "68882", 2),
+        ("m68030", "68881", 1),
+        ("m68030", "68882", 2),
+        ("m68040", "68040", 3),
+        ("m68080", "68080", 4),
+    ] {
+        let resolved = model.resolve_pipeline(cpu, None).expect("m68k pipeline");
+        let mut state = model
+            .initial_package_state(&resolved, m68k_value_programs::STATE_RUNTIME, cpu)
+            .expect("initial state");
+        assert_eq!(
+            model
+                .apply_package_state_directive(
+                    &resolved,
+                    m68k_value_programs::STATE_RUNTIME,
+                    cpu,
+                    "FPU",
+                    &[target.to_string()],
+                    &mut state,
+                )
+                .expect("legal FPU transition"),
+            PortableStateDirectiveOutcome::Applied
+        );
+        assert_eq!(state.get(m68k_state::FPU_TARGET_KEY), Some(&value));
+        assert_eq!(
+            model
+                .package_capability_allowed(
+                    &resolved,
+                    m68k_value_programs::STATE_RUNTIME,
+                    cpu,
+                    "fpu",
+                    &state,
+                )
+                .expect("FPU capability"),
+            Some(true)
+        );
+        let reset = model
+            .initial_package_state(&resolved, m68k_value_programs::STATE_RUNTIME, cpu)
+            .expect("reset state");
+        assert_eq!(
+            reset.get(m68k_state::FPU_TARGET_KEY),
+            Some(&if cpu == "m68080" { 4 } else { 0 })
+        );
+    }
+
+    for (cpu, target) in [
+        ("m68000", "68881"),
+        ("m68010", "68882"),
+        ("m68020", "68040"),
+        ("m68030", "68080"),
+        ("m68040", "68881"),
+        ("m68080", "68040"),
+    ] {
+        let resolved = model.resolve_pipeline(cpu, None).expect("m68k pipeline");
+        let mut state = model
+            .initial_package_state(&resolved, m68k_value_programs::STATE_RUNTIME, cpu)
+            .expect("initial state");
+        let before = state.clone();
+        assert!(matches!(
+            model.apply_package_state_directive(
+                &resolved,
+                m68k_value_programs::STATE_RUNTIME,
+                cpu,
+                "fpu",
+                &[target.to_string()],
+                &mut state,
+            ),
+            Err(StateVmError::IllegalCombination { .. })
+        ));
+        assert_eq!(state, before, "failed transition must be transactional");
+    }
+
+    for cpu in ["m68000", "m68010", "m68020", "m68030", "m68040", "m68080"] {
+        let resolved = model.resolve_pipeline(cpu, None).expect("m68k pipeline");
+        for (target, value) in [
+            ("none", 0),
+            ("68881", 1),
+            ("68882", 2),
+            ("68040", 3),
+            ("68080", 4),
+        ] {
+            let legal = target == "none"
+                || matches!(
+                    (cpu, target),
+                    ("m68020" | "m68030", "68881" | "68882")
+                        | ("m68040", "68040")
+                        | ("m68080", "68080")
+                );
+            let mut state = model
+                .initial_package_state(&resolved, m68k_value_programs::STATE_RUNTIME, cpu)
+                .expect("initial state");
+            let before = state.clone();
+            let result = model.apply_package_state_directive(
+                &resolved,
+                m68k_value_programs::STATE_RUNTIME,
+                cpu,
+                "fpu",
+                &[target.to_string()],
+                &mut state,
+            );
+            if legal {
+                assert_eq!(result, Ok(PortableStateDirectiveOutcome::Applied));
+                assert_eq!(state.get(m68k_state::FPU_TARGET_KEY), Some(&value));
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(StateVmError::IllegalCombination { .. })
+                ));
+                assert_eq!(state, before, "failed transition must be transactional");
+            }
+        }
+    }
+
+    for cpu in ["m68000", "m68010", "m68020", "m68030", "m68040"] {
+        let resolved = model.resolve_pipeline(cpu, None).expect("m68k pipeline");
+        let mut state = model
+            .initial_package_state(&resolved, m68k_value_programs::STATE_RUNTIME, cpu)
+            .expect("initial state");
+        let before = state.clone();
+        for argument in ["on", "1", "off", "0"] {
+            assert!(matches!(
+                model.apply_package_state_directive(
+                    &resolved,
+                    m68k_value_programs::STATE_RUNTIME,
+                    cpu,
+                    "apollo",
+                    &[argument.to_string()],
+                    &mut state,
+                ),
+                Err(StateVmError::IllegalCombination { .. })
+            ));
+            assert_eq!(
+                state, before,
+                "illegal Apollo transition must be transactional"
+            );
+        }
+        assert_eq!(
+            model
+                .package_capability_allowed(
+                    &resolved,
+                    m68k_value_programs::STATE_RUNTIME,
+                    cpu,
+                    "apollo",
+                    &state,
+                )
+                .expect("Apollo capability"),
+            Some(false)
+        );
+    }
+
+    let resolved = model
+        .resolve_pipeline("m68080", None)
+        .expect("m68080 pipeline");
+    let mut state = model
+        .initial_package_state(&resolved, m68k_value_programs::STATE_RUNTIME, "m68080")
+        .expect("m68080 initial state");
+    for argument in ["on", "1", "off", "0"] {
+        model
+            .apply_package_state_directive(
+                &resolved,
+                m68k_value_programs::STATE_RUNTIME,
+                "m68080",
+                "apollo",
+                &[argument.to_string()],
+                &mut state,
+            )
+            .expect("legal Apollo transition");
+    }
+    assert_eq!(
+        model
+            .apply_package_state_directive(
+                &resolved,
+                m68k_value_programs::STATE_RUNTIME,
+                "m68080",
+                "unknown",
+                &["on".to_string()],
+                &mut state,
+            )
+            .expect("unknown directive"),
+        PortableStateDirectiveOutcome::NotHandled
+    );
+    assert!(matches!(
+        model.apply_package_state_directive(
+            &resolved,
+            m68k_value_programs::STATE_RUNTIME,
+            "m68080",
+            "fpu",
+            &[],
+            &mut state,
+        ),
+        Err(StateVmError::InvalidOperandCount { .. })
+    ));
+    assert!(matches!(
+        model.apply_package_state_directive(
+            &resolved,
+            m68k_value_programs::STATE_RUNTIME,
+            "m68080",
+            "fpu",
+            &["bad".to_string()],
+            &mut state,
+        ),
+        Err(StateVmError::InvalidArgument { .. })
+    ));
+}
+
+#[test]
+fn serialized_state_program_primitive_is_cross_family() {
+    let registry = mos6502_family_registry();
+    let mut chunks = build_hierarchy_chunks_from_registry(&registry).expect("6502 chunks");
+    chunks.state_programs.push(package::StateProgramDescriptor {
+        owner: ScopedOwner::Family("mos6502".to_string()),
+        id: "portable-test".to_string(),
+        opcode_version: package::STATE_VM_OPCODE_VERSION_V1,
+        program: package::compile_state_program(&package::StateProgramSpec {
+            profiles: vec!["m6502".to_string(), "m65c02".to_string()],
+            keys: vec![package::StateKeySpec {
+                id: "portable.mode".to_string(),
+                default: 0,
+                overrides: vec![],
+            }],
+            directives: vec![package::StateDirectiveSpec {
+                id: "portable".to_string(),
+                key: "portable.mode".to_string(),
+                arguments: vec![package::StateArgumentSpec {
+                    id: "on".to_string(),
+                    value: 1,
+                    allowed_profiles: vec!["m6502".to_string(), "m65c02".to_string()],
+                }],
+            }],
+            capabilities: vec![package::StateCapabilitySpec {
+                id: "portable".to_string(),
+                key: "portable.mode".to_string(),
+                rules: vec![package::StateCapabilityRuleSpec {
+                    allowed_profiles: vec!["m6502".to_string(), "m65c02".to_string()],
+                    allowed_values: vec![1],
+                }],
+            }],
+        })
+        .expect("compile cross-family state program"),
+    });
+    let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("serialize 6502 state package");
+    drop(chunks);
+    drop(registry);
+    let model = HierarchyExecutionModel::from_package_bytes(&bytes).expect("load state package");
+
+    for (cpu, profile) in [("m6502", "m6502"), ("65c02", "m65c02")] {
+        let resolved = model.resolve_pipeline(cpu, None).expect("6502 pipeline");
+        let mut state = model
+            .initial_package_state(&resolved, "portable-test", profile)
+            .expect("portable initial state");
+        model
+            .apply_package_state_directive(
+                &resolved,
+                "portable-test",
+                profile,
+                "portable",
+                &["on".to_string()],
+                &mut state,
+            )
+            .expect("portable state transition");
+        assert_eq!(
+            model
+                .package_capability_allowed(
+                    &resolved,
+                    "portable-test",
+                    profile,
+                    "portable",
+                    &state,
+                )
+                .expect("portable capability"),
+            Some(true)
+        );
+    }
 }

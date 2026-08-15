@@ -11,7 +11,7 @@ use crate::family::{AssemblerContext, EncodeResult, FamilyEncodeResult, FamilyPa
 use opcore::parser::Expr;
 use package::{
     DiagnosticDescriptor, OpcpuCodecError, OperandRecordProgramDescriptor,
-    SelectorProgramDescriptor, ValueProgramDescriptor,
+    SelectorProgramDescriptor, StateProgramDescriptor, ValueProgramDescriptor,
 };
 
 pub trait FamilyOperandSet: Send + Sync {
@@ -180,6 +180,9 @@ pub trait FamilyModule: Send + Sync {
     fn selector_programs(&self) -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecError> {
         Ok(Vec::new())
     }
+    fn state_programs(&self) -> Result<Vec<StateProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
     fn diagnostics(&self) -> Vec<DiagnosticDescriptor> {
         Vec::new()
     }
@@ -207,6 +210,9 @@ pub trait CpuModule: Send + Sync {
         Ok(Vec::new())
     }
     fn selector_programs(&self) -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
+    fn state_programs(&self) -> Result<Vec<StateProgramDescriptor>, OpcpuCodecError> {
         Ok(Vec::new())
     }
     fn diagnostics(&self) -> Vec<DiagnosticDescriptor> {
@@ -403,6 +409,26 @@ impl AsmRegistry {
         self.cpus
             .get(&cpu)
             .map(|module| module.selector_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn family_state_programs(
+        &self,
+        family: CpuFamily,
+    ) -> Result<Vec<StateProgramDescriptor>, OpcpuCodecError> {
+        self.families
+            .get(&family)
+            .map(|module| module.state_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn cpu_state_programs(
+        &self,
+        cpu: CpuType,
+    ) -> Result<Vec<StateProgramDescriptor>, OpcpuCodecError> {
+        self.cpus
+            .get(&cpu)
+            .map(|module| module.state_programs())
             .unwrap_or_else(|| Ok(Vec::new()))
     }
 

@@ -1,0 +1,60 @@
+[slice]
+schema_version = 1
+name = "versioned portable capability and target-state programs"
+kind = "package-runtime"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 7
+requirements = ["N68X0-001", "N68X0-002", "N68X0-003", "N68X0-004", "N68X0-005", "N68X0-006", "N68X0-014", "N68X0-015"]
+rust_reference = [
+  "crates/opforge-families/src/m68k/state.rs::initial_runtime_state",
+  "crates/opforge-families/src/m68k/state.rs::apply_runtime_directive",
+  "crates/opforge-families/src/m68k/package_programs.rs::state_programs",
+  "crates/opforge-package/src/package/state_program.rs::compile_state_program",
+  "crates/opforge-vm/src/state_vm.rs::initial_state",
+  "crates/opforge-vm/src/state_vm.rs::apply_directive",
+  "crates/opforge-vm/src/state_vm.rs::capability_allowed",
+  "crates/opforge-vm/src/runtime_model_core.rs::RuntimeModelCore::initial_package_state"
+]
+boundary = "STVM v1 is an optional, independently versioned, CPU-neutral state-matrix chunk. Generic package and runtime code understands only opaque scopes, program/profile/key/directive/argument/capability ids, unsigned values, defaults, masks, and allowed-value sets. Motorola CPU/FPU/Apollo meanings and their six-profile legality matrix remain family-owned package data. The common primitive is independently proven with a synthetic MOS 6502-family state program."
+invariant = "After registry serialization and destruction, the runtime materializes profile defaults, applies legal transitions transactionally, rejects illegal profile/argument pairings without mutation, resets from package defaults, and answers capability queries using only decoded package bytes. Packages without STVM retain their previous canonical bytes; unsupported versions, noncanonical varints, invalid masks, truncation, and trailing bytes fail closed."
+expected_inputs = "A resolved package hierarchy, one opaque state-program and profile id, an optional directive plus one opaque argument, and the current opaque key/value map."
+expected_outputs = "A deterministic initial key/value map, applied/not-handled transition result, optional capability decision, or a typed unknown-program/profile, malformed-operand, invalid-argument, or illegal-combination failure."
+known_non_equivalences = "Item 7 materializes package state decisions and the neutral runtime only. The existing Rust assembler callback cutover, complete callback removal, fixed/structured encoding, fixups, convergence, native STVM interpretation, output formats, and CLI behavior remain assigned to Items 8-15 and especially the Item 13 package-only cutover. No native production source changes in this slice."
+fast_proof_command = "cargo test -p package state_program -- --nocapture && cargo test -p vm serialized_m68k_state_program -- --nocapture && cargo test -p vm serialized_state_program_primitive_is_cross_family -- --nocapture && cargo test -p asm motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry -- --nocapture"
+full_gate_command = "cargo test -p package && cargo test -p registry && cargo test -p families && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
+native_proof = "not-applicable: Item 7 changes no native production source; the refreshed exact Rust-built focused package is 8,122 bytes and fits the unchanged 8,192-byte native package allocation"
+
+[[tests]]
+name = "state_program_round_trip_is_canonical_and_compacts_cpu_aliases"
+proof_level = "package"
+proves = "STVM programs round-trip canonically, legacy packages without STVM retain byte identity, and neutral CALS compaction reconstructs exactly representable CPU aliases while retaining richer aliases losslessly in CPUS and reducing the focused package footprint."
+
+[[tests]]
+name = "state_program_codec_rejects_unknown_versions_and_malformed_programs"
+proof_level = "package"
+proves = "Unknown versions, truncation, trailing bytes, noncanonical varints, and masks that select undeclared profiles fail closed."
+
+[[tests]]
+name = "state_program_validator_is_deterministic_for_arbitrary_bytes"
+proof_level = "package-fuzz"
+proves = "Arbitrary bounded state byte streams produce deterministic validation outcomes without panics."
+
+[[tests]]
+name = "serialized_m68k_state_program_matches_all_six_cpu_profiles"
+proof_level = "runtime"
+proves = "The serialized-only runtime reproduces FPU, Apollo, and 68080 marker defaults for m68000, m68010, m68020, m68030, m68040, and m68080."
+
+[[tests]]
+name = "serialized_m68k_state_program_owns_transitions_legality_and_reset"
+proof_level = "runtime"
+proves = "Package bytes own every legal FPU pairing, representative illegal cross-pairings, Apollo legality on all six profiles, transactional failure, reset, malformed operand/argument decisions, and capability queries."
+
+[[tests]]
+name = "serialized_state_program_primitive_is_cross_family"
+proof_level = "runtime-cross-family"
+proves = "The same serialized state primitive executes for both base and extended MOS 6502-family profiles without Motorola-aware generic runtime logic."
+
+[[tests]]
+name = "motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry"
+proof_level = "native-package-capacity"
+proves = "The exact Rust-built focused package is 8,122 bytes and fits the unchanged 8,192-byte tkpkg package allocation."

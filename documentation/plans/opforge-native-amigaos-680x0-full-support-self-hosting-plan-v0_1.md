@@ -370,6 +370,13 @@ the same unmodified serialized semantic package.
   keep aliases, ordering, applicability, and diagnostic choice in package data.
   The refreshed focused native package is exact Rust-builder output and remains
   within the unchanged 8,192-byte native allocation.
+- Item 7 retains container version 1 and adds optional `STVM`, whose payload
+  carries its own exact opcode version, plus lossless `CALS` compaction for CPU
+  aliases whose family and default-dialect fields are exactly reconstructible.
+  Richer aliases remain complete in `CPUS`; legacy packages without `STVM`
+  retain canonical bytes, and malformed or unsupported state programs fail
+  closed. The refreshed focused native package remains exact Rust-builder
+  output at 8,122 bytes within the unchanged 8,192-byte native allocation.
 - Owned contract: the 68020/AmigaOS executable exposes the complete
   Rust-supported 680x0 assembler surface and can rebuild itself
 - Rationale: CPU discovery is already present in package metadata, but complete
@@ -426,11 +433,11 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit moving selection ordering and owned diagnostic choice into package programs.
   - Definition of done: selection and its diagnostics match the oracle without post-construction family selector callbacks.
 
-- [ ] Item 7: materialize capability legality and target-state programs
+- [x] Item 7: materialize capability legality and target-state programs
   - Source requirement or finding IDs: `N68X0-001`-`N68X0-006`, `N68X0-014`, `N68X0-015`.
   - Expected files: neutral capability/state records, family/CPU compiler adapters, Rust tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; CPU/FPU/Apollo pairing, state transition/reset, illegal combination, malformed-program, and cross-family capability tests.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for the capability/state invariant only.
+  - Plan-compliance review evidence: `PASS` — after rejecting an initial lossy alias-compaction revision, the independent `plan-compliance-reviewer` confirmed versioned, CPU-neutral `STVM`; lossless `CALS`/`CPUS` alias handling; exhaustive six-profile × five-FPU-target legality plus Apollo rejection on every non-68080 profile; transactional transitions, reset/default behavior, serialized-only execution, cross-family MOS reuse, legacy-byte compatibility, fail-closed malformed/unsupported programs, exact 8,122/8,192 fixture capacity, no native production-source change, explicit assembler-callback cutover deferral to Item 13, and clean focused, full Rust all-family, architecture-boundary, and workflow gates.
   - Commit outcome: one commit moving runtime legality and directive-state decisions into package programs.
   - Definition of done: all six profiles make identical legality/state decisions without family legality or directive callbacks.
 

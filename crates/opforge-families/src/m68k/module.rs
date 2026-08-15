@@ -58,6 +58,12 @@ impl FamilyModule for Motorola68000FamilyModule {
         super::package_programs::operand_record_programs()
     }
 
+    fn state_programs(
+        &self,
+    ) -> Result<Vec<package::StateProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::state_programs()
+    }
+
     fn diagnostics(&self) -> Vec<package::DiagnosticDescriptor> {
         super::package_programs::diagnostics()
     }

@@ -9,15 +9,15 @@ use std::sync::Arc;
 use opcore::expr_vm::PortableExprBudgets;
 use opcore::tokenizer::{RegisterChecker, Tokenizer};
 use package::{
-    decode_hierarchy_chunks, HierarchyChunks, ModeSelectorDescriptor, OpcpuCodecError,
-    SelectorProgramDescriptor, TokenCaseRule, TokenizerVmDiagnosticMap, TokenizerVmLimits,
-    TokenizerVmOpcode, TokenizerVmStreamMode, DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
-    DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT, EXPR_VM_OPCODE_VERSION_V1,
-    EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1, OPERAND_RECORD_VM_VERSION_V1,
-    OPERAND_RECORD_VM_VERSION_V2, OPERAND_RECORD_VM_VERSION_V3, PARSER_AST_SCHEMA_ID_LINE_V1,
-    PARSER_GRAMMAR_ID_LINE_V1, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
-    SEMANTIC_VM_OPCODE_VERSION_V1, TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
-    VALUE_VM_OPCODE_VERSION_V1,
+    decode_hierarchy_chunks, decode_state_program, DecodedStateProgram, HierarchyChunks,
+    ModeSelectorDescriptor, OpcpuCodecError, SelectorProgramDescriptor, TokenCaseRule,
+    TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmStreamMode,
+    DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
+    EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1,
+    OPERAND_RECORD_VM_VERSION_V1, OPERAND_RECORD_VM_VERSION_V2, OPERAND_RECORD_VM_VERSION_V3,
+    PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
+    PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, SEMANTIC_VM_OPCODE_VERSION_V1,
+    TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
 };
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
@@ -48,6 +48,7 @@ use crate::runtime_model_types::{
 };
 use crate::runtime_portable_types::PortableTokenizeRequest;
 use crate::selector_vm::{execute_selector_program, PortableSelectorOutcome};
+use crate::state_vm::{self, PortableStateDirectiveOutcome, StateVmError};
 use crate::tokenizer_runtime_utils::{
     self, AsciiCaseRule, TokenizerDiagCodes, VmTokenizerInputStream,
 };
@@ -58,6 +59,7 @@ pub type SemanticProgramKey = (u8, u32, u32);
 pub type ValueProgramKey = (u8, u32, u32);
 pub type OperandRecordProgramKey = (u8, u32, u32);
 pub type SelectorProgramKey = (u8, u32);
+pub type StateProgramKey = (u8, u32, u32);
 pub type ModeSelectorKey = (u8, u32, u32, u32);
 pub type TokenPolicyKey = (u8, u32);
 pub type ParserContractKey = (u8, u32);
@@ -117,6 +119,7 @@ pub struct RuntimeModelCore {
     pub value_programs: HashMap<ValueProgramKey, (u16, Vec<u8>)>,
     pub operand_record_programs: HashMap<OperandRecordProgramKey, (u16, Vec<u8>)>,
     pub selector_programs: HashMap<SelectorProgramKey, Vec<SelectorProgramDescriptor>>,
+    pub state_programs: HashMap<StateProgramKey, DecodedStateProgram>,
     pub mode_selectors: HashMap<ModeSelectorKey, Vec<ModeSelectorDescriptor>>,
     pub token_policies: HashMap<TokenPolicyKey, RuntimeTokenPolicy>,
     pub tokenizer_vm_programs: HashMap<TokenPolicyKey, RuntimeTokenizerVmProgram>,
@@ -165,6 +168,7 @@ impl RuntimeModelCore {
             operand_record_programs,
             selector_programs,
             selectors,
+            state_programs,
         } = chunks;
         let package = HierarchyPackage::new(families, cpus, dialects)?;
         let mut interner = LowercaseIdInterner::default();
@@ -224,6 +228,16 @@ impl RuntimeModelCore {
                     .cmp(&right.priority)
                     .then_with(|| left.id.cmp(&right.id))
             });
+        }
+        let mut scoped_state_programs = HashMap::new();
+        for entry in state_programs {
+            let (owner_tag, owner_id) = owner_key_parts(&entry.owner);
+            let owner_id = interner.intern(owner_id.as_str());
+            let program_id = interner.intern(entry.id.as_str());
+            scoped_state_programs.insert(
+                (owner_tag, owner_id, program_id),
+                decode_state_program(entry.opcode_version, &entry.program)?,
+            );
         }
         let mut mode_selectors: HashMap<ModeSelectorKey, Vec<ModeSelectorDescriptor>> =
             HashMap::new();
@@ -414,6 +428,7 @@ impl RuntimeModelCore {
             value_programs: scoped_value_programs,
             operand_record_programs: scoped_operand_record_programs,
             selector_programs: scoped_selector_programs,
+            state_programs: scoped_state_programs,
             mode_selectors,
             token_policies: scoped_token_policies,
             tokenizer_vm_programs: scoped_tokenizer_vm_programs,
@@ -1684,6 +1699,72 @@ impl RuntimeModelCore {
             (1u8, self.interned_id(&cpu_id)),
             (0u8, self.interned_id(&family_id)),
         ]
+    }
+
+    fn state_program_for_resolved(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+    ) -> Result<&DecodedStateProgram, StateVmError> {
+        let normalized_id = program_id.to_ascii_lowercase();
+        let Some(program_id) = self.interned_id(&normalized_id) else {
+            return Err(StateVmError::UnknownProgram(normalized_id));
+        };
+        for (owner_tag, owner_id) in self.scoped_owner_lookup_order(resolved) {
+            let Some(owner_id) = owner_id else {
+                continue;
+            };
+            if let Some(program) = self.state_programs.get(&(owner_tag, owner_id, program_id)) {
+                return Ok(program);
+            }
+        }
+        Err(StateVmError::UnknownProgram(normalized_id))
+    }
+
+    pub fn initial_package_state(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        profile: &str,
+    ) -> Result<HashMap<String, u32>, StateVmError> {
+        state_vm::initial_state(
+            self.state_program_for_resolved(resolved, program_id)?,
+            profile,
+        )
+    }
+
+    pub fn apply_package_state_directive(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        profile: &str,
+        directive: &str,
+        arguments: &[String],
+        state: &mut HashMap<String, u32>,
+    ) -> Result<PortableStateDirectiveOutcome, StateVmError> {
+        state_vm::apply_directive(
+            self.state_program_for_resolved(resolved, program_id)?,
+            profile,
+            directive,
+            arguments,
+            state,
+        )
+    }
+
+    pub fn package_capability_allowed(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        profile: &str,
+        capability: &str,
+        state: &HashMap<String, u32>,
+    ) -> Result<Option<bool>, StateVmError> {
+        state_vm::capability_allowed(
+            self.state_program_for_resolved(resolved, program_id)?,
+            profile,
+            capability,
+            state,
+        )
     }
 
     pub fn execute_semantic_program(

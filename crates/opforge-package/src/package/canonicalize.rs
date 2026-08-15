@@ -162,6 +162,26 @@ pub fn canonicalize_selector_programs(programs: &mut Vec<SelectorProgramDescript
     });
 }
 
+pub fn canonicalize_state_programs(programs: &mut Vec<StateProgramDescriptor>) {
+    for entry in programs.iter_mut() {
+        entry.owner.normalize_owner_id_ascii_lowercase();
+        entry.id = entry.id.to_ascii_lowercase();
+    }
+    programs.sort_by(|left, right| {
+        left.owner
+            .cmp_scope_key(&right.owner)
+            .then_with(|| left.id.cmp(&right.id))
+            .then_with(|| left.opcode_version.cmp(&right.opcode_version))
+            .then_with(|| left.program.cmp(&right.program))
+    });
+    programs.dedup_by(|left, right| {
+        left.id == right.id
+            && left.opcode_version == right.opcode_version
+            && left.program == right.program
+            && left.owner.same_scope(&right.owner)
+    });
+}
+
 pub fn canonicalize_value_programs(value_programs: &mut Vec<ValueProgramDescriptor>) {
     for entry in value_programs.iter_mut() {
         entry.owner.normalize_owner_id_ascii_lowercase();

@@ -448,6 +448,45 @@ impl HierarchyExecutionModel {
         self.core.resolve_selector_choice(resolved, input)
     }
 
+    /// Materialize the initial values for one package-owned state profile.
+    pub fn initial_package_state(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        profile: &str,
+    ) -> Result<HashMap<String, u32>, crate::state_vm::StateVmError> {
+        self.core
+            .initial_package_state(resolved, program_id, profile)
+    }
+
+    /// Apply one package-owned state transition transactionally.
+    pub fn apply_package_state_directive(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        profile: &str,
+        directive: &str,
+        arguments: &[String],
+        state: &mut HashMap<String, u32>,
+    ) -> Result<crate::state_vm::PortableStateDirectiveOutcome, crate::state_vm::StateVmError> {
+        self.core.apply_package_state_directive(
+            resolved, program_id, profile, directive, arguments, state,
+        )
+    }
+
+    /// Query one opaque package-owned capability against the current state.
+    pub fn package_capability_allowed(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        profile: &str,
+        capability: &str,
+        state: &HashMap<String, u32>,
+    ) -> Result<Option<bool>, crate::state_vm::StateVmError> {
+        self.core
+            .package_capability_allowed(resolved, program_id, profile, capability, state)
+    }
+
     /// Execute a package-owned, versioned semantic program for a resolved hierarchy.
     pub fn execute_semantic_program(
         &self,

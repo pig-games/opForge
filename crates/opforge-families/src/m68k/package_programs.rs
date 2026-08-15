@@ -5,15 +5,19 @@
 
 use package::{
     compile_operand_record_program, compile_selector_map_program, compile_selector_suffix_program,
-    compile_value_program, DiagnosticDescriptor, OpcpuCodecError, OperandRecordBaseSource,
-    OperandRecordFieldSource, OperandRecordIndirection, OperandRecordOptionalIndexSource,
-    OperandRecordOptionalValueSource, OperandRecordProgram, OperandRecordProgramDescriptor,
-    OperandRecordUpdate, SelectorProgramDescriptor, ValueConstraint, ValueProgramDescriptor,
-    ValueProgramSource, OPERAND_RECORD_VM_VERSION_V1, OPERAND_RECORD_VM_VERSION_V2,
-    OPERAND_RECORD_VM_VERSION_V3, SELECTOR_VM_OPCODE_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
+    compile_state_program, compile_value_program, DiagnosticDescriptor, OpcpuCodecError,
+    OperandRecordBaseSource, OperandRecordFieldSource, OperandRecordIndirection,
+    OperandRecordOptionalIndexSource, OperandRecordOptionalValueSource, OperandRecordProgram,
+    OperandRecordProgramDescriptor, OperandRecordUpdate, SelectorProgramDescriptor,
+    StateArgumentSpec, StateCapabilityRuleSpec, StateCapabilitySpec, StateDirectiveSpec,
+    StateKeySpec, StateProgramDescriptor, StateProgramSpec, ValueConstraint,
+    ValueProgramDescriptor, ValueProgramSource, OPERAND_RECORD_VM_VERSION_V1,
+    OPERAND_RECORD_VM_VERSION_V2, OPERAND_RECORD_VM_VERSION_V3, SELECTOR_VM_OPCODE_VERSION_V1,
+    STATE_VM_OPCODE_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
 };
 use types::hierarchy::ScopedOwner;
 
+use super::state::{APOLLO_MODE_KEY, CPU_IS_68080_KEY, FPU_TARGET_KEY};
 use super::M68KFamilyHandler;
 
 pub const VALUE_NORMALIZED_INPUT: &str = "scalar.normalized-input";
@@ -76,6 +80,113 @@ pub const FPU_FORMAT_DOUBLE: u16 = 4;
 pub const FPU_FORMAT_EXTENDED: u16 = 5;
 pub const FPU_FORMAT_PACKED: u16 = 6;
 pub const DIAG_SELECTOR_UNSUPPORTED_QUALIFIER: &str = "selector.q";
+pub const STATE_RUNTIME: &str = "runtime";
+
+/// Compile target-state defaults, transitions, and capability legality as one
+/// family-owned matrix consumed by the CPU-neutral state runtime.
+pub fn state_programs() -> Result<Vec<StateProgramDescriptor>, OpcpuCodecError> {
+    let profiles = ["m68000", "m68010", "m68020", "m68030", "m68040", "m68080"];
+    let all_profiles = profiles.iter().map(|value| value.to_string()).collect();
+    let program = compile_state_program(&StateProgramSpec {
+        profiles: profiles.iter().map(|value| value.to_string()).collect(),
+        keys: vec![
+            StateKeySpec {
+                id: FPU_TARGET_KEY.to_string(),
+                default: 0,
+                overrides: vec![("m68080".to_string(), 4)],
+            },
+            StateKeySpec {
+                id: APOLLO_MODE_KEY.to_string(),
+                default: 0,
+                overrides: vec![],
+            },
+            StateKeySpec {
+                id: CPU_IS_68080_KEY.to_string(),
+                default: 0,
+                overrides: vec![("m68080".to_string(), 1)],
+            },
+        ],
+        directives: vec![
+            StateDirectiveSpec {
+                id: "fpu".to_string(),
+                key: FPU_TARGET_KEY.to_string(),
+                arguments: vec![
+                    StateArgumentSpec {
+                        id: "none".to_string(),
+                        value: 0,
+                        allowed_profiles: all_profiles,
+                    },
+                    StateArgumentSpec {
+                        id: "68881".to_string(),
+                        value: 1,
+                        allowed_profiles: vec!["m68020".to_string(), "m68030".to_string()],
+                    },
+                    StateArgumentSpec {
+                        id: "68882".to_string(),
+                        value: 2,
+                        allowed_profiles: vec!["m68020".to_string(), "m68030".to_string()],
+                    },
+                    StateArgumentSpec {
+                        id: "68040".to_string(),
+                        value: 3,
+                        allowed_profiles: vec!["m68040".to_string()],
+                    },
+                    StateArgumentSpec {
+                        id: "68080".to_string(),
+                        value: 4,
+                        allowed_profiles: vec!["m68080".to_string()],
+                    },
+                ],
+            },
+            StateDirectiveSpec {
+                id: "apollo".to_string(),
+                key: APOLLO_MODE_KEY.to_string(),
+                arguments: [("on", 1), ("1", 1), ("off", 0), ("0", 0)]
+                    .into_iter()
+                    .map(|(id, value)| StateArgumentSpec {
+                        id: id.to_string(),
+                        value,
+                        allowed_profiles: vec!["m68080".to_string()],
+                    })
+                    .collect(),
+            },
+        ],
+        capabilities: vec![
+            StateCapabilitySpec {
+                id: "fpu".to_string(),
+                key: FPU_TARGET_KEY.to_string(),
+                rules: vec![
+                    StateCapabilityRuleSpec {
+                        allowed_profiles: vec!["m68020".to_string(), "m68030".to_string()],
+                        allowed_values: vec![1, 2],
+                    },
+                    StateCapabilityRuleSpec {
+                        allowed_profiles: vec!["m68040".to_string()],
+                        allowed_values: vec![3],
+                    },
+                    StateCapabilityRuleSpec {
+                        allowed_profiles: vec!["m68080".to_string()],
+                        allowed_values: vec![4],
+                    },
+                ],
+            },
+            StateCapabilitySpec {
+                id: "apollo".to_string(),
+                key: APOLLO_MODE_KEY.to_string(),
+                rules: vec![StateCapabilityRuleSpec {
+                    allowed_profiles: vec!["m68080".to_string()],
+                    allowed_values: vec![1],
+                }],
+            },
+        ],
+    })?;
+    Ok(vec![StateProgramDescriptor {
+        owner: ScopedOwner::Family("motorola68000".to_string()),
+        id: STATE_RUNTIME.to_string(),
+        opcode_version: STATE_VM_OPCODE_VERSION_V1,
+        program,
+    }])
+}
 
 /// Convert a family-owned register spelling to the opaque class/index pair
 /// consumed by the neutral operand-record runtime.

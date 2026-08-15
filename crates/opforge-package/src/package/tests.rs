@@ -793,6 +793,7 @@ fn ultimate64_abi_header_is_little_endian_v1() {
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
         selector_programs: Vec::new(),
+        state_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -829,6 +830,7 @@ fn ultimate64_abi_toc_payload_layout_is_contiguous() {
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
         selector_programs: Vec::new(),
+        state_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1040,6 +1042,7 @@ fn encode_decode_round_trip_preserves_toks_policy() {
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
         selector_programs: Vec::new(),
+        state_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1103,6 +1106,7 @@ fn encode_decode_round_trip_preserves_parser_contracts() {
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
         selector_programs: Vec::new(),
+        state_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1159,6 +1163,7 @@ fn encode_decode_round_trip_preserves_parser_vm_programs() {
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
         selector_programs: Vec::new(),
+        state_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1265,6 +1270,7 @@ fn encode_decode_round_trip_preserves_expr_contracts() {
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
         selector_programs: Vec::new(),
+        state_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1312,6 +1318,7 @@ fn encode_decode_round_trip_preserves_expr_parser_contracts() {
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
         selector_programs: Vec::new(),
+        state_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1899,6 +1906,7 @@ proptest! {
                 prop_assert_eq!(left.value_programs.len(), right.value_programs.len());
                 prop_assert_eq!(left.operand_record_programs.len(), right.operand_record_programs.len());
                 prop_assert_eq!(left.selector_programs.len(), right.selector_programs.len());
+                prop_assert_eq!(left.state_programs.len(), right.state_programs.len());
             }
             (Err(left), Err(right)) => {
                 prop_assert_eq!(left.code(), right.code());
@@ -1937,6 +1945,138 @@ proptest! {
         let first = validate_selector_program(SELECTOR_VM_OPCODE_VERSION_V1, &bytes);
         let second = validate_selector_program(SELECTOR_VM_OPCODE_VERSION_V1, &bytes);
         prop_assert_eq!(first, second);
+    }
+
+    #[test]
+    fn state_program_validator_is_deterministic_for_arbitrary_bytes(
+        bytes in proptest::collection::vec(any::<u8>(), 0..512)
+    ) {
+        let first = validate_state_program(STATE_VM_OPCODE_VERSION_V1, &bytes);
+        let second = validate_state_program(STATE_VM_OPCODE_VERSION_V1, &bytes);
+        prop_assert_eq!(first, second);
+    }
+}
+
+fn sample_state_program() -> StateProgramDescriptor {
+    StateProgramDescriptor {
+        owner: ScopedOwner::Family("mos6502".to_string()),
+        id: "runtime".to_string(),
+        opcode_version: STATE_VM_OPCODE_VERSION_V1,
+        program: compile_state_program(&StateProgramSpec {
+            profiles: vec!["base".to_string(), "extended".to_string()],
+            keys: vec![StateKeySpec {
+                id: "mode".to_string(),
+                default: 0,
+                overrides: vec![("extended".to_string(), 1)],
+            }],
+            directives: vec![StateDirectiveSpec {
+                id: "mode".to_string(),
+                key: "mode".to_string(),
+                arguments: vec![StateArgumentSpec {
+                    id: "on".to_string(),
+                    value: 1,
+                    allowed_profiles: vec!["extended".to_string()],
+                }],
+            }],
+            capabilities: vec![StateCapabilitySpec {
+                id: "extended-mode".to_string(),
+                key: "mode".to_string(),
+                rules: vec![StateCapabilityRuleSpec {
+                    allowed_profiles: vec!["extended".to_string()],
+                    allowed_values: vec![1],
+                }],
+            }],
+        })
+        .expect("compile sample state program"),
+    }
+}
+
+#[test]
+fn state_program_round_trip_is_canonical_and_compacts_cpu_aliases() {
+    let legacy = encode_hierarchy_chunks(
+        &sample_families(),
+        &sample_cpus(),
+        &sample_dialects(),
+        &sample_registers(),
+        &sample_forms(),
+        &sample_tables(),
+    )
+    .expect("legacy package encode");
+    let mut chunks = decode_hierarchy_chunks(&legacy).expect("legacy package decode");
+    assert!(chunks.state_programs.is_empty());
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("legacy package re-encode"),
+        legacy,
+        "packages without state programs must retain their canonical bytes"
+    );
+
+    chunks.cpus.push(CpuDescriptor {
+        id: "m6502".to_string(),
+        family_id: "mos6502".to_string(),
+        default_dialect: None,
+        canonical_cpu_id: Some("6502".to_string()),
+    });
+    let rich_alias = CpuDescriptor {
+        id: "6502-mos".to_string(),
+        family_id: "mos6502".to_string(),
+        default_dialect: Some("mos".to_string()),
+        canonical_cpu_id: Some("6502".to_string()),
+    };
+    chunks.cpus.push(rich_alias.clone());
+    chunks.state_programs = vec![sample_state_program()];
+    let encoded = encode_hierarchy_chunks_from_chunks(&chunks).expect("state package encode");
+    let toc = parse_toc(&encoded).expect("state package TOC");
+    assert!(toc.contains_key(&CHUNK_STVM));
+    assert!(toc.contains_key(&CHUNK_CALS));
+    let cpus = toc.get(&CHUNK_CPUS).expect("CPUS entry");
+    let start = cpus.offset as usize;
+    let end = start + cpus.length as usize;
+    assert_eq!(
+        decode_cpus_chunk(&encoded[start..end])
+            .expect("compact canonical CPUS")
+            .len(),
+        sample_cpus().len() + 1,
+        "only aliases exactly representable by CALS may move out of CPUS"
+    );
+
+    let decoded = decode_hierarchy_chunks(&encoded).expect("state package decode");
+    assert_eq!(decoded.state_programs, vec![sample_state_program()]);
+    assert!(decoded
+        .cpus
+        .iter()
+        .any(|cpu| { cpu.id == "m6502" && cpu.canonical_cpu_id.as_deref() == Some("6502") }));
+    assert!(
+        decoded.cpus.contains(&rich_alias),
+        "aliases carrying fields CALS cannot represent must round-trip unchanged"
+    );
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical state re-encode"),
+        encoded
+    );
+}
+
+#[test]
+fn state_program_codec_rejects_unknown_versions_and_malformed_programs() {
+    let valid = sample_state_program().program;
+    assert!(validate_state_program(STATE_VM_OPCODE_VERSION_V1 + 1, &valid).is_err());
+
+    for malformed in [
+        Vec::new(),
+        valid[..valid.len() - 1].to_vec(),
+        {
+            let mut bytes = valid.clone();
+            bytes.push(0);
+            bytes
+        },
+        vec![1, 1, b'p', 1, 1, b'k', 0x80, 0, 0, 0, 0xff],
+        vec![
+            1, 1, b'p', 1, 1, b'k', 0, 0, 1, 1, b'd', 0, 1, 1, b'a', 1, 1, 2, 0, 0xff,
+        ],
+    ] {
+        assert!(
+            validate_state_program(STATE_VM_OPCODE_VERSION_V1, &malformed).is_err(),
+            "malformed state program must fail closed: {malformed:?}"
+        );
     }
 }
 

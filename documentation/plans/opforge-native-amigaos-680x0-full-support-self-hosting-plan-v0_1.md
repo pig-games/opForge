@@ -358,6 +358,11 @@ the same unmodified serialized semantic package.
   adds only neutral nested-address, pair, range, list, and field structures.
   Unsupported versions and malformed structures fail closed, and the refreshed
   `.opasm` fixtures remain exact Rust-builder output.
+- Item 5 retains container version 1 and extends optional `OPRD` with record
+  schema version 3. Versions 1 and 2 remain accepted unchanged; version 3 adds
+  only a neutral numeric format tag over nested records. Family- and CPU-scoped
+  package programs own every FPU/AMMX meaning, and the refreshed `.opasm`
+  fixtures remain exact Rust-builder output.
 - Owned contract: the 68020/AmigaOS executable exposes the complete
   Rust-supported 680x0 assembler surface and can rebuild itself
 - Rationale: CPU discovery is already present in package metadata, but complete
@@ -398,11 +403,11 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit eliminating runtime callbacks for structured integer operands.
   - Definition of done: all owned full-extension/list/pair/bit-field shapes match the family oracle from serialized records.
 
-- [ ] Item 5: materialize FPU and AMMX structured operand records
+- [x] Item 5: materialize FPU and AMMX structured operand records
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`-`N68X0-006`, `N68X0-014`, `N68X0-015`.
   - Expected files: neutral format/list/group/nested-record operations, family compiler adapters, Rust tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; FPU format/list, VEA/pair/group/texture, malformed-shape, and round-trip tests; reviewed decomposition for concepts without cross-family applicability.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for structured coprocessor/vector operands only and rejects family-shaped VM opcodes.
+  - Plan-compliance review evidence: `PASS` — the independent `plan-compliance-reviewer` confirmed that `OPRD` v3 adds only a CPU-neutral numeric-tagged composite while retaining v1/v2 decoding; generic package/VM paths contain no FPU, AMMX, VEA, texture, or target-register semantics; family/CPU adapters own all FPU formats and m68080 register, VEA, pair, group, and texture mappings; serialized-only tests cover the complete requested matrices, CPU-scope rejection, malformed/fuzz/round-trip behavior, and typed missing records; exact Rust-built fixtures were refreshed; no native production implementation changed; and all required gates pass.
   - Commit outcome: one commit eliminating the remaining complex-operand runtime callbacks.
   - Definition of done: all FPU/AMMX operand shapes match the family oracle while generic operations remain CPU-neutral.
 

@@ -9,7 +9,7 @@ use package::{
     OperandRecordOptionalIndexSource, OperandRecordOptionalValueSource, OperandRecordProgram,
     OperandRecordProgramDescriptor, OperandRecordUpdate, ValueConstraint, ValueProgramDescriptor,
     ValueProgramSource, OPERAND_RECORD_VM_VERSION_V1, OPERAND_RECORD_VM_VERSION_V2,
-    VALUE_VM_OPCODE_VERSION_V1,
+    OPERAND_RECORD_VM_VERSION_V3, VALUE_VM_OPCODE_VERSION_V1,
 };
 use types::hierarchy::ScopedOwner;
 
@@ -57,10 +57,39 @@ pub const RECORD_BIT_FIELD_REGISTER_OFFSET: &str = "operand.bit-field-register-o
 pub const RECORD_BIT_FIELD_IMMEDIATE: &str = "operand.bit-field-immediate";
 pub const RECORD_BIT_FIELD_VALUE_REGISTER: &str = "operand.bit-field-value-register";
 pub const RECORD_BIT_FIELD_REGISTERS: &str = "operand.bit-field-registers";
+pub const RECORD_FPU_DATA_REGISTER: &str = "operand.fpu-data-register";
+pub const RECORD_FPU_CONTROL_REGISTER: &str = "operand.fpu-control-register";
+pub const RECORD_FPU_REGISTER_LIST: &str = "operand.fpu-register-list";
+pub const RECORD_FPU_FORMAT_BYTE: &str = "operand.fpu-format-byte";
+pub const RECORD_FPU_FORMAT_WORD: &str = "operand.fpu-format-word";
+pub const RECORD_FPU_FORMAT_LONG: &str = "operand.fpu-format-long";
+pub const RECORD_FPU_FORMAT_SINGLE: &str = "operand.fpu-format-single";
+pub const RECORD_FPU_FORMAT_DOUBLE: &str = "operand.fpu-format-double";
+pub const RECORD_FPU_FORMAT_EXTENDED: &str = "operand.fpu-format-extended";
+pub const RECORD_FPU_FORMAT_PACKED: &str = "operand.fpu-format-packed";
+pub const FPU_FORMAT_BYTE: u16 = 0;
+pub const FPU_FORMAT_WORD: u16 = 1;
+pub const FPU_FORMAT_LONG: u16 = 2;
+pub const FPU_FORMAT_SINGLE: u16 = 3;
+pub const FPU_FORMAT_DOUBLE: u16 = 4;
+pub const FPU_FORMAT_EXTENDED: u16 = 5;
+pub const FPU_FORMAT_PACKED: u16 = 6;
 
 /// Convert a family-owned register spelling to the opaque class/index pair
 /// consumed by the neutral operand-record runtime.
 pub fn compile_register_input(register: &str) -> Option<(u16, u16)> {
+    for (name, index) in [("FPCR", 0), ("FPSR", 1), ("FPIAR", 2)] {
+        if register.eq_ignore_ascii_case(name) {
+            return Some((3, index));
+        }
+    }
+    if let Some(suffix) = register
+        .strip_prefix("FP")
+        .or_else(|| register.strip_prefix("fp"))
+    {
+        let index = suffix.parse::<u16>().ok()?;
+        return (index <= 7).then_some((2, index));
+    }
     let (prefix, suffix) = register.split_at_checked(1)?;
     let index = suffix.parse::<u16>().ok()?;
     if index > 7 {
@@ -176,6 +205,21 @@ fn structured_record(
         id: id.to_string(),
         schema_version: OPERAND_RECORD_VM_VERSION_V2,
         program: compile_operand_record_program(program)?,
+    })
+}
+
+fn composite_record(
+    id: &str,
+    format: u16,
+) -> Result<OperandRecordProgramDescriptor, OpcpuCodecError> {
+    Ok(OperandRecordProgramDescriptor {
+        owner: ScopedOwner::Family("motorola68000".to_string()),
+        id: id.to_string(),
+        schema_version: OPERAND_RECORD_VM_VERSION_V3,
+        program: compile_operand_record_program(OperandRecordProgram::Composite {
+            format,
+            first_record_input: Some(0),
+        })?,
     })
 }
 
@@ -388,7 +432,35 @@ pub fn operand_record_programs() -> Result<Vec<OperandRecordProgramDescriptor>, 
                 width: OperandRecordFieldSource::Register(1),
             },
         )?,
+        record(
+            RECORD_FPU_DATA_REGISTER,
+            OperandRecordProgram::Register { register_input: 0 },
+        )?,
+        record(
+            RECORD_FPU_CONTROL_REGISTER,
+            OperandRecordProgram::Register { register_input: 0 },
+        )?,
+        structured_record(
+            RECORD_FPU_REGISTER_LIST,
+            OperandRecordProgram::RegisterList {
+                first_register_input: 0,
+            },
+        )?,
     ]);
+    programs.extend(
+        [
+            (RECORD_FPU_FORMAT_BYTE, FPU_FORMAT_BYTE),
+            (RECORD_FPU_FORMAT_WORD, FPU_FORMAT_WORD),
+            (RECORD_FPU_FORMAT_LONG, FPU_FORMAT_LONG),
+            (RECORD_FPU_FORMAT_SINGLE, FPU_FORMAT_SINGLE),
+            (RECORD_FPU_FORMAT_DOUBLE, FPU_FORMAT_DOUBLE),
+            (RECORD_FPU_FORMAT_EXTENDED, FPU_FORMAT_EXTENDED),
+            (RECORD_FPU_FORMAT_PACKED, FPU_FORMAT_PACKED),
+        ]
+        .into_iter()
+        .map(|(id, format)| composite_record(id, format))
+        .collect::<Result<Vec<_>, _>>()?,
+    );
     Ok(programs)
 }
 

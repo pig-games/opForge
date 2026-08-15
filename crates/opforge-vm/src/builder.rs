@@ -205,6 +205,9 @@ pub fn build_hierarchy_chunks_from_registry(
         value_programs.extend(registry.family_value_programs(*family)?);
         operand_record_programs.extend(registry.family_operand_record_programs(*family)?);
     }
+    for cpu in registry.cpu_ids() {
+        operand_record_programs.extend(registry.cpu_operand_record_programs(cpu)?);
+    }
 
     let mut registers = Vec::new();
     for family in &family_ids {

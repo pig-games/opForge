@@ -1,0 +1,48 @@
+[slice]
+schema_version = 1
+name = "versioned portable coprocessor and vector operand records"
+kind = "package-runtime"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 5
+requirements = ["N68X0-001", "N68X0-003", "N68X0-004", "N68X0-005", "N68X0-006", "N68X0-014", "N68X0-015"]
+rust_reference = [
+  "crates/opforge-families/src/m68k/operand.rs::FamilyOperand",
+  "crates/opforge-families/src/m68k/package_programs.rs::operand_record_programs",
+  "crates/opforge-families/src/m68080/package_programs.rs::operand_record_programs",
+  "crates/opforge-registry/src/registry.rs::CpuModule::operand_record_programs",
+  "crates/opforge-package/src/package.rs::OperandRecordProgram::Composite",
+  "crates/opforge-vm/src/operand_record_vm.rs::execute_operand_record_program_with_records"
+]
+boundary = "OPRD v3 adds only a CPU-neutral numeric format tag over zero or more nested records. Family and CPU modules own all meanings assigned to tags, register classes, FPU formats, AMMX vector effective addresses, pairs, groups, and texture layouts. The generic package/runtime has no coprocessor, vector, FPU, AMMX, VEA, texture, or target-register vocabulary. CPU modules gain the same neutral operand-record contribution hook already available to family modules."
+invariant = "The normal registry package builder serializes family-scoped FPU records and CPU-scoped m68080 records. After serialization and destruction of the registry, m68020 reconstructs FPU data/control/list/pair/format records and m68080 reconstructs AMMX data/VEA/pair/group/texture records. CPU-scoped AMMX programs are unavailable to m68020. OPRD v1/v2 remain accepted unchanged; unsupported versions and malformed v3 composites fail closed."
+expected_inputs = "A canonical hierarchy package with scoped OPRD v1/v2/v3 descriptors plus opaque numeric registers and already-materialized nested records."
+expected_outputs = "One deterministic neutral register, list, pair, or numeric-tagged composite record, or a typed missing-input, malformed-program, unsupported-version, unknown-program, or missing-scope failure."
+known_non_equivalences = "No generic format tag has cross-family semantic meaning. FPU and AMMX concepts are intentionally decomposed into shared registers/lists/pairs/nested records plus package-owned opaque tags because no existing non-m68k family has applicable coprocessor/vector semantics. Selector order, legality diagnostics, encoding, fixups, pass stability, native interpretation, output formats, and CLI behavior remain owned by later items."
+fast_proof_command = "cargo test -p package operand_record -- --nocapture && cargo test -p vm execution_model_reconstructs_fpu_and_ammx_records_from_serialized_programs -- --nocapture && cargo test -p vm execution_model_reconstructs_structured_integer_records_from_serialized_programs -- --nocapture"
+full_gate_command = "cargo test -p package && cargo test -p registry && cargo test -p families && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
+native_proof = "not-applicable: Item 5 changes no native production file and the plan forbids FS-UAE as package-phase proof"
+
+[[tests]]
+name = "operand_record_program_round_trip_is_canonical_and_optional_for_legacy_packages"
+proof_level = "package"
+proves = "OPRD v3 composite records round-trip canonically while packages without OPRD retain existing bytes."
+
+[[tests]]
+name = "operand_record_codec_rejects_unknown_versions_and_malformed_records"
+proof_level = "package"
+proves = "Unknown versions and truncated v3 composite records fail closed."
+
+[[tests]]
+name = "operand_record_validator_is_deterministic_for_arbitrary_bytes"
+proof_level = "package-fuzz"
+proves = "Arbitrary bounded v3 byte streams produce deterministic validation outcomes without panics."
+
+[[tests]]
+name = "execution_model_reconstructs_fpu_and_ammx_records_from_serialized_programs"
+proof_level = "runtime"
+proves = "A serialized-only runtime reconstructs the complete Item 5 FPU format/list/pair and AMMX VEA/pair/group/texture matrix, uses family/CPU register adapters, rejects missing nested records, and enforces CPU scope."
+
+[[tests]]
+name = "execution_model_reconstructs_structured_integer_records_from_serialized_programs"
+proof_level = "runtime-regression"
+proves = "All OPRD v2 structured integer records remain executable after adding v3."

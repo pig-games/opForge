@@ -45,6 +45,7 @@ use families::{
         ld_indirect_candidate as intel8080_ld_indirect_candidate, Operand as IntelOperand,
     },
     m65816::state,
+    m68080::package_programs as m68080_record_programs,
     m68k::package_programs as m68k_value_programs,
     mos6502::{
         module::{M6502CpuModule, MOS6502FamilyModule, MOS6502Operands},
@@ -8178,7 +8179,7 @@ fn execution_model_reconstructs_base_operand_records_from_serialized_programs() 
     register_mos6502_family_stack(&mut registry);
     register_motorola68000_family_stack(&mut registry);
     let chunks = build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
-    assert_eq!(chunks.operand_record_programs.len(), 28);
+    assert_eq!(chunks.operand_record_programs.len(), 46);
     let package_bytes =
         encode_hierarchy_chunks_from_chunks(&chunks).expect("operand package serialization");
     drop(chunks);
@@ -8655,6 +8656,316 @@ fn execution_model_reconstructs_structured_integer_records_from_serialized_progr
         Err(RuntimeBridgeError::OperandRecordVm(
             OperandRecordVmError::MissingRecordInput { index: 0 }
         ))
+    ));
+}
+
+#[test]
+fn execution_model_reconstructs_fpu_and_ammx_records_from_serialized_programs() {
+    let mut registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut registry);
+    let package_bytes = encode_hierarchy_chunks_from_chunks(
+        &build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build"),
+    )
+    .expect("coprocessor/vector package serialization");
+    drop(registry);
+
+    let model = HierarchyExecutionModel::from_package_bytes(&package_bytes)
+        .expect("serialized coprocessor/vector package load");
+    let m68020 = model
+        .resolve_pipeline("m68020", None)
+        .expect("m68020 pipeline");
+    let m68080 = model
+        .resolve_pipeline("m68080", None)
+        .expect("m68080 pipeline");
+    let family_register = |name| {
+        let (class, index) =
+            m68k_value_programs::compile_register_input(name).expect("family register adapter");
+        PortableRegisterRef { class, index }
+    };
+    let cpu_register = |name| {
+        let (class, index) =
+            m68080_record_programs::compile_register_input(name).expect("CPU register adapter");
+        PortableRegisterRef { class, index }
+    };
+
+    let fp2 = family_register("FP2");
+    let fp3 = family_register("FP3");
+    let fpcr = family_register("FPCR");
+    let fpsr = family_register("FPSR");
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68020,
+                m68k_value_programs::RECORD_FPU_DATA_REGISTER,
+                &[fp2],
+                &[],
+            )
+            .expect("FPU data register"),
+        PortableOperandRecord::Register(fp2)
+    );
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68020,
+                m68k_value_programs::RECORD_FPU_CONTROL_REGISTER,
+                &[fpcr],
+                &[],
+            )
+            .expect("FPU control register"),
+        PortableOperandRecord::Register(fpcr)
+    );
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68020,
+                m68k_value_programs::RECORD_FPU_REGISTER_LIST,
+                &[fp2, fp3, fpcr, fpsr],
+                &[],
+            )
+            .expect("mixed FPU register list"),
+        PortableOperandRecord::RegisterList(vec![fp2, fp3, fpcr, fpsr])
+    );
+    let fpu_pair = model
+        .execute_operand_record_program(
+            &m68020,
+            m68k_value_programs::RECORD_REGISTER_PAIR,
+            &[fp2, fp3],
+            &[],
+        )
+        .expect("FPU register pair");
+    assert_eq!(
+        fpu_pair,
+        PortableOperandRecord::RegisterPair {
+            left: fp2,
+            right: fp3,
+            indirect: false,
+        }
+    );
+    for (id, format) in [
+        (
+            m68k_value_programs::RECORD_FPU_FORMAT_BYTE,
+            m68k_value_programs::FPU_FORMAT_BYTE,
+        ),
+        (
+            m68k_value_programs::RECORD_FPU_FORMAT_WORD,
+            m68k_value_programs::FPU_FORMAT_WORD,
+        ),
+        (
+            m68k_value_programs::RECORD_FPU_FORMAT_LONG,
+            m68k_value_programs::FPU_FORMAT_LONG,
+        ),
+        (
+            m68k_value_programs::RECORD_FPU_FORMAT_SINGLE,
+            m68k_value_programs::FPU_FORMAT_SINGLE,
+        ),
+        (
+            m68k_value_programs::RECORD_FPU_FORMAT_DOUBLE,
+            m68k_value_programs::FPU_FORMAT_DOUBLE,
+        ),
+        (
+            m68k_value_programs::RECORD_FPU_FORMAT_EXTENDED,
+            m68k_value_programs::FPU_FORMAT_EXTENDED,
+        ),
+        (
+            m68k_value_programs::RECORD_FPU_FORMAT_PACKED,
+            m68k_value_programs::FPU_FORMAT_PACKED,
+        ),
+    ] {
+        assert_eq!(
+            model
+                .execute_operand_record_program_with_records(
+                    &m68020,
+                    id,
+                    &[],
+                    &[],
+                    std::slice::from_ref(&fpu_pair),
+                )
+                .expect("FPU format wrapper"),
+            PortableOperandRecord::Composite {
+                format,
+                records: vec![fpu_pair.clone()],
+            }
+        );
+    }
+
+    let e7 = cpu_register("E7");
+    let e8 = cpu_register("E8");
+    let b2 = cpu_register("B2");
+    let a0 = cpu_register("A0");
+    let a1 = cpu_register("A1");
+    let a2 = cpu_register("A2");
+    let d0 = cpu_register("D0");
+    assert!(m68080_record_programs::compile_register_input("E24").is_none());
+    assert!(m68080_record_programs::compile_register_input("B8").is_none());
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68080,
+                m68080_record_programs::RECORD_AMMX_DATA_REGISTER,
+                &[e7],
+                &[],
+            )
+            .expect("AMMX register"),
+        PortableOperandRecord::Register(e7)
+    );
+
+    let vea_records = vec![
+        PortableOperandRecord::Register(e7),
+        PortableOperandRecord::Indirect {
+            base: b2,
+            update: PortableAddressUpdate::None,
+        },
+        PortableOperandRecord::Indirect {
+            base: b2,
+            update: PortableAddressUpdate::Postincrement,
+        },
+        PortableOperandRecord::Indirect {
+            base: b2,
+            update: PortableAddressUpdate::Predecrement,
+        },
+        PortableOperandRecord::Displacement {
+            base: PortableAddressBase::Register(b2),
+            displacement: -4,
+        },
+        PortableOperandRecord::Indexed {
+            base: PortableAddressBase::Register(b2),
+            index: d0,
+            index_width_bits: 32,
+            scale: 1,
+            displacement: 8,
+        },
+        PortableOperandRecord::Displacement {
+            base: PortableAddressBase::ProgramCounter,
+            displacement: 6,
+        },
+        PortableOperandRecord::Indexed {
+            base: PortableAddressBase::ProgramCounter,
+            index: d0,
+            index_width_bits: 16,
+            scale: 1,
+            displacement: 10,
+        },
+        PortableOperandRecord::Absolute {
+            value: 0x1234,
+            width_bits: 16,
+        },
+        PortableOperandRecord::Absolute {
+            value: 0x1234_5678,
+            width_bits: 32,
+        },
+    ];
+    for vea in vea_records {
+        assert_eq!(
+            model
+                .execute_operand_record_program_with_records(
+                    &m68080,
+                    m68080_record_programs::RECORD_AMMX_VEA,
+                    &[],
+                    &[],
+                    std::slice::from_ref(&vea),
+                )
+                .expect("AMMX vector effective address"),
+            PortableOperandRecord::Composite {
+                format: m68080_record_programs::FORMAT_AMMX_VEA,
+                records: vec![vea],
+            }
+        );
+    }
+    let pair = PortableOperandRecord::RegisterPair {
+        left: e7,
+        right: e8,
+        indirect: false,
+    };
+    let group = PortableOperandRecord::RegisterRange {
+        start: cpu_register("E0"),
+        end: cpu_register("E3"),
+    };
+    for (id, format, nested) in [
+        (
+            m68080_record_programs::RECORD_AMMX_PAIR,
+            m68080_record_programs::FORMAT_AMMX_PAIR,
+            pair,
+        ),
+        (
+            m68080_record_programs::RECORD_AMMX_GROUP,
+            m68080_record_programs::FORMAT_AMMX_GROUP,
+            group,
+        ),
+    ] {
+        assert_eq!(
+            model
+                .execute_operand_record_program_with_records(
+                    &m68080,
+                    id,
+                    &[],
+                    &[],
+                    std::slice::from_ref(&nested),
+                )
+                .expect("AMMX composite"),
+            PortableOperandRecord::Composite {
+                format,
+                records: vec![nested],
+            }
+        );
+    }
+
+    let texture_coordinates = vec![
+        PortableOperandRecord::Register(a0),
+        PortableOperandRecord::Register(a1),
+        PortableOperandRecord::Register(a2),
+    ];
+    let mut texture_scaled = texture_coordinates.clone();
+    texture_scaled.push(PortableOperandRecord::Register(d0));
+    for (id, format, records) in [
+        (
+            m68080_record_programs::RECORD_TEXTURE_NESTED,
+            m68080_record_programs::FORMAT_TEXTURE_NESTED,
+            texture_coordinates.clone(),
+        ),
+        (
+            m68080_record_programs::RECORD_TEXTURE_EXTERNAL_SCALE,
+            m68080_record_programs::FORMAT_TEXTURE_EXTERNAL_SCALE,
+            texture_scaled.clone(),
+        ),
+        (
+            m68080_record_programs::RECORD_TEXTURE_SCALED_INSIDE,
+            m68080_record_programs::FORMAT_TEXTURE_SCALED_INSIDE,
+            texture_scaled,
+        ),
+        (
+            m68080_record_programs::RECORD_TEXTURE_FLAT,
+            m68080_record_programs::FORMAT_TEXTURE_FLAT,
+            texture_coordinates,
+        ),
+    ] {
+        assert_eq!(
+            model
+                .execute_operand_record_program_with_records(&m68080, id, &[], &[], &records)
+                .expect("texture composite"),
+            PortableOperandRecord::Composite { format, records }
+        );
+    }
+    assert!(matches!(
+        model.execute_operand_record_program_with_records(
+            &m68080,
+            m68080_record_programs::RECORD_AMMX_VEA,
+            &[],
+            &[],
+            &[],
+        ),
+        Err(RuntimeBridgeError::OperandRecordVm(
+            OperandRecordVmError::MissingRecordInput { index: 0 }
+        ))
+    ));
+    assert!(matches!(
+        model.execute_operand_record_program_with_records(
+            &m68020,
+            m68080_record_programs::RECORD_AMMX_VEA,
+            &[],
+            &[],
+            std::slice::from_ref(&PortableOperandRecord::Register(fp2)),
+        ),
+        Err(RuntimeBridgeError::Resolve(_))
     ));
 }
 

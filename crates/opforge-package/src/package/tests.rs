@@ -1917,8 +1917,8 @@ proptest! {
     fn operand_record_validator_is_deterministic_for_arbitrary_bytes(
         bytes in proptest::collection::vec(any::<u8>(), 0..512)
     ) {
-        let first = validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V2, &bytes);
-        let second = validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V2, &bytes);
+        let first = validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V3, &bytes);
+        let second = validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V3, &bytes);
         prop_assert_eq!(first, second);
     }
 }
@@ -2203,11 +2203,28 @@ fn operand_record_program_round_trip_is_canonical_and_optional_for_legacy_packag
             schema_version: OPERAND_RECORD_VM_VERSION_V1,
             program,
         },
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Cpu("m68080".to_string()),
+            id: "operand.composite".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V3,
+            program: compile_operand_record_program(OperandRecordProgram::Composite {
+                format: 0x1234,
+                first_record_input: Some(0),
+            })
+            .expect("compile composite record"),
+        },
     ];
     let encoded = encode_hierarchy_chunks_from_chunks(&chunks).expect("OPRD package encode");
     let decoded = decode_hierarchy_chunks(&encoded).expect("OPRD package decode");
-    assert_eq!(decoded.operand_record_programs.len(), 1);
-    assert_eq!(decoded.operand_record_programs[0].id, "operand.indirect");
+    assert_eq!(decoded.operand_record_programs.len(), 2);
+    assert!(decoded
+        .operand_record_programs
+        .iter()
+        .any(|program| program.id == "operand.indirect"));
+    assert!(decoded
+        .operand_record_programs
+        .iter()
+        .any(|program| program.id == "operand.composite"));
     assert_eq!(
         encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical OPRD re-encode"),
         encoded
@@ -2220,7 +2237,7 @@ fn operand_record_codec_rejects_unknown_versions_and_malformed_records() {
         OperandRecordProgramDescriptor {
             owner: ScopedOwner::Family("mos6502".to_string()),
             id: "unknown-version".to_string(),
-            schema_version: OPERAND_RECORD_VM_VERSION_V2 + 1,
+            schema_version: OPERAND_RECORD_VM_VERSION_V3 + 1,
             program: vec![OPERAND_RECORD_OP_REGISTER, 0, OPERAND_RECORD_OP_END],
         },
         OperandRecordProgramDescriptor {
@@ -2273,6 +2290,12 @@ fn operand_record_codec_rejects_unknown_versions_and_malformed_records() {
             id: "trailing".to_string(),
             schema_version: OPERAND_RECORD_VM_VERSION_V1,
             program: vec![OPERAND_RECORD_OP_IMMEDIATE, 0, OPERAND_RECORD_OP_END, 0],
+        },
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Cpu("m68080".to_string()),
+            id: "truncated-composite".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V3,
+            program: vec![OPERAND_RECORD_OP_COMPOSITE, 0, OPERAND_RECORD_OP_END],
         },
         OperandRecordProgramDescriptor {
             owner: ScopedOwner::Family("mos6502".to_string()),

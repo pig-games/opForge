@@ -4,10 +4,10 @@
 //! CPU-neutral reconstruction of serialized operand records.
 
 use package::{
-    validate_operand_record_program, OPERAND_RECORD_OP_ABSOLUTE, OPERAND_RECORD_OP_DISPLACEMENT,
-    OPERAND_RECORD_OP_FIELD, OPERAND_RECORD_OP_IMMEDIATE, OPERAND_RECORD_OP_INDEXED,
-    OPERAND_RECORD_OP_INDIRECT, OPERAND_RECORD_OP_NESTED_ADDRESS, OPERAND_RECORD_OP_REGISTER,
-    OPERAND_RECORD_OP_REGISTER_LIST, OPERAND_RECORD_OP_REGISTER_PAIR,
+    validate_operand_record_program, OPERAND_RECORD_OP_ABSOLUTE, OPERAND_RECORD_OP_COMPOSITE,
+    OPERAND_RECORD_OP_DISPLACEMENT, OPERAND_RECORD_OP_FIELD, OPERAND_RECORD_OP_IMMEDIATE,
+    OPERAND_RECORD_OP_INDEXED, OPERAND_RECORD_OP_INDIRECT, OPERAND_RECORD_OP_NESTED_ADDRESS,
+    OPERAND_RECORD_OP_REGISTER, OPERAND_RECORD_OP_REGISTER_LIST, OPERAND_RECORD_OP_REGISTER_PAIR,
     OPERAND_RECORD_OP_REGISTER_RANGE,
 };
 
@@ -103,6 +103,10 @@ pub enum PortableOperandRecord {
         base: Box<PortableOperandRecord>,
         offset: PortableFieldSelector,
         width: PortableFieldSelector,
+    },
+    Composite {
+        format: u16,
+        records: Vec<PortableOperandRecord>,
     },
 }
 
@@ -287,6 +291,24 @@ pub fn execute_operand_record_program_with_records(
                 ),
                 offset: field(program[2], program[3])?,
                 width: field(program[4], program[5])?,
+            })
+        }
+        OPERAND_RECORD_OP_COMPOSITE => {
+            let first_record = program[3];
+            let records = if first_record == u8::MAX {
+                Vec::new()
+            } else {
+                records
+                    .get(first_record as usize..)
+                    .filter(|records| !records.is_empty())
+                    .ok_or(OperandRecordVmError::MissingRecordInput {
+                        index: first_record,
+                    })?
+                    .to_vec()
+            };
+            Ok(PortableOperandRecord::Composite {
+                format: u16::from_le_bytes([program[1], program[2]]),
+                records,
             })
         }
         _ => unreachable!("validated operand-record opcode"),

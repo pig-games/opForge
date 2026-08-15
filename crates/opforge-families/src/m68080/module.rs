@@ -459,6 +459,12 @@ impl CpuModule for M68080CpuModule {
         state::RUNTIME_DIRECTIVE_IDS
     }
 
+    fn operand_record_programs(
+        &self,
+    ) -> Result<Vec<package::OperandRecordProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::operand_record_programs()
+    }
+
     fn handler(&self) -> Box<dyn CpuHandlerDyn> {
         Box::new(M68080CpuHandler::new())
     }

@@ -138,6 +138,7 @@ pub const VALUE_VM_OP_REQUIRE_RANGE_I64: u8 = 0x06;
 pub const VALUE_VM_OP_END: u8 = 0xFF;
 pub const OPERAND_RECORD_VM_VERSION_V1: u16 = 0x0001;
 pub const OPERAND_RECORD_VM_VERSION_V2: u16 = 0x0002;
+pub const OPERAND_RECORD_VM_VERSION_V3: u16 = 0x0003;
 pub const OPERAND_RECORD_OP_REGISTER: u8 = 0x01;
 pub const OPERAND_RECORD_OP_INDIRECT: u8 = 0x02;
 pub const OPERAND_RECORD_OP_DISPLACEMENT: u8 = 0x03;
@@ -149,6 +150,7 @@ pub const OPERAND_RECORD_OP_REGISTER_PAIR: u8 = 0x08;
 pub const OPERAND_RECORD_OP_REGISTER_RANGE: u8 = 0x09;
 pub const OPERAND_RECORD_OP_REGISTER_LIST: u8 = 0x0A;
 pub const OPERAND_RECORD_OP_FIELD: u8 = 0x0B;
+pub const OPERAND_RECORD_OP_COMPOSITE: u8 = 0x0C;
 pub const OPERAND_RECORD_OP_END: u8 = 0xFF;
 pub const PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT: u16 = 0x0002;
 pub const EXVM_OPCODE_VERSION_V1: u16 = 0x0001;
@@ -333,6 +335,10 @@ pub enum OperandRecordProgram {
         offset: OperandRecordFieldSource,
         width: OperandRecordFieldSource,
     },
+    Composite {
+        format: u16,
+        first_record_input: Option<u8>,
+    },
 }
 
 /// Compile one neutral operand-record constructor.
@@ -447,9 +453,17 @@ pub fn compile_operand_record_program(
             push_field(&mut program, offset);
             push_field(&mut program, width);
         }
+        OperandRecordProgram::Composite {
+            format,
+            first_record_input,
+        } => {
+            program.push(OPERAND_RECORD_OP_COMPOSITE);
+            program.extend_from_slice(&format.to_le_bytes());
+            program.push(first_record_input.unwrap_or(u8::MAX));
+        }
     }
     program.push(OPERAND_RECORD_OP_END);
-    validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V2, &program)?;
+    validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V3, &program)?;
     Ok(program)
 }
 
@@ -466,7 +480,7 @@ pub fn validate_operand_record_program(
     }
     if !matches!(
         schema_version,
-        OPERAND_RECORD_VM_VERSION_V1 | OPERAND_RECORD_VM_VERSION_V2
+        OPERAND_RECORD_VM_VERSION_V1 | OPERAND_RECORD_VM_VERSION_V2 | OPERAND_RECORD_VM_VERSION_V3
     ) {
         return Err(invalid(format!(
             "unsupported operand-record schema version {schema_version}"
@@ -485,6 +499,7 @@ pub fn validate_operand_record_program(
         OPERAND_RECORD_OP_REGISTER_RANGE if schema_version >= OPERAND_RECORD_VM_VERSION_V2 => 2,
         OPERAND_RECORD_OP_REGISTER_LIST if schema_version >= OPERAND_RECORD_VM_VERSION_V2 => 1,
         OPERAND_RECORD_OP_FIELD if schema_version >= OPERAND_RECORD_VM_VERSION_V2 => 5,
+        OPERAND_RECORD_OP_COMPOSITE if schema_version >= OPERAND_RECORD_VM_VERSION_V3 => 3,
         other => {
             return Err(invalid(format!(
                 "unknown operand-record opcode {other:#04x}"

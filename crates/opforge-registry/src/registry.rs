@@ -186,6 +186,11 @@ pub trait CpuModule: Send + Sync {
     fn form_mnemonics(&self) -> Vec<String> {
         Vec::new()
     }
+    fn operand_record_programs(
+        &self,
+    ) -> Result<Vec<OperandRecordProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
     fn runtime_directive_ids(&self) -> &'static [&'static str] {
         &[]
     }
@@ -346,6 +351,16 @@ impl AsmRegistry {
     ) -> Result<Vec<OperandRecordProgramDescriptor>, OpcpuCodecError> {
         self.families
             .get(&family)
+            .map(|module| module.operand_record_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn cpu_operand_record_programs(
+        &self,
+        cpu: CpuType,
+    ) -> Result<Vec<OperandRecordProgramDescriptor>, OpcpuCodecError> {
+        self.cpus
+            .get(&cpu)
             .map(|module| module.operand_record_programs())
             .unwrap_or_else(|| Ok(Vec::new()))
     }

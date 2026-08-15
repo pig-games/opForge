@@ -1597,13 +1597,14 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: one focused generic overlapping-origin image parity commit before proof-closure/gate promotion
   - Definition of done: the exact stored source produces the full 57,365-byte binary byte-for-byte equal to Rust, and all sixteen parent roots pass without exclusion
 
-- [ ] Item 10.R0: restore the declared exact-source syntax/expression completion shard
+- [x] Item 10.R0: restore the declared exact-source syntax/expression completion shard
   - Source requirement or finding IDs: Item 5 names `native_reference_opcore_syntax_expression_fs_uae` as one of four bounded Level D shards, but the repository retained only an older localization test that strips CLI setup directives before native execution
   - Invariant: every assigned Item 6 root is supplied as its exact stored 6502/65C02 or CPU-neutral source, with every owned support file and a live same-case in-memory Rust CLI oracle; no source-stripping adapter or numeric case cap is completion evidence
   - Expected files: `crates/opforge-asm/src/tests/native_fs_uae_parity.rs`; `scripts/workflow/native_parity_test_names.txt`; this plan
   - Full quality gates: focused uncapped staging contract; exact named real `native_reference_opcore_syntax_expression_fs_uae`; reference test; native staged gate; workflow gate; full serial Rust quality gate
   - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for proof closure only, with no corpus or native behavior change
-  - Commit outcome: one focused proof-closure commit restores the declared exact-source shard before gate promotion
+  - Closure evidence: Item 10.R0.1 landed as `e3f40f0b` after exact-index review returned `PASS`. Its final uncapped `native_reference_opcore_syntax_expression_fs_uae` execution attempted and passed all sixteen inventory-assigned exact stored roots in 364.16s. Every root carried its own stored source/support tree and live in-memory Rust CLI oracle through the shared fresh challenge/start/done, explicit zero-exit, exact-byte, ephemeral-artifact contract. The canonical `examples/mos6502/mos_forward_ref_stability.asm` case is not part of that opcore inventory and was not inferred from its result: its separate mandatory `native_mos_forward_ref_stability_fs_uae` test passed independently on the committed `e3f40f0b` production index in 22.59s under the same fail-closed Level D contract. The same production index also passed the uncapped sixteen-root layout/output regression shard in 362.45s.
+  - Commit outcome: one focused proof-closure commit records the already-reviewed exact-source shard before gate promotion; no corpus or native behavior changes are included
   - Definition of done: every assigned root is attempted independently and requires fresh guest completion, explicit zero exit, and exact same-case Rust bytes
 
 - [ ] Item 10: promote the completed active native reference scope into the mandatory native completion gate

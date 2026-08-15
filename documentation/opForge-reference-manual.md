@@ -748,7 +748,9 @@ Examples in the repo:
 
 The `.cpu` directive selects the active instruction set, operand rules, and any
 family-specific assembler behavior. The accepted identifiers are easiest to
-read when grouped by CPU family.
+read when grouped by CPU family. CPU identifiers are case-insensitive, and the
+same canonical names and registered aliases are accepted by both `.cpu` and the
+CLI `--cpu <ID>` option.
 
 #### 3.11.1 Intel 8080 family
 
@@ -1161,7 +1163,9 @@ Other options:
 - `--fmt-write`: apply formatter changes in place for input files. Folder inputs and root source-file inputs include linked module files.
 - `--fmt-stdout`: format exactly one input file and write the result to stdout.
 - `--fmt-config <FILE>`: formatter config file path (requires a formatter mode flag).
-- `--cpu <ID>`: select initial CPU before source parsing (`.cpu` in source can still override later).
+- `--cpu <ID>`: select the initial CPU before source parsing (`.cpu` in source
+  can still override later). It uses the same case-insensitive canonical names
+  and registered aliases as `.cpu`; for example, `6502` resolves to `m6502`.
 - `--opasm-package <FILE>`: load runtime `.opasm` package from FILE and prefer it over artifact/bundled package sources.
 - `--print-capabilities`: print deterministic capability metadata and exit.
 - `--print-cpusupport`: print deterministic CPU support metadata and exit.

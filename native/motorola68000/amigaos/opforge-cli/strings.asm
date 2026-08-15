@@ -335,10 +335,10 @@ defaultFsUaeArgTail
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM10_INCLUDE_OUTPUT
-	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 -I Work:opforge_include_root_b -I Work:opforge_include_root_a", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu 6502 -I Work:opforge_include_root_b -I Work:opforge_include_root_a", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INCLUDE
-	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 -I Work:opforge_include_root_a", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu 6502 -I Work:opforge_include_root_a", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM13_OUTPUT_DIRECTIVE
 	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502", 0
@@ -450,16 +450,6 @@ DefaultCpuName
 DefaultFamilyName
 	.byte "motorola68k"
 DefaultFamilyNameEnd
-Cpu6502AliasText
-	.byte "6502", 0
-M6502CpuNameText
-	.byte "m6502", 0
-CpuM65C02AliasText
-	.byte "m65c02", 0
-Cpu65C02AliasText
-	.byte "65c02", 0
-Cpu65C02CanonicalText
-	.byte "65c02", 0
 Mos6502FamilyName
 	.byte "mos6502"
 Mos6502FamilyNameEnd

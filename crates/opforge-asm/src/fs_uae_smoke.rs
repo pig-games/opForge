@@ -921,6 +921,20 @@ pub(crate) fn run_opforge_native_cli_item10_include_from_env(
 ) -> Result<FsUaeSmokeOutcome, String> {
     let include_source = "        .include \"defs.inc\"\n        lda #$44\n";
     let missing_include_source = "        .include \"missing.inc\"\n        lda #$44\n";
+    let include_support = [
+        OpforgeNativeCliGuestFile {
+            relative_path: FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_FILE,
+            bytes: FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_TEXT.as_bytes(),
+        },
+        OpforgeNativeCliGuestFile {
+            relative_path: FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_FILE,
+            bytes: FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_TEXT.as_bytes(),
+        },
+    ];
+    let missing_include_support = [OpforgeNativeCliGuestFile {
+        relative_path: FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_FILE,
+        bytes: FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_TEXT.as_bytes(),
+    }];
     let cases = [
         OpforgeNativeCliParityCase {
             name: "item10-include-success",
@@ -929,7 +943,7 @@ pub(crate) fn run_opforge_native_cli_item10_include_from_env(
             source_override: Some(include_source.as_bytes()),
             command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-            extra_guest_files: &[],
+            extra_guest_files: &include_support,
             proof: OpforgeNativeCliProof::ExactArtifact {
                 relative_path: "Work/opforge_native_out.bin",
                 rust_oracle,
@@ -942,7 +956,7 @@ pub(crate) fn run_opforge_native_cli_item10_include_from_env(
             source_override: Some(missing_include_source.as_bytes()),
             command_template: None,
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-            extra_guest_files: &[],
+            extra_guest_files: &missing_include_support,
             proof: OpforgeNativeCliProof::ExpectedFailureContaining(
                 "ERROR OPC-NCLI014: native include expansion failed",
             ),
@@ -1487,12 +1501,12 @@ fn opforge_native_cli_case_command(
         }
         Some(FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE) => {
             default_package_args(
-                format!("{source_path} --bin {bin_path} --cpu m6502 -I {include_b} -I {include_a}").as_str(),
+                format!("{source_path} --bin {bin_path} --cpu 6502 -I {include_b} -I {include_a}").as_str(),
             )
         }
         Some(FS_UAE_OPFORGE_NATIVE_CLI_MISSING_INCLUDE_DEFINE) => {
             default_package_args(
-                format!("{source_path} --bin {bin_path} --cpu m6502 -I {include_a}").as_str(),
+                format!("{source_path} --bin {bin_path} --cpu 6502 -I {include_a}").as_str(),
             )
         }
         Some(FS_UAE_OPFORGE_NATIVE_CLI_ITEM13_OUTPUT_DIRECTIVE_DEFINE)
@@ -4529,7 +4543,7 @@ mod tests {
 
         assert_eq!(
             opforge_native_cli_case_command(&case, &paths),
-            "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 -I Work:opforge_include_root_b -I Work:opforge_include_root_a"
+            "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu 6502 -I Work:opforge_include_root_b -I Work:opforge_include_root_a"
         );
     }
 
@@ -4780,7 +4794,7 @@ mod tests {
             "--bin",
             "/tmp/opforge-fsuae/case_0000/out.bin",
             "--cpu",
-            "m6502",
+            "6502",
             "-I",
             "/tmp/opforge-fsuae/case_0000/include_root_b",
             "-I",
@@ -4792,7 +4806,7 @@ mod tests {
             "--bin".to_string(),
             "/tmp/opforge-fsuae/case_0000/out.bin".to_string(),
             "--cpu".to_string(),
-            "m6502".to_string(),
+            "6502".to_string(),
             "-I".to_string(),
             "/tmp/opforge-fsuae/case_0000/include_root_b".to_string(),
             "-I".to_string(),

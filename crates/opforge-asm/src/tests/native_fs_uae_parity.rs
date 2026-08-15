@@ -727,42 +727,36 @@ fn native_expression_metadata_fallback_source_routes_failures_to_stored_text() {
     ));
 }
 
-fn native_source_cpu_normalization_contract(token: &str, trailing: &str) -> Result<String, ()> {
-    let normalized = if let Some(inner) = token.strip_prefix('"') {
+fn native_source_cpu_token_contract(token: &str, trailing: &str) -> Result<String, ()> {
+    let requested = if let Some(inner) = token.strip_prefix('"') {
         inner.strip_suffix('"').ok_or(())?
     } else {
         token
     };
-    if normalized.is_empty()
+    if requested.is_empty()
         || (!trailing.trim().is_empty() && !trailing.trim_start().starts_with(';'))
     {
         return Err(());
     }
-    Ok(match normalized.to_ascii_lowercase().as_str() {
-        "6502" => "m6502".to_string(),
-        "m65c02" => "65c02".to_string(),
-        other => other.to_string(),
-    })
+    Ok(requested.to_string())
 }
 
 #[test]
-fn native_source_cpu_normalization_contract_covers_bare_quoted_and_malformed_tokens() {
-    // Proof level C. This test proves the intended normalization/rejection
-    // decision. This test does not prove native execution or package selection.
+fn native_source_cpu_token_contract_preserves_package_owned_names() {
+    // Proof level C. This test proves source parsing preserves canonical names,
+    // aliases, and case variants for the package resolver while retaining syntax
+    // rejection. This test does not prove native execution or package selection.
     assert_eq!(
-        native_source_cpu_normalization_contract("6502", ""),
-        Ok("m6502".to_string())
+        native_source_cpu_token_contract("6502", ""),
+        Ok("6502".to_string())
     );
     assert_eq!(
-        native_source_cpu_normalization_contract("\"6502\"", " ; comment"),
-        Ok("m6502".to_string())
+        native_source_cpu_token_contract("\"M6502\"", " ; comment"),
+        Ok("M6502".to_string())
     );
+    assert_eq!(native_source_cpu_token_contract("\"6502", ""), Err(()));
     assert_eq!(
-        native_source_cpu_normalization_contract("\"6502", ""),
-        Err(())
-    );
-    assert_eq!(
-        native_source_cpu_normalization_contract("\"6502\"", " trailing"),
+        native_source_cpu_token_contract("\"6502\"", " trailing"),
         Err(())
     );
 }
@@ -3536,9 +3530,10 @@ fn native_while_source_reevaluates_opening_and_preserves_status() {
 }
 
 #[test]
-fn native_source_cpu_bootstrap_preserves_tail_and_normalizes_before_routing() {
+fn native_source_cpu_bootstrap_preserves_tail_and_defers_names_to_package_routing() {
     // Proof level B. This test proves the bootstrap source preserves/restores
-    // its parser tail around normalization before validating trailing input.
+    // its parser tail, copies the requested name unchanged, and validates
+    // trailing input before the package-owned resolver handles aliases.
     // This test does not prove real 68020 execution.
     let source = fs::read_to_string(
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/source_reader.asm"),
@@ -3551,11 +3546,59 @@ fn native_source_cpu_bootstrap_preserves_tail_and_normalizes_before_routing() {
             "move.l d0, -(sp)",
             "move.l a0, -(sp)",
             "jsr directive_handlers.opforgeNativeCliNormalizeQuotedCpuToken",
-            "jsr token_util.opforgeNativeCliCanonicalizeCpuName",
+            "jsr token_util.opforgeNativeCliCopyTokenBuffer",
             "movea.l (sp)+, a0",
             "move.l (sp)+, d0",
             "bsr.w line_text.opforgeNativeCliSkipLineWhitespace",
             "cmpi.b #';', (a0)",
+        ]
+    ));
+}
+
+#[test]
+fn native_cpu_name_routing_uses_package_alias_descriptors_for_cli_and_source() {
+    // Proof level B. This test proves both native input surfaces preserve the
+    // requested name, the generic package resolver compares identifiers without
+    // ASCII case, and a matched alias is replaced by its package-owned canonical
+    // CPU locator. It does not execute the 68020 implementation.
+    let args = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/args.asm"),
+    )
+    .expect("read native CLI argument parser");
+    let directives = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/directive_handlers.asm"),
+    )
+    .expect("read native CLI directive handlers");
+    let pipeline = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm"),
+    )
+    .expect("read native package pipeline");
+    let token_util = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/token_util.asm"),
+    )
+    .expect("read native CLI token utilities");
+
+    assert!(source_contains_in_order(
+        &args,
+        &[
+            "cpu",
+            "lea state.NativeCliCpuName, a1",
+            "bsr.w opforgeNativeCliCopyRequiredValue",
+            "bra.w parseLoop",
+        ]
+    ));
+    assert!(directives.contains("jsr token_util.opforgeNativeCliCopyTokenBuffer"));
+    assert!(!args.contains("CanonicalizeCpuName"));
+    assert!(!directives.contains("CanonicalizeCpuName"));
+    assert!(!token_util.contains("CanonicalizeCpuName"));
+    assert!(source_contains_in_order(
+        &pipeline,
+        &[
+            "findCpuEntryV1",
+            "bsr.w stringEqAsciiCasefoldV1",
+            "bsr.w locateOptionalStringV1",
+            "lea buffers.PendingCpuOffsetLo, a3",
+            "bsr.w storePackageStringLocatorV1",
         ]
     ));
 }
@@ -5219,54 +5262,146 @@ fn native_conditional_flow_transitions_survive_callback_register_clobbers() {
     ));
 }
 
+struct NativeCpuOracleDir(PathBuf);
+
+impl Drop for NativeCpuOracleDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn live_rust_cpu_name_oracle(
+    source: &str,
+    cpu_override: Option<&str>,
+    label: &str,
+) -> Result<Vec<u8>, String> {
+    let case_dir = create_temp_dir(label);
+    let _cleanup = NativeCpuOracleDir(case_dir.clone());
+    let input_path = case_dir.join("input.asm");
+    let rust_bin_path = case_dir.join("rust.bin");
+    fs::write(&input_path, source).map_err(|error| error.to_string())?;
+    let mut args = vec![
+        "opForge".to_string(),
+        input_path.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        rust_bin_path.to_string_lossy().into_owned(),
+    ];
+    if let Some(cpu_name) = cpu_override {
+        args.push("--cpu".to_string());
+        args.push(cpu_name.to_string());
+    }
+    let cli = Cli::parse_from(args);
+    run_with_cli_with_context(&cli).map_err(|error| format!("{error:?}"))?;
+    fs::read(rust_bin_path).map_err(|error| error.to_string())
+}
+
 #[test]
 fn external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust_cli() {
-    // Proof level D. This test proves quoted source CPU selection reaches the
-    // real native pipeline and matches live Rust bytes, while trailing input
-    // fails. This test does not prove other CPU identifiers.
+    // Proof level D. This test proves package-owned aliases and case-insensitive
+    // canonical CPU names reach the real native pipeline through both `--cpu`
+    // and `.cpu` and match each actual case's live Rust bytes. It also proves
+    // malformed trailing `.cpu` input fails. This test does not prove aliases
+    // absent from the package supplied by the case.
     let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");
-    let valid_source =
-        "        .cpu \"65c02\"\n        .org $1000\nstart   lda $12\n        sta $34\n";
+    let source_cpu_variants = "        .cpu \"6502\"\n        .org $1000\n        lda #$11\n        .cpu M6502\n        sta $20\n        .cpu 65C02\n        bra done\n        .byte $ff\ndone    lda #$22\n";
+    let cli_cpu_source = "        .org $1000\nstart   lda #$42\n        sta $20\n";
     let invalid_source = "        .cpu \"6502\" trailing\nstart   lda #$42\n";
-    let case_dir = create_temp_dir("native-source-cpu-normalization");
-    let input_path = case_dir.join("input.asm");
-    let rust_bin_path = case_dir.join("rust.bin");
-    fs::write(&input_path, valid_source).expect("write quoted source CPU oracle");
-    let cli = Cli::parse_from([
-        "opForge",
-        input_path.to_string_lossy().as_ref(),
-        "--bin",
-        rust_bin_path.to_string_lossy().as_ref(),
-    ]);
-    run_with_cli_with_context(&cli).expect("run live Rust quoted source CPU oracle");
-    let rust_bin = fs::read(&rust_bin_path).expect("read live Rust quoted source CPU bytes");
-    let invalid_path = case_dir.join("invalid.asm");
-    let invalid_bin_path = case_dir.join("invalid.bin");
-    fs::write(&invalid_path, invalid_source).expect("write invalid source CPU oracle");
-    let invalid_cli = Cli::parse_from([
-        "opForge",
-        invalid_path.to_string_lossy().as_ref(),
-        "--bin",
-        invalid_bin_path.to_string_lossy().as_ref(),
-    ]);
+    let rust_unknown_alias_source = "        .cpu m65c02\nstart   lda #$42\n";
+    let source_oracle = live_rust_cpu_name_oracle(
+        source_cpu_variants,
+        None,
+        "native-source-cpu-package-aliases",
+    )
+    .expect("run live Rust source CPU alias oracle");
+    let cli_6502_oracle =
+        live_rust_cpu_name_oracle(cli_cpu_source, Some("6502"), "native-cli-cpu-6502")
+            .expect("run live Rust --cpu 6502 oracle");
+    let cli_m6502_oracle =
+        live_rust_cpu_name_oracle(cli_cpu_source, Some("M6502"), "native-cli-cpu-m6502")
+            .expect("run live Rust --cpu M6502 oracle");
+    let cli_65c02_oracle =
+        live_rust_cpu_name_oracle(cli_cpu_source, Some("65C02"), "native-cli-cpu-65c02")
+            .expect("run live Rust --cpu 65C02 oracle");
     assert!(
-        run_with_cli_with_context(&invalid_cli).is_err(),
+        live_rust_cpu_name_oracle(
+            invalid_source,
+            None,
+            "native-source-cpu-invalid-trailing-input",
+        )
+        .is_err(),
         "live Rust authority must reject trailing source CPU tokens"
+    );
+    assert!(
+        live_rust_cpu_name_oracle(
+            rust_unknown_alias_source,
+            None,
+            "native-source-cpu-rust-unknown-alias",
+        )
+        .is_err(),
+        "live Rust authority must reject source CPU name m65c02"
+    );
+    assert!(
+        live_rust_cpu_name_oracle(
+            cli_cpu_source,
+            Some("m65c02"),
+            "native-cli-cpu-rust-unknown-alias",
+        )
+        .is_err(),
+        "live Rust authority must reject --cpu m65c02"
     );
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
-            name: "source-cpu-valid",
+            name: "source-cpu-package-aliases",
             cpu_override: "68020",
             extra_assembly_defines: &[],
-            source_override: Some(valid_source.as_bytes()),
+            source_override: Some(source_cpu_variants.as_bytes()),
             command_template: Some("{input} --bin {bin}"),
             package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &[],
             proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
                 relative_path: "Work/opforge_native_out.bin",
-                rust_oracle: &rust_bin,
+                rust_oracle: &source_oracle,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "cli-cpu-6502-alias",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(cli_cpu_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu 6502"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &cli_6502_oracle,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "cli-cpu-m6502-case-variant",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(cli_cpu_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu M6502"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &cli_m6502_oracle,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "cli-cpu-65c02-case-variant",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(cli_cpu_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu 65C02"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &cli_65c02_oracle,
             },
         },
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
@@ -5279,6 +5414,30 @@ fn external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust
             extra_guest_files: &[],
             proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
         },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "source-cpu-rust-unknown-alias",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(rust_unknown_alias_source.as_bytes()),
+            command_template: Some("{input} --bin {bin}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                "OTR004: unresolved package cpu id",
+            ),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "cli-cpu-rust-unknown-alias",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(cli_cpu_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m65c02"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                "OTR004: unresolved package cpu id",
+            ),
+        },
     ];
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
         &workspace_root(),
@@ -5290,19 +5449,21 @@ fn external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust
             eprintln!("SKIP: {reason}");
         }
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
-            assert_eq!(runs.len(), 2);
-            assert!(
-                runs[0].success,
-                "quoted source CPU run failed\nstdout:\n{}\nstderr:\n{}",
-                runs[0].stdout, runs[0].stderr
-            );
-            let native_bin = captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin");
-            assert_eq!(native_bin, rust_bin);
-            assert!(
-                !runs[1].success,
-                "trailing source CPU token must fail\nstdout:\n{}\nstderr:\n{}",
-                runs[1].stdout, runs[1].stderr
-            );
+            assert_eq!(runs.len(), 7);
+            for run in &runs[..4] {
+                assert!(
+                    run.success,
+                    "CPU name parity run {} failed\nstdout:\n{}\nstderr:\n{}",
+                    run.example_name, run.stdout, run.stderr
+                );
+            }
+            for run in &runs[4..] {
+                assert!(
+                    !run.success,
+                    "CPU name rejection run {} unexpectedly succeeded\nstdout:\n{}\nstderr:\n{}",
+                    run.example_name, run.stdout, run.stderr
+                );
+            }
         }
     }
 }

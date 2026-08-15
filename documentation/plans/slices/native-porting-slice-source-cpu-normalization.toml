@@ -1,37 +1,52 @@
 [slice]
 schema_version = 2
-name = "native source CPU token normalization and routing"
+name = "package-owned native CPU name and alias routing"
 kind = "native-rust-parity"
 rust_reference = [
-  "crates/opforge-asm/src/line/asmline_directives.rs::.cpu handling"
+  "crates/opforge-registry/src/registry.rs::AsmRegistry::resolve_cpu_name",
+  "crates/opforge-vm/src/builder.rs::build_hierarchy_package_from_registry"
 ]
 native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/args.asm::opforgeNativeCliParseArgs",
   "native/motorola68000/amigaos/opforge-cli/source_reader.asm::opforgeNativeCliBootstrapCurrentCpuNameLine",
-  "native/motorola68000/amigaos/opforge-cli/directive_handlers.asm::opforgeNativeCliParseCpuLine"
+  "native/motorola68000/amigaos/opforge-cli/directive_handlers.asm::opforgeNativeCliParseCpuLine",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm::findCpuEntryV1"
 ]
-invariant = "Bare and quoted source CPU tokens normalize to the same package-backed pipeline, while unmatched quotes and trailing non-comment tokens are rejected."
-assertion_decision = "No extra runtime assertion: quote normalization and pipeline application already return checked status at both bootstrap and full-parser boundaries."
-expected_inputs = "Bare and quoted source CPU tokens, plus unmatched-quote and trailing-token rejection forms."
-expected_outputs = "Equivalent valid CPU forms select the same package-backed pipeline and native bytes match Rust; invalid tails fail."
-known_non_equivalences = "Other CPU identifiers and later CPU changes within modules are outside this slice."
-fast_proof_command = "cargo test -p asm native_source_cpu_ -- --nocapture"
-level_d_command = "scripts/workflow/run_native_reference_retrospective_completion.sh"
+invariant = "Both native `--cpu` and source `.cpu` preserve the requested identifier and resolve it case-insensitively through the package's canonical CPU and alias descriptors, exactly as Rust does; syntax errors and package-unknown names fail closed."
+assertion_decision = "No extra runtime assertion: CLI/source token parsing and package pipeline selection already return checked status, while the Level D cases require exact artifacts for accepted names and explicit nonzero guest exits with diagnostics for rejected names."
+expected_inputs = "CLI and bare/quoted source CPU tokens using canonical `m6502`/`65c02`, registered alias `6502`, representative mixed-case forms, Rust-unknown `m65c02`, unmatched quotes, and trailing non-comment tokens. The focused include case owns its source and both include-root files directly and invokes `--cpu 6502`."
+expected_outputs = "Every Rust-accepted form selects the package-owned canonical pipeline and produces byte-for-byte Rust output through both surfaces. Rust-unknown or malformed forms complete with nonzero guest exits and required diagnostics. The include-root case resolves the second declared root and emits the exact Rust bytes; its missing target fails explicitly."
+known_non_equivalences = "The native CLI retains its documented fixed token-buffer capacity; no CPU-family-specific alias list exists in generic native code."
+fast_proof_command = "cargo test -p asm native_source_cpu_ -- --nocapture && cargo test -p asm native_cpu_name_routing_ -- --nocapture && cargo test -p asm item10_native_cli_command_uses_include_roots_and_6502_override_source -- --nocapture"
+level_d_command = "scripts/workflow/run_native_reference_parity_completion.sh --verify && cargo test -p asm external_fs_uae_opforge_native_cli_item10_include_roots_match_rust_guided_bytes -- --nocapture --test-threads=1"
 level_d_fail_closed = true
 
 [[tests]]
-name = "native_source_cpu_normalization_contract_covers_bare_quoted_and_malformed_tokens"
+name = "native_source_cpu_token_contract_preserves_package_owned_names"
 proof_level = "C"
-proves = "The host boundary model accepts equivalent bare/quoted tokens and rejects unmatched quotes or trailing tokens."
+proves = "The host boundary model preserves canonical, alias, and case-variant tokens for package resolution while rejecting unmatched quotes and trailing tokens."
 does_not_prove = "Native branch implementation or package selection."
 
 [[tests]]
-name = "native_source_cpu_bootstrap_preserves_tail_and_normalizes_before_routing"
+name = "native_source_cpu_bootstrap_preserves_tail_and_defers_names_to_package_routing"
 proof_level = "B"
-proves = "The native bootstrap source preserves the parser tail, normalizes quotes, canonicalizes, validates trailing input, and only then returns success."
+proves = "The native bootstrap preserves the parser tail, strips only valid source quotes, copies the requested CPU name unchanged, and validates trailing input before package routing."
 does_not_prove = "Real 68020 execution."
+
+[[tests]]
+name = "native_cpu_name_routing_uses_package_alias_descriptors_for_cli_and_source"
+proof_level = "B"
+proves = "Both native input surfaces avoid CLI-owned alias rewriting, and the generic package resolver performs case-insensitive descriptor lookup followed by package-owned canonical CPU selection."
+does_not_prove = "Real 68020 execution or output bytes."
 
 [[tests]]
 name = "external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust_cli"
 proof_level = "D"
-proves = "FS-UAE executes quoted source CPU selection without a CLI CPU override, matches live Rust bytes, and rejects a trailing-token form."
-does_not_prove = "Other CPU identifiers or later CPU changes within included modules."
+proves = "FS-UAE executes package alias and mixed-case canonical selection through both `--cpu` and `.cpu`, matches each actual case's live Rust bytes, and rejects malformed or Rust-unknown names with explicit diagnostic exits."
+does_not_prove = "Aliases absent from the actual package supplied by a case."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_item10_include_roots_match_rust_guided_bytes"
+proof_level = "D"
+proves = "The actual case owns and stages both include roots, invokes the native CLI with `--cpu 6502`, resolves the ordered include, and emits exact live Rust bytes; the missing include completes with the required failure diagnostic."
+does_not_prove = "Nested includes or include paths not declared by the actual case."

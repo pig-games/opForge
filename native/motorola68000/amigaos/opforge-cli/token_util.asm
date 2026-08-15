@@ -8,7 +8,6 @@
 	.cpu 68020
 
 	.use opforge.cli.constants
-	.use opforge.cli.strings
 
 	.section code, kind=code
 	.pub
@@ -54,52 +53,6 @@ notEqual
 	moveq #0, d0
 	rts
 	.bend  ; opforgeNativeCliTokenEquals
-
-opforgeNativeCliCanonicalizeCpuName	.block
-	movem.l a2-a3, -(sp)
-	movea.l a0, a2
-	movea.l a1, a3
-
-	movea.l a2, a0
-	lea strings.Cpu6502AliasText, a1
-	jsr opforgeNativeCliTokenEquals
-	tst.l d0
-	bne.s canonicalPrimaryFamily
-
-	movea.l a2, a0
-	lea strings.CpuM65C02AliasText, a1
-	jsr opforgeNativeCliTokenEquals
-	tst.l d0
-	bne.s canonicalFamilyVariant
-
-	movea.l a2, a0
-	lea strings.Cpu65C02AliasText, a1
-	jsr opforgeNativeCliTokenEquals
-	tst.l d0
-	bne.s canonicalFamilyVariant
-
-	movea.l a2, a0
-	movea.l a3, a1
-	bsr.w opforgeNativeCliCopyTokenBuffer
-	bra.s done
-
-canonicalPrimaryFamily
-	lea strings.M6502CpuNameText, a0
-	movea.l a3, a1
-	bra.s copyCanonical
-
-canonicalFamilyVariant
-	lea strings.Cpu65C02CanonicalText, a0
-	movea.l a3, a1
-
-copyCanonical
-	bsr.w opforgeNativeCliCopyTokenBuffer
-
-done
-	movem.l (sp)+, a2-a3
-	moveq #0, d0
-	rts
-	.bend  ; opforgeNativeCliCanonicalizeCpuName
 
 	.endsection
 	.endmodule

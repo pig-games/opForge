@@ -538,7 +538,7 @@ opforgeNativeCliBootstrapCurrentCpuNameLine	.block
 	bne.s normalizeRestoreFail
 	lea state.NativeCliArgToken, a0
 	lea state.NativeCliCpuName, a1
-	jsr token_util.opforgeNativeCliCanonicalizeCpuName
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
 	movea.l (sp)+, a0
 	move.l (sp)+, d0
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace

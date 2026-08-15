@@ -8,6 +8,10 @@ It currently ships builtin support for:
 - Motorola 6800 family processors: 6809 and HD6309
 - Motorola 68000 family processors: `68000`, `68010`, `68020`, `68030`, `68040`, and `68080` with the corresponding `m68000`/`mc68000` through `m68080`/`mc68080` aliases
 
+CPU names are case-insensitive. The CLI `--cpu` option and source-level `.cpu`
+directive use the same registered aliases; for example, `6502` and `m6502`
+select the same baseline MOS 6502 pipeline.
+
 Motorola 68000-family support now spans the shipped CPU lineage from `68000`
 through `68080`. `68010` keeps baseline `68000` addressing, `68020`/`68030`/
 `68040` add the shipped `68020+` full-extension addressing surface, and

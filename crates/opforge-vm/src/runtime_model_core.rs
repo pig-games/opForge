@@ -18,7 +18,8 @@ use package::{
     PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
     PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, SEMANTIC_VM_OPCODE_VERSION_V1,
     SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3, SEMANTIC_VM_OPCODE_VERSION_V4,
-    TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V5, TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
+    VALUE_VM_OPCODE_VERSION_V1,
 };
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
@@ -26,6 +27,9 @@ use types::hierarchy::{
     HierarchyError, HierarchyPackage, ResolvedHierarchy, ScopedOwner, ScopedRegisterDescriptor,
 };
 
+use crate::branch_vm::{
+    execute_branch_program, PortableBranchContext, PortableBranchRequest, PortableBranchResult,
+};
 use crate::builder::{build_hierarchy_package_from_registry, HierarchyBuildError};
 use crate::bytecode::execute_program;
 use crate::encoding_vm::execute_encoding_program;
@@ -1901,6 +1905,47 @@ impl RuntimeModelCore {
         }
         Err(RuntimeBridgeError::Resolve(format!(
             "fixup program '{normalized_id}' is not defined for the resolved hierarchy"
+        )))
+    }
+
+    pub fn execute_branch_program(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        scalar_inputs: &[i64],
+        target_inputs: &[crate::fixup_vm::PortableDeferredValue],
+        request: PortableBranchRequest,
+        context: PortableBranchContext,
+    ) -> Result<PortableBranchResult, RuntimeBridgeError> {
+        let normalized_id = program_id.to_ascii_lowercase();
+        let program_id = self.interned_id(&normalized_id).ok_or_else(|| {
+            RuntimeBridgeError::Resolve(format!("unknown branch program '{normalized_id}'"))
+        })?;
+        for (owner_tag, owner_id) in self.scoped_owner_lookup_order(resolved) {
+            let Some(owner_id) = owner_id else {
+                continue;
+            };
+            let Some((opcode_version, program)) = self
+                .semantic_programs
+                .get(&(owner_tag, owner_id, program_id))
+            else {
+                continue;
+            };
+            if *opcode_version != SEMANTIC_VM_OPCODE_VERSION_V5 {
+                return Err(RuntimeBridgeError::Resolve(format!(
+                    "semantic program '{normalized_id}' is not a branch VM v5 program"
+                )));
+            }
+            return Ok(execute_branch_program(
+                program,
+                scalar_inputs,
+                target_inputs,
+                request,
+                context,
+            )?);
+        }
+        Err(RuntimeBridgeError::Resolve(format!(
+            "branch program '{normalized_id}' is not defined for the resolved hierarchy"
         )))
     }
 

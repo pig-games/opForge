@@ -1,3 +1,4 @@
+use crate::branch_vm::{BranchVmError, PortableBranchContext, PortableBranchRequest};
 use crate::builder::{build_hierarchy_chunks_from_registry, build_hierarchy_package_from_registry};
 use crate::bytecode::{OP_EMIT_OPERAND, OP_EMIT_U8, OP_END};
 use crate::execution_model::{
@@ -74,17 +75,17 @@ use opcore::parser::{
 };
 use opcore::tokenizer::{ConditionalKind, Span, Token, TokenKind, Tokenizer};
 use package::{
-    compile_encoding_program, compile_fixed_semantic_program, compile_fixup_program,
-    compile_selector_program, compile_structured_encoding_program,
+    compile_branch_program, compile_encoding_program, compile_fixed_semantic_program,
+    compile_fixup_program, compile_selector_program, compile_structured_encoding_program,
     default_token_policy_lexical_defaults, encode_hierarchy_chunks_from_chunks,
-    token_identifier_class, DiagnosticDescriptor, EncodingEndian, EncodingStep,
-    ExprContractDescriptor, ExprDiagnosticMap, ExprParserContractDescriptor,
-    ExprParserDiagnosticMap, FixupBase, FixupEncodingStep, FixupRange, HierarchyChunks,
-    ParserContractDescriptor, ParserDiagnosticMap, ParserVmOpcodeV2, ParserVmProgramDescriptor,
-    PortableRelocationKind, RegisterClassProjection, SelectorProgramDescriptor,
-    SelectorProgramMatcher, SelectorProgramOutcome, SemanticProgramDescriptor,
-    StructuredEncodingStep, TokenCaseRule, TokenPolicyDescriptor, TokenizerVmDiagnosticMap,
-    TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
+    token_identifier_class, BranchCandidateSpec, BranchProgramSpec, DiagnosticDescriptor,
+    EncodingEndian, EncodingStep, ExprContractDescriptor, ExprDiagnosticMap,
+    ExprParserContractDescriptor, ExprParserDiagnosticMap, FixupBase, FixupEncodingStep,
+    FixupRange, HierarchyChunks, ParserContractDescriptor, ParserDiagnosticMap, ParserVmOpcodeV2,
+    ParserVmProgramDescriptor, PortableRelocationKind, RegisterClassProjection,
+    SelectorProgramDescriptor, SelectorProgramMatcher, SelectorProgramOutcome,
+    SemanticProgramDescriptor, StructuredEncodingStep, TokenCaseRule, TokenPolicyDescriptor,
+    TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
     TokenizerVmStreamDescriptor, UnresolvedValuePolicy, VmProgramDescriptor,
     DIAG_EXPR_BUDGET_EXCEEDED, DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE,
     DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW,
@@ -93,7 +94,7 @@ use package::{
     EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1,
     EXVM_OPCODE_VERSION_V2, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
     SEMANTIC_VM_OPCODE_VERSION_V1, SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3,
-    SEMANTIC_VM_OPCODE_VERSION_V4, TOKENIZER_VM_OPCODE_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V4, SEMANTIC_VM_OPCODE_VERSION_V5, TOKENIZER_VM_OPCODE_VERSION_V1,
 };
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult, FamilyHandler};
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
@@ -8805,6 +8806,446 @@ fn serialized_fixup_programs_match_pc_relative_deferred_relocation_and_cross_fam
             )
             .expect_err("position overflow must fail closed"),
         RuntimeBridgeError::FixupVm(FixupVmError::PositionOverflow { .. })
+    ));
+}
+
+#[test]
+fn serialized_branch_programs_match_width_convergence_and_cross_family_oracles() {
+    let span = Span {
+        line: 1,
+        col_start: 1,
+        col_end: 2,
+    };
+    let (
+        unresolved_oracle,
+        forward_oracle,
+        backward_oracle,
+        byte_oracle,
+        word_oracle,
+        long_oracle,
+        converged_oracle,
+        mos_oracle,
+    ) = {
+        let m68k_oracle = |mnemonic: &str, position: u32, target: Option<u32>| {
+            let mut ctx = TestAssemblerContext::new();
+            ctx.addr = position;
+            if let Some(target) = target {
+                assert_eq!(
+                    ctx.symbols
+                        .add("target", target, false, SymbolVisibility::Private, None),
+                    types::symbol::SymbolTableResult::Ok
+                );
+                ctx.finalized.insert("target".to_string(), true);
+            } else {
+                ctx.pass = 1;
+            }
+            match M68020CpuHandler::new().encode_instruction(
+                mnemonic,
+                &[M68KOperand::BranchTarget {
+                    expr: Expr::Identifier("target".to_string(), span),
+                    span,
+                }],
+                &ctx,
+            ) {
+                EncodeResult::Ok(bytes) => bytes,
+                other => panic!("Rust m68k branch oracle rejected {mnemonic}: {other:?}"),
+            }
+        };
+        let mos_oracle = match MOS6502FamilyHandler::new().encode_instruction(
+            "BNE",
+            &[Operand::Absolute(0x1008, span)],
+            &{
+                let mut ctx = TestAssemblerContext::new();
+                ctx.addr = 0x1000;
+                ctx
+            },
+        ) {
+            EncodeResult::Ok(bytes) => bytes,
+            other => panic!("Rust MOS branch oracle failed: {other:?}"),
+        };
+        (
+            m68k_oracle("BRA", 0x1000, None),
+            m68k_oracle("BNE", 0x1000, Some(0x1008)),
+            m68k_oracle("BRA", 0x1000, Some(0x0ffc)),
+            m68k_oracle("BRA.B", 0x1000, Some(0x1008)),
+            m68k_oracle("BRA.W", 0x1000, Some(0x1008)),
+            m68k_oracle("BNE.L", 0, Some(0x8006)),
+            m68k_oracle("BRA", 0, Some(0x8006)),
+            mos_oracle,
+        )
+    };
+
+    let mut registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("branch hierarchy chunks");
+    assert!(chunks.semantic_programs.iter().any(|program| {
+        program.id == m68k_value_programs::BRANCH_SIZED
+            && program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V5
+    }));
+    chunks.semantic_programs.push(SemanticProgramDescriptor {
+        owner: ScopedOwner::Family("mos6502".to_string()),
+        id: "branch.single".to_string(),
+        opcode_version: SEMANTIC_VM_OPCODE_VERSION_V5,
+        program: compile_branch_program(&BranchProgramSpec {
+            opcode_input: 0,
+            target_input: 0,
+            unresolved_candidate: 7,
+            candidates: vec![BranchCandidateSpec {
+                id: 7,
+                automatic_classes: 1,
+                suffix: vec![],
+                displacement_width: 1,
+                endian: EncodingEndian::Little,
+                position_adjustment: 2,
+                unresolved_placeholder: 0,
+                reserved_values: vec![],
+            }],
+        })
+        .expect("compile cross-family branch program"),
+    });
+    let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("serialize branch programs");
+    drop(chunks);
+    drop(registry);
+
+    // Compiler adapters, live family handlers, and registry state are unavailable
+    // from here onward. Only serialized bytes and neutral layout inputs remain.
+    let model = HierarchyExecutionModel::from_package_bytes(&bytes)
+        .expect("reload serialized branch programs");
+    let m68k = model
+        .resolve_pipeline("m68020", None)
+        .expect("resolve m68020");
+    let mos = model
+        .resolve_pipeline("m6502", None)
+        .expect("resolve m6502");
+    let context = PortableBranchContext { position: 0x1000 };
+    let baseline_auto = PortableBranchRequest::default();
+    let extended_auto = PortableBranchRequest {
+        automatic_class: 1,
+        ..PortableBranchRequest::default()
+    };
+
+    let unresolved = model
+        .execute_branch_program(
+            &m68k,
+            m68k_value_programs::BRANCH_SIZED,
+            &[0x60],
+            &[PortableDeferredValue::Unresolved],
+            extended_auto,
+            context,
+        )
+        .expect("select unresolved word placeholder");
+    assert_eq!(unresolved.bytes, unresolved_oracle);
+    assert_eq!(
+        unresolved.candidate_id,
+        m68k_value_programs::BRANCH_CANDIDATE_WORD
+    );
+    assert_eq!(unresolved.output_size, 4);
+    assert!(unresolved.deferred);
+    assert!(!unresolved.layout_changed);
+
+    for (opcode, target, oracle) in [
+        (0x66, 0x1008, forward_oracle.as_slice()),
+        (0x60, 0x0ffc, backward_oracle.as_slice()),
+    ] {
+        let result = model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[opcode],
+                &[PortableDeferredValue::Resolved(target)],
+                extended_auto,
+                context,
+            )
+            .expect("select automatic word candidate");
+        assert_eq!(result.bytes, oracle);
+        assert_eq!(
+            result.candidate_id,
+            m68k_value_programs::BRANCH_CANDIDATE_WORD
+        );
+        assert!(!result.deferred);
+    }
+
+    for (candidate, opcode, oracle) in [
+        (
+            m68k_value_programs::BRANCH_CANDIDATE_BYTE,
+            0x60,
+            byte_oracle.as_slice(),
+        ),
+        (
+            m68k_value_programs::BRANCH_CANDIDATE_WORD,
+            0x60,
+            word_oracle.as_slice(),
+        ),
+        (
+            m68k_value_programs::BRANCH_CANDIDATE_LONG,
+            0x66,
+            long_oracle.as_slice(),
+        ),
+    ] {
+        let (position, target) = if candidate == m68k_value_programs::BRANCH_CANDIDATE_LONG {
+            (0, 0x8006)
+        } else {
+            (0x1000, 0x1008)
+        };
+        let result = model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[opcode],
+                &[PortableDeferredValue::Resolved(target)],
+                PortableBranchRequest {
+                    requested_candidate: Some(candidate),
+                    previous_output_size: None,
+                    automatic_class: 1,
+                },
+                PortableBranchContext { position },
+            )
+            .expect("select explicit branch candidate");
+        assert_eq!(result.bytes, oracle);
+        assert_eq!(result.candidate_id, candidate);
+    }
+
+    let explicit_ignores_automatic_class = model
+        .execute_branch_program(
+            &m68k,
+            m68k_value_programs::BRANCH_SIZED,
+            &[0x60],
+            &[PortableDeferredValue::Resolved(0x1008)],
+            PortableBranchRequest {
+                requested_candidate: Some(m68k_value_programs::BRANCH_CANDIDATE_WORD),
+                previous_output_size: None,
+                automatic_class: 8,
+            },
+            PortableBranchContext { position: 0x1000 },
+        )
+        .expect("explicit candidate must be independent of automatic class");
+    assert_eq!(explicit_ignores_automatic_class.bytes, word_oracle);
+    assert_eq!(
+        explicit_ignores_automatic_class.candidate_id,
+        m68k_value_programs::BRANCH_CANDIDATE_WORD
+    );
+
+    let pass1 = unresolved;
+    let widened = model
+        .execute_branch_program(
+            &m68k,
+            m68k_value_programs::BRANCH_SIZED,
+            &[0x60],
+            &[PortableDeferredValue::Resolved(0x8004)],
+            PortableBranchRequest {
+                requested_candidate: None,
+                previous_output_size: Some(pass1.output_size),
+                automatic_class: 1,
+            },
+            PortableBranchContext { position: 0 },
+        )
+        .expect("widen after first resolved layout");
+    assert_eq!(widened.output_size, 6);
+    assert!(widened.layout_changed);
+    let converged = model
+        .execute_branch_program(
+            &m68k,
+            m68k_value_programs::BRANCH_SIZED,
+            &[0x60],
+            &[PortableDeferredValue::Resolved(0x8006)],
+            PortableBranchRequest {
+                requested_candidate: None,
+                previous_output_size: Some(widened.output_size),
+                automatic_class: 1,
+            },
+            PortableBranchContext { position: 0 },
+        )
+        .expect("converge at long width");
+    assert_eq!(converged.bytes, converged_oracle);
+    assert_eq!(converged.output_size, 6);
+    assert!(!converged.layout_changed);
+
+    let baseline = model
+        .execute_branch_program(
+            &m68k,
+            m68k_value_programs::BRANCH_SIZED,
+            &[0x60],
+            &[PortableDeferredValue::Resolved(0x1008)],
+            baseline_auto,
+            context,
+        )
+        .expect("baseline package keeps the word candidate");
+    assert_eq!(baseline.bytes, word_oracle);
+    assert!(matches!(
+        model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[0x60],
+                &[PortableDeferredValue::Resolved(0x8006)],
+                baseline_auto,
+                PortableBranchContext { position: 0 },
+            )
+            .expect_err("baseline automatic class must not select long width"),
+        RuntimeBridgeError::BranchVm(BranchVmError::NoAutomaticCandidate { .. })
+    ));
+
+    assert_eq!(
+        model
+            .execute_branch_program(
+                &mos,
+                "branch.single",
+                &[0xd0],
+                &[PortableDeferredValue::Resolved(0x1008)],
+                baseline_auto,
+                context,
+            )
+            .expect("reuse candidate-width VM for MOS")
+            .bytes,
+        mos_oracle
+    );
+
+    assert!(matches!(
+        model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[],
+                &[PortableDeferredValue::Resolved(0)],
+                extended_auto,
+                context,
+            )
+            .expect_err("missing scalar must fail closed"),
+        RuntimeBridgeError::BranchVm(BranchVmError::MissingScalarInput { index: 0, len: 0 })
+    ));
+    assert!(matches!(
+        model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[0x60],
+                &[],
+                extended_auto,
+                context,
+            )
+            .expect_err("missing target must fail closed"),
+        RuntimeBridgeError::BranchVm(BranchVmError::MissingTargetInput { index: 0, len: 0 })
+    ));
+    assert!(matches!(
+        model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[256],
+                &[PortableDeferredValue::Resolved(0x1008)],
+                extended_auto,
+                context,
+            )
+            .expect_err("invalid opcode input must fail closed"),
+        RuntimeBridgeError::BranchVm(BranchVmError::OpcodeOutOfRange { .. })
+    ));
+    assert!(matches!(
+        model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[0x60],
+                &[PortableDeferredValue::Resolved(0x1008)],
+                PortableBranchRequest {
+                    requested_candidate: Some(9),
+                    previous_output_size: None,
+                    automatic_class: 1,
+                },
+                context,
+            )
+            .expect_err("unknown explicit width must fail closed"),
+        RuntimeBridgeError::BranchVm(BranchVmError::UnknownExplicitCandidate { id: 9 })
+    ));
+    assert!(matches!(
+        model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[0x60],
+                &[PortableDeferredValue::Resolved(0x1002)],
+                PortableBranchRequest {
+                    requested_candidate: Some(m68k_value_programs::BRANCH_CANDIDATE_BYTE),
+                    previous_output_size: None,
+                    automatic_class: 1,
+                },
+                context,
+            )
+            .expect_err("reserved byte displacement must fail closed"),
+        RuntimeBridgeError::BranchVm(BranchVmError::ReservedValue { value: 0, .. })
+    ));
+    assert!(matches!(
+        model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[0x60],
+                &[PortableDeferredValue::Resolved(0x1100)],
+                PortableBranchRequest {
+                    requested_candidate: Some(m68k_value_programs::BRANCH_CANDIDATE_BYTE),
+                    previous_output_size: None,
+                    automatic_class: 1,
+                },
+                context,
+            )
+            .expect_err("explicit byte overflow must fail closed"),
+        RuntimeBridgeError::BranchVm(BranchVmError::ValueOutOfRange { .. })
+    ));
+    assert!(matches!(
+        model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[0x60],
+                &[PortableDeferredValue::Resolved(i64::MAX)],
+                extended_auto,
+                PortableBranchContext { position: 0 },
+            )
+            .expect_err("unencodable automatic target must fail closed"),
+        RuntimeBridgeError::BranchVm(BranchVmError::NoAutomaticCandidate { .. })
+    ));
+    assert!(matches!(
+        model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[0x60],
+                &[PortableDeferredValue::Resolved(0)],
+                extended_auto,
+                PortableBranchContext { position: i64::MAX },
+            )
+            .expect_err("position overflow must fail closed"),
+        RuntimeBridgeError::BranchVm(BranchVmError::PositionOverflow { .. })
+    ));
+    assert!(matches!(
+        model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[0x60],
+                &[PortableDeferredValue::Resolved(i64::MIN)],
+                extended_auto,
+                PortableBranchContext { position: 0 },
+            )
+            .expect_err("projection overflow must fail closed"),
+        RuntimeBridgeError::BranchVm(BranchVmError::ProjectionOverflow { .. })
+    ));
+    assert!(matches!(
+        model
+            .execute_branch_program(
+                &m68k,
+                m68k_value_programs::BRANCH_SIZED,
+                &[0x60],
+                &[PortableDeferredValue::Resolved(0x1008)],
+                PortableBranchRequest {
+                    automatic_class: 8,
+                    ..PortableBranchRequest::default()
+                },
+                context,
+            )
+            .expect_err("automatic class overflow must fail closed"),
+        RuntimeBridgeError::BranchVm(BranchVmError::InvalidAutomaticClass { class: 8 })
     ));
 }
 

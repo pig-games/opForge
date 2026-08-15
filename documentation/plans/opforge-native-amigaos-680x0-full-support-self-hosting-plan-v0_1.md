@@ -404,6 +404,18 @@ the same unmodified serialized semantic package.
   closed. The exact Rust-built focused and full native fixtures are 8,030 and
   134,142 bytes; the focused fixture remains within the unchanged 8,192-byte
   native allocation.
+- Item 11 retains container version 1 and adds independently versioned `SEMV`
+  v5 programs for CPU-neutral ordered branch candidates, opaque automatic-class
+  masks, explicit candidate selection, checked position-relative projection,
+  width/endian/suffix emission, unresolved placeholders, reserved values, and
+  output-size stability reporting. `SEMV` v1-v4 remain accepted unchanged.
+  Family package definitions own candidate meaning, automatic-class policy,
+  position adjustments, widths, endian, suffixes, placeholders, and reserved
+  values; malformed or unsupported programs and typed missing-input, class,
+  candidate, position, projection, range, reserved-value, and output-size
+  failures fail closed. The exact Rust-built focused and full native fixtures
+  are 8,124 and 134,236 bytes; the focused fixture remains within the unchanged
+  8,192-byte native allocation.
 - Owned contract: the 68020/AmigaOS executable exposes the complete
   Rust-supported 680x0 assembler surface and can rebuild itself
 - Rationale: CPU discovery is already present in package metadata, but complete
@@ -511,11 +523,22 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit expressing deferred 680x0 values through neutral package fixups.
   - Definition of done: fixups and relocations match the oracle without a runtime family fixup callback.
 
-- [ ] Item 11: materialize branch sizing and multi-pass convergence programs
+- [x] Item 11: materialize branch sizing and multi-pass convergence programs
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`-`N68X0-006`, `N68X0-014`, `N68X0-015`.
   - Expected files: neutral candidate-width/stability operations, family branch compiler adapter, Rust pass tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; widening, explicit size, convergence, overflow, deterministic failure, and applicable cross-family branch tests.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for the single branch-width convergence invariant.
+  - Plan-compliance review evidence: `PASS` — after correcting automatic-class
+    validation so it applies only to automatic selection, the independent
+    `plan-compliance-reviewer` confirmed CPU-neutral, independently versioned,
+    canonical, and fail-closed `SEMV` v5 branch programs; package-owned m68k
+    candidate order, automatic classes, widths, suffixes, endian, position
+    adjustments, placeholders, and reserved values; serialized-only unresolved,
+    forward/backward, explicit byte/word/long, widening, convergence, baseline
+    no-long, overflow, and cross-family MOS reuse proofs; explicit selection
+    independence from automatic class; exact live Rust branch-width oracle
+    equality; exact 8,124- and 134,236-byte fixtures; no native production-source
+    change; and clean focused, full Rust all-family, architecture-boundary, and
+    workflow gates.
   - Commit outcome: one commit moving branch sizing policy into package candidates/programs.
   - Definition of done: packaged execution converges to Rust-identical widths and bytes with no runtime family branch callback.
 

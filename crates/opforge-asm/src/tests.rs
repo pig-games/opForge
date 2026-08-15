@@ -28513,6 +28513,92 @@ fn package_fixup_abs32_projection_matches_live_cross_section_relocation_oracle()
 }
 
 #[test]
+fn package_branch_width_signal_converges_to_live_m68020_layout_oracle() {
+    let assembler = run_passes(&[
+        ".cpu 68020",
+        ".org $0000",
+        "    BRA far_target",
+        "    .fill byte, 32768, $00",
+        "far_target:",
+        "    RTS",
+    ]);
+    let oracle = assembler
+        .image()
+        .entries()
+        .expect("live assembler image")
+        .iter()
+        .take(6)
+        .map(|(_, byte)| *byte)
+        .collect::<Vec<_>>();
+
+    let package_bytes = build_hierarchy_package_from_registry(&default_registry())
+        .expect("serialize default package");
+    let model = load_opasm_model_from_package_bytes(&package_bytes);
+    let resolved = model
+        .resolve_pipeline("m68020", None)
+        .expect("resolve serialized m68020 package");
+    let program = families::m68k::package_programs::BRANCH_SIZED;
+    let context = vm::branch_vm::PortableBranchContext { position: 0 };
+
+    let pass1 = model
+        .execute_branch_program(
+            &resolved,
+            program,
+            &[0x60],
+            &[vm::fixup_vm::PortableDeferredValue::Unresolved],
+            vm::branch_vm::PortableBranchRequest {
+                automatic_class: 1,
+                ..vm::branch_vm::PortableBranchRequest::default()
+            },
+            context,
+        )
+        .expect("package pass1 unresolved choice");
+    assert_eq!(pass1.output_size, 4);
+    assert!(!pass1.layout_changed);
+
+    let first_resolved_target = i64::from(pass1.output_size) + 32768;
+    let widened = model
+        .execute_branch_program(
+            &resolved,
+            program,
+            &[0x60],
+            &[vm::fixup_vm::PortableDeferredValue::Resolved(
+                first_resolved_target,
+            )],
+            vm::branch_vm::PortableBranchRequest {
+                requested_candidate: None,
+                previous_output_size: Some(pass1.output_size),
+                automatic_class: 1,
+            },
+            context,
+        )
+        .expect("package widening choice");
+    assert_eq!(widened.output_size, 6);
+    assert!(widened.layout_changed);
+
+    let stabilized_target = i64::from(widened.output_size) + 32768;
+    let converged = model
+        .execute_branch_program(
+            &resolved,
+            program,
+            &[0x60],
+            &[vm::fixup_vm::PortableDeferredValue::Resolved(
+                stabilized_target,
+            )],
+            vm::branch_vm::PortableBranchRequest {
+                requested_candidate: None,
+                previous_output_size: Some(widened.output_size),
+                automatic_class: 1,
+            },
+            context,
+        )
+        .expect("package converged choice");
+    assert_eq!(converged.output_size, 6);
+    assert!(!converged.layout_changed);
+    assert_eq!(converged.bytes, oracle);
+}
+
+#[test]
 fn linker_output_hunk_live_path_emits_reloc32_for_move_from_absolute_long_symbol() {
     let assembler = run_passes(&[
         ".module main",

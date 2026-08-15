@@ -31,6 +31,7 @@ use types::hierarchy::{
     ScopedFormDescriptor, ScopedOwner, ScopedRegisterDescriptor,
 };
 
+mod branch_program;
 mod canonicalize;
 mod encoding_program;
 mod fixup_program;
@@ -39,6 +40,7 @@ mod structured_encoding_program;
 #[cfg(test)]
 mod tests;
 
+pub use branch_program::*;
 use canonicalize::canonicalize_package_support_chunks;
 pub use canonicalize::{
     canonicalize_expr_contracts, canonicalize_expr_parser_contracts,
@@ -145,6 +147,7 @@ pub const SEMANTIC_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const SEMANTIC_VM_OPCODE_VERSION_V2: u16 = 0x0002;
 pub const SEMANTIC_VM_OPCODE_VERSION_V3: u16 = 0x0003;
 pub const SEMANTIC_VM_OPCODE_VERSION_V4: u16 = 0x0004;
+pub const SEMANTIC_VM_OPCODE_VERSION_V5: u16 = 0x0005;
 pub const COMPACT_OPERAND_RECORD_CHUNK_VERSION_V1: u16 = 0x0001;
 pub const SEMANTIC_VM_OP_EMIT_U8: u8 = 0x01;
 pub const SEMANTIC_VM_OP_EMIT_OPERAND: u8 = 0x02;
@@ -1102,6 +1105,9 @@ pub fn validate_semantic_program(
     }
     if opcode_version == SEMANTIC_VM_OPCODE_VERSION_V4 {
         return validate_fixup_program(opcode_version, program);
+    }
+    if opcode_version == SEMANTIC_VM_OPCODE_VERSION_V5 {
+        return validate_branch_program(opcode_version, program);
     }
     if opcode_version != SEMANTIC_VM_OPCODE_VERSION_V1 {
         return Err(OpcpuCodecError::InvalidChunkFormat {

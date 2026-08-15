@@ -4,11 +4,12 @@
 //! Package compilation adapter for Motorola 68000 scalar semantics.
 
 use package::{
-    compile_encoding_program, compile_fixup_program, compile_operand_record_program,
-    compile_selector_map_program, compile_selector_suffix_program, compile_state_program,
-    compile_structured_encoding_program, compile_value_program, DiagnosticDescriptor,
-    EncodingEndian, EncodingFieldSpec, EncodingStep, FixupBase, FixupEncodingStep, FixupRange,
-    OpcpuCodecError, OperandRecordBaseSource, OperandRecordFieldSource, OperandRecordIndirection,
+    compile_branch_program, compile_encoding_program, compile_fixup_program,
+    compile_operand_record_program, compile_selector_map_program, compile_selector_suffix_program,
+    compile_state_program, compile_structured_encoding_program, compile_value_program,
+    BranchCandidateSpec, BranchProgramSpec, DiagnosticDescriptor, EncodingEndian,
+    EncodingFieldSpec, EncodingStep, FixupBase, FixupEncodingStep, FixupRange, OpcpuCodecError,
+    OperandRecordBaseSource, OperandRecordFieldSource, OperandRecordIndirection,
     OperandRecordOptionalIndexSource, OperandRecordOptionalValueSource, OperandRecordProgram,
     OperandRecordProgramDescriptor, OperandRecordUpdate, PortableRelocationKind,
     RegisterClassProjection, SelectorProgramDescriptor, SemanticProgramDescriptor,
@@ -17,7 +18,8 @@ use package::{
     UnresolvedValuePolicy, ValueConstraint, ValueProgramDescriptor, ValueProgramSource,
     OPERAND_RECORD_VM_VERSION_V1, OPERAND_RECORD_VM_VERSION_V2, OPERAND_RECORD_VM_VERSION_V3,
     SELECTOR_VM_OPCODE_VERSION_V1, SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3,
-    SEMANTIC_VM_OPCODE_VERSION_V4, STATE_VM_OPCODE_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V4, SEMANTIC_VM_OPCODE_VERSION_V5, STATE_VM_OPCODE_VERSION_V1,
+    VALUE_VM_OPCODE_VERSION_V1,
 };
 use types::hierarchy::ScopedOwner;
 
@@ -94,6 +96,49 @@ pub const ENCODING_BIT_FIELD: &str = "enc.bit-field";
 pub const FIXUP_PC_BYTE: &str = "fix.pc8";
 pub const FIXUP_PC_WORD: &str = "fix.pc16";
 pub const FIXUP_ABSOLUTE_LONG: &str = "fix.abs32";
+pub const BRANCH_SIZED: &str = "branch.sized";
+pub const BRANCH_CANDIDATE_BYTE: u8 = 0;
+pub const BRANCH_CANDIDATE_WORD: u8 = 1;
+pub const BRANCH_CANDIDATE_LONG: u8 = 2;
+
+fn branch_candidate(
+    id: u8,
+    automatic_classes: u8,
+    suffix: &[u8],
+    displacement_width: u8,
+    unresolved_placeholder: i32,
+    reserved_values: &[i32],
+) -> BranchCandidateSpec {
+    BranchCandidateSpec {
+        id,
+        automatic_classes,
+        suffix: suffix.to_vec(),
+        displacement_width,
+        endian: EncodingEndian::Big,
+        position_adjustment: 2,
+        unresolved_placeholder,
+        reserved_values: reserved_values.to_vec(),
+    }
+}
+
+fn branch_program(owner: &ScopedOwner) -> Result<SemanticProgramDescriptor, OpcpuCodecError> {
+    let candidates = vec![
+        branch_candidate(BRANCH_CANDIDATE_BYTE, 0, &[], 1, 1, &[0]),
+        branch_candidate(BRANCH_CANDIDATE_WORD, 0b11, &[0], 2, 0, &[]),
+        branch_candidate(BRANCH_CANDIDATE_LONG, 0b10, &[0xff], 4, 0, &[]),
+    ];
+    Ok(SemanticProgramDescriptor {
+        owner: owner.clone(),
+        id: BRANCH_SIZED.to_string(),
+        opcode_version: SEMANTIC_VM_OPCODE_VERSION_V5,
+        program: compile_branch_program(&BranchProgramSpec {
+            opcode_input: 0,
+            target_input: 0,
+            unresolved_candidate: BRANCH_CANDIDATE_WORD,
+            candidates,
+        })?,
+    })
+}
 
 /// Compile one directly resolvable instruction form into the neutral fixed-field VM.
 pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecError> {
@@ -255,6 +300,7 @@ pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecE
             PortableRelocationKind::Absolute,
         )?,
     ]);
+    programs.push(branch_program(&owner)?);
     programs.extend(crate::m68080::package_programs::semantic_programs()?);
     Ok(programs)
 }

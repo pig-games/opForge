@@ -1,0 +1,55 @@
+[slice]
+schema_version = 1
+name = "versioned portable branch-width and layout-convergence programs"
+kind = "package-runtime"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 11
+requirements = ["N68X0-001", "N68X0-003", "N68X0-004", "N68X0-005", "N68X0-006", "N68X0-014", "N68X0-015"]
+rust_reference = [
+  "crates/opforge-families/src/m68020/handler.rs::M68020CpuHandler::encode_auto_sized_branch",
+  "crates/opforge-families/src/m68k/handler/alu_branch.rs::M68KFamilyHandler::encode_branch",
+  "crates/opforge-asm/src/engine.rs::Assembler::pass1",
+  "crates/opforge-families/src/mos6502/handler.rs::MOS6502FamilyHandler::encode_instruction",
+  "crates/opforge-families/src/m68k/package_programs.rs::semantic_programs",
+  "crates/opforge-package/src/package/branch_program.rs::compile_branch_program",
+  "crates/opforge-vm/src/branch_vm.rs::execute_branch_program",
+  "crates/opforge-vm/src/runtime_model_core.rs::RuntimeModelCore::execute_branch_program"
+]
+boundary = "SEMV v5 is an independently versioned, CPU-neutral choice over package-declared output-width candidates. Each candidate declares an opaque id, automatic applicability classes, fixed suffix, displacement width/endian, checked position adjustment, unresolved placeholder, and reserved projected values. The request supplies only scalar and typed target inputs, an opaque automatic class or explicit candidate id, the neutral position snapshot, and the prior output size. Family packages exclusively own candidate order, class masks, widths, suffixes, PC adjustment, placeholders, reserved values, and program ids."
+invariant = "After serialization and destruction of registry, chunks, compiler adapters, and live family handlers, the first package-declared automatic candidate that can represent the checked projected target is selected, while explicit requests select exactly their declared candidate. The result reports deterministic bytes, candidate id, output size, deferred state, and whether size changed from the prior layout pass. Repeating with the updated target and prior size reaches the same stable width and bytes as the live assembler oracle."
+expected_inputs = "A resolved hierarchy, opaque branch-program id, ordered scalar and typed resolved/unresolved target inputs, opaque automatic class or explicit candidate id, optional prior output size, and one signed runtime position."
+expected_outputs = "Deterministic selected candidate id, complete bytes, bounded output size, deferred flag, and layout-changed signal, or a typed program, input, class, candidate, position, projection, range, reserved-value, no-candidate, or size failure."
+known_non_equivalences = "Item 11 materializes candidate choice and the single output-size convergence signal only. Whole-program snapshot scheduling remains generic assembler/runtime orchestration; all-family applicability is Item 12; assembler callback cutover is Item 13; native SEMV v5 interpretation begins after Item 14. No native production source changes in this slice."
+fast_proof_command = "cargo test -p package branch_program_v5 -- --nocapture && cargo test -p vm serialized_branch_programs_match_width_convergence_and_cross_family_oracles -- --nocapture && cargo test -p asm package_branch_width_signal_converges_to_live_m68020_layout_oracle -- --nocapture && cargo test -p asm motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry -- --nocapture && cargo test -p asm motorola68020_embedded_native_cli_package_matches_rust_default_runtime_package -- --nocapture"
+full_gate_command = "cargo test -p package && cargo test -p registry && cargo test -p families && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
+native_proof = "not-applicable: Item 11 changes no native production source; refreshed fixtures are exact Rust-builder output, and the focused package is 8,124 bytes within the unchanged 8,192-byte native allocation"
+
+[[tests]]
+name = "branch_program_v5_round_trips_candidates_and_package_bytes_canonically"
+proof_level = "package"
+proves = "Canonical SEMV v5 preserves ordered candidates, automatic classes, widths, suffixes, endian, position adjustment, placeholders, and reserved values through the package container."
+
+[[tests]]
+name = "branch_program_v5_rejects_malformed_or_unrepresentable_programs"
+proof_level = "package-negative"
+proves = "Duplicate ids, absent automatic candidates, invalid unresolved candidates, invalid widths/endian, reserved placeholders, unsupported versions, truncation, and trailing bytes fail closed."
+
+[[tests]]
+name = "branch_program_v5_validation_is_deterministic_for_mutated_bytes"
+proof_level = "package-fuzz"
+proves = "Deterministically mutated SEMV v5 byte streams produce repeatable validation outcomes without panics."
+
+[[tests]]
+name = "serialized_branch_programs_match_width_convergence_and_cross_family_oracles"
+proof_level = "runtime-cross-family"
+proves = "Serialized-only execution matches live Rust m68k unresolved, forward, backward, explicit byte/word/long, baseline, widening, and converged oracles; reuses the neutral choice for a live MOS relative branch; and proves typed failures."
+
+[[tests]]
+name = "package_branch_width_signal_converges_to_live_m68020_layout_oracle"
+proof_level = "rust-oracle"
+proves = "The serialized package's unresolved word, resolved widening, and stable long sequence produces the exact final bytes from the live assembler's multi-pass 68020 layout."
+
+[[tests]]
+name = "motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry"
+proof_level = "native-package-capacity"
+proves = "The exact Rust-built focused package is 8,124 bytes and fits the unchanged 8,192-byte tkpkg allocation."

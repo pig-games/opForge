@@ -2513,6 +2513,131 @@ fn fixup_program_v4_validation_is_deterministic_for_mutated_bytes() {
     }
 }
 
+fn branch_program_v5_test_spec() -> BranchProgramSpec {
+    BranchProgramSpec {
+        opcode_input: 0,
+        target_input: 0,
+        unresolved_candidate: 1,
+        candidates: vec![
+            BranchCandidateSpec {
+                id: 0,
+                automatic_classes: 0,
+                suffix: vec![],
+                displacement_width: 1,
+                endian: EncodingEndian::Big,
+                position_adjustment: 2,
+                unresolved_placeholder: 1,
+                reserved_values: vec![0],
+            },
+            BranchCandidateSpec {
+                id: 1,
+                automatic_classes: 0b11,
+                suffix: vec![0],
+                displacement_width: 2,
+                endian: EncodingEndian::Big,
+                position_adjustment: 2,
+                unresolved_placeholder: 0,
+                reserved_values: vec![],
+            },
+            BranchCandidateSpec {
+                id: 2,
+                automatic_classes: 0b10,
+                suffix: vec![0xff],
+                displacement_width: 4,
+                endian: EncodingEndian::Big,
+                position_adjustment: 2,
+                unresolved_placeholder: 0,
+                reserved_values: vec![],
+            },
+        ],
+    }
+}
+
+#[test]
+fn branch_program_v5_round_trips_candidates_and_package_bytes_canonically() {
+    let spec = branch_program_v5_test_spec();
+    let program = compile_branch_program(&spec).expect("compile SEMV v5");
+    assert_eq!(
+        decode_branch_program(SEMANTIC_VM_OPCODE_VERSION_V5, &program).expect("decode SEMV v5"),
+        spec
+    );
+    validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V5, &program)
+        .expect("SEMV v5 validates through common boundary");
+
+    let mut chunks = decode_hierarchy_chunks(
+        &encode_hierarchy_chunks(
+            &sample_families(),
+            &sample_cpus(),
+            &sample_dialects(),
+            &sample_registers(),
+            &sample_forms(),
+            &sample_tables(),
+        )
+        .expect("encode legacy package"),
+    )
+    .expect("decode legacy package");
+    chunks.semantic_programs.push(SemanticProgramDescriptor {
+        owner: ScopedOwner::Family("motorola68000".to_string()),
+        id: "branch.extended".to_string(),
+        opcode_version: SEMANTIC_VM_OPCODE_VERSION_V5,
+        program,
+    });
+    let encoded = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode SEMV v5 package");
+    let decoded = decode_hierarchy_chunks(&encoded).expect("decode SEMV v5 package");
+    assert_eq!(decoded.semantic_programs, chunks.semantic_programs);
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical SEMV v5 re-encode"),
+        encoded
+    );
+}
+
+#[test]
+fn branch_program_v5_rejects_malformed_or_unrepresentable_programs() {
+    let mut duplicate = branch_program_v5_test_spec();
+    duplicate.candidates[1].id = duplicate.candidates[0].id;
+    assert!(compile_branch_program(&duplicate).is_err());
+
+    let mut no_automatic = branch_program_v5_test_spec();
+    for candidate in &mut no_automatic.candidates {
+        candidate.automatic_classes = 0;
+    }
+    assert!(compile_branch_program(&no_automatic).is_err());
+
+    let mut reserved_placeholder = branch_program_v5_test_spec();
+    reserved_placeholder.candidates[0].unresolved_placeholder = 0;
+    assert!(compile_branch_program(&reserved_placeholder).is_err());
+
+    let seed = compile_branch_program(&branch_program_v5_test_spec()).expect("compile seed");
+    for (index, value) in [(0, 0), (3, 9), (4, 0), (7, 9), (8, 3), (9, 2)] {
+        let mut malformed = seed.clone();
+        malformed[index] = value;
+        assert!(
+            validate_branch_program(SEMANTIC_VM_OPCODE_VERSION_V5, &malformed).is_err(),
+            "invalid field at {index} was accepted"
+        );
+    }
+    assert!(
+        validate_branch_program(SEMANTIC_VM_OPCODE_VERSION_V5, &seed[..seed.len() - 1]).is_err()
+    );
+    let mut trailing = seed.clone();
+    trailing.push(0);
+    assert!(validate_branch_program(SEMANTIC_VM_OPCODE_VERSION_V5, &trailing).is_err());
+    assert!(validate_branch_program(SEMANTIC_VM_OPCODE_VERSION_V5 + 1, &seed).is_err());
+}
+
+#[test]
+fn branch_program_v5_validation_is_deterministic_for_mutated_bytes() {
+    let seed = compile_branch_program(&branch_program_v5_test_spec()).expect("compile seed");
+    for byte in 0_u8..=u8::MAX {
+        let mut candidate = seed.clone();
+        let index = usize::from(byte) % candidate.len();
+        candidate[index] ^= byte;
+        let first = validate_branch_program(SEMANTIC_VM_OPCODE_VERSION_V5, &candidate);
+        let second = validate_branch_program(SEMANTIC_VM_OPCODE_VERSION_V5, &candidate);
+        assert_eq!(first, second);
+    }
+}
+
 #[test]
 fn value_program_round_trip_is_canonical_and_optional_for_legacy_packages() {
     let legacy = encode_hierarchy_chunks(

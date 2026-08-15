@@ -533,6 +533,26 @@ impl HierarchyExecutionModel {
             .execute_fixup_program(resolved, program_id, inputs, context)
     }
 
+    /// Select and emit one package-owned candidate width against a layout snapshot.
+    pub fn execute_branch_program(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        scalar_inputs: &[i64],
+        target_inputs: &[crate::fixup_vm::PortableDeferredValue],
+        request: crate::branch_vm::PortableBranchRequest,
+        context: crate::branch_vm::PortableBranchContext,
+    ) -> Result<crate::branch_vm::PortableBranchResult, RuntimeBridgeError> {
+        self.core.execute_branch_program(
+            resolved,
+            program_id,
+            scalar_inputs,
+            target_inputs,
+            request,
+            context,
+        )
+    }
+
     /// Materialize one scalar using a package-owned, versioned value program.
     pub fn execute_value_program(
         &self,

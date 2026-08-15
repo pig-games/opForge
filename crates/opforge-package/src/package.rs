@@ -33,6 +33,7 @@ use types::hierarchy::{
 
 mod canonicalize;
 mod encoding_program;
+mod fixup_program;
 mod state_program;
 mod structured_encoding_program;
 #[cfg(test)]
@@ -47,6 +48,7 @@ pub use canonicalize::{
     canonicalize_tokenizer_vm_programs, canonicalize_value_programs,
 };
 pub use encoding_program::*;
+pub use fixup_program::*;
 pub use state_program::*;
 pub use structured_encoding_program::*;
 
@@ -142,6 +144,7 @@ pub const TOKENIZER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const SEMANTIC_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const SEMANTIC_VM_OPCODE_VERSION_V2: u16 = 0x0002;
 pub const SEMANTIC_VM_OPCODE_VERSION_V3: u16 = 0x0003;
+pub const SEMANTIC_VM_OPCODE_VERSION_V4: u16 = 0x0004;
 pub const COMPACT_OPERAND_RECORD_CHUNK_VERSION_V1: u16 = 0x0001;
 pub const SEMANTIC_VM_OP_EMIT_U8: u8 = 0x01;
 pub const SEMANTIC_VM_OP_EMIT_OPERAND: u8 = 0x02;
@@ -1096,6 +1099,9 @@ pub fn validate_semantic_program(
     }
     if opcode_version == SEMANTIC_VM_OPCODE_VERSION_V3 {
         return validate_structured_encoding_program(opcode_version, program);
+    }
+    if opcode_version == SEMANTIC_VM_OPCODE_VERSION_V4 {
+        return validate_fixup_program(opcode_version, program);
     }
     if opcode_version != SEMANTIC_VM_OPCODE_VERSION_V1 {
         return Err(OpcpuCodecError::InvalidChunkFormat {

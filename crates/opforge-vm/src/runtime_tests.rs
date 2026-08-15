@@ -5,6 +5,10 @@ use crate::execution_model::{
     CORE_EXPR_PARSER_FAILPOINT, RUNTIME_EXPR_COMPATIBILITY_FAILPOINT,
 };
 use crate::exvm_v2_runtime::{run_exvm_expression_parser_program_with_backend, ExvmRuntimeBackend};
+use crate::fixup_vm::{
+    FixupVmError, PortableDeferredValue, PortableFixupContext, PortableFixupInput,
+    PortableOutputFixupKind,
+};
 use crate::hierarchy::{
     CpuDescriptor, DialectDescriptor, FamilyDescriptor, HierarchyError, HierarchyPackage,
     ResolvedHierarchy, ScopedOwner,
@@ -51,13 +55,13 @@ use families::{
     m68020::M68020CpuHandler,
     m68080::package_programs as m68080_record_programs,
     m68k::{
-        operand::{BitFieldSelector, RegisterListRegister},
+        operand::{AbsoluteSize, BitFieldSelector, RegisterListRegister},
         package_programs as m68k_value_programs, state as m68k_state, M68KFamilyHandler,
         Operand as M68KOperand,
     },
     mos6502::{
         module::{M6502CpuModule, MOS6502FamilyModule, MOS6502Operands},
-        package_programs as mos6502_value_programs, Operand,
+        package_programs as mos6502_value_programs, MOS6502FamilyHandler, Operand,
     },
     register_intel8080_family_stack, register_mos6502_family_stack,
     register_motorola68000_family_stack, register_motorola6800_family_stack,
@@ -70,16 +74,18 @@ use opcore::parser::{
 };
 use opcore::tokenizer::{ConditionalKind, Span, Token, TokenKind, Tokenizer};
 use package::{
-    compile_encoding_program, compile_fixed_semantic_program, compile_selector_program,
-    compile_structured_encoding_program, default_token_policy_lexical_defaults,
-    encode_hierarchy_chunks_from_chunks, token_identifier_class, DiagnosticDescriptor,
-    EncodingEndian, EncodingStep, ExprContractDescriptor, ExprDiagnosticMap,
-    ExprParserContractDescriptor, ExprParserDiagnosticMap, HierarchyChunks,
+    compile_encoding_program, compile_fixed_semantic_program, compile_fixup_program,
+    compile_selector_program, compile_structured_encoding_program,
+    default_token_policy_lexical_defaults, encode_hierarchy_chunks_from_chunks,
+    token_identifier_class, DiagnosticDescriptor, EncodingEndian, EncodingStep,
+    ExprContractDescriptor, ExprDiagnosticMap, ExprParserContractDescriptor,
+    ExprParserDiagnosticMap, FixupBase, FixupEncodingStep, FixupRange, HierarchyChunks,
     ParserContractDescriptor, ParserDiagnosticMap, ParserVmOpcodeV2, ParserVmProgramDescriptor,
-    RegisterClassProjection, SelectorProgramDescriptor, SelectorProgramMatcher,
-    SelectorProgramOutcome, SemanticProgramDescriptor, StructuredEncodingStep, TokenCaseRule,
-    TokenPolicyDescriptor, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
-    TokenizerVmProgramDescriptor, TokenizerVmStreamDescriptor, VmProgramDescriptor,
+    PortableRelocationKind, RegisterClassProjection, SelectorProgramDescriptor,
+    SelectorProgramMatcher, SelectorProgramOutcome, SemanticProgramDescriptor,
+    StructuredEncodingStep, TokenCaseRule, TokenPolicyDescriptor, TokenizerVmDiagnosticMap,
+    TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
+    TokenizerVmStreamDescriptor, UnresolvedValuePolicy, VmProgramDescriptor,
     DIAG_EXPR_BUDGET_EXCEEDED, DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE,
     DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW,
     DIAG_EXPR_UNKNOWN_SYMBOL, DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
@@ -87,7 +93,7 @@ use package::{
     EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1,
     EXVM_OPCODE_VERSION_V2, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
     SEMANTIC_VM_OPCODE_VERSION_V1, SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3,
-    TOKENIZER_VM_OPCODE_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V4, TOKENIZER_VM_OPCODE_VERSION_V1,
 };
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult, FamilyHandler};
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
@@ -98,6 +104,7 @@ use std::path::{Path, PathBuf};
 use types::asm_value::{AsmValue, StructDef, StructField};
 use types::image::ImageStore;
 use types::line_ast::{ConditionalAst, PackAst, PlaceAst, UseAst};
+use types::symbol::{SymbolTable, SymbolVisibility};
 
 const VM_TOKEN_KIND_IDENTIFIER: u8 = 0;
 
@@ -747,6 +754,7 @@ fn runtime_vm_program_for_test(
 struct TestAssemblerContext {
     values: HashMap<String, i64>,
     value_symbols: HashMap<String, AsmValue>,
+    symbols: SymbolTable,
     finalized: HashMap<String, bool>,
     cpu_flags: HashMap<String, u32>,
     addr: u32,
@@ -759,6 +767,7 @@ impl TestAssemblerContext {
         Self {
             values: HashMap::new(),
             value_symbols: HashMap::new(),
+            symbols: SymbolTable::new(),
             finalized: HashMap::new(),
             cpu_flags: HashMap::new(),
             addr: 0,
@@ -801,13 +810,18 @@ impl AssemblerContext for TestAssemblerContext {
                         }
                     };
                 }
-                self.values.get(name).copied().map(Ok).unwrap_or_else(|| {
-                    if self.pass == 1 {
-                        Ok(0)
-                    } else {
-                        Err(format!("Label not found: {}", name))
-                    }
-                })
+                self.values
+                    .get(name)
+                    .copied()
+                    .or_else(|| self.symbols.entry(name).map(|entry| i64::from(entry.val)))
+                    .map(Ok)
+                    .unwrap_or_else(|| {
+                        if self.pass == 1 {
+                            Ok(0)
+                        } else {
+                            Err(format!("Label not found: {}", name))
+                        }
+                    })
             }
             Expr::Immediate(inner, _) => self.eval_expr(inner),
             _ => Err("unsupported test expression".to_string()),
@@ -815,11 +829,13 @@ impl AssemblerContext for TestAssemblerContext {
     }
 
     fn symbols(&self) -> &types::symbol::SymbolTable {
-        panic!("symbols() is not used in runtime resolver tests")
+        &self.symbols
     }
 
     fn has_symbol(&self, name: &str) -> bool {
-        self.values.contains_key(name) || self.value_symbols.contains_key(name)
+        self.values.contains_key(name)
+            || self.value_symbols.contains_key(name)
+            || self.symbols.entry(name).is_some()
     }
 
     fn symbol_is_finalized(&self, name: &str) -> Option<bool> {
@@ -8505,6 +8521,290 @@ fn serialized_structured_encoding_programs_match_family_oracles_without_callback
             value: 33,
             bits: 5
         })
+    ));
+}
+
+#[test]
+fn serialized_fixup_programs_match_pc_relative_deferred_relocation_and_cross_family_oracles() {
+    let span = Span {
+        line: 1,
+        col_start: 1,
+        col_end: 2,
+    };
+    let pc_oracle = |target: u32| {
+        let mut ctx = TestAssemblerContext::new();
+        ctx.addr = 0x1000;
+        assert_eq!(
+            ctx.symbols
+                .add("target", target, false, SymbolVisibility::Private, None),
+            types::symbol::SymbolTableResult::Ok
+        );
+        ctx.finalized.insert("target".to_string(), true);
+        match M68KFamilyHandler::new().encode_instruction(
+            "MOVE.W",
+            &[
+                M68KOperand::PcDisplacement {
+                    displacement: Expr::Identifier("target".to_string(), span),
+                    span,
+                },
+                M68KOperand::DataRegister {
+                    register: "D0".to_string(),
+                    span,
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => bytes[2..4].to_vec(),
+            other => panic!("Rust m68k PC-relative oracle rejected target {target:#x}: {other:?}"),
+        }
+    };
+    let forward_oracle = pc_oracle(0x1008);
+    let backward_oracle = pc_oracle(0x0ffc);
+
+    let mut unresolved_ctx = TestAssemblerContext::new();
+    unresolved_ctx.addr = 0x1000;
+    unresolved_ctx.pass = 1;
+    let unresolved_oracle = match M68KFamilyHandler::new().encode_instruction(
+        "MOVE.W",
+        &[
+            M68KOperand::PcDisplacement {
+                displacement: Expr::Identifier("target".to_string(), span),
+                span,
+            },
+            M68KOperand::DataRegister {
+                register: "D0".to_string(),
+                span,
+            },
+        ],
+        &unresolved_ctx,
+    ) {
+        EncodeResult::Ok(bytes) => bytes[2..4].to_vec(),
+        other => panic!("Rust m68k unresolved PC-relative oracle failed: {other:?}"),
+    };
+
+    let absolute_oracle = match M68KFamilyHandler::new().encode_instruction(
+        "MOVE.L",
+        &[
+            M68KOperand::Absolute {
+                expr: Expr::Number("4".to_string(), span),
+                size: AbsoluteSize::Long,
+                span,
+            },
+            M68KOperand::DataRegister {
+                register: "D0".to_string(),
+                span,
+            },
+        ],
+        &TestAssemblerContext::new(),
+    ) {
+        EncodeResult::Ok(bytes) => bytes[bytes.len() - 4..].to_vec(),
+        other => panic!("Rust m68k absolute-long oracle failed: {other:?}"),
+    };
+    let mos_oracle = match MOS6502FamilyHandler::new().encode_instruction(
+        "BNE",
+        &[Operand::Absolute(0x1008, span)],
+        &{
+            let mut ctx = TestAssemblerContext::new();
+            ctx.addr = 0x1000;
+            ctx
+        },
+    ) {
+        EncodeResult::Ok(bytes) => bytes,
+        other => panic!("Rust MOS relative oracle failed: {other:?}"),
+    };
+
+    let mut registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("fixup hierarchy chunks");
+    assert!(chunks.semantic_programs.iter().any(|program| {
+        program.id == m68k_value_programs::FIXUP_PC_WORD
+            && program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V4
+    }));
+    assert!(chunks.semantic_programs.iter().any(|program| {
+        program.id == mos6502_value_programs::FIXUP_RELATIVE_BYTE
+            && program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V4
+    }));
+    chunks.semantic_programs.push(SemanticProgramDescriptor {
+        owner: ScopedOwner::Family("mos6502".to_string()),
+        id: "fix.reject".to_string(),
+        opcode_version: SEMANTIC_VM_OPCODE_VERSION_V4,
+        program: compile_fixup_program(&[FixupEncodingStep {
+            input: 0,
+            width: 1,
+            endian: EncodingEndian::Little,
+            base: FixupBase::Value,
+            range: FixupRange::Unsigned,
+            unresolved: UnresolvedValuePolicy::Reject,
+            relocation: PortableRelocationKind::None,
+        }])
+        .expect("compile reject fixup"),
+    });
+    let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("serialize fixup programs");
+    drop(chunks);
+    drop(registry);
+    drop(unresolved_ctx);
+
+    // Family handlers, package builders, and registry state are unavailable from
+    // here onward. Only serialized bytes, neutral values, and position remain.
+    let model = HierarchyExecutionModel::from_package_bytes(&bytes)
+        .expect("reload serialized fixup programs");
+    let m68k = model
+        .resolve_pipeline("m68020", None)
+        .expect("resolve m68020");
+    let mos = model
+        .resolve_pipeline("m6502", None)
+        .expect("resolve m6502");
+    let context = PortableFixupContext { position: 0x1000 };
+    let target = |value| PortableFixupInput {
+        value: PortableDeferredValue::Resolved(value),
+        target_reference: true,
+        relocation_target: None,
+    };
+
+    assert_eq!(
+        model
+            .execute_fixup_program(
+                &m68k,
+                m68k_value_programs::FIXUP_PC_WORD,
+                &[target(0x1008)],
+                context,
+            )
+            .expect("project forward PC-relative value")
+            .bytes,
+        forward_oracle
+    );
+    assert_eq!(
+        model
+            .execute_fixup_program(
+                &m68k,
+                m68k_value_programs::FIXUP_PC_WORD,
+                &[target(0x0ffc)],
+                context,
+            )
+            .expect("project backward PC-relative value")
+            .bytes,
+        backward_oracle
+    );
+    let literal = model
+        .execute_fixup_program(
+            &m68k,
+            m68k_value_programs::FIXUP_PC_WORD,
+            &[PortableFixupInput {
+                value: PortableDeferredValue::Resolved(4),
+                target_reference: false,
+                relocation_target: None,
+            }],
+            context,
+        )
+        .expect("scalar displacement remains literal");
+    assert_eq!(literal.bytes, [0, 4]);
+    assert!(literal.deferred_inputs.is_empty());
+
+    let deferred = model
+        .execute_fixup_program(
+            &m68k,
+            m68k_value_programs::FIXUP_PC_WORD,
+            &[PortableFixupInput {
+                value: PortableDeferredValue::Unresolved,
+                target_reference: true,
+                relocation_target: None,
+            }],
+            context,
+        )
+        .expect("use package-owned unresolved placeholder");
+    assert_eq!(deferred.bytes, unresolved_oracle);
+    assert_eq!(deferred.deferred_inputs, [0]);
+    assert!(deferred.fixups.is_empty());
+
+    assert_eq!(
+        model
+            .execute_fixup_program(
+                &m68k,
+                m68k_value_programs::FIXUP_PC_BYTE,
+                &[target(0x1008)],
+                context,
+            )
+            .expect("project indexed PC-relative byte")
+            .bytes,
+        [6]
+    );
+    assert_eq!(
+        model
+            .execute_fixup_program(
+                &mos,
+                mos6502_value_programs::FIXUP_RELATIVE_BYTE,
+                &[target(0x1008)],
+                context,
+            )
+            .expect("reuse relative projection for MOS")
+            .bytes,
+        mos_oracle[1..]
+    );
+
+    let relocated = model
+        .execute_fixup_program(
+            &m68k,
+            m68k_value_programs::FIXUP_ABSOLUTE_LONG,
+            &[PortableFixupInput {
+                value: PortableDeferredValue::Resolved(4),
+                target_reference: true,
+                relocation_target: Some("data".to_string()),
+            }],
+            context,
+        )
+        .expect("emit absolute long and portable relocation");
+    assert_eq!(relocated.bytes, absolute_oracle);
+    assert_eq!(relocated.fixups.len(), 1);
+    assert_eq!(relocated.fixups[0].offset, 0);
+    assert_eq!(relocated.fixups[0].width, 4);
+    assert_eq!(relocated.fixups[0].kind, PortableOutputFixupKind::Absolute);
+    assert_eq!(relocated.fixups[0].target, "data");
+    assert_eq!(relocated.fixups[0].encoded_addend, 4);
+
+    assert!(matches!(
+        model
+            .execute_fixup_program(&m68k, m68k_value_programs::FIXUP_PC_WORD, &[], context,)
+            .expect_err("missing input must fail closed"),
+        RuntimeBridgeError::FixupVm(FixupVmError::MissingInput { index: 0, len: 0 })
+    ));
+    assert!(matches!(
+        model
+            .execute_fixup_program(
+                &mos,
+                "fix.reject",
+                &[PortableFixupInput {
+                    value: PortableDeferredValue::Unresolved,
+                    target_reference: false,
+                    relocation_target: None,
+                }],
+                context
+            )
+            .expect_err("rejected unresolved input must fail closed"),
+        RuntimeBridgeError::FixupVm(FixupVmError::UnresolvedInput { index: 0 })
+    ));
+    assert!(matches!(
+        model
+            .execute_fixup_program(
+                &m68k,
+                m68k_value_programs::FIXUP_PC_BYTE,
+                &[target(0x2000)],
+                context,
+            )
+            .expect_err("relative overflow must fail closed"),
+        RuntimeBridgeError::FixupVm(FixupVmError::ValueOutOfRange { .. })
+    ));
+    assert!(matches!(
+        model
+            .execute_fixup_program(
+                &m68k,
+                m68k_value_programs::FIXUP_PC_WORD,
+                &[target(0)],
+                PortableFixupContext { position: i64::MAX },
+            )
+            .expect_err("position overflow must fail closed"),
+        RuntimeBridgeError::FixupVm(FixupVmError::PositionOverflow { .. })
     ));
 }
 

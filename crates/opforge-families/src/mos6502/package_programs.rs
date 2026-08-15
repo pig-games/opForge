@@ -4,9 +4,11 @@
 //! Package compilation adapter for MOS 65x02 scalar semantics.
 
 use package::{
-    compile_operand_record_program, compile_value_program, OpcpuCodecError, OperandRecordProgram,
-    OperandRecordProgramDescriptor, ValueConstraint, ValueProgramDescriptor, ValueProgramSource,
-    OPERAND_RECORD_VM_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
+    compile_fixup_program, compile_operand_record_program, compile_value_program, EncodingEndian,
+    FixupBase, FixupEncodingStep, FixupRange, OpcpuCodecError, OperandRecordProgram,
+    OperandRecordProgramDescriptor, PortableRelocationKind, SemanticProgramDescriptor,
+    UnresolvedValuePolicy, ValueConstraint, ValueProgramDescriptor, ValueProgramSource,
+    OPERAND_RECORD_VM_VERSION_V1, SEMANTIC_VM_OPCODE_VERSION_V4, VALUE_VM_OPCODE_VERSION_V1,
 };
 use types::hierarchy::ScopedOwner;
 
@@ -15,6 +17,7 @@ pub const VALUE_UNSIGNED_WORD: &str = "scalar.unsigned-word";
 pub const VALUE_LITERAL_ZERO: &str = "scalar.literal-zero";
 pub const RECORD_ABSOLUTE_WORD: &str = "operand.absolute-word";
 pub const RECORD_IMMEDIATE: &str = "operand.immediate";
+pub const FIXUP_RELATIVE_BYTE: &str = "fix.rel8";
 
 fn input_program(id: &str, bits: u8) -> Result<ValueProgramDescriptor, OpcpuCodecError> {
     Ok(ValueProgramDescriptor {
@@ -40,6 +43,27 @@ pub fn value_programs() -> Result<Vec<ValueProgramDescriptor>, OpcpuCodecError> 
             program: compile_value_program(ValueProgramSource::Literal(0), &[])?,
         },
     ])
+}
+
+/// Compile the MOS relative-byte projection with the shared neutral fixup VM.
+pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecError> {
+    Ok(vec![SemanticProgramDescriptor {
+        owner: ScopedOwner::Family("mos6502".to_string()),
+        id: FIXUP_RELATIVE_BYTE.to_string(),
+        opcode_version: SEMANTIC_VM_OPCODE_VERSION_V4,
+        program: compile_fixup_program(&[FixupEncodingStep {
+            input: 0,
+            width: 1,
+            endian: EncodingEndian::Little,
+            base: FixupBase::Position {
+                adjustment: 2,
+                target_references_only: false,
+            },
+            range: FixupRange::Signed,
+            unresolved: UnresolvedValuePolicy::Placeholder(0),
+            relocation: PortableRelocationKind::None,
+        }])?,
+    }])
 }
 
 /// Compile the reusable MOS scalar-address and immediate record shapes.

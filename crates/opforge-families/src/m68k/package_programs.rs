@@ -4,19 +4,20 @@
 //! Package compilation adapter for Motorola 68000 scalar semantics.
 
 use package::{
-    compile_encoding_program, compile_operand_record_program, compile_selector_map_program,
-    compile_selector_suffix_program, compile_state_program, compile_structured_encoding_program,
-    compile_value_program, DiagnosticDescriptor, EncodingEndian, EncodingFieldSpec, EncodingStep,
+    compile_encoding_program, compile_fixup_program, compile_operand_record_program,
+    compile_selector_map_program, compile_selector_suffix_program, compile_state_program,
+    compile_structured_encoding_program, compile_value_program, DiagnosticDescriptor,
+    EncodingEndian, EncodingFieldSpec, EncodingStep, FixupBase, FixupEncodingStep, FixupRange,
     OpcpuCodecError, OperandRecordBaseSource, OperandRecordFieldSource, OperandRecordIndirection,
     OperandRecordOptionalIndexSource, OperandRecordOptionalValueSource, OperandRecordProgram,
-    OperandRecordProgramDescriptor, OperandRecordUpdate, RegisterClassProjection,
-    SelectorProgramDescriptor, SemanticProgramDescriptor, StateArgumentSpec,
-    StateCapabilityRuleSpec, StateCapabilitySpec, StateDirectiveSpec, StateKeySpec,
-    StateProgramDescriptor, StateProgramSpec, StructuredEncodingStep, ValueConstraint,
-    ValueProgramDescriptor, ValueProgramSource, OPERAND_RECORD_VM_VERSION_V1,
-    OPERAND_RECORD_VM_VERSION_V2, OPERAND_RECORD_VM_VERSION_V3, SELECTOR_VM_OPCODE_VERSION_V1,
-    SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3, STATE_VM_OPCODE_VERSION_V1,
-    VALUE_VM_OPCODE_VERSION_V1,
+    OperandRecordProgramDescriptor, OperandRecordUpdate, PortableRelocationKind,
+    RegisterClassProjection, SelectorProgramDescriptor, SemanticProgramDescriptor,
+    StateArgumentSpec, StateCapabilityRuleSpec, StateCapabilitySpec, StateDirectiveSpec,
+    StateKeySpec, StateProgramDescriptor, StateProgramSpec, StructuredEncodingStep,
+    UnresolvedValuePolicy, ValueConstraint, ValueProgramDescriptor, ValueProgramSource,
+    OPERAND_RECORD_VM_VERSION_V1, OPERAND_RECORD_VM_VERSION_V2, OPERAND_RECORD_VM_VERSION_V3,
+    SELECTOR_VM_OPCODE_VERSION_V1, SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3,
+    SEMANTIC_VM_OPCODE_VERSION_V4, STATE_VM_OPCODE_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
 };
 use types::hierarchy::ScopedOwner;
 
@@ -90,6 +91,9 @@ pub const ENCODING_REVERSED_REGISTER_MASK: &str = "enc.mask-rev";
 pub const ENCODING_FPU_REGISTER_MASK: &str = "enc.fpu-mask";
 pub const ENCODING_REGISTER_PAIR: &str = "enc.pair";
 pub const ENCODING_BIT_FIELD: &str = "enc.bit-field";
+pub const FIXUP_PC_BYTE: &str = "fix.pc8";
+pub const FIXUP_PC_WORD: &str = "fix.pc16";
+pub const FIXUP_ABSOLUTE_LONG: &str = "fix.abs32";
 
 /// Compile one directly resolvable instruction form into the neutral fixed-field VM.
 pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecError> {
@@ -201,6 +205,56 @@ pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecE
             },
         )?,
     ];
+    let fixup = |id: &str,
+                 width: u8,
+                 base: FixupBase,
+                 range: FixupRange,
+                 relocation: PortableRelocationKind|
+     -> Result<SemanticProgramDescriptor, OpcpuCodecError> {
+        Ok(SemanticProgramDescriptor {
+            owner: owner.clone(),
+            id: id.to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V4,
+            program: compile_fixup_program(&[FixupEncodingStep {
+                input: 0,
+                width,
+                endian: EncodingEndian::Big,
+                base,
+                range,
+                unresolved: UnresolvedValuePolicy::Placeholder(0),
+                relocation,
+            }])?,
+        })
+    };
+    programs.extend([
+        fixup(
+            FIXUP_PC_BYTE,
+            1,
+            FixupBase::Position {
+                adjustment: 2,
+                target_references_only: true,
+            },
+            FixupRange::Signed,
+            PortableRelocationKind::None,
+        )?,
+        fixup(
+            FIXUP_PC_WORD,
+            2,
+            FixupBase::Position {
+                adjustment: 2,
+                target_references_only: true,
+            },
+            FixupRange::Signed,
+            PortableRelocationKind::None,
+        )?,
+        fixup(
+            FIXUP_ABSOLUTE_LONG,
+            4,
+            FixupBase::Value,
+            FixupRange::BitPattern,
+            PortableRelocationKind::Absolute,
+        )?,
+    ]);
     programs.extend(crate::m68080::package_programs::semantic_programs()?);
     Ok(programs)
 }

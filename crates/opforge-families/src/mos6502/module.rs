@@ -65,6 +65,12 @@ impl FamilyModule for MOS6502FamilyModule {
         super::package_programs::value_programs()
     }
 
+    fn semantic_programs(
+        &self,
+    ) -> Result<Vec<package::SemanticProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::semantic_programs()
+    }
+
     fn operand_record_programs(
         &self,
     ) -> Result<Vec<package::OperandRecordProgramDescriptor>, package::OpcpuCodecError> {

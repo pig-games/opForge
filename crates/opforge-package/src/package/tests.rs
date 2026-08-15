@@ -2388,6 +2388,132 @@ fn structured_encoding_program_v3_validation_is_deterministic_for_mutated_bytes(
 }
 
 #[test]
+fn fixup_program_v4_round_trips_runtime_bases_placeholders_ranges_and_relocations() {
+    let steps = vec![
+        FixupEncodingStep {
+            input: 0,
+            width: 2,
+            endian: EncodingEndian::Big,
+            base: FixupBase::Position {
+                adjustment: 2,
+                target_references_only: true,
+            },
+            range: FixupRange::Signed,
+            unresolved: UnresolvedValuePolicy::Placeholder(0),
+            relocation: PortableRelocationKind::None,
+        },
+        FixupEncodingStep {
+            input: 1,
+            width: 4,
+            endian: EncodingEndian::Little,
+            base: FixupBase::Value,
+            range: FixupRange::BitPattern,
+            unresolved: UnresolvedValuePolicy::Reject,
+            relocation: PortableRelocationKind::Absolute,
+        },
+    ];
+    let program = compile_fixup_program(&steps).expect("compile SEMV v4");
+    assert_eq!(
+        decode_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V4, &program).expect("decode SEMV v4"),
+        steps
+    );
+    validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V4, &program)
+        .expect("SEMV v4 validates through the common semantic-program boundary");
+
+    let mut chunks = decode_hierarchy_chunks(
+        &encode_hierarchy_chunks(
+            &sample_families(),
+            &sample_cpus(),
+            &sample_dialects(),
+            &sample_registers(),
+            &sample_forms(),
+            &sample_tables(),
+        )
+        .expect("encode legacy package"),
+    )
+    .expect("decode legacy package");
+    chunks.semantic_programs.push(SemanticProgramDescriptor {
+        owner: ScopedOwner::Family("motorola68000".to_string()),
+        id: "fix.pc-and-absolute".to_string(),
+        opcode_version: SEMANTIC_VM_OPCODE_VERSION_V4,
+        program,
+    });
+    let encoded = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode SEMV v4 package");
+    let decoded = decode_hierarchy_chunks(&encoded).expect("decode SEMV v4 package");
+    assert_eq!(decoded.semantic_programs, chunks.semantic_programs);
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical SEMV v4 re-encode"),
+        encoded
+    );
+}
+
+#[test]
+fn fixup_program_v4_rejects_malformed_or_unrepresentable_programs() {
+    assert!(compile_fixup_program(&[]).is_err());
+    assert!(compile_fixup_program(&[FixupEncodingStep {
+        input: 0,
+        width: 1,
+        endian: EncodingEndian::Big,
+        base: FixupBase::Value,
+        range: FixupRange::Signed,
+        unresolved: UnresolvedValuePolicy::Placeholder(128),
+        relocation: PortableRelocationKind::None,
+    }])
+    .is_err());
+
+    let seed = compile_fixup_program(&[FixupEncodingStep {
+        input: 0,
+        width: 2,
+        endian: EncodingEndian::Big,
+        base: FixupBase::Position {
+            adjustment: 2,
+            target_references_only: true,
+        },
+        range: FixupRange::Signed,
+        unresolved: UnresolvedValuePolicy::Placeholder(0),
+        relocation: PortableRelocationKind::None,
+    }])
+    .expect("compile malformed seed");
+    for index in [2, 3, 4, 9, 14, 15] {
+        let mut malformed = seed.clone();
+        malformed[index] = 0x7f;
+        assert!(
+            validate_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V4, &malformed).is_err(),
+            "invalid field at {index} was accepted"
+        );
+    }
+    assert!(
+        validate_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V4, &seed[..seed.len() - 1]).is_err()
+    );
+    let mut trailing = seed.clone();
+    trailing.push(0);
+    assert!(validate_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V4, &trailing).is_err());
+    assert!(validate_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V4 + 1, &seed).is_err());
+}
+
+#[test]
+fn fixup_program_v4_validation_is_deterministic_for_mutated_bytes() {
+    let seed = compile_fixup_program(&[FixupEncodingStep {
+        input: 0,
+        width: 4,
+        endian: EncodingEndian::Little,
+        base: FixupBase::Value,
+        range: FixupRange::BitPattern,
+        unresolved: UnresolvedValuePolicy::Reject,
+        relocation: PortableRelocationKind::Absolute,
+    }])
+    .expect("compile fixup mutation seed");
+    for byte in 0_u8..=u8::MAX {
+        let mut candidate = seed.clone();
+        let index = usize::from(byte) % candidate.len();
+        candidate[index] ^= byte;
+        let first = validate_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V4, &candidate);
+        let second = validate_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V4, &candidate);
+        assert_eq!(first, second);
+    }
+}
+
+#[test]
 fn value_program_round_trip_is_canonical_and_optional_for_legacy_packages() {
     let legacy = encode_hierarchy_chunks(
         &sample_families(),

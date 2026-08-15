@@ -394,6 +394,16 @@ the same unmodified serialized semantic package.
   missing records, invalid shapes/classes, and overflow fail closed. The exact
   Rust-built focused and full native fixtures are 7,871 and 133,936 bytes; the
   focused fixture remains within the unchanged 8,192-byte native allocation.
+- Item 10 retains container version 1 and adds independently versioned `SEMV`
+  v4 programs for CPU-neutral deferred-value projection, checked position-base
+  calculation, range validation, endian emission, unresolved placeholders, and
+  portable absolute relocations. `SEMV` v1-v3 remain accepted unchanged.
+  Family package definitions own PC adjustments, widths, endian, ranges, and
+  placeholder policy; malformed or unsupported programs and typed missing,
+  unresolved, position, projection, range, and output-offset failures fail
+  closed. The exact Rust-built focused and full native fixtures are 8,030 and
+  134,142 bytes; the focused fixture remains within the unchanged 8,192-byte
+  native allocation.
 - Owned contract: the 68020/AmigaOS executable exposes the complete
   Rust-supported 680x0 assembler surface and can rebuild itself
 - Rationale: CPU discovery is already present in package metadata, but complete
@@ -484,11 +494,20 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit compiling complex extension emission into neutral programs.
   - Definition of done: structured extensions match the oracle without runtime family encoder dispatch.
 
-- [ ] Item 10: materialize PC-relative and deferred-fixup programs
+- [x] Item 10: materialize PC-relative and deferred-fixup programs
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`-`N68X0-006`, `N68X0-014`, `N68X0-015`.
   - Expected files: neutral fixup/runtime-context operations, family fixup compiler adapter, Rust tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; unresolved symbol, PC-relative base, relocation, forward/backward reference, malformed-program, and cross-family fixup tests.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for fixup projection/evaluation only.
+  - Plan-compliance review evidence: `PASS` — the independent
+    `plan-compliance-reviewer` confirmed CPU-neutral, independently versioned,
+    canonical, and fail-closed `SEMV` v4 fixup programs; package-owned m68k and
+    MOS base/width/endian/range/placeholder adapters; serialized-only live-oracle
+    equality for forward and backward PC-relative targets, unresolved deferred
+    values, scalar PC-relative literals, absolute-long relocation, and
+    cross-family relative reuse; typed failure coverage; a live cross-section
+    Hunk relocation oracle; exact 8,030- and 134,142-byte fixtures; no native
+    production-source change; and clean focused, full Rust all-family,
+    architecture-boundary, and workflow gates.
   - Commit outcome: one commit expressing deferred 680x0 values through neutral package fixups.
   - Definition of done: fixups and relocations match the oracle without a runtime family fixup callback.
 

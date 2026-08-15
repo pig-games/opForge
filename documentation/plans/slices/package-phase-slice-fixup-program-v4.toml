@@ -1,0 +1,56 @@
+[slice]
+schema_version = 1
+name = "versioned portable runtime-position and deferred-fixup programs"
+kind = "package-runtime"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 10
+requirements = ["N68X0-001", "N68X0-003", "N68X0-004", "N68X0-005", "N68X0-006", "N68X0-014", "N68X0-015"]
+rust_reference = [
+  "crates/opforge-families/src/m68k/handler.rs::M68KFamilyHandler::eval_pc_relative_displacement",
+  "crates/opforge-families/src/m68k/handler/effective_address.rs::M68KFamilyHandler::encode_effective_address",
+  "crates/opforge-asm/src/asmline_instruction.rs::AsmLine::m68k_instruction_output_fixups",
+  "crates/opforge-families/src/mos6502/handler.rs::MOS6502FamilyHandler::encode_instruction",
+  "crates/opforge-families/src/m68k/package_programs.rs::semantic_programs",
+  "crates/opforge-families/src/mos6502/package_programs.rs::semantic_programs",
+  "crates/opforge-package/src/package/fixup_program.rs::compile_fixup_program",
+  "crates/opforge-vm/src/fixup_vm.rs::execute_fixup_program",
+  "crates/opforge-vm/src/runtime_model_core.rs::RuntimeModelCore::execute_fixup_program"
+]
+boundary = "SEMV v4 is an independently versioned, CPU-neutral projection of typed resolved or unresolved values against a bounded runtime-position snapshot. Programs declare value versus position base, signed/unsigned/bit-pattern range, endian and width, unresolved rejection or placeholder, target-reference-sensitive projection, and optional absolute relocation intent. Family package adapters exclusively own PC-base adjustments, target-reference policy, widths, endian, and program ids."
+invariant = "After serialization and destruction of registry, chunks, and family handlers, emitted bytes, deferred-input reporting, and portable relocation records are determined only by SEMV v4 bytes, typed values, and the neutral position snapshot. Missing/unresolved inputs, overflow, invalid ranges/tags/widths, malformed programs, unsupported versions, truncation, and trailing bytes fail closed."
+expected_inputs = "A resolved hierarchy, opaque fixup-program id, ordered typed resolved/unresolved values carrying only target-reference and optional relocation-target metadata, and one signed runtime position."
+expected_outputs = "Deterministic bytes plus deferred-input indexes and bounded portable relocation records, or a typed program, input, position, projection, range, or offset failure."
+known_non_equivalences = "Item 10 materializes fixup projection/evaluation only. Expression parsing and symbol lookup remain inputs to the neutral boundary; branch candidate sizing/convergence is Item 11; full all-family applicability and assembler callback cutover are Items 12-13; native SEMV v4 interpretation and output integration begin after Item 14. No native production source changes in this slice."
+fast_proof_command = "cargo test -p package fixup_program_v4 -- --nocapture && cargo test -p vm serialized_fixup_programs_match_pc_relative_deferred_relocation_and_cross_family_oracles -- --nocapture && cargo test -p asm package_fixup_abs32_projection_matches_live_cross_section_relocation_oracle -- --nocapture && cargo test -p asm motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry -- --nocapture && cargo test -p asm motorola68020_embedded_native_cli_package_matches_rust_default_runtime_package -- --nocapture"
+full_gate_command = "cargo test -p package && cargo test -p registry && cargo test -p families && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
+native_proof = "not-applicable: Item 10 changes no native production source; refreshed fixtures are exact Rust-builder output, and the focused package is 8,030 bytes within the unchanged 8,192-byte native allocation"
+
+[[tests]]
+name = "fixup_program_v4_round_trips_runtime_bases_placeholders_ranges_and_relocations"
+proof_level = "package"
+proves = "Canonical SEMV v4 encodes and decodes every neutral base, range, endian, placeholder, and relocation declaration and round-trips through the package container."
+
+[[tests]]
+name = "fixup_program_v4_rejects_malformed_or_unrepresentable_programs"
+proof_level = "package-negative"
+proves = "Invalid widths, tags, base encoding, placeholder ranges, unsupported versions, truncation, and trailing bytes fail closed."
+
+[[tests]]
+name = "fixup_program_v4_validation_is_deterministic_for_mutated_bytes"
+proof_level = "package-fuzz"
+proves = "Deterministically mutated SEMV v4 byte streams produce repeatable validation outcomes without panics."
+
+[[tests]]
+name = "serialized_fixup_programs_match_pc_relative_deferred_relocation_and_cross_family_oracles"
+proof_level = "runtime-cross-family"
+proves = "Serialized-only execution matches live Rust m68k forward/backward PC-relative, unresolved placeholder, scalar displacement, and absolute-long bytes; emits a portable relocation; reuses the position-relative operation for the live MOS branch oracle; and proves typed failures."
+
+[[tests]]
+name = "package_fixup_abs32_projection_matches_live_cross_section_relocation_oracle"
+proof_level = "rust-oracle"
+proves = "Serialized m68k absolute-long projection matches the live assembler's cross-section bytes, target, encoded addend, and relative fixup offset."
+
+[[tests]]
+name = "motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry"
+proof_level = "native-package-capacity"
+proves = "The exact Rust-built focused package is 8,030 bytes and fits the unchanged 8,192-byte tkpkg allocation."

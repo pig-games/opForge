@@ -521,6 +521,18 @@ impl HierarchyExecutionModel {
             .execute_structured_encoding_program(resolved, program_id, records)
     }
 
+    /// Project resolved or deferred values against a neutral runtime-position snapshot.
+    pub fn execute_fixup_program(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        inputs: &[crate::fixup_vm::PortableFixupInput],
+        context: crate::fixup_vm::PortableFixupContext,
+    ) -> Result<crate::fixup_vm::PortableFixupResult, RuntimeBridgeError> {
+        self.core
+            .execute_fixup_program(resolved, program_id, inputs, context)
+    }
+
     /// Materialize one scalar using a package-owned, versioned value program.
     pub fn execute_value_program(
         &self,

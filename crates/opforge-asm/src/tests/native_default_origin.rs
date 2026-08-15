@@ -7,17 +7,36 @@ const IMPLICIT_ORIGIN_SOURCE: &[u8] =
 
 const EXPLICIT_ORIGIN_SOURCE: &[u8] = b"        .org $1200\n        .word target-1\n        nop\n        jmp exec\nexec    nop\ntarget  .byte $aa\n";
 
+const PRE_ORG_OUTPUT_SOURCE: &[u8] = b"        .byte $aa\n        .org $10\n        .byte $bb\n";
+
+const MIXED_UNPLACED_AND_PLACED_SOURCE: &[u8] = b".module app.main\n        .cpu 65c02\n        .region rom, $1000, $10ff\n        .section low, kind=code\n        .byte $aa\n        .endsection\n        .section high, kind=code\n        .byte $bb\n        .endsection\n        .place high in rom\n.endmodule\n.end\n";
+
+struct OriginOracleDir(PathBuf);
+
+impl Drop for OriginOracleDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 fn rust_origin_bytes(source: &[u8]) -> Vec<u8> {
-    let text = std::str::from_utf8(source).expect("origin fixture UTF-8");
-    let mut lines = vec![".cpu 65c02"];
-    lines.extend(text.lines());
-    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&lines, true)
-        .expect("assemble Rust origin authority");
-    assert!(
-        diagnostics.is_empty(),
-        "Rust origin diagnostics: {diagnostics:?}"
-    );
-    entries.into_iter().map(|(_, byte)| byte).collect()
+    let case_dir = create_temp_dir("native-default-origin-live-rust-cli");
+    let _guard = OriginOracleDir(case_dir.clone());
+    let input_path = case_dir.join("input.asm");
+    let output_path = case_dir.join("oracle.bin");
+    fs::write(&input_path, source).expect("write origin oracle source");
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--bin",
+        output_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "65c02",
+    ]);
+    let mut config = validate_cli(&cli).expect("validate origin Rust CLI oracle");
+    config.out_dir = Some(case_dir);
+    run_with_validated_cli_with_context(&cli, &config).expect("run origin Rust CLI oracle");
+    fs::read(output_path).expect("read origin Rust CLI oracle")
 }
 
 #[test]
@@ -33,6 +52,11 @@ fn native_default_origin_rust_oracle() {
         rust_origin_bytes(EXPLICIT_ORIGIN_SOURCE),
         vec![0x06, 0x12, 0xea, 0x4c, 0x06, 0x12, 0xea, 0xaa]
     );
+    assert_eq!(
+        rust_origin_bytes(PRE_ORG_OUTPUT_SOURCE),
+        [vec![0xaa], vec![0; 15], vec![0xbb]].concat()
+    );
+    assert_eq!(rust_origin_bytes(MIXED_UNPLACED_AND_PLACED_SOURCE), [0xbb]);
 }
 
 #[test]
@@ -76,6 +100,23 @@ fn native_default_origin_source_contract() {
             "move.l d1, OpasmEngineSessionCurrentPc.l",
         ]
     ));
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "advanceLayoutD3",
+            "jsr layout.sectionActiveV1",
+            "bne.s advanceLayoutReady",
+            "move.w #1, OpasmDriverImageBaseSeen",
+            "advanceOne",
+            "jsr layout.sectionActiveV1",
+            "bne.s advanceOneReady",
+            "move.w #1, OpasmDriverImageBaseSeen",
+        ]
+    ));
 }
 
 #[test]
@@ -86,6 +127,8 @@ fn native_default_origin_fs_uae() {
     let package = item6_mos_package_bytes();
     let implicit_rust = rust_origin_bytes(IMPLICIT_ORIGIN_SOURCE);
     let explicit_rust = rust_origin_bytes(EXPLICIT_ORIGIN_SOURCE);
+    let pre_org_rust = rust_origin_bytes(PRE_ORG_OUTPUT_SOURCE);
+    let mixed_section_rust = rust_origin_bytes(MIXED_UNPLACED_AND_PLACED_SOURCE);
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
             name: "implicit-origin-zero",
@@ -97,12 +140,30 @@ fn native_default_origin_fs_uae() {
             ),
         },
         crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+            name: "output-before-explicit-origin",
+            cpu_id: "65c02",
+            source: PRE_ORG_OUTPUT_SOURCE,
+            package_bytes: package.as_slice(),
+            proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(
+                pre_org_rust.as_slice(),
+            ),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
             name: "explicit-origin-1200",
             cpu_id: "65c02",
             source: EXPLICIT_ORIGIN_SOURCE,
             package_bytes: package.as_slice(),
             proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(
                 explicit_rust.as_slice(),
+            ),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+            name: "discard-unplaced-section-before-placed-section",
+            cpu_id: "65c02",
+            source: MIXED_UNPLACED_AND_PLACED_SOURCE,
+            package_bytes: package.as_slice(),
+            proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(
+                mixed_section_rust.as_slice(),
             ),
         },
     ];
@@ -112,7 +173,12 @@ fn native_default_origin_fs_uae() {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
             assert_eq!(runs.len(), cases.len());
-            for (run, expected) in runs.iter().zip([implicit_rust, explicit_rust]) {
+            for (run, expected) in runs.iter().zip([
+                &implicit_rust,
+                &pre_org_rust,
+                &explicit_rust,
+                &mixed_section_rust,
+            ]) {
                 assert!(
                     run.success,
                     "native origin fixture failed\nstdout:\n{}\nstderr:\n{}",

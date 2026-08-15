@@ -6766,6 +6766,56 @@ fn item83_staged_cases() -> Vec<Item82StagedCase> {
         .collect()
 }
 
+fn item6_staged_cases() -> Vec<Item7StagedCase> {
+    NATIVE_OPCORE_ASSIGNMENTS
+        .iter()
+        .filter(|assignment| {
+            assignment.shard == NativeOpcoreShard::SyntaxExpression
+                && matches!(assignment.role, NativeOpcoreRole::Root { .. })
+        })
+        .map(|assignment| {
+            let guest_files = NATIVE_OPCORE_ASSIGNMENTS
+                .iter()
+                .filter_map(|support| match support.role {
+                    NativeOpcoreRole::Support { owner }
+                        if support.shard == NativeOpcoreShard::SyntaxExpression
+                            && owner == assignment.source_path =>
+                    {
+                        let relative_path = support
+                            .source_path
+                            .strip_prefix("examples/opcore/")
+                            .expect("Item 6 support is below examples/opcore")
+                            .to_string();
+                        let bytes = fs::read(workspace_root().join(support.source_path))
+                            .unwrap_or_else(|err| {
+                                panic!("read Item 6 support {}: {err}", support.source_path)
+                            });
+                        Some(Item7StagedGuestFile {
+                            relative_path,
+                            bytes,
+                        })
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            let source = item7_native_source(assignment);
+            let rust_oracle = item7_live_rust_cli_binary_oracle(
+                assignment.source_path,
+                &source,
+                &guest_files,
+                "65c02",
+                &[],
+            );
+            Item7StagedCase {
+                name: assignment.source_path,
+                source,
+                guest_files,
+                rust_oracle,
+            }
+        })
+        .collect()
+}
+
 fn item7_staged_cases() -> Vec<Item7StagedCase> {
     NATIVE_OPCORE_ASSIGNMENTS
         .iter()
@@ -7057,6 +7107,175 @@ fn item9_normalize_native_diagnostic(stderr: &str) -> Result<Item9DiagnosticKind
         ));
     }
     Ok(primary)
+}
+
+#[test]
+fn native_image_writes_follow_current_pc_across_overlapping_origins() {
+    // Proof level B. The native image owner retains the lowest pass-one origin
+    // and starts every pass-two statement at current-PC minus that origin.
+    // Appends then overwrite that address range and extend/zero only a forward
+    // gap. This proves the corrected source contract, not real 68020 execution.
+    let engine = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_engine.asm"),
+    )
+    .expect("read native opasm engine");
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "opasmEngineAppendImageBytesV1",
+            "move.l OpasmEngineImageWriteOffset.l, d1",
+            "mainGapLoop",
+            "move.b (a0)+, (a1)+",
+            "add.l d3, OpasmEngineImageWriteOffset.l",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "opasmEngineAppendImageBytesV1",
+            "tst.l d3",
+            "beq.w success",
+            "opasmEngineFlushMappedImageV1",
+            "move.w OpasmEngineImageByteCount.l, d0",
+            "move.l d0, OpasmEngineImageWriteOffset.l",
+            "jsr opasmEngineAppendImageBytesV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "opasmEngineBeginStatementOutputV1",
+            "move.l OpasmEngineSessionCurrentPc.l, d2",
+            "sub.l OpasmEngineSessionOrigin.l, d2",
+            "move.l d2, OpasmEngineImageWriteOffset.l",
+        ]
+    ));
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm driver");
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "finalizeImageOriginForPassTwo",
+            "jsr layout.getSectionCountV1",
+            "jsr layout.getPlacedSectionImageOriginCandidateV1",
+            "tst.w OpasmDriverImageBaseSeen",
+            "jsr eng.opasmEngineSetImageOriginV1",
+            "setPlacedSectionOriginWithImageGap",
+            "jsr eng.opasmEngineGetSessionPassV1",
+            "tst.w OpasmDriverImageBaseSeen",
+            "jsr eng.opasmEngineGetSessionOriginV1",
+            "jsr eng.opasmEngineSetImageOriginV1",
+            "jsr eng.opasmEngineSetCurrentPcV1",
+        ]
+    ));
+    let layout = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_layout.asm"),
+    )
+    .expect("read native opasm layout");
+    assert!(source_contains_in_order(
+        &layout,
+        &[
+            "getPlacedSectionImageOriginCandidateV1",
+            "OpasmLayoutSectionPlacedFlags.l",
+            "OpasmLayoutSectionSizes.l",
+            "OPASM_LAYOUT_SECTION_KIND_BSS",
+            "OpasmLayoutSectionLogicalFlags.l",
+            "OpasmLayoutSectionBases.l",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &layout,
+        &[
+            "placeSectionV1",
+            "groupSizeLoop",
+            "sectionNameMatchesPlaceTargetV1",
+            "OpasmLayoutSectionLogicalFlags.l",
+            "OpasmLayoutSectionSizes.l",
+            "assignGroupLoop",
+            "OpasmLayoutSectionBases.l",
+            "OpasmLayoutSectionRegionIndices.l",
+            "OpasmLayoutSectionPlacedFlags.l",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &layout,
+        &[
+            "statementImageRouteV1",
+            "OpasmLayoutStatementMappedFlags.l",
+            "bne.s mapped",
+            "OpasmLayoutSectionLogicalFlags.l",
+            "bne.s discard",
+            "OpasmLayoutSectionPlacedFlags.l",
+            "bne.s main",
+            "discard",
+            "moveq #1, d0",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "advanceLayoutD3",
+            "jsr layout.sectionActiveV1",
+            "bne.s advanceLayoutReady",
+            "move.w #1, OpasmDriverImageBaseSeen",
+        ]
+    ));
+    assert!(engine.contains("NATIVE_IMAGE_BUFFER_CAPACITY    = 65535"));
+}
+
+#[test]
+fn item6_staging_covers_every_assigned_root_and_support_file() {
+    // Proof levels A/B. The Item 6 evidence set is derived from the exact
+    // inventory without a numeric cap. Every root supplies its stored source,
+    // owned support tree, and same-case live Rust CLI bytes. Native execution
+    // remains the separate Level D test.
+    let cases = item6_staged_cases();
+    let expected_roots = NATIVE_OPCORE_ASSIGNMENTS
+        .iter()
+        .filter(|assignment| {
+            assignment.shard == NativeOpcoreShard::SyntaxExpression
+                && matches!(assignment.role, NativeOpcoreRole::Root { .. })
+        })
+        .map(|assignment| assignment.source_path)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        cases.iter().map(|case| case.name).collect::<Vec<_>>(),
+        expected_roots,
+        "uncapped Item 6 staging must contain every assigned root in inventory order"
+    );
+    assert!(!cases.is_empty(), "Item 6 must have assigned roots");
+    for case in &cases {
+        let expected_support = NATIVE_OPCORE_ASSIGNMENTS
+            .iter()
+            .filter_map(|assignment| match assignment.role {
+                NativeOpcoreRole::Support { owner }
+                    if assignment.shard == NativeOpcoreShard::SyntaxExpression
+                        && owner == case.name =>
+                {
+                    Some(
+                        assignment
+                            .source_path
+                            .strip_prefix("examples/opcore/")
+                            .expect("Item 6 support path below opcore"),
+                    )
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            case.guest_files
+                .iter()
+                .map(|file| file.relative_path.as_str())
+                .collect::<Vec<_>>(),
+            expected_support,
+            "Item 6 must stage every support file owned by {}",
+            case.name
+        );
+        assert!(!case.source.is_empty());
+        assert!(!case.rust_oracle.is_empty());
+    }
 }
 
 #[test]
@@ -7990,6 +8209,155 @@ fn native_preprocessor_conditionals_stored_65c02_fs_uae() {
             assert!(
                 runs[5..].iter().all(|run| !run.success),
                 "every malformed or capacity case must fail"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_syntax_overlapping_origins_fs_uae() {
+    // Proof level D. The exact stored syntax root exercises forward, backward,
+    // overlapping, and far-forward origins. Its fresh native CLI artifact must
+    // equal the same-source live Rust bytes; completion and exit zero remain
+    // mandatory in the shared fail-closed runner.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let staged = item6_staged_cases();
+    let case = staged
+        .iter()
+        .find(|case| case.name == "examples/opcore/syntax.asm")
+        .expect("stored syntax root is assigned to Item 6");
+    let guest_files = case
+        .guest_files
+        .iter()
+        .map(|file| crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+            relative_path: &file.relative_path,
+            bytes: &file.bytes,
+        })
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let parity_case = crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: case.name,
+        cpu_override: "68020",
+        extra_assembly_defines: &defines,
+        source_override: Some(&case.source),
+        command_template: Some(
+            "{input} --bin {bin} --cpu 65c02 -I {guest_work_dir} -M {guest_work_dir}",
+        ),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &guest_files,
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &case.rust_oracle,
+        },
+    };
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &[parity_case],
+    )
+    .expect("overlapping-origin syntax FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].success, "stored syntax root must exit zero");
+            assert_eq!(verified_fs_uae_output(&runs[0]), case.rust_oracle);
+        }
+    }
+}
+
+#[test]
+fn native_reference_opcore_syntax_expression_fs_uae() {
+    // Proof level D. Every exact stored Item 6 root and its owned support tree
+    // runs independently through the native CLI. Fresh guest completion,
+    // explicit zero exit, and byte equality with that root's live in-memory
+    // Rust CLI oracle are mandatory; no runtime case cap is accepted.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let root = workspace_root();
+    let staged = item6_staged_cases();
+    let assigned_roots = NATIVE_OPCORE_ASSIGNMENTS
+        .iter()
+        .filter(|assignment| {
+            assignment.shard == NativeOpcoreShard::SyntaxExpression
+                && matches!(assignment.role, NativeOpcoreRole::Root { .. })
+        })
+        .map(|assignment| assignment.source_path)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        staged.iter().map(|case| case.name).collect::<Vec<_>>(),
+        assigned_roots,
+        "uncapped Item 6 run must contain every assigned root in inventory order"
+    );
+    let guest_files = staged
+        .iter()
+        .map(|case| {
+            case.guest_files
+                .iter()
+                .map(|file| crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+                    relative_path: &file.relative_path,
+                    bytes: &file.bytes,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let cases = staged
+        .iter()
+        .enumerate()
+        .map(
+            |(index, case)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name: case.name,
+                cpu_override: "68020",
+                extra_assembly_defines: &defines,
+                source_override: Some(&case.source),
+                command_template: Some(
+                    "{input} --bin {bin} --cpu 65c02 -I {guest_work_dir} -M {guest_work_dir}",
+                ),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &guest_files[index],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: &case.rust_oracle,
+                },
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&root, &cases)
+        .expect("Item 6 syntax/expression FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), staged.len(), "every Item 6 root completed");
+            let mut errors = Vec::new();
+            for (run, case) in runs.iter().zip(staged.iter()) {
+                if !run.success {
+                    errors.push(format!(
+                        "{} failed\nstdout:\n{}\nstderr:\n{}",
+                        case.name, run.stdout, run.stderr
+                    ));
+                    continue;
+                }
+                let native = verified_fs_uae_output(run);
+                if native != case.rust_oracle {
+                    errors.push(format!(
+                        "{} bytes differ: native {}, Rust {}",
+                        case.name,
+                        item6_hex_bytes(native),
+                        item6_hex_bytes(&case.rust_oracle)
+                    ));
+                }
+            }
+            assert!(
+                errors.is_empty(),
+                "{} of {} Item 6 roots failed after every case was attempted:\n{}",
+                errors.len(),
+                staged.len(),
+                errors.join("\n")
             );
         }
     }

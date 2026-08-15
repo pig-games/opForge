@@ -16,7 +16,7 @@ SOURCE_LINE_BUFFER_CAPACITY     = 512
 NATIVE_SOURCE_RECORD_CAPACITY   = 512
 NATIVE_STATEMENT_TABLE_CAPACITY = NATIVE_SOURCE_RECORD_CAPACITY
 NATIVE_LABEL_TABLE_CAPACITY     = NATIVE_SOURCE_RECORD_CAPACITY
-NATIVE_IMAGE_BUFFER_CAPACITY    = 8192
+NATIVE_IMAGE_BUFFER_CAPACITY    = 65535
 NATIVE_SOURCE_TEXT_BYTES        = NATIVE_SOURCE_RECORD_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY
 OPASM_ENGINE_CONTEXT_LONGS      = 11
 ; Exact byte count from OpasmEngineAssemblySessionStart through the two image
@@ -327,6 +327,7 @@ clearLoop
 	clr.b (a0)+
 	dbf d0, clearLoop
 	clr.w OpasmEngineImageByteCount.l
+	clr.l OpasmEngineImageWriteOffset.l
 	clr.l OpasmEngineSessionOrigin.l
 	move.l OpasmEngineSessionOrigin.l, d1
 	move.l d1, OpasmEngineSessionCurrentPc.l
@@ -355,6 +356,7 @@ finalizeDone
 	clr.w OpasmEngineImageByteCount.l
 	clr.w OpasmEngineMappedImageByteCount.l
 	clr.w OpasmEngineImageRoute.l
+	clr.l OpasmEngineImageWriteOffset.l
 	move.l OpasmEngineSessionOrigin.l, d1
 	move.l d1, OpasmEngineSessionCurrentPc.l
 	movem.l (sp)+, d1/a0
@@ -796,6 +798,19 @@ opasmEngineSetOriginV1	.block
 	rts
 	.bend  ; opasmEngineSetOriginV1
 
+; Lower the retained image origin without changing the current source PC.
+; Pass one uses this when a later `.org` precedes the first observed origin;
+; pass two then starts at the finalized minimum address.
+; @opforge-owner: opasm.amigaos.image
+; @opforge-slice: documentation/plans/slices/native-porting-slice-overlapping-origin-image.toml
+; @opforge-role: implementation
+; Inputs: D0 = new image origin. Outputs: D0 = 0.
+opasmEngineSetImageOriginV1	.block
+	move.l d0, OpasmEngineSessionOrigin.l
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineSetImageOriginV1
+
 ; Set current PC while preserving the session origin.
 ;
 ; Inputs:
@@ -823,6 +838,9 @@ opasmEngineAdvancePcBySizeV1	.block
 	.bend  ; opasmEngineAdvancePcBySizeV1
 
 ; Append encoded bytes to the opasm-owned image buffer.
+; @opforge-owner: opasm.amigaos.image
+; @opforge-slice: documentation/plans/slices/native-porting-slice-overlapping-origin-image.toml
+; @opforge-role: implementation
 ;
 ; Inputs:
 ; - A0: encoded byte source.
@@ -839,17 +857,34 @@ opasmEngineAppendImageBytesV1	.block
 	move.w OpasmEngineImageRoute.l, d1
 	cmpi.w #1, d1
 	beq.w success
+	tst.l d3
+	beq.w success
 	cmpi.w #2, d1
 	beq.w mapped
-	moveq #0, d1
-	move.w OpasmEngineImageByteCount.l, d1
-	add.l d3, d1
-	cmpi.l #NATIVE_IMAGE_BUFFER_CAPACITY, d1
+	move.l OpasmEngineImageWriteOffset.l, d1
+	move.l d1, d2
+	add.l d3, d2
+	cmpi.l #NATIVE_IMAGE_BUFFER_CAPACITY, d2
 	bhi.w fail
-	moveq #0, d1
-	move.w OpasmEngineImageByteCount.l, d1
+	; A forward origin leaves an address gap. Clear only the newly exposed
+	; range so bytes from a prior assembly can never become current evidence.
+	moveq #0, d3
+	move.w OpasmEngineImageByteCount.l, d3
+	cmp.l d3, d1
+	bls.s mainCopyReady
+	lea OpasmEngineImageBuffer.l, a1
+	adda.l d3, a1
+	sub.l d3, d1
+mainGapLoop
+	clr.b (a1)+
+	subq.l #1, d1
+	bne.s mainGapLoop
+	move.l OpasmEngineImageWriteOffset.l, d1
+mainCopyReady
 	lea OpasmEngineImageBuffer.l, a1
 	adda.l d1, a1
+	moveq #0, d3
+	move.w d0, d3
 	move.w d3, d1
 	beq.s done
 
@@ -859,7 +894,13 @@ copyLoop
 	bne.s copyLoop
 
 done
-	add.w d3, OpasmEngineImageByteCount.l
+	add.l d3, OpasmEngineImageWriteOffset.l
+	move.l OpasmEngineImageWriteOffset.l, d1
+	moveq #0, d2
+	move.w OpasmEngineImageByteCount.l, d2
+	cmp.l d2, d1
+	bls.w success
+	move.w d1, OpasmEngineImageByteCount.l
 	bra.w success
 
 mapped
@@ -914,6 +955,9 @@ fail
 ; Outputs: D0.L = 0 on success, 1 on main-image capacity failure.
 opasmEngineFlushMappedImageV1	.block
 	clr.w OpasmEngineImageRoute.l
+	moveq #0, d0
+	move.w OpasmEngineImageByteCount.l, d0
+	move.l d0, OpasmEngineImageWriteOffset.l
 	lea OpasmEngineMappedImageBuffer.l, a0
 	moveq #0, d0
 	move.w OpasmEngineMappedImageByteCount.l, d0
@@ -942,6 +986,9 @@ invalid
 	.bend  ; opasmEngineGetLabelStatementIndexV1
 
 ; Mark the image byte offset/address where one statement starts emitting bytes.
+; @opforge-owner: opasm.amigaos.image
+; @opforge-slice: documentation/plans/slices/native-porting-slice-overlapping-origin-image.toml
+; @opforge-role: implementation
 ;
 ; Inputs:
 ; - D0: statement index.
@@ -953,8 +1000,9 @@ opasmEngineBeginStatementOutputV1	.block
 	moveq #0, d1
 	move.w d0, d1
 	lsl.l #2, d1
-	moveq #0, d2
-	move.w OpasmEngineImageByteCount.l, d2
+	move.l OpasmEngineSessionCurrentPc.l, d2
+	sub.l OpasmEngineSessionOrigin.l, d2
+	move.l d2, OpasmEngineImageWriteOffset.l
 	lea OpasmEngineStmtOutputOffsetTable.l, a0
 	move.l d2, 0(a0, d1.l)
 	lea OpasmEngineStmtOutputByteCountTable.l, a0
@@ -979,8 +1027,7 @@ opasmEngineEndStatementOutputV1	.block
 	moveq #0, d1
 	move.w d0, d1
 	lsl.l #2, d1
-	moveq #0, d2
-	move.w OpasmEngineImageByteCount.l, d2
+	move.l OpasmEngineImageWriteOffset.l, d2
 	lea OpasmEngineStmtOutputOffsetTable.l, a0
 	sub.l 0(a0, d1.l), d2
 	lea OpasmEngineStmtOutputByteCountTable.l, a0
@@ -3126,6 +3173,8 @@ OpasmEngineImageRoute
 	.res word, 1
 OpasmEngineMappedImageByteCount
 	.res word, 1
+OpasmEngineImageWriteOffset
+	.res long, 1
 OpasmEngineImageBuffer
 	.res byte, NATIVE_IMAGE_BUFFER_CAPACITY
 OpasmEngineMappedImageBuffer

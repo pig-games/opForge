@@ -273,7 +273,7 @@ fail
 ; Inputs: D0.L = requested alignment; stored place indices select the section and region.
 ;         Caller has confirmed no section is active.
 ; Outputs: D0.L = 0 on success, 1 for invalid index, duplicate, overflow, or range failure.
-; Clobbers: D0-D6/A0/CCR.
+; Clobbers: D0-D7/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 placeSectionV1	.block
 	move.l d0, d3
@@ -319,13 +319,35 @@ haveSectionAlign
 	move.w d4, OpasmLayoutPlaceSectionIndex
 	bsr.w alignCursorV1
 	bne.w fail
-	moveq #0, d4
-	move.w OpasmLayoutPlaceSectionIndex, d4
+	; Rust ordinary sections merge by structural section name across module
+	; owners. Compute the complete concrete group size before reserving space.
+	moveq #0, d2
+	moveq #0, d7
+groupSizeLoop
+	cmp.w OpasmLayoutSectionCount.l, d7
+	bhs.s groupSizeReady
+	move.w d7, d5
+	bsr.w sectionNameMatchesPlaceTargetV1
+	bne.s groupSizeNext
+	lea OpasmLayoutSectionLogicalFlags.l, a0
+	jsr wordTablePtrV1
+	tst.w (a0)
+	bne.s groupSizeNext
+	lea OpasmLayoutSectionPlacedFlags.l, a0
+	jsr wordTablePtrV1
+	tst.w (a0)
+	bne.w fail
 	lea OpasmLayoutSectionSizes.l, a0
-	move.w d4, d5
 	jsr longTablePtrV1
-	move.l (a0), d2
-	beq.s store
+	add.l (a0), d2
+	bcs.w fail
+groupSizeNext
+	addq.w #1, d7
+	bra.s groupSizeLoop
+
+groupSizeReady
+	tst.l d2
+	beq.s storeCursor
 	move.l d1, d0
 	add.l d2, d0
 	bcs.w fail
@@ -340,27 +362,44 @@ haveSectionAlign
 	move.w d6, d5
 	jsr longTablePtrV1
 	move.l d0, (a0)
-	bra.s storeBase
+	bra.s assignGroup
 
-store
+storeCursor
 	lea OpasmLayoutRegionCursors.l, a0
 	move.w d6, d5
 	jsr longTablePtrV1
 	move.l d1, (a0)
 
-storeBase
+assignGroup
+	move.l d1, d3
+	moveq #0, d7
+assignGroupLoop
+	cmp.w OpasmLayoutSectionCount.l, d7
+	bhs.s success
+	move.w d7, d5
+	bsr.w sectionNameMatchesPlaceTargetV1
+	bne.s assignGroupNext
+	lea OpasmLayoutSectionLogicalFlags.l, a0
+	jsr wordTablePtrV1
+	tst.w (a0)
+	bne.s assignGroupNext
 	lea OpasmLayoutSectionBases.l, a0
-	move.w d4, d5
 	jsr longTablePtrV1
-	move.l d1, (a0)
+	move.l d3, (a0)
 	lea OpasmLayoutSectionRegionIndices.l, a0
-	move.w d4, d5
 	jsr wordTablePtrV1
 	move.w d6, (a0)
 	lea OpasmLayoutSectionPlacedFlags.l, a0
-	move.w d4, d5
 	jsr wordTablePtrV1
 	move.w #1, (a0)
+	lea OpasmLayoutSectionSizes.l, a0
+	jsr longTablePtrV1
+	add.l (a0), d3
+assignGroupNext
+	addq.w #1, d7
+	bra.s assignGroupLoop
+
+success
 	moveq #0, d0
 	rts
 
@@ -368,6 +407,42 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; placeSectionV1
+
+; Compare one retained section's ordinary name with the selected `.place`
+; target while preserving the caller's group cursors and indices.
+; @opforge-owner: opasm.amigaos.layout
+; @opforge-slice: documentation/plans/slices/native-porting-slice-overlapping-origin-image.toml
+; @opforge-role: delegation
+; Inputs: D5.W = candidate section index; stored place index = target.
+; Outputs: D0.L = 0 on match, 1 on mismatch.
+; Clobbers: D0/A0-A1/CCR. Preserves D1-D7/A2.
+sectionNameMatchesPlaceTargetV1	.block
+	movem.l d1-d5/a2, -(sp)
+	lea OpasmLayoutSectionNameLens.l, a0
+	jsr wordTablePtrV1
+	moveq #0, d0
+	move.w (a0), d0
+	move.l d5, d2
+	lsl.l #5, d2
+	lea OpasmLayoutSectionNames.l, a0
+	adda.l d2, a0
+	moveq #0, d5
+	move.w OpasmLayoutPlaceSectionIndex, d5
+	lea OpasmLayoutSectionNameLens.l, a1
+	move.l a0, d4
+	movea.l a1, a0
+	jsr wordTablePtrV1
+	moveq #0, d1
+	move.w (a0), d1
+	move.l d5, d2
+	lsl.l #5, d2
+	lea OpasmLayoutSectionNames.l, a1
+	adda.l d2, a1
+	movea.l d4, a0
+	jsr namesMatchV1
+	movem.l (sp)+, d1-d5/a2
+	rts
+	.bend  ; sectionNameMatchesPlaceTargetV1
 ; Return whether a section remains active after a layout transition.
 ; Outputs: D0.L = 0 when clear, 1 when active.
 ; Clobbers: D0/CCR.
@@ -908,6 +983,45 @@ getSectionInfoV1	.block
 	rts
 	.bend  ; getSectionInfoV1
 
+; Return the flat-image origin candidate for one finalized placed, concrete,
+; nonempty, non-BSS section. Logical and unplaced sections route to discard or
+; the separately packed mapped tail and never establish this base.
+; @opforge-owner: opasm.amigaos.image
+; @opforge-slice: documentation/plans/slices/native-porting-slice-overlapping-origin-image.toml
+; @opforge-role: delegation
+; Inputs: D5.W = section index.
+; Outputs: D0.L = candidate address; D1.L = 1 when valid, otherwise 0.
+; Clobbers: D0-D2/A0/CCR. Preserves D3-D5, including the caller's index.
+getPlacedSectionImageOriginCandidateV1	.block
+	cmp.w OpasmLayoutSectionCount.l, d5
+	bhs.s invalid
+	lea OpasmLayoutSectionPlacedFlags.l, a0
+	jsr wordTablePtrV1
+	tst.w (a0)
+	beq.s invalid
+	lea OpasmLayoutSectionSizes.l, a0
+	jsr longTablePtrV1
+	tst.l (a0)
+	beq.s invalid
+	lea OpasmLayoutSectionKinds.l, a0
+	jsr wordTablePtrV1
+	cmpi.w #OPASM_LAYOUT_SECTION_KIND_BSS, (a0)
+	beq.s invalid
+	lea OpasmLayoutSectionLogicalFlags.l, a0
+	jsr wordTablePtrV1
+	tst.w (a0)
+	bne.s invalid
+	lea OpasmLayoutSectionBases.l, a0
+	jsr longTablePtrV1
+	move.l (a0), d0
+	moveq #1, d1
+	rts
+invalid
+	moveq #0, d0
+	moveq #0, d1
+	rts
+	.bend  ; getPlacedSectionImageOriginCandidateV1
+
 ; Translate a pass-one PC through the final placed section layout.
 ; Inputs: D0 = pass-one PC. Outputs: D0 = placed PC and D1 = 1 when the PC
 ; belongs to a placed section; otherwise D0 is unchanged and D1 = 0.
@@ -1255,9 +1369,14 @@ statementImageRouteV1	.block
 	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
 	beq.s main
 	lea OpasmLayoutSectionLogicalFlags.l, a0
-	add.w d5, d5
-	tst.w 0(a0, d5.w)
-	beq.s main
+	jsr wordTablePtrV1
+	tst.w (a0)
+	bne.s discard
+	lea OpasmLayoutSectionPlacedFlags.l, a0
+	jsr wordTablePtrV1
+	tst.w (a0)
+	bne.s main
+discard
 	moveq #1, d0
 	rts
 mapped

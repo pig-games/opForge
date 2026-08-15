@@ -14187,9 +14187,12 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &driver,
         &[
             "setPlacedSectionOriginWithImageGap .BLOCK",
-            "BSR.W appendRepeatedByte",
-            "JSR eng.opasmEngineSetCurrentPcV1",
+            "JSR eng.opasmEngineGetSessionPassV1",
+            "TST.W OpasmDriverImageBaseSeen",
             "JSR eng.opasmEngineSetOriginV1",
+            "JSR eng.opasmEngineGetSessionOriginV1",
+            "JSR eng.opasmEngineSetImageOriginV1",
+            "JSR eng.opasmEngineSetCurrentPcV1",
         ]
     ));
     assert!(source_contains_in_order(

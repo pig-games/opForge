@@ -83,6 +83,7 @@ opasmDriverPassOneBegin	.block
 	moveq #1, d1
 	bsr.w appendPassEvent
 	jsr eng.opasmEngineBeginPassOneV1
+	clr.w OpasmDriverImageBaseSeen
 	jsr layout.resetStateV1
 	movea.l OpasmActiveAssembleReqPtr, a0
 	movea.l abi.OPASM_ASSEMBLE_REQ_LAYOUT_INIT_CB(a0), a0
@@ -123,6 +124,8 @@ opasmDriverPassTwoBegin	.block
 	bsr.w appendPassEvent
 	jsr eng.opasmEngineBeginPassTwoV1
 	jsr layout.finalizeReachableSectionMapsV1
+	bne.s layoutFail
+	bsr.w finalizeImageOriginForPassTwo
 	bne.s layoutFail
 	bsr.w rebasePlacedLabelsForPassTwo
 	bne.s rebaseFail
@@ -179,6 +182,53 @@ failDone
 	moveq #1, d0
 	rts
 	.bend  ; opasmDriverPassTwoBegin
+
+; Fold finalized placed concrete non-BSS sections into the flat image origin.
+; A default zero PC is not an emitted address. Explicit origins or bytes
+; outside sections keep their retained lower base.
+; @opforge-owner: opasm.amigaos.image
+; @opforge-slice: documentation/plans/slices/native-porting-slice-overlapping-origin-image.toml
+; @opforge-role: delegation
+; Outputs: D0.L = 0.
+; Clobbers: D0-D7/A0/CCR.
+finalizeImageOriginForPassTwo	.block
+	moveq #0, d7
+	moveq #0, d4
+	jsr layout.getSectionCountV1
+	move.w d0, d6
+	moveq #0, d5
+sectionLoop
+	cmp.w d6, d5
+	bhs.s haveMinimum
+	jsr layout.getPlacedSectionImageOriginCandidateV1
+	tst.l d1
+	beq.s next
+	tst.w d7
+	beq.s storeMinimum
+	cmp.l d4, d0
+	bhs.s next
+storeMinimum
+	move.l d0, d4
+	moveq #1, d7
+next
+	addq.w #1, d5
+	bra.s sectionLoop
+
+haveMinimum
+	tst.w d7
+	beq.s success
+	tst.w OpasmDriverImageBaseSeen
+	beq.s setMinimum
+	jsr eng.opasmEngineGetSessionOriginV1
+	cmp.l d0, d4
+	bhs.s success
+setMinimum
+	move.l d4, d0
+	jsr eng.opasmEngineSetImageOriginV1
+success
+	moveq #0, d0
+	rts
+	.bend  ; finalizeImageOriginForPassTwo
 
 ; Rebase every PC-backed pass-one label through the finalized section layout
 ; before pass-two expression evaluation begins. This includes forward
@@ -1607,6 +1657,13 @@ fill
 	bne.s orgBad
 
 advanceLayoutD3
+	tst.l d3
+	beq.s advanceLayoutReady
+	jsr layout.sectionActiveV1
+	tst.l d0
+	bne.s advanceLayoutReady
+	move.w #1, OpasmDriverImageBaseSeen
+advanceLayoutReady
 	move.l d3, d0
 	jsr eng.opasmEngineAdvancePcBySizeV1
 	bra.w done
@@ -1653,16 +1710,31 @@ ptext
 	bra.w orgBad
 
 advanceOne
+	jsr layout.sectionActiveV1
+	tst.l d0
+	bne.s advanceOneReady
+	move.w #1, OpasmDriverImageBaseSeen
+advanceOneReady
 	moveq #1, d0
 	jsr eng.opasmEngineAdvancePcBySizeV1
 	bra.w done
 
 advanceTwo
+	jsr layout.sectionActiveV1
+	tst.l d0
+	bne.s advanceTwoReady
+	move.w #1, OpasmDriverImageBaseSeen
+advanceTwoReady
 	moveq #2, d0
 	jsr eng.opasmEngineAdvancePcBySizeV1
 	bra.w done
 
 advanceThree
+	jsr layout.sectionActiveV1
+	tst.l d0
+	bne.s advanceThreeReady
+	move.w #1, OpasmDriverImageBaseSeen
+advanceThreeReady
 	moveq #3, d0
 	jsr eng.opasmEngineAdvancePcBySizeV1
 	bra.w done
@@ -2475,39 +2547,39 @@ return
 	rts
 	.bend  ; processPackDirectiveForStatement
 
-; Set origin for a placed section, preserving first image origin and filling gaps.
+; Retain the minimum pass-one origin, then position pass two by address. The
+; engine's statement write cursor materializes forward gaps and overwrites
+; backward ranges, so source-order `.org` changes never depend on append order.
+; @opforge-owner: opasm.amigaos.image
+; @opforge-slice: documentation/plans/slices/native-porting-slice-overlapping-origin-image.toml
+; @opforge-role: implementation
 ; Inputs: D0.L = placed section base.
-; Outputs: D0.L = 0 on success, 1 on image capacity failure.
+; Outputs: D0.L = 0 on success.
 ; Clobbers: D0-D4/A0/CCR.
 ; CCR: reflects D0.L on return.
 setPlacedSectionOriginWithImageGap	.block
 	movem.l d1-d4/a0, -(sp)
 	move.l d0, d4
-	jsr eng.opasmEngineGetImageByteCountV1
-	tst.l d0
-	beq.s firstImageOrigin
-	jsr eng.opasmEngineGetSessionCurrentPcV1
-	move.l d4, d1
-	cmp.l d0, d1
-	bls.s setCurrentPc
-	sub.l d0, d1
-	move.l d1, d0
-	moveq #0, d1
-	bsr.w appendRepeatedByte
-	bne.s fail
-
-setCurrentPc
-	move.l d4, d0
-	jsr eng.opasmEngineSetCurrentPcV1
-	bra.s return
-
-firstImageOrigin
+	jsr eng.opasmEngineGetSessionPassV1
+	cmpi.w #1, d0
+	bne.s setCurrentPc
+	tst.w OpasmDriverImageBaseSeen
+	bne.s updateMinimum
+	move.w #1, OpasmDriverImageBaseSeen
 	move.l d4, d0
 	jsr eng.opasmEngineSetOriginV1
 	bra.s return
 
-fail
-	moveq #1, d0
+updateMinimum
+	jsr eng.opasmEngineGetSessionOriginV1
+	cmp.l d0, d4
+	bhs.s setCurrentPc
+	move.l d4, d0
+	jsr eng.opasmEngineSetImageOriginV1
+
+setCurrentPc
+	move.l d4, d0
+	jsr eng.opasmEngineSetCurrentPcV1
 
 return
 	movem.l (sp)+, d1-d4/a0
@@ -4410,6 +4482,9 @@ OpasmDriverScopedRepeatValue
 
 OpasmMatchValue
 	.res long, 1
+
+OpasmDriverImageBaseSeen
+	.res word, 1
 
 	.endsection
 	.endmodule

@@ -1,0 +1,34 @@
+[slice]
+schema_version = 2
+name = "native overlapping-origin image parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-types/src/image.rs::ImageStore",
+  "examples/opcore/syntax.asm"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_layout.asm::getPlacedSectionImageOriginCandidateV1",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::finalizeImageOriginForPassTwo",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::setPlacedSectionOriginWithImageGap",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineBeginStatementOutputV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineAppendImageBytesV1"
+]
+invariant = "The finalized image origin is the lowest address exposed by unsectioned output, an explicit origin, or a nonempty finalized placed concrete section. Ordinary same-named concrete sections across module owners form one contiguous placed group in declaration order; differently named unplaced concrete statements route to discard rather than underflowing the main cursor. Logical and BSS sections do not establish the flat image origin. Every pass-two byte is written at current-PC minus that origin so exposed forward gaps are zero-filled and backward or overlapping origins overwrite by address rather than append order; zero-byte writes expose nothing and retained mapped tails append at the main-image high-water mark."
+expected_inputs = "The exact stored 65C02 syntax.asm root with source-order origins at $2000, $4000, $1000, and $F000, plus its live same-source Rust CLI binary oracle."
+expected_outputs = "A fresh 57,365-byte native CLI binary exactly equal to Rust, including zero-filled gaps and bytes emitted after backward origin changes."
+known_non_equivalences = "The native artifact-count ABI remains explicitly bounded to 65,535 bytes; all assigned active roots, including the required 57,365-byte artifact, execute without exclusion. No foreign CPU or linker-object behavior is added."
+fast_proof_command = "cargo test -p asm native_image_writes_follow_current_pc_across_overlapping_origins -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_syntax_overlapping_origins_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_image_writes_follow_current_pc_across_overlapping_origins"
+proof_level = "B"
+proves = "The native source retains the minimum emitted/explicit/placed origin, groups ordinary same-named concrete sections across owners, discards other unplaced concrete statements, derives a per-statement address offset, overwrites that range, clears only newly exposed forward gaps, and positions mapped flush at the main high-water mark."
+does_not_prove = "Real native execution or final artifact equality; the existing qualified-map Level D proof separately exercises mapped-tail flushing."
+
+[[tests]]
+name = "native_syntax_overlapping_origins_fs_uae"
+proof_level = "D"
+proves = "The exact stored syntax.asm completes freshly with exit zero and its full sparse/overlapping binary is byte-for-byte equal to its live in-memory Rust CLI oracle."
+does_not_prove = "The other fifteen assigned Item 6 roots; the uncapped parent shard proves those separately."

@@ -339,8 +339,10 @@ the same unmodified serialized semantic package.
   artifact paths, 65x02 package compiler/regressions, all-family package
   compatibility gates, FS-UAE parity harness, 680x0 corpus accounting, native docs
 - Impact class: major
-- Versioning decision: package format compatibility and the exact schema-version
-  change must be decided in Item 1 from additive compatibility evidence
+- Versioning decision: Item 1 retains container version 1 and adds optional
+  `SEMV`, whose payload carries its own exact opcode version. Packages without
+  `SEMV` retain their canonical bytes; unknown semantic opcode versions and
+  malformed programs fail closed with an `SEMV` package-format diagnostic.
 - Owned contract: the 68020/AmigaOS executable exposes the complete
   Rust-supported 680x0 assembler surface and can rebuild itself
 - Rationale: CPU discovery is already present in package metadata, but complete
@@ -349,11 +351,11 @@ the same unmodified serialized semantic package.
 
 ## Work Items
 
-- [ ] Item 1: add the versioned portable semantic-program substrate with a Rust-only fixed-opcode vertical slice
+- [x] Item 1: add the versioned portable semantic-program substrate with a Rust-only fixed-opcode vertical slice
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`, `N68X0-004`, `N68X0-014`, `N68X0-015`.
   - Expected files: `crates/opforge-package/src/package.rs`, `crates/opforge-package/src/package/codec/**`, architecture-neutral Rust package runtime/builder modules, focused tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; focused package round-trip/canonicalization/malformed-opcode tests; fixed-opcode serialized-package execution; cross-family proof for every reusable primitive.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for a versioned generic substrate and package-owned fixed-opcode vertical slice, with no native production change or family branch in the generic Rust runtime.
+  - Plan-compliance review evidence: `PASS` — the independent `plan-compliance-reviewer` confirmed a focused, versioned, CPU-neutral `SEMV` substrate; legacy-byte compatibility; fail-closed malformed/unsupported programs; serialized-only fixed big-endian m68020 emission; cross-family reuse; no native production change; and passing focused, Rust, architecture-boundary, and workflow gates.
   - Commit outcome: one commit that serializes, reloads, selects, and emits a package-owned fixed big-endian opcode through the Rust package runtime.
   - Definition of done: freshly serialized bytes are the only execution input; compatible old packages remain supported or fail with the explicitly versioned diagnostic; malformed programs fail closed; no m68k callback executes after construction.
 

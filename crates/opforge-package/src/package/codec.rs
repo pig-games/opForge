@@ -49,6 +49,7 @@ pub(super) fn encode_hierarchy_chunks_full(
         registers: registers.to_vec(),
         forms: forms.to_vec(),
         tables: tables.to_vec(),
+        semantic_programs: Vec::new(),
         selectors: selectors.to_vec(),
     };
     encode_hierarchy_chunks_from_chunks(&chunks)
@@ -79,6 +80,7 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
     let mut regs = chunks.registers.to_vec();
     let mut forms = chunks.forms.to_vec();
     let mut tables = chunks.tables.to_vec();
+    let mut semantic_programs = chunks.semantic_programs.to_vec();
     let mut selectors = chunks.selectors.to_vec();
     canonicalize_hierarchy_metadata(
         &mut fams,
@@ -89,6 +91,8 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
         &mut tables,
         &mut selectors,
     );
+    canonicalize_semantic_programs(&mut semantic_programs);
+    validate_semantic_program_set(&semantic_programs)?;
     canonicalize_token_policies(&mut token_policies);
     canonicalize_tokenizer_vm_programs(&mut tokenizer_vm_programs);
     canonicalize_parser_contracts(&mut parser_contracts);
@@ -119,6 +123,9 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
     }
     if !expr_parser_contracts.is_empty() {
         chunks.push((CHUNK_EXVM, encode_exvm_chunk(&expr_parser_contracts)?));
+    }
+    if !semantic_programs.is_empty() {
+        chunks.push((CHUNK_SEMV, encode_semv_chunk(&semantic_programs)?));
     }
     chunks.extend_from_slice(&[
         (CHUNK_FAMS, encode_fams_chunk(&fams)?),
@@ -274,6 +281,7 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
     let prvm_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_PRVM)?;
     let expr_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_EXPR)?;
     let exvm_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_EXVM)?;
+    let semv_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_SEMV)?;
     let fams_bytes = slice_for_chunk(bytes, &toc, CHUNK_FAMS)?;
     let cpus_bytes = slice_for_chunk(bytes, &toc, CHUNK_CPUS)?;
     let dial_bytes = slice_for_chunk(bytes, &toc, CHUNK_DIAL)?;
@@ -325,6 +333,10 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
         registers: decode_regs_chunk(regs_bytes)?,
         forms: decode_form_chunk(form_bytes)?,
         tables: decode_tabl_chunk(tabl_bytes)?,
+        semantic_programs: match semv_bytes {
+            Some(payload) => decode_semv_chunk(payload)?,
+            None => Vec::new(),
+        },
         selectors: match msel_bytes {
             Some(payload) => decode_msel_chunk(payload)?,
             None => Vec::new(),
@@ -700,6 +712,47 @@ pub(super) fn encode_tabl_chunk(
 
 pub(super) fn decode_tabl_chunk(bytes: &[u8]) -> Result<Vec<VmProgramDescriptor>, OpcpuCodecError> {
     decode_scoped_schema_chunk(bytes)
+}
+
+pub(super) fn encode_semv_chunk(
+    programs: &[SemanticProgramDescriptor],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    encode_scoped_schema_chunk(programs)
+}
+
+pub(super) fn decode_semv_chunk(
+    bytes: &[u8],
+) -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecError> {
+    let programs = decode_scoped_schema_chunk(bytes)?;
+    validate_semantic_program_set(&programs)?;
+    Ok(programs)
+}
+
+fn validate_semantic_program_set(
+    programs: &[SemanticProgramDescriptor],
+) -> Result<(), OpcpuCodecError> {
+    for (index, entry) in programs.iter().enumerate() {
+        if entry.id.is_empty() {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "SEMV".to_string(),
+                detail: "semantic VM program id must not be empty".to_string(),
+            });
+        }
+        validate_semantic_program(entry.opcode_version, &entry.program)?;
+        if programs[..index].iter().any(|prior| {
+            prior.owner.key_parts_lowercase() == entry.owner.key_parts_lowercase()
+                && prior.id.eq_ignore_ascii_case(&entry.id)
+        }) {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "SEMV".to_string(),
+                detail: format!(
+                    "duplicate semantic VM program id '{}' in one owner scope",
+                    entry.id
+                ),
+            });
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn encode_msel_chunk(

@@ -55,19 +55,20 @@ use opcore::parser::{
 };
 use opcore::tokenizer::{ConditionalKind, Span, Token, TokenKind, Tokenizer};
 use package::{
-    default_token_policy_lexical_defaults, token_identifier_class, DiagnosticDescriptor,
+    compile_fixed_semantic_program, default_token_policy_lexical_defaults,
+    encode_hierarchy_chunks_from_chunks, token_identifier_class, DiagnosticDescriptor,
     ExprContractDescriptor, ExprDiagnosticMap, ExprParserContractDescriptor,
     ExprParserDiagnosticMap, HierarchyChunks, ParserContractDescriptor, ParserDiagnosticMap,
-    ParserVmOpcodeV2, ParserVmProgramDescriptor, TokenCaseRule, TokenPolicyDescriptor,
-    TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
-    TokenizerVmStreamDescriptor, VmProgramDescriptor, DIAG_EXPR_BUDGET_EXCEEDED,
-    DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM,
-    DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
-    DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
+    ParserVmOpcodeV2, ParserVmProgramDescriptor, SemanticProgramDescriptor, TokenCaseRule,
+    TokenPolicyDescriptor, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
+    TokenizerVmProgramDescriptor, TokenizerVmStreamDescriptor, VmProgramDescriptor,
+    DIAG_EXPR_BUDGET_EXCEEDED, DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE,
+    DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW,
+    DIAG_EXPR_UNKNOWN_SYMBOL, DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
     EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1,
     EXVM_OPCODE_VERSION_V2, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
-    TOKENIZER_VM_OPCODE_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V1, TOKENIZER_VM_OPCODE_VERSION_V1,
 };
 use registry::family::AssemblerContext;
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
@@ -932,6 +933,7 @@ fn intel_only_chunks() -> HierarchyChunks {
             mode_key: "immediate".to_string(),
             program: vec![OP_EMIT_U8, 0x3E, OP_EMIT_OPERAND, 0x00, OP_END],
         }],
+        semantic_programs: Vec::new(),
         selectors: Vec::new(),
     }
 }
@@ -7999,6 +8001,55 @@ fn execution_model_rejects_invalid_package_bytes() {
     let err = HierarchyExecutionModel::from_package_bytes(b"not-an-opasm")
         .expect_err("invalid package bytes should be rejected");
     assert!(matches!(err, RuntimeBridgeError::Package(_)));
+}
+
+#[test]
+fn execution_model_runs_fixed_semantics_from_serialized_package_across_families() {
+    let mut registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.semantic_programs = vec![
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("motorola68000".to_string()),
+            id: "fixed.nop".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V1,
+            program: compile_fixed_semantic_program(&[0x4e, 0x71]),
+        },
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "fixed.nop".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V1,
+            program: compile_fixed_semantic_program(&[0xea]),
+        },
+    ];
+    let package_bytes =
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("semantic package serialization");
+
+    // Only serialized bytes cross this boundary. No family callback or registry is
+    // available to the reloaded runtime when the semantic programs execute.
+    let model = HierarchyExecutionModel::from_package_bytes(&package_bytes)
+        .expect("runtime should load serialized semantic package");
+    let m68k = model
+        .resolve_pipeline("m68020", None)
+        .expect("resolve m68020 package hierarchy");
+    let mos = model
+        .resolve_pipeline("m6502", None)
+        .expect("resolve m6502 package hierarchy");
+
+    assert_eq!(
+        model
+            .execute_semantic_program(&m68k, "fixed.nop", &[])
+            .expect("execute package-owned big-endian fixed opcode"),
+        vec![0x4e, 0x71]
+    );
+    assert_eq!(
+        model
+            .execute_semantic_program(&mos, "fixed.nop", &[])
+            .expect("execute the same neutral semantic primitive for mos6502"),
+        vec![0xea]
+    );
 }
 
 #[test]

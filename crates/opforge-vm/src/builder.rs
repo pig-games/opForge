@@ -748,6 +748,7 @@ pub fn build_hierarchy_chunks_from_registry(
         registers,
         forms,
         tables,
+        semantic_programs: Vec::new(),
         selectors,
     })
 }

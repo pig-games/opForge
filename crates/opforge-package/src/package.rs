@@ -14,6 +14,7 @@
 //! - `REGS` (scoped register descriptors)
 //! - `FORM` (scoped form descriptors)
 //! - `TABL` (scoped VM instruction program descriptors)
+//! - `SEMV` (versioned scoped semantic VM program descriptors)
 //! - `TKVM` (scoped tokenizer VM program descriptors)
 //! - `PARS` (scoped parser/AST contract descriptors)
 //! - `PRVM` (scoped parser VM program descriptors)
@@ -34,7 +35,7 @@ use canonicalize::canonicalize_package_support_chunks;
 pub use canonicalize::{
     canonicalize_expr_contracts, canonicalize_expr_parser_contracts,
     canonicalize_hierarchy_metadata, canonicalize_parser_contracts,
-    canonicalize_parser_vm_programs, canonicalize_token_policies,
+    canonicalize_parser_vm_programs, canonicalize_semantic_programs, canonicalize_token_policies,
     canonicalize_tokenizer_vm_programs,
 };
 
@@ -56,6 +57,7 @@ const CHUNK_DIAL: [u8; 4] = *b"DIAL";
 const CHUNK_REGS: [u8; 4] = *b"REGS";
 const CHUNK_FORM: [u8; 4] = *b"FORM";
 const CHUNK_TABL: [u8; 4] = *b"TABL";
+const CHUNK_SEMV: [u8; 4] = *b"SEMV";
 const CHUNK_MSEL: [u8; 4] = *b"MSEL";
 const CHUNK_TKVM: [u8; 4] = *b"TKVM";
 const CHUNK_PARS: [u8; 4] = *b"PARS";
@@ -114,6 +116,10 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 /// - exact version match required for the active decoder.
 /// - unknown versions must produce deterministic errors.
 pub const TOKENIZER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
+pub const SEMANTIC_VM_OPCODE_VERSION_V1: u16 = 0x0001;
+pub const SEMANTIC_VM_OP_EMIT_U8: u8 = 0x01;
+pub const SEMANTIC_VM_OP_EMIT_OPERAND: u8 = 0x02;
+pub const SEMANTIC_VM_OP_END: u8 = 0xFF;
 pub const PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT: u16 = 0x0002;
 pub const EXVM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const EXVM_OPCODE_VERSION_V2: u16 = 0x0002;
@@ -164,6 +170,78 @@ pub struct VmProgramDescriptor {
     pub mnemonic: String,
     pub mode_key: String,
     pub program: Vec<u8>,
+}
+
+/// Independently versioned, package-owned semantic bytecode selected by scope and id.
+///
+/// This descriptor is intentionally CPU-neutral. Families define the meaning and
+/// contents of programs; the shared package/runtime only validate and execute the
+/// portable byte-emission contract.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SemanticProgramDescriptor {
+    pub owner: ScopedOwner,
+    pub id: String,
+    pub opcode_version: u16,
+    pub program: Vec<u8>,
+}
+
+/// Build the v1 semantic bytecode for a fixed byte sequence.
+pub fn compile_fixed_semantic_program(bytes: &[u8]) -> Vec<u8> {
+    let mut program = Vec::with_capacity(bytes.len().saturating_mul(2).saturating_add(1));
+    for byte in bytes {
+        program.push(SEMANTIC_VM_OP_EMIT_U8);
+        program.push(*byte);
+    }
+    program.push(SEMANTIC_VM_OP_END);
+    program
+}
+
+/// Validate one portable semantic program without interpreting CPU semantics.
+pub fn validate_semantic_program(
+    opcode_version: u16,
+    program: &[u8],
+) -> Result<(), OpcpuCodecError> {
+    if opcode_version != SEMANTIC_VM_OPCODE_VERSION_V1 {
+        return Err(OpcpuCodecError::InvalidChunkFormat {
+            chunk: "SEMV".to_string(),
+            detail: format!("unsupported semantic VM opcode version {opcode_version}"),
+        });
+    }
+
+    let mut pc = 0usize;
+    loop {
+        let opcode = *program
+            .get(pc)
+            .ok_or_else(|| OpcpuCodecError::InvalidChunkFormat {
+                chunk: "SEMV".to_string(),
+                detail: "semantic VM program is truncated before END".to_string(),
+            })?;
+        pc += 1;
+        match opcode {
+            SEMANTIC_VM_OP_EMIT_U8 | SEMANTIC_VM_OP_EMIT_OPERAND => {
+                if program.get(pc).is_none() {
+                    return Err(OpcpuCodecError::InvalidChunkFormat {
+                        chunk: "SEMV".to_string(),
+                        detail: format!("semantic VM opcode 0x{opcode:02X} is truncated"),
+                    });
+                }
+                pc += 1;
+            }
+            SEMANTIC_VM_OP_END if pc == program.len() => return Ok(()),
+            SEMANTIC_VM_OP_END => {
+                return Err(OpcpuCodecError::InvalidChunkFormat {
+                    chunk: "SEMV".to_string(),
+                    detail: "semantic VM program has trailing bytes after END".to_string(),
+                });
+            }
+            _ => {
+                return Err(OpcpuCodecError::InvalidChunkFormat {
+                    chunk: "SEMV".to_string(),
+                    detail: format!("invalid semantic VM opcode 0x{opcode:02X} at pc={}", pc - 1),
+                });
+            }
+        }
+    }
 }
 
 /// Scoped mode selector descriptor for Expr/family-operand to VM mode candidate mapping.
@@ -735,6 +813,7 @@ pub struct HierarchyChunks {
     pub registers: Vec<ScopedRegisterDescriptor>,
     pub forms: Vec<ScopedFormDescriptor>,
     pub tables: Vec<VmProgramDescriptor>,
+    pub semantic_programs: Vec<SemanticProgramDescriptor>,
     pub selectors: Vec<ModeSelectorDescriptor>,
 }
 

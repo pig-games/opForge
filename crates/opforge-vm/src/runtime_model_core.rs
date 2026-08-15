@@ -15,7 +15,7 @@ use package::{
     DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT, EXPR_VM_OPCODE_VERSION_V1,
     EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1,
     PARSER_GRAMMAR_ID_LINE_V1, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
-    TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V1, TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
 };
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
@@ -46,6 +46,7 @@ use crate::tokenizer_runtime_utils::{
 };
 
 pub type VmProgramKey = (u8, u32, u32, u32);
+pub type SemanticProgramKey = (u8, u32, u32);
 pub type ModeSelectorKey = (u8, u32, u32, u32);
 pub type TokenPolicyKey = (u8, u32);
 pub type ParserContractKey = (u8, u32);
@@ -101,6 +102,7 @@ pub struct RuntimeModelCore {
     pub cpu_registers: ScopedSymbolMap,
     pub dialect_registers: ScopedSymbolMap,
     pub vm_programs: HashMap<VmProgramKey, Vec<u8>>,
+    pub semantic_programs: HashMap<SemanticProgramKey, (u16, Vec<u8>)>,
     pub mode_selectors: HashMap<ModeSelectorKey, Vec<ModeSelectorDescriptor>>,
     pub token_policies: HashMap<TokenPolicyKey, RuntimeTokenPolicy>,
     pub tokenizer_vm_programs: HashMap<TokenPolicyKey, RuntimeTokenizerVmProgram>,
@@ -144,6 +146,7 @@ impl RuntimeModelCore {
             registers,
             forms,
             tables,
+            semantic_programs,
             selectors,
         } = chunks;
         let package = HierarchyPackage::new(families, cpus, dialects)?;
@@ -155,6 +158,16 @@ impl RuntimeModelCore {
             let mnemonic_id = interner.intern(entry.mnemonic.as_str());
             let mode_id = interner.intern(entry.mode_key.as_str());
             vm_programs.insert((owner_tag, owner_id, mnemonic_id, mode_id), entry.program);
+        }
+        let mut scoped_semantic_programs = HashMap::new();
+        for entry in semantic_programs {
+            let (owner_tag, owner_id) = owner_key_parts(&entry.owner);
+            let owner_id = interner.intern(owner_id.as_str());
+            let program_id = interner.intern(entry.id.as_str());
+            scoped_semantic_programs.insert(
+                (owner_tag, owner_id, program_id),
+                (entry.opcode_version, entry.program),
+            );
         }
         let mut mode_selectors: HashMap<ModeSelectorKey, Vec<ModeSelectorDescriptor>> =
             HashMap::new();
@@ -341,6 +354,7 @@ impl RuntimeModelCore {
             cpu_registers,
             dialect_registers,
             vm_programs,
+            semantic_programs: scoped_semantic_programs,
             mode_selectors,
             token_policies: scoped_token_policies,
             tokenizer_vm_programs: scoped_tokenizer_vm_programs,
@@ -1552,6 +1566,38 @@ impl RuntimeModelCore {
             (1u8, self.interned_id(&cpu_id)),
             (0u8, self.interned_id(&family_id)),
         ]
+    }
+
+    pub fn execute_semantic_program(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        operands: &[&[u8]],
+    ) -> Result<Vec<u8>, RuntimeBridgeError> {
+        let normalized_id = program_id.to_ascii_lowercase();
+        let program_id = self.interned_id(&normalized_id).ok_or_else(|| {
+            RuntimeBridgeError::Resolve(format!("unknown semantic program '{normalized_id}'"))
+        })?;
+        for (owner_tag, owner_id) in self.scoped_owner_lookup_order(resolved) {
+            let Some(owner_id) = owner_id else {
+                continue;
+            };
+            let Some((opcode_version, program)) = self
+                .semantic_programs
+                .get(&(owner_tag, owner_id, program_id))
+            else {
+                continue;
+            };
+            if *opcode_version != SEMANTIC_VM_OPCODE_VERSION_V1 {
+                return Err(RuntimeBridgeError::Resolve(format!(
+                    "unsupported semantic VM opcode version {opcode_version}"
+                )));
+            }
+            return Ok(execute_program(program, operands)?);
+        }
+        Err(RuntimeBridgeError::Resolve(format!(
+            "semantic program '{normalized_id}' is not defined for the resolved hierarchy"
+        )))
     }
 
     fn lookup_scoped<'a, T>(

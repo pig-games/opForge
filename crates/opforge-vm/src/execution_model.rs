@@ -439,6 +439,17 @@ impl HierarchyExecutionModel {
         Ok(self.core.resolve_pipeline(cpu_id, dialect_override)?)
     }
 
+    /// Execute a package-owned, versioned semantic program for a resolved hierarchy.
+    pub fn execute_semantic_program(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        operands: &[&[u8]],
+    ) -> Result<Vec<u8>, RuntimeBridgeError> {
+        self.core
+            .execute_semantic_program(resolved, program_id, operands)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn parse_family_operand_surface_expr(
         &self,

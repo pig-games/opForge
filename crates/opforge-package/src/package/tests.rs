@@ -789,6 +789,7 @@ fn ultimate64_abi_header_is_little_endian_v1() {
         registers: sample_registers(),
         forms: sample_forms(),
         tables: sample_tables(),
+        semantic_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -821,6 +822,7 @@ fn ultimate64_abi_toc_payload_layout_is_contiguous() {
         registers: sample_registers(),
         forms: sample_forms(),
         tables: sample_tables(),
+        semantic_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1028,6 +1030,7 @@ fn encode_decode_round_trip_preserves_toks_policy() {
         registers: sample_registers(),
         forms: sample_forms(),
         tables: sample_tables(),
+        semantic_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1087,6 +1090,7 @@ fn encode_decode_round_trip_preserves_parser_contracts() {
         registers: sample_registers(),
         forms: sample_forms(),
         tables: sample_tables(),
+        semantic_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1139,6 +1143,7 @@ fn encode_decode_round_trip_preserves_parser_vm_programs() {
         registers: sample_registers(),
         forms: sample_forms(),
         tables: sample_tables(),
+        semantic_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1241,6 +1246,7 @@ fn encode_decode_round_trip_preserves_expr_contracts() {
         registers: sample_registers(),
         forms: sample_forms(),
         tables: sample_tables(),
+        semantic_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1284,6 +1290,7 @@ fn encode_decode_round_trip_preserves_expr_parser_contracts() {
         registers: sample_registers(),
         forms: sample_forms(),
         tables: sample_tables(),
+        semantic_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1880,4 +1887,116 @@ proptest! {
             }
         }
     }
+}
+
+#[test]
+fn semantic_program_round_trip_is_canonical_and_legacy_bytes_stay_compatible() {
+    let legacy = encode_hierarchy_chunks(
+        &sample_families(),
+        &sample_cpus(),
+        &sample_dialects(),
+        &sample_registers(),
+        &sample_forms(),
+        &sample_tables(),
+    )
+    .expect("legacy package encode");
+    let mut chunks = decode_hierarchy_chunks(&legacy).expect("legacy package decode");
+    assert!(chunks.semantic_programs.is_empty());
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("legacy package re-encode"),
+        legacy,
+        "omitting SEMV must preserve the existing package encoding"
+    );
+
+    let program = compile_fixed_semantic_program(&[0x4e, 0x71]);
+    chunks.semantic_programs = vec![
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("MOS6502".to_string()),
+            id: "FIXED.NOP".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V1,
+            program: compile_fixed_semantic_program(&[0xea]),
+        },
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("motorola68000".to_string()),
+            id: "fixed.nop".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V1,
+            program: program.clone(),
+        },
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("MOTOROLA68000".to_string()),
+            id: "FIXED.NOP".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V1,
+            program,
+        },
+    ];
+
+    let encoded = encode_hierarchy_chunks_from_chunks(&chunks).expect("SEMV package encode");
+    let decoded = decode_hierarchy_chunks(&encoded).expect("SEMV package decode");
+    assert_eq!(decoded.semantic_programs.len(), 2);
+    assert_eq!(decoded.semantic_programs[0].id, "fixed.nop");
+    assert_eq!(
+        decoded.semantic_programs[0].owner,
+        ScopedOwner::Family("mos6502".to_string())
+    );
+    assert_eq!(
+        decoded.semantic_programs[1].program,
+        compile_fixed_semantic_program(&[0x4e, 0x71])
+    );
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical SEMV re-encode"),
+        encoded
+    );
+}
+
+#[test]
+fn semantic_program_codec_rejects_unknown_versions_and_malformed_opcodes() {
+    for entry in [
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "unknown-version".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V1 + 1,
+            program: vec![SEMANTIC_VM_OP_END],
+        },
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "invalid-opcode".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V1,
+            program: vec![0x7e, SEMANTIC_VM_OP_END],
+        },
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "trailing-byte".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V1,
+            program: vec![SEMANTIC_VM_OP_END, 0x00],
+        },
+    ] {
+        let payload = encode_semv_chunk(&[entry]).expect("raw SEMV schema encode");
+        let error = decode_semv_chunk(&payload).expect_err("invalid SEMV must fail closed");
+        assert!(matches!(
+            error,
+            OpcpuCodecError::InvalidChunkFormat { ref chunk, .. } if chunk == "SEMV"
+        ));
+    }
+
+    let duplicate_payload = encode_semv_chunk(&[
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "fixed.nop".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V1,
+            program: vec![SEMANTIC_VM_OP_END],
+        },
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("MOS6502".to_string()),
+            id: "FIXED.NOP".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V1,
+            program: compile_fixed_semantic_program(&[0xea]),
+        },
+    ])
+    .expect("raw duplicate SEMV schema encode");
+    let duplicate_error =
+        decode_semv_chunk(&duplicate_payload).expect_err("duplicate scoped id must fail closed");
+    assert!(matches!(
+        duplicate_error,
+        OpcpuCodecError::InvalidChunkFormat { ref chunk, .. } if chunk == "SEMV"
+    ));
 }

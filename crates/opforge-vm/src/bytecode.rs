@@ -3,9 +3,10 @@
 
 //! Generic bytecode VM primitives used by family-specific adapters.
 
-pub const OP_EMIT_U8: u8 = 0x01;
-pub const OP_EMIT_OPERAND: u8 = 0x02;
-pub const OP_END: u8 = 0xFF;
+pub use package::{
+    SEMANTIC_VM_OP_EMIT_OPERAND as OP_EMIT_OPERAND, SEMANTIC_VM_OP_EMIT_U8 as OP_EMIT_U8,
+    SEMANTIC_VM_OP_END as OP_END,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VmError {

@@ -1,0 +1,35 @@
+[slice]
+schema_version = 1
+name = "versioned portable semantic-program substrate"
+kind = "package-runtime"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 1
+requirements = ["N68X0-001", "N68X0-003", "N68X0-004", "N68X0-014", "N68X0-015"]
+rust_reference = [
+  "crates/opforge-package/src/package.rs::SemanticProgramDescriptor",
+  "crates/opforge-package/src/package.rs::validate_semantic_program",
+  "crates/opforge-vm/src/runtime_model_core.rs::RuntimeModelCore::execute_semantic_program"
+]
+boundary = "SEMV is an optional, independently versioned, scoped package chunk. The generic package/runtime owns only version checks, structural validation, scoped lookup, literal-byte emission, operand-byte insertion, and termination. CPU/family meanings and byte sequences remain package data. Existing packages omit SEMV and retain their prior canonical bytes."
+invariant = "Serialized package bytes are the sole semantic-program input to a reloaded runtime; unsupported versions, malformed opcodes, truncation, and bytes after END fail closed before execution."
+expected_inputs = "A canonical hierarchy package with zero or more scoped SEMV descriptors using semantic opcode version 1 and the neutral EmitU8, EmitOperand, and End operations."
+expected_outputs = "Deterministic emitted bytes selected in dialect, CPU, then family scope order. The fixed proof emits 4E 71 for m68020 and EA for m6502 from the same neutral primitive contract."
+known_non_equivalences = "This slice does not port 680x0 operand parsing, selection, fixups, variable-width encoding, native interpretation, Hunk/S-record output, or CLI behavior. It establishes only the fixed-byte vertical slice."
+fast_proof_command = "cargo test -p package semantic_program -- --nocapture && cargo test -p vm execution_model_runs_fixed_semantics_from_serialized_package_across_families -- --nocapture"
+full_gate_command = "cargo test -p package && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
+native_proof = "not-applicable: Item 1 changes no native production file and the plan forbids FS-UAE as package-phase proof"
+
+[[tests]]
+name = "semantic_program_round_trip_is_canonical_and_legacy_bytes_stay_compatible"
+proof_level = "package"
+proves = "SEMV round-trips canonically, duplicate case variants collapse, and packages without SEMV re-encode byte-for-byte unchanged."
+
+[[tests]]
+name = "semantic_program_codec_rejects_unknown_versions_and_malformed_opcodes"
+proof_level = "package"
+proves = "Unknown semantic opcode versions, invalid opcodes, and trailing bytes fail closed with a SEMV package diagnostic."
+
+[[tests]]
+name = "execution_model_runs_fixed_semantics_from_serialized_package_across_families"
+proof_level = "runtime"
+proves = "A runtime rebuilt from serialized bytes selects and executes package-owned fixed programs for m68020 and m6502 without retaining a registry or family callback."

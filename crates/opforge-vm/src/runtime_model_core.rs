@@ -17,8 +17,8 @@ use package::{
     OPERAND_RECORD_VM_VERSION_V1, OPERAND_RECORD_VM_VERSION_V2, OPERAND_RECORD_VM_VERSION_V3,
     PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
     PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, SEMANTIC_VM_OPCODE_VERSION_V1,
-    SEMANTIC_VM_OPCODE_VERSION_V2, TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
-    VALUE_VM_OPCODE_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3, TOKENIZER_VM_OPCODE_VERSION_V1,
+    TOKENIZER_VM_STREAM_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
 };
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
@@ -51,6 +51,7 @@ use crate::runtime_model_types::{
 use crate::runtime_portable_types::PortableTokenizeRequest;
 use crate::selector_vm::{execute_selector_program, PortableSelectorOutcome};
 use crate::state_vm::{self, PortableStateDirectiveOutcome, StateVmError};
+use crate::structured_encoding_vm::execute_structured_encoding_program;
 use crate::tokenizer_runtime_utils::{
     self, AsciiCaseRule, TokenizerDiagCodes, VmTokenizerInputStream,
 };
@@ -1830,6 +1831,40 @@ impl RuntimeModelCore {
         }
         Err(RuntimeBridgeError::Resolve(format!(
             "encoding program '{normalized_id}' is not defined for the resolved hierarchy"
+        )))
+    }
+
+    pub fn execute_structured_encoding_program(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        records: &[PortableOperandRecord],
+    ) -> Result<Vec<u8>, RuntimeBridgeError> {
+        let normalized_id = program_id.to_ascii_lowercase();
+        let program_id = self.interned_id(&normalized_id).ok_or_else(|| {
+            RuntimeBridgeError::Resolve(format!(
+                "unknown structured encoding program '{normalized_id}'"
+            ))
+        })?;
+        for (owner_tag, owner_id) in self.scoped_owner_lookup_order(resolved) {
+            let Some(owner_id) = owner_id else {
+                continue;
+            };
+            let Some((opcode_version, program)) = self
+                .semantic_programs
+                .get(&(owner_tag, owner_id, program_id))
+            else {
+                continue;
+            };
+            if *opcode_version != SEMANTIC_VM_OPCODE_VERSION_V3 {
+                return Err(RuntimeBridgeError::Resolve(format!(
+                    "semantic program '{normalized_id}' is not a structured encoding VM v3 program"
+                )));
+            }
+            return Ok(execute_structured_encoding_program(program, records)?);
+        }
+        Err(RuntimeBridgeError::Resolve(format!(
+            "structured encoding program '{normalized_id}' is not defined for the resolved hierarchy"
         )))
     }
 

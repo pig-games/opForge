@@ -28,6 +28,7 @@ use registry::registry::{ModuleRegistry, OperandSet, VmEncodeCandidate};
 use registry::syntax::RegisterChecker;
 use types::hierarchy::ResolvedHierarchy;
 
+use crate::operand_record_vm::PortableOperandRecord;
 use crate::portable_contract::{PortableLineAst, PortableToken};
 use crate::runtime_contract_types::{
     RuntimeExprContract, RuntimeExprParserContract, RuntimeParserCertificationChecklists,
@@ -507,6 +508,17 @@ impl HierarchyExecutionModel {
     ) -> Result<Vec<u8>, RuntimeBridgeError> {
         self.core
             .execute_encoding_program(resolved, program_id, inputs)
+    }
+
+    /// Project portable structured operand records with a package-owned program.
+    pub fn execute_structured_encoding_program(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        records: &[PortableOperandRecord],
+    ) -> Result<Vec<u8>, RuntimeBridgeError> {
+        self.core
+            .execute_structured_encoding_program(resolved, program_id, records)
     }
 
     /// Materialize one scalar using a package-owned, versioned value program.

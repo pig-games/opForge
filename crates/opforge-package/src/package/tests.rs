@@ -2277,6 +2277,117 @@ fn encoding_program_v2_rejects_malformed_and_unencodable_fields() {
 }
 
 #[test]
+fn structured_encoding_program_v3_round_trips_every_neutral_projection() {
+    let steps = vec![
+        StructuredEncodingStep::RegisterMask {
+            record: 0,
+            width: 2,
+            endian: EncodingEndian::Big,
+            reverse_bits: true,
+            classes: vec![RegisterClassProjection {
+                class: 2,
+                offset: 0,
+            }],
+        },
+        StructuredEncodingStep::RegisterPair {
+            record: 1,
+            base: 0xa000,
+            width: 2,
+            endian: EncodingEndian::Big,
+            left_shift: 6,
+            right_shift: 0,
+            bits: 3,
+            indirect: Some(false),
+        },
+        StructuredEncodingStep::FieldSelectors {
+            record: 2,
+            base: 0x0800,
+            width: 2,
+            endian: EncodingEndian::Big,
+            offset_shift: 6,
+            width_shift: 0,
+            bits: 5,
+            offset_full_width_zero: false,
+            width_full_width_zero: true,
+        },
+        StructuredEncodingStep::CompositeValues {
+            record: 3,
+            format: 7,
+            width: 2,
+            endian: EncodingEndian::Little,
+            item_bits: 4,
+            max_items: 4,
+        },
+    ];
+    let program = compile_structured_encoding_program(&steps).expect("compile SEMV v3");
+    assert_eq!(
+        decode_structured_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V3, &program)
+            .expect("decode SEMV v3"),
+        steps
+    );
+    validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V3, &program)
+        .expect("SEMV v3 validates through the common semantic-program boundary");
+}
+
+#[test]
+fn structured_encoding_program_v3_rejects_malformed_or_ambiguous_programs() {
+    for invalid in [
+        vec![],
+        vec![1, 0, 3, 0, 0, 0xff],
+        vec![1, 0, 2, 9, 0, 0xff],
+        vec![1, 0, 2, 0, 2, 0xff],
+        vec![2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 3, 0, 0xff],
+        vec![4, 0, 1, 0, 1, 0, 5, 2, 0xff],
+        vec![1, 0, 2, 0, 0],
+        vec![1, 0, 2, 0, 0, 0xff, 0],
+    ] {
+        assert!(
+            validate_structured_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V3, &invalid).is_err(),
+            "invalid program unexpectedly accepted: {invalid:?}"
+        );
+    }
+
+    assert!(
+        compile_structured_encoding_program(&[StructuredEncodingStep::FieldSelectors {
+            record: 0,
+            base: 0,
+            width: 2,
+            endian: EncodingEndian::Big,
+            offset_shift: 0,
+            width_shift: 3,
+            bits: 5,
+            offset_full_width_zero: false,
+            width_full_width_zero: false,
+        }])
+        .is_err()
+    );
+}
+
+#[test]
+fn structured_encoding_program_v3_validation_is_deterministic_for_mutated_bytes() {
+    let seed = compile_structured_encoding_program(&[StructuredEncodingStep::RegisterMask {
+        record: 0,
+        width: 2,
+        endian: EncodingEndian::Big,
+        reverse_bits: false,
+        classes: vec![RegisterClassProjection {
+            class: 0,
+            offset: 0,
+        }],
+    }])
+    .expect("compile mutation seed");
+    for byte in 0_u8..=u8::MAX {
+        let mut candidate = seed.clone();
+        let index = usize::from(byte) % candidate.len();
+        candidate[index] ^= byte;
+        let first = validate_structured_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V3, &candidate);
+        let second =
+            validate_structured_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V3, &candidate);
+        assert_eq!(first, second);
+    }
+}
+
+#[test]
 fn value_program_round_trip_is_canonical_and_optional_for_legacy_packages() {
     let legacy = encode_hierarchy_chunks(
         &sample_families(),
@@ -2468,6 +2579,89 @@ fn operand_record_program_round_trip_is_canonical_and_optional_for_legacy_packag
         .any(|program| program.id == "operand.composite"));
     assert_eq!(
         encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical OPRD re-encode"),
+        encoded
+    );
+}
+
+#[test]
+fn compact_operand_record_chunk_is_lossless_bounded_and_legacy_oprd_stays_available() {
+    let make = |id: &str, input| OperandRecordProgramDescriptor {
+        owner: ScopedOwner::Family("motorola68000".to_string()),
+        id: id.to_string(),
+        schema_version: OPERAND_RECORD_VM_VERSION_V1,
+        program: compile_operand_record_program(OperandRecordProgram::Register {
+            register_input: input,
+        })
+        .expect("compile compact record"),
+    };
+    let programs = vec![make("operand.first", 0), make("operand.second", 1)];
+    let legacy = encode_oprd_chunk(&programs).expect("encode legacy OPRD");
+    assert_eq!(
+        decode_oprd_chunk(&legacy).expect("decode legacy OPRD"),
+        programs,
+        "the existing OPRD representation remains lossless"
+    );
+
+    let compact = encode_compact_oprd_chunk(&programs).expect("encode compact OPRD");
+    assert!(compact.len() < legacy.len());
+    assert_eq!(
+        decode_compact_oprd_chunk(&compact).expect("decode compact OPRD"),
+        programs
+    );
+
+    let mut unsupported = compact.clone();
+    unsupported[..2].copy_from_slice(&(COMPACT_OPERAND_RECORD_CHUNK_VERSION_V1 + 1).to_le_bytes());
+    assert!(matches!(
+        decode_compact_oprd_chunk(&unsupported),
+        Err(OpcpuCodecError::InvalidChunkFormat { ref chunk, .. }) if chunk == "CPRD"
+    ));
+
+    let mut bad_owner = compact.clone();
+    let first_owner_index = 2 + 2 + 1 + 4 + "motorola68000".len() + 4;
+    bad_owner[first_owner_index..first_owner_index + 2].copy_from_slice(&u16::MAX.to_le_bytes());
+    assert!(decode_compact_oprd_chunk(&bad_owner).is_err());
+    assert!(decode_compact_oprd_chunk(&compact[..compact.len() - 1]).is_err());
+    let mut trailing = compact.clone();
+    trailing.push(0);
+    assert!(decode_compact_oprd_chunk(&trailing).is_err());
+
+    let mut chunks = decode_hierarchy_chunks(
+        &encode_hierarchy_chunks(
+            &sample_families(),
+            &sample_cpus(),
+            &sample_dialects(),
+            &sample_registers(),
+            &sample_forms(),
+            &sample_tables(),
+        )
+        .expect("encode package base"),
+    )
+    .expect("decode package base");
+    chunks.operand_record_programs = programs;
+    chunks.semantic_programs = vec![SemanticProgramDescriptor {
+        owner: ScopedOwner::Family("motorola68000".to_string()),
+        id: "enc.mask".to_string(),
+        opcode_version: SEMANTIC_VM_OPCODE_VERSION_V3,
+        program: compile_structured_encoding_program(&[StructuredEncodingStep::RegisterMask {
+            record: 0,
+            width: 2,
+            endian: EncodingEndian::Big,
+            reverse_bits: false,
+            classes: vec![RegisterClassProjection {
+                class: 0,
+                offset: 0,
+            }],
+        }])
+        .expect("compile structured program for compact package"),
+    }];
+    let encoded = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode compact package");
+    let decoded = decode_hierarchy_chunks(&encoded).expect("decode compact package");
+    assert_eq!(
+        decoded.operand_record_programs,
+        chunks.operand_record_programs
+    );
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical compact re-encode"),
         encoded
     );
 }

@@ -5,16 +5,18 @@
 
 use package::{
     compile_encoding_program, compile_operand_record_program, compile_selector_map_program,
-    compile_selector_suffix_program, compile_state_program, compile_value_program,
-    DiagnosticDescriptor, EncodingEndian, EncodingFieldSpec, EncodingStep, OpcpuCodecError,
-    OperandRecordBaseSource, OperandRecordFieldSource, OperandRecordIndirection,
+    compile_selector_suffix_program, compile_state_program, compile_structured_encoding_program,
+    compile_value_program, DiagnosticDescriptor, EncodingEndian, EncodingFieldSpec, EncodingStep,
+    OpcpuCodecError, OperandRecordBaseSource, OperandRecordFieldSource, OperandRecordIndirection,
     OperandRecordOptionalIndexSource, OperandRecordOptionalValueSource, OperandRecordProgram,
-    OperandRecordProgramDescriptor, OperandRecordUpdate, SelectorProgramDescriptor,
-    SemanticProgramDescriptor, StateArgumentSpec, StateCapabilityRuleSpec, StateCapabilitySpec,
-    StateDirectiveSpec, StateKeySpec, StateProgramDescriptor, StateProgramSpec, ValueConstraint,
+    OperandRecordProgramDescriptor, OperandRecordUpdate, RegisterClassProjection,
+    SelectorProgramDescriptor, SemanticProgramDescriptor, StateArgumentSpec,
+    StateCapabilityRuleSpec, StateCapabilitySpec, StateDirectiveSpec, StateKeySpec,
+    StateProgramDescriptor, StateProgramSpec, StructuredEncodingStep, ValueConstraint,
     ValueProgramDescriptor, ValueProgramSource, OPERAND_RECORD_VM_VERSION_V1,
     OPERAND_RECORD_VM_VERSION_V2, OPERAND_RECORD_VM_VERSION_V3, SELECTOR_VM_OPCODE_VERSION_V1,
-    SEMANTIC_VM_OPCODE_VERSION_V2, STATE_VM_OPCODE_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3, STATE_VM_OPCODE_VERSION_V1,
+    VALUE_VM_OPCODE_VERSION_V1,
 };
 use types::hierarchy::ScopedOwner;
 
@@ -83,26 +85,124 @@ pub const FPU_FORMAT_PACKED: u16 = 6;
 pub const DIAG_SELECTOR_UNSUPPORTED_QUALIFIER: &str = "selector.q";
 pub const STATE_RUNTIME: &str = "runtime";
 pub const ENCODING_TRAP_VECTOR: &str = "enc.trap";
+pub const ENCODING_REGISTER_MASK: &str = "enc.mask";
+pub const ENCODING_REVERSED_REGISTER_MASK: &str = "enc.mask-rev";
+pub const ENCODING_FPU_REGISTER_MASK: &str = "enc.fpu-mask";
+pub const ENCODING_REGISTER_PAIR: &str = "enc.pair";
+pub const ENCODING_BIT_FIELD: &str = "enc.bit-field";
 
 /// Compile one directly resolvable instruction form into the neutral fixed-field VM.
 pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecError> {
-    Ok(vec![SemanticProgramDescriptor {
-        owner: ScopedOwner::Family("motorola68000".to_string()),
-        id: ENCODING_TRAP_VECTOR.to_string(),
-        opcode_version: SEMANTIC_VM_OPCODE_VERSION_V2,
-        program: compile_encoding_program(&[EncodingStep::Fields {
-            base: 0x4e40,
-            width: 2,
-            endian: EncodingEndian::Big,
-            fields: vec![EncodingFieldSpec {
-                input: 0,
-                shift: 0,
-                bits: 4,
-                min: 0,
-                max: 15,
-            }],
-        }])?,
-    }])
+    let owner = ScopedOwner::Family("motorola68000".to_string());
+    let structured = |id: &str,
+                      step: StructuredEncodingStep|
+     -> Result<SemanticProgramDescriptor, OpcpuCodecError> {
+        Ok(SemanticProgramDescriptor {
+            owner: owner.clone(),
+            id: id.to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V3,
+            program: compile_structured_encoding_program(&[step])?,
+        })
+    };
+    let mut programs = vec![
+        SemanticProgramDescriptor {
+            owner: owner.clone(),
+            id: ENCODING_TRAP_VECTOR.to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V2,
+            program: compile_encoding_program(&[EncodingStep::Fields {
+                base: 0x4e40,
+                width: 2,
+                endian: EncodingEndian::Big,
+                fields: vec![EncodingFieldSpec {
+                    input: 0,
+                    shift: 0,
+                    bits: 4,
+                    min: 0,
+                    max: 15,
+                }],
+            }])?,
+        },
+        structured(
+            ENCODING_REGISTER_MASK,
+            StructuredEncodingStep::RegisterMask {
+                record: 0,
+                width: 2,
+                endian: EncodingEndian::Big,
+                reverse_bits: false,
+                classes: vec![
+                    RegisterClassProjection {
+                        class: 0,
+                        offset: 0,
+                    },
+                    RegisterClassProjection {
+                        class: 1,
+                        offset: 8,
+                    },
+                ],
+            },
+        )?,
+        structured(
+            ENCODING_REVERSED_REGISTER_MASK,
+            StructuredEncodingStep::RegisterMask {
+                record: 0,
+                width: 2,
+                endian: EncodingEndian::Big,
+                reverse_bits: true,
+                classes: vec![
+                    RegisterClassProjection {
+                        class: 0,
+                        offset: 0,
+                    },
+                    RegisterClassProjection {
+                        class: 1,
+                        offset: 8,
+                    },
+                ],
+            },
+        )?,
+        structured(
+            ENCODING_FPU_REGISTER_MASK,
+            StructuredEncodingStep::RegisterMask {
+                record: 0,
+                width: 1,
+                endian: EncodingEndian::Big,
+                reverse_bits: true,
+                classes: vec![RegisterClassProjection {
+                    class: 2,
+                    offset: 0,
+                }],
+            },
+        )?,
+        structured(
+            ENCODING_REGISTER_PAIR,
+            StructuredEncodingStep::RegisterPair {
+                record: 0,
+                base: 0,
+                width: 2,
+                endian: EncodingEndian::Big,
+                left_shift: 6,
+                right_shift: 0,
+                bits: 3,
+                indirect: None,
+            },
+        )?,
+        structured(
+            ENCODING_BIT_FIELD,
+            StructuredEncodingStep::FieldSelectors {
+                record: 0,
+                base: 0,
+                width: 2,
+                endian: EncodingEndian::Big,
+                offset_shift: 6,
+                width_shift: 0,
+                bits: 5,
+                offset_full_width_zero: false,
+                width_full_width_zero: true,
+            },
+        )?,
+    ];
+    programs.extend(crate::m68080::package_programs::semantic_programs()?);
+    Ok(programs)
 }
 
 /// Compile target-state defaults, transitions, and capability legality as one

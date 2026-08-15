@@ -33,6 +33,7 @@ use crate::runtime_model_types::*;
 use crate::runtime_portable_types::*;
 use crate::selector_vm::PortableSelectorOutcome;
 use crate::state_vm::{PortableStateDirectiveOutcome, StateVmError};
+use crate::structured_encoding_vm::StructuredEncodingVmError;
 use crate::vm_opasm::{build_bin_output_payload, build_hex_output_payload};
 use crate::vm_opasm_parse::tokenize_parser_tokens_with_model;
 use crate::vm_opcore::{
@@ -47,8 +48,10 @@ use families::{
         ld_indirect_candidate as intel8080_ld_indirect_candidate, Operand as IntelOperand,
     },
     m65816::state,
+    m68020::M68020CpuHandler,
     m68080::package_programs as m68080_record_programs,
     m68k::{
+        operand::{BitFieldSelector, RegisterListRegister},
         package_programs as m68k_value_programs, state as m68k_state, M68KFamilyHandler,
         Operand as M68KOperand,
     },
@@ -68,23 +71,25 @@ use opcore::parser::{
 use opcore::tokenizer::{ConditionalKind, Span, Token, TokenKind, Tokenizer};
 use package::{
     compile_encoding_program, compile_fixed_semantic_program, compile_selector_program,
-    default_token_policy_lexical_defaults, encode_hierarchy_chunks_from_chunks,
-    token_identifier_class, DiagnosticDescriptor, EncodingEndian, EncodingStep,
-    ExprContractDescriptor, ExprDiagnosticMap, ExprParserContractDescriptor,
-    ExprParserDiagnosticMap, HierarchyChunks, ParserContractDescriptor, ParserDiagnosticMap,
-    ParserVmOpcodeV2, ParserVmProgramDescriptor, SelectorProgramDescriptor, SelectorProgramMatcher,
-    SelectorProgramOutcome, SemanticProgramDescriptor, TokenCaseRule, TokenPolicyDescriptor,
-    TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
-    TokenizerVmStreamDescriptor, VmProgramDescriptor, DIAG_EXPR_BUDGET_EXCEEDED,
-    DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM,
-    DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
-    DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
+    compile_structured_encoding_program, default_token_policy_lexical_defaults,
+    encode_hierarchy_chunks_from_chunks, token_identifier_class, DiagnosticDescriptor,
+    EncodingEndian, EncodingStep, ExprContractDescriptor, ExprDiagnosticMap,
+    ExprParserContractDescriptor, ExprParserDiagnosticMap, HierarchyChunks,
+    ParserContractDescriptor, ParserDiagnosticMap, ParserVmOpcodeV2, ParserVmProgramDescriptor,
+    RegisterClassProjection, SelectorProgramDescriptor, SelectorProgramMatcher,
+    SelectorProgramOutcome, SemanticProgramDescriptor, StructuredEncodingStep, TokenCaseRule,
+    TokenPolicyDescriptor, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
+    TokenizerVmProgramDescriptor, TokenizerVmStreamDescriptor, VmProgramDescriptor,
+    DIAG_EXPR_BUDGET_EXCEEDED, DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE,
+    DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW,
+    DIAG_EXPR_UNKNOWN_SYMBOL, DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
     EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1,
     EXVM_OPCODE_VERSION_V2, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
-    SEMANTIC_VM_OPCODE_VERSION_V1, SEMANTIC_VM_OPCODE_VERSION_V2, TOKENIZER_VM_OPCODE_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V1, SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3,
+    TOKENIZER_VM_OPCODE_VERSION_V1,
 };
-use registry::family::{AssemblerContext, EncodeResult, FamilyHandler};
+use registry::family::{AssemblerContext, CpuHandler, EncodeResult, FamilyHandler};
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
 use registry::syntax::register_checker_none;
 use std::collections::HashMap;
@@ -8184,6 +8189,321 @@ fn serialized_encoding_programs_own_fields_endian_displacements_and_overflow() {
             value: 16,
             min: 0,
             max: 15,
+        })
+    ));
+}
+
+#[test]
+fn serialized_structured_encoding_programs_match_family_oracles_without_callbacks() {
+    let span = Span {
+        line: 1,
+        col_start: 1,
+        col_end: 2,
+    };
+    let handler = M68KFamilyHandler::new();
+    let later_handler = M68020CpuHandler::new();
+    let movem_operands = [
+        M68KOperand::RegisterList {
+            registers: vec![
+                RegisterListRegister::Data(0),
+                RegisterListRegister::Data(2),
+                RegisterListRegister::Address(1),
+            ],
+            span,
+        },
+        M68KOperand::AddressIndirect {
+            register: "A0".to_string(),
+            span,
+        },
+    ];
+    let movem_oracle = match handler.encode_instruction(
+        "MOVEM.L",
+        &movem_operands,
+        &TestAssemblerContext::new(),
+    ) {
+        EncodeResult::Ok(bytes) => bytes,
+        other => panic!("Rust m68k oracle rejected MOVEM.L: {other:?}"),
+    };
+    let bit_field = M68KOperand::BitField {
+        base: Box::new(M68KOperand::DataRegister {
+            register: "D0".to_string(),
+            span,
+        }),
+        offset: BitFieldSelector::DataRegister {
+            register: "D1".to_string(),
+            span,
+        },
+        width: BitFieldSelector::Immediate {
+            expr: Expr::Number("32".to_string(), span),
+            span,
+        },
+        span,
+    };
+    let bitfield_oracle =
+        match later_handler.encode_instruction("BFTST", &[bit_field], &TestAssemblerContext::new())
+        {
+            EncodeResult::Ok(bytes) => bytes,
+            other => panic!("Rust m68k oracle rejected BFTST: {other:?}"),
+        };
+
+    let mut registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("structured hierarchy chunks");
+    assert!(chunks.semantic_programs.iter().any(|program| {
+        program.id == m68k_value_programs::ENCODING_BIT_FIELD
+            && program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V3
+    }));
+    assert!(chunks.semantic_programs.iter().any(|program| {
+        program.id == m68080_record_programs::ENCODING_AMMX_GROUP
+            && program.owner == ScopedOwner::Cpu("m68080".to_string())
+    }));
+    chunks.semantic_programs.push(SemanticProgramDescriptor {
+        owner: ScopedOwner::Family("mos6502".to_string()),
+        id: "enc.mask-le".to_string(),
+        opcode_version: SEMANTIC_VM_OPCODE_VERSION_V3,
+        program: compile_structured_encoding_program(&[StructuredEncodingStep::RegisterMask {
+            record: 0,
+            width: 2,
+            endian: EncodingEndian::Little,
+            reverse_bits: false,
+            classes: vec![RegisterClassProjection {
+                class: 9,
+                offset: 0,
+            }],
+        }])
+        .expect("compile cross-family structured mask"),
+    });
+    let bytes =
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("serialize structured programs");
+    drop(chunks);
+    drop(registry);
+    drop(handler);
+    drop(later_handler);
+
+    // All compiler descriptors, registries, and family handlers are gone. The
+    // following results are projections of records plus serialized bytes only.
+    let model = HierarchyExecutionModel::from_package_bytes(&bytes)
+        .expect("reload serialized structured programs");
+    let m68k = model
+        .resolve_pipeline("m68020", None)
+        .expect("resolve m68020");
+    let m68080 = model
+        .resolve_pipeline("m68080", None)
+        .expect("resolve m68080");
+    let mos = model
+        .resolve_pipeline("m6502", None)
+        .expect("resolve m6502");
+    let integer_list = PortableOperandRecord::RegisterList(vec![
+        PortableRegisterRef { class: 0, index: 0 },
+        PortableRegisterRef { class: 0, index: 2 },
+        PortableRegisterRef { class: 1, index: 1 },
+    ]);
+    assert_eq!(
+        model
+            .execute_structured_encoding_program(
+                &m68k,
+                m68k_value_programs::ENCODING_REGISTER_MASK,
+                std::slice::from_ref(&integer_list),
+            )
+            .expect("emit MOVEM register mask"),
+        movem_oracle[2..4]
+    );
+    assert_eq!(
+        model
+            .execute_structured_encoding_program(
+                &m68k,
+                m68k_value_programs::ENCODING_REGISTER_MASK,
+                &[PortableOperandRecord::RegisterRange {
+                    start: PortableRegisterRef { class: 0, index: 0 },
+                    end: PortableRegisterRef { class: 0, index: 2 },
+                }],
+            )
+            .expect("emit inclusive register range"),
+        [0x00, 0x07]
+    );
+    assert_eq!(
+        model
+            .execute_structured_encoding_program(
+                &m68k,
+                m68k_value_programs::ENCODING_REVERSED_REGISTER_MASK,
+                std::slice::from_ref(&integer_list),
+            )
+            .expect("emit reversed predecrement mask"),
+        [0xa0, 0x40]
+    );
+    assert_eq!(
+        model
+            .execute_structured_encoding_program(
+                &m68k,
+                m68k_value_programs::ENCODING_FPU_REGISTER_MASK,
+                &[PortableOperandRecord::RegisterList(vec![
+                    PortableRegisterRef { class: 2, index: 0 },
+                    PortableRegisterRef { class: 2, index: 2 },
+                ])],
+            )
+            .expect("emit FPU register mask"),
+        [0xa0]
+    );
+    assert_eq!(
+        model
+            .execute_structured_encoding_program(
+                &m68k,
+                m68k_value_programs::ENCODING_REGISTER_PAIR,
+                &[PortableOperandRecord::RegisterPair {
+                    left: PortableRegisterRef { class: 2, index: 1 },
+                    right: PortableRegisterRef { class: 2, index: 2 },
+                    indirect: false,
+                }],
+            )
+            .expect("emit FPU/AMMX pair fields"),
+        [0x00, 0x42]
+    );
+    let field_record = PortableOperandRecord::Field {
+        base: Box::new(PortableOperandRecord::Register(PortableRegisterRef {
+            class: 0,
+            index: 0,
+        })),
+        offset: PortableFieldSelector::Register(PortableRegisterRef { class: 0, index: 1 }),
+        width: PortableFieldSelector::Value(32),
+    };
+    assert_eq!(
+        model
+            .execute_structured_encoding_program(
+                &m68k,
+                m68k_value_programs::ENCODING_BIT_FIELD,
+                std::slice::from_ref(&field_record),
+            )
+            .expect("emit bit-field selector extension"),
+        bitfield_oracle[2..4]
+    );
+    assert_eq!(
+        model
+            .execute_structured_encoding_program(
+                &m68080,
+                m68080_record_programs::ENCODING_AMMX_GROUP,
+                &[PortableOperandRecord::Composite {
+                    format: m68080_record_programs::FORMAT_AMMX_GROUP,
+                    records: vec![PortableOperandRecord::RegisterRange {
+                        start: PortableRegisterRef { class: 4, index: 0 },
+                        end: PortableRegisterRef { class: 4, index: 3 },
+                    }],
+                }],
+            )
+            .expect("emit nested AMMX group"),
+        [0x01, 0x23]
+    );
+    assert_eq!(
+        model
+            .execute_structured_encoding_program(
+                &mos,
+                "enc.mask-le",
+                &[PortableOperandRecord::RegisterList(vec![
+                    PortableRegisterRef { class: 9, index: 1 },
+                    PortableRegisterRef { class: 9, index: 3 },
+                ])],
+            )
+            .expect("reuse mask projection across families"),
+        [0x0a, 0x00]
+    );
+
+    assert!(matches!(
+        model
+            .execute_structured_encoding_program(
+                &m68k,
+                m68k_value_programs::ENCODING_REGISTER_MASK,
+                &[],
+            )
+            .expect_err("missing record must fail closed"),
+        RuntimeBridgeError::StructuredEncodingVm(StructuredEncodingVmError::MissingRecord {
+            index: 0,
+            len: 0,
+        })
+    ));
+    assert!(matches!(
+        model
+            .execute_structured_encoding_program(
+                &m68k,
+                m68k_value_programs::ENCODING_REGISTER_MASK,
+                &[PortableOperandRecord::RegisterList(vec![
+                    PortableRegisterRef { class: 7, index: 0 }
+                ])],
+            )
+            .expect_err("unknown register class must fail closed"),
+        RuntimeBridgeError::StructuredEncodingVm(StructuredEncodingVmError::UnknownRegisterClass {
+            class: 7
+        })
+    ));
+    assert!(matches!(
+        model
+            .execute_structured_encoding_program(
+                &m68k,
+                m68k_value_programs::ENCODING_REGISTER_PAIR,
+                &[PortableOperandRecord::RegisterPair {
+                    left: PortableRegisterRef { class: 2, index: 8 },
+                    right: PortableRegisterRef { class: 2, index: 0 },
+                    indirect: false,
+                }],
+            )
+            .expect_err("pair field overflow must fail closed"),
+        RuntimeBridgeError::StructuredEncodingVm(StructuredEncodingVmError::RegisterOutOfRange {
+            index: 8,
+            bits: 3
+        })
+    ));
+    assert!(matches!(
+        model
+            .execute_structured_encoding_program(
+                &m68080,
+                m68080_record_programs::ENCODING_AMMX_GROUP,
+                &[PortableOperandRecord::Composite {
+                    format: m68080_record_programs::FORMAT_AMMX_PAIR,
+                    records: vec![],
+                }],
+            )
+            .expect_err("wrong composite format must fail closed"),
+        RuntimeBridgeError::StructuredEncodingVm(
+            StructuredEncodingVmError::CompositeFormatMismatch { .. }
+        )
+    ));
+    assert!(matches!(
+        model
+            .execute_structured_encoding_program(
+                &m68080,
+                m68080_record_programs::ENCODING_AMMX_GROUP,
+                &[PortableOperandRecord::Composite {
+                    format: m68080_record_programs::FORMAT_AMMX_GROUP,
+                    records: vec![
+                        PortableOperandRecord::Immediate { value: 1 },
+                        PortableOperandRecord::Immediate { value: 2 },
+                        PortableOperandRecord::Immediate { value: 3 },
+                        PortableOperandRecord::Immediate { value: 4 },
+                        PortableOperandRecord::Immediate { value: 5 },
+                    ],
+                }],
+            )
+            .expect_err("oversized composite must fail closed"),
+        RuntimeBridgeError::StructuredEncodingVm(StructuredEncodingVmError::CompositeTooLong {
+            len: 5,
+            max: 4
+        })
+    ));
+    let mut overflow_field = field_record;
+    if let PortableOperandRecord::Field { width, .. } = &mut overflow_field {
+        *width = PortableFieldSelector::Value(33);
+    }
+    assert!(matches!(
+        model
+            .execute_structured_encoding_program(
+                &m68k,
+                m68k_value_programs::ENCODING_BIT_FIELD,
+                &[overflow_field],
+            )
+            .expect_err("selector overflow must fail closed"),
+        RuntimeBridgeError::StructuredEncodingVm(StructuredEncodingVmError::ValueOutOfRange {
+            value: 33,
+            bits: 5
         })
     ));
 }

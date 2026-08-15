@@ -4,8 +4,10 @@
 //! CPU-owned portable operand records for the Motorola 68080 extension.
 
 use package::{
-    compile_operand_record_program, OpcpuCodecError, OperandRecordProgram,
-    OperandRecordProgramDescriptor, OPERAND_RECORD_VM_VERSION_V1, OPERAND_RECORD_VM_VERSION_V3,
+    compile_operand_record_program, compile_structured_encoding_program, EncodingEndian,
+    OpcpuCodecError, OperandRecordProgram, OperandRecordProgramDescriptor,
+    SemanticProgramDescriptor, StructuredEncodingStep, OPERAND_RECORD_VM_VERSION_V1,
+    OPERAND_RECORD_VM_VERSION_V3, SEMANTIC_VM_OPCODE_VERSION_V3,
 };
 use types::hierarchy::ScopedOwner;
 
@@ -25,6 +27,7 @@ pub const FORMAT_TEXTURE_NESTED: u16 = 16;
 pub const FORMAT_TEXTURE_EXTERNAL_SCALE: u16 = 17;
 pub const FORMAT_TEXTURE_SCALED_INSIDE: u16 = 18;
 pub const FORMAT_TEXTURE_FLAT: u16 = 19;
+pub const ENCODING_AMMX_GROUP: &str = "enc.ammx-group";
 
 /// Convert CPU-owned AMMX register spelling to an opaque class/index pair.
 pub fn compile_register_input(register: &str) -> Option<(u16, u16)> {
@@ -82,4 +85,21 @@ pub fn operand_record_programs() -> Result<Vec<OperandRecordProgramDescriptor>, 
         composite(RECORD_TEXTURE_SCALED_INSIDE, FORMAT_TEXTURE_SCALED_INSIDE)?,
         composite(RECORD_TEXTURE_FLAT, FORMAT_TEXTURE_FLAT)?,
     ])
+}
+
+/// Compile the CPU-owned AMMX group projection into a neutral composite emitter.
+pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecError> {
+    Ok(vec![SemanticProgramDescriptor {
+        owner: ScopedOwner::Cpu("m68080".to_string()),
+        id: ENCODING_AMMX_GROUP.to_string(),
+        opcode_version: SEMANTIC_VM_OPCODE_VERSION_V3,
+        program: compile_structured_encoding_program(&[StructuredEncodingStep::CompositeValues {
+            record: 0,
+            format: FORMAT_AMMX_GROUP,
+            width: 2,
+            endian: EncodingEndian::Big,
+            item_bits: 4,
+            max_items: 4,
+        }])?,
+    }])
 }

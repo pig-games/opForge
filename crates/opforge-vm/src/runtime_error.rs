@@ -13,6 +13,7 @@ use crate::operand_record_vm::OperandRecordVmError;
 use crate::runtime_bridge::HierarchyRuntimeBridgeError;
 use crate::runtime_diagnostics::RuntimeBridgeDiagnostic;
 use crate::runtime_model_core::RuntimeModelLoadError;
+use crate::structured_encoding_vm::StructuredEncodingVmError;
 use crate::value_vm::ValueVmError;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -27,6 +28,7 @@ pub enum RuntimeBridgeError {
     EncodingVm(EncodingVmError),
     ValueVm(ValueVmError),
     OperandRecordVm(OperandRecordVmError),
+    StructuredEncodingVm(StructuredEncodingVmError),
 }
 
 impl std::fmt::Display for RuntimeBridgeError {
@@ -42,6 +44,7 @@ impl std::fmt::Display for RuntimeBridgeError {
             Self::EncodingVm(err) => write!(f, "encoding VM error: {}", err),
             Self::ValueVm(err) => write!(f, "value VM error: {}", err),
             Self::OperandRecordVm(err) => write!(f, "operand-record VM error: {}", err),
+            Self::StructuredEncodingVm(err) => write!(f, "structured encoding VM error: {}", err),
         }
     }
 }
@@ -106,5 +109,11 @@ impl From<ValueVmError> for RuntimeBridgeError {
 impl From<OperandRecordVmError> for RuntimeBridgeError {
     fn from(value: OperandRecordVmError) -> Self {
         Self::OperandRecordVm(value)
+    }
+}
+
+impl From<StructuredEncodingVmError> for RuntimeBridgeError {
+    fn from(value: StructuredEncodingVmError) -> Self {
+        Self::StructuredEncodingVm(value)
     }
 }

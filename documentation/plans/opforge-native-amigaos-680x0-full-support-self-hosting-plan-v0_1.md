@@ -383,6 +383,17 @@ the same unmodified serialized semantic package.
   programs and missing or out-of-range inputs fail closed. The refreshed
   focused package remains exact Rust-builder output at 8,187 bytes within the
   unchanged 8,192-byte native allocation.
+- Item 9 retains container version 1 and adds independently versioned `SEMV`
+  v3 programs for CPU-neutral register-mask, register-pair, field-selector, and
+  composite-value emission. `SEMV` v1/v2 remain accepted unchanged. The new
+  `CPRD` compact operand-record chunk carries an explicit v1 wire version and is
+  used only with related `SEMV` v3 capability; legacy packages without v3 keep
+  their existing `OPRD` representation. Package-owned register-class
+  projections and composite format tags retain all family meaning outside the
+  generic runtime. Unsupported versions, malformed programs and records,
+  missing records, invalid shapes/classes, and overflow fail closed. The exact
+  Rust-built focused and full native fixtures are 7,871 and 133,936 bytes; the
+  focused fixture remains within the unchanged 8,192-byte native allocation.
 - Owned contract: the 68020/AmigaOS executable exposes the complete
   Rust-supported 680x0 assembler surface and can rebuild itself
 - Rationale: CPU discovery is already present in package metadata, but complete
@@ -455,11 +466,21 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit compiling directly resolvable encodings into portable programs.
   - Definition of done: fixed instruction/extension bytes match the oracle with zero runtime encoder callbacks.
 
-- [ ] Item 9: materialize structured extension encoding programs
+- [x] Item 9: materialize structured extension encoding programs
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`-`N68X0-006`, `N68X0-014`, `N68X0-015`.
   - Expected files: neutral list/pair/range/nested-extension encoding operations, family compiler adapter, Rust tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; list/pair/bit-field/FPU/AMMX extension, overflow, malformed-program, and applicable cross-family structured-emission tests.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for one structured-extension construction invariant.
+  - Plan-compliance review evidence: `PASS` — after rejecting an initial
+    unversioned and incorrectly coupled compact-record revision, the independent
+    `plan-compliance-reviewer` confirmed explicit `CPRD` v1 versioning and
+    fail-closed unsupported-version behavior; `SEMV` v3 capability-based compact
+    activation with legacy `OPRD` preservation; the governed Item 9 slice;
+    CPU-neutral serialized-only register-mask, reversed-mask, FPU-mask,
+    register-pair, field-selector, and composite-value execution; actual AMMX
+    group flattening; live Rust MOVEM and BFTST oracle equality; cross-family MOS
+    reuse; typed missing/class/pair/composite/selector failures; exact 7,871- and
+    133,936-byte fixtures; no native production-source change; and clean focused,
+    full Rust all-family, architecture-boundary, and workflow gates.
   - Commit outcome: one commit compiling complex extension emission into neutral programs.
   - Definition of done: structured extensions match the oracle without runtime family encoder dispatch.
 

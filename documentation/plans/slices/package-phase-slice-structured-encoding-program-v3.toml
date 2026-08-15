@@ -1,0 +1,54 @@
+[slice]
+schema_version = 1
+name = "versioned portable structured extension encoding programs"
+kind = "package-runtime"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 9
+requirements = ["N68X0-001", "N68X0-003", "N68X0-004", "N68X0-005", "N68X0-006", "N68X0-014", "N68X0-015"]
+rust_reference = [
+  "crates/opforge-families/src/m68k/handler/control_movem.rs::M68KFamilyHandler::encode_movem",
+  "crates/opforge-families/src/m68k/handler/bitfield.rs::M68KFamilyHandler::encode_bit_field_instruction",
+  "crates/opforge-families/src/m68k/package_programs.rs::semantic_programs",
+  "crates/opforge-families/src/m68080/package_programs.rs::semantic_programs",
+  "crates/opforge-package/src/package/structured_encoding_program.rs::compile_structured_encoding_program",
+  "crates/opforge-vm/src/structured_encoding_vm.rs::execute_structured_encoding_program",
+  "crates/opforge-vm/src/runtime_model_core.rs::RuntimeModelCore::execute_structured_encoding_program"
+]
+boundary = "SEMV v3 is an independently versioned, CPU-neutral projection of portable register lists/ranges, pairs, field selectors, and bounded composites. Programs carry opaque register-class-to-bit-offset tables, field positions, selector-kind markers, full-width zero aliases, endian, widths, format tags, and cardinality. The m68k family and m68080 CPU adapters exclusively own the meanings assigned to those values. CPRD v1 independently versions a lossless shared-owner representation for operand programs used by structured-capable packages; packages without SEMV v3 retain legacy OPRD encoding."
+invariant = "After registry serialization and destruction of the registry, chunks, and family handlers, structured extension bytes are determined only by serialized package programs plus portable operand records. The same program primitives emit list and range masks, reversed masks, pairs, selector fields, and bounded nested values. Missing records, unknown classes, mismatched shapes/formats, overflow, malformed programs, unsupported versions, truncation, and trailing bytes fail closed."
+expected_inputs = "A resolved hierarchy, opaque structured-program id, and ordered portable operand records previously reconstructed from package-owned OPRD/CPRD programs."
+expected_outputs = "A deterministic byte vector in package-declared order, or a typed program, record-shape, class, format, cardinality, or range failure."
+known_non_equivalences = "Item 9 materializes structured extension construction only. Deferred fixups, PC-relative context, branch convergence, assembler callback cutover, native SEMV v3/CPRD interpretation, artifacts, and CLI work remain assigned to Items 10-15 and Item 13. No native production source changes in this slice."
+fast_proof_command = "cargo test -p package structured_encoding_program_v3 -- --nocapture && cargo test -p package compact_operand_record_chunk_is_lossless_bounded_and_legacy_oprd_stays_available -- --nocapture && cargo test -p vm serialized_structured_encoding_programs_match_family_oracles_without_callbacks -- --nocapture && cargo test -p asm motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry -- --nocapture && cargo test -p asm motorola68020_embedded_native_cli_package_matches_rust_default_runtime_package -- --nocapture"
+full_gate_command = "cargo test -p package && cargo test -p registry && cargo test -p families && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
+native_proof = "not-applicable: Item 9 changes no native production source; refreshed fixtures are exact Rust-builder output, and the focused package is 7,871 bytes within the unchanged 8,192-byte native allocation"
+
+[[tests]]
+name = "structured_encoding_program_v3_round_trips_every_neutral_projection"
+proof_level = "package"
+proves = "Canonical SEMV v3 encodes and decodes every structured projection, explicit endian, class table, selector policy, and bounded composite declaration."
+
+[[tests]]
+name = "structured_encoding_program_v3_rejects_malformed_or_ambiguous_programs"
+proof_level = "package-negative"
+proves = "Invalid widths, endian/flags, overlaps, bounds, truncation, and trailing bytes fail closed."
+
+[[tests]]
+name = "structured_encoding_program_v3_validation_is_deterministic_for_mutated_bytes"
+proof_level = "package-fuzz"
+proves = "Deterministically mutated SEMV v3 byte streams produce repeatable validation outcomes without panics."
+
+[[tests]]
+name = "compact_operand_record_chunk_is_lossless_bounded_and_legacy_oprd_stays_available"
+proof_level = "package-compatibility"
+proves = "CPRD v1 is smaller, lossless, canonical, explicitly versioned, and fail-closed while legacy OPRD remains unchanged for packages without SEMV v3."
+
+[[tests]]
+name = "serialized_structured_encoding_programs_match_family_oracles_without_callbacks"
+proof_level = "runtime-cross-family"
+proves = "Serialized-only execution matches live Rust MOVEM and BFTST extension oracles and proves range/list equivalence, reversed and FPU masks, pair and AMMX group projection, MOS reuse, and typed failures."
+
+[[tests]]
+name = "motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry"
+proof_level = "native-package-capacity"
+proves = "The exact Rust-built focused package is 7,871 bytes and fits the unchanged 8,192-byte tkpkg allocation."

@@ -147,7 +147,17 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
         chunks.push((CHUNK_VALP, encode_valp_chunk(&value_programs)?));
     }
     if !operand_record_programs.is_empty() {
-        chunks.push((CHUNK_OPRD, encode_oprd_chunk(&operand_record_programs)?));
+        let structured_programs_present = semantic_programs
+            .iter()
+            .any(|program| program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V3);
+        if !structured_programs_present {
+            chunks.push((CHUNK_OPRD, encode_oprd_chunk(&operand_record_programs)?));
+        } else {
+            chunks.push((
+                CHUNK_CPRD,
+                encode_compact_oprd_chunk(&operand_record_programs)?,
+            ));
+        }
     }
     if !selector_programs.is_empty() {
         chunks.push((CHUNK_SLCT, encode_slct_chunk(&selector_programs)?));
@@ -340,8 +350,26 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
     let semv_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_SEMV)?;
     let valp_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_VALP)?;
     let oprd_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_OPRD)?;
+    let cprd_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_CPRD)?;
     let slct_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_SLCT)?;
     let stvm_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_STVM)?;
+    if cprd_bytes.is_some() {
+        let Some(payload) = semv_bytes else {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "CPRD".to_string(),
+                detail: "compact operand records require structured semantic programs".to_string(),
+            });
+        };
+        if !decode_semv_chunk(payload)?
+            .iter()
+            .any(|program| program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V3)
+        {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "CPRD".to_string(),
+                detail: "compact operand records require a SEMV v3 program".to_string(),
+            });
+        }
+    }
     let fams_bytes = slice_for_chunk(bytes, &toc, CHUNK_FAMS)?;
     let cpus_bytes = slice_for_chunk(bytes, &toc, CHUNK_CPUS)?;
     let cals_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_CALS)?;
@@ -407,9 +435,16 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
             Some(payload) => decode_valp_chunk(payload)?,
             None => Vec::new(),
         },
-        operand_record_programs: match oprd_bytes {
-            Some(payload) => decode_oprd_chunk(payload)?,
-            None => Vec::new(),
+        operand_record_programs: match (oprd_bytes, cprd_bytes) {
+            (Some(_), Some(_)) => {
+                return Err(OpcpuCodecError::InvalidChunkFormat {
+                    chunk: "CPRD".to_string(),
+                    detail: "package contains both OPRD and CPRD".to_string(),
+                })
+            }
+            (Some(payload), None) => decode_oprd_chunk(payload)?,
+            (None, Some(payload)) => decode_compact_oprd_chunk(payload)?,
+            (None, None) => Vec::new(),
         },
         selector_programs: match slct_bytes {
             Some(payload) => decode_slct_chunk(payload)?,
@@ -972,6 +1007,114 @@ pub(super) fn decode_oprd_chunk(
     bytes: &[u8],
 ) -> Result<Vec<OperandRecordProgramDescriptor>, OpcpuCodecError> {
     let programs = decode_scoped_schema_chunk(bytes)?;
+    validate_operand_record_program_set(&programs)?;
+    Ok(programs)
+}
+
+pub(super) fn encode_compact_oprd_chunk(
+    programs: &[OperandRecordProgramDescriptor],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    let mut owners: Vec<ScopedOwner> = Vec::new();
+    for program in programs {
+        if !owners
+            .iter()
+            .any(|owner| owner.key_parts_lowercase() == program.owner.key_parts_lowercase())
+        {
+            owners.push(program.owner.clone());
+        }
+    }
+    let owner_count =
+        u16::try_from(owners.len()).map_err(|_| OpcpuCodecError::CountOutOfRange {
+            context: "CPRD owner count exceeds u16".to_string(),
+        })?;
+    let mut out = Vec::new();
+    write_u16(&mut out, COMPACT_OPERAND_RECORD_CHUNK_VERSION_V1);
+    write_u16(&mut out, owner_count);
+    for owner in &owners {
+        encode_scoped_owner(&mut out, "CPRD", owner)?;
+    }
+    write_u32(&mut out, u32_count(programs.len(), "CPRD program count")?);
+    for program in programs {
+        let owner_index = owners
+            .iter()
+            .position(|owner| owner.key_parts_lowercase() == program.owner.key_parts_lowercase())
+            .expect("owner table was built from every program");
+        write_u16(
+            &mut out,
+            u16::try_from(owner_index).expect("owner count already fits in u16"),
+        );
+        write_string(&mut out, "CPRD", &program.id)?;
+        write_u16(&mut out, program.schema_version);
+        write_u32(
+            &mut out,
+            u32_count(program.program.len(), "CPRD program byte length")?,
+        );
+        out.extend_from_slice(&program.program);
+    }
+    Ok(out)
+}
+
+pub(super) fn decode_compact_oprd_chunk(
+    bytes: &[u8],
+) -> Result<Vec<OperandRecordProgramDescriptor>, OpcpuCodecError> {
+    let mut cur = Decoder::new(bytes, "CPRD");
+    let version = cur.read_u16()?;
+    if version != COMPACT_OPERAND_RECORD_CHUNK_VERSION_V1 {
+        return Err(OpcpuCodecError::InvalidChunkFormat {
+            chunk: "CPRD".to_string(),
+            detail: format!("unsupported compact operand-record chunk version {version}"),
+        });
+    }
+    let owner_count = cur.read_u16()? as usize;
+    if owner_count == 0 {
+        return Err(OpcpuCodecError::InvalidChunkFormat {
+            chunk: "CPRD".to_string(),
+            detail: "compact owner table must not be empty".to_string(),
+        });
+    }
+    let mut owners = Vec::with_capacity(owner_count);
+    for _ in 0..owner_count {
+        let owner = decode_scoped_owner(&mut cur, "CPRD")?;
+        if owners
+            .iter()
+            .any(|prior: &ScopedOwner| prior.key_parts_lowercase() == owner.key_parts_lowercase())
+        {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "CPRD".to_string(),
+                detail: "compact owner table contains a duplicate owner".to_string(),
+            });
+        }
+        owners.push(owner);
+    }
+    let count = cur.read_u32()? as usize;
+    if count > MAX_DECODE_ENTRY_COUNT {
+        return Err(OpcpuCodecError::CountOutOfRange {
+            context: "CPRD program count exceeds hard limit".to_string(),
+        });
+    }
+    let mut programs = Vec::with_capacity(count);
+    for _ in 0..count {
+        let owner_index = cur.read_u16()? as usize;
+        let owner = owners.get(owner_index).cloned().ok_or_else(|| {
+            OpcpuCodecError::InvalidChunkFormat {
+                chunk: "CPRD".to_string(),
+                detail: format!("compact owner index {owner_index} is out of range"),
+            }
+        })?;
+        let id = cur.read_string()?;
+        let schema_version = cur.read_u16()?;
+        let len = cur.read_u32()? as usize;
+        let program = cur
+            .read_exact(len, "operand-record program bytes")?
+            .to_vec();
+        programs.push(OperandRecordProgramDescriptor {
+            owner,
+            id,
+            schema_version,
+            program,
+        });
+    }
+    cur.finish()?;
     validate_operand_record_program_set(&programs)?;
     Ok(programs)
 }

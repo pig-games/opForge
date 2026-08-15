@@ -34,6 +34,7 @@ use types::hierarchy::{
 mod canonicalize;
 mod encoding_program;
 mod state_program;
+mod structured_encoding_program;
 #[cfg(test)]
 mod tests;
 
@@ -47,6 +48,7 @@ pub use canonicalize::{
 };
 pub use encoding_program::*;
 pub use state_program::*;
+pub use structured_encoding_program::*;
 
 pub const OPASM_MAGIC: [u8; 4] = *b"OPCP";
 pub const OPASM_VERSION_V1: u16 = 0x0001;
@@ -69,6 +71,7 @@ const CHUNK_TABL: [u8; 4] = *b"TABL";
 const CHUNK_SEMV: [u8; 4] = *b"SEMV";
 const CHUNK_VALP: [u8; 4] = *b"VALP";
 const CHUNK_OPRD: [u8; 4] = *b"OPRD";
+const CHUNK_CPRD: [u8; 4] = *b"CPRD";
 const CHUNK_SLCT: [u8; 4] = *b"SLCT";
 const CHUNK_STVM: [u8; 4] = *b"STVM";
 const CHUNK_CALS: [u8; 4] = *b"CALS";
@@ -138,6 +141,8 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 pub const TOKENIZER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const SEMANTIC_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const SEMANTIC_VM_OPCODE_VERSION_V2: u16 = 0x0002;
+pub const SEMANTIC_VM_OPCODE_VERSION_V3: u16 = 0x0003;
+pub const COMPACT_OPERAND_RECORD_CHUNK_VERSION_V1: u16 = 0x0001;
 pub const SEMANTIC_VM_OP_EMIT_U8: u8 = 0x01;
 pub const SEMANTIC_VM_OP_EMIT_OPERAND: u8 = 0x02;
 pub const SEMANTIC_VM_OP_END: u8 = 0xFF;
@@ -1088,6 +1093,9 @@ pub fn validate_semantic_program(
 ) -> Result<(), OpcpuCodecError> {
     if opcode_version == SEMANTIC_VM_OPCODE_VERSION_V2 {
         return validate_encoding_program(opcode_version, program);
+    }
+    if opcode_version == SEMANTIC_VM_OPCODE_VERSION_V3 {
+        return validate_structured_encoding_program(opcode_version, program);
     }
     if opcode_version != SEMANTIC_VM_OPCODE_VERSION_V1 {
         return Err(OpcpuCodecError::InvalidChunkFormat {

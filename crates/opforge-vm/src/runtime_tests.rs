@@ -48,7 +48,10 @@ use families::{
     },
     m65816::state,
     m68080::package_programs as m68080_record_programs,
-    m68k::{package_programs as m68k_value_programs, state as m68k_state},
+    m68k::{
+        package_programs as m68k_value_programs, state as m68k_state, M68KFamilyHandler,
+        Operand as M68KOperand,
+    },
     mos6502::{
         module::{M6502CpuModule, MOS6502FamilyModule, MOS6502Operands},
         package_programs as mos6502_value_programs, Operand,
@@ -64,14 +67,14 @@ use opcore::parser::{
 };
 use opcore::tokenizer::{ConditionalKind, Span, Token, TokenKind, Tokenizer};
 use package::{
-    compile_fixed_semantic_program, compile_selector_program,
+    compile_encoding_program, compile_fixed_semantic_program, compile_selector_program,
     default_token_policy_lexical_defaults, encode_hierarchy_chunks_from_chunks,
-    token_identifier_class, DiagnosticDescriptor, ExprContractDescriptor, ExprDiagnosticMap,
-    ExprParserContractDescriptor, ExprParserDiagnosticMap, HierarchyChunks,
-    ParserContractDescriptor, ParserDiagnosticMap, ParserVmOpcodeV2, ParserVmProgramDescriptor,
-    SelectorProgramDescriptor, SelectorProgramMatcher, SelectorProgramOutcome,
-    SemanticProgramDescriptor, TokenCaseRule, TokenPolicyDescriptor, TokenizerVmDiagnosticMap,
-    TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
+    token_identifier_class, DiagnosticDescriptor, EncodingEndian, EncodingStep,
+    ExprContractDescriptor, ExprDiagnosticMap, ExprParserContractDescriptor,
+    ExprParserDiagnosticMap, HierarchyChunks, ParserContractDescriptor, ParserDiagnosticMap,
+    ParserVmOpcodeV2, ParserVmProgramDescriptor, SelectorProgramDescriptor, SelectorProgramMatcher,
+    SelectorProgramOutcome, SemanticProgramDescriptor, TokenCaseRule, TokenPolicyDescriptor,
+    TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
     TokenizerVmStreamDescriptor, VmProgramDescriptor, DIAG_EXPR_BUDGET_EXCEEDED,
     DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM,
     DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
@@ -79,9 +82,9 @@ use package::{
     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
     EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1,
     EXVM_OPCODE_VERSION_V2, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
-    SEMANTIC_VM_OPCODE_VERSION_V1, TOKENIZER_VM_OPCODE_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V1, SEMANTIC_VM_OPCODE_VERSION_V2, TOKENIZER_VM_OPCODE_VERSION_V1,
 };
-use registry::family::AssemblerContext;
+use registry::family::{AssemblerContext, EncodeResult, FamilyHandler};
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
 use registry::syntax::register_checker_none;
 use std::collections::HashMap;
@@ -8065,6 +8068,124 @@ fn execution_model_runs_fixed_semantics_from_serialized_package_across_families(
             .expect("execute the same neutral semantic primitive for mos6502"),
         vec![0xea]
     );
+}
+
+#[test]
+fn serialized_encoding_programs_own_fields_endian_displacements_and_overflow() {
+    let span = Span {
+        line: 1,
+        col_start: 1,
+        col_end: 2,
+    };
+    let oracle = match M68KFamilyHandler::new().encode_instruction(
+        "TRAP",
+        &[M68KOperand::Immediate {
+            expr: Expr::Number("7".to_string(), span),
+            span,
+        }],
+        &TestAssemblerContext::new(),
+    ) {
+        EncodeResult::Ok(bytes) => bytes,
+        other => panic!("Rust m68k oracle rejected TRAP #7: {other:?}"),
+    };
+    let mut registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    assert!(chunks.semantic_programs.iter().any(|program| {
+        program.id == m68k_value_programs::ENCODING_TRAP_VECTOR
+            && program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V2
+    }));
+    chunks.semantic_programs.extend([
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("motorola68000".to_string()),
+            id: "encoding.displacement-word".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V2,
+            program: compile_encoding_program(&[EncodingStep::Scalar {
+                input: 0,
+                width: 2,
+                endian: EncodingEndian::Big,
+                min: -32_768,
+                max: 32_767,
+            }])
+            .expect("compile signed displacement"),
+        },
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "encoding.immediate-word".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V2,
+            program: compile_encoding_program(&[
+                EncodingStep::Literal {
+                    value: 0xea,
+                    width: 1,
+                    endian: EncodingEndian::Little,
+                },
+                EncodingStep::Scalar {
+                    input: 0,
+                    width: 2,
+                    endian: EncodingEndian::Little,
+                    min: 0,
+                    max: 65_535,
+                },
+            ])
+            .expect("compile little-endian immediate"),
+        },
+    ]);
+    let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("serialize encoding programs");
+    drop(chunks);
+    drop(registry);
+
+    // Only package bytes reach this runtime: neither registry nor family encoder
+    // callbacks are available after this point.
+    let model = HierarchyExecutionModel::from_package_bytes(&bytes)
+        .expect("reload serialized encoding programs");
+    let m68k = model
+        .resolve_pipeline("m68020", None)
+        .expect("resolve m68020");
+    let mos = model
+        .resolve_pipeline("m6502", None)
+        .expect("resolve m6502");
+    assert_eq!(
+        model
+            .execute_encoding_program(&m68k, m68k_value_programs::ENCODING_TRAP_VECTOR, &[7])
+            .expect("insert trap vector field"),
+        oracle
+    );
+    assert_eq!(
+        model
+            .execute_encoding_program(&m68k, "encoding.displacement-word", &[-2])
+            .expect("emit signed big-endian displacement"),
+        [0xff, 0xfe]
+    );
+    assert_eq!(
+        model
+            .execute_encoding_program(&mos, "encoding.immediate-word", &[0x1234])
+            .expect("emit little-endian cross-family immediate"),
+        [0xea, 0x34, 0x12]
+    );
+    let missing = model
+        .execute_encoding_program(&mos, "encoding.immediate-word", &[])
+        .expect_err("missing scalar input must fail closed");
+    assert!(matches!(
+        missing,
+        RuntimeBridgeError::EncodingVm(crate::encoding_vm::EncodingVmError::MissingInput {
+            index: 0,
+            len: 0,
+        })
+    ));
+    let error = model
+        .execute_encoding_program(&m68k, m68k_value_programs::ENCODING_TRAP_VECTOR, &[16])
+        .expect_err("field overflow must fail closed");
+    assert!(matches!(
+        error,
+        RuntimeBridgeError::EncodingVm(crate::encoding_vm::EncodingVmError::ValueOutOfRange {
+            index: 0,
+            value: 16,
+            min: 0,
+            max: 15,
+        })
+    ));
 }
 
 #[test]

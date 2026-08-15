@@ -32,6 +32,7 @@ use types::hierarchy::{
 };
 
 mod canonicalize;
+mod encoding_program;
 mod state_program;
 #[cfg(test)]
 mod tests;
@@ -44,6 +45,7 @@ pub use canonicalize::{
     canonicalize_semantic_programs, canonicalize_state_programs, canonicalize_token_policies,
     canonicalize_tokenizer_vm_programs, canonicalize_value_programs,
 };
+pub use encoding_program::*;
 pub use state_program::*;
 
 pub const OPASM_MAGIC: [u8; 4] = *b"OPCP";
@@ -135,6 +137,7 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 /// - unknown versions must produce deterministic errors.
 pub const TOKENIZER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const SEMANTIC_VM_OPCODE_VERSION_V1: u16 = 0x0001;
+pub const SEMANTIC_VM_OPCODE_VERSION_V2: u16 = 0x0002;
 pub const SEMANTIC_VM_OP_EMIT_U8: u8 = 0x01;
 pub const SEMANTIC_VM_OP_EMIT_OPERAND: u8 = 0x02;
 pub const SEMANTIC_VM_OP_END: u8 = 0xFF;
@@ -1083,6 +1086,9 @@ pub fn validate_semantic_program(
     opcode_version: u16,
     program: &[u8],
 ) -> Result<(), OpcpuCodecError> {
+    if opcode_version == SEMANTIC_VM_OPCODE_VERSION_V2 {
+        return validate_encoding_program(opcode_version, program);
+    }
     if opcode_version != SEMANTIC_VM_OPCODE_VERSION_V1 {
         return Err(OpcpuCodecError::InvalidChunkFormat {
             chunk: "SEMV".to_string(),

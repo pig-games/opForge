@@ -44,7 +44,7 @@ use opcore::expr_vm::PortableExprBudgets;
 use package::{
     canonicalize_expr_parser_contracts, canonicalize_hierarchy_metadata,
     canonicalize_operand_record_programs, canonicalize_parser_contracts,
-    canonicalize_parser_vm_programs, canonicalize_token_policies,
+    canonicalize_parser_vm_programs, canonicalize_semantic_programs, canonicalize_token_policies,
     canonicalize_tokenizer_vm_programs, canonicalize_value_programs,
     default_runtime_diagnostic_catalog, default_token_policy_lexical_defaults,
     encode_hierarchy_chunks_from_chunks, token_identifier_class, ExprContractDescriptor,
@@ -269,9 +269,11 @@ pub fn build_hierarchy_chunks_from_registry(
 
     let mut tables = Vec::new();
     let mut selectors = Vec::new();
+    let mut semantic_programs = Vec::new();
     let mut selector_programs: Vec<SelectorProgramDescriptor> = Vec::new();
     let mut state_programs: Vec<StateProgramDescriptor> = Vec::new();
     for family in &family_ids {
+        semantic_programs.extend(registry.family_semantic_programs(*family)?);
         selector_programs.extend(registry.family_selector_programs(*family)?);
         state_programs.extend(registry.family_state_programs(*family)?);
     }
@@ -766,6 +768,7 @@ pub fn build_hierarchy_chunks_from_registry(
     canonicalize_parser_vm_programs(&mut parser_vm_programs);
     package::canonicalize_expr_contracts(&mut expr_contracts);
     canonicalize_expr_parser_contracts(&mut expr_parser_contracts);
+    canonicalize_semantic_programs(&mut semantic_programs);
     canonicalize_value_programs(&mut value_programs);
     canonicalize_operand_record_programs(&mut operand_record_programs);
     package::canonicalize_selector_programs(&mut selector_programs);
@@ -790,7 +793,7 @@ pub fn build_hierarchy_chunks_from_registry(
         registers,
         forms,
         tables,
-        semantic_programs: Vec::new(),
+        semantic_programs,
         value_programs,
         operand_record_programs,
         selector_programs,

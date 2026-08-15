@@ -8,6 +8,7 @@ use types::hierarchy::HierarchyError;
 
 use crate::builder::HierarchyBuildError;
 use crate::bytecode::VmError;
+use crate::encoding_vm::EncodingVmError;
 use crate::operand_record_vm::OperandRecordVmError;
 use crate::runtime_bridge::HierarchyRuntimeBridgeError;
 use crate::runtime_diagnostics::RuntimeBridgeDiagnostic;
@@ -23,6 +24,7 @@ pub enum RuntimeBridgeError {
     Resolve(String),
     Diagnostic(RuntimeBridgeDiagnostic),
     Vm(VmError),
+    EncodingVm(EncodingVmError),
     ValueVm(ValueVmError),
     OperandRecordVm(OperandRecordVmError),
 }
@@ -37,6 +39,7 @@ impl std::fmt::Display for RuntimeBridgeError {
             Self::Resolve(err) => write!(f, "{}", err),
             Self::Diagnostic(diag) => write!(f, "{}", diag.render()),
             Self::Vm(err) => write!(f, "VM encode error: {}", err),
+            Self::EncodingVm(err) => write!(f, "encoding VM error: {}", err),
             Self::ValueVm(err) => write!(f, "value VM error: {}", err),
             Self::OperandRecordVm(err) => write!(f, "operand-record VM error: {}", err),
         }
@@ -85,6 +88,12 @@ impl From<OpcpuCodecError> for RuntimeBridgeError {
 impl From<VmError> for RuntimeBridgeError {
     fn from(value: VmError) -> Self {
         Self::Vm(value)
+    }
+}
+
+impl From<EncodingVmError> for RuntimeBridgeError {
+    fn from(value: EncodingVmError) -> Self {
+        Self::EncodingVm(value)
     }
 }
 

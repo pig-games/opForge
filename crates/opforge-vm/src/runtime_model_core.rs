@@ -17,7 +17,8 @@ use package::{
     OPERAND_RECORD_VM_VERSION_V1, OPERAND_RECORD_VM_VERSION_V2, OPERAND_RECORD_VM_VERSION_V3,
     PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
     PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, SEMANTIC_VM_OPCODE_VERSION_V1,
-    TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V2, TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
+    VALUE_VM_OPCODE_VERSION_V1,
 };
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
@@ -27,6 +28,7 @@ use types::hierarchy::{
 
 use crate::builder::{build_hierarchy_package_from_registry, HierarchyBuildError};
 use crate::bytecode::execute_program;
+use crate::encoding_vm::execute_encoding_program;
 use crate::operand_record_vm::{
     execute_operand_record_program_with_records as execute_operand_record_program_bytes,
     PortableOperandRecord, PortableRegisterRef,
@@ -1796,6 +1798,38 @@ impl RuntimeModelCore {
         }
         Err(RuntimeBridgeError::Resolve(format!(
             "semantic program '{normalized_id}' is not defined for the resolved hierarchy"
+        )))
+    }
+
+    pub fn execute_encoding_program(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        inputs: &[i64],
+    ) -> Result<Vec<u8>, RuntimeBridgeError> {
+        let normalized_id = program_id.to_ascii_lowercase();
+        let program_id = self.interned_id(&normalized_id).ok_or_else(|| {
+            RuntimeBridgeError::Resolve(format!("unknown encoding program '{normalized_id}'"))
+        })?;
+        for (owner_tag, owner_id) in self.scoped_owner_lookup_order(resolved) {
+            let Some(owner_id) = owner_id else {
+                continue;
+            };
+            let Some((opcode_version, program)) = self
+                .semantic_programs
+                .get(&(owner_tag, owner_id, program_id))
+            else {
+                continue;
+            };
+            if *opcode_version != SEMANTIC_VM_OPCODE_VERSION_V2 {
+                return Err(RuntimeBridgeError::Resolve(format!(
+                    "semantic program '{normalized_id}' is not an encoding VM v2 program"
+                )));
+            }
+            return Ok(execute_encoding_program(program, inputs)?);
+        }
+        Err(RuntimeBridgeError::Resolve(format!(
+            "encoding program '{normalized_id}' is not defined for the resolved hierarchy"
         )))
     }
 

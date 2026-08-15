@@ -498,6 +498,17 @@ impl HierarchyExecutionModel {
             .execute_semantic_program(resolved, program_id, operands)
     }
 
+    /// Execute a fixed-field/scalar encoding program from serialized package data.
+    pub fn execute_encoding_program(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        inputs: &[i64],
+    ) -> Result<Vec<u8>, RuntimeBridgeError> {
+        self.core
+            .execute_encoding_program(resolved, program_id, inputs)
+    }
+
     /// Materialize one scalar using a package-owned, versioned value program.
     pub fn execute_value_program(
         &self,

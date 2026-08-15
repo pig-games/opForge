@@ -11,7 +11,8 @@ use crate::family::{AssemblerContext, EncodeResult, FamilyEncodeResult, FamilyPa
 use opcore::parser::Expr;
 use package::{
     DiagnosticDescriptor, OpcpuCodecError, OperandRecordProgramDescriptor,
-    SelectorProgramDescriptor, StateProgramDescriptor, ValueProgramDescriptor,
+    SelectorProgramDescriptor, SemanticProgramDescriptor, StateProgramDescriptor,
+    ValueProgramDescriptor,
 };
 
 pub trait FamilyOperandSet: Send + Sync {
@@ -170,6 +171,9 @@ pub trait FamilyModule: Send + Sync {
         Vec::new()
     }
     fn value_programs(&self) -> Result<Vec<ValueProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
+    fn semantic_programs(&self) -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecError> {
         Ok(Vec::new())
     }
     fn operand_record_programs(
@@ -369,6 +373,16 @@ impl AsmRegistry {
         self.families
             .get(&family)
             .map(|module| module.value_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn family_semantic_programs(
+        &self,
+        family: CpuFamily,
+    ) -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecError> {
+        self.families
+            .get(&family)
+            .map(|module| module.semantic_programs())
             .unwrap_or_else(|| Ok(Vec::new()))
     }
 

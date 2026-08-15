@@ -377,6 +377,12 @@ the same unmodified serialized semantic package.
   retain canonical bytes, and malformed or unsupported state programs fail
   closed. The refreshed focused native package remains exact Rust-builder
   output at 8,122 bytes within the unchanged 8,192-byte native allocation.
+- Item 8 retains container version 1 and adds independently versioned `SEMV`
+  v2 programs for CPU-neutral literal, constrained-scalar, fixed-field, width,
+  and endian emission. `SEMV` v1 remains accepted unchanged; malformed v2
+  programs and missing or out-of-range inputs fail closed. The refreshed
+  focused package remains exact Rust-builder output at 8,187 bytes within the
+  unchanged 8,192-byte native allocation.
 - Owned contract: the 68020/AmigaOS executable exposes the complete
   Rust-supported 680x0 assembler surface and can rebuild itself
 - Rationale: CPU discovery is already present in package metadata, but complete
@@ -441,11 +447,11 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit moving runtime legality and directive-state decisions into package programs.
   - Definition of done: all six profiles make identical legality/state decisions without family legality or directive callbacks.
 
-- [ ] Item 8: materialize fixed field, endian, and value-validation encoding programs
+- [x] Item 8: materialize fixed field, endian, and value-validation encoding programs
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`-`N68X0-006`, `N68X0-014`, `N68X0-015`.
   - Expected files: neutral field/value/emission operations, family encoder compiler adapter, Rust tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; field insertion, endian, immediate/displacement, overflow, malformed-program, canonical package, and cross-family emission tests.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for fixed encoding operations and no second opcode table.
+  - Plan-compliance review evidence: `PASS` — after requiring explicit destruction of compiler state plus literal and typed missing-input proof, the independent `plan-compliance-reviewer` confirmed CPU-neutral, independently versioned and v1-compatible `SEMV` v2; family-owned m68k field meaning; live Rust-oracle equality; serialized-only literal/scalar/fixed-field execution; big-endian signed displacement and bounded field insertion; cross-family MOS little-endian reuse; typed missing-input/overflow failures; malformed/fuzz coverage; exact 8,187/8,192 fixture capacity; no native production-source change; later structured/fixup/cutover work excluded; and clean focused, full Rust all-family, architecture-boundary, and workflow gates.
   - Commit outcome: one commit compiling directly resolvable encodings into portable programs.
   - Definition of done: fixed instruction/extension bytes match the oracle with zero runtime encoder callbacks.
 

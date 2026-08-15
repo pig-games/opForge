@@ -14,6 +14,7 @@
 
 pub mod builder;
 pub mod bytecode;
+pub mod encoding_vm;
 pub mod execution_model;
 pub mod expr_vm_compat;
 pub(crate) mod exvm_v2_runtime;

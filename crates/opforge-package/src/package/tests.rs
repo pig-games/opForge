@@ -1955,6 +1955,15 @@ proptest! {
         let second = validate_state_program(STATE_VM_OPCODE_VERSION_V1, &bytes);
         prop_assert_eq!(first, second);
     }
+
+    #[test]
+    fn encoding_program_validator_is_deterministic_for_arbitrary_bytes(
+        bytes in proptest::collection::vec(any::<u8>(), 0..512)
+    ) {
+        let first = validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V2, &bytes);
+        let second = validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V2, &bytes);
+        prop_assert_eq!(first, second);
+    }
 }
 
 fn sample_state_program() -> StateProgramDescriptor {
@@ -2145,7 +2154,7 @@ fn semantic_program_codec_rejects_unknown_versions_and_malformed_opcodes() {
         SemanticProgramDescriptor {
             owner: ScopedOwner::Family("mos6502".to_string()),
             id: "unknown-version".to_string(),
-            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V1 + 1,
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V2 + 1,
             program: vec![SEMANTIC_VM_OP_END],
         },
         SemanticProgramDescriptor {
@@ -2190,6 +2199,81 @@ fn semantic_program_codec_rejects_unknown_versions_and_malformed_opcodes() {
         duplicate_error,
         OpcpuCodecError::InvalidChunkFormat { ref chunk, .. } if chunk == "SEMV"
     ));
+}
+
+#[test]
+fn encoding_program_v2_round_trips_fields_endian_and_value_constraints() {
+    let steps = vec![
+        EncodingStep::Literal {
+            value: 0x4e71,
+            width: 2,
+            endian: EncodingEndian::Big,
+        },
+        EncodingStep::Fields {
+            base: 0x4e40,
+            width: 2,
+            endian: EncodingEndian::Big,
+            fields: vec![EncodingFieldSpec {
+                input: 0,
+                shift: 0,
+                bits: 4,
+                min: 0,
+                max: 15,
+            }],
+        },
+        EncodingStep::Scalar {
+            input: 1,
+            width: 2,
+            endian: EncodingEndian::Little,
+            min: -32_768,
+            max: 65_535,
+        },
+    ];
+    let program = compile_encoding_program(&steps).expect("compile neutral encoding program");
+    assert_eq!(
+        decode_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V2, &program)
+            .expect("decode neutral encoding program"),
+        steps
+    );
+    validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V2, &program)
+        .expect("SEMV v2 accepts canonical encoding program");
+}
+
+#[test]
+fn encoding_program_v2_rejects_malformed_and_unencodable_fields() {
+    let overlapping = compile_encoding_program(&[EncodingStep::Fields {
+        base: 0,
+        width: 2,
+        endian: EncodingEndian::Big,
+        fields: vec![
+            EncodingFieldSpec {
+                input: 0,
+                shift: 0,
+                bits: 4,
+                min: 0,
+                max: 15,
+            },
+            EncodingFieldSpec {
+                input: 1,
+                shift: 2,
+                bits: 4,
+                min: 0,
+                max: 15,
+            },
+        ],
+    }]);
+    assert!(overlapping.is_err());
+
+    let mut malformed = compile_encoding_program(&[EncodingStep::Literal {
+        value: 0x1234,
+        width: 2,
+        endian: EncodingEndian::Big,
+    }])
+    .expect("compile canonical literal");
+    malformed[2] = 7;
+    assert!(validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V2, &malformed).is_err());
+    malformed.pop();
+    assert!(validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V2, &malformed).is_err());
 }
 
 #[test]

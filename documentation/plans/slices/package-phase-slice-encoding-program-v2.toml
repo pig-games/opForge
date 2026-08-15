@@ -1,0 +1,47 @@
+[slice]
+schema_version = 1
+name = "versioned portable fixed-field and scalar encoding programs"
+kind = "package-runtime"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 8
+requirements = ["N68X0-001", "N68X0-003", "N68X0-004", "N68X0-005", "N68X0-006", "N68X0-014", "N68X0-015"]
+rust_reference = [
+  "crates/opforge-families/src/m68k/handler.rs::M68KFamilyHandler::encode_instruction_impl",
+  "crates/opforge-families/src/m68k/package_programs.rs::semantic_programs",
+  "crates/opforge-package/src/package/encoding_program.rs::compile_encoding_program",
+  "crates/opforge-vm/src/encoding_vm.rs::execute_encoding_program",
+  "crates/opforge-vm/src/runtime_model_core.rs::RuntimeModelCore::execute_encoding_program"
+]
+boundary = "SEMV v2 is an independently versioned, CPU-neutral sequence of literal, constrained scalar, and fixed-field emission steps. Shared code knows only input indexes, 1/2/4-byte output widths, explicit endian tags, signed or unsigned bounds, bases, shifts, and bit widths. The m68k adapter owns the TRAP-vector opcode and field meaning; synthetic MOS data proves the same scalar/endian primitive is cross-family."
+invariant = "After registry serialization and destruction, fixed fields and constrained scalar values emit deterministically from package bytes alone. Out-of-range inputs, missing inputs, unsupported widths or endian tags, overlap, truncation, invalid opcodes, and trailing bytes fail closed. SEMV v1 programs and packages without SEMV v2 retain their established behavior and canonical encoding."
+expected_inputs = "A resolved hierarchy, opaque encoding-program id, and an ordered list of already-materialized scalar inputs."
+expected_outputs = "A deterministic byte vector in the package-declared endian order, or a typed malformed-program, missing-input, or value-range failure."
+known_non_equivalences = "Item 8 covers fixed directly resolvable fields and scalar units only. Structured list/pair/range/nested extension construction, deferred fixups, convergence, assembler callback cutover, native SEMV v2 interpretation, artifacts, and CLI work remain assigned to Items 9-15 and Item 13. No native production source changes in this slice."
+fast_proof_command = "cargo test -p package encoding_program -- --nocapture && cargo test -p vm serialized_encoding_programs_own_fields_endian_displacements_and_overflow -- --nocapture && cargo test -p asm motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry -- --nocapture && cargo test -p asm motorola68020_embedded_native_cli_package_matches_rust_default_runtime_package -- --nocapture"
+full_gate_command = "cargo test -p package && cargo test -p registry && cargo test -p families && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
+native_proof = "not-applicable: Item 8 changes no native production source; refreshed fixtures are exact Rust-builder output, and the focused package is 8,187 bytes within the unchanged 8,192-byte native allocation"
+
+[[tests]]
+name = "encoding_program_v2_round_trips_fields_endian_and_value_constraints"
+proof_level = "package"
+proves = "Canonical SEMV v2 encodes and decodes literal, field, scalar, endian, and signed/mixed-range constraints exactly."
+
+[[tests]]
+name = "encoding_program_v2_rejects_malformed_and_unencodable_fields"
+proof_level = "package-negative"
+proves = "Overlapping fields, invalid endian tags, truncation, and unencodable structures fail closed."
+
+[[tests]]
+name = "encoding_program_validator_is_deterministic_for_arbitrary_bytes"
+proof_level = "package-fuzz"
+proves = "Arbitrary bounded SEMV v2 byte streams produce deterministic validation outcomes without panics."
+
+[[tests]]
+name = "serialized_encoding_programs_own_fields_endian_displacements_and_overflow"
+proof_level = "runtime-cross-family"
+proves = "Serialized-only execution inserts a bounded m68k field, emits a signed big-endian displacement, emits a MOS little-endian immediate through the same primitive, and reports exact overflow without callbacks."
+
+[[tests]]
+name = "motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry"
+proof_level = "native-package-capacity"
+proves = "The exact Rust-built focused package is 8,187 bytes and fits the unchanged 8,192-byte tkpkg package allocation."

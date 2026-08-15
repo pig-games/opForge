@@ -31,6 +31,7 @@ use crate::runtime_bridge::{HierarchyRuntimeBridge, HierarchyRuntimeBridgeError}
 use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_model_types::*;
 use crate::runtime_portable_types::*;
+use crate::selector_vm::PortableSelectorOutcome;
 use crate::vm_opasm::{build_bin_output_payload, build_hex_output_payload};
 use crate::vm_opasm_parse::tokenize_parser_tokens_with_model;
 use crate::vm_opcore::{
@@ -62,16 +63,18 @@ use opcore::parser::{
 };
 use opcore::tokenizer::{ConditionalKind, Span, Token, TokenKind, Tokenizer};
 use package::{
-    compile_fixed_semantic_program, default_token_policy_lexical_defaults,
-    encode_hierarchy_chunks_from_chunks, token_identifier_class, DiagnosticDescriptor,
-    ExprContractDescriptor, ExprDiagnosticMap, ExprParserContractDescriptor,
-    ExprParserDiagnosticMap, HierarchyChunks, ParserContractDescriptor, ParserDiagnosticMap,
-    ParserVmOpcodeV2, ParserVmProgramDescriptor, SemanticProgramDescriptor, TokenCaseRule,
-    TokenPolicyDescriptor, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
-    TokenizerVmProgramDescriptor, TokenizerVmStreamDescriptor, VmProgramDescriptor,
-    DIAG_EXPR_BUDGET_EXCEEDED, DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE,
-    DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW,
-    DIAG_EXPR_UNKNOWN_SYMBOL, DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
+    compile_fixed_semantic_program, compile_selector_program,
+    default_token_policy_lexical_defaults, encode_hierarchy_chunks_from_chunks,
+    token_identifier_class, DiagnosticDescriptor, ExprContractDescriptor, ExprDiagnosticMap,
+    ExprParserContractDescriptor, ExprParserDiagnosticMap, HierarchyChunks,
+    ParserContractDescriptor, ParserDiagnosticMap, ParserVmOpcodeV2, ParserVmProgramDescriptor,
+    SelectorProgramDescriptor, SelectorProgramMatcher, SelectorProgramOutcome,
+    SemanticProgramDescriptor, TokenCaseRule, TokenPolicyDescriptor, TokenizerVmDiagnosticMap,
+    TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
+    TokenizerVmStreamDescriptor, VmProgramDescriptor, DIAG_EXPR_BUDGET_EXCEEDED,
+    DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM,
+    DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
+    DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
     EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1,
     EXVM_OPCODE_VERSION_V2, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
@@ -943,6 +946,7 @@ fn intel_only_chunks() -> HierarchyChunks {
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
+        selector_programs: Vec::new(),
         selectors: Vec::new(),
     }
 }
@@ -8967,6 +8971,181 @@ fn execution_model_reconstructs_fpu_and_ammx_records_from_serialized_programs() 
         ),
         Err(RuntimeBridgeError::Resolve(_))
     ));
+}
+
+#[test]
+fn execution_model_resolves_package_owned_selector_aliases_order_and_diagnostics() {
+    let mut registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut registry);
+    register_mos6502_family_stack(&mut registry);
+    let package_bytes = encode_hierarchy_chunks_from_chunks(
+        &build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build"),
+    )
+    .expect("selector package serialization");
+    drop(registry);
+
+    let model = HierarchyExecutionModel::from_package_bytes(&package_bytes)
+        .expect("serialized selector package load");
+    let m68000 = model
+        .resolve_pipeline("m68000", None)
+        .expect("m68000 pipeline");
+    let m68020 = model
+        .resolve_pipeline("m68020", None)
+        .expect("m68020 pipeline");
+    let m6502 = model
+        .resolve_pipeline("m6502", None)
+        .expect("m6502 pipeline");
+    let m65c02 = model
+        .resolve_pipeline("65c02", None)
+        .expect("65c02 pipeline");
+
+    for (input, expected) in [
+        ("BHS", "BCC"),
+        ("blo", "BCS"),
+        ("DBRA", "DBF"),
+        ("DBHS", "DBCC"),
+        ("DBLO", "DBCS"),
+        ("SHS", "SCC"),
+        ("SLO", "SCS"),
+        ("PACKUSBW", "PACKUSWB"),
+        ("BRA.S", "BRA.B"),
+        ("BSR.S", "BSR.B"),
+        ("BHI.S", "BHI.B"),
+        ("BLS.S", "BLS.B"),
+        ("BCC.S", "BCC.B"),
+        ("BHS.S", "BCC.B"),
+        ("BCS.S", "BCS.B"),
+        ("BLO.S", "BCS.B"),
+        ("BNE.S", "BNE.B"),
+        ("BEQ.S", "BEQ.B"),
+        ("BVC.S", "BVC.B"),
+        ("BVS.S", "BVS.B"),
+        ("BPL.S", "BPL.B"),
+        ("BMI.S", "BMI.B"),
+        ("BGE.S", "BGE.B"),
+        ("BLT.S", "BLT.B"),
+        ("BGT.S", "BGT.B"),
+        ("BLE.S", "BLE.B"),
+    ] {
+        assert_eq!(
+            model
+                .resolve_selector_choice(&m68000, input)
+                .expect("family selector choice"),
+            Some(PortableSelectorOutcome::Target(expected.to_string())),
+            "selector mismatch for {input}"
+        );
+    }
+    assert_eq!(
+        model
+            .resolve_selector_choice(&m68020, "TRAPHS")
+            .expect("CPU selector choice"),
+        Some(PortableSelectorOutcome::Target("TRAPCC".to_string()))
+    );
+    for cpu in ["m68020", "m68030", "m68040", "m68080"] {
+        let pipeline = model
+            .resolve_pipeline(cpu, None)
+            .expect("later CPU pipeline");
+        assert_eq!(
+            model
+                .resolve_selector_choice(&pipeline, "TRAPLO")
+                .expect("inherited CPU alias"),
+            Some(PortableSelectorOutcome::Target("TRAPCS".to_string())),
+            "selector mismatch for {cpu}"
+        );
+    }
+    assert_eq!(
+        model
+            .resolve_selector_choice(&m68000, "TRAPHS")
+            .expect("older CPU scope must not see later alias"),
+        None
+    );
+    assert_eq!(
+        model
+            .resolve_selector_choice(&m68000, "BHS.Q")
+            .expect("selected diagnostic"),
+        Some(PortableSelectorOutcome::Diagnostic(
+            m68k_value_programs::DIAG_SELECTOR_UNSUPPORTED_QUALIFIER.to_string()
+        ))
+    );
+    assert_eq!(
+        model
+            .resolve_selector_choice(&m6502, "BHS")
+            .expect("cross-family lookup"),
+        None
+    );
+    assert_eq!(
+        model
+            .resolve_selector_choice(&m65c02, "DEA")
+            .expect("cross-family reusable selector program"),
+        Some(PortableSelectorOutcome::Target("DEC".to_string()))
+    );
+    assert_eq!(
+        model
+            .resolve_selector_choice(&m6502, "DEA")
+            .expect("CPU-scoped alias must not leak to base CPU"),
+        None
+    );
+    assert_eq!(
+        model
+            .resolve_selector_choice(&m68000, "NOT-A-MNEMONIC")
+            .expect("missing selector"),
+        None
+    );
+
+    let descriptor = |id: &str, target: &str| SelectorProgramDescriptor {
+        owner: ScopedOwner::Cpu("m68020".to_string()),
+        id: id.to_string(),
+        opcode_version: package::SELECTOR_VM_OPCODE_VERSION_V1,
+        priority: 0,
+        cpu_allow_list: None,
+        program: compile_selector_program(
+            SelectorProgramMatcher::Exact(vec!["COLLIDE".to_string()]),
+            SelectorProgramOutcome::Target(target.to_string()),
+        )
+        .expect("compile collision selector"),
+    };
+
+    let mut duplicate_chunks = build_hierarchy_chunks_from_registry(&{
+        let mut registry = ModuleRegistry::new();
+        register_motorola68000_family_stack(&mut registry);
+        registry
+    })
+    .expect("duplicate chunks build");
+    duplicate_chunks.selector_programs.extend([
+        descriptor("collision.one", "same"),
+        descriptor("collision.two", "same"),
+    ]);
+    let duplicate_model =
+        HierarchyExecutionModel::from_chunks(duplicate_chunks).expect("duplicate model load");
+    let duplicate_pipeline = duplicate_model
+        .resolve_pipeline("m68020", None)
+        .expect("duplicate pipeline");
+    assert!(duplicate_model
+        .resolve_selector_choice(&duplicate_pipeline, "COLLIDE")
+        .expect_err("duplicate target must fail")
+        .to_string()
+        .contains("duplicate target"));
+
+    let mut ambiguous_chunks = build_hierarchy_chunks_from_registry(&{
+        let mut registry = ModuleRegistry::new();
+        register_motorola68000_family_stack(&mut registry);
+        registry
+    })
+    .expect("ambiguous chunks build");
+    ambiguous_chunks.selector_programs.extend([
+        descriptor("collision.one", "left"),
+        descriptor("collision.two", "right"),
+    ]);
+    let ambiguous_model =
+        HierarchyExecutionModel::from_chunks(ambiguous_chunks).expect("ambiguous model load");
+    let ambiguous_pipeline = ambiguous_model
+        .resolve_pipeline("m68020", None)
+        .expect("ambiguous pipeline");
+    assert!(ambiguous_model
+        .resolve_selector_choice(&ambiguous_pipeline, "COLLIDE")
+        .expect_err("ambiguous target must fail")
+        .to_string()
+        .contains("ambiguous"));
 }
 
 #[test]

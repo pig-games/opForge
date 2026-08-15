@@ -363,6 +363,13 @@ the same unmodified serialized semantic package.
   only a neutral numeric format tag over nested records. Family- and CPU-scoped
   package programs own every FPU/AMMX meaning, and the refreshed `.opasm`
   fixtures remain exact Rust-builder output.
+- Item 6 retains container version 1 and adds optional `SLCT`, whose payload
+  carries its own exact opcode version. Packages without `SLCT` retain their
+  canonical bytes; malformed and unsupported selector programs fail closed.
+  Neutral exact maps, qualified-suffix rewrites, priority, and CPU allow lists
+  keep aliases, ordering, applicability, and diagnostic choice in package data.
+  The refreshed focused native package is exact Rust-builder output and remains
+  within the unchanged 8,192-byte native allocation.
 - Owned contract: the 68020/AmigaOS executable exposes the complete
   Rust-supported 680x0 assembler surface and can rebuild itself
 - Rationale: CPU discovery is already present in package metadata, but complete
@@ -411,11 +418,11 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit eliminating the remaining complex-operand runtime callbacks.
   - Definition of done: all FPU/AMMX operand shapes match the family oracle while generic operations remain CPU-neutral.
 
-- [ ] Item 6: materialize selector ordering, aliases, and selected diagnostic programs
+- [x] Item 6: materialize selector ordering, aliases, and selected diagnostic programs
   - Source requirement or finding IDs: `N68X0-001`-`N68X0-004`, `N68X0-014`, `N68X0-015`.
   - Expected files: neutral selector/alias/diagnostic records, family/dialect compiler adapter, Rust tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; selector order, aliases, ambiguity, missing/duplicate target, selected diagnostic, malformed-program, and cross-family selector tests.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for selection/alias/diagnostic choice only.
+  - Plan-compliance review evidence: `PASS` — the independent `plan-compliance-reviewer` confirmed optional, independently versioned, canonical, CPU-neutral `SLCT`; dialect → CPU → family precedence and deterministic priority; explicit duplicate/ambiguity failures; canonical CPU allow-list applicability; exact qualified-suffix rewrites and declared diagnostic selection; fail-closed malformed/unsupported programs; serialized-only alias, isolation, missing, diagnostic, and cross-family 65C02 reuse coverage; the boundary excluding later legality/encoding work; exact fixture-only native changes; and the 8,157/8,192-byte focused native package proof.
   - Commit outcome: one commit moving selection ordering and owned diagnostic choice into package programs.
   - Definition of done: selection and its diagnostics match the oracle without post-construction family selector callbacks.
 

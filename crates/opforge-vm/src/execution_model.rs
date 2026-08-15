@@ -439,6 +439,15 @@ impl HierarchyExecutionModel {
         Ok(self.core.resolve_pipeline(cpu_id, dialect_override)?)
     }
 
+    /// Resolve a package-owned selector choice for one opaque input key.
+    pub fn resolve_selector_choice(
+        &self,
+        resolved: &ResolvedHierarchy,
+        input: &str,
+    ) -> Result<Option<crate::selector_vm::PortableSelectorOutcome>, RuntimeBridgeError> {
+        self.core.resolve_selector_choice(resolved, input)
+    }
+
     /// Execute a package-owned, versioned semantic program for a resolved hierarchy.
     pub fn execute_semantic_program(
         &self,

@@ -4,12 +4,13 @@
 //! Package compilation adapter for Motorola 68000 scalar semantics.
 
 use package::{
-    compile_operand_record_program, compile_value_program, OpcpuCodecError,
-    OperandRecordBaseSource, OperandRecordFieldSource, OperandRecordIndirection,
-    OperandRecordOptionalIndexSource, OperandRecordOptionalValueSource, OperandRecordProgram,
-    OperandRecordProgramDescriptor, OperandRecordUpdate, ValueConstraint, ValueProgramDescriptor,
+    compile_operand_record_program, compile_selector_map_program, compile_selector_suffix_program,
+    compile_value_program, DiagnosticDescriptor, OpcpuCodecError, OperandRecordBaseSource,
+    OperandRecordFieldSource, OperandRecordIndirection, OperandRecordOptionalIndexSource,
+    OperandRecordOptionalValueSource, OperandRecordProgram, OperandRecordProgramDescriptor,
+    OperandRecordUpdate, SelectorProgramDescriptor, ValueConstraint, ValueProgramDescriptor,
     ValueProgramSource, OPERAND_RECORD_VM_VERSION_V1, OPERAND_RECORD_VM_VERSION_V2,
-    OPERAND_RECORD_VM_VERSION_V3, VALUE_VM_OPCODE_VERSION_V1,
+    OPERAND_RECORD_VM_VERSION_V3, SELECTOR_VM_OPCODE_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
 };
 use types::hierarchy::ScopedOwner;
 
@@ -74,6 +75,7 @@ pub const FPU_FORMAT_SINGLE: u16 = 3;
 pub const FPU_FORMAT_DOUBLE: u16 = 4;
 pub const FPU_FORMAT_EXTENDED: u16 = 5;
 pub const FPU_FORMAT_PACKED: u16 = 6;
+pub const DIAG_SELECTOR_UNSUPPORTED_QUALIFIER: &str = "selector.q";
 
 /// Convert a family-owned register spelling to the opaque class/index pair
 /// consumed by the neutral operand-record runtime.
@@ -462,6 +464,105 @@ pub fn operand_record_programs() -> Result<Vec<OperandRecordProgramDescriptor>, 
         .collect::<Result<Vec<_>, _>>()?,
     );
     Ok(programs)
+}
+
+fn exact_aliases(
+    owner: ScopedOwner,
+    id: &str,
+    aliases: &[(&str, &str)],
+) -> Result<SelectorProgramDescriptor, OpcpuCodecError> {
+    Ok(SelectorProgramDescriptor {
+        owner,
+        id: id.to_string(),
+        opcode_version: SELECTOR_VM_OPCODE_VERSION_V1,
+        priority: 0,
+        cpu_allow_list: None,
+        program: compile_selector_map_program(
+            &aliases
+                .iter()
+                .map(|(input, target)| ((*input).to_string(), (*target).to_string()))
+                .collect::<Vec<_>>(),
+        )?,
+    })
+}
+
+/// Compile the family-owned spelling aliases and branch-short ordering rules.
+pub fn selector_programs() -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecError> {
+    let owner = ScopedOwner::Dialect("motorola68k".to_string());
+    let aliases = [
+        ("BHS", "BCC"),
+        ("BLO", "BCS"),
+        ("DBRA", "DBF"),
+        ("DBHS", "DBCC"),
+        ("DBLO", "DBCS"),
+        ("SHS", "SCC"),
+        ("SLO", "SCS"),
+        ("PACKUSBW", "PACKUSWB"),
+    ];
+    let branch_bases = [
+        ("BRA", "BRA"),
+        ("BSR", "BSR"),
+        ("BHI", "BHI"),
+        ("BLS", "BLS"),
+        ("BCC", "BCC"),
+        ("BHS", "BCC"),
+        ("BCS", "BCS"),
+        ("BLO", "BCS"),
+        ("BNE", "BNE"),
+        ("BEQ", "BEQ"),
+        ("BVC", "BVC"),
+        ("BVS", "BVS"),
+        ("BPL", "BPL"),
+        ("BMI", "BMI"),
+        ("BGE", "BGE"),
+        ("BLT", "BLT"),
+        ("BGT", "BGT"),
+        ("BLE", "BLE"),
+    ];
+    Ok(vec![
+        exact_aliases(owner.clone(), "a", &aliases)?,
+        SelectorProgramDescriptor {
+            owner,
+            id: "b".to_string(),
+            opcode_version: SELECTOR_VM_OPCODE_VERSION_V1,
+            priority: 0,
+            cpu_allow_list: None,
+            program: compile_selector_suffix_program(
+                &branch_bases
+                    .iter()
+                    .map(|(input, target)| ((*input).to_string(), (*target).to_string()))
+                    .collect::<Vec<_>>(),
+                ".",
+                ".S",
+                ".B",
+                DIAG_SELECTOR_UNSUPPORTED_QUALIFIER,
+            )?,
+        },
+    ])
+}
+
+/// Compile aliases introduced by the 68020 instruction surface for one CPU
+/// profile that inherits that surface.
+pub fn m68020_selector_programs() -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecError> {
+    let mut program = exact_aliases(
+        ScopedOwner::Dialect("motorola68k".to_string()),
+        "t",
+        &[("TRAPHS", "TRAPCC"), ("TRAPLO", "TRAPCS")],
+    )?;
+    program.cpu_allow_list = Some(
+        ["m68020", "m68030", "m68040", "m68080"]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+    );
+    Ok(vec![program])
+}
+
+pub fn diagnostics() -> Vec<DiagnosticDescriptor> {
+    vec![DiagnosticDescriptor {
+        code: DIAG_SELECTOR_UNSUPPORTED_QUALIFIER.to_string(),
+        message_template: "unsupported selector qualifier".to_string(),
+    }]
 }
 
 /// Existing family scalar normalization retained as the differential oracle

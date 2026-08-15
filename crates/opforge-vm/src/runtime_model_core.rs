@@ -10,8 +10,8 @@ use opcore::expr_vm::PortableExprBudgets;
 use opcore::tokenizer::{RegisterChecker, Tokenizer};
 use package::{
     decode_hierarchy_chunks, HierarchyChunks, ModeSelectorDescriptor, OpcpuCodecError,
-    TokenCaseRule, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
-    TokenizerVmStreamMode, DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
+    SelectorProgramDescriptor, TokenCaseRule, TokenizerVmDiagnosticMap, TokenizerVmLimits,
+    TokenizerVmOpcode, TokenizerVmStreamMode, DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
     DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT, EXPR_VM_OPCODE_VERSION_V1,
     EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1, OPERAND_RECORD_VM_VERSION_V1,
     OPERAND_RECORD_VM_VERSION_V2, OPERAND_RECORD_VM_VERSION_V3, PARSER_AST_SCHEMA_ID_LINE_V1,
@@ -47,6 +47,7 @@ use crate::runtime_model_types::{
     RuntimeParserVmProgram, RuntimeTokenPolicy, RuntimeTokenizerMode, RuntimeTokenizerVmProgram,
 };
 use crate::runtime_portable_types::PortableTokenizeRequest;
+use crate::selector_vm::{execute_selector_program, PortableSelectorOutcome};
 use crate::tokenizer_runtime_utils::{
     self, AsciiCaseRule, TokenizerDiagCodes, VmTokenizerInputStream,
 };
@@ -56,6 +57,7 @@ pub type VmProgramKey = (u8, u32, u32, u32);
 pub type SemanticProgramKey = (u8, u32, u32);
 pub type ValueProgramKey = (u8, u32, u32);
 pub type OperandRecordProgramKey = (u8, u32, u32);
+pub type SelectorProgramKey = (u8, u32);
 pub type ModeSelectorKey = (u8, u32, u32, u32);
 pub type TokenPolicyKey = (u8, u32);
 pub type ParserContractKey = (u8, u32);
@@ -114,6 +116,7 @@ pub struct RuntimeModelCore {
     pub semantic_programs: HashMap<SemanticProgramKey, (u16, Vec<u8>)>,
     pub value_programs: HashMap<ValueProgramKey, (u16, Vec<u8>)>,
     pub operand_record_programs: HashMap<OperandRecordProgramKey, (u16, Vec<u8>)>,
+    pub selector_programs: HashMap<SelectorProgramKey, Vec<SelectorProgramDescriptor>>,
     pub mode_selectors: HashMap<ModeSelectorKey, Vec<ModeSelectorDescriptor>>,
     pub token_policies: HashMap<TokenPolicyKey, RuntimeTokenPolicy>,
     pub tokenizer_vm_programs: HashMap<TokenPolicyKey, RuntimeTokenizerVmProgram>,
@@ -160,6 +163,7 @@ impl RuntimeModelCore {
             semantic_programs,
             value_programs,
             operand_record_programs,
+            selector_programs,
             selectors,
         } = chunks;
         let package = HierarchyPackage::new(families, cpus, dialects)?;
@@ -201,6 +205,25 @@ impl RuntimeModelCore {
                 (owner_tag, owner_id, program_id),
                 (entry.schema_version, entry.program),
             );
+        }
+        let mut scoped_selector_programs: HashMap<
+            SelectorProgramKey,
+            Vec<SelectorProgramDescriptor>,
+        > = HashMap::new();
+        for entry in selector_programs {
+            let (owner_tag, owner_id) = owner_key_parts(&entry.owner);
+            let owner_id = interner.intern(owner_id.as_str());
+            scoped_selector_programs
+                .entry((owner_tag, owner_id))
+                .or_default()
+                .push(entry);
+        }
+        for entries in scoped_selector_programs.values_mut() {
+            entries.sort_by(|left, right| {
+                left.priority
+                    .cmp(&right.priority)
+                    .then_with(|| left.id.cmp(&right.id))
+            });
         }
         let mut mode_selectors: HashMap<ModeSelectorKey, Vec<ModeSelectorDescriptor>> =
             HashMap::new();
@@ -390,6 +413,7 @@ impl RuntimeModelCore {
             semantic_programs: scoped_semantic_programs,
             value_programs: scoped_value_programs,
             operand_record_programs: scoped_operand_record_programs,
+            selector_programs: scoped_selector_programs,
             mode_selectors,
             token_policies: scoped_token_policies,
             tokenizer_vm_programs: scoped_tokenizer_vm_programs,
@@ -580,6 +604,65 @@ impl RuntimeModelCore {
             self.ensure_diag_code_declared_in_package_catalog(error_code, "tokenizer VM", value)?;
         }
         Ok(())
+    }
+
+    pub fn resolve_selector_choice(
+        &self,
+        resolved: &ResolvedHierarchy,
+        input: &str,
+    ) -> Result<Option<PortableSelectorOutcome>, RuntimeBridgeError> {
+        for (owner_tag, owner_id) in self.scoped_owner_lookup_order(resolved) {
+            let Some(owner_id) = owner_id else {
+                continue;
+            };
+            let Some(programs) = self.selector_programs.get(&(owner_tag, owner_id)) else {
+                continue;
+            };
+            let mut matches = Vec::new();
+            let mut matched_priority = None;
+            for entry in programs {
+                if entry.cpu_allow_list.as_ref().is_some_and(|allowed| {
+                    !allowed
+                        .iter()
+                        .any(|cpu_id| cpu_id.eq_ignore_ascii_case(&resolved.cpu_id))
+                }) {
+                    continue;
+                }
+                if matched_priority.is_some_and(|priority| entry.priority > priority) {
+                    break;
+                }
+                let outcome =
+                    execute_selector_program(entry.opcode_version, entry.program.as_slice(), input)
+                        .map_err(|err| RuntimeBridgeError::Resolve(err.to_string()))?;
+                if let Some(outcome) = outcome {
+                    matched_priority.get_or_insert(entry.priority);
+                    matches.push((entry.id.as_str(), outcome));
+                }
+            }
+            match matches.as_slice() {
+                [] => continue,
+                [(_, PortableSelectorOutcome::Diagnostic(code))] => {
+                    if !self.diag_templates.contains_key(&code.to_ascii_lowercase()) {
+                        return Err(RuntimeBridgeError::Resolve(format!(
+                            "selector program selected undeclared diagnostic code '{code}'"
+                        )));
+                    }
+                    return Ok(Some(PortableSelectorOutcome::Diagnostic(code.clone())));
+                }
+                [(_, outcome)] => return Ok(Some(outcome.clone())),
+                [(first_id, first), (second_id, second), ..] if first == second => {
+                    return Err(RuntimeBridgeError::Resolve(format!(
+                        "selector programs '{first_id}' and '{second_id}' select duplicate target at the same priority"
+                    )));
+                }
+                [(first_id, _), (second_id, _), ..] => {
+                    return Err(RuntimeBridgeError::Resolve(format!(
+                        "selector programs '{first_id}' and '{second_id}' are ambiguous at the same priority"
+                    )));
+                }
+            }
+        }
+        Ok(None)
     }
 
     pub fn encode_candidates(

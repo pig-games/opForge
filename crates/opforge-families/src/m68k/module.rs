@@ -58,6 +58,10 @@ impl FamilyModule for Motorola68000FamilyModule {
         super::package_programs::operand_record_programs()
     }
 
+    fn diagnostics(&self) -> Vec<package::DiagnosticDescriptor> {
+        super::package_programs::diagnostics()
+    }
+
     fn dialects(&self) -> Vec<Box<dyn DialectModule>> {
         vec![Box::new(CanonicalDialect)]
     }
@@ -102,6 +106,12 @@ impl DialectModule for CanonicalDialect {
 
     fn family_id(&self) -> CpuFamily {
         FAMILY_ID
+    }
+
+    fn selector_programs(
+        &self,
+    ) -> Result<Vec<package::SelectorProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::selector_programs()
     }
 
     fn map_mnemonic(

@@ -723,6 +723,58 @@ impl ScopedSchemaEntry for OperandRecordProgramDescriptor {
     }
 }
 
+impl ScopedSchemaEntry for SelectorProgramDescriptor {
+    const CHUNK: &'static str = "SLCT";
+    const ENTRY_KIND: &'static str = "selector program entry";
+    const COUNT_LABEL: &'static str = "SLCT count";
+    const FIELD_SPECS: &'static [FieldSpec] = &[
+        FieldSpec::String,
+        FieldSpec::U16,
+        FieldSpec::U16,
+        FieldSpec::OptionalStringList {
+            label: "selector CPU allow list",
+            count_label: "selector CPU allow-list count",
+            entry_label: "selector CPU allow-list entry",
+        },
+        FieldSpec::Bytes {
+            len_label: "SLCT program byte length",
+            value_label: "selector program",
+        },
+    ];
+
+    fn owner(&self) -> &ScopedOwner {
+        &self.owner
+    }
+
+    fn field_values(&self) -> Vec<FieldValue<'_>> {
+        vec![
+            FieldValue::String(&self.id),
+            FieldValue::U16(self.opcode_version),
+            FieldValue::U16(self.priority),
+            FieldValue::OptionalStringList(self.cpu_allow_list.as_deref()),
+            FieldValue::Bytes(&self.program),
+        ]
+    }
+
+    fn from_decoded(
+        owner: ScopedOwner,
+        mut fields: DecodedFields,
+    ) -> Result<Self, OpcpuCodecError> {
+        Ok(Self {
+            owner,
+            id: fields.next_string(Self::CHUNK)?,
+            opcode_version: fields.next_u16(Self::CHUNK)?,
+            priority: fields.next_u16(Self::CHUNK)?,
+            cpu_allow_list: fields.next_optional_string_list(Self::CHUNK)?,
+            program: fields.next_bytes(Self::CHUNK)?,
+        })
+    }
+
+    fn validate_decoded(entry: &Self) -> Result<(), OpcpuCodecError> {
+        validate_selector_program(entry.opcode_version, &entry.program)
+    }
+}
+
 impl ScopedSchemaEntry for ModeSelectorDescriptor {
     const CHUNK: &'static str = "MSEL";
     const ENTRY_KIND: &'static str = "mode selector entry";

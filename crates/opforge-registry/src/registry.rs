@@ -9,7 +9,10 @@ use std::collections::HashMap;
 use crate::cpu::{CpuFamily, CpuType};
 use crate::family::{AssemblerContext, EncodeResult, FamilyEncodeResult, FamilyParseError};
 use opcore::parser::Expr;
-use package::{OpcpuCodecError, OperandRecordProgramDescriptor, ValueProgramDescriptor};
+use package::{
+    DiagnosticDescriptor, OpcpuCodecError, OperandRecordProgramDescriptor,
+    SelectorProgramDescriptor, ValueProgramDescriptor,
+};
 
 pub trait FamilyOperandSet: Send + Sync {
     fn as_any(&self) -> &dyn Any;
@@ -124,6 +127,12 @@ pub trait DialectModule: Send + Sync {
     fn form_mnemonics(&self) -> Vec<String> {
         Vec::new()
     }
+    fn selector_programs(&self) -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
+    fn diagnostics(&self) -> Vec<DiagnosticDescriptor> {
+        Vec::new()
+    }
     fn map_mnemonic(
         &self,
         mnemonic: &str,
@@ -168,6 +177,12 @@ pub trait FamilyModule: Send + Sync {
     ) -> Result<Vec<OperandRecordProgramDescriptor>, OpcpuCodecError> {
         Ok(Vec::new())
     }
+    fn selector_programs(&self) -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
+    fn diagnostics(&self) -> Vec<DiagnosticDescriptor> {
+        Vec::new()
+    }
     fn dialects(&self) -> Vec<Box<dyn DialectModule>>;
     fn handler(&self) -> Box<dyn FamilyHandlerDyn>;
 }
@@ -190,6 +205,12 @@ pub trait CpuModule: Send + Sync {
         &self,
     ) -> Result<Vec<OperandRecordProgramDescriptor>, OpcpuCodecError> {
         Ok(Vec::new())
+    }
+    fn selector_programs(&self) -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
+    fn diagnostics(&self) -> Vec<DiagnosticDescriptor> {
+        Vec::new()
     }
     fn runtime_directive_ids(&self) -> &'static [&'static str] {
         &[]
@@ -363,6 +384,56 @@ impl AsmRegistry {
             .get(&cpu)
             .map(|module| module.operand_record_programs())
             .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn family_selector_programs(
+        &self,
+        family: CpuFamily,
+    ) -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecError> {
+        self.families
+            .get(&family)
+            .map(|module| module.selector_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn cpu_selector_programs(
+        &self,
+        cpu: CpuType,
+    ) -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecError> {
+        self.cpus
+            .get(&cpu)
+            .map(|module| module.selector_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn dialect_selector_programs(
+        &self,
+        family: CpuFamily,
+        dialect: &str,
+    ) -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecError> {
+        let key = (family, normalize_dialect(dialect));
+        self.dialects
+            .get(&key)
+            .map(|module| module.selector_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn package_diagnostics(&self) -> Vec<DiagnosticDescriptor> {
+        let mut diagnostics = Vec::new();
+        for family in self.family_ids() {
+            if let Some(module) = self.families.get(&family) {
+                diagnostics.extend(module.diagnostics());
+            }
+        }
+        for cpu in self.cpu_ids() {
+            if let Some(module) = self.cpus.get(&cpu) {
+                diagnostics.extend(module.diagnostics());
+            }
+        }
+        for module in self.dialects.values() {
+            diagnostics.extend(module.diagnostics());
+        }
+        diagnostics
     }
 
     pub fn dialect_ids_for_family(&self, family: CpuFamily) -> Vec<String> {

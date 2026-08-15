@@ -50,13 +50,13 @@ use package::{
     encode_hierarchy_chunks_from_chunks, token_identifier_class, ExprContractDescriptor,
     ExprDiagnosticMap, ExprParserContractDescriptor, ExprParserDiagnosticMap, HierarchyChunks,
     ModeSelectorDescriptor, OpcpuCodecError, ParserContractDescriptor, ParserDiagnosticMap,
-    ParserVmOpcodeV2, ParserVmProgramDescriptor, TokenCaseRule, TokenPolicyDescriptor,
-    TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
-    TokenizerVmStreamDescriptor, VmProgramDescriptor, DIAG_EXPR_BUDGET_EXCEEDED,
-    DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM,
-    DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
-    DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_PARSER_EXPECTED_EXPRESSION, DIAG_PARSER_EXPECTED_OPERAND,
-    DIAG_PARSER_INVALID_STATEMENT, DIAG_PARSER_UNEXPECTED_TOKEN,
+    ParserVmOpcodeV2, ParserVmProgramDescriptor, SelectorProgramDescriptor, TokenCaseRule,
+    TokenPolicyDescriptor, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
+    TokenizerVmProgramDescriptor, TokenizerVmStreamDescriptor, VmProgramDescriptor,
+    DIAG_EXPR_BUDGET_EXCEEDED, DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE,
+    DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW,
+    DIAG_EXPR_UNKNOWN_SYMBOL, DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_PARSER_EXPECTED_EXPRESSION,
+    DIAG_PARSER_EXPECTED_OPERAND, DIAG_PARSER_INVALID_STATEMENT, DIAG_PARSER_UNEXPECTED_TOKEN,
     DIAG_TOKENIZER_ERROR_LIMIT_EXCEEDED, DIAG_TOKENIZER_INVALID_CHAR,
     DIAG_TOKENIZER_LEXEME_LIMIT_EXCEEDED, DIAG_TOKENIZER_STEP_LIMIT_EXCEEDED,
     DIAG_TOKENIZER_TOKEN_LIMIT_EXCEEDED, DIAG_TOKENIZER_UNTERMINATED_STRING,
@@ -113,6 +113,18 @@ pub fn build_hierarchy_chunks_from_registry(
     registry: &ModuleRegistry,
 ) -> Result<HierarchyChunks, HierarchyBuildError> {
     let family_ids = registry.family_ids();
+    let mut diagnostics = default_runtime_diagnostic_catalog();
+    diagnostics.extend(registry.package_diagnostics());
+    diagnostics.sort_by(|left, right| {
+        left.code
+            .to_ascii_lowercase()
+            .cmp(&right.code.to_ascii_lowercase())
+            .then_with(|| left.message_template.cmp(&right.message_template))
+    });
+    diagnostics.dedup_by(|left, right| {
+        left.code.eq_ignore_ascii_case(&right.code)
+            && left.message_template == right.message_template
+    });
 
     let mut families = Vec::with_capacity(family_ids.len());
     for family in &family_ids {
@@ -257,6 +269,19 @@ pub fn build_hierarchy_chunks_from_registry(
 
     let mut tables = Vec::new();
     let mut selectors = Vec::new();
+    let mut selector_programs: Vec<SelectorProgramDescriptor> = Vec::new();
+    for family in &family_ids {
+        selector_programs.extend(registry.family_selector_programs(*family)?);
+    }
+    for cpu in registry.cpu_ids() {
+        selector_programs.extend(registry.cpu_selector_programs(cpu)?);
+    }
+    for family in &family_ids {
+        for dialect_id in registry.dialect_ids_for_family(*family) {
+            selector_programs
+                .extend(registry.dialect_selector_programs(*family, dialect_id.as_str())?);
+        }
+    }
     let registered_family_ids: std::collections::HashSet<String> = family_ids
         .iter()
         .map(|family| family.as_str().to_ascii_lowercase())
@@ -740,6 +765,7 @@ pub fn build_hierarchy_chunks_from_registry(
     canonicalize_expr_parser_contracts(&mut expr_parser_contracts);
     canonicalize_value_programs(&mut value_programs);
     canonicalize_operand_record_programs(&mut operand_record_programs);
+    package::canonicalize_selector_programs(&mut selector_programs);
 
     // Ensure the materialized metadata is coherent before returning.
     HierarchyPackage::new(families.clone(), cpus.clone(), dialects.clone())?;
@@ -747,7 +773,7 @@ pub fn build_hierarchy_chunks_from_registry(
     Ok(HierarchyChunks {
         metadata: package::PackageMetaDescriptor::default(),
         strings: Vec::new(),
-        diagnostics: default_runtime_diagnostic_catalog(),
+        diagnostics,
         token_policies,
         tokenizer_vm_programs,
         parser_contracts,
@@ -763,6 +789,7 @@ pub fn build_hierarchy_chunks_from_registry(
         semantic_programs: Vec::new(),
         value_programs,
         operand_record_programs,
+        selector_programs,
         selectors,
     })
 }

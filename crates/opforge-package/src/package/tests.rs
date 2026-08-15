@@ -792,6 +792,7 @@ fn ultimate64_abi_header_is_little_endian_v1() {
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
+        selector_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -827,6 +828,7 @@ fn ultimate64_abi_toc_payload_layout_is_contiguous() {
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
+        selector_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1037,6 +1039,7 @@ fn encode_decode_round_trip_preserves_toks_policy() {
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
+        selector_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1099,6 +1102,7 @@ fn encode_decode_round_trip_preserves_parser_contracts() {
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
+        selector_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1154,6 +1158,7 @@ fn encode_decode_round_trip_preserves_parser_vm_programs() {
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
+        selector_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1259,6 +1264,7 @@ fn encode_decode_round_trip_preserves_expr_contracts() {
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
+        selector_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1305,6 +1311,7 @@ fn encode_decode_round_trip_preserves_expr_parser_contracts() {
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
         operand_record_programs: Vec::new(),
+        selector_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1891,6 +1898,7 @@ proptest! {
                 prop_assert_eq!(left.selectors.len(), right.selectors.len());
                 prop_assert_eq!(left.value_programs.len(), right.value_programs.len());
                 prop_assert_eq!(left.operand_record_programs.len(), right.operand_record_programs.len());
+                prop_assert_eq!(left.selector_programs.len(), right.selector_programs.len());
             }
             (Err(left), Err(right)) => {
                 prop_assert_eq!(left.code(), right.code());
@@ -1919,6 +1927,15 @@ proptest! {
     ) {
         let first = validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V3, &bytes);
         let second = validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V3, &bytes);
+        prop_assert_eq!(first, second);
+    }
+
+    #[test]
+    fn selector_program_validator_is_deterministic_for_arbitrary_bytes(
+        bytes in proptest::collection::vec(any::<u8>(), 0..512)
+    ) {
+        let first = validate_selector_program(SELECTOR_VM_OPCODE_VERSION_V1, &bytes);
+        let second = validate_selector_program(SELECTOR_VM_OPCODE_VERSION_V1, &bytes);
         prop_assert_eq!(first, second);
     }
 }
@@ -2229,6 +2246,181 @@ fn operand_record_program_round_trip_is_canonical_and_optional_for_legacy_packag
         encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical OPRD re-encode"),
         encoded
     );
+}
+
+#[test]
+fn selector_program_round_trip_is_canonical_and_optional_for_legacy_packages() {
+    let legacy = encode_hierarchy_chunks(
+        &sample_families(),
+        &sample_cpus(),
+        &sample_dialects(),
+        &sample_registers(),
+        &sample_forms(),
+        &sample_tables(),
+    )
+    .expect("legacy package encode");
+    let mut chunks = decode_hierarchy_chunks(&legacy).expect("legacy package decode");
+    assert!(chunks.selector_programs.is_empty());
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("legacy package re-encode"),
+        legacy
+    );
+
+    let program = compile_selector_program(
+        SelectorProgramMatcher::Exact(vec!["ALIAS".to_string()]),
+        SelectorProgramOutcome::Target("canonical".to_string()),
+    )
+    .expect("compile selector program");
+    let map_program = compile_selector_map_program(&[
+        ("FIRST".to_string(), "one".to_string()),
+        ("SECOND".to_string(), "two".to_string()),
+    ])
+    .expect("compile selector map program");
+    chunks.selector_programs = vec![
+        SelectorProgramDescriptor {
+            owner: ScopedOwner::Family("MOS6502".to_string()),
+            id: "ALIAS.SELECT".to_string(),
+            opcode_version: SELECTOR_VM_OPCODE_VERSION_V1,
+            priority: 10,
+            cpu_allow_list: None,
+            program: program.clone(),
+        },
+        SelectorProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "alias.select".to_string(),
+            opcode_version: SELECTOR_VM_OPCODE_VERSION_V1,
+            priority: 10,
+            cpu_allow_list: None,
+            program,
+        },
+        SelectorProgramDescriptor {
+            owner: ScopedOwner::Cpu("m65c02".to_string()),
+            id: "alias.map".to_string(),
+            opcode_version: SELECTOR_VM_OPCODE_VERSION_V1,
+            priority: 0,
+            cpu_allow_list: Some(vec!["M65C02".to_string(), "m65c02".to_string()]),
+            program: map_program,
+        },
+    ];
+    let encoded = encode_hierarchy_chunks_from_chunks(&chunks).expect("SLCT package encode");
+    let decoded = decode_hierarchy_chunks(&encoded).expect("SLCT package decode");
+    assert_eq!(decoded.selector_programs.len(), 2);
+    assert!(decoded
+        .selector_programs
+        .iter()
+        .any(|program| program.id == "alias.select"));
+    assert!(decoded
+        .selector_programs
+        .iter()
+        .any(|program| program.id == "alias.map"));
+    assert_eq!(
+        decoded
+            .selector_programs
+            .iter()
+            .find(|program| program.id == "alias.map")
+            .and_then(|program| program.cpu_allow_list.as_ref()),
+        Some(&vec!["m65c02".to_string()])
+    );
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical SLCT re-encode"),
+        encoded
+    );
+}
+
+#[test]
+fn selector_program_codec_rejects_unknown_versions_and_malformed_programs() {
+    let valid = compile_selector_program(
+        SelectorProgramMatcher::Exact(vec!["alias".to_string()]),
+        SelectorProgramOutcome::Target("target".to_string()),
+    )
+    .expect("compile selector program");
+    for entry in [
+        SelectorProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "unknown-version".to_string(),
+            opcode_version: SELECTOR_VM_OPCODE_VERSION_V1 + 1,
+            priority: 0,
+            cpu_allow_list: None,
+            program: valid.clone(),
+        },
+        SelectorProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "missing-target".to_string(),
+            opcode_version: SELECTOR_VM_OPCODE_VERSION_V1,
+            priority: 0,
+            cpu_allow_list: None,
+            program: vec![SELECTOR_VM_OP_MATCH_EXACT, 1, 1, b'a', SELECTOR_VM_OP_END],
+        },
+        SelectorProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "trailing".to_string(),
+            opcode_version: SELECTOR_VM_OPCODE_VERSION_V1,
+            priority: 0,
+            cpu_allow_list: None,
+            program: {
+                let mut bytes = valid.clone();
+                bytes.push(0);
+                bytes
+            },
+        },
+        SelectorProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "duplicate-map-input".to_string(),
+            opcode_version: SELECTOR_VM_OPCODE_VERSION_V1,
+            priority: 0,
+            cpu_allow_list: None,
+            program: vec![
+                SELECTOR_VM_OP_MAP_EXACT,
+                2,
+                1,
+                b'a',
+                1,
+                b'x',
+                1,
+                b'A',
+                1,
+                b'y',
+                SELECTOR_VM_OP_END,
+            ],
+        },
+        SelectorProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "duplicate-suffix-input".to_string(),
+            opcode_version: SELECTOR_VM_OPCODE_VERSION_V1,
+            priority: 0,
+            cpu_allow_list: None,
+            program: vec![
+                SELECTOR_VM_OP_REWRITE_SUFFIX,
+                2,
+                1,
+                b'a',
+                1,
+                b'x',
+                1,
+                b'A',
+                1,
+                b'y',
+                1,
+                b'.',
+                2,
+                b'.',
+                b's',
+                2,
+                b'.',
+                b'b',
+                1,
+                b'd',
+                SELECTOR_VM_OP_END,
+            ],
+        },
+    ] {
+        let payload = encode_slct_chunk(&[entry]).expect("raw SLCT schema encode");
+        let error = decode_slct_chunk(&payload).expect_err("invalid SLCT must fail closed");
+        assert!(matches!(
+            error,
+            OpcpuCodecError::InvalidChunkFormat { ref chunk, .. } if chunk == "SLCT"
+        ));
+    }
 }
 
 #[test]

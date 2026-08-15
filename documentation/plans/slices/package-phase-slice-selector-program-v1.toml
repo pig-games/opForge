@@ -1,0 +1,50 @@
+[slice]
+schema_version = 1
+name = "versioned portable selector choice programs"
+kind = "package-runtime"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 6
+requirements = ["N68X0-001", "N68X0-002", "N68X0-003", "N68X0-004", "N68X0-014", "N68X0-015"]
+rust_reference = [
+  "crates/opforge-package/src/package.rs::SelectorProgramDescriptor",
+  "crates/opforge-package/src/package.rs::compile_selector_map_program",
+  "crates/opforge-package/src/package.rs::compile_selector_suffix_program",
+  "crates/opforge-vm/src/selector_vm.rs::execute_selector_program",
+  "crates/opforge-vm/src/runtime_model_core.rs::RuntimeModelCore::resolve_selector_choice",
+  "crates/opforge-families/src/m68k/package_programs.rs::selector_programs",
+  "crates/opforge-families/src/m68k/package_programs.rs::m68020_selector_programs",
+  "crates/opforge-families/src/m65c02/package_programs.rs::selector_programs"
+]
+boundary = "SLCT v1 is an optional, independently versioned, CPU-neutral choice-program chunk. Generic package and runtime code understands only opaque scoped ids, priorities, exact maps, qualified suffix rewrites, CPU allow lists, targets, and diagnostic ids. Motorola condition aliases, branch spellings, the 68020-derived TRAP aliases, and their applicability remain family/dialect package data. The 65C02 adapter adopts the same map primitive for DEA/INA without leaking it to the base 6502."
+invariant = "After the registry is serialized and destroyed, the runtime resolves dialect, CPU-applicable, and family selectors in deterministic priority order; returns package-owned aliases or declared diagnostics; rejects duplicate and ambiguous equal-priority selections; and never invokes a family selector callback. Packages without SLCT retain their previous canonical bytes, while malformed or unsupported programs fail closed."
+expected_inputs = "A resolved package hierarchy and one opaque selector input string."
+expected_outputs = "No selection, one opaque package-owned target, one declared package diagnostic, or a deterministic malformed/unsupported/duplicate/ambiguous failure."
+known_non_equivalences = "Item 6 owns alias, qualifier, ordering, applicability, and selected-diagnostic choice only. Operand parsing, capability/state legality, encoding, fixups, pass stability, native SLCT interpretation, output formats, and CLI behavior remain assigned to later plan items. No native production source changes in this slice."
+fast_proof_command = "cargo test -p package selector_program -- --nocapture && cargo test -p vm execution_model_resolves_package_owned_selector_aliases_order_and_diagnostics -- --nocapture && cargo test -p asm motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry -- --nocapture"
+full_gate_command = "cargo test -p package && cargo test -p registry && cargo test -p families && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
+native_proof = "not-applicable: Item 6 changes no native production source; the refreshed 8,157-byte tkpkg fixture proves the new package remains within the unchanged 8,192-byte native storage allocation"
+
+[[tests]]
+name = "selector_program_round_trip_is_canonical_and_optional_for_legacy_packages"
+proof_level = "package"
+proves = "SLCT exact-map programs and canonicalized CPU allow lists round-trip deterministically while legacy packages without SLCT retain byte identity."
+
+[[tests]]
+name = "selector_program_codec_rejects_unknown_versions_and_malformed_programs"
+proof_level = "package"
+proves = "Unknown versions, truncated programs, trailing bytes, and duplicate exact or qualified-map inputs fail closed."
+
+[[tests]]
+name = "selector_program_validator_is_deterministic_for_arbitrary_bytes"
+proof_level = "package-fuzz"
+proves = "Arbitrary bounded selector byte streams produce deterministic validation outcomes without panics."
+
+[[tests]]
+name = "execution_model_resolves_package_owned_selector_aliases_order_and_diagnostics"
+proof_level = "runtime"
+proves = "A serialized-only combined-family runtime resolves all owned Motorola aliases and short-branch spellings, applies 68020-derived aliases only to the declared CPU set, selects a declared qualifier diagnostic, adopts reusable 65C02 aliases, isolates families, and rejects duplicate or ambiguous equal-priority choices."
+
+[[tests]]
+name = "motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry"
+proof_level = "native-package-capacity"
+proves = "The exact Rust-built focused native package is 8,157 bytes and fits the unchanged 8,192-byte tkpkg package allocation."

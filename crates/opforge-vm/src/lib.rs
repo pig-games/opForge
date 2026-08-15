@@ -44,6 +44,7 @@ pub mod runtime_portable_types;
 #[cfg(test)]
 mod runtime_tests;
 pub mod selector_encoding_utils;
+pub mod selector_vm;
 pub mod tokenizer_runtime_utils;
 pub mod value_vm;
 pub mod vm_core;

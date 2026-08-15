@@ -46,6 +46,12 @@ impl CpuModule for M68020CpuModule {
         state::RUNTIME_DIRECTIVE_IDS
     }
 
+    fn selector_programs(
+        &self,
+    ) -> Result<Vec<package::SelectorProgramDescriptor>, package::OpcpuCodecError> {
+        crate::families::m68k::package_programs::m68020_selector_programs()
+    }
+
     fn handler(&self) -> Box<dyn CpuHandlerDyn> {
         Box::new(M68020CpuHandler::new())
     }

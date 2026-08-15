@@ -51,6 +51,12 @@ impl CpuModule for M65C02CpuModule {
         cpu_form_mnemonics()
     }
 
+    fn selector_programs(
+        &self,
+    ) -> Result<Vec<package::SelectorProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::selector_programs()
+    }
+
     fn handler(&self) -> Box<dyn CpuHandlerDyn> {
         Box::new(M65C02CpuHandler::new())
     }

@@ -131,6 +131,37 @@ pub fn canonicalize_semantic_programs(semantic_programs: &mut Vec<SemanticProgra
     });
 }
 
+pub fn canonicalize_selector_programs(programs: &mut Vec<SelectorProgramDescriptor>) {
+    for entry in programs.iter_mut() {
+        entry.owner.normalize_owner_id_ascii_lowercase();
+        entry.id = entry.id.to_ascii_lowercase();
+        if let Some(cpu_allow_list) = &mut entry.cpu_allow_list {
+            for cpu_id in cpu_allow_list.iter_mut() {
+                *cpu_id = cpu_id.to_ascii_lowercase();
+            }
+            cpu_allow_list.sort();
+            cpu_allow_list.dedup();
+        }
+    }
+    programs.sort_by(|left, right| {
+        left.owner
+            .cmp_scope_key(&right.owner)
+            .then_with(|| left.priority.cmp(&right.priority))
+            .then_with(|| left.id.cmp(&right.id))
+            .then_with(|| left.opcode_version.cmp(&right.opcode_version))
+            .then_with(|| left.cpu_allow_list.cmp(&right.cpu_allow_list))
+            .then_with(|| left.program.cmp(&right.program))
+    });
+    programs.dedup_by(|left, right| {
+        left.id == right.id
+            && left.priority == right.priority
+            && left.opcode_version == right.opcode_version
+            && left.cpu_allow_list == right.cpu_allow_list
+            && left.program == right.program
+            && left.owner.same_scope(&right.owner)
+    });
+}
+
 pub fn canonicalize_value_programs(value_programs: &mut Vec<ValueProgramDescriptor>) {
     for entry in value_programs.iter_mut() {
         entry.owner.normalize_owner_id_ascii_lowercase();

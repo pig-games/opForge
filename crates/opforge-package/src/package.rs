@@ -37,8 +37,9 @@ use canonicalize::canonicalize_package_support_chunks;
 pub use canonicalize::{
     canonicalize_expr_contracts, canonicalize_expr_parser_contracts,
     canonicalize_hierarchy_metadata, canonicalize_operand_record_programs,
-    canonicalize_parser_contracts, canonicalize_parser_vm_programs, canonicalize_semantic_programs,
-    canonicalize_token_policies, canonicalize_tokenizer_vm_programs, canonicalize_value_programs,
+    canonicalize_parser_contracts, canonicalize_parser_vm_programs, canonicalize_selector_programs,
+    canonicalize_semantic_programs, canonicalize_token_policies,
+    canonicalize_tokenizer_vm_programs, canonicalize_value_programs,
 };
 
 pub const OPASM_MAGIC: [u8; 4] = *b"OPCP";
@@ -62,6 +63,7 @@ const CHUNK_TABL: [u8; 4] = *b"TABL";
 const CHUNK_SEMV: [u8; 4] = *b"SEMV";
 const CHUNK_VALP: [u8; 4] = *b"VALP";
 const CHUNK_OPRD: [u8; 4] = *b"OPRD";
+const CHUNK_SLCT: [u8; 4] = *b"SLCT";
 const CHUNK_MSEL: [u8; 4] = *b"MSEL";
 const CHUNK_TKVM: [u8; 4] = *b"TKVM";
 const CHUNK_PARS: [u8; 4] = *b"PARS";
@@ -152,6 +154,14 @@ pub const OPERAND_RECORD_OP_REGISTER_LIST: u8 = 0x0A;
 pub const OPERAND_RECORD_OP_FIELD: u8 = 0x0B;
 pub const OPERAND_RECORD_OP_COMPOSITE: u8 = 0x0C;
 pub const OPERAND_RECORD_OP_END: u8 = 0xFF;
+pub const SELECTOR_VM_OPCODE_VERSION_V1: u16 = 0x0001;
+pub const SELECTOR_VM_OP_MATCH_EXACT: u8 = 0x01;
+pub const SELECTOR_VM_OP_MATCH_PREFIX: u8 = 0x02;
+pub const SELECTOR_VM_OP_SELECT_TARGET: u8 = 0x03;
+pub const SELECTOR_VM_OP_SELECT_DIAGNOSTIC: u8 = 0x04;
+pub const SELECTOR_VM_OP_MAP_EXACT: u8 = 0x05;
+pub const SELECTOR_VM_OP_REWRITE_SUFFIX: u8 = 0x06;
+pub const SELECTOR_VM_OP_END: u8 = 0xFF;
 pub const PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT: u16 = 0x0002;
 pub const EXVM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const EXVM_OPCODE_VERSION_V2: u16 = 0x0002;
@@ -237,6 +247,177 @@ pub struct OperandRecordProgramDescriptor {
     pub id: String,
     pub schema_version: u16,
     pub program: Vec<u8>,
+}
+
+/// Independently versioned, CPU-neutral selector choice program.
+///
+/// Programs match an input key by exact spelling or prefix and select either
+/// an opaque package-owned target id or a declared diagnostic code. The shared
+/// package/runtime assigns no CPU-specific meaning to either string.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelectorProgramDescriptor {
+    pub owner: ScopedOwner,
+    pub id: String,
+    pub opcode_version: u16,
+    pub priority: u16,
+    pub cpu_allow_list: Option<Vec<String>>,
+    pub program: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SelectorProgramMatcher {
+    Exact(Vec<String>),
+    Prefix(Vec<String>),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SelectorProgramOutcome {
+    Target(String),
+    Diagnostic(String),
+}
+
+pub fn compile_selector_program(
+    matcher: SelectorProgramMatcher,
+    outcome: SelectorProgramOutcome,
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    fn push_strings(program: &mut Vec<u8>, values: &[String]) -> Result<(), OpcpuCodecError> {
+        let count = u8::try_from(values.len()).map_err(|_| OpcpuCodecError::CountOutOfRange {
+            context: "selector VM matcher count exceeds u8".to_string(),
+        })?;
+        if count == 0 {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "SLCT".to_string(),
+                detail: "selector VM matcher list must not be empty".to_string(),
+            });
+        }
+        program.push(count);
+        for value in values {
+            let bytes = value.as_bytes();
+            let len = u8::try_from(bytes.len()).map_err(|_| OpcpuCodecError::CountOutOfRange {
+                context: "selector VM string length exceeds u8".to_string(),
+            })?;
+            if len == 0 {
+                return Err(OpcpuCodecError::InvalidChunkFormat {
+                    chunk: "SLCT".to_string(),
+                    detail: "selector VM strings must not be empty".to_string(),
+                });
+            }
+            program.push(len);
+            program.extend_from_slice(bytes);
+        }
+        Ok(())
+    }
+
+    let mut program = Vec::new();
+    match matcher {
+        SelectorProgramMatcher::Exact(values) => {
+            program.push(SELECTOR_VM_OP_MATCH_EXACT);
+            push_strings(&mut program, &values)?;
+        }
+        SelectorProgramMatcher::Prefix(values) => {
+            program.push(SELECTOR_VM_OP_MATCH_PREFIX);
+            push_strings(&mut program, &values)?;
+        }
+    }
+    match outcome {
+        SelectorProgramOutcome::Target(value) => {
+            program.push(SELECTOR_VM_OP_SELECT_TARGET);
+            push_strings(&mut program, &[value])?;
+        }
+        SelectorProgramOutcome::Diagnostic(value) => {
+            program.push(SELECTOR_VM_OP_SELECT_DIAGNOSTIC);
+            push_strings(&mut program, &[value])?;
+        }
+    }
+    program.push(SELECTOR_VM_OP_END);
+    validate_selector_program(SELECTOR_VM_OPCODE_VERSION_V1, &program)?;
+    Ok(program)
+}
+
+/// Compile a compact exact-key mapping table. This is semantically equivalent
+/// to several equal-priority exact-match/target programs, without repeating
+/// scoped descriptor metadata for every alias.
+pub fn compile_selector_map_program(
+    mappings: &[(String, String)],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    let count = u8::try_from(mappings.len()).map_err(|_| OpcpuCodecError::CountOutOfRange {
+        context: "selector VM mapping count exceeds u8".to_string(),
+    })?;
+    if count == 0 {
+        return Err(OpcpuCodecError::InvalidChunkFormat {
+            chunk: "SLCT".to_string(),
+            detail: "selector VM mapping table must not be empty".to_string(),
+        });
+    }
+    let mut program = vec![SELECTOR_VM_OP_MAP_EXACT, count];
+    for (input, target) in mappings {
+        for value in [input, target] {
+            let bytes = value.as_bytes();
+            let len = u8::try_from(bytes.len()).map_err(|_| OpcpuCodecError::CountOutOfRange {
+                context: "selector VM mapping string length exceeds u8".to_string(),
+            })?;
+            if len == 0 {
+                return Err(OpcpuCodecError::InvalidChunkFormat {
+                    chunk: "SLCT".to_string(),
+                    detail: "selector VM mapping strings must not be empty".to_string(),
+                });
+            }
+            program.push(len);
+            program.extend_from_slice(bytes);
+        }
+    }
+    program.push(SELECTOR_VM_OP_END);
+    validate_selector_program(SELECTOR_VM_OPCODE_VERSION_V1, &program)?;
+    Ok(program)
+}
+
+/// Compile a compact qualified-name rewrite table. Exact `base + from_suffix`
+/// inputs select `target_base + to_suffix`; another qualifier on a declared
+/// base selects the supplied package diagnostic.
+pub fn compile_selector_suffix_program(
+    base_mappings: &[(String, String)],
+    qualifier_prefix: &str,
+    from_suffix: &str,
+    to_suffix: &str,
+    diagnostic: &str,
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    let count =
+        u8::try_from(base_mappings.len()).map_err(|_| OpcpuCodecError::CountOutOfRange {
+            context: "selector VM suffix mapping count exceeds u8".to_string(),
+        })?;
+    if count == 0 {
+        return Err(OpcpuCodecError::InvalidChunkFormat {
+            chunk: "SLCT".to_string(),
+            detail: "selector VM suffix mapping table must not be empty".to_string(),
+        });
+    }
+    let mut program = vec![SELECTOR_VM_OP_REWRITE_SUFFIX, count];
+    for (input, target) in base_mappings {
+        push_one_selector_string(&mut program, input)?;
+        push_one_selector_string(&mut program, target)?;
+    }
+    for value in [qualifier_prefix, from_suffix, to_suffix, diagnostic] {
+        push_one_selector_string(&mut program, value)?;
+    }
+    program.push(SELECTOR_VM_OP_END);
+    validate_selector_program(SELECTOR_VM_OPCODE_VERSION_V1, &program)?;
+    Ok(program)
+}
+
+fn push_one_selector_string(program: &mut Vec<u8>, value: &str) -> Result<(), OpcpuCodecError> {
+    let bytes = value.as_bytes();
+    let len = u8::try_from(bytes.len()).map_err(|_| OpcpuCodecError::CountOutOfRange {
+        context: "selector VM string length exceeds u8".to_string(),
+    })?;
+    if len == 0 {
+        return Err(OpcpuCodecError::InvalidChunkFormat {
+            chunk: "SLCT".to_string(),
+            detail: "selector VM strings must not be empty".to_string(),
+        });
+    }
+    program.push(len);
+    program.extend_from_slice(bytes);
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -566,6 +747,165 @@ pub fn validate_operand_record_program(
             return Err(invalid("operand-record field source kind is invalid"));
         }
         _ => {}
+    }
+    Ok(())
+}
+
+/// Validate one selector choice program without interpreting target ids or
+/// diagnostic codes.
+pub fn validate_selector_program(
+    opcode_version: u16,
+    program: &[u8],
+) -> Result<(), OpcpuCodecError> {
+    fn invalid(detail: impl Into<String>) -> OpcpuCodecError {
+        OpcpuCodecError::InvalidChunkFormat {
+            chunk: "SLCT".to_string(),
+            detail: detail.into(),
+        }
+    }
+    fn read_strings<'a>(
+        program: &'a [u8],
+        pc: &mut usize,
+        label: &str,
+    ) -> Result<Vec<&'a str>, OpcpuCodecError> {
+        let count = *program
+            .get(*pc)
+            .ok_or_else(|| invalid(format!("selector VM {label} count is truncated")))?;
+        *pc += 1;
+        if count == 0 {
+            return Err(invalid(format!(
+                "selector VM {label} list must not be empty"
+            )));
+        }
+        let mut values = Vec::with_capacity(count as usize);
+        for _ in 0..count {
+            values.push(read_one_string(program, pc, label)?);
+        }
+        Ok(values)
+    }
+    fn read_one_string<'a>(
+        program: &'a [u8],
+        pc: &mut usize,
+        label: &str,
+    ) -> Result<&'a str, OpcpuCodecError> {
+        let len = *program
+            .get(*pc)
+            .ok_or_else(|| invalid(format!("selector VM {label} length is truncated")))?
+            as usize;
+        *pc += 1;
+        if len == 0 {
+            return Err(invalid(format!(
+                "selector VM {label} string must not be empty"
+            )));
+        }
+        let end = pc
+            .checked_add(len)
+            .filter(|end| *end <= program.len())
+            .ok_or_else(|| invalid(format!("selector VM {label} string is truncated")))?;
+        let value = std::str::from_utf8(&program[*pc..end])
+            .map_err(|_| invalid(format!("selector VM {label} string is not UTF-8")))?;
+        *pc = end;
+        Ok(value)
+    }
+
+    if opcode_version != SELECTOR_VM_OPCODE_VERSION_V1 {
+        return Err(invalid(format!(
+            "unsupported selector VM opcode version {opcode_version}"
+        )));
+    }
+    let mut pc = 0usize;
+    let matcher = *program
+        .get(pc)
+        .ok_or_else(|| invalid("selector VM program is empty"))?;
+    pc += 1;
+    if matcher == SELECTOR_VM_OP_MAP_EXACT {
+        let count = *program
+            .get(pc)
+            .ok_or_else(|| invalid("selector VM mapping count is truncated"))?;
+        pc += 1;
+        if count == 0 {
+            return Err(invalid("selector VM mapping table must not be empty"));
+        }
+        let mut inputs = std::collections::HashSet::new();
+        for _ in 0..count {
+            let input = read_one_string(program, &mut pc, "mapping input")?;
+            let _target = read_one_string(program, &mut pc, "mapping target")?;
+            if !inputs.insert(input.to_ascii_lowercase()) {
+                return Err(invalid("selector VM mapping contains a duplicate input"));
+            }
+        }
+        if program.get(pc) != Some(&SELECTOR_VM_OP_END) || pc + 1 != program.len() {
+            return Err(invalid("selector VM mapping has an invalid END"));
+        }
+        return Ok(());
+    }
+    if matcher == SELECTOR_VM_OP_REWRITE_SUFFIX {
+        let count = *program
+            .get(pc)
+            .ok_or_else(|| invalid("selector VM suffix mapping count is truncated"))?;
+        pc += 1;
+        if count == 0 {
+            return Err(invalid(
+                "selector VM suffix mapping table must not be empty",
+            ));
+        }
+        let mut inputs = std::collections::HashSet::new();
+        for _ in 0..count {
+            let input = read_one_string(program, &mut pc, "suffix mapping input")?;
+            let _target = read_one_string(program, &mut pc, "suffix mapping target")?;
+            if !inputs.insert(input.to_ascii_lowercase()) {
+                return Err(invalid(
+                    "selector VM suffix mapping contains a duplicate input",
+                ));
+            }
+        }
+        for label in [
+            "qualifier prefix",
+            "input suffix",
+            "output suffix",
+            "suffix diagnostic",
+        ] {
+            let _ = read_one_string(program, &mut pc, label)?;
+        }
+        if program.get(pc) != Some(&SELECTOR_VM_OP_END) || pc + 1 != program.len() {
+            return Err(invalid("selector VM suffix mapping has an invalid END"));
+        }
+        return Ok(());
+    }
+    if !matches!(
+        matcher,
+        SELECTOR_VM_OP_MATCH_EXACT | SELECTOR_VM_OP_MATCH_PREFIX
+    ) {
+        return Err(invalid(format!(
+            "selector VM program has invalid matcher opcode {matcher:#04x}"
+        )));
+    }
+    let _ = read_strings(program, &mut pc, "matcher")?;
+
+    let outcome = *program
+        .get(pc)
+        .ok_or_else(|| invalid("selector VM program is truncated before outcome"))?;
+    pc += 1;
+    if !matches!(
+        outcome,
+        SELECTOR_VM_OP_SELECT_TARGET | SELECTOR_VM_OP_SELECT_DIAGNOSTIC
+    ) {
+        return Err(invalid(format!(
+            "selector VM program has invalid outcome opcode {outcome:#04x}"
+        )));
+    }
+    let values = read_strings(program, &mut pc, "outcome")?;
+    if values.len() != 1 {
+        return Err(invalid(
+            "selector VM program must select exactly one target or diagnostic",
+        ));
+    }
+    if program.get(pc) != Some(&SELECTOR_VM_OP_END) {
+        return Err(invalid("selector VM program is truncated before END"));
+    }
+    pc += 1;
+    if pc != program.len() {
+        return Err(invalid("selector VM program has trailing bytes after END"));
     }
     Ok(())
 }
@@ -1350,6 +1690,7 @@ pub struct HierarchyChunks {
     pub semantic_programs: Vec<SemanticProgramDescriptor>,
     pub value_programs: Vec<ValueProgramDescriptor>,
     pub operand_record_programs: Vec<OperandRecordProgramDescriptor>,
+    pub selector_programs: Vec<SelectorProgramDescriptor>,
     pub selectors: Vec<ModeSelectorDescriptor>,
 }
 

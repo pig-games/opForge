@@ -101,6 +101,94 @@ pub(crate) struct NativeOpcoreAssignment {
     pub(crate) role: NativeOpcoreRole,
 }
 
+// Item 9 policy is inventory-owned rather than selected by the emulator test.
+// These exact paths partition the directly stored diagnostic shard according to
+// the behavior of each actual source and its live Rust CLI result.
+pub(crate) const NATIVE_OPCORE_DIAGNOSTIC_REACHABLE_ROOTS: &[&str] = &[
+    "examples/opcore/mos65c02_parser_error.asm",
+    "examples/opcore/macro_cross_module_error.asm",
+    "examples/opcore/segment_cross_module_error.asm",
+    "examples/opcore/statement_cross_module_error.asm",
+    "examples/opcore/statement_private_import_error.asm",
+];
+
+pub(crate) const NATIVE_OPCORE_DIAGNOSTIC_NATIVE_BLOCKERS: &[(&str, &str)] = &[
+    (
+        "examples/opcore/mos65c02_mnemonic_error.asm",
+        "native emits OPC-NCLI026 unsupported addressing while Rust reports unknown instruction",
+    ),
+    (
+        "examples/opcore/directive_typo_elseif_fixit_error.asm",
+        "native routes the typo as OPC-NCLI025 unknown mnemonic and has no Rust-equivalent directive fixit",
+    ),
+    (
+        "examples/opcore/directive_typo_endif_fixit_error.asm",
+        "native routes the typo as OPC-NCLI025 unknown mnemonic and has no Rust-equivalent directive fixit",
+    ),
+    (
+        "examples/opcore/directive_typo_endmatch_fixit_error.asm",
+        "native routes the typo as OPC-NCLI025 unknown mnemonic and has no Rust-equivalent directive fixit",
+    ),
+    (
+        "examples/opcore/directive_typo_endmodule_fixit_error.asm",
+        "native stops at OPC-NCLI016 module-depth mismatch before Rust's unknown-directive fixit path",
+    ),
+    (
+        "examples/opcore/directive_typo_endsection_fixit_error.asm",
+        "native routes the typo as OPC-NCLI025 unknown mnemonic and has no Rust-equivalent directive fixit",
+    ),
+    (
+        "examples/opcore/errors.asm",
+        "native reports a generic tokenizer VM failure instead of Rust's invalid-number diagnostic",
+    ),
+    (
+        "examples/opcore/linker_regions_phase6_image_span_overflow.asm",
+        "native reports generic flat-output write failure instead of Rust's invalid image-span diagnostic",
+    ),
+];
+
+pub(crate) const NATIVE_OPCORE_DIAGNOSTIC_SUCCESS_ROOTS: &[(&str, &str)] = &[
+    (
+        "examples/opcore/conditional_missing_endif_fixit_error.asm",
+        "the current stored source succeeds in Rust and owns normal output references, not a diagnostic reference",
+    ),
+    (
+        "examples/opcore/conditional_unmatched_endif_error.asm",
+        "the current stored source succeeds in Rust and owns normal output references, not a diagnostic reference",
+    ),
+    (
+        "examples/opcore/module_missing_endmodule_error.asm",
+        "the current stored source succeeds in Rust and owns normal output references, not a diagnostic reference",
+    ),
+    (
+        "examples/opcore/multi_error_reporting_error.asm",
+        "the current stored source succeeds in Rust and owns normal output references, not a diagnostic reference",
+    ),
+    (
+        "examples/opcore/section_missing_endsection_error.asm",
+        "the current stored source succeeds in Rust and owns normal output references, not a diagnostic reference",
+    ),
+];
+
+// These error roots intentionally exercise the same stored export modules as
+// their successful counterparts. The mapping is explicit because each support
+// file has one canonical inventory owner, while Item 9 still needs the exact
+// file bytes in the error root's isolated guest tree.
+pub(crate) const NATIVE_OPCORE_DIAGNOSTIC_SHARED_SUPPORT: &[(&str, &str)] = &[
+    (
+        "examples/opcore/macro_cross_module_error.asm",
+        "examples/opcore/lib/macro_export_lib.asm",
+    ),
+    (
+        "examples/opcore/segment_cross_module_error.asm",
+        "examples/opcore/lib/segment_export_lib.asm",
+    ),
+    (
+        "examples/opcore/statement_cross_module_error.asm",
+        "examples/opcore/lib/statement_export_lib.asm",
+    ),
+];
+
 macro_rules! opcore_root {
     ($path:literal, $shard:ident, $staging:ident) => {
         NativeOpcoreAssignment {

@@ -6399,6 +6399,23 @@ struct Item7StagedCase {
     rust_oracle: Vec<u8>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Item9DiagnosticKind {
+    UnknownInstruction,
+    UnexpectedEndExpression,
+    UnknownDirective,
+    InvalidNumber,
+    InvalidImageSpan,
+}
+
+struct Item9StagedCase {
+    name: &'static str,
+    source: Vec<u8>,
+    guest_files: Vec<Item7StagedGuestFile>,
+    reference_error: String,
+    rust_kind: Item9DiagnosticKind,
+}
+
 struct Item82StagedArtifact {
     relative_path: &'static str,
     rust_oracle: Vec<u8>,
@@ -6863,6 +6880,183 @@ fn item8_staged_cases() -> Vec<Item7StagedCase> {
             }
         })
         .collect()
+}
+
+fn item9_classify_rust_diagnostic(text: &str) -> Option<Item9DiagnosticKind> {
+    let folded = text.to_ascii_lowercase();
+    if folded.contains("no instruction found") {
+        Some(Item9DiagnosticKind::UnknownInstruction)
+    } else if folded.contains("unexpected end of expression") {
+        Some(Item9DiagnosticKind::UnexpectedEndExpression)
+    } else if folded.contains("unknown directive") {
+        Some(Item9DiagnosticKind::UnknownDirective)
+    } else if folded.contains("invalid number") {
+        Some(Item9DiagnosticKind::InvalidNumber)
+    } else if folded.contains("invalid image span range") {
+        Some(Item9DiagnosticKind::InvalidImageSpan)
+    } else {
+        None
+    }
+}
+
+fn item9_live_rust_diagnostic_kind(
+    case_name: &str,
+    source: &[u8],
+    guest_files: &[Item7StagedGuestFile],
+) -> Item9DiagnosticKind {
+    let case_dir = create_temp_dir("item9-live-rust-cli-oracle");
+    let _case_dir_guard = Item7OracleDir(case_dir.clone());
+    let input_path = case_dir.join("input.asm");
+    let bin_path = case_dir.join("oracle.bin");
+    fs::write(&input_path, source)
+        .unwrap_or_else(|err| panic!("write same-case Rust Item 9 root {case_name}: {err}"));
+    for guest_file in guest_files {
+        let path = case_dir.join(&guest_file.relative_path);
+        fs::create_dir_all(path.parent().expect("Item 9 support path has a parent"))
+            .unwrap_or_else(|err| panic!("create Item 9 support parent {}: {err}", path.display()));
+        fs::write(&path, &guest_file.bytes)
+            .unwrap_or_else(|err| panic!("write Item 9 support {}: {err}", path.display()));
+    }
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        input_path.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        bin_path.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "65c02".to_string(),
+        "-I".to_string(),
+        case_dir.to_string_lossy().into_owned(),
+        "-M".to_string(),
+        case_dir.to_string_lossy().into_owned(),
+    ]);
+    let mut config = validate_cli(&cli)
+        .unwrap_or_else(|err| panic!("validate same-case Rust Item 9 oracle {case_name}: {err:?}"));
+    config.out_dir = Some(case_dir.clone());
+    let error = run_with_validated_cli_with_context(&cli, &config)
+        .expect_err("assigned Item 9 diagnostic root must fail in live Rust");
+    let diagnostic_text = match &error {
+        CliRunError::Assembler { error, .. } => error
+            .diagnostics()
+            .iter()
+            .find(|diagnostic| diagnostic.severity == Severity::Error)
+            .map(|diagnostic| diagnostic.error.message().to_string())
+            .unwrap_or_else(|| error.to_string()),
+        _ => format!("{error:?}"),
+    };
+    item9_classify_rust_diagnostic(&diagnostic_text).unwrap_or_else(|| {
+        panic!("unclassified live Rust Item 9 diagnostic for {case_name}: {diagnostic_text}")
+    })
+}
+
+fn item9_staged_cases() -> Vec<Item9StagedCase> {
+    NATIVE_OPCORE_ASSIGNMENTS
+        .iter()
+        .filter_map(|assignment| {
+            let NativeOpcoreRole::Root { reference_stem } = assignment.role else {
+                return None;
+            };
+            if assignment.shard != NativeOpcoreShard::Diagnostic {
+                return None;
+            }
+            if assignment.staging != NativeOpcoreStaging::DirectMos65c02 {
+                return None;
+            }
+            let reference_path = workspace_root()
+                .join("examples/reference/opcore")
+                .join(reference_stem)
+                .with_extension("err");
+            if !reference_path.exists() {
+                return None;
+            }
+            let source = item7_native_source(assignment);
+            let mut guest_files = NATIVE_OPCORE_ASSIGNMENTS
+                .iter()
+                .filter_map(|support| match support.role {
+                    NativeOpcoreRole::Support { owner }
+                        if support.shard == NativeOpcoreShard::Diagnostic
+                            && owner == assignment.source_path =>
+                    {
+                        Some(Item7StagedGuestFile {
+                            relative_path: support
+                                .source_path
+                                .strip_prefix("examples/opcore/")
+                                .expect("Item 9 support below examples/opcore")
+                                .to_string(),
+                            bytes: fs::read(workspace_root().join(support.source_path))
+                                .unwrap_or_else(|err| {
+                                    panic!("read Item 9 support {}: {err}", support.source_path)
+                                }),
+                        })
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            for (_, support_path) in
+                crate::native_reference_parity::NATIVE_OPCORE_DIAGNOSTIC_SHARED_SUPPORT
+                    .iter()
+                    .filter(|(owner, _)| *owner == assignment.source_path)
+            {
+                let relative_path = support_path
+                    .strip_prefix("examples/opcore/")
+                    .expect("Item 9 shared support below examples/opcore");
+                guest_files.push(Item7StagedGuestFile {
+                    relative_path: relative_path.to_string(),
+                    bytes: fs::read(workspace_root().join(support_path)).unwrap_or_else(|err| {
+                        panic!("read Item 9 shared support {support_path}: {err}")
+                    }),
+                });
+            }
+            let reference_error = fs::read_to_string(&reference_path).unwrap_or_else(|err| {
+                panic!("read Item 9 reference {}: {err}", reference_path.display())
+            });
+            let reference_kind =
+                item9_classify_rust_diagnostic(&reference_error).unwrap_or_else(|| {
+                    panic!("unclassified Item 9 reference {}", reference_path.display())
+                });
+            let rust_kind =
+                item9_live_rust_diagnostic_kind(assignment.source_path, &source, &guest_files);
+            assert_eq!(
+                rust_kind, reference_kind,
+                "live Rust and checked-in Item 9 reference disagree for {}",
+                assignment.source_path
+            );
+            Some(Item9StagedCase {
+                name: assignment.source_path,
+                source,
+                guest_files,
+                reference_error,
+                rust_kind,
+            })
+        })
+        .collect()
+}
+
+fn item9_normalize_native_diagnostic(stderr: &str) -> Result<Item9DiagnosticKind, String> {
+    let primary = if stderr.contains("ERROR OPC-NCLI025: unknown native mnemonic") {
+        Item9DiagnosticKind::UnknownInstruction
+    } else if stderr.contains("OTR901: selected operand empty") {
+        Item9DiagnosticKind::UnexpectedEndExpression
+    } else {
+        return Err(format!("unrecognized native primary diagnostic:\n{stderr}"));
+    };
+    let primary_offset = match primary {
+        Item9DiagnosticKind::UnknownInstruction => stderr
+            .find("ERROR OPC-NCLI025: unknown native mnemonic")
+            .expect("classified unknown-instruction diagnostic is present"),
+        Item9DiagnosticKind::UnexpectedEndExpression => stderr
+            .find("OTR901: selected operand empty")
+            .expect("classified empty-expression diagnostic is present"),
+        _ => unreachable!("only reachable Item 9 native diagnostics are normalized"),
+    };
+    let cascade_offset = stderr
+        .find("ERROR OPC-NCLI020: native pass engine failed")
+        .ok_or_else(|| format!("native diagnostic omitted terminal pass failure:\n{stderr}"))?;
+    if primary_offset >= cascade_offset {
+        return Err(format!(
+            "native diagnostic order is invalid: primary offset {primary_offset}, cascade offset {cascade_offset}\n{stderr}"
+        ));
+    }
+    Ok(primary)
 }
 
 #[test]
@@ -7796,6 +7990,197 @@ fn native_preprocessor_conditionals_stored_65c02_fs_uae() {
             assert!(
                 runs[5..].iter().all(|run| !run.success),
                 "every malformed or capacity case must fail"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_reference_opcore_diagnostic_contract_uses_live_rust_and_checked_references() {
+    // Proof levels A/B. Every stored Item 9 root with a checked-in `.err`
+    // artifact supplies its exact source and support files to a fresh in-memory
+    // Rust CLI oracle. The oracle's semantic failure must agree with that
+    // root's checked reference. This does not execute native code.
+    let cases = item9_staged_cases();
+    assert_eq!(cases.len(), 13, "reviewed Item 9 error-reference inventory");
+    assert!(cases.iter().all(|case| !case.reference_error.is_empty()));
+    assert!(cases.iter().all(|case| matches!(
+        case.rust_kind,
+        Item9DiagnosticKind::UnknownInstruction
+            | Item9DiagnosticKind::UnexpectedEndExpression
+            | Item9DiagnosticKind::UnknownDirective
+            | Item9DiagnosticKind::InvalidNumber
+            | Item9DiagnosticKind::InvalidImageSpan
+    )));
+    let accounted = cases.iter().map(|case| case.name).collect::<HashSet<_>>();
+    let reachable = crate::native_reference_parity::NATIVE_OPCORE_DIAGNOSTIC_REACHABLE_ROOTS
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>();
+    let excluded = crate::native_reference_parity::NATIVE_OPCORE_DIAGNOSTIC_NATIVE_BLOCKERS
+        .iter()
+        .map(|(name, reason)| {
+            assert!(
+                !reason.trim().is_empty(),
+                "Item 9 exclusion reason for {name}"
+            );
+            *name
+        })
+        .collect::<HashSet<_>>();
+    assert!(reachable.is_disjoint(&excluded));
+    assert_eq!(
+        reachable.union(&excluded).copied().collect::<HashSet<_>>(),
+        accounted,
+        "every actual stored 65C02 `.err` root is reachable or has one concrete native blocker"
+    );
+    for (owner, support_path) in
+        crate::native_reference_parity::NATIVE_OPCORE_DIAGNOSTIC_SHARED_SUPPORT
+    {
+        assert!(
+            accounted.contains(owner),
+            "stale Item 9 shared-support owner"
+        );
+        assert!(
+            NATIVE_OPCORE_ASSIGNMENTS
+                .iter()
+                .any(|assignment| assignment.source_path == *support_path),
+            "Item 9 shared support is absent from the canonical inventory: {support_path}"
+        );
+    }
+
+    let diagnostic_assignments = NATIVE_OPCORE_ASSIGNMENTS
+        .iter()
+        .filter(|assignment| {
+            assignment.shard == NativeOpcoreShard::Diagnostic
+                && assignment.staging == NativeOpcoreStaging::DirectMos65c02
+                && matches!(assignment.role, NativeOpcoreRole::Root { .. })
+        })
+        .map(|assignment| assignment.source_path)
+        .collect::<HashSet<_>>();
+    let success_roots = crate::native_reference_parity::NATIVE_OPCORE_DIAGNOSTIC_SUCCESS_ROOTS
+        .iter()
+        .map(|(name, reason)| {
+            assert!(
+                !reason.trim().is_empty(),
+                "Item 9 successful-reference reason for {name}"
+            );
+            let assignment = NATIVE_OPCORE_ASSIGNMENTS
+                .iter()
+                .find(|assignment| assignment.source_path == *name)
+                .unwrap_or_else(|| panic!("missing Item 9 successful-reference root {name}"));
+            let NativeOpcoreRole::Root { reference_stem } = assignment.role else {
+                panic!("Item 9 successful-reference path is not a root: {name}");
+            };
+            let reference_root = workspace_root().join("examples/reference/opcore");
+            assert!(
+                reference_root
+                    .join(format!("{reference_stem}.hex"))
+                    .is_file()
+                    || reference_root
+                        .join(format!("{reference_stem}.lst"))
+                        .is_file(),
+                "Item 9 successful root {name} must own a normal output reference"
+            );
+            assert!(
+                !reference_root
+                    .join(format!("{reference_stem}.err"))
+                    .exists(),
+                "Item 9 successful root {name} must not masquerade as diagnostic evidence"
+            );
+            *name
+        })
+        .collect::<HashSet<_>>();
+    assert!(accounted.is_disjoint(&success_roots));
+    assert_eq!(
+        accounted
+            .union(&success_roots)
+            .copied()
+            .collect::<HashSet<_>>(),
+        diagnostic_assignments,
+        "all 18 assigned Item 9 roots must be classified without a cap or silent omission"
+    );
+}
+
+#[test]
+fn native_reference_opcore_diagnostic_fs_uae() {
+    // Proof level D. Every reachable stored Item 9 diagnostic root is evaluated
+    // in an independent fresh guest after its same-source live Rust oracle and
+    // checked-in `.err` contract agree. Native completion, nonzero exit, error
+    // order, and normalized semantic text are mandatory. Reviewed exclusions
+    // remain outside the evidence set and name their concrete native blocker.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let staged = item9_staged_cases()
+        .into_iter()
+        .filter(|case| {
+            crate::native_reference_parity::NATIVE_OPCORE_DIAGNOSTIC_REACHABLE_ROOTS
+                .contains(&case.name)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        staged.iter().map(|case| case.name).collect::<Vec<_>>(),
+        crate::native_reference_parity::NATIVE_OPCORE_DIAGNOSTIC_REACHABLE_ROOTS,
+        "the Item 9 evidence set is derived without a runtime case cap"
+    );
+    let guest_files = staged
+        .iter()
+        .map(|case| {
+            case.guest_files
+                .iter()
+                .map(|file| crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+                    relative_path: &file.relative_path,
+                    bytes: &file.bytes,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let package = item6_mos_package_bytes();
+    let defines = [crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE];
+    let cases = staged
+        .iter()
+        .enumerate()
+        .map(
+            |(index, case)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name: case.name,
+                cpu_override: "68020",
+                extra_assembly_defines: &defines,
+                source_override: Some(&case.source),
+                command_template: Some(
+                    "{input} --bin {bin} --cpu 65c02 -I {guest_work_dir} -M {guest_work_dir}",
+                ),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &guest_files[index],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 9 diagnostic FS-UAE helper")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), staged.len(), "every diagnostic probe completed");
+            let mut errors = Vec::new();
+            for (run, case) in runs.iter().zip(staged.iter()) {
+                match item9_normalize_native_diagnostic(&run.stderr) {
+                    Ok(native_kind) if native_kind == case.rust_kind => {}
+                    Ok(native_kind) => errors.push(format!(
+                        "{} normalized native {:?}, live Rust/reference {:?}\nstderr:\n{}",
+                        case.name, native_kind, case.rust_kind, run.stderr
+                    )),
+                    Err(error) => errors.push(format!("{}: {error}", case.name)),
+                }
+            }
+            assert!(
+                errors.is_empty(),
+                "{} of {} Item 9 diagnostics differed after every case completed:\n{}",
+                errors.len(),
+                staged.len(),
+                errors.join("\n")
             );
         }
     }

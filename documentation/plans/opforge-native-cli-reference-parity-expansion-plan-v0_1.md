@@ -1557,9 +1557,9 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: one focused native selector-classification remediation commit, separate from the Item 9 diagnostic shard
   - Definition of done: the exact stored 6502 unsupported-addressing case completes in FS-UAE and emits the required diagnostic while the unknown-mnemonic case remains distinct
 
-- [ ] Item 9: add the deterministic opcore diagnostic parity shard
-  - Source requirement or finding IDs: Item 5 assignments for applicable `*_error.asm` and deterministic CLI failure cases; `I9-D-01`, the corrected 17-case native diagnostic matrix reaches the stored unsupported-addressing source but native emits `OPC-NCLI025` unknown mnemonic for `jmp` instead of the required `OPC-NCLI026` unsupported addressing-mode diagnostic
-  - First red evidence: on 2026-08-13 the fail-closed Level D diagnostic matrix attempted every one of its 17 cases in 385.36s; 16 completed with their required diagnostics and only `unsupported-addressing` failed exact diagnostic proof. This is a native diagnostic-routing defect, not an emulator completion or stale-evidence failure, and no fix is bundled into Item 7.12.
+- [x] Item 9: add the deterministic opcore diagnostic parity shard
+  - Source requirement or finding IDs: Item 5 assignments for applicable `*_error.asm` and deterministic CLI failure cases; `I9-D-01` was corrected and committed separately by Item 9.R1 before this proof-only shard.
+  - Inventory accounting: all eighteen directly stored `DirectMos65c02` diagnostic roots are derived without a runtime cap and form one exact, disjoint partition. Thirteen own checked `.err` contracts: five are currently reachable through native with equivalent normalized primary diagnostics, while eight name a concrete native blocker in `NATIVE_OPCORE_DIAGNOSTIC_NATIVE_BLOCKERS`. The remaining five current sources succeed in live Rust, own normal `.hex`/`.lst` references, own no `.err`, and are named in `NATIVE_OPCORE_DIAGNOSTIC_SUCCESS_ROOTS`; they cannot masquerade as diagnostic evidence.
   - Expected files:
     - direct stored 6502/65C02 opcore error fixtures and matching `.err` references assigned by Item 5 and Item 9.1
     - `crates/opforge-asm/src/native_reference_parity.rs`
@@ -1572,10 +1572,13 @@ produce deterministic diagnostics rather than silently truncate. The active
     - `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`
     - `scripts/workflow/run_native_68000_format_gate.sh`
     - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
+  - Host proof: `native_reference_opcore_diagnostic_contract_uses_live_rust_and_checked_references` passed for all thirteen actual `.err` roots. Each oracle was built from that root's exact source and owned support in a fresh RAII-cleaned directory; its live Rust semantic failure agreed with its own checked `.err`. The same test proves the 5 reachable + 8 blocked + 5 Rust-success partition equals all eighteen inventory assignments.
+  - Level D proof: the final exact-slice `native_reference_opcore_diagnostic_fs_uae` run passed all five currently reachable stored roots in 113.16s. Every case ran independently with a fresh guest challenge and completion, explicit nonzero guest exit, ordered primary-before-cascade diagnostics, and normalized semantic equivalence to that actual case's live in-memory Rust/reference result. A prior forced thirteen-case localization run is Level E only and is not completion evidence.
+  - Reviewed native blockers: `mos65c02_mnemonic_error` differs as unsupported-addressing versus Rust unknown-instruction; five directive-typo roots lack equivalent native directive/fixit routing; `errors` stops at generic tokenizer VM failure rather than invalid-number; and the image-span-overflow root stops at generic flat-output write failure rather than Rust invalid-image-span. These eight are explicit future production gaps, not skipped passing cases.
   - Plan-compliance review evidence:
     - `plan-compliance-reviewer` returns `PASS` for one deterministic diagnostic shard, exact Rust/native failure equivalence, and no bundled native behavior fix
   - Commit outcome:
-    - every assigned reachable error case compares deterministic native CLI diagnostics with Rust and its checked-in `.err` contract
+    - every assigned reachable error case compares deterministic native CLI diagnostics with Rust and its checked-in `.err` contract; all other assigned roots are explicitly and mechanically accounted for
   - Definition of done:
     - host launch failures are distinguished from Amiga-side diagnostic failures
     - error ordering, exit status, and normalized text are compared

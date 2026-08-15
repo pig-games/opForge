@@ -3,35 +3,29 @@ schema_version = 2
 name = "native CLI deterministic diagnostic parity"
 kind = "native-rust-parity"
 rust_reference = [
-  "crates/opforge-asm/src/tests.rs::native_reference_schema_live_rust_cli_diagnostic_oracle_classifies_unknown_mnemonic",
-  "crates/opforge-asm/src/fs_uae_smoke.rs::FS_UAE_OPFORGE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING_TEXT"
+  "crates/opforge-asm/src/tests/native_fs_uae_parity.rs::item9_live_rust_diagnostic_kind",
+  "examples/reference/opcore/*.err"
 ]
 native_boundary = [
-  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildSelectedEnvelopeFromMselV1",
-  "native/motorola68000/amigaos/opforge-cli/report.asm::opforgeNativeCliReport"
+  "native/motorola68000/amigaos/opforge-cli/report.asm::opforgeNativeCliReport",
+  "crates/opforge-asm/src/fs_uae_smoke.rs::OpforgeNativeCliProof::ExpectedFailureWithDiagnostic"
 ]
-invariant = "Active-owner mnemonic recognition is retained independently of operand-shape selection, so an absent mnemonic reports unknown mnemonic while a known mnemonic with no selectable form reports unsupported addressing."
-expected_inputs = "The reviewed unknown-mnemonic case and the stored 6502 unsupported-addressing source `jmp $20,x`, each evaluated through its actual case identity."
-expected_outputs = "Unknown and unsupported-addressing remain distinct deterministic native CLI diagnostic classes matching the Rust authority."
-known_non_equivalences = "This remediation changes only selector failure classification; the complete assigned stored diagnostic corpus remains Item 9 proof scope."
-fast_proof_command = "cargo test -p asm native_selector_retains_mnemonic_match_before_shape_rejection -- --nocapture && cargo test -p asm native_reference_schema_diagnostic_comparator_accepts_match_and_rejects_mismatch -- --nocapture"
-level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics -- --nocapture --test-threads=1"
+invariant = "Every assigned stored 6502/65C02 diagnostic root is classified from its actual source and live Rust result; every reachable native case completes fresh, exits nonzero, and matches the same case's Rust/reference diagnostic kind and ordering."
+expected_inputs = "All eighteen directly stored Item 9 roots in inventory order: thirteen with checked .err contracts and five verified live-Rust success roots with normal output references."
+expected_outputs = "Five reachable .err roots pass exact same-case Level D diagnostic proof; eight .err roots retain concrete reviewed native blockers; five successful roots are explicitly excluded from diagnostic evidence because they have no Rust failure."
+known_non_equivalences = "Native directive-fixit, invalid-number, invalid-image-span, and one mnemonic classification path remain the eight exact inventory-owned blockers; none is counted as parity evidence."
+fast_proof_command = "cargo test -p asm native_reference_opcore_diagnostic_contract_uses_live_rust_and_checked_references -- --nocapture && cargo test -p asm examples_match_reference_outputs -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_reference_opcore_diagnostic_fs_uae -- --nocapture --test-threads=1"
 level_d_fail_closed = true
 
 [[tests]]
-name = "native_selector_retains_mnemonic_match_before_shape_rejection"
+name = "native_reference_opcore_diagnostic_contract_uses_live_rust_and_checked_references"
 proof_level = "B"
-proves = "Generic MSEL traversal records an active-owner mnemonic match before operand-shape rejection and uses that independent state for unknown-versus-unsupported routing."
-does_not_prove = "Real native CLI execution or the complete diagnostic shard."
-
-[[tests]]
-name = "native_reference_schema_diagnostic_comparator_accepts_match_and_rejects_mismatch"
-proof_level = "B"
-proves = "The comparator accepts the normalized diagnostic class and rejects a mismatch."
+proves = "The inventory-derived 18-root partition is exact and disjoint; every .err root's actual source and support agree between live Rust and its checked reference, while successful roots own no .err evidence."
 does_not_prove = "Real native CLI execution."
 
 [[tests]]
-name = "external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics"
+name = "native_reference_opcore_diagnostic_fs_uae"
 proof_level = "D"
-proves = "The uncapped matrix executes the real unknown and unsupported-addressing CLI failure paths with fresh guest completion and exact required diagnostic classification."
-does_not_prove = "The separate Item 9 stored diagnostic reference shard."
+proves = "Every currently reachable stored diagnostic root runs independently with fresh guest protocol, explicit nonzero exit, ordered diagnostics, and same-case live Rust/reference equivalence."
+does_not_prove = "Parity for the eight roots whose concrete native blockers remain listed in the authoritative inventory."

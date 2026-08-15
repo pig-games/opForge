@@ -17,6 +17,7 @@ MODULES = (
     "native_reference_shards",
     "native_fs_uae_parity",
 )
+ADDITIONAL_FILTER_MODULES = ("native_mos_forward_ref_stability",)
 TEST_RE = re.compile(r"(?m)^#\[test\]\nfn ([A-Za-z_][A-Za-z0-9_]*)\(")
 
 
@@ -83,6 +84,10 @@ def validate(root: Path = ROOT, ledger_path: Path | None = None) -> list[str]:
         module_path = root / f"crates/opforge-asm/src/tests/{module}.rs"
         if module_path.is_file():
             all_names.extend(TEST_RE.findall(module_path.read_text(encoding="utf-8")))
+    for module in ADDITIONAL_FILTER_MODULES:
+        module_path = root / f"crates/opforge-asm/src/tests/{module}.rs"
+        if module_path.is_file():
+            all_names.extend(TEST_RE.findall(module_path.read_text(encoding="utf-8")))
     duplicates = sorted(name for name in set(all_names) if all_names.count(name) > 1)
     if duplicates:
         errors.append(f"test functions must remain unique after the split: {', '.join(duplicates)}")
@@ -90,6 +95,7 @@ def validate(root: Path = ROOT, ledger_path: Path | None = None) -> list[str]:
     for wrapper in (
         "scripts/workflow/run_native_macro_completion.sh",
         "scripts/workflow/run_native_existing_parity_completion.sh",
+        "scripts/workflow/run_native_reference_parity_completion.sh",
     ):
         wrapper_path = root / wrapper
         if not wrapper_path.is_file():

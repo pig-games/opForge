@@ -267,8 +267,9 @@ landed” is not equivalent to “framework-closed.”
     - `crates/opforge-asm/src/fs_uae_smoke.rs`
     - `crates/opforge-asm/src/native_reference_parity.rs` or equivalent helper module if extracted
   - Full quality gates:
-    - `cargo test -p asm native_reference_6502_ -- --nocapture`
-    - `cargo test -p asm native_reference_65c02_ -- --nocapture`
+    - `cargo test -p asm native_reference_schema_ -- --nocapture`
+    - `cargo test -p asm native_reference_manifest_ -- --nocapture`
+    - `cargo test -p asm native_mos_forward_ref_stability_pass_one_contract -- --nocapture`
     - `cargo test -p asm external_fs_uae_opforge_native_cli_ -- --nocapture --test-threads=1`
     - `scripts/workflow/run_native_68000_format_gate.sh`
     - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
@@ -1607,7 +1608,7 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: one focused proof-closure commit records the already-reviewed exact-source shard before gate promotion; no corpus or native behavior changes are included
   - Definition of done: every assigned root is attempted independently and requires fresh guest completion, explicit zero exit, and exact same-case Rust bytes
 
-- [ ] Item 10: promote the completed active native reference scope into the mandatory native completion gate
+- [x] Item 10: promote the completed active native reference scope into the mandatory native completion gate
   - Source requirement or finding IDs: user request that these tests “must become part of the standard test run for any native implementation work”; the explicit user reprioritization to make `6502`/`65c02` the only active family scope before anything else advances; existing `scripts/workflow/run_rust_quality_gate.sh`; native rule-pack requirements from `AGENTS.md`
   - Expected files:
     - `scripts/workflow/run_native_porting_quality_gate.py`
@@ -1628,6 +1629,8 @@ produce deterministic diagnostics rather than silently truncate. The active
     - `make workflow-gate`
   - Plan-compliance review evidence:
     - `plan-compliance-reviewer` returns `PASS` for gate promotion only, with deterministic staged checks separated from configured Level D completion execution and no corpus or native behavior changes
+  - Implementation: `scripts/workflow/run_native_reference_parity_completion.sh --verify`, exposed as `make native-reference-parity-completion`, is the configured standard completion path for native implementation work. It validates all FS-UAE configuration before execution, names exactly the six completed MOS CLI reference/boundary proofs, the separate canonical `native_mos_forward_ref_stability_fs_uae` proof, and the four inventory-derived opcore shards, then requires each cargo filter to run and pass exactly once with no `SKIP`. Its output files live only in one trap-cleaned temporary directory. Failures are accumulated so every later named test is still attempted. The deterministic staged native-porting gate remains emulator- and network-free, and focused filters remain available only for iteration.
+  - Validation evidence: after review strengthened skip detection to reject `SKIP:` anywhere in real prefixed libtest output, the exact configured `make native-reference-parity-completion` command passed all eleven required entrypoints in one continuous final-code run. Schema binary passed in 158.84s; listing in 22.70s; diagnostic schema in 22.64s; expression metadata fallback in 22.72s; source CPU normalization in 45.35s; debug-output isolation in 45.36s; the separate `mos_forward_ref_stability.asm` proof in 22.74s; the uncapped syntax/expression shard passed all sixteen roots in 364.57s; the uncapped module/macro/statement shard passed all sixteen roots in 385.39s; the uncapped layout/output shard passed all sixteen roots in 363.36s; and the diagnostic shard passed in 113.83s. The wrapper then reported `PASS: complete active 6502/65C02 native reference Level D parity verified (11 tests)`; no on-hold family test was present in the gate. A focused wrapper regression reproduces the real `test ... SKIP: ...` output shape, rejects it, and confirms all later entrypoints are still attempted.
   - Commit outcome:
     - native implementation work can no longer bypass the declared `6502`/`65c02` and opcore-on-`6502`/`65c02` parity shards during the standard required workflow
   - Definition of done:

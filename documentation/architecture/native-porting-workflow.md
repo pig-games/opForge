@@ -50,6 +50,23 @@ must continue to match the named Rust contract.
 8. Run the named FS-UAE confirmation with `--test-threads=1`.
 9. Remove temporary probes; retain only stable, documented contract assertions.
 
+Before native implementation work is complete, run the configured active
+reference completion gate:
+
+```sh
+make native-reference-parity-completion
+```
+
+This gate is deliberately separate from the deterministic staged gate because
+it launches FS-UAE. It fails when emulator configuration is missing and runs
+only the active 6502/65C02 reference scope: the CLI schema/boundary proofs, the
+separate canonical MOS forward-reference proof, and all four uncapped opcore
+shards. Every named test must execute and pass exactly once. A failure in one
+test is accumulated only after every later named test has also been attempted.
+Focused `cargo test` filters remain available for iteration but do not replace
+this completion command. Any reduced fixture used by such a filter remains
+localization-only Proof Level E.
+
 The boundary order is source line, tokenization, parser/portable statement,
 native statement/session record, expression envelope, EXVM result, selector,
 encoder, session bytes, and output artifact.

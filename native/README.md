@@ -326,6 +326,8 @@ behavior itself changed.
 FS-UAE tests are opt-in. They require `OPFORGE_FS_UAE_SMOKE=1` and
 environment/configuration for the local FS-UAE executable and launcher
 arguments. The helper code lives in `crates/opforge-asm/src/fs_uae_smoke.rs`.
+Policy marker: opt-in-allowed for focused local tests; the configured native
+reference completion command below is fail closed and mandatory for completion.
 When running from a sandboxed agent, make sure the command has GUI/process
 access before interpreting a FS-UAE `SIGABRT` during `UAE: Initializing core
 derived from WinUAE` as an opForge failure.
@@ -341,6 +343,14 @@ OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opfo
 OPFORGE_FS_UAE_ARGS='{fsuae_config}' \
 cargo test -p asm external_fs_uae_ -- --nocapture --test-threads=1
 ```
+
+For completion of native implementation work, the required active reference
+gate is `make native-reference-parity-completion` with those same environment
+variables. It is fail closed on missing configuration, skips, zero discovered
+tests, crashes, or parity failures; it attempts every named test before
+reporting the aggregate result. Its scope is exclusively 6502/65C02 and
+includes `mos_forward_ref_stability.asm` as a separate proof plus all four
+uncapped opcore shards.
 
 Focused FS-UAE checks:
 

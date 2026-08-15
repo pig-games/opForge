@@ -36,6 +36,7 @@ class NativeTestModuleOwnershipTests(unittest.TestCase):
         for wrapper in (
             "run_native_macro_completion.sh",
             "run_native_existing_parity_completion.sh",
+            "run_native_reference_parity_completion.sh",
         ):
             (workflow_dir / wrapper).write_text("tests=(\n)\n", encoding="utf-8")
         return root

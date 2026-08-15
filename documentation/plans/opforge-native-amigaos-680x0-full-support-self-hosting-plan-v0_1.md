@@ -353,6 +353,11 @@ the same unmodified serialized semantic package.
   their canonical bytes; unknown record-program versions and malformed records
   fail closed. The checked-in `.opasm` package fixtures are regenerated exact
   Rust-builder output and remain direct inputs for the later native work.
+- Item 4 retains container version 1 and extends optional `OPRD` with record
+  schema version 2. Version 1 base records remain accepted unchanged; version 2
+  adds only neutral nested-address, pair, range, list, and field structures.
+  Unsupported versions and malformed structures fail closed, and the refreshed
+  `.opasm` fixtures remain exact Rust-builder output.
 - Owned contract: the 68020/AmigaOS executable exposes the complete
   Rust-supported 680x0 assembler surface and can rebuild itself
 - Rationale: CPU discovery is already present in package metadata, but complete
@@ -385,11 +390,11 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit serializing all base effective-address components.
   - Definition of done: base addressing is reconstructed from package records without runtime family parsing or register-name logic in the generic VM.
 
-- [ ] Item 4: materialize full-extension, list, pair, and bit-field operand records
+- [x] Item 4: materialize full-extension, list, pair, and bit-field operand records
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`-`N68X0-006`, `N68X0-014`, `N68X0-015`.
   - Expected files: neutral nested-address/list/pair/range records, family compiler adapter, Rust tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; 68020 extension, list/pair, bit-field, bounds, malformed-record, round-trip, and applicable cross-family structured-operand tests.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` only if target-specific meaning remains family-owned data composed from neutral structures.
+  - Plan-compliance review evidence: `PASS` — the independent `plan-compliance-reviewer` confirmed CPU-neutral, v1-compatible `OPRD` v2 structures; family-owned full-extension and bit-field combinations and bounds; serialized-only reconstruction of indexed/index-suppressed nested addresses, direct/indirect pairs, ranges, nonempty lists, and all register/value field-selector combinations; fail-closed malformed/fuzz behavior and typed missing inputs; exact Rust-built fixtures; and no native production change. The reviewer rechecked and closed the omitted-shape, empty-list, and two-sided-bound findings.
   - Commit outcome: one commit eliminating runtime callbacks for structured integer operands.
   - Definition of done: all owned full-extension/list/pair/bit-field shapes match the family oracle from serialized records.
 

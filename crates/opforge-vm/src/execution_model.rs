@@ -473,6 +473,20 @@ impl HierarchyExecutionModel {
             .execute_operand_record_program(resolved, program_id, registers, values)
     }
 
+    /// Reconstruct one record that composes already-materialized nested records.
+    pub fn execute_operand_record_program_with_records(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        registers: &[crate::operand_record_vm::PortableRegisterRef],
+        values: &[i64],
+        records: &[crate::operand_record_vm::PortableOperandRecord],
+    ) -> Result<crate::operand_record_vm::PortableOperandRecord, RuntimeBridgeError> {
+        self.core.execute_operand_record_program_with_records(
+            resolved, program_id, registers, values, records,
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn parse_family_operand_surface_expr(
         &self,

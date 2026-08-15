@@ -137,12 +137,18 @@ pub const VALUE_VM_OP_REQUIRE_UNSIGNED_BITS: u8 = 0x05;
 pub const VALUE_VM_OP_REQUIRE_RANGE_I64: u8 = 0x06;
 pub const VALUE_VM_OP_END: u8 = 0xFF;
 pub const OPERAND_RECORD_VM_VERSION_V1: u16 = 0x0001;
+pub const OPERAND_RECORD_VM_VERSION_V2: u16 = 0x0002;
 pub const OPERAND_RECORD_OP_REGISTER: u8 = 0x01;
 pub const OPERAND_RECORD_OP_INDIRECT: u8 = 0x02;
 pub const OPERAND_RECORD_OP_DISPLACEMENT: u8 = 0x03;
 pub const OPERAND_RECORD_OP_INDEXED: u8 = 0x04;
 pub const OPERAND_RECORD_OP_ABSOLUTE: u8 = 0x05;
 pub const OPERAND_RECORD_OP_IMMEDIATE: u8 = 0x06;
+pub const OPERAND_RECORD_OP_NESTED_ADDRESS: u8 = 0x07;
+pub const OPERAND_RECORD_OP_REGISTER_PAIR: u8 = 0x08;
+pub const OPERAND_RECORD_OP_REGISTER_RANGE: u8 = 0x09;
+pub const OPERAND_RECORD_OP_REGISTER_LIST: u8 = 0x0A;
+pub const OPERAND_RECORD_OP_FIELD: u8 = 0x0B;
 pub const OPERAND_RECORD_OP_END: u8 = 0xFF;
 pub const PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT: u16 = 0x0002;
 pub const EXVM_OPCODE_VERSION_V1: u16 = 0x0001;
@@ -235,6 +241,7 @@ pub struct OperandRecordProgramDescriptor {
 pub enum OperandRecordBaseSource {
     Register(u8),
     ProgramCounter,
+    Suppressed,
 }
 
 #[repr(u8)]
@@ -243,6 +250,36 @@ pub enum OperandRecordUpdate {
     None,
     Postincrement,
     Predecrement,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperandRecordIndirection {
+    None,
+    Preindexed,
+    Postindexed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperandRecordOptionalValueSource {
+    None,
+    Input { index: u8, width_bits: u8 },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperandRecordOptionalIndexSource {
+    None,
+    Input {
+        index: u8,
+        width_bits: u8,
+        scale: u8,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperandRecordFieldSource {
+    Register(u8),
+    Value(u8),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -272,6 +309,30 @@ pub enum OperandRecordProgram {
     Immediate {
         value_input: u8,
     },
+    NestedAddress {
+        base: OperandRecordBaseSource,
+        base_displacement: OperandRecordOptionalValueSource,
+        index: OperandRecordOptionalIndexSource,
+        indirection: OperandRecordIndirection,
+        outer_displacement: OperandRecordOptionalValueSource,
+    },
+    RegisterPair {
+        left_register_input: u8,
+        right_register_input: u8,
+        indirect: bool,
+    },
+    RegisterRange {
+        start_register_input: u8,
+        end_register_input: u8,
+    },
+    RegisterList {
+        first_register_input: u8,
+    },
+    Field {
+        record_input: u8,
+        offset: OperandRecordFieldSource,
+        width: OperandRecordFieldSource,
+    },
 }
 
 /// Compile one neutral operand-record constructor.
@@ -282,6 +343,18 @@ pub fn compile_operand_record_program(
     let push_base = |program: &mut Vec<u8>, base: OperandRecordBaseSource| match base {
         OperandRecordBaseSource::Register(input) => program.extend_from_slice(&[0, input]),
         OperandRecordBaseSource::ProgramCounter => program.extend_from_slice(&[1, 0]),
+        OperandRecordBaseSource::Suppressed => program.extend_from_slice(&[2, 0]),
+    };
+    let push_optional_value =
+        |program: &mut Vec<u8>, source: OperandRecordOptionalValueSource| match source {
+            OperandRecordOptionalValueSource::None => program.extend_from_slice(&[u8::MAX, 0]),
+            OperandRecordOptionalValueSource::Input { index, width_bits } => {
+                program.extend_from_slice(&[index, width_bits]);
+            }
+        };
+    let push_field = |program: &mut Vec<u8>, source: OperandRecordFieldSource| match source {
+        OperandRecordFieldSource::Register(index) => program.extend_from_slice(&[0, index]),
+        OperandRecordFieldSource::Value(index) => program.extend_from_slice(&[1, index]),
     };
     match record {
         OperandRecordProgram::Register { register_input } => {
@@ -321,9 +394,62 @@ pub fn compile_operand_record_program(
         OperandRecordProgram::Immediate { value_input } => {
             program.extend_from_slice(&[OPERAND_RECORD_OP_IMMEDIATE, value_input]);
         }
+        OperandRecordProgram::NestedAddress {
+            base,
+            base_displacement,
+            index,
+            indirection,
+            outer_displacement,
+        } => {
+            program.push(OPERAND_RECORD_OP_NESTED_ADDRESS);
+            push_base(&mut program, base);
+            push_optional_value(&mut program, base_displacement);
+            match index {
+                OperandRecordOptionalIndexSource::None => {
+                    program.extend_from_slice(&[u8::MAX, 0, 0]);
+                }
+                OperandRecordOptionalIndexSource::Input {
+                    index,
+                    width_bits,
+                    scale,
+                } => program.extend_from_slice(&[index, width_bits, scale]),
+            }
+            program.push(indirection as u8);
+            push_optional_value(&mut program, outer_displacement);
+        }
+        OperandRecordProgram::RegisterPair {
+            left_register_input,
+            right_register_input,
+            indirect,
+        } => program.extend_from_slice(&[
+            OPERAND_RECORD_OP_REGISTER_PAIR,
+            left_register_input,
+            right_register_input,
+            u8::from(indirect),
+        ]),
+        OperandRecordProgram::RegisterRange {
+            start_register_input,
+            end_register_input,
+        } => program.extend_from_slice(&[
+            OPERAND_RECORD_OP_REGISTER_RANGE,
+            start_register_input,
+            end_register_input,
+        ]),
+        OperandRecordProgram::RegisterList {
+            first_register_input,
+        } => program.extend_from_slice(&[OPERAND_RECORD_OP_REGISTER_LIST, first_register_input]),
+        OperandRecordProgram::Field {
+            record_input,
+            offset,
+            width,
+        } => {
+            program.extend_from_slice(&[OPERAND_RECORD_OP_FIELD, record_input]);
+            push_field(&mut program, offset);
+            push_field(&mut program, width);
+        }
     }
     program.push(OPERAND_RECORD_OP_END);
-    validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V1, &program)?;
+    validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V2, &program)?;
     Ok(program)
 }
 
@@ -338,7 +464,10 @@ pub fn validate_operand_record_program(
             detail: detail.into(),
         }
     }
-    if schema_version != OPERAND_RECORD_VM_VERSION_V1 {
+    if !matches!(
+        schema_version,
+        OPERAND_RECORD_VM_VERSION_V1 | OPERAND_RECORD_VM_VERSION_V2
+    ) {
         return Err(invalid(format!(
             "unsupported operand-record schema version {schema_version}"
         )));
@@ -351,6 +480,11 @@ pub fn validate_operand_record_program(
         OPERAND_RECORD_OP_INDIRECT | OPERAND_RECORD_OP_ABSOLUTE => 2,
         OPERAND_RECORD_OP_DISPLACEMENT => 3,
         OPERAND_RECORD_OP_INDEXED => 6,
+        OPERAND_RECORD_OP_NESTED_ADDRESS if schema_version >= OPERAND_RECORD_VM_VERSION_V2 => 10,
+        OPERAND_RECORD_OP_REGISTER_PAIR if schema_version >= OPERAND_RECORD_VM_VERSION_V2 => 3,
+        OPERAND_RECORD_OP_REGISTER_RANGE if schema_version >= OPERAND_RECORD_VM_VERSION_V2 => 2,
+        OPERAND_RECORD_OP_REGISTER_LIST if schema_version >= OPERAND_RECORD_VM_VERSION_V2 => 1,
+        OPERAND_RECORD_OP_FIELD if schema_version >= OPERAND_RECORD_VM_VERSION_V2 => 5,
         other => {
             return Err(invalid(format!(
                 "unknown operand-record opcode {other:#04x}"
@@ -388,6 +522,33 @@ pub fn validate_operand_record_program(
         }
         OPERAND_RECORD_OP_ABSOLUTE if !matches!(program[2], 8 | 16 | 24 | 32 | 64) => {
             return Err(invalid("operand-record absolute width is invalid"));
+        }
+        OPERAND_RECORD_OP_NESTED_ADDRESS => {
+            if program[1] > 2 || (program[1] != 0 && program[2] != 0) {
+                return Err(invalid("operand-record nested base is invalid"));
+            }
+            for (index, width) in [(program[3], program[4]), (program[9], program[10])] {
+                if (index == u8::MAX) != (width == 0)
+                    || (index != u8::MAX && !matches!(width, 16 | 32))
+                {
+                    return Err(invalid("operand-record optional displacement is invalid"));
+                }
+            }
+            if (program[5] == u8::MAX) != (program[6] == 0 && program[7] == 0)
+                || (program[5] != u8::MAX
+                    && (!matches!(program[6], 16 | 32) || !program[7].is_power_of_two()))
+            {
+                return Err(invalid("operand-record optional index is invalid"));
+            }
+            if program[8] > OperandRecordIndirection::Postindexed as u8 {
+                return Err(invalid("operand-record indirection kind is invalid"));
+            }
+        }
+        OPERAND_RECORD_OP_REGISTER_PAIR if program[3] > 1 => {
+            return Err(invalid("operand-record pair indirect flag is invalid"));
+        }
+        OPERAND_RECORD_OP_FIELD if !matches!(program[2], 0 | 1) || !matches!(program[4], 0 | 1) => {
+            return Err(invalid("operand-record field source kind is invalid"));
         }
         _ => {}
     }

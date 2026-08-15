@@ -1,0 +1,47 @@
+[slice]
+schema_version = 1
+name = "versioned portable structured operand records"
+kind = "package-runtime"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 4
+requirements = ["N68X0-001", "N68X0-003", "N68X0-004", "N68X0-005", "N68X0-006", "N68X0-014", "N68X0-015"]
+rust_reference = [
+  "crates/opforge-families/src/m68k/operand.rs::FamilyOperand",
+  "crates/opforge-families/src/m68k/package_programs.rs::operand_record_programs",
+  "crates/opforge-package/src/package.rs::OperandRecordProgram",
+  "crates/opforge-vm/src/operand_record_vm.rs::execute_operand_record_program_with_records",
+  "crates/opforge-vm/src/runtime_model_core.rs::RuntimeModelCore::execute_operand_record_program_with_records"
+]
+boundary = "OPRD v2 adds only CPU-neutral optional address components, pairs, ranges, lists, nested records, and register/value field selectors. The m68k package builder owns which constants and combinations represent full-extension, register-group, indirect-pair, and bit-field forms. The generic package/runtime contains no target spelling, target register class meaning, instruction dispatch, or encoding rule."
+invariant = "The normal registry package builder serializes family-owned structured integer operand constructors. After serialization and registry destruction, the runtime reconstructs address/register/field structures using only opaque register, scalar, and nested-record inputs. OPRD v1 remains accepted unchanged; unsupported versions and malformed v2 structures fail closed."
+expected_inputs = "A canonical hierarchy package with scoped OPRD v1/v2 descriptors plus opaque numeric registers, evaluated scalar values, and already-materialized nested records."
+expected_outputs = "One deterministic neutral structured operand record or a typed missing-register, missing-value, missing-record, malformed-program, unsupported-version, unknown-program, or missing-scope failure."
+known_non_equivalences = "This slice excludes FPU/AMMX-specific structures, selector order, legality, encoding, fixups, pass stability, native interpretation, output formats, and CLI behavior. Those remain owned by later plan items."
+fast_proof_command = "cargo test -p package operand_record -- --nocapture && cargo test -p vm execution_model_reconstructs_structured_integer_records_from_serialized_programs -- --nocapture && cargo test -p vm execution_model_reconstructs_base_operand_records_from_serialized_programs -- --nocapture"
+full_gate_command = "cargo test -p package && cargo test -p registry && cargo test -p families && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
+native_proof = "not-applicable: Item 4 changes no native production file and the plan forbids FS-UAE as package-phase proof"
+
+[[tests]]
+name = "operand_record_program_round_trip_is_canonical_and_optional_for_legacy_packages"
+proof_level = "package"
+proves = "OPRD remains optional and canonical, and packages without OPRD retain their existing bytes."
+
+[[tests]]
+name = "operand_record_codec_rejects_unknown_versions_and_malformed_records"
+proof_level = "package"
+proves = "Unknown versions and malformed v1/v2 payload fields fail closed."
+
+[[tests]]
+name = "operand_record_validator_is_deterministic_for_arbitrary_bytes"
+proof_level = "package-fuzz"
+proves = "Arbitrary bounded v2 byte streams produce deterministic validation outcomes without panics."
+
+[[tests]]
+name = "execution_model_reconstructs_structured_integer_records_from_serialized_programs"
+proof_level = "runtime"
+proves = "A serialized-only runtime reconstructs nested address components, pairs, ranges, variable lists, and nested register/value-selected fields while target-specific combinations remain family-owned package programs."
+
+[[tests]]
+name = "execution_model_reconstructs_base_operand_records_from_serialized_programs"
+proof_level = "runtime-regression"
+proves = "All OPRD v1 base records remain bytecode-compatible and executable after adding v2."

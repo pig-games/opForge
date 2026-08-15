@@ -14,7 +14,7 @@ use package::{
     TokenizerVmStreamMode, DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
     DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT, EXPR_VM_OPCODE_VERSION_V1,
     EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1, OPERAND_RECORD_VM_VERSION_V1,
-    PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
+    OPERAND_RECORD_VM_VERSION_V2, PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
     PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, SEMANTIC_VM_OPCODE_VERSION_V1,
     TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
 };
@@ -27,8 +27,8 @@ use types::hierarchy::{
 use crate::builder::{build_hierarchy_package_from_registry, HierarchyBuildError};
 use crate::bytecode::execute_program;
 use crate::operand_record_vm::{
-    execute_operand_record_program as execute_operand_record_program_bytes, PortableOperandRecord,
-    PortableRegisterRef,
+    execute_operand_record_program_with_records as execute_operand_record_program_bytes,
+    PortableOperandRecord, PortableRegisterRef,
 };
 use crate::portable_contract::PortableToken;
 use crate::rollout::{
@@ -1676,6 +1676,23 @@ impl RuntimeModelCore {
         registers: &[PortableRegisterRef],
         values: &[i64],
     ) -> Result<PortableOperandRecord, RuntimeBridgeError> {
+        self.execute_operand_record_program_with_records(
+            resolved,
+            program_id,
+            registers,
+            values,
+            &[],
+        )
+    }
+
+    pub fn execute_operand_record_program_with_records(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        registers: &[PortableRegisterRef],
+        values: &[i64],
+        records: &[PortableOperandRecord],
+    ) -> Result<PortableOperandRecord, RuntimeBridgeError> {
         let normalized_id = program_id.to_ascii_lowercase();
         let program_id = self.interned_id(&normalized_id).ok_or_else(|| {
             RuntimeBridgeError::Resolve(format!("unknown operand-record program '{normalized_id}'"))
@@ -1688,7 +1705,10 @@ impl RuntimeModelCore {
             else {
                 continue;
             };
-            if *schema_version != OPERAND_RECORD_VM_VERSION_V1 {
+            if !matches!(
+                *schema_version,
+                OPERAND_RECORD_VM_VERSION_V1 | OPERAND_RECORD_VM_VERSION_V2
+            ) {
                 return Err(RuntimeBridgeError::Resolve(format!(
                     "unsupported operand-record schema version {schema_version}"
                 )));
@@ -1698,6 +1718,7 @@ impl RuntimeModelCore {
                 program,
                 registers,
                 values,
+                records,
             )?);
         }
         Err(RuntimeBridgeError::Resolve(format!(

@@ -21,8 +21,9 @@ use crate::native_prvm::{
     NATIVE_PRVM_EXPR_SLOT_READY,
 };
 use crate::operand_record_vm::{
-    OperandRecordVmError, PortableAddressBase, PortableAddressUpdate, PortableOperandRecord,
-    PortableRegisterRef,
+    OperandRecordVmError, PortableAddressBase, PortableAddressIndex, PortableAddressUpdate,
+    PortableFieldSelector, PortableMemoryIndirection, PortableOperandRecord, PortableRegisterRef,
+    PortableSizedValue,
 };
 use crate::portable_contract::*;
 use crate::rollout::{family_runtime_mode, FamilyRuntimeMode};
@@ -8065,7 +8066,7 @@ fn execution_model_materializes_family_scalar_values_from_serialized_programs() 
     register_mos6502_family_stack(&mut registry);
     register_motorola68000_family_stack(&mut registry);
     let chunks = build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
-    assert_eq!(chunks.value_programs.len(), 11);
+    assert_eq!(chunks.value_programs.len(), 13);
     let package_bytes =
         encode_hierarchy_chunks_from_chunks(&chunks).expect("value package serialization");
 
@@ -8177,7 +8178,7 @@ fn execution_model_reconstructs_base_operand_records_from_serialized_programs() 
     register_mos6502_family_stack(&mut registry);
     register_motorola68000_family_stack(&mut registry);
     let chunks = build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
-    assert_eq!(chunks.operand_record_programs.len(), 16);
+    assert_eq!(chunks.operand_record_programs.len(), 28);
     let package_bytes =
         encode_hierarchy_chunks_from_chunks(&chunks).expect("operand package serialization");
     drop(chunks);
@@ -8382,6 +8383,277 @@ fn execution_model_reconstructs_base_operand_records_from_serialized_programs() 
         ),
         Err(RuntimeBridgeError::OperandRecordVm(
             OperandRecordVmError::MissingValueInput { index: 0 }
+        ))
+    ));
+}
+
+#[test]
+fn execution_model_reconstructs_structured_integer_records_from_serialized_programs() {
+    let mut registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut registry);
+    let package_bytes = encode_hierarchy_chunks_from_chunks(
+        &build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build"),
+    )
+    .expect("structured operand package serialization");
+    drop(registry);
+
+    let model = HierarchyExecutionModel::from_package_bytes(&package_bytes)
+        .expect("serialized structured operand package load");
+    let m68k = model
+        .resolve_pipeline("m68020", None)
+        .expect("m68k pipeline");
+    let register = |name| {
+        let (class, index) =
+            m68k_value_programs::compile_register_input(name).expect("family register adapter");
+        PortableRegisterRef { class, index }
+    };
+    let data = register("D3");
+    let address = register("A2");
+    let other_address = register("A5");
+    let base = PortableOperandRecord::Absolute {
+        value: 0x1234,
+        width_bits: 32,
+    };
+
+    for (program_id, accepted, rejected_low, rejected_high) in [
+        (m68k_value_programs::VALUE_BIT_FIELD_OFFSET, 31, -1, 32),
+        (m68k_value_programs::VALUE_BIT_FIELD_WIDTH, 32, 0, 33),
+    ] {
+        assert_eq!(
+            model
+                .execute_value_program(&m68k, program_id, &[accepted])
+                .expect("structured field bound accepts edge"),
+            accepted
+        );
+        for rejected in [rejected_low, rejected_high] {
+            assert!(matches!(
+                model.execute_value_program(&m68k, program_id, &[rejected]),
+                Err(RuntimeBridgeError::ValueVm(
+                    crate::value_vm::ValueVmError::ConstraintViolation { .. }
+                ))
+            ));
+        }
+    }
+
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68k,
+                m68k_value_programs::RECORD_FULL_ADDRESS_PREINDEXED,
+                &[address, data],
+                &[-4, 12],
+            )
+            .expect("full address record"),
+        PortableOperandRecord::NestedAddress {
+            base: PortableAddressBase::Register(address),
+            base_displacement: Some(PortableSizedValue {
+                value: -4,
+                width_bits: 16,
+            }),
+            index: Some(PortableAddressIndex {
+                register: data,
+                width_bits: 32,
+                scale: 4,
+            }),
+            indirection: PortableMemoryIndirection::Preindexed,
+            outer_displacement: Some(PortableSizedValue {
+                value: 12,
+                width_bits: 32,
+            }),
+        }
+    );
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68k,
+                m68k_value_programs::RECORD_FULL_ADDRESS_BASE_ONLY,
+                &[address],
+                &[-8],
+            )
+            .expect("index-suppressed full address record"),
+        PortableOperandRecord::NestedAddress {
+            base: PortableAddressBase::Register(address),
+            base_displacement: Some(PortableSizedValue {
+                value: -8,
+                width_bits: 32,
+            }),
+            index: None,
+            indirection: PortableMemoryIndirection::None,
+            outer_displacement: None,
+        }
+    );
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68k,
+                m68k_value_programs::RECORD_FULL_PC_POSTINDEXED,
+                &[data],
+                &[6],
+            )
+            .expect("full pc record"),
+        PortableOperandRecord::NestedAddress {
+            base: PortableAddressBase::ProgramCounter,
+            base_displacement: None,
+            index: Some(PortableAddressIndex {
+                register: data,
+                width_bits: 16,
+                scale: 2,
+            }),
+            indirection: PortableMemoryIndirection::Postindexed,
+            outer_displacement: Some(PortableSizedValue {
+                value: 6,
+                width_bits: 16,
+            }),
+        }
+    );
+    assert!(matches!(
+        model.execute_operand_record_program(
+            &m68k,
+            m68k_value_programs::RECORD_REGISTER_LIST,
+            &[],
+            &[],
+        ),
+        Err(RuntimeBridgeError::OperandRecordVm(
+            OperandRecordVmError::MissingRegisterInput { index: 0 }
+        ))
+    ));
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68k,
+                m68k_value_programs::RECORD_FULL_SUPPRESSED_INDEX,
+                &[data],
+                &[],
+            )
+            .expect("suppressed base record"),
+        PortableOperandRecord::NestedAddress {
+            base: PortableAddressBase::Suppressed,
+            base_displacement: None,
+            index: Some(PortableAddressIndex {
+                register: data,
+                width_bits: 32,
+                scale: 8,
+            }),
+            indirection: PortableMemoryIndirection::None,
+            outer_displacement: None,
+        }
+    );
+    assert_eq!(
+        model
+            .execute_operand_record_program_with_records(
+                &m68k,
+                m68k_value_programs::RECORD_BIT_FIELD_VALUE_REGISTER,
+                &[data],
+                &[3],
+                std::slice::from_ref(&base),
+            )
+            .expect("value-register field"),
+        PortableOperandRecord::Field {
+            base: Box::new(base.clone()),
+            offset: PortableFieldSelector::Value(3),
+            width: PortableFieldSelector::Register(data),
+        }
+    );
+    assert_eq!(
+        model
+            .execute_operand_record_program_with_records(
+                &m68k,
+                m68k_value_programs::RECORD_BIT_FIELD_REGISTERS,
+                &[data, address],
+                &[],
+                std::slice::from_ref(&base),
+            )
+            .expect("register-register field"),
+        PortableOperandRecord::Field {
+            base: Box::new(base.clone()),
+            offset: PortableFieldSelector::Register(data),
+            width: PortableFieldSelector::Register(address),
+        }
+    );
+
+    for (id, indirect) in [
+        (m68k_value_programs::RECORD_REGISTER_PAIR, false),
+        (m68k_value_programs::RECORD_INDIRECT_REGISTER_PAIR, true),
+    ] {
+        assert_eq!(
+            model
+                .execute_operand_record_program(&m68k, id, &[data, address], &[])
+                .expect("register pair"),
+            PortableOperandRecord::RegisterPair {
+                left: data,
+                right: address,
+                indirect,
+            }
+        );
+    }
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68k,
+                m68k_value_programs::RECORD_REGISTER_GROUP,
+                &[address, other_address],
+                &[],
+            )
+            .expect("register group"),
+        PortableOperandRecord::RegisterRange {
+            start: address,
+            end: other_address,
+        }
+    );
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68k,
+                m68k_value_programs::RECORD_REGISTER_LIST,
+                &[data, address, other_address],
+                &[],
+            )
+            .expect("register list"),
+        PortableOperandRecord::RegisterList(vec![data, address, other_address])
+    );
+
+    assert_eq!(
+        model
+            .execute_operand_record_program_with_records(
+                &m68k,
+                m68k_value_programs::RECORD_BIT_FIELD_REGISTER_OFFSET,
+                &[data],
+                &[5],
+                std::slice::from_ref(&base),
+            )
+            .expect("register-offset field"),
+        PortableOperandRecord::Field {
+            base: Box::new(base.clone()),
+            offset: PortableFieldSelector::Register(data),
+            width: PortableFieldSelector::Value(5),
+        }
+    );
+    assert_eq!(
+        model
+            .execute_operand_record_program_with_records(
+                &m68k,
+                m68k_value_programs::RECORD_BIT_FIELD_IMMEDIATE,
+                &[],
+                &[3, 7],
+                std::slice::from_ref(&base),
+            )
+            .expect("immediate field"),
+        PortableOperandRecord::Field {
+            base: Box::new(base),
+            offset: PortableFieldSelector::Value(3),
+            width: PortableFieldSelector::Value(7),
+        }
+    );
+    assert!(matches!(
+        model.execute_operand_record_program_with_records(
+            &m68k,
+            m68k_value_programs::RECORD_BIT_FIELD_IMMEDIATE,
+            &[],
+            &[3, 7],
+            &[],
+        ),
+        Err(RuntimeBridgeError::OperandRecordVm(
+            OperandRecordVmError::MissingRecordInput { index: 0 }
         ))
     ));
 }

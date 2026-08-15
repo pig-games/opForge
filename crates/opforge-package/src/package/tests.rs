@@ -1917,8 +1917,8 @@ proptest! {
     fn operand_record_validator_is_deterministic_for_arbitrary_bytes(
         bytes in proptest::collection::vec(any::<u8>(), 0..512)
     ) {
-        let first = validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V1, &bytes);
-        let second = validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V1, &bytes);
+        let first = validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V2, &bytes);
+        let second = validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V2, &bytes);
         prop_assert_eq!(first, second);
     }
 }
@@ -2220,7 +2220,7 @@ fn operand_record_codec_rejects_unknown_versions_and_malformed_records() {
         OperandRecordProgramDescriptor {
             owner: ScopedOwner::Family("mos6502".to_string()),
             id: "unknown-version".to_string(),
-            schema_version: OPERAND_RECORD_VM_VERSION_V1 + 1,
+            schema_version: OPERAND_RECORD_VM_VERSION_V2 + 1,
             program: vec![OPERAND_RECORD_OP_REGISTER, 0, OPERAND_RECORD_OP_END],
         },
         OperandRecordProgramDescriptor {
@@ -2273,6 +2273,25 @@ fn operand_record_codec_rejects_unknown_versions_and_malformed_records() {
             id: "trailing".to_string(),
             schema_version: OPERAND_RECORD_VM_VERSION_V1,
             program: vec![OPERAND_RECORD_OP_IMMEDIATE, 0, OPERAND_RECORD_OP_END, 0],
+        },
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "bad-nested-index".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V2,
+            program: vec![
+                OPERAND_RECORD_OP_NESTED_ADDRESS,
+                2,
+                0,
+                u8::MAX,
+                0,
+                0,
+                0,
+                0,
+                0,
+                u8::MAX,
+                0,
+                OPERAND_RECORD_OP_END,
+            ],
         },
     ] {
         let payload = encode_oprd_chunk(&[entry]).expect("raw OPRD schema encode");

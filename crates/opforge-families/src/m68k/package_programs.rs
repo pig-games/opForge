@@ -5,9 +5,11 @@
 
 use package::{
     compile_operand_record_program, compile_value_program, OpcpuCodecError,
-    OperandRecordBaseSource, OperandRecordProgram, OperandRecordProgramDescriptor,
-    OperandRecordUpdate, ValueConstraint, ValueProgramDescriptor, ValueProgramSource,
-    OPERAND_RECORD_VM_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
+    OperandRecordBaseSource, OperandRecordFieldSource, OperandRecordIndirection,
+    OperandRecordOptionalIndexSource, OperandRecordOptionalValueSource, OperandRecordProgram,
+    OperandRecordProgramDescriptor, OperandRecordUpdate, ValueConstraint, ValueProgramDescriptor,
+    ValueProgramSource, OPERAND_RECORD_VM_VERSION_V1, OPERAND_RECORD_VM_VERSION_V2,
+    VALUE_VM_OPCODE_VERSION_V1,
 };
 use types::hierarchy::ScopedOwner;
 
@@ -21,6 +23,8 @@ pub const VALUE_IMMEDIATE_BYTE: &str = "scalar.immediate-byte";
 pub const VALUE_IMMEDIATE_WORD: &str = "scalar.immediate-word";
 pub const VALUE_IMMEDIATE_LONG: &str = "scalar.immediate-long";
 pub const VALUE_LITERAL_ZERO: &str = "scalar.literal-zero";
+pub const VALUE_BIT_FIELD_OFFSET: &str = "scalar.bit-field-offset";
+pub const VALUE_BIT_FIELD_WIDTH: &str = "scalar.bit-field-width";
 pub const SIGNED_BYTE_RANGE: (i64, i64) = (-128, 127);
 pub const UNSIGNED_BYTE_RANGE: (i64, i64) = (0, 255);
 pub const SIGNED_WORD_RANGE: (i64, i64) = (-32_768, 32_767);
@@ -41,6 +45,18 @@ pub const RECORD_PC_INDEXED_LONG: &str = "operand.pc-indexed-long";
 pub const RECORD_ABSOLUTE_WORD: &str = "operand.absolute-word";
 pub const RECORD_ABSOLUTE_LONG: &str = "operand.absolute-long";
 pub const RECORD_IMMEDIATE: &str = "operand.immediate";
+pub const RECORD_FULL_ADDRESS_PREINDEXED: &str = "operand.full-address-preindexed";
+pub const RECORD_FULL_PC_POSTINDEXED: &str = "operand.full-pc-postindexed";
+pub const RECORD_FULL_SUPPRESSED_INDEX: &str = "operand.full-suppressed-index";
+pub const RECORD_FULL_ADDRESS_BASE_ONLY: &str = "operand.full-address-base-only";
+pub const RECORD_REGISTER_PAIR: &str = "operand.register-pair";
+pub const RECORD_REGISTER_GROUP: &str = "operand.register-group";
+pub const RECORD_INDIRECT_REGISTER_PAIR: &str = "operand.indirect-register-pair";
+pub const RECORD_REGISTER_LIST: &str = "operand.register-list";
+pub const RECORD_BIT_FIELD_REGISTER_OFFSET: &str = "operand.bit-field-register-offset";
+pub const RECORD_BIT_FIELD_IMMEDIATE: &str = "operand.bit-field-immediate";
+pub const RECORD_BIT_FIELD_VALUE_REGISTER: &str = "operand.bit-field-value-register";
+pub const RECORD_BIT_FIELD_REGISTERS: &str = "operand.bit-field-registers";
 
 /// Convert a family-owned register spelling to the opaque class/index pair
 /// consumed by the neutral operand-record runtime.
@@ -122,6 +138,20 @@ pub fn value_programs() -> Result<Vec<ValueProgramDescriptor>, OpcpuCodecError> 
             opcode_version: VALUE_VM_OPCODE_VERSION_V1,
             program: compile_value_program(ValueProgramSource::Literal(0), &[])?,
         },
+        input_program(
+            VALUE_BIT_FIELD_OFFSET,
+            &[
+                normalize,
+                ValueConstraint::InclusiveRange { min: 0, max: 31 },
+            ],
+        )?,
+        input_program(
+            VALUE_BIT_FIELD_WIDTH,
+            &[
+                normalize,
+                ValueConstraint::InclusiveRange { min: 1, max: 32 },
+            ],
+        )?,
     ])
 }
 
@@ -137,6 +167,18 @@ fn record(
     })
 }
 
+fn structured_record(
+    id: &str,
+    program: OperandRecordProgram,
+) -> Result<OperandRecordProgramDescriptor, OpcpuCodecError> {
+    Ok(OperandRecordProgramDescriptor {
+        owner: ScopedOwner::Family("motorola68000".to_string()),
+        id: id.to_string(),
+        schema_version: OPERAND_RECORD_VM_VERSION_V2,
+        program: compile_operand_record_program(program)?,
+    })
+}
+
 /// Compile base addressing shapes to neutral operand-record constructors.
 pub fn operand_record_programs() -> Result<Vec<OperandRecordProgramDescriptor>, OpcpuCodecError> {
     let register = |register_input| OperandRecordBaseSource::Register(register_input);
@@ -147,7 +189,7 @@ pub fn operand_record_programs() -> Result<Vec<OperandRecordProgramDescriptor>, 
         scale: 1,
         value_input: 0,
     };
-    Ok(vec![
+    let mut programs = vec![
         record(
             RECORD_DATA_REGISTER,
             OperandRecordProgram::Register { register_input: 0 },
@@ -219,7 +261,135 @@ pub fn operand_record_programs() -> Result<Vec<OperandRecordProgramDescriptor>, 
             RECORD_IMMEDIATE,
             OperandRecordProgram::Immediate { value_input: 0 },
         )?,
-    ])
+    ];
+    programs.extend([
+        structured_record(
+            RECORD_FULL_ADDRESS_PREINDEXED,
+            OperandRecordProgram::NestedAddress {
+                base: OperandRecordBaseSource::Register(0),
+                base_displacement: OperandRecordOptionalValueSource::Input {
+                    index: 0,
+                    width_bits: 16,
+                },
+                index: OperandRecordOptionalIndexSource::Input {
+                    index: 1,
+                    width_bits: 32,
+                    scale: 4,
+                },
+                indirection: OperandRecordIndirection::Preindexed,
+                outer_displacement: OperandRecordOptionalValueSource::Input {
+                    index: 1,
+                    width_bits: 32,
+                },
+            },
+        )?,
+        structured_record(
+            RECORD_FULL_PC_POSTINDEXED,
+            OperandRecordProgram::NestedAddress {
+                base: OperandRecordBaseSource::ProgramCounter,
+                base_displacement: OperandRecordOptionalValueSource::None,
+                index: OperandRecordOptionalIndexSource::Input {
+                    index: 0,
+                    width_bits: 16,
+                    scale: 2,
+                },
+                indirection: OperandRecordIndirection::Postindexed,
+                outer_displacement: OperandRecordOptionalValueSource::Input {
+                    index: 0,
+                    width_bits: 16,
+                },
+            },
+        )?,
+        structured_record(
+            RECORD_FULL_SUPPRESSED_INDEX,
+            OperandRecordProgram::NestedAddress {
+                base: OperandRecordBaseSource::Suppressed,
+                base_displacement: OperandRecordOptionalValueSource::None,
+                index: OperandRecordOptionalIndexSource::Input {
+                    index: 0,
+                    width_bits: 32,
+                    scale: 8,
+                },
+                indirection: OperandRecordIndirection::None,
+                outer_displacement: OperandRecordOptionalValueSource::None,
+            },
+        )?,
+        structured_record(
+            RECORD_FULL_ADDRESS_BASE_ONLY,
+            OperandRecordProgram::NestedAddress {
+                base: OperandRecordBaseSource::Register(0),
+                base_displacement: OperandRecordOptionalValueSource::Input {
+                    index: 0,
+                    width_bits: 32,
+                },
+                index: OperandRecordOptionalIndexSource::None,
+                indirection: OperandRecordIndirection::None,
+                outer_displacement: OperandRecordOptionalValueSource::None,
+            },
+        )?,
+        structured_record(
+            RECORD_REGISTER_PAIR,
+            OperandRecordProgram::RegisterPair {
+                left_register_input: 0,
+                right_register_input: 1,
+                indirect: false,
+            },
+        )?,
+        structured_record(
+            RECORD_REGISTER_GROUP,
+            OperandRecordProgram::RegisterRange {
+                start_register_input: 0,
+                end_register_input: 1,
+            },
+        )?,
+        structured_record(
+            RECORD_INDIRECT_REGISTER_PAIR,
+            OperandRecordProgram::RegisterPair {
+                left_register_input: 0,
+                right_register_input: 1,
+                indirect: true,
+            },
+        )?,
+        structured_record(
+            RECORD_REGISTER_LIST,
+            OperandRecordProgram::RegisterList {
+                first_register_input: 0,
+            },
+        )?,
+        structured_record(
+            RECORD_BIT_FIELD_REGISTER_OFFSET,
+            OperandRecordProgram::Field {
+                record_input: 0,
+                offset: OperandRecordFieldSource::Register(0),
+                width: OperandRecordFieldSource::Value(0),
+            },
+        )?,
+        structured_record(
+            RECORD_BIT_FIELD_IMMEDIATE,
+            OperandRecordProgram::Field {
+                record_input: 0,
+                offset: OperandRecordFieldSource::Value(0),
+                width: OperandRecordFieldSource::Value(1),
+            },
+        )?,
+        structured_record(
+            RECORD_BIT_FIELD_VALUE_REGISTER,
+            OperandRecordProgram::Field {
+                record_input: 0,
+                offset: OperandRecordFieldSource::Value(0),
+                width: OperandRecordFieldSource::Register(0),
+            },
+        )?,
+        structured_record(
+            RECORD_BIT_FIELD_REGISTERS,
+            OperandRecordProgram::Field {
+                record_input: 0,
+                offset: OperandRecordFieldSource::Register(0),
+                width: OperandRecordFieldSource::Register(1),
+            },
+        )?,
+    ]);
+    Ok(programs)
 }
 
 /// Existing family scalar normalization retained as the differential oracle

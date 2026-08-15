@@ -348,6 +348,11 @@ the same unmodified serialized semantic package.
   canonical bytes; unknown value opcode versions and malformed value programs
   fail closed. The checked-in `.opasm` package fixtures are regenerated exact
   Rust-builder output and are not a native-only schema or transformation.
+- Item 3 retains container version 1 and adds optional `OPRD`, whose payload
+  carries its own exact record-program version. Packages without `OPRD` retain
+  their canonical bytes; unknown record-program versions and malformed records
+  fail closed. The checked-in `.opasm` package fixtures are regenerated exact
+  Rust-builder output and remain direct inputs for the later native work.
 - Owned contract: the 68020/AmigaOS executable exposes the complete
   Rust-supported 680x0 assembler surface and can rebuild itself
 - Rationale: CPU discovery is already present in package metadata, but complete
@@ -372,11 +377,11 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit replacing runtime scalar/value callbacks with serialized neutral programs.
   - Definition of done: scalar and expression values match the family oracle with zero post-construction family parser calls.
 
-- [ ] Item 3: materialize register and base effective-address operand records
+- [x] Item 3: materialize register and base effective-address operand records
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`-`N68X0-005`, `N68X0-014`, `N68X0-015`.
   - Expected files: neutral register/address-component records, family compiler adapter, Rust interpreter tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; register, indirect, increment/decrement, displacement, indexed, absolute, PC-relative, immediate, malformed-record, and applicable cross-family addressing tests.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for the single base-addressing-record invariant.
+  - Plan-compliance review evidence: `PASS` — the independent `plan-compliance-reviewer` confirmed the optional, independently versioned, CPU-neutral `OPRD` substrate; family-owned register spelling adapters; serialized-only reconstruction of direct data/address registers, indirect update modes, displacement, indexed, absolute, PC-relative, and immediate records; cross-family reuse; typed malformed/missing-input failures; legacy-byte compatibility; exact Rust-built fixture refresh; and no native production change. The reviewer specifically rechecked and closed the direct-address-register coverage finding.
   - Commit outcome: one commit serializing all base effective-address components.
   - Definition of done: base addressing is reconstructed from package records without runtime family parsing or register-name logic in the generic VM.
 

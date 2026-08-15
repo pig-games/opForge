@@ -16,6 +16,7 @@
 //! - `TABL` (scoped VM instruction program descriptors)
 //! - `SEMV` (versioned scoped semantic VM program descriptors)
 //! - `VALP` (versioned scoped scalar-value program descriptors)
+//! - `OPRD` (versioned scoped operand-record program descriptors)
 //! - `TKVM` (scoped tokenizer VM program descriptors)
 //! - `PARS` (scoped parser/AST contract descriptors)
 //! - `PRVM` (scoped parser VM program descriptors)
@@ -35,9 +36,9 @@ mod tests;
 use canonicalize::canonicalize_package_support_chunks;
 pub use canonicalize::{
     canonicalize_expr_contracts, canonicalize_expr_parser_contracts,
-    canonicalize_hierarchy_metadata, canonicalize_parser_contracts,
-    canonicalize_parser_vm_programs, canonicalize_semantic_programs, canonicalize_token_policies,
-    canonicalize_tokenizer_vm_programs, canonicalize_value_programs,
+    canonicalize_hierarchy_metadata, canonicalize_operand_record_programs,
+    canonicalize_parser_contracts, canonicalize_parser_vm_programs, canonicalize_semantic_programs,
+    canonicalize_token_policies, canonicalize_tokenizer_vm_programs, canonicalize_value_programs,
 };
 
 pub const OPASM_MAGIC: [u8; 4] = *b"OPCP";
@@ -60,6 +61,7 @@ const CHUNK_FORM: [u8; 4] = *b"FORM";
 const CHUNK_TABL: [u8; 4] = *b"TABL";
 const CHUNK_SEMV: [u8; 4] = *b"SEMV";
 const CHUNK_VALP: [u8; 4] = *b"VALP";
+const CHUNK_OPRD: [u8; 4] = *b"OPRD";
 const CHUNK_MSEL: [u8; 4] = *b"MSEL";
 const CHUNK_TKVM: [u8; 4] = *b"TKVM";
 const CHUNK_PARS: [u8; 4] = *b"PARS";
@@ -115,6 +117,8 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 ///   payloads.
 /// - `VALUE_VM_OPCODE_VERSION_V1`: scalar value materialization (`VALP`)
 ///   payloads.
+/// - `OPERAND_RECORD_VM_VERSION_V1`: neutral operand-record construction
+///   (`OPRD`) payloads.
 ///
 /// Decode/validation policy for all versioned VM payloads:
 /// - exact version match required for the active decoder.
@@ -132,6 +136,14 @@ pub const VALUE_VM_OP_REQUIRE_SIGNED_BITS: u8 = 0x04;
 pub const VALUE_VM_OP_REQUIRE_UNSIGNED_BITS: u8 = 0x05;
 pub const VALUE_VM_OP_REQUIRE_RANGE_I64: u8 = 0x06;
 pub const VALUE_VM_OP_END: u8 = 0xFF;
+pub const OPERAND_RECORD_VM_VERSION_V1: u16 = 0x0001;
+pub const OPERAND_RECORD_OP_REGISTER: u8 = 0x01;
+pub const OPERAND_RECORD_OP_INDIRECT: u8 = 0x02;
+pub const OPERAND_RECORD_OP_DISPLACEMENT: u8 = 0x03;
+pub const OPERAND_RECORD_OP_INDEXED: u8 = 0x04;
+pub const OPERAND_RECORD_OP_ABSOLUTE: u8 = 0x05;
+pub const OPERAND_RECORD_OP_IMMEDIATE: u8 = 0x06;
+pub const OPERAND_RECORD_OP_END: u8 = 0xFF;
 pub const PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT: u16 = 0x0002;
 pub const EXVM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const EXVM_OPCODE_VERSION_V2: u16 = 0x0002;
@@ -208,6 +220,178 @@ pub struct ValueProgramDescriptor {
     pub id: String,
     pub opcode_version: u16,
     pub program: Vec<u8>,
+}
+
+/// Independently versioned constructor for one CPU-neutral operand record.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OperandRecordProgramDescriptor {
+    pub owner: ScopedOwner,
+    pub id: String,
+    pub schema_version: u16,
+    pub program: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperandRecordBaseSource {
+    Register(u8),
+    ProgramCounter,
+}
+
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperandRecordUpdate {
+    None,
+    Postincrement,
+    Predecrement,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperandRecordProgram {
+    Register {
+        register_input: u8,
+    },
+    Indirect {
+        register_input: u8,
+        update: OperandRecordUpdate,
+    },
+    Displacement {
+        base: OperandRecordBaseSource,
+        value_input: u8,
+    },
+    Indexed {
+        base: OperandRecordBaseSource,
+        index_register_input: u8,
+        index_width_bits: u8,
+        scale: u8,
+        value_input: u8,
+    },
+    Absolute {
+        value_input: u8,
+        width_bits: u8,
+    },
+    Immediate {
+        value_input: u8,
+    },
+}
+
+/// Compile one neutral operand-record constructor.
+pub fn compile_operand_record_program(
+    record: OperandRecordProgram,
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    let mut program = Vec::new();
+    let push_base = |program: &mut Vec<u8>, base: OperandRecordBaseSource| match base {
+        OperandRecordBaseSource::Register(input) => program.extend_from_slice(&[0, input]),
+        OperandRecordBaseSource::ProgramCounter => program.extend_from_slice(&[1, 0]),
+    };
+    match record {
+        OperandRecordProgram::Register { register_input } => {
+            program.extend_from_slice(&[OPERAND_RECORD_OP_REGISTER, register_input]);
+        }
+        OperandRecordProgram::Indirect {
+            register_input,
+            update,
+        } => {
+            program.extend_from_slice(&[OPERAND_RECORD_OP_INDIRECT, register_input, update as u8]);
+        }
+        OperandRecordProgram::Displacement { base, value_input } => {
+            program.push(OPERAND_RECORD_OP_DISPLACEMENT);
+            push_base(&mut program, base);
+            program.push(value_input);
+        }
+        OperandRecordProgram::Indexed {
+            base,
+            index_register_input,
+            index_width_bits,
+            scale,
+            value_input,
+        } => {
+            program.push(OPERAND_RECORD_OP_INDEXED);
+            push_base(&mut program, base);
+            program.extend_from_slice(&[
+                index_register_input,
+                index_width_bits,
+                scale,
+                value_input,
+            ]);
+        }
+        OperandRecordProgram::Absolute {
+            value_input,
+            width_bits,
+        } => program.extend_from_slice(&[OPERAND_RECORD_OP_ABSOLUTE, value_input, width_bits]),
+        OperandRecordProgram::Immediate { value_input } => {
+            program.extend_from_slice(&[OPERAND_RECORD_OP_IMMEDIATE, value_input]);
+        }
+    }
+    program.push(OPERAND_RECORD_OP_END);
+    validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V1, &program)?;
+    Ok(program)
+}
+
+/// Validate one operand-record constructor without interpreting family meaning.
+pub fn validate_operand_record_program(
+    schema_version: u16,
+    program: &[u8],
+) -> Result<(), OpcpuCodecError> {
+    fn invalid(detail: impl Into<String>) -> OpcpuCodecError {
+        OpcpuCodecError::InvalidChunkFormat {
+            chunk: "OPRD".to_string(),
+            detail: detail.into(),
+        }
+    }
+    if schema_version != OPERAND_RECORD_VM_VERSION_V1 {
+        return Err(invalid(format!(
+            "unsupported operand-record schema version {schema_version}"
+        )));
+    }
+    let opcode = *program
+        .first()
+        .ok_or_else(|| invalid("operand-record program is empty"))?;
+    let payload_len = match opcode {
+        OPERAND_RECORD_OP_REGISTER | OPERAND_RECORD_OP_IMMEDIATE => 1,
+        OPERAND_RECORD_OP_INDIRECT | OPERAND_RECORD_OP_ABSOLUTE => 2,
+        OPERAND_RECORD_OP_DISPLACEMENT => 3,
+        OPERAND_RECORD_OP_INDEXED => 6,
+        other => {
+            return Err(invalid(format!(
+                "unknown operand-record opcode {other:#04x}"
+            )))
+        }
+    };
+    if program.len() != payload_len + 2 || program.last() != Some(&OPERAND_RECORD_OP_END) {
+        return Err(invalid(
+            "operand-record program has a truncated or trailing payload",
+        ));
+    }
+    match opcode {
+        OPERAND_RECORD_OP_INDIRECT if program[2] > OperandRecordUpdate::Predecrement as u8 => {
+            return Err(invalid("operand-record update mode is invalid"));
+        }
+        OPERAND_RECORD_OP_DISPLACEMENT | OPERAND_RECORD_OP_INDEXED if program[1] > 1 => {
+            return Err(invalid("operand-record base kind is invalid"));
+        }
+        OPERAND_RECORD_OP_DISPLACEMENT | OPERAND_RECORD_OP_INDEXED
+            if program[1] == 1 && program[2] != 0 =>
+        {
+            return Err(invalid(
+                "operand-record program-counter base has a nonzero reserved byte",
+            ));
+        }
+        OPERAND_RECORD_OP_INDEXED => {
+            if !matches!(program[4], 8 | 16 | 32 | 64) {
+                return Err(invalid("operand-record index width is invalid"));
+            }
+            if !program[5].is_power_of_two() {
+                return Err(invalid(
+                    "operand-record index scale must be a nonzero power of two",
+                ));
+            }
+        }
+        OPERAND_RECORD_OP_ABSOLUTE if !matches!(program[2], 8 | 16 | 24 | 32 | 64) => {
+            return Err(invalid("operand-record absolute width is invalid"));
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -989,6 +1173,7 @@ pub struct HierarchyChunks {
     pub tables: Vec<VmProgramDescriptor>,
     pub semantic_programs: Vec<SemanticProgramDescriptor>,
     pub value_programs: Vec<ValueProgramDescriptor>,
+    pub operand_record_programs: Vec<OperandRecordProgramDescriptor>,
     pub selectors: Vec<ModeSelectorDescriptor>,
 }
 

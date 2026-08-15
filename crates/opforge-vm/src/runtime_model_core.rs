@@ -13,10 +13,10 @@ use package::{
     TokenCaseRule, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
     TokenizerVmStreamMode, DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
     DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT, EXPR_VM_OPCODE_VERSION_V1,
-    EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1,
-    PARSER_GRAMMAR_ID_LINE_V1, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
-    SEMANTIC_VM_OPCODE_VERSION_V1, TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
-    VALUE_VM_OPCODE_VERSION_V1,
+    EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1, OPERAND_RECORD_VM_VERSION_V1,
+    PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
+    PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, SEMANTIC_VM_OPCODE_VERSION_V1,
+    TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1, VALUE_VM_OPCODE_VERSION_V1,
 };
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
@@ -26,6 +26,10 @@ use types::hierarchy::{
 
 use crate::builder::{build_hierarchy_package_from_registry, HierarchyBuildError};
 use crate::bytecode::execute_program;
+use crate::operand_record_vm::{
+    execute_operand_record_program as execute_operand_record_program_bytes, PortableOperandRecord,
+    PortableRegisterRef,
+};
 use crate::portable_contract::PortableToken;
 use crate::rollout::{
     family_expr_parser_rollout_policy, parser_certification_checklists_for_family,
@@ -50,6 +54,7 @@ use crate::value_vm::execute_value_program as execute_value_program_bytes;
 pub type VmProgramKey = (u8, u32, u32, u32);
 pub type SemanticProgramKey = (u8, u32, u32);
 pub type ValueProgramKey = (u8, u32, u32);
+pub type OperandRecordProgramKey = (u8, u32, u32);
 pub type ModeSelectorKey = (u8, u32, u32, u32);
 pub type TokenPolicyKey = (u8, u32);
 pub type ParserContractKey = (u8, u32);
@@ -107,6 +112,7 @@ pub struct RuntimeModelCore {
     pub vm_programs: HashMap<VmProgramKey, Vec<u8>>,
     pub semantic_programs: HashMap<SemanticProgramKey, (u16, Vec<u8>)>,
     pub value_programs: HashMap<ValueProgramKey, (u16, Vec<u8>)>,
+    pub operand_record_programs: HashMap<OperandRecordProgramKey, (u16, Vec<u8>)>,
     pub mode_selectors: HashMap<ModeSelectorKey, Vec<ModeSelectorDescriptor>>,
     pub token_policies: HashMap<TokenPolicyKey, RuntimeTokenPolicy>,
     pub tokenizer_vm_programs: HashMap<TokenPolicyKey, RuntimeTokenizerVmProgram>,
@@ -152,6 +158,7 @@ impl RuntimeModelCore {
             tables,
             semantic_programs,
             value_programs,
+            operand_record_programs,
             selectors,
         } = chunks;
         let package = HierarchyPackage::new(families, cpus, dialects)?;
@@ -182,6 +189,16 @@ impl RuntimeModelCore {
             scoped_value_programs.insert(
                 (owner_tag, owner_id, program_id),
                 (entry.opcode_version, entry.program),
+            );
+        }
+        let mut scoped_operand_record_programs = HashMap::new();
+        for entry in operand_record_programs {
+            let (owner_tag, owner_id) = owner_key_parts(&entry.owner);
+            let owner_id = interner.intern(owner_id.as_str());
+            let program_id = interner.intern(entry.id.as_str());
+            scoped_operand_record_programs.insert(
+                (owner_tag, owner_id, program_id),
+                (entry.schema_version, entry.program),
             );
         }
         let mut mode_selectors: HashMap<ModeSelectorKey, Vec<ModeSelectorDescriptor>> =
@@ -371,6 +388,7 @@ impl RuntimeModelCore {
             vm_programs,
             semantic_programs: scoped_semantic_programs,
             value_programs: scoped_value_programs,
+            operand_record_programs: scoped_operand_record_programs,
             mode_selectors,
             token_policies: scoped_token_policies,
             tokenizer_vm_programs: scoped_tokenizer_vm_programs,
@@ -1648,6 +1666,42 @@ impl RuntimeModelCore {
         }
         Err(RuntimeBridgeError::Resolve(format!(
             "value program '{normalized_id}' is not defined for the resolved hierarchy"
+        )))
+    }
+
+    pub fn execute_operand_record_program(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        registers: &[PortableRegisterRef],
+        values: &[i64],
+    ) -> Result<PortableOperandRecord, RuntimeBridgeError> {
+        let normalized_id = program_id.to_ascii_lowercase();
+        let program_id = self.interned_id(&normalized_id).ok_or_else(|| {
+            RuntimeBridgeError::Resolve(format!("unknown operand-record program '{normalized_id}'"))
+        })?;
+        for (owner_tag, owner_id) in self.scoped_owner_lookup_order(resolved) {
+            let Some(owner_id) = owner_id else { continue };
+            let Some((schema_version, program)) = self
+                .operand_record_programs
+                .get(&(owner_tag, owner_id, program_id))
+            else {
+                continue;
+            };
+            if *schema_version != OPERAND_RECORD_VM_VERSION_V1 {
+                return Err(RuntimeBridgeError::Resolve(format!(
+                    "unsupported operand-record schema version {schema_version}"
+                )));
+            }
+            return Ok(execute_operand_record_program_bytes(
+                *schema_version,
+                program,
+                registers,
+                values,
+            )?);
+        }
+        Err(RuntimeBridgeError::Resolve(format!(
+            "operand-record program '{normalized_id}' is not defined for the resolved hierarchy"
         )))
     }
 

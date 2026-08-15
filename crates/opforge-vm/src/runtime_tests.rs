@@ -20,6 +20,10 @@ use crate::native_prvm::{
     NativePrvmHostExpressionEvaluation, NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE,
     NATIVE_PRVM_EXPR_SLOT_READY,
 };
+use crate::operand_record_vm::{
+    OperandRecordVmError, PortableAddressBase, PortableAddressUpdate, PortableOperandRecord,
+    PortableRegisterRef,
+};
 use crate::portable_contract::*;
 use crate::rollout::{family_runtime_mode, FamilyRuntimeMode};
 use crate::runtime_bridge::{HierarchyRuntimeBridge, HierarchyRuntimeBridgeError};
@@ -936,6 +940,7 @@ fn intel_only_chunks() -> HierarchyChunks {
         }],
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
+        operand_record_programs: Vec::new(),
         selectors: Vec::new(),
     }
 }
@@ -8164,6 +8169,221 @@ fn execution_model_materializes_family_scalar_values_from_serialized_programs() 
             .expect("materialize evaluated expression value"),
         42
     );
+}
+
+#[test]
+fn execution_model_reconstructs_base_operand_records_from_serialized_programs() {
+    let mut registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
+    let chunks = build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    assert_eq!(chunks.operand_record_programs.len(), 16);
+    let package_bytes =
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("operand package serialization");
+    drop(chunks);
+    drop(registry);
+
+    let model = HierarchyExecutionModel::from_package_bytes(&package_bytes)
+        .expect("serialized operand package load");
+    let m68k = model
+        .resolve_pipeline("m68020", None)
+        .expect("m68k pipeline");
+    let mos = model.resolve_pipeline("m6502", None).expect("mos pipeline");
+    let (data_class, data_index) =
+        m68k_value_programs::compile_register_input("D3").expect("family register adapter");
+    let (address_class, address_index) =
+        m68k_value_programs::compile_register_input("A2").expect("family register adapter");
+    let data = PortableRegisterRef {
+        class: data_class,
+        index: data_index,
+    };
+    let address = PortableRegisterRef {
+        class: address_class,
+        index: address_index,
+    };
+    let registers = [address, data];
+
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68k,
+                m68k_value_programs::RECORD_DATA_REGISTER,
+                &[data],
+                &[],
+            )
+            .expect("data register record"),
+        PortableOperandRecord::Register(data)
+    );
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68k,
+                m68k_value_programs::RECORD_ADDRESS_REGISTER,
+                &[address],
+                &[],
+            )
+            .expect("address register record"),
+        PortableOperandRecord::Register(address)
+    );
+    for (id, update) in [
+        (
+            m68k_value_programs::RECORD_ADDRESS_INDIRECT,
+            PortableAddressUpdate::None,
+        ),
+        (
+            m68k_value_programs::RECORD_ADDRESS_POSTINCREMENT,
+            PortableAddressUpdate::Postincrement,
+        ),
+        (
+            m68k_value_programs::RECORD_ADDRESS_PREDECREMENT,
+            PortableAddressUpdate::Predecrement,
+        ),
+    ] {
+        assert_eq!(
+            model
+                .execute_operand_record_program(&m68k, id, &[address], &[])
+                .expect("indirect record"),
+            PortableOperandRecord::Indirect {
+                base: address,
+                update
+            }
+        );
+    }
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68k,
+                m68k_value_programs::RECORD_ADDRESS_DISPLACEMENT,
+                &[address],
+                &[-4],
+            )
+            .expect("address displacement"),
+        PortableOperandRecord::Displacement {
+            base: PortableAddressBase::Register(address),
+            displacement: -4,
+        }
+    );
+    for (id, base, width) in [
+        (
+            m68k_value_programs::RECORD_ADDRESS_INDEXED_WORD,
+            PortableAddressBase::Register(address),
+            16,
+        ),
+        (
+            m68k_value_programs::RECORD_ADDRESS_INDEXED_LONG,
+            PortableAddressBase::Register(address),
+            32,
+        ),
+        (
+            m68k_value_programs::RECORD_PC_INDEXED_WORD,
+            PortableAddressBase::ProgramCounter,
+            16,
+        ),
+        (
+            m68k_value_programs::RECORD_PC_INDEXED_LONG,
+            PortableAddressBase::ProgramCounter,
+            32,
+        ),
+    ] {
+        assert_eq!(
+            model
+                .execute_operand_record_program(&m68k, id, &registers, &[12])
+                .expect("indexed record"),
+            PortableOperandRecord::Indexed {
+                base,
+                index: data,
+                index_width_bits: width,
+                scale: 1,
+                displacement: 12,
+            }
+        );
+    }
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68k,
+                m68k_value_programs::RECORD_PC_DISPLACEMENT,
+                &[],
+                &[6],
+            )
+            .expect("pc displacement"),
+        PortableOperandRecord::Displacement {
+            base: PortableAddressBase::ProgramCounter,
+            displacement: 6,
+        }
+    );
+    for (id, width) in [
+        (m68k_value_programs::RECORD_ABSOLUTE_WORD, 16),
+        (m68k_value_programs::RECORD_ABSOLUTE_LONG, 32),
+    ] {
+        assert_eq!(
+            model
+                .execute_operand_record_program(&m68k, id, &[], &[0x1234])
+                .expect("absolute record"),
+            PortableOperandRecord::Absolute {
+                value: 0x1234,
+                width_bits: width
+            }
+        );
+    }
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m68k,
+                m68k_value_programs::RECORD_IMMEDIATE,
+                &[],
+                &[42],
+            )
+            .expect("m68k immediate"),
+        PortableOperandRecord::Immediate { value: 42 }
+    );
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &mos,
+                mos6502_value_programs::RECORD_ABSOLUTE_WORD,
+                &[],
+                &[0x1234],
+            )
+            .expect("cross-family absolute record"),
+        PortableOperandRecord::Absolute {
+            value: 0x1234,
+            width_bits: 16
+        }
+    );
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &mos,
+                mos6502_value_programs::RECORD_IMMEDIATE,
+                &[],
+                &[0x42],
+            )
+            .expect("cross-family immediate record"),
+        PortableOperandRecord::Immediate { value: 0x42 }
+    );
+    assert!(matches!(
+        model.execute_operand_record_program(
+            &m68k,
+            m68k_value_programs::RECORD_ADDRESS_INDIRECT,
+            &[],
+            &[],
+        ),
+        Err(RuntimeBridgeError::OperandRecordVm(
+            OperandRecordVmError::MissingRegisterInput { index: 0 }
+        ))
+    ));
+    assert!(matches!(
+        model.execute_operand_record_program(
+            &m68k,
+            m68k_value_programs::RECORD_IMMEDIATE,
+            &[],
+            &[],
+        ),
+        Err(RuntimeBridgeError::OperandRecordVm(
+            OperandRecordVmError::MissingValueInput { index: 0 }
+        ))
+    ));
 }
 
 #[test]

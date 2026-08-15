@@ -461,6 +461,18 @@ impl HierarchyExecutionModel {
             .execute_value_program(resolved, program_id, inputs)
     }
 
+    /// Reconstruct one neutral operand record from a package-owned program.
+    pub fn execute_operand_record_program(
+        &self,
+        resolved: &ResolvedHierarchy,
+        program_id: &str,
+        registers: &[crate::operand_record_vm::PortableRegisterRef],
+        values: &[i64],
+    ) -> Result<crate::operand_record_vm::PortableOperandRecord, RuntimeBridgeError> {
+        self.core
+            .execute_operand_record_program(resolved, program_id, registers, values)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn parse_family_operand_surface_expr(
         &self,

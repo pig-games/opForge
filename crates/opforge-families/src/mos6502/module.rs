@@ -65,6 +65,12 @@ impl FamilyModule for MOS6502FamilyModule {
         super::package_programs::value_programs()
     }
 
+    fn operand_record_programs(
+        &self,
+    ) -> Result<Vec<package::OperandRecordProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::operand_record_programs()
+    }
+
     fn dialects(&self) -> Vec<Box<dyn DialectModule>> {
         vec![Box::new(TransparentDialect)]
     }

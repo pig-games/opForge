@@ -791,6 +791,7 @@ fn ultimate64_abi_header_is_little_endian_v1() {
         tables: sample_tables(),
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
+        operand_record_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -825,6 +826,7 @@ fn ultimate64_abi_toc_payload_layout_is_contiguous() {
         tables: sample_tables(),
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
+        operand_record_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1034,6 +1036,7 @@ fn encode_decode_round_trip_preserves_toks_policy() {
         tables: sample_tables(),
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
+        operand_record_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1095,6 +1098,7 @@ fn encode_decode_round_trip_preserves_parser_contracts() {
         tables: sample_tables(),
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
+        operand_record_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1149,6 +1153,7 @@ fn encode_decode_round_trip_preserves_parser_vm_programs() {
         tables: sample_tables(),
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
+        operand_record_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1253,6 +1258,7 @@ fn encode_decode_round_trip_preserves_expr_contracts() {
         tables: sample_tables(),
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
+        operand_record_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1298,6 +1304,7 @@ fn encode_decode_round_trip_preserves_expr_parser_contracts() {
         tables: sample_tables(),
         semantic_programs: Vec::new(),
         value_programs: Vec::new(),
+        operand_record_programs: Vec::new(),
         selectors: Vec::new(),
     };
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode should succeed");
@@ -1883,6 +1890,7 @@ proptest! {
                 prop_assert_eq!(left.tables.len(), right.tables.len());
                 prop_assert_eq!(left.selectors.len(), right.selectors.len());
                 prop_assert_eq!(left.value_programs.len(), right.value_programs.len());
+                prop_assert_eq!(left.operand_record_programs.len(), right.operand_record_programs.len());
             }
             (Err(left), Err(right)) => {
                 prop_assert_eq!(left.code(), right.code());
@@ -1902,6 +1910,15 @@ proptest! {
     ) {
         let first = validate_value_program(VALUE_VM_OPCODE_VERSION_V1, &bytes);
         let second = validate_value_program(VALUE_VM_OPCODE_VERSION_V1, &bytes);
+        prop_assert_eq!(first, second);
+    }
+
+    #[test]
+    fn operand_record_validator_is_deterministic_for_arbitrary_bytes(
+        bytes in proptest::collection::vec(any::<u8>(), 0..512)
+    ) {
+        let first = validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V1, &bytes);
+        let second = validate_operand_record_program(OPERAND_RECORD_VM_VERSION_V1, &bytes);
         prop_assert_eq!(first, second);
     }
 }
@@ -2148,4 +2165,140 @@ fn value_program_codec_rejects_unknown_versions_and_malformed_values() {
     ])
     .expect("raw duplicate VALP schema encode");
     assert!(decode_valp_chunk(&duplicate_payload).is_err());
+}
+
+#[test]
+fn operand_record_program_round_trip_is_canonical_and_optional_for_legacy_packages() {
+    let legacy = encode_hierarchy_chunks(
+        &sample_families(),
+        &sample_cpus(),
+        &sample_dialects(),
+        &sample_registers(),
+        &sample_forms(),
+        &sample_tables(),
+    )
+    .expect("legacy package encode");
+    let mut chunks = decode_hierarchy_chunks(&legacy).expect("legacy package decode");
+    assert!(chunks.operand_record_programs.is_empty());
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("legacy package re-encode"),
+        legacy
+    );
+
+    let program = compile_operand_record_program(OperandRecordProgram::Indirect {
+        register_input: 0,
+        update: OperandRecordUpdate::Postincrement,
+    })
+    .expect("compile operand record");
+    chunks.operand_record_programs = vec![
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Family("MOS6502".to_string()),
+            id: "OPERAND.INDIRECT".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V1,
+            program: program.clone(),
+        },
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "operand.indirect".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V1,
+            program,
+        },
+    ];
+    let encoded = encode_hierarchy_chunks_from_chunks(&chunks).expect("OPRD package encode");
+    let decoded = decode_hierarchy_chunks(&encoded).expect("OPRD package decode");
+    assert_eq!(decoded.operand_record_programs.len(), 1);
+    assert_eq!(decoded.operand_record_programs[0].id, "operand.indirect");
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical OPRD re-encode"),
+        encoded
+    );
+}
+
+#[test]
+fn operand_record_codec_rejects_unknown_versions_and_malformed_records() {
+    for entry in [
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "unknown-version".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V1 + 1,
+            program: vec![OPERAND_RECORD_OP_REGISTER, 0, OPERAND_RECORD_OP_END],
+        },
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "bad-update".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V1,
+            program: vec![OPERAND_RECORD_OP_INDIRECT, 0, 3, OPERAND_RECORD_OP_END],
+        },
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "bad-width".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V1,
+            program: vec![OPERAND_RECORD_OP_ABSOLUTE, 0, 7, OPERAND_RECORD_OP_END],
+        },
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "bad-base".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V1,
+            program: vec![
+                OPERAND_RECORD_OP_DISPLACEMENT,
+                2,
+                0,
+                0,
+                OPERAND_RECORD_OP_END,
+            ],
+        },
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "bad-scale".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V1,
+            program: vec![
+                OPERAND_RECORD_OP_INDEXED,
+                1,
+                0,
+                0,
+                16,
+                0,
+                0,
+                OPERAND_RECORD_OP_END,
+            ],
+        },
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "truncated".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V1,
+            program: vec![OPERAND_RECORD_OP_REGISTER, OPERAND_RECORD_OP_END],
+        },
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "trailing".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V1,
+            program: vec![OPERAND_RECORD_OP_IMMEDIATE, 0, OPERAND_RECORD_OP_END, 0],
+        },
+    ] {
+        let payload = encode_oprd_chunk(&[entry]).expect("raw OPRD schema encode");
+        let error = decode_oprd_chunk(&payload).expect_err("invalid OPRD must fail closed");
+        assert!(matches!(
+            error,
+            OpcpuCodecError::InvalidChunkFormat { ref chunk, .. } if chunk == "OPRD"
+        ));
+    }
+
+    let valid = compile_operand_record_program(OperandRecordProgram::Immediate { value_input: 0 })
+        .expect("compile duplicate record program");
+    let duplicate_payload = encode_oprd_chunk(&[
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Family("mos6502".to_string()),
+            id: "operand.immediate".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V1,
+            program: valid.clone(),
+        },
+        OperandRecordProgramDescriptor {
+            owner: ScopedOwner::Family("MOS6502".to_string()),
+            id: "OPERAND.IMMEDIATE".to_string(),
+            schema_version: OPERAND_RECORD_VM_VERSION_V1,
+            program: valid,
+        },
+    ])
+    .expect("raw duplicate OPRD schema encode");
+    assert!(decode_oprd_chunk(&duplicate_payload).is_err());
 }

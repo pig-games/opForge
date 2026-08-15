@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use crate::cpu::{CpuFamily, CpuType};
 use crate::family::{AssemblerContext, EncodeResult, FamilyEncodeResult, FamilyParseError};
 use opcore::parser::Expr;
-use package::{OpcpuCodecError, ValueProgramDescriptor};
+use package::{OpcpuCodecError, OperandRecordProgramDescriptor, ValueProgramDescriptor};
 
 pub trait FamilyOperandSet: Send + Sync {
     fn as_any(&self) -> &dyn Any;
@@ -161,6 +161,11 @@ pub trait FamilyModule: Send + Sync {
         Vec::new()
     }
     fn value_programs(&self) -> Result<Vec<ValueProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
+    fn operand_record_programs(
+        &self,
+    ) -> Result<Vec<OperandRecordProgramDescriptor>, OpcpuCodecError> {
         Ok(Vec::new())
     }
     fn dialects(&self) -> Vec<Box<dyn DialectModule>>;
@@ -332,6 +337,16 @@ impl AsmRegistry {
         self.families
             .get(&family)
             .map(|module| module.value_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn family_operand_record_programs(
+        &self,
+        family: CpuFamily,
+    ) -> Result<Vec<OperandRecordProgramDescriptor>, OpcpuCodecError> {
+        self.families
+            .get(&family)
+            .map(|module| module.operand_record_programs())
             .unwrap_or_else(|| Ok(Vec::new()))
     }
 

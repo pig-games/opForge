@@ -151,6 +151,26 @@ pub fn canonicalize_value_programs(value_programs: &mut Vec<ValueProgramDescript
     });
 }
 
+pub fn canonicalize_operand_record_programs(programs: &mut Vec<OperandRecordProgramDescriptor>) {
+    for entry in programs.iter_mut() {
+        entry.owner.normalize_owner_id_ascii_lowercase();
+        entry.id = entry.id.to_ascii_lowercase();
+    }
+    programs.sort_by(|left, right| {
+        left.owner
+            .cmp_scope_key(&right.owner)
+            .then_with(|| left.id.cmp(&right.id))
+            .then_with(|| left.schema_version.cmp(&right.schema_version))
+            .then_with(|| left.program.cmp(&right.program))
+    });
+    programs.dedup_by(|left, right| {
+        left.id == right.id
+            && left.schema_version == right.schema_version
+            && left.program == right.program
+            && left.owner.same_scope(&right.owner)
+    });
+}
+
 fn compare_ascii_case_insensitive(left: &str, right: &str) -> std::cmp::Ordering {
     left.bytes()
         .map(|value| value.to_ascii_lowercase())

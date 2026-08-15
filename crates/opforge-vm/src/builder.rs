@@ -43,7 +43,8 @@ use families::z80::module::CPU_ID as Z80_CPU_ID;
 use opcore::expr_vm::PortableExprBudgets;
 use package::{
     canonicalize_expr_parser_contracts, canonicalize_hierarchy_metadata,
-    canonicalize_parser_contracts, canonicalize_parser_vm_programs, canonicalize_token_policies,
+    canonicalize_operand_record_programs, canonicalize_parser_contracts,
+    canonicalize_parser_vm_programs, canonicalize_token_policies,
     canonicalize_tokenizer_vm_programs, canonicalize_value_programs,
     default_runtime_diagnostic_catalog, default_token_policy_lexical_defaults,
     encode_hierarchy_chunks_from_chunks, token_identifier_class, ExprContractDescriptor,
@@ -199,8 +200,10 @@ pub fn build_hierarchy_chunks_from_registry(
         .map(|family| default_family_expr_parser_contract(family.as_str()))
         .collect();
     let mut value_programs = Vec::new();
+    let mut operand_record_programs = Vec::new();
     for family in &family_ids {
         value_programs.extend(registry.family_value_programs(*family)?);
+        operand_record_programs.extend(registry.family_operand_record_programs(*family)?);
     }
 
     let mut registers = Vec::new();
@@ -733,6 +736,7 @@ pub fn build_hierarchy_chunks_from_registry(
     package::canonicalize_expr_contracts(&mut expr_contracts);
     canonicalize_expr_parser_contracts(&mut expr_parser_contracts);
     canonicalize_value_programs(&mut value_programs);
+    canonicalize_operand_record_programs(&mut operand_record_programs);
 
     // Ensure the materialized metadata is coherent before returning.
     HierarchyPackage::new(families.clone(), cpus.clone(), dialects.clone())?;
@@ -755,6 +759,7 @@ pub fn build_hierarchy_chunks_from_registry(
         tables,
         semantic_programs: Vec::new(),
         value_programs,
+        operand_record_programs,
         selectors,
     })
 }

@@ -143,25 +143,22 @@ finally mandatory gating for that active scope only.
 
 ## Current Status
 
-- Items 1 through 3 are historically implemented in commits `9d29ed41` and
-  `2cd2378a`, but they are not closed under the current native-porting quality
-  framework.
-- Item 4 is complete: RQ-001 through RQ-010 classify the retrospective gaps,
-  and Items 4.1 through 4.8 provide the ordered closure path.
-- Item 4.1 is complete: manifest evidence is classified at Level A and its
-  duplicate, unknown-scope, prefix-precedence, and broad-prefix limitations are
-  protected.
-- Item 4.2 is complete: the Rust CLI receives exact example source bytes and
-  generates the live binary/PRG oracle used by Level D parity. Item 4.3 is the
-  next active item.
-- The remaining opForge Core expansion has been decomposed into Items 5 through
-  9 so each coverage commit owns one coherent corpus surface. Item 10 promotes
-  only the framework-closed active scope into the mandatory native completion
-  gate.
-- If an Item 6–9 coverage shard reveals a native/Rust divergence, that coverage
-  item pauses. A new one-invariant remediation item must be inserted into this
-  plan and completed under the native porting workflow before the coverage
-  shard resumes.
+- Items 1 through 10 and every inserted remediation item are complete under the
+  current native-porting quality framework; no active work remains in this
+  plan.
+- The active corpus is limited to stored 6502/65C02 or CPU-neutral sources.
+  Item 8's final uncapped layout/output proof passed all sixteen assigned roots
+  with exact same-case Rust artifacts, and the other opcore shards and separate
+  `mos_forward_ref_stability.asm` proof are likewise closed.
+- `make native-reference-parity-completion` is the mandatory configured Level D
+  completion gate. Its final skip-safe run passed all eleven entrypoints,
+  including the three uncapped sixteen-root positive shards and the diagnostic
+  shard; missing configuration, skips, zero-test results, emulator failures,
+  and parity mismatches fail closed.
+- The deterministic staged gate remains emulator- and network-free. On-hold
+  foreign-family scope remains outside this completed plan.
+- All required quality gates and exact-index compliance reviews passed. The
+  plan is complete and ready for this timestamped archive.
 
 ## Native Porting Execution Contract
 
@@ -1441,7 +1438,7 @@ produce deterministic diagnostics rather than silently truncate. The active
   - Commit outcome: one focused stored-corpus conversion commit owns the four roots, references, and assignment changes.
   - Definition of done: the layout shard contains no foreign `.cpu` directive or Intel instruction spelling and never substitutes an adapted source at runtime
 
-- [ ] Item 8: add the section, region, linker, and output opcore parity shard
+- [x] Item 8: add the section, region, linker, and output opcore parity shard
   - Source requirement or finding IDs: Item 5 assignments for sections, segments, regions, maps, metadata, alignment, linker placement, and CLI-selected output artifacts
   - Activation dependency: a separate CPU/selector semantic-remediation programme is complete and green. That programme does not block Items 7.3g–7.7 source-preprocessor work.
   - Expected files:
@@ -1458,6 +1455,7 @@ produce deterministic diagnostics rather than silently truncate. The active
     - `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`
   - Plan-compliance review evidence:
     - `plan-compliance-reviewer` returns `PASS` for one section/linker/output coverage shard and exact declared artifact comparisons without bundled native fixes
+  - Closure evidence: Items 8.0–8.5 separately activated and remediated every one of the sixteen inventory-assigned stored 6502/65C02 layout/output roots. The reviewed source-artifact contract requires each actual root to carry its live in-memory Rust oracle and every declared binary, PRG, listing, map, image, or exported-section path and payload directly; fresh protocol completion, explicit guest exit, exact artifact presence/content, and trap-owned cleanup are mandatory. The final skip-safe `make native-reference-parity-completion` run executed the uncapped `native_reference_opcore_layout_output_fs_uae` entrypoint on the committed production implementation and passed all sixteen roots in 363.36s. No root or artifact was capped, normalized beyond the reviewed contract, inferred from a filename, or omitted after an earlier failure.
   - Commit outcome:
     - assigned layout and output cases compare exact CLI-written payloads, listings, maps, metadata, and other declared artifacts with Rust
   - Definition of done:

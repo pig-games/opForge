@@ -1,6 +1,6 @@
 status: PASS
 gate: plan-quality
-artifact: documentation/plans/opforge-native-cli-reference-parity-expansion-plan-v0_1.md
+artifact: documentation/plans/completed/opforge-native-cli-reference-parity-expansion-plan-v0_1-completed-2026-08-15T040926Z.md
 review-date: 2026-07-14
 reviewers: Plan Quality GPT-5.4; Plan Quality Claude Opus 4.6; Plan Quality Gemini 3.1 Pro
 summary: PASS after a three-reviewer adjudication of the Item 7 native-preprocessor expansion. The first review cycle found one scope/evidence conflict: Item 7.3 deferred `.segment` semantics but claimed canonical `macro_syntax.asm` completion. The plan now assigns a macro-only fixture to Item 7.3 and reserves canonical `macro_syntax.asm` for Item 7.4. All reviewers then passed source mapping, sequencing, validation, done criteria, and commit boundaries.

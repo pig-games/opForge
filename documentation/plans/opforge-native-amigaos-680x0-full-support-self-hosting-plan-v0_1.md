@@ -542,11 +542,26 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit moving branch sizing policy into package candidates/programs.
   - Definition of done: packaged execution converges to Rust-identical widths and bytes with no runtime family branch callback.
 
-- [ ] Item 12: adopt every applicable neutral VM/package improvement across all existing CPU families
+- [x] Item 12: adopt every applicable neutral VM/package improvement across all existing CPU families
   - Source requirement or finding IDs: `N68X0-003`, `N68X0-013`, `N68X0-015`, `N68X0-016`.
   - Expected files: package compiler definitions for every registered family with an applicable migration, operation-by-family applicability matrix, focused per-family Rust tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; complete applicability matrix covering Items 1-11 and every registered family; each family's complete positive/negative, alias, addressing, selection, diagnostic, serialization, and registry-composition tests; canonical compatibility evidence; unfiltered root `cargo test --locked`.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` only if every operation/family cell is accounted for, every applicable improvement uses the common path, every inapplicable cell has a concrete family-semantic reason, and any non-mechanical family work was split into its own prior reviewed item.
+  - Plan-compliance review evidence: `PASS` — after excluding arity-sensitive
+    `RLCA`/`RRCA` from mnemonic-only selector migration, the independent
+    `plan-compliance-reviewer` confirmed all 44 registered-family/Item 1-11 cells
+    are accounted for; every mechanically applicable facility is adopted;
+    common-path and inapplicable cells give concrete semantic reasons; exact
+    Zilog aliases are derived from the authoritative family table and remain
+    dialect-scoped; serialized-only tests cover every newly adopted width,
+    operand constructor, endian/field projection, structured pair, resolved and
+    unresolved fixup, bounds/range failure, and scope boundary after compiler
+    and registry destruction; no native production source changed; and the
+    focused, full Rust all-family, architecture-boundary, and workflow gates
+    pass.
+  - Version impact: no package container, chunk schema, or VM opcode version was
+    added. The family adapters reuse existing `VALP` v1, `OPRD` v1/v2, `SLCT`
+    v1, and `SEMV` v2/v3/v4 facilities. The exact focused native fixture remains
+    8,124 bytes; the canonical combined native CLI fixture is 135,340 bytes.
   - Commit outcome: one mechanical commit bringing every existing Rust-built family package onto every applicable improved common facility.
   - Definition of done: all registered families consume all applicable neutral improvements through their updated serialized packages, their complete Rust suites pass without behavior regression, and no family remains on a legacy-only runtime fork; the 65x02 package also remains ready for the retained native proof.
 

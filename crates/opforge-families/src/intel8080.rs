@@ -10,6 +10,8 @@ pub mod handler;
 
 pub mod module;
 
+pub mod package_programs;
+
 mod operand;
 
 pub mod selector;

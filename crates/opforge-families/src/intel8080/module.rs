@@ -61,6 +61,30 @@ impl FamilyModule for Intel8080FamilyModule {
         family_form_mnemonics()
     }
 
+    fn value_programs(
+        &self,
+    ) -> Result<Vec<package::ValueProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::value_programs()
+    }
+
+    fn semantic_programs(
+        &self,
+    ) -> Result<Vec<package::SemanticProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::semantic_programs()
+    }
+
+    fn operand_record_programs(
+        &self,
+    ) -> Result<Vec<package::OperandRecordProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::operand_record_programs()
+    }
+
+    fn selector_programs(
+        &self,
+    ) -> Result<Vec<package::SelectorProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::selector_programs()
+    }
+
     fn dialects(&self) -> Vec<Box<dyn DialectModule>> {
         vec![Box::new(Intel8080Dialect), Box::new(ZilogDialect)]
     }

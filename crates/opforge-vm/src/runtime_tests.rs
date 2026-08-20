@@ -50,9 +50,13 @@ use crate::vm_opcore::{
 use families::{
     intel8080::{
         candidate_from_resolved_operands as intel8080_candidate_from_resolved,
-        ld_indirect_candidate as intel8080_ld_indirect_candidate, Operand as IntelOperand,
+        ld_indirect_candidate as intel8080_ld_indirect_candidate,
+        package_programs as intel8080_package_programs, Operand as IntelOperand,
     },
     m65816::state,
+    m6800::{
+        package_programs as m6800_package_programs, M6800FamilyHandler, Operand as M6800Operand,
+    },
     m68020::M68020CpuHandler,
     m68080::package_programs as m68080_record_programs,
     m68k::{
@@ -9247,6 +9251,463 @@ fn serialized_branch_programs_match_width_convergence_and_cross_family_oracles()
             .expect_err("automatic class overflow must fail closed"),
         RuntimeBridgeError::BranchVm(BranchVmError::InvalidAutomaticClass { class: 8 })
     ));
+}
+
+#[test]
+fn serialized_all_family_adoptions_match_existing_scalar_record_and_encoding_oracles() {
+    let span = Span::default();
+    let intel_restart_oracle = families::intel8080::lookup_instruction("RST", Some("3"), None)
+        .expect("live Intel table contains RST 3")
+        .opcode;
+    let m6800_pair_oracle = match M6800FamilyHandler::new().encode_instruction(
+        "TFR",
+        &[
+            M6800Operand::Register("D".to_string(), span),
+            M6800Operand::Register("X".to_string(), span),
+        ],
+        &TestAssemblerContext::new(),
+    ) {
+        EncodeResult::Ok(bytes) => bytes,
+        other => panic!("live Motorola 6800-family oracle rejected TFR D,X: {other:?}"),
+    };
+    let m6800_rel8_oracle = match M6800FamilyHandler::new().encode_instruction(
+        "BNE",
+        &[M6800Operand::Relative8(3, span)],
+        &TestAssemblerContext::new(),
+    ) {
+        EncodeResult::Ok(bytes) => bytes,
+        other => panic!("live Motorola 6800-family oracle rejected BNE: {other:?}"),
+    };
+    let m6800_rel16_oracle = match M6800FamilyHandler::new().encode_instruction(
+        "LBRA",
+        &[M6800Operand::Relative16(4, span)],
+        &TestAssemblerContext::new(),
+    ) {
+        EncodeResult::Ok(bytes) => bytes,
+        other => panic!("live Motorola 6800-family oracle rejected LBRA: {other:?}"),
+    };
+    let (d_class, d_index) =
+        m6800_package_programs::compile_register_input("D").expect("compile D register");
+    let (x_class, x_index) =
+        m6800_package_programs::compile_register_input("X").expect("compile X register");
+    let d = PortableRegisterRef {
+        class: d_class,
+        index: d_index,
+    };
+    let x = PortableRegisterRef {
+        class: x_class,
+        index: x_index,
+    };
+    let intel_register = PortableRegisterRef { class: 0, index: 0 };
+    let mut registry = ModuleRegistry::new();
+    register_intel8080_family_stack(&mut registry);
+    register_motorola6800_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
+    register_mos6502_family_stack(&mut registry);
+    let chunks = build_hierarchy_chunks_from_registry(&registry)
+        .expect("build all-family package adoption chunks");
+    for family in ["intel8080", "motorola6800", "motorola68000", "mos6502"] {
+        assert!(
+            chunks.families.iter().any(|entry| entry.id == family),
+            "registered family {family} must remain in the all-family package"
+        );
+    }
+    assert!(chunks.semantic_programs.iter().any(|program| {
+        program.owner == ScopedOwner::Family("intel8080".to_string())
+            && program.id == intel8080_package_programs::ENCODING_RESTART_VECTOR
+            && program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V2
+    }));
+    assert!(chunks.semantic_programs.iter().any(|program| {
+        program.owner == ScopedOwner::Cpu("z80".to_string())
+            && program.id == intel8080_package_programs::FIXUP_Z80_RELATIVE_BYTE
+            && program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V4
+    }));
+    assert!(chunks.semantic_programs.iter().any(|program| {
+        program.owner == ScopedOwner::Family("motorola6800".to_string())
+            && program.id == m6800_package_programs::ENCODING_REGISTER_PAIR
+            && program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V3
+    }));
+    assert!(chunks.semantic_programs.iter().any(|program| {
+        program.owner == ScopedOwner::Family("mos6502".to_string())
+            && program.id == mos6502_value_programs::ENCODING_UNSIGNED_WORD
+            && program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V2
+    }));
+    let bytes = encode_hierarchy_chunks_from_chunks(&chunks)
+        .expect("serialize all-family package adoptions");
+    drop(chunks);
+    drop(registry);
+
+    // Only the canonical package bytes survive this boundary. No family
+    // parser, selector, handler, or compiler adapter participates below.
+    let model = HierarchyExecutionModel::from_package_bytes(&bytes)
+        .expect("reload all-family adoption package");
+    let intel = model.resolve_pipeline("8085", None).expect("resolve 8085");
+    let z80 = model.resolve_pipeline("z80", None).expect("resolve z80");
+    let m6800 = model.resolve_pipeline("6809", None).expect("resolve 6809");
+    let mos = model.resolve_pipeline("6502", None).expect("resolve 6502");
+
+    for (input, expected) in [
+        ("RLA", "RAL"),
+        ("RRA", "RAR"),
+        ("CPL", "CMA"),
+        ("SCF", "STC"),
+        ("CCF", "CMC"),
+        ("HALT", "HLT"),
+    ] {
+        assert_eq!(
+            model
+                .resolve_selector_choice(&z80, input)
+                .expect("resolve serialized Zilog exact alias"),
+            Some(PortableSelectorOutcome::Target(expected.to_string()))
+        );
+    }
+    for overloaded in ["RLCA", "RRCA"] {
+        assert_eq!(
+            model
+                .resolve_selector_choice(&z80, overloaded)
+                .expect("arity-sensitive alias must remain on family path"),
+            None
+        );
+    }
+    assert_eq!(
+        model
+            .resolve_selector_choice(&intel, "RLCA")
+            .expect("Zilog alias must not leak to canonical Intel dialect"),
+        None
+    );
+    assert_eq!(
+        model
+            .resolve_selector_choice(&m6800, "RLCA")
+            .expect("Zilog alias must not leak across families"),
+        None
+    );
+
+    assert_eq!(
+        model
+            .execute_value_program(
+                &intel,
+                intel8080_package_programs::VALUE_UNSIGNED_BYTE,
+                &[255],
+            )
+            .expect("Intel unsigned-byte boundary"),
+        255
+    );
+    assert!(model
+        .execute_value_program(
+            &intel,
+            intel8080_package_programs::VALUE_UNSIGNED_BYTE,
+            &[256],
+        )
+        .is_err());
+    assert_eq!(
+        model
+            .execute_value_program(
+                &intel,
+                intel8080_package_programs::VALUE_UNSIGNED_WORD,
+                &[65_535],
+            )
+            .expect("Intel unsigned-word boundary"),
+        65_535
+    );
+    assert!(model
+        .execute_value_program(&intel, intel8080_package_programs::VALUE_UNSIGNED_WORD, &[])
+        .is_err());
+    for (program, accepted, rejected) in [
+        (m6800_package_programs::VALUE_UNSIGNED_BYTE, 255, 256),
+        (m6800_package_programs::VALUE_UNSIGNED_WORD, 65_535, 65_536),
+        (m6800_package_programs::VALUE_SIGNED_BYTE, -128, -129),
+        (m6800_package_programs::VALUE_SIGNED_WORD, -32_768, -32_769),
+    ] {
+        assert_eq!(
+            model
+                .execute_value_program(&m6800, program, &[accepted])
+                .expect("Motorola 6800 scalar boundary"),
+            accepted
+        );
+        assert!(model
+            .execute_value_program(&m6800, program, &[rejected])
+            .is_err());
+    }
+    assert_eq!(
+        model
+            .execute_value_program(&m6800, m6800_package_programs::VALUE_SIGNED_WORD, &[-1])
+            .expect("Motorola 6800 signed-word boundary"),
+        -1
+    );
+    assert_eq!(
+        model
+            .execute_encoding_program(
+                &intel,
+                intel8080_package_programs::ENCODING_RESTART_VECTOR,
+                &[3],
+            )
+            .expect("emit Intel restart vector"),
+        vec![intel_restart_oracle]
+    );
+    assert!(model
+        .execute_encoding_program(
+            &intel,
+            intel8080_package_programs::ENCODING_RESTART_VECTOR,
+            &[8],
+        )
+        .is_err());
+    assert_eq!(
+        model
+            .execute_encoding_program(
+                &m6800,
+                m6800_package_programs::ENCODING_UNSIGNED_BYTE,
+                &[0xab],
+            )
+            .expect("emit Motorola 6800 byte"),
+        vec![0xab]
+    );
+    assert_eq!(
+        model
+            .execute_encoding_program(
+                &m6800,
+                m6800_package_programs::ENCODING_UNSIGNED_WORD,
+                &[0x1234],
+            )
+            .expect("emit Motorola 6800 big-endian word"),
+        vec![0x12, 0x34]
+    );
+    assert_eq!(
+        model
+            .execute_encoding_program(
+                &mos,
+                mos6502_value_programs::ENCODING_UNSIGNED_BYTE,
+                &[0xab],
+            )
+            .expect("emit MOS byte"),
+        vec![0xab]
+    );
+    assert_eq!(
+        model
+            .execute_encoding_program(
+                &mos,
+                mos6502_value_programs::ENCODING_UNSIGNED_WORD,
+                &[0x1234],
+            )
+            .expect("emit MOS little-endian word"),
+        vec![0x34, 0x12]
+    );
+    for (pipeline, program, rejected) in [
+        (
+            &m6800,
+            m6800_package_programs::ENCODING_UNSIGNED_BYTE,
+            0x100,
+        ),
+        (
+            &m6800,
+            m6800_package_programs::ENCODING_UNSIGNED_WORD,
+            0x1_0000,
+        ),
+        (&mos, mos6502_value_programs::ENCODING_UNSIGNED_BYTE, 0x100),
+        (
+            &mos,
+            mos6502_value_programs::ENCODING_UNSIGNED_WORD,
+            0x1_0000,
+        ),
+    ] {
+        assert!(model
+            .execute_encoding_program(pipeline, program, &[rejected])
+            .is_err());
+    }
+
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &intel,
+                intel8080_package_programs::RECORD_REGISTER,
+                &[intel_register],
+                &[],
+            )
+            .expect("reconstruct Intel register"),
+        PortableOperandRecord::Register(intel_register)
+    );
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &intel,
+                intel8080_package_programs::RECORD_INDIRECT,
+                &[intel_register],
+                &[],
+            )
+            .expect("reconstruct Intel indirect register"),
+        PortableOperandRecord::Indirect {
+            base: intel_register,
+            update: PortableAddressUpdate::None,
+        }
+    );
+    for (pipeline, absolute, immediate) in [
+        (
+            &intel,
+            intel8080_package_programs::RECORD_ABSOLUTE_WORD,
+            intel8080_package_programs::RECORD_IMMEDIATE,
+        ),
+        (
+            &m6800,
+            m6800_package_programs::RECORD_ABSOLUTE_WORD,
+            m6800_package_programs::RECORD_IMMEDIATE,
+        ),
+    ] {
+        assert_eq!(
+            model
+                .execute_operand_record_program(pipeline, absolute, &[], &[0x1234])
+                .expect("reconstruct absolute word"),
+            PortableOperandRecord::Absolute {
+                value: 0x1234,
+                width_bits: 16,
+            }
+        );
+        assert_eq!(
+            model
+                .execute_operand_record_program(pipeline, immediate, &[], &[42])
+                .expect("reconstruct immediate"),
+            PortableOperandRecord::Immediate { value: 42 }
+        );
+    }
+    assert_eq!(
+        model
+            .execute_operand_record_program(
+                &m6800,
+                m6800_package_programs::RECORD_REGISTER,
+                &[d],
+                &[],
+            )
+            .expect("reconstruct Motorola 6800 register"),
+        PortableOperandRecord::Register(d)
+    );
+    assert!(model
+        .execute_operand_record_program(&m6800, m6800_package_programs::RECORD_PAIR, &[d], &[],)
+        .is_err());
+    for (pipeline, program) in [
+        (&intel, intel8080_package_programs::RECORD_REGISTER),
+        (&intel, intel8080_package_programs::RECORD_INDIRECT),
+        (&intel, intel8080_package_programs::RECORD_ABSOLUTE_WORD),
+        (&intel, intel8080_package_programs::RECORD_IMMEDIATE),
+        (&m6800, m6800_package_programs::RECORD_REGISTER),
+        (&m6800, m6800_package_programs::RECORD_PAIR),
+        (&m6800, m6800_package_programs::RECORD_ABSOLUTE_WORD),
+        (&m6800, m6800_package_programs::RECORD_IMMEDIATE),
+    ] {
+        assert!(model
+            .execute_operand_record_program(pipeline, program, &[], &[])
+            .is_err());
+    }
+    let pair = model
+        .execute_operand_record_program(&m6800, m6800_package_programs::RECORD_PAIR, &[d, x], &[])
+        .expect("reconstruct Motorola 6800 register pair");
+    assert_eq!(
+        pair,
+        PortableOperandRecord::RegisterPair {
+            left: d,
+            right: x,
+            indirect: false,
+        }
+    );
+    assert_eq!(
+        model
+            .execute_structured_encoding_program(
+                &m6800,
+                m6800_package_programs::ENCODING_REGISTER_PAIR,
+                &[pair],
+            )
+            .expect("emit Motorola 6800 register-pair postbyte"),
+        m6800_pair_oracle[1..]
+    );
+    assert!(model
+        .execute_structured_encoding_program(
+            &m6800,
+            m6800_package_programs::ENCODING_REGISTER_PAIR,
+            &[PortableOperandRecord::Immediate { value: 0 }],
+        )
+        .is_err());
+
+    let target = |value| PortableFixupInput {
+        value: PortableDeferredValue::Resolved(value),
+        target_reference: true,
+        relocation_target: None,
+    };
+    assert_eq!(
+        model
+            .execute_fixup_program(
+                &z80,
+                intel8080_package_programs::FIXUP_Z80_RELATIVE_BYTE,
+                &[target(0x1005)],
+                PortableFixupContext { position: 0x1000 },
+            )
+            .expect("project Z80 relative byte")
+            .bytes,
+        vec![3]
+    );
+    assert_eq!(
+        model
+            .execute_fixup_program(
+                &m6800,
+                m6800_package_programs::FIXUP_RELATIVE_BYTE,
+                &[target(0x1005)],
+                PortableFixupContext { position: 0x1000 },
+            )
+            .expect("project Motorola 6800 relative byte")
+            .bytes,
+        m6800_rel8_oracle[1..]
+    );
+    assert_eq!(
+        model
+            .execute_fixup_program(
+                &m6800,
+                m6800_package_programs::FIXUP_RELATIVE_WORD,
+                &[target(0x1007)],
+                PortableFixupContext { position: 0x1000 },
+            )
+            .expect("project Motorola 6800 relative word")
+            .bytes,
+        m6800_rel16_oracle[1..]
+    );
+    let unresolved = PortableFixupInput {
+        value: PortableDeferredValue::Unresolved,
+        target_reference: true,
+        relocation_target: None,
+    };
+    for (pipeline, program, width) in [
+        (&z80, intel8080_package_programs::FIXUP_Z80_RELATIVE_BYTE, 1),
+        (&m6800, m6800_package_programs::FIXUP_RELATIVE_BYTE, 1),
+        (&m6800, m6800_package_programs::FIXUP_RELATIVE_WORD, 2),
+    ] {
+        let deferred = model
+            .execute_fixup_program(
+                pipeline,
+                program,
+                &[unresolved.clone()],
+                PortableFixupContext { position: 0x1000 },
+            )
+            .expect("serialized unresolved fixup placeholder");
+        assert_eq!(deferred.bytes, vec![0; width]);
+        assert_eq!(deferred.deferred_inputs, [0]);
+    }
+    assert!(model
+        .execute_fixup_program(
+            &intel,
+            intel8080_package_programs::FIXUP_Z80_RELATIVE_BYTE,
+            &[target(0x1005)],
+            PortableFixupContext { position: 0x1000 },
+        )
+        .is_err());
+    for (pipeline, program) in [
+        (&z80, intel8080_package_programs::FIXUP_Z80_RELATIVE_BYTE),
+        (&m6800, m6800_package_programs::FIXUP_RELATIVE_BYTE),
+        (&m6800, m6800_package_programs::FIXUP_RELATIVE_WORD),
+    ] {
+        assert!(model
+            .execute_fixup_program(
+                pipeline,
+                program,
+                &[target(i64::MAX)],
+                PortableFixupContext { position: 0x1000 },
+            )
+            .is_err());
+    }
 }
 
 #[test]

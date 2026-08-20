@@ -197,4 +197,34 @@ mod tests {
             .into_iter()
             .any(|family| family.as_str() == "mos6502"));
     }
+
+    #[test]
+    fn package_improvement_applicability_matrix_covers_every_registered_family_and_item() {
+        let matrix = include_str!(
+            "../../../documentation/plans/slices/package-phase-slice-all-family-applicability-v1.toml"
+        );
+        let mut registry = AsmRegistry::new();
+        register_intel8080_family_stack(&mut registry);
+        register_motorola6800_family_stack(&mut registry);
+        register_motorola68000_family_stack(&mut registry);
+        register_mos6502_family_stack(&mut registry);
+
+        let families = registry.family_ids();
+        assert_eq!(families.len(), 4, "matrix family inventory changed");
+        assert_eq!(matrix.matches("[[applicability]]").count(), 44);
+        for family in families {
+            for item in 1..=11 {
+                let key = format!("key = \"{}:item{item:02}\"", family.as_str());
+                assert_eq!(
+                    matrix.matches(&key).count(),
+                    1,
+                    "missing or duplicate applicability cell {key}"
+                );
+            }
+        }
+        for cell in matrix.split("[[applicability]]").skip(1) {
+            assert!(cell.contains("status = \""), "matrix cell lacks status");
+            assert!(cell.contains("evidence = \""), "matrix cell lacks evidence");
+        }
+    }
 }

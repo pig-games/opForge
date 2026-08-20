@@ -1,0 +1,260 @@
+[slice]
+schema_version = 1
+name = "all-family neutral package improvement adoption"
+kind = "package-runtime"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 12
+requirements = ["N68X0-003", "N68X0-013", "N68X0-015", "N68X0-016", "N68X0-017"]
+rust_reference = [
+  "crates/opforge-families/src/lib.rs::package_improvement_applicability_matrix_covers_every_registered_family_and_item",
+  "crates/opforge-families/src/intel8080/package_programs.rs",
+  "crates/opforge-families/src/m6800/package_programs.rs",
+  "crates/opforge-families/src/m68k/package_programs.rs",
+  "crates/opforge-families/src/mos6502/package_programs.rs",
+  "crates/opforge-vm/src/runtime_tests.rs::serialized_all_family_adoptions_match_existing_scalar_record_and_encoding_oracles"
+]
+boundary = "Item 12 adds no VM opcode or record version. It audits every neutral package improvement from Items 1-11 against the four families returned by the live registry, mechanically adds only representations of existing family semantics, and records a concrete semantic reason wherever a primitive cannot preserve that family's behavior or would duplicate an already canonical neutral package path."
+invariant = "Every registered family has exactly one adopted, common-path, or not-applicable cell for every Item 1-11 operation. Adopted cells are carried by the normal Rust-built package and execute from serialized bytes after registry destruction. Common-path cells identify the narrower canonical package authority that already preserves the behavior. Not-applicable cells identify the exact family-semantic mismatch and do not hide an unported behavior behind a generic runtime callback."
+expected_inputs = "The live four-family registry and the canonical Rust package builder after Items 1-11."
+expected_outputs = "A complete 4 x 11 matrix, unchanged family source semantics and diagnostics, serialized-only equality with existing family oracles, and no native production-source change."
+known_non_equivalences = "This audit does not migrate complex Zilog operand transformations into exact mnemonic selectors; it does not flatten 65816 instruction-induced and arbitrary-scalar state into the finite STVM v1 matrix; and it does not invent automatic branch sizing for families whose source language uses distinct fixed-width branch mnemonics. Those are semantic non-equivalences, not deferred mechanical migrations. The m68k callback cutover remains Item 13."
+fast_proof_command = "cargo test -p families package_improvement_applicability_matrix_covers_every_registered_family_and_item -- --nocapture && cargo test -p vm serialized_all_family_adoptions_match_existing_scalar_record_and_encoding_oracles -- --nocapture && cargo test -p asm motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry -- --nocapture && cargo test -p asm motorola68020_embedded_native_cli_package_matches_rust_default_runtime_package -- --nocapture"
+full_gate_command = "cargo test -p package && cargo test -p registry && cargo test -p families && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
+native_proof = "not-applicable: Item 12 changes no native production source; checked-in package fixtures are exact Rust-builder output and the focused package remains within the unchanged 8,192-byte native allocation"
+
+# Status vocabulary:
+# - adopted: the normal Rust-built package carries the applicable neutral program.
+# - common_path: the family already uses a narrower canonical neutral package
+#   path; adding the newer optional representation would duplicate authority.
+# - not_applicable: the family has no matching semantic concept, or the primitive
+#   cannot preserve the existing family behavior described by evidence.
+
+[[applicability]]
+key = "intel8080:item01"
+status = "common_path"
+evidence = "Fixed literal/operand emission is already canonical TABL package data for the family; duplicating every fixed row in optional SEMV v1 would create a second encoding authority."
+
+[[applicability]]
+key = "intel8080:item02"
+status = "adopted"
+evidence = "intel8080/package_programs.rs carries family-scoped unsigned byte and word VALP programs compiled from existing operand bounds."
+
+[[applicability]]
+key = "intel8080:item03"
+status = "adopted"
+evidence = "intel8080/package_programs.rs carries register, indirect-register, absolute-word, and immediate OPRD v1 constructors."
+
+[[applicability]]
+key = "intel8080:item04"
+status = "not_applicable"
+evidence = "Intel register pairs are atomic register operands and current indexed operands are already resolved TABL byte candidates; the family has no nested/list/range/field record contract requiring OPRD v2."
+
+[[applicability]]
+key = "intel8080:item05"
+status = "not_applicable"
+evidence = "The registered Intel family has no coprocessor/vector composite operand model."
+
+[[applicability]]
+key = "intel8080:item06"
+status = "adopted"
+evidence = "The package compiler derives the six unambiguous no-operand aliases from the authoritative ZILOG_DIALECT_MAP into dialect-scoped SLCT v1 exact mappings. Operand-transforming mappings and arity-sensitive RLCA/RRCA remain family-owned because mnemonic-only SLCT v1 cannot preserve their source shapes."
+
+[[applicability]]
+key = "intel8080:item07"
+status = "not_applicable"
+evidence = "The Intel family exposes no mutable runtime target-state directives or capability matrix."
+
+[[applicability]]
+key = "intel8080:item08"
+status = "adopted"
+evidence = "intel8080/package_programs.rs carries SEMV v2 RST-vector field insertion and proves exact equality with the existing family table."
+
+[[applicability]]
+key = "intel8080:item09"
+status = "not_applicable"
+evidence = "The family has no emitted register list/range, two-sided register pair, field-selector, or composite record after TABL candidate resolution."
+
+[[applicability]]
+key = "intel8080:item10"
+status = "adopted"
+evidence = "intel8080/package_programs.rs carries the CPU-scoped Z80 signed rel8 PC+2 SEMV v4 fixup; base 8080/8085 have no PC-relative instruction."
+
+[[applicability]]
+key = "intel8080:item11"
+status = "not_applicable"
+evidence = "JR/DJNZ and JP are distinct fixed-width source mnemonics; the family performs no automatic branch-width candidate selection or convergence."
+
+[[applicability]]
+key = "motorola6800:item01"
+status = "common_path"
+evidence = "Fixed opcode and operand bytes are already canonical TABL package programs; SEMV v1 duplication would create a second encoding authority."
+
+[[applicability]]
+key = "motorola6800:item02"
+status = "adopted"
+evidence = "m6800/package_programs.rs carries signed/unsigned byte and word VALP programs compiled from existing operand bounds."
+
+[[applicability]]
+key = "motorola6800:item03"
+status = "adopted"
+evidence = "m6800/package_programs.rs carries register, absolute-word, and immediate OPRD v1 constructors."
+
+[[applicability]]
+key = "motorola6800:item04"
+status = "adopted"
+evidence = "m6800/package_programs.rs carries the existing TFR/EXG two-sided register contract as OPRD v2 RegisterPair."
+
+[[applicability]]
+key = "motorola6800:item05"
+status = "not_applicable"
+evidence = "The registered Motorola 6800 family has no coprocessor/vector composite operand model."
+
+[[applicability]]
+key = "motorola6800:item06"
+status = "not_applicable"
+evidence = "The family registers one canonical dialect and exposes no mnemonic alias selection contract."
+
+[[applicability]]
+key = "motorola6800:item07"
+status = "not_applicable"
+evidence = "The family exposes no mutable runtime target-state directives or capability matrix."
+
+[[applicability]]
+key = "motorola6800:item08"
+status = "adopted"
+evidence = "m6800/package_programs.rs carries big-endian unsigned byte and word SEMV v2 scalar emission."
+
+[[applicability]]
+key = "motorola6800:item09"
+status = "adopted"
+evidence = "m6800/package_programs.rs carries SEMV v3 register-pair projection and proves the emitted postbyte equals live TFR D,X output."
+
+[[applicability]]
+key = "motorola6800:item10"
+status = "adopted"
+evidence = "m6800/package_programs.rs carries signed rel8 PC+2 and rel16 PC+3 big-endian SEMV v4 fixups matching existing BNE/LBRA encodings."
+
+[[applicability]]
+key = "motorola6800:item11"
+status = "not_applicable"
+evidence = "Bxx and LBxx are distinct fixed-width source mnemonics; the family performs no automatic branch-width candidate selection or convergence."
+
+[[applicability]]
+key = "motorola68000:item01"
+status = "common_path"
+evidence = "Simple fixed forms remain canonical TABL data while later SEMV versions carry only forms TABL cannot express; duplicating fixed rows in SEMV v1 would split authority."
+
+[[applicability]]
+key = "motorola68000:item02"
+status = "adopted"
+evidence = "m68k/package_programs.rs carries the complete scalar normalization, literal, signed/unsigned, immediate, displacement, and selector bounds."
+
+[[applicability]]
+key = "motorola68000:item03"
+status = "adopted"
+evidence = "m68k/package_programs.rs carries the base OPRD v1 register/address/immediate constructor matrix."
+
+[[applicability]]
+key = "motorola68000:item04"
+status = "adopted"
+evidence = "m68k/package_programs.rs carries the OPRD v2 nested address, pair, range, list, and field constructor matrix."
+
+[[applicability]]
+key = "motorola68000:item05"
+status = "adopted"
+evidence = "m68k and m68080 package_programs.rs carry OPRD v3 FPU/AMMX/VEA/group/texture composites with opaque package-owned format tags."
+
+[[applicability]]
+key = "motorola68000:item06"
+status = "adopted"
+evidence = "m68k/package_programs.rs carries family/CPU/dialect SLCT aliases, qualifiers, applicability, priorities, and diagnostic outcomes."
+
+[[applicability]]
+key = "motorola68000:item07"
+status = "adopted"
+evidence = "m68k/package_programs.rs carries the six-profile FPU/Apollo legality and transition matrix in STVM v1."
+
+[[applicability]]
+key = "motorola68000:item08"
+status = "adopted"
+evidence = "m68k/package_programs.rs carries fixed-field TRAP-vector SEMV v2 encoding."
+
+[[applicability]]
+key = "motorola68000:item09"
+status = "adopted"
+evidence = "m68k and m68080 package_programs.rs carry SEMV v3 masks, pairs, field selectors, and bounded composites."
+
+[[applicability]]
+key = "motorola68000:item10"
+status = "adopted"
+evidence = "m68k/package_programs.rs carries PC-relative byte/word and absolute-long relocation SEMV v4 fixups."
+
+[[applicability]]
+key = "motorola68000:item11"
+status = "adopted"
+evidence = "m68k/package_programs.rs carries ordered byte/word/long SEMV v5 candidates and the layout-stability signal."
+
+[[applicability]]
+key = "mos6502:item01"
+status = "common_path"
+evidence = "Fixed opcode and operand emission is already canonical TABL package data; SEMV v1 duplication would create a second encoding authority."
+
+[[applicability]]
+key = "mos6502:item02"
+status = "adopted"
+evidence = "mos6502/package_programs.rs carries unsigned byte/word and literal-zero VALP programs."
+
+[[applicability]]
+key = "mos6502:item03"
+status = "adopted"
+evidence = "mos6502/package_programs.rs carries absolute-word and immediate OPRD v1 constructors."
+
+[[applicability]]
+key = "mos6502:item04"
+status = "not_applicable"
+evidence = "Current MOS operands are flat scalar/register/address forms; 65816 block-move banks are two scalar operands rather than nested/list/range/field records."
+
+[[applicability]]
+key = "mos6502:item05"
+status = "not_applicable"
+evidence = "The registered MOS family has no coprocessor/vector composite operand model."
+
+[[applicability]]
+key = "mos6502:item06"
+status = "adopted"
+evidence = "m65c02/package_programs.rs carries CPU-scoped exact DEA/INA selectors without leaking them into base 6502."
+
+[[applicability]]
+key = "mos6502:item07"
+status = "not_applicable"
+evidence = "65816 state includes arbitrary numeric bank/page directives plus instruction-induced invalidation and inference; finite enumerated STVM v1 transitions cannot preserve that dataflow contract losslessly."
+
+[[applicability]]
+key = "mos6502:item08"
+status = "adopted"
+evidence = "mos6502/package_programs.rs carries little-endian unsigned byte and word SEMV v2 scalar emission."
+
+[[applicability]]
+key = "mos6502:item09"
+status = "not_applicable"
+evidence = "The family emits no register list/range, two-sided register pair, field-selector, or composite portable record."
+
+[[applicability]]
+key = "mos6502:item10"
+status = "adopted"
+evidence = "mos6502/package_programs.rs carries signed rel8 PC+2 SEMV v4 projection for family branches."
+
+[[applicability]]
+key = "mos6502:item11"
+status = "not_applicable"
+evidence = "Relative branches and 65816 BRL use distinct fixed-width mnemonics; the family performs no automatic branch-width candidate selection or convergence."
+
+[[tests]]
+name = "package_improvement_applicability_matrix_covers_every_registered_family_and_item"
+proof_level = "registry-matrix"
+proves = "The live registry has exactly the four audited families and each has exactly one Item 1-11 cell with status and evidence."
+
+[[tests]]
+name = "serialized_all_family_adoptions_match_existing_scalar_record_and_encoding_oracles"
+proof_level = "runtime-all-family"
+proves = "Normal package construction carries the mechanical Intel, Motorola 6800, Motorola 68000, and MOS adoptions; after compiler and registry destruction, serialized-only execution proves every new width and operand constructor, exact and scoped Zilog aliases, endian and field projections, structured pair encoding, resolved and unresolved fixups, range failures, and existing family-oracle equality."

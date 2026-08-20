@@ -62,6 +62,24 @@ impl FamilyModule for Motorola6800FamilyModule {
         family_form_mnemonics()
     }
 
+    fn value_programs(
+        &self,
+    ) -> Result<Vec<package::ValueProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::value_programs()
+    }
+
+    fn semantic_programs(
+        &self,
+    ) -> Result<Vec<package::SemanticProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::semantic_programs()
+    }
+
+    fn operand_record_programs(
+        &self,
+    ) -> Result<Vec<package::OperandRecordProgramDescriptor>, package::OpcpuCodecError> {
+        super::package_programs::operand_record_programs()
+    }
+
     fn dialects(&self) -> Vec<Box<dyn DialectModule>> {
         vec![Box::new(CanonicalDialect)]
     }
@@ -101,7 +119,7 @@ impl OperandSet for M6800Operands {
     }
 }
 
-fn register_code(name: &str) -> Option<u8> {
+pub(super) fn register_code(name: &str) -> Option<u8> {
     match name.to_ascii_uppercase().as_str() {
         "D" => Some(0x0),
         "X" => Some(0x1),

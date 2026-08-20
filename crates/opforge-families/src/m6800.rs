@@ -8,6 +8,8 @@ mod handler;
 
 pub mod operand;
 
+pub mod package_programs;
+
 mod table;
 
 pub use handler::M6800FamilyHandler;

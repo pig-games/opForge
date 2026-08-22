@@ -409,11 +409,11 @@ opforgeNativeCliRecordSourceBareLabelStatement	.block
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
-	beq.s done
+	beq.w done
 	movea.l a0, a2
 	move.l d0, d2
 	bsr.w opforgeNativeCliFallbackTokenLen
-	beq.s done
+	beq.w done
 	move.w d0, d3
 	moveq #0, d4
 	move.w state.NativeCliSourceLineLen, d4
@@ -430,23 +430,23 @@ opforgeNativeCliRecordSourceBareLabelStatement	.block
 	move.l d2, d5
 	sub.w d3, d5
 	tst.l d5
-	beq.s done
+	beq.w done
 	movea.l a3, a0
 	move.l d5, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
-	beq.s done
+	beq.w done
 	tst.b (a0)
-	beq.s done
+	beq.w done
 	cmpi.b #10, (a0)
-	beq.s done
+	beq.w done
 	cmpi.b #13, (a0)
-	beq.s done
+	beq.w done
 	cmpi.b #';', (a0)
-	beq.s done
+	beq.w done
 	movea.l a0, a2
 	move.l d0, d2
 	bsr.w opforgeNativeCliFallbackTokenLen
-	beq.s done
+	beq.w done
 	move.w d0, d3
 	moveq #0, d4
 	move.w state.NativeCliSourceLineLen, d4

@@ -28,7 +28,7 @@ use registry::registry::{ModuleRegistry, OperandSet, VmEncodeCandidate};
 use registry::syntax::RegisterChecker;
 use types::hierarchy::ResolvedHierarchy;
 
-use crate::operand_record_vm::PortableOperandRecord;
+use crate::operand_record_vm::{PortableOperandRecord, PortableRegisterRef};
 use crate::portable_contract::{PortableLineAst, PortableToken};
 use crate::runtime_contract_types::{
     RuntimeExprContract, RuntimeExprParserContract, RuntimeParserCertificationChecklists,
@@ -460,6 +460,27 @@ impl HierarchyExecutionModel {
             .initial_package_state(resolved, program_id, profile)
     }
 
+    pub fn initial_unique_package_state(
+        &self,
+        resolved: &ResolvedHierarchy,
+        profile: &str,
+    ) -> Result<Option<HashMap<String, u32>>, crate::state_vm::StateVmError> {
+        self.core.initial_unique_package_state(resolved, profile)
+    }
+
+    pub fn apply_unique_package_state_directive(
+        &self,
+        resolved: &ResolvedHierarchy,
+        profile: &str,
+        directive: &str,
+        arguments: &[String],
+        state: &mut HashMap<String, u32>,
+    ) -> Result<Option<crate::state_vm::PortableStateDirectiveOutcome>, crate::state_vm::StateVmError>
+    {
+        self.core
+            .apply_unique_package_state_directive(resolved, profile, directive, arguments, state)
+    }
+
     /// Apply one package-owned state transition transactionally.
     pub fn apply_package_state_directive(
         &self,
@@ -619,6 +640,15 @@ impl HierarchyExecutionModel {
 
     pub fn register_checker_for_resolved(&self, resolved: &ResolvedHierarchy) -> RegisterChecker {
         self.core.register_checker_for_resolved(resolved)
+    }
+
+    pub(super) fn register_encoding_for_resolved(
+        &self,
+        resolved: &ResolvedHierarchy,
+        register_id: &str,
+    ) -> Option<PortableRegisterRef> {
+        self.core
+            .register_encoding_for_resolved(resolved, register_id)
     }
 
     pub fn supports_mnemonic(

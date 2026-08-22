@@ -534,6 +534,47 @@ impl ScopedSchemaEntry for ScopedRegisterDescriptor {
     }
 }
 
+impl ScopedSchemaEntry for RegisterEncodingDescriptor {
+    const CHUNK: &'static str = "RENC";
+    const ENTRY_KIND: &'static str = "register encoding entry";
+    const COUNT_LABEL: &'static str = "RENC count";
+    const FIELD_SPECS: &'static [FieldSpec] = &[FieldSpec::String, FieldSpec::U16, FieldSpec::U16];
+
+    fn owner(&self) -> &ScopedOwner {
+        &self.owner
+    }
+
+    fn field_values(&self) -> Vec<FieldValue<'_>> {
+        vec![
+            FieldValue::String(&self.id),
+            FieldValue::U16(self.class),
+            FieldValue::U16(self.index),
+        ]
+    }
+
+    fn from_decoded(
+        owner: ScopedOwner,
+        mut fields: DecodedFields,
+    ) -> Result<Self, OpcpuCodecError> {
+        Ok(Self {
+            owner,
+            id: fields.next_string(Self::CHUNK)?,
+            class: fields.next_u16(Self::CHUNK)?,
+            index: fields.next_u16(Self::CHUNK)?,
+        })
+    }
+
+    fn validate_decoded(entry: &Self) -> Result<(), OpcpuCodecError> {
+        if entry.id.is_empty() {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: Self::CHUNK.to_string(),
+                detail: "register encoding id must not be empty".to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
 impl ScopedSchemaEntry for ScopedFormDescriptor {
     const CHUNK: &'static str = "FORM";
     const ENTRY_KIND: &'static str = "form entry";
@@ -863,6 +904,10 @@ impl ScopedSchemaEntry for ModeSelectorDescriptor {
             unstable_widen: fields.next_bool(Self::CHUNK)?,
             width_rank: fields.next_u8(Self::CHUNK)?,
         })
+    }
+
+    fn validate_decoded(entry: &Self) -> Result<(), OpcpuCodecError> {
+        validate_mode_selector_set(std::slice::from_ref(entry))
     }
 }
 

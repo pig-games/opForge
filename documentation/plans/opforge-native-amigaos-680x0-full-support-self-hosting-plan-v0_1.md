@@ -546,8 +546,8 @@ the same unmodified serialized semantic package.
   - Source requirement or finding IDs: `N68X0-003`, `N68X0-013`, `N68X0-015`, `N68X0-016`.
   - Expected files: package compiler definitions for every registered family with an applicable migration, operation-by-family applicability matrix, focused per-family Rust tests, one package-phase slice record; no `native/**` production file.
   - Full quality gates: Package Phase Quality Gate; complete applicability matrix covering Items 1-11 and every registered family; each family's complete positive/negative, alias, addressing, selection, diagnostic, serialization, and registry-composition tests; canonical compatibility evidence; unfiltered root `cargo test --locked`.
-  - Plan-compliance review evidence: `PASS` — after excluding arity-sensitive
-    `RLCA`/`RRCA` from mnemonic-only selector migration, the independent
+  - Plan-compliance review evidence: `PASS` — after adopting all eight exact
+    no-operand Zilog aliases, including `RLCA`/`RRCA`, the independent
     `plan-compliance-reviewer` confirmed all 44 registered-family/Item 1-11 cells
     are accounted for; every mechanically applicable facility is adopted;
     common-path and inapplicable cells give concrete semantic reasons; exact
@@ -565,13 +565,43 @@ the same unmodified serialized semantic package.
   - Commit outcome: one mechanical commit bringing every existing Rust-built family package onto every applicable improved common facility.
   - Definition of done: all registered families consume all applicable neutral improvements through their updated serialized packages, their complete Rust suites pass without behavior regression, and no family remains on a legacy-only runtime fork; the 65x02 package also remains ready for the retained native proof.
 
-- [ ] Item 13: cut the Rust assembler over to complete package-only 680x0 execution and publish the package-first completion gate
+- [x] Item 13: cut the Rust assembler over to complete package-only 680x0 execution and publish the package-first completion gate
   - Source requirement or finding IDs: `N68X0-001`-`N68X0-007`, `N68X0-013`-`N68X0-017`.
-  - Expected files: Rust assembler/package adapter, all six 680x0 package builders, registry composition tests, callback guard, `scripts/workflow/run_m68k_package_runtime_completion.sh`, corpus accounting, focused tests, one package-phase slice record; no `native/**` production file.
-  - Full quality gates: Package Phase Quality Gate; Item 12 all-family applicability matrix and complete per-family suites; full 680x0 positive/negative corpus through freshly serialized packages; single/combined package and registry-order tests; callback-audit zero assertion; package size report; `scripts/workflow/run_m68k_package_runtime_completion.sh`; final clean-tree `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh` whose unfiltered `cargo test --locked` covers every workspace crate and supported family.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` only after the complete callback audit, exact serialized inputs, corpus accounting, composition matrix, clean-tree receipt, workspace-membership diff, ignored/skipped-test diff, and complete Rust quality-gate transcript prove that no crate or supported-family test coverage was reduced.
+  - Expected files: Rust assembler/package adapter, all six 680x0 package builders, registry composition tests, callback guard, `scripts/workflow/run_m68k_package_runtime_completion.sh`, corpus accounting, focused tests, one package-phase slice record, the CPU-neutral native package-storage capacity adjustment required to hold the exact complete combined Rust package, and semantics-preserving explicit branch-width corrections required for the stricter resolved-branch package path to assemble the complete native CLI source; the initial synchronized bound is 393,216 bytes (384 KiB), not the former family-only-sized bound, and no native selector, encoder, parser, or family-semantic implementation is permitted.
+  - Full quality gates: Package Phase Quality Gate; Item 12 all-family applicability matrix and complete per-family suites; full 680x0 positive/negative corpus through freshly serialized packages; single/combined package and registry-order tests; callback-audit zero assertion; package size report recording the exact 680x0-only, 65x02-only, combined, and all-family byte counts plus remaining native headroom; exact equality between the embedded native package and the freshly serialized all-family Rust package; a synchronized Rust/native capacity assertion and deterministic one-byte-over-capacity rejection probe; `scripts/workflow/run_m68k_package_runtime_completion.sh`; final clean-tree `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh` whose unfiltered `cargo test --locked` covers every workspace crate and supported family.
+  - Reference-refresh evidence: controlled update mode changed only diagnostic
+    caret placement in
+    `examples/reference/motorola68000/68040_callm_error.err`,
+    `examples/reference/motorola68000/68040_fsin_error.err`,
+    `examples/reference/motorola68000/68040_movec_caar_error.err`,
+    `examples/reference/motorola68000/68040_rtm_error.err`,
+    `examples/reference/motorola68000/68080_ammx_shape_error.err`, and
+    `examples/reference/motorola68000/68080_apollo_gate_error.err`, plus retained
+    expanded-source blank-line whitespace in
+    `examples/reference/opcore/preproc_syntax.lst`. No instruction bytes,
+    S-records, diagnostic messages, or success/failure outcomes changed. The
+    first broad update attempt was rejected after exposing package parity gaps;
+    those gaps were fixed in package definitions before the scoped refresh was
+    rerun. Both the controlled update command and the subsequent no-update
+    `examples_match_reference_outputs` comparison passed.
+  - Plan-compliance review evidence: `PASS` — independent reviewer
+    `/root/item13_plan_compliance` confirmed authoritative package-only execution
+    for all six 680x0 profiles; zero family/CPU/dialect callbacks; unmodified
+    680x0-only, 65x02-only, combined, and all-family package use; insertion-order
+    determinism; exact sizes `315,343 / 61,698 / 339,941 / 367,246`;
+    synchronized 393,216-byte native capacity with 25,970 bytes headroom and a
+    fail-closed 393,217-byte probe; byte-exact embedded package equality;
+    CPU-neutral VM/package extensions and applicable all-family adoption; no
+    native semantic growth; unchanged workspace membership; no ignored tests
+    and net-added coverage; scoped reference refreshes; the complete locked Rust
+    corpus; the focused completion gate; the staged native audit; and canonical
+    `make workflow-gate` with 74 workflow tests and 219 formatted native files.
+    Deterministic staged metadata discovery selects only a sole fully valid
+    native slice and remains fail-closed on ambiguity. The unrelated untracked
+    RISC-V plan artifacts remained excluded. The reviewer explicitly authorized
+    checking off and committing Item 13.
   - Commit outcome: one commit making package-only execution the normal Rust 680x0 path and publishing the native-activation receipt.
-  - Definition of done: the Mandatory Package-First Execution Boundary passes for all six profiles; direct family runtime paths are removed or test-oracle-only; exact single-family and combined packages are ready for native consumption.
+  - Definition of done: the Mandatory Package-First Execution Boundary passes for all six profiles; direct family runtime paths are removed or test-oracle-only; exact single-family, combined, and all-family packages fit the synchronized 393,216-byte generic native storage bound and are ready for native consumption; the current 367,246-byte all-family package is embedded byte-for-byte, leaves 25,970 bytes of measured headroom, and 393,217 bytes still fails closed.
 
 - [ ] Item 14: implement the versioned portable selector/encoder substrate in the native generic runtime and prove fixed-opcode execution
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`, `N68X0-004`, `N68X0-008`, `N68X0-013`-`N68X0-016`.

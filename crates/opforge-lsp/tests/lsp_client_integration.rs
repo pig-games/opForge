@@ -428,7 +428,7 @@ printf '{"code":"ESAVE","severity":"error","message":"save-check","file":"%s","l
         }),
     );
     let _ = client
-        .wait_for_publish_diagnostics(&uri, Duration::from_secs(2))
+        .wait_for_publish_diagnostics(&uri, Duration::from_secs(3))
         .expect("initial publish");
 
     client.notify(

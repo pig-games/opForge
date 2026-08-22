@@ -7,12 +7,12 @@
 use package::{
     compile_encoding_program, compile_fixup_program, compile_operand_record_program,
     compile_structured_encoding_program, compile_value_program, EncodingEndian, EncodingStep,
-    FixupBase, FixupEncodingStep, FixupRange, OpcpuCodecError, OperandRecordProgram,
-    OperandRecordProgramDescriptor, PortableRelocationKind, SemanticProgramDescriptor,
-    StructuredEncodingStep, UnresolvedValuePolicy, ValueConstraint, ValueProgramDescriptor,
-    ValueProgramSource, OPERAND_RECORD_VM_VERSION_V1, OPERAND_RECORD_VM_VERSION_V2,
-    SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3, SEMANTIC_VM_OPCODE_VERSION_V4,
-    VALUE_VM_OPCODE_VERSION_V1,
+    FixupBase, FixupEncodingStep, FixupRange, FixupTransform, OpcpuCodecError,
+    OperandRecordProgram, OperandRecordProgramDescriptor, PortableRelocationKind,
+    SemanticProgramDescriptor, StructuredEncodingStep, UnresolvedValuePolicy, ValueConstraint,
+    ValueProgramDescriptor, ValueProgramSource, OPERAND_RECORD_VM_VERSION_V1,
+    OPERAND_RECORD_VM_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3,
+    SEMANTIC_VM_OPCODE_VERSION_V4, VALUE_VM_OPCODE_VERSION_V1,
 };
 use types::hierarchy::ScopedOwner;
 
@@ -131,6 +131,7 @@ pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecE
                 range: FixupRange::Signed,
                 unresolved: UnresolvedValuePolicy::Placeholder(0),
                 relocation: PortableRelocationKind::None,
+                transform: FixupTransform::Identity,
             }])?,
         })
     };

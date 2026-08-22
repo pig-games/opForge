@@ -449,7 +449,7 @@ fn assert_native_cli_schema_case(
             schema_case.name
         )
     });
-    native_cli_schema_compare_artifact(artifact, &actual).unwrap_or_else(|message| {
+    native_cli_schema_compare_artifact(artifact, actual).unwrap_or_else(|message| {
         panic!(
             "schema-driven native CLI artifact mismatch for {}: {message}\nstdout:\n{}\nstderr:\n{}",
             schema_case.name, run.stdout, run.stderr,
@@ -1574,7 +1574,6 @@ fn native_statement_definition_storage_is_bounded() {
                 let keyword = trimmed
                     .strip_prefix(".statement")
                     .expect("prefix checked")
-                    .trim_start()
                     .split_whitespace()
                     .next()
                     .unwrap_or("");
@@ -4776,7 +4775,7 @@ fn native_struct_contract_covers_layout_instances_and_scoped_labels() {
 
     let point_stride = 2_u32;
     let second_point_base = point_stride;
-    assert_eq!(second_point_base + 0, 2);
+    assert_eq!(second_point_base, 2);
     assert_eq!(second_point_base + 1, 3);
 }
 
@@ -6221,7 +6220,7 @@ fn native_expression_suffix_literals_rust_oracle() {
     ];
     for (name, literal, expected) in cases {
         let value_line = format!("value .const {literal}");
-        let immediate_line = format!("start lda #value+1");
+        let immediate_line = "start lda #value+1".to_string();
         let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
             &[
                 ".cpu 65c02",
@@ -9181,7 +9180,7 @@ fn native_statement_expansion_fs_uae() {
     let root = workspace_root();
     let path = root.join("examples/opcore/statement_expansion.asm");
     let canonical = fs::read(&path).expect("read canonical statement expansion source");
-    let sources = vec![
+    let sources = [
         (
             "statement-load",
             b".org $2000\n.statement LOAD byte:val\n .byte .val\n.endstatement\n LOAD 7\n .end\n"

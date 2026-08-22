@@ -572,6 +572,10 @@ impl PortableExprEvalContext for RuntimePortableExprEvalContext<'_> {
             .map(PortableExprValueV2::Int)
     }
 
+    fn symbol_exists(&self, name: &str) -> bool {
+        self.assembler_ctx.has_symbol(name)
+    }
+
     fn current_address(&self) -> Option<i64> {
         Some(self.assembler_ctx.current_address() as i64)
     }

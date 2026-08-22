@@ -10,9 +10,9 @@ use crate::cpu::{CpuFamily, CpuType};
 use crate::family::{AssemblerContext, EncodeResult, FamilyEncodeResult, FamilyParseError};
 use opcore::parser::Expr;
 use package::{
-    DiagnosticDescriptor, OpcpuCodecError, OperandRecordProgramDescriptor,
-    SelectorProgramDescriptor, SemanticProgramDescriptor, StateProgramDescriptor,
-    ValueProgramDescriptor,
+    DiagnosticDescriptor, ModeSelectorDescriptor, OpcpuCodecError, OperandRecordProgramDescriptor,
+    RegisterEncodingDescriptor, SelectorProgramDescriptor, SemanticProgramDescriptor,
+    StateProgramDescriptor, ValueProgramDescriptor, VmProgramDescriptor,
 };
 
 pub trait FamilyOperandSet: Send + Sync {
@@ -128,7 +128,16 @@ pub trait DialectModule: Send + Sync {
     fn form_mnemonics(&self) -> Vec<String> {
         Vec::new()
     }
+    fn register_encodings(&self) -> Vec<RegisterEncodingDescriptor> {
+        Vec::new()
+    }
     fn selector_programs(&self) -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
+    fn instruction_programs(&self) -> Result<Vec<VmProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
+    fn mode_selectors(&self) -> Result<Vec<ModeSelectorDescriptor>, OpcpuCodecError> {
         Ok(Vec::new())
     }
     fn diagnostics(&self) -> Vec<DiagnosticDescriptor> {
@@ -167,6 +176,9 @@ pub trait FamilyModule: Send + Sync {
     fn register_ids(&self) -> &'static [&'static str] {
         &[]
     }
+    fn register_encodings(&self) -> Vec<RegisterEncodingDescriptor> {
+        Vec::new()
+    }
     fn form_mnemonics(&self) -> Vec<String> {
         Vec::new()
     }
@@ -187,6 +199,12 @@ pub trait FamilyModule: Send + Sync {
     fn state_programs(&self) -> Result<Vec<StateProgramDescriptor>, OpcpuCodecError> {
         Ok(Vec::new())
     }
+    fn instruction_programs(&self) -> Result<Vec<VmProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
+    fn mode_selectors(&self) -> Result<Vec<ModeSelectorDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
     fn diagnostics(&self) -> Vec<DiagnosticDescriptor> {
         Vec::new()
     }
@@ -205,8 +223,14 @@ pub trait CpuModule: Send + Sync {
     fn register_ids(&self) -> &'static [&'static str] {
         &[]
     }
+    fn register_encodings(&self) -> Vec<RegisterEncodingDescriptor> {
+        Vec::new()
+    }
     fn form_mnemonics(&self) -> Vec<String> {
         Vec::new()
+    }
+    fn value_programs(&self) -> Result<Vec<ValueProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
     }
     fn operand_record_programs(
         &self,
@@ -217,6 +241,12 @@ pub trait CpuModule: Send + Sync {
         Ok(Vec::new())
     }
     fn state_programs(&self) -> Result<Vec<StateProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
+    fn instruction_programs(&self) -> Result<Vec<VmProgramDescriptor>, OpcpuCodecError> {
+        Ok(Vec::new())
+    }
+    fn mode_selectors(&self) -> Result<Vec<ModeSelectorDescriptor>, OpcpuCodecError> {
         Ok(Vec::new())
     }
     fn diagnostics(&self) -> Vec<DiagnosticDescriptor> {
@@ -386,6 +416,16 @@ impl AsmRegistry {
             .unwrap_or_else(|| Ok(Vec::new()))
     }
 
+    pub fn cpu_value_programs(
+        &self,
+        cpu: CpuType,
+    ) -> Result<Vec<ValueProgramDescriptor>, OpcpuCodecError> {
+        self.cpus
+            .get(&cpu)
+            .map(|module| module.value_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
     pub fn family_operand_record_programs(
         &self,
         family: CpuFamily,
@@ -446,6 +486,46 @@ impl AsmRegistry {
             .unwrap_or_else(|| Ok(Vec::new()))
     }
 
+    pub fn family_instruction_programs(
+        &self,
+        family: CpuFamily,
+    ) -> Result<Vec<VmProgramDescriptor>, OpcpuCodecError> {
+        self.families
+            .get(&family)
+            .map(|module| module.instruction_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn cpu_instruction_programs(
+        &self,
+        cpu: CpuType,
+    ) -> Result<Vec<VmProgramDescriptor>, OpcpuCodecError> {
+        self.cpus
+            .get(&cpu)
+            .map(|module| module.instruction_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn family_mode_selectors(
+        &self,
+        family: CpuFamily,
+    ) -> Result<Vec<ModeSelectorDescriptor>, OpcpuCodecError> {
+        self.families
+            .get(&family)
+            .map(|module| module.mode_selectors())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn cpu_mode_selectors(
+        &self,
+        cpu: CpuType,
+    ) -> Result<Vec<ModeSelectorDescriptor>, OpcpuCodecError> {
+        self.cpus
+            .get(&cpu)
+            .map(|module| module.mode_selectors())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
     pub fn dialect_selector_programs(
         &self,
         family: CpuFamily,
@@ -455,6 +535,30 @@ impl AsmRegistry {
         self.dialects
             .get(&key)
             .map(|module| module.selector_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn dialect_instruction_programs(
+        &self,
+        family: CpuFamily,
+        dialect: &str,
+    ) -> Result<Vec<VmProgramDescriptor>, OpcpuCodecError> {
+        let key = (family, normalize_dialect(dialect));
+        self.dialects
+            .get(&key)
+            .map(|module| module.instruction_programs())
+            .unwrap_or_else(|| Ok(Vec::new()))
+    }
+
+    pub fn dialect_mode_selectors(
+        &self,
+        family: CpuFamily,
+        dialect: &str,
+    ) -> Result<Vec<ModeSelectorDescriptor>, OpcpuCodecError> {
+        let key = (family, normalize_dialect(dialect));
+        self.dialects
+            .get(&key)
+            .map(|module| module.mode_selectors())
             .unwrap_or_else(|| Ok(Vec::new()))
     }
 
@@ -510,6 +614,13 @@ impl AsmRegistry {
         ids
     }
 
+    pub fn family_register_encodings(&self, family: CpuFamily) -> Vec<RegisterEncodingDescriptor> {
+        self.families
+            .get(&family)
+            .map(|module| module.register_encodings())
+            .unwrap_or_default()
+    }
+
     pub fn cpu_register_ids(&self, cpu: CpuType) -> Vec<String> {
         let Some(module) = self.cpus.get(&cpu) else {
             return Vec::new();
@@ -522,6 +633,24 @@ impl AsmRegistry {
         ids.sort_by_key(|id| id.to_ascii_lowercase());
         ids.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
         ids
+    }
+
+    pub fn cpu_register_encodings(&self, cpu: CpuType) -> Vec<RegisterEncodingDescriptor> {
+        self.cpus
+            .get(&cpu)
+            .map(|module| module.register_encodings())
+            .unwrap_or_default()
+    }
+
+    pub fn dialect_register_encodings(
+        &self,
+        family: CpuFamily,
+        dialect: &str,
+    ) -> Vec<RegisterEncodingDescriptor> {
+        self.dialects
+            .get(&(family, normalize_dialect(dialect)))
+            .map(|module| module.register_encodings())
+            .unwrap_or_default()
     }
 
     pub fn family_form_mnemonics(&self, family: CpuFamily) -> Vec<String> {

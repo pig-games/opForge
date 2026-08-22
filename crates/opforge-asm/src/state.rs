@@ -123,7 +123,23 @@ pub struct AsmCpuModeState {
 impl AsmCpuModeState {
     #[must_use]
     pub fn new(registry: &ModuleRegistry, cpu: CpuType) -> Self {
+        Self::new_with_model(registry, cpu, None)
+    }
+
+    #[must_use]
+    pub fn new_with_model(
+        registry: &ModuleRegistry,
+        cpu: CpuType,
+        model: Option<&vm::vm_opasm::HierarchyExecutionModel>,
+    ) -> Self {
         let resolved = registry.resolve_pipeline(cpu, None).ok();
+        let package_state = model.and_then(|model| {
+            let resolved = model.resolve_pipeline(cpu.as_str(), None).ok()?;
+            model
+                .initial_unique_package_state(&resolved, cpu.as_str())
+                .ok()
+                .flatten()
+        });
         Self {
             program_address_max: resolved
                 .as_ref()
@@ -137,10 +153,12 @@ impl AsmCpuModeState {
                 .as_ref()
                 .map(|pipeline| pipeline.cpu.is_little_endian())
                 .unwrap_or(true),
-            state_flags: resolved
-                .as_ref()
-                .map(|pipeline| pipeline.cpu.runtime_state_defaults())
-                .unwrap_or_default(),
+            state_flags: package_state.unwrap_or_else(|| {
+                resolved
+                    .as_ref()
+                    .map(|pipeline| pipeline.cpu.runtime_state_defaults())
+                    .unwrap_or_default()
+            }),
         }
     }
 }
@@ -154,6 +172,17 @@ pub fn build_register_checker(registry: &ModuleRegistry, cpu: CpuType) -> Regist
         }
         Err(_) => register_checker_none(),
     }
+}
+
+#[must_use]
+pub fn build_package_register_checker(
+    model: &vm::vm_opasm::HierarchyExecutionModel,
+    cpu: CpuType,
+) -> Option<RegisterChecker> {
+    model
+        .resolve_pipeline(cpu.as_str(), None)
+        .ok()
+        .map(|resolved| model.register_checker_for_resolved(&resolved))
 }
 
 pub struct ActiveStructDefinition {

@@ -511,13 +511,13 @@ opforgeNativeCliBootstrapCurrentCpuNameLine	.block
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
-	beq.s noMatch
+	beq.w noMatch
 	move.l d0, -(sp)
 	move.l a0, -(sp)
 	lea strings.CpuMnemonicText, a1
 	moveq #4, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	beq.s noMatchRestore
+	beq.w noMatchRestore
 	movea.l (sp)+, a0
 	move.l (sp)+, d0
 	addq.l #4, a0
@@ -526,25 +526,25 @@ opforgeNativeCliBootstrapCurrentCpuNameLine	.block
 	lea state.NativeCliArgToken, a1
 	move.l d0, -(sp)
 	bsr.w line_text.opforgeNativeCliCopyLineWord
-	bne.s copyRestoreFail
+	bne.w copyRestoreFail
 	move.l (sp)+, d0
 	sub.l d5, d0
 	tst.b state.NativeCliArgToken
-	beq.s fail
+	beq.w fail
 	move.l d0, -(sp)
 	move.l a0, -(sp)
 	jsr directive_handlers.opforgeNativeCliNormalizeQuotedCpuToken
 	tst.l d0
-	bne.s normalizeRestoreFail
+	bne.w normalizeRestoreFail
 	lea state.NativeCliArgToken, a0
 	lea state.NativeCliCpuName, a1
 	jsr token_util.opforgeNativeCliCopyTokenBuffer
 	movea.l (sp)+, a0
 	move.l (sp)+, d0
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
-	beq.s ok
+	beq.w ok
 	cmpi.b #';', (a0)
-	bne.s fail
+	bne.w fail
 
 ok
 	moveq #0, d0
@@ -559,7 +559,7 @@ noMatch
 
 normalizeRestoreFail
 	addq.l #8, sp
-	bra.s fail
+	bra.w fail
 
 copyRestoreFail
 	addq.l #4, sp

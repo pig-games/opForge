@@ -782,7 +782,7 @@ done
 parseNumber	.block
 	clr.l d3
 	tst.l d7
-	beq.s fail
+	beq.w fail
 	cmpi.b #'$', (a0)
 	beq.s hexStart
 

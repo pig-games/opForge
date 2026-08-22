@@ -2364,6 +2364,7 @@ fn assemble_example_entries_with_runtime_mode(
     let graph = load_module_graph(asm_path, root_lines.clone(), &[], &[], &module_paths, 64)
         .map_err(|err| format!("Preprocess failed: {err}"))?;
     let expanded_lines = graph.lines;
+    let source_map = graph.source_map;
 
     let mut assembler = Assembler::new();
     let execution_mode = runtime_enabled_execution_mode(enable_opthread_runtime);
@@ -2388,7 +2389,25 @@ fn assemble_example_entries_with_runtime_mode(
         .diagnostics
         .iter()
         .filter(|diag| diag.severity == Severity::Error)
-        .map(|diag| format!("{}:{}", diag.line, diag.error.message()))
+        .map(|diag| {
+            let origin = source_map.origin_for_line(diag.line);
+            let origin_location = origin.map_or_else(
+                || diag.line.to_string(),
+                |origin| {
+                    format!(
+                        "{}:{}",
+                        origin.file.as_deref().unwrap_or("<unknown source>"),
+                        origin.line
+                    )
+                },
+            );
+            let source = usize::try_from(diag.line)
+                .ok()
+                .and_then(|line| line.checked_sub(1))
+                .and_then(|index| expanded_lines.get(index))
+                .map_or("<missing expanded source>", String::as_str);
+            format!("{origin_location}:{}: `{source}`", diag.error.message())
+        })
         .collect();
 
     if matches!(execution_mode, ExecutionMode::Lockstep { .. }) {
@@ -4271,6 +4290,49 @@ fn m68080_ammx_full_extension_matrix() {
 }
 
 #[test]
+fn m68080_package_preserves_apollo_transition_ammx_vea_and_diagnostic_parity() {
+    let apollo_source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    .apollo off",
+        "    MOV3Q #1,D0",
+    ];
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&apollo_source, false)
+        .expect("Apollo state transition should finish with diagnostics");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.contains("MOV3Q is Apollo-gated on m68080")),
+        "unexpected Apollo-off diagnostics: {diagnostics:?}"
+    );
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[".cpu 68080", "    .apollo on", "    PACK3216 D2,D3,E10"],
+        false,
+    )
+    .expect("PACK3216 E-bank destination should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected PACK3216 diagnostics: {diagnostics:?}"
+    );
+    assert_eq!(
+        entries.iter().map(|(_, byte)| *byte).collect::<Vec<_>>(),
+        [0xFF, 0x02, 0x23, 0x07]
+    );
+
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[".cpu 68080", "    .apollo on", "    PADD.B A0,E1,E2"],
+        false,
+    )
+    .expect("invalid PADD first operand should finish with diagnostics");
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic
+            .contains("AMMX PADD first operand must be a vector effective address")),
+        "unexpected PADD diagnostics: {diagnostics:?}"
+    );
+}
+
+#[test]
 fn m68080_ammx_alias_and_saturated_arithmetic_slice() {
     let source = [
         ".cpu 68080",
@@ -4662,7 +4724,10 @@ fn m68080_integer_extension_slice() {
     let (status, message) = assemble_line_status(m68040_cpu_id, "    MOVEC PCR,D0");
     assert_eq!(status, LineStatus::Error);
     let message = message.expect("expected unsupported MOVEC control-register diagnostic");
-    assert!(message.contains("unsupported MOVEC control register for m68040"));
+    assert!(
+        message.contains("unsupported MOVEC control register for m68040"),
+        "{message}"
+    );
 
     for (line, expected) in [
         ("    EXTUB.W D0", "EXTUB does not support .W size"),
@@ -6236,74 +6301,86 @@ fn m68k_external_fpu_boundary_matrix_matches_the_promised_surface() {
         },
     ];
 
-    for case in cases {
-        for cpu in ["68020", "68030"] {
-            for fpu in ["68881", "68882"] {
-                let cpu_directive = format!(".cpu {cpu}");
-                let fpu_directive = format!(".fpu {fpu}");
-                let source: Vec<&str> = std::iter::once(cpu_directive.as_str())
-                    .chain(std::iter::once(fpu_directive.as_str()))
-                    .chain(case.lines.iter().copied())
-                    .collect();
-                let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(
-                    &source, false,
-                )
-                .unwrap_or_else(|err| {
-                    panic!(
-                        "{case_name} should assemble on {cpu}/{fpu}: {err}",
-                        case_name = case.name
-                    )
-                });
-                assert!(
-                    diagnostics.is_empty(),
-                    "{case_name} unexpectedly failed on {cpu}/{fpu}: {diagnostics:?}",
-                    case_name = case.name
-                );
+    let source_for_cases = |cpu: &str, fpu: &str| {
+        let mut source = vec![format!(".cpu {cpu}"), format!(".fpu {fpu}")];
+        let mut case_lines = Vec::with_capacity(cases.len());
+        for case in &cases {
+            case_lines.push(source.len() + 1);
+            source.extend(case.lines.iter().map(|line| (*line).to_string()));
+        }
+        (source, case_lines)
+    };
+    let diagnostic_at_line = |diagnostics: &[String], line: usize| {
+        let prefix = format!("{line}:");
+        diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.starts_with(&prefix))
+            .cloned()
+    };
 
-                let disabled_source: Vec<&str> = std::iter::once(cpu_directive.as_str())
-                    .chain(std::iter::once(".fpu none"))
-                    .chain(case.lines.iter().copied())
-                    .collect();
-                let (_entries, disabled_diagnostics) =
-                    assemble_source_entries_with_runtime_mode(&disabled_source, false)
-                        .expect("assembly should finish with diagnostics");
-                let disabled = disabled_diagnostics
-                    .iter()
-                    .find(|diag| diag.contains("requires an active .fpu target"))
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "{case_name} missing .fpu none diagnostic on {cpu}: {disabled_diagnostics:?}",
-                            case_name = case.name
-                        )
-                    });
-                assert!(disabled.contains(&format!("m{}", cpu)), "{disabled}");
-            }
+    // Assemble each target matrix cell as one source. This preserves every
+    // mnemonic/target assertion while avoiding hundreds of identical package
+    // rebuilds now that the normal assembler path is package-first.
+    for cpu in ["68020", "68030"] {
+        for fpu in ["68881", "68882"] {
+            let (source, _) = source_for_cases(cpu, fpu);
+            let source_refs = source.iter().map(String::as_str).collect::<Vec<_>>();
+            let (_entries, diagnostics) =
+                assemble_source_entries_with_runtime_mode(&source_refs, false).unwrap_or_else(
+                    |err| panic!("external FPU matrix should assemble on {cpu}/{fpu}: {err}"),
+                );
+            assert!(
+                diagnostics.is_empty(),
+                "external FPU matrix unexpectedly failed on {cpu}/{fpu}: {diagnostics:?}"
+            );
         }
 
-        let integrated_source: Vec<&str> = std::iter::once(".cpu 68040")
-            .chain(std::iter::once(".fpu 68040"))
-            .chain(case.lines.iter().copied())
-            .collect();
-        let (_entries, integrated_diagnostics) =
-            assemble_source_entries_with_runtime_mode(&integrated_source, false)
-                .expect("assembly should finish with diagnostics");
+        let (source, case_lines) = source_for_cases(cpu, "none");
+        let source_refs = source.iter().map(String::as_str).collect::<Vec<_>>();
+        let (_entries, diagnostics) =
+            assemble_source_entries_with_runtime_mode(&source_refs, false)
+                .expect("disabled-FPU matrix should finish with diagnostics");
+        for (case, line) in cases.iter().zip(case_lines) {
+            let disabled = diagnostic_at_line(&diagnostics, line).unwrap_or_else(|| {
+                panic!(
+                    "{} missing .fpu none diagnostic on {cpu} line {line}: {diagnostics:?}",
+                    case.name
+                )
+            });
+            assert!(
+                disabled.contains("requires an active .fpu target")
+                    && disabled.contains(&format!("m{cpu}")),
+                "{} returned the wrong disabled-FPU diagnostic: {disabled}",
+                case.name
+            );
+        }
+    }
+
+    let (source, case_lines) = source_for_cases("68040", "68040");
+    let source_refs = source.iter().map(String::as_str).collect::<Vec<_>>();
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source_refs, false)
+        .expect("integrated-68040 matrix should finish with diagnostics");
+    for (case, line) in cases.iter().zip(case_lines) {
+        let diagnostic = diagnostic_at_line(&diagnostics, line);
         if case.allow_integrated_68040 {
             assert!(
-                integrated_diagnostics.is_empty(),
-                "{case_name} should stay available on integrated 68040: {integrated_diagnostics:?}",
-                case_name = case.name
+                diagnostic.is_none(),
+                "{} should stay available on integrated 68040: {diagnostic:?}",
+                case.name
             );
         } else {
-            let integrated = integrated_diagnostics
-                .iter()
-                .find(|diag| diag.contains("integrated 68040 FPU target"))
-                .unwrap_or_else(|| {
-                    panic!(
-                        "{case_name} missing integrated-68040 rejection: {integrated_diagnostics:?}",
-                        case_name = case.name
-                    )
-                });
-            assert!(integrated.contains("not supported"), "{integrated}");
+            let integrated = diagnostic.unwrap_or_else(|| {
+                panic!(
+                    "{} missing integrated-68040 rejection on line {line}: {diagnostics:?}",
+                    case.name
+                )
+            });
+            assert!(
+                integrated.contains("integrated 68040 FPU target")
+                    && integrated.contains("not supported"),
+                "{} returned the wrong integrated-68040 diagnostic: {integrated}",
+                case.name
+            );
         }
     }
 }
@@ -6628,6 +6705,23 @@ fn m68000_scaled_index_aliases_above_identity_stay_rejected() {
 }
 
 #[test]
+fn m68k_package_error_projects_the_offending_final_operand_column() {
+    let assembler = run_pass1(&[".cpu 68000", ".org $1000", "    BCHG #1,4(PC)"]);
+    let diagnostic = assembler
+        .diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic
+                .error
+                .message()
+                .contains("invalid destination effective address for BCHG")
+        })
+        .expect("package rejection diagnostic");
+    assert_eq!(diagnostic.line(), 3);
+    assert_eq!(diagnostic.column(), Some(13));
+}
+
+#[test]
 fn m68000_movement_and_addressing_slice_rejects_illegal_effective_addresses() {
     let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVE.W D0,A0");
     assert_eq!(status, LineStatus::Error);
@@ -6637,7 +6731,10 @@ fn m68000_movement_and_addressing_slice_rejects_illegal_effective_addresses() {
     let (status, message) = assemble_line_status(m68000_cpu_id, "    LEA #1,A0");
     assert_eq!(status, LineStatus::Error);
     let message = message.expect("expected LEA legality diagnostic");
-    assert!(message.contains("invalid source effective address for LEA"));
+    assert!(
+        message.contains("invalid source effective address for LEA"),
+        "unexpected LEA diagnostic: {message}"
+    );
 
     let (status, message) = assemble_line_status(m68000_cpu_id, "    JMP D0");
     assert_eq!(status, LineStatus::Error);
@@ -6649,6 +6746,8 @@ fn m68000_movement_and_addressing_slice_rejects_illegal_effective_addresses() {
 fn m68000_lockstep_runtime_accepts_extended_addressing_forms() {
     let lines = [
         "    LEA 4(A0,D1.W),A1",
+        "    MOVE.W (A0,D1.W*1),D0",
+        "    MOVE.W (PC,D2.W*1),D3",
         "    PEA 4(A0)",
         "    JMP 4(PC)",
         "    MOVE.L (A0)+,(A1)",
@@ -6748,6 +6847,1413 @@ fn m68000_arithmetic_control_quick_and_shift_slice_emits_expected_bytes() {
     assert_eq!(
         assemble_bytes(m68000_cpu_id, "    ROR.W #1,D3"),
         vec![0xE2, 0x5B]
+    );
+}
+
+#[test]
+fn m68k_normal_assembler_path_executes_serialized_scalar_register_programs_for_all_profiles() {
+    for cpu in [
+        m68000_cpu_id,
+        m68010_cpu_id,
+        m68020_cpu_id,
+        m68030_cpu_id,
+        m68040_cpu_id,
+        m68080_cpu_id,
+    ] {
+        let registry = default_registry();
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::with_cpu(&mut symbols, cpu, &registry);
+        asm.clear_conditionals();
+        asm.clear_scopes();
+        for (line, expected) in [
+            ("    ILLEGAL", vec![0x4A, 0xFC]),
+            ("    NOP", vec![0x4E, 0x71]),
+            ("    RESET", vec![0x4E, 0x70]),
+            ("    RTE", vec![0x4E, 0x73]),
+            ("    RTR", vec![0x4E, 0x77]),
+            ("    RTS", vec![0x4E, 0x75]),
+            ("    TRAP #7", vec![0x4E, 0x47]),
+            ("    TRAPV", vec![0x4E, 0x76]),
+            ("    MOVEQ #-1,D7", vec![0x7E, 0xFF]),
+            ("    SWAP D7", vec![0x48, 0x47]),
+            ("    EXT.W D7", vec![0x48, 0x87]),
+            ("    EXT.L D7", vec![0x48, 0xC7]),
+            ("    UNLK A7", vec![0x4E, 0x5F]),
+            ("    EXG D1,A2", vec![0xC3, 0x8A]),
+            ("    STOP #$2700", vec![0x4E, 0x72, 0x27, 0x00]),
+            ("    LINK A6,#-8", vec![0x4E, 0x56, 0xFF, 0xF8]),
+            ("    LINK.W A6,#-8", vec![0x4E, 0x56, 0xFF, 0xF8]),
+            ("    MOVE USP,A1", vec![0x4E, 0x69]),
+            ("    MOVE A2,USP", vec![0x4E, 0x62]),
+            ("    MOVE SR,D0", vec![0x40, 0xC0]),
+            ("    MOVE D0,CCR", vec![0x44, 0xC0]),
+            ("    MOVE D0,SR", vec![0x46, 0xC0]),
+            ("    MOVE #$0F,CCR", vec![0x44, 0xFC, 0x00, 0x0F]),
+            ("    MOVE #$2700,SR", vec![0x46, 0xFC, 0x27, 0x00]),
+            ("    MOVE ($1234).W,CCR", vec![0x44, 0xF8, 0x12, 0x34]),
+            ("    ANDI #$1F,CCR", vec![0x02, 0x3C, 0x00, 0x1F]),
+            ("    ORI #$2700,SR", vec![0x00, 0x7C, 0x27, 0x00]),
+            ("    EORI #$0F,CCR", vec![0x0A, 0x3C, 0x00, 0x0F]),
+        ] {
+            let status = asm.process(line, 1, 0, 2);
+            assert_eq!(
+                status,
+                LineStatus::Ok,
+                "{} {line}: {:?}",
+                cpu.as_str(),
+                asm.error().map(|error| error.to_string())
+            );
+            assert_eq!(asm.bytes(), expected.as_slice(), "{} {line}", cpu.as_str());
+        }
+    }
+
+    for cpu in [
+        m68010_cpu_id,
+        m68020_cpu_id,
+        m68030_cpu_id,
+        m68040_cpu_id,
+        m68080_cpu_id,
+    ] {
+        let registry = default_registry();
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::with_cpu(&mut symbols, cpu, &registry);
+        asm.clear_conditionals();
+        asm.clear_scopes();
+        for (line, expected) in [
+            ("    BKPT #3", vec![0x48, 0x4B]),
+            ("    RTD #-8", vec![0x4E, 0x74, 0xFF, 0xF8]),
+            ("    MOVE CCR,D0", vec![0x42, 0xC0]),
+            ("    MOVE CCR,($1234).W", vec![0x42, 0xF8, 0x12, 0x34]),
+            ("    MOVEC SFC,D0", vec![0x4E, 0x7A, 0x00, 0x00]),
+            ("    MOVEC D1,DFC", vec![0x4E, 0x7B, 0x10, 0x01]),
+            ("    MOVEC VBR,A2", vec![0x4E, 0x7A, 0xA8, 0x01]),
+            ("    MOVES.W D0,(A0)", vec![0x0E, 0x50, 0x08, 0x00]),
+            ("    MOVES.L (A1),A2", vec![0x0E, 0x91, 0xA0, 0x00]),
+        ] {
+            let status = asm.process(line, 1, 0, 2);
+            assert_eq!(
+                status,
+                LineStatus::Ok,
+                "{} {line}: {:?}",
+                cpu.as_str(),
+                asm.error().map(|error| error.to_string())
+            );
+            assert_eq!(asm.bytes(), expected.as_slice(), "{} {line}", cpu.as_str());
+        }
+    }
+    for cpu in [m68020_cpu_id, m68030_cpu_id, m68040_cpu_id, m68080_cpu_id] {
+        let registry = default_registry();
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::with_cpu(&mut symbols, cpu, &registry);
+        asm.clear_conditionals();
+        asm.clear_scopes();
+        for (line, expected) in [
+            (
+                "    LINK.L A6,#-8",
+                vec![0x48, 0x0E, 0xFF, 0xFF, 0xFF, 0xF8],
+            ),
+            ("    EXTB.L D2", vec![0x49, 0xC2]),
+        ] {
+            let status = asm.process(line, 1, 0, 2);
+            assert_eq!(
+                status,
+                LineStatus::Ok,
+                "{} {line}: {:?}",
+                cpu.as_str(),
+                asm.error().map(|error| error.to_string())
+            );
+            assert_eq!(asm.bytes(), expected.as_slice(), "{} {line}", cpu.as_str());
+        }
+        if cpu == m68020_cpu_id {
+            assert_eq!(asm.process("    RTM A3", 1, 0, 2), LineStatus::Ok);
+            assert_eq!(asm.bytes(), &[0x06, 0xCB]);
+        }
+    }
+}
+
+#[test]
+fn m68k_serialized_scalar_register_path_uses_zero_family_cpu_or_dialect_callbacks() {
+    use registry::cpu::CpuFamily;
+    use registry::registry::{
+        CpuHandlerDyn, CpuModule, DialectModule, FamilyHandlerDyn, FamilyModule, FamilyOperandSet,
+        OperandSet,
+    };
+
+    const FAMILY: CpuFamily = CpuFamily::new("motorola68000");
+
+    struct PanicFamilyHandler;
+    impl FamilyHandlerDyn for PanicFamilyHandler {
+        fn family_id(&self) -> CpuFamily {
+            FAMILY
+        }
+
+        fn parse_operands(
+            &self,
+            mnemonic: &str,
+            exprs: &[Expr],
+        ) -> Result<Box<dyn FamilyOperandSet>, registry::family::FamilyParseError> {
+            panic!("family parse callback reached after package construction: {mnemonic} {exprs:?}")
+        }
+
+        fn encode_instruction(
+            &self,
+            _mnemonic: &str,
+            _operands: &dyn OperandSet,
+            _ctx: &dyn AssemblerContext,
+        ) -> registry::family::EncodeResult<Vec<u8>> {
+            panic!("family encode callback reached after package construction")
+        }
+
+        fn is_register(&self, _name: &str) -> bool {
+            panic!("family register callback reached after package construction")
+        }
+
+        fn is_condition(&self, _name: &str) -> bool {
+            panic!("family condition callback reached after package construction")
+        }
+    }
+
+    struct PanicCpuHandler(CpuType);
+    impl CpuHandlerDyn for PanicCpuHandler {
+        fn cpu_id(&self) -> CpuType {
+            self.0
+        }
+
+        fn family_id(&self) -> CpuFamily {
+            FAMILY
+        }
+
+        fn resolve_operands(
+            &self,
+            _mnemonic: &str,
+            _family_operands: &dyn FamilyOperandSet,
+            _ctx: &dyn AssemblerContext,
+        ) -> Result<Box<dyn OperandSet>, String> {
+            panic!("CPU resolve callback reached after package construction")
+        }
+
+        fn encode_instruction(
+            &self,
+            _mnemonic: &str,
+            _operands: &dyn OperandSet,
+            _ctx: &dyn AssemblerContext,
+        ) -> registry::family::EncodeResult<Vec<u8>> {
+            panic!("CPU encode callback reached after package construction")
+        }
+
+        fn supports_mnemonic(&self, _mnemonic: &str) -> bool {
+            panic!("CPU legality callback reached after package construction")
+        }
+
+        fn max_program_address(&self) -> u32 {
+            u32::MAX
+        }
+
+        fn is_little_endian(&self) -> bool {
+            false
+        }
+    }
+
+    struct PanicDialect;
+    impl DialectModule for PanicDialect {
+        fn dialect_id(&self) -> &'static str {
+            "motorola68k"
+        }
+
+        fn family_id(&self) -> CpuFamily {
+            FAMILY
+        }
+
+        fn map_mnemonic(
+            &self,
+            _mnemonic: &str,
+            _operands: &dyn FamilyOperandSet,
+        ) -> Option<(String, Box<dyn FamilyOperandSet>)> {
+            panic!("dialect selection callback reached after package construction")
+        }
+    }
+
+    struct PanicFamilyModule;
+    impl FamilyModule for PanicFamilyModule {
+        fn family_id(&self) -> CpuFamily {
+            FAMILY
+        }
+
+        fn canonical_dialect(&self) -> &'static str {
+            "motorola68k"
+        }
+
+        fn register_ids(&self) -> &'static [&'static str] {
+            &[
+                "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "A0", "A1", "A2", "A3", "A4", "A5",
+                "A6", "A7", "USP", "SR", "CCR", "SFC", "DFC", "VBR",
+            ]
+        }
+
+        fn dialects(&self) -> Vec<Box<dyn DialectModule>> {
+            vec![Box::new(PanicDialect)]
+        }
+
+        fn handler(&self) -> Box<dyn FamilyHandlerDyn> {
+            Box::new(PanicFamilyHandler)
+        }
+    }
+
+    struct PanicCpuModule {
+        id: CpuType,
+        name: &'static str,
+    }
+    impl CpuModule for PanicCpuModule {
+        fn cpu_id(&self) -> CpuType {
+            self.id
+        }
+
+        fn family_id(&self) -> CpuFamily {
+            FAMILY
+        }
+
+        fn cpu_name(&self) -> &'static str {
+            self.name
+        }
+
+        fn default_dialect(&self) -> &'static str {
+            "motorola68k"
+        }
+
+        fn handler(&self) -> Box<dyn CpuHandlerDyn> {
+            Box::new(PanicCpuHandler(self.id))
+        }
+    }
+
+    let mut package_registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut package_registry);
+    let package_bytes = build_hierarchy_package_from_registry(&package_registry)
+        .expect("serialize m68k package before callback guard");
+    drop(package_registry);
+
+    for (cpu, name) in [
+        (m68000_cpu_id, "68000"),
+        (m68010_cpu_id, "68010"),
+        (m68020_cpu_id, "68020"),
+        (m68030_cpu_id, "68030"),
+        (m68040_cpu_id, "68040"),
+        (m68080_cpu_id, "68080"),
+    ] {
+        let mut callback_guard_registry = ModuleRegistry::new();
+        callback_guard_registry.register_family(Box::new(PanicFamilyModule));
+        callback_guard_registry.register_cpu(Box::new(PanicCpuModule { id: cpu, name }));
+
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::with_cpu(&mut symbols, cpu, &callback_guard_registry);
+        asm.opthread_execution_model = Some(load_opasm_model_from_package_bytes(&package_bytes));
+        asm.clear_conditionals();
+        asm.clear_scopes();
+        for (line_number, line, expected) in [
+            (1, "    NOP", vec![0x4E, 0x71]),
+            (2, "    TRAP #7", vec![0x4E, 0x47]),
+            (3, "    MOVEQ #-1,D7", vec![0x7E, 0xFF]),
+            (4, "    SWAP D7", vec![0x48, 0x47]),
+            (5, "    EXT.W D7", vec![0x48, 0x87]),
+            (6, "    EXT.L D7", vec![0x48, 0xC7]),
+            (7, "    UNLK A7", vec![0x4E, 0x5F]),
+            (8, "    EXG D1,A2", vec![0xC3, 0x8A]),
+            (9, "    STOP #$2700", vec![0x4E, 0x72, 0x27, 0x00]),
+            (10, "    LINK A6,#-8", vec![0x4E, 0x56, 0xFF, 0xF8]),
+            (11, "    LINK.W A6,#-8", vec![0x4E, 0x56, 0xFF, 0xF8]),
+            (21, "    MOVE USP,A1", vec![0x4E, 0x69]),
+            (22, "    MOVE A2,USP", vec![0x4E, 0x62]),
+            (23, "    MOVE SR,D0", vec![0x40, 0xC0]),
+            (24, "    MOVE D0,CCR", vec![0x44, 0xC0]),
+            (25, "    MOVE D0,SR", vec![0x46, 0xC0]),
+            (26, "    MOVE #$0F,CCR", vec![0x44, 0xFC, 0x00, 0x0F]),
+            (27, "    MOVE #$2700,SR", vec![0x46, 0xFC, 0x27, 0x00]),
+            (34, "    MOVE ($1234).W,CCR", vec![0x44, 0xF8, 0x12, 0x34]),
+            (28, "    ANDI #$1F,CCR", vec![0x02, 0x3C, 0x00, 0x1F]),
+            (29, "    ORI #$2700,SR", vec![0x00, 0x7C, 0x27, 0x00]),
+            (30, "    EORI #$0F,CCR", vec![0x0A, 0x3C, 0x00, 0x0F]),
+            (41, "    MOVE.B (A0),D1", vec![0x12, 0x10]),
+            (42, "    MOVE.W (A0),D1", vec![0x32, 0x10]),
+            (43, "    MOVE.L (A0),D1", vec![0x22, 0x10]),
+            (44, "    MOVE.B D1,(A0)", vec![0x10, 0x81]),
+            (45, "    MOVE.W D1,(A0)", vec![0x30, 0x81]),
+            (46, "    MOVE.L D1,(A0)", vec![0x20, 0x81]),
+            (47, "    MOVEA.W (A0),A1", vec![0x32, 0x50]),
+            (48, "    MOVEA.L (A0),A1", vec![0x22, 0x50]),
+            (49, "    LEA (A0),A1", vec![0x43, 0xD0]),
+            (50, "    MOVE.B (A2)+,(A3)+", vec![0x16, 0xDA]),
+            (51, "    MOVE.W (A1),-(A6)", vec![0x3D, 0x11]),
+            (52, "    MOVE.L -(A7),(A0)", vec![0x20, 0xA7]),
+            (50, "    PEA (A0)", vec![0x48, 0x50]),
+            (51, "    JMP (A0)", vec![0x4E, 0xD0]),
+            (52, "    JSR (A0)", vec![0x4E, 0x90]),
+            (53, "    MOVE.B (A0)+,D1", vec![0x12, 0x18]),
+            (54, "    MOVE.W (A0)+,D1", vec![0x32, 0x18]),
+            (55, "    MOVE.L (A0)+,D1", vec![0x22, 0x18]),
+            (56, "    MOVE.B D1,(A0)+", vec![0x10, 0xC1]),
+            (57, "    MOVE.W D1,(A0)+", vec![0x30, 0xC1]),
+            (58, "    MOVE.L D1,(A0)+", vec![0x20, 0xC1]),
+            (59, "    MOVE.B -(A0),D1", vec![0x12, 0x20]),
+            (60, "    MOVE.W -(A0),D1", vec![0x32, 0x20]),
+            (61, "    MOVE.L -(A0),D1", vec![0x22, 0x20]),
+            (62, "    MOVE.B D1,-(A0)", vec![0x11, 0x01]),
+            (63, "    MOVE.W D1,-(A0)", vec![0x31, 0x01]),
+            (64, "    MOVE.L D1,-(A0)", vec![0x21, 0x01]),
+            (65, "    MOVE.B 4(A0),D1", vec![0x12, 0x28, 0x00, 0x04]),
+            (66, "    MOVE.W 4(A0),D1", vec![0x32, 0x28, 0x00, 0x04]),
+            (67, "    MOVE.L 4(A0),D1", vec![0x22, 0x28, 0x00, 0x04]),
+            (68, "    MOVE.B D1,4(A0)", vec![0x11, 0x41, 0x00, 0x04]),
+            (69, "    MOVE.W D1,4(A0)", vec![0x31, 0x41, 0x00, 0x04]),
+            (70, "    MOVE.L D1,4(A0)", vec![0x21, 0x41, 0x00, 0x04]),
+            (71, "    MOVEA.W 4(A0),A1", vec![0x32, 0x68, 0x00, 0x04]),
+            (72, "    MOVEA.L 4(A0),A1", vec![0x22, 0x68, 0x00, 0x04]),
+            (72, "    MOVEA.W (SP)+,A2", vec![0x34, 0x5F]),
+            (72, "    MOVEA.L (SP)+,A2", vec![0x24, 0x5F]),
+            (72, "    MOVEA.W -(SP),A2", vec![0x34, 0x67]),
+            (72, "    MOVEA.L -(SP),A2", vec![0x24, 0x67]),
+            (73, "    LEA 4(A0),A1", vec![0x43, 0xE8, 0x00, 0x04]),
+            (74, "    PEA 4(A0)", vec![0x48, 0x68, 0x00, 0x04]),
+            (75, "    JMP 4(A0)", vec![0x4E, 0xE8, 0x00, 0x04]),
+            (76, "    JSR 4(A0)", vec![0x4E, 0xA8, 0x00, 0x04]),
+            (
+                77,
+                "    MOVE.L 4(A2),-8(A4)",
+                vec![0x29, 0x6A, 0x00, 0x04, 0xFF, 0xF8],
+            ),
+            (77, "    MOVE.B 4(A0,D1.W),D2", vec![0x14, 0x30, 0x10, 0x04]),
+            (78, "    MOVE.W 4(A0,D1.W),D2", vec![0x34, 0x30, 0x10, 0x04]),
+            (79, "    MOVE.L 4(A0,D1.W),D2", vec![0x24, 0x30, 0x10, 0x04]),
+            (80, "    MOVE.B D2,4(A0,D1.W)", vec![0x11, 0x82, 0x10, 0x04]),
+            (81, "    MOVE.W D2,4(A0,D1.W)", vec![0x31, 0x82, 0x10, 0x04]),
+            (82, "    MOVE.L D2,4(A0,D1.W)", vec![0x21, 0x82, 0x10, 0x04]),
+            (
+                83,
+                "    MOVEA.W 4(A0,D1.W),A2",
+                vec![0x34, 0x70, 0x10, 0x04],
+            ),
+            (
+                84,
+                "    MOVEA.L 4(A0,D1.W),A2",
+                vec![0x24, 0x70, 0x10, 0x04],
+            ),
+            (85, "    LEA 4(A0,D1.W),A2", vec![0x45, 0xF0, 0x10, 0x04]),
+            (86, "    PEA 4(A0,D1.W)", vec![0x48, 0x70, 0x10, 0x04]),
+            (87, "    JMP 4(A0,D1.W)", vec![0x4E, 0xF0, 0x10, 0x04]),
+            (88, "    JSR 4(A0,D1.W)", vec![0x4E, 0xB0, 0x10, 0x04]),
+            (89, "    MOVE.W ($1234).W,D2", vec![0x34, 0x38, 0x12, 0x34]),
+            (90, "    MOVE.W D2,($1234).W", vec![0x31, 0xC2, 0x12, 0x34]),
+            (
+                91,
+                "    MOVE.L ($123456).L,D2",
+                vec![0x24, 0x39, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (
+                92,
+                "    MOVE.L D2,($123456).L",
+                vec![0x23, 0xC2, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (93, "    MOVEA.W ($1234).W,A2", vec![0x34, 0x78, 0x12, 0x34]),
+            (
+                94,
+                "    LEA ($123456).L,A2",
+                vec![0x45, 0xF9, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (95, "    PEA ($1234).W", vec![0x48, 0x78, 0x12, 0x34]),
+            (
+                96,
+                "    JSR ($123456).L",
+                vec![0x4E, 0xB9, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (97, "    MOVE.B #$80,D2", vec![0x14, 0x3C, 0x00, 0x80]),
+            (98, "    MOVE.W #$1234,D2", vec![0x34, 0x3C, 0x12, 0x34]),
+            (
+                99,
+                "    MOVE.L #$12345678,D2",
+                vec![0x24, 0x3C, 0x12, 0x34, 0x56, 0x78],
+            ),
+            (101, "    MOVE.W 4(PC),D2", vec![0x34, 0x3A, 0x00, 0x04]),
+            (102, "    MOVEA.L 4(PC),A2", vec![0x24, 0x7A, 0x00, 0x04]),
+            (103, "    LEA 4(PC),A2", vec![0x45, 0xFA, 0x00, 0x04]),
+            (104, "    PEA 4(PC)", vec![0x48, 0x7A, 0x00, 0x04]),
+            (105, "    JMP 4(PC)", vec![0x4E, 0xFA, 0x00, 0x04]),
+            (106, "    JSR 4(PC)", vec![0x4E, 0xBA, 0x00, 0x04]),
+            (
+                107,
+                "    MOVE.W 4(PC,D1.W),D2",
+                vec![0x34, 0x3B, 0x10, 0x04],
+            ),
+            (
+                108,
+                "    MOVEA.L 4(PC,D1.W),A2",
+                vec![0x24, 0x7B, 0x10, 0x04],
+            ),
+            (109, "    LEA 4(PC,D1.W),A2", vec![0x45, 0xFB, 0x10, 0x04]),
+            (110, "    PEA 4(PC,D1.W)", vec![0x48, 0x7B, 0x10, 0x04]),
+            (111, "    JMP 4(PC,D1.W)", vec![0x4E, 0xFB, 0x10, 0x04]),
+            (112, "    JSR 4(PC,D1.W)", vec![0x4E, 0xBB, 0x10, 0x04]),
+            (113, "    MOVE.B D1,D2", vec![0x14, 0x01]),
+            (114, "    MOVE.W A1,D2", vec![0x34, 0x09]),
+            (115, "    MOVE.L A1,D2", vec![0x24, 0x09]),
+            (116, "    MOVEA.W D1,A2", vec![0x34, 0x41]),
+            (117, "    MOVEA.L A1,A2", vec![0x24, 0x49]),
+            (118, "    ADD.W D1,D0", vec![0xD0, 0x41]),
+            (119, "    SUB.L D1,D0", vec![0x90, 0x81]),
+            (120, "    AND.B D1,D2", vec![0xC4, 0x01]),
+            (121, "    OR.L D1,D2", vec![0x84, 0x81]),
+            (122, "    CMP.W D1,D2", vec![0xB4, 0x41]),
+            (123, "    EOR.W D1,D2", vec![0xB3, 0x42]),
+            (124, "    ADD.W #1,D0", vec![0xD0, 0x7C, 0x00, 0x01]),
+            (
+                125,
+                "    OR.L #$12345678,D2",
+                vec![0x84, 0xBC, 0x12, 0x34, 0x56, 0x78],
+            ),
+            (126, "    ANDI.B #$12,D1", vec![0x02, 0x01, 0x00, 0x12]),
+            (127, "    SUBI.W #1,D3", vec![0x04, 0x43, 0x00, 0x01]),
+            (
+                128,
+                "    EORI.L #$12345678,D1",
+                vec![0x0A, 0x81, 0x12, 0x34, 0x56, 0x78],
+            ),
+            (129, "    CMPI.W #$1234,D2", vec![0x0C, 0x42, 0x12, 0x34]),
+            (130, "    CLR.W D2", vec![0x42, 0x42]),
+            (131, "    NEG.B D0", vec![0x44, 0x00]),
+            (132, "    NOT.L D3", vec![0x46, 0x83]),
+            (133, "    TST.W D4", vec![0x4A, 0x44]),
+            (134, "    NEGX.B D0", vec![0x40, 0x00]),
+            (135, "    NBCD D1", vec![0x48, 0x01]),
+            (136, "    TAS D2", vec![0x4A, 0xC2]),
+            (137, "    ADD.W (A0),D1", vec![0xD2, 0x50]),
+            (138, "    SUB.L (A0)+,D1", vec![0x92, 0x98]),
+            (139, "    AND.B -(A0),D1", vec![0xC2, 0x20]),
+            (140, "    OR.W 4(A0),D1", vec![0x82, 0x68, 0x00, 0x04]),
+            (141, "    CMP.L 4(A0,D1.W),D2", vec![0xB4, 0xB0, 0x10, 0x04]),
+            (142, "    ADD.W ($1234).W,D1", vec![0xD2, 0x78, 0x12, 0x34]),
+            (
+                143,
+                "    SUB.W ($123456).L,D1",
+                vec![0x92, 0x79, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (144, "    AND.L 4(PC),D1", vec![0xC2, 0xBA, 0x00, 0x04]),
+            (145, "    OR.B 4(PC,D1.W),D2", vec![0x84, 0x3B, 0x10, 0x04]),
+            (146, "    ADD.W D1,(A0)", vec![0xD3, 0x50]),
+            (147, "    SUB.L D1,(A0)+", vec![0x93, 0x98]),
+            (148, "    AND.B D1,-(A0)", vec![0xC3, 0x20]),
+            (149, "    OR.W D1,4(A0)", vec![0x83, 0x68, 0x00, 0x04]),
+            (150, "    EOR.L D2,4(A0,D1.W)", vec![0xB5, 0xB0, 0x10, 0x04]),
+            (151, "    ADD.W D1,($1234).W", vec![0xD3, 0x78, 0x12, 0x34]),
+            (
+                152,
+                "    SUB.W D1,($123456).L",
+                vec![0x93, 0x79, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (153, "    NEGX.B (A0)", vec![0x40, 0x10]),
+            (154, "    CLR.W (A0)+", vec![0x42, 0x58]),
+            (155, "    NEG.L -(A0)", vec![0x44, 0xA0]),
+            (156, "    NOT.B 4(A0)", vec![0x46, 0x28, 0x00, 0x04]),
+            (157, "    TST.W 4(A0,D1.W)", vec![0x4A, 0x70, 0x10, 0x04]),
+            (158, "    NBCD ($1234).W", vec![0x48, 0x38, 0x12, 0x34]),
+            (
+                159,
+                "    TAS ($123456).L",
+                vec![0x4A, 0xF9, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (160, "    ASR.W D1,D2", vec![0xE2, 0x62]),
+            (161, "    ASL.B D1,D2", vec![0xE3, 0x22]),
+            (162, "    LSR.B D1,D2", vec![0xE2, 0x2A]),
+            (163, "    LSL.L D1,D2", vec![0xE3, 0xAA]),
+            (164, "    ROXR.L D1,D2", vec![0xE2, 0xB2]),
+            (165, "    ROXL.W D1,D2", vec![0xE3, 0x72]),
+            (166, "    ROR.W D1,D2", vec![0xE2, 0x7A]),
+            (167, "    ROL.B D1,D2", vec![0xE3, 0x3A]),
+            (168, "    ASR (A0)", vec![0xE0, 0xD0]),
+            (169, "    ASL.W (A0)+", vec![0xE1, 0xD8]),
+            (170, "    LSR -(A0)", vec![0xE2, 0xE0]),
+            (171, "    LSL.W 4(A0)", vec![0xE3, 0xE8, 0x00, 0x04]),
+            (172, "    ROXR 4(A0,D1.W)", vec![0xE4, 0xF0, 0x10, 0x04]),
+            (173, "    ROXL.W ($1234).W", vec![0xE5, 0xF8, 0x12, 0x34]),
+            (
+                174,
+                "    ROR ($123456).L",
+                vec![0xE6, 0xF9, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (175, "    ROL.W (A1)", vec![0xE7, 0xD1]),
+            (176, "    BTST D1,D2", vec![0x03, 0x02]),
+            (177, "    BCHG D1,(A0)", vec![0x03, 0x50]),
+            (178, "    BCLR D1,(A0)+", vec![0x03, 0x98]),
+            (179, "    BSET D1,-(A0)", vec![0x03, 0xE0]),
+            (180, "    BTST D1,4(A0)", vec![0x03, 0x28, 0x00, 0x04]),
+            (181, "    BCHG D2,4(A0,D1.W)", vec![0x05, 0x70, 0x10, 0x04]),
+            (182, "    BCLR D1,($1234).W", vec![0x03, 0xB8, 0x12, 0x34]),
+            (
+                183,
+                "    BSET D1,($123456).L",
+                vec![0x03, 0xF9, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (184, "    BTST D1,4(PC)", vec![0x03, 0x3A, 0x00, 0x04]),
+            (185, "    BTST D2,4(PC,D1.W)", vec![0x05, 0x3B, 0x10, 0x04]),
+            (186, "    BTST #3,D2", vec![0x08, 0x02, 0x00, 0x03]),
+            (187, "    BCHG #4,(A0)", vec![0x08, 0x50, 0x00, 0x04]),
+            (188, "    BCLR #5,(A0)+", vec![0x08, 0x98, 0x00, 0x05]),
+            (189, "    BSET #6,-(A0)", vec![0x08, 0xE0, 0x00, 0x06]),
+            (
+                190,
+                "    BTST #7,4(A0)",
+                vec![0x08, 0x28, 0x00, 0x07, 0x00, 0x04],
+            ),
+            (
+                191,
+                "    BCHG #8,4(A0,D1.W)",
+                vec![0x08, 0x70, 0x00, 0x08, 0x10, 0x04],
+            ),
+            (
+                192,
+                "    BCLR #9,($1234).W",
+                vec![0x08, 0xB8, 0x00, 0x09, 0x12, 0x34],
+            ),
+            (
+                193,
+                "    BSET #10,($123456).L",
+                vec![0x08, 0xF9, 0x00, 0x0A, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (
+                194,
+                "    BTST #11,4(PC)",
+                vec![0x08, 0x3A, 0x00, 0x0B, 0x00, 0x04],
+            ),
+            (
+                195,
+                "    BTST #12,4(PC,D1.W)",
+                vec![0x08, 0x3B, 0x00, 0x0C, 0x10, 0x04],
+            ),
+            (196, "    ASR.W #8,D2", vec![0xE0, 0x42]),
+            (197, "    ASL.B #3,D2", vec![0xE7, 0x02]),
+            (198, "    LSR.B #8,D2", vec![0xE0, 0x0A]),
+            (199, "    LSL.L #3,D2", vec![0xE7, 0x8A]),
+            (200, "    ROXR.L #8,D2", vec![0xE0, 0x92]),
+            (201, "    ROXL.W #3,D2", vec![0xE7, 0x52]),
+            (202, "    ROR.W #8,D2", vec![0xE0, 0x5A]),
+            (203, "    ROL.B #3,D2", vec![0xE7, 0x1A]),
+            (204, "    ADDQ.B #8,D2", vec![0x50, 0x02]),
+            (205, "    SUBQ.W #3,A1", vec![0x57, 0x49]),
+            (206, "    ADDQ.L #3,(A0)", vec![0x56, 0x90]),
+            (207, "    SUBQ.B #8,(A0)+", vec![0x51, 0x18]),
+            (208, "    ADDQ.W #1,-(A0)", vec![0x52, 0x60]),
+            (209, "    SUBQ.L #2,4(A0)", vec![0x55, 0xA8, 0x00, 0x04]),
+            (
+                210,
+                "    ADDQ.B #3,4(A0,D1.W)",
+                vec![0x56, 0x30, 0x10, 0x04],
+            ),
+            (211, "    SUBQ.W #8,($1234).W", vec![0x51, 0x78, 0x12, 0x34]),
+            (
+                212,
+                "    ADDQ.L #1,($123456).L",
+                vec![0x52, 0xB9, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (213, "    BRA $+8", vec![0x60, 0x00, 0x00, 0x06]),
+            (214, "    BNE.B $+8", vec![0x66, 0x06]),
+            (215, "    BHS.S $+8", vec![0x64, 0x06]),
+            (216, "    BLO.W $+8", vec![0x65, 0x00, 0x00, 0x06]),
+            (220, "    SNE D0", vec![0x56, 0xC0]),
+            (221, "    ST (A0)", vec![0x50, 0xD0]),
+            (222, "    SHS 4(A0)", vec![0x54, 0xE8, 0x00, 0x04]),
+            (223, "    SLO ($1234).W", vec![0x55, 0xF8, 0x12, 0x34]),
+            (224, "    DBRA D1,$+8", vec![0x51, 0xC9, 0x00, 0x06]),
+            (225, "    DBNE D2,$+8", vec![0x56, 0xCA, 0x00, 0x06]),
+            (226, "    DBHS D3,$+8", vec![0x54, 0xCB, 0x00, 0x06]),
+            (227, "    DBLO D4,$+8", vec![0x55, 0xCC, 0x00, 0x06]),
+            (230, "    ADDX.B D0,D1", vec![0xD3, 0x00]),
+            (231, "    ADDX.W -(A0),-(A1)", vec![0xD3, 0x48]),
+            (232, "    SUBX.L D2,D3", vec![0x97, 0x82]),
+            (233, "    ABCD D4,D5", vec![0xCB, 0x04]),
+            (234, "    SBCD -(A2),-(A3)", vec![0x87, 0x0A]),
+            (235, "    CMPM.W (A4)+,(A5)+", vec![0xBB, 0x4C]),
+            (236, "    CMPA.W ($1234).W,A0", vec![0xB0, 0xF8, 0x12, 0x34]),
+            (237, "    ADDA.L (A0),A1", vec![0xD3, 0xD0]),
+            (238, "    SUBA.W ($1234).W,A2", vec![0x94, 0xF8, 0x12, 0x34]),
+            (
+                239,
+                "    CMPA.L ($123456).L,A3",
+                vec![0xB7, 0xF9, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (240, "    ANDI.W #$1234,(A0)", vec![0x02, 0x50, 0x12, 0x34]),
+            (
+                241,
+                "    ADDI.W #1,4(A0)",
+                vec![0x06, 0x68, 0x00, 0x01, 0x00, 0x04],
+            ),
+            (242, "    SUBI.B #1,(A1)+", vec![0x04, 0x19, 0x00, 0x01]),
+            (
+                243,
+                "    CMPI.W #$1234,($1234).W",
+                vec![0x0C, 0x78, 0x12, 0x34, 0x12, 0x34],
+            ),
+            (
+                244,
+                "    CMPI.W #1,4(PC)",
+                vec![0x0C, 0x7A, 0x00, 0x01, 0x00, 0x04],
+            ),
+            (245, "    CHK ($1234).W,D0", vec![0x41, 0xB8, 0x12, 0x34]),
+            (246, "    MULU.W (A0),D1", vec![0xC2, 0xD0]),
+            (247, "    MULS #$00FF,D2", vec![0xC5, 0xFC, 0x00, 0xFF]),
+            (
+                248,
+                "    DIVU ($123456).L,D3",
+                vec![0x86, 0xF9, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (249, "    DIVS.W 4(PC),D4", vec![0x89, 0xFA, 0x00, 0x04]),
+            (
+                250,
+                "    MOVE.W 6(A3,D4.L),D5",
+                vec![0x3A, 0x33, 0x48, 0x06],
+            ),
+            (251, "    MOVE.L (A0)+,(A1)", vec![0x22, 0x98]),
+            (252, "    JMP (PC)", vec![0x4E, 0xFA, 0x00, 0x00]),
+            (253, "    MOVE.W (A0,D1*1),D0", vec![0x30, 0x30, 0x10, 0x00]),
+            (
+                254,
+                "    MOVE.W (PC,D2.L*1),D3",
+                vec![0x36, 0x3B, 0x28, 0x00],
+            ),
+            (255, "    MOVE.W $1234,D0", vec![0x30, 0x38, 0x12, 0x34]),
+            (
+                256,
+                "    MOVE.L $DFF000,D0",
+                vec![0x20, 0x39, 0x00, 0xDF, 0xF0, 0x00],
+            ),
+            (
+                257,
+                "    MOVE.L #$12345678,$DFF000",
+                vec![0x23, 0xFC, 0x12, 0x34, 0x56, 0x78, 0x00, 0xDF, 0xF0, 0x00],
+            ),
+            (
+                258,
+                "    MOVE.L #$12345678,($DFF000).L",
+                vec![0x23, 0xFC, 0x12, 0x34, 0x56, 0x78, 0x00, 0xDF, 0xF0, 0x00],
+            ),
+            (259, "    MOVEP.W D5,4(A1)", vec![0x0B, 0x89, 0x00, 0x04]),
+            (260, "    MOVEP.L 6(A2),D6", vec![0x0D, 0x4A, 0x00, 0x06]),
+            (
+                261,
+                "    MOVEM.W D0-D2/A6,-(A7)",
+                vec![0x48, 0xA7, 0xE0, 0x02],
+            ),
+            (
+                262,
+                "    MOVEM.L (A0)+,D1/D3/A2-A4",
+                vec![0x4C, 0xD8, 0x1C, 0x0A],
+            ),
+            (
+                263,
+                "    MOVEM.W D7,($1234).W",
+                vec![0x48, 0xB8, 0x00, 0x80, 0x12, 0x34],
+            ),
+            (
+                264,
+                "    MOVEM.L 4(PC),D0-D1/A6-A7",
+                vec![0x4C, 0xFA, 0xC0, 0x03, 0x00, 0x04],
+            ),
+        ] {
+            let status = asm.process(line, line_number, 0, 2);
+            assert_eq!(
+                status,
+                LineStatus::Ok,
+                "{name} package-only {line}: {:?}",
+                asm.error().map(|error| error.to_string())
+            );
+            assert_eq!(
+                asm.bytes(),
+                expected.as_slice(),
+                "{name} package-only {line} bytes"
+            );
+        }
+        let sign_extended_absolute = if cpu == m68000_cpu_id || cpu == m68010_cpu_id {
+            "    MOVE.W ($FF8000).W,D0"
+        } else {
+            "    MOVE.W ($FFFF8000).W,D0"
+        };
+        assert_eq!(
+            asm.process(sign_extended_absolute, 100, 0, 2),
+            LineStatus::Ok,
+            "{name} package-only sign-extended absolute word"
+        );
+        assert_eq!(
+            asm.bytes(),
+            &[0x30, 0x38, 0x80, 0x00],
+            "{name} package-only sign-extended absolute word bytes"
+        );
+        if cpu != m68000_cpu_id {
+            for (line_number, line, expected) in [
+                (13, "    BKPT #3", vec![0x48, 0x4B]),
+                (14, "    RTD #-8", vec![0x4E, 0x74, 0xFF, 0xF8]),
+                (31, "    MOVE CCR,D0", vec![0x42, 0xC0]),
+                (38, "    MOVE CCR,($1234).W", vec![0x42, 0xF8, 0x12, 0x34]),
+                (35, "    MOVEC SFC,D0", vec![0x4E, 0x7A, 0x00, 0x00]),
+                (36, "    MOVEC D1,DFC", vec![0x4E, 0x7B, 0x10, 0x01]),
+                (37, "    MOVEC VBR,A2", vec![0x4E, 0x7A, 0xA8, 0x01]),
+                (39, "    MOVES.W D0,(A0)", vec![0x0E, 0x50, 0x08, 0x00]),
+                (40, "    MOVES.L (A1),A2", vec![0x0E, 0x91, 0xA0, 0x00]),
+            ] {
+                assert_eq!(
+                    asm.process(line, line_number, 0, 2),
+                    LineStatus::Ok,
+                    "{name} package-only {line}: {:?}",
+                    asm.error().map(|error| error.to_string())
+                );
+                assert_eq!(
+                    asm.bytes(),
+                    expected.as_slice(),
+                    "{name} package-only {line}"
+                );
+            }
+        }
+        if cpu == m68020_cpu_id
+            || cpu == m68030_cpu_id
+            || cpu == m68040_cpu_id
+            || cpu == m68080_cpu_id
+        {
+            for (line_number, line, expected) in [
+                (
+                    15,
+                    "    LINK.L A6,#-8",
+                    vec![0x48, 0x0E, 0xFF, 0xFF, 0xFF, 0xF8],
+                ),
+                (16, "    EXTB.L D2", vec![0x49, 0xC2]),
+                (
+                    217,
+                    "    BRA.L $+8",
+                    vec![0x60, 0xFF, 0x00, 0x00, 0x00, 0x06],
+                ),
+                (
+                    219,
+                    "    MOVE.W ([A3],D2.W*2,8.L),D3",
+                    vec![0x36, 0x33, 0x23, 0x17, 0x00, 0x00, 0x00, 0x08],
+                ),
+            ] {
+                assert_eq!(
+                    asm.process(line, line_number, 0, 2),
+                    LineStatus::Ok,
+                    "{name} package-only {line}: {:?}",
+                    asm.error().map(|error| error.to_string())
+                );
+                assert_eq!(
+                    asm.bytes(),
+                    expected.as_slice(),
+                    "{name} package-only {line}"
+                );
+            }
+            assert_eq!(
+                asm.process("    BRA $+65538", 218, 0, 2),
+                LineStatus::Ok,
+                "{name} package-only automatic long branch"
+            );
+            assert_eq!(
+                asm.bytes(),
+                &[0x60, 0xFF, 0x00, 0x01, 0x00, 0x00],
+                "{name} package-only automatic long branch bytes"
+            );
+        } else {
+            assert_eq!(
+                asm.process("    BRA $+65538", 218, 0, 2),
+                LineStatus::Error,
+                "{name} package-only automatic branch range rejection"
+            );
+        }
+        if cpu == m68020_cpu_id {
+            assert_eq!(
+                asm.process("    RTM A3", 17, 0, 2),
+                LineStatus::Ok,
+                "{name} package-only RTM A3"
+            );
+            assert_eq!(asm.bytes(), &[0x06, 0xCB], "{name} package-only RTM A3");
+            // AsmLine tests start after directive processing; state value 1 is .fpu 68881.
+            asm.cpu_mode
+                .state_flags
+                .insert("m68k.fpu_target".to_string(), 1);
+            for (line_number, line, expected) in [
+                (266, "    FMOVE.D (A0)+,FP4", vec![0xF2, 0x18, 0x56, 0x00]),
+                (267, "    FMOVE.X -(A1),FP5", vec![0xF2, 0x21, 0x4A, 0x80]),
+                (
+                    268,
+                    "    FMOVE.P 8(A2),FP6",
+                    vec![0xF2, 0x2A, 0x4F, 0x00, 0x00, 0x08],
+                ),
+                (269, "    FMOVE.W (A0),FP3", vec![0xF2, 0x10, 0x51, 0x80]),
+                (270, "    FMOVE.L (A0)+,FP4", vec![0xF2, 0x18, 0x42, 0x00]),
+                (271, "    FMOVE.W -(A1),FP5", vec![0xF2, 0x21, 0x52, 0x80]),
+                (
+                    272,
+                    "    FMOVE.L 8(A2),FP6",
+                    vec![0xF2, 0x2A, 0x43, 0x00, 0x00, 0x08],
+                ),
+                (
+                    273,
+                    "    FMOVE.W 0(A3,D5.W),FP7",
+                    vec![0xF2, 0x33, 0x53, 0x80, 0x50, 0x00],
+                ),
+                (
+                    274,
+                    "    FMOVE.W ($1234).W,FP0",
+                    vec![0xF2, 0x38, 0x50, 0x00, 0x12, 0x34],
+                ),
+                (
+                    275,
+                    "    FMOVE.L ($123456).L,FP1",
+                    vec![0xF2, 0x39, 0x40, 0x80, 0x00, 0x12, 0x34, 0x56],
+                ),
+                (
+                    276,
+                    "    FMOVE.W 8(PC),FP2",
+                    vec![0xF2, 0x3A, 0x51, 0x00, 0x00, 0x08],
+                ),
+                (277, "    FADD.S (A0),FP3", vec![0xF2, 0x10, 0x45, 0xA2]),
+                (278, "    FADD.D (A0)+,FP4", vec![0xF2, 0x18, 0x56, 0x22]),
+                (279, "    FADD.X -(A1),FP5", vec![0xF2, 0x21, 0x4A, 0xA2]),
+                (
+                    280,
+                    "    FADD.P 8(A2),FP6",
+                    vec![0xF2, 0x2A, 0x4F, 0x22, 0x00, 0x08],
+                ),
+            ] {
+                assert_eq!(
+                    asm.process(line, line_number, 0, 2),
+                    LineStatus::Ok,
+                    "{name} package-only {line}: {:?}",
+                    asm.error().map(|error| error.to_string())
+                );
+                assert_eq!(
+                    asm.bytes(),
+                    expected.as_slice(),
+                    "{name} package-only {line}"
+                );
+            }
+        }
+        if cpu == m68080_cpu_id {
+            for (line_number, line, expected) in [
+                (272, "    EXTUB.L E8", vec![0x71, 0x0A, 0x4B, 0xC0]),
+                (273, "    EXTUW.L D1", vec![0x4D, 0xC1]),
+                (
+                    274,
+                    "    PERM #$ABC,D0,E1",
+                    vec![0x71, 0x01, 0x4C, 0xC0, 0x1A, 0xBC],
+                ),
+                (275, "    MOVEC PCR,D0", vec![0x4E, 0x7A, 0x08, 0x08]),
+                (276, "    MOVEC D1,MWR", vec![0x4E, 0x7B, 0x10, 0x0E]),
+                (277, "    MOVE SR,E0", vec![0x71, 0x05, 0x40, 0xC0]),
+                (
+                    278,
+                    "    MOVE16 ($1234).L,(A1)",
+                    vec![0xF6, 0x19, 0x00, 0x00, 0x12, 0x34],
+                ),
+                (
+                    400,
+                    "    ADDIW.L #$3333,(A1)+",
+                    vec![0x06, 0xD9, 0x33, 0x33],
+                ),
+                (
+                    401,
+                    "    ADDIW.L #$4444,-(A2)",
+                    vec![0x06, 0xE2, 0x44, 0x44],
+                ),
+                (
+                    402,
+                    "    ADDIW.L #$5555,16(A3)",
+                    vec![0x06, 0xEB, 0x55, 0x55, 0x00, 0x10],
+                ),
+                (
+                    403,
+                    "    ADDIW.L #$6666,0(A4,D1.W)",
+                    vec![0x06, 0xF4, 0x66, 0x66, 0x10, 0x00],
+                ),
+                (
+                    404,
+                    "    ADDIW.L #$7777,($1234).W",
+                    vec![0x06, 0xF8, 0x77, 0x77, 0x12, 0x34],
+                ),
+                (
+                    405,
+                    "    ADDIW.L #$0102,($123456).L",
+                    vec![0x06, 0xF9, 0x01, 0x02, 0x00, 0x12, 0x34, 0x56],
+                ),
+                (
+                    406,
+                    "    CMPIW.L #$1122,12(A6)",
+                    vec![0x4E, 0x2E, 0x11, 0x22, 0x00, 0x0C],
+                ),
+                (
+                    407,
+                    "    CMPIW.L #$5566,($2100).W",
+                    vec![0x4E, 0x38, 0x55, 0x66, 0x21, 0x00],
+                ),
+                (
+                    408,
+                    "    CMPIW.L #$7F00,($00123456).L",
+                    vec![0x4E, 0x39, 0x7F, 0x00, 0x00, 0x12, 0x34, 0x56],
+                ),
+                (409, "    MOVIW.L #$0101,(A0)", vec![0x30, 0xBD, 0x01, 0x01]),
+                (
+                    410,
+                    "    MOVIW.L #$0202,($2200).W",
+                    vec![0x31, 0xFD, 0x02, 0x02, 0x22, 0x00],
+                ),
+                (
+                    411,
+                    "    MOVIW.L #$0303,($00102200).L",
+                    vec![0x33, 0xFD, 0x03, 0x03, 0x00, 0x10, 0x22, 0x00],
+                ),
+                (279, "    DBRA.L D1,$+8", vec![0x51, 0xC9, 0x00, 0x09]),
+                (280, "    BRA.S+ $+130", vec![0x60, 0x01]),
+                (281, "    BNE.S+ $+132", vec![0x66, 0x03]),
+                (286, "    PAND D0,D1,D2", vec![0xFE, 0x00, 0x12, 0x08]),
+                (287, "    PMUL88 E8,E9,E10", vec![0xFF, 0xC0, 0x12, 0x18]),
+                (288, "    PCMPGTW E0,D1,E2", vec![0xFE, 0x08, 0x1A, 0x2F]),
+                (289, "    PADD.B E0,E1,E2", vec![0xFE, 0x08, 0x9A, 0x10]),
+                (290, "    PSUB.W E8,E9,E10", vec![0xFF, 0xC0, 0x12, 0x13]),
+                (309, "    PADDB D0,D1,D2", vec![0xFE, 0x00, 0x12, 0x10]),
+                (310, "    PADDUSB D0,D1,D2", vec![0xFE, 0x00, 0x12, 0x14]),
+                (311, "    PSUBUSW D0,D1,D2", vec![0xFE, 0x00, 0x12, 0x17]),
+                (312, "    PAVGB D0,D1,D2", vec![0xFE, 0x00, 0x12, 0x0C]),
+                (313, "    PMINSB D0,D1,D2", vec![0xFE, 0x00, 0x12, 0x30]),
+                (314, "    PMAXUW D0,D1,D2", vec![0xFE, 0x00, 0x12, 0x37]),
+                (315, "    LSLQ D0,D1,D2", vec![0xFE, 0x00, 0x12, 0x38]),
+                (316, "    LSRQ D0,D1,D2", vec![0xFE, 0x00, 0x12, 0x39]),
+                (
+                    362,
+                    "    PADD.B #$1234,D1,D2",
+                    vec![0xFE, 0x3C, 0x12, 0x10, 0x12, 0x34],
+                ),
+                (
+                    363,
+                    "    PADD.W #$1234,D1,D2",
+                    vec![0xFF, 0x3C, 0x12, 0x11, 0x12, 0x34],
+                ),
+                (
+                    364,
+                    "    LOAD.W #$1234,D1",
+                    vec![0xFF, 0x3C, 0x01, 0x01, 0x12, 0x34],
+                ),
+                (
+                    317,
+                    "    BFLYB D0,D1,.pair(D2,D3)",
+                    vec![0xFE, 0x00, 0x12, 0x1C],
+                ),
+                (
+                    318,
+                    "    BFLYW E8,E9,.pair(E10,E11)",
+                    vec![0xFF, 0xC0, 0x12, 0x1D],
+                ),
+                (319, "    C2P D0,D2", vec![0xFE, 0x00, 0x08, 0xA8]),
+                (320, "    C2P E8,E10", vec![0xFF, 0x40, 0x08, 0xA8]),
+                (323, "    MINTERM D0-D3,D4", vec![0xFE, 0x00, 0x10, 0xAA]),
+                (324, "    MINTERM E8-E11,E12", vec![0xFF, 0x40, 0x10, 0xAA]),
+                (
+                    325,
+                    "    TRANSHI D0-D3,.pair(D4,D5)",
+                    vec![0xFE, 0x00, 0x10, 0x02],
+                ),
+                (
+                    326,
+                    "    TRANSLO E8-E11,.pair(E12,E13)",
+                    vec![0xFF, 0x40, 0x10, 0x03],
+                ),
+                (330, "    STOREM D0,D1,(A0)", vec![0xFE, 0x10, 0x01, 0x25]),
+                (331, "    STOREM E8,E9,(B0)", vec![0xFF, 0xD0, 0x01, 0x25]),
+                (332, "    STOREM3 D0,#3,(A0)", vec![0xFE, 0x10, 0x03, 0x25]),
+                (333, "    STOREM3 D0,D2,(A0)", vec![0xFE, 0x10, 0x02, 0x25]),
+                (367, "    LOAD (A0),E0", vec![0xFE, 0x10, 0x08, 0x01]),
+                (368, "    LOADI (A0),D1", vec![0xFE, 0x10, 0x11, 0x01]),
+                (369, "    STORE D0,(A1)", vec![0xFE, 0x11, 0x00, 0x04]),
+                (370, "    STOREI D0,(B1)", vec![0xFF, 0x11, 0x01, 0x04]),
+                (371, "    STOREC D0,D1,(A2)", vec![0xFE, 0x12, 0x01, 0x24]),
+                (372, "    STOREILM E8,E9,(B2)", vec![0xFF, 0xD2, 0x01, 0x05]),
+                (373, "    PACK3216 D0,D1,E2", vec![0xFE, 0x0A, 0x01, 0x07]),
+                (374, "    PACKUSWB D0,D1,(A2)", vec![0xFE, 0x12, 0x01, 0x06]),
+                (
+                    375,
+                    "    UNPACK1632 D0,.pair(D2,D3)",
+                    vec![0xFE, 0x00, 0x02, 0x1E],
+                ),
+                (
+                    382,
+                    "    VPERM #$3210AB78,D0,E1,E6",
+                    vec![0xFE, 0x3F, 0x9E, 0x00, 0x32, 0x10, 0xAB, 0x78],
+                ),
+                (
+                    384,
+                    "    TEX8.512 (A0,(A1,A2)),D0",
+                    vec![0xFE, 0x30, 0x20, 0x3E, 0x98, 0x60],
+                ),
+                (
+                    385,
+                    "    TEX16.256 (A0,(A1,A2)),D1",
+                    vec![0xFE, 0x30, 0x21, 0x3E, 0x9A, 0x51],
+                ),
+                (
+                    386,
+                    "    TEX24.64 (A0,(A1,A2))*D0,D2",
+                    vec![0xFE, 0x30, 0x22, 0x3E, 0x9E, 0x82],
+                ),
+                (
+                    387,
+                    "    TEX.B (A0,A1*D3,A2),D4",
+                    vec![0xFE, 0x30, 0x24, 0x3E, 0x90, 0x30],
+                ),
+                (336, "    ADDQ.L #1,B0", vec![0x52, 0x08]),
+                (337, "    SUBQ.L #8,B7", vec![0x51, 0x0F]),
+                (338, "    CMP.L B2,D3", vec![0xC7, 0x82]),
+                (339, "    MOVE.L B0,D1", vec![0x12, 0x08]),
+                (340, "    MOVE.L D0,B4", vec![0x18, 0x40]),
+                (341, "    MOVEA.L D0,B5", vec![0x1A, 0x40]),
+                (342, "    LEA 1(A0),B1", vec![0x43, 0x68, 0x00, 0x01]),
+                (343, "    LEA (B2),A3", vec![0x47, 0xCA]),
+            ] {
+                assert_eq!(
+                    asm.process(line, line_number, 0, 2),
+                    LineStatus::Ok,
+                    "{name} package-only {line}: {:?}",
+                    asm.error().map(|error| error.to_string())
+                );
+                assert_eq!(
+                    asm.bytes(),
+                    expected.as_slice(),
+                    "{name} package-only {line} bytes"
+                );
+            }
+            for (line_number, line) in [
+                (282, "    EXTUB.W D0"),
+                (283, "    PERM #$1000,D0,D1"),
+                (284, "    DBRA.L D1,$+1"),
+                (285, "    BRA.S+ $+4"),
+                (321, "    BFLYB D0,D1,.pair(D1,D2)"),
+                (322, "    BFLYW D0,D1,.pair(D4,D6)"),
+                (327, "    MINTERM D1-D4,D4"),
+                (328, "    TRANSLO D0-D2,.pair(D4,D5)"),
+                (329, "    TRANSHI D0-D3,.pair(D4,D6)"),
+                (334, "    STOREM3 D0,#4,(A0)"),
+                (335, "    STOREM3 D0,D4,(A0)"),
+                (344, "    LEA (B0),B1"),
+                (345, "    ADDQ.W #1,B0"),
+                (346, "    CMP.W B0,D0"),
+                (347, "    MOVE.W B0,D0"),
+                (348, "    MOVE.L B0,B1"),
+                (349, "    MOVEA.W D0,B1"),
+                (350, "    MOVEA.L B0,B1"),
+                (365, "    LOAD #$1234,D1"),
+                (366, "    PADDB.B D0,D1,D2"),
+            ] {
+                assert_eq!(
+                    asm.process(line, line_number, 0, 2),
+                    LineStatus::Error,
+                    "{name} package-only rejection for {line}"
+                );
+            }
+            asm.cpu_mode
+                .state_flags
+                .insert("m68k.fpu_target".to_string(), 4);
+            for (line_number, line, expected) in [
+                (291, "    FNOP", vec![0xF2, 0x80, 0x00, 0x00]),
+                (292, "    FMOVE FP0,FP1", vec![0xF2, 0x00, 0x00, 0x80]),
+                (293, "    FSIN FP0,FP1", vec![0xF2, 0x00, 0x00, 0x8E]),
+                (294, "    FMOVE.D D0,FP0", vec![0xF2, 0x00, 0x54, 0x00]),
+                (295, "    FMOVE.D FP1,D1", vec![0xF2, 0x01, 0x74, 0x80]),
+                (296, "    FLOADI.D D0,FP0", vec![0xF2, 0x00, 0x54, 0x00]),
+                (297, "    FSTOREI.X FP1,D1", vec![0xF2, 0x01, 0x68, 0x80]),
+                (298, "    FMOVERZ.L FP0,D0", vec![0xF2, 0x00, 0x60, 0x01]),
+                (351, "    FMOVECR #11,FP0", vec![0xF2, 0x00, 0x5C, 0x0B]),
+                (
+                    352,
+                    "    FDBNE.L D0,$+6",
+                    vec![0xF2, 0x48, 0x00, 0x0E, 0x00, 0x07],
+                ),
+                (
+                    390,
+                    "    FMUL.W E4,FP3,E5",
+                    vec![0x7D, 0x54, 0xF2, 0x04, 0x51, 0xA3],
+                ),
+                (
+                    391,
+                    "    FADD.W D0,E1,E2",
+                    vec![0x77, 0x41, 0xF2, 0x00, 0x50, 0xA2],
+                ),
+                (
+                    392,
+                    "    FSCALE E4,FP3,E5",
+                    vec![0x7D, 0x54, 0xF2, 0x00, 0x11, 0xA6],
+                ),
+                (299, "    FMOVEURZ.B FP2,(A3)", vec![0xF2, 0x13, 0x79, 0x03]),
+                (
+                    300,
+                    "    FMOVEURZ.W FP1,(A2)+",
+                    vec![0xF2, 0x1A, 0x70, 0x83],
+                ),
+                (301, "    FMOVERZ.L FP7,-(A7)", vec![0xF2, 0x27, 0x63, 0x81]),
+                (
+                    302,
+                    "    FMOVERZ.L FP3,4(A4)",
+                    vec![0xF2, 0x2C, 0x61, 0x81, 0x00, 0x04],
+                ),
+                (
+                    303,
+                    "    FMOVEURZ.W FP1,4(A0,D1.W)",
+                    vec![0xF2, 0x30, 0x70, 0x83, 0x10, 0x04],
+                ),
+                (
+                    304,
+                    "    FMOVERZ.B FP2,4(A3,A1.L)",
+                    vec![0xF2, 0x33, 0x79, 0x01, 0x98, 0x04],
+                ),
+                (
+                    305,
+                    "    FMOVERZ.W FP4,($1234).W",
+                    vec![0xF2, 0x38, 0x72, 0x01, 0x12, 0x34],
+                ),
+                (
+                    306,
+                    "    FMOVEURZ.L FP5,($123456).L",
+                    vec![0xF2, 0x39, 0x62, 0x83, 0x00, 0x12, 0x34, 0x56],
+                ),
+                (
+                    307,
+                    "    FMOVERZ.L FP0,4.W(A0,D1.L*4)",
+                    vec![0xF2, 0x30, 0x60, 0x01, 0x1D, 0x20, 0x00, 0x04],
+                ),
+                (
+                    308,
+                    "    FMOVEURZ.W FP1,([A0,D1.L*4],8.W)",
+                    vec![0xF2, 0x30, 0x70, 0x83, 0x1D, 0x12, 0x00, 0x08],
+                ),
+            ] {
+                assert_eq!(
+                    asm.process(line, line_number, 0, 2),
+                    LineStatus::Ok,
+                    "{name} package-only {line}: {:?}",
+                    asm.error().map(|error| error.to_string())
+                );
+                assert_eq!(
+                    asm.bytes(),
+                    expected.as_slice(),
+                    "{name} package-only {line} bytes"
+                );
+            }
+        } else {
+            for (line_number, line) in [
+                (353, "    PADD.B D0,D1,D2"),
+                (354, "    BFLYB D0,D1,.pair(D2,D3)"),
+                (355, "    C2P D0,D2"),
+                (356, "    MINTERM D0-D3,D4"),
+                (357, "    STOREM D0,D1,(A0)"),
+                (358, "    FLOADI.D D0,FP0"),
+                (359, "    FSTOREI.X FP1,D1"),
+                (360, "    FMOVERZ.L FP0,D0"),
+                (361, "    FDBNE.L D0,$+6"),
+                (376, "    LOAD (A0),D0"),
+                (377, "    LOADI (A0),D1"),
+                (378, "    STORE D0,(A1)"),
+                (379, "    STOREC D0,D1,(A2)"),
+                (380, "    PACK3216 D0,D1,D2"),
+                (381, "    UNPACK1632 D0,.pair(D2,D3)"),
+                (383, "    VPERM #$3210AB78,D0,D1,D2"),
+                (388, "    TEX8.512 (A0,(A1,A2)),D0"),
+                (389, "    TEX24.64 (A0,(A1,A2))*D0,D2"),
+                (390, "    FMUL.W E4,FP3,E5"),
+            ] {
+                assert_eq!(
+                    asm.process(line, line_number, 0, 2),
+                    LineStatus::Error,
+                    "{name} package-only m68080-form rejection for {line}: {:?}",
+                    asm.error().map(|error| error.to_string())
+                );
+            }
+        }
+        assert_eq!(
+            asm.process("    MOVEQ #128,D0", 12, 0, 2),
+            LineStatus::Error,
+            "{name} package-only MOVEQ range rejection"
+        );
+        assert_eq!(
+            asm.process("    MOVE #256,CCR", 32, 0, 2),
+            LineStatus::Error,
+            "{name} package-only CCR range rejection"
+        );
+        assert_eq!(
+            asm.process("    ORI #65536,SR", 33, 0, 2),
+            LineStatus::Error,
+            "{name} package-only SR range rejection"
+        );
+        assert_eq!(
+            asm.process("    BRA.B $+2", 219, 0, 2),
+            LineStatus::Error,
+            "{name} package-only reserved byte displacement rejection"
+        );
+        assert_eq!(
+            asm.process("    DBRA D0,$+32770", 229, 0, 2),
+            LineStatus::Error,
+            "{name} package-only DBcc displacement range rejection"
+        );
+        if cpu != m68000_cpu_id {
+            assert_eq!(
+                asm.process("    BKPT #8", 18, 0, 2),
+                LineStatus::Error,
+                "{name} package-only BKPT range rejection"
+            );
+            assert_eq!(
+                asm.process("    RTD #32768", 19, 0, 2),
+                LineStatus::Error,
+                "{name} package-only RTD range rejection"
+            );
+        }
+        if cpu == m68020_cpu_id
+            || cpu == m68030_cpu_id
+            || cpu == m68040_cpu_id
+            || cpu == m68080_cpu_id
+        {
+            assert_eq!(
+                asm.process("    LINK.L A6,#4294967296", 20, 0, 2),
+                LineStatus::Error,
+                "{name} package-only LINK.L range rejection"
+            );
+        }
+    }
+}
+
+#[test]
+fn m68k_serialized_move_memory_to_memory_matrix_covers_update_modes() {
+    for (mnemonic, size_base) in [
+        ("MOVE.B", 0x1000_u16),
+        ("MOVE.W", 0x3000_u16),
+        ("MOVE.L", 0x2000_u16),
+    ] {
+        for (source, source_bits) in [("(A2)", 0x10_u16), ("(A2)+", 0x18), ("-(A2)", 0x20)] {
+            for (destination, destination_bits) in
+                [("(A3)", 0x80_u16), ("(A3)+", 0xc0), ("-(A3)", 0x100)]
+            {
+                let line = format!("    {mnemonic} {source},{destination}");
+                let opcode = size_base + source_bits + 2 + destination_bits + (3 << 9);
+                assert_eq!(
+                    assemble_bytes(m68000_cpu_id, &line),
+                    opcode.to_be_bytes(),
+                    "serialized package {line}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn m68k_serialized_move_immediate_accepts_finalized_constant_expression() {
+    let assembler = run_passes(&[
+        ".module opasm.engine",
+        ".cpu 68020",
+        "capacity = 512",
+        ".region ram, 0, $ff",
+        ".section code, kind=code",
+        "    MOVE.L #capacity - 1,D4",
+        ".endsection",
+        ".place code in ram",
+        ".endmodule",
+    ]);
+    let entries = assembler.image().entries().expect("image entries");
+    assert_eq!(
+        entries,
+        vec![
+            (0, 0x28),
+            (1, 0x3c),
+            (2, 0x00),
+            (3, 0x00),
+            (4, 0x01),
+            (5, 0xff),
+        ]
+    );
+}
+
+#[test]
+fn m68k_vm_line_parser_preserves_spaced_immediate_subtraction_for_package_selection() {
+    let (status, message, bytes) =
+        assemble_line_with_runtime_mode(m68020_cpu_id, "    MOVE.L #512 - 1,D4", true);
+    assert_eq!(status, LineStatus::Ok, "{message:?}");
+    assert_eq!(bytes, vec![0x28, 0x3c, 0x00, 0x00, 0x01, 0xff]);
+}
+
+#[test]
+fn m68k_serialized_indexed_effective_address_class_uses_package_programs() {
+    for (line, expected) in [
+        ("    MOVE.L D0,0(A0,D2.L)", vec![0x21, 0x80, 0x28, 0x00]),
+        ("    MOVE.W A0,0(A1,D2.L)", vec![0x33, 0x88, 0x28, 0x00]),
+        ("    CLR.B 0(A0,D6.L)", vec![0x42, 0x30, 0x68, 0x00]),
+        ("    TST.W 0(A1,A2.W)", vec![0x4a, 0x71, 0xa0, 0x00]),
+        ("    SUB.L 0(A0,D1.L),D2", vec![0x94, 0xb0, 0x18, 0x00]),
+        ("    ADDA.L 8(A5),A0", vec![0xd1, 0xed, 0x00, 0x08]),
+        ("    ADDA.L 0(A5,D2.L),A0", vec![0xd1, 0xf5, 0x28, 0x00]),
+    ] {
+        assert_eq!(assemble_bytes(m68020_cpu_id, line), expected, "{line}");
+    }
+}
+
+#[test]
+fn m68k_serialized_move_immediate_and_address_sources_cover_memory_destinations() {
+    for (line, expected) in [
+        ("    MOVE.B #1,(A0)+", vec![0x10, 0xfc, 0x00, 0x01]),
+        ("    MOVE.W #1,(A0)", vec![0x30, 0xbc, 0x00, 0x01]),
+        (
+            "    MOVE.B #1,0(A0,D6.L)",
+            vec![0x11, 0xbc, 0x00, 0x01, 0x68, 0x00],
+        ),
+        (
+            "    MOVE.W #-1,$12345678.L",
+            vec![0x33, 0xfc, 0xff, 0xff, 0x12, 0x34, 0x56, 0x78],
+        ),
+        ("    MOVE.L A0,(A1)", vec![0x22, 0x88]),
+        ("    MOVE.L A0,4(A2)", vec![0x25, 0x48, 0x00, 0x04]),
+        (
+            "    MOVE.L A0,$12345678.L",
+            vec![0x23, 0xc8, 0x12, 0x34, 0x56, 0x78],
+        ),
+        ("    MOVE.L 4(A0),(A1)+", vec![0x22, 0xe8, 0x00, 0x04]),
+        (
+            "    MOVE.L $12345678.L,(A1)+",
+            vec![0x22, 0xf9, 0x12, 0x34, 0x56, 0x78],
+        ),
+        (
+            "    MOVE.L 4(A5),0(A0,D1.L)",
+            vec![0x21, 0xad, 0x00, 0x04, 0x18, 0x00],
+        ),
+        (
+            "    MOVE.L 0(A1,D1.L),8(A0)",
+            vec![0x21, 0x71, 0x18, 0x00, 0x00, 0x08],
+        ),
+        (
+            "    MOVE.L $12345678.L,0(A0,D5.L)",
+            vec![0x21, 0xb9, 0x12, 0x34, 0x56, 0x78, 0x58, 0x00],
+        ),
+    ] {
+        assert_eq!(assemble_bytes(m68020_cpu_id, line), expected, "{line}");
+    }
+}
+
+#[test]
+fn m68k_serialized_move_symbol_immediate_to_memory_uses_package_fixup() {
+    let assembler = run_passes(&[
+        ".cpu 68020",
+        ".region ram, 0, $ff",
+        ".section code, kind=code",
+        "    MOVE.L #target,(A1)+",
+        "target:",
+        "    NOP",
+        ".endsection",
+        ".place code in ram",
+    ]);
+    assert_eq!(
+        assembler.image().entries().expect("image entries"),
+        vec![
+            (0, 0x22),
+            (1, 0xfc),
+            (2, 0x00),
+            (3, 0x00),
+            (4, 0x00),
+            (5, 0x06),
+            (6, 0x4e),
+            (7, 0x71),
+        ]
     );
 }
 
@@ -7381,7 +8887,10 @@ fn m68000_branch_and_immediate_diagnostics_are_deterministic() {
     let (status, message) = assemble_line_status(m68000_cpu_id, "    ADDI.W #1,A0");
     assert_eq!(status, LineStatus::Error);
     let message = message.expect("expected ADDI legality diagnostic");
-    assert!(message.contains("invalid destination effective address for ADDI.W"));
+    assert!(
+        message.contains("invalid destination effective address for ADDI.W"),
+        "unexpected ADDI diagnostic: {message}"
+    );
 
     let (status, message) = assemble_line_status(m68000_cpu_id, "    TST.W A0");
     assert_eq!(status, LineStatus::Error);
@@ -7484,7 +8993,10 @@ fn m68000_branch_and_immediate_diagnostics_are_deterministic() {
     let (status, message) = assemble_line_status(m68000_cpu_id, "    CHK.L D0,D1");
     assert_eq!(status, LineStatus::Error);
     let message = message.expect("expected CHK size diagnostic");
-    assert!(message.contains("CHK does not support .L size"));
+    assert!(
+        message.contains("CHK does not support .L size"),
+        "unexpected CHK diagnostic: {message}"
+    );
 
     let (status, message) = assemble_line_status(m68000_cpu_id, "    MULU A0,D1");
     assert_eq!(status, LineStatus::Error);
@@ -7531,12 +9043,18 @@ fn m68000_branch_and_immediate_diagnostics_are_deterministic() {
     let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVEM.W D0/D0,(A0)");
     assert_eq!(status, LineStatus::Error);
     let message = message.expect("expected MOVEM duplicate-list diagnostic");
-    assert!(message.contains("duplicate register in MOVEM list: D0"));
+    assert!(
+        message.contains("duplicate register in MOVEM list: D0"),
+        "unexpected MOVEM duplicate-list diagnostic: {message}"
+    );
 
     let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVEM.B D0,(A0)");
     assert_eq!(status, LineStatus::Error);
     let message = message.expect("expected MOVEM size diagnostic");
-    assert!(message.contains("MOVEM does not support .B size"));
+    assert!(
+        message.contains("MOVEM does not support .B size"),
+        "unexpected MOVEM size diagnostic: {message}"
+    );
 
     let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVEP.W D0,(A0)");
     assert_eq!(status, LineStatus::Error);
@@ -7589,7 +9107,10 @@ fn m68010_delta_and_m68000_rejection_diagnostics_are_deterministic() {
     let (status, message) = assemble_line_status(m68010_cpu_id, "    MOVEC CACR,D0");
     assert_eq!(status, LineStatus::Error);
     let message = message.expect("expected MOVEC control register diagnostic");
-    assert!(message.contains("unsupported MOVEC control register for m68010"));
+    assert!(
+        message.contains("unsupported MOVEC control register for m68010"),
+        "unexpected MOVEC control-register diagnostic: {message}"
+    );
 
     let (status, message) = assemble_line_status(m68010_cpu_id, "    MOVES.W D0,4(PC)");
     assert_eq!(status, LineStatus::Error);
@@ -13174,16 +14695,91 @@ fn motorola68020_item6_7_embedded_native_cli_package_contains_bit_branch_vm_entr
 
 #[test]
 fn motorola68020_embedded_native_cli_package_matches_rust_default_runtime_package() {
+    const NATIVE_PACKAGE_STORAGE_CAPACITY: usize = 393_216;
+    const ONE_BYTE_OVER_CAPACITY: usize = 393_217;
+    let buffers_path =
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm");
+    let buffers_source = fs::read_to_string(&buffers_path).expect("read native package buffers");
+    let native_capacity = buffers_source
+        .lines()
+        .find(|line| line.trim_start().starts_with("PACKAGE_STORAGE_CAPACITY"))
+        .and_then(|line| line.split_once('='))
+        .and_then(|(_, value)| value.trim().parse::<usize>().ok())
+        .expect("parse native package capacity");
+    assert_eq!(
+        native_capacity, NATIVE_PACKAGE_STORAGE_CAPACITY,
+        "Rust and native package capacity must remain synchronized"
+    );
+    let fs_uae_source =
+        fs::read_to_string(workspace_root().join("crates/opforge-asm/src/fs_uae_smoke.rs"))
+            .expect("read FS-UAE package overflow fixture owner");
+    let oversized_capacity = fs_uae_source
+        .lines()
+        .find(|line| {
+            line.trim_start()
+                .starts_with("const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_BYTES:")
+        })
+        .and_then(|line| line.split_once('='))
+        .and_then(|(_, value)| {
+            value
+                .trim()
+                .trim_end_matches(';')
+                .replace('_', "")
+                .parse::<usize>()
+                .ok()
+        })
+        .expect("parse FS-UAE oversized package length");
+    assert_eq!(
+        oversized_capacity, ONE_BYTE_OVER_CAPACITY,
+        "FS-UAE oversized package probe must remain exactly one byte above native capacity"
+    );
     let package_path =
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let generated_path = workspace_root().join("target/opforge_cli_package.expected.opasm");
     let embedded_package = fs::read(&package_path).expect("read embedded native CLI package");
     let default_package = build_hierarchy_package_from_registry(&default_registry())
         .expect("build default Rust runtime package");
+    let chunk_sizes = |bytes: &[u8]| {
+        let count = u32::from_le_bytes(bytes[8..12].try_into().expect("package TOC count"));
+        (0..count as usize)
+            .map(|index| {
+                let offset = 12 + index * 12;
+                let tag = std::str::from_utf8(&bytes[offset..offset + 4])
+                    .expect("ASCII chunk tag")
+                    .to_string();
+                let size = u32::from_le_bytes(
+                    bytes[offset + 8..offset + 12]
+                        .try_into()
+                        .expect("four-byte chunk size"),
+                );
+                (tag, size)
+            })
+            .collect::<Vec<_>>()
+    };
 
-    assert_eq!(
-        embedded_package, default_package,
-        "embedded native CLI package should match Rust's default bundled runtime package"
+    assert!(
+        default_package.len() <= NATIVE_PACKAGE_STORAGE_CAPACITY,
+        "default all-family package is {} bytes and exceeds native capacity by {} bytes (current chunks={:?}; embedded chunks={:?})",
+        default_package.len(),
+        default_package
+            .len()
+            .saturating_sub(NATIVE_PACKAGE_STORAGE_CAPACITY),
+        chunk_sizes(&default_package),
+        chunk_sizes(&embedded_package)
     );
+    if embedded_package != default_package {
+        if let Some(parent) = generated_path.parent() {
+            fs::create_dir_all(parent).expect("create generated fixture directory");
+        }
+        fs::write(&generated_path, &default_package)
+            .expect("write generated native CLI package fixture");
+        panic!(
+            "embedded native CLI package ({} bytes) should match Rust's default bundled runtime package ({} bytes); wrote expected bytes to {}",
+            embedded_package.len(),
+            default_package.len(),
+            generated_path.display()
+        );
+    }
 }
 
 #[test]
@@ -15947,6 +17543,248 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
     );
 }
 
+#[test]
+fn motorola68020_opforge_native_cli_hunk_sections_have_relocation_evidence() {
+    let asm_path = workspace_root().join("native/motorola68000/amigaos/main.asm");
+    let root_lines = expand_source_file(&asm_path, &[], &[], 64).expect("expand native CLI root");
+    let module_paths = example_module_paths(&asm_path);
+    let graph = load_module_graph(&asm_path, root_lines.clone(), &[], &[], &module_paths, 64)
+        .expect("load native CLI module graph");
+
+    let mut assembler = Assembler::new();
+    assembler.set_runtime_line_router(Some(make_test_runtime_line_router(
+        runtime_enabled_execution_mode(true),
+    )));
+    assembler.root_metadata.root_module_id = Some(
+        root_module_id_from_lines(&asm_path, &root_lines).expect("resolve native CLI root module"),
+    );
+    assembler.module_macro_names = graph.module_macro_names;
+    assembler.clear_diagnostics();
+
+    let pass1 = assembler.pass1(&graph.lines);
+    let mut listing_out = Vec::new();
+    let mut listing = ListingWriter::new(&mut listing_out, false);
+    let pass2 = assembler
+        .pass2(&graph.lines, &mut listing)
+        .expect("assemble native CLI pass two");
+    assert_eq!(pass1.errors + pass2.errors, 0, "native CLI assembly errors");
+
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("native CLI Hunk output directive");
+    let audit = ["entry", "code", "data", "bss"]
+        .into_iter()
+        .map(|name| {
+            let section = assembler.sections.get(name).expect("declared Hunk section");
+            format!(
+                "{name}: relocation_free={} hunk_compatible={} fixups={} fixup_error={:?} bytes={}",
+                section.relocation_free_certified,
+                section.hunk_relocation_compatible,
+                section.output_fixups.len(),
+                section.hunk_fixup_error,
+                section.bytes.len()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_ne!(
+        assembler.hunk_output_relocation_disposition_for(output),
+        LinkerOutputRelocationDisposition::Unknown,
+        "native CLI Hunk sections lack relocation evidence:\n{audit}"
+    );
+}
+
+#[test]
+fn motorola68020_package_unary_displacement_accepts_native_source_shape() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[
+            ".cpu 68020",
+            ".org 0",
+            "scope .block",
+            "    clr.b 31(a0)",
+            "    move.l 20(a0),8(a1)",
+            "    .bend",
+        ],
+        true,
+    )
+    .expect("assemble package-backed unary displacement source");
+
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
+    assert_eq!(
+        entries,
+        vec![
+            (0, 0x42),
+            (1, 0x28),
+            (2, 0x00),
+            (3, 0x1f),
+            (4, 0x23),
+            (5, 0x68),
+            (6, 0x00),
+            (7, 0x14),
+            (8, 0x00),
+            (9, 0x08),
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_package_normalizes_negative_symbol_for_word_immediate() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[
+            ".cpu 68020",
+            ".org 0",
+            "quoted = -2",
+            "    cmpi.w #quoted,d0",
+        ],
+        true,
+    )
+    .expect("assemble package-backed signed symbol immediate");
+
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
+    assert_eq!(entries, vec![(0, 0x0c), (1, 0x40), (2, 0xff), (3, 0xfe)]);
+}
+
+#[test]
+fn motorola68020_package_normalizes_negative_symbol_for_move_to_bare_symbol() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[
+            ".cpu 68020",
+            ".org 0",
+            "value = -1",
+            "    move.w #value,status",
+            "status:",
+            "    .word 0",
+        ],
+        true,
+    )
+    .expect("assemble package-backed signed MOVE immediate");
+
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
+    assert_eq!(
+        entries,
+        vec![
+            (0, 0x33),
+            (1, 0xfc),
+            (2, 0xff),
+            (3, 0xff),
+            (4, 0x00),
+            (5, 0x00),
+            (6, 0x00),
+            (7, 0x08),
+            (8, 0x00),
+            (9, 0x00),
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_package_quick_long_accepts_long_indexed_destination() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[".cpu 68020", ".org 0", "    subq.l #1,0(a1,d3.l)"],
+        true,
+    )
+    .expect("assemble package-backed quick indexed destination");
+
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
+    assert_eq!(entries, vec![(0, 0x53), (1, 0xb1), (2, 0x38), (3, 0x00)]);
+}
+
+#[test]
+fn motorola68020_package_divu_word_accepts_data_register_source() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[".cpu 68020", ".org 0", "    divu.w d2,d0"],
+        true,
+    )
+    .expect("assemble package-backed DIVU register form");
+
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
+    assert_eq!(entries, vec![(0, 0x80), (1, 0xc2)]);
+}
+
+#[test]
+fn motorola68020_package_unary_accepts_zero_displacement_long_index() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[".cpu 68020", ".org 0", "    tst.b (a0,d0.l)"],
+        true,
+    )
+    .expect("assemble package-backed unary zero-displacement indexed form");
+
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
+    assert_eq!(entries, vec![(0, 0x4a), (1, 0x30), (2, 0x08), (3, 0x00)]);
+}
+
+#[test]
+fn motorola68020_package_mulu_long_accepts_immediate_source() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[".cpu 68020", ".org 0", "    mulu.l #16,d4"],
+        true,
+    )
+    .expect("assemble package-backed MULU.L immediate form");
+
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
+    assert_eq!(
+        entries,
+        vec![
+            (0, 0x4c),
+            (1, 0x3c),
+            (2, 0x40),
+            (3, 0x04),
+            (4, 0x00),
+            (5, 0x00),
+            (6, 0x00),
+            (7, 0x10),
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_package_movem_long_loads_from_displacement() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[".cpu 68020", ".org 0", "    movem.l 12(sp),d2-d7/a2-a5"],
+        true,
+    )
+    .expect("assemble package-backed MOVEM displacement load");
+
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
+    assert_eq!(
+        entries,
+        vec![
+            (0, 0x4c),
+            (1, 0xef),
+            (2, 0x3c),
+            (3, 0xfc),
+            (4, 0x00),
+            (5, 0x0c),
+        ]
+    );
+}
+
 fn tokvm_amigaos_source(file_name: &str) -> String {
     let repo_root = workspace_root();
     let asm_path = if matches!(
@@ -16024,8 +17862,26 @@ fn tkpkg_smoke_registry() -> ModuleRegistry {
 }
 
 fn tkpkg_smoke_package_bytes() -> Vec<u8> {
-    build_hierarchy_package_from_registry(&tkpkg_smoke_registry())
-        .expect("build tkpkg smoke package")
+    let mut chunks = build_hierarchy_chunks_from_registry(&tkpkg_smoke_registry())
+        .expect("build tkpkg smoke chunks");
+    // This native fixture exercises package loading, pipeline selection,
+    // tokenization, parsing, and expression services. Instruction forms and
+    // encoding tables are deliberately excluded so that this focused package
+    // retains its historical 8 KiB native storage contract as the complete
+    // family runtime package grows.
+    chunks
+        .registers
+        .retain(|entry| !matches!(entry.owner, ScopedOwner::Cpu(_)));
+    chunks.forms.clear();
+    chunks.register_encodings.clear();
+    chunks.value_programs.clear();
+    chunks.tables.clear();
+    chunks.semantic_programs.clear();
+    chunks.selectors.clear();
+    chunks.diagnostics.retain(|diagnostic| {
+        diagnostic.code != "selector.q" && !diagnostic.code.starts_with("encoding.")
+    });
+    encode_hierarchy_chunks_from_chunks(&chunks).expect("encode focused tkpkg smoke package")
 }
 
 fn tkpkg_mos6502_native_parity_package_bytes() -> Vec<u8> {
@@ -16042,6 +17898,7 @@ fn tkpkg_mos6502_native_parity_package_bytes() -> Vec<u8> {
     let mut chunks =
         build_hierarchy_chunks_from_registry(&registry).expect("build mos6502 tkpkg parity chunks");
     chunks.registers.clear();
+    chunks.register_encodings.clear();
     chunks.forms.clear();
     chunks.tables.clear();
     chunks.selectors.clear();
@@ -16054,6 +17911,7 @@ fn tkpkg_intel8080_native_parity_package_bytes() -> Vec<u8> {
     let mut chunks = build_hierarchy_chunks_from_registry(&registry)
         .expect("build intel8080 tkpkg parity chunks");
     chunks.registers.clear();
+    chunks.register_encodings.clear();
     chunks.forms.clear();
     chunks.tables.clear();
     chunks.selectors.clear();
@@ -16066,6 +17924,7 @@ fn tkpkg_motorola6800_native_parity_package_bytes() -> Vec<u8> {
     let mut chunks = build_hierarchy_chunks_from_registry(&registry)
         .expect("build motorola6800 tkpkg parity chunks");
     chunks.registers.clear();
+    chunks.register_encodings.clear();
     chunks.forms.clear();
     chunks.tables.clear();
     chunks.selectors.clear();
@@ -16157,6 +18016,7 @@ fn tkpkg_m68020_package_with_pipeline_ids(
     chunks.expr_contracts.clear();
     chunks.expr_parser_contracts.clear();
     chunks.registers.clear();
+    chunks.register_encodings.clear();
     chunks.forms.clear();
     chunks.tables.clear();
     chunks.selectors.clear();
@@ -22811,6 +24671,49 @@ fn block_forward_branches_prefer_local_duplicate_labels() {
 }
 
 #[test]
+fn package_pass1_defers_outer_symbol_when_active_block_can_define_local_branch_target() {
+    let lines = [
+        ".module main",
+        ".cpu 68020",
+        ".org 0",
+        "fail NOP",
+        ".fill byte, 256, 0",
+        "inner .block",
+        "    BRA far_target",
+        "    BEQ.S fail",
+        "    NOP",
+        "fail NOP",
+        ".fill byte, 32768, 0",
+        "far_target RTS",
+        ".bend",
+        ".endmodule",
+    ];
+    let mut assembler = run_pass1(&lines);
+    assert_eq!(assembler.symbols().lookup("main.inner.fail"), Some(268));
+    let owned_lines = lines
+        .iter()
+        .map(|line| line.to_string())
+        .collect::<Vec<_>>();
+    let mut listing_out = Vec::new();
+    let mut listing = ListingWriter::new(&mut listing_out, false);
+    let pass2 = assembler.pass2(&owned_lines, &mut listing).expect("pass2");
+    assert_eq!(
+        pass2.errors, 0,
+        "pass2 diagnostics: {:?}",
+        assembler.diagnostics
+    );
+    let entries = assembler.image().entries().expect("image entries");
+    assert_eq!(
+        entries
+            .iter()
+            .filter(|(address, _)| (264..266).contains(address))
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![(264, 0x67), (265, 0x02)]
+    );
+}
+
+#[test]
 fn nested_scopes_are_addressable_by_qualified_name() {
     let mut symbols = SymbolTable::new();
     let registry = default_registry();
@@ -27916,6 +29819,60 @@ fn linker_output_hunk_live_path_emits_reloc32_for_v03_bare_symbol_instruction_su
 }
 
 #[test]
+fn m68k_package_resolves_org_based_bare_lea_as_absolute_long() {
+    let assembler = run_passes(&[
+        ".cpu 68000",
+        ".org $1000",
+        "start: LEA target,A1",
+        "target: RTS",
+        ".output \"build/out.hunk\", format=hunk",
+    ]);
+    let section = assembler
+        .sections()
+        .get(IMPLICIT_HUNK_CODE_SECTION_NAME)
+        .expect("implicit code section");
+
+    assert_eq!(
+        &section.bytes[0x1000..],
+        &[0x43, 0xF9, 0x00, 0x00, 0x10, 0x06, 0x4E, 0x75]
+    );
+}
+
+#[test]
+fn m68k_package_runtime_assembles_flat_amiga_hunk_symbols() {
+    let registry = default_registry();
+    let mut symbols = SymbolTable::new();
+    let asm = AsmLine::with_cpu(&mut symbols, m68000_cpu_id, &registry);
+    let parsed = crate::repetition::parse_line_ast_for_repetition(
+        &asm,
+        "        LEA dos_name,A1 ; forward HUNK symbol",
+        17,
+    )
+    .expect("parse bare-symbol LEA through the runtime parser");
+    let (_, mnemonic, operands) = crate::repetition::statement_parts(&parsed)
+        .expect("runtime parser should return an instruction statement");
+    assert_eq!(mnemonic, "LEA");
+    assert!(matches!(&operands[0], Expr::Identifier(name, _) if name == "dos_name"));
+    assert!(matches!(&operands[1], Expr::Register(name, _) if name == "A1"));
+    let encoded = asm
+        .opthread_execution_model
+        .as_ref()
+        .expect("runtime package model")
+        .encode_instruction_from_exprs("68000", None, &mnemonic, &operands, &asm)
+        .expect("encode parsed forward-symbol LEA through the package")
+        .expect("parsed forward-symbol LEA package candidate");
+    assert_eq!(encoded, [0x43, 0xF9, 0x00, 0x00, 0x00, 0x00]);
+
+    let asm_path = workspace_root().join("examples/motorola68000/amigaos/helloworld.asm");
+    let out_dir = create_temp_dir("m68k-flat-amiga-hunk-package");
+
+    if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
+        let detail = assemble_example_error(&asm_path).unwrap_or(err);
+        panic!("assemble flat Amiga HUNK through package runtime: {detail}");
+    }
+}
+
+#[test]
 fn linker_output_hunk_live_path_emits_reloc32_for_unary_bare_symbol_subset() {
     for source in [
         "start: CLR.W target",
@@ -28339,7 +30296,6 @@ fn linker_output_hunk_live_path_rejects_non_matrix_bare_symbolic_instruction_for
     for source in [
         "start: MOVE.B target1,target2",
         "start: MOVE.W target1,target2",
-        "start: MOVE.L target1,target2",
     ] {
         let lines = vec![
             ".module main".to_string(),
@@ -28599,6 +30555,11 @@ fn package_branch_width_signal_converges_to_live_m68020_layout_oracle() {
 }
 
 #[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_long_bare_symbol_to_bare_symbol() {
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction("start: MOVE.L target,target");
+}
+
+#[test]
 fn linker_output_hunk_live_path_emits_reloc32_for_move_from_absolute_long_symbol() {
     let assembler = run_passes(&[
         ".module main",
@@ -28691,6 +30652,11 @@ fn linker_output_hunk_live_path_emits_reloc32_for_move_immediate_long_symbol() {
 }
 
 #[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_symbol_to_postincrement_memory() {
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction("start: MOVE.L #target,(A0)+");
+}
+
+#[test]
 fn linker_output_hunk_live_path_emits_reloc32_for_move_to_bare_symbol_after_immediate_long() {
     assert_hunk_live_path_emits_reloc32_for_symbolic_instruction("start: MOVE.L #$12345678,target");
 }
@@ -28722,6 +30688,44 @@ fn linker_output_hunk_live_path_does_not_treat_in_range_absolute_constant_move_i
     assert_ne!(
         output.relocation_disposition,
         LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    assert!(section.output_fixups.is_empty());
+}
+
+#[test]
+fn linker_output_hunk_preserves_module_qualified_constant_provenance() {
+    let assembler = run_passes(&[
+        ".module buffers",
+        ".section constants, kind=data",
+        "START: .byte 0",
+        "END:",
+        ".endsection",
+        ".pub",
+        "COUNT = END - START",
+        ".endmodule",
+        ".module main",
+        ".cpu 68000",
+        ".use buffers",
+        "LAST = buffers.COUNT - 1",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        " MOVE.W #LAST,D0",
+        " RTS",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let section = assembler.sections().get("code").expect("code section");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::ProvenRelocationFree
     );
     assert!(section.output_fixups.is_empty());
 }

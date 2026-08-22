@@ -120,7 +120,14 @@ impl std::fmt::Display for BranchVmError {
                 "branch candidate {candidate} value {value} is outside {min}..={max}"
             ),
             Self::ReservedValue { candidate, value } => {
-                write!(f, "branch candidate {candidate} reserves value {value}")
+                if *value == 0 {
+                    write!(
+                        f,
+                        "zero displacement is reserved for branch candidate {candidate}"
+                    )
+                } else {
+                    write!(f, "branch candidate {candidate} reserves value {value}")
+                }
             }
             Self::NoAutomaticCandidate { target } => {
                 write!(

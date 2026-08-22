@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
-//! CPU-neutral fixed-field and scalar emission programs carried by `SEMV` v2.
+//! CPU-neutral fixed-field and scalar emission programs carried by `SEMV` v2/v6.
 
-use super::{OpcpuCodecError, SEMANTIC_VM_OPCODE_VERSION_V2};
+use super::{
+    OpcpuCodecError, SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V6,
+    SEMANTIC_VM_OPCODE_VERSION_V8,
+};
 
 pub const ENCODING_VM_OP_LITERAL: u8 = 0x01;
 pub const ENCODING_VM_OP_SCALAR: u8 = 0x02;
 pub const ENCODING_VM_OP_FIELDS: u8 = 0x03;
+pub const ENCODING_VM_OP_INPUT_FIELDS: u8 = 0x04;
+pub const ENCODING_VM_OP_INTEGER_TO_IEEE754: u8 = 0x05;
 pub const ENCODING_VM_OP_END: u8 = 0xff;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,6 +49,17 @@ pub enum EncodingStep {
         width: u8,
         endian: EncodingEndian,
         fields: Vec<EncodingFieldSpec>,
+    },
+    InputFields {
+        base_input: u8,
+        width: u8,
+        endian: EncodingEndian,
+        fields: Vec<EncodingFieldSpec>,
+    },
+    IntegerToIeee754 {
+        input: u8,
+        width: u8,
+        endian: EncodingEndian,
     },
 }
 
@@ -98,6 +114,37 @@ fn field_range_tag(field: &EncodingFieldSpec) -> Result<u8, OpcpuCodecError> {
 }
 
 pub fn compile_encoding_program(steps: &[EncodingStep]) -> Result<Vec<u8>, OpcpuCodecError> {
+    compile_encoding_program_for_version(SEMANTIC_VM_OPCODE_VERSION_V2, steps)
+}
+
+pub fn compile_parameterized_encoding_program(
+    steps: &[EncodingStep],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    compile_encoding_program_for_version(SEMANTIC_VM_OPCODE_VERSION_V6, steps)
+}
+
+/// Compile a v8 numeric encoding program. The operation is CPU-neutral: it
+/// converts an evaluated integer scalar to canonical IEEE-754 binary32 or
+/// binary64 bytes, while packages retain ownership of when that conversion is
+/// applicable.
+pub fn compile_numeric_encoding_program(
+    steps: &[EncodingStep],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    compile_encoding_program_for_version(SEMANTIC_VM_OPCODE_VERSION_V8, steps)
+}
+
+fn validate_ieee754_width(width: u8) -> Result<(), OpcpuCodecError> {
+    if matches!(width, 4 | 8) {
+        Ok(())
+    } else {
+        Err(invalid("encoding VM IEEE-754 width must be 4 or 8 bytes"))
+    }
+}
+
+fn compile_encoding_program_for_version(
+    opcode_version: u16,
+    steps: &[EncodingStep],
+) -> Result<Vec<u8>, OpcpuCodecError> {
     if steps.is_empty() {
         return Err(invalid(
             "encoding VM program must contain at least one step",
@@ -177,10 +224,48 @@ pub fn compile_encoding_program(steps: &[EncodingStep]) -> Result<Vec<u8>, Opcpu
                     out.push(field_range_tag(field)?);
                 }
             }
+            EncodingStep::InputFields {
+                base_input,
+                width,
+                endian,
+                fields,
+            } => {
+                if opcode_version != SEMANTIC_VM_OPCODE_VERSION_V6
+                    && opcode_version != SEMANTIC_VM_OPCODE_VERSION_V8
+                {
+                    return Err(invalid(
+                        "encoding VM input-field steps require opcode version 6",
+                    ));
+                }
+                validate_fields(*width, fields)?;
+                out.push(ENCODING_VM_OP_INPUT_FIELDS);
+                out.push(*base_input);
+                push_header(&mut out, *width, *endian);
+                out.push(fields.len() as u8);
+                encode_fields(&mut out, fields)?;
+            }
+            EncodingStep::IntegerToIeee754 {
+                input,
+                width,
+                endian,
+            } => {
+                if opcode_version != SEMANTIC_VM_OPCODE_VERSION_V8 {
+                    return Err(invalid(
+                        "encoding VM IEEE-754 conversion requires opcode version 8",
+                    ));
+                }
+                validate_ieee754_width(*width)?;
+                out.extend_from_slice(&[
+                    ENCODING_VM_OP_INTEGER_TO_IEEE754,
+                    *input,
+                    *width,
+                    u8::from(*endian == EncodingEndian::Little),
+                ]);
+            }
         }
     }
     out.push(ENCODING_VM_OP_END);
-    validate_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V2, &out)?;
+    validate_encoding_program(opcode_version, &out)?;
     Ok(out)
 }
 
@@ -188,7 +273,10 @@ pub fn decode_encoding_program(
     opcode_version: u16,
     bytes: &[u8],
 ) -> Result<Vec<EncodingStep>, OpcpuCodecError> {
-    if opcode_version != SEMANTIC_VM_OPCODE_VERSION_V2 {
+    if opcode_version != SEMANTIC_VM_OPCODE_VERSION_V2
+        && opcode_version != SEMANTIC_VM_OPCODE_VERSION_V6
+        && opcode_version != SEMANTIC_VM_OPCODE_VERSION_V8
+    {
         return Err(invalid(format!(
             "unsupported encoding VM opcode version {opcode_version}"
         )));
@@ -298,6 +386,49 @@ pub fn decode_encoding_program(
                     fields,
                 });
             }
+            ENCODING_VM_OP_INPUT_FIELDS => {
+                if opcode_version != SEMANTIC_VM_OPCODE_VERSION_V6
+                    && opcode_version != SEMANTIC_VM_OPCODE_VERSION_V8
+                {
+                    return Err(invalid(
+                        "encoding VM input-field opcode requires opcode version 6",
+                    ));
+                }
+                let base_input = take_u8(&mut pc)?;
+                let (width, endian) = read_header(&mut pc)?;
+                let count = take_u8(&mut pc)?;
+                let fields = decode_fields(&mut pc, count, &take_u8)?;
+                steps.push(EncodingStep::InputFields {
+                    base_input,
+                    width,
+                    endian,
+                    fields,
+                });
+            }
+            ENCODING_VM_OP_INTEGER_TO_IEEE754 => {
+                if opcode_version != SEMANTIC_VM_OPCODE_VERSION_V8 {
+                    return Err(invalid(
+                        "encoding VM IEEE-754 opcode requires opcode version 8",
+                    ));
+                }
+                let input = take_u8(&mut pc)?;
+                let width = take_u8(&mut pc)?;
+                validate_ieee754_width(width)?;
+                let endian = match take_u8(&mut pc)? {
+                    0 => EncodingEndian::Big,
+                    1 => EncodingEndian::Little,
+                    value => {
+                        return Err(invalid(format!(
+                            "encoding VM endian tag {value} is invalid"
+                        )))
+                    }
+                };
+                steps.push(EncodingStep::IntegerToIeee754 {
+                    input,
+                    width,
+                    endian,
+                });
+            }
             _ => {
                 return Err(invalid(format!(
                     "invalid encoding VM opcode 0x{opcode:02x}"
@@ -357,7 +488,81 @@ fn compile_encoding_program_unchecked_validation(
                     field_range_tag(field)?;
                 }
             }
+            EncodingStep::InputFields { width, fields, .. } => {
+                validate_fields(*width, fields)?;
+            }
+            EncodingStep::IntegerToIeee754 { width, .. } => {
+                validate_ieee754_width(*width)?;
+            }
         }
     }
     Ok(())
+}
+
+fn validate_fields(width: u8, fields: &[EncodingFieldSpec]) -> Result<(), OpcpuCodecError> {
+    width_mask(width)?;
+    if fields.is_empty() || fields.len() > u8::MAX as usize {
+        return Err(invalid("encoding VM field step has invalid field count"));
+    }
+    let mut occupied = 0_u64;
+    for field in fields {
+        if field.bits == 0 || u16::from(field.shift) + u16::from(field.bits) > u16::from(width) * 8
+        {
+            return Err(invalid("encoding VM field exceeds its output unit"));
+        }
+        let mask = ((1_u64 << field.bits) - 1) << field.shift;
+        if occupied & mask != 0 {
+            return Err(invalid("encoding VM fields overlap"));
+        }
+        occupied |= mask;
+        if field.min > field.max
+            || field.min < -(1_i64 << (field.bits - 1))
+            || field.max as i128 > (1_i128 << field.bits) - 1
+        {
+            return Err(invalid("encoding VM field range exceeds its bit width"));
+        }
+        field_range_tag(field)?;
+    }
+    Ok(())
+}
+
+fn encode_fields(out: &mut Vec<u8>, fields: &[EncodingFieldSpec]) -> Result<(), OpcpuCodecError> {
+    for field in fields {
+        out.extend_from_slice(&[field.input, field.shift, field.bits]);
+        out.push(field_range_tag(field)?);
+    }
+    Ok(())
+}
+
+fn decode_fields(
+    pc: &mut usize,
+    count: u8,
+    take_u8: &impl Fn(&mut usize) -> Result<u8, OpcpuCodecError>,
+) -> Result<Vec<EncodingFieldSpec>, OpcpuCodecError> {
+    let mut fields = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let input = take_u8(pc)?;
+        let shift = take_u8(pc)?;
+        let bits = take_u8(pc)?;
+        if bits == 0 || bits > 32 {
+            return Err(invalid("encoding VM field bit width is invalid"));
+        }
+        let (min, max) = match take_u8(pc)? {
+            0 => (0, ((1_i128 << bits) - 1) as i64),
+            1 => (-(1_i64 << (bits - 1)), (1_i64 << (bits - 1)) - 1),
+            value => {
+                return Err(invalid(format!(
+                    "encoding VM field range tag {value} is invalid"
+                )))
+            }
+        };
+        fields.push(EncodingFieldSpec {
+            input,
+            shift,
+            bits,
+            min,
+            max,
+        });
+    }
+    Ok(fields)
 }

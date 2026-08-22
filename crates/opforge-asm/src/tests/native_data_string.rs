@@ -28,7 +28,7 @@ fn expected_data_string_bytes() -> Vec<u8> {
     expected.extend_from_slice(b"abcd");
     expected.extend_from_slice(b"Labels can be up to 32 characters && must start with an alpha.");
     expected.extend_from_slice(&[13, 10, 9, 0x2a, 0x2b, 0]);
-    expected.extend_from_slice(&[b'\\', b'\'', b'\'']);
+    expected.extend_from_slice(b"\\''");
     expected.extend_from_slice(&[3]);
     expected.extend_from_slice(b"red");
     expected.extend_from_slice(&[4]);

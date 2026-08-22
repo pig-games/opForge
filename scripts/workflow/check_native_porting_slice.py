@@ -29,13 +29,28 @@ def parse_metadata(text: str) -> tuple[dict | None, list[str]]:
         return None, [f"malformed native slice metadata: {err}"]
 
 
-def discover_metadata(paths: list[str]) -> str | None:
+def discover_metadata(paths: list[str], root: Path | None = None) -> str | None:
     candidates = [
         path
         for path in paths
         if path.startswith("documentation/plans/slices/") and path.endswith(".toml")
     ]
-    return candidates[0] if len(candidates) == 1 else None
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        return None
+
+    base = root or Path(".")
+    complete_candidates: list[str] = []
+    for candidate in candidates:
+        try:
+            text = (base / candidate).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        data, parse_errors = parse_metadata(text)
+        if data is not None and not parse_errors and not validate_metadata(data):
+            complete_candidates.append(candidate)
+    return complete_candidates[0] if len(complete_candidates) == 1 else None
 
 
 def validate_metadata(data: dict) -> list[str]:
@@ -108,7 +123,7 @@ def main() -> int:
         return 0
     metadata_path = args.metadata
     if not metadata_path:
-        metadata_path = discover_metadata(paths)
+        metadata_path = discover_metadata(paths, root)
     if not metadata_path:
         print("FAIL: native assembly changes require --metadata", file=sys.stderr)
         return 1

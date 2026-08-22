@@ -289,7 +289,11 @@ impl<'a> AsmLine<'a> {
             Some(cpu) => {
                 self.cpu = cpu;
                 self.reset_cpu_runtime_profile();
-                self.register_checker = build_register_checker(self.registry, self.cpu);
+                self.register_checker = self
+                    .opthread_execution_model
+                    .as_ref()
+                    .and_then(|model| build_package_register_checker(model, self.cpu))
+                    .unwrap_or_else(|| build_register_checker(self.registry, self.cpu));
                 LineStatus::Ok
             }
             None => {

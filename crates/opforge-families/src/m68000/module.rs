@@ -46,6 +46,22 @@ impl CpuModule for M68000CpuModule {
         state::RUNTIME_DIRECTIVE_IDS
     }
 
+    fn form_mnemonics(&self) -> Vec<String> {
+        crate::m68080::package_programs::legacy_rejection_form_mnemonics()
+    }
+
+    fn instruction_programs(
+        &self,
+    ) -> Result<Vec<package::VmProgramDescriptor>, package::OpcpuCodecError> {
+        Ok(crate::m68080::package_programs::legacy_rejection_instruction_programs(CPU_ID.as_str()))
+    }
+
+    fn mode_selectors(
+        &self,
+    ) -> Result<Vec<package::ModeSelectorDescriptor>, package::OpcpuCodecError> {
+        Ok(crate::m68080::package_programs::legacy_rejection_mode_selectors(CPU_ID.as_str()))
+    }
+
     fn handler(&self) -> Box<dyn CpuHandlerDyn> {
         Box::new(M68000CpuHandler::new())
     }

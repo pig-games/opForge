@@ -19,7 +19,27 @@ pub(super) struct SelectorInput<'a> {
     pub(super) shape_key: String,
     pub(super) expr0: Option<&'a Expr>,
     pub(super) expr1: Option<&'a Expr>,
+    pub(super) extra_exprs: &'a [Expr],
     pub(super) force: Option<SelectorOperandForce>,
+}
+
+impl<'a> SelectorInput<'a> {
+    pub(super) fn expr(&self, index: usize) -> Option<&'a Expr> {
+        match index {
+            0 => self.expr0,
+            1 => self.expr1,
+            _ => self.extra_exprs.get(index - 2).map(|expr| match expr {
+                Expr::Immediate(inner, _) => inner.as_ref(),
+                expr => expr,
+            }),
+        }
+    }
+
+    pub(super) fn expr_count(&self) -> usize {
+        usize::from(self.expr0.is_some())
+            + usize::from(self.expr1.is_some())
+            + self.extra_exprs.len()
+    }
 }
 
 pub(super) struct SelectorExprContext<'a> {
@@ -45,7 +65,8 @@ impl<'a> SelectorExprContext<'a> {
         assembler_ctx: &'a dyn AssemblerContext,
     ) -> Self {
         let use_portable_eval =
-            crate::rollout::package_runtime_default_enabled_for_family(resolved.family_id.as_str());
+            crate::rollout::package_runtime_default_enabled_for_family(resolved.family_id.as_str())
+                && !assembler_ctx.force_host_expression_eval(resolved.family_id.as_str());
         Self {
             model,
             resolved,
@@ -83,6 +104,78 @@ impl<'a> SelectorExprContext<'a> {
         if !self.use_portable_eval {
             return Ok(expr_has_unstable_symbols(expr, self.assembler_ctx));
         }
+        self.portable_structural_expr_has_unstable_symbols(expr)
+    }
+
+    fn portable_structural_expr_has_unstable_symbols(&self, expr: &Expr) -> Result<bool, String> {
+        let child_is_unstable =
+            |child: &Expr| self.portable_structural_expr_has_unstable_symbols(child);
+        match expr {
+            Expr::List(items, _) | Expr::Tuple(items, _) => {
+                for item in items {
+                    if child_is_unstable(item)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+            Expr::Index { base, index, .. } => {
+                Ok(child_is_unstable(base)? || child_is_unstable(index)?)
+            }
+            Expr::Member { base, .. }
+            | Expr::Immediate(base, _)
+            | Expr::Indirect(base, _)
+            | Expr::IndirectLong(base, _)
+            | Expr::Unary { expr: base, .. } => child_is_unstable(base),
+            Expr::StructLiteral { fields, .. } => {
+                for (_, value) in fields {
+                    if child_is_unstable(value)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+            Expr::Call { args, .. } => {
+                for argument in args {
+                    if child_is_unstable(argument)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+            Expr::Ternary {
+                cond,
+                then_expr,
+                else_expr,
+                ..
+            } => Ok(child_is_unstable(cond)?
+                || child_is_unstable(then_expr)?
+                || child_is_unstable(else_expr)?),
+            Expr::Binary { left, right, .. } => {
+                Ok(child_is_unstable(left)? || child_is_unstable(right)?)
+            }
+            Expr::Range {
+                start, end, step, ..
+            } => {
+                if child_is_unstable(start)? || child_is_unstable(end)? {
+                    return Ok(true);
+                }
+                match step.as_deref() {
+                    Some(step) => child_is_unstable(step),
+                    None => Ok(false),
+                }
+            }
+            Expr::Number(_, _)
+            | Expr::Register(_, _)
+            | Expr::Placeholder(_)
+            | Expr::String(_, _)
+            | Expr::Dollar(_)
+            | Expr::Error(_, _) => Ok(false),
+            Expr::Identifier(_, _) => self.portable_scalar_expr_has_unstable_symbols(expr),
+        }
+    }
+
+    fn portable_scalar_expr_has_unstable_symbols(&self, expr: &Expr) -> Result<bool, String> {
         match crate::vm_opcore::expression_has_unstable_symbols_for_assembler(
             self.model,
             self.resolved.cpu_id.as_str(),
@@ -215,7 +308,6 @@ impl HierarchyExecutionModel {
         operands: &[Expr],
         ctx: &dyn AssemblerContext,
     ) -> Result<Option<Vec<VmEncodeCandidate>>, RuntimeBridgeError> {
-        let expr_ctx = SelectorExprContext::new(self, resolved, ctx);
         let family_input = match mos6502_selector_input_from_exprs(mnemonic, operands) {
             Ok(Some(input)) => input,
             Ok(None) | Err(_) => return Ok(None),
@@ -224,8 +316,20 @@ impl HierarchyExecutionModel {
             shape_key: family_input.shape_key,
             expr0: family_input.expr0.as_ref(),
             expr1: family_input.expr1.as_ref(),
+            extra_exprs: &[],
             force: family_input.force.map(selector_operand_force_from_mos6502),
         };
+        self.select_candidates_from_package_shape(resolved, mnemonic, input, ctx)
+    }
+
+    pub(super) fn select_candidates_from_package_shape(
+        &self,
+        resolved: &ResolvedHierarchy,
+        mnemonic: &str,
+        input: SelectorInput<'_>,
+        ctx: &dyn AssemblerContext,
+    ) -> Result<Option<Vec<VmEncodeCandidate>>, RuntimeBridgeError> {
+        let expr_ctx = SelectorExprContext::new(self, resolved, ctx);
         if input.shape_key.is_empty() {
             return Ok(None);
         }
@@ -268,6 +372,9 @@ impl HierarchyExecutionModel {
                 continue;
             };
             saw_selector = true;
+            // The outer loop preserves dialect -> CPU -> family precedence.
+            // Within one owner, later diagnostic bands are more specific.
+            let mut owner_candidate_error: Option<(u16, String)> = None;
 
             let has_wider = selectors.iter().any(|entry| {
                 entry.width_rank > 1
@@ -306,11 +413,17 @@ impl HierarchyExecutionModel {
                     }
                     Ok(None) => {}
                     Err(message) => {
-                        if candidate_error.is_none() {
-                            candidate_error = Some(message);
+                        if owner_candidate_error
+                            .as_ref()
+                            .is_none_or(|(priority, _)| selector.priority > *priority)
+                        {
+                            owner_candidate_error = Some((selector.priority, message));
                         }
                     }
                 }
+            }
+            if candidate_error.is_none() {
+                candidate_error = owner_candidate_error.map(|(_, message)| message);
             }
         }
 
@@ -336,6 +449,34 @@ impl HierarchyExecutionModel {
 
         if let Some(message) = candidate_error {
             return Err(RuntimeBridgeError::Resolve(message));
+        }
+
+        // A zero-operand instruction has one unambiguous neutral candidate.
+        // Packages therefore do not need to repeat an MSEL row for every
+        // fixed instruction; the existence of its implied TABL entry is the
+        // complete declaration.
+        if input.shape_key.eq_ignore_ascii_case("implied") {
+            let implied_mode = "implied";
+            if let Some(mode_id) = self.interned_id(implied_mode) {
+                let has_program = self
+                    .scoped_owner_lookup_order(resolved)
+                    .into_iter()
+                    .filter_map(|(owner_tag, owner_id)| owner_id.map(|id| (owner_tag, id)))
+                    .any(|(owner_tag, owner_id)| {
+                        self.core.vm_programs.contains_key(&(
+                            owner_tag,
+                            owner_id,
+                            mnemonic_id,
+                            mode_id,
+                        ))
+                    });
+                if has_program {
+                    return Ok(Some(vec![VmEncodeCandidate {
+                        mode_key: implied_mode.to_string(),
+                        operand_bytes: Vec::new(),
+                    }]));
+                }
+            }
         }
 
         Ok(None)

@@ -218,10 +218,12 @@ pub fn build_hierarchy_chunks_from_registry(
         operand_record_programs.extend(registry.family_operand_record_programs(*family)?);
     }
     for cpu in registry.cpu_ids() {
+        value_programs.extend(registry.cpu_value_programs(cpu)?);
         operand_record_programs.extend(registry.cpu_operand_record_programs(cpu)?);
     }
 
     let mut registers = Vec::new();
+    let mut register_encodings = Vec::new();
     for family in &family_ids {
         for register_id in registry.family_register_ids(*family) {
             registers.push(ScopedRegisterDescriptor {
@@ -229,6 +231,7 @@ pub fn build_hierarchy_chunks_from_registry(
                 id: register_id,
             });
         }
+        register_encodings.extend(registry.family_register_encodings(*family));
     }
     for cpu in registry.cpu_ids() {
         for register_id in registry.cpu_register_ids(cpu) {
@@ -236,6 +239,13 @@ pub fn build_hierarchy_chunks_from_registry(
                 owner: ScopedOwner::Cpu(cpu.as_str().to_string()),
                 id: register_id,
             });
+        }
+        register_encodings.extend(registry.cpu_register_encodings(cpu));
+    }
+    for family in &family_ids {
+        for dialect in registry.dialect_ids_for_family(*family) {
+            register_encodings
+                .extend(registry.dialect_register_encodings(*family, dialect.as_str()));
         }
     }
 
@@ -273,16 +283,22 @@ pub fn build_hierarchy_chunks_from_registry(
     let mut selector_programs: Vec<SelectorProgramDescriptor> = Vec::new();
     let mut state_programs: Vec<StateProgramDescriptor> = Vec::new();
     for family in &family_ids {
+        tables.extend(registry.family_instruction_programs(*family)?);
+        selectors.extend(registry.family_mode_selectors(*family)?);
         semantic_programs.extend(registry.family_semantic_programs(*family)?);
         selector_programs.extend(registry.family_selector_programs(*family)?);
         state_programs.extend(registry.family_state_programs(*family)?);
     }
     for cpu in registry.cpu_ids() {
+        tables.extend(registry.cpu_instruction_programs(cpu)?);
+        selectors.extend(registry.cpu_mode_selectors(cpu)?);
         selector_programs.extend(registry.cpu_selector_programs(cpu)?);
         state_programs.extend(registry.cpu_state_programs(cpu)?);
     }
     for family in &family_ids {
         for dialect_id in registry.dialect_ids_for_family(*family) {
+            tables.extend(registry.dialect_instruction_programs(*family, dialect_id.as_str())?);
+            selectors.extend(registry.dialect_mode_selectors(*family, dialect_id.as_str())?);
             selector_programs
                 .extend(registry.dialect_selector_programs(*family, dialect_id.as_str())?);
         }
@@ -762,6 +778,7 @@ pub fn build_hierarchy_chunks_from_registry(
         &mut tables,
         &mut selectors,
     );
+    package::canonicalize_register_encodings(&mut register_encodings);
     canonicalize_token_policies(&mut token_policies);
     canonicalize_tokenizer_vm_programs(&mut tokenizer_vm_programs);
     canonicalize_parser_contracts(&mut parser_contracts);
@@ -791,6 +808,7 @@ pub fn build_hierarchy_chunks_from_registry(
         cpus,
         dialects,
         registers,
+        register_encodings,
         forms,
         tables,
         semantic_programs,

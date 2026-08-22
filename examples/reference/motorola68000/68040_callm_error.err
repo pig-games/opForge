@@ -3,7 +3,7 @@ Assembly failed:
     3 | .org $1000
     4 | 
     5 |     CALLM #5,($1234).W
-      |                       ^
+      |               ^
     6 | 
     7 | .end
 ERROR: CALLM is not supported on m68040

@@ -17,6 +17,12 @@ the manifest and its decision in a later scoped item.  The routine-group
 descriptions below assign each derived routine to its module's declared
 responsibility group; they do not declare every private routine a public API.
 
+Item 13 refreshed the audited hashes for `opasm.amigaos.assembly_driver`,
+`opasm.amigaos.engine`, and `opcore.amigaos.expr_bridge` after
+semantics-preserving explicit branch-width corrections required by stricter
+resolved-branch assembly. Their routines, imports, sections, diagnostic paths,
+ownership decisions, and dependency directions are unchanged.
+
 ## Dependency direction
 
 ```text

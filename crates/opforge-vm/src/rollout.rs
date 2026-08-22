@@ -92,8 +92,8 @@ pub const FAMILY_RUNTIME_ROLLOUT: &[FamilyRuntimeRollout] = &[
     },
     FamilyRuntimeRollout {
         family_id: "motorola68000",
-        mode: FamilyRuntimeMode::StagedVerification,
-        migration_checklist: "phase6-motorola68000-runtime-staged-verification",
+        mode: FamilyRuntimeMode::Authoritative,
+        migration_checklist: "item13-motorola68000-package-runtime-completion",
     },
 ];
 
@@ -110,6 +110,17 @@ pub fn package_runtime_default_enabled_for_family(family_id: &str) -> bool {
         family_runtime_mode(family_id),
         FamilyRuntimeMode::Authoritative
     )
+}
+
+/// Families whose completed serialized instruction surface may run before any
+/// family parser or encoder callback is consulted.
+const FAMILY_PRE_CALLBACK_RUNTIME: &[&str] = &["motorola68000"];
+
+pub fn package_runtime_pre_callback_enabled_for_family(family_id: &str) -> bool {
+    package_runtime_default_enabled_for_family(family_id)
+        && FAMILY_PRE_CALLBACK_RUNTIME
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(family_id))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

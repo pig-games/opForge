@@ -3,7 +3,9 @@
 
 //! CPU-neutral runtime-position and deferred-value programs carried by `SEMV` v4.
 
-use super::{EncodingEndian, OpcpuCodecError, SEMANTIC_VM_OPCODE_VERSION_V4};
+use super::{
+    EncodingEndian, OpcpuCodecError, SEMANTIC_VM_OPCODE_VERSION_V4, SEMANTIC_VM_OPCODE_VERSION_V7,
+};
 
 const OP_PROJECT: u8 = 0x01;
 const OP_END: u8 = 0xff;
@@ -45,6 +47,27 @@ pub struct FixupEncodingStep {
     pub range: FixupRange,
     pub unresolved: UnresolvedValuePolicy,
     pub relocation: PortableRelocationKind,
+    pub transform: FixupTransform,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FixupTransform {
+    Identity,
+    AlignedBitOr {
+        alignment: u32,
+        mask: u32,
+    },
+    RangeMap {
+        alignment: u32,
+        mappings: Vec<FixupRangeMapping>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FixupRangeMapping {
+    pub min: i64,
+    pub max: i64,
+    pub adjustment: i64,
 }
 
 fn invalid(detail: impl Into<String>) -> OpcpuCodecError {
@@ -88,6 +111,25 @@ fn decode_range(tag: u8) -> Result<FixupRange, OpcpuCodecError> {
 }
 
 pub fn compile_fixup_program(steps: &[FixupEncodingStep]) -> Result<Vec<u8>, OpcpuCodecError> {
+    if steps
+        .iter()
+        .any(|step| step.transform != FixupTransform::Identity)
+    {
+        return Err(invalid("fixup transforms require fixup VM v7"));
+    }
+    compile_fixup_program_for_version(SEMANTIC_VM_OPCODE_VERSION_V4, steps)
+}
+
+pub fn compile_projected_fixup_program(
+    steps: &[FixupEncodingStep],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    compile_fixup_program_for_version(SEMANTIC_VM_OPCODE_VERSION_V7, steps)
+}
+
+fn compile_fixup_program_for_version(
+    version: u16,
+    steps: &[FixupEncodingStep],
+) -> Result<Vec<u8>, OpcpuCodecError> {
     if steps.is_empty() {
         return Err(invalid("fixup encoding program must not be empty"));
     }
@@ -146,17 +188,91 @@ pub fn compile_fixup_program(steps: &[FixupEncodingStep]) -> Result<Vec<u8>, Opc
                 PortableRelocationKind::Absolute => 1,
             },
         ]);
+        if version == SEMANTIC_VM_OPCODE_VERSION_V7 {
+            encode_transform(&mut out, step.width, &step.transform)?;
+        }
     }
     out.push(OP_END);
-    validate_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V4, &out)?;
+    validate_fixup_program(version, &out)?;
     Ok(out)
+}
+
+fn validate_alignment(alignment: u32) -> Result<(), OpcpuCodecError> {
+    if alignment == 0 || !alignment.is_power_of_two() {
+        return Err(invalid(
+            "fixup transform alignment must be a nonzero power of two",
+        ));
+    }
+    Ok(())
+}
+
+fn encode_transform(
+    out: &mut Vec<u8>,
+    width: u8,
+    transform: &FixupTransform,
+) -> Result<(), OpcpuCodecError> {
+    match transform {
+        FixupTransform::Identity => out.push(0),
+        FixupTransform::AlignedBitOr { alignment, mask } => {
+            validate_alignment(*alignment)?;
+            let width_mask = match width {
+                1 => 0xff,
+                2 => 0xffff,
+                4 => u32::MAX,
+                _ => unreachable!("fixup width already validated"),
+            };
+            if mask & !width_mask != 0 {
+                return Err(invalid("fixup transform bit mask exceeds output width"));
+            }
+            out.push(1);
+            out.extend_from_slice(&alignment.to_le_bytes());
+            out.extend_from_slice(&mask.to_le_bytes());
+        }
+        FixupTransform::RangeMap {
+            alignment,
+            mappings,
+        } => {
+            validate_alignment(*alignment)?;
+            let count = u8::try_from(mappings.len())
+                .map_err(|_| invalid("fixup range-map count exceeds u8"))?;
+            if count == 0 {
+                return Err(invalid("fixup range-map transform must not be empty"));
+            }
+            let mut previous_max = None;
+            for mapping in mappings {
+                if mapping.min > mapping.max || previous_max.is_some_and(|max| mapping.min <= max) {
+                    return Err(invalid(
+                        "fixup range-map entries must be ordered, nonempty, and disjoint",
+                    ));
+                }
+                mapping
+                    .min
+                    .checked_add(mapping.adjustment)
+                    .and_then(|_| mapping.max.checked_add(mapping.adjustment))
+                    .ok_or_else(|| invalid("fixup range-map adjustment overflows i64"))?;
+                previous_max = Some(mapping.max);
+            }
+            out.push(2);
+            out.extend_from_slice(&alignment.to_le_bytes());
+            out.push(count);
+            for mapping in mappings {
+                out.extend_from_slice(&mapping.min.to_le_bytes());
+                out.extend_from_slice(&mapping.max.to_le_bytes());
+                out.extend_from_slice(&mapping.adjustment.to_le_bytes());
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn decode_fixup_program(
     version: u16,
     bytes: &[u8],
 ) -> Result<Vec<FixupEncodingStep>, OpcpuCodecError> {
-    if version != SEMANTIC_VM_OPCODE_VERSION_V4 {
+    if !matches!(
+        version,
+        SEMANTIC_VM_OPCODE_VERSION_V4 | SEMANTIC_VM_OPCODE_VERSION_V7
+    ) {
         return Err(invalid(format!(
             "unsupported fixup encoding VM version {version}"
         )));
@@ -176,6 +292,24 @@ pub fn decode_fixup_program(
             .filter(|end| *end <= bytes.len())
             .ok_or_else(|| invalid("fixup encoding i32 is truncated"))?;
         let value = i32::from_le_bytes(bytes[*pc..end].try_into().expect("four bytes"));
+        *pc = end;
+        Ok(value)
+    };
+    let take_u32 = |pc: &mut usize| -> Result<u32, OpcpuCodecError> {
+        let end = pc
+            .checked_add(4)
+            .filter(|end| *end <= bytes.len())
+            .ok_or_else(|| invalid("fixup encoding u32 is truncated"))?;
+        let value = u32::from_le_bytes(bytes[*pc..end].try_into().expect("four bytes"));
+        *pc = end;
+        Ok(value)
+    };
+    let take_i64 = |pc: &mut usize| -> Result<i64, OpcpuCodecError> {
+        let end = pc
+            .checked_add(8)
+            .filter(|end| *end <= bytes.len())
+            .ok_or_else(|| invalid("fixup encoding i64 is truncated"))?;
+        let value = i64::from_le_bytes(bytes[*pc..end].try_into().expect("eight bytes"));
         *pc = end;
         Ok(value)
     };
@@ -226,6 +360,51 @@ pub fn decode_fixup_program(
                     1 => PortableRelocationKind::Absolute,
                     _ => return Err(invalid("fixup relocation tag is invalid")),
                 };
+                let transform = if version == SEMANTIC_VM_OPCODE_VERSION_V7 {
+                    match take_u8(&mut pc)? {
+                        0 => FixupTransform::Identity,
+                        1 => {
+                            let alignment = take_u32(&mut pc)?;
+                            let mask = take_u32(&mut pc)?;
+                            let transform = FixupTransform::AlignedBitOr { alignment, mask };
+                            let mut encoded = Vec::new();
+                            encode_transform(&mut encoded, width, &transform)?;
+                            transform
+                        }
+                        2 => {
+                            let alignment = take_u32(&mut pc)?;
+                            validate_alignment(alignment)?;
+                            let count = take_u8(&mut pc)?;
+                            if count == 0 {
+                                return Err(invalid("fixup range-map transform must not be empty"));
+                            }
+                            let mut mappings = Vec::with_capacity(count as usize);
+                            for _ in 0..count {
+                                mappings.push(FixupRangeMapping {
+                                    min: take_i64(&mut pc)?,
+                                    max: take_i64(&mut pc)?,
+                                    adjustment: take_i64(&mut pc)?,
+                                });
+                            }
+                            let mut encoded = Vec::new();
+                            encode_transform(
+                                &mut encoded,
+                                width,
+                                &FixupTransform::RangeMap {
+                                    alignment,
+                                    mappings: mappings.clone(),
+                                },
+                            )?;
+                            FixupTransform::RangeMap {
+                                alignment,
+                                mappings,
+                            }
+                        }
+                        _ => return Err(invalid("fixup transform tag is invalid")),
+                    }
+                } else {
+                    FixupTransform::Identity
+                };
                 let (min, max) = range_bounds(width, range)?;
                 if let UnresolvedValuePolicy::Placeholder(value) = unresolved {
                     let value = i64::from(value);
@@ -241,6 +420,7 @@ pub fn decode_fixup_program(
                     range,
                     unresolved,
                     relocation,
+                    transform,
                 });
             }
             opcode => {

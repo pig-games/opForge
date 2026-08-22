@@ -21,8 +21,9 @@ use crate::runtime_model::{
     build_execution_model_for_request as build_opthread_execution_model_for_request,
 };
 use crate::state::{
-    build_register_checker, ActiveStructDefinition, AsmCpuModeState, AsmDiagnosticsState,
-    AsmLayoutState, AsmOutputState, AsmSymbolScopeState, EncodingScopeState,
+    build_package_register_checker, build_register_checker, ActiveStructDefinition,
+    AsmCpuModeState, AsmDiagnosticsState, AsmLayoutState, AsmOutputState, AsmSymbolScopeState,
+    EncodingScopeState,
 };
 #[cfg(not(feature = "vm-runtime-only"))]
 use families::intel8080::module::Intel8080FamilyOperands;
@@ -48,7 +49,6 @@ use opcore::expression::{
 use opcore::imports::module_import_from_parser;
 use opcore::parser as asm_parser;
 use opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError};
-#[cfg(not(feature = "vm-runtime-only"))]
 use opcore::parser::{BinaryOp, UnaryOp};
 use opcore::struct_table::StructTable;
 use opcore::tokenizer::{ConditionalKind, Span};
@@ -396,8 +396,29 @@ impl<'a> AsmLine<'a> {
         registry: &'a ModuleRegistry,
         root_metadata: RootMetadata,
     ) -> Self {
+        let opthread_execution_model = build_opthread_execution_model(registry, cpu);
+        Self::with_cpu_metadata_and_execution_model(
+            symbols,
+            cpu,
+            registry,
+            root_metadata,
+            opthread_execution_model,
+        )
+    }
+
+    pub(crate) fn with_cpu_metadata_and_execution_model(
+        symbols: &'a mut SymbolTable,
+        cpu: CpuType,
+        registry: &'a ModuleRegistry,
+        root_metadata: RootMetadata,
+        opthread_execution_model: Option<HierarchyExecutionModel>,
+    ) -> Self {
         let text_encoding_registry = TextEncodingRegistry::new();
         let active_text_encoding = text_encoding_registry.default_encoding_name().to_string();
+        let register_checker = opthread_execution_model
+            .as_ref()
+            .and_then(|model| build_package_register_checker(model, cpu))
+            .unwrap_or_else(|| build_register_checker(registry, cpu));
         Self {
             symbols,
             registry,
@@ -424,7 +445,7 @@ impl<'a> AsmLine<'a> {
             mnemonic: None,
             current_unit_symbol: None,
             cpu,
-            register_checker: build_register_checker(registry, cpu),
+            register_checker,
             runtime_line_router: None,
             runtime_package_cache_key: String::new(),
             runtime_parse_cache: None,
@@ -432,12 +453,16 @@ impl<'a> AsmLine<'a> {
             profile_phase: AsmProfilePhase::Pass1,
             runtime_processing_traces: Vec::new(),
             runtime_lockstep_report: LockstepReport::default(),
-            cpu_mode: AsmCpuModeState::new(registry, cpu),
+            cpu_mode: AsmCpuModeState::new_with_model(
+                registry,
+                cpu,
+                opthread_execution_model.as_ref(),
+            ),
             opthread_expr_eval_opt_in_families: expr_eval_opt_in_families_from_env(),
             opthread_expr_eval_force_host_families: expr_eval_force_host_families_from_env(),
             opthread_expr_parser_opt_in_families: expr_parser_opt_in_families_from_env(),
             opthread_expr_parser_force_host_families: expr_parser_force_host_families_from_env(),
-            opthread_execution_model: build_opthread_execution_model(registry, cpu),
+            opthread_execution_model,
             text_encoding_registry,
             active_text_encoding,
             encoding_scope_stack: Vec::new(),
@@ -452,6 +477,11 @@ impl<'a> AsmLine<'a> {
             .unwrap_or_default();
         self.opthread_execution_model =
             build_opthread_execution_model_for_request(self.registry, self.cpu, opasm_package_path);
+        self.register_checker = self
+            .opthread_execution_model
+            .as_ref()
+            .and_then(|model| build_package_register_checker(model, self.cpu))
+            .unwrap_or_else(|| build_register_checker(self.registry, self.cpu));
     }
 
     fn portable_expr_runtime_enabled_for_family(&self, family_id: &str) -> bool {
@@ -779,7 +809,11 @@ impl<'a> AsmLine<'a> {
     }
 
     fn reset_cpu_runtime_profile(&mut self) {
-        self.cpu_mode = AsmCpuModeState::new(self.registry, self.cpu);
+        self.cpu_mode = AsmCpuModeState::new_with_model(
+            self.registry,
+            self.cpu,
+            self.opthread_execution_model.as_ref(),
+        );
     }
 
     fn reset_text_encoding_profile(&mut self) {
@@ -1139,7 +1173,6 @@ impl<'a> AsmLine<'a> {
         }
     }
 
-    #[cfg(not(feature = "vm-runtime-only"))]
     fn hunk_abs32_output_fixup(
         &self,
         offset: u32,
@@ -1153,16 +1186,6 @@ impl<'a> AsmLine<'a> {
             encoded_addend,
             target_section,
         ))
-    }
-
-    #[cfg(feature = "vm-runtime-only")]
-    fn hunk_abs32_output_fixup(
-        &self,
-        _offset: u32,
-        _encoded_addend: u32,
-        _target_section: String,
-    ) -> Option<OutputFixupRecord> {
-        None
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
@@ -1344,7 +1367,6 @@ impl<'a> AsmLine<'a> {
         }
     }
 
-    #[cfg(not(feature = "vm-runtime-only"))]
     fn resolve_symbol_name_for_relocation(&self, name: &str) -> Option<String> {
         match self.resolve_scoped_name(name) {
             Ok(Some(resolved)) => Some(resolved),
@@ -1357,7 +1379,6 @@ impl<'a> AsmLine<'a> {
         }
     }
 
-    #[cfg(not(feature = "vm-runtime-only"))]
     fn resolved_symbol_section_name(&self, resolved_name: &str) -> Option<String> {
         if let Some(section_name) = self.layout.section_symbol_sections.get(resolved_name) {
             return Some(section_name.clone());
@@ -1377,11 +1398,16 @@ impl<'a> AsmLine<'a> {
         None
     }
 
-    #[cfg(not(feature = "vm-runtime-only"))]
     fn hunk_abs32_target_section_for_expr(&self, expr: &Expr) -> Option<String> {
         match expr {
             Expr::Identifier(name, _) => {
-                let resolved_name = self.resolve_symbol_name_for_relocation(name)?;
+                let relocation_name = name
+                    .rsplit_once('.')
+                    .filter(|(_, field)| {
+                        field.eq_ignore_ascii_case("W") || field.eq_ignore_ascii_case("L")
+                    })
+                    .map_or(name.as_str(), |(base, _)| base);
+                let resolved_name = self.resolve_symbol_name_for_relocation(relocation_name)?;
                 if self
                     .layout
                     .absolute_constant_symbols
@@ -1399,6 +1425,11 @@ impl<'a> AsmLine<'a> {
             | Expr::Immediate(inner, _)
             | Expr::Indirect(inner, _)
             | Expr::IndirectLong(inner, _) => self.hunk_abs32_target_section_for_expr(inner),
+            Expr::Member { base, field, .. }
+                if field.eq_ignore_ascii_case("W") || field.eq_ignore_ascii_case("L") =>
+            {
+                self.hunk_abs32_target_section_for_expr(base)
+            }
             Expr::Binary {
                 op: BinaryOp::Add,
                 left,
@@ -2800,6 +2831,18 @@ impl<'a> AsmLine<'a> {
             Expr::StructLiteral { fields, .. } => fields
                 .iter()
                 .all(|(_, value)| self.expr_is_absolute_constant_symbol_expr(value)),
+            Expr::Binary {
+                op: BinaryOp::Subtract,
+                left,
+                right,
+                ..
+            } if self
+                .hunk_abs32_target_section_for_expr(left)
+                .zip(self.hunk_abs32_target_section_for_expr(right))
+                .is_some_and(|(left_section, right_section)| left_section == right_section) =>
+            {
+                true
+            }
             Expr::Binary { left, right, .. } => {
                 self.expr_is_absolute_constant_symbol_expr(left)
                     && self.expr_is_absolute_constant_symbol_expr(right)
@@ -2823,12 +2866,29 @@ impl<'a> AsmLine<'a> {
                         self.expr_is_absolute_constant_symbol_expr(step_expr)
                     })
             }
+            Expr::Member { base, field, .. }
+                if field.eq_ignore_ascii_case("W") || field.eq_ignore_ascii_case("L") =>
+            {
+                self.expr_is_absolute_constant_symbol_expr(base)
+            }
+            Expr::Member { base, field, .. } => {
+                let Expr::Identifier(owner, _) = base.as_ref() else {
+                    return false;
+                };
+                let qualified_name = format!("{owner}.{field}");
+                let Some(resolved_name) = self.resolve_symbol_name_for_relocation(&qualified_name)
+                else {
+                    return false;
+                };
+                self.layout
+                    .absolute_constant_symbols
+                    .contains(&resolved_name)
+            }
             Expr::Error(_, _)
             | Expr::Placeholder(_)
             | Expr::Dollar(_)
             | Expr::Register(_, _)
             | Expr::Index { .. }
-            | Expr::Member { .. }
             | Expr::Call { .. } => false,
         }
     }

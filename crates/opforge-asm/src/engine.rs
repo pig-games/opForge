@@ -35,6 +35,7 @@ use types::symbol::{
     SymbolProfileStatSnapshot, SymbolTable, SymbolVisibility,
 };
 use vm::output_model::{LinkerOutputFormat, IMPLICIT_HUNK_CODE_SECTION_NAME};
+use vm::vm_opasm::HierarchyExecutionModel;
 
 fn build_default_registry_for_tests() -> ModuleRegistry {
     let mut registry = ModuleRegistry::new();
@@ -62,6 +63,7 @@ pub struct Assembler {
     pub max_loop_iterations: u32,
     pub opasm_package_path: Option<std::path::PathBuf>,
     pub runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
+    runtime_execution_model: Option<HierarchyExecutionModel>,
     runtime_parse_cache: Rc<std::cell::RefCell<RuntimeParseCache>>,
     prepared_source: Option<PreparedSource>,
     collect_runtime_traces: bool,
@@ -430,6 +432,21 @@ qualified_share={:.2}%",
         }
     }
 
+    fn prepare_stabilization_symbols(&mut self) {
+        let names = self
+            .symbols
+            .entries()
+            .iter()
+            .filter(|entry| !entry.rw)
+            .map(|entry| entry.name.clone())
+            .collect::<Vec<_>>();
+        for name in names {
+            if let Some(entry) = self.symbols.entry_mut(&name) {
+                entry.updated = false;
+            }
+        }
+    }
+
     fn capture_layout_snapshot(&self) -> LayoutStabilitySnapshot {
         let mut symbols = self
             .symbols
@@ -501,6 +518,9 @@ qualified_share={:.2}%",
         finalize_section_symbols: bool,
         loop_trace: &mut Vec<(u32, u32)>,
     ) -> PassCounts {
+        if pass_num > 1 {
+            self.prepare_stabilization_symbols();
+        }
         if self.prepared_source.is_none() {
             self.prepared_source = Some(PreparedSource::from_lines(lines));
         }
@@ -538,13 +558,20 @@ qualified_share={:.2}%",
             } else {
                 RootMetadata::default()
             };
-            let mut asm_line = AsmLine::with_cpu_and_metadata(
+            let runtime_execution_model = self.runtime_execution_model.take().or_else(|| {
+                crate::runtime_model::build_execution_model_for_request(
+                    &self.registry,
+                    self.cpu,
+                    self.opasm_package_path.as_deref(),
+                )
+            });
+            let mut asm_line = AsmLine::with_cpu_metadata_and_execution_model(
                 &mut self.symbols,
                 self.cpu,
                 &self.registry,
                 root_metadata,
+                runtime_execution_model,
             );
-            asm_line.set_runtime_package_path(self.opasm_package_path.as_deref());
             asm_line.set_runtime_line_router(self.runtime_line_router.clone());
             asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));
             asm_line.set_collect_runtime_traces(self.collect_runtime_traces);
@@ -777,6 +804,7 @@ qualified_share={:.2}%",
             self.root_metadata = asm_line.take_root_metadata();
             self.sections = asm_line.take_sections();
             self.regions = asm_line.take_regions();
+            self.runtime_execution_model = asm_line.opthread_execution_model.take();
         }
 
         let _ = diagnostics;
@@ -979,6 +1007,7 @@ qualified_share={:.2}%",
             max_loop_iterations: repetition::DEFAULT_MAX_LOOP_ITERATIONS,
             opasm_package_path: None,
             runtime_line_router: None,
+            runtime_execution_model: None,
             runtime_parse_cache: Rc::new(std::cell::RefCell::new(RuntimeParseCache::default())),
             prepared_source: None,
             collect_runtime_traces: true,
@@ -1223,8 +1252,20 @@ qualified_share={:.2}%",
         let pass1_loop_trace = self.loop_iteration_trace_pass1.clone();
         let uses_implicit_hunk_code_section =
             Self::uses_implicit_hunk_code_section(lines, self.implicit_hunk_output_requested);
-        let mut asm_line = AsmLine::with_cpu(&mut self.symbols, self.cpu, &self.registry);
-        asm_line.set_runtime_package_path(self.opasm_package_path.as_deref());
+        let runtime_execution_model = self.runtime_execution_model.take().or_else(|| {
+            crate::runtime_model::build_execution_model_for_request(
+                &self.registry,
+                self.cpu,
+                self.opasm_package_path.as_deref(),
+            )
+        });
+        let mut asm_line = AsmLine::with_cpu_metadata_and_execution_model(
+            &mut self.symbols,
+            self.cpu,
+            &self.registry,
+            RootMetadata::default(),
+            runtime_execution_model,
+        );
         asm_line.set_runtime_line_router(self.runtime_line_router.clone());
         asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));
         asm_line.set_collect_runtime_traces(self.collect_runtime_traces);
@@ -1465,6 +1506,7 @@ qualified_share={:.2}%",
         }
 
         self.cpu = asm_line.cpu;
+        self.runtime_execution_model = asm_line.opthread_execution_model.take();
         self.absolute_constant_symbols = asm_line.layout.absolute_constant_symbols.clone();
         self.concrete_section_declarations = asm_line.layout.concrete_section_declarations.clone();
         self.sections = sections;

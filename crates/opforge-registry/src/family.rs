@@ -153,8 +153,37 @@ pub trait AssemblerContext {
     fn symbols(&self) -> &SymbolTable;
     fn has_symbol(&self, name: &str) -> bool;
     fn symbol_is_finalized(&self, name: &str) -> Option<bool>;
+    fn symbol_is_absolute_constant(&self, _name: &str) -> bool {
+        false
+    }
+    fn symbol_is_target_reference(&self, _name: &str) -> bool {
+        false
+    }
+    /// Resolve an expression to a portable absolute relocation addend and
+    /// target name. Backends that do not support relocatable output leave the
+    /// default implementation in place.
+    fn absolute_relocation(&self, _expr: &Expr) -> Result<Option<(i64, String)>, String> {
+        Ok(None)
+    }
     fn current_address(&self) -> u32;
     fn pass(&self) -> u8;
+
+    fn should_defer_unstable_symbols(&self) -> bool {
+        self.pass() == 1
+    }
+
+    /// Whether an unstable branch target must remain deferred because its
+    /// nearest binding can still change while the current source scope is
+    /// being laid out.
+    fn should_defer_unstable_branch_target(&self) -> bool {
+        false
+    }
+
+    /// Whether this assembly request explicitly requires host expression
+    /// evaluation for the resolved family.
+    fn force_host_expression_eval(&self, _family_id: &str) -> bool {
+        false
+    }
 
     fn scalar_value_symbol(&self, _name: &str) -> Option<i64> {
         None
@@ -275,6 +304,54 @@ pub fn expr_has_unstable_symbols(expr: &Expr, ctx: &dyn AssemblerContext) -> boo
                     .is_some_and(|step_expr| expr_has_unstable_symbols(step_expr, ctx))
         }
         Expr::Number(_, _) | Expr::Dollar(_) | Expr::String(_, _) | Expr::Error(_, _) => false,
+    }
+}
+
+pub fn expr_has_symbol_references(expr: &Expr) -> bool {
+    match expr {
+        Expr::Identifier(_, _) | Expr::Register(_, _) => true,
+        Expr::Indirect(inner, _) | Expr::Immediate(inner, _) | Expr::IndirectLong(inner, _) => {
+            expr_has_symbol_references(inner)
+        }
+        Expr::List(items, _) | Expr::Tuple(items, _) => {
+            items.iter().any(expr_has_symbol_references)
+        }
+        Expr::Index { base, index, .. } => {
+            expr_has_symbol_references(base) || expr_has_symbol_references(index)
+        }
+        Expr::Member { base, .. } => expr_has_symbol_references(base),
+        Expr::StructLiteral { fields, .. } => fields
+            .iter()
+            .any(|(_, value)| expr_has_symbol_references(value)),
+        Expr::Call { args, .. } => args.iter().any(expr_has_symbol_references),
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+            ..
+        } => {
+            expr_has_symbol_references(cond)
+                || expr_has_symbol_references(then_expr)
+                || expr_has_symbol_references(else_expr)
+        }
+        Expr::Unary { expr, .. } => expr_has_symbol_references(expr),
+        Expr::Binary { left, right, .. } => {
+            expr_has_symbol_references(left) || expr_has_symbol_references(right)
+        }
+        Expr::Range {
+            start, end, step, ..
+        } => {
+            expr_has_symbol_references(start)
+                || expr_has_symbol_references(end)
+                || step
+                    .as_ref()
+                    .is_some_and(|expr| expr_has_symbol_references(expr))
+        }
+        Expr::Number(_, _)
+        | Expr::Dollar(_)
+        | Expr::String(_, _)
+        | Expr::Placeholder(_)
+        | Expr::Error(_, _) => false,
     }
 }
 

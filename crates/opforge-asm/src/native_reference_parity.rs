@@ -567,7 +567,7 @@ fn parse_native_reference_cases_fixture(
     fixture_path: &Path,
     fixture_text: &str,
 ) -> Result<Vec<NativeReferenceCase>, String> {
-    let parsed: serde_json::Value = serde_json::from_str(&fixture_text).map_err(|err| {
+    let parsed: serde_json::Value = serde_json::from_str(fixture_text).map_err(|err| {
         format!(
             "parse native reference fixture {} as JSON: {err}",
             fixture_path.display()
@@ -596,12 +596,12 @@ fn parse_native_reference_cases_fixture(
                 case_index
             )
         })?;
-        let asm_path = fixture_string_field(case_index, entry, "asm_path", &fixture_path)?;
-        let cpu_id = fixture_string_field(case_index, entry, "cpu_id", &fixture_path)?;
+        let asm_path = fixture_string_field(case_index, entry, "asm_path", fixture_path)?;
+        let cpu_id = fixture_string_field(case_index, entry, "cpu_id", fixture_path)?;
         let source_mode_text =
-            fixture_string_field(case_index, entry, "source_mode", &fixture_path)?;
+            fixture_string_field(case_index, entry, "source_mode", fixture_path)?;
         let command_template =
-            fixture_string_field(case_index, entry, "command_template", &fixture_path)?;
+            fixture_string_field(case_index, entry, "command_template", fixture_path)?;
         let source_mode = NativeReferenceSourceMode::from_fixture_str(source_mode_text.as_str())
             .map_err(|err| {
                 format!(

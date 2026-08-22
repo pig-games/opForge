@@ -20,6 +20,26 @@ pub(super) fn canonicalize_package_support_chunks(
     });
 }
 
+pub fn canonicalize_register_encodings(entries: &mut Vec<RegisterEncodingDescriptor>) {
+    for entry in entries.iter_mut() {
+        entry.owner.normalize_owner_id_ascii_lowercase();
+        entry.id = entry.id.to_ascii_lowercase();
+    }
+    entries.sort_by(|left, right| {
+        left.owner
+            .cmp_scope_key(&right.owner)
+            .then_with(|| left.id.cmp(&right.id))
+            .then_with(|| left.class.cmp(&right.class))
+            .then_with(|| left.index.cmp(&right.index))
+    });
+    entries.dedup_by(|left, right| {
+        left.owner.same_scope(&right.owner)
+            && left.id == right.id
+            && left.class == right.class
+            && left.index == right.index
+    });
+}
+
 pub fn canonicalize_hierarchy_metadata(
     families: &mut [FamilyDescriptor],
     cpus: &mut [CpuDescriptor],

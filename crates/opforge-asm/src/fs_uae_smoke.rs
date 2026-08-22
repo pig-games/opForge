@@ -146,7 +146,7 @@ const FS_UAE_PIPELINE_SELECT_HARNESS_SOURCE_PATH: &str =
 const FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE: &str = "opforge_cli_package.opasm";
 const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE: &str =
     "opforge_cli_package_oversized.opasm";
-const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_BYTES: usize = 262_145;
+const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_BYTES: usize = 393_217;
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_ARTIFACTS_DIR: &str = "case_artifacts";
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDOUT_FILE: &str = "opforge_fsuae_smoke.stdout";
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDERR_FILE: &str = "opforge_fsuae_smoke.stderr";
@@ -2429,7 +2429,7 @@ fn stage_opforge_native_cli_common_guest_inputs(
             package_bytes,
         )?;
     }
-    // This must exceed native tkpkg PACKAGE_STORAGE_CAPACITY (262144 bytes).
+    // This must exceed native tkpkg PACKAGE_STORAGE_CAPACITY (393216 bytes).
     let oversized_package = vec![0u8; FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_BYTES];
     stage_guest_input_bytes(
         mounted_work_dir,

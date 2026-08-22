@@ -242,9 +242,9 @@ scan
 	tst.l d6
 	beq.s outsideQuote
 	cmp.b d6, d0
-	bne.s next
+	bne.w next
 	clr.l d6
-	bra.s next
+	bra.w next
 outsideQuote
 	cmpi.b #';', d0
 	beq.w no
@@ -254,7 +254,7 @@ outsideQuote
 	bne.s candidate
 enterQuote
 	move.b d0, d6
-	bra.s next
+	bra.w next
 candidate
 	tst.l d4
 	beq.s compare
@@ -262,7 +262,7 @@ candidate
 	cmpi.b #' ', d0
 	beq.s compare
 	cmpi.b #9, d0
-	bne.s next
+	bne.w next
 
 compare
 	moveq #0, d0
@@ -283,7 +283,7 @@ compareLoop
 
 compareByte
 	cmp.b d2, d1
-	bne.s next
+	bne.w next
 	addq.l #1, d0
 	bra.s compareLoop
 

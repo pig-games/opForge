@@ -12,6 +12,7 @@ use registry::family::AssemblerContext;
 pub const FPU_TARGET_KEY: &str = "m68k.fpu_target";
 pub const APOLLO_MODE_KEY: &str = "m68k.apollo_mode";
 pub const CPU_IS_68080_KEY: &str = "m68k.cpu_is_68080";
+pub const CPU_LEVEL_KEY: &str = "m68k.cpu_level";
 pub const RUNTIME_DIRECTIVE_IDS: &[&str] = &["FPU", "APOLLO"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,6 +78,15 @@ pub fn initial_runtime_state(cpu: CpuType) -> HashMap<String, u32> {
         CPU_IS_68080_KEY.to_string(),
         u32::from(cpu.as_str() == "m68080"),
     );
+    let cpu_level = match cpu.as_str() {
+        "m68010" => 1,
+        "m68020" => 2,
+        "m68030" => 3,
+        "m68040" => 4,
+        "m68080" => 5,
+        _ => 0,
+    };
+    state.insert(CPU_LEVEL_KEY.to_string(), cpu_level);
     state
 }
 

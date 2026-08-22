@@ -20,7 +20,8 @@ const FAMILY_REGISTER_IDS: &[&str] = &[
     "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7",
     "E0", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12", "E13", "E14",
     "E15", "E16", "E17", "E18", "E19", "E20", "E21", "E22", "E23", "B0", "B1", "B2", "B3", "B4",
-    "B5", "B6", "B7", "SP", "PC", "SR", "CCR", "USP", "SSP",
+    "B5", "B6", "B7", "SP", "PC", "SR", "CCR", "USP", "SSP", "FP0", "FP1", "FP2", "FP3", "FP4",
+    "FP5", "FP6", "FP7", "FPCR", "FPSR", "FPIAR",
 ];
 
 pub struct Motorola68000FamilyModule;
@@ -46,6 +47,14 @@ impl FamilyModule for Motorola68000FamilyModule {
         FAMILY_REGISTER_IDS
     }
 
+    fn register_encodings(&self) -> Vec<package::RegisterEncodingDescriptor> {
+        super::package_programs::register_encodings()
+    }
+
+    fn form_mnemonics(&self) -> Vec<String> {
+        super::package_programs::instruction_form_mnemonics()
+    }
+
     fn value_programs(
         &self,
     ) -> Result<Vec<package::ValueProgramDescriptor>, package::OpcpuCodecError> {
@@ -68,6 +77,18 @@ impl FamilyModule for Motorola68000FamilyModule {
         &self,
     ) -> Result<Vec<package::StateProgramDescriptor>, package::OpcpuCodecError> {
         super::package_programs::state_programs()
+    }
+
+    fn instruction_programs(
+        &self,
+    ) -> Result<Vec<package::VmProgramDescriptor>, package::OpcpuCodecError> {
+        Ok(super::package_programs::instruction_programs())
+    }
+
+    fn mode_selectors(
+        &self,
+    ) -> Result<Vec<package::ModeSelectorDescriptor>, package::OpcpuCodecError> {
+        Ok(super::package_programs::mode_selectors())
     }
 
     fn diagnostics(&self) -> Vec<package::DiagnosticDescriptor> {

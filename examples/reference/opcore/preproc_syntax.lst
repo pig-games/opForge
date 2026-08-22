@@ -9,7 +9,7 @@ ADDR    BYTES                    LINE  SOURCE
 0000    A9 42                       6          lda #$42
 ----                                7  
 0002    8D 00 02                    8          sta $0200
-----                                9
+----                                9  
 ----                               10  ; 65C02 support included by preproc_syntax.asm
 ----    EQU 0005                   11  INCVAL .const 5
 0005    A9 05                      12          lda #INCVAL

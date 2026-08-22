@@ -3,7 +3,7 @@ Assembly failed:
     4 | .org $1000
     5 | 
     6 |     FSIN FP0,FP1
-      |                 ^
+      |              ^
     7 | 
     8 | .end
 ERROR: FSIN is not supported by the integrated 68040 FPU target

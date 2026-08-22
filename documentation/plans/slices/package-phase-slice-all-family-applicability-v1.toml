@@ -57,7 +57,7 @@ evidence = "The registered Intel family has no coprocessor/vector composite oper
 [[applicability]]
 key = "intel8080:item06"
 status = "adopted"
-evidence = "The package compiler derives the six unambiguous no-operand aliases from the authoritative ZILOG_DIALECT_MAP into dialect-scoped SLCT v1 exact mappings. Operand-transforming mappings and arity-sensitive RLCA/RRCA remain family-owned because mnemonic-only SLCT v1 cannot preserve their source shapes."
+evidence = "The package compiler derives all eight exact no-operand aliases RLCA→RLC, RRCA→RRC, RLA→RAL, RRA→RAR, CPL→CMA, SCF→STC, CCF→CMC, and HALT→HLT from the authoritative ZILOG_DIALECT_MAP into dialect-scoped SLCT v1 mappings. Operand-transforming mappings remain family-owned."
 
 [[applicability]]
 key = "intel8080:item07"

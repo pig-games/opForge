@@ -18,8 +18,9 @@ use package::{
     PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
     PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, SEMANTIC_VM_OPCODE_VERSION_V1,
     SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3, SEMANTIC_VM_OPCODE_VERSION_V4,
-    SEMANTIC_VM_OPCODE_VERSION_V5, TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
-    VALUE_VM_OPCODE_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V5, SEMANTIC_VM_OPCODE_VERSION_V6, SEMANTIC_VM_OPCODE_VERSION_V7,
+    SEMANTIC_VM_OPCODE_VERSION_V8, TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
+    VALUE_VM_OPCODE_VERSION_V1, VALUE_VM_OPCODE_VERSION_V2,
 };
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
@@ -34,7 +35,8 @@ use crate::builder::{build_hierarchy_package_from_registry, HierarchyBuildError}
 use crate::bytecode::execute_program;
 use crate::encoding_vm::execute_encoding_program;
 use crate::fixup_vm::{
-    execute_fixup_program, PortableFixupContext, PortableFixupInput, PortableFixupResult,
+    execute_fixup_program_for_version, PortableFixupContext, PortableFixupInput,
+    PortableFixupResult,
 };
 use crate::operand_record_vm::{
     execute_operand_record_program_with_records as execute_operand_record_program_bytes,
@@ -55,6 +57,74 @@ use crate::runtime_model_types::{
     RuntimeBudgetLimits, RuntimeBudgetProfile, RuntimeParserContract, RuntimeParserDiagnosticMap,
     RuntimeParserVmProgram, RuntimeTokenPolicy, RuntimeTokenizerMode, RuntimeTokenizerVmProgram,
 };
+
+pub(crate) const RELOCATION_FREE_CANDIDATE_MARKER: &[u8] = &[0xff, b'O', b'F', 1];
+const OUTPUT_FIXUP_CANDIDATE_MARKER_PREFIX: &[u8] = &[0xff, b'O', b'F', 2];
+const MAX_OUTPUT_FIXUP_TARGET_BYTES: usize = 1024;
+
+pub(crate) fn output_fixup_candidate_marker(
+    fixup: &crate::fixup_vm::PortableOutputFixup,
+) -> Result<Vec<u8>, String> {
+    if fixup.target.len() > MAX_OUTPUT_FIXUP_TARGET_BYTES {
+        return Err("portable output fixup target exceeds runtime limit".to_string());
+    }
+    let mut marker = Vec::with_capacity(14 + fixup.target.len());
+    marker.extend_from_slice(OUTPUT_FIXUP_CANDIDATE_MARKER_PREFIX);
+    marker.extend_from_slice(&fixup.offset.to_be_bytes());
+    marker.push(fixup.width);
+    marker.push(match fixup.kind {
+        crate::fixup_vm::PortableOutputFixupKind::Absolute => 0,
+    });
+    marker.extend_from_slice(&fixup.encoded_addend.to_be_bytes());
+    marker.extend_from_slice(fixup.target.as_bytes());
+    Ok(marker)
+}
+
+fn decode_output_fixup_candidate_marker(
+    marker: &[u8],
+) -> Result<Option<crate::fixup_vm::PortableOutputFixup>, RuntimeBridgeError> {
+    if !marker.starts_with(OUTPUT_FIXUP_CANDIDATE_MARKER_PREFIX) {
+        return Ok(None);
+    }
+    if marker.len() < 14 || marker.len() - 14 > MAX_OUTPUT_FIXUP_TARGET_BYTES {
+        return Err(RuntimeBridgeError::Resolve(
+            "malformed portable output fixup effect".to_string(),
+        ));
+    }
+    let offset = u32::from_be_bytes(marker[4..8].try_into().expect("fixed slice"));
+    let width = marker[8];
+    let kind = match marker[9] {
+        0 => crate::fixup_vm::PortableOutputFixupKind::Absolute,
+        _ => {
+            return Err(RuntimeBridgeError::Resolve(
+                "unsupported portable output fixup kind".to_string(),
+            ))
+        }
+    };
+    let encoded_addend = u32::from_be_bytes(marker[10..14].try_into().expect("fixed slice"));
+    let target = std::str::from_utf8(&marker[14..])
+        .map_err(|_| {
+            RuntimeBridgeError::Resolve("invalid portable output fixup target".to_string())
+        })?
+        .to_string();
+    if target.is_empty() {
+        return Err(RuntimeBridgeError::Resolve(
+            "portable output fixup target is empty".to_string(),
+        ));
+    }
+    Ok(Some(crate::fixup_vm::PortableOutputFixup {
+        offset,
+        width,
+        kind,
+        target,
+        encoded_addend,
+    }))
+}
+
+fn is_candidate_effect_marker(bytes: &[u8]) -> bool {
+    bytes == RELOCATION_FREE_CANDIDATE_MARKER
+        || bytes.starts_with(OUTPUT_FIXUP_CANDIDATE_MARKER_PREFIX)
+}
 use crate::runtime_portable_types::PortableTokenizeRequest;
 use crate::selector_vm::{execute_selector_program, PortableSelectorOutcome};
 use crate::state_vm::{self, PortableStateDirectiveOutcome, StateVmError};
@@ -71,6 +141,7 @@ pub type OperandRecordProgramKey = (u8, u32, u32);
 pub type SelectorProgramKey = (u8, u32);
 pub type StateProgramKey = (u8, u32, u32);
 pub type ModeSelectorKey = (u8, u32, u32, u32);
+pub type RegisterEncodingKey = (u8, u32, u32);
 pub type TokenPolicyKey = (u8, u32);
 pub type ParserContractKey = (u8, u32);
 pub type ParserVmProgramKey = (u8, u32);
@@ -124,6 +195,7 @@ pub struct RuntimeModelCore {
     pub family_registers: ScopedSymbolMap,
     pub cpu_registers: ScopedSymbolMap,
     pub dialect_registers: ScopedSymbolMap,
+    pub register_encodings: HashMap<RegisterEncodingKey, PortableRegisterRef>,
     pub vm_programs: HashMap<VmProgramKey, Vec<u8>>,
     pub semantic_programs: HashMap<SemanticProgramKey, (u16, Vec<u8>)>,
     pub value_programs: HashMap<ValueProgramKey, (u16, Vec<u8>)>,
@@ -171,6 +243,7 @@ impl RuntimeModelCore {
             cpus,
             dialects,
             registers,
+            register_encodings,
             forms,
             tables,
             semantic_programs,
@@ -182,6 +255,19 @@ impl RuntimeModelCore {
         } = chunks;
         let package = HierarchyPackage::new(families, cpus, dialects)?;
         let mut interner = LowercaseIdInterner::default();
+        let mut scoped_register_encodings = HashMap::new();
+        for entry in register_encodings {
+            let (owner_tag, owner_id) = owner_key_parts(&entry.owner);
+            let owner_id = interner.intern(owner_id.as_str());
+            let register_id = interner.intern(entry.id.as_str());
+            scoped_register_encodings.insert(
+                (owner_tag, owner_id, register_id),
+                PortableRegisterRef {
+                    class: entry.class,
+                    index: entry.index,
+                },
+            );
+        }
         let mut vm_programs = HashMap::new();
         for entry in tables {
             let (owner_tag, owner_id) = owner_key_parts(&entry.owner);
@@ -260,11 +346,20 @@ impl RuntimeModelCore {
             let (owner_tag, owner_id) = owner_key_parts(&entry.owner);
             let owner_id = interner.intern(owner_id.as_str());
             let mnemonic_id = interner.intern(entry.mnemonic.as_str());
-            let shape_id = interner.intern(entry.shape_key.as_str());
-            mode_selectors
-                .entry((owner_tag, owner_id, mnemonic_id, shape_id))
-                .or_default()
-                .push(entry);
+            let shape_keys = entry
+                .shape_key
+                .split(package::MODE_SELECTOR_SHAPE_ALTERNATIVE_SEPARATOR)
+                .map(str::trim)
+                .filter(|shape| !shape.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            for shape_key in shape_keys {
+                let shape_id = interner.intern(shape_key.as_str());
+                mode_selectors
+                    .entry((owner_tag, owner_id, mnemonic_id, shape_id))
+                    .or_default()
+                    .push(entry.clone());
+            }
         }
         for entries in mode_selectors.values_mut() {
             entries.sort_by_key(|entry| (entry.priority, entry.width_rank, entry.mode_key.clone()));
@@ -433,6 +528,7 @@ impl RuntimeModelCore {
             family_registers,
             cpu_registers,
             dialect_registers,
+            register_encodings: scoped_register_encodings,
             vm_programs,
             semantic_programs: scoped_semantic_programs,
             value_programs: scoped_value_programs,
@@ -500,6 +596,22 @@ impl RuntimeModelCore {
         extend_scoped_symbols(&mut names, &self.dialect_registers, &resolved.dialect_id);
         let names = Arc::new(names);
         Arc::new(move |ident: &str| names.contains(&ident.to_ascii_lowercase()))
+    }
+
+    pub fn register_encoding_for_resolved(
+        &self,
+        resolved: &ResolvedHierarchy,
+        register_id: &str,
+    ) -> Option<PortableRegisterRef> {
+        let register_id = self.interned_id(register_id.to_ascii_lowercase().as_str())?;
+        self.scoped_owner_lookup_order(resolved)
+            .into_iter()
+            .filter_map(|(owner_tag, owner_id)| owner_id.map(|id| (owner_tag, id)))
+            .find_map(|(owner_tag, owner_id)| {
+                self.register_encodings
+                    .get(&(owner_tag, owner_id, register_id))
+                    .copied()
+            })
     }
 
     pub fn supported_family_ids(&self) -> Vec<String> {
@@ -696,6 +808,19 @@ impl RuntimeModelCore {
         mnemonic: &str,
         candidates: &[VmEncodeCandidate],
     ) -> Result<Option<Vec<u8>>, RuntimeBridgeError> {
+        self.encode_candidates_with_effects(resolved, mnemonic, candidates)
+            .map(|result| result.map(|(bytes, _)| bytes))
+    }
+
+    pub fn encode_candidates_with_effects(
+        &self,
+        resolved: &ResolvedHierarchy,
+        mnemonic: &str,
+        candidates: &[VmEncodeCandidate],
+    ) -> Result<
+        Option<(Vec<u8>, crate::runtime_model_types::VmInstructionEffects)>,
+        RuntimeBridgeError,
+    > {
         let normalized_mnemonic = mnemonic.to_ascii_lowercase();
         let Some(mnemonic_id) = self.interned_id(&normalized_mnemonic) else {
             return Ok(None);
@@ -707,8 +832,22 @@ impl RuntimeModelCore {
             let Some(mode_id) = self.interned_id(&mode_key) else {
                 continue;
             };
-            let operand_views: Vec<&[u8]> =
-                candidate.operand_bytes.iter().map(Vec::as_slice).collect();
+            let relocation_free = candidate
+                .operand_bytes
+                .iter()
+                .any(|operand| operand.as_slice() == RELOCATION_FREE_CANDIDATE_MARKER);
+            let mut output_fixups = Vec::new();
+            for operand in &candidate.operand_bytes {
+                if let Some(fixup) = decode_output_fixup_candidate_marker(operand)? {
+                    output_fixups.push(fixup);
+                }
+            }
+            let operand_views: Vec<&[u8]> = candidate
+                .operand_bytes
+                .iter()
+                .map(Vec::as_slice)
+                .filter(|operand| !is_candidate_effect_marker(operand))
+                .collect();
             for (owner_tag, owner_id) in owner_order {
                 let Some(owner_id) = owner_id else {
                     continue;
@@ -717,7 +856,15 @@ impl RuntimeModelCore {
                 if let Some(program) = self.vm_programs.get(&key) {
                     self.enforce_vm_program_budget(program.len())?;
                     return execute_program(program, operand_views.as_slice())
-                        .map(Some)
+                        .map(|bytes| {
+                            Some((
+                                bytes,
+                                crate::runtime_model_types::VmInstructionEffects {
+                                    relocation_free,
+                                    output_fixups,
+                                },
+                            ))
+                        })
                         .map_err(Into::into);
                 }
             }
@@ -737,14 +884,23 @@ impl RuntimeModelCore {
             ));
         }
         for candidate in candidates {
-            if candidate.operand_bytes.len() > self.budget_limits.max_operand_count_per_candidate {
+            let encoded_operand_count = candidate
+                .operand_bytes
+                .iter()
+                .filter(|operand| !is_candidate_effect_marker(operand))
+                .count();
+            if encoded_operand_count > self.budget_limits.max_operand_count_per_candidate {
                 return Err(Self::budget_error(
                     "operand_count_per_candidate",
                     self.budget_limits.max_operand_count_per_candidate,
-                    candidate.operand_bytes.len(),
+                    encoded_operand_count,
                 ));
             }
             for operand_bytes in &candidate.operand_bytes {
+                if is_candidate_effect_marker(operand_bytes) {
+                    decode_output_fixup_candidate_marker(operand_bytes)?;
+                    continue;
+                }
                 if operand_bytes.len() > self.budget_limits.max_operand_bytes_per_operand {
                     return Err(Self::budget_error(
                         "operand_bytes_per_operand",
@@ -1743,6 +1899,60 @@ impl RuntimeModelCore {
         )
     }
 
+    pub fn initial_unique_package_state(
+        &self,
+        resolved: &ResolvedHierarchy,
+        profile: &str,
+    ) -> Result<Option<HashMap<String, u32>>, StateVmError> {
+        for (owner_tag, owner_id) in self.scoped_owner_lookup_order(resolved) {
+            let Some(owner_id) = owner_id else {
+                continue;
+            };
+            let mut programs = self.state_programs.iter().filter_map(
+                |((candidate_tag, candidate_owner, _), program)| {
+                    (*candidate_tag == owner_tag && *candidate_owner == owner_id).then_some(program)
+                },
+            );
+            let Some(program) = programs.next() else {
+                continue;
+            };
+            if programs.next().is_some() {
+                return Ok(None);
+            }
+            return state_vm::initial_state(program, profile).map(Some);
+        }
+        Ok(None)
+    }
+
+    pub fn apply_unique_package_state_directive(
+        &self,
+        resolved: &ResolvedHierarchy,
+        profile: &str,
+        directive: &str,
+        arguments: &[String],
+        state: &mut HashMap<String, u32>,
+    ) -> Result<Option<PortableStateDirectiveOutcome>, StateVmError> {
+        for (owner_tag, owner_id) in self.scoped_owner_lookup_order(resolved) {
+            let Some(owner_id) = owner_id else {
+                continue;
+            };
+            let mut programs = self.state_programs.iter().filter_map(
+                |((candidate_tag, candidate_owner, _), program)| {
+                    (*candidate_tag == owner_tag && *candidate_owner == owner_id).then_some(program)
+                },
+            );
+            let Some(program) = programs.next() else {
+                continue;
+            };
+            if programs.next().is_some() {
+                return Ok(None);
+            }
+            return state_vm::apply_directive(program, profile, directive, arguments, state)
+                .map(Some);
+        }
+        Ok(None)
+    }
+
     pub fn apply_package_state_directive(
         &self,
         resolved: &ResolvedHierarchy,
@@ -1829,12 +2039,15 @@ impl RuntimeModelCore {
             else {
                 continue;
             };
-            if *opcode_version != SEMANTIC_VM_OPCODE_VERSION_V2 {
+            if *opcode_version != SEMANTIC_VM_OPCODE_VERSION_V2
+                && *opcode_version != SEMANTIC_VM_OPCODE_VERSION_V6
+                && *opcode_version != SEMANTIC_VM_OPCODE_VERSION_V8
+            {
                 return Err(RuntimeBridgeError::Resolve(format!(
-                    "semantic program '{normalized_id}' is not an encoding VM v2 program"
+                    "semantic program '{normalized_id}' is not an encoding VM v2/v6/v8 program"
                 )));
             }
-            return Ok(execute_encoding_program(program, inputs)?);
+            return Ok(execute_encoding_program(*opcode_version, program, inputs)?);
         }
         Err(RuntimeBridgeError::Resolve(format!(
             "encoding program '{normalized_id}' is not defined for the resolved hierarchy"
@@ -1896,12 +2109,20 @@ impl RuntimeModelCore {
             else {
                 continue;
             };
-            if *opcode_version != SEMANTIC_VM_OPCODE_VERSION_V4 {
+            if !matches!(
+                *opcode_version,
+                SEMANTIC_VM_OPCODE_VERSION_V4 | SEMANTIC_VM_OPCODE_VERSION_V7
+            ) {
                 return Err(RuntimeBridgeError::Resolve(format!(
-                    "semantic program '{normalized_id}' is not a fixup VM v4 program"
+                    "semantic program '{normalized_id}' is not a supported fixup VM program"
                 )));
             }
-            return Ok(execute_fixup_program(program, inputs, context)?);
+            return Ok(execute_fixup_program_for_version(
+                *opcode_version,
+                program,
+                inputs,
+                context,
+            )?);
         }
         Err(RuntimeBridgeError::Resolve(format!(
             "fixup program '{normalized_id}' is not defined for the resolved hierarchy"
@@ -1968,7 +2189,9 @@ impl RuntimeModelCore {
             else {
                 continue;
             };
-            if *opcode_version != VALUE_VM_OPCODE_VERSION_V1 {
+            if *opcode_version != VALUE_VM_OPCODE_VERSION_V1
+                && *opcode_version != VALUE_VM_OPCODE_VERSION_V2
+            {
                 return Err(RuntimeBridgeError::Resolve(format!(
                     "unsupported value VM opcode version {opcode_version}"
                 )));

@@ -455,8 +455,66 @@ impl CpuModule for M68080CpuModule {
         DIALECT_MOTOROLA68K
     }
 
+    fn register_encodings(&self) -> Vec<package::RegisterEncodingDescriptor> {
+        super::package_programs::register_encodings()
+    }
+
+    fn register_ids(&self) -> &'static [&'static str] {
+        super::package_programs::M68080_REGISTER_IDS
+    }
+
     fn runtime_directive_ids(&self) -> &'static [&'static str] {
         state::RUNTIME_DIRECTIVE_IDS
+    }
+
+    fn form_mnemonics(&self) -> Vec<String> {
+        let mut forms =
+            crate::families::m68k::package_programs::m68010_instruction_form_mnemonics();
+        forms.extend(
+            crate::families::m68k::package_programs::m68020_instruction_form_mnemonics(false),
+        );
+        forms.extend(super::package_programs::instruction_form_mnemonics());
+        forms
+    }
+
+    fn value_programs(
+        &self,
+    ) -> Result<Vec<package::ValueProgramDescriptor>, package::OpcpuCodecError> {
+        let mut programs =
+            crate::families::m68k::package_programs::m68020_value_programs(CPU_ID.as_str())?;
+        programs.extend(super::package_programs::value_programs()?);
+        Ok(programs)
+    }
+
+    fn instruction_programs(
+        &self,
+    ) -> Result<Vec<package::VmProgramDescriptor>, package::OpcpuCodecError> {
+        let mut programs =
+            crate::families::m68k::package_programs::m68010_instruction_programs(CPU_ID.as_str());
+        programs.extend(
+            crate::families::m68k::package_programs::m68020_instruction_programs(
+                CPU_ID.as_str(),
+                false,
+            ),
+        );
+        programs.extend(super::package_programs::instruction_programs());
+        Ok(programs)
+    }
+
+    fn mode_selectors(
+        &self,
+    ) -> Result<Vec<package::ModeSelectorDescriptor>, package::OpcpuCodecError> {
+        let mut selectors =
+            crate::families::m68k::package_programs::m68010_mode_selectors(CPU_ID.as_str());
+        selectors.extend(
+            crate::families::m68k::package_programs::m68020_mode_selectors(CPU_ID.as_str(), false),
+        );
+        selectors.extend(super::package_programs::mode_selectors());
+        Ok(selectors)
+    }
+
+    fn diagnostics(&self) -> Vec<package::DiagnosticDescriptor> {
+        super::package_programs::diagnostics()
     }
 
     fn operand_record_programs(

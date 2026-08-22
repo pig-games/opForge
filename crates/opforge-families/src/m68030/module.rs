@@ -42,8 +42,64 @@ impl CpuModule for M68030CpuModule {
         DIALECT_MOTOROLA68K
     }
 
+    fn register_encodings(&self) -> Vec<package::RegisterEncodingDescriptor> {
+        crate::families::m68k::package_programs::m68020_register_encodings(CPU_ID.as_str())
+    }
+
+    fn register_ids(&self) -> &'static [&'static str] {
+        crate::families::m68k::package_programs::M68020_CONTROL_REGISTER_IDS
+    }
+
     fn runtime_directive_ids(&self) -> &'static [&'static str] {
         state::RUNTIME_DIRECTIVE_IDS
+    }
+
+    fn form_mnemonics(&self) -> Vec<String> {
+        let mut forms =
+            crate::families::m68k::package_programs::m68010_instruction_form_mnemonics();
+        forms.extend(
+            crate::families::m68k::package_programs::m68020_instruction_form_mnemonics(false),
+        );
+        forms.push("PFLUSH".to_string());
+        forms.extend(crate::m68080::package_programs::legacy_rejection_form_mnemonics());
+        forms
+    }
+
+    fn value_programs(
+        &self,
+    ) -> Result<Vec<package::ValueProgramDescriptor>, package::OpcpuCodecError> {
+        crate::families::m68k::package_programs::m68020_value_programs(CPU_ID.as_str())
+    }
+
+    fn instruction_programs(
+        &self,
+    ) -> Result<Vec<package::VmProgramDescriptor>, package::OpcpuCodecError> {
+        let mut programs =
+            crate::families::m68k::package_programs::m68010_instruction_programs(CPU_ID.as_str());
+        programs.extend(
+            crate::families::m68k::package_programs::m68020_instruction_programs(
+                CPU_ID.as_str(),
+                false,
+            ),
+        );
+        programs.extend(
+            crate::m68080::package_programs::legacy_rejection_instruction_programs(CPU_ID.as_str()),
+        );
+        Ok(programs)
+    }
+
+    fn mode_selectors(
+        &self,
+    ) -> Result<Vec<package::ModeSelectorDescriptor>, package::OpcpuCodecError> {
+        let mut selectors =
+            crate::families::m68k::package_programs::m68010_mode_selectors(CPU_ID.as_str());
+        selectors.extend(
+            crate::families::m68k::package_programs::m68020_mode_selectors(CPU_ID.as_str(), false),
+        );
+        selectors.extend(
+            crate::m68080::package_programs::legacy_rejection_mode_selectors(CPU_ID.as_str()),
+        );
+        Ok(selectors)
     }
 
     fn handler(&self) -> Box<dyn CpuHandlerDyn> {

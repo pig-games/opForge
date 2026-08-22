@@ -114,7 +114,7 @@ TARGETS = {
     ),
 }
 SNAPSHOTS = {
-    "opasm.amigaos.assembly_driver": ("675bef2eb643d6b8bf6a4c1941230423ede79431ce8b66b6700e1fb2b3b617be", 77, 18, ("code", "data", "bss"), 149),
+    "opasm.amigaos.assembly_driver": ("e3f0ea938b8ee28123938ba88fba5d25eb4dd7cbe072594f0f1c3526ec31364a", 77, 18, ("code", "data", "bss"), 149),
     "opasm.amigaos.directive_router": ("b1011828f566a3896329cbda6d491379ee67f17888a5fb432e28aca15cce2339", 3, 0, ("code", "data"), 1),
     "opasm.amigaos.operand_eval": ("f4c8c3471ff2f4a543440b8825e527b390ef70956d480c3fe3b5d083d2f8c8ae", 15, 3, ("code", "bss"), 7),
     "opasm.amigaos.directive_data": ("ae827acedfad611d1d57ff93783edda61b6eb4de332c2907521343d6f9fdf3bc", 2, 3, ("code", "bss"), 19),
@@ -126,9 +126,9 @@ SNAPSHOTS = {
     "tkpkg.amigaos.encode_service": ("c6da4d60d638389ed0088dac042dc29fcddc48313eabaf5d4004c59d8f32cd34", 12, 3, ("data", "code"), 11),
     "tkpkg.amigaos.runtime_context": ("9b1e03e3b8689dfe72157e04da3441cf595a8e21b4dac19e55700effb0a6bace", 8, 1, ("code", "bss"), 19),
     "tkpkg.amigaos.engine_context_adapter": ("a06328ca23472b6f624f579ffd24e09d51d3373acd0c2e825e2596086461ea54", 9, 1, ("code",), 0),
-    "opasm.amigaos.engine": ("4afc694bb41a884885977ed0b2756da4a0f64b9bfe08007c5373d51d18aa6235", 83, 1, ("code", "bss"), 22),
+    "opasm.amigaos.engine": ("14a47b60cec0f9559a7d29915fee06f9e3dccfc31b2608359757f47138d177d5", 83, 1, ("code", "bss"), 22),
     "tkpkg.amigaos.tokenizer_vm": ("7bbafa635dcded0236c9a65368db47e0e10aded6b328d4389e580654125e5b65", 31, 5, ("data", "code"), 124),
-    "opcore.amigaos.expr_bridge": ("1ee19dbd7cc1249921e0bb006f2bfb67b04d21c0a0c6b126e042b08b3b9f705a", 30, 1, ("code", "bss"), 5),
+    "opcore.amigaos.expr_bridge": ("a28dca5bdeed16e9862b7f592921b7f4d5aba028bcc50247ebbada529a5878ac", 30, 1, ("code", "bss"), 5),
     "prvm.amigaos.runtime": ("d49fad6cedf4807ffed62932c3e55b8f1adbfba0ff93bd8085d66b4e42efb74b", 20, 0, ("data", "code"), 37),
     "tkpkg.amigaos.pipeline": ("d161f2cad5c379e2610c7c44294ef170538beceae92790019f559e6b0550b9ab", 35, 3, ("data", "code"), 19),
     "opasm.amigaos.flow_text_encoding": ("954eb2582ad5d90550efe5d620c07ffc7411b149e318aaf8626a3f09cf611666", 16, 0, ("code", "bss", "data"), 0),

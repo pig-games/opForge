@@ -52,6 +52,7 @@ pub fn encode_relative_offset(
 pub fn mode_key_operand_size(mode_key_lower: &str) -> Option<u8> {
     match mode_key_lower {
         "implied" | "accumulator" => Some(0),
+        "semantic" => Some(u8::MAX),
         "immediate"
         | "zeropage"
         | "zeropagex"

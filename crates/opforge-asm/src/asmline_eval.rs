@@ -714,12 +714,78 @@ impl<'a> AssemblerContext for AsmLine<'a> {
         self.lookup_scoped_entry(name).map(|entry| entry.updated)
     }
 
+    fn symbol_is_absolute_constant(&self, name: &str) -> bool {
+        self.layout.absolute_constant_symbols.contains(name)
+    }
+
+    fn symbol_is_target_reference(&self, name: &str) -> bool {
+        self.lookup_scoped_entry(name).is_some_and(|entry| {
+            !entry.rw
+                && !self
+                    .layout
+                    .absolute_constant_symbols
+                    .contains(entry.name.as_str())
+        })
+    }
+
+    fn absolute_relocation(&self, expr: &Expr) -> Result<Option<(i64, String)>, String> {
+        let Some(target_section) = self.hunk_abs32_target_section_for_expr(expr) else {
+            return Ok(None);
+        };
+        let value = match expr {
+            Expr::Member { base, field, .. }
+                if field.eq_ignore_ascii_case("W") || field.eq_ignore_ascii_case("L") =>
+            {
+                self.eval_expr(base)?
+            }
+            Expr::Identifier(name, span) => {
+                if let Some((base, _)) = name.rsplit_once('.').filter(|(_, field)| {
+                    field.eq_ignore_ascii_case("W") || field.eq_ignore_ascii_case("L")
+                }) {
+                    self.eval_expr(&Expr::Identifier(base.to_string(), *span))?
+                } else {
+                    self.eval_expr(expr)?
+                }
+            }
+            _ => self.eval_expr(expr)?,
+        };
+        let Some(section) = self.layout.sections.get(&target_section) else {
+            return Ok(None);
+        };
+        let base = i64::from(section.base_addr.unwrap_or(0));
+        let addend = value.checked_sub(base).ok_or_else(|| {
+            "section relocation value underflows the target section base".to_string()
+        })?;
+        Ok(Some((addend, target_section)))
+    }
+
     fn current_address(&self) -> u32 {
         self.start_addr
     }
 
     fn pass(&self) -> u8 {
         self.pass
+    }
+
+    fn should_defer_unstable_symbols(&self) -> bool {
+        matches!(
+            self.profile_phase,
+            AsmProfilePhase::Pass1 | AsmProfilePhase::LayoutStabilization
+        )
+    }
+
+    fn should_defer_unstable_branch_target(&self) -> bool {
+        (self.pass == 1 || self.profile_phase == AsmProfilePhase::LayoutStabilization)
+            && self
+                .symbol_scope
+                .scope_stack
+                .has_block_deeper_than(self.symbol_scope.module_scope_depth)
+    }
+
+    fn force_host_expression_eval(&self, family_id: &str) -> bool {
+        self.opthread_expr_eval_force_host_families
+            .iter()
+            .any(|owner| owner.eq_ignore_ascii_case(family_id))
     }
 
     fn scalar_value_symbol(&self, name: &str) -> Option<i64> {

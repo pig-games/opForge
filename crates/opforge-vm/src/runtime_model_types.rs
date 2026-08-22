@@ -5,6 +5,14 @@ use package::{
     TokenizerVmLimits, TokenizerVmStreamDescriptor,
 };
 
+use crate::fixup_vm::PortableOutputFixup;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct VmInstructionEffects {
+    pub relocation_free: bool,
+    pub output_fixups: Vec<PortableOutputFixup>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeTokenizerMode {
     Auto,
@@ -114,7 +122,7 @@ impl RuntimeBudgetProfile {
             Self::HostDefault => RuntimeBudgetLimits {
                 max_candidate_count: 64,
                 max_operand_count_per_candidate: 8,
-                max_operand_bytes_per_operand: 8,
+                max_operand_bytes_per_operand: 32,
                 max_vm_program_bytes: 128,
                 max_selectors_scanned_per_instruction: 512,
                 max_parser_tokens_per_line: 512,
@@ -128,7 +136,7 @@ impl RuntimeBudgetProfile {
             Self::RetroConstrained => RuntimeBudgetLimits {
                 max_candidate_count: 16,
                 max_operand_count_per_candidate: 4,
-                max_operand_bytes_per_operand: 4,
+                max_operand_bytes_per_operand: 32,
                 max_vm_program_bytes: 48,
                 max_selectors_scanned_per_instruction: 128,
                 max_parser_tokens_per_line: 128,

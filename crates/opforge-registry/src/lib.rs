@@ -10,8 +10,8 @@ pub mod syntax;
 
 pub use cpu::{CpuFamily, CpuType, EncodeError, OperandParseError};
 pub use family::{
-    expr_has_unstable_symbols, AssemblerContext, CpuHandler, EncodeOutcome, EncodeResult,
-    FamilyEncodeResult, FamilyHandler, FamilyParseError,
+    expr_has_symbol_references, expr_has_unstable_symbols, AssemblerContext, CpuHandler,
+    EncodeOutcome, EncodeResult, FamilyEncodeResult, FamilyHandler, FamilyParseError,
 };
 pub use registry::{
     AsmRegistry, CpuHandlerDyn, CpuModule, CpuValidator, DialectModule, FamilyHandlerDyn,

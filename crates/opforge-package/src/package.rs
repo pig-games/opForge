@@ -45,7 +45,8 @@ use canonicalize::canonicalize_package_support_chunks;
 pub use canonicalize::{
     canonicalize_expr_contracts, canonicalize_expr_parser_contracts,
     canonicalize_hierarchy_metadata, canonicalize_operand_record_programs,
-    canonicalize_parser_contracts, canonicalize_parser_vm_programs, canonicalize_selector_programs,
+    canonicalize_parser_contracts, canonicalize_parser_vm_programs,
+    canonicalize_register_encodings, canonicalize_selector_programs,
     canonicalize_semantic_programs, canonicalize_state_programs, canonicalize_token_policies,
     canonicalize_tokenizer_vm_programs, canonicalize_value_programs,
 };
@@ -61,6 +62,20 @@ pub const OPASM_ENDIAN_MARKER: u16 = 0x1234;
 const HEADER_SIZE: usize = 12;
 const TOC_ENTRY_SIZE: usize = 12;
 const MAX_DECODE_ENTRY_COUNT: usize = 100_000;
+const COMPACT_MODE_SELECTOR_CHUNK_VERSION_V1: u16 = 1;
+const COMPACT_MODE_SELECTOR_CHUNK_VERSION_V2: u16 = 2;
+const COMPACT_MODE_SELECTOR_CHUNK_VERSION_V3: u16 = 3;
+const COMPACT_MODE_SELECTOR_CHUNK_VERSION_V4: u16 = 4;
+const COMPACT_MODE_SELECTOR_CHUNK_VERSION_V5: u16 = 5;
+const COMPACT_MODE_SELECTOR_CHUNK_VERSION_V6: u16 = 6;
+const COMPACT_MODE_SELECTOR_CHUNK_VERSION_V7: u16 = 7;
+const COMPACT_MODE_SELECTOR_THRESHOLD_BYTES: usize = 128 * 1024;
+const COMPACT_FORM_CHUNK_VERSION_V1: u16 = 1;
+const COMPACT_FORM_THRESHOLD_BYTES: usize = 8 * 1024;
+const COMPACT_TABLE_CHUNK_VERSION_V1: u16 = 1;
+const COMPACT_TABLE_THRESHOLD_BYTES: usize = 8 * 1024;
+const COMPACT_SEMANTIC_PROGRAM_CHUNK_VERSION_V1: u16 = 1;
+const COMPACT_SEMANTIC_PROGRAM_THRESHOLD_BYTES: usize = 8 * 1024;
 
 const CHUNK_META: [u8; 4] = *b"META";
 const CHUNK_STRS: [u8; 4] = *b"STRS";
@@ -70,9 +85,13 @@ const CHUNK_FAMS: [u8; 4] = *b"FAMS";
 const CHUNK_CPUS: [u8; 4] = *b"CPUS";
 const CHUNK_DIAL: [u8; 4] = *b"DIAL";
 const CHUNK_REGS: [u8; 4] = *b"REGS";
+const CHUNK_RENC: [u8; 4] = *b"RENC";
 const CHUNK_FORM: [u8; 4] = *b"FORM";
+const CHUNK_CFOR: [u8; 4] = *b"CFOR";
 const CHUNK_TABL: [u8; 4] = *b"TABL";
+const CHUNK_CTBL: [u8; 4] = *b"CTBL";
 const CHUNK_SEMV: [u8; 4] = *b"SEMV";
+const CHUNK_CSEM: [u8; 4] = *b"CSEM";
 const CHUNK_VALP: [u8; 4] = *b"VALP";
 const CHUNK_OPRD: [u8; 4] = *b"OPRD";
 const CHUNK_CPRD: [u8; 4] = *b"CPRD";
@@ -80,6 +99,7 @@ const CHUNK_SLCT: [u8; 4] = *b"SLCT";
 const CHUNK_STVM: [u8; 4] = *b"STVM";
 const CHUNK_CALS: [u8; 4] = *b"CALS";
 const CHUNK_MSEL: [u8; 4] = *b"MSEL";
+const CHUNK_CMSE: [u8; 4] = *b"CMSE";
 const CHUNK_TKVM: [u8; 4] = *b"TKVM";
 const CHUNK_PARS: [u8; 4] = *b"PARS";
 const CHUNK_PRVM: [u8; 4] = *b"PRVM";
@@ -132,8 +152,8 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 ///   sourced from `core::expr_vm` to keep runtime/package compatibility strict.
 /// - `EXPR_VM_OPCODE_VERSION_V2`: staged expression evaluator VM v2 contract
 ///   payloads.
-/// - `VALUE_VM_OPCODE_VERSION_V1`: scalar value materialization (`VALP`)
-///   payloads.
+/// - `VALUE_VM_OPCODE_VERSION_V1` and `VALUE_VM_OPCODE_VERSION_V2`: scalar
+///   value materialization (`VALP`) payloads.
 /// - `OPERAND_RECORD_VM_VERSION_V1`: neutral operand-record construction
 ///   (`OPRD`) payloads.
 /// - `STATE_VM_OPCODE_VERSION_V1`: neutral profile/state/capability matrices
@@ -148,17 +168,22 @@ pub const SEMANTIC_VM_OPCODE_VERSION_V2: u16 = 0x0002;
 pub const SEMANTIC_VM_OPCODE_VERSION_V3: u16 = 0x0003;
 pub const SEMANTIC_VM_OPCODE_VERSION_V4: u16 = 0x0004;
 pub const SEMANTIC_VM_OPCODE_VERSION_V5: u16 = 0x0005;
+pub const SEMANTIC_VM_OPCODE_VERSION_V6: u16 = 0x0006;
+pub const SEMANTIC_VM_OPCODE_VERSION_V7: u16 = 0x0007;
+pub const SEMANTIC_VM_OPCODE_VERSION_V8: u16 = 0x0008;
 pub const COMPACT_OPERAND_RECORD_CHUNK_VERSION_V1: u16 = 0x0001;
 pub const SEMANTIC_VM_OP_EMIT_U8: u8 = 0x01;
 pub const SEMANTIC_VM_OP_EMIT_OPERAND: u8 = 0x02;
 pub const SEMANTIC_VM_OP_END: u8 = 0xFF;
 pub const VALUE_VM_OPCODE_VERSION_V1: u16 = 0x0001;
+pub const VALUE_VM_OPCODE_VERSION_V2: u16 = 0x0002;
 pub const VALUE_VM_OP_PUSH_LITERAL_I64: u8 = 0x01;
 pub const VALUE_VM_OP_PUSH_INPUT: u8 = 0x02;
 pub const VALUE_VM_OP_NORMALIZE_TWOS_COMPLEMENT: u8 = 0x03;
 pub const VALUE_VM_OP_REQUIRE_SIGNED_BITS: u8 = 0x04;
 pub const VALUE_VM_OP_REQUIRE_UNSIGNED_BITS: u8 = 0x05;
 pub const VALUE_VM_OP_REQUIRE_RANGE_I64: u8 = 0x06;
+pub const VALUE_VM_OP_ENCODE_UPPER_BOUND_AS_ZERO: u8 = 0x07;
 pub const VALUE_VM_OP_END: u8 = 0xFF;
 pub const OPERAND_RECORD_VM_VERSION_V1: u16 = 0x0001;
 pub const OPERAND_RECORD_VM_VERSION_V2: u16 = 0x0002;
@@ -944,10 +969,27 @@ pub enum ValueConstraint {
     SignedBits(u8),
     UnsignedBits(u8),
     InclusiveRange { min: i64, max: i64 },
+    EncodeUpperBoundAsZero(u8),
 }
 
 /// Compile a CPU-neutral scalar program from one source and ordered constraints.
 pub fn compile_value_program(
+    source: ValueProgramSource,
+    constraints: &[ValueConstraint],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    compile_value_program_for_version(VALUE_VM_OPCODE_VERSION_V1, source, constraints)
+}
+
+/// Compile a v2 scalar program, including neutral packed-field projections.
+pub fn compile_value_program_v2(
+    source: ValueProgramSource,
+    constraints: &[ValueConstraint],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    compile_value_program_for_version(VALUE_VM_OPCODE_VERSION_V2, source, constraints)
+}
+
+fn compile_value_program_for_version(
+    opcode_version: u16,
     source: ValueProgramSource,
     constraints: &[ValueConstraint],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
@@ -981,10 +1023,14 @@ pub fn compile_value_program(
                 program.extend_from_slice(&min.to_le_bytes());
                 program.extend_from_slice(&max.to_le_bytes());
             }
+            ValueConstraint::EncodeUpperBoundAsZero(bits) => {
+                program.push(VALUE_VM_OP_ENCODE_UPPER_BOUND_AS_ZERO);
+                program.push(bits);
+            }
         }
     }
     program.push(VALUE_VM_OP_END);
-    validate_value_program(VALUE_VM_OPCODE_VERSION_V1, &program)?;
+    validate_value_program(opcode_version, &program)?;
     Ok(program)
 }
 
@@ -997,7 +1043,8 @@ pub fn validate_value_program(opcode_version: u16, program: &[u8]) -> Result<(),
         }
     }
 
-    if opcode_version != VALUE_VM_OPCODE_VERSION_V1 {
+    if opcode_version != VALUE_VM_OPCODE_VERSION_V1 && opcode_version != VALUE_VM_OPCODE_VERSION_V2
+    {
         return Err(invalid(format!(
             "unsupported value VM opcode version {opcode_version}"
         )));
@@ -1064,6 +1111,22 @@ pub fn validate_value_program(opcode_version: u16, program: &[u8]) -> Result<(),
                 }
                 pc = end;
             }
+            VALUE_VM_OP_ENCODE_UPPER_BOUND_AS_ZERO
+                if opcode_version == VALUE_VM_OPCODE_VERSION_V2 =>
+            {
+                if !has_value {
+                    return Err(invalid("value VM projection precedes its source"));
+                }
+                let bits = *program
+                    .get(pc)
+                    .ok_or_else(|| invalid("value VM packed-field width is truncated"))?;
+                pc += 1;
+                if !(1..=62).contains(&bits) {
+                    return Err(invalid(format!(
+                        "value VM packed-field width {bits} is outside 1..=62"
+                    )));
+                }
+            }
             VALUE_VM_OP_END if !has_value => {
                 return Err(invalid("value VM program ends without a source"));
             }
@@ -1097,13 +1160,19 @@ pub fn validate_semantic_program(
     opcode_version: u16,
     program: &[u8],
 ) -> Result<(), OpcpuCodecError> {
-    if opcode_version == SEMANTIC_VM_OPCODE_VERSION_V2 {
+    if opcode_version == SEMANTIC_VM_OPCODE_VERSION_V2
+        || opcode_version == SEMANTIC_VM_OPCODE_VERSION_V6
+        || opcode_version == SEMANTIC_VM_OPCODE_VERSION_V8
+    {
         return validate_encoding_program(opcode_version, program);
     }
     if opcode_version == SEMANTIC_VM_OPCODE_VERSION_V3 {
         return validate_structured_encoding_program(opcode_version, program);
     }
-    if opcode_version == SEMANTIC_VM_OPCODE_VERSION_V4 {
+    if matches!(
+        opcode_version,
+        SEMANTIC_VM_OPCODE_VERSION_V4 | SEMANTIC_VM_OPCODE_VERSION_V7
+    ) {
         return validate_fixup_program(opcode_version, program);
     }
     if opcode_version == SEMANTIC_VM_OPCODE_VERSION_V5 {
@@ -1163,6 +1232,137 @@ pub struct ModeSelectorDescriptor {
     pub priority: u16,
     pub unstable_widen: bool,
     pub width_rank: u8,
+}
+
+/// Operand-plan prefix for executing a scoped SEMV scalar program and passing
+/// its emitted bytes as one TABL operand.
+pub const MODE_SELECTOR_PLAN_SEMANTIC_SCALAR_PREFIX: &str = "semv.scalar.v1:";
+/// Runs a semantic encoding program from a declarative list of expression and
+/// package-register inputs, for example `semv.inputs:enc.id@expr0,reg1.class0`.
+pub const MODE_SELECTOR_PLAN_SEMANTIC_INPUTS_PREFIX: &str = "semv.inputs.v1:";
+/// Runs a candidate-width semantic branch program from package-owned opcode,
+/// target-expression, explicit/automatic candidate, and automatic-class data.
+pub const MODE_SELECTOR_PLAN_SEMANTIC_BRANCH_PREFIX: &str = "semv.branch.v1:";
+/// Versioned CPU-neutral composition of ordered encoding and fixup programs.
+pub const MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX: &str = "semv.sequence.v1:";
+/// Versioned CPU-neutral structural rejection. The package supplies the
+/// diagnostic code and the operand sources that must match.
+pub const MODE_SELECTOR_PLAN_SEMANTIC_REJECT_PREFIX: &str = "semv.reject.v1:";
+/// CPU-neutral runtime-state guard wrapped around another operand plan.
+/// Syntax: `state.require.v1:<key>=<value>[+<value>...][?<diagnostic>];<nested-plan>`.
+pub const MODE_SELECTOR_PLAN_STATE_REQUIRE_PREFIX: &str = "state.require.v1:";
+/// CPU-neutral structural projection from one operand expression.
+///
+/// Syntax: `xp1:<operand>/<step>/.../<terminal>`. The compact tokens describe
+/// generic expression containers and scalar projections; packages own both the
+/// paths and their architectural meaning.
+pub const MODE_SELECTOR_PLAN_EXPR_PATH_PREFIX: &str = "xp1:";
+pub const MODE_SELECTOR_PLAN_INPUT_SEPARATOR: char = '@';
+/// Separates alternative structural shape keys represented by one serialized
+/// selector row. The runtime expands them into ordinary lookup keys.
+pub const MODE_SELECTOR_SHAPE_ALTERNATIVE_SEPARATOR: char = '|';
+/// Structural semantic-input source for an expression shaped as a member
+/// applied to an indirect wrapper, for example `member_indirect0.fieldW`.
+/// The package owns the expected member spelling; the VM only matches the AST
+/// shape and evaluates the wrapped expression.
+pub const MODE_SELECTOR_PLAN_MEMBER_INDIRECT_PREFIX: &str = "member_indirect";
+pub const MODE_SELECTOR_PLAN_MEMBER_PREFIX: &str = "member";
+pub const MODE_SELECTOR_PLAN_MEMBER_SHAPE_PREFIX: &str = "member_shape";
+pub const MODE_SELECTOR_PLAN_CALL_ARG_REGISTER_PREFIX: &str = "call_arg_register";
+/// Structural source that validates two call arguments as a same-class,
+/// consecutive register sequence and projects the first opaque index.
+/// Syntax: `call_arg_register_sequenceN.argA.argB.classC.alignK`.
+pub const MODE_SELECTOR_PLAN_CALL_ARG_REGISTER_SEQUENCE_PREFIX: &str = "call_arg_register_sequence";
+pub const MODE_SELECTOR_PLAN_CALL_ARG_VALUE_PREFIX: &str = "call_arg_value";
+pub const MODE_SELECTOR_PLAN_CALL_ARG_MEMBER_PREFIX: &str = "call_arg_member";
+pub const MODE_SELECTOR_PLAN_CALL_ARG_INDIRECT_REGISTER_PREFIX: &str = "call_arg_indirect_register";
+pub const MODE_SELECTOR_PLAN_CALL_ARG_INDIRECT_TUPLE_REGISTER_PREFIX: &str =
+    "call_arg_indirect_tuple_register";
+pub const MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR: &str = ".field";
+/// Structural semantic-input source for a package register inside an indirect
+/// AST wrapper, for example `indirect_reg1.class0`.
+pub const MODE_SELECTOR_PLAN_INDIRECT_REGISTER_PREFIX: &str = "indirect_reg";
+/// Structural semantic-input source for an immediate AST wrapper.
+pub const MODE_SELECTOR_PLAN_IMMEDIATE_PREFIX: &str = "immediate";
+/// Structural semantic-input sources for a register or scalar tuple item
+/// nested inside an indirect wrapper. Tuple position and expected register
+/// class remain package data.
+pub const MODE_SELECTOR_PLAN_INDIRECT_TUPLE_REGISTER_PREFIX: &str = "indirect_tuple_reg";
+pub const MODE_SELECTOR_PLAN_INDIRECT_TUPLE_VALUE_PREFIX: &str = "indirect_tuple_value";
+pub const MODE_SELECTOR_PLAN_INDIRECT_TUPLE_QUALIFIED_REGISTER_PREFIX: &str =
+    "indirect_tuple_qualified_reg";
+pub const MODE_SELECTOR_PLAN_REGISTER_QUALIFIER_SEPARATOR: &str = ".qualifier";
+pub const MODE_SELECTOR_PLAN_INDIRECT_TUPLE_ARITY_PREFIX: &str = "indirect_tuple_arity";
+pub const MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR: &str = ".item";
+/// Structural source that accepts a tuple item scaled by the neutral identity
+/// value and projects that value. Syntax: `indirect_tuple_identity_scaleN.itemM`.
+pub const MODE_SELECTOR_PLAN_INDIRECT_TUPLE_IDENTITY_SCALE_PREFIX: &str =
+    "indirect_tuple_identity_scale";
+/// Structural semantic-input source for a package-defined register-list mask.
+/// Class-to-bit offsets and optional bit reversal remain package data.
+pub const MODE_SELECTOR_PLAN_REGISTER_MASK_PREFIX: &str = "register_mask";
+/// Structural source that validates a top-level register range as a same-class,
+/// fixed-count consecutive sequence with an aligned start, then projects the
+/// first opaque index. Syntax: `register_sequenceN.classC.countK.alignA`.
+pub const MODE_SELECTOR_PLAN_REGISTER_SEQUENCE_PREFIX: &str = "register_sequence";
+/// Structural source that XORs the opaque indices of two top-level package
+/// registers after validating their independently package-owned classes.
+/// Syntax: `register_index_xorN.classC.withM.classD[.shrS][.andK]`.
+pub const MODE_SELECTOR_PLAN_REGISTER_INDEX_XOR_PREFIX: &str = "register_index_xor";
+/// Structural source for a top-level register whose opaque package index must
+/// fall in an inclusive range. Syntax: `bounded_regN.classC.minL.maxH`.
+pub const MODE_SELECTOR_PLAN_BOUNDED_REGISTER_PREFIX: &str = "bounded_reg";
+pub const MODE_SELECTOR_PLAN_DUPLICATE_REGISTER_PREFIX: &str = "duplicate_register";
+pub const MODE_SELECTOR_PLAN_DISTINCT_REGISTER_PREFIX: &str = "distinct_register";
+pub const MODE_SELECTOR_PLAN_OUT_OF_RANGE_PREFIX: &str = "out_of_range";
+pub const MODE_SELECTOR_PLAN_NAMED_REGISTER_PREFIX: &str = "named_register";
+/// Structural source for an identifier/register spelling composed from a
+/// package-owned prefix and a bounded decimal suffix.
+/// Syntax: `named_register_rangeN.prefixP.minL.maxH`.
+pub const MODE_SELECTOR_PLAN_NAMED_REGISTER_RANGE_PREFIX: &str = "named_register_range";
+/// Structural source accepting either a register in one of the package-owned
+/// classes or an identifier matching a package-owned prefix/range.
+pub const MODE_SELECTOR_PLAN_REGISTER_OR_NAMED_RANGE_PREFIX: &str = "register_or_named_range";
+/// Structural source requiring at least a package-owned count of operands to
+/// match one prefix/range.
+pub const MODE_SELECTOR_PLAN_NAMED_REGISTER_RANGE_COUNT_PREFIX: &str = "named_register_range_count";
+pub const MODE_SELECTOR_PLAN_INDIRECT_TUPLE_NONIDENTITY_SCALE_PREFIX: &str =
+    "indirect_tuple_nonidentity_scale";
+/// Structural semantic-input source for a register nested under unary plus or
+/// minus and an indirect wrapper. The package owns the meaning of the unary
+/// operator; the VM only validates and projects the AST shape.
+pub const MODE_SELECTOR_PLAN_UNARY_PLUS_INDIRECT_REGISTER_PREFIX: &str = "unary_plus_indirect_reg";
+pub const MODE_SELECTOR_PLAN_UNARY_MINUS_INDIRECT_REGISTER_PREFIX: &str =
+    "unary_minus_indirect_reg";
+/// Package-owned scalar constant supplied to a semantic encoding program.
+pub const MODE_SELECTOR_PLAN_LITERAL_PREFIX: &str = "literal:";
+/// Optional suffix on a qualified register source that projects its opaque
+/// package index by shifting right before passing it to a semantic program.
+pub const MODE_SELECTOR_PLAN_REGISTER_INDEX_SHIFT_SUFFIX: &str = ".shr";
+/// Optional suffix on a qualified register source that projects its opaque
+/// package index with an unsigned mask before passing it to a semantic program.
+pub const MODE_SELECTOR_PLAN_REGISTER_INDEX_MASK_SUFFIX: &str = ".and";
+/// Apply a resolved package value program to a projected scalar source. The
+/// v1 grammar is `value_program:<program-id>:<source>`.
+pub const MODE_SELECTOR_PLAN_VALUE_PROGRAM_PREFIX: &str = "value_program:";
+/// Apply a value program whose constraint violation is a selected-candidate
+/// error rather than a structural non-match.
+pub const MODE_SELECTOR_PLAN_REQUIRED_VALUE_PROGRAM_PREFIX: &str = "required_value_program:";
+pub const MODE_SELECTOR_PLAN_VALUE_PROGRAM_SEPARATOR: char = ':';
+/// Separates a semantic scalar program id from its optional package-owned
+/// diagnostic code. The VM treats both fields as opaque package vocabulary.
+pub const MODE_SELECTOR_PLAN_DIAGNOSTIC_SEPARATOR: char = '|';
+/// Independently versioned register-to-portable-encoding metadata.
+pub const REGISTER_ENCODING_CHUNK_VERSION_V1: u16 = 1;
+
+/// Package-owned mapping from a scoped register spelling to the neutral
+/// class/index pair consumed by operand-record and structured-encoding VMs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RegisterEncodingDescriptor {
+    pub owner: ScopedOwner,
+    pub id: String,
+    pub class: u16,
+    pub index: u16,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1719,6 +1919,7 @@ pub struct HierarchyChunks {
     pub cpus: Vec<CpuDescriptor>,
     pub dialects: Vec<DialectDescriptor>,
     pub registers: Vec<ScopedRegisterDescriptor>,
+    pub register_encodings: Vec<RegisterEncodingDescriptor>,
     pub forms: Vec<ScopedFormDescriptor>,
     pub tables: Vec<VmProgramDescriptor>,
     pub semantic_programs: Vec<SemanticProgramDescriptor>,

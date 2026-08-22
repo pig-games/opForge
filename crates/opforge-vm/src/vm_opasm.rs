@@ -253,6 +253,27 @@ pub fn encode_instruction_from_exprs(
     model.encode_instruction_from_exprs(cpu_id, dialect_override, mnemonic, operands, ctx)
 }
 
+/// Encode an instruction and preserve CPU-neutral package-declared output effects.
+pub fn encode_instruction_from_exprs_with_effects(
+    model: &HierarchyExecutionModel,
+    cpu_id: &str,
+    dialect_override: Option<&str>,
+    mnemonic: &str,
+    operands: &[Expr],
+    ctx: &dyn AssemblerContext,
+) -> Result<
+    Option<(Vec<u8>, crate::runtime_model_types::VmInstructionEffects)>,
+    crate::runtime_error::RuntimeBridgeError,
+> {
+    model.encode_instruction_from_exprs_with_effects(
+        cpu_id,
+        dialect_override,
+        mnemonic,
+        operands,
+        ctx,
+    )
+}
+
 pub fn expr_resolution_is_strict_for_family(
     model: &HierarchyExecutionModel,
     family_id: &str,

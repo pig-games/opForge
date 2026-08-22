@@ -3,7 +3,7 @@ Assembly failed:
     7 | 
     8 | start:
     9 |         MOV3Q #1,D0
-      |                    ^
+      |                  ^
    10 | 
    11 |         .end
 ERROR: MOV3Q is Apollo-gated on m68080; enable .apollo on

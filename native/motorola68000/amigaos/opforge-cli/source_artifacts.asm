@@ -39,11 +39,11 @@ requestLoop
 	moveq #0, d6
 	move.b 0(a0, d7.l), d6
 	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_OUTPUT, d6
-	beq.s outputRequest
+	beq.w outputRequest
 	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_MAPFILE, d6
-	beq.s mapRequest
+	beq.w mapRequest
 	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_EXPORTSECTIONS, d6
-	beq.s exportRequest
+	beq.w exportRequest
 	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_METADATA_LIST, d6
 	beq.w metadataListRequest
 	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_METADATA_HEX, d6

@@ -7,11 +7,12 @@
 use package::{
     compile_encoding_program, compile_fixup_program, compile_operand_record_program,
     compile_selector_map_program, compile_value_program, EncodingEndian, EncodingFieldSpec,
-    EncodingStep, FixupBase, FixupEncodingStep, FixupRange, OpcpuCodecError, OperandRecordProgram,
-    OperandRecordProgramDescriptor, PortableRelocationKind, SelectorProgramDescriptor,
-    SemanticProgramDescriptor, UnresolvedValuePolicy, ValueConstraint, ValueProgramDescriptor,
-    ValueProgramSource, OPERAND_RECORD_VM_VERSION_V1, SELECTOR_VM_OPCODE_VERSION_V1,
-    SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V4, VALUE_VM_OPCODE_VERSION_V1,
+    EncodingStep, FixupBase, FixupEncodingStep, FixupRange, FixupTransform, OpcpuCodecError,
+    OperandRecordProgram, OperandRecordProgramDescriptor, PortableRelocationKind,
+    SelectorProgramDescriptor, SemanticProgramDescriptor, UnresolvedValuePolicy, ValueConstraint,
+    ValueProgramDescriptor, ValueProgramSource, OPERAND_RECORD_VM_VERSION_V1,
+    SELECTOR_VM_OPCODE_VERSION_V1, SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V4,
+    VALUE_VM_OPCODE_VERSION_V1,
 };
 use types::hierarchy::ScopedOwner;
 
@@ -95,9 +96,6 @@ pub fn selector_programs() -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecE
                 && !entry.canonical_has_imm
                 && entry.transform == super::dialect::OperandTransform::Identity
                 && entry.from != entry.canonical
-                // RLC/RRC are also valid one-operand Z80 mnemonics. SLCT v1
-                // cannot preserve the source alias's zero-operand arity.
-                && !super::dialect::is_z80_only_mnemonic(entry.canonical)
         })
         .map(|entry| (entry.from.to_string(), entry.canonical.to_string()))
         .collect::<Vec<_>>();
@@ -109,17 +107,6 @@ pub fn selector_programs() -> Result<Vec<SelectorProgramDescriptor>, OpcpuCodecE
         cpu_allow_list: None,
         program: compile_selector_map_program(&aliases)?,
     }])
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn overloaded_rotate_aliases_remain_on_the_arity_aware_dialect_path() {
-        for mnemonic in ["RLCA", "RRCA"] {
-            assert!(super::super::dialect::find_mapping(mnemonic, 0, false).is_some());
-            assert!(super::super::dialect::find_mapping(mnemonic, 1, false).is_none());
-        }
-    }
 }
 
 pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecError> {
@@ -156,7 +143,23 @@ pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecE
                 range: FixupRange::Signed,
                 unresolved: UnresolvedValuePolicy::Placeholder(0),
                 relocation: PortableRelocationKind::None,
+                transform: FixupTransform::Identity,
             }])?,
         },
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn exact_no_operand_aliases_are_package_selector_candidates() {
+        let programs = super::selector_programs().expect("compile exact Zilog aliases");
+        assert_eq!(programs.len(), 1);
+        for mnemonic in ["RLCA", "RRCA", "RLA", "RRA", "CPL", "SCF", "CCF", "HALT"] {
+            assert!(
+                super::super::dialect::find_mapping(mnemonic, 0, false).is_some(),
+                "{mnemonic} must remain sourced from the authoritative dialect table"
+            );
+        }
+    }
 }

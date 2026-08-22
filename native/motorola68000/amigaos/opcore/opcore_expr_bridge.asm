@@ -1481,22 +1481,22 @@ parseHex	.block
 
 loop
 	tst.l d0
-	beq.s ok
+	beq.w ok
 	moveq #0, d1
 	move.b (a0)+, d1
 	subq.l #1, d0
 	cmpi.b #'+', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #'-', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #'|', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #'?', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #':', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #')', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #' ', d1
 	beq.s ok
 	cmpi.b #9, d1
@@ -1529,7 +1529,7 @@ haveDigit
 	moveq #1, d2
 	lsl.l #4, d3
 	or.b d1, d3
-	bra.s loop
+	bra.w loop
 
 ok
 	tst.l d2
@@ -1765,32 +1765,32 @@ parseDecimal	.block
 
 loop
 	tst.l d0
-	beq.s ok
+	beq.w ok
 	moveq #0, d1
 	move.b (a0)+, d1
 	subq.l #1, d0
 	cmpi.b #'+', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #'-', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #'*', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #'/', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #'%', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #'<', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #'>', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #'|', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #'?', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #':', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #')', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #' ', d1
 	beq.s ok
 	cmpi.b #9, d1
@@ -1808,7 +1808,7 @@ loop
 	add.l d2, d3
 	add.l d2, d3
 	add.l d1, d3
-	bra.s loop
+	bra.w loop
 
 ok
 	tst.l d4

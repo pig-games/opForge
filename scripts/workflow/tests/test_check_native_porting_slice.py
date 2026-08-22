@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -29,6 +30,42 @@ class NativePortingSliceTests(unittest.TestCase):
         path = "documentation/plans/slices/native-porting-slice-test.toml"
         self.assertEqual(discover_metadata(["native/motorola68000/x.asm", path]), path)
         self.assertIsNone(discover_metadata([path, path.replace("test", "other")]))
+
+    def test_multiple_staged_slices_select_the_only_complete_native_metadata(self):
+        native_path = "documentation/plans/slices/native-porting-slice-test.toml"
+        package_path = "documentation/plans/slices/package-phase-slice-test.toml"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / native_path).parent.mkdir(parents=True)
+            (root / native_path).write_text(
+                """[slice]
+name = "native"
+kind = "native-rust-parity"
+rust_reference = ["r"]
+native_boundary = ["n"]
+invariant = "i"
+
+[[tests]]
+name = "host proof"
+proof_level = "A"
+proves = "p"
+does_not_prove = "n"
+""",
+                encoding="utf-8",
+            )
+            (root / package_path).write_text(
+                """[slice]
+name = "package"
+kind = "package-runtime"
+rust_reference = ["r"]
+invariant = "i"
+""",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                discover_metadata([native_path, package_path], root),
+                native_path,
+            )
 
     def test_missing_and_malformed_fields_fail(self):
         for data in ({}, {"slice": {}, "tests": []}):

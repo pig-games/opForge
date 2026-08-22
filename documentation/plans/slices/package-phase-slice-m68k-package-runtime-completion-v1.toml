@@ -1,0 +1,67 @@
+[slice]
+schema_version = 1
+name = "complete package-only 680x0 Rust execution and native activation receipt"
+kind = "package-runtime"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 13
+requirements = ["N68X0-001", "N68X0-002", "N68X0-003", "N68X0-004", "N68X0-005", "N68X0-006", "N68X0-007", "N68X0-013", "N68X0-014", "N68X0-015", "N68X0-016", "N68X0-017"]
+rust_reference = [
+  "crates/opforge-asm/src/line.rs::AsmLine::with_cpu",
+  "crates/opforge-asm/src/tests.rs::m68k_serialized_scalar_register_path_uses_zero_family_cpu_or_dialect_callbacks",
+  "crates/opforge-asm/src/tests.rs::motorola68000_family_example_programs_assemble_in_reference_workflow",
+  "crates/opforge-families/src/m68k/package_programs.rs",
+  "crates/opforge-families/src/m68080/package_programs.rs",
+  "crates/opforge-vm/src/runtime_tests.rs::serialized_m68k_scalar_register_programs_execute_for_all_six_profiles",
+  "crates/opforge-vm/src/runtime_tests.rs::serialized_m68k_only_mos65x02_only_and_combined_packages_are_order_independent",
+  "scripts/workflow/run_m68k_package_runtime_completion.sh"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm::TKPKG_MAX_PACKAGE_BYTES",
+  "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm",
+  "native/motorola68000/amigaos/opforge-cli and opasm explicit branch-width source corrections"
+]
+boundary = "Item 13 completes the Rust-side package-first boundary. Motorola 680x0 selection, operand construction, state legality, encoding, fixup, and branch-width meaning remains in the family package builders and executes through the CPU-neutral serialized runtime. Native production changes are limited to a generic package-storage increase from 262,144 to 393,216 bytes and semantics-preserving explicit branch-width corrections in the existing native source so the stricter resolved-branch package path can assemble the complete CLI. No native selector, encoder, parser, register, addressing-mode, instruction, CPU-profile, or dialect semantic is introduced."
+invariant = "After the authoritative 680x0 package bytes are serialized and their builder registry is destroyed, every supported 68000, 68010, 68020, 68030, 68040, and 68080 corpus case executes without a family, CPU, or dialect runtime callback. Exact 680x0-only, 65x02-only, combined, and all-family packages remain independently usable and insertion-order deterministic. The embedded native package is byte-for-byte equal to the canonical all-family Rust package, fits the synchronized 393,216-byte allocation, and a 393,217-byte input still fails closed."
+legacy_contract_migration = "This slice does not migrate or activate a legacy native semantic path. It replaces the embedded package input, synchronizes the CPU-neutral storage bound, and makes explicit source-level branch widths while retaining the existing native runtime contract for Item 14 activation."
+expected_inputs = "Fresh canonical bytes built from the ordinary unmodified Rust 680x0-only registry, ordinary unmodified Rust 65x02-only registry, both registry insertion orders for the combined package, and the complete default all-family registry; the checked-in positive/negative six-profile corpus and complete 680x0 example tree."
+expected_outputs = "Rust-oracle-identical instruction bytes, diagnostics, state transitions, fixups, branch convergence, complete example artifacts, deterministic package bytes, zero post-construction family/CPU/dialect callbacks, and the size report m68k-only=315,343, 65x02-only=61,698, combined=339,941, all-family=367,246, native capacity=393,216, headroom=25,970."
+known_non_equivalences = "This slice does not activate new native package VM opcodes or claim native 680x0 execution; that begins at Item 14. It does not implement native Hunk or S-record output; those remain Items 35-37. It does not run FS-UAE because the package phase changes no native CPU semantics. The 393,216-byte allocation is a bounded current-product capacity, not an unlimited-resource claim; Item 38 remeasures all full-product resources before terminal self-hosting."
+fast_proof_command = "scripts/workflow/run_m68k_package_runtime_completion.sh"
+full_gate_command = "cargo test -p package && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
+native_proof = "host source proof only: Item 13 freezes the exact Rust package for later native activation, increases only generic native package storage, and makes semantics-preserving explicit branch-width corrections required for the stricter resolved-branch package path to assemble the complete CLI; the 367,246-byte embedded package equality, 25,970-byte headroom, 393,217-byte rejection fixture, native source assembly test, and native format gate are inputs to Item 14. No FS-UAE/native runtime parity claim is made."
+
+[[tests]]
+name = "serialized_m68k_scalar_register_programs_execute_for_all_six_profiles"
+proof_level = "A"
+proves = "Fresh serialized 680x0-only package bytes execute the shared and profile-gated positive and negative scalar/register semantic surface after builder destruction."
+does_not_prove = "Native 68020/AmigaOS execution of those package operations."
+
+[[tests]]
+name = "m68k_serialized_scalar_register_path_uses_zero_family_cpu_or_dialect_callbacks"
+proof_level = "A"
+proves = "The normal assembler path executes the package-owned selection, operand, encoding, fixup, and branch corpus for every profile while panic-on-use family, CPU, and dialect callbacks record zero calls."
+does_not_prove = "Native package VM activation or FS-UAE parity."
+
+[[tests]]
+name = "motorola68000_family_example_programs_assemble_in_reference_workflow"
+proof_level = "A"
+proves = "Every checked-in 680x0 and AmigaOS example assembles through the normal package runtime and reference workflow."
+does_not_prove = "That the native executable can yet execute the complete 680x0 package."
+
+[[tests]]
+name = "serialized_m68k_only_mos65x02_only_and_combined_packages_are_order_independent"
+proof_level = "A"
+proves = "Unmodified 680x0-only and 65x02-only packages work independently; the combined package is insertion-order deterministic; the all-family package fits the generic native bound; and the exact four package sizes and remaining headroom are reported."
+does_not_prove = "Native consumption beyond the synchronized bounded-storage contract."
+
+[[tests]]
+name = "motorola68020_embedded_native_cli_package_matches_rust_default_runtime_package"
+proof_level = "B"
+proves = "The embedded native package exactly equals freshly serialized all-family Rust bytes; Rust and native capacity constants agree; and the FS-UAE overflow input remains exactly one byte over capacity."
+does_not_prove = "Real native execution of the embedded package or a successful FS-UAE run."
+
+[[tests]]
+name = "m68k_package_runtime_assembles_flat_amiga_hunk_symbols"
+proof_level = "A"
+proves = "The serialized package resolves forward bare-symbol address and relative-branch fixups into the complete Amiga Hunk artifact without a family encoding callback."
+does_not_prove = "Native Hunk emission, which remains scheduled for Items 35-37."

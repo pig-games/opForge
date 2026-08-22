@@ -187,7 +187,7 @@ unsupported
 	move.l #state.NativeCliArgToken, d1
 	jsr dos.putErrStr
 	move.l #strings.NativeSubsetHelpText, d1
-	bra.s reportText
+	bra.w reportText
 
 unknown
 	move.l #strings.UnknownFlagText, d1
@@ -195,7 +195,7 @@ unknown
 	move.l #state.NativeCliArgToken, d1
 	jsr dos.putErrStr
 	move.l #strings.NewlineText, d1
-	bra.s reportText
+	bra.w reportText
 
 missing
 	move.l #strings.MissingValueText, d1
@@ -203,23 +203,23 @@ missing
 	move.l #state.NativeCliArgToken, d1
 	jsr dos.putErrStr
 	move.l #strings.NewlineText, d1
-	bra.s reportText
+	bra.w reportText
 
 noInput
 	move.l #strings.NoInputText, d1
-	bra.s reportText
+	bra.w reportText
 
 hunkRequired
 	move.l #strings.HunkRequiredText, d1
-	bra.s reportText
+	bra.w reportText
 
 mixedInput
 	move.l #strings.MixedInputText, d1
-	bra.s reportText
+	bra.w reportText
 
 multiplePositional
 	move.l #strings.MultiplePositionalText, d1
-	bra.s reportText
+	bra.w reportText
 
 modulePathCapacity
 	move.l #strings.ModulePathCapacityText, d1

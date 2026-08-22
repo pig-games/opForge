@@ -4,7 +4,7 @@
 //! CPU-neutral execution of runtime-position and deferred-value `SEMV` v4 programs.
 
 use package::{
-    decode_fixup_program, EncodingEndian, FixupBase, FixupRange, OpcpuCodecError,
+    decode_fixup_program, EncodingEndian, FixupBase, FixupRange, FixupTransform, OpcpuCodecError,
     PortableRelocationKind, UnresolvedValuePolicy, SEMANTIC_VM_OPCODE_VERSION_V4,
 };
 
@@ -65,6 +65,20 @@ pub enum FixupVmError {
         value: i64,
         base: i64,
     },
+    AlignmentViolation {
+        index: usize,
+        value: i64,
+        alignment: u32,
+    },
+    NoRangeMapping {
+        index: usize,
+        value: i64,
+    },
+    TransformOverflow {
+        index: usize,
+        value: i64,
+        adjustment: i64,
+    },
     ValueOutOfRange {
         index: usize,
         value: i64,
@@ -95,6 +109,26 @@ impl std::fmt::Display for FixupVmError {
             Self::ProjectionOverflow { value, base } => {
                 write!(f, "fixup value {value} minus base {base} overflows")
             }
+            Self::AlignmentViolation {
+                index,
+                value,
+                alignment,
+            } => write!(
+                f,
+                "fixup input {index} projected value {value} is not aligned to {alignment}"
+            ),
+            Self::NoRangeMapping { index, value } => write!(
+                f,
+                "fixup input {index} projected value {value} has no declared range mapping"
+            ),
+            Self::TransformOverflow {
+                index,
+                value,
+                adjustment,
+            } => write!(
+                f,
+                "fixup input {index} value {value} plus adjustment {adjustment} overflows"
+            ),
             Self::ValueOutOfRange {
                 index,
                 value,
@@ -136,8 +170,16 @@ pub fn execute_fixup_program(
     inputs: &[PortableFixupInput],
     context: PortableFixupContext,
 ) -> Result<PortableFixupResult, FixupVmError> {
-    let steps = decode_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V4, program)
-        .map_err(FixupVmError::Program)?;
+    execute_fixup_program_for_version(SEMANTIC_VM_OPCODE_VERSION_V4, program, inputs, context)
+}
+
+pub fn execute_fixup_program_for_version(
+    version: u16,
+    program: &[u8],
+    inputs: &[PortableFixupInput],
+    context: PortableFixupContext,
+) -> Result<PortableFixupResult, FixupVmError> {
+    let steps = decode_fixup_program(version, program).map_err(FixupVmError::Program)?;
     let mut bytes = Vec::new();
     let mut fixups = Vec::new();
     let mut deferred_inputs = Vec::new();
@@ -149,6 +191,7 @@ pub fn execute_fixup_program(
                 index: step.input as usize,
                 len: inputs.len(),
             })?;
+        let unresolved = matches!(input.value, PortableDeferredValue::Unresolved);
         let mut value = match input.value {
             PortableDeferredValue::Resolved(value) => value,
             PortableDeferredValue::Unresolved => match step.unresolved {
@@ -186,6 +229,9 @@ pub fn execute_fixup_program(
                 .checked_sub(base)
                 .ok_or(FixupVmError::ProjectionOverflow { value, base })?;
         }
+        if !unresolved {
+            value = apply_transform(step.input as usize, value, &step.transform)?;
+        }
         let (min, max) = range_bounds(step.width, step.range);
         if value < min || value > max {
             return Err(FixupVmError::ValueOutOfRange {
@@ -215,4 +261,40 @@ pub fn execute_fixup_program(
         fixups,
         deferred_inputs,
     })
+}
+
+fn apply_transform(
+    index: usize,
+    value: i64,
+    transform: &FixupTransform,
+) -> Result<i64, FixupVmError> {
+    let alignment = match transform {
+        FixupTransform::Identity => return Ok(value),
+        FixupTransform::AlignedBitOr { alignment, .. }
+        | FixupTransform::RangeMap { alignment, .. } => *alignment,
+    };
+    if value.rem_euclid(i64::from(alignment)) != 0 {
+        return Err(FixupVmError::AlignmentViolation {
+            index,
+            value,
+            alignment,
+        });
+    }
+    match transform {
+        FixupTransform::Identity => Ok(value),
+        FixupTransform::AlignedBitOr { mask, .. } => Ok(value | i64::from(*mask)),
+        FixupTransform::RangeMap { mappings, .. } => {
+            let mapping = mappings
+                .iter()
+                .find(|mapping| (mapping.min..=mapping.max).contains(&value))
+                .ok_or(FixupVmError::NoRangeMapping { index, value })?;
+            value
+                .checked_add(mapping.adjustment)
+                .ok_or(FixupVmError::TransformOverflow {
+                    index,
+                    value,
+                    adjustment: mapping.adjustment,
+                })
+        }
+    }
 }

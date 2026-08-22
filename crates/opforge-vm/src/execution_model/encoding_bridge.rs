@@ -1,4 +1,143 @@
+use super::selector_bridge::SelectorInput;
 use super::*;
+
+fn package_expr_is_register(
+    model: &HierarchyExecutionModel,
+    resolved: &ResolvedHierarchy,
+    expr: &Expr,
+) -> bool {
+    match expr {
+        Expr::Register(_, _) => true,
+        Expr::Identifier(id, _) => model
+            .core
+            .register_encoding_for_resolved(resolved, id)
+            .is_some(),
+        _ => false,
+    }
+}
+
+fn package_shape_input<'a>(
+    model: &HierarchyExecutionModel,
+    resolved: &ResolvedHierarchy,
+    operands: &'a [Expr],
+) -> Option<SelectorInput<'a>> {
+    match operands {
+        [] => Some(SelectorInput {
+            shape_key: "implied".to_string(),
+            expr0: None,
+            expr1: None,
+            extra_exprs: &[],
+            force: None,
+        }),
+        [Expr::Immediate(expr, _)] => Some(SelectorInput {
+            shape_key: "immediate".to_string(),
+            expr0: Some(expr.as_ref()),
+            expr1: None,
+            extra_exprs: &[],
+            force: None,
+        }),
+        [expr] if package_expr_is_register(model, resolved, expr) => Some(SelectorInput {
+            shape_key: "register".to_string(),
+            expr0: Some(expr),
+            expr1: None,
+            extra_exprs: &[],
+            force: None,
+        }),
+        [Expr::Immediate(expr, _), register]
+            if package_expr_is_register(model, resolved, register) =>
+        {
+            Some(SelectorInput {
+                shape_key: "immediate_register".to_string(),
+                expr0: Some(expr.as_ref()),
+                expr1: Some(register),
+                extra_exprs: &[],
+                force: None,
+            })
+        }
+        [Expr::Immediate(expr, _), destination] => Some(SelectorInput {
+            shape_key: "immediate_direct".to_string(),
+            expr0: Some(expr.as_ref()),
+            expr1: Some(destination),
+            extra_exprs: &[],
+            force: None,
+        }),
+        [left, right]
+            if package_expr_is_register(model, resolved, left)
+                && package_expr_is_register(model, resolved, right) =>
+        {
+            Some(SelectorInput {
+                shape_key: "register_register".to_string(),
+                expr0: Some(left),
+                expr1: Some(right),
+                extra_exprs: &[],
+                force: None,
+            })
+        }
+        [register, Expr::Immediate(expr, _)]
+            if package_expr_is_register(model, resolved, register) =>
+        {
+            Some(SelectorInput {
+                shape_key: "register_immediate".to_string(),
+                expr0: Some(register),
+                expr1: Some(expr.as_ref()),
+                extra_exprs: &[],
+                force: None,
+            })
+        }
+        [expr, register] if package_expr_is_register(model, resolved, register) => {
+            Some(SelectorInput {
+                shape_key: "direct_register".to_string(),
+                expr0: Some(expr),
+                expr1: Some(register),
+                extra_exprs: &[],
+                force: None,
+            })
+        }
+        [register, expr] if package_expr_is_register(model, resolved, register) => {
+            Some(SelectorInput {
+                shape_key: "register_direct".to_string(),
+                expr0: Some(register),
+                expr1: Some(expr),
+                extra_exprs: &[],
+                force: None,
+            })
+        }
+        [left, right] => Some(SelectorInput {
+            shape_key: "direct_direct".to_string(),
+            expr0: Some(left),
+            expr1: Some(right),
+            extra_exprs: &[],
+            force: None,
+        }),
+        [expr] => Some(SelectorInput {
+            shape_key: "direct".to_string(),
+            expr0: Some(expr),
+            expr1: None,
+            extra_exprs: &[],
+            force: None,
+        }),
+        _ => {
+            let component = |expr: &Expr| match expr {
+                Expr::Immediate(_, _) => "immediate",
+                expr if package_expr_is_register(model, resolved, expr) => "register",
+                _ => "direct",
+            };
+            Some(SelectorInput {
+                shape_key: operands.iter().map(component).collect::<Vec<_>>().join("_"),
+                expr0: operands.first().map(|expr| match expr {
+                    Expr::Immediate(inner, _) => inner.as_ref(),
+                    expr => expr,
+                }),
+                expr1: operands.get(1).map(|expr| match expr {
+                    Expr::Immediate(inner, _) => inner.as_ref(),
+                    expr => expr,
+                }),
+                extra_exprs: &operands[2..],
+                force: None,
+            })
+        }
+    }
+}
 
 impl HierarchyExecutionModel {
     pub fn encode_instruction(
@@ -41,20 +180,67 @@ impl HierarchyExecutionModel {
         operands: &[Expr],
         ctx: &dyn AssemblerContext,
     ) -> Result<Option<Vec<u8>>, RuntimeBridgeError> {
+        self.encode_instruction_from_exprs_with_effects(
+            cpu_id,
+            dialect_override,
+            mnemonic,
+            operands,
+            ctx,
+        )
+        .map(|result| result.map(|(bytes, _)| bytes))
+    }
+
+    pub fn encode_instruction_from_exprs_with_effects(
+        &self,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+        mnemonic: &str,
+        operands: &[Expr],
+        ctx: &dyn AssemblerContext,
+    ) -> Result<
+        Option<(Vec<u8>, crate::runtime_model_types::VmInstructionEffects)>,
+        RuntimeBridgeError,
+    > {
         let resolved = self.core.resolve_pipeline(cpu_id, dialect_override)?;
-        let Some(resolver) = self.expr_resolver_entry(resolved.family_id.as_str()) else {
-            return Ok(None);
-        };
-        let Some(candidates) = resolver
-            .resolver
-            .resolve_candidates(self, &resolved, mnemonic, operands, ctx)?
-        else {
-            return Ok(None);
+        let (candidates, require_program) = match self
+            .expr_resolver_entry(resolved.family_id.as_str())
+        {
+            Some(resolver) => match resolver
+                .resolver
+                .resolve_candidates(self, &resolved, mnemonic, operands, ctx)?
+            {
+                Some(candidates) => (candidates, true),
+                None => {
+                    let Some(input) = package_shape_input(self, &resolved, operands) else {
+                        return Ok(None);
+                    };
+                    let Some(candidates) =
+                        self.select_candidates_from_package_shape(&resolved, mnemonic, input, ctx)?
+                    else {
+                        return Ok(None);
+                    };
+                    (candidates, true)
+                }
+            },
+            None => {
+                let Some(input) = package_shape_input(self, &resolved, operands) else {
+                    return Ok(None);
+                };
+                let Some(candidates) =
+                    self.select_candidates_from_package_shape(&resolved, mnemonic, input, ctx)?
+                else {
+                    return Ok(None);
+                };
+                (candidates, true)
+            }
         };
         self.enforce_candidate_budget(&candidates)?;
-        match self.encode_candidates(&resolved, mnemonic, &candidates)? {
-            Some(bytes) => Ok(Some(bytes)),
-            None => {
+        match self
+            .core
+            .encode_candidates_with_effects(&resolved, mnemonic, &candidates)?
+        {
+            Some(result) => Ok(Some(result)),
+            None if require_program => {
                 let upper = mnemonic.to_ascii_uppercase();
                 let fallback = format!("missing VM program for {}", upper);
                 let message = self.diag_message(
@@ -64,6 +250,7 @@ impl HierarchyExecutionModel {
                 );
                 Err(RuntimeBridgeError::Resolve(message))
             }
+            None => Ok(None),
         }
     }
 

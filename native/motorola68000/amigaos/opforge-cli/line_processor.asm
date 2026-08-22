@@ -512,7 +512,7 @@ fail
 opforgeNativeCliProcessExpandedScopeLineV1	.block
 	movem.l d4-d7, -(sp)
 	jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1.l
-	bne.s fail
+	bne.w fail
 	jsr engine.opasmEngineGetSourceRecordCountV1
 	move.l d0, d4
 	jsr engine.opasmEngineGetStatementCountV1
@@ -627,7 +627,7 @@ bodyLoop
 	; bounded independently of the per-definition count table so corrupted or
 	; stale metadata cannot make the native CLI iterate unboundedly.
 	cmpi.w #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d0
-	bcc.s close
+	bcc.w close
 	lea state.NativeCliPreprocessDefinitionBodyCount, a0
 	moveq #0, d4
 	add.w d2, d2
@@ -635,7 +635,7 @@ bodyLoop
 	cmpi.w #constants.NATIVE_PREPROCESS_BODY_LINE_CAPACITY, d4
 	bhi.w fail
 	cmp.w d4, d0
-	bcc.s close
+	bcc.w close
 	jsr preprocessor_substitution.opforgeNativeCliSubstituteMacroBodyLineV1.l
 	bne.w fail
 	move.w d1, state.NativeCliPreprocessExpansionLineLen
@@ -708,7 +708,7 @@ attachSegmentInvocationLabel	.block
 	moveq #0, d3
 trim
 	cmp.w d2, d3
-	bcc.s contentReady
+	bcc.w contentReady
 	move.b 0(a0, d3.w), d4
 	cmpi.b #' ', d4
 	beq.s trimNext
@@ -724,7 +724,7 @@ contentReady
 	addq.w #1, d4
 	add.w d2, d4
 	cmpi.w #constants.NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY, d4
-	bcc.s fail
+	bcc.w fail
 	move.w d0, d6
 	addq.w #1, d6
 	cmp.w d3, d6
@@ -746,7 +746,7 @@ forwardBody
 	moveq #0, d5
 forwardLoop
 	cmp.w d2, d5
-	bcc.s copyLabel
+	bcc.w copyLabel
 	move.w d5, d6
 	add.w d3, d6
 	move.b 0(a0, d6.w), d6

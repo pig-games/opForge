@@ -337,14 +337,14 @@ ordinaryResolveImportLoop
 	moveq #0, d3
 ordinaryResolveDotScan
 	cmp.l d6, d3
-	bhs.s ordinaryResolveSelections
+	bhs.w ordinaryResolveSelections
 	cmpi.b #'.', 0(a3, d3.l)
 	beq.s ordinaryResolveQualifier
 	addq.l #1, d3
 	bra.s ordinaryResolveDotScan
 ordinaryResolveQualifier
 	tst.l d3
-	beq.s ordinaryResolveSelections
+	beq.w ordinaryResolveSelections
 	move.l d3, d5
 	move.l d7, d0
 	lsl.l #6, d0

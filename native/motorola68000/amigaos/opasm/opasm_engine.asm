@@ -1537,7 +1537,7 @@ opasmEngineGetStatementTextMetadataV1	.block
 
 haveMnemLen
 	tst.w d0
-	beq.s fail
+	beq.w fail
 	move.l d0, OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a2)
 	; Prefer the original statement source span for operands.  The legacy token
 	; snapshot remains the fallback for synthesized records, but source-backed

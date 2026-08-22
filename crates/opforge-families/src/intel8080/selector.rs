@@ -127,13 +127,10 @@ fn resolved_operand_candidates(
             resolved_candidates.push(ops);
         }
     } else if cpu_id.eq_ignore_ascii_case("8085") {
-        if let Ok(ops) = I8085CpuHandler::new().resolve_operands(mnemonic, parsed, ctx) {
-            resolved_candidates.push(ops);
-        }
-    } else if let Ok(ops) =
-        resolve_intel8080_operands(mnemonic, parsed, ctx).map_err(|err| err.message)
-    {
-        resolved_candidates.push(ops);
+        resolved_candidates.push(I8085CpuHandler::new().resolve_operands(mnemonic, parsed, ctx)?);
+    } else {
+        resolved_candidates
+            .push(resolve_intel8080_operands(mnemonic, parsed, ctx).map_err(|err| err.message)?);
     }
 
     Ok(resolved_candidates)

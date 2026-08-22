@@ -583,7 +583,7 @@ compareEndfor
 	move.l 0(a0, d4.l), d5
 	subq.l #1, d5
 	move.l d5, 0(a0, d4.l)
-	beq.s finishFor
+	beq.w finishFor
 	moveq #0, d2
 	move.w d3, d2
 	jsr structs.advanceScopedRepeatV1

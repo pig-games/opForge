@@ -47,9 +47,6 @@ impl<'a> AsmLine<'a> {
     ) -> LineStatus {
         #[cfg(feature = "vm-runtime-only")]
         {
-            if self.in_section() {
-                self.mark_current_section_not_relocation_free();
-            }
             self.try_encode_instruction_vm_only(mnemonic, operands)
                 .unwrap_or_else(|| {
                     self.failure(
@@ -66,6 +63,12 @@ impl<'a> AsmLine<'a> {
 
         #[cfg(not(feature = "vm-runtime-only"))]
         {
+            if let Some(status) =
+                self.try_encode_instruction_via_package_before_family_callbacks(mnemonic, operands)
+            {
+                return status;
+            }
+
             let pipeline = match Self::resolve_pipeline_for_cpu(self.registry, self.cpu) {
                 Ok(pipeline) => pipeline,
                 Err(message) => {
@@ -264,6 +267,127 @@ impl<'a> AsmLine<'a> {
                 mapped_mnemonic: &mapped_mnemonic,
                 mapped_operands: mapped_operands.as_ref(),
             })
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn try_encode_instruction_via_package_before_family_callbacks(
+        &mut self,
+        mnemonic: &str,
+        operands: &[Expr],
+    ) -> Option<LineStatus> {
+        let model = self.opthread_execution_model.as_ref()?;
+        let resolved = model.resolve_pipeline(self.cpu.as_str(), None).ok()?;
+        if !vm::rollout::package_runtime_pre_callback_enabled_for_family(&resolved.family_id) {
+            return None;
+        }
+
+        match vm::vm_opasm::encode_instruction_from_exprs_with_effects(
+            model,
+            self.cpu.as_str(),
+            None,
+            mnemonic,
+            operands,
+            self,
+        ) {
+            Ok(Some((bytes, effects))) => {
+                if bytes.is_empty() {
+                    return Some(self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Instruction,
+                        &format!(
+                            "VM program emitted no bytes for {}",
+                            mnemonic.to_ascii_uppercase()
+                        ),
+                        None,
+                    ));
+                }
+                if let Err(err) =
+                    self.validate_instruction_emit_span(mnemonic, operands, bytes.len())
+                {
+                    return Some(self.failure_at_span(
+                        LineStatus::Error,
+                        AsmErrorKind::Instruction,
+                        err.error.message(),
+                        None,
+                        err.span,
+                    ));
+                }
+                let instruction_offset = match u32::try_from(self.bytes.len()) {
+                    Ok(offset) => offset,
+                    Err(_) => {
+                        return Some(self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "instruction relocation base exceeds supported range",
+                            None,
+                        ))
+                    }
+                };
+                let has_output_fixups = !effects.output_fixups.is_empty();
+                for fixup in effects.output_fixups {
+                    if fixup.width != 4
+                        || fixup.kind != vm::fixup_vm::PortableOutputFixupKind::Absolute
+                    {
+                        return Some(self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "VM runtime emitted an unsupported output fixup",
+                            None,
+                        ));
+                    }
+                    let Some(offset) = instruction_offset.checked_add(fixup.offset) else {
+                        return Some(self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "instruction relocation offset exceeds supported range",
+                            None,
+                        ));
+                    };
+                    let Some(output_fixup) =
+                        self.hunk_abs32_output_fixup(offset, fixup.encoded_addend, fixup.target)
+                    else {
+                        return Some(self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "instruction relocation requires an active section",
+                            None,
+                        ));
+                    };
+                    self.mark_current_section_hunk_relocatable();
+                    self.pending_output_fixups.push(output_fixup);
+                }
+                self.bytes.extend_from_slice(&bytes);
+                if self.in_section()
+                    && !effects.relocation_free
+                    && !has_output_fixups
+                    && operands
+                        .iter()
+                        .any(|expr| self.instruction_expr_references_target(expr))
+                {
+                    self.mark_current_section_hunk_fixup_error(&format!(
+                        "format=hunk does not support this symbolic instruction form in v0.3: instruction {mnemonic} with operands {operands:?} references a relocatable symbol but its package encoding emitted no output fixup"
+                    ));
+                }
+                Some(LineStatus::Ok)
+            }
+            Ok(None) => None,
+            Err(err) => Some(if let Some(operand) = operands.last() {
+                self.failure_at_span(
+                    LineStatus::Error,
+                    AsmErrorKind::Instruction,
+                    &err.to_string(),
+                    None,
+                    expr_span(operand),
+                )
+            } else {
+                self.failure(
+                    LineStatus::Error,
+                    AsmErrorKind::Instruction,
+                    &err.to_string(),
+                    None,
+                )
+            }),
         }
     }
 
@@ -1924,7 +2048,7 @@ impl<'a> AsmLine<'a> {
         operands: &[Expr],
     ) -> Option<LineStatus> {
         let model = self.opthread_execution_model.as_ref()?;
-        match vm::vm_opasm::encode_instruction_from_exprs(
+        match vm::vm_opasm::encode_instruction_from_exprs_with_effects(
             model,
             self.cpu.as_str(),
             None,
@@ -1932,7 +2056,7 @@ impl<'a> AsmLine<'a> {
             operands,
             self,
         ) {
-            Ok(Some(bytes)) => {
+            Ok(Some((bytes, effects))) => {
                 if bytes.is_empty() {
                     return Some(self.failure(
                         LineStatus::Error,
@@ -1955,17 +2079,68 @@ impl<'a> AsmLine<'a> {
                         err.span,
                     ));
                 }
+                let instruction_offset = match u32::try_from(self.bytes.len()) {
+                    Ok(offset) => offset,
+                    Err(_) => {
+                        return Some(self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "instruction relocation base exceeds supported range",
+                            None,
+                        ))
+                    }
+                };
+                let has_output_fixups = !effects.output_fixups.is_empty();
+                for fixup in effects.output_fixups {
+                    if fixup.width != 4
+                        || fixup.kind != vm::fixup_vm::PortableOutputFixupKind::Absolute
+                    {
+                        return Some(self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "VM runtime emitted an unsupported output fixup",
+                            None,
+                        ));
+                    }
+                    let Some(offset) = instruction_offset.checked_add(fixup.offset) else {
+                        return Some(self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "instruction relocation offset exceeds supported range",
+                            None,
+                        ));
+                    };
+                    let Some(output_fixup) =
+                        self.hunk_abs32_output_fixup(offset, fixup.encoded_addend, fixup.target)
+                    else {
+                        return Some(self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "instruction relocation requires an active section",
+                            None,
+                        ));
+                    };
+                    self.mark_current_section_hunk_relocatable();
+                    self.pending_output_fixups.push(output_fixup);
+                }
                 self.bytes.extend_from_slice(&bytes);
+                if self.in_section()
+                    && !effects.relocation_free
+                    && !has_output_fixups
+                    && operands
+                        .iter()
+                        .any(|expr| self.instruction_expr_references_target(expr))
+                {
+                    self.mark_current_section_hunk_fixup_error(&format!(
+                        "format=hunk does not support this symbolic instruction form in v0.3: instruction {mnemonic} with operands {operands:?} references a relocatable symbol but its package encoding emitted no output fixup"
+                    ));
+                }
                 Some(LineStatus::Ok)
             }
             Ok(None) => Some(self.failure(
                 LineStatus::Error,
                 AsmErrorKind::Instruction,
-                &format!(
-                    "instruction not found for CPU '{}' in VM runtime: {}",
-                    self.cpu.as_str(),
-                    mnemonic
-                ),
+                &format!("No instruction found for {}", mnemonic.to_ascii_uppercase()),
                 None,
             )),
             Err(err) => Some(self.failure(
@@ -1974,6 +2149,40 @@ impl<'a> AsmLine<'a> {
                 &err.to_string(),
                 None,
             )),
+        }
+    }
+
+    fn instruction_expr_references_target(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Identifier(name, _) | Expr::Register(name, _) => {
+                self.symbol_is_target_reference(name)
+            }
+            Expr::List(items, _) | Expr::Tuple(items, _) => items
+                .iter()
+                .any(|item| self.instruction_expr_references_target(item)),
+            Expr::Index { base, index, .. } => {
+                self.instruction_expr_references_target(base)
+                    || self.instruction_expr_references_target(index)
+            }
+            Expr::Member { base, .. }
+            | Expr::Indirect(base, _)
+            | Expr::Immediate(base, _)
+            | Expr::IndirectLong(base, _)
+            | Expr::Unary { expr: base, .. } => self.instruction_expr_references_target(base),
+            Expr::Binary { left, right, .. } => {
+                self.instruction_expr_references_target(left)
+                    || self.instruction_expr_references_target(right)
+            }
+            Expr::Range {
+                start, end, step, ..
+            } => {
+                self.instruction_expr_references_target(start)
+                    || self.instruction_expr_references_target(end)
+                    || step
+                        .as_deref()
+                        .is_some_and(|step| self.instruction_expr_references_target(step))
+            }
+            _ => false,
         }
     }
 
@@ -2046,7 +2255,7 @@ impl<'a> AsmLine<'a> {
             Self::opthread_runtime_expr_operands_from_mapped(mapped_operands);
         let runtime_expr_operands = runtime_expr_operands_storage.as_deref().unwrap_or(operands);
         let vm_start = std::time::Instant::now();
-        let vm_res = vm::vm_opasm::encode_instruction_from_exprs(
+        let vm_res = vm::vm_opasm::encode_instruction_from_exprs_with_effects(
             model,
             self.cpu.as_str(),
             None,
@@ -2059,7 +2268,7 @@ impl<'a> AsmLine<'a> {
         crate::phase_profile::record_execution_path(Some(bucket), "vm.encode", vm_elapsed);
 
         match vm_res {
-            Ok(Some(bytes)) => {
+            Ok(Some((bytes, effects))) => {
                 if runtime_expr_selector_gate_only {
                     return None;
                 }
@@ -2081,10 +2290,72 @@ impl<'a> AsmLine<'a> {
                     return None;
                 }
 
-                if let Some(status) =
-                    self.emit_instruction_bytes_checked(mapped_mnemonic, operands, bytes.as_slice())
+                if let Err(err) =
+                    self.validate_instruction_emit_span(mapped_mnemonic, operands, bytes.len())
                 {
-                    return Some(status);
+                    return Some(self.failure_at_span(
+                        LineStatus::Error,
+                        AsmErrorKind::Instruction,
+                        err.error.message(),
+                        None,
+                        err.span,
+                    ));
+                }
+                let instruction_offset = match u32::try_from(self.bytes.len()) {
+                    Ok(offset) => offset,
+                    Err(_) => {
+                        return Some(self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "instruction relocation base exceeds supported range",
+                            None,
+                        ))
+                    }
+                };
+                let has_output_fixups = !effects.output_fixups.is_empty();
+                for fixup in effects.output_fixups {
+                    if fixup.width != 4
+                        || fixup.kind != vm::fixup_vm::PortableOutputFixupKind::Absolute
+                    {
+                        return Some(self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "VM runtime emitted an unsupported output fixup",
+                            None,
+                        ));
+                    }
+                    let Some(offset) = instruction_offset.checked_add(fixup.offset) else {
+                        return Some(self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "instruction relocation offset exceeds supported range",
+                            None,
+                        ));
+                    };
+                    let Some(output_fixup) =
+                        self.hunk_abs32_output_fixup(offset, fixup.encoded_addend, fixup.target)
+                    else {
+                        return Some(self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "instruction relocation requires an active section",
+                            None,
+                        ));
+                    };
+                    self.mark_current_section_hunk_relocatable();
+                    self.pending_output_fixups.push(output_fixup);
+                }
+                self.bytes.extend_from_slice(&bytes);
+                if self.in_section()
+                    && !effects.relocation_free
+                    && !has_output_fixups
+                    && runtime_expr_operands
+                        .iter()
+                        .any(|expr| self.instruction_expr_references_target(expr))
+                {
+                    self.mark_current_section_hunk_fixup_error(&format!(
+                        "format=hunk does not support this symbolic instruction form in v0.3: instruction {mnemonic} with operands {runtime_expr_operands:?} references a relocatable symbol but its package encoding emitted no output fixup"
+                    ));
                 }
                 if let Ok(resolved_operands) =
                     pipeline
@@ -2105,7 +2376,9 @@ impl<'a> AsmLine<'a> {
                         model,
                         pipeline.family_id.as_str(),
                     );
-                if strict_runtime_parse_resolve && !defer_to_native_diagnostics {
+                if family_runtime_authoritative
+                    || (strict_runtime_parse_resolve && !defer_to_native_diagnostics)
+                {
                     Some(self.failure_instruction_not_found(
                         LineStatus::Error,
                         pipeline,

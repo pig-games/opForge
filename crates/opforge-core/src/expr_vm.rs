@@ -926,7 +926,7 @@ fn eval_portable_expr_program_v1(
                 if is_symbol_unstable(
                     symbol_name,
                     ctx.pass(),
-                    |symbol| ctx.lookup_symbol(symbol).is_some(),
+                    |symbol| ctx.symbol_exists(symbol),
                     |symbol| ctx.symbol_is_finalized(symbol),
                 ) {
                     has_unstable_symbols = true;

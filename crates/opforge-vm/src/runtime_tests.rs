@@ -80,12 +80,14 @@ use opcore::parser::{
 use opcore::tokenizer::{ConditionalKind, Span, Token, TokenKind, Tokenizer};
 use package::{
     compile_branch_program, compile_encoding_program, compile_fixed_semantic_program,
-    compile_fixup_program, compile_selector_program, compile_structured_encoding_program,
-    default_token_policy_lexical_defaults, encode_hierarchy_chunks_from_chunks,
-    token_identifier_class, BranchCandidateSpec, BranchProgramSpec, DiagnosticDescriptor,
-    EncodingEndian, EncodingStep, ExprContractDescriptor, ExprDiagnosticMap,
-    ExprParserContractDescriptor, ExprParserDiagnosticMap, FixupBase, FixupEncodingStep,
-    FixupRange, HierarchyChunks, ParserContractDescriptor, ParserDiagnosticMap, ParserVmOpcodeV2,
+    compile_fixup_program, compile_numeric_encoding_program,
+    compile_parameterized_encoding_program, compile_selector_program,
+    compile_structured_encoding_program, default_token_policy_lexical_defaults,
+    encode_hierarchy_chunks_from_chunks, token_identifier_class, BranchCandidateSpec,
+    BranchProgramSpec, DiagnosticDescriptor, EncodingEndian, EncodingFieldSpec, EncodingStep,
+    ExprContractDescriptor, ExprDiagnosticMap, ExprParserContractDescriptor,
+    ExprParserDiagnosticMap, FixupBase, FixupEncodingStep, FixupRange, FixupTransform,
+    HierarchyChunks, ParserContractDescriptor, ParserDiagnosticMap, ParserVmOpcodeV2,
     ParserVmProgramDescriptor, PortableRelocationKind, RegisterClassProjection,
     SelectorProgramDescriptor, SelectorProgramMatcher, SelectorProgramOutcome,
     SemanticProgramDescriptor, StructuredEncodingStep, TokenCaseRule, TokenPolicyDescriptor,
@@ -98,7 +100,8 @@ use package::{
     EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1,
     EXVM_OPCODE_VERSION_V2, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
     SEMANTIC_VM_OPCODE_VERSION_V1, SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3,
-    SEMANTIC_VM_OPCODE_VERSION_V4, SEMANTIC_VM_OPCODE_VERSION_V5, TOKENIZER_VM_OPCODE_VERSION_V1,
+    SEMANTIC_VM_OPCODE_VERSION_V4, SEMANTIC_VM_OPCODE_VERSION_V5, SEMANTIC_VM_OPCODE_VERSION_V6,
+    SEMANTIC_VM_OPCODE_VERSION_V7, SEMANTIC_VM_OPCODE_VERSION_V8, TOKENIZER_VM_OPCODE_VERSION_V1,
 };
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult, FamilyHandler};
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
@@ -966,6 +969,7 @@ fn intel_only_chunks() -> HierarchyChunks {
             cpu_allow_list: None,
         }],
         registers: Vec::new(),
+        register_encodings: Vec::new(),
         forms: Vec::new(),
         tables: vec![VmProgramDescriptor {
             owner: ScopedOwner::Family("intel8080".to_string()),
@@ -1177,6 +1181,16 @@ fn execution_model_budget_rejects_operand_byte_overflow() {
         .encode_instruction("m6502", None, "LDA", &operands)
         .expect_err("operand byte budget should reject immediate bytes");
     assert!(err.to_string().contains("operand_bytes_per_operand"));
+}
+
+#[test]
+fn execution_model_profiles_accept_bounded_long_operand_encodings() {
+    for profile in [
+        RuntimeBudgetProfile::HostDefault,
+        RuntimeBudgetProfile::RetroConstrained,
+    ] {
+        assert_eq!(profile.limits().max_operand_bytes_per_operand, 32);
+    }
 }
 
 #[test]
@@ -5544,7 +5558,7 @@ fn execution_model_parser_certification_checklists_return_expr_and_instruction_t
     );
     assert_eq!(
         motorola68000.instruction_parse_encode_checklist,
-        Some("phase6-motorola68000-runtime-staged-verification")
+        Some("item13-motorola68000-package-runtime-completion")
     );
 }
 
@@ -6049,7 +6063,7 @@ fn motorola68000_tokenizer_vm_staged_baseline_matches_host_for_smoke_line() {
 
     assert_eq!(
         family_runtime_mode("motorola68000"),
-        FamilyRuntimeMode::StagedVerification
+        FamilyRuntimeMode::Authoritative
     );
 
     let host =
@@ -6064,7 +6078,10 @@ fn motorola68000_tokenizer_vm_staged_baseline_matches_host_for_smoke_line() {
     )
     .expect("vm tokenizer result");
 
-    assert_eq!(vm, host, "motorola68000 staged baseline should match host");
+    assert_eq!(
+        vm, host,
+        "motorola68000 authoritative baseline should match host"
+    );
 }
 
 #[test]
@@ -6082,7 +6099,7 @@ fn motorola68000_tokenizer_vm_staged_corpus_matches_host_for_example_lines() {
 
     assert_eq!(
         family_runtime_mode("motorola68000"),
-        FamilyRuntimeMode::StagedVerification
+        FamilyRuntimeMode::Authoritative
     );
 
     for (path, cpu_id, line_num, line) in corpus {
@@ -8126,6 +8143,24 @@ fn serialized_encoding_programs_own_fields_endian_displacements_and_overflow() {
     chunks.semantic_programs.extend([
         SemanticProgramDescriptor {
             owner: ScopedOwner::Family("motorola68000".to_string()),
+            id: "encoding.parameterized-register".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V6,
+            program: compile_parameterized_encoding_program(&[EncodingStep::InputFields {
+                base_input: 0,
+                width: 2,
+                endian: EncodingEndian::Big,
+                fields: vec![EncodingFieldSpec {
+                    input: 1,
+                    shift: 9,
+                    bits: 3,
+                    min: 0,
+                    max: 7,
+                }],
+            }])
+            .expect("compile parameterized register encoding"),
+        },
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("motorola68000".to_string()),
             id: "encoding.displacement-word".to_string(),
             opcode_version: SEMANTIC_VM_OPCODE_VERSION_V2,
             program: compile_encoding_program(&[EncodingStep::Scalar {
@@ -8157,6 +8192,24 @@ fn serialized_encoding_programs_own_fields_endian_displacements_and_overflow() {
             ])
             .expect("compile little-endian immediate"),
         },
+        SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("motorola68000".to_string()),
+            id: "encoding.integer-ieee754".to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V8,
+            program: compile_numeric_encoding_program(&[
+                EncodingStep::IntegerToIeee754 {
+                    input: 0,
+                    width: 4,
+                    endian: EncodingEndian::Big,
+                },
+                EncodingStep::IntegerToIeee754 {
+                    input: 1,
+                    width: 8,
+                    endian: EncodingEndian::Big,
+                },
+            ])
+            .expect("compile neutral integer-to-IEEE-754 conversion"),
+        },
     ]);
     let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("serialize encoding programs");
     drop(chunks);
@@ -8172,6 +8225,24 @@ fn serialized_encoding_programs_own_fields_endian_displacements_and_overflow() {
     let mos = model
         .resolve_pipeline("m6502", None)
         .expect("resolve m6502");
+    assert_eq!(
+        model
+            .execute_encoding_program(&m68k, "encoding.parameterized-register", &[0xd040, 3],)
+            .expect("overlay register field on package-provided base"),
+        [0xd6, 0x40]
+    );
+    let base_overflow = model
+        .execute_encoding_program(&m68k, "encoding.parameterized-register", &[0x1_0000, 0])
+        .expect_err("parameterized base overflow must fail closed");
+    assert!(matches!(
+        base_overflow,
+        RuntimeBridgeError::EncodingVm(crate::encoding_vm::EncodingVmError::ValueOutOfRange {
+            index: 0,
+            value: 65_536,
+            min: 0,
+            max: 65_535,
+        })
+    ));
     assert_eq!(
         model
             .execute_encoding_program(&m68k, m68k_value_programs::ENCODING_TRAP_VECTOR, &[7])
@@ -8190,6 +8261,22 @@ fn serialized_encoding_programs_own_fields_endian_displacements_and_overflow() {
             .expect("emit little-endian cross-family immediate"),
         [0xea, 0x34, 0x12]
     );
+    assert_eq!(
+        model
+            .execute_encoding_program(&m68k, "encoding.integer-ieee754", &[1, -2])
+            .expect("convert serialized integer inputs to IEEE-754 bytes"),
+        [0x3f, 0x80, 0x00, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,]
+    );
+    let missing_float = model
+        .execute_encoding_program(&m68k, "encoding.integer-ieee754", &[1])
+        .expect_err("missing binary64 input must fail closed");
+    assert!(matches!(
+        missing_float,
+        RuntimeBridgeError::EncodingVm(crate::encoding_vm::EncodingVmError::MissingInput {
+            index: 1,
+            len: 1,
+        })
+    ));
     let missing = model
         .execute_encoding_program(&mos, "encoding.immediate-word", &[])
         .expect_err("missing scalar input must fail closed");
@@ -8221,51 +8308,56 @@ fn serialized_structured_encoding_programs_match_family_oracles_without_callback
         col_start: 1,
         col_end: 2,
     };
-    let handler = M68KFamilyHandler::new();
-    let later_handler = M68020CpuHandler::new();
-    let movem_operands = [
-        M68KOperand::RegisterList {
-            registers: vec![
-                RegisterListRegister::Data(0),
-                RegisterListRegister::Data(2),
-                RegisterListRegister::Address(1),
-            ],
+    let (movem_oracle, bitfield_oracle) = {
+        let handler = M68KFamilyHandler::new();
+        let later_handler = M68020CpuHandler::new();
+        let movem_operands = [
+            M68KOperand::RegisterList {
+                registers: vec![
+                    RegisterListRegister::Data(0),
+                    RegisterListRegister::Data(2),
+                    RegisterListRegister::Address(1),
+                ],
+                span,
+            },
+            M68KOperand::AddressIndirect {
+                register: "A0".to_string(),
+                span,
+            },
+        ];
+        let movem_oracle = match handler.encode_instruction(
+            "MOVEM.L",
+            &movem_operands,
+            &TestAssemblerContext::new(),
+        ) {
+            EncodeResult::Ok(bytes) => bytes,
+            other => panic!("Rust m68k oracle rejected MOVEM.L: {other:?}"),
+        };
+        let bit_field = M68KOperand::BitField {
+            base: Box::new(M68KOperand::DataRegister {
+                register: "D0".to_string(),
+                span,
+            }),
+            offset: BitFieldSelector::DataRegister {
+                register: "D1".to_string(),
+                span,
+            },
+            width: BitFieldSelector::Immediate {
+                expr: Expr::Number("32".to_string(), span),
+                span,
+            },
             span,
-        },
-        M68KOperand::AddressIndirect {
-            register: "A0".to_string(),
-            span,
-        },
-    ];
-    let movem_oracle = match handler.encode_instruction(
-        "MOVEM.L",
-        &movem_operands,
-        &TestAssemblerContext::new(),
-    ) {
-        EncodeResult::Ok(bytes) => bytes,
-        other => panic!("Rust m68k oracle rejected MOVEM.L: {other:?}"),
-    };
-    let bit_field = M68KOperand::BitField {
-        base: Box::new(M68KOperand::DataRegister {
-            register: "D0".to_string(),
-            span,
-        }),
-        offset: BitFieldSelector::DataRegister {
-            register: "D1".to_string(),
-            span,
-        },
-        width: BitFieldSelector::Immediate {
-            expr: Expr::Number("32".to_string(), span),
-            span,
-        },
-        span,
-    };
-    let bitfield_oracle =
-        match later_handler.encode_instruction("BFTST", &[bit_field], &TestAssemblerContext::new())
-        {
+        };
+        let bitfield_oracle = match later_handler.encode_instruction(
+            "BFTST",
+            &[bit_field],
+            &TestAssemblerContext::new(),
+        ) {
             EncodeResult::Ok(bytes) => bytes,
             other => panic!("Rust m68k oracle rejected BFTST: {other:?}"),
         };
+        (movem_oracle, bitfield_oracle)
+    };
 
     let mut registry = ModuleRegistry::new();
     register_mos6502_family_stack(&mut registry);
@@ -8300,8 +8392,6 @@ fn serialized_structured_encoding_programs_match_family_oracles_without_callback
         encode_hierarchy_chunks_from_chunks(&chunks).expect("serialize structured programs");
     drop(chunks);
     drop(registry);
-    drop(handler);
-    drop(later_handler);
 
     // All compiler descriptors, registries, and family handlers are gone. The
     // following results are projections of records plus serialized bytes only.
@@ -8643,6 +8733,7 @@ fn serialized_fixup_programs_match_pc_relative_deferred_relocation_and_cross_fam
             range: FixupRange::Unsigned,
             unresolved: UnresolvedValuePolicy::Reject,
             relocation: PortableRelocationKind::None,
+            transform: FixupTransform::Identity,
         }])
         .expect("compile reject fixup"),
     });
@@ -8814,6 +8905,86 @@ fn serialized_fixup_programs_match_pc_relative_deferred_relocation_and_cross_fam
 }
 
 #[test]
+fn serialized_fixup_v7_executes_neutral_aligned_and_range_map_projections() {
+    let mut registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut registry);
+    let chunks = build_hierarchy_chunks_from_registry(&registry).expect("680x0 package chunks");
+    assert!(chunks.semantic_programs.iter().any(|program| {
+        program.id == "fix.m68080.long-counter"
+            && program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V7
+    }));
+    assert!(chunks.semantic_programs.iter().any(|program| {
+        program.id == "fix.m68080.extended-short"
+            && program.opcode_version == SEMANTIC_VM_OPCODE_VERSION_V7
+    }));
+    let bytes = encode_hierarchy_chunks_from_chunks(&chunks).expect("serialize 680x0 package");
+    drop(chunks);
+    drop(registry);
+
+    let model = HierarchyExecutionModel::from_package_bytes(&bytes)
+        .expect("reload serialized 680x0 package");
+    let resolved = model
+        .resolve_pipeline("m68080", None)
+        .expect("resolve m68080");
+    let context = PortableFixupContext { position: 0x1000 };
+    let target = |value| PortableFixupInput {
+        value: PortableDeferredValue::Resolved(value),
+        target_reference: true,
+        relocation_target: None,
+    };
+    let execute =
+        |program, value| model.execute_fixup_program(&resolved, program, &[target(value)], context);
+
+    assert_eq!(
+        execute("fix.m68080.long-counter", 0x1008)
+            .expect("aligned long-counter")
+            .bytes,
+        [0, 9]
+    );
+    let deferred = model
+        .execute_fixup_program(
+            &resolved,
+            "fix.m68080.long-counter",
+            &[PortableFixupInput {
+                value: PortableDeferredValue::Unresolved,
+                target_reference: true,
+                relocation_target: None,
+            }],
+            context,
+        )
+        .expect("long-counter placeholder");
+    assert_eq!(deferred.bytes, [0, 1]);
+    assert_eq!(deferred.deferred_inputs, [0]);
+    assert!(matches!(
+        execute("fix.m68080.long-counter", 0x1009).expect_err("odd long-counter must fail"),
+        RuntimeBridgeError::FixupVm(FixupVmError::AlignmentViolation { .. })
+    ));
+
+    for (target_value, expected) in [
+        (0x0f02, 0x81_u8),
+        (0x0f7e, 0xfd),
+        (0x1082, 0x01),
+        (0x1100, 0x7f),
+    ] {
+        assert_eq!(
+            execute("fix.m68080.extended-short", target_value)
+                .expect("mapped extended-short")
+                .bytes,
+            [expected]
+        );
+    }
+    assert!(matches!(
+        execute("fix.m68080.extended-short", 0x1083).expect_err("odd extended-short must fail"),
+        RuntimeBridgeError::FixupVm(FixupVmError::AlignmentViolation { .. })
+    ));
+    assert!(matches!(
+        execute("fix.m68080.extended-short", 0x1080)
+            .expect_err("unmapped extended-short must fail"),
+        RuntimeBridgeError::FixupVm(FixupVmError::NoRangeMapping { .. })
+    ));
+}
+
+#[test]
 fn serialized_branch_programs_match_width_convergence_and_cross_family_oracles() {
     let span = Span {
         line: 1,
@@ -8929,6 +9100,24 @@ fn serialized_branch_programs_match_width_convergence_and_cross_family_oracles()
         automatic_class: 1,
         ..PortableBranchRequest::default()
     };
+
+    let mut selector_ctx = TestAssemblerContext::new();
+    selector_ctx.addr = 0x1000;
+    selector_ctx.values.insert("target".to_string(), 0x1008);
+    selector_ctx.finalized.insert("target".to_string(), true);
+    let (selected_bytes, selected_effects) = model
+        .encode_instruction_from_exprs_with_effects(
+            "m68020",
+            None,
+            "BNE",
+            &[Expr::Identifier("target".to_string(), span)],
+            &selector_ctx,
+        )
+        .expect("select serialized branch through the package runtime")
+        .expect("serialized branch selector candidate");
+    assert_eq!(selected_bytes, forward_oracle);
+    assert!(selected_effects.relocation_free);
+    assert!(selected_effects.output_fixups.is_empty());
 
     let unresolved = model
         .execute_branch_program(
@@ -9347,6 +9536,8 @@ fn serialized_all_family_adoptions_match_existing_scalar_record_and_encoding_ora
     let mos = model.resolve_pipeline("6502", None).expect("resolve 6502");
 
     for (input, expected) in [
+        ("RLCA", "RLC"),
+        ("RRCA", "RRC"),
         ("RLA", "RAL"),
         ("RRA", "RAR"),
         ("CPL", "CMA"),
@@ -9359,14 +9550,6 @@ fn serialized_all_family_adoptions_match_existing_scalar_record_and_encoding_ora
                 .resolve_selector_choice(&z80, input)
                 .expect("resolve serialized Zilog exact alias"),
             Some(PortableSelectorOutcome::Target(expected.to_string()))
-        );
-    }
-    for overloaded in ["RLCA", "RRCA"] {
-        assert_eq!(
-            model
-                .resolve_selector_choice(&z80, overloaded)
-                .expect("arity-sensitive alias must remain on family path"),
-            None
         );
     }
     assert_eq!(
@@ -9679,7 +9862,7 @@ fn serialized_all_family_adoptions_match_existing_scalar_record_and_encoding_ora
             .execute_fixup_program(
                 pipeline,
                 program,
-                &[unresolved.clone()],
+                std::slice::from_ref(&unresolved),
                 PortableFixupContext { position: 0x1000 },
             )
             .expect("serialized unresolved fixup placeholder");
@@ -9716,7 +9899,20 @@ fn execution_model_materializes_family_scalar_values_from_serialized_programs() 
     register_mos6502_family_stack(&mut registry);
     register_motorola68000_family_stack(&mut registry);
     let chunks = build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
-    assert_eq!(chunks.value_programs.len(), 13);
+    assert_eq!(chunks.value_programs.len(), 28);
+    assert!(chunks.value_programs.iter().any(|program| {
+        program.owner == ScopedOwner::Family("motorola68000".to_string())
+            && program.id == m68k_value_programs::VALUE_PACKED_THREE_BIT_COUNT
+    }));
+    assert_eq!(
+        chunks
+            .value_programs
+            .iter()
+            .filter(|program| matches!(program.owner, ScopedOwner::Cpu(_)))
+            .count(),
+        12,
+        "four 68020+ profiles must each override the two address-width value programs, and 68080 adds four integer/AMMX constraints"
+    );
     let package_bytes =
         encode_hierarchy_chunks_from_chunks(&chunks).expect("value package serialization");
 
@@ -10846,6 +11042,1866 @@ fn execution_model_vm_encode_supports_m65816_cpu_tables() {
 }
 
 #[test]
+fn serialized_m68k_scalar_register_programs_execute_for_all_six_profiles() {
+    let mut registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut registry);
+    let chunks = build_hierarchy_chunks_from_registry(&registry).expect("m68k chunks");
+    let package_bytes =
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("m68k package serialization");
+    drop(chunks);
+    drop(registry);
+
+    let model = HierarchyExecutionModel::from_package_bytes(&package_bytes)
+        .expect("serialized m68k package load");
+    let ctx = TestAssemblerContext::new();
+    let span = Span::default();
+    for cpu in ["m68000", "m68010", "m68020", "m68030", "m68040", "m68080"] {
+        for (mnemonic, expected) in [
+            ("ILLEGAL", vec![0x4A, 0xFC]),
+            ("NOP", vec![0x4E, 0x71]),
+            ("RESET", vec![0x4E, 0x70]),
+            ("RTE", vec![0x4E, 0x73]),
+            ("RTR", vec![0x4E, 0x77]),
+            ("RTS", vec![0x4E, 0x75]),
+            ("TRAPV", vec![0x4E, 0x76]),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, &[], &ctx)
+                    .expect("serialized fixed instruction execution"),
+                Some(expected),
+                "{cpu} {mnemonic}"
+            );
+        }
+        let trap_operand = Expr::Immediate(Box::new(Expr::Number("7".to_string(), span)), span);
+        assert_eq!(
+            model
+                .encode_instruction_from_exprs(cpu, None, "TRAP", &[trap_operand], &ctx)
+                .expect("serialized TRAP semantic program"),
+            Some(vec![0x4E, 0x47]),
+            "{cpu} TRAP #7"
+        );
+        let moveq_operands = [
+            Expr::Immediate(Box::new(Expr::Number("-1".to_string(), span)), span),
+            Expr::Register("D7".to_string(), span),
+        ];
+        assert_eq!(
+            model
+                .encode_instruction_from_exprs(cpu, None, "MOVEQ", &moveq_operands, &ctx)
+                .expect("serialized MOVEQ semantic program"),
+            Some(vec![0x7E, 0xFF]),
+            "{cpu} MOVEQ #-1,D7"
+        );
+        for (mnemonic, register, expected) in [
+            ("SWAP", "D7", vec![0x48, 0x47]),
+            ("EXT.W", "D7", vec![0x48, 0x87]),
+            ("EXT.L", "D7", vec![0x48, 0xC7]),
+            ("UNLK", "A7", vec![0x4E, 0x5F]),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[Expr::Register(register.to_string(), span)],
+                        &ctx,
+                    )
+                    .expect("serialized single-register semantic program"),
+                Some(expected),
+                "{cpu} {mnemonic} {register}"
+            );
+        }
+        for (left, right, expected) in [
+            ("D1", "D2", vec![0xC3, 0x42]),
+            ("A1", "A2", vec![0xC3, 0x4A]),
+            ("D1", "A2", vec![0xC3, 0x8A]),
+            ("A2", "D1", vec![0xC3, 0x8A]),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        "EXG",
+                        &[
+                            Expr::Register(left.to_string(), span),
+                            Expr::Register(right.to_string(), span),
+                        ],
+                        &ctx,
+                    )
+                    .expect("serialized EXG semantic program"),
+                Some(expected),
+                "{cpu} EXG {left},{right}"
+            );
+        }
+        let stop_operand = Expr::Immediate(Box::new(Expr::Number("9984".to_string(), span)), span);
+        assert_eq!(
+            model
+                .encode_instruction_from_exprs(cpu, None, "STOP", &[stop_operand], &ctx)
+                .expect("serialized STOP semantic program"),
+            Some(vec![0x4E, 0x72, 0x27, 0x00]),
+            "{cpu} STOP #$2700"
+        );
+        for mnemonic in ["LINK", "LINK.W"] {
+            let link_operands = [
+                Expr::Register("A6".to_string(), span),
+                Expr::Immediate(Box::new(Expr::Number("-8".to_string(), span)), span),
+            ];
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, &link_operands, &ctx)
+                    .expect("serialized LINK semantic program"),
+                Some(vec![0x4E, 0x56, 0xFF, 0xF8]),
+                "{cpu} {mnemonic} A6,#-8"
+            );
+        }
+        if cpu != "m68000" {
+            let bkpt_operand = Expr::Immediate(Box::new(Expr::Number("3".to_string(), span)), span);
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, "BKPT", &[bkpt_operand], &ctx)
+                    .expect("serialized BKPT semantic program"),
+                Some(vec![0x48, 0x4B]),
+                "{cpu} BKPT #3"
+            );
+            let rtd_operand = Expr::Immediate(Box::new(Expr::Number("-8".to_string(), span)), span);
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, "RTD", &[rtd_operand], &ctx)
+                    .expect("serialized RTD semantic program"),
+                Some(vec![0x4E, 0x74, 0xFF, 0xF8]),
+                "{cpu} RTD #-8"
+            );
+        }
+        if matches!(cpu, "m68020" | "m68030" | "m68040" | "m68080") {
+            let link_long_operands = [
+                Expr::Register("A6".to_string(), span),
+                Expr::Immediate(Box::new(Expr::Number("-8".to_string(), span)), span),
+            ];
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, "LINK.L", &link_long_operands, &ctx,)
+                    .expect("serialized LINK.L semantic program"),
+                Some(vec![0x48, 0x0E, 0xFF, 0xFF, 0xFF, 0xF8]),
+                "{cpu} LINK.L A6,#-8"
+            );
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        "EXTB.L",
+                        &[Expr::Register("D2".to_string(), span)],
+                        &ctx,
+                    )
+                    .expect("serialized EXTB.L semantic program"),
+                Some(vec![0x49, 0xC2]),
+                "{cpu} EXTB.L D2"
+            );
+        }
+        if cpu == "m68020" {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        "RTM",
+                        &[Expr::Register("A3".to_string(), span)],
+                        &ctx,
+                    )
+                    .expect("serialized RTM semantic program"),
+                Some(vec![0x06, 0xCB]),
+                "{cpu} RTM A3"
+            );
+        }
+        for (mnemonic, operands, expected) in [
+            (
+                "MOVE",
+                vec![
+                    Expr::Register("USP".to_string(), span),
+                    Expr::Register("A1".to_string(), span),
+                ],
+                vec![0x4E, 0x69],
+            ),
+            (
+                "MOVE",
+                vec![
+                    Expr::Register("A2".to_string(), span),
+                    Expr::Register("USP".to_string(), span),
+                ],
+                vec![0x4E, 0x62],
+            ),
+            (
+                "MOVE",
+                vec![
+                    Expr::Register("SR".to_string(), span),
+                    Expr::Register("D0".to_string(), span),
+                ],
+                vec![0x40, 0xC0],
+            ),
+            (
+                "MOVE",
+                vec![
+                    Expr::Register("D0".to_string(), span),
+                    Expr::Register("CCR".to_string(), span),
+                ],
+                vec![0x44, 0xC0],
+            ),
+            (
+                "MOVE",
+                vec![
+                    Expr::Register("D0".to_string(), span),
+                    Expr::Register("SR".to_string(), span),
+                ],
+                vec![0x46, 0xC0],
+            ),
+            (
+                "MOVE",
+                vec![
+                    Expr::Immediate(Box::new(Expr::Number("15".to_string(), span)), span),
+                    Expr::Register("CCR".to_string(), span),
+                ],
+                vec![0x44, 0xFC, 0x00, 0x0F],
+            ),
+            (
+                "MOVE",
+                vec![
+                    Expr::Immediate(Box::new(Expr::Number("9984".to_string(), span)), span),
+                    Expr::Register("SR".to_string(), span),
+                ],
+                vec![0x46, 0xFC, 0x27, 0x00],
+            ),
+            (
+                "MOVE",
+                vec![
+                    Expr::Member {
+                        base: Box::new(Expr::Number("4660".to_string(), span)),
+                        field: "W".to_string(),
+                        span,
+                    },
+                    Expr::Register("CCR".to_string(), span),
+                ],
+                vec![0x44, 0xF8, 0x12, 0x34],
+            ),
+            (
+                "ANDI",
+                vec![
+                    Expr::Immediate(Box::new(Expr::Number("31".to_string(), span)), span),
+                    Expr::Register("CCR".to_string(), span),
+                ],
+                vec![0x02, 0x3C, 0x00, 0x1F],
+            ),
+            (
+                "ORI",
+                vec![
+                    Expr::Immediate(Box::new(Expr::Number("9984".to_string(), span)), span),
+                    Expr::Register("SR".to_string(), span),
+                ],
+                vec![0x00, 0x7C, 0x27, 0x00],
+            ),
+            (
+                "EORI",
+                vec![
+                    Expr::Immediate(Box::new(Expr::Number("15".to_string(), span)), span),
+                    Expr::Register("CCR".to_string(), span),
+                ],
+                vec![0x0A, 0x3C, 0x00, 0x0F],
+            ),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, operands.as_slice(), &ctx,)
+                    .expect("serialized status-register semantic program"),
+                Some(expected),
+                "{cpu} {mnemonic} status-register form"
+            );
+        }
+        for (mnemonic, operands, expected) in [
+            (
+                "MOVE.B",
+                vec![
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                    Expr::Register("D1".to_string(), span),
+                ],
+                vec![0x12, 0x10],
+            ),
+            (
+                "MOVE.W",
+                vec![
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                    Expr::Register("D1".to_string(), span),
+                ],
+                vec![0x32, 0x10],
+            ),
+            (
+                "MOVE.L",
+                vec![
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                    Expr::Register("D1".to_string(), span),
+                ],
+                vec![0x22, 0x10],
+            ),
+            (
+                "MOVE.B",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                ],
+                vec![0x10, 0x81],
+            ),
+            (
+                "MOVE.W",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                ],
+                vec![0x30, 0x81],
+            ),
+            (
+                "MOVE.L",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                ],
+                vec![0x20, 0x81],
+            ),
+            (
+                "MOVEA.W",
+                vec![
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                    Expr::Register("A1".to_string(), span),
+                ],
+                vec![0x32, 0x50],
+            ),
+            (
+                "MOVEA.L",
+                vec![
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                    Expr::Register("A1".to_string(), span),
+                ],
+                vec![0x22, 0x50],
+            ),
+            (
+                "LEA",
+                vec![
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                    Expr::Register("A1".to_string(), span),
+                ],
+                vec![0x43, 0xd0],
+            ),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, operands.as_slice(), &ctx)
+                    .expect("serialized base-indirect movement program"),
+                Some(expected),
+                "{cpu} {mnemonic} base-indirect form"
+            );
+        }
+        for (mnemonic, expected) in [
+            ("PEA", vec![0x48, 0x50]),
+            ("JMP", vec![0x4e, 0xd0]),
+            ("JSR", vec![0x4e, 0x90]),
+        ] {
+            let operand = Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span);
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, &[operand], &ctx)
+                    .expect("serialized base-indirect control program"),
+                Some(expected),
+                "{cpu} {mnemonic} (A0)"
+            );
+        }
+        for (op, source_bases, destination_bases) in [
+            (
+                UnaryOp::Plus,
+                [0x1218_u16, 0x3218, 0x2218],
+                [0x10c1_u16, 0x30c1, 0x20c1],
+            ),
+            (
+                UnaryOp::Minus,
+                [0x1220_u16, 0x3220, 0x2220],
+                [0x1101_u16, 0x3101, 0x2101],
+            ),
+        ] {
+            for ((mnemonic, source_expected), destination_expected) in
+                ["MOVE.B", "MOVE.W", "MOVE.L"]
+                    .into_iter()
+                    .zip(source_bases)
+                    .zip(destination_bases)
+            {
+                let updated_indirect = || Expr::Unary {
+                    op,
+                    expr: Box::new(Expr::Indirect(
+                        Box::new(Expr::Register("A0".to_string(), span)),
+                        span,
+                    )),
+                    span,
+                };
+                assert_eq!(
+                    model
+                        .encode_instruction_from_exprs(
+                            cpu,
+                            None,
+                            mnemonic,
+                            &[updated_indirect(), Expr::Register("D1".to_string(), span),],
+                            &ctx,
+                        )
+                        .expect("serialized update-mode source program"),
+                    Some(source_expected.to_be_bytes().to_vec()),
+                    "{cpu} {mnemonic} update-mode source"
+                );
+                assert_eq!(
+                    model
+                        .encode_instruction_from_exprs(
+                            cpu,
+                            None,
+                            mnemonic,
+                            &[Expr::Register("D1".to_string(), span), updated_indirect(),],
+                            &ctx,
+                        )
+                        .expect("serialized update-mode destination program"),
+                    Some(destination_expected.to_be_bytes().to_vec()),
+                    "{cpu} {mnemonic} update-mode destination"
+                );
+            }
+        }
+        let displacement = |value: &str| {
+            Expr::Indirect(
+                Box::new(Expr::Tuple(
+                    vec![
+                        Expr::Number(value.to_string(), span),
+                        Expr::Register("A0".to_string(), span),
+                    ],
+                    span,
+                )),
+                span,
+            )
+        };
+        for ((mnemonic, source_expected), destination_expected) in ["MOVE.B", "MOVE.W", "MOVE.L"]
+            .into_iter()
+            .zip([0x1228_u16, 0x3228, 0x2228])
+            .zip([0x1141_u16, 0x3141, 0x2141])
+        {
+            for (operands, opcode, label) in [
+                (
+                    vec![displacement("4"), Expr::Register("D1".to_string(), span)],
+                    source_expected,
+                    "source",
+                ),
+                (
+                    vec![Expr::Register("D1".to_string(), span), displacement("4")],
+                    destination_expected,
+                    "destination",
+                ),
+            ] {
+                assert_eq!(
+                    model
+                        .encode_instruction_from_exprs(
+                            cpu,
+                            None,
+                            mnemonic,
+                            operands.as_slice(),
+                            &ctx,
+                        )
+                        .expect("serialized displacement movement program"),
+                    Some(opcode.to_be_bytes().into_iter().chain([0, 4]).collect()),
+                    "{cpu} {mnemonic} displacement {label}"
+                );
+            }
+        }
+        for (mnemonic, expected) in [
+            ("MOVEA.W", 0x3268_u16),
+            ("MOVEA.L", 0x2268),
+            ("LEA", 0x43e8),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[displacement("4"), Expr::Register("A1".to_string(), span),],
+                        &ctx,
+                    )
+                    .expect("serialized displacement address-register program"),
+                Some(expected.to_be_bytes().into_iter().chain([0, 4]).collect()),
+                "{cpu} {mnemonic} displacement form"
+            );
+        }
+        for (mnemonic, expected) in [("PEA", 0x4868_u16), ("JMP", 0x4ee8), ("JSR", 0x4ea8)] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, &[displacement("4")], &ctx,)
+                    .expect("serialized displacement control program"),
+                Some(expected.to_be_bytes().into_iter().chain([0, 4]).collect()),
+                "{cpu} {mnemonic} displacement form"
+            );
+        }
+        let pc_displacement = |value: &str| {
+            Expr::Indirect(
+                Box::new(Expr::Tuple(
+                    vec![
+                        Expr::Number(value.to_string(), span),
+                        Expr::Register("PC".to_string(), span),
+                    ],
+                    span,
+                )),
+                span,
+            )
+        };
+        for (mnemonic, expected) in [("MOVE.W", 0x343a_u16), ("MOVEA.L", 0x247a), ("LEA", 0x45fa)] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[
+                            pc_displacement("4"),
+                            Expr::Register(
+                                if mnemonic == "MOVE.W" { "D2" } else { "A2" }.to_string(),
+                                span,
+                            ),
+                        ],
+                        &ctx,
+                    )
+                    .expect("serialized PC-displacement register program"),
+                Some(expected.to_be_bytes().into_iter().chain([0, 4]).collect()),
+                "{cpu} {mnemonic} PC displacement"
+            );
+        }
+        for (mnemonic, expected) in [("PEA", 0x487a_u16), ("JMP", 0x4efa), ("JSR", 0x4eba)] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[pc_displacement("4")],
+                        &ctx,
+                    )
+                    .expect("serialized PC-displacement control program"),
+                Some(expected.to_be_bytes().into_iter().chain([0, 4]).collect()),
+                "{cpu} {mnemonic} PC displacement"
+            );
+        }
+        let pc_indexed = |value: &str| {
+            Expr::Indirect(
+                Box::new(Expr::Tuple(
+                    vec![
+                        Expr::Number(value.to_string(), span),
+                        Expr::Register("PC".to_string(), span),
+                        Expr::Member {
+                            base: Box::new(Expr::Register("D1".to_string(), span)),
+                            field: "W".to_string(),
+                            span,
+                        },
+                    ],
+                    span,
+                )),
+                span,
+            )
+        };
+        for (mnemonic, expected) in [("MOVE.W", 0x343b_u16), ("MOVEA.L", 0x247b), ("LEA", 0x45fb)] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[
+                            pc_indexed("4"),
+                            Expr::Register(
+                                if mnemonic == "MOVE.W" { "D2" } else { "A2" }.to_string(),
+                                span,
+                            ),
+                        ],
+                        &ctx,
+                    )
+                    .expect("serialized PC-indexed register program"),
+                Some(
+                    expected
+                        .to_be_bytes()
+                        .into_iter()
+                        .chain([0x10, 0x04])
+                        .collect()
+                ),
+                "{cpu} {mnemonic} PC indexed"
+            );
+        }
+        for (mnemonic, expected) in [("PEA", 0x487b_u16), ("JMP", 0x4efb), ("JSR", 0x4ebb)] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, &[pc_indexed("4")], &ctx,)
+                    .expect("serialized PC-indexed control program"),
+                Some(
+                    expected
+                        .to_be_bytes()
+                        .into_iter()
+                        .chain([0x10, 0x04])
+                        .collect()
+                ),
+                "{cpu} {mnemonic} PC indexed"
+            );
+        }
+        let err = model
+            .encode_instruction_from_exprs(cpu, None, "PEA", &[displacement("32768")], &ctx)
+            .expect_err("serialized displacement must enforce signed-word bounds");
+        assert!(err.to_string().contains("outside -32768..=32767"), "{err}");
+        let indexed = |value: &str, field: &str| {
+            Expr::Indirect(
+                Box::new(Expr::Tuple(
+                    vec![
+                        Expr::Number(value.to_string(), span),
+                        Expr::Register("A0".to_string(), span),
+                        Expr::Member {
+                            base: Box::new(Expr::Register("D1".to_string(), span)),
+                            field: field.to_string(),
+                            span,
+                        },
+                    ],
+                    span,
+                )),
+                span,
+            )
+        };
+        for ((mnemonic, source_expected), destination_expected) in ["MOVE.B", "MOVE.W", "MOVE.L"]
+            .into_iter()
+            .zip([0x1430_u16, 0x3430, 0x2430])
+            .zip([0x1182_u16, 0x3182, 0x2182])
+        {
+            for (operands, opcode, label) in [
+                (
+                    vec![indexed("4", "W"), Expr::Register("D2".to_string(), span)],
+                    source_expected,
+                    "source",
+                ),
+                (
+                    vec![Expr::Register("D2".to_string(), span), indexed("4", "W")],
+                    destination_expected,
+                    "destination",
+                ),
+            ] {
+                assert_eq!(
+                    model
+                        .encode_instruction_from_exprs(
+                            cpu,
+                            None,
+                            mnemonic,
+                            operands.as_slice(),
+                            &ctx,
+                        )
+                        .expect("serialized indexed movement program"),
+                    Some(
+                        opcode
+                            .to_be_bytes()
+                            .into_iter()
+                            .chain([0x10, 0x04])
+                            .collect()
+                    ),
+                    "{cpu} {mnemonic} indexed {label}"
+                );
+            }
+        }
+        for (mnemonic, expected) in [
+            ("MOVEA.W", 0x3470_u16),
+            ("MOVEA.L", 0x2470),
+            ("LEA", 0x45f0),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[indexed("4", "W"), Expr::Register("A2".to_string(), span),],
+                        &ctx,
+                    )
+                    .expect("serialized indexed address-register program"),
+                Some(
+                    expected
+                        .to_be_bytes()
+                        .into_iter()
+                        .chain([0x10, 0x04])
+                        .collect()
+                ),
+                "{cpu} {mnemonic} indexed form"
+            );
+        }
+        for (mnemonic, expected) in [("PEA", 0x4870_u16), ("JMP", 0x4ef0), ("JSR", 0x4eb0)] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, &[indexed("4", "W")], &ctx,)
+                    .expect("serialized indexed control program"),
+                Some(
+                    expected
+                        .to_be_bytes()
+                        .into_iter()
+                        .chain([0x10, 0x04])
+                        .collect()
+                ),
+                "{cpu} {mnemonic} indexed form"
+            );
+        }
+        assert_eq!(
+            model
+                .encode_instruction_from_exprs(cpu, None, "PEA", &[indexed("4", "L")], &ctx,)
+                .expect("nonmatching package-owned member field remains unselected"),
+            None
+        );
+        let err = model
+            .encode_instruction_from_exprs(cpu, None, "PEA", &[indexed("128", "W")], &ctx)
+            .expect_err("serialized brief index displacement must enforce byte bounds");
+        assert!(err.to_string().contains("outside -128..=127"), "{err}");
+        let absolute = |value: &str, field: &str| Expr::Member {
+            base: Box::new(Expr::Number(value.to_string(), span)),
+            field: field.to_string(),
+            span,
+        };
+        for (mnemonic, operands, expected) in [
+            (
+                "MOVE.W",
+                vec![
+                    absolute("4660", "W"),
+                    Expr::Register("D2".to_string(), span),
+                ],
+                vec![0x34, 0x38, 0x12, 0x34],
+            ),
+            (
+                "MOVE.W",
+                vec![
+                    Expr::Register("D2".to_string(), span),
+                    absolute("4660", "W"),
+                ],
+                vec![0x31, 0xc2, 0x12, 0x34],
+            ),
+            (
+                "MOVE.L",
+                vec![
+                    absolute("305419896", "L"),
+                    Expr::Register("D2".to_string(), span),
+                ],
+                vec![0x24, 0x39, 0x12, 0x34, 0x56, 0x78],
+            ),
+            (
+                "MOVE.L",
+                vec![
+                    Expr::Register("D2".to_string(), span),
+                    absolute("305419896", "L"),
+                ],
+                vec![0x23, 0xc2, 0x12, 0x34, 0x56, 0x78],
+            ),
+            (
+                "MOVEA.W",
+                vec![
+                    absolute("4660", "W"),
+                    Expr::Register("A2".to_string(), span),
+                ],
+                vec![0x34, 0x78, 0x12, 0x34],
+            ),
+            (
+                "LEA",
+                vec![
+                    absolute("305419896", "L"),
+                    Expr::Register("A2".to_string(), span),
+                ],
+                vec![0x45, 0xf9, 0x12, 0x34, 0x56, 0x78],
+            ),
+            (
+                "PEA",
+                vec![absolute("4660", "W")],
+                vec![0x48, 0x78, 0x12, 0x34],
+            ),
+            (
+                "JSR",
+                vec![absolute("305419896", "L")],
+                vec![0x4e, 0xb9, 0x12, 0x34, 0x56, 0x78],
+            ),
+        ] {
+            let result =
+                model.encode_instruction_from_exprs(cpu, None, mnemonic, operands.as_slice(), &ctx);
+            assert_eq!(
+                result.expect("serialized absolute EA program"),
+                Some(expected),
+                "{cpu} {mnemonic} absolute form"
+            );
+        }
+        let sign_extended_word = if matches!(cpu, "m68000" | "m68010") {
+            "16744448"
+        } else {
+            "4294934528"
+        };
+        assert_eq!(
+            model
+                .encode_instruction_from_exprs(
+                    cpu,
+                    None,
+                    "MOVE.W",
+                    &[
+                        absolute(sign_extended_word, "W"),
+                        Expr::Register("D0".to_string(), span),
+                    ],
+                    &ctx,
+                )
+                .expect("profile-specific sign-extended absolute word"),
+            Some(vec![0x30, 0x38, 0x80, 0x00]),
+            "{cpu} sign-extended absolute word"
+        );
+        for (mnemonic, value, expected) in [
+            ("MOVE.B", "128", vec![0x14, 0x3c, 0x00, 0x80]),
+            ("MOVE.W", "4660", vec![0x34, 0x3c, 0x12, 0x34]),
+            (
+                "MOVE.L",
+                "305419896",
+                vec![0x24, 0x3c, 0x12, 0x34, 0x56, 0x78],
+            ),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[
+                            Expr::Immediate(Box::new(Expr::Number(value.to_string(), span)), span,),
+                            Expr::Register("D2".to_string(), span),
+                        ],
+                        &ctx,
+                    )
+                    .expect("serialized immediate movement program"),
+                Some(expected),
+                "{cpu} {mnemonic} immediate form"
+            );
+        }
+        for (mnemonic, source, destination, expected) in [
+            ("MOVE.B", "D1", "D2", vec![0x14, 0x01]),
+            ("MOVE.W", "A1", "D2", vec![0x34, 0x09]),
+            ("MOVE.L", "A1", "D2", vec![0x24, 0x09]),
+            ("MOVEA.W", "D1", "A2", vec![0x34, 0x41]),
+            ("MOVEA.L", "A1", "A2", vec![0x24, 0x49]),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[
+                            Expr::Register(source.to_string(), span),
+                            Expr::Register(destination.to_string(), span),
+                        ],
+                        &ctx,
+                    )
+                    .expect("serialized register movement program"),
+                Some(expected),
+                "{cpu} {mnemonic} {source},{destination}"
+            );
+        }
+        for (mnemonic, source, destination, expected) in [
+            ("ADD.W", "D1", "D0", vec![0xd0, 0x41]),
+            ("SUB.L", "D1", "D0", vec![0x90, 0x81]),
+            ("AND.B", "D1", "D2", vec![0xc4, 0x01]),
+            ("OR.L", "D1", "D2", vec![0x84, 0x81]),
+            ("CMP.W", "D1", "D2", vec![0xb4, 0x41]),
+            ("EOR.W", "D1", "D2", vec![0xb3, 0x42]),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[
+                            Expr::Register(source.to_string(), span),
+                            Expr::Register(destination.to_string(), span),
+                        ],
+                        &ctx,
+                    )
+                    .expect("serialized binary register ALU program"),
+                Some(expected),
+                "{cpu} {mnemonic} {source},{destination}"
+            );
+        }
+        for (mnemonic, value, register, expected) in [
+            ("ADD.W", "1", "D0", vec![0xd0, 0x7c, 0x00, 0x01]),
+            (
+                "OR.L",
+                "305419896",
+                "D2",
+                vec![0x84, 0xbc, 0x12, 0x34, 0x56, 0x78],
+            ),
+            ("ANDI.B", "18", "D1", vec![0x02, 0x01, 0x00, 0x12]),
+            ("SUBI.W", "1", "D3", vec![0x04, 0x43, 0x00, 0x01]),
+            (
+                "EORI.L",
+                "305419896",
+                "D1",
+                vec![0x0a, 0x81, 0x12, 0x34, 0x56, 0x78],
+            ),
+            ("CMPI.W", "4660", "D2", vec![0x0c, 0x42, 0x12, 0x34]),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[
+                            Expr::Immediate(Box::new(Expr::Number(value.to_string(), span)), span,),
+                            Expr::Register(register.to_string(), span),
+                        ],
+                        &ctx,
+                    )
+                    .expect("serialized immediate ALU program"),
+                Some(expected),
+                "{cpu} {mnemonic} #{value},{register}"
+            );
+        }
+        for (mnemonic, register, expected) in [
+            ("CLR.W", "D2", vec![0x42, 0x42]),
+            ("NEG.B", "D0", vec![0x44, 0x00]),
+            ("NOT.L", "D3", vec![0x46, 0x83]),
+            ("TST.W", "D4", vec![0x4a, 0x44]),
+            ("NEGX.B", "D0", vec![0x40, 0x00]),
+            ("NBCD", "D1", vec![0x48, 0x01]),
+            ("TAS", "D2", vec![0x4a, 0xc2]),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[Expr::Register(register.to_string(), span)],
+                        &ctx,
+                    )
+                    .expect("serialized unary register program"),
+                Some(expected),
+                "{cpu} {mnemonic} {register}"
+            );
+        }
+        let updated_indirect = |op: UnaryOp| Expr::Unary {
+            op,
+            expr: Box::new(Expr::Indirect(
+                Box::new(Expr::Register("A0".to_string(), span)),
+                span,
+            )),
+            span,
+        };
+        for (mnemonic, operands, expected) in [
+            (
+                "ADD.W",
+                vec![
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                    Expr::Register("D1".to_string(), span),
+                ],
+                vec![0xd2, 0x50],
+            ),
+            (
+                "SUB.L",
+                vec![
+                    updated_indirect(UnaryOp::Plus),
+                    Expr::Register("D1".to_string(), span),
+                ],
+                vec![0x92, 0x98],
+            ),
+            (
+                "AND.B",
+                vec![
+                    updated_indirect(UnaryOp::Minus),
+                    Expr::Register("D1".to_string(), span),
+                ],
+                vec![0xc2, 0x20],
+            ),
+            (
+                "OR.W",
+                vec![displacement("4"), Expr::Register("D1".to_string(), span)],
+                vec![0x82, 0x68, 0x00, 0x04],
+            ),
+            (
+                "CMP.L",
+                vec![indexed("4", "W"), Expr::Register("D2".to_string(), span)],
+                vec![0xb4, 0xb0, 0x10, 0x04],
+            ),
+            (
+                "ADD.W",
+                vec![
+                    absolute("4660", "W"),
+                    Expr::Register("D1".to_string(), span),
+                ],
+                vec![0xd2, 0x78, 0x12, 0x34],
+            ),
+            (
+                "SUB.W",
+                vec![
+                    absolute("1193046", "L"),
+                    Expr::Register("D1".to_string(), span),
+                ],
+                vec![0x92, 0x79, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (
+                "AND.L",
+                vec![pc_displacement("4"), Expr::Register("D1".to_string(), span)],
+                vec![0xc2, 0xba, 0x00, 0x04],
+            ),
+            (
+                "OR.B",
+                vec![pc_indexed("4"), Expr::Register("D2".to_string(), span)],
+                vec![0x84, 0x3b, 0x10, 0x04],
+            ),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, &operands, &ctx)
+                    .expect("serialized effective-address ALU program"),
+                Some(expected),
+                "{cpu} {mnemonic} effective-address form"
+            );
+        }
+        for (mnemonic, operands, expected) in [
+            (
+                "ADD.W",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                ],
+                vec![0xd3, 0x50],
+            ),
+            (
+                "SUB.L",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    updated_indirect(UnaryOp::Plus),
+                ],
+                vec![0x93, 0x98],
+            ),
+            (
+                "AND.B",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    updated_indirect(UnaryOp::Minus),
+                ],
+                vec![0xc3, 0x20],
+            ),
+            (
+                "OR.W",
+                vec![Expr::Register("D1".to_string(), span), displacement("4")],
+                vec![0x83, 0x68, 0x00, 0x04],
+            ),
+            (
+                "EOR.L",
+                vec![Expr::Register("D2".to_string(), span), indexed("4", "W")],
+                vec![0xb5, 0xb0, 0x10, 0x04],
+            ),
+            (
+                "ADD.W",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    absolute("4660", "W"),
+                ],
+                vec![0xd3, 0x78, 0x12, 0x34],
+            ),
+            (
+                "SUB.W",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    absolute("1193046", "L"),
+                ],
+                vec![0x93, 0x79, 0x00, 0x12, 0x34, 0x56],
+            ),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, &operands, &ctx)
+                    .expect("serialized data-register-to-effective-address ALU program"),
+                Some(expected),
+                "{cpu} {mnemonic} data-register-to-effective-address form"
+            );
+        }
+        for (mnemonic, operand, expected) in [
+            (
+                "NEGX.B",
+                Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                vec![0x40, 0x10],
+            ),
+            ("CLR.W", updated_indirect(UnaryOp::Plus), vec![0x42, 0x58]),
+            ("NEG.L", updated_indirect(UnaryOp::Minus), vec![0x44, 0xa0]),
+            ("NOT.B", displacement("4"), vec![0x46, 0x28, 0x00, 0x04]),
+            (
+                "CLR.B",
+                Expr::Indirect(
+                    Box::new(Expr::Tuple(
+                        vec![
+                            Expr::Number("31".to_string(), span),
+                            Expr::Identifier("a0".to_string(), span),
+                        ],
+                        span,
+                    )),
+                    span,
+                ),
+                vec![0x42, 0x28, 0x00, 0x1f],
+            ),
+            ("TST.W", indexed("4", "W"), vec![0x4a, 0x70, 0x10, 0x04]),
+            ("NBCD", absolute("4660", "W"), vec![0x48, 0x38, 0x12, 0x34]),
+            (
+                "TAS",
+                absolute("1193046", "L"),
+                vec![0x4a, 0xf9, 0x00, 0x12, 0x34, 0x56],
+            ),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, &[operand], &ctx)
+                    .expect("serialized unary effective-address program"),
+                Some(expected),
+                "{cpu} {mnemonic} unary effective-address form"
+            );
+        }
+        for (mnemonic, expected) in [
+            ("ASR.W", vec![0xe2, 0x62]),
+            ("ASL.B", vec![0xe3, 0x22]),
+            ("LSR.B", vec![0xe2, 0x2a]),
+            ("LSL.L", vec![0xe3, 0xaa]),
+            ("ROXR.L", vec![0xe2, 0xb2]),
+            ("ROXL.W", vec![0xe3, 0x72]),
+            ("ROR.W", vec![0xe2, 0x7a]),
+            ("ROL.B", vec![0xe3, 0x3a]),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[
+                            Expr::Register("D1".to_string(), span),
+                            Expr::Register("D2".to_string(), span),
+                        ],
+                        &ctx,
+                    )
+                    .expect("serialized register-count shift program"),
+                Some(expected),
+                "{cpu} {mnemonic} D1,D2"
+            );
+        }
+        for (mnemonic, count, expected) in [
+            ("ASR.W", "8", vec![0xe0, 0x42]),
+            ("ASL.B", "3", vec![0xe7, 0x02]),
+            ("LSR.B", "8", vec![0xe0, 0x0a]),
+            ("LSL.L", "3", vec![0xe7, 0x8a]),
+            ("ROXR.L", "8", vec![0xe0, 0x92]),
+            ("ROXL.W", "3", vec![0xe7, 0x52]),
+            ("ROR.W", "8", vec![0xe0, 0x5a]),
+            ("ROL.B", "3", vec![0xe7, 0x1a]),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[
+                            Expr::Immediate(Box::new(Expr::Number(count.to_string(), span)), span,),
+                            Expr::Register("D2".to_string(), span),
+                        ],
+                        &ctx,
+                    )
+                    .expect("serialized immediate-count shift program"),
+                Some(expected),
+                "{cpu} {mnemonic} #{count},D2"
+            );
+        }
+        for (mnemonic, count, destination, expected) in [
+            (
+                "ADDQ.B",
+                "8",
+                Expr::Register("D2".to_string(), span),
+                vec![0x50, 0x02],
+            ),
+            (
+                "SUBQ.W",
+                "3",
+                Expr::Register("A1".to_string(), span),
+                vec![0x57, 0x49],
+            ),
+            (
+                "ADDQ.L",
+                "3",
+                Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                vec![0x56, 0x90],
+            ),
+            (
+                "SUBQ.B",
+                "8",
+                updated_indirect(UnaryOp::Plus),
+                vec![0x51, 0x18],
+            ),
+            (
+                "ADDQ.W",
+                "1",
+                updated_indirect(UnaryOp::Minus),
+                vec![0x52, 0x60],
+            ),
+            (
+                "SUBQ.L",
+                "2",
+                displacement("4"),
+                vec![0x55, 0xa8, 0x00, 0x04],
+            ),
+            (
+                "ADDQ.B",
+                "3",
+                indexed("4", "W"),
+                vec![0x56, 0x30, 0x10, 0x04],
+            ),
+            (
+                "SUBQ.W",
+                "8",
+                absolute("4660", "W"),
+                vec![0x51, 0x78, 0x12, 0x34],
+            ),
+            (
+                "ADDQ.L",
+                "1",
+                absolute("1193046", "L"),
+                vec![0x52, 0xb9, 0x00, 0x12, 0x34, 0x56],
+            ),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        mnemonic,
+                        &[
+                            Expr::Immediate(Box::new(Expr::Number(count.to_string(), span)), span,),
+                            destination,
+                        ],
+                        &ctx,
+                    )
+                    .expect("serialized quick arithmetic program"),
+                Some(expected),
+                "{cpu} {mnemonic} #{count},<ea>"
+            );
+        }
+        for (mnemonic, operand, expected) in [
+            (
+                "ASR",
+                Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                vec![0xe0, 0xd0],
+            ),
+            ("ASL.W", updated_indirect(UnaryOp::Plus), vec![0xe1, 0xd8]),
+            ("LSR", updated_indirect(UnaryOp::Minus), vec![0xe2, 0xe0]),
+            ("LSL.W", displacement("4"), vec![0xe3, 0xe8, 0x00, 0x04]),
+            ("ROXR", indexed("4", "W"), vec![0xe4, 0xf0, 0x10, 0x04]),
+            (
+                "ROXL.W",
+                absolute("4660", "W"),
+                vec![0xe5, 0xf8, 0x12, 0x34],
+            ),
+            (
+                "ROR",
+                absolute("1193046", "L"),
+                vec![0xe6, 0xf9, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (
+                "ROL.W",
+                Expr::Indirect(Box::new(Expr::Register("A1".to_string(), span)), span),
+                vec![0xe7, 0xd1],
+            ),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, &[operand], &ctx)
+                    .expect("serialized memory shift program"),
+                Some(expected),
+                "{cpu} {mnemonic} memory form"
+            );
+        }
+        for (mnemonic, operands, expected) in [
+            (
+                "BTST",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    Expr::Register("D2".to_string(), span),
+                ],
+                vec![0x03, 0x02],
+            ),
+            (
+                "BCHG",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                ],
+                vec![0x03, 0x50],
+            ),
+            (
+                "BCLR",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    updated_indirect(UnaryOp::Plus),
+                ],
+                vec![0x03, 0x98],
+            ),
+            (
+                "BSET",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    updated_indirect(UnaryOp::Minus),
+                ],
+                vec![0x03, 0xe0],
+            ),
+            (
+                "BTST",
+                vec![Expr::Register("D1".to_string(), span), displacement("4")],
+                vec![0x03, 0x28, 0x00, 0x04],
+            ),
+            (
+                "BCHG",
+                vec![Expr::Register("D2".to_string(), span), indexed("4", "W")],
+                vec![0x05, 0x70, 0x10, 0x04],
+            ),
+            (
+                "BCLR",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    absolute("4660", "W"),
+                ],
+                vec![0x03, 0xb8, 0x12, 0x34],
+            ),
+            (
+                "BSET",
+                vec![
+                    Expr::Register("D1".to_string(), span),
+                    absolute("1193046", "L"),
+                ],
+                vec![0x03, 0xf9, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (
+                "BTST",
+                vec![Expr::Register("D1".to_string(), span), pc_displacement("4")],
+                vec![0x03, 0x3a, 0x00, 0x04],
+            ),
+            (
+                "BTST",
+                vec![Expr::Register("D2".to_string(), span), pc_indexed("4")],
+                vec![0x05, 0x3b, 0x10, 0x04],
+            ),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, &operands, &ctx)
+                    .expect("serialized dynamic bit program"),
+                Some(expected),
+                "{cpu} {mnemonic} dynamic-bit form"
+            );
+        }
+        let immediate =
+            |value: &str| Expr::Immediate(Box::new(Expr::Number(value.to_string(), span)), span);
+        for (mnemonic, operands, expected) in [
+            (
+                "BTST",
+                vec![immediate("3"), Expr::Register("D2".to_string(), span)],
+                vec![0x08, 0x02, 0x00, 0x03],
+            ),
+            (
+                "BCHG",
+                vec![
+                    immediate("4"),
+                    Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                ],
+                vec![0x08, 0x50, 0x00, 0x04],
+            ),
+            (
+                "BCLR",
+                vec![immediate("5"), updated_indirect(UnaryOp::Plus)],
+                vec![0x08, 0x98, 0x00, 0x05],
+            ),
+            (
+                "BSET",
+                vec![immediate("6"), updated_indirect(UnaryOp::Minus)],
+                vec![0x08, 0xe0, 0x00, 0x06],
+            ),
+            (
+                "BTST",
+                vec![immediate("7"), displacement("4")],
+                vec![0x08, 0x28, 0x00, 0x07, 0x00, 0x04],
+            ),
+            (
+                "BCHG",
+                vec![immediate("8"), indexed("4", "W")],
+                vec![0x08, 0x70, 0x00, 0x08, 0x10, 0x04],
+            ),
+            (
+                "BCLR",
+                vec![immediate("9"), absolute("4660", "W")],
+                vec![0x08, 0xb8, 0x00, 0x09, 0x12, 0x34],
+            ),
+            (
+                "BSET",
+                vec![immediate("10"), absolute("1193046", "L")],
+                vec![0x08, 0xf9, 0x00, 0x0a, 0x00, 0x12, 0x34, 0x56],
+            ),
+            (
+                "BTST",
+                vec![immediate("11"), pc_displacement("4")],
+                vec![0x08, 0x3a, 0x00, 0x0b, 0x00, 0x04],
+            ),
+            (
+                "BTST",
+                vec![immediate("12"), pc_indexed("4")],
+                vec![0x08, 0x3b, 0x00, 0x0c, 0x10, 0x04],
+            ),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(cpu, None, mnemonic, &operands, &ctx)
+                    .expect("serialized static bit program"),
+                Some(expected),
+                "{cpu} {mnemonic} static-bit form"
+            );
+        }
+        assert_eq!(
+            model
+                .encode_instruction_from_exprs(
+                    cpu,
+                    None,
+                    "PEA",
+                    &[Expr::Indirect(
+                        Box::new(Expr::Register("D0".to_string(), span)),
+                        span,
+                    )],
+                    &ctx,
+                )
+                .expect("wrong register class remains unselected"),
+            None,
+            "{cpu} PEA must reject an indirect non-address register"
+        );
+        if cpu != "m68000" {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        cpu,
+                        None,
+                        "MOVE",
+                        &[
+                            Expr::Register("CCR".to_string(), span),
+                            Expr::Register("D0".to_string(), span),
+                        ],
+                        &ctx,
+                    )
+                    .expect("serialized MOVE CCR,D0 semantic program"),
+                Some(vec![0x42, 0xC0]),
+                "{cpu} MOVE CCR,D0"
+            );
+            for (operands, expected) in [
+                (
+                    vec![
+                        Expr::Register("SFC".to_string(), span),
+                        Expr::Register("D0".to_string(), span),
+                    ],
+                    vec![0x4E, 0x7A, 0x00, 0x00],
+                ),
+                (
+                    vec![
+                        Expr::Register("D1".to_string(), span),
+                        Expr::Register("DFC".to_string(), span),
+                    ],
+                    vec![0x4E, 0x7B, 0x10, 0x01],
+                ),
+                (
+                    vec![
+                        Expr::Register("VBR".to_string(), span),
+                        Expr::Register("A2".to_string(), span),
+                    ],
+                    vec![0x4E, 0x7A, 0xA8, 0x01],
+                ),
+            ] {
+                assert_eq!(
+                    model
+                        .encode_instruction_from_exprs(
+                            cpu,
+                            None,
+                            "MOVEC",
+                            operands.as_slice(),
+                            &ctx,
+                        )
+                        .expect("serialized MOVEC semantic program"),
+                    Some(expected),
+                    "{cpu} MOVEC"
+                );
+            }
+            for (mnemonic, operands, expected) in [
+                (
+                    "MOVE",
+                    vec![
+                        Expr::Register("CCR".to_string(), span),
+                        Expr::Member {
+                            base: Box::new(Expr::Number("4660".to_string(), span)),
+                            field: "W".to_string(),
+                            span,
+                        },
+                    ],
+                    vec![0x42, 0xF8, 0x12, 0x34],
+                ),
+                (
+                    "MOVES.W",
+                    vec![
+                        Expr::Register("D0".to_string(), span),
+                        Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+                    ],
+                    vec![0x0E, 0x50, 0x08, 0x00],
+                ),
+                (
+                    "MOVES.L",
+                    vec![
+                        Expr::Indirect(Box::new(Expr::Register("A1".to_string(), span)), span),
+                        Expr::Register("A2".to_string(), span),
+                    ],
+                    vec![0x0E, 0x91, 0xA0, 0x00],
+                ),
+            ] {
+                assert_eq!(
+                    model
+                        .encode_instruction_from_exprs(
+                            cpu,
+                            None,
+                            mnemonic,
+                            operands.as_slice(),
+                            &ctx,
+                        )
+                        .expect("serialized 68010 structural semantic program"),
+                    Some(expected),
+                    "{cpu} {mnemonic}"
+                );
+            }
+        }
+        assert_eq!(
+            model
+                .encode_instruction_from_exprs(
+                    cpu,
+                    None,
+                    "MOVE",
+                    &[
+                        Expr::Member {
+                            base: Box::new(Expr::Number("4660".to_string(), span)),
+                            field: "L".to_string(),
+                            span,
+                        },
+                        Expr::Register("CCR".to_string(), span),
+                    ],
+                    &ctx,
+                )
+                .expect("nonmatching structural member source must remain unselected"),
+            None,
+            "{cpu} package selector must not reinterpret a long member as word"
+        );
+    }
+
+    assert_eq!(
+        model
+            .encode_instruction_from_exprs(
+                "m68020",
+                None,
+                "NOP",
+                &[Expr::Number("1".to_string(), Span::default())],
+                &ctx,
+            )
+            .expect("unsupported operand shape should not invoke a family fallback"),
+        None
+    );
+    for (cpu, mnemonic, operands) in [
+        (
+            "m68000",
+            "BKPT",
+            vec![Expr::Immediate(
+                Box::new(Expr::Number("3".to_string(), span)),
+                span,
+            )],
+        ),
+        (
+            "m68000",
+            "MOVEC",
+            vec![
+                Expr::Register("SFC".to_string(), span),
+                Expr::Register("D0".to_string(), span),
+            ],
+        ),
+        (
+            "m68000",
+            "MOVES.W",
+            vec![
+                Expr::Register("D0".to_string(), span),
+                Expr::Indirect(Box::new(Expr::Register("A0".to_string(), span)), span),
+            ],
+        ),
+    ] {
+        assert_eq!(
+            model
+                .encode_instruction_from_exprs(cpu, None, mnemonic, operands.as_slice(), &ctx)
+                .expect("CPU-scoped package form must remain absent"),
+            None,
+            "{cpu} must not inherit {mnemonic} outside its package scope"
+        );
+    }
+
+    let rtm_err = model
+        .encode_instruction_from_exprs(
+            "m68030",
+            None,
+            "RTM",
+            &[Expr::Register("A3".to_string(), span)],
+            &ctx,
+        )
+        .expect_err("m68030 RTM must preserve the live family legality diagnostic");
+    assert_eq!(rtm_err.to_string(), "RTM is only supported on m68020");
+
+    let baseline_link_long = model
+        .encode_instruction_from_exprs(
+            "m68010",
+            None,
+            "LINK.L",
+            &[
+                Expr::Register("A6".to_string(), span),
+                Expr::Immediate(Box::new(Expr::Number("-8".to_string(), span)), span),
+            ],
+            &ctx,
+        )
+        .expect_err("baseline LINK.L must fail closed through its package diagnostic");
+    assert!(
+        baseline_link_long
+            .to_string()
+            .contains("LINK does not support .L size"),
+        "unexpected baseline LINK.L diagnostic: {baseline_link_long}"
+    );
+
+    for cpu in ["m68000", "m68010", "m68020", "m68030", "m68040", "m68080"] {
+        let trap_out_of_range =
+            Expr::Immediate(Box::new(Expr::Number("16".to_string(), span)), span);
+        let err = model
+            .encode_instruction_from_exprs(cpu, None, "TRAP", &[trap_out_of_range], &ctx)
+            .expect_err("serialized TRAP range must fail closed");
+        assert!(
+            err.to_string()
+                .contains("TRAP vector 16 out of range (0-15)"),
+            "{cpu}: {err}"
+        );
+
+        let moveq_out_of_range = [
+            Expr::Immediate(Box::new(Expr::Number("128".to_string(), span)), span),
+            Expr::Register("D0".to_string(), span),
+        ];
+        let err = model
+            .encode_instruction_from_exprs(cpu, None, "MOVEQ", &moveq_out_of_range, &ctx)
+            .expect_err("serialized MOVEQ range must fail closed");
+        assert!(
+            err.to_string()
+                .contains("MOVEQ immediate value 128 out of signed 8-bit range"),
+            "{cpu}: {err}"
+        );
+
+        let stop_out_of_range =
+            Expr::Immediate(Box::new(Expr::Number("65536".to_string(), span)), span);
+        let err = model
+            .encode_instruction_from_exprs(cpu, None, "STOP", &[stop_out_of_range], &ctx)
+            .expect_err("serialized STOP range must fail closed");
+        assert!(
+            err.to_string()
+                .contains("STOP immediate value 65536 out of 16-bit range"),
+            "{cpu}: {err}"
+        );
+
+        let link_out_of_range = [
+            Expr::Register("A6".to_string(), span),
+            Expr::Immediate(Box::new(Expr::Number("32768".to_string(), span)), span),
+        ];
+        let err = model
+            .encode_instruction_from_exprs(cpu, None, "LINK", &link_out_of_range, &ctx)
+            .expect_err("serialized LINK range must fail closed");
+        assert!(
+            err.to_string()
+                .contains("LINK displacement 32768 out of 16-bit signed range"),
+            "{cpu}: {err}"
+        );
+        if cpu != "m68000" {
+            let bkpt_out_of_range =
+                Expr::Immediate(Box::new(Expr::Number("8".to_string(), span)), span);
+            let err = model
+                .encode_instruction_from_exprs(cpu, None, "BKPT", &[bkpt_out_of_range], &ctx)
+                .expect_err("serialized BKPT range must fail closed");
+            assert!(err.to_string().contains("BKPT vector out of range (0-7)"));
+
+            let rtd_out_of_range =
+                Expr::Immediate(Box::new(Expr::Number("32768".to_string(), span)), span);
+            let err = model
+                .encode_instruction_from_exprs(cpu, None, "RTD", &[rtd_out_of_range], &ctx)
+                .expect_err("serialized RTD range must fail closed");
+            assert!(err
+                .to_string()
+                .contains("RTD displacement out of 16-bit signed range"));
+        }
+        if matches!(cpu, "m68020" | "m68030" | "m68040" | "m68080") {
+            let link_long_out_of_range = [
+                Expr::Register("A6".to_string(), span),
+                Expr::Immediate(Box::new(Expr::Number("4294967296".to_string(), span)), span),
+            ];
+            let err = model
+                .encode_instruction_from_exprs(cpu, None, "LINK.L", &link_long_out_of_range, &ctx)
+                .expect_err("serialized LINK.L range must fail closed");
+            assert!(err
+                .to_string()
+                .contains("LINK.L displacement 4294967296 out of 32-bit range"));
+        }
+    }
+}
+
+#[test]
+fn serialized_m68k_only_mos65x02_only_and_combined_packages_are_order_independent() {
+    const NATIVE_PACKAGE_STORAGE_CAPACITY: usize = 393_216;
+    let mut m68k_registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut m68k_registry);
+    let m68k_bytes = build_hierarchy_package_from_registry(&m68k_registry)
+        .expect("build unmodified m68k-only package");
+    drop(m68k_registry);
+
+    let mut mos_registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut mos_registry);
+    let mos_bytes = build_hierarchy_package_from_registry(&mos_registry)
+        .expect("build unmodified MOS 65x02-only package");
+    drop(mos_registry);
+
+    let mut combined_mos_first = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut combined_mos_first);
+    register_motorola68000_family_stack(&mut combined_mos_first);
+    let combined_mos_first_bytes = build_hierarchy_package_from_registry(&combined_mos_first)
+        .expect("build MOS-first combined package");
+    drop(combined_mos_first);
+
+    let mut combined_m68k_first = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut combined_m68k_first);
+    register_mos6502_family_stack(&mut combined_m68k_first);
+    let combined_m68k_first_bytes = build_hierarchy_package_from_registry(&combined_m68k_first)
+        .expect("build m68k-first combined package");
+    drop(combined_m68k_first);
+
+    let mut all_family_registry = ModuleRegistry::new();
+    register_intel8080_family_stack(&mut all_family_registry);
+    register_mos6502_family_stack(&mut all_family_registry);
+    register_motorola6800_family_stack(&mut all_family_registry);
+    register_motorola68000_family_stack(&mut all_family_registry);
+    let all_family_bytes = build_hierarchy_package_from_registry(&all_family_registry)
+        .expect("build unmodified all-family package");
+    drop(all_family_registry);
+
+    assert_eq!(
+        combined_mos_first_bytes, combined_m68k_first_bytes,
+        "combined package bytes must not depend on registry insertion order"
+    );
+    for (label, bytes) in [
+        ("m68k-only", &m68k_bytes),
+        ("MOS 65x02-only", &mos_bytes),
+        ("combined", &combined_mos_first_bytes),
+        ("all-family", &all_family_bytes),
+    ] {
+        assert!(
+            bytes.len() <= NATIVE_PACKAGE_STORAGE_CAPACITY,
+            "{label} package is {} bytes and exceeds native capacity by {} bytes",
+            bytes.len(),
+            bytes.len().saturating_sub(NATIVE_PACKAGE_STORAGE_CAPACITY)
+        );
+    }
+    eprintln!(
+        "PACKAGE_SIZE_REPORT m68k_only={} mos65x02_only={} combined={} all_family={} native_capacity={} all_family_headroom={}",
+        m68k_bytes.len(),
+        mos_bytes.len(),
+        combined_mos_first_bytes.len(),
+        all_family_bytes.len(),
+        NATIVE_PACKAGE_STORAGE_CAPACITY,
+        NATIVE_PACKAGE_STORAGE_CAPACITY.saturating_sub(all_family_bytes.len())
+    );
+
+    let m68k_model = HierarchyExecutionModel::from_package_bytes(&m68k_bytes)
+        .expect("load m68k-only package after registry destruction");
+    let mos_model = HierarchyExecutionModel::from_package_bytes(&mos_bytes)
+        .expect("load MOS-only package after registry destruction");
+    let combined_model = HierarchyExecutionModel::from_package_bytes(&combined_mos_first_bytes)
+        .expect("load combined package after registry destruction");
+    let ctx = TestAssemblerContext::new();
+    let span = Span::default();
+    let immediate = Expr::Immediate(Box::new(Expr::Number("66".to_string(), span)), span);
+
+    assert_eq!(
+        m68k_model
+            .encode_instruction_from_exprs("m68000", None, "NOP", &[], &ctx)
+            .expect("m68k-only package NOP"),
+        Some(vec![0x4E, 0x71])
+    );
+    assert!(m68k_model.resolve_pipeline("m6502", None).is_err());
+    assert_eq!(
+        mos_model
+            .encode_instruction_from_exprs(
+                "m6502",
+                None,
+                "LDA",
+                std::slice::from_ref(&immediate),
+                &ctx,
+            )
+            .expect("MOS-only package LDA"),
+        Some(vec![0xA9, 0x42])
+    );
+    assert!(mos_model.resolve_pipeline("m68000", None).is_err());
+    assert_eq!(
+        combined_model
+            .encode_instruction_from_exprs("m68020", None, "NOP", &[], &ctx)
+            .expect("combined package m68k NOP"),
+        Some(vec![0x4E, 0x71])
+    );
+    assert_eq!(
+        combined_model
+            .encode_instruction_from_exprs("65c02", None, "LDA", &[immediate], &ctx)
+            .expect("combined package 65C02 LDA"),
+        Some(vec![0xA9, 0x42])
+    );
+}
+
+#[test]
+fn serialized_m68k_package_selects_bare_symbol_absolute_long_lea() {
+    let mut registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut registry);
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("build unmodified m68k package");
+    drop(registry);
+
+    let model = HierarchyExecutionModel::from_package_bytes(&package_bytes)
+        .expect("load serialized m68k package");
+    let mut ctx = TestAssemblerContext::new();
+    ctx.values.insert("dos_name".to_string(), 0x1234);
+    let span = Span::default();
+    let operands = [
+        Expr::Identifier("dos_name".to_string(), span),
+        Expr::Register("A1".to_string(), span),
+    ];
+
+    for cpu in ["m68000", "68000"] {
+        let encoded = model
+            .encode_instruction_from_exprs(cpu, None, "LEA", &operands, &ctx)
+            .expect("select bare-symbol LEA from serialized package")
+            .expect("serialized package must contain a bare-symbol LEA candidate");
+        assert_eq!(encoded, [0x43, 0xF9, 0x00, 0x00, 0x12, 0x34]);
+    }
+
+    let mut forward_ctx = TestAssemblerContext::new();
+    forward_ctx.pass = 1;
+    let deferred = model
+        .encode_instruction_from_exprs("m68000", None, "LEA", &operands, &forward_ctx)
+        .expect("defer forward bare-symbol LEA from serialized package")
+        .expect("serialized package must retain the forward-symbol LEA candidate");
+    assert_eq!(deferred, [0x43, 0xF9, 0x00, 0x00, 0x00, 0x00]);
+}
+
+#[test]
 fn serialized_m68k_state_program_matches_all_six_cpu_profiles() {
     let mut registry = ModuleRegistry::new();
     register_motorola68000_family_stack(&mut registry);
@@ -11093,6 +13149,50 @@ fn serialized_m68k_state_program_owns_transitions_legality_and_reset() {
         ),
         Err(StateVmError::InvalidArgument { .. })
     ));
+}
+
+#[test]
+fn serialized_register_index_relation_encodes_banked_register_forms() {
+    let mut registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut registry);
+    let bytes = build_hierarchy_package_from_registry(&registry).expect("m68k hierarchy package");
+    let chunks = package::decode_hierarchy_chunks(&bytes).expect("decode m68k hierarchy package");
+    let banked_rejections = chunks
+        .selectors
+        .iter()
+        .filter(|selector| {
+            selector.owner == ScopedOwner::Cpu("m68020".to_string())
+                && selector.mnemonic.eq_ignore_ascii_case("FMUL.W")
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        banked_rejections
+            .iter()
+            .any(|selector| selector.shape_key.contains("direct_register_direct")),
+        "serialized m68020 FMUL.W selectors: {banked_rejections:?}"
+    );
+    drop(chunks);
+    drop(registry);
+
+    let model = HierarchyExecutionModel::from_package_bytes(&bytes)
+        .expect("reload serialized m68k hierarchy package");
+    let mut ctx = TestAssemblerContext::new();
+    ctx.cpu_flags.insert("m68k.fpu_target".to_string(), 4);
+    let operands = [
+        Expr::Identifier("E4".to_string(), Span::default()),
+        Expr::Identifier("FP3".to_string(), Span::default()),
+        Expr::Identifier("E5".to_string(), Span::default()),
+    ];
+    assert_eq!(
+        model
+            .encode_instruction_from_exprs("m68080", None, "FMUL.W", &operands, &ctx)
+            .expect("execute serialized banked-register selector"),
+        Some(vec![0x7D, 0x54, 0xF2, 0x04, 0x51, 0xA3])
+    );
+    let error = model
+        .encode_instruction_from_exprs("m68020", None, "FMUL.W", &operands, &ctx)
+        .expect_err("older profile must reject serialized banked-register form");
+    assert!(error.to_string().contains("m68080"), "{error}");
 }
 
 #[test]

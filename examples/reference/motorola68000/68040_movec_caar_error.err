@@ -3,7 +3,7 @@ Assembly failed:
     3 | .org $1000
     4 | 
     5 |     MOVEC CAAR,D0
-      |           ^
+      |                ^
     6 | 
     7 | .end
 ERROR: MOVEC CAAR is not supported on m68040

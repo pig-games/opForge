@@ -675,6 +675,201 @@ fn encode_decode_round_trip_scoped_schema_registers() {
 }
 
 #[test]
+fn semantic_operand_plan_v1_is_explicit_and_unsupported_versions_fail_closed() {
+    let selector = |operand_plan: &str| ModeSelectorDescriptor {
+        owner: ScopedOwner::Family("family".to_string()),
+        mnemonic: "OP".to_string(),
+        shape_key: "shape".to_string(),
+        mode_key: "semantic".to_string(),
+        operand_plan: operand_plan.to_string(),
+        priority: 0,
+        unstable_widen: false,
+        width_rank: 0,
+    };
+    for valid in [
+        "semv.inputs.v1:program@expr0",
+        "semv.branch.v1:branch.sized@96,expr0,auto,1",
+        "semv.branch.v1:branch.sized@96,expr0,2,1",
+        "semv.sequence.v1:encode:fields@lit:20680,reg0.class0;fixup:pc16@expr1",
+        "semv.scalar.v1:program",
+        "semv.scalar.v1:program|diagnostic",
+        "legacy-plan",
+    ] {
+        validate_mode_selector_set(&[selector(valid)]).expect("supported operand plan");
+    }
+    for invalid in [
+        "semv.inputs.v2:program@expr0",
+        "semv.branch.v2:branch.sized@96,expr0,auto,1",
+        "semv.branch.v1:branch.sized@96,expr0,auto",
+        "semv.branch.v1:branch.sized@opcode,expr0,auto,1",
+        "semv.branch.v1:branch.sized@96,expr0,candidate,1",
+        "semv.sequence.v2:encode:fields@lit:20680,reg0.class0;fixup:pc16@expr1",
+        "semv.sequence.v1:encode:fields@lit:20680,reg0.class0",
+        "semv.sequence.v1:program@expr0;fixup:pc16@expr1",
+        "semv.sequence.v1:encode:fields@;fixup:pc16@expr1",
+        "semv.scalar.v2:program",
+        "semv.inputs.v1:program",
+        "semv.inputs.v1:@expr0",
+        "semv.inputs.v1:program@",
+        "semv.scalar.v1:",
+    ] {
+        let err = validate_mode_selector_set(&[selector(invalid)])
+            .expect_err("malformed or unsupported semantic plan must fail closed");
+        assert!(
+            matches!(err, OpcpuCodecError::InvalidChunkFormat { ref chunk, .. } if chunk == "MSEL"),
+            "{invalid}: {err}"
+        );
+    }
+
+    let unsupported = encode_msel_chunk(&[selector("semv.inputs.v2:program@expr0")])
+        .expect("encode raw unsupported MSEL");
+    let err = decode_msel_chunk(&unsupported).expect_err("decode must reject unsupported version");
+    assert!(
+        matches!(err, OpcpuCodecError::InvalidChunkFormat { ref chunk, .. } if chunk == "MSEL")
+    );
+
+    let unsupported_branch =
+        encode_msel_chunk(&[selector("semv.branch.v2:branch.sized@96,expr0,auto,1")])
+            .expect("encode raw unsupported branch MSEL");
+    let err = decode_msel_chunk(&unsupported_branch)
+        .expect_err("decode must reject unsupported branch operand-plan version");
+    assert!(
+        matches!(err, OpcpuCodecError::InvalidChunkFormat { ref chunk, .. } if chunk == "MSEL")
+    );
+}
+
+#[test]
+fn register_encoding_chunk_v1_round_trips_and_rejects_unknown_versions() {
+    let entries = vec![
+        RegisterEncodingDescriptor {
+            owner: ScopedOwner::Family("family".to_string()),
+            id: "R0".to_string(),
+            class: 3,
+            index: 7,
+        },
+        RegisterEncodingDescriptor {
+            owner: ScopedOwner::Cpu("cpu".to_string()),
+            id: "alias".to_string(),
+            class: 3,
+            index: 7,
+        },
+    ];
+    let encoded = encode_renc_chunk(&entries).expect("encode RENC v1");
+    assert_eq!(
+        decode_renc_chunk(&encoded).expect("decode RENC v1"),
+        entries
+    );
+
+    let mut unsupported = encoded;
+    unsupported[..2].copy_from_slice(&2_u16.to_le_bytes());
+    let err = decode_renc_chunk(&unsupported).expect_err("unknown RENC version must fail closed");
+    assert!(
+        err.to_string()
+            .contains("unsupported register encoding chunk version 2"),
+        "{err}"
+    );
+}
+
+#[test]
+fn register_encoding_container_is_optional_and_rejects_broken_register_references() {
+    let registers = sample_registers();
+    let valid = vec![RegisterEncodingDescriptor {
+        owner: ScopedOwner::Cpu("z80".to_string()),
+        id: "ix".to_string(),
+        class: 4,
+        index: 0,
+    }];
+    let chunks = HierarchyChunks {
+        metadata: PackageMetaDescriptor::default(),
+        strings: Vec::new(),
+        diagnostics: Vec::new(),
+        token_policies: Vec::new(),
+        tokenizer_vm_programs: Vec::new(),
+        parser_contracts: Vec::new(),
+        parser_vm_programs: Vec::new(),
+        expr_contracts: Vec::new(),
+        expr_parser_contracts: Vec::new(),
+        families: sample_families(),
+        cpus: sample_cpus(),
+        dialects: sample_dialects(),
+        registers: registers.clone(),
+        register_encodings: valid.clone(),
+        forms: sample_forms(),
+        tables: sample_tables(),
+        semantic_programs: Vec::new(),
+        value_programs: Vec::new(),
+        operand_record_programs: Vec::new(),
+        selector_programs: Vec::new(),
+        state_programs: Vec::new(),
+        selectors: Vec::new(),
+    };
+    let encoded = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode RENC container");
+    assert_eq!(
+        decode_hierarchy_chunks(&encoded)
+            .expect("decode RENC container")
+            .register_encodings,
+        valid
+    );
+
+    let mut legacy = chunks.clone();
+    legacy.register_encodings.clear();
+    let encoded = encode_hierarchy_chunks_from_chunks(&legacy).expect("encode legacy container");
+    assert!(!encoded.windows(4).any(|window| window == CHUNK_RENC));
+    assert!(decode_hierarchy_chunks(&encoded)
+        .expect("legacy container must remain loadable")
+        .register_encodings
+        .is_empty());
+
+    for (entries, expected) in [
+        (
+            vec![RegisterEncodingDescriptor {
+                owner: ScopedOwner::Cpu("z80".to_string()),
+                id: "MISSING".to_string(),
+                class: 4,
+                index: 0,
+            }],
+            "has no matching REGS descriptor",
+        ),
+        (
+            vec![
+                RegisterEncodingDescriptor {
+                    owner: ScopedOwner::Cpu("z80".to_string()),
+                    id: "IX".to_string(),
+                    class: 4,
+                    index: 0,
+                },
+                RegisterEncodingDescriptor {
+                    owner: ScopedOwner::Cpu("z80".to_string()),
+                    id: "ix".to_string(),
+                    class: 5,
+                    index: 1,
+                },
+            ],
+            "duplicate register encoding",
+        ),
+    ] {
+        let raw = encode_container(&[
+            (
+                CHUNK_FAMS,
+                encode_fams_chunk(&sample_families()).expect("FAMS"),
+            ),
+            (CHUNK_CPUS, encode_cpus_chunk(&sample_cpus()).expect("CPUS")),
+            (
+                CHUNK_DIAL,
+                encode_dial_chunk(&sample_dialects()).expect("DIAL"),
+            ),
+            (CHUNK_REGS, encode_regs_chunk(&registers).expect("REGS")),
+            (CHUNK_RENC, encode_renc_chunk(&entries).expect("RENC")),
+            (CHUNK_FORM, encode_form_chunk(&[]).expect("FORM")),
+            (CHUNK_TABL, encode_tabl_chunk(&[]).expect("TABL")),
+        ])
+        .expect("raw malformed container");
+        let err = decode_hierarchy_chunks(&raw).expect_err("malformed RENC must fail closed");
+        assert!(err.to_string().contains(expected), "{err}");
+    }
+}
+
+#[test]
 fn encode_decode_round_trip_scoped_schema_forms() {
     let entries = sample_forms();
     assert_scoped_schema_round_trip(&entries, encode_form_chunk, decode_form_chunk);
@@ -787,6 +982,7 @@ fn ultimate64_abi_header_is_little_endian_v1() {
         cpus: sample_cpus(),
         dialects: sample_dialects(),
         registers: sample_registers(),
+        register_encodings: Vec::new(),
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
@@ -824,6 +1020,7 @@ fn ultimate64_abi_toc_payload_layout_is_contiguous() {
         cpus: sample_cpus(),
         dialects: sample_dialects(),
         registers: sample_registers(),
+        register_encodings: Vec::new(),
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
@@ -1036,6 +1233,7 @@ fn encode_decode_round_trip_preserves_toks_policy() {
         cpus: sample_cpus(),
         dialects: sample_dialects(),
         registers: sample_registers(),
+        register_encodings: Vec::new(),
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
@@ -1100,6 +1298,7 @@ fn encode_decode_round_trip_preserves_parser_contracts() {
         cpus: sample_cpus(),
         dialects: sample_dialects(),
         registers: sample_registers(),
+        register_encodings: Vec::new(),
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
@@ -1157,6 +1356,7 @@ fn encode_decode_round_trip_preserves_parser_vm_programs() {
         cpus: sample_cpus(),
         dialects: sample_dialects(),
         registers: sample_registers(),
+        register_encodings: Vec::new(),
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
@@ -1264,6 +1464,7 @@ fn encode_decode_round_trip_preserves_expr_contracts() {
         cpus: sample_cpus(),
         dialects: sample_dialects(),
         registers: sample_registers(),
+        register_encodings: Vec::new(),
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
@@ -1312,6 +1513,7 @@ fn encode_decode_round_trip_preserves_expr_parser_contracts() {
         cpus: sample_cpus(),
         dialects: sample_dialects(),
         registers: sample_registers(),
+        register_encodings: Vec::new(),
         forms: sample_forms(),
         tables: sample_tables(),
         semantic_programs: Vec::new(),
@@ -2277,6 +2479,72 @@ fn encoding_program_v2_rejects_malformed_and_unencodable_fields() {
 }
 
 #[test]
+fn encoding_program_v6_round_trips_parameterized_base_and_fails_closed_for_v2() {
+    let steps = vec![EncodingStep::InputFields {
+        base_input: 0,
+        width: 2,
+        endian: EncodingEndian::Big,
+        fields: vec![EncodingFieldSpec {
+            input: 1,
+            shift: 9,
+            bits: 3,
+            min: 0,
+            max: 7,
+        }],
+    }];
+    let program =
+        compile_parameterized_encoding_program(&steps).expect("compile parameterized encoding");
+    assert_eq!(
+        decode_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V6, &program)
+            .expect("decode parameterized encoding"),
+        steps
+    );
+    validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V6, &program)
+        .expect("SEMV v6 accepts parameterized encoding program");
+    assert!(validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V2, &program).is_err());
+    assert!(compile_encoding_program(&steps).is_err());
+
+    let mut unsupported = program.clone();
+    unsupported[0] = 0x7e;
+    assert!(validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V6, &unsupported).is_err());
+}
+
+#[test]
+fn encoding_program_v8_round_trips_cpu_neutral_ieee754_integer_conversion() {
+    let steps = vec![
+        EncodingStep::IntegerToIeee754 {
+            input: 0,
+            width: 4,
+            endian: EncodingEndian::Big,
+        },
+        EncodingStep::IntegerToIeee754 {
+            input: 1,
+            width: 8,
+            endian: EncodingEndian::Little,
+        },
+    ];
+    let program =
+        compile_numeric_encoding_program(&steps).expect("compile SEMV v8 numeric program");
+    assert_eq!(
+        decode_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V8, &program)
+            .expect("decode SEMV v8 numeric program"),
+        steps
+    );
+    validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V8, &program)
+        .expect("SEMV v8 accepts canonical numeric conversion");
+    assert!(decode_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V7, &program).is_err());
+    assert!(compile_parameterized_encoding_program(&steps).is_err());
+    assert!(
+        compile_numeric_encoding_program(&[EncodingStep::IntegerToIeee754 {
+            input: 0,
+            width: 2,
+            endian: EncodingEndian::Big,
+        }])
+        .is_err()
+    );
+}
+
+#[test]
 fn structured_encoding_program_v3_round_trips_every_neutral_projection() {
     let steps = vec![
         StructuredEncodingStep::RegisterMask {
@@ -2401,6 +2669,7 @@ fn fixup_program_v4_round_trips_runtime_bases_placeholders_ranges_and_relocation
             range: FixupRange::Signed,
             unresolved: UnresolvedValuePolicy::Placeholder(0),
             relocation: PortableRelocationKind::None,
+            transform: FixupTransform::Identity,
         },
         FixupEncodingStep {
             input: 1,
@@ -2410,6 +2679,7 @@ fn fixup_program_v4_round_trips_runtime_bases_placeholders_ranges_and_relocation
             range: FixupRange::BitPattern,
             unresolved: UnresolvedValuePolicy::Reject,
             relocation: PortableRelocationKind::Absolute,
+            transform: FixupTransform::Identity,
         },
     ];
     let program = compile_fixup_program(&steps).expect("compile SEMV v4");
@@ -2448,6 +2718,103 @@ fn fixup_program_v4_round_trips_runtime_bases_placeholders_ranges_and_relocation
 }
 
 #[test]
+fn fixup_program_v7_round_trips_neutral_post_projection_transforms_and_fails_closed() {
+    let steps = vec![
+        FixupEncodingStep {
+            input: 0,
+            width: 2,
+            endian: EncodingEndian::Big,
+            base: FixupBase::Position {
+                adjustment: 0,
+                target_references_only: true,
+            },
+            range: FixupRange::Signed,
+            unresolved: UnresolvedValuePolicy::Placeholder(1),
+            relocation: PortableRelocationKind::None,
+            transform: FixupTransform::AlignedBitOr {
+                alignment: 2,
+                mask: 1,
+            },
+        },
+        FixupEncodingStep {
+            input: 1,
+            width: 1,
+            endian: EncodingEndian::Big,
+            base: FixupBase::Position {
+                adjustment: 2,
+                target_references_only: true,
+            },
+            range: FixupRange::Signed,
+            unresolved: UnresolvedValuePolicy::Placeholder(1),
+            relocation: PortableRelocationKind::None,
+            transform: FixupTransform::RangeMap {
+                alignment: 2,
+                mappings: vec![
+                    FixupRangeMapping {
+                        min: -256,
+                        max: -132,
+                        adjustment: 129,
+                    },
+                    FixupRangeMapping {
+                        min: 128,
+                        max: 254,
+                        adjustment: -127,
+                    },
+                ],
+            },
+        },
+    ];
+    let program = compile_projected_fixup_program(&steps).expect("compile SEMV v7");
+    assert_eq!(
+        decode_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V7, &program).expect("decode SEMV v7"),
+        steps
+    );
+    validate_semantic_program(SEMANTIC_VM_OPCODE_VERSION_V7, &program)
+        .expect("SEMV v7 validates through common boundary");
+    assert!(compile_fixup_program(&steps).is_err());
+
+    let mut chunks = decode_hierarchy_chunks(
+        &encode_hierarchy_chunks(
+            &sample_families(),
+            &sample_cpus(),
+            &sample_dialects(),
+            &sample_registers(),
+            &sample_forms(),
+            &sample_tables(),
+        )
+        .expect("encode legacy package"),
+    )
+    .expect("decode legacy package");
+    chunks.semantic_programs.push(SemanticProgramDescriptor {
+        owner: ScopedOwner::Family("motorola68000".to_string()),
+        id: "fix.projected".to_string(),
+        opcode_version: SEMANTIC_VM_OPCODE_VERSION_V7,
+        program: program.clone(),
+    });
+    let encoded = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode SEMV v7 package");
+    let decoded = decode_hierarchy_chunks(&encoded).expect("decode SEMV v7 package");
+    assert_eq!(decoded.semantic_programs, chunks.semantic_programs);
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical SEMV v7 re-encode"),
+        encoded
+    );
+
+    assert!(validate_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V7 + 1, &program).is_err());
+    for end in 0..program.len() {
+        assert!(
+            validate_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V7, &program[..end]).is_err(),
+            "truncated v7 program at {end} bytes was accepted"
+        );
+    }
+    let mut invalid_tag = program.clone();
+    invalid_tag[16] = 0x7f;
+    assert!(validate_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V7, &invalid_tag).is_err());
+    let mut invalid_mask = program;
+    invalid_mask[21..25].copy_from_slice(&0x1_0000_u32.to_le_bytes());
+    assert!(validate_fixup_program(SEMANTIC_VM_OPCODE_VERSION_V7, &invalid_mask).is_err());
+}
+
+#[test]
 fn fixup_program_v4_rejects_malformed_or_unrepresentable_programs() {
     assert!(compile_fixup_program(&[]).is_err());
     assert!(compile_fixup_program(&[FixupEncodingStep {
@@ -2458,6 +2825,7 @@ fn fixup_program_v4_rejects_malformed_or_unrepresentable_programs() {
         range: FixupRange::Signed,
         unresolved: UnresolvedValuePolicy::Placeholder(128),
         relocation: PortableRelocationKind::None,
+        transform: FixupTransform::Identity,
     }])
     .is_err());
 
@@ -2472,6 +2840,7 @@ fn fixup_program_v4_rejects_malformed_or_unrepresentable_programs() {
         range: FixupRange::Signed,
         unresolved: UnresolvedValuePolicy::Placeholder(0),
         relocation: PortableRelocationKind::None,
+        transform: FixupTransform::Identity,
     }])
     .expect("compile malformed seed");
     for index in [2, 3, 4, 9, 14, 15] {
@@ -2501,6 +2870,7 @@ fn fixup_program_v4_validation_is_deterministic_for_mutated_bytes() {
         range: FixupRange::BitPattern,
         unresolved: UnresolvedValuePolicy::Reject,
         relocation: PortableRelocationKind::Absolute,
+        transform: FixupTransform::Identity,
     }])
     .expect("compile fixup mutation seed");
     for byte in 0_u8..=u8::MAX {
@@ -2701,7 +3071,7 @@ fn value_program_codec_rejects_unknown_versions_and_malformed_values() {
         ValueProgramDescriptor {
             owner: ScopedOwner::Family("mos6502".to_string()),
             id: "unknown-version".to_string(),
-            opcode_version: VALUE_VM_OPCODE_VERSION_V1 + 1,
+            opcode_version: VALUE_VM_OPCODE_VERSION_V2 + 1,
             program: vec![VALUE_VM_OP_PUSH_INPUT, 0, VALUE_VM_OP_END],
         },
         ValueProgramDescriptor {
@@ -2768,6 +3138,22 @@ fn value_program_codec_rejects_unknown_versions_and_malformed_values() {
     ])
     .expect("raw duplicate VALP schema encode");
     assert!(decode_valp_chunk(&duplicate_payload).is_err());
+}
+
+#[test]
+fn value_program_v2_projects_inclusive_upper_bound_to_zero_and_v1_rejects_it() {
+    let program = compile_value_program_v2(
+        ValueProgramSource::Input(0),
+        &[ValueConstraint::EncodeUpperBoundAsZero(3)],
+    )
+    .expect("compile packed-field projection");
+    assert!(validate_value_program(VALUE_VM_OPCODE_VERSION_V2, &program).is_ok());
+    assert!(validate_value_program(VALUE_VM_OPCODE_VERSION_V1, &program).is_err());
+    assert!(compile_value_program(
+        ValueProgramSource::Input(0),
+        &[ValueConstraint::EncodeUpperBoundAsZero(3)],
+    )
+    .is_err());
 }
 
 #[test]
@@ -2914,6 +3300,325 @@ fn compact_operand_record_chunk_is_lossless_bounded_and_legacy_oprd_stays_availa
     assert_eq!(
         encode_hierarchy_chunks_from_chunks(&decoded).expect("canonical compact re-encode"),
         encoded
+    );
+}
+
+#[test]
+fn compact_mode_selector_chunk_is_versioned_lossless_and_size_triggered() {
+    let mut selectors = (0..2_500)
+        .map(|index| ModeSelectorDescriptor {
+            owner: ScopedOwner::Family("large-family".to_string()),
+            mnemonic: format!("OP{index:04}"),
+            shape_key: "direct_register".to_string(),
+            mode_key: "semantic".to_string(),
+            operand_plan:
+                "semv.inputs.v1:encoding.shared@indirect_tuple_reg0.item1.class1,reg1.class0,indirect_tuple_value0.item0,indirect_tuple_arity0.value2"
+                    .to_string(),
+            priority: 1,
+            unstable_widen: false,
+            width_rank: 0,
+        })
+        .collect::<Vec<_>>();
+    selectors.extend([
+        ModeSelectorDescriptor {
+            owner: ScopedOwner::Family("large-family".to_string()),
+            mnemonic: "BRANCH".to_string(),
+            shape_key: "direct".to_string(),
+            mode_key: "semantic".to_string(),
+            operand_plan: "semv.branch.v1:branch.sized@96,expr0,auto,1".to_string(),
+            priority: 0,
+            unstable_widen: true,
+            width_rank: 0,
+        },
+        ModeSelectorDescriptor {
+            owner: ScopedOwner::Family("large-family".to_string()),
+            mnemonic: "SEQUENCE".to_string(),
+            shape_key: "register_direct".to_string(),
+            mode_key: "semantic".to_string(),
+            operand_plan: "semv.sequence.v1:match:_@reg0.class0;encode:fields@lit:20680,reg0.class0;fixup:pc16@target:expr1".to_string(),
+            priority: 0,
+            unstable_widen: false,
+            width_rank: 1,
+        },
+        ModeSelectorDescriptor {
+            owner: ScopedOwner::Cpu("large-cpu".to_string()),
+            mnemonic: "STATEFUL".to_string(),
+            shape_key: "register".to_string(),
+            mode_key: "semantic".to_string(),
+            operand_plan: "state.require.v1:feature=1+2?feature.disabled;semv.inputs.v1:encoding.shared@reg0.class0".to_string(),
+            priority: 1000,
+            unstable_widen: false,
+            width_rank: 0,
+        },
+        ModeSelectorDescriptor {
+            owner: ScopedOwner::Cpu("large-cpu".to_string()),
+            mnemonic: "REJECTED".to_string(),
+            shape_key: "immediate_register".to_string(),
+            mode_key: "semantic".to_string(),
+            operand_plan:
+                "semv.reject.v1:encoding.range@out_of_range0.min-32768.max65535,reg1.class0"
+                    .to_string(),
+            priority: 0,
+            unstable_widen: false,
+            width_rank: u8::MAX,
+        },
+    ]);
+    let legacy = encode_msel_chunk(&selectors).expect("encode legacy selector chunk");
+    assert!(legacy.len() >= COMPACT_MODE_SELECTOR_THRESHOLD_BYTES);
+    let compact = encode_compact_msel_chunk(&selectors).expect("encode compact selector chunk");
+    assert!(compact.len() < legacy.len());
+    assert_eq!(
+        u16::from_le_bytes(compact[..2].try_into().expect("CMSE version")),
+        COMPACT_MODE_SELECTOR_CHUNK_VERSION_V7
+    );
+    assert_eq!(
+        decode_compact_msel_chunk(&compact).expect("decode compact selector chunk"),
+        selectors
+    );
+
+    let mut unsupported = compact.clone();
+    unsupported[..2].copy_from_slice(&(COMPACT_MODE_SELECTOR_CHUNK_VERSION_V7 + 1).to_le_bytes());
+    assert!(matches!(
+        decode_compact_msel_chunk(&unsupported),
+        Err(OpcpuCodecError::InvalidChunkFormat { ref chunk, .. }) if chunk == "CMSE"
+    ));
+    assert!(decode_compact_msel_chunk(&compact[..compact.len() - 1]).is_err());
+
+    let small = encode_hierarchy_chunks_full(
+        &sample_families(),
+        &sample_cpus(),
+        &sample_dialects(),
+        &sample_registers(),
+        &sample_forms(),
+        &sample_tables(),
+        &sample_selectors(),
+    )
+    .expect("encode small legacy-selector package");
+    let small_toc = parse_toc(&small).expect("small package TOC");
+    assert!(small_toc.contains_key(&CHUNK_MSEL));
+    assert!(!small_toc.contains_key(&CHUNK_CMSE));
+
+    let large = encode_hierarchy_chunks_full(
+        &sample_families(),
+        &sample_cpus(),
+        &sample_dialects(),
+        &sample_registers(),
+        &sample_forms(),
+        &sample_tables(),
+        &selectors,
+    )
+    .expect("encode large compact-selector package");
+    let large_toc = parse_toc(&large).expect("large package TOC");
+    assert!(!large_toc.contains_key(&CHUNK_MSEL));
+    assert!(large_toc.contains_key(&CHUNK_CMSE));
+    let decoded = decode_hierarchy_chunks(&large).expect("decode large compact-selector package");
+    assert_eq!(decoded.selectors.len(), selectors.len());
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded)
+            .expect("canonical compact-selector package re-encode"),
+        large
+    );
+}
+
+#[test]
+fn compact_form_chunk_is_versioned_lossless_size_triggered_and_fail_closed() {
+    let forms = (0..2_500)
+        .map(|index| ScopedFormDescriptor {
+            owner: ScopedOwner::Cpu(format!("cpu{}", index % 5)),
+            mnemonic: format!("FORM{index:04}"),
+        })
+        .collect::<Vec<_>>();
+    let legacy = encode_form_chunk(&forms).expect("encode legacy form chunk");
+    assert!(legacy.len() >= COMPACT_FORM_THRESHOLD_BYTES);
+    let compact = encode_compact_form_chunk(&forms).expect("encode compact form chunk");
+    assert!(compact.len() < legacy.len());
+    assert_eq!(
+        decode_compact_form_chunk(&compact).expect("decode compact form chunk"),
+        forms
+    );
+
+    let mut unsupported = compact.clone();
+    unsupported[..2].copy_from_slice(&(COMPACT_FORM_CHUNK_VERSION_V1 + 1).to_le_bytes());
+    assert!(matches!(
+        decode_compact_form_chunk(&unsupported),
+        Err(OpcpuCodecError::InvalidChunkFormat { ref chunk, .. }) if chunk == "CFOR"
+    ));
+    assert!(decode_compact_form_chunk(&compact[..compact.len() - 1]).is_err());
+
+    let base = encode_hierarchy_chunks(
+        &sample_families(),
+        &sample_cpus(),
+        &sample_dialects(),
+        &sample_registers(),
+        &sample_forms(),
+        &sample_tables(),
+    )
+    .expect("encode base package");
+    let mut chunks = decode_hierarchy_chunks(&base).expect("decode base package");
+    chunks.forms = forms;
+    let package =
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("encode compact-form package");
+    let toc = parse_toc(&package).expect("compact-form package TOC");
+    assert!(!toc.contains_key(&CHUNK_FORM));
+    assert!(toc.contains_key(&CHUNK_CFOR));
+    let decoded = decode_hierarchy_chunks(&package).expect("decode compact-form package");
+    assert_eq!(decoded.forms.len(), chunks.forms.len());
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded)
+            .expect("canonical compact-form package re-encode"),
+        package
+    );
+}
+
+#[test]
+fn compact_table_chunk_is_versioned_lossless_size_triggered_and_fail_closed() {
+    let tables = (0..2_500)
+        .map(|index| VmProgramDescriptor {
+            owner: ScopedOwner::Cpu(format!("cpu{}", index % 5)),
+            mnemonic: format!("FORM{index:04}"),
+            mode_key: "semantic".to_string(),
+            program: if index % 2 == 0 {
+                vec![0x01, 0x00, 0xff]
+            } else {
+                vec![0x01, 0x01, 0xff]
+            },
+        })
+        .collect::<Vec<_>>();
+    let legacy = encode_tabl_chunk(&tables).expect("encode legacy table chunk");
+    assert!(legacy.len() >= COMPACT_TABLE_THRESHOLD_BYTES);
+    let compact = encode_compact_tabl_chunk(&tables).expect("encode compact table chunk");
+    assert!(compact.len() < legacy.len());
+    assert_eq!(
+        decode_compact_tabl_chunk(&compact).expect("decode compact table chunk"),
+        tables
+    );
+
+    let mut unsupported = compact.clone();
+    unsupported[..2].copy_from_slice(&(COMPACT_TABLE_CHUNK_VERSION_V1 + 1).to_le_bytes());
+    assert!(matches!(
+        decode_compact_tabl_chunk(&unsupported),
+        Err(OpcpuCodecError::InvalidChunkFormat { ref chunk, .. }) if chunk == "CTBL"
+    ));
+    assert!(decode_compact_tabl_chunk(&compact[..compact.len() - 1]).is_err());
+
+    let conflict = encode_container(&[
+        (
+            CHUNK_FAMS,
+            encode_fams_chunk(&sample_families()).expect("FAMS"),
+        ),
+        (CHUNK_CPUS, encode_cpus_chunk(&sample_cpus()).expect("CPUS")),
+        (
+            CHUNK_DIAL,
+            encode_dial_chunk(&sample_dialects()).expect("DIAL"),
+        ),
+        (
+            CHUNK_REGS,
+            encode_regs_chunk(&sample_registers()).expect("REGS"),
+        ),
+        (CHUNK_FORM, encode_form_chunk(&[]).expect("FORM")),
+        (CHUNK_TABL, legacy.clone()),
+        (CHUNK_CTBL, compact.clone()),
+    ])
+    .expect("encode conflicting table package");
+    assert!(matches!(
+        decode_hierarchy_chunks(&conflict),
+        Err(OpcpuCodecError::InvalidChunkFormat { ref chunk, .. }) if chunk == "CTBL"
+    ));
+
+    let base = encode_hierarchy_chunks(
+        &sample_families(),
+        &sample_cpus(),
+        &sample_dialects(),
+        &sample_registers(),
+        &sample_forms(),
+        &sample_tables(),
+    )
+    .expect("encode base package");
+    let mut chunks = decode_hierarchy_chunks(&base).expect("decode base package");
+    chunks.tables = tables;
+    let package =
+        encode_hierarchy_chunks_from_chunks(&chunks).expect("encode compact-table package");
+    let toc = parse_toc(&package).expect("compact-table package TOC");
+    assert!(!toc.contains_key(&CHUNK_TABL));
+    assert!(toc.contains_key(&CHUNK_CTBL));
+    let decoded = decode_hierarchy_chunks(&package).expect("decode compact-table package");
+    assert_eq!(decoded.tables.len(), chunks.tables.len());
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded)
+            .expect("canonical compact-table package re-encode"),
+        package
+    );
+}
+
+#[test]
+fn compact_semantic_program_chunk_is_versioned_lossless_and_size_triggered() {
+    let body = compile_encoding_program(&[EncodingStep::Literal {
+        value: 0x4e71,
+        width: 2,
+        endian: EncodingEndian::Big,
+    }])
+    .expect("compile shared semantic body");
+    let programs = (0..1_500)
+        .map(|index| SemanticProgramDescriptor {
+            owner: ScopedOwner::Family("large-family".to_string()),
+            id: format!("encoding.program.{index:04}"),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V2,
+            program: body.clone(),
+        })
+        .collect::<Vec<_>>();
+    let legacy = encode_semv_chunk(&programs).expect("encode legacy semantic programs");
+    assert!(legacy.len() >= COMPACT_SEMANTIC_PROGRAM_THRESHOLD_BYTES);
+    let compact = encode_compact_semv_chunk(&programs).expect("encode compact semantic programs");
+    assert!(compact.len() < legacy.len());
+    assert_eq!(
+        decode_compact_semv_chunk(&compact).expect("decode compact semantic programs"),
+        programs
+    );
+
+    let mut unsupported = compact.clone();
+    unsupported[..2]
+        .copy_from_slice(&(COMPACT_SEMANTIC_PROGRAM_CHUNK_VERSION_V1 + 1).to_le_bytes());
+    assert!(matches!(
+        decode_compact_semv_chunk(&unsupported),
+        Err(OpcpuCodecError::InvalidChunkFormat { ref chunk, .. }) if chunk == "CSEM"
+    ));
+    assert!(decode_compact_semv_chunk(&compact[..compact.len() - 1]).is_err());
+
+    let base = encode_hierarchy_chunks(
+        &sample_families(),
+        &sample_cpus(),
+        &sample_dialects(),
+        &sample_registers(),
+        &sample_forms(),
+        &sample_tables(),
+    )
+    .expect("encode base package");
+    let mut small_chunks = decode_hierarchy_chunks(&base).expect("decode base package");
+    small_chunks.semantic_programs = vec![SemanticProgramDescriptor {
+        owner: ScopedOwner::Family("mos6502".to_string()),
+        id: "encoding.small".to_string(),
+        opcode_version: SEMANTIC_VM_OPCODE_VERSION_V2,
+        program: body.clone(),
+    }];
+    let small = encode_hierarchy_chunks_from_chunks(&small_chunks)
+        .expect("encode small legacy-semantic package");
+    let small_toc = parse_toc(&small).expect("small semantic package TOC");
+    assert!(small_toc.contains_key(&CHUNK_SEMV));
+    assert!(!small_toc.contains_key(&CHUNK_CSEM));
+
+    let mut chunks = decode_hierarchy_chunks(&base).expect("decode base package");
+    chunks.semantic_programs = programs;
+    let large = encode_hierarchy_chunks_from_chunks(&chunks)
+        .expect("encode large compact-semantic package");
+    let toc = parse_toc(&large).expect("compact-semantic package TOC");
+    assert!(!toc.contains_key(&CHUNK_SEMV));
+    assert!(toc.contains_key(&CHUNK_CSEM));
+    let decoded = decode_hierarchy_chunks(&large).expect("decode compact-semantic package");
+    assert_eq!(decoded.semantic_programs.len(), 1_500);
+    assert_eq!(
+        encode_hierarchy_chunks_from_chunks(&decoded)
+            .expect("canonical compact-semantic package re-encode"),
+        large
     );
 }
 

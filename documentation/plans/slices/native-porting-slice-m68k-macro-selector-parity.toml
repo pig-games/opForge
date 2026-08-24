@@ -1,0 +1,51 @@
+[slice]
+schema_version = 2
+name = "m68k macro-path immediate selector parity"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-families/src/m68k/handler/alu_branch.rs::M68KFamilyHandler::encode_immediate_binary_op",
+  "crates/opforge-families/src/m68k/package_programs.rs::mode_selectors"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm",
+  "examples/opcore/macro_invocation_native.asm",
+  "native/motorola68000/amigaos/test-harnesses/debug/macro_preprocessor_harness.asm"
+]
+invariant = "The unmodified Rust-built 680x0 package structurally discriminates immediate indexed, displacement, PC-relative, qualified absolute-long, and bare-symbol absolute-long destinations, composes the exact Rust handler effective-address field, and preserves required HUNK_RELOC32 metadata without native CPU-specific fallback logic."
+assertion_decision = "No native runtime assertion: serialized selector matching fails closed, focused host byte/fixup contracts pin the Rust behavior, and fresh Level D guest completion proves the established macro CLI consumer."
+expected_inputs = "CMPI byte/word/long forms covering indexed address-register destinations, address displacement, PC displacement, explicit .W/.L absolute members, and qualified bare symbols, plus the canonical native macro invocation source."
+expected_outputs = "Rust-handler-identical instruction bytes, portable absolute-long output fixups where symbolic, an exact Rust-regenerated embedded package below native capacity, and Rust-identical canonical macro fixture bytes from a fresh FS-UAE guest."
+known_non_equivalences = "The standalone macro-preprocessor harness also stalls with a diagnostic Hunk assembled through the direct Rust family handler whose segment payloads are byte-identical; that independent macro-runtime regression and the complete existing parity wrapper are owned by Item 14.3."
+fast_proof_command = "cargo test -p asm m68k_serialized_indexed_effective_address_class_uses_package_programs -- --nocapture && cargo test -p asm m68000_immediate_and_unary_slice_emits_expected_bytes -- --nocapture && cargo test -p asm m68k_package_immediate_bare_symbol_uses_absolute_long_effective_address -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_TIMEOUT_MS=120000 OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=60000 RUST_TEST_THREADS=1 cargo test -p asm native_macro_invocation_fixture_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "m68k_serialized_indexed_effective_address_class_uses_package_programs"
+proof_level = "C"
+proves = "The serialized package selects the address-register indexed immediate form and the qualified absolute-long form with the exact Rust effective-address bits and extension widths."
+does_not_prove = "Symbol relocation metadata or native guest execution."
+
+[[tests]]
+name = "m68000_immediate_and_unary_slice_emits_expected_bytes"
+proof_level = "C"
+proves = "The authoritative assembler path retains direct Rust bytes for immediate displacement, absolute-word, and PC-displacement forms after structural selector discrimination."
+does_not_prove = "Native package loading or macro preprocessing."
+
+[[tests]]
+name = "m68k_package_immediate_bare_symbol_uses_absolute_long_effective_address"
+proof_level = "C"
+proves = "A qualified bare symbol selects mode 7/register 1 and produces one portable absolute-long output fixup rather than an absolute-word opcode with a four-byte extension."
+does_not_prove = "AmigaOS relocation application or the standalone macro harness."
+
+[[tests]]
+name = "motorola68020_embedded_native_cli_package_matches_rust_default_runtime_package"
+proof_level = "C"
+proves = "The checked-in native package is the exact unmodified output of the Rust default package builder."
+does_not_prove = "Guest execution."
+
+[[tests]]
+name = "native_macro_invocation_fixture_fs_uae"
+proof_level = "D"
+proves = "A fresh AmigaOS guest loads the exact Rust-built package, completes the canonical macro definition/invocation/substitution fixture with explicit zero exit, and writes bytes identical to the live Rust oracle."
+does_not_prove = "The independent standalone macro-preprocessor harness regression tracked by Item 14.3."

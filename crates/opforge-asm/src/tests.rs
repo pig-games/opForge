@@ -8181,6 +8181,14 @@ fn m68k_serialized_indexed_effective_address_class_uses_package_programs() {
         ("    MOVE.W A0,0(A1,D2.L)", vec![0x33, 0x88, 0x28, 0x00]),
         ("    CLR.B 0(A0,D6.L)", vec![0x42, 0x30, 0x68, 0x00]),
         ("    TST.W 0(A1,A2.W)", vec![0x4a, 0x71, 0xa0, 0x00]),
+        (
+            "    CMPI.B #'.',0(A0,D2.L)",
+            vec![0x0c, 0x30, 0x00, 0x2e, 0x28, 0x00],
+        ),
+        (
+            "    CMPI.B #'V',$12345678.L",
+            vec![0x0c, 0x39, 0x00, 0x56, 0x12, 0x34, 0x56, 0x78],
+        ),
         ("    SUB.L 0(A0,D1.L),D2", vec![0x94, 0xb0, 0x18, 0x00]),
         ("    ADDA.L 8(A5),A0", vec![0xd1, 0xed, 0x00, 0x08]),
         ("    ADDA.L 0(A5,D2.L),A0", vec![0xd1, 0xf5, 0x28, 0x00]),
@@ -14785,8 +14793,8 @@ fn motorola68020_embedded_native_cli_package_matches_rust_default_runtime_packag
 #[test]
 fn motorola68020_item14_native_compact_fixed_opcode_uses_item13_exact_package_digest() {
     // Keep the historical test entrypoint used by the Item 14 slice manifest,
-    // while pinning the exact Rust-built package consumed after Item 14.1.
-    const ITEM14_1_PACKAGE_FNV1A64: u64 = 0x9ecd_a65f_7fb9_d04f;
+    // while pinning the exact Rust-built package consumed after Item 14.2.
+    const ITEM14_2_PACKAGE_FNV1A64: u64 = 0xe24f_e38f_17b5_d880;
     let package_path =
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
     let embedded_package = fs::read(&package_path).expect("read Item 13 embedded package");
@@ -14802,8 +14810,8 @@ fn motorola68020_item14_native_compact_fixed_opcode_uses_item13_exact_package_di
             (state ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
         });
     assert_eq!(
-        digest, ITEM14_1_PACKAGE_FNV1A64,
-        "Item 14.1 package input digest changed"
+        digest, ITEM14_2_PACKAGE_FNV1A64,
+        "Item 14.2 package input digest changed"
     );
 
     let chunks =
@@ -30047,6 +30055,25 @@ fn linker_output_hunk_live_path_emits_reloc32_for_immediate_binary_bare_symbol_s
     ] {
         assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
     }
+}
+
+#[test]
+fn m68k_package_immediate_bare_symbol_uses_absolute_long_effective_address() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: CMPI.B #'V',target",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let code = assembler.sections.get("code").expect("code section");
+    assert_eq!(&code.bytes[..4], &[0x0c, 0x39, 0x00, 0x56]);
+    assert_eq!(code.output_fixups.len(), 1);
 }
 
 #[test]

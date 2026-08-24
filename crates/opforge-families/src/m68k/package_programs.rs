@@ -6423,7 +6423,7 @@ pub fn mode_selectors() -> Vec<ModeSelectorDescriptor> {
             shape_key: "immediate_direct".to_string(),
             mode_key: "semantic".to_string(),
             operand_plan: format!(
-                "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}encode:{immediate_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},expr0,{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_REGISTER_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}1.class1;encode:{PARAM_SCALAR_WORD}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_VALUE_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}0",
+                "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}expr0,{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_REGISTER_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}1.class1,{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_VALUE_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}0,{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_ARITY_PREFIX}1.value2;encode:{immediate_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},expr0,{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_REGISTER_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}1.class1;encode:{PARAM_SCALAR_WORD}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_VALUE_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}0",
                 base + 0x28
             ),
             priority: 323,
@@ -6456,13 +6456,14 @@ pub fn mode_selectors() -> Vec<ModeSelectorDescriptor> {
         .into_iter()
         .enumerate()
         {
+            let mode_register = mode_bits & 0x07;
             selectors.push(ModeSelectorDescriptor {
                 owner: ScopedOwner::Family("motorola68000".to_string()),
                 mnemonic: instruction.to_string(),
                 shape_key: "immediate_direct".to_string(),
                 mode_key: "semantic".to_string(),
                 operand_plan: format!(
-                    "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}encode:{immediate_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},expr0,{MODE_SELECTOR_PLAN_LITERAL_PREFIX}0;encode:{scalar_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_VALUE_PROGRAM_PREFIX}scalar.absolute-{field}:member1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}{field}",
+                    "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}expr0,{MODE_SELECTOR_PLAN_MEMBER_SHAPE_PREFIX}1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}{field};encode:{immediate_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},expr0,{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{mode_register};encode:{scalar_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_VALUE_PROGRAM_PREFIX}scalar.absolute-{field}:member1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}{field}",
                     base + mode_bits
                 ),
                 priority: (324 + priority) as u16,
@@ -6476,7 +6477,7 @@ pub fn mode_selectors() -> Vec<ModeSelectorDescriptor> {
             shape_key: "immediate_direct".to_string(),
             mode_key: "semantic".to_string(),
             operand_plan: format!(
-                "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}expr0,target:expr1;encode:{immediate_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},expr0,{MODE_SELECTOR_PLAN_LITERAL_PREFIX}0;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr1",
+                "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}expr0,target:expr1;encode:{immediate_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},expr0,{MODE_SELECTOR_PLAN_LITERAL_PREFIX}1;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr1",
                 base + 0x39
             ),
             priority: 336,
@@ -6490,7 +6491,7 @@ pub fn mode_selectors() -> Vec<ModeSelectorDescriptor> {
                 shape_key: "immediate_direct".to_string(),
                 mode_key: "semantic".to_string(),
                 operand_plan: format!(
-                    "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}encode:{immediate_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},expr0,{MODE_SELECTOR_PLAN_LITERAL_PREFIX}2;encode:{PARAM_SCALAR_WORD}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_VALUE_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}0",
+                    "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}expr0,{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_REGISTER_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}1.class8,{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_VALUE_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}0,{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_ARITY_PREFIX}1.value2;encode:{immediate_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},expr0,{MODE_SELECTOR_PLAN_LITERAL_PREFIX}2;encode:{PARAM_SCALAR_WORD}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_VALUE_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}0",
                     base + 0x38
                 ),
                 priority: 326,

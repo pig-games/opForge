@@ -16,11 +16,11 @@ OPASM_SCOPE_TEXT_CAPACITY = 64
 ; Clobbers: D0/CCR.
 ; CCR: reflects D0 on return.
 resetStateV1	.block
-	clr.w ScopeDepth.l
-	clr.w ModuleParentDepth.l
-	clr.w RootModuleNameSet.l
-	move.w #-1, ActiveModuleStatementIndex.l
 	moveq #0, d0
+	move.w d0, ScopeDepth.l
+	move.w d0, ModuleParentDepth.l
+	move.w d0, RootModuleNameSet.l
+	move.w #-1, ActiveModuleStatementIndex.l
 	rts
 	.bend  ; resetStateV1
 
@@ -50,6 +50,10 @@ activeModuleMnemonic
 activeModuleOperand
 	bsr.w skipWhitespace
 	movea.l a0, a1
+	; The source-text getter uses D1 for its table offset.  Module-name length is
+	; a new result and must start at zero for every statement, exactly like
+	; Rust's freshly parsed module identifier.
+	moveq #0, d1
 activeModuleLen
 	tst.l d0
 	beq.s activeModuleDone
@@ -133,7 +137,7 @@ fail
 ; compilation roots, so a preceding module cannot contribute a prefix to the
 ; next module's local symbols.
 ; Inputs: D7.W = current statement index.
-; Outputs: D0 = 0 on success, 1 on malformed/capacity failure.
+; Outputs: D0 = status; D1 = 1; D2.W = next statement index on success.
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 beginModuleScopeV1	.block
@@ -141,13 +145,15 @@ beginModuleScopeV1	.block
 	beq.s begin
 	cmpi.w #1, d0
 	bne.s moduleFail
-	tst.w ModuleParentDepth.l
+	move.w ModuleParentDepth.l, d1
 	bne.s moduleFail
 	move.w ActiveModuleStatementIndex.l, d3
 	move.w d3, ParentModuleStatementIndex.l
-	move.w #1, ModuleParentDepth.l
+	moveq #1, d1
+	move.w d1, ModuleParentDepth.l
 begin
-	clr.w ScopeDepth.l
+	moveq #0, d0
+	move.w d0, ScopeDepth.l
 	move.w d7, ActiveModuleStatementIndex.l
 	bsr.w beginNamespaceScopeV1
 	bne.s moduleFail
@@ -165,6 +171,9 @@ copyRoot
 rootCopied
 	move.w #1, RootModuleNameSet.l
 moduleDone
+	move.w d7, d2
+	addq.w #1, d2
+	moveq #1, d1
 	moveq #0, d0
 	rts
 moduleFail
@@ -179,13 +188,16 @@ moduleFail
 ; Clobbers: D0-D3/A0-A1/CCR.
 ; CCR: reflects D0 on return.
 endModuleScopeV1	.block
-	cmpi.w #1, ScopeDepth.l
+	move.w ScopeDepth.l, d0
+	cmpi.w #1, d0
 	bne.s moduleEndFail
 	move.w d7, -(sp)
-	clr.w ScopeDepth.l
-	tst.w ModuleParentDepth.l
+	moveq #0, d0
+	move.w d0, ScopeDepth.l
+	move.w ModuleParentDepth.l, d0
 	beq.s moduleEndRoot
-	subq.w #1, ModuleParentDepth.l
+	subq.w #1, d0
+	move.w d0, ModuleParentDepth.l
 	move.w ParentModuleStatementIndex.l, d7
 	move.w d7, ActiveModuleStatementIndex.l
 	bsr.w pushFromStatementOperand
@@ -236,6 +248,12 @@ qualifyStatementLabelIfScopedV1	.block
 	jsr eng.opasmEngineGetStatementOwnerTextV1
 	tst.l d0
 	bne.s haveStatementOwner
+	bsr.w activeModuleNameV1
+	beq.s checkScopeDepth
+	movea.l a1, a0
+	move.l d1, d0
+	bra.s haveStatementOwner
+checkScopeDepth
 	tst.w ScopeDepth.l
 	beq.w ok
 	bra.s statementOwnerReady
@@ -345,7 +363,7 @@ verifyFail
 ; CCR: reflects D0 on return.
 resolveLabelValueV1	.block
 	movem.l d1-d2/d4-d6/a0-a2, -(sp)
-	tst.w ScopeDepth.l
+	move.w ScopeDepth.l, d1
 	beq.s fail
 	movea.l a0, a2
 	move.l d0, d6
@@ -452,6 +470,19 @@ pushFromStatementLabel	.block
 	bsr.w pushText
 	rts
 	.bend  ; pushFromStatementLabel
+
+; Push the parser-retained module owner as one scope component.
+; Inputs: D7.W = module statement index.
+; Outputs: D0 = 0 on success, 1 on missing/over-capacity name.
+; Clobbers: D0-D5/A0-A2/CCR.
+; CCR: reflects D0 on return.
+pushFromStatementOwner	.block
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementOwnerTextV1
+	bsr.w pushText
+	rts
+	.bend  ; pushFromStatementOwner
 
 ; Push the first operand token of the current `.namespace` as one scope component.
 ; Inputs: D7.W = statement index.

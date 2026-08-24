@@ -24,6 +24,8 @@ opforgeNativeCliParseStatementInvocationV1	.block
 	bsr.w normalizeScalarAssignment
 	tst.l d0
 	bne.w malformed
+	tst.w state.NativeCliPreprocessDefinitionCount
+	beq.w pass  ; no stored statement signature can match this ordinary line
 	clr.w state.NativeCliPreprocessInvocationLabelLen
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0

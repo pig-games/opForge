@@ -46,6 +46,12 @@
 	.pub
 
 opforgeNativeCliTokenizeCurrentLine	.block
+	; Parsed statement ownership is per-line immutable state.  Clear both words
+	; through a register so no prior structural directive can leak into the next
+	; statement when the selected assembler encodes absolute-memory forms.
+	moveq #0, d0
+	move.w d0, state.NativeCliStmtDirectiveKind
+	move.w d0, state.NativeCliStmtDirectiveKindAuthoritative
 	jsr preprocessor.opforgeNativeCliRouteConditionalLineV1
 	tst.l d0
 	beq.s conditionalPass
@@ -61,7 +67,13 @@ conditionalPass
 	jsr metadata.opforgeNativeCliRouteRootMetadataLineV1
 	tst.l d0
 	beq.s metadataPass
-	bmi.w fail
+	bpl.s metadataConsumed
+	lea strings.MetadataPreprocessFailureText, a1
+	move.l a1, d1
+	jsr dos.putErrStr
+	bra.w fail
+
+metadataConsumed
 	moveq #0, d0
 	rts
 
@@ -76,7 +88,13 @@ visibilityPass
 	jsr preprocessor_definitions.opforgeNativeCliCaptureMacroDefinitionLineV1
 	tst.l d0
 	beq.s preprocessPass
-	bmi.w fail
+	bpl.s macroDefinitionConsumed
+	lea strings.MacroDefinitionPreprocessFailureText, a1
+	move.l a1, d1
+	jsr dos.putErrStr
+	bra.w fail
+
+macroDefinitionConsumed
 	moveq #0, d0
 	rts
 
@@ -84,8 +102,11 @@ preprocessPass
 	jsr preprocessor_statement.opforgeNativeCliParseStatementInvocationV1
 	tst.l d0
 	beq.s statementPass
-	bmi.w fail
-	bra.s invocationObserved
+	bpl.s invocationObserved
+	lea strings.StatementPreprocessFailureText, a1
+	move.l a1, d1
+	jsr dos.putErrStr
+	bra.w fail
 
 statementPass
 	jsr preprocessor_invocation.opforgeNativeCliParseMacroInvocationV1
@@ -121,7 +142,13 @@ invocationObserved
 	move.l (sp)+, d0
 .endif
 	tst.l d0
-	bmi.w fail
+	bpl.s invocationReady
+	lea strings.MacroInvocationPreprocessFailureText, a1
+	move.l a1, d1
+	jsr dos.putErrStr
+	bra.w fail
+
+invocationReady
 	bsr.w opforgeNativeCliExpandActiveMacroV1
 	rts
 
@@ -181,11 +208,47 @@ packageRoute
 	tst.w state.NativeCliPackagePipelineReady
 	beq.w parseOnly
 	bsr.w opforgeNativeCliDispatchTokenizeLineEnvelope
+	beq.s tokenizeOk
+	move.l d0, d2
+	lea buffers.ControlBlockV1, a0
+	jsr tkpkg_control_block.opforgeNativeCliReadLastErrorLen
+	tst.w d0
 	bne.w fail
+	move.l d2, d0
+	cmpi.b #abi.STATUS_BAD_CONTROL_BLOCK_V1, d0
+	beq.s tokenizerBadControl
+	cmpi.b #abi.STATUS_BAD_REQUEST_V1, d0
+	beq.s tokenizerBadRequest
+	cmpi.b #abi.STATUS_RUNTIME_ERROR_V1, d0
+	beq.s tokenizerRuntimeError
+	lea strings.TokenizerUnknownStatusText, a1
+	bra.s emitTokenizerStatus
+
+tokenizerBadControl
+	lea strings.TokenizerBadControlStatusText, a1
+	bra.s emitTokenizerStatus
+
+tokenizerBadRequest
+	lea strings.TokenizerBadRequestStatusText, a1
+	bra.s emitTokenizerStatus
+
+tokenizerRuntimeError
+	lea strings.TokenizerRuntimeStatusText, a1
+
+emitTokenizerStatus
+	move.l a1, d1
+	jsr dos.putErrStr
+	bra.w fail
+
+tokenizeOk
 	jsr prvm_bridge.opforgeNativeCliSampleActivePrvmLengthField
 	move.l d0, state.NativeCliPrvmTokenizerDetail
 	jsr prvm_bridge.opforgeNativeCliDispatchParseLineUntilReady
-	bne.w fail
+	beq.s ok
+	lea strings.ParserFailureText, a1
+	move.l a1, d1
+	jsr dos.putErrStr
+	bra.w fail
 
 ok
 	bsr.w opforgeNativeCliParseCurrentLine
@@ -356,7 +419,7 @@ readOutput
 haveMessage
 	lea buffers.lastErrorBuffer, a1
 	clr.b 0(a1, d0.W)
-	move.l #buffers.lastErrorBuffer, d1
+	move.l a1, d1
 	jsr dos.putErrStr
 	move.l #strings.NewlineText, d1
 	jsr dos.putErrStr
@@ -1050,6 +1113,8 @@ checkUseFallback
 	moveq #constants.NCLI_PARSER_DIRECTIVE_USE, d0
 
 haveDirectiveKind
+	move.w d0, state.NativeCliStmtDirectiveKind
+	move.w #1, state.NativeCliStmtDirectiveKindAuthoritative
 	cmpi.w #constants.NCLI_PARSER_DIRECTIVE_MODULE, d0
 	bne.s checkEndmodule
 	jsr directive_handlers.opforgeNativeCliParseModuleLine

@@ -68,7 +68,15 @@ loadStagedPayload
 	move.l state.NativeCliPackageLenActive, d0
 	jsr package_loader.tkpkgPackageLoaderLoadStagedV1
 	tst.l d0
-	bne.s fail
+	bne.s loadStagedFailure
+	bra.s packageLoaded
+
+loadStagedFailure
+	move.l a1, d1
+	jsr dos.putErrStr
+	move.l #strings.NewlineText, d1
+	jsr dos.putErrStr
+	bra.s fail
 
 packageLoaded
 	bsr.w opforgeNativeCliApplyCurrentPipeline

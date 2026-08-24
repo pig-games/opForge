@@ -14783,6 +14783,87 @@ fn motorola68020_embedded_native_cli_package_matches_rust_default_runtime_packag
 }
 
 #[test]
+fn motorola68020_item14_native_compact_fixed_opcode_uses_item13_exact_package_digest() {
+    const ITEM13_PACKAGE_FNV1A64: u64 = 0xd2f1_94dc_9075_9eb0;
+    let package_path =
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let embedded_package = fs::read(&package_path).expect("read Item 13 embedded package");
+    let rust_package = build_hierarchy_package_from_registry(&default_registry())
+        .expect("build current unmodified Rust package");
+    assert_eq!(
+        embedded_package, rust_package,
+        "Item 14 native input must remain byte-identical to Item 13 Rust output"
+    );
+    let digest = embedded_package
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325, |state, byte| {
+            (state ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+        });
+    assert_eq!(
+        digest, ITEM13_PACKAGE_FNV1A64,
+        "Item 13 package input digest changed"
+    );
+
+    let chunks =
+        package::decode_hierarchy_chunks(&embedded_package).expect("decode exact Item 13 package");
+    let fixed = chunks
+        .tables
+        .iter()
+        .find(|entry| {
+            entry.owner == ScopedOwner::Family("motorola68000".to_string())
+                && entry.mnemonic.eq_ignore_ascii_case("nop")
+                && entry.mode_key.eq_ignore_ascii_case("implied")
+        })
+        .expect("frozen package fixed-opcode row");
+    assert_eq!(fixed.program, [0x01, 0x4e, 0x01, 0x71, 0xff]);
+
+    let compact_source = tkpkg_amigaos_source("tkpkg_compact_table.asm");
+    let loader_source = tkpkg_amigaos_source("tkpkg_package_loader.asm");
+    assert!(compact_source.contains("cmpi.w #COMPACT_TABLE_VERSION_V1, d0"));
+    assert!(compact_source.contains("tkpkgSelectedMselOwnerMatchesV1"));
+    assert!(loader_source.contains("buffers.CtblChunkOffsetLo"));
+    for forbidden in ["motorola68000", "m68020", "nop", "$4e71", "$4E71"] {
+        assert!(
+            !compact_source.contains(forbidden),
+            "generic compact-table runtime must not own family spelling {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn motorola68020_item14_native_compact_fixed_opcode_guards_version_and_malformed_opcodes() {
+    let compact_source = tkpkg_amigaos_source("tkpkg_compact_table.asm");
+    let encode_source = tkpkg_amigaos_source("tkpkg_encode_service.asm");
+    assert!(source_contains_in_order(
+        &compact_source,
+        &[
+            "tkpkgServiceReadU16LeV1",
+            "cmpi.w #COMPACT_TABLE_VERSION_V1, d0",
+            "bne.w malformed",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &encode_source,
+        &[
+            "tkpkgEncodeExecuteProgram",
+            "cmpi.b #$FF, d0",
+            "cmpi.b #$01, d0",
+            "cmpi.b #$02, d0",
+            "bra.w fail",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &encode_source,
+        &["endProgram", "tst.w d7", "bne.s fail"]
+    ));
+    assert!(source_contains_in_order(
+        &compact_source,
+        &["found", "move.w d0, d1", "movea.l a2, a1", "moveq #0, d0",]
+    ));
+    assert!(!compact_source.contains("Cached"));
+}
+
+#[test]
 fn motorola68020_item6_7_pass_one_sizes_relative_branches_when_selected_size_is_empty() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
@@ -15122,9 +15203,10 @@ fn motorola68020_item13_native_bin_output_routes_through_artifact_layer() {
         &[
             ".use opasm.amigaos.output_artifacts as artifacts",
             "opforgeNativeCliWriteFlatOutput .block",
-            "jsr dos.openOutput",
             "jsr artifacts.opasmOutputBuildBinArtifactV1",
             "move.l d1, d3",
+            "lea state.NativeCliBinPath, a0",
+            "jsr dos.openOutput",
             "move.l d3, d0",
             "jsr dos.writeOutput",
         ]
@@ -15192,7 +15274,8 @@ fn motorola68020_item13_native_bin_output_routes_through_artifact_layer() {
         &run_source,
         &[
             "tokenizerOk",
-            "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat",
+            "move.w state.NativeCliOutputFormat, d0",
+            "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d0",
             "bne.s outputRequestReady",
             "move.l #strings.NativeHunkNotImplementedText, d1",
             "move.l #constants.RETURN_NOT_IMPLEMENTED, state.NativeCliReturnCode",
@@ -15243,12 +15326,12 @@ fn motorola68020_item14_native_prg_output_routes_through_artifact_layer() {
     assert!(source_contains_in_order(
         &output_source,
         &[
-            "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat",
-            "lea state.NativeCliPrgPath, a0",
+            "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d0",
             "moveq #-1, d2",
             "tst.w state.NativeCliPrgLoadAddrSet",
             "move.l state.NativeCliPrgLoadAddr, d2",
             "jsr artifacts.opasmOutputBuildPrgArtifactV1",
+            "lea state.NativeCliPrgPath, a0",
         ]
     ));
     assert!(source_contains_in_order(
@@ -15359,10 +15442,10 @@ fn motorola68020_item15_native_hex_output_routes_through_artifact_layer() {
     assert!(source_contains_in_order(
         &output_source,
         &[
-            "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, state.NativeCliOutputFormat",
-            "lea state.NativeCliHexPath, a0",
+            "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d0",
             "buildHex",
             "jsr artifacts.opasmOutputBuildHexArtifactV1",
+            "lea state.NativeCliHexPath, a0",
         ]
     ));
     assert!(source_contains_in_order(
@@ -15470,10 +15553,10 @@ fn motorola68020_item16_native_listing_output_routes_through_artifact_layer() {
     assert!(source_contains_in_order(
         &output_source,
         &[
-            "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat",
-            "lea state.NativeCliLstPath, a0",
+            "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0",
             "buildLst",
             "jsr artifacts.opasmOutputBuildListingArtifactV1",
+            "lea state.NativeCliLstPath, a0",
         ]
     ));
     assert!(source_contains_in_order(
@@ -15947,12 +16030,13 @@ fn motorola68020_item82_native_source_artifact_requests_are_preserved() {
     assert!(source_contains_in_order(
         &handlers,
         &[
-            "opforgeNativeCliCaptureArtifactRequestLineV1 .BLOCK",
-            "CMPI.W #constants.NATIVE_ARTIFACT_REQUEST_CAPACITY, D7",
-            "LEA state.NativeCliArtifactRequestKinds, A0",
-            "LEA state.NativeCliArtifactRequestLengths, A0",
-            "LEA state.NativeCliArtifactRequestTexts, A1",
-            "ADDQ.W #1, state.NativeCliArtifactRequestCount",
+            "opforgeNativeCliCaptureArtifactRequestLineV1\t.block",
+            "cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_CAPACITY, d7",
+            "lea state.NativeCliArtifactRequestKinds, a0",
+            "lea state.NativeCliArtifactRequestLengths, a0",
+            "lea state.NativeCliArtifactRequestTexts, a1",
+            "addq.w #1, d7",
+            "move.w d7, state.NativeCliArtifactRequestCount",
         ]
     ));
     assert!(source_contains_in_order(
@@ -16753,11 +16837,13 @@ fn motorola68020_item11_native_use_module_recursion_preserves_root_reader() {
     assert!(source_contains_in_order(
         &source_reader,
         &[
-            "opforgeNativeCliTokenizePendingUseModule .BLOCK",
-            "MOVEM.L D5-D6, -(SP)",
-            "BSR.W opforgeNativeCliTokenizeResolvedUseModule",
-            "JSR module_use.opforgeNativeCliBindImportDefinitionsV1",
-            "MOVEM.L (SP)+, D5-D6",
+            "opforgeNativeCliTokenizePendingUseModule\t.block",
+            "movem.l d1/d5-d6/a0-a1, -(sp)",
+            "move.l d6, -(sp)",
+            "bsr.w opforgeNativeCliTokenizeResolvedUseModule",
+            "move.l (sp)+, d6",
+            "jsr module_use.opforgeNativeCliBindImportDefinitionsV1",
+            "movem.l (sp)+, d1/d5-d6/a0-a1",
         ]
     ));
     assert!(source_contains_in_order(
@@ -17184,6 +17270,20 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
             "moveq #runtime.EXPRVM_V2_OPCODE_REQUIRE_SCALAR, d6",
             "moveq #runtime.EXPRVM_V2_OPCODE_END, d6",
         ]
+    ));
+    assert!(routine_contains_in_order(
+        &source,
+        "emitU8D6",
+        &[
+            "move.w OpcoreExprVmProgramLen, d1",
+            "addq.w #1, d1",
+            "move.w d1, OpcoreExprVmProgramLen",
+        ]
+    ));
+    assert!(!routine_contains(
+        &source,
+        "emitU8D6",
+        "addi.w #1, OpcoreExprVmProgramLen"
     ));
     assert!(routine_contains_in_order(
         &source,
@@ -19690,7 +19790,7 @@ fn motorola68020_tkpkg_selection_service_has_one_implementation_owner() {
     ));
     assert!(tkpkg_source_contains(
         &encoding,
-        "havePipeline:\n        JSR selection.buildSelectedEnvelopeV1"
+        "useSelectedEnvelope:\n        JSR selection.buildSelectedEnvelopeV1"
     ));
     assert!(!facade.contains("buildSelectedEnvelopeV1\t.block"));
     assert!(!facade.contains("tkpkgBuildSelectedEnvelopeFromMselV1\t.block"));
@@ -20074,7 +20174,7 @@ fn motorola68020_tkpkg_load_package_validates_little_endian_container_header() {
     ));
     assert!(tkpkg_source_contains(
         &service,
-        "handleLoadPackage:\n        MOVE.L A0, -(SP)\n        BSR.W package_loader.tkpkgPackageLoaderLoadV1\n        MOVEA.L (SP)+, A0\n        TST.B D0\n        BNE.S loadPackageError"
+        "handleLoadPackage:\n        MOVE.L A0, -(SP)\n        JSR package_loader.tkpkgPackageLoaderLoadV1\n        MOVEA.L (SP)+, A0\n        TST.B D0\n        BNE.S loadPackageError"
     ));
     assert!(source_contains_in_order(
         &loader,
@@ -20154,13 +20254,13 @@ fn motorola68020_tkpkg_load_package_copies_owned_package_state() {
         &["loop", "MOVE.B (A1)+,(A2)+", "SUBQ.L #1,D2", "BNE.S loop"]
     ));
     assert!(loader.contains("buffers.FamsChunkOffsetLo"));
-    assert!(loader.contains("buffers.PACKAGE_CHUNK_FAMS"));
+    assert!(loader.contains("bset #0, buffers.PackageChunkFlags"));
     assert!(loader.contains("buffers.ToksChunkOffsetLo"));
-    assert!(loader.contains("buffers.PACKAGE_CHUNK_TOKS"));
+    assert!(loader.contains("bset #3, buffers.PackageChunkFlags"));
     assert!(loader.contains("buffers.TkvmChunkOffsetLo"));
-    assert!(loader.contains("buffers.PACKAGE_CHUNK_TKVM"));
+    assert!(loader.contains("bset #4, buffers.PackageChunkFlags"));
     assert!(loader.contains("buffers.MselChunkOffsetLo"));
-    assert!(loader.contains("buffers.PACKAGE_CHUNK_MSEL"));
+    assert!(loader.contains("bset #0, buffers.PackageChunkFlagsHi"));
     assert!(loader.contains("buffers.PackageChunkFlagsHi"));
     assert!(source_contains_in_order(
         &loader,
@@ -20168,11 +20268,11 @@ fn motorola68020_tkpkg_load_package_copies_owned_package_state() {
     ));
     assert!(loader.contains("bne.w checkMsel"));
     assert!(loader.contains("lea buffers.MselChunkOffsetLo, a3"));
-    assert!(loader.contains("ori.b #buffers.PACKAGE_CHUNK_MSEL, buffers.PackageChunkFlagsHi"));
+    assert!(loader.contains("bset #0, buffers.PackageChunkFlagsHi"));
     assert!(loader.contains("buffers.ExprChunkOffsetLo"));
-    assert!(loader.contains("buffers.PACKAGE_CHUNK_EXPR"));
+    assert!(loader.contains("bset #6, buffers.PackageChunkFlags"));
     assert!(loader.contains("buffers.ExvmChunkOffsetLo"));
-    assert!(loader.contains("buffers.PACKAGE_CHUNK_EXVM"));
+    assert!(loader.contains("bset #7, buffers.PackageChunkFlags"));
     assert!(loader.contains("buffers.PACKAGE_REQUIRED_CHUNK_FLAGS"));
     assert!(loader.contains("missingChunk"));
     assert!(tkpkg_source_contains(
@@ -20442,7 +20542,11 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "TST.B D0\n        BEQ.W skipCpuEntry\n        LEA buffers.PendingCpuOffsetLo, A3\n        MOVEA.L A4, A1\n        MOVE.W D6, D0\n        BSR.W storePackageStringLocatorV1"
+        "TST.B D0\n        BEQ.W skipCpuEntry\n        BSR.W stageCpuEntryV1\n        RTS\n\n        skipCpuEntry"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "stageCpuEntryV1\t.block\n        LEA buffers.PendingCpuOffsetLo, A3\n        MOVEA.L A4, A1\n        MOVE.W D6, D0\n        BSR.W storePackageStringLocatorV1"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
@@ -21500,7 +21604,11 @@ fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_p
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "MOVEQ #abi.ENTRY_ORD_LOAD_PACKAGE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        BNE.W tkpkgDebugCliReportFailure\n        MOVE.L #PackageLoadedText, D1"
+        "tkpkgDebugCliLoadStagedPackage:\n        MOVE.L TkpkgDebugCliPackageLen, D0\n        JSR package_loader.tkpkgPackageLoaderLoadStagedV1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkgDebugCliPackageLoaded:\n        MOVE.L #PackageLoadedText, D1"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -21573,7 +21681,7 @@ fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_p
     let service_source = tkpkg_amigaos_source("tkpkg_service.asm");
     assert!(tkpkg_source_contains(
         &service_source,
-        "handleLoadPackage:\n        MOVE.L A0, -(SP)\n        BSR.W package_loader.tkpkgPackageLoaderLoadV1\n        MOVEA.L (SP)+, A0"
+        "handleLoadPackage:\n        MOVE.L A0, -(SP)\n        JSR package_loader.tkpkgPackageLoaderLoadV1\n        MOVEA.L (SP)+, A0"
     ));
     assert!(tkpkg_source_contains(
         &service_source,
@@ -21581,7 +21689,7 @@ fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_p
     ));
     assert!(tkpkg_source_contains(
         &source,
-        ".align 2\n\ndebugCliDosBase:\n        .long 0\n\ndebugCliReturnCode:\n        .long RETURN_FAIL\n\ndebugCliFileModeEnabled:\n        .long 0\n\ntkpkgDebugCliPackageLen:\n        .word TKPKG_DEBUG_CLI_PACKAGE_LEN"
+        ".align 2\n\ndebugCliDosBase:\n        .long 0\n\ndebugCliReturnCode:\n        .long RETURN_FAIL\n\ndebugCliFileModeEnabled:\n        .long 0\n\ntkpkgDebugCliPackageLen:\n        .long TKPKG_DEBUG_CLI_PACKAGE_LEN"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -21680,7 +21788,7 @@ fn motorola68020_tkpkg_debug_cli_locks_package_selection_contract() {
     );
     let load_idx = tkpkg_source_snippet_index(
         &source,
-        "LEA tkpkgDebugCliPackageData, A1\n        LEA buffers.packageStorage, A2\n        MOVE.W TkpkgDebugCliPackageLen, D0\n        BSR.W tkpkgDebugCliCopyBytesV1\n\n        LEA buffers.ControlBlockV1, A0\n        MOVE.W #PACKAGE_INPUT_PTR_V1, D0\n        MOVE.W TkpkgDebugCliPackageLen, D1\n        BSR.W tkpkgDebugCliWriteInputWindowV1\n        MOVEQ #abi.ENTRY_ORD_LOAD_PACKAGE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        BNE.W tkpkgDebugCliReportFailure",
+        "LEA tkpkgDebugCliPackageData, A1\n        LEA buffers.packageStorage, A2\n        MOVE.L TkpkgDebugCliPackageLen, D0\n        BSR.W tkpkgDebugCliCopyBytesV1\n        MOVE.L TkpkgDebugCliPackageLen, D0\n        MOVE.L D0, D1\n        SWAP D1\n        TST.W D1\n        BNE.S tkpkgDebugCliLoadStagedPackage\n\n        LEA buffers.ControlBlockV1, A0\n        MOVE.W #PACKAGE_INPUT_PTR_V1, D0\n        MOVE.L TkpkgDebugCliPackageLen, D1\n        BSR.W tkpkgDebugCliWriteInputWindowV1\n        MOVEQ #abi.ENTRY_ORD_LOAD_PACKAGE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        BNE.W tkpkgDebugCliReportFailure",
     );
     let set_pipeline_idx = tkpkg_source_snippet_index(
         &source,

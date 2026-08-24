@@ -17,11 +17,13 @@ TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE = 9
 TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE = 16
 TKPKG_SELECTED_EXTENSION_INPUT_SIZE = 24
 TKPKG_SELECTED_EXTENSION_PASS_INPUT_SIZE = 28
+TKPKG_SELECTED_EXTENSION_RESOLVER_INPUT_SIZE = 32
 TKPKG_SELECTED_STATUS_OK = 0
 TKPKG_SELECTED_STATUS_NO_OUTPUT = 1
 TKPKG_SELECTED_STATUS_UNKNOWN_MNEMONIC = 2
 TKPKG_SELECTED_STATUS_UNSUPPORTED_ADDRESS = 3
 TKPKG_SELECTED_STATUS_OPERAND_ERROR = 4
+TKPKG_SELECTED_STATUS_RUNTIME_ERROR = 5
 TKPKG_MSEL_SURFACE_NONE = 0
 TKPKG_MSEL_SURFACE_IMMEDIATE = 1
 TKPKG_MSEL_SURFACE_ACCUMULATOR = 2
@@ -241,6 +243,7 @@ unknown
 ; CCR:
 ; - Reflects D0 on return.
 buildSelectedEnvelopeV1	.block
+	move.l a0, -(sp)
 	moveq #0, d0
 	move.b abi.CB_INPUT_PTR(a0), d0
 	moveq #0, d1
@@ -297,7 +300,9 @@ buildSelectedEnvelopeV1	.block
 	move.l d4, -(sp)
 	move.l d2, -(sp)
 	cmpi.w #TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE, d1
-	bcs.s noExtension
+	bcc.s haveBaseExtension
+	bra.w noExtension
+haveBaseExtension
 	lea 0(a0, d0.W), a5
 	movea.l (a5)+, a1
 	movea.l (a5)+, a2
@@ -311,16 +316,27 @@ buildSelectedEnvelopeV1	.block
 	move.w d0, state.EncodeSelectedSessionPass
 	clr.l state.EncodeSelectedMselShapePtr
 	clr.w state.EncodeSelectedMselShapeLen
+	clr.l state.EncodeSelectedSymbolResolverPtr
 	cmpi.w #TKPKG_SELECTED_EXTENSION_INPUT_SIZE, d5
-	bcs.s resolveVersions
+	bcc.s haveShapeExtension
+	bra.w resolveVersions
+haveShapeExtension
 	movea.l (a5)+, a1
 	move.l (a5)+, d0
 	move.l a1, state.EncodeSelectedMselShapePtr
 	move.w d0, state.EncodeSelectedMselShapeLen
 	cmpi.w #TKPKG_SELECTED_EXTENSION_PASS_INPUT_SIZE, d5
-	bcs.s resolveVersions
+	bcc.s havePassExtension
+	bra.w resolveVersions
+havePassExtension
 	move.l (a5)+, d0
 	move.w d0, state.EncodeSelectedSessionPass
+	cmpi.w #TKPKG_SELECTED_EXTENSION_RESOLVER_INPUT_SIZE, d5
+	bcc.s haveResolverExtension
+	bra.w resolveVersions
+haveResolverExtension
+	move.l (a5)+, d0
+	move.l d0, state.EncodeSelectedSymbolResolverPtr
 	bra.s resolveVersions
 
 noExtension
@@ -332,6 +348,7 @@ noExtension
 	move.w d0, state.EncodeSelectedSessionPass
 	clr.l state.EncodeSelectedMselShapePtr
 	clr.w state.EncodeSelectedMselShapeLen
+	clr.l state.EncodeSelectedSymbolResolverPtr
 
 resolveVersions
 	move.l d7, -(sp)
@@ -598,6 +615,7 @@ resolveFail
 	addq.l #8, sp
 
 return
+	movea.l (sp)+, a0
 	tst.l d0
 	rts
 	.bend  ; buildSelectedEnvelopeV1
@@ -613,7 +631,7 @@ tkpkgBuildSelectedEnvelopeFromMselV1	.block
 	beq.w noOutput
 	lea buffers.MselChunkOffsetLo, a3
 	bsr.w tkpkgServiceChunkPtrFromLocatorV1
-	bne.w noOutput
+	bne.w compactSelector
 	bsr.w tkpkgServiceReadU32LeLow16V1
 	bne.w noOutput
 	tst.w d0
@@ -756,11 +774,546 @@ unknownMnemonic
 unsupported
 	moveq #0, d1
 	moveq #TKPKG_SELECTED_STATUS_UNSUPPORTED_ADDRESS, d0
+	bra.s return
+
+compactSelector
+	movea.l a5, a0
+	moveq #0, d0
+	move.w state.EncodeSelectedMselMnemonicLen, d0
+	bsr.w tkpkgBuildSelectedEnvelopeFromCmseV7
 
 return
 	movem.l (sp)+, d2-d7/a0-a6
 	rts
 	.bend  ; tkpkgBuildSelectedEnvelopeFromMselV1
+
+; Decode the Rust CMSE v7 wire format far enough to recover raw, package-owned
+; operand plans.  Semantic plan records are bounds-checked and skipped here;
+; later slices execute those plans in their owning neutral VM.  This preserves
+; the existing operand-plan runtime for families whose package rows are raw.
+; Inputs: A0/D0 = selected mnemonic text/length.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D1 = envelope length on success.
+tkpkgBuildSelectedEnvelopeFromCmseV7	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	lea -24(sp), sp
+	clr.w state.EncodeSelectedMselMatchFlags
+	clr.w state.EncodeSelectedMselFallbackLen
+	movea.l a0, a5
+	move.w d0, d2
+	move.w d2, state.EncodeSelectedMselMnemonicLen
+	tst.w d2
+	beq.w cmseNoOutput
+	cmpi.w #buffers.COMPACT_SELECTOR_TEXT_CAPACITY, d2
+	bhi.w cmseMalformed
+	lea buffers.CompactSelectorMnemonicText, a3
+	movea.l a5, a1
+	move.w d2, d3
+	beq.s cmseMnemonicCopied
+	subq.w #1, d3
+cmseMnemonicCopyLoop
+	move.b (a1)+, (a3)+
+	dbf d3, cmseMnemonicCopyLoop
+cmseMnemonicCopied
+	moveq #0, d0
+	move.w state.EncodeSelectedMselShapeLen, d0
+	cmpi.w #buffers.COMPACT_SELECTOR_TEXT_CAPACITY, d0
+	bhi.w cmseMalformed
+	tst.w d0
+	beq.s cmseShapeCopied
+	movea.l state.EncodeSelectedMselShapePtr, a1
+	move.l a1, d1
+	beq.w cmseMalformed
+	lea buffers.CompactSelectorShapeText, a3
+	move.w d0, d3
+	subq.w #1, d3
+cmseShapeCopyLoop
+	move.b (a1)+, (a3)+
+	dbf d3, cmseShapeCopyLoop
+	lea buffers.CompactSelectorShapeText, a1
+	move.l a1, state.EncodeSelectedMselShapePtr
+cmseShapeCopied
+	lea buffers.CompactSelectorMnemonicText, a5
+	lea buffers.CmseChunkOffsetLo, a3
+	bsr.w tkpkgServiceChunkPtrFromLocatorV1
+	bne.w cmseNoOutput
+	move.l a6, buffers.CompactSelectorChunkEndPtr
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w cmseMalformed
+	cmpi.w #7, d0
+	bne.w cmseMalformed
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w cmseMalformed
+	tst.w d0
+	beq.w cmseMalformed
+	move.w d0, d7
+	move.w #$FFFF, 16(sp)
+	move.w #$FFFF, 18(sp)
+	move.w #$FFFF, 20(sp)
+	moveq #0, d5
+
+cmseOwnerLoop
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w cmseMalformed
+	moveq #0, d6
+	move.b (a2)+, d6
+	cmpi.b #SCOPED_OWNER_DIALECT, d6
+	bhi.w cmseMalformed
+	bsr.w tkpkgServiceLocateStringV1
+	bne.w cmseMalformed
+	move.l a2, -(sp)
+	bsr.w tkpkgSelectedMselOwnerMatchesV1
+	movea.l (sp)+, a2
+	tst.b d0
+	beq.s cmseOwnerNext
+	tst.b d6
+	beq.s cmseOwnerFamily
+	cmpi.b #SCOPED_OWNER_CPU, d6
+	beq.s cmseOwnerCpu
+	move.w d5, 20(sp)
+	bra.s cmseOwnerNext
+cmseOwnerCpu
+	move.w d5, 18(sp)
+	bra.s cmseOwnerNext
+cmseOwnerFamily
+	move.w d5, 16(sp)
+cmseOwnerNext
+	addq.w #1, d5
+	subq.w #1, d7
+	bne.w cmseOwnerLoop
+
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w cmseMalformed
+	tst.w d0
+	beq.w cmseMalformed
+	move.w d0, buffers.CompactSelectorStringCount
+	move.l a2, buffers.CompactSelectorStringsPtr
+	move.w #$FFFF, (sp)
+	move.w #$FFFF, 2(sp)
+	clr.w 22(sp)
+	move.w d0, d7
+	moveq #0, d5
+
+cmseStringLoop
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w cmseMalformed
+	move.w d0, d6
+	cmp.w 22(sp), d6
+	bhi.w cmseMalformed
+	bsr.w tkpkgServiceLocateStringV1
+	bne.w cmseMalformed
+	move.w d0, d3
+	add.w d6, d0
+	bcs.w cmseMalformed
+	cmpi.w #buffers.COMPACT_STRING_SCRATCH_CAPACITY, d0
+	bhi.w cmseMalformed
+	move.w d0, 22(sp)
+	lea buffers.CompactStringScratchBuffer, a3
+	adda.w d6, a3
+	tst.w d3
+	beq.s cmseStringCompare
+	subq.w #1, d3
+cmseStringCopy
+	move.b (a1)+, (a3)+
+	dbf d3, cmseStringCopy
+
+cmseStringCompare
+	move.l a2, -(sp)
+	move.w state.EncodeSelectedMselMnemonicLen, d1
+	lea buffers.CompactStringScratchBuffer, a1
+	movea.l a5, a2
+	move.w 26(sp), d0
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
+	tst.b d0
+	beq.s cmseStringShape
+	move.w d5, (sp)
+
+cmseStringShape
+	tst.w state.EncodeSelectedMselShapeLen
+	beq.s cmseStringNext
+	tst.l state.EncodeSelectedMselShapePtr
+	beq.s cmseStringNext
+	move.l a2, -(sp)
+	move.w state.EncodeSelectedMselShapeLen, d1
+	lea buffers.CompactStringScratchBuffer, a1
+	movea.l state.EncodeSelectedMselShapePtr, a2
+	move.w 26(sp), d0
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
+	tst.b d0
+	beq.s cmseStringNext
+	move.w d5, 2(sp)
+
+cmseStringNext
+	addq.w #1, d5
+	subq.w #1, d7
+	bne.w cmseStringLoop
+	move.w (sp), d0
+	cmpi.w #$FFFF, d0
+	beq.w cmseMissingChunk
+	tst.w state.EncodeSelectedMselShapeLen
+	beq.s cmseHaveStringKeys
+	move.w 2(sp), d0
+	cmpi.w #$FFFF, d0
+	beq.w cmseNoOutput
+
+cmseHaveStringKeys
+	moveq #4, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w cmseMalformed
+	tst.b 2(a2)
+	bne.w cmseMalformed
+	tst.b 3(a2)
+	bne.w cmseMalformed
+	moveq #0, d7
+	move.b (a2)+, d7
+	moveq #0, d0
+	move.b (a2)+, d0
+	lsl.w #8, d0
+	or.w d0, d7
+	addq.l #2, a2
+	tst.w d7
+	beq.w cmseMalformed
+	subq.w #1, d7
+
+cmseSelectorLoop
+	moveq #0, d6
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w cmseMalformed
+	move.b (a2)+, d6
+	move.w d6, 10(sp)
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w cmseMalformed
+	move.w d0, 12(sp)
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w cmseMalformed
+	move.w d0, 14(sp)
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w cmseMalformed
+	moveq #0, d0
+	move.b (a2)+, d0
+	cmpi.b #0, d0
+	beq.s cmseSemanticMode
+	cmpi.b #1, d0
+	bne.w cmseMalformed
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w cmseMalformed
+	move.w d0, 4(sp)
+	bra.s cmseModeReady
+cmseSemanticMode
+	move.w #$FFFF, 4(sp)
+cmseModeReady
+	clr.b 8(sp)
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w cmseMalformed
+	moveq #0, d0
+	move.b (a2)+, d0
+	bne.s cmseSkipStructuredPlan
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w cmseMalformed
+	move.w d0, 6(sp)
+	move.b #1, 8(sp)
+	bra.s cmsePlanReady
+cmseSkipStructuredPlan
+	bsr.w skipCompactSelectorPlanBodyV7
+	bne.w cmseMalformed
+cmsePlanReady
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w cmseMalformed
+	moveq #0, d0
+	move.b (a2)+, d0
+	cmpi.b #$FF, d0
+	bne.s cmsePriorityReady
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w cmseMalformed
+cmsePriorityReady
+	moveq #2, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w cmseMalformed
+	move.b (a2)+, d0
+	cmpi.b #1, d0
+	bhi.w cmseMalformed
+	move.b d0, 9(sp)
+	addq.l #1, a2
+
+	move.w 10(sp), d6
+	cmp.w 20(sp), d6
+	beq.s cmseOwnerMatches
+	cmp.w 18(sp), d6
+	beq.s cmseOwnerMatches
+	cmp.w 16(sp), d6
+	bne.w cmseSelectorNext
+cmseOwnerMatches
+	move.w 12(sp), d3
+	move.w 14(sp), d4
+	moveq #0, d0
+	move.w (sp), d0
+	cmp.w d0, d3
+	bne.w cmseSelectorNext
+	bset #2, state.EncodeSelectedMselMatchFlags
+	tst.w state.EncodeSelectedMselShapeLen
+	beq.s cmseShapeMatches
+	moveq #0, d0
+	move.w 2(sp), d0
+	cmp.w d0, d4
+	bne.w cmseSelectorNext
+cmseShapeMatches
+	tst.b 8(sp)
+	beq.w cmseSelectorNext
+	move.w 4(sp), d0
+	cmpi.w #$FFFF, d0
+	beq.w cmseSelectorNext
+	lea buffers.CompactSelectorModeText, a0
+	bsr.w resolveCompactSelectorStringV1
+	bne.w cmseMalformed
+	lea buffers.CompactSelectorModeText, a1
+	move.l a1, state.EncodeSelectedMselModePtr
+	move.w d0, state.EncodeSelectedMselModeLen
+	move.w 6(sp), d0
+	lea buffers.CompactSelectorPlanText, a0
+	bsr.w resolveCompactSelectorStringV1
+	bne.w cmseMalformed
+	lea buffers.CompactSelectorPlanText, a1
+	move.l a1, state.EncodeSelectedMselPlanPtr
+	move.w d0, state.EncodeSelectedMselPlanLen
+	move.l state.EncodeSelectedMselShapePtr, d0
+	move.l d0, state.EncodeSelectedCurrentShapePtr
+	move.w state.EncodeSelectedMselShapeLen, d0
+	move.w d0, state.EncodeSelectedCurrentShapeLen
+	bset #0, state.EncodeSelectedMselMatchFlags
+	moveq #0, d4
+	move.b 9(sp), d4
+	move.l a2, -(sp)
+	move.w d7, -(sp)
+	jsr operand.tkpkgMselTryBuildCandidateV1
+	move.w (sp)+, d7
+	movea.l (sp)+, a2
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.s cmseCandidateNotOk
+	tst.b d4
+	beq.w cmseReturn
+	tst.b state.EncodeSelectedMselUnstable
+	beq.w cmseReturn
+	bset #1, state.EncodeSelectedMselMatchFlags
+	move.w d1, state.EncodeSelectedMselFallbackLen
+	bra.s cmseSelectorNext
+
+cmseCandidateNotOk
+	cmpi.l #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
+	bne.w cmseSelectorNext
+	tst.w state.EncodeSelectedMselShapeLen
+	beq.w cmseSelectorNext
+	tst.l state.EncodeSelectedMselShapePtr
+	beq.w cmseSelectorNext
+	bra.s cmseReturn
+
+cmseSelectorNext
+	dbf d7, cmseSelectorLoop
+	btst #1, state.EncodeSelectedMselMatchFlags
+	beq.s cmseNoFallback
+	moveq #0, d1
+	move.w state.EncodeSelectedMselFallbackLen, d1
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s cmseReturn
+cmseNoFallback
+	moveq #0, d1
+	btst #2, state.EncodeSelectedMselMatchFlags
+	beq.s cmseUnknown
+	moveq #TKPKG_SELECTED_STATUS_UNSUPPORTED_ADDRESS, d0
+	bra.s cmseReturn
+cmseUnknown
+	moveq #TKPKG_SELECTED_STATUS_UNKNOWN_MNEMONIC, d0
+	bra.s cmseReturn
+cmseNoOutput
+	moveq #0, d1
+	moveq #TKPKG_SELECTED_STATUS_UNKNOWN_MNEMONIC, d0
+	bra.s cmseReturn
+cmseMissingChunk
+	moveq #0, d1
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s cmseReturn
+cmseMalformed
+	moveq #0, d1
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+cmseReturn
+	lea 24(sp), sp
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; tkpkgBuildSelectedEnvelopeFromCmseV7
+
+; Resolve one prefix-compressed CMSE string into a bounded destination.
+; Inputs: D0.W = string index; A0 = destination.
+; Outputs: D0.W = length and D1 = 0, or D1 = 1 on malformed input.
+resolveCompactSelectorStringV1	.block
+	movem.l d2-d7/a1-a6, -(sp)
+	move.w d0, d7
+	cmp.w buffers.CompactSelectorStringCount, d7
+	bhs.s compactStringResolveFail
+	movea.l a0, a5
+	movea.l buffers.CompactSelectorStringsPtr, a2
+	movea.l buffers.CompactSelectorChunkEndPtr, a6
+	moveq #0, d5
+	moveq #0, d4
+compactStringResolveLoop
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.s compactStringResolveFail
+	move.w d0, d6
+	cmp.w d5, d6
+	bhi.s compactStringResolveFail
+	bsr.w tkpkgServiceLocateStringV1
+	bne.s compactStringResolveFail
+	move.w d0, d3
+	add.w d6, d0
+	bcs.s compactStringResolveFail
+	cmpi.w #buffers.COMPACT_STRING_SCRATCH_CAPACITY, d0
+	bhi.s compactStringResolveFail
+	move.w d0, d5
+	lea buffers.CompactStringScratchBuffer, a3
+	adda.w d6, a3
+	tst.w d3
+	beq.s compactStringResolveReady
+	subq.w #1, d3
+compactStringResolveSuffixCopy
+	move.b (a1)+, (a3)+
+	dbf d3, compactStringResolveSuffixCopy
+compactStringResolveReady
+	cmp.w d7, d4
+	beq.s compactStringResolveCopy
+	addq.w #1, d4
+	bra.s compactStringResolveLoop
+compactStringResolveCopy
+	cmpi.w #buffers.COMPACT_SELECTOR_TEXT_CAPACITY, d5
+	bhi.s compactStringResolveFail
+	lea buffers.CompactStringScratchBuffer, a1
+	movea.l a5, a3
+	move.w d5, d3
+	beq.s compactStringResolveOk
+	subq.w #1, d3
+compactStringResolveCopyLoop
+	move.b (a1)+, (a3)+
+	dbf d3, compactStringResolveCopyLoop
+compactStringResolveOk
+	move.w d5, d0
+	moveq #0, d1
+	bra.s compactStringResolveReturn
+compactStringResolveFail
+	moveq #0, d0
+	moveq #1, d1
+compactStringResolveReturn
+	movem.l (sp)+, d2-d7/a1-a6
+	tst.l d1
+	rts
+	.bend  ; resolveCompactSelectorStringV1
+
+; Skip one non-raw CMSE v7 plan body. Inputs: D0.B = plan kind; A2/A6 cursor.
+; Output: D0 = 0 success, 1 malformed.
+skipCompactSelectorPlanBodyV7	.block
+	cmpi.b #1, d0
+	beq.w compactPlanInputs
+	cmpi.b #2, d0
+	beq.w compactPlanScalar
+	cmpi.b #3, d0
+	beq.w compactPlanInputs
+	cmpi.b #4, d0
+	beq.w compactPlanSequence
+	cmpi.b #5, d0
+	beq.w compactPlanState
+	cmpi.b #6, d0
+	beq.w compactPlanReject
+	bra.w compactPlanFail
+compactPlanInputs
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w compactPlanFail
+	bsr.w skipCompactSelectorInputsV7
+	bne.w compactPlanFail
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w compactPlanFail
+	bra.w compactPlanOk
+compactPlanScalar
+	moveq #4, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w compactPlanFail
+	addq.l #4, a2
+	bra.w compactPlanOk
+compactPlanSequence
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w compactPlanFail
+	moveq #0, d1
+	move.b (a2)+, d1
+	beq.w compactPlanFail
+	move.w d1, -(sp)
+compactPlanSequenceLoop
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.s compactPlanSequenceStackFail
+	move.b (a2)+, d0
+	cmpi.b #2, d0
+	bhi.s compactPlanSequenceStackFail
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.s compactPlanSequenceStackFail
+	bsr.w skipCompactSelectorInputsV7
+	bne.s compactPlanSequenceStackFail
+	subq.w #1, (sp)
+	bne.s compactPlanSequenceLoop
+	addq.l #2, sp
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.s compactPlanFail
+	bra.s compactPlanOk
+compactPlanSequenceStackFail
+	addq.l #2, sp
+	bra.s compactPlanFail
+compactPlanState
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.s compactPlanFail
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.s compactPlanFail
+	moveq #0, d0
+	move.b (a2)+, d0
+	beq.s compactPlanStateRaw
+	bsr.w skipCompactSelectorPlanBodyV7
+	bra.s compactPlanReturn
+compactPlanStateRaw
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.s compactPlanFail
+	bra.s compactPlanOk
+compactPlanReject
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.s compactPlanFail
+	bsr.w skipCompactSelectorInputsV7
+	bne.s compactPlanFail
+compactPlanOk
+	moveq #0, d0
+compactPlanReturn
+	rts
+compactPlanFail
+	moveq #1, d0
+	rts
+	.bend  ; skipCompactSelectorPlanBodyV7
+
+skipCompactSelectorInputsV7	.block
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.s compactInputsFail
+	moveq #0, d0
+	move.b (a2)+, d0
+	lsl.w #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.s compactInputsFail
+	adda.w d0, a2
+	moveq #0, d0
+	rts
+compactInputsFail
+	moveq #1, d0
+	rts
+	.bend  ; skipCompactSelectorInputsV7
 
 tkpkgSelectedMselOwnerMatchesV1	.block
 	movem.l d2-d4/a2-a4, -(sp)

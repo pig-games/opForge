@@ -48,7 +48,9 @@ emit
 	move.b d3, (a1)
 	clr.b 1(a1)
 	move.l #state.NativeCliDecimalChar, d1
+	move.l d0, -(sp)
 	jsr dos.putStr
+	move.l (sp)+, d0
 
 next
 	dbra d6, powerLoop
@@ -94,7 +96,9 @@ emit
 	move.b d3, (a1)
 	clr.b 1(a1)
 	move.l #state.NativeCliDecimalChar, d1
+	movem.l d0-d3/a0, -(sp)
 	jsr dos.putErrStr
+	movem.l (sp)+, d0-d3/a0
 
 next
 	dbra d6, powerLoop

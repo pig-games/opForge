@@ -128,7 +128,8 @@ inputOpened
 maybeHunkRequested
 	tst.w state.NativeCliOutputFormat
 	beq.s outputFormatReady
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
+	move.w state.NativeCliOutputFormat, d0
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d0
 	bne.s outputFormatReady
 	move.l #strings.NativeHunkNotImplementedText, d1
 	jsr dos.putErrStr
@@ -205,7 +206,8 @@ tokenizerOk
 	; Macro definitions and invocation frames are frontend-only. The engine must
 	; begin from a clean preprocessor frame after all source expansion is done.
 	jsr preprocessor.opforgeNativeCliResetPreprocessorV1
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
+	move.w state.NativeCliOutputFormat, d0
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d0
 	bne.s outputRequestReady
 	move.l #strings.NativeHunkNotImplementedText, d1
 	jsr dos.putErrStr

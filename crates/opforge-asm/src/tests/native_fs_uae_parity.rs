@@ -1266,7 +1266,11 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
         &[
             "opforgeNativeCliTokenizeCurrentLine\t.block",
             "jsr preprocessor_definitions.opforgeNativeCliCaptureMacroDefinitionLineV1",
-            "bmi.w fail",
+            "tst.l d0",
+            "beq.s preprocessPass",
+            "bpl.s macroDefinitionConsumed",
+            "bra.w fail",
+            "macroDefinitionConsumed",
             "moveq #0, d0",
             "rts",
             "preprocessPass",
@@ -1278,7 +1282,10 @@ fn native_preprocessor_macro_definitions_are_consumed_and_bounded() {
         &[
             "checkModuleDepth",
             "jsr preprocessor_definitions.opforgeNativeCliFinishMacroDefinitionsV1",
-            "bne.s close",
+            "beq.s macroDefinitionsFinished",
+            "move.l #strings.MacroDefinitionFinishFailureText, d1",
+            "bra.s close",
+            "macroDefinitionsFinished",
         ]
     ));
 }
@@ -1973,7 +1980,8 @@ fn native_ordinary_visibility_directives_are_trimmed_before_consumption() {
         &imports,
         &[
             "opforgeNativeCliRecordOrdinaryExportV1\t.block",
-            "cmpi.w #constants.NATIVE_PREPROCESS_VISIBILITY_PUBLIC, state.NativeCliPreprocessCurrentVisibility",
+            "move.w state.NativeCliPreprocessCurrentVisibility, d0",
+            "cmpi.w #constants.NATIVE_PREPROCESS_VISIBILITY_PUBLIC, d0",
             "bne.s ordinaryRecordOk",
             "addq.w #1, state.NativeCliOrdinaryExportCount",
         ]
@@ -3235,7 +3243,8 @@ fn native_sequence_assignment_storage_is_bounded_and_reset_per_session() {
     assert!(source_contains_in_order(
         &assembly_session,
         &[
-            "cmpi.b #'=', buffers.tokenScratchBuffer",
+            "move.b buffers.tokenScratchBuffer, d1",
+            "cmpi.b #'=', d1",
             "lea state.NativeCliSourceLine, a0",
             "jsr compile_values.captureSourceListAssignmentV1",
             "bsr.w opforgeNativeCliStoreStatementRecord",
@@ -4353,10 +4362,12 @@ fn native_scope_source_tracks_stack_and_qualified_symbols() {
             "beginNamespaceScopeV1\t.block",
             "bsr.w pushFromStatementOperand",
             "beginModuleScopeV1\t.block",
-            "clr.w ScopeDepth",
+            "moveq #0, d0",
+            "move.w d0, ScopeDepth.l",
             "move.w d7, ActiveModuleStatementIndex.l",
             "endModuleScopeV1\t.block",
-            "tst.w ModuleParentDepth.l",
+            "move.w ModuleParentDepth.l, d0",
+            "beq.s moduleEndRoot",
             "move.w ParentModuleStatementIndex.l, d7",
             "bsr.w pushFromStatementOperand",
             "endScopeDirectiveV1\t.block",
@@ -10464,7 +10475,7 @@ fn external_fs_uae_opforge_native_cli_placed_relative_prg_output_matches_rust_gu
     let source = [
         "        .module main",
         "        .cpu 6502",
-        "",
+        "start   lda #$42",
         "        .region ram, $0800, $083f, align=1",
         "",
         "        .section code, align=1",
@@ -11193,6 +11204,79 @@ fn external_fs_uae_opforge_native_cli_layouted_branches_minimal_match_rust_bytes
             assert_eq!(
                 native_bin, expected,
                 "layouted branch minimal output mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_placed_section_symbol_package_and_word_match_rust_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .module main",
+        "        .cpu 6502",
+        "",
+        "        .region ram, $0800, $083f, align=1",
+        "",
+        "        .section code, align=1",
+        "start   .word done",
+        "        lda done",
+        "done    nop",
+        "        .endsection",
+        "",
+        "        .place code in ram",
+        "",
+        "        .endmodule",
+        "        .end",
+    ]
+    .join("\n");
+    let rust_lines = source.lines().collect::<Vec<_>>();
+    let (rust_entries, rust_diagnostics) =
+        assemble_source_entries_with_runtime_mode(rust_lines.as_slice(), true)
+            .expect("Rust placed section-symbol assembly should run");
+    assert!(
+        rust_diagnostics.is_empty(),
+        "Rust placed section-symbol diagnostics: {rust_diagnostics:?}"
+    );
+    let expected = rust_entries
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect::<Vec<_>>();
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "placed-section-symbol-package-and-word-cli-bin",
+        cpu_id: m6502_cpu_id.as_str(),
+        source: source.as_bytes(),
+        package_bytes: package_bytes.as_slice(),
+        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&expected),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("placed section-symbol word FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one placed section-symbol word run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "placed section-symbol word fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let native_bin = verified_fs_uae_output(run);
+            assert_eq!(
+                native_bin, expected,
+                "placed section-symbol word output mismatch\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
         }
@@ -12097,6 +12181,290 @@ fn external_fs_uae_tkpkg_native_motorola68000_family_corpus_matches_vm_authorita
                     run.stdout,
                     run.stderr,
                 );
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68k_fixed_opcode_package_parity() {
+    // Proof level D. This test supplies the exact Item 13 Rust-built package to
+    // the real native CLI and requires byte-for-byte equality with the live
+    // Rust CLI oracle. It proves only the zero-operand fixed-program slice.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        nop\n";
+    let rust_oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m68020"),
+        "item14-native-fixed-opcode-rust-oracle",
+    )
+    .expect("run live Rust fixed-opcode oracle");
+    assert_eq!(rust_oracle, [0x4e, 0x71]);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 13 package");
+    let rust_package = build_hierarchy_package_from_registry(&default_registry())
+        .expect("build unmodified Rust package vector");
+    assert_eq!(
+        package, rust_package,
+        "native package input must be unmodified"
+    );
+    let guest_files = [crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+        relative_path: "s",
+        bytes: source.as_bytes(),
+    }];
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item14-fixed-opcode",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some(
+            "{guest_work_dir}s --bin {bin} --cpu m68020 --opasm-package {package}",
+        ),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &guest_files,
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 14 fixed-opcode FS-UAE parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native fixed-opcode run failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            assert_eq!(
+                captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_compact_operand_package_parity() {
+    // Proof level D. This test supplies the exact Item 13 Rust-built package to
+    // the real native CLI and requires byte-for-byte equality with the live
+    // Rust CLI oracle for an operand-bearing instruction. It proves the compact
+    // selector-to-existing-opcore handoff without changing the package bytes.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        lda #$44\n";
+    let rust_oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m6502"),
+        "item14-native-compact-operand-rust-oracle",
+    )
+    .expect("run live Rust compact-operand oracle");
+    assert_eq!(rust_oracle, [0xa9, 0x44]);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 13 package");
+    let rust_package = build_hierarchy_package_from_registry(&default_registry())
+        .expect("build unmodified Rust package vector");
+    assert_eq!(
+        package, rust_package,
+        "native package input must be unmodified"
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item14-compact-operand",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m6502 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 14 compact-operand FS-UAE parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native compact-operand run failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            assert_eq!(
+                captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_tkpkg_native_item13_package_tokenizes_nop() {
+    // Proof level D. This isolates the tokenizer service used by the Item 14
+    // CLI case while supplying the exact unmodified Item 13 package.
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 13 package");
+    match crate::fs_uae_smoke::run_tkpkg_debug_cli_file_mode_with_package_from_env(
+        &workspace_root(),
+        b"        nop\n",
+        "m68020",
+        package.as_slice(),
+    )
+    .expect("Item 14 exact-package tokenizer isolation run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "exact Item 13 package tokenizer failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            assert!(
+                run.stdout.contains("TKPKG load_package/set_pipeline OK"),
+                "exact-package tokenizer did not complete pipeline setup\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_tkpkg_native_item13_package_encodes_fixed_nop() {
+    // Proof level D localization probe. The guest invokes the real selected-
+    // instruction service with the exact Item 13 package and verifies the
+    // returned fixed-program bytes before reporting success.
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 13 package");
+    match crate::fs_uae_smoke::run_tkpkg_debug_cli_fixed_opcode_with_package_from_env(
+        &workspace_root(),
+        "m68020",
+        package.as_slice(),
+    )
+    .expect("Item 14 exact-package fixed-opcode isolation run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "exact Item 13 package fixed-opcode service failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            assert!(
+                run.stdout.contains("TKPKG fixed opcode 4E71 OK"),
+                "guest did not verify fixed opcode bytes\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_compact_fixed_opcode_rejects_version_and_opcode_mutations() {
+    // Proof level D. These cases prove the real guest rejects an unsupported
+    // CTBL version and an invalid fixed-program opcode. They do not establish
+    // positive instruction parity beyond the dedicated Item 14 case.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        nop\n";
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 13 package");
+    let toc_count = u32::from_le_bytes(package[8..12].try_into().expect("TOC count")) as usize;
+    let (ctbl_offset, ctbl_len) = (0..toc_count)
+        .find_map(|index| {
+            let toc = 12 + index * 12;
+            (&package[toc..toc + 4] == b"CTBL").then(|| {
+                (
+                    u32::from_le_bytes(package[toc + 4..toc + 8].try_into().unwrap()) as usize,
+                    u32::from_le_bytes(package[toc + 8..toc + 12].try_into().unwrap()) as usize,
+                )
+            })
+        })
+        .expect("CTBL payload");
+    let mut bad_version = package.clone();
+    bad_version[ctbl_offset..ctbl_offset + 2].copy_from_slice(&2u16.to_le_bytes());
+    let mut bad_opcode = package.clone();
+    let fixed_program = [0x01, 0x4e, 0x01, 0x71, 0xff];
+    let matches = package[ctbl_offset..ctbl_offset + ctbl_len]
+        .windows(fixed_program.len())
+        .enumerate()
+        .filter_map(|(offset, bytes)| (bytes == fixed_program).then_some(offset))
+        .collect::<Vec<_>>();
+    assert_eq!(matches.len(), 1, "expected one frozen fixed-program vector");
+    bad_opcode[ctbl_offset + matches[0]] = 0x7e;
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item14-unsupported-compact-table-version",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&bad_version),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                "OTR901: compact table malformed",
+            ),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item14-malformed-fixed-program-opcode",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&bad_opcode),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                "OTR901: encode table malformed",
+            ),
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 14 malformed compact-program FS-UAE runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len());
+            for run in runs {
+                assert!(
+                    !run.success,
+                    "malformed compact-program case unexpectedly passed\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout, run.stderr
+                );
+                assert_eq!(run.exit_code, Some(1));
             }
         }
     }

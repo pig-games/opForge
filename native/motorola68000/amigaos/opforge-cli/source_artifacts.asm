@@ -28,6 +28,10 @@ NATIVE_SOURCE_MAP_BUFFER_CAPACITY = 8192
 ; Clobbers: D0-D7/A0-A5/CCR.
 opforgeNativeCliWriteSourceArtifactsV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
+	moveq #0, d0
+	move.w state.NativeCliArtifactRequestCount, d0
+	cmpi.w #constants.NATIVE_ARTIFACT_REQUEST_CAPACITY, d0
+	bhi.w fail
 	moveq #0, d7
 
 requestLoop
@@ -155,11 +159,12 @@ fail
 
 ; Return A0 pointing at the selected path for the parsed source `.output`.
 selectedOutputPathV1	.block
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat
+	move.w state.NativeCliOutputFormat, d0
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d0
 	beq.s prg
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, state.NativeCliOutputFormat
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d0
 	beq.s hex
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0
 	beq.s lst
 	lea state.NativeCliBinPath, a0
 	rts

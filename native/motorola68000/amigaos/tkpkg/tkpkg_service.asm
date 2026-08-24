@@ -371,7 +371,7 @@ lastErrorBadRequest
 
 handleLoadPackage
 	move.l a0, -(sp)
-	bsr.w package_loader.tkpkgPackageLoaderLoadV1
+	jsr package_loader.tkpkgPackageLoaderLoadV1
 	movea.l (sp)+, a0
 	tst.b d0
 	bne.s loadPackageError

@@ -8,6 +8,7 @@
 	.use opforge.cli.state
 	.use opforge.cli.constants
 	.use opforge.cli.dos
+	.use opforge.cli.strings
 
 	.section code, kind=code
 	.pub
@@ -20,41 +21,17 @@ NATIVE_SOURCE_OUTPUT_BUFFER_CAPACITY = constants.NATIVE_IMAGE_BUFFER_CAPACITY + 
 ; Outputs:
 ;   D0.L = 0 on success, 1 when the output file cannot be opened or written fully
 ; Clobbers:
-;   D0-D4/A0-A1/CCR
+;   D0-D4/A0-A2/CCR
 ; CCR:
 ;   Reflects D0.L on return
 opforgeNativeCliWriteFlatOutput	.block
-	movem.l d1-d4/a0-a1, -(sp)
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, state.NativeCliOutputFormat
-	beq.s openHex
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat
-	beq.s openLst
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat
-	beq.s openPrg
-	lea state.NativeCliBinPath, a0
-	bra.s openSelected
-
-openHex
-	lea state.NativeCliHexPath, a0
-	bra.s openSelected
-
-openLst
-	lea state.NativeCliLstPath, a0
-	bra.s openSelected
-
-openPrg
-	lea state.NativeCliPrgPath, a0
-
-openSelected
-	jsr dos.openOutput
-	tst.l d0
-	beq.w fail
-	move.l d0, d4
+	movem.l d1-d4/a0-a2, -(sp)
 	tst.w state.NativeCliSourceOutputSectionCount
 	beq.s buildDefaultArtifact
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_BIN, state.NativeCliOutputFormat
+	move.w state.NativeCliOutputFormat, d0
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_BIN, d0
 	beq.s buildSourceArtifact
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d0
 	bne.s buildDefaultArtifact
 
 buildSourceArtifact
@@ -62,12 +39,15 @@ buildSourceArtifact
 	bra.s artifactBuilt
 
 buildDefaultArtifact
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, state.NativeCliOutputFormat
+	move.w state.NativeCliOutputFormat, d0
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_BIN, d0
+	beq.s buildBin
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d0
 	beq.s buildHex
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0
 	beq.s buildLst
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat
-	bne.s buildBin
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d0
+	bne.w artifactFail
 	moveq #-1, d2
 	tst.w state.NativeCliPrgLoadAddrSet
 	beq.s buildPrg
@@ -89,27 +69,70 @@ buildBin
 	jsr artifacts.opasmOutputBuildBinArtifactV1
 
 artifactBuilt
-	bne.s closeFail
+	bne.w artifactFail
+	movea.l a0, a2
 	move.l d1, d3
+payloadReady
+	move.w state.NativeCliOutputFormat, d0
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_BIN, d0
+	beq.s payloadBinPath
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d0
+	beq.s payloadHexPath
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0
+	beq.s payloadLstPath
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d0
+	bne.s artifactFail
+	lea state.NativeCliPrgPath, a0
+	bra.s payloadOpen
+
+payloadBinPath
+	lea state.NativeCliBinPath, a0
+	bra.s payloadOpen
+
+payloadHexPath
+	lea state.NativeCliHexPath, a0
+	bra.s payloadOpen
+
+payloadLstPath
+	lea state.NativeCliLstPath, a0
+
+payloadOpen
+	jsr dos.openOutput
+	tst.l d0
+	beq.s openFail
+	move.l d0, d4
+	movea.l a2, a0
 	move.l d3, d0
 	move.l d4, d1
 	jsr dos.writeOutput
 	cmp.l d3, d0
-	bne.s closeFail
+	bne.s writeFail
 	move.l d4, d1
 	jsr dos.close
 	moveq #0, d0
 	bra.s return
 
-closeFail
+artifactFail
+	move.l #strings.NativeOutputArtifactFailureText, d1
+	jsr dos.putErrStr
+	bra.s fail
+
+writeFail
 	move.l d4, d1
 	jsr dos.close
+	move.l #strings.NativeOutputShortWriteText, d1
+	jsr dos.putErrStr
+	bra.s fail
+
+openFail
+	move.l #strings.NativeOutputOpenFailureText, d1
+	jsr dos.putErrStr
 
 fail
 	moveq #1, d0
 
 return
-	movem.l (sp)+, d1-d4/a0-a1
+	movem.l (sp)+, d1-d4/a0-a2
 	rts
 	.bend  ; opforgeNativeCliWriteFlatOutput
 
@@ -126,7 +149,8 @@ buildSelectedSourceArtifactV1	.block
 	moveq #-1, d0
 	movea.l d0, a4
 	moveq #0, d7
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat
+	move.w state.NativeCliOutputFormat, d0
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d0
 	bne.s payloadStartReady
 	addq.l #2, a3
 
@@ -140,7 +164,8 @@ payloadStartReady
 	bcs.w fail
 	addq.l #1, d7
 	move.l d7, d0
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat
+	move.w state.NativeCliOutputFormat, d2
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d2
 	bne.s imageCapacityReady
 	addq.l #2, d0
 imageCapacityReady
@@ -205,7 +230,8 @@ firstBaseReady
 	cmp.l d7, d2
 	bhi.w sectionFail
 	lea NativeSourceOutputBuffer.l, a3
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat
+	move.w state.NativeCliOutputFormat, d2
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d2
 	bne.s imageDestinationReady
 	addq.l #2, a3
 imageDestinationReady
@@ -241,7 +267,8 @@ sectionFail
 sectionsDone
 	lea NativeSourceOutputBuffer.l, a0
 	move.l d7, d1
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat
+	move.w state.NativeCliOutputFormat, d2
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d2
 	bne.s success
 	move.l a4, d2
 	cmpi.l #$FFFFFFFF, d2

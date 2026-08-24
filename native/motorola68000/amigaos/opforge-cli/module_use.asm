@@ -247,7 +247,8 @@ return
 ; Clobbers: D0-D4/A0-A1/CCR.
 opforgeNativeCliRecordOrdinaryExportV1	.block
 	movem.l d1-d4/a0-a1, -(sp)
-	cmpi.w #constants.NATIVE_PREPROCESS_VISIBILITY_PUBLIC, state.NativeCliPreprocessCurrentVisibility
+	move.w state.NativeCliPreprocessCurrentVisibility, d0
+	cmpi.w #constants.NATIVE_PREPROCESS_VISIBILITY_PUBLIC, d0
 	bne.s ordinaryRecordOk
 	tst.w state.NativeCliModuleDepth
 	beq.s ordinaryRecordOk

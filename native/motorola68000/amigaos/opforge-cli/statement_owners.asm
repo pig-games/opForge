@@ -15,7 +15,8 @@
 
 ; Reset the module-owner stack that follows the retained statement stream.
 opforgeNativeCliResetStatementOwnersV1	.block
-	clr.w AssemblyOwnerDepth.l
+	moveq #0, d0
+	move.w d0, AssemblyOwnerDepth.l
 	rts
 	.bend  ; opforgeNativeCliResetStatementOwnersV1
 
@@ -24,9 +25,11 @@ opforgeNativeCliResetStatementOwnersV1	.block
 ; statement has been stored successfully.
 ; Outputs: D0 = status; A1/D1 = owner slice, or D1 = 0 outside a module.
 opforgeNativeCliPrepareStatementOwnerV1	.block
-	cmpi.w #constants.NCLI_PARSER_DIRECTIVE_ENDMODULE, state.NativeCliStmtDirectiveKind
+	move.w state.NativeCliStmtDirectiveKind, d0
+	cmpi.w #constants.NCLI_PARSER_DIRECTIVE_ENDMODULE, d0
 	bne.s currentStatementOwnerV1
-	tst.w AssemblyOwnerDepth.l
+	moveq #0, d0
+	move.w AssemblyOwnerDepth.l, d0
 	beq.s ownerStateInvalid
 
 currentStatementOwnerV1
@@ -85,7 +88,8 @@ opforgeNativeCliOpenStatementOwnerV1	.block
 	add.l d6, d6
 	lea AssemblyOwnerLengthStack.l, a0
 	move.w d5, 0(a0, d6.l)
-	addq.w #1, AssemblyOwnerDepth.l
+	addq.w #1, d2
+	move.w d2, AssemblyOwnerDepth.l
 	moveq #0, d0
 	bra.s ownerPushReturn
 ownerPushFail
@@ -98,9 +102,11 @@ ownerPushReturn
 ; Close the current retained-statement owner after the caller has confirmed
 ; that an authoritative retained `.endmodule` request was stored.
 opforgeNativeCliFinishStatementOwnerV1	.block
-	tst.w AssemblyOwnerDepth.l
+	moveq #0, d0
+	move.w AssemblyOwnerDepth.l, d0
 	beq.s ownerFinishFail
-	subq.w #1, AssemblyOwnerDepth.l
+	subq.w #1, d0
+	move.w d0, AssemblyOwnerDepth.l
 	moveq #0, d0
 	rts
 ownerFinishFail

@@ -28,6 +28,20 @@ class InstrumentationSafetyTests(unittest.TestCase):
             [],
         )
 
+    def test_standalone_tkpkg_diagnostic_harness_owns_its_text_protocol(self):
+        path = "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm"
+        self.assertEqual(validate_text(path, "bsr.w tkpkgDebugCliPutStrV1"), [])
+        self.assertTrue(
+            validate_text(
+                "native/motorola68000/amigaos/tkpkg/runtime.asm",
+                "bsr.w tkpkgDebugCliPutStrV1",
+            )
+        )
+
+    def test_standalone_harness_still_rejects_prohibited_debug_buffers(self):
+        path = "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm"
+        self.assertTrue(validate_text(path, "move.l d0, RequestBuffer ; debug"))
+
 
 if __name__ == "__main__":
     unittest.main()

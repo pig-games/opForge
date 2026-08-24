@@ -22,6 +22,8 @@ EncodeSelectedLabelCount
 	.res long, 1
 EncodeSelectedCurrentPc
 	.res long, 1
+EncodeSelectedSymbolResolverPtr
+	.res long, 1
 EncodeSelectedSessionPass
 	.res word, 1
 EncodeSelectedExvmOpcodeVersion

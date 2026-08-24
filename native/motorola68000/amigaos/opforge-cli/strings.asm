@@ -61,6 +61,36 @@ TokenizerOkText
 	.byte "STATUS tokenizer-ok", 10, 0
 TokenizerFailureText
 	.byte "ERROR OPC-NCLI010: native tokenizer stage failed", 10, 0
+TokenizerBadControlStatusText
+	.byte "ERROR OPC-NCLI031: native tokenizer service rejected its control block without a diagnostic", 10, 0
+TokenizerBadRequestStatusText
+	.byte "ERROR OPC-NCLI032: native tokenizer service rejected its request without a diagnostic", 10, 0
+TokenizerRuntimeStatusText
+	.byte "ERROR OPC-NCLI033: native tokenizer service failed without a diagnostic", 10, 0
+TokenizerUnknownStatusText
+	.byte "ERROR OPC-NCLI034: native tokenizer service returned an unknown status without a diagnostic", 10, 0
+MetadataPreprocessFailureText
+	.byte "ERROR OPC-NCLI035: native metadata preprocessing failed", 10, 0
+MacroDefinitionPreprocessFailureText
+	.byte "ERROR OPC-NCLI036: native macro-definition preprocessing failed", 10, 0
+StatementPreprocessFailureText
+	.byte "ERROR OPC-NCLI037: native statement preprocessing failed", 10, 0
+MacroInvocationPreprocessFailureText
+	.byte "ERROR OPC-NCLI038: native macro-invocation preprocessing failed", 10, 0
+SourceLineProcessFailureText
+	.byte "ERROR OPC-NCLI039: native source-line processing failed", 10, 0
+PendingIncludeFailureText
+	.byte "ERROR OPC-NCLI040: native pending-include processing failed", 10, 0
+PendingModuleFailureText
+	.byte "ERROR OPC-NCLI041: native pending-module processing failed", 10, 0
+MacroDefinitionFinishFailureText
+	.byte "ERROR OPC-NCLI042: native macro-definition finalization failed", 10, 0
+NativeOutputOpenFailureText
+	.byte "ERROR OPC-NCLI043: native output file open failed", 10, 0
+NativeOutputArtifactFailureText
+	.byte "ERROR OPC-NCLI044: native output artifact build failed", 10, 0
+NativeOutputShortWriteText
+	.byte "ERROR OPC-NCLI045: native output file write was incomplete", 10, 0
 ParserStageText
 	.byte "STAGE parser", 10
 	.byte 0

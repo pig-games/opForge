@@ -267,27 +267,7 @@ cpuLoop
 	movea.l (sp)+, a2
 	tst.b d0
 	beq.w skipCpuEntry
-	lea buffers.PendingCpuOffsetLo, a3
-	movea.l a4, a1
-	move.w d6, d0
-	bsr.w storePackageStringLocatorV1
-	bsr.w locateStringV1
-	bne.w cpuMissing
-	lea buffers.PendingFamilyOffsetLo, a3
-	bsr.w storePackageStringLocatorV1
-	bsr.w locateOptionalStringV1
-	bne.w cpuMissing
-	lea buffers.PendingDefaultDialectOffsetLo, a3
-	bsr.w storeOptionalPackageStringLocatorV1
-	bsr.w locateOptionalStringV1
-	bne.w cpuMissing
-	tst.w d0
-	beq.s cpuFound
-	lea buffers.PendingCpuOffsetLo, a3
-	bsr.w storePackageStringLocatorV1
-
-cpuFound
-	moveq #0, d0
+	bsr.w stageCpuEntryV1
 	rts
 
 skipCpuEntry
@@ -298,11 +278,132 @@ skipCpuEntry
 	bsr.w skipOptionalStringV1
 	bne.w cpuMissing
 	dbf d7, cpuLoop
+	bsr.w findCpuAliasEntryV1
+	rts
 
 cpuMissing
 	moveq #1, d0
 	rts
 	.bend  ; findCpuEntryV1
+
+; Stage the canonical CPUS record whose id was already decoded.
+; Inputs: A4/D6 = CPU id bytes/length; A2 = cursor after that id.
+stageCpuEntryV1	.block
+	lea buffers.PendingCpuOffsetLo, a3
+	movea.l a4, a1
+	move.w d6, d0
+	bsr.w storePackageStringLocatorV1
+	bsr.w locateStringV1
+	bne.s cpuStageMissing
+	lea buffers.PendingFamilyOffsetLo, a3
+	bsr.w storePackageStringLocatorV1
+	bsr.w locateOptionalStringV1
+	bne.s cpuStageMissing
+	lea buffers.PendingDefaultDialectOffsetLo, a3
+	bsr.w storeOptionalPackageStringLocatorV1
+	bsr.w locateOptionalStringV1
+	bne.s cpuStageMissing
+	tst.w d0
+	beq.s cpuFound
+	lea buffers.PendingCpuOffsetLo, a3
+	bsr.w storePackageStringLocatorV1
+
+cpuFound
+	moveq #0, d0
+	rts
+
+cpuStageMissing
+	moveq #1, d0
+	rts
+	.bend  ; stageCpuEntryV1
+
+; Resolve a package-owned CPU alias from CALS, then stage its canonical CPUS
+; record by index. CALS is optional and contains no family-specific semantics.
+; Inputs: A5/D5 = requested CPU id bytes/length.
+findCpuAliasEntryV1	.block
+	btst #5, buffers.PackageChunkFlagsHi
+	beq.w cpuAliasMissing
+	lea buffers.CalsChunkOffsetLo, a3
+	bsr.w chunkPtrFromLocatorV1
+	bsr.w readU32LeLow16V1
+	bne.w cpuAliasMissing
+	tst.w d0
+	beq.w cpuAliasMissing
+	move.w d0, d7
+	subq.w #1, d7
+	lea 4(a2), a2
+
+cpuAliasLoop
+	bsr.w locateStringV1
+	bne.w cpuAliasMissing
+	move.w d0, d6
+	movea.l a1, a4
+	move.l a2, -(sp)
+	move.w d6, d0
+	move.w d5, d1
+	movea.l a4, a1
+	movea.l a5, a2
+	bsr.w stringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
+	move.b d0, d4
+	moveq #2, d0
+	bsr.w requireBytesV1
+	bne.w cpuAliasMissing
+	moveq #0, d0
+	move.b (a2)+, d0
+	moveq #0, d1
+	move.b (a2)+, d1
+	lsl.w #8, d1
+	or.w d1, d0
+	tst.b d4
+	bne.s cpuAliasFound
+	dbf d7, cpuAliasLoop
+	bra.s cpuAliasMissing
+
+cpuAliasFound
+	bsr.w findCpuEntryByIndexV1
+	rts
+
+cpuAliasMissing
+	moveq #1, d0
+	rts
+	.bend  ; findCpuAliasEntryV1
+
+; Stage canonical CPUS record D0.W by zero-based package index.
+findCpuEntryByIndexV1	.block
+	move.w d0, d5
+	lea buffers.CpusChunkOffsetLo, a3
+	bsr.w chunkPtrFromLocatorV1
+	bsr.w readU32LeLow16V1
+	bne.s cpuIndexMissing
+	cmp.w d0, d5
+	bhs.s cpuIndexMissing
+	lea 4(a2), a2
+
+cpuIndexLoop
+	bsr.w locateStringV1
+	bne.s cpuIndexMissing
+	move.w d0, d6
+	movea.l a1, a4
+	tst.w d5
+	beq.s cpuIndexFound
+	bsr.w skipStringV1
+	bne.s cpuIndexMissing
+	bsr.w skipOptionalStringV1
+	bne.s cpuIndexMissing
+	bsr.w skipOptionalStringV1
+	bne.s cpuIndexMissing
+	subq.w #1, d5
+	bra.s cpuIndexLoop
+
+cpuIndexFound
+	bsr.w stageCpuEntryV1
+	rts
+
+cpuIndexMissing
+	moveq #1, d0
+	rts
+	.bend  ; findCpuEntryByIndexV1
 
 ; Find the FAMS record matching the family referenced by the selected CPU.
 findFamilyEntryV1	.block
@@ -859,7 +960,7 @@ commitActiveSelectionV1	.block
 	bsr.w copyRecordLocatorV1
 	move.b buffers.PendingParserVmOwnerTag, d0
 	move.b d0, buffers.ActiveParserVmOwnerTag
-	ori.b #buffers.PACKAGE_STATE_PIPELINE_ACTIVE, buffers.PackageStateFlags
+	bset #1, buffers.PackageStateFlags
 	moveq #0, d0
 
 commitDone

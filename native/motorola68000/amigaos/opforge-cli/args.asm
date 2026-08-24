@@ -168,7 +168,8 @@ parseLoop
 infile
 	tst.w state.NativeCliInputStyle
 	beq.s infileFirst
-	cmpi.w #1, state.NativeCliInputStyle
+	move.w state.NativeCliInputStyle, d0
+	cmpi.w #1, d0
 	beq.w mixedInput
 	bra.w usage
 
@@ -275,7 +276,8 @@ define
 positionalInputPath
 	tst.w state.NativeCliInputStyle
 	beq.s positionalInputPathFirst
-	cmpi.w #2, state.NativeCliInputStyle
+	move.w state.NativeCliInputStyle, d0
+	cmpi.w #2, d0
 	beq.w mixedInput
 	bra.w multiplePositional
 
@@ -294,11 +296,12 @@ parseDone
 	beq.w noInput
 	tst.w state.NativeCliOutputFormat
 	beq.w parseOk
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_BIN, state.NativeCliOutputFormat
+	move.w state.NativeCliOutputFormat, d0
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_BIN, d0
 	beq.s defaultBinPath
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d0
 	beq.s defaultHunkPath
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0
 	beq.s defaultLstPath
 	bra.w usage
 

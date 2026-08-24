@@ -953,6 +953,45 @@ encodeSelectedOperandV1	.block
 	clr.w state.EncodeSelectedOperandStatus
 	move.l d0, d5
 	movea.l a0, a5
+	movea.l state.EncodeSelectedSymbolResolverPtr, a3
+	move.l a3, d0
+	beq.s loadSymbolTables
+	moveq #0, d0
+	move.b (a5), d0
+	cmpi.b #'A', d0
+	blo.s selectedResolverPunctuation
+	cmpi.b #'Z', d0
+	bls.s selectedResolverCall
+	cmpi.b #'a', d0
+	blo.s selectedResolverPunctuation
+	cmpi.b #'z', d0
+	bls.s selectedResolverCall
+selectedResolverPunctuation
+	cmpi.b #'_', d0
+	beq.s selectedResolverCall
+	cmpi.b #'.', d0
+	bne.s loadSymbolTables
+selectedResolverCall
+	movea.l a5, a0
+	move.l d5, d0
+	movem.l d1-d2/d4-d7/a1-a2/a5-a6, -(sp)
+	jsr (a3)
+	move.l d0, -(sp)
+	move.l d3, -(sp)
+	movem.l 8(sp), d1-d2/d4-d7/a1-a2/a5-a6
+	move.l (sp)+, d3
+	move.l (sp)+, d0
+	adda.l #40, sp
+	tst.l d0
+	bne.s selectedResolverMiss
+	moveq #0, d5
+	moveq #0, d0
+	bra.w return
+
+selectedResolverMiss
+	movea.l a5, a0
+
+loadSymbolTables
 	movea.l state.EncodeSelectedLabelNamePtr, a1
 	movea.l state.EncodeSelectedLabelValuePtr, a2
 	move.l state.EncodeSelectedLabelCount, d1

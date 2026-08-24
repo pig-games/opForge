@@ -38,6 +38,7 @@ opforgeNativeCliWriteExtensionWindow	.block
 opforgeNativeCliReadStatus	.block
 	moveq #0, d0
 	move.b abi.CB_STATUS_CODE(a0), d0
+	tst.l d0  ; make the documented D0/CCR status contract explicit for callers
 	rts
 	.bend  ; opforgeNativeCliReadStatus
 

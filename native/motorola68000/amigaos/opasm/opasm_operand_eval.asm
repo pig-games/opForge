@@ -75,8 +75,23 @@ prepareExpressionExtensionV1	.block
 prepareSelectedExtensionV1	.block
 	move.w d1, SelectedStatementIndex.l
 	moveq #1, d1
-	bra.w prepareExtensionCommon
+	bsr.w prepareExtensionCommon
+	tst.l d0
+	bne.s selectedExtensionReturn
+	movea.l abi.OPASM_SERVICE_EVAL_EXTENSION_PTR(a0), a1
+	move.l #resolveSelectedSymbolV1, 28(a1)
+selectedExtensionReturn
+	rts
 	.bend  ; prepareSelectedExtensionV1
+
+; Resolve one selected-instruction token through the active assembler lexical
+; context. This is the native callback form of Rust's evaluation-context symbol
+; lookup; compound expressions fall through to the existing ExprVM snapshot.
+; Inputs: A0/D0 = token text/length. Outputs: D0 = status; D3 = value.
+resolveSelectedSymbolV1	.block
+	jsr scopes.resolveLabelValueV1
+	rts
+	.bend  ; resolveSelectedSymbolV1
 
 ; Prepare the directive-specific evaluation extension.
 ; Inputs: A0 = OPASM_SERVICE_* frame.
@@ -198,6 +213,27 @@ selectedAliasTokenScan
 	bra.s selectedAliasTokenScan
 
 selectedAliasTokenReady
+	; Rust resolves an instruction operand in its active lexical scope before
+	; import and global fallbacks, then exposes that request-local spelling to
+	; the family VM.  Materialize the same neutral alias/value pair here.
+	movem.l d2-d7/a2-a5, -(sp)
+	movea.l a3, a0
+	move.l d4, d0
+	jsr scopes.resolveLabelValueV1
+	move.l d0, -(sp)
+	move.l d3, -(sp)
+	movem.l 8(sp), d2-d7/a2-a5
+	move.l (sp)+, d3
+	move.l (sp)+, d0
+	adda.l #40, sp
+	tst.l d0
+	bne.s selectedAliasTryImport
+	movea.l a3, a0
+	move.l d4, d0
+	bsr.w appendSelectedSnapshotAliasV1
+	bra.w selectedAliasAdvanceToken
+
+selectedAliasTryImport
 	tst.l d5
 	beq.s selectedAliasTrySuffix
 	movem.l d2-d7/a2-a5, -(sp)
@@ -385,8 +421,6 @@ punctuation
 	beq.s accepted
 	cmpi.b #'.', d0
 	beq.s accepted
-	cmpi.b #'$', d0
-	beq.s accepted
 	moveq #0, d0
 	rts
 accepted
@@ -426,9 +460,7 @@ materializeScopedSnapshot	.block
 	move.l d1, d5
 	movea.l a0, a3
 	movea.l a1, a6
-	movea.l 0(a3), a4
-	movea.l 4(a3), a5
-	move.l 8(a3), d0
+	jsr eng.opasmEngineGetLabelCountV1
 	cmpi.w #SCOPED_SNAPSHOT_SOURCE_CAPACITY, d0
 	bhi.w done
 	move.w d0, ScopedSnapshotSourceCount.l
@@ -439,8 +471,7 @@ aliasLoop
 	cmp.w ScopedSnapshotSourceCount.l, d7
 	bhs.s importedAliasBegin
 	move.l d7, d0
-	lsl.l #6, d0
-	lea 0(a4, d0.l), a0
+	jsr eng.opasmEngineGetLabelNameV1
 	bsr.w snapshotNameLen
 	jsr scopes.activeLabelAliasV1
 	tst.l d0
@@ -454,9 +485,9 @@ aliasLoop
 	lea ScopedSnapshotNames.l, a1
 	adda.l d2, a1
 	bsr.w copySnapshotName
-	move.l d7, d2
-	lsl.l #2, d2
-	move.l 0(a5, d2.l), d3
+	move.l d7, d0
+	jsr eng.opasmEngineGetLabelValueV1
+	move.l d0, d3
 	moveq #0, d1
 	move.w ScopedSnapshotCount.l, d1
 	lsl.l #2, d1
@@ -473,6 +504,10 @@ aliasNext
 importedAliasBegin
 	tst.l d5
 	beq.s copyOriginalBegin
+	; Selected-instruction contexts are request-local in Rust. Rebuild their
+	; aliases in operand-token order so lexical resolution wins over the broad
+	; scope aliases materialized above; qualified originals follow below.
+	clr.w ScopedSnapshotCount.l
 	move.l d6, d0
 	bsr.w materializeSelectedImportAliases
 
@@ -486,18 +521,17 @@ copyOriginalLoop
 	move.w ScopedSnapshotCount.l, d1
 	cmpi.w #SCOPED_SNAPSHOT_CAPACITY, d1
 	bhs.s publish
-	move.l d7, d2
-	lsl.l #6, d2
-	lea 0(a4, d2.l), a0
+	move.l d7, d0
+	jsr eng.opasmEngineGetLabelNameV1
 	move.l d1, d3
 	lsl.l #6, d3
 	lea ScopedSnapshotNames.l, a1
 	adda.l d3, a1
 	moveq #SCOPED_SNAPSHOT_NAME_BYTES, d0
 	bsr.w copySnapshotName
-	move.l d7, d2
-	lsl.l #2, d2
-	move.l 0(a5, d2.l), d3
+	move.l d7, d0
+	jsr eng.opasmEngineGetLabelValueV1
+	move.l d0, d3
 	moveq #0, d1
 	move.w ScopedSnapshotCount.l, d1
 	lsl.l #2, d1

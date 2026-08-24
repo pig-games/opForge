@@ -78,7 +78,7 @@ pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_ITEM17_SOURCE_CPU_ONLY_DEFINE: &str =
     "OPFORGE_FS_UAE_NATIVE_CLI_ITEM17_SOURCE_CPU_ONLY";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_FILE: &str = "opforge_6502_native_cli_smoke.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_TEXT: &str =
-    "start   lda #$42\n        sta $20\n        lda $20,x\n        sta $0200\n        lda $0200,x\n        lda $0200,y\ndone    jmp done\n";
+    ".org $0800\nstart   lda #$42\n        sta $20\n        lda $20,x\n        sta $0200\n        lda $0200,x\n        lda $0200,y\ndone    jmp done\n";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE: &str = "opforge_native_out.bin";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE: &str = "opforge_native_out.prg";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_HEX_OUTPUT_FILE: &str = "opforge_native_out.hex";
@@ -143,7 +143,10 @@ const FS_UAE_MACRO_PREPROCESSOR_HARNESS_SOURCE_PATH: &str =
 const FS_UAE_PIPELINE_SELECT_HARNESS_NAME: &str = "pipeline_select_harness";
 const FS_UAE_PIPELINE_SELECT_HARNESS_SOURCE_PATH: &str =
     "native/motorola68000/amigaos/test-harnesses/debug/pipeline_select_harness.asm";
-const FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE: &str = "opforge_cli_package.opasm";
+// Keep explicit-package parity commands below the classic AmigaShell command
+// tail limit. The filename is runner-private and every byte is still supplied
+// by the authoritative case package.
+const FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE: &str = "p.opasm";
 const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE: &str =
     "opforge_cli_package_oversized.opasm";
 const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_BYTES: usize = 393_217;
@@ -641,7 +644,7 @@ pub(crate) fn run_opforge_native_cli_6502_output_from_env(
         extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE],
         source_override: None,
         command_template: None,
-        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        package_mode: OpforgeNativeCliPackageMode::Mos6502FocusedPair,
         extra_guest_files: &[],
         proof: OpforgeNativeCliProof::ExactArtifact {
             relative_path: "Work/opforge_native_out.bin",
@@ -846,9 +849,10 @@ fn verify_exact_native_cli_artifacts(
         };
         if actual != artifact.rust_oracle {
             errors.push(format!(
-                "{}: native output ({} bytes) differs from the in-memory Rust oracle ({} bytes); {}",
+                "{}: native output ({} bytes, {:02x?}) differs from the in-memory Rust oracle ({} bytes); {}",
                 relative_output_path.display(),
                 actual.len(),
+                actual,
                 artifact.rust_oracle.len(),
                 describe_first_byte_mismatch(&actual, artifact.rust_oracle)
             ));
@@ -859,11 +863,20 @@ fn verify_exact_native_cli_artifacts(
         }
     }
     if !errors.is_empty() {
+        let captured = run
+            .captured_artifacts
+            .keys()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
         return Err(format!(
-            "FS-UAE exact artifact proof failed for {} after checking all {} declared artifacts:\n{}",
+            "FS-UAE exact artifact proof failed for {} after checking all {} declared artifacts:\n{}\nfresh captured paths: [{}]\nstdout:\n{}\nstderr:\n{}",
             case.name,
             artifacts.len(),
-            errors.join("\n")
+            errors.join("\n"),
+            captured,
+            run.stdout,
+            run.stderr,
         ));
     }
     run.verified_output = first_verified;
@@ -1104,7 +1117,7 @@ pub(crate) fn run_opforge_native_cli_item17_artifact_matrix_from_env(
 pub(crate) fn run_opforge_native_cli_item17_source_cpu_output_from_env(
     workspace_root: &Path,
     source: &[u8],
-    _package_bytes: &[u8],
+    package_bytes: &[u8],
     proof_relative_path: &str,
     rust_oracle: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
@@ -1114,7 +1127,7 @@ pub(crate) fn run_opforge_native_cli_item17_source_cpu_output_from_env(
         extra_assembly_defines: &[],
         source_override: Some(source),
         command_template: Some("{input}"),
-        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        package_mode: OpforgeNativeCliPackageMode::Explicit(package_bytes),
         extra_guest_files: &[],
         proof: OpforgeNativeCliProof::ExactArtifact {
             relative_path: proof_relative_path,
@@ -1408,24 +1421,33 @@ fn opforge_native_cli_case_command(
     let _list_path =
         guest_path(format!("build/{FS_UAE_OPFORGE_NATIVE_CLI_LST_OUTPUT_FILE}").as_str());
     let hunk_path = guest_path("build/opforge_native_out.hunk");
+    let package_path = guest_path(FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE);
     let oversized_package_path = guest_path(FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE);
     let include_a =
         guest_path(FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_FILE.trim_end_matches("/defs.inc"));
     let include_b =
         guest_path(FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_FILE.trim_end_matches("/defs.inc"));
-    let default_package_args = |args: &str| args.to_string();
+    let with_case_package = |args: String| match case.package_mode {
+        OpforgeNativeCliPackageMode::EmbeddedDefault => args,
+        _ if args.contains("--opasm-package") => args,
+        _ => format!("{args} --opasm-package {package_path}"),
+    };
+    let default_package_args = |args: &str| with_case_package(args.to_string());
 
     if let Some(template) = case.command_template {
-        return template
-            .replace("{input}", &source_path)
-            .replace("{bin}", &bin_path)
-            .replace("{prg}", &_prg_path)
-            .replace("{hex}", &_hex_path)
-            .replace("{list}", &_list_path)
-            .replace("{hunk}", &hunk_path)
-            .replace("{guest_work_dir}", guest_work_dir)
-            .replace("{include_a}", &include_a)
-            .replace("{include_b}", &include_b);
+        return with_case_package(
+            template
+                .replace("{input}", &source_path)
+                .replace("{bin}", &bin_path)
+                .replace("{prg}", &_prg_path)
+                .replace("{hex}", &_hex_path)
+                .replace("{list}", &_list_path)
+                .replace("{hunk}", &hunk_path)
+                .replace("{package}", &package_path)
+                .replace("{guest_work_dir}", guest_work_dir)
+                .replace("{include_a}", &include_a)
+                .replace("{include_b}", &include_b),
+        );
     }
 
     if case.source_override.is_some() && opforge_native_cli_case_define(case).is_none() {
@@ -1866,7 +1888,25 @@ fn run_opforge_native_cli_parity_batch_cases(
         Err(err) => {
             let _ = cleanup_spawned_fs_uae_processes(&baseline_process_ids);
             let _ = wait_for_spawned_fs_uae_processes_to_exit(&baseline_process_ids);
-            return Err(err);
+            let partial = batch_paths
+                .iter()
+                .enumerate()
+                .map(|(index, paths)| {
+                    let stdout = read_optional_text(&paths.stdout_path)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default();
+                    let stderr = read_optional_text(&paths.stderr_path)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default();
+                    format!(
+                        "case {index} partial stdout:\n{stdout}\ncase {index} partial stderr:\n{stderr}"
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(format!("{err}\n{partial}"));
         }
     };
     if wait_outcome == FsUaeWaitOutcome::Captured {
@@ -2042,6 +2082,7 @@ pub(crate) fn run_tkpkg_debug_cli_file_mode_from_env(
         guest_source,
         cpu_id,
         None,
+        &[],
     )
 }
 
@@ -2056,6 +2097,21 @@ pub(crate) fn run_tkpkg_debug_cli_file_mode_with_package_from_env(
         guest_source,
         cpu_id,
         Some(package_bytes),
+        &[],
+    )
+}
+
+pub(crate) fn run_tkpkg_debug_cli_fixed_opcode_with_package_from_env(
+    workspace_root: &Path,
+    cpu_id: &str,
+    package_bytes: &[u8],
+) -> Result<FsUaeSmokeOutcome, String> {
+    run_tkpkg_debug_cli_file_mode_with_optional_package_from_env(
+        workspace_root,
+        b"",
+        cpu_id,
+        Some(package_bytes),
+        &["OPFORGE_FS_UAE_TKPKG_FIXED_OPCODE"],
     )
 }
 
@@ -2064,12 +2120,14 @@ fn run_tkpkg_debug_cli_file_mode_with_optional_package_from_env(
     guest_source: &[u8],
     cpu_id: &str,
     package_bytes: Option<&[u8]>,
+    extra_assembly_defines: &[&str],
 ) -> Result<FsUaeSmokeOutcome, String> {
     run_tkpkg_debug_cli_input_mode_with_optional_package_from_env(
         workspace_root,
         TkpkgDebugCliInputMode::SingleFile(guest_source),
         cpu_id,
         package_bytes,
+        extra_assembly_defines,
     )
 }
 
@@ -2087,6 +2145,7 @@ pub(crate) fn run_tkpkg_debug_cli_manifest_mode_with_package_from_env<'a>(
         TkpkgDebugCliInputMode::Manifest(cases),
         cpu_id,
         Some(package_bytes),
+        &[],
     )
 }
 
@@ -2095,6 +2154,7 @@ fn run_tkpkg_debug_cli_input_mode_with_optional_package_from_env<'a>(
     input_mode: TkpkgDebugCliInputMode<'a>,
     cpu_id: &str,
     package_bytes: Option<&'a [u8]>,
+    extra_assembly_defines: &'a [&'a str],
 ) -> Result<FsUaeSmokeOutcome, String> {
     let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
         Ok(value) if !value.trim().is_empty() => value,
@@ -2113,6 +2173,7 @@ fn run_tkpkg_debug_cli_input_mode_with_optional_package_from_env<'a>(
         input_mode,
         pipeline_define: tkpkg_pipeline_define_for_cpu(cpu_id)?,
         package_bytes,
+        extra_assembly_defines,
     };
     let run = run_example_smoke_with_guest_input(workspace_root, &fs_uae_bin, &args_text, &spec)?;
     match run {
@@ -2244,11 +2305,15 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
     if example_name == FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME
         || example_name == FS_UAE_CLI_DEBUG_EVENT_EXAMPLE_NAME
     {
+        // Resolve the whole native CLI composition from the worktree. Omitting
+        // this directory can mix a stale CLI composition with current tkpkg
+        // and opasm modules, which is not valid native parity evidence.
         let amigaos_dir = workspace_root
             .join("native")
             .join("motorola68000")
             .join("amigaos");
         return vec![
+            amigaos_dir.join("opforge-cli"),
             amigaos_dir.join("tkpkg"),
             amigaos_dir.join("tkvm"),
             amigaos_dir.join("prvm"),
@@ -2264,6 +2329,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             .join("motorola68000")
             .join("amigaos");
         return vec![
+            amigaos_dir.join("opforge-cli"),
             amigaos_dir.join("tkpkg"),
             amigaos_dir.join("tkvm"),
             amigaos_dir.join("prvm"),
@@ -2588,6 +2654,7 @@ struct GuestInputSmokeSpec<'a> {
     input_mode: TkpkgDebugCliInputMode<'a>,
     pipeline_define: &'a str,
     package_bytes: Option<&'a [u8]>,
+    extra_assembly_defines: &'a [&'a str],
 }
 
 #[derive(Clone, Copy)]
@@ -3519,6 +3586,11 @@ fn run_example_smoke_with_guest_input(
         assembly_defines.push("OPFORGE_FS_UAE_TKPKG_MANIFEST".to_string());
     }
     assembly_defines.push(spec.pipeline_define.to_string());
+    assembly_defines.extend(
+        spec.extra_assembly_defines
+            .iter()
+            .map(|define| (*define).to_string()),
+    );
     let include_paths = example_include_paths(workspace_root, spec.example_name);
     run_assembly(AssemblyExecutionRequest {
         root_path: &source_path,
@@ -4609,7 +4681,7 @@ mod tests {
             extra_assembly_defines: &[],
             source_override: Some(b"        lda #$42\n"),
             command_template: Some("{input} --list {list} --cpu m6502 -I {include_a}"),
-            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            package_mode: OpforgeNativeCliPackageMode::Mos6502FocusedPair,
             extra_guest_files: &[],
             proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
         };
@@ -4622,7 +4694,7 @@ mod tests {
 
         assert_eq!(
             opforge_native_cli_case_command(&case, &paths),
-            "Work:opforge_6502_native_cli_smoke.asm --list Work:build/opforge_native_out.lst --cpu m6502 -I Work:opforge_include_root_a"
+            "Work:opforge_6502_native_cli_smoke.asm --list Work:build/opforge_native_out.lst --cpu m6502 -I Work:opforge_include_root_a --opasm-package Work:p.opasm"
         );
     }
 

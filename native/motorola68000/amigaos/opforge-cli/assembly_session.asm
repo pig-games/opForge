@@ -38,9 +38,9 @@ opforgeNativeCliRecordSourceLine	.block
 
 opforgeNativeCliRecordPrvmStatementLine	.block
 	movem.l d1-d7/a0-a2, -(sp)
-	tst.l state.NativeCliPrvmRouteStatus
+	move.l state.NativeCliPrvmRouteStatus, d1
 	beq.s routeOk
-	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, state.NativeCliPrvmRouteStatus
+	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, d1
 	bne.w sourceOnly
 
 routeOk
@@ -63,10 +63,16 @@ routeOk
 	clr.l state.NativeCliStmtExprSpanEnd
 	clr.w state.NativeCliStmtMnemFound
 	clr.w state.NativeCliStmtExprFound
+	tst.w state.NativeCliStmtDirectiveKindAuthoritative
+	bne.s directiveKindReady
 	jsr prvm_bridge.opforgeNativeCliParserDirectiveKind
 	move.w d0, state.NativeCliStmtDirectiveKind
+directiveKindReady
+	moveq #0, d0
+	move.w d0, state.NativeCliStmtDirectiveKindAuthoritative
 	move.w state.NativeCliPrvmResultCount, d7
-	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, state.NativeCliPrvmRouteStatus
+	move.l state.NativeCliPrvmRouteStatus, d1
+	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, d1
 	bne.s haveCount
 	move.w #constants.PRVM_RESULT_RECORD_COUNT, d7
 
@@ -94,7 +100,8 @@ next
 	dbra d7, scan
 
 finalize
-	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, state.NativeCliPrvmRouteStatus
+	move.l state.NativeCliPrvmRouteStatus, d1
+	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, d1
 	bne.s checkMnemonic
 	bsr.w opforgeNativeCliRecordPrvmExpressionRequest
 
@@ -163,9 +170,11 @@ trySourceFallback
 	tst.l state.NativeCliStmtLabelLen
 	beq.w done
 checkStore
-	cmpi.l #1, state.NativeCliStmtMnemLen
+	move.l state.NativeCliStmtMnemLen, d1
+	cmpi.l #1, d1
 	bne.s store
-	cmpi.b #'=', buffers.tokenScratchBuffer
+	move.b buffers.tokenScratchBuffer, d1
+	cmpi.b #'=', d1
 	bne.s store
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
@@ -201,8 +210,13 @@ sourceOnly
 	clr.l state.NativeCliStmtExprSpanEnd
 	clr.w state.NativeCliStmtMnemFound
 	clr.w state.NativeCliStmtExprFound
+	tst.w state.NativeCliStmtDirectiveKindAuthoritative
+	bne.s sourceDirectiveKindReady
 	moveq #constants.NCLI_PARSER_DIRECTIVE_NONE, d0
 	move.w d0, state.NativeCliStmtDirectiveKind
+sourceDirectiveKindReady
+	moveq #0, d0
+	move.w d0, state.NativeCliStmtDirectiveKindAuthoritative
 	bra.w trySourceFallback
 
 haveLabel

@@ -63,7 +63,8 @@ copyLoop
 	dbra d4, copyLoop
 
 stored
-	addq.w #1, state.NativeCliArtifactRequestCount
+	addq.w #1, d7
+	move.w d7, state.NativeCliArtifactRequestCount
 	moveq #0, d0
 	bra.s return
 
@@ -1085,7 +1086,8 @@ nameLoop
 	bra.s nameLoop
 nameDone
 	clr.b (a1)
-	addq.w #1, state.NativeCliSourceOutputSectionCount
+	addq.w #1, d3
+	move.w d3, state.NativeCliSourceOutputSectionCount
 	moveq #0, d1
 	rts
 unknown

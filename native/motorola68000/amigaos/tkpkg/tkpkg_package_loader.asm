@@ -325,23 +325,39 @@ tocLoop
 	bne.w duplicateChunk
 	lea buffers.FamsChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #buffers.PACKAGE_CHUNK_FAMS, buffers.PackageChunkFlags
+	bset #0, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkCpus
 	cmpi.b #'C', (a2)
-	bne.s checkDial
+	bne.s checkCals
 	cmpi.b #'P', 1(a2)
-	bne.s checkDial
+	bne.s checkCals
 	cmpi.b #'U', 2(a2)
-	bne.s checkDial
+	bne.s checkCals
 	cmpi.b #'S', 3(a2)
-	bne.s checkDial
+	bne.s checkCals
 	btst #1, buffers.PackageChunkFlags
 	bne.w duplicateChunk
 	lea buffers.CpusChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #buffers.PACKAGE_CHUNK_CPUS, buffers.PackageChunkFlags
+	bset #1, buffers.PackageChunkFlags
+	bra.w nextTocEntry
+
+checkCals
+	cmpi.b #'C', (a2)
+	bne.s checkDial
+	cmpi.b #'A', 1(a2)
+	bne.s checkDial
+	cmpi.b #'L', 2(a2)
+	bne.s checkDial
+	cmpi.b #'S', 3(a2)
+	bne.s checkDial
+	btst #5, buffers.PackageChunkFlagsHi
+	bne.w duplicateChunk
+	lea buffers.CalsChunkOffsetLo, a3
+	bsr.w storeLocator
+	bset #5, buffers.PackageChunkFlagsHi
 	bra.w nextTocEntry
 
 checkDial
@@ -357,7 +373,7 @@ checkDial
 	bne.w duplicateChunk
 	lea buffers.DialChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #buffers.PACKAGE_CHUNK_DIAL, buffers.PackageChunkFlags
+	bset #2, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkToks
@@ -373,7 +389,7 @@ checkToks
 	bne.w duplicateChunk
 	lea buffers.ToksChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #buffers.PACKAGE_CHUNK_TOKS, buffers.PackageChunkFlags
+	bset #3, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkTkvm
@@ -389,7 +405,7 @@ checkTkvm
 	bne.w duplicateChunk
 	lea buffers.TkvmChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #buffers.PACKAGE_CHUNK_TKVM, buffers.PackageChunkFlags
+	bset #4, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkTabl
@@ -405,7 +421,7 @@ checkTabl
 	bne.w duplicateChunk
 	lea buffers.TablChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #buffers.PACKAGE_CHUNK_TABL, buffers.PackageChunkFlags
+	bset #5, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkMsel
@@ -421,7 +437,7 @@ checkMsel
 	bne.w duplicateChunk
 	lea buffers.MselChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #buffers.PACKAGE_CHUNK_MSEL, buffers.PackageChunkFlagsHi
+	bset #0, buffers.PackageChunkFlagsHi
 	bra.w nextTocEntry
 
 checkPrvm
@@ -437,7 +453,7 @@ checkPrvm
 	bne.w duplicateChunk
 	lea buffers.PrvmChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #buffers.PACKAGE_CHUNK_PRVM, buffers.PackageChunkFlagsHi
+	bset #1, buffers.PackageChunkFlagsHi
 	bra.w nextTocEntry
 
 checkExpr
@@ -453,23 +469,71 @@ checkExpr
 	bne.w duplicateChunk
 	lea buffers.ExprChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #buffers.PACKAGE_CHUNK_EXPR, buffers.PackageChunkFlags
+	bset #6, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkExvm
 	cmpi.b #'E', (a2)
-	bne.w nextTocEntry
+	bne.w checkCtbl
 	cmpi.b #'X', 1(a2)
-	bne.w nextTocEntry
+	bne.w checkCtbl
 	cmpi.b #'V', 2(a2)
-	bne.w nextTocEntry
+	bne.w checkCtbl
 	cmpi.b #'M', 3(a2)
-	bne.w nextTocEntry
+	bne.w checkCtbl
 	btst #7, buffers.PackageChunkFlags
 	bne.w duplicateChunk
 	lea buffers.ExvmChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #buffers.PACKAGE_CHUNK_EXVM, buffers.PackageChunkFlags
+	bset #7, buffers.PackageChunkFlags
+	bra.w nextTocEntry
+
+checkCtbl
+	cmpi.b #'C', (a2)
+	bne.w checkCsem
+	cmpi.b #'T', 1(a2)
+	bne.w checkCsem
+	cmpi.b #'B', 2(a2)
+	bne.w checkCsem
+	cmpi.b #'L', 3(a2)
+	bne.w checkCsem
+	btst #2, buffers.PackageChunkFlagsHi
+	bne.w duplicateChunk
+	lea buffers.CtblChunkOffsetLo, a3
+	bsr.w storeLocator
+	bset #2, buffers.PackageChunkFlagsHi
+	bra.w nextTocEntry
+
+checkCsem
+	cmpi.b #'C', (a2)
+	bne.w checkCmse
+	cmpi.b #'S', 1(a2)
+	bne.w checkCmse
+	cmpi.b #'E', 2(a2)
+	bne.w checkCmse
+	cmpi.b #'M', 3(a2)
+	bne.w checkCmse
+	btst #3, buffers.PackageChunkFlagsHi
+	bne.w duplicateChunk
+	lea buffers.CsemChunkOffsetLo, a3
+	bsr.w storeLocator
+	bset #3, buffers.PackageChunkFlagsHi
+	bra.w nextTocEntry
+
+checkCmse
+	cmpi.b #'C', (a2)
+	bne.w nextTocEntry
+	cmpi.b #'M', 1(a2)
+	bne.w nextTocEntry
+	cmpi.b #'S', 2(a2)
+	bne.w nextTocEntry
+	cmpi.b #'E', 3(a2)
+	bne.w nextTocEntry
+	btst #4, buffers.PackageChunkFlagsHi
+	bne.w duplicateChunk
+	lea buffers.CmseChunkOffsetLo, a3
+	bsr.w storeLocator
+	bset #4, buffers.PackageChunkFlagsHi
 	bra.w nextTocEntry
 
 nextTocEntry

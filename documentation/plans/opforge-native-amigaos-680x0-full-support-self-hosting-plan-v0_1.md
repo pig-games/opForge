@@ -603,13 +603,26 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit making package-only execution the normal Rust 680x0 path and publishing the native-activation receipt.
   - Definition of done: the Mandatory Package-First Execution Boundary passes for all six profiles; direct family runtime paths are removed or test-oracle-only; exact single-family, combined, and all-family packages fit the synchronized 393,216-byte generic native storage bound and are ready for native consumption; the current 367,246-byte all-family package is embedded byte-for-byte, leaves 25,970 bytes of measured headroom, and 393,217 bytes still fails closed.
 
-- [ ] Item 14: implement the versioned portable selector/encoder substrate in the native generic runtime and prove fixed-opcode execution
+- [x] Item 14: implement the versioned portable selector/encoder substrate in the native generic runtime and prove fixed-opcode execution
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`, `N68X0-004`, `N68X0-008`, `N68X0-013`-`N68X0-016`.
   - Expected files: architecture-neutral native `tkpkg` package/selection/encoding modules, focused tests, one native parity slice record; no family package-definition change.
   - Full quality gates: Shared Full Quality Gate; Item 13 completion receipt; focused native exact-input-digest, package-version, and malformed-opcode tests; Level D `external_fs_uae_native_m68k_fixed_opcode_package_parity` using the unmodified Rust-builder byte vector.
   - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for native implementation of the already-frozen generic substrate and confirms the staged package digest matches Item 13 and the shared 65x02 completion proof remains green.
+  - Completion evidence (2026-08-24): the focused exact-digest, malformed
+    package-program, selector-fallback, and architecture-boundary tests pass;
+    all three fail-closed Level D Item 14 cases pass in fresh FS-UAE guests; the
+    dedicated unmodified 65x02-only package CLI proof emits the same 18 bytes as
+    Rust; the 222-file native format gate, complete locked Rust/all-family
+    quality gate, and 76-test workflow gate pass. The plan-compliance reviewer
+    returned `PASS` and authorized the focused commit.
   - Commit outcome: one commit making native `tkpkg` execute the package-owned fixed-opcode program without a family-specific branch.
   - Definition of done: real native execution consumes Item 13's exact serialized bytes and matches packaged Rust output; the current Rust-built 65x02 package remains fully native-executable; no native package transformation or m68k-owned identifier exists in generic runtime control flow.
+  - Deferred regression note: native counted `.for` assembly currently reaches the
+    generic flow callback but does not preserve the Rust engine's pending-flow
+    redirection, ending in `OTR901: unimplemented` for the retained `.for`
+    statement. Exact package-driven 65x02 opcode encoding remains green, so this
+    is tracked as a separate generic flow-navigation regression and is not part
+    of Item 14's selector/encoder completion claim.
 
 - [ ] Item 15: implement neutral scalar/register and big-endian field operations in the native package runtime
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`-`N68X0-005`, `N68X0-014`-`N68X0-016`.

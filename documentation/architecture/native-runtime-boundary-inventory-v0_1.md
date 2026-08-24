@@ -23,6 +23,12 @@ semantics-preserving explicit branch-width corrections required by stricter
 resolved-branch assembly. Their routines, imports, sections, diagnostic paths,
 ownership decisions, and dependency directions are unchanged.
 
+Item 14 refreshed the complete audited manifest after adding the generic
+compact-table selector/encoder path and its package-owned fixed-program
+execution. The refresh includes the affected opasm bridge/layout routines and
+the tkpkg service, pipeline, selection, operand, encoding, and compact-table
+owners; no CPU-family semantic owner moved into the generic native runtime.
+
 ## Dependency direction
 
 ```text
@@ -227,15 +233,34 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm`.
 - Public entries: `encodeInstructionV1` and `encodeSelectedInstructionV1`.
-- Imports/outbound dependencies: tkpkg ABI/buffers and the existing selection
-  service boundary.
+- Imports/outbound dependencies: tkpkg ABI/buffers, the existing selection
+  service boundary, and the generic compact-table boundary.
 - Mutable state: writes the same existing package-service output buffer; it does
   not own pipeline selection, package loading, or status projection.
-- Routine responsibility groups: selected-envelope encoding, package-table
-  lookup, encoding-program execution, and encoded-output construction.
-- Decision: this is an ownership-only file split. Package data, selector
-  ordering, plan tags, status/diagnostic paths, and emitted bytes remain
-  unchanged; no CPU, family, dialect, or instruction support is added.
+- Routine responsibility groups: selected-envelope encoding, legacy
+  package-table lookup, neutral encoding-program execution, compact fixed-row
+  delegation, and encoded-output construction.
+- Decision: Item 14 retains this module as the sole neutral bytecode executor
+  and routes compact fixed-row discovery through a separate bounded package
+  reader. The executor accepts only its existing literal/operand/END contract,
+  now rejects trailing bytes and output overflow, and contains no CPU, family,
+  dialect, mnemonic, register, addressing-mode, or target-opcode authority.
+
+### `tkpkg.amigaos.compact_table` (NR-004, Item 14 compact package activation)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm`.
+- Public entry: `findFixedProgramFromRequestV1`.
+- Imports/outbound dependencies: tkpkg ABI/buffers and the existing neutral
+  scoped-owner/string/bounds helpers in the selection service.
+- Mutable state: bounded compact-reader scratch fields in tkpkg buffers and the
+  existing output scratch buffer while reconstructing prefix-compressed strings.
+- Routine responsibility groups: exact CTBL version validation, bounded owner
+  and string-table reconstruction, dialect/CPU/family scope-order selection
+  among matching rows, ambiguity rejection, and program-byte location.
+- Decision: this module interprets only the frozen CPU-neutral compact wire
+  format. All names, target meanings, and emitted opcode bytes remain package
+  data; later semantic program versions, operand records, fixups, and branch
+  convergence remain outside the Item 14 boundary.
 
 ### `tkpkg.amigaos.runtime_context` (NR-005, Item 5.7 ownership split)
 

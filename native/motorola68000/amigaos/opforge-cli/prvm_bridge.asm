@@ -30,23 +30,34 @@ done
 	.bend  ; opforgeNativeCliDispatchParseLineEnvelope
 
 opforgeNativeCliDispatchParseLineUntilReady	.block
+	move.l d5, -(sp)
+	moveq #constants.PRVM_ROUTE_EXPR_RESULT_CAPACITY, d5
 	clr.w state.NativeCliPrvmPartialResultCount
 	bsr.w opforgeNativeCliPrepareParseLineServiceRequest
-	bne.s done
+	bne.s restore
 
 loop
 	bsr.w opforgeNativeCliDispatchPreparedParseLineEnvelope
-	bne.s done
-	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, state.NativeCliPrvmRouteStatus
+	bne.s restore
+	move.l state.NativeCliPrvmRouteStatus, d1
+	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, d1
 	bne.s finalize
+	subq.l #1, d5
+	bmi.s resumeLimit
 	bsr.w opforgeNativeCliServicePrvmExpressionRequest
-	bne.s done
+	bne.s restore
 	bra.s loop
 
 finalize
-done
+restore
+	move.l (sp)+, d5
 	tst.l d0
 	rts
+
+resumeLimit
+	move.l #constants.PRVM_STATUS_EXPR_RESUME_LIMIT, state.NativeCliPrvmRouteStatus
+	moveq #1, d0
+	bra.s restore
 	.bend  ; opforgeNativeCliDispatchParseLineUntilReady
 
 opforgeNativeCliParserDirectiveKind	.block

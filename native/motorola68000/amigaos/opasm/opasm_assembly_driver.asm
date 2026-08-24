@@ -245,14 +245,13 @@ labelLoop
 	cmp.l d5, d4
 	bhs.s success
 	move.l d4, d0
-	jsr layout.labelIsMappedV1
-	tst.l d0
-	bne.s next
-	move.l d4, d0
 	jsr eng.opasmEngineGetPcBackedLabelValueV1
 	tst.l d1
 	beq.s next
-	jsr layout.translatePassOneAddressV1
+	move.l d0, d3
+	move.l d4, d0
+	move.l d3, d1
+	jsr layout.translatePassOneLabelAddressV1
 	tst.l d1
 	beq.s next
 	move.l d0, d3
@@ -285,6 +284,13 @@ opasmDriverApplyFlowControl	.block
 	jsr navigation.initializeStatementFlowV1
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementKindV1
+	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_MODULE, d0
+	beq.w beginStoredModule
+	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_ENDMODULE, d0
+	beq.w endStoredModule
 	moveq #0, d0
 	move.w d7, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
@@ -410,6 +416,7 @@ compareModule
 	moveq #6, d1
 	bsr.w lineStartsWith
 	beq.s checkEndmodule
+beginStoredModule
 	bsr.w scopes.beginModuleScopeV1
 	bne.w fail
 	bra.w success
@@ -426,6 +433,7 @@ compareEndmodule
 	moveq #9, d1
 	bsr.w lineStartsWith
 	beq.s checkConditional
+endStoredModule
 	bsr.w scopes.endModuleScopeV1
 	bne.w fail
 	bra.w success
@@ -1248,6 +1256,15 @@ opasmDriverEmitImageBytes	.block
 	jsr layout.statementImageRouteV1
 	jsr eng.opasmEngineSetImageRouteV1
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	moveq #0, d0
+	move.w d6, d0
+	jsr eng.opasmEngineGetStatementKindV1
+	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_MODULE, d0
+	beq.w ok
+	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_ENDMODULE, d0
+	beq.w ok
+	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_USE, d0
+	beq.w ok
 	movea.l sp, a0
 	moveq #0, d0
 	move.w d6, d0
@@ -1471,6 +1488,15 @@ opasmDriverAdvancePc	.block
 	jsr layout.recordStatementSectionV1
 	bne.w done
 statementLayoutRecorded
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementKindV1
+	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_MODULE, d0
+	beq.w done
+	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_ENDMODULE, d0
+	beq.w done
+	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_USE, d0
+	beq.w done
 	movea.l sp, a0
 	move.l d7, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1

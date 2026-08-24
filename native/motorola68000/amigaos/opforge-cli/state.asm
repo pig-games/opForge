@@ -116,6 +116,8 @@ NativeCliStmtExprFound
 	.res word, 1
 NativeCliStmtDirectiveKind
 	.res word, 1
+NativeCliStmtDirectiveKindAuthoritative
+	.res word, 1
 NativeCliInputChar
 	.res byte, 1
 NativeCliDecimalChar

@@ -1403,7 +1403,9 @@ emitU8D6	.block
 	bhs.s fail
 	lea OpcoreExprVmProgramBuffer, a2
 	move.b d6, 0(a2, d0.l)
-	addi.w #1, OpcoreExprVmProgramLen
+	move.w OpcoreExprVmProgramLen, d1
+	addq.w #1, d1
+	move.w d1, OpcoreExprVmProgramLen
 	moveq #0, d0
 	bra.s return
 

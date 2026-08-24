@@ -22,7 +22,7 @@ OPASM_ENGINE_CONTEXT_LONGS      = 11
 ; Exact byte count from OpasmEngineAssemblySessionStart through the two image
 ; buffers. Keep this explicit: the native bootstrap must not depend on a
 ; forward label subtraction while forward-reference stability is under proof.
-OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = 747608
+OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = 862298
 
 	.section code
 
@@ -71,6 +71,13 @@ OPASM_ENGINE_STMT_REQ_OWNER_PTR        = 68
 OPASM_ENGINE_STMT_REQ_OWNER_LEN        = 72
 OPASM_ENGINE_STMT_REQ_OWNER_LEN_WORD   = 74
 OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES = 76
+; CPU-neutral parser/assembler statement kinds. Structural kinds are consumed
+; before instruction selection, matching Rust's directive-first line pipeline.
+OPASM_ENGINE_STMT_KIND_NONE       = 0
+OPASM_ENGINE_STMT_KIND_MODULE     = 1
+OPASM_ENGINE_STMT_KIND_ENDMODULE  = 2
+OPASM_ENGINE_STMT_KIND_USE        = 3
+OPASM_ENGINE_STMT_KIND_GENERIC    = 4
 OPASM_ENGINE_LABEL_EVENT_NONE      = 0
 OPASM_ENGINE_LABEL_EVENT_STORED    = 1
 OPASM_ENGINE_LABEL_EVENT_DUPLICATE = 2
@@ -226,7 +233,9 @@ copyLoop
 
 copyDone
 	clr.b (a1)
-	addq.w #1, OpasmEngineSourceRecordCount.l
+	move.w OpasmEngineSourceRecordCount.l, d2
+	addq.w #1, d2
+	move.w d2, OpasmEngineSourceRecordCount.l
 
 done
 	movem.l (sp)+, d2-d4/a0-a2
@@ -279,7 +288,9 @@ return
 ; Outputs:
 ; - D0: 0 on success.
 opasmEngineCommitStatementRecordV1	.block
-	addq.w #1, OpasmEngineStmtCount.l
+	move.w OpasmEngineStmtCount.l, d0
+	addq.w #1, d0
+	move.w d0, OpasmEngineStmtCount.l
 	moveq #0, d0
 	rts
 	.bend  ; opasmEngineCommitStatementRecordV1
@@ -457,7 +468,9 @@ storeLabel
 haveStoreLabelLen
 	bsr.w copyFixedString
 	clr.b (a1)
-	addq.w #1, OpasmEngineLabelCount.l
+	move.w OpasmEngineLabelCount.l, d5
+	addq.w #1, d5
+	move.w d5, OpasmEngineLabelCount.l
 	moveq #0, d0
 	moveq #OPASM_ENGINE_LABEL_EVENT_STORED, d1
 	move.l OpasmEngineSessionCurrentPc.l, d2
@@ -582,7 +595,9 @@ storeLabel
 haveStoreLabelLen
 	bsr.w copyFixedString
 	clr.b (a1)
-	addq.w #1, OpasmEngineLabelCount.l
+	move.w OpasmEngineLabelCount.l, d5
+	addq.w #1, d5
+	move.w d5, OpasmEngineLabelCount.l
 	moveq #0, d0
 	moveq #OPASM_ENGINE_LABEL_EVENT_STORED, d1
 	move.l d3, d2
@@ -1187,6 +1202,22 @@ opasmEngineGetStatementCountV1	.block
 	move.w OpasmEngineStmtCount.l, d0
 	rts
 	.bend  ; opasmEngineGetStatementCountV1
+
+; Return the CPU-neutral parser kind retained with a statement.
+; Inputs: D0.W = statement index.
+; Outputs: D0.W = OPASM_ENGINE_STMT_KIND_*.
+; Clobbers: D0/CCR.
+opasmEngineGetStatementKindV1	.block
+	movem.l d1/a0, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	add.w d1, d1
+	lea OpasmEngineStmtDirectiveKindTable.l, a0
+	moveq #0, d0
+	move.w 0(a0, d1.l), d0
+	movem.l (sp)+, d1/a0
+	rts
+	.bend  ; opasmEngineGetStatementKindV1
 
 ; Return the label count.
 ;

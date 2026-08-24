@@ -14,6 +14,8 @@ TOKEN_BUFFER_CAPACITY                = 64
 TOKEN_SCRATCH_CAPACITY               = 256
 TOKENIZER_VM_STATE_TABLE_CAPACITY    = 32
 TOKENIZER_VM_DIAG_CODE_CAPACITY      = 32
+COMPACT_SELECTOR_TEXT_CAPACITY       = 64
+COMPACT_STRING_SCRATCH_CAPACITY      = LAST_ERROR_BUFFER_CAPACITY
 PACKAGE_STATE_LOADED                 = 1
 PACKAGE_STATE_PIPELINE_ACTIVE        = 2
 PACKAGE_CHUNK_FAMS                   = 1
@@ -26,13 +28,16 @@ PACKAGE_CHUNK_EXPR                   = 64
 PACKAGE_CHUNK_EXVM                   = 128
 PACKAGE_CHUNK_MSEL                   = 1
 PACKAGE_CHUNK_PRVM                   = 2
+PACKAGE_CHUNK_CTBL                   = 4
+PACKAGE_CHUNK_CSEM                   = 8
+PACKAGE_CHUNK_CMSE                   = 16
 PACKAGE_REQUIRED_CHUNK_FLAGS         = 31
 SCOPED_OWNER_FAMILY                  = 0
 SCOPED_OWNER_CPU                     = 1
 SCOPED_OWNER_DIALECT                 = 2
 BAD_REQUEST_TEXT_LEN                 = 19
 CONTROL_BLOCK_ERROR_TEXT_LEN         = 20
-RUNTIME_ERROR_TEXT_LEN               = 20
+RUNTIME_ERROR_TEXT_LEN               = 21
 LAST_ERROR_KIND_NONE                 = 0
 LAST_ERROR_KIND_BAD_REQUEST          = 1
 LAST_ERROR_KIND_BAD_CONTROL          = 2
@@ -62,14 +67,14 @@ ControlBlockV1
 LastErrorBuffer
 	.res byte, LAST_ERROR_BUFFER_CAPACITY
 
-PackageStorage
-	.res byte, PACKAGE_STORAGE_CAPACITY
-
 TokenRecordBuffer
 	.res byte, TOKEN_RECORD_SIZE * TOKEN_BUFFER_CAPACITY
 
 TokenScratchBuffer
 	.res byte, TOKEN_SCRATCH_CAPACITY
+
+CompactStringScratchBuffer
+	.res byte, COMPACT_STRING_SCRATCH_CAPACITY
 
 LastTokenCount
 	.res word, 1
@@ -146,6 +151,30 @@ CpusChunkLenMidHi
 	.res byte, 1
 
 CpusChunkLenHi
+	.res byte, 1
+
+CalsChunkOffsetLo
+	.res byte, 1
+
+CalsChunkOffsetMidLo
+	.res byte, 1
+
+CalsChunkOffsetMidHi
+	.res byte, 1
+
+CalsChunkOffsetHi
+	.res byte, 1
+
+CalsChunkLenLo
+	.res byte, 1
+
+CalsChunkLenMidLo
+	.res byte, 1
+
+CalsChunkLenMidHi
+	.res byte, 1
+
+CalsChunkLenHi
 	.res byte, 1
 
 DialChunkOffsetLo
@@ -339,6 +368,100 @@ PrvmChunkLenMidHi
 
 PrvmChunkLenHi
 	.res byte, 1
+
+CtblChunkOffsetLo
+	.res byte, 1
+
+CtblChunkOffsetMidLo
+	.res byte, 1
+
+CtblChunkOffsetMidHi
+	.res byte, 1
+
+CtblChunkOffsetHi
+	.res byte, 1
+
+CtblChunkLenLo
+	.res byte, 1
+
+CtblChunkLenMidLo
+	.res byte, 1
+
+CtblChunkLenMidHi
+	.res byte, 1
+
+CtblChunkLenHi
+	.res byte, 1
+
+CsemChunkOffsetLo
+	.res byte, 1
+
+CsemChunkOffsetMidLo
+	.res byte, 1
+
+CsemChunkOffsetMidHi
+	.res byte, 1
+
+CsemChunkOffsetHi
+	.res byte, 1
+
+CsemChunkLenLo
+	.res byte, 1
+
+CsemChunkLenMidLo
+	.res byte, 1
+
+CsemChunkLenMidHi
+	.res byte, 1
+
+CsemChunkLenHi
+	.res byte, 1
+
+CmseChunkOffsetLo
+	.res byte, 1
+
+CmseChunkOffsetMidLo
+	.res byte, 1
+
+CmseChunkOffsetMidHi
+	.res byte, 1
+
+CmseChunkOffsetHi
+	.res byte, 1
+
+CmseChunkLenLo
+	.res byte, 1
+
+CmseChunkLenMidLo
+	.res byte, 1
+
+CmseChunkLenMidHi
+	.res byte, 1
+
+CmseChunkLenHi
+	.res byte, 1
+
+	.align 2
+CompactSelectorStringsPtr
+	.res long, 1
+
+CompactSelectorChunkEndPtr
+	.res long, 1
+
+CompactSelectorStringCount
+	.res word, 1
+
+CompactSelectorMnemonicText
+	.res byte, COMPACT_SELECTOR_TEXT_CAPACITY
+
+CompactSelectorShapeText
+	.res byte, COMPACT_SELECTOR_TEXT_CAPACITY
+
+CompactSelectorModeText
+	.res byte, COMPACT_SELECTOR_TEXT_CAPACITY
+
+CompactSelectorPlanText
+	.res byte, COMPACT_SELECTOR_TEXT_CAPACITY
 
 ActiveCpuBuffer
 	.res byte, PIPELINE_ID_BUFFER_CAPACITY
@@ -709,6 +832,15 @@ NextRequestIdHi
 PACKAGE_STATE_CLEAR_END
 
 PACKAGE_STATE_CLEAR_BYTE_COUNT = PACKAGE_STATE_CLEAR_END - PackageStateClearStart
+
+; The public v1 service ABI carries 16-bit control-block-relative pointers.
+; Keep every request/result buffer before this large allocation, while keeping
+; PackageStorage's starting address inside that window. The package can then
+; extend beyond 64 KiB without pushing later ABI buffers out of range.
+PackageStorage
+	.res byte, PACKAGE_STORAGE_CAPACITY
+
+PACKAGE_STORAGE_PTR_V1 = PackageStorage - ControlBlockV1
 
 	.endsection
 	.endmodule

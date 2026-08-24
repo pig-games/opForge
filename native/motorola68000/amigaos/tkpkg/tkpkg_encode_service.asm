@@ -7,6 +7,7 @@
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
 	.use tkpkg.amigaos.selection_service as selection
+	.use tkpkg.amigaos.compact_table as compact
 
 ENCODE_ENVELOPE_MALFORMED_TEXT_LEN = 33
 ENCODE_TABLE_MALFORMED_TEXT_LEN = 30
@@ -39,6 +40,19 @@ encodeSelectedInstructionV1	.block
 	bra.w return
 
 havePipeline
+	moveq #0, d0
+	movea.l d0, a1
+	jsr compact.findFixedProgramFromRequestV1
+	bne.s return
+	tst.w d1
+	beq.s useSelectedEnvelope
+	moveq #0, d5
+	moveq #0, d6
+	movea.l d6, a3
+	bsr.w tkpkgEncodeExecuteProgram
+	bra.s return
+
+useSelectedEnvelope
 	jsr selection.buildSelectedEnvelopeV1
 	bne.s return
 	tst.w d1
@@ -322,7 +336,21 @@ return
 	.bend  ; tkpkgEncodeInstructionEnvelopeV1
 
 tkpkgEncodeFindAndExecuteTableProgram	.block
-	movem.l d2-d7/a0-a6, -(sp)
+	movem.l d2-d7/a0/a2-a6, -(sp)
+	movea.l a6, a1
+	moveq #0, d0
+	move.w d4, d0
+	movem.l d5-d6/a3, -(sp)
+	jsr compact.findFixedProgramFromRequestV1
+	movem.l (sp)+, d5-d6/a3
+	tst.l d0
+	bne.w return
+	tst.w d1
+	beq.s legacyTableLookup
+	bsr.w tkpkgEncodeExecuteProgram
+	bra.w return
+
+legacyTableLookup
 	moveq #0, d0
 	move.b buffers.TablChunkOffsetLo, d0
 	moveq #0, d1
@@ -416,12 +444,12 @@ fail
 	moveq #1, d0
 
 return
-	movem.l (sp)+, d2-d7/a0-a6
+	movem.l (sp)+, d2-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgEncodeFindAndExecuteTableProgram
 
 tkpkgEncodeExecuteProgram	.block
-	movem.l d2-d7/a0-a4, -(sp)
+	movem.l d2-d7/a0/a2-a4, -(sp)
 	movea.l a1, a0
 	move.w d1, d7
 	lea buffers.LastErrorBuffer, a2
@@ -433,7 +461,7 @@ loop
 	move.b (a0)+, d0
 	subq.w #1, d7
 	cmpi.b #$FF, d0
-	beq.s ok
+	beq.s endProgram
 	cmpi.b #$01, d0
 	beq.s emitU8
 	cmpi.b #$02, d0
@@ -443,6 +471,8 @@ loop
 emitU8
 	tst.w d7
 	beq.s fail
+	cmpi.w #buffers.LAST_ERROR_BUFFER_CAPACITY, d1
+	bhs.s fail
 	move.b (a0)+, (a2)+
 	subq.w #1, d7
 	addq.w #1, d1
@@ -479,17 +509,21 @@ operandLoop
 	bne.s operandLoop
 	bra.s loop
 
+endProgram
+	tst.w d7
+	bne.s fail
+
 ok
 	moveq #0, d0
 	bra.s return
 
 fail
-	lea buffers.RuntimeErrorText, a1
-	moveq #buffers.RUNTIME_ERROR_TEXT_LEN, d1
+	lea EncodeTableMalformedText, a1
+	moveq #ENCODE_TABLE_MALFORMED_TEXT_LEN, d1
 	moveq #1, d0
 
 return
-	movem.l (sp)+, d2-d7/a0-a4
+	movem.l (sp)+, d2-d7/a0/a2-a4
 	rts
 	.bend  ; tkpkgEncodeExecuteProgram
 

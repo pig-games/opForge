@@ -7,6 +7,8 @@
 	.cpu 68020
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
+	.use tkpkg.amigaos.compact_table as compact
+	.use tkpkg.amigaos.package_loader
 	.use tkpkg.amigaos.service
 
 SYS_BASE                        = 4
@@ -29,7 +31,7 @@ DEBUG_CLI_MAX_LINE_BYTES        = buffers.LAST_ERROR_BUFFER_CAPACITY - 4
 DEBUG_CLI_FILE_MODE_SINGLE      = 1
 DEBUG_CLI_FILE_MODE_MANIFEST    = 2
 
-PACKAGE_INPUT_PTR_V1           = buffers.LAST_ERROR_BUFFER_PTR_V1 + buffers.LAST_ERROR_BUFFER_CAPACITY
+PACKAGE_INPUT_PTR_V1           = buffers.PACKAGE_STORAGE_PTR_V1
 
 	.section entry, kind=code
 	.pub
@@ -71,17 +73,39 @@ tkpkgDebugCliHaveDos
 
 	lea tkpkgDebugCliPackageData, a1
 	lea buffers.packageStorage, a2
-	move.w TkpkgDebugCliPackageLen, d0
+	move.l TkpkgDebugCliPackageLen, d0
 	bsr.w tkpkgDebugCliCopyBytesV1
+	move.l TkpkgDebugCliPackageLen, d0
+	move.l d0, d1
+	swap d1
+	tst.w d1
+	bne.s tkpkgDebugCliLoadStagedPackage
 
 	lea buffers.ControlBlockV1, a0
 	move.w #PACKAGE_INPUT_PTR_V1, d0
-	move.w TkpkgDebugCliPackageLen, d1
+	move.l TkpkgDebugCliPackageLen, d1
 	bsr.w tkpkgDebugCliWriteInputWindowV1
 	moveq #abi.ENTRY_ORD_LOAD_PACKAGE, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
 	bne.w tkpkgDebugCliReportFailure
+	bra.s tkpkgDebugCliPackageLoaded
+
+tkpkgDebugCliLoadStagedPackage
+	move.l TkpkgDebugCliPackageLen, d0
+	jsr package_loader.tkpkgPackageLoaderLoadStagedV1
+	tst.l d0
+	beq.s tkpkgDebugCliPackageLoaded
+	movea.l a1, a3
+	move.l #FailurePrefixText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	move.l a3, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	move.l #NewlineText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	bra.w tkpkgDebugCliCloseDos
+
+tkpkgDebugCliPackageLoaded
 	move.l #PackageLoadedText, d1
 	bsr.w tkpkgDebugCliPutStrV1
 
@@ -122,6 +146,59 @@ tkpkgDebugCliCopyDefaultSmokePathLoop
 	bne.w tkpkgDebugCliReportFailure
 
 	move.l DebugCliFileModeEnabled, d0
+
+.ifdef OPFORGE_FS_UAE_TKPKG_FIXED_OPCODE
+	lea FixedNopRequest, a1
+	lea buffers.lastErrorBuffer, a2
+	moveq #FIXED_NOP_REQUEST_LEN, d0
+	bsr.w tkpkgDebugCliCopyBytesV1
+
+	lea buffers.ControlBlockV1, a0
+	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
+	moveq #FIXED_NOP_REQUEST_LEN, d1
+	bsr.w tkpkgDebugCliWriteInputWindowV1
+	jsr compact.findFixedProgramFromRequestV1
+	bne.w tkpkgDebugCliReportFixedTableMalformed
+	tst.w d1
+	beq.w tkpkgDebugCliReportFixedTableNoMatch
+	cmpi.w #5, d1
+	bne.w tkpkgDebugCliReportFixedTableMismatch
+	cmpi.b #$01, (a1)+
+	bne.w tkpkgDebugCliReportFixedTableMismatch
+	cmpi.b #$4e, (a1)+
+	bne.w tkpkgDebugCliReportFixedTableMismatch
+	cmpi.b #$01, (a1)+
+	bne.w tkpkgDebugCliReportFixedTableMismatch
+	cmpi.b #$71, (a1)+
+	bne.w tkpkgDebugCliReportFixedTableMismatch
+	cmpi.b #$ff, (a1)
+	bne.w tkpkgDebugCliReportFixedTableMismatch
+	move.l #FixedTableSuccessText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	lea buffers.ControlBlockV1, a0
+	moveq #abi.ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0
+	bsr.w tkpkgDebugCliDispatchServiceV1
+	bsr.w tkpkgDebugCliReadStatusV1
+	bne.w tkpkgDebugCliReportFailure
+	bsr.w tkpkgDebugCliReadOutputLenV1
+	cmpi.w #2, d0
+	bne.w tkpkgDebugCliReportFixedOpcodeMismatch
+	moveq #0, d0
+	move.b abi.CB_OUTPUT_PTR(a0), d0
+	moveq #0, d1
+	move.b 21(a0), d1
+	lsl.w #8, d1
+	or.w d1, d0
+	lea 0(a0, d0.w), a1
+	cmpi.b #$4e, (a1)+
+	bne.w tkpkgDebugCliReportFixedOpcodeMismatch
+	cmpi.b #$71, (a1)
+	bne.w tkpkgDebugCliReportFixedOpcodeMismatch
+	move.l #FixedOpcodeSuccessText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	bra.w tkpkgDebugCliCheckLastErrorClear
+.endif
+
 	cmpi.l #DEBUG_CLI_FILE_MODE_MANIFEST, d0
 	beq.w tkpkgDebugCliPipelineManifestMode
 	tst.l d0
@@ -198,6 +275,26 @@ tkpkgDebugCliReportLastErrorBuffer
 
 tkpkgDebugCliReportEmptyTokenizeOutput
 	move.l #EmptyTokenizeOutputText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	bra.w tkpkgDebugCliCloseDos
+
+tkpkgDebugCliReportFixedOpcodeMismatch
+	move.l #FixedOpcodeMismatchText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	bra.w tkpkgDebugCliCloseDos
+
+tkpkgDebugCliReportFixedTableMalformed
+	move.l #FixedTableMalformedText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	bra.w tkpkgDebugCliCloseDos
+
+tkpkgDebugCliReportFixedTableNoMatch
+	move.l #FixedTableNoMatchText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	bra.w tkpkgDebugCliCloseDos
+
+tkpkgDebugCliReportFixedTableMismatch
+	move.l #FixedTableMismatchText, d1
 	bsr.w tkpkgDebugCliPutStrV1
 
 tkpkgDebugCliCloseDos
@@ -803,12 +900,12 @@ tkpkgDebugCliCloseDosV1
 	rts
 
 tkpkgDebugCliCopyBytesV1
-	move.w d0, d2
+	move.l d0, d2
 	beq.s tkpkgDebugCliCopyDone
 
 tkpkgDebugCliCopyLoop
 	move.b (a1)+, (a2)+
-	subq.w #1, d2
+	subq.l #1, d2
 	bne.s tkpkgDebugCliCopyLoop
 
 tkpkgDebugCliCopyDone
@@ -900,6 +997,33 @@ TokenizeSuccessText
 LastErrorClearText
 	.byte "TKPKG last_error clear OK", 10, 0
 
+FixedOpcodeSuccessText
+	.byte "TKPKG fixed opcode 4E71 OK", 10, 0
+
+FixedOpcodeMismatchText
+	.byte "tkpkg failure: fixed opcode output was not 4E71", 10, 0
+
+FixedTableSuccessText
+	.byte "TKPKG fixed table program 014E0171FF OK", 10, 0
+
+FixedTableMalformedText
+	.byte "tkpkg failure: compact table lookup malformed", 10, 0
+
+FixedTableNoMatchText
+	.byte "tkpkg failure: compact table lookup found no NOP", 10, 0
+
+FixedTableNoOwnerText
+	.byte "tkpkg failure: compact table found no active family owner", 10, 0
+
+FixedTableNoMnemonicText
+	.byte "tkpkg failure: compact table found no NOP string", 10, 0
+
+FixedTableNoProgramText
+	.byte "tkpkg failure: compact table found no NOP program row", 10, 0
+
+FixedTableMismatchText
+	.byte "tkpkg failure: compact table NOP program mismatch", 10, 0
+
 EmptyTokenizeOutputText
 	.byte "tkpkg failure: tokenize_line returned empty output", 10, 0
 
@@ -966,7 +1090,7 @@ DebugCliFileModeEnabled
 	.long 0
 
 TkpkgDebugCliPackageLen
-	.word TKPKG_DEBUG_CLI_PACKAGE_LEN
+	.long TKPKG_DEBUG_CLI_PACKAGE_LEN
 
 setPipelineRequest
 .ifdef TKPKG_DEBUG_PIPELINE_M6502
@@ -1028,6 +1152,13 @@ TokenizeLineRequest
 	.byte "move.b d0,d1"
 tokenizeLineRequestEnd
 
+FixedNopRequest
+	.byte 1, 0, 0, 0
+	.byte 0, 0
+	.byte 0, 0
+	.byte 3, "nop"
+FixedNopRequestEnd
+
 	.align 2
 tkpkgDebugCliPackageData
 	.incbin "../../tkpkg/tkpkg_debug_cli_package.opasm"
@@ -1035,6 +1166,7 @@ TKPKG_DEBUG_CLI_PACKAGE_DATA_END
 
 SET_PIPELINE_REQUEST_LEN = SetPipelineRequestEnd - setPipelineRequest
 TOKENIZE_LINE_REQUEST_LEN = tokenizeLineRequestEnd - TokenizeLineRequest
+FIXED_NOP_REQUEST_LEN = FixedNopRequestEnd - FixedNopRequest
 TKPKG_DEBUG_CLI_PACKAGE_LEN = TKPKG_DEBUG_CLI_PACKAGE_DATA_END - tkpkgDebugCliPackageData
 
 	.endsection

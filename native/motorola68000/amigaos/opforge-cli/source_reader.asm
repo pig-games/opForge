@@ -301,17 +301,31 @@ lineDone
 	; source stream rather than issuing Read against a clobbered handle.
 	move.l d5, -(sp)
 	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
-	bne.s lineDoneRestoreClose
+	bne.s lineDoneProcessFail
 	bsr.w opforgeNativeCliTokenizePendingInclude
-	bne.s lineDoneRestoreClose
+	bne.s lineDoneIncludeFail
 	bsr.w opforgeNativeCliTokenizePendingUseModule
-	bne.s lineDoneRestoreClose
+	bne.s lineDoneModuleFail
 	move.l (sp)+, d5
 	move.l state.NativeCliSourceLineNum, d0
 	addq.l #1, d0
 	move.l d0, state.NativeCliSourceLineNum
 	clr.w state.NativeCliSourceLineLen
 	bra.w loop
+
+lineDoneProcessFail
+	move.l #strings.SourceLineProcessFailureText, d1
+	jsr dos.putErrStr
+	bra.s lineDoneRestoreClose
+
+lineDoneIncludeFail
+	move.l #strings.PendingIncludeFailureText, d1
+	jsr dos.putErrStr
+	bra.s lineDoneRestoreClose
+
+lineDoneModuleFail
+	move.l #strings.PendingModuleFailureText, d1
+	jsr dos.putErrStr
 
 lineDoneRestoreClose
 	move.l (sp)+, d5
@@ -324,13 +338,27 @@ fileEof
 	; callback before the EOF close path consumes it.
 	move.l d5, -(sp)
 	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
-	bne.s fileEofRestoreClose
+	bne.s fileEofProcessFail
 	bsr.w opforgeNativeCliTokenizePendingInclude
-	bne.s fileEofRestoreClose
+	bne.s fileEofIncludeFail
 	bsr.w opforgeNativeCliTokenizePendingUseModule
-	bne.s fileEofRestoreClose
+	bne.s fileEofModuleFail
 	move.l (sp)+, d5
 	bra.s checkModuleDepth
+
+fileEofProcessFail
+	move.l #strings.SourceLineProcessFailureText, d1
+	jsr dos.putErrStr
+	bra.s fileEofRestoreClose
+
+fileEofIncludeFail
+	move.l #strings.PendingIncludeFailureText, d1
+	jsr dos.putErrStr
+	bra.s fileEofRestoreClose
+
+fileEofModuleFail
+	move.l #strings.PendingModuleFailureText, d1
+	jsr dos.putErrStr
 
 fileEofRestoreClose
 	move.l (sp)+, d5
@@ -338,7 +366,12 @@ fileEofRestoreClose
 
 checkModuleDepth
 	jsr preprocessor_definitions.opforgeNativeCliFinishMacroDefinitionsV1
-	bne.s close
+	beq.s macroDefinitionsFinished
+	move.l #strings.MacroDefinitionFinishFailureText, d1
+	jsr dos.putErrStr
+	bra.s close
+
+macroDefinitionsFinished
 	tst.w state.NativeCliIncludeDepth
 	bne.s successClose
 	tst.w state.NativeCliModuleResolveDepth
@@ -388,7 +421,16 @@ return
 ; Clobbers: D0/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliTokenizePendingUseModule	.block
-	movem.l d5-d6, -(sp)
+	movem.l d1/d5-d6/a0-a1, -(sp)
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s ok
+	lea strings.UseDirectiveText, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s ok
 	cmpi.w #-1, state.NativeCliResolvedModuleId
 	beq.s ok
 	move.w state.NativeCliImportCount, d6
@@ -415,7 +457,7 @@ ok
 	moveq #0, d0
 
 return
-	movem.l (sp)+, d5-d6
+	movem.l (sp)+, d1/d5-d6/a0-a1
 	rts
 	.bend  ; opforgeNativeCliTokenizePendingUseModule
 

@@ -27,8 +27,11 @@ resetStateV1	.block
 	movem.l d1/a0-a1, -(sp)
 	clr.w OpasmLayoutRegionCount.l
 	clr.w OpasmLayoutSectionCount.l
-	clr.w OpasmLayoutSectionActive.l
-	move.w #OPASM_LAYOUT_INDEX_NONE, OpasmLayoutActiveSectionIndex.l
+	lea OpasmLayoutSectionActive.l, a0
+	clr.w (a0)
+	moveq #-1, d0
+	lea OpasmLayoutActiveSectionIndex.l, a0
+	move.w d0, (a0)
 	clr.w OpasmLayoutScratchNameLen
 	clr.b OpasmLayoutScratchName
 	clr.w OpasmLayoutScratchSectionOwnerLen
@@ -63,7 +66,13 @@ statementResetLoop
 ; Clobbers: D0/CCR.
 ; CCR: reflects D0 on return.
 beginPassTwoV1	.block
-	clr.w OpasmLayoutSectionActive.l
+	move.l a0, -(sp)
+	lea OpasmLayoutSectionActive.l, a0
+	clr.w (a0)
+	moveq #-1, d0
+	lea OpasmLayoutActiveSectionIndex.l, a0
+	move.w d0, (a0)
+	movea.l (sp)+, a0
 	moveq #0, d0
 	rts
 	.bend  ; beginPassTwoV1
@@ -74,7 +83,8 @@ beginPassTwoV1	.block
 ; CCR: reflects D0 on return.
 processEndsectionV1	.block
 	movem.l d1-d5/a0, -(sp)
-	tst.w OpasmLayoutSectionActive.l
+	lea OpasmLayoutSectionActive.l, a0
+	tst.w (a0)
 	beq.w fail
 	jsr eng.opasmEngineGetSessionPassV1
 	cmpi.w #1, d0
@@ -82,7 +92,8 @@ processEndsectionV1	.block
 	jsr eng.opasmEngineGetSessionCurrentPcV1
 	move.l d0, d1
 	moveq #0, d5
-	move.w OpasmLayoutActiveSectionIndex.l, d5
+	lea OpasmLayoutActiveSectionIndex.l, a0
+	move.w (a0), d5
 	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
 	beq.w fail
 	lea OpasmLayoutSectionStartPcs.l, a0
@@ -93,8 +104,11 @@ processEndsectionV1	.block
 	move.l d1, (a0)
 
 clearActive
-	clr.w OpasmLayoutSectionActive.l
-	move.w #OPASM_LAYOUT_INDEX_NONE, OpasmLayoutActiveSectionIndex.l
+	lea OpasmLayoutSectionActive.l, a0
+	clr.w (a0)
+	moveq #-1, d0
+	lea OpasmLayoutActiveSectionIndex.l, a0
+	move.w d0, (a0)
 	moveq #0, d0
 	bra.w return
 
@@ -113,19 +127,22 @@ return
 ; CCR: reflects D0 on return.
 appendRegionV1	.block
 	movem.l d4-d6/a0-a2, -(sp)
+	movea.l a0, a2
 	cmp.l d1, d2
 	blo.w fail
 	moveq #0, d6
-	move.w OpasmLayoutRegionCount.l, d6
+	lea OpasmLayoutRegionCount.l, a0
+	move.w (a0), d6
 	cmpi.w #OPASM_LAYOUT_REGION_CAPACITY, d6
 	bhs.w fail
-	movea.l d3, a2
+	move.l d3, -(sp)
 	move.l d2, d4
 	move.l d1, d3
 	lea OpasmLayoutRegionNames.l, a1
 	move.l d6, d2
 	lsl.l #5, d2
 	lea 0(a1, d2.w), a1
+	movea.l a2, a0
 	jsr copyNameBytesV1
 	lea OpasmLayoutRegionNameLens.l, a0
 	move.w d6, d5
@@ -146,7 +163,7 @@ appendRegionV1	.block
 	lea OpasmLayoutRegionAligns.l, a0
 	move.w d6, d5
 	jsr longTablePtrV1
-	move.l a2, d0
+	move.l (sp)+, d0
 	move.l d0, (a0)
 	lea OpasmLayoutRegionCount.l, a0
 	addq.w #1, (a0)
@@ -168,26 +185,32 @@ return
 ; CCR: reflects D0 on return.
 appendSectionV1	.block
 	movem.l d3-d6/a0-a2, -(sp)
-	tst.w OpasmLayoutSectionActive.l
+	movea.l a0, a2
+	lea OpasmLayoutSectionActive.l, a0
+	tst.w (a0)
 	bne.w fail
 	moveq #0, d6
-	move.w OpasmLayoutSectionCount.l, d6
+	lea OpasmLayoutSectionCount.l, a0
+	move.w (a0), d6
 	cmpi.w #OPASM_LAYOUT_SECTION_CAPACITY, d6
 	bhs.w fail
-	movea.l d1, a2
+	move.l d1, -(sp)
 	move.l d2, d3
 	lea OpasmLayoutSectionNames.l, a1
 	move.l d6, d2
 	lsl.l #5, d2
 	lea 0(a1, d2.w), a1
+	movea.l a2, a0
 	jsr copyNameBytesV1
 	lea OpasmLayoutSectionNameLens.l, a0
 	move.w d6, d5
 	jsr wordTablePtrV1
 	move.w d0, (a0)
-	lea OpasmLayoutScratchSectionOwner.l, a0
+	lea OpasmLayoutScratchSectionOwnerLen.l, a0
 	moveq #0, d0
-	move.w OpasmLayoutScratchSectionOwnerLen, d0
+	move.w (a0), d0
+	move.w d0, d4
+	lea OpasmLayoutScratchSectionOwner.l, a0
 	move.l d6, d2
 	lsl.l #6, d2
 	lea OpasmLayoutSectionOwnerNames.l, a1
@@ -196,7 +219,7 @@ appendSectionV1	.block
 	lea OpasmLayoutSectionOwnerNameLens.l, a0
 	move.w d6, d5
 	jsr wordTablePtrV1
-	move.w OpasmLayoutScratchSectionOwnerLen, (a0)
+	move.w d4, (a0)
 	lea OpasmLayoutSectionPlacedFlags.l, a0
 	move.w d6, d5
 	jsr wordTablePtrV1
@@ -216,7 +239,7 @@ appendSectionV1	.block
 	lea OpasmLayoutSectionAligns.l, a0
 	move.w d6, d5
 	jsr longTablePtrV1
-	move.l a2, d0
+	move.l (sp)+, d0
 	move.l d0, (a0)
 	lea OpasmLayoutSectionSizes.l, a0
 	move.w d6, d5
@@ -230,8 +253,10 @@ appendSectionV1	.block
 	move.w d6, d5
 	jsr longTablePtrV1
 	move.l d3, (a0)
-	move.w #1, OpasmLayoutSectionActive.l
-	move.w d6, OpasmLayoutActiveSectionIndex.l
+	lea OpasmLayoutSectionActive.l, a0
+	move.w #1, (a0)
+	lea OpasmLayoutActiveSectionIndex.l, a0
+	move.w d6, (a0)
 	lea OpasmLayoutSectionCount.l, a0
 	addq.w #1, (a0)
 	moveq #0, d0
@@ -253,10 +278,13 @@ return
 beginSectionPassTwoV1	.block
 	cmpi.w #OPASM_LAYOUT_SECTION_CAPACITY, d5
 	bhs.w fail
-	cmp.w OpasmLayoutSectionCount.l, d5
+	lea OpasmLayoutSectionCount.l, a0
+	cmp.w (a0), d5
 	bhs.w fail
-	move.w #1, OpasmLayoutSectionActive.l
-	move.w d5, OpasmLayoutActiveSectionIndex.l
+	lea OpasmLayoutSectionActive.l, a0
+	move.w #1, (a0)
+	lea OpasmLayoutActiveSectionIndex.l, a0
+	move.w d5, (a0)
 	move.l d0, d1
 	lea OpasmLayoutSectionStartPcs.l, a0
 	jsr longTablePtrV1
@@ -278,17 +306,21 @@ fail
 placeSectionV1	.block
 	move.l d0, d3
 	moveq #0, d5
-	move.w OpasmLayoutPlaceSectionIndex, d5
+	lea OpasmLayoutPlaceSectionIndex.l, a0
+	move.w (a0), d5
 	moveq #0, d6
-	move.w OpasmLayoutPlaceRegionIndex, d6
+	lea OpasmLayoutPlaceRegionIndex.l, a0
+	move.w (a0), d6
 	move.w d5, d4
 	cmpi.w #OPASM_LAYOUT_SECTION_CAPACITY, d4
 	bhs.w fail
-	cmp.w OpasmLayoutSectionCount.l, d4
+	lea OpasmLayoutSectionCount.l, a0
+	cmp.w (a0), d4
 	bhs.w fail
 	cmpi.w #OPASM_LAYOUT_REGION_CAPACITY, d6
 	bhs.w fail
-	cmp.w OpasmLayoutRegionCount.l, d6
+	lea OpasmLayoutRegionCount.l, a0
+	cmp.w (a0), d6
 	bhs.w fail
 	lea OpasmLayoutSectionPlacedFlags.l, a0
 	move.w d4, d5
@@ -316,7 +348,8 @@ haveSectionAlign
 	jsr longTablePtrV1
 	move.l (a0), d1
 	move.l d3, d0
-	move.w d4, OpasmLayoutPlaceSectionIndex
+	lea OpasmLayoutPlaceSectionIndex.l, a0
+	move.w d4, (a0)
 	bsr.w alignCursorV1
 	bne.w fail
 	; Rust ordinary sections merge by structural section name across module
@@ -324,7 +357,8 @@ haveSectionAlign
 	moveq #0, d2
 	moveq #0, d7
 groupSizeLoop
-	cmp.w OpasmLayoutSectionCount.l, d7
+	lea OpasmLayoutSectionCount.l, a0
+	cmp.w (a0), d7
 	bhs.s groupSizeReady
 	move.w d7, d5
 	bsr.w sectionNameMatchesPlaceTargetV1
@@ -374,7 +408,8 @@ assignGroup
 	move.l d1, d3
 	moveq #0, d7
 assignGroupLoop
-	cmp.w OpasmLayoutSectionCount.l, d7
+	lea OpasmLayoutSectionCount.l, a0
+	cmp.w (a0), d7
 	bhs.s success
 	move.w d7, d5
 	bsr.w sectionNameMatchesPlaceTargetV1
@@ -427,7 +462,8 @@ sectionNameMatchesPlaceTargetV1	.block
 	lea OpasmLayoutSectionNames.l, a0
 	adda.l d2, a0
 	moveq #0, d5
-	move.w OpasmLayoutPlaceSectionIndex, d5
+	lea OpasmLayoutPlaceSectionIndex.l, a1
+	move.w (a1), d5
 	lea OpasmLayoutSectionNameLens.l, a1
 	move.l a0, d4
 	movea.l a1, a0
@@ -448,10 +484,13 @@ sectionNameMatchesPlaceTargetV1	.block
 ; Clobbers: D0/CCR.
 sectionActiveV1	.block
 	moveq #0, d0
-	tst.w OpasmLayoutSectionActive.l
+	move.l a0, -(sp)
+	lea OpasmLayoutSectionActive.l, a0
+	tst.w (a0)
 	beq.s return
 	moveq #1, d0
 return
+	movea.l (sp)+, a0
 	rts
 	.bend  ; sectionActiveV1
 
@@ -467,7 +506,8 @@ findRegionByNameV1	.block
 	moveq #0, d5
 
 loop
-	cmp.w OpasmLayoutRegionCount.l, d5
+	lea OpasmLayoutRegionCount.l, a0
+	cmp.w (a0), d5
 	bhs.s missing
 	lea OpasmLayoutRegionNameLens.l, a0
 	jsr wordTablePtrV1
@@ -506,7 +546,8 @@ findSectionByNameV1	.block
 	moveq #0, d5
 
 loop
-	cmp.w OpasmLayoutSectionCount.l, d5
+	lea OpasmLayoutSectionCount.l, a0
+	cmp.w (a0), d5
 	bhs.s missing
 	lea OpasmLayoutSectionNameLens.l, a0
 	jsr wordTablePtrV1
@@ -547,7 +588,8 @@ findSectionByOwnedNameV1	.block
 	moveq #0, d5
 
 loop
-	cmp.w OpasmLayoutSectionCount.l, d5
+	lea OpasmLayoutSectionCount.l, a0
+	cmp.w (a0), d5
 	bhs.w missing
 	lea OpasmLayoutSectionNameLens.l, a0
 	jsr wordTablePtrV1
@@ -660,7 +702,10 @@ scratchNamePtrV1	.block
 ; Inputs: D0.W = name length.
 ; Clobbers: none.
 setScratchNameLenV1	.block
-	move.w d0, OpasmLayoutScratchNameLen
+	move.l a0, -(sp)
+	lea OpasmLayoutScratchNameLen.l, a0
+	move.w d0, (a0)
+	movea.l (sp)+, a0
 	rts
 	.bend  ; setScratchNameLenV1
 
@@ -671,7 +716,8 @@ setScratchSectionOwnerV1	.block
 	movem.l d1/a0-a1, -(sp)
 	cmpi.w #OPASM_LAYOUT_OWNER_CAPACITY - 1, d0
 	bhi.s fail
-	move.w d0, OpasmLayoutScratchSectionOwnerLen
+	lea OpasmLayoutScratchSectionOwnerLen.l, a1
+	move.w d0, (a1)
 	lea OpasmLayoutScratchSectionOwner.l, a1
 	jsr copyNameBytesV1
 	movem.l (sp)+, d1/a0-a1
@@ -741,6 +787,7 @@ store
 ; Retain the active section owner for one pass-one statement.
 ; Inputs: D0.W = statement index. Outputs: D0.L = 0 on success.
 recordStatementSectionV1	.block
+	movem.l d1/a0-a1, -(sp)
 	cmpi.w #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
 	bhs.s fail
 	moveq #0, d1
@@ -750,12 +797,17 @@ recordStatementSectionV1	.block
 	adda.l d1, a0
 	cmpi.w #OPASM_LAYOUT_INDEX_NONE, (a0)
 	bne.s success
-	move.w OpasmLayoutActiveSectionIndex.l, (a0)
+	lea OpasmLayoutActiveSectionIndex.l, a1
+	move.w (a1), d1
+	move.w d1, (a0)
 success
 	moveq #0, d0
-	rts
+	bra.s return
 fail
 	moveq #1, d0
+
+return
+	movem.l (sp)+, d1/a0-a1
 	rts
 	.bend  ; recordStatementSectionV1
 
@@ -1070,6 +1122,61 @@ return
 	movem.l (sp)+, d2-d7/a0-a2
 	rts
 	.bend  ; translatePassOneAddressV1
+
+; Translate one PC-backed label through the finalized placement of the section
+; that owns its defining statement.  Rust retains labels as section-relative
+; symbols and applies the owning section's placement before pass two; using the
+; statement-to-section relation here avoids guessing ownership from overlapping
+; pass-one address ranges.
+; Inputs: D0.W = label index; D1.L = pass-one label value.
+; Outputs: D0.L = placed label value and D1.L = 1 when translated; otherwise
+; D0.L is the pass-one value and D1.L = 0.
+; Clobbers: D0-D7/A0-A2/CCR.
+translatePassOneLabelAddressV1	.block
+	movem.l d2-d7/a0-a2, -(sp)
+	move.l d1, d7
+	jsr eng.opasmEngineGetLabelStatementIndexV1
+	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d0
+	beq.s notTranslated
+	cmpi.w #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
+	bhs.s notTranslated
+	move.w d0, d2
+	add.w d2, d2
+	lea OpasmLayoutStatementSectionIndices.l, a0
+	moveq #0, d5
+	move.w 0(a0, d2.w), d5
+	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
+	beq.s notTranslated
+	cmpi.w #OPASM_LAYOUT_SECTION_CAPACITY, d5
+	bhs.s notTranslated
+	lea OpasmLayoutSectionCount.l, a0
+	cmp.w (a0), d5
+	bhs.s notTranslated
+	lea OpasmLayoutSectionStartPcs.l, a0
+	jsr longTablePtrV1
+	move.l (a0), d3
+	cmp.l d3, d7
+	blo.s notTranslated
+	lea OpasmLayoutSectionPlacedFlags.l, a0
+	jsr wordTablePtrV1
+	tst.w (a0)
+	beq.s notTranslated
+	lea OpasmLayoutSectionBases.l, a0
+	jsr longTablePtrV1
+	move.l d7, d0
+	sub.l d3, d0
+	add.l (a0), d0
+	moveq #1, d1
+	bra.s return
+
+notTranslated
+	move.l d7, d0
+	moveq #0, d1
+
+return
+	movem.l (sp)+, d2-d7/a0-a2
+	rts
+	.bend  ; translatePassOneLabelAddressV1
 
 ; Resolve retained section maps and rebase each selected logical unit after
 ; concrete placement has finalized but before pass-two expression evaluation.
@@ -1391,9 +1498,10 @@ main
 ; Outputs: A0 = name pointer; D0.L = name length.
 ; Clobbers: D0/A0/CCR.
 getScratchNameV1	.block
-	lea OpasmLayoutScratchName.l, a0
 	moveq #0, d0
-	move.w OpasmLayoutScratchNameLen, d0
+	lea OpasmLayoutScratchNameLen.l, a0
+	move.w (a0), d0
+	lea OpasmLayoutScratchName.l, a0
 	rts
 	.bend  ; getScratchNameV1
 
@@ -1422,9 +1530,10 @@ fail
 ; Outputs: A0/D0 = name and length; D1 = start; D2 = end.
 ; Clobbers: D0-D2/A0/CCR.
 getScratchRegionRequestV1	.block
-	lea OpasmLayoutScratchName.l, a0
 	moveq #0, d0
-	move.w OpasmLayoutScratchNameLen, d0
+	lea OpasmLayoutScratchNameLen.l, a0
+	move.w (a0), d0
+	lea OpasmLayoutScratchName.l, a0
 	move.l OpasmLayoutScratchStart, d1
 	move.l OpasmLayoutScratchEnd, d2
 	rts
@@ -1451,19 +1560,25 @@ placeRegionNamePtrV1	.block
 ; Outputs: D0.L = 0 on success, 1 for an invalid selector.
 ; Clobbers: D0/CCR.
 setPlaceNameLenV1	.block
+	move.l a0, -(sp)
 	tst.w d1
 	beq.s section
 	cmpi.w #1, d1
 	bne.s fail
-	move.w d0, OpasmLayoutPlaceRegionNameLen
+	lea OpasmLayoutPlaceRegionNameLen.l, a0
+	move.w d0, (a0)
 	moveq #0, d0
-	rts
+	bra.s return
 section
-	move.w d0, OpasmLayoutPlaceSectionNameLen
+	lea OpasmLayoutPlaceSectionNameLen.l, a0
+	move.w d0, (a0)
 	moveq #0, d0
-	rts
+	bra.s return
 fail
 	moveq #1, d0
+
+return
+	movea.l (sp)+, a0
 	rts
 	.bend  ; setPlaceNameLenV1
 
@@ -1472,19 +1587,25 @@ fail
 ; Outputs: D0.L = 0 on success, 1 for an invalid selector.
 ; Clobbers: D0/CCR.
 setPlaceIndexV1	.block
+	move.l a0, -(sp)
 	tst.w d1
 	beq.s section
 	cmpi.w #1, d1
 	bne.s fail
-	move.w d0, OpasmLayoutPlaceRegionIndex
+	lea OpasmLayoutPlaceRegionIndex.l, a0
+	move.w d0, (a0)
 	moveq #0, d0
-	rts
+	bra.s return
 section
-	move.w d0, OpasmLayoutPlaceSectionIndex
+	lea OpasmLayoutPlaceSectionIndex.l, a0
+	move.w d0, (a0)
 	moveq #0, d0
-	rts
+	bra.s return
 fail
 	moveq #1, d0
+
+return
+	movea.l (sp)+, a0
 	rts
 	.bend  ; setPlaceIndexV1
 
@@ -1493,9 +1614,10 @@ fail
 ; Outputs: D0.L = 0 on found, 1 when missing; D5.W = index on found.
 ; Clobbers: D0-D5/A0-A1/CCR.
 findScratchNameV1	.block
-	lea OpasmLayoutScratchName.l, a0
 	moveq #0, d0
-	move.w OpasmLayoutScratchNameLen, d0
+	lea OpasmLayoutScratchNameLen.l, a0
+	move.w (a0), d0
+	lea OpasmLayoutScratchName.l, a0
 	tst.w d1
 	bne.s section
 	jsr findRegionByNameV1
@@ -1508,12 +1630,14 @@ section
 ; Find the current scratch section by structural owner and name.
 ; Outputs: D0.L = 0 on found, 1 when missing; D5.W = index on found.
 findScratchOwnedSectionV1	.block
-	lea OpasmLayoutScratchName.l, a0
 	moveq #0, d0
-	move.w OpasmLayoutScratchNameLen, d0
-	lea OpasmLayoutScratchSectionOwner.l, a1
+	lea OpasmLayoutScratchNameLen.l, a0
+	move.w (a0), d0
+	lea OpasmLayoutScratchName.l, a0
 	moveq #0, d1
-	move.w OpasmLayoutScratchSectionOwnerLen, d1
+	lea OpasmLayoutScratchSectionOwnerLen.l, a1
+	move.w (a1), d1
+	lea OpasmLayoutScratchSectionOwner.l, a1
 	jsr findSectionByOwnedNameV1
 	rts
 	.bend  ; findScratchOwnedSectionV1
@@ -1527,13 +1651,15 @@ findPlaceNameV1	.block
 	bne.s section
 	lea OpasmLayoutPlaceRegionName.l, a0
 	moveq #0, d0
-	move.w OpasmLayoutPlaceRegionNameLen, d0
+	lea OpasmLayoutPlaceRegionNameLen.l, a1
+	move.w (a1), d0
 	jsr findRegionByNameV1
 	rts
 section
 	lea OpasmLayoutPlaceSectionName.l, a0
 	moveq #0, d0
-	move.w OpasmLayoutPlaceSectionNameLen, d0
+	lea OpasmLayoutPlaceSectionNameLen.l, a1
+	move.w (a1), d0
 	jsr findSectionByNameV1
 	rts
 	.bend  ; findPlaceNameV1

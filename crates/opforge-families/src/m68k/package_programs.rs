@@ -5637,15 +5637,23 @@ pub fn mode_selectors() -> Vec<ModeSelectorDescriptor> {
                 "absolute-long" => (PARAM_FIXED_EXTENSION_LONG, 0x39),
                 _ => unreachable!("declared unary absolute mode"),
             };
+            let operand_plan = if mode == "absolute-long" {
+                format!(
+                    "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_MEMBER_SHAPE_PREFIX}0{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}L;encode:{PARAM_SCALAR_WORD}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{};fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:{MODE_SELECTOR_PLAN_MEMBER_PREFIX}0{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}L",
+                    base + mode_bits
+                )
+            } else {
+                format!(
+                    "{MODE_SELECTOR_PLAN_SEMANTIC_INPUTS_PREFIX}{program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},{MODE_SELECTOR_PLAN_VALUE_PROGRAM_PREFIX}scalar.absolute-{field}:member0{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}{field}",
+                    base + mode_bits
+                )
+            };
             selectors.push(ModeSelectorDescriptor {
                 owner: ScopedOwner::Family("motorola68000".to_string()),
                 mnemonic: instruction.to_string(),
                 shape_key: "direct".to_string(),
                 mode_key: "semantic".to_string(),
-                operand_plan: format!(
-                    "{MODE_SELECTOR_PLAN_SEMANTIC_INPUTS_PREFIX}{program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},{MODE_SELECTOR_PLAN_VALUE_PROGRAM_PREFIX}scalar.absolute-{field}:member0{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}{field}",
-                    base + mode_bits
-                ),
+                operand_plan,
                 priority: 224 + mode_offset,
                 unstable_widen: false,
                 width_rank: 0,

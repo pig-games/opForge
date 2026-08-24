@@ -4,18 +4,21 @@ name = "native counted repetition expansion"
 kind = "native-rust-parity"
 rust_reference = [
   "crates/opforge-asm/src/repetition.rs::evaluate_for_plan",
-  "crates/opforge-asm/src/repetition_driver.rs"
+  "crates/opforge-asm/src/repetition_driver.rs",
+  "crates/opforge-families/src/m68k/package_programs.rs::mode_selectors"
 ]
 native_boundary = [
   "native/motorola68000/amigaos/opasm/opasm_engine.asm::runPassOne",
   "native/motorola68000/amigaos/opasm/opasm_engine.asm::runPassTwo",
   "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverApplyFlowControl",
-  "native/motorola68000/amigaos/opasm/opasm_flow_repetition.asm::routeDirectiveV1"
+  "native/motorola68000/amigaos/opasm/opasm_flow_repetition.asm::routeDirectiveV1",
+  "Hunk loader relocation of package-encoded qualified unary absolute-long operands"
 ]
-invariant = "A matched `.for <count>` block is skipped at its control records and its complete body is processed exactly count times in both passes, with bounded nesting and iteration count."
+invariant = "A matched `.for <count>` block is skipped at its control records and its complete body is processed exactly count times in both passes; every package-encoded qualified unary absolute-long reference used by the neutral cursor adapter carries a portable relocation into the emitted Hunk."
 assertion_decision = "No runtime assertion: valid zero-count and repeated control flow are external source semantics; explicit status returns fail closed on unmatched blocks, stack capacity, invalid count, and iteration overflow."
-expected_inputs = "Canonical `for_counter_basic.asm` plus zero, nested, and bounded-count host contract inputs."
-expected_outputs = "Each complete `.for` body is visited exactly the selected count in both passes and canonical native bytes equal Rust."
+expected_inputs = "Canonical `for_counter_basic.asm`, canonical block/namespace sources, qualified `TST.W`/`CLR.W` symbolic Hunk operands, plus zero, nested, and bounded-count host contract inputs."
+expected_outputs = "Each complete `.for` body is visited exactly the selected count in both passes, scope directives remain skipped, qualified unary symbol operands emit HUNK_RELOC32, and canonical native bytes equal Rust."
+package_artifact = "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm is regenerated directly by the Rust build_vm_package binary and remains within PACKAGE_STORAGE_CAPACITY."
 known_non_equivalences = "Does not cover iterable `.for`, `.bfor`, or `.while` semantics."
 fast_proof_command = "cargo test -p asm native_counted_for_ -- --nocapture"
 level_d_command = "scripts/workflow/run_native_cli_expansion_completion.sh --manifest documentation/quality-gates/native-cli-expansion-items-5-1-to-5-6-$(git rev-parse --short HEAD).json"
@@ -34,7 +37,19 @@ proves = "Both native passes invoke flow control before ordinary statement callb
 does_not_prove = "Callback execution or emitted bytes."
 
 [[tests]]
+name = "linker_output_hunk_live_path_emits_reloc32_for_qualified_unary_symbol_subset"
+proof_level = "C"
+proves = "Qualified unary absolute-long symbolic operands use the package-owned portable fixup and emit HUNK_RELOC32 records."
+does_not_prove = "AmigaOS loader application or flow callback execution."
+
+[[tests]]
 name = "native_opcore_counted_for_fs_uae"
 proof_level = "D"
 proves = "FS-UAE executes canonical `for_counter_basic.asm` and the native CLI-written binary matches the live Rust CLI."
 does_not_prove = "Iterable `.for`, `.bfor`, or `.while` semantics."
+
+[[tests]]
+name = "native_opcore_scopes_fs_uae"
+proof_level = "D"
+proves = "FS-UAE applies the same relocated pending-flow flag to canonical `.block` and `.namespace` sources and matches live Rust bytes."
+does_not_prove = "Unassigned struct or scoped-repeat semantics."

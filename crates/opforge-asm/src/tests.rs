@@ -14784,7 +14784,9 @@ fn motorola68020_embedded_native_cli_package_matches_rust_default_runtime_packag
 
 #[test]
 fn motorola68020_item14_native_compact_fixed_opcode_uses_item13_exact_package_digest() {
-    const ITEM13_PACKAGE_FNV1A64: u64 = 0xd2f1_94dc_9075_9eb0;
+    // Keep the historical test entrypoint used by the Item 14 slice manifest,
+    // while pinning the exact Rust-built package consumed after Item 14.1.
+    const ITEM14_1_PACKAGE_FNV1A64: u64 = 0x9ecd_a65f_7fb9_d04f;
     let package_path =
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
     let embedded_package = fs::read(&package_path).expect("read Item 13 embedded package");
@@ -14800,8 +14802,8 @@ fn motorola68020_item14_native_compact_fixed_opcode_uses_item13_exact_package_di
             (state ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
         });
     assert_eq!(
-        digest, ITEM13_PACKAGE_FNV1A64,
-        "Item 13 package input digest changed"
+        digest, ITEM14_1_PACKAGE_FNV1A64,
+        "Item 14.1 package input digest changed"
     );
 
     let chunks =
@@ -29922,6 +29924,13 @@ fn linker_output_hunk_live_path_emits_reloc32_for_v03_bare_symbol_instruction_su
         "start: JMP target",
         "start: JSR target",
     ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_qualified_unary_symbol_subset() {
+    for source in ["start: TST.W target.L", "start: CLR.W target.L"] {
         assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
     }
 }

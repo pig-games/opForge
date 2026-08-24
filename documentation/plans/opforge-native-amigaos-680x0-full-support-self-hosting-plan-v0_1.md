@@ -624,6 +624,22 @@ the same unmodified serialized semantic package.
     is tracked as a separate generic flow-navigation regression and is not part
     of Item 14's selector/encoder completion claim.
 
+- [x] Item 14.1: restore the CPU-neutral counted-repetition cursor handoff
+  - Source requirement or finding IDs: Item 14 deferred counted-`.for` regression; native existing-parity completion gate failure before Item 15 closure.
+  - Expected files: the package-owned 680x0 qualified-unary selector, focused portable-relocation and package-digest contracts, the exact Rust-regenerated embedded native package, existing counted-repetition slice record, and this plan; no native CPU-specific logic, repetition syntax, dialect, or directive-parser change.
+  - Full quality gates: Shared Full Quality Gate; focused Hunk `HUNK_RELOC32` proof for qualified `TST.W`/`CLR.W`; `cargo test -p asm native_counted_for_ -- --nocapture`; Level D `native_opcore_counted_for_fs_uae` and `native_opcore_scopes_fs_uae` against live Rust CLI oracles. The complete existing native parity wrapper is intentionally sequenced after this regression lock-down in Item 14.2 because its independent macro/package-selector failure is outside the counted-repetition invariant.
+  - Plan-compliance review evidence: `PASS` — the independent `plan-compliance-reviewer` confirmed the package-owned portable absolute-long relocation repair and exact 367,666-byte Rust-built package refresh; the focused host and fresh Level D counted-`.for`/scope proofs; passing canonical serial Rust/all-family and workflow gates; sufficient 393,216-byte native package capacity; and that no macro implementation or native CPU-specific semantics are staged.
+  - Commit outcome: one focused commit making the existing package-owned qualified-unary selector emit the same portable absolute-long fixup as its bare-symbol form and refreshing the exact Rust-built embedded package/digest.
+  - Definition of done: native Hunk generation relocates every read/write of the shared pending-flow flag, and canonical counted `.for`, `.block`, and `.namespace` emit Rust-identical bytes in fresh FS-UAE guests without a native semantic fallback.
+
+- [ ] Item 14.2: restore structural discrimination for established macro-package selectors
+  - Source requirement or finding IDs: existing native macro-preprocessor harness and native macro CLI completion failures exposed after Item 14.1; Rust package selector precedence and immediate effective-address encoding are authoritative.
+  - Expected files: package-owned 680x0 immediate-memory selectors, focused Rust selector/fixup contracts, exact Rust-regenerated embedded native package and digest, this plan, and the existing macro slice record if its evidence boundary changes; no native CPU-specific semantic fallback.
+  - Full quality gates: Shared Full Quality Gate; focused Rust indexed and absolute-long immediate-memory package proofs; Level D native macro invocation fixture and macro-preprocessor harness in fresh FS-UAE guests; complete existing native parity wrapper.
+  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for direct Rust-to-package selector parity only and confirms no macro semantics or CPU-specific addressing logic moved into the native generic runtime.
+  - Commit outcome: one focused commit restoring the established macro paths by correcting package-owned selector matching/EA-field composition and refreshing the exact Rust-built package.
+  - Definition of done: established macro definition, invocation, substitution, and nested-frame rejection proofs complete in FS-UAE; the complete existing native parity wrapper passes; and all corrected 680x0 forms remain package-driven.
+
 - [ ] Item 15: implement neutral scalar/register and big-endian field operations in the native package runtime
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`-`N68X0-005`, `N68X0-014`-`N68X0-016`.
   - Expected files: native `tkpkg_operand_runtime.asm` and `tkpkg_encode_service.asm`, native/Rust parity tests, one slice record; Item 13 package bytes are frozen inputs.

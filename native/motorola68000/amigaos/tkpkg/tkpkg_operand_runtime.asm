@@ -1291,5 +1291,131 @@ done
 	rts
 	.bend  ; tkpkgOperandFoldAsciiLowerV1
 
+; Locate one top-level operand in the selected source span.  Operand numbering
+; and nesting are syntax-neutral; package input projections decide how the
+; resulting span is interpreted.
+; Inputs: D0.W = zero-based operand index.
+; Outputs: A0/D0 = trimmed operand span, D1 = 0 success or 1 no such operand.
+tkpkgMselLocateSemanticOperandV2	.block
+	movem.l d2-d7/a1-a3, -(sp)
+	move.w d0, d7
+	movea.l state.EncodeSelectedMselExprPtr, a1
+	moveq #0, d6
+	move.w state.EncodeSelectedMselExprLen, d6
+	movea.l a1, a2
+	moveq #0, d5
+	moveq #0, d4
+
+scan
+	tst.l d6
+	beq.s atEnd
+	move.b (a1), d3
+	cmpi.b #'(', d3
+	beq.s open
+	cmpi.b #')', d3
+	beq.s close
+	cmpi.b #',', d3
+	bne.s next
+	tst.w d4
+	bne.s next
+	cmp.w d7, d5
+	beq.s found
+	addq.w #1, d5
+	addq.l #1, a1
+	subq.l #1, d6
+	movea.l a1, a2
+	bra.s scan
+
+open
+	addq.w #1, d4
+	bra.s next
+
+close
+	tst.w d4
+	beq.s fail
+	subq.w #1, d4
+
+next
+	addq.l #1, a1
+	subq.l #1, d6
+	bra.s scan
+
+atEnd
+	tst.w d4
+	bne.s fail
+	cmp.w d7, d5
+	bne.s fail
+
+found
+	movea.l a1, a3
+
+trimStart
+	cmpa.l a3, a2
+	bhs.s fail
+	move.b (a2), d3
+	cmpi.b #' ', d3
+	beq.s trimStartOne
+	cmpi.b #9, d3
+	bne.s trimEnd
+trimStartOne
+	addq.l #1, a2
+	bra.s trimStart
+
+trimEnd
+	movea.l a3, a1
+trimEndLoop
+	cmpa.l a2, a1
+	bls.s fail
+	subq.l #1, a1
+	move.b (a1), d3
+	cmpi.b #' ', d3
+	beq.s trimEndLoop
+	cmpi.b #9, d3
+	beq.s trimEndLoop
+	addq.l #1, a1
+	move.l a1, d0
+	sub.l a2, d0
+	movea.l a2, a0
+	moveq #0, d1
+	bra.s return
+
+fail
+	moveq #0, d0
+	movea.l d0, a0
+	moveq #1, d1
+
+return
+	movem.l (sp)+, d2-d7/a1-a3
+	tst.l d1
+	rts
+	.bend  ; tkpkgMselLocateSemanticOperandV2
+
+; Evaluate a located semantic scalar through the same opcore bridge used by
+; raw package plans.  The projection, not the runtime, decides whether an
+; immediate marker is required and removed.
+; Inputs: A0/D0 = trimmed operand span; D1.B = nonzero to require leading '#'.
+; Outputs: D0 = selected status; D3.L = evaluated scalar on success.
+tkpkgMselEvaluateSemanticSpanV2	.block
+	tst.b d1
+	beq.s evaluate
+	tst.l d0
+	beq.s fail
+	cmpi.b #'#', (a0)
+	bne.s fail
+	addq.l #1, a0
+	subq.l #1, d0
+	beq.s fail
+evaluate
+	bsr.w encodeSelectedOperandV1
+	tst.l d0
+	beq.s ok
+fail
+	moveq #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
+	rts
+ok
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	rts
+	.bend  ; tkpkgMselEvaluateSemanticSpanV2
+
 	.endsection
 	.endmodule

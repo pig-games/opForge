@@ -1,0 +1,54 @@
+[slice]
+schema_version = 2
+name = "native compact semantic scalar and register encoding v3"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 15
+requirements = ["N68X0-001", "N68X0-003", "N68X0-004", "N68X0-005", "N68X0-014", "N68X0-015", "N68X0-016"]
+rust_reference = [
+  "crates/opforge-package/src/package/encoding_program.rs::decode_encoding_program",
+  "crates/opforge-vm/src/encoding_vm.rs::execute_encoding_program",
+  "crates/opforge-vm/src/execution_model/selector_encoding.rs",
+  "crates/opforge-vm/src/execution_model/encoding_bridge.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildCompactSemanticCandidateV2",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgProjectCompactSemanticInputV2",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm::tkpkgMselLocateSemanticOperandV2",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm::tkpkgMselEvaluateSemanticSpanV2",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm::tkpkgEncodeExecuteSemanticProgramV2",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::opcoreExvmEvalOperandWithResolverV1",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverAdvancePc"
+]
+invariant = "After the independently committed counted-.for and macro/text prerequisites, the native generic runtime consumes the exact unmodified Item 13.1 package, projects compact semantic expression, immediate, required-value, and scoped-register inputs into neutral scalar records, and directly executes Rust CSEM v2 Literal, Scalar, and Fields operations with identical signed and unsigned ranges, overlap rejection, unit widths, byte order, termination, and output bounds; generic native control flow contains no family, CPU, mnemonic, register, addressing-mode, or opcode spelling."
+expected_inputs = "The unchanged Item 13.1 all-family package; an active scoped owner; a CMSE v7 semantic plan; neutral operand text; RENC and VALP rows; and a CSEM v2 program limited to Literal, Scalar, and Fields operations."
+expected_outputs = "Byte-for-byte live Rust output for fixed, immediate, scoped-register, signed scalar, big-endian word, and big-endian long forms. Malformed programs, missing inputs, range failures, invalid widths or endian values, overlapping fields, ambiguous rows, trailing bytes, and output overflow fail closed."
+known_non_equivalences = "This slice does not decode effective-address records, execute InputFields or later encoding-program versions, add or transform family package data, implement Hunk or S-record output, stabilize branches/fixups, or claim complete 680x0 support."
+fast_proof_command = "cargo test -p asm motorola68020_item15_native_semantic_v2_is_package_driven_and_fail_closed -- --nocapture && cargo test -p asm motorola68020_item6_7_pass_one_sizes_relative_branches_when_selected_size_is_empty -- --nocapture && python3 scripts/workflow/check_cpu_specific_arch_boundary.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_native_m68000_scalar_register_encoding_parity -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_item15_native_semantic_v2_is_package_driven_and_fail_closed"
+proof_level = "B"
+proves = "Native source owns explicit CSEM v2 opcode, termination, signed/unsigned bounds, endian, field-overlap, 32-bit scalar transport, RENC, VALP, malformed-input, and CPU-neutral architecture-boundary checks."
+does_not_prove = "Execution by a real Amiga guest."
+
+[[tests]]
+name = "motorola68020_item6_7_pass_one_sizes_relative_branches_when_selected_size_is_empty"
+proof_level = "B"
+proves = "The shared native pass-one driver advances by the package encoder's complete returned length instead of a family-specific one-, two-, or three-byte switch."
+does_not_prove = "Runtime bytes or branch stabilization."
+
+[[tests]]
+name = "external_fs_uae_native_m68000_scalar_register_encoding_parity"
+proof_level = "D"
+proves = "A fresh real Amiga guest consumes byte-identical unmodified Rust package data and emits the scalar/register corpus byte-for-byte equal to the in-memory live Rust oracle, including positive and negative scalar values, scoped registers, field insertion, and big-endian words and longs."
+does_not_prove = "Effective-address records, branch/fixup behavior, output formats, or the complete 680x0 surface."
+
+[[tests]]
+name = "native_existing_parity_completion_wrapper"
+proof_level = "D"
+proves = "All 34 established native parity groups remain green, including the already committed counted-.for and macro paths and the package-driven 65x02, Intel 8080, Motorola 6800, and Motorola 68000 family corpora."
+does_not_prove = "New 680x0 behavior beyond this scalar/register slice."

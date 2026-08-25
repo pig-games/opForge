@@ -31,6 +31,8 @@ PACKAGE_CHUNK_PRVM                   = 2
 PACKAGE_CHUNK_CTBL                   = 4
 PACKAGE_CHUNK_CSEM                   = 8
 PACKAGE_CHUNK_CMSE                   = 16
+PACKAGE_CHUNK_RENC                   = 32
+PACKAGE_CHUNK_VALP                   = 64
 PACKAGE_REQUIRED_CHUNK_FLAGS         = 31
 SCOPED_OWNER_FAMILY                  = 0
 SCOPED_OWNER_CPU                     = 1
@@ -91,6 +93,9 @@ PackageChunkFlags
 	.res byte, 1
 
 PackageChunkFlagsHi
+	.res byte, 1
+
+PackageChunkFlagsExtra
 	.res byte, 1
 
 PackageStorageLen
@@ -441,6 +446,54 @@ CmseChunkLenMidHi
 CmseChunkLenHi
 	.res byte, 1
 
+RencChunkOffsetLo
+	.res byte, 1
+
+RencChunkOffsetMidLo
+	.res byte, 1
+
+RencChunkOffsetMidHi
+	.res byte, 1
+
+RencChunkOffsetHi
+	.res byte, 1
+
+RencChunkLenLo
+	.res byte, 1
+
+RencChunkLenMidLo
+	.res byte, 1
+
+RencChunkLenMidHi
+	.res byte, 1
+
+RencChunkLenHi
+	.res byte, 1
+
+ValpChunkOffsetLo
+	.res byte, 1
+
+ValpChunkOffsetMidLo
+	.res byte, 1
+
+ValpChunkOffsetMidHi
+	.res byte, 1
+
+ValpChunkOffsetHi
+	.res byte, 1
+
+ValpChunkLenLo
+	.res byte, 1
+
+ValpChunkLenMidLo
+	.res byte, 1
+
+ValpChunkLenMidHi
+	.res byte, 1
+
+ValpChunkLenHi
+	.res byte, 1
+
 	.align 2
 CompactSelectorStringsPtr
 	.res long, 1
@@ -462,6 +515,17 @@ CompactSelectorModeText
 
 CompactSelectorPlanText
 	.res byte, COMPACT_SELECTOR_TEXT_CAPACITY
+
+CompactSelectorInputText
+	.res byte, COMPACT_SELECTOR_TEXT_CAPACITY
+
+	.align 2
+SemanticInputRecordPtr
+	.res long, 1
+SemanticInputRecordCount
+	.res word, 1
+SemanticFirstInputLen
+	.res word, 1
 
 ActiveCpuBuffer
 	.res byte, PIPELINE_ID_BUFFER_CAPACITY

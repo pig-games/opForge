@@ -29,6 +29,13 @@ execution. The refresh includes the affected opasm bridge/layout routines and
 the tkpkg service, pipeline, selection, operand, encoding, and compact-table
 owners; no CPU-family semantic owner moved into the generic native runtime.
 
+Item 15 refreshed the complete audited manifest after directly porting Rust's
+CPU-neutral CSEM-v2 scalar/register projection and encoding behavior. The
+refresh covers the assembly-driver, operand-evaluation, selection, operand,
+encoding, engine-shape, and expression-bridge owners. The exact Item 13.1
+package remains unchanged; register names, encodings, ranges, field layouts,
+endianness, and emitted opcode values remain package data.
+
 ## Dependency direction
 
 ```text
@@ -64,7 +71,9 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   callback; scoped-struct repeat-label qualification callback; operand/evaluation request
   construction, including delegation of imported-label lookup without owning
   module visibility; selector/encoding adaptation; data/text sizing and emission;
-  remaining layout/region/section/place/pack dispatch; event projection.
+  arbitrary package-returned instruction-size advancement; complete stored
+  directive-operand delegation; remaining layout/region/section/place/pack
+  dispatch; event projection.
 - Inbound users: the CLI engine-callback adapter imports this driver; the
   driver is the session orchestration boundary, not a package or CPU owner.
 - Decision: orchestration stays here. Item 5.8 moves non-structural directive
@@ -112,9 +121,11 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   dispatch, diagnostics, and fallback policy.
 - Decision: this owner constructs engine request envelopes and projects
   active-scope and imported aliases ahead of the unchanged qualified/global
-  label snapshot. Imported names are resolved only through the CLI-owned
-  callback; this module does not own module visibility. It does not select,
-  encode, emit, resolve operands, or own layout behavior.
+  label snapshot. It also supplies the same lexical-scope-first resolver to the
+  expression bridge when a directive expression misses that immutable
+  snapshot. Imported names are resolved only through the CLI-owned callback;
+  this module does not own module visibility. It does not select, encode, emit,
+  own expression syntax, or own layout behavior.
 
 ### `opasm.amigaos.directive_data` (Item 5.9.2 ownership split)
 
@@ -206,12 +217,15 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Mutable state: selected request envelope and candidate traversal cursor; the
   unchanged operand scratch state is shared through the internal selection-state
   module.
-- Routine responsibility groups: selected-request decoding; package MSEL
-  traversal; candidate construction; selected-output diagnostic selection.
+- Routine responsibility groups: selected-request decoding; package MSEL and
+  CSEM-owner traversal; CPU-neutral CMSE-v7 scalar input projection; scoped
+  RENC/VALP program lookup and execution; candidate construction;
+  selected-output diagnostic selection.
 - Decision: this module delegates existing plan interpretation to
   `tkpkg.amigaos.operand_runtime` and reads the session pass through the neutral
-  runtime context. Neither item expands CPU support or changes package
-  semantics.
+  runtime context. Item 15 adds only neutral package record decoding and input
+  projection; all target names, register indices, accepted values, field
+  meanings, and instruction semantics remain package-owned.
 
 ### `tkpkg.amigaos.operand_runtime` (NR-004, Item 5.6.1 ownership split)
 
@@ -221,30 +235,36 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   runtime context, and the expression bridge transition boundary.
 - Mutable state: reads and writes the preserved selection-state scratch layout;
   it does not own package selection or selected-output diagnostics.
-- Routine responsibility groups: unchanged plan-tag dispatch, operand-span
-  normalization, expression evaluation, and candidate-envelope construction.
+- Routine responsibility groups: plan-tag dispatch, operand-span normalization,
+  top-level neutral operand-list splitting, expression evaluation, and
+  candidate-envelope construction.
 - Decision: this is a file-boundary extraction only. Its legacy expression
   bridge receives context-owned copies of symbol names, values, and stability;
-  it no longer receives engine label-table storage. Existing plan tags and
-  emitted bytes are retained exactly; no CPU, family, dialect, or instruction
-  support is added or generalized.
+  it no longer receives engine label-table storage. Item 15 locates and
+  evaluates opaque semantic operand spans without interpreting register,
+  addressing-mode, mnemonic, or CPU spellings; those decisions remain in the
+  package projection rows.
 
 ### `tkpkg.amigaos.encode_service` (NR-004, Item 5.6.2 ownership split)
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm`.
 - Public entries: `encodeInstructionV1` and `encodeSelectedInstructionV1`.
-- Imports/outbound dependencies: tkpkg ABI/buffers, the existing selection
-  service boundary, and the generic compact-table boundary.
+- Imports/outbound dependencies: tkpkg ABI/buffers, private selection state,
+  the existing selection-service boundary, and the generic compact-table
+  boundary.
 - Mutable state: writes the same existing package-service output buffer; it does
   not own pipeline selection, package loading, or status projection.
 - Routine responsibility groups: selected-envelope encoding, legacy
-  package-table lookup, neutral encoding-program execution, compact fixed-row
-  delegation, and encoded-output construction.
+  package-table lookup, neutral CSEM owner/program lookup, direct CSEM-v2
+  Literal/Scalar/Fields execution with bounds/overlap/endianness validation,
+  compact fixed-row delegation, and encoded-output construction.
 - Decision: Item 14 retains this module as the sole neutral bytecode executor
   and routes compact fixed-row discovery through a separate bounded package
   reader. The executor accepts only its existing literal/operand/END contract,
   now rejects trailing bytes and output overflow, and contains no CPU, family,
   dialect, mnemonic, register, addressing-mode, or target-opcode authority.
+  Item 15 extends that same neutral executor with the Rust CSEM-v2 wire
+  operations; it does not add any native target dispatch.
 
 ### `tkpkg.amigaos.compact_table` (NR-004, Item 14 compact package activation)
 
@@ -317,6 +337,9 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   package dependency. Moving these routines would split access to the same
   state without removing a prohibited edge. Later CPU/selector semantic
   remediation remains separately governed and is not authorized by this audit.
+  Item 15 only corrects the generic selected-shape hint so a top-level comma is
+  not misclassified as one legacy immediate operand; the package projection
+  remains authoritative for the composite operand list.
 
 ### `tkpkg.amigaos.tokenizer_vm` (NR-005, retain cohesive)
 
@@ -335,23 +358,27 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 ### `opcore.amigaos.expr_bridge` (NR-008, retained cohesive frontend)
 
 - Source: `native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm`.
-- Public entries: `opcoreExprEvalOperandV1` and `opcoreExvmEvalOperandV1`.
+- Public entries: `opcoreExprEvalOperandV1`, `opcoreExvmEvalOperandV1`, and
+  `opcoreExvmEvalOperandWithResolverV1`.
 - Imports/outbound dependencies: expression VM runtime.
 - Mutable state: selected opcode version plus the private ExprVM program length
   and byte buffer. Parser cursor, literal value, and symbol index are bounded
   call-local register state; evaluator state belongs to the ExprVM runtime.
 - Routine responsibility groups: bounded scalar grammar/literal/symbol-index
-  compilation into versioned ExprVM bytecode, default EXVM program selection,
-  and invocation of the ExprVM runtime.
+  compilation into versioned ExprVM bytecode, optional neutral
+  lexical-context resolution before immutable-snapshot fallback, default EXVM
+  program selection, and invocation of the ExprVM runtime.
 - Inbound users: the tkpkg expression service and operand runtime through the
   two documented public entries.
 - Decision: retain cohesive. This module is the sole native scalar
   text-to-ExprVM frontend; its parser and emitter share one cursor/register ABI
   and private program buffer. It owns no request-envelope, diagnostic, evaluator,
   package-selection, or engine-context policy and imports only the ExprVM
-  runtime. All compiler helpers are private after Item 5.10. The long-term owner
-  remains this bridge until a package parser supplies ExprVM bytecode directly;
-  that future replacement, not a line-count split, is its deletion criterion.
+  runtime. The optional resolver is call-scoped policy supplied by the owner;
+  it does not expose or import engine state. All compiler helpers are private
+  after Item 5.10. The long-term owner remains this bridge until a package
+  parser supplies ExprVM bytecode directly; that future replacement, not a
+  line-count split, is its deletion criterion.
 
 ### `prvm.amigaos.runtime` (NR-005, retain cohesive)
 

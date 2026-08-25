@@ -64,7 +64,13 @@ expressionImportMapped
 ; Outputs: D0 = engine status.
 prepareExpressionExtensionV1	.block
 	moveq #0, d1
-	bra.w prepareExtensionCommon
+	bsr.w prepareExtensionCommon
+	tst.l d0
+	bne.s expressionExtensionReturn
+	movea.l abi.OPASM_SERVICE_EVAL_EXTENSION_PTR(a0), a1
+	move.l #resolveExpressionSymbolV1, 28(a1)
+expressionExtensionReturn
+	rts
 	.bend  ; prepareExpressionExtensionV1
 
 ; Append the evaluation extension and imported aliases for a selected CPU
@@ -93,6 +99,20 @@ resolveSelectedSymbolV1	.block
 	rts
 	.bend  ; resolveSelectedSymbolV1
 
+	.priv
+; Resolve one directive-expression symbol through the same lexical context
+; used by Rust before falling back to the qualified engine table.  ExprVM uses
+; this only when its immutable snapshot lookup misses.
+; Inputs: A0/D0 = token text/length. Outputs: D0 = status; D3 = value.
+resolveExpressionSymbolV1	.block
+	jsr scopes.resolveLabelValueV1
+	beq.s expressionSymbolReturn
+	jsr eng.opasmEngineResolveLabelValueV1
+expressionSymbolReturn
+	rts
+	.bend  ; resolveExpressionSymbolV1
+
+	.pub
 ; Prepare the directive-specific evaluation extension.
 ; Inputs: A0 = OPASM_SERVICE_* frame.
 ; Outputs: D0 = engine status.

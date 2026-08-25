@@ -727,6 +727,84 @@ fn native_expression_metadata_fallback_source_routes_failures_to_stored_text() {
     ));
 }
 
+#[test]
+fn native_numeric_directive_single_part_uses_complete_stored_operand() {
+    // Proof level B. This proves the native numeric-data owner bypasses a
+    // parser-owned expression subspan for its already-delimited single part,
+    // matching Rust's complete directive-operand evaluation. It does not prove
+    // the 68020 execution path or the resulting output bytes.
+    let source = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm assembly driver");
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "readStoredOperandValueForStatement\t.block",
+            "move.w #1, OpasmDriverForceStoredOperand",
+            "bsr.w readOperandValueForStatement",
+            "clr.w OpasmDriverForceStoredOperand",
+            "resolveNumericDataPartForOwner\t.block",
+            "cmpi.w #1, d2",
+            "bsr.w readStoredOperandValueForStatement",
+            "splitPart",
+            "bsr.w readCommaOperandValueForStatement",
+        ]
+    ));
+}
+
+#[test]
+fn native_directive_expression_resolves_lexical_context_before_snapshot() {
+    // Proof level B. This proves the generic directive-expression bridge ports
+    // Rust's lexical-context-before-global-snapshot lookup order. It does not
+    // prove native execution or any CPU-family encoding.
+    let operand_eval = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_operand_eval.asm"),
+    )
+    .expect("read native operand evaluation adapter");
+    let expression_service = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_expression_service.asm"),
+    )
+    .expect("read native expression service");
+    let expr_bridge = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm"),
+    )
+    .expect("read native opcore expression bridge");
+
+    assert!(source_contains_in_order(
+        &operand_eval,
+        &[
+            "prepareExpressionExtensionV1\t.block",
+            "bsr.w prepareExtensionCommon",
+            "move.l #resolveExpressionSymbolV1, 28(a1)",
+            "resolveExpressionSymbolV1\t.block",
+            "jsr scopes.resolveLabelValueV1",
+            "jsr eng.opasmEngineResolveLabelValueV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &expression_service,
+        &[
+            "TKPKG_EVAL_EXPR_EXTENSION_RESOLVER_INPUT_SIZE = 32",
+            "move.l 12(a5), PreparedSymbolResolverPtr",
+            "tst.l PreparedSymbolResolverPtr",
+            "jsr expr_bridge.opcoreExvmEvalOperandWithResolverV1",
+            "evaluateSnapshotOnly",
+            "jsr expr_bridge.opcoreExvmEvalOperandV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &expr_bridge,
+        &[
+            "label",
+            "movea.l OpcoreExvmSymbolResolverPtr, a1",
+            "jsr (a1)",
+            "labelSnapshot",
+            "bsr.w resolveLabelIndex",
+        ]
+    ));
+}
+
 fn native_source_cpu_token_contract(token: &str, trailing: &str) -> Result<String, ()> {
     let requested = if let Some(inner) = token.strip_prefix('"') {
         inner.strip_suffix('"').ok_or(())?
@@ -12205,7 +12283,7 @@ fn external_fs_uae_native_m68k_fixed_opcode_package_parity() {
     let package = fs::read(
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
-    .expect("read exact Item 13 package");
+    .expect("read exact Item 13.1 package");
     let rust_package = build_hierarchy_package_from_registry(&default_registry())
         .expect("build unmodified Rust package vector");
     assert_eq!(
@@ -12274,7 +12352,7 @@ fn external_fs_uae_native_compact_operand_package_parity() {
     let package = fs::read(
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
-    .expect("read exact Item 13 package");
+    .expect("read exact Item 13.1 package");
     let rust_package = build_hierarchy_package_from_registry(&default_registry())
         .expect("build unmodified Rust package vector");
     assert_eq!(
@@ -12313,6 +12391,111 @@ fn external_fs_uae_native_compact_operand_package_parity() {
                 captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
                 rust_oracle
             );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68000_scalar_register_encoding_parity() {
+    // Proof level D. Each fresh guest consumes the exact unmodified Rust-built
+    // all-family package and must match its in-memory Rust oracle for v2
+    // literal/scalar/field programs, package-resolved register indices, and an
+    // actual four-byte big-endian scalar emitted by the 68020 LINK.L form.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = concat!(
+        "        trap #7\n",
+        "        moveq #-1,d7\n",
+        "        swap d3\n",
+        "        ext.w d4\n",
+        "        ext.l d5\n",
+        "        unlk a6\n",
+        "        exg d1,d2\n",
+        "        exg a1,a2\n",
+        "        exg d3,a4\n",
+        "        stop #$2700\n",
+        "        link a6,#-8\n",
+    );
+    let rust_oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m68000"),
+        "item15-native-scalar-register-rust-oracle",
+    )
+    .expect("run live Rust scalar/register oracle");
+    let long_source = "        link.l a6,#-8\n";
+    let long_rust_oracle = live_rust_cpu_name_oracle(
+        long_source,
+        Some("m68020"),
+        "item15-native-big-endian-long-rust-oracle",
+    )
+    .expect("run live Rust big-endian long oracle");
+    assert_eq!(
+        long_rust_oracle,
+        [0x48, 0x0e, 0xff, 0xff, 0xff, 0xf8],
+        "LINK.L must exercise a four-byte big-endian scalar after its opcode"
+    );
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 13.1 package");
+    let rust_package = build_hierarchy_package_from_registry(&default_registry())
+        .expect("build unmodified Rust package vector");
+    assert_eq!(
+        package, rust_package,
+        "native package input must be unmodified"
+    );
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item15-scalar-register",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68000 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_oracle,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item15-big-endian-long",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(long_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &long_rust_oracle,
+            },
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 15 scalar/register FS-UAE parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 2);
+            for (run, expected) in runs
+                .iter()
+                .zip([rust_oracle.as_slice(), long_rust_oracle.as_slice()])
+            {
+                assert!(
+                    run.success,
+                    "native scalar/register run failed\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout, run.stderr
+                );
+                assert_eq!(
+                    captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                    expected
+                );
+            }
         }
     }
 }

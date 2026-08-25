@@ -506,18 +506,50 @@ checkCtbl
 
 checkCsem
 	cmpi.b #'C', (a2)
-	bne.w checkCmse
+	bne.w checkRenc
 	cmpi.b #'S', 1(a2)
-	bne.w checkCmse
+	bne.w checkRenc
 	cmpi.b #'E', 2(a2)
-	bne.w checkCmse
+	bne.w checkRenc
 	cmpi.b #'M', 3(a2)
-	bne.w checkCmse
+	bne.w checkRenc
 	btst #3, buffers.PackageChunkFlagsHi
 	bne.w duplicateChunk
 	lea buffers.CsemChunkOffsetLo, a3
 	bsr.w storeLocator
 	bset #3, buffers.PackageChunkFlagsHi
+	bra.w nextTocEntry
+
+checkRenc
+	cmpi.b #'R', (a2)
+	bne.w checkValp
+	cmpi.b #'E', 1(a2)
+	bne.w checkValp
+	cmpi.b #'N', 2(a2)
+	bne.w checkValp
+	cmpi.b #'C', 3(a2)
+	bne.w checkValp
+	btst #0, buffers.PackageChunkFlagsExtra
+	bne.w duplicateChunk
+	lea buffers.RencChunkOffsetLo, a3
+	bsr.w storeLocator
+	bset #0, buffers.PackageChunkFlagsExtra
+	bra.w nextTocEntry
+
+checkValp
+	cmpi.b #'V', (a2)
+	bne.w checkCmse
+	cmpi.b #'A', 1(a2)
+	bne.w checkCmse
+	cmpi.b #'L', 2(a2)
+	bne.w checkCmse
+	cmpi.b #'P', 3(a2)
+	bne.w checkCmse
+	btst #1, buffers.PackageChunkFlagsExtra
+	bne.w duplicateChunk
+	lea buffers.ValpChunkOffsetLo, a3
+	bsr.w storeLocator
+	bset #1, buffers.PackageChunkFlagsExtra
 	bra.w nextTocEntry
 
 checkCmse

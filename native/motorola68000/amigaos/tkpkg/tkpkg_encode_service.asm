@@ -7,6 +7,7 @@
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
 	.use tkpkg.amigaos.selection_service as selection
+	.use tkpkg.amigaos.selection_state as state
 	.use tkpkg.amigaos.compact_table as compact
 
 ENCODE_ENVELOPE_MALFORMED_TEXT_LEN = 33
@@ -317,6 +318,21 @@ noOperandRecord
 	movea.l a4, a3
 
 encodeCandidate
+	move.l a3, buffers.SemanticInputRecordPtr
+	move.w d5, buffers.SemanticInputRecordCount
+	move.w d6, buffers.SemanticFirstInputLen
+	tst.b state.EncodeSelectedSemanticPlanKind
+	beq.s encodeLegacyCandidate
+	bsr.w tkpkgEncodeFindAndExecuteSemanticProgramV2
+	tst.l d0
+	bne.s return
+	tst.b d3
+	bne.s return
+	lea EncodeTableMalformedText, a1
+	moveq #ENCODE_TABLE_MALFORMED_TEXT_LEN, d1
+	moveq #1, d0
+	bra.s return
+encodeLegacyCandidate
 	bsr.w tkpkgEncodeFindAndExecuteTableProgram
 	bra.s return
 
@@ -448,6 +464,563 @@ return
 	rts
 	.bend  ; tkpkgEncodeFindAndExecuteTableProgram
 
+	.priv
+; Resolve an opaque selected mode as a CSEM program using Rust's
+; dialect/cpu/family precedence, then execute semantic opcode version 2.
+; Inputs are the same selected-envelope registers used by the table path.
+; Outputs: D0 status, D1 encoded length, D3.B found flag.
+tkpkgEncodeFindAndExecuteSemanticProgramV2	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -22(sp), sp
+	clr.w (sp)
+	clr.w 2(sp)
+	clr.w 4(sp)
+	clr.l 6(sp)
+	move.w d4, 10(sp)
+	move.l a6, 12(sp)
+	move.w #$FFFF, 16(sp)
+	move.w #$FFFF, 18(sp)
+	move.w #$FFFF, 20(sp)
+	lea buffers.CsemChunkOffsetLo, a3
+	jsr selection.tkpkgServiceChunkPtrFromLocatorV1
+	bne.w semanticNotFound
+	jsr selection.tkpkgServiceReadU16LeV1
+	bne.w semanticMalformed
+	cmpi.w #1, d0
+	bne.w semanticMalformed
+	jsr selection.tkpkgServiceReadU16LeV1
+	bne.w semanticMalformed
+	tst.w d0
+	beq.w semanticMalformed
+	move.w d0, d7
+	subq.w #1, d7
+	moveq #0, d5
+
+semanticOwnerLoop
+	moveq #1, d0
+	jsr selection.tkpkgServiceRequireBytesV1
+	bne.w semanticMalformed
+	moveq #0, d6
+	move.b (a2)+, d6
+	cmpi.b #2, d6
+	bhi.w semanticMalformed
+	jsr selection.tkpkgServiceLocateStringV1
+	bne.w semanticMalformed
+	move.l a2, -(sp)
+	jsr selection.tkpkgSelectedMselOwnerMatchesV1
+	movea.l (sp)+, a2
+	tst.b d0
+	beq.s semanticOwnerNext
+	tst.b d6
+	beq.s semanticOwnerFamily
+	cmpi.b #1, d6
+	beq.s semanticOwnerCpu
+	move.w d5, 20(sp)
+	bra.s semanticOwnerNext
+semanticOwnerCpu
+	move.w d5, 18(sp)
+	bra.s semanticOwnerNext
+semanticOwnerFamily
+	move.w d5, 16(sp)
+semanticOwnerNext
+	addq.w #1, d5
+	dbf d7, semanticOwnerLoop
+
+	jsr selection.tkpkgServiceReadU32LeLow16V1
+	bne.w semanticMalformed
+	addq.l #4, a2
+	tst.w d0
+	beq.w semanticMalformed
+	move.w d0, d7
+	subq.w #1, d7
+
+semanticProgramLoop
+	jsr selection.tkpkgServiceReadU16LeV1
+	bne.w semanticMalformed
+	move.w d0, d6
+	jsr selection.tkpkgServiceLocateStringV1
+	bne.w semanticMalformed
+	move.l a2, -(sp)
+	move.w 14(sp), d1
+	movea.l 16(sp), a2
+	jsr selection.tkpkgServiceStringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
+	move.w d0, d5
+	jsr selection.tkpkgServiceReadU16LeV1
+	bne.w semanticMalformed
+	move.w d0, d4
+	jsr selection.tkpkgServiceReadU32LeLow16V1
+	bne.w semanticMalformed
+	addq.l #4, a2
+	move.w d0, d1
+	movea.l a2, a0
+	moveq #0, d0
+	move.w d1, d0
+	jsr selection.tkpkgServiceRequireBytesV1
+	bne.w semanticMalformed
+	move.w d0, d1
+	adda.w d0, a2
+	tst.w d5
+	beq.s semanticProgramNext
+	moveq #0, d5
+	cmp.w 16(sp), d6
+	bne.s semanticProgramCpu
+	moveq #1, d5
+semanticProgramCpu
+	cmp.w 18(sp), d6
+	bne.s semanticProgramDialect
+	moveq #2, d5
+semanticProgramDialect
+	cmp.w 20(sp), d6
+	bne.s semanticProgramRanked
+	moveq #3, d5
+semanticProgramRanked
+	tst.w d5
+	beq.s semanticProgramNext
+	cmp.w (sp), d5
+	bls.s semanticProgramNext
+	move.w d5, (sp)
+	move.w d4, 2(sp)
+	move.w d1, 4(sp)
+	move.l a0, 6(sp)
+semanticProgramNext
+	dbf d7, semanticProgramLoop
+	cmpa.l a6, a2
+	bne.s semanticMalformed
+	tst.w (sp)
+	beq.s semanticNotFound
+	cmpi.w #2, 2(sp)
+	bne.s semanticMalformed
+	movea.l 6(sp), a1
+	move.w 4(sp), d1
+	bsr.w tkpkgEncodeExecuteSemanticProgramV2
+	moveq #1, d3
+	bra.s semanticReturn
+
+semanticNotFound
+	moveq #0, d0
+	moveq #0, d1
+	moveq #0, d3
+	bra.s semanticReturn
+semanticMalformed
+	lea EncodeTableMalformedText, a1
+	moveq #ENCODE_TABLE_MALFORMED_TEXT_LEN, d1
+	moveq #1, d0
+	moveq #1, d3
+semanticReturn
+	lea 22(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgEncodeFindAndExecuteSemanticProgramV2
+
+; Direct Rust encoding_vm::execute_encoding_program port for SEMV/CSEM v2.
+; Inputs: A1/D1 = program; D5/D6/A3 = scalar record count/first length/data.
+; Outputs: D0 status; D1 output length in LastErrorBuffer.
+tkpkgEncodeExecuteSemanticProgramV2	.block
+	movem.l d2-d7/a0/a2-a5, -(sp)
+	movea.l a1, a0
+	moveq #0, d0
+	move.w d1, d0
+	lea 0(a0, d0.l), a5
+	lea buffers.LastErrorBuffer, a2
+	clr.w d1
+
+encodingLoop
+	cmpa.l a5, a0
+	bhs.w encodingFail
+	moveq #0, d0
+	move.b (a0)+, d0
+	cmpi.b #$FF, d0
+	beq.w encodingEnd
+	cmpi.b #$01, d0
+	beq.w encodingLiteral
+	cmpi.b #$02, d0
+	beq.w encodingScalar
+	cmpi.b #$03, d0
+	beq.w encodingFields
+	bra.w encodingFail
+
+encodingLiteral
+	moveq #6, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w encodingFail
+	moveq #0, d2
+	move.b (a0)+, d2
+	moveq #0, d4
+	move.b (a0)+, d4
+	bsr.w tkpkgSemanticReadU32LeV2
+	bne.w encodingFail
+	bsr.w tkpkgSemanticValidateUnitV2
+	tst.l d3
+	bne.w encodingFail
+	bsr.w tkpkgSemanticEmitUnitV2
+	tst.l d3
+	bne.w encodingFail
+	bra.w encodingLoop
+
+encodingScalar
+	moveq #19, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w encodingFail
+	moveq #0, d0
+	move.b (a0)+, d0
+	moveq #0, d2
+	move.b (a0)+, d2
+	moveq #0, d4
+	move.b (a0)+, d4
+	lea -22(sp), sp
+	move.w d0, 16(sp)
+	move.w d2, 18(sp)
+	move.w d4, 20(sp)
+	bsr.w tkpkgSemanticReadU32LeV2
+	bne.w encodingScalarFrameFail
+	move.l d0, 12(sp)
+	bsr.w tkpkgSemanticReadU32LeV2
+	bne.w encodingScalarFrameFail
+	move.l d0, 8(sp)
+	bsr.w tkpkgSemanticReadU32LeV2
+	bne.w encodingScalarFrameFail
+	move.l d0, 4(sp)
+	bsr.w tkpkgSemanticReadU32LeV2
+	bne.w encodingScalarFrameFail
+	move.l d0, (sp)
+	moveq #0, d0
+	move.w 16(sp), d0
+	bsr.w tkpkgSemanticLoadInputV2
+	bne.w encodingScalarFrameFail
+	move.l d3, d7
+	moveq #0, d6
+	tst.l d7
+	bpl.s encodingScalarInputHigh
+	moveq #-1, d6
+encodingScalarInputHigh
+	cmp.l 8(sp), d6
+	blt.w encodingScalarFrameFail
+	bgt.s encodingScalarCheckMax
+	cmp.l 12(sp), d7
+	blo.w encodingScalarFrameFail
+encodingScalarCheckMax
+	cmp.l (sp), d6
+	bgt.w encodingScalarFrameFail
+	blt.s encodingScalarRangeOk
+	cmp.l 4(sp), d7
+	bhi.w encodingScalarFrameFail
+encodingScalarRangeOk
+	move.w 18(sp), d2
+	move.w 20(sp), d4
+	move.l d7, d0
+	lea 22(sp), sp
+	cmpi.w #1, d2
+	beq.s encodingScalarMaskByte
+	cmpi.w #2, d2
+	beq.s encodingScalarMaskWord
+	cmpi.w #4, d2
+	bne.w encodingFail
+	bra.s encodingScalarUnitReady
+encodingScalarMaskByte
+	andi.l #$000000FF, d0
+	bra.s encodingScalarUnitReady
+encodingScalarMaskWord
+	andi.l #$0000FFFF, d0
+encodingScalarUnitReady
+	bsr.w tkpkgSemanticValidateUnitV2
+	tst.l d3
+	bne.w encodingFail
+	bsr.w tkpkgSemanticEmitUnitV2
+	tst.l d3
+	bne.w encodingFail
+	bra.w encodingLoop
+encodingScalarFrameFail
+	lea 22(sp), sp
+	bra.w encodingFail
+
+encodingFields
+	moveq #7, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w encodingFail
+	moveq #0, d2
+	move.b (a0)+, d2
+	moveq #0, d4
+	move.b (a0)+, d4
+	bsr.w tkpkgSemanticReadU32LeV2
+	bne.w encodingFail
+	move.l d0, d7
+	bsr.w tkpkgSemanticValidateUnitV2
+	tst.l d3
+	bne.w encodingFail
+	moveq #0, d6
+	move.b (a0)+, d6
+	tst.w d6
+	beq.w encodingFail
+	move.w d6, d0
+	lsl.w #2, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w encodingFail
+	move.w d4, -(sp)
+	move.w d2, -(sp)
+	clr.l -(sp)
+encodingFieldLoop
+	moveq #0, d0
+	move.b (a0)+, d0
+	moveq #0, d5
+	move.b (a0)+, d5
+	moveq #0, d3
+	move.b (a0)+, d3
+	moveq #0, d4
+	move.b (a0)+, d4
+	tst.b d3
+	beq.w encodingFieldStackFail
+	move.w d5, d1
+	add.w d3, d1
+	move.w d2, d0
+	lsl.w #3, d0
+	cmp.w d0, d1
+	bhi.w encodingFieldStackFail
+	cmpi.b #1, d4
+	bhi.w encodingFieldStackFail
+	move.w d0, -(sp)
+	move.w d3, -(sp)
+	move.w d5, -(sp)
+	move.w d4, -(sp)
+	moveq #0, d0
+	move.b -4(a0), d0
+	bsr.w tkpkgSemanticLoadInputV2
+	bne.w encodingFieldLocalsFail
+	move.w 2(sp), d5
+	move.w 4(sp), d4
+	moveq #-1, d0
+	cmpi.w #32, d4
+	beq.s encodingFieldMaskReady
+	moveq #32, d1
+	sub.w d4, d1
+	lsr.l d1, d0
+encodingFieldMaskReady
+	tst.w (sp)
+	bne.s encodingFieldSigned
+	tst.l d3
+	bmi.w encodingFieldLocalsFail
+	cmp.l d0, d3
+	bhi.w encodingFieldLocalsFail
+	bra.s encodingFieldRangeOk
+encodingFieldSigned
+	move.l d0, d1
+	lsr.l #1, d1
+	cmp.l d1, d3
+	bgt.w encodingFieldLocalsFail
+	not.l d1
+	cmp.l d1, d3
+	blt.w encodingFieldLocalsFail
+encodingFieldRangeOk
+	move.l d0, d1
+	lsl.l d5, d1
+	move.l 8(sp), d4
+	and.l d1, d4
+	bne.w encodingFieldLocalsFail
+	or.l d1, 8(sp)
+	and.l d0, d3
+	lsl.l d5, d3
+	not.l d1
+	and.l d1, d7
+	or.l d3, d7
+	lea 8(sp), sp
+	subq.w #1, d6
+	bne.w encodingFieldLoop
+	move.w 4(sp), d2
+	move.w 6(sp), d4
+	lea 8(sp), sp
+	move.l d7, d0
+	bsr.w tkpkgSemanticEmitUnitV2
+	tst.l d3
+	bne.w encodingFail
+	bra.w encodingLoop
+encodingFieldLocalsFail
+	lea 8(sp), sp
+encodingFieldStackFail
+	lea 8(sp), sp
+	bra.w encodingFail
+
+encodingEnd
+	cmpa.l a5, a0
+	bne.s encodingFail
+	move.l a2, d1
+	lea buffers.LastErrorBuffer, a1
+	sub.l a1, d1
+	tst.w d1
+	beq.s encodingFail
+	moveq #0, d0
+	bra.s encodingReturn
+encodingFail
+	lea EncodeTableMalformedText, a1
+	moveq #ENCODE_TABLE_MALFORMED_TEXT_LEN, d1
+	moveq #1, d0
+encodingReturn
+	movem.l (sp)+, d2-d7/a0/a2-a5
+	rts
+	.bend  ; tkpkgEncodeExecuteSemanticProgramV2
+
+tkpkgSemanticRequireProgramBytesV2	.block
+	movea.l a0, a1
+	adda.l d0, a1
+	cmpa.l a5, a1
+	bhi.s semanticRequireFail
+	moveq #0, d1
+	rts
+semanticRequireFail
+	moveq #1, d1
+	rts
+	.bend  ; tkpkgSemanticRequireProgramBytesV2
+
+tkpkgSemanticReadU32LeV2	.block
+	moveq #4, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.s semanticReadFail
+	moveq #0, d0
+	move.b (a0)+, d0
+	moveq #0, d1
+	move.b (a0)+, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a0)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a0)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	rts
+semanticReadFail
+	moveq #1, d1
+	rts
+	.bend  ; tkpkgSemanticReadU32LeV2
+
+; Validate width/endian and that D0 fits the selected unit. D3 is status.
+tkpkgSemanticValidateUnitV2	.block
+	cmpi.w #1, d2
+	beq.s semanticValidateByte
+	cmpi.w #2, d2
+	beq.s semanticValidateWord
+	cmpi.w #4, d2
+	bne.s semanticValidateFail
+	bra.s semanticValidateEndian
+semanticValidateByte
+	cmpi.l #$000000FF, d0
+	bhi.s semanticValidateFail
+	bra.s semanticValidateEndian
+semanticValidateWord
+	cmpi.l #$0000FFFF, d0
+	bhi.s semanticValidateFail
+semanticValidateEndian
+	cmpi.w #1, d4
+	bhi.s semanticValidateFail
+	moveq #0, d3
+	rts
+semanticValidateFail
+	moveq #1, d3
+	rts
+	.bend  ; tkpkgSemanticValidateUnitV2
+
+; Emit D0 in width D2 and endian D4.
+tkpkgSemanticEmitUnitV2	.block
+	move.l a2, d3
+	lea buffers.LastErrorBuffer, a4
+	sub.l a4, d3
+	add.l d2, d3
+	cmpi.l #buffers.LAST_ERROR_BUFFER_CAPACITY, d3
+	bhi.s semanticEmitFail
+	tst.b d4
+	bne.s semanticEmitLittle
+	cmpi.w #4, d2
+	beq.s semanticEmitBig4
+	cmpi.w #2, d2
+	beq.s semanticEmitBig2
+	move.b d0, (a2)+
+	bra.s semanticEmitDone
+semanticEmitBig4
+	move.l d0, d3
+	lsr.l #8, d3
+	lsr.l #8, d3
+	lsr.l #8, d3
+	move.b d3, (a2)+
+	move.l d0, d3
+	lsr.l #8, d3
+	lsr.l #8, d3
+	move.b d3, (a2)+
+semanticEmitBig2
+	move.l d0, d3
+	lsr.l #8, d3
+	move.b d3, (a2)+
+	move.b d0, (a2)+
+	bra.s semanticEmitDone
+semanticEmitLittle
+	move.l d0, d3
+	move.w d2, d5
+	move.b d3, (a2)+
+	subq.w #1, d5
+	beq.s semanticEmitRestoreWidth
+semanticEmitLittleLoop
+	lsr.l #8, d3
+	move.b d3, (a2)+
+	subq.w #1, d5
+	bne.s semanticEmitLittleLoop
+semanticEmitRestoreWidth
+semanticEmitDone
+	moveq #0, d3
+	rts
+semanticEmitFail
+	moveq #1, d3
+	rts
+	.bend  ; tkpkgSemanticEmitUnitV2
+
+; Load one four-byte little-endian scalar record by index.
+; Inputs: D0.W index; D5/D6/A3 selected operand records.
+; Outputs: D0 status; D3 value.
+tkpkgSemanticLoadInputV2	.block
+	cmp.w buffers.SemanticInputRecordCount, d0
+	bhs.s semanticInputFail
+	move.w d0, d4
+	movea.l buffers.SemanticInputRecordPtr, a4
+	move.w buffers.SemanticFirstInputLen, d2
+	tst.w d4
+	beq.s semanticInputReady
+semanticInputScan
+	adda.w d2, a4
+	moveq #0, d2
+	move.b (a4)+, d2
+	subq.w #1, d4
+	bne.s semanticInputScan
+semanticInputReady
+	cmpi.w #4, d2
+	bne.s semanticInputFail
+	moveq #0, d3
+	move.b (a4)+, d3
+	moveq #0, d4
+	move.b (a4)+, d4
+	lsl.l #8, d4
+	or.l d4, d3
+	moveq #0, d4
+	move.b (a4)+, d4
+	lsl.l #8, d4
+	lsl.l #8, d4
+	or.l d4, d3
+	moveq #0, d4
+	move.b (a4)+, d4
+	lsl.l #8, d4
+	lsl.l #8, d4
+	lsl.l #8, d4
+	or.l d4, d3
+	moveq #0, d0
+	rts
+semanticInputFail
+	moveq #1, d0
+	rts
+	.bend  ; tkpkgSemanticLoadInputV2
+
+	.pub
 tkpkgEncodeExecuteProgram	.block
 	movem.l d2-d7/a0/a2-a4, -(sp)
 	movea.l a1, a0

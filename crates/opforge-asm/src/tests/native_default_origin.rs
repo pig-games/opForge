@@ -111,9 +111,16 @@ fn native_default_origin_source_contract() {
             "jsr layout.sectionActiveV1",
             "bne.s advanceLayoutReady",
             "move.w #1, OpasmDriverImageBaseSeen",
-            "advanceOne",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "selectedSizeKnown",
+            "move.l d0, d1",
+            "beq.w done",
             "jsr layout.sectionActiveV1",
-            "bne.s advanceOneReady",
+            "bne.s selectedAdvanceReady",
             "move.w #1, OpasmDriverImageBaseSeen",
         ]
     ));

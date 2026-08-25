@@ -71,10 +71,29 @@ EXVM_OPCODE_FAIL                = $03
 ; ---------------------------------------------------------------------------
 opcoreExprEvalOperandV1	.block
 	moveq #1, d4
-	bra.w opcoreExvmEvalOperandV1
 	.bend  ; opcoreExprEvalOperandV1
 
 opcoreExvmEvalOperandV1	.block
+	clr.l OpcoreExvmSymbolResolverPtr
+	bra.s opcoreExvmEvalOperandCommon
+	.bend  ; opcoreExvmEvalOperandV1
+
+; Evaluate with an optional CPU-neutral lexical resolver fallback.
+; Inputs match opcoreExvmEvalOperandV1; A5 is a callback receiving A0/D0 token
+; text and returning D0 status plus D3 value.
+; @opforge-owner: opcore.amigaos.expr_bridge
+; @opforge-slice: documentation/plans/slices/native-porting-slice-scalar-register-encoding-v3.toml
+; @opforge-role: facade
+opcoreExvmEvalOperandWithResolverV1	.block
+	move.l a5, OpcoreExvmSymbolResolverPtr
+	.bend  ; opcoreExvmEvalOperandWithResolverV1
+
+	.priv
+; Shared implementation for snapshot-only and lexical-context entry points.
+; @opforge-owner: opcore.amigaos.expr_bridge
+; @opforge-slice: documentation/plans/slices/native-porting-slice-scalar-register-encoding-v3.toml
+; @opforge-role: delegation
+opcoreExvmEvalOperandCommon	.block
 	move.w d4, OpcoreExvmSelectedOpcodeVersion
 	movem.l d1-d2/d6-d7/a0-a5, -(sp)
 	cmpi.w #2, d5
@@ -123,8 +142,7 @@ fail
 return
 	movem.l (sp)+, d1-d2/d6-d7/a0-a5
 	rts
-	.bend  ; opcoreExvmEvalOperandV1
-	.priv
+	.bend  ; opcoreExvmEvalOperandCommon
 
 selectProgram	.block
 	moveq #0, d0
@@ -1130,6 +1148,29 @@ label
 	move.l d0, d6
 	bsr.w termLength
 	move.l d0, d2
+	; Rust resolves through the active lexical evaluation context before the
+	; broad immutable snapshot.  Preserve that ordering when a native caller
+	; supplied the neutral resolver callback.
+	movea.l OpcoreExvmSymbolResolverPtr, a1
+	move.l a1, d5
+	beq.s labelSnapshot
+	movem.l d2/d6/a0, -(sp)
+	move.l d2, d0
+	jsr (a1)
+	movem.l (sp)+, d2/d6/a0
+	tst.l d0
+	bne.s labelSnapshot
+	move.l d0, -(sp)
+	bsr.w emitPushLiteralD3
+	move.l d0, d5
+	move.l (sp)+, d0
+	bne.w maybeApplyUnary
+	adda.l d2, a0
+	move.l d6, d0
+	sub.l d2, d0
+	bra.w maybeApplyUnary
+
+labelSnapshot
 	bsr.w resolveLabelIndex
 	move.l d0, d5
 	beq.s labelResolved
@@ -1907,6 +1948,8 @@ OpcoreExvmSelectedOpcodeVersion
 OpcoreExvmSawUnresolvedSymbol
 	.res byte, 1
 	.align 2
+OpcoreExvmSymbolResolverPtr
+	.res long, 1
 OpcoreExprVmProgramLen
 	.res word, 1
 OpcoreExprVmProgramBuffer

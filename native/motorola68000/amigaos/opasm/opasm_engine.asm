@@ -2280,6 +2280,7 @@ checkTopLevelComma
 	movea.l a0, a1
 	move.w d2, d4
 	moveq #0, d5
+	moveq #0, d6
 
 commaScan
 	tst.w d4
@@ -2289,6 +2290,11 @@ commaScan
 	beq.s commaOpen
 	cmpi.b #')', d3
 	beq.s commaClose
+	cmpi.b #',', d3
+	bne.s commaNext
+	tst.w d5
+	bne.s commaNext
+	moveq #1, d6
 	bra.s commaNext
 
 commaOpen
@@ -2315,7 +2321,15 @@ ready
 checkPrefix
 	move.b (a0), d3
 	cmpi.b #'#', d3
-	beq.w immediate
+	bne.s checkParenPrefix
+	; A top-level comma means this is a composite operand list.  Do not label
+	; the whole list with the legacy single-immediate shape; the package-owned
+	; semantic input plan resolves its components and register classes.
+	tst.w d6
+	bne.w none
+	bra.w immediate
+
+checkParenPrefix
 	cmpi.b #'(', d3
 	beq.w paren
 	bsr.w inferSelectedShapeSuffix

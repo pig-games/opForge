@@ -1587,12 +1587,17 @@ selectedSizeOk
 	jsr layout.recordReachableLabelV1
 	bne.w done
 selectedSizeKnown
-	cmpi.w #1, d1
-	beq.w advanceOne
-	cmpi.w #2, d1
-	beq.w advanceTwo
-	cmpi.w #3, d1
-	beq.w advanceThree
+	moveq #0, d0
+	move.w d1, d0
+	move.l d0, d1
+	beq.w done
+	jsr layout.sectionActiveV1
+	tst.l d0
+	bne.s selectedAdvanceReady
+	move.w #1, OpasmDriverImageBaseSeen
+selectedAdvanceReady
+	move.l d1, d0
+	jsr eng.opasmEngineAdvancePcBySizeV1
 	bra.w done
 
 org
@@ -1734,36 +1739,6 @@ ptext
 	bsr.w textDirectiveSizeForStatement
 	beq.s advanceLayoutD3
 	bra.w orgBad
-
-advanceOne
-	jsr layout.sectionActiveV1
-	tst.l d0
-	bne.s advanceOneReady
-	move.w #1, OpasmDriverImageBaseSeen
-advanceOneReady
-	moveq #1, d0
-	jsr eng.opasmEngineAdvancePcBySizeV1
-	bra.w done
-
-advanceTwo
-	jsr layout.sectionActiveV1
-	tst.l d0
-	bne.s advanceTwoReady
-	move.w #1, OpasmDriverImageBaseSeen
-advanceTwoReady
-	moveq #2, d0
-	jsr eng.opasmEngineAdvancePcBySizeV1
-	bra.w done
-
-advanceThree
-	jsr layout.sectionActiveV1
-	tst.l d0
-	bne.s advanceThreeReady
-	move.w #1, OpasmDriverImageBaseSeen
-advanceThreeReady
-	moveq #3, d0
-	jsr eng.opasmEngineAdvancePcBySizeV1
-	bra.w done
 
 done
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
@@ -2011,14 +1986,27 @@ return
 readWhileConditionForStatement	.block
 	bsr.w readCurrentPcWhileCondition
 	beq.s return
+	bsr.w readStoredOperandValueForStatement
+return
+	rts
+	.bend  ; readWhileConditionForStatement
+
+	.priv
+; Evaluate the complete stored operand instead of a parser-owned expression
+; subspan. Directive operands are already split at their directive boundary;
+; Rust evaluates each resulting operand as one complete expression.
+; @opforge-owner: opasm.amigaos.operand_eval
+; @opforge-slice: documentation/plans/slices/native-porting-slice-scalar-register-encoding-v3.toml
+; @opforge-role: delegation
+; Inputs/outputs/clobbers match readOperandValueForStatement.
+readStoredOperandValueForStatement	.block
 	move.w #1, OpasmDriverForceStoredOperand
 	bsr.w readOperandValueForStatement
 	move.l d0, -(sp)
 	clr.w OpasmDriverForceStoredOperand
 	move.l (sp)+, d0
-return
 	rts
-	.bend  ; readWhileConditionForStatement
+	.bend  ; readStoredOperandValueForStatement
 
 ; Evaluate `$ < literal` or `$ <= literal` against the current session PC.
 ; Inputs: D7.W = statement index.
@@ -3244,7 +3232,7 @@ return
 resolveNumericDataPartForOwner	.block
 	cmpi.w #1, d2
 	bne.s splitPart
-	bsr.w readOperandValueForStatement
+	bsr.w readStoredOperandValueForStatement
 	rts
 
 splitPart

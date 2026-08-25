@@ -14583,6 +14583,9 @@ fn motorola68020_item6_7_selected_shape_inference_uses_request_span_slice() {
             "commaScan",
             "CMPI.B #'(', D3",
             "CMPI.B #')', D3",
+            "CMPI.B #',', D3",
+            "TST.W D5",
+            "MOVEQ #1, D6",
             "BRA.S commaNext",
             "ready",
         ]
@@ -14610,7 +14613,11 @@ fn motorola68020_item6_8_native_shape_inference_has_no_mos_mnemonic_classifiers(
             "ready",
             "checkPrefix",
             "CMPI.B #'#', D3",
-            "BEQ.W immediate",
+            "BNE.S checkParenPrefix",
+            "TST.W D6",
+            "BNE.W none",
+            "BRA.W immediate",
+            "checkParenPrefix",
             "CMPI.B #'(', D3",
             "BEQ.W paren",
             "BSR.W inferSelectedShapeSuffix",
@@ -14874,6 +14881,136 @@ fn motorola68020_item14_native_compact_fixed_opcode_guards_version_and_malformed
 }
 
 #[test]
+fn motorola68020_item15_native_semantic_v2_is_package_driven_and_fail_closed() {
+    let loader = tkpkg_amigaos_source("tkpkg_package_loader.asm");
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
+    let encode = tkpkg_amigaos_source("tkpkg_encode_service.asm");
+
+    assert!(loader.contains("buffers.RencChunkOffsetLo"));
+    assert!(loader.contains("buffers.ValpChunkOffsetLo"));
+    assert!(selection.contains("tkpkgBuildCompactSemanticCandidateV2"));
+    assert!(selection.contains("tkpkgFindScopedRegisterEncodingV1"));
+    assert!(selection.contains("tkpkgExecuteScopedValueProgramV1"));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "buildSelectedEnvelopeV1",
+            "clr.l state.EncodeSelectedSemanticPlanPtr",
+            "clr.b state.EncodeSelectedSemanticPlanKind",
+            "cmseSelectorLoop",
+            "move.l a2, state.EncodeSelectedSemanticPlanPtr",
+            "move.b d0, state.EncodeSelectedSemanticPlanKind",
+            "cmseStructuredCandidate",
+            "move.b state.EncodeSelectedSemanticPlanKind, d0",
+            "movea.l state.EncodeSelectedSemanticPlanPtr, a1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "cmseStringNext",
+            "cmpi.w #$FFFF, d0",
+            "beq.w cmseUnknown",
+            "cmseHaveStringKeys",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "tkpkgParseU16DecimalV2",
+            "cmpi.l #$00001999, d3",
+            "cmpi.b #5, d4",
+            "parseU16Accumulate",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "tkpkgParseU32DecimalV2",
+            "cmpi.l #$19999999, d3",
+            "cmpi.b #5, d4",
+            "tkpkgParseSignedDecimalV2",
+            "bsr.w tkpkgParseU32DecimalV2",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "tkpkgProjectRequiredValueV1",
+            "lea RequiredValuePrefixText, a2",
+            "tkpkgExecuteScopedValueProgramV1",
+        ]
+    ));
+    assert!(!selection.contains("RequiredValuePrefixText(pc)"));
+    assert!(operand.contains("tkpkgMselLocateSemanticOperandV2"));
+    assert!(operand.contains("tkpkgMselEvaluateSemanticSpanV2"));
+    assert!(source_contains_in_order(
+        &encode,
+        &[
+            "encodeCandidate",
+            "tst.b state.EncodeSelectedSemanticPlanKind",
+            "beq.s encodeLegacyCandidate",
+            "tkpkgEncodeExecuteSemanticProgramV2",
+            "cmpi.b #$01, d0",
+            "cmpi.b #$02, d0",
+            "cmpi.b #$03, d0",
+            "bra.w encodingFail",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &encode,
+        &[
+            "encodeLegacyCandidate",
+            "bsr.w tkpkgEncodeFindAndExecuteTableProgram",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &encode,
+        &["encodingEnd", "cmpa.l a5, a0", "bne.s encodingFail"]
+    ));
+    assert!(source_contains_in_order(
+        &encode,
+        &[
+            "encodingScalarRangeOk",
+            "encodingScalarMaskByte",
+            "andi.l #$000000FF, d0",
+            "encodingScalarMaskWord",
+            "andi.l #$0000FFFF, d0",
+            "tkpkgSemanticEmitUnitV2",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &encode,
+        &[
+            "encodingFields",
+            "encodingFieldMaskReady",
+            "encodingFieldSigned",
+            "encodingFieldRangeOk",
+            "tkpkgSemanticEmitUnitV2",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &encode,
+        &[
+            "tkpkgSemanticEmitUnitV2",
+            "semanticEmitBig4",
+            "semanticEmitBig2",
+            "semanticEmitLittle",
+        ]
+    ));
+
+    for forbidden in ["m68000", "motorola68000"] {
+        assert!(
+            !selection.to_ascii_lowercase().contains(forbidden)
+                && !operand.to_ascii_lowercase().contains(forbidden)
+                && !encode.to_ascii_lowercase().contains(forbidden),
+            "generic Item 15 runtime must not own target spelling {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn motorola68020_item6_7_pass_one_sizes_relative_branches_when_selected_size_is_empty() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
@@ -14888,8 +15025,13 @@ fn motorola68020_item6_7_pass_one_sizes_relative_branches_when_selected_size_is_
             "BEQ.S selectedSizeOk",
             "JSR eng.opasmEngineStatementLooksBareColumnOneV1",
             "selectedSizeOk",
-            "CMPI.W #1, D1",
-            "MOVEQ #1, D0",
+            "selectedSizeKnown",
+            "MOVEQ #0, D0",
+            "MOVE.W D1, D0",
+            "MOVE.L D0, D1",
+            "JSR layout.sectionActiveV1",
+            "MOVE.L D1, D0",
+            "JSR eng.opasmEngineAdvancePcBySizeV1",
         ]
     ));
 
@@ -16706,7 +16848,7 @@ fn motorola68020_opasm_directive_data_owns_numeric_size_calculation() {
         &driver,
         &[
             "resolveNumericDataPartForOwner .BLOCK",
-            "BSR.W readOperandValueForStatement",
+            "BSR.W readStoredOperandValueForStatement",
             "splitPart",
             "BSR.W readCommaOperandValueForStatement",
         ]
@@ -17075,6 +17217,8 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
     assert!(source.contains(".module opcore.amigaos.expr_bridge"));
     assert!(source.contains("opcoreExprEvalOperandV1"));
     assert!(source.contains("opcoreExvmEvalOperandV1"));
+    assert!(source.contains("opcoreExvmEvalOperandWithResolverV1"));
+    assert!(source.contains("opcoreExvmEvalOperandCommon"));
     assert!(source.contains("EXVM_OPCODE_PARSE_EXPRESSION"));
     assert!(source.contains("EXVM_OPCODE_END"));
     assert!(source.contains("EXPRVM_V2_OPCODE_PUSH_LITERAL"));
@@ -17096,7 +17240,9 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
             ".pub",
             "opcoreExprEvalOperandV1 .BLOCK",
             "opcoreExvmEvalOperandV1 .BLOCK",
+            "opcoreExvmEvalOperandWithResolverV1 .BLOCK",
             ".priv",
+            "opcoreExvmEvalOperandCommon .BLOCK",
             "selectProgram .BLOCK",
         ]
     ));
@@ -17130,14 +17276,27 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
             "expected {routine_name} routine to exist"
         );
     }
-    assert!(routine_contains_in_order(
+    assert!(routine_contains(
         &source,
         "opcoreExprEvalOperandV1",
-        &["moveq #1, d4", "bra.w opcoreExvmEvalOperandV1"]
+        "moveq #1, d4"
     ));
     assert!(routine_contains_in_order(
         &source,
         "opcoreExvmEvalOperandV1",
+        &[
+            "clr.l OpcoreExvmSymbolResolverPtr",
+            "bra.s opcoreExvmEvalOperandCommon",
+        ]
+    ));
+    assert!(routine_contains(
+        &source,
+        "opcoreExvmEvalOperandWithResolverV1",
+        "move.l a5, OpcoreExvmSymbolResolverPtr"
+    ));
+    assert!(routine_contains_in_order(
+        &source,
+        "opcoreExvmEvalOperandCommon",
         &[
             "move.w d4, OpcoreExvmSelectedOpcodeVersion",
             "cmpi.w #2, d5",

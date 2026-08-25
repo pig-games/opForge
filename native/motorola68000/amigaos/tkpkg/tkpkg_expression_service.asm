@@ -10,6 +10,7 @@
 
 TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE = 9
 TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE = 16
+TKPKG_EVAL_EXPR_EXTENSION_RESOLVER_INPUT_SIZE = 32
 TKPKG_EVAL_EXPR_EXTENSION_RESULT_OFF = 16
 EVAL_EXPR_NEEDS_PIPELINE_TEXT_LEN = 45
 EVAL_EXPR_FAILED_TEXT_LEN = 36
@@ -79,6 +80,8 @@ PreparedLabelCount
 PreparedCurrentPc
 	.res long, 1
 PreparedExtensionPtr
+	.res long, 1
+PreparedSymbolResolverPtr
 	.res long, 1
 PreparedFlags
 	.res word, 1
@@ -189,6 +192,7 @@ havePipeline
 	clr.l PreparedLabelCount
 	clr.l PreparedCurrentPc
 	clr.l PreparedExtensionPtr
+	clr.l PreparedSymbolResolverPtr
 	cmpi.w #TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE, d1
 	bcs.s prepared
 	lea 0(a0, d0.W), a5
@@ -202,6 +206,9 @@ havePipeline
 	move.l d2, PreparedLabelCount
 	move.l d3, PreparedCurrentPc
 	bset #0, PreparedFlags
+	cmpi.w #TKPKG_EVAL_EXPR_EXTENSION_RESOLVER_INPUT_SIZE, d1
+	bcs.s prepared
+	move.l 12(a5), PreparedSymbolResolverPtr
 
 prepared
 	moveq #0, d0
@@ -253,7 +260,14 @@ haveLabelContext
 	movea.l PreparedLabelValuePtr, a2
 	move.l PreparedLabelCount, d1
 	move.l PreparedCurrentPc, d2
+	tst.l PreparedSymbolResolverPtr
+	beq.s evaluateSnapshotOnly
+	movea.l PreparedSymbolResolverPtr, a5
+	jsr expr_bridge.opcoreExvmEvalOperandWithResolverV1
+	bra.s evaluateDone
+evaluateSnapshotOnly
 	jsr expr_bridge.opcoreExvmEvalOperandV1
+evaluateDone
 	tst.b d0
 	bne.s bridgeFail
 	movea.l PreparedExtensionPtr, a5

@@ -67,6 +67,11 @@ EncodeSelectedMselMatchFlags
 	.res word, 1
 EncodeSelectedMselFallbackLen
 	.res word, 1
+EncodeSelectedSemanticPlanPtr
+	.res long, 1
+EncodeSelectedSemanticPlanKind
+	.res byte, 1
+	.align 2
 
 PairAPtr
 	.res long, 1

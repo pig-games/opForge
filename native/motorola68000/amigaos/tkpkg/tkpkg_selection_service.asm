@@ -182,6 +182,9 @@ ExprVmEndStackText
 
 ExprVmPopText
 
+RequiredValuePrefixText
+	.byte "required_value_program:"
+
 	.endsection
 
 	.section code, kind=code
@@ -244,6 +247,8 @@ unknown
 ; - Reflects D0 on return.
 buildSelectedEnvelopeV1	.block
 	move.l a0, -(sp)
+	clr.l state.EncodeSelectedSemanticPlanPtr
+	clr.b state.EncodeSelectedSemanticPlanKind
 	moveq #0, d0
 	move.b abi.CB_INPUT_PTR(a0), d0
 	moveq #0, d1
@@ -787,10 +792,9 @@ return
 	rts
 	.bend  ; tkpkgBuildSelectedEnvelopeFromMselV1
 
-; Decode the Rust CMSE v7 wire format far enough to recover raw, package-owned
-; operand plans.  Semantic plan records are bounds-checked and skipped here;
-; later slices execute those plans in their owning neutral VM.  This preserves
-; the existing operand-plan runtime for families whose package rows are raw.
+; Decode the Rust CMSE v7 wire format and recover raw or v2 scalar-input plans.
+; Both paths preserve package ownership: this module only transports opaque
+; program ids and neutral scalar projections into the candidate envelope.
 ; Inputs: A0/D0 = selected mnemonic text/length.
 ; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D1 = envelope length on success.
 tkpkgBuildSelectedEnvelopeFromCmseV7	.block
@@ -978,6 +982,8 @@ cmseHaveStringKeys
 	subq.w #1, d7
 
 cmseSelectorLoop
+	clr.l state.EncodeSelectedSemanticPlanPtr
+	clr.b state.EncodeSelectedSemanticPlanKind
 	moveq #0, d6
 	moveq #1, d0
 	bsr.w tkpkgServiceRequireBytesV1
@@ -1019,6 +1025,8 @@ cmseModeReady
 	move.b #1, 8(sp)
 	bra.s cmsePlanReady
 cmseSkipStructuredPlan
+	move.l a2, state.EncodeSelectedSemanticPlanPtr
+	move.b d0, state.EncodeSelectedSemanticPlanKind
 	bsr.w skipCompactSelectorPlanBodyV7
 	bne.w cmseMalformed
 cmsePlanReady
@@ -1043,9 +1051,9 @@ cmsePriorityReady
 
 	move.w 10(sp), d6
 	cmp.w 20(sp), d6
-	beq.s cmseOwnerMatches
+	beq.w cmseOwnerMatches
 	cmp.w 18(sp), d6
-	beq.s cmseOwnerMatches
+	beq.w cmseOwnerMatches
 	cmp.w 16(sp), d6
 	bne.w cmseSelectorNext
 cmseOwnerMatches
@@ -1057,14 +1065,16 @@ cmseOwnerMatches
 	bne.w cmseSelectorNext
 	bset #2, state.EncodeSelectedMselMatchFlags
 	tst.w state.EncodeSelectedMselShapeLen
-	beq.s cmseShapeMatches
+	beq.w cmseShapeMatches
 	moveq #0, d0
 	move.w 2(sp), d0
 	cmp.w d0, d4
 	bne.w cmseSelectorNext
 cmseShapeMatches
+	moveq #0, d4
+	move.b 9(sp), d4
 	tst.b 8(sp)
-	beq.w cmseSelectorNext
+	beq.w cmseStructuredCandidate
 	move.w 4(sp), d0
 	cmpi.w #$FFFF, d0
 	beq.w cmseSelectorNext
@@ -1086,22 +1096,42 @@ cmseShapeMatches
 	move.w state.EncodeSelectedMselShapeLen, d0
 	move.w d0, state.EncodeSelectedCurrentShapeLen
 	bset #0, state.EncodeSelectedMselMatchFlags
-	moveq #0, d4
-	move.b 9(sp), d4
 	move.l a2, -(sp)
 	move.w d7, -(sp)
 	jsr operand.tkpkgMselTryBuildCandidateV1
 	move.w (sp)+, d7
 	movea.l (sp)+, a2
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
-	bne.s cmseCandidateNotOk
+	bne.s cmseCandidateReady
+	clr.l state.EncodeSelectedSemanticPlanPtr
+	clr.b state.EncodeSelectedSemanticPlanKind
+	bra.w cmseCandidateReady
+
+cmseStructuredCandidate
+	moveq #0, d0
+	move.b state.EncodeSelectedSemanticPlanKind, d0
+	cmpi.b #1, d0
+	beq.w cmseBuildStructured
+	cmpi.b #2, d0
+	bne.w cmseSelectorNext
+cmseBuildStructured
+	movea.l state.EncodeSelectedSemanticPlanPtr, a1
+	move.l a2, -(sp)
+	move.w d7, -(sp)
+	bsr.w tkpkgBuildCompactSemanticCandidateV2
+	move.w (sp)+, d7
+	movea.l (sp)+, a2
+
+cmseCandidateReady
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.w cmseCandidateNotOk
 	tst.b d4
 	beq.w cmseReturn
 	tst.b state.EncodeSelectedMselUnstable
 	beq.w cmseReturn
 	bset #1, state.EncodeSelectedMselMatchFlags
 	move.w d1, state.EncodeSelectedMselFallbackLen
-	bra.s cmseSelectorNext
+	bra.w cmseSelectorNext
 
 cmseCandidateNotOk
 	cmpi.l #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
@@ -1110,7 +1140,7 @@ cmseCandidateNotOk
 	beq.w cmseSelectorNext
 	tst.l state.EncodeSelectedMselShapePtr
 	beq.w cmseSelectorNext
-	bra.s cmseReturn
+	bra.w cmseReturn
 
 cmseSelectorNext
 	dbf d7, cmseSelectorLoop
@@ -1147,6 +1177,732 @@ cmseReturn
 	rts
 	.bend  ; tkpkgBuildSelectedEnvelopeFromCmseV7
 
+	.priv
+; Build the existing candidate envelope from one CMSE v7 scalar/input plan.
+; The envelope carries an opaque CSEM program id and four-byte neutral scalar
+; records.  No family spelling or encoding meaning is interpreted here.
+; Inputs: D0.B = compact plan kind (1 inputs, 2 scalar); A1 = plan body;
+;         A5/D2 = selected mnemonic; A6 = CMSE chunk end.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D1 = envelope length on success.
+tkpkgBuildCompactSemanticCandidateV2	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	moveq #0, d7
+	move.b d0, d7
+	movea.l a1, a2
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w semanticMalformed
+	lea buffers.CompactSelectorPlanText, a0
+	bsr.w resolveCompactSelectorStringV1
+	bne.w semanticMalformed
+	tst.w d0
+	beq.w semanticMalformed
+	cmpi.w #buffers.COMPACT_SELECTOR_TEXT_CAPACITY, d0
+	bhi.w semanticMalformed
+	lea buffers.CompactSelectorPlanText, a1
+	move.l a1, state.EncodeSelectedMselModePtr
+	move.w d0, state.EncodeSelectedMselModeLen
+	move.l state.EncodeSelectedMselShapePtr, d1
+	move.l d1, state.EncodeSelectedCurrentShapePtr
+	move.w state.EncodeSelectedMselShapeLen, d1
+	move.w d1, state.EncodeSelectedCurrentShapeLen
+	bset #0, state.EncodeSelectedMselMatchFlags
+
+	lea buffers.TokenScratchBuffer, a4
+	move.w state.EncodeSelectedMselMnemonicLen, d0
+	cmpi.w #255, d0
+	bhi.w semanticMalformed
+	move.b d0, (a4)+
+	movea.l a5, a0
+	jsr operand.tkpkgMselCopyBytesV1
+	move.b #1, (a4)+
+	move.w state.EncodeSelectedMselModeLen, d0
+	cmpi.w #255, d0
+	bhi.w semanticMalformed
+	move.b d0, (a4)+
+	movea.l state.EncodeSelectedMselModePtr, a0
+	jsr operand.tkpkgMselCopyBytesV1
+
+	cmpi.b #2, d7
+	beq.w semanticScalar
+	cmpi.b #1, d7
+	bne.w semanticMalformed
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w semanticMalformed
+	moveq #0, d6
+	move.b (a2)+, d6
+	tst.w d6
+	beq.w semanticMalformed
+	cmpi.w #32, d6
+	bhi.w semanticMalformed
+	move.b d6, (a4)+
+
+semanticInputLoop
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w semanticMalformed
+	lea buffers.CompactSelectorInputText, a0
+	bsr.w resolveCompactSelectorStringV1
+	bne.w semanticMalformed
+	tst.w d0
+	beq.w semanticMalformed
+	cmpi.w #buffers.COMPACT_SELECTOR_TEXT_CAPACITY, d0
+	bhi.w semanticMalformed
+	lea buffers.CompactSelectorInputText, a1
+	bsr.w tkpkgProjectCompactSemanticInputV2
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.w semanticReturn
+	move.b #4, (a4)+
+	move.b d3, (a4)+
+	lsr.l #8, d3
+	move.b d3, (a4)+
+	lsr.l #8, d3
+	move.b d3, (a4)+
+	lsr.l #8, d3
+	move.b d3, (a4)+
+	subq.w #1, d6
+	bne.w semanticInputLoop
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w semanticMalformed
+	bra.s semanticDone
+
+semanticScalar
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w semanticMalformed
+	move.b #1, (a4)+
+	moveq #0, d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w semanticOperand
+	moveq #0, d1
+	cmpi.b #'#', (a0)
+	bne.s semanticScalarEvaluate
+	moveq #1, d1
+semanticScalarEvaluate
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.s semanticReturn
+	move.b #4, (a4)+
+	move.b d3, (a4)+
+	lsr.l #8, d3
+	move.b d3, (a4)+
+	lsr.l #8, d3
+	move.b d3, (a4)+
+	lsr.l #8, d3
+	move.b d3, (a4)+
+
+semanticDone
+	move.l a4, d1
+	lea buffers.TokenScratchBuffer, a0
+	sub.l a0, d1
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s semanticReturn
+
+semanticOperand
+	moveq #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
+	bra.s semanticReturn
+semanticMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	moveq #0, d1
+semanticReturn
+	movem.l (sp)+, d2-d7/a0-a6
+	rts
+	.bend  ; tkpkgBuildCompactSemanticCandidateV2
+
+; Project the Item-15 CPU-neutral CMSE input grammar.  Package strings choose
+; expression, immediate, literal, value-program, or scoped-register sources.
+; Inputs: A1/D0 = resolved input source text.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = projected scalar on success.
+tkpkgProjectCompactSemanticInputV2	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	movea.l a1, a5
+	move.w d0, d7
+	cmpi.w #8, d7
+	bcs.s semanticCheckExpr
+	cmpi.b #'l', (a5)
+	bne.s semanticCheckExpr
+	cmpi.b #'i', 1(a5)
+	bne.s semanticCheckExpr
+	cmpi.b #'t', 2(a5)
+	bne.s semanticCheckExpr
+	cmpi.b #'e', 3(a5)
+	bne.s semanticCheckExpr
+	cmpi.b #'r', 4(a5)
+	bne.s semanticCheckExpr
+	cmpi.b #'a', 5(a5)
+	bne.s semanticCheckExpr
+	cmpi.b #'l', 6(a5)
+	bne.s semanticCheckExpr
+	cmpi.b #':', 7(a5)
+	bne.s semanticCheckExpr
+	lea 8(a5), a1
+	subi.w #8, d7
+	bsr.w tkpkgParseSignedDecimalV2
+	bne.w semanticProjectMalformed
+	bra.w semanticProjectOk
+
+semanticCheckExpr
+	cmpi.w #4, d7
+	bcs.s semanticCheckImmediate
+	cmpi.b #'e', (a5)
+	bne.s semanticCheckImmediate
+	cmpi.b #'x', 1(a5)
+	bne.s semanticCheckImmediate
+	cmpi.b #'p', 2(a5)
+	bne.s semanticCheckImmediate
+	cmpi.b #'r', 3(a5)
+	bne.s semanticCheckImmediate
+	lea 4(a5), a1
+	move.w d7, d0
+	subi.w #4, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w semanticProjectMalformed
+	move.w d3, d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w semanticProjectNoMatch
+	moveq #0, d1
+	cmpi.b #'#', (a0)
+	bne.s semanticExprEvaluate
+	moveq #1, d1
+semanticExprEvaluate
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	bra.w semanticProjectReturn
+
+semanticCheckImmediate
+	cmpi.w #9, d7
+	bcs.s semanticCheckRegister
+	cmpi.b #'i', (a5)
+	bne.s semanticCheckRegister
+	cmpi.b #'m', 1(a5)
+	bne.s semanticCheckRegister
+	cmpi.b #'m', 2(a5)
+	bne.s semanticCheckRegister
+	cmpi.b #'e', 3(a5)
+	bne.s semanticCheckRegister
+	cmpi.b #'d', 4(a5)
+	bne.s semanticCheckRegister
+	cmpi.b #'i', 5(a5)
+	bne.s semanticCheckRegister
+	cmpi.b #'a', 6(a5)
+	bne.s semanticCheckRegister
+	cmpi.b #'t', 7(a5)
+	bne.s semanticCheckRegister
+	cmpi.b #'e', 8(a5)
+	bne.s semanticCheckRegister
+	lea 9(a5), a1
+	move.w d7, d0
+	subi.w #9, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w semanticProjectMalformed
+	move.w d3, d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w semanticProjectNoMatch
+	moveq #1, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	bra.w semanticProjectReturn
+
+semanticCheckRegister
+	cmpi.w #10, d7
+	bcs.w semanticCheckRequiredValue
+	cmpi.b #'r', (a5)
+	bne.w semanticCheckRequiredValue
+	cmpi.b #'e', 1(a5)
+	bne.w semanticCheckRequiredValue
+	cmpi.b #'g', 2(a5)
+	bne.w semanticCheckRequiredValue
+	lea 3(a5), a1
+	move.w d7, d0
+	subi.w #3, d0
+	movea.l a1, a2
+	move.w d0, d6
+	moveq #0, d4
+semanticRegisterIndexScan
+	tst.w d6
+	beq.w semanticProjectMalformed
+	cmpi.b #'.', (a2)
+	beq.s semanticRegisterIndexReady
+	addq.l #1, a2
+	addq.w #1, d4
+	subq.w #1, d6
+	bra.s semanticRegisterIndexScan
+semanticRegisterIndexReady
+	move.w d4, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w semanticProjectMalformed
+	move.w d3, d7
+	cmpi.w #6, d6
+	bcs.w semanticProjectMalformed
+	cmpi.b #'c', 1(a2)
+	bne.w semanticProjectMalformed
+	cmpi.b #'l', 2(a2)
+	bne.w semanticProjectMalformed
+	cmpi.b #'a', 3(a2)
+	bne.w semanticProjectMalformed
+	cmpi.b #'s', 4(a2)
+	bne.w semanticProjectMalformed
+	cmpi.b #'s', 5(a2)
+	bne.w semanticProjectMalformed
+	lea 6(a2), a1
+	move.w d6, d0
+	subi.w #6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w semanticProjectMalformed
+	move.w d3, d6
+	move.w d7, d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w semanticProjectNoMatch
+	move.w d6, d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w semanticProjectNoMatch
+	bra.s semanticProjectOk
+
+semanticCheckRequiredValue
+	; Value-program projections are handled by the neutral VALP interpreter in
+	; the next helper.  Only the frozen v1 `...:exprN` grammar is accepted.
+	movea.l a5, a1
+	move.w d7, d0
+	bsr.w tkpkgProjectRequiredValueV1
+	bra.s semanticProjectReturn
+
+semanticProjectMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s semanticProjectReturn
+semanticProjectNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+	bra.s semanticProjectReturn
+semanticProjectOk
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+semanticProjectReturn
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectCompactSemanticInputV2
+
+; Parse an unsigned decimal constrained to u16.
+; Inputs: A1/D0.W = text. Outputs: D3.L = value; D1 = 0/1.
+tkpkgParseU16DecimalV2	.block
+	moveq #0, d3
+	moveq #1, d1
+	tst.w d0
+	beq.s parseU16Return
+	move.w d0, d2
+parseU16Loop
+	moveq #0, d4
+	move.b (a1)+, d4
+	cmpi.b #'0', d4
+	bcs.s parseU16Return
+	cmpi.b #'9', d4
+	bhi.s parseU16Return
+	subi.b #'0', d4
+	cmpi.l #$00001999, d3
+	bhi.s parseU16Return
+	bne.s parseU16Accumulate
+	cmpi.b #5, d4
+	bhi.s parseU16Return
+parseU16Accumulate
+	move.l d3, d5
+	lsl.l #3, d3
+	add.l d5, d5
+	add.l d5, d3
+	add.l d4, d3
+	subq.w #1, d2
+	bne.s parseU16Loop
+	moveq #0, d1
+parseU16Return
+	tst.l d1
+	rts
+	.bend  ; tkpkgParseU16DecimalV2
+
+; Parse an unsigned decimal constrained to the native u32 scalar transport.
+; Inputs: A1/D0.W = text. Outputs: D3.L = value; D1 = 0/1.
+tkpkgParseU32DecimalV2	.block
+	moveq #0, d3
+	moveq #1, d1
+	tst.w d0
+	beq.s parseU32Return
+	move.w d0, d2
+parseU32Loop
+	moveq #0, d4
+	move.b (a1)+, d4
+	cmpi.b #'0', d4
+	bcs.s parseU32Return
+	cmpi.b #'9', d4
+	bhi.s parseU32Return
+	subi.b #'0', d4
+	cmpi.l #$19999999, d3
+	bhi.s parseU32Return
+	bne.s parseU32Accumulate
+	cmpi.b #5, d4
+	bhi.s parseU32Return
+parseU32Accumulate
+	move.l d3, d5
+	lsl.l #3, d3
+	add.l d5, d5
+	add.l d5, d3
+	add.l d4, d3
+	subq.w #1, d2
+	bne.s parseU32Loop
+	moveq #0, d1
+parseU32Return
+	tst.l d1
+	rts
+	.bend  ; tkpkgParseU32DecimalV2
+
+; Parse a signed decimal into the native 32-bit scalar transport.  A negative
+; magnitude is retained modulo 2^32, matching Rust's cast at the encoding VM
+; boundary after the package-owned signed range check.
+; Inputs: A1/D7.W = text. Outputs: D3.L = value; D1 = 0/1.
+tkpkgParseSignedDecimalV2	.block
+	moveq #0, d6
+	tst.w d7
+	beq.s parseSignedFail
+	cmpi.b #'-', (a1)
+	bne.s parseSignedDigits
+	moveq #1, d6
+	addq.l #1, a1
+	subq.w #1, d7
+	beq.s parseSignedFail
+parseSignedDigits
+	move.w d7, d0
+	bsr.w tkpkgParseU32DecimalV2
+	bne.s parseSignedFail
+	tst.b d6
+	beq.s parseSignedOk
+	neg.l d3
+parseSignedOk
+	moveq #0, d1
+	rts
+parseSignedFail
+	moveq #1, d1
+	rts
+	.bend  ; tkpkgParseSignedDecimalV2
+
+; Resolve one source spelling through the package-owned RENC v1 mapping.
+; Inputs: A0/D0 = register token; D1.W = required neutral class.
+; Outputs: D0 = 0 success or 1 no match/malformed; D3.L = neutral index.
+tkpkgFindScopedRegisterEncodingV1	.block
+	movem.l d2/d4-d7/a0-a6, -(sp)
+	lea -18(sp), sp
+	move.w d1, (sp)
+	clr.w 2(sp)
+	clr.w 4(sp)
+	clr.w 6(sp)
+	move.w d0, 8(sp)
+	move.l a0, 10(sp)
+	lea buffers.RencChunkOffsetLo, a3
+	bsr.w tkpkgServiceChunkPtrFromLocatorV1
+	bne.w rencFail
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w rencFail
+	cmpi.w #1, d0
+	bne.w rencFail
+	bsr.w tkpkgServiceReadU32LeLow16V1
+	bne.w rencFail
+	addq.l #4, a2
+	tst.w d0
+	beq.w rencFail
+	move.w d0, d7
+	subq.w #1, d7
+
+rencLoop
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w rencFail
+	moveq #0, d6
+	move.b (a2)+, d6
+	cmpi.b #SCOPED_OWNER_DIALECT, d6
+	bhi.w rencFail
+	move.w d6, 16(sp)
+	bsr.w tkpkgServiceLocateStringV1
+	bne.w rencFail
+	move.l a2, -(sp)
+	bsr.w tkpkgSelectedMselOwnerMatchesV1
+	movea.l (sp)+, a2
+	move.w d0, 14(sp)
+	bsr.w tkpkgServiceLocateStringV1
+	bne.w rencFail
+	move.l a2, -(sp)
+	move.w 12(sp), d1
+	movea.l 14(sp), a2
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
+	move.w d0, d5
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w rencFail
+	move.w d0, d4
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w rencFail
+	tst.w 14(sp)
+	beq.s rencNext
+	tst.w d5
+	beq.s rencNext
+	move.w 16(sp), d5
+	addq.w #1, d5
+	cmp.w 2(sp), d5
+	bls.s rencNext
+	move.w d5, 2(sp)
+	move.w d0, 4(sp)
+	move.w d4, 6(sp)
+rencNext
+	dbf d7, rencLoop
+	cmpa.l a6, a2
+	bne.s rencFail
+	tst.w 2(sp)
+	beq.s rencNoMatch
+	move.w 6(sp), d0
+	cmp.w (sp), d0
+	bne.s rencNoMatch
+	moveq #0, d3
+	move.w 4(sp), d3
+	moveq #0, d0
+	bra.s rencReturn
+rencNoMatch
+rencFail
+	moveq #1, d0
+rencReturn
+	lea 18(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; tkpkgFindScopedRegisterEncodingV1
+
+; Apply a package-owned required value program to an exprN projection.
+; Inputs: A1/D0 = full required_value_program source.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3 = projected value.
+tkpkgProjectRequiredValueV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	movea.l a1, a5
+	move.w d0, d7
+	cmpi.w #29, d7
+	bcs.w requiredMalformed
+	lea RequiredValuePrefixText, a2
+	movea.l a5, a1
+	moveq #23, d0
+	moveq #23, d1
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	beq.w requiredMalformed
+	lea 23(a5), a4
+	move.w d7, d6
+	subi.w #23, d6
+	movea.l a4, a2
+	moveq #0, d5
+requiredProgramScan
+	tst.w d6
+	beq.w requiredMalformed
+	cmpi.b #':', (a2)
+	beq.s requiredProgramReady
+	addq.l #1, a2
+	addq.w #1, d5
+	subq.w #1, d6
+	bra.s requiredProgramScan
+requiredProgramReady
+	tst.w d5
+	beq.w requiredMalformed
+	move.w d5, d7
+	addq.l #1, a2
+	subq.w #1, d6
+	cmpi.w #5, d6
+	bcs.w requiredMalformed
+	cmpi.b #'e', (a2)
+	bne.w requiredMalformed
+	cmpi.b #'x', 1(a2)
+	bne.w requiredMalformed
+	cmpi.b #'p', 2(a2)
+	bne.w requiredMalformed
+	cmpi.b #'r', 3(a2)
+	bne.w requiredMalformed
+	lea 4(a2), a1
+	move.w d6, d0
+	subi.w #4, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w requiredMalformed
+	move.w d3, d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w requiredNoMatch
+	moveq #0, d1
+	cmpi.b #'#', (a0)
+	bne.s requiredEvaluate
+	moveq #1, d1
+requiredEvaluate
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.s requiredReturn
+	lea 23(a5), a1
+	move.w d7, d0
+	bsr.w tkpkgExecuteScopedValueProgramV1
+	bne.s requiredMalformed
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s requiredReturn
+requiredNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+	bra.s requiredReturn
+requiredMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+requiredReturn
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectRequiredValueV1
+
+; Find the most-specific scoped VALP row and execute the v1 scalar program.
+; Inputs: A1/D0 = opaque program id; D3 = input value.
+; Outputs: D0 = 0 success or 1 failure; D3 = program result.
+tkpkgExecuteScopedValueProgramV1	.block
+	movem.l d2/d4-d7/a0-a6, -(sp)
+	lea -24(sp), sp
+	move.w d0, (sp)
+	move.l a1, 2(sp)
+	move.l d3, 6(sp)
+	clr.w 10(sp)
+	clr.w 12(sp)
+	clr.l 14(sp)
+	clr.w 18(sp)
+	lea buffers.ValpChunkOffsetLo, a3
+	bsr.w tkpkgServiceChunkPtrFromLocatorV1
+	bne.w valpFail
+	bsr.w tkpkgServiceReadU32LeLow16V1
+	bne.w valpFail
+	addq.l #4, a2
+	tst.w d0
+	beq.w valpFail
+	move.w d0, d7
+	subq.w #1, d7
+valpLoop
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w valpFail
+	moveq #0, d6
+	move.b (a2)+, d6
+	cmpi.b #SCOPED_OWNER_DIALECT, d6
+	bhi.w valpFail
+	move.w d6, 20(sp)
+	bsr.w tkpkgServiceLocateStringV1
+	bne.w valpFail
+	move.l a2, -(sp)
+	bsr.w tkpkgSelectedMselOwnerMatchesV1
+	movea.l (sp)+, a2
+	move.w d0, 22(sp)
+	bsr.w tkpkgServiceLocateStringV1
+	bne.w valpFail
+	move.l a2, -(sp)
+	move.w 4(sp), d1
+	movea.l 6(sp), a2
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
+	move.w d0, d5
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w valpFail
+	move.w d0, d4
+	bsr.w tkpkgServiceReadU32LeLow16V1
+	bne.w valpFail
+	addq.l #4, a2
+	move.w d0, d1
+	movea.l a2, a0
+	moveq #0, d0
+	move.w d1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.w valpFail
+	move.w d0, d1
+	adda.w d0, a2
+	tst.w 22(sp)
+	beq.s valpNext
+	tst.w d5
+	beq.s valpNext
+	cmpi.w #1, d4
+	bne.s valpNext
+	move.w 20(sp), d5
+	addq.w #1, d5
+	cmp.w 10(sp), d5
+	bls.s valpNext
+	move.w d5, 10(sp)
+	move.w d4, 12(sp)
+	move.l a0, 14(sp)
+	move.w d1, 18(sp)
+valpNext
+	dbf d7, valpLoop
+	cmpa.l a6, a2
+	bne.s valpFail
+	tst.w 10(sp)
+	beq.s valpFail
+	movea.l 14(sp), a1
+	move.w 18(sp), d1
+	move.l 6(sp), d3
+	bsr.w tkpkgExecuteValueProgramBytesV1
+	bra.s valpReturn
+valpFail
+	moveq #1, d0
+valpReturn
+	lea 24(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; tkpkgExecuteScopedValueProgramV1
+
+; Direct Rust VALUE_VM v1 port for the operations required by Item 15.
+; Inputs: A1/D1 = program bytes; D3 = input zero. Outputs: D0 status; D3 value.
+tkpkgExecuteValueProgramBytesV1	.block
+	movea.l a1, a0
+	move.w d1, d7
+	moveq #0, d6
+valueLoop
+	tst.w d7
+	beq.s valueFail
+	moveq #0, d0
+	move.b (a0)+, d0
+	subq.w #1, d7
+	cmpi.b #$FF, d0
+	beq.s valueEnd
+	cmpi.b #$02, d0
+	beq.s valuePushInput
+	cmpi.b #$03, d0
+	beq.s valueNormalize
+	bra.s valueFail
+valuePushInput
+	tst.w d7
+	beq.s valueFail
+	tst.b (a0)+
+	bne.s valueFail
+	subq.w #1, d7
+	moveq #1, d6
+	bra.s valueLoop
+valueNormalize
+	tst.b d6
+	beq.s valueFail
+	tst.w d7
+	beq.s valueFail
+	moveq #0, d2
+	move.b (a0)+, d2
+	subq.w #1, d7
+	tst.b d2
+	beq.s valueFail
+	cmpi.b #32, d2
+	beq.s valueLoop
+	bhi.s valueFail
+	moveq #-1, d4
+	moveq #32, d5
+	sub.b d2, d5
+	lsr.l d5, d4
+	and.l d4, d3
+	moveq #1, d4
+	subq.b #1, d2
+	lsl.l d2, d4
+	move.l d3, d5
+	and.l d4, d5
+	beq.s valueLoop
+	moveq #-1, d4
+	addq.b #1, d2
+	lsl.l d2, d4
+	or.l d4, d3
+	bra.s valueLoop
+valueEnd
+	tst.w d7
+	bne.s valueFail
+	tst.b d6
+	beq.s valueFail
+	moveq #0, d0
+	rts
+valueFail
+	moveq #1, d0
+	rts
+	.bend  ; tkpkgExecuteValueProgramBytesV1
+
+	.pub
 ; Resolve one prefix-compressed CMSE string into a bounded destination.
 ; Inputs: D0.W = string index; A0 = destination.
 ; Outputs: D0.W = length and D1 = 0, or D1 = 1 on malformed input.

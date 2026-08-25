@@ -6179,20 +6179,28 @@ pub fn mode_selectors() -> Vec<ModeSelectorDescriptor> {
         }
         for (mode_offset, field, mode) in [(5_u16, "W", "absolute-word"), (6, "L", "absolute-long")]
         {
-            let (program, mode_bits) = match mode {
-                "absolute-word" => (PARAM_EXTENSION_WORD_9, 0x38_u32),
-                "absolute-long" => (PARAM_EXTENSION_LONG_9, 0x39),
+            let mode_bits = match mode {
+                "absolute-word" => 0x38_u32,
+                "absolute-long" => 0x39,
                 _ => unreachable!("declared quick absolute mode"),
+            };
+            let operand_plan = if field == "L" {
+                format!(
+                    "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_MEMBER_SHAPE_PREFIX}1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}L;encode:{PARAM_FIELD_9}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},{MODE_SELECTOR_PLAN_REQUIRED_VALUE_PROGRAM_PREFIX}{VALUE_PACKED_THREE_BIT_COUNT}:expr0;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:{MODE_SELECTOR_PLAN_MEMBER_PREFIX}1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}L{MODE_SELECTOR_PLAN_DIAGNOSTIC_SEPARATOR}{DIAG_COUNT_RANGE}",
+                    base + mode_bits
+                )
+            } else {
+                format!(
+                    "{MODE_SELECTOR_PLAN_SEMANTIC_INPUTS_PREFIX}{PARAM_EXTENSION_WORD_9}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},{MODE_SELECTOR_PLAN_REQUIRED_VALUE_PROGRAM_PREFIX}{VALUE_PACKED_THREE_BIT_COUNT}:expr0,{MODE_SELECTOR_PLAN_VALUE_PROGRAM_PREFIX}scalar.absolute-W:member1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}W{MODE_SELECTOR_PLAN_DIAGNOSTIC_SEPARATOR}{DIAG_COUNT_RANGE}",
+                    base + mode_bits
+                )
             };
             selectors.push(ModeSelectorDescriptor {
                 owner: ScopedOwner::Family("motorola68000".to_string()),
                 mnemonic: instruction.to_string(),
                 shape_key: "immediate_direct".to_string(),
                 mode_key: "semantic".to_string(),
-                operand_plan: format!(
-                    "{MODE_SELECTOR_PLAN_SEMANTIC_INPUTS_PREFIX}{program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},{MODE_SELECTOR_PLAN_REQUIRED_VALUE_PROGRAM_PREFIX}{VALUE_PACKED_THREE_BIT_COUNT}:expr0,{MODE_SELECTOR_PLAN_VALUE_PROGRAM_PREFIX}scalar.absolute-{field}:member1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}{field}{MODE_SELECTOR_PLAN_DIAGNOSTIC_SEPARATOR}{DIAG_COUNT_RANGE}",
-                    base + mode_bits
-                ),
+                operand_plan,
                 priority: 282 + mode_offset,
                 unstable_widen: false,
                 width_rank: 0,
@@ -6457,15 +6465,23 @@ pub fn mode_selectors() -> Vec<ModeSelectorDescriptor> {
         .enumerate()
         {
             let mode_register = mode_bits & 0x07;
+            let operand_plan = if field == "L" {
+                format!(
+                    "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}expr0,{MODE_SELECTOR_PLAN_MEMBER_SHAPE_PREFIX}1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}L;encode:{immediate_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},expr0,{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{mode_register};fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:{MODE_SELECTOR_PLAN_MEMBER_PREFIX}1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}L",
+                    base + mode_bits
+                )
+            } else {
+                format!(
+                    "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}expr0,{MODE_SELECTOR_PLAN_MEMBER_SHAPE_PREFIX}1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}W;encode:{immediate_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},expr0,{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{mode_register};encode:{scalar_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_VALUE_PROGRAM_PREFIX}scalar.absolute-W:member1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}W",
+                    base + mode_bits
+                )
+            };
             selectors.push(ModeSelectorDescriptor {
                 owner: ScopedOwner::Family("motorola68000".to_string()),
                 mnemonic: instruction.to_string(),
                 shape_key: "immediate_direct".to_string(),
                 mode_key: "semantic".to_string(),
-                operand_plan: format!(
-                    "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}expr0,{MODE_SELECTOR_PLAN_MEMBER_SHAPE_PREFIX}1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}{field};encode:{immediate_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},expr0,{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{mode_register};encode:{scalar_program}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_VALUE_PROGRAM_PREFIX}scalar.absolute-{field}:member1{MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR}{field}",
-                    base + mode_bits
-                ),
+                operand_plan,
                 priority: (324 + priority) as u16,
                 unstable_widen: false,
                 width_rank: 0,

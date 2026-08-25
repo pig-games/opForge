@@ -1,6 +1,6 @@
 [slice]
 schema_version = 1
-name = "complete package-only 680x0 Rust execution and native activation receipt"
+name = "complete package-only 680x0 Rust execution, native activation receipt, and qualified-symbol amendment"
 kind = "package-runtime"
 plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
 plan_item = 13
@@ -8,6 +8,8 @@ requirements = ["N68X0-001", "N68X0-002", "N68X0-003", "N68X0-004", "N68X0-005",
 rust_reference = [
   "crates/opforge-asm/src/line.rs::AsmLine::with_cpu",
   "crates/opforge-asm/src/tests.rs::m68k_serialized_scalar_register_path_uses_zero_family_cpu_or_dialect_callbacks",
+  "crates/opforge-asm/src/tests.rs::m68k_package_quick_qualified_symbol_uses_absolute_long_fixup",
+  "crates/opforge-asm/src/tests.rs::m68k_package_immediate_qualified_symbol_uses_absolute_long_fixup",
   "crates/opforge-asm/src/tests.rs::motorola68000_family_example_programs_assemble_in_reference_workflow",
   "crates/opforge-families/src/m68k/package_programs.rs",
   "crates/opforge-families/src/m68080/package_programs.rs",
@@ -20,15 +22,27 @@ native_boundary = [
   "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm",
   "native/motorola68000/amigaos/opforge-cli and opasm explicit branch-width source corrections"
 ]
-boundary = "Item 13 completes the Rust-side package-first boundary. Motorola 680x0 selection, operand construction, state legality, encoding, fixup, and branch-width meaning remains in the family package builders and executes through the CPU-neutral serialized runtime. Native production changes are limited to a generic package-storage increase from 262,144 to 393,216 bytes and semantics-preserving explicit branch-width corrections in the existing native source so the stricter resolved-branch package path can assemble the complete CLI. No native selector, encoder, parser, register, addressing-mode, instruction, CPU-profile, or dialect semantic is introduced."
-invariant = "After the authoritative 680x0 package bytes are serialized and their builder registry is destroyed, every supported 68000, 68010, 68020, 68030, 68040, and 68080 corpus case executes without a family, CPU, or dialect runtime callback. Exact 680x0-only, 65x02-only, combined, and all-family packages remain independently usable and insertion-order deterministic. The embedded native package is byte-for-byte equal to the canonical all-family Rust package, fits the synchronized 393,216-byte allocation, and a 393,217-byte input still fails closed."
+boundary = "Item 13 completes the Rust-side package-first boundary, and Item 13.1 reopens that same package-only contract for a post-freeze qualified-symbol fixup omission before native Item 14.3 resumes. Motorola 680x0 selection, operand construction, state legality, encoding, fixup, and branch-width meaning remains in the family package builders and executes through the CPU-neutral serialized runtime. The amendment changes no native selector, encoder, parser, text registry, macro runtime, diagnostic, register, addressing-mode, instruction, CPU-profile, or dialect semantic; the native package file remains exact Rust builder output only."
+invariant = "After the authoritative 680x0 package bytes are serialized and their builder registry is destroyed, every supported 68000, 68010, 68020, 68030, 68040, and 68080 corpus case executes without a family, CPU, or dialect runtime callback. Qualified symbolic `.L` destinations for quick and immediate operations compose the existing portable absolute-long fixup, matching the authoritative Rust handler. Exact 680x0-only, 65x02-only, combined, and all-family packages remain independently usable and insertion-order deterministic. The embedded native package is byte-for-byte equal to the canonical all-family Rust package, fits the synchronized 393,216-byte allocation, and a 393,217-byte input still fails closed."
 legacy_contract_migration = "This slice does not migrate or activate a legacy native semantic path. It replaces the embedded package input, synchronizes the CPU-neutral storage bound, and makes explicit source-level branch widths while retaining the existing native runtime contract for Item 14 activation."
-expected_inputs = "Fresh canonical bytes built from the ordinary unmodified Rust 680x0-only registry, ordinary unmodified Rust 65x02-only registry, both registry insertion orders for the combined package, and the complete default all-family registry; the checked-in positive/negative six-profile corpus and complete 680x0 example tree."
-expected_outputs = "Rust-oracle-identical instruction bytes, diagnostics, state transitions, fixups, branch convergence, complete example artifacts, deterministic package bytes, zero post-construction family/CPU/dialect callbacks, and the size report m68k-only=315,343, 65x02-only=61,698, combined=339,941, all-family=367,246, native capacity=393,216, headroom=25,970."
-known_non_equivalences = "This slice does not activate new native package VM opcodes or claim native 680x0 execution; that begins at Item 14. It does not implement native Hunk or S-record output; those remain Items 35-37. It does not run FS-UAE because the package phase changes no native CPU semantics. The 393,216-byte allocation is a bounded current-product capacity, not an unlimited-resource claim; Item 38 remeasures all full-product resources before terminal self-hosting."
-fast_proof_command = "scripts/workflow/run_m68k_package_runtime_completion.sh"
+expected_inputs = "Fresh canonical bytes built from the ordinary unmodified Rust 680x0-only registry, ordinary unmodified Rust 65x02-only registry, both registry insertion orders for the combined package, and the complete default all-family registry; the checked-in positive/negative six-profile corpus and complete 680x0 example tree; ADDQ.W #1,target.l and CMPI.W #2,target.l qualified-symbol cases."
+expected_outputs = "Rust-oracle-identical instruction bytes, diagnostics, state transitions, fixups, branch convergence, complete example artifacts, deterministic package bytes, zero post-construction family/CPU/dialect callbacks, one portable absolute-long fixup for each focused qualified-symbol case, and the amended size report m68k-only=316,375, 65x02-only=61,698, combined=340,973, all-family=368,278, native capacity=393,216, headroom=24,938."
+known_non_equivalences = "This slice and its Item 13.1 amendment do not activate new native package VM opcodes or claim native 680x0 execution. They do not change native text, macro, diagnostic, FS-UAE, Hunk-output, or S-record implementations; those remain Item 14.3 and Items 35-37. The package phase does not require FS-UAE because it changes no native CPU semantics. The 393,216-byte allocation is a bounded current-product capacity, not an unlimited-resource claim; Item 38 remeasures all full-product resources before terminal self-hosting."
+fast_proof_command = "cargo test -p asm m68k_package_quick_qualified_symbol_uses_absolute_long_fixup -- --nocapture && cargo test -p asm m68k_package_immediate_qualified_symbol_uses_absolute_long_fixup -- --nocapture && scripts/workflow/run_m68k_package_runtime_completion.sh"
 full_gate_command = "cargo test -p package && cargo test -p vm && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh && make workflow-gate"
-native_proof = "host source proof only: Item 13 freezes the exact Rust package for later native activation, increases only generic native package storage, and makes semantics-preserving explicit branch-width corrections required for the stricter resolved-branch package path to assemble the complete CLI; the 367,246-byte embedded package equality, 25,970-byte headroom, 393,217-byte rejection fixture, native source assembly test, and native format gate are inputs to Item 14. No FS-UAE/native runtime parity claim is made."
+native_proof = "host source proof only: Item 13 freezes the exact Rust package for later native activation, and Item 13.1 renews that frozen input after the separately reviewed family-package amendment. The 368,278-byte embedded package equality, 24,938-byte headroom, and unchanged 393,217-byte rejection fixture are inputs to later native work. No FS-UAE/native runtime parity claim is made by the package-phase amendment."
+
+[[tests]]
+name = "m68k_package_quick_qualified_symbol_uses_absolute_long_fixup"
+proof_level = "A"
+proves = "The serialized family package emits the authoritative quick-operation opcode and exactly one portable absolute-long output fixup for a qualified symbolic `.L` destination."
+does_not_prove = "Native package consumption or AmigaOS execution."
+
+[[tests]]
+name = "m68k_package_immediate_qualified_symbol_uses_absolute_long_fixup"
+proof_level = "A"
+proves = "The serialized family package composes the immediate extension with exactly one portable absolute-long output fixup for a qualified symbolic `.L` destination."
+does_not_prove = "Native package consumption or AmigaOS execution."
 
 [[tests]]
 name = "serialized_m68k_scalar_register_programs_execute_for_all_six_profiles"

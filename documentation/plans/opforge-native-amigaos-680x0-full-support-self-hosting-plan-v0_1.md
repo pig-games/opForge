@@ -239,6 +239,11 @@ No work item may start until all of these are true on the execution branch:
   shows that the package is incomplete, native work stops, the owning Item 1-13
   contract is reopened in a separate reviewed commit, and plan quality approval
   is renewed before native execution resumes.
+- A reopened package-phase contract is recorded as a decimal subitem of its
+  original Item 1-13 owner, uses that item's package-phase slice, runs the full
+  Package Phase Quality Gate, and ends in its own reviewed commit. The corrected
+  package digest then becomes the new immutable input for later native work;
+  native production/runtime changes remain excluded from the reopening commit.
 - Native tests must stage the bytes emitted by the Rust package builder
   directly and attest their digest before and after transfer. A native-only
   package compiler, converter, rewriter, subset extractor, reordered package,
@@ -278,8 +283,8 @@ changes examples/references, it also runs
 native item's Level D test uses the known-good FS-UAE environment from
 `agents/rules/fs-uae.md` and `--test-threads=1`.
 
-For Items 1-13, “Package Phase Quality Gate” means the item's focused tests plus
-all of:
+For Items 1-13 and any reopened decimal package-phase subitem, “Package Phase
+Quality Gate” means the item's focused tests plus all of:
 
 ```sh
 cargo test -p package
@@ -603,6 +608,14 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit making package-only execution the normal Rust 680x0 path and publishing the native-activation receipt.
   - Definition of done: the Mandatory Package-First Execution Boundary passes for all six profiles; direct family runtime paths are removed or test-oracle-only; exact single-family, combined, and all-family packages fit the synchronized 393,216-byte generic native storage bound and are ready for native consumption; the current 367,246-byte all-family package is embedded byte-for-byte, leaves 25,970 bytes of measured headroom, and 393,217 bytes still fails closed.
 
+- [x] Item 13.1: reopen the package-first contract for qualified symbolic absolute-long destinations
+  - Source requirement or finding IDs: the Item 14.3 native parity investigation proved a Rust-visible package incompleteness after Item 13 was frozen: package-owned quick and immediate-operation rows encoded qualified symbolic `.L` destinations as scalar extensions and therefore omitted the portable absolute-long output fixup already required by the authoritative Rust 680x0 handlers.
+  - Expected files: `crates/opforge-families/src/m68k/package_programs.rs`, focused Rust package byte/fixup and exact-package contracts in `crates/opforge-asm/src/tests.rs`, the exact unmodified Rust-regenerated `native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm`, the existing Item 13 package-phase slice, and this plan. No native selector, encoder, parser, text registry, macro runtime, diagnostic, FS-UAE runner, or completion-wrapper implementation is permitted.
+  - Full quality gates: Package Phase Quality Gate; focused qualified quick/immediate absolute-long Hunk-fixup proofs; unchanged representative arithmetic/control bytes; exact embedded-package equality/digest/capacity proof; `scripts/workflow/run_m68k_package_runtime_completion.sh`; complete unfiltered Rust/all-family corpus; workflow gate.
+  - Plan-compliance review evidence: `PASS` — independent reviewer `/root/item13_plan_compliance` confirmed the exact staged index is a focused package-phase amendment; the fix composes existing family-owned encoding and portable absolute-long fixup operations; no VM/wire opcode or native runtime semantic was added; the embedded package is exact unmodified Rust-builder output at 368,278 bytes with 24,938 bytes headroom; package-only scope, all-family/package-composition compatibility, architecture boundary, focused tests, package/VM suites, complete Rust corpus, and workflow gates pass; and all native Item 14.3 implementation and unrelated untracked files are excluded.
+  - Commit outcome: one focused package-phase amendment commit composing the existing absolute-long fixup operation into qualified symbolic quick/immediate rows, refreshing the exact Rust-built package, and renewing the immutable native input digest.
+  - Definition of done: `ADDQ.W #1,target.l` and `CMPI.W #2,target.l` emit their authoritative mode-7/register-1 bytes plus exactly one portable absolute-long fixup; the complete package/Rust corpus passes; the exact all-family package is 368,278 bytes within the unchanged 393,216-byte bound; and native work remains stopped until this item is independently approved and committed.
+
 - [x] Item 14: implement the versioned portable selector/encoder substrate in the native generic runtime and prove fixed-opcode execution
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`, `N68X0-004`, `N68X0-008`, `N68X0-013`-`N68X0-016`.
   - Expected files: architecture-neutral native `tkpkg` package/selection/encoding modules, focused tests, one native parity slice record; no family package-definition change.
@@ -641,12 +654,12 @@ the same unmodified serialized semantic package.
   - Definition of done: the canonical macro invocation fixture emits Rust-identical bytes in a fresh FS-UAE guest; corrected immediate-memory forms remain package-driven; and an exact duplicate assembly of the standalone harness through package-authoritative and direct Rust-handler paths proves identical segment payload bytes, with any remaining harness failure deferred explicitly rather than attributed to selector encoding.
 
 - [ ] Item 14.3: restore the standalone macro-preprocessor harness invariant
-  - Source requirement or finding IDs: Item 14.2 Level D localization; `native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection` reaches the fresh guest start marker but not completion with both the package-authoritative Hunk and an exact direct Rust-handler diagnostic Hunk whose four segment payloads are byte-identical.
-  - Expected files: the smallest native macro-preprocessor implementation owner required by the direct Rust macro logic, focused host/native contracts, the existing macro substitution/re-entry slice record if its evidence boundary changes, and this plan; no package-selector, CPU-semantic, or unrelated preprocessor expansion.
-  - Full quality gates: Shared Full Quality Gate; approved read-only FS-UAE/debug-contract localization; focused macro capture/lookup/substitution/nested-frame host contracts; both tests in `scripts/workflow/run_native_macro_completion.sh --verify`; complete `scripts/workflow/run_native_existing_parity_completion.sh --verify`.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for direct Rust macro-logic parity only and confirms that package selector/relocation behavior from Item 14.2 remains unchanged.
-  - Commit outcome: one focused commit restoring guest completion of the existing standalone macro-preprocessor harness through the smallest Rust-guided native macro-runtime correction.
-  - Definition of done: the canonical macro fixture and standalone capture/lookup/substitution/nested-frame rejection harness both complete with explicit zero guest exits in fresh FS-UAE guests; the complete existing native parity wrapper passes; no ad-hoc instrumentation remains; and no CPU-specific behavior enters generic native runtime code.
+  - Source requirement or finding IDs: Item 14.2 Level D localization plus the established parity failures in the standalone macro harness and native text-encoding definitions. The separately reviewed and committed Item 13.1 package is the immutable semantic input; Rust `TextEncodingRegistry::ensure_encoding` behavior is authoritative for the remaining native lookup branch.
+  - Expected files: the CPU-neutral native text-encoding lookup branch, native diagnostic-routing corrections exposed by the complete parity run, fail-closed FS-UAE launch/diagnostic and completion-wrapper parsing, focused host/wrapper tests, one Item 14.3 native slice record, and this plan. No family package definition, embedded package, package digest, native CPU-specific fallback, or macro-semantic rewrite is permitted.
+  - Full quality gates: Shared Full Quality Gate; committed Item 13.1 package digest/equality/capacity prerequisite; native formatter; focused diagnostic and wrapper tests; both tests in `scripts/workflow/run_native_macro_completion.sh --verify`; complete 34-group `scripts/workflow/run_native_existing_parity_completion.sh --verify`; staged native-porting gate; Rust quality gate; workflow gate.
+  - Plan-compliance review evidence: pending final staged review after Item 13.1 is committed; reviewer must confirm the native lookup branch directly mirrors Rust ensure semantics, Item 13.1 package bytes remain unchanged, fail-closed proof criteria are unchanged, no Level E instrumentation remains, and no package-phase change is mixed into this native commit.
+  - Commit outcome: one focused native commit restoring text/macro/native parity on the immutable Item 13.1 package and making completion wrappers robust to FS-UAE cleanup output that splits libtest lines.
+  - Definition of done: canonical macro invocation and standalone macro harness complete with explicit zero guest exits; all 34 established native parity groups pass against their live Rust or package-authoritative oracles; the committed Item 13.1 package remains byte-identical; no ad-hoc instrumentation remains; and no CPU-specific behavior enters generic native runtime code.
 
 - [ ] Item 15: implement neutral scalar/register and big-endian field operations in the native package runtime
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-003`-`N68X0-005`, `N68X0-014`-`N68X0-016`.

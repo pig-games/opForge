@@ -14793,8 +14793,8 @@ fn motorola68020_embedded_native_cli_package_matches_rust_default_runtime_packag
 #[test]
 fn motorola68020_item14_native_compact_fixed_opcode_uses_item13_exact_package_digest() {
     // Keep the historical test entrypoint used by the Item 14 slice manifest,
-    // while pinning the exact Rust-built package consumed after Item 14.2.
-    const ITEM14_2_PACKAGE_FNV1A64: u64 = 0xe24f_e38f_17b5_d880;
+    // while pinning the exact Rust-built package consumed after Item 14.3.
+    const ITEM14_3_PACKAGE_FNV1A64: u64 = 0x37aa_f6a8_f1f4_66a3;
     let package_path =
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
     let embedded_package = fs::read(&package_path).expect("read Item 13 embedded package");
@@ -14810,8 +14810,8 @@ fn motorola68020_item14_native_compact_fixed_opcode_uses_item13_exact_package_di
             (state ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
         });
     assert_eq!(
-        digest, ITEM14_2_PACKAGE_FNV1A64,
-        "Item 14.2 package input digest changed"
+        digest, ITEM14_3_PACKAGE_FNV1A64,
+        "Item 14.3 package input digest changed"
     );
 
     let chunks =
@@ -30073,6 +30073,44 @@ fn m68k_package_immediate_bare_symbol_uses_absolute_long_effective_address() {
     ]);
     let code = assembler.sections.get("code").expect("code section");
     assert_eq!(&code.bytes[..4], &[0x0c, 0x39, 0x00, 0x56]);
+    assert_eq!(code.output_fixups.len(), 1);
+}
+
+#[test]
+fn m68k_package_immediate_qualified_symbol_uses_absolute_long_fixup() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: CMPI.W #2,target.l",
+        "target: .word 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let code = assembler.sections.get("code").expect("code section");
+    assert_eq!(&code.bytes[..4], &[0x0c, 0x79, 0x00, 0x02]);
+    assert_eq!(code.output_fixups.len(), 1);
+}
+
+#[test]
+fn m68k_package_quick_qualified_symbol_uses_absolute_long_fixup() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: ADDQ.W #1,target.l",
+        "target: .word 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let code = assembler.sections.get("code").expect("code section");
+    assert_eq!(&code.bytes[..2], &[0x52, 0x79]);
     assert_eq!(code.output_fixups.len(), 1);
 }
 

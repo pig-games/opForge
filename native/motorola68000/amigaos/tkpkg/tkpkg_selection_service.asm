@@ -951,7 +951,7 @@ cmseStringNext
 	bne.w cmseStringLoop
 	move.w (sp), d0
 	cmpi.w #$FFFF, d0
-	beq.w cmseMissingChunk
+	beq.w cmseUnknown
 	tst.w state.EncodeSelectedMselShapeLen
 	beq.s cmseHaveStringKeys
 	move.w 2(sp), d0

@@ -97,7 +97,7 @@ for test_name in "${tests[@]}"; do
   cat "${output_file}"
   if rg -q '^SKIP:' "${output_file}" \
     || ! rg -q '^running 1 test$' "${output_file}" \
-    || ! rg -q "test .*${test_name} .*ok" "${output_file}" \
+    || ! rg -q "test .*${test_name}" "${output_file}" \
     || ! rg -q '^test result: ok\. 1 passed; 0 failed;' "${output_file}"; then
     echo "error: required Level D test did not run and pass exactly once: ${test_name}" >&2
     exit 1

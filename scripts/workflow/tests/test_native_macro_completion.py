@@ -52,6 +52,44 @@ class NativeMacroCompletionTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("did not run and pass exactly once", result.stderr)
 
+    def test_cleanup_output_may_split_libtest_name_from_ok(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            fake_cargo = root / "cargo"
+            fake_cargo.write_text(
+                "#!/usr/bin/env bash\n"
+                "printf 'running 1 test\\n'\n"
+                "printf 'test tests::native_fs_uae_parity::%s ... cleanup\\n' \"$4\"\n"
+                "printf 'ok\\n\\ntest result: ok. 1 passed; 0 failed;\\n'\n",
+                encoding="utf-8",
+            )
+            fake_cargo.chmod(0o755)
+            emulator = root / "fs-uae"
+            emulator.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            emulator.chmod(0o755)
+            config = root / "config.fs-uae"
+            config.write_text("", encoding="utf-8")
+            env = os.environ.copy()
+            env.update(
+                {
+                    "CARGO": str(fake_cargo),
+                    "OPFORGE_FS_UAE_SMOKE": "1",
+                    "OPFORGE_FS_UAE_BIN": str(emulator),
+                    "OPFORGE_FS_UAE_CONFIG_TEMPLATE": str(config),
+                    "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+                }
+            )
+            result = subprocess.run(
+                ["bash", str(self.wrapper), "--verify"],
+                cwd=self.root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PASS: native macro Level D completion verified", result.stdout)
+
     def test_manifest_rejects_a_dirty_worktree_before_running_tests(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

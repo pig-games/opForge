@@ -50,6 +50,32 @@ fn native_selector_retains_mnemonic_match_before_shape_rejection() {
 }
 
 #[test]
+fn native_compact_selector_absent_string_is_unknown_mnemonic() {
+    // Proof level B. This locks the Rust CMSE-selection invariant that a
+    // requested mnemonic absent from the package string table is an empty
+    // candidate set, not a malformed-package failure. It does not prove real
+    // AmigaOS execution or diagnostic rendering.
+    let service = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
+    )
+    .expect("read native package selection service");
+    let selector = service
+        .split_once("tkpkgBuildSelectedEnvelopeFromCmseV7\t.block")
+        .and_then(|(_, tail)| tail.split_once("\t.bend  ; tkpkgBuildSelectedEnvelopeFromCmseV7"))
+        .map(|(body, _)| body)
+        .expect("selected-envelope CMSE-v7 traversal body");
+
+    assert!(
+        selector.contains("move.w (sp), d0\n\tcmpi.w #$FFFF, d0\n\tbeq.w cmseUnknown"),
+        "a mnemonic absent from the valid CMSE string table must return unknown mnemonic"
+    );
+    assert!(selector.contains("cmseUnknown\n\tmoveq #TKPKG_SELECTED_STATUS_UNKNOWN_MNEMONIC, d0"));
+    assert!(selector.contains(
+        "cmseMissingChunk\n\tmoveq #0, d1\n\tmoveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0"
+    ));
+}
+
+#[test]
 fn native_cli_error_output_routing_contract() {
     // Proof level B. This test proves the native CLI has a distinct
     // ErrorOutput adapter, composed diagnostics keep every fragment on that
@@ -97,6 +123,23 @@ fn native_cli_error_output_routing_contract() {
             "native CLI DOS adapter must contain {required}"
         );
     }
+    let put_err = dos
+        .split_once("putErrStr\t.block")
+        .and_then(|(_, tail)| tail.split_once("\t.bend  ; putErrStr"))
+        .map(|(body, _)| body)
+        .expect("ErrorOutput adapter body");
+    assert!(source_contains_in_order(
+        put_err,
+        &[
+            "tst.l state.NativeCliDosBase",
+            "beq.s unavailable",
+            "jsr constants.FIND_TASK(a6)",
+            "movea.l state.NativeCliDosBase, a6",
+            "jsr constants.FPUTS(a6)",
+            "unavailable",
+            "moveq #-1, d0",
+        ]
+    ));
 
     for diagnostic in [
         "InputOpenErrorText",

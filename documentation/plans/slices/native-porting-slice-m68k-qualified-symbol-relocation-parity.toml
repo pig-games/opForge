@@ -1,0 +1,60 @@
+[slice]
+schema_version = 2
+name = "native text, diagnostic, and established parity closure on the renewed package"
+kind = "native-rust-parity"
+rust_reference = [
+  "crates/opforge-types/src/text_encoding.rs::TextEncodingRegistry::ensure_encoding",
+  "crates/opforge-asm/src/fs_uae_smoke.rs::run_opforge_native_cli_parity_cases_from_env",
+  "crates/opforge-asm/src/tests/native_harness_evidence.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_flow_text_encoding.asm::beginDefinitionV1",
+  "native/motorola68000/amigaos/opforge-cli/dos.asm::putErrStr",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildSelectedEnvelopeFromCmseV7",
+  "scripts/workflow/run_native_macro_completion.sh",
+  "scripts/workflow/run_native_existing_parity_completion.sh"
+]
+invariant = "With committed Item 13.1 package bytes as immutable input, native text-definition lookup must branch on the Rust-equivalent lookup result before restoring saved operands; a mnemonic absent from a valid compact package string table is an unknown mnemonic rather than package corruption; unavailable DOS error output fails safely; and every Level D case uses a fresh in-memory Rust oracle, challenge/start/done protocol, explicit guest exit, exact artifact comparison, and ephemeral evidence. No family package or native CPU-specific fallback is permitted in this item."
+assertion_decision = "No retained runtime assertion: focused source/host contracts lock the CPU-neutral native branches, while the existing approved debug/assert framework and fail-closed Level D runners prove real guest behavior. All localization instrumentation is removed."
+expected_inputs = "The committed 368278-byte Item 13.1 all-family package, canonical and custom text encodings, canonical macro invocation, the standalone macro capture/lookup/substitution/nested-frame harness, absent valid-package mnemonics, unavailable DOS error output, and every established native parity group."
+expected_outputs = "Existing text encodings are reused, missing encodings are inserted, absent mnemonics report unknown without a package-runtime error, unavailable diagnostic output returns -1 safely, both macro proofs complete with explicit zero exits, and all 34 established parity groups match their live Rust or package-authoritative oracles."
+known_non_equivalences = "This slice closes established Item 14 parity only; later plan items still own the remaining full 680x0 instruction/runtime/output/self-host coverage."
+fast_proof_command = "cargo test -p asm native_compact_selector_absent_string_is_unknown_mnemonic -- --nocapture && cargo test -p asm native_cli_error_output_routing_contract -- --nocapture && cargo test -p asm fs_uae_smoke::tests:: -- --nocapture && python3 -m unittest scripts.workflow.tests.test_native_macro_completion scripts.workflow.tests.test_native_existing_parity_completion"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' scripts/workflow/run_native_macro_completion.sh --verify && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_compact_selector_absent_string_is_unknown_mnemonic"
+proof_level = "B"
+proves = "The native compact selector maps an absent mnemonic in a valid string table to the unknown-mnemonic status while retaining malformed-chunk failure separately."
+does_not_prove = "Real AmigaOS execution or rendered diagnostic text."
+
+[[tests]]
+name = "native_cli_error_output_routing_contract"
+proof_level = "B"
+proves = "The native DOS adapter checks its library base before ErrorOutput/FPuts and returns -1 when diagnostic output is unavailable."
+does_not_prove = "A particular AmigaOS process environment or console device."
+
+[[tests]]
+name = "native_text_encoding_definition_steps_fs_uae"
+proof_level = "E"
+proves = "Reduced fresh-guest probes localize all six text-definition steps, including existing/custom selection and definition-state transitions."
+does_not_prove = "Level D Rust parity: these localization cases use focused expected state/byte vectors rather than live in-memory Rust CLI oracles."
+
+[[tests]]
+name = "native_opcore_text_encoding_fs_uae"
+proof_level = "D"
+proves = "The canonical text-encoding source completes in a fresh guest with explicit zero exit and byte-for-byte equality to its live in-memory Rust CLI oracle."
+does_not_prove = "Text-encoding behavior outside the canonical Level D source; the six reduced definition cases remain Level E localization evidence."
+
+[[tests]]
+name = "run_native_macro_completion.sh --verify"
+proof_level = "D"
+proves = "Fresh AmigaOS guests complete both canonical macro invocation and standalone capture/lookup/substitution/nested-frame rejection with explicit zero exits."
+does_not_prove = "Non-established later-plan 680x0 coverage."
+
+[[tests]]
+name = "run_native_existing_parity_completion.sh --verify"
+proof_level = "D"
+proves = "All 34 established fail-closed native parity groups complete, including all supported family corpora, canonical text encodings, macros, flow directives, and expressions."
+does_not_prove = "Plan Items 15 onward."

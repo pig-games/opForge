@@ -26,10 +26,12 @@ putStr	.block
 
 ; Write a zero-terminated diagnostic through the process ErrorOutput stream.
 ; Inputs: D1 = zero-terminated string pointer.
-; Outputs: D0 = dos.library/FPuts result, or -1 when no output handle exists.
+; Outputs: D0 = dos.library/FPuts result, or -1 when DOS/output is unavailable.
 ; Clobbers: D0-D2/A0-A1/A6/CCR.
-; CCR: reflects D0 only on the no-handle path; otherwise unspecified.
+; CCR: reflects D0 only on unavailable-output paths; otherwise unspecified.
 putErrStr	.block
+	tst.l state.NativeCliDosBase
+	beq.s unavailable
 	move.l d1, -(sp)
 	suba.l a1, a1
 	movea.l constants.SYS_BASE.W, a6
@@ -48,6 +50,10 @@ haveHandle
 	rts
 
 noHandle
+	moveq #-1, d0
+	rts
+
+unavailable
 	moveq #-1, d0
 	rts
 	.bend  ; putErrStr

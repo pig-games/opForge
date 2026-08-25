@@ -478,10 +478,16 @@ ensure
 	movea.l a2, a0
 	move.l d3, d0
 	bsr.w selectCustomEncodingV1
+	bne.s insert
 	movea.l (sp)+, a2
 	move.l (sp)+, d6
 	move.l (sp)+, d3
-	beq.s open
+	bra.s open
+
+insert
+	movea.l (sp)+, a2
+	move.l (sp)+, d6
+	move.l (sp)+, d3
 	moveq #0, d4
 	move.w TextEncodingCustomCount.l, d4
 	cmpi.w #TEXT_ENCODING_CUSTOM_CAPACITY, d4

@@ -46,11 +46,11 @@ const FS_UAE_TKPKG_SMOKE_INPUT_FILE: &str = "opforge_fsuae_smoke_input.asm";
 const FS_UAE_TKPKG_SMOKE_INPUT_TEXT: &str = "move.b d0,d1\nmove.w d2,d3\n";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str =
     ".module main\n.use math\n.use math as m\n.endmodule\n";
-const FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT: &str =
+pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT: &str =
     ".org $0800\nstart   lda #$42\n.byte $99\n.word $1234, $5678\n.long $01020304\n.text \"OK\"\n.null \"A\"\n.ptext \"BC\"\n";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE: &str =
     "OPFORGE_FS_UAE_NATIVE_CLI_ITEM5_DIRECTIVE_ROUTER";
-const FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_INPUT_TEXT: &str =
+pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_INPUT_TEXT: &str =
     ".org $0800\n.if 0\n.byte $11\n.else\n.byte $42\n.endif\n";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_DEFINE: &str =
     "OPFORGE_FS_UAE_NATIVE_CLI_ITEM5_FLOW_NAVIGATION";
@@ -493,68 +493,42 @@ pub(crate) fn run_native_cli_debug_event_from_env(
 
 pub(crate) fn run_native_cli_directive_router_from_env(
     workspace_root: &Path,
+    rust_oracle: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
-    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
-        Ok(value) if !value.trim().is_empty() => value,
-        _ => return Ok(FsUaeSmokeOutcome::Skipped(format!(
-            "{FS_UAE_ARGS_ENV} is not set; configure FS-UAE to execute the native CLI directive-router fixture"
-        ))),
-    };
-    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
-    let input = OpforgeNativeCliStagedInputs {
-        source: Some(FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT.as_bytes()),
-        package_bytes: None,
+    let cases = [OpforgeNativeCliParityCase {
+        name: "native-cli-directive-router",
+        cpu_override: "68020",
+        extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE],
+        source_override: Some(FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m6502"),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
-    };
-    match run_example_smoke_with_extra_defines_and_native_cli_input(
-        workspace_root,
-        &fs_uae_bin,
-        &args_text,
-        FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
-        FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH,
-        "68020",
-        &[
-            "OPFORGE_FS_UAE_SMOKE",
-            FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE,
-        ],
-        Some(&input),
-    )? {
-        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
-        ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
-    }
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle,
+        },
+    }];
+    run_opforge_native_cli_parity_cases_from_env(workspace_root, &cases)
 }
 
 pub(crate) fn run_native_cli_flow_navigation_from_env(
     workspace_root: &Path,
+    rust_oracle: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
-    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
-        Ok(value) if !value.trim().is_empty() => value,
-        _ => return Ok(FsUaeSmokeOutcome::Skipped(format!(
-            "{FS_UAE_ARGS_ENV} is not set; configure FS-UAE to execute the native flow-navigation fixture"
-        ))),
-    };
-    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
-    let input = OpforgeNativeCliStagedInputs {
-        source: Some(FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_INPUT_TEXT.as_bytes()),
-        package_bytes: None,
+    let cases = [OpforgeNativeCliParityCase {
+        name: "native-cli-flow-navigation",
+        cpu_override: "68020",
+        extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_DEFINE],
+        source_override: Some(FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_INPUT_TEXT.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m6502"),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &[],
-    };
-    match run_example_smoke_with_extra_defines_and_native_cli_input(
-        workspace_root,
-        &fs_uae_bin,
-        &args_text,
-        FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
-        FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH,
-        "68020",
-        &[
-            "OPFORGE_FS_UAE_SMOKE",
-            FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_DEFINE,
-        ],
-        Some(&input),
-    )? {
-        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
-        ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
-    }
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle,
+        },
+    }];
+    run_opforge_native_cli_parity_cases_from_env(workspace_root, &cases)
 }
 
 // @opforge-evidence: level=D; role=focused-negative; authority=focused-contract; lifecycle=permanent
@@ -3077,12 +3051,14 @@ fn require_completed_guest_protocol(
     example_name: &str,
     protocol_completed: bool,
     guest_exit_code: Option<i32>,
+    stdout: &str,
+    stderr: &str,
 ) -> Result<(), String> {
     if protocol_completed && guest_exit_code.is_some() {
         return Ok(());
     }
     Err(format!(
-        "FS-UAE guest proof did not complete for {example_name}; no test result is valid without the fresh completion marker and explicit guest exit code"
+        "FS-UAE guest proof did not complete for {example_name}; no test result is valid without the fresh completion marker and explicit guest exit code\nstdout:\n{stdout}\nstderr:\n{stderr}"
     ))
 }
 
@@ -3110,6 +3086,23 @@ fn fs_uae_launcher_status_text(status: ExitStatus) -> String {
 /// initialization on this host, while opening the bundle keeps the emulator
 /// process alive for the mounted guest startup hook and debugger.
 fn fs_uae_launch_command(fs_uae_bin: &str, args: &[String]) -> Command {
+    #[cfg(target_os = "macos")]
+    {
+        let executable = Path::new(fs_uae_bin);
+        if let Some(app_bundle) = executable
+            .ancestors()
+            .find(|path| path.extension().and_then(|value| value.to_str()) == Some("app"))
+        {
+            let mut command = Command::new("/usr/bin/open");
+            command
+                .args(["-W", "-n"])
+                .arg(app_bundle)
+                .arg("--args")
+                .args(args);
+            return command;
+        }
+    }
+
     let mut command = Command::new(fs_uae_bin);
     command.args(args);
     command
@@ -3530,7 +3523,13 @@ fn run_example_smoke_with_request(
             artifact_dir.display()
         ));
     }
-    require_completed_guest_protocol(example_name, run.protocol_completed, run.exit_code)?;
+    require_completed_guest_protocol(
+        example_name,
+        run.protocol_completed,
+        run.exit_code,
+        &run.stdout,
+        &run.stderr,
+    )?;
     Ok(ExampleSmokeResult::Run(run))
 }
 
@@ -3797,7 +3796,13 @@ fn run_example_smoke_with_guest_input(
             artifact_dir.display()
         ));
     }
-    require_completed_guest_protocol(spec.example_name, run.protocol_completed, run.exit_code)?;
+    require_completed_guest_protocol(
+        spec.example_name,
+        run.protocol_completed,
+        run.exit_code,
+        &run.stdout,
+        &run.stderr,
+    )?;
     Ok(ExampleSmokeResult::Run(run))
 }
 
@@ -3888,6 +3893,30 @@ mod tests {
         ));
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_inner_binary_launches_through_the_application_bundle() {
+        let args = vec!["case.fs-uae".to_string(), "--headless=1".to_string()];
+        let command =
+            fs_uae_launch_command("/Applications/FS-UAE.app/Contents/MacOS/fs-uae", &args);
+
+        assert_eq!(command.get_program(), "/usr/bin/open");
+        assert_eq!(
+            command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            [
+                "-W",
+                "-n",
+                "/Applications/FS-UAE.app",
+                "--args",
+                "case.fs-uae",
+                "--headless=1",
+            ]
+        );
+    }
+
     #[test]
     fn capture_config_defaults_to_standard_smoke_files() {
         let artifact_dir = Path::new("/tmp/opforge-fsuae-smoke");
@@ -3961,10 +3990,15 @@ mod tests {
 
     #[test]
     fn every_generic_run_requires_fresh_guest_completion_even_for_expected_failure() {
-        assert!(require_completed_guest_protocol("positive", true, Some(0)).is_ok());
-        assert!(require_completed_guest_protocol("expected-failure", true, Some(7)).is_ok());
-        assert!(require_completed_guest_protocol("missing-marker", false, Some(7)).is_err());
-        assert!(require_completed_guest_protocol("missing-exit", true, None).is_err());
+        assert!(require_completed_guest_protocol("positive", true, Some(0), "", "").is_ok());
+        assert!(
+            require_completed_guest_protocol("expected-failure", true, Some(7), "", "").is_ok()
+        );
+        let missing_marker =
+            require_completed_guest_protocol("missing-marker", false, Some(7), "out", "err")
+                .expect_err("missing marker must fail closed");
+        assert!(missing_marker.contains("stdout:\nout\nstderr:\nerr"));
+        assert!(require_completed_guest_protocol("missing-exit", true, None, "", "").is_err());
     }
 
     #[test]

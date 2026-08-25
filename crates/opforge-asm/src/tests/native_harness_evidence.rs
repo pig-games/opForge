@@ -2,6 +2,32 @@
 
 use super::*;
 
+struct NativeHarnessOracleDir(PathBuf);
+
+impl Drop for NativeHarnessOracleDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn native_harness_live_rust_cli_oracle(label: &str, source: &str) -> Vec<u8> {
+    let case_dir = create_temp_dir(label);
+    let _case_dir_guard = NativeHarnessOracleDir(case_dir.clone());
+    let input_path = case_dir.join("input.asm");
+    let bin_path = case_dir.join("oracle.bin");
+    fs::write(&input_path, source).expect("write native-harness Rust oracle source");
+    let cli = Cli::parse_from([
+        "opForge",
+        input_path.to_string_lossy().as_ref(),
+        "--bin",
+        bin_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "m6502",
+    ]);
+    run_with_cli_with_context(&cli).expect("run native-harness live Rust CLI oracle");
+    fs::read(&bin_path).expect("read native-harness live Rust CLI oracle")
+}
+
 #[test]
 fn native_debug_contract_cli_header_fs_uae_proves_real_site_behavior() {
     match crate::fs_uae_smoke::run_native_cli_debug_event_from_env(&workspace_root())
@@ -24,8 +50,25 @@ fn native_debug_contract_cli_header_fs_uae_proves_real_site_behavior() {
 
 #[test]
 fn external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture() {
-    match crate::fs_uae_smoke::run_native_cli_directive_router_from_env(&workspace_root())
-        .expect("native directive-router FS-UAE fixture should complete or skip cleanly")
+    // Proof level D. This proves the real native directive router emits bytes
+    // identical to the live Rust CLI for the exact source in this case. It does
+    // not prove other directives or source CPU families.
+    let rust_oracle = native_harness_live_rust_cli_oracle(
+        "native-directive-router-live-rust-cli",
+        crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT,
+    );
+    assert_eq!(
+        rust_oracle,
+        vec![
+            0xa9, 0x42, 0x99, 0x34, 0x12, 0x78, 0x56, 0x04, 0x03, 0x02, 0x01, b'O', b'K', b'A',
+            0x00, 0x02, b'B', b'C',
+        ]
+    );
+    match crate::fs_uae_smoke::run_native_cli_directive_router_from_env(
+        &workspace_root(),
+        &rust_oracle,
+    )
+    .expect("native directive-router FS-UAE fixture should complete or skip cleanly")
     {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
@@ -36,19 +79,7 @@ fn external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture() {
                 "native directive-router fixture failed under FS-UAE\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let bytes = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native directive-router output");
-            assert_eq!(
-                bytes,
-                vec![
-                    0xa9, 0x42, 0x99, 0x34, 0x12, 0x78, 0x56, 0x04, 0x03, 0x02, 0x01, b'O', b'K',
-                    b'A', 0x00, 0x02, b'B', b'C',
-                ]
-            );
+            assert_eq!(run.verified_output.as_deref(), Some(rust_oracle.as_slice()));
         }
     }
 }
@@ -56,10 +87,19 @@ fn external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture() {
 #[test]
 fn external_fs_uae_native_cli_flow_navigation_preserves_nested_structural_skips() {
     // Proof level D. This runs the native CLI through false `.if`, zero `.for`,
-    // `.match` default selection, and zero `.while` navigation. It does not
-    // add or prove support for a new source CPU.
-    match crate::fs_uae_smoke::run_native_cli_flow_navigation_from_env(&workspace_root())
-        .expect("native flow-navigation FS-UAE fixture should complete or skip cleanly")
+    // `.match` default selection, and zero `.while` navigation and compares the
+    // output with the live Rust CLI. It does not add or prove support for a new
+    // source CPU.
+    let rust_oracle = native_harness_live_rust_cli_oracle(
+        "native-flow-navigation-live-rust-cli",
+        crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_INPUT_TEXT,
+    );
+    assert_eq!(rust_oracle, vec![0x42]);
+    match crate::fs_uae_smoke::run_native_cli_flow_navigation_from_env(
+        &workspace_root(),
+        &rust_oracle,
+    )
+    .expect("native flow-navigation FS-UAE fixture should complete or skip cleanly")
     {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
@@ -70,13 +110,7 @@ fn external_fs_uae_native_cli_flow_navigation_preserves_nested_structural_skips(
                 "native flow-navigation fixture failed under FS-UAE\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr
             );
-            let bytes = fs::read(
-                run.artifact_dir
-                    .join("Work")
-                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE),
-            )
-            .expect("read native flow-navigation output");
-            assert_eq!(bytes, vec![0x42]);
+            assert_eq!(run.verified_output.as_deref(), Some(rust_oracle.as_slice()));
         }
     }
 }
@@ -136,8 +170,11 @@ fn native_macro_cli_debug_event_harness_proves_complete_macro_fixture_image() {
             assert_eq!(runs.len(), 1);
             assert!(
                 runs[0].success,
-                "diagnostic harness should emit the complete macro fixture image: {}",
-                runs[0].stdout
+                "diagnostic harness should emit the complete macro fixture image: guest exit {:?}, protocol_completed={}\nstdout:\n{}\nstderr:\n{}",
+                runs[0].exit_code,
+                runs[0].protocol_completed,
+                runs[0].stdout,
+                runs[0].stderr
             );
         }
     }

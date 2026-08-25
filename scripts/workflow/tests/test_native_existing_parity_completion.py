@@ -47,6 +47,7 @@ class NativeExistingParityCompletionTests(unittest.TestCase):
             "tkpkg_native_mos6502_family_corpus",
             "item7_layout_directives_match_rust_guided_bytes",
             "native_cli_65c02_expr_syntax_matches_rust_bin",
+            "native_m68000_move_control_parity",
         )
         for name in required_representatives:
             self.assertIn(name, source)

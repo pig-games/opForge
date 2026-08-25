@@ -15148,6 +15148,709 @@ fn motorola68020_item16_native_base_operand_record_decoder_is_package_driven_and
 }
 
 #[test]
+fn motorola68020_item17_native_indirect_register_projection_matches_rust_boundary() {
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "semanticCheckIndirectRegister",
+            "cmpi.b #'i', (a5)",
+            "cmpi.b #'g', 11(a5)",
+            "movea.l #1, a6",
+            "semanticRegisterSpec",
+            "operand.tkpkgMselLocateSemanticOperandV2",
+            "move.l a6, d5",
+            "operand.tkpkgMselStripOuterParensV1",
+            "semanticRegisterLookup",
+            "tkpkgFindScopedRegisterEncodingV1",
+        ]
+    ));
+    for forbidden in ["motorola68000", "m68000", "MOVE.L"] {
+        assert!(
+            !selection.contains(forbidden),
+            "generic Item 17 projection must not own target spelling {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 17 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 17 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 17 package input");
+    let selector = chunks
+        .selectors
+        .iter()
+        .find(|selector| {
+            selector
+                .operand_plan
+                .contains("enc.move.l.data-to-indirect")
+        })
+        .expect("Rust package MOVE.L data-to-indirect selector");
+    assert_eq!(selector.mnemonic, "move.l");
+    assert_eq!(selector.shape_key, "register_direct");
+    assert_eq!(selector.mode_key, "semantic");
+    assert_eq!(
+        selector.operand_plan,
+        "semv.inputs.v1:enc.move.l.data-to-indirect@indirect_reg1.class1,reg0.class0"
+    );
+}
+
+#[test]
+fn motorola68020_item17_native_immediate_register_shape_matches_rust_boundary() {
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "tkpkgInferSelectedPackageShapeV1",
+            "operand.tkpkgMselLocateSemanticOperandV2",
+            "cmpi.b #'#', (a0)",
+            "moveq #2, d0",
+            "operand.tkpkgMselLocateSemanticOperandV2",
+            "move.w #$FFFF, d1",
+            "tkpkgFindScopedRegisterEncodingV1",
+            "ImmediateRegisterShapeText",
+            "move.w #18, state.EncodeSelectedMselShapeLen",
+            "ImmediateDirectShapeText",
+            "move.w #16, state.EncodeSelectedMselShapeLen",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "tkpkgExecuteValueProgramBytesV1",
+            "cmpi.b #$03, d0",
+            "valueNormalize",
+            "cmpi.b #$06, d0",
+            "valueRequireRange",
+            "cmpi.w #16, d7",
+            "tkpkgValueReadI64LeV1",
+            "move.l d0, d4",
+            "move.l d1, d5",
+            "tkpkgValueReadI64LeV1",
+            "subi.w #16, d7",
+            "valueRangeBoundsReady",
+            "valueRangeHighReady",
+            "valueRangeMinOk",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "move.w 6(sp), d0",
+            "cmpi.w #$FFFF, (sp)",
+            "beq.s rencMatch",
+            "cmp.w (sp), d0",
+            "rencMatch",
+        ],
+    ));
+    for forbidden in ["motorola68000", "m68000", "MOVE.W"] {
+        assert!(
+            !selection.contains(forbidden),
+            "generic immediate shape inference must not own target spelling {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 17 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 17 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 17 package input");
+    let selector = chunks
+        .selectors
+        .iter()
+        .find(|selector| {
+            selector.mnemonic.eq_ignore_ascii_case("MOVE.W")
+                && selector.shape_key.eq_ignore_ascii_case("immediate_register")
+                && selector
+                    .operand_plan
+                    .contains("scalar.immediate-word:expr0,reg1.class0")
+        })
+        .expect("Rust package MOVE.W immediate-register selector");
+    assert_eq!(selector.mode_key, "semantic");
+    let value_program = chunks
+        .value_programs
+        .iter()
+        .find(|program| program.id == "scalar.immediate-word")
+        .expect("Rust package immediate-word value program");
+    assert_eq!(value_program.opcode_version, 1);
+    assert_eq!(value_program.program[0..4], [0x02, 0x00, 0x03, 0x20]);
+    assert_eq!(value_program.program[4], 0x06);
+    assert_eq!(value_program.program.last(), Some(&0xff));
+}
+
+#[test]
+fn motorola68020_item17_native_unary_indirect_register_matches_rust_boundary() {
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "semanticCheckUnaryPlusIndirectRegister",
+            "UnaryPlusIndirectRegisterPrefixText",
+            "moveq #23, d1",
+            "movea.l #2, a6",
+            "semanticCheckUnaryMinusIndirectRegister",
+            "UnaryMinusIndirectRegisterPrefixText",
+            "moveq #24, d1",
+            "movea.l #3, a6",
+            "semanticRegisterSpec",
+            "operand.tkpkgMselLocateSemanticOperandV2",
+            "cmpi.b #'-', (a0)",
+            "semanticRegisterStripUnaryPlus",
+            "cmpi.b #'+', 0(a0, d0.l)",
+            "semanticRegisterStripParens",
+            "operand.tkpkgMselStripOuterParensV1",
+            "tkpkgFindScopedRegisterEncodingV1",
+        ],
+    ));
+    for forbidden in ["motorola68000", "m68000", "MOVE.W"] {
+        assert!(
+            !selection.contains(forbidden),
+            "generic unary-indirect projection must not own target spelling {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 17 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 17 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 17 package input");
+    let plans = chunks
+        .selectors
+        .iter()
+        .filter(|selector| selector.mnemonic.eq_ignore_ascii_case("MOVE.W"))
+        .map(|selector| selector.operand_plan.as_str())
+        .collect::<Vec<_>>();
+    assert!(plans.iter().any(|plan| {
+        plan.contains("enc.move.w.postincrement-to-data")
+            && plan.contains("unary_plus_indirect_reg0.class1,reg1.class0")
+    }));
+    assert!(plans.iter().any(|plan| {
+        plan.contains("enc.move.w.predecrement-to-data")
+            && plan.contains("unary_minus_indirect_reg0.class1,reg1.class0")
+    }));
+}
+
+#[test]
+fn motorola68020_item17_native_optional_tuple_value_program_matches_rust_boundary() {
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let buffers = tkpkg_amigaos_source("tkpkg_buffers.asm");
+    let native_selector_capacity = buffers
+        .lines()
+        .find(|line| {
+            line.trim_start()
+                .starts_with("COMPACT_SELECTOR_TEXT_CAPACITY")
+        })
+        .and_then(|line| line.split_once('='))
+        .and_then(|(_, value)| value.trim().parse::<usize>().ok())
+        .expect("native compact-selector text capacity");
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "RequiredValuePrefixText",
+            "ValuePrefixText",
+            "tkpkgProjectRequiredValueV1",
+            "requiredCheckOptional",
+            "requiredCheckTupleValue",
+            "IndirectTupleValuePrefixText",
+            "requiredProjectSource",
+            "tkpkgProjectCompactSemanticInputV2",
+            "tkpkgExecuteScopedValueProgramV1",
+            "cmpi.l #2, d0",
+            "requiredNoMatch",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "valueRangeHighReady",
+            "blt.w valueConstraintFail",
+            "bcs.w valueConstraintFail",
+            "valueRangeMinOk",
+            "bgt.w valueConstraintFail",
+            "bhi.w valueConstraintFail",
+            "valueConstraintFail",
+            "moveq #2, d0",
+        ],
+    ));
+    for forbidden in ["motorola68000", "m68000", "PEA"] {
+        assert!(
+            !selection.contains(forbidden),
+            "generic optional value-program projection must not own target spelling {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 17 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 17 must consume the exact unmodified Rust package"
+    );
+    fn take_u16(bytes: &[u8], cursor: &mut usize) -> usize {
+        let value = u16::from_le_bytes(
+            bytes[*cursor..*cursor + 2]
+                .try_into()
+                .expect("bounded CMSE u16"),
+        );
+        *cursor += 2;
+        usize::from(value)
+    }
+    fn take_u32(bytes: &[u8], cursor: &mut usize) -> usize {
+        let value = u32::from_le_bytes(
+            bytes[*cursor..*cursor + 4]
+                .try_into()
+                .expect("bounded CMSE u32"),
+        );
+        *cursor += 4;
+        usize::try_from(value).expect("CMSE length fits host usize")
+    }
+    let toc_count = usize::from(u16::from_le_bytes(
+        embedded_package[8..10]
+            .try_into()
+            .expect("package TOC count"),
+    ));
+    let cmse = (0..toc_count)
+        .find_map(|index| {
+            let entry = 12 + index * 12;
+            (&embedded_package[entry..entry + 4] == b"CMSE").then(|| {
+                let offset = u32::from_le_bytes(
+                    embedded_package[entry + 4..entry + 8]
+                        .try_into()
+                        .expect("CMSE offset"),
+                ) as usize;
+                let length = u32::from_le_bytes(
+                    embedded_package[entry + 8..entry + 12]
+                        .try_into()
+                        .expect("CMSE length"),
+                ) as usize;
+                &embedded_package[offset..offset + length]
+            })
+        })
+        .expect("exact Rust package CMSE chunk");
+    let mut cursor = 0;
+    assert_eq!(take_u16(cmse, &mut cursor), 7, "expected CMSE v7");
+    let owner_count = take_u16(cmse, &mut cursor);
+    for _ in 0..owner_count {
+        cursor += 1;
+        let owner_len = take_u32(cmse, &mut cursor);
+        cursor += owner_len;
+    }
+    let string_count = take_u16(cmse, &mut cursor);
+    let mut previous = String::new();
+    let mut longest_resolved_string = 0;
+    for _ in 0..string_count {
+        let prefix_len = take_u16(cmse, &mut cursor);
+        let suffix_len = take_u32(cmse, &mut cursor);
+        let suffix = std::str::from_utf8(&cmse[cursor..cursor + suffix_len])
+            .expect("CMSE suffix is UTF-8");
+        cursor += suffix_len;
+        previous.truncate(prefix_len);
+        previous.push_str(suffix);
+        longest_resolved_string = longest_resolved_string.max(previous.len());
+    }
+    let pea_value_source =
+        "value_program:scalar.normalized-input:indirect_tuple_value0.item0";
+    assert_eq!(pea_value_source.len(), 65, "PEA regression source length");
+    assert!(
+        native_selector_capacity >= longest_resolved_string,
+        "native selector capacity {native_selector_capacity} is smaller than the exact Rust CMSE-v7 maximum {longest_resolved_string}"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 17 package input");
+    let selector = chunks
+        .selectors
+        .iter()
+        .find(|selector| {
+            selector.mnemonic.eq_ignore_ascii_case("PEA")
+                && selector.shape_key.eq_ignore_ascii_case("direct")
+                && selector.operand_plan.contains("enc.pea.displacement")
+                && selector.operand_plan.contains(
+                    "value_program:scalar.normalized-input:indirect_tuple_value0.item0",
+                )
+        })
+        .expect("Rust package PEA displacement selector");
+    assert_eq!(selector.mode_key, "semantic");
+    let value_program = chunks
+        .value_programs
+        .iter()
+        .find(|program| program.id == "scalar.normalized-input")
+        .expect("Rust package normalized-input value program");
+    assert_eq!(value_program.opcode_version, 1);
+    assert_eq!(value_program.program, [0x02, 0x00, 0x03, 0x20, 0xff]);
+}
+
+#[test]
+fn motorola68020_item17_native_direct_target_matches_rust_boundary() {
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let sequence_builder = selection
+        .split_once("tkpkgBuildCompactSemanticSequenceCandidateV2\t.block")
+        .and_then(|(_, tail)| {
+            tail.split_once("\t.bend  ; tkpkgBuildCompactSemanticSequenceCandidateV2")
+        })
+        .map(|(body, _)| body)
+        .expect("native compact semantic sequence builder");
+    assert!(source_contains_in_order(
+        sequence_builder,
+        &[
+            "sequenceInputLoop",
+            "move.l a2, -(sp)",
+            "lea TargetPrefixText, a2",
+            "sequenceInputProjected",
+            "movea.l (sp)+, a2",
+            "sequenceInputNext",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "TargetPrefixText",
+            "sequenceNoTargetPrefix",
+            "tkpkgProjectDirectSemanticTargetV2",
+            "move.w #$FFFF, d1",
+            "tkpkgFindScopedRegisterEncodingV1",
+            "targetIdentifierRest",
+            "targetNoMatch",
+            "targetMalformed",
+        ],
+    ));
+    for forbidden in ["motorola68000", "m68000", "JSR"] {
+        assert!(
+            !selection.contains(forbidden),
+            "generic direct-target projection must not own target spelling {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 17 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 17 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 17 package input");
+    assert!(chunks.selectors.iter().any(|selector| {
+        selector.mnemonic.eq_ignore_ascii_case("JSR")
+            && selector.shape_key.eq_ignore_ascii_case("direct")
+            && selector.operand_plan.contains("match:_@target:expr0")
+            && selector.operand_plan.contains("fixup:fix.abs32@target:expr0")
+    }));
+}
+
+#[test]
+fn motorola68020_item17_native_semantic_reject_matches_rust_boundary() {
+    let buffers = tkpkg_amigaos_source("tkpkg_buffers.asm");
+    let loader = tkpkg_amigaos_source("tkpkg_package_loader.asm");
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    assert!(buffers.contains("MessageChunkOffsetLo"));
+    assert!(source_contains_in_order(
+        &loader,
+        &[
+            "checkMessageChunk",
+            "lea buffers.MessageChunkOffsetLo, a3",
+            "bsr.w storeLocator",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "TKPKG_SELECTED_STATUS_SEMANTIC_REJECT = 6",
+            "tkpkgBuildCompactSemanticRejectCandidateV2",
+            "tkpkgProjectCompactSemanticInputV2",
+            "tkpkgRenderRejectMessageCodeV1",
+            "lea buffers.MessageChunkOffsetLo, a3",
+            "tkpkgRenderRejectMessageTemplateV1",
+        ],
+    ));
+    assert!(selection.contains("RejectMnemonicPlaceholderText"));
+    assert!(selection.contains("RejectFormPlaceholderText"));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "tkpkgRenderRejectMessageCodeV1",
+            "lea -4(sp), sp",
+            "move.w d2, (sp)",
+            "move.w d0, 2(sp)",
+            "bsr.w tkpkgServiceChunkPtrFromLocatorV1",
+            "move.w 2(sp), d7",
+            "rejectMessageFound",
+            "move.w (sp), d2",
+            "bsr.w tkpkgRenderRejectMessageTemplateV1",
+            "lea 4(sp), sp",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "tkpkgBuildCompactSemanticRejectCandidateV2",
+            "move.w state.EncodeSelectedMselMnemonicLen, d2",
+            "bsr.w tkpkgRenderRejectMessageCodeV1",
+        ],
+    ));
+    for forbidden in ["MOVE.W", "LEA", "JMP", "m68000"] {
+        assert!(
+            !selection.contains(forbidden),
+            "generic semantic-reject runtime must not own target spelling {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 17 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 17 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 17 package input");
+    for (code, template) in [
+        (
+            "encoding.invalid-destination-form",
+            "invalid destination effective address for {form}",
+        ),
+        (
+            "encoding.invalid-source",
+            "invalid source effective address for {mnemonic}",
+        ),
+    ] {
+        assert!(chunks
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == code && diagnostic.message_template == template));
+    }
+    for (mnemonic, shape, plan) in [
+        (
+            "MOVE.W",
+            "register_register",
+            "semv.reject.v1:encoding.invalid-destination-form@reg0.class0,reg1.class1",
+        ),
+        (
+            "LEA",
+            "immediate_register",
+            "semv.reject.v1:encoding.invalid-source@expr0,reg1.class1",
+        ),
+        (
+            "JMP",
+            "register",
+            "semv.reject.v1:encoding.invalid-source@reg0.class0",
+        ),
+    ] {
+        let actual = chunks
+            .selectors
+            .iter()
+            .filter(|selector| selector.mnemonic.eq_ignore_ascii_case(mnemonic))
+            .map(|selector| (selector.shape_key.as_str(), selector.operand_plan.as_str()))
+            .collect::<Vec<_>>();
+        assert!(
+            actual
+                .iter()
+                .any(|(actual_shape, actual_plan)| {
+                    actual_shape.eq_ignore_ascii_case(shape) && *actual_plan == plan
+                }),
+            "missing exact Rust semantic-reject row {mnemonic}/{shape}/{plan}; decoded rows: {actual:?}"
+        );
+    }
+}
+
+#[test]
+fn motorola68020_item17_native_input_fields_v6_matches_rust_boundary() {
+    let encode = tkpkg_amigaos_source("tkpkg_encode_service.asm");
+    assert!(source_contains_in_order(
+        &encode,
+        &[
+            "move.w 2(sp), d4",
+            "cmpi.w #2, d4",
+            "cmpi.w #6, d4",
+            "tkpkgEncodeExecuteSemanticProgramV2",
+            "cmpi.b #$04, d0",
+            "encodingInputFields",
+            "cmpi.w #6, (sp)",
+            "tkpkgSemanticLoadInputV2",
+            "tkpkgSemanticValidateUnitV2",
+            "encodingFieldsReady",
+            "tkpkgSemanticEmitUnitV2",
+        ]
+    ));
+    for forbidden in ["motorola68000", "m68000", "MOVEA.L"] {
+        assert!(
+            !encode.contains(forbidden),
+            "generic Item 17 encoder must not own target spelling {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 17 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 17 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 17 package input");
+    let program = chunks
+        .semantic_programs
+        .iter()
+        .find(|program| program.id == "enc.template.fields-0-9")
+        .expect("Rust package input-fields template");
+    assert_eq!(program.opcode_version, 6);
+    assert_eq!(
+        program.program,
+        [0x04, 0x00, 0x02, 0x00, 0x02, 0x01, 0x00, 0x03, 0x00, 0x02, 0x09, 0x03, 0x00, 0xff],
+        "native opcode-04 path must consume the exact Rust-compiled v6 contract"
+    );
+}
+
+#[test]
+fn motorola68020_item17_native_indirect_tuple_projection_matches_rust_boundary() {
+    let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let encode = tkpkg_amigaos_source("tkpkg_encode_service.asm");
+    let buffers = tkpkg_amigaos_source("tkpkg_buffers.asm");
+    let engine = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_engine.asm"),
+    )
+    .expect("read native opasm engine");
+    assert!(source_contains_in_order(
+        &operand,
+        &[
+            "tkpkgMselLocateIndirectTupleItemV2",
+            "tkpkgMselLocateSemanticOperandV2",
+            "tupleFindOpen",
+            "tupleScanInner",
+            "tupleRecordSpan",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "semanticCheckTupleRegister",
+            "tkpkgParseTupleItemClassSpecV2",
+            "operand.tkpkgMselLocateIndirectTupleItemV2",
+            "semanticCheckTupleQualifiedRegister",
+            "tkpkgMselStripExpectedQualifierV2",
+            "semanticCheckTupleValue",
+            "operand.tkpkgMselEvaluateSemanticSpanV2",
+            "semanticCheckTupleArity",
+            "tkpkgParseTupleAritySpecV2",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "cmpi.b #4, d0",
+            "tkpkgBuildCompactSemanticSequenceCandidateV2",
+            "sequenceStepLoop",
+            "cmpi.b #2, d5",
+            "tkpkgProjectCompactSemanticInputV2",
+            "sequenceWriteInputValue",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "semanticCheckMember",
+            "tkpkgParseMemberSpecV2",
+            "operand.tkpkgMselLocateMemberBaseV2",
+            "operand.tkpkgMselEvaluateSemanticSpanV2",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &encode,
+        &[
+            "cmpi.b #4, state.EncodeSelectedSemanticPlanKind",
+            "encodeSemanticSequenceCandidate",
+            "semanticSequenceStepLoop",
+            "tkpkgEncodeFindAndExecuteSemanticProgramV2",
+            "move.w d1, buffers.SemanticOutputWriteOffset",
+            "tkpkgEncodeExecuteFixupProgramV4",
+        ]
+    ));
+    assert!(buffers.contains("SemanticOutputWriteOffset"));
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "paren",
+            "inferSelectedShapeSuffix",
+            "indirectIndexedY",
+            "tst.w d6",
+            "bne.w none",
+        ]
+    ));
+    for forbidden in ["motorola68000", "m68000", "LEA"] {
+        assert!(
+            !operand.contains(forbidden) && !selection.contains(forbidden),
+            "generic Item 17 tuple projection must not own target spelling {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 17 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 17 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 17 package input");
+    let selector = chunks
+        .selectors
+        .iter()
+        .find(|selector| {
+            selector.mnemonic.eq_ignore_ascii_case("lea")
+                && selector.operand_plan.starts_with("semv.inputs.v1:")
+                && selector
+                    .operand_plan
+                    .contains("indirect_tuple_qualified_reg0.item2.qualifierw.class0")
+        })
+        .expect("Rust package W-indexed LEA selector");
+    for source in [
+        "indirect_tuple_reg0.item1.class1",
+        "reg1.class1",
+        "indirect_tuple_qualified_reg0.item2.qualifierw.class0",
+        "indirect_tuple_value0.item0",
+        "indirect_tuple_arity0.value3",
+    ] {
+        assert!(selector.operand_plan.contains(source), "missing Rust source {source}");
+    }
+}
+
+#[test]
 fn motorola68020_item6_7_pass_one_sizes_relative_branches_when_selected_size_is_empty() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");

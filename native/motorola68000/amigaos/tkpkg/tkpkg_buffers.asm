@@ -15,7 +15,10 @@ TOKEN_BUFFER_CAPACITY                = 64
 TOKEN_SCRATCH_CAPACITY               = 256
 TOKENIZER_VM_STATE_TABLE_CAPACITY    = 32
 TOKENIZER_VM_DIAG_CODE_CAPACITY      = 32
-COMPACT_SELECTOR_TEXT_CAPACITY       = 64
+; The exact Rust CMSE-v7 package currently contains resolved selector strings
+; up to 164 bytes.  Keep one CPU-neutral power-of-two bound for every decoded
+; selector field while retaining a fail-closed limit below package storage.
+COMPACT_SELECTOR_TEXT_CAPACITY       = 256
 COMPACT_STRING_SCRATCH_CAPACITY      = LAST_ERROR_BUFFER_CAPACITY
 PACKAGE_STATE_LOADED                 = 1
 PACKAGE_STATE_PIPELINE_ACTIVE        = 2
@@ -35,6 +38,7 @@ PACKAGE_CHUNK_CMSE                   = 16
 PACKAGE_CHUNK_RENC                   = 32
 PACKAGE_CHUNK_VALP                   = 64
 PACKAGE_CHUNK_CPRD                   = 128
+PACKAGE_CHUNK_DIAG                   = 8
 PACKAGE_REQUIRED_CHUNK_FLAGS         = 31
 SCOPED_OWNER_FAMILY                  = 0
 SCOPED_OWNER_CPU                     = 1
@@ -453,6 +457,30 @@ CmseChunkLenMidHi
 CmseChunkLenHi
 	.res byte, 1
 
+MessageChunkOffsetLo
+	.res byte, 1
+
+MessageChunkOffsetMidLo
+	.res byte, 1
+
+MessageChunkOffsetMidHi
+	.res byte, 1
+
+MessageChunkOffsetHi
+	.res byte, 1
+
+MessageChunkLenLo
+	.res byte, 1
+
+MessageChunkLenMidLo
+	.res byte, 1
+
+MessageChunkLenMidHi
+	.res byte, 1
+
+MessageChunkLenHi
+	.res byte, 1
+
 RencChunkOffsetLo
 	.res byte, 1
 
@@ -556,6 +584,9 @@ SemanticInputRecordPtr
 SemanticInputRecordCount
 	.res word, 1
 SemanticFirstInputLen
+	.res word, 1
+
+SemanticOutputWriteOffset
 	.res word, 1
 
 ActiveCpuBuffer

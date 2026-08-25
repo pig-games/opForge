@@ -1390,6 +1390,223 @@ return
 	rts
 	.bend  ; tkpkgMselLocateSemanticOperandV2
 
+; Locate the base of one neutral member expression and require its final field.
+; This mirrors Rust Expr::Member projection without assigning meaning to the
+; field spelling.  A package plan supplies that spelling (for example `.L`).
+; Inputs: D0.W = operand index; A1/D1.W = expected field (without the dot).
+; Outputs: A0/D0 = trimmed member-base span, D1 = 0 success or 1 no match.
+tkpkgMselLocateMemberBaseV2	.block
+	movem.l d2-d7/a1-a3, -(sp)
+	movea.l a1, a3
+	moveq #0, d7
+	move.w d1, d7
+	bsr.w tkpkgMselLocateSemanticOperandV2
+	bne.w memberFail
+	movea.l a0, a2
+	move.l d0, d6
+	tst.w d7
+	beq.w memberFail
+	cmp.l d7, d6
+	bls.w memberFail
+	lea 0(a0, d6.l), a1
+
+memberFindDot
+	tst.l d6
+	beq.w memberFail
+	subq.l #1, a1
+	subq.l #1, d6
+	cmpi.b #'.', (a1)
+	bne.s memberFindDot
+	move.l d0, d5
+	sub.l d6, d5
+	subq.l #1, d5
+	cmp.l d7, d5
+	bne.s memberFindDot
+	movea.l a1, a2
+	addq.l #1, a2
+	movea.l a2, a1
+	move.l d7, d0
+	movea.l a3, a2
+	move.l d7, d1
+	bsr.w tkpkgOperandStringEqAsciiCasefoldV1
+	tst.b d0
+	beq.w memberFail
+	movea.l a0, a1
+	adda.l d6, a1
+
+memberTrimBaseEnd
+	tst.l d6
+	beq.w memberFail
+	subq.l #1, a1
+	move.b (a1), d2
+	cmpi.b #' ', d2
+	beq.s memberTrimOne
+	cmpi.b #9, d2
+	bne.s memberReady
+memberTrimOne
+	subq.l #1, d6
+	bra.s memberTrimBaseEnd
+
+memberReady
+	move.l d6, d0
+	moveq #0, d1
+	bra.s memberReturn
+memberFail
+	moveq #0, d0
+	suba.l a0, a0
+	moveq #1, d1
+memberReturn
+	movem.l (sp)+, d2-d7/a1-a3
+	tst.l d1
+	rts
+	.bend  ; tkpkgMselLocateMemberBaseV2
+
+; Locate one neutral tuple item inside an indirect operand.  The source form
+; `prefix(item,...)` projects the nonempty prefix as item zero, matching Rust's
+; `Expr::Indirect(Expr::Tuple(...))` representation.  Nested parentheses are
+; skipped while finding tuple separators.
+; Inputs: D0.W = operand index; D1.W = tuple item index.
+; Outputs: A0/D0 = trimmed item span; D1 = 0 success or 1 no match;
+;          D2.W = tuple arity.
+tkpkgMselLocateIndirectTupleItemV2	.block
+	movem.l d3-d7/a1-a3, -(sp)
+	move.w d1, d7
+	bsr.w tkpkgMselLocateSemanticOperandV2
+	bne.w tupleFail
+	movea.l a0, a1
+	movea.l a0, a2
+	move.l d0, d5
+
+tupleFindOpen
+	tst.l d5
+	beq.w tupleFail
+	cmpi.b #'(', (a2)
+	beq.s tupleHaveOpen
+	addq.l #1, a2
+	subq.l #1, d5
+	bra.s tupleFindOpen
+
+tupleHaveOpen
+	lea 0(a0, d0.l), a0
+	subq.l #1, a0
+	cmpi.b #')', (a0)
+	bne.w tupleFail
+	moveq #0, d2
+	moveq #0, d4
+	moveq #0, d5
+	movea.l d5, a3
+	move.l a2, -(sp)
+	bsr.w tupleRecordSpan
+	movea.l (sp)+, a2
+	addq.l #1, a2
+	movea.l a2, a1
+	moveq #0, d6
+
+tupleScanInner
+	cmpa.l a0, a2
+	bhs.s tupleInnerEnd
+	moveq #0, d5
+	move.b (a2), d5
+	cmpi.b #'(', d5
+	beq.s tupleNestedOpen
+	cmpi.b #')', d5
+	beq.s tupleNestedClose
+	cmpi.b #',', d5
+	bne.s tupleInnerNext
+	tst.w d6
+	bne.s tupleInnerNext
+	move.l a2, -(sp)
+	bsr.w tupleRecordSpan
+	movea.l (sp)+, a2
+	tst.l d1
+	bne.s tupleFail
+	addq.l #1, a2
+	movea.l a2, a1
+	bra.s tupleScanInner
+
+tupleNestedOpen
+	addq.w #1, d6
+	bra.s tupleInnerNext
+
+tupleNestedClose
+	tst.w d6
+	beq.s tupleFail
+	subq.w #1, d6
+
+tupleInnerNext
+	addq.l #1, a2
+	bra.s tupleScanInner
+
+tupleInnerEnd
+	tst.w d6
+	bne.s tupleFail
+	movea.l a0, a2
+	bsr.w tupleRecordSpan
+	tst.l d1
+	bne.s tupleFail
+	move.l a3, d5
+	tst.l d5
+	beq.s tupleFail
+	movea.l a3, a0
+	move.l d4, d0
+	moveq #0, d1
+	bra.s tupleReturn
+
+; A1/A2 are the candidate half-open span.  Empty spans are reported to the
+; caller; a nonempty prefix before `(` is optional and is ignored by that
+; caller, while every inner item must be nonempty.
+tupleRecordSpan
+	cmpa.l a2, a1
+	bhs.s tupleSpanEmpty
+tupleTrimStart
+	cmpa.l a2, a1
+	bhs.s tupleSpanEmpty
+	moveq #0, d5
+	move.b (a1), d5
+	cmpi.b #' ', d5
+	beq.s tupleTrimStartOne
+	cmpi.b #9, d5
+	bne.s tupleTrimEnd
+tupleTrimStartOne
+	addq.l #1, a1
+	bra.s tupleTrimStart
+tupleTrimEnd
+	cmpa.l a1, a2
+	bls.s tupleSpanEmpty
+	moveq #0, d5
+	move.b -1(a2), d5
+	cmpi.b #' ', d5
+	beq.s tupleTrimEndOne
+	cmpi.b #9, d5
+	bne.s tupleSpanReady
+tupleTrimEndOne
+	subq.l #1, a2
+	bra.s tupleTrimEnd
+tupleSpanReady
+	cmp.w d7, d2
+	bne.s tupleSpanCount
+	movea.l a1, a3
+	move.l a2, d4
+	sub.l a1, d4
+tupleSpanCount
+	addq.w #1, d2
+	moveq #0, d1
+	rts
+tupleSpanEmpty
+	moveq #1, d1
+	rts
+
+tupleFail
+	moveq #0, d0
+	movea.l d0, a0
+	moveq #0, d2
+	moveq #1, d1
+tupleReturn
+	movem.l (sp)+, d3-d7/a1-a3
+	tst.l d1
+	rts
+	.bend  ; tkpkgMselLocateIndirectTupleItemV2
+
 ; Evaluate a located semantic scalar through the same opcore bridge used by
 ; raw package plans.  The projection, not the runtime, decides whether an
 ; immediate marker is required and removed.

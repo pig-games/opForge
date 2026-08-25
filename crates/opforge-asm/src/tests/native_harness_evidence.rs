@@ -150,8 +150,11 @@ fn native_pipeline_select_harness_fs_uae_proves_embedded_65c02_selection() {
             assert_eq!(runs.len(), 1);
             assert!(
                 runs[0].success,
-                "native pipeline-selection harness failed: {}",
-                runs[0].stdout
+                "native pipeline-selection harness failed: guest exit {:?}, protocol_completed={}\nstdout:\n{}\nstderr:\n{}",
+                runs[0].exit_code,
+                runs[0].protocol_completed,
+                runs[0].stdout,
+                runs[0].stderr
             );
         }
     }

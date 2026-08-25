@@ -2343,6 +2343,11 @@ paren
 	bsr.w inferSelectedShapeSuffix
 	cmpi.b #'y', d0
 	beq.w indirectIndexedY
+	; A top-level second operand makes this a composite package expression,
+	; not one legacy indirect operand.  Keep the established `(expr),Y` and
+	; `(expr,X)` forms above/below; otherwise let package projections decide.
+	tst.w d6
+	bne.w none
 	move.w d2, d4
 	subq.w #1, d4
 	move.b 0(a0, d4.w), d3

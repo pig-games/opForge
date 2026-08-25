@@ -1,0 +1,51 @@
+[slice]
+schema_version = 2
+name = "native m68000 movement and control-flow package execution v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 17
+requirements = ["N68X0-001", "N68X0-002", "N68X0-004", "N68X0-005", "N68X0-014", "N68X0-015", "N68X0-016"]
+rust_reference = [
+  "crates/opforge-vm/src/execution_model/selector_encoding.rs",
+  "crates/opforge-vm/src/encoding_vm.rs::execute_encoding_program",
+  "crates/opforge-vm/src/operand_record_vm.rs::execute_operand_record_program",
+  "crates/opforge-vm/src/runtime_model_core.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildSelectedEnvelopeFromCmseV7",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm::tkpkgEncodeExecuteSemanticProgramV2",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm"
+]
+invariant = "For movement and control-flow rows selected by the exact unmodified Rust package, the native generic runtime projects the same neutral semantic inputs, executes the same package-owned operand, encoding, value, sequence, fixup, and rejection plans, and emits the same bytes or diagnostic as Rust without embedding CPU, mnemonic, register, addressing-mode, or opcode authority."
+expected_inputs = "The exact unmodified all-family package; the complete 68000_basic_moves, 68000_addressing_matrix, 68000_control_addressing, and 68000_qualified_jsr source bytes; and the invalid MOVE.W, LEA, and JMP effective-address sources."
+expected_outputs = "Byte-for-byte equality with the same-source in-memory Rust oracle for MOVE, MOVEA, MOVEQ, LEA, PEA, JMP, JSR, package-selected fixed control forms, and ADDA.W where exercised by the package path; illegal effective addresses complete with explicit nonzero guest exits and the exact live Rust semantic diagnostic."
+known_non_equivalences = "This slice does not implement or claim the Item 18 ALU/bit/shift surface, Item 19 branch sizing and multi-pass stability, Item 20 remaining base-68000 forms, later-CPU features, output-format completion, or self-hosting."
+fast_proof_command = "cargo test -p asm motorola68020_item17 -- --nocapture && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_m68000_move_control_parity -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_item17_native_boundary_contracts"
+proof_level = "B"
+proves = "The native source boundary mirrors the Rust neutral input, tuple, target, fixup, InputFields-v6, DIAG, and semantic-rejection contracts while the embedded package remains byte-identical to a fresh Rust build."
+does_not_prove = "Execution by a real Amiga guest."
+
+[[tests]]
+name = "external_fs_uae_native_m68000_move_control_parity"
+proof_level = "D"
+proves = "Seven independent fresh guests are all attempted: four assemble the complete owned movement/control fixtures and compare exact BIN bytes with same-case live Rust oracles, while three require explicit nonzero completion and the exact live Rust diagnostic for illegal MOVE.W, LEA, and JMP effective addresses."
+does_not_prove = "Later ALU, branch-stability, remaining-base, post-68000, output-format, or self-hosting behavior."
+
+[[tests]]
+name = "directed_item17_exact_package_parity_cases"
+proof_level = "D"
+proves = "Fresh-guest exact-package cases isolate MOVE.W immediate, unary indirect update, PEA displacement, qualified JSR, required-value, indirect/tuple projections, InputFields v6, ADDA.W, absolute-long fixup, and each semantic-rejection correction found by the single broad run."
+does_not_prove = "A second broad regression run or behavior outside Item 17."
+
+[[tests]]
+name = "native_existing_parity_completion_wrapper"
+proof_level = "D"
+proves = "The single Item 17 broad native invocation re-proves the complete established native corpus and attempts the seven-case Item 17 movement/control group without being repeated after directed repairs."
+does_not_prove = "That later directed repairs were followed by another broad run; the directed-fix quality gate explicitly forbids that repetition."

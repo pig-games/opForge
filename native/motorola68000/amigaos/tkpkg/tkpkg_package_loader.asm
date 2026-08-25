@@ -346,18 +346,34 @@ checkCpus
 
 checkCals
 	cmpi.b #'C', (a2)
-	bne.s checkDial
+	bne.w checkMessageChunk
 	cmpi.b #'A', 1(a2)
-	bne.s checkDial
+	bne.w checkMessageChunk
 	cmpi.b #'L', 2(a2)
-	bne.s checkDial
+	bne.w checkMessageChunk
 	cmpi.b #'S', 3(a2)
-	bne.s checkDial
+	bne.w checkMessageChunk
 	btst #5, buffers.PackageChunkFlagsHi
 	bne.w duplicateChunk
 	lea buffers.CalsChunkOffsetLo, a3
 	bsr.w storeLocator
 	bset #5, buffers.PackageChunkFlagsHi
+	bra.w nextTocEntry
+
+checkMessageChunk
+	cmpi.b #'D', (a2)
+	bne.w checkDial
+	cmpi.b #'I', 1(a2)
+	bne.w checkDial
+	cmpi.b #'A', 2(a2)
+	bne.w checkDial
+	cmpi.b #'G', 3(a2)
+	bne.w checkDial
+	btst #3, buffers.PackageChunkFlagsExtra
+	bne.w duplicateChunk
+	lea buffers.MessageChunkOffsetLo, a3
+	bsr.w storeLocator
+	bset #3, buffers.PackageChunkFlagsExtra
 	bra.w nextTocEntry
 
 checkDial

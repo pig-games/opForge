@@ -44,6 +44,14 @@ the entire bounded CPRD owner/program set before selection, and rejects any requ
 that overlaps its distinct result buffer before reading or materializing bytes.
 The exact Item 13.1 package and every family definition remain unchanged.
 
+Item 17 refreshed the complete audited manifest after directly porting the
+remaining neutral selector projections, semantic sequences, InputFields-v6
+encoding, absolute fixups, and package-owned semantic rejection needed by the
+base 68000 movement/control fixtures. The selection, operand, encoding, and
+engine modules still interpret only package-owned plans and neutral values;
+no CPU, mnemonic, register, addressing-mode, or opcode authority moved into
+the generic native runtime. The exact Rust-built package remains unchanged.
+
 ## Dependency direction
 
 ```text

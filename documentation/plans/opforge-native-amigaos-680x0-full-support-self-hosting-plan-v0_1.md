@@ -261,10 +261,30 @@ No work item may start until all of these are true on the execution branch:
 - Do not claim full support from representative smokes. Completion requires
   corpus accounting plus the self-host proof.
 
+## Directed-Fix and Single Native Completion Quality Gate
+
+Every native work item (Items 14-40) uses two distinct validation phases:
+
+1. During implementation, every corrected invariant receives the smallest
+   directed host/source-contract test and, when guest execution is required,
+   one focused Level D case. Only those directed tests may be repeated while
+   fixing that invariant. The item-wide Level D corpus and the complete native
+   completion wrapper do not run during this loop.
+2. After every directed proof for the item is green, add the item's item-wide
+   Level D test to `run_native_existing_parity_completion.sh` and invoke that
+   wrapper exactly once. This is the item's single broad native run. If that run
+   discovers another defect, correct it and run only a new or existing directed
+   test for that defect; do not repeat the broad native run for the same item.
+
+The full Rust quality gate runs only when production Rust code changed. Rust
+changes confined to tests receive their directed tests and do not trigger the
+full Rust gate. Native assembly, native tests, workflow artifacts, plans, and
+slice records alone likewise do not trigger it.
+
 ## Shared Full Quality Gate
 
-Every native work item (Items 14-40) runs its named focused tests and Level D
-command, then all of:
+Every native work item (Items 14-40) follows the Directed-Fix and Single Native
+Completion Quality Gate, then runs the applicable non-emulator closure checks:
 
 ```sh
 scripts/workflow/run_native_68000_format_gate.sh
@@ -272,9 +292,13 @@ python3 scripts/workflow/check_cpu_specific_arch_boundary.py
 python3 scripts/workflow/check_native_runtime_boundary_inventory.py
 python3 scripts/workflow/run_native_porting_quality_gate.py --staged
 scripts/workflow/run_native_existing_parity_completion.sh --verify
-RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh
 make workflow-gate
 ```
+
+Run `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh` in addition
+to the commands above only when the item changes production Rust code. The
+native completion wrapper is the sole item-wide Level D invocation; do not run
+the item's broad Level D filter separately.
 
 If an item changes package codec/version behavior, it also runs focused
 `opforge-package` round-trip, malformed-input, and canonicalization tests. If it
@@ -681,11 +705,12 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit that transports base 68000 EA semantics as package data and decodes them architecture-neutrally on AmigaOS.
   - Definition of done: every base EA record round-trips, malformed records fail closed, and the native decoder contains no m68k-owned spellings.
 
-- [ ] Item 17: prove native package execution for base 68000 movement and control flow
+- [x] Item 17: prove native package execution for base 68000 movement and control flow
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-002`, `N68X0-004`, `N68X0-005`, `N68X0-014`-`N68X0-016`.
   - Expected files: native generic interpreter only if a frozen neutral operation is missing, parity tests, one slice record; no package/family-definition change.
   - Full quality gates: Shared Full Quality Gate; focused `68000_basic_moves`, `68000_addressing_matrix`, `68000_control_addressing`, and `68000_qualified_jsr` parity; Level D `external_fs_uae_native_m68000_move_control_parity`.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for movement and control-flow forms only.
+  - Plan-compliance review evidence: `PASS` — primary Sol review of the exact staged Item 17 set confirms that the native generic runtime directly ports Rust's neutral selector/input, sequence, value, InputFields-v6, fixup, and semantic-rejection contracts; the exact Rust-built package remains byte-identical and owns every CPU, mnemonic, register, addressing-mode, opcode, diagnostic, and legality decision; ADDA.W is retained because the Rust package/VM supports it; and no later ALU, branch-stability, remaining-base, post-68000, output-format, or self-hosting scope is claimed. Per the user's delegation constraint, Luna monitored test process lifecycle only and performed no analysis, fixes, or compliance judgment.
+  - Completion evidence (2026-08-25): nine focused Level-B Rust-boundary/source contracts pass, including indirect/register/tuple projections, immediate-register inference, unary updates, direct qualified targets, InputFields-v6, package-owned semantic rejection, first-run artifact isolation, and exact embedded-package equality. Fresh Level-D guests prove the complete four-fixture movement/control corpus plus directed MOVE.W immediate, unary update, PEA displacement, qualified JSR, required-value, tuple/index, ADDA.W (`D0 C0`), absolute-long fixup, and invalid MOVE.W/LEA/JMP diagnostic paths against same-source live Rust oracles with explicit guest completion/exit. The complete native wrapper was invoked exactly once: it re-proved every established group, then exposed only the three Item 17 semantic-rejection failures; after the generic DIAG lookup/rendering invariant was corrected, those three cases passed individually and the broad wrapper was not repeated, as required by the Directed-Fix and Single Native Completion Quality Gate. The 225-file native formatter, CPU-specific architecture boundary, complete runtime-boundary inventory, staged native-porting gate, workflow gate, plan validators, and exact-index diff checks pass. No production Rust changed, so the Rust quality gate is intentionally not applicable.
   - Commit outcome: one commit covering `MOVE/MOVEA/MOVEQ/LEA/PEA/JMP/JSR` and package-selected fixed control forms.
   - Definition of done: complete owned fixtures and their negative EA cases match live Rust bytes/diagnostics.
 

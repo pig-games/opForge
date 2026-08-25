@@ -43,6 +43,7 @@ const FS_UAE_MOUNTED_HUNK_ALIAS: &str = "build/opforge_fsuae_smoke.hunk";
 const FS_UAE_STARTUP_HUNK_ALIAS: &str = "build/tkpkg_debug_cli.hunk";
 const FS_UAE_STARTUP_HUNK_ALIAS_UAEM: &str = "build/tkpkg_debug_cli.hunk.uaem";
 const FS_UAE_TKPKG_SMOKE_INPUT_FILE: &str = "opforge_fsuae_smoke_input.asm";
+const FS_UAE_TKPKG_OPERAND_RECORD_BATCH_FILE: &str = "opforge_fsuae_operand_records.bin";
 const FS_UAE_TKPKG_SMOKE_INPUT_TEXT: &str = "move.b d0,d1\nmove.w d2,d3\n";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str =
     ".module main\n.use math\n.use math as m\n.endmodule\n";
@@ -219,6 +220,19 @@ pub(crate) struct TkpkgDebugCliManifestCase<'a> {
     pub(crate) source: &'a [u8],
 }
 
+pub(crate) struct TkpkgDebugCliOperandRecordParityCase<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) batch: &'a [u8],
+    pub(crate) package_bytes: &'a [u8],
+    pub(crate) proof: TkpkgDebugCliOperandRecordProof<'a>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum TkpkgDebugCliOperandRecordProof<'a> {
+    ExactRows(&'a [u8]),
+    ExpectedFailureContaining(&'a str),
+}
+
 pub(crate) struct OpforgeNativeCliFailureCase<'a> {
     pub(crate) name: &'a str,
     pub(crate) define: &'a str,
@@ -279,8 +293,18 @@ pub(crate) enum OpforgeNativeCliProof<'a> {
         rust_oracle: &'a [u8],
     },
     ExactArtifacts(&'a [OpforgeNativeCliExpectedArtifact<'a>]),
+    ExactStdoutLines {
+        prefix: &'a str,
+        rust_oracle: &'a [u8],
+    },
     ExpectedFailureWithDiagnostic,
     ExpectedFailureContaining(&'a str),
+}
+
+#[derive(Clone, Copy)]
+enum NativeCliParityExecutable {
+    OpforgeCli,
+    TkpkgDebugCliOperandRecord,
 }
 
 struct OpforgeNativeCliStagedInputs<'a> {
@@ -646,7 +670,67 @@ pub(crate) fn run_opforge_native_cli_parity_cases_from_env(
     };
 
     let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
-    run_opforge_native_cli_parity_batch_cases(workspace_root, &fs_uae_bin, &args_text, cases)
+    run_native_cli_parity_batch_cases(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        cases,
+        NativeCliParityExecutable::OpforgeCli,
+    )
+}
+
+pub(crate) fn run_tkpkg_debug_cli_operand_record_parity_cases_from_env(
+    workspace_root: &Path,
+    cases: &[TkpkgDebugCliOperandRecordParityCase<'_>],
+) -> Result<FsUaeSmokeOutcome, String> {
+    const DEFINES: &[&str] = &[
+        "OPFORGE_FS_UAE_SMOKE",
+        "OPFORGE_FS_UAE_TKPKG_OPERAND_RECORD",
+    ];
+    if cases.is_empty() {
+        return Err(
+            "native tkpkg operand-record parity mode requires at least one case".to_string(),
+        );
+    }
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set; provide newline-delimited FS-UAE arguments"
+            )))
+        }
+    };
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    let parity_cases = cases
+        .iter()
+        .map(|case| OpforgeNativeCliParityCase {
+            name: case.name,
+            cpu_override: "68020",
+            extra_assembly_defines: DEFINES,
+            source_override: Some(case.batch),
+            command_template: None,
+            package_mode: OpforgeNativeCliPackageMode::Explicit(case.package_bytes),
+            extra_guest_files: &[],
+            proof: match case.proof {
+                TkpkgDebugCliOperandRecordProof::ExactRows(rust_oracle) => {
+                    OpforgeNativeCliProof::ExactStdoutLines {
+                        prefix: "TKPKG OPRD ",
+                        rust_oracle,
+                    }
+                }
+                TkpkgDebugCliOperandRecordProof::ExpectedFailureContaining(diagnostic) => {
+                    OpforgeNativeCliProof::ExpectedFailureContaining(diagnostic)
+                }
+            },
+        })
+        .collect::<Vec<_>>();
+    run_native_cli_parity_batch_cases(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        &parity_cases,
+        NativeCliParityExecutable::TkpkgDebugCliOperandRecord,
+    )
 }
 
 fn native_cli_output_define_for_cpu(cpu_id: &str, case_name: &str) -> Result<&'static str, String> {
@@ -736,6 +820,27 @@ fn verify_native_cli_case_proof(
     case: &OpforgeNativeCliParityCase<'_>,
     run: &mut FsUaeSmokeRun,
 ) -> Result<(), String> {
+    fn protocol_artifact<'a>(
+        case_name: &str,
+        run: &'a FsUaeSmokeRun,
+        file_name: &str,
+    ) -> Result<&'a [u8], String> {
+        let path = PathBuf::from(FS_UAE_MOUNTED_WORK_DIR_NAME)
+            .join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_ARTIFACTS_DIR)
+            .join(opforge_native_cli_batch_case_name(0))
+            .join(file_name);
+        run.captured_artifacts
+            .get(&path)
+            .map(Vec::as_slice)
+            .ok_or_else(|| {
+                format!(
+                    "FS-UAE proof for {} is invalid: isolated guest artifact {} is missing",
+                    case_name,
+                    path.display()
+                )
+            })
+    }
+
     if !run.protocol_completed {
         return Err(format!(
             "FS-UAE proof for {} is invalid: the exact fresh start/done challenge and guest exit evidence were not all present\nstdout:\n{}\nstderr:\n{}",
@@ -758,6 +863,43 @@ fn verify_native_cli_case_proof(
         OpforgeNativeCliProof::ExactArtifacts(artifacts) => {
             verify_exact_native_cli_artifacts(case, run, artifacts)
         }
+        OpforgeNativeCliProof::ExactStdoutLines {
+            prefix,
+            rust_oracle,
+        } => {
+            if !run.success || run.exit_code != Some(0) {
+                return Err(format!(
+                    "FS-UAE proof for {} is invalid: guest exit was {:?}, expected exactly 0\nstdout:\n{}\nstderr:\n{}",
+                    case.name, run.exit_code, run.stdout, run.stderr
+                ));
+            }
+            let guest_stdout = std::str::from_utf8(protocol_artifact(
+                case.name,
+                run,
+                FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDOUT_FILE,
+            )?)
+            .map_err(|error| {
+                format!(
+                    "FS-UAE proof for {} has non-UTF-8 isolated guest stdout: {error}",
+                    case.name
+                )
+            })?;
+            let actual = guest_stdout
+                .lines()
+                .filter(|line| line.starts_with(prefix))
+                .collect::<Vec<_>>()
+                .join("\n")
+                .into_bytes();
+            if actual != rust_oracle {
+                return Err(format!(
+                    "FS-UAE stdout proof for {} differs from the in-memory Rust oracle: {}",
+                    case.name,
+                    describe_first_byte_mismatch(&actual, rust_oracle)
+                ));
+            }
+            run.verified_output = Some(actual);
+            Ok(())
+        }
         OpforgeNativeCliProof::ExpectedFailureWithDiagnostic
         | OpforgeNativeCliProof::ExpectedFailureContaining(_) => {
             if run.exit_code == Some(0) || run.exit_code.is_none() {
@@ -766,7 +908,17 @@ fn verify_native_cli_case_proof(
                     case.name, run.exit_code
                 ));
             }
-            let combined = format!("{}\n{}", run.stdout, run.stderr);
+            let guest_stdout = String::from_utf8_lossy(protocol_artifact(
+                case.name,
+                run,
+                FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDOUT_FILE,
+            )?);
+            let guest_stderr = String::from_utf8_lossy(protocol_artifact(
+                case.name,
+                run,
+                FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDERR_FILE,
+            )?);
+            let combined = format!("{guest_stdout}\n{guest_stderr}");
             if combined.trim().is_empty() {
                 return Err(format!(
                     "FS-UAE negative proof for {} is invalid: completed guest failure produced no diagnostic output",
@@ -1259,8 +1411,19 @@ fn fnv1a64_update(mut state: u64, bytes: &[u8]) -> u64 {
 fn opforge_native_cli_case_identity(
     case: &OpforgeNativeCliParityCase<'_>,
     resolved_package_bytes: Option<&[u8]>,
+    executable: NativeCliParityExecutable,
 ) -> String {
     let mut state = 0xcbf2_9ce4_8422_2325;
+    state = fnv1a64_update(
+        state,
+        match executable {
+            NativeCliParityExecutable::OpforgeCli => b"opforge-cli",
+            NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
+                b"tkpkg-debug-cli-operand-record"
+            }
+        },
+    );
+    state = fnv1a64_update(state, &[0]);
     state = fnv1a64_update(state, case.cpu_override.as_bytes());
     state = fnv1a64_update(state, &[0]);
     state = fnv1a64_update(state, case.source_override.unwrap_or_default());
@@ -1300,6 +1463,16 @@ fn opforge_native_cli_case_identity(
                 state = fnv1a64_update(state, &[0]);
                 state = fnv1a64_update(state, artifact.rust_oracle);
             }
+        }
+        OpforgeNativeCliProof::ExactStdoutLines {
+            prefix,
+            rust_oracle,
+        } => {
+            state = fnv1a64_update(state, b"exact-stdout-lines");
+            state = fnv1a64_update(state, &[0]);
+            state = fnv1a64_update(state, prefix.as_bytes());
+            state = fnv1a64_update(state, &[0]);
+            state = fnv1a64_update(state, rust_oracle);
         }
         OpforgeNativeCliProof::ExpectedFailureWithDiagnostic => {
             state = fnv1a64_update(state, b"failure-with-diagnostic");
@@ -1577,21 +1750,23 @@ fn stage_opforge_native_cli_case_guest_inputs(
     Ok(())
 }
 
-fn run_opforge_native_cli_parity_batch_cases(
+fn run_native_cli_parity_batch_cases(
     workspace_root: &Path,
     fs_uae_bin: &str,
     args_text: &str,
     cases: &[OpforgeNativeCliParityCase<'_>],
+    executable: NativeCliParityExecutable,
 ) -> Result<FsUaeSmokeOutcome, String> {
     if cases.len() > 1 {
         let mut runs = Vec::with_capacity(cases.len());
         let mut proof_errors = Vec::new();
         for case in cases {
-            match run_opforge_native_cli_parity_batch_cases(
+            match run_native_cli_parity_batch_cases(
                 workspace_root,
                 fs_uae_bin,
                 args_text,
                 std::slice::from_ref(case),
+                executable,
             ) {
                 Err(error) => proof_errors.push(format!("{}: {error}", case.name)),
                 Ok(FsUaeSmokeOutcome::Completed { runs: case_runs }) => runs.extend(case_runs),
@@ -1611,7 +1786,16 @@ fn run_opforge_native_cli_parity_batch_cases(
         return Ok(FsUaeSmokeOutcome::Completed { runs });
     }
 
-    let source_path = workspace_root.join(FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH);
+    let example_name = match executable {
+        NativeCliParityExecutable::OpforgeCli => FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+        NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
+            FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME
+        }
+    };
+    let source_path = workspace_root.join(match executable {
+        NativeCliParityExecutable::OpforgeCli => FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH,
+        NativeCliParityExecutable::TkpkgDebugCliOperandRecord => FS_UAE_TKPKG_DEBUG_CLI_SOURCE_PATH,
+    });
     if !source_path.is_file() {
         return Err(format!(
             "expected FS-UAE smoke example source at {}",
@@ -1640,7 +1824,8 @@ fn run_opforge_native_cli_parity_batch_cases(
             ));
         }
         let package_bytes = resolve_opforge_native_cli_package_bytes(workspace_root, case)?;
-        let case_identity = opforge_native_cli_case_identity(case, package_bytes.as_deref());
+        let case_identity =
+            opforge_native_cli_case_identity(case, package_bytes.as_deref(), executable);
         let case_paths = opforge_native_cli_batch_case_paths(
             &mounted_work_dir,
             index,
@@ -1653,8 +1838,33 @@ fn run_opforge_native_cli_parity_batch_cases(
                 case_paths.protocol_dir.display()
             )
         })?;
-        stage_opforge_native_cli_case_guest_inputs(&case_paths, case, package_bytes.as_deref())?;
-        let command = opforge_native_cli_case_command(case, &case_paths);
+        match executable {
+            NativeCliParityExecutable::OpforgeCli => {
+                stage_opforge_native_cli_case_guest_inputs(
+                    &case_paths,
+                    case,
+                    package_bytes.as_deref(),
+                )?;
+            }
+            NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
+                stage_guest_input_bytes(
+                    &case_paths.artifact_dir,
+                    FS_UAE_TKPKG_OPERAND_RECORD_BATCH_FILE,
+                    case.source_override.ok_or_else(|| {
+                        format!("tkpkg operand-record case {} has no batch bytes", case.name)
+                    })?,
+                )?;
+            }
+        }
+        let command = match executable {
+            NativeCliParityExecutable::OpforgeCli => format!(
+                "Work:build/opforge_cli {}",
+                opforge_native_cli_case_command(case, &case_paths)
+            ),
+            NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
+                "Work:build/tkpkg_debug_cli_bin".to_string()
+            }
+        };
         batch_script.push_str("Echo \"");
         batch_script.push_str(case_paths.expected_started.as_str());
         batch_script.push_str("\" >");
@@ -1666,7 +1876,6 @@ fn run_opforge_native_cli_parity_batch_cases(
             .as_str(),
         );
         batch_script.push('\n');
-        batch_script.push_str("Work:build/opforge_cli ");
         batch_script.push_str(command.as_str());
         batch_script.push_str(" >");
         batch_script.push_str(
@@ -1707,13 +1916,34 @@ fn run_opforge_native_cli_parity_batch_cases(
         batch_script.push('\n');
         batch_paths.push(case_paths);
     }
-    let assembly_defines = opforge_native_cli_case_assembly_defines(&cases[0]);
-    let include_paths =
-        example_include_paths(workspace_root, FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME);
-    let module_paths = example_module_paths(workspace_root, FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME);
+    let assembly_defines = match executable {
+        NativeCliParityExecutable::OpforgeCli => {
+            opforge_native_cli_case_assembly_defines(&cases[0])
+        }
+        NativeCliParityExecutable::TkpkgDebugCliOperandRecord => vec![
+            "OPFORGE_FS_UAE_SMOKE".to_string(),
+            "OPFORGE_FS_UAE_TKPKG_OPERAND_RECORD".to_string(),
+        ],
+    };
+    let include_paths = example_include_paths(workspace_root, example_name);
+    let module_paths = example_module_paths(workspace_root, example_name);
+    let source_path = match executable {
+        NativeCliParityExecutable::OpforgeCli => source_path,
+        NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
+            let package_bytes =
+                resolve_opforge_native_cli_package_bytes(workspace_root, &cases[0])?.ok_or_else(
+                    || "tkpkg operand-record parity requires explicit package bytes".to_string(),
+                )?;
+            materialize_tkpkg_debug_cli_package_override_source(
+                &source_path,
+                &artifact_dir,
+                &package_bytes,
+            )?
+        }
+    };
     run_assembly(AssemblyExecutionRequest {
         root_path: &source_path,
-        input_base: FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+        input_base: example_name,
         defines: &assembly_defines,
         include_paths: &include_paths,
         module_paths: &module_paths,
@@ -1751,24 +1981,24 @@ fn run_opforge_native_cli_parity_batch_cases(
     .map_err(|err| {
         format!(
             "assemble FS-UAE smoke example {} from {}: {}; diagnostics: {:#?}",
-            FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+            example_name,
             source_path.display(),
             err.summary(),
             err.diagnostics()
         )
     })?;
 
-    let hunk_path =
-        generated_hunk_artifact_path(&artifact_dir, FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME);
+    let hunk_path = generated_hunk_artifact_path(&artifact_dir, example_name);
     if !hunk_path.is_file() {
         return Err(format!(
             "expected generated Hunk artifact at {}",
             hunk_path.display()
         ));
     }
-    let mounted_hunk_alias_path = mounted_work_dir
-        .join("build")
-        .join(FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME);
+    let mounted_hunk_alias_path = mounted_work_dir.join("build").join(match executable {
+        NativeCliParityExecutable::OpforgeCli => "opforge_cli",
+        NativeCliParityExecutable::TkpkgDebugCliOperandRecord => "tkpkg_debug_cli_bin",
+    });
     if mounted_hunk_alias_path != hunk_path {
         fs::copy(&hunk_path, &mounted_hunk_alias_path).map_err(|err| {
             format!(
@@ -1791,7 +2021,7 @@ fn run_opforge_native_cli_parity_batch_cases(
         .map(|line| {
             line.replace("{hunk}", &hunk_path.to_string_lossy())
                 .replace("{artifact_dir}", &artifact_dir.to_string_lossy())
-                .replace("{example}", FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME)
+                .replace("{example}", example_name)
                 .replace(
                     "{start_file}",
                     &capture.start_paths.primary.to_string_lossy(),
@@ -1846,7 +2076,7 @@ fn run_opforge_native_cli_parity_batch_cases(
         Err(err) => {
             return Err(format!(
                 "launch FS-UAE binary '{fs_uae_bin}' for {} example {}: {err}",
-                FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+                example_name,
                 hunk_path.display()
             ))
         }
@@ -1855,7 +2085,7 @@ fn run_opforge_native_cli_parity_batch_cases(
     let wait_outcome = match wait_for_capture_or_exit(
         &mut child,
         &capture,
-        FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+        example_name,
         &baseline_process_ids,
     ) {
         Ok(wait_outcome) => wait_outcome,
@@ -1884,14 +2114,11 @@ fn run_opforge_native_cli_parity_batch_cases(
         }
     };
     if wait_outcome == FsUaeWaitOutcome::Captured {
-        wait_for_process_exit_after_capture(&mut child, FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME)?;
+        wait_for_process_exit_after_capture(&mut child, example_name)?;
     }
-    let launcher_status = child.wait().map_err(|err| {
-        format!(
-            "wait for FS-UAE process for {}: {err}",
-            FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME
-        )
-    })?;
+    let launcher_status = child
+        .wait()
+        .map_err(|err| format!("wait for FS-UAE process for {}: {err}", example_name))?;
     let _ = cleanup_spawned_fs_uae_processes(&baseline_process_ids);
     wait_for_spawned_fs_uae_processes_to_exit(&baseline_process_ids)?;
 
@@ -1953,7 +2180,7 @@ fn run_opforge_native_cli_parity_batch_cases(
         );
         let protocol_completed = started_matches && done_matches && exit_code.is_some();
         let mut run = FsUaeSmokeRun {
-            example_name: FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+            example_name,
             source_path: case_paths
                 .artifact_dir
                 .join(opforge_native_cli_case_source_relative_path(case)),
@@ -3561,11 +3788,15 @@ fn run_example_smoke_with_guest_input(
     })?;
     match spec.input_mode {
         TkpkgDebugCliInputMode::SingleFile(guest_source) => {
-            stage_guest_input_bytes(
-                &mounted_work_dir,
-                FS_UAE_TKPKG_SMOKE_INPUT_FILE,
-                guest_source,
-            )?;
+            let guest_file = if spec
+                .extra_assembly_defines
+                .contains(&"OPFORGE_FS_UAE_TKPKG_OPERAND_RECORD")
+            {
+                FS_UAE_TKPKG_OPERAND_RECORD_BATCH_FILE
+            } else {
+                FS_UAE_TKPKG_SMOKE_INPUT_FILE
+            };
+            stage_guest_input_bytes(&mounted_work_dir, guest_file, guest_source)?;
         }
         TkpkgDebugCliInputMode::Manifest(cases) => {
             stage_tkpkg_manifest_inputs(&mounted_work_dir, cases)?;
@@ -3630,10 +3861,12 @@ fn run_example_smoke_with_guest_input(
     })
     .map_err(|err| {
         format!(
-            "assemble FS-UAE smoke example {} from {}: {}",
+            "assemble FS-UAE smoke example {} from {}: {}; diagnostics: {:#?}; source notes: {:#?}",
             spec.example_name,
             source_path.display(),
-            err.summary()
+            err.summary(),
+            err.diagnostics(),
+            err.source_lines()
         )
     })?;
 
@@ -4156,24 +4389,44 @@ mod tests {
         renamed.name = "display-name-must-not-select-oracle";
 
         assert_ne!(
-            opforge_native_cli_case_identity(&base, None),
-            opforge_native_cli_case_identity(&changed_source, None)
+            opforge_native_cli_case_identity(&base, None, NativeCliParityExecutable::OpforgeCli),
+            opforge_native_cli_case_identity(
+                &changed_source,
+                None,
+                NativeCliParityExecutable::OpforgeCli,
+            )
         );
         assert_ne!(
-            opforge_native_cli_case_identity(&base, None),
-            opforge_native_cli_case_identity(&changed_command, None)
+            opforge_native_cli_case_identity(&base, None, NativeCliParityExecutable::OpforgeCli),
+            opforge_native_cli_case_identity(
+                &changed_command,
+                None,
+                NativeCliParityExecutable::OpforgeCli,
+            )
         );
         assert_ne!(
-            opforge_native_cli_case_identity(&base, Some(b"package-a")),
-            opforge_native_cli_case_identity(&base, Some(b"package-b"))
+            opforge_native_cli_case_identity(
+                &base,
+                Some(b"package-a"),
+                NativeCliParityExecutable::OpforgeCli,
+            ),
+            opforge_native_cli_case_identity(
+                &base,
+                Some(b"package-b"),
+                NativeCliParityExecutable::OpforgeCli,
+            )
         );
         assert_ne!(
-            opforge_native_cli_case_identity(&base, None),
-            opforge_native_cli_case_identity(&changed_oracle, None)
+            opforge_native_cli_case_identity(&base, None, NativeCliParityExecutable::OpforgeCli),
+            opforge_native_cli_case_identity(
+                &changed_oracle,
+                None,
+                NativeCliParityExecutable::OpforgeCli,
+            )
         );
         assert_eq!(
-            opforge_native_cli_case_identity(&base, None),
-            opforge_native_cli_case_identity(&renamed, None)
+            opforge_native_cli_case_identity(&base, None, NativeCliParityExecutable::OpforgeCli),
+            opforge_native_cli_case_identity(&renamed, None, NativeCliParityExecutable::OpforgeCli)
         );
     }
 

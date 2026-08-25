@@ -15011,6 +15011,143 @@ fn motorola68020_item15_native_semantic_v2_is_package_driven_and_fail_closed() {
 }
 
 #[test]
+fn motorola68020_item16_native_base_operand_record_decoder_is_package_driven_and_fail_closed() {
+    let loader = tkpkg_amigaos_source("tkpkg_package_loader.asm");
+    let service = tkpkg_amigaos_source("tkpkg_service.asm");
+    let decoder = tkpkg_amigaos_source("tkpkg_operand_record_service.asm");
+
+    assert!(loader.contains("buffers.CprdChunkOffsetLo"));
+    assert!(service.contains("abi.ENTRY_ORD_EXECUTE_OPERAND_RECORD"));
+    assert!(service.contains("operand_record.executeRequestV1"));
+    assert!(service.contains("buffers.OPERAND_RECORD_RESULT_BUFFER_PTR_V1"));
+    assert!(source_contains_in_order(
+        &decoder,
+        &[
+            "parseRequestV1",
+            "buffers.OPERAND_RECORD_RESULT_BUFFER_PTR_V1",
+            "inputDoesNotOverlapResult",
+            "findScopedProgramV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &decoder,
+        &[
+            "findScopedProgramV1",
+            "MAX_OWNER_COUNT_V1",
+            "ownerDescriptorIsDuplicateV1",
+            "OwnerIndexByRank",
+            "MAX_PROGRAM_COUNT_V1",
+            "programDescriptorIsDuplicateV1",
+            "validateProgramShapeV1",
+            "ownerRankForIndexV1",
+            "executeProgramV1",
+        ]
+    ));
+    assert!(decoder.contains("validateUtf8V1"));
+    for opcode in [
+        "OPERAND_RECORD_OP_REGISTER",
+        "OPERAND_RECORD_OP_INDIRECT",
+        "OPERAND_RECORD_OP_DISPLACEMENT",
+        "OPERAND_RECORD_OP_INDEXED",
+        "OPERAND_RECORD_OP_ABSOLUTE",
+        "OPERAND_RECORD_OP_IMMEDIATE",
+        "OPERAND_RECORD_OP_NESTED_ADDRESS",
+        "OPERAND_RECORD_OP_REGISTER_PAIR",
+        "OPERAND_RECORD_OP_REGISTER_RANGE",
+        "OPERAND_RECORD_OP_REGISTER_LIST",
+        "OPERAND_RECORD_OP_FIELD",
+        "OPERAND_RECORD_OP_COMPOSITE",
+    ] {
+        assert!(decoder.contains(opcode));
+    }
+    assert!(source_contains_in_order(
+        &decoder,
+        &[
+            "executeProgramV1",
+            "executeRegister",
+            "executeIndirect",
+            "executeDisplacement",
+            "executeIndexed",
+            "executeAbsolute",
+            "executeImmediate",
+        ]
+    ));
+    for exact_length in ["#3, d7", "#4, d7", "#5, d7", "#8, d7"] {
+        assert!(
+            decoder.contains(exact_length),
+            "native OPRD-v1 decoder must validate exact program length {exact_length}"
+        );
+    }
+    assert!(decoder.contains("OPERAND_RECORD_OP_END"));
+    assert!(decoder.contains("cmpa.l a6, a2"));
+    assert!(decoder.contains("MALFORMED_CHUNK_TEXT_LEN"));
+    assert!(decoder.contains("MALFORMED_PROGRAM_TEXT_LEN"));
+    assert!(decoder.contains("MISSING_INPUT_TEXT_LEN"));
+    assert!(source_contains_in_order(
+        &decoder,
+        &[
+            "parseRequestV1",
+            "MAX_REGISTER_INPUTS_V1",
+            "MAX_VALUE_INPUTS_V1",
+            "findScopedProgramV1",
+            "executeProgramV1",
+        ]
+    ));
+    for forbidden in [
+        "motorola68000",
+        "m68000",
+        "operand.data-register",
+        "operand.address-register",
+        "operand.address-indirect",
+        "operand.pc-",
+    ] {
+        assert!(
+            !decoder.to_ascii_lowercase().contains(forbidden),
+            "generic Item 16 decoder must not own family spelling {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 13.1 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 16 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 16 package input");
+    for (id, opcode, length) in [
+        ("operand.data-register", 0x01, 3),
+        ("operand.address-register", 0x01, 3),
+        ("operand.address-indirect", 0x02, 4),
+        ("operand.address-postincrement", 0x02, 4),
+        ("operand.address-predecrement", 0x02, 4),
+        ("operand.address-displacement", 0x03, 5),
+        ("operand.address-indexed-word", 0x04, 8),
+        ("operand.address-indexed-long", 0x04, 8),
+        ("operand.pc-displacement", 0x03, 5),
+        ("operand.pc-indexed-word", 0x04, 8),
+        ("operand.pc-indexed-long", 0x04, 8),
+        ("operand.absolute-word", 0x05, 4),
+        ("operand.absolute-long", 0x05, 4),
+        ("operand.immediate", 0x06, 3),
+    ] {
+        let program = chunks
+            .operand_record_programs
+            .iter()
+            .find(|program| program.id == id)
+            .unwrap_or_else(|| panic!("missing frozen base record {id}"));
+        assert_eq!(program.schema_version, 1, "schema for {id}");
+        assert_eq!(program.program.len(), length, "program length for {id}");
+        assert_eq!(program.program[0], opcode, "program opcode for {id}");
+        assert_eq!(program.program.last(), Some(&0xff), "program END for {id}");
+    }
+}
+
+#[test]
 fn motorola68020_item6_7_pass_one_sizes_relative_branches_when_selected_size_is_empty() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
@@ -19767,7 +19904,11 @@ fn motorola68020_tkpkg_native_abi_locks_v1_entrypoint_ordinals() {
         &source,
         "ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION = 9"
     ));
-    assert!(tkpkg_source_contains(&source, "ENTRY_ORD_COUNT_V1 = 10"));
+    assert!(tkpkg_source_contains(
+        &source,
+        "ENTRY_ORD_EXECUTE_OPERAND_RECORD = 10"
+    ));
+    assert!(tkpkg_source_contains(&source, "ENTRY_ORD_COUNT_V1 = 11"));
 }
 
 #[test]
@@ -21833,7 +21974,7 @@ fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_p
     ));
     assert!(tkpkg_source_contains(
         &source,
-        ".ifdef OPFORGE_FS_UAE_SMOKE\ndefaultSmokeInputPath:\n        .byte \"Work:opforge_fsuae_smoke_input.asm\", 0\n.endif"
+        ".ifdef OPFORGE_FS_UAE_SMOKE\ndefaultSmokeInputPath:\n.ifdef OPFORGE_FS_UAE_TKPKG_OPERAND_RECORD\n        .byte \"Work:opforge_fsuae_operand_records.bin\", 0\n.else\n        .byte \"Work:opforge_fsuae_smoke_input.asm\", 0\n.endif\n.endif"
     ));
     assert!(tkpkg_source_contains(
         &source,

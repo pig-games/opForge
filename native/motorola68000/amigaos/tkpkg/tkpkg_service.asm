@@ -11,6 +11,7 @@
 	.use tkpkg.amigaos.expression_service as expression
 	.use tkpkg.amigaos.selection_service as selection
 	.use tkpkg.amigaos.encode_service as encoding
+	.use tkpkg.amigaos.operand_record_service as operand_record
 	.use tkpkg.amigaos.package_loader
 	.use tkpkg.amigaos.parse_service as parser
 	.use tkpkg.amigaos.pipeline
@@ -326,6 +327,8 @@ dispatchV1	.block
 	beq.w handleSelectInstruction
 	cmpi.b #abi.ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0
 	beq.w handleEncodeSelectedInstruction
+	cmpi.b #abi.ENTRY_ORD_EXECUTE_OPERAND_RECORD, d0
+	beq.w handleExecuteOperandRecord
 	bsr.w tkpkgServiceSetBadRequestV1
 	rts
 
@@ -545,6 +548,38 @@ encodeSelectedInstructionOk
 	move.b d1, 23(a0)
 
 encodeSelectedInstructionDone
+	rts
+
+handleExecuteOperandRecord
+	move.l a0, -(sp)
+	jsr operand_record.executeRequestV1
+	movea.l (sp)+, a0
+	tst.b d0
+	beq.s executeOperandRecordOk
+	cmpi.b #abi.STATUS_BAD_REQUEST_V1, d0
+	beq.s executeOperandRecordBadRequest
+	bsr.w tkpkgServiceSetRuntimeErrorMessageV1
+	rts
+
+executeOperandRecordBadRequest
+	bsr.w tkpkgServiceSetBadRequestV1
+	rts
+
+executeOperandRecordOk
+	move.w d1, EncodeSelectedOutputLen.l
+	bsr.w tkpkgServiceWriteClearInputFieldsV1
+	bsr.w tkpkgServiceClearStoredLastErrorV1
+	bsr.w tkpkgServiceWriteClearLastErrorFieldsV1
+	bsr.w tkpkgServiceSetStatusOkV1
+	bsr.w tkpkgServiceWriteClearOutputFieldsV1
+	move.w EncodeSelectedOutputLen.l, d1
+	move.w #buffers.OPERAND_RECORD_RESULT_BUFFER_PTR_V1, d0
+	move.b d0, abi.CB_OUTPUT_PTR(a0)
+	lsr.w #8, d0
+	move.b d0, 21(a0)
+	move.b d1, abi.CB_OUTPUT_LEN(a0)
+	lsr.w #8, d1
+	move.b d1, 23(a0)
 	rts
 
 handleEvaluateExpression

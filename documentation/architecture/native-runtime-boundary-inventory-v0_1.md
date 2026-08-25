@@ -36,6 +36,14 @@ encoding, engine-shape, and expression-bridge owners. The exact Item 13.1
 package remains unchanged; register names, encodings, ranges, field layouts,
 endianness, and emitted opcode values remain package data.
 
+Item 16 refreshed the complete audited manifest after directly porting Rust's
+CPU-neutral CPRD scope lookup and frozen OPRD-v1 base-record execution. The
+new operand-record service interprets only opaque ids, owner scopes, neutral
+register references, scalar inputs, and schema opcodes. It validates UTF-8 and
+the entire bounded CPRD owner/program set before selection, and rejects any request interval
+that overlaps its distinct result buffer before reading or materializing bytes.
+The exact Item 13.1 package and every family definition remain unchanged.
+
 ## Dependency direction
 
 ```text
@@ -43,7 +51,7 @@ CLI/session frontend -> assembly driver -> engine callback API
                                     -> flow owners / text-encoding owner
                                     -> tkpkg bridge -> tkpkg service facade
 tkpkg service facade -> pipeline, tokenizer VM, PRVM line router,
-                        expression bridge, package loader
+                        expression bridge, package loader, operand-record service
 pipeline -> package hierarchy / CPU-family-dialect locators
 expression bridge -> expression VM runtime
 ```
@@ -175,7 +183,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Public entries: `bootstrapV1` and `dispatchV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers, dedicated request-lifecycle,
   status-projection, parser-adapter, expression-service, and selection-service
-  owners; engine, expression bridge, package loader, pipeline, and tokenizer VM.
+  owners; operand-record service, engine, expression bridge, package loader,
+  pipeline, and tokenizer VM.
   The expression service now reaches pass/finalization state only through the
   neutral `tkpkg.amigaos.runtime_context` façade.
 - Mutable state: request/control-block pointers, output and last-error buffers,
@@ -281,6 +290,26 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   format. All names, target meanings, and emitted opcode bytes remain package
   data; later semantic program versions, operand records, fixups, and branch
   convergence remain outside the Item 14 boundary.
+
+### `tkpkg.amigaos.operand_record_service` (NR-004, Item 16 frozen base record)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_operand_record_service.asm`.
+- Public entry: `executeRequestV1`; it parses one bounded neutral request,
+  resolves an opaque CPRD id by dialect/CPU/family precedence, and executes one
+  exact OPRD schema-v1 base program.
+- Imports/outbound dependencies: only the tkpkg ABI and shared buffers.
+- Mutable state: bounded request cursors, active-owner indices, selected-program
+  metadata, and the dedicated neutral 24-byte result buffer.
+- Routine responsibility groups: little-endian bounded CPRD reading; complete
+  UTF-8, duplicate-owner/duplicate-id, and v1-v3 program-set validation before scoped
+  owner/id matching; exact program-shape and END validation; request/result
+  non-overlap enforcement; neutral register,
+  indirect/update, displacement/base, indexed/width/scale, absolute, and
+  immediate result materialization; missing-input and malformed-data rejection.
+- Decision: this module is a direct native port of the Rust package and operand-
+  record VM boundary. It owns no CPU, family, dialect, mnemonic, register name,
+  addressing-mode spelling, or encoding byte. Later structured record schemas,
+  instruction encoding, fixups, and branch convergence remain outside Item 16.
 
 ### `tkpkg.amigaos.runtime_context` (NR-005, Item 5.7 ownership split)
 

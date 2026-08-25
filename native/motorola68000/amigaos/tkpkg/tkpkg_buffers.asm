@@ -6,6 +6,7 @@
 	.use tkpkg.amigaos.abi
 
 LAST_ERROR_BUFFER_CAPACITY           = 4096
+OPERAND_RECORD_RESULT_CAPACITY       = abi.OPERAND_RECORD_RESULT_SIZE_V1
 LAST_ERROR_BUFFER_PTR_V1             = abi.NATIVE_CONTROL_BLOCK_SIZE_V1
 PACKAGE_STORAGE_CAPACITY             = 393216
 PIPELINE_ID_BUFFER_CAPACITY          = 32
@@ -33,6 +34,7 @@ PACKAGE_CHUNK_CSEM                   = 8
 PACKAGE_CHUNK_CMSE                   = 16
 PACKAGE_CHUNK_RENC                   = 32
 PACKAGE_CHUNK_VALP                   = 64
+PACKAGE_CHUNK_CPRD                   = 128
 PACKAGE_REQUIRED_CHUNK_FLAGS         = 31
 SCOPED_OWNER_FAMILY                  = 0
 SCOPED_OWNER_CPU                     = 1
@@ -68,6 +70,11 @@ ControlBlockV1
 
 LastErrorBuffer
 	.res byte, LAST_ERROR_BUFFER_CAPACITY
+
+OperandRecordResultBuffer
+	.res byte, OPERAND_RECORD_RESULT_CAPACITY
+
+OPERAND_RECORD_RESULT_BUFFER_PTR_V1 = OperandRecordResultBuffer - ControlBlockV1
 
 TokenRecordBuffer
 	.res byte, TOKEN_RECORD_SIZE * TOKEN_BUFFER_CAPACITY
@@ -492,6 +499,30 @@ ValpChunkLenMidHi
 	.res byte, 1
 
 ValpChunkLenHi
+	.res byte, 1
+
+CprdChunkOffsetLo
+	.res byte, 1
+
+CprdChunkOffsetMidLo
+	.res byte, 1
+
+CprdChunkOffsetMidHi
+	.res byte, 1
+
+CprdChunkOffsetHi
+	.res byte, 1
+
+CprdChunkLenLo
+	.res byte, 1
+
+CprdChunkLenMidLo
+	.res byte, 1
+
+CprdChunkLenMidHi
+	.res byte, 1
+
+CprdChunkLenHi
 	.res byte, 1
 
 	.align 2

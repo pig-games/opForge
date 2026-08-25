@@ -82,6 +82,14 @@ TARGETS = {
             "tkpkg.amigaos.selection_service",
         ),
     ),
+    "tkpkg.amigaos.operand_record_service": (
+        "native/motorola68000/amigaos/tkpkg/tkpkg_operand_record_service.asm",
+        "executeRequestV1",
+        (
+            "tkpkg.amigaos.abi",
+            "tkpkg.amigaos.buffers",
+        ),
+    ),
     "tkpkg.amigaos.runtime_context": (
         "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm",
         "getAbiVersionV1",
@@ -130,11 +138,12 @@ SNAPSHOTS = {
     "opasm.amigaos.directive_data": ("ae827acedfad611d1d57ff93783edda61b6eb4de332c2907521343d6f9fdf3bc", 2, 3, ("code", "bss"), 19),
     "opasm.amigaos.directive_text": ("98d283b9678f051c68787dc915b841559ee1a3647e597b44d966492a931ff0c8", 2, 1, ("code", "bss"), 2),
     "opasm.amigaos.layout": ("319155f2c0d107b187c27ee0abcd218a731dae8d6f5f99f3111c6010d9faed2d", 53, 1, ("code", "bss"), 2),
-    "tkpkg.amigaos.service": ("316dd2ef9391846d6cbe2e26308d9d71e856bf5e247b41392729c4f5254d28e9", 42, 12, ("data", "bss", "code"), 112),
+    "tkpkg.amigaos.service": ("ee73bb8b17e459daf2edec91e717b39e48f3e75d9ccb0e2b3f26d87bc6370522", 42, 13, ("data", "bss", "code"), 117),
     "tkpkg.amigaos.selection_service": ("4f5546e9dc2a8589470b652b969160a1f148c1e63025bf13a20303fc168cbaa8", 34, 6, ("data", "code"), 89),
     "tkpkg.amigaos.operand_runtime": ("3e46e941f132d16b90fc03bbb1f4a9070d80ee4c514abad9069d03148d9ec54f", 21, 4, ("data", "code"), 59),
     "tkpkg.amigaos.encode_service": ("e03d46d7052c7775e01e7918bdd1e8ca7a1eca36eaa8b5f16632b71a2542e1ee", 19, 5, ("data", "code"), 18),
     "tkpkg.amigaos.compact_table": ("b6b9f451b8f9449916d7079af3563288acec06756dc3838c8489ee2a7b3d7c89", 5, 3, ("data", "code"), 1),
+    "tkpkg.amigaos.operand_record_service": ("87dcfbc85d498b14021c638ee62a0ddf3f845e0dba0d7296f12733bdd6113788", 27, 2, ("data", "bss", "code"), 13),
     "tkpkg.amigaos.runtime_context": ("9b1e03e3b8689dfe72157e04da3441cf595a8e21b4dac19e55700effb0a6bace", 8, 1, ("code", "bss"), 19),
     "tkpkg.amigaos.engine_context_adapter": ("a06328ca23472b6f624f579ffd24e09d51d3373acd0c2e825e2596086461ea54", 9, 1, ("code",), 0),
     "opasm.amigaos.engine": ("28a8d5f3b274ee8396b431680e01ccd3068261305fd008522e2e1dc71b5a9fe9", 84, 1, ("code", "bss"), 22),

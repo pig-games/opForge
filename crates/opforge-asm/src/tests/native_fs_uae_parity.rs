@@ -12500,6 +12500,347 @@ fn external_fs_uae_native_m68000_scalar_register_encoding_parity() {
     }
 }
 
+fn item16_operand_record_request(
+    program_id: &str,
+    registers: &[vm::operand_record_vm::PortableRegisterRef],
+    values: &[i64],
+) -> Vec<u8> {
+    let mut request = vec![
+        1,
+        u8::try_from(program_id.len()).expect("Item 16 program id length"),
+    ];
+    request.extend_from_slice(program_id.as_bytes());
+    request.push(u8::try_from(registers.len()).expect("Item 16 register count"));
+    for register in registers {
+        request.extend_from_slice(&register.class.to_le_bytes());
+        request.extend_from_slice(&register.index.to_le_bytes());
+    }
+    request.push(u8::try_from(values.len()).expect("Item 16 value count"));
+    for value in values {
+        request.extend_from_slice(&value.to_le_bytes());
+    }
+    request
+}
+
+fn item16_operand_record_batch(requests: &[Vec<u8>]) -> Vec<u8> {
+    item16_operand_record_batch_with_overlap(requests, false)
+}
+
+fn item16_operand_record_batch_with_overlap(
+    requests: &[Vec<u8>],
+    overlap_result_buffer: bool,
+) -> Vec<u8> {
+    let mut batch = Vec::new();
+    batch.extend_from_slice(
+        &u16::try_from(requests.len())
+            .expect("Item 16 batch count")
+            .to_le_bytes(),
+    );
+    for request in requests {
+        let mut length = u16::try_from(request.len()).expect("Item 16 request length");
+        if overlap_result_buffer {
+            length |= 0x8000;
+        }
+        batch.extend_from_slice(&length.to_le_bytes());
+        batch.extend_from_slice(request);
+    }
+    batch
+}
+
+#[derive(Clone, Copy)]
+enum Item16UnselectedProgramMutation {
+    InvalidOpcode,
+    InvalidUtf8Id,
+}
+
+fn item16_package_with_malformed_unselected_program(
+    package: &[u8],
+    mutation: Item16UnselectedProgramMutation,
+) -> Vec<u8> {
+    fn read_u16(bytes: &[u8], cursor: &mut usize) -> u16 {
+        let value = u16::from_le_bytes(bytes[*cursor..*cursor + 2].try_into().unwrap());
+        *cursor += 2;
+        value
+    }
+    fn read_u32(bytes: &[u8], cursor: &mut usize) -> u32 {
+        let value = u32::from_le_bytes(bytes[*cursor..*cursor + 4].try_into().unwrap());
+        *cursor += 4;
+        value
+    }
+    fn skip_string(bytes: &[u8], cursor: &mut usize) -> std::ops::Range<usize> {
+        let length = read_u32(bytes, cursor) as usize;
+        let range = *cursor..*cursor + length;
+        *cursor += length;
+        range
+    }
+
+    let toc_count = u32::from_le_bytes(package[8..12].try_into().unwrap()) as usize;
+    let (offset, length) = (0..toc_count)
+        .find_map(|index| {
+            let entry = 12 + index * 12;
+            (&package[entry..entry + 4] == b"CPRD").then(|| {
+                (
+                    u32::from_le_bytes(package[entry + 4..entry + 8].try_into().unwrap()) as usize,
+                    u32::from_le_bytes(package[entry + 8..entry + 12].try_into().unwrap()) as usize,
+                )
+            })
+        })
+        .expect("CPRD chunk");
+    let mut mutated = package.to_vec();
+    let mut cursor = offset;
+    assert_eq!(read_u16(&mutated, &mut cursor), 1);
+    let owner_count = read_u16(&mutated, &mut cursor);
+    for _ in 0..owner_count {
+        cursor += 1;
+        skip_string(&mutated, &mut cursor);
+    }
+    let program_count = read_u32(&mutated, &mut cursor);
+    for _ in 0..program_count {
+        cursor += 2;
+        let id_range = skip_string(&mutated, &mut cursor);
+        let id = std::str::from_utf8(&mutated[id_range.clone()]).unwrap();
+        let schema = read_u16(&mutated, &mut cursor);
+        let program_len = read_u32(&mutated, &mut cursor) as usize;
+        if schema > 1 && id != "operand.immediate" {
+            match mutation {
+                Item16UnselectedProgramMutation::InvalidOpcode => mutated[cursor] = 0xfe,
+                Item16UnselectedProgramMutation::InvalidUtf8Id => {
+                    mutated[id_range.start] = 0xff;
+                }
+            }
+            assert!(cursor + program_len <= offset + length);
+            assert!(
+                package::decode_hierarchy_chunks(&mutated).is_err(),
+                "Rust must reject the malformed unselected OPRD program"
+            );
+            return mutated;
+        }
+        cursor += program_len;
+    }
+    panic!("no unselected structured OPRD program found");
+}
+
+fn item16_operand_record_wire(record: &vm::operand_record_vm::PortableOperandRecord) -> Vec<u8> {
+    use vm::operand_record_vm::{
+        PortableAddressBase, PortableAddressUpdate, PortableOperandRecord,
+    };
+
+    fn write_register(
+        output: &mut [u8],
+        offset: usize,
+        register: vm::operand_record_vm::PortableRegisterRef,
+    ) {
+        output[offset..offset + 2].copy_from_slice(&register.class.to_le_bytes());
+        output[offset + 2..offset + 4].copy_from_slice(&register.index.to_le_bytes());
+    }
+
+    fn base_variant(base: PortableAddressBase) -> u8 {
+        match base {
+            PortableAddressBase::Register(_) => 0,
+            PortableAddressBase::ProgramCounter => 1,
+            PortableAddressBase::Suppressed => 2,
+        }
+    }
+
+    let mut output = vec![0; 24];
+    output[0] = 1;
+    match record {
+        PortableOperandRecord::Register(register) => {
+            output[1] = 1;
+            write_register(&mut output, 4, *register);
+        }
+        PortableOperandRecord::Indirect { base, update } => {
+            output[1] = 2;
+            output[2] = match update {
+                PortableAddressUpdate::None => 0,
+                PortableAddressUpdate::Postincrement => 1,
+                PortableAddressUpdate::Predecrement => 2,
+            };
+            write_register(&mut output, 4, *base);
+        }
+        PortableOperandRecord::Displacement { base, displacement } => {
+            output[1] = 3;
+            output[2] = base_variant(*base);
+            if let PortableAddressBase::Register(register) = base {
+                write_register(&mut output, 4, *register);
+            }
+            output[12..20].copy_from_slice(&displacement.to_le_bytes());
+        }
+        PortableOperandRecord::Indexed {
+            base,
+            index,
+            index_width_bits,
+            scale,
+            displacement,
+        } => {
+            output[1] = 4;
+            output[2] = base_variant(*base);
+            if let PortableAddressBase::Register(register) = base {
+                write_register(&mut output, 4, *register);
+            }
+            write_register(&mut output, 8, *index);
+            output[12..20].copy_from_slice(&displacement.to_le_bytes());
+            output[20] = *index_width_bits;
+            output[21] = *scale;
+        }
+        PortableOperandRecord::Absolute { value, width_bits } => {
+            output[1] = 5;
+            output[12..20].copy_from_slice(&value.to_le_bytes());
+            output[20] = *width_bits;
+        }
+        PortableOperandRecord::Immediate { value } => {
+            output[1] = 6;
+            output[12..20].copy_from_slice(&value.to_le_bytes());
+        }
+        other => panic!("Item 16 base-record oracle received later-schema record: {other:?}"),
+    }
+    output
+}
+
+#[test]
+fn external_fs_uae_native_m68000_effective_address_record_parity() {
+    // Proof level D. One fresh guest executes every schema-v1 base record from
+    // the exact unmodified all-family package. Each returned neutral wire record
+    // is compared byte-for-byte with the in-memory Rust VM result for that same
+    // case. This proves CPRD scope lookup and OPRD-v1 base execution; it does not
+    // claim Item 17 instruction encoding.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 13.1 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector"),
+        "native operand-record package input must be unmodified"
+    );
+    let model = load_opasm_model_from_package_bytes(package.as_slice());
+    let pipeline = model
+        .resolve_pipeline("m68020", Some("motorola68k"))
+        .expect("resolve Item 16 Rust pipeline");
+    let data = vm::operand_record_vm::PortableRegisterRef { class: 0, index: 3 };
+    let address = vm::operand_record_vm::PortableRegisterRef { class: 1, index: 2 };
+    let definitions: [(&str, &[vm::operand_record_vm::PortableRegisterRef], &[i64]); 14] = [
+        ("operand.data-register", &[data], &[]),
+        ("operand.address-register", &[address], &[]),
+        ("operand.address-indirect", &[address], &[]),
+        ("operand.address-postincrement", &[address], &[]),
+        ("operand.address-predecrement", &[address], &[]),
+        ("operand.address-displacement", &[address], &[-4]),
+        ("operand.address-indexed-word", &[address, data], &[12]),
+        ("operand.address-indexed-long", &[address, data], &[12]),
+        ("operand.pc-displacement", &[], &[6]),
+        ("operand.pc-indexed-word", &[address, data], &[12]),
+        ("operand.pc-indexed-long", &[address, data], &[12]),
+        ("operand.absolute-word", &[], &[0x1234]),
+        ("operand.absolute-long", &[], &[0x1234]),
+        ("operand.immediate", &[], &[42]),
+    ];
+    let requests = definitions
+        .iter()
+        .map(|(program_id, registers, values)| {
+            item16_operand_record_request(program_id, registers, values)
+        })
+        .collect::<Vec<_>>();
+    let expected_rows = definitions
+        .iter()
+        .map(|(program_id, registers, values)| {
+            let record = model
+                .execute_operand_record_program(&pipeline, program_id, registers, values)
+                .unwrap_or_else(|error| panic!("execute Rust record {program_id}: {error}"));
+            format!(
+                "TKPKG OPRD {}",
+                item16_operand_record_wire(&record)
+                    .into_iter()
+                    .map(|byte| format!("{byte:02X}"))
+                    .collect::<String>()
+            )
+        })
+        .collect::<Vec<_>>();
+    let batch = item16_operand_record_batch(&requests);
+    let expected_rows = expected_rows.join("\n").into_bytes();
+    let missing_input = item16_operand_record_batch(&[item16_operand_record_request(
+        "operand.immediate",
+        &[],
+        &[],
+    )]);
+    let overlap = item16_operand_record_batch_with_overlap(
+        &[item16_operand_record_request(
+            "operand.immediate",
+            &[],
+            &[42],
+        )],
+        true,
+    );
+    let malformed_package = item16_package_with_malformed_unselected_program(
+        &package,
+        Item16UnselectedProgramMutation::InvalidOpcode,
+    );
+    let invalid_utf8_package = item16_package_with_malformed_unselected_program(
+        &package,
+        Item16UnselectedProgramMutation::InvalidUtf8Id,
+    );
+    let valid_immediate = item16_operand_record_batch(&[item16_operand_record_request(
+        "operand.immediate",
+        &[],
+        &[42],
+    )]);
+    let cases = [
+        crate::fs_uae_smoke::TkpkgDebugCliOperandRecordParityCase {
+            name: "item16-all-base-records",
+            batch: &batch,
+            package_bytes: &package,
+            proof: crate::fs_uae_smoke::TkpkgDebugCliOperandRecordProof::ExactRows(&expected_rows),
+        },
+        crate::fs_uae_smoke::TkpkgDebugCliOperandRecordParityCase {
+            name: "item16-missing-input",
+            batch: &missing_input,
+            package_bytes: &package,
+            proof: crate::fs_uae_smoke::TkpkgDebugCliOperandRecordProof::ExpectedFailureContaining(
+                "OTR901: operand-record input is missing",
+            ),
+        },
+        crate::fs_uae_smoke::TkpkgDebugCliOperandRecordParityCase {
+            name: "item16-result-overlap",
+            batch: &overlap,
+            package_bytes: &package,
+            proof: crate::fs_uae_smoke::TkpkgDebugCliOperandRecordProof::ExpectedFailureContaining(
+                "OTR002: bad request",
+            ),
+        },
+        crate::fs_uae_smoke::TkpkgDebugCliOperandRecordParityCase {
+            name: "item16-malformed-unselected-program",
+            batch: &valid_immediate,
+            package_bytes: &malformed_package,
+            proof: crate::fs_uae_smoke::TkpkgDebugCliOperandRecordProof::ExpectedFailureContaining(
+                "OTR901: compact operand-record malformed",
+            ),
+        },
+        crate::fs_uae_smoke::TkpkgDebugCliOperandRecordParityCase {
+            name: "item16-invalid-utf8-unselected-id",
+            batch: &valid_immediate,
+            package_bytes: &invalid_utf8_package,
+            proof: crate::fs_uae_smoke::TkpkgDebugCliOperandRecordProof::ExpectedFailureContaining(
+                "OTR901: compact operand-record malformed",
+            ),
+        },
+    ];
+    match crate::fs_uae_smoke::run_tkpkg_debug_cli_operand_record_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 16 challenge-bound FS-UAE parity cases")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len(), "every fresh Item 16 guest ran");
+        }
+    }
+}
+
 #[test]
 fn external_fs_uae_tkpkg_native_item13_package_tokenizes_nop() {
     // Proof level D. This isolates the tokenizer service used by the Item 14

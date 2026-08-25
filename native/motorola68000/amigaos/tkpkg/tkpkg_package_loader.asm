@@ -538,7 +538,7 @@ checkRenc
 
 checkValp
 	cmpi.b #'V', (a2)
-	bne.w checkCmse
+	bne.w checkCprd
 	cmpi.b #'A', 1(a2)
 	bne.w checkCmse
 	cmpi.b #'L', 2(a2)
@@ -550,6 +550,22 @@ checkValp
 	lea buffers.ValpChunkOffsetLo, a3
 	bsr.w storeLocator
 	bset #1, buffers.PackageChunkFlagsExtra
+	bra.w nextTocEntry
+
+checkCprd
+	cmpi.b #'C', (a2)
+	bne.w checkCmse
+	cmpi.b #'P', 1(a2)
+	bne.w checkCmse
+	cmpi.b #'R', 2(a2)
+	bne.w checkCmse
+	cmpi.b #'D', 3(a2)
+	bne.w checkCmse
+	btst #2, buffers.PackageChunkFlagsExtra
+	bne.w duplicateChunk
+	lea buffers.CprdChunkOffsetLo, a3
+	bsr.w storeLocator
+	bset #2, buffers.PackageChunkFlagsExtra
 	bra.w nextTocEntry
 
 checkCmse

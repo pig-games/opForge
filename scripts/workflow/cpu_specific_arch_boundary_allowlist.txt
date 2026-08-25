@@ -40,6 +40,7 @@ native/motorola68000/amigaos/tkpkg/tkpkg_service.asm | accumulator,branch_offset
 native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm | accumulator,branch_offset,direct,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Item 5.6 moved the reviewed generic package-selector ownership unchanged from the service facade; target semantics remain package-defined.
 native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm | accumulator,branch_offset,direct,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Item 5.6.1 moved the existing package-selected operand-plan interpreter unchanged out of the selection owner; target semantics remain package-defined.
 native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm | accumulator,branch_offset,direct,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Item 5.6.2 moved the existing package-table encoder unchanged out of the service facade; target semantics remain package-defined.
+native/motorola68000/amigaos/tkpkg/tkpkg_operand_record_service.asm | absolute,displacement,immediate,indexed,indirect | Item 16 directly ports the CPU-neutral Rust PortableOperandRecord schema vocabulary; opaque package programs retain all target-family meaning.
 
 # Host-native ABI entrypoints intentionally retain stable 68000 surface names.
 native/motorola68000/amigaos/prvm/*.asm | 68000 | PRVM host-native runtime surfaces intentionally retain stable 68000 ABI names.

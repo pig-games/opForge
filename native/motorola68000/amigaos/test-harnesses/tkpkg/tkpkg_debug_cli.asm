@@ -145,6 +145,14 @@ tkpkgDebugCliCopyDefaultSmokePathLoop
 	bsr.w tkpkgDebugCliReadStatusV1
 	bne.w tkpkgDebugCliReportFailure
 
+.ifdef OPFORGE_FS_UAE_TKPKG_OPERAND_RECORD
+	bsr.w tkpkgDebugCliRunOperandRecordBatchV1
+	tst.l d0
+	bmi.w tkpkgDebugCliCloseDos
+	bne.w tkpkgDebugCliReportFailure
+	bra.w tkpkgDebugCliCheckLastErrorClear
+.endif
+
 	move.l DebugCliFileModeEnabled, d0
 
 .ifdef OPFORGE_FS_UAE_TKPKG_FIXED_OPCODE
@@ -899,6 +907,178 @@ tkpkgDebugCliCloseDosV1
 	jsr CLOSE_LIBRARY(a6)
 	rts
 
+; Execute a host-staged batch of exact operand-record service requests.
+; Batch bytes are `u16 count`, then repeated `u16 request_len, request_bytes`,
+; all little-endian. Length bit 15 asks the harness to place that request in the
+; result buffer so the service's overlap rejection can be exercised. Each
+; successful fixed-size result is rendered as one
+; `TKPKG OPRD <hex>` row for exact host comparison.
+; Inputs: DebugCliInputPathBuffer names the staged batch file.
+; Outputs: D0.L = 0 success, 1 service failure, -1 harness/file failure.
+; Clobbers: D0-D7/A0-A6/CCR. CCR: reflects D0.L on return.
+tkpkgDebugCliRunOperandRecordBatchV1
+	movem.l d2-d7/a2-a6, -(sp)
+	lea DebugCliInputPathBuffer, a0
+	bsr.w tkpkgDebugCliOpenInputV1
+	tst.l d0
+	bne.s opened
+	move.l #InputOpenFailureText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	moveq #-1, d0
+	bra.w return
+opened
+	move.l d0, d5
+	lea DebugCliSourceFileBuffer, a0
+	move.l #DEBUG_CLI_SOURCE_BUFFER_CAPACITY, d0
+	move.l d5, d1
+	bsr.w tkpkgDebugCliReadInputV1
+	cmpi.l #-1, d0
+	beq.w readFail
+	move.l d0, d7
+	lea DebugCliSourceFileProbeByte, a0
+	moveq #1, d0
+	move.l d5, d1
+	bsr.w tkpkgDebugCliReadInputV1
+	move.l d0, d6
+	move.l d5, d1
+	bsr.w tkpkgDebugCliCloseInputV1
+	cmpi.l #-1, d6
+	beq.w reportReadFail
+	tst.l d6
+	bne.w malformedBatch
+	cmpi.l #2, d7
+	bcs.w malformedBatch
+	lea DebugCliSourceFileBuffer, a3
+	moveq #0, d6
+	move.b (a3)+, d6
+	moveq #0, d0
+	move.b (a3)+, d0
+	lsl.w #8, d0
+	or.w d0, d6
+	subq.l #2, d7
+	tst.w d6
+	beq.w malformedBatch
+
+caseLoop
+	cmpi.l #2, d7
+	bcs.w malformedBatch
+	moveq #0, d5
+	move.b (a3)+, d5
+	moveq #0, d0
+	move.b (a3)+, d0
+	lsl.w #8, d0
+	or.w d0, d5
+	subq.l #2, d7
+	clr.b OperandRecordOverlapRequestFlag
+	btst #15, d5
+	beq.s requestLengthReady
+	bclr #15, d5
+	st OperandRecordOverlapRequestFlag
+requestLengthReady
+	tst.w d5
+	beq.w malformedBatch
+	cmpi.w #buffers.LAST_ERROR_BUFFER_CAPACITY, d5
+	bhi.w malformedBatch
+	moveq #0, d0
+	move.w d5, d0
+	cmp.l d7, d0
+	bhi.w malformedBatch
+	movea.l a3, a1
+	lea buffers.LastErrorBuffer, a2
+	tst.b OperandRecordOverlapRequestFlag
+	beq.s requestDestinationReady
+	lea buffers.OperandRecordResultBuffer, a2
+requestDestinationReady
+	bsr.w tkpkgDebugCliCopyBytesV1
+	adda.w d5, a3
+	sub.l d0, d7
+	movem.l d5-d7/a3, -(sp)
+	lea buffers.ControlBlockV1, a0
+	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
+	tst.b OperandRecordOverlapRequestFlag
+	beq.s requestPointerReady
+	move.w #buffers.OPERAND_RECORD_RESULT_BUFFER_PTR_V1, d0
+requestPointerReady
+	move.w d5, d1
+	bsr.w tkpkgDebugCliWriteInputWindowV1
+	moveq #abi.ENTRY_ORD_EXECUTE_OPERAND_RECORD, d0
+	bsr.w tkpkgDebugCliDispatchServiceV1
+	bsr.w tkpkgDebugCliReadStatusV1
+	move.l d0, d4
+	movem.l (sp)+, d5-d7/a3
+	tst.l d4
+	bne.s serviceFail
+	lea buffers.ControlBlockV1, a0
+	bsr.w tkpkgDebugCliReadOutputLenV1
+	cmpi.w #abi.OPERAND_RECORD_RESULT_SIZE_V1, d0
+	bne.s malformedResult
+	moveq #0, d0
+	move.b abi.CB_OUTPUT_PTR(a0), d0
+	moveq #0, d1
+	move.b 21(a0), d1
+	lsl.w #8, d1
+	or.w d1, d0
+	lea 0(a0, d0.w), a1
+	movem.l d5-d7/a3, -(sp)
+	bsr.w tkpkgDebugCliRenderOperandRecordV1
+	movem.l (sp)+, d5-d7/a3
+	subq.w #1, d6
+	bne.w caseLoop
+	tst.l d7
+	bne.s malformedBatch
+	moveq #0, d0
+	bra.s return
+
+readFail
+	move.l d5, d1
+	bsr.w tkpkgDebugCliCloseInputV1
+reportReadFail
+	move.l #InputReadFailureText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	moveq #-1, d0
+	bra.s return
+malformedBatch
+	move.l #OperandRecordBatchFailureText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	moveq #-1, d0
+	bra.s return
+malformedResult
+	move.l #OperandRecordResultFailureText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	moveq #-1, d0
+	bra.s return
+serviceFail
+	moveq #1, d0
+return
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
+
+; Render the 24-byte neutral result at A1 as one exact uppercase-hex row.
+; Outputs: row written to stdout. Clobbers: D0-D5/A0-A2/A6/CCR.
+tkpkgDebugCliRenderOperandRecordV1
+	movem.l d6-d7/a3-a5, -(sp)
+	movea.l a1, a3
+	move.l #OperandRecordRowPrefixText, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	lea OperandRecordHexBuffer, a2
+	lea OperandRecordHexDigits, a4
+	moveq #abi.OPERAND_RECORD_RESULT_SIZE_V1 - 1, d5
+byteLoop
+	moveq #0, d0
+	move.b (a3)+, d0
+	move.l d0, d1
+	lsr.b #4, d1
+	move.b 0(a4, d1.w), (a2)+
+	andi.b #$0F, d0
+	move.b 0(a4, d0.w), (a2)+
+	dbf d5, byteLoop
+	move.b #10, (a2)+
+	clr.b (a2)
+	move.l #OperandRecordHexBuffer, d1
+	bsr.w tkpkgDebugCliPutStrV1
+	movem.l (sp)+, d6-d7/a3-a5
+	rts
+
 tkpkgDebugCliCopyBytesV1
 	move.l d0, d2
 	beq.s tkpkgDebugCliCopyDone
@@ -971,7 +1151,11 @@ StartedText
 
 .ifdef OPFORGE_FS_UAE_SMOKE
 DefaultSmokeInputPath
+.ifdef OPFORGE_FS_UAE_TKPKG_OPERAND_RECORD
+	.byte "Work:opforge_fsuae_operand_records.bin", 0
+.else
 	.byte "Work:opforge_fsuae_smoke_input.asm", 0
+.endif
 .endif
 
 .ifdef OPFORGE_FS_UAE_TKPKG_MANIFEST
@@ -1074,6 +1258,18 @@ ManifestTokenizeOkText
 
 LineTooLongText
 	.byte "tkpkg failure: input line exceeds tokenize_line payload budget", 10, 0
+
+OperandRecordBatchFailureText
+	.byte "tkpkg failure: operand-record batch malformed", 10, 0
+
+OperandRecordResultFailureText
+	.byte "tkpkg failure: operand-record result malformed", 10, 0
+
+OperandRecordRowPrefixText
+	.byte "TKPKG OPRD ", 0
+
+OperandRecordHexDigits
+	.byte "0123456789ABCDEF"
 
 NewlineText
 	.byte 10, 0
@@ -1182,6 +1378,12 @@ DebugCliManifestBuffer
 	.res byte, DEBUG_CLI_MANIFEST_BUFFER_CAPACITY
 
 DebugCliSourceFileProbeByte
+	.res byte, 1
+
+OperandRecordHexBuffer
+	.res byte, abi.OPERAND_RECORD_RESULT_SIZE_V1 * 2 + 2
+
+OperandRecordOverlapRequestFlag
 	.res byte, 1
 
 	.endsection

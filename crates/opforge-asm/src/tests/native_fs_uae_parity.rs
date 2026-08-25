@@ -13753,6 +13753,568 @@ fn external_fs_uae_native_m68000_absolute_long_fixup_parity() {
 }
 
 #[test]
+fn external_fs_uae_native_m68000_packed_count_value_program_parity() {
+    // Proof level D. One fresh guest consumes the exact unmodified package and
+    // proves Rust VALUE_VM-v2 packed-count projection for quick and immediate
+    // shift forms, including the encoded-zero representation of count eight.
+    // It does not prove the complete Item 18 ALU/bit/shift fixture corpus.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = concat!(
+        "        ADDQ.W #8,D0\n",
+        "        ASL.B #8,D1\n",
+        "        LSR.W #1,D2\n",
+    );
+    let rust_oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m68000"),
+        "item18-packed-count-value-program-rust-oracle",
+    )
+    .expect("run live Rust packed-count oracle");
+    assert_eq!(rust_oracle, [0x50, 0x40, 0xe1, 0x01, 0xe2, 0x4a]);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 18 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector"),
+        "focused Item 18 packed-count proof must consume the exact unmodified Rust package"
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item18-packed-count-value-program",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68000 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("focused Item 18 packed-count FS-UAE parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(
+                runs[0].success,
+                "focused Item 18 packed-count case failed\nstdout:\n{}\nstderr:\n{}",
+                runs[0].stdout, runs[0].stderr
+            );
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68000_value_member_projection_parity() {
+    // Proof level D. One fresh guest proves the corrected neutral member source
+    // for VALUE_VM across address ALU, memory shift, bit, and immediate forms.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = concat!(
+        "        SUBA.W ($1234).W,A2\n",
+        "        CMPA.L ($123456).L,A1\n",
+        "        LSR.W ($1234).W\n",
+        "        BCHG D3,($1234).W\n",
+        "        CMPI.W #$1234,($1234).W\n",
+    );
+    let rust_oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m68000"),
+        "item18-value-member-projection-rust-oracle",
+    )
+    .expect("run live Rust value-member oracle");
+    assert_eq!(
+        rust_oracle,
+        [
+            0x94, 0xf8, 0x12, 0x34, 0xb3, 0xf9, 0x00, 0x12, 0x34, 0x56, 0xe2, 0xf8, 0x12,
+            0x34, 0x07, 0x78, 0x12, 0x34, 0x0c, 0x78, 0x12, 0x34, 0x12, 0x34,
+        ]
+    );
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 18 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item18-value-member-projection",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68000 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("focused Item 18 value-member FS-UAE parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(
+                runs[0].success,
+                "value-member case failed\nstdout:\n{}\nstderr:\n{}",
+                runs[0].stdout, runs[0].stderr
+            );
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68000_package_shape_regression_parity() {
+    // Proof level D. Fresh per-form guests prove Rust package_shape_input parity
+    // for the two exact surfaces exposed by the single Item 18 full-wrapper run:
+    // register_direct MOVE and the bounded direct/register control forms.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let definitions: [(&str, &str, &[u8]); 7] = [
+        ("item18-shape-move", "        MOVE.L D1,(A0)\n", &[0x20, 0x81]),
+        (
+            "item18-shape-lea",
+            "        LEA 4(A0,D1.W),A1\n",
+            &[0x43, 0xf0, 0x10, 0x04],
+        ),
+        ("item18-shape-pea", "        PEA 4(A0)\n", &[0x48, 0x68, 0x00, 0x04]),
+        (
+            "item18-shape-bsr",
+            "        BSR.W helper\nhelper:\n        RTS\n",
+            &[0x61, 0x00, 0x00, 0x02, 0x4e, 0x75],
+        ),
+        ("item18-shape-jmp", "        JMP 4(PC)\n", &[0x4e, 0xfa, 0x00, 0x04]),
+        ("item18-shape-jsr", "        JSR (A0)\n", &[0x4e, 0x90]),
+        ("item18-shape-addq", "        ADDQ.W #1,D0\n", &[0x52, 0x40]),
+    ];
+    let rust_oracles = definitions
+        .iter()
+        .map(|(name, source, expected)| {
+            let rust_oracle = live_rust_cpu_name_oracle(
+                source,
+                Some("m68000"),
+                format!("{name}-rust-oracle").as_str(),
+            )
+            .unwrap_or_else(|error| panic!("run live Rust package-shape oracle {name}: {error}"));
+            assert_eq!(rust_oracle, *expected, "unexpected live Rust bytes for {name}");
+            rust_oracle
+        })
+        .collect::<Vec<_>>();
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 18 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = definitions
+        .iter()
+        .zip(rust_oracles.iter())
+        .map(
+            |((name, source, _), rust_oracle)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(source.as_bytes()),
+                command_template: Some(
+                    "{input} --bin {bin} --cpu m68000 --opasm-package {package}",
+                ),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &[],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle,
+                },
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("focused Item 18 package-shape FS-UAE parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len(), "every fresh shape guest ran");
+            for ((run, (name, _, _)), rust_oracle) in
+                runs.iter().zip(definitions.iter()).zip(rust_oracles.iter())
+            {
+                assert!(
+                    run.success,
+                    "package-shape case {name} failed\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout, run.stderr
+                );
+                assert_eq!(
+                    captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                    *rust_oracle,
+                    "native bytes differ from live Rust for {name}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68000_semantic_branch_word_parity() {
+    // Proof level D. One fresh guest proves the exact Rust CMSE kind-3 / SEMV
+    // v5 path for the only remaining failure localized from the Item 18 full
+    // wrapper: an explicit word branch to a forward unstable label.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        BSR.W helper\nhelper:\n        RTS\n";
+    let rust_oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m68000"),
+        "item18-semantic-branch-word-rust-oracle",
+    )
+    .expect("run live Rust semantic-branch word oracle");
+    assert_eq!(rust_oracle, [0x61, 0x00, 0x00, 0x02, 0x4e, 0x75]);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 18 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item18-semantic-branch-word",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68000 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("focused Item 18 semantic-branch word FS-UAE parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(
+                runs[0].success,
+                "semantic-branch word case failed\nstdout:\n{}\nstderr:\n{}",
+                runs[0].stdout, runs[0].stderr
+            );
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68000_semantic_diagnostic_parity() {
+    // Proof level D. Three fresh guests prove CMSE v7 diagnostic routing for an
+    // encoding constraint and a required VALUE_VM constraint. Each diagnostic
+    // is generated by the same-source live Rust CLI.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 18 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let definitions = [
+        ("item18-diagnostic-addi", "        ADDI.W #1,A0\n"),
+        ("item18-diagnostic-tst", "        TST.W A0\n"),
+        ("item18-diagnostic-shift-count", "        ASL.B #9,D0\n"),
+    ];
+    let expected = definitions
+        .iter()
+        .map(|(name, source)| {
+            (
+                *name,
+                *source,
+                live_rust_cpu_name_diagnostic(
+                    source,
+                    "m68000",
+                    format!("{name}-rust-diagnostic").as_str(),
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let cases = expected
+        .iter()
+        .map(|(name, source, diagnostic)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name,
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68000 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                diagnostic,
+            ),
+        })
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("focused Item 18 semantic-diagnostic FS-UAE parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len());
+            for run in &runs {
+                assert_eq!(run.exit_code, Some(1));
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68000_value_normalize_window_parity() {
+    // Proof level D. One fresh guest proves that a positive value outside the
+    // Rust NormalizeTwosComplement(24) window is not truncated before the
+    // following required absolute-word constraint and therefore fails with
+    // the package-owned Rust diagnostic.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        MOVE.W #1,($01001234).W\n";
+    let diagnostic = live_rust_cpu_name_diagnostic(
+        source,
+        "m68000",
+        "item18-value-normalize-window-rust-diagnostic",
+    );
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 18 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item18-value-normalize-window",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68000 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(&diagnostic),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("focused Item 18 normalization-window FS-UAE parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert_eq!(runs[0].exit_code, Some(1));
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68000_alu_bit_shift_parity() {
+    // Proof level D. Six fresh guests prove the five complete owned Item 18
+    // fixtures plus the CMPA-only boundary of the mixed operand-state fixture
+    // against same-source live Rust CLI bytes. Five more fresh guests require
+    // explicit nonzero completion and the exact Rust-selected diagnostic for
+    // representative ALU, immediate/unary, bit, quick, and shift rejections.
+    // NEGX/NBCD/TAS remain Item 20 and are intentionally not claimed here.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 18 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector"),
+        "Item 18 must consume the exact unmodified Rust package"
+    );
+
+    let fixture_definitions = [
+        (
+            "item18-68000-address-arithmetic-shifts",
+            "examples/motorola68000/68000_address_arithmetic_shifts.asm",
+        ),
+        (
+            "item18-68000-arithmetic-sizes",
+            "examples/motorola68000/68000_arithmetic_sizes.asm",
+        ),
+        (
+            "item18-68000-bit-operations",
+            "examples/motorola68000/68000_bit_operations.asm",
+        ),
+        (
+            "item18-68000-immediate-unary",
+            "examples/motorola68000/68000_immediate_unary.asm",
+        ),
+        (
+            "item18-68000-rotate-memory-shift",
+            "examples/motorola68000/68000_rotate_memory_shift.asm",
+        ),
+    ];
+    let mut fixtures = fixture_definitions
+        .iter()
+        .map(|(name, relative_path)| {
+            let source = fs::read_to_string(workspace_root().join(relative_path))
+                .unwrap_or_else(|error| panic!("read Item 18 fixture {relative_path}: {error}"));
+            let rust_oracle = live_rust_cpu_name_oracle(
+                &source,
+                Some("m68000"),
+                format!("{name}-rust-oracle").as_str(),
+            )
+            .unwrap_or_else(|error| panic!("run Item 18 Rust oracle {name}: {error}"));
+            (*name, source, rust_oracle)
+        })
+        .collect::<Vec<_>>();
+    let cmpa_source = concat!(
+        ".cpu 68000\n",
+        ".org $1000\n",
+        "start:\n",
+        "    CMPA.W ($1234).W,A0\n",
+        "    CMPA.L ($123456).L,A1\n",
+        "    RTS\n",
+        ".end\n",
+    )
+    .to_string();
+    let cmpa_oracle = live_rust_cpu_name_oracle(
+        &cmpa_source,
+        Some("m68000"),
+        "item18-68000-cmpa-rust-oracle",
+    )
+    .expect("run Item 18 CMPA Rust oracle");
+    fixtures.push(("item18-68000-cmpa", cmpa_source, cmpa_oracle));
+
+    let negative_definitions = [
+        ("item18-invalid-alu-destination", "        ADD.W D0,4(PC)\n"),
+        ("item18-invalid-immediate-destination", "        ADDI.W #1,A0\n"),
+        ("item18-invalid-unary-destination", "        TST.W A0\n"),
+        ("item18-invalid-bit-destination", "        BCHG #1,4(PC)\n"),
+        ("item18-invalid-shift-count", "        ASL.B #9,D0\n"),
+    ];
+    let negative_cases = negative_definitions
+        .iter()
+        .map(|(name, source)| {
+            let diagnostic = live_rust_cpu_name_diagnostic(
+                source,
+                "m68000",
+                format!("{name}-rust-diagnostic").as_str(),
+            );
+            (*name, *source, diagnostic)
+        })
+        .collect::<Vec<_>>();
+
+    let mut cases = Vec::with_capacity(fixtures.len() + negative_cases.len());
+    for (name, source, rust_oracle) in &fixtures {
+        cases.push(crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name,
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68000 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle,
+            },
+        });
+    }
+    for (name, source, diagnostic) in &negative_cases {
+        cases.push(crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name,
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68000 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                diagnostic,
+            ),
+        });
+    }
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 18 ALU/bit/shift FS-UAE parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len(), "every fresh Item 18 guest ran");
+            for (index, run) in runs.iter().enumerate() {
+                if index < fixtures.len() {
+                    assert!(
+                        run.success,
+                        "Item 18 positive case {} failed\nstdout:\n{}\nstderr:\n{}",
+                        cases[index].name, run.stdout, run.stderr
+                    );
+                } else {
+                    assert_eq!(
+                        run.exit_code,
+                        Some(1),
+                        "Item 18 negative case {} must complete with guest exit 1",
+                        cases[index].name
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_tkpkg_native_item13_package_tokenizes_nop() {
     // Proof level D. This isolates the tokenizer service used by the Item 14
     // CLI case while supplying the exact unmodified Item 13 package.

@@ -52,6 +52,15 @@ engine modules still interpret only package-owned plans and neutral values;
 no CPU, mnemonic, register, addressing-mode, or opcode authority moved into
 the generic native runtime. The exact Rust-built package remains unchanged.
 
+Item 18 refreshed the complete audited manifest after directly porting Rust's
+neutral VALUE_VM v1/v2 operations, semantic-input projection, package-shape
+classification, and CSEM-v5 branch-program execution needed by the base 68000
+ALU/bit/shift fixtures and one explicit-word branch regression exposed by the
+single native completion run. The native modules interpret only opaque package
+records, neutral scalar/register/direct inputs, and package-owned diagnostics;
+automatic branch sizing and multi-pass stability remain Item 19. The exact
+Rust-built package and every family definition remain unchanged.
+
 ## Dependency direction
 
 ```text

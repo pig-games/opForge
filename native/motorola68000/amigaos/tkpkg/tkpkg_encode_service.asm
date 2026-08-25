@@ -328,7 +328,20 @@ encodeCandidate
 	clr.w buffers.SemanticOutputWriteOffset
 	bsr.w tkpkgEncodeFindAndExecuteSemanticProgramV2
 	tst.l d0
-	bne.w return
+	beq.s semanticProgramExecuted
+	cmpi.w #$FFFF, state.EncodeSelectedSemanticDiagnosticIndex
+	beq.w return
+	jsr selection.tkpkgRenderSelectedSemanticRejectV1
+	tst.l d0
+	bne.s semanticDiagnosticFail
+	moveq #1, d0
+	bra.w return
+semanticDiagnosticFail
+	lea EncodeTableMalformedText, a1
+	moveq #ENCODE_TABLE_MALFORMED_TEXT_LEN, d1
+	moveq #1, d0
+	bra.w return
+semanticProgramExecuted
 	tst.b d3
 	bne.w return
 	lea EncodeTableMalformedText, a1
@@ -677,11 +690,19 @@ semanticProgramNext
 	beq.s semanticEncodingReady
 	cmpi.w #6, d4
 	beq.s semanticEncodingReady
+	cmpi.w #5, d4
+	beq.s semanticBranchReady
 	cmpi.w #4, d4
 	bne.s semanticMalformed
 	movea.l 6(sp), a1
 	move.w 4(sp), d1
 	bsr.w tkpkgEncodeExecuteFixupProgramV4
+	moveq #1, d3
+	bra.s semanticReturn
+semanticBranchReady
+	movea.l 6(sp), a1
+	move.w 4(sp), d1
+	bsr.w tkpkgEncodeExecuteBranchProgramV5
 	moveq #1, d3
 	bra.s semanticReturn
 semanticEncodingReady
@@ -706,6 +727,336 @@ semanticReturn
 	movem.l (sp)+, d2/d4-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgEncodeFindAndExecuteSemanticProgramV2
+
+; Direct Rust branch_vm::execute_branch_program port for SEMV/CSEM v5.  The
+; selected envelope supplies opcode, target, requested candidate (`-1` means
+; auto), and automatic class.  Candidate widths, suffixes, endian, position
+; adjustment, unresolved placeholder, and reserved values remain package data.
+; Inputs: A1/D1 = program; four scalar records in SemanticInputRecordPtr.
+; Outputs: D0 status; D1 total output length in LastErrorBuffer.
+tkpkgEncodeExecuteBranchProgramV5	.block
+	movem.l d2-d7/a0/a2-a6, -(sp)
+	lea -60(sp), sp
+	movea.l a1, a0
+	moveq #0, d0
+	move.w d1, d0
+	movea.l a1, a5
+	adda.l d0, a5
+	move.l a5, (sp)
+	clr.l 4(sp)
+	clr.l 8(sp)
+
+	moveq #0, d0
+	bsr.w tkpkgSemanticLoadInputV2
+	bne.w branchFail
+	cmpi.l #255, d3
+	bhi.w branchFail
+	move.l d3, 12(sp)
+	moveq #1, d0
+	bsr.w tkpkgSemanticLoadInputV2
+	bne.w branchFail
+	move.l d3, 16(sp)
+	moveq #2, d0
+	bsr.w tkpkgSemanticLoadInputV2
+	bne.w branchFail
+	cmpi.l #-1, d3
+	beq.s branchRequestedReady
+	cmpi.l #255, d3
+	bhi.w branchFail
+branchRequestedReady
+	move.l d3, 20(sp)
+	moveq #3, d0
+	bsr.w tkpkgSemanticLoadInputV2
+	bne.w branchFail
+	cmpi.l #7, d3
+	bhi.w branchFail
+	move.w d3, d2
+	move.w d2, 30(sp)
+	moveq #1, d0
+	lsl.b d2, d0
+	move.w d0, 32(sp)
+	move.l state.EncodeSelectedCurrentPc, 24(sp)
+	clr.w 34(sp)
+	tst.b state.EncodeSelectedMselUnstable
+	beq.s branchUnresolvedReady
+	cmpi.w #1, state.EncodeSelectedSessionPass
+	bne.s branchUnresolvedReady
+	move.w #1, 34(sp)
+branchUnresolvedReady
+
+	moveq #5, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w branchFail
+	cmpi.b #$01, (a0)+
+	bne.w branchFail
+	tst.b (a0)+
+	bne.w branchFail
+	tst.b (a0)+
+	bne.w branchFail
+	moveq #0, d0
+	move.b (a0)+, d0
+	move.w d0, 28(sp)
+	moveq #0, d7
+	move.b (a0)+, d7
+	tst.w d7
+	beq.w branchFail
+	cmpi.w #16, d7
+	bhi.w branchFail
+	move.w d7, 30(sp)
+
+branchCandidateLoop
+	movea.l a0, a3
+	moveq #3, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w branchFail
+	moveq #0, d0
+	move.b (a0)+, d0
+	move.w d0, 36(sp)
+	moveq #0, d0
+	move.b (a0)+, d0
+	move.w d0, 38(sp)
+	moveq #0, d4
+	move.b (a0)+, d4
+	cmpi.w #8, d4
+	bhi.w branchFail
+	moveq #11, d0
+	add.w d4, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w branchFail
+	adda.w d4, a0
+	moveq #0, d5
+	move.b (a0)+, d5
+	cmpi.w #1, d5
+	beq.s branchWidthReady
+	cmpi.w #2, d5
+	beq.s branchWidthReady
+	cmpi.w #4, d5
+	bne.w branchFail
+branchWidthReady
+	moveq #0, d6
+	move.b (a0)+, d6
+	cmpi.w #1, d6
+	bhi.w branchFail
+	bsr.w tkpkgSemanticReadU32LeV2
+	bne.w branchFail
+	move.l d0, 44(sp)
+	bsr.w tkpkgSemanticReadU32LeV2
+	bne.w branchFail
+	move.l d0, 48(sp)
+	move.w d5, d2
+	bsr.w tkpkgBranchValueFitsSignedWidthV5
+	tst.l d0
+	bne.w branchFail
+	moveq #0, d4
+	move.b (a0)+, d4
+	cmpi.w #8, d4
+	bhi.w branchFail
+	move.w d4, d0
+	lsl.w #2, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w branchFail
+
+	clr.w 40(sp)
+	clr.w 42(sp)
+	move.l 20(sp), d0
+	cmpi.l #-1, d0
+	beq.s branchAutomaticCandidate
+	cmp.w 36(sp), d0
+	bne.s branchCandidateValueReady
+	move.w #1, 40(sp)
+	bra.s branchComputeCandidateValue
+
+branchAutomaticCandidate
+	tst.l 4(sp)
+	bne.s branchCandidateValueReady
+	move.w 38(sp), d0
+	and.w 32(sp), d0
+	beq.s branchCandidateValueReady
+	tst.w 34(sp)
+	beq.s branchAutomaticResolved
+	move.w 36(sp), d0
+	cmp.w 28(sp), d0
+	bne.s branchCandidateValueReady
+branchAutomaticResolved
+	move.w #1, 40(sp)
+
+branchComputeCandidateValue
+	tst.w 34(sp)
+	beq.s branchProjectCandidateValue
+	move.l 48(sp), d3
+	bra.s branchValidateCandidateValue
+branchProjectCandidateValue
+	move.l 24(sp), d0
+	add.l 44(sp), d0
+	bvs.w branchFail
+	move.l 16(sp), d3
+	sub.l d0, d3
+	bvs.w branchFail
+branchValidateCandidateValue
+	move.l d3, 52(sp)
+	move.l d3, d0
+	move.w d5, d2
+	bsr.w tkpkgBranchValueFitsSignedWidthV5
+	tst.l d0
+	beq.s branchCandidateValueReady
+	cmpi.l #-1, 20(sp)
+	bne.w branchFail
+	clr.w 40(sp)
+
+branchCandidateValueReady
+	clr.l 56(sp)
+	moveq #0, d6
+	movea.l d4, a4
+	bra.s branchReservedCheck
+
+branchReservedLoop
+	bsr.w tkpkgSemanticReadU32LeV2
+	bne.w branchFail
+	move.l d0, d3
+	move.w d5, d2
+	bsr.w tkpkgBranchValueFitsSignedWidthV5
+	tst.l d0
+	bne.w branchFail
+	tst.w d6
+	beq.s branchReservedAscending
+	move.l 56(sp), d0
+	cmp.l d3, d0
+	bge.w branchFail
+branchReservedAscending
+	move.l d3, 56(sp)
+	moveq #1, d6
+	cmp.l 48(sp), d3
+	beq.w branchFail
+	tst.w 40(sp)
+	beq.s branchReservedNext
+	cmp.l 52(sp), d3
+	bne.s branchReservedNext
+	move.w #1, 42(sp)
+branchReservedNext
+	subq.l #1, a4
+
+branchReservedCheck
+	move.l a4, d0
+	bne.s branchReservedLoop
+	tst.w 40(sp)
+	beq.s branchCandidateNext
+	tst.w 42(sp)
+	beq.s branchSelectCandidate
+	cmpi.l #-1, 20(sp)
+	bne.w branchFail
+	bra.s branchCandidateNext
+
+branchSelectCandidate
+	tst.l 4(sp)
+	beq.s branchStoreCandidate
+	cmpi.l #-1, 20(sp)
+	bne.w branchFail
+	bra.s branchCandidateNext
+branchStoreCandidate
+	move.l a3, 4(sp)
+	move.l 52(sp), d0
+	move.l d0, 8(sp)
+
+branchCandidateNext
+	subq.w #1, d7
+	bne.w branchCandidateLoop
+	moveq #1, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w branchFail
+	cmpi.b #$FF, (a0)+
+	bne.w branchFail
+	cmpa.l (sp), a0
+	bne.w branchFail
+	tst.l 4(sp)
+	beq.w branchFail
+
+	movea.l 4(sp), a0
+	addq.l #2, a0
+	moveq #0, d7
+	move.b (a0)+, d7
+	cmpi.w #8, d7
+	bhi.w branchFail
+	moveq #0, d0
+	move.w d7, d0
+	addq.w #3, d0
+	move.l a0, d2
+	add.l d0, d2
+	cmp.l (sp), d2
+	bhi.w branchFail
+	lea buffers.LastErrorBuffer, a2
+	moveq #0, d0
+	move.w buffers.SemanticOutputWriteOffset, d0
+	adda.w d0, a2
+	move.l a2, d3
+	lea buffers.LastErrorBuffer, a1
+	sub.l a1, d3
+	addq.l #1, d3
+	add.l d7, d3
+	cmpi.l #buffers.LAST_ERROR_BUFFER_CAPACITY, d3
+	bhi.w branchFail
+	move.l 12(sp), d0
+	move.b d0, (a2)+
+	tst.w d7
+	beq.s branchSuffixReady
+branchSuffixLoop
+	move.b (a0)+, (a2)+
+	subq.w #1, d7
+	bne.s branchSuffixLoop
+branchSuffixReady
+	moveq #0, d2
+	move.b (a0)+, d2
+	moveq #0, d4
+	move.b (a0)+, d4
+	move.l 8(sp), d0
+	bsr.w tkpkgSemanticEmitUnitV2
+	tst.l d3
+	bne.w branchFail
+	move.l a2, d1
+	lea buffers.LastErrorBuffer, a1
+	sub.l a1, d1
+	cmp.w buffers.SemanticOutputWriteOffset, d1
+	bls.w branchFail
+	moveq #0, d0
+	bra.s branchReturn
+
+branchFail
+	lea EncodeTableMalformedText, a1
+	moveq #ENCODE_TABLE_MALFORMED_TEXT_LEN, d1
+	moveq #1, d0
+branchReturn
+	lea 60(sp), sp
+	movem.l (sp)+, d2-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgEncodeExecuteBranchProgramV5
+
+; Inputs: D0 signed value, D2.W width (1/2/4). Output D0=0 fits, 1 fails.
+tkpkgBranchValueFitsSignedWidthV5	.block
+	cmpi.w #1, d2
+	beq.s branchFitsByte
+	cmpi.w #2, d2
+	beq.s branchFitsWord
+	cmpi.w #4, d2
+	bne.s branchDoesNotFit
+	moveq #0, d0
+	rts
+branchFitsByte
+	cmpi.l #-128, d0
+	blt.s branchDoesNotFit
+	cmpi.l #127, d0
+	bgt.s branchDoesNotFit
+	moveq #0, d0
+	rts
+branchFitsWord
+	cmpi.l #-32768, d0
+	blt.s branchDoesNotFit
+	cmpi.l #32767, d0
+	bgt.s branchDoesNotFit
+	moveq #0, d0
+	rts
+branchDoesNotFit
+	moveq #1, d0
+	rts
+	.bend  ; tkpkgBranchValueFitsSignedWidthV5
 
 ; Direct Rust fixup_vm::execute_fixup_program v4 port for resolved native
 ; scalars.  Fixup inputs use a five-byte record: flags then little-endian u32.

@@ -2348,6 +2348,13 @@ paren
 	; `(expr,X)` forms above/below; otherwise let package projections decide.
 	tst.w d6
 	bne.w none
+	; Rust's package_shape_input classifies every single non-register operand as
+	; direct, including a Member whose base is parenthesized.  Do not let the
+	; legacy leading-parenthesis hint misclassify `(expr).field` as indirect;
+	; the package-owned member projection will validate the field itself.
+	bsr.w inferSelectedShapeParenMember
+	tst.b d0
+	bne.w direct
 	move.w d2, d4
 	subq.w #1, d4
 	move.b 0(a0, d4.w), d3
@@ -2615,6 +2622,45 @@ maybe
 return
 	rts
 	.bend  ; inferSelectedShapeSuffix
+
+; Identify a neutral member suffix following the close of the leading
+; parenthesized expression.  The field spelling remains package-owned.
+; Inputs: A0/D2.W = trimmed operand text. Output: D0.B = 1 on match, else 0.
+inferSelectedShapeParenMember	.block
+	movem.l d3-d5/a1, -(sp)
+	movea.l a0, a1
+	move.w d2, d4
+	moveq #0, d5
+	moveq #0, d0
+
+scan
+	tst.w d4
+	beq.s return
+	move.b (a1)+, d3
+	subq.w #1, d4
+	cmpi.b #'(', d3
+	beq.s open
+	cmpi.b #')', d3
+	bne.s scan
+	tst.w d5
+	beq.s return
+	subq.w #1, d5
+	bne.s scan
+	cmpi.w #2, d4
+	blo.s return
+	cmpi.b #'.', (a1)
+	bne.s return
+	moveq #1, d0
+	bra.s return
+
+open
+	addq.w #1, d5
+	bra.s scan
+
+return
+	movem.l (sp)+, d3-d5/a1
+	rts
+	.bend  ; inferSelectedShapeParenMember
 
 OpasmEngineSelectedShapeAccumulatorText
 	.byte "accumulator", 0

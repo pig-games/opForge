@@ -1151,6 +1151,7 @@ return
 
 encodeSelectedOperandTryLabelV1	.block
 	movem.l d0-d2/d4/d6/a0-a2/a6, -(sp)
+	move.l a6, d4
 	moveq #0, d7
 	tst.l d1
 	beq.s return
@@ -1174,6 +1175,11 @@ found
 	lsl.l #2, d2
 	move.l 0(a2, d2.l), d3
 	moveq #0, d5
+	movea.l d4, a6
+	tst.b 0(a6, d6.l)
+	bne.s foundStable
+	moveq #1, d5
+foundStable
 	moveq #0, d0
 
 return
@@ -1630,6 +1636,10 @@ fail
 	moveq #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
 	rts
 ok
+	tst.l d5
+	beq.s stable
+	move.b #1, state.EncodeSelectedMselUnstable
+stable
 	moveq #TKPKG_SELECTED_STATUS_OK, d0
 	rts
 	.bend  ; tkpkgMselEvaluateSemanticSpanV2

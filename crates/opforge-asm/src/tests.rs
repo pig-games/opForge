@@ -15851,6 +15851,303 @@ fn motorola68020_item17_native_indirect_tuple_projection_matches_rust_boundary()
 }
 
 #[test]
+fn motorola68020_item18_native_value_vm_v2_matches_rust_boundary() {
+    // Proof level B. This proves the generic native VALP interpreter accepts
+    // the exact Rust v1/v2 opcode surface used by Item 18 and that the frozen
+    // package selects the v2 packed-count program. It does not prove execution
+    // by a real Amiga guest.
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let engine = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_engine.asm"),
+    )
+    .expect("read native opasm engine");
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "paren",
+            "bsr.w inferSelectedShapeParenMember",
+            "bne.w direct",
+            "inferSelectedShapeParenMember\t.block",
+            "cmpi.b #'.', (a1)",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "tkpkgInferSelectedPackageShapeV1\t.block",
+            "RegisterRegisterShapeText",
+            "RegisterImmediateShapeText",
+            "DirectRegisterShapeText",
+            "RegisterDirectShapeText",
+            "DirectDirectShapeText",
+            "classifyImmediatePair",
+            "ImmediateRegisterShapeText",
+            "ImmediateDirectShapeText",
+            "classifySingle",
+            "RegisterShapeText",
+            "DirectShapeText",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "compactSelector",
+            "tkpkgBuildSelectedEnvelopeFromCmseV7",
+            "cmpi.l #TKPKG_SELECTED_STATUS_UNSUPPORTED_ADDRESS, d0",
+            "clr.l state.EncodeSelectedMselShapePtr",
+            "clr.w state.EncodeSelectedMselShapeLen",
+            "bsr.w tkpkgInferSelectedPackageShapeV1",
+            "retryCompactSelector",
+            "tkpkgBuildSelectedEnvelopeFromCmseV7",
+            "restoreLegacyShape",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "cmseStructuredCandidate",
+            "cmpi.b #3, d0",
+            "cmseBuildBranch",
+            "tkpkgBuildCompactSemanticBranchCandidateV2",
+            "cmpi.b #4, (a2)+",
+            "AutomaticBranchCandidateText",
+            "tkpkgProjectCompactSemanticInputV2",
+        ],
+    ));
+    let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
+    assert!(source_contains_in_order(
+        &operand,
+        &[
+            "encodeSelectedOperandTryLabelV1\t.block",
+            "move.l a6, d4",
+            "movea.l d4, a6",
+            "tst.b 0(a6, d6.l)",
+            "moveq #1, d5",
+            "tkpkgMselEvaluateSemanticSpanV2\t.block",
+            "tst.l d5",
+            "move.b #1, state.EncodeSelectedMselUnstable",
+        ],
+    ));
+    let scoped = selection
+        .split_once("tkpkgExecuteScopedValueProgramV2\t.block")
+        .and_then(|(_, tail)| tail.split_once("\t.bend  ; tkpkgExecuteScopedValueProgramV2"))
+        .map(|(body, _)| body)
+        .expect("native scoped VALUE_VM v2 resolver");
+    assert!(source_contains_in_order(
+        scoped,
+        &[
+            "cmpi.w #1, d4",
+            "cmpi.w #2, d4",
+            "move.w d4, 12(sp)",
+            "move.w 12(sp), d0",
+            "bsr.w tkpkgExecuteValueProgramBytesV2",
+        ],
+    ));
+    let interpreter = selection
+        .split_once("tkpkgExecuteValueProgramBytesV2\t.block")
+        .and_then(|(_, tail)| tail.split_once("\t.bend  ; tkpkgExecuteValueProgramBytesV2"))
+        .map(|(body, _)| body)
+        .expect("native VALUE_VM v1/v2 interpreter");
+    assert!(source_contains_in_order(
+        interpreter,
+        &[
+            "cmpi.w #1, d0",
+            "cmpi.w #2, d0",
+            "cmpi.b #$01, d0",
+            "valuePushLiteral",
+            "cmpi.b #$02, d0",
+            "valuePushInput",
+            "cmpi.b #$03, d0",
+            "valueNormalize",
+            "cmpi.b #$04, d0",
+            "valueRequireSignedBits",
+            "cmpi.b #$05, d0",
+            "valueRequireUnsignedBits",
+            "cmpi.b #$06, d0",
+            "valueRequireRange",
+            "cmpi.b #$07, d0",
+            "valueEncodeUpperBoundAsZero",
+            "cmpi.w #2, d1",
+            "cmpi.b #62, d2",
+            "valueConstraintFail",
+            "valueEnd",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        interpreter,
+        &[
+            "valueNormalize",
+            "cmpi.b #32, d2",
+            "moveq #1, d4",
+            "subq.l #1, d5",
+            "cmp.l d5, d3",
+            "ble.w valueLoop",
+            "add.l d4, d4",
+            "cmp.l d4, d3",
+            "bge.w valueLoop",
+            "valueNormalizeApply",
+            "sub.l d4, d3",
+        ],
+    ));
+    assert!(!interpreter.contains("and.l d4, d3"));
+    let selection_state = tkpkg_amigaos_source("tkpkg_selection_state.asm");
+    assert!(selection_state.contains("EncodeSelectedSemanticDiagnosticIndex"));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "move.w #$FFFF, state.EncodeSelectedSemanticDiagnosticIndex",
+            "bsr.w skipCompactSelectorPlanBodyV7",
+            "bsr.w tkpkgRenderSelectedSemanticRejectV1",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "tkpkgRenderSelectedSemanticRejectV1\t.block",
+            "move.w state.EncodeSelectedSemanticDiagnosticIndex, d0",
+            "bsr.w tkpkgRenderRejectMessageCodeV1",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "skipCompactSelectorPlanBodyV7\t.block",
+            "bsr.w tkpkgServiceReadU16LeV1",
+            "move.w d0, state.EncodeSelectedSemanticDiagnosticIndex",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "requiredProjectSource",
+            "lea MemberPrefixText, a2",
+            "lea IndirectTupleValuePrefixText, a2",
+            "requiredProjectValidatedSource",
+            "bsr.w tkpkgProjectCompactSemanticInputV2",
+        ],
+    ));
+    let encode = tkpkg_amigaos_source("tkpkg_encode_service.asm");
+    assert!(source_contains_in_order(
+        &encode,
+        &[
+            "bsr.w tkpkgEncodeFindAndExecuteSemanticProgramV2",
+            "cmpi.w #$FFFF, state.EncodeSelectedSemanticDiagnosticIndex",
+            "jsr selection.tkpkgRenderSelectedSemanticRejectV1",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &encode,
+        &[
+            "cmpi.w #5, d4",
+            "semanticBranchReady",
+            "tkpkgEncodeExecuteBranchProgramV5",
+            "state.EncodeSelectedMselUnstable",
+            "state.EncodeSelectedSessionPass",
+            "cmpi.b #$01, (a0)+",
+            "branchCandidateLoop",
+            "branchAutomaticCandidate",
+            "branchProjectCandidateValue",
+            "tkpkgBranchValueFitsSignedWidthV5",
+            "branchReservedLoop",
+            "branchSelectCandidate",
+            "tkpkgSemanticEmitUnitV2",
+        ],
+    ));
+    for forbidden in ["motorola68000", "m68000", "ADDQ", "ASL"] {
+        assert!(
+            !scoped.contains(forbidden) && !interpreter.contains(forbidden),
+            "generic VALUE_VM runtime must not own target spelling {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 18 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 18 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 18 package input");
+    let bsr_selector = chunks
+        .selectors
+        .iter()
+        .find(|selector| {
+            selector.mnemonic.eq_ignore_ascii_case("BSR.W")
+                && selector.shape_key.eq_ignore_ascii_case("direct")
+        })
+        .expect("Rust package BSR.W direct selector");
+    assert_eq!(
+        bsr_selector.operand_plan,
+        "semv.branch.v1:branch.sized@97,expr0,1,0"
+    );
+    let branch_program = chunks
+        .semantic_programs
+        .iter()
+        .find(|program| program.id == "branch.sized")
+        .expect("Rust package branch.sized program");
+    assert_eq!(branch_program.opcode_version, 5);
+    let branch_spec = package::decode_branch_program(5, &branch_program.program)
+        .expect("decode Rust SEMV v5 branch program");
+    assert_eq!(branch_spec.opcode_input, 0);
+    assert_eq!(branch_spec.target_input, 0);
+    assert_eq!(branch_spec.unresolved_candidate, 1);
+    assert_eq!(branch_spec.candidates.len(), 3);
+    assert_eq!(branch_spec.candidates[1].id, 1);
+    assert_eq!(branch_spec.candidates[1].automatic_classes, 0b11);
+    assert_eq!(branch_spec.candidates[1].suffix, [0]);
+    assert_eq!(branch_spec.candidates[1].displacement_width, 2);
+    assert_eq!(branch_spec.candidates[1].position_adjustment, 2);
+    assert_eq!(branch_spec.candidates[1].unresolved_placeholder, 0);
+    let absolute_word_programs = chunks
+        .value_programs
+        .iter()
+        .filter(|program| program.id.eq_ignore_ascii_case("scalar.absolute-W"))
+        .collect::<Vec<_>>();
+    assert!(absolute_word_programs.iter().any(|program| {
+        program.opcode_version == 1
+            && program.program == [0x02, 0x00, 0x03, 24, 0x04, 16, 0xff]
+    }));
+    let fixed_extension_word = chunks
+        .semantic_programs
+        .iter()
+        .find(|program| {
+            program
+                .id
+                .eq_ignore_ascii_case("enc.template.fixed-extension-word")
+        })
+        .expect("Rust fixed-extension-word encoder");
+    assert_eq!(fixed_extension_word.opcode_version, 2);
+    assert_eq!(fixed_extension_word.program[0], 0x02);
+    assert_eq!(fixed_extension_word.program[20], 0x02);
+    assert_eq!(fixed_extension_word.program.last(), Some(&0xff));
+    let program = chunks
+        .value_programs
+        .iter()
+        .find(|program| program.id == "scalar.packed-three-bit-count")
+        .expect("Rust packed three-bit count value program");
+    assert_eq!(program.opcode_version, 2);
+    assert_eq!(program.program, [0x02, 0x00, 0x07, 0x03, 0xff]);
+    for mnemonic in ["ADDQ.W", "ASL.B"] {
+        let selector = chunks
+            .selectors
+            .iter()
+            .find(|selector| {
+                selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                    && selector.shape_key.eq_ignore_ascii_case("immediate_register")
+                    && selector
+                        .operand_plan
+                        .contains("required_value_program:scalar.packed-three-bit-count:expr0")
+            })
+            .unwrap_or_else(|| panic!("Rust package {mnemonic} packed-count selector"));
+        assert!(selector.operand_plan.contains("encoding.count.range"));
+    }
+}
+
+#[test]
 fn motorola68020_item6_7_pass_one_sizes_relative_branches_when_selected_size_is_empty() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");

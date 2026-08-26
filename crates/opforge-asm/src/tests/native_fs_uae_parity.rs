@@ -13693,6 +13693,351 @@ fn external_fs_uae_native_m68000_adda_word_register_parity() {
 }
 
 #[test]
+fn external_fs_uae_native_m68010_named_register_diagnostic_parity() {
+    // Proof level D. One fresh guest executes the exact package-owned m68010
+    // named-register rejection and must return Rust's live diagnostic with an
+    // explicit guest exit 1.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        MOVEC CACR,D0\n";
+    let rust_diagnostic = live_rust_cpu_name_diagnostic(
+        source,
+        "m68010",
+        "item21-m68010-named-register-rust-diagnostic",
+    );
+    assert!(rust_diagnostic.contains("unsupported MOVEC control register for m68010"));
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 21 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item21-m68010-named-register-diagnostic",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68010 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+            &rust_diagnostic,
+        ),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("focused native m68010 named-register diagnostic parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert_eq!(runs[0].exit_code, Some(1));
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68010_delta_parity() {
+    // Proof level D. Every case uses a fresh challenged guest, the exact
+    // unmodified package, and a same-source live Rust oracle. The complete
+    // fixture and both CPU aliases prove positive execution; baseline and
+    // m68010 legality cases require exact Rust diagnostics and guest exit 1.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 21 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+
+    let fixture_source =
+        fs::read_to_string(workspace_root().join("examples/motorola68000/68010_delta.asm"))
+            .expect("read authoritative 68010 delta fixture");
+    let alias_source = "        BKPT #3\n        MOVE CCR,D0\n        RTD #4\n";
+    let positive_definitions = [
+        (
+            "item21-m68010-complete-fixture",
+            "m68010",
+            fixture_source.as_str(),
+        ),
+        ("item21-68010-cli-alias", "68010", alias_source),
+        ("item21-mc68010-cli-alias", "mc68010", alias_source),
+    ];
+    let positives = positive_definitions
+        .iter()
+        .map(|(name, cpu, source)| {
+            let oracle = live_rust_cpu_name_oracle(
+                source,
+                Some(cpu),
+                format!("{name}-rust-oracle").as_str(),
+            )
+            .unwrap_or_else(|error| panic!("run Item 21 Rust oracle {name}: {error}"));
+            let command =
+                format!("{{input}} --bin {{bin}} --cpu {cpu} --opasm-package {{package}}");
+            (*name, *source, oracle, command)
+        })
+        .collect::<Vec<_>>();
+
+    let negative_definitions = [
+        ("item21-m68000-reject-bkpt", "m68000", "        BKPT #3\n"),
+        (
+            "item21-m68000-reject-movec",
+            "m68000",
+            "        MOVEC SFC,D0\n",
+        ),
+        (
+            "item21-m68000-reject-moves",
+            "m68000",
+            "        MOVES.W D0,(A0)\n",
+        ),
+        ("item21-m68000-reject-rtd", "m68000", "        RTD #4\n"),
+        (
+            "item21-m68000-reject-move-ccr",
+            "m68000",
+            "        MOVE CCR,D0\n",
+        ),
+        ("item21-m68010-bkpt-range", "m68010", "        BKPT #8\n"),
+        (
+            "item21-m68010-movec-control",
+            "m68010",
+            "        MOVEC CACR,D0\n",
+        ),
+        (
+            "item21-m68010-moves-destination",
+            "m68010",
+            "        MOVES.W D0,4(PC)\n",
+        ),
+        ("item21-m68010-rtd-range", "m68010", "        RTD #$10000\n"),
+    ];
+    let negatives = negative_definitions
+        .iter()
+        .map(|(name, cpu, source)| {
+            let diagnostic = live_rust_cpu_name_diagnostic(
+                source,
+                cpu,
+                format!("{name}-rust-diagnostic").as_str(),
+            );
+            let command =
+                format!("{{input}} --bin {{bin}} --cpu {cpu} --opasm-package {{package}}");
+            (*name, *source, diagnostic, command)
+        })
+        .collect::<Vec<_>>();
+
+    let mut cases = Vec::with_capacity(positives.len() + negatives.len());
+    for (name, source, oracle, command) in &positives {
+        cases.push(crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name,
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some(command.as_str()),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: oracle,
+            },
+        });
+    }
+    for (name, source, diagnostic, command) in &negatives {
+        cases.push(crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name,
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some(command.as_str()),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                diagnostic,
+            ),
+        });
+    }
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 21 m68010 delta FS-UAE parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len(), "every fresh Item 21 guest ran");
+            for (index, run) in runs.iter().enumerate() {
+                assert!(
+                    run.protocol_completed,
+                    "Item 21 case {} must complete the guest protocol",
+                    cases[index].name
+                );
+                if index < positives.len() {
+                    assert!(
+                        run.success,
+                        "Item 21 positive case {} failed\nstdout:\n{}\nstderr:\n{}",
+                        cases[index].name, run.stdout, run.stderr
+                    );
+                    assert_eq!(run.exit_code, Some(0));
+                } else {
+                    assert_eq!(
+                        run.exit_code,
+                        Some(1),
+                        "Item 21 negative case {} must complete with guest exit 1",
+                        cases[index].name
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68010_baseline_rejection_diagnostic_parity() {
+    // Proof level D. This directed closure test covers only the four baseline
+    // cases that exposed one shared generic-mnemonic renderer defect in the
+    // complete Item 21 aggregate. Every case uses a fresh challenged guest and
+    // the same-source live Rust diagnostic, with explicit guest exit 1.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 21 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+
+    let definitions = [
+        ("item21-directed-m68000-reject-bkpt", "        BKPT #3\n"),
+        (
+            "item21-directed-m68000-reject-movec",
+            "        MOVEC SFC,D0\n",
+        ),
+        (
+            "item21-directed-m68000-reject-moves",
+            "        MOVES.W D0,(A0)\n",
+        ),
+        ("item21-directed-m68000-reject-rtd", "        RTD #4\n"),
+    ];
+    let cases_with_diagnostics = definitions
+        .iter()
+        .map(|(name, source)| {
+            let diagnostic = live_rust_cpu_name_diagnostic(
+                source,
+                "m68000",
+                format!("{name}-rust-diagnostic").as_str(),
+            );
+            (*name, *source, diagnostic)
+        })
+        .collect::<Vec<_>>();
+    let cases = cases_with_diagnostics
+        .iter()
+        .map(
+            |(name, source, diagnostic)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(source.as_bytes()),
+                command_template: Some(
+                    "{input} --bin {bin} --cpu m68000 --opasm-package {package}",
+                ),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &[],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                    diagnostic,
+                ),
+            },
+        )
+        .collect::<Vec<_>>();
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 21 baseline diagnostic parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len(), "all directed Item 21 guests ran");
+            for (index, run) in runs.iter().enumerate() {
+                assert!(
+                    run.protocol_completed,
+                    "directed Item 21 case {} must complete the guest protocol",
+                    cases[index].name
+                );
+                assert_eq!(
+                    run.exit_code,
+                    Some(1),
+                    "directed Item 21 case {} must exit 1",
+                    cases[index].name
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68010_moves_rejection_diagnostic_parity() {
+    // Proof level D. One fresh challenged guest closes the only residual case
+    // from the directed renderer test: the live Rust CLI preserves the `.W`
+    // suffix supplied to its generic mnemonic diagnostic and returns exit 1.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        MOVES.W D0,(A0)\n";
+    let rust_diagnostic =
+        live_rust_cpu_name_diagnostic(source, "m68000", "item21-directed-moves-rust-diagnostic");
+    assert_eq!(rust_diagnostic, "No instruction found for MOVES.W");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 21 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item21-directed-m68000-reject-moves-only",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68000 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+            &rust_diagnostic,
+        ),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 21 MOVES.W diagnostic parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert_eq!(runs[0].exit_code, Some(1));
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_native_m68000_movem_register_mask_parity() {
     // Proof level D. Two fresh guests execute Rust's register-mask paths:
     // predecrement reverses the complete mask, while postincrement retains the

@@ -16295,6 +16295,236 @@ fn motorola68020_item19_native_layout_stability_matches_rust_boundary() {
 }
 
 #[test]
+fn m68010_item21_named_register_matches_rust_boundary() {
+    // Proof level B. Rust's neutral named-register selector source is the
+    // authority; native compares the package-owned spelling without owning a
+    // CPU or control-register table. This does not execute an Amiga guest.
+    let rust_selector = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_encoding.rs"),
+    )
+    .expect("read Rust selector encoding reference");
+    for expected in [
+        "MODE_SELECTOR_PLAN_NAMED_REGISTER_PREFIX",
+        "let Some((index, expected)) = named_spec.split_once('=')",
+        "actual.eq_ignore_ascii_case(expected)",
+        "values.push(0)",
+    ] {
+        assert!(
+            rust_selector.contains(expected),
+            "missing Rust named-register boundary {expected}"
+        );
+    }
+    let rust_selector_bridge = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_bridge.rs"),
+    )
+    .expect("read Rust selector owner-precedence reference");
+    for expected in [
+        "The outer loop preserves dialect -> CPU -> family precedence.",
+        "selector.priority > *priority",
+    ] {
+        assert!(
+            rust_selector_bridge.contains(expected),
+            "missing Rust selector owner-precedence boundary {expected}"
+        );
+    }
+
+    let native_selector = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
+    )
+    .expect("read native package selection service");
+    for expected in [
+        ".byte \"named_register\"",
+        "semanticCheckNamedRegister",
+        "tkpkgProjectNamedRegisterV1\t.block",
+        "tkpkgMselLocateSemanticOperandV2",
+        "tkpkgServiceStringEqAsciiCasefoldV1",
+        "movem.l d2/d6, -(sp)\n\tbsr.w tkpkgParseU16DecimalV2\n\tmovem.l (sp)+, d2/d6",
+        "DeferredSemanticRejectBuffer",
+        "cmseRejectCpuRank",
+        "move.w 24(sp), 28(sp)",
+    ] {
+        assert!(
+            native_selector.contains(expected),
+            "missing native named-register boundary {expected}"
+        );
+    }
+    let projection = native_selector
+        .split("tkpkgProjectNamedRegisterV1\t.block")
+        .nth(1)
+        .and_then(|tail| tail.split("\t.bend  ; tkpkgProjectNamedRegisterV1").next())
+        .expect("bounded native named-register projection");
+    for forbidden in ["MOVEC", "CACR", "m68010", "68010"] {
+        assert!(
+            !projection.contains(forbidden),
+            "generic named-register projection must not own {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 21 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package")
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 21 package input");
+    let movec_rejections = chunks
+        .selectors
+        .iter()
+        .filter(|selector| {
+            selector.mnemonic.eq_ignore_ascii_case("MOVEC")
+                && selector.operand_plan.contains("movec-control-m68010")
+        })
+        .map(|selector| {
+            (
+                selector.owner.clone(),
+                selector.shape_key.clone(),
+                selector.operand_plan.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !movec_rejections.is_empty(),
+        "decoded package must retain a m68010 MOVEC rejection row"
+    );
+    assert!(movec_rejections.iter().any(|(owner, shape, plan)| {
+        matches!(owner, ScopedOwner::Cpu(cpu) if cpu == "m68010")
+            && shape == "direct_register"
+            && plan.contains("named_register0=cacr")
+    }));
+    let rust_package_programs = fs::read_to_string(
+        workspace_root().join("crates/opforge-families/src/m68k/package_programs.rs"),
+    )
+    .expect("read Rust m68k package-program reference");
+    for expected in [
+        "if cpu_id == \"m68010\"",
+        "MODE_SELECTOR_PLAN_NAMED_REGISTER_PREFIX}0=CACR",
+        "DIAG_MOVEC_CONTROL_M68010",
+    ] {
+        assert!(
+            rust_package_programs.contains(expected),
+            "missing Rust m68010 package boundary {expected}"
+        );
+    }
+}
+
+#[test]
+fn m68010_item21_no_instruction_diagnostic_matches_rust_boundary() {
+    // Proof level B. Rust's generic diagnostic uppercases the mnemonic value
+    // supplied by the active assembly path. Native therefore copies the full
+    // bounded statement mnemonic and uppercases it without owning instruction
+    // vocabulary. This does not execute an Amiga guest.
+    let rust_instruction =
+        fs::read_to_string(workspace_root().join("crates/opforge-asm/src/asmline_instruction.rs"))
+            .expect("read Rust instruction diagnostic reference");
+    assert!(
+        rust_instruction
+            .contains("format!(\"No instruction found for {}\", mnemonic.to_ascii_uppercase())"),
+        "missing Rust generic no-instruction diagnostic boundary"
+    );
+
+    let native_reporter = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opasm_event_report.asm"),
+    )
+    .expect("read native event reporter");
+    for expected in [
+        "unknownMnemonicDone\n\tadda.l #engine.OPASM_ENGINE_STMT_TEXT_BYTES, sp\n\tmove.l #strings.NewlineText, d1\n\tjsr dos.putErrStr\n\tbsr.w reportNoInstructionFound",
+        "unsupportedAddressing\n\tmove.l #strings.NativeUnsupportedAddressingText, d1\n\tjsr dos.putErrStr\n\tbsr.w reportNoInstructionFound",
+        "reportNoInstructionFound\t.block",
+        "jsr engine.opasmEngineGetStatementTextMetadataV1",
+        "subi.b #$20, d0",
+        "move.l #strings.NativeNoInstructionFoundText, d1",
+    ] {
+        assert!(
+            native_reporter.contains(expected),
+            "missing native Rust-diagnostic rendering boundary {expected}"
+        );
+    }
+    let renderer = native_reporter
+        .split("reportNoInstructionFound\t.block")
+        .nth(1)
+        .and_then(|tail| tail.split("\t.bend  ; reportNoInstructionFound").next())
+        .expect("bounded native no-instruction renderer");
+    for forbidden in ["BKPT", "MOVEC", "MOVES", "RTD", "m68000", "m68010"] {
+        assert!(
+            !renderer.contains(forbidden),
+            "generic diagnostic renderer must not own {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn m68010_item21_delta_corpus_matches_rust_boundary() {
+    // Proof level B. The established Rust assembler and frozen package remain
+    // authoritative for the complete 68010 fixture and legality surface. This
+    // does not execute native code in an Amiga guest.
+    let repo_root = workspace_root();
+    let example_path = repo_root.join("examples/motorola68000/68010_delta.asm");
+    let reference_dir = repo_root.join("examples/reference/motorola68000");
+    let out_dir = create_temp_dir("item21-m68010-rust-corpus");
+    assemble_example(&example_path, &out_dir, false)
+        .expect("assemble authoritative Rust 68010 delta fixture");
+    for extension in ["srec", "lst"] {
+        let actual = fs::read(out_dir.join(format!("68010_delta.{extension}")))
+            .expect("read generated 68010 delta output");
+        let expected = fs::read(reference_dir.join(format!("68010_delta.{extension}")))
+            .expect("read established 68010 delta reference");
+        assert_eq!(actual, expected, "68010_delta.{extension} drifted");
+    }
+
+    let rust_tests = fs::read_to_string(repo_root.join("crates/opforge-asm/src/tests.rs"))
+        .expect("read Rust assembler parity references");
+    for expected in [
+        "fn m68010_delta_slice_emits_expected_bytes()",
+        "fn m68010_delta_and_m68000_rejection_diagnostics_are_deterministic()",
+        "assemble_bytes(m68010_cpu_id, \"    BKPT #3\")",
+        "assemble_bytes(m68010_cpu_id, \"    MOVE CCR,D0\")",
+        "assemble_bytes(m68010_cpu_id, \"    MOVEC SFC,D0\")",
+        "assemble_bytes(m68010_cpu_id, \"    MOVES.W D0,(A0)\")",
+        "assemble_bytes(m68010_cpu_id, \"    RTD #4\")",
+    ] {
+        assert!(
+            rust_tests.contains(expected),
+            "missing Rust Item 21 case {expected}"
+        );
+    }
+
+    let rust_package_programs =
+        fs::read_to_string(repo_root.join("crates/opforge-families/src/m68k/package_programs.rs"))
+            .expect("read Rust m68k package-program reference");
+    for expected in [
+        "pub fn m68010_mode_selectors(cpu_id: &str)",
+        "ENCODING_BKPT",
+        "ENCODING_RTD",
+        "ENCODING_MOVEC_CONTROL_TO_DATA",
+        "ENCODING_MOVES_INDIRECT",
+        "ENCODING_MOVE_CCR_TO_DATA",
+        "DIAG_BKPT_VECTOR_RANGE",
+        "DIAG_RTD_DISPLACEMENT_RANGE",
+        "DIAG_MOVEC_CONTROL_M68010",
+    ] {
+        assert!(
+            rust_package_programs.contains(expected),
+            "missing Rust Item 21 package boundary {expected}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 21 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 21 must consume the exact unmodified Rust package"
+    );
+}
+
+#[test]
 fn motorola68020_item20_remaining_base_corpus_matches_rust_boundary() {
     // Proof level B. This accounts every 68000_* source fixture exactly once
     // across the completed Item 17-19 slices and Item 20, then proves the nine

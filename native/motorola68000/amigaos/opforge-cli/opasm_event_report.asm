@@ -165,11 +165,15 @@ unknownMnemonic
 unknownMnemonicDone
 	adda.l #engine.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	move.l #strings.NewlineText, d1
-	bra.w reportErrorText
+	jsr dos.putErrStr
+	bsr.w reportNoInstructionFound
+	bra.w done
 
 unsupportedAddressing
 	move.l #strings.NativeUnsupportedAddressingText, d1
-	bra.w reportErrorText
+	jsr dos.putErrStr
+	bsr.w reportNoInstructionFound
+	bra.w done
 
 unresolvedLabel
 	move.l #strings.NativeUnresolvedLabelText, d1
@@ -279,6 +283,54 @@ done
 	movem.l (sp)+, d0-d2/a0-a2
 	rts
 	.bend  ; reportEventErrorText
+
+; Render Rust's generic package-selection failure for the event-owned
+; statement. The mnemonic is uppercased from bounded statement metadata; no
+; instruction or CPU vocabulary is owned by this renderer.
+; Inputs: A2 = OPASM_EVENT_UNKNOWN_MNEMONIC or _UNSUPPORTED_ADDRESSING record.
+; Outputs: `No instruction found for <MNEMONIC>` is written to ErrorOutput.
+; Clobbers: none; D0-D3/A0-A2 are protected by the routine body.
+reportNoInstructionFound	.block
+	movem.l d0-d3/a0-a2, -(sp)
+	suba.l #engine.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movea.l sp, a0
+	moveq #0, d0
+	move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0
+	jsr engine.opasmEngineGetStatementTextMetadataV1
+	bne.s noInstructionDone
+	move.l engine.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d2
+	beq.s noInstructionDone
+	cmpi.l #255, d2
+	bls.s noInstructionLengthReady
+	move.l #255, d2
+noInstructionLengthReady
+	movea.l engine.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	lea EventTextBuffer, a1
+	move.l d2, d3
+	subq.l #1, d3
+noInstructionCopy
+	moveq #0, d0
+	move.b (a0)+, d0
+	cmpi.b #'a', d0
+	bcs.s noInstructionStore
+	cmpi.b #'z', d0
+	bhi.s noInstructionStore
+	subi.b #$20, d0
+noInstructionStore
+	move.b d0, (a1)+
+	dbf d3, noInstructionCopy
+	clr.b (a1)
+	move.l #strings.NativeNoInstructionFoundText, d1
+	jsr dos.putErrStr
+	move.l #EventTextBuffer, d1
+	jsr dos.putErrStr
+	move.l #strings.NewlineText, d1
+	jsr dos.putErrStr
+noInstructionDone
+	adda.l #engine.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d0-d3/a0-a2
+	rts
+	.bend  ; reportNoInstructionFound
 
 	.endsection
 

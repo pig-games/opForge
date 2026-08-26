@@ -139,7 +139,7 @@ SNAPSHOTS = {
     "opasm.amigaos.directive_text": ("98d283b9678f051c68787dc915b841559ee1a3647e597b44d966492a931ff0c8", 2, 1, ("code", "bss"), 2),
     "opasm.amigaos.layout": ("319155f2c0d107b187c27ee0abcd218a731dae8d6f5f99f3111c6010d9faed2d", 53, 1, ("code", "bss"), 2),
     "tkpkg.amigaos.service": ("ee73bb8b17e459daf2edec91e717b39e48f3e75d9ccb0e2b3f26d87bc6370522", 42, 13, ("data", "bss", "code"), 117),
-    "tkpkg.amigaos.selection_service": ("4f6f5f852c5d03cb5d8d1e6768f2d5d3eaa2b2497d18a9bbc1d0cd123e5c9c70", 55, 6, ("data", "code"), 146),
+    "tkpkg.amigaos.selection_service": ("fb66f4fa3d81416595f1caff0e2fbed9f12e84dd0844650bd5aa8a1915dce2e3", 56, 6, ("data", "code"), 152),
     "tkpkg.amigaos.operand_runtime": ("bc4595a8d349ea117862f310032cdeed72b25cbda2b5c147677fa730eddd1876", 23, 4, ("data", "code"), 59),
     "tkpkg.amigaos.encode_service": ("4fbefe000e6e96a1c9ff3ad6b6fce6b70f0b05723ec881d6e7b62d273f623e82", 24, 5, ("data", "code"), 32),
     "tkpkg.amigaos.compact_table": ("b6b9f451b8f9449916d7079af3563288acec06756dc3838c8489ee2a7b3d7c89", 5, 3, ("data", "code"), 1),

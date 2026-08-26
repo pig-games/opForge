@@ -86,6 +86,9 @@ TokenRecordBuffer
 TokenScratchBuffer
 	.res byte, TOKEN_SCRATCH_CAPACITY
 
+DeferredSemanticRejectBuffer
+	.res byte, TOKEN_SCRATCH_CAPACITY
+
 CompactStringScratchBuffer
 	.res byte, COMPACT_STRING_SCRATCH_CAPACITY
 

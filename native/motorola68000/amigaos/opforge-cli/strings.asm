@@ -146,6 +146,8 @@ NativeUnknownMnemonicText
 	.byte "ERROR OPC-NCLI025: unknown native mnemonic", 10, 0
 NativeUnsupportedAddressingText
 	.byte "ERROR OPC-NCLI026: unsupported native addressing mode", 10, 0
+NativeNoInstructionFoundText
+	.byte "No instruction found for ", 0
 NativeBadOrgText
 	.byte "ERROR OPC-NCLI027: invalid native .org expression", 10, 0
 NativeHunkNotImplementedText

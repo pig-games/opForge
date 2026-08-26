@@ -76,6 +76,7 @@ tests=(
   external_fs_uae_tkpkg_native_motorola6800_family_corpus_matches_vm_authoritative_rows
   external_fs_uae_native_m68000_move_control_parity
   external_fs_uae_native_m68000_remaining_base_parity
+  external_fs_uae_native_m68010_delta_parity
 )
 
 test_source="crates/opforge-asm/src"

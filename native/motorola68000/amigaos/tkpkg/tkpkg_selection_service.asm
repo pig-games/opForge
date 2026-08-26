@@ -216,6 +216,9 @@ MemberShapePrefixText
 MemberPrefixText
 	.byte "member"
 
+NamedRegisterPrefixText
+	.byte "named_register"
+
 TargetPrefixText
 	.byte "target:"
 
@@ -1113,9 +1116,13 @@ return
 ; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D1 = envelope length on success.
 tkpkgBuildSelectedEnvelopeFromCmseV7	.block
 	movem.l d2-d7/a0-a6, -(sp)
-	lea -24(sp), sp
+	lea -32(sp), sp
 	clr.w state.EncodeSelectedMselMatchFlags
 	clr.w state.EncodeSelectedMselFallbackLen
+	clr.w 24(sp)
+	clr.w 26(sp)
+	clr.w 28(sp)
+	clr.w 30(sp)
 	movea.l a0, a5
 	move.w d0, d2
 	move.w d2, state.EncodeSelectedMselMnemonicLen
@@ -1357,6 +1364,7 @@ cmsePlanReady
 	bsr.w tkpkgServiceReadU16LeV1
 	bne.w cmseMalformed
 cmsePriorityReady
+	move.w d0, 24(sp)
 	moveq #2, d0
 	bsr.w tkpkgServiceRequireBytesV1
 	bne.w cmseMalformed
@@ -1495,7 +1503,45 @@ cmseBuildStructured
 
 cmseCandidateReady
 	cmpi.l #TKPKG_SELECTED_STATUS_SEMANTIC_REJECT, d0
-	beq.w cmseReturn
+	bne.s cmseCandidateCheckOk
+	; Rust retains a selector error from the most-specific active owner
+	; (dialect, then CPU, then family) and the highest priority within that
+	; owner. Preserve the rendered text while later rows are evaluated.
+	moveq #1, d2
+	move.w 10(sp), d3
+	cmp.w 18(sp), d3
+	beq.s cmseRejectCpuRank
+	cmp.w 20(sp), d3
+	bne.s cmseRejectRankReady
+	moveq #3, d2
+	bra.s cmseRejectRankReady
+cmseRejectCpuRank
+	moveq #2, d2
+cmseRejectRankReady
+	cmp.w 26(sp), d2
+	bcs.w cmseSelectorNext
+	bhi.s cmseRejectSave
+	move.w 24(sp), d3
+	cmp.w 28(sp), d3
+	bls.w cmseSelectorNext
+cmseRejectSave
+	tst.w d1
+	beq.w cmseMalformed
+	cmpi.w #buffers.TOKEN_SCRATCH_CAPACITY, d1
+	bhi.w cmseMalformed
+	lea buffers.TokenScratchBuffer, a0
+	lea buffers.DeferredSemanticRejectBuffer, a1
+	move.w d1, d5
+	subq.w #1, d5
+cmseRejectCopy
+	move.b (a0)+, (a1)+
+	dbf d5, cmseRejectCopy
+	move.w d2, 26(sp)
+	move.w 24(sp), 28(sp)
+	move.w d1, 30(sp)
+	bra.w cmseSelectorNext
+
+cmseCandidateCheckOk
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.w cmseCandidateNotOk
 	tst.b d4
@@ -1524,6 +1570,18 @@ cmseSelectorNext
 	moveq #TKPKG_SELECTED_STATUS_OK, d0
 	bra.s cmseReturn
 cmseNoFallback
+	move.w 30(sp), d1
+	beq.s cmseNoDeferredReject
+	lea buffers.DeferredSemanticRejectBuffer, a0
+	lea buffers.TokenScratchBuffer, a1
+	move.w d1, d5
+	subq.w #1, d5
+cmseDeferredRejectCopy
+	move.b (a0)+, (a1)+
+	dbf d5, cmseDeferredRejectCopy
+	moveq #TKPKG_SELECTED_STATUS_SEMANTIC_REJECT, d0
+	bra.s cmseReturn
+cmseNoDeferredReject
 	moveq #0, d1
 	btst #2, state.EncodeSelectedMselMatchFlags
 	beq.s cmseUnknown
@@ -1544,7 +1602,7 @@ cmseMalformed
 	moveq #0, d1
 	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
 cmseReturn
-	lea 24(sp), sp
+	lea 32(sp), sp
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
@@ -2460,7 +2518,7 @@ semanticCheckMember
 	moveq #6, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
 	tst.b d0
-	beq.s semanticCheckLiteral
+	beq.s semanticCheckNamedRegister
 	lea 6(a5), a1
 	move.w d7, d0
 	subi.w #6, d0
@@ -2474,6 +2532,20 @@ semanticCheckMember
 	jsr operand.tkpkgMselStripOuterParensV1
 	moveq #0, d1
 	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	bra.w semanticProjectReturn
+
+semanticCheckNamedRegister
+	movea.l a5, a1
+	move.w d7, d0
+	lea NamedRegisterPrefixText, a2
+	moveq #14, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckLiteral
+	lea 14(a5), a1
+	move.w d7, d0
+	subi.w #14, d0
+	bsr.w tkpkgProjectNamedRegisterV1
 	bra.w semanticProjectReturn
 
 semanticCheckLiteral
@@ -2871,6 +2943,71 @@ semanticProjectReturn
 	movem.l (sp)+, d2/d4-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgProjectCompactSemanticInputV2
+
+; Project Rust's neutral `named_registerN=NAME` semantic input.  The expected
+; spelling is package data; this runtime only performs the bounded operand
+; lookup and the same ASCII case-insensitive equality used by Rust.
+; Inputs: A1/D0.W = text after `named_register`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = zero on success.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68010-delta-v1.toml
+; @opforge-role: facade
+tkpkgProjectNamedRegisterV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -8(sp), sp
+	movea.l a1, a3
+	move.w d0, d7
+	moveq #0, d2
+
+namedRegisterSeparatorScan
+	cmp.w d7, d2
+	bhs.s namedRegisterMalformed
+	cmpi.b #'=', 0(a3, d2.w)
+	beq.s namedRegisterSeparatorReady
+	addq.w #1, d2
+	bra.s namedRegisterSeparatorScan
+
+namedRegisterSeparatorReady
+	tst.w d2
+	beq.s namedRegisterMalformed
+	move.w d7, d6
+	sub.w d2, d6
+	subq.w #1, d6
+	beq.s namedRegisterMalformed
+	movea.l a3, a1
+	move.w d2, d0
+	movem.l d2/d6, -(sp)
+	bsr.w tkpkgParseU16DecimalV2
+	movem.l (sp)+, d2/d6
+	tst.l d1
+	bne.s namedRegisterMalformed
+	move.w d3, 6(sp)
+	lea 1(a3, d2.w), a4
+	move.l a4, (sp)
+	move.w d6, 4(sp)
+	move.w 6(sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.s namedRegisterNoMatch
+	movea.l a0, a1
+	movea.l (sp), a2
+	move.w 4(sp), d1
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	tst.b d0
+	beq.s namedRegisterNoMatch
+	moveq #0, d3
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s namedRegisterReturn
+
+namedRegisterMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s namedRegisterReturn
+namedRegisterNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+namedRegisterReturn
+	lea 8(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectNamedRegisterV1
 
 ; Project Rust's neutral `duplicate_registerN` rejection capture from the
 ; bounded source form of a divide-composed register list.  Subtraction ranges

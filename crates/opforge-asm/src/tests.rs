@@ -16148,6 +16148,153 @@ fn motorola68020_item18_native_value_vm_v2_matches_rust_boundary() {
 }
 
 #[test]
+fn motorola68020_item19_native_layout_stability_matches_rust_boundary() {
+    // Proof level B. This proves the native engine mirrors Rust's bounded
+    // whole-layout convergence boundary and refreshes exact PC-backed labels
+    // before each retry. It does not prove real guest execution.
+    let engine = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_engine.asm"),
+    )
+    .expect("read native opasm engine");
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "OPASM_ENGINE_LAYOUT_PASS_LIMIT  = 8",
+            "opasmEngineRunTwoPassV1\t.block",
+            "move.w #OPASM_ENGINE_LAYOUT_PASS_LIMIT, OpasmEngineLayoutPassesRemaining.l",
+            "layoutPass",
+            "bsr.w runPassTwo",
+            "tst.w OpasmEngineLayoutChanged.l",
+            "subq.w #1, OpasmEngineLayoutPassesRemaining.l",
+            "bne.s layoutPass",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "opasmEngineRefreshStatementPcLabelV1\t.block",
+            "OpasmEngineStmtLabelNameTable",
+            "refreshFindLoop",
+            "OpasmEngineLabelNameTable",
+            "bsr.w labelEquals",
+            "OpasmEngineLabelPcBackedTable",
+            "OpasmEngineLabelValueTable",
+            "OpasmEngineSessionCurrentPc.l",
+            "move.w #1, OpasmEngineLayoutChanged.l",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "runPassTwo\t.block",
+            "process",
+            "OPASM_ENGINE_CTX_REFRESH_LABEL_CB",
+            "jsr (a0)",
+            "OPASM_ENGINE_CTX_BIN_REQUESTED_PTR",
+        ],
+    ));
+    let driver = fs::read_to_string(
+        workspace_root().join(
+            "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm",
+        ),
+    )
+    .expect("read native opasm assembly driver");
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "OPASM_ENGINE_CALLBACK_REQ_REFRESH_LABEL_CB",
+            "opasmDriverRefreshLabel\t.block",
+            "bsr.w qualifyScopedRepeatLabelForStatement",
+            "jsr eng.opasmEngineRefreshStatementPcLabelV1",
+        ],
+    ));
+    let selection = fs::read_to_string(
+        workspace_root().join(
+            "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm",
+        ),
+    )
+    .expect("read native package selection service");
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "cmpi.w #2, d6",
+            "move.l a2, -(sp)",
+            "lea AutomaticBranchCandidateText, a2",
+            "bsr.w tkpkgServiceStringEqAsciiCasefoldV1",
+            "movea.l (sp)+, a2",
+            "branchInputReady",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "tkpkgBuildSelectedEnvelopeFromMselV1\t.block",
+            "lea -2(sp), sp",
+            "clr.w (sp)",
+            "frontendShapePresent",
+            "move.w #2, (sp)",
+            "inferPackageShape",
+            "bsr.w tkpkgInferSelectedPackageShapeV1",
+            "mselChunk",
+            "noFallback",
+            "tst.w (sp)",
+            "clr.l state.EncodeSelectedMselShapePtr",
+            "clr.w state.EncodeSelectedMselShapeLen",
+            "move.w #1, (sp)",
+            "bra.w mselChunk",
+            "compactSelector",
+            "move.b (sp), d7",
+            "bsr.w tkpkgBuildSelectedEnvelopeFromCmseV7",
+            "tst.b d7",
+            "bne.s retryNeutralPackageShape",
+            "clr.l state.EncodeSelectedMselShapePtr",
+            "clr.w state.EncodeSelectedMselShapeLen",
+            "bsr.w tkpkgBuildSelectedEnvelopeFromCmseV7",
+            "move.w 14(sp), d0",
+            "lea buffers.CompactSelectorShapeText, a0",
+            "bsr.w resolveCompactSelectorStringV1",
+            "cmseSaveRequestedShape",
+            "move.l state.EncodeSelectedMselShapePtr, -(sp)",
+            "move.w state.EncodeSelectedMselShapeLen, -(sp)",
+            "move.l a1, state.EncodeSelectedMselShapePtr",
+            "move.w d0, state.EncodeSelectedMselShapeLen",
+            "cmseCandidateShapeReady",
+            "jsr operand.tkpkgMselTryBuildCandidateV1",
+            "move.w d3, state.EncodeSelectedMselShapeLen",
+            "move.l d3, state.EncodeSelectedMselShapePtr",
+        ],
+    ));
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 19 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 19 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 19 package input");
+    let branch_program = chunks
+        .semantic_programs
+        .iter()
+        .find(|program| program.id == "branch.sized")
+        .expect("Rust package branch.sized program");
+    let spec = package::decode_branch_program(5, &branch_program.program)
+        .expect("decode Rust branch sizing program");
+    assert_eq!(spec.unresolved_candidate, 1);
+    assert_eq!(spec.candidates.len(), 3);
+    assert_eq!(spec.candidates[0].displacement_width, 1);
+    assert_eq!(spec.candidates[0].automatic_classes, 0);
+    assert_eq!(spec.candidates[1].displacement_width, 2);
+    assert_eq!(spec.candidates[1].automatic_classes, 0b11);
+    assert_eq!(spec.candidates[2].displacement_width, 4);
+    assert_eq!(spec.candidates[2].automatic_classes, 0b10);
+}
+
+#[test]
 fn motorola68020_item6_7_pass_one_sizes_relative_branches_when_selected_size_is_empty() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");

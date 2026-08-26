@@ -708,6 +708,8 @@ return
 
 tkpkgBuildSelectedEnvelopeFromMselV1	.block
 	movem.l d2-d7/a0-a6, -(sp)
+	lea -2(sp), sp
+	clr.w (sp)
 	clr.w state.EncodeSelectedMselMatchFlags
 	clr.w state.EncodeSelectedMselFallbackLen
 	movea.l a0, a5
@@ -715,7 +717,15 @@ tkpkgBuildSelectedEnvelopeFromMselV1	.block
 	move.w d2, state.EncodeSelectedMselMnemonicLen
 	tst.w d2
 	beq.w noOutput
+	tst.w state.EncodeSelectedMselShapeLen
+	bne.s frontendShapePresent
+	tst.l state.EncodeSelectedMselShapePtr
+	beq.s inferPackageShape
+frontendShapePresent
+	move.w #2, (sp)
+inferPackageShape
 	bsr.w tkpkgInferSelectedPackageShapeV1
+mselChunk
 	lea buffers.MselChunkOffsetLo, a3
 	bsr.w tkpkgServiceChunkPtrFromLocatorV1
 	bne.w compactSelector
@@ -851,6 +861,23 @@ noFallback
 	moveq #0, d1
 	btst #2, state.EncodeSelectedMselMatchFlags
 	beq.s unknownMnemonic
+	; Rust first uses the family resolver (for example, its package-declared
+	; two-direct-operand shape) and only then falls back to package_shape_input.
+	; Native has no host family handler. If its neutral inferred shape found no
+	; MSEL row, retry the same package rows exactly once without a shape filter
+	; and let the package-owned operand plan validate the candidate.
+	tst.w (sp)
+	bne.s unsupportedAddress
+	tst.w state.EncodeSelectedMselShapeLen
+	beq.s unsupportedAddress
+	clr.l state.EncodeSelectedMselShapePtr
+	clr.w state.EncodeSelectedMselShapeLen
+	clr.w state.EncodeSelectedMselMatchFlags
+	clr.w state.EncodeSelectedMselFallbackLen
+	move.w #1, (sp)
+	bra.w mselChunk
+
+unsupportedAddress
 	moveq #TKPKG_SELECTED_STATUS_UNSUPPORTED_ADDRESS, d0
 	bra.w return
 
@@ -869,6 +896,7 @@ compactSelector
 	; no matching selector, retry exactly once with Rust's package_shape_input
 	; classification; register-aware package families classify every lone
 	; non-register expression (including `(register)`) as direct.
+	move.b (sp), d7
 	move.l state.EncodeSelectedMselShapePtr, d3
 	moveq #0, d6
 	move.w state.EncodeSelectedMselShapeLen, d6
@@ -880,6 +908,21 @@ compactSelector
 	bne.w return
 	tst.w d6
 	beq.w return
+	; When no frontend family shape existed, the shape above was only native's
+	; neutral package_shape_input equivalent. Rust may instead have obtained a
+	; package-declared family shape. Retry once without a shape filter so the
+	; compact package row and its operand plan remain authoritative.
+	tst.b d7
+	bne.s retryNeutralPackageShape
+	clr.l state.EncodeSelectedMselShapePtr
+	clr.w state.EncodeSelectedMselShapeLen
+	movea.l a5, a0
+	moveq #0, d0
+	move.w state.EncodeSelectedMselMnemonicLen, d0
+	bsr.w tkpkgBuildSelectedEnvelopeFromCmseV7
+	bra.w return
+
+retryNeutralPackageShape
 	clr.l state.EncodeSelectedMselShapePtr
 	clr.w state.EncodeSelectedMselShapeLen
 	bsr.w tkpkgInferSelectedPackageShapeV1
@@ -903,6 +946,7 @@ restoreLegacyShape
 	move.w d6, state.EncodeSelectedMselShapeLen
 
 return
+	addq.l #2, sp
 	movem.l (sp)+, d2-d7/a0-a6
 	rts
 	.bend  ; tkpkgBuildSelectedEnvelopeFromMselV1
@@ -1332,6 +1376,23 @@ cmseShapeMatches
 	lea buffers.CompactSelectorPlanText, a1
 	move.l a1, state.EncodeSelectedMselPlanPtr
 	move.w d0, state.EncodeSelectedMselPlanLen
+	tst.w state.EncodeSelectedMselShapeLen
+	bne.s cmseSaveRequestedShape
+	moveq #0, d0
+	move.w 14(sp), d0
+	lea buffers.CompactSelectorShapeText, a0
+	bsr.w resolveCompactSelectorStringV1
+	bne.w cmseMalformed
+
+cmseSaveRequestedShape
+	move.l state.EncodeSelectedMselShapePtr, -(sp)
+	move.w state.EncodeSelectedMselShapeLen, -(sp)
+	tst.w (sp)
+	bne.s cmseCandidateShapeReady
+	lea buffers.CompactSelectorShapeText, a1
+	move.l a1, state.EncodeSelectedMselShapePtr
+	move.w d0, state.EncodeSelectedMselShapeLen
+cmseCandidateShapeReady
 	move.l state.EncodeSelectedMselShapePtr, d0
 	move.l d0, state.EncodeSelectedCurrentShapePtr
 	move.w state.EncodeSelectedMselShapeLen, d0
@@ -1342,6 +1403,14 @@ cmseShapeMatches
 	jsr operand.tkpkgMselTryBuildCandidateV1
 	move.w (sp)+, d7
 	movea.l (sp)+, a2
+	move.l d0, d5
+	move.l d1, d6
+	move.w (sp)+, d3
+	move.w d3, state.EncodeSelectedMselShapeLen
+	move.l (sp)+, d3
+	move.l d3, state.EncodeSelectedMselShapePtr
+	move.l d6, d1
+	move.l d5, d0
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.w cmseCandidateReady
 	clr.l state.EncodeSelectedSemanticPlanPtr
@@ -1652,9 +1721,11 @@ branchInputLoop
 	bne.s branchParseUnsigned
 	cmpi.w #4, d0
 	bne.s branchParseUnsigned
+	move.l a2, -(sp)
 	lea AutomaticBranchCandidateText, a2
 	moveq #4, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
 	tst.b d0
 	beq.s branchReloadUnsigned
 	moveq #-1, d3

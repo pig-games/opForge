@@ -14315,6 +14315,274 @@ fn external_fs_uae_native_m68000_alu_bit_shift_parity() {
 }
 
 #[test]
+fn external_fs_uae_native_m68020_branch_layout_convergence_parity() {
+    // Proof level D. One fresh guest proves the corrected invariant isolated
+    // from the wider Item 19 branch corpus: an unresolved word placeholder
+    // widens to the package-declared long candidate, moves the forward label,
+    // and converges to the exact same final bytes as live Rust.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let mut source = String::from("        BRA far_target\n");
+    for _ in 0..33 {
+        source.push_str("        .fill byte,1000,$00\n");
+    }
+    source.push_str("far_target:\n        RTS\n");
+    let rust_oracle = live_rust_cpu_name_oracle(
+        &source,
+        Some("m68020"),
+        "item19-branch-layout-convergence-rust-oracle",
+    )
+    .expect("run live Rust branch convergence oracle");
+    assert_eq!(rust_oracle.len(), 33_008);
+    assert_eq!(&rust_oracle[..6], &[0x60, 0xff, 0x00, 0x00, 0x80, 0xec]);
+    assert!(rust_oracle[6..33_006].iter().all(|&byte| byte == 0));
+    assert_eq!(&rust_oracle[33_006..], &[0x4e, 0x75]);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 19 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item19-branch-layout-convergence",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("focused Item 19 branch convergence FS-UAE parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(
+                runs[0].success,
+                "branch convergence guest failed\nstdout:\n{}\nstderr:\n{}",
+                runs[0].stdout, runs[0].stderr
+            );
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68000_branch_stability_parity() {
+    // Proof level D. Every case gets a fresh guest and an in-memory live Rust
+    // oracle. Together they prove the complete owned base-68000 branch
+    // fixtures, automatic forward/backward word selection, explicit byte/word
+    // selection, Bcc/BSR/DBcc/Scc displacement emission, and exact failure for
+    // an out-of-range explicit byte branch.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 19 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector"),
+        "Item 19 must consume the exact unmodified Rust package"
+    );
+
+    let fixture_definitions = [
+        (
+            "item19-68000-branching",
+            fs::read_to_string(workspace_root().join(
+                "examples/motorola68000/68000_branching.asm",
+            ))
+            .expect("read complete 68000 branching fixture"),
+        ),
+        (
+            "item19-68000-condition-loops",
+            fs::read_to_string(workspace_root().join(
+                "examples/motorola68000/68000_condition_loops.asm",
+            ))
+            .expect("read complete 68000 condition-loop fixture"),
+        ),
+        (
+            "item19-68000-automatic-forward-backward",
+            concat!(
+                "start:\n",
+                "        BRA forward\n",
+                "back:\n",
+                "        NOP\n",
+                "forward:\n",
+                "        BSR back\n",
+                "        RTS\n",
+            )
+            .to_string(),
+        ),
+        (
+            "item19-68000-explicit-byte-word",
+            concat!(
+                "start:\n",
+                "        BRA.S near\n",
+                "        NOP\n",
+                "near:\n",
+                "        BSR.W helper\n",
+                "        BNE.B start\n",
+                "helper:\n",
+                "        RTS\n",
+            )
+            .to_string(),
+        ),
+    ];
+    let fixtures = fixture_definitions
+        .into_iter()
+        .map(|(name, source)| {
+            let rust_oracle = live_rust_cpu_name_oracle(
+                &source,
+                Some("m68000"),
+                format!("{name}-rust-oracle").as_str(),
+            )
+            .unwrap_or_else(|error| panic!("run Item 19 Rust oracle {name}: {error}"));
+            (name, source, rust_oracle)
+        })
+        .collect::<Vec<_>>();
+    let negative_source = concat!(
+        "        BRA.B far_target\n",
+        "        .fill byte,200,$00\n",
+        "far_target:\n",
+        "        RTS\n",
+    );
+    let negative_diagnostic = live_rust_cpu_name_diagnostic(
+        negative_source,
+        "m68000",
+        "item19-explicit-byte-range-rust-diagnostic",
+    );
+
+    let mut cases = Vec::with_capacity(fixtures.len() + 1);
+    for (name, source, rust_oracle) in &fixtures {
+        cases.push(crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name,
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68000 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle,
+            },
+        });
+    }
+    cases.push(crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item19-68000-explicit-byte-range",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(negative_source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68000 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+            &negative_diagnostic,
+        ),
+    });
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 19 base branch-stability FS-UAE parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len(), "every fresh Item 19 guest ran");
+            for (index, run) in runs.iter().enumerate() {
+                if index < fixtures.len() {
+                    assert!(
+                        run.success,
+                        "Item 19 positive case {} failed\nstdout:\n{}\nstderr:\n{}",
+                        cases[index].name, run.stdout, run.stderr
+                    );
+                } else {
+                    assert_eq!(
+                        run.exit_code,
+                        Some(1),
+                        "Item 19 negative case must complete with guest exit 1"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68000_branch_byte_range_diagnostic_parity() {
+    // Proof level D. One fresh guest isolates the sole Item 19 corpus failure:
+    // the generic SEMV branch runtime must project the exact live Rust
+    // diagnostic for an explicit byte candidate whose displacement is too far.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = concat!(
+        "        BRA.B far_target\n",
+        "        .fill byte,200,$00\n",
+        "far_target:\n",
+        "        RTS\n",
+    );
+    let diagnostic = live_rust_cpu_name_diagnostic(
+        source,
+        "m68000",
+        "item19-explicit-byte-range-directed-rust-diagnostic",
+    );
+    assert_eq!(diagnostic, "BRA.B branch displacement out of range");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 19 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item19-68000-explicit-byte-range-directed",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68000 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(&diagnostic),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 19 byte-range diagnostic FS-UAE parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert_eq!(runs[0].exit_code, Some(1));
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_tkpkg_native_item13_package_tokenizes_nop() {
     // Proof level D. This isolates the tokenizer service used by the Item 14
     // CLI case while supplying the exact unmodified Item 13 package.

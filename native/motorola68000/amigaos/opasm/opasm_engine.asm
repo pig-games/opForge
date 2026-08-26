@@ -18,11 +18,12 @@ NATIVE_STATEMENT_TABLE_CAPACITY = NATIVE_SOURCE_RECORD_CAPACITY
 NATIVE_LABEL_TABLE_CAPACITY     = NATIVE_SOURCE_RECORD_CAPACITY
 NATIVE_IMAGE_BUFFER_CAPACITY    = 65535
 NATIVE_SOURCE_TEXT_BYTES        = NATIVE_SOURCE_RECORD_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY
-OPASM_ENGINE_CONTEXT_LONGS      = 11
+OPASM_ENGINE_LAYOUT_PASS_LIMIT  = 8
+OPASM_ENGINE_CONTEXT_LONGS      = 12
 ; Exact byte count from OpasmEngineAssemblySessionStart through the two image
 ; buffers. Keep this explicit: the native bootstrap must not depend on a
 ; forward label subtraction while forward-reference stability is under proof.
-OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = 862298
+OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = 862302
 
 	.section code
 
@@ -34,19 +35,21 @@ OPASM_ENGINE_CTX_PASS2_BEGIN_CB   = 16
 OPASM_ENGINE_CTX_PASS1_OK_CB      = 20
 OPASM_ENGINE_CTX_PASS2_OK_CB      = 24
 OPASM_ENGINE_CTX_RECORD_LABEL_CB  = 28
-OPASM_ENGINE_CTX_ADVANCE_PC_CB    = 32
-OPASM_ENGINE_CTX_FLOW_CONTROL_CB  = 36
-OPASM_ENGINE_CTX_EMIT_IMAGE_CB    = 40
+OPASM_ENGINE_CTX_REFRESH_LABEL_CB = 32
+OPASM_ENGINE_CTX_ADVANCE_PC_CB    = 36
+OPASM_ENGINE_CTX_FLOW_CONTROL_CB  = 40
+OPASM_ENGINE_CTX_EMIT_IMAGE_CB    = 44
 OPASM_ENGINE_CALLBACK_REQ_BIN_REQUESTED_PTR = 0
 OPASM_ENGINE_CALLBACK_REQ_PASS1_BEGIN_CB = 4
 OPASM_ENGINE_CALLBACK_REQ_PASS2_BEGIN_CB = 8
 OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB = 12
 OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB = 16
 OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB = 20
-OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB = 24
-OPASM_ENGINE_CALLBACK_REQ_FLOW_CONTROL_CB = 28
-OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB = 32
-OPASM_ENGINE_CALLBACK_REQ_BYTES = 36
+OPASM_ENGINE_CALLBACK_REQ_REFRESH_LABEL_CB = 24
+OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB = 28
+OPASM_ENGINE_CALLBACK_REQ_FLOW_CONTROL_CB = 32
+OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB = 36
+OPASM_ENGINE_CALLBACK_REQ_BYTES = 40
 OPASM_ENGINE_STMT_REQ_SOURCE_LINE_NUM = 0
 OPASM_ENGINE_STMT_REQ_SOURCE_LINE_LEN = 4
 OPASM_ENGINE_STMT_REQ_DIRECTIVE_KIND  = 6
@@ -314,6 +317,7 @@ opasmEngineBuildCallbackContextV1	.block
 	move.l OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB(a0), (a1)+
 	move.l OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB(a0), (a1)+
 	move.l OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB(a0), (a1)+
+	move.l OPASM_ENGINE_CALLBACK_REQ_REFRESH_LABEL_CB(a0), (a1)+
 	move.l OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB(a0), (a1)+
 	move.l OPASM_ENGINE_CALLBACK_REQ_FLOW_CONTROL_CB(a0), (a1)+
 	move.l OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB(a0), (a1)+
@@ -353,6 +357,7 @@ clearLoop
 ; - D0: 0 on success.
 opasmEngineBeginPassTwoV1	.block
 	movem.l d1/a0, -(sp)
+	clr.w OpasmEngineLayoutChanged.l
 	moveq #0, d0
 	move.w OpasmEngineLabelCount.l, d0
 	subq.w #1, d0
@@ -1901,6 +1906,68 @@ return
 	rts
 	.bend  ; opasmEngineSetPcBackedLabelValueV1
 
+; Refresh one exact PC-backed statement label during a neutral layout retry.
+; Mutable/value symbols are deliberately ignored. A changed address requests
+; another whole layout pass, matching Rust's snapshot-convergence boundary.
+; @opforge-owner: opasm.amigaos.engine
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68000-branch-stability-v1.toml
+; @opforge-role: facade
+; Inputs: D0 = statement index. Outputs: D0 = 0 success, 1 missing label.
+opasmEngineRefreshStatementPcLabelV1	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	moveq #0, d6
+	move.w d0, d6
+	cmp.w OpasmEngineStmtCount.l, d6
+	bhs.s refreshFail
+	move.l d6, d7
+	lsl.l #6, d7
+	lea OpasmEngineStmtLabelNameTable.l, a1
+	adda.l d7, a1
+	move.l d6, d5
+	add.l d5, d5
+	lea OpasmEngineStmtLabelLenTable.l, a2
+	moveq #0, d7
+	move.w 0(a2, d5.l), d7
+	beq.s refreshOk
+	moveq #0, d4
+
+refreshFindLoop
+	cmp.w OpasmEngineLabelCount.l, d4
+	bhs.s refreshFail
+	move.l d4, d5
+	lsl.l #6, d5
+	lea OpasmEngineLabelNameTable.l, a0
+	adda.l d5, a0
+	move.w d7, d0
+	bsr.w labelEquals
+	tst.l d0
+	bne.s refreshFound
+	addq.w #1, d4
+	bra.s refreshFindLoop
+
+refreshFound
+	lea OpasmEngineLabelPcBackedTable.l, a0
+	tst.b 0(a0, d4.l)
+	beq.s refreshOk
+	move.l d4, d5
+	lsl.l #2, d5
+	lea OpasmEngineLabelValueTable.l, a0
+	move.l OpasmEngineSessionCurrentPc.l, d3
+	cmp.l 0(a0, d5.l), d3
+	beq.s refreshOk
+	move.l d3, 0(a0, d5.l)
+	move.w #1, OpasmEngineLayoutChanged.l
+
+refreshOk
+	moveq #0, d0
+	bra.s refreshReturn
+refreshFail
+	moveq #1, d0
+refreshReturn
+	movem.l (sp)+, d1-d7/a0-a3
+	rts
+	.bend  ; opasmEngineRefreshStatementPcLabelV1
+
 ; Return the final placed value for one label. PC-backed labels use the owning
 ; statement's pass-two output address; const/var/set labels retain their stored
 ; value. This keeps artifact rendering tied to the same assembled statement
@@ -2564,7 +2631,17 @@ opasmEngineRunTwoPassV1	.block
 	bsr.w runPassOne
 	tst.l d0
 	bne.s done
+	move.w #OPASM_ENGINE_LAYOUT_PASS_LIMIT, OpasmEngineLayoutPassesRemaining.l
+
+layoutPass
 	bsr.w runPassTwo
+	tst.l d0
+	bne.s done
+	tst.w OpasmEngineLayoutChanged.l
+	beq.s done
+	subq.w #1, OpasmEngineLayoutPassesRemaining.l
+	bne.s layoutPass
+	moveq #1, d0
 
 done
 	movem.l (sp)+, d1-d7/a0-a5
@@ -3121,6 +3198,14 @@ setNext
 
 process
 	clr.w OpasmEngineFlowRedirected.l
+	moveq #0, d0
+	move.w d7, d0
+	movea.l OPASM_ENGINE_CTX_REFRESH_LABEL_CB(a5), a0
+	move.l d7, -(sp)
+	jsr (a0)
+	move.l (sp)+, d7
+	tst.l d0
+	bne.w return
 	movea.l OPASM_ENGINE_CTX_BIN_REQUESTED_PTR(a5), a0
 	tst.w (a0)
 	beq.s advanceOnly
@@ -3182,6 +3267,10 @@ OpasmEngineAssemblySessionStart
 OpasmEngineStmtCount
 	.res word, 1
 OpasmEngineSessionPass
+	.res word, 1
+OpasmEngineLayoutPassesRemaining
+	.res word, 1
+OpasmEngineLayoutChanged
 	.res word, 1
 OpasmEngineSourceRecordCount
 	.res word, 1

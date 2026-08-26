@@ -13,6 +13,7 @@
 ENCODE_ENVELOPE_MALFORMED_TEXT_LEN = 33
 ENCODE_TABLE_MALFORMED_TEXT_LEN = 30
 EVAL_EXPR_NEEDS_PIPELINE_TEXT_LEN = 45
+BRANCH_DISPLACEMENT_RANGE_SUFFIX_LEN = 33
 
 	.section data, kind=data
 	.priv
@@ -25,6 +26,9 @@ EncodeEnvelopeMalformedText
 
 EncodeTableMalformedText
 	.byte "OTR901: encode table malformed", 0
+
+BranchDisplacementRangeSuffix
+	.byte " branch displacement out of range"
 
 	.endsection
 
@@ -900,7 +904,7 @@ branchValidateCandidateValue
 	tst.l d0
 	beq.s branchCandidateValueReady
 	cmpi.l #-1, 20(sp)
-	bne.w branchFail
+	bne.w branchRangeFail
 	clr.w 40(sp)
 
 branchCandidateValueReady
@@ -1017,6 +1021,35 @@ branchSuffixReady
 	cmp.w buffers.SemanticOutputWriteOffset, d1
 	bls.w branchFail
 	moveq #0, d0
+	bra.s branchReturn
+
+branchRangeFail
+	moveq #0, d1
+	move.w state.EncodeSelectedMselMnemonicLen, d1
+	move.l d1, d2
+	addi.l #BRANCH_DISPLACEMENT_RANGE_SUFFIX_LEN + 1, d2
+	cmpi.l #buffers.LAST_ERROR_BUFFER_CAPACITY, d2
+	bhi.s branchFail
+	lea buffers.LastErrorBuffer, a2
+	lea buffers.CompactSelectorMnemonicText, a3
+	move.l d1, d2
+branchRangeMnemonicLoop
+	tst.l d2
+	beq.s branchRangeSuffixReady
+	move.b (a3)+, (a2)+
+	subq.l #1, d2
+	bra.s branchRangeMnemonicLoop
+branchRangeSuffixReady
+	lea BranchDisplacementRangeSuffix, a3
+	moveq #BRANCH_DISPLACEMENT_RANGE_SUFFIX_LEN, d2
+branchRangeSuffixLoop
+	move.b (a3)+, (a2)+
+	subq.l #1, d2
+	bne.s branchRangeSuffixLoop
+	clr.b (a2)
+	addi.w #BRANCH_DISPLACEMENT_RANGE_SUFFIX_LEN, d1
+	lea buffers.LastErrorBuffer, a1
+	moveq #1, d0
 	bra.s branchReturn
 
 branchFail

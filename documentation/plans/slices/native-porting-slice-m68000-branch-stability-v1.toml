@@ -1,0 +1,54 @@
+[slice]
+schema_version = 2
+name = "native m68000 branch sizing and layout stability v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 19
+requirements = ["N68X0-001", "N68X0-005", "N68X0-008", "N68X0-009", "N68X0-014", "N68X0-015", "N68X0-016"]
+rust_reference = [
+  "crates/opforge-asm/src/engine.rs",
+  "crates/opforge-vm/src/branch_vm.rs::execute_branch_program",
+  "crates/opforge-vm/src/execution_model/selector_encoding.rs",
+  "crates/opforge-vm/src/execution_model/encoding_bridge.rs::package_shape_input"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineRunTwoPassV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineRefreshStatementPcLabelV1",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverRefreshLabel",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildSelectedEnvelopeFromMselV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildCompactSemanticBranchCandidateV2",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm::tkpkgEncodeExecuteBranchProgramV5"
+]
+invariant = "For branch rows selected by the exact unmodified Rust package, native retries the complete pass-two layout up to Rust's eight-pass bound, refreshes only exact PC-backed labels before each statement, and executes the package-owned branch candidates so final widths, displacements, bytes, and range diagnostics equal Rust without embedding CPU, mnemonic, register, addressing-mode, opcode, or legality authority."
+assertion_decision = "No new runtime assertion: the bounded convergence loop fails closed, and fresh challenge-bound Level D cases prove exact final bytes, explicit completion, and the live Rust range diagnostic."
+expected_inputs = "The exact unmodified all-family package; complete 68000_branching and 68000_condition_loops sources; automatic forward/backward and explicit byte/word sources; an m68020 widening source; and an explicit out-of-range byte branch."
+expected_outputs = "Byte-for-byte equality with same-source in-memory Rust oracles after final layout convergence, plus explicit nonzero guest completion carrying Rust's exact branch-range diagnostic."
+known_non_equivalences = "Native transports scalar values as 32-bit quantities, a fundamental Amiga host boundary. The m68020 widening case proves the neutral convergence infrastructure but does not claim the later-CPU instruction surface. The directed 65C02 BBR0 regression proves only that a native frontend without Rust's family resolver can defer shape choice to an exact package row and its neutral operand plan."
+fast_proof_command = "cargo test -p asm motorola68020_item19_native_layout_stability_matches_rust_boundary -- --nocapture && python3 scripts/workflow/check_cpu_specific_arch_boundary.py && python3 scripts/workflow/check_native_runtime_boundary_inventory.py"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_m68000_branch_stability_parity -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_item19_native_layout_stability_matches_rust_boundary"
+proof_level = "B"
+proves = "The native source boundary mirrors Rust's eight-pass convergence, exact PC-label refresh, package-driven selector fallback, branch candidate contract, and byte-identical embedded package."
+does_not_prove = "Execution by a real Amiga guest."
+
+[[tests]]
+name = "external_fs_uae_native_m68000_branch_stability_parity"
+proof_level = "D"
+proves = "Five independent fresh guests are all attempted: four compare complete and focused branch programs byte-for-byte with same-source live Rust oracles, while one requires explicit nonzero completion and the exact live Rust range diagnostic."
+does_not_prove = "Remaining base forms, later CPUs, output formats, or self-hosting."
+
+[[tests]]
+name = "directed_item19_branch_repairs"
+proof_level = "D"
+proves = "Fresh guests isolate m68020 long widening, the explicit-byte range diagnostic, and the exact-package symbolic BBR0 selector fallback exposed by the single broad run."
+does_not_prove = "A second broad regression run or CPU-specific native semantics."
+
+[[tests]]
+name = "native_existing_parity_completion_wrapper"
+proof_level = "D"
+proves = "The single Item 19 broad native invocation began re-proving the established corpus and exposed one pre-existing package-shape transport gap in the 65C02 fixture."
+does_not_prove = "A complete second broad run after the directed repair; the Directed-Fix and Single Native Completion Quality Gate explicitly forbids that repetition."

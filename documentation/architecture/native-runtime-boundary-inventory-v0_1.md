@@ -61,6 +61,15 @@ records, neutral scalar/register/direct inputs, and package-owned diagnostics;
 automatic branch sizing and multi-pass stability remain Item 19. The exact
 Rust-built package and every family definition remain unchanged.
 
+Item 19 refreshed the complete audited manifest after directly porting Rust's
+bounded whole-layout convergence, exact PC-backed label refresh, package-owned
+branch candidate selection, and explicit range-diagnostic behavior. The native
+frontend still has no Rust family handler; when no frontend shape exists, the
+generic selector now lets an exact package row supply its opaque shape and
+neutral operand plan. No CPU, mnemonic, register, addressing-mode, opcode,
+branch width, or legality authority moved into the generic runtime. The exact
+Rust-built package and every family definition remain unchanged.
+
 ## Dependency direction
 
 ```text

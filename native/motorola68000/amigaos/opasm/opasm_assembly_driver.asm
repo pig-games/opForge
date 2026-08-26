@@ -64,6 +64,7 @@ buildContext
 	move.l #opasmDriverPassOneOk, eng.OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB(a0)
 	move.l #opasmDriverPassTwoOk, eng.OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB(a0)
 	move.l #opasmDriverRecordLabel, eng.OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB(a0)
+	move.l #opasmDriverRefreshLabel, eng.OPASM_ENGINE_CALLBACK_REQ_REFRESH_LABEL_CB(a0)
 	move.l #opasmDriverAdvancePc, eng.OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB(a0)
 	move.l #opasmDriverApplyFlowControl, eng.OPASM_ENGINE_CALLBACK_REQ_FLOW_CONTROL_CB(a0)
 	move.l #opasmDriverEmitImageBytes, eng.OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB(a0)
@@ -1158,6 +1159,26 @@ symbolValueFail
 	moveq #1, d0
 	bra.s return
 	.bend  ; opasmDriverRecordLabel
+
+; Refresh the exact PC-backed label for one pass-two statement without
+; disturbing the established pass-one label-recording callback.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68000-branch-stability-v1.toml
+; @opforge-role: facade
+; Inputs: D0 = statement index. Outputs: D0 = engine refresh status.
+opasmDriverRefreshLabel	.block
+	movem.l d1-d7/a0-a1/a5, -(sp)
+	move.w d0, d7
+	clr.w OpasmDriverScopedRepeatLabel.l
+	bsr.w qualifyScopedRepeatLabelForStatement
+	bne.s refreshReturn
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineRefreshStatementPcLabelV1
+refreshReturn
+	movem.l (sp)+, d1-d7/a0-a1/a5
+	rts
+	.bend  ; opasmDriverRefreshLabel
 
 ; Replace a label inside `.bfor` with its zero-based scoped name before the
 ; ordinary label table sees it. Repeated visits use the final component of the

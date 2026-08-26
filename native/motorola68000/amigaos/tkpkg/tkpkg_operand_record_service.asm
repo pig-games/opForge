@@ -10,6 +10,7 @@
 
 COMPACT_RECORD_CHUNK_VERSION_V1      = 1
 OPERAND_RECORD_SCHEMA_VERSION_V1     = 1
+OPERAND_RECORD_SCHEMA_VERSION_V2     = 2
 OPERAND_RECORD_OP_REGISTER           = $01
 OPERAND_RECORD_OP_INDIRECT           = $02
 OPERAND_RECORD_OP_DISPLACEMENT       = $03
@@ -153,6 +154,10 @@ executeRequestV1	.block
 	bne.w return
 	lea buffers.OperandRecordResultBuffer, a1
 	moveq #abi.OPERAND_RECORD_RESULT_SIZE_V1, d1
+	cmpi.b #abi.OPERAND_RECORD_RESULT_VERSION_V2, abi.OPERAND_RECORD_RESULT_VERSION(a1)
+	bne.s resultLengthReady
+	moveq #abi.OPERAND_RECORD_RESULT_SIZE_V2, d1
+resultLengthReady
 	moveq #0, d0
 	bra.s return
 
@@ -195,7 +200,7 @@ parseRequestV1	.block
 	movea.l a0, a2
 	adda.l #buffers.OPERAND_RECORD_RESULT_BUFFER_PTR_V1, a2
 	movea.l a2, a3
-	adda.l #abi.OPERAND_RECORD_RESULT_SIZE_V1, a3
+	adda.l #buffers.OPERAND_RECORD_RESULT_CAPACITY, a3
 	movea.l a4, a5
 	adda.w d7, a5
 	cmpa.l a2, a5
@@ -407,12 +412,17 @@ malformedChunk
 	rts
 	.bend  ; findScopedProgramV1
 
-; Execute exactly the Rust OPRD schema-v1 base opcode set.
+; Execute exactly the Rust OPRD schema-v1 base opcode set and the schema-v2
+; nested-address constructor. Other later-schema opcodes remain fail-closed.
 ; Inputs: A2/D7 = program bytes/length; D6 = schema. Outputs: neutral result.
 ; Clobbers: D0-D7/A0-A5/CCR. CCR: reflects D0 on return.
 executeProgramV1	.block
 	cmpi.w #OPERAND_RECORD_SCHEMA_VERSION_V1, d6
-	bne.w unsupportedSchema
+	beq.s executeSchemaV1
+	cmpi.w #OPERAND_RECORD_SCHEMA_VERSION_V2, d6
+	beq.w executeSchemaV2
+	bra.w unsupportedSchema
+executeSchemaV1
 	cmpi.w #3, d7
 	bcs.w malformedProgram
 	lea buffers.OperandRecordResultBuffer, a1
@@ -438,6 +448,23 @@ clearResult
 	cmpi.b #OPERAND_RECORD_OP_IMMEDIATE, d4
 	beq.w executeImmediate
 	bra.w malformedProgram
+
+executeSchemaV2
+	cmpi.w #12, d7
+	bne.w malformedProgram
+	cmpi.b #OPERAND_RECORD_OP_NESTED_ADDRESS, (a2)
+	bne.w malformedProgram
+	cmpi.b #OPERAND_RECORD_OP_END, 11(a2)
+	bne.w malformedProgram
+	lea buffers.OperandRecordResultBuffer, a1
+	moveq #abi.OPERAND_RECORD_RESULT_SIZE_V2 - 1, d0
+clearResultV2
+	clr.b (a1)+
+	dbf d0, clearResultV2
+	lea buffers.OperandRecordResultBuffer, a1
+	move.b #abi.OPERAND_RECORD_RESULT_VERSION_V2, abi.OPERAND_RECORD_RESULT_VERSION(a1)
+	move.b #OPERAND_RECORD_OP_NESTED_ADDRESS, abi.OPERAND_RECORD_RESULT_KIND(a1)
+	bra.w executeNestedAddress
 
 executeRegister
 	cmpi.w #3, d7
@@ -567,18 +594,78 @@ absoluteWidthOk
 	lea abi.OPERAND_RECORD_RESULT_VALUE(a1), a0
 	bsr.w copyValueInputV1
 	bne.w missingInput
-	bra.s programOk
+	bra.w programOk
 
 executeImmediate
 	cmpi.w #3, d7
-	bne.s malformedProgram
+	bne.w malformedProgram
 	cmpi.b #OPERAND_RECORD_OP_END, 2(a2)
-	bne.s malformedProgram
+	bne.w malformedProgram
 	moveq #0, d0
 	move.b 1(a2), d0
 	lea abi.OPERAND_RECORD_RESULT_VALUE(a1), a0
 	bsr.w copyValueInputV1
-	bne.s missingInput
+	bne.w missingInput
+	bra.w programOk
+
+executeNestedAddress
+	moveq #0, d5
+	moveq #0, d0
+	move.b 1(a2), d0
+	cmpi.b #2, d0
+	bhi.w malformedProgram
+	move.b d0, abi.OPERAND_RECORD_RESULT_VARIANT(a1)
+	tst.b d0
+	bne.s nestedBaseWithoutRegister
+	moveq #0, d0
+	move.b 2(a2), d0
+	lea abi.OPERAND_RECORD_RESULT_PRIMARY_CLASS(a1), a0
+	bsr.w copyRegisterInputV1
+	bne.w missingInput
+	bra.s nestedBaseReady
+nestedBaseWithoutRegister
+	tst.b 2(a2)
+	bne.w malformedProgram
+nestedBaseReady
+
+	cmpi.b #$FF, 3(a2)
+	beq.s nestedIndex
+	ori.b #1, d5
+	move.b 4(a2), abi.OPERAND_RECORD_RESULT_WIDTH(a1)
+	moveq #0, d0
+	move.b 3(a2), d0
+	lea abi.OPERAND_RECORD_RESULT_VALUE(a1), a0
+	bsr.w copyValueInputV1
+	bne.w missingInput
+
+nestedIndex
+	cmpi.b #$FF, 5(a2)
+	beq.s nestedIndirection
+	ori.b #2, d5
+	move.b 6(a2), abi.OPERAND_RECORD_RESULT_INDEX_WIDTH(a1)
+	move.b 7(a2), abi.OPERAND_RECORD_RESULT_SCALE(a1)
+	moveq #0, d0
+	move.b 5(a2), d0
+	lea abi.OPERAND_RECORD_RESULT_SECONDARY_CLASS(a1), a0
+	bsr.w copyRegisterInputV1
+	bne.w missingInput
+
+nestedIndirection
+	move.b 8(a2), d0
+	cmpi.b #2, d0
+	bhi.w malformedProgram
+	move.b d0, abi.OPERAND_RECORD_RESULT_INDIRECTION(a1)
+	cmpi.b #$FF, 9(a2)
+	beq.s nestedReady
+	ori.b #4, d5
+	move.b 10(a2), abi.OPERAND_RECORD_RESULT_OUTER_WIDTH(a1)
+	moveq #0, d0
+	move.b 9(a2), d0
+	lea abi.OPERAND_RECORD_RESULT_OUTER_VALUE(a1), a0
+	bsr.w copyValueInputV1
+	bne.w missingInput
+nestedReady
+	move.b d5, abi.OPERAND_RECORD_RESULT_FLAGS(a1)
 
 programOk
 	moveq #0, d0

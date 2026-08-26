@@ -204,6 +204,12 @@ IndirectTupleArityPrefixText
 IndirectTupleIdentityScalePrefixText
 	.byte "indirect_tuple_identity_scale"
 
+IndirectTupleNonidentityScalePrefixText
+	.byte "indirect_tuple_nonidentity_scale"
+
+ExprPathPrefixText
+	.byte "xp1:"
+
 UnaryPlusIndirectRegisterPrefixText
 	.byte "unary_plus_indirect_reg"
 
@@ -2493,6 +2499,20 @@ tkpkgProjectCompactSemanticInputV2	.block
 	move.w d0, d7
 	movea.l a5, a1
 	move.w d7, d0
+	lea ExprPathPrefixText, a2
+	moveq #4, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckMemberShape
+	lea 4(a5), a1
+	move.w d7, d0
+	subq.w #4, d0
+	bsr.w tkpkgProjectExprPathV1
+	bra.w semanticProjectReturn
+
+semanticCheckMemberShape
+	movea.l a5, a1
+	move.w d7, d0
 	lea MemberShapePrefixText, a2
 	moveq #12, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
@@ -2698,7 +2718,7 @@ semanticCheckTupleIdentityScale
 	moveq #29, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
 	tst.b d0
-	beq.s semanticCheckTupleValue
+	beq.s semanticCheckTupleNonidentityScale
 	lea 29(a5), a1
 	move.w d7, d0
 	subi.w #29, d0
@@ -2716,6 +2736,20 @@ semanticCheckTupleIdentityScale
 	bne.w semanticProjectNoMatch
 	moveq #1, d3
 	bra.w semanticProjectOk
+
+semanticCheckTupleNonidentityScale
+	movea.l a5, a1
+	move.w d7, d0
+	lea IndirectTupleNonidentityScalePrefixText, a2
+	moveq #32, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckTupleValue
+	lea 32(a5), a1
+	move.w d7, d0
+	subi.w #32, d0
+	bsr.w tkpkgProjectNonidentityScaleV1
+	bra.w semanticProjectReturn
 
 semanticCheckTupleValue
 	movea.l a5, a1
@@ -2943,6 +2977,770 @@ semanticProjectReturn
 	movem.l (sp)+, d2/d4-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgProjectCompactSemanticInputV2
+
+; Project the Rust `xp1:` expression-path subset used by frozen complex-address
+; package rows.  Package text owns every operand, tuple, field, qualifier, and
+; register-class choice; this helper only walks neutral source-expression
+; containers and projects one scalar.
+; Inputs: A1/D0.W = path text after `xp1:`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = projected scalar on success.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68020-full-extension-addressing-v1.toml
+; @opforge-role: facade
+tkpkgProjectExprPathV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -30(sp), sp
+	clr.w 28(sp)
+	movea.l a1, a3
+	move.w d0, d7
+	moveq #0, d6
+
+exprPathOperandScan
+	cmp.w d7, d6
+	bhs.w exprPathMalformed
+	cmpi.b #'/', 0(a3, d6.w)
+	beq.s exprPathOperandReady
+	addq.w #1, d6
+	bra.s exprPathOperandScan
+
+exprPathOperandReady
+	tst.w d6
+	beq.w exprPathMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w exprPathMalformed
+	move.w d3, d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w exprPathNoMatch
+	move.l a0, (sp)
+	move.w d0, 4(sp)
+	lea 1(a3, d6.w), a4
+	move.l a4, 6(sp)
+	move.w d7, d5
+	sub.w d6, d5
+	subq.w #1, d5
+	beq.w exprPathMalformed
+	move.w d5, 10(sp)
+
+exprPathStepLoop
+	movea.l 6(sp), a4
+	move.w 10(sp), d7
+	moveq #0, d6
+exprPathStepScan
+	cmp.w d7, d6
+	bhs.w exprPathTerminal
+	cmpi.b #'/', 0(a4, d6.w)
+	beq.s exprPathContainer
+	addq.w #1, d6
+	bra.s exprPathStepScan
+
+exprPathContainer
+	tst.w d6
+	beq.w exprPathMalformed
+	cmpi.w #1, d6
+	bne.s exprPathCheckTuple
+	movea.l (sp), a0
+	moveq #0, d0
+	move.w 4(sp), d0
+	moveq #'(', d1
+	moveq #')', d2
+	cmpi.b #'i', (a4)
+	beq.s exprPathStripContainer
+	moveq #'[', d1
+	moveq #']', d2
+	cmpi.b #'b', (a4)
+	bne.s exprPathCheckTuple
+exprPathStripContainer
+	bsr.w tkpkgExprPathStripWrapperV1
+	bne.w exprPathNoMatch
+	move.w d2, 28(sp)
+	bra.s exprPathContainerReady
+
+exprPathCheckTuple
+	cmpi.b #'t', (a4)
+	bne.w exprPathNoMatch
+	cmpi.w #2, d6
+	bcs.w exprPathMalformed
+	lea 1(a4), a1
+	move.w d6, d0
+	subq.w #1, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w exprPathMalformed
+	move.w d3, d1
+	movea.l (sp), a0
+	moveq #0, d0
+	move.w 4(sp), d0
+	moveq #0, d2
+	move.w 28(sp), d2
+	bsr.w tkpkgExprPathSelectTupleItemV1
+	bne.w exprPathNoMatch
+	clr.w 28(sp)
+
+exprPathContainerReady
+	move.l a0, (sp)
+	move.w d0, 4(sp)
+	lea 1(a4, d6.w), a4
+	move.l a4, 6(sp)
+	move.w d7, d5
+	sub.w d6, d5
+	subq.w #1, d5
+	beq.w exprPathMalformed
+	move.w d5, 10(sp)
+	bra.w exprPathStepLoop
+
+exprPathTerminal
+	tst.w d7
+	beq.w exprPathMalformed
+	move.l a4, 12(sp)
+	move.w d7, 16(sp)
+	cmpi.b #'r', (a4)
+	beq.w exprPathRegisterTerminal
+	cmpi.b #'q', (a4)
+	beq.w exprPathQualifiedTerminal
+	cmpi.b #'s', (a4)
+	beq.w exprPathScaleTerminal
+	cmpi.b #'m', (a4)
+	beq.w exprPathMemberTerminal
+	bra.w exprPathMalformed
+
+exprPathRegisterTerminal
+	cmpi.w #2, d7
+	bcs.w exprPathMalformed
+	lea 1(a4), a1
+	move.w d7, d0
+	subq.w #1, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w exprPathMalformed
+	move.w d3, d1
+	movea.l (sp), a0
+	moveq #0, d0
+	move.w 4(sp), d0
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w exprPathNoMatch
+	bra.w exprPathOk
+
+exprPathQualifiedTerminal
+	cmpi.w #5, d7
+	bcs.w exprPathMalformed
+	moveq #1, d6
+exprPathQualifiedClassScan
+	move.w d7, d5
+	subq.w #2, d5
+	cmp.w d5, d6
+	bhi.w exprPathMalformed
+	cmpi.b #'.', 0(a4, d6.w)
+	bne.s exprPathQualifiedClassNext
+	cmpi.b #'c', 1(a4, d6.w)
+	beq.s exprPathQualifiedClassReady
+exprPathQualifiedClassNext
+	addq.w #1, d6
+	bra.s exprPathQualifiedClassScan
+exprPathQualifiedClassReady
+	cmpi.w #1, d6
+	beq.w exprPathMalformed
+	lea 2(a4, d6.w), a1
+	move.w d7, d0
+	sub.w d6, d0
+	subq.w #2, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w exprPathMalformed
+	move.w d3, 26(sp)
+	move.w d6, 24(sp)
+	movea.l (sp), a0
+	moveq #0, d0
+	move.w 4(sp), d0
+	bsr.w tkpkgExprPathSplitMultiplyV1
+	tst.l d2
+	bne.s exprPathQualifiedSpanReady
+	move.l a1, 18(sp)
+	move.w d1, 22(sp)
+	move.l a0, (sp)
+	move.w d0, 4(sp)
+	movea.l 18(sp), a0
+	moveq #0, d0
+	move.w 22(sp), d0
+	moveq #0, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	tst.l d0
+	beq.s exprPathQualifiedUseLeft
+	movea.l (sp), a0
+	moveq #0, d0
+	move.w 4(sp), d0
+	moveq #0, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	tst.l d0
+	bne.w exprPathNoMatch
+	movea.l 18(sp), a0
+	moveq #0, d0
+	move.w 22(sp), d0
+	bra.s exprPathQualifiedSpanReady
+exprPathQualifiedUseLeft
+	movea.l (sp), a0
+	moveq #0, d0
+	move.w 4(sp), d0
+exprPathQualifiedSpanReady
+	movea.l 12(sp), a4
+	move.w 24(sp), d6
+	lea 1(a4), a1
+	move.w d6, d1
+	subq.w #1, d1
+	bsr.w tkpkgMselStripExpectedQualifierV2
+	bne.w exprPathNoMatch
+	move.w 26(sp), d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w exprPathNoMatch
+	bra.w exprPathOk
+
+exprPathScaleTerminal
+	cmpi.w #1, d7
+	bne.w exprPathMalformed
+	movea.l (sp), a0
+	moveq #0, d0
+	move.w 4(sp), d0
+	bsr.w tkpkgExprPathSplitMultiplyV1
+	tst.l d2
+	bne.w exprPathNoMatch
+	move.l a0, (sp)
+	move.w d0, 4(sp)
+	move.l a1, 18(sp)
+	move.w d1, 22(sp)
+	movea.l a1, a0
+	move.l d1, d0
+	moveq #0, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	tst.l d0
+	beq.s exprPathScaleValidate
+	movea.l (sp), a0
+	moveq #0, d0
+	move.w 4(sp), d0
+	moveq #0, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	tst.l d0
+	bne.w exprPathNoMatch
+exprPathScaleValidate
+	cmpi.l #1, d3
+	beq.s exprPathScaleZero
+	cmpi.l #2, d3
+	beq.s exprPathScaleOne
+	cmpi.l #4, d3
+	beq.s exprPathScaleTwo
+	cmpi.l #8, d3
+	bne.w exprPathNoMatch
+	moveq #3, d3
+	bra.s exprPathOk
+exprPathScaleTwo
+	moveq #2, d3
+	bra.s exprPathOk
+exprPathScaleOne
+	moveq #1, d3
+	bra.s exprPathOk
+exprPathScaleZero
+	moveq #0, d3
+	bra.s exprPathOk
+
+exprPathMemberTerminal
+	cmpi.w #2, d7
+	bcs.w exprPathMalformed
+	movea.l (sp), a0
+	moveq #0, d0
+	move.w 4(sp), d0
+	lea 1(a4), a1
+	move.w d7, d1
+	subq.w #1, d1
+	bsr.w tkpkgMselStripExpectedQualifierV2
+	bne.w exprPathNoMatch
+	moveq #0, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	bra.s exprPathReturn
+
+exprPathMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s exprPathReturn
+exprPathNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+	bra.s exprPathReturn
+exprPathOk
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+exprPathReturn
+	lea 30(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectExprPathV1
+
+; Strip one neutral wrapper from a bounded expression span.  Rust normalizes
+; both `(item0,item1,...)` and `item0(item1,...)` as indirect tuples, so the
+; latter preserves its prefix and reports the alias separator to the tuple
+; selector.
+; Inputs: A0/D0 = span; D1.B/D2.B = opening/closing delimiters.
+; Outputs: A0/D0 = logical inner span; D1 = 0/1; D2 = prefix-alias flag.
+tkpkgExprPathStripWrapperV1	.block
+	movem.l d3-d4/a1, -(sp)
+	cmpi.l #2, d0
+	bcs.s exprPathWrapperFailSaved
+	move.b d2, d4
+	cmp.b (a0), d1
+	bne.s exprPathWrapperAlias
+	cmp.b -1(a0, d0.l), d4
+	bne.s exprPathWrapperFailSaved
+	addq.l #1, a0
+	subq.l #2, d0
+	beq.s exprPathWrapperFailSaved
+	moveq #0, d2
+	moveq #0, d1
+	bra.s exprPathWrapperReturn
+
+exprPathWrapperAlias
+	cmp.b -1(a0, d0.l), d4
+	bne.s exprPathWrapperFailSaved
+	movea.l a0, a1
+	addq.l #1, a1
+	move.l d0, d3
+	subq.l #1, d3
+exprPathWrapperAliasScan
+	cmpi.l #1, d3
+	bls.s exprPathWrapperFailSaved
+	cmp.b (a1), d1
+	beq.s exprPathWrapperAliasReady
+	addq.l #1, a1
+	subq.l #1, d3
+	bra.s exprPathWrapperAliasScan
+exprPathWrapperAliasReady
+	subq.l #1, d0
+	moveq #1, d2
+	moveq #0, d1
+	bra.s exprPathWrapperReturn
+
+exprPathWrapperFailSaved
+	moveq #1, d1
+	moveq #0, d2
+exprPathWrapperReturn
+	movem.l (sp)+, d3-d4/a1
+	tst.l d1
+	rts
+	.bend  ; tkpkgExprPathStripWrapperV1
+
+; Select one zero-based top-level tuple/list item from a bounded span.  Empty
+; items still advance the neutral index, matching Rust placeholder nodes.
+; Inputs: A0/D0 = container contents; D1.W = item index; D2.B = prefix-alias flag.
+; Outputs: A0/D0 = trimmed item; D1 = 0/1.
+tkpkgExprPathSelectTupleItemV1	.block
+	movem.l d2-d7/a1-a3, -(sp)
+	move.w d1, d7
+	move.b d2, d3
+	movea.l a0, a1
+	movea.l a0, a2
+	adda.l d0, a2
+	movea.l a1, a3
+	moveq #0, d6
+	moveq #0, d4
+	moveq #0, d5
+exprPathTupleScan
+	cmpa.l a2, a1
+	bhs.s exprPathTupleAtEnd
+	moveq #0, d2
+	move.b (a1), d2
+	cmpi.b #'(', d2
+	beq.s exprPathTupleOpenParen
+	cmpi.b #')', d2
+	beq.s exprPathTupleCloseParen
+	cmpi.b #'[', d2
+	beq.s exprPathTupleOpenBracket
+	cmpi.b #']', d2
+	beq.s exprPathTupleCloseBracket
+	cmpi.b #',', d2
+	bne.s exprPathTupleNext
+	tst.w d4
+	bne.s exprPathTupleNext
+	tst.w d5
+	bne.s exprPathTupleNext
+	cmp.w d7, d6
+	beq.s exprPathTupleFound
+	addq.w #1, d6
+	addq.l #1, a1
+	movea.l a1, a3
+	bra.s exprPathTupleScan
+exprPathTupleOpenParen
+	tst.b d3
+	beq.s exprPathTupleNestedParen
+	tst.w d4
+	bne.s exprPathTupleNestedParen
+	tst.w d5
+	bne.s exprPathTupleNestedParen
+	cmp.w d7, d6
+	beq.s exprPathTupleFound
+	addq.w #1, d6
+	addq.l #1, a1
+	movea.l a1, a3
+	moveq #0, d3
+	bra.s exprPathTupleScan
+exprPathTupleNestedParen
+	addq.w #1, d4
+	bra.s exprPathTupleNext
+exprPathTupleCloseParen
+	tst.w d4
+	beq.s exprPathTupleFail
+	subq.w #1, d4
+	bra.s exprPathTupleNext
+exprPathTupleOpenBracket
+	addq.w #1, d5
+	bra.s exprPathTupleNext
+exprPathTupleCloseBracket
+	tst.w d5
+	beq.s exprPathTupleFail
+	subq.w #1, d5
+exprPathTupleNext
+	addq.l #1, a1
+	bra.s exprPathTupleScan
+exprPathTupleAtEnd
+	tst.w d4
+	bne.s exprPathTupleFail
+	tst.w d5
+	bne.s exprPathTupleFail
+	cmp.w d7, d6
+	bne.s exprPathTupleFail
+exprPathTupleFound
+	movea.l a3, a0
+exprPathTupleTrimStart
+	cmpa.l a1, a0
+	bhs.s exprPathTupleFail
+	cmpi.b #' ', (a0)
+	beq.s exprPathTupleTrimStartOne
+	cmpi.b #9, (a0)
+	bne.s exprPathTupleTrimEnd
+exprPathTupleTrimStartOne
+	addq.l #1, a0
+	bra.s exprPathTupleTrimStart
+exprPathTupleTrimEnd
+	cmpa.l a0, a1
+	bls.s exprPathTupleFail
+	cmpi.b #' ', -1(a1)
+	beq.s exprPathTupleTrimEndOne
+	cmpi.b #9, -1(a1)
+	bne.s exprPathTupleReady
+exprPathTupleTrimEndOne
+	subq.l #1, a1
+	bra.s exprPathTupleTrimEnd
+exprPathTupleReady
+	move.l a1, d0
+	sub.l a0, d0
+	moveq #0, d1
+	bra.s exprPathTupleReturn
+exprPathTupleFail
+	moveq #0, d0
+	suba.l a0, a0
+	moveq #1, d1
+exprPathTupleReturn
+	movem.l (sp)+, d2-d7/a1-a3
+	tst.l d1
+	rts
+	.bend  ; tkpkgExprPathSelectTupleItemV1
+
+; Split one neutral top-level multiply expression into trimmed halves.
+; Inputs: A0/D0 = expression span.
+; Outputs: A0/D0 = left; A1/D1 = right; D2 = 0/1.
+tkpkgExprPathSplitMultiplyV1	.block
+	movem.l d3-d7/a2-a4, -(sp)
+	movea.l a0, a2
+	movea.l a0, a3
+	adda.l d0, a3
+	moveq #0, d6
+	moveq #0, d7
+exprPathMultiplyScan
+	cmpa.l a3, a2
+	bhs.w exprPathMultiplyFail
+	moveq #0, d5
+	move.b (a2), d5
+	cmpi.b #'(', d5
+	beq.s exprPathMultiplyOpenParen
+	cmpi.b #')', d5
+	beq.s exprPathMultiplyCloseParen
+	cmpi.b #'[', d5
+	beq.s exprPathMultiplyOpenBracket
+	cmpi.b #']', d5
+	beq.s exprPathMultiplyCloseBracket
+	cmpi.b #'*', d5
+	bne.s exprPathMultiplyNext
+	tst.w d6
+	bne.s exprPathMultiplyNext
+	tst.w d7
+	bne.s exprPathMultiplyNext
+	movea.l a2, a4
+exprPathMultiplyTrimLeft
+	cmpa.l a0, a4
+	bls.s exprPathMultiplyFail
+	cmpi.b #' ', -1(a4)
+	beq.s exprPathMultiplyTrimLeftOne
+	cmpi.b #9, -1(a4)
+	bne.s exprPathMultiplyRightStart
+exprPathMultiplyTrimLeftOne
+	subq.l #1, a4
+	bra.s exprPathMultiplyTrimLeft
+exprPathMultiplyRightStart
+	lea 1(a2), a1
+exprPathMultiplyTrimRightStart
+	cmpa.l a3, a1
+	bhs.s exprPathMultiplyFail
+	cmpi.b #' ', (a1)
+	beq.s exprPathMultiplyTrimRightStartOne
+	cmpi.b #9, (a1)
+	bne.s exprPathMultiplyTrimRightEnd
+exprPathMultiplyTrimRightStartOne
+	addq.l #1, a1
+	bra.s exprPathMultiplyTrimRightStart
+exprPathMultiplyTrimRightEnd
+	cmpa.l a1, a3
+	bls.s exprPathMultiplyFail
+	cmpi.b #' ', -1(a3)
+	beq.s exprPathMultiplyTrimRightEndOne
+	cmpi.b #9, -1(a3)
+	bne.s exprPathMultiplyReady
+exprPathMultiplyTrimRightEndOne
+	subq.l #1, a3
+	bra.s exprPathMultiplyTrimRightEnd
+exprPathMultiplyReady
+	move.l a4, d0
+	sub.l a0, d0
+	move.l a3, d1
+	sub.l a1, d1
+	moveq #0, d2
+	bra.s exprPathMultiplyReturn
+exprPathMultiplyOpenParen
+	addq.w #1, d6
+	bra.s exprPathMultiplyNext
+exprPathMultiplyCloseParen
+	tst.w d6
+	beq.s exprPathMultiplyFail
+	subq.w #1, d6
+	bra.s exprPathMultiplyNext
+exprPathMultiplyOpenBracket
+	addq.w #1, d7
+	bra.s exprPathMultiplyNext
+exprPathMultiplyCloseBracket
+	tst.w d7
+	beq.s exprPathMultiplyFail
+	subq.w #1, d7
+exprPathMultiplyNext
+	addq.l #1, a2
+	bra.w exprPathMultiplyScan
+exprPathMultiplyFail
+	moveq #1, d2
+exprPathMultiplyReturn
+	movem.l (sp)+, d3-d7/a2-a4
+	tst.l d2
+	rts
+	.bend  ; tkpkgExprPathSplitMultiplyV1
+
+; Project Rust's neutral `indirect_tuple_nonidentity_scaleN.itemM` source.
+; The package chooses the operand and either one tuple item or `any`; this
+; helper preserves Rust's right-before-left scalar evaluation order and only
+; accepts a successfully evaluated multiplication side whose value is not one.
+; Inputs: A1/D0.W = text after the source prefix.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = scale on success.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68020-full-extension-addressing-v1.toml
+; @opforge-role: facade
+tkpkgProjectNonidentityScaleV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -8(sp), sp
+	movea.l a1, a3
+	move.w d0, d7
+	moveq #0, d6
+nonidentityItemSeparatorScan
+	move.w d7, d5
+	subq.w #5, d5
+	cmp.w d5, d6
+	bhi.w nonidentityMalformed
+	cmpi.b #'.', 0(a3, d6.w)
+	bne.s nonidentityItemSeparatorNext
+	cmpi.b #'i', 1(a3, d6.w)
+	bne.s nonidentityItemSeparatorNext
+	cmpi.b #'t', 2(a3, d6.w)
+	bne.s nonidentityItemSeparatorNext
+	cmpi.b #'e', 3(a3, d6.w)
+	bne.s nonidentityItemSeparatorNext
+	cmpi.b #'m', 4(a3, d6.w)
+	beq.s nonidentityItemSeparatorReady
+nonidentityItemSeparatorNext
+	addq.w #1, d6
+	bra.s nonidentityItemSeparatorScan
+
+nonidentityItemSeparatorReady
+	tst.w d6
+	beq.w nonidentityMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w nonidentityMalformed
+	move.w d3, (sp)
+	lea 5(a3, d6.w), a4
+	move.w d7, d5
+	sub.w d6, d5
+	subq.w #5, d5
+	beq.w nonidentityMalformed
+	move.w d5, 2(sp)
+	move.w (sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w nonidentityNoMatch
+	move.l a0, 4(sp)
+	cmpi.w #3, d5
+	bne.s nonidentityNumericItem
+	cmpi.b #'a', (a4)
+	bne.s nonidentityNumericItem
+	cmpi.b #'n', 1(a4)
+	bne.s nonidentityNumericItem
+	cmpi.b #'y', 2(a4)
+	bne.s nonidentityNumericItem
+	bra.s nonidentitySpanReady
+
+nonidentityNumericItem
+	movea.l a4, a1
+	move.w d5, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w nonidentityMalformed
+	move.w d3, d1
+	move.w (sp), d0
+	jsr operand.tkpkgMselLocateIndirectTupleItemV2
+	bne.w nonidentityNoMatch
+
+nonidentitySpanReady
+	bsr.w tkpkgFindNonidentityScaleSpanV1
+	bne.s nonidentityNoMatch
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s nonidentityReturn
+nonidentityMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s nonidentityReturn
+nonidentityNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+nonidentityReturn
+	lea 8(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectNonidentityScaleV1
+
+; Find one multiplication with a non-identity evaluated side inside a bounded
+; neutral expression span. Every `*` node is visited in source order; its right
+; side is evaluated before its left side, matching Rust's recursive projector.
+; Inputs: A0/D0 = expression span. Outputs: D0 = 0 found or 1 none; D3 = value.
+tkpkgFindNonidentityScaleSpanV1	.block
+	movem.l d2/d4-d7/a1-a6, -(sp)
+	lea -22(sp), sp
+	move.l a0, (sp)
+	move.l d0, 4(sp)
+	clr.w 8(sp)
+
+nonidentityScaleScan
+	moveq #0, d6
+	move.w 8(sp), d6
+	cmp.l 4(sp), d6
+	bhs.w nonidentityScaleNone
+	movea.l (sp), a2
+	adda.l d6, a2
+	cmpi.b #'*', (a2)
+	beq.s nonidentityScaleOperator
+	addq.w #1, 8(sp)
+	bra.s nonidentityScaleScan
+
+nonidentityScaleOperator
+	movea.l a2, a3
+nonidentityScaleLeftBound
+	cmpa.l (sp), a3
+	bls.w nonidentityScaleNext
+	moveq #0, d5
+	move.b -1(a3), d5
+	cmpi.b #',', d5
+	beq.s nonidentityScaleLeftReady
+	cmpi.b #'(', d5
+	beq.s nonidentityScaleLeftReady
+	cmpi.b #'[', d5
+	beq.s nonidentityScaleLeftReady
+	subq.l #1, a3
+	bra.s nonidentityScaleLeftBound
+nonidentityScaleLeftReady
+	movea.l a2, a4
+nonidentityScaleTrimLeftEnd
+	cmpa.l a3, a4
+	bls.w nonidentityScaleNext
+	cmpi.b #' ', -1(a4)
+	beq.s nonidentityScaleTrimLeftOne
+	cmpi.b #9, -1(a4)
+	bne.s nonidentityScaleRightStart
+nonidentityScaleTrimLeftOne
+	subq.l #1, a4
+	bra.s nonidentityScaleTrimLeftEnd
+nonidentityScaleRightStart
+	lea 1(a2), a5
+	movea.l (sp), a6
+	adda.l 4(sp), a6
+nonidentityScaleTrimRightStart
+	cmpa.l a6, a5
+	bhs.w nonidentityScaleNext
+	cmpi.b #' ', (a5)
+	beq.s nonidentityScaleTrimRightStartOne
+	cmpi.b #9, (a5)
+	bne.s nonidentityScaleRightBound
+nonidentityScaleTrimRightStartOne
+	addq.l #1, a5
+	bra.s nonidentityScaleTrimRightStart
+nonidentityScaleRightBound
+	movea.l a5, a1
+nonidentityScaleRightScan
+	cmpa.l a6, a1
+	bhs.s nonidentityScaleSpansReady
+	moveq #0, d5
+	move.b (a1), d5
+	cmpi.b #',', d5
+	beq.s nonidentityScaleSpansReady
+	cmpi.b #')', d5
+	beq.s nonidentityScaleSpansReady
+	cmpi.b #']', d5
+	beq.s nonidentityScaleSpansReady
+	addq.l #1, a1
+	bra.s nonidentityScaleRightScan
+nonidentityScaleSpansReady
+	move.l a3, 10(sp)
+	move.l a4, d5
+	sub.l a3, d5
+	move.w d5, 14(sp)
+	move.l a5, 16(sp)
+	move.l a1, d5
+	sub.l a5, d5
+	move.w d5, 20(sp)
+	movea.l 16(sp), a0
+	moveq #0, d0
+	move.w 20(sp), d0
+	moveq #0, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	tst.l d0
+	bne.s nonidentityScaleTryLeft
+	cmpi.l #1, d3
+	bne.s nonidentityScaleFound
+	bra.s nonidentityScaleNext
+nonidentityScaleTryLeft
+	movea.l 10(sp), a0
+	moveq #0, d0
+	move.w 14(sp), d0
+	moveq #0, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	tst.l d0
+	bne.s nonidentityScaleNext
+	cmpi.l #1, d3
+	bne.s nonidentityScaleFound
+nonidentityScaleNext
+	addq.w #1, 8(sp)
+	bra.w nonidentityScaleScan
+nonidentityScaleFound
+	moveq #0, d0
+	bra.s nonidentityScaleReturn
+nonidentityScaleNone
+	moveq #1, d0
+nonidentityScaleReturn
+	lea 22(sp), sp
+	movem.l (sp)+, d2/d4-d7/a1-a6
+	tst.l d0
+	rts
+	.bend  ; tkpkgFindNonidentityScaleSpanV1
 
 ; Project Rust's neutral `named_registerN=NAME` semantic input.  The expected
 ; spelling is package data; this runtime only performs the bounded operand

@@ -15274,7 +15274,9 @@ fn motorola68020_item17_native_immediate_register_shape_matches_rust_boundary() 
         .iter()
         .find(|selector| {
             selector.mnemonic.eq_ignore_ascii_case("MOVE.W")
-                && selector.shape_key.eq_ignore_ascii_case("immediate_register")
+                && selector
+                    .shape_key
+                    .eq_ignore_ascii_case("immediate_register")
                 && selector
                     .operand_plan
                     .contains("scalar.immediate-word:expr0,reg1.class0")
@@ -15465,15 +15467,14 @@ fn motorola68020_item17_native_optional_tuple_value_program_matches_rust_boundar
     for _ in 0..string_count {
         let prefix_len = take_u16(cmse, &mut cursor);
         let suffix_len = take_u32(cmse, &mut cursor);
-        let suffix = std::str::from_utf8(&cmse[cursor..cursor + suffix_len])
-            .expect("CMSE suffix is UTF-8");
+        let suffix =
+            std::str::from_utf8(&cmse[cursor..cursor + suffix_len]).expect("CMSE suffix is UTF-8");
         cursor += suffix_len;
         previous.truncate(prefix_len);
         previous.push_str(suffix);
         longest_resolved_string = longest_resolved_string.max(previous.len());
     }
-    let pea_value_source =
-        "value_program:scalar.normalized-input:indirect_tuple_value0.item0";
+    let pea_value_source = "value_program:scalar.normalized-input:indirect_tuple_value0.item0";
     assert_eq!(pea_value_source.len(), 65, "PEA regression source length");
     assert!(
         native_selector_capacity >= longest_resolved_string,
@@ -15488,9 +15489,9 @@ fn motorola68020_item17_native_optional_tuple_value_program_matches_rust_boundar
             selector.mnemonic.eq_ignore_ascii_case("PEA")
                 && selector.shape_key.eq_ignore_ascii_case("direct")
                 && selector.operand_plan.contains("enc.pea.displacement")
-                && selector.operand_plan.contains(
-                    "value_program:scalar.normalized-input:indirect_tuple_value0.item0",
-                )
+                && selector
+                    .operand_plan
+                    .contains("value_program:scalar.normalized-input:indirect_tuple_value0.item0")
         })
         .expect("Rust package PEA displacement selector");
     assert_eq!(selector.mode_key, "semantic");
@@ -15560,7 +15561,9 @@ fn motorola68020_item17_native_direct_target_matches_rust_boundary() {
         selector.mnemonic.eq_ignore_ascii_case("JSR")
             && selector.shape_key.eq_ignore_ascii_case("direct")
             && selector.operand_plan.contains("match:_@target:expr0")
-            && selector.operand_plan.contains("fixup:fix.abs32@target:expr0")
+            && selector
+                .operand_plan
+                .contains("fixup:fix.abs32@target:expr0")
     }));
 }
 
@@ -15846,7 +15849,10 @@ fn motorola68020_item17_native_indirect_tuple_projection_matches_rust_boundary()
         "indirect_tuple_value0.item0",
         "indirect_tuple_arity0.value3",
     ] {
-        assert!(selector.operand_plan.contains(source), "missing Rust source {source}");
+        assert!(
+            selector.operand_plan.contains(source),
+            "missing Rust source {source}"
+        );
     }
 }
 
@@ -16108,8 +16114,7 @@ fn motorola68020_item18_native_value_vm_v2_matches_rust_boundary() {
         .filter(|program| program.id.eq_ignore_ascii_case("scalar.absolute-W"))
         .collect::<Vec<_>>();
     assert!(absolute_word_programs.iter().any(|program| {
-        program.opcode_version == 1
-            && program.program == [0x02, 0x00, 0x03, 24, 0x04, 16, 0xff]
+        program.opcode_version == 1 && program.program == [0x02, 0x00, 0x03, 24, 0x04, 16, 0xff]
     }));
     let fixed_extension_word = chunks
         .semantic_programs
@@ -16137,7 +16142,9 @@ fn motorola68020_item18_native_value_vm_v2_matches_rust_boundary() {
             .iter()
             .find(|selector| {
                 selector.mnemonic.eq_ignore_ascii_case(mnemonic)
-                    && selector.shape_key.eq_ignore_ascii_case("immediate_register")
+                    && selector
+                        .shape_key
+                        .eq_ignore_ascii_case("immediate_register")
                     && selector
                         .operand_plan
                         .contains("required_value_program:scalar.packed-three-bit-count:expr0")
@@ -16194,9 +16201,7 @@ fn motorola68020_item19_native_layout_stability_matches_rust_boundary() {
         ],
     ));
     let driver = fs::read_to_string(
-        workspace_root().join(
-            "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm",
-        ),
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
     )
     .expect("read native opasm assembly driver");
     assert!(source_contains_in_order(
@@ -16209,9 +16214,7 @@ fn motorola68020_item19_native_layout_stability_matches_rust_boundary() {
         ],
     ));
     let selection = fs::read_to_string(
-        workspace_root().join(
-            "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm",
-        ),
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
     )
     .expect("read native package selection service");
     assert!(source_contains_in_order(
@@ -16580,8 +16583,7 @@ fn motorola68020_item20_remaining_base_corpus_matches_rust_boundary() {
         .collect::<Vec<_>>();
     discovered_stems.sort_unstable();
     assert_eq!(
-        discovered_stems,
-        accounted_stems,
+        discovered_stems, accounted_stems,
         "every base 68000 source fixture must be owned by Items 17-20"
     );
 
@@ -16605,12 +16607,11 @@ fn motorola68020_item20_remaining_base_corpus_matches_rust_boundary() {
     }
 
     let negative_path = examples_dir.join(format!("{item20_negative_stem}.asm"));
-    let actual_error = assemble_example_error(&negative_path)
-        .expect("Item 20 negative Rust fixture must fail");
-    let expected_error = read_example_error_reference(
-        &reference_dir.join(format!("{item20_negative_stem}.err")),
-    )
-    .expect("read Item 20 negative reference");
+    let actual_error =
+        assemble_example_error(&negative_path).expect("Item 20 negative Rust fixture must fail");
+    let expected_error =
+        read_example_error_reference(&reference_dir.join(format!("{item20_negative_stem}.err")))
+            .expect("read Item 20 negative reference");
     assert_eq!(actual_error, expected_error);
 
     let embedded_package = fs::read(
@@ -16759,7 +16760,10 @@ fn motorola68020_item20_identity_scale_matches_rust_boundary() {
     let projection = native_selector
         .split("tkpkgMselUnwrapIdentityScaleV1\t.block")
         .nth(1)
-        .and_then(|tail| tail.split("\t.bend  ; tkpkgMselUnwrapIdentityScaleV1").next())
+        .and_then(|tail| {
+            tail.split("\t.bend  ; tkpkgMselUnwrapIdentityScaleV1")
+                .next()
+        })
         .expect("bounded native identity-scale projection");
     for forbidden in ["68000", "MOVE", "cmpi.b #'D'", "cmpi.b #'A'"] {
         assert!(
@@ -16767,6 +16771,330 @@ fn motorola68020_item20_identity_scale_matches_rust_boundary() {
             "generic identity-scale projection must not own {forbidden}"
         );
     }
+}
+
+#[test]
+fn motorola68020_item22_expr_path_matches_rust_boundary() {
+    // Proof level B. Rust's neutral expression-path walker is authoritative;
+    // native implements only the frozen full-extension package subset and
+    // resolves every field, qualifier, and register class from package data.
+    // This source contract does not execute an Amiga guest.
+    let rust_selector = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_encoding.rs"),
+    )
+    .expect("read Rust expression-path reference");
+    for expected in [
+        "fn project_expr_path(",
+        "(\"i\", Expr::Indirect(inner, _)) => inner",
+        "(\"b\", Expr::IndirectLong(inner, _)) => inner",
+        "step.starts_with('t')",
+        "if let Some(qualified) = terminal.strip_prefix('q')",
+        "if *terminal == \"s\"",
+        "if let Some(field) = terminal.strip_prefix('m')",
+    ] {
+        assert!(
+            rust_selector.contains(expected),
+            "missing Rust expression-path boundary {expected}"
+        );
+    }
+
+    let native_selector = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
+    )
+    .expect("read native package selection service");
+    for expected in [
+        ".byte \"xp1:\"",
+        "tkpkgProjectExprPathV1\t.block",
+        "tkpkgExprPathStripWrapperV1\t.block",
+        "tkpkgExprPathSelectTupleItemV1\t.block",
+        "tkpkgExprPathSplitMultiplyV1\t.block",
+        "jsr operand.tkpkgMselEvaluateSemanticSpanV2",
+        "bsr.w tkpkgFindScopedRegisterEncodingV1",
+    ] {
+        assert!(
+            native_selector.contains(expected),
+            "missing native expression-path boundary {expected}"
+        );
+    }
+    let projection = native_selector
+        .split("tkpkgProjectExprPathV1\t.block")
+        .nth(1)
+        .and_then(|tail| tail.split("\t.bend  ; tkpkgProjectExprPathV1").next())
+        .expect("bounded native expression-path projection");
+    for forbidden in ["68020", "MOVE.W", "MOVES", "D0", "A0"] {
+        assert!(
+            !projection.contains(forbidden),
+            "generic expression-path projection must not own {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 22 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package")
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 22 package input");
+    assert!(chunks
+        .selectors
+        .iter()
+        .any(|selector| selector.operand_plan.contains("xp1:")));
+    let rust_package_programs = fs::read_to_string(
+        workspace_root().join("crates/opforge-families/src/m68k/package_programs.rs"),
+    )
+    .expect("read frozen Rust m68k package programs");
+    for expected in [
+        "{MODE_SELECTOR_PLAN_EXPR_PATH_PREFIX}0/i/t1/r1",
+        "{MODE_SELECTOR_PLAN_EXPR_PATH_PREFIX}0/i/t2/qL.c0",
+        "{MODE_SELECTOR_PLAN_EXPR_PATH_PREFIX}0/i/t2/s",
+        "{MODE_SELECTOR_PLAN_EXPR_PATH_PREFIX}0/i/t0/mW",
+        "{MODE_SELECTOR_PLAN_EXPR_PATH_PREFIX}0/i/t0/b/t{base_item}/r1",
+        "{MODE_SELECTOR_PLAN_EXPR_PATH_PREFIX}0/i/t1/qW.c0",
+        "{MODE_SELECTOR_PLAN_EXPR_PATH_PREFIX}0/i/t2/mL",
+    ] {
+        assert!(
+            rust_package_programs.contains(expected),
+            "frozen Rust package source lacks Item 22 path {expected}"
+        );
+    }
+}
+
+#[test]
+fn motorola68020_item22_nonidentity_scale_matches_rust_boundary() {
+    // Proof level B. Rust's recursive AST predicate is authoritative; native
+    // evaluates only the package-selected source span and preserves Rust's
+    // right-before-left, non-identity rule. This does not run an Amiga guest.
+    let rust_selector = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_encoding.rs"),
+    )
+    .expect("read Rust nonidentity-scale reference");
+    for expected in [
+        "MODE_SELECTOR_PLAN_INDIRECT_TUPLE_NONIDENTITY_SCALE_PREFIX",
+        "fn find_scale(expr: &Expr, expr_ctx: &SelectorExprContext<'_>) -> Option<i64>",
+        ".filter(|scale| *scale != 1)",
+        ".or_else(|| find_scale(left, expr_ctx))",
+        ".or_else(|| find_scale(right, expr_ctx))",
+        "let scale = if item == \"any\"",
+    ] {
+        assert!(
+            rust_selector.contains(expected),
+            "missing Rust nonidentity-scale boundary {expected}"
+        );
+    }
+
+    let native_selector = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
+    )
+    .expect("read native package selection service");
+    for expected in [
+        ".byte \"indirect_tuple_nonidentity_scale\"",
+        "semanticCheckTupleNonidentityScale",
+        "tkpkgProjectNonidentityScaleV1\t.block",
+        "tkpkgFindNonidentityScaleSpanV1\t.block",
+        "jsr operand.tkpkgMselEvaluateSemanticSpanV2",
+        "cmpi.l #1, d3",
+    ] {
+        assert!(
+            native_selector.contains(expected),
+            "missing native nonidentity-scale boundary {expected}"
+        );
+    }
+    let projection = native_selector
+        .split("tkpkgProjectNonidentityScaleV1\t.block")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\t.bend  ; tkpkgProjectNonidentityScaleV1")
+                .next()
+        })
+        .expect("bounded native nonidentity-scale projection");
+    for forbidden in ["68020", "MOVE", "MOVES", "D1", "A0"] {
+        assert!(
+            !projection.contains(forbidden),
+            "generic nonidentity-scale projection must not own {forbidden}"
+        );
+    }
+
+    let rust_package_programs = fs::read_to_string(
+        workspace_root().join("crates/opforge-families/src/m68k/package_programs.rs"),
+    )
+    .expect("read frozen Rust m68k package programs");
+    for expected in [
+        "MODE_SELECTOR_PLAN_INDIRECT_TUPLE_NONIDENTITY_SCALE_PREFIX}0{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}any",
+        "DIAG_FULL_EXTENSION_UNSUPPORTED",
+    ] {
+        assert!(
+            rust_package_programs.contains(expected),
+            "frozen Rust package source lacks Item 22 rejection boundary {expected}"
+        );
+    }
+}
+
+#[test]
+fn motorola68020_item22_nested_operand_record_matches_rust_boundary() {
+    // Proof level B. Rust's PortableOperandRecord::NestedAddress layout and
+    // frozen schema-v2 programs are authoritative. Native exposes a distinct
+    // v2 neutral wire record without changing the established v1 bytes.
+    let rust_vm =
+        fs::read_to_string(workspace_root().join("crates/opforge-vm/src/operand_record_vm.rs"))
+            .expect("read Rust operand-record VM reference");
+    for expected in [
+        "PortableOperandRecord::NestedAddress",
+        "base_displacement: optional_value(program[3], program[4])?",
+        "register: register_input(registers, program[5])?",
+        "1 => PortableMemoryIndirection::Preindexed",
+        "outer_displacement: optional_value(program[9], program[10])?",
+    ] {
+        assert!(
+            rust_vm.contains(expected),
+            "missing Rust nested-record boundary {expected}"
+        );
+    }
+
+    let abi = tkpkg_amigaos_source("tkpkg_abi.asm");
+    for expected in [
+        "OPERAND_RECORD_RESULT_VERSION_V1     = 1",
+        "OPERAND_RECORD_RESULT_SIZE_V1        = 24",
+        "OPERAND_RECORD_RESULT_VERSION_V2     = 2",
+        "OPERAND_RECORD_RESULT_SIZE_V2        = 40",
+        "OPERAND_RECORD_RESULT_INDEX_WIDTH",
+        "OPERAND_RECORD_RESULT_INDIRECTION",
+        "OPERAND_RECORD_RESULT_OUTER_VALUE",
+        "OPERAND_RECORD_RESULT_OUTER_WIDTH",
+        "OPERAND_RECORD_RESULT_FLAGS",
+    ] {
+        assert!(
+            abi.contains(expected),
+            "missing native v2 ABI boundary {expected}"
+        );
+    }
+    let decoder = tkpkg_amigaos_source("tkpkg_operand_record_service.asm");
+    for expected in [
+        "OPERAND_RECORD_SCHEMA_VERSION_V2",
+        "executeSchemaV2",
+        "executeNestedAddress",
+        "copyRegisterInputV1",
+        "copyValueInputV1",
+        "abi.OPERAND_RECORD_RESULT_OUTER_VALUE",
+        "abi.OPERAND_RECORD_RESULT_FLAGS",
+    ] {
+        assert!(
+            decoder.contains(expected),
+            "missing native nested-record boundary {expected}"
+        );
+    }
+    let nested = decoder
+        .split("executeNestedAddress")
+        .nth(2)
+        .and_then(|tail| tail.split("programOk").next())
+        .expect("bounded native nested-address execution");
+    for forbidden in ["68020", "MOVE", "MOVES", "address-register"] {
+        assert!(
+            !nested.contains(forbidden),
+            "generic nested-record execution must not own {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 22 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package")
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 22 package input");
+    for id in [
+        "operand.full-address-preindexed",
+        "operand.full-pc-postindexed",
+        "operand.full-suppressed-index",
+        "operand.full-address-base-only",
+    ] {
+        let program = chunks
+            .operand_record_programs
+            .iter()
+            .find(|program| program.id == id)
+            .unwrap_or_else(|| panic!("missing frozen nested record {id}"));
+        assert_eq!(program.schema_version, 2, "schema for {id}");
+        assert_eq!(program.program.len(), 12, "program length for {id}");
+        assert_eq!(program.program[0], 0x07, "nested opcode for {id}");
+        assert_eq!(program.program.last(), Some(&0xff), "program END for {id}");
+    }
+}
+
+#[test]
+fn motorola68020_item22_full_extension_corpus_matches_rust_boundary() {
+    // Proof level B. This inventories the complete Item 22 Rust corpus and
+    // exact checked-in package/reference inputs; it does not execute a guest.
+    let rust_tests = fs::read_to_string(workspace_root().join("crates/opforge-asm/src/tests.rs"))
+        .expect("read Rust assembler tests");
+    for expected in [
+        "baseline_m68k_cpus_reject_68020_full_extension_operands_deterministically",
+        "baseline_m68k_cpus_reject_68020_memory_indirect_operands_deterministically",
+        "later_m68k_cpus_accept_full_extension_shared_baseline_surface",
+        "later_m68k_cpus_accept_moves_with_full_extension_addressing",
+        "m68010_rejects_moves_with_68020_full_extension_addressing",
+    ] {
+        assert!(
+            rust_tests.contains(expected),
+            "missing Item 22 Rust corpus {expected}"
+        );
+    }
+    let handler =
+        fs::read_to_string(workspace_root().join("crates/opforge-families/src/m68k/handler.rs"))
+            .expect("read Rust m68k handler tests");
+    for expected in [
+        "parses_canonical_68020_full_extension_operands",
+        "base_suppressed",
+        "index_suppressed",
+        "normalizes_68020_memory_indirect_aliases_to_canonical_operands",
+    ] {
+        assert!(
+            handler.contains(expected),
+            "missing Item 22 Rust handler boundary {expected}"
+        );
+    }
+    let fixture =
+        workspace_root().join("examples/motorola68000/68020_full_extension_addressing.asm");
+    let listing = workspace_root()
+        .join("examples/reference/motorola68000/68020_full_extension_addressing.lst");
+    let srec = workspace_root()
+        .join("examples/reference/motorola68000/68020_full_extension_addressing.srec");
+    for path in [&fixture, &listing, &srec] {
+        assert!(
+            path.is_file(),
+            "missing authoritative Item 22 artifact {}",
+            path.display()
+        );
+    }
+    let listing_text = fs::read_to_string(listing).expect("read Item 22 reference listing");
+    for expected in [
+        "MOVE.W (4.W,A0,D1.L*4),D0",
+        "MOVE.W 4.W(A0,D1.L*4),D1",
+        "MOVE.W ([A0,D1.L*4],8.W),D2",
+        "MOVE.W ([A3],D2.W*2,8.L),D3",
+        "MOVES.W D0,(4.W,A0,D1.L*4)",
+        "MOVES.L ([A0,D1.L*4],8.W),A2",
+    ] {
+        assert!(
+            listing_text.contains(expected),
+            "missing Item 22 fixture row {expected}"
+        );
+    }
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 22 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package")
+    );
 }
 
 #[test]
@@ -16810,7 +17138,10 @@ fn motorola68020_item20_value_diagnostic_matches_rust_boundary() {
     let renderer = native_selector
         .split("tkpkgFormatSignedSemanticValueV1\t.block")
         .nth(1)
-        .and_then(|tail| tail.split("\t.bend  ; tkpkgFormatSignedSemanticValueV1").next())
+        .and_then(|tail| {
+            tail.split("\t.bend  ; tkpkgFormatSignedSemanticValueV1")
+                .next()
+        })
         .expect("bounded native signed-value formatter");
     for forbidden in ["TRAP", "68000", "opcode"] {
         assert!(

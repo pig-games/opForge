@@ -269,7 +269,12 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   register indices, accepted values, field meanings, diagnostic templates, and
   instruction semantics remain package-owned. Item 21 adds only the neutral
   named-register predicate and Rust-equivalent owner-priority deferral required
-  to consume the frozen m68010 rows.
+  to consume the frozen m68010 rows. Item 22 adds the neutral `xp1:`
+  expression-path subset used by the frozen full-extension rows plus Rust's
+  nonidentity-scale predicate. Its neutral indirect-container walker preserves
+  Rust's equivalent `(item0,item1,...)` and `item0(item1,...)` tuple spellings;
+  operand indices, tuple paths, qualifiers, classes, fields, and rejection
+  meaning remain package data.
 
 ### `tkpkg.amigaos.operand_runtime` (NR-004, Item 5.6.1 ownership split)
 
@@ -326,25 +331,28 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   data; later semantic program versions, operand records, fixups, and branch
   convergence remain outside the Item 14 boundary.
 
-### `tkpkg.amigaos.operand_record_service` (NR-004, Item 16 frozen base record)
+### `tkpkg.amigaos.operand_record_service` (NR-004, Items 16 and 22 operand records)
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_operand_record_service.asm`.
 - Public entry: `executeRequestV1`; it parses one bounded neutral request,
   resolves an opaque CPRD id by dialect/CPU/family precedence, and executes one
-  exact OPRD schema-v1 base program.
+  exact OPRD schema-v1 base program or schema-v2 nested-address program.
 - Imports/outbound dependencies: only the tkpkg ABI and shared buffers.
 - Mutable state: bounded request cursors, active-owner indices, selected-program
-  metadata, and the dedicated neutral 24-byte result buffer.
+  metadata, and the dedicated neutral result buffer (24-byte v1 or 40-byte v2).
 - Routine responsibility groups: little-endian bounded CPRD reading; complete
   UTF-8, duplicate-owner/duplicate-id, and v1-v3 program-set validation before scoped
   owner/id matching; exact program-shape and END validation; request/result
   non-overlap enforcement; neutral register,
   indirect/update, displacement/base, indexed/width/scale, absolute, and
-  immediate result materialization; missing-input and malformed-data rejection.
+  immediate result materialization; Item 22 nested base, optional base
+  displacement, optional index, indirection, and optional outer displacement
+  materialization; missing-input and malformed-data rejection.
 - Decision: this module is a direct native port of the Rust package and operand-
   record VM boundary. It owns no CPU, family, dialect, mnemonic, register name,
-  addressing-mode spelling, or encoding byte. Later structured record schemas,
-  instruction encoding, fixups, and branch convergence remain outside Item 16.
+  addressing-mode spelling, or encoding byte. Schema-v2 pair/list/field records,
+  schema v3, instruction encoding, fixups, and branch convergence remain outside
+  the completed Item 22 boundary.
 
 ### `tkpkg.amigaos.runtime_context` (NR-005, Item 5.7 ownership split)
 

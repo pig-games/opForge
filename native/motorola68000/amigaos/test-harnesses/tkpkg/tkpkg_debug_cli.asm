@@ -1011,7 +1011,11 @@ requestPointerReady
 	lea buffers.ControlBlockV1, a0
 	bsr.w tkpkgDebugCliReadOutputLenV1
 	cmpi.w #abi.OPERAND_RECORD_RESULT_SIZE_V1, d0
+	beq.s resultLengthReady
+	cmpi.w #abi.OPERAND_RECORD_RESULT_SIZE_V2, d0
 	bne.s malformedResult
+resultLengthReady
+	move.w d0, d4
 	moveq #0, d0
 	move.b abi.CB_OUTPUT_PTR(a0), d0
 	moveq #0, d1
@@ -1020,6 +1024,7 @@ requestPointerReady
 	or.w d1, d0
 	lea 0(a0, d0.w), a1
 	movem.l d5-d7/a3, -(sp)
+	move.w d4, d0
 	bsr.w tkpkgDebugCliRenderOperandRecordV1
 	movem.l (sp)+, d5-d7/a3
 	subq.w #1, d6
@@ -1053,16 +1058,18 @@ return
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 
-; Render the 24-byte neutral result at A1 as one exact uppercase-hex row.
-; Outputs: row written to stdout. Clobbers: D0-D5/A0-A2/A6/CCR.
+; Render one bounded v1/v2 neutral result at A1 as exact uppercase hex.
+; Inputs: D0.W = result length. Outputs: row written to stdout.
+; Clobbers: D0-D5/A0-A2/A6/CCR.
 tkpkgDebugCliRenderOperandRecordV1
 	movem.l d6-d7/a3-a5, -(sp)
 	movea.l a1, a3
+	move.w d0, d5
 	move.l #OperandRecordRowPrefixText, d1
 	bsr.w tkpkgDebugCliPutStrV1
 	lea OperandRecordHexBuffer, a2
 	lea OperandRecordHexDigits, a4
-	moveq #abi.OPERAND_RECORD_RESULT_SIZE_V1 - 1, d5
+	subq.w #1, d5
 byteLoop
 	moveq #0, d0
 	move.b (a3)+, d0
@@ -1381,7 +1388,7 @@ DebugCliSourceFileProbeByte
 	.res byte, 1
 
 OperandRecordHexBuffer
-	.res byte, abi.OPERAND_RECORD_RESULT_SIZE_V1 * 2 + 2
+	.res byte, abi.OPERAND_RECORD_RESULT_SIZE_V2 * 2 + 2
 
 OperandRecordOverlapRequestFlag
 	.res byte, 1

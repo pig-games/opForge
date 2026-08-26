@@ -1,0 +1,58 @@
+[slice]
+schema_version = 2
+name = "native m68k runtime directive state v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 25
+requirements = ["N68X0-003", "N68X0-004", "N68X0-006", "N68X0-014", "N68X0-015", "N68X0-016"]
+rust_reference = [
+  "crates/opforge-families/src/m68k/package_programs.rs::state_programs",
+  "crates/opforge-package/src/package/state_program.rs::decode_state_program",
+  "crates/opforge-vm/src/runtime_model_core.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm::commitActiveSelectionV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm::getCpuStateFlagV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::statementStartsWithDirectiveSigilV1"
+]
+invariant = "Native selects and interprets the exact frozen package-owned STVM program, resets package profile defaults for each selected pipeline/pass, applies only explicitly dotted package directives, and evaluates opaque selector requirements without a native CPU/FPU/Apollo table."
+assertion_decision = "Each corrected invariant is proved by a directed Level B or fresh challenge-bound Level D test. After all directed tests pass, the complete established native parity wrapper runs exactly once; any issue it exposes is fixed and proved only by a directed small test without repeating the wrapper."
+expected_inputs = "The exact unmodified Rust-built all-family package; CLI-selected m68020 and m68080 profiles; source-selected m68040 overriding CLI m68020; `.fpu 68881`, `.fpu 68040`, and `.apollo on` transitions."
+expected_outputs = "Exact live-Rust artifacts for successful fresh guests, explicit guest completion and exit zero, plus deterministic rejection for malformed, unknown, or profile-illegal package state operations."
+known_non_equivalences = "Native uses bounded resident tables and 16-bit serialized string lengths because of the Amiga host memory model; these limits do not change the frozen package values exercised here. FPU and Apollo instruction encoding breadth remains owned by later plan items."
+fast_proof_command = "cargo test -p asm motorola68020_item25_native_state_runtime_matches_frozen_rust_program_boundary -- --nocapture && cargo test -p asm motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_m68k_runtime_directive_state_parity -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_m68k_runtime_directive_state_switch_parity -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_m68k_runtime_directive_state_illegal_pair_rejection -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_item25_native_state_runtime_matches_frozen_rust_program_boundary"
+proof_level = "B"
+proves = "The embedded package is exact Rust output; its frozen profiles, opaque keys, and directives are retained; the generic native service owns only interpreter operations."
+does_not_prove = "Execution by a real Amiga guest."
+
+[[tests]]
+name = "motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary"
+proof_level = "B"
+proves = "The new state service and all public state entrypoints assemble into the composed native tkpkg boundary."
+does_not_prove = "Runtime state transitions."
+
+[[tests]]
+name = "external_fs_uae_native_m68k_runtime_directive_state_parity"
+proof_level = "D"
+proves = "Two fresh challenged guests accept package-owned `.fpu` and `.apollo` transitions and emit exact live-Rust artifacts with explicit zero exits."
+does_not_prove = "Later FPU or Apollo instruction encoding surfaces."
+
+[[tests]]
+name = "external_fs_uae_native_m68k_runtime_directive_state_switch_parity"
+proof_level = "D"
+proves = "A fresh challenged guest applies source m68040 selection over CLI m68020, resets the active STVM profile, accepts `.fpu 68040`, and emits the exact live-Rust artifact."
+does_not_prove = "Cross-family composition, which remains Item 33."
+
+[[tests]]
+name = "external_fs_uae_native_m68k_runtime_directive_state_illegal_pair_rejection"
+proof_level = "D"
+proves = "Two fresh challenged guests reject package-profile-illegal FPU and Apollo state pairs with deterministic diagnostics and explicit exit one, matching the live Rust rejection decision."
+does_not_prove = "Byte-identical Rust diagnostic prose because the frozen STVM format carries legality masks but no directive-diagnostic templates."

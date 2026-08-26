@@ -19,6 +19,7 @@
 	.use opasm.amigaos.layout as layout
 	.use opasm.amigaos.operand_eval as operand_eval
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
+	.use tkpkg.amigaos.state_service as state_service
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opforge.debug.contracts as debug_contracts
 	.use opforge.debug.events as debug_events
@@ -99,6 +100,9 @@ layoutReady
 	jsr structs.resetStateV1
 	jsr text_encoding.resetStateV1
 	jsr compile_values.resetBindingsV1
+	jsr state_service.resetActiveV1
+	tst.l d0
+	bne.s layoutInitFail
 	movem.l (sp)+, a4-a5
 	moveq #0, d0
 	rts
@@ -135,6 +139,9 @@ opasmDriverPassTwoBegin	.block
 	jsr scopes.resetStateV1
 	jsr structs.resetStateV1
 	jsr text_encoding.resetStateV1
+	jsr state_service.resetActiveV1
+	tst.l d0
+	bne.s layoutFail
 	movem.l (sp)+, a4-a5
 	moveq #0, d0
 	rts
@@ -1301,6 +1308,25 @@ opasmDriverEmitImageBytes	.block
 	movea.l d5, a0
 	jsr eng.opasmEngineStatementMnemonicDuplicatesLabelV1
 	bne.w ok
+	moveq #0, d0
+	move.w d6, d0
+	bsr.w statementStartsWithDirectiveSigilV1
+	bne.s emitPackageStateReady
+	movea.l d5, a0
+	move.w d4, d0
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a1
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d1
+	jsr state_service.applyDirectiveV1
+	cmpi.w #1, d0
+	beq.w ok
+	cmpi.w #2, d0
+	bne.s emitPackageStateReady
+	movea.l a1, a0
+	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
+	bsr.w appendTextEvent
+	bra.w serviceFailReturn
+
+emitPackageStateReady
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d4, d0
@@ -1544,6 +1570,28 @@ statementLayoutRecorded
 	movea.l d5, a0
 	jsr eng.opasmEngineStatementMnemonicDuplicatesLabelV1
 	bne.w done
+	moveq #0, d0
+	move.w d7, d0
+	bsr.w statementStartsWithDirectiveSigilV1
+	bne.s advancePackageStateReady
+	movea.l d5, a0
+	move.w d6, d0
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a1
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d1
+	jsr state_service.applyDirectiveV1
+	cmpi.w #1, d0
+	beq.w done
+	cmpi.w #2, d0
+	bne.s advancePackageStateReady
+	movea.l a1, a0
+	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
+	bsr.w appendTextEvent
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d0-d7/a0-a5
+	moveq #1, d0
+	rts
+
+advancePackageStateReady
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d6, d0
@@ -3715,6 +3763,7 @@ done
 statementStartsWithDirectiveSigilV1	.block
 	movem.l d1/a0, -(sp)
 	jsr eng.opasmEngineGetStatementSourceTextV1
+	tst.l d0
 	beq.s no
 	bsr.w skipLineWhitespace
 	beq.s no

@@ -80,6 +80,13 @@ Directive meaning, operand bounds, diagnostics, CPU availability, and emitted
 instruction bytes remain owned by the unchanged Rust-built package and VM
 definitions.
 
+Item 25 adds `tkpkg.amigaos.state_service` and refreshes its four neutral
+callers. The service selects and interprets the frozen STVM program, restores
+package profile defaults, applies package-declared directive transitions, and
+answers opaque state requirements. CPU names, directive names, target values,
+profile legality, and selector diagnostics remain in the unchanged Rust-built
+package; the native runtime contains no FPU or Apollo target table.
+
 ## Dependency direction
 
 ```text
@@ -89,6 +96,7 @@ CLI/session frontend -> assembly driver -> engine callback API
 tkpkg service facade -> pipeline, tokenizer VM, PRVM line router,
                         expression bridge, package loader, operand-record service
 pipeline -> package hierarchy / CPU-family-dialect locators
+         -> state service -> package-owned STVM profiles/keys/transitions
 expression bridge -> expression VM runtime
 ```
 
@@ -97,6 +105,25 @@ The desired direction is toward narrow service or runtime contracts. Item
 import; the engine-context adapter is now the sole tkpkg engine reader.
 
 ## Audited modules
+
+### `tkpkg.amigaos.state_service` (Item 25 package-state interpreter)
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm`.
+- Public entries: `initializeActiveV1`, `resetActiveV1`, `applyDirectiveV1`,
+  `getFlagV1`, and `requirementAllowsV1`.
+- Imports/outbound dependencies: `tkpkg.amigaos.buffers` only.
+- Mutable state: the selected package-program cursor and directive-table cursor;
+  bounded active key pointers, lengths, values, profile index, and program bounds
+  live in the shared package buffers.
+- Routine responsibility groups: bounded STVM decoding; scoped-owner matching;
+  active-profile default materialization; case-insensitive directive and argument
+  matching; transactional profile-mask validation; opaque key lookup; and generic
+  `key=v1+v2?diagnostic` requirement evaluation.
+- Inbound users: pipeline selection initializes the service, the assembly driver
+  resets/applies state per pass, runtime context projects opaque flags, and the
+  selector evaluates package-owned requirements.
+- Decision: this is a CPU-neutral serialized-program interpreter. It must not
+  contain family, CPU, FPU, Apollo, mnemonic, register, or target-value tables.
 
 ### `opasm.amigaos.assembly_driver` (NR-006, mandatory decomposition)
 

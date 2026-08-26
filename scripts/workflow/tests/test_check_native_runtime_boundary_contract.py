@@ -39,6 +39,7 @@ class NativeRuntimeBoundaryContractTests(unittest.TestCase):
             (
                 "tkpkg.amigaos.abi",
                 "tkpkg.amigaos.buffers",
+                "tkpkg.amigaos.state_service",
                 "tkpkg.amigaos.token_policy",
             ),
         )

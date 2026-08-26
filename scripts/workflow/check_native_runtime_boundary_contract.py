@@ -47,6 +47,7 @@ RETAINED_ITEM_511_IMPORTS = {
     "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": (
         "tkpkg.amigaos.abi",
         "tkpkg.amigaos.buffers",
+        "tkpkg.amigaos.state_service",
         "tkpkg.amigaos.token_policy",
     ),
 }

@@ -17841,6 +17841,15 @@ fn motorola68020_item20_duplicate_register_matches_rust_boundary() {
             "missing native duplicate-register boundary {expected}"
         );
     }
+    let duplicate_dispatch = native_selector
+        .split("\nrejectCheckDuplicate\n")
+        .nth(1)
+        .and_then(|tail| tail.split("rejectOrdinaryInput").next())
+        .expect("bounded native duplicate-register dispatch");
+    assert!(
+        duplicate_dispatch.contains("move.w d5, d0\n\tmoveq #18, d1"),
+        "duplicate prefix matching must reload the source length after prior prefix probes"
+    );
     let duplicate_projection = native_selector
         .split("tkpkgProjectDuplicateRegisterV1\t.block")
         .nth(1)
@@ -23986,6 +23995,92 @@ fn motorola68020_tkpkg_owner_precedence_prefers_dialect_then_cpu_then_family() {
 }
 
 #[test]
+fn motorola68020_item25_native_state_runtime_matches_frozen_rust_program_boundary() {
+    let package_path =
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let embedded_package = fs::read(&package_path).expect("read Item 25 embedded package");
+    let rust_package = build_hierarchy_package_from_registry(&default_registry())
+        .expect("build current unmodified Rust package");
+    assert_eq!(embedded_package, rust_package);
+
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 25 package input");
+    assert_eq!(chunks.state_programs.len(), 1);
+    let descriptor = &chunks.state_programs[0];
+    assert_eq!(
+        descriptor.owner,
+        ScopedOwner::Family("motorola68000".to_string())
+    );
+    assert_eq!(descriptor.id, "runtime");
+    assert_eq!(
+        descriptor.opcode_version,
+        package::STATE_VM_OPCODE_VERSION_V1
+    );
+    let decoded = package::decode_state_program(descriptor.opcode_version, &descriptor.program)
+        .expect("decode frozen Rust state program");
+    assert_eq!(
+        decoded.profiles,
+        ["m68000", "m68010", "m68020", "m68030", "m68040", "m68080"]
+    );
+    assert_eq!(
+        decoded
+            .keys
+            .iter()
+            .map(|key| key.id.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "m68k.fpu_target",
+            "m68k.apollo_mode",
+            "m68k.cpu_is_68080",
+            "m68k.cpu_level",
+        ]
+    );
+    assert_eq!(
+        decoded
+            .directives
+            .iter()
+            .map(|directive| directive.id.as_str())
+            .collect::<Vec<_>>(),
+        ["fpu", "apollo"]
+    );
+
+    let state_runtime = tkpkg_amigaos_source("tkpkg_state_service.asm");
+    assert!(source_contains_in_order(
+        &state_runtime,
+        &[
+            "initializeActiveV1 .block",
+            "CLR.L ActiveStateDirectiveTablePtr",
+            "BSR.W activeOwnerMatchesV1",
+            "MOVE.L A2, buffers.ActiveStateProgramPtr",
+            "BSR.W resetActiveV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &state_runtime,
+        &[
+            "applyDirectiveV1 .block",
+            "BSR.W normalizeArgumentV1",
+            "LEA buffers.ActiveStateValues, A0",
+            "MOVE.L D0, 0(A0, D2.L)",
+        ]
+    ));
+    for forbidden in [
+        "motorola68000",
+        "m68020",
+        "m68080",
+        "68881",
+        "68882",
+        "apollo",
+        "fpu_target",
+    ] {
+        assert!(
+            !state_runtime.to_ascii_lowercase().contains(forbidden),
+            "generic native state runtime must not own package spelling {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn motorola68020_tkpkg_native_wire_roundtrip_preserves_subset_examples() {
     let source = tkpkg_amigaos_source("tkpkg_abi.asm");
 
@@ -24099,6 +24194,13 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
     assert!(listing.contains("tkpkg.amigaos.package_loader.validateToc"));
     assert!(listing.contains("tkpkg.amigaos.pipeline.tkpkgPipelineSetActiveV1"));
     assert!(listing.contains("tkpkg.amigaos.pipeline.resolveTokenizerVmLocatorV1"));
+    assert!(listing.contains("tkpkg.amigaos.state_service.initializeActiveV1"));
+    assert!(listing.contains("tkpkg.amigaos.state_service.resetActiveV1"));
+    assert!(listing.contains("tkpkg.amigaos.state_service.applyDirectiveV1"));
+    assert!(listing.contains("tkpkg.amigaos.state_service.getFlagV1"));
+    assert!(listing.contains("tkpkg.amigaos.state_service.requirementAllowsV1"));
+    assert!(listing.contains("tkpkg.amigaos.buffers.StvmChunkOffsetLo"));
+    assert!(listing.contains("tkpkg.amigaos.buffers.ActiveStateProgramPtr"));
     assert!(listing.contains("tkpkg.amigaos.token_policy.resolveLocatorV1"));
     assert!(listing.contains("tkpkg.amigaos.tokenizer_vm.tkpkgTokenizerVmTokenizeLineV1"));
     assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000"));

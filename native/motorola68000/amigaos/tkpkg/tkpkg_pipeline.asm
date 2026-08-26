@@ -5,6 +5,7 @@
 	.pub
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
+	.use tkpkg.amigaos.state_service as state_service
 	.use tkpkg.amigaos.token_policy as policy  ;(tkpkgTokenPolicyResolveLocatorV1)
 
 NO_PACKAGE_TEXT_LEN                  = 41
@@ -960,6 +961,9 @@ commitActiveSelectionV1	.block
 	bsr.w copyRecordLocatorV1
 	move.b buffers.PendingParserVmOwnerTag, d0
 	move.b d0, buffers.ActiveParserVmOwnerTag
+	jsr state_service.initializeActiveV1
+	tst.l d0
+	bne.s commitDone
 	bset #1, buffers.PackageStateFlags
 	moveq #0, d0
 

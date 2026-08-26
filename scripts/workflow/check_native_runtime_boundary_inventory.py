@@ -16,7 +16,12 @@ TARGETS = {
     "opasm.amigaos.assembly_driver": (
         "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm",
         "assembleSessionV1",
-        ("opasm.amigaos.directive_router", "opasm.amigaos.engine", "opasm.amigaos.tkpkg_bridge"),
+        (
+            "opasm.amigaos.directive_router",
+            "opasm.amigaos.engine",
+            "opasm.amigaos.tkpkg_bridge",
+            "tkpkg.amigaos.state_service",
+        ),
     ),
     "opasm.amigaos.directive_router": (
         "native/motorola68000/amigaos/opasm/opasm_directive_router.asm",
@@ -51,7 +56,11 @@ TARGETS = {
     "tkpkg.amigaos.selection_service": (
         "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm",
         "selectInstructionV1",
-        ("tkpkg.amigaos.runtime_context", "opcore.amigaos.expr_bridge"),
+        (
+            "tkpkg.amigaos.runtime_context",
+            "tkpkg.amigaos.state_service",
+            "opcore.amigaos.expr_bridge",
+        ),
     ),
     "tkpkg.amigaos.operand_runtime": (
         "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm",
@@ -93,7 +102,7 @@ TARGETS = {
     "tkpkg.amigaos.runtime_context": (
         "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm",
         "getAbiVersionV1",
-        ("tkpkg.amigaos.engine_context_adapter",),
+        ("tkpkg.amigaos.engine_context_adapter", "tkpkg.amigaos.state_service"),
     ),
     "tkpkg.amigaos.engine_context_adapter": (
         "native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm",
@@ -123,7 +132,12 @@ TARGETS = {
     "tkpkg.amigaos.pipeline": (
         "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm",
         "tkpkgPipelineSetActiveV1",
-        ("tkpkg.amigaos.token_policy",),
+        ("tkpkg.amigaos.token_policy", "tkpkg.amigaos.state_service"),
+    ),
+    "tkpkg.amigaos.state_service": (
+        "native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm",
+        "initializeActiveV1",
+        ("tkpkg.amigaos.buffers",),
     ),
     "opasm.amigaos.flow_text_encoding": (
         "native/motorola68000/amigaos/opasm/opasm_flow_text_encoding.asm",
@@ -132,25 +146,26 @@ TARGETS = {
     ),
 }
 SNAPSHOTS = {
-    "opasm.amigaos.assembly_driver": ("017b352dcbc8280929d222293b93dcf70e38f93da13dae9b167364bcad07d323", 80, 18, ("code", "data", "bss"), 150),
+    "opasm.amigaos.assembly_driver": ("48dd1c409555d1dca66913c14b768d164e7afecd772dc7f7fc38eb2921141ed4", 80, 19, ("code", "data", "bss"), 154),
     "opasm.amigaos.directive_router": ("b1011828f566a3896329cbda6d491379ee67f17888a5fb432e28aca15cce2339", 3, 0, ("code", "data"), 1),
     "opasm.amigaos.operand_eval": ("ae3c196bbfb545f49f703539e4d7aac40686a0158dea316a9b65572f71864f5e", 17, 3, ("code", "bss"), 9),
     "opasm.amigaos.directive_data": ("ae827acedfad611d1d57ff93783edda61b6eb4de332c2907521343d6f9fdf3bc", 2, 3, ("code", "bss"), 19),
     "opasm.amigaos.directive_text": ("98d283b9678f051c68787dc915b841559ee1a3647e597b44d966492a931ff0c8", 2, 1, ("code", "bss"), 2),
     "opasm.amigaos.layout": ("319155f2c0d107b187c27ee0abcd218a731dae8d6f5f99f3111c6010d9faed2d", 53, 1, ("code", "bss"), 2),
     "tkpkg.amigaos.service": ("ee73bb8b17e459daf2edec91e717b39e48f3e75d9ccb0e2b3f26d87bc6370522", 42, 13, ("data", "bss", "code"), 117),
-    "tkpkg.amigaos.selection_service": ("454fa4551f21002a375d0fe5610bfffd593a0349c876cda8dba9b0feda2b2e5d", 72, 6, ("data", "code"), 195),
+    "tkpkg.amigaos.selection_service": ("c6d394e7abf979623cbb21d062130e1ae597e6ecdc4ef848c99b004f06c99f7f", 73, 7, ("data", "code"), 199),
     "tkpkg.amigaos.operand_runtime": ("bc4595a8d349ea117862f310032cdeed72b25cbda2b5c147677fa730eddd1876", 23, 4, ("data", "code"), 59),
     "tkpkg.amigaos.encode_service": ("4fbefe000e6e96a1c9ff3ad6b6fce6b70f0b05723ec881d6e7b62d273f623e82", 24, 5, ("data", "code"), 32),
     "tkpkg.amigaos.compact_table": ("b6b9f451b8f9449916d7079af3563288acec06756dc3838c8489ee2a7b3d7c89", 5, 3, ("data", "code"), 1),
     "tkpkg.amigaos.operand_record_service": ("7d703b307b57c2bbf44d7ab0465be9e6fae33853a8d45b7d90479c2f71dd68ff", 27, 2, ("data", "bss", "code"), 13),
-    "tkpkg.amigaos.runtime_context": ("9b1e03e3b8689dfe72157e04da3441cf595a8e21b4dac19e55700effb0a6bace", 8, 1, ("code", "bss"), 19),
+    "tkpkg.amigaos.runtime_context": ("6ae26bac41792dd0cd3d1a12e725ad405f5ba303407e2cb085e321dc0ce882ee", 9, 2, ("code", "bss"), 19),
     "tkpkg.amigaos.engine_context_adapter": ("a06328ca23472b6f624f579ffd24e09d51d3373acd0c2e825e2596086461ea54", 9, 1, ("code",), 0),
     "opasm.amigaos.engine": ("38fcd587a41c6d02f81a4f439a4dcbdd5885a229c470abdb2369e7d5414ba750", 86, 1, ("code", "bss"), 22),
     "tkpkg.amigaos.tokenizer_vm": ("7bbafa635dcded0236c9a65368db47e0e10aded6b328d4389e580654125e5b65", 31, 5, ("data", "code"), 124),
     "opcore.amigaos.expr_bridge": ("f8c22759e6ebb88cfe593f4573e962591df9b80b01e5b0919065ac48b1f51cb2", 32, 1, ("code", "bss"), 6),
     "prvm.amigaos.runtime": ("d49fad6cedf4807ffed62932c3e55b8f1adbfba0ff93bd8085d66b4e42efb74b", 20, 0, ("data", "code"), 37),
-    "tkpkg.amigaos.pipeline": ("d60652c3a5a66dcaa37e0df985db5cd65fbbbccd4359140451f490ecfcd6f73f", 38, 3, ("data", "code"), 19),
+    "tkpkg.amigaos.pipeline": ("c98f344cdc0ccf11636d50026e30053c80736aa11fda3d1d01d70f24c759eca3", 38, 4, ("data", "code"), 19),
+    "tkpkg.amigaos.state_service": ("e9f6de48118f760c758b03d8d189a17f37f3d7bc7494fc9ef27cb8f98e7326cd", 18, 1, ("data", "code", "bss"), 9),
     "opasm.amigaos.flow_text_encoding": ("17fd0bac93c8e91ce9355ac37b9b1bfcb7afc428320e164884e49a19dc892bc0", 16, 0, ("code", "bss", "data"), 0),
 }
 

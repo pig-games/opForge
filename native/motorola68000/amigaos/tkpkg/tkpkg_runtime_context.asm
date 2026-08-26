@@ -7,6 +7,7 @@
 	.cpu 68020
 	.pub
 	.use tkpkg.amigaos.engine_context_adapter as adapter
+	.use tkpkg.amigaos.state_service as state_service
 
 RUNTIME_CONTEXT_ABI_VERSION = 1
 RUNTIME_CONTEXT_SYMBOL_FOUND = 0
@@ -35,6 +36,12 @@ getAddressV1	.block
 lookupSymbolV1	.block
 	jmp adapter.lookupSymbolV1
 	.bend  ; lookupSymbolV1
+
+; Read one opaque package-owned runtime-state key.
+; Inputs: A0/D0 = key text. Outputs: D0 = 0 found/D1 value, 1 absent.
+getCpuStateFlagV1	.block
+	jmp state_service.getFlagV1
+	.bend  ; getCpuStateFlagV1
 
 ; Materialize a bounded, read-only stability snapshot for one consumer call.
 ; Inputs: D0 = symbol count.

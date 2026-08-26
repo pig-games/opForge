@@ -570,18 +570,34 @@ checkValp
 
 checkCprd
 	cmpi.b #'C', (a2)
-	bne.w checkCmse
+	bne.w checkStvm
 	cmpi.b #'P', 1(a2)
-	bne.w checkCmse
+	bne.w checkStvm
 	cmpi.b #'R', 2(a2)
-	bne.w checkCmse
+	bne.w checkStvm
 	cmpi.b #'D', 3(a2)
-	bne.w checkCmse
+	bne.w checkStvm
 	btst #2, buffers.PackageChunkFlagsExtra
 	bne.w duplicateChunk
 	lea buffers.CprdChunkOffsetLo, a3
 	bsr.w storeLocator
 	bset #2, buffers.PackageChunkFlagsExtra
+	bra.w nextTocEntry
+
+checkStvm
+	cmpi.b #'S', (a2)
+	bne.w checkCmse
+	cmpi.b #'T', 1(a2)
+	bne.w checkCmse
+	cmpi.b #'V', 2(a2)
+	bne.w checkCmse
+	cmpi.b #'M', 3(a2)
+	bne.w checkCmse
+	btst #5, buffers.PackageChunkFlagsExtra
+	bne.w duplicateChunk
+	lea buffers.StvmChunkOffsetLo, a3
+	bsr.w storeLocator
+	bset #5, buffers.PackageChunkFlagsExtra
 	bra.w nextTocEntry
 
 checkCmse

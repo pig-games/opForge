@@ -80,6 +80,9 @@ tests=(
   external_fs_uae_native_m68020_full_extension_addressing_parity
   external_fs_uae_native_m68020_later_integer_group_a_parity
   external_fs_uae_native_m68020_later_integer_group_b_parity
+  external_fs_uae_native_m68k_runtime_directive_state_parity
+  external_fs_uae_native_m68k_runtime_directive_state_switch_parity
+  external_fs_uae_native_m68k_runtime_directive_state_illegal_pair_rejection
 )
 
 test_source="crates/opforge-asm/src"

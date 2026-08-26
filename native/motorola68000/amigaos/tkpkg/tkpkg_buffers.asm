@@ -15,6 +15,7 @@ TOKEN_BUFFER_CAPACITY                = 64
 TOKEN_SCRATCH_CAPACITY               = 256
 TOKENIZER_VM_STATE_TABLE_CAPACITY    = 32
 TOKENIZER_VM_DIAG_CODE_CAPACITY      = 32
+STATE_VM_KEY_CAPACITY                = 32
 ; The exact Rust CMSE-v7 package currently contains resolved selector strings
 ; up to 164 bytes.  Keep one CPU-neutral power-of-two bound for every decoded
 ; selector field while retaining a fail-closed limit below package storage.
@@ -555,6 +556,54 @@ CprdChunkLenMidHi
 
 CprdChunkLenHi
 	.res byte, 1
+
+StvmChunkOffsetLo
+	.res byte, 1
+
+StvmChunkOffsetMidLo
+	.res byte, 1
+
+StvmChunkOffsetMidHi
+	.res byte, 1
+
+StvmChunkOffsetHi
+	.res byte, 1
+
+StvmChunkLenLo
+	.res byte, 1
+
+StvmChunkLenMidLo
+	.res byte, 1
+
+StvmChunkLenMidHi
+	.res byte, 1
+
+StvmChunkLenHi
+	.res byte, 1
+
+	.align 2
+ActiveStateProgramPtr
+	.res long, 1
+
+ActiveStateProgramEndPtr
+	.res long, 1
+
+ActiveStateProfileIndex
+	.res byte, 1
+
+ActiveStateKeyCount
+	.res byte, 1
+
+	.align 2
+ActiveStateKeyPtrs
+	.res long, STATE_VM_KEY_CAPACITY
+
+ActiveStateKeyLens
+	.res byte, STATE_VM_KEY_CAPACITY
+
+	.align 2
+ActiveStateValues
+	.res long, STATE_VM_KEY_CAPACITY
 
 	.align 2
 CompactSelectorStringsPtr

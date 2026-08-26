@@ -11,6 +11,7 @@
 	.use tkpkg.amigaos.selection_state as state
 	.use tkpkg.amigaos.operand_runtime as operand
 	.use tkpkg.amigaos.runtime_context as context
+	.use tkpkg.amigaos.state_service as state_service
 	.use opcore.amigaos.expr_bridge
 
 TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE = 9
@@ -1495,6 +1496,8 @@ cmseStructuredCandidate
 	beq.s cmseBuildBranch
 	cmpi.b #4, d0
 	beq.s cmseBuildSequence
+	cmpi.b #5, d0
+	beq.s cmseBuildState
 	cmpi.b #6, d0
 	bne.w cmseSelectorNext
 	movea.l state.EncodeSelectedSemanticPlanPtr, a1
@@ -1517,6 +1520,14 @@ cmseBuildSequence
 	move.l a2, -(sp)
 	move.w d7, -(sp)
 	bsr.w tkpkgBuildCompactSemanticSequenceCandidateV2
+	move.w (sp)+, d7
+	movea.l (sp)+, a2
+	bra.w cmseCandidateReady
+cmseBuildState
+	movea.l state.EncodeSelectedSemanticPlanPtr, a1
+	move.l a2, -(sp)
+	move.w d7, -(sp)
+	bsr.w tkpkgBuildCompactStateCandidateV2
 	move.w (sp)+, d7
 	movea.l (sp)+, a2
 	bra.w cmseCandidateReady
@@ -1636,6 +1647,89 @@ cmseReturn
 	.bend  ; tkpkgBuildSelectedEnvelopeFromCmseV7
 
 	.priv
+; Evaluate one package-owned state guard and dispatch its nested compact plan.
+; Inputs: A1 = state plan body; A5/D2 = selected mnemonic; A6 = CMSE end.
+; Outputs: D0/D1 use TKPKG_SELECTED_STATUS_* candidate convention.
+tkpkgBuildCompactStateCandidateV2	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a1, a2
+	bsr.w tkpkgServiceReadU16LeV1
+	bne.w stateCandidateMalformed
+	move.w d0, d7
+	movea.l a2, a3
+	lea buffers.CompactSelectorPlanText, a0
+	move.w d7, d0
+	bsr.w resolveCompactSelectorStringV1
+	bne.w stateCandidateMalformed
+	lea buffers.CompactSelectorPlanText, a0
+	jsr state_service.requirementAllowsV1
+	cmpi.w #2, d0
+	beq.w stateCandidateMalformed
+	cmpi.w #1, d0
+	bne.s stateCandidateAllowed
+	tst.w d1
+	beq.s stateCandidateMiss
+	move.w d1, d0
+	moveq #1, d3
+	suba.l a0, a0
+	moveq #0, d4
+	bsr.w tkpkgRenderRejectMessageCodeV1
+	tst.l d0
+	bne.w stateCandidateMalformed
+	moveq #TKPKG_SELECTED_STATUS_SEMANTIC_REJECT, d0
+	bra.w stateCandidateReturn
+
+stateCandidateMiss
+	moveq #0, d1
+	moveq #TKPKG_SELECTED_STATUS_UNKNOWN_MNEMONIC, d0
+	bra.w stateCandidateReturn
+
+stateCandidateAllowed
+	movea.l a3, a2
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	bne.s stateCandidateMalformed
+	moveq #0, d0
+	move.b (a2)+, d0
+	movea.l a2, a1
+	cmpi.b #1, d0
+	beq.s stateCandidateStructured
+	cmpi.b #2, d0
+	beq.s stateCandidateStructured
+	cmpi.b #3, d0
+	beq.s stateCandidateBranch
+	cmpi.b #4, d0
+	beq.s stateCandidateSequence
+	cmpi.b #5, d0
+	beq.s stateCandidateNested
+	cmpi.b #6, d0
+	beq.s stateCandidateReject
+	bra.s stateCandidateMalformed
+
+stateCandidateStructured
+	bsr.w tkpkgBuildCompactSemanticCandidateV2
+	bra.s stateCandidateReturn
+stateCandidateBranch
+	bsr.w tkpkgBuildCompactSemanticBranchCandidateV2
+	bra.s stateCandidateReturn
+stateCandidateSequence
+	bsr.w tkpkgBuildCompactSemanticSequenceCandidateV2
+	bra.s stateCandidateReturn
+stateCandidateNested
+	bsr.w tkpkgBuildCompactStateCandidateV2
+	bra.s stateCandidateReturn
+stateCandidateReject
+	bsr.w tkpkgBuildCompactSemanticRejectCandidateV2
+	bra.s stateCandidateReturn
+stateCandidateMalformed
+	moveq #0, d1
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+stateCandidateReturn
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; tkpkgBuildCompactStateCandidateV2
+
 ; Build the existing candidate envelope from one CMSE v7 scalar/input plan.
 ; The envelope carries an opaque CSEM program id and four-byte neutral scalar
 ; records.  No family spelling or encoding meaning is interpreted here.
@@ -2163,6 +2257,7 @@ rejectCheckDuplicate
 	move.l a2, -(sp)
 	lea buffers.CompactSelectorInputText, a1
 	lea DuplicateRegisterPrefixText, a2
+	move.w d5, d0
 	moveq #18, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
 	movea.l (sp)+, a2

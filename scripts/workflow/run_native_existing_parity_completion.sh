@@ -78,6 +78,7 @@ tests=(
   external_fs_uae_native_m68000_remaining_base_parity
   external_fs_uae_native_m68010_delta_parity
   external_fs_uae_native_m68020_full_extension_addressing_parity
+  external_fs_uae_native_m68020_later_integer_group_a_parity
 )
 
 test_source="crates/opforge-asm/src"

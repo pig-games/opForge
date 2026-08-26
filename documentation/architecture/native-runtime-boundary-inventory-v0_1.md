@@ -256,8 +256,9 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   search.
 - Routine responsibility groups: selected-request decoding; package MSEL and
   CSEM-owner traversal; CPU-neutral CMSE-v7 scalar input projection; scoped
-  RENC/VALP program lookup and execution; neutral register-list mask and
-  duplicate detection; neutral tuple identity-scale projection; candidate
+  RENC/VALP program lookup and execution; neutral register-list mask,
+  duplicate, and distinct-register detection; direct and indirect call-argument
+  register projection; neutral tuple identity-scale projection; candidate
   construction; package-declared named-register comparison; dialect-CPU-family
   rejection precedence; selected-output diagnostic selection; and standard
   scalar capture rendering.
@@ -274,7 +275,12 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   nonidentity-scale predicate. Its neutral indirect-container walker preserves
   Rust's equivalent `(item0,item1,...)` and `item0(item1,...)` tuple spellings;
   operand indices, tuple paths, qualifiers, classes, fields, and rejection
-  meaning remain package data.
+  meaning remain package data. Item 23 adds Rust's neutral direct/indirect
+  call-argument register projection and distinct-register predicate for the
+  frozen first 68020 later-family group. The native visitor accepts the same
+  slash-list and colon-call argument separators, while all CPU, instruction,
+  register, opcode, and legality authority remains in the exact Rust-built
+  package.
 
 ### `tkpkg.amigaos.operand_runtime` (NR-004, Item 5.6.1 ownership split)
 

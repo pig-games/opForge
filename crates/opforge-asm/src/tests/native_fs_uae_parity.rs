@@ -13984,6 +13984,330 @@ fn external_fs_uae_native_m68020_nonidentity_scale_rejection_parity() {
 }
 
 #[test]
+fn external_fs_uae_native_m68020_call_arg_register_parity() {
+    // Proof level D. One fresh challenged guest isolates the neutral direct and
+    // indirect call-argument register projections used by a frozen CAS2 row.
+    // Exact same-source live Rust bytes and explicit guest exit zero are required.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        CAS2.L D0:D1,D2:D3,(A0):(A1)\n";
+    let rust_oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m68020"),
+        "item23-call-arg-register-rust-oracle",
+    )
+    .expect("run live Rust Item 23 call-argument oracle");
+    assert_eq!(rust_oracle, [0x0e, 0xfc, 0x80, 0x80, 0x90, 0xc1]);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 23 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item23-directed-call-arg-registers",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 23 call-argument parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert!(
+                runs[0].success,
+                "directed Item 23 call-argument parity failed\nstdout:\n{}\nstderr:\n{}",
+                runs[0].stdout, runs[0].stderr
+            );
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68020_distinct_register_parity() {
+    // Proof level D. Two fresh challenged guests isolate Rust's neutral
+    // distinct-register predicate: one exact positive pair and one duplicate
+    // pair with the same live Rust diagnostic and explicit guest exit one.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let positive_source = "        DIVS.L (A0),D2:D3\n";
+    let negative_source = "        DIVS.L (A0),D2:D2\n";
+    let rust_oracle = live_rust_cpu_name_oracle(
+        positive_source,
+        Some("m68020"),
+        "item23-distinct-register-rust-oracle",
+    )
+    .expect("run live Rust Item 23 distinct-register oracle");
+    assert_eq!(rust_oracle, [0x4c, 0x50, 0x3c, 0x02]);
+    let rust_diagnostic = live_rust_cpu_name_diagnostic(
+        negative_source,
+        "m68020",
+        "item23-duplicate-register-rust-diagnostic",
+    );
+    assert!(rust_diagnostic.contains(
+        "DIVS register-pair destination requires distinct remainder and quotient registers"
+    ));
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 23 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item23-directed-distinct-register-positive",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(positive_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &rust_oracle,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item23-directed-distinct-register-negative",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(negative_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                &rust_diagnostic,
+            ),
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 23 distinct-register parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 2);
+            assert!(runs[0].success);
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+            assert!(runs[1].protocol_completed);
+            assert_eq!(runs[1].exit_code, Some(1));
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68020_later_integer_group_a_parity() {
+    // Proof level D. This is the complete Item 23 aggregate and is executed by
+    // the one established native completion wrapper. Every case has a fresh
+    // challenged guest, the exact package, a same-source live Rust oracle, and
+    // explicit guest completion/exit. CAS2 field legality remains Item 24.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 23 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+
+    let positive_source = concat!(
+        "        LINK.L A6,#-8\n",
+        "        EXTB.L D2\n",
+        "        MULU.L (A0),D1\n",
+        "        MULS.L ($1234).W,D2\n",
+        "        DIVS.L (A0),D1\n",
+        "        DIVU.L (A0),D1\n",
+        "        DIVS.L (A0),D2:D3\n",
+        "        DIVU.L (A0),D2:D3\n",
+        "        DIVSL.L (A0),D2:D3\n",
+        "        DIVUL.L (A0),D2:D3\n",
+        "        BRA.L far_target\n",
+        "        BSR.L helper\n",
+        "        BNE.L far_target\n",
+        "        CAS.W D0,D1,(A0)\n",
+        "        CAS2.L D0:D1,D2:D3,(A0):(A1)\n",
+        "        CHK2.L ($1234).W,A1\n",
+        "        CMP2.B ($1234).W,D0\n",
+        "helper:\n",
+        "        RTS\n",
+        "far_target:\n",
+        "        NOP\n",
+        "        RTS\n",
+    );
+    let positive_oracle = live_rust_cpu_name_oracle(
+        positive_source,
+        Some("m68020"),
+        "item23-group-a-positive-rust-oracle",
+    )
+    .expect("run live Rust Item 23 group-A positive oracle");
+    assert!(!positive_oracle.is_empty());
+
+    let negative_definitions = [
+        (
+            "item23-m68020-div-pair-duplicate",
+            "m68020",
+            "        DIVS.L (A0),D2:D2\n",
+        ),
+        (
+            "item23-m68020-divsl-pair-required",
+            "m68020",
+            "        DIVSL.L (A0),D1\n",
+        ),
+        (
+            "item23-m68020-cas-register-destination",
+            "m68020",
+            "        CAS.B D0,D1,D0\n",
+        ),
+        (
+            "item23-m68020-cmp2-register-bounds",
+            "m68020",
+            "        CMP2.W D0,D1\n",
+        ),
+        (
+            "item23-m68000-reject-long-branch",
+            "m68000",
+            "        BRA.L target\ntarget:\n        RTS\n",
+        ),
+        (
+            "item23-m68010-reject-link-long",
+            "m68010",
+            "        LINK.L A6,#-8\n",
+        ),
+        (
+            "item23-m68000-reject-multiply-long",
+            "m68000",
+            "        MULU.L (A0),D1\n",
+        ),
+        (
+            "item23-m68010-reject-cas2",
+            "m68010",
+            "        CAS2.W D0:D1,D2:D3,(A0):(A1)\n",
+        ),
+        (
+            "item23-m68000-reject-chk2",
+            "m68000",
+            "        CHK2.W ($1234).W,D0\n",
+        ),
+    ];
+    let negatives = negative_definitions
+        .iter()
+        .map(|(name, cpu, source)| {
+            let diagnostic = live_rust_cpu_name_diagnostic(
+                source,
+                cpu,
+                format!("{name}-rust-diagnostic").as_str(),
+            );
+            let command =
+                format!("{{input}} --bin {{bin}} --cpu {cpu} --opasm-package {{package}}");
+            (*name, *source, diagnostic, command)
+        })
+        .collect::<Vec<_>>();
+
+    let mut cases = Vec::with_capacity(1 + negatives.len());
+    cases.push(crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item23-m68020-group-a-positive",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(positive_source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &positive_oracle,
+        },
+    });
+    for (name, source, diagnostic, command) in &negatives {
+        cases.push(crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name,
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some(command.as_str()),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                diagnostic,
+            ),
+        });
+    }
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 23 m68020 later integer group-A FS-UAE parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len(), "every fresh Item 23 guest ran");
+            for (index, run) in runs.iter().enumerate() {
+                assert!(
+                    run.protocol_completed,
+                    "Item 23 case {} must complete its guest protocol",
+                    cases[index].name
+                );
+                if index == 0 {
+                    assert!(
+                        run.success,
+                        "Item 23 positive case failed\nstdout:\n{}\nstderr:\n{}",
+                        run.stdout, run.stderr
+                    );
+                    assert_eq!(run.exit_code, Some(0));
+                    assert_eq!(
+                        captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                        positive_oracle
+                    );
+                } else {
+                    assert_eq!(
+                        run.exit_code,
+                        Some(1),
+                        "Item 23 negative case {} must exit 1",
+                        cases[index].name
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_native_m68020_full_extension_addressing_parity() {
     // Proof level D. This is the complete Item 22 aggregate and is executed by
     // the one established native completion wrapper. Fresh guests prove the

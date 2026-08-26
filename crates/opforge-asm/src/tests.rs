@@ -17098,6 +17098,225 @@ fn motorola68020_item22_full_extension_corpus_matches_rust_boundary() {
 }
 
 #[test]
+fn motorola68020_item23_call_arg_register_matches_rust_boundary() {
+    // Proof level B. Rust's call-argument register projector is authoritative;
+    // native implements only the frozen operand/argument/class grammar and
+    // resolves all register spellings through the unchanged package RENC data.
+    let rust_selector = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_encoding.rs"),
+    )
+    .expect("read Rust call-argument register reference");
+    for expected in [
+        "MODE_SELECTOR_PLAN_CALL_ARG_INDIRECT_REGISTER_PREFIX",
+        "MODE_SELECTOR_PLAN_CALL_ARG_REGISTER_PREFIX",
+        "let Some(Expr::Call { args, .. })",
+        "let register_expr = if indirect",
+        "register_encoding_for_resolved",
+        "if register.class != class",
+    ] {
+        assert!(
+            rust_selector.contains(expected),
+            "missing Rust call-argument boundary {expected}"
+        );
+    }
+
+    let native_selector = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
+    )
+    .expect("read native package selection service");
+    for expected in [
+        ".byte \"call_arg_indirect_register\"",
+        ".byte \"call_arg_register\"",
+        "tkpkgProjectCallArgRegisterV1\t.block",
+        "tkpkgSelectCallArgumentV1\t.block",
+        "jsr operand.tkpkgMselLocateSemanticOperandV2",
+        "bsr.w tkpkgFindScopedRegisterEncodingV1",
+    ] {
+        assert!(
+            native_selector.contains(expected),
+            "missing native call-argument boundary {expected}"
+        );
+    }
+    assert!(source_contains_in_order(
+        &native_selector,
+        &[
+            "callArgSpecClassReady",
+            "move.w d5, 4(sp)",
+            "bsr.w tkpkgParseU16DecimalV2",
+            "move.w d3, 2(sp)",
+            "move.w 4(sp), d0",
+            "sub.w d6, d0",
+            "subq.w #6, d0",
+            "bsr.w tkpkgParseU16DecimalV2",
+            "move.w d3, 4(sp)",
+        ]
+    ));
+    let projection = native_selector
+        .split("tkpkgProjectCallArgRegisterV1\t.block")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\t.bend  ; tkpkgProjectCallArgRegisterV1")
+                .next()
+        })
+        .expect("bounded native call-argument projection");
+    for forbidden in ["68020", "CAS2", "DIVS", "D0", "A0", "opcode"] {
+        assert!(
+            !projection.contains(forbidden),
+            "generic call-argument projection must not own {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 23 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package")
+    );
+    let package_programs = fs::read_to_string(
+        workspace_root().join("crates/opforge-families/src/m68k/package_programs.rs"),
+    )
+    .expect("read frozen Rust m68k package programs");
+    for expected in [
+        "MODE_SELECTOR_PLAN_CALL_ARG_REGISTER_PREFIX}0.arg0.class0",
+        "MODE_SELECTOR_PLAN_CALL_ARG_REGISTER_PREFIX}1.arg1.class0",
+        "MODE_SELECTOR_PLAN_CALL_ARG_INDIRECT_REGISTER_PREFIX}2.arg0.class1",
+        "MODE_SELECTOR_PLAN_CALL_ARG_INDIRECT_REGISTER_PREFIX}2.arg1.class1",
+    ] {
+        assert!(
+            package_programs.contains(expected),
+            "frozen Rust package lacks Item 23 source {expected}"
+        );
+    }
+}
+
+#[test]
+fn motorola68020_item23_distinct_register_matches_rust_boundary() {
+    // Proof level B. Rust accepts a distinct-register source only when its
+    // recursive register visitor finds no duplicate; native inverts the same
+    // neutral duplicate predicate for slash lists and colon call arguments.
+    let rust_selector = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_encoding.rs"),
+    )
+    .expect("read Rust distinct-register reference");
+    assert!(source_contains_in_order(
+        &rust_selector,
+        &[
+            "MODE_SELECTOR_PLAN_DISTINCT_REGISTER_PREFIX",
+            "semantic_duplicate_register(expr).is_some()",
+            "return Ok(None);",
+            "values.push(0);",
+        ]
+    ));
+
+    let native_selector = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
+    )
+    .expect("read native package selection service");
+    assert!(source_contains_in_order(
+        &native_selector,
+        &[
+            ".byte \"distinct_register\"",
+            "semanticCheckDistinctRegister",
+            "tkpkgProjectDistinctRegisterV1",
+            "bsr.w tkpkgProjectDuplicateRegisterV1",
+            "cmpi.l #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0",
+            "distinctRegisterOk",
+            "moveq #0, d3",
+        ]
+    ));
+    let duplicate = native_selector
+        .split("tkpkgProjectDuplicateRegisterV1\t.block")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\t.bend  ; tkpkgProjectDuplicateRegisterV1")
+                .next()
+        })
+        .expect("bounded native duplicate-register visitor");
+    assert!(duplicate.contains("cmpi.b #'/', 0(a3, d5.l)"));
+    assert!(duplicate.contains("cmpi.b #':', 0(a3, d5.l)"));
+    for forbidden in ["68020", "DIVS", "DIVU", "D2", "D3", "opcode"] {
+        assert!(
+            !duplicate.contains(forbidden),
+            "generic duplicate/distinct visitor must not own {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 23 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package")
+    );
+}
+
+#[test]
+fn motorola68020_item23_later_integer_group_a_matches_rust_boundary() {
+    // Proof level B. The exact Rust package, selector implementation, and
+    // stored later-family fixture remain the authority for Item 23 group A.
+    let package_programs = fs::read_to_string(
+        workspace_root().join("crates/opforge-families/src/m68k/package_programs.rs"),
+    )
+    .expect("read frozen Rust m68k package programs");
+    for expected in [
+        "pub fn m68020_mode_selectors",
+        "mnemonic: \"LINK.L\"",
+        "mnemonic: \"EXTB.L\"",
+        "[(\"MULU.L\", 0_u32), (\"MULS.L\", 0x0800)]",
+        "[(\"DIVS.L\", 0x0800_u32), (\"DIVU.L\", 0_u32)]",
+        "(\"DIVSL.L\", 0x0800)",
+        "(\"DIVUL.L\", 0)",
+        "[(\"CAS.B\", 0x0ad0_u32), (\"CAS.W\", 0x0cd0), (\"CAS.L\", 0x0ed0)]",
+        "[(\"CAS2.W\", 0x0cfc_u32), (\"CAS2.L\", 0x0efc)]",
+        "(\"CHK2.B\", 0x00f8_u32, 0x0800_u32)",
+        "(\"CMP2.B\", 0x00f8, 0)",
+        "BRANCH_CANDIDATE_LONG",
+    ] {
+        assert!(
+            package_programs.contains(expected),
+            "missing frozen Rust Item 23 group-A boundary {expected}"
+        );
+    }
+
+    let fixture = fs::read_to_string(
+        workspace_root().join("examples/motorola68000/68020_later_families.asm"),
+    )
+    .expect("read authoritative 68020 later-family fixture");
+    for expected in [
+        "LINK.L A6,#-8",
+        "EXTB.L D2",
+        "MULU.L (A0),D1",
+        "DIVS.L (A0),D2:D3",
+        "DIVUL.L (A0),D2:D3",
+        "BRA.L far_target",
+        "CAS.W D0,D1,(A0)",
+        "CAS2.L D0:D1,D2:D3,(A0):(A1)",
+        "CHK2.L ($1234).W,A1",
+        "CMP2.B ($1234).W,D0",
+    ] {
+        assert!(
+            fixture.contains(expected),
+            "missing Item 23 fixture row {expected}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 23 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package")
+    );
+}
+
+#[test]
 fn motorola68020_item20_value_diagnostic_matches_rust_boundary() {
     // Proof level B. The shared native diagnostic path retains Rust's first
     // projected scalar capture and renders it as signed decimal; the package

@@ -16295,6 +16295,378 @@ fn motorola68020_item19_native_layout_stability_matches_rust_boundary() {
 }
 
 #[test]
+fn motorola68020_item20_remaining_base_corpus_matches_rust_boundary() {
+    // Proof level B. This accounts every 68000_* source fixture exactly once
+    // across the completed Item 17-19 slices and Item 20, then proves the nine
+    // remaining positive fixtures and the remaining negative fixture against
+    // their established Rust-generated references. It does not execute native
+    // code in an Amiga guest.
+    let repo_root = workspace_root();
+    let examples_dir = repo_root.join("examples/motorola68000");
+    let reference_dir = repo_root.join("examples/reference/motorola68000");
+    let prior_item_stems = [
+        "68000_address_arithmetic_shifts",
+        "68000_addressing_matrix",
+        "68000_arithmetic_sizes",
+        "68000_basic_moves",
+        "68000_bit_operations",
+        "68000_branching",
+        "68000_condition_loops",
+        "68000_control_addressing",
+        "68000_immediate_unary",
+        "68000_qualified_jsr",
+        "68000_rotate_memory_shift",
+    ];
+    let item20_positive_stems = [
+        "68000_aliases",
+        "68000_allmodes",
+        "68000_compare_operand_state",
+        "68000_effective_addresses",
+        "68000_exchange_registers",
+        "68000_extend_bcd_cmpm",
+        "68000_movem_movep",
+        "68000_multiply_divide_check",
+        "68000_system_register_misc",
+    ];
+    let item20_negative_stem = "68000_btst_pc_relative_error";
+
+    let mut accounted_stems = prior_item_stems
+        .into_iter()
+        .chain(item20_positive_stems)
+        .chain([item20_negative_stem])
+        .collect::<Vec<_>>();
+    accounted_stems.sort_unstable();
+    let mut discovered_stems = fs::read_dir(&examples_dir)
+        .expect("read motorola68000 example directory")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("asm"))
+        .filter_map(|path| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .filter(|stem| stem.starts_with("68000_"))
+                .map(str::to_string)
+        })
+        .collect::<Vec<_>>();
+    discovered_stems.sort_unstable();
+    assert_eq!(
+        discovered_stems,
+        accounted_stems,
+        "every base 68000 source fixture must be owned by Items 17-20"
+    );
+
+    let out_dir = create_temp_dir("item20-remaining-base-rust-corpus");
+    for stem in item20_positive_stems {
+        let asm_path = examples_dir.join(format!("{stem}.asm"));
+        assemble_example(&asm_path, &out_dir, false)
+            .unwrap_or_else(|error| panic!("assemble Item 20 Rust fixture {stem}: {error}"));
+        for extension in ["srec", "lst"] {
+            let actual = fs::read(out_dir.join(format!("{stem}.{extension}")))
+                .unwrap_or_else(|error| panic!("read Item 20 output {stem}.{extension}: {error}"));
+            let expected = fs::read(reference_dir.join(format!("{stem}.{extension}")))
+                .unwrap_or_else(|error| {
+                    panic!("read Item 20 reference {stem}.{extension}: {error}")
+                });
+            assert_eq!(
+                actual, expected,
+                "Item 20 Rust fixture {stem}.{extension} drifted from its reference"
+            );
+        }
+    }
+
+    let negative_path = examples_dir.join(format!("{item20_negative_stem}.asm"));
+    let actual_error = assemble_example_error(&negative_path)
+        .expect("Item 20 negative Rust fixture must fail");
+    let expected_error = read_example_error_reference(
+        &reference_dir.join(format!("{item20_negative_stem}.err")),
+    )
+    .expect("read Item 20 negative reference");
+    assert_eq!(actual_error, expected_error);
+
+    let embedded_package = fs::read(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 20 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 20 must consume the exact unmodified Rust package"
+    );
+}
+
+#[test]
+fn motorola68020_item20_register_mask_matches_rust_boundary() {
+    // Proof level B. This proves the native selector mirrors Rust's neutral
+    // register-mask projection and consumes the exact unmodified package. It
+    // does not prove execution by a real Amiga guest.
+    let rust_selector = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_encoding.rs"),
+    )
+    .expect("read Rust selector encoding reference");
+    for expected in [
+        "fn semantic_register_position(",
+        "register_encoding_for_resolved",
+        "checked_add(register.index)",
+        "bit < 16",
+        "fn semantic_register_mask(",
+        "BinaryOp::Divide | BinaryOp::Subtract",
+        "previous.0 == current.0 && previous.1 <= current.1",
+        "mask.reverse_bits()",
+    ] {
+        assert!(
+            rust_selector.contains(expected),
+            "missing Rust mask boundary {expected}"
+        );
+    }
+
+    let native_selector = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
+    )
+    .expect("read native package selection service");
+    for expected in [
+        "RegisterMaskPrefixText",
+        ".byte \"register_mask\"",
+        "semanticCheckRegister",
+        "bsr.w tkpkgProjectRegisterMaskV1",
+        "tkpkgProjectRegisterMaskV1\t.block",
+        "tkpkgMselLocateSemanticOperandV2",
+        "tkpkgFindScopedRegisterEncodingClassV1",
+        "tkpkgRegisterMaskMappedBitV1",
+        "move.w d4, -(sp)\n\tbsr.w tkpkgParseU16DecimalV2\n\tmove.w (sp)+, d4\n\ttst.l d1",
+        "movem.l d2/d5, -(sp)\n\tbsr.w tkpkgParseU16DecimalV2\n\tmovem.l (sp)+, d2/d5\n\ttst.l d1",
+        "movem.l d2/d4, -(sp)\n\tbsr.w tkpkgParseU16DecimalV2\n\tmovem.l (sp)+, d2/d4\n\ttst.l d1",
+        "add.w d7, d3\n\tbcs.s registerMaskMapOutOfRange",
+        "move.w d4, 14(sp)",
+        "move.w 14(sp), d2",
+        "cmpi.w #'/', d5",
+        "cmpi.w #'-', d5",
+        "registerMaskFillRange",
+        "registerMaskReverseLoop",
+    ] {
+        assert!(
+            native_selector.contains(expected),
+            "missing native mask boundary {expected}"
+        );
+    }
+    let mask_projection = native_selector
+        .split("tkpkgProjectRegisterMaskV1\t.block")
+        .nth(1)
+        .and_then(|tail| tail.split("\t.bend  ; tkpkgProjectRegisterMaskV1").next())
+        .expect("bounded native register-mask routine");
+    for forbidden in ["MOVEM", "cmpi.b #'D'", "cmpi.b #'A'"] {
+        assert!(
+            !mask_projection.contains(forbidden),
+            "generic native mask projection must not own package spelling {forbidden}"
+        );
+    }
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 20 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package"),
+        "Item 20 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 20 package input");
+    let movem_plans = chunks
+        .selectors
+        .iter()
+        .filter(|selector| selector.mnemonic.to_ascii_uppercase().starts_with("MOVEM."))
+        .map(|selector| selector.operand_plan.as_str())
+        .collect::<Vec<_>>();
+    assert!(!movem_plans.is_empty(), "Rust package owns MOVEM selectors");
+    assert!(movem_plans
+        .iter()
+        .any(|plan| plan.contains("register_mask0.map0=0+1=8.reverse16")));
+    assert!(movem_plans
+        .iter()
+        .any(|plan| plan.contains("register_mask1.map0=0+1=8")));
+}
+
+#[test]
+fn motorola68020_item20_identity_scale_matches_rust_boundary() {
+    // Proof level B. Rust's AST projection remains authoritative; native
+    // recognizes only the neutral tuple-item identity multiplication and then
+    // applies the package-declared qualified-register projection.
+    let rust_selector = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_encoding.rs"),
+    )
+    .expect("read Rust selector encoding reference");
+    for expected in [
+        "MODE_SELECTOR_PLAN_INDIRECT_TUPLE_IDENTITY_SCALE_PREFIX",
+        "op: BinaryOp::Multiply",
+        "if expr_ctx.eval_expr(right).ok() == Some(1) => left.as_ref()",
+        "if identity != Some(1)",
+    ] {
+        assert!(
+            rust_selector.contains(expected),
+            "missing Rust identity-scale boundary {expected}"
+        );
+    }
+
+    let native_selector = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
+    )
+    .expect("read native package selection service");
+    for expected in [
+        ".byte \"indirect_tuple_identity_scale\"",
+        "semanticCheckTupleIdentityScale",
+        "tkpkgMselUnwrapIdentityScaleV1\t.block",
+        "jsr operand.tkpkgMselEvaluateSemanticSpanV2",
+        "cmpi.l #1, d3",
+        "bsr.w tkpkgMselStripExpectedQualifierV2",
+    ] {
+        assert!(
+            native_selector.contains(expected),
+            "missing native identity-scale boundary {expected}"
+        );
+    }
+    let projection = native_selector
+        .split("tkpkgMselUnwrapIdentityScaleV1\t.block")
+        .nth(1)
+        .and_then(|tail| tail.split("\t.bend  ; tkpkgMselUnwrapIdentityScaleV1").next())
+        .expect("bounded native identity-scale projection");
+    for forbidden in ["68000", "MOVE", "cmpi.b #'D'", "cmpi.b #'A'"] {
+        assert!(
+            !projection.contains(forbidden),
+            "generic identity-scale projection must not own {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn motorola68020_item20_value_diagnostic_matches_rust_boundary() {
+    // Proof level B. The shared native diagnostic path retains Rust's first
+    // projected scalar capture and renders it as signed decimal; the package
+    // still owns every diagnostic code and literal template byte.
+    let rust_selector = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_encoding.rs"),
+    )
+    .expect("read Rust selector encoding reference");
+    for expected in [
+        "let value_text = values.first().copied().unwrap_or_default().to_string();",
+        "let value_text = value.to_string();",
+        "(\"value\", value_text.as_str())",
+    ] {
+        assert!(
+            rust_selector.contains(expected),
+            "missing Rust value-diagnostic boundary {expected}"
+        );
+    }
+
+    let native_selector = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
+    )
+    .expect("read native package selection service");
+    for expected in [
+        ".byte \"{value}\"",
+        "state.EncodeSelectedSemanticValue",
+        "state.EncodeSelectedSemanticValueValid",
+        "rejectMessageCheckValue",
+        "tkpkgFormatSignedSemanticValueV1\t.block",
+        "RejectValueMinI32Text",
+        "RejectValueDecimalPowers",
+    ] {
+        assert!(
+            native_selector.contains(expected),
+            "missing native value-diagnostic boundary {expected}"
+        );
+    }
+    let renderer = native_selector
+        .split("tkpkgFormatSignedSemanticValueV1\t.block")
+        .nth(1)
+        .and_then(|tail| tail.split("\t.bend  ; tkpkgFormatSignedSemanticValueV1").next())
+        .expect("bounded native signed-value formatter");
+    for forbidden in ["TRAP", "68000", "opcode"] {
+        assert!(
+            !renderer.contains(forbidden),
+            "generic value formatter must not own {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn motorola68020_item20_duplicate_register_matches_rust_boundary() {
+    // Proof level B. This proves native duplicate-list rejection follows the
+    // Rust visitor/capture boundary and leaves the diagnostic in the package.
+    let rust_selector = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_encoding.rs"),
+    )
+    .expect("read Rust selector encoding reference");
+    for expected in [
+        "fn semantic_duplicate_register(expr: &Expr)",
+        "op: BinaryOp::Divide",
+        "let canonical = id.to_ascii_uppercase()",
+        "captures.push((\"register\", duplicate))",
+    ] {
+        assert!(
+            rust_selector.contains(expected),
+            "missing Rust duplicate-register boundary {expected}"
+        );
+    }
+
+    let native_selector = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
+    )
+    .expect("read native package selection service");
+    for expected in [
+        ".byte \"duplicate_register\"",
+        ".byte \"{register}\"",
+        "tkpkgProjectDuplicateRegisterV1\t.block",
+        "cmpi.b #'/', 0(a3, d5.l)",
+        "cmpi.b #'-', 0(a3, d0.w)",
+        "duplicateRegisterCompareLoop",
+        "move.l a0, (sp)",
+        "move.w d1, 4(sp)",
+        "rejectMessageCheckRegister",
+    ] {
+        assert!(
+            native_selector.contains(expected),
+            "missing native duplicate-register boundary {expected}"
+        );
+    }
+    let duplicate_projection = native_selector
+        .split("tkpkgProjectDuplicateRegisterV1\t.block")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("\t.bend  ; tkpkgProjectDuplicateRegisterV1")
+                .next()
+        })
+        .expect("bounded native duplicate-register routine");
+    assert!(!duplicate_projection.contains("MOVEM"));
+
+    let embedded_package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 20 package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unchanged all-family package")
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 20 package input");
+    let duplicate_plan = chunks
+        .selectors
+        .iter()
+        .find(|selector| {
+            selector.mnemonic.eq_ignore_ascii_case("MOVEM.W")
+                && selector
+                    .operand_plan
+                    .contains("duplicate_register0,indirect_reg1.class1")
+        })
+        .expect("Rust package MOVEM duplicate-register rejection");
+    assert!(duplicate_plan
+        .operand_plan
+        .contains("encoding.duplicate-register"));
+}
+
+#[test]
 fn motorola68020_item6_7_pass_one_sizes_relative_branches_when_selected_size_is_empty() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");

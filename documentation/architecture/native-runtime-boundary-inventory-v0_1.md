@@ -254,13 +254,17 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   module.
 - Routine responsibility groups: selected-request decoding; package MSEL and
   CSEM-owner traversal; CPU-neutral CMSE-v7 scalar input projection; scoped
-  RENC/VALP program lookup and execution; candidate construction;
-  selected-output diagnostic selection.
+  RENC/VALP program lookup and execution; neutral register-list mask and
+  duplicate detection; neutral tuple identity-scale projection; candidate
+  construction; selected-output diagnostic selection and standard scalar
+  capture rendering.
 - Decision: this module delegates existing plan interpretation to
   `tkpkg.amigaos.operand_runtime` and reads the session pass through the neutral
   runtime context. Item 15 adds only neutral package record decoding and input
-  projection; all target names, register indices, accepted values, field
-  meanings, and instruction semantics remain package-owned.
+  projection; Item 20 completes the package-declared register-list,
+  identity-scale, and diagnostic-capture projections. All target names,
+  register indices, accepted values, field meanings, diagnostic templates, and
+  instruction semantics remain package-owned.
 
 ### `tkpkg.amigaos.operand_runtime` (NR-004, Item 5.6.1 ownership split)
 

@@ -74,6 +74,11 @@ EncodeSelectedSemanticPlanKind
 	.align 2
 EncodeSelectedSemanticDiagnosticIndex
 	.res word, 1
+EncodeSelectedSemanticValue
+	.res long, 1
+EncodeSelectedSemanticValueValid
+	.res byte, 1
+	.align 2
 
 PairAPtr
 	.res long, 1

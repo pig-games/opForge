@@ -201,6 +201,9 @@ IndirectTupleValuePrefixText
 IndirectTupleArityPrefixText
 	.byte "indirect_tuple_arity"
 
+IndirectTupleIdentityScalePrefixText
+	.byte "indirect_tuple_identity_scale"
+
 UnaryPlusIndirectRegisterPrefixText
 	.byte "unary_plus_indirect_reg"
 
@@ -225,8 +228,35 @@ RejectMnemonicPlaceholderText
 RejectFormPlaceholderText
 	.byte "{form}"
 
+RejectRegisterPlaceholderText
+	.byte "{register}"
+
+RejectValuePlaceholderText
+	.byte "{value}"
+
+RejectValueMinI32Text
+	.byte "-2147483648"
+
+RejectValueDecimalPowers
+	.long 1000000000
+	.long 100000000
+	.long 10000000
+	.long 1000000
+	.long 100000
+	.long 10000
+	.long 1000
+	.long 100
+	.long 10
+	.long 1
+
 ImmediateRegisterShapeText
 	.byte "immediate_register"
+
+RegisterMaskPrefixText
+	.byte "register_mask"
+
+DuplicateRegisterPrefixText
+	.byte "duplicate_register"
 
 ImmediateDirectShapeText
 	.byte "immediate_direct"
@@ -1269,6 +1299,8 @@ cmseSelectorLoop
 	clr.l state.EncodeSelectedSemanticPlanPtr
 	clr.b state.EncodeSelectedSemanticPlanKind
 	move.w #$FFFF, state.EncodeSelectedSemanticDiagnosticIndex
+	clr.l state.EncodeSelectedSemanticValue
+	clr.b state.EncodeSelectedSemanticValueValid
 	moveq #0, d6
 	moveq #1, d0
 	bsr.w tkpkgServiceRequireBytesV1
@@ -1592,6 +1624,11 @@ semanticInputLoop
 	bsr.w tkpkgProjectCompactSemanticInputV2
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.w semanticProjectionFailed
+	tst.b state.EncodeSelectedSemanticValueValid
+	bne.s semanticInputValueCaptured
+	move.l d3, state.EncodeSelectedSemanticValue
+	move.b #1, state.EncodeSelectedSemanticValueValid
+semanticInputValueCaptured
 	move.b #4, (a4)+
 	move.b d3, (a4)+
 	lsr.l #8, d3
@@ -1621,6 +1658,8 @@ semanticScalarEvaluate
 	jsr operand.tkpkgMselEvaluateSemanticSpanV2
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.s semanticProjectionFailed
+	move.l d3, state.EncodeSelectedSemanticValue
+	move.b #1, state.EncodeSelectedSemanticValueValid
 	move.b #4, (a4)+
 	move.b d3, (a4)+
 	lsr.l #8, d3
@@ -1982,41 +2021,66 @@ sequenceReturn
 
 ; Execute Rust CMSE v7 semantic rejection for neutral input sources.  A row is
 ; rejected only when every declared projection matches.  The package DIAG
-; table owns the message template; this runtime substitutes the two standard
-; selector captures supplied by Rust (`mnemonic` and `form`).
+; table owns the message template; this runtime substitutes Rust's standard
+; selector captures (`mnemonic`, `form`, `register`, and projected `value`).
 ; Inputs: A1 = kind-6 plan body; A5/D2 = mnemonic; A6 = CMSE chunk end.
 ; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D1 = diagnostic length on rejection.
 tkpkgBuildCompactSemanticRejectCandidateV2	.block
 	movem.l d2-d7/a0-a6, -(sp)
+	lea -6(sp), sp
+	clr.l (sp)
+	clr.w 4(sp)
 	movea.l a1, a2
 	bsr.w tkpkgServiceReadU16LeV1
-	bne.s rejectMalformed
+	bne.w rejectMalformed
 	lea buffers.CompactSelectorPlanText, a0
 	bsr.w resolveCompactSelectorStringV1
-	bne.s rejectMalformed
+	bne.w rejectMalformed
 	tst.w d0
-	beq.s rejectMalformed
+	beq.w rejectMalformed
 	move.w d0, d6
 	moveq #1, d0
 	bsr.w tkpkgServiceRequireBytesV1
-	bne.s rejectMalformed
+	bne.w rejectMalformed
 	moveq #0, d7
 	move.b (a2)+, d7
 	tst.w d7
-	beq.s rejectMalformed
+	beq.w rejectMalformed
 
 rejectInputLoop
 	bsr.w tkpkgServiceReadU16LeV1
-	bne.s rejectMalformed
+	bne.w rejectMalformed
 	lea buffers.CompactSelectorInputText, a0
 	bsr.w resolveCompactSelectorStringV1
-	bne.s rejectMalformed
+	bne.w rejectMalformed
 	tst.w d0
-	beq.s rejectMalformed
+	beq.w rejectMalformed
+	move.w d0, d5
+	move.l a2, -(sp)
 	lea buffers.CompactSelectorInputText, a1
+	lea DuplicateRegisterPrefixText, a2
+	moveq #18, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	movea.l (sp)+, a2
+	tst.b d0
+	beq.s rejectOrdinaryInput
+	lea buffers.CompactSelectorInputText+18, a1
+	move.w d5, d0
+	subi.w #18, d0
+	bsr.w tkpkgProjectDuplicateRegisterV1
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.s rejectReturn
+	move.l a0, (sp)
+	move.w d1, 4(sp)
+	bra.s rejectInputMatched
+
+rejectOrdinaryInput
+	lea buffers.CompactSelectorInputText, a1
+	move.w d5, d0
 	bsr.w tkpkgProjectCompactSemanticInputV2
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.s rejectReturn
+rejectInputMatched
 	subq.w #1, d7
 	bne.s rejectInputLoop
 
@@ -2024,6 +2088,9 @@ rejectInputLoop
 	move.w d6, d0
 	move.w state.EncodeSelectedMselMnemonicLen, d2
 	moveq #0, d3
+	movea.l (sp), a0
+	moveq #0, d4
+	move.w 4(sp), d4
 	bsr.w tkpkgRenderRejectMessageCodeV1
 	tst.l d0
 	bne.s rejectMalformed
@@ -2034,6 +2101,7 @@ rejectMalformed
 	moveq #0, d1
 	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
 rejectReturn
+	lea 6(sp), sp
 	movem.l (sp)+, d2-d7/a0-a6
 	rts
 	.bend  ; tkpkgBuildCompactSemanticRejectCandidateV2
@@ -2042,14 +2110,18 @@ rejectReturn
 ; bounded candidate scratch buffer.  DIAG is the Rust simple-schema sequence:
 ; u32 count followed by code/template length-prefixed UTF-8 string pairs.
 ; Inputs: A1/D0 = diagnostic code; A5/D2 = selected full mnemonic;
-;         D3.B = nonzero when `{mnemonic}` uses the full form.
+;         D3.B = nonzero when `{mnemonic}` uses the full form;
+;         A0/D4 = optional package-neutral `{register}` capture;
+;         state carries the optional first projected `{value}` scalar.
 ; Outputs: D0 = 0 success, 1 malformed/missing; D1 = rendered byte length.
 tkpkgRenderRejectMessageCodeV1	.block
 	movem.l d2-d7/a0-a6, -(sp)
-	lea -6(sp), sp
+	lea -12(sp), sp
 	move.w d2, (sp)
 	move.w d0, 2(sp)
 	move.w d3, 4(sp)
+	move.l a0, 6(sp)
+	move.w d4, 10(sp)
 	movea.l a1, a4
 	lea buffers.MessageChunkOffsetLo, a3
 	bsr.w tkpkgServiceChunkPtrFromLocatorV1
@@ -2092,6 +2164,9 @@ rejectMessageLoop
 rejectMessageFound
 	move.w (sp), d2
 	move.w 4(sp), d3
+	movea.l 6(sp), a0
+	moveq #0, d4
+	move.w 10(sp), d4
 	bsr.w tkpkgRenderRejectMessageTemplateV1
 	bra.s rejectMessageReturn
 
@@ -2099,7 +2174,7 @@ rejectMessageFail
 	moveq #0, d1
 	moveq #1, d0
 rejectMessageReturn
-	lea 6(sp), sp
+	lea 12(sp), sp
 	movem.l (sp)+, d2-d7/a0-a6
 	rts
 	.bend  ; tkpkgRenderRejectMessageCodeV1
@@ -2120,6 +2195,8 @@ tkpkgRenderSelectedSemanticRejectV1	.block
 	movea.l state.EncodeSelectedMnemonicPtr, a5
 	lea buffers.CompactSelectorPlanText, a1
 	moveq #1, d3
+	suba.l a0, a0
+	moveq #0, d4
 	bsr.w tkpkgRenderRejectMessageCodeV1
 	tst.l d0
 	bne.s selectedDiagnosticReturn
@@ -2135,11 +2212,15 @@ selectedDiagnosticFail
 ; remain package-owned; replacement mnemonics are ASCII-uppercased exactly as
 ; Rust's selector boundary does before supplying `mnemonic` and `form`.
 ; Inputs: A1/D0 = template; A5/D2 = selected full mnemonic;
-;         D3.B = nonzero when `{mnemonic}` uses the full form.
+;         D3.B = nonzero when `{mnemonic}` uses the full form;
+;         A0/D4 = optional package-neutral `{register}` capture.
 ; Outputs: D0 = 0 success, 1 overflow; D1 = rendered length.
 tkpkgRenderRejectMessageTemplateV1	.block
 	movem.l d2-d7/a0-a6, -(sp)
-	move.w d3, -(sp)
+	lea -8(sp), sp
+	move.w d3, (sp)
+	move.l a0, 2(sp)
+	move.w d4, 6(sp)
 	movea.l a1, a3
 	move.w d0, d7
 	lea buffers.TokenScratchBuffer, a4
@@ -2174,31 +2255,66 @@ rejectMessageTemplateLoop
 rejectMessageMnemonicReady
 	lea 10(a3), a3
 	subi.w #10, d7
-	bra.s rejectMessageCopyReplacement
+	bra.w rejectMessageCopyReplacement
 
 rejectMessageCheckForm
 	cmpi.w #6, d7
-	bcs.s rejectMessageCopyLiteral
+	bcs.s rejectMessageCheckRegister
 	movea.l a3, a1
 	move.w d7, d0
 	lea RejectFormPlaceholderText, a2
 	moveq #6, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
 	tst.b d0
-	beq.s rejectMessageCopyLiteral
+	beq.s rejectMessageCheckRegister
 	movea.l a5, a0
 	move.w d2, d4
 	lea 6(a3), a3
 	subq.w #6, d7
+	bra.w rejectMessageCopyReplacement
+
+rejectMessageCheckRegister
+	cmpi.w #10, d7
+	bcs.s rejectMessageCheckValue
+	movea.l a3, a1
+	move.w d7, d0
+	lea RejectRegisterPlaceholderText, a2
+	moveq #10, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s rejectMessageCheckValue
+	movea.l 2(sp), a0
+	move.w 6(sp), d4
+	beq.w rejectMessageTemplateFail
+	lea 10(a3), a3
+	subi.w #10, d7
+	bra.w rejectMessageCopyReplacement
+
+rejectMessageCheckValue
+	cmpi.w #7, d7
+	bcs.w rejectMessageCopyLiteral
+	movea.l a3, a1
+	move.w d7, d0
+	lea RejectValuePlaceholderText, a2
+	moveq #7, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.w rejectMessageCopyLiteral
+	tst.b state.EncodeSelectedSemanticValueValid
+	beq.w rejectMessageTemplateFail
+	move.l state.EncodeSelectedSemanticValue, d0
+	bsr.w tkpkgFormatSignedSemanticValueV1
+	lea 7(a3), a3
+	subi.w #7, d7
 
 rejectMessageCopyReplacement
 	move.w d6, d0
 	add.w d4, d0
-	bcs.s rejectMessageTemplateFail
+	bcs.w rejectMessageTemplateFail
 	cmpi.w #buffers.TOKEN_SCRATCH_CAPACITY, d0
-	bhi.s rejectMessageTemplateFail
+	bhi.w rejectMessageTemplateFail
 	tst.w d4
-	beq.s rejectMessageTemplateLoop
+	beq.w rejectMessageTemplateLoop
 rejectMessageReplacementLoop
 	moveq #0, d3
 	move.b (a0)+, d3
@@ -2216,7 +2332,7 @@ rejectMessageReplacementReady
 
 rejectMessageCopyLiteral
 	cmpi.w #buffers.TOKEN_SCRATCH_CAPACITY, d6
-	bhs.s rejectMessageTemplateFail
+	bhs.w rejectMessageTemplateFail
 	move.b (a3)+, (a4)+
 	addq.w #1, d6
 	subq.w #1, d7
@@ -2230,10 +2346,69 @@ rejectMessageTemplateFail
 	moveq #0, d1
 	moveq #1, d0
 rejectMessageTemplateReturn
-	addq.l #2, sp
+	lea 8(sp), sp
 	movem.l (sp)+, d2-d7/a0-a6
 	rts
 	.bend  ; tkpkgRenderRejectMessageTemplateV1
+
+; Format one native signed-32 semantic scalar exactly as Rust's `{value}`
+; diagnostic capture.  Decimal powers avoid target-specific division behavior.
+; Inputs: D0.L = value. Outputs: A0/D4 = bounded decimal text span.
+tkpkgFormatSignedSemanticValueV1	.block
+	movem.l d1-d3/d5-d7/a1-a2, -(sp)
+	lea buffers.CompactStringScratchBuffer, a0
+	movea.l a0, a2
+	moveq #0, d4
+	move.l d0, d5
+	bpl.s semanticValueUnsigned
+	cmpi.l #$80000000, d5
+	bne.s semanticValueNegative
+	lea RejectValueMinI32Text, a1
+	moveq #10, d6
+semanticValueMinCopy
+	move.b (a1)+, (a2)+
+	dbf d6, semanticValueMinCopy
+	moveq #11, d4
+	bra.s semanticValueDone
+
+semanticValueNegative
+	move.b #'-', (a2)+
+	addq.w #1, d4
+	neg.l d5
+
+semanticValueUnsigned
+	lea RejectValueDecimalPowers, a1
+	moveq #9, d6
+	moveq #0, d3
+semanticValuePowerLoop
+	move.l (a1)+, d1
+	moveq #0, d2
+semanticValueDigitLoop
+	cmp.l d1, d5
+	bcs.s semanticValueDigitReady
+	sub.l d1, d5
+	addq.b #1, d2
+	bra.s semanticValueDigitLoop
+semanticValueDigitReady
+	tst.b d3
+	bne.s semanticValueEmitDigit
+	tst.b d2
+	bne.s semanticValueStartDigits
+	tst.w d6
+	bne.s semanticValueNextPower
+semanticValueStartDigits
+	moveq #1, d3
+semanticValueEmitDigit
+	addi.b #'0', d2
+	move.b d2, (a2)+
+	addq.w #1, d4
+semanticValueNextPower
+	dbf d6, semanticValuePowerLoop
+
+semanticValueDone
+	movem.l (sp)+, d1-d3/d5-d7/a1-a2
+	rts
+	.bend  ; tkpkgFormatSignedSemanticValueV1
 
 ; Require D0.W more bytes in the bounded selected-candidate buffer.
 tkpkgSequenceRequireCandidateBytesV2	.block
@@ -2419,7 +2594,7 @@ semanticCheckTupleQualifiedRegister
 	moveq #28, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
 	tst.b d0
-	beq.s semanticCheckTupleValue
+	beq.s semanticCheckTupleIdentityScale
 	lea 28(a5), a1
 	move.w d7, d0
 	subi.w #28, d0
@@ -2434,6 +2609,7 @@ semanticCheckTupleQualifiedRegister
 	move.w d4, d1
 	jsr operand.tkpkgMselLocateIndirectTupleItemV2
 	bne.w semanticProjectNoMatch
+	bsr.w tkpkgMselUnwrapIdentityScaleV1
 	movea.l a2, a1
 	move.w d6, d1
 	bsr.w tkpkgMselStripExpectedQualifierV2
@@ -2441,6 +2617,32 @@ semanticCheckTupleQualifiedRegister
 	move.l a6, d1
 	bsr.w tkpkgFindScopedRegisterEncodingV1
 	bne.w semanticProjectNoMatch
+	bra.w semanticProjectOk
+
+semanticCheckTupleIdentityScale
+	movea.l a5, a1
+	move.w d7, d0
+	lea IndirectTupleIdentityScalePrefixText, a2
+	moveq #29, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckTupleValue
+	lea 29(a5), a1
+	move.w d7, d0
+	subi.w #29, d0
+	bsr.w tkpkgParseTupleItemClassSpecV2
+	bne.w semanticProjectMalformed
+	tst.w d6
+	bne.w semanticProjectMalformed
+	cmpi.w #$FFFF, d5
+	bne.w semanticProjectMalformed
+	move.w d3, d0
+	move.w d4, d1
+	jsr operand.tkpkgMselLocateIndirectTupleItemV2
+	bne.w semanticProjectNoMatch
+	bsr.w tkpkgMselUnwrapIdentityScaleV1
+	bne.w semanticProjectNoMatch
+	moveq #1, d3
 	bra.w semanticProjectOk
 
 semanticCheckTupleValue
@@ -2551,6 +2753,20 @@ semanticCheckIndirectRegister
 	bra.s semanticRegisterSpec
 
 semanticCheckRegister
+	movea.l a5, a1
+	move.w d7, d0
+	lea RegisterMaskPrefixText, a2
+	moveq #13, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckRegisterSource
+	lea 13(a5), a1
+	move.w d7, d0
+	subi.w #13, d0
+	bsr.w tkpkgProjectRegisterMaskV1
+	bra.w semanticProjectReturn
+
+semanticCheckRegisterSource
 	cmpi.w #10, d7
 	bcs.w semanticCheckRequiredValue
 	cmpi.b #'r', (a5)
@@ -2655,6 +2871,548 @@ semanticProjectReturn
 	movem.l (sp)+, d2/d4-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgProjectCompactSemanticInputV2
+
+; Project Rust's neutral `duplicate_registerN` rejection capture from the
+; bounded source form of a divide-composed register list.  Subtraction ranges
+; are opaque nodes for duplicate detection, matching Rust's recursive visitor.
+; Inputs: A1/D0.W = operand index text after `duplicate_register`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; A0/D1.W = duplicate token on success.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68000-remaining-base-v1.toml
+; @opforge-role: delegation
+tkpkgProjectDuplicateRegisterV1	.block
+	movem.l d2-d7/a1-a6, -(sp)
+	lea -8(sp), sp
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w duplicateRegisterMalformed
+	move.w d3, d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w duplicateRegisterNoMatch
+	movea.l a0, a5
+	movea.l a0, a2
+	move.l d0, d6
+
+duplicateRegisterTokenLoop
+	tst.l d6
+	beq.w duplicateRegisterNoMatch
+duplicateRegisterTrimStart
+	move.b (a2), d0
+	cmpi.b #' ', d0
+	beq.s duplicateRegisterTrimStartOne
+	cmpi.b #9, d0
+	bne.s duplicateRegisterTokenStart
+duplicateRegisterTrimStartOne
+	addq.l #1, a2
+	subq.l #1, d6
+	bne.s duplicateRegisterTrimStart
+	bra.w duplicateRegisterNoMatch
+
+duplicateRegisterTokenStart
+	movea.l a2, a3
+	moveq #0, d5
+duplicateRegisterTokenScan
+	cmp.l d6, d5
+	bhs.s duplicateRegisterTokenEnd
+	cmpi.b #'/', 0(a3, d5.l)
+	beq.s duplicateRegisterTokenEnd
+	addq.l #1, d5
+	bra.s duplicateRegisterTokenScan
+
+duplicateRegisterTokenEnd
+	move.l d5, d4
+duplicateRegisterTrimEnd
+	tst.l d4
+	beq.w duplicateRegisterNoMatch
+	move.b -1(a3, d4.l), d0
+	cmpi.b #' ', d0
+	beq.s duplicateRegisterTrimEndOne
+	cmpi.b #9, d0
+	bne.s duplicateRegisterTokenReady
+duplicateRegisterTrimEndOne
+	subq.l #1, d4
+	bra.s duplicateRegisterTrimEnd
+
+duplicateRegisterTokenReady
+	move.l a3, (sp)
+	move.w d4, 4(sp)
+	move.w d5, 6(sp)
+	moveq #0, d0
+duplicateRegisterCurrentShape
+	cmp.w d4, d0
+	bhs.s duplicateRegisterPreviousInit
+	cmpi.b #'-', 0(a3, d0.w)
+	beq.w duplicateRegisterAdvance
+	addq.w #1, d0
+	bra.s duplicateRegisterCurrentShape
+
+duplicateRegisterPreviousInit
+	movea.l a5, a4
+	move.l a3, d2
+	sub.l a5, d2
+
+duplicateRegisterPreviousLoop
+	tst.l d2
+	beq.w duplicateRegisterAdvance
+duplicateRegisterPreviousTrimStart
+	move.b (a4), d0
+	cmpi.b #' ', d0
+	beq.s duplicateRegisterPreviousTrimOne
+	cmpi.b #9, d0
+	bne.s duplicateRegisterPreviousStart
+duplicateRegisterPreviousTrimOne
+	addq.l #1, a4
+	subq.l #1, d2
+	bne.s duplicateRegisterPreviousTrimStart
+	bra.w duplicateRegisterAdvance
+
+duplicateRegisterPreviousStart
+	moveq #0, d3
+	suba.l a6, a6
+duplicateRegisterPreviousScan
+	cmp.l d2, d3
+	bhs.w duplicateRegisterAdvance
+	move.b 0(a4, d3.l), d0
+	cmpi.b #'/', d0
+	beq.s duplicateRegisterPreviousEnd
+	cmpi.b #'-', d0
+	bne.s duplicateRegisterPreviousNext
+	movea.l #1, a6
+duplicateRegisterPreviousNext
+	addq.l #1, d3
+	bra.s duplicateRegisterPreviousScan
+
+duplicateRegisterPreviousEnd
+	move.l d3, d7
+	move.l d3, d1
+duplicateRegisterPreviousTrimEnd
+	tst.l d1
+	beq.s duplicateRegisterPreviousAdvance
+	move.b -1(a4, d1.l), d0
+	cmpi.b #' ', d0
+	beq.s duplicateRegisterPreviousTrimEndOne
+	cmpi.b #9, d0
+	bne.s duplicateRegisterPreviousCompare
+duplicateRegisterPreviousTrimEndOne
+	subq.l #1, d1
+	bra.s duplicateRegisterPreviousTrimEnd
+
+duplicateRegisterPreviousCompare
+	move.l a6, d0
+	bne.s duplicateRegisterPreviousAdvance
+	cmp.w 4(sp), d1
+	bne.s duplicateRegisterPreviousAdvance
+	moveq #0, d0
+duplicateRegisterCompareLoop
+	cmp.w d1, d0
+	bhs.s duplicateRegisterFound
+	moveq #0, d3
+	move.b 0(a4, d0.w), d3
+	cmpi.b #'a', d3
+	bcs.s duplicateRegisterPreviousFolded
+	cmpi.b #'z', d3
+	bhi.s duplicateRegisterPreviousFolded
+	subi.b #$20, d3
+duplicateRegisterPreviousFolded
+	movea.l (sp), a6
+	moveq #0, d5
+	move.b 0(a6, d0.w), d5
+	cmpi.b #'a', d5
+	bcs.s duplicateRegisterCurrentFolded
+	cmpi.b #'z', d5
+	bhi.s duplicateRegisterCurrentFolded
+	subi.b #$20, d5
+duplicateRegisterCurrentFolded
+	cmp.b d5, d3
+	bne.s duplicateRegisterPreviousAdvance
+	addq.w #1, d0
+	bra.s duplicateRegisterCompareLoop
+
+duplicateRegisterPreviousAdvance
+	movea.l a4, a0
+	adda.l d7, a0
+	addq.l #1, a0
+	movea.l a0, a4
+	sub.l d7, d2
+	subq.l #1, d2
+	bra.w duplicateRegisterPreviousLoop
+
+duplicateRegisterFound
+	movea.l (sp), a0
+	moveq #0, d1
+	move.w 4(sp), d1
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s duplicateRegisterReturn
+
+duplicateRegisterAdvance
+	moveq #0, d5
+	move.w 6(sp), d5
+	cmp.l d6, d5
+	bhs.s duplicateRegisterNoMatch
+	movea.l (sp), a2
+	adda.l d5, a2
+	addq.l #1, a2
+	sub.l d5, d6
+	subq.l #1, d6
+	bra.w duplicateRegisterTokenLoop
+
+duplicateRegisterMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s duplicateRegisterFail
+duplicateRegisterNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+duplicateRegisterFail
+	suba.l a0, a0
+	moveq #0, d1
+duplicateRegisterReturn
+	lea 8(sp), sp
+	movem.l (sp)+, d2-d7/a1-a6
+	rts
+	.bend  ; tkpkgProjectDuplicateRegisterV1
+
+; Project Rust's architecture-neutral `register_maskN.mapC=O[+...][.reverse16]`
+; semantic input from a bounded source span.  Package RENC records own every
+; register spelling, class, index, and class-to-bit offset used here.
+; Inputs: A1/D0.W = text after `register_mask`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = u16 mask on success.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68000-remaining-base-v1.toml
+; @opforge-role: facade
+tkpkgProjectRegisterMaskV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -20(sp), sp
+	movea.l a1, a5
+	move.w d0, d7
+	moveq #0, d4
+
+registerMaskFindMap
+	cmp.w d7, d4
+	bhs.w registerMaskMalformed
+	cmpi.b #'.', 0(a5, d4.w)
+	bne.s registerMaskFindMapNext
+	move.w d7, d6
+	sub.w d4, d6
+	cmpi.w #4, d6
+	bcs.w registerMaskMalformed
+	cmpi.b #'m', 1(a5, d4.w)
+	bne.s registerMaskFindMapNext
+	cmpi.b #'a', 2(a5, d4.w)
+	bne.s registerMaskFindMapNext
+	cmpi.b #'p', 3(a5, d4.w)
+	bne.s registerMaskFindMapNext
+	bra.s registerMaskMapFound
+
+registerMaskFindMapNext
+	addq.w #1, d4
+	bra.s registerMaskFindMap
+
+registerMaskMapFound
+	tst.w d4
+	beq.w registerMaskMalformed
+	movea.l a5, a1
+	move.w d4, d0
+	move.w d4, -(sp)
+	bsr.w tkpkgParseU16DecimalV2
+	move.w (sp)+, d4
+	tst.l d1
+	bne.w registerMaskMalformed
+	move.w d3, (sp)
+	lea 4(a5, d4.w), a2
+	move.w d7, d6
+	sub.w d4, d6
+	subi.w #4, d6
+	beq.w registerMaskMalformed
+	clr.w 8(sp)
+	cmpi.w #10, d6
+	bcs.s registerMaskPlanReady
+	move.w d6, d5
+	subi.w #10, d5
+	cmpi.b #'.', 0(a2, d5.w)
+	bne.s registerMaskPlanReady
+	cmpi.b #'r', 1(a2, d5.w)
+	bne.s registerMaskPlanReady
+	cmpi.b #'e', 2(a2, d5.w)
+	bne.s registerMaskPlanReady
+	cmpi.b #'v', 3(a2, d5.w)
+	bne.s registerMaskPlanReady
+	cmpi.b #'e', 4(a2, d5.w)
+	bne.s registerMaskPlanReady
+	cmpi.b #'r', 5(a2, d5.w)
+	bne.s registerMaskPlanReady
+	cmpi.b #'s', 6(a2, d5.w)
+	bne.s registerMaskPlanReady
+	cmpi.b #'e', 7(a2, d5.w)
+	bne.s registerMaskPlanReady
+	cmpi.b #'1', 8(a2, d5.w)
+	bne.s registerMaskPlanReady
+	cmpi.b #'6', 9(a2, d5.w)
+	bne.s registerMaskPlanReady
+	moveq #1, d0
+	move.w d0, 8(sp)
+	move.w d5, d6
+	beq.w registerMaskMalformed
+
+registerMaskPlanReady
+	move.l a2, 2(sp)
+	move.w d6, 6(sp)
+	move.w (sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w registerMaskNoMatch
+	move.l a0, 10(sp)
+	move.w d0, 14(sp)
+	clr.w 16(sp)
+	clr.w 18(sp)
+	movea.l a0, a2
+	move.l d0, d6
+	moveq #0, d7
+	moveq #0, d5
+
+registerMaskTokenLoop
+	tst.l d6
+	beq.w registerMaskNoMatch
+registerMaskTrimStart
+	move.b (a2), d0
+	cmpi.b #' ', d0
+	beq.s registerMaskTrimStartOne
+	cmpi.b #9, d0
+	bne.s registerMaskTokenStart
+registerMaskTrimStartOne
+	addq.l #1, a2
+	subq.l #1, d6
+	bne.s registerMaskTrimStart
+	bra.w registerMaskNoMatch
+
+registerMaskTokenStart
+	movea.l a2, a3
+	moveq #0, d4
+registerMaskTokenScan
+	cmp.l d6, d4
+	bhs.s registerMaskTokenEnd
+	move.b 0(a3, d4.l), d0
+	cmpi.b #'/', d0
+	beq.s registerMaskTokenEnd
+	cmpi.b #'-', d0
+	beq.s registerMaskTokenEnd
+	addq.l #1, d4
+	bra.s registerMaskTokenScan
+
+registerMaskTokenEnd
+	move.w d4, 14(sp)
+	move.l d4, d2
+registerMaskTrimTokenEnd
+	tst.l d2
+	beq.w registerMaskNoMatch
+	move.b -1(a3, d2.l), d0
+	cmpi.b #' ', d0
+	beq.s registerMaskTrimTokenEndOne
+	cmpi.b #9, d0
+	bne.s registerMaskResolveToken
+registerMaskTrimTokenEndOne
+	subq.l #1, d2
+	bra.s registerMaskTrimTokenEnd
+
+registerMaskResolveToken
+	movea.l a3, a0
+	move.l d2, d0
+	move.w #$FFFF, d1
+	bsr.w tkpkgFindScopedRegisterEncodingClassV1
+	bne.w registerMaskNoMatch
+	movea.l 2(sp), a1
+	moveq #0, d0
+	move.w 6(sp), d0
+	bsr.w tkpkgRegisterMaskMappedBitV1
+	cmpi.w #2, d0
+	beq.w registerMaskMalformed
+	tst.w d0
+	bne.w registerMaskNoMatch
+
+	tst.w 16(sp)
+	beq.s registerMaskFirstBit
+	cmpi.w #'/', d5
+	beq.s registerMaskAddBit
+	cmpi.w #'-', d5
+	bne.w registerMaskNoMatch
+	cmp.w 18(sp), d4
+	bne.w registerMaskNoMatch
+	move.w 16(sp), d2
+	subq.w #1, d2
+	cmp.w d2, d3
+	blo.w registerMaskNoMatch
+registerMaskFillRange
+	bset d2, d7
+	cmp.w d3, d2
+	beq.s registerMaskRememberBit
+	addq.w #1, d2
+	bra.s registerMaskFillRange
+
+registerMaskFirstBit
+	moveq #1, d0
+	move.w d0, 16(sp)
+registerMaskAddBit
+	bset d3, d7
+registerMaskRememberBit
+	move.w d3, 16(sp)
+	addq.w #1, 16(sp)
+	move.w d4, 18(sp)
+	moveq #0, d2
+	move.w 14(sp), d2
+	cmp.l d6, d2
+	bhs.s registerMaskTokensComplete
+	moveq #0, d5
+	move.b 0(a3, d2.l), d5
+	lea 1(a3, d2.l), a2
+	move.l d6, d0
+	sub.l d2, d0
+	subq.l #1, d0
+	move.l d0, d6
+	beq.w registerMaskNoMatch
+	bra.w registerMaskTokenLoop
+
+registerMaskTokensComplete
+	tst.w 8(sp)
+	beq.s registerMaskOk
+	moveq #0, d3
+	moveq #0, d4
+	moveq #15, d5
+registerMaskReverseLoop
+	btst d5, d7
+	beq.s registerMaskReverseNext
+	bset d4, d3
+registerMaskReverseNext
+	addq.w #1, d4
+	subq.w #1, d5
+	bpl.s registerMaskReverseLoop
+	move.w d3, d7
+
+registerMaskOk
+	moveq #0, d3
+	move.w d7, d3
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s registerMaskReturn
+registerMaskMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s registerMaskReturn
+registerMaskNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+registerMaskReturn
+	lea 20(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectRegisterMaskV1
+
+; Validate one package class mapping and return the mapped bit for a resolved
+; class/index.  All mapping entries are parsed before success, matching Rust's
+; fail-closed collection of the mapping vector.
+; Inputs: A1/D0.W = mapping text; D4.W = class; D3.W = register index.
+; Outputs: D0 = 0 success, 1 no mapping/range, 2 malformed; D3.W = bit.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68000-remaining-base-v1.toml
+; @opforge-role: delegation
+tkpkgRegisterMaskMappedBitV1	.block
+	movem.l d2/d4-d7/a0-a6, -(sp)
+	lea -6(sp), sp
+	move.w d3, d7
+	move.w d4, d6
+	movea.l a1, a5
+	move.w d0, d5
+	clr.w (sp)
+	clr.w 2(sp)
+
+registerMaskMapEntry
+	tst.w d5
+	beq.w registerMaskMapDone
+	movea.l a5, a4
+	moveq #0, d2
+registerMaskMapFindEquals
+	cmp.w d5, d2
+	bhs.w registerMaskMapMalformed
+	move.b 0(a4, d2.w), d0
+	cmpi.b #'=', d0
+	beq.s registerMaskMapEquals
+	cmpi.b #'+', d0
+	beq.w registerMaskMapMalformed
+	addq.w #1, d2
+	bra.s registerMaskMapFindEquals
+
+registerMaskMapEquals
+	tst.w d2
+	beq.w registerMaskMapMalformed
+	movea.l a4, a1
+	move.w d2, d0
+	movem.l d2/d5, -(sp)
+	bsr.w tkpkgParseU16DecimalV2
+	movem.l (sp)+, d2/d5
+	tst.l d1
+	bne.w registerMaskMapMalformed
+	move.w d3, 4(sp)
+	lea 1(a4, d2.w), a3
+	move.w d5, d4
+	sub.w d2, d4
+	subq.w #1, d4
+	beq.w registerMaskMapMalformed
+	moveq #0, d2
+registerMaskMapFindPlus
+	cmp.w d4, d2
+	bhs.s registerMaskMapOffsetReady
+	cmpi.b #'+', 0(a3, d2.w)
+	beq.s registerMaskMapOffsetReady
+	addq.w #1, d2
+	bra.s registerMaskMapFindPlus
+
+registerMaskMapOffsetReady
+	tst.w d2
+	beq.w registerMaskMapMalformed
+	movea.l a3, a1
+	move.w d2, d0
+	movem.l d2/d4, -(sp)
+	bsr.w tkpkgParseU16DecimalV2
+	movem.l (sp)+, d2/d4
+	tst.l d1
+	bne.w registerMaskMapMalformed
+	cmp.w 4(sp), d6
+	bne.s registerMaskMapAdvance
+	tst.w (sp)
+	bne.s registerMaskMapAdvance
+	add.w d7, d3
+	bcs.s registerMaskMapOutOfRange
+	cmpi.w #16, d3
+	blo.s registerMaskMapRemember
+registerMaskMapOutOfRange
+	moveq #2, d0
+	move.w d0, (sp)
+	bra.s registerMaskMapAdvance
+registerMaskMapRemember
+	moveq #1, d0
+	move.w d0, (sp)
+	move.w d3, 2(sp)
+
+registerMaskMapAdvance
+	movea.l a3, a5
+	adda.w d2, a5
+	move.w d4, d5
+	sub.w d2, d5
+	beq.s registerMaskMapDone
+	addq.l #1, a5
+	subq.w #1, d5
+	beq.w registerMaskMapMalformed
+	bra.w registerMaskMapEntry
+
+registerMaskMapDone
+	cmpi.w #1, (sp)
+	bne.s registerMaskMapNoMatch
+	moveq #0, d3
+	move.w 2(sp), d3
+	moveq #0, d0
+	bra.s registerMaskMapReturn
+registerMaskMapMalformed
+	moveq #2, d0
+	bra.s registerMaskMapReturn
+registerMaskMapNoMatch
+	moveq #1, d0
+registerMaskMapReturn
+	lea 6(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0-a6
+	rts
+	.bend  ; tkpkgRegisterMaskMappedBitV1
 
 ; Project Rust's `target:exprN` match predicate for a direct identifier.  The
 ; native selector boundary retains source spans rather than Rust Expr nodes, so
@@ -3027,6 +3785,147 @@ tupleArityReturn
 	rts
 	.bend  ; tkpkgParseTupleAritySpecV2
 
+; Unwrap one neutral tuple-item multiplication when either evaluated side is
+; exactly the identity value.  The right side is tried first, matching Rust's
+; BinaryOp::Multiply projection; the other text span is returned unchanged.
+; Inputs: A0/D0 = tuple-item span. Outputs: A0/D0 = non-identity span;
+;         D1 = 0 match or 1 no match (with the original span restored).
+tkpkgMselUnwrapIdentityScaleV1	.block
+	movem.l d2-d7/a1-a6, -(sp)
+	lea -24(sp), sp
+	move.l a0, (sp)
+	move.w d0, 4(sp)
+	movea.l a0, a2
+	adda.l d0, a2
+	move.w d0, d7
+	moveq #0, d6
+
+identityScaleFindOperator
+	tst.w d7
+	beq.w identityScaleNoMatch
+	subq.l #1, a2
+	subq.w #1, d7
+	moveq #0, d2
+	move.b (a2), d2
+	cmpi.b #')', d2
+	beq.s identityScaleNestedClose
+	cmpi.b #'(', d2
+	beq.s identityScaleNestedOpen
+	cmpi.b #'*', d2
+	bne.s identityScaleFindOperator
+	tst.w d6
+	bne.s identityScaleFindOperator
+	bra.s identityScaleHaveOperator
+
+identityScaleNestedClose
+	addq.w #1, d6
+	bra.s identityScaleFindOperator
+
+identityScaleNestedOpen
+	tst.w d6
+	beq.w identityScaleNoMatch
+	subq.w #1, d6
+	bra.s identityScaleFindOperator
+
+identityScaleHaveOperator
+	movea.l (sp), a4
+	movea.l a2, a3
+identityScaleTrimLeftEnd
+	cmpa.l a4, a3
+	bls.w identityScaleNoMatch
+	cmpi.b #' ', -1(a3)
+	beq.s identityScaleTrimLeftOne
+	cmpi.b #9, -1(a3)
+	bne.s identityScaleLeftReady
+identityScaleTrimLeftOne
+	subq.l #1, a3
+	bra.s identityScaleTrimLeftEnd
+
+identityScaleLeftReady
+	lea 1(a2), a5
+	movea.l (sp), a6
+	moveq #0, d5
+	move.w 4(sp), d5
+	adda.l d5, a6
+identityScaleTrimRightStart
+	cmpa.l a6, a5
+	bhs.w identityScaleNoMatch
+	cmpi.b #' ', (a5)
+	beq.s identityScaleTrimRightStartOne
+	cmpi.b #9, (a5)
+	bne.s identityScaleTrimRightEnd
+identityScaleTrimRightStartOne
+	addq.l #1, a5
+	bra.s identityScaleTrimRightStart
+
+identityScaleTrimRightEnd
+	cmpa.l a5, a6
+	bls.w identityScaleNoMatch
+	cmpi.b #' ', -1(a6)
+	beq.s identityScaleTrimRightEndOne
+	cmpi.b #9, -1(a6)
+	bne.s identityScaleSpansReady
+identityScaleTrimRightEndOne
+	subq.l #1, a6
+	bra.s identityScaleTrimRightEnd
+
+identityScaleSpansReady
+	move.l a4, 8(sp)
+	move.l a3, d4
+	sub.l a4, d4
+	move.w d4, 12(sp)
+	move.l a5, 16(sp)
+	move.l a6, d5
+	sub.l a5, d5
+	move.w d5, 20(sp)
+
+	movea.l 16(sp), a0
+	moveq #0, d0
+	move.w 20(sp), d0
+	moveq #0, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.s identityScaleTryLeft
+	cmpi.l #1, d3
+	beq.s identityScaleReturnLeft
+
+identityScaleTryLeft
+	movea.l 8(sp), a0
+	moveq #0, d0
+	move.w 12(sp), d0
+	moveq #0, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.s identityScaleNoMatch
+	cmpi.l #1, d3
+	bne.s identityScaleNoMatch
+	movea.l 16(sp), a0
+	moveq #0, d0
+	move.w 20(sp), d0
+	bra.s identityScaleMatched
+
+identityScaleReturnLeft
+	movea.l 8(sp), a0
+	moveq #0, d0
+	move.w 12(sp), d0
+
+identityScaleMatched
+	moveq #0, d1
+	bra.s identityScaleReturn
+
+identityScaleNoMatch
+	movea.l (sp), a0
+	moveq #0, d0
+	move.w 4(sp), d0
+	moveq #1, d1
+
+identityScaleReturn
+	lea 24(sp), sp
+	movem.l (sp)+, d2-d7/a1-a6
+	tst.l d1
+	rts
+	.bend  ; tkpkgMselUnwrapIdentityScaleV1
+
 ; Remove and validate a case-insensitive `.qualifier` suffix from one tuple
 ; item. Inputs: A0/D0=item span; A1/D1=expected qualifier. Outputs: A0/D0=base.
 tkpkgMselStripExpectedQualifierV2	.block
@@ -3166,7 +4065,21 @@ parseSignedFail
 ; Inputs: A0/D0 = register token; D1.W = required neutral class.
 ; Outputs: D0 = 0 success or 1 no match/malformed; D3.L = neutral index.
 tkpkgFindScopedRegisterEncodingV1	.block
-	movem.l d2/d4-d7/a0-a6, -(sp)
+	move.l d4, -(sp)
+	bsr.w tkpkgFindScopedRegisterEncodingClassV1
+	move.l (sp)+, d4
+	tst.l d0
+	rts
+	.bend  ; tkpkgFindScopedRegisterEncodingV1
+
+; Resolve one spelling while retaining its package-owned neutral class.
+; Inputs: A0/D0 = register token; D1.W = required class or $FFFF.
+; Outputs: D0 = 0/1; D3.L = index; D4.W = class on success.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68000-remaining-base-v1.toml
+; @opforge-role: delegation
+tkpkgFindScopedRegisterEncodingClassV1	.block
+	movem.l d2/d5-d7/a0-a6, -(sp)
 	lea -18(sp), sp
 	move.w d1, (sp)
 	clr.w 2(sp)
@@ -3242,6 +4155,8 @@ rencNext
 rencMatch
 	moveq #0, d3
 	move.w 4(sp), d3
+	moveq #0, d4
+	move.w 6(sp), d4
 	moveq #0, d0
 	bra.s rencReturn
 rencNoMatch
@@ -3249,10 +4164,10 @@ rencFail
 	moveq #1, d0
 rencReturn
 	lea 18(sp), sp
-	movem.l (sp)+, d2/d4-d7/a0-a6
+	movem.l (sp)+, d2/d5-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; tkpkgFindScopedRegisterEncodingV1
+	.bend  ; tkpkgFindScopedRegisterEncodingClassV1
 
 ; Apply a package-owned required or optional value program to a scalar
 ; projection.  Optional constraint violations reject the selector candidate;

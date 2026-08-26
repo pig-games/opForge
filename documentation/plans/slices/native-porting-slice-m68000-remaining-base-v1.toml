@@ -1,0 +1,108 @@
+[slice]
+schema_version = 2
+name = "native m68000 remaining base surface v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 20
+requirements = ["N68X0-001", "N68X0-002", "N68X0-004", "N68X0-014", "N68X0-015", "N68X0-016"]
+rust_reference = [
+  "crates/opforge-vm/src/execution_model/selector_encoding.rs::semantic_register_mask",
+  "crates/opforge-vm/src/execution_model/selector_encoding.rs::semantic_duplicate_register",
+  "crates/opforge-vm/src/execution_model/selector_encoding.rs::semantic_plan_inputs",
+  "crates/opforge-package/src/package.rs::MODE_SELECTOR_PLAN_INDIRECT_TUPLE_IDENTITY_SCALE_PREFIX",
+  "crates/opforge-families/src/m68k/package_programs.rs",
+  "crates/opforge-asm/src/tests.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgProjectCompactSemanticInputV2",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgProjectDuplicateRegisterV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgProjectRegisterMaskV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgRegisterMaskMappedBitV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgFindScopedRegisterEncodingClassV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgMselUnwrapIdentityScaleV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildCompactSemanticRejectCandidateV2",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgRenderRejectMessageTemplateV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgFormatSignedSemanticValueV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_state.asm::EncodeSelectedSemanticValue"
+]
+invariant = "For remaining base-68000 rows selected by the exact unmodified Rust package, native projects only the package-declared neutral semantic inputs and emits byte-for-byte Rust-equivalent output or the exact Rust-owned diagnostic without embedding CPU, mnemonic, register, addressing-mode, opcode, or legality authority."
+assertion_decision = "No ad-hoc instrumentation: focused Level B source contracts and fresh challenge-bound Level D guests prove each initial neutral invariant before one final established native completion run; the two invariants exposed by that single run are closed only by their own directed Level B and one-guest Level D proofs, without repeating the broad wrapper."
+expected_inputs = "The exact unmodified all-family package and focused MOVEM, MOVEP, system-register, BCD, exchange, extend, multiply, divide, check, and remaining negative base-68000 sources."
+expected_outputs = "Byte-for-byte equality with same-source in-memory Rust oracles for every positive source and explicit nonzero guest completion carrying the same Rust diagnostic for every negative source."
+known_non_equivalences = "Native transports scalar values as 32-bit quantities and uses bounded fixed storage, fundamental Amiga host differences that do not alter the owned base-68000 value domains in this slice."
+fast_proof_command = "cargo test -p asm motorola68020_item20_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_m68000_remaining_base_parity -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_item20_remaining_base_corpus_matches_rust_boundary"
+proof_level = "B"
+proves = "Every base-68000 source is accounted for exactly once across Items 17-20; all nine remaining positive fixtures match Rust .srec and .lst output and the remaining negative fixture matches Rust .err output under the exact embedded package."
+does_not_prove = "Execution by a real Amiga guest."
+
+[[tests]]
+name = "motorola68020_item20_register_mask_matches_rust_boundary"
+proof_level = "B"
+proves = "Native source mirrors Rust's neutral register-mask plan parsing, package RENC resolution, class mapping, range/union construction, optional bit reversal, and exact unmodified package boundary."
+does_not_prove = "Execution by a real Amiga guest or the later remaining-base families."
+
+[[tests]]
+name = "external_fs_uae_native_m68000_single_register_mask_localization"
+proof_level = "D"
+proves = "A fresh guest executes the smallest single-register MOVEM mask and matches the same-source live Rust bytes exactly, isolating package RENC lookup and mask-bit mapping."
+does_not_prove = "Range traversal, union construction, reverse masks, diagnostics, or other remaining-base families."
+
+[[tests]]
+name = "external_fs_uae_native_m68000_movem_register_mask_parity"
+proof_level = "D"
+proves = "A fresh guest executes focused MOVEM register-list forms from the exact package and matches the same-source live Rust bytes exactly."
+does_not_prove = "MOVEP, system-register, BCD, exchange, extend, multiply, divide, check, negatives, later CPUs, output formats, or self-hosting."
+
+[[tests]]
+name = "motorola68020_item20_duplicate_register_matches_rust_boundary"
+proof_level = "B"
+proves = "Native source mirrors Rust's case-insensitive divide-list duplicate visitor, opaque subtraction ranges, register capture, package diagnostic lookup, and exact package rejection row."
+does_not_prove = "Execution or diagnostic output by a real Amiga guest."
+
+[[tests]]
+name = "motorola68020_item20_identity_scale_matches_rust_boundary"
+proof_level = "B"
+proves = "Native source mirrors Rust's neutral indirect-tuple identity multiplication, right-first scalar evaluation, qualified-register unwrapping, and exact package-declared source spelling."
+does_not_prove = "Execution or bytes from a real Amiga guest."
+
+[[tests]]
+name = "motorola68020_item20_value_diagnostic_matches_rust_boundary"
+proof_level = "B"
+proves = "Native retains Rust's first projected scalar capture and renders signed decimal `{value}` text while the exact package owns diagnostic codes and literal templates."
+does_not_prove = "Execution or diagnostic output by a real Amiga guest."
+
+[[tests]]
+name = "external_fs_uae_native_m68000_movem_duplicate_register_diagnostic_parity"
+proof_level = "D"
+proves = "A fresh guest rejects a repeated MOVEM register, renders the exact package-owned Rust diagnostic capture, and completes with explicit guest exit 1."
+does_not_prove = "Any positive form or any other remaining-base diagnostic."
+
+[[tests]]
+name = "external_fs_uae_native_m68000_identity_scale_alias_parity"
+proof_level = "D"
+proves = "One fresh guest executes `MOVE.W (A0,D1.W*1),D0` through the exact package and emits Rust's exact 30 30 10 00 bytes."
+does_not_prove = "Nonidentity scaling or 68020 full-extension addressing."
+
+[[tests]]
+name = "external_fs_uae_native_m68000_trap_value_diagnostic_parity"
+proof_level = "D"
+proves = "One fresh guest rejects `TRAP #16`, renders Rust's exact evaluated-value diagnostic, and completes with explicit guest exit 1."
+does_not_prove = "Other diagnostic placeholders or later TRAPcc forms."
+
+[[tests]]
+name = "external_fs_uae_native_m68000_remaining_base_parity"
+proof_level = "D"
+proves = "The single aggregate attempt ran every one of its nine positive and 21 negative cases, passing 28 and exposing the identity-scale alias and `{value}` renderer gaps subsequently closed by directed one-guest proofs."
+does_not_prove = "A second aggregate run after directed repair, later CPU extensions, output formats beyond the exercised native request path, or self-hosting."
+
+[[tests]]
+name = "native_existing_parity_completion_wrapper"
+proof_level = "D"
+proves = "The single Item 20 broad invocation re-proved every earlier established shard, including the full Motorola 68000 authoritative corpus and move/control aggregate, then attempted all 30 Item 20 cases and exposed exactly two directed repair targets."
+does_not_prove = "A second broad invocation after the directed repairs; the Directed-Fix and Single Native Completion Quality Gate explicitly forbids repetition."

@@ -12,6 +12,7 @@
 COMPACT_TABLE_VERSION_V1 = 1
 COMPACT_INDEX_NONE = $FFFF
 COMPACT_TABLE_MALFORMED_TEXT_LEN = 31
+ZERO_SHAPE_MODE_KEY_LEN = 7
 CTBL_LOCAL_MODE_PTR = 0
 CTBL_LOCAL_MODE_LEN = 4
 CTBL_LOCAL_FAMILY_OWNER = 6
@@ -30,6 +31,9 @@ CTBL_LOCAL_BYTES = 24
 CompactTableMalformedText
 	.byte "OTR901: compact table malformed", 0
 
+ZeroShapeModeKey
+	.byte $69, $6D, $70, $6C, $69, $65, $64
+
 	.endsection
 
 	.section code, kind=code
@@ -40,7 +44,8 @@ CompactTableMalformedText
 ;
 ; Inputs:
 ; - A0: selected-instruction request control block.
-; - A1/D0.W: selected mode bytes/length; zero length selects a fixed program.
+; - A1/D0.W: selected mode bytes/length; zero length selects Rust's canonical
+;   fixed-program mode key for a zero-operand request.
 ;
 ; Outputs:
 ; - D0: 0 on success/no match, 1 when CTBL is malformed or unsupported.
@@ -89,7 +94,13 @@ findFixedProgramFromRequestV1	.block
 	or.w d0, d3
 	subq.w #4, d7
 	or.w d3, d2
-	beq.s requestShapeReady
+	bne.s requestHasShape
+	lea ZeroShapeModeKey, a1
+	move.l a1, CTBL_LOCAL_MODE_PTR(a4)
+	move.w #ZERO_SHAPE_MODE_KEY_LEN, CTBL_LOCAL_MODE_LEN(a4)
+	bra.s requestShapeReady
+
+requestHasShape
 	tst.w CTBL_LOCAL_MODE_LEN(a4)
 	beq.w noMatch
 

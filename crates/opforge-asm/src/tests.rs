@@ -24081,6 +24081,146 @@ fn motorola68020_item25_native_state_runtime_matches_frozen_rust_program_boundar
 }
 
 #[test]
+fn motorola68020_item26_native_m68030_m68040_package_boundary_matches_rust() {
+    // Proof level B. The native selector/operand/encoder services must remain
+    // architecture-neutral while consuming the exact CPU-scoped Rust package
+    // rows for the 68030/68040 integer and narrow-MMU surface.
+    let package_path =
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let embedded_package = fs::read(&package_path).expect("read Item 26 embedded package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build current unmodified Rust package"),
+        "Item 26 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 26 package input");
+
+    let selector = |cpu: &str, mnemonic: &str, plan_fragment: &str| {
+        chunks
+            .selectors
+            .iter()
+            .find(|selector| {
+                selector.owner == ScopedOwner::Cpu(cpu.to_string())
+                    && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                    && selector.operand_plan.contains(plan_fragment)
+            })
+            .unwrap_or_else(|| {
+                panic!("missing Rust package selector {cpu}/{mnemonic}/{plan_fragment}")
+            })
+    };
+    let pflush_68030 = selector("m68030", "PFLUSH", "enc.pflush.68030");
+    assert_eq!(pflush_68030.shape_key, "immediate_direct");
+    assert!(pflush_68030.operand_plan.ends_with("@expr0,immediate1"));
+    let pflush_68040 = selector("m68040", "PFLUSH", "enc.pflush.68040");
+    assert_eq!(pflush_68040.shape_key, "direct");
+    assert!(pflush_68040.operand_plan.ends_with("@indirect_reg0.class1"));
+    let move16 = selector("m68040", "MOVE16", "unary_plus_indirect_reg0.class1");
+    assert_eq!(move16.shape_key, "direct_direct");
+    assert!(move16
+        .operand_plan
+        .contains("unary_plus_indirect_reg1.class1"));
+
+    for (cpu, mnemonic, diagnostic) in [
+        ("m68030", "RTM", "encoding.rtm.m68030"),
+        ("m68040", "CALLM", "encoding.callm.m68040"),
+        ("m68040", "RTM", "encoding.rtm.m68040"),
+        ("m68040", "MOVEC", "encoding.movec-caar-m68040"),
+        ("m68040", "PFLUSH", "encoding.pflush.m68040-arity"),
+    ] {
+        selector(cpu, mnemonic, diagnostic);
+    }
+
+    for id in ["enc.pflush.68030", "enc.pflush.68040"] {
+        let program = chunks
+            .semantic_programs
+            .iter()
+            .find(|program| program.id == id)
+            .unwrap_or_else(|| panic!("missing Rust semantic program {id}"));
+        assert_eq!(
+            program.owner,
+            ScopedOwner::Family("motorola68000".to_string())
+        );
+        assert_eq!(program.opcode_version, 2);
+    }
+
+    let m68040_controls = chunks
+        .register_encodings
+        .iter()
+        .filter(|register| register.owner == ScopedOwner::Cpu("m68040".to_string()))
+        .map(|register| (register.id.as_str(), register.class, register.index))
+        .collect::<Vec<_>>();
+    for (expected_id, expected_class, expected_index) in [
+        ("TC", 7, 0x003),
+        ("ITT0", 7, 0x004),
+        ("ITT1", 7, 0x005),
+        ("DTT0", 7, 0x006),
+        ("DTT1", 7, 0x007),
+        ("MMUSR", 7, 0x805),
+        ("URP", 7, 0x806),
+        ("SRP", 7, 0x807),
+    ] {
+        assert!(
+            m68040_controls.iter().any(|(id, class, index)| {
+                id.eq_ignore_ascii_case(expected_id)
+                    && *class == expected_class
+                    && *index == expected_index
+            }),
+            "missing Rust m68040 control-register row ({expected_id}, {expected_class}, {expected_index:#x}); decoded rows: {m68040_controls:?}"
+        );
+    }
+    assert!(!m68040_controls
+        .iter()
+        .any(|(id, _, _)| id.eq_ignore_ascii_case("CAAR")));
+
+    // ADDA.W is part of the inherited Rust instruction package and therefore
+    // remains a required native carry-forward form on both later CPUs.
+    assert!(chunks.selectors.iter().any(|selector| {
+        selector.owner == ScopedOwner::Family("motorola68000".to_string())
+            && selector.mnemonic.eq_ignore_ascii_case("ADDA.W")
+    }));
+
+    // Rust keeps a semantic CTBL placeholder for package-selected TRAPNE.
+    // Native's zero-operand fast path must distinguish it from an exact
+    // `implied` fixed program by preserving the table mode key in lookup.
+    assert!(chunks.tables.iter().any(|program| {
+        program.owner == ScopedOwner::Cpu("m68030".to_string())
+            && program.mnemonic.eq_ignore_ascii_case("TRAPNE")
+            && program.mode_key == "semantic"
+    }));
+    let compact_table = tkpkg_amigaos_source("tkpkg_compact_table.asm");
+    assert!(source_contains_in_order(
+        &compact_table,
+        &[
+            "ZeroShapeModeKey",
+            ".byte $69, $6D, $70, $6C, $69, $65, $64",
+            "move.l a1, CTBL_LOCAL_MODE_PTR(a4)",
+            "move.w #ZERO_SHAPE_MODE_KEY_LEN, CTBL_LOCAL_MODE_LEN(a4)",
+            "compareModeString",
+            "move.w CTBL_LOCAL_MODE_INDEX(a4), d0",
+            "cmp.w d0, d7",
+        ]
+    ));
+
+    for source_name in [
+        "tkpkg_selection_service.asm",
+        "tkpkg_operand_runtime.asm",
+        "tkpkg_encode_service.asm",
+    ] {
+        let source = tkpkg_amigaos_source(source_name);
+        for forbidden in ["m68030", "m68040", "PFLUSH", "MOVE16", "CAAR"] {
+            assert!(
+                !source
+                    .to_ascii_lowercase()
+                    .contains(&forbidden.to_ascii_lowercase()),
+                "generic native {source_name} must not own target spelling {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
 fn motorola68020_tkpkg_native_wire_roundtrip_preserves_subset_examples() {
     let source = tkpkg_amigaos_source("tkpkg_abi.asm");
 

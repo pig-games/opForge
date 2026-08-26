@@ -14308,6 +14308,705 @@ fn external_fs_uae_native_m68020_later_integer_group_a_parity() {
 }
 
 #[test]
+fn external_fs_uae_native_m68020_call_arg_value_parity() {
+    // Proof level D. One fresh challenged guest isolates Rust's neutral
+    // call-argument scalar projection through a frozen BFTST row.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        BFTST D0{3:5}\n";
+    let rust_oracle =
+        live_rust_cpu_name_oracle(source, Some("m68020"), "item24-call-arg-value-rust-oracle")
+            .expect("run live Rust Item 24 call-argument value oracle");
+    assert_eq!(rust_oracle, [0xe8, 0xc0, 0x00, 0xc5]);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 24 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item24-directed-call-arg-value",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 24 call-argument value parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert!(
+                runs[0].success,
+                "directed Item 24 call-argument value parity failed\nstdout:\n{}\nstderr:\n{}",
+                runs[0].stdout, runs[0].stderr
+            );
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68020_call_arg_value_target_parity() {
+    // Proof level D. One fresh challenged guest proves that native structurally
+    // matches the same relocation-capable postfix call argument as Rust and
+    // applies the package-owned absolute-long fixup to that argument.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        BFTST target{3:5}\ntarget:\n        NOP\n";
+    let rust_oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m68020"),
+        "item24-call-arg-value-target-rust-oracle",
+    )
+    .expect("run live Rust Item 24 call-argument target oracle");
+    assert_eq!(
+        rust_oracle,
+        [0xe8, 0xf9, 0x00, 0xc5, 0x00, 0x00, 0x00, 0x08, 0x4e, 0x71]
+    );
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 24 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item24-directed-call-arg-value-target",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 24 call-argument target parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert!(
+                runs[0].success,
+                "directed Item 24 call-argument target parity failed\nstdout:\n{}\nstderr:\n{}",
+                runs[0].stdout, runs[0].stderr
+            );
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68020_call_arg_member_parity() {
+    // Proof level D. One fresh challenged guest isolates Rust's member-field
+    // check and member-base evaluation inside a postfix bit-field call.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        BFEXTU ($1234).W{D1:8},D2\n";
+    let rust_oracle =
+        live_rust_cpu_name_oracle(source, Some("m68020"), "item24-call-arg-member-rust-oracle")
+            .expect("run live Rust Item 24 call-argument member oracle");
+    assert_eq!(rust_oracle, [0xe9, 0xf8, 0x28, 0x48, 0x12, 0x34]);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 24 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item24-directed-call-arg-member",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 24 call-argument member parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert!(runs[0].success);
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68020_call_arg_member_target_parity() {
+    // Proof level D. One fresh challenged guest proves Rust-equivalent member
+    // suffix validation and absolute-long fixup of the selected member base.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        BFEXTU (target).L{D1:8},D2\ntarget:\n        NOP\n";
+    let rust_oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m68020"),
+        "item24-call-arg-member-target-rust-oracle",
+    )
+    .expect("run live Rust Item 24 call-argument member target oracle");
+    assert_eq!(
+        rust_oracle,
+        [0xe9, 0xf9, 0x28, 0x48, 0x00, 0x00, 0x00, 0x08, 0x4e, 0x71]
+    );
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 24 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item24-directed-call-arg-member-target",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 24 call-argument member target parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert!(
+                runs[0].success,
+                "directed Item 24 call-argument member target parity failed\nstdout:\n{}\nstderr:\n{}",
+                runs[0].stdout, runs[0].stderr
+            );
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68020_call_arg_indirect_tuple_register_parity() {
+    // Proof level D. One fresh challenged guest isolates Rust's indirect tuple
+    // register projection and exact package-owned BFINS rejection diagnostic.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        BFINS D0,(4,PC){1:1}\n";
+    let rust_diagnostic = live_rust_cpu_name_diagnostic(
+        source,
+        "m68020",
+        "item24-call-arg-indirect-tuple-rust-diagnostic",
+    );
+    assert!(rust_diagnostic.contains("invalid bit-field effective address for BFINS"));
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 24 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item24-directed-call-arg-indirect-tuple-register",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+            &rust_diagnostic,
+        ),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 24 call-argument indirect-tuple parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert_eq!(runs[0].exit_code, Some(1));
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68020_bitfield_insert_parity() {
+    // Proof level D. One fresh challenged guest isolates the positive BFINS
+    // postfix-call path after its neutral argument projections were ported.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        BFINS D3,(A0){4:D4}\n";
+    let rust_oracle =
+        live_rust_cpu_name_oracle(source, Some("m68020"), "item24-bitfield-insert-rust-oracle")
+            .expect("run live Rust Item 24 BFINS oracle");
+    assert_eq!(rust_oracle, [0xef, 0xd0, 0x31, 0x24]);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 24 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item24-directed-bitfield-insert",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 24 BFINS parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert!(runs[0].success);
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68020_pack_mnemonic_routing_parity() {
+    // Proof level D. Two fresh challenged guests prove that bare PACK reaches
+    // package selection on both supported and earlier CPUs; `.pack` remains
+    // the explicit layout-directive spelling.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let positive_source = "        PACK D0,D1,#-1\n";
+    let positive_oracle = live_rust_cpu_name_oracle(
+        positive_source,
+        Some("m68020"),
+        "item24-pack-routing-rust-oracle",
+    )
+    .expect("run live Rust Item 24 PACK oracle");
+    assert_eq!(positive_oracle, [0x83, 0x40, 0xff, 0xff]);
+    let negative_source = "        PACK D0,D1,#1\n";
+    let negative_diagnostic = live_rust_cpu_name_diagnostic(
+        negative_source,
+        "m68010",
+        "item24-pack-routing-rust-diagnostic",
+    );
+    assert!(negative_diagnostic.contains("PACK is only supported on m68020 and later"));
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 24 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item24-directed-pack-m68020",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(positive_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &positive_oracle,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item24-directed-pack-m68010-rejection",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(negative_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68010 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                &negative_diagnostic,
+            ),
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 24 PACK routing parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 2);
+            assert!(runs.iter().all(|run| run.protocol_completed));
+            assert!(runs[0].success);
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                positive_oracle
+            );
+            assert_eq!(runs[1].exit_code, Some(1));
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68020_callm_count_diagnostic_parity() {
+    // Proof level D. One fresh challenged guest proves the neutral range
+    // projector lets the active m68020 owner return Rust's exact diagnostic.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = "        CALLM #300,($1234).W\n";
+    let rust_diagnostic =
+        live_rust_cpu_name_diagnostic(source, "m68020", "item24-callm-count-rust-diagnostic");
+    assert!(rust_diagnostic.contains("CALLM count 300 out of range (0-255)"));
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 24 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item24-directed-callm-count",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+            &rust_diagnostic,
+        ),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 24 CALLM count parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert_eq!(runs[0].exit_code, Some(1));
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68020_later_integer_group_b_parity() {
+    // Proof level D. This is the complete Item 24 aggregate executed by the
+    // established native completion wrapper. Every case uses a fresh challenge,
+    // the exact Rust-built package, a same-source in-memory Rust oracle, guest
+    // completion, and an explicit guest exit. PMMU behavior remains out of scope.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 24 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+
+    let fixture_source = fs::read_to_string(
+        workspace_root().join("examples/motorola68000/68020_later_families.asm"),
+    )
+    .expect("read exact Item 24 later-family fixture");
+    let residual_positive_source = concat!(
+        "        BFTST D0{3:5}\n",
+        "        BFEXTU ($1234).W{D1:8},D2\n",
+        "        BFINS D3,(A0){4:D4}\n",
+        "        BFTST target{3:5}\n",
+        "        BFEXTU (target).L{D1:8},D2\n",
+        "        BFINS D3,target{4:D4}\n",
+        "        MOVES.W D0,(A0)\n",
+        "target:\n",
+        "        NOP\n",
+    );
+    let fixture_oracle = live_rust_cpu_name_oracle(
+        &fixture_source,
+        Some("m68020"),
+        "item24-group-b-fixture-rust-oracle",
+    )
+    .expect("run live Rust Item 24 fixture oracle");
+    let residual_positive_oracle = live_rust_cpu_name_oracle(
+        residual_positive_source,
+        Some("m68020"),
+        "item24-group-b-residual-positive-rust-oracle",
+    )
+    .expect("run live Rust Item 24 residual positive oracle");
+    assert!(!fixture_oracle.is_empty());
+    assert!(!residual_positive_oracle.is_empty());
+
+    let negative_definitions = [
+        (
+            "item24-m68020-cas2-byte-size",
+            "m68020",
+            "        CAS2.B D0:D1,D2:D3,(A0):(A1)\n",
+            "CAS2 does not support .B size",
+        ),
+        (
+            "item24-m68020-cas2-first-data-register",
+            "m68020",
+            "        CAS2.W D0:D1,D2:D3,(D0):(A1)\n",
+            "CAS2 memory operand must use (An):(Am) address-register pair syntax",
+        ),
+        (
+            "item24-m68020-cas2-second-data-register",
+            "m68020",
+            "        CAS2.W D0:D1,D2:D3,(A0):(D1)\n",
+            "CAS2 memory operand must use (An):(Am) address-register pair syntax",
+        ),
+        (
+            "item24-m68020-cas2-both-data-registers",
+            "m68020",
+            "        CAS2.W D0:D1,D2:D3,(D0):(D1)\n",
+            "CAS2 memory operand must use (An):(Am) address-register pair syntax",
+        ),
+        (
+            "item24-m68020-bfins-pc-relative",
+            "m68020",
+            "        BFINS D0,(4,PC){1:1}\n",
+            "invalid bit-field effective address for BFINS",
+        ),
+        (
+            "item24-m68020-trapcc-unsized-immediate",
+            "m68020",
+            "        TRAPT #1\n",
+            "unsized TRAPcc does not take an immediate operand",
+        ),
+        (
+            "item24-m68020-callm-count-range",
+            "m68020",
+            "        CALLM #300,($1234).W\n",
+            "CALLM count 300 out of range",
+        ),
+        (
+            "item24-m68020-rtm-operand",
+            "m68020",
+            "        RTM #1\n",
+            "RTM operand must be a data or address register",
+        ),
+        (
+            "item24-m68020-moves-pc-source",
+            "m68020",
+            "        MOVES.W 4(PC),D0\n",
+            "No instruction found for MOVES.W",
+        ),
+        (
+            "item24-m68020-moves-pc-destination",
+            "m68020",
+            "        MOVES.W D0,4(PC)\n",
+            "invalid destination effective address for MOVES.W",
+        ),
+        (
+            "item24-m68000-reject-bitfield",
+            "m68000",
+            "        BFTST D0{3:5}\n",
+            "m68020 and later",
+        ),
+        (
+            "item24-m68010-reject-pack",
+            "m68010",
+            "        PACK D0,D1,#1\n",
+            "m68020 and later",
+        ),
+    ];
+    let negatives = negative_definitions
+        .iter()
+        .map(|(name, cpu, source, expected)| {
+            let diagnostic = live_rust_cpu_name_diagnostic(
+                source,
+                cpu,
+                format!("{name}-rust-diagnostic").as_str(),
+            );
+            assert!(
+                diagnostic.contains(expected),
+                "unexpected Rust Item 24 diagnostic for {name}: {diagnostic}"
+            );
+            let command =
+                format!("{{input}} --bin {{bin}} --cpu {cpu} --opasm-package {{package}}");
+            (*name, *source, diagnostic, command)
+        })
+        .collect::<Vec<_>>();
+
+    let mut cases = Vec::with_capacity(2 + negatives.len());
+    cases.push(crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item24-m68020-later-family-fixture",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(fixture_source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &fixture_oracle,
+        },
+    });
+    cases.push(crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item24-m68020-residual-positive",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(residual_positive_source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &residual_positive_oracle,
+        },
+    });
+    for (name, source, diagnostic, command) in &negatives {
+        cases.push(crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name,
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some(command.as_str()),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                diagnostic,
+            ),
+        });
+    }
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("Item 24 m68020 later integer group-B FS-UAE parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len(), "every fresh Item 24 guest ran");
+            for (index, run) in runs.iter().enumerate() {
+                assert!(
+                    run.protocol_completed,
+                    "Item 24 case {} must complete its guest protocol",
+                    cases[index].name
+                );
+                if index < 2 {
+                    let oracle = if index == 0 {
+                        &fixture_oracle
+                    } else {
+                        &residual_positive_oracle
+                    };
+                    assert!(
+                        run.success,
+                        "Item 24 positive case {} failed\nstdout:\n{}\nstderr:\n{}",
+                        cases[index].name, run.stdout, run.stderr
+                    );
+                    assert_eq!(run.exit_code, Some(0));
+                    assert_eq!(
+                        captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                        *oracle
+                    );
+                } else {
+                    assert_eq!(
+                        run.exit_code,
+                        Some(1),
+                        "Item 24 negative case {} must exit 1",
+                        cases[index].name
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_native_m68020_full_extension_addressing_parity() {
     // Proof level D. This is the complete Item 22 aggregate and is executed by
     // the one established native completion wrapper. Fresh guests prove the

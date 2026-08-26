@@ -213,8 +213,17 @@ ExprPathPrefixText
 CallArgIndirectRegisterPrefixText
 	.byte "call_arg_indirect_register"
 
+CallArgIndirectTupleRegisterPrefixText
+	.byte "call_arg_indirect_tuple_register"
+
 CallArgRegisterPrefixText
 	.byte "call_arg_register"
+
+CallArgValuePrefixText
+	.byte "call_arg_value"
+
+CallArgMemberPrefixText
+	.byte "call_arg_member"
 
 UnaryPlusIndirectRegisterPrefixText
 	.byte "unary_plus_indirect_reg"
@@ -272,6 +281,9 @@ RegisterMaskPrefixText
 
 DuplicateRegisterPrefixText
 	.byte "duplicate_register"
+
+OutOfRangePrefixText
+	.byte "out_of_range"
 
 DistinctRegisterPrefixText
 	.byte "distinct_register"
@@ -2131,6 +2143,25 @@ rejectInputLoop
 	move.w d0, d5
 	move.l a2, -(sp)
 	lea buffers.CompactSelectorInputText, a1
+	lea OutOfRangePrefixText, a2
+	moveq #12, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	movea.l (sp)+, a2
+	tst.b d0
+	beq.s rejectCheckDuplicate
+	lea buffers.CompactSelectorInputText+12, a1
+	move.w d5, d0
+	subi.w #12, d0
+	bsr.w tkpkgProjectOutOfRangeV1
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.w rejectReturn
+	move.l d3, state.EncodeSelectedSemanticValue
+	move.b #1, state.EncodeSelectedSemanticValueValid
+	bra.s rejectInputMatched
+
+rejectCheckDuplicate
+	move.l a2, -(sp)
+	lea buffers.CompactSelectorInputText, a1
 	lea DuplicateRegisterPrefixText, a2
 	moveq #18, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
@@ -2142,7 +2173,7 @@ rejectInputLoop
 	subi.w #18, d0
 	bsr.w tkpkgProjectDuplicateRegisterV1
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
-	bne.s rejectReturn
+	bne.w rejectReturn
 	move.l a0, (sp)
 	move.w d1, 4(sp)
 	bra.s rejectInputMatched
@@ -2152,10 +2183,10 @@ rejectOrdinaryInput
 	move.w d5, d0
 	bsr.w tkpkgProjectCompactSemanticInputV2
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
-	bne.s rejectReturn
+	bne.w rejectReturn
 rejectInputMatched
 	subq.w #1, d7
-	bne.s rejectInputLoop
+	bne.w rejectInputLoop
 
 	lea buffers.CompactSelectorPlanText, a1
 	move.w d6, d0
@@ -2522,6 +2553,20 @@ tkpkgProjectCompactSemanticInputV2	.block
 semanticCheckCallArgIndirectRegister
 	movea.l a5, a1
 	move.w d7, d0
+	lea CallArgIndirectTupleRegisterPrefixText, a2
+	moveq #32, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckCallArgIndirectRegisterOnly
+	lea 32(a5), a1
+	move.w d7, d0
+	subi.w #32, d0
+	bsr.w tkpkgProjectCallArgIndirectTupleRegisterV1
+	bra.w semanticProjectReturn
+
+semanticCheckCallArgIndirectRegisterOnly
+	movea.l a5, a1
+	move.w d7, d0
 	lea CallArgIndirectRegisterPrefixText, a2
 	moveq #26, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
@@ -2541,12 +2586,40 @@ semanticCheckCallArgRegister
 	moveq #17, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
 	tst.b d0
-	beq.s semanticCheckMemberShape
+	beq.s semanticCheckCallArgValue
 	lea 17(a5), a1
 	move.w d7, d0
 	subi.w #17, d0
 	moveq #0, d2
 	bsr.w tkpkgProjectCallArgRegisterV1
+	bra.w semanticProjectReturn
+
+semanticCheckCallArgValue
+	movea.l a5, a1
+	move.w d7, d0
+	lea CallArgValuePrefixText, a2
+	moveq #14, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckCallArgMember
+	lea 14(a5), a1
+	move.w d7, d0
+	subi.w #14, d0
+	bsr.w tkpkgProjectCallArgValueV1
+	bra.w semanticProjectReturn
+
+semanticCheckCallArgMember
+	movea.l a5, a1
+	move.w d7, d0
+	lea CallArgMemberPrefixText, a2
+	moveq #15, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckMemberShape
+	lea 15(a5), a1
+	move.w d7, d0
+	subi.w #15, d0
+	bsr.w tkpkgProjectCallArgMemberV1
 	bra.w semanticProjectReturn
 
 semanticCheckMemberShape
@@ -3031,6 +3104,120 @@ semanticProjectReturn
 	rts
 	.bend  ; tkpkgProjectCompactSemanticInputV2
 
+; Match Rust's neutral `out_of_rangeN.minX.maxY` rejection projection.  The
+; package owns the operand index and signed bounds; native only evaluates the
+; selected operand and reports a match when its scalar lies outside them.
+; Inputs: A1/D0.W = `N.minX.maxY`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = rejected scalar on success.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68020-later-integer-group-b-v1.toml
+; @opforge-role: facade
+tkpkgProjectOutOfRangeV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -12(sp), sp
+	movea.l a1, a3
+	move.w d0, d7
+	cmpi.w #11, d7
+	bcs.w outOfRangeMalformed
+	move.w d7, 2(sp)
+	moveq #0, d6
+
+outOfRangeMinScan
+	move.w d7, d5
+	subq.w #4, d5
+	cmp.w d5, d6
+	bhi.w outOfRangeMalformed
+	cmpi.b #'.', 0(a3, d6.w)
+	bne.s outOfRangeMinNext
+	cmpi.b #'m', 1(a3, d6.w)
+	bne.s outOfRangeMinNext
+	cmpi.b #'i', 2(a3, d6.w)
+	bne.s outOfRangeMinNext
+	cmpi.b #'n', 3(a3, d6.w)
+	beq.s outOfRangeMinReady
+outOfRangeMinNext
+	addq.w #1, d6
+	bra.s outOfRangeMinScan
+
+outOfRangeMinReady
+	tst.w d6
+	beq.w outOfRangeMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w outOfRangeMalformed
+	move.w d3, (sp)
+	addq.w #4, d6
+	move.w d6, d4
+
+outOfRangeMaxScan
+	move.w d7, d5
+	subq.w #4, d5
+	cmp.w d5, d4
+	bhi.w outOfRangeMalformed
+	cmpi.b #'.', 0(a3, d4.w)
+	bne.s outOfRangeMaxNext
+	cmpi.b #'m', 1(a3, d4.w)
+	bne.s outOfRangeMaxNext
+	cmpi.b #'a', 2(a3, d4.w)
+	bne.s outOfRangeMaxNext
+	cmpi.b #'x', 3(a3, d4.w)
+	beq.s outOfRangeMaxReady
+outOfRangeMaxNext
+	addq.w #1, d4
+	bra.s outOfRangeMaxScan
+
+outOfRangeMaxReady
+	move.w d4, 10(sp)
+	move.w d4, d5
+	sub.w d6, d5
+	beq.w outOfRangeMalformed
+	movea.l a3, a1
+	adda.w d6, a1
+	move.w d5, d7
+	bsr.w tkpkgParseSignedDecimalV2
+	bne.w outOfRangeMalformed
+	move.l d3, 4(sp)
+	move.w 10(sp), d4
+	addq.w #4, d4
+	move.w 2(sp), d5
+	sub.w d4, d5
+	beq.w outOfRangeMalformed
+	movea.l a3, a1
+	adda.w d4, a1
+	move.w d5, d7
+	bsr.w tkpkgParseSignedDecimalV2
+	bne.w outOfRangeMalformed
+	move.l d3, 8(sp)
+	move.w (sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w outOfRangeNoMatch
+	moveq #0, d1
+	cmpi.b #'#', (a0)
+	bne.s outOfRangeEvaluate
+	moveq #1, d1
+outOfRangeEvaluate
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.s outOfRangeReturn
+	cmp.l 4(sp), d3
+	blt.s outOfRangeMatched
+	cmp.l 8(sp), d3
+	bgt.s outOfRangeMatched
+outOfRangeNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+	bra.s outOfRangeReturn
+outOfRangeMatched
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s outOfRangeReturn
+outOfRangeMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+outOfRangeReturn
+	lea 12(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectOutOfRangeV1
+
 ; Project Rust's neutral call-argument register sources used by frozen package
 ; rows. The package selects operand, argument, and required register class;
 ; source spelling is resolved exclusively through package RENC records.
@@ -3145,8 +3332,271 @@ callArgSpecReturn
 	rts
 	.bend  ; tkpkgProjectCallArgRegisterV1
 
-; Select one zero-based top-level argument from a bounded colon-separated call
-; span, preserving nested parenthesized and bracketed expressions.
+; Project Rust's neutral call-argument scalar source. The package selects the
+; operand and argument; the selected span is evaluated by the shared expression
+; bridge exactly like an ordinary `exprN` semantic input.
+; Inputs: A1/D0.W = `N.argM`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = evaluated scalar on success.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68020-later-integer-group-b-v1.toml
+; @opforge-role: facade
+tkpkgProjectCallArgValueV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -4(sp), sp
+	movea.l a1, a3
+	move.w d0, d7
+	moveq #0, d6
+
+callArgValueArgScan
+	move.w d7, d5
+	subq.w #4, d5
+	cmp.w d5, d6
+	bhi.s callArgValueMalformed
+	cmpi.b #'.', 0(a3, d6.w)
+	bne.s callArgValueArgNext
+	cmpi.b #'a', 1(a3, d6.w)
+	bne.s callArgValueArgNext
+	cmpi.b #'r', 2(a3, d6.w)
+	bne.s callArgValueArgNext
+	cmpi.b #'g', 3(a3, d6.w)
+	beq.s callArgValueArgReady
+callArgValueArgNext
+	addq.w #1, d6
+	bra.s callArgValueArgScan
+
+callArgValueArgReady
+	tst.w d6
+	beq.s callArgValueMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.s callArgValueMalformed
+	move.w d3, (sp)
+	lea 4(a3, d6.w), a1
+	move.w d7, d0
+	sub.w d6, d0
+	subq.w #4, d0
+	beq.s callArgValueMalformed
+	bsr.w tkpkgParseU16DecimalV2
+	bne.s callArgValueMalformed
+	move.w d3, 2(sp)
+
+	move.w (sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.s callArgValueNoMatch
+	move.w 2(sp), d1
+	bsr.w tkpkgSelectCallArgumentV1
+	bne.s callArgValueNoMatch
+	moveq #0, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	bra.s callArgValueReturn
+
+callArgValueMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s callArgValueReturn
+callArgValueNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+callArgValueReturn
+	lea 4(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectCallArgValueV1
+
+; Project Rust's neutral call-argument member source. The package selects the
+; operand, argument, and case-insensitive member field; the member base is
+; evaluated by the shared expression bridge.
+; Inputs: A1/D0.W = `N.argM.fieldF`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = evaluated member base.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68020-later-integer-group-b-v1.toml
+; @opforge-role: facade
+tkpkgProjectCallArgMemberV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -12(sp), sp
+	movea.l a1, a3
+	move.w d0, d7
+	moveq #0, d6
+
+callArgMemberArgScan
+	move.w d7, d5
+	subq.w #4, d5
+	cmp.w d5, d6
+	bhi.w callArgMemberMalformed
+	cmpi.b #'.', 0(a3, d6.w)
+	bne.s callArgMemberArgNext
+	cmpi.b #'a', 1(a3, d6.w)
+	bne.s callArgMemberArgNext
+	cmpi.b #'r', 2(a3, d6.w)
+	bne.s callArgMemberArgNext
+	cmpi.b #'g', 3(a3, d6.w)
+	beq.s callArgMemberArgReady
+callArgMemberArgNext
+	addq.w #1, d6
+	bra.s callArgMemberArgScan
+
+callArgMemberArgReady
+	tst.w d6
+	beq.w callArgMemberMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w callArgMemberMalformed
+	move.w d3, (sp)
+	lea 4(a3, d6.w), a4
+	move.w d7, d5
+	sub.w d6, d5
+	subq.w #4, d5
+	moveq #0, d6
+
+callArgMemberFieldScan
+	move.w d5, d4
+	subq.w #6, d4
+	cmp.w d4, d6
+	bhi.w callArgMemberMalformed
+	cmpi.b #'.', 0(a4, d6.w)
+	bne.s callArgMemberFieldNext
+	cmpi.b #'f', 1(a4, d6.w)
+	bne.s callArgMemberFieldNext
+	cmpi.b #'i', 2(a4, d6.w)
+	bne.s callArgMemberFieldNext
+	cmpi.b #'e', 3(a4, d6.w)
+	bne.s callArgMemberFieldNext
+	cmpi.b #'l', 4(a4, d6.w)
+	bne.s callArgMemberFieldNext
+	cmpi.b #'d', 5(a4, d6.w)
+	beq.s callArgMemberFieldReady
+callArgMemberFieldNext
+	addq.w #1, d6
+	bra.s callArgMemberFieldScan
+
+callArgMemberFieldReady
+	tst.w d6
+	beq.w callArgMemberMalformed
+	move.w d5, 6(sp)
+	movea.l a4, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w callArgMemberMalformed
+	move.w d3, 2(sp)
+	lea 6(a4, d6.w), a1
+	move.l a1, 8(sp)
+	move.w 6(sp), d0
+	sub.w d6, d0
+	subq.w #6, d0
+	beq.w callArgMemberMalformed
+	move.w d0, 4(sp)
+
+	move.w (sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.s callArgMemberNoMatch
+	move.w 2(sp), d1
+	bsr.w tkpkgSelectCallArgumentV1
+	bne.s callArgMemberNoMatch
+	movea.l 8(sp), a1
+	move.w 4(sp), d1
+	bsr.w tkpkgMselStripExpectedQualifierV2
+	bne.s callArgMemberNoMatch
+	moveq #0, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	bra.s callArgMemberReturn
+
+callArgMemberMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s callArgMemberReturn
+callArgMemberNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+callArgMemberReturn
+	lea 12(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectCallArgMemberV1
+
+; Project Rust's neutral register inside an indirect tuple call argument. The
+; package supplies operand, argument, tuple-item, and register-class indices;
+; register spelling and opaque encoding remain package RENC data.
+; Inputs: A1/D0.W = `N.argA.itemI.classC`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = register index on success.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68020-later-integer-group-b-v1.toml
+; @opforge-role: facade
+tkpkgProjectCallArgIndirectTupleRegisterV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -8(sp), sp
+	movea.l a1, a3
+	move.w d0, d7
+	moveq #0, d6
+
+callArgTupleSpecArgScan
+	move.w d7, d5
+	subq.w #4, d5
+	cmp.w d5, d6
+	bhi.w callArgTupleSpecMalformed
+	cmpi.b #'.', 0(a3, d6.w)
+	bne.s callArgTupleSpecArgNext
+	cmpi.b #'a', 1(a3, d6.w)
+	bne.s callArgTupleSpecArgNext
+	cmpi.b #'r', 2(a3, d6.w)
+	bne.s callArgTupleSpecArgNext
+	cmpi.b #'g', 3(a3, d6.w)
+	beq.s callArgTupleSpecArgReady
+callArgTupleSpecArgNext
+	addq.w #1, d6
+	bra.s callArgTupleSpecArgScan
+
+callArgTupleSpecArgReady
+	tst.w d6
+	beq.w callArgTupleSpecMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w callArgTupleSpecMalformed
+	move.w d3, (sp)
+	lea 4(a3, d6.w), a1
+	move.w d7, d0
+	sub.w d6, d0
+	subq.w #4, d0
+	bsr.w tkpkgParseTupleItemClassSpecV2
+	bne.w callArgTupleSpecMalformed
+	tst.w d6
+	bne.w callArgTupleSpecMalformed
+	cmpi.w #$FFFF, d5
+	beq.w callArgTupleSpecMalformed
+	move.w d3, 2(sp)
+	move.w d4, 4(sp)
+	move.w d5, 6(sp)
+
+	move.w (sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.s callArgTupleSpecNoMatch
+	move.w 2(sp), d1
+	bsr.w tkpkgSelectCallArgumentV1
+	bne.s callArgTupleSpecNoMatch
+	jsr operand.tkpkgMselStripOuterParensV1
+	bne.s callArgTupleSpecNoMatch
+	move.w 4(sp), d1
+	moveq #0, d2
+	bsr.w tkpkgExprPathSelectTupleItemV1
+	bne.s callArgTupleSpecNoMatch
+	move.w 6(sp), d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.s callArgTupleSpecNoMatch
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s callArgTupleSpecReturn
+
+callArgTupleSpecMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s callArgTupleSpecReturn
+callArgTupleSpecNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+callArgTupleSpecReturn
+	lea 8(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectCallArgIndirectTupleRegisterV1
+
+; Select one zero-based argument from a bounded neutral call span. Rust's
+; parser represents both `arg0:arg1` and postfix `arg0{arg1:arg2}` spellings as
+; calls; preserve nested parenthesized and bracketed expressions in either form.
 ; Inputs: A0/D0 = call span; D1.W = argument index.
 ; Outputs: A0/D0 = trimmed argument; D1 = 0/1.
 ; Clobbers: D1/CCR. Other working registers are restored.
@@ -3159,6 +3609,81 @@ tkpkgSelectCallArgumentV1	.block
 	adda.l d0, a2
 	movea.l a1, a3
 	moveq #0, d6
+	moveq #0, d4
+	moveq #0, d5
+
+callArgSelectBraceScan
+	cmpa.l a2, a3
+	bhs.s callArgSelectNoBrace
+	moveq #0, d2
+	move.b (a3), d2
+	cmpi.b #'(', d2
+	beq.s callArgSelectBraceOpenParen
+	cmpi.b #')', d2
+	beq.s callArgSelectBraceCloseParen
+	cmpi.b #'[', d2
+	beq.s callArgSelectBraceOpenBracket
+	cmpi.b #']', d2
+	beq.s callArgSelectBraceCloseBracket
+	cmpi.b #'{', d2
+	bne.s callArgSelectBraceNext
+	tst.w d4
+	bne.s callArgSelectBraceNext
+	tst.w d5
+	bne.s callArgSelectBraceNext
+	bra.s callArgSelectBraceFound
+
+callArgSelectBraceOpenParen
+	addq.w #1, d4
+	bra.s callArgSelectBraceNext
+callArgSelectBraceCloseParen
+	tst.w d4
+	beq.w callArgSelectFail
+	subq.w #1, d4
+	bra.s callArgSelectBraceNext
+callArgSelectBraceOpenBracket
+	addq.w #1, d5
+	bra.s callArgSelectBraceNext
+callArgSelectBraceCloseBracket
+	tst.w d5
+	beq.w callArgSelectFail
+	subq.w #1, d5
+callArgSelectBraceNext
+	addq.l #1, a3
+	bra.s callArgSelectBraceScan
+
+callArgSelectNoBrace
+	movea.l a0, a1
+	movea.l a1, a3
+	moveq #0, d4
+	moveq #0, d5
+	bra.s callArgSelectScan
+
+callArgSelectBraceFound
+	tst.w d7
+	bne.s callArgSelectBraceArguments
+	movea.l a3, a1
+	movea.l a0, a3
+	moveq #0, d4
+	moveq #0, d5
+	bra.w callArgSelectFound
+
+callArgSelectBraceArguments
+	movea.l a2, a1
+callArgSelectBraceTrimEnd
+	cmpa.l a3, a1
+	bls.w callArgSelectFail
+	subq.l #1, a1
+	cmpi.b #' ', (a1)
+	beq.s callArgSelectBraceTrimEnd
+	cmpi.b #9, (a1)
+	beq.s callArgSelectBraceTrimEnd
+	cmpi.b #'}', (a1)
+	bne.w callArgSelectFail
+	movea.l a1, a2
+	lea 1(a3), a1
+	movea.l a1, a3
+	moveq #1, d6
 	moveq #0, d4
 	moveq #0, d5
 
@@ -4660,6 +5185,34 @@ tkpkgProjectDirectSemanticTargetV2	.block
 	movem.l d2/d4-d7/a0/a2-a6, -(sp)
 	movea.l a1, a5
 	move.w d0, d7
+	movea.l a5, a1
+	move.w d7, d0
+	lea CallArgValuePrefixText, a2
+	moveq #14, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s targetCheckCallArgMember
+	lea 14(a5), a1
+	move.w d7, d0
+	subi.w #14, d0
+	bsr.w tkpkgProjectCallArgValueTargetV1
+	bra.w targetReturn
+
+targetCheckCallArgMember
+	movea.l a5, a1
+	move.w d7, d0
+	lea CallArgMemberPrefixText, a2
+	moveq #15, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s targetCheckExpr
+	lea 15(a5), a1
+	move.w d7, d0
+	subi.w #15, d0
+	bsr.w tkpkgProjectCallArgMemberTargetV1
+	bra.w targetReturn
+
+targetCheckExpr
 	cmpi.w #5, d7
 	bcs.w targetMalformed
 	cmpi.b #'e', (a5)
@@ -4740,6 +5293,251 @@ targetReturn
 	movem.l (sp)+, d2/d4-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgProjectDirectSemanticTargetV2
+
+; Project Rust's `target:call_arg_valueN.argM` predicate for the direct
+; identifier subset supported by native target projection. Selection is purely
+; structural; the fixup step evaluates the same selected argument later.
+; Inputs: A1/D0.W = `N.argM`.
+; Outputs: D0 selected status; D3=0 on match.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68020-later-integer-group-b-v1.toml
+; @opforge-role: facade
+tkpkgProjectCallArgValueTargetV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -4(sp), sp
+	movea.l a1, a3
+	move.w d0, d7
+	moveq #0, d6
+
+callArgValueTargetArgScan
+	move.w d7, d5
+	subq.w #4, d5
+	cmp.w d5, d6
+	bhi.w callArgValueTargetMalformed
+	cmpi.b #'.', 0(a3, d6.w)
+	bne.s callArgValueTargetArgNext
+	cmpi.b #'a', 1(a3, d6.w)
+	bne.s callArgValueTargetArgNext
+	cmpi.b #'r', 2(a3, d6.w)
+	bne.s callArgValueTargetArgNext
+	cmpi.b #'g', 3(a3, d6.w)
+	beq.s callArgValueTargetArgReady
+callArgValueTargetArgNext
+	addq.w #1, d6
+	bra.s callArgValueTargetArgScan
+
+callArgValueTargetArgReady
+	tst.w d6
+	beq.s callArgValueTargetMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.s callArgValueTargetMalformed
+	move.w d3, (sp)
+	lea 4(a3, d6.w), a1
+	move.w d7, d0
+	sub.w d6, d0
+	subq.w #4, d0
+	beq.s callArgValueTargetMalformed
+	bsr.w tkpkgParseU16DecimalV2
+	bne.s callArgValueTargetMalformed
+	move.w d3, 2(sp)
+
+	move.w (sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.s callArgValueTargetNoMatch
+	move.w 2(sp), d1
+	bsr.w tkpkgSelectCallArgumentV1
+	bne.s callArgValueTargetNoMatch
+	bsr.w tkpkgValidateDirectTargetSpanV1
+	bra.s callArgValueTargetReturn
+
+callArgValueTargetMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s callArgValueTargetReturn
+callArgValueTargetNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+callArgValueTargetReturn
+	lea 4(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectCallArgValueTargetV1
+
+; Project Rust's `target:call_arg_memberN.argM.fieldF` predicate for the direct
+; identifier subset supported by native target projection. The selected call
+; argument must have the package-declared member suffix; its base is validated
+; structurally and is evaluated only by the later fixup step.
+; Inputs: A1/D0.W = `N.argM.fieldF`.
+; Outputs: D0 selected status; D3=0 on match.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68020-later-integer-group-b-v1.toml
+; @opforge-role: facade
+tkpkgProjectCallArgMemberTargetV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -12(sp), sp
+	movea.l a1, a3
+	move.w d0, d7
+	moveq #0, d6
+
+callArgMemberTargetArgScan
+	move.w d7, d5
+	subq.w #4, d5
+	cmp.w d5, d6
+	bhi.w callArgMemberTargetMalformed
+	cmpi.b #'.', 0(a3, d6.w)
+	bne.s callArgMemberTargetArgNext
+	cmpi.b #'a', 1(a3, d6.w)
+	bne.s callArgMemberTargetArgNext
+	cmpi.b #'r', 2(a3, d6.w)
+	bne.s callArgMemberTargetArgNext
+	cmpi.b #'g', 3(a3, d6.w)
+	beq.s callArgMemberTargetArgReady
+callArgMemberTargetArgNext
+	addq.w #1, d6
+	bra.s callArgMemberTargetArgScan
+
+callArgMemberTargetArgReady
+	tst.w d6
+	beq.w callArgMemberTargetMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w callArgMemberTargetMalformed
+	move.w d3, (sp)
+	lea 4(a3, d6.w), a4
+	move.w d7, d5
+	sub.w d6, d5
+	subq.w #4, d5
+	moveq #0, d6
+
+callArgMemberTargetFieldScan
+	move.w d5, d4
+	subq.w #6, d4
+	cmp.w d4, d6
+	bhi.w callArgMemberTargetMalformed
+	cmpi.b #'.', 0(a4, d6.w)
+	bne.s callArgMemberTargetFieldNext
+	cmpi.b #'f', 1(a4, d6.w)
+	bne.s callArgMemberTargetFieldNext
+	cmpi.b #'i', 2(a4, d6.w)
+	bne.s callArgMemberTargetFieldNext
+	cmpi.b #'e', 3(a4, d6.w)
+	bne.s callArgMemberTargetFieldNext
+	cmpi.b #'l', 4(a4, d6.w)
+	bne.s callArgMemberTargetFieldNext
+	cmpi.b #'d', 5(a4, d6.w)
+	beq.s callArgMemberTargetFieldReady
+callArgMemberTargetFieldNext
+	addq.w #1, d6
+	bra.s callArgMemberTargetFieldScan
+
+callArgMemberTargetFieldReady
+	tst.w d6
+	beq.w callArgMemberTargetMalformed
+	move.w d5, 6(sp)
+	movea.l a4, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w callArgMemberTargetMalformed
+	move.w d3, 2(sp)
+	lea 6(a4, d6.w), a1
+	move.l a1, 8(sp)
+	move.w 6(sp), d0
+	sub.w d6, d0
+	subq.w #6, d0
+	beq.w callArgMemberTargetMalformed
+	move.w d0, 4(sp)
+
+	move.w (sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.s callArgMemberTargetNoMatch
+	move.w 2(sp), d1
+	bsr.w tkpkgSelectCallArgumentV1
+	bne.s callArgMemberTargetNoMatch
+	movea.l 8(sp), a1
+	move.w 4(sp), d1
+	bsr.w tkpkgMselStripExpectedQualifierV2
+	bne.s callArgMemberTargetNoMatch
+	jsr operand.tkpkgMselStripOuterParensV1
+	bne.s callArgMemberTargetNoMatch
+	bsr.w tkpkgValidateDirectTargetSpanV1
+	bra.s callArgMemberTargetReturn
+
+callArgMemberTargetMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s callArgMemberTargetReturn
+callArgMemberTargetNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+callArgMemberTargetReturn
+	lea 12(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectCallArgMemberTargetV1
+
+; Validate the same architecture-neutral direct identifier span accepted by
+; `target:exprN`, rejecting any spelling owned by package RENC records.
+; Inputs: A0/D0 = candidate span. Outputs: D0 selected status; D3=0 on match.
+tkpkgValidateDirectTargetSpanV1	.block
+	movem.l d2/d4-d7/a1-a6, -(sp)
+	movea.l a0, a4
+	move.l d0, d6
+	move.w #$FFFF, d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	beq.s targetSpanNoMatch
+	movea.l a4, a0
+	move.l d6, d7
+	beq.s targetSpanNoMatch
+	moveq #0, d4
+	move.b (a0)+, d4
+	subq.l #1, d7
+	cmpi.b #'_', d4
+	beq.s targetSpanIdentifierRest
+	cmpi.b #'.', d4
+	beq.s targetSpanIdentifierRest
+	cmpi.b #'A', d4
+	bcs.s targetSpanNoMatch
+	cmpi.b #'Z', d4
+	bls.s targetSpanIdentifierRest
+	cmpi.b #'a', d4
+	bcs.s targetSpanNoMatch
+	cmpi.b #'z', d4
+	bhi.s targetSpanNoMatch
+
+targetSpanIdentifierRest
+	tst.l d7
+	beq.s targetSpanOk
+	moveq #0, d4
+	move.b (a0)+, d4
+	subq.l #1, d7
+	cmpi.b #'_', d4
+	beq.s targetSpanIdentifierRest
+	cmpi.b #'.', d4
+	beq.s targetSpanIdentifierRest
+	cmpi.b #'0', d4
+	bcs.s targetSpanIdentifierLetter
+	cmpi.b #'9', d4
+	bls.s targetSpanIdentifierRest
+targetSpanIdentifierLetter
+	cmpi.b #'A', d4
+	bcs.s targetSpanNoMatch
+	cmpi.b #'Z', d4
+	bls.s targetSpanIdentifierRest
+	cmpi.b #'a', d4
+	bcs.s targetSpanNoMatch
+	cmpi.b #'z', d4
+	bls.s targetSpanIdentifierRest
+	bra.s targetSpanNoMatch
+
+targetSpanOk
+	moveq #0, d3
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s targetSpanReturn
+targetSpanNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+targetSpanReturn
+	movem.l (sp)+, d2/d4-d7/a1-a6
+	rts
+	.bend  ; tkpkgValidateDirectTargetSpanV1
 
 ; Parse `N.FIELD` for neutral member/member-shape projections.
 ; Inputs: A1/D0 = suffix. Outputs: D3=operand, A2/D4=field, D1=0/1.

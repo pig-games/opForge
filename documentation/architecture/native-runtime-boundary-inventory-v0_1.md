@@ -70,6 +70,16 @@ neutral operand plan. No CPU, mnemonic, register, addressing-mode, opcode,
 branch width, or legality authority moved into the generic runtime. The exact
 Rust-built package and every family definition remain unchanged.
 
+Item 24 refreshed the assembly-driver and selection-service manifests after
+the single complete native run exposed two final neutral-runtime gaps. The
+driver now consults original statement syntax only to distinguish an explicit
+`.pack` directive from the package-owned bare `PACK` mnemonic after normalized
+text metadata removed the sigil. The selection service now mirrors Rust's
+generic `out_of_rangeN.minX.maxY` rejection projection and scalar capture.
+Directive meaning, operand bounds, diagnostics, CPU availability, and emitted
+instruction bytes remain owned by the unchanged Rust-built package and VM
+definitions.
+
 ## Dependency direction
 
 ```text
@@ -101,7 +111,9 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   scratch, and text scratch/output state. Layout region/section/place storage
   is owned by `opasm.amigaos.layout`.
 - Routine responsibility groups: pass callback orchestration; router-result
-  dispatch; structural-flow state transitions and explicit `.case` evaluation
+  dispatch, including original-source sigil disambiguation when a normalized
+  directive name collides with a package mnemonic; structural-flow state
+  transitions and explicit `.case` evaluation
   callback; scoped-struct repeat-label qualification callback; operand/evaluation request
   construction, including delegation of imported-label lookup without owning
   module visibility; selector/encoding adaptation; data/text sizing and emission;
@@ -259,7 +271,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   RENC/VALP program lookup and execution; neutral register-list mask,
   duplicate, and distinct-register detection; direct and indirect call-argument
   register projection; neutral tuple identity-scale projection; candidate
-  construction; package-declared named-register comparison; dialect-CPU-family
+  construction; package-declared named-register comparison and signed
+  out-of-range rejection projection; dialect-CPU-family
   rejection precedence; selected-output diagnostic selection; and standard
   scalar capture rendering.
 - Decision: this module delegates existing plan interpretation to
@@ -280,7 +293,15 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   frozen first 68020 later-family group. The native visitor accepts the same
   slash-list and colon-call argument separators, while all CPU, instruction,
   register, opcode, and legality authority remains in the exact Rust-built
-  package.
+  package. Item 24 extends that same neutral boundary with Rust's postfix-brace
+  call splitting, selected scalar/member/indirect-tuple-register projection,
+  and the direct-identifier relocation-target subset required by the frozen
+  remaining 68020 bit-field rows. Target expression values are still evaluated
+  only by the existing fixup bridge, and member fields, tuple items, register
+  classes, encodings, opcodes, legality, and diagnostics remain package-owned.
+  The final wrapper-discovered range case adds Rust's neutral signed
+  `out_of_range` predicate and `{value}` capture without naming an instruction
+  or owning its package-declared bounds.
 
 ### `tkpkg.amigaos.operand_runtime` (NR-004, Item 5.6.1 ownership split)
 

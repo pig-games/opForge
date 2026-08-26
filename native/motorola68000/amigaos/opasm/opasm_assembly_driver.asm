@@ -1305,6 +1305,14 @@ opasmDriverEmitImageBytes	.block
 	moveq #0, d0
 	move.w d4, d0
 	jsr directives.classifyV1
+	cmpi.w #directives.OPASM_DIRECTIVE_PACK, d3
+	bne.s emitDirectiveReady
+	moveq #0, d0
+	move.w d6, d0
+	bsr.w statementStartsWithDirectiveSigilV1
+	beq.s emitDirectiveReady
+	clr.w d3
+emitDirectiveReady
 	cmpi.w #directives.OPASM_DIRECTIVE_ALIGN, d3
 	beq.w emitAlign
 	cmpi.w #directives.OPASM_DIRECTIVE_DS, d3
@@ -1540,6 +1548,14 @@ statementLayoutRecorded
 	moveq #0, d0
 	move.w d6, d0
 	jsr directives.classifyV1
+	cmpi.w #directives.OPASM_DIRECTIVE_PACK, d3
+	bne.s advanceDirectiveReady
+	moveq #0, d0
+	move.w d7, d0
+	bsr.w statementStartsWithDirectiveSigilV1
+	beq.s advanceDirectiveReady
+	clr.w d3
+advanceDirectiveReady
 	cmpi.w #directives.OPASM_DIRECTIVE_ORG, d3
 	beq.w org
 	cmpi.w #directives.OPASM_DIRECTIVE_REGION, d3
@@ -3687,6 +3703,32 @@ loop
 done
 	rts
 	.bend  ; skipSourceHeadToken
+
+; Distinguish explicit directives from a package-owned instruction that shares
+; the same normalized mnemonic.  The text metadata intentionally omits the
+; leading directive sigil, so consult the original statement before routing.
+; Inputs: D0.W = statement index.
+; Outputs: D0 = 0 when the first non-whitespace source byte is `.`, else 1.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-m68020-later-integer-group-b-v1.toml
+; @opforge-role: facade
+statementStartsWithDirectiveSigilV1	.block
+	movem.l d1/a0, -(sp)
+	jsr eng.opasmEngineGetStatementSourceTextV1
+	beq.s no
+	bsr.w skipLineWhitespace
+	beq.s no
+	cmpi.b #'.', (a0)
+	bne.s no
+	moveq #0, d0
+	bra.s return
+no
+	moveq #1, d0
+return
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; statementStartsWithDirectiveSigilV1
 
 trimPartTrailing	.block
 	tst.l d0

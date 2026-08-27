@@ -24218,6 +24218,131 @@ fn motorola68020_item26_native_m68030_m68040_package_boundary_matches_rust() {
             );
         }
     }
+
+    let selection_service = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    assert!(source_contains_in_order(
+        &selection_service,
+        &[
+            "stateCandidateAllowed",
+            "move.b (a2)+, d0",
+            "move.b d0, state.EncodeSelectedSemanticPlanKind",
+            "cmpi.b #4, d0",
+            "stateCandidateSequence",
+            "tkpkgBuildCompactSemanticSequenceCandidateV2",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_item27_native_external_fpu_core_package_boundary_matches_rust() {
+    // Proof level B. Native must consume the exact Rust-built external-FPU
+    // selectors and opaque register encodings without owning FPU semantics.
+    let package_path =
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let embedded_package = fs::read(&package_path).expect("read Item 27 embedded package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build current unmodified Rust package"),
+        "Item 27 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 27 package input");
+
+    for cpu in ["m68020", "m68030"] {
+        for (mnemonic, plan_fragment) in [
+            ("FMOVE", "reg0.class2,reg1.class2"),
+            ("FADD", "reg0.class2,reg1.class2"),
+            ("FMOVE.S", "indirect_reg0.class1,reg1.class2"),
+            ("FMOVEM", "register_mask0.map2=0"),
+            ("FSINCOS", "call_arg_register1.arg1.class2"),
+            ("FBEQ", "target:expr0"),
+            ("FDBNE", "target:expr1"),
+            ("FSNE", "reg0.class0"),
+            ("FTRAPGT.W", "expr0"),
+            ("FSAVE", "indirect_reg0.class1"),
+            ("FRESTORE", "unary_plus_indirect_reg0.class1"),
+        ] {
+            let selector = chunks
+                .selectors
+                .iter()
+                .find(|selector| {
+                    selector.owner == ScopedOwner::Cpu(cpu.to_string())
+                        && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                        && selector.operand_plan.contains(plan_fragment)
+                })
+                .unwrap_or_else(|| {
+                    panic!("missing Rust Item 27 selector {cpu}/{mnemonic}/{plan_fragment}")
+                });
+            assert!(
+                selector
+                    .operand_plan
+                    .starts_with("state.require.v1:m68k.fpu_target=1+2?"),
+                "external-FPU selector must retain Rust's package state guard: {selector:?}"
+            );
+        }
+    }
+
+    for index in 0_u16..=7 {
+        assert!(chunks.register_encodings.iter().any(|register| {
+            register.owner == ScopedOwner::Family("motorola68000".to_string())
+                && register
+                    .id
+                    .eq_ignore_ascii_case(format!("FP{index}").as_str())
+                && register.class == 2
+                && register.index == index
+        }));
+    }
+    for (id, index) in [("FPCR", 0_u16), ("FPSR", 1), ("FPIAR", 2)] {
+        assert!(chunks.register_encodings.iter().any(|register| {
+            register.owner == ScopedOwner::Family("motorola68000".to_string())
+                && register.id.eq_ignore_ascii_case(id)
+                && register.class == 3
+                && register.index == index
+        }));
+    }
+
+    for source_name in [
+        "tkpkg_selection_service.asm",
+        "tkpkg_operand_runtime.asm",
+        "tkpkg_encode_service.asm",
+        "tkpkg_state_service.asm",
+    ] {
+        let source = tkpkg_amigaos_source(source_name).to_ascii_lowercase();
+        for forbidden in ["68881", "68882", "fmove", "fmovem", "fpu register"] {
+            assert!(
+                !source.contains(forbidden),
+                "generic native {source_name} must not own external-FPU spelling {forbidden}"
+            );
+        }
+    }
+
+    let selection_service = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    assert!(source_contains_in_order(
+        &selection_service,
+        &[
+            "tkpkgSelectCallArgumentV1\t.block",
+            "cmpi.b #'.', (a1)",
+            "callArgSelectNamedOpenScan",
+            "cmpi.b #'(', (a3)",
+            "callArgSelectNamedOpenFound",
+            "cmpi.b #')', (a1)",
+            "moveq #',', d3",
+            "callArgSelectScan",
+            "cmp.b d3, d2",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &selection_service,
+        &[
+            "tkpkgBuildCompactStateCandidateV2\t.block",
+            "jsr state_service.requirementAllowsV1",
+            "cmpi.w #1, d0",
+            "move.w state.EncodeSelectedMselMnemonicLen, d2",
+            "movea.l state.EncodeSelectedMnemonicPtr, a5",
+            "bsr.w tkpkgRenderRejectMessageCodeV1",
+        ]
+    ));
 }
 
 #[test]

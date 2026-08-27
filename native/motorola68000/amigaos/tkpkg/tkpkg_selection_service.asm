@@ -1670,6 +1670,8 @@ tkpkgBuildCompactStateCandidateV2	.block
 	tst.w d1
 	beq.s stateCandidateMiss
 	move.w d1, d0
+	move.w state.EncodeSelectedMselMnemonicLen, d2
+	movea.l state.EncodeSelectedMnemonicPtr, a5
 	moveq #1, d3
 	suba.l a0, a0
 	moveq #0, d4
@@ -1692,6 +1694,7 @@ stateCandidateAllowed
 	moveq #0, d0
 	move.b (a2)+, d0
 	movea.l a2, a1
+	move.b d0, state.EncodeSelectedSemanticPlanKind
 	cmpi.b #1, d0
 	beq.s stateCandidateStructured
 	cmpi.b #2, d0
@@ -3690,8 +3693,9 @@ callArgTupleSpecReturn
 	.bend  ; tkpkgProjectCallArgIndirectTupleRegisterV1
 
 ; Select one zero-based argument from a bounded neutral call span. Rust's
-; parser represents both `arg0:arg1` and postfix `arg0{arg1:arg2}` spellings as
-; calls; preserve nested parenthesized and bracketed expressions in either form.
+; parser represents named `.name(arg0,arg1)`, `arg0:arg1`, and postfix
+; `arg0{arg1:arg2}` spellings as calls; preserve nested parenthesized and
+; bracketed expressions in every form.
 ; Inputs: A0/D0 = call span; D1.W = argument index.
 ; Outputs: A0/D0 = trimmed argument; D1 = 0/1.
 ; Clobbers: D1/CCR. Other working registers are restored.
@@ -3706,6 +3710,47 @@ tkpkgSelectCallArgumentV1	.block
 	moveq #0, d6
 	moveq #0, d4
 	moveq #0, d5
+	moveq #':', d3
+
+	cmpa.l a2, a1
+	bhs.w callArgSelectFail
+	cmpi.b #'.', (a1)
+	bne.s callArgSelectBraceScan
+	movea.l a1, a3
+	addq.l #1, a3
+	moveq #0, d6
+
+callArgSelectNamedOpenScan
+	cmpa.l a2, a3
+	bhs.w callArgSelectFail
+	cmpi.b #'(', (a3)
+	beq.s callArgSelectNamedOpenFound
+	addq.l #1, a3
+	addq.w #1, d6
+	bra.s callArgSelectNamedOpenScan
+
+callArgSelectNamedOpenFound
+	tst.w d6
+	beq.w callArgSelectFail
+	movea.l a2, a1
+callArgSelectNamedTrimEnd
+	cmpa.l a3, a1
+	bls.w callArgSelectFail
+	subq.l #1, a1
+	cmpi.b #' ', (a1)
+	beq.s callArgSelectNamedTrimEnd
+	cmpi.b #9, (a1)
+	beq.s callArgSelectNamedTrimEnd
+	cmpi.b #')', (a1)
+	bne.w callArgSelectFail
+	movea.l a1, a2
+	lea 1(a3), a1
+	movea.l a1, a3
+	moveq #0, d6
+	moveq #0, d4
+	moveq #0, d5
+	moveq #',', d3
+	bra.w callArgSelectScan
 
 callArgSelectBraceScan
 	cmpa.l a2, a3
@@ -3752,6 +3797,7 @@ callArgSelectNoBrace
 	movea.l a1, a3
 	moveq #0, d4
 	moveq #0, d5
+	moveq #':', d3
 	bra.s callArgSelectScan
 
 callArgSelectBraceFound
@@ -3781,6 +3827,7 @@ callArgSelectBraceTrimEnd
 	moveq #1, d6
 	moveq #0, d4
 	moveq #0, d5
+	moveq #':', d3
 
 callArgSelectScan
 	cmpa.l a2, a1
@@ -3795,7 +3842,7 @@ callArgSelectScan
 	beq.s callArgSelectOpenBracket
 	cmpi.b #']', d2
 	beq.s callArgSelectCloseBracket
-	cmpi.b #':', d2
+	cmp.b d3, d2
 	bne.s callArgSelectNext
 	tst.w d4
 	bne.s callArgSelectNext

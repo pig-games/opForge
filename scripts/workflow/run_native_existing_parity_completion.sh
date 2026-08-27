@@ -84,6 +84,7 @@ tests=(
   external_fs_uae_native_m68k_runtime_directive_state_switch_parity
   external_fs_uae_native_m68k_runtime_directive_state_illegal_pair_rejection
   external_fs_uae_native_m68030_m68040_integer_mmu_parity
+  external_fs_uae_native_m68881_m68882_core_parity
 )
 
 test_source="crates/opforge-asm/src"

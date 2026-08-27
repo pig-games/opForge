@@ -307,6 +307,14 @@ changes examples/references, it also runs
 native item's Level D test uses the known-good FS-UAE environment from
 `agents/rules/fs-uae.md` and `--test-threads=1`.
 
+On macOS, every real FS-UAE command must be launched with host application
+permission (the runner intentionally hands the installed `.app` bundle to
+Launch Services), not merely with filesystem access to its inner executable.
+A sandboxed `kLSNoExecutableErr` that occurs before the fresh guest-start
+challenge is invalid pre-guest evidence, not a product result. After confirming
+that the configured executable exists, do not repeat the command in the same
+sandbox; rerun that same directed proof once with application-launch permission.
+
 For Items 1-13 and any reopened decimal package-phase subitem, “Package Phase
 Quality Gate” means the item's focused tests plus all of:
 
@@ -822,11 +830,12 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit completing the Rust-supported m68040 FPU profile.
   - Definition of done: `68040_integrated_fpu` and all matching `.err` fixtures agree with Rust.
 
-- [ ] Item 30: prove native package execution for the 68080 integer and control surface
+- [x] Item 30: prove native package execution for the 68080 integer and control surface
   - Source requirement or finding IDs: `N68X0-001`-`N68X0-006`, `N68X0-014`-`N68X0-016`; `REQ-68080-FULL-001`-`007`, `009`-`011`.
   - Expected files: generic native interpreter implementations for frozen bank/pair/state records only if needed, parity tests, one slice record; no package/family-definition change.
   - Full quality gates: Shared Full Quality Gate; complete 68080 integer matrix and non-68080 rejections; Level D `external_fs_uae_native_m68080_integer_parity`.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for 68080 non-AMMX integer/control behavior only.
+  - Plan-compliance review evidence: `PASS` — primary Sol review of the exact Item 30 set confirms that the native changes implement only architecture-neutral Rust runtime contracts: register-index projection, SEMV v7 identity/aligned-bit-or/range-map transforms, selector shape-alternative expansion, and register-or-named-range projection. The exact unmodified Rust-built package remains authoritative for CPU availability, mnemonics, aliases, register banks, selectors, encodings, fixups, gating, and diagnostics; generic native production sources add none of that vocabulary. The signed-32 native scalar boundary is the only fundamental representation difference and rejects unrepresentable package i64 transform fields. Per the user's delegation constraint, Luna monitored test lifecycle only and performed no analysis, fixes, or compliance judgment.
+  - Completion evidence (2026-08-27): the Level-B boundary contract passes against the exact live Rust package and explicitly proves inherited `ADDA.W D0,A0` plus `ADDA.W #16,A1`, all m68080 integer/control selectors and register banks, exact SEMV v7 transforms, the m68040 B-register rejection row, and Rust's shape-alternative expansion. Directed fresh Level-D guests first proved register-index projection and four surface groups. The established native completion wrapper was invoked exactly once: its schema-binary shard passed, then an external Work-volume handoff timeout occurred before the schema-listing guest start; the exact unchanged schema-listing shard passed once as the permitted directed confirmation, and the wrapper was not repeated. The Item 30 aggregate was invoked exactly once and attempted all sixteen fresh cases: fourteen produced their exact Rust bytes or diagnostics and explicit exits; the remaining two exposed missing neutral SEMV v7 transform handling and selector shape-alternative/register-or-named-range handling. After those fixes, only directed proofs ran: the extended-short RangeMap guest passed with exact Rust bytes and explicit exit zero, and the m68040 `ADDQ.L #1,B0` guest passed with Rust's exact `E/B register requires .cpu 68080 and is unavailable on m68040` diagnostic, completed protocol, and explicit exit one. The aggregate and completion wrapper were not repeated. The macOS sandbox/App-launch pitfall is now recorded above so pre-guest `kLSNoExecutableErr` results cannot be mistaken for product evidence or retried in the same sandbox. No production Rust changed, so no Rust full gate applies.
   - Commit outcome: one commit completing the Rust 68080 integer profile.
   - Definition of done: `68080_integer_addressing_matrix` and all owned alias/gating cases match Rust.
 

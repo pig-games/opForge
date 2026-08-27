@@ -241,6 +241,9 @@ MemberPrefixText
 NamedRegisterPrefixText
 	.byte "named_register"
 
+RegisterOrNamedRangePrefixText
+	.byte "register_or_named_range"
+
 TargetPrefixText
 	.byte "target:"
 
@@ -1292,7 +1295,7 @@ cmseStringShape
 	lea buffers.CompactStringScratchBuffer, a1
 	movea.l state.EncodeSelectedMselShapePtr, a2
 	move.w 26(sp), d0
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	bsr.w tkpkgServiceShapeAlternativeMatchesV1
 	movea.l (sp)+, a2
 	tst.b d0
 	beq.s cmseStringNext
@@ -2748,7 +2751,7 @@ semanticCheckMember
 	moveq #6, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
 	tst.b d0
-	beq.s semanticCheckNamedRegister
+	beq.s semanticCheckRegisterOrNamedRange
 	lea 6(a5), a1
 	move.w d7, d0
 	subi.w #6, d0
@@ -2762,6 +2765,20 @@ semanticCheckMember
 	jsr operand.tkpkgMselStripOuterParensV1
 	moveq #0, d1
 	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	bra.w semanticProjectReturn
+
+semanticCheckRegisterOrNamedRange
+	movea.l a5, a1
+	move.w d7, d0
+	lea RegisterOrNamedRangePrefixText, a2
+	moveq #23, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckNamedRegister
+	lea 23(a5), a1
+	move.w d7, d0
+	subi.w #23, d0
+	bsr.w tkpkgProjectRegisterOrNamedRangeV1
 	bra.w semanticProjectReturn
 
 semanticCheckNamedRegister
@@ -3129,17 +3146,17 @@ semanticRegisterIndexReady
 	lea 6(a2), a1
 	move.w d6, d0
 	subi.w #6, d0
-	bsr.w tkpkgParseU16DecimalV2
+	bsr.w tkpkgParseRegisterClassProjectionV1
 	bne.w semanticProjectMalformed
 	move.w d3, d6
 	move.w d7, d0
 	jsr operand.tkpkgMselLocateSemanticOperandV2
 	bne.w semanticProjectNoMatch
-	move.l a6, d5
+	move.l a6, d1
 	beq.s semanticRegisterLookup
-	cmpi.l #1, d5
+	cmpi.l #1, d1
 	beq.s semanticRegisterStripParens
-	cmpi.l #2, d5
+	cmpi.l #2, d1
 	beq.s semanticRegisterStripUnaryPlus
 	tst.l d0
 	beq.w semanticProjectNoMatch
@@ -3164,6 +3181,20 @@ semanticRegisterLookup
 	move.w d6, d1
 	bsr.w tkpkgFindScopedRegisterEncodingV1
 	bne.w semanticProjectNoMatch
+	tst.w d2
+	beq.s semanticRegisterProjected
+	cmpi.w #1, d2
+	beq.s semanticRegisterShift
+	cmpi.w #2, d2
+	beq.s semanticRegisterMask
+	lsr.l d4, d3
+	bra.s semanticRegisterMask
+semanticRegisterShift
+	lsr.l d4, d3
+	bra.s semanticRegisterProjected
+semanticRegisterMask
+	and.l d5, d3
+semanticRegisterProjected
 	bra.s semanticProjectOk
 
 semanticCheckDistinctRegister
@@ -6173,6 +6204,399 @@ parseU16Return
 	rts
 	.bend  ; tkpkgParseU16DecimalV2
 
+; Parse Rust's neutral register-index projection grammar.  The package may
+; retain the resolved index, shift it right, mask it, or shift and then mask.
+; Inputs: A1/D0.W = `class`, `class.shrN`, `class.andM`, or
+;         `class.shrN.andM` text after the `.class` marker.
+; Outputs: D3.W = class; D2.W = 0 identity, 1 shift, 2 mask, 3 shift+mask;
+;          D4.W = shift; D5.W = mask; D1 = 0/1.
+; Clobbers: D0-D5/A1-A3/CCR.
+tkpkgParseRegisterClassProjectionV1	.block
+	movem.l d6-d7/a2-a3, -(sp)
+	lea -2(sp), sp
+	movea.l a1, a3
+	move.w d0, d7
+	moveq #0, d2
+	moveq #0, d4
+	moveq #0, d5
+	clr.w (sp)
+	tst.w d7
+	beq.w registerProjectionFail
+	moveq #0, d6
+
+registerProjectionClassScan
+	cmp.w d7, d6
+	bhs.s registerProjectionIdentity
+	cmpi.b #'.', 0(a3, d6.w)
+	beq.s registerProjectionSuffix
+	addq.w #1, d6
+	bra.s registerProjectionClassScan
+
+registerProjectionIdentity
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w registerProjectionFail
+	move.w d3, (sp)
+	moveq #0, d2
+	moveq #0, d4
+	moveq #0, d5
+	bra.w registerProjectionOk
+
+registerProjectionSuffix
+	tst.w d6
+	beq.w registerProjectionFail
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w registerProjectionFail
+	move.w d3, (sp)
+	lea 0(a3, d6.w), a2
+	move.w d7, d0
+	sub.w d6, d0
+	cmpi.w #5, d0
+	bcs.w registerProjectionFail
+	cmpi.b #'.', (a2)
+	bne.w registerProjectionFail
+	cmpi.b #'s', 1(a2)
+	bne.w registerProjectionCheckMask
+	cmpi.b #'h', 2(a2)
+	bne.w registerProjectionFail
+	cmpi.b #'r', 3(a2)
+	bne.w registerProjectionFail
+	lea 4(a2), a1
+	subq.w #4, d0
+	moveq #0, d6
+
+registerProjectionShiftScan
+	cmp.w d0, d6
+	bhs.s registerProjectionShiftOnly
+	move.w d0, d7
+	sub.w d6, d7
+	cmpi.w #4, d7
+	bcs.s registerProjectionShiftNext
+	cmpi.b #'.', 0(a1, d6.w)
+	bne.s registerProjectionShiftNext
+	cmpi.b #'a', 1(a1, d6.w)
+	bne.s registerProjectionShiftNext
+	cmpi.b #'n', 2(a1, d6.w)
+	bne.s registerProjectionShiftNext
+	cmpi.b #'d', 3(a1, d6.w)
+	beq.s registerProjectionShiftMask
+registerProjectionShiftNext
+	addq.w #1, d6
+	bra.s registerProjectionShiftScan
+
+registerProjectionShiftOnly
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w registerProjectionFail
+	cmpi.l #15, d3
+	bhi.w registerProjectionFail
+	move.w d3, d4
+	moveq #1, d2
+	bra.s registerProjectionOk
+
+registerProjectionShiftMask
+	tst.w d6
+	beq.w registerProjectionFail
+	move.w d0, d7
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w registerProjectionFail
+	cmpi.l #15, d3
+	bhi.w registerProjectionFail
+	move.w d3, d4
+	lea 4(a1, d6.w), a1
+	move.w d7, d0
+	sub.w d6, d0
+	subq.w #4, d0
+	beq.w registerProjectionFail
+	move.l d4, -(sp)
+	bsr.w tkpkgParseU16DecimalV2
+	move.l (sp)+, d4
+	tst.l d1
+	bne.w registerProjectionFail
+	move.w d3, d5
+	moveq #3, d2
+	bra.s registerProjectionOk
+
+registerProjectionCheckMask
+	cmpi.b #'a', 1(a2)
+	bne.w registerProjectionFail
+	cmpi.b #'n', 2(a2)
+	bne.w registerProjectionFail
+	cmpi.b #'d', 3(a2)
+	bne.w registerProjectionFail
+	lea 4(a2), a1
+	subq.w #4, d0
+	beq.s registerProjectionFail
+	bsr.w tkpkgParseU16DecimalV2
+	bne.s registerProjectionFail
+	move.w d3, d5
+	moveq #2, d2
+
+registerProjectionOk
+	moveq #0, d3
+	move.w (sp), d3
+	moveq #0, d1
+	bra.s registerProjectionReturn
+registerProjectionFail
+	moveq #1, d1
+registerProjectionReturn
+	lea 2(sp), sp
+	movem.l (sp)+, d6-d7/a2-a3
+	tst.l d1
+	rts
+	.bend  ; tkpkgParseRegisterClassProjectionV1
+
+; Project Rust's neutral `register_or_named_rangeN.classesC[+C]
+; .prefixP.minX.maxY` source. Active package RENC classes take precedence;
+; otherwise the raw identifier may match the package-declared prefix/range.
+; Inputs: A1/D0.W = text after `register_or_named_range`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = register/range index.
+tkpkgProjectRegisterOrNamedRangeV1	.block
+	movem.l d2/d4-d7/a0-a6, -(sp)
+	lea -40(sp), sp
+	move.l a1, (sp)
+	move.w d0, 4(sp)
+	clr.w 6(sp)
+	clr.l 8(sp)
+	clr.w 12(sp)
+	clr.l 14(sp)
+	clr.w 18(sp)
+	clr.l 20(sp)
+	clr.l 24(sp)
+	clr.l 28(sp)
+	clr.w 32(sp)
+	clr.l 34(sp)
+	clr.w 38(sp)
+
+	movea.l a1, a2
+	move.w d0, d7
+	moveq #0, d6
+rangeFindClasses
+	tst.w d7
+	beq.w rangeMalformed
+	cmpi.b #'.', (a2)
+	beq.s rangeClassesMarker
+	addq.l #1, a2
+	addq.w #1, d6
+	subq.w #1, d7
+	bra.s rangeFindClasses
+
+rangeClassesMarker
+	tst.w d6
+	beq.w rangeMalformed
+	movea.l (sp), a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w rangeMalformed
+	move.w d3, 6(sp)
+	cmpi.w #8, d7
+	bcs.w rangeMalformed
+	cmpi.b #'.', (a2)
+	bne.w rangeMalformed
+	cmpi.b #'c', 1(a2)
+	bne.w rangeMalformed
+	cmpi.b #'l', 2(a2)
+	bne.w rangeMalformed
+	cmpi.b #'a', 3(a2)
+	bne.w rangeMalformed
+	cmpi.b #'s', 4(a2)
+	bne.w rangeMalformed
+	cmpi.b #'s', 5(a2)
+	bne.w rangeMalformed
+	cmpi.b #'e', 6(a2)
+	bne.w rangeMalformed
+	cmpi.b #'s', 7(a2)
+	bne.w rangeMalformed
+	lea 8(a2), a3
+	subi.w #8, d7
+	move.l a3, 8(sp)
+	moveq #0, d6
+
+rangeFindPrefix
+	cmpi.w #7, d7
+	bcs.w rangeMalformed
+	cmpi.b #'.', (a3)
+	bne.s rangePrefixNext
+	cmpi.b #'p', 1(a3)
+	bne.s rangePrefixNext
+	cmpi.b #'r', 2(a3)
+	bne.s rangePrefixNext
+	cmpi.b #'e', 3(a3)
+	bne.s rangePrefixNext
+	cmpi.b #'f', 4(a3)
+	bne.s rangePrefixNext
+	cmpi.b #'i', 5(a3)
+	bne.s rangePrefixNext
+	cmpi.b #'x', 6(a3)
+	beq.s rangePrefixMarker
+rangePrefixNext
+	addq.l #1, a3
+	addq.w #1, d6
+	subq.w #1, d7
+	bra.s rangeFindPrefix
+
+rangePrefixMarker
+	tst.w d6
+	beq.w rangeMalformed
+	move.w d6, 12(sp)
+	lea 7(a3), a4
+	subi.w #7, d7
+	move.l a4, 14(sp)
+	moveq #0, d6
+
+rangeFindMin
+	cmpi.w #4, d7
+	bcs.w rangeMalformed
+	cmpi.b #'.', (a4)
+	bne.s rangeMinNext
+	cmpi.b #'m', 1(a4)
+	bne.s rangeMinNext
+	cmpi.b #'i', 2(a4)
+	bne.s rangeMinNext
+	cmpi.b #'n', 3(a4)
+	beq.s rangeMinMarker
+rangeMinNext
+	addq.l #1, a4
+	addq.w #1, d6
+	subq.w #1, d7
+	bra.s rangeFindMin
+
+rangeMinMarker
+	tst.w d6
+	beq.w rangeMalformed
+	move.w d6, 18(sp)
+	lea 4(a4), a5
+	subq.w #4, d7
+	moveq #0, d6
+
+rangeFindMax
+	cmpi.w #4, d7
+	bcs.w rangeMalformed
+	cmpi.b #'.', 0(a5, d6.w)
+	bne.s rangeMaxNext
+	cmpi.b #'m', 1(a5, d6.w)
+	bne.s rangeMaxNext
+	cmpi.b #'a', 2(a5, d6.w)
+	bne.s rangeMaxNext
+	cmpi.b #'x', 3(a5, d6.w)
+	beq.s rangeMaxMarker
+rangeMaxNext
+	addq.w #1, d6
+	subq.w #1, d7
+	bra.s rangeFindMax
+
+rangeMaxMarker
+	tst.w d6
+	beq.w rangeMalformed
+	lea 0(a5, d6.w), a2
+	lea 4(a2), a3
+	subq.w #4, d7
+	beq.w rangeMalformed
+	movea.l a5, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU32DecimalV2
+	bne.w rangeMalformed
+	move.l d3, 20(sp)
+	movea.l a3, a1
+	move.w d7, d0
+	bsr.w tkpkgParseU32DecimalV2
+	bne.w rangeMalformed
+	move.l d3, 24(sp)
+	move.l 20(sp), d4
+	cmp.l 24(sp), d4
+	bhi.w rangeMalformed
+
+	move.w 6(sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w rangeNoMatch
+	move.l a0, 28(sp)
+	move.w d0, 32(sp)
+	movea.l 8(sp), a3
+	move.w 12(sp), d7
+
+rangeClassLoop
+	moveq #0, d6
+rangeClassScan
+	cmp.w d7, d6
+	beq.s rangeClassReady
+	cmpi.b #'+', 0(a3, d6.w)
+	beq.s rangeClassReady
+	addq.w #1, d6
+	bra.s rangeClassScan
+rangeClassReady
+	tst.w d6
+	beq.w rangeMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w rangeMalformed
+	move.w d3, d1
+	movea.l 28(sp), a0
+	moveq #0, d0
+	move.w 32(sp), d0
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.s rangeClassAdvance
+	tst.w 38(sp)
+	bne.s rangeClassAdvance
+	move.l d3, 34(sp)
+	move.w #1, 38(sp)
+rangeClassAdvance
+	cmp.w d7, d6
+	beq.s rangeClassesDone
+	addq.w #1, d6
+	adda.w d6, a3
+	sub.w d6, d7
+	beq.w rangeMalformed
+	bra.s rangeClassLoop
+
+rangeClassesDone
+	tst.w 38(sp)
+	beq.s rangeTryNamed
+	move.l 34(sp), d3
+	bra.s rangeOk
+
+rangeTryNamed
+	move.w 32(sp), d0
+	move.w 18(sp), d1
+	cmp.w d1, d0
+	bls.s rangeNoMatch
+	movea.l 28(sp), a1
+	movea.l 14(sp), a2
+	move.w d1, d0
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	tst.b d0
+	beq.s rangeNoMatch
+	movea.l 28(sp), a1
+	moveq #0, d0
+	move.w 18(sp), d0
+	adda.l d0, a1
+	moveq #0, d0
+	move.w 32(sp), d0
+	sub.w 18(sp), d0
+	bsr.w tkpkgParseU32DecimalV2
+	bne.s rangeNoMatch
+	cmp.l 20(sp), d3
+	bcs.s rangeNoMatch
+	cmp.l 24(sp), d3
+	bhi.s rangeNoMatch
+
+rangeOk
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s rangeReturn
+rangeNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+	bra.s rangeReturn
+rangeMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+rangeReturn
+	lea 40(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0-a6
+	rts
+	.bend  ; tkpkgProjectRegisterOrNamedRangeV1
+
 ; Parse an unsigned decimal constrained to the native u32 scalar transport.
 ; Inputs: A1/D0.W = text. Outputs: D3.L = value; D1 = 0/1.
 tkpkgParseU32DecimalV2	.block
@@ -7456,6 +7880,95 @@ noMatch
 	moveq #0, d0
 	rts
 	.bend  ; tkpkgServiceStringEqAsciiCasefoldV1
+
+; Match Rust runtime_model_core's selector-shape expansion. The package string
+; is split on `|`; surrounding ASCII space/tab is trimmed and empty alternatives
+; are ignored before case-insensitive comparison with the requested shape.
+; Inputs: A1/D0 = package shape string; A2/D1 = requested shape.
+; Outputs: D0 = 1 match, 0 no match.
+tkpkgServiceShapeAlternativeMatchesV1	.block
+	movem.l d2-d7/a1-a6, -(sp)
+	movea.l a1, a3
+	move.w d0, d7
+	movea.l a2, a4
+	move.w d1, d6
+
+shapeAlternativeNext
+	tst.w d7
+	beq.s shapeAlternativeNoMatch
+shapeAlternativeTrimStart
+	tst.w d7
+	beq.s shapeAlternativeNoMatch
+	cmpi.b #' ', (a3)
+	beq.s shapeAlternativeSkipStart
+	cmpi.b #9, (a3)
+	bne.s shapeAlternativeStartReady
+shapeAlternativeSkipStart
+	addq.l #1, a3
+	subq.w #1, d7
+	bra.s shapeAlternativeTrimStart
+
+shapeAlternativeStartReady
+	cmpi.b #'|', (a3)
+	bne.s shapeAlternativeScan
+	addq.l #1, a3
+	subq.w #1, d7
+	bra.s shapeAlternativeNext
+
+shapeAlternativeScan
+	movea.l a3, a5
+	move.w d7, d5
+	moveq #0, d4
+shapeAlternativeScanLoop
+	cmp.w d5, d4
+	beq.s shapeAlternativeEndReady
+	cmpi.b #'|', 0(a5, d4.w)
+	beq.s shapeAlternativeEndReady
+	addq.w #1, d4
+	bra.s shapeAlternativeScanLoop
+
+shapeAlternativeEndReady
+	move.w d4, d2
+shapeAlternativeTrimEnd
+	tst.w d2
+	beq.s shapeAlternativeAdvance
+	cmpi.b #' ', -1(a3, d2.w)
+	beq.s shapeAlternativeTrimOne
+	cmpi.b #9, -1(a3, d2.w)
+	bne.s shapeAlternativeCompare
+shapeAlternativeTrimOne
+	subq.w #1, d2
+	bra.s shapeAlternativeTrimEnd
+
+shapeAlternativeCompare
+	cmp.w d6, d2
+	bne.s shapeAlternativeAdvance
+	movea.l a3, a1
+	movea.l a4, a2
+	move.w d2, d0
+	move.w d6, d1
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	tst.b d0
+	bne.s shapeAlternativeMatch
+
+shapeAlternativeAdvance
+	cmp.w d7, d4
+	beq.s shapeAlternativeNoMatch
+	addq.w #1, d4
+	adda.w d4, a3
+	sub.w d4, d7
+	bra.s shapeAlternativeNext
+
+shapeAlternativeMatch
+	moveq #1, d0
+	bra.s shapeAlternativeReturn
+shapeAlternativeNoMatch
+	moveq #0, d0
+shapeAlternativeReturn
+	movem.l (sp)+, d2-d7/a1-a6
+	tst.l d0
+	rts
+	.bend  ; tkpkgServiceShapeAlternativeMatchesV1
 
 tkpkgServiceFoldAsciiLowerV1	.block
 	cmpi.b #'A', d0

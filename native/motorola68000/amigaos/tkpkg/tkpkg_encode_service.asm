@@ -566,7 +566,8 @@ return
 
 	.priv
 ; Resolve an opaque selected mode as a CSEM program using Rust's
-; dialect/cpu/family precedence, then execute encoding v2/v6 or fixup v4.
+; dialect/cpu/family precedence, then execute encoding v2/v6, branch v5, or
+; fixup v4/v7.
 ; Inputs are the same selected-envelope registers used by the table path.
 ; Outputs: D0 status, D1 encoded length, D3.B found flag.
 tkpkgEncodeFindAndExecuteSemanticProgramV2	.block
@@ -696,8 +697,11 @@ semanticProgramNext
 	beq.s semanticEncodingReady
 	cmpi.w #5, d4
 	beq.s semanticBranchReady
+	cmpi.w #7, d4
+	beq.s semanticFixupReady
 	cmpi.w #4, d4
 	bne.s semanticMalformed
+semanticFixupReady
 	movea.l 6(sp), a1
 	move.w 4(sp), d1
 	bsr.w tkpkgEncodeExecuteFixupProgramV4
@@ -1091,13 +1095,22 @@ branchDoesNotFit
 	rts
 	.bend  ; tkpkgBranchValueFitsSignedWidthV5
 
-; Direct Rust fixup_vm::execute_fixup_program v4 port for resolved native
-; scalars.  Fixup inputs use a five-byte record: flags then little-endian u32.
-; Bit zero carries Rust's target_reference property; bit one is unresolved.
-; Inputs: A1/D1 = program; D5/D6/A3 = input records.
+; Direct Rust fixup_vm::execute_fixup_program v4/v7 port over the native
+; signed-32 scalar transport.  Fixup inputs use a five-byte record: flags then
+; little-endian u32.  Bit zero carries Rust's target_reference property; bit
+; one is unresolved.  V7 transforms remain package data and are interpreted
+; generically; signed i64 transform values outside native i32 transport fail
+; closed.
+; Inputs: A1/D1 = program; D4.W = opcode version; D5/D6/A3 = input records.
 ; Outputs: D0 status; D1 total output length in LastErrorBuffer.
 tkpkgEncodeExecuteFixupProgramV4	.block
 	movem.l d2-d7/a0/a2-a5, -(sp)
+	move.w d4, d7
+	cmpi.w #4, d7
+	beq.s fixupVersionReady
+	cmpi.w #7, d7
+	bne.w fixupFail
+fixupVersionReady
 	movea.l a1, a0
 	moveq #0, d0
 	move.w d1, d0
@@ -1192,6 +1205,11 @@ fixupApplyPosition
 	bvs.w fixupFrameFail
 
 fixupProjected
+	cmpi.w #7, d7
+	bne.s fixupTransformReady
+	bsr.w tkpkgSemanticApplyFixupTransformV7
+	bne.w fixupFrameFail
+fixupTransformReady
 	move.w 18(sp), d0
 	move.w 2(sp), d2
 	bsr.w tkpkgSemanticValidateFixupRangeV4
@@ -1224,6 +1242,238 @@ fixupReturn
 	movem.l (sp)+, d2-d7/a0/a2-a5
 	rts
 	.bend  ; tkpkgEncodeExecuteFixupProgramV4
+
+; Apply one Rust FixupTransform carried by SEMV v7.  The native expression
+; boundary transports signed i32 scalars, so range-map i64 fields must be exact
+; sign extensions of i32 values.  This is the only representation difference
+; from Rust; ordering, alignment, mapping, and overflow behavior are identical.
+; Inputs: A0/A5 = transform cursor/program end; D2.W = output width;
+;         D3.L = projected value; D6.W bit one = unresolved.
+; Outputs: D0 = 0/1; D3.L transformed value; A0 advanced.
+tkpkgSemanticApplyFixupTransformV7	.block
+	movem.l d1-d2/d4-d7/a1-a4, -(sp)
+	lea -32(sp), sp
+	move.l d3, (sp)
+	move.w d2, 4(sp)
+	clr.w 6(sp)
+	clr.w 8(sp)
+	clr.l 10(sp)
+	clr.l 14(sp)
+	clr.l 18(sp)
+	clr.l 22(sp)
+	clr.l 26(sp)
+	move.w d6, 30(sp)
+
+	moveq #1, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w transformFail
+	moveq #0, d0
+	move.b (a0)+, d0
+	tst.b d0
+	bne.s transformCheckKind
+	bra.w transformIdentity
+transformCheckKind
+	cmpi.b #1, d0
+	bne.s transformCheckRangeMap
+	bra.w transformAlignedBitOr
+transformCheckRangeMap
+	cmpi.b #2, d0
+	bne.w transformFail
+
+transformRangeMap
+	moveq #5, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w transformFail
+	bsr.w tkpkgSemanticReadU32LeV2
+	bne.w transformFail
+	move.l d0, 22(sp)
+	bsr.w tkpkgSemanticValidateAlignmentV7
+	bne.w transformFail
+	moveq #0, d7
+	move.b (a0)+, d7
+	beq.w transformFail
+	move.w 30(sp), d0
+	btst #1, d0
+	bne.s transformRangeLoop
+	move.l 22(sp), d4
+	subq.l #1, d4
+	move.l (sp), d0
+	and.l d4, d0
+	bne.w transformFail
+
+transformRangeLoop
+	moveq #24, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w transformFail
+	bsr.w tkpkgSemanticReadI64LeV7
+	bsr.w tkpkgSemanticRequireI32V7
+	bne.w transformFail
+	move.l d1, 14(sp)
+	bsr.w tkpkgSemanticReadI64LeV7
+	bsr.w tkpkgSemanticRequireI32V7
+	bne.w transformFail
+	move.l d1, 18(sp)
+	bsr.w tkpkgSemanticReadI64LeV7
+	bsr.w tkpkgSemanticRequireI32V7
+	bne.w transformFail
+	move.l d1, 26(sp)
+
+	move.l 14(sp), d4
+	cmp.l 18(sp), d4
+	bgt.w transformFail
+	tst.w 6(sp)
+	beq.s transformRangeOrdered
+	move.l 10(sp), d5
+	cmp.l d4, d5
+	bge.w transformFail
+transformRangeOrdered
+	move.l 18(sp), 10(sp)
+	move.w #1, 6(sp)
+	move.l d4, d0
+	add.l 26(sp), d0
+	bvs.w transformFail
+	move.l 18(sp), d0
+	add.l 26(sp), d0
+	bvs.w transformFail
+
+	move.w 30(sp), d0
+	btst #1, d0
+	bne.s transformRangeNext
+	move.l (sp), d5
+	cmp.l 14(sp), d5
+	blt.s transformRangeNext
+	cmp.l 18(sp), d5
+	bgt.s transformRangeNext
+	tst.w 8(sp)
+	bne.w transformFail
+	add.l 26(sp), d5
+	bvs.w transformFail
+	move.l d5, (sp)
+	move.w #1, 8(sp)
+transformRangeNext
+	subq.w #1, d7
+	beq.s transformRangeDone
+	bra.w transformRangeLoop
+transformRangeDone
+	move.w 30(sp), d0
+	btst #1, d0
+	beq.s transformRangeResolved
+	bra.w transformIdentity
+transformRangeResolved
+	tst.w 8(sp)
+	beq.w transformFail
+	move.l (sp), d3
+	bra.s transformOk
+
+transformAlignedBitOr
+	moveq #8, d0
+	bsr.w tkpkgSemanticRequireProgramBytesV2
+	bne.w transformFail
+	bsr.w tkpkgSemanticReadU32LeV2
+	bne.w transformFail
+	move.l d0, 22(sp)
+	bsr.w tkpkgSemanticValidateAlignmentV7
+	bne.w transformFail
+	bsr.w tkpkgSemanticReadU32LeV2
+	bne.w transformFail
+	move.l d0, 26(sp)
+	move.w 4(sp), d2
+	cmpi.w #1, d2
+	bne.s transformMaskWord
+	cmpi.l #$ff, d0
+	bhi.w transformFail
+	bra.s transformMaskReady
+transformMaskWord
+	cmpi.w #2, d2
+	bne.s transformMaskLong
+	cmpi.l #$ffff, d0
+	bhi.w transformFail
+	bra.s transformMaskReady
+transformMaskLong
+	cmpi.w #4, d2
+	bne.w transformFail
+transformMaskReady
+	move.w 30(sp), d0
+	btst #1, d0
+	bne.s transformIdentity
+	move.l 22(sp), d4
+	subq.l #1, d4
+	move.l (sp), d0
+	and.l d4, d0
+	bne.w transformFail
+	move.l (sp), d3
+	or.l 26(sp), d3
+	bra.s transformOk
+
+transformIdentity
+	move.l (sp), d3
+transformOk
+	moveq #0, d0
+	bra.s transformReturn
+transformFail
+	moveq #1, d0
+transformReturn
+	lea 32(sp), sp
+	movem.l (sp)+, d1-d2/d4-d7/a1-a4
+	tst.l d0
+	rts
+	.bend  ; tkpkgSemanticApplyFixupTransformV7
+
+; Validate a package u32 alignment as Rust's nonzero power-of-two contract.
+; Input: D0.L alignment. Output: D0=0/1.
+tkpkgSemanticValidateAlignmentV7	.block
+	move.l d1, -(sp)
+	tst.l d0
+	beq.s alignmentFail
+	move.l d0, d1
+	subq.l #1, d1
+	and.l d0, d1
+	bne.s alignmentFail
+	moveq #0, d0
+	bra.s alignmentReturn
+alignmentFail
+	moveq #1, d0
+alignmentReturn
+	move.l (sp)+, d1
+	tst.l d0
+	rts
+	.bend  ; tkpkgSemanticValidateAlignmentV7
+
+; Read one signed package i64 stored little-endian.
+; Inputs: A0 = cursor already proven to have eight bytes.
+; Outputs: D0=high32, D1=low32, A0+=8.
+tkpkgSemanticReadI64LeV7	.block
+	move.l (a0)+, d1
+	ror.w #8, d1
+	swap d1
+	ror.w #8, d1
+	move.l (a0)+, d0
+	ror.w #8, d0
+	swap d0
+	ror.w #8, d0
+	rts
+	.bend  ; tkpkgSemanticReadI64LeV7
+
+; Require one signed i64 pair to be exactly representable by native i32.
+; Inputs: D0=high32, D1=low32. Output: D0=0/1.
+tkpkgSemanticRequireI32V7	.block
+	move.l d2, -(sp)
+	moveq #0, d2
+	tst.l d1
+	bpl.s requireI32HighReady
+	moveq #-1, d2
+requireI32HighReady
+	cmp.l d2, d0
+	bne.s requireI32Fail
+	moveq #0, d0
+	bra.s requireI32Return
+requireI32Fail
+	moveq #1, d0
+requireI32Return
+	move.l (sp)+, d2
+	tst.l d0
+	rts
+	.bend  ; tkpkgSemanticRequireI32V7
 
 ; Load one fixup record by index. Outputs D3=value, D6=flags, D0=0/1.
 tkpkgSemanticLoadFixupInputV4	.block

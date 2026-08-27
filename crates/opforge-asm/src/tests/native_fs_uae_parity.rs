@@ -16578,6 +16578,608 @@ fn external_fs_uae_native_m68040_integrated_fpu_parity() {
     }
 }
 
+fn item30_m68080_integer_residual_source() -> String {
+    concat!(
+        ".cpu 68080\n",
+        ".org 0\n",
+        "        ADDA.W D0,A0\n",
+        "        ADDA.W #16,A1\n",
+        "        MOVEX.L D0,D1\n",
+        "        MOVEH (A0),D3\n",
+        "        MOVE2.W (A0),.pair(D2,D3)\n",
+        "        MOVZ2.W (A0),.pair(D4,D5)\n",
+        "        TOUCH (A1)\n",
+        "        MOVIW.L #$8123,D0\n",
+        "        EXTUB.L E23\n",
+        "        EXTUW.L E0\n",
+        "        PERM #$ABC,E0,E23\n",
+        "        MOVEC PCR,D0\n",
+        "        MOVEC D1,MWR\n",
+        "        MOVE SR,E0\n",
+        "        MOVE16 ($1234).L,(A1)\n",
+        "        .apollo on\n",
+        "        MOV3Q #7,D3\n",
+        "        MOVS.B D0,D1\n",
+        "        MOVZ.W (A0),D2\n",
+        "        CLR.Q D2\n",
+    )
+    .to_string()
+}
+
+fn item30_m68080_branch_alias_source() -> String {
+    let mut source = concat!(
+        ".cpu 68080\n",
+        ".org 0\n",
+        "        DBRA.L D0,after_dbra\n",
+        "        NOP\n",
+        "after_dbra:\n",
+    )
+    .to_string();
+    for mnemonic in [
+        "BRA.S+", "BSR.S+", "BHI.S+", "BLS.S+", "BCC.S+", "BHS.S+", "BCS.S+", "BLO.S+", "BNE.S+",
+        "BEQ.S+", "BVC.S+", "BVS.S+", "BPL.S+", "BMI.S+", "BGE.S+", "BLT.S+", "BGT.S+", "BLE.S+",
+    ] {
+        source.push_str(format!("        {mnemonic} $+130\n").as_str());
+    }
+    source
+}
+
+fn item30_m68080_control_alias_source() -> String {
+    let mut source = ".cpu 68080\n.org 0\n".to_string();
+    for register in [
+        "SFC", "DFC", "VBR", "CACR", "MSP", "ISP", "TC", "ITT0", "ITT1", "DTT0", "DTT1", "MMUSR",
+        "URP", "SRP", "PCR", "CCC", "IEP1", "IEP2", "BPC", "BPW", "DCH", "DCM", "STR", "STC",
+        "IEP3", "STH", "STB", "MWR",
+    ] {
+        source.push_str(format!("        MOVEC {register},D0\n").as_str());
+        source.push_str(format!("        MOVEC D1,{register}\n").as_str());
+    }
+    source
+}
+
+#[test]
+fn external_fs_uae_native_m68080_register_index_projection_directed_parity() {
+    // Proof level D. Two fresh guests isolate Rust's neutral register-index
+    // projection grammar with nonzero shift and mask results for package-owned
+    // class-4 and class-5 registers.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 30 package");
+    let definitions = [
+        (
+            "item30-extended-register-shift-and-mask",
+            "        EXTUB.L E23\n",
+        ),
+        (
+            "item30-bank-register-mask",
+            ".apollo on\n        ADDQ.L #1,B7\n",
+        ),
+    ];
+    let resolved = definitions
+        .iter()
+        .map(|(name, source)| {
+            let oracle = live_rust_cpu_name_oracle(
+                source,
+                Some("m68080"),
+                format!("{name}-rust-oracle").as_str(),
+            )
+            .unwrap_or_else(|error| panic!("run Item 30 RENC oracle for {name}: {error}"));
+            (*name, *source, oracle)
+        })
+        .collect::<Vec<_>>();
+    let cases = resolved
+        .iter()
+        .map(
+            |(name, source, oracle)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(source.as_bytes()),
+                command_template: Some(
+                    "{input} --bin {bin} --cpu m68080 --opasm-package {package}",
+                ),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &[],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: oracle,
+                },
+            },
+        )
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 30 register-index projection runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len());
+            for (run, (_, _, oracle)) in runs.iter().zip(&resolved) {
+                assert!(run.protocol_completed);
+                assert!(
+                    run.success,
+                    "Item 30 register-index projection case failed\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout, run.stderr
+                );
+                assert_eq!(run.exit_code, Some(0));
+                assert_eq!(
+                    captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                    *oracle
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68080_integer_directed_parity() {
+    // Proof level D. Four fresh guests isolate the complete checked-in integer
+    // matrix, the residual package/VM surface including inherited ADDA.W,
+    // Apollo-state rejection, and an older-CPU rejection row.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 30 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+
+    let positive_definitions = [
+        (
+            "item30-directed-integer-matrix",
+            fs::read_to_string(
+                workspace_root().join("examples/motorola68000/68080_integer_addressing_matrix.asm"),
+            )
+            .expect("read exact m68080 integer matrix fixture"),
+        ),
+        (
+            "item30-directed-integer-residual",
+            item30_m68080_integer_residual_source(),
+        ),
+    ];
+    let positives = positive_definitions
+        .iter()
+        .map(|(name, source)| {
+            let oracle = live_rust_cpu_name_oracle(
+                source,
+                Some("m68080"),
+                format!("{name}-rust-oracle").as_str(),
+            )
+            .unwrap_or_else(|error| panic!("run Item 30 Rust oracle for {name}: {error}"));
+            (*name, source.as_str(), oracle)
+        })
+        .collect::<Vec<_>>();
+    assert!(positives[1]
+        .2
+        .starts_with(&[0xd0, 0xc0, 0xd2, 0xfc, 0x00, 0x10]));
+
+    let negative_definitions = [
+        (
+            "item30-directed-apollo-disabled-mov3q",
+            "m68080",
+            "        MOV3Q #1,D0\n",
+        ),
+        (
+            "item30-directed-m68040-addiw-rejection",
+            "m68040",
+            "        ADDIW.L #1,D0\n",
+        ),
+    ];
+    let negatives = negative_definitions
+        .iter()
+        .map(|(name, cpu, source)| {
+            let diagnostic = live_rust_cpu_name_diagnostic(
+                source,
+                cpu,
+                format!("{name}-rust-diagnostic").as_str(),
+            );
+            (*name, *cpu, *source, diagnostic)
+        })
+        .collect::<Vec<_>>();
+    let positive_commands = positives
+        .iter()
+        .map(|_| "{input} --bin {bin} --cpu m68080 --opasm-package {package}".to_string())
+        .collect::<Vec<_>>();
+    let negative_commands = negatives
+        .iter()
+        .map(|(_, cpu, _, _)| {
+            format!("{{input}} --bin {{bin}} --cpu {cpu} --opasm-package {{package}}")
+        })
+        .collect::<Vec<_>>();
+    let cases = positives
+        .iter()
+        .zip(&positive_commands)
+        .map(
+            |((name, source, oracle), command)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(source.as_bytes()),
+                command_template: Some(command.as_str()),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &[],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: oracle,
+                },
+            },
+        )
+        .chain(negatives.iter().zip(&negative_commands).map(
+            |((name, _, source, diagnostic), command)| {
+                crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                    name,
+                    cpu_override: "68020",
+                    extra_assembly_defines: &[],
+                    source_override: Some(source.as_bytes()),
+                    command_template: Some(command.as_str()),
+                    package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(
+                        &package,
+                    ),
+                    extra_guest_files: &[],
+                    proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                        diagnostic,
+                    ),
+                }
+            },
+        ))
+        .collect::<Vec<_>>();
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 30 m68080 integer parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len());
+            for (run, (_, _, oracle)) in runs.iter().zip(&positives) {
+                assert!(run.protocol_completed);
+                assert!(
+                    run.success,
+                    "Item 30 directed positive failed\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout, run.stderr
+                );
+                assert_eq!(run.exit_code, Some(0));
+                assert_eq!(
+                    captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                    *oracle
+                );
+            }
+            for run in runs.iter().skip(positives.len()) {
+                assert!(run.protocol_completed);
+                assert!(!run.success);
+                assert_eq!(run.exit_code, Some(1));
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68080_extended_short_v7_directed_parity() {
+    // Proof level D. One fresh guest isolates the corrected neutral SEMV v7
+    // range-map invariant with one positive and one negative extended-short
+    // projection. The same source is assembled by Rust in memory.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 30 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let source = concat!(
+        ".cpu 68080\n",
+        ".org $100\n",
+        "        BRA.S+ $+130\n",
+        "        BSR.S+ $-130\n",
+    );
+    let oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m68080"),
+        "item30-extended-short-v7-directed-rust-oracle",
+    )
+    .expect("run live Rust Item 30 extended-short v7 oracle");
+    assert_eq!(oracle.len(), 4);
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item30-extended-short-v7-directed",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68080 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 30 extended-short v7 parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(run.protocol_completed);
+            assert!(
+                run.success,
+                "Item 30 extended-short v7 directed case failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            assert_eq!(run.exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                oracle.as_slice()
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68040_b_register_rejection_directed_parity() {
+    // Proof level D. One fresh guest isolates Rust's package-owned
+    // register-or-named-range fallback when the B-register RENC class is not
+    // active, including the exact Rust diagnostic and explicit guest exit one.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 30 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let source = "        ADDQ.L #1,B0\n";
+    let diagnostic = live_rust_cpu_name_diagnostic(
+        source,
+        "m68040",
+        "item30-m68040-b-register-directed-rust-diagnostic",
+    );
+    assert_eq!(
+        diagnostic,
+        "E/B register requires .cpu 68080 and is unavailable on m68040"
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item30-m68040-b-register-directed",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68040 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(&diagnostic),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 30 m68040 B-register rejection parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(run.protocol_completed);
+            assert!(!run.success);
+            assert_eq!(run.exit_code, Some(1));
+            assert!(
+                run.stderr.contains(&diagnostic),
+                "native diagnostic did not match Rust\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68080_integer_parity() {
+    // Proof level D. This is the complete Item 30 aggregate executed once by
+    // the established native wrapper. Every case uses a fresh challenge, the
+    // exact Rust-built package, a same-source Rust oracle or diagnostic, guest
+    // completion, and an explicit guest exit.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 30 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+
+    let positive_definitions = [
+        (
+            "item30-integer-matrix",
+            fs::read_to_string(
+                workspace_root().join("examples/motorola68000/68080_integer_addressing_matrix.asm"),
+            )
+            .expect("read exact m68080 integer matrix fixture"),
+        ),
+        (
+            "item30-integer-residual",
+            item30_m68080_integer_residual_source(),
+        ),
+        ("item30-branch-aliases", item30_m68080_branch_alias_source()),
+        (
+            "item30-control-aliases",
+            item30_m68080_control_alias_source(),
+        ),
+    ];
+    let positives = positive_definitions
+        .iter()
+        .map(|(name, source)| {
+            let oracle = live_rust_cpu_name_oracle(
+                source,
+                Some("m68080"),
+                format!("{name}-rust-oracle").as_str(),
+            )
+            .unwrap_or_else(|error| panic!("run Item 30 Rust oracle for {name}: {error}"));
+            (*name, source.as_str(), oracle)
+        })
+        .collect::<Vec<_>>();
+
+    let negative_definitions = [
+        (
+            "item30-apollo-disabled-mov3q",
+            "m68080",
+            "        MOV3Q #1,D0\n",
+        ),
+        (
+            "item30-apollo-disabled-movs",
+            "m68080",
+            "        MOVS.B D0,D1\n",
+        ),
+        (
+            "item30-apollo-disabled-movz",
+            "m68080",
+            "        MOVZ.W (A0),D1\n",
+        ),
+        (
+            "item30-apollo-disabled-clrq",
+            "m68080",
+            "        CLR.Q D0\n",
+        ),
+        ("item30-m68040-addiw", "m68040", "        ADDIW.L #1,D0\n"),
+        ("item30-m68040-movex", "m68040", "        MOVEX.L D0,D1\n"),
+        ("item30-m68040-moveh", "m68040", "        MOVEH (A0),D1\n"),
+        (
+            "item30-m68040-move2",
+            "m68040",
+            "        MOVE2.W (A0),.pair(D0,D1)\n",
+        ),
+        ("item30-m68040-touch", "m68040", "        TOUCH (A0)\n"),
+        (
+            "item30-m68040-b-register",
+            "m68040",
+            "        ADDQ.L #1,B0\n",
+        ),
+        (
+            "item30-m68040-dbra-long",
+            "m68040",
+            "        DBRA.L D0,$0000\n",
+        ),
+        (
+            "item30-m68040-branch-plus",
+            "m68040",
+            "        BRA.S+ $0082\n",
+        ),
+    ];
+    let negatives = negative_definitions
+        .iter()
+        .map(|(name, cpu, source)| {
+            let diagnostic = live_rust_cpu_name_diagnostic(
+                source,
+                cpu,
+                format!("{name}-rust-diagnostic").as_str(),
+            );
+            (*name, *cpu, *source, diagnostic)
+        })
+        .collect::<Vec<_>>();
+    let positive_commands = positives
+        .iter()
+        .map(|_| "{input} --bin {bin} --cpu m68080 --opasm-package {package}".to_string())
+        .collect::<Vec<_>>();
+    let negative_commands = negatives
+        .iter()
+        .map(|(_, cpu, _, _)| {
+            format!("{{input}} --bin {{bin}} --cpu {cpu} --opasm-package {{package}}")
+        })
+        .collect::<Vec<_>>();
+    let cases = positives
+        .iter()
+        .zip(&positive_commands)
+        .map(
+            |((name, source, oracle), command)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(source.as_bytes()),
+                command_template: Some(command.as_str()),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &[],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: oracle,
+                },
+            },
+        )
+        .chain(negatives.iter().zip(&negative_commands).map(
+            |((name, _, source, diagnostic), command)| {
+                crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                    name,
+                    cpu_override: "68020",
+                    extra_assembly_defines: &[],
+                    source_override: Some(source.as_bytes()),
+                    command_template: Some(command.as_str()),
+                    package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(
+                        &package,
+                    ),
+                    extra_guest_files: &[],
+                    proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                        diagnostic,
+                    ),
+                }
+            },
+        ))
+        .collect::<Vec<_>>();
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("complete Item 30 m68080 integer parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len());
+            for (run, (_, _, oracle)) in runs.iter().zip(&positives) {
+                assert!(run.protocol_completed);
+                assert!(
+                    run.success,
+                    "Item 30 aggregate positive failed\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout, run.stderr
+                );
+                assert_eq!(run.exit_code, Some(0));
+                assert_eq!(
+                    captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                    *oracle
+                );
+            }
+            for run in runs.iter().skip(positives.len()) {
+                assert!(run.protocol_completed);
+                assert!(!run.success);
+                assert_eq!(run.exit_code, Some(1));
+            }
+        }
+    }
+}
+
 #[test]
 fn external_fs_uae_native_m68020_later_integer_group_b_parity() {
     // Proof level D. This is the complete Item 24 aggregate executed by the

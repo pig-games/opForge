@@ -24544,6 +24544,314 @@ fn motorola68020_item29_native_m68040_integrated_fpu_package_boundary_matches_ru
 }
 
 #[test]
+fn motorola68020_item30_native_m68080_integer_package_boundary_matches_rust() {
+    // Proof level B. Rust's package remains the sole owner of the m68080
+    // integer/control selectors, register banks, state guards, fixups,
+    // encodings, and rejection wording consumed by native.
+    let package_path =
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let embedded_package = fs::read(&package_path).expect("read Item 30 embedded package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build current unmodified Rust package"),
+        "Item 30 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 30 package input");
+    let owner = ScopedOwner::Cpu("m68080".to_string());
+    let selector = |mnemonic: &str, plan_fragment: &str| {
+        chunks
+            .selectors
+            .iter()
+            .find(|selector| {
+                selector.owner == owner
+                    && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                    && selector.operand_plan.contains(plan_fragment)
+            })
+            .unwrap_or_else(|| {
+                let matching = chunks
+                    .selectors
+                    .iter()
+                    .filter(|selector| {
+                        selector.owner == owner
+                            && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                    })
+                    .collect::<Vec<_>>();
+                panic!(
+                    "missing Rust Item 30 selector m68080/{mnemonic}/{plan_fragment}; matching rows: {matching:?}"
+                )
+            })
+    };
+
+    for (id, class, index) in [
+        ("E0", 4_u16, 8_u16),
+        ("E23", 4, 31),
+        ("B0", 5, 0),
+        ("B7", 5, 7),
+        ("PCR", 7, 0x808),
+        ("IEP3", 7, 0x00c),
+        ("STH", 7, 0x00c),
+        ("MWR", 7, 0x00e),
+    ] {
+        assert!(
+            chunks.register_encodings.iter().any(|register| {
+                register.owner == owner
+                    && register.id.eq_ignore_ascii_case(id)
+                    && register.class == class
+                    && register.index == index
+            }),
+            "missing Rust Item 30 register row {id}/class{class}/{index:#x}"
+        );
+    }
+
+    for (mnemonic, plan_fragment) in [
+        ("ADDIW.L", "scalar.immediate-word:expr0"),
+        ("CMPIW.L", "scalar.immediate-word:expr0"),
+        ("MOVIW.L", "scalar.immediate-word:expr0"),
+        ("MOVEX.L", "reg0.class0,reg1.class0"),
+        ("MOVEH", "indirect_reg0.class1,reg1.class0"),
+        ("MOVE2.W", "call_arg_register1.arg1.class0"),
+        ("MOVZ2.W", "call_arg_register1.arg1.class0"),
+        ("TOUCH", "indirect_reg0.class1"),
+        ("MOV3Q", "m68k.apollo_mode=1"),
+        ("MOVS.B", "m68k.apollo_mode=1"),
+        ("MOVZ.W", "m68k.apollo_mode=1"),
+        ("CLR.Q", "m68k.apollo_mode=1"),
+        ("EXTUB.L", "enc.m68080.bank-prefix"),
+        ("PERM", "enc.m68080.perm-second"),
+        ("MOVE", "reg0.class5,reg1.class4"),
+        ("MOVE16", "member_shape0.fieldl"),
+        ("DBRA.L", "fix.m68080.long-counter"),
+        ("LEA", "reg1.class5"),
+        ("ADDQ.L", "reg1.class5"),
+    ] {
+        selector(mnemonic, plan_fragment);
+    }
+    for mnemonic in [
+        "BRA.S+", "BSR.S+", "BHI.S+", "BLS.S+", "BCC.S+", "BHS.S+", "BCS.S+", "BLO.S+", "BNE.S+",
+        "BEQ.S+", "BVC.S+", "BVS.S+", "BPL.S+", "BMI.S+", "BGE.S+", "BLT.S+", "BGT.S+", "BLE.S+",
+    ] {
+        selector(mnemonic, "fix.m68080.extended-short");
+    }
+
+    let extended_short_program = chunks
+        .semantic_programs
+        .iter()
+        .find(|program| program.id == "fix.m68080.extended-short")
+        .expect("Rust m68080 extended-short fixup program");
+    assert_eq!(extended_short_program.opcode_version, 7);
+    let extended_short_steps = package::decode_fixup_program(
+        extended_short_program.opcode_version,
+        &extended_short_program.program,
+    )
+    .expect("decode exact Rust extended-short fixup program");
+    assert_eq!(extended_short_steps.len(), 1);
+    assert!(matches!(
+        &extended_short_steps[0].transform,
+        package::FixupTransform::RangeMap {
+            alignment: 2,
+            mappings,
+        } if mappings == &vec![
+            package::FixupRangeMapping { min: -256, max: -132, adjustment: 129 },
+            package::FixupRangeMapping { min: 128, max: 254, adjustment: -127 },
+        ]
+    ));
+    let long_counter_program = chunks
+        .semantic_programs
+        .iter()
+        .find(|program| program.id == "fix.m68080.long-counter")
+        .expect("Rust m68080 long-counter fixup program");
+    assert_eq!(long_counter_program.opcode_version, 7);
+    let long_counter_steps = package::decode_fixup_program(
+        long_counter_program.opcode_version,
+        &long_counter_program.program,
+    )
+    .expect("decode exact Rust long-counter fixup program");
+    assert!(matches!(
+        &long_counter_steps[0].transform,
+        package::FixupTransform::AlignedBitOr {
+            alignment: 2,
+            mask: 1,
+        }
+    ));
+
+    let native_encode = tkpkg_amigaos_source("tkpkg_encode_service.asm").to_ascii_lowercase();
+    assert!(source_contains_in_order(
+        &native_encode,
+        &[
+            "cmpi.w #7, d4",
+            "semanticfixupready",
+            "tkpkgencodeexecutefixupprogramv4",
+            "cmpi.w #7, d7",
+            "tkpkgsemanticapplyfixuptransformv7",
+            "transformalignedbitor",
+            "transformrangemap",
+            "tkpkgsemanticreadi64lev7",
+            "tkpkgsemanticrequirei32v7",
+        ],
+    ));
+
+    let legacy_b_reject = chunks
+        .selectors
+        .iter()
+        .find(|selector| {
+            selector.owner == ScopedOwner::Cpu("m68040".to_string())
+                && selector.mnemonic.eq_ignore_ascii_case("ADDQ.L")
+                && selector.shape_key == "immediate_register|immediate_direct"
+                && selector.operand_plan
+                    == "semv.reject.v1:encoding.m68080-register.m68040@expr0,register_or_named_range1.classes5.prefixb.min0.max7"
+        })
+        .unwrap_or_else(|| {
+            let matching = chunks
+                .selectors
+                .iter()
+                .filter(|selector| {
+                    selector.owner == ScopedOwner::Cpu("m68040".to_string())
+                        && selector.mnemonic.eq_ignore_ascii_case("ADDQ.L")
+                })
+                .collect::<Vec<_>>();
+            panic!("missing exact Rust m68040 B-register rejection selector: {matching:?}")
+        });
+    assert_eq!(legacy_b_reject.priority, 2000);
+    let native_selection = tkpkg_amigaos_source("tkpkg_selection_service.asm").to_ascii_lowercase();
+    assert!(source_contains_in_order(
+        &native_selection,
+        &[
+            "registerornamedrangeprefixtext",
+            "register_or_named_range",
+            "semanticcheckregisterornamedrange",
+            "tkpkgprojectregisterornamedrangev1",
+            "rangeclassloop",
+            "tkpkgfindscopedregisterencodingv1",
+            "rangetrynamed",
+            "tkpkgservicestringeqasciicasefoldv1",
+            "tkpkgparseu32decimalv2",
+        ],
+    ));
+    let rust_runtime_core =
+        fs::read_to_string(workspace_root().join("crates/opforge-vm/src/runtime_model_core.rs"))
+            .expect("read Rust compact selector shape reference");
+    assert!(source_contains_in_order(
+        &rust_runtime_core,
+        &[
+            ".shape_key",
+            ".split(package::MODE_SELECTOR_SHAPE_ALTERNATIVE_SEPARATOR)",
+            ".map(str::trim)",
+            ".filter(|shape| !shape.is_empty())",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &native_selection,
+        &[
+            "cmsestringshape",
+            "tkpkgserviceshapealternativematchesv1",
+            "shapealternativetrimstart",
+            "cmpi.b #'|', (a3)",
+            "shapealternativetrimend",
+            "tkpkgservicestringeqasciicasefoldv1",
+        ],
+    ));
+
+    // ADDA.W remains inherited package/VM behavior on the m68080 profile; it
+    // must not be mistaken for an m68080-only native special case.
+    assert!(chunks.selectors.iter().any(|selector| {
+        selector.owner == ScopedOwner::Family("motorola68000".to_string())
+            && selector.mnemonic.eq_ignore_ascii_case("ADDA.W")
+    }));
+    for (cpu, mnemonic) in [
+        ("m68040", "ADDIW.L"),
+        ("m68040", "MOVEX.L"),
+        ("m68040", "DBRA.L"),
+        ("m68040", "BRA.S+"),
+    ] {
+        assert!(
+            chunks.selectors.iter().any(|selector| {
+                selector.owner == ScopedOwner::Cpu(cpu.to_string())
+                    && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                    && selector.operand_plan.starts_with("semv.reject.v1:")
+            }),
+            "missing Rust Item 30 legacy rejection selector {cpu}/{mnemonic}"
+        );
+    }
+
+    let fixture = fs::read_to_string(
+        workspace_root().join("examples/motorola68000/68080_integer_addressing_matrix.asm"),
+    )
+    .expect("read exact Item 30 integer matrix fixture");
+    assert!(source_contains_in_order(
+        &fixture,
+        &[
+            ".cpu 68080",
+            "ADDIW.L #$8001,D0",
+            "CMPIW.L #$8001,D2",
+            "MOVE SR,E0",
+            "EXTUB.L E8",
+            "PERM #$0ABC,E8,E16",
+            "MOVIW.L #$8123,D3",
+            ".apollo on",
+            "MOV3Q #5,D4",
+            "ADDQ.L #1,B0",
+            "LEA (B2),A3",
+            "MOVEA.L D0,B5",
+        ],
+    ));
+
+    let rust_selector_projection = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_encoding.rs"),
+    )
+    .expect("read Rust register-index projection reference");
+    let mut rust_projection_offset = 0;
+    for fragment in [
+        "fn parse_register_index_projection(",
+        "RegisterIndexProjection::ShiftRightAndMask(shift, mask)",
+        "RegisterIndexProjection::ShiftRight(shift)",
+        "RegisterIndexProjection::Mask(mask)",
+        "fn project_register_index(",
+        "(index >> shift) & mask",
+    ] {
+        let relative = rust_selector_projection[rust_projection_offset..]
+            .find(fragment)
+            .unwrap_or_else(|| panic!("missing ordered Rust projection fragment {fragment}"));
+        rust_projection_offset += relative + fragment.len();
+    }
+    assert!(source_contains_in_order(
+        &native_selection,
+        &[
+            "bsr.w tkpkgparseregisterclassprojectionv1",
+            "semanticregistershift",
+            "semanticregistermask",
+            "tkpkgparseregisterclassprojectionv1\t.block",
+            "lea 4(a1, d6.w), a1",
+            "registerprojectioncheckmask",
+        ],
+    ));
+
+    for source_name in [
+        "tkpkg_selection_service.asm",
+        "tkpkg_operand_runtime.asm",
+        "tkpkg_encode_service.asm",
+        "tkpkg_state_service.asm",
+    ] {
+        let source = tkpkg_amigaos_source(source_name).to_ascii_lowercase();
+        for forbidden in [
+            "m68080",
+            "addiw",
+            "moviw",
+            "mov3q",
+            "extub",
+            "apollo",
+            "b-register",
+        ] {
+            assert!(
+                !source.contains(forbidden),
+                "generic native {source_name} must not own 68080 spelling {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
 fn motorola68020_tkpkg_native_wire_roundtrip_preserves_subset_examples() {
     let source = tkpkg_amigaos_source("tkpkg_abi.asm");
 

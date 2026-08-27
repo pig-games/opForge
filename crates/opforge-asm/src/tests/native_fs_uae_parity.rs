@@ -16074,6 +16074,267 @@ fn external_fs_uae_native_m68881_m68882_core_parity() {
 }
 
 #[test]
+fn external_fs_uae_native_m68881_m68882_extended_math_directed_parity() {
+    // Proof level D. Two fresh guests isolate the complete external-only math
+    // register surface and Rust's integrated-68040 rejection boundary.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 28 package");
+    let positive_source = concat!(
+        ".fpu 68881\n",
+        "        FMOVECR #11,FP0\n",
+        "        FSGLDIV FP1,FP2\n",
+        "        FSGLMUL FP3,FP4\n",
+        "        FSIN FP0,FP1\n",
+        "        FCOS.W (A1),FP2\n",
+        "        FSINCOS FP3,.pair(FP4,FP5)\n",
+        "        FTAN FP5,FP6\n",
+        "        FASIN FP6,FP7\n",
+        "        FACOS FP7,FP0\n",
+        "        FATAN FP0,FP1\n",
+        "        FSINH FP1,FP2\n",
+        "        FCOSH FP2,FP3\n",
+        "        FTANH FP3,FP4\n",
+        "        FATANH FP4,FP5\n",
+        "        FETOX FP5,FP6\n",
+        "        FETOXM1 FP6,FP7\n",
+        "        FTENTOX FP7,FP0\n",
+        "        FTWOTOX FP0,FP1\n",
+        "        FLOGN FP1,FP2\n",
+        "        FLOGNP1 FP2,FP3\n",
+        "        FLOG10 FP3,FP4\n",
+        "        FLOG2 FP4,FP5\n",
+        "        FGETEXP FP5,FP6\n",
+        "        FGETMAN FP6,FP7\n",
+        "        FSCALE FP7,FP0\n",
+        "        FMOD FP0,FP1\n",
+        "        FREM FP1,FP2\n",
+    );
+    let positive_oracle = live_rust_cpu_name_oracle(
+        positive_source,
+        Some("m68020"),
+        "item28-extended-math-rust-oracle",
+    )
+    .expect("run Item 28 extended-math Rust oracle");
+    let negative_source = ".fpu 68040\n        FETOX FP0,FP1\n";
+    let negative_diagnostic = live_rust_cpu_name_diagnostic(
+        negative_source,
+        "m68040",
+        "item28-integrated-68040-rejection-rust-diagnostic",
+    );
+    assert!(negative_diagnostic.contains("integrated 68040 FPU target"));
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item28-external-only-math",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(positive_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &positive_oracle,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item28-integrated-68040-rejection",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(negative_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68040 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                &negative_diagnostic,
+            ),
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 28 external-FPU catalog runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len());
+            let positive = &runs[0];
+            assert!(positive.protocol_completed);
+            assert!(
+                positive.success,
+                "stdout:\n{}\nstderr:\n{}",
+                positive.stdout, positive.stderr
+            );
+            assert_eq!(positive.exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(positive, "Work/opforge_native_out.bin"),
+                positive_oracle
+            );
+            let negative = &runs[1];
+            assert!(negative.protocol_completed);
+            assert!(!negative.success);
+            assert_eq!(negative.exit_code, Some(1));
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68881_m68882_extended_math_parity() {
+    // Proof level D. This is the complete Item 28 aggregate executed once by
+    // the established native wrapper. Every case uses a fresh challenge, the
+    // exact Rust-built package, a same-source Rust oracle, guest completion,
+    // and an explicit guest exit.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 28 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let fixture = fs::read_to_string(
+        workspace_root().join("examples/motorola68000/68020_fpu_instruction_catalog.asm"),
+    )
+    .expect("read exact external-FPU instruction catalog fixture");
+    let positive_definitions = [
+        ("m68020", "68020", "68881"),
+        ("m68020", "68020", "68882"),
+        ("m68030", "68030", "68881"),
+        ("m68030", "68030", "68882"),
+    ]
+    .into_iter()
+    .map(|(cpu, source_cpu, fpu)| {
+        (
+            format!("item28-{source_cpu}-{fpu}-complete-catalog"),
+            cpu,
+            fixture
+                .replacen(".cpu 68020", format!(".cpu {source_cpu}").as_str(), 1)
+                .replacen(".fpu 68881", format!(".fpu {fpu}").as_str(), 1),
+        )
+    })
+    .collect::<Vec<_>>();
+    let positives = positive_definitions
+        .iter()
+        .map(|(name, cpu, source)| {
+            let oracle = live_rust_cpu_name_oracle(
+                source,
+                Some(cpu),
+                format!("{name}-rust-oracle").as_str(),
+            )
+            .unwrap_or_else(|error| panic!("run Item 28 Rust oracle for {name}: {error}"));
+            let command =
+                format!("{{input}} --bin {{bin}} --cpu {cpu} --opasm-package {{package}}");
+            (name.as_str(), source.as_str(), oracle, command)
+        })
+        .collect::<Vec<_>>();
+    let negative_definitions = [
+        (
+            "item28-m68040-fmovecr-integrated-rejection",
+            "m68040",
+            ".fpu 68040\n        FMOVECR #11,FP0\n",
+        ),
+        (
+            "item28-m68040-fsin-integrated-rejection",
+            "m68040",
+            ".fpu 68040\n        FSIN FP0,FP1\n",
+        ),
+        (
+            "item28-m68040-fetox-integrated-rejection",
+            "m68040",
+            ".fpu 68040\n        FETOX FP0,FP1\n",
+        ),
+        (
+            "item28-m68030-frem-disabled-rejection",
+            "m68030",
+            "        FREM FP0,FP1\n",
+        ),
+    ];
+    let negatives = negative_definitions
+        .iter()
+        .map(|(name, cpu, source)| {
+            let diagnostic = live_rust_cpu_name_diagnostic(
+                source,
+                cpu,
+                format!("{name}-rust-diagnostic").as_str(),
+            );
+            let command =
+                format!("{{input}} --bin {{bin}} --cpu {cpu} --opasm-package {{package}}");
+            (*name, *source, diagnostic, command)
+        })
+        .collect::<Vec<_>>();
+    let cases = positives
+        .iter()
+        .map(
+            |(name, source, oracle, command)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(source.as_bytes()),
+                command_template: Some(command.as_str()),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &[],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: oracle,
+                },
+            },
+        )
+        .chain(negatives.iter().map(|(name, source, diagnostic, command)| {
+            crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(source.as_bytes()),
+                command_template: Some(command.as_str()),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &[],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                    diagnostic,
+                ),
+            }
+        }))
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("complete Item 28 external-FPU catalog parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len());
+            for (run, (_, _, oracle, _)) in runs.iter().zip(&positives) {
+                assert!(run.protocol_completed);
+                assert!(
+                    run.success,
+                    "Item 28 positive case failed\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout, run.stderr
+                );
+                assert_eq!(run.exit_code, Some(0));
+                assert_eq!(
+                    captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                    *oracle
+                );
+            }
+            for run in runs.iter().skip(positives.len()) {
+                assert!(run.protocol_completed);
+                assert!(!run.success);
+                assert_eq!(run.exit_code, Some(1));
+            }
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_native_m68020_later_integer_group_b_parity() {
     // Proof level D. This is the complete Item 24 aggregate executed by the
     // established native completion wrapper. Every case uses a fresh challenge,

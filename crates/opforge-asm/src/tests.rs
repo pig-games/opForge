@@ -24346,6 +24346,89 @@ fn motorola68020_item27_native_external_fpu_core_package_boundary_matches_rust()
 }
 
 #[test]
+fn motorola68020_item28_native_external_fpu_catalog_package_boundary_matches_rust() {
+    // Proof level B. Rust's package remains the sole owner of the remaining
+    // external-FPU catalog, target guards, encodings, and rejection wording.
+    let package_path =
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let embedded_package = fs::read(&package_path).expect("read Item 28 embedded package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build current unmodified Rust package"),
+        "Item 28 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 28 package input");
+    let external_only = [
+        "FMOVECR", "FSGLDIV", "FSGLMUL", "FSIN", "FCOS.W", "FSINCOS", "FTAN", "FASIN", "FACOS",
+        "FATAN", "FSINH", "FCOSH", "FTANH", "FATANH", "FETOX", "FETOXM1", "FTENTOX", "FTWOTOX",
+        "FLOGN", "FLOGNP1", "FLOG10", "FLOG2", "FGETEXP", "FGETMAN", "FSCALE", "FMOD", "FREM",
+    ];
+    for cpu in ["m68020", "m68030"] {
+        for mnemonic in external_only {
+            assert!(
+                chunks.selectors.iter().any(|selector| {
+                    selector.owner == ScopedOwner::Cpu(cpu.to_string())
+                        && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                        && selector
+                            .operand_plan
+                            .starts_with("state.require.v1:m68k.fpu_target=1+2?")
+                }),
+                "missing Rust Item 28 selector {cpu}/{mnemonic}"
+            );
+        }
+    }
+    for mnemonic in external_only {
+        assert!(
+            chunks.selectors.iter().any(|selector| {
+                selector.owner == ScopedOwner::Cpu("m68040".to_string())
+                    && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                    && selector
+                        .operand_plan
+                        .contains("encoding.fpu-integrated-unsupported.m68040")
+            }),
+            "missing Rust integrated-68040 rejection selector for {mnemonic}"
+        );
+    }
+
+    let catalog = fs::read_to_string(
+        workspace_root().join("examples/motorola68000/68020_fpu_instruction_catalog.asm"),
+    )
+    .expect("read exact Item 28 catalog fixture");
+    assert!(source_contains_in_order(
+        &catalog,
+        &[
+            "FNOP",
+            "FMOVECR #11,FP0",
+            "FSGLDIV FP1,FP2",
+            "FSIN FP0,FP1",
+            "FSINCOS FP3,.pair(FP4,FP5)",
+            "FETOX FP5,FP6",
+            "FLOGN FP1,FP2",
+            "FGETMAN FP6,FP7",
+            "FSCALE FP7,FP0",
+            "FREM FP1,FP2",
+        ]
+    ));
+
+    for source_name in [
+        "tkpkg_selection_service.asm",
+        "tkpkg_operand_runtime.asm",
+        "tkpkg_encode_service.asm",
+        "tkpkg_state_service.asm",
+    ] {
+        let source = tkpkg_amigaos_source(source_name).to_ascii_lowercase();
+        for forbidden in ["fmovecr", "fsincos", "fetox", "flogn", "fscale", "frem"] {
+            assert!(
+                !source.contains(forbidden),
+                "generic native {source_name} must not own catalog spelling {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
 fn motorola68020_tkpkg_native_wire_roundtrip_preserves_subset_examples() {
     let source = tkpkg_amigaos_source("tkpkg_abi.asm");
 

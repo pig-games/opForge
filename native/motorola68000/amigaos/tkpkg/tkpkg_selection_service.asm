@@ -220,6 +220,9 @@ CallArgIndirectTupleRegisterPrefixText
 CallArgRegisterPrefixText
 	.byte "call_arg_register"
 
+CallArgRegisterSequencePrefixText
+	.byte "call_arg_register_sequence"
+
 CallArgValuePrefixText
 	.byte "call_arg_value"
 
@@ -243,6 +246,30 @@ NamedRegisterPrefixText
 
 RegisterOrNamedRangePrefixText
 	.byte "register_or_named_range"
+
+RegisterSequencePrefixText
+	.byte "register_sequence"
+
+SemanticArgMarkerText
+	.byte ".arg"
+
+SemanticClassMarkerText
+	.byte ".class"
+
+SemanticCountMarkerText
+	.byte ".count"
+
+SemanticAlignMarkerText
+	.byte ".align"
+
+SemanticViolationMarkerText
+	.byte ".violation-"
+
+SemanticAlignmentViolationText
+	.byte "alignment"
+
+SemanticSequenceViolationText
+	.byte "sequence"
 
 TargetPrefixText
 	.byte "target:"
@@ -972,10 +999,10 @@ compactSelector
 	bne.w return
 	tst.w d6
 	beq.w return
-	; When no frontend family shape existed, the shape above was only native's
-	; neutral package_shape_input equivalent. Rust may instead have obtained a
-	; package-declared family shape. Retry once without a shape filter so the
-	; compact package row and its operand plan remain authoritative.
+	; Native has no host family resolver. After exact per-row alternative matching
+	; fails for a neutral package shape, let the package operand plans provide the
+	; compatibility fallback. Exact shapes still win before this path, so an
+	; immediate row cannot be displaced by an unrelated direct row.
 	tst.b d7
 	bne.s retryNeutralPackageShape
 	clr.l state.EncodeSelectedMselShapePtr
@@ -1423,9 +1450,18 @@ cmseOwnerMatches
 	tst.w state.EncodeSelectedMselShapeLen
 	beq.w cmseShapeMatches
 	moveq #0, d0
-	move.w 2(sp), d0
-	cmp.w d0, d4
-	bne.w cmseSelectorNext
+	move.w d4, d0
+	lea buffers.CompactSelectorModeText, a0
+	bsr.w resolveCompactSelectorStringV1
+	bne.w cmseMalformed
+	move.l a2, -(sp)
+	lea buffers.CompactSelectorModeText, a1
+	movea.l state.EncodeSelectedMselShapePtr, a2
+	move.w state.EncodeSelectedMselShapeLen, d1
+	bsr.w tkpkgServiceShapeAlternativeMatchesV1
+	movea.l (sp)+, a2
+	tst.b d0
+	beq.w cmseSelectorNext
 cmseShapeMatches
 	moveq #0, d4
 	move.b 9(sp), d4
@@ -2683,6 +2719,20 @@ semanticCheckCallArgIndirectRegisterOnly
 semanticCheckCallArgRegister
 	movea.l a5, a1
 	move.w d7, d0
+	lea CallArgRegisterSequencePrefixText, a2
+	moveq #26, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckCallArgRegisterOnly
+	lea 26(a5), a1
+	move.w d7, d0
+	subi.w #26, d0
+	bsr.w tkpkgProjectCallArgRegisterSequenceV1
+	bra.w semanticProjectReturn
+
+semanticCheckCallArgRegisterOnly
+	movea.l a5, a1
+	move.w d7, d0
 	lea CallArgRegisterPrefixText, a2
 	moveq #17, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
@@ -3088,6 +3138,20 @@ semanticCheckIndirectRegister
 semanticCheckRegister
 	movea.l a5, a1
 	move.w d7, d0
+	lea RegisterSequencePrefixText, a2
+	moveq #17, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckRegisterMask
+	lea 17(a5), a1
+	move.w d7, d0
+	subi.w #17, d0
+	bsr.w tkpkgProjectRegisterSequenceV1
+	bra.w semanticProjectReturn
+
+semanticCheckRegisterMask
+	movea.l a5, a1
+	move.w d7, d0
 	lea RegisterMaskPrefixText, a2
 	moveq #13, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
@@ -3347,6 +3411,164 @@ outOfRangeReturn
 	rts
 	.bend  ; tkpkgProjectOutOfRangeV1
 
+; Project Rust's neutral `call_arg_register_sequenceN.argA.argB.classC.alignK`
+; source, including optional register-index projection and explicit alignment
+; or sequence violation selection. Source spans substitute for Rust Expr nodes;
+; all class, alignment, relation, projection, and diagnostic choices are package
+; data.
+; Inputs: A1/D0.W = text after `call_arg_register_sequence`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = projected first index.
+tkpkgProjectCallArgRegisterSequenceV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -40(sp), sp
+	move.l a1, (sp)
+	move.w d0, 4(sp)
+	clr.w 6(sp)
+	clr.w 8(sp)
+	clr.w 10(sp)
+	clr.w 12(sp)
+	clr.w 14(sp)
+	clr.w 16(sp)
+	clr.l 18(sp)
+	clr.w 22(sp)
+	clr.w 24(sp)
+	clr.w 26(sp)
+	clr.w 28(sp)
+	clr.l 30(sp)
+	clr.w 34(sp)
+
+	lea SemanticArgMarkerText, a2
+	moveq #4, d1
+	bsr.w tkpkgFindSemanticMarkerV1
+	bne.w callArgSequenceMalformed
+	move.w d0, d6
+	beq.w callArgSequenceMalformed
+	movea.l (sp), a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w callArgSequenceMalformed
+	move.w d3, 6(sp)
+	movea.l (sp), a3
+	lea 4(a3, d6.w), a3
+	move.w 4(sp), d7
+	sub.w d6, d7
+	subq.w #4, d7
+
+	movea.l a3, a1
+	move.w d7, d0
+	lea SemanticArgMarkerText, a2
+	moveq #4, d1
+	bsr.w tkpkgFindSemanticMarkerV1
+	bne.w callArgSequenceMalformed
+	move.w d0, d6
+	beq.w callArgSequenceMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w callArgSequenceMalformed
+	move.w d3, 8(sp)
+	lea 4(a3, d6.w), a3
+	sub.w d6, d7
+	subq.w #4, d7
+
+	movea.l a3, a1
+	move.w d7, d0
+	lea SemanticClassMarkerText, a2
+	moveq #6, d1
+	bsr.w tkpkgFindSemanticMarkerV1
+	bne.w callArgSequenceMalformed
+	move.w d0, d6
+	beq.w callArgSequenceMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w callArgSequenceMalformed
+	move.w d3, 10(sp)
+	lea 6(a3, d6.w), a3
+	sub.w d6, d7
+	subq.w #6, d7
+
+	movea.l a3, a1
+	move.w d7, d0
+	lea SemanticAlignMarkerText, a2
+	moveq #6, d1
+	bsr.w tkpkgFindSemanticMarkerV1
+	bne.w callArgSequenceMalformed
+	move.w d0, d6
+	beq.w callArgSequenceMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseRegisterClassProjectionV1
+	bne.w callArgSequenceMalformed
+	move.w d3, 12(sp)
+	move.w d2, 14(sp)
+	move.w d4, 16(sp)
+	move.l d5, 18(sp)
+	lea 6(a3, d6.w), a1
+	move.w d7, d0
+	sub.w d6, d0
+	subq.w #6, d0
+	bsr.w tkpkgParseSequenceTailV1
+	bne.w callArgSequenceMalformed
+	move.w d3, 22(sp)
+	move.w d4, 24(sp)
+
+	move.w 6(sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w callArgSequenceNoMatch
+	move.l a0, 30(sp)
+	move.w d0, 34(sp)
+	move.w 8(sp), d1
+	bsr.w tkpkgSelectCallArgumentV1
+	bne.w callArgSequenceNoMatch
+	move.w 12(sp), d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w callArgSequenceNoMatch
+	move.w d3, 26(sp)
+
+	movea.l 30(sp), a0
+	moveq #0, d0
+	move.w 34(sp), d0
+	move.w 10(sp), d1
+	bsr.w tkpkgSelectCallArgumentV1
+	bne.w callArgSequenceNoMatch
+	move.w 12(sp), d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w callArgSequenceNoMatch
+	move.w d3, 28(sp)
+
+	moveq #0, d0
+	move.w 26(sp), d0
+	moveq #0, d1
+	move.w 28(sp), d1
+	moveq #2, d2
+	moveq #0, d3
+	move.w 22(sp), d3
+	moveq #0, d4
+	move.w 24(sp), d4
+	bsr.w tkpkgRegisterSequenceRelationMatchesV1
+	tst.l d0
+	beq.s callArgSequenceNoMatch
+	moveq #0, d3
+	move.w 26(sp), d3
+	move.w 14(sp), d2
+	move.w 16(sp), d4
+	move.l 18(sp), d5
+	bsr.w tkpkgApplyRegisterIndexProjectionV1
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s callArgSequenceReturn
+
+callArgSequenceMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s callArgSequenceReturn
+callArgSequenceNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+callArgSequenceReturn
+	lea 40(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectCallArgRegisterSequenceV1
+
 ; Project Rust's neutral call-argument register sources used by frozen package
 ; rows. The package selects operand, argument, and required register class;
 ; source spelling is resolved exclusively through package RENC records.
@@ -3357,8 +3579,12 @@ outOfRangeReturn
 ; @opforge-role: facade
 tkpkgProjectCallArgRegisterV1	.block
 	movem.l d2/d4-d7/a0/a2-a6, -(sp)
-	lea -8(sp), sp
+	lea -20(sp), sp
 	move.w d2, 6(sp)
+	clr.w 8(sp)
+	clr.w 10(sp)
+	clr.l 12(sp)
+	clr.w 16(sp)
 	movea.l a1, a3
 	move.w d0, d7
 	moveq #0, d6
@@ -3418,20 +3644,23 @@ callArgSpecClassNext
 callArgSpecClassReady
 	tst.w d6
 	beq.w callArgSpecMalformed
-	move.w d5, 4(sp)
+	move.w d5, 16(sp)
 	movea.l a4, a1
 	move.w d6, d0
 	bsr.w tkpkgParseU16DecimalV2
 	bne.w callArgSpecMalformed
 	move.w d3, 2(sp)
 	lea 6(a4, d6.w), a1
-	move.w 4(sp), d0
+	move.w 16(sp), d0
 	sub.w d6, d0
 	subq.w #6, d0
 	beq.w callArgSpecMalformed
-	bsr.w tkpkgParseU16DecimalV2
+	bsr.w tkpkgParseRegisterClassProjectionV1
 	bne.w callArgSpecMalformed
 	move.w d3, 4(sp)
+	move.w d2, 8(sp)
+	move.w d4, 10(sp)
+	move.l d5, 12(sp)
 
 	move.w (sp), d0
 	jsr operand.tkpkgMselLocateSemanticOperandV2
@@ -3447,6 +3676,10 @@ callArgSpecLookup
 	move.w 4(sp), d1
 	bsr.w tkpkgFindScopedRegisterEncodingV1
 	bne.s callArgSpecNoMatch
+	move.w 8(sp), d2
+	move.w 10(sp), d4
+	move.l 12(sp), d5
+	bsr.w tkpkgApplyRegisterIndexProjectionV1
 	moveq #TKPKG_SELECTED_STATUS_OK, d0
 	bra.s callArgSpecReturn
 
@@ -3456,10 +3689,257 @@ callArgSpecMalformed
 callArgSpecNoMatch
 	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
 callArgSpecReturn
-	lea 8(sp), sp
+	lea 20(sp), sp
 	movem.l (sp)+, d2/d4-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgProjectCallArgRegisterV1
+
+; Split one neutral top-level register sequence represented as subtraction or
+; a range. Inputs: A0/D0 = source span. Outputs: A0/D0 left, A1/D1 right,
+; D2=0/1. This is the bounded source-span equivalent of Rust's Binary::Subtract
+; or Range endpoint match.
+tkpkgSplitRegisterSequenceSpanV1	.block
+	movem.l d3-d7/a2-a5, -(sp)
+	movea.l a0, a2
+	movea.l a0, a3
+	adda.l d0, a3
+	moveq #0, d6
+	moveq #0, d7
+registerSequenceSplitScan
+	cmpa.l a3, a2
+	bhs.w registerSequenceSplitFail
+	moveq #0, d5
+	move.b (a2), d5
+	cmpi.b #'(', d5
+	beq.w registerSequenceSplitOpenParen
+	cmpi.b #')', d5
+	beq.w registerSequenceSplitCloseParen
+	cmpi.b #'[', d5
+	beq.w registerSequenceSplitOpenBracket
+	cmpi.b #']', d5
+	beq.w registerSequenceSplitCloseBracket
+	tst.w d6
+	bne.w registerSequenceSplitNext
+	tst.w d7
+	bne.w registerSequenceSplitNext
+	cmpi.b #'-', d5
+	beq.w registerSequenceSplitDelimiterOne
+	cmpi.b #'.', d5
+	bne.w registerSequenceSplitNext
+	lea 1(a2), a4
+	cmpa.l a3, a4
+	bhs.w registerSequenceSplitFail
+	cmpi.b #'.', (a4)
+	bne.w registerSequenceSplitNext
+	moveq #2, d4
+	bra.w registerSequenceSplitDelimiter
+registerSequenceSplitDelimiterOne
+	moveq #1, d4
+registerSequenceSplitDelimiter
+	movea.l a2, a4
+registerSequenceSplitTrimLeft
+	cmpa.l a0, a4
+	bls.w registerSequenceSplitFail
+	cmpi.b #' ', -1(a4)
+	beq.s registerSequenceSplitTrimLeftOne
+	cmpi.b #9, -1(a4)
+	bne.w registerSequenceSplitRightStart
+registerSequenceSplitTrimLeftOne
+	subq.l #1, a4
+	bra.w registerSequenceSplitTrimLeft
+registerSequenceSplitRightStart
+	movea.l a2, a5
+	adda.w d4, a5
+registerSequenceSplitTrimRightStart
+	cmpa.l a3, a5
+	bhs.w registerSequenceSplitFail
+	cmpi.b #' ', (a5)
+	beq.s registerSequenceSplitTrimRightStartOne
+	cmpi.b #9, (a5)
+	bne.w registerSequenceSplitTrimRightEnd
+registerSequenceSplitTrimRightStartOne
+	addq.l #1, a5
+	bra.w registerSequenceSplitTrimRightStart
+registerSequenceSplitTrimRightEnd
+	cmpa.l a5, a3
+	bls.w registerSequenceSplitFail
+	cmpi.b #' ', -1(a3)
+	beq.s registerSequenceSplitTrimRightEndOne
+	cmpi.b #9, -1(a3)
+	bne.w registerSequenceSplitReady
+registerSequenceSplitTrimRightEndOne
+	subq.l #1, a3
+	bra.w registerSequenceSplitTrimRightEnd
+registerSequenceSplitReady
+	move.l a4, d0
+	sub.l a0, d0
+	movea.l a5, a1
+	move.l a3, d1
+	sub.l a1, d1
+	moveq #0, d2
+	bra.w registerSequenceSplitReturn
+registerSequenceSplitOpenParen
+	addq.w #1, d6
+	bra.w registerSequenceSplitNext
+registerSequenceSplitCloseParen
+	tst.w d6
+	beq.w registerSequenceSplitFail
+	subq.w #1, d6
+	bra.w registerSequenceSplitNext
+registerSequenceSplitOpenBracket
+	addq.w #1, d7
+	bra.w registerSequenceSplitNext
+registerSequenceSplitCloseBracket
+	tst.w d7
+	beq.w registerSequenceSplitFail
+	subq.w #1, d7
+registerSequenceSplitNext
+	addq.l #1, a2
+	bra.w registerSequenceSplitScan
+registerSequenceSplitFail
+	moveq #0, d0
+	moveq #0, d1
+	moveq #1, d2
+	suba.l a0, a0
+	suba.l a1, a1
+registerSequenceSplitReturn
+	movem.l (sp)+, d3-d7/a2-a5
+	tst.l d2
+	rts
+	.bend  ; tkpkgSplitRegisterSequenceSpanV1
+
+; Project Rust's neutral `register_sequenceN.classC.countK.alignA` source,
+; including index projections and explicit relation-violation selectors.
+; Inputs: A1/D0.W = text after `register_sequence`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = projected start index.
+tkpkgProjectRegisterSequenceV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -36(sp), sp
+	move.l a1, (sp)
+	move.w d0, 4(sp)
+	clr.w 6(sp)
+	clr.w 8(sp)
+	clr.w 10(sp)
+	clr.w 12(sp)
+	clr.l 14(sp)
+	clr.w 18(sp)
+	clr.w 20(sp)
+	clr.w 22(sp)
+	clr.w 24(sp)
+	clr.w 26(sp)
+
+	lea SemanticClassMarkerText, a2
+	moveq #6, d1
+	bsr.w tkpkgFindSemanticMarkerV1
+	bne.w registerSequenceMalformed
+	move.w d0, d6
+	beq.w registerSequenceMalformed
+	movea.l (sp), a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w registerSequenceMalformed
+	move.w d3, 6(sp)
+	movea.l (sp), a3
+	lea 6(a3, d6.w), a3
+	move.w 4(sp), d7
+	sub.w d6, d7
+	subq.w #6, d7
+
+	movea.l a3, a1
+	move.w d7, d0
+	lea SemanticCountMarkerText, a2
+	moveq #6, d1
+	bsr.w tkpkgFindSemanticMarkerV1
+	bne.w registerSequenceMalformed
+	move.w d0, d6
+	beq.w registerSequenceMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseRegisterClassProjectionV1
+	bne.w registerSequenceMalformed
+	move.w d3, 8(sp)
+	move.w d2, 10(sp)
+	move.w d4, 12(sp)
+	move.l d5, 14(sp)
+	lea 6(a3, d6.w), a3
+	sub.w d6, d7
+	subq.w #6, d7
+
+	movea.l a3, a1
+	move.w d7, d0
+	lea SemanticAlignMarkerText, a2
+	moveq #6, d1
+	bsr.w tkpkgFindSemanticMarkerV1
+	bne.w registerSequenceMalformed
+	move.w d0, d6
+	beq.w registerSequenceMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w registerSequenceMalformed
+	tst.w d3
+	beq.w registerSequenceMalformed
+	move.w d3, 18(sp)
+	lea 6(a3, d6.w), a1
+	move.w d7, d0
+	sub.w d6, d0
+	subq.w #6, d0
+	bsr.w tkpkgParseSequenceTailV1
+	bne.w registerSequenceMalformed
+	move.w d3, 20(sp)
+	move.w d4, 22(sp)
+
+	move.w 6(sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w registerSequenceNoMatch
+	bsr.w tkpkgSplitRegisterSequenceSpanV1
+	bne.w registerSequenceNoMatch
+	move.l a1, 28(sp)
+	move.w d1, 32(sp)
+	move.w 8(sp), d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w registerSequenceNoMatch
+	move.w d3, 24(sp)
+	movea.l 28(sp), a0
+	moveq #0, d0
+	move.w 32(sp), d0
+	move.w 8(sp), d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w registerSequenceNoMatch
+	move.w d3, 26(sp)
+
+	moveq #0, d0
+	move.w 24(sp), d0
+	moveq #0, d1
+	move.w 26(sp), d1
+	moveq #0, d2
+	move.w 18(sp), d2
+	moveq #0, d3
+	move.w 20(sp), d3
+	moveq #0, d4
+	move.w 22(sp), d4
+	bsr.w tkpkgRegisterSequenceRelationMatchesV1
+	tst.l d0
+	beq.s registerSequenceNoMatch
+	moveq #0, d3
+	move.w 24(sp), d3
+	move.w 10(sp), d2
+	move.w 12(sp), d4
+	move.l 14(sp), d5
+	bsr.w tkpkgApplyRegisterIndexProjectionV1
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s registerSequenceReturn
+
+registerSequenceMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+	bra.s registerSequenceReturn
+registerSequenceNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+registerSequenceReturn
+	lea 36(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectRegisterSequenceV1
 
 ; Project Rust's neutral call-argument scalar source. The package selects the
 ; operand and argument; the selected span is evaluated by the shared expression
@@ -4045,11 +4525,32 @@ exprPathContainer
 	moveq #'[', d1
 	moveq #']', d2
 	cmpi.b #'b', (a4)
-	bne.s exprPathCheckTuple
+	beq.s exprPathStripContainer
+	cmpi.b #'l', (a4)
+	beq.s exprPathSelectBinaryLeft
+	cmpi.b #'r', (a4)
+	beq.s exprPathSelectBinaryRight
+	bra.s exprPathCheckTuple
 exprPathStripContainer
 	bsr.w tkpkgExprPathStripWrapperV1
 	bne.w exprPathNoMatch
 	move.w d2, 28(sp)
+	bra.s exprPathContainerReady
+
+exprPathSelectBinaryLeft
+	bsr.w tkpkgExprPathSplitMultiplyV1
+	tst.l d2
+	bne.w exprPathNoMatch
+	clr.w 28(sp)
+	bra.s exprPathContainerReady
+
+exprPathSelectBinaryRight
+	bsr.w tkpkgExprPathSplitMultiplyV1
+	tst.l d2
+	bne.w exprPathNoMatch
+	movea.l a1, a0
+	move.l d1, d0
+	clr.w 28(sp)
 	bra.s exprPathContainerReady
 
 exprPathCheckTuple
@@ -4097,6 +4598,8 @@ exprPathTerminal
 	beq.w exprPathScaleTerminal
 	cmpi.b #'m', (a4)
 	beq.w exprPathMemberTerminal
+	cmpi.b #'n', (a4)
+	beq.w exprPathNamedRegisterTerminal
 	bra.w exprPathMalformed
 
 exprPathRegisterTerminal
@@ -4111,6 +4614,25 @@ exprPathRegisterTerminal
 	movea.l (sp), a0
 	moveq #0, d0
 	move.w 4(sp), d0
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w exprPathNoMatch
+	bra.w exprPathOk
+
+exprPathNamedRegisterTerminal
+	cmpi.w #2, d7
+	bcs.w exprPathMalformed
+	movea.l (sp), a1
+	lea 1(a4), a2
+	move.w 4(sp), d0
+	move.w d7, d1
+	subq.w #1, d1
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	tst.b d0
+	beq.w exprPathNoMatch
+	movea.l (sp), a0
+	moveq #0, d0
+	move.w 4(sp), d0
+	move.w #$FFFF, d1
 	bsr.w tkpkgFindScopedRegisterEncodingV1
 	bne.w exprPathNoMatch
 	bra.w exprPathOk
@@ -5789,6 +6311,196 @@ prefixReturn
 	rts
 	.bend  ; tkpkgSemanticPrefixMatchesV2
 
+; Find one exact package grammar marker in a bounded semantic source.
+; Inputs: A1/D0.W = source; A2/D1.W = marker.
+; Outputs: D0.W = marker offset; D1 = 0 found, 1 absent.
+tkpkgFindSemanticMarkerV1	.block
+	movem.l d2-d7/a0-a2, -(sp)
+	move.w d0, d7
+	move.w d1, d6
+	moveq #0, d5
+semanticMarkerCandidate
+	move.w d7, d4
+	sub.w d5, d4
+	cmp.w d6, d4
+	bcs.s semanticMarkerAbsent
+	lea 0(a1, d5.w), a0
+	moveq #0, d3
+semanticMarkerCompare
+	cmp.w d6, d3
+	beq.s semanticMarkerFound
+	moveq #0, d2
+	move.b 0(a0, d3.w), d2
+	cmp.b 0(a2, d3.w), d2
+	bne.s semanticMarkerNext
+	addq.w #1, d3
+	bra.s semanticMarkerCompare
+semanticMarkerNext
+	addq.w #1, d5
+	bra.s semanticMarkerCandidate
+semanticMarkerFound
+	move.w d5, d0
+	moveq #0, d1
+	bra.s semanticMarkerReturn
+semanticMarkerAbsent
+	moveq #0, d0
+	moveq #1, d1
+semanticMarkerReturn
+	movem.l (sp)+, d2-d7/a0-a2
+	tst.l d1
+	rts
+	.bend  ; tkpkgFindSemanticMarkerV1
+
+; Parse `alignment[.violation-alignment|.violation-sequence]` exactly as
+; Rust's two neutral register-sequence projectors.
+; Inputs: A1/D0.W = tail. Outputs: D3.W = nonzero alignment;
+; D4.W = 0 ordinary, 1 alignment violation, 2 sequence violation; D1=0/1.
+tkpkgParseSequenceTailV1	.block
+	movem.l d2/d5-d7/a0-a6, -(sp)
+	lea -8(sp), sp
+	move.l a1, (sp)
+	move.w d0, 4(sp)
+	clr.w 6(sp)
+	lea SemanticViolationMarkerText, a2
+	moveq #11, d1
+	bsr.w tkpkgFindSemanticMarkerV1
+	bne.s sequenceTailPlain
+	move.w d0, d6
+	beq.s sequenceTailMalformed
+	movea.l (sp), a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.s sequenceTailMalformed
+	tst.w d3
+	beq.s sequenceTailMalformed
+	move.w d3, 6(sp)
+	movea.l (sp), a1
+	lea 11(a1, d6.w), a1
+	move.w 4(sp), d0
+	sub.w d6, d0
+	subi.w #11, d0
+	cmpi.w #9, d0
+	bne.s sequenceTailCheckSequence
+	lea SemanticAlignmentViolationText, a2
+	moveq #9, d1
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	tst.b d0
+	beq.s sequenceTailMalformed
+	moveq #1, d4
+	bra.s sequenceTailOk
+sequenceTailCheckSequence
+	cmpi.w #8, d0
+	bne.s sequenceTailMalformed
+	lea SemanticSequenceViolationText, a2
+	moveq #8, d1
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	tst.b d0
+	beq.s sequenceTailMalformed
+	moveq #2, d4
+	bra.s sequenceTailOk
+
+sequenceTailPlain
+	movea.l (sp), a1
+	move.w 4(sp), d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.s sequenceTailMalformed
+	tst.w d3
+	beq.s sequenceTailMalformed
+	move.w d3, 6(sp)
+	moveq #0, d4
+sequenceTailOk
+	move.w 6(sp), d3
+	moveq #0, d1
+	bra.s sequenceTailReturn
+sequenceTailMalformed
+	moveq #0, d3
+	moveq #0, d4
+	moveq #1, d1
+sequenceTailReturn
+	lea 8(sp), sp
+	movem.l (sp)+, d2/d5-d7/a0-a6
+	tst.l d1
+	rts
+	.bend  ; tkpkgParseSequenceTailV1
+
+; Apply the package's parsed opaque register-index projection.
+; Inputs: D3.L index; D2.W kind; D4.W shift; D5.L mask. Output: D3.L.
+tkpkgApplyRegisterIndexProjectionV1	.block
+	tst.w d2
+	beq.s registerIndexProjectionReturn
+	cmpi.w #1, d2
+	beq.s registerIndexProjectionShift
+	cmpi.w #2, d2
+	beq.s registerIndexProjectionMask
+	lsr.l d4, d3
+	and.l d5, d3
+	bra.s registerIndexProjectionReturn
+registerIndexProjectionShift
+	lsr.l d4, d3
+	bra.s registerIndexProjectionReturn
+registerIndexProjectionMask
+	and.l d5, d3
+registerIndexProjectionReturn
+	rts
+	.bend  ; tkpkgApplyRegisterIndexProjectionV1
+
+; Match Rust's aligned/consecutive relation, including its two explicit
+; violation selectors. Inputs: D0.W first, D1.W last, D2.W count,
+; D3.W alignment, D4.W violation. Output: D0=1 match, 0 no match.
+tkpkgRegisterSequenceRelationMatchesV1	.block
+	movem.l d1-d7, -(sp)
+	move.w d0, d5
+	move.w d1, d6
+	move.w d2, d7
+	moveq #0, d1
+	move.w d5, d0
+	divu.w d3, d0
+	swap d0
+	tst.w d0
+	seq d1
+	andi.w #1, d1
+	move.w d5, d2
+	move.w d7, d0
+	subq.w #1, d0
+	add.w d0, d2
+	bcc.s registerRelationExpectedReady
+	move.w #$FFFF, d2
+registerRelationExpectedReady
+	moveq #0, d3
+	cmp.w d2, d6
+	seq d3
+	andi.w #1, d3
+	tst.w d4
+	beq.s registerRelationOrdinary
+	cmpi.w #1, d4
+	beq.s registerRelationAlignment
+	tst.w d1
+	beq.s registerRelationNo
+	tst.w d3
+	beq.s registerRelationYes
+	bra.s registerRelationNo
+registerRelationAlignment
+	tst.w d1
+	bne.s registerRelationNo
+	tst.w d3
+	bne.s registerRelationYes
+	bra.s registerRelationNo
+registerRelationOrdinary
+	tst.w d1
+	beq.s registerRelationNo
+	tst.w d3
+	beq.s registerRelationNo
+registerRelationYes
+	moveq #1, d0
+	bra.s registerRelationReturn
+registerRelationNo
+	moveq #0, d0
+registerRelationReturn
+	movem.l (sp)+, d1-d7
+	tst.l d0
+	rts
+	.bend  ; tkpkgRegisterSequenceRelationMatchesV1
+
 ; Parse `N.itemM[.qualifierQ].classC` or `N.itemM` using the same unsigned
 ; indices and exact structural separators as Rust semantic_plan_inputs.
 ; Inputs: A1/D0 = suffix.
@@ -6301,12 +7013,13 @@ registerProjectionShiftMask
 	beq.w registerProjectionFail
 	move.w d0, d7
 	move.w d6, d0
+	movea.l a1, a2
 	bsr.w tkpkgParseU16DecimalV2
 	bne.w registerProjectionFail
 	cmpi.l #15, d3
 	bhi.w registerProjectionFail
 	move.w d3, d4
-	lea 4(a1, d6.w), a1
+	lea 4(a2, d6.w), a1
 	move.w d7, d0
 	sub.w d6, d0
 	subq.w #4, d0
@@ -7947,7 +8660,9 @@ shapeAlternativeCompare
 	movea.l a4, a2
 	move.w d2, d0
 	move.w d6, d1
+	move.w d4, -(sp)
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	move.w (sp)+, d4
 	tst.b d0
 	bne.s shapeAlternativeMatch
 

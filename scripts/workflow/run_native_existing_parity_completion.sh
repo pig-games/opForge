@@ -88,6 +88,7 @@ tests=(
   external_fs_uae_native_m68881_m68882_extended_math_parity
   external_fs_uae_native_m68040_integrated_fpu_parity
   external_fs_uae_native_m68080_integer_parity
+  external_fs_uae_native_m68080_ammx_parity
 )
 
 test_source="crates/opforge-asm/src"

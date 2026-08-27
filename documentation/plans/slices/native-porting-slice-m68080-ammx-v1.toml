@@ -1,0 +1,108 @@
+[slice]
+schema_version = 2
+name = "native m68080 AMMX v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 31
+requirements = ["N68X0-001", "N68X0-002", "N68X0-003", "N68X0-004", "N68X0-005", "N68X0-006", "N68X0-014", "N68X0-015", "N68X0-016", "REQ-68080-FULL-001", "REQ-68080-FULL-004", "REQ-68080-FULL-005", "REQ-68080-FULL-007", "REQ-68080-FULL-008", "REQ-68080-FULL-009", "REQ-68080-FULL-010", "REQ-68080-FULL-011"]
+rust_reference = [
+  "crates/opforge-families/src/m68080/package_programs.rs::m68080_mode_selectors",
+  "crates/opforge-families/src/m68080/package_programs.rs::m68080_operand_record_programs",
+  "crates/opforge-families/src/m68080/package_programs.rs::m68080_register_encodings",
+  "crates/opforge-vm/src/execution_model/selector_encoding.rs::semantic_plan_inputs",
+  "crates/opforge-vm/src/execution_model/selector_encoding.rs::parse_register_index_projection",
+  "crates/opforge-vm/src/execution_model/selector_encoding.rs::project_register_index",
+  "examples/motorola68000/68080_ammx_slice.asm",
+  "examples/motorola68000/68080_ammx_addressing_matrix.asm",
+  "examples/motorola68000/68080_ammx_shape_error.asm"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgProjectCallArgRegisterSequenceV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgProjectRegisterSequenceV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgRegisterSequenceRelationMatchesV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgParseRegisterClassProjectionV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgProjectExprPathV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm"
+]
+invariant = "For the exact unmodified Rust package, native executes AMMX vector effective-address records, pair and four-register group relations, register-index projections, texture expression paths, encoders, availability rows, and diagnostic selectors through architecture-neutral package operations. CPU, mnemonic, register, operand-shape, opcode, legality, and diagnostic semantics remain package-owned."
+assertion_decision = "Prove the complete Rust/package boundary at Level B and each corrected invariant with a fresh directed Level D guest. After every directed proof passes, invoke the complete established native parity wrapper exactly once. If that invocation exposes an issue, never repeat the wrapper or aggregate; correct the issue and run only its smallest directed proof."
+expected_inputs = "The exact unmodified all-family Rust package; the checked-in 68080 AMMX slice and addressing matrix; an additional source covering every Rust-supported AMMX family, alias, pair/group, selector, and texture form; one source for every AMMX diagnostic family; and an explicit m68040 rejection source."
+expected_outputs = "Byte-for-byte equality with same-source live Rust artifacts and explicit guest exit zero for successful cases; exact live-Rust diagnostics and explicit guest exit one for invalid shape, relation, size, selector, mode, and earlier-CPU cases."
+known_non_equivalences = "Native uses bounded resident buffers, 68000 calling conventions, and bounded source spans in place of Rust AST references. The source-span implementation follows Rust's top-level subtraction/range and multiply structure and fails closed for other shapes; package data still owns every semantic choice. On macOS, real FS-UAE runs require app-launch permission: a sandboxed kLSNoExecutableErr before a fresh guest starts is invalid pre-guest evidence and must be rerun once with permission rather than retried in the sandbox."
+fast_proof_command = "cargo test -p asm motorola68020_item31_native_m68080_ammx_package_boundary_matches_rust -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_m68080_ammx_parity -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_item31_native_m68080_ammx_package_boundary_matches_rust"
+proof_level = "B"
+proves = "The embedded package equals the live Rust registry build and owns all AMMX records, selector programs, register classes, encoders, diagnostics, fixtures, and the two Rust sequence algorithms while generic native sources remain CPU-neutral."
+does_not_prove = "Execution by a real Amiga guest."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_ammx_directed_parity"
+proof_level = "D"
+proves = "The single eight-case invocation attempted every fresh guest; the simple AMMX slice and m68040 rejection completed with their Rust results, while six failures localized missing texture and sequence projections."
+does_not_prove = "The six subsequently corrected cases; the failed invocation was not repeated."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_ammx_tex24_directed_parity"
+proof_level = "D"
+proves = "One fresh guest proves Rust binary-left/right expression-path selection and package-named-register resolution through exact TEX24.64 bytes and explicit exit zero."
+does_not_prove = "Other texture forms or the complete AMMX surface."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_ammx_sequence_directed_parity"
+proof_level = "D"
+proves = "The single five-case invocation attempted every guest and proved all four exact pair/group alignment/sequence diagnostics with explicit exit one."
+does_not_prove = "Its positive sequence case, which failed at the subsequently corrected ordinary call-argument projection and was not repeated."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_ammx_call_arg_projection_directed_parity"
+proof_level = "D"
+proves = "One fresh UNPACK1632 guest proves Rust's ordinary call-argument mask projection after a successful pair relation, with exact bytes and explicit exit zero."
+does_not_prove = "Projected group or pair-sequence encoders."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_ammx_group_projection_directed_parity"
+proof_level = "D"
+proves = "The one failed fresh guest localized the combined shift-and-mask parser defect at MINTERM."
+does_not_prove = "Successful group encoding; the failed invocation was not repeated."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_ammx_combined_projection_directed_parity"
+proof_level = "D"
+proves = "One fresh MINTERM guest proves the corrected stable-base `.shrN.andM` parser through exact Rust bytes and explicit exit zero."
+does_not_prove = "Projected call-argument pair encoding or the complete AMMX surface."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_ammx_pair_projection_directed_parity"
+proof_level = "D"
+proves = "One fresh BFLYB guest proves projected consecutive call-argument pairs in both selection and encoding, with exact Rust bytes and explicit exit zero."
+does_not_prove = "The complete AMMX aggregate."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_ammx_parity"
+proof_level = "D"
+proves = "The complete Item 31 aggregate carries three same-source Rust byte oracles and all fifteen AMMX diagnostic/availability cases into eighteen independent fresh guest contracts."
+does_not_prove = "Execution evidence: the one permitted established wrapper stopped at an earlier regression before reaching this aggregate, and neither was rerun under the Directed-Fix and Single Native Completion Quality Gate."
+
+[[tests]]
+name = "external_fs_uae_native_m68000_move_word_immediate_parity"
+proof_level = "D"
+proves = "After the one permitted wrapper exposed selector-shape drift, one fresh guest proves per-candidate Rust shape matching through exact MOVE.W immediate bytes and explicit exit zero."
+does_not_prove = "The complete movement/control shard or Item 31 aggregate; both remained intentionally unrepeated."
+
+[[tests]]
+name = "external_fs_uae_native_m68000_invalid_lea_ea_parity"
+proof_level = "D"
+proves = "One fresh guest proves that the same corrected selector-shape invariant reaches Rust's exact invalid-immediate LEA diagnostic with explicit exit one."
+does_not_prove = "Any unrelated movement/control or AMMX behavior."
+
+[[tests]]
+name = "native_existing_parity_completion_wrapper"
+proof_level = "D"
+proves = "The single configured invocation passed 34 established shards with real test counts and fresh protocols, then fail-closed after shard 35 attempted all seven cases and exposed one selector-shape invariant."
+does_not_prove = "Later wrapper shards or direct execution of the Item 31 aggregate; the wrapper was not repeated, and the exposed invariant was closed only by its two smallest directed guests."

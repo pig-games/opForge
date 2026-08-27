@@ -49,6 +49,7 @@ class NativeExistingParityCompletionTests(unittest.TestCase):
             "native_cli_65c02_expr_syntax_matches_rust_bin",
             "native_m68000_move_control_parity",
             "native_m68080_integer_parity",
+            "native_m68080_ammx_parity",
         )
         for name in required_representatives:
             self.assertIn(name, source)

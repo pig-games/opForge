@@ -24749,7 +24749,21 @@ fn motorola68020_item30_native_m68080_integer_package_boundary_matches_rust() {
             "shapealternativetrimstart",
             "cmpi.b #'|', (a3)",
             "shapealternativetrimend",
+            "move.w d4, -(sp)",
             "tkpkgservicestringeqasciicasefoldv1",
+            "move.w (sp)+, d4",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &native_selection,
+        &[
+            "cmseownermatches",
+            "move.w d4, d0",
+            "lea buffers.compactselectormodetext, a0",
+            "bsr.w resolvecompactselectorstringv1",
+            "movea.l state.encodeselectedmselshapeptr, a2",
+            "bsr.w tkpkgserviceshapealternativematchesv1",
+            "cmseshapematches",
         ],
     ));
 
@@ -24822,7 +24836,8 @@ fn motorola68020_item30_native_m68080_integer_package_boundary_matches_rust() {
             "semanticregistershift",
             "semanticregistermask",
             "tkpkgparseregisterclassprojectionv1\t.block",
-            "lea 4(a1, d6.w), a1",
+            "movea.l a1, a2",
+            "lea 4(a2, d6.w), a1",
             "registerprojectioncheckmask",
         ],
     ));
@@ -24846,6 +24861,185 @@ fn motorola68020_item30_native_m68080_integer_package_boundary_matches_rust() {
             assert!(
                 !source.contains(forbidden),
                 "generic native {source_name} must not own 68080 spelling {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
+fn motorola68020_item31_native_m68080_ammx_package_boundary_matches_rust() {
+    // Proof level B. Rust's package owns every AMMX mnemonic, register class,
+    // composite operand format, selector, encoding program, and diagnostic.
+    let package_path =
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let embedded_package = fs::read(&package_path).expect("read Item 31 embedded package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build current unmodified Rust package"),
+        "Item 31 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 31 package input");
+    let owner = ScopedOwner::Cpu("m68080".to_string());
+
+    for (id, schema, format) in [
+        ("operand.ammx-vea", 3_u16, 0_u16),
+        ("operand.ammx-pair", 3, 1),
+        ("operand.ammx-group", 3, 2),
+        ("operand.texture-nested", 3, 16),
+        ("operand.texture-external-scale", 3, 17),
+        ("operand.texture-scaled-inside", 3, 18),
+        ("operand.texture-flat", 3, 19),
+    ] {
+        let record = chunks
+            .operand_record_programs
+            .iter()
+            .find(|record| record.owner == owner && record.id == id)
+            .unwrap_or_else(|| panic!("missing Rust Item 31 operand record {id}"));
+        assert_eq!(record.schema_version, schema);
+        assert_eq!(
+            record.program,
+            vec![0x0c, format as u8, (format >> 8) as u8, 0, 0xff],
+            "unexpected Rust composite record program for {id}"
+        );
+    }
+
+    let selector = |mnemonic: &str, plan_fragment: &str| {
+        chunks
+            .selectors
+            .iter()
+            .find(|selector| {
+                selector.owner == owner
+                    && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                    && selector.operand_plan.contains(plan_fragment)
+            })
+            .unwrap_or_else(|| {
+                let matching = chunks
+                    .selectors
+                    .iter()
+                    .filter(|selector| {
+                        selector.owner == owner
+                            && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                    })
+                    .collect::<Vec<_>>();
+                panic!(
+                    "missing Rust Item 31 selector m68080/{mnemonic}/{plan_fragment}; matching rows: {matching:?}"
+                )
+            })
+    };
+    for (mnemonic, plan_fragment) in [
+        ("LOAD", "enc.m68080.ammx-vea-first"),
+        ("PADD.B", "enc.m68080.ammx-three-register-first"),
+        ("VPERM", "enc.m68080.ammx-vperm-second"),
+        ("UNPACK1632", "call_arg_register_sequence1.arg0.arg1"),
+        ("BFLYB", "call_arg_register_sequence2.arg0.arg1"),
+        ("MINTERM", "register_sequence0.class"),
+        ("TRANSHI", "register_sequence0.class"),
+        ("STOREM3", "enc.m68080.ammx-indirect-first"),
+        ("TEX8.512", "enc.m68080.tex-standard"),
+        ("TEX16.256", "enc.m68080.tex-standard"),
+        ("TEX24.64", "enc.m68080.tex-standard"),
+        ("TEX.B", "enc.m68080.tex-byte"),
+    ] {
+        selector(mnemonic, plan_fragment);
+    }
+    for (mnemonic, violation) in [
+        ("BFLYB", "violation-alignment"),
+        ("BFLYB", "violation-sequence"),
+        ("MINTERM", "violation-alignment"),
+        ("MINTERM", "violation-sequence"),
+    ] {
+        selector(mnemonic, violation);
+    }
+    assert!(chunks.selectors.iter().any(|selector| {
+        selector.owner == ScopedOwner::Cpu("m68040".to_string())
+            && selector.mnemonic.eq_ignore_ascii_case("PADD.B")
+            && selector
+                .operand_plan
+                .starts_with("semv.reject.v1:encoding.m68080-only")
+    }));
+
+    for code in [
+        "encoding.m68080.ammx-pair-alignment",
+        "encoding.m68080.ammx-pair-sequence",
+        "encoding.m68080.ammx-group-alignment",
+        "encoding.m68080.ammx-group-sequence",
+        "encoding.m68080.storem3-mode",
+        "encoding.m68080.padd-first-vea",
+        "encoding.m68080.packuswb-vea",
+        "encoding.m68080.ammx-selector-register",
+        "encoding.m68080.ammx-vperm-operands",
+        "encoding.m68080.ammx-load-immediate-size",
+        "encoding.m68080.tex8-nested-shape",
+        "encoding.m68080.tex16-nested-shape",
+        "encoding.m68080.tex-external-d0-shape",
+        "encoding.m68080.tex-byte-shape",
+    ] {
+        assert!(
+            chunks
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code.eq_ignore_ascii_case(code) }),
+            "missing Rust Item 31 diagnostic {code}"
+        );
+    }
+
+    let rust_projection = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_encoding.rs"),
+    )
+    .expect("read Rust Item 31 projection reference");
+    for fragment in [
+        "MODE_SELECTOR_PLAN_CALL_ARG_REGISTER_SEQUENCE_PREFIX",
+        "let aligned = first.index % alignment == 0;",
+        "let consecutive = second.index == first.index.saturating_add(1);",
+        "MODE_SELECTOR_PLAN_REGISTER_SEQUENCE_PREFIX",
+        "let consecutive = end.index == start.index.saturating_add(count - 1);",
+        "project_register_index(first.index, projection)",
+        "project_register_index(start.index, projection)",
+    ] {
+        assert!(
+            rust_projection.contains(fragment),
+            "missing Rust Item 31 reference fragment {fragment}"
+        );
+    }
+
+    let native_projection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    for fragment in [
+        "tkpkgProjectCallArgRegisterSequenceV1",
+        "tkpkgProjectRegisterSequenceV1",
+        "tkpkgRegisterSequenceRelationMatchesV1",
+        "tkpkgApplyRegisterIndexProjectionV1",
+        "tkpkgExprPathSplitMultiplyV1",
+        "exprPathNamedRegisterTerminal",
+    ] {
+        assert!(
+            native_projection.contains(fragment),
+            "missing neutral native Item 31 boundary {fragment}"
+        );
+    }
+
+    for fixture in [
+        "68080_ammx_slice.asm",
+        "68080_ammx_addressing_matrix.asm",
+        "68080_ammx_shape_error.asm",
+    ] {
+        assert!(workspace_root()
+            .join("examples/motorola68000")
+            .join(fixture)
+            .is_file());
+    }
+    for source_name in [
+        "tkpkg_selection_service.asm",
+        "tkpkg_operand_runtime.asm",
+        "tkpkg_encode_service.asm",
+        "tkpkg_operand_record_service.asm",
+    ] {
+        let source = tkpkg_amigaos_source(source_name).to_ascii_lowercase();
+        for forbidden in ["ammx", "padd", "vperm", "minterm", "tex8", "e0-e23"] {
+            assert!(
+                !source.contains(forbidden),
+                "generic native {source_name} must not own AMMX spelling {forbidden}"
             );
         }
     }

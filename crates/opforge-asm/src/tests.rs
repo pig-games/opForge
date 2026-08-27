@@ -24429,6 +24429,121 @@ fn motorola68020_item28_native_external_fpu_catalog_package_boundary_matches_rus
 }
 
 #[test]
+fn motorola68020_item29_native_m68040_integrated_fpu_package_boundary_matches_rust() {
+    // Proof level B. Rust's package remains the sole owner of the integrated
+    // m68040 FPU surface, target guards, encodings, and rejection wording.
+    let package_path =
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let embedded_package = fs::read(&package_path).expect("read Item 29 embedded package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build current unmodified Rust package"),
+        "Item 29 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 29 package input");
+
+    for (mnemonic, plan_fragment) in [
+        ("FMOVE", "reg0.class2,reg1.class2"),
+        ("FMOVEM", "register_mask0.map2=0"),
+        ("FADD", "reg0.class2,reg1.class2"),
+        ("FSUB", "reg0.class2,reg1.class2"),
+        ("FMUL", "reg0.class2,reg1.class2"),
+        ("FDIV", "reg0.class2,reg1.class2"),
+        ("FSQRT", "reg0.class2"),
+        ("FABS", "reg0.class2"),
+        ("FNEG", "reg0.class2"),
+        ("FINT", "reg0.class2"),
+        ("FINTRZ", "reg0.class2"),
+        ("FCMP", "reg0.class2,reg1.class2"),
+        ("FTST", "reg0.class2"),
+        ("FBEQ", "target:expr0"),
+        ("FDBNE", "target:expr1"),
+        ("FSNE", "reg0.class0"),
+        ("FTRAPGT.W", "expr0"),
+        ("FSAVE", "indirect_reg0.class1"),
+        ("FRESTORE", "unary_plus_indirect_reg0.class1"),
+    ] {
+        let selector = chunks
+            .selectors
+            .iter()
+            .find(|selector| {
+                selector.owner == ScopedOwner::Cpu("m68040".to_string())
+                    && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                    && selector.operand_plan.contains(plan_fragment)
+            })
+            .unwrap_or_else(|| {
+                panic!("missing Rust Item 29 selector m68040/{mnemonic}/{plan_fragment}")
+            });
+        assert!(
+            selector
+                .operand_plan
+                .starts_with("state.require.v1:m68k.fpu_target=3?"),
+            "integrated-FPU selector must retain Rust's package state guard: {selector:?}"
+        );
+    }
+
+    for mnemonic in ["FMOVE", "FADD", "FSNE", "FSAVE"] {
+        assert!(chunks.selectors.iter().any(|selector| {
+            selector.owner == ScopedOwner::Cpu("m68040".to_string())
+                && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                && selector
+                    .operand_plan
+                    .contains("encoding.fpu-disabled.m68040")
+        }));
+    }
+    for mnemonic in ["FMOVECR", "FSIN", "FETOX", "FREM"] {
+        assert!(chunks.selectors.iter().any(|selector| {
+            selector.owner == ScopedOwner::Cpu("m68040".to_string())
+                && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                && selector
+                    .operand_plan
+                    .contains("encoding.fpu-integrated-unsupported.m68040")
+        }));
+    }
+
+    let fixture = fs::read_to_string(
+        workspace_root().join("examples/motorola68000/68040_integrated_fpu.asm"),
+    )
+    .expect("read exact Item 29 integrated-FPU fixture");
+    assert!(source_contains_in_order(
+        &fixture,
+        &[
+            ".cpu 68040",
+            ".fpu 68040",
+            "FMOVE FP0,FP1",
+            "FMOVEM FP0/FP2,(A0)",
+            "FMOVE.L D0,FPCR",
+            "FADD FP0,FP1",
+            "FSQRT FP4",
+            "FCMP FP0,FP1",
+            "FBEQ after_fb",
+            "FDBNE D0,after_fdb",
+            "FSNE D3",
+            "FTRAPGT.W #1",
+            "FSAVE (A1)",
+            "FRESTORE (A1)+",
+        ]
+    ));
+
+    for source_name in [
+        "tkpkg_selection_service.asm",
+        "tkpkg_operand_runtime.asm",
+        "tkpkg_encode_service.asm",
+        "tkpkg_state_service.asm",
+    ] {
+        let source = tkpkg_amigaos_source(source_name).to_ascii_lowercase();
+        for forbidden in ["68040 fpu", "fmove", "fadd", "fsave", "fsin"] {
+            assert!(
+                !source.contains(forbidden),
+                "generic native {source_name} must not own integrated-FPU spelling {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
 fn motorola68020_tkpkg_native_wire_roundtrip_preserves_subset_examples() {
     let source = tkpkg_amigaos_source("tkpkg_abi.asm");
 

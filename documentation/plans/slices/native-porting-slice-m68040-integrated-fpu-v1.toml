@@ -1,0 +1,57 @@
+[slice]
+schema_version = 2
+name = "native m68040 integrated fpu v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 29
+requirements = ["N68X0-001", "N68X0-002", "N68X0-006", "N68X0-014", "N68X0-015", "N68X0-016", "AC-M68KMF-001", "AC-M68KMF-002", "AC-M68KMF-005", "AC-M68KMF-006", "AC-M68KMF-007"]
+rust_reference = [
+  "crates/opforge-families/src/m68k/package_programs.rs::m68020_instruction_programs",
+  "crates/opforge-families/src/m68k/package_programs.rs::m68020_mode_selectors",
+  "crates/opforge-families/src/m68k/package_programs.rs::semantic_programs",
+  "crates/opforge-families/src/m68k/fpu_capability.rs",
+  "crates/opforge-families/src/m68040/handler.rs",
+  "crates/opforge-asm/src/tests.rs::m68k_external_fpu_boundary_matrix_matches_the_promised_surface",
+  "crates/opforge-asm/src/tests.rs::m68040_rejects_fsin_class_mnemonics_under_fpu_68040",
+  "examples/motorola68000/68040_integrated_fpu.asm",
+  "examples/motorola68000/68040_fsin_error.asm"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildCompactStateCandidateV2",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildCompactSemanticSequenceCandidateV2",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgProjectCompactSemanticInputV2",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm::tkpkgEncodeInstructionEnvelopeV1"
+]
+invariant = "For the exact unmodified Rust package, native executes the complete integrated m68040 FPU fixture and rejects disabled, external-coprocessor-target, and external-only forms through architecture-neutral state, selection, register, effective-address, sequence, and diagnostic operations; all target, mnemonic, register, opcode, legality, and diagnostic semantics remain package-owned."
+assertion_decision = "Begin with the Level B boundary contract and three fresh directed Level D guests. Repair only a proven architecture-neutral native gap and prove each repair with a directed small test. After all directed proofs pass, run the complete established native parity wrapper exactly once; do not repeat it after a directed repair."
+expected_inputs = "The exact unmodified all-family Rust package; the complete 68040_integrated_fpu fixture; the checked-in FSIN rejection boundary; disabled integrated-FPU input; and incompatible 68881/68882 target inputs."
+expected_outputs = "Byte-for-byte equality with the same-source live Rust artifact and explicit guest exit zero for the complete integrated fixture; exact live-Rust package selector diagnostics for disabled/external-only instruction rejections; and the same Rust legality decision with the deterministic STVM diagnostic for incompatible directive transitions, always with explicit guest exit one."
+known_non_equivalences = "Native uses bounded resident buffers and 68000 calling conventions. As established by Item 25, the frozen STVM format transports profile legality masks but no directive-specific diagnostic templates, so incompatible `.fpu` transitions use native's deterministic generic state diagnostic while preserving Rust's rejection decision; package selector diagnostics remain exact."
+fast_proof_command = "cargo test -p asm motorola68020_item29_native_m68040_integrated_fpu_package_boundary_matches_rust -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_m68040_integrated_fpu_parity -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_item29_native_m68040_integrated_fpu_package_boundary_matches_rust"
+proof_level = "B"
+proves = "The embedded package equals the live Rust registry build and owns the complete integrated m68040 positive surface plus disabled and external-only rejection rows, while generic native sources contain no FPU vocabulary."
+does_not_prove = "Execution by a real Amiga guest."
+
+[[tests]]
+name = "external_fs_uae_native_m68040_integrated_fpu_directed_parity"
+proof_level = "D"
+proves = "Three fresh guests isolate the complete integrated fixture, the Rust-equivalent rejection decision for an incompatible external-FPU target, and an exact live-Rust external-only instruction diagnostic with explicit guest exits."
+does_not_prove = "All aggregate negative target variants."
+
+[[tests]]
+name = "external_fs_uae_native_m68040_integrated_fpu_parity"
+proof_level = "D"
+proves = "Fresh guests prove the complete checked-in integrated-FPU fixture, exact Rust selector diagnostics for disabled FADD and integrated FSIN, and Rust-equivalent legality rejection for both incompatible external-target classes."
+does_not_prove = "External 68881/68882 positive behavior already closed by Items 27 and 28."
+
+[[tests]]
+name = "native_existing_parity_completion_wrapper"
+proof_level = "D"
+proves = "One Item 29 invocation re-proves every established native parity shard and executes the complete Item 29 aggregate exactly once."
+does_not_prove = "A second wrapper run after any directed repair; the Directed-Fix and Single Native Completion Quality Gate forbids repetition."

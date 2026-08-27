@@ -16335,6 +16335,250 @@ fn external_fs_uae_native_m68881_m68882_extended_math_parity() {
 }
 
 #[test]
+fn external_fs_uae_native_m68040_integrated_fpu_directed_parity() {
+    // Proof level D. Three fresh guests isolate the complete integrated-FPU
+    // fixture and Rust's external-target and external-only rejection paths.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 29 package");
+    let positive_source = fs::read_to_string(
+        workspace_root().join("examples/motorola68000/68040_integrated_fpu.asm"),
+    )
+    .expect("read exact integrated-68040 fixture");
+    let positive_oracle = live_rust_cpu_name_oracle(
+        &positive_source,
+        Some("m68040"),
+        "item29-integrated-fpu-rust-oracle",
+    )
+    .expect("run Item 29 integrated-FPU Rust oracle");
+    let external_target_source = ".fpu 68881\n        FADD FP0,FP1\n";
+    let external_target_diagnostic = live_rust_cpu_name_diagnostic(
+        external_target_source,
+        "m68040",
+        "item29-external-target-rust-diagnostic",
+    );
+    assert!(external_target_diagnostic.contains("legal .fpu targets for m68040"));
+    let external_only_source = ".fpu 68040\n        FSIN FP0,FP1\n";
+    let external_only_diagnostic = live_rust_cpu_name_diagnostic(
+        external_only_source,
+        "m68040",
+        "item29-external-only-rust-diagnostic",
+    );
+    assert!(external_only_diagnostic.contains("integrated 68040 FPU target"));
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item29-integrated-fpu-fixture",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(positive_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68040 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &positive_oracle,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item29-external-target-rejection",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(external_target_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68040 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item29-external-only-rejection",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(external_only_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68040 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                &external_only_diagnostic,
+            ),
+        },
+    ];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 29 integrated-FPU runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len());
+            let positive = &runs[0];
+            assert!(positive.protocol_completed);
+            assert!(
+                positive.success,
+                "stdout:\n{}\nstderr:\n{}",
+                positive.stdout, positive.stderr
+            );
+            assert_eq!(positive.exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(positive, "Work/opforge_native_out.bin"),
+                positive_oracle
+            );
+            let external_target = &runs[1];
+            assert!(external_target.protocol_completed);
+            assert!(!external_target.success);
+            assert_eq!(external_target.exit_code, Some(1));
+            assert!(external_target
+                .stderr
+                .contains("package state directive argument is not legal for active profile"));
+            let external_only = &runs[2];
+            assert!(external_only.protocol_completed);
+            assert!(!external_only.success);
+            assert_eq!(external_only.exit_code, Some(1));
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68040_integrated_fpu_parity() {
+    // Proof level D. This is the complete Item 29 aggregate executed once by
+    // the established native wrapper. Every case uses a fresh challenge, the
+    // exact Rust-built package, a same-source Rust oracle, guest completion,
+    // and an explicit guest exit.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 29 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let positive_source = fs::read_to_string(
+        workspace_root().join("examples/motorola68000/68040_integrated_fpu.asm"),
+    )
+    .expect("read exact integrated-68040 fixture");
+    let positive_oracle = live_rust_cpu_name_oracle(
+        &positive_source,
+        Some("m68040"),
+        "item29-aggregate-integrated-fpu-rust-oracle",
+    )
+    .expect("run Item 29 aggregate integrated-FPU Rust oracle");
+    let negative_definitions = [
+        (
+            "item29-m68040-disabled-fadd",
+            "        FADD FP0,FP1\n",
+            true,
+        ),
+        (
+            "item29-m68040-68881-fadd",
+            ".fpu 68881\n        FADD FP0,FP1\n",
+            false,
+        ),
+        (
+            "item29-m68040-68882-fsne",
+            ".fpu 68882\n        FSNE D0\n",
+            false,
+        ),
+        (
+            "item29-m68040-integrated-fsin",
+            ".fpu 68040\n        FSIN FP0,FP1\n",
+            true,
+        ),
+    ];
+    let negatives = negative_definitions
+        .iter()
+        .map(|(name, source, exact_diagnostic)| {
+            let diagnostic = live_rust_cpu_name_diagnostic(
+                source,
+                "m68040",
+                format!("{name}-rust-diagnostic").as_str(),
+            );
+            (*name, *source, diagnostic, *exact_diagnostic)
+        })
+        .collect::<Vec<_>>();
+    let cases = std::iter::once(crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item29-m68040-integrated-fpu-complete-fixture",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(positive_source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68040 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &positive_oracle,
+        },
+    })
+    .chain(
+        negatives
+            .iter()
+            .map(|(name, source, diagnostic, exact_diagnostic)| {
+                crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                    name,
+                    cpu_override: "68020",
+                    extra_assembly_defines: &[],
+                    source_override: Some(source.as_bytes()),
+                    command_template: Some(
+                        "{input} --bin {bin} --cpu m68040 --opasm-package {package}",
+                    ),
+                    package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(
+                        &package,
+                    ),
+                    extra_guest_files: &[],
+                    proof: if *exact_diagnostic {
+                        crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                            diagnostic,
+                        )
+                    } else {
+                        crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureWithDiagnostic
+                    },
+                }
+            }),
+    )
+    .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("complete Item 29 integrated-FPU parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len());
+            let positive = &runs[0];
+            assert!(positive.protocol_completed);
+            assert!(
+                positive.success,
+                "Item 29 positive case failed\nstdout:\n{}\nstderr:\n{}",
+                positive.stdout, positive.stderr
+            );
+            assert_eq!(positive.exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(positive, "Work/opforge_native_out.bin"),
+                positive_oracle
+            );
+            for (run, (_, _, _, exact_diagnostic)) in runs[1..].iter().zip(&negatives) {
+                assert!(run.protocol_completed);
+                assert!(!run.success);
+                assert_eq!(run.exit_code, Some(1));
+                if !exact_diagnostic {
+                    assert!(run.stderr.contains(
+                        "package state directive argument is not legal for active profile"
+                    ));
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_native_m68020_later_integer_group_b_parity() {
     // Proof level D. This is the complete Item 24 aggregate executed by the
     // established native completion wrapper. Every case uses a fresh challenge,

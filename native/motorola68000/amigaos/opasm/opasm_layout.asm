@@ -18,6 +18,10 @@ OPASM_LAYOUT_INDEX_NONE = $ffff
 OPASM_LAYOUT_SECTION_KIND_CODE = 0
 OPASM_LAYOUT_SECTION_KIND_DATA = 1
 OPASM_LAYOUT_SECTION_KIND_BSS = 2
+OPASM_LAYOUT_HUNK_MEMORY_ANY = 0
+OPASM_LAYOUT_HUNK_MEMORY_CHIP = 1
+OPASM_LAYOUT_HUNK_MEMORY_FAST = 2
+OPASM_LAYOUT_HUNK_MEMORY_SLOW = 3
 
 ; Reset all layout state for a new assembly session.
 ; Outputs: D0.L = 0.
@@ -37,6 +41,7 @@ resetStateV1	.block
 	clr.w OpasmLayoutScratchSectionOwnerLen
 	clr.b OpasmLayoutScratchSectionOwner
 	clr.w OpasmLayoutScratchSectionKind
+	clr.w OpasmLayoutScratchSectionMemoryType
 	clr.w OpasmLayoutScratchSectionLogical
 	clr.w OpasmLayoutScratchMapLogicalOwnerLen
 	clr.b OpasmLayoutScratchMapLogicalOwner
@@ -228,6 +233,10 @@ appendSectionV1	.block
 	move.w d6, d5
 	jsr wordTablePtrV1
 	move.w OpasmLayoutScratchSectionKind, (a0)
+	lea OpasmLayoutSectionMemoryTypes.l, a0
+	move.w d6, d5
+	jsr wordTablePtrV1
+	move.w OpasmLayoutScratchSectionMemoryType, (a0)
 	lea OpasmLayoutSectionLogicalFlags.l, a0
 	move.w d6, d5
 	jsr wordTablePtrV1
@@ -772,6 +781,20 @@ fail
 	rts
 	.bend  ; setScratchSectionKindV1
 
+; Store Rust's Hunk allocation-memory classification for the next section.
+; Inputs: D0.W = OPASM_LAYOUT_HUNK_MEMORY_*.
+; Outputs: D0.L = 0 on success, 1 for an invalid value.
+setScratchSectionMemoryTypeV1	.block
+	cmpi.w #OPASM_LAYOUT_HUNK_MEMORY_SLOW, d0
+	bhi.s fail
+	move.w d0, OpasmLayoutScratchSectionMemoryType
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; setScratchSectionMemoryTypeV1
+
 ; Store whether the next pass-one section is logical rather than directly emitted.
 ; Inputs: D0.W = 0 concrete, nonzero logical. Outputs: D0.L = 0.
 setScratchSectionLogicalV1	.block
@@ -1034,6 +1057,22 @@ getSectionInfoV1	.block
 	move.l (sp)+, d0
 	rts
 	.bend  ; getSectionInfoV1
+
+; Return one retained section's Rust Hunk memory type.
+; Inputs: D5.W = section index. Outputs: D0.L = OPASM_LAYOUT_HUNK_MEMORY_*;
+; invalid indices return ANY. Clobbers: D0/A0/CCR; preserves D5.
+getSectionMemoryTypeV1	.block
+	cmp.w OpasmLayoutSectionCount.l, d5
+	bhs.s any
+	lea OpasmLayoutSectionMemoryTypes.l, a0
+	jsr wordTablePtrV1
+	moveq #0, d0
+	move.w (a0), d0
+	rts
+any
+	moveq #OPASM_LAYOUT_HUNK_MEMORY_ANY, d0
+	rts
+	.bend  ; getSectionMemoryTypeV1
 
 ; Return the flat-image origin candidate for one finalized placed, concrete,
 ; nonempty, non-BSS section. Logical and unplaced sections route to discard or
@@ -1850,6 +1889,9 @@ OpasmLayoutScratchNameLen
 OpasmLayoutScratchSectionKind
 	.res word, 1
 
+OpasmLayoutScratchSectionMemoryType
+	.res word, 1
+
 OpasmLayoutScratchSectionLogical
 	.res word, 1
 
@@ -1908,6 +1950,9 @@ OpasmLayoutSectionPlacedFlags
 	.res word, OPASM_LAYOUT_SECTION_CAPACITY
 
 OpasmLayoutSectionKinds
+	.res word, OPASM_LAYOUT_SECTION_CAPACITY
+
+OpasmLayoutSectionMemoryTypes
 	.res word, OPASM_LAYOUT_SECTION_CAPACITY
 
 OpasmLayoutSectionLogicalFlags

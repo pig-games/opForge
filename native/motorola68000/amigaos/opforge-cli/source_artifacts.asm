@@ -166,6 +166,8 @@ selectedOutputPathV1	.block
 	beq.s hex
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0
 	beq.s lst
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d0
+	beq.s hunk
 	lea state.NativeCliBinPath, a0
 	rts
 prg
@@ -176,6 +178,9 @@ hex
 	rts
 lst
 	lea state.NativeCliLstPath, a0
+	rts
+hunk
+	lea state.NativeCliHunkPath, a0
 	rts
 	.bend  ; selectedOutputPathV1
 

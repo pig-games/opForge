@@ -9,6 +9,7 @@
 	.use opforge.cli.constants
 	.use opforge.cli.dos
 	.use opforge.cli.strings
+	.use opforge.cli.hunk_output as hunk_output
 
 	.section code, kind=code
 	.pub
@@ -32,7 +33,11 @@ opforgeNativeCliWriteFlatOutput	.block
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_BIN, d0
 	beq.s buildSourceArtifact
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d0
+	beq.s buildSourceArtifact
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d0
 	bne.s buildDefaultArtifact
+	jsr hunk_output.buildSelectedSectionsV1
+	bra.s artifactBuilt
 
 buildSourceArtifact
 	bsr.w buildSelectedSourceArtifactV1
@@ -42,6 +47,8 @@ buildDefaultArtifact
 	move.w state.NativeCliOutputFormat, d0
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_BIN, d0
 	beq.s buildBin
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d0
+	beq.s buildHunk
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d0
 	beq.s buildHex
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0
@@ -67,6 +74,10 @@ buildLst
 
 buildBin
 	jsr artifacts.opasmOutputBuildBinArtifactV1
+	bra.s artifactBuilt
+
+buildHunk
+	jsr hunk_output.buildFlatCodeV1
 
 artifactBuilt
 	bne.w artifactFail
@@ -76,6 +87,8 @@ payloadReady
 	move.w state.NativeCliOutputFormat, d0
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_BIN, d0
 	beq.s payloadBinPath
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d0
+	beq.s payloadHunkPath
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d0
 	beq.s payloadHexPath
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0
@@ -87,6 +100,10 @@ payloadReady
 
 payloadBinPath
 	lea state.NativeCliBinPath, a0
+	bra.s payloadOpen
+
+payloadHunkPath
+	lea state.NativeCliHunkPath, a0
 	bra.s payloadOpen
 
 payloadHexPath

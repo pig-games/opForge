@@ -5383,6 +5383,47 @@ fn live_rust_cpu_name_oracle(
     fs::read(rust_bin_path).map_err(|error| error.to_string())
 }
 
+fn live_rust_cpu_hunk_oracle(source: &str, cpu_override: &str, label: &str) -> Vec<u8> {
+    let case_dir = create_temp_dir(label);
+    let _cleanup = NativeCpuOracleDir(case_dir.clone());
+    let input_path = case_dir.join("input.asm");
+    let rust_hunk_path = case_dir.join("rust.hunk");
+    fs::write(&input_path, source).expect("write live Rust Hunk source");
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        input_path.to_string_lossy().into_owned(),
+        "--hunk".to_string(),
+        rust_hunk_path.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        cpu_override.to_string(),
+    ]);
+    run_with_cli_with_context(&cli).expect("run live Rust Hunk oracle");
+    fs::read(rust_hunk_path).expect("read live Rust Hunk oracle")
+}
+
+fn live_rust_source_hunk_oracle(
+    source: &str,
+    cpu_override: &str,
+    relative_output: &str,
+    label: &str,
+) -> Vec<u8> {
+    let case_dir = create_temp_dir(label);
+    let _cleanup = NativeCpuOracleDir(case_dir.clone());
+    let input_path = case_dir.join("input.asm");
+    fs::create_dir_all(case_dir.join("build")).expect("create live Rust Hunk output directory");
+    fs::write(&input_path, source).expect("write live Rust source Hunk input");
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        input_path.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        cpu_override.to_string(),
+    ]);
+    let mut config = validate_cli(&cli).expect("validate live Rust source Hunk CLI");
+    config.out_dir = Some(case_dir.clone());
+    run_with_validated_cli_with_context(&cli, &config).expect("run live Rust source Hunk oracle");
+    fs::read(case_dir.join(relative_output)).expect("read live Rust source Hunk oracle")
+}
+
 fn live_rust_cpu_name_oracle_with_package(
     source: &str,
     cpu_override: &str,
@@ -12156,12 +12197,7 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "missing-hunk",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK",
-            expected_diagnostic: "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin or --list",
-        },
-        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
-            name: "hunk-output",
-            define: "OPFORGE_FS_UAE_NATIVE_CLI_HUNK_OUTPUT",
-            expected_diagnostic: "ERROR OPC-NCLI028: native Hunk output is not implemented; use --bin for flat output",
+            expected_diagnostic: "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin, --hunk, or --list",
         },
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "mixed-input",
@@ -22431,4 +22467,333 @@ fn external_fs_uae_native_motorola68000_complete_reference_parity() {
         7
     );
     item34_run_reference_runtime_cases(&cases, "complete Item 34 reference parity");
+}
+
+#[test]
+fn external_fs_uae_native_item35_forward_extended_short_fixup_closure_parity() {
+    // Proof level D. The one Item 35 completion-wrapper regression gets one
+    // directed closure: a forward extended-short label must remain unresolved
+    // in pass one, then emit the exact live-Rust range-map byte in pass two.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let selected = ["examples/motorola68000/68080_full_additional_surface.asm"];
+    let cases = item34_reference_runtime_cases(Some(&selected));
+    assert_eq!(cases.len(), 1);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 35 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let Item34ReferenceOracle::Binary(oracle) = &cases[0].oracle else {
+        panic!("Item 35 closure source must have a binary Rust oracle");
+    };
+    assert_eq!(oracle.len(), 246);
+    assert_eq!(
+        &oracle[0x2a..0x34],
+        &[0x51, 0xc9, 0x00, 0x87, 0x60, 0x03, 0x61, 0x03, 0x66, 0x03]
+    );
+    let parity_cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item35-forward-extended-short-fixup-closure",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(cases[0].source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &parity_cases,
+    )
+    .expect("directed Item 35 forward extended-short fixup closure")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(run.protocol_completed);
+            assert!(run.success);
+            assert_eq!(run.exit_code, Some(0));
+            let native = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
+            assert_eq!(native, oracle.as_slice());
+            eprintln!(
+                "ITEM35_FIXUP_CLOSURE runs={} protocol_completed={} guest_exit={:?} rust_bytes={} native_bytes={} exact_match={}",
+                runs.len(),
+                run.protocol_completed,
+                run.exit_code,
+                oracle.len(),
+                native.len(),
+                native == oracle.as_slice()
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_item35_implicit_code_hunk_parity() {
+    // Proof level D. One fresh guest proves the first Item 35 production slice:
+    // Rust and native render the same implicit relocation-free CODE Hunk.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = ".cpu 68020\n.org 0\n        nop\n        .byte $12,$34,$56\n";
+    let oracle = live_rust_cpu_hunk_oracle(source, "m68020", "item35-implicit-code-hunk");
+    assert_eq!(
+        &oracle[..24],
+        &[0x00, 0x00, 0x03, 0xf3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2,]
+    );
+    assert_eq!(oracle.len(), 44);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 35 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item35-implicit-code-hunk",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --hunk {hunk} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/build/opforge_native_out.hunk",
+            rust_oracle: &oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 35 implicit Hunk run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert!(runs[0].success);
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/build/opforge_native_out.hunk"),
+                oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_item35_ordered_segment_hunk_parity() {
+    // Proof level D. One fresh guest proves declared CODE/BSS/DATA order,
+    // initialized-byte padding, BSS allocation, and CHIP/FAST size bits.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = concat!(
+        ".module main\n",
+        ".cpu 68020\n",
+        ".region memory, $1000, $10ff\n",
+        ".section code, kind=code, memory=any\n",
+        "        nop\n",
+        "        .byte $12\n",
+        ".endsection\n",
+        ".section data, kind=data, memory=chip\n",
+        "        .byte $aa,$bb\n",
+        ".endsection\n",
+        ".section bss, kind=bss, memory=fast\n",
+        "        .res byte, 5\n",
+        ".endsection\n",
+        ".place code in memory\n",
+        ".place data in memory\n",
+        ".place bss in memory\n",
+        ".output \"build/item35_sections.hunk\", format=hunk, sections=code,bss,data\n",
+        ".endmodule\n",
+    );
+    let oracle = live_rust_source_hunk_oracle(
+        source,
+        "m68020",
+        "build/item35_sections.hunk",
+        "item35-ordered-segment-hunk",
+    );
+    let words = oracle
+        .chunks_exact(4)
+        .map(|chunk| u32::from_be_bytes(chunk.try_into().expect("Hunk word")))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        &words[..8],
+        &[0x3f3, 0, 3, 0, 2, 1, 0x8000_0002, 0x4000_0001]
+    );
+    assert_eq!(
+        words
+            .iter()
+            .copied()
+            .filter(|word| matches!(*word, 0x3e9 | 0x3ea | 0x3eb))
+            .collect::<Vec<_>>(),
+        [0x3e9, 0x3eb, 0x3ea]
+    );
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 35 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item35-ordered-segment-hunk",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --cpu m68020 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/build/item35_sections.hunk",
+            rust_oracle: &oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 35 ordered-segment Hunk run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert!(runs[0].success);
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/build/item35_sections.hunk"),
+                oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_hunk_segment_surface_parity() {
+    // Proof level D. A fresh guest uses the production native CLI to emit the
+    // same selected CODE/DATA/BSS Hunk as Rust while omitting an empty DATA
+    // section, then AmigaDOS loads and runs that newly emitted file. The
+    // captured guest exit is the Hunk's return code, not merely the native
+    // CLI's status.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = concat!(
+        ".module main\n",
+        ".cpu 68020\n",
+        ".region memory, $1000, $10ff\n",
+        ".section code, kind=code, memory=any\n",
+        "        moveq #0,d0\n",
+        "        rts\n",
+        "        .byte $12\n",
+        ".endsection\n",
+        ".section data, kind=data, memory=fast\n",
+        "        .byte $aa,$bb\n",
+        ".endsection\n",
+        ".section empty, kind=data, memory=any\n",
+        ".endsection\n",
+        ".section bss, kind=bss, memory=chip\n",
+        "        .res byte, 5\n",
+        ".endsection\n",
+        ".place code in memory\n",
+        ".place data in memory\n",
+        ".place bss in memory\n",
+        ".output \"build/item35_executable.hunk\", format=hunk, sections=code,empty,data,bss\n",
+        ".endmodule\n",
+    );
+    let oracle = live_rust_source_hunk_oracle(
+        source,
+        "m68020",
+        "build/item35_executable.hunk",
+        "item35-executable-segment-hunk",
+    );
+    let words = oracle
+        .chunks_exact(4)
+        .map(|chunk| u32::from_be_bytes(chunk.try_into().expect("Hunk word")))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        &words[..8],
+        &[0x3f3, 0, 3, 0, 2, 2, 0x8000_0001, 0x4000_0002]
+    );
+    assert_eq!(
+        words
+            .iter()
+            .copied()
+            .filter(|word| matches!(*word, 0x3e9 | 0x3ea | 0x3eb))
+            .collect::<Vec<_>>(),
+        [0x3e9, 0x3ea, 0x3eb]
+    );
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 35 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item35-executable-segment-hunk",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some(
+            "{input} --cpu m68020 --opasm-package {package}\n{guest_work_dir}build/item35_executable.hunk",
+        ),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/build/item35_executable.hunk",
+            rust_oracle: &oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("complete Item 35 executable Hunk segment-surface run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert!(runs[0].success);
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(runs[0].verified_output.as_deref(), Some(oracle.as_slice()));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/build/item35_executable.hunk"),
+                oracle
+            );
+            eprintln!(
+                "ITEM35_HUNK_PROOF runs={} protocol_completed={} guest_exit={:?} rust_bytes={} native_bytes={} exact_match={}",
+                runs.len(),
+                runs[0].protocol_completed,
+                runs[0].exit_code,
+                oracle.len(),
+                runs[0]
+                    .verified_output
+                    .as_ref()
+                    .expect("verified native Hunk")
+                    .len(),
+                runs[0].verified_output.as_deref() == Some(oracle.as_slice()),
+            );
+        }
+    }
 }

@@ -149,7 +149,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   arbitrary package-returned instruction-size advancement; generic package
   pipeline restoration at pass start and replay of source `.cpu` transitions
   through `SET_PIPELINE`; complete stored directive-operand delegation; remaining
-  layout/region/section/place/pack dispatch; event projection.
+  layout/region/section/place/pack dispatch, including bounded projection of
+  Rust Hunk section-memory aliases into the layout owner; event projection.
 - Inbound users: the CLI engine-callback adapter imports this driver; the
   driver is the session orchestration boundary, not a package or CPU owner.
 - Decision: orchestration stays here. Item 5.8 moves non-structural directive
@@ -233,7 +234,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   request APIs, `alignCursorV1`, and `alignPadV1`.
 - Imports/outbound dependencies: none.
 - Mutable state: region/section/place counters, names, bounds, cursors,
-  alignment values, placement indices, and scratch storage.
+  alignment values, placement indices, Hunk memory attributes, and scratch
+  storage.
 - Routine responsibility groups: overflow-safe positive alignment,
   power-of-two padding arithmetic, bounded layout-name copy/comparison,
   region/section/place validation and transitions, including sequential `.pack`
@@ -334,9 +336,11 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   `out_of_range` predicate and `{value}` capture without naming an instruction
   or owning its package-declared bounds. Item 34 adds Rust's neutral
   `bounded_regN.classC.minM.maxX[.outside]` projection and transports the
-  target-reference bit for an exact resolved label. Register classes, bounds,
-  inversion, tuple paths, and fixup programs remain package-owned; whether a
-  resolved symbol is PC-backed remains engine-owned.
+  target-reference bit for an exact resolved label. Item 35 additionally
+  transports Rust's independent per-input unresolved bit so package-owned
+  placeholder policy runs before forward-label projection. Register classes,
+  bounds, inversion, tuple paths, and fixup programs remain package-owned;
+  whether a resolved symbol is PC-backed remains engine-owned.
 
 ### `tkpkg.amigaos.operand_runtime` (NR-004, Item 5.6.1 ownership split)
 
@@ -355,6 +359,9 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   evaluates opaque semantic operand spans without interpreting register,
   addressing-mode, mnemonic, or CPU spellings; those decisions remain in the
   package projection rows.
+  Item 35 clears expression instability at each direct semantic evaluation so
+  one input or statement cannot leak unresolved state into the next fixup
+  record; the selection service transports that neutral result.
 
 ### `tkpkg.amigaos.encode_service` (NR-004, Item 5.6.2 ownership split)
 

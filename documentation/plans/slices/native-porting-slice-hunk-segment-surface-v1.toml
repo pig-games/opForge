@@ -1,0 +1,61 @@
+[slice]
+schema_version = 2
+name = "native Hunk segment surface v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 35
+requirements = ["N68X0-001", "N68X0-005", "N68X0-009", "N68X0-010"]
+rust_reference = [
+  "crates/opforge-vm/src/fixup_vm.rs::execute_fixup_program",
+  "crates/opforge-vm/src/output_hunk.rs::build_hunk_payload",
+  "crates/opforge-vm/src/output_hunk.rs::collect_hunk_output_input",
+  "crates/opforge-vm/src/output_model.rs::HunkMemoryType::segment_bits"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/hunk_output.asm::buildFlatCodeV1",
+  "native/motorola68000/amigaos/opforge-cli/output.asm::opforgeNativeCliWriteFlatOutput",
+  "native/motorola68000/amigaos/opforge-cli/run.asm::opforgeNativeCliRun",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::readSectionMemoryForStatement",
+  "native/motorola68000/amigaos/opasm/opasm_layout.asm::setScratchSectionMemoryTypeV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm::tkpkgMselEvaluateSemanticSpanV2",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgBuildCompactSemanticSequenceCandidateV2"
+]
+invariant = "Native renders the same ordered, relocation-free executable Hunk words as Rust: header and allocation table first, then each selected CODE/DATA/BSS segment with Rust's allocation length, memory bits, initialized payload padding, and HUNK_END. Relocation records remain Item 36."
+assertion_decision = "Activate the smallest single implicit CODE segment first and prove exact live Rust bytes in one fresh guest. Extend the same writer to explicit ordered sections, memory bits, BSS, and source format=hunk before the one Item 35 completion wrapper invocation."
+expected_inputs = "CLI --hunk output and source-declared format=hunk requests covering implicit code plus explicit ordered CODE/DATA/BSS sections with ANY/CHIP/FAST memory attributes and non-longword payload lengths."
+expected_outputs = "Byte-for-byte equality with the live Rust Hunk artifact, fresh guest completion, explicit exit zero, and no relocation record before Item 36."
+known_non_equivalences = "Native writes big-endian longwords directly on the 68020 while Rust calls to_be_bytes; the resulting artifact bytes must be identical. Native uses bounded resident buffers. On macOS, every command capable of launching FS-UAE requests host application-launch permission on its first attempt; pre-guest kLSNoExecutableErr is invalid evidence, counts as zero guest cases, and must not be retried in the same sandbox."
+fast_proof_command = "cargo test -p asm native_item35_hunk_output_contract -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_hunk_segment_surface_parity -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_item35_hunk_output_contract"
+proof_level = "B"
+proves = "The native Hunk writer carries Rust's header, segment, end, padding, first-CODE legality, empty initialized-section omission, memory-bit constants, and CLI/source routing structure."
+does_not_prove = "Native execution, guest completion, loader acceptance, or final artifact byte equality."
+
+[[tests]]
+name = "external_fs_uae_native_item35_implicit_code_hunk_parity"
+proof_level = "D"
+proves = "One fresh guest emits a single implicit CODE-segment Hunk byte-for-byte equal to the same-source live Rust CLI artifact with explicit exit zero."
+does_not_prove = "Explicit section ordering, DATA/BSS, memory attributes, or relocation records."
+
+[[tests]]
+name = "external_fs_uae_native_item35_forward_extended_short_fixup_closure_parity"
+proof_level = "D"
+proves = "One fresh guest closes the completion-wrapper regression by assembling the exact largest 68080 additional-surface source to live Rust-identical bytes after native transports Rust's independent target-reference and unresolved fixup-input properties."
+does_not_prove = "The full established wrapper beyond its recorded single invocation, or Hunk relocation behavior."
+
+[[tests]]
+name = "external_fs_uae_native_item35_ordered_segment_hunk_parity"
+proof_level = "D"
+proves = "One fresh guest emits explicitly placed CODE/BSS/DATA segments in requested order with Rust-identical allocation sizes, initialized-byte padding, ANY/FAST/CHIP bits, record tags, and exact artifact bytes."
+does_not_prove = "Independent byte retention for unplaced explicit sections, relocation records, or loader execution."
+
+[[tests]]
+name = "external_fs_uae_native_hunk_segment_surface_parity"
+proof_level = "D"
+proves = "One fresh guest emits a selected CODE/DATA/BSS Hunk byte-for-byte equal to the live Rust artifact while omitting a selected empty initialized section, then AmigaDOS loads and executes that newly emitted Hunk and records its explicit zero return code."
+does_not_prove = "Independent byte retention for unplaced explicit sections, relocation records, or relocation diagnostics."

@@ -592,6 +592,8 @@ finishOptions
 	beq.w selectHex
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d6
 	beq.w selectLst
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d6
+	beq.w selectHunk
 	bra.w fail
 
 selectBin
@@ -689,6 +691,29 @@ lstPathReady
 	move.w #1, state.NativeCliBinRequested
 	move.w #1, state.NativeCliLstRequested
 	move.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat
+	moveq #0, d0
+	movem.l (sp)+, d6-d7/a3
+	rts
+
+selectHunk
+	tst.b state.NativeCliOutputPathScratch
+	beq.s defaultHunkPath
+	lea state.NativeCliOutputPathScratch, a0
+	lea state.NativeCliHunkPath, a1
+	bsr.w opforgeNativeCliResolveOutputPath
+	bra.s hunkPathReady
+defaultHunkPath
+	tst.b state.NativeCliHunkPath
+	bne.s hunkPathReady
+	tst.b state.NativeCliOutfileBase
+	beq.w fail
+	lea state.NativeCliOutfileBase, a0
+	lea state.NativeCliHunkPath, a1
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
+hunkPathReady
+	move.w #1, state.NativeCliHunkRequested
+	move.w #1, state.NativeCliBinRequested
+	move.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
 	moveq #0, d0
 	movem.l (sp)+, d6-d7/a3
 	rts
@@ -800,44 +825,58 @@ parseOutputFormatToken	.block
 	bne.w unknown
 	move.b (a2)+, d0
 	cmpi.b #'b', d0
-	beq.s maybeBin
+	beq.w maybeBin
 	cmpi.b #'h', d0
-	beq.s maybeHex
+	beq.w maybeHex
 	cmpi.b #'l', d0
-	beq.s maybeLst
+	beq.w maybeLst
 	cmpi.b #'p', d0
-	beq.s maybePrg
-	bra.s malformed
+	beq.w maybePrg
+	bra.w malformed
 
 maybeBin
 	cmpi.b #'i', (a2)+
-	bne.s malformed
+	bne.w malformed
 	cmpi.b #'n', (a2)+
-	bne.s malformed
+	bne.w malformed
 	tst.b (a2)
-	bne.s malformed
+	bne.w malformed
 	move.w #constants.NATIVE_OUTPUT_FORMAT_BIN, d6
 	moveq #0, d1
 	rts
 
 maybeHex
-	cmpi.b #'e', (a2)+
-	bne.s malformed
+	move.b (a2)+, d0
+	cmpi.b #'u', d0
+	beq.s maybeHunk
+	cmpi.b #'e', d0
+	bne.w malformed
 	cmpi.b #'x', (a2)+
-	bne.s malformed
+	bne.w malformed
 	tst.b (a2)
-	bne.s malformed
+	bne.w malformed
 	move.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d6
+	moveq #0, d1
+	rts
+
+maybeHunk
+	cmpi.b #'n', (a2)+
+	bne.w malformed
+	cmpi.b #'k', (a2)+
+	bne.w malformed
+	tst.b (a2)
+	bne.w malformed
+	move.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d6
 	moveq #0, d1
 	rts
 
 maybeLst
 	cmpi.b #'s', (a2)+
-	bne.s malformed
+	bne.w malformed
 	cmpi.b #'t', (a2)+
-	bne.s malformed
+	bne.w malformed
 	tst.b (a2)
-	bne.s malformed
+	bne.w malformed
 	move.w #constants.NATIVE_OUTPUT_FORMAT_LST, d6
 	moveq #0, d1
 	rts

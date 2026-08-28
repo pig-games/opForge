@@ -2350,6 +2350,11 @@ processSectionDirectiveForStatement	.block
 	move.l d3, d0
 	jsr layout.setScratchSectionKindV1
 	bne.w fail
+	bsr.w readSectionMemoryForStatement
+	bne.w fail
+	move.l d3, d0
+	jsr layout.setScratchSectionMemoryTypeV1
+	bne.w fail
 	bsr.w readSectionLogicalForStatement
 	bne.w fail
 	move.l d3, d0
@@ -2401,7 +2406,7 @@ return
 	rts
 	.bend  ; processSectionDirectiveForStatement
 
-; Read `kind=bss` from a `.section` option list, defaulting to code.
+; Read `kind=code|data|bss` from a `.section` option list, defaulting to code.
 ; Inputs: D7.W = statement index.
 ; Outputs: D0.L = 0 on success; D3.L = OPASM_LAYOUT_SECTION_KIND_*.
 ; Clobbers: D0-D6/A0-A3/CCR.
@@ -2426,29 +2431,69 @@ scan
 	move.b (a2), d3
 	bsr.w lowerD3
 	cmpi.b #'k', d3
-	bne.s next
+	bne.w next
 	move.b 1(a2), d3
 	bsr.w lowerD3
 	cmpi.b #'i', d3
-	bne.s next
+	bne.w next
 	move.b 2(a2), d3
 	bsr.w lowerD3
 	cmpi.b #'n', d3
-	bne.s next
+	bne.w next
 	move.b 3(a2), d3
 	bsr.w lowerD3
 	cmpi.b #'d', d3
-	bne.s next
+	bne.w next
 	cmpi.b #'=', 4(a2)
-	bne.s next
+	bne.w next
 	move.b 5(a2), d3
 	bsr.w lowerD3
 	cmpi.b #'b', d3
-	bne.s next
+	beq.w maybeBss
+	cmpi.b #'d', d3
+	beq.w maybeData
+	cmpi.b #'c', d3
+	bne.w next
+	cmpi.l #9, d2
+	blo.w next
+	move.b 6(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'o', d3
+	bne.w next
+	move.b 7(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'d', d3
+	bne.w next
+	move.b 8(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'e', d3
+	bne.w next
+	moveq #layout.OPASM_LAYOUT_SECTION_KIND_CODE, d3
+	moveq #0, d0
+	bra.w return
+maybeData
+	cmpi.l #9, d2
+	blo.w next
+	move.b 6(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'a', d3
+	bne.w next
+	move.b 7(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'t', d3
+	bne.w next
+	move.b 8(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'a', d3
+	bne.w next
+	moveq #layout.OPASM_LAYOUT_SECTION_KIND_DATA, d3
+	moveq #0, d0
+	bra.w return
+maybeBss
 	move.b 6(a2), d3
 	bsr.w lowerD3
 	cmpi.b #'s', d3
-	bne.s next
+	bne.w next
 	move.b 7(a2), d3
 	bsr.w lowerD3
 	cmpi.b #'s', d3
@@ -2461,7 +2506,7 @@ next
 	addq.l #1, a2
 	subq.l #1, d2
 	cmpi.l #8, d2
-	bhs.s scan
+	bhs.w scan
 
 defaultCode
 	moveq #layout.OPASM_LAYOUT_SECTION_KIND_CODE, d3
@@ -2472,6 +2517,82 @@ return
 	movem.l (sp)+, d1-d2/d4-d7/a0-a3
 	rts
 	.bend  ; readSectionKindForStatement
+
+; Read `memory=any|chip|fast|slow`, matching Rust's Hunk memory aliases.
+; Inputs: D7.W = statement index. Outputs: D0.L = 0; D3.L = memory type.
+; @opforge-owner: opasm.amigaos.layout
+; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-segment-surface-v1.toml
+; @opforge-role: delegation
+readSectionMemoryForStatement	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	moveq #0, d0
+	move.w d7, d0
+	movea.l sp, a0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w memoryAny
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a2
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d2
+	cmpi.l #10, d2
+	blo.w memoryAny
+memoryScan
+	move.b (a2), d3
+	bsr.w lowerD3
+	cmpi.b #'m', d3
+	bne.w memoryNext
+	move.b 1(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'e', d3
+	bne.w memoryNext
+	move.b 2(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'m', d3
+	bne.w memoryNext
+	move.b 3(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'o', d3
+	bne.w memoryNext
+	move.b 4(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'r', d3
+	bne.w memoryNext
+	move.b 5(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'y', d3
+	bne.w memoryNext
+	cmpi.b #'=', 6(a2)
+	bne.w memoryNext
+	move.b 7(a2), d3
+	bsr.w lowerD3
+	cmpi.b #'a', d3
+	beq.w memoryAny
+	cmpi.b #'c', d3
+	beq.w memoryChip
+	cmpi.b #'f', d3
+	beq.w memoryFast
+	cmpi.b #'s', d3
+	bne.w memoryNext
+	moveq #layout.OPASM_LAYOUT_HUNK_MEMORY_SLOW, d3
+	bra.w memoryReturnOk
+memoryChip
+	moveq #layout.OPASM_LAYOUT_HUNK_MEMORY_CHIP, d3
+	bra.w memoryReturnOk
+memoryFast
+	moveq #layout.OPASM_LAYOUT_HUNK_MEMORY_FAST, d3
+	bra.w memoryReturnOk
+memoryNext
+	addq.l #1, a2
+	subq.l #1, d2
+	cmpi.l #10, d2
+	bhs.w memoryScan
+memoryAny
+	moveq #layout.OPASM_LAYOUT_HUNK_MEMORY_ANY, d3
+memoryReturnOk
+	moveq #0, d0
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; readSectionMemoryForStatement
 
 ; Read the structural `logical` section option, defaulting to concrete.
 ; Inputs: D7.W = statement index. Outputs: D0.L = 0; D3.L = 0 or 1.

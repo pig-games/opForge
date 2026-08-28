@@ -314,6 +314,12 @@ A sandboxed `kLSNoExecutableErr` that occurs before the fresh guest-start
 challenge is invalid pre-guest evidence, not a product result. After confirming
 that the configured executable exists, do not repeat the command in the same
 sandbox; rerun that same directed proof once with application-launch permission.
+This is a first-attempt rule, not merely a recovery procedure: sandboxed runs
+may perform host-only compilation or preflight checks, but any command capable
+of starting the installed FS-UAE application must request host
+application-launch permission before its first execution. If permission is not
+available, record zero guest cases attempted and stop; never spend a test run on
+the already-known filesystem-sandbox/Launch-Services failure mode.
 
 For Items 1-13 and any reopened decimal package-phase subitem, “Package Phase
 Quality Gate” means the item's focused tests plus all of:
@@ -875,11 +881,13 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit promoting the complete applicable 680x0 corpus into a required native completion gate.
   - Definition of done: every top-level 680x0 source and every applicable `.srec/.lst/.err` artifact is accounted for; all cases run even after a failure; no reviewed exclusion represents missing behavior owned by this plan.
 
-- [ ] Item 35: implement native Hunk headers, ordered CODE/DATA/BSS segments, memory attributes, and padding
+- [x] Item 35: implement native Hunk headers, ordered CODE/DATA/BSS segments, memory attributes, and padding
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-009`, `N68X0-010`; Hunk v0.2/v0.3 executable contracts.
   - Expected files: native output-artifact/Hunk owner, CLI/source-output routing, section/layout projection, focused Hunk parser tests, one slice record.
   - Full quality gates: Shared Full Quality Gate; byte-level header/table/segment/padding/order/memory-bit tests; Level D `external_fs_uae_native_hunk_segment_surface_parity` including loader execution.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for Hunk container/segment rendering only, with no relocation or CPU-semantic work.
+  - FS-UAE execution note: every remaining real Item 35 guest proof starts with host application-launch permission on its first attempt; a sandboxed pre-guest `kLSNoExecutableErr` counts as zero cases and is never retried in that sandbox.
+  - Plan-compliance review evidence: `PASS` — primary Sol review of the exact Item 35 set confirms that native copies Rust's relocation-free executable-Hunk record order, allocation sizing, initialized-section omission, longword padding, and memory bits without adding CPU semantics. The wrapper-discovered fix transports Rust's architecture-neutral per-fixup `target_reference` and `unresolved` properties independently; all mnemonic/range/placeholder behavior remains package data. Luna monitored the directed closure only and performed no analysis or fix work.
+  - Completion evidence (2026-08-28): the focused Level-B Hunk contract passed one test with zero failures. Three directed Level-D proofs used fresh guests and live in-memory Rust oracles: implicit CODE emitted exactly 44 bytes; ordered CODE/BSS/DATA matched byte-for-byte with ANY/FAST/CHIP allocation bits and padding; and the authoritative selected CODE/empty-DATA/DATA/BSS artifact matched all 80 Rust bytes, completed with guest exit zero, then loaded and executed under AmigaDOS with explicit exit zero. The staged deterministic native-porting gate passed slice metadata, instrumentation, 23 native contracts, FS-UAE invocation policy, no-growth/CPU boundary, evidence classification, ownership, fail-closed proof contracts, runtime inventory, and the 230-file formatter. The established native completion wrapper was invoked exactly once. Shards 1-50 each reported one passed and zero failed, including every prior counted-`.for`, macro, family, CPU/FPU, package-composition, and reference path. Shard 51 attempted all 43 complete-reference guests; 42 satisfied their proof contracts and only `68080_full_additional_surface.asm` exited one with `OTR901: encode table malformed`. Cumulative localization proved the complete pre-branch prefix and `DBRA.L` matched Rust exactly, then isolated the first failure to a forward `BRA.S+` label. Native semantic-sequence records carried Rust's target-reference bit but omitted its independent unresolved bit, causing pass-one projection instead of the package-declared placeholder; the generic record transport now clears instability per input and writes both bits independently. Per the Directed-Fix and Single Native Completion Quality Gate, neither the wrapper nor the 43-case aggregate was repeated. The sole final closure ran one fresh guest and reported `runs=1`, `protocol_completed=true`, `guest_exit=Some(0)`, `rust_bytes=246`, `native_bytes=246`, and `exact_match=true`. No production Rust changed, so no Rust full gate applies.
   - Commit outcome: one commit writing Rust-equivalent executable Hunk structure for flat and explicitly selected CODE/DATA/BSS sections.
   - Definition of done: HUNK_HEADER/CODE/DATA/BSS/END records, longword padding, empty-section omission, declared order, CHIP/FAST/ANY attributes, first-segment legality, CLI `--hunk`, and source `format=hunk` behavior match Rust.
 

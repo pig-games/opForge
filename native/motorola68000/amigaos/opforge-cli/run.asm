@@ -122,19 +122,8 @@ inputOpened
 	move.l d0, d1
 	jsr dos.close
 	tst.w state.NativeCliOutputFormat
-	bne.s maybeHunkRequested
-	jsr source_reader.opforgeNativeCliBootstrapSourceOutputFromInput
-
-maybeHunkRequested
-	tst.w state.NativeCliOutputFormat
-	beq.s outputFormatReady
-	move.w state.NativeCliOutputFormat, d0
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d0
 	bne.s outputFormatReady
-	move.l #strings.NativeHunkNotImplementedText, d1
-	jsr dos.putErrStr
-	move.l #constants.RETURN_NOT_IMPLEMENTED, state.NativeCliReturnCode
-	bra.w closeDos
+	jsr source_reader.opforgeNativeCliBootstrapSourceOutputFromInput
 
 outputFormatReady
 	tst.w state.NativeCliOutputFormat
@@ -206,14 +195,6 @@ tokenizerOk
 	; Macro definitions and invocation frames are frontend-only. The engine must
 	; begin from a clean preprocessor frame after all source expansion is done.
 	jsr preprocessor.opforgeNativeCliResetPreprocessorV1
-	move.w state.NativeCliOutputFormat, d0
-	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d0
-	bne.s outputRequestReady
-	move.l #strings.NativeHunkNotImplementedText, d1
-	jsr dos.putErrStr
-	move.l #constants.RETURN_NOT_IMPLEMENTED, state.NativeCliReturnCode
-	bra.w closeDos
-
 outputRequestReady
 	tst.w state.NativeCliDebugEnabled
 	beq.s runEngine

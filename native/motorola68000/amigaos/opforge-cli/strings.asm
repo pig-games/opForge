@@ -25,7 +25,7 @@ QuotedText
 UnsupportedText
 	.byte "OPC-NCLI003: recognized Rust CLI option is not implemented by native AmigaOS CLI yet: ", 0
 NativeSubsetHelpText
-	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -D/--define, -I/--include-path, -M/--module-path, and --native-debug; --hunk is not implemented yet.", 10, 0
+	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -D/--define, -I/--include-path, -M/--module-path, and --native-debug.", 10, 0
 UnknownFlagText
 	.byte "OPC-NCLI004: unknown CLI flag: ", 0
 MissingValueText
@@ -33,7 +33,7 @@ MissingValueText
 NoInputText
 	.byte "OPC-NCLI006: No input files specified. Use -i/--infile", 10, 0
 HunkRequiredText
-	.byte "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin or --list", 10, 0
+	.byte "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin, --hunk, or --list", 10, 0
 MixedInputText
 	.byte "OPC-NCLI011: Do not mix positional input with -i/--infile; use one style", 10, 0
 MultiplePositionalText
@@ -150,8 +150,6 @@ NativeNoInstructionFoundText
 	.byte "No instruction found for ", 0
 NativeBadOrgText
 	.byte "ERROR OPC-NCLI027: invalid native .org expression", 10, 0
-NativeHunkNotImplementedText
-	.byte "ERROR OPC-NCLI028: native Hunk output is not implemented; use --bin for flat output", 10, 0
 NativeSelectorUnknownRawText
 	.byte "OTR901: selector unknown mnemonic", 0
 NativeSelectorUnsupportedRawText

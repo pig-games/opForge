@@ -186,6 +186,9 @@ infileFirst
 
 hunk
 	move.w #1, state.NativeCliHunkRequested
+	; The assembly callback's legacy BIN_REQUESTED slot is the native
+	; image-emission request, independent of the selected container writer.
+	move.w #1, state.NativeCliBinRequested
 	move.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
 	lea state.NativeCliHunkPath, a1
 	bsr.w opforgeNativeCliCopyOptionalPathValue

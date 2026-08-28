@@ -1629,6 +1629,10 @@ tkpkgMselEvaluateSemanticSpanV2	.block
 	subq.l #1, d0
 	beq.s fail
 evaluate
+	; Rust creates one PortableFixupInput per expression. Keep the native
+	; unstable result equally local: a prior semantic input or statement must
+	; not make this evaluation appear unresolved.
+	clr.b state.EncodeSelectedMselUnstable
 	bsr.w encodeSelectedOperandV1
 	tst.l d0
 	beq.s ok

@@ -2212,10 +2212,20 @@ sequenceInputProjected
 	bne.s sequenceProjectionFailed
 	cmpi.b #2, d5
 	bne.s sequenceTargetReferenceReady
-	tst.b state.EncodeSelectedSemanticTargetReference
+	; Fixup input flags mirror Rust PortableFixupInput: bit zero is target
+	; reference and bit one is unresolved.  The package-owned unresolved
+	; policy must see bit one during pass one instead of projecting the
+	; placeholder as though it were a resolved address.
+	tst.b state.EncodeSelectedMselUnstable
 	beq.s sequenceTargetReferenceReady
-	moveq #1, d2
+	ori.b #2, d2
 sequenceTargetReferenceReady
+	cmpi.b #2, d5
+	bne.s sequenceInputFlagsReady
+	tst.b state.EncodeSelectedSemanticTargetReference
+	beq.s sequenceInputFlagsReady
+	ori.b #1, d2
+sequenceInputFlagsReady
 	tst.b d5
 	beq.s sequenceInputNext
 	moveq #5, d0

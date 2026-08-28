@@ -69,6 +69,23 @@ return
 	rts
 	.bend  ; lookupSymbolV1
 
+; Inputs: A0/D0 = exact symbol text. Outputs: D0 = 1 when the resolved engine
+; label is PC-backed, otherwise 0.  The engine owns label classification.
+isSymbolTargetReferenceV1	.block
+	movem.l d1-d3/a0-a1, -(sp)
+	jsr engine.opasmEngineResolveLabelValueV1
+	tst.l d0
+	bne.s symbolNotTarget
+	jsr engine.opasmEngineLastResolvedLabelIsTargetReferenceV1
+	bra.s symbolTargetReturn
+symbolNotTarget
+	moveq #0, d0
+symbolTargetReturn
+	movem.l (sp)+, d1-d3/a0-a1
+	tst.l d0
+	rts
+	.bend  ; isSymbolTargetReferenceV1
+
 ; Inputs: D0 = symbol index.
 ; Outputs: D0 = 1 when the symbol is finalized, 0 otherwise.
 isSymbolFinalV1	.block

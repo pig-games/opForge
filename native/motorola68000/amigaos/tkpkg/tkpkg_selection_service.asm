@@ -253,11 +253,23 @@ RegisterSequencePrefixText
 RegisterIndexXorPrefixText
 	.byte "register_index_xor"
 
+BoundedRegisterPrefixText
+	.byte "bounded_reg"
+
 SemanticArgMarkerText
 	.byte ".arg"
 
 SemanticClassMarkerText
 	.byte ".class"
+
+SemanticMinMarkerText
+	.byte ".min"
+
+SemanticMaxMarkerText
+	.byte ".max"
+
+SemanticOutsideMarkerText
+	.byte ".outside"
 
 SemanticCountMarkerText
 	.byte ".count"
@@ -2198,6 +2210,12 @@ sequenceInputProjected
 	movea.l (sp)+, a2
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.s sequenceProjectionFailed
+	cmpi.b #2, d5
+	bne.s sequenceTargetReferenceReady
+	tst.b state.EncodeSelectedSemanticTargetReference
+	beq.s sequenceTargetReferenceReady
+	moveq #1, d2
+sequenceTargetReferenceReady
 	tst.b d5
 	beq.s sequenceInputNext
 	moveq #5, d0
@@ -2704,6 +2722,7 @@ sequenceCandidateFail
 ; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = projected scalar on success.
 tkpkgProjectCompactSemanticInputV2	.block
 	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	clr.b state.EncodeSelectedSemanticTargetReference
 	movea.l a1, a5
 	move.w d0, d7
 	movea.l a5, a1
@@ -3079,6 +3098,12 @@ semanticCheckTupleValue
 	move.w d4, d1
 	jsr operand.tkpkgMselLocateIndirectTupleItemV2
 	bne.w semanticProjectNoMatch
+	move.l a0, -(sp)
+	move.l d0, -(sp)
+	jsr context.isSymbolTargetReferenceV1
+	move.b d0, state.EncodeSelectedSemanticTargetReference
+	move.l (sp)+, d0
+	movea.l (sp)+, a0
 	moveq #0, d1
 	jsr operand.tkpkgMselEvaluateSemanticSpanV2
 	bra.w semanticProjectReturn
@@ -3310,6 +3335,20 @@ semanticRegisterProjected
 semanticCheckDistinctRegister
 	movea.l a5, a1
 	move.w d7, d0
+	lea BoundedRegisterPrefixText, a2
+	moveq #11, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckDistinctRegisterOnly
+	lea 11(a5), a1
+	move.w d7, d0
+	subi.w #11, d0
+	bsr.w tkpkgProjectBoundedRegisterV1
+	bra.s semanticProjectReturn
+
+semanticCheckDistinctRegisterOnly
+	movea.l a5, a1
+	move.w d7, d0
 	lea DistinctRegisterPrefixText, a2
 	moveq #17, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
@@ -3342,6 +3381,138 @@ semanticProjectReturn
 	movem.l (sp)+, d2/d4-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgProjectCompactSemanticInputV2
+
+; Project Rust's neutral `bounded_regN.classC.minM.maxX[.outside]` source.
+; Package data owns every index/class/range choice; native resolves the named
+; register through RENC and applies Rust's inclusive/inverted match rule.
+; Inputs: A1/D0.W = source text after `bounded_reg`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = register index on success.
+; @opforge-owner: tkpkg.amigaos.selection_service
+; @opforge-slice: documentation/plans/slices/native-porting-slice-motorola68000-reference-matrix-v1.toml
+; @opforge-role: facade
+tkpkgProjectBoundedRegisterV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -12(sp), sp
+	movea.l a1, a3
+	move.w d0, d7
+	clr.w 8(sp)
+
+	lea SemanticClassMarkerText, a2
+	moveq #6, d1
+	bsr.w tkpkgFindSemanticMarkerV1
+	bne.w boundedRegisterMalformed
+	tst.w d0
+	beq.w boundedRegisterMalformed
+	move.w d0, d6
+	movea.l a3, a1
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w boundedRegisterMalformed
+	move.w d3, (sp)
+	lea 6(a3, d6.w), a4
+	move.w d7, d5
+	sub.w d6, d5
+	subq.w #6, d5
+	beq.w boundedRegisterMalformed
+
+	movea.l a4, a1
+	move.w d5, d0
+	lea SemanticMinMarkerText, a2
+	moveq #4, d1
+	bsr.w tkpkgFindSemanticMarkerV1
+	bne.w boundedRegisterMalformed
+	tst.w d0
+	beq.w boundedRegisterMalformed
+	move.w d0, d6
+	move.w d5, 10(sp)
+	movea.l a4, a1
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w boundedRegisterMalformed
+	move.w d3, 2(sp)
+	move.w 10(sp), d5
+	lea 4(a4, d6.w), a4
+	sub.w d6, d5
+	subq.w #4, d5
+	beq.w boundedRegisterMalformed
+
+	movea.l a4, a1
+	move.w d5, d0
+	lea SemanticMaxMarkerText, a2
+	moveq #4, d1
+	bsr.w tkpkgFindSemanticMarkerV1
+	bne.w boundedRegisterMalformed
+	tst.w d0
+	beq.w boundedRegisterMalformed
+	move.w d0, d6
+	move.w d5, 10(sp)
+	movea.l a4, a1
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w boundedRegisterMalformed
+	move.w d3, 4(sp)
+	move.w 10(sp), d5
+	lea 4(a4, d6.w), a4
+	sub.w d6, d5
+	subq.w #4, d5
+	beq.w boundedRegisterMalformed
+
+	movea.l a4, a1
+	move.w d5, d0
+	lea SemanticOutsideMarkerText, a2
+	moveq #8, d1
+	bsr.w tkpkgFindSemanticMarkerV1
+	bne.s boundedRegisterPlainMax
+	tst.w d0
+	beq.w boundedRegisterMalformed
+	move.w d0, d6
+	addq.w #8, d0
+	cmp.w d5, d0
+	bne.w boundedRegisterMalformed
+	move.w #1, 8(sp)
+	bra.s boundedRegisterParseMax
+boundedRegisterPlainMax
+	move.w d5, d6
+boundedRegisterParseMax
+	movea.l a4, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w boundedRegisterMalformed
+	move.w d3, 6(sp)
+	move.w 4(sp), d4
+	cmp.w 6(sp), d4
+	bhi.w boundedRegisterMalformed
+
+	move.w (sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.s boundedRegisterNoMatch
+	move.w 2(sp), d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.s boundedRegisterNoMatch
+	moveq #0, d4
+	move.w 4(sp), d4
+	cmp.l d4, d3
+	bcs.s boundedRegisterOutsideRange
+	moveq #0, d4
+	move.w 6(sp), d4
+	cmp.l d4, d3
+	bhi.s boundedRegisterOutsideRange
+	tst.w 8(sp)
+	bne.s boundedRegisterNoMatch
+	bra.s boundedRegisterOk
+boundedRegisterOutsideRange
+	tst.w 8(sp)
+	beq.s boundedRegisterNoMatch
+boundedRegisterOk
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s boundedRegisterReturn
+boundedRegisterNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+	bra.s boundedRegisterReturn
+boundedRegisterMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+boundedRegisterReturn
+	lea 12(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectBoundedRegisterV1
 
 ; Project Rust's neutral
 ; `register_index_xorN.classC.withM.classD[.shrS][.andK]` source.  Both

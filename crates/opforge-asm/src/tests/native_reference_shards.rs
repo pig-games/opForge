@@ -72,6 +72,7 @@ fn native_reference_manifest_accounts_for_current_example_corpus() {
     let asm_files = collect_example_asm_files(&examples_dir);
     let mut case_count = 0usize;
     let mut opcore_count = 0usize;
+    let mut motorola68000_count = 0usize;
     let mut exclusion_count = 0usize;
 
     for asm_path in asm_files {
@@ -90,6 +91,13 @@ fn native_reference_manifest_accounts_for_current_example_corpus() {
             NativeReferenceAccounting::Opcore(assignment) => {
                 opcore_count += 1;
                 assert_eq!(assignment.source_path, relative_path);
+            }
+            NativeReferenceAccounting::Motorola68000Reference => {
+                motorola68000_count += 1;
+                assert_eq!(
+                    Path::new(&relative_path).parent(),
+                    Some(Path::new("examples/motorola68000"))
+                );
             }
             NativeReferenceAccounting::Excluded(rule) => {
                 exclusion_count += 1;
@@ -110,4 +118,37 @@ fn native_reference_manifest_accounts_for_current_example_corpus() {
         exclusion_count > 0,
         "native reference completeness guard should exercise explicit exclusions"
     );
+    assert_eq!(
+        motorola68000_count, 43,
+        "every current top-level Motorola 68000 source must be reference-owned"
+    );
+}
+
+#[test]
+fn native_reference_motorola68000_manifest_accounts_for_complete_top_level_corpus() {
+    // Proof level B. The discovered source set and every top-level .srec/.lst/
+    // .err artifact must have one exact owner. This proves complete accounting,
+    // not execution by a native guest.
+    let cases =
+        crate::native_reference_parity::native_motorola68000_reference_cases(&workspace_root())
+            .expect("complete Motorola 68000 reference inventory");
+    assert_eq!(cases.len(), 43);
+    let binary_count = cases
+        .iter()
+        .filter(|case| {
+            matches!(
+                case.outcome,
+                crate::native_reference_parity::NativeMotorola68000ReferenceOutcome::Binary { .. }
+            )
+        })
+        .count();
+    let diagnostic_count = cases.len() - binary_count;
+    assert_eq!(binary_count, 36);
+    assert_eq!(diagnostic_count, 7);
+    for case in &cases {
+        assert!(matches!(
+            account_native_reference_path(&case.asm_path),
+            Ok(NativeReferenceAccounting::Motorola68000Reference)
+        ));
+    }
 }

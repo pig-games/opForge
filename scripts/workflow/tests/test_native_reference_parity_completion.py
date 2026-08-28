@@ -63,7 +63,7 @@ class NativeReferenceParityCompletionTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("required for fail-closed native reference parity completion", result.stderr)
 
-    def test_exact_active_scope_is_6502_65c02_only(self):
+    def test_exact_active_scope_includes_complete_motorola68000_reference_matrix(self):
         self.assertEqual(
             self.tests,
             (
@@ -78,10 +78,11 @@ class NativeReferenceParityCompletionTests(unittest.TestCase):
                 "native_reference_opcore_module_macro_statement_fs_uae",
                 "native_reference_opcore_layout_output_fs_uae",
                 "native_reference_opcore_diagnostic_fs_uae",
+                "external_fs_uae_native_motorola68000_complete_reference_parity",
             ),
         )
         source = self.wrapper.read_text(encoding="utf-8")
-        for foreign in ("intel8080", "motorola6800", "motorola68000", "z80", "riscv"):
+        for foreign in ("intel8080", "motorola6800_family", "z80", "riscv"):
             self.assertNotIn(foreign, source.lower())
         self.assertIn("--test-threads=1", source)
         self.assertIn("rg -q 'SKIP:'", source)
@@ -135,7 +136,7 @@ class NativeReferenceParityCompletionTests(unittest.TestCase):
             invocations = log.read_text(encoding="utf-8").splitlines()
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(invocations, list(self.tests))
-        self.assertIn("failed for 1/11 tests", result.stderr)
+        self.assertIn(f"failed for 1/{len(self.tests)} tests", result.stderr)
 
     def test_prefixed_libtest_skip_fails_and_later_tests_are_attempted(self):
         cargo_body = (
@@ -164,7 +165,7 @@ class NativeReferenceParityCompletionTests(unittest.TestCase):
             invocations = log.read_text(encoding="utf-8").splitlines()
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(invocations, list(self.tests))
-        self.assertIn("failed for 1/11 tests", result.stderr)
+        self.assertIn(f"failed for 1/{len(self.tests)} tests", result.stderr)
 
 
 if __name__ == "__main__":

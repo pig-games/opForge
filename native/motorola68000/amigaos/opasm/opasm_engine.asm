@@ -804,6 +804,30 @@ opasmEngineGetLastResolvedLabelV1	.block
 	rts
 	.bend  ; opasmEngineGetLastResolvedLabelV1
 
+; Report Rust's target-reference property for the most recently resolved
+; symbol.  PC-backed labels are targets; const/var/set labels are scalar
+; values and therefore remain position-independent.
+; Outputs: D0 = 1 for a PC-backed resolved label, otherwise 0.
+; @opforge-owner: opasm.amigaos.engine
+; @opforge-slice: documentation/plans/slices/native-porting-slice-motorola68000-reference-matrix-v1.toml
+; @opforge-role: context
+opasmEngineLastResolvedLabelIsTargetReferenceV1	.block
+	moveq #0, d0
+	move.w OpasmEngineLastResolvedLabelIndex.l, d0
+	cmpi.w #-1, d0
+	beq.s notTarget
+	cmp.w OpasmEngineLabelCount.l, d0
+	bhs.s notTarget
+	lea OpasmEngineLabelPcBackedTable.l, a0
+	moveq #0, d1
+	move.b 0(a0, d0.w), d1
+	move.l d1, d0
+	rts
+notTarget
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineLastResolvedLabelIsTargetReferenceV1
+
 ; Set origin and current PC.
 ;
 ; Inputs:

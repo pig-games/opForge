@@ -37,6 +37,12 @@ lookupSymbolV1	.block
 	jmp adapter.lookupSymbolV1
 	.bend  ; lookupSymbolV1
 
+; Inputs: A0/D0 = exact symbol text. Outputs: D0 = 1 only for a PC-backed
+; assembler label, matching Rust's target-reference classification.
+isSymbolTargetReferenceV1	.block
+	jmp adapter.isSymbolTargetReferenceV1
+	.bend  ; isSymbolTargetReferenceV1
+
 ; Read one opaque package-owned runtime-state key.
 ; Inputs: A0/D0 = key text. Outputs: D0 = 0 found/D1 value, 1 absent.
 getCpuStateFlagV1	.block

@@ -1,0 +1,76 @@
+[slice]
+schema_version = 2
+name = "native Motorola 68000 complete reference matrix v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 34
+requirements = ["N68X0-001", "N68X0-002", "N68X0-007", "N68X0-008", "N68X0-009"]
+rust_reference = [
+  "crates/opforge-asm/src/tests.rs::examples_match_reference_outputs",
+  "crates/opforge-asm/src/tests.rs::collect_example_asm_files",
+  "crates/opforge-asm/src/tests.rs::example_reference_stem",
+  "crates/opforge-asm/src/tests/native_fs_uae_parity.rs::live_rust_cpu_name_oracle",
+  "crates/opforge-asm/src/tests/native_fs_uae_parity.rs::live_rust_cpu_name_diagnostic"
+]
+native_boundary = [
+  "crates/opforge-asm/src/native_reference_parity.rs::native_motorola68000_reference_cases",
+  "crates/opforge-asm/src/tests/native_fs_uae_parity.rs::item34_run_reference_runtime_cases",
+  "crates/opforge-asm/src/fs_uae_smoke.rs::run_opforge_native_cli_parity_cases_from_env",
+  "native/motorola68000/amigaos/opforge-cli/main.asm::opforgeNativeCliMain",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineLastResolvedLabelIsTargetReferenceV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm::isSymbolTargetReferenceV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm::isSymbolTargetReferenceV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgProjectBoundedRegisterV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_state.asm::EncodeSelectedSemanticTargetReference"
+]
+invariant = "Every top-level examples/motorola68000 source and every corresponding top-level .srec/.lst/.err reference artifact has exactly one derived owner. The uncapped Level D matrix runs every owned source in a fresh native guest against that actual source's in-memory Rust artifact or diagnostic oracle, with exact protocol completion and explicit guest exit evidence."
+assertion_decision = "Use the filesystem-derived source/reference naming contract for fail-closed Level B accounting. Prove one positive and one diagnostic case at Level D before appending the complete 43-case matrix to the single established native completion wrapper invocation. Never refresh references or cap/select aggregate cases to obtain a pass."
+expected_inputs = "All 43 top-level examples/motorola68000/*.asm sources, all 79 matching top-level reference artifacts (36 .srec, 36 .lst, 7 .err), and the exact unmodified Rust-built package."
+expected_outputs = "Level B reports 43 uniquely owned sources and 79 uniquely owned artifacts. Level D positives emit byte-for-byte live Rust flat artifacts with guest exit zero; negatives contain the same live Rust diagnostic with guest exit one; all 43 cases complete independently."
+known_non_equivalences = "The Item 34 native CLI proof compares flat assembled bytes to the live Rust oracle because native S-record container output is implemented later in Item 37; the checked .srec/.lst files remain the Rust reference ownership boundary and were independently validated without update mode before this slice. AmigaOS Hunk examples remain explicitly outside this top-level corpus until Items 35-36. Rust retains target-reference identity in its expression AST; the native bounded representation projects the equivalent bit from the engine's already-resolved PC-backed label metadata for the exact-symbol tuple form exercised here. On macOS, real FS-UAE runs require app-launch permission: a sandboxed kLSNoExecutableErr before a fresh guest starts is invalid pre-guest evidence and must be rerun once with permission rather than retried in the sandbox."
+fast_proof_command = "cargo test -p asm native_reference_motorola68000_manifest_accounts_for_complete_top_level_corpus -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_motorola68000_complete_reference_parity -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "examples_match_reference_outputs"
+proof_level = "B"
+proves = "Without update mode, the live Rust assembler reproduces the complete checked example/reference corpus; Item 34 observed one passed and zero failed with no fixture changes before implementation."
+does_not_prove = "Execution by the native Amiga guest."
+
+[[tests]]
+name = "native_reference_motorola68000_manifest_accounts_for_complete_top_level_corpus"
+proof_level = "B"
+proves = "All 43 top-level sources and all 79 matching top-level .srec/.lst/.err artifacts have exactly one derived owner, and the broad Motorola 68000 exclusion is retired."
+does_not_prove = "Native execution or byte equality."
+
+[[tests]]
+name = "external_fs_uae_native_motorola68000_reference_directed_parity"
+proof_level = "D"
+proves = "One successful reference-owned source and one diagnostic reference-owned source each ran in a fresh guest; the first matched exact live Rust bytes with exit zero and the second matched the live Rust diagnostic with exit one."
+does_not_prove = "The other 41 corpus sources."
+
+[[tests]]
+name = "external_fs_uae_native_motorola68000_complete_reference_parity"
+proof_level = "D"
+proves = "The uncapped 43-case aggregate binds every actual source to an in-memory Rust artifact or diagnostic oracle and independent fail-closed guest contract."
+does_not_prove = "Execution evidence in the one established completion wrapper, which stopped at the preceding AMMX shard and was not repeated under the directed-fix policy."
+
+[[tests]]
+name = "native_existing_parity_completion_wrapper"
+proof_level = "D"
+proves = "The one permitted Item 34 invocation passed shards 1-48 with one real non-skipped test each. Shard 49 attempted all 18 AMMX guests and exposed exactly two native invariants: PC-relative target classification and bounded-register projection."
+does_not_prove = "Shards 50-51, including the Item 34 aggregate, because the wrapper stopped at shard 49 and was intentionally not repeated."
+
+[[tests]]
+name = "external_fs_uae_native_item34_pc_relative_fixup_closure_parity"
+proof_level = "D"
+proves = "One fresh guest uses a live Rust oracle for LOAD target(PC),E7, completes the challenge protocol, exits zero, and emits Rust's exact seven bytes including displacement 0004."
+does_not_prove = "Any unexecuted aggregate case; it is the minimal closure for the wrapper's exact PC-relative mismatch."
+
+[[tests]]
+name = "external_fs_uae_native_item34_bounded_register_closure_parity"
+proof_level = "D"
+proves = "One fresh guest uses a live Rust oracle for valid bounded-register selection, completes the challenge protocol, exits zero, and emits the exact bytes FE100225."
+does_not_prove = "Any unexecuted aggregate case; it is the minimal closure for the wrapper's exact valid-register rejection."

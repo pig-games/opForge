@@ -78,6 +78,8 @@ EncodeSelectedSemanticValue
 	.res long, 1
 EncodeSelectedSemanticValueValid
 	.res byte, 1
+EncodeSelectedSemanticTargetReference
+	.res byte, 1
 	.align 2
 
 PairAPtr

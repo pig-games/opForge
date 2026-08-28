@@ -8,9 +8,10 @@ Usage:
   scripts/workflow/run_native_reference_parity_completion.sh --check-config
 
 Runs the mandatory fail-closed Level D completion suite for the active native
-reference scope. Only 6502/65C02 cases participate. Every exact test must run
-and pass once; missing configuration, skips, zero-test filters, and failures
-make the command fail. All tests are attempted before failures are reported.
+reference scope, including the complete top-level Motorola 68000 corpus. Every
+exact test must run and pass once; missing configuration, skips, zero-test
+filters, and failures make the command fail. All tests are attempted before
+failures are reported.
 EOF
 }
 
@@ -48,6 +49,7 @@ tests=(
   native_reference_opcore_module_macro_statement_fs_uae
   native_reference_opcore_layout_output_fs_uae
   native_reference_opcore_diagnostic_fs_uae
+  external_fs_uae_native_motorola68000_complete_reference_parity
 )
 
 test_source="crates/opforge-asm/src"
@@ -86,4 +88,4 @@ if [[ ${#failures[@]} -ne 0 ]]; then
   exit 1
 fi
 
-echo "PASS: complete active 6502/65C02 native reference Level D parity verified (${#tests[@]} tests)"
+echo "PASS: complete active native reference Level D parity verified (${#tests[@]} tests)"

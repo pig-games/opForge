@@ -287,8 +287,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 ### `tkpkg.amigaos.selection_service` (NR-004, Items 5.6–5.6.1 ownership split)
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm`.
-- Public entries: `selectInstructionV1`, `buildSelectedEnvelopeV1`, and
-  `noOutputErrorV1`.
+- Public entries: `selectInstructionV1`, `buildSelectedEnvelopeV1`,
+  `noOutputErrorV1`, and `tkpkgProjectBoundedRegisterV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers, operand runtime, neutral
   runtime context, and the expression bridge transition boundary.
 - Mutable state: selected request envelope and candidate traversal cursor; the
@@ -304,7 +304,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   construction; package-declared named-register comparison and signed
   out-of-range rejection projection; dialect-CPU-family
   rejection precedence; selected-output diagnostic selection; and standard
-  scalar capture rendering.
+  scalar capture rendering; package-declared bounded-register projection; and
+  propagation of engine-owned label target-reference metadata into fixups.
 - Decision: this module delegates existing plan interpretation to
   `tkpkg.amigaos.operand_runtime` and reads the session pass through the neutral
   runtime context. Item 15 adds only neutral package record decoding and input
@@ -331,7 +332,11 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   classes, encodings, opcodes, legality, and diagnostics remain package-owned.
   The final wrapper-discovered range case adds Rust's neutral signed
   `out_of_range` predicate and `{value}` capture without naming an instruction
-  or owning its package-declared bounds.
+  or owning its package-declared bounds. Item 34 adds Rust's neutral
+  `bounded_regN.classC.minM.maxX[.outside]` projection and transports the
+  target-reference bit for an exact resolved label. Register classes, bounds,
+  inversion, tuple paths, and fixup programs remain package-owned; whether a
+  resolved symbol is PC-backed remains engine-owned.
 
 ### `tkpkg.amigaos.operand_runtime` (NR-004, Item 5.6.1 ownership split)
 
@@ -415,13 +420,15 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm`.
 - Public entries: `getAbiVersionV1`, `getPassV1`, `getAddressV1`,
-  `lookupSymbolV1`, `getSymbolStabilityTableV1`, `getSymbolTableSnapshotV1`,
+  `lookupSymbolV1`, `isSymbolTargetReferenceV1`,
+  `getSymbolStabilityTableV1`, `getSymbolTableSnapshotV1`,
   `reportDiagnosticV1`, and `getLastDiagnosticV1`.
 - Imports/outbound dependencies: only the engine-context adapter.
 - Mutable state: private neutral diagnostic, symbol-stability, and bounded
   copied symbol-table records; none is engine, CLI, or package-service storage.
 - Routine responsibility groups: versioned read-only context projection,
-  bounded diagnostic handoff, and bounded stability snapshot materialization.
+  bounded diagnostic handoff, bounded stability snapshot materialization, and
+  read-only projection of engine-owned label target-reference metadata.
 - Decision: Items 5.7.1 and 5.7.2 migrate expression, selection, and operand
   consumers through bounded context snapshots. Neither change adds CPU, family,
   dialect, instruction, selector, plan-tag, or encoding support.
@@ -431,13 +438,14 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Source:
   `native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm`.
 - Public entries: `getPassV1`, `getAddressV1`, `lookupSymbolV1`,
-  `isSymbolFinalV1`, `getSymbolCountV1`, `getSymbolNameV1`, and
-  `getSymbolValueV1`.
+  `isSymbolTargetReferenceV1`, `isSymbolFinalV1`, `getSymbolCountV1`,
+  `getSymbolNameV1`, and `getSymbolValueV1`.
 - Imports/outbound dependencies: documented engine getter APIs only.
 - Mutable state: none; it translates engine-owned label/pass/address state to
   the runtime-context ABI and never exposes engine table layout.
 - Routine responsibility groups: the sole transitional engine access point for
-  future tkpkg context consumers.
+  future tkpkg context consumers, including exact-symbol projection of the
+  engine's PC-backed target-reference property.
 - Decision: this adapter remains the sole transitional engine-state reader.
   Items 5.7.1 and 5.7.2 have migrated expression, selection, and operand
   consumers. Parent native parity Item 7.7 is the latest permitted removal
@@ -449,8 +457,9 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 
 - Source: `native/motorola68000/amigaos/opasm/opasm_engine.asm`.
 - Public surface: session initialization, source/statement collection,
-  callback-context construction, pass execution, labels, PC/image access, and
-  selector/expression request preparation APIs.
+  callback-context construction, pass execution, labels and their PC-backed
+  target-reference property, PC/image access, and selector/expression request
+  preparation APIs.
 - Imports/outbound dependencies: event projection only.
 - Mutable state: assembly session allocation, source/statement records, label
   table, pass/PC/image state, callback context, and diagnostic/event state.
@@ -466,7 +475,9 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   package dependency. Moving these routines would split access to the same
   state without removing a prohibited edge. Later CPU/selector semantic
   remediation remains separately governed and is not authorized by this audit.
-  Item 15 only corrects the generic selected-shape hint so a top-level comma is
+  Item 34 exposes the already-owned PC-backed bit for the last exactly resolved
+  label; it does not infer package semantics or target names. Item 15 only
+  corrects the generic selected-shape hint so a top-level comma is
   not misclassified as one legacy immediate operand; the package projection
   remains authoritative for the composite operand list.
 

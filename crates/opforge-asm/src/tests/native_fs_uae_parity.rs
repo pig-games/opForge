@@ -22131,3 +22131,304 @@ fn external_fs_uae_native_rust_package_composition_matrix_parity() {
         }
     }
 }
+
+enum Item34ReferenceOracle {
+    Binary(Vec<u8>),
+    Diagnostic(String),
+}
+
+struct Item34ReferenceRuntimeCase {
+    name: String,
+    source: String,
+    oracle: Item34ReferenceOracle,
+}
+
+fn item34_reference_runtime_cases(
+    selected_paths: Option<&[&str]>,
+) -> Vec<Item34ReferenceRuntimeCase> {
+    let repo_root = workspace_root();
+    crate::native_reference_parity::native_motorola68000_reference_cases(&repo_root)
+        .expect("discover complete Item 34 reference inventory")
+        .into_iter()
+        .filter(|case| selected_paths.is_none_or(|paths| paths.contains(&case.asm_path.as_str())))
+        .map(|case| {
+            let source = fs::read_to_string(repo_root.join(&case.asm_path))
+                .unwrap_or_else(|error| panic!("read Item 34 source {}: {error}", case.asm_path));
+            let label = Path::new(&case.asm_path)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .expect("Item 34 UTF-8 source stem");
+            let oracle = match case.outcome {
+                crate::native_reference_parity::NativeMotorola68000ReferenceOutcome::Binary {
+                    ..
+                } => Item34ReferenceOracle::Binary(
+                    live_rust_cpu_name_oracle(
+                        &source,
+                        Some("m68020"),
+                        format!("item34-{label}-rust-oracle").as_str(),
+                    )
+                    .unwrap_or_else(|error| {
+                        panic!("run Item 34 Rust artifact oracle for {}: {error}", case.asm_path)
+                    }),
+                ),
+                crate::native_reference_parity::NativeMotorola68000ReferenceOutcome::Diagnostic {
+                    ..
+                } => Item34ReferenceOracle::Diagnostic(live_rust_cpu_name_diagnostic(
+                    &source,
+                    "m68020",
+                    format!("item34-{label}-rust-diagnostic").as_str(),
+                )),
+            };
+            Item34ReferenceRuntimeCase {
+                name: case.asm_path,
+                source,
+                oracle,
+            }
+        })
+        .collect()
+}
+
+fn item34_run_reference_runtime_cases(cases: &[Item34ReferenceRuntimeCase], context: &str) {
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 34 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector"),
+        "Item 34 native package input must be the unmodified Rust output"
+    );
+    let parity_cases = cases
+        .iter()
+        .map(|case| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: &case.name,
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(case.source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68020 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: match &case.oracle {
+                Item34ReferenceOracle::Binary(oracle) => {
+                    crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                        relative_path: "Work/opforge_native_out.bin",
+                        rust_oracle: oracle,
+                    }
+                }
+                Item34ReferenceOracle::Diagnostic(diagnostic) => {
+                    crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                        diagnostic,
+                    )
+                }
+            },
+        })
+        .collect::<Vec<_>>();
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &parity_cases,
+    )
+    .unwrap_or_else(|error| panic!("{context}: {error}"))
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), cases.len());
+            for (case, run) in cases.iter().zip(&runs) {
+                assert!(run.protocol_completed, "{} protocol", case.name);
+                match &case.oracle {
+                    Item34ReferenceOracle::Binary(oracle) => {
+                        assert!(
+                            run.success,
+                            "Item 34 positive {} failed\nstdout:\n{}\nstderr:\n{}",
+                            case.name, run.stdout, run.stderr
+                        );
+                        assert_eq!(run.exit_code, Some(0));
+                        assert_eq!(
+                            captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                            oracle
+                        );
+                    }
+                    Item34ReferenceOracle::Diagnostic(diagnostic) => {
+                        assert!(!run.success, "{} must fail", case.name);
+                        assert_eq!(run.exit_code, Some(1));
+                        assert!(run.stderr.contains(diagnostic));
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_motorola68000_reference_directed_parity() {
+    // Proof level D. Two fresh guests prove one stored-success and one stored-
+    // diagnostic path use the same source and live Rust oracle as the complete
+    // manifest. This is the focused pre-aggregate proof, not corpus completion.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let selected = [
+        "examples/motorola68000/68000_basic_moves.asm",
+        "examples/motorola68000/68040_fsin_error.asm",
+    ];
+    let cases = item34_reference_runtime_cases(Some(&selected));
+    assert_eq!(cases.len(), selected.len());
+    item34_run_reference_runtime_cases(&cases, "directed Item 34 reference parity");
+}
+
+#[test]
+fn external_fs_uae_native_item34_pc_relative_fixup_closure_parity() {
+    // Proof level D. One fresh guest closes the wrapper's exact PC-relative
+    // mismatch: the native fixup must classify the label as a target and emit
+    // Rust's displacement, not its absolute address.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = concat!(
+        ".cpu 68080\n",
+        ".org $1000\n",
+        ".apollo on\n",
+        "        LOAD target(PC),E7\n",
+        "target:\n",
+        "        .byte 0\n",
+    );
+    let oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m68080"),
+        "item34-pc-relative-fixup-rust-oracle",
+    )
+    .expect("run Item 34 PC-relative Rust oracle");
+    assert_eq!(oracle.len(), 7);
+    assert_eq!(&oracle[4..], &[0x00, 0x04, 0x00]);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 34 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item34-pc-relative-fixup-closure",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68080 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 34 PC-relative closure run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert!(runs[0].success);
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_item34_bounded_register_closure_parity() {
+    // Proof level D. One fresh guest closes the wrapper's valid-register
+    // rejection and proves the neutral bounded_reg projection emits the exact
+    // Rust STOREM3 D2 mode bytes.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let source = concat!(
+        ".cpu 68080\n",
+        ".org 0\n",
+        ".apollo on\n",
+        "        STOREM3 D0,D2,(A0)\n",
+    );
+    let oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m68080"),
+        "item34-bounded-register-rust-oracle",
+    )
+    .expect("run Item 34 bounded-register Rust oracle");
+    assert_eq!(oracle, [0xfe, 0x10, 0x02, 0x25]);
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 34 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item34-bounded-register-closure",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68080 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 34 bounded-register closure run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert!(runs[0].success);
+            assert_eq!(runs[0].exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(&runs[0], "Work/opforge_native_out.bin"),
+                oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_motorola68000_complete_reference_parity() {
+    // Proof level D. The complete top-level source/reference inventory is
+    // authoritative and uncapped. Each source gets a fresh challenged guest,
+    // a same-source live Rust artifact or diagnostic oracle, exact completion,
+    // and an explicit guest exit; one failure cannot select or suppress cases.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let cases = item34_reference_runtime_cases(None);
+    assert_eq!(cases.len(), 43);
+    assert_eq!(
+        cases
+            .iter()
+            .filter(|case| matches!(case.oracle, Item34ReferenceOracle::Binary(_)))
+            .count(),
+        36
+    );
+    assert_eq!(
+        cases
+            .iter()
+            .filter(|case| matches!(case.oracle, Item34ReferenceOracle::Diagnostic(_)))
+            .count(),
+        7
+    );
+    item34_run_reference_runtime_cases(&cases, "complete Item 34 reference parity");
+}

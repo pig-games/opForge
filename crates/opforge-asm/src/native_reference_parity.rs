@@ -70,7 +70,25 @@ pub(crate) struct NativeReferenceExclusionRule {
 pub(crate) enum NativeReferenceAccounting<'a> {
     Case(&'a NativeReferenceCase),
     Opcore(&'a NativeOpcoreAssignment),
+    Motorola68000Reference,
     Excluded(&'a NativeReferenceExclusionRule),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum NativeMotorola68000ReferenceOutcome {
+    Binary {
+        payload_path: String,
+        listing_path: String,
+    },
+    Diagnostic {
+        error_path: String,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct NativeMotorola68000ReferenceCase {
+    pub(crate) asm_path: String,
+    pub(crate) outcome: NativeMotorola68000ReferenceOutcome,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -503,11 +521,6 @@ pub(crate) const NATIVE_REFERENCE_EXCLUSION_RULES: &[NativeReferenceExclusionRul
         reason:
             "these AmigaOS examples currently validate Rust-side hunk/reference behavior, but the manifest runner does not yet compare native CLI outputs for AmigaOS artifact surfaces",
     },
-    NativeReferenceExclusionRule {
-        matcher: NativeReferencePathMatcher::Prefix("examples/motorola68000/"),
-        reason:
-            "the manifest runner does not yet stage the motorola68000 package through the native CLI reference path, so this family remains explicitly excluded in the first slice",
-    },
 ];
 
 static NATIVE_REFERENCE_CASES: OnceLock<Vec<NativeReferenceCase>> = OnceLock::new();
@@ -650,6 +663,106 @@ pub(crate) fn native_reference_case_for_path(path: &str) -> Option<&'static Nati
         .find(|case| case.asm_path == path)
 }
 
+fn is_top_level_motorola68000_example(path: &str) -> bool {
+    let path = Path::new(path);
+    path.extension().and_then(|extension| extension.to_str()) == Some("asm")
+        && path.parent() == Some(Path::new("examples/motorola68000"))
+}
+
+fn repository_relative_path(repo_root: &Path, path: &Path) -> Result<String, String> {
+    path.strip_prefix(repo_root)
+        .map(|relative| relative.to_string_lossy().replace('\\', "/"))
+        .map_err(|error| {
+            format!(
+                "reference path {} is not below repository root {}: {error}",
+                path.display(),
+                repo_root.display()
+            )
+        })
+}
+
+pub(crate) fn native_motorola68000_reference_cases(
+    repo_root: &Path,
+) -> Result<Vec<NativeMotorola68000ReferenceCase>, String> {
+    let source_root = repo_root.join("examples/motorola68000");
+    let reference_root = repo_root.join("examples/reference/motorola68000");
+    let mut sources = fs::read_dir(&source_root)
+        .map_err(|error| format!("read {}: {error}", source_root.display()))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|extension| extension.to_str()) == Some("asm"))
+        .collect::<Vec<_>>();
+    sources.sort();
+
+    let mut owned_references = HashSet::new();
+    let mut cases = Vec::with_capacity(sources.len());
+    for source_path in sources {
+        let stem = source_path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| format!("non-UTF-8 source stem: {}", source_path.display()))?;
+        let error_path = reference_root.join(format!("{stem}.err"));
+        let payload_path = reference_root.join(format!("{stem}.srec"));
+        let listing_path = reference_root.join(format!("{stem}.lst"));
+        let outcome = if error_path.is_file() {
+            if payload_path.exists() || listing_path.exists() {
+                return Err(format!(
+                    "diagnostic reference {} must not also own .srec/.lst artifacts",
+                    error_path.display()
+                ));
+            }
+            let relative = repository_relative_path(repo_root, &error_path)?;
+            owned_references.insert(relative.clone());
+            NativeMotorola68000ReferenceOutcome::Diagnostic {
+                error_path: relative,
+            }
+        } else {
+            if !payload_path.is_file() || !listing_path.is_file() {
+                return Err(format!(
+                    "successful reference source {} requires both {} and {}",
+                    source_path.display(),
+                    payload_path.display(),
+                    listing_path.display()
+                ));
+            }
+            let payload_relative = repository_relative_path(repo_root, &payload_path)?;
+            let listing_relative = repository_relative_path(repo_root, &listing_path)?;
+            owned_references.insert(payload_relative.clone());
+            owned_references.insert(listing_relative.clone());
+            NativeMotorola68000ReferenceOutcome::Binary {
+                payload_path: payload_relative,
+                listing_path: listing_relative,
+            }
+        };
+        cases.push(NativeMotorola68000ReferenceCase {
+            asm_path: repository_relative_path(repo_root, &source_path)?,
+            outcome,
+        });
+    }
+
+    let mut actual_references = fs::read_dir(&reference_root)
+        .map_err(|error| format!("read {}: {error}", reference_root.display()))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            matches!(
+                path.extension().and_then(|extension| extension.to_str()),
+                Some("srec" | "lst" | "err")
+            )
+        })
+        .map(|path| repository_relative_path(repo_root, &path))
+        .collect::<Result<Vec<_>, _>>()?;
+    actual_references.sort();
+    let mut expected_references = owned_references.into_iter().collect::<Vec<_>>();
+    expected_references.sort();
+    if actual_references != expected_references {
+        return Err(format!(
+            "top-level Motorola 68000 reference ownership mismatch: expected {expected_references:?}, actual {actual_references:?}"
+        ));
+    }
+    Ok(cases)
+}
+
 pub(crate) fn account_native_reference_path(
     path: &str,
 ) -> Result<NativeReferenceAccounting<'static>, String> {
@@ -661,6 +774,9 @@ pub(crate) fn account_native_reference_path(
         .find(|assignment| assignment.source_path == path)
     {
         return Ok(NativeReferenceAccounting::Opcore(assignment));
+    }
+    if is_top_level_motorola68000_example(path) {
+        return Ok(NativeReferenceAccounting::Motorola68000Reference);
     }
 
     let mut matches = NATIVE_REFERENCE_EXCLUSION_RULES
@@ -779,6 +895,9 @@ mod tests {
             }
             NativeReferenceAccounting::Opcore(assignment) => {
                 panic!("expected exclusion, got opcore {}", assignment.source_path)
+            }
+            NativeReferenceAccounting::Motorola68000Reference => {
+                panic!("expected exclusion, got top-level Motorola 68000 reference")
             }
         }
     }

@@ -14,6 +14,7 @@ OPASM_LAYOUT_SECTION_CAPACITY = 16
 OPASM_LAYOUT_MAP_CAPACITY = 16
 OPASM_LAYOUT_STATEMENT_CAPACITY = 512
 OPASM_LAYOUT_REACHABLE_CAPACITY = 512
+OPASM_LAYOUT_OUTPUT_FIXUP_CAPACITY = 256
 OPASM_LAYOUT_INDEX_NONE = $ffff
 OPASM_LAYOUT_SECTION_KIND_CODE = 0
 OPASM_LAYOUT_SECTION_KIND_DATA = 1
@@ -49,6 +50,11 @@ resetStateV1	.block
 	clr.b OpasmLayoutScratchMapConcreteOwner
 	clr.w OpasmLayoutMapCount.l
 	clr.w OpasmLayoutReachableLabelCount.l
+	clr.w OpasmLayoutOutputFixupCount.l
+	clr.w OpasmLayoutUnsupportedHunkFixupKind.l
+	move.w #OPASM_LAYOUT_INDEX_NONE, OpasmLayoutUnsupportedHunkFixupSectionIndex.l
+	clr.w OpasmLayoutUnsupportedHunkFixupSectionNameLen.l
+	clr.b OpasmLayoutUnsupportedHunkFixupSectionName.l
 	clr.l OpasmLayoutMappedByteCount.l
 	clr.w OpasmLayoutPlaceSectionNameLen
 	clr.b OpasmLayoutPlaceSectionName
@@ -77,6 +83,11 @@ beginPassTwoV1	.block
 	moveq #-1, d0
 	lea OpasmLayoutActiveSectionIndex.l, a0
 	move.w d0, (a0)
+	clr.w OpasmLayoutOutputFixupCount.l
+	clr.w OpasmLayoutUnsupportedHunkFixupKind.l
+	move.w #OPASM_LAYOUT_INDEX_NONE, OpasmLayoutUnsupportedHunkFixupSectionIndex.l
+	clr.w OpasmLayoutUnsupportedHunkFixupSectionNameLen.l
+	clr.b OpasmLayoutUnsupportedHunkFixupSectionName.l
 	movea.l (sp)+, a0
 	moveq #0, d0
 	rts
@@ -1074,6 +1085,229 @@ any
 	rts
 	.bend  ; getSectionMemoryTypeV1
 
+; Convert one package-emitted absolute fixup to Rust's section-relative
+; addend and retain its architecture-neutral Hunk record.
+; Inputs: D0.W=source statement index, D1=instruction-relative offset,
+; D2.W=opaque target symbol index, D3=absolute encoded scalar.
+; Outputs: D0=0 success/1 invalid or capacity; D3=section-relative addend.
+recordAbsoluteOutputFixupV1	.block
+	movem.l d1-d2/d4-d7/a0-a2, -(sp)
+	lea -8(sp), sp
+	move.l d1, (sp)
+	move.l d3, 4(sp)
+	moveq #0, d7
+	move.w d0, d7
+	cmpi.w #OPASM_LAYOUT_STATEMENT_CAPACITY, d7
+	bhs.w recordOutputFixupFail
+
+	move.w d2, d0
+	jsr eng.opasmEngineGetLabelStatementIndexV1
+	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d0
+	beq.w recordOutputFixupFail
+	cmpi.w #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
+	bhs.w recordOutputFixupFail
+	move.w d0, d6
+
+	move.l d7, d0
+	add.w d0, d0
+	lea OpasmLayoutStatementSectionIndices.l, a0
+	moveq #0, d4
+	move.w 0(a0, d0.w), d4
+	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d4
+	beq.w recordOutputFixupFlatSource
+	cmp.w OpasmLayoutSectionCount.l, d4
+	bhs.w recordOutputFixupFail
+
+	move.l d6, d0
+	add.w d0, d0
+	lea OpasmLayoutStatementSectionIndices.l, a0
+	moveq #0, d5
+	move.w 0(a0, d0.w), d5
+	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
+	beq.w recordOutputFixupFail
+	cmp.w OpasmLayoutSectionCount.l, d5
+	bhs.w recordOutputFixupFail
+
+	move.l d7, d0
+	jsr eng.opasmEngineGetStatementOutputAddrV1
+	move.l d0, d7
+	moveq #0, d0
+	move.w d4, d0
+	lsl.l #2, d0
+	lea OpasmLayoutSectionBases.l, a0
+	sub.l 0(a0, d0.l), d7
+	bcs.w recordOutputFixupFail
+	add.l (sp), d7
+	bcs.w recordOutputFixupFail
+
+	move.l 4(sp), d3
+	moveq #0, d0
+	move.w d5, d0
+	lsl.l #2, d0
+	lea OpasmLayoutSectionBases.l, a0
+	sub.l 0(a0, d0.l), d3
+	bcs.w recordOutputFixupFail
+	bra.s recordOutputFixupStore
+
+; Rust models source with no explicit sections as one implicit CODE segment.
+; Retain that distinction with the existing NONE sentinel and normalize both
+; the relocation offset and encoded addend to the flat session origin.
+recordOutputFixupFlatSource
+	move.l d6, d0
+	add.w d0, d0
+	lea OpasmLayoutStatementSectionIndices.l, a0
+	moveq #0, d5
+	move.w 0(a0, d0.w), d5
+	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
+	bne.w recordOutputFixupFail
+
+	move.l d7, d0
+	jsr eng.opasmEngineGetStatementOutputAddrV1
+	move.l d0, d7
+	jsr eng.opasmEngineGetSessionOriginV1
+	sub.l d0, d7
+	bcs.w recordOutputFixupFail
+	add.l (sp), d7
+	bcs.w recordOutputFixupFail
+
+	move.l 4(sp), d3
+	jsr eng.opasmEngineGetSessionOriginV1
+	sub.l d0, d3
+	bcs.w recordOutputFixupFail
+
+recordOutputFixupStore
+	moveq #0, d6
+	move.w OpasmLayoutOutputFixupCount.l, d6
+	cmpi.w #OPASM_LAYOUT_OUTPUT_FIXUP_CAPACITY, d6
+	bhs.w recordOutputFixupFail
+	move.l d6, d0
+	add.w d0, d0
+	lea OpasmLayoutOutputFixupSourceSectionIndices.l, a0
+	move.w d4, 0(a0, d0.w)
+	lea OpasmLayoutOutputFixupTargetSectionIndices.l, a0
+	move.w d5, 0(a0, d0.w)
+	move.l d6, d0
+	lsl.l #2, d0
+	lea OpasmLayoutOutputFixupOffsets.l, a0
+	move.l d7, 0(a0, d0.l)
+	lea OpasmLayoutOutputFixupEncodedAddends.l, a0
+	move.l d3, 0(a0, d0.l)
+	addq.w #1, OpasmLayoutOutputFixupCount.l
+	moveq #0, d0
+	bra.s recordOutputFixupReturn
+
+recordOutputFixupFail
+	moveq #1, d0
+recordOutputFixupReturn
+	lea 8(sp), sp
+	movem.l (sp)+, d1-d2/d4-d7/a0-a2
+	tst.l d0
+	rts
+	.bend  ; recordAbsoluteOutputFixupV1
+
+getOutputFixupCountV1	.block
+	moveq #0, d0
+	move.w OpasmLayoutOutputFixupCount.l, d0
+	rts
+	.bend  ; getOutputFixupCountV1
+
+; Retain the first Rust-equivalent executable-Hunk expression-shape failure.
+; Assembly and non-Hunk outputs may still consume the evaluated scalar bytes;
+; only the Hunk artifact owner rejects this format-specific condition.
+; @opforge-owner: opasm.amigaos.layout
+; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
+; @opforge-role: context
+; Inputs: D0.W = 1 for data-long v0.3, 2 for generic emit-long v0.2.
+; Outputs: D0=0 success, 1 invalid kind. Clobbers D0-D1/A0/CCR.
+recordUnsupportedHunkFixupV1	.block
+	movem.l d2-d4/a0-a1, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	cmpi.w #1, d1
+	blo.w unsupportedKindFail
+	cmpi.w #2, d1
+	bhi.w unsupportedKindFail
+	lea OpasmLayoutUnsupportedHunkFixupKind.l, a0
+	tst.w (a0)
+	bne.w unsupportedKindOk
+	move.w d1, (a0)
+	moveq #0, d4
+	move.w OpasmLayoutActiveSectionIndex.l, d4
+	move.w d4, OpasmLayoutUnsupportedHunkFixupSectionIndex.l
+	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d4
+	beq.s unsupportedKindOk
+	cmp.w OpasmLayoutSectionCount.l, d4
+	bhs.s unsupportedKindOk
+	move.l d4, d2
+	add.w d2, d2
+	lea OpasmLayoutSectionNameLens.l, a0
+	moveq #0, d3
+	move.w 0(a0, d2.w), d3
+	move.w d3, OpasmLayoutUnsupportedHunkFixupSectionNameLen.l
+	move.l d4, d2
+	lsl.l #5, d2
+	lea OpasmLayoutSectionNames.l, a0
+	adda.l d2, a0
+	lea OpasmLayoutUnsupportedHunkFixupSectionName.l, a1
+	tst.w d3
+	beq.s unsupportedKindTerminate
+	move.w d3, d2
+	subq.w #1, d2
+unsupportedKindCopyName
+	move.b (a0)+, (a1)+
+	dbf d2, unsupportedKindCopyName
+unsupportedKindTerminate
+	clr.b (a1)
+unsupportedKindOk
+	moveq #0, d0
+	bra.s unsupportedKindReturn
+unsupportedKindFail
+	moveq #1, d0
+
+unsupportedKindReturn
+	movem.l (sp)+, d2-d4/a0-a1
+	rts
+	.bend  ; recordUnsupportedHunkFixupV1
+
+; Outputs: D0.W = retained unsupported Hunk expression kind, or zero;
+; D1.W = owning section-name length; A0 = bounded retained name.
+getUnsupportedHunkFixupV1	.block
+	moveq #0, d0
+	moveq #0, d1
+	move.w OpasmLayoutUnsupportedHunkFixupKind.l, d0
+	move.w OpasmLayoutUnsupportedHunkFixupSectionNameLen.l, d1
+	lea OpasmLayoutUnsupportedHunkFixupSectionName.l, a0
+	rts
+	.bend  ; getUnsupportedHunkFixupV1
+
+; Inputs: D0.W=index. Outputs: D0=0/1, D1=source section index,
+; D2=target section index, D3=section-relative offset, D4=encoded addend.
+getOutputFixupV1	.block
+	moveq #0, d5
+	move.w d0, d5
+	cmp.w OpasmLayoutOutputFixupCount.l, d5
+	bhs.s getOutputFixupFail
+	move.l d5, d0
+	add.w d0, d0
+	lea OpasmLayoutOutputFixupSourceSectionIndices.l, a0
+	moveq #0, d1
+	move.w 0(a0, d0.w), d1
+	lea OpasmLayoutOutputFixupTargetSectionIndices.l, a0
+	moveq #0, d2
+	move.w 0(a0, d0.w), d2
+	move.l d5, d0
+	lsl.l #2, d0
+	lea OpasmLayoutOutputFixupOffsets.l, a0
+	move.l 0(a0, d0.l), d3
+	lea OpasmLayoutOutputFixupEncodedAddends.l, a0
+	move.l 0(a0, d0.l), d4
+	moveq #0, d0
+	rts
+getOutputFixupFail
+	moveq #1, d0
+	rts
+	.bend  ; getOutputFixupV1
+
 ; Return the flat-image origin candidate for one finalized placed, concrete,
 ; nonempty, non-BSS section. Logical and unplaced sections route to discard or
 ; the separately packed mapped tail and never establish this base.
@@ -2026,6 +2260,33 @@ OpasmLayoutStatementMappedFlags
 
 OpasmLayoutReachableLabelCount
 	.res word, 1
+
+OpasmLayoutOutputFixupCount
+	.res word, 1
+
+OpasmLayoutUnsupportedHunkFixupKind
+	.res word, 1
+
+OpasmLayoutUnsupportedHunkFixupSectionIndex
+	.res word, 1
+
+OpasmLayoutUnsupportedHunkFixupSectionNameLen
+	.res word, 1
+
+OpasmLayoutUnsupportedHunkFixupSectionName
+	.res byte, OPASM_LAYOUT_NAME_CAPACITY + 1
+
+OpasmLayoutOutputFixupSourceSectionIndices
+	.res word, OPASM_LAYOUT_OUTPUT_FIXUP_CAPACITY
+
+OpasmLayoutOutputFixupTargetSectionIndices
+	.res word, OPASM_LAYOUT_OUTPUT_FIXUP_CAPACITY
+
+OpasmLayoutOutputFixupOffsets
+	.res long, OPASM_LAYOUT_OUTPUT_FIXUP_CAPACITY
+
+OpasmLayoutOutputFixupEncodedAddends
+	.res long, OPASM_LAYOUT_OUTPUT_FIXUP_CAPACITY
 
 OpasmLayoutReachableLabelIndices
 	.res word, OPASM_LAYOUT_REACHABLE_CAPACITY

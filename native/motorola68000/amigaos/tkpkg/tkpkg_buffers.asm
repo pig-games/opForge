@@ -21,6 +21,7 @@ STATE_VM_KEY_CAPACITY                = 32
 ; selector field while retaining a fail-closed limit below package storage.
 COMPACT_SELECTOR_TEXT_CAPACITY       = 256
 COMPACT_STRING_SCRATCH_CAPACITY      = LAST_ERROR_BUFFER_CAPACITY
+SEMANTIC_OUTPUT_FIXUP_CAPACITY       = 32
 PACKAGE_STATE_LOADED                 = 1
 PACKAGE_STATE_PIPELINE_ACTIVE        = 2
 PACKAGE_CHUNK_FAMS                   = 1
@@ -640,6 +641,20 @@ SemanticFirstInputLen
 
 SemanticOutputWriteOffset
 	.res word, 1
+
+; One bounded, CPU-neutral side channel for PortableOutputFixup records
+; produced by Rust SEMV fixup programs.  Target values are opaque opasm symbol
+; indices; the assembler owns their later section projection.
+SemanticOutputFixupCount
+	.res word, 1
+SemanticOutputFixupOffsets
+	.res long, SEMANTIC_OUTPUT_FIXUP_CAPACITY
+SemanticOutputFixupWidths
+	.res word, SEMANTIC_OUTPUT_FIXUP_CAPACITY
+SemanticOutputFixupTargetSymbolIndices
+	.res word, SEMANTIC_OUTPUT_FIXUP_CAPACITY
+SemanticOutputFixupEncodedAddends
+	.res long, SEMANTIC_OUTPUT_FIXUP_CAPACITY
 
 ActiveCpuBuffer
 	.res byte, PIPELINE_ID_BUFFER_CAPACITY

@@ -43,6 +43,13 @@ isSymbolTargetReferenceV1	.block
 	jmp adapter.isSymbolTargetReferenceV1
 	.bend  ; isSymbolTargetReferenceV1
 
+; Return the opaque symbol index from the most recent successful target
+; classification/evaluation.  Consumers must not infer family semantics from
+; the value; it exists only to preserve Rust's relocation target identity.
+getLastResolvedSymbolIndexV1	.block
+	jmp adapter.getLastResolvedSymbolIndexV1
+	.bend  ; getLastResolvedSymbolIndexV1
+
 ; Read one opaque package-owned runtime-state key.
 ; Inputs: A0/D0 = key text. Outputs: D0 = 0 found/D1 value, 1 absent.
 getCpuStateFlagV1	.block

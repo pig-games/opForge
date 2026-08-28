@@ -89,6 +89,12 @@ NativeOutputOpenFailureText
 	.byte "ERROR OPC-NCLI043: native output file open failed", 10, 0
 NativeOutputArtifactFailureText
 	.byte "ERROR OPC-NCLI044: native output artifact build failed", 10, 0
+NativeHunkUnsupportedLongFixupText
+	.byte "format=hunk does not support this symbolic .long expression in v0.3", 0
+NativeHunkUnsupportedEmitLongFixupText
+	.byte "format=hunk does not support this symbolic .emit long expression in v0.2", 0
+NativeHunkSectionSeparatorText
+	.byte ": ", 0
 NativeOutputShortWriteText
 	.byte "ERROR OPC-NCLI045: native output file write was incomplete", 10, 0
 ParserStageText

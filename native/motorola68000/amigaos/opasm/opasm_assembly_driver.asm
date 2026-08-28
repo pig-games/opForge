@@ -227,6 +227,8 @@ opasmDriverPassTwoBegin	.block
 	bne.s layoutFail
 	bsr.w rebasePlacedLabelsForPassTwo
 	bne.s rebaseFail
+	bsr.w refreshAbsoluteConstantLabelsForPassTwo
+	bne.s rebaseFail
 	jsr layout.beginPassTwoV1
 	clr.w OpasmRepeatDepth
 	jsr scopes.resetStateV1
@@ -375,6 +377,85 @@ return
 	movem.l (sp)+, d2-d5
 	rts
 	.bend  ; rebasePlacedLabelsForPassTwo
+
+; Reconstruct Rust's `absolute_constant_symbols` set after pass-one symbol and
+; placement finalization. Value-backed `.const` definitions become absolute
+; only when their complete expression contains no target reference and every
+; referenced value symbol is already absolute. The bounded fixed-point loop
+; supports forward constant chains without treating label-derived aliases as
+; absolute addends.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
+; @opforge-role: delegation
+; Outputs: D0=0 success, 1 metadata/property failure.
+; Clobbers: D0-D7/A0-A2/CCR.
+refreshAbsoluteConstantLabelsForPassTwo	.block
+	movem.l d2-d7/a0-a2, -(sp)
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	jsr eng.opasmEngineGetLabelCountV1
+	move.w d0, d5
+	move.w d5, d6
+	beq.w absoluteRefreshSuccess
+
+absoluteRefreshPass
+	moveq #0, d7
+	moveq #0, d4
+absoluteRefreshLabel
+	cmp.w d5, d4
+	bhs.s absoluteRefreshPassDone
+	move.w d4, d0
+	jsr eng.opasmEngineGetPcBackedLabelValueV1
+	tst.l d1
+	bne.w absoluteRefreshNext
+	move.w d4, d0
+	jsr eng.opasmEngineLabelIsAbsoluteConstantV1
+	tst.l d0
+	bne.w absoluteRefreshNext
+	move.w d4, d0
+	jsr eng.opasmEngineGetLabelStatementIndexV1
+	cmpi.w #$ffff, d0
+	beq.w absoluteRefreshFail
+	move.w d0, d3
+	movea.l sp, a0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w absoluteRefreshFail
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d0
+	jsr directives.classifyV1
+	cmpi.w #directives.OPASM_DIRECTIVE_CONST, d3
+	bne.s absoluteRefreshNext
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
+	moveq #2, d1
+	jsr operand_eval.classifyAbsoluteRelocationExpressionV1
+	tst.l d0
+	bne.s absoluteRefreshNext
+	move.w d4, d0
+	moveq #1, d1
+	jsr eng.opasmEngineSetLabelAbsoluteConstantV1
+	bne.s absoluteRefreshFail
+	moveq #1, d7
+absoluteRefreshNext
+	addq.w #1, d4
+	bra.w absoluteRefreshLabel
+
+absoluteRefreshPassDone
+	tst.w d7
+	beq.s absoluteRefreshSuccess
+	subq.w #1, d6
+	bne.w absoluteRefreshPass
+
+absoluteRefreshSuccess
+	moveq #0, d0
+	bra.s absoluteRefreshReturn
+absoluteRefreshFail
+	moveq #1, d0
+absoluteRefreshReturn
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d2-d7/a0-a2
+	tst.l d0
+	rts
+	.bend  ; refreshAbsoluteConstantLabelsForPassTwo
 
 ; Apply counted-repetition control before one statement reaches pass logic.
 ; Inputs: D0.W = current statement index.
@@ -1447,6 +1528,8 @@ emitDirectiveReady
 	beq.w emitWord
 	cmpi.w #directives.OPASM_DIRECTIVE_LONG, d3
 	beq.w emitLong
+	cmpi.w #directives.OPASM_DIRECTIVE_EMIT, d3
+	beq.w emitTypedLong
 	cmpi.w #directives.OPASM_DIRECTIVE_TEXT, d3
 	beq.w emitText
 	cmpi.w #directives.OPASM_DIRECTIVE_NULL, d3
@@ -1463,13 +1546,18 @@ emitDirectiveReady
 	bsr.w prepareSelectedEvaluateExpressionExtension
 	bsr.w serviceFramePtr
 	move.w OpasmDriverEvalRequestLen, d0
+	move.w d6, -(sp)
 	jsr tkpkg.adaptSelectedEncodeRequestV1
+	move.w (sp)+, d3
 	move.w d2, d4
 	tst.b d0
 	bne.w serviceFail
 	tst.w d1
 	beq.w noOutput
 	move.w d1, d6
+	move.w d3, d0
+	bsr.w recordSelectedOutputFixupsV1
+	bne.w fail
 	bsr.w serviceFramePtr
 	jsr tkpkg.readOutputPtrV1
 	moveq #0, d0
@@ -1582,8 +1670,18 @@ emitWordOk
 
 emitLong
 	move.w d6, d7
-	moveq #4, d5
-	bsr.w emitDataDirectiveForStatement
+	moveq #0, d4
+	bsr.w emitPackageLongDirectiveForStatement
+	bne.w emitLayoutFail
+	moveq #0, d0
+	bra.w return
+
+emitTypedLong
+	move.w d6, d7
+	bsr.w emitDirectiveIsLongV1
+	bne.w emitLayoutFail
+	moveq #1, d4
+	bsr.w emitPackageLongDirectiveForStatement
 	bne.w emitLayoutFail
 	moveq #0, d0
 	bra.w return
@@ -1622,6 +1720,68 @@ return
 	movem.l (sp)+, d1-d6/a0-a4
 	rts
 	.bend  ; opasmDriverEmitImageBytes
+
+; Project and retain the PortableOutputFixup records returned alongside one
+; selected instruction. Rust keeps the ordinary absolute encoding in the
+; assembled image and carries the section-relative addend separately. Native
+; metadata calls reuse service scratch, so restore the package's retained
+; encoded scalar after recording; only the Hunk artifact owner substitutes the
+; section-relative addend in its copied payload before writing HUNK_RELOC32.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
+; @opforge-role: delegation
+; Inputs: D0.W=statement index, D6.W=selected output byte count.
+; Outputs: D0=0 success/1 malformed or unsupported fixup.
+recordSelectedOutputFixupsV1	.block
+	movem.l d1-d7/a0-a2, -(sp)
+	lea -8(sp), sp
+	moveq #0, d7
+	move.w d0, d7
+	moveq #0, d0
+	move.w d6, d0
+	move.l d0, 4(sp)
+	jsr tkpkg.getOutputFixupCountV1
+	move.w d0, (sp)
+	clr.w 2(sp)
+outputFixupLoop
+	move.w 2(sp), d0
+	cmp.w (sp), d0
+	bhs.s outputFixupDone
+	jsr tkpkg.getOutputFixupV1
+	bne.s outputFixupFail
+	cmpi.w #4, d2
+	bne.s outputFixupFail
+	move.l d1, -(sp)
+	move.l d1, d0
+	addq.l #4, d0
+	cmp.l 8(sp), d0
+	bhi.s outputFixupStackFail
+	move.w d3, d2
+	move.l d4, d3
+	move.l (sp), d1
+	move.l d7, d0
+	jsr layout.recordAbsoluteOutputFixupV1
+	bne.s outputFixupStackFail
+	bsr.w serviceFramePtr
+	jsr tkpkg.readOutputPtrV1
+	move.l (sp)+, d1
+	move.l d4, 0(a0, d1.l)
+	addq.w #1, 2(sp)
+	bra.s outputFixupLoop
+
+outputFixupStackFail
+	addq.l #4, sp
+outputFixupFail
+	moveq #1, d0
+	bra.s outputFixupReturn
+outputFixupDone
+	moveq #0, d0
+outputFixupReturn
+	lea 8(sp), sp
+	movem.l (sp)+, d1-d7/a0-a2
+	tst.l d0
+	rts
+	.bend  ; recordSelectedOutputFixupsV1
 
 ; Advance the current PC by the size inferred for the selected statement text.
 ; Inputs: D0 = statement index.
@@ -1728,6 +1888,8 @@ advanceDirectiveReady
 	beq.w word
 	cmpi.w #directives.OPASM_DIRECTIVE_LONG, d3
 	beq.w long
+	cmpi.w #directives.OPASM_DIRECTIVE_EMIT, d3
+	beq.w typedLong
 	cmpi.w #directives.OPASM_DIRECTIVE_TEXT, d3
 	beq.w text
 	cmpi.w #directives.OPASM_DIRECTIVE_NULL, d3
@@ -1890,7 +2052,7 @@ advanceLayoutReady
 
 byte
 	bsr.w byteDirectiveSizeForStatement
-	beq.s advanceLayoutD3
+	beq.w advanceLayoutD3
 	bra.w orgBad
 
 word
@@ -1902,31 +2064,41 @@ word
 wordNumeric
 	moveq #2, d5
 	bsr.w dataDirectiveSizeForStatement
-	beq.s advanceLayoutD3
+	beq.w advanceLayoutD3
 	bra.w orgBad
 
 long
 	moveq #4, d5
 	bsr.w dataDirectiveSizeForStatement
-	beq.s advanceLayoutD3
+	beq.w advanceLayoutD3
 	bra.w orgBad
+
+typedLong
+	bsr.w emitDirectiveIsLongV1
+	bne.w orgBad
+	moveq #4, d5
+	bsr.w dataDirectiveSizeForStatement
+	bne.w orgBad
+	subq.l #4, d3
+	beq.w orgBad
+	bra.w advanceLayoutD3
 
 text
 	moveq #0, d5
 	bsr.w textDirectiveSizeForStatement
-	beq.s advanceLayoutD3
+	beq.w advanceLayoutD3
 	bra.w orgBad
 
 null
 	moveq #1, d5
 	bsr.w textDirectiveSizeForStatement
-	beq.s advanceLayoutD3
+	beq.w advanceLayoutD3
 	bra.w orgBad
 
 ptext
 	moveq #2, d5
 	bsr.w textDirectiveSizeForStatement
-	beq.s advanceLayoutD3
+	beq.w advanceLayoutD3
 	bra.w orgBad
 
 done
@@ -3534,6 +3706,210 @@ return
 	rts
 	.bend  ; emitDataDirectiveForStatement
 
+; Emit `.long` through the active package's architecture-neutral absolute-32
+; semantic role when present. That program owns byte order and relocation
+; production. Packages without the role retain the existing numeric-directive
+; path, but a symbolic target fails closed because native cannot invent its
+; relocation semantics.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
+; @opforge-role: delegation
+; Inputs: D7.W=statement index. Outputs: D0=0 success/1 failure.
+emitPackageLongDirectiveForStatement	.block
+	movem.l d1-d7/a0-a4, -(sp)
+	lea -12(sp), sp
+	move.w d7, (sp)
+	move.w d4, 10(sp)
+	moveq #4, d5
+	bsr.w countCommaPartsForStatement
+	bne.w packageLongFail
+	move.w d3, 2(sp)
+	move.w 10(sp), d0
+	addq.w #1, d0
+	cmp.w d3, d0
+	bhi.w packageLongFail
+	move.w d0, 4(sp)
+	clr.l 6(sp)
+
+packageLongLoop
+	move.w (sp), d7
+	move.w 2(sp), d2
+	move.w 4(sp), d6
+	moveq #4, d5
+	bsr.w resolveNumericDataPartForOwner
+	bne.w packageLongFail
+	movea.l OpasmDriverEvalFallbackPtr.l, a0
+	move.l OpasmDriverEvalFallbackLen.l, d0
+	moveq #0, d1
+	move.w 10(sp), d1
+	jsr operand_eval.classifyAbsoluteRelocationExpressionV1
+	move.l d0, d5
+	move.l d1, d7
+	move.w d2, d6
+	tst.l d5
+	beq.s packageLongClassificationReady
+	moveq #1, d0
+	add.w 10(sp), d0
+	jsr layout.recordUnsupportedHunkFixupV1
+	bne.w packageLongFail
+	moveq #0, d7
+	move.w #$ffff, d6
+packageLongClassificationReady
+	lea OpasmDirectiveFixupInput.l, a0
+	clr.b (a0)
+	move.l d3, d0
+	move.b d0, 1(a0)
+	lsr.l #8, d0
+	move.b d0, 2(a0)
+	lsr.l #8, d0
+	move.b d0, 3(a0)
+	lsr.l #8, d0
+	move.b d0, 4(a0)
+	tst.l d7
+	beq.s packageLongTargetReady
+	move.b #1, OpasmDirectiveFixupInput.l
+packageLongTargetReady
+	move.w d6, d0
+	lsr.w #8, d0
+	move.b d0, OpasmDirectiveFixupInput+5
+	move.b d6, OpasmDirectiveFixupInput+6
+	jsr eng.opasmEngineGetSessionCurrentPcV1
+	move.l d0, d3
+	lea DirectiveAbsolute32ProgramId.l, a0
+	moveq #9, d0
+	lea OpasmDirectiveFixupInput.l, a1
+	moveq #7, d1
+	moveq #1, d2
+	jsr tkpkg.executeNamedSemanticProgramV1
+	cmpi.l #2, d0
+	bne.s packageLongExecuted
+	tst.b OpasmDirectiveFixupInput.l
+	bne.w packageLongFail
+	tst.l 6(sp)
+	bne.w packageLongFail
+	tst.w 10(sp)
+	bne.w packageLongFail
+	move.w (sp), d7
+	moveq #4, d5
+	bsr.w emitDataDirectiveForStatement
+	bra.w packageLongReturn
+
+packageLongExecuted
+	tst.l d0
+	bne.w packageLongFail
+	cmpi.w #4, d1
+	bne.w packageLongFail
+	movea.l a0, a4
+	move.w d1, d2
+	move.l 6(sp), d1
+	moveq #0, d0
+	move.w (sp), d0
+	bsr.w recordDirectiveOutputFixupsV1
+	bne.w packageLongFail
+	movea.l a4, a0
+	moveq #4, d0
+	jsr eng.opasmEngineAppendImageBytesV1
+	bne.w packageLongFail
+	addq.l #4, 6(sp)
+	addq.w #1, 4(sp)
+	move.w 4(sp), d0
+	cmp.w 2(sp), d0
+	bls.w packageLongLoop
+	moveq #0, d0
+	bra.s packageLongReturn
+
+packageLongFail
+	moveq #1, d0
+packageLongReturn
+	lea 12(sp), sp
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; emitPackageLongDirectiveForStatement
+
+; Accept the Rust `.emit long, ...` type selector for the executable-Hunk
+; directive path. Other `.emit` unit kinds remain outside this focused slice.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
+; @opforge-role: delegation
+; Inputs: D7.W=statement index. Outputs: D0=0 for `long`, 1 otherwise.
+emitDirectiveIsLongV1	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	lea OpasmDirectiveKindScratch.l, a1
+	moveq #1, d6
+	bsr.w readCommaNameForStatement
+	bne.s emitKindFail
+	lea OpasmDirectiveKindScratch.l, a0
+	move.l d3, d0
+	lea DirectiveLongKindText.l, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	tst.l d0
+	beq.s emitKindFail
+	moveq #0, d0
+	bra.s emitKindReturn
+emitKindFail
+	moveq #1, d0
+emitKindReturn
+	movem.l (sp)+, d1-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; emitDirectiveIsLongV1
+
+; Project and retain the package output fixups for one directive list element.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
+; @opforge-role: delegation
+; Inputs: D0.W=statement, D1=directive-relative base, D2=output length,
+; A0=package output bytes. Outputs: D0=0/1; fixup metadata retained while the
+; ordinary absolute package bytes remain unchanged for non-Hunk artifacts.
+recordDirectiveOutputFixupsV1	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	lea -14(sp), sp
+	move.w d0, (sp)
+	move.l d1, 2(sp)
+	move.l d2, 6(sp)
+	move.l a0, 10(sp)
+	jsr tkpkg.getOutputFixupCountV1
+	move.w d0, d7
+	moveq #0, d6
+directiveFixupLoop
+	cmp.w d7, d6
+	bhs.s directiveFixupDone
+	move.l d6, d0
+	jsr tkpkg.getOutputFixupV1
+	bne.s directiveFixupFail
+	cmpi.w #4, d2
+	bne.s directiveFixupFail
+	move.l d1, d5
+	addq.l #4, d5
+	cmp.l 6(sp), d5
+	bhi.s directiveFixupFail
+	move.l d1, d5
+	add.l 2(sp), d1
+	bcs.s directiveFixupFail
+	move.w d3, d2
+	move.l d4, d3
+	moveq #0, d0
+	move.w (sp), d0
+	jsr layout.recordAbsoluteOutputFixupV1
+	bne.s directiveFixupFail
+	movea.l 10(sp), a0
+	move.l d4, 0(a0, d5.l)
+	addq.w #1, d6
+	bra.s directiveFixupLoop
+directiveFixupDone
+	moveq #0, d0
+	bra.s directiveFixupReturn
+directiveFixupFail
+	moveq #1, d0
+directiveFixupReturn
+	lea 14(sp), sp
+	movem.l (sp)+, d1-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; recordDirectiveOutputFixupsV1
+
 ; Resolve the current numeric-data part for the directive-data owner.
 ; Inputs: D7.W = statement; D2.W = part count; D5.W = unit bytes; D6.W = part.
 ; Outputs: D0.L = status; D3.L = resolved value.
@@ -4767,6 +5143,12 @@ LayoutMapRangeFailureText
 LayoutMapEmptyFailureText
 	.byte "layout finalize: no structural section map was retained", 0
 
+DirectiveAbsolute32ProgramId
+	.byte "fix.abs32"
+
+DirectiveLongKindText
+	.byte "long"
+
 	.endsection
 
 	.section bss, kind=bss
@@ -4791,6 +5173,12 @@ OpasmDriverWhileReevaluation
 
 OpasmDataScratch
 	.res byte, 4
+
+OpasmDirectiveFixupInput
+	.res byte, 7
+
+OpasmDirectiveKindScratch
+	.res byte, 8
 
 OpasmTextScratchLen
 	.res long, 1

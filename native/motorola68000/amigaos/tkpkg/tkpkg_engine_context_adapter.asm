@@ -86,6 +86,14 @@ symbolTargetReturn
 	rts
 	.bend  ; isSymbolTargetReferenceV1
 
+; Return the symbol index retained by the last successful neutral symbol
+; classification/evaluation.  The index is opaque to tkpkg; opasm translates
+; it to section ownership when materializing an output-fixup record.
+; Outputs: D0.W = symbol index, or $ffff when no symbol was resolved.
+getLastResolvedSymbolIndexV1	.block
+	jmp engine.opasmEngineGetLastResolvedLabelV1
+	.bend  ; getLastResolvedSymbolIndexV1
+
 ; Inputs: D0 = symbol index.
 ; Outputs: D0 = 1 when the symbol is finalized, 0 otherwise.
 isSymbolFinalV1	.block

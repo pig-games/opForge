@@ -2209,7 +2209,7 @@ sequenceProjectInput
 sequenceInputProjected
 	movea.l (sp)+, a2
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
-	bne.s sequenceProjectionFailed
+	bne.w sequenceProjectionFailed
 	cmpi.b #2, d5
 	bne.s sequenceTargetReferenceReady
 	; Fixup input flags mirror Rust PortableFixupInput: bit zero is target
@@ -2228,17 +2228,32 @@ sequenceTargetReferenceReady
 sequenceInputFlagsReady
 	tst.b d5
 	beq.s sequenceInputNext
+	moveq #-1, d1
+	cmpi.b #2, d5
+	bne.s sequenceTargetIndexReady
+	btst #0, d2
+	beq.s sequenceTargetIndexReady
+	jsr context.getLastResolvedSymbolIndexV1
+	move.w d0, d1
+sequenceTargetIndexReady
 	moveq #5, d0
 	cmpi.b #2, d5
 	bne.s sequenceRequireInputRecord
-	addq.w #1, d0
+	addq.w #3, d0
 sequenceRequireInputRecord
+	; The capacity helper returns its status in D1.  Preserve the opaque
+	; resolved-symbol index across that bounded-write check so the emitted
+	; fixup record retains the same target identity as Rust.
+	move.w d1, -(sp)
 	bsr.w tkpkgSequenceRequireCandidateBytesV2
+	move.w d1, d0
+	move.w (sp)+, d1
+	tst.l d0
 	bne.w sequenceMalformed
 	moveq #4, d0
 	cmpi.b #2, d5
 	bne.s sequenceWriteInputLength
-	addq.w #1, d0
+	addq.w #3, d0
 sequenceWriteInputLength
 	move.b d0, (a4)+
 	cmpi.b #2, d5
@@ -2252,6 +2267,12 @@ sequenceWriteInputValue
 	move.b d3, (a4)+
 	lsr.l #8, d3
 	move.b d3, (a4)+
+	cmpi.b #2, d5
+	bne.s sequenceInputNext
+	move.w d1, d0
+	lsr.w #8, d0
+	move.b d0, (a4)+
+	move.b d1, (a4)+
 
 sequenceInputNext
 	subq.w #1, d4

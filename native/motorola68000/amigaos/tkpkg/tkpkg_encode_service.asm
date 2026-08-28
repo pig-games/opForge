@@ -37,6 +37,10 @@ BranchDisplacementRangeSuffix
 
 encodeSelectedInstructionV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
+	; Rust returns a fresh PortableFixupResult for every selected encode.
+	; Reset the native side channel at the same request boundary so semantic
+	; sequence calls cannot replay a pass-one fixup during pass two.
+	clr.w buffers.SemanticOutputFixupCount
 	btst #1, buffers.PackageStateFlags
 	bne.s havePipeline
 	lea EvaluateExprNeedsPipelineText, a1
@@ -70,6 +74,8 @@ haveEnvelope
 	move.w d1, d7
 	bsr.w tkpkgEncodeInstructionEnvelopeV1
 	tst.b d0
+	bne.s return
+	bsr.w tkpkgNormalizeOutputFixupLengthV1
 	bne.s return
 	tst.w d1
 	bne.s return
@@ -563,6 +569,43 @@ return
 	movem.l (sp)+, d2-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgEncodeFindAndExecuteTableProgram
+
+; Execute one caller-selected package semantic program through the same
+; dialect/cpu/family precedence and Rust VM interpreter as instruction steps.
+; The program id is opaque to tkpkg; directive/output owners may request a
+; semantic role without owning its endian, width, transform, or relocation.
+; Inputs: A0/D0=program id; A1/D1=input records/first record length;
+; D2.W=record count; D3=current PC.
+; Outputs: D0=0 success, 1 malformed/execution failure, 2 program absent;
+; D1=output length; A0=output bytes on success.
+executeNamedSemanticProgramV1	.block
+	movem.l d2-d7/a1-a6, -(sp)
+	movea.l a0, a6
+	move.w d0, d4
+	move.l a1, buffers.SemanticInputRecordPtr
+	move.w d1, buffers.SemanticFirstInputLen
+	move.w d2, buffers.SemanticInputRecordCount
+	move.l d3, state.EncodeSelectedCurrentPc
+	clr.w buffers.SemanticOutputWriteOffset
+	clr.w buffers.SemanticOutputFixupCount
+	bsr.w tkpkgEncodeFindAndExecuteSemanticProgramV2
+	tst.l d0
+	bne.s namedReturn
+	tst.b d3
+	beq.s namedMissing
+	bsr.w tkpkgNormalizeOutputFixupLengthV1
+	bne.s namedReturn
+	lea buffers.LastErrorBuffer, a0
+	moveq #0, d0
+	bra.s namedReturn
+namedMissing
+	moveq #0, d1
+	moveq #2, d0
+namedReturn
+	movem.l (sp)+, d2-d7/a1-a6
+	tst.l d0
+	rts
+	.bend  ; executeNamedSemanticProgramV1
 
 	.priv
 ; Resolve an opaque selected mode as a CSEM program using Rust's
@@ -1096,11 +1139,11 @@ branchDoesNotFit
 	.bend  ; tkpkgBranchValueFitsSignedWidthV5
 
 ; Direct Rust fixup_vm::execute_fixup_program v4/v7 port over the native
-; signed-32 scalar transport.  Fixup inputs use a five-byte record: flags then
-; little-endian u32.  Bit zero carries Rust's target_reference property; bit
-; one is unresolved.  V7 transforms remain package data and are interpreted
-; generically; signed i64 transform values outside native i32 transport fail
-; closed.
+; signed-32 scalar transport. Fixup inputs use a seven-byte record: flags,
+; little-endian u32, then an opaque big-endian target-symbol index. Bit zero
+; carries Rust's target_reference property; bit one is unresolved. V7
+; transforms remain package data and are interpreted generically; signed i64
+; transform values outside native i32 transport fail closed.
 ; Inputs: A1/D1 = program; D4.W = opcode version; D5/D6/A3 = input records.
 ; Outputs: D0 status; D1 total output length in LastErrorBuffer.
 tkpkgEncodeExecuteFixupProgramV4	.block
@@ -1215,6 +1258,18 @@ fixupTransformReady
 	move.w 2(sp), d2
 	bsr.w tkpkgSemanticValidateFixupRangeV4
 	bne.w fixupFrameFail
+	cmpi.w #1, 20(sp)
+	bne.s fixupRecordReady
+	cmpi.w #$ffff, d5
+	beq.s fixupRecordReady
+	move.l a2, d0
+	lea buffers.LastErrorBuffer, a1
+	sub.l a1, d0
+	move.w d2, d1
+	move.w d5, d2
+	bsr.w tkpkgRecordOutputFixupV1
+	bne.w fixupFrameFail
+fixupRecordReady
 	move.l d3, d0
 	move.w 4(sp), d4
 	bsr.w tkpkgSemanticEmitUnitV2
@@ -1476,7 +1531,9 @@ requireI32Return
 	rts
 	.bend  ; tkpkgSemanticRequireI32V7
 
-; Load one fixup record by index. Outputs D3=value, D6=flags, D0=0/1.
+; Load one fixup record by index. Outputs D3=value, D5=opaque target symbol
+; index, D6=flags, D0=0/1.  The seven-byte record is the native projection of
+; Rust PortableFixupInput: flags, signed scalar, then target identity.
 tkpkgSemanticLoadFixupInputV4	.block
 	cmp.w buffers.SemanticInputRecordCount, d0
 	bhs.s fixupInputFail
@@ -1492,7 +1549,7 @@ fixupInputScan
 	subq.w #1, d4
 	bne.s fixupInputScan
 fixupInputReady
-	cmpi.w #5, d2
+	cmpi.w #7, d2
 	bne.s fixupInputFail
 	moveq #0, d6
 	move.b (a4)+, d6
@@ -1514,12 +1571,98 @@ fixupInputReady
 	lsl.l #8, d4
 	lsl.l #8, d4
 	or.l d4, d3
+	moveq #0, d5
+	move.b (a4)+, d5
+	lsl.w #8, d5
+	move.b (a4)+, d5
 	moveq #0, d0
 	rts
 fixupInputFail
 	moveq #1, d0
 	rts
 	.bend  ; tkpkgSemanticLoadFixupInputV4
+
+; Retain one Rust PortableOutputFixup emitted by the active SEMV fixup step.
+; Inputs: D0=step-relative output offset, D1.W=width, D2.W=opaque target
+; symbol index, D3=encoded scalar before assembler section projection.
+; Outputs: D0=0 success/1 capacity failure. Preserves all other registers.
+tkpkgRecordOutputFixupV1	.block
+	movem.l d1-d7/a0-a2, -(sp)
+	moveq #0, d7
+	move.w buffers.SemanticOutputFixupCount, d7
+	cmpi.w #buffers.SEMANTIC_OUTPUT_FIXUP_CAPACITY, d7
+	bhs.s outputFixupFail
+	move.l d7, d6
+	lsl.l #2, d6
+	lea buffers.SemanticOutputFixupOffsets, a0
+	move.l d0, 0(a0, d6.l)
+	lea buffers.SemanticOutputFixupEncodedAddends, a0
+	move.l d3, 0(a0, d6.l)
+	move.l d7, d6
+	add.w d6, d6
+	lea buffers.SemanticOutputFixupWidths, a0
+	move.w d1, 0(a0, d6.w)
+	lea buffers.SemanticOutputFixupTargetSymbolIndices, a0
+	move.w d2, 0(a0, d6.w)
+	addq.w #1, buffers.SemanticOutputFixupCount
+	moveq #0, d0
+	bra.s outputFixupReturn
+outputFixupFail
+	moveq #1, d0
+outputFixupReturn
+	movem.l (sp)+, d1-d7/a0-a2
+	tst.l d0
+	rts
+	.bend  ; tkpkgRecordOutputFixupV1
+
+; Rust guarantees every PortableOutputFixup range is contained by
+; PortableFixupResult.bytes.  Preserve that invariant at the native service
+; boundary when a sequence leaves a step-local value in D1.
+; Inputs: D1.W=candidate output length. Outputs: D0=0/1, D1=bounded length.
+tkpkgNormalizeOutputFixupLengthV1	.block
+	movem.l d2-d7/a0, -(sp)
+	moveq #0, d7
+	move.w buffers.SemanticOutputFixupCount, d7
+	moveq #0, d6
+outputFixupExtentLoop
+	cmp.w d7, d6
+	bhs.s outputFixupExtentDone
+	move.l d6, d0
+	lsl.l #2, d0
+	lea buffers.SemanticOutputFixupOffsets, a0
+	move.l 0(a0, d0.l), d4
+	move.l d6, d0
+	add.w d0, d0
+	lea buffers.SemanticOutputFixupWidths, a0
+	moveq #0, d5
+	move.w 0(a0, d0.w), d5
+	cmpi.w #1, d5
+	beq.s outputFixupWidthReady
+	cmpi.w #2, d5
+	beq.s outputFixupWidthReady
+	cmpi.w #4, d5
+	bne.s outputFixupExtentFail
+outputFixupWidthReady
+	add.l d5, d4
+	bcs.s outputFixupExtentFail
+	cmpi.l #buffers.LAST_ERROR_BUFFER_CAPACITY, d4
+	bhi.s outputFixupExtentFail
+	cmp.l d1, d4
+	bls.s outputFixupExtentNext
+	move.w d4, d1
+outputFixupExtentNext
+	addq.w #1, d6
+	bra.s outputFixupExtentLoop
+outputFixupExtentDone
+	moveq #0, d0
+	bra.s outputFixupExtentReturn
+outputFixupExtentFail
+	moveq #1, d0
+outputFixupExtentReturn
+	movem.l (sp)+, d2-d7/a0
+	tst.l d0
+	rts
+	.bend  ; tkpkgNormalizeOutputFixupLengthV1
 
 ; Apply Rust FixupRange to native i32/u32 scalar transport.
 ; Inputs: D3=value, D2=width, D0=range tag. Output D0=0/1.
@@ -2026,6 +2169,43 @@ semanticInputFail
 	.bend  ; tkpkgSemanticLoadInputV2
 
 	.pub
+; Return the number of PortableOutputFixup records produced by the most recent
+; selected-instruction request.
+getOutputFixupCountV1	.block
+	moveq #0, d0
+	move.w buffers.SemanticOutputFixupCount, d0
+	rts
+	.bend  ; getOutputFixupCountV1
+
+; Return one PortableOutputFixup side-channel record.
+; Inputs: D0.W=index. Outputs: D0=0/1, D1=offset, D2=width,
+; D3=opaque target symbol index, D4=encoded scalar.
+getOutputFixupV1	.block
+	moveq #0, d5
+	move.w d0, d5
+	cmp.w buffers.SemanticOutputFixupCount, d5
+	bhs.s getOutputFixupFail
+	move.l d5, d0
+	lsl.l #2, d0
+	lea buffers.SemanticOutputFixupOffsets, a0
+	move.l 0(a0, d0.l), d1
+	lea buffers.SemanticOutputFixupEncodedAddends, a0
+	move.l 0(a0, d0.l), d4
+	move.l d5, d0
+	add.w d0, d0
+	lea buffers.SemanticOutputFixupWidths, a0
+	moveq #0, d2
+	move.w 0(a0, d0.w), d2
+	lea buffers.SemanticOutputFixupTargetSymbolIndices, a0
+	moveq #0, d3
+	move.w 0(a0, d0.w), d3
+	moveq #0, d0
+	rts
+getOutputFixupFail
+	moveq #1, d0
+	rts
+	.bend  ; getOutputFixupV1
+
 tkpkgEncodeExecuteProgram	.block
 	movem.l d2-d7/a0/a2-a4, -(sp)
 	movea.l a1, a0

@@ -36,6 +36,8 @@ opforgeNativeCliWriteFlatOutput	.block
 	beq.s buildSourceArtifact
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d0
 	bne.s buildDefaultArtifact
+	bsr.w rejectUnsupportedHunkFixupV1
+	bne.w unsupportedArtifactFail
 	jsr hunk_output.buildSelectedSectionsV1
 	bra.s artifactBuilt
 
@@ -77,6 +79,8 @@ buildBin
 	bra.s artifactBuilt
 
 buildHunk
+	bsr.w rejectUnsupportedHunkFixupV1
+	bne.w unsupportedArtifactFail
 	jsr hunk_output.buildFlatCodeV1
 
 artifactBuilt
@@ -134,6 +138,10 @@ artifactFail
 	jsr dos.putErrStr
 	bra.s fail
 
+unsupportedArtifactFail
+	moveq #1, d0
+	bra.s return
+
 writeFail
 	move.l d4, d1
 	jsr dos.close
@@ -152,6 +160,55 @@ return
 	movem.l (sp)+, d1-d4/a0-a2
 	rts
 	.bend  ; opforgeNativeCliWriteFlatOutput
+
+; Render the format-specific diagnostic retained by the neutral layout layer.
+; Rust records this condition during assembly but rejects only when building a
+; Hunk artifact; native follows the same boundary so BIN/listing output remains
+; unaffected by unsupported executable-Hunk relocation shapes.
+; @opforge-owner: opforge.cli.output
+; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
+; @opforge-role: facade
+; Outputs: D0=0 when clear, 1 after emitting the retained Hunk diagnostic.
+rejectUnsupportedHunkFixupV1	.block
+	movem.l d4-d5/a0, -(sp)
+	jsr layout.getUnsupportedHunkFixupV1
+	tst.w d0
+	beq.w unsupportedHunkClear
+	cmpi.w #2, d0
+	beq.s unsupportedHunkEmit
+	move.l #strings.NativeHunkUnsupportedLongFixupText, d1
+	jsr dos.putErrStr
+	bra.s unsupportedHunkSection
+unsupportedHunkEmit
+	move.l #strings.NativeHunkUnsupportedEmitLongFixupText, d1
+	jsr dos.putErrStr
+
+unsupportedHunkSection
+	jsr layout.getUnsupportedHunkFixupV1
+	moveq #0, d5
+	move.w d1, d5
+	beq.s unsupportedHunkNewline
+	lea NativeHunkSectionNameScratch.l, a1
+unsupportedHunkSectionCopy
+	move.b (a0)+, (a1)+
+	subq.l #1, d5
+	bne.s unsupportedHunkSectionCopy
+	clr.b (a1)
+	move.l #strings.NativeHunkSectionSeparatorText, d1
+	jsr dos.putErrStr
+	move.l #NativeHunkSectionNameScratch, d1
+	jsr dos.putErrStr
+unsupportedHunkNewline
+	move.l #strings.NewlineText, d1
+	jsr dos.putErrStr
+	moveq #1, d0
+	movem.l (sp)+, d4-d5/a0
+	rts
+unsupportedHunkClear
+	moveq #0, d0
+	movem.l (sp)+, d4-d5/a0
+	rts
+	.bend  ; rejectUnsupportedHunkFixupV1
 
 ; Build a source-declared BIN/PRG payload from its selected placed sections.
 ; The source directive's exact section list is authoritative; bytes are taken
@@ -322,6 +379,9 @@ return
 
 NativeSourceOutputBuffer
 	.res byte, NATIVE_SOURCE_OUTPUT_BUFFER_CAPACITY
+
+NativeHunkSectionNameScratch
+	.res byte, layout.OPASM_LAYOUT_NAME_CAPACITY + 1
 
 	.endsection
 	.endmodule

@@ -336,10 +336,12 @@ opasmEngineBeginPassOneV1	.block
 	clr.w OpasmEngineLabelCount.l
 	move.w #-1, OpasmEngineLastResolvedLabelIndex.l
 	lea OpasmEngineLabelFinalizedTable.l, a0
+	lea OpasmEngineLabelAbsoluteConstantTable.l, a1
 	move.w #NATIVE_LABEL_TABLE_CAPACITY - 1, d0
 
 clearLoop
 	clr.b (a0)+
+	clr.b (a1)+
 	dbf d0, clearLoop
 	clr.w OpasmEngineImageByteCount.l
 	clr.l OpasmEngineImageWriteOffset.l
@@ -445,6 +447,8 @@ storeLabel
 	move.w d0, 0(a0, d5.l)
 	lea OpasmEngineLabelPcBackedTable.l, a0
 	move.b #1, 0(a0, d6.l)
+	lea OpasmEngineLabelAbsoluteConstantTable.l, a0
+	clr.b 0(a0, d6.l)
 	move.l d6, d5
 	lsl.l #2, d5
 	lea OpasmEngineLabelValueTable.l, a0
@@ -572,6 +576,8 @@ storeLabel
 	move.w d0, 0(a0, d5.l)
 	lea OpasmEngineLabelPcBackedTable.l, a0
 	clr.b 0(a0, d6.l)
+	lea OpasmEngineLabelAbsoluteConstantTable.l, a0
+	clr.b 0(a0, d6.l)
 	move.l d6, d5
 	lsl.l #2, d5
 	lea OpasmEngineLabelValueTable.l, a0
@@ -627,6 +633,8 @@ updateExisting
 	lsr.l #6, d1
 	move.w d1, 0(a0, d0.l)
 	lea OpasmEngineLabelPcBackedTable.l, a0
+	clr.b 0(a0, d5.l)
+	lea OpasmEngineLabelAbsoluteConstantTable.l, a0
 	clr.b 0(a0, d5.l)
 	lsl.l #2, d5
 	lea OpasmEngineLabelValueTable.l, a0
@@ -827,6 +835,52 @@ notTarget
 	moveq #0, d0
 	rts
 	.bend  ; opasmEngineLastResolvedLabelIsTargetReferenceV1
+
+; Retain and query Rust's absolute-constant provenance for a value-backed
+; symbol. The expression owner computes the property from the complete source
+; expression after pass-one labels have been finalized.
+; @opforge-owner: opasm.amigaos.engine
+; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
+; @opforge-role: context
+; Inputs: D0.W = label index; D1.B = zero/nonzero property.
+; Outputs: D0 = 0 on success, 1 for an invalid or PC-backed label.
+; Clobbers: D0-D2/A0/CCR.
+; CCR: reflects D0 on return.
+opasmEngineSetLabelAbsoluteConstantV1	.block
+	moveq #0, d2
+	move.w d0, d2
+	cmp.w OpasmEngineLabelCount.l, d2
+	bhs.s absoluteSetFail
+	lea OpasmEngineLabelPcBackedTable.l, a0
+	tst.b 0(a0, d2.l)
+	bne.s absoluteSetFail
+	lea OpasmEngineLabelAbsoluteConstantTable.l, a0
+	move.b d1, 0(a0, d2.l)
+	moveq #0, d0
+	rts
+absoluteSetFail
+	moveq #1, d0
+	rts
+	.bend  ; opasmEngineSetLabelAbsoluteConstantV1
+
+; Inputs: D0.W = label index. Outputs: D0 = 1 only for a retained absolute
+; constant, otherwise 0. Clobbers: D0-D1/A0/CCR. CCR reflects D0.
+; @opforge-owner: opasm.amigaos.engine
+; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
+; @opforge-role: context
+opasmEngineLabelIsAbsoluteConstantV1	.block
+	moveq #0, d1
+	move.w d0, d1
+	cmp.w OpasmEngineLabelCount.l, d1
+	bhs.s absoluteNo
+	lea OpasmEngineLabelAbsoluteConstantTable.l, a0
+	moveq #0, d0
+	move.b 0(a0, d1.l), d0
+	rts
+absoluteNo
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineLabelIsAbsoluteConstantV1
 
 ; Set origin and current PC.
 ;
@@ -3375,6 +3429,8 @@ OpasmEngineLabelFinalizedTable
 OpasmEngineLabelStatementIndexTable
 	.res word, NATIVE_LABEL_TABLE_CAPACITY
 OpasmEngineLabelPcBackedTable
+	.res byte, NATIVE_LABEL_TABLE_CAPACITY
+OpasmEngineLabelAbsoluteConstantTable
 	.res byte, NATIVE_LABEL_TABLE_CAPACITY
 OpasmEngineLastResolvedLabelIndex
 	.res word, 1

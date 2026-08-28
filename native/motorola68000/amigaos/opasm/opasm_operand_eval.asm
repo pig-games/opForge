@@ -90,6 +90,417 @@ selectedExtensionReturn
 	rts
 	.bend  ; prepareSelectedExtensionV1
 
+; Classify the symbol provenance of one already parsed directive expression.
+; Rust performs this decision over its Expr tree. Native retains the original
+; bounded source span, so this scanner projects the same architecture-neutral
+; facts needed by the executable-Hunk contract: one PC-backed target, absolute
+; value symbols, non-absolute value symbols, and the outer binary operator.
+; Numeric spelling, byte order, and CPU syntax remain outside this routine.
+; @opforge-owner: opasm.amigaos.operand_eval
+; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
+; @opforge-role: context
+; Inputs: A0/D0 = expression text/bytes; D1.W = mode:
+;   0 data-long (target plus absolute expression),
+;   1 generic long (target plus/minus relocation-free literal),
+;   2 absolute-constant provenance.
+; Outputs: D0=0 accepted/absolute, 1 unsupported/non-absolute;
+;          D1=1 and D2.W=target label index when relocation is retained.
+; Clobbers: D0-D2/CCR. Preserves D3-D7/A0-A3.
+classifyAbsoluteRelocationExpressionV1	.block
+	movem.l d3-d7/a0-a3, -(sp)
+	move.w d1, RelocScanMode.l
+	clr.w RelocScanTargetCount.l
+	move.w #$ffff, RelocScanTargetIndex.l
+	clr.w RelocScanAbsoluteSymbolCount.l
+	clr.w RelocScanNonAbsoluteSymbolCount.l
+	clr.w RelocScanRootPlusCount.l
+	clr.w RelocScanRootMinusCount.l
+	clr.w RelocScanRootOtherCount.l
+	move.w #$7fff, RelocScanRootDepth.l
+	move.l #-1, RelocScanFirstRootMinusOffset.l
+	clr.l RelocScanTargetOffset.l
+	clr.w RelocScanParenDepth.l
+	move.w #1, RelocScanExpectOperand.l
+	movea.l a0, a2
+	move.l d0, d6
+	movea.l a0, a3
+
+relocScanLoop
+	tst.l d6
+	beq.w relocScanDecide
+	moveq #0, d3
+	move.b (a2), d3
+	cmpi.b #' ', d3
+	beq.w relocScanAdvance
+	cmpi.b #9, d3
+	beq.w relocScanAdvance
+	cmpi.b #';', d3
+	beq.w relocScanDecide
+	cmpi.b #'"', d3
+	beq.w relocScanQuoted
+	cmpi.b #39, d3
+	beq.w relocScanQuoted
+	cmpi.b #'(', d3
+	beq.w relocScanOpen
+	cmpi.b #'[', d3
+	beq.w relocScanOpen
+	cmpi.b #'{', d3
+	beq.w relocScanOpen
+	cmpi.b #')', d3
+	beq.w relocScanClose
+	cmpi.b #']', d3
+	beq.w relocScanClose
+	cmpi.b #'}', d3
+	beq.w relocScanClose
+	cmpi.b #'$', d3
+	beq.w relocScanNumber
+	cmpi.b #'%', d3
+	beq.w relocScanNumber
+	cmpi.b #'0', d3
+	blo.s relocScanIdentifierStart
+	cmpi.b #'9', d3
+	bls.w relocScanNumber
+
+relocScanIdentifierStart
+	move.b d3, d4
+	ori.b #$20, d4
+	cmpi.b #'a', d4
+	blo.s relocScanIdentifierPunctuation
+	cmpi.b #'z', d4
+	bls.w relocScanIdentifier
+relocScanIdentifierPunctuation
+	cmpi.b #'_', d3
+	beq.w relocScanIdentifier
+	cmpi.b #'.', d3
+	beq.w relocScanIdentifier
+	cmpi.b #'@', d3
+	beq.w relocScanIdentifier
+
+	; Only plus/minus need distinct treatment. Any other outer operator makes a
+	; target-bearing expression unsupported, while operators inside an absolute
+	; addend remain part of that addend just as they do in Rust's Expr subtree.
+	tst.w RelocScanExpectOperand.l
+	bne.w relocScanOperatorAdvance
+	cmpi.b #'+', d3
+	beq.s relocScanBinaryPlus
+	cmpi.b #'-', d3
+	beq.s relocScanBinaryMinus
+	bsr.w relocScanRecordRootOther
+	bra.w relocScanOperatorAdvance
+
+relocScanBinaryPlus
+	bsr.w relocScanRecordRootPlus
+	bra.w relocScanOperatorAdvance
+
+relocScanBinaryMinus
+	bsr.w relocScanRecordRootMinus
+
+relocScanOperatorAdvance
+	move.w #1, RelocScanExpectOperand.l
+	bra.w relocScanAdvance
+
+relocScanOpen
+	addq.w #1, RelocScanParenDepth.l
+	move.w #1, RelocScanExpectOperand.l
+	bra.w relocScanAdvance
+
+relocScanClose
+	tst.w RelocScanParenDepth.l
+	beq.w relocScanMalformed
+	subq.w #1, RelocScanParenDepth.l
+	clr.w RelocScanExpectOperand.l
+	bra.w relocScanAdvance
+
+relocScanQuoted
+	move.b d3, d5
+	bsr.w relocScanAdvanceOne
+relocScanQuoteLoop
+	tst.l d6
+	beq.w relocScanMalformed
+	moveq #0, d3
+	move.b (a2), d3
+	cmp.b d5, d3
+	beq.s relocScanQuoteDone
+	cmpi.b #'\\', d3
+	bne.s relocScanQuoteAdvance
+	bsr.w relocScanAdvanceOne
+	tst.l d6
+	beq.w relocScanMalformed
+relocScanQuoteAdvance
+	bsr.w relocScanAdvanceOne
+	bra.s relocScanQuoteLoop
+relocScanQuoteDone
+	clr.w RelocScanExpectOperand.l
+	bra.w relocScanAdvance
+
+relocScanNumber
+	bsr.w relocScanAdvanceOne
+relocScanNumberLoop
+	tst.l d6
+	beq.s relocScanNumberDone
+	moveq #0, d3
+	move.b (a2), d3
+	move.b d3, d4
+	ori.b #$20, d4
+	cmpi.b #'0', d3
+	blo.s relocScanNumberLetter
+	cmpi.b #'9', d3
+	bls.s relocScanNumberAdvance
+relocScanNumberLetter
+	cmpi.b #'a', d4
+	blo.s relocScanNumberExtra
+	cmpi.b #'f', d4
+	bls.s relocScanNumberAdvance
+relocScanNumberExtra
+	cmpi.b #'_', d3
+	bne.s relocScanNumberDone
+relocScanNumberAdvance
+	bsr.w relocScanAdvanceOne
+	bra.s relocScanNumberLoop
+relocScanNumberDone
+	clr.w RelocScanExpectOperand.l
+	bra.w relocScanLoop
+
+relocScanIdentifier
+	movea.l a2, a1
+	moveq #0, d7
+relocScanIdentifierLoop
+	cmp.l d6, d7
+	bhs.s relocScanIdentifierReady
+	moveq #0, d3
+	move.b 0(a2, d7.l), d3
+	move.b d3, d4
+	ori.b #$20, d4
+	cmpi.b #'a', d4
+	blo.s relocScanIdentifierDigit
+	cmpi.b #'z', d4
+	bls.s relocScanIdentifierContinue
+relocScanIdentifierDigit
+	cmpi.b #'0', d3
+	blo.s relocScanIdentifierExtra
+	cmpi.b #'9', d3
+	bls.s relocScanIdentifierContinue
+relocScanIdentifierExtra
+	cmpi.b #'_', d3
+	beq.s relocScanIdentifierContinue
+	cmpi.b #'.', d3
+	beq.s relocScanIdentifierContinue
+	cmpi.b #'@', d3
+	bne.s relocScanIdentifierReady
+relocScanIdentifierContinue
+	addq.l #1, d7
+	bra.s relocScanIdentifierLoop
+
+relocScanIdentifierReady
+	tst.l d7
+	beq.w relocScanMalformed
+	; The generic relocation surface treats terminal .W/.L as a width member
+	; on the base symbol. Data-long uses the parsed identifier unchanged.
+	cmpi.w #1, RelocScanMode.l
+	bne.s relocScanResolve
+	cmpi.l #2, d7
+	bls.s relocScanResolve
+	moveq #0, d3
+	move.b -2(a1, d7.l), d3
+	cmpi.b #'.', d3
+	bne.s relocScanResolve
+	moveq #0, d3
+	move.b -1(a1, d7.l), d3
+	ori.b #$20, d3
+	cmpi.b #'w', d3
+	beq.s relocScanStripWidth
+	cmpi.b #'l', d3
+	bne.s relocScanResolve
+relocScanStripWidth
+	subq.l #2, d7
+
+relocScanResolve
+	jsr eng.opasmEngineResetLastResolvedLabelV1
+	movea.l a1, a0
+	move.l d7, d0
+	jsr scopes.resolveLabelValueV1
+	beq.s relocScanResolved
+	movea.l a1, a0
+	move.l d7, d0
+	jsr eng.opasmEngineResolveLabelValueV1
+	beq.s relocScanResolved
+	movea.l a1, a0
+	move.l d7, d0
+	jsr eng.opasmEngineResolveUniqueLabelFinalComponentV1
+	bne.s relocScanUnresolved
+
+relocScanResolved
+	jsr eng.opasmEngineGetLastResolvedLabelV1
+	move.w d0, d5
+	jsr eng.opasmEngineLastResolvedLabelIsTargetReferenceV1
+	tst.l d0
+	beq.s relocScanResolvedValue
+	addq.w #1, RelocScanTargetCount.l
+	move.w d5, RelocScanTargetIndex.l
+	move.l a1, d0
+	sub.l a3, d0
+	move.l d0, RelocScanTargetOffset.l
+	bra.s relocScanIdentifierAdvance
+
+relocScanResolvedValue
+	move.w d5, d0
+	jsr eng.opasmEngineLabelIsAbsoluteConstantV1
+	tst.l d0
+	beq.s relocScanResolvedNonAbsolute
+	addq.w #1, RelocScanAbsoluteSymbolCount.l
+	bra.s relocScanIdentifierAdvance
+relocScanResolvedNonAbsolute
+	addq.w #1, RelocScanNonAbsoluteSymbolCount.l
+	bra.s relocScanIdentifierAdvance
+
+relocScanUnresolved
+	addq.w #1, RelocScanNonAbsoluteSymbolCount.l
+
+relocScanIdentifierAdvance
+	adda.l d7, a2
+	sub.l d7, d6
+	clr.w RelocScanExpectOperand.l
+	bra.w relocScanLoop
+
+relocScanAdvance
+	bsr.w relocScanAdvanceOne
+	bra.w relocScanLoop
+
+relocScanDecide
+	tst.w RelocScanParenDepth.l
+	bne.w relocScanMalformed
+	moveq #1, d3
+	moveq #0, d4
+	move.w RelocScanTargetCount.l, d4
+	moveq #0, d5
+	move.w RelocScanNonAbsoluteSymbolCount.l, d5
+	cmpi.w #2, RelocScanMode.l
+	beq.s relocScanDecideAbsolute
+	tst.w d4
+	bne.s relocScanDecideTarget
+	; A scalar expression is relocation-free only when every resolved symbol is
+	; an absolute constant. Unknown/non-absolute value provenance fails closed.
+	tst.w d5
+	bne.s relocScanPublish
+	moveq #0, d3
+	bra.s relocScanPublish
+
+relocScanDecideAbsolute
+	tst.w d4
+	bne.s relocScanPublish
+	tst.w d5
+	bne.s relocScanPublish
+	moveq #0, d3
+	bra.s relocScanPublish
+
+relocScanDecideTarget
+	cmpi.w #1, d4
+	bne.s relocScanPublish
+	tst.w d5
+	bne.s relocScanPublish
+	tst.w RelocScanRootOtherCount.l
+	bne.s relocScanPublish
+	cmpi.w #1, RelocScanMode.l
+	beq.s relocScanDecideGeneric
+	; Data-long's frozen v0.3 shape permits only addition of an absolute
+	; constant expression; subtraction remains explicitly unsupported.
+	tst.w RelocScanRootMinusCount.l
+	bne.s relocScanPublish
+	moveq #0, d3
+	bra.s relocScanPublishTarget
+
+relocScanDecideGeneric
+	; Generic `.emit long` accepts only relocation-free literal addends, not
+	; named constant-symbol addends. Subtraction requires the target on the left.
+	tst.w RelocScanAbsoluteSymbolCount.l
+	bne.s relocScanPublish
+	tst.w RelocScanRootMinusCount.l
+	beq.s relocScanGenericAccepted
+	move.l RelocScanFirstRootMinusOffset.l, d0
+	cmp.l RelocScanTargetOffset.l, d0
+	bls.s relocScanPublish
+relocScanGenericAccepted
+	moveq #0, d3
+
+relocScanPublishTarget
+	moveq #1, d4
+	moveq #0, d5
+	move.w RelocScanTargetIndex.l, d5
+	bra.s relocScanPublishValues
+
+relocScanMalformed
+	moveq #1, d3
+relocScanPublish
+	moveq #0, d4
+	moveq #0, d5
+	move.w #$ffff, d5
+relocScanPublishValues
+	move.l d3, d0
+	move.l d4, d1
+	move.l d5, d2
+	movem.l (sp)+, d3-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; classifyAbsoluteRelocationExpressionV1
+
+	.priv
+
+; Advance the bounded relocation scanner by one byte.
+relocScanAdvanceOne	.block
+	addq.l #1, a2
+	subq.l #1, d6
+	rts
+	.bend  ; relocScanAdvanceOne
+
+; Keep only operators at the shallowest expression depth. This removes outer
+; wrapper parentheses while retaining the true root operator.
+relocScanPrepareRootOperator	.block
+	move.w RelocScanParenDepth.l, d4
+	cmp.w RelocScanRootDepth.l, d4
+	bhi.s relocScanRootDeeper
+	beq.s relocScanRootReady
+	move.w d4, RelocScanRootDepth.l
+	clr.w RelocScanRootPlusCount.l
+	clr.w RelocScanRootMinusCount.l
+	clr.w RelocScanRootOtherCount.l
+	move.l #-1, RelocScanFirstRootMinusOffset.l
+relocScanRootReady
+	moveq #0, d0
+	rts
+relocScanRootDeeper
+	moveq #1, d0
+	rts
+	.bend  ; relocScanPrepareRootOperator
+
+relocScanRecordRootPlus	.block
+	bsr.s relocScanPrepareRootOperator
+	bne.s relocScanRootPlusReturn
+	addq.w #1, RelocScanRootPlusCount.l
+relocScanRootPlusReturn
+	rts
+	.bend  ; relocScanRecordRootPlus
+
+relocScanRecordRootMinus	.block
+	bsr.s relocScanPrepareRootOperator
+	bne.s relocScanRootMinusReturn
+	addq.w #1, RelocScanRootMinusCount.l
+	move.l RelocScanFirstRootMinusOffset.l, d0
+	bpl.s relocScanRootMinusReturn
+	move.l a2, d0
+	sub.l a3, d0
+	move.l d0, RelocScanFirstRootMinusOffset.l
+relocScanRootMinusReturn
+	rts
+	.bend  ; relocScanRecordRootMinus
+
+relocScanRecordRootOther	.block
+	bsr.s relocScanPrepareRootOperator
+	bne.s relocScanRootOtherReturn
+	addq.w #1, RelocScanRootOtherCount.l
+relocScanRootOtherReturn
+	rts
+	.bend  ; relocScanRecordRootOther
+
 ; Resolve one selected-instruction token through the active assembler lexical
 ; context. This is the native callback form of Rust's evaluation-context symbol
 ; lookup; compound expressions fall through to the existing ExprVM snapshot.
@@ -624,6 +1035,33 @@ ScopedSnapshotCount
 	.res word, 1
 SelectedStatementIndex
 	.res word, 1
+RelocScanMode
+	.res word, 1
+RelocScanTargetCount
+	.res word, 1
+RelocScanTargetIndex
+	.res word, 1
+RelocScanAbsoluteSymbolCount
+	.res word, 1
+RelocScanNonAbsoluteSymbolCount
+	.res word, 1
+RelocScanRootPlusCount
+	.res word, 1
+RelocScanRootMinusCount
+	.res word, 1
+RelocScanRootOtherCount
+	.res word, 1
+RelocScanRootDepth
+	.res word, 1
+RelocScanParenDepth
+	.res word, 1
+RelocScanExpectOperand
+	.res word, 1
+	.align 4
+RelocScanFirstRootMinusOffset
+	.res long, 1
+RelocScanTargetOffset
+	.res long, 1
 ScopedSnapshotNames
 	.res byte, SCOPED_SNAPSHOT_CAPACITY * SCOPED_SNAPSHOT_NAME_BYTES
 ScopedSnapshotValues

@@ -1,0 +1,132 @@
+[slice]
+schema_version = 2
+name = "native Hunk fixup relocation v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 36
+requirements = ["N68X0-001", "N68X0-005", "N68X0-009", "N68X0-010"]
+rust_reference = [
+  "crates/opforge-vm/src/fixup_vm.rs::execute_fixup_program",
+  "crates/opforge-vm/src/output_hunk.rs::append_relocation_hunks",
+  "crates/opforge-asm/src/asmline_eval.rs::absolute_relocation",
+  "crates/opforge-asm/src/line.rs::hunk_abs32_target_section_for_expr",
+  "crates/opforge-asm/src/line.rs::hunk_abs32_target_section_for_data_expr",
+  "crates/opforge-asm/src/line.rs::expr_is_absolute_constant_symbol_expr"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm::executeNamedSemanticProgramV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm::tkpkgRecordOutputFixupV1",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::recordSelectedOutputFixupsV1",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::emitPackageLongDirectiveForStatement",
+  "native/motorola68000/amigaos/opasm/opasm_operand_eval.asm::classifyAbsoluteRelocationExpressionV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineSetLabelAbsoluteConstantV1",
+  "native/motorola68000/amigaos/opasm/opasm_layout.asm::recordAbsoluteOutputFixupV1",
+  "native/motorola68000/amigaos/opasm/opasm_layout.asm::recordUnsupportedHunkFixupV1",
+  "native/motorola68000/amigaos/opforge-cli/output.asm::rejectUnsupportedHunkFixupV1",
+  "native/motorola68000/amigaos/opforge-cli/hunk_output.asm::appendSelectedRelocationsV1"
+]
+invariant = "Native consumes package-emitted absolute output-fixup metadata for instructions and package-driven `.long`/`.emit long` values, preserves Rust's target/absolute-constant/non-absolute expression provenance, writes target-section-relative addends into initialized big-endian bytes, emits HUNK_RELOC32 groups in Rust emitted-target-index and offset order, and rejects unsupported Hunk expression shapes with the Rust diagnostic and owning section without CPU-specific logic in generic native paths."
+assertion_decision = "Prove package-selected absolute-long relocation across explicit and implicit CODE, interleaved multi-target grouping, both long-directive surfaces, empty initialized-section omission/remapping, every accepted symbolic-long addend in the frozen Rust matrix, every Rust-rejected symbolic `.long` shape with separate fresh guests, and isolation of retained relocation metadata from ordinary BIN bytes."
+expected_inputs = "Placed and implicit instruction targets; interleaved references to two DATA targets; `.long` and `.emit long` constants/bare targets; target plus literal, absolute `.const`, and address-like `.const`; generic target plus/minus literal; target-target subtraction, target-const subtraction, a label-derived const addend, a selected empty DATA section before the target, and the qualified absolute JSR fixture under BIN output."
+expected_outputs = "Exact live-Rust Hunk bytes for every accepted directed case, including big-endian constants, section-relative addends, empty-section target-index remapping, grouped ascending offsets, and explicit guest exit zero; every rejected case completes a separate fresh protocol with explicit guest exit one and its live Rust format/section diagnostic; ordinary BIN retains Rust's absolute JSR bytes while Hunk-only payload copies receive relocation addends."
+known_non_equivalences = "Native stores bounded fixup/provenance arrays, scans a bounded source span because it does not retain Rust's Expr tree, and patches big-endian bytes in place; Rust owns growable vectors and an AST. Capacity overflow and malformed bounded expressions fail closed. The macOS FS-UAE application-launch rule in the parent plan applies on the first attempt; a filesystem-sandbox or application-launch denial before guest start is zero guest evidence and must be retried with host application-launch permission rather than counted as a parity result."
+fast_proof_command = "cargo test -p asm native_item36_hunk_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_item36_ -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_item36_hunk_abs32_transport_contract"
+proof_level = "B"
+proves = "Rust and native structural boundaries agree on absolute output-fixup transport and HUNK_RELOC32 ownership."
+does_not_prove = "Native execution or emitted artifact bytes."
+
+[[tests]]
+name = "external_fs_uae_native_item36_cross_section_abs32_hunk_parity"
+proof_level = "D"
+proves = "One fresh guest emits a cross-section absolute-long Hunk byte-for-byte equal to the live Rust artifact with explicit zero exit."
+does_not_prove = "Directive fixups, multiple fixups/groups, implicit CODE relocation, unsupported forms, or the complete Item 36 matrix."
+
+[[tests]]
+name = "native_item36_hunk_implicit_abs32_contract"
+proof_level = "B"
+proves = "Rust's implicit CODE ownership is projected through the native NONE sentinel and flat Hunk relocation writer without CPU-specific semantics."
+does_not_prove = "Native execution or emitted artifact bytes."
+
+[[tests]]
+name = "external_fs_uae_native_item36_implicit_code_abs32_hunk_parity"
+proof_level = "D"
+proves = "One fresh guest emits an implicit-CODE absolute-long Hunk byte-for-byte equal to the live Rust artifact, with target segment zero and explicit zero exit."
+does_not_prove = "Directive fixups, multiple fixups/groups, unsupported forms, or the complete Item 36 matrix."
+
+[[tests]]
+name = "native_item36_hunk_multi_group_contract"
+proof_level = "B"
+proves = "Native group traversal follows Rust's emitted-target and ascending-offset ordering contract."
+does_not_prove = "Native execution or emitted artifact bytes."
+
+[[tests]]
+name = "external_fs_uae_native_item36_multi_group_abs32_hunk_parity"
+proof_level = "D"
+proves = "One fresh guest emits interleaved references as Rust-identical target-index groups with exact ordered offsets and explicit zero exit."
+does_not_prove = "Directive fixups, unsupported forms, empty-target omission, or the complete Item 36 matrix."
+
+[[tests]]
+name = "native_item36_hunk_directive_long_package_contract"
+proof_level = "B"
+proves = "Native `.long` requests the package-owned opaque absolute-32 semantic role and transports its bytes and fixups without embedding a CPU endian decision."
+does_not_prove = "Native execution, emitted artifact bytes, unsupported expression diagnostics, or empty-target omission."
+
+[[tests]]
+name = "external_fs_uae_native_item36_directive_long_hunk_parity"
+proof_level = "D"
+proves = "One fresh guest emits `.long $11223344, target` byte-for-byte equal to the live Rust Hunk, including the big-endian constant, relocation group, and explicit zero exit."
+does_not_prove = "`.emit long`, unsupported expression diagnostics, empty-target omission, or the complete Item 36 matrix."
+
+[[tests]]
+name = "native_item36_hunk_emit_long_contract"
+proof_level = "B"
+proves = "Native recognizes Rust's typed `.emit long` surface and delegates each value to the same package-owned absolute-32 semantic program."
+does_not_prove = "Native execution, emitted artifact bytes, unsupported expression diagnostics, or empty-target omission."
+
+[[tests]]
+name = "external_fs_uae_native_item36_emit_long_hunk_parity"
+proof_level = "D"
+proves = "One fresh guest emits `.emit long, $a1b2c3d4, target` byte-for-byte equal to the live Rust Hunk, including the big-endian constant, relocation group, and explicit zero exit."
+does_not_prove = "Unsupported expression diagnostics, empty-target omission, or the complete Item 36 matrix."
+
+[[tests]]
+name = "native_item36_hunk_empty_target_index_contract"
+proof_level = "B"
+proves = "Rust and native omit empty initialized targets before assigning emitted Hunk relocation indices."
+does_not_prove = "Native execution or emitted artifact bytes."
+
+[[tests]]
+name = "external_fs_uae_native_item36_empty_target_index_hunk_parity"
+proof_level = "D"
+proves = "One fresh guest omits the selected empty initialized section, targets emitted segment one, matches all 84 live-Rust Hunk bytes, and exits zero."
+does_not_prove = "Symbolic-long expression acceptance or rejection diagnostics."
+
+[[tests]]
+name = "native_item36_hunk_symbolic_long_expression_contract"
+proof_level = "B"
+proves = "Native's bounded expression-provenance, absolute-constant fixed point, and format-specific diagnostic boundary are structurally bound to Rust's frozen `.long`/`.emit long` decisions."
+does_not_prove = "Native execution, artifact bytes, or guest diagnostics."
+
+[[tests]]
+name = "external_fs_uae_native_item36_symbolic_long_acceptance_matrix_hunk_parity"
+proof_level = "D"
+proves = "One fresh guest emits all five accepted symbolic-long addend forms as an exact 116-byte live-Rust Hunk with five ordered relocations and explicit exit zero."
+does_not_prove = "Rust-rejected expression diagnostics."
+
+[[tests]]
+name = "external_fs_uae_native_item36_symbolic_long_rejection_diagnostics_parity"
+proof_level = "D"
+proves = "Three separate fresh guests reject target-target subtraction, target-const subtraction, and a label-derived const addend; all protocols complete, all guests exit one, and every diagnostic contains that case's live Rust v0.3 message plus owning section."
+does_not_prove = "Accepted artifact bytes or expression shapes outside the frozen Rust executable-Hunk matrix."
+
+[[tests]]
+name = "external_fs_uae_native_item36_flat_bin_fixup_isolation_closure_parity"
+proof_level = "D"
+proves = "One fresh guest assembles the wrapper-discovered qualified absolute JSR to the exact 18 live-Rust BIN bytes, including absolute operand 0x00001010, with completed protocol and explicit exit zero."
+does_not_prove = "Hunk payload patching or any movement/control case other than the exact wrapper regression."

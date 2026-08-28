@@ -6,6 +6,7 @@
 	.use opasm.amigaos.callback_abi as abi
 	.use tkpkg.amigaos.abi as tkabi
 	.use tkpkg.amigaos.service
+	.use tkpkg.amigaos.encode_service as encoding
 
 	.section code, kind=code
 	.pub
@@ -140,6 +141,22 @@ readOutputPtrV1	.block
 	adda.w d0, a0
 	rts
 	.bend  ; readOutputPtrV1
+
+; Read the neutral PortableOutputFixup side channel associated with the most
+; recent selected-instruction response.
+getOutputFixupCountV1	.block
+	jmp encoding.getOutputFixupCountV1
+	.bend  ; getOutputFixupCountV1
+
+; Inputs/outputs match encoding.getOutputFixupV1.
+getOutputFixupV1	.block
+	jmp encoding.getOutputFixupV1
+	.bend  ; getOutputFixupV1
+
+; Inputs/outputs match encoding.executeNamedSemanticProgramV1.
+executeNamedSemanticProgramV1	.block
+	jmp encoding.executeNamedSemanticProgramV1
+	.bend  ; executeNamedSemanticProgramV1
 
 ; Read tkpkg last-error length from the control block named by an opasm service frame.
 ;

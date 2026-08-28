@@ -14929,14 +14929,24 @@ fn external_fs_uae_native_m68k_runtime_directive_state_illegal_pair_rejection() 
         ("item25-illegal-fpu-pair", "m68020", ".fpu 68040\n"),
         ("item25-illegal-apollo-pair", "m68040", ".apollo on\n"),
     ];
-    for (name, cpu, source) in definitions {
-        let rust_diagnostic =
-            live_rust_cpu_name_diagnostic(source, cpu, format!("{name}-rust-diagnostic").as_str());
-        assert!(
-            !rust_diagnostic.is_empty(),
-            "live Rust CLI must reject {name}"
-        );
-    }
+    let rust_diagnostics = definitions
+        .iter()
+        .map(|(name, cpu, source)| {
+            live_rust_cpu_name_diagnostic(source, cpu, format!("{name}-rust-diagnostic").as_str())
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        rust_diagnostics[0],
+        "FPU target 68040 is not supported on m68020; legal .fpu targets for m68020: none, 68881, 68882"
+    );
+    assert_eq!(
+        rust_diagnostics[1],
+        ".apollo is only supported on m68080 (active cpu: m68040)"
+    );
+    let expected_native_diagnostics = [
+        rust_diagnostics[0].as_str(),
+        "package state directive argument is not legal for active profile",
+    ];
     let package = fs::read(
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
@@ -14950,8 +14960,9 @@ fn external_fs_uae_native_m68k_runtime_directive_state_illegal_pair_rejection() 
     let cases = definitions
         .iter()
         .zip(&commands)
-        .map(
-            |((name, _, source), command)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        .zip(expected_native_diagnostics)
+        .map(|(((name, _, source), command), diagnostic)| {
+            crate::fs_uae_smoke::OpforgeNativeCliParityCase {
                 name,
                 cpu_override: "68020",
                 extra_assembly_defines: &[],
@@ -14959,9 +14970,11 @@ fn external_fs_uae_native_m68k_runtime_directive_state_illegal_pair_rejection() 
                 command_template: Some(command.as_str()),
                 package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
                 extra_guest_files: &[],
-                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
-            },
-        )
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                    diagnostic,
+                ),
+            }
+        })
         .collect::<Vec<_>>();
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
         &workspace_root(),
@@ -14972,13 +14985,11 @@ fn external_fs_uae_native_m68k_runtime_directive_state_illegal_pair_rejection() 
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
             assert_eq!(runs.len(), 2);
-            for run in runs {
+            for (run, expected_diagnostic) in runs.iter().zip(expected_native_diagnostics) {
                 assert!(run.protocol_completed);
                 assert!(!run.success);
                 assert_eq!(run.exit_code, Some(1));
-                assert!(run
-                    .stderr
-                    .contains("package state directive argument is not legal for active profile"));
+                assert!(run.stderr.contains(expected_diagnostic));
             }
         }
     }
@@ -18065,6 +18076,528 @@ fn external_fs_uae_native_m68080_ammx_parity() {
                 assert!(
                     run.success,
                     "Item 31 aggregate positive failed\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout, run.stderr
+                );
+                assert_eq!(run.exit_code, Some(0));
+                assert_eq!(
+                    captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                    *oracle
+                );
+            }
+            for run in runs.iter().skip(positives.len()) {
+                assert!(run.protocol_completed);
+                assert!(!run.success);
+                assert_eq!(run.exit_code, Some(1));
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68080_fpu_directed_parity() {
+    // Proof level D. One fresh guest proves the checked-in complete m68080 FPU
+    // fixture byte-for-byte against its same-source live Rust CLI oracle. This
+    // is a directed first proof, not the final Item 32 aggregate.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 32 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let source =
+        fs::read_to_string(workspace_root().join("examples/motorola68000/68080_fpu_surface.asm"))
+            .expect("read exact m68080 FPU fixture");
+    let rust_oracle = live_rust_cpu_name_oracle(
+        &source,
+        Some("m68080"),
+        "item32-m68080-fpu-directed-rust-oracle",
+    )
+    .expect("run Item 32 m68080 FPU Rust oracle");
+    assert!(
+        !rust_oracle.is_empty(),
+        "Rust Item 32 oracle must emit bytes"
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item32-m68080-fpu-complete-fixture-directed",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68080 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 32 m68080 FPU parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(run.protocol_completed);
+            assert!(
+                run.success,
+                "Item 32 directed FPU fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            assert_eq!(run.exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68080_fpu_long_counter_directed_parity() {
+    // Proof level D. One fresh guest isolates the Rust m68080 FPU long-counter
+    // sequence and proves its two encode steps plus transformed fixup against
+    // a same-source live Rust oracle.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 32 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let source = concat!(
+        ".cpu 68080\n",
+        ".fpu 68080\n",
+        ".org 0\n",
+        "        FDBNE.L D0,after_fdb_long\n",
+        "after_fdb_long:\n",
+    );
+    let rust_oracle = live_rust_cpu_name_oracle(
+        source,
+        Some("m68080"),
+        "item32-m68080-fpu-long-counter-rust-oracle",
+    )
+    .expect("run Item 32 long-counter Rust oracle");
+    assert_eq!(rust_oracle, [0xf2, 0x48, 0x00, 0x0e, 0x00, 0x07]);
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item32-m68080-fpu-long-counter-directed",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68080 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 32 m68080 FPU long-counter parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(run.protocol_completed);
+            assert!(
+                run.success,
+                "Item 32 directed long-counter failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr
+            );
+            assert_eq!(run.exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(run, "Work/opforge_native_out.bin"),
+                rust_oracle
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68080_fpu_state_directed_parity() {
+    // Proof level D. Three fresh guests isolate Rust's m68080 FPU state
+    // contract: the integrated target is the CPU default, `.fpu none`
+    // disables FPU instructions, and an external 68881 pairing is rejected.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 32 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+
+    let default_source = concat!(
+        ".cpu 68080\n",
+        ".org 0\n",
+        "        FNOP\n",
+        "        FSIN FP0,FP1\n",
+    );
+    let default_oracle = live_rust_cpu_name_oracle(
+        default_source,
+        Some("m68080"),
+        "item32-fpu-default-state-rust-oracle",
+    )
+    .expect("run Item 32 default FPU state Rust oracle");
+    let disabled_source = concat!(
+        ".cpu 68080\n",
+        ".fpu none\n",
+        ".org 0\n",
+        "        FSIN FP0,FP1\n",
+    );
+    let disabled_diagnostic = live_rust_cpu_name_diagnostic(
+        disabled_source,
+        "m68080",
+        "item32-fpu-disabled-state-rust-diagnostic",
+    );
+    let illegal_pairing_source =
+        concat!(".cpu 68080\n", ".fpu 68881\n", ".org 0\n", "        FNOP\n",);
+    let illegal_pairing_diagnostic = live_rust_cpu_name_diagnostic(
+        illegal_pairing_source,
+        "m68080",
+        "item32-fpu-illegal-pairing-rust-diagnostic",
+    );
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item32-fpu-default-state",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(default_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68080 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &default_oracle,
+            },
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item32-fpu-disabled-state",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(disabled_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68080 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                &disabled_diagnostic,
+            ),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "item32-fpu-illegal-68881-pairing",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(illegal_pairing_source.as_bytes()),
+            command_template: Some("{input} --bin {bin} --cpu m68080 --opasm-package {package}"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+            extra_guest_files: &[],
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                &illegal_pairing_diagnostic,
+            ),
+        },
+    ];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 32 m68080 FPU state parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 3);
+            let default_run = &runs[0];
+            assert!(default_run.protocol_completed);
+            assert!(
+                default_run.success,
+                "Item 32 default FPU state failed\nstdout:\n{}\nstderr:\n{}",
+                default_run.stdout, default_run.stderr
+            );
+            assert_eq!(default_run.exit_code, Some(0));
+            assert_eq!(
+                captured_fs_uae_artifact(default_run, "Work/opforge_native_out.bin"),
+                default_oracle.as_slice()
+            );
+            for run in runs.iter().skip(1) {
+                assert!(run.protocol_completed);
+                assert!(!run.success);
+                assert_eq!(run.exit_code, Some(1));
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68080_fpu_illegal_pairing_directed_parity() {
+    // Proof level D. One fresh guest isolates the package-derived diagnostic
+    // corrected after the three-case state proof exposed native wording drift.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 32 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+    let source = concat!(".cpu 68080\n", ".fpu 68881\n", ".org 0\n", "        FNOP\n",);
+    let rust_diagnostic = live_rust_cpu_name_diagnostic(
+        source,
+        "m68080",
+        "item32-fpu-illegal-pairing-fix-rust-diagnostic",
+    );
+    assert_eq!(
+        rust_diagnostic,
+        "FPU target 68881 is not supported on m68080; legal .fpu targets for m68080: none, 68080"
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+        name: "item32-fpu-illegal-68881-pairing-fix",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m68080 --opasm-package {package}"),
+        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+        extra_guest_files: &[],
+        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+            &rust_diagnostic,
+        ),
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("directed Item 32 illegal FPU pairing parity run")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(run.protocol_completed);
+            assert!(!run.success);
+            assert_eq!(run.exit_code, Some(1));
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_m68080_fpu_parity() {
+    // Proof level D. This complete Item 32 aggregate carries every positive
+    // fixture/state/literal surface and every owned diagnostic or illegal FPU
+    // target pairing as an independent fresh guest with a live Rust oracle.
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let package = fs::read(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
+    )
+    .expect("read exact Item 32 package");
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust package vector")
+    );
+
+    let positive_definitions = [
+        (
+            "item32-fpu-explicit-complete-fixture",
+            fs::read_to_string(
+                workspace_root().join("examples/motorola68000/68080_fpu_surface.asm"),
+            )
+            .expect("read exact m68080 FPU fixture"),
+        ),
+        (
+            "item32-fpu-default-integrated-target",
+            concat!(
+                ".cpu 68080\n",
+                ".org 0\n",
+                "        FNOP\n",
+                "        FMOVE FP0,FP1\n",
+                "        FSIN FP0,FP1\n",
+                "        FSINCOS FP0,.pair(FP1,FP2)\n",
+            )
+            .to_string(),
+        ),
+        (
+            "item32-fpu-immediate-literals",
+            concat!(
+                ".cpu 68080\n",
+                ".fpu 68080\n",
+                ".org 0\n",
+                "        FADD.D #1,FP0\n",
+                "        FMOVE.X #1,FP0\n",
+                "        FADD.D #1.d,FP0\n",
+                "        FMOVE.S #1.s,FP0\n",
+            )
+            .to_string(),
+        ),
+    ];
+    let positives = positive_definitions
+        .iter()
+        .map(|(name, source)| {
+            let oracle = live_rust_cpu_name_oracle(
+                source,
+                Some("m68080"),
+                format!("{name}-rust-oracle").as_str(),
+            )
+            .unwrap_or_else(|error| panic!("run Item 32 Rust oracle for {name}: {error}"));
+            (*name, source.as_str(), oracle)
+        })
+        .collect::<Vec<_>>();
+
+    let negative_definitions = [
+        (
+            "item32-fpu-disabled",
+            ".cpu 68080\n.fpu none\n.org 0\n        FSIN FP0,FP1\n",
+        ),
+        (
+            "item32-fpu-invalid-register-form",
+            ".cpu 68080\n.fpu 68080\n.org 0\n        FSIN FP0,D0\n",
+        ),
+        (
+            "item32-fpu-extended-literal-gap",
+            ".cpu 68080\n.fpu 68080\n.org 0\n        FMOVE.X #1.x,FP0\n",
+        ),
+        (
+            "item32-fpu-odd-long-counter",
+            ".cpu 68080\n.fpu 68080\n.org 0\n        FDBNE.L D0,$0007\n",
+        ),
+        (
+            "item32-fpu-m68040-long-counter-size",
+            ".cpu 68040\n.fpu 68040\n.org 0\n        FDBNE.L D0,done\ndone:\n",
+        ),
+        (
+            "item32-fpu-m68040-floadi-gating",
+            ".cpu 68040\n.fpu 68040\n.org 0\n        FLOADI.D D0,FP0\n",
+        ),
+        (
+            "item32-fpu-m68080-rejects-68881",
+            ".cpu 68080\n.fpu 68881\n",
+        ),
+        (
+            "item32-fpu-m68080-rejects-68882",
+            ".cpu 68080\n.fpu 68882\n",
+        ),
+        (
+            "item32-fpu-m68080-rejects-68040",
+            ".cpu 68080\n.fpu 68040\n",
+        ),
+        (
+            "item32-fpu-m68000-rejects-68080",
+            ".cpu 68000\n.fpu 68080\n",
+        ),
+        (
+            "item32-fpu-m68010-rejects-68080",
+            ".cpu 68010\n.fpu 68080\n",
+        ),
+        (
+            "item32-fpu-m68020-rejects-68080",
+            ".cpu 68020\n.fpu 68080\n",
+        ),
+        (
+            "item32-fpu-m68030-rejects-68080",
+            ".cpu 68030\n.fpu 68080\n",
+        ),
+        (
+            "item32-fpu-m68040-rejects-68080",
+            ".cpu 68040\n.fpu 68080\n",
+        ),
+    ];
+    let negatives = negative_definitions
+        .iter()
+        .map(|(name, source)| {
+            let diagnostic = live_rust_cpu_name_diagnostic(
+                source,
+                "m68080",
+                format!("{name}-rust-diagnostic").as_str(),
+            );
+            (*name, *source, diagnostic)
+        })
+        .collect::<Vec<_>>();
+    let commands = std::iter::repeat_n(
+        "{input} --bin {bin} --cpu m68080 --opasm-package {package}".to_string(),
+        positives.len() + negatives.len(),
+    )
+    .collect::<Vec<_>>();
+    let cases = positives
+        .iter()
+        .zip(&commands)
+        .map(
+            |((name, source, oracle), command)| crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(source.as_bytes()),
+                command_template: Some(command.as_str()),
+                package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
+                extra_guest_files: &[],
+                proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/opforge_native_out.bin",
+                    rust_oracle: oracle,
+                },
+            },
+        )
+        .chain(
+            negatives
+                .iter()
+                .zip(commands.iter().skip(positives.len()))
+                .map(|((name, source, diagnostic), command)| {
+                    crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+                        name,
+                        cpu_override: "68020",
+                        extra_assembly_defines: &[],
+                        source_override: Some(source.as_bytes()),
+                        command_template: Some(command.as_str()),
+                        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(
+                            &package,
+                        ),
+                        extra_guest_files: &[],
+                        proof:
+                            crate::fs_uae_smoke::OpforgeNativeCliProof::ExpectedFailureContaining(
+                                diagnostic,
+                            ),
+                    }
+                }),
+        )
+        .collect::<Vec<_>>();
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("complete Item 32 m68080 FPU parity runs")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 17);
+            for (run, (_, _, oracle)) in runs.iter().zip(&positives) {
+                assert!(run.protocol_completed);
+                assert!(
+                    run.success,
+                    "Item 32 aggregate positive failed\nstdout:\n{}\nstderr:\n{}",
                     run.stdout, run.stderr
                 );
                 assert_eq!(run.exit_code, Some(0));

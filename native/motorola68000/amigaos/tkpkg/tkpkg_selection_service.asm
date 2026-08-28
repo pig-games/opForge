@@ -250,6 +250,9 @@ RegisterOrNamedRangePrefixText
 RegisterSequencePrefixText
 	.byte "register_sequence"
 
+RegisterIndexXorPrefixText
+	.byte "register_index_xor"
+
 SemanticArgMarkerText
 	.byte ".arg"
 
@@ -336,6 +339,9 @@ DirectShapeText
 
 RegisterRegisterShapeText
 	.byte "register_register"
+
+RegisterRegisterRegisterShapeText
+	.byte "register_register_register"
 
 RegisterImmediateShapeText
 	.byte "register_immediate"
@@ -1045,14 +1051,14 @@ return
 ; Infer Rust's package shape at the package boundary when the frontend supplied
 ; no legacy selected-shape metadata. Source spans stand in for Expr nodes; the
 ; package register map distinguishes registers, while every other single
-; operand is direct. The bounded native surface currently transports at most
-; two top-level operands through this classifier.
+; operand is direct. The bounded native surface classifies up to three
+; top-level operands, which covers package-owned three-register rows.
 ;
 ; Inputs: state.EncodeSelectedMselExprPtr/Len and resolved package context.
 ; Outputs: state.EncodeSelectedMselShapePtr/Len when inference applies.
 ; Clobbers: D0-D7/A0-A3/CCR.
 tkpkgInferSelectedPackageShapeV1	.block
-	movem.l d2-d7/a2-a3, -(sp)
+	movem.l d2-d7/a2-a4, -(sp)
 	tst.w state.EncodeSelectedMselShapeLen
 	bne.w return
 	tst.l state.EncodeSelectedMselShapePtr
@@ -1076,7 +1082,33 @@ locateFirst
 	move.l d0, d4
 	moveq #2, d0
 	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w classifyPair
+	movea.l a0, a4
+	move.l d0, d5
+	moveq #3, d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
 	beq.w return
+
+	movea.l a4, a0
+	move.l d5, d0
+	move.w #$FFFF, d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w return
+	movea.l a3, a0
+	move.l d4, d0
+	move.w #$FFFF, d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w return
+	movea.l a2, a0
+	move.l d2, d0
+	move.w #$FFFF, d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w return
+	lea RegisterRegisterRegisterShapeText, a0
+	moveq #26, d0
+	bra.w setShape
+
+classifyPair
 
 	cmpi.b #'#', (a2)
 	beq.s classifyImmediatePair
@@ -1163,7 +1195,7 @@ setShape
 	move.w d0, state.EncodeSelectedMselShapeLen
 
 return
-	movem.l (sp)+, d2-d7/a2-a3
+	movem.l (sp)+, d2-d7/a2-a4
 	rts
 	.bend  ; tkpkgInferSelectedPackageShapeV1
 
@@ -3133,7 +3165,7 @@ semanticCheckIndirectRegister
 	lea 12(a5), a1
 	move.w d7, d0
 	subi.w #12, d0
-	bra.s semanticRegisterSpec
+	bra.w semanticRegisterSpec
 
 semanticCheckRegister
 	movea.l a5, a1
@@ -3156,11 +3188,25 @@ semanticCheckRegisterMask
 	moveq #13, d1
 	bsr.w tkpkgSemanticPrefixMatchesV2
 	tst.b d0
-	beq.s semanticCheckRegisterSource
+	beq.s semanticCheckRegisterIndexXor
 	lea 13(a5), a1
 	move.w d7, d0
 	subi.w #13, d0
 	bsr.w tkpkgProjectRegisterMaskV1
+	bra.w semanticProjectReturn
+
+semanticCheckRegisterIndexXor
+	movea.l a5, a1
+	move.w d7, d0
+	lea RegisterIndexXorPrefixText, a2
+	moveq #18, d1
+	bsr.w tkpkgSemanticPrefixMatchesV2
+	tst.b d0
+	beq.s semanticCheckRegisterSource
+	lea 18(a5), a1
+	move.w d7, d0
+	subi.w #18, d0
+	bsr.w tkpkgProjectRegisterIndexXorV1
 	bra.w semanticProjectReturn
 
 semanticCheckRegisterSource
@@ -3296,6 +3342,174 @@ semanticProjectReturn
 	movem.l (sp)+, d2/d4-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgProjectCompactSemanticInputV2
+
+; Project Rust's neutral
+; `register_index_xorN.classC.withM.classD[.shrS][.andK]` source.  Both
+; registers must resolve through package RENC data with the requested classes;
+; native XORs their opaque indices and applies the package-selected projection.
+; Inputs: A1/D0.W = source text after `register_index_xor`.
+; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D3.L = projected XOR on success.
+tkpkgProjectRegisterIndexXorV1	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	lea -20(sp), sp
+	movea.l a1, a3
+	move.w d0, d7
+	moveq #0, d6
+
+registerIndexXorLeftClassScan
+	move.w d7, d5
+	sub.w d6, d5
+	cmpi.w #6, d5
+	bcs.w registerIndexXorMalformed
+	cmpi.b #'.', 0(a3, d6.w)
+	bne.s registerIndexXorLeftClassNext
+	cmpi.b #'c', 1(a3, d6.w)
+	bne.s registerIndexXorLeftClassNext
+	cmpi.b #'l', 2(a3, d6.w)
+	bne.s registerIndexXorLeftClassNext
+	cmpi.b #'a', 3(a3, d6.w)
+	bne.s registerIndexXorLeftClassNext
+	cmpi.b #'s', 4(a3, d6.w)
+	bne.s registerIndexXorLeftClassNext
+	cmpi.b #'s', 5(a3, d6.w)
+	beq.s registerIndexXorLeftClassReady
+registerIndexXorLeftClassNext
+	addq.w #1, d6
+	bra.s registerIndexXorLeftClassScan
+
+registerIndexXorLeftClassReady
+	tst.w d6
+	beq.w registerIndexXorMalformed
+	movea.l a3, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w registerIndexXorMalformed
+	move.w d3, (sp)
+	lea 6(a3, d6.w), a2
+	move.w d6, d4
+	addq.w #6, d4
+	move.w d4, d6
+
+registerIndexXorWithScan
+	move.w d7, d5
+	sub.w d6, d5
+	cmpi.w #5, d5
+	bcs.w registerIndexXorMalformed
+	cmpi.b #'.', 0(a3, d6.w)
+	bne.s registerIndexXorWithNext
+	cmpi.b #'w', 1(a3, d6.w)
+	bne.s registerIndexXorWithNext
+	cmpi.b #'i', 2(a3, d6.w)
+	bne.s registerIndexXorWithNext
+	cmpi.b #'t', 3(a3, d6.w)
+	bne.s registerIndexXorWithNext
+	cmpi.b #'h', 4(a3, d6.w)
+	beq.s registerIndexXorWithReady
+registerIndexXorWithNext
+	addq.w #1, d6
+	bra.s registerIndexXorWithScan
+
+registerIndexXorWithReady
+	move.w d6, d0
+	sub.w d4, d0
+	beq.w registerIndexXorMalformed
+	movea.l a2, a1
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w registerIndexXorMalformed
+	move.w d3, 2(sp)
+	lea 5(a3, d6.w), a2
+	move.w d7, d5
+	sub.w d6, d5
+	subq.w #5, d5
+	moveq #0, d6
+
+registerIndexXorRightClassScan
+	move.w d5, d4
+	sub.w d6, d4
+	cmpi.w #6, d4
+	bcs.w registerIndexXorMalformed
+	cmpi.b #'.', 0(a2, d6.w)
+	bne.s registerIndexXorRightClassNext
+	cmpi.b #'c', 1(a2, d6.w)
+	bne.s registerIndexXorRightClassNext
+	cmpi.b #'l', 2(a2, d6.w)
+	bne.s registerIndexXorRightClassNext
+	cmpi.b #'a', 3(a2, d6.w)
+	bne.s registerIndexXorRightClassNext
+	cmpi.b #'s', 4(a2, d6.w)
+	bne.s registerIndexXorRightClassNext
+	cmpi.b #'s', 5(a2, d6.w)
+	beq.s registerIndexXorRightClassReady
+registerIndexXorRightClassNext
+	addq.w #1, d6
+	bra.s registerIndexXorRightClassScan
+
+registerIndexXorRightClassReady
+	tst.w d6
+	beq.w registerIndexXorMalformed
+	move.w d5, 14(sp)
+	movea.l a2, a1
+	move.w d6, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w registerIndexXorMalformed
+	move.w d3, 4(sp)
+	lea 6(a2, d6.w), a1
+	move.w 14(sp), d0
+	sub.w d6, d0
+	subq.w #6, d0
+	beq.w registerIndexXorMalformed
+	bsr.w tkpkgParseRegisterClassProjectionV1
+	bne.w registerIndexXorMalformed
+	move.w d3, 6(sp)
+	move.w d2, 8(sp)
+	move.w d4, 10(sp)
+	move.w d5, 12(sp)
+
+	move.w (sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w registerIndexXorNoMatch
+	move.w 2(sp), d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w registerIndexXorNoMatch
+	move.l d3, 16(sp)
+
+	move.w 4(sp), d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w registerIndexXorNoMatch
+	move.w 6(sp), d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w registerIndexXorNoMatch
+	move.l 16(sp), d2
+	eor.l d2, d3
+	move.w 8(sp), d2
+	beq.s registerIndexXorOk
+	move.w 10(sp), d4
+	move.w 12(sp), d5
+	cmpi.w #1, d2
+	beq.s registerIndexXorShift
+	cmpi.w #2, d2
+	beq.s registerIndexXorMask
+	lsr.l d4, d3
+	bra.s registerIndexXorMask
+registerIndexXorShift
+	lsr.l d4, d3
+	bra.s registerIndexXorOk
+registerIndexXorMask
+	and.l d5, d3
+
+registerIndexXorOk
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s registerIndexXorReturn
+registerIndexXorNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+	bra.s registerIndexXorReturn
+registerIndexXorMalformed
+	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
+registerIndexXorReturn
+	lea 20(sp), sp
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectRegisterIndexXorV1
 
 ; Match Rust's neutral `out_of_rangeN.minX.maxY` rejection projection.  The
 ; package owns the operand index and signed bounds; native only evaluates the

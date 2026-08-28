@@ -327,8 +327,8 @@ fn native_debug_contract_fs_uae_executes_asserts_events_and_preservation() {
             let run = &runs[0];
             assert!(
                 run.success,
-                "native debug-contract harness failed under FS-UAE\nstdout:\n{}\nstderr:\n{}",
-                run.stdout, run.stderr
+                "native debug-contract harness failed under FS-UAE\nprotocol completed: {}\nguest exit: {:?}\nstdout:\n{}\nstderr:\n{}",
+                run.protocol_completed, run.exit_code, run.stdout, run.stderr
             );
         }
     }
@@ -24663,6 +24663,14 @@ fn motorola68020_item30_native_m68080_integer_package_boundary_matches_rust() {
         .find(|program| program.id == "fix.m68080.long-counter")
         .expect("Rust m68080 long-counter fixup program");
     assert_eq!(long_counter_program.opcode_version, 7);
+    assert_eq!(
+        long_counter_program.program,
+        [
+            0x01, 0x00, 0x02, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x01, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xff,
+        ],
+        "native decoder must consume the exact Rust v7 AlignedBitOr wire program"
+    );
     let long_counter_steps = package::decode_fixup_program(
         long_counter_program.opcode_version,
         &long_counter_program.program,
@@ -25040,6 +25048,119 @@ fn motorola68020_item31_native_m68080_ammx_package_boundary_matches_rust() {
             assert!(
                 !source.contains(forbidden),
                 "generic native {source_name} must not own AMMX spelling {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
+fn motorola68020_item32_native_m68080_fpu_package_boundary_matches_rust() {
+    // Proof level B. Rust's package owns the complete m68080 FPU selector,
+    // register, state, encoding, fixup, and diagnostic surface consumed by
+    // the architecture-neutral native package runtime.
+    let package_path =
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let embedded_package = fs::read(&package_path).expect("read Item 32 embedded package");
+    assert_eq!(
+        embedded_package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build current unmodified Rust package"),
+        "Item 32 must consume the exact unmodified Rust package"
+    );
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Item 32 package input");
+    let owner = ScopedOwner::Cpu("m68080".to_string());
+
+    let selector = |mnemonic: &str, plan_fragment: &str| {
+        chunks
+            .selectors
+            .iter()
+            .find(|selector| {
+                selector.owner == owner
+                    && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                    && selector.operand_plan.contains(plan_fragment)
+            })
+            .unwrap_or_else(|| {
+                let matching = chunks
+                    .selectors
+                    .iter()
+                    .filter(|selector| {
+                        selector.owner == owner
+                            && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                    })
+                    .collect::<Vec<_>>();
+                panic!(
+                    "missing Rust Item 32 selector m68080/{mnemonic}/{plan_fragment}; matching rows: {matching:?}"
+                )
+            })
+    };
+    for (mnemonic, plan_fragment) in [
+        ("FMOVE", "reg0.class2,reg1.class2"),
+        ("FMOVEM", "register_mask0.map2=0"),
+        ("FMOVE.L", "reg0.class0,named_register1=fpcr"),
+        ("FADD", "reg0.class2,reg1.class2"),
+        ("FMUL.W", "enc.m68080.bank-prefix-fpu"),
+        ("FCMP.W", "enc.m68080.bank-prefix-fpu"),
+        ("FLOADI.D", "reg0.class0,reg1.class2"),
+        ("FSTOREI.X", "reg0.class2,reg1.class0"),
+        ("FMOVERZ.L", "reg0.class2,reg1.class0"),
+        ("FMOVEURZ.W", "reg0.class2,reg1.class0"),
+        ("FSINCOS", "call_arg_register1.arg1.class2"),
+        ("FDBNE.L", "fix.m68080.long-counter"),
+        ("FSNE", "reg0.class0"),
+    ] {
+        let row = selector(mnemonic, plan_fragment);
+        assert!(
+            row.operand_plan
+                .starts_with("state.require.v1:m68k.fpu_target=4?"),
+            "m68080 FPU selector must retain Rust's target guard: {row:?}"
+        );
+    }
+    for (mnemonic, diagnostic) in [
+        ("FMOVE.X", "encoding.m68080.fpu-extended-literal"),
+        ("FSIN", "encoding.m68080.fpu-register-form"),
+    ] {
+        selector(mnemonic, diagnostic);
+    }
+
+    let fixture =
+        fs::read_to_string(workspace_root().join("examples/motorola68000/68080_fpu_surface.asm"))
+            .expect("read exact Item 32 FPU fixture");
+    assert!(source_contains_in_order(
+        &fixture,
+        &[
+            ".cpu 68080",
+            ".fpu 68080",
+            "FNOP",
+            "FMOVE FP0,FP1",
+            "FMOVECR #11,FP0",
+            "FMOVEM FP0/FP2,(A0)",
+            "FMOVE.D D0,FP0",
+            "FMUL.W E4,FP3,E5",
+            "FCMP.W E4,FP3,E5",
+            "FSINCOS FP0,.pair(FP1,FP2)",
+            "FLOADI.D D0,FP0",
+            "FSTOREI.X FP1,D1",
+            "FMOVERZ.L FP0,D0",
+            "FMOVEURZ.W FP1,D1",
+            "FDBNE.L D0,after_fdb_long",
+            "FSNE D3",
+        ],
+    ));
+
+    for source_name in [
+        "tkpkg_selection_service.asm",
+        "tkpkg_operand_runtime.asm",
+        "tkpkg_encode_service.asm",
+        "tkpkg_state_service.asm",
+    ] {
+        let source = tkpkg_amigaos_source(source_name).to_ascii_lowercase();
+        for forbidden in [
+            "floadi", "fstorei", "fmoverz", "fmoveurz", "fp0", "fpu68080",
+        ] {
+            assert!(
+                !source.contains(forbidden),
+                "generic native {source_name} must not own m68080 FPU spelling {forbidden}"
             );
         }
     }

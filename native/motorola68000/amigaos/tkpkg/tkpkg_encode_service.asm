@@ -1205,6 +1205,7 @@ fixupApplyPosition
 	bvs.w fixupFrameFail
 
 fixupProjected
+	move.w 2(sp), d2
 	cmpi.w #7, d7
 	bne.s fixupTransformReady
 	bsr.w tkpkgSemanticApplyFixupTransformV7

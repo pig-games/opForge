@@ -153,9 +153,9 @@ SNAPSHOTS = {
     "opasm.amigaos.directive_text": ("98d283b9678f051c68787dc915b841559ee1a3647e597b44d966492a931ff0c8", 2, 1, ("code", "bss"), 2),
     "opasm.amigaos.layout": ("319155f2c0d107b187c27ee0abcd218a731dae8d6f5f99f3111c6010d9faed2d", 53, 1, ("code", "bss"), 2),
     "tkpkg.amigaos.service": ("ee73bb8b17e459daf2edec91e717b39e48f3e75d9ccb0e2b3f26d87bc6370522", 42, 13, ("data", "bss", "code"), 117),
-    "tkpkg.amigaos.selection_service": ("291e4b54e83fd59f0bc60e7b6462dff2d309748e9a1be54d70300f1068eeb9f4", 83, 7, ("data", "code"), 212),
+    "tkpkg.amigaos.selection_service": ("6f510c3ad5edc68b89ec269a2d1404c12fc58bca1f838898ae6cd760787c32ef", 84, 7, ("data", "code"), 216),
     "tkpkg.amigaos.operand_runtime": ("bc4595a8d349ea117862f310032cdeed72b25cbda2b5c147677fa730eddd1876", 23, 4, ("data", "code"), 59),
-    "tkpkg.amigaos.encode_service": ("63d86d7c0c40a04abc8f6f99c96128d2d16082d6ab21535ce0c01b62854e4d36", 28, 5, ("data", "code"), 32),
+    "tkpkg.amigaos.encode_service": ("fc9e48120f250df232ebb294b4790f8e91250a0cfdb95e3cf2616eddc00c922c", 28, 5, ("data", "code"), 32),
     "tkpkg.amigaos.compact_table": ("ec94a6cc88fa889b8751c57806ad92227ce64a1492d8fc5c94c49c744175d507", 5, 3, ("data", "code"), 1),
     "tkpkg.amigaos.operand_record_service": ("7d703b307b57c2bbf44d7ab0465be9e6fae33853a8d45b7d90479c2f71dd68ff", 27, 2, ("data", "bss", "code"), 13),
     "tkpkg.amigaos.runtime_context": ("6ae26bac41792dd0cd3d1a12e725ad405f5ba303407e2cb085e321dc0ce882ee", 9, 2, ("code", "bss"), 19),
@@ -165,7 +165,7 @@ SNAPSHOTS = {
     "opcore.amigaos.expr_bridge": ("f8c22759e6ebb88cfe593f4573e962591df9b80b01e5b0919065ac48b1f51cb2", 32, 1, ("code", "bss"), 6),
     "prvm.amigaos.runtime": ("d49fad6cedf4807ffed62932c3e55b8f1adbfba0ff93bd8085d66b4e42efb74b", 20, 0, ("data", "code"), 37),
     "tkpkg.amigaos.pipeline": ("c98f344cdc0ccf11636d50026e30053c80736aa11fda3d1d01d70f24c759eca3", 38, 4, ("data", "code"), 19),
-    "tkpkg.amigaos.state_service": ("e9f6de48118f760c758b03d8d189a17f37f3d7bc7494fc9ef27cb8f98e7326cd", 18, 1, ("data", "code", "bss"), 9),
+    "tkpkg.amigaos.state_service": ("91af79921ac4ddbcbf476d1ab41172c6e6c952d704631fc78c4d833bb9046625", 21, 1, ("data", "code", "bss"), 14),
     "opasm.amigaos.flow_text_encoding": ("17fd0bac93c8e91ce9355ac37b9b1bfcb7afc428320e164884e49a19dc892bc0", 16, 0, ("code", "bss", "data"), 0),
 }
 

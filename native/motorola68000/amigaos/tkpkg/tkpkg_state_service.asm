@@ -23,6 +23,31 @@ StateArgumentText
 	.byte "invalid package state directive argument", 0
 StateCombinationText
 	.byte "package state directive argument is not legal for active profile", 0
+StateTargetText
+	.byte " target "
+StateTargetTextEnd
+StateUnsupportedText
+	.byte " is not supported on "
+StateUnsupportedTextEnd
+StateLegalPrefixText
+	.byte "; legal ."
+StateLegalPrefixTextEnd
+StateTargetsForText
+	.byte " targets for "
+StateTargetsForTextEnd
+StateListPrefixText
+	.byte ": "
+StateListPrefixTextEnd
+StateListSeparatorText
+	.byte ", "
+STATE_LIST_SEPARATOR_TEXT_END
+
+STATE_TARGET_TEXT_LEN = StateTargetTextEnd - StateTargetText
+STATE_UNSUPPORTED_TEXT_LEN = StateUnsupportedTextEnd - StateUnsupportedText
+STATE_LEGAL_PREFIX_TEXT_LEN = StateLegalPrefixTextEnd - StateLegalPrefixText
+STATE_TARGETS_FOR_TEXT_LEN = StateTargetsForTextEnd - StateTargetsForText
+STATE_LIST_PREFIX_TEXT_LEN = StateListPrefixTextEnd - StateListPrefixText
+STATE_LIST_SEPARATOR_TEXT_LEN = STATE_LIST_SEPARATOR_TEXT_END - StateListSeparatorText
 
 	.endsection
 
@@ -124,6 +149,8 @@ initializeReturn
 ; Outputs: D0 = 0 success/no STVM, 1 malformed.
 resetActiveV1	.block
 	movem.l d2-d7/a0-a6, -(sp)
+	clr.l ActiveStateProfilePtr
+	clr.w ActiveStateProfileLen
 	movea.l buffers.ActiveStateProgramPtr, a2
 	movea.l buffers.ActiveStateProgramEndPtr, a6
 	move.l a2, d0
@@ -151,6 +178,8 @@ profileLoop
 	tst.b d0
 	beq.s profileNext
 	move.w d6, d5
+	move.l a3, ActiveStateProfilePtr
+	move.w d4, ActiveStateProfileLen
 profileNext
 	addq.w #1, d6
 	cmp.w d7, d6
@@ -225,6 +254,8 @@ resetOk
 resetFail
 	clr.b buffers.ActiveStateKeyCount
 	clr.l ActiveStateDirectiveTablePtr
+	clr.l ActiveStateProfilePtr
+	clr.w ActiveStateProfileLen
 	moveq #1, d0
 resetReturn
 	movem.l (sp)+, d2-d7/a0-a6
@@ -237,7 +268,7 @@ resetReturn
 ; Outputs: D0 = 0 not handled, 1 applied, 2 rejected/malformed; A1/D1 message on 2.
 applyDirectiveV1	.block
 	movem.l d2-d7/a0/a2-a6, -(sp)
-	lea -12(sp), sp
+	lea -32(sp), sp
 	move.l a0, (sp)
 	move.w d0, 4(sp)
 	move.l a1, 6(sp)
@@ -259,6 +290,8 @@ directiveLoop
 	bne.w directiveMalformed
 	movea.l a1, a4
 	move.w d0, d4
+	move.l a4, 12(sp)
+	move.w d4, 16(sp)
 	movea.l a2, a3
 	movea.l (sp), a0
 	movea.l a4, a1
@@ -291,6 +324,8 @@ skipArguments
 	bra.w directiveNotHandled
 
 matchedDirective
+	move.l a2, 18(sp)
+	move.w d4, 22(sp)
 	bsr.w normalizeArgumentV1
 	bne.w directiveOperandCount
 	move.w d4, d7
@@ -300,6 +335,8 @@ argumentLoop
 	bne.w directiveMalformed
 	movea.l a1, a4
 	move.w d0, d6
+	move.l a4, 24(sp)
+	move.w d6, 28(sp)
 	bsr.w readVarU32V1
 	bne.w directiveMalformed
 	move.l d0, -(sp)  ; proposed value
@@ -357,8 +394,18 @@ directiveMalformedPop
 directiveIllegalPop
 	addq.l #4, sp
 directiveIllegal
+	movea.l 12(sp), a0
+	move.w 16(sp), d0
+	movea.l 24(sp), a1
+	move.w 28(sp), d1
+	movea.l 18(sp), a2
+	move.w 22(sp), d2
+	bsr.w renderIllegalCombinationV1
+	tst.b d0
+	beq.s directiveIllegalRendered
 	lea StateCombinationText.l, a1
 	moveq #64, d1
+directiveIllegalRendered
 	moveq #2, d0
 	bra.s directiveReturn
 directiveInvalidArgument
@@ -379,11 +426,198 @@ directiveMalformed
 directiveNotHandled
 	moveq #0, d0
 directiveReturn
-	lea 12(sp), sp
+	lea 32(sp), sp
 	movem.l (sp)+, d2-d7/a0/a2-a6
 	tst.l d0
 	rts
 	.bend  ; applyDirectiveV1
+
+; Render the package-derived enum legality diagnostic used by Rust.  The
+; serialized directive, argument, profile, and legal-value masks remain the
+; sole source of target-specific names and combinations.
+; Inputs: A0/D0 directive id; A1/D1 matched argument id; A2/D2 argument table;
+;         A6 end of active STVM program.
+; Outputs: D0 = 0 rendered with A1/D1 message, 1 use generic fallback.
+renderIllegalCombinationV1	.block
+	movem.l d2-d7/a0-a5, -(sp)
+	lea -20(sp), sp
+	move.l a0, (sp)
+	move.w d0, 4(sp)
+	move.l a1, 6(sp)
+	move.w d1, 10(sp)
+	move.l a2, 12(sp)
+	move.w d2, 16(sp)
+	clr.w 18(sp)
+	move.l ActiveStateProfilePtr, d0
+	beq.w illegalRenderFallback
+	tst.w ActiveStateProfileLen
+	beq.w illegalRenderFallback
+	lea buffers.LastErrorBuffer, a5
+	moveq #0, d5
+	move.l #buffers.LAST_ERROR_BUFFER_CAPACITY, d4
+	movea.l (sp), a0
+	move.w 4(sp), d0
+	bsr.w appendStateMessageUpperSliceV1
+	bne.w illegalRenderFallback
+	lea StateTargetText.l, a0
+	moveq #STATE_TARGET_TEXT_LEN, d0
+	bsr.w appendStateMessageSliceV1
+	bne.w illegalRenderFallback
+	movea.l 6(sp), a0
+	move.w 10(sp), d0
+	bsr.w appendStateMessageSliceV1
+	bne.w illegalRenderFallback
+	lea StateUnsupportedText.l, a0
+	moveq #STATE_UNSUPPORTED_TEXT_LEN, d0
+	bsr.w appendStateMessageSliceV1
+	bne.w illegalRenderFallback
+	movea.l ActiveStateProfilePtr, a0
+	move.w ActiveStateProfileLen, d0
+	bsr.w appendStateMessageSliceV1
+	bne.w illegalRenderFallback
+	lea StateLegalPrefixText.l, a0
+	moveq #STATE_LEGAL_PREFIX_TEXT_LEN, d0
+	bsr.w appendStateMessageSliceV1
+	bne.w illegalRenderFallback
+	movea.l (sp), a0
+	move.w 4(sp), d0
+	bsr.w appendStateMessageSliceV1
+	bne.w illegalRenderFallback
+	lea StateTargetsForText.l, a0
+	moveq #STATE_TARGETS_FOR_TEXT_LEN, d0
+	bsr.w appendStateMessageSliceV1
+	bne.w illegalRenderFallback
+	movea.l ActiveStateProfilePtr, a0
+	move.w ActiveStateProfileLen, d0
+	bsr.w appendStateMessageSliceV1
+	bne.w illegalRenderFallback
+	lea StateListPrefixText.l, a0
+	moveq #STATE_LIST_PREFIX_TEXT_LEN, d0
+	bsr.w appendStateMessageSliceV1
+	bne.w illegalRenderFallback
+
+	movea.l 12(sp), a2
+	move.w 16(sp), d7
+	beq.w illegalRenderFallback
+	subq.w #1, d7
+illegalRenderArgumentLoop
+	bsr.w locateVmStringV1
+	bne.w illegalRenderFallback
+	movea.l a1, a3
+	move.w d0, d3
+	movem.l d3-d5/a3, -(sp)
+	bsr.w readVarU32V1
+	movem.l (sp)+, d3-d5/a3
+	bne.w illegalRenderFallback
+	moveq #1, d0
+	bsr.w requireBytesV1
+	bne.w illegalRenderFallback
+	moveq #0, d6
+	move.b (a2)+, d6
+	beq.w illegalRenderFallback
+	move.l a2, d0
+	add.l d6, d0
+	cmp.l a6, d0
+	bhi.w illegalRenderFallback
+	moveq #0, d0
+	move.b buffers.ActiveStateProfileIndex, d0
+	move.w d0, d1
+	lsr.w #3, d0
+	cmp.w d6, d0
+	bhs.s illegalRenderArgumentNext
+	moveq #0, d2
+	move.b 0(a2, d0.w), d2
+	andi.w #7, d1
+	btst d1, d2
+	beq.s illegalRenderArgumentNext
+	adda.w d6, a2
+	tst.w 18(sp)
+	beq.s illegalRenderAppendArgument
+	lea StateListSeparatorText.l, a0
+	moveq #STATE_LIST_SEPARATOR_TEXT_LEN, d0
+	bsr.w appendStateMessageSliceV1
+	bne.w illegalRenderFallback
+illegalRenderAppendArgument
+	movea.l a3, a0
+	move.w d3, d0
+	bsr.w appendStateMessageSliceV1
+	bne.w illegalRenderFallback
+	addq.w #1, 18(sp)
+	bra.s illegalRenderArgumentDone
+illegalRenderArgumentNext
+	adda.w d6, a2
+illegalRenderArgumentDone
+	dbf d7, illegalRenderArgumentLoop
+	tst.w 18(sp)
+	beq.s illegalRenderFallback
+	tst.l d4
+	beq.s illegalRenderFallback
+	clr.b (a5)
+	move.w d5, d1
+	lea 20(sp), sp
+	movem.l (sp)+, d2-d7/a0-a5
+	lea buffers.LastErrorBuffer, a1
+	moveq #0, d0
+	rts
+
+illegalRenderFallback
+	lea 20(sp), sp
+	movem.l (sp)+, d2-d7/a0-a5
+	moveq #1, d0
+	rts
+	.bend  ; renderIllegalCombinationV1
+
+; Append one byte slice to the bounded diagnostic buffer.
+; Inputs: A0/D0 source; A5 destination cursor; D4 remaining; D5 total length.
+appendStateMessageSliceV1	.block
+	andi.l #$ffff, d0
+	move.w d0, d2
+	beq.s appendStateMessageOk
+	cmp.l d4, d0
+	bhs.s appendStateMessageFail
+	move.w d0, d1
+	subq.w #1, d1
+appendStateMessageLoop
+	move.b (a0)+, (a5)+
+	dbf d1, appendStateMessageLoop
+	add.l d2, d5
+	sub.l d2, d4
+appendStateMessageOk
+	moveq #0, d0
+	rts
+appendStateMessageFail
+	moveq #1, d0
+	rts
+	.bend  ; appendStateMessageSliceV1
+
+; Append one ASCII slice uppercased without changing package storage.
+appendStateMessageUpperSliceV1	.block
+	andi.l #$ffff, d0
+	move.w d0, d2
+	beq.s appendStateMessageUpperOk
+	cmp.l d4, d0
+	bhs.s appendStateMessageUpperFail
+	move.w d0, d1
+	subq.w #1, d1
+appendStateMessageUpperLoop
+	move.b (a0)+, d3
+	cmpi.b #'a', d3
+	blo.s appendStateMessageUpperByte
+	cmpi.b #'z', d3
+	bhi.s appendStateMessageUpperByte
+	andi.b #$df, d3
+appendStateMessageUpperByte
+	move.b d3, (a5)+
+	dbf d1, appendStateMessageUpperLoop
+	add.l d2, d5
+	sub.l d2, d4
+appendStateMessageUpperOk
+	moveq #0, d0
+	rts
+appendStateMessageUpperFail
+	moveq #1, d0
+	rts
+	.bend  ; appendStateMessageUpperSliceV1
 
 ; Query one opaque state key.
 ; Inputs: A0/D0 key. Outputs: D0 = 0 found/D1 value, 1 absent.
@@ -910,6 +1144,10 @@ chunkPtrFromLocatorV1	.block
 
 ActiveStateDirectiveTablePtr
 	.res long, 1
+ActiveStateProfilePtr
+	.res long, 1
+ActiveStateProfileLen
+	.res word, 1
 
 	.endsection
 	.endmodule

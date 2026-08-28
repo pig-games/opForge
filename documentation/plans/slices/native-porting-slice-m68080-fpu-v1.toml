@@ -1,0 +1,83 @@
+[slice]
+schema_version = 2
+name = "native m68080 FPU v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 32
+requirements = ["N68X0-001", "N68X0-002", "N68X0-006", "N68X0-014", "N68X0-015", "N68X0-016", "REQ-68080-FULL-002", "REQ-68080-FULL-003", "REQ-68080-FULL-006", "REQ-68080-FULL-007", "REQ-68080-FULL-008", "REQ-68080-FULL-009", "REQ-68080-FULL-010"]
+rust_reference = [
+  "crates/opforge-families/src/m68080/package_programs.rs::register_encodings",
+  "crates/opforge-families/src/m68080/package_programs.rs::semantic_programs",
+  "crates/opforge-families/src/m68080/package_programs.rs::instruction_programs",
+  "crates/opforge-families/src/m68080/package_programs.rs::mode_selectors",
+  "crates/opforge-families/src/m68080/package_programs.rs::diagnostics",
+  "crates/opforge-families/src/m68k/package_programs.rs::state_programs",
+  "crates/opforge-families/src/m68k/state.rs::apply_runtime_directive",
+  "crates/opforge-vm/src/fixup_vm.rs::apply_transform",
+  "examples/motorola68000/68080_fpu_surface.asm"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgInferSelectedPackageShapeV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm::tkpkgProjectRegisterIndexXorV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm::encodeSelectedInstructionV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm::tkpkgSemanticApplyFixupTransformV7",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm::applyDirectiveV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm::renderIllegalCombinationV1"
+]
+invariant = "For the exact unmodified Rust package, native executes the complete m68080 FPU selector, state, register, semantic, encoding, fixup, and diagnostic surface through architecture-neutral package operations. CPU/FPU targets, mnemonics, registers, operand shapes, opcodes, legal pairings, transforms, and diagnostics remain Rust/package-owned."
+assertion_decision = "Prove the complete Rust/package boundary at Level B and each corrected invariant with a fresh directed Level D guest. After every directed proof passes, invoke the complete established native parity wrapper exactly once. If that invocation exposes an issue, never repeat the wrapper or aggregate; correct the issue and run only its smallest directed proof."
+expected_inputs = "The exact unmodified all-family Rust package; the complete checked-in 68080 FPU fixture; default, explicit, and disabled FPU state sources; immediate-literal, long-counter, conditional, register-transfer, arithmetic, and rounding forms; every illegal FPU target pairing and earlier-CPU rejection."
+expected_outputs = "Byte-for-byte equality with same-source live Rust artifacts and explicit guest exit zero for successful cases; exact live-Rust diagnostics and explicit guest exit one for disabled, invalid form, unsupported literal, alignment, size, instruction-gating, and illegal target cases."
+known_non_equivalences = "Native uses bounded resident buffers, 68000 calling conventions, and signed-32 scalar storage in place of Rust-owned data structures and i64 values. The generic state service reconstructs Rust's enum-target legality wording solely from the serialized directive, argument, active profile, and profile masks because STVM v1 does not carry a diagnostic template. On macOS, real FS-UAE runs require app-launch permission: a sandboxed kLSNoExecutableErr before a fresh guest starts is invalid pre-guest evidence and must be rerun once with permission rather than retried in the sandbox."
+fast_proof_command = "cargo test -p asm motorola68020_item32_native_m68080_fpu_package_boundary_matches_rust -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_m68080_fpu_parity -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_item32_native_m68080_fpu_package_boundary_matches_rust"
+proof_level = "B"
+proves = "The embedded package equals the live Rust registry build and owns the complete m68080 FPU selectors, state, registers, encodings, fixups, diagnostics, and fixture order while generic native sources contain no m68080 FPU vocabulary."
+does_not_prove = "Execution by a real Amiga guest."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_fpu_directed_parity"
+proof_level = "D"
+proves = "One fresh guest proves the complete checked-in m68080 FPU fixture byte-for-byte against its same-source live Rust oracle with explicit exit zero."
+does_not_prove = "Default/disabled state, illegal pairings, or the full aggregate."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_fpu_long_counter_directed_parity"
+proof_level = "D"
+proves = "One fresh FDBNE.L guest proves the corrected Rust SEMV-v7 AlignedBitOr output-width handoff through exact bytes F2 48 00 0E 00 07 and explicit exit zero."
+does_not_prove = "Other FPU families or diagnostics."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_fpu_state_directed_parity"
+proof_level = "D"
+proves = "The single three-case invocation attempted every fresh guest and proved default integrated state plus disabled-FPU rejection; its illegal 68881 guest exposed only generic diagnostic wording and the test was not repeated."
+does_not_prove = "The subsequently corrected exact illegal-pairing wording."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_fpu_illegal_pairing_directed_parity"
+proof_level = "D"
+proves = "One fresh illegal-pairing guest proves native derives Rust's exact FPU target, active CPU profile, and ordered legal targets from package state data, with completed protocol and explicit exit one."
+does_not_prove = "Other illegal pairings or the complete aggregate."
+
+[[tests]]
+name = "external_fs_uae_native_m68080_fpu_parity"
+proof_level = "D"
+proves = "The complete Item 32 aggregate carries three same-source Rust byte oracles and fourteen Rust diagnostic or illegal-target cases into seventeen independent fresh guest contracts."
+does_not_prove = "Execution evidence: the one permitted established wrapper stopped at an earlier stale Item 25 expectation before reaching this aggregate, and neither was rerun under the Directed-Fix and Single Native Completion Quality Gate."
+
+[[tests]]
+name = "native_existing_parity_completion_wrapper"
+proof_level = "D"
+proves = "The single configured invocation passed 42 established shards with real nonzero test counts and fresh protocols, then shard 43 attempted both illegal state-pair guests and exposed one stale generic-diagnostic assertion after native gained the package-derived Rust FPU wording."
+does_not_prove = "Later wrapper shards or direct execution of the Item 32 aggregate; the wrapper was not repeated, and the stale assertion was closed only by its two-guest directed state-pair proof."
+
+[[tests]]
+name = "external_fs_uae_native_m68k_runtime_directive_state_illegal_pair_rejection"
+proof_level = "D"
+proves = "After the one permitted wrapper exposed the stale Item 25 assertion, two fresh guests prove exact live-Rust FPU legality wording for m68020/68040 and the governed generic Apollo rejection where STVM carries no legal target or diagnostic template, each with protocol completion and explicit exit one."
+does_not_prove = "The complete established wrapper or Item 32 aggregate; both remained intentionally unrepeated."

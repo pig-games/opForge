@@ -1,0 +1,81 @@
+[slice]
+schema_version = 2
+name = "native Rust package composition v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 33
+requirements = ["N68X0-003", "N68X0-004", "N68X0-006", "N68X0-008", "N68X0-009", "N68X0-013", "N68X0-014", "N68X0-015", "N68X0-016"]
+rust_reference = [
+  "crates/opforge-vm/src/builder.rs::build_hierarchy_package_from_registry",
+  "crates/opforge-vm/src/runtime_model_core.rs::resolve_pipeline",
+  "crates/opforge-asm/src/asmline_directives_data.rs::apply_cpu_directive",
+  "crates/opforge-asm/src/asmline.rs::reset_cpu_runtime_profile",
+  "crates/opforge-families/src/lib.rs::register_motorola68000_family_stack",
+  "crates/opforge-families/src/lib.rs::register_mos6502_family_stack"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/source_reader.asm::opforgeNativeCliTokenizeFrontend",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::captureInitialPipelineV1",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::selectInitialPipelineV1",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::selectPipelineTextV1",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::opasmDriverAdvancePc",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm::tkpkgPipelineSetActiveV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm::initializeActiveV1"
+]
+invariant = "Native consumes the exact unmodified Rust-built m68k-only, MOS 65x02-only, and combined package bytes. Each assembly pass begins from the request CPU, replays source `.cpu` directives in order through the generic package service, and resets only package-owned runtime state; package order, family ownership, CPU ids, selectors, encodings, state, and diagnostics remain Rust/package-owned."
+assertion_decision = "Prove byte identity, stable composition order, capacity, family presence/absence, and neutral native ownership at Level B. Correct each invariant with the smallest directed Level D guest. After all directed proofs pass, invoke the established completion wrapper exactly once with the seven-case Item 33 aggregate appended; never repeat that broad run for Item 33."
+expected_inputs = "Direct outputs of the Rust registry package builder for the m68000 family stack, the MOS 65x02 family stack, and both stacks registered in either order; sources selecting every CPU in each package, repeated cross-family switches, package-owned m68080 state reset, absent-family requests, and one explicitly malformed duplicate-CPUS TOC case."
+expected_outputs = "Stable package sizes/digests and registry-order byte identity at Level B; byte-for-byte native equality with same-source Rust artifacts plus explicit guest exit zero for positives; deterministic unresolved-package or duplicate-chunk diagnostics plus explicit guest exit one for negatives."
+known_non_equivalences = "Native stores the package and request CPU in bounded resident 68000 buffers rather than Rust-owned vectors and strings. Rust host-only 65816 directives such as `.al` have no serialized STVM program in the immutable package and therefore are outside this package-execution slice; native must not hard-code them. On macOS, real FS-UAE runs require app-launch permission: a sandboxed kLSNoExecutableErr before a fresh guest starts is invalid pre-guest evidence and must be rerun once with permission rather than retried in the sandbox."
+fast_proof_command = "cargo test -p asm motorola68020_item33_native_package_composition_boundary_matches_rust -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_rust_package_composition_matrix_parity -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "motorola68020_item33_native_package_composition_boundary_matches_rust"
+proof_level = "B"
+proves = "The three exact Rust-builder outputs have stable sizes/digests, both combined registration orders are byte-identical, each fits native storage, each resolves precisely its owned CPU set, and the native loader/pass-replay implementation remains architecture neutral."
+does_not_prove = "Execution by a real Amiga guest."
+
+[[tests]]
+name = "external_fs_uae_native_rust_package_composition_directed_parity"
+proof_level = "D"
+proves = "The first three-case invocation attempted every fresh guest; m68k-only and combined switching passed exact Rust artifact, protocol, and zero-exit contracts, while the MOS case exposed a mismatched test-only initial CPU."
+does_not_prove = "The corrected MOS-only initial-CPU case."
+
+[[tests]]
+name = "external_fs_uae_native_rust_mos_package_switch_closure_parity"
+proof_level = "D"
+proves = "One fresh MOS-only guest uses m6502 as the identical Rust/native initial CPU, switches across all four package CPUs, completes the protocol with exit zero, and emits exact Rust bytes."
+does_not_prove = "Absent-family rejection or state reset."
+
+[[tests]]
+name = "external_fs_uae_native_rust_package_composition_negative_reset_directed_parity"
+proof_level = "D"
+proves = "The three-case invocation attempted every fresh guest and proved both absent-family rejections with explicit exit one; its state case exposed an invalid test expectation for host-only 65816 `.al` outside the frozen package."
+does_not_prove = "The corrected package-owned state-reset case."
+
+[[tests]]
+name = "external_fs_uae_native_rust_package_composition_state_reset_closure_parity"
+proof_level = "D"
+proves = "One fresh combined-package guest proves package-owned m68080 FPU state resets after switching to MOS and back, then continues across 65816 and m68020 with exact Rust bytes, protocol completion, and exit zero."
+does_not_prove = "The item-wide aggregate or complete established wrapper."
+
+[[tests]]
+name = "external_fs_uae_native_rust_package_composition_matrix_parity"
+proof_level = "D"
+proves = "The seven-case Item 33 aggregate carries four exact Rust byte oracles across all ten owned CPU ids, repeated combined switching and state reset, two absent-family rejections, and one Rust-rejected duplicate-CPUS package into independent fail-closed guest contracts."
+does_not_prove = "Execution evidence until the single established completion wrapper reaches and runs this aggregate."
+
+[[tests]]
+name = "native_existing_parity_completion_wrapper"
+proof_level = "D"
+proves = "The one permitted Item 33 invocation ran shards 1-46 successfully with every discovered test reporting one passed and zero failed, including exact native/Rust CPU-family coverage. Shard 47 ran all five fresh guests before a stale test-only generic diagnostic assertion failed; the wrapper then stopped as designed."
+does_not_prove = "Shards 48-50, including the Item 33 aggregate, because the wrapper was intentionally not repeated after the shard 47 test-only failure."
+
+[[tests]]
+name = "external_fs_uae_native_m68040_external_fpu_target_diagnostic_closure"
+proof_level = "D"
+proves = "One fresh m68040 guest rejects external target 68881 with guest protocol completion, explicit exit one, and the exact live Rust diagnostic used by the repaired authoritative case proof."
+does_not_prove = "Any unexecuted wrapper shard or aggregate; it is the minimal closure for the sole wrapper-discovered stale assertion."

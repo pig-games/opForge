@@ -41127,3 +41127,154 @@ fn external_oracle_vasm_documented_divergence_manifests() {
         }
     }
 }
+
+#[test]
+fn motorola68020_item33_native_package_composition_boundary_matches_rust() {
+    const NATIVE_PACKAGE_STORAGE_CAPACITY: usize = 393_216;
+
+    fn build_package(register: fn(&mut ModuleRegistry)) -> Vec<u8> {
+        let mut registry = ModuleRegistry::new();
+        register(&mut registry);
+        build_hierarchy_package_from_registry(&registry).expect("build exact Rust package")
+    }
+
+    fn fnv1a64(bytes: &[u8]) -> u64 {
+        bytes.iter().fold(0xcbf2_9ce4_8422_2325, |state, byte| {
+            (state ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+        })
+    }
+
+    let m68k_only = build_package(register_motorola68000_family_stack);
+    let mos65x02_only = build_package(register_mos6502_family_stack);
+
+    let mut combined_m68k_first_registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut combined_m68k_first_registry);
+    register_mos6502_family_stack(&mut combined_m68k_first_registry);
+    let combined_m68k_first = build_hierarchy_package_from_registry(&combined_m68k_first_registry)
+        .expect("build exact Rust m68k-first combined package");
+
+    let mut combined_mos_first_registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut combined_mos_first_registry);
+    register_motorola68000_family_stack(&mut combined_mos_first_registry);
+    let combined_mos_first = build_hierarchy_package_from_registry(&combined_mos_first_registry)
+        .expect("build exact Rust MOS-first combined package");
+
+    assert_eq!(
+        combined_m68k_first, combined_mos_first,
+        "Rust package composition must remain byte-identical in either registry order"
+    );
+    for (label, bytes) in [
+        ("m68k-only", m68k_only.as_slice()),
+        ("MOS 65x02-only", mos65x02_only.as_slice()),
+        ("combined", combined_m68k_first.as_slice()),
+    ] {
+        assert!(
+            bytes.len() <= NATIVE_PACKAGE_STORAGE_CAPACITY,
+            "{label} package exceeds native package storage: {} > {NATIVE_PACKAGE_STORAGE_CAPACITY}",
+            bytes.len()
+        );
+    }
+
+    let m68k_model = load_opasm_model_from_package_bytes(&m68k_only);
+    let mos_model = load_opasm_model_from_package_bytes(&mos65x02_only);
+    let combined_model = load_opasm_model_from_package_bytes(&combined_m68k_first);
+    for cpu in [
+        m68000_cpu_id.as_str(),
+        m68010_cpu_id.as_str(),
+        m68020_cpu_id.as_str(),
+        m68030_cpu_id.as_str(),
+        m68040_cpu_id.as_str(),
+        m68080_cpu_id.as_str(),
+    ] {
+        assert!(m68k_model.resolve_pipeline(cpu, None).is_ok(), "{cpu}");
+        assert!(combined_model.resolve_pipeline(cpu, None).is_ok(), "{cpu}");
+        assert!(mos_model.resolve_pipeline(cpu, None).is_err(), "{cpu}");
+    }
+    for cpu in [
+        m6502_cpu_id.as_str(),
+        m65c02_cpu_id.as_str(),
+        m65816_cpu_id.as_str(),
+        m45gs02_cpu_id.as_str(),
+    ] {
+        assert!(mos_model.resolve_pipeline(cpu, None).is_ok(), "{cpu}");
+        assert!(combined_model.resolve_pipeline(cpu, None).is_ok(), "{cpu}");
+        assert!(m68k_model.resolve_pipeline(cpu, None).is_err(), "{cpu}");
+    }
+
+    let loader = tkpkg_amigaos_source("tkpkg_package_loader.asm");
+    let pipeline = tkpkg_amigaos_source("tkpkg_pipeline.asm");
+    let state = tkpkg_amigaos_source("tkpkg_state_service.asm");
+    let source_reader = opforge_amigaos_source("source_reader.asm");
+    let assembly_driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm assembly driver");
+    assert!(source_contains_in_order(
+        &loader,
+        &["clearLoadedState", "validateHeader", "validateToc"]
+    ));
+    assert!(pipeline.contains("findCpuEntryV1"));
+    assert!(pipeline.contains("findCpuAliasEntryV1"));
+    assert!(pipeline.contains("commitActiveSelectionV1"));
+    assert!(state.contains("initializeActiveV1"));
+    assert!(pipeline.contains("jsr state_service.initializeActiveV1"));
+    assert!(source_contains_in_order(
+        &source_reader,
+        &[
+            "NativeCliInitialCpuName",
+            "opforgeNativeCliTokenizeFile",
+            "NativeCliInitialCpuName",
+            "opforgeNativeCliApplyCurrentPipeline",
+            "engine.setSessionCpuNameV1",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &assembly_driver,
+        &[
+            "captureInitialPipelineV1",
+            "opasmDriverPassOneBegin",
+            "selectInitialPipelineV1",
+            "state_service.resetActiveV1",
+            "opasmDriverPassTwoBegin",
+            "selectInitialPipelineV1",
+            "state_service.resetActiveV1",
+            "opasmDriverAdvancePc",
+            "OPASM_DIRECTIVE_CPU",
+            "selectPipelineTextV1",
+        ],
+    ));
+    assert!(assembly_driver.contains("ENTRY_ORD_SET_PIPELINE"));
+    assert!(!loader.contains("motorola68000"));
+    assert!(!pipeline.contains("mos6502"));
+    let initial_replay = assembly_driver
+        .split_once("captureInitialPipelineV1\t.block")
+        .expect("initial pipeline replay helper")
+        .1
+        .split_once("opasmDriverPassOneBegin\t.block")
+        .expect("end of initial pipeline replay helpers")
+        .0;
+    let directive_replay = assembly_driver
+        .split_once("\ncpu\n")
+        .expect("source CPU replay branch")
+        .1
+        .split_once("\nselectedSizeDispatch\n")
+        .expect("end of source CPU replay branch")
+        .0;
+    for forbidden in ["m68000", "m6502", "65c02", "65816", "45gs02"] {
+        assert!(
+            !initial_replay.contains(forbidden) && !directive_replay.contains(forbidden),
+            "generic native pass replay must not own package CPU id {forbidden}"
+        );
+    }
+
+    eprintln!(
+        "ITEM33_PACKAGE_REPORT m68k_only={}:{:016x} mos65x02_only={}:{:016x} combined={}:{:016x} native_capacity={}",
+        m68k_only.len(),
+        fnv1a64(&m68k_only),
+        mos65x02_only.len(),
+        fnv1a64(&mos65x02_only),
+        combined_m68k_first.len(),
+        fnv1a64(&combined_m68k_first),
+        NATIVE_PACKAGE_STORAGE_CAPACITY,
+    );
+}

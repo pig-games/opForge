@@ -132,11 +132,13 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   runs the two-pass session.
 - Imports/outbound dependencies: callback ABI, compile values, directive router,
   numeric-data owner, engine, events, conditional/navigation/repetition/scope/struct
-  flow modules, text encoding, tkpkg bridge, the CLI-owned imported-label
-  resolver callback, and approved debug contracts/events.
+  flow modules, text encoding, tkpkg bridge, the architecture-neutral tkpkg ABI
+  and shared pipeline buffers, the CLI-owned imported-label resolver callback,
+  and approved debug contracts/events.
 - Mutable state: module-local pass/session request pointers, flow/repetition
-  scratch, and text scratch/output state. Layout region/section/place storage
-  is owned by `opasm.amigaos.layout`.
+  scratch, text scratch/output state, and one bounded copy of the request-selected
+  package CPU id used to restore the same initial pipeline before each pass.
+  Layout region/section/place storage is owned by `opasm.amigaos.layout`.
 - Routine responsibility groups: pass callback orchestration; router-result
   dispatch, including original-source sigil disambiguation when a normalized
   directive name collides with a package mnemonic; structural-flow state
@@ -144,9 +146,10 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   callback; scoped-struct repeat-label qualification callback; operand/evaluation request
   construction, including delegation of imported-label lookup without owning
   module visibility; selector/encoding adaptation; data/text sizing and emission;
-  arbitrary package-returned instruction-size advancement; complete stored
-  directive-operand delegation; remaining layout/region/section/place/pack
-  dispatch; event projection.
+  arbitrary package-returned instruction-size advancement; generic package
+  pipeline restoration at pass start and replay of source `.cpu` transitions
+  through `SET_PIPELINE`; complete stored directive-operand delegation; remaining
+  layout/region/section/place/pack dispatch; event projection.
 - Inbound users: the CLI engine-callback adapter imports this driver; the
   driver is the session orchestration boundary, not a package or CPU owner.
 - Decision: orchestration stays here. Item 5.8 moves non-structural directive

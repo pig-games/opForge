@@ -57,6 +57,7 @@ opforgeNativeCliParseArgs	.block
 	clr.b state.NativeCliOutputPathScratch
 	clr.b state.NativeCliOutfileBase
 	clr.b state.NativeCliCpuName
+	clr.b state.NativeCliInitialCpuName
 	clr.b state.NativeCliPackagePath
 	clr.l state.NativeCliPrgLoadAddr
 	move.w #1, state.NativeCliModulePathCount

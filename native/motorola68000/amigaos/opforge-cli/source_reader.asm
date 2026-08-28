@@ -57,6 +57,9 @@ opforgeNativeCliTokenizeFrontend	.block
 bootstrapMiss
 
 bootstrapDone
+	lea state.NativeCliCpuName, a0
+	lea state.NativeCliInitialCpuName, a1
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
 	clr.w state.NativeCliPackagePipelineReady
 	bsr.w package_pipeline.opforgeNativeCliInitPackagePipeline
 	beq.s packageReady
@@ -84,6 +87,18 @@ packageUnavailable
 	bra.s return
 
 success
+	; Rust starts every assembly pass from the request CPU, then replays each
+	; source `.cpu` directive in order. Tokenization must also switch pipelines,
+	; so restore the saved request CPU after the frontend reaches EOF and before
+	; the two-pass engine snapshots its initial package pipeline.
+	lea state.NativeCliInitialCpuName, a0
+	lea state.NativeCliCpuName, a1
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	jsr package_pipeline.opforgeNativeCliApplyCurrentPipeline
+	tst.l d0
+	bne.s return
+	lea buffers.ActiveCpuBuffer, a0
+	jsr engine.setSessionCpuNameV1
 	moveq #0, d0
 
 return

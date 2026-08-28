@@ -59,6 +59,8 @@ NativeCliOutfileBase
 	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliCpuName
 	.res byte, constants.TOKEN_BUFFER_CAPACITY
+NativeCliInitialCpuName
+	.res byte, constants.TOKEN_BUFFER_CAPACITY
 NativeCliPackagePath
 	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliSourceLineLen

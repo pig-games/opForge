@@ -19,6 +19,8 @@
 	.use opasm.amigaos.layout as layout
 	.use opasm.amigaos.operand_eval as operand_eval
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
+	.use tkpkg.amigaos.abi as tkabi
+	.use tkpkg.amigaos.buffers as buffers
 	.use tkpkg.amigaos.state_service as state_service
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opforge.debug.contracts as debug_contracts
@@ -51,6 +53,7 @@ assembleSessionV1	.block
 	movem.l a1-a2/a4, -(sp)
 	movea.l a0, a1
 	move.l a1, OpasmActiveAssembleReqPtr
+	bsr.w captureInitialPipelineV1
 	tst.l abi.OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(a1)
 	beq.s buildContext
 	movea.l abi.OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(a1), a0
@@ -79,6 +82,93 @@ buildContext
 
 	.priv
 
+; Preserve the request-selected package pipeline before either pass starts.
+; Source `.cpu` directives are replayed during both passes, so each pass must
+; begin from this same architecture-neutral CPU id just as Rust constructs a
+; fresh AsmLine from the request CPU.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-package-composition-v1.toml
+; @opforge-role: delegation
+captureInitialPipelineV1	.block
+	movem.l d0-d1/a0-a1, -(sp)
+	lea buffers.ActiveCpuBuffer, a0
+	lea OpasmDriverInitialCpuName, a1
+	moveq #eng.TOKEN_BUFFER_CAPACITY - 2, d0
+copyLoop
+	move.b (a0)+, d1
+	beq.s terminate
+	move.b d1, (a1)+
+	dbf d0, copyLoop
+terminate
+	clr.b (a1)
+	movem.l (sp)+, d0-d1/a0-a1
+	rts
+	.bend  ; captureInitialPipelineV1
+
+; Re-select the request CPU at the start of one assembly pass.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-package-composition-v1.toml
+; @opforge-role: delegation
+selectInitialPipelineV1	.block
+	lea OpasmDriverInitialCpuName, a0
+	bsr.w tokenLen
+	bra.w selectPipelineTextV1
+	.bend  ; selectInitialPipelineV1
+
+; Apply one package-owned CPU id through the same generic SET_PIPELINE service
+; used by Rust's source `.cpu` transition, then mirror the canonical id into
+; the opasm session. The package retains all family/CPU/alias/state authority.
+; Inputs: A0/D0 = CPU id bytes/length. Outputs: D0 = 0 success, 1 failure.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-package-composition-v1.toml
+; @opforge-role: delegation
+selectPipelineTextV1	.block
+	movem.l d1-d6/a0-a3, -(sp)
+	movea.l a0, a3
+	move.l d0, d6
+	beq.w fail
+	cmpi.l #eng.TOKEN_BUFFER_CAPACITY, d6
+	bhs.w fail
+	bsr.w serviceFramePtr
+	movea.l abi.OPASM_SERVICE_IO_BUFFER_PTR(a0), a1
+	moveq #0, d5
+	move.w abi.OPASM_SERVICE_IO_BUFFER_CAPACITY(a0), d5
+	move.l d6, d4
+	addq.w #1, d4
+	cmp.w d5, d4
+	bhi.w fail
+	move.w d6, d5
+	subq.w #1, d5
+copyLoop
+	move.b (a3)+, (a1)+
+	dbf d5, copyLoop
+	clr.b (a1)
+	bsr.w serviceFramePtr
+	moveq #tkabi.ENTRY_ORD_SET_PIPELINE, d0
+	move.w d4, d1
+	jsr tkpkg.dispatchServiceV1
+	move.w d2, d6
+	tst.b d0
+	bne.s serviceFail
+	lea buffers.ActiveCpuBuffer, a0
+	jsr eng.setSessionCpuNameV1
+	moveq #0, d0
+	bra.s return
+serviceFail
+	tst.w d6
+	beq.s fail
+	bsr.w serviceFramePtr
+	jsr tkpkg.readLastErrorPtrV1
+	move.w d6, d1
+	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
+	bsr.w appendTextEvent
+fail
+	moveq #1, d0
+return
+	movem.l (sp)+, d1-d6/a0-a3
+	rts
+	.bend  ; selectPipelineTextV1
+
 opasmDriverPassOneBegin	.block
 	movem.l a4-a5, -(sp)
 	moveq #abi.OPASM_EVENT_PASS_BEGIN, d0
@@ -100,6 +190,9 @@ layoutReady
 	jsr structs.resetStateV1
 	jsr text_encoding.resetStateV1
 	jsr compile_values.resetBindingsV1
+	bsr.w selectInitialPipelineV1
+	tst.l d0
+	bne.s layoutInitFail
 	jsr state_service.resetActiveV1
 	tst.l d0
 	bne.s layoutInitFail
@@ -139,6 +232,9 @@ opasmDriverPassTwoBegin	.block
 	jsr scopes.resetStateV1
 	jsr structs.resetStateV1
 	jsr text_encoding.resetStateV1
+	bsr.w selectInitialPipelineV1
+	tst.l d0
+	bne.s layoutFail
 	jsr state_service.resetActiveV1
 	tst.l d0
 	bne.s layoutFail
@@ -1604,6 +1700,8 @@ advancePackageStateReady
 	beq.s advanceDirectiveReady
 	clr.w d3
 advanceDirectiveReady
+	cmpi.w #directives.OPASM_DIRECTIVE_CPU, d3
+	beq.w cpu
 	cmpi.w #directives.OPASM_DIRECTIVE_ORG, d3
 	beq.w org
 	cmpi.w #directives.OPASM_DIRECTIVE_REGION, d3
@@ -1648,6 +1746,12 @@ advanceDirectiveReady
 	beq.s selectedSizeDispatch
 	moveq #0, d0
 	bra.s selectedSizeOk
+
+cpu
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
+	bsr.w selectPipelineTextV1
+	bra.w done
 
 selectedSizeDispatch
 	moveq #0, d0
@@ -4611,6 +4715,9 @@ OpasmMatchValue
 
 OpasmDriverImageBaseSeen
 	.res word, 1
+
+OpasmDriverInitialCpuName
+	.res byte, eng.TOKEN_BUFFER_CAPACITY
 
 	.endsection
 	.endmodule

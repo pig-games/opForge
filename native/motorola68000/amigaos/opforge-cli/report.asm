@@ -174,6 +174,10 @@ opforgeNativeCliReportParseError	.block
 	beq.w includePathCapacity
 	cmpi.w #constants.NCLI_PARSE_DEFINE_CAPACITY, d0
 	beq.w defineCapacity
+	cmpi.w #constants.NCLI_PARSE_INVALID_GO, d0
+	beq.w invalidGo
+	cmpi.w #constants.NCLI_PARSE_GO_REQUIRES_OUTPUT, d0
+	beq.w goRequiresOutput
 	move.l #strings.UsageText, d1
 	bra.w reportText
 
@@ -231,6 +235,14 @@ includePathCapacity
 
 defineCapacity
 	move.l #strings.DefineCapacityText, d1
+	bra.w reportText
+
+invalidGo
+	move.l #strings.InvalidGoText, d1
+	bra.w reportText
+
+goRequiresOutput
+	move.l #strings.GoRequiresOutputText, d1
 
 reportText
 	jsr dos.putErrStr

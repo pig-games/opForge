@@ -10,11 +10,48 @@
 	.use opforge.cli.dos
 	.use opforge.cli.strings
 	.use opforge.cli.hunk_output as hunk_output
+	.use opforge.cli.srec_output as srec_output
 
 	.section code, kind=code
 	.pub
 
 NATIVE_SOURCE_OUTPUT_BUFFER_CAPACITY = constants.NATIVE_IMAGE_BUFFER_CAPACITY + 2
+
+; Write every independently requested CLI output. NativeCliBinRequested remains
+; the generic image-emission switch; NativeCliFlatBinRequested distinguishes an
+; actual `--bin` artifact from Hunk/S-record/listing requests.
+; Outputs: D0=0 success, 1 after the first deterministic write failure.
+opforgeNativeCliWriteRequestedOutputs	.block
+	tst.w state.NativeCliFlatBinRequested
+	beq.s requestedSrec
+	move.w #constants.NATIVE_OUTPUT_FORMAT_BIN, state.NativeCliOutputFormat
+	bsr.w opforgeNativeCliWriteFlatOutput
+	bne.s requestedFail
+requestedSrec
+	tst.w state.NativeCliSrecRequested
+	beq.s requestedHunk
+	move.w #constants.NATIVE_OUTPUT_FORMAT_SREC, state.NativeCliOutputFormat
+	bsr.w opforgeNativeCliWriteFlatOutput
+	bne.s requestedFail
+requestedHunk
+	tst.w state.NativeCliHunkRequested
+	beq.s requestedList
+	move.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
+	bsr.w opforgeNativeCliWriteFlatOutput
+	bne.s requestedFail
+requestedList
+	tst.w state.NativeCliLstRequested
+	beq.s requestedSuccess
+	move.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat
+	bsr.w opforgeNativeCliWriteFlatOutput
+	bne.s requestedFail
+requestedSuccess
+	moveq #0, d0
+	rts
+requestedFail
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliWriteRequestedOutputs
 
 ; Inputs:
 ;   state.NativeCliOutputFormat selects the artifact/path pair.
@@ -39,11 +76,11 @@ opforgeNativeCliWriteFlatOutput	.block
 	bsr.w rejectUnsupportedHunkFixupV1
 	bne.w unsupportedArtifactFail
 	jsr hunk_output.buildSelectedSectionsV1
-	bra.s artifactBuilt
+	bra.w artifactBuilt
 
 buildSourceArtifact
 	bsr.w buildSelectedSourceArtifactV1
-	bra.s artifactBuilt
+	bra.w artifactBuilt
 
 buildDefaultArtifact
 	move.w state.NativeCliOutputFormat, d0
@@ -55,6 +92,8 @@ buildDefaultArtifact
 	beq.s buildHex
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0
 	beq.s buildLst
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_SREC, d0
+	beq.s buildSrec
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d0
 	bne.w artifactFail
 	moveq #-1, d2
@@ -82,6 +121,13 @@ buildHunk
 	bsr.w rejectUnsupportedHunkFixupV1
 	bne.w unsupportedArtifactFail
 	jsr hunk_output.buildFlatCodeV1
+	bra.s artifactBuilt
+
+buildSrec
+	moveq #0, d0
+	move.w state.NativeCliGoAddrSet, d0
+	move.l state.NativeCliGoAddr, d1
+	jsr srec_output.buildFlatV1
 
 artifactBuilt
 	bne.w artifactFail
@@ -97,6 +143,8 @@ payloadReady
 	beq.s payloadHexPath
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0
 	beq.s payloadLstPath
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_SREC, d0
+	beq.s payloadSrecPath
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d0
 	bne.s artifactFail
 	lea state.NativeCliPrgPath, a0
@@ -116,6 +164,10 @@ payloadHexPath
 
 payloadLstPath
 	lea state.NativeCliLstPath, a0
+	bra.s payloadOpen
+
+payloadSrecPath
+	lea state.NativeCliSrecPath, a0
 
 payloadOpen
 	jsr dos.openOutput

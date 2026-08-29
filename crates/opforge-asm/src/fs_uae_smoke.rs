@@ -1619,8 +1619,8 @@ fn opforge_native_cli_case_command(
         Some("OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT") => {
             default_package_args(
                 format!(
-                    "{source_path} --srec {} --cpu m6502",
-                    guest_path("build/opforge_native_out.srec")
+                    "{source_path} --hex {} --cpu m6502",
+                    guest_path("build/opforge_native_out.hex")
                 )
                 .as_str(),
             )

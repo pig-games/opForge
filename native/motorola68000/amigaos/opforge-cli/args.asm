@@ -41,11 +41,14 @@ opforgeNativeCliParseArgs	.block
 	clr.w state.NativeCliInputStyle
 	clr.w state.NativeCliHunkRequested
 	clr.w state.NativeCliBinRequested
+	clr.w state.NativeCliFlatBinRequested
 	clr.w state.NativeCliPrgRequested
 	clr.w state.NativeCliHexRequested
 	clr.w state.NativeCliLstRequested
+	clr.w state.NativeCliSrecRequested
 	clr.w state.NativeCliOutputFormat
 	clr.w state.NativeCliPrgLoadAddrSet
+	clr.w state.NativeCliGoAddrSet
 	clr.w state.NativeCliParseStatus
 	clr.w state.NativeCliDebugEnabled
 	clr.b state.NativeCliInputPath
@@ -54,12 +57,14 @@ opforgeNativeCliParseArgs	.block
 	clr.b state.NativeCliPrgPath
 	clr.b state.NativeCliHexPath
 	clr.b state.NativeCliLstPath
+	clr.b state.NativeCliSrecPath
 	clr.b state.NativeCliOutputPathScratch
 	clr.b state.NativeCliOutfileBase
 	clr.b state.NativeCliCpuName
 	clr.b state.NativeCliInitialCpuName
 	clr.b state.NativeCliPackagePath
 	clr.l state.NativeCliPrgLoadAddr
+	clr.l state.NativeCliGoAddr
 	move.w #1, state.NativeCliModulePathCount
 
 parseLoop
@@ -118,6 +123,22 @@ parseLoop
 	lea strings.FlagListLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
 	bne.w list
+	lea state.NativeCliArgToken, a0
+	lea strings.FlagSrecShort, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	bne.w srec
+	lea state.NativeCliArgToken, a0
+	lea strings.FlagSrecLong, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	bne.w srec
+	lea state.NativeCliArgToken, a0
+	lea strings.FlagGoShort, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	bne.w goAddress
+	lea state.NativeCliArgToken, a0
+	lea strings.FlagGoLong, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	bne.w goAddress
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagOutfileShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
@@ -199,6 +220,7 @@ hunk
 
 bin
 	move.w #1, state.NativeCliBinRequested
+	move.w #1, state.NativeCliFlatBinRequested
 	move.w #constants.NATIVE_OUTPUT_FORMAT_BIN, state.NativeCliOutputFormat
 	lea state.NativeCliBinPath, a1
 	bsr.w opforgeNativeCliCopyOptionalPathValue
@@ -216,6 +238,25 @@ list
 	bmi.w quoted
 	tst.l d0
 	bne.w usage
+	bra.w parseLoop
+
+srec
+	move.w #1, state.NativeCliBinRequested
+	move.w #1, state.NativeCliSrecRequested
+	move.w #constants.NATIVE_OUTPUT_FORMAT_SREC, state.NativeCliOutputFormat
+	lea state.NativeCliSrecPath, a1
+	bsr.w opforgeNativeCliCopyOptionalPathValue
+	bmi.w quoted
+	tst.l d0
+	bne.w usage
+	bra.w parseLoop
+
+goAddress
+	lea state.NativeCliArgToken, a1
+	bsr.w opforgeNativeCliCopyRequiredValue
+	bne.w missingValue
+	bsr.w opforgeNativeCliParseGoAddressValue
+	bne.w invalidGo
 	bra.w parseLoop
 
 outfile
@@ -298,6 +339,11 @@ positionalInputPathFirst
 parseDone
 	tst.w state.NativeCliInputStyle
 	beq.w noInput
+	tst.w state.NativeCliGoAddrSet
+	beq.s outputPathDefaults
+	tst.w state.NativeCliSrecRequested
+	beq.w goRequiresOutput
+outputPathDefaults
 	tst.w state.NativeCliOutputFormat
 	beq.w parseOk
 	move.w state.NativeCliOutputFormat, d0
@@ -307,13 +353,15 @@ parseDone
 	beq.s defaultHunkPath
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0
 	beq.s defaultLstPath
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_SREC, d0
+	beq.s defaultSrecPath
 	bra.w usage
 
 defaultBinPath
 	tst.b state.NativeCliBinPath
-	bne.s parseOk
+	bne.w parseOk
 	tst.b state.NativeCliOutfileBase
-	beq.s parseOk
+	beq.w parseOk
 	lea state.NativeCliOutfileBase, a0
 	lea state.NativeCliBinPath, a1
 	jsr token_util.opforgeNativeCliCopyTokenBuffer
@@ -321,9 +369,9 @@ defaultBinPath
 
 defaultHunkPath
 	tst.b state.NativeCliHunkPath
-	bne.s parseOk
+	bne.w parseOk
 	tst.b state.NativeCliOutfileBase
-	beq.s parseOk
+	beq.w parseOk
 	lea state.NativeCliOutfileBase, a0
 	lea state.NativeCliHunkPath, a1
 	jsr token_util.opforgeNativeCliCopyTokenBuffer
@@ -331,12 +379,25 @@ defaultHunkPath
 
 defaultLstPath
 	tst.b state.NativeCliLstPath
-	bne.s parseOk
+	bne.w parseOk
 	tst.b state.NativeCliOutfileBase
-	beq.s parseOk
+	beq.w parseOk
 	lea state.NativeCliOutfileBase, a0
 	lea state.NativeCliLstPath, a1
 	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	bra.s parseOk
+
+defaultSrecPath
+	tst.b state.NativeCliSrecPath
+	bne.w parseOk
+	lea state.NativeCliOutfileBase, a0
+	tst.b (a0)
+	bne.s deriveSrecPath
+	lea state.NativeCliInputPath, a0
+deriveSrecPath
+	lea state.NativeCliSrecPath, a1
+	bsr.w opforgeNativeCliDeriveSrecPath
+	bne.w usage
 
 parseOk
 	bsr.w opforgeNativeCliSeedModulePathRootFromInput
@@ -398,6 +459,14 @@ includePathCapacity
 
 defineCapacity
 	move.w #constants.NCLI_PARSE_DEFINE_CAPACITY, state.NativeCliParseStatus
+	bra.w parseReturn
+
+invalidGo
+	move.w #constants.NCLI_PARSE_INVALID_GO, state.NativeCliParseStatus
+	bra.w parseReturn
+
+goRequiresOutput
+	move.w #constants.NCLI_PARSE_GO_REQUIRES_OUTPUT, state.NativeCliParseStatus
 
 parseReturn
 	move.w state.NativeCliParseStatus, d0
@@ -620,6 +689,115 @@ optionalPathQuoted
 	rts
 	.bend  ; opforgeNativeCliCopyOptionalPathValue
 
+; Parse Rust's CLI `-g/--go` value: exactly 4-8 hexadecimal digits, without a
+; prefix. Inputs: NativeCliArgToken. Outputs: D0=0 success/1 invalid.
+opforgeNativeCliParseGoAddressValue	.block
+	movem.l d1-d3/a0, -(sp)
+	lea state.NativeCliArgToken, a0
+	moveq #0, d1
+	moveq #0, d2
+goDigitLoop
+	moveq #0, d0
+	move.b (a0)+, d0
+	beq.s goDigitsDone
+	cmpi.l #8, d2
+	bhs.s goInvalid
+	cmpi.b #'0', d0
+	blo.s goInvalid
+	cmpi.b #'9', d0
+	bls.s goDecimal
+	cmpi.b #'A', d0
+	blo.s goMaybeLower
+	cmpi.b #'F', d0
+	bls.s goUpper
+goMaybeLower
+	cmpi.b #'a', d0
+	blo.s goInvalid
+	cmpi.b #'f', d0
+	bhi.s goInvalid
+	subi.b #87, d0
+	bra.s goAccumulate
+goUpper
+	subi.b #55, d0
+	bra.s goAccumulate
+goDecimal
+	subi.b #'0', d0
+goAccumulate
+	lsl.l #4, d1
+	or.b d0, d1
+	addq.l #1, d2
+	bra.s goDigitLoop
+goDigitsDone
+	cmpi.l #4, d2
+	blo.s goInvalid
+	move.l d1, state.NativeCliGoAddr
+	move.w #1, state.NativeCliGoAddrSet
+	moveq #0, d0
+	bra.s goReturn
+goInvalid
+	moveq #1, d0
+goReturn
+	movem.l (sp)+, d1-d3/a0
+	tst.l d0
+	rts
+	.bend  ; opforgeNativeCliParseGoAddressValue
+
+; Derive Rust's omitted `--srec` filename by replacing the final source/base
+; suffix with `.srec` while preserving its volume and directory spelling.
+; Inputs: A0=source/base path; A1=destination. Outputs: D0=0/1 capacity.
+opforgeNativeCliDeriveSrecPath	.block
+	movem.l d1-d4/a0-a3, -(sp)
+	movea.l a1, a3
+	moveq #-1, d4
+	movea.l d4, a2
+	move.l #constants.PATH_BUFFER_CAPACITY - 1, d3
+deriveCopy
+	moveq #0, d1
+	move.b (a0)+, d1
+	beq.s deriveCopied
+	tst.l d3
+	beq.s deriveFail
+	move.b d1, (a1)+
+	subq.l #1, d3
+	cmpi.b #':', d1
+	beq.s deriveResetDot
+	cmpi.b #'/', d1
+	beq.s deriveResetDot
+	cmpi.b #'.', d1
+	bne.s deriveCopy
+	lea -1(a1), a2
+	bra.s deriveCopy
+deriveResetDot
+	moveq #-1, d4
+	movea.l d4, a2
+	bra.s deriveCopy
+deriveCopied
+	move.l a2, d4
+	cmpi.l #-1, d4
+	bne.s deriveHaveSuffix
+	movea.l a1, a2
+deriveHaveSuffix
+	move.l a2, d4
+	sub.l a3, d4
+	cmpi.l #constants.PATH_BUFFER_CAPACITY - 6, d4
+	bhi.s deriveFail
+	move.b #'.', (a2)+
+	move.b #'s', (a2)+
+	move.b #'r', (a2)+
+	move.b #'e', (a2)+
+	move.b #'c', (a2)+
+	clr.b (a2)
+	moveq #0, d0
+	bra.s deriveReturn
+deriveFail
+	clr.b (a3)
+	moveq #1, d0
+deriveReturn
+	movem.l (sp)+, d1-d4/a0-a3
+	tst.l d0
+	rts
+	.bend  ; opforgeNativeCliDeriveSrecPath
+
 ; Check whether the current parsed flag is one of the known-but-unsupported CLI options.
 ; Inputs: state.NativeCliArgToken = current parsed flag token.
 ; Outputs: D0 = 1 when the flag is recognized as unsupported, 0 otherwise.
@@ -632,14 +810,6 @@ opforgeNativeCliIsUnsupportedFlag	.block
 	bne.w unsupportedYes
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagHexLong, a1
-	jsr token_util.opforgeNativeCliTokenEquals
-	bne.w unsupportedYes
-	lea state.NativeCliArgToken, a0
-	lea strings.FlagSrecShort, a1
-	jsr token_util.opforgeNativeCliTokenEquals
-	bne.w unsupportedYes
-	lea state.NativeCliArgToken, a0
-	lea strings.FlagSrecLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
 	bne.w unsupportedYes
 	moveq #0, d0

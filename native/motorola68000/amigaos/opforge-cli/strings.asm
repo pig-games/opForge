@@ -17,7 +17,7 @@ VersionText
 	.byte "opForge native AmigaOS CLI 0.1", 10, 0
 HelpText
 	.byte "Usage: opForge [OPTIONS] [INPUT]", 10
-	.byte "Native subset: INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -D/--define, -I/--include-path, -M/--module-path, --native-debug", 10, 0
+	.byte "Native subset: INPUT, -i/--infile, --bin [FILE], -s/--srec [FILE], -g/--go ADDR, -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -D/--define, -I/--include-path, -M/--module-path, --native-debug", 10, 0
 UsageText
 	.byte "OPC-NCLI001: Usage: opForge [OPTIONS] [INPUT]", 10, 0
 QuotedText
@@ -25,7 +25,7 @@ QuotedText
 UnsupportedText
 	.byte "OPC-NCLI003: recognized Rust CLI option is not implemented by native AmigaOS CLI yet: ", 0
 NativeSubsetHelpText
-	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -D/--define, -I/--include-path, -M/--module-path, and --native-debug.", 10, 0
+	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], -s/--srec [FILE], -g/--go ADDR, -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -D/--define, -I/--include-path, -M/--module-path, and --native-debug.", 10, 0
 UnknownFlagText
 	.byte "OPC-NCLI004: unknown CLI flag: ", 0
 MissingValueText
@@ -33,7 +33,7 @@ MissingValueText
 NoInputText
 	.byte "OPC-NCLI006: No input files specified. Use -i/--infile", 10, 0
 HunkRequiredText
-	.byte "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin, --hunk, or --list", 10, 0
+	.byte "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin, --srec, --hunk, or --list", 10, 0
 MixedInputText
 	.byte "OPC-NCLI011: Do not mix positional input with -i/--infile; use one style", 10, 0
 MultiplePositionalText
@@ -44,6 +44,10 @@ IncludePathCapacityText
 	.byte "OPC-NCLI029: native include path capacity exceeded", 10, 0
 DefineCapacityText
 	.byte "OPC-NCLI030: native command-line define capacity exceeded", 10, 0
+InvalidGoText
+	.byte "Invalid -g/--go address; must be 4-8 hex digits", 10, 0
+GoRequiresOutputText
+	.byte "-g/--go requires hex or S-record output (-x/--hex, -s/--srec, or output metadata)", 10, 0
 PackageTooLargeText
 	.byte "ERROR OPC-NCLI019: opasm package exceeds native package storage capacity", 10, 0
 InputOpenErrorText
@@ -171,6 +175,8 @@ EmitterStubText
 	.byte "ERROR OPC-NCLI009: native emitter VM not implemented", 10, 0
 ParserFailureText
 	.byte "ERROR OPC-NCLI013: native module/use parser stage failed", 10, 0
+UnknownSrecOutputFormatText
+	.byte "Unknown .output format 'srec'; supported formats: bin, prg, hunk", 10, 0
 PrvmRouteStatusText
 	.byte "PRVM-STATUS $", 0
 PrvmRouteDetailText
@@ -332,7 +338,7 @@ defaultFsUaeArgTail
 	.byte "Work:opforge_6502_bad_org.asm --bin Work:opforge_native_out.bin --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT
-	.byte "Work:opforge_6502_native_cli_smoke.asm --srec Work:opforge_native_out.srec --cpu m6502", 0
+	.byte "Work:opforge_6502_native_cli_smoke.asm --hex Work:opforge_native_out.hex --cpu m6502", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT
 	.byte "Work:opforge_missing_input.asm --bin Work:opforge_native_out.bin --cpu m68020", 0
@@ -462,6 +468,10 @@ FlagSrecShort
 	.byte "-s", 0
 FlagSrecLong
 	.byte "--srec", 0
+FlagGoShort
+	.byte "-g", 0
+FlagGoLong
+	.byte "--go", 0
 FlagBinShort
 	.byte "-b", 0
 FlagBinLong

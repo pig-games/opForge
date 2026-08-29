@@ -499,6 +499,7 @@ fail
 ; CCR: reflects D0 on return.
 opforgeNativeCliParseOutputLine	.block
 	movem.l d6-d7/a3, -(sp)
+	moveq #0, d4
 	moveq #0, d6
 	clr.b state.NativeCliOutputPathScratch
 	clr.w state.NativeCliPrgLoadAddrSet
@@ -719,7 +720,13 @@ hunkPathReady
 	rts
 
 fail
+	tst.w d4
+	beq.s genericFailure
+	move.l #strings.UnknownSrecOutputFormatText, d1
+	bra.s emitFailure
+genericFailure
 	move.l #strings.ParserFailureText, d1
+emitFailure
 	jsr dos.putErrStr
 	moveq #1, d0
 	movem.l (sp)+, d6-d7/a3
@@ -832,6 +839,8 @@ parseOutputFormatToken	.block
 	beq.w maybeLst
 	cmpi.b #'p', d0
 	beq.w maybePrg
+	cmpi.b #'s', d0
+	beq.w maybeUnsupportedSrec
 	bra.w malformed
 
 maybeBin
@@ -891,6 +900,18 @@ maybePrg
 	move.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d6
 	moveq #0, d1
 	rts
+
+maybeUnsupportedSrec
+	cmpi.b #'r', (a2)+
+	bne.s malformed
+	cmpi.b #'e', (a2)+
+	bne.s malformed
+	cmpi.b #'c', (a2)+
+	bne.s malformed
+	tst.b (a2)
+	bne.s malformed
+	moveq #1, d4
+	bra.s malformed
 
 unknown
 	moveq #1, d1

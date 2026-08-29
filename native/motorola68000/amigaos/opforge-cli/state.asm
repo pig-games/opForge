@@ -24,15 +24,21 @@ NativeCliHunkRequested
 	.res word, 1
 NativeCliBinRequested
 	.res word, 1
+NativeCliFlatBinRequested
+	.res word, 1
 NativeCliPrgRequested
 	.res word, 1
 NativeCliHexRequested
 	.res word, 1
 NativeCliLstRequested
 	.res word, 1
+NativeCliSrecRequested
+	.res word, 1
 NativeCliOutputFormat
 	.res word, 1
 NativeCliPrgLoadAddrSet
+	.res word, 1
+NativeCliGoAddrSet
 	.res word, 1
 NativeCliParseStatus
 	.res word, 1
@@ -54,6 +60,8 @@ NativeCliPrgPath
 NativeCliHexPath
 	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliLstPath
+	.res byte, constants.PATH_BUFFER_CAPACITY
+NativeCliSrecPath
 	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliOutfileBase
 	.res byte, constants.PATH_BUFFER_CAPACITY
@@ -81,6 +89,8 @@ NativeCliEncodeRequestLen
 NativeCliSourceLineNum
 	.res long, 1
 NativeCliPrgLoadAddr
+	.res long, 1
+NativeCliGoAddr
 	.res long, 1
 NativeCliOutputBootstrapFromSource
 	.res word, 1

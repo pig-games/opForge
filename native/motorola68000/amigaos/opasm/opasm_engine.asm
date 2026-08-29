@@ -333,6 +333,7 @@ opasmEngineBuildCallbackContextV1	.block
 ; - D0: 0 on success.
 opasmEngineBeginPassOneV1	.block
 	movem.l d1/a0, -(sp)
+	bsr.w clearImagePresentV1
 	clr.w OpasmEngineLabelCount.l
 	move.w #-1, OpasmEngineLastResolvedLabelIndex.l
 	lea OpasmEngineLabelFinalizedTable.l, a0
@@ -359,6 +360,7 @@ clearLoop
 ; - D0: 0 on success.
 opasmEngineBeginPassTwoV1	.block
 	movem.l d1/a0, -(sp)
+	bsr.w clearImagePresentV1
 	clr.w OpasmEngineLayoutChanged.l
 	moveq #0, d0
 	move.w OpasmEngineLabelCount.l, d0
@@ -947,7 +949,7 @@ opasmEngineAdvancePcBySizeV1	.block
 ; Outputs:
 ; - D0: 0 on success, non-zero on image capacity failure.
 opasmEngineAppendImageBytesV1	.block
-	movem.l d1-d3/a0-a1, -(sp)
+	movem.l d1-d3/a0-a2, -(sp)
 	moveq #0, d3
 	move.w d0, d3
 	cmpi.l #NATIVE_IMAGE_BUFFER_CAPACITY, d3
@@ -981,6 +983,8 @@ mainGapLoop
 mainCopyReady
 	lea OpasmEngineImageBuffer.l, a1
 	adda.l d1, a1
+	lea OpasmEngineImagePresentBuffer.l, a2
+	adda.l d1, a2
 	moveq #0, d3
 	move.w d0, d3
 	move.w d3, d1
@@ -988,6 +992,7 @@ mainCopyReady
 
 copyLoop
 	move.b (a0)+, (a1)+
+	move.b #1, (a2)+
 	subq.w #1, d1
 	bne.s copyLoop
 
@@ -1023,15 +1028,33 @@ mappedDone
 	add.w d3, OpasmEngineMappedImageByteCount.l
 
 success
-	movem.l (sp)+, d1-d3/a0-a1
+	movem.l (sp)+, d1-d3/a0-a2
 	moveq #0, d0
 	rts
 
 fail
-	movem.l (sp)+, d1-d3/a0-a1
+	movem.l (sp)+, d1-d3/a0-a2
 	moveq #1, d0
 	rts
 	.bend  ; opasmEngineAppendImageBytesV1
+
+	.priv
+
+; Clear the written-byte presence map at each pass boundary. The full bounded
+; map is reset so bytes from a prior pass/session can never become S-record
+; evidence.
+clearImagePresentV1	.block
+	movem.l d0/a0, -(sp)
+	lea OpasmEngineImagePresentBuffer.l, a0
+	move.w #-2, d0
+clearPresentLoop
+	clr.b (a0)+
+	dbf d0, clearPresentLoop
+	movem.l (sp)+, d0/a0
+	rts
+	.bend  ; clearImagePresentV1
+
+	.pub
 
 ; Select where subsequent statement bytes are emitted.
 ;
@@ -1153,6 +1176,14 @@ opasmEngineGetImageBufferPtrV1	.block
 	lea OpasmEngineImageBuffer.l, a0
 	rts
 	.bend  ; opasmEngineGetImageBufferPtrV1
+
+; Return the architecture-neutral written-byte presence map corresponding to
+; the flat image buffer. A nonzero byte means Rust ImageStore has an entry at
+; origin + offset; materialized BIN gaps remain zero here.
+opasmEngineGetImagePresentBufferPtrV1	.block
+	lea OpasmEngineImagePresentBuffer.l, a0
+	rts
+	.bend  ; opasmEngineGetImagePresentBufferPtrV1
 
 ; Return a pointer to the opasm-owned session CPU name.
 ;
@@ -3443,6 +3474,8 @@ OpasmEngineImageWriteOffset
 OpasmEngineImageBuffer
 	.res byte, NATIVE_IMAGE_BUFFER_CAPACITY
 OpasmEngineMappedImageBuffer
+	.res byte, NATIVE_IMAGE_BUFFER_CAPACITY
+OpasmEngineImagePresentBuffer
 	.res byte, NATIVE_IMAGE_BUFFER_CAPACITY
 opasmEngineAssemblySessionEnd
 

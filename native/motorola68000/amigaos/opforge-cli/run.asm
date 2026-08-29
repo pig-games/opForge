@@ -220,10 +220,15 @@ passesOk
 checkImage
 	jsr engine.opasmEngineGetImageByteCountV1
 	tst.l d0
+	bne.s imageReady
+	; Rust emits a termination-only S-record for an empty ImageStore. Preserve
+	; the legacy zero-image stub for output families not yet proved empty.
+	tst.w state.NativeCliSrecRequested
 	beq.s emitStub
+imageReady
 	tst.w state.NativeCliOutputBootstrapFromSource
 	bne.s writeSourceArtifacts
-	jsr output.opforgeNativeCliWriteFlatOutput
+	jsr output.opforgeNativeCliWriteRequestedOutputs
 	bne.s outputFail
 
 writeSourceArtifacts

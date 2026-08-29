@@ -469,9 +469,11 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   preparation APIs.
 - Imports/outbound dependencies: event projection only.
 - Mutable state: assembly session allocation, source/statement records, label
-  table, pass/PC/image state, callback context, and diagnostic/event state.
+  table, pass/PC/image state, one byte-presence bit per bounded image address,
+  callback context, and diagnostic/event state.
 - Routine responsibility groups: session collection and lifecycle; two-pass
-  runner; label/image/PC ownership; callback API; request preparation.
+  runner; label/image/PC and written-address-presence ownership; callback API;
+  request preparation.
 - Inbound users: CLI session/source/report components, assembly driver, tkpkg
   service, and test/debug harnesses import the engine API.
 - Decision: retain cohesive after the Item 5.11 conditional audit. It imports
@@ -486,7 +488,10 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   label; it does not infer package semantics or target names. Item 15 only
   corrects the generic selected-shape hint so a top-level comma is
   not misclassified as one legacy immediate operand; the package projection
-  remains authoritative for the composite operand list.
+  remains authoritative for the composite operand list. Item 37 records and
+  clears bounded written-address presence alongside the already-owned image so
+  artifact writers can distinguish a Rust ImageStore gap from an explicitly
+  written zero; it does not interpret output formats or target semantics.
 
 ### `tkpkg.amigaos.tokenizer_vm` (NR-005, retain cohesive)
 

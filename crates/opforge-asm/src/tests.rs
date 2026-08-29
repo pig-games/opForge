@@ -134,6 +134,8 @@ mod native_label_capacity;
 mod native_mos_forward_ref_stability;
 #[path = "tests/native_reference_shards.rs"]
 mod native_reference_shards;
+#[path = "tests/native_srec_output_contract.rs"]
+mod native_srec_output_contract;
 #[path = "tests/native_statement_capacity.rs"]
 mod native_statement_capacity;
 #[path = "tests/native_word_string_data.rs"]

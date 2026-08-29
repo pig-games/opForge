@@ -1,0 +1,102 @@
+[slice]
+schema_version = 2
+name = "native Motorola S-record output v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 37
+requirements = ["N68X0-001", "N68X0-005", "N68X0-009", "N68X0-010"]
+rust_reference = [
+  "crates/opforge-types/src/image.rs::ImageStore::write_srec_file",
+  "crates/opforge-types/src/image.rs::write_srec_record",
+  "crates/opforge-cli-core/src/cli.rs::validate_cli",
+  "crates/opforge-engine/src/lib.rs::Assembler::assemble"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/srec_output.asm::buildFlatV1",
+  "native/motorola68000/amigaos/opforge-cli/args.asm::opforgeNativeCliParseArgs",
+  "native/motorola68000/amigaos/opforge-cli/args.asm::opforgeNativeCliParseGoAddressValue",
+  "native/motorola68000/amigaos/opforge-cli/output.asm::opforgeNativeCliWriteRequestedOutputs",
+  "native/motorola68000/amigaos/opforge-cli/directive_handlers.asm::parseOutputFormatToken",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineGetImagePresentBufferPtrV1"
+]
+invariant = "Native renders the current Rust ImageStore S-record stream exactly: sorted last-write-wins bytes become contiguous S1/S2/S3 chunks of at most 32 bytes, gaps split records, address width is selected from the highest data/start address, checksum and uppercase hex match, and exactly one matching S9/S8/S7 termination record uses --go or zero. Rust owns neither S0 nor S5/S6 output and does not support source format=srec."
+assertion_decision = "Prove each Rust-owned record width, the 32-byte split, sparse omission, sorted last-write-wins bytes, termination-only empty output, optional path derivation, simultaneous Hunk/S-record/listing isolation, exact malformed --go diagnostics, and exact source format=srec rejection with fresh challenged guests and live Rust oracles."
+expected_inputs = "CLI -s/--srec with explicit or omitted path, optional 4-8-digit hexadecimal -g/--go, empty/contiguous/sparse/out-of-order/repeated image addresses, simultaneous --hunk/--srec/--list, malformed go values, go without an eligible output, and source .output format=srec."
+expected_outputs = "Byte-for-byte live-Rust S-record artifacts, independent Rust-identical simultaneous artifacts, completed fresh protocols with explicit exit zero for successes, and exact live-Rust diagnostics with explicit exit one for rejected requests."
+known_non_equivalences = "Native uses fixed resident image/presence/output buffers and writes big-endian/ASCII bytes directly; Rust uses growable ordered storage and Write. Capacity overflow remains a deterministic native platform boundary. The current Rust writer emits no S0 or S5/S6 records and source format=srec is unsupported, so native mirrors those absences. Every macOS FS-UAE-capable command requests host application-launch permission on its first attempt; a filesystem-sandbox denial, kLSNoExecutableErr, or compile failure before guest start is zero guest evidence and only the same directed case may be rerun after correcting that pre-guest condition."
+fast_proof_command = "cargo test -p asm native_item37_srec_writer_contract -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_item37_ -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_item37_srec_writer_contract"
+proof_level = "B"
+proves = "Rust and native structural boundaries agree on record types, 32-byte chunks, checksum, address-width selection, gap presence, CLI parsing, and independent output routing."
+does_not_prove = "Native execution, guest completion, or emitted artifact bytes."
+
+[[tests]]
+name = "external_fs_uae_native_item37_s1_s9_contiguous_parity"
+proof_level = "D"
+proves = "One fresh guest emits exact live-Rust S1 data and S9 termination bytes with explicit exit zero."
+does_not_prove = "Wider addresses, sparse data, empty output, or malformed requests."
+
+[[tests]]
+name = "external_fs_uae_native_item37_s2_s8_wide_go_parity"
+proof_level = "D"
+proves = "One fresh guest emits exact live-Rust S2/S8 bytes for a 24-bit data/start address with explicit exit zero."
+does_not_prove = "32-bit addresses, line splitting, or malformed go values."
+
+[[tests]]
+name = "external_fs_uae_native_item37_s3_s7_line_limit_parity"
+proof_level = "D"
+proves = "One fresh guest emits exact live-Rust S3/S7 bytes and splits 33 contiguous bytes into 32-byte and 1-byte records."
+does_not_prove = "Sparse gaps, path derivation, or simultaneous outputs."
+
+[[tests]]
+name = "external_fs_uae_native_item37_sparse_gap_parity"
+proof_level = "D"
+proves = "One fresh guest omits an unwritten address and emits two exact live-Rust data records rather than materializing a zero."
+does_not_prove = "Out-of-order writes or overwrites."
+
+[[tests]]
+name = "external_fs_uae_native_item37_sorted_last_write_wins_parity"
+proof_level = "D"
+proves = "One fresh guest emits sorted AA DD CC bytes after out-of-order writes and an overwrite, exactly matching live Rust."
+does_not_prove = "Sparse gaps or wider record types."
+
+[[tests]]
+name = "external_fs_uae_native_item37_empty_image_parity"
+proof_level = "D"
+proves = "One fresh guest emits the exact live-Rust 11-byte termination-only S-record for an empty image with explicit exit zero."
+does_not_prove = "Any data record."
+
+[[tests]]
+name = "external_fs_uae_native_item37_simultaneous_hunk_srec_listing_parity"
+proof_level = "D"
+proves = "One fresh guest writes three independent artifacts whose Hunk, S-record, and listing bytes each equal their live Rust oracle."
+does_not_prove = "Full-product resource capacity, which belongs to Item 38."
+
+[[tests]]
+name = "external_fs_uae_native_item37_omitted_srec_path_parity"
+proof_level = "D"
+proves = "One fresh guest derives Rust's .srec suffix from the input path and emits exact artifact bytes."
+does_not_prove = "An explicit --outfile base or multiple input files."
+
+[[tests]]
+name = "external_fs_uae_native_item37_go_failure_diagnostic_parity"
+proof_level = "D"
+proves = "Two fresh guests complete with explicit exit one and exact live-Rust diagnostics for malformed --go and --go without hex/S-record output."
+does_not_prove = "Assembler/source-output diagnostics."
+
+[[tests]]
+name = "external_fs_uae_native_item37_source_srec_rejection_parity"
+proof_level = "D"
+proves = "One fresh guest rejects source format=srec with the exact live-Rust unsupported-format diagnostic and explicit exit one."
+does_not_prove = "Any source-declared S-record success because Rust has no such format."
+
+[[tests]]
+name = "external_fs_uae_native_item37_68040_reference_timeout_closure_parity"
+proof_level = "D"
+proves = "One fresh guest closes the one-time wrapper's sole timeout by completing the exact 68040_integrated_fpu.asm reference source, exiting zero, and matching its same-source live Rust bytes exactly."
+does_not_prove = "A second completion-wrapper run or any of the other 42 reference cases, whose successful results remain recorded from the single wrapper invocation."

@@ -139,6 +139,8 @@ checkTargetBoundary
 
 handled
 	jsr assembly_session.opforgeNativeCliRecordSourceLine
+	tst.l d0
+	bne.s malformed
 	moveq #1, d0
 	bra.s return
 notMetadata

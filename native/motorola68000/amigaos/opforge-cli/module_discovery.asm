@@ -38,31 +38,48 @@ resolveDeclaredModuleV1	.block
 	jsr token_util.opforgeNativeCliCopyTokenBuffer
 	clr.w ModuleScanMatchCount
 	clr.b ModuleScanFoundPath
+	tst.w ModuleScanIndexBuilt.l
+	bne.s lookupIndex
+	bsr.w buildModuleIndex
+	tst.l d0
+	bne.w fail
+
+lookupIndex
 	moveq #0, d7
 
-rootLoop
-	cmp.w state.NativeCliModulePathCount, d7
-	bhs.s rootsDone
-	bsr.w rootWasAlreadyScanned
+indexLoop
+	cmp.w ModuleScanIndexCount.l, d7
+	bhs.s indexDone
+	move.l d7, d0
+	lsl.l #6, d0
+	lea ModuleScanIndexNameTable.l, a0
+	adda.l d0, a0
+	lea ModuleScanLookupName.l, a1
+	bsr.w compareFoldedNull
 	tst.l d0
-	bne.s nextRoot
+	beq.s indexNext
+	tst.w ModuleScanMatchCount.l
+	bne.s fail
 	move.l d7, d0
 	lsl.l #8, d0
-	lea state.NativeCliModulePathTable, a0
+	lea ModuleScanIndexPathTable.l, a0
 	adda.l d0, a0
-	lea ModuleScanDirectoryPathTable.l, a1
+	lea ModuleScanFoundPath.l, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
 	bne.s fail
-	moveq #0, d0
-	bsr.w scanDirectory
-	tst.l d0
-	bne.s fail
+	move.l d7, d0
+	lsl.l #2, d0
+	lea ModuleScanIndexStartTable.l, a0
+	move.l 0(a0, d0.l), state.NativeCliResolvedModuleStartOffset.l
+	lea ModuleScanIndexEndTable.l, a0
+	move.l 0(a0, d0.l), state.NativeCliResolvedModuleEndOffset.l
+	move.w #1, ModuleScanMatchCount.l
 
-nextRoot
+indexNext
 	addq.w #1, d7
-	bra.s rootLoop
+	bra.s indexLoop
 
-rootsDone
+indexDone
 	cmpi.w #1, ModuleScanMatchCount
 	bne.s fail
 	lea ModuleScanFoundPath.l, a0
@@ -81,6 +98,54 @@ return
 	.bend  ; resolveDeclaredModuleV1
 
 	.priv
+
+; Build one declaration index for the configured roots. Rust resolves module
+; declarations from the complete ordered root set; native keeps that semantic
+; contract while avoiding a full directory/file rescan for every `.use`.
+; Outputs: D0 = 0 success, 1 bounded/I/O failure.
+buildModuleIndex	.block
+	movem.l d1-d7/a0-a2, -(sp)
+	clr.w ModuleScanIndexCount.l
+	move.w #1, ModuleScanBuildIndex.l
+	moveq #0, d7
+
+rootLoop
+	cmp.w state.NativeCliModulePathCount, d7
+	bhs.s rootsDone
+	bsr.w rootWasAlreadyScanned
+	tst.l d0
+	bne.s nextRoot
+	move.l d7, d0
+	lsl.l #8, d0
+	lea state.NativeCliModulePathTable, a0
+	adda.l d0, a0
+	lea ModuleScanDirectoryPathTable.l, a1
+	jsr path.opforgeNativeCliCopyPathBuffer
+	bne.s buildFail
+	moveq #0, d0
+	bsr.w scanDirectory
+	tst.l d0
+	bne.s buildFail
+
+nextRoot
+	addq.w #1, d7
+	bra.s rootLoop
+
+rootsDone
+	clr.w ModuleScanBuildIndex.l
+	move.w #1, ModuleScanIndexBuilt.l
+	moveq #0, d0
+	bra.s buildReturn
+
+buildFail
+	clr.w ModuleScanBuildIndex.l
+	clr.w ModuleScanIndexCount.l
+	moveq #1, d0
+
+buildReturn
+	movem.l (sp)+, d1-d7/a0-a2
+	rts
+	.bend  ; buildModuleIndex
 
 ; Recursively scan one directory using a depth-owned FileInfoBlock.
 ; Inputs: D0.W = directory depth; path is in ModuleScanDirectoryPathTable[depth].
@@ -140,7 +205,7 @@ buildCandidate
 	bne.w scanUnlockFail
 	bsr.w scanFibPtr
 	tst.l constants.FIB_DIR_ENTRY_TYPE(a0)
-	bgt.s descend
+	bgt.w descend
 	lea constants.FIB_FILE_NAME(a0), a0
 	bsr.w hasModuleSourceExtension
 	tst.l d0
@@ -150,6 +215,22 @@ buildCandidate
 	movem.l (sp)+, d7
 	tst.l d0
 	bmi.w scanUnlockFail
+	tst.w ModuleScanBuildIndex.l
+	beq.s targetScanResult
+	tst.w ModuleScanSawExplicit.l
+	bne.w entryLoop
+	bsr.w scanFibPtr
+	lea constants.FIB_FILE_NAME(a0), a0
+	bsr.w copyFallbackModuleName
+	tst.l d0
+	bne.w scanUnlockFail
+	clr.l ModuleScanCandidateStartOffset.l
+	bsr.w recordCatalogCandidate
+	tst.l d0
+	bne.w scanUnlockFail
+	bra.w entryLoop
+
+targetScanResult
 	bne.s candidateMatch
 	tst.w ModuleScanSawExplicit
 	bne.w entryLoop
@@ -330,6 +411,11 @@ candidateEofChecked
 	clr.w ModuleScanTargetOpen.l
 	move.l ModuleScanByteOffset.l, d0
 	move.l d0, ModuleScanCandidateEndOffset.l
+	tst.w ModuleScanBuildIndex.l
+	beq.s candidateEofClosed
+	bsr.w recordCatalogCandidate
+	tst.l d0
+	bne.w candidateCloseFail
 
 candidateEofClosed
 	tst.w ModuleScanTargetFound.l
@@ -437,6 +523,13 @@ scanCurrentModuleLine	.block
 	clr.w ModuleScanTargetOpen.l
 	move.l ModuleScanByteOffset.l, d0
 	move.l d0, ModuleScanCandidateEndOffset.l
+	tst.w ModuleScanBuildIndex.l
+	beq.s endmoduleDone
+	bsr.w recordCatalogCandidate
+	tst.l d0
+	bne.w moduleLineFail
+
+endmoduleDone
 	moveq #0, d0
 	rts
 
@@ -451,6 +544,11 @@ checkModuleLine
 	clr.w ModuleScanTargetOpen.l
 	move.l ModuleScanLineStartOffset.l, d0
 	move.l d0, ModuleScanCandidateEndOffset.l
+	tst.w ModuleScanBuildIndex.l
+	beq.s moduleLineNotOpen
+	bsr.w recordCatalogCandidate
+	tst.l d0
+	bne.w moduleLineFail
 
 moduleLineNotOpen
 	movea.l a2, a0
@@ -466,6 +564,15 @@ moduleLineNotOpen
 	tst.b ModuleScanName
 	beq.w moduleLineNo
 	move.w #1, ModuleScanSawExplicit
+	tst.w ModuleScanBuildIndex.l
+	beq.s compareRequestedModule
+	move.w #1, ModuleScanTargetOpen.l
+	move.l ModuleScanLineStartOffset.l, d0
+	move.l d0, ModuleScanCandidateStartOffset.l
+	moveq #0, d0
+	rts
+
+compareRequestedModule
 	lea ModuleScanName.l, a0
 	lea ModuleScanLookupName.l, a1
 	bsr.w compareFoldedNull
@@ -614,6 +721,100 @@ scanWordFail
 	rts
 	.bend  ; copyScanWord
 
+; Copy the filename stem from A0 into ModuleScanName for declaration-free
+; compatibility files. Inputs are already extension-validated.
+copyFallbackModuleName	.block
+	movea.l a0, a2
+	jsr token_util.opforgeNativeCliTokenLen
+	subq.l #4, d0
+	beq.s fallbackCopyFail
+	cmpi.l #constants.TOKEN_BUFFER_CAPACITY, d0
+	bhs.s fallbackCopyFail
+	lea ModuleScanName.l, a1
+	move.l d0, d1
+
+fallbackCopyLoop
+	move.b (a2)+, (a1)+
+	subq.l #1, d1
+	bne.s fallbackCopyLoop
+	clr.b (a1)
+	moveq #0, d0
+	rts
+
+fallbackCopyFail
+	moveq #1, d0
+	rts
+	.bend  ; copyFallbackModuleName
+
+; Append the current declaration/path/range to the bounded discovery index.
+; Duplicate names remain separate rows so lookup fails ambiguous exactly as
+; the Rust resolver does.
+recordCatalogCandidate	.block
+	movem.l d1-d4/a0-a2, -(sp)
+	moveq #0, d4
+
+indexDedupeLoop
+	cmp.w ModuleScanIndexCount.l, d4
+	bhs.s indexDedupeDone
+	move.l d4, d0
+	lsl.l #6, d0
+	lea ModuleScanIndexNameTable.l, a0
+	adda.l d0, a0
+	lea ModuleScanName.l, a1
+	bsr.w compareFoldedNull
+	tst.l d0
+	beq.s indexDedupeNext
+	move.l d4, d0
+	lsl.l #8, d0
+	lea ModuleScanIndexPathTable.l, a0
+	adda.l d0, a0
+	lea ModuleScanCandidatePath.l, a1
+	bsr.w compareFoldedNull
+	tst.l d0
+	bne.s indexRecordOk
+
+indexDedupeNext
+	addq.w #1, d4
+	bra.s indexDedupeLoop
+
+indexDedupeDone
+	moveq #0, d4
+	move.w ModuleScanIndexCount.l, d4
+	cmpi.w #constants.NATIVE_MODULE_TABLE_CAPACITY, d4
+	bhs.s indexRecordFail
+	move.l d4, d0
+	lsl.l #6, d0
+	lea ModuleScanIndexNameTable.l, a1
+	adda.l d0, a1
+	lea ModuleScanName.l, a0
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	move.l d4, d0
+	lsl.l #8, d0
+	lea ModuleScanIndexPathTable.l, a1
+	adda.l d0, a1
+	lea ModuleScanCandidatePath.l, a0
+	jsr path.opforgeNativeCliCopyPathBuffer
+	bne.s indexRecordFail
+	move.l d4, d0
+	lsl.l #2, d0
+	lea ModuleScanIndexStartTable.l, a0
+	move.l ModuleScanCandidateStartOffset.l, 0(a0, d0.l)
+	lea ModuleScanIndexEndTable.l, a0
+	move.l ModuleScanCandidateEndOffset.l, 0(a0, d0.l)
+	addq.w #1, ModuleScanIndexCount.l
+
+indexRecordOk
+	moveq #0, d0
+	bra.s indexRecordReturn
+
+indexRecordFail
+	moveq #1, d0
+
+indexRecordReturn
+	movem.l (sp)+, d1-d4/a0-a2
+	rts
+	.bend  ; recordCatalogCandidate
+
 ; Compare the implicit filename stem against the requested module id.
 ; Inputs: A0 = filename known to end in `.asm`/`.inc`. Outputs: D0 = boolean.
 ; Clobbers: D0-D4/A0-A2/CCR. CCR: reflects D0.
@@ -745,6 +946,12 @@ EndmoduleDirectiveText
 	.align 4
 ModuleScanMatchCount
 	.res word, 1
+ModuleScanIndexBuilt
+	.res word, 1
+ModuleScanBuildIndex
+	.res word, 1
+ModuleScanIndexCount
+	.res word, 1
 ModuleScanSawExplicit
 	.res word, 1
 ModuleScanTargetOpen
@@ -785,6 +992,14 @@ ModuleScanFibTable
 	.res byte, constants.NATIVE_MODULE_SCAN_DEPTH_CAPACITY * constants.FILE_INFO_BLOCK_SIZE
 ModuleScanDirectoryPathTable
 	.res byte, constants.NATIVE_MODULE_SCAN_DEPTH_CAPACITY * constants.PATH_BUFFER_CAPACITY
+ModuleScanIndexNameTable
+	.res byte, constants.NATIVE_MODULE_TABLE_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
+ModuleScanIndexPathTable
+	.res byte, constants.NATIVE_MODULE_TABLE_CAPACITY * constants.PATH_BUFFER_CAPACITY
+ModuleScanIndexStartTable
+	.res long, constants.NATIVE_MODULE_TABLE_CAPACITY
+ModuleScanIndexEndTable
+	.res long, constants.NATIVE_MODULE_TABLE_CAPACITY
 
 	.endsection
 	.endmodule

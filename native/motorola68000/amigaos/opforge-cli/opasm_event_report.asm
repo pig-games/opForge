@@ -186,6 +186,15 @@ badOrg
 	move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0
 	jsr text_output.opforgeNativeCliPutErrU16Decimal
 	move.l #strings.NewlineText, d1
+	jsr dos.putErrStr
+	moveq #0, d0
+	move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0
+	jsr engine.opasmEngineGetStatementSourceTextV1
+	tst.l d0
+	beq.w done
+	move.l a0, d1
+	jsr dos.putErrStr
+	move.l #strings.NewlineText, d1
 	bra.s reportErrorText
 
 serviceFailure

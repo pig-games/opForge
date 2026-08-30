@@ -23,6 +23,12 @@ semantics-preserving explicit branch-width corrections required by stricter
 resolved-branch assembly. Their routines, imports, sections, diagnostic paths,
 ownership decisions, and dependency directions are unchanged.
 
+Item 38 refreshes seven audited hashes after measured full-product capacity,
+packed-storage, label-indexing, and layout-stability work. Imports and section
+ownership remain unchanged. The complete inventory adds one layout helper, five
+private engine label-index helpers, and one expression-bridge diagnostic path;
+all remain architecture-neutral and inside their existing owners.
+
 Item 14 refreshed the complete audited manifest after adding the generic
 compact-table selector/encoder path and its package-owned fixed-program
 execution. The refresh includes the affected opasm bridge/layout routines and
@@ -492,6 +498,10 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   clears bounded written-address presence alongside the already-owned image so
   artifact writers can distinguish a Rust ImageStore gap from an explicitly
   written zero; it does not interpret output formats or target semantics.
+  Item 38 widens only the label-specific statement and symbol rows to the
+  measured 108-byte native representation required by Rust's 107-byte fully
+  scoped product maximum; generic token rows and all symbol semantics remain
+  unchanged.
 
 ### `tkpkg.amigaos.tokenizer_vm` (NR-005, retain cohesive)
 
@@ -530,7 +540,9 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   it does not expose or import engine state. All compiler helpers are private
   after Item 5.10. The long-term owner remains this bridge until a package
   parser supplies ExprVM bytecode directly; that future replacement, not a
-  line-count split, is its deletion criterion.
+  line-count split, is its deletion criterion. Item 38 keeps its read-only
+  label-row stride aligned with the engine's measured 108-byte native row; it
+  adds no grammar, lookup, or evaluation behavior.
 
 ### `prvm.amigaos.runtime` (NR-005, retain cohesive)
 

@@ -10,6 +10,7 @@
 	.use opforge.cli.module_use
 	.use opforge.cli.preprocessor
 	.use opforge.cli.preprocessor_definitions
+	.use opforge.cli.preprocessor_expansion
 	.use opforge.cli.preprocessor_substitution
 	.use opforge.cli.preprocessor_invocation
 	.use opforge.cli.state
@@ -30,12 +31,16 @@ start	.block
 	moveq #4, d0
 	jsr copy.copyBytes
 	move.w #1, state.NativeCliOrdinaryExportCount
+	move.l #6, state.NativeCliOrdinaryExportNamePoolLen
 	clr.w state.NativeCliOrdinaryExportOwnerTable
+	move.l #1, state.NativeCliModuleOrdinaryExportHeadTable
+	clr.l state.NativeCliOrdinaryExportNextTable
+	clr.l state.NativeCliOrdinaryExportNameOffsetTable
 	lea ResolverValueText.l, a1
-	lea state.NativeCliOrdinaryExportNameTable, a2
+	lea state.NativeCliOrdinaryExportNamePool, a2
 	moveq #5, d0
 	jsr copy.copyBytes
-	cmpi.b #'V', state.NativeCliOrdinaryExportNameTable
+	cmpi.b #'V', state.NativeCliOrdinaryExportNamePool
 	bne.w ordinaryImportExportTableFail
 	move.w #1, state.NativeCliImportCount
 	move.w #1, state.NativeCliImportOwnerModuleTable
@@ -296,7 +301,8 @@ verifyDirectiveFirstExpansionLoop
 	bne.w bareLocalInvocationFail
 	cmpi.w #3, state.NativeCliPreprocessInvocationDefinition
 	bne.w bareLocalInvocationFail
-	move.w #-1, state.NativeCliPreprocessInvocationDefinition
+	jsr preprocessor.opforgeNativeCliEndMacroInvocationFrameV1
+	bne.w bareLocalInvocationFail
 	lea LocalInvocationText.l, a1
 	lea state.NativeCliSourceLine, a2
 	moveq #10, d0
@@ -313,7 +319,8 @@ localInvocationStatusOk
 	bne.w localInvocationDefinitionFail
 	cmpi.w #3, state.NativeCliPreprocessInvocationLabelLen
 	bne.w localInvocationLabelFail
-	move.w #-1, state.NativeCliPreprocessInvocationDefinition
+	jsr preprocessor.opforgeNativeCliEndMacroInvocationFrameV1
+	bne.w localInvocationDefinitionFail
 	lea PairInvocationText.l, a1
 	lea state.NativeCliSourceLine, a2
 	moveq #8, d0
@@ -362,7 +369,8 @@ verifyPairSubstitutionLoop
 	bne.w pairSubstitutionTextFail
 	subq.l #1, d0
 	bne.s verifyPairSubstitutionLoop
-	move.w #-1, state.NativeCliPreprocessInvocationDefinition
+	jsr preprocessor.opforgeNativeCliEndMacroInvocationFrameV1
+	bne.w pairInvocationFail
 
 	lea InvocationText.l, a1
 	lea state.NativeCliSourceLine, a2
@@ -391,17 +399,27 @@ verifySubstitutionLoop
 	bne.w substitutionTextFail
 	subq.l #1, d0
 	bne.s verifySubstitutionLoop
-	; A substituted nested invocation must fail while the COPY frame and caller
-	; source line remain intact.  It is rejected before source/session recording.
+	; A substituted nested invocation must occupy its own bounded frame, then
+	; restore the COPY caller and its logical source line when popped.
 	lea NestedInvocationText.l, a0
 	moveq #7, d0
-	jsr line_processor.opforgeNativeCliProcessExpandedLineV1
-	tst.l d0
-	beq.w nestedInvocationAcceptedFail
+	jsr preprocessor_expansion.opforgeNativeCliBeginExpandedLineV1
+	bne.w nestedInvocationAcceptedFail
+	jsr preprocessor_invocation.opforgeNativeCliParseMacroInvocationV1
+	cmpi.l #1, d0
+	bne.w nestedInvocationAcceptedFail
+	cmpi.w #2, state.NativeCliPreprocessInvocationDepth
+	bne.w nestedFrameCorruptFail
+	cmpi.w #1, state.NativeCliPreprocessInvocationDefinition
+	bne.w nestedFrameCorruptFail
+	jsr preprocessor.opforgeNativeCliEndMacroInvocationFrameV1
+	bne.w nestedFrameCorruptFail
 	cmpi.w #0, state.NativeCliPreprocessInvocationDefinition
 	bne.w nestedFrameCorruptFail
 	cmpi.w #3, state.NativeCliPreprocessInvocationArgLen
 	bne.w nestedFrameCorruptFail
+	jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1
+	bne.w nestedCallerRestoreFail
 	cmpi.w #15, state.NativeCliSourceLineLen
 	bne.w nestedCallerRestoreFail
 	lea InvocationText.l, a1
@@ -413,7 +431,8 @@ verifyNestedCallerRestoreLoop
 	bne.w nestedCallerRestoreFail
 	subq.l #1, d0
 	bne.s verifyNestedCallerRestoreLoop
-	move.w #-1, state.NativeCliPreprocessInvocationDefinition
+	jsr preprocessor.opforgeNativeCliEndMacroInvocationFrameV1
+	bne.w nestedFrameCorruptFail
 	moveq #0, d0
 	rts
 fail

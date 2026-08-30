@@ -36,7 +36,7 @@ return
 	.bend  ; sizeNumericDirectiveV1
 
 ; Emit numeric directive values in first-run MOS little-endian order.
-; Inputs: D7.W = statement; D5.W = unit bytes; A0 = count callback;
+; Inputs: D7.L = statement; D5.W = unit bytes; A0 = count callback;
 ;         A1 = resolver callback. The resolver returns D3.L.
 ; Outputs: D0.L = 0 on success, 1 on malformed data or image overflow.
 ; Clobbers: D0-D7/A0-A3/CCR.
@@ -77,8 +77,7 @@ loop
 	moveq #1, d2
 	moveq #0, d4
 	move.w DataUnitBytes, d4
-	moveq #0, d5
-	move.w d7, d5
+	move.l d7, d5
 	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_DIRECTIVE_DATA
 	movem.l (sp)+, d0-d7/a0-a3
 	move.w (sp)+, ccr
@@ -130,8 +129,7 @@ append
 	moveq #2, d2
 	moveq #0, d4
 	move.w DataUnitBytes, d4
-	moveq #0, d5
-	move.w d7, d5
+	move.l d7, d5
 	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_DIRECTIVE_DATA
 	movem.l (sp)+, d0-d7/a0-a3
 	move.w (sp)+, ccr

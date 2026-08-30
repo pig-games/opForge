@@ -91,6 +91,7 @@ tests=(
   external_fs_uae_native_m68080_ammx_parity
   external_fs_uae_native_rust_package_composition_matrix_parity
   external_fs_uae_native_motorola68000_complete_reference_parity
+  external_fs_uae_native_opforge_full_product_artifact_parity
 )
 
 test_source="crates/opforge-asm/src"

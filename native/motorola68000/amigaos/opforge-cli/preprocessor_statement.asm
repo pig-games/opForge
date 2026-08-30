@@ -26,7 +26,7 @@ opforgeNativeCliParseStatementInvocationV1	.block
 	bne.w malformed
 	tst.w state.NativeCliPreprocessDefinitionCount
 	beq.w pass  ; no stored statement signature can match this ordinary line
-	clr.w state.NativeCliPreprocessInvocationLabelLen
+	clr.w state.NativeCliPreprocessPendingInvocationLabelLen
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
@@ -132,6 +132,7 @@ matchDone
 	move.w StatementSelectedDefinition.l, d0
 	jsr preprocessor.opforgeNativeCliBeginMacroInvocationFrameV1
 	bne.w malformed
+	bsr.w commitPendingInvocationLabel
 	move.w StatementSelectedDefinition.l, d7
 	bsr.w loadStatementHeader
 	bne.w clearAndFail
@@ -140,15 +141,30 @@ matchDone
 	moveq #1, d0
 	rts
 clearAndFail
-	move.w #-1, state.NativeCliPreprocessInvocationDefinition
+	jsr preprocessor.opforgeNativeCliEndMacroInvocationFrameV1
 malformed
 	moveq #-1, d0
 	rts
 pass
-	clr.w state.NativeCliPreprocessInvocationLabelLen
+	clr.w state.NativeCliPreprocessPendingInvocationLabelLen
 	moveq #0, d0
 	rts
 	.bend  ; opforgeNativeCliParseStatementInvocationV1
+
+; Commit the provisional statement label after the caller frame is suspended.
+commitPendingInvocationLabel	.block
+	moveq #0, d0
+	move.w state.NativeCliPreprocessPendingInvocationLabelLen, d0
+	move.w d0, state.NativeCliPreprocessInvocationLabelLen
+	beq.s done
+	addq.l #1, d0
+	lea state.NativeCliPreprocessPendingInvocationLabel, a1
+	lea state.NativeCliPreprocessInvocationLabel, a2
+	jsr copy.copyBytes
+done
+	moveq #0, d0
+	rts
+	.bend  ; commitPendingInvocationLabel
 
 ; Resolve a captured statement name to its positional slot.
 ; Inputs: A0 = requested name bytes; D0 = requested name length.
@@ -316,7 +332,7 @@ fail
 ; Inputs: A0/D0 = source slice. Outputs: A0/D0 advanced, D1 = status.
 ; Clobbers: D1-D3/A1/CCR. CCR: reflects D1.
 captureLeadingLabel	.block
-	lea state.NativeCliPreprocessInvocationLabel, a1
+	lea state.NativeCliPreprocessPendingInvocationLabel, a1
 	clr.w d3
 loop
 	tst.l d0
@@ -359,7 +375,7 @@ done
 	tst.w d3
 	beq.s fail
 	clr.b (a1)
-	move.w d3, state.NativeCliPreprocessInvocationLabelLen
+	move.w d3, state.NativeCliPreprocessPendingInvocationLabelLen
 	moveq #0, d1
 	rts
 fail

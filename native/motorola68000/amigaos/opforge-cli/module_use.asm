@@ -246,38 +246,60 @@ return
 ; Outputs: D0 = 0 success/not applicable, 1 capacity or malformed name.
 ; Clobbers: D0-D4/A0-A1/CCR.
 opforgeNativeCliRecordOrdinaryExportV1	.block
-	movem.l d1-d4/a0-a1, -(sp)
+	movem.l d1-d5/a0-a1, -(sp)
 	move.w state.NativeCliPreprocessCurrentVisibility, d0
 	cmpi.w #constants.NATIVE_PREPROCESS_VISIBILITY_PUBLIC, d0
-	bne.s ordinaryRecordOk
+	bne.w ordinaryRecordOk
 	tst.w state.NativeCliModuleDepth
-	beq.s ordinaryRecordOk
+	beq.w ordinaryRecordOk
 	move.l state.NativeCliStmtLabelLen, d2
-	beq.s ordinaryRecordOk
+	beq.w ordinaryRecordOk
 	cmpi.l #constants.TOKEN_BUFFER_CAPACITY, d2
-	bcc.s ordinaryRecordFail
+	bcc.w ordinaryRecordFail
 	moveq #0, d0
 	move.w state.NativeCliOrdinaryExportCount, d0
 	cmpi.w #constants.NATIVE_ORDINARY_EXPORT_CAPACITY, d0
-	bhs.s ordinaryRecordFail
-	move.l d0, d1
+	bhs.w ordinaryRecordFail
+	move.l d0, d5
+	move.l state.NativeCliOrdinaryExportNamePoolLen, d3
+	move.l d3, d1
+	add.l d2, d1
+	addq.l #1, d1
+	cmpi.l #constants.NATIVE_ORDINARY_EXPORT_NAME_POOL_CAPACITY, d1
+	bhi.w ordinaryRecordFail
+	move.l d1, d4
+	move.l d5, d1
 	add.l d1, d1
 	lea state.NativeCliOrdinaryExportOwnerTable, a1
 	move.w state.NativeCliCurrentModuleId, 0(a1, d1.l)
-	move.l d0, d1
-	lsl.l #6, d1
-	lea state.NativeCliOrdinaryExportNameTable, a1
-	adda.l d1, a1
+	move.l d5, d1
+	lsl.l #2, d1
+	lea state.NativeCliOrdinaryExportNameOffsetTable, a1
+	move.l d3, 0(a1, d1.l)
+	lea state.NativeCliOrdinaryExportNamePool, a1
+	adda.l d3, a1
 	lea state.NativeCliSourceLine, a0
-	move.l state.NativeCliStmtLabelStart, d3
-	beq.s ordinaryRecordFail
-	subq.l #1, d3
-	adda.l d3, a0
+	move.l state.NativeCliStmtLabelStart, d0
+	beq.w ordinaryRecordFail
+	subq.l #1, d0
+	adda.l d0, a0
 ordinaryRecordCopy
 	move.b (a0)+, (a1)+
 	subq.l #1, d2
 	bne.s ordinaryRecordCopy
 	clr.b (a1)
+	move.l d4, state.NativeCliOrdinaryExportNamePoolLen
+	move.l d5, d0
+	lsl.l #2, d0
+	lea state.NativeCliOrdinaryExportNextTable, a1
+	moveq #0, d1
+	move.w state.NativeCliCurrentModuleId, d1
+	lsl.l #2, d1
+	lea state.NativeCliModuleOrdinaryExportHeadTable, a0
+	move.l 0(a0, d1.l), d3
+	move.l d3, 0(a1, d0.l)
+	addq.l #1, d5
+	move.l d5, 0(a0, d1.l)
 	addq.w #1, state.NativeCliOrdinaryExportCount
 ordinaryRecordOk
 	moveq #0, d0
@@ -285,7 +307,7 @@ ordinaryRecordOk
 ordinaryRecordFail
 	moveq #1, d0
 ordinaryRecordReturn
-	movem.l (sp)+, d1-d4/a0-a1
+	movem.l (sp)+, d1-d5/a0-a1
 	rts
 	.bend  ; opforgeNativeCliRecordOrdinaryExportV1
 
@@ -334,7 +356,8 @@ ordinaryResolveImportLoop
 	lea state.NativeCliImportModuleTable, a0
 	move.w 0(a0, d0.l), d4
 
-	; First resolve `Alias.NAME` and `module.name.NAME` forms.
+	; First resolve explicit aliases, Rust's implicit final-component qualifier,
+	; and complete `module.name.NAME` forms.
 	moveq #0, d3
 ordinaryResolveDotScan
 	cmp.l d6, d3
@@ -353,7 +376,37 @@ ordinaryResolveQualifier
 	adda.l d0, a0
 	bsr.w token_util.opforgeNativeCliTokenLen
 	tst.l d0
-	beq.s ordinaryResolveModuleQualifier
+	beq.s ordinaryResolveOwnerQualifier
+	movea.l a3, a1
+	move.l d5, d1
+	bsr.w compareFoldedExact
+	move.l d5, d3
+	tst.l d0
+	bne.s ordinaryResolveQualifiedExport
+
+ordinaryResolveOwnerQualifier
+	move.l d4, d0
+	lsl.l #6, d0
+	lea state.NativeCliModuleNameTable, a0
+	adda.l d0, a0
+	bsr.w token_util.opforgeNativeCliTokenLen
+	movea.l a0, a2
+	move.l d0, d3
+	move.l d0, d1
+ordinaryResolveOwnerScan
+	tst.l d1
+	beq.s ordinaryResolveOwnerReady
+	cmpi.b #'.', (a0)+
+	bne.s ordinaryResolveOwnerNext
+	movea.l a0, a2
+	move.l d1, d3
+	subq.l #1, d3
+ordinaryResolveOwnerNext
+	subq.l #1, d1
+	bra.s ordinaryResolveOwnerScan
+ordinaryResolveOwnerReady
+	movea.l a2, a0
+	move.l d3, d0
 	movea.l a3, a1
 	move.l d5, d1
 	bsr.w compareFoldedExact
@@ -509,21 +562,23 @@ ordinaryResolveReturn
 ; Find public export A2/D3 owned by target module D4.W.
 ; Outputs: D0 = row or -1. Clobbers: D0-D3/A0-A1/CCR.
 ordinaryExportIndex	.block
-	movem.l d2-d5/a2-a5, -(sp)
+	movem.l d2-d6/a2-a5, -(sp)
 	movea.l a2, a5
 	move.l d3, d5
-	moveq #0, d2
+	moveq #0, d6
+	move.w d4, d6
+	lsl.l #2, d6
+	lea state.NativeCliModuleOrdinaryExportHeadTable, a0
+	move.l 0(a0, d6.l), d6
 ordinaryExportLoop
-	cmp.w state.NativeCliOrdinaryExportCount, d2
-	bhs.s ordinaryExportNo
-	move.l d2, d0
-	add.l d0, d0
-	lea state.NativeCliOrdinaryExportOwnerTable, a0
-	cmp.w 0(a0, d0.l), d4
-	bne.s ordinaryExportNext
-	move.l d2, d0
-	lsl.l #6, d0
-	lea state.NativeCliOrdinaryExportNameTable, a0
+	tst.l d6
+	beq.s ordinaryExportNo
+	subq.l #1, d6
+	move.l d6, d0
+	lsl.l #2, d0
+	lea state.NativeCliOrdinaryExportNameOffsetTable, a0
+	move.l 0(a0, d0.l), d0
+	lea state.NativeCliOrdinaryExportNamePool, a0
 	adda.l d0, a0
 	bsr.w token_util.opforgeNativeCliTokenLen
 	movea.l a5, a1
@@ -532,15 +587,18 @@ ordinaryExportLoop
 	tst.l d0
 	bne.s ordinaryExportYes
 ordinaryExportNext
-	addq.w #1, d2
+	move.l d6, d0
+	lsl.l #2, d0
+	lea state.NativeCliOrdinaryExportNextTable, a0
+	move.l 0(a0, d0.l), d6
 	bra.s ordinaryExportLoop
 ordinaryExportYes
-	move.l d2, d0
+	move.l d6, d0
 	bra.s ordinaryExportReturn
 ordinaryExportNo
 	moveq #-1, d0
 ordinaryExportReturn
-	movem.l (sp)+, d2-d5/a2-a5
+	movem.l (sp)+, d2-d6/a2-a5
 	rts
 	.bend  ; ordinaryExportIndex
 

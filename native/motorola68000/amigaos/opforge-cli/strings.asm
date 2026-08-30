@@ -374,7 +374,7 @@ defaultFsUaeArgTail
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 -M", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW
-	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8", 0
+	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8 -M Work:mod9", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM10_INCLUDE_OUTPUT
 	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu 6502 -I Work:opforge_include_root_b -I Work:opforge_include_root_a", 0

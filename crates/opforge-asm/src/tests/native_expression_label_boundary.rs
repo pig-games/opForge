@@ -61,6 +61,17 @@ fn native_expression_label_boundary_source_contract() {
         single,
         &["bsr.w compileHighLow", "cmpi.b #')', (a0)", "addq.l #1, a0",]
     ));
+    assert!(source_contains_in_order(
+        single,
+        &[
+            "jsr (a1)",
+            "tst.l d0",
+            "bne.s labelSnapshot",
+            "labelSnapshot",
+            "move.l d2, d0",
+            "bsr.w resolveLabelIndex",
+        ]
+    ));
 }
 
 #[test]
@@ -95,6 +106,20 @@ fn native_expression_label_boundary_fs_uae() {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
             assert_eq!(runs.len(), cases.len());
+            eprintln!(
+                "proof expression-label-boundary: protocol_completed={} exit={:?} success={} bytes={:02x?}",
+                runs[0].protocol_completed,
+                runs[0].exit_code,
+                runs[0].success,
+                verified_fs_uae_output(&runs[0]),
+            );
+            eprintln!(
+                "proof expression-label-boundary-unresolved: protocol_completed={} exit={:?} success={} diagnostic={:?}",
+                runs[1].protocol_completed,
+                runs[1].exit_code,
+                runs[1].success,
+                runs[1].stderr.trim(),
+            );
             assert_eq!(verified_fs_uae_output(&runs[0]), rust_bytes.as_slice());
             assert!(runs[0].success);
             assert!(runs[1].protocol_completed);

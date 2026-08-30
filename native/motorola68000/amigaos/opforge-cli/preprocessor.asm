@@ -259,19 +259,34 @@ noDirective
 	rts
 	.bend  ; opforgeNativeCliTrackVisibilityV1
 
-; Reserve the one bounded macro invocation frame for a captured definition.
+; Reserve one bounded macro invocation frame for a captured definition.  A
+; nested invocation suspends the complete caller frame before binding its own
+; arguments, matching Rust's recursive expansion order.
 ; Inputs: D0 = zero-based definition index.
-; Outputs: D0 = 0 on success, 1 when the index is out of range or a frame is active.
+; Outputs: D0 = 0 on success, 1 when the index or bounded depth is out of range.
 ; Clobbers: D0/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliBeginMacroInvocationFrameV1	.block
 	cmpi.w #constants.NATIVE_PREPROCESS_DEFINITION_CAPACITY, d0
 	bcc.s fail
+	cmpi.w #constants.NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT, state.NativeCliPreprocessInvocationDepth
+	bcc.s fail
+	movem.l d1-d7/a0-a2, -(sp)
+	move.l d0, d6
 	tst.w state.NativeCliPreprocessInvocationDefinition
-	bpl.s fail
-	move.w d0, state.NativeCliPreprocessInvocationDefinition
+	bmi.s install
+	moveq #0, d0
+	move.w state.NativeCliPreprocessInvocationDepth, d0
+	subq.w #1, d0
+	bsr.w saveInvocationFrame
+install
+	move.w d6, state.NativeCliPreprocessInvocationDefinition
 	clr.w state.NativeCliPreprocessInvocationArgCount
 	clr.w state.NativeCliPreprocessInvocationBodyIndex
+	clr.w state.NativeCliPreprocessInvocationFullArgsLen
+	clr.w state.NativeCliPreprocessInvocationLabelLen
+	addq.w #1, state.NativeCliPreprocessInvocationDepth
+	movem.l (sp)+, d1-d7/a0-a2
 	moveq #0, d0
 	rts
 
@@ -280,13 +295,142 @@ fail
 	rts
 	.bend  ; opforgeNativeCliBeginMacroInvocationFrameV1
 
+; Close the current invocation and restore its suspended caller, if any.
+; Outputs: D0 = 0 on success, 1 with no active frame.
+opforgeNativeCliEndMacroInvocationFrameV1	.block
+	tst.w state.NativeCliPreprocessInvocationDepth
+	beq.s fail
+	movem.l d1-d7/a0-a2, -(sp)
+	subq.w #1, state.NativeCliPreprocessInvocationDepth
+	tst.w state.NativeCliPreprocessInvocationDepth
+	beq.s clear
+	moveq #0, d0
+	move.w state.NativeCliPreprocessInvocationDepth, d0
+	subq.w #1, d0
+	bsr.w restoreInvocationFrame
+	bra.s success
+clear
+	move.w #-1, state.NativeCliPreprocessInvocationDefinition
+	clr.w state.NativeCliPreprocessInvocationArgCount
+	clr.w state.NativeCliPreprocessInvocationBodyIndex
+	clr.w state.NativeCliPreprocessInvocationFullArgsLen
+	clr.w state.NativeCliPreprocessInvocationLabelLen
+success
+	movem.l (sp)+, d1-d7/a0-a2
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliEndMacroInvocationFrameV1
+
+	.priv
+
+; Save the complete current invocation in suspended slot D0.
+saveInvocationFrame	.block
+	move.l d0, d7
+	add.l d0, d0
+	lea state.NativeCliPreprocessSavedInvocationDefinition, a0
+	move.w state.NativeCliPreprocessInvocationDefinition, d1
+	move.w d1, 0(a0, d0.l)
+	lea state.NativeCliPreprocessSavedInvocationArgCount, a0
+	move.w state.NativeCliPreprocessInvocationArgCount, d1
+	move.w d1, 0(a0, d0.l)
+	lea state.NativeCliPreprocessSavedInvocationBodyIndex, a0
+	move.w state.NativeCliPreprocessInvocationBodyIndex, d1
+	move.w d1, 0(a0, d0.l)
+	lea state.NativeCliPreprocessSavedInvocationFullArgsLen, a0
+	move.w state.NativeCliPreprocessInvocationFullArgsLen, d1
+	move.w d1, 0(a0, d0.l)
+	lea state.NativeCliPreprocessSavedInvocationLabelLen, a0
+	move.w state.NativeCliPreprocessInvocationLabelLen, d1
+	move.w d1, 0(a0, d0.l)
+	move.l d7, d0
+	mulu #constants.NATIVE_PREPROCESS_INVOCATION_ARG_LENGTH_BYTES, d0
+	lea state.NativeCliPreprocessInvocationArgLen, a1
+	lea state.NativeCliPreprocessSavedInvocationArgLen, a2
+	adda.l d0, a2
+	move.l #constants.NATIVE_PREPROCESS_INVOCATION_ARG_LENGTH_BYTES, d0
+	jsr copy.copyBytes
+	move.l d7, d0
+	mulu #constants.NATIVE_PREPROCESS_INVOCATION_ARGS_BYTES, d0
+	lea state.NativeCliPreprocessInvocationArgs, a1
+	lea state.NativeCliPreprocessSavedInvocationArgs, a2
+	adda.l d0, a2
+	move.l #constants.NATIVE_PREPROCESS_INVOCATION_ARGS_BYTES, d0
+	jsr copy.copyBytes
+	move.l d7, d0
+	mulu #constants.NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY, d0
+	lea state.NativeCliPreprocessInvocationFullArgs, a1
+	lea state.NativeCliPreprocessSavedInvocationFullArgs, a2
+	adda.l d0, a2
+	move.l #constants.NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY, d0
+	jsr copy.copyBytes
+	move.l d7, d0
+	mulu #constants.NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY, d0
+	lea state.NativeCliPreprocessInvocationLabel, a1
+	lea state.NativeCliPreprocessSavedInvocationLabel, a2
+	adda.l d0, a2
+	move.l #constants.NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY, d0
+	jsr copy.copyBytes
+	rts
+	.bend  ; saveInvocationFrame
+
+; Restore the complete current invocation from suspended slot D0.
+restoreInvocationFrame	.block
+	move.l d0, d7
+	add.l d0, d0
+	lea state.NativeCliPreprocessSavedInvocationDefinition, a0
+	move.w 0(a0, d0.l), d1
+	move.w d1, state.NativeCliPreprocessInvocationDefinition
+	lea state.NativeCliPreprocessSavedInvocationArgCount, a0
+	move.w 0(a0, d0.l), d1
+	move.w d1, state.NativeCliPreprocessInvocationArgCount
+	lea state.NativeCliPreprocessSavedInvocationBodyIndex, a0
+	move.w 0(a0, d0.l), d1
+	move.w d1, state.NativeCliPreprocessInvocationBodyIndex
+	lea state.NativeCliPreprocessSavedInvocationFullArgsLen, a0
+	move.w 0(a0, d0.l), d1
+	move.w d1, state.NativeCliPreprocessInvocationFullArgsLen
+	lea state.NativeCliPreprocessSavedInvocationLabelLen, a0
+	move.w 0(a0, d0.l), d1
+	move.w d1, state.NativeCliPreprocessInvocationLabelLen
+	move.l d7, d0
+	mulu #constants.NATIVE_PREPROCESS_INVOCATION_ARG_LENGTH_BYTES, d0
+	lea state.NativeCliPreprocessSavedInvocationArgLen, a1
+	adda.l d0, a1
+	lea state.NativeCliPreprocessInvocationArgLen, a2
+	move.l #constants.NATIVE_PREPROCESS_INVOCATION_ARG_LENGTH_BYTES, d0
+	jsr copy.copyBytes
+	move.l d7, d0
+	mulu #constants.NATIVE_PREPROCESS_INVOCATION_ARGS_BYTES, d0
+	lea state.NativeCliPreprocessSavedInvocationArgs, a1
+	adda.l d0, a1
+	lea state.NativeCliPreprocessInvocationArgs, a2
+	move.l #constants.NATIVE_PREPROCESS_INVOCATION_ARGS_BYTES, d0
+	jsr copy.copyBytes
+	move.l d7, d0
+	mulu #constants.NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY, d0
+	lea state.NativeCliPreprocessSavedInvocationFullArgs, a1
+	adda.l d0, a1
+	lea state.NativeCliPreprocessInvocationFullArgs, a2
+	move.l #constants.NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY, d0
+	jsr copy.copyBytes
+	move.l d7, d0
+	mulu #constants.NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY, d0
+	lea state.NativeCliPreprocessSavedInvocationLabel, a1
+	adda.l d0, a1
+	lea state.NativeCliPreprocessInvocationLabel, a2
+	move.l #constants.NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY, d0
+	jsr copy.copyBytes
+	rts
+	.bend  ; restoreInvocationFrame
+
 ; Macro substitution lives in opforge.cli.preprocessor_substitution.
 
 ; Macro scanning lives in opforge.cli.preprocessor_scan.
 
 ; Expanded-line staging lives in opforge.cli.preprocessor_expansion.
-
-	.priv
 
 ; Compare the define-name portions (before '=' or NUL) case-insensitively.
 ; Inputs: A0/A1 = define tokens. Outputs: D0 = 1 equal, 0 different.

@@ -12,7 +12,7 @@ OPASM_LAYOUT_OWNER_CAPACITY = 64
 OPASM_LAYOUT_REGION_CAPACITY = 8
 OPASM_LAYOUT_SECTION_CAPACITY = 16
 OPASM_LAYOUT_MAP_CAPACITY = 16
-OPASM_LAYOUT_STATEMENT_CAPACITY = 512
+OPASM_LAYOUT_STATEMENT_CAPACITY = 100000
 OPASM_LAYOUT_REACHABLE_CAPACITY = 512
 OPASM_LAYOUT_OUTPUT_FIXUP_CAPACITY = 256
 OPASM_LAYOUT_INDEX_NONE = $ffff
@@ -62,11 +62,12 @@ resetStateV1	.block
 	clr.b OpasmLayoutPlaceRegionName
 	lea OpasmLayoutStatementSectionIndices.l, a0
 	lea OpasmLayoutStatementMappedFlags.l, a1
-	move.w #OPASM_LAYOUT_STATEMENT_CAPACITY - 1, d1
+	move.l #OPASM_LAYOUT_STATEMENT_CAPACITY, d1
 statementResetLoop
 	move.w #OPASM_LAYOUT_INDEX_NONE, (a0)+
 	clr.b (a1)+
-	dbf d1, statementResetLoop
+	subq.l #1, d1
+	bne.s statementResetLoop
 	movem.l (sp)+, d1/a0-a1
 	moveq #0, d0
 	rts
@@ -92,6 +93,23 @@ beginPassTwoV1	.block
 	moveq #0, d0
 	rts
 	.bend  ; beginPassTwoV1
+
+; Retain the parent/main program counter before entering one section. Rust
+; advances each section's PC independently and restores the enclosing address
+; context at `.endsection`; native currently supports one active section.
+; Inputs: D0.L = parent PC. Outputs: D0.L = 0 on success, 1 when nested.
+; Clobbers: D0/A0/CCR.
+captureSectionParentPcV1	.block
+	lea OpasmLayoutSectionActive.l, a0
+	tst.w (a0)
+	bne.s captureParentFail
+	move.l d0, OpasmLayoutSectionParentPc.l
+	moveq #0, d0
+	rts
+captureParentFail
+	moveq #1, d0
+	rts
+	.bend  ; captureSectionParentPcV1
 
 ; Close the active section and retain its pass-one byte size.
 ; Outputs: D0.L = 0 on success, 1 when no section is active.
@@ -120,6 +138,8 @@ processEndsectionV1	.block
 	move.l d1, (a0)
 
 clearActive
+	move.l OpasmLayoutSectionParentPc.l, d0
+	jsr eng.opasmEngineSetCurrentPcV1
 	lea OpasmLayoutSectionActive.l, a0
 	clr.w (a0)
 	moveq #-1, d0
@@ -819,14 +839,13 @@ store
 	.bend  ; setScratchSectionLogicalV1
 
 ; Retain the active section owner for one pass-one statement.
-; Inputs: D0.W = statement index. Outputs: D0.L = 0 on success.
+; Inputs: D0.L = statement index. Outputs: D0.L = 0 on success.
 recordStatementSectionV1	.block
 	movem.l d1/a0-a1, -(sp)
-	cmpi.w #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
+	cmpi.l #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
 	bhs.s fail
-	moveq #0, d1
-	move.w d0, d1
-	add.w d1, d1
+	move.l d0, d1
+	add.l d1, d1
 	lea OpasmLayoutStatementSectionIndices.l, a0
 	adda.l d1, a0
 	cmpi.w #OPASM_LAYOUT_INDEX_NONE, (a0)
@@ -1087,7 +1106,7 @@ any
 
 ; Convert one package-emitted absolute fixup to Rust's section-relative
 ; addend and retain its architecture-neutral Hunk record.
-; Inputs: D0.W=source statement index, D1=instruction-relative offset,
+; Inputs: D0.L=source statement index, D1=instruction-relative offset,
 ; D2.W=opaque target symbol index, D3=absolute encoded scalar.
 ; Outputs: D0=0 success/1 invalid or capacity; D3=section-relative addend.
 recordAbsoluteOutputFixupV1	.block
@@ -1095,34 +1114,33 @@ recordAbsoluteOutputFixupV1	.block
 	lea -8(sp), sp
 	move.l d1, (sp)
 	move.l d3, 4(sp)
-	moveq #0, d7
-	move.w d0, d7
-	cmpi.w #OPASM_LAYOUT_STATEMENT_CAPACITY, d7
+	move.l d0, d7
+	cmpi.l #OPASM_LAYOUT_STATEMENT_CAPACITY, d7
 	bhs.w recordOutputFixupFail
 
 	move.w d2, d0
 	jsr eng.opasmEngineGetLabelStatementIndexV1
-	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d0
+	cmpi.l #$ffffffff, d0
 	beq.w recordOutputFixupFail
-	cmpi.w #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
+	cmpi.l #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
 	bhs.w recordOutputFixupFail
-	move.w d0, d6
+	move.l d0, d6
 
 	move.l d7, d0
-	add.w d0, d0
+	add.l d0, d0
 	lea OpasmLayoutStatementSectionIndices.l, a0
 	moveq #0, d4
-	move.w 0(a0, d0.w), d4
+	move.w 0(a0, d0.l), d4
 	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d4
 	beq.w recordOutputFixupFlatSource
 	cmp.w OpasmLayoutSectionCount.l, d4
 	bhs.w recordOutputFixupFail
 
 	move.l d6, d0
-	add.w d0, d0
+	add.l d0, d0
 	lea OpasmLayoutStatementSectionIndices.l, a0
 	moveq #0, d5
-	move.w 0(a0, d0.w), d5
+	move.w 0(a0, d0.l), d5
 	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
 	beq.w recordOutputFixupFail
 	cmp.w OpasmLayoutSectionCount.l, d5
@@ -1154,10 +1172,10 @@ recordAbsoluteOutputFixupV1	.block
 ; the relocation offset and encoded addend to the flat session origin.
 recordOutputFixupFlatSource
 	move.l d6, d0
-	add.w d0, d0
+	add.l d0, d0
 	lea OpasmLayoutStatementSectionIndices.l, a0
 	moveq #0, d5
-	move.w 0(a0, d0.w), d5
+	move.w 0(a0, d0.l), d5
 	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
 	bne.w recordOutputFixupFail
 
@@ -1409,15 +1427,15 @@ translatePassOneLabelAddressV1	.block
 	movem.l d2-d7/a0-a2, -(sp)
 	move.l d1, d7
 	jsr eng.opasmEngineGetLabelStatementIndexV1
-	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d0
+	cmpi.l #$ffffffff, d0
 	beq.s notTranslated
-	cmpi.w #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
+	cmpi.l #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
 	bhs.s notTranslated
-	move.w d0, d2
-	add.w d2, d2
+	move.l d0, d2
+	add.l d2, d2
 	lea OpasmLayoutStatementSectionIndices.l, a0
 	moveq #0, d5
-	move.w 0(a0, d2.w), d5
+	move.w 0(a0, d2.l), d5
 	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
 	beq.s notTranslated
 	cmpi.w #OPASM_LAYOUT_SECTION_CAPACITY, d5
@@ -1516,13 +1534,13 @@ reachableLoop
 	move.w d6, OpasmLayoutCurrentLabelIndex.l
 	move.l d6, d0
 	jsr eng.opasmEngineGetLabelStatementIndexV1
-	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d0
+	cmpi.l #$ffffffff, d0
 	beq.w labelStatementMissing
-	move.w d0, OpasmLayoutCurrentStatementIndex.l
-	move.w d0, d1
-	add.w d1, d1
+	move.l d0, OpasmLayoutCurrentStatementIndex.l
+	move.l d0, d1
+	add.l d1, d1
 	lea OpasmLayoutStatementSectionIndices.l, a0
-	move.w 0(a0, d1.w), d5
+	move.w 0(a0, d1.l), d5
 	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
 	beq.w unsectionedReachable
 	move.w d5, OpasmLayoutCurrentSourceSection.l
@@ -1615,7 +1633,8 @@ targetFound
 	jsr longTablePtrV1
 	add.l (a0), d3
 	move.l d3, OpasmLayoutCurrentUnitEndAddress.l
-	move.w #OPASM_LAYOUT_INDEX_NONE, OpasmLayoutCurrentUnitEndStatement.l
+	moveq #-1, d0
+	move.l d0, OpasmLayoutCurrentUnitEndStatement.l
 	jsr eng.opasmEngineGetLabelCountV1
 	move.w d0, d6
 	moveq #0, d4
@@ -1624,22 +1643,22 @@ nextLabelLoop
 	bhs.w nextLabelDone
 	move.l d4, d0
 	jsr eng.opasmEngineGetLabelStatementIndexV1
-	move.w d0, d2
-	cmp.w OpasmLayoutCurrentStatementIndex.l, d2
+	move.l d0, d2
+	cmp.l OpasmLayoutCurrentStatementIndex.l, d2
 	bls.w nextLabel
-	move.w OpasmLayoutCurrentUnitEndStatement.l, d3
-	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d3
+	move.l OpasmLayoutCurrentUnitEndStatement.l, d3
+	cmpi.l #$ffffffff, d3
 	beq.w checkNextOwner
-	cmp.w d3, d2
+	cmp.l d3, d2
 	bhs.w nextLabel
 checkNextOwner
-	move.w d2, d3
-	add.w d3, d3
+	move.l d2, d3
+	add.l d3, d3
 	lea OpasmLayoutStatementSectionIndices.l, a0
-	move.w 0(a0, d3.w), d3
+	move.w 0(a0, d3.l), d3
 	cmp.w OpasmLayoutCurrentSourceSection.l, d3
 	bne.w nextLabel
-	move.w d2, OpasmLayoutCurrentUnitEndStatement.l
+	move.l d2, OpasmLayoutCurrentUnitEndStatement.l
 	move.l d4, d0
 	jsr eng.opasmEngineGetLabelValueV1
 	move.l d0, OpasmLayoutCurrentUnitEndAddress.l
@@ -1647,19 +1666,17 @@ nextLabel
 	addq.w #1, d4
 	bra.w nextLabelLoop
 nextLabelDone
-	moveq #0, d4
-	move.w OpasmLayoutCurrentStatementIndex.l, d4
-	moveq #0, d6
-	move.w OpasmLayoutCurrentUnitEndStatement.l, d6
-	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d6
+	move.l OpasmLayoutCurrentStatementIndex.l, d4
+	move.l OpasmLayoutCurrentUnitEndStatement.l, d6
+	cmpi.l #$ffffffff, d6
 	bne.w markLoop
-	move.w #OPASM_LAYOUT_STATEMENT_CAPACITY, d6
+	move.l #OPASM_LAYOUT_STATEMENT_CAPACITY, d6
 markLoop
-	cmp.w d6, d4
+	cmp.l d6, d4
 	bhs.w marked
 	lea OpasmLayoutStatementMappedFlags.l, a0
-	move.b #1, 0(a0, d4.w)
-	addq.w #1, d4
+	move.b #1, 0(a0, d4.l)
+	addq.l #1, d4
 	bra.w markLoop
 marked
 	move.l OpasmLayoutCurrentUnitEndAddress.l, d0
@@ -1720,14 +1737,14 @@ return
 ; logical unit. Inputs: D0.W = label index. Outputs: D0.L = boolean.
 labelIsMappedV1	.block
 	jsr eng.opasmEngineGetLabelStatementIndexV1
-	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d0
+	cmpi.l #$ffffffff, d0
 	beq.s notMapped
-	cmpi.w #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
+	cmpi.l #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
 	bhs.s notMapped
-	move.w d0, d1
+	move.l d0, d1
 	lea OpasmLayoutStatementMappedFlags.l, a0
 	moveq #0, d0
-	move.b 0(a0, d1.w), d0
+	move.b 0(a0, d1.l), d0
 	rts
 notMapped
 	moveq #0, d0
@@ -1735,17 +1752,17 @@ notMapped
 	.bend  ; labelIsMappedV1
 
 ; Select pass-two image routing for one statement.
-; Inputs: D0.W = statement index. Outputs: D0.L = 0 main, 1 discard, 2 mapped.
+; Inputs: D0.L = statement index. Outputs: D0.L = 0 main, 1 discard, 2 mapped.
 statementImageRouteV1	.block
-	cmpi.w #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
+	cmpi.l #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
 	bhs.s main
-	move.w d0, d1
+	move.l d0, d1
 	lea OpasmLayoutStatementMappedFlags.l, a0
-	tst.b 0(a0, d1.w)
+	tst.b 0(a0, d1.l)
 	bne.s mapped
-	add.w d1, d1
+	add.l d1, d1
 	lea OpasmLayoutStatementSectionIndices.l, a0
-	move.w 0(a0, d1.w), d5
+	move.w 0(a0, d1.l), d5
 	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
 	beq.s main
 	lea OpasmLayoutSectionLogicalFlags.l, a0
@@ -2105,6 +2122,9 @@ OpasmLayoutSectionActive
 OpasmLayoutActiveSectionIndex
 	.res word, 1
 
+OpasmLayoutSectionParentPc
+	.res long, 1
+
 OpasmLayoutPlaceSectionIndex
 	.res word, 1
 
@@ -2298,7 +2318,7 @@ OpasmLayoutCurrentLabelIndex
 	.res word, 1
 
 OpasmLayoutCurrentStatementIndex
-	.res word, 1
+	.res long, 1
 
 OpasmLayoutCurrentSourceSection
 	.res word, 1
@@ -2307,7 +2327,7 @@ OpasmLayoutCurrentTargetSection
 	.res word, 1
 
 OpasmLayoutCurrentUnitEndStatement
-	.res word, 1
+	.res long, 1
 
 OpasmLayoutCurrentMappedAddress
 	.res long, 1

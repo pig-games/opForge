@@ -58,6 +58,49 @@ next
 	rts
 	.bend  ; opforgeNativeCliPutU16Decimal
 
+; Print unsigned 32-bit D0 as decimal through the CLI stdout path.
+opforgeNativeCliPutU32Decimal	.block
+	movem.l d1-d6/a0-a1, -(sp)
+	lea DecimalLongPowers, a0
+	moveq #9, d6
+	clr.w d5
+
+powerLoop
+	moveq #0, d3
+	move.l (a0)+, d2
+
+digitLoop
+	cmp.l d2, d0
+	bcs.s maybeEmit
+	sub.l d2, d0
+	addq.w #1, d3
+	bra.s digitLoop
+
+maybeEmit
+	tst.w d3
+	bne.s emit
+	tst.w d5
+	bne.s emit
+	cmpi.l #1, d2
+	bne.s next
+
+emit
+	move.w #1, d5
+	addi.b #'0', d3
+	lea state.NativeCliDecimalChar, a1
+	move.b d3, (a1)
+	clr.b 1(a1)
+	move.l #state.NativeCliDecimalChar, d1
+	move.l d0, -(sp)
+	jsr dos.putStr
+	move.l (sp)+, d0
+
+next
+	dbra d6, powerLoop
+	movem.l (sp)+, d1-d6/a0-a1
+	rts
+	.bend  ; opforgeNativeCliPutU32Decimal
+
 ; Print unsigned 16-bit D0 as decimal through the CLI ErrorOutput path.
 ; Inputs: D0.w = unsigned value.
 ; Outputs: decimal text is written to ErrorOutput; D0 is consumed.
@@ -158,6 +201,11 @@ opforgeNativeCliPutErrSpace	.block
 
 DecimalPowers
 	.word 10000, 1000, 100, 10, 1
+
+	.align 4
+DecimalLongPowers
+	.long 1000000000, 100000000, 10000000, 1000000, 100000
+	.long 10000, 1000, 100, 10, 1
 
 	.endsection
 

@@ -168,6 +168,7 @@ invocationPass
 
 record
 	jsr assembly_session.opforgeNativeCliRecordSourceLine
+	bne.w fail
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
@@ -589,10 +590,12 @@ opforgeNativeCliProcessExpandedScopeLineV1	.block
 	; Preserve them through the existing source/session flow fallback; substituted
 	; macro body lines still use the full tokenizer → PRVM path above.
 	jsr assembly_session.opforgeNativeCliRecordSourceLine
+	bne.s expandedScopeRecordDone
 	moveq #-1, d0
 	move.l d0, state.NativeCliPrvmRouteStatus
 	clr.w state.NativeCliPrvmResultCount
 	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
+expandedScopeRecordDone
 	move.l d0, -(sp)
 	jsr preprocessor_expansion.opforgeNativeCliEndExpandedLineV1.l
 	move.l d0, d2
@@ -751,10 +754,10 @@ closeMacro
 	bsr.w opforgeNativeCliProcessExpandedScopeLineV1
 	bne.w fail
 finish
-	move.w #-1, state.NativeCliPreprocessInvocationDefinition
-	moveq #0, d0
+	jsr preprocessor.opforgeNativeCliEndMacroInvocationFrameV1
 	rts
 fail
+	jsr preprocessor.opforgeNativeCliEndMacroInvocationFrameV1
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliExpandActiveMacroV1

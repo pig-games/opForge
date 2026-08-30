@@ -5,8 +5,14 @@
 	.use opasm.amigaos.engine as eng
 
 OPASM_SCOPE_DEPTH_CAPACITY = 8
+; Recursive `.use` tokenization interleaves the canonical 18-edge module graph
+; in the retained statement stream. Keep module parents independent from the
+; ordinary block/namespace scope stack and reject a thirty-third parent.
+OPASM_MODULE_PARENT_DEPTH_CAPACITY = 32
 OPASM_SCOPE_NAME_CAPACITY = 64
-OPASM_SCOPE_TEXT_CAPACITY = 64
+; The exact Rust-expanded product reaches 107 bytes after module, nested block,
+; and local-label qualification. Retain its terminating NUL as well.
+OPASM_SCOPE_TEXT_CAPACITY = 108
 
 	.section code, kind=code
 	.pub
@@ -20,7 +26,8 @@ resetStateV1	.block
 	move.w d0, ScopeDepth.l
 	move.w d0, ModuleParentDepth.l
 	move.w d0, RootModuleNameSet.l
-	move.w #-1, ActiveModuleStatementIndex.l
+	moveq #-1, d0
+	move.l d0, ActiveModuleStatementIndex.l
 	rts
 	.bend  ; resetStateV1
 
@@ -29,8 +36,7 @@ resetStateV1	.block
 ; Clobbers: D0-D2/A0-A1/CCR.
 activeModuleNameV1	.block
 	moveq #0, d1
-	moveq #0, d0
-	move.w ActiveModuleStatementIndex.l, d0
+	move.l ActiveModuleStatementIndex.l, d0
 	bmi.s activeModuleDone
 	jsr eng.opasmEngineGetStatementSourceTextV1
 	tst.l d0
@@ -95,18 +101,17 @@ done
 	.bend  ; rootModuleNameV1
 
 ; Apply the current `.block` scope directive and skip it.
-; Inputs: D7.W = current statement index.
-; Outputs: D0 = status; D1 = 1; D2.W = next statement index.
+; Inputs: D7.L = current statement index.
+; Outputs: D0 = status; D1 = 1; D2.L = next statement index.
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 beginBlockScopeV1	.block
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
 	bsr.w pushText
 	bne.s fail
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	moveq #0, d0
 	rts
@@ -116,15 +121,15 @@ fail
 	.bend  ; beginBlockScopeV1
 
 ; Apply the current `.namespace` scope directive and skip it.
-; Inputs: D7.W = current statement index.
-; Outputs: D0 = status; D1 = 1; D2.W = next statement index.
+; Inputs: D7.L = current statement index.
+; Outputs: D0 = status; D1 = 1; D2.L = next statement index.
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 beginNamespaceScopeV1	.block
 	bsr.w pushFromStatementOperand
 	bne.s fail
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	moveq #0, d0
 	rts
@@ -136,8 +141,8 @@ fail
 ; Begin one top-level module-local scope.  Native CLI modules are independent
 ; compilation roots, so a preceding module cannot contribute a prefix to the
 ; next module's local symbols.
-; Inputs: D7.W = current statement index.
-; Outputs: D0 = status; D1 = 1; D2.W = next statement index on success.
+; Inputs: D7.L = current statement index.
+; Outputs: D0 = status; D1 = 1; D2.L = next statement index on success.
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 beginModuleScopeV1	.block
@@ -145,16 +150,20 @@ beginModuleScopeV1	.block
 	beq.s begin
 	cmpi.w #1, d0
 	bne.s moduleFail
+	moveq #0, d1
 	move.w ModuleParentDepth.l, d1
-	bne.s moduleFail
-	move.w ActiveModuleStatementIndex.l, d3
-	move.w d3, ParentModuleStatementIndex.l
-	moveq #1, d1
+	cmpi.w #OPASM_MODULE_PARENT_DEPTH_CAPACITY, d1
+	bhs.s moduleFail
+	move.l d1, d2
+	lsl.l #2, d2
+	lea ParentModuleStatementIndexStack.l, a0
+	move.l ActiveModuleStatementIndex.l, 0(a0, d2.l)
+	addq.w #1, d1
 	move.w d1, ModuleParentDepth.l
 begin
 	moveq #0, d0
 	move.w d0, ScopeDepth.l
-	move.w d7, ActiveModuleStatementIndex.l
+	move.l d7, ActiveModuleStatementIndex.l
 	bsr.w beginNamespaceScopeV1
 	bne.s moduleFail
 	tst.w RootModuleNameSet.l
@@ -171,8 +180,8 @@ copyRoot
 rootCopied
 	move.w #1, RootModuleNameSet.l
 moduleDone
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	moveq #0, d0
 	rts
@@ -183,34 +192,38 @@ moduleFail
 
 ; Close one module root and restore the importer module root when recursive
 ; `.use` tokenization interleaved a dependency into the statement stream.
-; Inputs: D7.W = current statement index.
-; Outputs: D0 = status; D1 = 1; D2.W = next statement index.
+; Inputs: D7.L = current statement index.
+; Outputs: D0 = status; D1 = 1; D2.L = next statement index.
 ; Clobbers: D0-D3/A0-A1/CCR.
 ; CCR: reflects D0 on return.
 endModuleScopeV1	.block
 	move.w ScopeDepth.l, d0
 	cmpi.w #1, d0
 	bne.s moduleEndFail
-	move.w d7, -(sp)
+	move.l d7, -(sp)
 	moveq #0, d0
 	move.w d0, ScopeDepth.l
 	move.w ModuleParentDepth.l, d0
 	beq.s moduleEndRoot
 	subq.w #1, d0
 	move.w d0, ModuleParentDepth.l
-	move.w ParentModuleStatementIndex.l, d7
-	move.w d7, ActiveModuleStatementIndex.l
+	move.l d0, d1
+	lsl.l #2, d1
+	lea ParentModuleStatementIndexStack.l, a0
+	move.l 0(a0, d1.l), d7
+	move.l d7, ActiveModuleStatementIndex.l
 	bsr.w pushFromStatementOperand
-	move.w (sp)+, d7
+	move.l (sp)+, d7
 	tst.l d0
 	bne.s moduleEndFail
 	bra.s moduleEndDone
 moduleEndRoot
-	move.w (sp)+, d7
-	move.w #-1, ActiveModuleStatementIndex.l
+	move.l (sp)+, d7
+	moveq #-1, d0
+	move.l d0, ActiveModuleStatementIndex.l
 moduleEndDone
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	moveq #0, d0
 	rts
@@ -220,15 +233,15 @@ moduleEndFail
 	.bend  ; endModuleScopeV1
 
 ; Apply a scope close directive and skip it.
-; Inputs: D7.W = current statement index.
-; Outputs: D0 = status; D1 = 1; D2.W = next statement index.
+; Inputs: D7.L = current statement index.
+; Outputs: D0 = status; D1 = 1; D2.L = next statement index.
 ; Clobbers: D0-D1/CCR.
 ; CCR: reflects D0 on return.
 endScopeDirectiveV1	.block
 	bsr.w popScope
 	bne.s fail
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	moveq #0, d0
 	rts
@@ -238,25 +251,22 @@ fail
 	.bend  ; endScopeDirectiveV1
 
 ; Rewrite the current symbol directive's label with active scope prefixes.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0 = 0 on success, 1 on qualification failure.
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 qualifyStatementLabelIfScopedV1	.block
-	moveq #0, d0
-	move.w d7, d0
+	; Rust's ScopeStack::qualify uses every active segment. Native recursive
+	; module replay retains the root separately per statement, so rebuild the
+	; equivalent name from that stable owner plus live block/namespace suffixes.
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementOwnerTextV1
 	tst.l d0
 	bne.s haveStatementOwner
 	bsr.w activeModuleNameV1
-	beq.s checkScopeDepth
+	beq.w checkScopeDepth
 	movea.l a1, a0
 	move.l d1, d0
-	bra.s haveStatementOwner
-checkScopeDepth
-	tst.w ScopeDepth.l
-	beq.w ok
-	bra.s statementOwnerReady
 haveStatementOwner
 	cmpi.l #OPASM_SCOPE_NAME_CAPACITY - 1, d0
 	bhi.w ownerCapacityFail
@@ -271,21 +281,45 @@ statementOwnerCopy
 	bra.s statementOwnerCopy
 statementOwnerCopied
 	move.b #'.', (a1)+
-	moveq #0, d0
-	move.w d7, d0
+	addq.l #1, d4
+	moveq #1, d3
+	moveq #0, d2
+	move.w ScopeDepth.l, d2
+statementOwnerScopeLoop
+	cmp.w d2, d3
+	bhs.s statementOwnerPrefixReady
+	move.l d3, d0
+	lsl.l #6, d0
+	lea ScopeNames.l, a0
+	adda.l d0, a0
+statementOwnerScopeChar
+	move.b (a0)+, d5
+	beq.s statementOwnerScopeEnd
+	cmpi.l #OPASM_SCOPE_TEXT_CAPACITY - 1, d4
+	bhs.w ownerCapacityFail
+	move.b d5, (a1)+
+	addq.l #1, d4
+	bra.s statementOwnerScopeChar
+statementOwnerScopeEnd
+	cmpi.l #OPASM_SCOPE_TEXT_CAPACITY - 1, d4
+	bhs.w ownerCapacityFail
+	move.b #'.', (a1)+
+	addq.l #1, d4
+	addq.w #1, d3
+	bra.s statementOwnerScopeLoop
+statementOwnerPrefixReady
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
 	tst.l d0
 	beq.w ok
 	move.l d0, d5
 	move.l d4, d1
-	addq.l #1, d1
 	add.l d5, d1
-	cmpi.l #OPASM_SCOPE_NAME_CAPACITY - 1, d1
+	cmpi.l #OPASM_SCOPE_TEXT_CAPACITY - 1, d1
 	bhi.w ownerCapacityFail
 	movea.l a0, a2
 	lea ScopeScratch.l, a1
 	adda.l d4, a1
-	addq.l #1, a1
 statementLabelCopy
 	tst.l d5
 	beq.s statementLabelCopied
@@ -296,9 +330,11 @@ statementLabelCopied
 	clr.b (a1)
 	lea ScopeScratch.l, a0
 	bra.s qualifiedTextReady
+checkScopeDepth
+	tst.w ScopeDepth.l
+	beq.w ok
 statementOwnerReady
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
 	tst.l d0
 	beq.s ok
@@ -313,15 +349,13 @@ statementOwnerReady
 qualifiedTextReady
 	move.l d1, d5
 	movea.l a0, a1
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l a1, a0
 	move.l d5, d1
 	jsr eng.opasmEngineSetStatementLabelTextV1
 	tst.l d0
 	bne.s setFail
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
 	cmp.l d5, d0
 	bne.s lengthFail
@@ -459,40 +493,37 @@ return
 	.priv
 
 ; Push the label attached to the current `.block` as one scope component.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0 = 0 on success, 1 on missing/over-capacity name.
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 pushFromStatementLabel	.block
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
 	bsr.w pushText
 	rts
 	.bend  ; pushFromStatementLabel
 
 ; Push the parser-retained module owner as one scope component.
-; Inputs: D7.W = module statement index.
+; Inputs: D7.L = module statement index.
 ; Outputs: D0 = 0 on success, 1 on missing/over-capacity name.
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 pushFromStatementOwner	.block
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementOwnerTextV1
 	bsr.w pushText
 	rts
 	.bend  ; pushFromStatementOwner
 
 ; Push the first operand token of the current `.namespace` as one scope component.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0 = 0 on success, 1 on missing/over-capacity name.
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 pushFromStatementOperand	.block
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.s fail
@@ -665,7 +696,7 @@ ModuleParentDepth
 	.res word, 1
 
 ActiveModuleStatementIndex
-	.res word, 1
+	.res long, 1
 
 RootModuleNameSet
 	.res word, 1
@@ -676,8 +707,8 @@ RootModuleName
 ScopeNames
 	.res byte, OPASM_SCOPE_DEPTH_CAPACITY * OPASM_SCOPE_NAME_CAPACITY
 
-ParentModuleStatementIndex
-	.res word, 1
+ParentModuleStatementIndexStack
+	.res long, OPASM_MODULE_PARENT_DEPTH_CAPACITY
 
 ScopeScratch
 	.res byte, OPASM_SCOPE_TEXT_CAPACITY

@@ -99,29 +99,56 @@ NATIVE_SOURCE_OUTPUT_SECTION_NAME_CAPACITY = 32
 PATH_BUFFER_CAPACITY            = 256
 TOKEN_BUFFER_CAPACITY           = 64
 SOURCE_LINE_BUFFER_CAPACITY     = 512
-NATIVE_SOURCE_RECORD_CAPACITY   = 512
-NATIVE_MODULE_TABLE_CAPACITY    = 16
-NATIVE_IMPORT_TABLE_CAPACITY    = 32
-NATIVE_MODULE_PATH_CAPACITY     = 8
+NATIVE_SOURCE_RECORD_CAPACITY   = 100000
+; Rust's canonical processed full-product graph stores 3,461,038 source bytes
+; across 89,933 logical rows. Keep the packed owner at the next power of two
+; while leaving deterministic headroom.
+NATIVE_SOURCE_TEXT_POOL_CAPACITY = 4194304
+; The complete native product currently contributes 105 discoverable modules.
+; Keep deterministic overflow behavior while leaving measured headroom for the
+; current graph instead of rejecting it at the former smoke-only limit of 16.
+NATIVE_MODULE_TABLE_CAPACITY    = 128
+; The canonical full-product graph currently retains 369 `.use` records.
+; Preserve the Rust graph without truncation while keeping the next bounded
+; power-of-two limit deterministic.
+NATIVE_IMPORT_TABLE_CAPACITY    = 512
+; Slot zero is the implicit input-directory root. The canonical full-product
+; command supplies eight explicit module paths, so its measured native budget
+; is nine while the next insertion still fails deterministically.
+NATIVE_MODULE_PATH_CAPACITY     = 9
 NATIVE_MODULE_SCAN_DEPTH_CAPACITY = 8
-NATIVE_MODULE_RESOLVE_DEPTH_LIMIT = 8
+; Rust resolves the canonical product through an 18-edge `.use` chain. Native
+; keeps the same recursive ordering in a fixed stack with power-of-two
+; headroom; the thirty-third active module fails before any frame write.
+NATIVE_MODULE_RESOLVE_DEPTH_LIMIT = 32
+NATIVE_STATEMENT_OWNER_DEPTH_CAPACITY = 32
 NATIVE_INCLUDE_PATH_CAPACITY    = 8
 NATIVE_IMPORT_SELECT_CAPACITY   = 64
 NATIVE_IMPORT_SECTION_MAP_CAPACITY = 32
-NATIVE_ORDINARY_EXPORT_CAPACITY = 64
-NATIVE_STATEMENT_TABLE_CAPACITY = NATIVE_SOURCE_RECORD_CAPACITY
-NATIVE_LABEL_TABLE_CAPACITY     = 16
+; The canonical full-product source graph contains 6,290 ordinary declaration
+; candidates while public visibility is active.  Retain the complete Rust
+; module-export surface with bounded power-of-two headroom.
+NATIVE_ORDINARY_EXPORT_CAPACITY = 8192
+NATIVE_ORDINARY_EXPORT_NAME_POOL_CAPACITY = 262144
+NATIVE_STATEMENT_TABLE_CAPACITY = 100000
+NATIVE_LABEL_TABLE_CAPACITY     = 16384
+NATIVE_LABEL_HASH_BUCKET_CAPACITY = 256
 NATIVE_IMAGE_BUFFER_CAPACITY    = 65535
-NATIVE_PREPROCESS_EXPANSION_DEPTH_LIMIT = 1
+; Rust recursively expands substituted macro/segment/statement bodies.  The
+; canonical full-product macro graph reaches depth two (the emit* helpers call
+; emitLe32), so the native fixed-memory implementation retains four frames and
+; rejects only a fifth active frame.
+NATIVE_PREPROCESS_EXPANSION_DEPTH_LIMIT = 4
 NATIVE_PREPROCESS_DEFINITION_CAPACITY = 8
 ; Command-line defines and conditional frames are independently bounded
-; frontend resources. Their limits are named explicitly so overflow is a
-; deterministic parse/preprocess failure, never silent truncation.
+; frontend resources.  The canonical full-product source graph reaches 32
+; nested conditionals, so retain power-of-two headroom while keeping overflow
+; a deterministic parse/preprocess failure, never silent truncation.
 NATIVE_PREPROCESS_CLI_DEFINE_CAPACITY = 16
-NATIVE_PREPROCESS_CONDITIONAL_DEPTH_CAPACITY = 16
+NATIVE_PREPROCESS_CONDITIONAL_DEPTH_CAPACITY = 64
 NATIVE_PREPROCESS_BODY_LINE_CAPACITY = 8
 NATIVE_PREPROCESS_MACRO_ARG_CAPACITY = 9
-NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT = 1
+NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT = 4
 ; Native macro storage is deliberately fixed.  These text capacities name the
 ; individual owners rather than implying that their buffers can be shared.
 ; Definition headers retain the macro name/signature in one source-line slot.
@@ -132,6 +159,8 @@ NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY
 NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY
 NATIVE_PREPROCESS_SAVED_LINE_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY
 NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY
+NATIVE_PREPROCESS_INVOCATION_ARG_LENGTH_BYTES = NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * 2
+NATIVE_PREPROCESS_INVOCATION_ARGS_BYTES = NATIVE_PREPROCESS_MACRO_ARG_CAPACITY * NATIVE_PREPROCESS_INVOCATION_ARG_TEXT_CAPACITY
 ; Structural-definition record kinds. MACRO expands with lexical scope;
 ; SEGMENT and STATEMENT expand inline through their dedicated matchers.
 NATIVE_PREPROCESS_DEFINITION_KIND_MACRO = 0
@@ -142,8 +171,17 @@ NATIVE_PREPROCESS_VISIBILITY_PUBLIC = 1
 NATIVE_PREPROCESS_IMPORT_BINDING_CAPACITY = NATIVE_IMPORT_SELECT_CAPACITY
 NATIVE_PREPROCESS_IMPORT_BINDING_NAME_CAPACITY = SOURCE_LINE_BUFFER_CAPACITY
 NATIVE_STATEMENT_OUTPUT_BYTES   = NATIVE_STATEMENT_TABLE_CAPACITY * 12
-NATIVE_SOURCE_TEXT_BYTES        = NATIVE_SOURCE_RECORD_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY
-NATIVE_ASSEMBLY_SESSION_BYTES   = (5 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + NATIVE_SOURCE_TEXT_BYTES + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + NATIVE_STATEMENT_OUTPUT_BYTES + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + NATIVE_IMAGE_BUFFER_CAPACITY
+; Keep this resource accounting parseable by the native source reader itself:
+; every product source line must fit SOURCE_LINE_BUFFER_CAPACITY. The previous
+; single 1,215-byte expression made the full graph undiscoverable even though
+; each independently owned allocation was within its bound.
+NATIVE_ASSEMBLY_SESSION_HEADER_BYTES = 90
+NATIVE_ASSEMBLY_SESSION_SOURCE_BYTES = (NATIVE_SOURCE_RECORD_CAPACITY * 10) + NATIVE_SOURCE_TEXT_POOL_CAPACITY
+NATIVE_ASSEMBLY_SESSION_STATEMENT_BYTES = NATIVE_STATEMENT_TABLE_CAPACITY * 308
+NATIVE_ASSEMBLY_SESSION_LABEL_BYTES = (NATIVE_LABEL_TABLE_CAPACITY * 123) + (NATIVE_LABEL_HASH_BUCKET_CAPACITY * 4)
+NATIVE_ASSEMBLY_SESSION_TAIL_BYTES = 10
+NATIVE_ASSEMBLY_SESSION_IMAGE_BYTES = NATIVE_IMAGE_BUFFER_CAPACITY * 3
+NATIVE_ASSEMBLY_SESSION_BYTES = NATIVE_ASSEMBLY_SESSION_HEADER_BYTES + NATIVE_ASSEMBLY_SESSION_SOURCE_BYTES + NATIVE_ASSEMBLY_SESSION_STATEMENT_BYTES + NATIVE_ASSEMBLY_SESSION_LABEL_BYTES + NATIVE_ASSEMBLY_SESSION_TAIL_BYTES + NATIVE_ASSEMBLY_SESSION_IMAGE_BYTES
 PACKAGE_INPUT_PTR_V1            = buffers.PACKAGE_STORAGE_PTR_V1
 NATIVE_INCLUDE_DEPTH_LIMIT      = 1
 PRVM_ROUTE_MAGIC_OPLR           = $4F504C52

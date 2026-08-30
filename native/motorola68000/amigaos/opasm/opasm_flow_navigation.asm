@@ -9,36 +9,35 @@
 	.pub
 
 ; Initialize ordinary forward statement flow for one callback invocation.
-; Inputs: D0.W = current statement index.
-; Outputs: D0 = 0; D1 = 0 to process; D2.W = next statement index.
+; Inputs: D0.L = current statement index.
+; Outputs: D0 = 0; D1 = 0 to process; D2.L = next statement index.
 ; Clobbers: D0-D2/CCR.
 ; CCR: reflects D0 on return.
 initializeStatementFlowV1	.block
-	move.w d0, d2
-	addq.w #1, d2
+	move.l d0, d2
+	addq.l #1, d2
 	clr.w d1
 	moveq #0, d0
 	rts
 	.bend  ; initializeStatementFlowV1
 
 ; Find the next same-level `.elseif`, `.else`, or `.endif` after an `.if` branch.
-; Inputs: D7.W = current conditional statement index.
-; Outputs: D0 = status; D1 = 1 elseif, 2 else, 3 endif; D2.W = statement index.
+; Inputs: D7.L = current conditional statement index.
+; Outputs: D0 = status; D1 = 1 elseif, 2 else, 3 endif; D2.L = statement index.
 ; Clobbers: D0-D6/A0-A1/CCR.
 ; CCR: reflects D0 on return.
 findNextIfBranchV1	.block
 	movem.l d3-d6/a0-a1, -(sp)
-	move.w d7, d2
+	move.l d7, d2
 	moveq #1, d6
 scan
-	addq.w #1, d2
+	addq.l #1, d2
 	jsr eng.opasmEngineGetStatementCountV1
-	cmp.w d0, d2
+	cmp.l d0, d2
 	bhs.w fail
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
-	moveq #0, d0
-	move.w d2, d0
+	move.l d2, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w next
 	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
@@ -117,8 +116,8 @@ return
 	.bend  ; findNextIfBranchV1
 
 ; Find a matching same-level `.endif` after one selected branch marker.
-; Inputs: D7.W = current `.elseif` or `.else` statement index.
-; Outputs: D0 = status; D2.W = matching endif index.
+; Inputs: D7.L = current `.elseif` or `.else` statement index.
+; Outputs: D0 = status; D2.L = matching endif index.
 ; Clobbers: D0-D6/A0-A3/CCR.
 ; CCR: reflects D0 on return.
 findMatchingEndifV1	.block
@@ -131,25 +130,24 @@ findMatchingEndifV1	.block
 	.bend  ; findMatchingEndifV1
 
 ; Find the first same-level matching `.case`, otherwise `.default`, for `.match`.
-; Inputs: A0 = callback that returns zero for a matching D7.W `.case`; D7.W = `.match` statement index.
-; Outputs: D0 = status; D2.W = selected case/default/endmatch statement index.
+; Inputs: A0 = callback that returns zero for a matching D7.L `.case`; D7.L = `.match` statement index.
+; Outputs: D0 = status; D2.L = selected case/default/endmatch statement index.
 ; Clobbers: D0-D6/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 findSelectedMatchBranchV1	.block
 	movem.l d1/d3-d6/a0-a2, -(sp)
 	move.l a0, FlowCaseMatcher
-	move.w #$ffff, d3
-	move.w d7, d2
+	moveq #-1, d3
+	move.l d7, d2
 	moveq #1, d6
 scan
-	addq.w #1, d2
+	addq.l #1, d2
 	jsr eng.opasmEngineGetStatementCountV1
-	cmp.w d0, d2
+	cmp.l d0, d2
 	bhs.w fail
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
-	moveq #0, d0
-	move.w d2, d0
+	move.l d2, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w next
 	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
@@ -180,7 +178,7 @@ outerBranch
 	moveq #4, d1
 	bsr.w flowMnemonicEquals
 	beq.s maybeDefault
-	move.w d2, d7
+	move.l d2, d7
 	movea.l FlowCaseMatcher, a2
 	move.l d2, -(sp)
 	jsr (a2)
@@ -195,12 +193,12 @@ maybeDefault
 	moveq #7, d1
 	bsr.w flowMnemonicEquals
 	beq.w next
-	move.w d2, d3
+	move.l d2, d3
 	bra.w next
 chooseDefault
-	cmpi.w #$ffff, d3
+	cmpi.l #$ffffffff, d3
 	beq.s found
-	move.w d3, d2
+	move.l d3, d2
 found
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	moveq #0, d0
@@ -216,8 +214,8 @@ return
 	.bend  ; findSelectedMatchBranchV1
 
 ; Find a matching same-level `.endmatch` after a selected case/default.
-; Inputs: D7.W = current case/default statement index.
-; Outputs: D0 = status; D2.W = matching end statement.
+; Inputs: D7.L = current case/default statement index.
+; Outputs: D0 = status; D2.L = matching end statement.
 ; Clobbers: D0-D6/A0-A3/CCR.
 ; CCR: reflects D0 on return.
 findMatchingEndmatchV1	.block
@@ -230,8 +228,8 @@ findMatchingEndmatchV1	.block
 	.bend  ; findMatchingEndmatchV1
 
 ; Find the matching `.endfor` for a zero-count `.for`.
-; Inputs: D7.W = opening statement index.
-; Outputs: D0 = status; D2.W = matching end statement.
+; Inputs: D7.L = opening statement index.
+; Outputs: D0 = status; D2.L = matching end statement.
 ; Clobbers: D0-D6/A0-A3/CCR.
 ; CCR: reflects D0 on return.
 findMatchingEndforV1	.block
@@ -244,8 +242,8 @@ findMatchingEndforV1	.block
 	.bend  ; findMatchingEndforV1
 
 ; Find the matching `.endwhile` for a false-first `.while`.
-; Inputs: D7.W = opening statement index.
-; Outputs: D0 = status; D2.W = matching end statement.
+; Inputs: D7.L = opening statement index.
+; Outputs: D0 = status; D2.L = matching end statement.
 ; Clobbers: D0-D6/A0-A3/CCR.
 ; CCR: reflects D0 on return.
 findMatchingEndwhileV1	.block
@@ -258,8 +256,8 @@ findMatchingEndwhileV1	.block
 	.bend  ; findMatchingEndwhileV1
 
 ; Find an end token at the same nesting level as the supplied opening token.
-; Inputs: D7.W = opening index; A0/D0 = opening token; A1/D1 = ending token.
-; Outputs: D0 = status; D2.W = matching end index on success.
+; Inputs: D7.L = opening index; A0/D0 = opening token; A1/D1 = ending token.
+; Outputs: D0 = status; D2.L = matching end index on success.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0 on return.
 findMatchingPairV1	.block
@@ -268,17 +266,16 @@ findMatchingPairV1	.block
 	move.l d0, d5
 	movea.l a1, a3
 	move.l d1, d6
-	move.w d7, d2
+	move.l d7, d2
 	moveq #1, d7
 scan
-	addq.w #1, d2
+	addq.l #1, d2
 	jsr eng.opasmEngineGetStatementCountV1
-	cmp.w d0, d2
+	cmp.l d0, d2
 	bhs.w fail
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
-	moveq #0, d0
-	move.w d2, d0
+	move.l d2, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.s next
 	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4

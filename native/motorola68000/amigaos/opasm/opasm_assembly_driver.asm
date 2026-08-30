@@ -413,9 +413,9 @@ absoluteRefreshLabel
 	bne.w absoluteRefreshNext
 	move.w d4, d0
 	jsr eng.opasmEngineGetLabelStatementIndexV1
-	cmpi.w #$ffff, d0
+	cmpi.l #$ffffffff, d0
 	beq.w absoluteRefreshFail
-	move.w d0, d3
+	move.l d0, d3
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w absoluteRefreshFail
@@ -458,26 +458,24 @@ absoluteRefreshReturn
 	.bend  ; refreshAbsoluteConstantLabelsForPassTwo
 
 ; Apply counted-repetition control before one statement reaches pass logic.
-; Inputs: D0.W = current statement index.
-; Outputs: D0 = status; D1 = 0 to process or 1 to skip; D2.W = next index when skipped.
+; Inputs: D0.L = current statement index.
+; Outputs: D0 = status; D1 = 0 to process or 1 to skip; D2.L = next index when skipped.
 ; Clobbers: D0-D2/CCR.
 ; CCR: reflects D0 on return.
 opasmDriverApplyFlowControl	.block
 	movem.l d3-d7/a0-a2/a4-a5, -(sp)
-	move.w d0, d7
-	move.w d7, d0
+	move.l d0, d7
+	move.l d7, d0
 	jsr navigation.initializeStatementFlowV1
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementKindV1
 	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_MODULE, d0
 	beq.w beginStoredModule
 	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_ENDMODULE, d0
 	beq.w endStoredModule
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w processStatement
 	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d4
@@ -486,8 +484,8 @@ opasmDriverApplyFlowControl	.block
 	bne.s checkFor
 	cmpi.b #'=', (a0)
 	bne.s checkFor
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
@@ -649,27 +647,25 @@ checkConditional
 	bra.w fail
 
 beginStructDefinition
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
 	jsr structs.beginDefinitionV1
 	bne.w fail
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
 endStructDefinition
 	jsr structs.endDefinitionV1
 	bne.w fail
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
 skipStructField
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
 	movea.l a0, a1
 	move.l d0, d2
@@ -678,14 +674,14 @@ skipStructField
 	move.l d2, d0
 	jsr structs.captureFieldV1
 	bne.w fail
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
 skipTextEncodingDirective
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
@@ -805,9 +801,9 @@ updateBinding
 	bne.w fail
 repeatBody
 	move.l d3, d4
-	add.w d4, d4
+	lsl.l #2, d4
 	lea OpasmRepeatBodyStart, a0
-	move.w 0(a0, d4.l), d2
+	move.l 0(a0, d4.l), d2
 	moveq #1, d1
 	bra.w success
 
@@ -825,8 +821,8 @@ finishFor
 	bne.w fail
 finishPop
 	move.w d3, OpasmRepeatDepth
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
@@ -856,18 +852,17 @@ compareEndwhile
 	cmpi.b #OPASM_REPEAT_KIND_WHILE, 0(a0, d3.l)
 	bne.w fail
 	move.l d3, d4
-	add.w d4, d4
+	lsl.l #2, d4
 	lea OpasmRepeatOpening, a0
-	moveq #0, d0
-	move.w 0(a0, d4.l), d0
-	move.w d7, d6
-	move.w d0, d7
+	move.l 0(a0, d4.l), d0
+	move.l d7, d6
+	move.l d0, d7
 	moveq #4, d5
 	move.w #1, OpasmDriverWhileReevaluation
 	bsr.w readWhileConditionForStatement
 	move.l d0, d5
 	clr.w OpasmDriverWhileReevaluation
-	move.w d6, d7
+	move.l d6, d7
 	tst.l d5
 	bne.w fail
 	tst.l d3
@@ -884,17 +879,17 @@ compareEndwhile
 	bhi.w fail
 	move.l d5, 0(a0, d4.l)
 	move.l d3, d4
-	add.w d4, d4
+	lsl.l #2, d4
 	lea OpasmRepeatBodyStart, a0
-	move.w 0(a0, d4.l), d2
+	move.l 0(a0, d4.l), d2
 	moveq #1, d1
 	bra.w success
 finishWhile
 	move.w OpasmRepeatDepth, d3
 	subq.w #1, d3
 	move.w d3, OpasmRepeatDepth
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
@@ -916,13 +911,13 @@ compareWhile
 	cmpi.w #OPASM_REPEAT_STACK_CAPACITY, d4
 	bhs.w fail
 	move.l d4, d5
-	add.w d5, d5
+	lsl.l #2, d5
 	lea OpasmRepeatBodyStart, a0
-	move.w d7, d6
-	addq.w #1, d6
-	move.w d6, 0(a0, d5.l)
+	move.l d7, d6
+	addq.l #1, d6
+	move.l d6, 0(a0, d5.l)
 	lea OpasmRepeatOpening, a0
-	move.w d7, 0(a0, d5.l)
+	move.l d7, 0(a0, d5.l)
 	move.l d4, d5
 	lsl.l #2, d5
 	lea OpasmRepeatRemaining, a0
@@ -932,15 +927,15 @@ compareWhile
 	move.b #OPASM_REPEAT_KIND_WHILE, 0(a0, d4.l)
 	addq.w #1, d4
 	move.w d4, OpasmRepeatDepth
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 zeroWhile
 	jsr navigation.findMatchingEndwhileV1
 	bne.w fail
 	moveq #1, d1
-	addq.w #1, d2
+	addq.l #1, d2
 	bra.w success
 
 beginIfBranch
@@ -957,7 +952,7 @@ ifFalse
 	beq.w selectIfBranchAtD2
 	cmpi.w #2, d1
 	beq.w selectElseIfBranchAtD2
-	addq.w #1, d2
+	addq.l #1, d2
 	bra.w finishIfBranch
 
 handleElseifBranch
@@ -977,7 +972,7 @@ elseifFalse
 	beq.w selectIfBranchAtD2
 	cmpi.w #2, d1
 	beq.w selectElseIfBranchAtD2
-	addq.w #1, d2
+	addq.l #1, d2
 	bra.w finishIfBranch
 
 handleElseBranch
@@ -986,9 +981,9 @@ handleElseBranch
 finishIfBranch
 	; Skip the zero-width marker while marking the next statement as a sequential
 	; arrival, so an outer `.elseif` is not mistaken for a false-branch target.
-	move.w d7, d2
-	addq.w #1, d2
-	ori.w #$8000, d2
+	move.l d7, d2
+	addq.l #1, d2
+	ori.l #$80000000, d2
 	moveq #1, d1
 	bra.w success
 
@@ -1000,39 +995,39 @@ beginMatchBranch
 	lea caseMatchesCurrentValue, a0
 	jsr navigation.findSelectedMatchBranchV1
 	bne.w fail
-	addq.w #1, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
 skipSelectedMatchBranch
 	jsr navigation.findMatchingEndmatchV1
 	bne.w fail
-	addq.w #1, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
 finishEndmatchBranch
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
 selectIfBranch
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 selectIfBranchAtD2
 	moveq #1, d1
 	bra.w success
 
 selectElseIfBranchAtD2
-	addq.w #1, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
 skipSelectedIfBranch
 	jsr navigation.findMatchingEndifV1
 	bne.w fail
-	addq.w #1, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
@@ -1057,8 +1052,7 @@ beginBfor
 	lsl.l #2, d6
 	lea OpasmRepeatBforBasePc.l, a0
 	move.l d0, 0(a0, d6.l)
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
 	moveq #0, d2
 	move.w d5, d2
@@ -1067,11 +1061,11 @@ beginBfor
 
 beginForShared
 	move.l d5, d6
-	add.w d6, d6
+	lsl.l #2, d6
 	lea OpasmRepeatBodyStart, a0
-	move.w d7, d0
-	addq.w #1, d0
-	move.w d0, 0(a0, d6.l)
+	move.l d7, d0
+	addq.l #1, d0
+	move.l d0, 0(a0, d6.l)
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
 	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
 	jsr compile_values.planListForOperandV1
@@ -1100,8 +1094,8 @@ beginForShared
 	move.w OpasmRepeatDepth, d4
 	addq.w #1, d4
 	move.w d4, OpasmRepeatDepth
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
@@ -1133,8 +1127,8 @@ beginIterableFor
 	move.w OpasmRepeatDepth, d4
 	addq.w #1, d4
 	move.w d4, OpasmRepeatDepth
-	move.w d7, d2
-	addq.w #1, d2
+	move.l d7, d2
+	addq.l #1, d2
 	moveq #1, d1
 	bra.w success
 
@@ -1142,7 +1136,7 @@ zeroFor
 	jsr navigation.findMatchingEndforV1
 	bne.w fail
 	moveq #1, d1
-	addq.w #1, d2
+	addq.l #1, d2
 	bra.w success
 
 processStatement
@@ -1152,15 +1146,14 @@ processStatement
 success
 	tst.w d1
 	beq.s successStatus
-	move.w d2, d0
+	move.l d2, d0
 	jsr eng.opasmEngineSetFlowNextV1
 successStatus
 	moveq #0, d0
 	bra.s return
 
 fail
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementSourceTextV1
 	move.l d0, d1
 	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
@@ -1174,7 +1167,7 @@ return
 	.bend  ; opasmDriverApplyFlowControl
 
 ; Return whether any comma-separated `.case` value matches OpasmMatchValue.
-; Inputs: D7.W = case statement index.
+; Inputs: D7.L = case statement index.
 ; Outputs: D0 = 0 on match, 1 otherwise/malformed.
 ; Clobbers: D0-D6/A0-A2/CCR.
 ; CCR: reflects D0 on return.
@@ -1219,14 +1212,13 @@ fail
 
 opasmDriverRecordLabel	.block
 	movem.l d1-d7/a0-a1/a5, -(sp)
-	move.w d0, d7
+	move.l d0, d7
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	clr.w OpasmDriverScopedRepeatLabel.l
 	bsr.w qualifyScopedRepeatLabelForStatement
 	bne.w return
 	movea.l sp, a0
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w recordPcLabel
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a1
@@ -1249,8 +1241,7 @@ recordPcLabel
 	beq.s recordAbsolutePcLabel
 	move.l OpasmDriverScopedRepeatValue.l, d3
 	moveq #0, d4
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineRecordStatementLabelValueV1
 	bra.w handleLabelEvent
 
@@ -1258,8 +1249,7 @@ recordAbsolutePcLabel
 	jsr scopes.qualifyStatementLabelIfScopedV1
 	tst.l d0
 	bne.w symbolValueFail
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineRecordStatementLabelV1
 	bra.w handleLabelEvent
 
@@ -1293,8 +1283,7 @@ recordResolvedSymbolValue
 	move.l (sp)+, d3
 	tst.l d5
 	bne.w symbolValueFail
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	move.w d6, d4
 	jsr eng.opasmEngineRecordStatementLabelValueV1
 
@@ -1334,8 +1323,7 @@ return
 
 symbolValueFail
 	move.l d0, d2
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementOwnerTextV1
 	move.l d0, d1
 	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
@@ -1352,12 +1340,11 @@ symbolValueFail
 ; Inputs: D0 = statement index. Outputs: D0 = engine refresh status.
 opasmDriverRefreshLabel	.block
 	movem.l d1-d7/a0-a1/a5, -(sp)
-	move.w d0, d7
+	move.l d0, d7
 	clr.w OpasmDriverScopedRepeatLabel.l
 	bsr.w qualifyScopedRepeatLabelForStatement
 	bne.s refreshReturn
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineRefreshStatementPcLabelV1
 refreshReturn
 	movem.l (sp)+, d1-d7/a0-a1/a5
@@ -1370,13 +1357,12 @@ refreshReturn
 ; @opforge-owner: opasm.amigaos.flow_structs
 ; @opforge-slice: documentation/plans/slices/native-porting-slice-structs.toml
 ; @opforge-role: delegation
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0 = 0 on success/no active `.bfor`, 1 on capacity failure.
 qualifyScopedRepeatLabelForStatement	.block
 	tst.w OpasmRepeatDepth
 	beq.s scopedLabelOk
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
 	movea.l a0, a1
 	move.l d0, d4
@@ -1389,8 +1375,7 @@ qualifyScopedRepeatLabelForStatement	.block
 	bne.s scopedLabelFail
 	tst.w d3
 	beq.s scopedLabelOk
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineSetStatementLabelTextV1
 	bne.s scopedLabelFail
 	jsr eng.opasmEngineGetSessionCurrentPcV1
@@ -1413,7 +1398,7 @@ scopedLabelFail
 	.bend  ; qualifyScopedRepeatLabelForStatement
 
 ; Capture a typed struct instance from a const, var, or set statement.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0 = 0 when captured and D3 = struct size; D0 = 1 otherwise.
 ; Clobbers: D0-D3/A0-A2/CCR.
 ; CCR: reflects D0 on return.
@@ -1421,8 +1406,7 @@ tryCaptureTypedStructInstanceForStatement	.block
 	movem.l d1-d2/d4-d6/a0-a2, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.s fail
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
@@ -1435,8 +1419,7 @@ tryCaptureTypedStructInstanceForStatement	.block
 	cmpi.w #directives.OPASM_DIRECTIVE_SET, d3
 	bne.s fail
 capture
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
 	movea.l a0, a2
 	move.l d0, d2
@@ -1457,12 +1440,11 @@ return
 
 opasmDriverEmitImageBytes	.block
 	movem.l d1-d6/a0-a4, -(sp)
-	move.w d0, d6
+	move.l d0, d6
 	jsr layout.statementImageRouteV1
 	jsr eng.opasmEngineSetImageRouteV1
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d6, d0
+	move.l d6, d0
 	jsr eng.opasmEngineGetStatementKindV1
 	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_MODULE, d0
 	beq.w ok
@@ -1471,22 +1453,19 @@ opasmDriverEmitImageBytes	.block
 	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_USE, d0
 	beq.w ok
 	movea.l sp, a0
-	moveq #0, d0
-	move.w d6, d0
+	move.l d6, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w ok
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a1
 	move.l a1, d5
 	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a0), d4
 	beq.w ok
-	moveq #0, d0
-	move.w d6, d0
+	move.l d6, d0
 	move.w d4, d1
 	movea.l d5, a0
 	jsr eng.opasmEngineStatementMnemonicDuplicatesLabelV1
 	bne.w ok
-	moveq #0, d0
-	move.w d6, d0
+	move.l d6, d0
 	bsr.w statementStartsWithDirectiveSigilV1
 	bne.s emitPackageStateReady
 	movea.l d5, a0
@@ -1510,8 +1489,7 @@ emitPackageStateReady
 	jsr directives.classifyV1
 	cmpi.w #directives.OPASM_DIRECTIVE_PACK, d3
 	bne.s emitDirectiveReady
-	moveq #0, d0
-	move.w d6, d0
+	move.l d6, d0
 	bsr.w statementStartsWithDirectiveSigilV1
 	beq.s emitDirectiveReady
 	clr.w d3
@@ -1546,16 +1524,16 @@ emitDirectiveReady
 	bsr.w prepareSelectedEvaluateExpressionExtension
 	bsr.w serviceFramePtr
 	move.w OpasmDriverEvalRequestLen, d0
-	move.w d6, -(sp)
+	move.l d6, -(sp)
 	jsr tkpkg.adaptSelectedEncodeRequestV1
-	move.w (sp)+, d3
+	move.l (sp)+, d3
 	move.w d2, d4
 	tst.b d0
 	bne.w serviceFail
 	tst.w d1
 	beq.w noOutput
 	move.w d1, d6
-	move.w d3, d0
+	move.l d3, d0
 	bsr.w recordSelectedOutputFixupsV1
 	bne.w fail
 	bsr.w serviceFramePtr
@@ -1581,8 +1559,7 @@ fail
 	bra.w return
 
 serviceFail
-	moveq #0, d0
-	move.w d6, d0
+	move.l d6, d0
 	jsr eng.opasmEngineStatementLooksBareColumnOneV1
 	bne.w ok
 	tst.w d4
@@ -1609,7 +1586,7 @@ noOutput
 	bra.w return
 
 emitAlign
-	move.w d6, d7
+	move.l d6, d7
 	bsr.w readAlignPadForStatement
 	bne.w emitLayoutFail
 	move.l d3, d0
@@ -1626,12 +1603,12 @@ emitDs
 	bra.w return
 
 emitFill
-	move.w d6, d7
+	move.l d6, d7
 	moveq #2, d6
 	bsr.w readCommaOperandValueForStatement
 	bne.w emitLayoutFail
 	move.l d3, d5
-	move.w d7, d6
+	move.l d7, d6
 	moveq #3, d6
 	bsr.w readCommaOperandValueForStatement
 	bne.w emitLayoutFail
@@ -1643,14 +1620,14 @@ emitFill
 	bra.w return
 
 emitByte
-	move.w d6, d7
+	move.l d6, d7
 	bsr.w emitByteDirectiveForStatement
 	bne.w emitLayoutFail
 	moveq #0, d0
 	bra.w return
 
 emitWord
-	move.w d6, d7
+	move.l d6, d7
 	moveq #0, d5
 	bsr.w parseTextDirectiveForStatement
 	bne.s emitWordNumeric
@@ -1669,7 +1646,7 @@ emitWordOk
 	bra.w return
 
 emitLong
-	move.w d6, d7
+	move.l d6, d7
 	moveq #0, d4
 	bsr.w emitPackageLongDirectiveForStatement
 	bne.w emitLayoutFail
@@ -1677,7 +1654,7 @@ emitLong
 	bra.w return
 
 emitTypedLong
-	move.w d6, d7
+	move.l d6, d7
 	bsr.w emitDirectiveIsLongV1
 	bne.w emitLayoutFail
 	moveq #1, d4
@@ -1687,7 +1664,7 @@ emitTypedLong
 	bra.w return
 
 emitText
-	move.w d6, d7
+	move.l d6, d7
 	moveq #0, d5
 	bsr.w emitTextDirectiveForStatement
 	bne.w emitLayoutFail
@@ -1695,7 +1672,7 @@ emitText
 	bra.w return
 
 emitNull
-	move.w d6, d7
+	move.l d6, d7
 	moveq #1, d5
 	bsr.w emitTextDirectiveForStatement
 	bne.w emitLayoutFail
@@ -1703,7 +1680,7 @@ emitNull
 	bra.w return
 
 emitPtext
-	move.w d6, d7
+	move.l d6, d7
 	moveq #2, d5
 	bsr.w emitTextDirectiveForStatement
 	bne.w emitLayoutFail
@@ -1730,13 +1707,12 @@ return
 ; @opforge-owner: opasm.amigaos.assembly_driver
 ; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
 ; @opforge-role: delegation
-; Inputs: D0.W=statement index, D6.W=selected output byte count.
+; Inputs: D0.L=statement index, D6.W=selected output byte count.
 ; Outputs: D0=0 success/1 malformed or unsupported fixup.
 recordSelectedOutputFixupsV1	.block
 	movem.l d1-d7/a0-a2, -(sp)
 	lea -8(sp), sp
-	moveq #0, d7
-	move.w d0, d7
+	move.l d0, d7
 	moveq #0, d0
 	move.w d6, d0
 	move.l d0, 4(sp)
@@ -1799,8 +1775,7 @@ opasmDriverAdvancePc	.block
 	jsr layout.recordStatementSectionV1
 	bne.w done
 statementLayoutRecorded
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementKindV1
 	cmpi.w #eng.OPASM_ENGINE_STMT_KIND_MODULE, d0
 	beq.w done
@@ -1815,19 +1790,16 @@ statementLayoutRecorded
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a1
 	move.l a1, d5
 	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a0), d6
-	moveq #0, d4
-	move.w d7, d4
-	add.w d4, d4
+	move.l d7, d4
+	add.l d4, d4
 	tst.w d6
 	beq.w done
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	move.w d6, d1
 	movea.l d5, a0
 	jsr eng.opasmEngineStatementMnemonicDuplicatesLabelV1
 	bne.w done
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	bsr.w statementStartsWithDirectiveSigilV1
 	bne.s advancePackageStateReady
 	movea.l d5, a0
@@ -1854,8 +1826,7 @@ advancePackageStateReady
 	jsr directives.classifyV1
 	cmpi.w #directives.OPASM_DIRECTIVE_PACK, d3
 	bne.s advanceDirectiveReady
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	bsr.w statementStartsWithDirectiveSigilV1
 	beq.s advanceDirectiveReady
 	clr.w d3
@@ -1901,8 +1872,7 @@ advanceDirectiveReady
 	jsr eng.opasmEngineGetSessionPassV1
 	cmpi.w #2, d0
 	bne.s selectedSizeDispatch
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementOutputByteCountV1
 	move.l d0, d1
 	beq.s selectedSizeDispatch
@@ -1916,11 +1886,10 @@ cpu
 	bra.w done
 
 selectedSizeDispatch
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	bsr.w trySelectedEncodeSizeForStatement
 	beq.s selectedSizeOk
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineStatementLooksBareColumnOneV1
 	bne.w done
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
@@ -1959,8 +1928,7 @@ org
 	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
 	bsr.w parseDirectiveLiteralValue
 	beq.s orgOk
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementSourceTextV1
 	beq.s orgGeneralExpression
 	bsr.w skipLineWhitespace
@@ -2110,7 +2078,7 @@ done
 
 trySelectedEncodeSizeForStatement	.block
 	movem.l d2-d7/a0-a2, -(sp)
-	move.w d0, d6
+	move.l d0, d6
 	jsr eng.opasmEngineResetLastResolvedLabelV1
 	clr.w d4
 	bsr.w prepareEncodeSelectedRequestForStatement
@@ -2157,7 +2125,7 @@ return
 	.bend  ; trySelectedEncodeSizeForStatement
 
 ; Inputs:
-;   D7.W = statement index
+;   D7.L = statement index
 ;   D5.B = operand width policy used for range checks
 ; Outputs:
 ;   D0.L = 0 on success, 1 when the operand cannot be resolved or fails width checks
@@ -2171,8 +2139,7 @@ readOperandValueForStatement	.block
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	tst.w OpasmDriverForceStoredOperand
 	bne.w storedText
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.statementHasExprMetadataV1
 	tst.l d0
 	beq.s storedText
@@ -2181,8 +2148,7 @@ readOperandValueForStatement	.block
 
 loadExprSlice
 	suba.l #eng.OPASM_ENGINE_EXPR_META_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementExprMetadataV1
 	tst.l d0
@@ -2190,8 +2156,7 @@ loadExprSlice
 	move.l eng.OPASM_ENGINE_EXPR_META_SPAN_START(a0), d1
 	move.l eng.OPASM_ENGINE_EXPR_META_SPAN_END(a0), d2
 	adda.l #eng.OPASM_ENGINE_EXPR_META_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementExprTextSliceV1
 	tst.l d0
 	beq.w storedText
@@ -2204,8 +2169,7 @@ exprSliceStoredTextFallback
 storedText
 	clr.w d6
 	clr.l d3
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
@@ -2222,8 +2186,7 @@ storedText
 	; Removal/stabilization plan: remove after the byte-list input invariant is
 	; confirmed by the authoritative macro fixture.
 	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d3
-	moveq #0, d4
-	move.w d7, d4
+	move.l d7, d4
 	moveq #0, d5
 	move.w d5, d5
 	moveq #0, d6
@@ -2370,15 +2333,14 @@ readStoredOperandValueForStatement	.block
 	.bend  ; readStoredOperandValueForStatement
 
 ; Evaluate `$ < literal` or `$ <= literal` against the current session PC.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0 = status; D3 = 0 or 1 on success.
 ; Clobbers: D0-D7/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 readCurrentPcWhileCondition	.block
 	movem.l d1-d2/d4-d7/a0-a2, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
@@ -2443,7 +2405,7 @@ fail
 	.bend  ; readCurrentPcWhileCondition
 
 ; Store a native layout region from `.region <name>, <start>, <end>`.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0.L = 0 on success, 1 on invalid region bounds.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -2499,7 +2461,7 @@ return
 	.bend  ; processRegionDirectiveForStatement
 
 ; Enter a native layout section slice.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0.L = 0 on success.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -2532,10 +2494,12 @@ processSectionDirectiveForStatement	.block
 	move.l d3, d0
 	jsr layout.setScratchSectionLogicalV1
 	bne.w fail
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	jsr eng.opasmEngineGetStatementOwnerTextV1
 	jsr layout.setScratchSectionOwnerV1
+	bne.w fail
+	jsr eng.opasmEngineGetSessionCurrentPcV1
+	jsr layout.captureSectionParentPcV1
 	bne.w fail
 	jsr eng.opasmEngineGetSessionPassV1
 	cmpi.w #2, d0
@@ -2579,7 +2543,7 @@ return
 	.bend  ; processSectionDirectiveForStatement
 
 ; Read `kind=code|data|bss` from a `.section` option list, defaulting to code.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0.L = 0 on success; D3.L = OPASM_LAYOUT_SECTION_KIND_*.
 ; Clobbers: D0-D6/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -2589,8 +2553,7 @@ return
 readSectionKindForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w defaultCode
@@ -2691,15 +2654,14 @@ return
 	.bend  ; readSectionKindForStatement
 
 ; Read `memory=any|chip|fast|slow`, matching Rust's Hunk memory aliases.
-; Inputs: D7.W = statement index. Outputs: D0.L = 0; D3.L = memory type.
+; Inputs: D7.L = statement index. Outputs: D0.L = 0; D3.L = memory type.
 ; @opforge-owner: opasm.amigaos.layout
 ; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-segment-surface-v1.toml
 ; @opforge-role: delegation
 readSectionMemoryForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w memoryAny
@@ -2767,15 +2729,14 @@ memoryReturnOk
 	.bend  ; readSectionMemoryForStatement
 
 ; Read the structural `logical` section option, defaulting to concrete.
-; Inputs: D7.W = statement index. Outputs: D0.L = 0; D3.L = 0 or 1.
+; Inputs: D7.L = statement index. Outputs: D0.L = 0; D3.L = 0 or 1.
 ; @opforge-owner: opasm.amigaos.layout
 ; @opforge-slice: documentation/plans/slices/native-porting-slice-opasm-layout.toml
 ; @opforge-role: delegation
 readSectionLogicalForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w concrete
@@ -2830,7 +2791,7 @@ logicalReturn
 	.bend  ; readSectionLogicalForStatement
 
 ; Leave the active native section slice and record its pass-one size.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0.L = 0 on success, 1 when no section is active.
 ; Clobbers: D0-D5/A0/CCR.
 ; CCR: reflects D0.L on return.
@@ -2840,7 +2801,7 @@ processEndsectionDirectiveForStatement	.block
 	.bend  ; processEndsectionDirectiveForStatement
 
 ; Place a named native section slice in a named region.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0.L = 0 on success, 1 on missing state or range overflow.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -2893,7 +2854,7 @@ return
 ; @opforge-owner: opasm.amigaos.layout
 ; @opforge-slice: documentation/plans/slices/native-porting-slice-opasm-layout.toml
 ; @opforge-role: delegation
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0.L = 0 on success, 1 on malformed, missing, duplicate, or overflowing state.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -2905,8 +2866,7 @@ processPackDirectiveForStatement	.block
 	jsr layout.sectionActiveV1
 	bne.w fail
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w metadataFail
@@ -3083,7 +3043,7 @@ return
 	.bend  ; setPlacedSectionOriginWithImageGap
 
 ; Read a comma-separated directive identifier part into a bounded layout buffer.
-; Inputs: D7.W = statement index; D6.W = one-based part; A1 = destination buffer.
+; Inputs: D7.L = statement index; D6.W = one-based part; A1 = destination buffer.
 ; Outputs: D0.L = 0 on success, 1 on missing/over-capacity name; D3.W = copied length.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -3091,8 +3051,7 @@ readCommaNameForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
 	move.l a1, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
@@ -3149,15 +3108,14 @@ return
 	.bend  ; readCommaNameForStatement
 
 ; Read optional align=<n> for a comma-delimited directive operand.
-; Inputs: D7.W = statement index; D6.W = one-based comma part.
+; Inputs: D7.L = statement index; D6.W = one-based comma part.
 ; Outputs: D0.L = 0 on success; D3.L = parsed step or 1 by default.
 ; Clobbers: D0-D2/D4-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
 readAlignOptionForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w defaultAlign
@@ -3213,15 +3171,14 @@ return
 	.bend  ; readAlignOptionForStatement
 
 ; Parse `.place <section> in <region>` names for the current statement.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0.L = 0 on success, 1 on malformed names; place-name globals updated.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
 parsePlaceDirectiveNamesForStatement	.block
 	movem.l d1-d7/a0-a3, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
@@ -3408,15 +3365,14 @@ lowerD3	.block
 	.bend  ; lowerD3
 
 ; Evaluate a comma-separated directive operand part.
-; Inputs: D7.W = statement index; D6.W = one-based operand part number.
+; Inputs: D7.L = statement index; D6.W = one-based operand part number.
 ; Outputs: D0.L = 0 on success, 1 on parse/evaluation failure; D3.L = value.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
 readCommaOperandValueForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
@@ -3628,7 +3584,7 @@ ok
 	.bend  ; resolveDottedLabelSuffixValue
 
 ; Compute Rust-compatible `.align` padding for the current native PC.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0.L = 0 on success, 1 on invalid expression/boundary; D3.L = pad.
 ; Clobbers: D0-D7/A0-A2/CCR.
 ; CCR: reflects D0.L on return.
@@ -3650,7 +3606,7 @@ return
 	.bend  ; readAlignPadForStatement
 
 ; Return the byte size of a numeric data directive.
-; Inputs: D7.W = statement index; D5.W = unit size (1, 2, or 4).
+; Inputs: D7.L = statement index; D5.W = unit size (1, 2, or 4).
 ; Outputs: D0.L = 0 on success, 1 on malformed data list; D3.L = byte size.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -3669,7 +3625,7 @@ return
 	.bend  ; dataDirectiveSizeForStatement
 
 ; Return the byte size of a `.byte`/`.db` list, including quoted operands.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0.L = 0 on success, 1 on malformed data; D3.L = byte size.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -3691,7 +3647,7 @@ return
 	.bend  ; byteDirectiveSizeForStatement
 
 ; Emit a numeric data directive in first-run MOS little-endian order.
-; Inputs: D7.W = statement index; D5.W = unit size (1, 2, or 4).
+; Inputs: D7.L = statement index; D5.W = unit size (1, 2, or 4).
 ; Outputs: D0.L = 0 on success, 1 on malformed data list or image overflow.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -3714,34 +3670,34 @@ return
 ; @opforge-owner: opasm.amigaos.assembly_driver
 ; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
 ; @opforge-role: delegation
-; Inputs: D7.W=statement index. Outputs: D0=0 success/1 failure.
+; Inputs: D7.L=statement index. Outputs: D0=0 success/1 failure.
 emitPackageLongDirectiveForStatement	.block
 	movem.l d1-d7/a0-a4, -(sp)
-	lea -12(sp), sp
-	move.w d7, (sp)
-	move.w d4, 10(sp)
+	lea -16(sp), sp
+	move.l d7, (sp)
+	move.w d4, 12(sp)
 	moveq #4, d5
 	bsr.w countCommaPartsForStatement
 	bne.w packageLongFail
-	move.w d3, 2(sp)
-	move.w 10(sp), d0
+	move.w d3, 4(sp)
+	move.w 12(sp), d0
 	addq.w #1, d0
 	cmp.w d3, d0
 	bhi.w packageLongFail
-	move.w d0, 4(sp)
-	clr.l 6(sp)
+	move.w d0, 6(sp)
+	clr.l 8(sp)
 
 packageLongLoop
-	move.w (sp), d7
-	move.w 2(sp), d2
-	move.w 4(sp), d6
+	move.l (sp), d7
+	move.w 4(sp), d2
+	move.w 6(sp), d6
 	moveq #4, d5
 	bsr.w resolveNumericDataPartForOwner
 	bne.w packageLongFail
 	movea.l OpasmDriverEvalFallbackPtr.l, a0
 	move.l OpasmDriverEvalFallbackLen.l, d0
 	moveq #0, d1
-	move.w 10(sp), d1
+	move.w 12(sp), d1
 	jsr operand_eval.classifyAbsoluteRelocationExpressionV1
 	move.l d0, d5
 	move.l d1, d7
@@ -3749,7 +3705,7 @@ packageLongLoop
 	tst.l d5
 	beq.s packageLongClassificationReady
 	moveq #1, d0
-	add.w 10(sp), d0
+	add.w 12(sp), d0
 	jsr layout.recordUnsupportedHunkFixupV1
 	bne.w packageLongFail
 	moveq #0, d7
@@ -3785,11 +3741,11 @@ packageLongTargetReady
 	bne.s packageLongExecuted
 	tst.b OpasmDirectiveFixupInput.l
 	bne.w packageLongFail
-	tst.l 6(sp)
+	tst.l 8(sp)
 	bne.w packageLongFail
-	tst.w 10(sp)
+	tst.w 12(sp)
 	bne.w packageLongFail
-	move.w (sp), d7
+	move.l (sp), d7
 	moveq #4, d5
 	bsr.w emitDataDirectiveForStatement
 	bra.w packageLongReturn
@@ -3801,19 +3757,18 @@ packageLongExecuted
 	bne.w packageLongFail
 	movea.l a0, a4
 	move.w d1, d2
-	move.l 6(sp), d1
-	moveq #0, d0
-	move.w (sp), d0
+	move.l 8(sp), d1
+	move.l (sp), d0
 	bsr.w recordDirectiveOutputFixupsV1
 	bne.w packageLongFail
 	movea.l a4, a0
 	moveq #4, d0
 	jsr eng.opasmEngineAppendImageBytesV1
 	bne.w packageLongFail
-	addq.l #4, 6(sp)
-	addq.w #1, 4(sp)
-	move.w 4(sp), d0
-	cmp.w 2(sp), d0
+	addq.l #4, 8(sp)
+	addq.w #1, 6(sp)
+	move.w 6(sp), d0
+	cmp.w 4(sp), d0
 	bls.w packageLongLoop
 	moveq #0, d0
 	bra.s packageLongReturn
@@ -3821,7 +3776,7 @@ packageLongExecuted
 packageLongFail
 	moveq #1, d0
 packageLongReturn
-	lea 12(sp), sp
+	lea 16(sp), sp
 	movem.l (sp)+, d1-d7/a0-a4
 	tst.l d0
 	rts
@@ -3832,7 +3787,7 @@ packageLongReturn
 ; @opforge-owner: opasm.amigaos.assembly_driver
 ; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
 ; @opforge-role: delegation
-; Inputs: D7.W=statement index. Outputs: D0=0 for `long`, 1 otherwise.
+; Inputs: D7.L=statement index. Outputs: D0=0 for `long`, 1 otherwise.
 emitDirectiveIsLongV1	.block
 	movem.l d1-d7/a0-a3, -(sp)
 	lea OpasmDirectiveKindScratch.l, a1
@@ -3860,16 +3815,16 @@ emitKindReturn
 ; @opforge-owner: opasm.amigaos.assembly_driver
 ; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
 ; @opforge-role: delegation
-; Inputs: D0.W=statement, D1=directive-relative base, D2=output length,
+; Inputs: D0.L=statement, D1=directive-relative base, D2=output length,
 ; A0=package output bytes. Outputs: D0=0/1; fixup metadata retained while the
 ; ordinary absolute package bytes remain unchanged for non-Hunk artifacts.
 recordDirectiveOutputFixupsV1	.block
 	movem.l d1-d7/a0-a3, -(sp)
-	lea -14(sp), sp
-	move.w d0, (sp)
-	move.l d1, 2(sp)
-	move.l d2, 6(sp)
-	move.l a0, 10(sp)
+	lea -16(sp), sp
+	move.l d0, (sp)
+	move.l d1, 4(sp)
+	move.l d2, 8(sp)
+	move.l a0, 12(sp)
 	jsr tkpkg.getOutputFixupCountV1
 	move.w d0, d7
 	moveq #0, d6
@@ -3883,18 +3838,17 @@ directiveFixupLoop
 	bne.s directiveFixupFail
 	move.l d1, d5
 	addq.l #4, d5
-	cmp.l 6(sp), d5
+	cmp.l 8(sp), d5
 	bhi.s directiveFixupFail
 	move.l d1, d5
-	add.l 2(sp), d1
+	add.l 4(sp), d1
 	bcs.s directiveFixupFail
 	move.w d3, d2
 	move.l d4, d3
-	moveq #0, d0
-	move.w (sp), d0
+	move.l (sp), d0
 	jsr layout.recordAbsoluteOutputFixupV1
 	bne.s directiveFixupFail
-	movea.l 10(sp), a0
+	movea.l 12(sp), a0
 	move.l d4, 0(a0, d5.l)
 	addq.w #1, d6
 	bra.s directiveFixupLoop
@@ -3904,14 +3858,14 @@ directiveFixupDone
 directiveFixupFail
 	moveq #1, d0
 directiveFixupReturn
-	lea 14(sp), sp
+	lea 16(sp), sp
 	movem.l (sp)+, d1-d7/a0-a3
 	tst.l d0
 	rts
 	.bend  ; recordDirectiveOutputFixupsV1
 
 ; Resolve the current numeric-data part for the directive-data owner.
-; Inputs: D7.W = statement; D2.W = part count; D5.W = unit bytes; D6.W = part.
+; Inputs: D7.L = statement; D2.W = part count; D5.W = unit bytes; D6.W = part.
 ; Outputs: D0.L = status; D3.L = resolved value.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0 on return.
@@ -3927,7 +3881,7 @@ splitPart
 	.bend  ; resolveNumericDataPartForOwner
 
 ; Emit a `.byte`/`.db` list whose quoted operands use the active encoding.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0.L = 0 on success, 1 on malformed data or image overflow.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -3955,15 +3909,14 @@ return
 	.bend  ; emitByteDirectiveForStatement
 
 ; Count comma-delimited operands after the directive mnemonic.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0.L = 0 on success, 1 on empty/malformed list; D3.W = part count.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
 countCommaPartsForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
@@ -4013,7 +3966,7 @@ return
 	.bend  ; countCommaPartsForStatement
 
 ; Return the emitted byte size of a text directive.
-; Inputs: D7.W = statement index; D5.W = mode (0 .text, 1 .null, 2 .ptext).
+; Inputs: D7.L = statement index; D5.W = mode (0 .text, 1 .null, 2 .ptext).
 ; Outputs: D0.L = 0 on success, 1 on malformed text; D3.L = byte size.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -4029,7 +3982,7 @@ return
 	.bend  ; textDirectiveSizeForStatement
 
 ; Emit a parsed text directive.
-; Inputs: D7.W = statement index; D5.W = mode (0 .text, 1 .null, 2 .ptext).
+; Inputs: D7.L = statement index; D5.W = mode (0 .text, 1 .null, 2 .ptext).
 ; Outputs: D0.L = 0 on success, 1 on malformed text or image overflow.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -4046,7 +3999,7 @@ return
 	.bend  ; emitTextDirectiveForStatement
 
 ; Parse text and expose its current scratch length to the text owner.
-; Inputs: D7.W = statement; D5.W = text mode.
+; Inputs: D7.L = statement; D5.W = text mode.
 ; Outputs: D0.L = status; D3.L = parsed text length.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0 on return.
@@ -4058,7 +4011,7 @@ parseTextDirectiveForOwner	.block
 	.bend  ; parseTextDirectiveForOwner
 
 ; Parse quoted text operands into the scratch buffer.
-; Inputs: D7.W = statement index.
+; Inputs: D7.L = statement index.
 ; Outputs: D0.L = 0 on success, 1 on malformed text or scratch overflow.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
@@ -4067,8 +4020,7 @@ parseTextDirectiveForStatement	.block
 	clr.l OpasmTextScratchLen
 	clr.w d6
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	moveq #0, d0
-	move.w d7, d0
+	move.l d7, d0
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
 	bne.w fail
@@ -4195,8 +4147,7 @@ numericEnd
 	movem.l d0-d2/d4-d6/a0, -(sp)
 	move.l d6, d1
 	move.l d0, d4
-	moveq #0, d5
-	move.w d7, d5
+	move.l d7, d5
 	moveq #0, d6
 	move.w d1, d6
 	.DEBUG_EVENT_U32X4 debug_contracts.EVENT_EXPR_RESULT
@@ -4356,7 +4307,7 @@ done
 ; Distinguish explicit directives from a package-owned instruction that shares
 ; the same normalized mnemonic.  The text metadata intentionally omits the
 ; leading directive sigil, so consult the original statement before routing.
-; Inputs: D0.W = statement index.
+; Inputs: D0.L = statement index.
 ; Outputs: D0 = 0 when the first non-whitespace source byte is `.`, else 1.
 ; @opforge-owner: opasm.amigaos.assembly_driver
 ; @opforge-slice: documentation/plans/slices/native-porting-slice-m68020-later-integer-group-b-v1.toml
@@ -4570,7 +4521,7 @@ fail
 	.bend  ; appendRepeatedByte
 
 ; Inputs:
-;   D6.W = statement index
+;   D6.L = statement index
 ; Outputs:
 ;   D0.L = 0 on success, 1 when selector request preparation fails
 ;   OpasmDriverEvalRequestLen updated from D1 on success
@@ -4581,8 +4532,7 @@ fail
 prepareEncodeSelectedRequestForStatement	.block
 	movem.l d1/d6/a1, -(sp)
 	clr.w OpasmDriverEvalRequestLen
-	moveq #0, d0
-	move.w d6, d0
+	move.l d6, d0
 	bsr.w serviceFramePtr
 	jsr operand_eval.prepareSelectedRequestV1
 	bne.s return
@@ -4597,7 +4547,7 @@ return
 ; Inputs:
 ;   A0 = expression text pointer
 ;   D0.L = expression text length
-;   D7.W = statement index
+;   D7.L = statement index
 ; Outputs:
 ;   D0.L = 0 on success, 1 when expression request preparation fails
 ;   OpasmDriverEvalRequestLen updated from D1 on success
@@ -4612,7 +4562,7 @@ prepareEvaluateExpressionRequest	.block
 	bsr.w serviceFramePtr
 	movea.l a0, a1
 	movea.l a2, a0
-	move.w d7, d1
+	move.l d7, d1
 	jsr operand_eval.prepareExpressionRequestV1
 	bne.s return
 	move.w d1, OpasmDriverEvalRequestLen
@@ -4642,8 +4592,7 @@ prepareSelectedEvaluateExpressionExtension	.block
 	bsr.w serviceFramePtr
 	moveq #0, d0
 	move.w OpasmDriverEvalRequestLen, d0
-	moveq #0, d1
-	move.w d6, d1
+	move.l d6, d1
 	jsr operand_eval.prepareSelectedExtensionV1
 	movem.l (sp)+, d0-d1/a0-a2
 	rts
@@ -4907,7 +4856,7 @@ appendEventFrame	.block
 	beq.s ok
 	movea.l abi.OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR(a3), a0
 	movea.l abi.OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(a3), a1
-	jsr events.appendV1
+	jsr events.appendRetainingNewestV1
 
 ok
 	movem.l (sp)+, d0-d1/a0-a1/a3
@@ -5190,10 +5139,10 @@ OpasmRepeatDepth
 	.res word, 1
 
 OpasmRepeatBodyStart
-	.res word, OPASM_REPEAT_STACK_CAPACITY
+	.res long, OPASM_REPEAT_STACK_CAPACITY
 
 OpasmRepeatOpening
-	.res word, OPASM_REPEAT_STACK_CAPACITY
+	.res long, OPASM_REPEAT_STACK_CAPACITY
 
 OpasmRepeatRemaining
 	.res long, OPASM_REPEAT_STACK_CAPACITY

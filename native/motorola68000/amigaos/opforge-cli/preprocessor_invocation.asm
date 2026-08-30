@@ -24,7 +24,7 @@ opforgeNativeCliParseMacroInvocationV1	.block
 	move.w state.NativeCliSourceLineLen, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
 	beq.w pass
-	clr.w state.NativeCliPreprocessInvocationLabelLen
+	clr.w state.NativeCliPreprocessPendingInvocationLabelLen
 	; A comment is never a label-attached macro invocation.  The ordinary line
 	; pipeline owns comment recording, so leave it untouched for that stage.
 	cmpi.b #';', (a0)
@@ -65,6 +65,7 @@ directive
 	bmi.w pass
 	jsr preprocessor.opforgeNativeCliBeginMacroInvocationFrameV1
 	bne.w malformed
+	bsr.w commitPendingInvocationLabel
 	movea.l a3, a0
 	move.l d3, d0
 	adda.l d4, a0
@@ -75,7 +76,7 @@ directive
 	rts
 
 clearFrameAndFail
-	move.w #-1, state.NativeCliPreprocessInvocationDefinition
+	jsr preprocessor.opforgeNativeCliEndMacroInvocationFrameV1
 malformed
 	moveq #-1, d0
 	rts
@@ -84,7 +85,7 @@ pass
 	; A non-macro line may have been provisionally scanned as a label followed
 	; by an instruction.  It must not leak that provisional label into a later
 	; macro close, where it would synthesize an unmatched `.endblock`.
-	clr.w state.NativeCliPreprocessInvocationLabelLen
+	clr.w state.NativeCliPreprocessPendingInvocationLabelLen
 	moveq #0, d0
 	rts
 	.bend  ; opforgeNativeCliParseMacroInvocationV1
@@ -94,7 +95,7 @@ pass
 ; Outputs: D0 = 0, A0/D0 advanced to the byte after the label; nonzero on malformed/capacity.
 ; Clobbers: D1-D3/A1/CCR.
 captureInvocationLabel	.block
-	lea state.NativeCliPreprocessInvocationLabel, a1
+	lea state.NativeCliPreprocessPendingInvocationLabel, a1
 	move.l #constants.NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY - 1, d2
 	clr.w d3
 loop
@@ -141,13 +142,29 @@ done
 	tst.w d3
 	beq.s fail
 	clr.b (a1)
-	move.w d3, state.NativeCliPreprocessInvocationLabelLen
+	move.w d3, state.NativeCliPreprocessPendingInvocationLabelLen
 	moveq #0, d0
 	rts
 fail
 	moveq #1, d0
 	rts
 	.bend  ; captureInvocationLabel
+
+; Commit the provisional label after BeginMacroInvocationFrameV1 has saved any
+; active caller. Inputs: pending label state. Outputs: D0 = 0.
+commitPendingInvocationLabel	.block
+	moveq #0, d0
+	move.w state.NativeCliPreprocessPendingInvocationLabelLen, d0
+	move.w d0, state.NativeCliPreprocessInvocationLabelLen
+	beq.s done
+	addq.l #1, d0
+	lea state.NativeCliPreprocessPendingInvocationLabel, a1
+	lea state.NativeCliPreprocessInvocationLabel, a2
+	jsr copy.copyBytes
+done
+	moveq #0, d0
+	rts
+	.bend  ; commitPendingInvocationLabel
 
 ; Take the dotted invocation name, leaving its pointer in A3 and byte count in D0.
 ; Inputs: A0 = first name byte; D0 = remaining bytes.

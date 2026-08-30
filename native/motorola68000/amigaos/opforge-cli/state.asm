@@ -219,7 +219,7 @@ NativeCliPreprocessStateStart
 NativeCliPreprocessExpansionDepth
 	.res word, 1
 NativeCliPreprocessSavedLineLen
-	.res word, 1
+	.res word, constants.NATIVE_PREPROCESS_EXPANSION_DEPTH_LIMIT
 NativeCliPreprocessDefinitionCount
 	.res word, 1
 NativeCliPreprocessActiveDefinition
@@ -254,6 +254,8 @@ NativeCliPreprocessConditionalName
 ; and expansion lines are separate fixed buffers despite equal byte capacities.
 NativeCliPreprocessInvocationDefinition
 	.res word, 1
+NativeCliPreprocessInvocationDepth
+	.res word, 1
 NativeCliPreprocessInvocationArgCount
 	.res word, 1
 NativeCliPreprocessInvocationBodyIndex
@@ -286,8 +288,35 @@ NativeCliPreprocessInvocationFullArgs
 	.res byte, constants.NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY
 NativeCliPreprocessInvocationLabel
 	.res byte, constants.NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY
+; A nested parser must not overwrite the active caller label before its frame
+; has been saved.  Invocation lookup captures into this one provisional slot,
+; then commits it only after BeginMacroInvocationFrameV1 has pushed the caller.
+NativeCliPreprocessPendingInvocationLabelLen
+	.res word, 1
+NativeCliPreprocessPendingInvocationLabel
+	.res byte, constants.NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY
+; The current invocation remains in the fields above so substitution stays a
+; compact hot path.  Only suspended callers occupy these bounded stack tables.
+NativeCliPreprocessSavedInvocationDefinition
+	.res word, constants.NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT - 1
+NativeCliPreprocessSavedInvocationArgCount
+	.res word, constants.NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT - 1
+NativeCliPreprocessSavedInvocationBodyIndex
+	.res word, constants.NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT - 1
+NativeCliPreprocessSavedInvocationFullArgsLen
+	.res word, constants.NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT - 1
+NativeCliPreprocessSavedInvocationLabelLen
+	.res word, constants.NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT - 1
+NativeCliPreprocessSavedInvocationArgLen
+	.res byte, (constants.NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT - 1) * constants.NATIVE_PREPROCESS_INVOCATION_ARG_LENGTH_BYTES
+NativeCliPreprocessSavedInvocationArgs
+	.res byte, (constants.NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT - 1) * constants.NATIVE_PREPROCESS_INVOCATION_ARGS_BYTES
+NativeCliPreprocessSavedInvocationFullArgs
+	.res byte, (constants.NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT - 1) * constants.NATIVE_PREPROCESS_INVOCATION_FULL_ARGS_CAPACITY
+NativeCliPreprocessSavedInvocationLabel
+	.res byte, (constants.NATIVE_PREPROCESS_INVOCATION_DEPTH_LIMIT - 1) * constants.NATIVE_PREPROCESS_INVOCATION_LABEL_CAPACITY
 NativeCliPreprocessSavedLine
-	.res byte, constants.NATIVE_PREPROCESS_SAVED_LINE_CAPACITY
+	.res byte, constants.NATIVE_PREPROCESS_EXPANSION_DEPTH_LIMIT * constants.NATIVE_PREPROCESS_SAVED_LINE_CAPACITY
 NativeCliPreprocessExpansionLine
 	.res byte, constants.NATIVE_PREPROCESS_EXPANSION_LINE_CAPACITY
 NativeCliPreprocessExpansionLineLen
@@ -360,10 +389,19 @@ NativeCliPreprocessImportBindingNameTable
 	.res byte, constants.NATIVE_PREPROCESS_IMPORT_BINDING_CAPACITY * constants.NATIVE_PREPROCESS_IMPORT_BINDING_NAME_CAPACITY
 NativeCliOrdinaryExportCount
 	.res word, 1
+	.align 4
+NativeCliOrdinaryExportNamePoolLen
+	.res long, 1
 NativeCliOrdinaryExportOwnerTable
 	.res word, constants.NATIVE_ORDINARY_EXPORT_CAPACITY
-NativeCliOrdinaryExportNameTable
-	.res byte, constants.NATIVE_ORDINARY_EXPORT_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
+NativeCliModuleOrdinaryExportHeadTable
+	.res long, constants.NATIVE_MODULE_TABLE_CAPACITY
+NativeCliOrdinaryExportNextTable
+	.res long, constants.NATIVE_ORDINARY_EXPORT_CAPACITY
+NativeCliOrdinaryExportNameOffsetTable
+	.res long, constants.NATIVE_ORDINARY_EXPORT_CAPACITY
+NativeCliOrdinaryExportNamePool
+	.res byte, constants.NATIVE_ORDINARY_EXPORT_NAME_POOL_CAPACITY
 NativeCliResolvedImportName
 	.res byte, constants.TOKEN_BUFFER_CAPACITY
 NativeCliModulePathTable

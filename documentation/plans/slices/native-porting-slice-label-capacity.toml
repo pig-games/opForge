@@ -4,29 +4,50 @@ name = "native label and symbol snapshot capacity"
 kind = "native-rust-parity"
 rust_reference = [
   "crates/opforge-asm/src/session.rs::AssemblySession",
+  "crates/opforge-core/src/scope.rs::ScopeStack::qualify",
   "crates/opforge-types/src/symbol_stability.rs::is_symbol_unstable"
 ]
 native_boundary = [
   "native/motorola68000/amigaos/opasm/opasm_engine.asm::NATIVE_LABEL_TABLE_CAPACITY",
+  "native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm::qualifyStatementLabelIfScopedV1",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::LABEL_NAME_CAPACITY",
   "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm::RUNTIME_CONTEXT_STABILITY_CAPACITY",
   "native/motorola68000/amigaos/opasm/opasm_operand_eval.asm::SCOPED_SNAPSHOT_SOURCE_CAPACITY"
 ]
-invariant = "Native label storage and every read-only symbol snapshot accept the complete bounded 512-record source domain instead of failing at the former 16-label transitional limit."
-expected_inputs = "A native source defining more than sixteen labels and then referencing the final label through a selected instruction."
-expected_outputs = "The real native CLI retains and resolves every label through the final reference, producing the exact live Rust bytes."
-known_non_equivalences = "This slice does not claim behavior beyond the existing 512-record source/session bound or complete additive fixture parity."
-fast_proof_command = "cargo test -p asm native_label_capacity_tracks_complete_source_record_domain -- --nocapture"
-level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_label_capacity_over_16_fs_uae -- --nocapture --test-threads=1"
+invariant = "Native label storage and every read-only symbol snapshot accept the complete bounded 16,384-label session domain, retain the measured 107-byte Rust-qualified product maximum plus NUL, and qualify a local label as retained statement owner plus every active block/namespace suffix."
+expected_inputs = "Native sources defining more than sixteen labels and more than 512 labels, a same-module symbol inside a compound reservation expression, a 107-byte fully scoped label, and identical local names in separate blocks after a section transition."
+expected_outputs = "The real native CLI retains and resolves the final selected-instruction reference, compound reservation expression, maximum fully scoped label, and independent block-local labels, producing exact live Rust bytes."
+known_non_equivalences = "Rust symbol storage and names grow dynamically; native uses a reviewed fixed 16,384-label session table, 108-byte label-only rows, and a bounded alias-plus-qualified snapshot. Native recursive module replay retains the module root per statement and combines it with live nested-scope suffixes; this is a platform storage difference with Rust-identical qualified names. This slice does not claim overflow behavior beyond those explicit allocations."
+fast_proof_command = "cargo test -p asm native_item38_qualified_label_name_budget_matches_rust_product -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_native_item38_block_scope_label_precedence_parity -- --nocapture --test-threads=1"
 level_d_fail_closed = true
 
 [[tests]]
 name = "native_label_capacity_tracks_complete_source_record_domain"
 proof_level = "B"
-proves = "Label storage, stability tables, and scoped snapshot sources share the existing 512-record bounded domain."
+proves = "Label storage, stability tables, and scoped snapshot sources share the complete bounded 16,384-label native session domain."
 does_not_prove = "Real 68020 allocation or execution."
 
 [[tests]]
 name = "native_label_capacity_over_16_fs_uae"
 proof_level = "D"
 proves = "The real 68020/AmigaOS native CLI stores more than sixteen labels and resolves the final one through selected-instruction evaluation."
-does_not_prove = "Overflow diagnostics beyond the 512-record source/session bound or complete additive fixture parity."
+does_not_prove = "Overflow diagnostics beyond the explicit 16,384-label native session allocation or complete additive fixture parity."
+
+[[tests]]
+name = "native_label_snapshot_over_512_compound_res_fs_uae"
+proof_level = "D"
+proves = "A fresh 68020 guest crosses the former 512-symbol snapshot boundary and resolves a same-module constant inside a compound `.res` expression to exact live Rust bytes."
+does_not_prove = "Overflow behavior beyond the explicit 16,384-label native session allocation or full-product artifact parity."
+
+[[tests]]
+name = "native_item38_qualified_label_name_budget_matches_rust_product"
+proof_level = "B"
+proves = "The exact native product inventory reaches 107 fully scoped bytes and every label-only reader/writer uses a 108-byte row while generic token rows remain unchanged."
+does_not_prove = "Real 68020 allocation or execution."
+
+[[tests]]
+name = "external_fs_uae_native_item38_block_scope_label_precedence_parity"
+proof_level = "D"
+proves = "After a section transition, a fresh 68020 guest combines the retained statement owner with each active block suffix and keeps identical local names independent, emitting Rust's exact bytes 11 22."
+does_not_prove = "A second invocation of the once-only full native completion wrapper or overflow beyond the explicit native allocations."

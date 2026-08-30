@@ -73,7 +73,7 @@ opforgeNativeCliOpenStatementOwnerV1	.block
 	bhs.s ownerPushFail
 	moveq #0, d2
 	move.w AssemblyOwnerDepth.l, d2
-	cmpi.w #constants.NATIVE_MODULE_SCAN_DEPTH_CAPACITY, d2
+	cmpi.w #constants.NATIVE_STATEMENT_OWNER_DEPTH_CAPACITY, d2
 	bhs.s ownerPushFail
 	move.l d2, d4
 	move.l d2, d6
@@ -84,6 +84,10 @@ opforgeNativeCliOpenStatementOwnerV1	.block
 	move.l d5, d0
 	jsr copy.copyFixedString
 	clr.b (a1)
+	; copyFixedString uses D2 as its byte countdown. Recover the pre-copy
+	; owner depth so a lazily loaded module extends the retained owner stack
+	; instead of resetting it to one and orphaning its caller's `.endmodule`.
+	move.l d4, d2
 	move.l d4, d6
 	add.l d6, d6
 	lea AssemblyOwnerLengthStack.l, a0
@@ -120,8 +124,8 @@ ownerFinishFail
 AssemblyOwnerDepth
 	.res word, 1
 AssemblyOwnerLengthStack
-	.res word, constants.NATIVE_MODULE_SCAN_DEPTH_CAPACITY
+	.res word, constants.NATIVE_STATEMENT_OWNER_DEPTH_CAPACITY
 AssemblyOwnerNameStack
-	.res byte, constants.NATIVE_MODULE_SCAN_DEPTH_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_STATEMENT_OWNER_DEPTH_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
 	.endsection
 	.endmodule

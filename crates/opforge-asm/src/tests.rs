@@ -12117,7 +12117,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         );
     }
     assert!(listing.contains(
-        "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin or --list"
+        "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin, --srec, --hunk, or --list"
     ));
     assert!(listing
         .contains("OPC-NCLI011: Do not mix positional input with -i/--infile; use one style"));
@@ -12131,7 +12131,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         .contains("ERROR OPC-NCLI019: opasm package exceeds native package storage capacity"));
     assert!(listing.contains("OPC-NCLI008: Input source file not found"));
     assert!(listing.contains(
-        "Native subset supports INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -D/--define, -I/--include-path, -M/--module-path, and --native-debug; --hunk is not implemented yet."
+        "Native subset supports INPUT, -i/--infile, --bin [FILE], -s/--srec [FILE], -g/--go ADDR, -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -D/--define, -I/--include-path, -M/--module-path, and --native-debug."
     ));
     assert!(listing.contains("OPC-NCLI010: native tokenizer stage failed"));
     assert!(listing.contains("STAGE parser"));
@@ -12143,8 +12143,6 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(listing.contains("OPC-NCLI025: unknown native mnemonic"));
     assert!(listing.contains("OPC-NCLI026: unsupported native addressing mode"));
     assert!(listing.contains("OPC-NCLI027: invalid native .org expression"));
-    assert!(listing
-        .contains("OPC-NCLI028: native Hunk output is not implemented; use --bin for flat output"));
     assert!(listing.contains("OPC-NCLI013: native module/use parser stage failed"));
     assert!(listing.contains("OPC-NCLI014: native include expansion failed"));
     assert!(listing.contains("OPC-NCLI015: native conditional preprocessing failed"));
@@ -12317,11 +12315,12 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "OpasmEngineStmtExprFlagsTable",
         "OpasmEngineStmtExprOperandIndexTable",
         "OpasmEngineStmtExprSlotIndexTable",
-        "OpasmEngineStmtSourceLineLenTable",
-        "OpasmEngineStmtSourceLineTextTable",
+        "OpasmEngineSourceLineLenTable",
+        "OpasmEngineSourceLineTextTable",
+        "OpasmEngineStmtSourceRecordIndexTable",
         "OpasmEngineStmtLineTable",
         "OpasmEngineStmtLabelNameTable",
-        "OpasmEngineStmtMnemNameTable",
+        "OpasmEngineStmtMnemStartTable",
         "OpasmEngineLabelNameTable",
         "opasm.amigaos.engine.opasmEngineRunTwoPassV1",
         "opasm.amigaos.engine.runPassOne",
@@ -18723,6 +18722,46 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
 }
 
 #[test]
+fn motorola68020_opasm_bounded_event_sink_retains_terminal_failure_evidence() {
+    let events = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_events.asm"),
+    )
+    .expect("read native opasm event helpers");
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm assembly driver");
+    let report = opforge_amigaos_source("opasm_event_report.asm");
+
+    assert!(events.contains("appendRetainingNewestV1"));
+    assert!(source_contains_in_order(
+        &events,
+        &[
+            "CMP.W D0, D1",
+            "BLO.S append",
+            "SUBQ.W #1, D2",
+            "LSL.L #5, D2",
+            "MOVE.B (A2)+, (A3)+",
+            "MOVEQ #abi.OPASM_STATUS_EVENT_CAPACITY, D0",
+        ]
+    ));
+    assert!(driver.contains("jsr events.appendRetainingNewestV1"));
+    assert!(!driver.contains("jsr events.appendV1"));
+    assert!(source_contains_in_order(
+        &report,
+        &[
+            "badOrg",
+            "move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0",
+            "jsr text_output.opforgeNativeCliPutErrU16Decimal",
+            "move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0",
+            "jsr engine.opasmEngineGetStatementSourceTextV1",
+            "move.l a0, d1",
+            "jsr dos.putErrStr",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_opasm_driver_uses_tkpkg_output_and_error_pointers() {
     let repo_root = workspace_root();
     let driver_path =
@@ -19213,9 +19252,8 @@ fn motorola68020_item84_native_use_section_map_is_retained_generically() {
         &module_use,
         &[
             "NativeCliOrdinaryExportOwnerTable",
-            "MOVE.L D0, D1",
-            "LSL.L #6, D1",
-            "NativeCliOrdinaryExportNameTable",
+            "NativeCliOrdinaryExportNameOffsetTable",
+            "NativeCliOrdinaryExportNamePool",
         ]
     ));
     assert!(state.contains("NativeCliImportSectionMapImportTable"));
@@ -19248,6 +19286,16 @@ fn motorola68020_item84_native_use_section_map_is_retained_generically() {
         ]
     ));
     assert!(statement_owners.contains("opforgeNativeCliPrepareStatementOwnerV1"));
+    assert!(source_contains_in_order(
+        &statement_owners,
+        &[
+            "MOVE.L D2, D4",
+            "JSR copy.copyFixedString",
+            "MOVE.L D4, D2",
+            "ADDQ.W #1, D2",
+            "MOVE.W D2, AssemblyOwnerDepth.L",
+        ]
+    ));
     assert!(source_contains_in_order(
         &engine_callbacks,
         &[
@@ -19311,6 +19359,32 @@ fn motorola68020_item84_native_use_section_map_is_retained_generically() {
         repo_root.join("native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm"),
     )
     .expect("read native opasm scope owner");
+    assert!(source_contains_in_order(
+        &scopes,
+        &[
+            "MOVE.W ModuleParentDepth.L, D1",
+            "CMPI.W #OPASM_SCOPE_DEPTH_CAPACITY, D1",
+            "MOVE.L D1, D2",
+            "LSL.L #2, D2",
+            "LEA ParentModuleStatementIndexStack.L, A0",
+            "MOVE.L ActiveModuleStatementIndex.L, 0(A0, D2.L)",
+            "ADDQ.W #1, D1",
+            "MOVE.W D1, ModuleParentDepth.L",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &scopes,
+        &[
+            "SUBQ.W #1, D0",
+            "MOVE.W D0, ModuleParentDepth.L",
+            "MOVE.L D0, D1",
+            "LSL.L #2, D1",
+            "LEA ParentModuleStatementIndexStack.L, A0",
+            "MOVE.L 0(A0, D1.L), D7",
+            "MOVE.L D7, ActiveModuleStatementIndex.L",
+        ]
+    ));
+    assert!(scopes.contains(".res long, OPASM_SCOPE_DEPTH_CAPACITY"));
     assert!(source_contains_in_order(
         &scopes,
         &[
@@ -20532,7 +20606,7 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
     assert!(listing.contains("opasmEngineGetSourceRecordCountV1"));
     assert!(listing.contains("OpasmEngineStmtLineTable"));
     assert!(listing.contains("OpasmEngineStmtLabelNameTable"));
-    assert!(listing.contains("OpasmEngineStmtMnemNameTable"));
+    assert!(listing.contains("OpasmEngineStmtMnemStartTable"));
     assert!(listing.contains("OpasmEngineLabelNameTable"));
     assert!(listing.contains("opasmEngineGetImageBufferPtrV1"));
     assert!(listing.contains("opforgeNativeCliStagePackage"));

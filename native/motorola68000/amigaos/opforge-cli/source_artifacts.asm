@@ -854,8 +854,10 @@ loop
 	cmp.w state.NativeCliRootModuleId, d1
 	bne.s next
 	move.l d6, d0
-	lsl.l #6, d0
-	lea state.NativeCliOrdinaryExportNameTable, a1
+	lsl.l #2, d0
+	lea state.NativeCliOrdinaryExportNameOffsetTable, a1
+	move.l 0(a1, d0.l), d0
+	lea state.NativeCliOrdinaryExportNamePool, a1
 	adda.l d0, a1
 	movea.l a3, a0
 	bsr.w namesEqualFoldedV1

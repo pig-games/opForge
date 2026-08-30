@@ -17,7 +17,9 @@
 	.pub
 	.use exprvm.amigaos.runtime
 
-TOKEN_BUFFER_CAPACITY           = 64
+; Matches opasm's label-only row: 107 Rust-valid fully scoped name bytes plus
+; the terminating NUL.
+LABEL_NAME_CAPACITY             = 108
 OPCORE_EXPRVM_PROGRAM_CAPACITY  = 128
 EXVM_OPCODE_END                 = $00
 EXVM_OPCODE_PARSE_EXPRESSION    = $01
@@ -1171,6 +1173,10 @@ label
 	bra.w maybeApplyUnary
 
 labelSnapshot
+	; The lexical resolver returns its status in D0.  Snapshot fallback still
+	; consumes the complete parsed term, matching Rust's lookup order, so restore
+	; the term length retained in D2 before scanning the immutable table.
+	move.l d2, d0
 	bsr.w resolveLabelIndex
 	move.l d0, d5
 	beq.s labelResolved
@@ -1883,7 +1889,16 @@ loop
 	bhs.s fail
 	moveq #0, d5
 	move.w d4, d5
-	lsl.l #6, d5
+	move.l d5, d1
+	move.l d5, d2
+	move.l d5, d0
+	lsl.l #2, d5
+	lsl.l #3, d1
+	lsl.l #5, d2
+	lsl.l #6, d0
+	add.l d1, d5
+	add.l d2, d5
+	add.l d0, d5
 	movea.l a3, a0
 	adda.l d5, a0
 	movea.l a2, a1

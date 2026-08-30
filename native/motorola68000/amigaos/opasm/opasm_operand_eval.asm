@@ -7,15 +7,18 @@
 	.use opasm.amigaos.engine as eng
 	.use opasm.amigaos.flow_scopes as scopes
 
-SCOPED_SNAPSHOT_SOURCE_CAPACITY = 512
-SCOPED_SNAPSHOT_CAPACITY = 1024
+; Rust evaluates against the complete session symbol table. Native keeps a
+; fixed snapshot, so both the qualified source rows and their possible active
+; lexical aliases must cover opasm's complete 16,384-label session domain.
+SCOPED_SNAPSHOT_SOURCE_CAPACITY = 16384
+SCOPED_SNAPSHOT_CAPACITY = 32768
 SCOPED_SNAPSHOT_NAME_BYTES = 64
 
 	.section code, kind=code
 	.pub
 
 ; Build one selected-instruction evaluation request.
-; Inputs: D0.W = statement index; A0 = OPASM_SERVICE_* frame.
+; Inputs: D0.L = statement index; A0 = OPASM_SERVICE_* frame.
 ; Outputs: D0 = status; D1.W = request bytes on success.
 prepareSelectedRequestV1	.block
 	movea.l abi.OPASM_SERVICE_IO_BUFFER_PTR(a0), a1
@@ -24,7 +27,7 @@ prepareSelectedRequestV1	.block
 	.bend  ; prepareSelectedRequestV1
 
 ; Build one textual expression evaluation request.
-; Inputs: A0 = expression text; D0.L = text bytes; D1.W = statement index;
+; Inputs: A0 = expression text; D0.L = text bytes; D1.L = statement index;
 ;         A1 = OPASM_SERVICE_* frame.
 ; Outputs: D0 = status; D1.W = request bytes on success.
 prepareExpressionRequestV1	.block
@@ -76,10 +79,10 @@ expressionExtensionReturn
 ; Append the evaluation extension and imported aliases for a selected CPU
 ; instruction request. The original operand text remains authoritative.
 ; Inputs: A0 = OPASM_SERVICE_* frame; D0.W = request bytes;
-;         D1.W = stored statement index.
+;         D1.L = stored statement index.
 ; Outputs: D0 = engine status.
 prepareSelectedExtensionV1	.block
-	move.w d1, SelectedStatementIndex.l
+	move.l d1, SelectedStatementIndex.l
 	moveq #1, d1
 	bsr.w prepareExtensionCommon
 	tst.l d0
@@ -583,8 +586,7 @@ materializeSelectedImportAliases	.block
 	beq.w selectedAliasReturn
 	suba.l a4, a4
 	moveq #0, d5
-	moveq #0, d0
-	move.w SelectedStatementIndex.l, d0
+	move.l SelectedStatementIndex.l, d0
 	jsr eng.opasmEngineGetStatementOwnerTextV1
 	tst.l d0
 	beq.s selectedAliasOwnerReady
@@ -1034,7 +1036,7 @@ ScopedSnapshotSourceCount
 ScopedSnapshotCount
 	.res word, 1
 SelectedStatementIndex
-	.res word, 1
+	.res long, 1
 RelocScanMode
 	.res word, 1
 RelocScanTargetCount

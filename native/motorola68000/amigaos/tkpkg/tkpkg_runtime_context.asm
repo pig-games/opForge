@@ -14,7 +14,10 @@ RUNTIME_CONTEXT_SYMBOL_FOUND = 0
 RUNTIME_CONTEXT_SYMBOL_UNRESOLVED = 1
 RUNTIME_CONTEXT_SYMBOL_ABSENT = 2
 RUNTIME_CONTEXT_DIAGNOSTIC_CAPACITY = 96
-RUNTIME_CONTEXT_STABILITY_CAPACITY = 512
+; Keep the package-neutral stability view coextensive with opasm's bounded
+; 16,384-label session table. Rust's view grows dynamically; this fixed table
+; is the native platform allocation for the same complete symbol domain.
+RUNTIME_CONTEXT_STABILITY_CAPACITY = 16384
 RUNTIME_CONTEXT_SYMBOL_NAME_BYTES = 64
 
 	.section code, kind=code

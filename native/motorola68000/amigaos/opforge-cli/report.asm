@@ -67,13 +67,13 @@ opforgeNativeCliEmitAssemblySessionSummary	.block
 	move.l #strings.SessionSourceCountText, d1
 	jsr dos.putStr
 	jsr engine.opasmEngineGetSourceRecordCountV1
-	jsr text_output.opforgeNativeCliPutU16Decimal
+	jsr text_output.opforgeNativeCliPutU32Decimal
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	move.l #strings.SessionStmtCountText, d1
 	jsr dos.putStr
 	jsr engine.opasmEngineGetStatementCountV1
-	jsr text_output.opforgeNativeCliPutU16Decimal
+	jsr text_output.opforgeNativeCliPutU32Decimal
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	move.l #strings.SessionLabelCountText, d1
@@ -105,16 +105,16 @@ opforgeNativeCliEmitAssemblySessionStatementDump	.block
 loop
 	move.l #strings.SessionStmtDumpText, d1
 	jsr dos.putStr
-	move.w d2, d0
-	jsr text_output.opforgeNativeCliPutU16Decimal
+	move.l d2, d0
+	jsr text_output.opforgeNativeCliPutU32Decimal
 	jsr text_output.opforgeNativeCliPutSpace
-	move.w d2, d0
+	move.l d2, d0
 	jsr engine.opasmEngineGetStatementLineNumberV1
-	jsr text_output.opforgeNativeCliPutU16Decimal
+	jsr text_output.opforgeNativeCliPutU32Decimal
 	jsr text_output.opforgeNativeCliPutSpace
 	suba.l #engine.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
-	move.w d2, d0
+	move.l d2, d0
 	jsr engine.opasmEngineGetStatementTextMetadataV1
 	bne.s noMnem
 	movea.l sp, a0

@@ -38,6 +38,7 @@ const FS_UAE_LAUNCHER_HANDOFF_GRACE_MS: u64 = 5_000;
 const FS_UAE_LAUNCHER_STDOUT_FILE: &str = "fs_uae_launcher.stdout.log";
 const FS_UAE_LAUNCHER_STDERR_FILE: &str = "fs_uae_launcher.stderr.log";
 const FS_UAE_CONFIG_FILE_NAME: &str = "fs-uae-smoke.fs-uae";
+const FS_UAE_NATIVE_ZORRO_III_MEMORY_KIB: u32 = 65_536;
 const FS_UAE_MOUNTED_WORK_DIR_NAME: &str = "Work";
 const FS_UAE_MOUNTED_HUNK_ALIAS: &str = "build/opforge_fsuae_smoke.hunk";
 const FS_UAE_STARTUP_HUNK_ALIAS: &str = "build/tkpkg_debug_cli.hunk";
@@ -3192,17 +3193,28 @@ fn maybe_materialize_fs_uae_config(
 fn rewrite_fs_uae_config_work_mount(template_text: &str, work_mount_path: &str) -> String {
     let mut lines = Vec::new();
     let mut replaced_work_mount = false;
+    let mut replaced_zorro_memory = false;
     for line in template_text.lines() {
         let trimmed = line.trim_start();
         if trimmed.starts_with("hard_drive_1") {
             lines.push(format!("hard_drive_1 = {work_mount_path}"));
             replaced_work_mount = true;
+        } else if trimmed.starts_with("zorro_iii_memory") {
+            lines.push(format!(
+                "zorro_iii_memory = {FS_UAE_NATIVE_ZORRO_III_MEMORY_KIB}"
+            ));
+            replaced_zorro_memory = true;
         } else {
             lines.push(line.to_string());
         }
     }
     if !replaced_work_mount {
         lines.push(format!("hard_drive_1 = {work_mount_path}"));
+    }
+    if !replaced_zorro_memory {
+        lines.push(format!(
+            "zorro_iii_memory = {FS_UAE_NATIVE_ZORRO_III_MEMORY_KIB}"
+        ));
     }
     let mut rewritten = lines.join("\n");
     rewritten.push('\n');
@@ -4554,12 +4566,14 @@ mod tests {
 
     #[test]
     fn rewrite_fs_uae_config_work_mount_replaces_hard_drive_1() {
-        let template = "[fs-uae]\nhard_drive_0 = /sys\nhard_drive_1 = /old/work\nsave_disk = 0\n";
+        let template = "[fs-uae]\nhard_drive_0 = /sys\nhard_drive_1 = /old/work\nzorro_iii_memory = 16384\nsave_disk = 0\n";
         let rewritten = rewrite_fs_uae_config_work_mount(template, "/new/work");
 
         assert!(rewritten.contains("hard_drive_0 = /sys"));
         assert!(rewritten.contains("hard_drive_1 = /new/work"));
         assert!(!rewritten.contains("hard_drive_1 = /old/work"));
+        assert!(rewritten.contains("zorro_iii_memory = 65536"));
+        assert!(!rewritten.contains("zorro_iii_memory = 16384"));
     }
 
     #[test]
@@ -4569,6 +4583,7 @@ mod tests {
 
         assert!(rewritten.contains("hard_drive_0 = /sys"));
         assert!(rewritten.contains("hard_drive_1 = /new/work"));
+        assert!(rewritten.contains("zorro_iii_memory = 65536"));
     }
 
     #[test]

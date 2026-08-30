@@ -321,6 +321,17 @@ application-launch permission before its first execution. If permission is not
 available, record zero guest cases attempted and stop; never spend a test run on
 the already-known filesystem-sandbox/Launch-Services failure mode.
 
+Real-hardware self-host staging must separately respect the selected AmigaOS
+filesystem's filename-component limit. A real A6000 build has already exposed
+overlong native source filenames, while the FS-UAE host-directory setup accepts
+those names. Therefore host-directory success is not filename portability
+evidence: Items 38-40 must classify DOS open/name failures as staging/path
+failures, inventory every staged component against the target filesystem, and
+either use a deterministic reviewed short-name mapping or state and prove the
+required long-filename filesystem. Such mapping is a fundamental platform path
+difference only; it may not change module identity, source content, logical
+arguments, or any Rust-owned assembly behavior.
+
 For Items 1-13 and any reopened decimal package-phase subitem, “Package Phase
 Quality Gate” means the item's focused tests plus all of:
 
@@ -912,11 +923,14 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit completing the Rust-supported S-record surface on AmigaOS.
   - Definition of done: CLI S-record output, automatic address record selection, checksums, `-g` termination address, sparse/sorted/last-write-wins and empty-image behavior, optional path derivation, and deterministic CLI/source-format failures match Rust byte-for-byte; requesting Hunk, S-record, and listing together writes all three without state leakage.
 
-- [ ] Item 38: remove full-product resource blockers and prove simultaneous Hunk/S-record/listing generation
+- [x] Item 38: remove full-product resource blockers and prove simultaneous Hunk/S-record/listing generation
   - Source requirement or finding IDs: `N68X0-005`, `N68X0-009`, `N68X0-010`.
   - Expected files: native package/source/session/fixup/output allocation and bounds owners, CLI artifact orchestration, focused tests, one slice record.
   - Full quality gates: Shared Full Quality Gate; exact package/source/statement/label/fixup/image/output budget tests; Hunk structural validator and S-record parser; Level D `external_fs_uae_native_opforge_full_product_artifact_parity`.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for measured resource and orchestration blockers only, with no new CPU semantics.
+  - Plan-compliance review evidence: `PASS` — primary Sol review of the exact Item 38 set confirms every production change is a measured resource, generic storage/index, scope-replay, diagnostic-retention, or output-orchestration correction. Rust `ScopeStack::qualify` remains the semantic authority; native's retained per-statement module owner is combined with live block/namespace suffixes solely because recursive AmigaOS replay stores those components separately. No package, family, CPU, dialect, mnemonic, register, addressing-mode, opcode, or diagnostic authority moved into generic native code. Luna monitored test logs only and performed no analysis, fixes, or compliance judgment.
+  - Completion evidence (2026-08-30): Level-B inventory measured 369/512 imports, 6,330/8,192 exports using 122,694/262,144 packed-name bytes, 90,441 Rust-expanded source rows using 3,479,376/4,194,304 bytes, a 262-byte maximum source line, and 9,134 source labels. A live Rust label artifact and the deterministic source inventory agree on a 107-byte fully scoped maximum; native label-only rows are 108 bytes, the 256-bucket exact-name hash's worst bucket is 49 entries, and the bounded session accounts 308 bytes per statement plus 123 bytes per label. Directed fresh guests previously proved the raised import/export/module-path/conditional/macro/module-resolution/label/snapshot boundaries, exact buffer-module reservation, hash collision handling, and the 107-byte label boundary with explicit exit zero and byte-for-byte Rust equality. The staged native porting and workflow gates passed before the completion run, and no production Rust changed, so no Rust full gate applies.
+
+    The established native completion wrapper was invoked exactly once. Its first 51 shards all passed with zero failures, including Intel 8080-family and registered Motorola 6800-family corpora, every established 680x0/FPU/AMMX path, package composition, and the complete 43-source reference corpus. Final shard 52 ran one fresh full-product guest and exited one on duplicate `opasm.amigaos.events.capacity`; no artifact-equality claim was made. A directed rerun of only that failed case moved the first failure to corrupted section-scope text and again exited one. Per the Directed-Fix and Single Native Completion Quality Gate, neither the wrapper nor product case was run again. The final minimal Level-D closure crossed a real `.section` boundary, defined identical `capacity` locals in two blocks, completed one fresh guest, exited zero, and reported `rust_bytes=2`, `native_bytes=2`, `rust_bytes_hex=1122`, `native_bytes_hex=1122`, and `exact_match=true`. This records the once-only aggregate limitation explicitly rather than presenting the final product artifact case as rerun success.
   - Commit outcome: one commit allowing the complete source graph and 680x0 package to emit all self-host artifacts in one invocation.
   - Definition of done: no fixed capacity rejects the current full product/package; overflow still fails deterministically; the native CLI produces Rust-identical Hunk and S-record artifacts plus the normalized-identical listing without a host postprocessor.
 

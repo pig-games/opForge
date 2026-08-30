@@ -118,8 +118,8 @@ fn external_fs_uae_native_cli_flow_navigation_preserves_nested_structural_skips(
 #[test]
 fn native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection() {
     // Proof level D. The guest harness captures COPY/PAIR/TEXT/LOCAL, validates
-    // bounded substitution, and proves a nested macro call fails without
-    // overwriting the active caller frame or its restored source line.
+    // bounded substitution, and proves a nested invocation frame can be pushed
+    // and popped without overwriting its caller or restored source line.
     match crate::fs_uae_smoke::run_native_macro_preprocessor_harness_from_env(&workspace_root())
         .expect("native macro-preprocessor FS-UAE harness should complete or skip cleanly")
     {

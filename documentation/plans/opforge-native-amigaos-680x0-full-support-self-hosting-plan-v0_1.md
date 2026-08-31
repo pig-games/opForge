@@ -1008,21 +1008,21 @@ item may weaken or supersede it.
 
 ## Milestones
 
-- [ ] Milestone 1: the Rust assembler executes all supported 680x0 behavior
+- [x] Milestone 1: the Rust assembler executes all supported 680x0 behavior
   exclusively from CPU-neutral serialized package programs; every registered
   family has adopted every applicable improvement, remains green, and the
   package-first receipt is valid (Items 1-13).
-- [ ] Milestone 2: the frozen portable substrate and base operand records are
+- [x] Milestone 2: the frozen portable substrate and base operand records are
   native-executable without family-specific native logic (Items 14-16).
-- [ ] Milestone 3: complete native `m68000` and `m68010` package parity is green
+- [x] Milestone 3: complete native `m68000` and `m68010` package parity is green
   (Items 17-21).
-- [ ] Milestone 4: complete native `m68020`, `m68030`, and `m68040` integer/MMU
+- [x] Milestone 4: complete native `m68020`, `m68030`, and `m68040` integer/MMU
   package parity is green (Items 22-26).
-- [ ] Milestone 5: external and integrated pre-68080 native FPU package parity
+- [x] Milestone 5: external and integrated pre-68080 native FPU package parity
   is green (Items 27-29).
-- [ ] Milestone 6: complete native `m68080` integer, AMMX, and FPU package parity
+- [x] Milestone 6: complete native `m68080` integer, AMMX, and FPU package parity
   is green (Items 30-32).
-- [ ] Milestone 7: complete native package-composition and reference parity,
+- [x] Milestone 7: complete native package-composition and reference parity,
   full executable-Hunk and S-record parity, and simultaneous full-product output
   are mandatory and green (Items 33-38).
 - [ ] Milestone 8: generation-0 native `opforge` builds generation 1, and

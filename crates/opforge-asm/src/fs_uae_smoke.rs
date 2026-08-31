@@ -906,6 +906,7 @@ pub(crate) fn run_opforge_native_cli_parity_cases_from_env(
         &args_text,
         cases,
         NativeCliParityExecutable::OpforgeCli,
+        None,
     )
 }
 
@@ -913,7 +914,18 @@ pub(crate) fn run_opforge_native_self_host_generation_one_from_env(
     workspace_root: &Path,
     case: &OpforgeNativeSelfHostGenerationOneCase<'_>,
 ) -> Result<FsUaeSmokeOutcome, String> {
+    run_opforge_native_self_host_generation_from_env(workspace_root, case, None)
+}
+
+pub(crate) fn run_opforge_native_self_host_generation_from_env(
+    workspace_root: &Path,
+    case: &OpforgeNativeSelfHostGenerationOneCase<'_>,
+    bootstrap_executable: Option<&[u8]>,
+) -> Result<FsUaeSmokeOutcome, String> {
     verify_opforge_self_host_command_rendering(case.amiga_command, case.amiga_paths)?;
+    if bootstrap_executable.is_some_and(|bytes| bytes.is_empty()) {
+        return Err("self-host bootstrap executable override must not be empty".to_string());
+    }
     let command_tail = case.amiga_command[1..].join(" ");
     let parity_case = OpforgeNativeCliParityCase {
         name: case.name,
@@ -941,6 +953,7 @@ pub(crate) fn run_opforge_native_self_host_generation_one_from_env(
         &args_text,
         std::slice::from_ref(&parity_case),
         NativeCliParityExecutable::OpforgeSelfHostGenerationOne,
+        bootstrap_executable,
     )
 }
 
@@ -995,6 +1008,7 @@ pub(crate) fn run_tkpkg_debug_cli_operand_record_parity_cases_from_env(
         &args_text,
         &parity_cases,
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord,
+        None,
     )
 }
 
@@ -1677,6 +1691,7 @@ fn opforge_native_cli_case_identity(
     case: &OpforgeNativeCliParityCase<'_>,
     resolved_package_bytes: Option<&[u8]>,
     executable: NativeCliParityExecutable,
+    bootstrap_executable: Option<&[u8]>,
 ) -> String {
     let mut state = 0xcbf2_9ce4_8422_2325;
     state = fnv1a64_update(
@@ -1705,6 +1720,8 @@ fn opforge_native_cli_case_identity(
     }
     state = fnv1a64_update(state, &[0]);
     state = fnv1a64_update(state, resolved_package_bytes.unwrap_or_default());
+    state = fnv1a64_update(state, &[0]);
+    state = fnv1a64_update(state, bootstrap_executable.unwrap_or_default());
     for file in case.extra_guest_files {
         state = fnv1a64_update(state, &[0]);
         state = fnv1a64_update(state, file.relative_path.as_bytes());
@@ -2024,6 +2041,7 @@ fn run_native_cli_parity_batch_cases(
     args_text: &str,
     cases: &[OpforgeNativeCliParityCase<'_>],
     executable: NativeCliParityExecutable,
+    bootstrap_executable: Option<&[u8]>,
 ) -> Result<FsUaeSmokeOutcome, String> {
     if cases.len() > 1 {
         let mut runs = Vec::with_capacity(cases.len());
@@ -2035,6 +2053,7 @@ fn run_native_cli_parity_batch_cases(
                 args_text,
                 std::slice::from_ref(case),
                 executable,
+                bootstrap_executable,
             ) {
                 Err(error) => proof_errors.push(format!("{}: {error}", case.name)),
                 Ok(FsUaeSmokeOutcome::Completed { runs: case_runs }) => runs.extend(case_runs),
@@ -2098,8 +2117,12 @@ fn run_native_cli_parity_batch_cases(
             ));
         }
         let package_bytes = resolve_opforge_native_cli_package_bytes(workspace_root, case)?;
-        let case_identity =
-            opforge_native_cli_case_identity(case, package_bytes.as_deref(), executable);
+        let case_identity = opforge_native_cli_case_identity(
+            case,
+            package_bytes.as_deref(),
+            executable,
+            bootstrap_executable,
+        );
         let case_paths = opforge_native_cli_batch_case_paths(
             &mounted_work_dir,
             index,
@@ -2283,7 +2306,14 @@ fn run_native_cli_parity_batch_cases(
             mounted_work_dir.join("build/tkpkg_debug_cli_bin")
         }
     };
-    if mounted_hunk_alias_path != hunk_path {
+    if let Some(bytes) = bootstrap_executable {
+        fs::write(&mounted_hunk_alias_path, bytes).map_err(|err| {
+            format!(
+                "stage captured self-host executable at {}: {err}",
+                mounted_hunk_alias_path.display()
+            )
+        })?;
+    } else if mounted_hunk_alias_path != hunk_path {
         fs::copy(&hunk_path, &mounted_hunk_alias_path).map_err(|err| {
             format!(
                 "copy {} to mounted Hunk alias {}: {err}",
@@ -4848,19 +4878,31 @@ mod tests {
         renamed.name = "display-name-must-not-select-oracle";
 
         assert_ne!(
-            opforge_native_cli_case_identity(&base, None, NativeCliParityExecutable::OpforgeCli),
+            opforge_native_cli_case_identity(
+                &base,
+                None,
+                NativeCliParityExecutable::OpforgeCli,
+                None,
+            ),
             opforge_native_cli_case_identity(
                 &changed_source,
                 None,
                 NativeCliParityExecutable::OpforgeCli,
+                None,
             )
         );
         assert_ne!(
-            opforge_native_cli_case_identity(&base, None, NativeCliParityExecutable::OpforgeCli),
+            opforge_native_cli_case_identity(
+                &base,
+                None,
+                NativeCliParityExecutable::OpforgeCli,
+                None,
+            ),
             opforge_native_cli_case_identity(
                 &changed_command,
                 None,
                 NativeCliParityExecutable::OpforgeCli,
+                None,
             )
         );
         assert_ne!(
@@ -4868,24 +4910,57 @@ mod tests {
                 &base,
                 Some(b"package-a"),
                 NativeCliParityExecutable::OpforgeCli,
+                None,
             ),
             opforge_native_cli_case_identity(
                 &base,
                 Some(b"package-b"),
                 NativeCliParityExecutable::OpforgeCli,
+                None,
             )
         );
         assert_ne!(
-            opforge_native_cli_case_identity(&base, None, NativeCliParityExecutable::OpforgeCli),
+            opforge_native_cli_case_identity(
+                &base,
+                None,
+                NativeCliParityExecutable::OpforgeCli,
+                None,
+            ),
             opforge_native_cli_case_identity(
                 &changed_oracle,
                 None,
                 NativeCliParityExecutable::OpforgeCli,
+                None,
             )
         );
         assert_eq!(
-            opforge_native_cli_case_identity(&base, None, NativeCliParityExecutable::OpforgeCli),
-            opforge_native_cli_case_identity(&renamed, None, NativeCliParityExecutable::OpforgeCli)
+            opforge_native_cli_case_identity(
+                &base,
+                None,
+                NativeCliParityExecutable::OpforgeCli,
+                None,
+            ),
+            opforge_native_cli_case_identity(
+                &renamed,
+                None,
+                NativeCliParityExecutable::OpforgeCli,
+                None,
+            )
+        );
+        assert_ne!(
+            opforge_native_cli_case_identity(
+                &base,
+                None,
+                NativeCliParityExecutable::OpforgeSelfHostGenerationOne,
+                None,
+            ),
+            opforge_native_cli_case_identity(
+                &base,
+                None,
+                NativeCliParityExecutable::OpforgeSelfHostGenerationOne,
+                Some(b"captured-generation-one"),
+            ),
+            "captured self-host executable bytes must bind the fresh case identity"
         );
     }
 

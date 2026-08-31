@@ -1,0 +1,60 @@
+[slice]
+schema_version = 2
+name = "native terminal two-generation self-host v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 40
+requirements = ["N68X0-001", "N68X0-009", "N68X0-010", "N68X0-011", "N68X0-012", "N68X0-013", "N68X0-014", "N68X0-015", "N68X0-016"]
+rust_reference = [
+  "crates/opforge-cli-core/src/cli.rs::input_base_from_path",
+  "crates/opforge-cli-core/src/run.rs::run_with_validated_cli_with_context",
+  "crates/opforge-engine/src/lib.rs::Assembler::assemble",
+  "crates/opforge-types/src/image.rs::ImageStore::write_srec_file",
+  "crates/opforge-vm/src/listing.rs"
+]
+native_boundary = [
+  "crates/opforge-asm/src/fs_uae_smoke.rs::render_opforge_self_host_command",
+  "crates/opforge-asm/src/fs_uae_smoke.rs::collect_opforge_self_host_product_tree",
+  "crates/opforge-asm/src/fs_uae_smoke.rs::run_opforge_native_self_host_generation_from_env",
+  "crates/opforge-asm/src/tests/native_fs_uae_parity.rs::external_fs_uae_native_opforge_two_generation_self_host_parity",
+  "scripts/workflow/run_native_existing_parity_completion.sh"
+]
+invariant = "One actual case constructs the exact full product tree, exact Rust default-registry product package, canonical six-token logical command, and in-memory Rust Hunk/S-record/listing oracles. Generation 0 builds generation 1 in a fresh guest; the captured generation-1 Hunk is byte-bound into a second fresh challenge, staged as the same `opforge` basename, launched, and builds generation 2 with the same logical argv. Both generations require explicit zero guest exits and exact artifact equality."
+assertion_decision = "Run host command, staging, cleanup, and executable-handoff identity contracts first. Then invoke the terminal two-generation Level D test once. A generation-1 failure prevents generation 2 from starting and claims no equality; a generation-2 skip after generation 1 is a hard failure. The second run captures Work:opforge and proves it is byte-identical to the first run's generated Hunk."
+expected_inputs = "The canonical argv `opforge native/motorola68000/amigaos -l build/opforge.lst -s build/opforge.srec`, 96 exact staged product files with reviewed <=30-byte physical components, the 368,278-byte Rust default-registry package and digest, generation 0, and the captured generation-1 executable bytes."
+expected_outputs = "Two independent fresh protocol completions and explicit zero exits; captured generation-1 bootstrap identity in generation 2; and generation-1 plus generation-2 Hunk, S-record, and listing bytes each exactly equal to the same in-memory Rust oracle. Every guest artifact tree is removed before return."
+known_non_equivalences = "Classic AmigaOS physical filenames use the reviewed Item 39 short-name map while logical module identity and bytes remain unchanged. Host and guest path notation differs only for the three path-valued argv tokens. Rust uses host process/filesystem APIs while native uses AmigaDOS and fixed native storage; these platform differences do not change the logical command, package, product sources, or artifacts. A macOS filesystem sandbox denial or kLSNoExecutableErr before a fresh guest starts is zero guest evidence and must be retried only with application-launch permission. The once-only terminal run timed out during generation 1 without completion, exit, or artifacts; a directed 900-second generation-one check failed the same way. The final quoted-semicolon closure proves only its corrected operand-snapshot invariant and does not promote this terminal slice."
+fast_proof_command = "cargo test -p asm fs_uae_smoke::tests:: -- --nocapture && cargo test -p asm external_fs_uae_native_opforge_two_generation_self_host_parity -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_opforge_two_generation_self_host_parity -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "self_host_command_is_exact_and_allows_only_reviewed_path_rendering"
+proof_level = "A"
+proves = "Both generations inherit the exact canonical logical argv and reject every non-path difference."
+does_not_prove = "Executable handoff, guest execution, or artifact equality."
+
+[[tests]]
+name = "native_cli_case_identity_is_derived_from_actual_cpu_source_and_command"
+proof_level = "B"
+proves = "The fresh case identity changes when captured bootstrap executable bytes change, binding generation 2 to the actual generation-1 Hunk."
+does_not_prove = "That the Hunk executes or emits correct artifacts."
+
+[[tests]]
+name = "self_host_product_tree_has_a_complete_classic_amigaos_name_map"
+proof_level = "B"
+proves = "All 96 product inputs retain exact bytes under a unique reviewed classic-AmigaOS physical path mapping."
+does_not_prove = "Either native generation."
+
+[[tests]]
+name = "external_fs_uae_native_opforge_two_generation_self_host_parity"
+proof_level = "D"
+proves = "Two fresh AmigaOS guests run sequential native generations with the same command; generation 2 executes the captured generation-1 Hunk; both explicit exits are zero; and all six generated artifacts equal their actual in-memory Rust oracles byte-for-byte."
+does_not_prove = "A third generation, a different source/package tree, or any command other than the canonical product directory build."
+
+[[tests]]
+name = "external_fs_uae_native_quoted_open_paren_cmpi_register_parity"
+proof_level = "D"
+proves = "One fresh guest completes with explicit exit zero and matches the live Rust oracle exactly for quoted structural-character immediates `CMPI.B #'(',D3` and `CMPI.B #';',D3`, proving that only an unquoted semicolon terminates the short native operand snapshot."
+does_not_prove = "Exact opasm.engine module assembly, generation 1, generation 2, or any self-host artifact equality."

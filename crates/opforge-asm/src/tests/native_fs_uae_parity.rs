@@ -25821,11 +25821,15 @@ fn external_fs_uae_native_quoted_open_paren_cmpi_register_parity() {
     let source = ".cpu 68020
 .org 0
 	cmpi.b #'(', d3
+	cmpi.b #';', d3
 ";
     let rust_oracle =
         live_rust_cpu_name_oracle(source, None, "item39-quoted-open-paren-cmpi-rust-oracle")
             .expect("run live Rust quoted-open-parenthesis CMPI.B oracle");
-    assert_eq!(rust_oracle, [0x0c, 0x03, 0x00, 0x28]);
+    assert_eq!(
+        rust_oracle,
+        [0x0c, 0x03, 0x00, 0x28, 0x0c, 0x03, 0x00, 0x3b]
+    );
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "i39-qparen-cmpi",
         cpu_override: "68020",
@@ -25855,7 +25859,7 @@ fn external_fs_uae_native_quoted_open_paren_cmpi_register_parity() {
             let native_output = captured_fs_uae_artifact(run, "Work/opforge_native_out.bin");
             assert_eq!(native_output, rust_oracle);
             eprintln!(
-                "ITEM39_QUOTED_OPEN_PAREN_CMPI runs={} protocol_completed={} guest_exit={:?} rust_bytes={} native_bytes={} exact_match=true bytes_hex=0C030028",
+                "ITEM40_QUOTED_STRUCTURAL_CMPI runs={} protocol_completed={} guest_exit={:?} rust_bytes={} native_bytes={} exact_match=true bytes_hex=0C0300280C03003B",
                 runs.len(),
                 run.protocol_completed,
                 run.exit_code,
@@ -26240,4 +26244,200 @@ fn external_fs_uae_native_opforge_self_host_generation_one_parity() {
             );
         }
     }
+}
+
+#[test]
+fn external_fs_uae_native_opforge_two_generation_self_host_parity() {
+    // Proof level D. Generation 0 builds generation 1 in one fresh guest. The
+    // captured generation-1 Hunk is then staged as Work:opforge in a second
+    // fresh guest and receives the same six-token logical command. Both runs
+    // must match the same actual in-memory Rust artifacts exactly.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+    let root = workspace_root();
+    let product_tree = crate::fs_uae_smoke::collect_opforge_self_host_product_tree(&root)
+        .expect("collect exact Item 40 self-host product tree");
+    let package_logical_path =
+        Path::new("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let package = product_tree
+        .iter()
+        .find(|file| file.logical_relative_path == package_logical_path)
+        .expect("self-host tree contains the product package")
+        .bytes
+        .clone();
+    assert_eq!(
+        package,
+        build_hierarchy_package_from_registry(&default_registry())
+            .expect("build unmodified Rust full product package")
+    );
+    let package_digest = crate::fs_uae_smoke::opforge_self_host_package_digest(&package);
+
+    let rust_case_dir = create_temp_dir("item40-self-host-two-generation-rust-oracle");
+    let _rust_cleanup = NativeCpuOracleDir(rust_case_dir.clone());
+    let rust_build_dir = rust_case_dir.join("build");
+    let rust_hunk_path = rust_build_dir.join("opforge_cli");
+    let rust_list_path = rust_build_dir.join("opforge.lst");
+    let rust_srec_path = rust_build_dir.join("opforge.srec");
+    let rust_product_dir = root.join("native/motorola68000/amigaos");
+    let rust_paths = crate::fs_uae_smoke::OpforgeSelfHostPathRendering {
+        executable: "opforge",
+        product_dir: rust_product_dir
+            .to_str()
+            .expect("UTF-8 Rust product directory"),
+        listing: rust_list_path.to_str().expect("UTF-8 Rust listing path"),
+        srec: rust_srec_path.to_str().expect("UTF-8 Rust S-record path"),
+    };
+    let rust_command = crate::fs_uae_smoke::render_opforge_self_host_command(rust_paths)
+        .expect("render canonical Rust self-host command");
+    let amiga_paths = crate::fs_uae_smoke::OpforgeSelfHostPathRendering {
+        executable: "Work:opforge",
+        product_dir: "Work:native/motorola68000/amigaos",
+        listing: "Work:build/opforge.lst",
+        srec: "Work:build/opforge.srec",
+    };
+    let amiga_command = crate::fs_uae_smoke::render_opforge_self_host_command(amiga_paths)
+        .expect("render canonical AmigaDOS self-host command");
+    crate::fs_uae_smoke::verify_opforge_self_host_same_logical_command(
+        &rust_command,
+        rust_paths,
+        &amiga_command,
+        amiga_paths,
+    )
+    .expect("Item 40 commands differ only by reviewed path rendering");
+
+    let rust_cli = Cli::parse_from(rust_command.clone());
+    let mut rust_config =
+        validate_cli(&rust_cli).expect("validate canonical Rust directory-build command");
+    rust_config.out_dir = Some(rust_case_dir.clone());
+    run_with_validated_cli_with_context(&rust_cli, &rust_config)
+        .expect("run canonical Rust directory-build oracle");
+    let hunk_oracle = fs::read(&rust_hunk_path).expect("read self-host Rust Hunk oracle");
+    let srec_oracle = fs::read(&rust_srec_path).expect("read self-host Rust S-record oracle");
+    let list_oracle = fs::read(&rust_list_path).expect("read self-host Rust listing oracle");
+    assert!(!hunk_oracle.is_empty());
+    assert!(!srec_oracle.is_empty());
+    assert!(!list_oracle.is_empty());
+
+    let staged_path_text = product_tree
+        .iter()
+        .map(|file| file.staged_relative_path.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    let guest_files = product_tree
+        .iter()
+        .zip(staged_path_text.iter())
+        .map(
+            |(file, relative_path)| crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+                relative_path,
+                bytes: &file.bytes,
+            },
+        )
+        .collect::<Vec<_>>();
+    let expected = [
+        crate::fs_uae_smoke::OpforgeNativeCliExpectedArtifact {
+            relative_path: "Work/build/opforge_cli",
+            rust_oracle: &hunk_oracle,
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliExpectedArtifact {
+            relative_path: "Work/build/opforge.srec",
+            rust_oracle: &srec_oracle,
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliExpectedArtifact {
+            relative_path: "Work/build/opforge.lst",
+            rust_oracle: &list_oracle,
+        },
+    ];
+    let generation_one_case = crate::fs_uae_smoke::OpforgeNativeSelfHostGenerationOneCase {
+        name: "item40-self-host-generation-one",
+        amiga_command: &amiga_command,
+        amiga_paths,
+        guest_files: &guest_files,
+        expected_artifacts: &expected,
+    };
+    let generation_one_runs =
+        match crate::fs_uae_smoke::run_opforge_native_self_host_generation_from_env(
+            &root,
+            &generation_one_case,
+            None,
+        )
+        .expect("Item 40 generation-one self-host parity run")
+        {
+            crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+                eprintln!("SKIP: {reason}");
+                return;
+            }
+            crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => runs,
+        };
+    assert_eq!(generation_one_runs.len(), 1);
+    let generation_one_run = &generation_one_runs[0];
+    assert!(generation_one_run.protocol_completed);
+    assert!(generation_one_run.success);
+    assert_eq!(generation_one_run.exit_code, Some(0));
+    let generation_one_hunk =
+        captured_fs_uae_artifact(generation_one_run, "Work/build/opforge_cli").to_vec();
+    assert_eq!(generation_one_hunk, hunk_oracle);
+    assert_eq!(
+        captured_fs_uae_artifact(generation_one_run, "Work/build/opforge.srec"),
+        srec_oracle
+    );
+    assert_eq!(
+        captured_fs_uae_artifact(generation_one_run, "Work/build/opforge.lst"),
+        list_oracle
+    );
+
+    let generation_two_case = crate::fs_uae_smoke::OpforgeNativeSelfHostGenerationOneCase {
+        name: "item40-self-host-generation-two",
+        amiga_command: &amiga_command,
+        amiga_paths,
+        guest_files: &guest_files,
+        expected_artifacts: &expected,
+    };
+    let generation_two_runs =
+        match crate::fs_uae_smoke::run_opforge_native_self_host_generation_from_env(
+            &root,
+            &generation_two_case,
+            Some(&generation_one_hunk),
+        )
+        .expect("Item 40 generation-two self-host parity run")
+        {
+            crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+                panic!("generation two skipped after generation one completed: {reason}")
+            }
+            crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => runs,
+        };
+    assert_eq!(generation_two_runs.len(), 1);
+    let generation_two_run = &generation_two_runs[0];
+    assert!(generation_two_run.protocol_completed);
+    assert!(generation_two_run.success);
+    assert_eq!(generation_two_run.exit_code, Some(0));
+    assert_eq!(
+        captured_fs_uae_artifact(generation_two_run, "Work/opforge"),
+        generation_one_hunk
+    );
+    let generation_two_hunk =
+        captured_fs_uae_artifact(generation_two_run, "Work/build/opforge_cli");
+    let generation_two_srec =
+        captured_fs_uae_artifact(generation_two_run, "Work/build/opforge.srec");
+    let generation_two_list =
+        captured_fs_uae_artifact(generation_two_run, "Work/build/opforge.lst");
+    assert_eq!(generation_two_hunk, hunk_oracle);
+    assert_eq!(generation_two_srec, srec_oracle);
+    assert_eq!(generation_two_list, list_oracle);
+    eprintln!(
+        "ITEM40_TWO_GENERATION_SELF_HOST runs=2 staged_files={} package_digest={} generation_one_protocol_completed={} generation_one_exit={:?} generation_two_protocol_completed={} generation_two_exit={:?} bootstrap_bytes={} bootstrap_exact=true hunk_rust_bytes={} generation_one_hunk_bytes={} generation_two_hunk_bytes={} hunk_exact=true srec_rust_bytes={} generation_two_srec_bytes={} srec_exact=true list_rust_bytes={} generation_two_list_bytes={} list_exact=true artifacts_per_generation=3",
+        guest_files.len(),
+        package_digest,
+        generation_one_run.protocol_completed,
+        generation_one_run.exit_code,
+        generation_two_run.protocol_completed,
+        generation_two_run.exit_code,
+        generation_one_hunk.len(),
+        hunk_oracle.len(),
+        generation_one_hunk.len(),
+        generation_two_hunk.len(),
+        srec_oracle.len(),
+        generation_two_srec.len(),
+        list_oracle.len(),
+        generation_two_list.len(),
+    );
 }

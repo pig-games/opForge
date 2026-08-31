@@ -3042,9 +3042,14 @@ done
 	.bend  ; skipLineWhitespace
 
 copyOperandText	.block
-	movem.l d0-d4/a0-a1, -(sp)
+	movem.l d0-d4/d6-d7/a0-a1, -(sp)
 	clr.w d5
 	move.l #TOKEN_BUFFER_CAPACITY - 1, d4
+	; Rust preserves comment punctuation inside parsed quoted expressions. Keep
+	; the copied short-operand snapshot on that same quote/escape boundary and
+	; stop only at an unquoted semicolon.
+	moveq #0, d6
+	moveq #0, d7
 
 loop
 	tst.l d0
@@ -3052,8 +3057,39 @@ loop
 	moveq #0, d2
 	move.b (a0), d2
 	beq.s done
-	cmpi.b #';', d2
+	tst.b d6
+	beq.s unquoted
+	tst.b d7
+	beq.s quotedByte
+	clr.b d7
+	bra.s retain
+
+quotedByte
+	cmpi.b #92, d2
+	bne.s quotedEnd
+	moveq #1, d7
+	bra.s retain
+
+quotedEnd
+	cmp.b d6, d2
+	bne.s retain
+	moveq #0, d6
+	bra.s retain
+
+unquoted
+	cmpi.b #39, d2
+	beq.s quoteBegin
+	cmpi.b #34, d2
+	beq.s quoteBegin
+	cmpi.b #59, d2
 	beq.s done
+	bra.s retain
+
+quoteBegin
+	move.b d2, d6
+	clr.b d7
+
+retain
 	cmpi.b #10, d2
 	beq.s done
 	cmpi.b #13, d2
@@ -3070,7 +3106,7 @@ loop
 done
 	bsr.w trimOperandText
 	clr.b (a1)
-	movem.l (sp)+, d0-d4/a0-a1
+	movem.l (sp)+, d0-d4/d6-d7/a0-a1
 	rts
 	.bend  ; copyOperandText
 

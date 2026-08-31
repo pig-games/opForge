@@ -92,7 +92,7 @@ tests=(
   external_fs_uae_native_rust_package_composition_matrix_parity
   external_fs_uae_native_motorola68000_complete_reference_parity
   external_fs_uae_native_opforge_full_product_artifact_parity
-  external_fs_uae_native_opforge_self_host_generation_one_parity
+  external_fs_uae_native_opforge_two_generation_self_host_parity
 )
 
 test_source="crates/opforge-asm/src"

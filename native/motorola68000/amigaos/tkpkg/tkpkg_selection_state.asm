@@ -93,6 +93,7 @@ PairBLen
 PairAVal
 	.res long, 1
 PairBVal
+	.res long, 1
 
 	.endsection
 	.endmodule

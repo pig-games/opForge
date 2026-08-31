@@ -209,6 +209,29 @@ fn native_item38_qualified_label_name_budget_matches_rust_product() {
             "add.l d0, d5",
         ]
     ));
+
+    let operand_eval = fs::read_to_string(amigaos.join("opasm/opasm_operand_eval.asm"))
+        .expect("read native operand-evaluation snapshot owner");
+    assert!(operand_eval.contains("SCOPED_SNAPSHOT_NAME_BYTES = eng.LABEL_NAME_CAPACITY"));
+    assert_eq!(
+        operand_eval
+            .matches("mulu.w #SCOPED_SNAPSHOT_NAME_BYTES")
+            .count(),
+        3
+    );
+
+    let operand_runtime = fs::read_to_string(amigaos.join("tkpkg/tkpkg_operand_runtime.asm"))
+        .expect("read native selected-operand snapshot consumer");
+    assert!(operand_runtime.contains("TKPKG_SELECTED_SYMBOL_NAME_BYTES = 108"));
+    assert!(source_contains_in_order(
+        &operand_runtime,
+        &[
+            "move.l d6, d2",
+            "mulu.w #TKPKG_SELECTED_SYMBOL_NAME_BYTES, d2",
+            "movea.l a1, a6",
+            "adda.l d2, a6",
+        ]
+    ));
 }
 
 #[test]
@@ -277,6 +300,74 @@ fn native_label_capacity_tracks_complete_source_record_domain() {
         &[
             "move.l OpasmLayoutSectionParentPc.l, d0",
             "jsr eng.opasmEngineSetCurrentPcV1",
+        ]
+    ));
+}
+
+#[test]
+fn native_selected_pair_values_have_distinct_backing_storage() {
+    // Proof level B. Rust keeps both projected pair values in request-local
+    // storage. Native must reserve both longs; a label without a reservation
+    // aliases the first BSS field linked after this module.
+    let root = workspace_root();
+    let state = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_state.asm"),
+    )
+    .expect("read native selected-pair state");
+    assert!(source_contains_in_order(
+        &state,
+        &[
+            "PairAVal",
+            ".res long, 1",
+            "PairBVal",
+            ".res long, 1",
+            ".endsection",
+        ]
+    ));
+}
+
+#[test]
+fn native_selected_operand_scanners_ignore_quoted_grouping_punctuation() {
+    // Proof level B. Rust shape selection consumes parsed Expr nodes, so raw
+    // native compatibility scans must keep quoted punctuation non-structural.
+    let root = workspace_root();
+    let engine =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm"))
+            .expect("read native opasm engine");
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "commaScan",
+            "tst.b d7",
+            "commaQuotedByte",
+            "cmpi.b #92, d3",
+            "commaQuoteEnd",
+            "commaUnquoted",
+            "cmpi.b #39, d3",
+            "cmpi.b #34, d3",
+            "commaQuoteBegin",
+        ]
+    ));
+
+    let operand_runtime = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm"),
+    )
+    .expect("read native selected-operand runtime");
+    assert!(source_contains_in_order(
+        &operand_runtime,
+        &[
+            "tkpkgMselLocateSemanticOperandV2",
+            "scan",
+            "tst.b d2",
+            "scanQuotedByte",
+            "cmpi.b #92, d3",
+            "scanQuoteEnd",
+            "scanUnquoted",
+            "cmpi.b #39, d3",
+            "cmpi.b #34, d3",
+            "scanQuoteBegin",
+            "atEnd",
+            "tst.b d2",
         ]
     ));
 }

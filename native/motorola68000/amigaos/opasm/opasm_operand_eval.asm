@@ -12,7 +12,10 @@
 ; lexical aliases must cover opasm's complete 16,384-label session domain.
 SCOPED_SNAPSHOT_SOURCE_CAPACITY = 16384
 SCOPED_SNAPSHOT_CAPACITY = 32768
-SCOPED_SNAPSHOT_NAME_BYTES = 64
+; The expression bridge consumes the same fixed-width symbol rows as the
+; engine label table. A smaller stride makes every row after the first visible
+; at the wrong address and diverges from Rust's complete symbol-name lookup.
+SCOPED_SNAPSHOT_NAME_BYTES = eng.LABEL_NAME_CAPACITY
 
 	.section code, kind=code
 	.pub
@@ -660,11 +663,31 @@ selectedAliasTokenReady
 	move.l (sp)+, d0
 	adda.l #40, sp
 	tst.l d0
-	bne.s selectedAliasTryImport
+	bne.s selectedAliasTryOwner
+selectedAliasAppendLocal
 	movea.l a3, a0
 	move.l d4, d0
 	bsr.w appendSelectedSnapshotAliasV1
 	bra.w selectedAliasAdvanceToken
+
+selectedAliasTryOwner
+	; Rust resolves an unqualified name against its owning module after active
+	; nested scopes and before imports. The retained statement owner makes that
+	; fallback independent of transient recursive-import scope state.
+	tst.l d5
+	beq.s selectedAliasTryImport
+	movea.l a3, a0
+	move.l d4, d0
+	movea.l a4, a1
+	move.l d5, d1
+	bsr.w resolveSelectedOwnerSymbolV1
+	tst.l d0
+	beq.s selectedAliasAppendLocal
+	movea.l a3, a0
+	move.l d4, d0
+	movea.l a4, a1
+	move.l d5, d1
+	bsr.w materializeSelectedOwnerMemberBaseAliasV1
 
 selectedAliasTryImport
 	tst.l d5
@@ -748,6 +771,97 @@ selectedAliasReturn
 	rts
 	.bend  ; materializeSelectedImportAliases
 
+; Resolve `{statement-owner}.{token}` through the exact engine label table.
+; Inputs: A0/D0 = token; A1/D1 = owner. Outputs: D0 = status; D3 = value.
+resolveSelectedOwnerSymbolV1	.block
+	movem.l d1-d2/d4-d7/a0-a5, -(sp)
+	movea.l a0, a2
+	move.l d0, d6
+	movea.l a1, a3
+	move.l d1, d7
+	beq.s ownerResolveFail
+ownerResolveAttempt
+	move.l d7, d4
+	addq.l #1, d4
+	add.l d6, d4
+	cmpi.l #eng.LABEL_NAME_CAPACITY, d4
+	bhs.s ownerResolveTrim
+	lea SelectedOwnerLookupName.l, a1
+	movea.l a3, a4
+	move.l d7, d2
+ownerCopyLoop
+	tst.l d2
+	beq.s ownerCopyDot
+	move.b (a4)+, (a1)+
+	subq.l #1, d2
+	bra.s ownerCopyLoop
+ownerCopyDot
+	move.b #'.', (a1)+
+ownerTokenLoop
+	tst.l d6
+	beq.s ownerResolve
+	move.b (a2)+, (a1)+
+	subq.l #1, d6
+	bra.s ownerTokenLoop
+ownerResolve
+	clr.b (a1)
+	lea SelectedOwnerLookupName.l, a0
+	move.l d4, d0
+	jsr eng.opasmEngineResolveLabelValueV1
+	tst.l d0
+	beq.s ownerResolveReturn
+ownerResolveTrim
+	tst.l d7
+	beq.s ownerResolveFail
+	subq.l #1, d7
+	cmpi.b #'.', 0(a3, d7.l)
+	bne.s ownerResolveTrim
+	tst.l d7
+	bne.s ownerResolveAttempt
+ownerResolveFail
+	moveq #1, d0
+ownerResolveReturn
+	movem.l (sp)+, d1-d2/d4-d7/a0-a5
+	rts
+	.bend  ; resolveSelectedOwnerSymbolV1
+
+; Materialize the longest resolvable owner-relative prefix of a dotted token.
+; Rust evaluates an Expr::Member base independently before a package interprets
+; the field. This helper preserves that neutral boundary: it resolves no field
+; spelling and only exposes the already-owned base symbol to the request.
+; Inputs: A0/D0 = token; A1/D1 = owner. Output: D0 = status.
+materializeSelectedOwnerMemberBaseAliasV1	.block
+	movem.l d1-d7/a0-a5, -(sp)
+	movea.l a0, a2
+	move.l d0, d6
+	movea.l a1, a3
+	move.l d1, d7
+ownerMemberBaseScan
+	tst.l d6
+	beq.s ownerMemberBaseFail
+	subq.l #1, d6
+	cmpi.b #'.', 0(a2, d6.l)
+	bne.s ownerMemberBaseScan
+	tst.l d6
+	beq.s ownerMemberBaseFail
+	movea.l a2, a0
+	move.l d6, d0
+	movea.l a3, a1
+	move.l d7, d1
+	bsr.w resolveSelectedOwnerSymbolV1
+	tst.l d0
+	bne.s ownerMemberBaseScan
+	movea.l a2, a0
+	move.l d6, d0
+	bsr.w appendSelectedSnapshotAliasV1
+	bra.s ownerMemberBaseReturn
+ownerMemberBaseFail
+	moveq #1, d0
+ownerMemberBaseReturn
+	movem.l (sp)+, d1-d7/a0-a5
+	rts
+	.bend  ; materializeSelectedOwnerMemberBaseAliasV1
+
 ; Append one already-authorized alias/value to the bounded selected snapshot.
 ; Inputs: A0/D0 = alias text/length; D3 = value. Outputs: D0 = status.
 appendSelectedSnapshotAliasV1	.block
@@ -759,9 +873,10 @@ appendSelectedSnapshotAliasV1	.block
 	cmpi.w #SCOPED_SNAPSHOT_CAPACITY, d1
 	bhs.s appendAliasStackFail
 	move.l d3, d6
-	lsl.l #6, d1
+	move.l d1, d0
+	mulu.w #SCOPED_SNAPSHOT_NAME_BYTES, d0
 	lea ScopedSnapshotNames.l, a1
-	adda.l d1, a1
+	adda.l d0, a1
 	move.l (sp), d0
 	bsr.w copySnapshotName
 	moveq #0, d0
@@ -914,7 +1029,7 @@ aliasLoop
 	cmpi.w #SCOPED_SNAPSHOT_CAPACITY, d1
 	bhs.s copyOriginalBegin
 	move.l d1, d2
-	lsl.l #6, d2
+	mulu.w #SCOPED_SNAPSHOT_NAME_BYTES, d2
 	lea ScopedSnapshotNames.l, a1
 	adda.l d2, a1
 	bsr.w copySnapshotName
@@ -957,7 +1072,7 @@ copyOriginalLoop
 	move.l d7, d0
 	jsr eng.opasmEngineGetLabelNameV1
 	move.l d1, d3
-	lsl.l #6, d3
+	mulu.w #SCOPED_SNAPSHOT_NAME_BYTES, d3
 	lea ScopedSnapshotNames.l, a1
 	adda.l d3, a1
 	moveq #SCOPED_SNAPSHOT_NAME_BYTES, d0
@@ -1037,6 +1152,8 @@ ScopedSnapshotCount
 	.res word, 1
 SelectedStatementIndex
 	.res long, 1
+SelectedOwnerLookupName
+	.res byte, eng.LABEL_NAME_CAPACITY
 RelocScanMode
 	.res word, 1
 RelocScanTargetCount

@@ -158,6 +158,28 @@ const FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDERR_FILE: &str = "opforge_fsuae_smoke.st
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_EXITCODE_FILE: &str = "opforge_fsuae_smoke.exitcode";
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_STARTED_FILE: &str = "opforge_fsuae_smoke.started";
 const FS_UAE_OPFORGE_NATIVE_CLI_CASE_DONE_FILE: &str = "opforge_fsuae_smoke.done";
+const AMIGAOS_CLASSIC_FILENAME_COMPONENT_MAX: usize = 30;
+const OPFORGE_SELF_HOST_PRODUCT_DIR: &str = "native/motorola68000/amigaos";
+const OPFORGE_SELF_HOST_SOURCE_DIRS: &[&str] = &[
+    "opforge-cli",
+    "tkpkg",
+    "tkvm",
+    "prvm",
+    "exprvm",
+    "opcore",
+    "opasm",
+    "debug",
+];
+const OPFORGE_SELF_HOST_SHORT_COMPONENT_MAP: &[(&str, &str)] = &[
+    (
+        "tkpkg_engine_context_adapter.asm",
+        "tkpkg_engine_ctx_adapter.asm",
+    ),
+    (
+        "tkpkg_operand_record_service.asm",
+        "tkpkg_operand_rec_service.asm",
+    ),
+];
 const FS_UAE_SCRIPT_UAEM_TEXT: &str = "-s--rw-d 2021-04-13 02:43:19.40 \n";
 const FS_UAE_TKPKG_DEBUG_CLI_PACKAGE_NAME: &str = "tkpkg_debug_cli_package.opasm";
 const FS_UAE_TKPKG_DEBUG_CLI_PACKAGE_OVERRIDE_NAME: &str = "tkpkg_debug_cli_package_override.opasm";
@@ -287,6 +309,212 @@ pub(crate) struct OpforgeNativeCliExpectedArtifact<'a> {
     pub(crate) rust_oracle: &'a [u8],
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct OpforgeSelfHostPathRendering<'a> {
+    pub(crate) executable: &'a str,
+    pub(crate) product_dir: &'a str,
+    pub(crate) listing: &'a str,
+    pub(crate) srec: &'a str,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct OpforgeSelfHostTreeFile {
+    pub(crate) logical_relative_path: PathBuf,
+    pub(crate) staged_relative_path: PathBuf,
+    pub(crate) bytes: Vec<u8>,
+}
+
+pub(crate) struct OpforgeNativeSelfHostGenerationOneCase<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) amiga_command: &'a [String],
+    pub(crate) amiga_paths: OpforgeSelfHostPathRendering<'a>,
+    pub(crate) guest_files: &'a [OpforgeNativeCliGuestFile<'a>],
+    pub(crate) expected_artifacts: &'a [OpforgeNativeCliExpectedArtifact<'a>],
+}
+
+pub(crate) fn render_opforge_self_host_command(
+    paths: OpforgeSelfHostPathRendering<'_>,
+) -> Result<Vec<String>, String> {
+    let executable_name = paths
+        .executable
+        .rsplit([':', '/'])
+        .next()
+        .unwrap_or_default();
+    if executable_name != "opforge" {
+        return Err(format!(
+            "self-host executable must retain basename 'opforge', got '{}'",
+            paths.executable
+        ));
+    }
+    for (role, value) in [
+        ("product directory", paths.product_dir),
+        ("listing", paths.listing),
+        ("S-record", paths.srec),
+    ] {
+        if value.is_empty() {
+            return Err(format!("self-host {role} path must not be empty"));
+        }
+    }
+    Ok(vec![
+        paths.executable.to_string(),
+        paths.product_dir.to_string(),
+        "-l".to_string(),
+        paths.listing.to_string(),
+        "-s".to_string(),
+        paths.srec.to_string(),
+    ])
+}
+
+pub(crate) fn verify_opforge_self_host_command_rendering(
+    actual: &[String],
+    paths: OpforgeSelfHostPathRendering<'_>,
+) -> Result<(), String> {
+    let expected = render_opforge_self_host_command(paths)?;
+    if actual.len() != expected.len() {
+        return Err(format!(
+            "self-host command has {} tokens; canonical command has {}",
+            actual.len(),
+            expected.len()
+        ));
+    }
+    for (index, (actual, expected)) in actual.iter().zip(expected.iter()).enumerate() {
+        if actual != expected {
+            return Err(format!(
+                "self-host command token {index} differs: actual='{actual}', expected='{expected}'"
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn verify_opforge_self_host_same_logical_command(
+    unix_command: &[String],
+    unix_paths: OpforgeSelfHostPathRendering<'_>,
+    amiga_command: &[String],
+    amiga_paths: OpforgeSelfHostPathRendering<'_>,
+) -> Result<(), String> {
+    verify_opforge_self_host_command_rendering(unix_command, unix_paths)
+        .map_err(|error| format!("Unix rendering: {error}"))?;
+    verify_opforge_self_host_command_rendering(amiga_command, amiga_paths)
+        .map_err(|error| format!("AmigaDOS rendering: {error}"))?;
+    Ok(())
+}
+
+fn opforge_self_host_staged_relative_path(logical: &Path) -> Result<PathBuf, String> {
+    let mut staged = PathBuf::new();
+    for component in logical.components() {
+        let std::path::Component::Normal(component) = component else {
+            return Err(format!(
+                "self-host staging path must be relative without traversal: {}",
+                logical.display()
+            ));
+        };
+        let component = component
+            .to_str()
+            .ok_or_else(|| format!("self-host staging path is not UTF-8: {}", logical.display()))?;
+        let staged_component = OPFORGE_SELF_HOST_SHORT_COMPONENT_MAP
+            .iter()
+            .find_map(|(source, target)| (*source == component).then_some(*target))
+            .unwrap_or(component);
+        if staged_component.len() > AMIGAOS_CLASSIC_FILENAME_COMPONENT_MAX {
+            return Err(format!(
+                "self-host staging component '{}' is {} bytes and has no reviewed <= {} byte mapping",
+                component,
+                component.len(),
+                AMIGAOS_CLASSIC_FILENAME_COMPONENT_MAX
+            ));
+        }
+        staged.push(staged_component);
+    }
+    if staged.as_os_str().is_empty() {
+        return Err("self-host staging path must not be empty".to_string());
+    }
+    Ok(staged)
+}
+
+pub(crate) fn collect_opforge_self_host_product_tree(
+    workspace_root: &Path,
+) -> Result<Vec<OpforgeSelfHostTreeFile>, String> {
+    let product_dir = workspace_root.join(OPFORGE_SELF_HOST_PRODUCT_DIR);
+    let mut logical_paths = vec![PathBuf::from(OPFORGE_SELF_HOST_PRODUCT_DIR).join("main.asm")];
+    for source_dir in OPFORGE_SELF_HOST_SOURCE_DIRS {
+        let absolute_dir = product_dir.join(source_dir);
+        let mut entries = fs::read_dir(&absolute_dir)
+            .map_err(|error| {
+                format!(
+                    "read self-host source directory {}: {error}",
+                    absolute_dir.display()
+                )
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                format!(
+                    "collect self-host source directory {}: {error}",
+                    absolute_dir.display()
+                )
+            })?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let extension = path.extension().and_then(|value| value.to_str());
+            if !matches!(extension, Some("asm" | "i")) {
+                continue;
+            }
+            logical_paths.push(
+                path.strip_prefix(workspace_root)
+                    .map_err(|error| {
+                        format!(
+                            "make self-host source {} relative to {}: {error}",
+                            path.display(),
+                            workspace_root.display()
+                        )
+                    })?
+                    .to_path_buf(),
+            );
+        }
+    }
+    logical_paths.push(
+        PathBuf::from(OPFORGE_SELF_HOST_PRODUCT_DIR).join("opforge-cli/opforge_cli_package.opasm"),
+    );
+    logical_paths.sort();
+    logical_paths.dedup();
+
+    let mut staged_paths = BTreeSet::new();
+    let mut files = Vec::with_capacity(logical_paths.len());
+    for logical_relative_path in logical_paths {
+        let staged_relative_path = opforge_self_host_staged_relative_path(&logical_relative_path)?;
+        if !staged_paths.insert(staged_relative_path.clone()) {
+            return Err(format!(
+                "self-host short-name mapping collides at {}",
+                staged_relative_path.display()
+            ));
+        }
+        let absolute_path = workspace_root.join(&logical_relative_path);
+        let bytes = fs::read(&absolute_path).map_err(|error| {
+            format!(
+                "read self-host product input {}: {error}",
+                absolute_path.display()
+            )
+        })?;
+        files.push(OpforgeSelfHostTreeFile {
+            logical_relative_path,
+            staged_relative_path,
+            bytes,
+        });
+    }
+    Ok(files)
+}
+
+pub(crate) fn opforge_self_host_package_digest(bytes: &[u8]) -> String {
+    format!(
+        "fnv1a64:{:016x}",
+        fnv1a64_update(0xcbf2_9ce4_8422_2325, bytes)
+    )
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum OpforgeNativeCliProof<'a> {
     ExactArtifact {
@@ -305,6 +533,7 @@ pub(crate) enum OpforgeNativeCliProof<'a> {
 #[derive(Clone, Copy)]
 enum NativeCliParityExecutable {
     OpforgeCli,
+    OpforgeSelfHostGenerationOne,
     TkpkgDebugCliOperandRecord,
 }
 
@@ -677,6 +906,41 @@ pub(crate) fn run_opforge_native_cli_parity_cases_from_env(
         &args_text,
         cases,
         NativeCliParityExecutable::OpforgeCli,
+    )
+}
+
+pub(crate) fn run_opforge_native_self_host_generation_one_from_env(
+    workspace_root: &Path,
+    case: &OpforgeNativeSelfHostGenerationOneCase<'_>,
+) -> Result<FsUaeSmokeOutcome, String> {
+    verify_opforge_self_host_command_rendering(case.amiga_command, case.amiga_paths)?;
+    let command_tail = case.amiga_command[1..].join(" ");
+    let parity_case = OpforgeNativeCliParityCase {
+        name: case.name,
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(b""),
+        command_template: Some(command_tail.as_str()),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: case.guest_files,
+        proof: OpforgeNativeCliProof::ExactArtifacts(case.expected_artifacts),
+    };
+
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set; provide newline-delimited FS-UAE arguments"
+            )))
+        }
+    };
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    run_native_cli_parity_batch_cases(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        std::slice::from_ref(&parity_case),
+        NativeCliParityExecutable::OpforgeSelfHostGenerationOne,
     )
 }
 
@@ -1419,6 +1683,9 @@ fn opforge_native_cli_case_identity(
         state,
         match executable {
             NativeCliParityExecutable::OpforgeCli => b"opforge-cli",
+            NativeCliParityExecutable::OpforgeSelfHostGenerationOne => {
+                b"opforge-self-host-generation-one"
+            }
             NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
                 b"tkpkg-debug-cli-operand-record"
             }
@@ -1788,13 +2055,19 @@ fn run_native_cli_parity_batch_cases(
     }
 
     let example_name = match executable {
-        NativeCliParityExecutable::OpforgeCli => FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+        NativeCliParityExecutable::OpforgeCli
+        | NativeCliParityExecutable::OpforgeSelfHostGenerationOne => {
+            FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME
+        }
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
             FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME
         }
     };
     let source_path = workspace_root.join(match executable {
-        NativeCliParityExecutable::OpforgeCli => FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH,
+        NativeCliParityExecutable::OpforgeCli
+        | NativeCliParityExecutable::OpforgeSelfHostGenerationOne => {
+            FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH
+        }
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord => FS_UAE_TKPKG_DEBUG_CLI_SOURCE_PATH,
     });
     if !source_path.is_file() {
@@ -1840,7 +2113,8 @@ fn run_native_cli_parity_batch_cases(
             )
         })?;
         match executable {
-            NativeCliParityExecutable::OpforgeCli => {
+            NativeCliParityExecutable::OpforgeCli
+            | NativeCliParityExecutable::OpforgeSelfHostGenerationOne => {
                 stage_opforge_native_cli_case_guest_inputs(
                     &case_paths,
                     case,
@@ -1860,6 +2134,10 @@ fn run_native_cli_parity_batch_cases(
         let command = match executable {
             NativeCliParityExecutable::OpforgeCli => format!(
                 "Work:build/opforge_cli {}",
+                opforge_native_cli_case_command(case, &case_paths)
+            ),
+            NativeCliParityExecutable::OpforgeSelfHostGenerationOne => format!(
+                "Work:opforge {}",
                 opforge_native_cli_case_command(case, &case_paths)
             ),
             NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
@@ -1918,7 +2196,8 @@ fn run_native_cli_parity_batch_cases(
         batch_paths.push(case_paths);
     }
     let assembly_defines = match executable {
-        NativeCliParityExecutable::OpforgeCli => {
+        NativeCliParityExecutable::OpforgeCli
+        | NativeCliParityExecutable::OpforgeSelfHostGenerationOne => {
             opforge_native_cli_case_assembly_defines(&cases[0])
         }
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord => vec![
@@ -1929,7 +2208,8 @@ fn run_native_cli_parity_batch_cases(
     let include_paths = example_include_paths(workspace_root, example_name);
     let module_paths = example_module_paths(workspace_root, example_name);
     let source_path = match executable {
-        NativeCliParityExecutable::OpforgeCli => source_path,
+        NativeCliParityExecutable::OpforgeCli
+        | NativeCliParityExecutable::OpforgeSelfHostGenerationOne => source_path,
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
             let package_bytes =
                 resolve_opforge_native_cli_package_bytes(workspace_root, &cases[0])?.ok_or_else(
@@ -1996,10 +2276,13 @@ fn run_native_cli_parity_batch_cases(
             hunk_path.display()
         ));
     }
-    let mounted_hunk_alias_path = mounted_work_dir.join("build").join(match executable {
-        NativeCliParityExecutable::OpforgeCli => "opforge_cli",
-        NativeCliParityExecutable::TkpkgDebugCliOperandRecord => "tkpkg_debug_cli_bin",
-    });
+    let mounted_hunk_alias_path = match executable {
+        NativeCliParityExecutable::OpforgeCli => mounted_work_dir.join("build/opforge_cli"),
+        NativeCliParityExecutable::OpforgeSelfHostGenerationOne => mounted_work_dir.join("opforge"),
+        NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
+            mounted_work_dir.join("build/tkpkg_debug_cli_bin")
+        }
+    };
     if mounted_hunk_alias_path != hunk_path {
         fs::copy(&hunk_path, &mounted_hunk_alias_path).map_err(|err| {
             format!(
@@ -4106,6 +4389,170 @@ fn materialize_tkpkg_debug_cli_package_override_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_workspace_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("canonical test workspace root")
+    }
+
+    #[test]
+    fn self_host_command_is_exact_and_allows_only_reviewed_path_rendering() {
+        let unix_paths = OpforgeSelfHostPathRendering {
+            executable: "opforge",
+            product_dir: "native/motorola68000/amigaos",
+            listing: "build/opforge.lst",
+            srec: "build/opforge.srec",
+        };
+        let amiga_paths = OpforgeSelfHostPathRendering {
+            executable: "Work:opforge",
+            product_dir: "Work:native/motorola68000/amigaos",
+            listing: "Work:build/opforge.lst",
+            srec: "Work:build/opforge.srec",
+        };
+        let unix = render_opforge_self_host_command(unix_paths).expect("render Unix command");
+        let amiga = render_opforge_self_host_command(amiga_paths).expect("render Amiga command");
+        assert_eq!(
+            unix,
+            [
+                "opforge",
+                "native/motorola68000/amigaos",
+                "-l",
+                "build/opforge.lst",
+                "-s",
+                "build/opforge.srec",
+            ]
+        );
+        assert_eq!(
+            amiga,
+            [
+                "Work:opforge",
+                "Work:native/motorola68000/amigaos",
+                "-l",
+                "Work:build/opforge.lst",
+                "-s",
+                "Work:build/opforge.srec",
+            ]
+        );
+        verify_opforge_self_host_same_logical_command(&unix, unix_paths, &amiga, amiga_paths)
+            .expect("reviewed path-only translation");
+
+        let mut changed_flag = amiga.clone();
+        changed_flag[2] = "--list".to_string();
+        assert!(verify_opforge_self_host_same_logical_command(
+            &unix,
+            unix_paths,
+            &changed_flag,
+            amiga_paths,
+        )
+        .is_err());
+        let mut changed_value = amiga.clone();
+        changed_value[5] = "Work:build/other.srec".to_string();
+        assert!(verify_opforge_self_host_same_logical_command(
+            &unix,
+            unix_paths,
+            &changed_value,
+            amiga_paths,
+        )
+        .is_err());
+        let mut reordered = amiga.clone();
+        reordered.swap(2, 4);
+        assert!(verify_opforge_self_host_same_logical_command(
+            &unix,
+            unix_paths,
+            &reordered,
+            amiga_paths,
+        )
+        .is_err());
+        let mut added = amiga.clone();
+        added.extend(["--cpu".to_string(), "68020".to_string()]);
+        assert!(verify_opforge_self_host_same_logical_command(
+            &unix,
+            unix_paths,
+            &added,
+            amiga_paths,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn self_host_product_tree_has_a_complete_classic_amigaos_name_map() {
+        let root = test_workspace_root();
+        let files = collect_opforge_self_host_product_tree(&root)
+            .expect("collect complete self-host product tree");
+        assert!(files.len() >= 95, "complete tree unexpectedly shrank");
+        assert!(files.iter().any(|file| {
+            file.logical_relative_path.ends_with("main.asm")
+                && file.staged_relative_path.ends_with("main.asm")
+        }));
+        assert!(files.iter().any(|file| {
+            file.logical_relative_path
+                .ends_with("opforge_cli_package.opasm")
+                && file
+                    .staged_relative_path
+                    .ends_with("opforge_cli_package.opasm")
+        }));
+
+        let mapped = files
+            .iter()
+            .filter(|file| file.logical_relative_path != file.staged_relative_path)
+            .map(|file| {
+                (
+                    file.logical_relative_path
+                        .file_name()
+                        .expect("logical filename")
+                        .to_string_lossy()
+                        .into_owned(),
+                    file.staged_relative_path
+                        .file_name()
+                        .expect("staged filename")
+                        .to_string_lossy()
+                        .into_owned(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            mapped,
+            [
+                (
+                    "tkpkg_engine_context_adapter.asm".to_string(),
+                    "tkpkg_engine_ctx_adapter.asm".to_string(),
+                ),
+                (
+                    "tkpkg_operand_record_service.asm".to_string(),
+                    "tkpkg_operand_rec_service.asm".to_string(),
+                ),
+            ]
+        );
+        for file in &files {
+            for component in file.staged_relative_path.components() {
+                let std::path::Component::Normal(component) = component else {
+                    panic!(
+                        "staged path is not normal: {}",
+                        file.staged_relative_path.display()
+                    );
+                };
+                assert!(
+                    component.as_encoded_bytes().len() <= AMIGAOS_CLASSIC_FILENAME_COMPONENT_MAX,
+                    "overlong staged component in {}",
+                    file.staged_relative_path.display()
+                );
+            }
+            assert_eq!(
+                file.bytes,
+                fs::read(root.join(&file.logical_relative_path)).expect("reread logical input"),
+                "staging changed bytes for {}",
+                file.logical_relative_path.display()
+            );
+        }
+
+        let unmapped = opforge_self_host_staged_relative_path(Path::new(
+            "native/motorola68000/amigaos/this_component_is_definitely_too_long.asm",
+        ))
+        .expect_err("unreviewed long component must fail closed");
+        assert!(unmapped.contains("has no reviewed"));
+    }
 
     #[test]
     fn malformed_use_map_fixture_is_65c02_and_omits_required_comma() {

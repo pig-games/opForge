@@ -20,6 +20,9 @@ TKPKG_MSEL_SURFACE_DIRECT_Y = 4
 TKPKG_MSEL_SURFACE_INDIRECT = 5
 TKPKG_MSEL_SURFACE_INDEXED_INDIRECT_X = 6
 TKPKG_MSEL_SURFACE_INDIRECT_INDEXED_Y = 7
+; Selected-instruction snapshots use the engine/expression-bridge symbol-row
+; contract: up to 107 Rust-valid qualified bytes plus the terminating NUL.
+TKPKG_SELECTED_SYMBOL_NAME_BYTES = 108
 
 	.section data, kind=data
 	.priv
@@ -1161,7 +1164,7 @@ loop
 	cmp.l d1, d6
 	bhs.s return
 	move.l d6, d2
-	lsl.l #6, d2
+	mulu.w #TKPKG_SELECTED_SYMBOL_NAME_BYTES, d2
 	movea.l a1, a6
 	adda.l d2, a6
 	bsr.s encodeSelectedOperandLabelEqualsV1
@@ -1311,11 +1314,39 @@ tkpkgMselLocateSemanticOperandV2	.block
 	movea.l a1, a2
 	moveq #0, d5
 	moveq #0, d4
+	; Rust splits already-tokenized Expr operands. Quotes therefore shield
+	; commas and grouping punctuation from this native source-span fallback.
+	moveq #0, d2
+	moveq #0, d0
 
 scan
 	tst.l d6
 	beq.s atEnd
 	move.b (a1), d3
+	tst.b d2
+	beq.s scanUnquoted
+	tst.b d0
+	beq.s scanQuotedByte
+	clr.b d0
+	bra.s next
+
+scanQuotedByte
+	cmpi.b #92, d3
+	bne.s scanQuoteEnd
+	moveq #1, d0
+	bra.s next
+
+scanQuoteEnd
+	cmp.b d2, d3
+	bne.s next
+	moveq #0, d2
+	bra.s next
+
+scanUnquoted
+	cmpi.b #39, d3
+	beq.s scanQuoteBegin
+	cmpi.b #34, d3
+	beq.s scanQuoteBegin
 	cmpi.b #'(', d3
 	beq.s open
 	cmpi.b #')', d3
@@ -1332,6 +1363,11 @@ scan
 	movea.l a1, a2
 	bra.s scan
 
+scanQuoteBegin
+	move.b d3, d2
+	clr.b d0
+	bra.s next
+
 open
 	addq.w #1, d4
 	bra.s next
@@ -1347,6 +1383,8 @@ next
 	bra.s scan
 
 atEnd
+	tst.b d2
+	bne.s fail
 	tst.w d4
 	bne.s fail
 	cmp.w d7, d5

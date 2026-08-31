@@ -1,0 +1,77 @@
+[slice]
+schema_version = 2
+name = "native canonical generation-one self-host v1"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md"
+plan_item = 39
+requirements = ["N68X0-009", "N68X0-010", "N68X0-011", "N68X0-012", "N68X0-013", "N68X0-014", "N68X0-015", "N68X0-016"]
+rust_reference = [
+  "crates/opforge-cli-core/src/cli.rs::input_base_from_path",
+  "crates/opforge-cli-core/src/cli.rs::resolve_root_module_from_dir",
+  "crates/opforge-core/src/parser.rs::Expr",
+  "crates/opforge-core/src/scope.rs::ScopeStack::qualify",
+  "crates/opforge-vm/src/fixup_vm.rs::PortableOutputFixup",
+  "crates/opforge-engine/src/lib.rs::Assembler::assemble"
+]
+native_boundary = [
+  "crates/opforge-asm/src/fs_uae_smoke.rs::render_opforge_self_host_command",
+  "crates/opforge-asm/src/fs_uae_smoke.rs::verify_opforge_self_host_same_logical_command",
+  "crates/opforge-asm/src/fs_uae_smoke.rs::collect_opforge_self_host_product_tree",
+  "crates/opforge-asm/src/fs_uae_smoke.rs::run_opforge_native_self_host_generation_one_from_env",
+  "native/motorola68000/amigaos/opforge-cli/input_resolver.asm::resolveInputPathV1",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::recordBlockEntryLabelV1",
+  "native/motorola68000/amigaos/opasm/opasm_operand_eval.asm::materializeSelectedImportAliases",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineInferSelectedShapeForEvalRequestV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm::tkpkgMselLocateSemanticOperandV2"
+]
+invariant = "Rust and native receive renderings of the same six-token canonical directory-build command. Native resolves the directory root and complete staged source/package tree without semantic rewriting, and its architecture-neutral assembly path preserves Rust's parent-scope block labels, owner-qualified symbols, unplaced-section fixup omission, parsed-expression operand boundaries, and independent selected-value storage."
+assertion_decision = "Reject every command token, flag, value, or order difference except the three reviewed path renderings; fail closed on unreviewed overlong AmigaOS filename components; bind every actual case to fresh in-memory Rust Hunk, S-record, and listing oracles; use the established full native wrapper only once and close any discovered invariant with the smallest directed guest proof."
+expected_inputs = "The exact canonical logical argv `opforge native/motorola68000/amigaos -l build/opforge.lst -s build/opforge.srec`, the complete native product tree, the byte-identical Rust-built full registered-family product package, and directed sources for block ownership, owner/member lookup, unplaced fixups, selected-value storage, and quoted operand punctuation."
+expected_outputs = "The command guard accepts only reviewed path rendering, staging preserves every source/package byte with unique <=30-byte physical components, and each successful fresh guest exits zero and matches its actual live Rust bytes exactly. The generation-one case compares Hunk, S-record, and normalized listing artifacts in memory and fails closed before claiming parity on any mismatch."
+known_non_equivalences = "Classic AmigaOS physical filename components are limited to 30 bytes, so two reviewed deterministic filenames are shortened during ephemeral staging while logical module identity and file bytes remain unchanged. AmigaDOS directory classification uses Lock/Examine/ExNext instead of Rust Path metadata. The one generation-one guest and the one established completion-wrapper invocation both exposed a package-neutral quoted-parenthesis scan defect and were not repeated under the directed-fix quality rule; the final focused fresh guest closed that exact invariant with explicit exit zero and 24/24 Rust-native byte equality, but does not claim a post-fix generation-one artifact rerun. A macOS filesystem sandbox denial or kLSNoExecutableErr before the fresh start marker is zero guest evidence and requires an escalated retry of only the same directed case."
+fast_proof_command = "cargo test -p asm self_host_command_is_exact_and_allows_only_reviewed_path_rendering -- --nocapture && cargo test -p asm self_host_product_tree_has_a_complete_classic_amigaos_name_map -- --nocapture && cargo test -p asm native_selected_operand_scanners_ignore_quoted_grouping_punctuation -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_opforge_self_host_generation_one_parity -- --nocapture --test-threads=1"
+regression_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh --verify"
+level_d_fail_closed = true
+
+[[tests]]
+name = "self_host_command_is_exact_and_allows_only_reviewed_path_rendering"
+proof_level = "A"
+proves = "The stored Unix and AmigaDOS commands are exact renderings of the canonical six-token argv and reject changed flags, values, order, or added CPU arguments."
+does_not_prove = "Filesystem staging, native execution, or output artifact equality."
+
+[[tests]]
+name = "self_host_product_tree_has_a_complete_classic_amigaos_name_map"
+proof_level = "B"
+proves = "The complete discovered product tree is staged byte-identically with unique physical paths and every classic AmigaOS component at most 30 bytes; unreviewed long components fail closed."
+does_not_prove = "AmigaDOS directory discovery or execution of the staged tree."
+
+[[tests]]
+name = "native_selected_pair_values_have_distinct_backing_storage"
+proof_level = "B"
+proves = "The two selected operand pair values have distinct longword storage, matching Rust's independent tuple fields."
+does_not_prove = "Native execution or any CPU-specific pair encoding."
+
+[[tests]]
+name = "native_selected_operand_scanners_ignore_quoted_grouping_punctuation"
+proof_level = "B"
+proves = "Both architecture-neutral native source-span scanners retain quote and escape state so commas and parentheses inside literals cannot become structural separators."
+does_not_prove = "Real guest parsing, package selection, or emitted bytes."
+
+[[tests]]
+name = "external_fs_uae_native_opforge_self_host_generation_one_parity"
+proof_level = "D"
+proves = "The actual generation-one case stages the complete tree and byte-identical package, uses one logical command, requires a fresh completed guest with explicit exit zero, and compares all three in-memory Rust artifacts byte-for-byte before it can pass."
+does_not_prove = "A post-fix generation-one success: the one permitted run exited one on the quoted-parenthesis scanner defect and no artifact equality was claimed."
+
+[[tests]]
+name = "external_fs_uae_native_quoted_open_paren_cmpi_register_parity"
+proof_level = "D"
+proves = "The committed minimal closure binds `CMPI.B #'(',D3` to its live Rust oracle and requires fresh protocol completion, explicit exit zero, and exact bytes 0C030028. The executed four-form closure on the same corrected production state matched all 24 Rust bytes."
+does_not_prove = "A second generation-one run or a second full native completion-wrapper invocation."
+
+[[tests]]
+name = "native_existing_parity_completion_wrapper"
+proof_level = "D"
+proves = "The one permitted established wrapper invocation re-proved the reached existing native parity shards before exposing the same quoted-parenthesis operand-boundary defect in the Item 39 product path."
+does_not_prove = "A post-fix wrapper pass; the wrapper was intentionally not repeated."

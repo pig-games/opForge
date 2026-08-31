@@ -501,6 +501,16 @@ compareBlock
 	moveq #5, d1
 	bsr.w lineStartsWith
 	beq.s checkEndblock
+	; Rust binds the label attached to `.block` at the parent-scope PC before
+	; entering the block. Flow directives bypass the engine's ordinary label
+	; callback, so retain that same pass-one ordering explicitly here.
+	jsr eng.opasmEngineGetSessionPassV1
+	cmpi.w #1, d0
+	bne.s beginBlockScope
+	move.l d7, d0
+	bsr.w recordBlockEntryLabelV1
+	bne.w fail
+beginBlockScope
 	bsr.w scopes.beginBlockScopeV1
 	bne.w fail
 	bra.w success
@@ -1197,6 +1207,45 @@ return
 	rts
 	.bend  ; caseMatchesCurrentValue
 
+; Record a callable `.block` entry label at its parent-scope PC without
+; replacing the raw statement label that beginBlockScopeV1 must push next.
+; Inputs: D0.L = statement index. Outputs: D0 = status.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-self-host-gen1-v1.toml
+; @opforge-role: facade
+recordBlockEntryLabelV1	.block
+	movem.l d1-d7/a0-a2, -(sp)
+	suba.l #eng.LABEL_NAME_CAPACITY, sp
+	move.l d0, d7
+	jsr eng.opasmEngineGetStatementLabelTextV1
+	move.l d0, d6
+	beq.s blockEntryFail
+	movea.l sp, a1
+	move.l d6, d4
+blockEntryCopy
+	move.b (a0)+, (a1)+
+	subq.l #1, d4
+	bne.s blockEntryCopy
+	move.l d7, d0
+	bsr.w opasmDriverRecordLabel
+	move.l d0, d5
+	movea.l sp, a0
+	move.l d7, d0
+	move.l d6, d1
+	jsr eng.opasmEngineSetStatementLabelTextV1
+	tst.l d0
+	beq.s blockEntryReturn
+	moveq #1, d5
+	bra.s blockEntryReturn
+blockEntryFail
+	moveq #1, d5
+blockEntryReturn
+	move.l d5, d0
+	adda.l #eng.LABEL_NAME_CAPACITY, sp
+	movem.l (sp)+, d1-d7/a0-a2
+	rts
+	.bend  ; recordBlockEntryLabelV1
+
 opasmDriverPassTwoOk	.block
 	jsr eng.opasmEngineFlushMappedImageV1
 	bne.s fail
@@ -1534,8 +1583,17 @@ emitDirectiveReady
 	beq.w noOutput
 	move.w d1, d6
 	move.l d3, d0
+	; Rust drops both bytes and PortableOutputFixup records for an unplaced
+	; section. The native image route already discards those bytes; do not try
+	; to project their section-relative fixups into the retained output table.
+	; Main and mapped output retain the existing fixup path unchanged.
+	jsr layout.statementImageRouteV1
+	cmpi.w #1, d0
+	beq.s selectedOutputFixupsReady
+	move.l d3, d0
 	bsr.w recordSelectedOutputFixupsV1
 	bne.w fail
+selectedOutputFixupsReady
 	bsr.w serviceFramePtr
 	jsr tkpkg.readOutputPtrV1
 	moveq #0, d0

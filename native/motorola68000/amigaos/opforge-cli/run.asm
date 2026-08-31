@@ -16,6 +16,7 @@
 	.use opforge.cli.source_reader
 	.use opforge.cli.report
 	.use opforge.cli.args
+	.use opforge.cli.input_resolver
 	.use opforge.cli.session_init
 	.use opforge.cli.output
 	.use opforge.cli.source_artifacts
@@ -105,10 +106,14 @@ version
 	bra.w closeDos
 
 parsed
+	jsr input_resolver.resolveInputPathV1
+	tst.l d0
+	bne.w inputOpenFailed
 	lea state.NativeCliInputPath, a0
 	jsr dos.openInput
 	tst.l d0
 	bne.s inputOpened
+inputOpenFailed
 	move.l #strings.InputOpenErrorText, d1
 	jsr dos.putErrStr
 	move.l #state.NativeCliInputPath, d1

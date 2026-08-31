@@ -94,8 +94,10 @@ machine on which the native executable runs.
   remain excluded because the Rust contract excludes them.
 - `N68X0-011`: The final self-host test uses the same ordered logical CLI argv
   for Rust and native builds. Only path operands may be translated between
-  Unix and AmigaDOS notation; flags, ordering, CPU, package, inputs, module
-  roots, include roots, and requested outputs may not differ.
+  Unix and AmigaDOS notation; the directory input, flags, ordering, and
+  requested listing/S-record outputs may not differ. The harness may not expand
+  the canonical directory build into explicit CPU, package, root-source,
+  module-root, include-root, or Hunk-output arguments.
 - `N68X0-012`: A Rust-built generation-0 native executable builds generation 1;
   generation 1 is launched and builds generation 2 with the same logical
   command; both generations match the same-command Rust oracle byte-for-byte
@@ -934,60 +936,56 @@ the same unmodified serialized semantic package.
   - Commit outcome: one commit allowing the complete source graph and 680x0 package to emit all self-host artifacts in one invocation.
   - Definition of done: no fixed capacity rejects the current full product/package; overflow still fails deterministically; the native CLI produces Rust-identical Hunk and S-record artifacts plus the normalized-identical listing without a host postprocessor.
 
-- [ ] Item 39: add the canonical same-command self-host harness and command-normalization guard
+- [x] Item 39: add the canonical same-command self-host harness and command-normalization guard
   - Source requirement or finding IDs: `N68X0-009`-`N68X0-016`.
   - Expected files: FS-UAE native harness, self-host command manifest/helper, deterministic command-normalization tests, completion wrapper, one slice record.
-  - Full quality gates: Shared Full Quality Gate; Level A tests reject flag/value/order differences and allow only reviewed path translation; Level B staging/cleanup tests; preparatory Level D `external_fs_uae_native_opforge_self_host_generation_one_parity` comparing Hunk, S-record, and listing outputs.
-  - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` for harness/guard behavior and confirms no evidence filename selects an oracle.
+  - Full quality gates: Shared Full Quality Gate; Level A tests reject flag/value/order differences and allow only reviewed path translation; Level B staging/cleanup tests; preparatory Level D `external_fs_uae_native_opforge_self_host_generation_one_parity` comparing Hunk, S-record, and listing outputs. The generation-one proof invokes the Rust and native assemblers through the same canonical logical command `opforge native/motorola68000/amigaos -l build/opforge.lst -s build/opforge.srec`; it may not expand that directory build into explicit CPU, package, module-path, include-path, root-source, or Hunk-output arguments.
+  - Plan-compliance review evidence: `PASS` — primary Sol review of the exact Item 39 set confirms that one six-token logical argv produces both host renderings; only the directory/listing/S-record path values change; the complete source/package tree is staged byte-identically under a reviewed classic-AmigaOS short-name map; and each actual case owns its in-memory Rust artifacts, fresh challenge, completion response, and explicit guest exit. Native production changes mirror only architecture-neutral Rust contracts for directory-root discovery, scoped symbol/fixup handling, selected-value storage, and parsed-expression operand boundaries. No evidence filename selects an oracle, and no CPU, mnemonic, register, addressing-mode, or opcode authority moved into generic native code. Luna monitored test logs only and performed no analysis, fixes, or compliance judgment.
+  - Completion evidence (2026-08-31): Level A command normalization passed and rejects changed flags, values, order, or added CPU arguments. Level B staging passed for 96 exact files, the byte-identical Rust-built package digest `fnv1a64:37aaf6a8f1f466a3`, unique physical paths, and the complete <=30-byte classic-AmigaOS component map. The host canonical directory build produced nonempty in-memory Rust oracles of 551,688 Hunk bytes, 11 S-record bytes, and 9,992,200 listing bytes. The preparatory generation-one guest started fresh but exited one on `CMPI.B #'(',D3`; therefore no Hunk/S-record/listing equality was claimed. Directed bisection identified the corrected invariant: native raw-source compatibility scans had treated quoted `(` as structural grouping, unlike Rust's parsed `Expr` boundary. The only final native closure used one fresh guest over all four relevant quoted forms, completed the protocol, exited zero, and matched Rust exactly at 24/24 bytes. Per the Directed-Fix and Single Native Completion Quality Gate, neither the full generation-one case nor the established native wrapper was repeated. The committed one-form regression retains exact bytes `0C030028`, and the generation-one proof is registered as the next fail-closed wrapper shard. The staged native-porting gate passes all contracts and 234-file formatting; the workflow gate passes after deterministic ownership and runtime-boundary ledger refreshes. No production Rust changed, so no Rust full gate applies.
   - Commit outcome: one commit creating a fail-closed, ephemeral two-generation self-host harness.
   - Definition of done: the harness derives both commands from one logical argv vector, stages the exact product source/package tree, captures all three outputs in memory, and rejects every non-path difference.
 
 - [ ] Item 40: run and promote the terminal two-generation native self-build proof
   - Source requirement or finding IDs: `N68X0-001`, `N68X0-009`-`N68X0-016`.
   - Expected files: self-host completion wrapper/gate registration, plan checkbox/evidence, documentation/release notes if version-impact evidence requires them, one final slice record.
-  - Full quality gates: Shared Full Quality Gate; package-first completion from Item 13; native package-composition parity from Item 33; complete reference parity from Item 34; full Hunk parity from Items 35-36; full S-record parity from Item 37; product artifact parity from Item 38; final Level D `external_fs_uae_native_opforge_two_generation_self_host_parity`; `make quality-gate`; `make workflow-gate`.
+  - Full quality gates: Shared Full Quality Gate; package-first completion from Item 13; native package-composition parity from Item 33; complete reference parity from Item 34; full Hunk parity from Items 35-36; full S-record parity from Item 37; product artifact parity from Item 38; final Level D `external_fs_uae_native_opforge_two_generation_self_host_parity`; `make quality-gate`; `make workflow-gate`. Both guest generations must invoke the exact canonical directory-build command `opforge native/motorola68000/amigaos -l build/opforge.lst -s build/opforge.srec`, subject only to reviewed host/guest path rendering.
   - Plan-compliance review evidence: `plan-compliance-reviewer` returns `PASS` only after reviewing the exact staged index, logical argv, path mapping, fresh protocols, both guest exits, in-memory comparisons of all outputs, and cleanup evidence.
   - Commit outcome: one commit promoting self-hosting to the mandatory native completion gate and recording plan completion.
-  - Definition of done: the final test below passes exactly as written in the Self-Hosting Acceptance Contract; generation 1 and generation 2 are complete, runnable native `opforge` executables and emit Rust-identical Hunk, S-record, and listing artifacts from an unmodified Rust-built 680x0-only package; no reduced source tree, alternate flags, helper assembler, native package rewrite, stored oracle, stale artifact, or launcher-only success is accepted.
+  - Definition of done: the final test below passes exactly as written in the Self-Hosting Acceptance Contract; generation 1 and generation 2 are complete, runnable native `opforge` executables and emit Rust-identical Hunk, S-record, and listing artifacts from the unmodified Rust-built full registered-family product package discovered by the canonical directory build; no reduced source tree, alternate flags, helper assembler, native package rewrite, stored oracle, stale artifact, or launcher-only success is accepted.
 
 ## Self-Hosting Acceptance Contract
 
-Item 39 must store one canonical logical argv vector equivalent to:
+Item 39 must store this canonical logical argv vector:
 
 ```text
 opforge
---cpu 68020
---opasm-package native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm
+native/motorola68000/amigaos
 -l build/opforge.lst
---hunk build/opforge
 -s build/opforge.srec
--M native/motorola68000/amigaos/opforge-cli
--M native/motorola68000/amigaos/tkpkg
--M native/motorola68000/amigaos/tkvm
--M native/motorola68000/amigaos/prvm
--M native/motorola68000/amigaos/exprvm
--M native/motorola68000/amigaos/opcore
--M native/motorola68000/amigaos/opasm
--M native/motorola68000/amigaos/debug
--I native/motorola68000/amigaos/debug
-native/motorola68000/amigaos/main.asm
 ```
 
 The exact vector may be amended before Item 39 only when the product's
 canonical build genuinely changes; such an amendment requires renewed plan
 quality approval. The executable is staged under the same basename `opforge` on
-both hosts. The `--opasm-package` operand must resolve to the exact
-Rust-builder-produced 680x0-only package whose digest is recorded in the actual
-test case; staging may change its path notation but not one byte. The path
-translator may rewrite only path-valued tokens, for
-example `native/.../main.asm` to `Work:native/.../main.asm` and
-`build/opforge` to `Work:build/opforge`. It may not add, remove, reorder, or
-change any non-path token.
+both hosts. Directory-input discovery must remain the actual Rust/native CLI
+behavior: the harness may not replace it with an explicit root source, CPU,
+package, module-path, include-path, or Hunk-output argument. The discovered
+package must be the exact Rust-builder-produced full registered-family product
+package whose digest is recorded in the actual test case; staging may change
+its path notation but not one byte. The path translator may rewrite only the three path-valued tokens
+(the directory input and the `-l`/`-s` operands), for example
+`native/motorola68000/amigaos` to `Work:native/motorola68000/amigaos` and
+`build/opforge.lst` to `Work:build/opforge.lst`. It may not add, remove,
+reorder, or change any non-path token. The staged source tree must use a
+deterministic reviewed short-name mapping for every path component that exceeds
+the selected classic AmigaOS filesystem limit; that mapping may alter only
+physical path spelling and must preserve source bytes, module identity, package
+bytes, discovery behavior, and the canonical logical argv.
 
 The terminal test must:
 
 1. construct a fresh actual case containing the exact source bytes, the exact
-   unmodified Rust-built 680x0-only package bytes and digest, the logical argv,
+   unmodified Rust-built full registered-family product-package bytes and digest, the logical argv,
    and the in-memory Rust Hunk/S-record/listing oracle;
 2. use the Rust CLI with the Unix rendering of that argv to build the
    generation-0 oracle and bootstrap native executable;

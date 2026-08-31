@@ -748,8 +748,12 @@ opforgeNativeCliResolveOutputPath	.block
 	bne.s resolveCurrentPath
 	tst.w state.NativeCliModuleResolveDepth
 	bne.s resolveCurrentPath
-	lea state.NativeCliInputPath, a0
-	bra.s resolveBasePath
+	; Rust leaves a root-source relative `.output` path relative to the process
+	; working directory when no explicit out_dir exists.  Preserve the literal
+	; path here; AmigaDOS resolves it against the guest's current directory.
+	movea.l a2, a0
+	jsr path.opforgeNativeCliCopyPathBuffer
+	bra.s return
 
 resolveCurrentPath
 	lea state.NativeCliCurrentPath, a0

@@ -2412,11 +2412,40 @@ checkTopLevelComma
 	move.w d2, d4
 	moveq #0, d5
 	moveq #0, d6
+	; Rust classifies parsed Expr operands, so grouping punctuation inside a
+	; quoted literal is never structural. Preserve that boundary while this
+	; native compatibility path scans the retained source span.
+	moveq #0, d7
+	moveq #0, d0
 
 commaScan
 	tst.w d4
 	beq.s ready
 	move.b (a1)+, d3
+	tst.b d7
+	beq.s commaUnquoted
+	tst.b d0
+	beq.s commaQuotedByte
+	clr.b d0
+	bra.s commaNext
+
+commaQuotedByte
+	cmpi.b #92, d3
+	bne.s commaQuoteEnd
+	moveq #1, d0
+	bra.s commaNext
+
+commaQuoteEnd
+	cmp.b d7, d3
+	bne.s commaNext
+	moveq #0, d7
+	bra.s commaNext
+
+commaUnquoted
+	cmpi.b #39, d3
+	beq.s commaQuoteBegin
+	cmpi.b #34, d3
+	beq.s commaQuoteBegin
 	cmpi.b #'(', d3
 	beq.s commaOpen
 	cmpi.b #')', d3
@@ -2426,6 +2455,11 @@ commaScan
 	tst.w d5
 	bne.s commaNext
 	moveq #1, d6
+	bra.s commaNext
+
+commaQuoteBegin
+	move.b d3, d7
+	clr.b d0
 	bra.s commaNext
 
 commaOpen

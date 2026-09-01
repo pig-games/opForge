@@ -24,19 +24,19 @@ operation share. The first response to the observed multi-hour native run is
 progress and multiplication instrumentation, not an assumed I/O, lookup, VM,
 or representation fix.
 
-This plan is deliberately dormant until
+This plan is active from remote checkpoint
+`68cc693c40fd27e30bed11e08974d3263d6cb6f6`. That commit deliberately parks
+Item 40 and Milestone 8 of
 `documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md`
-is finalized. Its closure commit is the required integration base. Final bug
-fixes and proof changes in that plan are expected to require a narrow rebase,
-anchor audit, and fresh baseline—not a redesign of this roadmap unless the audit
-finds a changed contract.
+after CPU-active native generation-one runs produced no completion, exit, or
+artifacts at two and six hours. The user's 2026-09-01 activation direction
+supersedes the former requirement to wait for terminal-plan finalization; it
+does not mark either checkbox complete or reinterpret the missing proof.
 
-A narrow instrumentation-only bridge is permitted before that closure solely
-to unblock diagnosis of an impractically long terminal proof. It may execute
-only after the active self-hosting plan is amended and reviewed to authorize the
-exact observation slice. It may add bounded progress/counters, coarse timing,
-symbolized sampling support, and incomplete abort reports, but may not optimize,
-change output behavior, relax proof requirements, or activate later items.
+Items 0a-0f are now the first post-activation implementation sequence. They add
+bounded progress/counters, coarse timing, symbolized sampling support, and
+incomplete abort reports before any optimization. They may not change output
+behavior, relax proof requirements, or turn incomplete evidence into proof.
 
 ## Version Impact
 
@@ -62,7 +62,7 @@ change output behavior, relax proof requirements, or activate later items.
   routing, tokenizer validation, and one exact tokenizer path; an attempted
   parser fast path improved a local bucket but regressed end-to-end and was
   reverted.
-- Native startup byte-clears a 38,207,265-byte capacity arena; source/bootstrap
+- Native startup byte-clears a 41,221,928-byte capacity arena; source/bootstrap
   and module discovery use one-byte DOS reads; the 368,278-byte embedded package
   is copied before use; pass-two convergence can repeat image work; expressions
   are compiled per evaluation; directive/flow/state/symbol work is repeatedly
@@ -142,14 +142,14 @@ change output behavior, relax proof requirements, or activate later items.
   variants, budgets, and terminal proof.
 - Reproducible real-CLI benchmark corpus, machine-readable results, profile
   overhead calibration, exact parity, failure paths, and self-hosting.
-- A pre-activation observation bridge limited to progress, operation counts,
-  coarse timing, bounded abort snapshots, and symbolized sampling when the
-  active plan explicitly authorizes it.
+- The activated native-attribution foundation: progress, operation counts,
+  coarse timing, bounded abort snapshots, and symbolized sampling before any
+  optimization.
 
 ### Out of Scope
 
-- Starting performance optimization before the current self-hosting plan is
-  finalized; the reviewed observation-only bridge above is the sole exception.
+- Claiming the parked self-hosting plan, Item 40, or Milestone 8 is complete;
+  terminal proof resumes after measured performance work.
 - Discovering or prototyping generic VM semantics first in 680x0 assembly.
 - CPU/family/dialect semantics in generic Rust/native implementation paths.
 - Benchmark-, path-, fixture-, generation-, source-text-, or expected-output-
@@ -163,21 +163,17 @@ change output behavior, relax proof requirements, or activate later items.
 
 ## Worktree and execution policy
 
-Create a long-lived sibling performance integration worktree from the finalized
-prerequisite commit, on a non-`main` branch such as
-`codex/rust-vm-native-performance`. Use a sibling child worktree/branch for a
+Use the long-lived sibling performance integration worktree created from remote
+checkpoint `68cc693c` on branch `codex/rust-vm-native-performance`. Use a sibling child worktree/branch for a
 high-risk or independently reviewable slice; lower-risk sequential slices may
 run directly in the performance integration worktree. Never execute a slice in
 the primary checkout or on `main`, and never push without explicit current-turn
 authorization.
 
-Items 0a-0f are the only pre-activation work. They run sequentially either in a
-dedicated sibling instrumentation worktree based on the active self-hosting
-integration state, or in that plan's already-dedicated worktree if its reviewed
-amendment explicitly selects it. They never run in the primary checkout. If the
-self-hosting plan closes before the bridge starts, run the same mandatory items
-from its closure commit in the future performance worktree before Item 1 records
-that commit as the performance integration base.
+Item 1 activates and records the checkpoint before Items 0a-0f run sequentially
+in this integration worktree or reviewed child slices. They never run in the
+primary checkout. The primary checkout's unrelated untracked files are outside
+this plan and remain untouched.
 
 Before each item, record in the performance ledger: prerequisite integration
 commit, slice base, branch, absolute sibling worktree path, active item, expected
@@ -198,8 +194,8 @@ No checkbox is marked complete before its listed gates pass and its commit exist
 
 | ID | Requirement |
 |---|---|
-| SR-ACT | Begin only from finalized current-plan integration state; rebase/audit/remeasure. |
-| SR-BRIDGE | Permit only reviewed observation instrumentation before activation; no optimization or proof weakening. |
+| SR-ACT | Begin from the latest fetched remote parking checkpoint; audit drift and preserve the open terminal proof. |
+| SR-BRIDGE | Run reviewed observation instrumentation immediately after activation; no optimization or proof weakening. |
 | SR-WT | Dedicated performance worktrees; record base, branch, path, commit, dependency. |
 | SR-RF | Rust profiles and implements generic VM changes before native transfer. |
 | SR-ID | Stable shared IDs and machine-readable Rust/native-correlatable output. |
@@ -219,7 +215,7 @@ Finding IDs F1-F12 refer to the companion baseline.
 
 | Phase | Primary track | Role |
 |---|---|---|
-| Pre-activation bridge | Track N/T measurement only | native progress and compute attribution; no optimization |
+| Activation/native attribution | Track N/T measurement only | checkpoint activation, native progress and compute attribution; no optimization |
 | 0 | Track R foundation plus Track N/T correlation foundation | activation, corpus, shared identities, Rust profiler, native platform/correlation counters |
 | 1 | Track R | complete Rust VM instrumentation and authoritative hotspot report |
 | 2 | Track R | initial evidence-gated Rust optimization experiments and decisions |
@@ -245,12 +241,30 @@ produces a reviewed no-go/reorder amendment, not implementation.
 
 ## Work Items
 
-### Pre-activation bridge — observe the multi-hour native run without optimizing
+### Phase 0 — activation, profiler architecture, baselines, and reproducibility
 
-These six items are mandatory measurement foundations. They may run before the
-current self-hosting plan closes only through its reviewed amendment; otherwise
-they run immediately from its closure commit. An incomplete profile is useful
-localization evidence but never a completed assembly or Level D result.
+- [x] Item 1 — Activate on the latest remote self-host parking checkpoint and publish the performance ledger
+  - Source requirement or finding IDs: SR-ACT, SR-WT, SR-MEAS, SR-TERM, SR-NOGUESS, F12.
+  - Rationale/mechanism: start from the exact committed six-hour parking state while preserving the open fail-closed terminal proof and preventing stale anchors.
+  - Architectural boundaries: no production change; no history rewrite; no terminal-proof success claim; primary checkout and its unrelated files remain untouched.
+  - Expected files: this plan, baseline, quality-gate sidecar, and `documentation/performance/results/opforge-native-performance-activation-ledger-2026-09-01.md`.
+  - Steps: fetch origin; verify `origin/main`; create the integration worktree/branch from that exact commit; merge the reviewed planning history; record base/branch/path; re-read rules; diff relevant paths from `94e23e2`; revalidate F1-F12 anchors and commands; amend/re-review changed evidence.
+  - Dependencies/worktree: first active item; user-authorized parking checkpoint `68cc693c`; long-lived `/Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance` on `codex/rust-vm-native-performance`.
+  - Before/after metrics: no speed claim; capture exact host/toolchain/package/corpus/native runner configuration, static counts, Rust 29.14-second checkpoint, and native two-/six-hour fail-closed observations.
+  - Correctness/parity/failure validation: workflow validators; verify Item 40/Milestone 8 remain unchecked; confirm primary checkout status is unchanged except its pre-existing unrelated files.
+  - Rollback/kill/reference strategy: retain `68cc693c` as immutable reference; abandon only the new performance branch/worktree if activation evidence is invalid; never rewrite the checkpoint.
+  - Effort/risk and stop/go: S/Low; stop if fetched remote differs from the recorded checkpoint, drift changes a semantic contract without plan amendment, or the terminal proof is accidentally represented as complete.
+  - Full quality gates: plan workflow, `make workflow-gate`, plan-quality review, and plan-compliance review.
+  - Plan-compliance review evidence: `PASS` — the independent reviewer confirmed the focused four-file documentation activation, exact fetched `origin/main`/merge-base `68cc693c`, reviewed planning merge `940a9e0d`, open Item 40/Milestone 8, exact 41,221,928-byte arena formula, partial F4 drift, Item-1-first sequencing, unchanged primary checkout, and absence of production changes or push.
+  - Activation evidence (2026-09-01): `git fetch origin` resolved `origin/main` to `68cc693c`; the dedicated branch/worktree was created from that commit and the reviewed planning history merged at `940a9e0d`; the activation ledger records toolchain, package digest, static counts, two-/six-hour fail-closed evidence, and F1-F12 drift. The checkbox validator, plan workflow, plan-quality review, `make workflow-gate`, diff checks, and plan-compliance review passed. Item 40 and Milestone 8 remain unchecked.
+  - Commit outcome: `docs(perf): activate from native self-host parking checkpoint`.
+  - Definition of done: exact remote base and isolation are recorded; drift and evidence are current; Item 40/Milestone 8 remain open; gates pass; and the activation commit exists.
+
+#### Native attribution foundation — observe the multi-hour run without optimizing
+
+These six items are the mandatory post-activation measurement foundation. They
+run sequentially after Item 1. An incomplete profile is useful localization
+evidence but never a completed assembly or Level D result.
 
 - [ ] Item 0a — Add bounded native progress and coarse phase timing
   - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-WT, SR-PAR, F12.
@@ -258,7 +272,7 @@ localization evidence but never a completed assembly or Level D result.
   - Architectural boundaries: approved native debug/assert framework only; bounded memory; no CPU semantics, optimization, per-operation I/O, output change, or proof relaxation.
   - Expected files: one generic native profile/progress module, `opasm/opasm_engine.asm` phase/pass/statement boundaries, native test harness, host decoder/report tests, and a bridge result-schema note.
   - Steps: define a versioned memory-resident block with fresh run ID, complete/incomplete state, phase, pass/layout round, current/last-completed/total statement, statement visits, source/module and VM/service/program IDs, flow/backward redirects, last-progress tick, elapsed phase ticks, saturation/overflow; time only startup/package/source ingest/statement build/pass one/layout rounds/final/artifacts; add default-off low-frequency approved heartbeat and graceful abort export with `complete=false`.
-  - Dependencies/worktree: first bridge item; requires the active self-hosting plan's reviewed authorization if run before closure; dedicated sibling instrumentation worktree or its explicitly authorized dedicated worktree, never primary/`main`.
+  - Dependencies/worktree: Item 1 activation commit; integration worktree or a dedicated child slice, never primary/`main`.
   - Before/after metrics: disabled/counters wall time, code bytes, block/report bytes, heartbeat frequency and overhead; no speed claim.
   - Correctness/parity/failure validation: Level A-C deterministic phase/progress/saturation/abort tests; exact artifact/diagnostic/exit parity when allowed to complete; incomplete records rejected as proof; one focused fresh-challenge FS-UAE confirmation.
   - Rollback/kill/reference strategy: build/runtime off switch; keep the pre-bridge binary as reference; disable heartbeat if perturbation exceeds the recorded investigation budget.
@@ -342,29 +356,11 @@ localization evidence but never a completed assembly or Level D result.
   - Before/after metrics: elapsed and progress deltas, operations/second and operations/statement-visit, phase shares, PC sample shares, counter overhead/control comparison, overflow/completeness; no speed claim.
   - Correctness/parity/failure validation: manifests/digests/configuration, repeated bounded snapshots, decoder integrity, explicit incomplete state, exact artifacts/diagnostics/exit only for completed runs; Level D rules unchanged.
   - Rollback/kill/reference strategy: if counters perturb ranking, rerun with successively coarser groups and PC sampling; if attribution remains ambiguous, amend a narrower instrumentation item rather than guess.
-  - Effort/risk and stop/go: M/Medium; proceed to Item 1 only with a reviewed attribution report, or after a reviewed amendment naming the missing measurement—not an assumed fix.
+  - Effort/risk and stop/go: M/Medium; proceed to Item 2 only with a reviewed attribution report, or after a reviewed amendment naming the missing measurement—not an assumed fix.
   - Full quality gates: focused report/schema validation and `make workflow-gate`; production instrumentation commits already carry native/Rust/FS-UAE gates.
   - Plan-compliance review evidence: reviewer verifies raw evidence, field/emulator distinction, completeness flags, overhead, ranked mechanisms, and absence of an optimization claim.
   - Commit outcome: `docs(perf): attribute native self-assembly compute work`.
   - Definition of done: the multi-hour run has a reproducible progress diagnosis and ranked measured owners, with incomplete evidence clearly separated from proof.
-
-### Phase 0 — activation, profiler architecture, baselines, and reproducibility
-
-- [ ] Item 1 — Activate on the finalized self-hosting base and publish the performance ledger
-  - Source requirement or finding IDs: SR-ACT, SR-WT, SR-MEAS, SR-TERM, SR-NOGUESS, F12.
-  - Rationale/mechanism: prevent stale anchors or measurements from the final correctness/proof work while preserving the roadmap.
-  - Architectural boundaries: no production change; no history rewrite; primary checkout remains untouched.
-  - Expected files: this plan and baseline only for material drift; a new `documentation/performance/results/...-environment-and-ledger.md` (or current repository equivalent).
-  - Steps: verify prerequisite closure and Items 0a-0f attribution report; create or confirm the integration worktree; record base/branch/path; re-read rules; diff relevant paths from `94e23e2`; revalidate every F1-F12 anchor and current command; update only changed evidence.
-  - Dependencies/worktree: Items 0a-0f and finalized prerequisite plan; long-lived performance integration worktree based on the prerequisite closure commit and carrying the reviewed bridge commits when those were produced separately.
-  - Before/after metrics: no speed claim; capture exact host/toolchain/package/corpus/native runner configuration and current static counts.
-  - Correctness/parity/failure validation: workflow validators; confirm prerequisite terminal evidence exists and primary checkout status is unchanged.
-  - Rollback/kill/reference strategy: abandon the new worktree if the prerequisite is not closed; retain this plan dormant.
-  - Effort/risk and stop/go: S/Low; stop if closure evidence or native attribution is absent, or drift changes a semantic contract; amend/re-review the plan before proceeding.
-  - Full quality gates: `make workflow-gate`; plan-quality review for any material plan edit.
-  - Plan-compliance review evidence: reviewer cites the closure commit, drift audit, and ledger.
-  - Commit outcome: `docs(perf): activate performance program on finalized native base`.
-  - Definition of done: exact new base and isolation are recorded, findings/commands are current, gates pass, and the activation commit exists.
 
 - [ ] Item 2 — Freeze the production-path benchmark corpus and result protocol
   - Source requirement or finding IDs: SR-MEAS, SR-PAR, SR-REMOTE, F1-F12.
@@ -372,7 +368,7 @@ localization evidence but never a completed assembly or Level D result.
   - Architectural boundaries: fixtures traverse real CLI/package paths; synthetic cases isolate mechanisms but cannot replace B10 self-build.
   - Expected files: `crates/opforge-asm/tests` or existing benchmark-fixture area, `scripts/performance/**`, `documentation/performance/results/**`.
   - Steps: map/reuse B01-B10; add deterministic generators/manifests only for gaps; record digests, commands, outputs, cold/warm policy, seven-run default, median/range/p95, and comparison schema; add artifact/diagnostic checks.
-  - Dependencies/worktree: Item 1; integration worktree unless fixture generation merits a child slice.
+  - Dependencies/worktree: Item 0f after Item 1; integration worktree unless fixture generation merits a child slice.
   - Before/after metrics: establish unprofiled Rust release wall times and sizes; capture native wall time only where current terminal path is reliable.
   - Correctness/parity/failure validation: generated/reused corpora produce expected artifacts/diagnostics; malformed-result and missing-artifact checks fail closed.
   - Rollback/kill/reference strategy: fixture manifests are versioned; remove synthetic cases that perturb the target or duplicate real coverage.
@@ -828,7 +824,7 @@ deterministic counts, failure behavior, and overhead are recorded.
 
 - [ ] Item 16 — Establish lifecycle invariants and stop clearing unused source capacity
   - Source requirement or finding IDs: SR-NATIVE, SR-PAR, F2.
-  - Rationale/mechanism: make scalar counts authoritative and eliminate the source-record/text-pool share of the 38,207,265-byte clear first.
+  - Rationale/mechanism: make scalar counts authoritative and eliminate the source-record/text-pool share of the 41,221,928-byte clear first.
   - Architectural boundaries: every valid source record is fully initialized; capacities, source diagnostics, and errors are unchanged.
   - Expected files: `opasm/opasm_engine.asm` session/source insertion paths, approved debug assertions/tests.
   - Steps: audit source-region zero reads; reset source scalars/used ranges; fully initialize insertion; poison unused source capacity in debug; retain a source-only legacy-clear switch.
@@ -872,7 +868,7 @@ deterministic counts, failure behavior, and overhead are recorded.
   - Full quality gates: native format/staged gate, Rust quality gate, focused symbol/image FS-UAE.
   - Plan-compliance review evidence: reviewer checks label/image-only lifecycle scope.
   - Commit outcome: `perf(native): reset label and image storage by live state`.
-  - Definition of done: the unconditional 38,207,265-byte clear is gone behind a temporary reference mode and all regions have poison proof.
+  - Definition of done: the unconditional 41,221,928-byte clear is gone behind a temporary reference mode and all regions have poison proof.
 
 - [ ] Item 17 — Add measured generic 68020 bulk copy and clear primitives
   - Source requirement or finding IDs: SR-NATIVE, SR-ARCH, SR-PAR, F3.
@@ -906,54 +902,54 @@ deterministic counts, failure behavior, and overhead are recorded.
   - Commit outcome: `perf(native): execute embedded package in place`.
   - Definition of done: embedded copy count is zero or a measured no-go decision closes the item.
 
-### Phase 5 — native layout convergence separated from final emission
+### Phase 5 — verify and finish the checkpoint's layout/final-emission split
 
-- [ ] Item 18 — Add explicit native layout and final-emission modes
+- [ ] Item 18 — Audit the existing native layout and final-emission modes
   - Source requirement or finding IDs: SR-NATIVE, SR-PAR, F4.
-  - Rationale/mechanism: establish a reviewed control boundary before suppressing any convergence work.
-  - Architectural boundaries: current callbacks and bytes remain unchanged in this slice; retry limit and diagnostics exact.
+  - Rationale/mechanism: checkpoint `68cc693c` already established layout-only retries plus one final pass; verify that boundary and add missing observability rather than reimplementing it.
+  - Architectural boundaries: current callbacks and bytes remain unchanged in this slice; retry limit and diagnostics exact; the checkpoint implementation is the reference.
   - Expected files: `opasm_engine.asm`, layout/runtime mode constants/context, tests.
-  - Steps: add explicit mode; thread it through pass and callback context; record stable selected size/form/fixup-shape metadata; assert legacy mode behaves identically.
+  - Steps: audit `OpasmEngineFinalEmission` and output-disable propagation through pass/callback context; count layout/final modes; record stable selected size/form/fixup-shape metadata; assert the checkpoint mode behaves identically with instrumentation off/on.
   - Dependencies/worktree: Items 6a and 16b; child worktree.
   - Before/after metrics: mode counts, record bytes, B05/B09/B10 non-regression; no speed claim.
   - Correctness/parity/failure validation: all pass/error/output variants and focused Level D.
-  - Rollback/kill/reference strategy: default legacy mode; named removal of legacy control is Item 29b.
+  - Rollback/kill/reference strategy: retain checkpoint mode unchanged; revert only new assertions/counters if they perturb behavior; cleanup is Item 29b.
   - Effort/risk and stop/go: M/High; stop if mode propagation changes any callback/result.
   - Full quality gates: native format/staged gate, Rust quality gate, focused stability/output FS-UAE.
   - Plan-compliance review evidence: reviewer checks this is mode/metadata only.
-  - Commit outcome: `refactor(native): distinguish layout and emission modes`.
+  - Commit outcome: `test(native-perf): verify layout and emission modes`.
   - Definition of done: every pass callback has an explicit tested mode and stable metadata is available.
 
-- [ ] Item 18a — Suppress image materialization during convergence
+- [ ] Item 18a — Verify zero convergence materialization and remove residual presence clears
   - Source requirement or finding IDs: SR-NATIVE, SR-PAR, F4.
-  - Rationale/mechanism: make convergence image writes and image-presence clears zero while retaining size/form/fixup-shape calculation.
+  - Rationale/mechanism: prove the checkpoint already makes convergence image writes zero, then remove the still-static 1 MiB image-presence clear from layout-only rounds if counters show it remains material.
   - Architectural boundaries: addresses, selected forms, sizes, branch stability, sections, and diagnostics remain exact.
   - Expected files: opasm image/output callbacks, encoder bridge, image-presence reset, tests.
-  - Steps: bypass only materialization/output begin/end in layout mode; retain authoritative size/fixup-shape results; dual-trace legacy/new rounds.
+  - Steps: count and assert zero layout-round image appends; measure per-round 1 MiB presence clears; if above the Item 0f threshold, bypass only that clear in layout mode while retaining authoritative size/fixup-shape results; dual-trace checkpoint/new rounds.
   - Dependencies/worktree: Item 18; next sequential child slice.
   - Before/after metrics: convergence image bytes and presence clears become zero; callback/encode counts and B05/B09/B10.
   - Correctness/parity/failure validation: stable/unstable branches, regions/overlap, retry exhaustion, no-output/all-output and focused Level D.
-  - Rollback/kill/reference strategy: legacy convergence-materialization switch and trace compare; removal Item 29b.
+  - Rollback/kill/reference strategy: checkpoint layout mode and trace compare; if the clear is not material, close with a measured no-go decision; cleanup Item 29b.
   - Effort/risk and stop/go: L/High; stop on any layout trace or diagnostic mismatch.
   - Full quality gates: native format/staged gate, Rust quality gate, focused then complete native parity.
   - Plan-compliance review evidence: reviewer checks only convergence materialization is suppressed.
-  - Commit outcome: `perf(native): make layout convergence image-free`.
+  - Commit outcome: `perf(native): remove measured layout presence clears` or measured no-go decision commit.
   - Definition of done: operation counters prove zero convergence image bytes with exact layout parity.
 
 - [ ] Item 18b — Execute exactly one asserted final emission
   - Source requirement or finding IDs: SR-NATIVE, SR-PAR, SR-TERM, F4.
-  - Rationale/mechanism: materialize images/fixups/artifacts once after convergence and prove encoded sizes match stable layout.
+  - Rationale/mechanism: verify the checkpoint's scheduled final pass materializes images/fixups/artifacts exactly once and prove encoded sizes match stable layout.
   - Architectural boundaries: all Hunk/S-record/BIN/PRG/listing/map/metadata/fixup behavior and errors remain exact.
   - Expected files: final pass orchestration, image/fixup/artifact callbacks, assertions/tests.
-  - Steps: schedule one final mode; assert every encoded size/form/fixup shape; count emissions; compare legacy/new final traces and artifacts.
+  - Steps: count the existing scheduled final mode; assert every encoded size/form/fixup shape; compare checkpoint/instrumented final traces and artifacts; change orchestration only if evidence disproves exactly-one behavior.
   - Dependencies/worktree: Item 18a; next sequential child slice.
   - Before/after metrics: final emission count exactly one, assertion failures zero, B05/B09/B10 median/p95.
   - Correctness/parity/failure validation: all-output/no-listing/listing, unresolved/overflow/retry errors, complete Level D and self-build checkpoint.
-  - Rollback/kill/reference strategy: whole legacy pass-two switch retained through Item 28 qualification; removal Item 29b.
+  - Rollback/kill/reference strategy: checkpoint pass-two orchestration retained as reference through Item 28 qualification; removal Item 29b.
   - Effort/risk and stop/go: L/High; any size/fixup assertion blocks and must be fixed, never bypassed.
   - Full quality gates: native format/staged gate, Rust quality gate, targeted and complete native parity wrapper.
   - Plan-compliance review evidence: reviewer verifies exactly-one emission and assertion coverage.
-  - Commit outcome: `perf(native): emit once after layout convergence`.
+  - Commit outcome: `test(native-perf): prove one final emission` or focused correction commit if counters disprove it.
   - Definition of done: counters/assertions and complete parity prove one final materialization.
 
 ### Phase 6 — prepared immutable execution state
@@ -1346,18 +1342,18 @@ temporary and are never removed by these items.
   - Commit outcome: `perf(native): retire legacy session clears`.
   - Definition of done: no legacy full-arena path remains and all gates pass.
 
-- [ ] Item 29b — Remove temporary legacy convergence/emission mode and comparisons
+- [ ] Item 29b — Remove temporary layout/emission audit comparisons
   - Source requirement or finding IDs: SR-NATIVE, SR-PAR, SR-TERM, F4 and Items 18-18b.
-  - Rationale/mechanism and boundaries: remove only duplicate legacy pass-two materialization and comparison traces; retain final-size/fixup assertions.
-  - Expected files: pass-mode switches, legacy callbacks, and comparison tests.
-  - Steps: delete the dead path and prove convergence bytes zero/final emission one.
+  - Rationale/mechanism and boundaries: remove only Item 18 audit/dual-trace scaffolding; retain the checkpoint's layout/final modes plus accepted counters and final-size/fixup assertions.
+  - Expected files: Item 18 audit switches, comparison traces, and tests.
+  - Steps: delete temporary comparison machinery and re-prove convergence bytes zero/final emission one.
   - Dependencies/worktree and metrics: Item 29a; common cleanup contract; B05/B09/B10 and emission counters remain accepted.
   - Correctness/parity/failure validation: common cleanup contract with stability/all-output/retry failures.
   - Rollback/kill/reference strategy: revert this commit on any mismatch or budget failure.
   - Full quality gates: common cleanup Rust/native/complete FS-UAE gates.
-  - Plan-compliance review evidence: reviewer verifies only legacy convergence/emission code is removed.
-  - Commit outcome: `perf(native): retire legacy convergence emission`.
-  - Definition of done: only layout-only plus one final mode remains.
+  - Plan-compliance review evidence: reviewer verifies no checkpoint production mode is removed.
+  - Commit outcome: `perf(native): retire layout emission audit scaffolding`.
+  - Definition of done: the checkpoint's layout-only plus one-final mode remains without temporary audit machinery.
 
 - [ ] Item 29c — Remove temporary directive and flow scanners used only for comparison
   - Source requirement or finding IDs: SR-NATIVE, SR-PAR, F6 and Items 19-19a.
@@ -1490,7 +1486,7 @@ until Item 9 establishes current distributions.
 
 | Phase | Mechanism success | End-to-end success/stop rule |
 |---|---|---|
-| Pre-activation bridge | Bounded native progress plus pass/flow/layout/symbol/expression/VM/platform counters and coarse timing; explicit complete/incomplete records | A repeated bounded FS-UAE/A6000 investigation attributes progress and ranks measured owners; no optimization or proof claim |
+| Activated native attribution | Bounded native progress plus pass/flow/layout/symbol/expression/VM/platform counters and coarse timing; explicit complete/incomplete records | A repeated bounded FS-UAE/A6000 investigation attributes progress and ranks measured owners; no optimization or proof claim |
 | 0 | Complete stable IDs, four Rust modes, promoted shared native counters, B01-B10, measured overhead | Control results repeat within documented variance and bridge attribution is retained; no optimization starts before gate |
 | 1 | 100% executor inventory attribution; ranked programs/opcodes/PCs/sequences/helpers | B10 hotspot report answers required questions; otherwise instrument more, do not guess |
 | 2 | Candidate event/dispatch/setup count changes as predicted; mismatches = 0 | Retain only within noise-safe non-regression and material B10/coverage evidence; foundations may be retained when explicitly required later |
@@ -1541,10 +1537,9 @@ run; they do not pre-approve an optimization.
 
 ## Blocking Rules
 
-- Items 0a-0f are the sole pre-finalization exception and require a reviewed
-  amendment to the active self-hosting plan. They may instrument and report only.
-- Item 1 cannot start until the current self-hosting plan is actually finalized
-  and Item 0f has published a reviewed native compute-attribution report.
+- Item 1 activates only from fetched remote checkpoint `68cc693c`; it does not
+  complete or waive the parked self-hosting plan.
+- Items 0a-0f follow Item 1 and may instrument and report only.
 - One work item is active at a time. A blocked item prevents the next item until
   the plan is explicitly amended and reviewed.
 - No F1-F10 optimization, candidate reordering, or generic VM optimization claim
@@ -1584,7 +1579,8 @@ run; they do not pre-approve an optimization.
   index mechanisms meet their recorded operation/memory criteria or have explicit
   measured no-go decisions.
 - B01-B10 exact artifacts, diagnostics, states, layouts, fixups, and exits match;
-  the complete Level D suite and fresh gen0->gen1->gen2 comparisons pass.
+  the complete Level D suite and fresh gen0->gen1->gen2 comparisons pass after
+  performance work resumes parked Item 40 and Milestone 8.
 - Temporary comparison/reference representations are removed where named;
   portable interpreters and supported fallback contracts remain.
 - Final documentation lists retained wins, rejected/reverted ideas, Rust-only

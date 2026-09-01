@@ -7,9 +7,10 @@ costs, measurement gaps, and candidate bottlenecks that underpin the companion
 Rust-first optimization plan. It is an investigation artifact, not a claim that
 any optimization has been implemented.
 
-- Inspected repository: `/Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance-plan`
-- Branch: `codex/rust-vm-native-performance-plan`
-- Inspected base/HEAD: `94e23e2b7e64bf531f2cdbc62afee2c626f27bec`
+- Inspected repository: `/Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance`
+- Branch: `codex/rust-vm-native-performance`
+- Remote activation base: `68cc693c40fd27e30bed11e08974d3263d6cb6f6`
+- Inspected planning-merge HEAD: `940a9e0d` (before the Item 1 activation commit)
 - Base status: clean
 - Host: macOS 26.6.2 (25G83), Darwin arm64, Apple T6041
 - Rust: `rustc 1.95.0 (59807616e 2026-04-14)`, Cargo 1.95.0
@@ -25,24 +26,29 @@ worktree. No current performance timings were collected during this planning
 task; every number below is either an exact static calculation or historical
 repository evidence and is labelled accordingly.
 
-## Activation prerequisite and related work
+## Activation checkpoint and related work
 
-The performance program starts only after
+The performance program is active from fetched remote checkpoint `68cc693c`.
+That commit intentionally parks Item 40 and Milestone 8 of
 `documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md`
-is finalized. At the inspected base, Item 40 and Milestone 8 remain open: the
-terminal generation-zero to generation-one to generation-two self-hosting proof
-has not completed after the latest correctness fixes. Activation therefore
-requires a rebase onto the finalized integration commit, a conflict/drift audit,
-and a fresh Phase 0 baseline. This is expected to change measurements and exact
-anchors more than roadmap structure.
+until performance work makes the terminal generation-zero to generation-one to
+generation-two proof practicable. The user's 2026-09-01 activation direction
+accepts the parking checkpoint as the integration base; it does not claim that
+either open checkbox passed.
 
-There is one deliberately narrow exception to this activation boundary. If the
-terminal self-hosting proof remains impractically long, the active self-hosting
-plan may first be amended and reviewed to permit observation-only native
-instrumentation in its own dedicated worktree. That bridge may expose progress,
-bounded counters, coarse phase timing, sampling symbols, and an explicitly
-incomplete abort snapshot. It may not optimize production behavior, weaken the
-terminal proof, or activate the rest of this performance program.
+The checkpoint records a canonical Rust package-only directory build completing
+in 29.14 seconds with a 554,144-byte Hunk, 11-byte S-record, and 10,096,156-byte
+listing. The unchanged native generation-one build remained CPU-active in the
+reviewed A4000/68040 maximum-speed JIT profile for two hours and again for six
+hours without guest `DONE`, guest exit, stdout/stderr diagnostic, or output
+artifact. Both runs failed closed; generation two never started. A later
+24-hour-ceiling attempt was stopped at the user's direction and is not evidence.
+
+This makes bounded observation Items 0a-0f the first implementation sequence
+after activation. They may expose progress, counters, coarse timing, sampling
+symbols, and explicitly incomplete abort snapshots, but may not optimize
+production behavior, weaken the terminal proof, or represent an incomplete run
+as success.
 
 ### Field observation motivating the instrumentation bridge
 
@@ -133,10 +139,12 @@ reference concepts, not byte-for-byte native representation requirements.
    `native/motorola68000/amigaos/opasm/opasm_engine.asm` owns statements,
    symbols, pass orchestration, image buffers, and callbacks to expression,
    selection, encoding, branch, fixup, operand, and state services.
-7. Pass one runs once. Pass two runs up to eight times while layout changes.
-   Current pass-two rounds can clear image presence, select/encode, refresh
-   labels, begin/end output, materialize image bytes, and advance PC. Output is
-   written through bulk artifact paths after a successful assembly.
+7. Pass one runs once. Pass two runs up to eight layout-only retries with output
+   disabled, followed by one explicit final-emission pass after convergence.
+   This checkpoint already separates final materialization, but every pass-two
+   boundary still clears the full 1 MiB image-presence map and revisits label,
+   flow, selection, encoding, and PC work. Output is written through bulk
+   artifact paths after a successful assembly.
 
 Existing choices to preserve are the once-per-invocation module index, bulk
 external-package reads, in-memory/bulk artifact writes, TKVM jump-table dispatch
@@ -217,13 +225,16 @@ plausible dispatch reduction is insufficient without repeated end-to-end proof.
 |---|---:|
 | Source records/text | `(100000 * 10) + 4194304 = 5,194,304` |
 | Statement records | `100000 * 308 = 30,800,000` |
-| Labels plus 256 hash heads | `(16384 * 123) + (256 * 4) = 2,016,256` |
-| Three 65,535-byte image arrays | `196,605` |
-| Header and tail | `100` |
-| Total | **38,207,265** |
+| Labels plus 256 hash heads | `(16384 * 127) + (256 * 4) = 2,081,792` |
+| Three 1,048,576-byte image arrays | `3,145,728` |
+| Header and tail | `104` |
+| Total | **41,221,928** |
 
 `initSessionV1` clears that full span through the byte-at-a-time `clearBytes`
 loop. The cost is unconditional and capacity-based rather than live-data-based.
+The checkpoint grew label rows from 123 to 127 bytes and each image array from
+65,535 bytes to 1 MiB to support the current self-host artifact, increasing the
+mandatory session clear by 3,014,663 bytes from the planning baseline.
 Layout reset separately clears 100,000 statement section-index/mapped entries.
 The statement record stores 108 label bytes, 64 operand bytes, and 64 owner
 bytes: 236 string bytes per row, or 23,600,000 bytes at capacity. The runtime
@@ -245,8 +256,9 @@ not be merged; Phase 0 must regenerate both with explicit definitions.
 - With 256 label buckets, full capacity would imply a theoretical average of 64
   labels per bucket. The observed 9,134-label workload averages about 35.68 and
   recorded a worst bucket of 49. Only the latter is observed evidence.
-- Current self-hosting oracle evidence: Hunk 551,688 bytes, S-record 11 bytes,
-  listing 9,992,200 bytes.
+- Activation-checkpoint self-hosting oracle evidence: Hunk 554,144 bytes,
+  S-record 11 bytes, listing 10,096,156 bytes; Rust package-only directory build
+  29.14 seconds.
 
 ## Findings
 
@@ -269,7 +281,7 @@ Exact dynamic opens/reads depend on directives and dependency graph and must be
 counted. Line ending and bounded-range behavior are semantic constraints for a
 shared buffered reader.
 
-### F2 — full 38,207,265-byte session clear (S)
+### F2 — full 41,221,928-byte session clear (S)
 
 The exact capacity calculation and `initSessionV1` byte-clear loop are verified.
 The primary opportunity is to remove initialization of unused capacity via
@@ -286,14 +298,16 @@ pointer is a high-confidence opportunity subject to lifetime/alignment checks.
 Other copy/clear call-site importance remains unmeasured. Existing bulk output
 writes should be preserved.
 
-### F4 — final-emission work repeated during native layout convergence (S)
+### F4 — residual layout-round work after final-emission separation (S/H)
 
-`opasmEngineRunTwoPassV1` repeats pass two up to eight times while layout changes.
-Each round invokes `opasmEngineBeginPassTwoV1`, including a full 65,535-byte
-image-presence clear. `runPassTwoV1` refreshes labels and executes flow, selection,
-size, output-begin, image-emission, output-end, and PC-advance paths; image append
-copies bytes and marks presence. Output materialization is conditional on the
-requested outputs, but convergence and final emission are not explicit modes.
+Checkpoint `68cc693c` partially resolves the original finding:
+`opasmEngineRunTwoPassV1` now disables output during up to eight layout retries
+and schedules one explicit final-emission pass after convergence. The roadmap
+must not reimplement that split. Residual repeated work remains measurable:
+every pass-two boundary clears the full 1 MiB image-presence map, refreshes label
+finalization state, and revisits flow, selection, size, encoding, and PC paths.
+Counters must prove whether layout retries materialize zero image bytes, whether
+exactly one final emission occurs, and which residual operations dominate.
 
 ### F5 — native expression compile on each evaluation (S/H)
 
@@ -558,11 +572,12 @@ warm-cache results remain separate.
 
 Authoritative current gates include `make quality-gate`, the focused crate tests,
 `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`, and the
-native FS-UAE parity/self-hosting wrappers. The native terminal command must be
-re-discovered after the prerequisite plan lands; at the inspected base its form
-is the `OPFORGE_FS_UAE_SMOKE=1`, explicit FS-UAE binary/config/args,
-`RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh
---verify` invocation documented by the active self-hosting plan.
+native FS-UAE parity/self-hosting wrappers. The parked terminal proof remains
+`external_fs_uae_native_opforge_two_generation_self_host_parity`; after it passes,
+the generation-two-first 53-test bonus wrapper is
+`scripts/workflow/run_native_generation_two_bonus_completion.sh`. Profiling does
+not invoke either as an inner loop, and their fresh-challenge/explicit-exit/
+artifact-equality contracts remain unchanged.
 
 ## Architectural constraints and non-goals
 
@@ -578,18 +593,20 @@ is the `OPFORGE_FS_UAE_SMOKE=1`, explicit FS-UAE binary/config/args,
   hidden fallback, per-event I/O, or weakened Level D proof is acceptable.
 - Future 8-bit native implementations must not be constrained by an Amiga-only
   semantic shortcut.
-- The task does not change production code, tests, fixtures, reference outputs,
-  opFoundryCore, or the open self-hosting plan.
+- This baseline/activation-document update does not itself change production
+  code, tests, fixtures, reference outputs, opFoundryCore, or the parked
+  self-hosting plan; later checked implementation items do change their named
+  production/test scopes.
 
 ## Prioritized finding table
 
 | Priority | ID | Classification | Expected impact | Risk | Dependency |
 |---:|---|---|---|---|---|
 | 1 | F12 | M/S/H | Attributes the observed multi-hour native compute phase | Low/Medium | approved progress/counter bridge |
-| 2 | F11 | S | Enables all defensible generic VM decisions | Medium | prerequisite plan completion; Phase 0 |
+| 2 | F11 | S | Enables all defensible generic VM decisions | Medium | Phase 0 Rust profiler foundation |
 | 3 | F8 | M/S/H | Potentially extreme repeated symbol work | Medium | lookup-call/candidate/byte slopes; no fix before evidence |
 | 4 | F5 | S/H | Potentially high repeated expression work | High | parse/compile/bind/evaluate slopes and Rust design |
-| 5 | F4 | S | Potentially high repeated layout/emission work | High | pass and image-byte counters; reference path |
+| 5 | F4 | S/H | Potentially high residual layout-round work | Medium/High | pass, presence-clear, and image-byte counters |
 | 6 | F1 | S | High startup I/O call reduction; unlikely full steady-state explanation | Medium | DOS counters and buffered-reader contract |
 | 7 | F2 | S | Very high fixed-startup work removal | Medium | initialization-invariant proof |
 | 8 | F3 | S/H | Medium startup and memory-bandwidth reduction | Low/Medium | copy-site counters; package-base audit |
@@ -602,11 +619,10 @@ Only priorities 1 and 2 authorize implementation before the first profile
 reports: they are measurement foundations. Priorities 3-12 are provisional
 mechanism hypotheses, not an optimization order.
 
-## Phase 0 unresolved evidence
+## Remaining Phase 0 evidence
 
-- Rebase/drift effects after the active self-hosting plan closes.
-- Current repeated Rust wall-time and VM-attributed baseline; all retained timing
-  data predates this HEAD.
+- Current repeated Rust wall-time and VM-attributed baseline; the checkpoint's
+  single 29.14-second Rust build is activation evidence, not a benchmark series.
 - Exact full-product definitions/counts for source rows versus live statements.
 - Dynamic native DOS operation counts and bytes by source/bootstrap/module path.
 - Native phase/progress location and counter slopes during a bounded A6000 run;

@@ -36,6 +36,39 @@ requires a rebase onto the finalized integration commit, a conflict/drift audit,
 and a fresh Phase 0 baseline. This is expected to change measurements and exact
 anchors more than roadmap structure.
 
+There is one deliberately narrow exception to this activation boundary. If the
+terminal self-hosting proof remains impractically long, the active self-hosting
+plan may first be amended and reviewed to permit observation-only native
+instrumentation in its own dedicated worktree. That bridge may expose progress,
+bounded counters, coarse phase timing, sampling symbols, and an explicitly
+incomplete abort snapshot. It may not optimize production behavior, weaken the
+terminal proof, or activate the rest of this performance program.
+
+### Field observation motivating the instrumentation bridge
+
+On 2026-09-01 the maintainer reported that a native self-assembly on an A6000
+had run for more than 4 hours 45 minutes. Drive activity was intense for the
+first few minutes and then became silent for hours while the machine continued
+working. The machine reports roughly 120 MIPS with its 68020-class execution
+environment. This is a field observation, not instrumented attribution: the
+MIPS value is not a literal instruction counter and the run had not necessarily
+finished.
+
+The scale is nevertheless a useful sanity check. Four hours 45 minutes is
+17,100 seconds; at 120 million instruction-equivalents per second that is about
+2.052 trillion instruction-equivalents. Across roughly 50,000 source statements
+that is about 41.0 million per source statement. Even assuming one pass-one
+visit plus all eight permitted pass-two visits (about 450,000 statement-pass
+visits), it is about 4.56 million instruction-equivalents per visit. An
+order-of-magnitude error in these assumptions would not make that normal
+assembler throughput. The observation raises the priority of finding repeated
+work, an algorithmic explosion, or a local spin before selecting any fix.
+
+The early drive activity means bytewise native I/O may still impose a sizable
+startup cost, but it is unlikely to explain the hours-long steady-state phase by
+itself. F1 remains measurable work; it is no longer a defensible first
+explanation for the complete elapsed time without operation counts.
+
 The archived
 `documentation/plans/completed/opforge-vm-runtime-performance-refactor-plan-v0_1.md`
 is the source of the historical Rust measurements below. This program
@@ -287,13 +320,20 @@ slices, pools, and interned owner IDs could reduce both reset work and cache
 traffic, but this is a high-risk representation migration and follows profiles,
 prepared-state work, and dual-representation proof.
 
-### F8 — native symbol indexing pressure (M/H)
+### F8 — native symbol indexing pressure (M/S/H)
 
 Exact lookup uses a 256-bucket hash-head/next chain and full name comparison. The
 full-product evidence recorded a worst chain of 49. Final-component resolution
-and repeated string comparison may dominate some workloads, but probe and compare
-distributions are absent. Stored hash/length metadata, more buckets, a secondary
-final-component index, and prepared symbol IDs are candidates only after counters.
+in `opasmEngineResolveUniqueLabelFinalComponentV1` scans every label and performs
+length/suffix work for each candidate. The expression bridge's `resolveLabelIndex`
+also linearly scans its complete label snapshot for each symbol reference, while
+scoped operand resolution can cascade through several lookup strategies. With
+9,134 labels and 48,950 nonblank/noncomment statements, one complete label scan
+per statement would inspect about 447 million candidates per pass, or about
+4.02 billion across nine statement visits. That is a scale illustration, not a
+dynamic call count. Exact-call, candidate, and compared-byte distributions are
+absent, so stored hash/length metadata, more buckets, a secondary final-component
+index, and prepared symbol IDs remain candidates only after counters.
 
 ### F9 — STVM is decoded/scanned during reset and directive application (S/H)
 
@@ -319,6 +359,18 @@ sequence, helper, allocation, clone, lookup, or service boundary dominates.
 Without that evidence, generic VM acceleration would repeat the risk demonstrated
 by the rejected parser fast path. A shared, low-overhead profiler is therefore
 the mandatory first implementation phase.
+
+### F12 — unattributed multi-hour native compute phase (M/S/H)
+
+The A6000 observation establishes a multi-hour, apparently compute-bound phase
+after initial drive activity but does not identify its owner. Static inspection
+shows several plausible multiplication sites: pass one plus as many as eight
+pass-two rounds; full-table final-component and expression-label scans; scoped
+and fallback lookup cascades; repeated expression parse/compile/bind/evaluate;
+control-flow traversal; selection/encoding candidate work; and native VM/service
+execution. None has a measured dynamic share. Native progress and operation
+instrumentation is therefore the highest-priority evidence gap. Until it exists,
+changing lookup, I/O, dispatch, representation, or pass behavior would be a guess.
 
 ## Rust-first profiler architecture
 
@@ -383,18 +435,93 @@ remains the semantic oracle and compatibility fallback. A decision record marks
 each accepted result portable-to-native, native-redesign-required, Rust-only, or
 rejected/reverted. Native transfer requires a separate positive decision.
 
+### Profile-gated portability design space
+
+The portable bytecode need not remain the representation directly dispatched
+on every vintage target. It can remain the canonical semantic and distribution
+format while a toolchain derives a faster target representation. Candidate
+families, evaluated only when profiles show VM dispatch/decode or a stable hot
+program is material, are:
+
+- a verified, architecture-neutral decoded micro-op/execution-plan cache that
+  removes repeated decode and validation while retaining interpreter handlers;
+- generated portable superinstructions selected from measured opcode sequences;
+- generated direct/indirect-threaded handler tapes whose target backend maps
+  portable opcode IDs to target-local handler addresses;
+- offline partial evaluation of immutable package programs into a stable
+  architecture-neutral low-level IR, followed by per-target assembly emission;
+- exact-program/signature-bound cross-assembly from canonical VM bytecode into
+  target object code, with the original bytecode, validator, and interpreter as
+  oracle and fallback; and
+- source-generated per-target interpreters sharing one declarative opcode/
+  semantic description, where full AOT code size or relocation cost is too high.
+
+A two-level design—canonical bytecode to validated portable execution IR, then
+execution IR to a target backend—best preserves portability if AOT is selected.
+Package semantics stay in the canonical definition; backends own only lowering,
+calling convention, relocation, register allocation, and target code layout.
+Every derived artifact is keyed by format/version/program digest/capabilities,
+has deterministic regeneration, rejects stale/unknown input, and falls back on
+the generic interpreter. The decision must compare setup time, code size, RAM,
+relocations, cache pressure, generated-code verification, workload coverage,
+and end-to-end benefit. On memory-constrained targets, predecode, threading, or
+selected superinstructions may dominate full cross-assembly despite lower peak
+speed.
+
 ## Native profiler and correlation design
 
-The native facility begins with platform counters: bytes/ranges cleared and
-copied; DOS opens, reads, bytes, seeks, writes, closes; files, source bytes and
-logical lines; module candidates/declarations; pass/layout-round counts; image
-bytes during convergence/final emission; and used/peak source, statement, label,
-image, and scratch memory. It then adds coarse VM/program/opcode/phase and
-accelerator counters using the shared IDs where practical.
+The native facility begins with a bounded, memory-resident progress block. It
+contains a schema version and fresh run identity; complete/incomplete state;
+phase; pass/layout round; current and last-completed statement; total statements
+and statement visits; current source/module and VM/service/program identity;
+flow and backward-redirect counts; last-progress tick; and coarse phase elapsed
+ticks. A low-frequency heartbeat may expose the block through the approved
+native debug/assert framework—by a statement-visit quantum such as 4096 or a
+tens-of-seconds interval—but is default-off and must have measured overhead.
+There is no per-operation console or file output.
 
-Export happens once after a fresh guest completion and explicit guest exit.
-FS-UAE is a confirmation gate, not the inner-loop debugger, and every case must
-retain the repository's fail-closed Level D proof contract. Later OFTB/OFTR
+Deterministic counters then measure the multipliers rather than presupposing the
+culprit:
+
+- statement visits by pass; layout rounds and `LayoutChanged` reasons; final
+  convergence status and convergence/final image bytes;
+- exact, scoped, imported, and final-component lookup calls; candidate labels,
+  compared string bytes, chain/probe histograms and maxima;
+- expression parse, compile, bind, and evaluate calls plus expression-snapshot
+  label candidates;
+- directive classifications, flow rows visited, forward redirects, and backward
+  redirects;
+- native VM/service invocations and total opcodes by VM/program/phase, plus
+  selector and encoding candidates; and
+- bytes/ranges cleared and copied; DOS opens, reads, bytes, seeks, writes and
+  closes; files, source bytes, logical lines, module candidates/declarations;
+  and used/peak source, statement, label, image, and scratch memory.
+
+Timing remains coarse: startup/package/source ingestion, statement building,
+pass one, each layout round, final emission, and artifacts. There is no timer
+call per opcode or lookup. FS-UAE or another emulator may additionally sample
+the program counter against a retained symbol/map file; physical hardware
+counters confirm the emulator diagnosis rather than substituting anecdotes for
+counters.
+
+A graceful diagnostic abort must export the same envelope with
+`complete=false`, current progress, counters, overflow state, and elapsed ticks.
+That makes a bounded five-to-ten-minute investigation useful without claiming a
+successful assembly. Such a snapshot is localization evidence only and can
+never satisfy Level D or close the active self-hosting proof.
+
+Counter slopes guide the next experiment: a fixed statement with rising local
+counters indicates a spin; explosive candidate-label/string-byte counts point
+to lookup; expression compilation tracking statement visits points to missing
+prepared expression state; repeated full statement counts point to the pass
+multiplier; quadratic flow rows point to navigation; dominant VM opcode totals
+justify VM-level profiling; and repeated convergence image bytes point to
+layout/emission work. Only this evidence may reorder or select optimizations.
+
+Export happens once at a controlled boundary: either the explicit diagnostic
+abort above or fresh guest completion with explicit guest exit. Only the latter
+can be proof. FS-UAE is a confirmation gate, not the inner-loop debugger, and
+every case must retain the repository's fail-closed Level D proof contract. Later OFTB/OFTR
 integration may carry profile configuration and result files, but must preserve
 fresh challenge, exact completion/exit, artifact checksum, attempt-all, and
 ephemeral run-tree rules.
@@ -458,17 +585,22 @@ is the `OPFORGE_FS_UAE_SMOKE=1`, explicit FS-UAE binary/config/args,
 
 | Priority | ID | Classification | Expected impact | Risk | Dependency |
 |---:|---|---|---|---|---|
-| 1 | F11 | S | Enables all defensible VM decisions | Medium | prerequisite plan completion; Phase 0 |
-| 2 | F1 | S | Very high native I/O call reduction | Medium | native counters and buffered-reader contract |
-| 3 | F2 | S | Very high fixed-startup work removal | Medium | initialization-invariant proof |
-| 4 | F4 | S | High on unstable/output-heavy builds | High | native pass counters; reference path |
-| 5 | F3 | S/H | Medium startup and memory-bandwidth reduction | Low/Medium | copy-site counters; package-base audit |
-| 6 | F5 | S/H | Potentially high on expression/layout cases | High | Rust expression profile/prepared design |
-| 7 | F6 | S/H | Potentially high on control-flow cases | Medium | route/flow counters and maps |
-| 8 | F9 | S/H | Medium for pass/pipeline-heavy inputs | Medium | shared state identity/invalidation profile |
-| 9 | F7 | S | High memory/cache/reset potential | High | F2, prepared state, access profile |
-| 10 | F8 | M/H | Workload-dependent lookup improvement | Medium | probe/compare distribution |
-| 11 | F10 | H | Unknown; possibly small after work removal | High | Rust decisions, native correlation, 68020 model |
+| 1 | F12 | M/S/H | Attributes the observed multi-hour native compute phase | Low/Medium | approved progress/counter bridge |
+| 2 | F11 | S | Enables all defensible generic VM decisions | Medium | prerequisite plan completion; Phase 0 |
+| 3 | F8 | M/S/H | Potentially extreme repeated symbol work | Medium | lookup-call/candidate/byte slopes; no fix before evidence |
+| 4 | F5 | S/H | Potentially high repeated expression work | High | parse/compile/bind/evaluate slopes and Rust design |
+| 5 | F4 | S | Potentially high repeated layout/emission work | High | pass and image-byte counters; reference path |
+| 6 | F1 | S | High startup I/O call reduction; unlikely full steady-state explanation | Medium | DOS counters and buffered-reader contract |
+| 7 | F2 | S | Very high fixed-startup work removal | Medium | initialization-invariant proof |
+| 8 | F3 | S/H | Medium startup and memory-bandwidth reduction | Low/Medium | copy-site counters; package-base audit |
+| 9 | F6 | S/H | Potentially high on control-flow cases | Medium | route/flow counters and maps |
+| 10 | F9 | S/H | Medium for pass/pipeline-heavy inputs | Medium | shared state identity/invalidation profile |
+| 11 | F7 | S | High memory/cache/reset potential | High | F2, prepared state, access profile |
+| 12 | F10 | H | Unknown; possibly small after work removal | High | Rust decisions, native correlation, 68020 model |
+
+Only priorities 1 and 2 authorize implementation before the first profile
+reports: they are measurement foundations. Priorities 3-12 are provisional
+mechanism hypotheses, not an optimization order.
 
 ## Phase 0 unresolved evidence
 
@@ -477,6 +609,9 @@ is the `OPFORGE_FS_UAE_SMOKE=1`, explicit FS-UAE binary/config/args,
   data predates this HEAD.
 - Exact full-product definitions/counts for source rows versus live statements.
 - Dynamic native DOS operation counts and bytes by source/bootstrap/module path.
+- Native phase/progress location and counter slopes during a bounded A6000 run;
+  whether the long run is progressing, repeating complete passes, or spinning
+  inside one statement/service.
 - Dynamic native bytes cleared/copied, pass rounds, convergence emission bytes,
   and used/peak arena sizes.
 - Rust program/opcode/PC/helper/allocation/clone/transition distributions.
@@ -485,6 +620,8 @@ is the `OPFORGE_FS_UAE_SMOKE=1`, explicit FS-UAE binary/config/args,
 - Current FS-UAE version/configuration reproducibility and physical-Amiga timing
   availability.
 - Instrumentation overhead and timer/sampler resolution.
+- A symbolized emulator PC sample and physical-A6000 confirmation for the
+  highest-ranked native compute owner.
 
 No optimization claim is valid until the relevant gap is closed with the
 specified production-path measurement and parity evidence.

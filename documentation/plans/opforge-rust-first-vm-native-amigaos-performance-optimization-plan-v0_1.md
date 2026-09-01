@@ -4,7 +4,7 @@
 
 ## Metadata
 
-- Source: `dev-docs/NextSteps/opforge-native-performance-plan-codex-prompt-v4-rust-first-separate-worktree.md` (uncommitted read-only task input in the invoking checkout), user activation clarification, and `documentation/performance/opforge-rust-vm-native-amigaos-performance-baseline-v0_1.md`
+- Source: `dev-docs/NextSteps/opforge-native-performance-plan-codex-prompt-v4-rust-first-separate-worktree.md` (uncommitted read-only task input in the invoking checkout), user activation clarification, the 2026-09-01 A6000 multi-hour self-assembly observation and instruction to profile before optimizing, and `documentation/performance/opforge-rust-vm-native-amigaos-performance-baseline-v0_1.md`
 - Mode: implementation plan with evidence-gated performance remediation
 - Owner: opForge maintainers and implementing Codex threads
 - AGENTS binding statement: the active root `AGENTS.md` and every applicable nested rule pack remain binding during execution. Native slices must load `agents/rules/native-rust-parity-porting.md`, `native-68000.md`, `native-68000-safe-instrumentation.md` when instrumentation changes, `fs-uae.md` for emulator work, `native-parity-failure-triage.md` on failures, and `multi-agent-gates.md` where its gates apply.
@@ -18,12 +18,25 @@ AmigaOS platform waste; and transfer only positively proven Rust VM ideas into
 native accelerators. Finish with regression budgets and the unchanged native
 generation-zero to generation-one to generation-two proof.
 
+No optimization candidate is selected or reordered until a native compute-
+attribution report and the relevant Rust hotspot report expose its measured
+operation share. The first response to the observed multi-hour native run is
+progress and multiplication instrumentation, not an assumed I/O, lookup, VM,
+or representation fix.
+
 This plan is deliberately dormant until
 `documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md`
 is finalized. Its closure commit is the required integration base. Final bug
 fixes and proof changes in that plan are expected to require a narrow rebase,
 anchor audit, and fresh baseline—not a redesign of this roadmap unless the audit
 finds a changed contract.
+
+A narrow instrumentation-only bridge is permitted before that closure solely
+to unblock diagnosis of an impractically long terminal proof. It may execute
+only after the active self-hosting plan is amended and reviewed to authorize the
+exact observation slice. It may add bounded progress/counters, coarse timing,
+symbolized sampling support, and incomplete abort reports, but may not optimize,
+change output behavior, relax proof requirements, or activate later items.
 
 ## Version Impact
 
@@ -54,6 +67,13 @@ finds a changed contract.
   is copied before use; pass-two convergence can repeat image work; expressions
   are compiled per evaluation; directive/flow/state/symbol work is repeatedly
   decoded or scanned; statement rows reserve 308 bytes each.
+- A 2026-09-01 A6000 self-assembly ran beyond 4 hours 45 minutes. Drive activity
+  was heavy only for the first minutes and then silent for hours. At the reported
+  roughly 120 MIPS, this is on the order of 2.052 trillion instruction-
+  equivalents, about 41.0 million per roughly 50,000 source statements or 4.56
+  million per statement-pass visit if all nine possible visits occur. These are
+  scale estimates, not attribution, but they make an unmeasured algorithmic
+  multiplier or spin a first-class concern.
 - Good native choices already present—bulk external package reads and artifact
   writes, one module index per invocation, TKVM jump-table/fused scanner paths,
   and package-owned CPU semantics—must remain.
@@ -63,6 +83,10 @@ finds a changed contract.
 - Stable, versioned, machine-readable Rust profiles rank all VM and service work
   by phase, owner, program, opcode, PC, sequence, helper, allocation/clone,
   lookup, high-water, cache, and accelerator outcome with measured overhead.
+- Native long runs expose bounded memory-resident progress, phase/pass/statement
+  position, multiplier counters, coarse timing, and an explicitly incomplete
+  diagnostic snapshot on graceful abort. Five-to-ten-minute counter slopes and
+  symbolized PC samples can localize work without being misrepresented as proof.
 - Generic VM optimizations start in Rust, retain the portable interpreter, and
   support disabled, generic-only, accelerated, and bounded dual-compare modes.
 - Native input reads scale with blocks; unused arena capacity is not cleared;
@@ -72,6 +96,11 @@ finds a changed contract.
   bytes per live object.
 - Native generic-VM accelerators exist only for positive Rust decision records;
   native-only ABI/cache/alignment tuning is separately profiled on 68020 first.
+- VM bytecode may remain the canonical portable semantic/distribution format
+  while measured hot programs are lowered through a validated portable execution
+  IR to predecoded, threaded, superinstruction, source-generated, or target-
+  assembled forms. Every derived form is signature-bound and retains the
+  interpreter as oracle/fallback.
 - Every accepted slice has mechanism counters, production-path before/after
   results, exact artifact/diagnostic/exit parity, rollback controls, and a focused
   commit in an isolated performance worktree.
@@ -94,6 +123,9 @@ finds a changed contract.
   `docs/planning/11_Amiga_Remote_Test_Execution_Architecture_Design.md`
 - Historical measurements and static calculations are transcribed in the
   baseline; all performance accept/reject decisions use fresh measurements.
+- Maintainer field evidence: A6000 self-assembly over 4:45, startup-only drive
+  activity followed by hours of apparent compute, and explicit direction to
+  instrument/profile before choosing an optimization.
 
 ## Scope
 
@@ -105,14 +137,19 @@ finds a changed contract.
   package copy removal, layout/emission separation, prepared state, compact
   representation, and measured index improvements.
 - Track T: shared native correlation, transfer decisions, ports of successful
-  Rust mechanisms, native-only 68020 ABI/dispatch/cache tuning, optional later
-  68040/68060/68080 variants, budgets, and terminal proof.
+  Rust mechanisms, profile-gated portable-IR/target-backend generation,
+  native-only 68020 ABI/dispatch/cache tuning, optional later 68040/68060/68080
+  variants, budgets, and terminal proof.
 - Reproducible real-CLI benchmark corpus, machine-readable results, profile
   overhead calibration, exact parity, failure paths, and self-hosting.
+- A pre-activation observation bridge limited to progress, operation counts,
+  coarse timing, bounded abort snapshots, and symbolized sampling when the
+  active plan explicitly authorizes it.
 
 ### Out of Scope
 
-- Starting before the current self-hosting plan is finalized.
+- Starting performance optimization before the current self-hosting plan is
+  finalized; the reviewed observation-only bridge above is the sole exception.
 - Discovering or prototyping generic VM semantics first in 680x0 assembly.
 - CPU/family/dialect semantics in generic Rust/native implementation paths.
 - Benchmark-, path-, fixture-, generation-, source-text-, or expected-output-
@@ -121,6 +158,8 @@ finds a changed contract.
   replacing the portable interpreter as compatibility fallback.
 - Modifying opFoundryCore or blocking Rust work on remote-runner availability.
 - Broad cleanup, unrelated refactors, or output/diagnostic contract changes.
+- Treating an incomplete/aborted profile, emulator sample, timeout, or progress
+  heartbeat as Level D evidence or terminal self-hosting completion.
 
 ## Worktree and execution policy
 
@@ -131,6 +170,14 @@ high-risk or independently reviewable slice; lower-risk sequential slices may
 run directly in the performance integration worktree. Never execute a slice in
 the primary checkout or on `main`, and never push without explicit current-turn
 authorization.
+
+Items 0a-0f are the only pre-activation work. They run sequentially either in a
+dedicated sibling instrumentation worktree based on the active self-hosting
+integration state, or in that plan's already-dedicated worktree if its reviewed
+amendment explicitly selects it. They never run in the primary checkout. If the
+self-hosting plan closes before the bridge starts, run the same mandatory items
+from its closure commit in the future performance worktree before Item 1 records
+that commit as the performance integration base.
 
 Before each item, record in the performance ledger: prerequisite integration
 commit, slice base, branch, absolute sibling worktree path, active item, expected
@@ -152,6 +199,7 @@ No checkbox is marked complete before its listed gates pass and its commit exist
 | ID | Requirement |
 |---|---|
 | SR-ACT | Begin only from finalized current-plan integration state; rebase/audit/remeasure. |
+| SR-BRIDGE | Permit only reviewed observation instrumentation before activation; no optimization or proof weakening. |
 | SR-WT | Dedicated performance worktrees; record base, branch, path, commit, dependency. |
 | SR-RF | Rust profiles and implements generic VM changes before native transfer. |
 | SR-ID | Stable shared IDs and machine-readable Rust/native-correlatable output. |
@@ -162,13 +210,16 @@ No checkbox is marked complete before its listed gates pass and its commit exist
 | SR-ARCH | Package ownership, CPU-neutral generic layers, and future portability. |
 | SR-REMOTE | Optional OFTB/OFTR-style remote automation without blocking early work. |
 | SR-TERM | Preserve gen0 -> gen1 -> gen2 terminal self-hosting proof. |
+| SR-PROG | Long native runs expose bounded progress and explicitly incomplete diagnostic snapshots. |
+| SR-NOGUESS | Every optimization item cites a positive relevant Item 0f/Phase 0/Phase 1 measured threshold; otherwise stop for a reviewed no-go/reorder amendment. |
 
-Finding IDs F1-F11 refer to the companion baseline.
+Finding IDs F1-F12 refer to the companion baseline.
 
 ## Workstream and phase map
 
 | Phase | Primary track | Role |
 |---|---|---|
+| Pre-activation bridge | Track N/T measurement only | native progress and compute attribution; no optimization |
 | 0 | Track R foundation plus Track N/T correlation foundation | activation, corpus, shared identities, Rust profiler, native platform/correlation counters |
 | 1 | Track R | complete Rust VM instrumentation and authoritative hotspot report |
 | 2 | Track R | initial evidence-gated Rust optimization experiments and decisions |
@@ -186,28 +237,137 @@ optimization. Track N can remove independently proven platform work after Phase
 0. Track T cannot schedule a generic native accelerator until Track R has a
 positive decision record and the plan has been amended with one concrete slice.
 
+Every optimization work item below inherits SR-NOGUESS even where its finding
+list does not repeat that ID. Its plan-compliance receipt must cite the raw
+Item 0f/Phase 0/Phase 1 measurement, the numeric acceptance threshold, and the
+observed value that passed it. Missing, ambiguous, or below-threshold evidence
+produces a reviewed no-go/reorder amendment, not implementation.
+
 ## Work Items
+
+### Pre-activation bridge — observe the multi-hour native run without optimizing
+
+These six items are mandatory measurement foundations. They may run before the
+current self-hosting plan closes only through its reviewed amendment; otherwise
+they run immediately from its closure commit. An incomplete profile is useful
+localization evidence but never a completed assembly or Level D result.
+
+- [ ] Item 0a — Add bounded native progress and coarse phase timing
+  - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-WT, SR-PAR, F12.
+  - Rationale/mechanism: make a multi-hour run observable and distinguish forward progress, repeated passes, and a local stall before choosing a fix.
+  - Architectural boundaries: approved native debug/assert framework only; bounded memory; no CPU semantics, optimization, per-operation I/O, output change, or proof relaxation.
+  - Expected files: one generic native profile/progress module, `opasm/opasm_engine.asm` phase/pass/statement boundaries, native test harness, host decoder/report tests, and a bridge result-schema note.
+  - Steps: define a versioned memory-resident block with fresh run ID, complete/incomplete state, phase, pass/layout round, current/last-completed/total statement, statement visits, source/module and VM/service/program IDs, flow/backward redirects, last-progress tick, elapsed phase ticks, saturation/overflow; time only startup/package/source ingest/statement build/pass one/layout rounds/final/artifacts; add default-off low-frequency approved heartbeat and graceful abort export with `complete=false`.
+  - Dependencies/worktree: first bridge item; requires the active self-hosting plan's reviewed authorization if run before closure; dedicated sibling instrumentation worktree or its explicitly authorized dedicated worktree, never primary/`main`.
+  - Before/after metrics: disabled/counters wall time, code bytes, block/report bytes, heartbeat frequency and overhead; no speed claim.
+  - Correctness/parity/failure validation: Level A-C deterministic phase/progress/saturation/abort tests; exact artifact/diagnostic/exit parity when allowed to complete; incomplete records rejected as proof; one focused fresh-challenge FS-UAE confirmation.
+  - Rollback/kill/reference strategy: build/runtime off switch; keep the pre-bridge binary as reference; disable heartbeat if perturbation exceeds the recorded investigation budget.
+  - Effort/risk and stop/go: M/High; stop on semantic output change, unbounded storage, per-event I/O, or inability to distinguish incomplete from complete.
+  - Full quality gates: native format, staged native porting gate, Rust quality gate, focused FS-UAE confirmation, and workflow gate for schema/report docs.
+  - Plan-compliance review evidence: reviewer verifies the active-plan authorization, approved instrumentation, boundedness, explicit incomplete state, and absence of optimization.
+  - Commit outcome: `feat(native-perf): expose bounded assembly progress`.
+  - Definition of done: a long run exposes trustworthy phase/pass/statement progress and a bounded complete or explicitly incomplete report with measured overhead.
+
+- [ ] Item 0b — Count native pass, statement, flow, and layout multiplication
+  - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-MEAS, SR-PAR, F4, F6, F12.
+  - Rationale/mechanism: determine whether elapsed time comes from repeated whole-input visits, control-flow rescans, backward redirects, layout retries, or repeated emission.
+  - Architectural boundaries: observe generic opasm lifecycle only; no route caching, pass reduction, emission suppression, or changed convergence behavior.
+  - Expected files: native profile module, `opasm/opasm_engine.asm`, `opasm/opasm_assembly_driver.asm`, native flow/navigation modules, decoder fixtures/tests.
+  - Steps: count statement visits by pass, layout rounds and `LayoutChanged` reasons, convergence/final image bytes, directive classifications, flow rows, forward/backward redirects, and bounded current/max progress; export through Item 0a's envelope.
+  - Dependencies/worktree: Item 0a commit; next sequential bridge slice in the same dedicated worktree lineage.
+  - Before/after metrics: deterministic counts and counter slopes at fixed snapshot intervals; disabled/counters overhead and added bytes; no speed claim.
+  - Correctness/parity/failure validation: Level A-C exact counter oracles for stable, unstable, forward/backward-flow, and final-emission cases; focused Level D parity; aborted record stays incomplete.
+  - Rollback/kill/reference strategy: independently gate the counter group and retain Item 0a progress-only mode.
+  - Effort/risk and stop/go: M/High; stop if instrumentation changes pass decisions, PC/layout, flow, images, or exceeds bounded storage.
+  - Full quality gates: native format, staged native porting gate, Rust quality gate, focused FS-UAE confirmation.
+  - Plan-compliance review evidence: reviewer verifies counters observe rather than alter pass/flow/layout invariants.
+  - Commit outcome: `feat(native-perf): count assembly work multiplication`.
+  - Definition of done: bounded reports show whether statement, flow, layout, or image work grows and at what rate without changing results.
+
+- [ ] Item 0c — Count native symbol and expression work
+  - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-MEAS, SR-PAR, F5, F8, F12.
+  - Rationale/mechanism: test the statically plausible full-label scans and repeated expression lifecycle against dynamic call/candidate/byte counts.
+  - Architectural boundaries: no index, cache, interning, prepared expression, lookup-order, ambiguity, or diagnostic change.
+  - Expected files: native profile module, `opasm/opasm_engine.asm`, `opasm/opasm_flow_scopes.asm`, operand-evaluation paths, `opcore/opcore_expr_bridge.asm`, decoder fixtures/tests.
+  - Steps: count exact/scoped/imported/final-component lookup calls, label candidates, compared string bytes, bounded probe/chain histogram/maxima, expression-snapshot candidates, and expression parse/compile/bind/evaluate calls; preserve lookup class and phase identity.
+  - Dependencies/worktree: Item 0b commit; next sequential bridge slice.
+  - Before/after metrics: calls, candidates, compared bytes, expression lifecycle ratios, counter slopes, disabled/counters overhead and report bytes; no speed claim.
+  - Correctness/parity/failure validation: Level A-C exact counts for exact/scoped/imported/suffix/ambiguous/missing symbols and expression success/failure; focused Level D parity; overflow visible.
+  - Rollback/kill/reference strategy: independently gate histograms and detailed byte counts while retaining aggregate calls if overhead is excessive.
+  - Effort/risk and stop/go: M/High; stop if lookup ordering, ambiguity, source position, diagnostics, or expression result changes.
+  - Full quality gates: native format, staged native porting gate, Rust quality gate, focused FS-UAE confirmation.
+  - Plan-compliance review evidence: reviewer verifies dynamic evidence covers every cited full-scan/cascade mechanism and introduces no fix.
+  - Commit outcome: `feat(native-perf): count symbol and expression work`.
+  - Definition of done: a bounded report can confirm or reject lookup/expression multiplication by call, candidate, byte, phase, and pass.
+
+- [ ] Item 0d — Count coarse native VM and service execution
+  - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-ID, SR-MEAS, SR-PAR, F10-F12.
+  - Rationale/mechanism: determine whether VM/service execution dominates before considering threaded dispatch, AOT translation, superinstructions, or another portable execution design.
+  - Architectural boundaries: invocation and aggregate-opcode counts only; provisional CPU-neutral IDs later map to Item 3; no per-opcode timing, VM rewrite, accelerator, target semantics, or changed ABI.
+  - Expected files: native profile/catalog module and TKVM, PRVM, ExprVM, expression, selection, encoding, operand, state, branch, fixup, and value service boundaries; decoder/catalog tests.
+  - Steps: count invocations and total executed opcodes by VM/program/phase plus selector/encoding candidates; capture current VM/service/program in the progress block; fail visibly on unknown/overflow; defer high-cardinality opcode/PC histograms to the shared profiler.
+  - Dependencies/worktree: Item 0c commit; next sequential bridge slice.
+  - Before/after metrics: invocation/opcode/candidate totals and slopes, catalog/report bytes, disabled/counters overhead; no speed claim.
+  - Correctness/parity/failure validation: Level A-C service-boundary counter oracles, unknown-ID and saturation tests, focused Level D artifact/diagnostic/exit parity.
+  - Rollback/kill/reference strategy: retain phase/service invocation counts if opcode totals materially perturb the run; runtime/build disable remains available.
+  - Effort/risk and stop/go: M/High; stop if identifiers encode CPU-specific semantics, addresses, or unstable ordering, or instrumentation alters VM state.
+  - Full quality gates: native format, staged native porting gate, Rust quality gate, focused FS-UAE confirmation.
+  - Plan-compliance review evidence: reviewer verifies CPU-neutral observation boundaries and absence of a VM optimization.
+  - Commit outcome: `feat(native-perf): count coarse runtime execution`.
+  - Definition of done: the report ranks native VM/service aggregate work sufficiently to decide whether deeper VM profiling is warranted.
+
+- [ ] Item 0e — Count native platform I/O, clear, and copy work
+  - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-MEAS, SR-PAR, F1-F3, F12.
+  - Rationale/mechanism: quantify the drive-active startup and fixed memory work so the bridge report can compare them with the hours-long compute phase rather than dismiss or overstate them.
+  - Architectural boundaries: observe platform operations only; no buffering, read consolidation, clear elimination, package in-place use, bulk primitive, or changed DOS/error behavior.
+  - Expected files: native profile module, DOS/source/module/package read boundaries, arena clear/copy call sites, decoder fixtures/tests.
+  - Steps: count DOS opens/reads/read bytes/seeks/writes/write bytes/closes by source/bootstrap/module/package/artifact class; count clear/copy calls, requested/completed bytes, and range class; record source bytes/logical lines/module candidates; export through Item 0a's bounded envelope.
+  - Dependencies/worktree: Item 0d commit; next sequential bridge slice.
+  - Before/after metrics: operations, bytes, average bytes/call, clear/copy bytes by phase, slopes and share of elapsed phase, disabled/counters overhead; no speed claim.
+  - Correctness/parity/failure validation: Level A-C exact success/short-read/EOF/error/range counter oracles, clear/copy saturation tests, focused Level D artifact/diagnostic/exit parity, incomplete abort stays explicit.
+  - Rollback/kill/reference strategy: independently gate platform counter groups; retain coarser phase/progress evidence if call-site detail perturbs the run.
+  - Effort/risk and stop/go: M/High; stop if DOS return/error behavior, memory contents, artifacts, diagnostics, or boundedness changes.
+  - Full quality gates: native format, staged native porting gate, Rust quality gate, focused FS-UAE confirmation.
+  - Plan-compliance review evidence: reviewer verifies complete F1-F3 observation coverage and absence of work elimination.
+  - Commit outcome: `feat(native-perf): count platform io and memory work`.
+  - Definition of done: bounded records distinguish startup I/O, clears, and copies from steady-state compute with exact operation and byte counts.
+
+- [ ] Item 0f — Publish the bounded native compute-attribution report
+  - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-MEAS, SR-PAR, F1-F12.
+  - Rationale/mechanism: replace competing guesses with measured slopes, a ranked owner/mechanism decision, and the smallest justified next profiling or optimization slice.
+  - Architectural boundaries: investigation/report only; a timed-out or aborted run remains localization evidence; no terminal-proof checkbox closes without actual fresh completion and explicit zero guest exit.
+  - Expected files: `documentation/performance/results/**` raw manifests/reports, symbol/map and sampling command manifest, this plan/baseline only if measured evidence changes priorities.
+  - Steps: run reproducible five-to-ten-minute FS-UAE snapshots and graceful incomplete aborts; retain a symbolized PC sample; run the same counters on the physical A6000 with snapshots and a complete run if feasible; compare statement/pass/lookup/expression/flow/image/VM/DOS/clear/copy slopes; distinguish progress from spin; rank measured owners and publish stop/go evidence without implementing a fix.
+  - Dependencies/worktree: Item 0e commit and access to the current self-hosting workload; same sequential bridge lineage; physical run may be collected manually into the reviewed result envelope.
+  - Before/after metrics: elapsed and progress deltas, operations/second and operations/statement-visit, phase shares, PC sample shares, counter overhead/control comparison, overflow/completeness; no speed claim.
+  - Correctness/parity/failure validation: manifests/digests/configuration, repeated bounded snapshots, decoder integrity, explicit incomplete state, exact artifacts/diagnostics/exit only for completed runs; Level D rules unchanged.
+  - Rollback/kill/reference strategy: if counters perturb ranking, rerun with successively coarser groups and PC sampling; if attribution remains ambiguous, amend a narrower instrumentation item rather than guess.
+  - Effort/risk and stop/go: M/Medium; proceed to Item 1 only with a reviewed attribution report, or after a reviewed amendment naming the missing measurement—not an assumed fix.
+  - Full quality gates: focused report/schema validation and `make workflow-gate`; production instrumentation commits already carry native/Rust/FS-UAE gates.
+  - Plan-compliance review evidence: reviewer verifies raw evidence, field/emulator distinction, completeness flags, overhead, ranked mechanisms, and absence of an optimization claim.
+  - Commit outcome: `docs(perf): attribute native self-assembly compute work`.
+  - Definition of done: the multi-hour run has a reproducible progress diagnosis and ranked measured owners, with incomplete evidence clearly separated from proof.
 
 ### Phase 0 — activation, profiler architecture, baselines, and reproducibility
 
 - [ ] Item 1 — Activate on the finalized self-hosting base and publish the performance ledger
-  - Source requirement or finding IDs: SR-ACT, SR-WT, SR-MEAS, SR-TERM.
+  - Source requirement or finding IDs: SR-ACT, SR-WT, SR-MEAS, SR-TERM, SR-NOGUESS, F12.
   - Rationale/mechanism: prevent stale anchors or measurements from the final correctness/proof work while preserving the roadmap.
   - Architectural boundaries: no production change; no history rewrite; primary checkout remains untouched.
   - Expected files: this plan and baseline only for material drift; a new `documentation/performance/results/...-environment-and-ledger.md` (or current repository equivalent).
-  - Steps: verify prerequisite closure; create integration worktree; record base/branch/path; re-read rules; diff relevant paths from `94e23e2`; revalidate every F1-F11 anchor and current commands; update only changed evidence.
-  - Dependencies/worktree: first item; long-lived performance integration worktree based on prerequisite closure commit.
+  - Steps: verify prerequisite closure and Items 0a-0f attribution report; create or confirm the integration worktree; record base/branch/path; re-read rules; diff relevant paths from `94e23e2`; revalidate every F1-F12 anchor and current command; update only changed evidence.
+  - Dependencies/worktree: Items 0a-0f and finalized prerequisite plan; long-lived performance integration worktree based on the prerequisite closure commit and carrying the reviewed bridge commits when those were produced separately.
   - Before/after metrics: no speed claim; capture exact host/toolchain/package/corpus/native runner configuration and current static counts.
   - Correctness/parity/failure validation: workflow validators; confirm prerequisite terminal evidence exists and primary checkout status is unchanged.
   - Rollback/kill/reference strategy: abandon the new worktree if the prerequisite is not closed; retain this plan dormant.
-  - Effort/risk and stop/go: S/Low; stop if closure evidence is absent or drift changes a semantic contract, amend/re-review the plan before proceeding.
+  - Effort/risk and stop/go: S/Low; stop if closure evidence or native attribution is absent, or drift changes a semantic contract; amend/re-review the plan before proceeding.
   - Full quality gates: `make workflow-gate`; plan-quality review for any material plan edit.
   - Plan-compliance review evidence: reviewer cites the closure commit, drift audit, and ledger.
   - Commit outcome: `docs(perf): activate performance program on finalized native base`.
   - Definition of done: exact new base and isolation are recorded, findings/commands are current, gates pass, and the activation commit exists.
 
 - [ ] Item 2 — Freeze the production-path benchmark corpus and result protocol
-  - Source requirement or finding IDs: SR-MEAS, SR-PAR, SR-REMOTE, F1-F11.
+  - Source requirement or finding IDs: SR-MEAS, SR-PAR, SR-REMOTE, F1-F12.
   - Rationale/mechanism: make every later mechanism and end-to-end result comparable.
   - Architectural boundaries: fixtures traverse real CLI/package paths; synthetic cases isolate mechanisms but cannot replace B10 self-build.
   - Expected files: `crates/opforge-asm/tests` or existing benchmark-fixture area, `scripts/performance/**`, `documentation/performance/results/**`.
@@ -270,13 +430,13 @@ positive decision record and the plan has been amended with one concrete slice.
   - Commit outcome: `feat(perf): add sampled Rust VM profiles and bounded traces`.
   - Definition of done: machine/human reports answer phase/program/opcode/PC/sequence/helper questions with measured overhead.
 
-- [ ] Item 6 — Add the native bounded profile collector and DOS/source counters
-  - Source requirement or finding IDs: SR-ID, SR-NATIVE, SR-MEAS, SR-PAR, F1, F3.
-  - Rationale/mechanism: quantify native work-elimination mechanisms and later correlate selected VM identities.
-  - Architectural boundaries: approved native debug/assert framework only; bounded memory; one export after fresh guest completion; no semantic behavior change.
-  - Expected files: native generic profile module, DOS/source/copy call sites, Rust host decoder/tests, native harness.
-  - Steps: implement the bounded native collector/export envelope and count DOS operations, bytes/ranges cleared/copied, files/lines/modules; decode to logical JSONL. Pass/arena and VM correlation hooks are deliberately separate Items 6a and 6b.
-  - Dependencies/worktree: Items 2, 3, and 5; child worktree after Item 5 commits. No item is active in parallel.
+- [ ] Item 6 — Promote the bridge profiler into the shared schema and add DOS/source counters
+  - Source requirement or finding IDs: SR-ID, SR-NATIVE, SR-MEAS, SR-PAR, SR-PROG, F1, F3, F12.
+  - Rationale/mechanism: retain the proven bridge observability, map it into the stable shared schema, and quantify native platform work for later work-elimination decisions.
+  - Architectural boundaries: approved native debug/assert framework only; bounded memory; explicit complete/incomplete envelope; one terminal export on completed proof runs; no semantic behavior change.
+  - Expected files: bridge native profile module, shared-ID catalog/schema adapters, DOS/source/copy call sites, Rust host decoder/tests, native harness.
+  - Steps: promote Items 0a-0e records to Item 3 stable IDs/logical JSONL; preserve progress and incomplete-abort decoding; extend DOS/source/copy classifications where the full B01-B10 corpus requires them; validate old provisional bridge records fail or migrate explicitly. Detailed lifecycle and correlation extensions remain Items 6a and 6b.
+  - Dependencies/worktree: Items 0a-0f, 2, 3, and 5; child worktree after Item 5 commits. No item is active in parallel.
   - Before/after metrics: native off/counters overhead, buffer footprint, export size, repeatability; no speed claim.
   - Correctness/parity/failure validation: Level A-C counter tests plus focused Level D fresh-challenge case; corrupt/overflow/missing-report failure paths.
   - Rollback/kill/reference strategy: build flag and runtime off; omit detailed opcode counters until later if memory/overhead fails budget.
@@ -284,14 +444,14 @@ positive decision record and the plan has been amended with one concrete slice.
   - Full quality gates: native format, staged native porting gate, Rust quality gate, focused FS-UAE confirmation.
   - Plan-compliance review evidence: reviewer checks approved instrumentation and shared-ID fidelity.
   - Commit outcome: `feat(native-perf): add bounded platform and correlation counters`.
-  - Definition of done: native collector plus DOS/source/memory-operation records export once with explicit overflow and exact parity.
+  - Definition of done: the bridge collector uses stable shared identities and emits progress plus DOS/source/memory-operation records with explicit completeness/overflow and exact parity.
 
 - [ ] Item 6a — Add native opasm lifecycle, pass, emission, and high-water counters
   - Source requirement or finding IDs: SR-ID, SR-NATIVE, SR-MEAS, SR-PAR, F2-F4, F6-F9.
   - Rationale/mechanism: quantify arena reset, live capacity, pass rounds, flow, and image work without mixing VM identity hooks into the collector commit.
   - Architectural boundaries: counters observe generic opasm state only; bounded memory and one terminal export; no per-event I/O or CPU semantics.
   - Expected files: native profile module, `opasm/opasm_engine.asm`, layout/flow/image call sites, Rust decoder fixtures/tests.
-  - Steps: add bytes/ranges cleared, pass/layout-round, convergence/final image, flow-scan, symbol-probe, and used/peak source/statement/label/image/scratch counters; extend the same schema/export.
+  - Steps: promote and extend Items 0b-0c pass/layout/convergence/flow/symbol records with bytes/ranges cleared and used/peak source/statement/label/image/scratch counters; retain measured bridge semantics in the shared schema/export.
   - Dependencies/worktree: Item 6; next sequential child slice from its integration commit.
   - Before/after metrics: off/counters overhead, buffer/report size, deterministic B01/B03-B10 counts.
   - Correctness/parity/failure validation: saturation/overflow and missing/corrupt-record tests, Level A-C counter oracles, focused Level D parity.
@@ -307,7 +467,7 @@ positive decision record and the plan has been amended with one concrete slice.
   - Rationale/mechanism: correlate selected native VM/service coverage to Rust identities without using native as generic-hotspot discovery authority.
   - Architectural boundaries: shared stable IDs only; no native opcode optimization or new semantics; detailed native counters are bounded and optional.
   - Expected files: native profile catalog, tkpkg/opasm service boundaries, Rust decoder/catalog tests.
-  - Steps: map native TKVM/PRVM/ExprVM/selection/encoding/operand/state/branch/fixup/value owners to Item 3 IDs; count invocation by phase/program; validate unknown IDs fail visibly.
+  - Steps: replace Item 0d provisional IDs with Item 3 IDs for native TKVM/PRVM/ExprVM/selection/encoding/operand/state/branch/fixup/value owners; retain invocation/opcode totals by phase/program; validate unknown IDs fail visibly.
   - Dependencies/worktree: Item 6a; next sequential child slice.
   - Before/after metrics: mapped invocation coverage, off/counters overhead, catalog/report bytes.
   - Correctness/parity/failure validation: Rust/native catalog round-trip, unknown/version failures, focused Level D exact parity.
@@ -582,28 +742,28 @@ deterministic counts, failure behavior, and overhead are recorded.
   - Commit outcome: `perf(vm): prepare measured <program> execution metadata`.
   - Definition of done: no stale reuse, measured benefit/coverage, and transfer class recorded.
 
-- [ ] Item 12 — Trial one measured generic dispatch or portable superinstruction candidate
+- [ ] Item 12 — Trial one measured portable execution representation
   - Source requirement or finding IDs: SR-RF, SR-ACC, SR-ARCH, F10-F11 and Phase 1 candidate.
-  - Rationale/mechanism: reduce dispatch/check frequency only where PC/sequence evidence predicts material coverage.
-  - Architectural boundaries: portable semantics and package representation remain versioned; no handcrafted CPU behavior.
-  - Expected files: one Rust VM, bytecode compiler/decoder only if versioned, tests, decision record.
-  - Steps: model sequence coverage and setup; add one jump/handler/fused portable opcode or predecode experiment; implement four modes; measure code size/cache proxy and B10.
+  - Rationale/mechanism: reduce dispatch/decode/check frequency only where PC/sequence evidence predicts material coverage, while deciding the smallest portability-preserving representation.
+  - Architectural boundaries: canonical portable bytecode and package semantics remain versioned and authoritative; derived execution IR contains no target semantics; no handcrafted CPU behavior.
+  - Expected files: one Rust VM, one validated portable execution-IR/predecode/threading/superinstruction experiment, tests, and decision record.
+  - Steps: compare decoded micro-ops, generated superinstructions, handler threading, and a two-level bytecode-to-portable-IR-to-target-backend design on coverage/setup/code/RAM/relocation/cache criteria; implement only the smallest positive Rust-side representation with four modes; measure B10; record whether a later target cross-assembler is justified.
   - Dependencies/worktree: Item 9; Item 11 if predecode is prerequisite; child worktree.
   - Before/after metrics: dispatches retired, sequence coverage, component/end-to-end time, setup, code/memory, fallback/mismatch.
   - Correctness/parity/failure validation: differential random/fixture programs, malformed bytecode, exact diagnostics/state/fixups and corpus parity.
   - Rollback/kill/reference strategy: signature/version gate and kill switch; reject if synthetic-only or B10 neutral/regressive; remove accepted experiment-only comparison scaffolding in Item 28c.
   - Effort/risk and stop/go: M/High; one VM/sequence per item; add another plan item only after decision.
   - Full quality gates: focused VM/differential/corpus tests and Rust quality gate.
-  - Plan-compliance review evidence: reviewer verifies measured sequence coverage and semantic ownership.
-  - Commit outcome: `perf(vm): trial measured <vm> dispatch accelerator` or revert/decision commit.
-  - Definition of done: positive/rejected result and native transfer class are explicit.
+  - Plan-compliance review evidence: reviewer verifies measured sequence coverage, canonical-bytecode authority, invalidation, and semantic ownership.
+  - Commit outcome: `perf(vm): trial measured <vm> execution representation` or revert/decision commit.
+  - Definition of done: positive/rejected representation, resource tradeoffs, and native/backend transfer class are explicit.
 
-- [ ] Item 13 — Trial one exact-program/signature-bound Rust accelerator if still justified
+- [ ] Item 13 — Trial one exact-program/signature-bound generated or AOT accelerator if still justified
   - Source requirement or finding IDs: SR-RF, SR-ACC, SR-PAR, SR-ARCH, F11 and positive Phase 1 evidence.
-  - Rationale/mechanism: accelerate an exceptionally hot stable portable program only when generic improvements leave material cost.
-  - Architectural boundaries: eligibility uses validated package capability/program signature; never paths/text/fixture/generation/output; generic interpreter is fallback/oracle.
-  - Expected files: correct Rust VM ownership layer, signature catalog/generator if warranted, tests, decision record.
-  - Steps: document contract and coverage; generate or implement smallest exact handler; add four modes/counters; dual-run outputs, state, fixups, diagnostics and failures; measure setup/code/cache/full workload.
+  - Rationale/mechanism: accelerate an exceptionally hot stable portable program only when generic improvements leave material cost, including testing bytecode as an intermediate input to generated code.
+  - Architectural boundaries: eligibility uses validated package capability/program signature; never paths/text/fixture/generation/output; canonical bytecode and generic interpreter remain oracle/fallback; target lowering may not own package semantics.
+  - Expected files: correct Rust VM ownership layer, validated portable execution IR and signature catalog/generator if warranted, one host backend experiment, tests, decision record.
+  - Steps: document contract and coverage; lower bytecode to a deterministic validated portable execution IR; generate or implement the smallest exact host handler; add four modes/counters; dual-run outputs, state, fixups, diagnostics and failures; measure generation/setup/code/cache/RAM/full workload; record target-backend relocation and verification requirements.
   - Dependencies/worktree: Items 9-12; requires positive threshold and explanation why portable superinstruction is insufficient; child worktree.
   - Before/after metrics: eligibility/hit/fallback/mismatch, covered execution share, component/B10 speed, startup/code/memory.
   - Correctness/parity/failure validation: signature near-miss, corrupt program, all semantic and failure outputs, corpus and self-build differential proof.
@@ -1017,7 +1177,7 @@ deterministic counts, failure behavior, and overhead are recorded.
   - Rationale/mechanism: prevent automatic or speculative native ports.
   - Architectural boundaries: no native code in this decision item; candidates cite exact portable/package contracts and preserve generic native interpreter fallback.
   - Expected files: `documentation/performance/results/**native-transfer-decisions**` and an amended/re-reviewed plan.
-  - Steps: classify each Rust result; add 68020 setup/dispatch/code-size/cache model and native coverage; choose port/adapt/leave-Rust/reject; amend this plan with one concrete checkbox Item 25.x and one paired cleanup Item 29k.x per approved candidate, including exact symbols/files/tests and a new plan-quality PASS.
+  - Steps: classify each Rust result; for execution-representation candidates compare interpreter, predecoded tape, threaded handlers, selected superinstructions, and portable-IR-to-68020 cross-assembly on generation/setup/relocation/code/RAM/cache/coverage/verification cost; choose port/adapt/leave-Rust/reject; amend this plan with one concrete checkbox Item 25.x and one paired cleanup Item 29k.x per approved candidate, including exact symbols/files/tests and a new plan-quality PASS.
   - Dependencies/worktree: completed Phase 2 reports and native correlation from Items 6b and 18b-24; integration worktree.
   - Before/after metrics: projected native coverage and break-even from measured counts; no projected speedup reported as achieved.
   - Correctness/parity/failure validation: traceability/schema checks and plan-quality review.
@@ -1041,6 +1201,13 @@ a paired Item 29k.x that removes only its temporary comparison machinery after
 qualification. The amended plan and quality sidecar must pass the full plan
 workflow before that new item starts.
 
+If the candidate uses VM bytecode as an intermediate assembler format, the
+25.x slice must additionally name the canonical-bytecode-to-portable-IR
+validator, deterministic target backend, relocation/calling-convention contract,
+generated-code memory and cache budget, stale-signature rejection, regeneration
+test, and proof that the backend contains lowering mechanics rather than
+CPU/family/dialect assembler semantics.
+
 - [ ] Item 26 — Profile and tune one truly native-only 68020 overhead
   - Source requirement or finding IDs: SR-NATIVE, SR-ARCH, SR-PAR, F10.
   - Rationale/mechanism: address ABI/register-save/dispatch/alignment/cache cost after higher-level work is removed.
@@ -1060,7 +1227,7 @@ workflow before that new item starts.
 ### Phase 10 — regression budgets and terminal proof
 
 - [ ] Item 27 — Install deterministic performance regression budgets
-  - Source requirement or finding IDs: SR-MEAS, SR-ACC, SR-NATIVE, SR-PAR, F1-F11.
+  - Source requirement or finding IDs: SR-MEAS, SR-ACC, SR-NATIVE, SR-PAR, F1-F12.
   - Rationale/mechanism: catch mechanism regressions in CI without relying on noisy wall time.
   - Architectural boundaries: deterministic counters are normative; wall-time lanes are optional isolated signals; budgets do not weaken correctness gates.
   - Expected files: performance verifier/scripts, CI/Makefile integration, saved representative profiles, documentation.
@@ -1123,9 +1290,9 @@ workflow before that new item starts.
   - Commit outcome: `perf(vm): retire item 11 comparison scaffolding` or focused no-op decision.
   - Definition of done: no candidate-specific Item 11 duplicate machinery remains.
 
-- [ ] Item 28c — Remove Item 12 Rust dispatch/superinstruction experiment scaffolding
+- [ ] Item 28c — Remove Item 12 Rust execution-representation experiment scaffolding
   - Source requirement or finding IDs: SR-RF, SR-ACC, SR-PAR, Item 12 decision record.
-  - Rationale/mechanism: remove prototype-only comparison state after qualification while retaining portable bytecode, accepted dispatch/superinstruction, shared bounded dual mode, and generic fallback.
+  - Rationale/mechanism: remove prototype-only comparison state after qualification while retaining canonical portable bytecode, the accepted predecode/threading/superinstruction representation, shared bounded dual mode, and generic fallback.
   - Architectural boundaries: bytecode version/signature and semantic ownership unchanged; rejected Item 12 yields a no-op cleanup.
   - Expected files: exact Item 12 VM/compiler/decoder tests and decision record.
   - Steps: remove candidate-specific duplicate dispatch/trace scaffolding; retain stable counters/modes; prove no dead opcode path.
@@ -1323,7 +1490,8 @@ until Item 9 establishes current distributions.
 
 | Phase | Mechanism success | End-to-end success/stop rule |
 |---|---|---|
-| 0 | Complete stable IDs, four Rust modes, shared native counters, B01-B10, measured overhead | Control results repeat within documented variance; no optimization starts before gate |
+| Pre-activation bridge | Bounded native progress plus pass/flow/layout/symbol/expression/VM/platform counters and coarse timing; explicit complete/incomplete records | A repeated bounded FS-UAE/A6000 investigation attributes progress and ranks measured owners; no optimization or proof claim |
+| 0 | Complete stable IDs, four Rust modes, promoted shared native counters, B01-B10, measured overhead | Control results repeat within documented variance and bridge attribution is retained; no optimization starts before gate |
 | 1 | 100% executor inventory attribution; ranked programs/opcodes/PCs/sequences/helpers | B10 hotspot report answers required questions; otherwise instrument more, do not guess |
 | 2 | Candidate event/dispatch/setup count changes as predicted; mismatches = 0 | Retain only within noise-safe non-regression and material B10/coverage evidence; foundations may be retained when explicitly required later |
 | 3 | DOS reads scale with blocks, known ranges seek, redundant root opens/scans removed | Exact corpus parity; B02/B08/B10 non-regressive and improvement reported, not preclaimed |
@@ -1345,7 +1513,9 @@ Provisional ambitions to calibrate, not commitments: counters-only overhead
 should be low enough for routine targeted CI use; sampled mode should preserve
 hotspot ordering; trace memory must be bounded; the native reader should use an
 8-16 KiB candidate buffer selected from measured memory/time tradeoffs. Item 9
-and Item 6 replace these ambitions with reviewed numeric budgets.
+and Item 6 replace these ambitions with reviewed numeric budgets. Items 0a-0f
+set only the bounded investigation budget needed to diagnose the current long
+run; they do not pre-approve an optimization.
 
 ## Validation and Quality Gates
 
@@ -1371,15 +1541,26 @@ and Item 6 replace these ambitions with reviewed numeric budgets.
 
 ## Blocking Rules
 
-- Item 1 cannot start until the current self-hosting plan is actually finalized.
+- Items 0a-0f are the sole pre-finalization exception and require a reviewed
+  amendment to the active self-hosting plan. They may instrument and report only.
+- Item 1 cannot start until the current self-hosting plan is actually finalized
+  and Item 0f has published a reviewed native compute-attribution report.
 - One work item is active at a time. A blocked item prevents the next item until
   the plan is explicitly amended and reviewed.
-- No VM optimization claim precedes Items 1-9. No native generic-VM accelerator
-  precedes a positive Rust decision record and Item 25 transfer approval.
+- No F1-F10 optimization, candidate reordering, or generic VM optimization claim
+  precedes Item 0f; after that report, every optimization item must cite a
+  positive relevant measured threshold from Item 0f, Phase 0, or Phase 1, or
+  stop for a reviewed no-go/reorder amendment. No generic VM optimization claim
+  precedes Items 1-9. No
+  native generic-VM accelerator precedes a positive Rust decision record and
+  Item 25 transfer approval.
 - Track N Items 14-18 may begin after Phase 0 without waiting for all Phase 2
   experiments, but must integrate through recorded commits and shared counters.
 - A moved failure, reduced fixture, prefix scan, smoke run, timeout, stale marker,
   launcher exit, or missing artifact is not a fix or proof.
+- A progress heartbeat, PC sample, partial counter snapshot, graceful abort, or
+  `complete=false` report is localization evidence only and never Level D or
+  terminal self-hosting proof.
 - Any mismatch, profiler overflow used as if complete, unstable identity,
   unexplained overhead, architecture-boundary violation, or full-workload
   regression blocks acceptance.
@@ -1388,9 +1569,13 @@ and Item 6 replace these ambitions with reviewed numeric budgets.
 
 ## Definition of Done
 
-- Items 1-30 and any approved 25.x transfer/29k.x cleanup items have focused commits,
+- Items 0a-0f, Items 1-30, and any approved 25.x transfer/29k.x cleanup items have focused commits,
   plan-compliance PASS receipts, green full gates, and recorded worktree/base/
   branch/integration relationships.
+- The observed multi-hour native phase has bounded FS-UAE and physical-A6000
+  progress/counter evidence, measured instrumentation overhead, a ranked
+  attribution report, and an explicit distinction between incomplete
+  localization runs and successful proof runs.
 - Stable Rust/native-correlatable profiles and deterministic budgets exist;
   all VMs/services in the inventory are attributable; profiler overhead is known.
 - Accepted Rust accelerators retain generic fallback and have complete decision

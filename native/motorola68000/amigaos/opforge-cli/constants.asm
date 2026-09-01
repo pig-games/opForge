@@ -39,6 +39,7 @@ ADD_PART                        = -882
 PUT_STR                         = -948
 FPUTS                           = -342
 GET_ARG_STR                     = -534
+DATE_STAMP                      = -192
 
 MODE_OLDFILE                    = 1005
 MODE_NEWFILE                    = 1006

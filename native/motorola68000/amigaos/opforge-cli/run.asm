@@ -25,6 +25,7 @@
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opforge.debug.contracts as debug_contracts
 	.use opforge.debug.events as debug_events
+	.use opasm.amigaos.progress as progress
 	.include "debug_macros.i"
 .endif
 
@@ -106,6 +107,27 @@ version
 	bra.w closeDos
 
 parsed
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: bounded assembly-run start and startup phase.
+	; Routine: progress.opasmProgressBeginRunV1, with DateStamp sampled only by
+	; coarse progress boundaries. It preserves D0-D7/A0-A6, CCR, and stack depth
+	; and writes only the dedicated progress block. Argument parsing has already
+	; selected an assembly invocation; input resolution has not started.
+	lea progressTickV1, a0
+	jsr progress.opasmProgressBeginRunV1
+	moveq #progress.OPASM_PROGRESS_PHASE_STARTUP, d0
+	moveq #0, d1
+	moveq #0, d2
+	jsr progress.opasmProgressSetPhaseV1
+.ifdef OPFORGE_PROGRESS_HEARTBEAT_QUANTUM
+	move.l #OPFORGE_PROGRESS_HEARTBEAT_QUANTUM, d0
+	jsr progress.opasmProgressSetHeartbeatV1
+.endif
+.ifdef OPFORGE_PROGRESS_ABORT_VISITS
+	move.l #OPFORGE_PROGRESS_ABORT_VISITS, d0
+	jsr progress.opasmProgressSetAbortVisitsV1
+.endif
+.endif
 	jsr input_resolver.resolveInputPathV1
 	tst.l d0
 	bne.w inputOpenFailed
@@ -183,6 +205,15 @@ headerReady
 	jsr dos.putStr
 
 tokenizerStage
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: startup is complete and package setup begins.
+	; The progress routine preserves all registers/CCR and stack depth and writes
+	; only the dedicated progress block before frontend status flags are produced.
+	moveq #progress.OPASM_PROGRESS_PHASE_PACKAGE, d0
+	moveq #0, d1
+	moveq #0, d2
+	jsr progress.opasmProgressSetPhaseV1
+.endif
 	jsr session_init.opforgeNativeCliInitAssemblySession
 	tst.w state.NativeCliDebugEnabled
 	beq.s tokenizeFrontend
@@ -218,6 +249,14 @@ runEngine
 	bra.w closeDos
 
 passesOk
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: artifacts phase after successful engine completion.
+	; The progress routine preserves all registers/CCR and has zero stack delta.
+	moveq #progress.OPASM_PROGRESS_PHASE_ARTIFACTS, d0
+	moveq #0, d1
+	moveq #0, d2
+	jsr progress.opasmProgressSetPhaseV1
+.endif
 	tst.w state.NativeCliDebugEnabled
 	beq.s checkImage
 	jsr report.opforgeNativeCliEmitAssemblySessionSummary
@@ -261,6 +300,14 @@ emitStub
 	move.l #constants.RETURN_NOT_IMPLEMENTED, state.NativeCliReturnCode
 
 closeDos
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: single controlled terminal export boundary.
+	; Complete is set only for RETURN_OK; every failure or configured diagnostic
+	; abort is sealed incomplete. The routine samples time once, preserves all
+	; registers/CCR and stack depth, and touches only the bounded progress block.
+	move.l state.NativeCliReturnCode, d0
+	jsr progress.opasmProgressFinishV1
+.endif
 	move.l state.NativeCliDosBase, d0
 	beq.s done
 	movea.l constants.SYS_BASE.W, a6
@@ -273,6 +320,27 @@ done
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 	.bend  ; opforgeNativeCliRun
+
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	.priv
+
+; Return a wrapping 50 Hz AmigaDOS DateStamp tick for coarse phase timing.
+; Inputs: NativeCliDosBase is open. Output: D0.L tick; clobbers D0-D2/A6/CCR.
+progressTickV1	.block
+	suba.l #12, sp
+	move.l sp, d1
+	movea.l state.NativeCliDosBase, a6
+	jsr constants.DATE_STAMP(a6)
+	move.l (sp), d2
+	mulu.l #1440, d2
+	add.l 4(sp), d2
+	mulu.l #3000, d2
+	move.l 8(sp), d0
+	add.l d2, d0
+	adda.l #12, sp
+	rts
+	.bend  ; progressTickV1
+.endif
 
 	.endsection
 	.endmodule

@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "scripts/workflow/native_debug_evidence_classification.toml"
 REQUIRED_IDS = (
     "debug-contract-harness",
+    "opasm-progress-harness",
     "cli-debug-event-harness",
     "macro-preprocessor-harness",
     "macro-preprocessor-helper",

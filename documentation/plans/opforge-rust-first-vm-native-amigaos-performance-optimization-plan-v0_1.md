@@ -266,7 +266,7 @@ These six items are the mandatory post-activation measurement foundation. They
 run sequentially after Item 1. An incomplete profile is useful localization
 evidence but never a completed assembly or Level D result.
 
-- [ ] Item 0a — Add bounded native progress and coarse phase timing
+- [x] Item 0a — Add bounded native progress and coarse phase timing
   - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-WT, SR-PAR, F12.
   - Rationale/mechanism: make a multi-hour run observable and distinguish forward progress, repeated passes, and a local stall before choosing a fix.
   - Architectural boundaries: approved native debug/assert framework only; bounded memory; no CPU semantics, optimization, per-operation I/O, output change, or proof relaxation.
@@ -278,7 +278,8 @@ evidence but never a completed assembly or Level D result.
   - Rollback/kill/reference strategy: build/runtime off switch; keep the pre-bridge binary as reference; disable heartbeat if perturbation exceeds the recorded investigation budget.
   - Effort/risk and stop/go: M/High; stop on semantic output change, unbounded storage, per-event I/O, or inability to distinguish incomplete from complete.
   - Full quality gates: native format, staged native porting gate, Rust quality gate, focused FS-UAE confirmation, and workflow gate for schema/report docs.
-  - Plan-compliance review evidence: reviewer verifies the active-plan authorization, approved instrumentation, boundedness, explicit incomplete state, and absence of optimization.
+  - Plan-compliance review evidence: `PASS` — the independent reviewer verified the exact staged Item 0a slice after remediation: Level-B checks lock both saturation paths; the deterministic FS-UAE harness executes them and checks their overflow bits; the decoder rejects unknown flag/overflow bits and complete-plus-abort; instrumentation remains fixed-size, default-off, release-gated, semantics-preserving, and proof-limited; and no preflight cleanup or optimization is mixed into the slice.
+  - Completion evidence (2026-09-02): the decoder, source contract, deterministic harness, native format/staged-porting gates, fresh FS-UAE harness, and fresh release/counters exact-artifact CLI cases pass. The full Rust gate passes all 1,563 library tests and remaining workspace/doc tests. Counters add 1,672 Hunk bytes over the cleaned release; heartbeat adds 16 more. One end-to-end FS-UAE perturbation check measured 48.46s release versus 48.55s counters (+0.19%), explicitly not a vintage-runtime estimate.
   - Commit outcome: `feat(native-perf): expose bounded assembly progress`.
   - Definition of done: a long run exposes trustworthy phase/pass/statement progress and a bounded complete or explicitly incomplete report with measured overhead.
 

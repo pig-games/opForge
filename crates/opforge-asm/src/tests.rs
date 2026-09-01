@@ -339,6 +339,95 @@ fn native_debug_contract_fs_uae_executes_asserts_events_and_preservation() {
 }
 
 #[test]
+fn native_bounded_progress_source_contract_is_observation_only() {
+    // Proof level B. This locks boundedness, build gating, preservation, and
+    // explicit terminal-state semantics. It does not prove guest execution or
+    // whole-assembly performance.
+    let root = workspace_root();
+    let progress =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_progress.asm"))
+            .expect("read bounded native progress module");
+    let engine =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm"))
+            .expect("read native engine progress sites");
+    let run = fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/run.asm"))
+        .expect("read native CLI progress boundaries");
+
+    for required in [
+        "OPASM_PROGRESS_RECORD_BYTES         = 128",
+        "OPASM_PROGRESS_FLAG_COMPLETE        = 2",
+        "OPASM_PROGRESS_FLAG_INCOMPLETE      = 4",
+        "OPASM_PROGRESS_ABORT_VISITS_OFFSET = 116",
+        "OPASM_PROGRESS_OVERFLOW_VISITS      = 1",
+        "OPASM_PROGRESS_OVERFLOW_PHASE_TICKS = 2",
+        "opasmProgressStatementBeginV1\t.block",
+        "opasmProgressAbortRequestedV1\t.block",
+        "opasmProgressFinishV1\t.block",
+        "EVENT_ASSEMBLY_PROGRESS",
+        "cmpi.l #-1, d2\n\tbeq.s visitOverflow",
+        "ori.l #OPASM_PROGRESS_OVERFLOW_VISITS, OPASM_PROGRESS_OVERFLOW_OFFSET(a5)",
+        "move.l #-1, d3\n\tori.l #OPASM_PROGRESS_OVERFLOW_PHASE_TICKS, OPASM_PROGRESS_OVERFLOW_OFFSET(a5)",
+    ] {
+        assert!(
+            progress.contains(required),
+            "missing progress contract {required:?}"
+        );
+    }
+    assert_eq!(
+        progress.matches("move.w ccr, -(sp)").count(),
+        progress.matches("move.w (sp)+, ccr").count(),
+        "passive progress routines must balance CCR saves/restores"
+    );
+    assert_eq!(
+        progress.matches("movem.l d0-d7/a0-a6, -(sp)").count(),
+        progress.matches("movem.l (sp)+, d0-d7/a0-a6").count(),
+        "passive progress routines must balance full register saves/restores"
+    );
+    assert!(engine.contains(".ifdef OPFORGE_DEBUG_CONTRACTS\n\t.use opasm.amigaos.progress"));
+    assert!(run.contains(".ifdef OPFORGE_PROGRESS_HEARTBEAT_QUANTUM"));
+    assert!(run.contains(".ifdef OPFORGE_PROGRESS_ABORT_VISITS"));
+    assert!(!progress.contains("dos.putStr"));
+    assert!(!progress.contains("dos.write"));
+}
+
+#[test]
+fn native_bounded_progress_harness_assembles() {
+    // Proof level C. This proves the focused harness and production progress
+    // routines assemble together. It does not prove execution on AmigaOS.
+    let root = workspace_root();
+    let asm_path =
+        root.join("native/motorola68000/amigaos/test-harnesses/debug/opasm_progress_harness.asm");
+    let out = create_temp_dir("native-bounded-progress-harness");
+    assemble_example_with_base_and_defines(
+        &asm_path,
+        &out,
+        "opasm_progress_harness",
+        false,
+        &["OPFORGE_DEBUG_CONTRACTS".to_string()],
+    )
+    .unwrap_or_else(|error| panic!("assemble bounded progress harness: {error}"));
+    assert!(out.join("build/opasm_progress_harness").is_file());
+}
+
+#[test]
+fn native_bounded_progress_fs_uae_confirms_record_contract() {
+    match crate::fs_uae_smoke::run_native_progress_harness_from_env(&workspace_root())
+        .expect("native progress FS-UAE harness should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native progress harness failed under FS-UAE\nprotocol completed: {}\nguest exit: {:?}\nstdout:\n{}\nstderr:\n{}",
+                run.protocol_completed, run.exit_code, run.stdout, run.stderr
+            );
+        }
+    }
+}
+
+#[test]
 fn native_debug_contract_console_capture_prepares_mounted_harness() {
     let Some(launch) =
         crate::fs_uae_smoke::prepare_native_debug_contract_console_from_env(&workspace_root())
@@ -2003,11 +2092,17 @@ fn example_requests_hunk_output(asm_path: &Path) -> bool {
 }
 
 fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
-    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("debug_contract_harness") {
+    if matches!(
+        asm_path.file_stem().and_then(|stem| stem.to_str()),
+        Some("debug_contract_harness" | "opasm_progress_harness")
+    ) {
         let amigaos_dir = workspace_root()
             .join("native")
             .join("motorola68000")
             .join("amigaos");
+        if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("opasm_progress_harness") {
+            return vec![amigaos_dir.join("opasm"), amigaos_dir.join("debug")];
+        }
         return vec![amigaos_dir.join("debug")];
     }
 
@@ -2092,7 +2187,10 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
 }
 
 fn example_include_paths(asm_path: &Path) -> Vec<PathBuf> {
-    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("debug_contract_harness") {
+    if matches!(
+        asm_path.file_stem().and_then(|stem| stem.to_str()),
+        Some("debug_contract_harness" | "opasm_progress_harness")
+    ) {
         return vec![workspace_root()
             .join("native")
             .join("motorola68000")

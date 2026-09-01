@@ -14,6 +14,16 @@ lifecycle = "permanent"
 deletion_condition = ""
 
 [[artifacts]]
+id = "opasm-progress-harness"
+path = "native/motorola68000/amigaos/test-harnesses/debug/opasm_progress_harness.asm"
+marker = "@opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent"
+proof_level = "D"
+role = "permanent-contract"
+authority = "focused-contract"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
 id = "cli-debug-event-harness"
 path = "native/motorola68000/amigaos/test-harnesses/debug/cli_debug_event_harness.asm"
 marker = "@opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent"

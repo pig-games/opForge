@@ -133,6 +133,9 @@ const FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH: &str = "native/motorola68000/amigao
 const FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME: &str = "debug_contract_harness";
 const FS_UAE_DEBUG_CONTRACT_SOURCE_PATH: &str =
     "native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm";
+const FS_UAE_PROGRESS_HARNESS_NAME: &str = "opasm_progress_harness";
+const FS_UAE_PROGRESS_HARNESS_SOURCE_PATH: &str =
+    "native/motorola68000/amigaos/test-harnesses/debug/opasm_progress_harness.asm";
 const FS_UAE_CLI_DEBUG_EVENT_EXAMPLE_NAME: &str = "cli_debug_event_harness";
 const FS_UAE_CLI_DEBUG_EVENT_SOURCE_PATH: &str =
     "native/motorola68000/amigaos/test-harnesses/debug/cli_debug_event_harness.asm";
@@ -598,6 +601,32 @@ pub(crate) fn run_native_debug_contract_from_env(
     }
 }
 
+pub(crate) fn run_native_progress_harness_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+            "{FS_UAE_ARGS_ENV} is not set; configure FS-UAE to execute the native progress harness"
+        )))
+        }
+    };
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    match run_example_smoke_with_extra_defines(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        FS_UAE_PROGRESS_HARNESS_NAME,
+        FS_UAE_PROGRESS_HARNESS_SOURCE_PATH,
+        "68020",
+        &["OPFORGE_DEBUG_CONTRACTS"],
+    )? {
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
+    }
+}
+
 /// Assemble and mount the debug-contract harness without launching FS-UAE.
 /// The returned config is consumed only by the separately opt-in PTY runner.
 pub(crate) fn prepare_native_debug_contract_console_from_env(
@@ -753,6 +782,29 @@ pub(crate) fn run_native_cli_directive_router_from_env(
         name: "native-cli-directive-router",
         cpu_override: "68020",
         extra_assembly_defines: &[FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE],
+        source_override: Some(FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m6502"),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle,
+        },
+    }];
+    run_opforge_native_cli_parity_cases_from_env(workspace_root, &cases)
+}
+
+pub(crate) fn run_native_progress_cli_parity_from_env(
+    workspace_root: &Path,
+    rust_oracle: &[u8],
+) -> Result<FsUaeSmokeOutcome, String> {
+    let cases = [OpforgeNativeCliParityCase {
+        name: "native-progress-cli-parity",
+        cpu_override: "68020",
+        extra_assembly_defines: &[
+            FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE,
+            "OPFORGE_DEBUG_CONTRACTS",
+        ],
         source_override: Some(FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT.as_bytes()),
         command_template: Some("{input} --bin {bin} --cpu m6502"),
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
@@ -2792,6 +2844,7 @@ fn example_assembly_defines(example_name: &str) -> Vec<String> {
 
 fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBuf> {
     if example_name == FS_UAE_CLI_DEBUG_EVENT_EXAMPLE_NAME
+        || example_name == FS_UAE_PROGRESS_HARNESS_NAME
         || example_name == FS_UAE_MACRO_PREPROCESSOR_HARNESS_NAME
         || example_name == FS_UAE_PIPELINE_SELECT_HARNESS_NAME
         || example_name == FS_UAE_MACRO_CLI_DEBUG_EVENT_HARNESS_NAME
@@ -2870,6 +2923,8 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
 
 fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBuf> {
     if example_name == FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME
+        || example_name == FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME
+        || example_name == FS_UAE_PROGRESS_HARNESS_NAME
         || example_name == FS_UAE_CLI_DEBUG_EVENT_EXAMPLE_NAME
         || example_name == FS_UAE_MACRO_PREPROCESSOR_HARNESS_NAME
         || example_name == FS_UAE_PIPELINE_SELECT_HARNESS_NAME

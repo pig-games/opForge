@@ -8,7 +8,7 @@ The native instrumentation framework isolates debug behavior in centralized
 Enabled macros emit a fixed-size call-site stub. Disabled macros emit zero
 bytes. Predicate logic and event writes occur only in module routines.
 
-All current routines:
+The assertion and structured-event routines:
 
 - preserve D0-D7 and A0-A6
 - preserve CCR exactly and do not touch supervisor state
@@ -16,6 +16,11 @@ All current routines:
 - write only the dedicated bounded event buffer
 - leave the event buffer unchanged when it is full
 - avoid request, service, last-error, and production output buffers
+
+The bounded assembly-progress bridge follows the same passive preservation
+contract. Its record-pointer getter returns A0, and its explicitly queried
+diagnostic-abort routine returns status in D0/CCR. Those are documented ABI
+outputs rather than hidden instrumentation clobbers.
 
 Instrumentation may not sit between a flag-setting instruction and its branch.
 Every use must carry the safety note required by
@@ -55,3 +60,32 @@ later tokenizer, parser, selector, encoder, or output boundary.
 `OPFORGE_DEBUG_CONTRACTS` enables the fixed-size stubs. Without it, macros
 expand to zero bytes. A layout-sensitive NOP mode is intentionally deferred
 until a concrete need exists.
+
+## Bounded assembly progress bridge
+
+`opasm.amigaos.progress` is an Item 0a provisional bridge for diagnosing long
+native assembly runs. It is linked into the production composition only when
+`OPFORGE_DEBUG_CONTRACTS` is defined; its module and call sites emit zero bytes
+in an ordinary release build. Item 0a's result ledger separately attributes the
+release-binary difference from the fetched checkpoint to mandatory native guard
+cleanup, not to this bridge.
+
+The module owns one 128-byte memory record and two private tick words. Passive
+updates preserve D0-D7/A0-A6, CCR, and stack depth and never write production
+request, VM, image, diagnostic, or output storage. The CLI samples AmigaDOS
+`DateStamp` only at coarse phase, optional heartbeat, and terminal boundaries.
+Statement visits perform bounded memory updates but no clock, console, or file
+operation.
+
+Heartbeat and graceful diagnostic abort are separately default-off. Builds may
+set `OPFORGE_PROGRESS_HEARTBEAT_QUANTUM` or
+`OPFORGE_PROGRESS_ABORT_VISITS`; reaching the latter follows the normal failure
+path and seals an explicitly incomplete record. A heartbeat writes the existing
+bounded structured-event buffer and may be dropped when it is full. The memory
+record remains authoritative.
+
+The complete binary schema, decoder command, flag meanings, proof boundary, and
+current combined frontend phase are documented in
+[`opforge-native-progress-record-v1.md`](../performance/opforge-native-progress-record-v1.md).
+An active or incomplete record is localization evidence only and cannot satisfy
+native parity proof.

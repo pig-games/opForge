@@ -43,6 +43,7 @@ FORBIDDEN_IMPORTS = {
 RETAINED_ITEM_511_IMPORTS = {
     "native/motorola68000/amigaos/opasm/opasm_engine.asm": (
         "opasm.amigaos.events",
+        "opasm.amigaos.progress",
     ),
     "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": (
         "tkpkg.amigaos.abi",

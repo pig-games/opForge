@@ -8,6 +8,9 @@
 	.cpu 68020
 
 	.use opasm.amigaos.events
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	.use opasm.amigaos.progress as progress
+.endif
 
 	.pub
 
@@ -3508,6 +3511,16 @@ storeFail
 runPassOne	.block
 	movea.l OPASM_ENGINE_CTX_SESSION_PASS_PTR(a5), a0
 	move.w #1, (a0)
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: coarse pass-one boundary.
+	; Routine: progress.opasmProgressSetPhaseV1. It preserves D0-D7/A0-A6,
+	; CCR, and stack depth; only the dedicated 128-byte progress block changes.
+	; The call precedes callback flag production and cannot alter pass behavior.
+	moveq #progress.OPASM_PROGRESS_PHASE_PASS_ONE, d0
+	moveq #1, d1
+	moveq #0, d2
+	jsr progress.opasmProgressSetPhaseV1
+.endif
 	movea.l OPASM_ENGINE_CTX_PASS1_BEGIN_CB(a5), a0
 	jsr (a0)
 	tst.l d0
@@ -3521,6 +3534,18 @@ loop
 	move.l (a0), d0
 	cmp.l d0, d7
 	bhs.w ok
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: pass-one statement visit.
+	; Routines preserve D1-D7/A0-A6 and stack depth; the note also preserves
+	; D0/CCR. The explicit abort query returns only D0/CCR and is default-off.
+	; No production buffers are touched and no flag/branch pair is split.
+	move.l d0, d1
+	move.l d7, d0
+	jsr progress.opasmProgressStatementBeginV1
+	jsr progress.opasmProgressAbortRequestedV1
+	tst.l d0
+	bne.w return
+.endif
 	move.l d7, d0
 	movea.l OPASM_ENGINE_CTX_FLOW_CONTROL_CB(a5), a0
 	move.l d7, -(sp)
@@ -3559,6 +3584,10 @@ process
 	move.l (sp)+, d7
 	tst.l d0
 	bne.w return
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	move.l d7, d0
+	jsr progress.opasmProgressStatementCompleteV1
+.endif
 	addq.l #1, d7
 	bra.w loop
 
@@ -3584,6 +3613,24 @@ return
 runPassTwo	.block
 	movea.l OPASM_ENGINE_CTX_SESSION_PASS_PTR(a5), a0
 	move.w #2, (a0)
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: layout retry or final-emission boundary.
+	; Routine: progress.opasmProgressSetPhaseV1. It preserves D0-D7/A0-A6,
+	; CCR, and stack depth and writes only the bounded progress record.
+	; Placement is before callback flag production, so branch decisions are
+	; unchanged. This remains until the bridge schema is superseded.
+	moveq #progress.OPASM_PROGRESS_PHASE_LAYOUT, d0
+	tst.w OpasmEngineFinalEmission.l
+	beq.s progressLayoutPhaseReady
+	moveq #progress.OPASM_PROGRESS_PHASE_FINAL_EMISSION, d0
+progressLayoutPhaseReady
+	moveq #2, d1
+	moveq #0, d2
+	move.w #OPASM_ENGINE_LAYOUT_PASS_LIMIT, d2
+	sub.w OpasmEngineLayoutPassesRemaining.l, d2
+	addq.w #1, d2
+	jsr progress.opasmProgressSetPhaseV1
+.endif
 	movea.l OPASM_ENGINE_CTX_PASS2_BEGIN_CB(a5), a0
 	jsr (a0)
 	tst.l d0
@@ -3597,6 +3644,16 @@ loop
 	move.l (a0), d0
 	cmp.l d0, d7
 	bhs.w ok
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: pass-two statement visit; same preservation and
+	; bounded-storage contract as the pass-one site above.
+	move.l d0, d1
+	move.l d7, d0
+	jsr progress.opasmProgressStatementBeginV1
+	jsr progress.opasmProgressAbortRequestedV1
+	tst.l d0
+	bne.w return
+.endif
 	move.l d7, d0
 	movea.l OPASM_ENGINE_CTX_FLOW_CONTROL_CB(a5), a0
 	move.l d7, -(sp)
@@ -3655,6 +3712,10 @@ advanceOnly
 	move.l (sp)+, d7
 	tst.l d0
 	bne.w return
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	move.l d7, d0
+	jsr progress.opasmProgressStatementCompleteV1
+.endif
 	addq.l #1, d7
 	bra.w loop
 

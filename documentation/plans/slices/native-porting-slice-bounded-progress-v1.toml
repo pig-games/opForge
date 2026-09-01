@@ -1,0 +1,56 @@
+[slice]
+schema_version = 2
+name = "bounded native assembly progress v1"
+kind = "native-observability"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "0a"
+requirements = ["SR-BRIDGE", "SR-PROG", "SR-NOGUESS", "SR-WT", "SR-PAR", "F12"]
+rust_reference = [
+  "crates/opforge-engine/src/lib.rs::Assembler::assemble",
+  "crates/opforge-asm/src/phase_profile.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/run.asm::opforgeNativeCliRun",
+  "native/motorola68000/amigaos/opforge-cli/source_reader.asm::opforgeNativeCliTokenizeFrontend",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineRunTwoPassV1",
+  "native/motorola68000/amigaos/opasm/opasm_progress.asm"
+]
+invariant = "Observation may expose phase, pass, current and completed statement, visits, coarse ticks, and explicit terminal state without changing assembler semantics, outputs, diagnostics, or ordinary exit status. Only an explicitly configured diagnostic visit limit may end a run, and that record is incomplete and never proof."
+assertion_decision = "Use only the approved debug-contract build gate and bounded storage; preserve all registers, CCR, and stack at passive sites; sample the OS clock only at coarse boundaries; fail closed in the host decoder on malformed, contradictory, unknown, or incomplete proof input."
+expected_inputs = "A native CLI assembly under OPFORGE_DEBUG_CONTRACTS, with heartbeat and abort controls absent by default; deterministic harness callbacks supply known coarse ticks."
+expected_outputs = "Release assembly is unchanged; debug assembly maintains one 128-byte OFPR record, optional bounded heartbeat events, and a terminal complete or explicitly incomplete state."
+known_non_equivalences = "The native frontend currently interleaves source ingestion and statement construction, so schema phase 3 reports their combined elapsed time and phase 4 remains reserved. Progress IDs and flow counters are schema slots populated by later Items 0b-0e. The progress complete bit is observability only and never replaces fresh guest exit and artifact equality."
+fast_proof_command = "python3 -m unittest scripts.workflow.tests.test_decode_native_progress && cargo test -p asm native_bounded_progress_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_bounded_progress_fs_uae_confirms_record_contract -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_progress_cli_preserves_exact_artifact_and_exit -- --nocapture --test-threads=1"
+regression_command = "RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate_summary.sh"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_progress_decoder_accepts_complete_and_rejects_incomplete_proof"
+proof_level = "C"
+proves = "The big-endian record decoder reports terminal state and fails closed on incomplete proof input, contradictory states, unknown flags, and unknown overflow bits."
+does_not_prove = "Native assembly, guest execution, or artifact parity."
+
+[[tests]]
+name = "native_bounded_progress_source_contract_is_observation_only"
+proof_level = "B"
+proves = "The bridge is fixed at 128 bytes, release call sites are build-gated, heartbeat and abort are default-off, visit and phase-tick saturation paths set their defined overflow bits, and all passive routines preserve registers, CCR, and stack."
+does_not_prove = "Real guest execution or full-run overhead."
+
+[[tests]]
+name = "native_bounded_progress_harness_assembles"
+proof_level = "C"
+proves = "The focused harness and real progress module assemble together with deterministic phase, heartbeat, abort, visit saturation, phase-tick saturation, overflow-bit, and terminal record checks."
+does_not_prove = "Execution on AmigaOS or whole-CLI behavior."
+
+[[tests]]
+name = "native_bounded_progress_fs_uae_confirms_record_contract"
+proof_level = "D"
+proves = "A fresh focused guest executes the actual bounded progress routines, reaches protocol completion, and exits zero only after phase, heartbeat, abort, visit and phase-tick saturation, overflow-bit, and incomplete-record checks pass."
+does_not_prove = "Full native assembly completion, Rust artifact equality, performance improvement, or the parked self-host proof."
+
+[[tests]]
+name = "external_fs_uae_native_progress_cli_preserves_exact_artifact_and_exit"
+proof_level = "D"
+proves = "The real debug-contract CLI completes a fresh focused assembly with explicit zero exit and byte-for-byte equality to its live in-memory Rust oracle."
+does_not_prove = "A full native self-host completion, performance improvement, or acceptable runtime overhead on vintage hardware."

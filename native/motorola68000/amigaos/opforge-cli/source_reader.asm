@@ -8,6 +8,9 @@
 	.cpu 68020
 
 	.use opasm.amigaos.engine
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	.use opasm.amigaos.progress as progress
+.endif
 	.use opforge.cli.state
 	.use opforge.cli.constants
 	.use opforge.cli.strings
@@ -65,10 +68,24 @@ bootstrapDone
 	beq.s packageReady
 	cmpi.l #2, d0
 	beq.s packageUnavailable
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	bra.w return
+.else
 	bra.s return
+.endif
 
 packageReady
 	move.w #1, state.NativeCliPackagePipelineReady
+.ifdef OPFORGE_DEBUG_CONTRACTS
+	; Instrumentation point: package setup has completed and the interleaved
+	; source-ingest/statement-build frontend begins. The progress routine
+	; preserves every register, CCR, and stack depth and writes only its bounded
+	; record, before any following test sets flags used by a branch.
+	moveq #progress.OPASM_PROGRESS_PHASE_FRONTEND, d0
+	moveq #0, d1
+	moveq #0, d2
+	jsr progress.opasmProgressSetPhaseV1
+.endif
 	lea buffers.ActiveCpuBuffer, a0
 	jsr engine.setSessionCpuNameV1
 	tst.w state.NativeCliDebugEnabled

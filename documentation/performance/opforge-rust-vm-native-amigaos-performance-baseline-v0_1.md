@@ -1,0 +1,490 @@
+# opForge Rust VM and Native AmigaOS Performance Baseline v0.1
+
+## Purpose and provenance
+
+This document records the verified architecture, existing measurements, static
+costs, measurement gaps, and candidate bottlenecks that underpin the companion
+Rust-first optimization plan. It is an investigation artifact, not a claim that
+any optimization has been implemented.
+
+- Inspected repository: `/Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance-plan`
+- Branch: `codex/rust-vm-native-performance-plan`
+- Inspected base/HEAD: `94e23e2b7e64bf531f2cdbc62afee2c626f27bec`
+- Base status: clean
+- Host: macOS 26.6.2 (25G83), Darwin arm64, Apple T6041
+- Rust: `rustc 1.95.0 (59807616e 2026-04-14)`, Cargo 1.95.0
+- Available host sampler: `/usr/bin/xctrace`
+- Not found on `PATH`: `cargo-flamegraph`, `samply`
+- Native runner found: `/Applications/FS-UAE.app/Contents/MacOS/fs-uae`
+- Investigation date: 2026-09-01
+
+The task source exists only as an uncommitted file in the invoking checkout at
+`dev-docs/NextSteps/opforge-native-performance-plan-codex-prompt-v4-rust-first-separate-worktree.md`.
+It was treated as read-only external task input and was not copied into this
+worktree. No current performance timings were collected during this planning
+task; every number below is either an exact static calculation or historical
+repository evidence and is labelled accordingly.
+
+## Activation prerequisite and related work
+
+The performance program starts only after
+`documentation/plans/opforge-native-amigaos-680x0-full-support-self-hosting-plan-v0_1.md`
+is finalized. At the inspected base, Item 40 and Milestone 8 remain open: the
+terminal generation-zero to generation-one to generation-two self-hosting proof
+has not completed after the latest correctness fixes. Activation therefore
+requires a rebase onto the finalized integration commit, a conflict/drift audit,
+and a fresh Phase 0 baseline. This is expected to change measurements and exact
+anchors more than roadmap structure.
+
+The archived
+`documentation/plans/completed/opforge-vm-runtime-performance-refactor-plan-v0_1.md`
+is the source of the historical Rust measurements below. This program
+complements its completed preparation and frontend optimizations and absorbs its
+still-unchecked tooling-trace/feature-stripping question into evidence-led Phase
+1 profiling. It does not silently reopen or supersede completed work.
+
+The opFoundryCore design
+`docs/planning/11_Amiga_Remote_Test_Execution_Architecture_Design.md` defines a
+future neutral suite/job protocol, OFTB bundle, OFTR result, durable spool, fresh
+challenge, exact exit/artifact proof, and equivalent FS-UAE/physical-Amiga
+execution. opForge continues to own benchmark corpora and semantic oracles.
+Remote execution can later automate native deployment and result collection,
+but is not a prerequisite for Rust profiling or early native work-elimination.
+
+## End-to-end execution pipelines
+
+### Rust CLI, assembler, and package runtime
+
+1. `crates/opforge-cli/src/bin/opforge.rs` enters the CLI and delegates to
+   `opforge-cli-core`.
+2. `crates/opforge-cli-core/src/run.rs::run_with_cli_with_context` validates the
+   request. `run_one` constructs `api::asm::Assembler` with input, output,
+   package, CPU, and diagnostic options.
+3. `crates/opforge-engine/src/source_graph.rs::load_module_graph*` loads the root
+   and dependency graph. `crates/opforge-engine/src/lib.rs` coordinates the
+   session and output workflow.
+4. `crates/opforge-asm/src/engine.rs::Assembler` prepares source, executes the
+   initial layout pass, runs bounded layout-stabilization retries when required,
+   then executes final emission/output processing.
+5. `crates/opforge-asm/src/runtime_model.rs` and
+   `crates/opforge-vm/src/runtime_model_core.rs::RuntimeModelCore` select and own
+   package-driven tokenizer, parser, expression, selector, encoding, fixup,
+   branch, value, operand, and state programs.
+6. `crates/opforge-asm/src/phase_profile.rs` can attribute broad phases and named
+   execution paths. Artifacts are then rendered and written by the assembler and
+   engine output paths.
+
+The Rust stabilization design already separates layout retries from the final
+artifact path more cleanly than the current native loop. It also reuses prepared
+source and route caches introduced by the earlier performance plan. Those are
+reference concepts, not byte-for-byte native representation requirements.
+
+### Native AmigaOS/680x0 CLI and assembler
+
+1. `native/motorola68000/amigaos/opforge-cli/run.asm` performs startup and an
+   existence-only root-source open/close, then coordinates bootstrap discovery,
+   package setup, assembly, and artifact output.
+2. `native/motorola68000/amigaos/opforge-cli/source_reader.asm` supplies root
+   source reading. `.output` and `.cpu` bootstrap paths, normal tokenization, and
+   known-range skipping currently consume one byte per DOS `Read` call.
+3. `native/motorola68000/amigaos/opforge-cli/module_discovery.asm` discovers and
+   indexes module declarations once per invocation, but scans candidate files
+   using one-byte reads.
+4. `native/motorola68000/amigaos/opforge-cli/package_pipeline.asm` bulk-reads an
+   external package. The embedded package is copied from `incbin` storage into
+   the mutable package arena before the package service validates/activates it.
+5. `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm` and service-specific
+   files expose package/runtime requests. `opasm_tkpkg_bridge.asm` connects them
+   to the assembler engine.
+6. TKVM and PRVM tokenize and parse source into the fixed statement arena.
+   `native/motorola68000/amigaos/opasm/opasm_engine.asm` owns statements,
+   symbols, pass orchestration, image buffers, and callbacks to expression,
+   selection, encoding, branch, fixup, operand, and state services.
+7. Pass one runs once. Pass two runs up to eight times while layout changes.
+   Current pass-two rounds can clear image presence, select/encode, refresh
+   labels, begin/end output, materialize image bytes, and advance PC. Output is
+   written through bulk artifact paths after a successful assembly.
+
+Existing choices to preserve are the once-per-invocation module index, bulk
+external-package reads, in-memory/bulk artifact writes, TKVM jump-table dispatch
+and fused scanner operations, safe reuse of known statement sizes, and
+package-owned target semantics behind CPU-neutral VM/service boundaries.
+
+## Rust VM and native counterpart inventory
+
+| Stable VM class | Rust primary entrypoint and owner | Native counterpart | Profiling focus |
+|---|---|---|---|
+| TKVM tokenizer | `runtime_model_core.rs` tokenizer execution; `execution_model/tokenizer_bridge.rs` | `tkvm/tkvm_runtime.asm`; `tkpkg/tkpkg_tokenizer_vm.asm` | program/opcode/PC, scanners, tokens, scratch, branches |
+| PRVM v2 parser | `execution_model/parser_vm_v2.rs::parse_line_with_parser_vm_v2`; `vm_opasm.rs` | `prvm/prvm_runtime.asm`; `prvm/prvm_bridge.asm` | dispatch, checkpoints, token/lexeme work, expression resumes |
+| EXVM parser | `exvm_v2_runtime.rs::run_exvm_expression_parser_program*` and `execute_from`; `vm_opcore.rs` | `opcore/opcore_expr_bridge.asm` frontend | parser bytecode, helpers, allocations, emitted ExprVM program |
+| ExprVM evaluator | `crates/opforge-core/src/expr_vm.rs` portable compiler/evaluator; `vm_opcore.rs::evaluate_*` | `exprvm/exprvm_runtime.asm`; `opcore/opcore_expr_bridge.asm` | compile/bind/evaluate counts, symbols, stack, current-PC use |
+| MSEL/TABL selection | `selector_vm.rs::execute_selector_program`; `runtime_model_core.rs::resolve_selector_choice` | `tkpkg/tkpkg_selection_service.asm` | candidate scans, predicates, selector/table identity |
+| SEMV semantic bytecode | `bytecode.rs::execute_program`; `RuntimeModelCore::execute_semantic_program` | semantic/encode service paths in `tkpkg` | opcode/PC, operand reads, helper boundaries |
+| Encoding VM | `encoding_vm.rs::execute_encoding_program` | `tkpkg/tkpkg_encode_service.asm` | selection-to-encoding transitions, output sizes |
+| Structured encoding | `structured_encoding_vm.rs::execute_structured_encoding_program` | `tkpkg/tkpkg_encode_service.asm` | record decode, candidates, result high-water |
+| OPRD operand records | `operand_record_vm.rs::execute_operand_record_program_with_records` | `tkpkg/tkpkg_operand_record_service.asm`; `tkpkg_operand_runtime.asm` | record decode, candidate/result counts |
+| STVM state | `state_vm.rs::{initial_state,apply_directive,capability_allowed}` | `tkpkg/tkpkg_state_service.asm` | decode/reset/directive lookup and invalidation |
+| BRVM branch | `branch_vm.rs::execute_branch_program` | branch work in `tkpkg_encode_service.asm`/runtime context | form choice, stability, branch outcomes |
+| FXVM fixup | `fixup_vm.rs::execute_fixup_program_for_version` | fixup work in `tkpkg_encode_service.asm`/opasm bridge | fixup kind, helper calls, result/error paths |
+| VALU value | `value_vm.rs::execute_value_program` | value/encoding service path | invocations, opcodes, stack/result sizes |
+| CALS CPU aliases | decoded compact package data, not a standalone opcode interpreter | package selection/alias service | decode and lookup service cost; do not mislabel as VM |
+
+This inventory is the minimum profiling scope. The implementation must discover
+new package executors through a central registry/test so profile coverage cannot
+silently drift when another VM is added.
+
+## Existing measurement and profiling facilities
+
+`crates/opforge-asm/src/phase_profile.rs` contains 41 phase buckets and two
+environment gates: `OPFORGE_PROFILE_PHASES` and
+`OPFORGE_PROFILE_EXECUTION_PATHS`. It uses thread-local accumulated durations
+and counts and emits sorted summaries at a controlled boundary. This is useful
+for coarse attribution and avoids per-event output, but path labels are dynamic
+strings and output is human-readable stderr. It has no stable shared numeric ID
+registry, VM/program/opcode/bytecode-PC attribution, transition histogram,
+branch/high-water/allocation/clone/cache/accelerator counters, sampled timing,
+bounded trace, machine-readable export, or overhead calibration.
+
+No Criterion configuration, Rust `#[bench]` harness, `cargo-flamegraph`, or
+Samply integration was found. The large-fixture regression test
+`qualified_use_reachability_perf_regression_multi_module_fixture` is a guard,
+not a controlled benchmark harness. The repository therefore has useful phase
+telemetry and production-path parity tests, but no current VM profiler or
+reproducible benchmark ledger.
+
+### Historical Rust measurements
+
+These results came from the archived runtime performance plan and are not a
+current baseline. They are retained because they establish prior mechanisms and
+guard against repeating rejected work:
+
+| Completed change | Historical observed result |
+|---|---|
+| Prepared route cache | `assembly_total` 3819.788 ms; 25,332 stabilization hits and 12,666 pass-two hits |
+| No-listing/listing split | listing work about 842 ms before; listing-on 788.137 -> 37.532 ms; no-listing 0.499 ms |
+| Stabilization reduction | 985.069 ms/two retries -> 483.887 ms/one retry; total 2621.766 ms |
+| Token reuse | total 2621.766 -> 2453.537 ms; pass-one parse 873.641 -> 720.332 ms |
+| Parser route cache | total 2447.769 -> 2380.827 ms; parse 714.062 -> 627.076 ms; routing 317.640 -> 228.459 ms |
+| Token clone removal | total 2380.827 -> 2353.859 ms; parse 627.076 -> 615.984 ms |
+| Tokenizer attribution | total 2353.859 -> 2352.044 ms; tokenizer 228.928 ms, portable runtime 157.763 ms |
+| Prevalidation | total 2352.044 -> 2290.573 ms; parse 604.961 -> 555.134 ms; portable runtime 157.763 -> 112.278 ms |
+| Exact default-tokenizer fast path | total 2290.573 -> 2206.855 ms; parse 555.134 -> 486.772 ms; tokenizer 183.067 -> 115.530 ms |
+| Rejected parser fast path | targeted bucket 412.556 -> 403.555/405.227 ms, but total regressed 2206.855 -> 2252.978/2274.575 ms; prototype `b3207be4`, revert `c3e06ff9` |
+
+The parser result is a direct warning: component speedup, synthetic coverage, or
+plausible dispatch reduction is insufficient without repeated end-to-end proof.
+
+## Verified static sizes and workload evidence
+
+### Native session arena
+
+`opasm/opasm_engine.asm` defines:
+
+| Region | Exact bytes |
+|---|---:|
+| Source records/text | `(100000 * 10) + 4194304 = 5,194,304` |
+| Statement records | `100000 * 308 = 30,800,000` |
+| Labels plus 256 hash heads | `(16384 * 123) + (256 * 4) = 2,016,256` |
+| Three 65,535-byte image arrays | `196,605` |
+| Header and tail | `100` |
+| Total | **38,207,265** |
+
+`initSessionV1` clears that full span through the byte-at-a-time `clearBytes`
+loop. The cost is unconditional and capacity-based rather than live-data-based.
+Layout reset separately clears 100,000 statement section-index/mapped entries.
+The statement record stores 108 label bytes, 64 operand bytes, and 64 owner
+bytes: 236 string bytes per row, or 23,600,000 bytes at capacity. The runtime
+already has a source-slice fallback for long operands, proving that offset-based
+representation is possible in at least one path.
+
+Current code comments cite 89,933 source/listing rows and 48,950
+nonblank/noncomment statement rows. The active self-hosting plan records 90,441
+Rust-expanded source rows. These refer to different measurement points and must
+not be merged; Phase 0 must regenerate both with explicit definitions.
+
+### Package, labels, and artifacts
+
+- Embedded all-family package size: **368,278 bytes**.
+- Package capacity: 393,216 bytes; static headroom: 24,938 bytes.
+- Full-product evidence: 369/512 imports, 6,330/8,192 exports,
+  122,694/262,144 name bytes, 9,134/16,384 labels, longest fully-scoped label
+  107 bytes.
+- With 256 label buckets, full capacity would imply a theoretical average of 64
+  labels per bucket. The observed 9,134-label workload averages about 35.68 and
+  recorded a worst bucket of 49. Only the latter is observed evidence.
+- Current self-hosting oracle evidence: Hunk 551,688 bytes, S-record 11 bytes,
+  listing 9,992,200 bytes.
+
+## Findings
+
+Classification means: **M** measured in retained repository evidence, **S**
+statically verified high-confidence mechanism, and **H** plausible hypothesis
+requiring instrumentation. A finding may have both historical measurement and a
+static current mechanism, but no historical number is treated as current.
+
+### F1 — byte-scaled native source I/O (S)
+
+`source_reader.asm` passes a length of one to the DOS read wrapper during output
+bootstrap, CPU bootstrap, normal tokenization, and known module-range skipping.
+`module_discovery.asm` does the same while scanning candidates. `run.asm` first
+performs an existence-only open/close. There is no native DOS seek wrapper.
+
+For a root whose `.output` is selected and whose CPU must be discovered, the
+current structure can perform the existence check plus separate output, CPU, and
+normal-processing opens, with three bytewise scans that may terminate early.
+Exact dynamic opens/reads depend on directives and dependency graph and must be
+counted. Line ending and bounded-range behavior are semantic constraints for a
+shared buffered reader.
+
+### F2 — full 38,207,265-byte session clear (S)
+
+The exact capacity calculation and `initSessionV1` byte-clear loop are verified.
+The primary opportunity is to remove initialization of unused capacity via
+authoritative counts, full record initialization, generations/touched ranges,
+and debug poisoning—not merely replace the loop with a faster memset.
+
+### F3 — avoidable native copies and bytewise primitives (S/H)
+
+`opforge-cli/copy.asm` supplies bytewise generic copy/clear loops.
+`package_pipeline.asm` copies the 368,278-byte embedded package into package
+storage, while external packages already use a bulk read plus a one-byte overflow
+probe. Immutable embedded package validation/execution through an active base
+pointer is a high-confidence opportunity subject to lifetime/alignment checks.
+Other copy/clear call-site importance remains unmeasured. Existing bulk output
+writes should be preserved.
+
+### F4 — final-emission work repeated during native layout convergence (S)
+
+`opasmEngineRunTwoPassV1` repeats pass two up to eight times while layout changes.
+Each round invokes `opasmEngineBeginPassTwoV1`, including a full 65,535-byte
+image-presence clear. `runPassTwoV1` refreshes labels and executes flow, selection,
+size, output-begin, image-emission, output-end, and PC-advance paths; image append
+copies bytes and marks presence. Output materialization is conditional on the
+requested outputs, but convergence and final emission are not explicit modes.
+
+### F5 — native expression compile on each evaluation (S/H)
+
+`opcore/opcore_expr_bridge.asm::runEvalProgram` calls `compileExpression`, resets
+and rebuilds a private 128-byte program, terminates it, then calls ExprVM for each
+evaluation. Compile-on-evaluation is static fact; repeated identical-expression
+frequency across pass one, retries, and final emission is not measured. Prepared
+state must include scope, stable symbol identity, current-PC use, forward/unstable
+references, pipeline/CPU state, diagnostics, and expression-contract version.
+
+### F6 — repeated native directive routing and flow scans (S/H)
+
+`opasm_directive_router.asm` classifies directives through a sequential series of
+`directiveTry*` calls. `opasm_flow_navigation.asm` scans forward for IF branches,
+matching ENDIF, selected MATCH branches, and related boundaries. Pass callbacks
+revisit this work. The repeated structure is verified; frequency and share need
+counters before representation changes.
+
+### F7 — fixed 308-byte native statement rows (S)
+
+The arena reserves 30.8 MB regardless of live rows, dominated by 23.6 MB of
+inline label/operand/owner strings at capacity. A hot/cold record plus source
+slices, pools, and interned owner IDs could reduce both reset work and cache
+traffic, but this is a high-risk representation migration and follows profiles,
+prepared-state work, and dual-representation proof.
+
+### F8 — native symbol indexing pressure (M/H)
+
+Exact lookup uses a 256-bucket hash-head/next chain and full name comparison. The
+full-product evidence recorded a worst chain of 49. Final-component resolution
+and repeated string comparison may dominate some workloads, but probe and compare
+distributions are absent. Stored hash/length metadata, more buckets, a secondary
+final-component index, and prepared symbol IDs are candidates only after counters.
+
+### F9 — STVM is decoded/scanned during reset and directive application (S/H)
+
+`tkpkg_state_service.asm::initializeActiveV1` chooses the state owner and calls
+`resetActiveV1`. Reset reparses profile/key/default/override records on every
+assembly pass or pipeline switch. `applyDirectiveV1` linearly walks serialized
+directives and compares case-folded strings. Decode-once state and indexed
+directives are plausible, but invocation/share and invalidation behavior need
+Rust-first and native counters.
+
+### F10 — native dispatch/ABI overhead (H)
+
+TKVM already uses an opcode jump table and fused scan handlers and should not be
+regressed. PRVM and ExprVM use compare/branch opcode dispatch, and statement
+passes use indirect callbacks and broad register saves. Whether dispatch,
+register-save, helper crossings, code size, or cache effects matter on 68020 is
+unknown. This is late native-only tuning after work-elimination and correlation.
+
+### F11 — insufficient Rust VM attribution (S)
+
+The current profiler cannot answer which VM, program, opcode, bytecode PC,
+sequence, helper, allocation, clone, lookup, or service boundary dominates.
+Without that evidence, generic VM acceleration would repeat the risk demonstrated
+by the rejected parser fast path. A shared, low-overhead profiler is therefore
+the mandatory first implementation phase.
+
+## Rust-first profiler architecture
+
+### Identity and schema
+
+Create a CPU-neutral versioned profile schema and central registry. Every record
+uses stable numeric IDs for VM class, program, opcode, helper class, owner,
+pipeline, phase, and accelerator. Program identity combines package-format
+version, canonical package digest/length, owner, VM class, program-table key,
+program offset/length, and bytecode-contract version. Reports include the
+resolvable ID catalog, so Rust and native can correlate identities without
+assuming equal addresses or timing behavior. Unknown/new IDs fail visibly in
+schema validation rather than being folded into an anonymous bucket.
+
+The durable export is versioned JSON Lines: one metadata/header record, catalog
+records, counter/timing/high-water/histogram records, and a terminal integrity
+record. JSONL permits bounded streaming at the run boundary and diff-friendly
+host tooling. Native may accumulate a compact fixed-width binary record buffer
+using the same numeric IDs and export once; a host decoder must emit the same
+logical JSONL schema. Human-readable ranked tables are derived output, never the
+only evidence.
+
+### Modes and collection
+
+- **off/control:** compiled or gated so hot events are effectively zero-cost;
+  establishes the unprofiled baseline.
+- **counters:** deterministic saturating invocation, opcode, PC, branch, helper,
+  lookup, allocation/clone, cache, invalidation, accelerator, and high-water
+  counts. Suitable for deterministic CI budgets.
+- **sampled:** coarse inclusive/exclusive timing with deterministic configurable
+  sampling and external `xctrace` call-stack sampling. No timer call per opcode.
+- **trace:** a workload/VM/program/phase-filtered bounded ring containing IDs,
+  PC, branch/result class, and sequence context. Overflow is counted and explicit.
+
+All modes accumulate in bounded memory and export only at a controlled assembly
+boundary. There is no per-event console/file I/O. Thread and nested-runtime
+attribution must preserve inclusive/exclusive accounting. Counters cover stack,
+scratch, candidate, token, result, scan, symbol, resume, state, and temporary
+allocation high-water marks plus expression parse/compile/bind/evaluate and
+accelerator eligible/hit/miss/fallback/bypass/mismatch/dual-run events.
+
+### Calibration and reports
+
+For every corpus/configuration run an unprofiled control, counters-only build,
+sampled build, and—only on targeted cases—bounded trace build. Record wall-time
+overhead, output size, dropped/overflowed samples, timer resolution, and result
+stability. A metric whose mode materially perturbs the ranking is investigation
+evidence only. The Phase 1 report must separate dispatch/check costs from
+semantic/helper/allocation/lookup/service costs, list opcode/PC and pair/triple
+coverage, quantify candidate accelerator coverage, and identify full-workload
+regressions as well as wins.
+
+### Accelerator lifecycle
+
+Every initial generic VM accelerator is implemented in Rust first with
+disabled, generic-only, enabled, and bounded dual-execute-and-compare modes.
+Eligibility is package capability plus validated program identity/signature—not
+path, source text, benchmark name, generation number, or expected output. Reports
+record eligibility, hits, misses, fallback, bypass, mismatch, setup cost, code
+size, memory, isolated speed, and end-to-end speed. The portable interpreter
+remains the semantic oracle and compatibility fallback. A decision record marks
+each accepted result portable-to-native, native-redesign-required, Rust-only, or
+rejected/reverted. Native transfer requires a separate positive decision.
+
+## Native profiler and correlation design
+
+The native facility begins with platform counters: bytes/ranges cleared and
+copied; DOS opens, reads, bytes, seeks, writes, closes; files, source bytes and
+logical lines; module candidates/declarations; pass/layout-round counts; image
+bytes during convergence/final emission; and used/peak source, statement, label,
+image, and scratch memory. It then adds coarse VM/program/opcode/phase and
+accelerator counters using the shared IDs where practical.
+
+Export happens once after a fresh guest completion and explicit guest exit.
+FS-UAE is a confirmation gate, not the inner-loop debugger, and every case must
+retain the repository's fail-closed Level D proof contract. Later OFTB/OFTR
+integration may carry profile configuration and result files, but must preserve
+fresh challenge, exact completion/exit, artifact checksum, attempt-all, and
+ephemeral run-tree rules.
+
+## Benchmark matrix and measurement protocol
+
+| Case | Mechanism isolated | Required production path |
+|---|---|---|
+| B01 tiny 10-line source | fixed startup/session/package cost | real CLI, real package |
+| B02 ~1 MiB comments/whitespace | source I/O, line handling, tokenizer | real CLI input |
+| B03 many trivial statements | parse/store/pass/callback throughput | normal statement pipeline |
+| B04 label/symbol heavy | hash probes, comparisons, scope lookup | package-driven symbols |
+| B05 forward branches | layout rounds, branch/fixup stability | current stability fixtures plus scaled case |
+| B06 expression heavy | EXVM compile/bind/eval and symbol dependencies | normal expression service |
+| B07 nested IF/repetition/MATCH | directive routes and flow boundaries | normal control-flow semantics |
+| B08 module/include tree | opens, reads, seeks, module index, owner scope | real dependency graph |
+| B09 all-output workload | final emission, listing/map/metadata/Hunk/S-record/BIN/PRG | requested production outputs |
+| B10 complete opForge self-build | coverage and end-to-end truth | Rust first; native gen0->gen1->gen2 later |
+
+Prefer existing fixtures; generated inputs are allowed only to isolate a
+mechanism and must still traverse the real CLI/engine/package runtime. Record
+HEAD, package bytes and identity, OS/architecture/toolchain, release profile and
+features, CPU/pipeline/dialect, exact command, corpus revision/digest, outputs,
+profiler mode, and cold/warm state. Native records add FS-UAE version/config,
+CPU/JIT, memory, device mapping, and profile/debug flags.
+
+Use a warm-up policy established in Phase 0, then at least seven retained runs
+per configuration unless variance analysis justifies a different count. Report
+median, minimum/maximum, and p95 (or all samples when the set is too small), not
+a single run. Randomize paired before/after order where host noise matters.
+Compare identical artifacts, diagnostics, exit codes, package and configuration.
+Report mechanism counters and full-workload wall time together. Cold-start and
+warm-cache results remain separate.
+
+Authoritative current gates include `make quality-gate`, the focused crate tests,
+`python3 scripts/workflow/run_native_porting_quality_gate.py --staged`, and the
+native FS-UAE parity/self-hosting wrappers. The native terminal command must be
+re-discovered after the prerequisite plan lands; at the inspected base its form
+is the `OPFORGE_FS_UAE_SMOKE=1`, explicit FS-UAE binary/config/args,
+`RUST_TEST_THREADS=1 scripts/workflow/run_native_existing_parity_completion.sh
+--verify` invocation documented by the active self-hosting plan.
+
+## Architectural constraints and non-goals
+
+- Rust is the semantic reference, profiling authority, and first implementation
+  site for generic VM optimization.
+- 68020 is the native baseline. 68080/AMMX is an optional later accelerator, not
+  an answer to avoidable work or a semantic fork.
+- Generic Rust/native VM and service code remains CPU-neutral and package-driven;
+  CPU/family/dialect semantics remain in package/family definitions.
+- Hunk, S-record, BIN/PRG, listing, map, metadata, exported-section, fixup,
+  diagnostic, exit-code, state, symbol, and layout parity are mandatory.
+- No benchmark-only path, fixture identity branch, reduced-workload claim,
+  hidden fallback, per-event I/O, or weakened Level D proof is acceptable.
+- Future 8-bit native implementations must not be constrained by an Amiga-only
+  semantic shortcut.
+- The task does not change production code, tests, fixtures, reference outputs,
+  opFoundryCore, or the open self-hosting plan.
+
+## Prioritized finding table
+
+| Priority | ID | Classification | Expected impact | Risk | Dependency |
+|---:|---|---|---|---|---|
+| 1 | F11 | S | Enables all defensible VM decisions | Medium | prerequisite plan completion; Phase 0 |
+| 2 | F1 | S | Very high native I/O call reduction | Medium | native counters and buffered-reader contract |
+| 3 | F2 | S | Very high fixed-startup work removal | Medium | initialization-invariant proof |
+| 4 | F4 | S | High on unstable/output-heavy builds | High | native pass counters; reference path |
+| 5 | F3 | S/H | Medium startup and memory-bandwidth reduction | Low/Medium | copy-site counters; package-base audit |
+| 6 | F5 | S/H | Potentially high on expression/layout cases | High | Rust expression profile/prepared design |
+| 7 | F6 | S/H | Potentially high on control-flow cases | Medium | route/flow counters and maps |
+| 8 | F9 | S/H | Medium for pass/pipeline-heavy inputs | Medium | shared state identity/invalidation profile |
+| 9 | F7 | S | High memory/cache/reset potential | High | F2, prepared state, access profile |
+| 10 | F8 | M/H | Workload-dependent lookup improvement | Medium | probe/compare distribution |
+| 11 | F10 | H | Unknown; possibly small after work removal | High | Rust decisions, native correlation, 68020 model |
+
+## Phase 0 unresolved evidence
+
+- Rebase/drift effects after the active self-hosting plan closes.
+- Current repeated Rust wall-time and VM-attributed baseline; all retained timing
+  data predates this HEAD.
+- Exact full-product definitions/counts for source rows versus live statements.
+- Dynamic native DOS operation counts and bytes by source/bootstrap/module path.
+- Dynamic native bytes cleared/copied, pass rounds, convergence emission bytes,
+  and used/peak arena sizes.
+- Rust program/opcode/PC/helper/allocation/clone/transition distributions.
+- Expression identity/recompile rates, directive/flow revisit rates, STVM reset
+  rates, and symbol probe/string-compare distributions.
+- Current FS-UAE version/configuration reproducibility and physical-Amiga timing
+  availability.
+- Instrumentation overhead and timer/sampler resolution.
+
+No optimization claim is valid until the relevant gap is closed with the
+specified production-path measurement and parity evidence.

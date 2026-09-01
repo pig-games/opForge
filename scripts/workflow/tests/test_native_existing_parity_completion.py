@@ -10,6 +10,9 @@ class NativeExistingParityCompletionTests(unittest.TestCase):
     def setUpClass(cls):
         cls.root = Path(__file__).resolve().parents[3]
         cls.wrapper = cls.root / "scripts/workflow/run_native_existing_parity_completion.sh"
+        cls.generation_two_bonus_wrapper = (
+            cls.root / "scripts/workflow/run_native_generation_two_bonus_completion.sh"
+        )
 
     def test_missing_configuration_fails_closed(self):
         env = os.environ.copy()
@@ -58,6 +61,27 @@ class NativeExistingParityCompletionTests(unittest.TestCase):
         self.assertIn("running 1 test", source)
         self.assertIn("parent-plan Items 7.4-7.7 remain open", source)
 
+    def test_generation_two_bonus_delegates_the_same_complete_inventory(self):
+        source = self.wrapper.read_text(encoding="utf-8")
+        bonus = self.generation_two_bonus_wrapper.read_text(encoding="utf-8")
+        test_array = source.split("tests=(\n", 1)[1].split("\n)", 1)[0]
+        named_tests = [
+            line.strip()
+            for line in test_array.splitlines()
+            if line.startswith("  ") and not line.lstrip().startswith("#")
+        ]
+
+        self.assertEqual(len(named_tests), 53)
+        self.assertEqual(len(set(named_tests)), 53)
+        self.assertEqual(
+            named_tests[-1],
+            "external_fs_uae_native_opforge_two_generation_self_host_parity",
+        )
+        self.assertIn("--verify-generation-two-first", bonus)
+        self.assertIn("run_native_existing_parity_completion.sh", bonus)
+        self.assertIn('generation_two_first_tests=("${generation_two_test}")', source)
+        self.assertIn('tests=("${generation_two_first_tests[@]}")', source)
+
     def test_cleanup_output_may_split_libtest_name_from_ok(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -95,6 +119,58 @@ class NativeExistingParityCompletionTests(unittest.TestCase):
             )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("PASS: complete established native Level D parity corpus", result.stdout)
+
+    def test_generation_two_bonus_runs_terminal_proof_before_remaining_corpus(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            fake_cargo = root / "cargo"
+            fake_cargo.write_text(
+                "#!/usr/bin/env bash\n"
+                "printf 'running 1 test\\n'\n"
+                "printf 'test tests::native_fs_uae_parity::%s ... ok\\n' \"$4\"\n"
+                "printf 'test result: ok. 1 passed; 0 failed;\\n'\n",
+                encoding="utf-8",
+            )
+            fake_cargo.chmod(0o755)
+            emulator = root / "fs-uae"
+            emulator.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            emulator.chmod(0o755)
+            config = root / "config.fs-uae"
+            config.write_text("", encoding="utf-8")
+            env = os.environ.copy()
+            env.update(
+                {
+                    "CARGO": str(fake_cargo),
+                    "OPFORGE_FS_UAE_SMOKE": "1",
+                    "OPFORGE_FS_UAE_BIN": str(emulator),
+                    "OPFORGE_FS_UAE_CONFIG_TEMPLATE": str(config),
+                    "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+                }
+            )
+            result = subprocess.run(
+                ["bash", str(self.generation_two_bonus_wrapper)],
+                cwd=self.root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        first_banner = next(
+            line
+            for line in result.stdout.splitlines()
+            if line.startswith("==> Established native Level D parity:")
+        )
+        self.assertTrue(
+            first_banner.endswith(
+                "external_fs_uae_native_opforge_two_generation_self_host_parity"
+            )
+        )
+        self.assertIn(
+            "PASS: complete established native Level D parity corpus verified (53 tests)",
+            result.stdout,
+        )
 
 
 if __name__ == "__main__":

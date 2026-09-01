@@ -34,33 +34,11 @@ prepareSelectedRequestV1	.block
 ;         A1 = OPASM_SERVICE_* frame.
 ; Outputs: D0 = status; D1.W = request bytes on success.
 prepareExpressionRequestV1	.block
-	move.l d1, -(sp)
-	move.l a1, -(sp)
-	move.l a0, -(sp)
-	move.l d0, -(sp)
-	movea.l abi.OPASM_SERVICE_IMPORT_NAME_RESOLVER_PTR(a1), a2
-	move.l a2, d1
-	beq.s expressionImportReady
-	move.l 12(sp), d0
-	jsr eng.opasmEngineGetStatementOwnerTextV1
-	tst.l d0
-	beq.s expressionImportReady
-	movea.l a0, a1
-	move.l d0, d1
-	movea.l 4(sp), a0
-	move.l (sp), d0
-	jsr (a2)
-	tst.l d1
-	beq.s expressionImportMapped
-expressionImportReady
-	movea.l 4(sp), a0
-	move.l (sp), d0
-expressionImportMapped
-	movea.l 8(sp), a1
-	move.l 12(sp), d1
-	adda.l #16, sp
-	movea.l abi.OPASM_SERVICE_IO_BUFFER_PTR(a1), a2
-	movea.l a2, a1
+	; Rust keeps the original expression text and resolves every identifier in
+	; its lexical/import context. Retain the statement owner so the extension can
+	; materialize the same request-local aliases without rewriting the expression.
+	move.l d1, SelectedStatementIndex.l
+	movea.l abi.OPASM_SERVICE_IO_BUFFER_PTR(a1), a1
 	jsr eng.prepareEvaluateExpressionRequestV1
 	rts
 	.bend  ; prepareExpressionRequestV1
@@ -69,7 +47,9 @@ expressionImportMapped
 ; Inputs: A0 = OPASM_SERVICE_* frame; D0.W = request bytes.
 ; Outputs: D0 = engine status.
 prepareExpressionExtensionV1	.block
-	moveq #0, d1
+	; Directive and selected-instruction expressions share Rust's request-local
+	; lexical/import context. Materialize aliases once before ExprVM evaluation.
+	moveq #1, d1
 	bsr.w prepareExtensionCommon
 	tst.l d0
 	bne.s expressionExtensionReturn
@@ -92,6 +72,19 @@ prepareSelectedExtensionV1	.block
 	bne.s selectedExtensionReturn
 	movea.l abi.OPASM_SERVICE_EVAL_EXTENSION_PTR(a0), a1
 	move.l #resolveSelectedSymbolV1, 28(a1)
+	; Rust defers an unstable explicitly sized branch during stabilization only
+	; when its nearest binding can still change inside a lexical block. Native's
+	; layout-only retry supplies that signal; the distinct final emission pass
+	; resolves the converged target and emits the actual displacement.
+	move.l a1, -(sp)
+	jsr scopes.hasBlockDeeperThanModuleV1
+	tst.l d0
+	beq.s selectedDeferReady
+	jsr eng.opasmEngineIsLayoutStabilizationV1
+selectedDeferReady
+	movea.l (sp)+, a1
+	move.l d0, 32(a1)
+	moveq #0, d0
 selectedExtensionReturn
 	rts
 	.bend  ; prepareSelectedExtensionV1
@@ -523,9 +516,6 @@ resolveSelectedSymbolV1	.block
 ; Inputs: A0/D0 = token text/length. Outputs: D0 = status; D3 = value.
 resolveExpressionSymbolV1	.block
 	jsr scopes.resolveLabelValueV1
-	beq.s expressionSymbolReturn
-	jsr eng.opasmEngineResolveLabelValueV1
-expressionSymbolReturn
 	rts
 	.bend  ; resolveExpressionSymbolV1
 
@@ -574,9 +564,9 @@ prepareExtensionCommon	.block
 	rts
 	.bend  ; prepareExtensionCommon
 
-; Add imported ordinary names referenced by one selected instruction operand
-; to the package evaluation snapshot. The selected request text is never
-; rewritten, so CPU-family addressing-mode selection sees the actual source.
+; Add imported ordinary names referenced by one request expression to the
+; package evaluation snapshot. The request text is never rewritten, so its
+; consumer sees the actual source spelling.
 ; Inputs: D0.W = selected request bytes; A6 = service frame.
 materializeSelectedImportAliases	.block
 	movem.l d0-d7/a0-a6, -(sp)
@@ -707,7 +697,7 @@ selectedAliasTryImport
 	move.l 8(sp), d1
 	adda.l #52, sp
 	tst.l d1
-	bne.s selectedAliasTrySuffix
+	bne.s selectedAliasTryImportMember
 	move.l d0, -(sp)
 	move.l a0, -(sp)
 	jsr eng.opasmEngineResolveLabelValueV1
@@ -719,10 +709,23 @@ selectedAliasTryImport
 	tst.l d0
 	beq.s selectedAliasMappedExact
 	addq.l #8, sp
-	bra.s selectedAliasTrySuffix
+	bra.s selectedAliasTryImportMember
 selectedAliasMappedExact
 	addq.l #8, sp
 	bra.s selectedAliasMappedResolved
+selectedAliasTryImportMember
+	; Rust evaluates an Expr::Member base independently before its consumer
+	; interprets the field. If the complete dotted token is not one import,
+	; expose the longest imported base without assigning meaning to its suffix.
+	tst.l d5
+	beq.s selectedAliasTrySuffix
+	movea.l a3, a0
+	move.l d4, d0
+	movea.l a4, a1
+	move.l d5, d1
+	bsr.w materializeSelectedImportedMemberBaseAliasV1
+	tst.l d0
+	beq.w selectedAliasAdvanceToken
 selectedAliasTrySuffix
 	moveq #0, d2
 	movea.l a3, a0
@@ -730,28 +733,16 @@ selectedAliasTrySuffix
 	bsr.w resolveSelectedLastComponentV1
 	tst.l d0
 	bne.w selectedAliasAdvanceToken
-	bra.s selectedAliasResolved
 selectedAliasMappedResolved
-	moveq #1, d2
+	; Rust resolves the source spelling directly to the imported full name for
+	; each expression term. Keep only that request-local source alias here;
+	; inserting an auxiliary final-component alias between source terms changes
+	; their snapshot ordering and has no Rust counterpart.
 selectedAliasResolved
 	movea.l a3, a0
 	move.l d4, d0
 	bsr.w appendSelectedSnapshotAliasV1
-	tst.l d0
-	bne.w selectedAliasAdvanceToken
-	; A successful qualified import is authoritative for this request. Retain
-	; its final component beside the source spelling so the package's direct
-	; label fast path consumes the same request-local visibility decision.
-	tst.l d2
-	beq.s selectedAliasAdvanceToken
-	movea.l a3, a0
-	move.l d4, d0
-	bsr.w finalIdentifierComponentV1
-	tst.l d0
-	beq.s selectedAliasMappedDone
-	bsr.w appendSelectedSnapshotAliasV1
-selectedAliasMappedDone
-	moveq #0, d2
+	bra.w selectedAliasAdvanceToken
 
 selectedAliasAdvanceToken
 	adda.l d4, a3
@@ -862,6 +853,72 @@ ownerMemberBaseReturn
 	rts
 	.bend  ; materializeSelectedOwnerMemberBaseAliasV1
 
+; Materialize the longest import-resolvable prefix of a dotted token. This is
+; the imported-name counterpart of the owner-member helper above and retains
+; the same architecture-neutral Expr::Member boundary.
+; Inputs: A0/D0 = token; A1/D1 = owner; A2 = import resolver.
+; Output: D0 = status.
+materializeSelectedImportedMemberBaseAliasV1	.block
+	movem.l d1-d7/a0-a5, -(sp)
+	movea.l a0, a3
+	move.l d0, d6
+	movea.l a1, a4
+	move.l d1, d7
+	movea.l a2, a5
+importMemberBaseScan
+	tst.l d6
+	beq.s importMemberBaseFail
+	subq.l #1, d6
+	cmpi.b #'.', 0(a3, d6.l)
+	bne.s importMemberBaseScan
+	tst.l d6
+	beq.s importMemberBaseFail
+	movea.l a3, a0
+	move.l d6, d0
+	movea.l a4, a1
+	move.l d7, d1
+	movea.l a5, a2
+	bsr.w resolveSelectedImportedPrefixV1
+	tst.l d0
+	bne.s importMemberBaseScan
+	movea.l a3, a0
+	move.l d6, d0
+	bsr.w appendSelectedSnapshotAliasV1
+	move.l d0, -(sp)
+	movem.l 4(sp), d1-d7/a0-a5
+	move.l (sp)+, d0
+	adda.l #52, sp
+	rts
+importMemberBaseFail
+	movem.l (sp)+, d1-d7/a0-a5
+	moveq #1, d0
+	rts
+	.bend  ; materializeSelectedImportedMemberBaseAliasV1
+
+; Resolve one already-bounded import prefix to the engine's authoritative
+; fully-qualified value while preserving the caller's scan state.
+; Inputs: A0/D0 = token; A1/D1 = owner; A2 = import resolver.
+; Outputs: D0 = status; D3 = value on success.
+resolveSelectedImportedPrefixV1	.block
+	movem.l d1-d2/d4-d7/a0-a5, -(sp)
+	jsr (a2)
+	tst.l d1
+	bne.s importedPrefixFail
+	jsr eng.opasmEngineResolveLabelValueV1
+	tst.l d0
+	bne.s importedPrefixFail
+	move.l d3, -(sp)
+	movem.l 4(sp), d1-d2/d4-d7/a0-a5
+	move.l (sp)+, d3
+	adda.l #48, sp
+	moveq #0, d0
+	rts
+importedPrefixFail
+	movem.l (sp)+, d1-d2/d4-d7/a0-a5
+	moveq #1, d0
+	rts
+	.bend  ; resolveSelectedImportedPrefixV1
+
 ; Append one already-authorized alias/value to the bounded selected snapshot.
 ; Inputs: A0/D0 = alias text/length; D3 = value. Outputs: D0 = status.
 appendSelectedSnapshotAliasV1	.block
@@ -895,28 +952,6 @@ appendAliasFail
 	moveq #1, d0
 	rts
 	.bend  ; appendSelectedSnapshotAliasV1
-
-; Return the final component of a dotted architecture-neutral identifier.
-; Inputs/outputs: A0/D0 = token slice; D0 = 0 when no suffix exists.
-finalIdentifierComponentV1	.block
-	movea.l a0, a1
-	move.l d0, d1
-	moveq #0, d6
-finalComponentScan
-	tst.l d1
-	beq.s finalComponentReady
-	cmpi.b #'.', (a1)+
-	bne.s finalComponentNext
-	movea.l a1, a0
-	move.l d1, d6
-	subq.l #1, d6
-finalComponentNext
-	subq.l #1, d1
-	bra.s finalComponentScan
-finalComponentReady
-	move.l d6, d0
-	rts
-	.bend  ; finalIdentifierComponentV1
 
 ; Resolve the final component of a dotted architecture-neutral identifier.
 ; This supports engines whose structural module pass retained an unqualified
@@ -1052,7 +1087,7 @@ aliasNext
 importedAliasBegin
 	tst.l d5
 	beq.s copyOriginalBegin
-	; Selected-instruction contexts are request-local in Rust. Rebuild their
+	; Expression contexts are request-local in Rust. Rebuild their
 	; aliases in operand-token order so lexical resolution wins over the broad
 	; scope aliases materialized above; qualified originals follow below.
 	clr.w ScopedSnapshotCount.l

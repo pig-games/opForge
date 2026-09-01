@@ -954,6 +954,7 @@ done
 encodeSelectedOperandV1	.block
 	movem.l d1-d2/d6-d7/a1-a2/a5-a6, -(sp)
 	clr.w state.EncodeSelectedOperandStatus
+	clr.b state.EncodeSelectedMselHasSymbolReference
 	move.l d0, d5
 	movea.l a0, a5
 	movea.l state.EncodeSelectedSymbolResolverPtr, a3
@@ -987,7 +988,24 @@ selectedResolverCall
 	adda.l #40, sp
 	tst.l d0
 	bne.s selectedResolverMiss
+	move.b #1, state.EncodeSelectedMselHasSymbolReference
+	; Rust evaluates the value and asks `has_unstable_symbols` independently.
+	; Preserve that second result on the direct lexical-resolver fast path:
+	; forward PC-backed labels are unstable until their defining statement has
+	; been refreshed in the current layout retry.
+	move.l d3, -(sp)
+	jsr context.getLastResolvedSymbolIndexV1
+	cmpi.w #-1, d0
+	beq.s selectedResolverStable
+	jsr context.isSymbolFinalV1
+	tst.l d0
+	bne.s selectedResolverStable
+	moveq #1, d5
+	bra.s selectedResolverStabilityReady
+selectedResolverStable
 	moveq #0, d5
+selectedResolverStabilityReady
+	move.l (sp)+, d3
 	moveq #0, d0
 	bra.w return
 
@@ -1094,8 +1112,13 @@ textOk
 	moveq #1, d5
 	moveq #0, d6
 	move.w state.EncodeSelectedSessionPass.l, d6
-	jsr expr_bridge.opcoreExvmEvalOperandV1
-	beq.w return
+	; Rust resolves every identifier term through the active lexical context,
+	; including terms inside compound expressions.  The direct-label fast path
+	; above covers a whole-token match; retain the resolver for ExprVM so
+	; `symbol + addend` follows the same lookup order.
+	movea.l state.EncodeSelectedSymbolResolverPtr, a5
+	jsr expr_bridge.opcoreExvmEvalOperandWithResolverV1
+	beq.s selectedExpressionOk
 	cmpi.b #3, d0
 	beq.s compileFail
 	cmpi.b #4, d0
@@ -1113,6 +1136,12 @@ textOk
 	cmpi.b #51, d0
 	bhs.s exprVmFail
 	move.w #4, state.EncodeSelectedOperandStatus
+	bra.w return
+
+selectedExpressionOk
+	tst.l d4
+	beq.w return
+	move.b #1, state.EncodeSelectedMselHasSymbolReference
 	bra.w return
 
 compileFail
@@ -1174,6 +1203,7 @@ loop
 	bra.s loop
 
 found
+	move.b #1, state.EncodeSelectedMselHasSymbolReference
 	move.l d6, d2
 	lsl.l #2, d2
 	move.l 0(a2, d2.l), d3

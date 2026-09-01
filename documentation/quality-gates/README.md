@@ -48,3 +48,8 @@ then-current 34-test corpus from a clean committed tree and retained a JSON
 receipt naming that exact commit and tree. The receipt also records the
 canonical ordered test list and the future-scope exclusion for parent-plan
 Items 7.4–7.7.
+
+`run_native_generation_two_bonus_completion.sh` runs the same canonical
+53-test inventory with the terminal two-generation self-host proof first. Only
+after that proof succeeds does it continue through the other 52 established
+Level D tests; it does not maintain a second test list.

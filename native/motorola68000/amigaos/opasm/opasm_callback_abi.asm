@@ -40,8 +40,9 @@ OPASM_STATUS_EVENT_CAPACITY = 5
 
 OPASM_EVENT_KIND = 0
 OPASM_EVENT_PASS = 2
+; Full 32-bit engine statement index. Large package builds routinely exceed the
+; 16-bit boundary, so bytes 4..7 are one field rather than index-plus-flags.
 OPASM_EVENT_STMT_INDEX = 4
-OPASM_EVENT_FLAGS = 6
 OPASM_EVENT_TEXT_PTR = 8
 OPASM_EVENT_TEXT_LEN = 12
 OPASM_EVENT_AUX_PTR = 14
@@ -51,6 +52,10 @@ OPASM_EVENT_STATUS = 24
 OPASM_EVENT_SERVICE_ORD = 26
 OPASM_EVENT_RESERVED = 28
 OPASM_EVENT_BYTES = 32
+
+; OPASM_EVENT_PASS is kind-specific. Service failures set this marker only
+; when OPASM_EVENT_STMT_INDEX identifies an actual source statement.
+OPASM_EVENT_CONTEXT_STATEMENT = 1
 
 OPASM_EVENT_PASS_BEGIN = 1
 OPASM_EVENT_PASS_OK = 2

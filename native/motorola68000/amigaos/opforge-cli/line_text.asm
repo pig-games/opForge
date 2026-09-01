@@ -331,11 +331,11 @@ opforgeNativeCliParseUseWildcard
 	lea strings.AsKeywordText, a1
 	moveq #2, d1
 	bsr.w opforgeNativeCliLineStartsWith
-	bne.s opforgeNativeCliParseUseItemsFail
+	bne.w opforgeNativeCliParseUseItemsFail
 	move.l d6, d0
-	beq.s opforgeNativeCliParseUseItemsFail
+	beq.w opforgeNativeCliParseUseItemsFail
 	cmpi.b #')', (a0)
-	bne.s opforgeNativeCliParseUseItemsFail
+	bne.w opforgeNativeCliParseUseItemsFail
 	addq.l #1, a0
 	subq.l #1, d0
 	moveq #0, d3
@@ -346,7 +346,7 @@ opforgeNativeCliParseUseWildcard
 	clr.b state.NativeCliIncludeTarget
 	moveq #2, d3
 	jsr module_use.opforgeNativeCliRecordImportSelect
-	bne.s opforgeNativeCliParseUseItemsFail
+	bne.w opforgeNativeCliParseUseItemsFail
 	bsr.w module_use.opforgeNativeCliEmitImportWildcardRecord
 	moveq #0, d1
 	rts

@@ -13,6 +13,9 @@ OPASM_SCOPE_NAME_CAPACITY = 64
 ; The exact Rust-expanded product reaches 107 bytes after module, nested block,
 ; and local-label qualification. Retain its terminating NUL as well.
 OPASM_SCOPE_TEXT_CAPACITY = 108
+OPASM_SCOPE_KIND_MODULE = 1
+OPASM_SCOPE_KIND_BLOCK = 2
+OPASM_SCOPE_KIND_NAMESPACE = 3
 
 	.section code, kind=code
 	.pub
@@ -108,6 +111,7 @@ done
 beginBlockScopeV1	.block
 	move.l d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
+	moveq #OPASM_SCOPE_KIND_BLOCK, d6
 	bsr.w pushText
 	bne.s fail
 	move.l d7, d2
@@ -126,6 +130,7 @@ fail
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 beginNamespaceScopeV1	.block
+	moveq #OPASM_SCOPE_KIND_NAMESPACE, d6
 	bsr.w pushFromStatementOperand
 	bne.s fail
 	move.l d7, d2
@@ -164,7 +169,8 @@ begin
 	moveq #0, d0
 	move.w d0, ScopeDepth.l
 	move.l d7, ActiveModuleStatementIndex.l
-	bsr.w beginNamespaceScopeV1
+	moveq #OPASM_SCOPE_KIND_MODULE, d6
+	bsr.w pushFromStatementOperand
 	bne.s moduleFail
 	tst.w RootModuleNameSet.l
 	bne.s moduleDone
@@ -212,6 +218,7 @@ endModuleScopeV1	.block
 	lea ParentModuleStatementIndexStack.l, a0
 	move.l 0(a0, d1.l), d7
 	move.l d7, ActiveModuleStatementIndex.l
+	moveq #OPASM_SCOPE_KIND_MODULE, d6
 	bsr.w pushFromStatementOperand
 	move.l (sp)+, d7
 	tst.l d0
@@ -249,6 +256,29 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; endScopeDirectiveV1
+
+; Return Rust ScopeStack::has_block_deeper_than(module_scope_depth) for the
+; active native scope stack. The module root occupies depth zero; namespaces
+; and repeat scopes do not satisfy the block-only predicate.
+; Outputs: D0 = 1 when a block exists below the module root, 0 otherwise.
+hasBlockDeeperThanModuleV1	.block
+	moveq #0, d0
+	moveq #1, d1
+	move.w ScopeDepth.l, d2
+scanKind
+	cmp.w d2, d1
+	bhs.s kindDone
+	lea ScopeKinds.l, a0
+	cmpi.b #OPASM_SCOPE_KIND_BLOCK, 0(a0, d1.l)
+	beq.s blockFound
+	addq.w #1, d1
+	bra.s scanKind
+blockFound
+	moveq #1, d0
+kindDone
+	tst.l d0
+	rts
+	.bend  ; hasBlockDeeperThanModuleV1
 
 ; Rewrite the current symbol directive's label with active scope prefixes.
 ; Inputs: D7.L = statement index.
@@ -418,7 +448,12 @@ scan
 	beq.s fail
 	movea.l a2, a0
 	move.l d6, d0
+	; Every Rust lexical-scope candidate is built from the original token.
+	; buildTextAtDepth consumes A2/D6 while copying that token, so retain both
+	; across an unsuccessful inner-scope lookup before trying the parent scope.
+	movem.l d6/a2, -(sp)
 	bsr.w buildTextAtDepth
+	movem.l (sp)+, d6/a2
 	bne.s next
 	move.l d1, d0
 	jsr eng.opasmEngineResolveLabelValueV1
@@ -500,6 +535,7 @@ return
 pushFromStatementLabel	.block
 	move.l d7, d0
 	jsr eng.opasmEngineGetStatementLabelTextV1
+	moveq #OPASM_SCOPE_KIND_BLOCK, d6
 	bsr.w pushText
 	rts
 	.bend  ; pushFromStatementLabel
@@ -512,16 +548,18 @@ pushFromStatementLabel	.block
 pushFromStatementOwner	.block
 	move.l d7, d0
 	jsr eng.opasmEngineGetStatementOwnerTextV1
+	moveq #OPASM_SCOPE_KIND_MODULE, d6
 	bsr.w pushText
 	rts
 	.bend  ; pushFromStatementOwner
 
 ; Push the first operand token of the current `.namespace` as one scope component.
-; Inputs: D7.L = statement index.
+; Inputs: D7.L = statement index; D6.B = OPASM_SCOPE_KIND_*.
 ; Outputs: D0 = 0 on success, 1 on missing/over-capacity name.
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
 pushFromStatementOperand	.block
+	move.w d6, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	move.l d7, d0
 	movea.l sp, a0
@@ -530,17 +568,20 @@ pushFromStatementOperand	.block
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
 	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
 	beq.s fail
+	move.w eng.OPASM_ENGINE_STMT_TEXT_BYTES(sp), d6
 	bsr.w pushText
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	addq.l #2, sp
 	rts
 fail
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	addq.l #2, sp
 	moveq #1, d0
 	rts
 	.bend  ; pushFromStatementOperand
 
 ; Push one identifier token onto the bounded scope stack.
-; Inputs: A0/D0 = name text/length.
+; Inputs: A0/D0 = name text/length; D6.B = OPASM_SCOPE_KIND_*.
 ; Outputs: D0 = 0 on success, 1 on malformed/capacity failure.
 ; Clobbers: D0-D5/A0-A2/CCR.
 ; CCR: reflects D0 on return.
@@ -574,6 +615,8 @@ copy
 finish
 	clr.b (a1)
 	move.w ScopeDepth.l, d2
+	lea ScopeKinds.l, a0
+	move.b d6, 0(a0, d2.l)
 	addq.w #1, d2
 	move.w d2, ScopeDepth.l
 	moveq #0, d0
@@ -706,6 +749,9 @@ RootModuleName
 
 ScopeNames
 	.res byte, OPASM_SCOPE_DEPTH_CAPACITY * OPASM_SCOPE_NAME_CAPACITY
+
+ScopeKinds
+	.res byte, OPASM_SCOPE_DEPTH_CAPACITY
 
 ParentModuleStatementIndexStack
 	.res long, OPASM_MODULE_PARENT_DEPTH_CAPACITY

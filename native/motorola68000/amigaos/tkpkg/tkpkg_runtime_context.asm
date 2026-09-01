@@ -53,6 +53,13 @@ getLastResolvedSymbolIndexV1	.block
 	jmp adapter.getLastResolvedSymbolIndexV1
 	.bend  ; getLastResolvedSymbolIndexV1
 
+; Return the engine-owned finality bit for one opaque symbol index. This is the
+; native counterpart of Rust's `symbol_is_finalized` context query.
+; Inputs: D0 = opaque symbol index. Outputs: D0 = 1 final, 0 unstable/invalid.
+isSymbolFinalV1	.block
+	jmp adapter.isSymbolFinalV1
+	.bend  ; isSymbolFinalV1
+
 ; Read one opaque package-owned runtime-state key.
 ; Inputs: A0/D0 = key text. Outputs: D0 = 0 found/D1 value, 1 absent.
 getCpuStateFlagV1	.block

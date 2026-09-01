@@ -5,6 +5,7 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/workflow/run_native_existing_parity_completion.sh --verify
+  scripts/workflow/run_native_existing_parity_completion.sh --verify-generation-two-first
   scripts/workflow/run_native_existing_parity_completion.sh --check-config
 
 Runs every established fail-closed native CLI Level D parity group required by
@@ -15,7 +16,7 @@ EOF
 }
 
 mode="${1:-}"
-[[ $# -eq 1 && ( "${mode}" == "--verify" || "${mode}" == "--check-config" ) ]] || {
+[[ $# -eq 1 && ( "${mode}" == "--verify" || "${mode}" == "--verify-generation-two-first" || "${mode}" == "--check-config" ) ]] || {
   usage >&2
   exit 2
 }
@@ -94,6 +95,19 @@ tests=(
   external_fs_uae_native_opforge_full_product_artifact_parity
   external_fs_uae_native_opforge_two_generation_self_host_parity
 )
+
+if [[ "${mode}" == "--verify-generation-two-first" ]]; then
+  generation_two_test=external_fs_uae_native_opforge_two_generation_self_host_parity
+  generation_two_first_tests=("${generation_two_test}")
+  for test_name in "${tests[@]}"; do
+    [[ "${test_name}" == "${generation_two_test}" ]] || generation_two_first_tests+=("${test_name}")
+  done
+  [[ ${#generation_two_first_tests[@]} -eq ${#tests[@]} ]] || {
+    echo "error: generation-two-first ordering changed the established test inventory" >&2
+    exit 2
+  }
+  tests=("${generation_two_first_tests[@]}")
+fi
 
 test_source="crates/opforge-asm/src"
 for test_name in "${tests[@]}"; do

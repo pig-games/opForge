@@ -64,6 +64,19 @@ conditionalFail
 	moveq #1, d0
 	rts
 conditionalPass
+	bsr.w opforgeNativeCliRouteIncbinLineV1
+	tst.l d0
+	beq.s incbinPass
+	bpl.s incbinConsumed
+	move.l #strings.IncludeFailureText, d1
+	jsr dos.putErrStr
+	bra.w fail
+
+incbinConsumed
+	moveq #0, d0
+	rts
+
+incbinPass
 	jsr metadata.opforgeNativeCliRouteRootMetadataLineV1
 	tst.l d0
 	beq.s metadataPass
@@ -622,6 +635,196 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliProcessExpandedScopeLineV1
+
+; Expand Rust's `.incbin` preprocessing boundary into ordinary `.byte` source
+; rows.  The file is resolved relative to the active source file (then the
+; configured include roots), read in Rust's 16-byte chunks, and re-enters the
+; normal line pipeline so labels, section layout, listings, and output bytes
+; have the same owners as the authoritative preprocessor.
+; Outputs: D0 = 0 passthrough, 1 consumed, -1 malformed/I/O/pipeline failure.
+; Clobbers: D0-D3/A0-A1/CCR.
+opforgeNativeCliRouteIncbinLineV1	.block
+	movem.l d4-d7/a2-a4, -(sp)
+	clr.w IncbinLabelLen.l
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.w passthrough
+	movea.l a0, a4
+	move.l d0, d7
+	lea strings.IncbinDirectiveText, a1
+	moveq #7, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	bne.w directiveReady
+
+	; Rust also accepts `Label .incbin ...` and `Label: .incbin ...`. Retain the
+	; label only on the first generated row (or as a label-only row for an empty
+	; file), exactly like Preprocessor::push_incbin_bytes.
+	movea.l a4, a0
+	move.l d7, d0
+	lea IncbinLabel.l, a2
+	moveq #0, d4
+labelScan
+	tst.l d0
+	beq.w passthrough
+	move.b (a0), d2
+	cmpi.b #':', d2
+	beq.s labelColon
+	cmpi.b #' ', d2
+	beq.s labelDone
+	cmpi.b #9, d2
+	beq.s labelDone
+	cmpi.b #';', d2
+	beq.w passthrough
+	cmpi.w #107, d4
+	bhs.w malformed
+	move.b d2, (a2)+
+	addq.l #1, a0
+	subq.l #1, d0
+	addq.w #1, d4
+	bra.s labelScan
+labelColon
+	addq.l #1, a0
+	subq.l #1, d0
+labelDone
+	tst.w d4
+	beq.w passthrough
+	clr.b (a2)
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.w passthrough
+	movea.l a0, a4
+	move.l d0, d7
+	move.w d4, IncbinLabelLen.l
+	lea strings.IncbinDirectiveText, a1
+	moveq #7, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.w passthrough
+
+directiveReady
+	movea.l a4, a0
+	move.l d7, d0
+	addq.l #7, a0
+	subq.l #7, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	lea state.NativeCliIncludeTarget, a1
+	jsr include_use.opforgeNativeCliCopyIncludeTarget
+	bne.w malformed
+	jsr include_use.opforgeNativeCliResolveIncludePath
+	bne.w malformed
+	lea state.NativeCliIncludePath, a0
+	jsr dos.openInput
+	tst.l d0
+	beq.w malformed
+	move.l d0, d7
+	moveq #1, d5
+
+readChunk
+	lea IncbinBytes.l, a0
+	moveq #16, d0
+	move.l d7, d1
+	jsr dos.readInput
+	cmpi.l #-1, d0
+	beq.w readFail
+	tst.l d0
+	beq.w fileDone
+	move.l d0, d6
+	lea state.NativeCliPreprocessExpansionLine, a2
+	moveq #0, d4
+	tst.w d5
+	beq.s appendByteDirective
+	moveq #0, d0
+	move.w IncbinLabelLen.l, d0
+	beq.s appendByteDirective
+	lea IncbinLabel.l, a0
+copyLabel
+	move.b (a0)+, (a2)+
+	addq.w #1, d4
+	subq.w #1, d0
+	bne.s copyLabel
+	move.b #' ', (a2)+
+	addq.w #1, d4
+
+appendByteDirective
+	move.b #'.', (a2)+
+	move.b #'b', (a2)+
+	move.b #'y', (a2)+
+	move.b #'t', (a2)+
+	move.b #'e', (a2)+
+	move.b #' ', (a2)+
+	addq.w #6, d4
+	lea IncbinBytes.l, a3
+	moveq #0, d3
+byteLoop
+	tst.w d3
+	beq.s bytePrefixReady
+	move.b #',', (a2)+
+	move.b #' ', (a2)+
+	addq.w #2, d4
+bytePrefixReady
+	move.b #'$', (a2)+
+	moveq #0, d0
+	move.b (a3)+, d0
+	move.l d0, d1
+	lsr.b #4, d0
+	bclr #4, d0
+	bsr.w incbinHexDigit
+	move.b d0, (a2)+
+	move.l d1, d0
+	andi.b #$0f, d0
+	bsr.w incbinHexDigit
+	move.b d0, (a2)+
+	addq.w #3, d4
+	addq.w #1, d3
+	cmp.w d6, d3
+	blo.s byteLoop
+	lea state.NativeCliPreprocessExpansionLine, a0
+	moveq #0, d0
+	move.w d4, d0
+	bsr.w opforgeNativeCliProcessExpandedLineV1
+	bne.w readFail
+	moveq #0, d5
+	bra.w readChunk
+
+fileDone
+	tst.w d5
+	beq.s closeSuccess
+	moveq #0, d0
+	move.w IncbinLabelLen.l, d0
+	beq.s closeSuccess
+	lea IncbinLabel.l, a0
+	bsr.w opforgeNativeCliProcessExpandedLineV1
+	bne.s readFail
+closeSuccess
+	move.l d7, d1
+	jsr dos.close
+	movem.l (sp)+, d4-d7/a2-a4
+	moveq #1, d0
+	rts
+
+readFail
+	move.l d7, d1
+	jsr dos.close
+malformed
+	movem.l (sp)+, d4-d7/a2-a4
+	moveq #-1, d0
+	rts
+passthrough
+	movem.l (sp)+, d4-d7/a2-a4
+	moveq #0, d0
+	rts
+	.bend  ; opforgeNativeCliRouteIncbinLineV1
+
+; Convert the low nibble in D0 to one uppercase hexadecimal byte.
+incbinHexDigit	.block
+	andi.b #$0f, d0
+	addi.b #'0', d0
+	cmpi.b #'9', d0
+	bls.s done
+	addi.b #'A' - '9' - 1, d0
+done
+	rts
+	.bend  ; incbinHexDigit
 
 ; Drain the active bounded macro frame through the ordinary CLI line path.
 ; Inputs: a complete preprocessor invocation frame is active.
@@ -1238,6 +1441,15 @@ opforgeNativeCliPrepareLineServiceRequest	.block
 	rts
 	.bend  ; opforgeNativeCliPrepareLineServiceRequest
 
+	.endsection
+
+	.section bss, kind=bss
+IncbinLabelLen
+	.res word, 1
+IncbinLabel
+	.res byte, 108
+IncbinBytes
+	.res byte, 16
 	.endsection
 
 	.endmodule

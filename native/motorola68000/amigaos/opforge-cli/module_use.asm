@@ -515,7 +515,7 @@ ordinaryResolveBuild
 	adda.l d0, a1
 	lea state.NativeCliResolvedImportName, a0
 	moveq #0, d1
-	moveq #constants.TOKEN_BUFFER_CAPACITY - 1, d3
+	moveq #constants.NATIVE_RESOLVED_IMPORT_NAME_CAPACITY - 1, d3
 
 ordinaryResolveBuildModule
 	move.b (a1)+, d0
@@ -1415,7 +1415,10 @@ tokenExactReady
 	.bend  ; compareTokenExact
 
 compareFoldedExact	.block
-	move.l d4, -(sp)
+	; Import resolution keeps its owning module id and table cursors in D2/D3
+	; while it compares successive qualifier candidates. Preserve those caller
+	; values so rejecting one earlier `.use` cannot redirect later imports.
+	movem.l d2-d4, -(sp)
 	cmp.l d1, d0
 	bne.s foldedNo
 	moveq #0, d2
@@ -1446,7 +1449,7 @@ foldedYes
 foldedNo
 	moveq #0, d0
 foldedReturn
-	move.l (sp)+, d4
+	movem.l (sp)+, d2-d4
 	rts
 	.bend  ; compareFoldedExact
 

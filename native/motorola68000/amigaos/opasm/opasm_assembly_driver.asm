@@ -176,6 +176,7 @@ opasmDriverPassOneBegin	.block
 	bsr.w appendPassEvent
 	jsr eng.opasmEngineBeginPassOneV1
 	clr.w OpasmDriverImageBaseSeen
+	clr.w OpasmDriverPlacedLabelsSeeded
 	jsr layout.resetStateV1
 	movea.l OpasmActiveAssembleReqPtr, a0
 	movea.l abi.OPASM_ASSEMBLE_REQ_LAYOUT_INIT_CB(a0), a0
@@ -225,8 +226,16 @@ opasmDriverPassTwoBegin	.block
 	bne.s layoutFail
 	bsr.w finalizeImageOriginForPassTwo
 	bne.s layoutFail
+	; Rust seeds the first stabilization retry from pass one's placed symbol
+	; snapshot, then carries each retry's corrected symbol values into the next
+	; retry and final emission. Reapplying the immutable pass-one values here on
+	; every retry would discard branch-width movement and prevent convergence.
+	tst.w OpasmDriverPlacedLabelsSeeded
+	bne.s placedLabelsReady
 	bsr.w rebasePlacedLabelsForPassTwo
 	bne.s rebaseFail
+	move.w #1, OpasmDriverPlacedLabelsSeeded
+placedLabelsReady
 	bsr.w refreshAbsoluteConstantLabelsForPassTwo
 	bne.s rebaseFail
 	jsr layout.beginPassTwoV1
@@ -351,7 +360,7 @@ labelLoop
 	cmp.l d5, d4
 	bhs.s success
 	move.l d4, d0
-	jsr eng.opasmEngineGetPcBackedLabelValueV1
+	jsr eng.opasmEngineGetPassOnePcBackedLabelValueV1
 	tst.l d1
 	beq.s next
 	move.l d0, d3
@@ -1219,7 +1228,11 @@ recordBlockEntryLabelV1	.block
 	move.l d0, d7
 	jsr eng.opasmEngineGetStatementLabelTextV1
 	move.l d0, d6
-	beq.s blockEntryFail
+	; Rust's macro expander emits anonymous `.block`/`.endblock` pairs around
+	; every invocation.  Only a source label creates a callable block-entry
+	; symbol; an anonymous lexical block is a successful no-op here and is then
+	; pushed by beginBlockScopeV1 like every other scope.
+	beq.s blockEntryNoLabel
 	movea.l sp, a1
 	move.l d6, d4
 blockEntryCopy
@@ -1237,8 +1250,8 @@ blockEntryCopy
 	beq.s blockEntryReturn
 	moveq #1, d5
 	bra.s blockEntryReturn
-blockEntryFail
-	moveq #1, d5
+blockEntryNoLabel
+	moveq #0, d5
 blockEntryReturn
 	move.l d5, d0
 	adda.l #eng.LABEL_NAME_CAPACITY, sp
@@ -1631,7 +1644,7 @@ serviceFail
 	jsr tkpkg.readLastErrorPtrV1
 	move.w d4, d1
 	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
-	bsr.w appendTextEvent
+	bsr.w appendStatementTextEvent
 
 serviceFailReturn
 	moveq #1, d0
@@ -2172,7 +2185,7 @@ fail
 	jsr tkpkg.readLastErrorPtrV1
 	move.w d4, d1
 	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
-	bsr.w appendTextEvent
+	bsr.w appendStatementTextEvent
 
 failReturn
 	moveq #1, d0
@@ -3422,7 +3435,8 @@ lowerD3	.block
 	rts
 	.bend  ; lowerD3
 
-; Evaluate a comma-separated directive operand part.
+; Evaluate a comma-separated directive operand part. Commas inside quoted text
+; belong to that operand, matching the Rust directive parser.
 ; Inputs: D7.L = statement index; D6.W = one-based operand part number.
 ; Outputs: D0.L = 0 on success, 1 on parse/evaluation failure; D3.L = value.
 ; Clobbers: D0-D7/A0-A3/CCR.
@@ -3447,13 +3461,44 @@ partStart
 	bsr.w skipPartWhitespace
 	movea.l a2, a3
 	moveq #0, d5
+	moveq #0, d1
+	moveq #0, d3
 
 partScan
 	tst.l d2
 	beq.s partEnd
 	move.b (a2), d0
+	tst.b d1
+	beq.s partUnquoted
+	tst.b d3
+	beq.s partQuotedByte
+	clr.b d3
+	bra.s partAdvance
+
+partQuotedByte
+	cmpi.b #92, d0
+	bne.s partQuotedEnd
+	moveq #1, d3
+	bra.s partAdvance
+partQuotedEnd
+	cmp.b d1, d0
+	bne.s partAdvance
+	clr.b d1
+	bra.s partAdvance
+
+partUnquoted
+	cmpi.b #'"', d0
+	beq.s partQuoteOpen
+	cmpi.b #39, d0
+	beq.s partQuoteOpen
 	cmpi.b #',', d0
 	beq.s partEnd
+	bra.s partAdvance
+
+partQuoteOpen
+	move.b d0, d1
+
+partAdvance
 	addq.l #1, a2
 	subq.l #1, d2
 	addq.l #1, d5
@@ -3579,9 +3624,16 @@ resolveImportedLabelValue	.block
 	movea.l abi.OPASM_SERVICE_IMPORT_NAME_RESOLVER_PTR(a0), a2
 	move.l a2, d0
 	beq.s importedResolveFail
-	jsr scopes.activeModuleNameV1
-	tst.l d1
+	; Rust resolves imports in the source statement's retained module context,
+	; not whichever module scope was most recently active during pass replay.
+	; Recursive module collection is complete before assembly, so transient scope
+	; state is not an authoritative owner for a stored expression.
+	move.l d7, d0
+	jsr eng.opasmEngineGetStatementOwnerTextV1
+	tst.l d0
 	beq.s importedResolveFail
+	movea.l a0, a1
+	move.l d0, d1
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	jsr (a2)
@@ -4846,7 +4898,7 @@ appendKindEvent	.block
 	movea.l sp, a0
 	bsr.w clearEventFrame
 	move.w d0, abi.OPASM_EVENT_KIND(a0)
-	move.w d7, abi.OPASM_EVENT_STMT_INDEX(a0)
+	move.l d7, abi.OPASM_EVENT_STMT_INDEX(a0)
 	movea.l a0, a2
 	bsr.w appendEventFrame
 	adda.l #abi.OPASM_EVENT_BYTES, sp
@@ -4883,6 +4935,29 @@ appendTextEvent	.block
 	movem.l (sp)+, d2/a0-a2
 	rts
 	.bend  ; appendTextEvent
+
+; Append text plus the active statement identity for a source-owned service
+; failure. Inputs match appendTextEvent; D7 is the full engine statement index.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-two-gen-self-host-v1.toml
+; @opforge-role: facade
+appendStatementTextEvent	.block
+	movem.l d2/a0-a2, -(sp)
+	movea.l a0, a1
+	suba.l #abi.OPASM_EVENT_BYTES, sp
+	movea.l sp, a0
+	bsr.w clearEventFrame
+	move.w d0, abi.OPASM_EVENT_KIND(a0)
+	move.w #abi.OPASM_EVENT_CONTEXT_STATEMENT, abi.OPASM_EVENT_PASS(a0)
+	move.l d7, abi.OPASM_EVENT_STMT_INDEX(a0)
+	move.l a1, abi.OPASM_EVENT_TEXT_PTR(a0)
+	move.w d1, abi.OPASM_EVENT_TEXT_LEN(a0)
+	movea.l a0, a2
+	bsr.w appendEventFrame
+	adda.l #abi.OPASM_EVENT_BYTES, sp
+	movem.l (sp)+, d2/a0-a2
+	rts
+	.bend  ; appendStatementTextEvent
 
 appendTextValueEvent	.block
 	movem.l d3/a0-a2, -(sp)
@@ -5230,6 +5305,9 @@ OpasmMatchValue
 	.res long, 1
 
 OpasmDriverImageBaseSeen
+	.res word, 1
+
+OpasmDriverPlacedLabelsSeeded
 	.res word, 1
 
 OpasmDriverInitialCpuName

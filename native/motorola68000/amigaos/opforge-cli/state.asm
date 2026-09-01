@@ -403,7 +403,7 @@ NativeCliOrdinaryExportNameOffsetTable
 NativeCliOrdinaryExportNamePool
 	.res byte, constants.NATIVE_ORDINARY_EXPORT_NAME_POOL_CAPACITY
 NativeCliResolvedImportName
-	.res byte, constants.TOKEN_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_RESOLVED_IMPORT_NAME_CAPACITY
 NativeCliModulePathTable
 	.res byte, constants.NATIVE_MODULE_PATH_CAPACITY * constants.PATH_BUFFER_CAPACITY
 NativeCliIncludePathTable

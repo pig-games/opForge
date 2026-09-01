@@ -261,6 +261,8 @@ UseDirectiveText
 	.byte ".use"
 IncludeDirectiveText
 	.byte ".include"
+IncbinDirectiveText
+	.byte ".incbin"
 OutputDirectiveText
 	.byte ".output"
 MapfileDirectiveText

@@ -150,13 +150,13 @@ unknownMnemonic
 	move.l #strings.NativeUnknownMnemonicText, d1
 	jsr dos.putErrStr
 	moveq #0, d0
-	move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0
+	move.l abi.OPASM_EVENT_STMT_INDEX(a2), d0
 	jsr text_output.opforgeNativeCliPutErrU16Decimal
 	jsr text_output.opforgeNativeCliPutErrSpace
 	suba.l #engine.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
 	moveq #0, d0
-	move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0
+	move.l abi.OPASM_EVENT_STMT_INDEX(a2), d0
 	jsr engine.opasmEngineGetStatementTextMetadataV1
 	bne.s unknownMnemonicDone
 	move.l engine.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), d1
@@ -177,18 +177,18 @@ unsupportedAddressing
 
 unresolvedLabel
 	move.l #strings.NativeUnresolvedLabelText, d1
-	bra.s reportErrorText
+	bra.w reportErrorText
 
 badOrg
 	move.l #strings.NativeBadOrgText, d1
 	jsr dos.putErrStr
 	moveq #0, d0
-	move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0
+	move.l abi.OPASM_EVENT_STMT_INDEX(a2), d0
 	jsr text_output.opforgeNativeCliPutErrU16Decimal
 	move.l #strings.NewlineText, d1
 	jsr dos.putErrStr
 	moveq #0, d0
-	move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0
+	move.l abi.OPASM_EVENT_STMT_INDEX(a2), d0
 	jsr engine.opasmEngineGetStatementSourceTextV1
 	tst.l d0
 	beq.w done
@@ -205,6 +205,16 @@ serviceFailure
 	move.l abi.OPASM_EVENT_VALUE(a2), d0
 	jsr text_output.opforgeNativeCliPutErrU16Decimal
 serviceFailureDone
+	move.l #strings.NewlineText, d1
+	jsr dos.putErrStr
+	cmpi.w #abi.OPASM_EVENT_CONTEXT_STATEMENT, abi.OPASM_EVENT_PASS(a2)
+	bne.w done
+	move.l abi.OPASM_EVENT_STMT_INDEX(a2), d0
+	jsr engine.opasmEngineGetStatementSourceTextV1
+	tst.l d0
+	beq.w done
+	move.l a0, d1
+	jsr dos.putErrStr
 	move.l #strings.NewlineText, d1
 	bra.s reportErrorText
 
@@ -294,8 +304,9 @@ done
 	.bend  ; reportEventErrorText
 
 ; Render Rust's generic package-selection failure for the event-owned
-; statement. The mnemonic is uppercased from bounded statement metadata; no
-; instruction or CPU vocabulary is owned by this renderer.
+; statement. The mnemonic is uppercased from bounded statement metadata, then
+; the original source row is retained as diagnostic context; no instruction or
+; CPU vocabulary is owned by this renderer.
 ; Inputs: A2 = OPASM_EVENT_UNKNOWN_MNEMONIC or _UNSUPPORTED_ADDRESSING record.
 ; Outputs: `No instruction found for <MNEMONIC>` is written to ErrorOutput.
 ; Clobbers: none; D0-D3/A0-A2 are protected by the routine body.
@@ -304,11 +315,11 @@ reportNoInstructionFound	.block
 	suba.l #engine.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
 	moveq #0, d0
-	move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0
+	move.l abi.OPASM_EVENT_STMT_INDEX(a2), d0
 	jsr engine.opasmEngineGetStatementTextMetadataV1
-	bne.s noInstructionDone
+	bne.w noInstructionDone
 	move.l engine.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d2
-	beq.s noInstructionDone
+	beq.w noInstructionDone
 	cmpi.l #255, d2
 	bls.s noInstructionLengthReady
 	move.l #255, d2
@@ -332,6 +343,14 @@ noInstructionStore
 	move.l #strings.NativeNoInstructionFoundText, d1
 	jsr dos.putErrStr
 	move.l #EventTextBuffer, d1
+	jsr dos.putErrStr
+	move.l #strings.NewlineText, d1
+	jsr dos.putErrStr
+	move.l abi.OPASM_EVENT_STMT_INDEX(a2), d0
+	jsr engine.opasmEngineGetStatementSourceTextV1
+	tst.l d0
+	beq.s noInstructionDone
+	move.l a0, d1
 	jsr dos.putErrStr
 	move.l #strings.NewlineText, d1
 	jsr dos.putErrStr

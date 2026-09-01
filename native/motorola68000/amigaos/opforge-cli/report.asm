@@ -85,7 +85,7 @@ opforgeNativeCliEmitAssemblySessionSummary	.block
 	move.l #strings.SessionImageBytesText, d1
 	jsr dos.putStr
 	jsr engine.opasmEngineGetImageByteCountV1
-	jsr text_output.opforgeNativeCliPutU16Decimal
+	jsr text_output.opforgeNativeCliPutU32Decimal
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	move.l #strings.SessionReadyText, d1

@@ -15740,6 +15740,21 @@ fn motorola68020_item17_native_input_fields_v6_matches_rust_boundary() {
 }
 
 #[test]
+fn native_fixup_emission_restores_width_after_recording_target_index() {
+    let encode = tkpkg_amigaos_source("tkpkg_encode_service.asm");
+    assert!(source_contains_in_order(
+        &encode,
+        &[
+            "move.w d2, d1",
+            "move.w d5, d2",
+            "bsr.w tkpkgRecordOutputFixupV1",
+            "move.w 2(sp), d2",
+            "bsr.w tkpkgSemanticEmitUnitV2",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_item17_native_indirect_tuple_projection_matches_rust_boundary() {
     let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
     let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
@@ -16177,15 +16192,18 @@ fn motorola68020_item19_native_layout_stability_matches_rust_boundary() {
             "tst.w OpasmEngineLayoutChanged.l",
             "subq.w #1, OpasmEngineLayoutPassesRemaining.l",
             "bne.s layoutPass",
+            "finalEmission",
+            "move.w #1, OpasmEngineFinalEmission.l",
+            "bsr.w runPassTwo",
         ],
     ));
     assert!(source_contains_in_order(
         &engine,
         &[
             "opasmEngineRefreshStatementPcLabelV1\t.block",
-            "OpasmEngineStmtLabelNameTable",
+            "bsr.w statementLabelNamePtr",
             "refreshFindLoop",
-            "OpasmEngineLabelNameTable",
+            "bsr.w labelNamePtr",
             "bsr.w labelEquals",
             "OpasmEngineLabelPcBackedTable",
             "OpasmEngineLabelValueTable",
@@ -16203,6 +16221,19 @@ fn motorola68020_item19_native_layout_stability_matches_rust_boundary() {
             "OPASM_ENGINE_CTX_BIN_REQUESTED_PTR",
         ],
     ));
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "opasmEngineBeginPassTwoV1\t.block",
+            "OpasmEngineLabelFinalizedTable",
+            "OpasmEngineLabelPcBackedTable",
+            "clr.b (a0)+",
+            "opasmEngineRefreshStatementPcLabelV1\t.block",
+            "OpasmEngineLabelFinalizedTable",
+            "move.b #1, 0(a0, d4.l)",
+            "opasmEngineIsLayoutStabilizationV1\t.block",
+        ],
+    ));
     let driver = fs::read_to_string(
         workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
     )
@@ -16216,10 +16247,107 @@ fn motorola68020_item19_native_layout_stability_matches_rust_boundary() {
             "jsr eng.opasmEngineRefreshStatementPcLabelV1",
         ],
     ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "opasmDriverPassOneBegin\t.block",
+            "clr.w OpasmDriverPlacedLabelsSeeded",
+            "opasmDriverPassTwoBegin\t.block",
+            "tst.w OpasmDriverPlacedLabelsSeeded",
+            "bne.s placedLabelsReady",
+            "bsr.w rebasePlacedLabelsForPassTwo",
+            "move.w #1, OpasmDriverPlacedLabelsSeeded",
+            "placedLabelsReady",
+        ],
+    ));
+    let layout = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_layout.asm"),
+    )
+    .expect("read native layout owner");
+    assert!(source_contains_in_order(
+        &layout,
+        &[
+            "processEndsectionV1\t.block",
+            "sub.l OpasmLayoutActiveSectionStartPc.l, d1",
+            "cmp.l (a0), d1",
+            "jsr eng.opasmEngineMarkLayoutChangedV1",
+            "move.l d1, (a0)",
+            "beginSectionPassTwoV1\t.block",
+            "move.l d0, OpasmLayoutActiveSectionStartPc.l",
+        ],
+    ));
+    let engine = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_engine.asm"),
+    )
+    .expect("read native assembly engine");
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "opasmEngineMarkLayoutChangedV1\t.block",
+            "move.w #1, OpasmEngineLayoutChanged.l",
+        ],
+    ));
     let selection = fs::read_to_string(
         workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm"),
     )
     .expect("read native package selection service");
+    let rust_selector_bridge = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_bridge.rs"),
+    )
+    .expect("read Rust selector candidate-loop authority");
+    assert!(source_contains_in_order(
+        &rust_selector_bridge,
+        &[
+            "let mut candidates = Vec::new()",
+            "let mut candidate_error: Option<String> = None",
+            "Err(message)",
+            "owner_candidate_error = Some((selector.priority, message))",
+            "if !candidates.is_empty()",
+            "if let Some(message) = candidate_error",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "cmseCandidateReady",
+            "cmpi.l #TKPKG_SELECTED_STATUS_SEMANTIC_REJECT, d0",
+            "cmpi.l #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0",
+            "cmseCandidateError",
+            "cmseRejectSave",
+            "move.w d0, 32(sp)",
+            "cmseCandidateNotOk",
+            "bra.w cmseSelectorNext",
+            "cmseNoFallback",
+            "move.w 32(sp), d0",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "clr.w 34(sp)",
+            "cmseCandidateCheckOk",
+            "cmseSuccessCpuRank",
+            "cmp.w 34(sp), d2",
+            "cmseSuccessCopy",
+            "move.w d2, 34(sp)",
+            "cmseSuccessRestore",
+            "move.b d3, state.EncodeSelectedSemanticPlanKind",
+            "move.b d3, state.EncodeSelectedMselUnstable",
+            "move.b d3, state.EncodeSelectedMselHasSymbolReference",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "sequenceProjectInput",
+            "btst #0, d2",
+            "bsr.w tkpkgProjectForcedFixupTargetV2",
+            "tkpkgProjectForcedFixupTargetV2\t.block",
+            "bsr.w tkpkgProjectCompactSemanticInputV2",
+            "forcedTargetMemberScan",
+            "jsr operand.tkpkgMselEvaluateSemanticSpanV2",
+        ],
+    ));
     assert!(source_contains_in_order(
         &selection,
         &[
@@ -16229,6 +16357,78 @@ fn motorola68020_item19_native_layout_stability_matches_rust_boundary() {
             "bsr.w tkpkgServiceStringEqAsciiCasefoldV1",
             "movea.l (sp)+, a2",
             "branchInputReady",
+        ],
+    ));
+    assert!(source_contains_in_order(
+        &selection,
+        &[
+            "TKPKG_SELECTED_EXTENSION_DEFER_INPUT_SIZE = 36",
+            "haveResolverExtension",
+            "state.EncodeSelectedSymbolResolverPtr",
+            "TKPKG_SELECTED_EXTENSION_DEFER_INPUT_SIZE",
+            "state.EncodeSelectedDeferUnstableBranchTarget",
+        ],
+    ));
+
+    let scopes = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm"),
+    )
+    .expect("read native scope stability owner");
+    assert!(source_contains_in_order(
+        &scopes,
+        &[
+            "OPASM_SCOPE_KIND_BLOCK = 2",
+            "beginBlockScopeV1\t.block",
+            "moveq #OPASM_SCOPE_KIND_BLOCK, d6",
+            "hasBlockDeeperThanModuleV1\t.block",
+            "ScopeKinds.l",
+            "cmpi.b #OPASM_SCOPE_KIND_BLOCK",
+        ],
+    ));
+    let operand_eval = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_operand_eval.asm"),
+    )
+    .expect("read native selected extension owner");
+    assert!(source_contains_in_order(
+        &operand_eval,
+        &[
+            "prepareSelectedExtensionV1\t.block",
+            "jsr scopes.hasBlockDeeperThanModuleV1",
+            "jsr eng.opasmEngineIsLayoutStabilizationV1",
+            "move.l d0, 32(a1)",
+        ],
+    ));
+    let encode = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm"),
+    )
+    .expect("read native branch execution owner");
+    assert!(source_contains_in_order(
+        &encode,
+        &[
+            "tst.b state.EncodeSelectedMselUnstable",
+            "cmpi.w #1, state.EncodeSelectedSessionPass",
+            "branchExplicitDefer",
+            "cmpi.l #-1, 20(sp)",
+            "tst.b state.EncodeSelectedDeferUnstableBranchTarget",
+            "tst.b state.EncodeSelectedMselHasSymbolReference",
+            "branchMarkUnresolved",
+        ],
+    ));
+    let operand_runtime = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm"),
+    )
+    .expect("read native direct selected resolver");
+    assert!(source_contains_in_order(
+        &operand_runtime,
+        &[
+            "clr.b state.EncodeSelectedMselHasSymbolReference",
+            "selectedResolverCall",
+            "jsr (a3)",
+            "move.b #1, state.EncodeSelectedMselHasSymbolReference",
+            "jsr context.getLastResolvedSymbolIndexV1",
+            "jsr context.isSymbolFinalV1",
+            "moveq #1, d5",
+            "selectedResolverStabilityReady",
         ],
     ));
     assert!(source_contains_in_order(
@@ -18751,9 +18951,75 @@ fn motorola68020_opasm_bounded_event_sink_retains_terminal_failure_evidence() {
         &report,
         &[
             "badOrg",
-            "move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0",
+            "move.l abi.OPASM_EVENT_STMT_INDEX(a2), d0",
             "jsr text_output.opforgeNativeCliPutErrU16Decimal",
-            "move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0",
+            "move.l abi.OPASM_EVENT_STMT_INDEX(a2), d0",
+            "jsr engine.opasmEngineGetStatementSourceTextV1",
+            "move.l a0, d1",
+            "jsr dos.putErrStr",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_opasm_failure_events_preserve_32_bit_statement_identity() {
+    let abi = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_callback_abi.asm"),
+    )
+    .expect("read native opasm callback ABI");
+    let driver = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native opasm assembly driver");
+    let report = opforge_amigaos_source("opasm_event_report.asm");
+
+    assert!(source_contains_in_order(
+        &abi,
+        &[
+            "OPASM_EVENT_STMT_INDEX = 4",
+            "OPASM_EVENT_TEXT_PTR = 8",
+            "OPASM_EVENT_BYTES = 32",
+            "OPASM_EVENT_CONTEXT_STATEMENT = 1",
+        ]
+    ));
+    assert!(!abi.contains("OPASM_EVENT_FLAGS"));
+    assert!(driver.contains("move.l d7, abi.OPASM_EVENT_STMT_INDEX(a0)"));
+    assert!(!driver.contains("move.w d7, abi.OPASM_EVENT_STMT_INDEX(a0)"));
+    assert_eq!(
+        report
+            .matches("move.l abi.OPASM_EVENT_STMT_INDEX(a2), d0")
+            .count(),
+        7
+    );
+    assert!(!report.contains("move.w abi.OPASM_EVENT_STMT_INDEX(a2), d0"));
+    assert!(source_contains_in_order(
+        &report,
+        &[
+            "reportNoInstructionFound",
+            "jsr engine.opasmEngineGetStatementTextMetadataV1",
+            "move.l #strings.NativeNoInstructionFoundText, d1",
+            "move.l abi.OPASM_EVENT_STMT_INDEX(a2), d0",
+            "jsr engine.opasmEngineGetStatementSourceTextV1",
+            "move.l a0, d1",
+            "jsr dos.putErrStr",
+        ]
+    ));
+    assert_eq!(driver.matches("bsr.w appendStatementTextEvent").count(), 2);
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "appendStatementTextEvent",
+            "move.w #abi.OPASM_EVENT_CONTEXT_STATEMENT, abi.OPASM_EVENT_PASS(a0)",
+            "move.l d7, abi.OPASM_EVENT_STMT_INDEX(a0)",
+            "move.l a1, abi.OPASM_EVENT_TEXT_PTR(a0)",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &report,
+        &[
+            "serviceFailureDone",
+            "cmpi.w #abi.OPASM_EVENT_CONTEXT_STATEMENT, abi.OPASM_EVENT_PASS(a2)",
+            "move.l abi.OPASM_EVENT_STMT_INDEX(a2), d0",
             "jsr engine.opasmEngineGetStatementSourceTextV1",
             "move.l a0, d1",
             "jsr dos.putErrStr",
@@ -18828,6 +19094,8 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
     let layout =
         fs::read_to_string(repo_root.join("native/motorola68000/amigaos/opasm/opasm_layout.asm"))
             .expect("read opasm layout owner source");
+
+    assert!(layout.contains("OPASM_LAYOUT_SECTION_CAPACITY = 256"));
 
     assert!(source_contains_in_order(
         &driver,
@@ -19447,7 +19715,9 @@ fn motorola68020_item8_native_data_text_directives_route_before_selected_encodin
     let repo_root = workspace_root();
     let driver_path =
         repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
+    let engine_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
     let driver = fs::read_to_string(&driver_path).expect("read opasm assembly driver source");
+    let engine = fs::read_to_string(&engine_path).expect("read opasm engine source");
 
     assert!(source_contains_in_order(
         &driver,
@@ -19506,6 +19776,43 @@ fn motorola68020_item8_native_data_text_directives_route_before_selected_encodin
             "MOVEA.L eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(SP), A0",
             "MOVE.L eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(SP), D0",
             "BSR.W appendTextScratchByte",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "readCommaOperandValueForStatement .BLOCK",
+            "TST.B D1",
+            "BEQ.S partUnquoted",
+            "CMPI.B #92, D0",
+            "CMPI.B #'\"', D0",
+            "CMPI.B #39, D0",
+            "CMPI.B #',', D0",
+            "partEnd",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "opasmEngineGetStatementTextMetadataV1 .BLOCK",
+            "CMPI.W #TOKEN_BUFFER_CAPACITY - 2, D2",
+            "BLO.S copiedOperand",
+            "MOVEA.L OPASM_ENGINE_STMT_TEXT_MNEM_PTR(A2), A0",
+            "MOVE.L OPASM_ENGINE_STMT_TEXT_MNEM_LEN(A2), D0",
+            "BSR.W sourceOperandLengthV1",
+            "CMP.L D2, D4",
+            "BLS.S copiedOperand",
+            "MOVE.L D0, OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(A2)",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "sourceOperandLengthV1 .BLOCK",
+            "CMPI.B #'\"', D5",
+            "CMPI.B #39, D5",
+            "CMPI.B #';', D5",
+            ".bend  ; sourceOperandLengthV1",
         ]
     ));
     assert!(source_contains_in_order(
@@ -21378,7 +21685,8 @@ fn format_tokvm_asm_fragment(source: &str) -> String {
         FormatterEngine::new(FormatterConfig::default()).format_source_with_diagnostics(source);
     assert!(
         output.diagnostics.is_empty(),
-        "expected formatter to accept tokvm asm snippet without diagnostics"
+        "expected formatter to accept tokvm asm snippet without diagnostics: {:?}",
+        output.diagnostics
     );
     output.rendered
 }
@@ -21391,7 +21699,8 @@ fn format_tokvm_amigaos_fragment(source: &str) -> String {
     let output = FormatterEngine::new(config).format_source_with_diagnostics(source);
     assert!(
         output.diagnostics.is_empty(),
-        "expected formatter to accept tokvm AmigaOS snippet without diagnostics"
+        "expected formatter to accept tokvm AmigaOS snippet without diagnostics: {:?}",
+        output.diagnostics
     );
     output.rendered
 }
@@ -22944,6 +23253,90 @@ fn motorola68020_tkpkg_selection_service_has_one_implementation_owner() {
     assert!(operand.contains("tkpkgMselTryBuildCandidateV1\t.block"));
     assert!(operand.contains("encodeSelectedOperandV1\t.block"));
     assert!(selection.contains("noOutputErrorV1\t.block"));
+}
+
+#[test]
+fn motorola68020_tkpkg_selected_compound_expressions_retain_lexical_resolution() {
+    let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
+    let selection = tkpkg_amigaos_source("tkpkg_selection_service.asm");
+    let rust_selector = fs::read_to_string(
+        workspace_root().join("crates/opforge-vm/src/execution_model/selector_encoding.rs"),
+    )
+    .expect("read Rust relocation-target selector authority");
+
+    assert!(routine_contains_in_order(
+        &operand,
+        "encodeSelectedOperandV1",
+        &[
+            "movea.l state.EncodeSelectedSymbolResolverPtr, a3",
+            "selectedResolverCall",
+            "jsr (a3)",
+            "textOk",
+            "bsr.w encodeSelectedOperandTryLabelV1",
+            "bsr.w encodeSelectedOperandTryLastComponentV1",
+            "movea.l state.EncodeSelectedSymbolResolverPtr, a5",
+            "jsr expr_bridge.opcoreExvmEvalOperandWithResolverV1",
+        ],
+    ));
+    assert!(!routine_contains(
+        &operand,
+        "encodeSelectedOperandV1",
+        "jsr expr_bridge.opcoreExvmEvalOperandV1"
+    ));
+    let rust_target_projection = rust_selector
+        .split_once("fn expression_can_be_relocation_target(expr: &Expr)")
+        .map(|(_, body)| body)
+        .expect("Rust relocation-target projection");
+    for fragment in [
+        "Expr::Identifier(_, _) => true",
+        "Expr::Binary { left, right, .. }",
+        "expression_can_be_relocation_target(left)",
+        "expression_can_be_relocation_target(right)",
+    ] {
+        assert!(
+            rust_target_projection.contains(fragment),
+            "Rust relocation-target projection must retain `{fragment}`"
+        );
+    }
+    let rust_target_match = rust_target_projection
+        .split_once("fn expression_is_atomic_relocation_target")
+        .map(|(body, _)| body)
+        .expect("bounded Rust relocation-target match");
+    assert!(
+        !rust_target_match.contains("Expr::Tuple"),
+        "Rust direct relocation-target projection must continue to reject tuple nodes"
+    );
+    assert!(routine_contains_in_order(
+        &selection,
+        "tkpkgProjectDirectSemanticTargetV2",
+        &[
+            "move.w d6, d0",
+            "moveq #1, d1",
+            "jsr operand.tkpkgMselLocateIndirectTupleItemV2",
+            "beq.w targetNoMatch",
+            "move.w d6, d0",
+            "jsr operand.tkpkgMselLocateSemanticOperandV2",
+            "bsr.w tkpkgValidateRelocationTargetSpanV2",
+        ],
+    ));
+    assert!(routine_contains_in_order(
+        &selection,
+        "tkpkgValidateRelocationTargetSpanV2",
+        &[
+            "targetScanIdentifier",
+            "targetScanIdentifierRest",
+            "bsr.w tkpkgFindScopedRegisterEncodingV1",
+            "bne.w targetScanMatch",
+        ],
+    ));
+    assert_eq!(
+        selection
+            .matches("bsr.w tkpkgValidateRelocationTargetSpanV2")
+            .count(),
+        3,
+        "expr and both Rust call-argument target projections must share one recursive predicate"
+    );
+    assert!(!selection.contains("tkpkgValidateDirectTargetSpanV1"));
 }
 
 #[test]

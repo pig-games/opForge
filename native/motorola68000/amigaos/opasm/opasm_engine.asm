@@ -27,17 +27,21 @@ NATIVE_SOURCE_TEXT_POOL_CAPACITY = 4194304
 NATIVE_STATEMENT_TABLE_CAPACITY = 100000
 NATIVE_LABEL_TABLE_CAPACITY     = 16384
 NATIVE_LABEL_HASH_BUCKET_CAPACITY = 256
-NATIVE_IMAGE_BUFFER_CAPACITY    = 65535
+; Rust's ImageStore grows with the assembled image. Native retains a fixed
+; AmigaOS allocation, but the canonical self-host image includes a 368,278-byte
+; package payload before the surrounding native code and data. Keep one MiB of
+; deterministic headroom and use long-sized counters throughout this owner.
+NATIVE_IMAGE_BUFFER_CAPACITY    = 1048576
 OPASM_ENGINE_LAYOUT_PASS_LIMIT  = 8
 OPASM_ENGINE_CONTEXT_LONGS      = 12
 ; Exact factored byte count from OpasmEngineAssemblySessionStart through the
 ; three image buffers. Source text is packed once and statements retain its
 ; record index instead of a second fixed 512-byte copy.
-OPASM_ENGINE_SESSION_HEADER_BYTES = 90
+OPASM_ENGINE_SESSION_HEADER_BYTES = 92
 OPASM_ENGINE_SESSION_SOURCE_BYTES = (NATIVE_SOURCE_RECORD_CAPACITY * 10) + NATIVE_SOURCE_TEXT_POOL_CAPACITY
 OPASM_ENGINE_SESSION_STATEMENT_BYTES = NATIVE_STATEMENT_TABLE_CAPACITY * 308
-OPASM_ENGINE_SESSION_LABEL_BYTES = (NATIVE_LABEL_TABLE_CAPACITY * 123) + (NATIVE_LABEL_HASH_BUCKET_CAPACITY * 4)
-OPASM_ENGINE_SESSION_TAIL_BYTES = 10
+OPASM_ENGINE_SESSION_LABEL_BYTES = (NATIVE_LABEL_TABLE_CAPACITY * 127) + (NATIVE_LABEL_HASH_BUCKET_CAPACITY * 4)
+OPASM_ENGINE_SESSION_TAIL_BYTES = 12
 OPASM_ENGINE_SESSION_IMAGE_BYTES = NATIVE_IMAGE_BUFFER_CAPACITY * 3
 OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = OPASM_ENGINE_SESSION_HEADER_BYTES + OPASM_ENGINE_SESSION_SOURCE_BYTES + OPASM_ENGINE_SESSION_STATEMENT_BYTES + OPASM_ENGINE_SESSION_LABEL_BYTES + OPASM_ENGINE_SESSION_TAIL_BYTES + OPASM_ENGINE_SESSION_IMAGE_BYTES
 
@@ -382,7 +386,7 @@ clearLoop
 clearHashLoop
 	clr.l (a0)+
 	dbf d0, clearHashLoop
-	clr.w OpasmEngineImageByteCount.l
+	clr.l OpasmEngineImageByteCount.l
 	clr.l OpasmEngineImageWriteOffset.l
 	clr.l OpasmEngineSessionOrigin.l
 	move.l OpasmEngineSessionOrigin.l, d1
@@ -397,7 +401,7 @@ clearHashLoop
 ; Outputs:
 ; - D0: 0 on success.
 opasmEngineBeginPassTwoV1	.block
-	movem.l d1/a0, -(sp)
+	movem.l d1/a0-a1, -(sp)
 	bsr.w clearImagePresentV1
 	clr.w OpasmEngineLayoutChanged.l
 	moveq #0, d0
@@ -405,19 +409,35 @@ opasmEngineBeginPassTwoV1	.block
 	subq.w #1, d0
 	bmi.s finalizeDone
 	lea OpasmEngineLabelFinalizedTable.l, a0
+	lea OpasmEngineLabelPcBackedTable.l, a1
 
 finalizeLoop
+	; Rust's layout-only stabilization retries clear `updated` for PC-backed
+	; symbols while retaining value symbols as final. Its separate final
+	; emission pass consumes the converged snapshot with every symbol final.
+	tst.w OpasmEngineFinalEmission.l
+	bne.s finalizeValueLabel
+	tst.b (a1)+
+	beq.s finalizeValueLabel
+	clr.b (a0)+
+	bra.s finalizeNext
+finalizeValueLabel
+	tst.w OpasmEngineFinalEmission.l
+	beq.s finalizeValueReady
+	addq.l #1, a1
+finalizeValueReady
 	move.b #1, (a0)+
+finalizeNext
 	dbf d0, finalizeLoop
 
 finalizeDone
-	clr.w OpasmEngineImageByteCount.l
-	clr.w OpasmEngineMappedImageByteCount.l
+	clr.l OpasmEngineImageByteCount.l
+	clr.l OpasmEngineMappedImageByteCount.l
 	clr.w OpasmEngineImageRoute.l
 	clr.l OpasmEngineImageWriteOffset.l
 	move.l OpasmEngineSessionOrigin.l, d1
 	move.l d1, OpasmEngineSessionCurrentPc.l
-	movem.l (sp)+, d1/a0
+	movem.l (sp)+, d1/a0-a1
 	moveq #0, d0
 	rts
 	.bend  ; opasmEngineBeginPassTwoV1
@@ -471,7 +491,13 @@ storeLabel
 	move.l d6, d5
 	lsl.l #2, d5
 	lea OpasmEngineLabelValueTable.l, a0
-	move.l OpasmEngineSessionCurrentPc.l, 0(a0, d5.l)
+	move.l OpasmEngineSessionCurrentPc.l, d0
+	move.l d0, 0(a0, d5.l)
+	; Rust retains the section-relative pass-one symbol snapshot separately from
+	; the mutable values refreshed during stabilization. Keep that immutable
+	; baseline so every retry rebases from the same value.
+	lea OpasmEngineLabelPassOneValueTable.l, a0
+	move.l d0, 0(a0, d5.l)
 	lea OpasmEngineLabelFinalizedTable.l, a0
 	clr.b 0(a0, d6.l)
 	move.l d6, d0
@@ -941,8 +967,7 @@ opasmEngineAdvancePcBySizeV1	.block
 ; - D0: 0 on success, non-zero on image capacity failure.
 opasmEngineAppendImageBytesV1	.block
 	movem.l d1-d3/a0-a2, -(sp)
-	moveq #0, d3
-	move.w d0, d3
+	move.l d0, d3
 	cmpi.l #NATIVE_IMAGE_BUFFER_CAPACITY, d3
 	bhi.w fail
 	move.w OpasmEngineImageRoute.l, d1
@@ -959,8 +984,7 @@ opasmEngineAppendImageBytesV1	.block
 	bhi.w fail
 	; A forward origin leaves an address gap. Clear only the newly exposed
 	; range so bytes from a prior assembly can never become current evidence.
-	moveq #0, d3
-	move.w OpasmEngineImageByteCount.l, d3
+	move.l OpasmEngineImageByteCount.l, d3
 	cmp.l d3, d1
 	bls.s mainCopyReady
 	lea OpasmEngineImageBuffer.l, a1
@@ -976,47 +1000,43 @@ mainCopyReady
 	adda.l d1, a1
 	lea OpasmEngineImagePresentBuffer.l, a2
 	adda.l d1, a2
-	moveq #0, d3
-	move.w d0, d3
-	move.w d3, d1
+	move.l d0, d3
+	move.l d3, d1
 	beq.s done
 
 copyLoop
 	move.b (a0)+, (a1)+
 	move.b #1, (a2)+
-	subq.w #1, d1
+	subq.l #1, d1
 	bne.s copyLoop
 
 done
 	add.l d3, OpasmEngineImageWriteOffset.l
 	move.l OpasmEngineImageWriteOffset.l, d1
-	moveq #0, d2
-	move.w OpasmEngineImageByteCount.l, d2
+	move.l OpasmEngineImageByteCount.l, d2
 	cmp.l d2, d1
 	bls.w success
-	move.w d1, OpasmEngineImageByteCount.l
+	move.l d1, OpasmEngineImageByteCount.l
 	bra.w success
 
 mapped
-	moveq #0, d1
-	move.w OpasmEngineMappedImageByteCount.l, d1
+	move.l OpasmEngineMappedImageByteCount.l, d1
 	add.l d3, d1
 	cmpi.l #NATIVE_IMAGE_BUFFER_CAPACITY, d1
 	bhi.w fail
-	moveq #0, d1
-	move.w OpasmEngineMappedImageByteCount.l, d1
+	move.l OpasmEngineMappedImageByteCount.l, d1
 	lea OpasmEngineMappedImageBuffer.l, a1
 	adda.l d1, a1
-	move.w d3, d1
+	move.l d3, d1
 	beq.s mappedDone
 
 mappedCopyLoop
 	move.b (a0)+, (a1)+
-	subq.w #1, d1
+	subq.l #1, d1
 	bne.s mappedCopyLoop
 
 mappedDone
-	add.w d3, OpasmEngineMappedImageByteCount.l
+	add.l d3, OpasmEngineMappedImageByteCount.l
 
 success
 	movem.l (sp)+, d1-d3/a0-a2
@@ -1037,10 +1057,11 @@ fail
 clearImagePresentV1	.block
 	movem.l d0/a0, -(sp)
 	lea OpasmEngineImagePresentBuffer.l, a0
-	move.w #-2, d0
+	move.l #NATIVE_IMAGE_BUFFER_CAPACITY, d0
 clearPresentLoop
 	clr.b (a0)+
-	dbf d0, clearPresentLoop
+	subq.l #1, d0
+	bne.s clearPresentLoop
 	movem.l (sp)+, d0/a0
 	rts
 	.bend  ; clearImagePresentV1
@@ -1067,12 +1088,10 @@ fail
 ; Outputs: D0.L = 0 on success, 1 on main-image capacity failure.
 opasmEngineFlushMappedImageV1	.block
 	clr.w OpasmEngineImageRoute.l
-	moveq #0, d0
-	move.w OpasmEngineImageByteCount.l, d0
+	move.l OpasmEngineImageByteCount.l, d0
 	move.l d0, OpasmEngineImageWriteOffset.l
 	lea OpasmEngineMappedImageBuffer.l, a0
-	moveq #0, d0
-	move.w OpasmEngineMappedImageByteCount.l, d0
+	move.l OpasmEngineMappedImageByteCount.l, d0
 	jsr opasmEngineAppendImageBytesV1
 	rts
 	.bend  ; opasmEngineFlushMappedImageV1
@@ -1150,8 +1169,7 @@ opasmEngineEndStatementOutputV1	.block
 ; Outputs:
 ; - D0: image byte count.
 opasmEngineGetImageByteCountV1	.block
-	moveq #0, d0
-	move.w OpasmEngineImageByteCount.l, d0
+	move.l OpasmEngineImageByteCount.l, d0
 	rts
 	.bend  ; opasmEngineGetImageByteCountV1
 
@@ -1236,7 +1254,7 @@ opasmEngineGetSourceRecordCountV1	.block
 	.bend  ; opasmEngineGetSourceRecordCountV1
 
 ; Restore the observable collection state to an earlier bounded checkpoint.
-; Inputs: D0.L = source records; D1.L = statements; D2.W = image bytes;
+; Inputs: D0.L = source records; D1.L = statements; D2.L = image bytes;
 ;         D3.L = current PC. Each count must not exceed its current value.
 ; Outputs: D0 = 0 on success, 1 when the checkpoint is not a rollback.
 ; Clobbers: D0-D2/CCR.
@@ -1247,7 +1265,7 @@ opasmEngineRollbackCollectionV1	.block
 	bhi.s fail
 	cmp.l OpasmEngineStmtCount.l, d1
 	bhi.s fail
-	cmp.w OpasmEngineImageByteCount.l, d2
+	cmp.l OpasmEngineImageByteCount.l, d2
 	bhi.s fail
 	move.l d0, OpasmEngineSourceRecordCount.l
 	tst.l d0
@@ -1270,7 +1288,7 @@ clearSourcePool
 	clr.l OpasmEngineSourceTextPoolLen.l
 sourcePoolReady
 	move.l d1, OpasmEngineStmtCount.l
-	move.w d2, OpasmEngineImageByteCount.l
+	move.l d2, OpasmEngineImageByteCount.l
 	move.l d3, OpasmEngineSessionCurrentPc.l
 	movem.l (sp)+, d4-d5/a0
 	moveq #0, d0
@@ -1640,12 +1658,14 @@ statementHasExprMetadataV1	.block
 ; Outputs:
 ; - D0: 0 on success, non-zero when the statement has no mnemonic text.
 opasmEngineGetStatementTextMetadataV1	.block
-	movem.l d1-d4/a0-a2, -(sp)
+	movem.l d1-d5/a0-a3, -(sp)
 	movea.l a0, a2
 	move.l d0, d1
 	bsr.w getStatementSourceLineTextV1
 	tst.l d0
 	beq.w fail
+	movea.l a0, a3
+	move.l d0, d5
 	move.l d0, d3
 	move.l d1, d2
 	lsl.l #2, d2
@@ -1666,27 +1686,34 @@ opasmEngineGetStatementTextMetadataV1	.block
 	adda.l d2, a0
 	move.l a0, OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a2)
 	move.l d0, OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a2)
-	; Prefer the original statement source span for operands.  The legacy token
-	; snapshot remains the fallback for synthesized records, but source-backed
-	; operands must retain the full 511-byte line contract instead of silently
-	; losing byte 64 and any closing quote stored there.
+	; The package token snapshot deliberately caps at 63 bytes and some package
+	; records report an already truncated 62-byte span. Shorter snapshots cannot
+	; have reached that native boundary and stay on the fast path. For near-full
+	; rows, derive the source-backed operand and use it only when it contains
+	; bytes missing from the bounded snapshot.
 	move.l d1, d3
 	add.l d3, d3
 	lea OpasmEngineStmtOperandLenTable.l, a1
-	cmpi.w #TOKEN_BUFFER_CAPACITY - 1, 0(a1, d3.l)
+	moveq #0, d2
+	move.w 0(a1, d3.l), d2
+	cmpi.w #TOKEN_BUFFER_CAPACITY - 2, d2
 	blo.s copiedOperand
-	move.l d1, -(sp)
-	move.l d1, d3
-	lsl.l #2, d3
-	lea OpasmEngineStmtOperandStartTable.l, a1
-	move.l 0(a1, d3.l), d1
-	lea OpasmEngineStmtOperandEndTable.l, a1
-	move.l 0(a1, d3.l), d2
-	move.l (sp), d0
-	bsr.w opasmEngineGetStatementExprTextSliceV1
-	move.l (sp)+, d1
+	movea.l OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a2), a0
+	move.l OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a2), d0
+	adda.l d0, a0
+	move.l a0, d4
+	sub.l a3, d4
+	move.l d5, d0
+	sub.l d4, d0
+	bls.s copiedOperand
+	bsr.w skipLineWhitespace
+	bsr.w sourceOperandLengthV1
 	tst.l d0
 	beq.s copiedOperand
+	move.l d0, d4
+	cmp.l d2, d4
+	bls.s copiedOperand
+	move.l d4, d0
 	move.l d0, OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(a2)
 	move.l a0, OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(a2)
 	bra.s textReady
@@ -1706,12 +1733,12 @@ copiedOperand
 	move.l d0, OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(a2)
 
 textReady
-	movem.l (sp)+, d1-d4/a0-a2
+	movem.l (sp)+, d1-d5/a0-a3
 	moveq #0, d0
 	rts
 
 fail
-	movem.l (sp)+, d1-d4/a0-a2
+	movem.l (sp)+, d1-d5/a0-a3
 	moveq #1, d0
 	rts
 	.bend  ; opasmEngineGetStatementTextMetadataV1
@@ -1953,6 +1980,34 @@ return
 	rts
 	.bend  ; opasmEngineGetPcBackedLabelValueV1
 
+; Return the immutable pass-one value for a PC-backed label. Layout retries
+; rebase this snapshot exactly as Rust rebuilds each pass from section-relative
+; symbols rather than translating an already placed value again.
+; Inputs: D0 = label index. Outputs: D0 = pass-one value, D1 = 1 when
+; PC-backed; otherwise D0/D1 = 0.
+opasmEngineGetPassOnePcBackedLabelValueV1	.block
+	movem.l d2-d3/a0, -(sp)
+	moveq #0, d2
+	move.w d0, d2
+	cmp.w OpasmEngineLabelCount.l, d2
+	bhs.s notPcBacked
+	lea OpasmEngineLabelPcBackedTable.l, a0
+	tst.b 0(a0, d2.l)
+	beq.s notPcBacked
+	move.l d2, d3
+	lsl.l #2, d3
+	lea OpasmEngineLabelPassOneValueTable.l, a0
+	move.l 0(a0, d3.l), d0
+	moveq #1, d1
+	bra.s return
+notPcBacked
+	clr.l d0
+	clr.l d1
+return
+	movem.l (sp)+, d2-d3/a0
+	rts
+	.bend  ; opasmEngineGetPassOnePcBackedLabelValueV1
+
 ; Replace one PC-backed label value after pass-one layout placement.
 ; Inputs: D0 = label index; D1 = final placed value.
 ; Outputs: D0 = 0 on success, 1 for invalid/non-PC-backed label.
@@ -2018,6 +2073,10 @@ refreshFound
 	lea OpasmEngineLabelPcBackedTable.l, a0
 	tst.b 0(a0, d4.l)
 	beq.s refreshOk
+	; The defining statement has now been visited in this retry. Mirror Rust's
+	; per-pass `updated = true` transition even when its address is unchanged.
+	lea OpasmEngineLabelFinalizedTable.l, a0
+	move.b #1, 0(a0, d4.l)
 	move.l d4, d5
 	lsl.l #2, d5
 	lea OpasmEngineLabelValueTable.l, a0
@@ -2036,6 +2095,29 @@ refreshReturn
 	movem.l (sp)+, d1-d7/a0-a3
 	rts
 	.bend  ; opasmEngineRefreshStatementPcLabelV1
+
+; Return whether the active pass is a layout-only stabilization retry.
+; Outputs: D0 = 1 during stabilization, 0 during final emission or other passes.
+opasmEngineIsLayoutStabilizationV1	.block
+	moveq #0, d0
+	cmpi.w #2, OpasmEngineSessionPass.l
+	bne.s layoutPhaseReturn
+	tst.w OpasmEngineFinalEmission.l
+	bne.s layoutPhaseReturn
+	moveq #1, d0
+layoutPhaseReturn
+	rts
+	.bend  ; opasmEngineIsLayoutStabilizationV1
+
+; Mark a layout-owned extent or placement change discovered outside the label
+; refresh path. Rust feeds symbol and section-size movement into the same
+; stabilization decision.
+; Outputs: D0 = 0.
+opasmEngineMarkLayoutChangedV1	.block
+	move.w #1, OpasmEngineLayoutChanged.l
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineMarkLayoutChangedV1
 
 ; Return the final placed value for one label. PC-backed labels use the owning
 ; statement's pass-two output address; const/var/set labels retain their stored
@@ -2722,22 +2804,53 @@ return
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5
+	movea.l OPASM_ENGINE_CTX_BIN_REQUESTED_PTR(a5), a0
+	moveq #0, d6
+	move.w (a0), d6
+	; Pass callbacks may use every working data register.  Retain the caller's
+	; output mode on the stack so Rust's distinct final emission pass cannot be
+	; accidentally left in layout-only mode after stabilization.
+	move.w d6, -(sp)
 	bsr.w runPassOne
 	tst.l d0
-	bne.s done
+	bne.s restoreOutputMode
+	; Rust stabilizes layout without producing final artifacts. Native uses the
+	; same callbacks with output disabled, then performs one distinct emission
+	; pass from the converged symbol snapshot.
+	movea.l OPASM_ENGINE_CTX_BIN_REQUESTED_PTR(a5), a0
+	clr.w (a0)
+	clr.w OpasmEngineFinalEmission.l
 	move.w #OPASM_ENGINE_LAYOUT_PASS_LIMIT, OpasmEngineLayoutPassesRemaining.l
 
 layoutPass
 	bsr.w runPassTwo
 	tst.l d0
-	bne.s done
+	bne.s restoreOutputMode
 	tst.w OpasmEngineLayoutChanged.l
-	beq.s done
+	beq.s finalEmission
 	subq.w #1, OpasmEngineLayoutPassesRemaining.l
 	bne.s layoutPass
 	moveq #1, d0
+	bra.s restoreOutputMode
 
-done
+finalEmission
+	movea.l OPASM_ENGINE_CTX_BIN_REQUESTED_PTR(a5), a0
+	move.w (sp), (a0)
+	move.w #1, OpasmEngineFinalEmission.l
+	bsr.w runPassTwo
+	clr.w OpasmEngineFinalEmission.l
+	tst.l d0
+	bne.s restoreOutputMode
+	; A converged snapshot cannot move during Rust's final pass.
+	tst.w OpasmEngineLayoutChanged.l
+	beq.s restoreOutputMode
+	moveq #1, d0
+
+restoreOutputMode
+	movea.l OPASM_ENGINE_CTX_BIN_REQUESTED_PTR(a5), a0
+	move.w (sp), (a0)
+	clr.w OpasmEngineFinalEmission.l
+	addq.l #2, sp
 	movem.l (sp)+, d1-d7/a0-a5
 	rts
 	.bend  ; opasmEngineRunTwoPassV1
@@ -3007,6 +3120,18 @@ labelEquals	.block
 loop
 	move.b (a0)+, d1
 	move.b (a1)+, d2
+	cmpi.b #'A', d1
+	bcs.s foldRight
+	cmpi.b #'Z', d1
+	bhi.s foldRight
+	ori.b #$20, d1
+foldRight
+	cmpi.b #'A', d2
+	bcs.s compare
+	cmpi.b #'Z', d2
+	bhi.s compare
+	ori.b #$20, d2
+compare
 	cmp.b d1, d2
 	bne.s no
 	subq.w #1, d3
@@ -3040,6 +3165,79 @@ one
 done
 	rts
 	.bend  ; skipLineWhitespace
+
+; Return the source-backed operand length before an unquoted comment and
+; trailing whitespace. Quotes and backslash escapes follow the Rust lexer
+; boundary, so semicolons inside text remain operand bytes.
+; Inputs: A0/D0 = operand remainder. Output: D0 = bounded operand length.
+; Preserves D1-D5/A0-A1.
+sourceOperandLengthV1	.block
+	movem.l d1-d5/a0-a1, -(sp)
+	movea.l a0, a1
+	move.l d0, d1
+	moveq #0, d2
+	moveq #0, d3
+	moveq #0, d4
+
+sourceOperandScan
+	tst.l d1
+	beq.s sourceOperandTrim
+	move.b (a1)+, d5
+	subq.l #1, d1
+	tst.b d2
+	beq.s sourceOperandUnquoted
+	tst.b d3
+	beq.s sourceOperandQuotedByte
+	clr.b d3
+	bra.s sourceOperandRetain
+
+sourceOperandQuotedByte
+	cmpi.b #92, d5
+	bne.s sourceOperandQuotedEnd
+	moveq #1, d3
+	bra.s sourceOperandRetain
+sourceOperandQuotedEnd
+	cmp.b d2, d5
+	bne.s sourceOperandRetain
+	clr.b d2
+	bra.s sourceOperandRetain
+
+sourceOperandUnquoted
+	cmpi.b #'"', d5
+	beq.s sourceOperandQuoteOpen
+	cmpi.b #39, d5
+	beq.s sourceOperandQuoteOpen
+	cmpi.b #';', d5
+	beq.s sourceOperandTrim
+	bra.s sourceOperandRetain
+
+sourceOperandQuoteOpen
+	move.b d5, d2
+sourceOperandRetain
+	addq.l #1, d4
+	bra.s sourceOperandScan
+
+sourceOperandTrim
+	movea.l a0, a1
+	adda.l d4, a1
+sourceOperandTrimLoop
+	tst.l d4
+	beq.s sourceOperandDone
+	move.b -1(a1), d5
+	cmpi.b #' ', d5
+	beq.s sourceOperandTrimOne
+	cmpi.b #9, d5
+	bne.s sourceOperandDone
+sourceOperandTrimOne
+	subq.l #1, a1
+	subq.l #1, d4
+	bra.s sourceOperandTrimLoop
+
+sourceOperandDone
+	move.l d4, d0
+	movem.l (sp)+, d1-d5/a0-a1
+	rts
+	.bend  ; sourceOperandLengthV1
 
 copyOperandText	.block
 	movem.l d0-d4/d6-d7/a0-a1, -(sp)
@@ -3493,6 +3691,8 @@ OpasmEngineSessionPass
 	.res word, 1
 OpasmEngineLayoutPassesRemaining
 	.res word, 1
+OpasmEngineFinalEmission
+	.res word, 1
 OpasmEngineLayoutChanged
 	.res word, 1
 OpasmEngineSourceRecordCount
@@ -3502,7 +3702,7 @@ OpasmEngineSourceTextPoolLen
 OpasmEngineLabelCount
 	.res word, 1
 OpasmEngineImageByteCount
-	.res word, 1
+	.res long, 1
 OpasmEngineSessionCpuName
 	.res byte, TOKEN_BUFFER_CAPACITY
 OpasmEngineSessionOrigin
@@ -3567,6 +3767,8 @@ OpasmEngineStmtExprSpanEndTable
 	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
 OpasmEngineLabelValueTable
 	.res long, NATIVE_LABEL_TABLE_CAPACITY
+OpasmEngineLabelPassOneValueTable
+	.res long, NATIVE_LABEL_TABLE_CAPACITY
 OpasmEngineLabelNameTable
 	.res byte, NATIVE_LABEL_TABLE_CAPACITY * LABEL_NAME_CAPACITY
 OpasmEngineLabelFinalizedTable
@@ -3586,7 +3788,7 @@ OpasmEngineLastResolvedLabelIndex
 OpasmEngineImageRoute
 	.res word, 1
 OpasmEngineMappedImageByteCount
-	.res word, 1
+	.res long, 1
 OpasmEngineImageWriteOffset
 	.res long, 1
 OpasmEngineImageBuffer

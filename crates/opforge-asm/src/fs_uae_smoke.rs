@@ -2106,7 +2106,10 @@ fn run_native_cli_parity_batch_cases(
         )
     })?;
 
-    let mut batch_script = String::from("FailAt 999\n");
+    // Rust resolves source-owned relative output paths from the invocation
+    // directory.  Make the mounted Work volume that same authority on AmigaOS
+    // before invoking any absolute `Work:` executable path.
+    let mut batch_script = String::from("FailAt 999\nCD Work:\n");
     let mut batch_paths = Vec::with_capacity(cases.len());
     let run_challenge = opforge_native_cli_run_challenge();
     for (index, case) in cases.iter().enumerate() {

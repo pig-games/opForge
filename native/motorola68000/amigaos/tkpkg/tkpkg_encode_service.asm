@@ -829,9 +829,18 @@ branchRequestedReady
 	move.l state.EncodeSelectedCurrentPc, 24(sp)
 	clr.w 34(sp)
 	tst.b state.EncodeSelectedMselUnstable
-	beq.s branchUnresolvedReady
+	beq.s branchExplicitDefer
 	cmpi.w #1, state.EncodeSelectedSessionPass
-	bne.s branchUnresolvedReady
+	beq.s branchMarkUnresolved
+
+branchExplicitDefer
+	cmpi.l #-1, 20(sp)
+	beq.s branchUnresolvedReady
+	tst.b state.EncodeSelectedDeferUnstableBranchTarget
+	beq.s branchUnresolvedReady
+	tst.b state.EncodeSelectedMselHasSymbolReference
+	beq.s branchUnresolvedReady
+branchMarkUnresolved
 	move.w #1, 34(sp)
 branchUnresolvedReady
 
@@ -1108,7 +1117,6 @@ branchReturn
 	movem.l (sp)+, d2-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgEncodeExecuteBranchProgramV5
-
 ; Inputs: D0 signed value, D2.W width (1/2/4). Output D0=0 fits, 1 fails.
 tkpkgBranchValueFitsSignedWidthV5	.block
 	cmpi.w #1, d2
@@ -1269,6 +1277,10 @@ fixupTransformReady
 	move.w d5, d2
 	bsr.w tkpkgRecordOutputFixupV1
 	bne.w fixupFrameFail
+	; Rust's PortableOutputFixup retains `width` and `target_index` as
+	; independent fields. D2 carried the opaque target index only across the
+	; record call; restore the package-declared output width before emission.
+	move.w 2(sp), d2
 fixupRecordReady
 	move.l d3, d0
 	move.w 4(sp), d4

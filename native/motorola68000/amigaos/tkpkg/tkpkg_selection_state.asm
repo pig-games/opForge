@@ -26,6 +26,9 @@ EncodeSelectedSymbolResolverPtr
 	.res long, 1
 EncodeSelectedSessionPass
 	.res word, 1
+EncodeSelectedDeferUnstableBranchTarget
+	.res byte, 1
+	.align 2
 EncodeSelectedExvmOpcodeVersion
 	.res word, 1
 EncodeSelectedExprOpcodeVersion
@@ -61,6 +64,8 @@ EncodeSelectedMselPlanLen
 EncodeSelectedMselValue
 	.res long, 1
 EncodeSelectedMselUnstable
+	.res byte, 1
+EncodeSelectedMselHasSymbolReference
 	.res byte, 1
 	.align 2
 EncodeSelectedMselMatchFlags

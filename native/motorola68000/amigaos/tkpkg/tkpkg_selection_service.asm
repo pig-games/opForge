@@ -19,6 +19,7 @@ TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE = 16
 TKPKG_SELECTED_EXTENSION_INPUT_SIZE = 24
 TKPKG_SELECTED_EXTENSION_PASS_INPUT_SIZE = 28
 TKPKG_SELECTED_EXTENSION_RESOLVER_INPUT_SIZE = 32
+TKPKG_SELECTED_EXTENSION_DEFER_INPUT_SIZE = 36
 TKPKG_SELECTED_STATUS_OK = 0
 TKPKG_SELECTED_STATUS_NO_OUTPUT = 1
 TKPKG_SELECTED_STATUS_UNKNOWN_MNEMONIC = 2
@@ -504,6 +505,7 @@ haveBaseExtension
 	clr.l state.EncodeSelectedMselShapePtr
 	clr.w state.EncodeSelectedMselShapeLen
 	clr.l state.EncodeSelectedSymbolResolverPtr
+	clr.b state.EncodeSelectedDeferUnstableBranchTarget
 	cmpi.w #TKPKG_SELECTED_EXTENSION_INPUT_SIZE, d5
 	bcc.s haveShapeExtension
 	bra.w resolveVersions
@@ -524,6 +526,11 @@ havePassExtension
 haveResolverExtension
 	move.l (a5)+, d0
 	move.l d0, state.EncodeSelectedSymbolResolverPtr
+	cmpi.w #TKPKG_SELECTED_EXTENSION_DEFER_INPUT_SIZE, d5
+	bcs.s resolveVersions
+	move.l (a5)+, d0
+	tst.l d0
+	sne state.EncodeSelectedDeferUnstableBranchTarget
 	bra.s resolveVersions
 
 noExtension
@@ -536,6 +543,7 @@ noExtension
 	clr.l state.EncodeSelectedMselShapePtr
 	clr.w state.EncodeSelectedMselShapeLen
 	clr.l state.EncodeSelectedSymbolResolverPtr
+	clr.b state.EncodeSelectedDeferUnstableBranchTarget
 
 resolveVersions
 	move.l d7, -(sp)
@@ -1218,13 +1226,23 @@ return
 ; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D1 = envelope length on success.
 tkpkgBuildSelectedEnvelopeFromCmseV7	.block
 	movem.l d2-d7/a0-a6, -(sp)
-	lea -32(sp), sp
+	lea -44(sp), sp
 	clr.w state.EncodeSelectedMselMatchFlags
 	clr.w state.EncodeSelectedMselFallbackLen
 	clr.w 24(sp)
 	clr.w 26(sp)
 	clr.w 28(sp)
 	clr.w 30(sp)
+	clr.w 32(sp)
+	; Rust scans active selector owners in dialect, CPU, family order and keeps
+	; successful candidates ahead of every less-specific owner.  CMSE stores
+	; rows in package order, so retain the first success at the greatest active
+	; owner rank while the remaining rows are scanned.
+	clr.w 34(sp)  ; retained success owner rank: 0 none, 1 family, 2 CPU, 3 dialect
+	clr.w 36(sp)  ; retained success envelope length
+	clr.w 38(sp)  ; retained plan kind / unstable flags
+	clr.w 40(sp)  ; retained symbol-reference flag
+	move.w #$FFFF, 42(sp)  ; retained semantic diagnostic index
 	movea.l a0, a5
 	move.w d0, d2
 	move.w d2, state.EncodeSelectedMselMnemonicLen
@@ -1624,10 +1642,19 @@ cmseBuildStructured
 
 cmseCandidateReady
 	cmpi.l #TKPKG_SELECTED_STATUS_SEMANTIC_REJECT, d0
+	beq.s cmseCandidateError
+	cmpi.l #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
 	bne.s cmseCandidateCheckOk
+
+cmseCandidateError
 	; Rust retains a selector error from the most-specific active owner
 	; (dialect, then CPU, then family) and the highest priority within that
-	; owner. Preserve the rendered text while later rows are evaluated.
+	; owner. Preserve both semantic rejects and operand errors while later rows
+	; are evaluated, because a later candidate may still encode successfully.
+	; A valid candidate wins over every deferred selector error in Rust.  The
+	; shared bounded retention buffer already owns that candidate envelope.
+	tst.w 36(sp)
+	bne.w cmseSelectorNext
 	moveq #1, d2
 	move.w 10(sp), d3
 	cmp.w 18(sp), d3
@@ -1646,6 +1673,7 @@ cmseRejectRankReady
 	cmp.w 28(sp), d3
 	bls.w cmseSelectorNext
 cmseRejectSave
+	move.w d0, 32(sp)
 	tst.w d1
 	beq.w cmseMalformed
 	cmpi.w #buffers.TOKEN_SCRATCH_CAPACITY, d1
@@ -1665,25 +1693,71 @@ cmseRejectCopy
 cmseCandidateCheckOk
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.w cmseCandidateNotOk
-	tst.b d4
-	beq.w cmseReturn
-	tst.b state.EncodeSelectedMselUnstable
-	beq.w cmseReturn
+	moveq #1, d2
+	move.w 10(sp), d3
+	cmp.w 18(sp), d3
+	beq.s cmseSuccessCpuRank
+	cmp.w 20(sp), d3
+	bne.s cmseSuccessRankReady
+	moveq #3, d2
+	bra.s cmseSuccessRankReady
+cmseSuccessCpuRank
+	moveq #2, d2
+cmseSuccessRankReady
+	cmp.w 34(sp), d2
+	bls.w cmseSelectorNext
+	tst.w d1
+	beq.w cmseMalformed
+	cmpi.w #buffers.TOKEN_SCRATCH_CAPACITY, d1
+	bhi.w cmseMalformed
+	lea buffers.TokenScratchBuffer, a0
+	lea buffers.DeferredSemanticRejectBuffer, a1
+	move.w d1, d5
+	subq.w #1, d5
+cmseSuccessCopy
+	move.b (a0)+, (a1)+
+	dbf d5, cmseSuccessCopy
+	move.w d2, 34(sp)
+	move.w d1, 36(sp)
+	moveq #0, d3
+	move.b state.EncodeSelectedSemanticPlanKind, d3
+	moveq #0, d5
+	move.b state.EncodeSelectedMselUnstable, d5
+	lsl.w #8, d5
+	or.w d5, d3
+	move.w d3, 38(sp)
+	moveq #0, d3
+	move.b state.EncodeSelectedMselHasSymbolReference, d3
+	move.w d3, 40(sp)
+	move.w state.EncodeSelectedSemanticDiagnosticIndex, 42(sp)
 	bset #1, state.EncodeSelectedMselMatchFlags
 	move.w d1, state.EncodeSelectedMselFallbackLen
 	bra.w cmseSelectorNext
 
 cmseCandidateNotOk
-	cmpi.l #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
-	bne.w cmseSelectorNext
-	tst.w state.EncodeSelectedMselShapeLen
-	beq.w cmseSelectorNext
-	tst.l state.EncodeSelectedMselShapePtr
-	beq.w cmseSelectorNext
-	bra.w cmseReturn
+	bra.w cmseSelectorNext
 
 cmseSelectorNext
 	dbf d7, cmseSelectorLoop
+	move.w 36(sp), d1
+	beq.s cmseNoRetainedSuccess
+	lea buffers.DeferredSemanticRejectBuffer, a0
+	lea buffers.TokenScratchBuffer, a1
+	move.w d1, d5
+	subq.w #1, d5
+cmseSuccessRestore
+	move.b (a0)+, (a1)+
+	dbf d5, cmseSuccessRestore
+	move.w 38(sp), d3
+	move.b d3, state.EncodeSelectedSemanticPlanKind
+	lsr.w #8, d3
+	move.b d3, state.EncodeSelectedMselUnstable
+	move.w 40(sp), d3
+	move.b d3, state.EncodeSelectedMselHasSymbolReference
+	move.w 42(sp), state.EncodeSelectedSemanticDiagnosticIndex
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s cmseReturn
+cmseNoRetainedSuccess
 	btst #1, state.EncodeSelectedMselMatchFlags
 	beq.s cmseNoFallback
 	moveq #0, d1
@@ -1700,7 +1774,8 @@ cmseNoFallback
 cmseDeferredRejectCopy
 	move.b (a0)+, (a1)+
 	dbf d5, cmseDeferredRejectCopy
-	moveq #TKPKG_SELECTED_STATUS_SEMANTIC_REJECT, d0
+	moveq #0, d0
+	move.w 32(sp), d0
 	bra.s cmseReturn
 cmseNoDeferredReject
 	moveq #0, d1
@@ -1723,7 +1798,7 @@ cmseMalformed
 	moveq #0, d1
 	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0
 cmseReturn
-	lea 32(sp), sp
+	lea 44(sp), sp
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
@@ -2205,6 +2280,18 @@ sequenceInputLoop
 sequenceNoTargetPrefix
 	move.l (sp)+, d0
 sequenceProjectInput
+	cmpi.b #2, d5
+	bne.s sequenceProjectOrdinaryInput
+	btst #0, d2
+	beq.s sequenceProjectOrdinaryInput
+	; Rust's forced-fixup path resolves an Expr::Member relocation through its
+	; base expression before scalar member evaluation.  The native boundary
+	; retains source spans, so retry only this package-declared `target:` input
+	; through the same neutral member-base projection when whole-span evaluation
+	; cannot resolve it.
+	bsr.w tkpkgProjectForcedFixupTargetV2
+	bra.s sequenceInputProjected
+sequenceProjectOrdinaryInput
 	bsr.w tkpkgProjectCompactSemanticInputV2
 sequenceInputProjected
 	movea.l (sp)+, a2
@@ -6286,11 +6373,11 @@ registerMaskMapReturn
 	rts
 	.bend  ; tkpkgRegisterMaskMappedBitV1
 
-; Project Rust's `target:exprN` match predicate for a direct identifier.  The
-; native selector boundary retains source spans rather than Rust Expr nodes, so
-; this slice accepts the equivalent architecture-neutral identifier spelling
-; and rejects package-owned register names.  More complex target expressions
-; remain non-matches until their structured projection is ported.
+; Project Rust's `target:exprN` match predicate.  Rust accepts an expression as
+; a relocation target when any recursively nested term is an Identifier.  The
+; native selector boundary retains the source span rather than Rust Expr nodes,
+; so the neutral lexical scan below applies the same identifier/register split
+; while ignoring numeric and quoted literal text.
 ; Inputs: A1/D0 = `exprN` suffix. Outputs: D0 selected status; D3=0 on match.
 tkpkgProjectDirectSemanticTargetV2	.block
 	movem.l d2/d4-d7/a0/a2-a6, -(sp)
@@ -6339,61 +6426,21 @@ targetCheckExpr
 	subi.w #4, d0
 	bsr.w tkpkgParseU16DecimalV2
 	bne.w targetMalformed
-	move.w d3, d0
+	move.w d3, d6
+	; Rust's expression_can_be_relocation_target recurses through Indirect,
+	; but deliberately has no Tuple arm.  Address-displacement syntax such as
+	; `symbol(a3)` is parsed as Indirect(Tuple(symbol, a3)) and therefore must
+	; not select a direct absolute-target plan merely because the tuple contains
+	; an identifier.  Probe item one first: success proves a multi-item indirect
+	; tuple, while a simple parenthesized identifier still falls through.
+	move.w d6, d0
+	moveq #1, d1
+	jsr operand.tkpkgMselLocateIndirectTupleItemV2
+	beq.w targetNoMatch
+	move.w d6, d0
 	jsr operand.tkpkgMselLocateSemanticOperandV2
 	bne.w targetNoMatch
-	movea.l a0, a4
-	move.l d0, d6
-	move.w #$FFFF, d1
-	bsr.w tkpkgFindScopedRegisterEncodingV1
-	beq.w targetNoMatch
-	movea.l a4, a0
-	move.l d6, d7
-	beq.w targetNoMatch
-	moveq #0, d4
-	move.b (a0)+, d4
-	subq.l #1, d7
-	cmpi.b #'_', d4
-	beq.s targetIdentifierRest
-	cmpi.b #'.', d4
-	beq.s targetIdentifierRest
-	cmpi.b #'A', d4
-	bcs.w targetNoMatch
-	cmpi.b #'Z', d4
-	bls.s targetIdentifierRest
-	cmpi.b #'a', d4
-	bcs.w targetNoMatch
-	cmpi.b #'z', d4
-	bhi.w targetNoMatch
-
-targetIdentifierRest
-	tst.l d7
-	beq.s targetOk
-	moveq #0, d4
-	move.b (a0)+, d4
-	subq.l #1, d7
-	cmpi.b #'_', d4
-	beq.s targetIdentifierRest
-	cmpi.b #'.', d4
-	beq.s targetIdentifierRest
-	cmpi.b #'0', d4
-	bcs.s targetIdentifierLetter
-	cmpi.b #'9', d4
-	bls.s targetIdentifierRest
-targetIdentifierLetter
-	cmpi.b #'A', d4
-	bcs.s targetNoMatch
-	cmpi.b #'Z', d4
-	bls.s targetIdentifierRest
-	cmpi.b #'a', d4
-	bcs.s targetNoMatch
-	cmpi.b #'z', d4
-	bls.s targetIdentifierRest
-	bra.s targetNoMatch
-
-targetOk
-	moveq #0, d3
-	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bsr.w tkpkgValidateRelocationTargetSpanV2
 	bra.s targetReturn
 targetNoMatch
 	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
@@ -6404,6 +6451,260 @@ targetReturn
 	movem.l (sp)+, d2/d4-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgProjectDirectSemanticTargetV2
+
+; Project one package-declared forced fixup target.  Rust first attempts the
+; complete expression, then resolves an Expr::Member relocation through its
+; base expression.  Native has the original bounded span rather than an Expr
+; tree, so a failed whole-span scalar projection retries the longest dotted
+; prefix.  No field spelling is interpreted here; the package's `target:`
+; declaration owns the relocation meaning.
+; Inputs: A1/D0 = semantic source after `target:` (currently `exprN`).
+; Outputs: D0 selected status; D3 projected scalar value on success.
+tkpkgProjectForcedFixupTargetV2	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	movea.l a1, a5
+	move.w d0, d7
+	bsr.w tkpkgProjectCompactSemanticInputV2
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	beq.w forcedTargetReturn
+	cmpi.l #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
+	bne.w forcedTargetReturn
+	cmpi.w #5, d7
+	bcs.w forcedTargetReturn
+	cmpi.b #'e', (a5)
+	bne.w forcedTargetReturn
+	cmpi.b #'x', 1(a5)
+	bne.w forcedTargetReturn
+	cmpi.b #'p', 2(a5)
+	bne.w forcedTargetReturn
+	cmpi.b #'r', 3(a5)
+	bne.w forcedTargetReturn
+	lea 4(a5), a1
+	move.w d7, d0
+	subi.w #4, d0
+	bsr.w tkpkgParseU16DecimalV2
+	bne.w forcedTargetReturn
+	move.w d3, d0
+	jsr operand.tkpkgMselLocateSemanticOperandV2
+	bne.w forcedTargetReturn
+	movea.l a0, a3
+	move.l d0, d6
+
+forcedTargetMemberScan
+	tst.l d6
+	beq.w forcedTargetReturn
+	subq.l #1, d6
+	cmpi.b #'.', 0(a3, d6.l)
+	bne.s forcedTargetMemberScan
+	tst.l d6
+	beq.w forcedTargetReturn
+	movea.l a3, a0
+	move.l d6, d0
+	moveq #0, d1
+	jsr operand.tkpkgMselEvaluateSemanticSpanV2
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	beq.s forcedTargetReturn
+	cmpi.l #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
+	beq.s forcedTargetMemberScan
+
+forcedTargetReturn
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	rts
+	.bend  ; tkpkgProjectForcedFixupTargetV2
+
+; Match Rust `expression_can_be_relocation_target` against a native source
+; span.  Inputs: A0/D0 = one parsed expression span. Outputs: selected status
+; in D0 and D3=0 on match.  Any non-register identifier term is sufficient;
+; numeric and quoted literal contents do not manufacture identifiers.
+tkpkgValidateRelocationTargetSpanV2	.block
+	movem.l d2/d4-d7/a0-a6, -(sp)
+	movea.l a0, a3
+	move.l d0, d7
+
+targetScan
+	tst.l d7
+	beq.w targetScanNoMatch
+	moveq #0, d4
+	move.b (a3), d4
+	cmpi.b #'"', d4
+	beq.w targetScanQuoted
+	cmpi.b #39, d4
+	beq.w targetScanQuoted
+	cmpi.b #'$', d4
+	beq.w targetScanDollar
+	cmpi.b #'%', d4
+	beq.w targetScanPercent
+	cmpi.b #'0', d4
+	bcs.s targetScanIdentifierStart
+	cmpi.b #'9', d4
+	bls.w targetScanNumber
+
+targetScanIdentifierStart
+	cmpi.b #'_', d4
+	beq.s targetScanIdentifier
+	cmpi.b #'A', d4
+	bcs.w targetScanAdvance
+	cmpi.b #'Z', d4
+	bls.s targetScanIdentifier
+	cmpi.b #'a', d4
+	bcs.w targetScanAdvance
+	cmpi.b #'z', d4
+	bhi.w targetScanAdvance
+
+targetScanIdentifier
+	movea.l a3, a4
+	moveq #1, d6
+
+targetScanIdentifierRest
+	cmp.l d7, d6
+	bhs.s targetScanIdentifierReady
+	moveq #0, d4
+	move.b 0(a3, d6.l), d4
+	cmpi.b #'_', d4
+	beq.s targetScanIdentifierContinue
+	cmpi.b #'.', d4
+	beq.s targetScanIdentifierContinue
+	cmpi.b #'$', d4
+	beq.s targetScanIdentifierContinue
+	cmpi.b #'0', d4
+	bcs.s targetScanIdentifierLetter
+	cmpi.b #'9', d4
+	bls.s targetScanIdentifierContinue
+targetScanIdentifierLetter
+	cmpi.b #'A', d4
+	bcs.s targetScanIdentifierReady
+	cmpi.b #'Z', d4
+	bls.s targetScanIdentifierContinue
+	cmpi.b #'a', d4
+	bcs.s targetScanIdentifierReady
+	cmpi.b #'z', d4
+	bhi.s targetScanIdentifierReady
+targetScanIdentifierContinue
+	addq.l #1, d6
+	bra.s targetScanIdentifierRest
+
+targetScanIdentifierReady
+	movea.l a4, a0
+	move.l d6, d0
+	move.w #$FFFF, d1
+	bsr.w tkpkgFindScopedRegisterEncodingV1
+	bne.w targetScanMatch
+	adda.l d6, a3
+	sub.l d6, d7
+	bra.w targetScan
+
+targetScanQuoted
+	move.b d4, d5
+	addq.l #1, a3
+	subq.l #1, d7
+targetScanQuotedLoop
+	tst.l d7
+	beq.w targetScanNoMatch
+	moveq #0, d4
+	move.b (a3)+, d4
+	subq.l #1, d7
+	cmp.b d5, d4
+	beq.w targetScan
+	cmpi.b #'\\', d4
+	bne.s targetScanQuotedLoop
+	tst.l d7
+	beq.w targetScanNoMatch
+	addq.l #1, a3
+	subq.l #1, d7
+	bra.s targetScanQuotedLoop
+
+targetScanDollar
+	addq.l #1, a3
+	subq.l #1, d7
+targetScanHexLoop
+	tst.l d7
+	beq.w targetScanNoMatch
+	moveq #0, d4
+	move.b (a3), d4
+	cmpi.b #'_', d4
+	beq.s targetScanHexContinue
+	cmpi.b #'0', d4
+	bcs.s targetScanHexUpper
+	cmpi.b #'9', d4
+	bls.s targetScanHexContinue
+targetScanHexUpper
+	cmpi.b #'A', d4
+	bcs.s targetScanHexLower
+	cmpi.b #'F', d4
+	bls.s targetScanHexContinue
+targetScanHexLower
+	cmpi.b #'a', d4
+	bcs.w targetScan
+	cmpi.b #'f', d4
+	bhi.w targetScan
+targetScanHexContinue
+	addq.l #1, a3
+	subq.l #1, d7
+	bra.s targetScanHexLoop
+
+targetScanPercent
+	addq.l #1, a3
+	subq.l #1, d7
+targetScanBinaryLoop
+	tst.l d7
+	beq.w targetScanNoMatch
+	moveq #0, d4
+	move.b (a3), d4
+	cmpi.b #'_', d4
+	beq.s targetScanBinaryContinue
+	cmpi.b #'0', d4
+	beq.s targetScanBinaryContinue
+	cmpi.b #'1', d4
+	bne.w targetScan
+targetScanBinaryContinue
+	addq.l #1, a3
+	subq.l #1, d7
+	bra.s targetScanBinaryLoop
+
+targetScanNumber
+	addq.l #1, a3
+	subq.l #1, d7
+targetScanNumberLoop
+	tst.l d7
+	beq.w targetScanNoMatch
+	moveq #0, d4
+	move.b (a3), d4
+	cmpi.b #'_', d4
+	beq.s targetScanNumberContinue
+	cmpi.b #'0', d4
+	bcs.s targetScanNumberUpper
+	cmpi.b #'9', d4
+	bls.s targetScanNumberContinue
+targetScanNumberUpper
+	cmpi.b #'A', d4
+	bcs.s targetScanNumberLower
+	cmpi.b #'Z', d4
+	bls.s targetScanNumberContinue
+targetScanNumberLower
+	cmpi.b #'a', d4
+	bcs.w targetScan
+	cmpi.b #'z', d4
+	bhi.w targetScan
+targetScanNumberContinue
+	addq.l #1, a3
+	subq.l #1, d7
+	bra.s targetScanNumberLoop
+
+targetScanAdvance
+	addq.l #1, a3
+	subq.l #1, d7
+	bra.w targetScan
+
+targetScanMatch
+	moveq #0, d3
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.s targetScanReturn
+targetScanNoMatch
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+targetScanReturn
+	movem.l (sp)+, d2/d4-d7/a0-a6
+	rts
+	.bend  ; tkpkgValidateRelocationTargetSpanV2
 
 ; Project Rust's `target:call_arg_valueN.argM` predicate for the direct
 ; identifier subset supported by native target projection. Selection is purely
@@ -6460,7 +6761,7 @@ callArgValueTargetArgReady
 	move.w 2(sp), d1
 	bsr.w tkpkgSelectCallArgumentV1
 	bne.s callArgValueTargetNoMatch
-	bsr.w tkpkgValidateDirectTargetSpanV1
+	bsr.w tkpkgValidateRelocationTargetSpanV2
 	bra.s callArgValueTargetReturn
 
 callArgValueTargetMalformed
@@ -6571,7 +6872,7 @@ callArgMemberTargetFieldReady
 	bne.s callArgMemberTargetNoMatch
 	jsr operand.tkpkgMselStripOuterParensV1
 	bne.s callArgMemberTargetNoMatch
-	bsr.w tkpkgValidateDirectTargetSpanV1
+	bsr.w tkpkgValidateRelocationTargetSpanV2
 	bra.s callArgMemberTargetReturn
 
 callArgMemberTargetMalformed
@@ -6584,72 +6885,6 @@ callArgMemberTargetReturn
 	movem.l (sp)+, d2/d4-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgProjectCallArgMemberTargetV1
-
-; Validate the same architecture-neutral direct identifier span accepted by
-; `target:exprN`, rejecting any spelling owned by package RENC records.
-; Inputs: A0/D0 = candidate span. Outputs: D0 selected status; D3=0 on match.
-tkpkgValidateDirectTargetSpanV1	.block
-	movem.l d2/d4-d7/a1-a6, -(sp)
-	movea.l a0, a4
-	move.l d0, d6
-	move.w #$FFFF, d1
-	bsr.w tkpkgFindScopedRegisterEncodingV1
-	beq.s targetSpanNoMatch
-	movea.l a4, a0
-	move.l d6, d7
-	beq.s targetSpanNoMatch
-	moveq #0, d4
-	move.b (a0)+, d4
-	subq.l #1, d7
-	cmpi.b #'_', d4
-	beq.s targetSpanIdentifierRest
-	cmpi.b #'.', d4
-	beq.s targetSpanIdentifierRest
-	cmpi.b #'A', d4
-	bcs.s targetSpanNoMatch
-	cmpi.b #'Z', d4
-	bls.s targetSpanIdentifierRest
-	cmpi.b #'a', d4
-	bcs.s targetSpanNoMatch
-	cmpi.b #'z', d4
-	bhi.s targetSpanNoMatch
-
-targetSpanIdentifierRest
-	tst.l d7
-	beq.s targetSpanOk
-	moveq #0, d4
-	move.b (a0)+, d4
-	subq.l #1, d7
-	cmpi.b #'_', d4
-	beq.s targetSpanIdentifierRest
-	cmpi.b #'.', d4
-	beq.s targetSpanIdentifierRest
-	cmpi.b #'0', d4
-	bcs.s targetSpanIdentifierLetter
-	cmpi.b #'9', d4
-	bls.s targetSpanIdentifierRest
-targetSpanIdentifierLetter
-	cmpi.b #'A', d4
-	bcs.s targetSpanNoMatch
-	cmpi.b #'Z', d4
-	bls.s targetSpanIdentifierRest
-	cmpi.b #'a', d4
-	bcs.s targetSpanNoMatch
-	cmpi.b #'z', d4
-	bls.s targetSpanIdentifierRest
-	bra.s targetSpanNoMatch
-
-targetSpanOk
-	moveq #0, d3
-	moveq #TKPKG_SELECTED_STATUS_OK, d0
-	bra.s targetSpanReturn
-targetSpanNoMatch
-	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
-targetSpanReturn
-	movem.l (sp)+, d2/d4-d7/a1-a6
-	rts
-	.bend  ; tkpkgValidateDirectTargetSpanV1
-
 ; Parse `N.FIELD` for neutral member/member-shape projections.
 ; Inputs: A1/D0 = suffix. Outputs: D3=operand, A2/D4=field, D1=0/1.
 tkpkgParseMemberSpecV2	.block

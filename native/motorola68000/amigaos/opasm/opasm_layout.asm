@@ -10,7 +10,10 @@
 OPASM_LAYOUT_NAME_CAPACITY = 32
 OPASM_LAYOUT_OWNER_CAPACITY = 64
 OPASM_LAYOUT_REGION_CAPACITY = 8
-OPASM_LAYOUT_SECTION_CAPACITY = 16
+; The current complete native product declares 172 module-owned sections.
+; Keep a power-of-two fixed native table with measured headroom; Rust remains
+; the unbounded semantic authority.
+OPASM_LAYOUT_SECTION_CAPACITY = 256
 OPASM_LAYOUT_MAP_CAPACITY = 16
 OPASM_LAYOUT_STATEMENT_CAPACITY = 100000
 OPASM_LAYOUT_REACHABLE_CAPACITY = 512
@@ -34,6 +37,7 @@ resetStateV1	.block
 	clr.w OpasmLayoutSectionCount.l
 	lea OpasmLayoutSectionActive.l, a0
 	clr.w (a0)
+	clr.l OpasmLayoutActiveSectionStartPc.l
 	moveq #-1, d0
 	lea OpasmLayoutActiveSectionIndex.l, a0
 	move.w d0, (a0)
@@ -111,7 +115,7 @@ captureParentFail
 	rts
 	.bend  ; captureSectionParentPcV1
 
-; Close the active section and retain its pass-one byte size.
+; Close the active section and retain its current stabilized byte size.
 ; Outputs: D0.L = 0 on success, 1 when no section is active.
 ; Clobbers: D0-D5/A0/CCR.
 ; CCR: reflects D0 on return.
@@ -120,9 +124,6 @@ processEndsectionV1	.block
 	lea OpasmLayoutSectionActive.l, a0
 	tst.w (a0)
 	beq.w fail
-	jsr eng.opasmEngineGetSessionPassV1
-	cmpi.w #1, d0
-	bne.s clearActive
 	jsr eng.opasmEngineGetSessionCurrentPcV1
 	move.l d0, d1
 	moveq #0, d5
@@ -130,11 +131,17 @@ processEndsectionV1	.block
 	move.w (a0), d5
 	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
 	beq.w fail
-	lea OpasmLayoutSectionStartPcs.l, a0
-	bsr.w longTablePtrV1
-	sub.l (a0), d1
+	sub.l OpasmLayoutActiveSectionStartPc.l, d1
 	lea OpasmLayoutSectionSizes.l, a0
 	bsr.w longTablePtrV1
+	cmp.l (a0), d1
+	beq.s sectionSizeReady
+	move.l d1, (a0)
+	jsr eng.opasmEngineGetSessionPassV1
+	cmpi.w #2, d0
+	bne.s sectionSizeReady
+	jsr eng.opasmEngineMarkLayoutChangedV1
+sectionSizeReady
 	move.l d1, (a0)
 
 clearActive
@@ -295,6 +302,7 @@ appendSectionV1	.block
 	move.l d3, (a0)
 	lea OpasmLayoutSectionActive.l, a0
 	move.w #1, (a0)
+	move.l d3, OpasmLayoutActiveSectionStartPc.l
 	lea OpasmLayoutActiveSectionIndex.l, a0
 	move.w d6, (a0)
 	lea OpasmLayoutSectionCount.l, a0
@@ -310,7 +318,8 @@ return
 	rts
 	.bend  ; appendSectionV1
 
-; Activate an existing section for pass two at the supplied current PC.
+; Activate an existing section for pass two. The pass-one start PC remains an
+; immutable section-relative baseline used by every stabilization retry.
 ; Inputs: D0.L = current PC; D5.W = section index.
 ; Outputs: D0.L = 0 on success, 1 for an invalid section index.
 ; Clobbers: D0-D2/D5/A0/CCR.
@@ -325,10 +334,7 @@ beginSectionPassTwoV1	.block
 	move.w #1, (a0)
 	lea OpasmLayoutActiveSectionIndex.l, a0
 	move.w d5, (a0)
-	move.l d0, d1
-	lea OpasmLayoutSectionStartPcs.l, a0
-	jsr longTablePtrV1
-	move.l d1, (a0)
+	move.l d0, OpasmLayoutActiveSectionStartPc.l
 	moveq #0, d0
 	rts
 
@@ -2121,6 +2127,9 @@ OpasmLayoutSectionActive
 
 OpasmLayoutActiveSectionIndex
 	.res word, 1
+
+OpasmLayoutActiveSectionStartPc
+	.res long, 1
 
 OpasmLayoutSectionParentPc
 	.res long, 1

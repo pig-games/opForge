@@ -60,13 +60,13 @@ fn native_item38_full_product_source_line_budget_contract() {
             .expect("workspace-relative path"),
         Path::new("native/motorola68000/amigaos/opforge-cli/constants.asm")
     );
-    assert_eq!(*max_line, 184);
+    assert_eq!(*max_line, 189);
     assert!(
         *max_bytes < 512,
         "full-product source line exceeds the native 512-byte owner"
     );
     assert_eq!(
-        loadable_source_bytes, 1_561_972,
+        loadable_source_bytes, 1_615_563,
         "canonical loadable source-byte budget changed"
     );
     assert!(
@@ -88,11 +88,11 @@ fn native_item38_full_product_source_line_budget_contract() {
     );
     assert_eq!(
         graph.lines.len(),
-        90_441,
+        91_775,
         "Rust-processed row budget changed"
     );
     assert_eq!(
-        rust_processed_source_bytes, 3_479_376,
+        rust_processed_source_bytes, 3_516_613,
         "Rust-processed byte budget changed"
     );
     assert!(
@@ -155,7 +155,7 @@ fn native_item38_full_product_import_budget_contract() {
         })
         .sum::<usize>();
     eprintln!("ITEM38_IMPORT_BUDGET uses={use_count} capacity=512");
-    assert_eq!(use_count, 369, "full-product `.use` graph changed");
+    assert_eq!(use_count, 379, "full-product `.use` graph changed");
     let constants = fs::read_to_string(amigaos.join("opforge-cli/constants.asm"))
         .expect("read native CLI constants");
     assert!(constants.contains("NATIVE_IMPORT_TABLE_CAPACITY    = 512"));
@@ -345,11 +345,11 @@ fn native_item38_full_product_public_export_budget_contract() {
         public_declaration_name_bytes,
     );
     assert_eq!(
-        public_declaration_count, 6_330,
+        public_declaration_count, 6_503,
         "canonical public-declaration budget changed"
     );
     assert_eq!(
-        public_declaration_name_bytes, 122_694,
+        public_declaration_name_bytes, 126_581,
         "canonical packed public-export name budget changed"
     );
     let constants = fs::read_to_string(amigaos.join("opforge-cli/constants.asm"))
@@ -456,7 +456,7 @@ fn native_item38_full_product_conditional_depth_budget_contract() {
             .expect("workspace-relative path"),
         Path::new("native/motorola68000/amigaos/opforge-cli/strings.asm")
     );
-    assert_eq!(maximum.2, 400, "deepest canonical conditional moved");
+    assert_eq!(maximum.2, 402, "deepest canonical conditional moved");
 
     let constants = fs::read_to_string(amigaos.join("opforge-cli/constants.asm"))
         .expect("read native CLI constants");

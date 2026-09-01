@@ -152,7 +152,7 @@ fn native_item38_qualified_label_name_budget_matches_rust_product() {
     assert!(engine
         .contains("OPASM_ENGINE_SESSION_STATEMENT_BYTES = NATIVE_STATEMENT_TABLE_CAPACITY * 308"));
     assert!(engine.contains(
-        "OPASM_ENGINE_SESSION_LABEL_BYTES = (NATIVE_LABEL_TABLE_CAPACITY * 123) + (NATIVE_LABEL_HASH_BUCKET_CAPACITY * 4)"
+        "OPASM_ENGINE_SESSION_LABEL_BYTES = (NATIVE_LABEL_TABLE_CAPACITY * 127) + (NATIVE_LABEL_HASH_BUCKET_CAPACITY * 4)"
     ));
     assert!(engine.contains("OpasmEngineLabelHashNextTable"));
     assert!(engine.contains("OpasmEngineLabelHashHeadTable"));

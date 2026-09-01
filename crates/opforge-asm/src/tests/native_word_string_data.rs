@@ -53,7 +53,7 @@ fn native_word_string_data_source_contract() {
     assert!(source_contains_in_order(
         &driver,
         &[
-            "emitWord\n\tmove.w d6, d7",
+            "emitWord\n\tmove.l d6, d7",
             "moveq #0, d5",
             "bsr.w parseTextDirectiveForStatement",
             "jsr eng.opasmEngineAppendImageBytesV1",

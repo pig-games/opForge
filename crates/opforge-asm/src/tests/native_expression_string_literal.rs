@@ -152,7 +152,7 @@ fn native_expression_string_literal_parser_contract() {
             "CMPI.B #39, D7",
             "CMPI.B #'\"', D7",
             "textOk",
-            "JSR expr_bridge.opcoreExvmEvalOperandV1",
+            "JSR expr_bridge.opcoreExvmEvalOperandWithResolverV1",
         ]
     ));
 

@@ -58,9 +58,9 @@ fn native_data_string_parser_contract() {
     assert!(source_contains_in_order(
         &engine,
         &[
-            "cmpi.w #TOKEN_BUFFER_CAPACITY - 1, 0(a1, d3.l)",
+            "cmpi.w #TOKEN_BUFFER_CAPACITY - 2, d2",
             "blo.s copiedOperand",
-            "bsr.w opasmEngineGetStatementExprTextSliceV1",
+            "bsr.w sourceOperandLengthV1",
             "move.l a0, OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(a2)",
             "copiedOperand",
         ]

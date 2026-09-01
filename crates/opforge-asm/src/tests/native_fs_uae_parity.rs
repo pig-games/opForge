@@ -966,9 +966,9 @@ fn native_counted_for_flow_callback_precedes_pass_processing() {
             "move.l (sp)+, d7",
             "tst.w OpasmEngineFlowPending.l",
             "beq.w process",
-            "move.w OpasmEngineFlowNext.l, d2",
+            "move.l OpasmEngineFlowNext.l, d2",
             "clr.w OpasmEngineFlowPending.l",
-            "move.w d2, d7",
+            "move.l d2, d7",
         ]
     ));
     assert_eq!(driver.matches("clr.w OpasmRepeatDepth").count(), 2);
@@ -1018,8 +1018,8 @@ fn native_flow_navigation_initializes_default_callback_contract() {
     assert!(source_contains_in_order(
         &driver,
         &[
-            "move.w d0, d7",
-            "move.w d7, d0",
+            "move.l d0, d7",
+            "move.l d7, d0",
             "jsr navigation.initializeStatementFlowV1",
         ]
     ));
@@ -1040,8 +1040,8 @@ fn native_flow_navigation_initializes_default_callback_contract() {
         &navigation,
         &[
             "initializeStatementFlowV1\t.block",
-            "move.w d0, d2",
-            "addq.w #1, d2",
+            "move.l d0, d2",
+            "addq.l #1, d2",
             "clr.w d1",
             "moveq #0, d0",
         ]
@@ -1180,10 +1180,10 @@ fn native_preprocessor_expanded_line_failure_restores_caller_state() {
             "opasmEngineRollbackCollectionV1\t.block",
             "cmp.l OpasmEngineSourceRecordCount.l, d0",
             "cmp.l OpasmEngineStmtCount.l, d1",
-            "cmp.w OpasmEngineImageByteCount.l, d2",
+            "cmp.l OpasmEngineImageByteCount.l, d2",
             "move.l d0, OpasmEngineSourceRecordCount.l",
             "move.l d1, OpasmEngineStmtCount.l",
-            "move.w d2, OpasmEngineImageByteCount.l",
+            "move.l d2, OpasmEngineImageByteCount.l",
             "move.l d3, OpasmEngineSessionCurrentPc.l",
         ]
     ));
@@ -2112,7 +2112,7 @@ fn native_selected_instruction_imports_preserve_operand_text_and_add_alias_value
             "lea ScopedSnapshotValues.l, a0",
         ]
     ));
-    assert!(operand.contains("The selected request text is never\n; rewritten"));
+    assert!(operand.contains("The request text is never rewritten"));
 }
 
 #[test]
@@ -3473,7 +3473,8 @@ fn native_iterable_for_source_binds_before_body_and_updates_before_repeat() {
             "advanceRange",
             "updateBinding",
             "jsr compile_values.updateTopBindingV1",
-            "move.w 0(a0, d4.l), d2",
+            "repeatBody",
+            "move.l d3, d4",
         ]
     ));
     assert!(source_contains_in_order(
@@ -3542,8 +3543,8 @@ fn native_completed_repetition_advances_past_closing_directive() {
         assert!(source_contains_in_order(
             &tail[..end],
             &[
-                "move.w d7, d2",
-                "addq.w #1, d2",
+                "move.l d7, d2",
+                "addq.l #1, d2",
                 "moveq #1, d1",
                 "bra.w success"
             ],
@@ -3642,11 +3643,11 @@ fn native_while_source_reevaluates_opening_and_preserves_status() {
         &driver,
         &[
             "lea OpasmRepeatOpening, a0",
-            "move.w 0(a0, d4.l), d0",
+            "move.l 0(a0, d4.l), d0",
             "move.w #1, OpasmDriverWhileReevaluation",
             "bsr.w readWhileConditionForStatement",
             "move.l d0, d5",
-            "move.w d6, d7",
+            "move.l d6, d7",
             "tst.l d5",
         ]
     ));
@@ -5360,7 +5361,7 @@ fn native_conditional_flow_transitions_survive_callback_register_clobbers() {
             "clr.w OpasmEngineFlowPending.l",
             "tst.l d2",
             "andi.l #$7fffffff, d2",
-            "move.w d2, d7",
+            "move.l d2, d7",
         ]
     ));
     assert!(engine.matches("move.l d7, -(sp)").count() >= 7);
@@ -5372,8 +5373,8 @@ fn native_conditional_flow_transitions_survive_callback_register_clobbers() {
             "finishIfBranch",
             "ori.l #$80000000, d2",
             "finishEndmatchBranch",
-            "move.w d7, d2",
-            "addq.w #1, d2",
+            "move.l d7, d2",
+            "addq.l #1, d2",
             "success",
             "jsr eng.opasmEngineSetFlowNextV1",
         ]
@@ -5384,7 +5385,7 @@ fn native_conditional_flow_transitions_survive_callback_register_clobbers() {
     assert!(source_contains_in_order(
         &navigation,
         &[
-            "move.w d2, d7",
+            "move.l d2, d7",
             "move.l d2, -(sp)",
             "jsr (a2)",
             "move.l (sp)+, d2",
@@ -7617,7 +7618,7 @@ fn native_image_writes_follow_current_pc_across_overlapping_origins() {
             "tst.l d3",
             "beq.w success",
             "opasmEngineFlushMappedImageV1",
-            "move.w OpasmEngineImageByteCount.l, d0",
+            "move.l OpasmEngineImageByteCount.l, d0",
             "move.l d0, OpasmEngineImageWriteOffset.l",
             "jsr opasmEngineAppendImageBytesV1",
         ]
@@ -7703,7 +7704,7 @@ fn native_image_writes_follow_current_pc_across_overlapping_origins() {
             "move.w #1, OpasmDriverImageBaseSeen",
         ]
     ));
-    assert!(engine.contains("NATIVE_IMAGE_BUFFER_CAPACITY    = 65535"));
+    assert!(engine.contains("NATIVE_IMAGE_BUFFER_CAPACITY    = 1048576"));
 }
 
 #[test]
@@ -8012,7 +8013,6 @@ fn native_module_discovery_matches_rust_declared_id_and_bounded_graph_contract()
         "modulescanfibtable",
         "native_module_scan_depth_capacity",
         "comparefoldednull",
-        "recordindexedcandidate",
         "modulescanindexnametable",
         "modulescanindexpathtable",
     ] {
@@ -10737,8 +10737,9 @@ fn external_fs_uae_opforge_native_cli_move_long_symbolic_displacement_matches_ru
     }];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&repo_root, &cases)
-        .expect("focused symbolic-displacement MOVE.L FS-UAE helper should complete or skip cleanly")
-    {
+        .expect(
+            "focused symbolic-displacement MOVE.L FS-UAE helper should complete or skip cleanly",
+        ) {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
             eprintln!("SKIP: {reason}");
         }
@@ -10812,10 +10813,9 @@ fn external_fs_uae_native_item40_indexed_to_explicit_absolute_long_parity() {
         &[],
     );
     assert_eq!(rust_oracle, [0xa5]);
-    let package = fs::read(
-        root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
-    )
-    .expect("read exact native full-product package");
+    let package =
+        fs::read(root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"))
+            .expect("read exact native full-product package");
     let guest_files = module_sources
         .iter()
         .map(
@@ -14150,10 +14150,10 @@ fn external_fs_uae_native_m68000_forward_qualified_jsr_parity() {
     assert_eq!(
         rust_oracle,
         [
-            0x4e, 0xb9, 0x00, 0x00, 0x10, 0x10, 0x4e, 0xb9, 0x00, 0x00, 0x10, 0x20, 0x4e,
-            0x75, 0x00, 0x00, 0x4e, 0xb9, 0x00, 0x00, 0x10, 0x30, 0x4e, 0x75, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4e, 0xb9, 0x00, 0x00, 0x10, 0x30, 0x4e,
-            0x75, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4e, 0x75,
+            0x4e, 0xb9, 0x00, 0x00, 0x10, 0x10, 0x4e, 0xb9, 0x00, 0x00, 0x10, 0x20, 0x4e, 0x75,
+            0x00, 0x00, 0x4e, 0xb9, 0x00, 0x00, 0x10, 0x30, 0x4e, 0x75, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x4e, 0xb9, 0x00, 0x00, 0x10, 0x30, 0x4e, 0x75, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4e, 0x75,
         ]
     );
     let package = fs::read(
@@ -14242,7 +14242,10 @@ fn external_fs_uae_native_explicit_alias_qualified_jsr_parity() {
         &[],
     );
     assert_eq!(rust_oracle.len(), 34);
-    assert_eq!(&rust_oracle[..8], [0x4e, 0xb9, 0x00, 0x00, 0x00, 0x10, 0x4e, 0x75]);
+    assert_eq!(
+        &rust_oracle[..8],
+        [0x4e, 0xb9, 0x00, 0x00, 0x00, 0x10, 0x4e, 0x75]
+    );
     assert_eq!(&rust_oracle[16..18], [0x4e, 0x75]);
     assert_eq!(&rust_oracle[32..34], [0x4e, 0x75]);
     let guest_files = [
@@ -14449,18 +14452,54 @@ fn external_fs_uae_native_item40_exact_expression_service_parity() {
     let root = workspace_root();
     let source = b".module item40.expression.probe\n.cpu 68020\n.use tkpkg.amigaos.expression_service\n.org 0\n.byte $a5\n.endmodule\n.end\n";
     let module_sources = [
-        ("item40_tkpkg_abi.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_abi.asm"),
-        ("item40_buffers.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm"),
-        ("item40_expression.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_expression_service.asm"),
-        ("item40_runtime_context.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm"),
-        ("item40_engine_adapter.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm"),
-        ("item40_state_service.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm"),
-        ("item40_expr_bridge.asm", "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm"),
-        ("item40_exprvm_runtime.asm", "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm"),
-        ("item40_expression.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_expression_service.asm"),
-        ("item40_opasm_engine.asm", "native/motorola68000/amigaos/opasm/opasm_engine.asm"),
-        ("item40_opasm_events.asm", "native/motorola68000/amigaos/opasm/opasm_events.asm"),
-        ("item40_opasm_abi.asm", "native/motorola68000/amigaos/opasm/opasm_callback_abi.asm"),
+        (
+            "item40_tkpkg_abi.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_abi.asm",
+        ),
+        (
+            "item40_buffers.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm",
+        ),
+        (
+            "item40_expression.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_expression_service.asm",
+        ),
+        (
+            "item40_runtime_context.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm",
+        ),
+        (
+            "item40_engine_adapter.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm",
+        ),
+        (
+            "item40_state_service.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm",
+        ),
+        (
+            "item40_expr_bridge.asm",
+            "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm",
+        ),
+        (
+            "item40_exprvm_runtime.asm",
+            "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm",
+        ),
+        (
+            "item40_expression.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_expression_service.asm",
+        ),
+        (
+            "item40_opasm_engine.asm",
+            "native/motorola68000/amigaos/opasm/opasm_engine.asm",
+        ),
+        (
+            "item40_opasm_events.asm",
+            "native/motorola68000/amigaos/opasm/opasm_events.asm",
+        ),
+        (
+            "item40_opasm_abi.asm",
+            "native/motorola68000/amigaos/opasm/opasm_callback_abi.asm",
+        ),
     ]
     .map(|(relative_path, source_path)| {
         (
@@ -14493,10 +14532,9 @@ fn external_fs_uae_native_item40_exact_expression_service_parity() {
             },
         )
         .collect::<Vec<_>>();
-    let package = fs::read(
-        root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
-    )
-    .expect("read exact native full-product package");
+    let package =
+        fs::read(root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"))
+            .expect("read exact native full-product package");
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item40-exact-expression-service",
         cpu_override: "68020",
@@ -14552,32 +14590,98 @@ fn external_fs_uae_native_item40_exact_operand_runtime_parity() {
     let root = workspace_root();
     let source = b".module item40.operand.probe\n.cpu 68020\n.use opforge.cli.constants\n.use opforge.cli.state\n.use opforge.cli.strings\n.use opforge.cli.dos\n.use opforge.cli.path\n.use opforge.cli.copy\n.use tkpkg.amigaos.package_loader\n.use tkpkg.amigaos.service_status\n.use tkpkg.amigaos.service_request\n.use exprvm.amigaos.runtime\n.use opcore.amigaos.expr_bridge\n.use tkpkg.amigaos.engine_context_adapter\n.use tkpkg.amigaos.state_service\n.use tkpkg.amigaos.runtime_context\n.use tkpkg.amigaos.expression_service\n.use tkpkg.amigaos.selection_state\n.use tkpkg.amigaos.operand_runtime\n.org 0\n.byte $a5\n.endmodule\n.end\n";
     let module_sources = [
-        ("item40_tkpkg_abi.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_abi.asm"),
-        ("item40_buffers.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm"),
-        ("item40_cli_constants.asm", "native/motorola68000/amigaos/opforge-cli/constants.asm"),
-        ("item40_cli_state.asm", "native/motorola68000/amigaos/opforge-cli/state.asm"),
-        ("item40_cli_strings.asm", "native/motorola68000/amigaos/opforge-cli/strings.asm"),
-        ("item40_cli_dos.asm", "native/motorola68000/amigaos/opforge-cli/dos.asm"),
-        ("item40_cli_path.asm", "native/motorola68000/amigaos/opforge-cli/path.asm"),
-        ("item40_cli_copy.asm", "native/motorola68000/amigaos/opforge-cli/copy.asm"),
-        ("item40_package_loader.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_package_loader.asm"),
-        ("item40_service_status.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_service_status.asm"),
-        ("item40_service_request.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_service_request.asm"),
-        ("item40_operand_runtime.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm"),
-        ("item40_selection_state.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_selection_state.asm"),
-        ("item40_runtime_context.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm"),
-        ("item40_engine_adapter.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm"),
-        ("item40_state_service.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm"),
-        ("item40_expr_bridge.asm", "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm"),
-        ("item40_exprvm_runtime.asm", "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm"),
-        ("item40_expression_service.asm", "native/motorola68000/amigaos/tkpkg/tkpkg_expression_service.asm"),
-        ("item40_opasm_engine.asm", "native/motorola68000/amigaos/opasm/opasm_engine.asm"),
-        ("item40_opasm_events.asm", "native/motorola68000/amigaos/opasm/opasm_events.asm"),
-        ("item40_opasm_abi.asm", "native/motorola68000/amigaos/opasm/opasm_callback_abi.asm"),
+        (
+            "item40_tkpkg_abi.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_abi.asm",
+        ),
+        (
+            "item40_buffers.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm",
+        ),
+        (
+            "item40_cli_constants.asm",
+            "native/motorola68000/amigaos/opforge-cli/constants.asm",
+        ),
+        (
+            "item40_cli_state.asm",
+            "native/motorola68000/amigaos/opforge-cli/state.asm",
+        ),
+        (
+            "item40_cli_strings.asm",
+            "native/motorola68000/amigaos/opforge-cli/strings.asm",
+        ),
+        (
+            "item40_cli_dos.asm",
+            "native/motorola68000/amigaos/opforge-cli/dos.asm",
+        ),
+        (
+            "item40_cli_path.asm",
+            "native/motorola68000/amigaos/opforge-cli/path.asm",
+        ),
+        (
+            "item40_cli_copy.asm",
+            "native/motorola68000/amigaos/opforge-cli/copy.asm",
+        ),
+        (
+            "item40_package_loader.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_package_loader.asm",
+        ),
+        (
+            "item40_service_status.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_service_status.asm",
+        ),
+        (
+            "item40_service_request.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_service_request.asm",
+        ),
+        (
+            "item40_operand_runtime.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm",
+        ),
+        (
+            "item40_selection_state.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_selection_state.asm",
+        ),
+        (
+            "item40_runtime_context.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm",
+        ),
+        (
+            "item40_engine_adapter.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm",
+        ),
+        (
+            "item40_state_service.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm",
+        ),
+        (
+            "item40_expr_bridge.asm",
+            "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm",
+        ),
+        (
+            "item40_exprvm_runtime.asm",
+            "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm",
+        ),
+        (
+            "item40_expression_service.asm",
+            "native/motorola68000/amigaos/tkpkg/tkpkg_expression_service.asm",
+        ),
+        (
+            "item40_opasm_engine.asm",
+            "native/motorola68000/amigaos/opasm/opasm_engine.asm",
+        ),
+        (
+            "item40_opasm_events.asm",
+            "native/motorola68000/amigaos/opasm/opasm_events.asm",
+        ),
+        (
+            "item40_opasm_abi.asm",
+            "native/motorola68000/amigaos/opasm/opasm_callback_abi.asm",
+        ),
     ]
     .map(|(relative_path, source_path)| {
-        let bytes = fs::read(root.join(source_path))
-            .expect("read exact operand-runtime dependency");
+        let bytes =
+            fs::read(root.join(source_path)).expect("read exact operand-runtime dependency");
         (relative_path, bytes)
     });
     let rust_support = module_sources
@@ -14604,10 +14708,9 @@ fn external_fs_uae_native_item40_exact_operand_runtime_parity() {
             },
         )
         .collect::<Vec<_>>();
-    let package = fs::read(
-        root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
-    )
-    .expect("read exact native full-product package");
+    let package =
+        fs::read(root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"))
+            .expect("read exact native full-product package");
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item40-exact-operand-runtime",
         cpu_override: "68020",
@@ -14785,10 +14888,9 @@ fn external_fs_uae_native_item40_exact_parse_service_parity() {
             },
         )
         .collect::<Vec<_>>();
-    let package = fs::read(
-        root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
-    )
-    .expect("read exact Item 40 package");
+    let package =
+        fs::read(root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"))
+            .expect("read exact Item 40 package");
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item40-exact-parse-service",
         cpu_override: "68020",
@@ -26717,7 +26819,7 @@ fn external_fs_uae_native_opforge_full_product_artifact_parity() {
         .collect::<Vec<_>>();
     assert_eq!(
         guest_files.len(),
-        93,
+        95,
         "measured canonical product staging set changed"
     );
 
@@ -27259,13 +27361,8 @@ fn external_fs_uae_native_large_image_count_parity() {
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");
     let source = b".cpu 68020\n.org 0\n.fill byte,65536,$a5\n.byte $5a\n.end\n";
-    let rust_oracle = item7_live_rust_cli_binary_oracle(
-        "item40-large-image-count",
-        source,
-        &[],
-        "68020",
-        &[],
-    );
+    let rust_oracle =
+        item7_live_rust_cli_binary_oracle("item40-large-image-count", source, &[], "68020", &[]);
     assert_eq!(rust_oracle.len(), 65_537);
     assert!(rust_oracle[..65_536].iter().all(|byte| *byte == 0xa5));
     assert_eq!(rust_oracle[65_536], 0x5a);
@@ -27331,20 +27428,8 @@ fn external_fs_uae_native_suba_long_compound_immediate_sp_boundary() {
         bytes: abi_bytes.clone(),
     }];
     let rust_oracles = [
-        item7_live_rust_cli_binary_oracle(
-            "item40-suba-compound-a7",
-            sources[0],
-            &[],
-            "68020",
-            &[],
-        ),
-        item7_live_rust_cli_binary_oracle(
-            "item40-suba-literal-sp",
-            sources[1],
-            &[],
-            "68020",
-            &[],
-        ),
+        item7_live_rust_cli_binary_oracle("item40-suba-compound-a7", sources[0], &[], "68020", &[]),
+        item7_live_rust_cli_binary_oracle("item40-suba-literal-sp", sources[1], &[], "68020", &[]),
         item7_live_rust_cli_binary_oracle(
             "item40-suba-qualified-sp",
             sources[2],
@@ -27718,13 +27803,8 @@ fn external_fs_uae_native_two_symbol_selected_expression_boundary() {
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");
     let source = b".module item40.values\n.cpu 68020\n.pub\nFIRST = 30\nSECOND = 20\n.endmodule\n.module item40.probe\n.cpu 68020\n.org 0\n        suba.l #item40.values.FIRST + item40.values.SECOND,sp\n.endmodule\n.end\n";
-    let rust_oracle = item7_live_rust_cli_binary_oracle(
-        "item40-two-symbol-suba",
-        source,
-        &[],
-        "68020",
-        &[],
-    );
+    let rust_oracle =
+        item7_live_rust_cli_binary_oracle("item40-two-symbol-suba", source, &[], "68020", &[]);
     assert_eq!(rust_oracle, [0x9f, 0xfc, 0x00, 0x00, 0x00, 0x32]);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item40-two-symbol-suba",
@@ -27814,9 +27894,9 @@ fn external_fs_uae_native_item40_block_local_blo_short_parity() {
     assert_eq!(
         branch_oracle,
         [
-            0x4e, 0x75, 0x61, 0xfc, 0x61, 0x18, 0x65, 0x12, 0x0c, 0x00, 0x00, 0x5a, 0x63,
-            0x0e, 0x0c, 0x00, 0x00, 0x61, 0x65, 0x06, 0x0c, 0x00, 0x00, 0x7a, 0x63, 0x02,
-            0x4e, 0x75, 0x4e, 0x75, 0x4e, 0x75,
+            0x4e, 0x75, 0x61, 0xfc, 0x61, 0x18, 0x65, 0x12, 0x0c, 0x00, 0x00, 0x5a, 0x63, 0x0e,
+            0x0c, 0x00, 0x00, 0x61, 0x65, 0x06, 0x0c, 0x00, 0x00, 0x7a, 0x63, 0x02, 0x4e, 0x75,
+            0x4e, 0x75, 0x4e, 0x75,
         ]
     );
     let source = format!(
@@ -27833,10 +27913,9 @@ fn external_fs_uae_native_item40_block_local_blo_short_parity() {
         &[],
     );
     assert_eq!(rust_oracle, [0xa5]);
-    let package = fs::read(
-        root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
-    )
-    .expect("read exact native full-product package");
+    let package =
+        fs::read(root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"))
+            .expect("read exact native full-product package");
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item40-block-local-blo-short",
         cpu_override: "68020",
@@ -27850,11 +27929,8 @@ fn external_fs_uae_native_item40_block_local_blo_short_parity() {
             rust_oracle: &rust_oracle,
         },
     }];
-    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
-        &root,
-        &cases,
-    )
-    .expect("directed Item 40 block-local BLO.S parity run")
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&root, &cases)
+        .expect("directed Item 40 block-local BLO.S parity run")
     {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
@@ -28083,9 +28159,17 @@ fn external_fs_uae_native_item40_parent_scope_bsr_word_parity() {
         .expect("native CLI FS-UAE smoke lock poisoned");
     let root = workspace_root();
     let source = b".module opforge.cli.metadata\n.cpu 68020\n.org 0\nopforgeNativeCliRouteRootMetadataLineV1 .block\nmatchesInlineTargetNameV1 .block\n\tbsr.w bytesEqualFoldedV1\n\trts\n\t.bend\nbytesEqualFoldedV1 .block\n\trts\n\t.bend\n\t.bend\n.endmodule\n.end\n";
-    let rust_oracle =
-        item7_live_rust_cli_binary_oracle("item40-parent-scope-bsr-word", source, &[], "68020", &[]);
-    assert_eq!(rust_oracle, [0x61, 0x00, 0x00, 0x04, 0x4e, 0x75, 0x4e, 0x75]);
+    let rust_oracle = item7_live_rust_cli_binary_oracle(
+        "item40-parent-scope-bsr-word",
+        source,
+        &[],
+        "68020",
+        &[],
+    );
+    assert_eq!(
+        rust_oracle,
+        [0x61, 0x00, 0x00, 0x04, 0x4e, 0x75, 0x4e, 0x75]
+    );
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item40-parent-scope-bsr-word",
         cpu_override: "68020",

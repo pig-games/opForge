@@ -1619,7 +1619,6 @@ tupleInnerEnd
 	tst.l d1
 	bne.s tupleFail
 	move.l a3, d5
-	tst.l d5
 	beq.s tupleFail
 	movea.l a3, a0
 	move.l d4, d0

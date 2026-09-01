@@ -71,7 +71,7 @@ fn native_expression_unary_parser_runtime_contract() {
             "CMPI.B #'<', D7",
             "CMPI.B #'>', D7",
             "textOk",
-            "JSR expr_bridge.opcoreExvmEvalOperandV1",
+            "JSR expr_bridge.opcoreExvmEvalOperandWithResolverV1",
         ]
     ));
 

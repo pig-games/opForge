@@ -382,7 +382,6 @@ semanticSequenceStepLoop
 	movea.l a4, a6
 	adda.w d4, a4
 	sub.w d4, d7
-	tst.w d7
 	beq.w fail
 	moveq #0, d5
 	move.b (a4)+, d5
@@ -1337,7 +1336,6 @@ tkpkgSemanticApplyFixupTransformV7	.block
 	bne.w transformFail
 	moveq #0, d0
 	move.b (a0)+, d0
-	tst.b d0
 	bne.s transformCheckKind
 	bra.w transformIdentity
 transformCheckKind

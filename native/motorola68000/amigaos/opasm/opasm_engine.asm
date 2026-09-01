@@ -1894,7 +1894,6 @@ opasmEngineStatementIsOrgV1	.block
 	suba.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
 	bsr.w opasmEngineGetStatementTextMetadataV1
-	tst.l d0
 	bne.s no
 	movea.l OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
 	move.l OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d3
@@ -2064,7 +2063,6 @@ refreshFindLoop
 	bsr.w labelNamePtr
 	move.w d7, d0
 	bsr.w labelEquals
-	tst.l d0
 	bne.s refreshFound
 	addq.w #1, d4
 	bra.s refreshFindLoop
@@ -3073,7 +3071,6 @@ findExactLabelLoop
 	movea.l a2, a1
 	move.l d5, d0
 	bsr.w labelEquals
-	tst.l d0
 	bne.s findExactLabelFound
 	move.l d6, d0
 	lsl.l #2, d0

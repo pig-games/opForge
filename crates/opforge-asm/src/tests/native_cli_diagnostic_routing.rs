@@ -143,7 +143,6 @@ fn native_cli_error_output_routing_contract() {
 
     for diagnostic in [
         "InputOpenErrorText",
-        "NativeHunkNotImplementedText",
         "HunkRequiredText",
         "TokenizerFailureText",
         "NativePassFailureText",

@@ -5130,7 +5130,6 @@ exprPathNamedRegisterTerminal
 	move.w d7, d1
 	subq.w #1, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	beq.w exprPathNoMatch
 	movea.l (sp), a0
 	moveq #0, d0
@@ -5810,7 +5809,6 @@ namedRegisterSeparatorReady
 	movea.l (sp), a2
 	move.w 4(sp), d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	beq.s namedRegisterNoMatch
 	moveq #0, d3
 	moveq #TKPKG_SELECTED_STATUS_OK, d0
@@ -7035,7 +7033,6 @@ tkpkgParseSequenceTailV1	.block
 	lea SemanticAlignmentViolationText, a2
 	moveq #9, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	beq.s sequenceTailMalformed
 	moveq #1, d4
 	bra.s sequenceTailOk
@@ -7045,7 +7042,6 @@ sequenceTailCheckSequence
 	lea SemanticSequenceViolationText, a2
 	moveq #8, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	beq.s sequenceTailMalformed
 	moveq #2, d4
 	bra.s sequenceTailOk
@@ -7165,7 +7161,6 @@ tkpkgParseTupleItemClassSpecV2	.block
 	movea.l d2, a2
 	movea.l a1, a3
 	move.w d0, d7
-	tst.w d7
 	beq.w tupleSpecFail
 
 tupleSpecOperandScan
@@ -7521,7 +7516,6 @@ tupleQualifierScan
 	movea.l a3, a2
 	move.w d7, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	beq.s tupleQualifierFail
 	movea.l a4, a0
 	move.w d6, d0
@@ -7931,7 +7925,6 @@ rangeTryNamed
 	movea.l 14(sp), a2
 	move.w d1, d0
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	beq.s rangeNoMatch
 	movea.l 28(sp), a1
 	moveq #0, d0

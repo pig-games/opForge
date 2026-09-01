@@ -3909,7 +3909,6 @@ emitDirectiveIsLongV1	.block
 	lea DirectiveLongKindText.l, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	tst.l d0
 	beq.s emitKindFail
 	moveq #0, d0
 	bra.s emitKindReturn

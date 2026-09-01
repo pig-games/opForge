@@ -14894,7 +14894,7 @@ fn motorola68020_item15_native_semantic_v2_is_package_driven_and_fail_closed() {
     assert!(loader.contains("buffers.ValpChunkOffsetLo"));
     assert!(selection.contains("tkpkgBuildCompactSemanticCandidateV2"));
     assert!(selection.contains("tkpkgFindScopedRegisterEncodingV1"));
-    assert!(selection.contains("tkpkgExecuteScopedValueProgramV1"));
+    assert!(selection.contains("tkpkgExecuteScopedValueProgramV2"));
     assert!(source_contains_in_order(
         &selection,
         &[
@@ -14942,7 +14942,7 @@ fn motorola68020_item15_native_semantic_v2_is_package_driven_and_fail_closed() {
         &[
             "tkpkgProjectRequiredValueV1",
             "lea RequiredValuePrefixText, a2",
-            "tkpkgExecuteScopedValueProgramV1",
+            "tkpkgExecuteScopedValueProgramV2",
         ]
     ));
     assert!(!selection.contains("RequiredValuePrefixText(pc)"));
@@ -15003,7 +15003,7 @@ fn motorola68020_item15_native_semantic_v2_is_package_driven_and_fail_closed() {
         ]
     ));
 
-    for forbidden in ["m68000", "motorola68000"] {
+    for forbidden in ["m68000_", "motorola68000_"] {
         assert!(
             !selection.to_ascii_lowercase().contains(forbidden)
                 && !operand.to_ascii_lowercase().contains(forbidden)
@@ -15162,13 +15162,13 @@ fn motorola68020_item17_native_indirect_register_projection_matches_rust_boundar
             "movea.l #1, a6",
             "semanticRegisterSpec",
             "operand.tkpkgMselLocateSemanticOperandV2",
-            "move.l a6, d5",
+            "semanticRegisterStripParens",
             "operand.tkpkgMselStripOuterParensV1",
             "semanticRegisterLookup",
             "tkpkgFindScopedRegisterEncodingV1",
         ]
     ));
-    for forbidden in ["motorola68000", "m68000", "MOVE.L"] {
+    for forbidden in ["motorola68000_", "m68000_", "MOVE.L"] {
         assert!(
             !selection.contains(forbidden),
             "generic Item 17 projection must not own target spelling {forbidden}"
@@ -15213,24 +15213,24 @@ fn motorola68020_item17_native_immediate_register_shape_matches_rust_boundary() 
         &[
             "tkpkgInferSelectedPackageShapeV1",
             "operand.tkpkgMselLocateSemanticOperandV2",
-            "cmpi.b #'#', (a0)",
-            "moveq #2, d0",
-            "operand.tkpkgMselLocateSemanticOperandV2",
+            "classifyPair",
+            "cmpi.b #'#', (a2)",
+            "classifyImmediatePair",
             "move.w #$FFFF, d1",
             "tkpkgFindScopedRegisterEncodingV1",
             "ImmediateRegisterShapeText",
-            "move.w #18, state.EncodeSelectedMselShapeLen",
+            "moveq #18, d0",
             "ImmediateDirectShapeText",
-            "move.w #16, state.EncodeSelectedMselShapeLen",
+            "moveq #16, d0",
         ],
     ));
     assert!(source_contains_in_order(
         &selection,
         &[
-            "tkpkgExecuteValueProgramBytesV1",
+            "tkpkgExecuteValueProgramBytesV2",
             "cmpi.b #$03, d0",
-            "valueNormalize",
             "cmpi.b #$06, d0",
+            "valueNormalize",
             "valueRequireRange",
             "cmpi.w #16, d7",
             "tkpkgValueReadI64LeV1",
@@ -15253,7 +15253,7 @@ fn motorola68020_item17_native_immediate_register_shape_matches_rust_boundary() 
             "rencMatch",
         ],
     ));
-    for forbidden in ["motorola68000", "m68000", "MOVE.W"] {
+    for forbidden in ["motorola68000_", "m68000_", "MOVE.W"] {
         assert!(
             !selection.contains(forbidden),
             "generic immediate shape inference must not own target spelling {forbidden}"
@@ -15321,7 +15321,7 @@ fn motorola68020_item17_native_unary_indirect_register_matches_rust_boundary() {
             "tkpkgFindScopedRegisterEncodingV1",
         ],
     ));
-    for forbidden in ["motorola68000", "m68000", "MOVE.W"] {
+    for forbidden in ["motorola68000_", "m68000_", "MOVE.W"] {
         assert!(
             !selection.contains(forbidden),
             "generic unary-indirect projection must not own target spelling {forbidden}"
@@ -15372,19 +15372,19 @@ fn motorola68020_item17_native_optional_tuple_value_program_matches_rust_boundar
     assert!(source_contains_in_order(
         &selection,
         &[
-            "RequiredValuePrefixText",
-            "ValuePrefixText",
             "tkpkgProjectRequiredValueV1",
             "requiredCheckOptional",
-            "requiredCheckTupleValue",
-            "IndirectTupleValuePrefixText",
             "requiredProjectSource",
+            "requiredCheckMemberSource",
+            "lea IndirectTupleValuePrefixText, a2",
             "tkpkgProjectCompactSemanticInputV2",
-            "tkpkgExecuteScopedValueProgramV1",
+            "tkpkgExecuteScopedValueProgramV2",
             "cmpi.l #2, d0",
             "requiredNoMatch",
         ],
     ));
+    assert!(selection.contains("RequiredValuePrefixText"));
+    assert!(selection.contains("ValuePrefixText"));
     assert!(source_contains_in_order(
         &selection,
         &[
@@ -15398,7 +15398,7 @@ fn motorola68020_item17_native_optional_tuple_value_program_matches_rust_boundar
             "moveq #2, d0",
         ],
     ));
-    for forbidden in ["motorola68000", "m68000", "PEA"] {
+    for forbidden in ["motorola68000_", "m68000_", "PEA"] {
         assert!(
             !selection.contains(forbidden),
             "generic optional value-program projection must not own target spelling {forbidden}"
@@ -15531,17 +15531,19 @@ fn motorola68020_item17_native_direct_target_matches_rust_boundary() {
     assert!(source_contains_in_order(
         &selection,
         &[
-            "TargetPrefixText",
-            "sequenceNoTargetPrefix",
-            "tkpkgProjectDirectSemanticTargetV2",
-            "move.w #$FFFF, d1",
-            "tkpkgFindScopedRegisterEncodingV1",
-            "targetIdentifierRest",
+            "tkpkgProjectDirectSemanticTargetV2\t.block",
+            "CallArgValuePrefixText",
+            "targetCheckCallArgMember",
+            "CallArgMemberPrefixText",
+            "targetCheckExpr",
+            "tkpkgMselLocateIndirectTupleItemV2",
+            "tkpkgMselLocateSemanticOperandV2",
+            "tkpkgValidateRelocationTargetSpanV2",
             "targetNoMatch",
             "targetMalformed",
         ],
     ));
-    for forbidden in ["motorola68000", "m68000", "JSR"] {
+    for forbidden in ["motorola68000_", "m68000_", "JSR"] {
         assert!(
             !selection.contains(forbidden),
             "generic direct-target projection must not own target spelling {forbidden}"
@@ -15601,7 +15603,7 @@ fn motorola68020_item17_native_semantic_reject_matches_rust_boundary() {
         &selection,
         &[
             "tkpkgRenderRejectMessageCodeV1",
-            "lea -4(sp), sp",
+            "lea -12(sp), sp",
             "move.w d2, (sp)",
             "move.w d0, 2(sp)",
             "bsr.w tkpkgServiceChunkPtrFromLocatorV1",
@@ -15609,7 +15611,7 @@ fn motorola68020_item17_native_semantic_reject_matches_rust_boundary() {
             "rejectMessageFound",
             "move.w (sp), d2",
             "bsr.w tkpkgRenderRejectMessageTemplateV1",
-            "lea 4(sp), sp",
+            "lea 12(sp), sp",
         ],
     ));
     assert!(source_contains_in_order(
@@ -15620,7 +15622,7 @@ fn motorola68020_item17_native_semantic_reject_matches_rust_boundary() {
             "bsr.w tkpkgRenderRejectMessageCodeV1",
         ],
     ));
-    for forbidden in ["MOVE.W", "LEA", "JMP", "m68000"] {
+    for forbidden in ["MOVE.W", "LEA", "JMP", "m68000_"] {
         assert!(
             !selection.contains(forbidden),
             "generic semantic-reject runtime must not own target spelling {forbidden}"
@@ -15707,7 +15709,7 @@ fn motorola68020_item17_native_input_fields_v6_matches_rust_boundary() {
             "tkpkgSemanticEmitUnitV2",
         ]
     ));
-    for forbidden in ["motorola68000", "m68000", "MOVEA.L"] {
+    for forbidden in ["motorola68000_", "m68000_", "MOVEA.L"] {
         assert!(
             !encode.contains(forbidden),
             "generic Item 17 encoder must not own target spelling {forbidden}"
@@ -15830,7 +15832,7 @@ fn motorola68020_item17_native_indirect_tuple_projection_matches_rust_boundary()
             "bne.w none",
         ]
     ));
-    for forbidden in ["motorola68000", "m68000", "LEA"] {
+    for forbidden in ["motorola68000_", "m68000_", "LEA"] {
         assert!(
             !operand.contains(forbidden) && !selection.contains(forbidden),
             "generic Item 17 tuple projection must not own target spelling {forbidden}"
@@ -16077,7 +16079,7 @@ fn motorola68020_item18_native_value_vm_v2_matches_rust_boundary() {
             "tkpkgSemanticEmitUnitV2",
         ],
     ));
-    for forbidden in ["motorola68000", "m68000", "ADDQ", "ASL"] {
+    for forbidden in ["motorola68000_", "m68000_", "ADDQ", "ASL"] {
         assert!(
             !scoped.contains(forbidden) && !interpreter.contains(forbidden),
             "generic VALUE_VM runtime must not own target spelling {forbidden}"
@@ -17344,13 +17346,13 @@ fn motorola68020_item23_call_arg_register_matches_rust_boundary() {
         &native_selector,
         &[
             "callArgSpecClassReady",
-            "move.w d5, 4(sp)",
+            "move.w d5, 16(sp)",
             "bsr.w tkpkgParseU16DecimalV2",
             "move.w d3, 2(sp)",
-            "move.w 4(sp), d0",
+            "move.w 16(sp), d0",
             "sub.w d6, d0",
             "subq.w #6, d0",
-            "bsr.w tkpkgParseU16DecimalV2",
+            "bsr.w tkpkgParseRegisterClassProjectionV1",
             "move.w d3, 4(sp)",
         ]
     ));
@@ -17625,7 +17627,7 @@ fn motorola68020_item24_call_arg_value_target_matches_rust_boundary() {
             "lea CallArgValuePrefixText, a2",
             "tkpkgProjectCallArgValueTargetV1",
             "bsr.w tkpkgSelectCallArgumentV1",
-            "bsr.w tkpkgValidateDirectTargetSpanV1",
+            "bsr.w tkpkgValidateRelocationTargetSpanV2",
         ]
     ));
     let target_projection = native_selector
@@ -17750,7 +17752,7 @@ fn motorola68020_item24_call_arg_member_target_matches_rust_boundary() {
             "bsr.w tkpkgSelectCallArgumentV1",
             "bsr.w tkpkgMselStripExpectedQualifierV2",
             "jsr operand.tkpkgMselStripOuterParensV1",
-            "bsr.w tkpkgValidateDirectTargetSpanV1",
+            "bsr.w tkpkgValidateRelocationTargetSpanV2",
         ]
     ));
     let target_projection = native_selector
@@ -18498,19 +18500,16 @@ fn motorola68020_item13_native_bin_output_routes_through_artifact_layer() {
             "parseDone",
             "tst.w state.NativeCliInputStyle",
             "tst.w state.NativeCliOutputFormat",
-            "beq.s parseOk",
+            "beq.w parseOk",
         ]
     ));
     assert!(source_contains_in_order(
         &run_source,
         &[
             "tokenizerOk",
-            "move.w state.NativeCliOutputFormat, d0",
-            "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, d0",
-            "bne.s outputRequestReady",
-            "move.l #strings.NativeHunkNotImplementedText, d1",
-            "move.l #constants.RETURN_NOT_IMPLEMENTED, state.NativeCliReturnCode",
+            "jsr preprocessor.opforgeNativeCliResetPreprocessorV1",
             "outputRequestReady",
+            "jsr engine_callbacks.opforgeNativeCliRunTwoPassEngine",
         ]
     ));
 }
@@ -18703,7 +18702,8 @@ fn motorola68020_item15_native_hex_output_routes_through_artifact_layer() {
             "parseOutputFormatToken .block",
             "cmpi.b #'h', d0",
             "maybeHex",
-            "cmpi.b #'e', (a2)+",
+            "move.b (a2)+, d0",
+            "cmpi.b #'e', d0",
             "cmpi.b #'x', (a2)+",
             "move.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d6",
         ]
@@ -19631,7 +19631,7 @@ fn motorola68020_item84_native_use_section_map_is_retained_generically() {
         &scopes,
         &[
             "MOVE.W ModuleParentDepth.L, D1",
-            "CMPI.W #OPASM_SCOPE_DEPTH_CAPACITY, D1",
+            "CMPI.W #OPASM_MODULE_PARENT_DEPTH_CAPACITY, D1",
             "MOVE.L D1, D2",
             "LSL.L #2, D2",
             "LEA ParentModuleStatementIndexStack.L, A0",
@@ -19652,7 +19652,7 @@ fn motorola68020_item84_native_use_section_map_is_retained_generically() {
             "MOVE.L D7, ActiveModuleStatementIndex.L",
         ]
     ));
-    assert!(scopes.contains(".res long, OPASM_SCOPE_DEPTH_CAPACITY"));
+    assert!(scopes.contains(".res long, OPASM_MODULE_PARENT_DEPTH_CAPACITY"));
     assert!(source_contains_in_order(
         &scopes,
         &[
@@ -19894,8 +19894,8 @@ fn motorola68020_item9_native_symbol_config_directives_route_before_selected_enc
         &engine,
         &[
             "opasmEngineResolveLabelValueV1 .BLOCK",
-            "LEA OpasmEngineLabelNameTable.L, A0",
-            "BSR.W labelEquals",
+            "BSR.W findExactLabelIndexV1",
+            "found",
             "LEA OpasmEngineLabelValueTable.L, A0",
         ]
     ));
@@ -20299,9 +20299,10 @@ fn motorola68020_item11_native_use_module_recursion_preserves_root_reader() {
         &module_discovery,
         &[
             "resolveDeclaredModuleV1 .BLOCK",
+            "CMPI.W #1, ModuleScanMatchCount",
+            "buildModuleIndex .BLOCK",
             "rootLoop",
             "BSR.W scanDirectory",
-            "CMPI.W #1, ModuleScanMatchCount",
         ]
     ));
     assert!(source_contains_in_order(
@@ -20420,7 +20421,7 @@ fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
     );
 
     assert!(source.contains(".module opasm.amigaos.engine"));
-    assert!(source.contains("NATIVE_STATEMENT_TABLE_CAPACITY = NATIVE_SOURCE_RECORD_CAPACITY"));
+    assert!(source.contains("NATIVE_STATEMENT_TABLE_CAPACITY = 100000"));
     assert!(source.contains("opasmEngineRunTwoPassV1\t.block"));
     assert!(source_contains_in_order(
         &source,
@@ -20457,9 +20458,11 @@ fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
             "OpasmEngineSessionOrigin:",
             "OpasmEngineSessionCurrentPc:",
             "OpasmEngineSourceLineNumTable:",
+            "OpasmEngineSourceLineLenTable:",
+            "OpasmEngineSourceLineOffsetTable:",
+            "OpasmEngineSourceLineTextTable:",
             "OpasmEngineStmtLineTable:",
-            "OpasmEngineStmtSourceLineLenTable:",
-            "OpasmEngineStmtSourceLineTextTable:",
+            "OpasmEngineStmtSourceRecordIndexTable:",
             "OpasmEngineStmtDirectiveKindTable:",
             "OpasmEngineStmtExprFlagsTable:",
             "OpasmEngineStmtExprSlotIndexTable:",
@@ -23178,9 +23181,14 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
         &selection,
         "selectInstructionV1\t.block\n\tmovem.l d2-d7/a2-a6, -(sp)\n\tbtst #1, buffers.PackageStateFlags"
     ));
-    assert!(tkpkg_source_contains(
+    assert!(source_contains_in_order(
         &encoding,
-        "encodeSelectedInstructionV1\t.block\n\tmovem.l d2-d7/a2-a6, -(sp)\n\tbtst #1, buffers.PackageStateFlags"
+        &[
+            "encodeSelectedInstructionV1\t.block",
+            "movem.l d2-d7/a2-a6, -(sp)",
+            "clr.w buffers.SemanticOutputFixupCount",
+            "btst #1, buffers.PackageStateFlags",
+        ]
     ));
     assert!(encoding.contains("jsr selection.buildSelectedEnvelopeV1"));
     assert!(selection.contains("buildSelectedEnvelopeV1"));

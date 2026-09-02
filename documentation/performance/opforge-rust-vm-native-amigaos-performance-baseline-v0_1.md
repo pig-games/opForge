@@ -44,11 +44,11 @@ hours without guest `DONE`, guest exit, stdout/stderr diagnostic, or output
 artifact. Both runs failed closed; generation two never started. A later
 24-hour-ceiling attempt was stopped at the user's direction and is not evidence.
 
-This makes bounded observation Items 0a-0f the first implementation sequence
-after activation. They may expose progress, counters, coarse timing, sampling
-symbols, and explicitly incomplete abort snapshots, but may not optimize
-production behavior, weaken the terminal proof, or represent an incomplete run
-as success.
+This makes bounded observation Items 0a-0e the first implementation sequence
+after activation, followed by Item 2 corpus freeze and Item 0f attribution.
+They may expose progress, counters, coarse timing, sampling symbols, and
+explicitly incomplete abort snapshots, but may not optimize production behavior,
+weaken the terminal proof, or represent an incomplete run as success.
 
 ### Field observation motivating the instrumentation bridge
 
@@ -434,7 +434,7 @@ overhead, output size, dropped/overflowed samples, timer resolution, and result
 stability. A metric whose mode materially perturbs the ranking is investigation
 evidence only. The Phase 1 report must separate dispatch/check costs from
 semantic/helper/allocation/lookup/service costs, list opcode/PC and pair/triple
-coverage, quantify candidate accelerator coverage, and identify full-workload
+coverage, quantify candidate accelerator coverage, and identify integrated-workload
 regressions as well as wins.
 
 ### Accelerator lifecycle
@@ -553,7 +553,7 @@ ephemeral run-tree rules.
 | B07 nested IF/repetition/MATCH | directive routes and flow boundaries | normal control-flow semantics |
 | B08 module/include tree | opens, reads, seeks, module index, owner scope | real dependency graph |
 | B09 all-output workload | final emission, listing/map/metadata/Hunk/S-record/BIN/PRG | requested production outputs |
-| B10 complete opForge self-build | coverage and end-to-end truth | Rust first; native gen0->gen1->gen2 later |
+| B10 bounded integrated production workload | cross-mechanism coverage and end-to-end performance | real CLI/package path; sized in Item 2 for repeatable native profiling |
 
 Prefer existing fixtures; generated inputs are allowed only to isolate a
 mechanism and must still traverse the real CLI/engine/package runtime. Record
@@ -567,8 +567,13 @@ per configuration unless variance analysis justifies a different count. Report
 median, minimum/maximum, and p95 (or all samples when the set is too small), not
 a single run. Randomize paired before/after order where host noise matters.
 Compare identical artifacts, diagnostics, exit codes, package and configuration.
-Report mechanism counters and full-workload wall time together. Cold-start and
-warm-cache results remain separate.
+Report mechanism counters and B10 integrated-workload wall time together.
+Cold-start and warm-cache results remain separate. B10 must be large and varied
+enough to exercise modules, symbols, expressions, flow, layout, emission, and
+requested artifacts, but bounded enough for repeated control/counters/sampled
+runs on the A6000. Item 2 records its exact composition, digest, coverage, and
+runtime envelope rather than deriving it from benchmark identity in production
+code.
 
 Authoritative current gates include `make quality-gate`, the focused crate tests,
 `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`, and the
@@ -577,7 +582,10 @@ native FS-UAE parity/self-hosting wrappers. The parked terminal proof remains
 the generation-two-first 53-test bonus wrapper is
 `scripts/workflow/run_native_generation_two_bonus_completion.sh`. Profiling does
 not invoke either as an inner loop, and their fresh-challenge/explicit-exit/
-artifact-equality contracts remain unchanged.
+artifact-equality contracts remain unchanged. The full self-host is not a
+performance benchmark, profiler calibration case, hotspot-ranking input, or
+optimization acceptance run; it is an explicit terminal correctness/scalability
+gate only.
 
 ## Architectural constraints and non-goals
 
@@ -625,9 +633,9 @@ mechanism hypotheses, not an optimization order.
   single 29.14-second Rust build is activation evidence, not a benchmark series.
 - Exact full-product definitions/counts for source rows versus live statements.
 - Dynamic native DOS operation counts and bytes by source/bootstrap/module path.
-- Native phase/progress location and counter slopes during a bounded A6000 run;
-  whether the long run is progressing, repeating complete passes, or spinning
-  inside one statement/service.
+- Native phase/progress location and counter slopes across bounded B01-B10
+  A6000 runs; whether representative workloads progress, repeat complete passes,
+  or spin inside one statement/service.
 - Dynamic native bytes cleared/copied, pass rounds, convergence emission bytes,
   and used/peak arena sizes.
 - Rust program/opcode/PC/helper/allocation/clone/transition distributions.

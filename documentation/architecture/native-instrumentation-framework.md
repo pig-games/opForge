@@ -77,6 +77,13 @@ request, VM, image, diagnostic, or output storage. The CLI samples AmigaDOS
 Statement visits perform bounded memory updates but no clock, console, or file
 operation.
 
+Item 0b optionally adds a separately gated 128-byte `OFWM` companion with
+`OPFORGE_PROGRESS_WORK_COUNTERS`. It is correlated to `OFPR` by run ID and
+counts statement visits by pass mode, layout rounds/reasons, flow direction and
+span, retained statement classifications, and convergence/final image bytes.
+Every group saturates and sets a defined overflow bit. The companion's code,
+call sites, and storage emit nothing in release or Item 0a progress-only builds.
+
 Heartbeat and graceful diagnostic abort are separately default-off. Builds may
 set `OPFORGE_PROGRESS_HEARTBEAT_QUANTUM` or
 `OPFORGE_PROGRESS_ABORT_VISITS`; reaching the latter follows the normal failure

@@ -1,0 +1,62 @@
+[slice]
+schema_version = 2
+name = "bounded native assembly work multiplication v1"
+kind = "native-observability"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "0b"
+requirements = ["SR-BRIDGE", "SR-PROG", "SR-NOGUESS", "SR-MEAS", "SR-PAR", "F4", "F6", "F12"]
+rust_reference = [
+  "crates/opforge-engine/src/lib.rs::Assembler::assemble",
+  "crates/opforge-asm/src/phase_profile.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineRunTwoPassV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::runPassOne",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::runPassTwo",
+  "native/motorola68000/amigaos/opasm/opasm_progress.asm"
+]
+invariant = "Observation counts generic pass, statement, flow, layout, classification, and image-byte work without changing pass selection, flow targets, layout convergence, emitted bytes, diagnostics, or exit status."
+assertion_decision = "Use a separately gated fixed 128-byte companion record; preserve all registers, CCR, and stack at passive sites; saturate every counter group with a visible overflow bit; restore the already-proven zero engine status after passive pass-end observation; fail closed in the host decoder on malformed, contradictory, unknown, incomplete, or uncorrelated proof input."
+expected_inputs = "A native CLI assembly under both OPFORGE_DEBUG_CONTRACTS and OPFORGE_PROGRESS_WORK_COUNTERS, or deterministic focused calls that exercise every work-counter group and saturation path."
+expected_outputs = "Release and Item 0a progress-only assemblies are unchanged; work-counter builds maintain one correlated 128-byte OFWM record and preserve exact artifacts, diagnostics, and guest exit."
+known_non_equivalences = "Item 0b supplies the counting mechanism and deterministic oracle. Corpus B01-B10 sampling, fixed-interval slopes, and attribution are deferred to Items 2 and 0f; the full self-host is a terminal correctness/scalability proof only and is not a profiling workload. A complete OFWM record never replaces fresh guest exit and artifact equality."
+fast_proof_command = "python3 -m unittest scripts.workflow.tests.test_decode_native_progress && cargo test -p asm native_work_multiplication_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_work_multiplication_fs_uae_confirms_counter_contract -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_progress_cli_preserves_exact_artifact_and_exit -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_progress_only_cli_preserves_exact_artifact_and_exit -- --nocapture --test-threads=1"
+regression_command = "RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate_summary.sh"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_work_multiplication_decoder_accepts_correlated_complete_records"
+proof_level = "C"
+proves = "The big-endian decoder reports every work field and fails closed on bad magic, schema, flags, mode, reserved bytes, overflow bits, terminal state, or OFPR/OFWM run-ID correlation."
+does_not_prove = "Native assembly, guest execution, corpus attribution, or performance value."
+
+[[tests]]
+name = "native_work_multiplication_source_contract_is_bounded_and_observational"
+proof_level = "B"
+proves = "The companion is fixed at 128 bytes, independently build-gated, saturating, free of I/O, and wired only to generic lifecycle sites; pass-end observation explicitly restores zero success status."
+does_not_prove = "Real guest execution, exact arbitrary-source counts, or acceptable vintage-hardware overhead."
+
+[[tests]]
+name = "native_work_multiplication_harness_assembles"
+proof_level = "C"
+proves = "The focused harness and real work-counter module assemble together with deterministic pass, statement, flow, layout, classification, image-byte, terminal, and saturation checks."
+does_not_prove = "Execution on AmigaOS, whole-CLI parity, or corpus-wide attribution."
+
+[[tests]]
+name = "native_work_multiplication_fs_uae_confirms_counter_contract"
+proof_level = "D"
+proves = "A fresh focused guest executes the actual work-counter routines, reaches protocol completion, and exits zero only after every deterministic counter and overflow check passes."
+does_not_prove = "Whole-CLI behavior, Rust artifact equality, corpus attribution, performance improvement, or the parked self-host proof."
+
+[[tests]]
+name = "external_fs_uae_native_progress_cli_preserves_exact_artifact_and_exit"
+proof_level = "D"
+proves = "The real work-counter CLI completes a fresh bounded assembly with explicit zero guest exit and byte-for-byte equality to its live in-memory Rust oracle."
+does_not_prove = "A full native self-host completion, performance improvement, corpus attribution, or acceptable runtime overhead on vintage hardware."
+
+[[tests]]
+name = "external_fs_uae_native_progress_only_cli_preserves_exact_artifact_and_exit"
+proof_level = "D"
+proves = "The retained Item 0a progress-only mode completes the same bounded assembly with explicit zero guest exit and byte-for-byte equality to its live in-memory Rust oracle."
+does_not_prove = "Work-counter values, a full native self-host completion, or a vintage-hardware overhead estimate."

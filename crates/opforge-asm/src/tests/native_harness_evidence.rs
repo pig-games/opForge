@@ -86,10 +86,11 @@ fn external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture() {
 
 #[test]
 fn external_fs_uae_native_progress_cli_preserves_exact_artifact_and_exit() {
-    // Proof level D. This runs the real CLI with counters enabled and heartbeat
-    // and diagnostic abort disabled, requires fresh protocol completion and
-    // explicit exit zero, and compares the exact artifact to the live Rust
-    // oracle. It does not prove a full self-host run or runtime overhead.
+    // Proof level D. This runs the real CLI with progress and work-multiplication
+    // counters enabled while heartbeat and diagnostic abort remain disabled,
+    // requires fresh protocol completion and explicit exit zero, and compares
+    // the exact artifact to the live Rust oracle. It does not prove corpus-wide
+    // counts or runtime overhead.
     let rust_oracle = native_harness_live_rust_cli_oracle(
         "native-progress-cli-live-rust-cli",
         crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT,
@@ -107,6 +108,35 @@ fn external_fs_uae_native_progress_cli_preserves_exact_artifact_and_exit() {
             assert!(
                 run.success,
                 "native progress CLI parity failed under FS-UAE\nprotocol completed: {}\nguest exit: {:?}\nstdout:\n{}\nstderr:\n{}",
+                run.protocol_completed, run.exit_code, run.stdout, run.stderr
+            );
+            assert_eq!(run.verified_output.as_deref(), Some(rust_oracle.as_slice()));
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_progress_only_cli_preserves_exact_artifact_and_exit() {
+    // Proof level D. This is the progress-only control for bounded Item 0b
+    // perturbation measurements. It proves exact output/exit for this fixture,
+    // not a performance improvement or terminal self-hosting.
+    let rust_oracle = native_harness_live_rust_cli_oracle(
+        "native-progress-only-cli-live-rust-cli",
+        crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT,
+    );
+    match crate::fs_uae_smoke::run_native_progress_only_cli_parity_from_env(
+        &workspace_root(),
+        &rust_oracle,
+    )
+    .expect("native progress-only CLI parity should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native progress-only CLI parity failed under FS-UAE\nprotocol completed: {}\nguest exit: {:?}\nstdout:\n{}\nstderr:\n{}",
                 run.protocol_completed, run.exit_code, run.stdout, run.stderr
             );
             assert_eq!(run.verified_output.as_deref(), Some(rust_oracle.as_slice()));

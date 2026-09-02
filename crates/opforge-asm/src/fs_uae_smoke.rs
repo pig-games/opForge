@@ -620,7 +620,7 @@ pub(crate) fn run_native_progress_harness_from_env(
         FS_UAE_PROGRESS_HARNESS_NAME,
         FS_UAE_PROGRESS_HARNESS_SOURCE_PATH,
         "68020",
-        &["OPFORGE_DEBUG_CONTRACTS"],
+        &["OPFORGE_DEBUG_CONTRACTS", "OPFORGE_PROGRESS_WORK_COUNTERS"],
     )? {
         ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
@@ -800,6 +800,30 @@ pub(crate) fn run_native_progress_cli_parity_from_env(
 ) -> Result<FsUaeSmokeOutcome, String> {
     let cases = [OpforgeNativeCliParityCase {
         name: "native-progress-cli-parity",
+        cpu_override: "68020",
+        extra_assembly_defines: &[
+            FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE,
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_PROGRESS_WORK_COUNTERS",
+        ],
+        source_override: Some(FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT.as_bytes()),
+        command_template: Some("{input} --bin {bin} --cpu m6502"),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle,
+        },
+    }];
+    run_opforge_native_cli_parity_cases_from_env(workspace_root, &cases)
+}
+
+pub(crate) fn run_native_progress_only_cli_parity_from_env(
+    workspace_root: &Path,
+    rust_oracle: &[u8],
+) -> Result<FsUaeSmokeOutcome, String> {
+    let cases = [OpforgeNativeCliParityCase {
+        name: "native-progress-only-cli-parity",
         cpu_override: "68020",
         extra_assembly_defines: &[
             FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE,

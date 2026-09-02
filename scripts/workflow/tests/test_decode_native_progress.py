@@ -31,6 +31,32 @@ def record(
     return bytes(data)
 
 
+def work_record(
+    flags: int,
+    *,
+    run_id: int = 0x1234,
+    mode: int = 2,
+    overflow_bits: int = 0,
+    exit_status: int = 0,
+) -> bytes:
+    data = bytearray(decoder.WORK_RECORD_BYTES)
+    struct.pack_into(
+        ">IHHIHH",
+        data,
+        0,
+        decoder.WORK_MAGIC,
+        decoder.WORK_SCHEMA_VERSION,
+        flags,
+        run_id,
+        mode,
+        0,
+    )
+    struct.pack_into(">" + "I" * 19, data, 16, *range(1, 20))
+    struct.pack_into(">I", data, 92, overflow_bits)
+    struct.pack_into(">I", data, 96, exit_status)
+    return bytes(data)
+
+
 class NativeProgressDecoderTests(unittest.TestCase):
     def test_decodes_complete_big_endian_record(self) -> None:
         report = decoder.decode_progress(record(decoder.FLAG_COMPLETE), require_complete=True)
@@ -70,6 +96,62 @@ class NativeProgressDecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(decoder.ProgressDecodeError, "abort requested"):
             decoder.decode_progress(
                 record(decoder.FLAG_COMPLETE | decoder.FLAG_ABORT_REQUESTED)
+            )
+
+    def test_decodes_correlated_complete_work_record(self) -> None:
+        report = decoder.decode_work_multiplication(
+            work_record(decoder.WORK_FLAG_COMPLETE),
+            expected_run_id=0x1234,
+            require_complete=True,
+        )
+        self.assertEqual(report["state"], "complete")
+        self.assertEqual(report["mode"], "layout")
+        self.assertEqual(report["pass_one_visits"], 1)
+        self.assertEqual(report["layout_rounds"], 4)
+        self.assertEqual(report["forward_redirects"], 9)
+        self.assertEqual(report["statement_classifications"]["generic"], 14)
+        self.assertEqual(report["final_image_bytes"], 19)
+
+    def test_rejects_malformed_or_uncorrelated_work_record(self) -> None:
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "does not match"):
+            decoder.decode_work_multiplication(
+                work_record(decoder.WORK_FLAG_COMPLETE), expected_run_id=7
+            )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "state active"):
+            decoder.decode_work_multiplication(
+                work_record(decoder.WORK_FLAG_ACTIVE), expected_state="complete"
+            )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "exit status 9"):
+            decoder.decode_work_multiplication(
+                work_record(decoder.WORK_FLAG_INCOMPLETE, exit_status=9),
+                expected_exit_status=8,
+            )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "unknown work flag"):
+            decoder.decode_work_multiplication(work_record(0x20))
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "unknown work overflow"):
+            decoder.decode_work_multiplication(
+                work_record(decoder.WORK_FLAG_ACTIVE, overflow_bits=0x20)
+            )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "unknown work mode"):
+            decoder.decode_work_multiplication(
+                work_record(decoder.WORK_FLAG_ACTIVE, mode=4)
+            )
+        malformed = bytearray(work_record(decoder.WORK_FLAG_ACTIVE))
+        malformed[127] = 1
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "reserved"):
+            decoder.decode_work_multiplication(bytes(malformed))
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "not proof"):
+            decoder.decode_work_multiplication(
+                work_record(decoder.WORK_FLAG_INCOMPLETE, exit_status=20),
+                require_complete=True,
+            )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "nonzero exit"):
+            decoder.decode_work_multiplication(
+                work_record(decoder.WORK_FLAG_INCOMPLETE)
+            )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "zero exit"):
+            decoder.decode_work_multiplication(
+                work_record(decoder.WORK_FLAG_ACTIVE, exit_status=1)
             )
 
 

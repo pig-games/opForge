@@ -2086,6 +2086,12 @@ refreshFound
 	beq.s refreshOk
 	move.l d3, 0(a0, d5.l)
 	move.w #1, OpasmEngineLayoutChanged.l
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	moveq #progress.OPASM_WORK_LAYOUT_CHANGE_LABEL, d0
+	jsr progress.opasmProgressWorkLayoutChangeV1
+.endif
+.endif
 
 refreshOk
 	moveq #0, d0
@@ -2116,6 +2122,12 @@ layoutPhaseReturn
 ; Outputs: D0 = 0.
 opasmEngineMarkLayoutChangedV1	.block
 	move.w #1, OpasmEngineLayoutChanged.l
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	moveq #progress.OPASM_WORK_LAYOUT_CHANGE_PLACEMENT, d0
+	jsr progress.opasmProgressWorkLayoutChangeV1
+.endif
+.endif
 	moveq #0, d0
 	rts
 	.bend  ; opasmEngineMarkLayoutChangedV1
@@ -2827,6 +2839,13 @@ layoutPass
 	bsr.w runPassTwo
 	tst.l d0
 	bne.s restoreOutputMode
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	move.l OpasmEngineImageByteCount.l, d0
+	jsr progress.opasmProgressWorkPassEndV1
+	moveq #0, d0
+.endif
+.endif
 	tst.w OpasmEngineLayoutChanged.l
 	beq.s finalEmission
 	subq.w #1, OpasmEngineLayoutPassesRemaining.l
@@ -2842,6 +2861,13 @@ finalEmission
 	clr.w OpasmEngineFinalEmission.l
 	tst.l d0
 	bne.s restoreOutputMode
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	move.l OpasmEngineImageByteCount.l, d0
+	jsr progress.opasmProgressWorkPassEndV1
+	moveq #0, d0
+.endif
+.endif
 	; A converged snapshot cannot move during Rust's final pass.
 	tst.w OpasmEngineLayoutChanged.l
 	beq.s restoreOutputMode
@@ -3520,6 +3546,10 @@ runPassOne	.block
 	moveq #1, d1
 	moveq #0, d2
 	jsr progress.opasmProgressSetPhaseV1
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	moveq #progress.OPASM_WORK_MODE_PASS_ONE, d0
+	jsr progress.opasmProgressWorkPassBeginV1
+.endif
 .endif
 	movea.l OPASM_ENGINE_CTX_PASS1_BEGIN_CB(a5), a0
 	jsr (a0)
@@ -3542,6 +3572,16 @@ loop
 	move.l d0, d1
 	move.l d7, d0
 	jsr progress.opasmProgressStatementBeginV1
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	move.l d7, d0
+	move.l d7, d1
+	add.l d1, d1
+	lea OpasmEngineStmtDirectiveKindTable.l, a0
+	moveq #0, d2
+	move.w 0(a0, d1.l), d2
+	move.l d2, d1
+	jsr progress.opasmProgressWorkStatementV1
+.endif
 	jsr progress.opasmProgressAbortRequestedV1
 	tst.l d0
 	bne.w return
@@ -3557,15 +3597,36 @@ loop
 	beq.w process
 	move.l OpasmEngineFlowNext.l, d2
 	clr.w OpasmEngineFlowPending.l
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	; Instrumentation point: passive flow classification. Preserve D3 around
+	; argument preparation; the recorder preserves every register and CCR.
+	; The target decision is already complete, so no flag/branch pair is split.
+	move.l d3, -(sp)
+.endif
 	tst.l d2
 	bpl.s redirected
 	andi.l #$7fffffff, d2
 	clr.w OpasmEngineFlowRedirected.l
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	moveq #0, d3
+.endif
 	bra.s setNext
 redirected
 	move.w #1, OpasmEngineFlowRedirected.l
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	moveq #1, d3
+.endif
 setNext
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	move.l d2, d1
+	move.l d7, d0
+	move.l d3, d2
+	jsr progress.opasmProgressWorkFlowV1
+	move.l d1, d7
+	move.l (sp)+, d3
+.else
 	move.l d2, d7
+.endif
 	bra.w loop
 
 process
@@ -3630,6 +3691,14 @@ progressLayoutPhaseReady
 	sub.w OpasmEngineLayoutPassesRemaining.l, d2
 	addq.w #1, d2
 	jsr progress.opasmProgressSetPhaseV1
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	moveq #progress.OPASM_WORK_MODE_LAYOUT, d0
+	tst.w OpasmEngineFinalEmission.l
+	beq.s progressWorkModeReady
+	moveq #progress.OPASM_WORK_MODE_FINAL_EMISSION, d0
+progressWorkModeReady
+	jsr progress.opasmProgressWorkPassBeginV1
+.endif
 .endif
 	movea.l OPASM_ENGINE_CTX_PASS2_BEGIN_CB(a5), a0
 	jsr (a0)
@@ -3650,6 +3719,16 @@ loop
 	move.l d0, d1
 	move.l d7, d0
 	jsr progress.opasmProgressStatementBeginV1
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	move.l d7, d0
+	move.l d7, d1
+	add.l d1, d1
+	lea OpasmEngineStmtDirectiveKindTable.l, a0
+	moveq #0, d2
+	move.w 0(a0, d1.l), d2
+	move.l d2, d1
+	jsr progress.opasmProgressWorkStatementV1
+.endif
 	jsr progress.opasmProgressAbortRequestedV1
 	tst.l d0
 	bne.w return
@@ -3665,15 +3744,36 @@ loop
 	beq.w process
 	move.l OpasmEngineFlowNext.l, d2
 	clr.w OpasmEngineFlowPending.l
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	; Instrumentation point: passive flow classification. Preserve D3 around
+	; argument preparation; the recorder preserves every register and CCR.
+	; The target decision is already complete, so no flag/branch pair is split.
+	move.l d3, -(sp)
+.endif
 	tst.l d2
 	bpl.s redirected
 	andi.l #$7fffffff, d2
 	clr.w OpasmEngineFlowRedirected.l
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	moveq #0, d3
+.endif
 	bra.s setNext
 redirected
 	move.w #1, OpasmEngineFlowRedirected.l
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	moveq #1, d3
+.endif
 setNext
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	move.l d2, d1
+	move.l d7, d0
+	move.l d3, d2
+	jsr progress.opasmProgressWorkFlowV1
+	move.l d1, d7
+	move.l (sp)+, d3
+.else
 	move.l d2, d7
+.endif
 	bra.w loop
 
 process

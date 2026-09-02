@@ -66,7 +66,7 @@ fn native_item38_full_product_source_line_budget_contract() {
         "full-product source line exceeds the native 512-byte owner"
     );
     assert_eq!(
-        loadable_source_bytes, 1_615_563,
+        loadable_source_bytes, 1_626_750,
         "canonical loadable source-byte budget changed"
     );
     assert!(
@@ -345,11 +345,11 @@ fn native_item38_full_product_public_export_budget_contract() {
         public_declaration_name_bytes,
     );
     assert_eq!(
-        public_declaration_count, 6_503,
+        public_declaration_count, 6_571,
         "canonical public-declaration budget changed"
     );
     assert_eq!(
-        public_declaration_name_bytes, 126_581,
+        public_declaration_name_bytes, 128_224,
         "canonical packed public-export name budget changed"
     );
     let constants = fs::read_to_string(amigaos.join("opforge-cli/constants.asm"))

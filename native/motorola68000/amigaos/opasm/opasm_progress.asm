@@ -67,6 +67,55 @@ OPASM_PROGRESS_EXIT_STATUS_OFFSET   = 124
 OPASM_PROGRESS_TICK_CALLBACK_OFFSET = 128
 OPASM_PROGRESS_FALLBACK_TICK_OFFSET = 132
 
+OPASM_WORK_MAGIC                    = $4f46574d; "OFWM"
+OPASM_WORK_SCHEMA_VERSION           = 1
+OPASM_WORK_RECORD_BYTES             = 128
+
+OPASM_WORK_FLAG_ACTIVE              = 1
+OPASM_WORK_FLAG_COMPLETE            = 2
+OPASM_WORK_FLAG_INCOMPLETE          = 4
+
+OPASM_WORK_MODE_NONE                = 0
+OPASM_WORK_MODE_PASS_ONE            = 1
+OPASM_WORK_MODE_LAYOUT              = 2
+OPASM_WORK_MODE_FINAL_EMISSION      = 3
+
+OPASM_WORK_LAYOUT_CHANGE_LABEL      = 1
+OPASM_WORK_LAYOUT_CHANGE_PLACEMENT  = 2
+
+OPASM_WORK_OVERFLOW_VISITS          = 1
+OPASM_WORK_OVERFLOW_LAYOUT          = 2
+OPASM_WORK_OVERFLOW_FLOW            = 4
+OPASM_WORK_OVERFLOW_CLASSIFICATION  = 8
+OPASM_WORK_OVERFLOW_IMAGE_BYTES     = 16
+
+OPASM_WORK_MAGIC_OFFSET             = 0
+OPASM_WORK_SCHEMA_OFFSET            = 4
+OPASM_WORK_FLAGS_OFFSET             = 6
+OPASM_WORK_RUN_ID_OFFSET            = 8
+OPASM_WORK_MODE_OFFSET              = 12
+OPASM_WORK_PASS_ONE_VISITS_OFFSET   = 16
+OPASM_WORK_LAYOUT_VISITS_OFFSET     = 20
+OPASM_WORK_FINAL_VISITS_OFFSET      = 24
+OPASM_WORK_LAYOUT_ROUNDS_OFFSET     = 28
+OPASM_WORK_FINAL_EMISSIONS_OFFSET   = 32
+OPASM_WORK_LAYOUT_LABEL_CHANGES_OFFSET = 36
+OPASM_WORK_LAYOUT_PLACEMENT_CHANGES_OFFSET = 40
+OPASM_WORK_FLOW_ROWS_OFFSET         = 44
+OPASM_WORK_FORWARD_REDIRECTS_OFFSET = 48
+OPASM_WORK_BACKWARD_REDIRECTS_OFFSET = 52
+OPASM_WORK_MODULE_ROWS_OFFSET       = 56
+OPASM_WORK_ENDMODULE_ROWS_OFFSET    = 60
+OPASM_WORK_USE_ROWS_OFFSET          = 64
+OPASM_WORK_GENERIC_ROWS_OFFSET      = 68
+OPASM_WORK_MAX_STATEMENT_OFFSET     = 72
+OPASM_WORK_MAX_FORWARD_SPAN_OFFSET  = 76
+OPASM_WORK_MAX_BACKWARD_SPAN_OFFSET = 80
+OPASM_WORK_CONVERGENCE_IMAGE_BYTES_OFFSET = 84
+OPASM_WORK_FINAL_IMAGE_BYTES_OFFSET = 88
+OPASM_WORK_OVERFLOW_OFFSET          = 92
+OPASM_WORK_EXIT_STATUS_OFFSET       = 96
+
 	.section code, kind=code
 
 ; Return the authoritative record pointer for a debugger/export harness.
@@ -75,6 +124,15 @@ opasmProgressGetRecordV1	.block
 	lea OpasmProgressRecord, a0
 	rts
 	.bend  ; opasmProgressGetRecordV1
+
+; Return the bounded work-multiplication companion record.
+; Inputs: none. Output: A0 = 128-byte record. D0-D7/A1-A6 and CCR preserved.
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+opasmProgressGetWorkRecordV1	.block
+	lea OpasmWorkRecord, a0
+	rts
+	.bend  ; opasmProgressGetWorkRecordV1
+.endif
 
 ; Start one fresh bounded progress record.
 ; Inputs: A0 = tick callback returning a monotonically wrapping D0.L value.
@@ -101,6 +159,19 @@ clearLoop
 	move.l d0, OPASM_PROGRESS_LAST_TICK_OFFSET(a5)
 	move.l d0, OPASM_PROGRESS_RUN_START_TICK_OFFSET(a5)
 	move.l d0, OPASM_PROGRESS_PHASE_START_TICK_OFFSET(a5)
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	lea OpasmWorkRecord, a4
+	movea.l a4, a0
+	moveq #0, d0
+	moveq #(OPASM_WORK_RECORD_BYTES / 4) - 1, d1
+clearWorkLoop
+	move.l d0, (a0)+
+	dbf d1, clearWorkLoop
+	move.l #OPASM_WORK_MAGIC, OPASM_WORK_MAGIC_OFFSET(a4)
+	move.w #OPASM_WORK_SCHEMA_VERSION, OPASM_WORK_SCHEMA_OFFSET(a4)
+	move.w #OPASM_WORK_FLAG_ACTIVE, OPASM_WORK_FLAGS_OFFSET(a4)
+	move.l OPASM_PROGRESS_RUN_ID_OFFSET(a5), OPASM_WORK_RUN_ID_OFFSET(a4)
+.endif
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
 	rts
@@ -197,6 +268,186 @@ return
 	rts
 	.bend  ; opasmProgressStatementCompleteV1
 
+; Enter one counted pass mode.
+; Inputs: D0.W = OPASM_WORK_MODE_*. Outputs/clobbers: none; CCR preserved.
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+opasmProgressWorkPassBeginV1	.block
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	lea OpasmWorkRecord, a5
+	bsr.w workIsActive
+	beq.s return
+	move.w d0, OPASM_WORK_MODE_OFFSET(a5)
+	cmpi.w #OPASM_WORK_MODE_LAYOUT, d0
+	bne.s checkFinal
+	lea OPASM_WORK_LAYOUT_ROUNDS_OFFSET(a5), a0
+	moveq #OPASM_WORK_OVERFLOW_LAYOUT, d1
+	bsr.w workIncrement
+	bra.s return
+checkFinal
+	cmpi.w #OPASM_WORK_MODE_FINAL_EMISSION, d0
+	bne.s return
+	lea OPASM_WORK_FINAL_EMISSIONS_OFFSET(a5), a0
+	moveq #OPASM_WORK_OVERFLOW_LAYOUT, d1
+	bsr.w workIncrement
+return
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; opasmProgressWorkPassBeginV1
+
+; Count one statement visit and its retained parser classification.
+; Inputs: D0.L = statement index; D1.W = retained statement kind 1..4.
+; Outputs/clobbers: none; CCR preserved.
+opasmProgressWorkStatementV1	.block
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	lea OpasmWorkRecord, a5
+	bsr.w workIsActive
+	beq.w return
+	move.l d0, d6
+	move.w d1, d7
+	moveq #0, d2
+	move.w OPASM_WORK_MODE_OFFSET(a5), d2
+	cmpi.w #OPASM_WORK_MODE_PASS_ONE, d2
+	bne.s checkLayout
+	lea OPASM_WORK_PASS_ONE_VISITS_OFFSET(a5), a0
+	bra.s countVisit
+checkLayout
+	cmpi.w #OPASM_WORK_MODE_LAYOUT, d2
+	bne.s checkFinal
+	lea OPASM_WORK_LAYOUT_VISITS_OFFSET(a5), a0
+	bra.s countVisit
+checkFinal
+	cmpi.w #OPASM_WORK_MODE_FINAL_EMISSION, d2
+	bne.s countClass
+	lea OPASM_WORK_FINAL_VISITS_OFFSET(a5), a0
+countVisit
+	moveq #OPASM_WORK_OVERFLOW_VISITS, d1
+	bsr.w workIncrement
+countClass
+	cmpi.w #1, d7
+	blo.s updateMax
+	cmpi.w #4, d7
+	bhi.s updateMax
+	moveq #0, d2
+	move.w d7, d2
+	subq.w #1, d2
+	lsl.w #2, d2
+	lea OPASM_WORK_MODULE_ROWS_OFFSET(a5), a0
+	adda.w d2, a0
+	moveq #OPASM_WORK_OVERFLOW_CLASSIFICATION, d1
+	bsr.w workIncrement
+updateMax
+	cmp.l OPASM_WORK_MAX_STATEMENT_OFFSET(a5), d6
+	bls.s return
+	move.l d6, OPASM_WORK_MAX_STATEMENT_OFFSET(a5)
+return
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; opasmProgressWorkStatementV1
+
+; Count a flow-control row and classify an actual redirect by direction.
+; Inputs: D0.L = current statement; D1.L = next statement; D2.W = redirected.
+; Outputs/clobbers: none; CCR preserved.
+opasmProgressWorkFlowV1	.block
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	lea OpasmWorkRecord, a5
+	bsr.w workIsActive
+	beq.w return
+	move.l d0, d6
+	move.l d1, d7
+	move.w d2, d5
+	lea OPASM_WORK_FLOW_ROWS_OFFSET(a5), a0
+	moveq #OPASM_WORK_OVERFLOW_FLOW, d1
+	bsr.w workIncrement
+	tst.w d5
+	beq.s return
+	cmp.l d6, d7
+	bls.s backward
+	lea OPASM_WORK_FORWARD_REDIRECTS_OFFSET(a5), a0
+	moveq #OPASM_WORK_OVERFLOW_FLOW, d1
+	bsr.w workIncrement
+	move.l d7, d2
+	sub.l d6, d2
+	cmp.l OPASM_WORK_MAX_FORWARD_SPAN_OFFSET(a5), d2
+	bls.s return
+	move.l d2, OPASM_WORK_MAX_FORWARD_SPAN_OFFSET(a5)
+	bra.s return
+backward
+	lea OPASM_WORK_BACKWARD_REDIRECTS_OFFSET(a5), a0
+	moveq #OPASM_WORK_OVERFLOW_FLOW, d1
+	bsr.w workIncrement
+	move.l d6, d2
+	sub.l d7, d2
+	cmp.l OPASM_WORK_MAX_BACKWARD_SPAN_OFFSET(a5), d2
+	bls.s return
+	move.l d2, OPASM_WORK_MAX_BACKWARD_SPAN_OFFSET(a5)
+return
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; opasmProgressWorkFlowV1
+
+; Count one layout-change reason.
+; Inputs: D0.W = OPASM_WORK_LAYOUT_CHANGE_*. Outputs/clobbers: none; CCR preserved.
+opasmProgressWorkLayoutChangeV1	.block
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	lea OpasmWorkRecord, a5
+	bsr.w workIsActive
+	beq.s return
+	cmpi.w #OPASM_WORK_LAYOUT_CHANGE_LABEL, d0
+	bne.s placement
+	lea OPASM_WORK_LAYOUT_LABEL_CHANGES_OFFSET(a5), a0
+	bra.s count
+placement
+	cmpi.w #OPASM_WORK_LAYOUT_CHANGE_PLACEMENT, d0
+	bne.s return
+	lea OPASM_WORK_LAYOUT_PLACEMENT_CHANGES_OFFSET(a5), a0
+count
+	moveq #OPASM_WORK_OVERFLOW_LAYOUT, d1
+	bsr.w workIncrement
+return
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; opasmProgressWorkLayoutChangeV1
+
+; Charge image-byte work to the active pass mode.
+; Inputs: D0.L = image bytes for the completed pass. Outputs/clobbers: none.
+; CCR preserved.
+opasmProgressWorkPassEndV1	.block
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	lea OpasmWorkRecord, a5
+	bsr.w workIsActive
+	beq.s return
+	move.l d0, d4
+	move.w OPASM_WORK_MODE_OFFSET(a5), d2
+	cmpi.w #OPASM_WORK_MODE_LAYOUT, d2
+	bne.s checkFinal
+	lea OPASM_WORK_CONVERGENCE_IMAGE_BYTES_OFFSET(a5), a0
+	move.l d4, d0
+	moveq #OPASM_WORK_OVERFLOW_IMAGE_BYTES, d1
+	bsr.w workAdd
+	bra.s return
+checkFinal
+	cmpi.w #OPASM_WORK_MODE_FINAL_EMISSION, d2
+	bne.s return
+	lea OPASM_WORK_FINAL_IMAGE_BYTES_OFFSET(a5), a0
+	move.l d4, d0
+	moveq #OPASM_WORK_OVERFLOW_IMAGE_BYTES, d1
+	bsr.w workAdd
+return
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; opasmProgressWorkPassEndV1
+.endif
+
 ; Enable a bounded heartbeat quantum. Zero disables it.
 ; Inputs: D0.L = visit quantum. Outputs/clobbers: none; CCR preserved.
 opasmProgressSetHeartbeatV1	.block
@@ -265,9 +516,21 @@ opasmProgressFinishV1	.block
 	tst.l d6
 	bne.s incomplete
 	ori.w #OPASM_PROGRESS_FLAG_COMPLETE, OPASM_PROGRESS_FLAGS_OFFSET(a5)
-	bra.s return
+	bra.s finishWork
 incomplete
 	ori.w #OPASM_PROGRESS_FLAG_INCOMPLETE, OPASM_PROGRESS_FLAGS_OFFSET(a5)
+finishWork
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	lea OpasmWorkRecord, a4
+	move.l d6, OPASM_WORK_EXIT_STATUS_OFFSET(a4)
+	andi.w #$fffe, OPASM_WORK_FLAGS_OFFSET(a4)
+	tst.l d6
+	bne.s workIncomplete
+	ori.w #OPASM_WORK_FLAG_COMPLETE, OPASM_WORK_FLAGS_OFFSET(a4)
+	bra.s return
+workIncomplete
+	ori.w #OPASM_WORK_FLAG_INCOMPLETE, OPASM_WORK_FLAGS_OFFSET(a4)
+.endif
 return
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
@@ -318,6 +581,38 @@ startNext
 	rts
 	.bend  ; sampleAndChargePhase
 
+; Return Z clear when the work record is active. A5 points at the work record.
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+workIsActive	.block
+	move.w OPASM_WORK_FLAGS_OFFSET(a5), d3
+	andi.w #OPASM_WORK_FLAG_ACTIVE, d3
+	rts
+	.bend  ; workIsActive
+
+; Saturating increment. A0 = field, D1.L = overflow bit, A5 = record.
+workIncrement	.block
+	cmpi.l #-1, (a0)
+	beq.s overflow
+	addq.l #1, (a0)
+	rts
+overflow
+	or.l d1, OPASM_WORK_OVERFLOW_OFFSET(a5)
+	rts
+	.bend  ; workIncrement
+
+; Saturating add. A0 = field, D0.L = amount, D1.L = overflow bit, A5 = record.
+workAdd	.block
+	move.l (a0), d2
+	add.l d0, d2
+	bcc.s store
+	move.l #-1, d2
+	or.l d1, OPASM_WORK_OVERFLOW_OFFSET(a5)
+store
+	move.l d2, (a0)
+	rts
+	.bend  ; workAdd
+.endif
+
 	.endsection
 
 	.pub
@@ -331,6 +626,10 @@ OpasmProgressTickCallback
 	.res long, 1
 OpasmProgressFallbackTick
 	.res long, 1
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+OpasmWorkRecord
+	.res byte, OPASM_WORK_RECORD_BYTES
+.endif
 
 	.endsection
 	.endmodule

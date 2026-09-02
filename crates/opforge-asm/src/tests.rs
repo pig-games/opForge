@@ -284,7 +284,10 @@ fn native_debug_contract_build_modes_emit_fixed_or_zero_byte_call_sites() {
         &enabled_out,
         "debug_contract_enabled",
         false,
-        &["OPFORGE_DEBUG_CONTRACTS".to_string()],
+        &[
+            "OPFORGE_DEBUG_CONTRACTS".to_string(),
+            "OPFORGE_PROGRESS_WORK_COUNTERS".to_string(),
+        ],
     )
     .unwrap_or_else(|err| panic!("assemble enabled native debug contract harness: {err}"));
     let enabled_listing = fs::read_to_string(enabled_out.join("debug_contract_enabled.lst"))
@@ -421,6 +424,97 @@ fn native_bounded_progress_fs_uae_confirms_record_contract() {
             assert!(
                 run.success,
                 "native progress harness failed under FS-UAE\nprotocol completed: {}\nguest exit: {:?}\nstdout:\n{}\nstderr:\n{}",
+                run.protocol_completed, run.exit_code, run.stdout, run.stderr
+            );
+        }
+    }
+}
+
+#[test]
+fn native_work_multiplication_source_contract_is_bounded_and_observational() {
+    // Proof level B. This locks the fixed companion record, independent build
+    // gate, saturating groups, and lifecycle sites. It does not prove guest
+    // execution, counter values for arbitrary sources, or performance value.
+    let root = workspace_root();
+    let progress =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_progress.asm"))
+            .expect("read native work-multiplication record");
+    let engine =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm"))
+            .expect("read native work-multiplication sites");
+    for required in [
+        "OPASM_WORK_MAGIC                    = $4f46574d",
+        "OPASM_WORK_RECORD_BYTES             = 128",
+        "OPASM_WORK_OVERFLOW_IMAGE_BYTES     = 16",
+        "opasmProgressWorkPassBeginV1\t.block",
+        "opasmProgressWorkStatementV1\t.block",
+        "opasmProgressWorkFlowV1\t.block",
+        "opasmProgressWorkLayoutChangeV1\t.block",
+        "opasmProgressWorkPassEndV1\t.block",
+        "cmpi.l #-1, (a0)\n\tbeq.s overflow",
+        "move.l #-1, d2\n\tor.l d1, OPASM_WORK_OVERFLOW_OFFSET(a5)",
+    ] {
+        assert!(
+            progress.contains(required),
+            "missing work-multiplication contract {required:?}"
+        );
+    }
+    for required in [
+        ".ifdef OPFORGE_PROGRESS_WORK_COUNTERS",
+        "jsr progress.opasmProgressWorkPassBeginV1",
+        "jsr progress.opasmProgressWorkStatementV1",
+        "jsr progress.opasmProgressWorkFlowV1",
+        "jsr progress.opasmProgressWorkFlowV1\n\tmove.l d1, d7\n\tmove.l (sp)+, d3",
+        "jsr progress.opasmProgressWorkLayoutChangeV1",
+        "jsr progress.opasmProgressWorkPassEndV1",
+        "jsr progress.opasmProgressWorkPassEndV1\n\tmoveq #0, d0",
+    ] {
+        assert!(
+            engine.contains(required),
+            "missing guarded engine site {required:?}"
+        );
+    }
+    assert!(!progress.contains("dos.putStr"));
+    assert!(!progress.contains("dos.write"));
+}
+
+#[test]
+fn native_work_multiplication_harness_assembles() {
+    // Proof level C. This proves the deterministic work-counter oracle and real
+    // module assemble together. It does not prove AmigaOS execution or parity.
+    let root = workspace_root();
+    let asm_path =
+        root.join("native/motorola68000/amigaos/test-harnesses/debug/opasm_progress_harness.asm");
+    let out = create_temp_dir("native-work-multiplication-harness");
+    assemble_example_with_base_and_defines(
+        &asm_path,
+        &out,
+        "opasm_progress_harness",
+        false,
+        &[
+            "OPFORGE_DEBUG_CONTRACTS".to_string(),
+            "OPFORGE_PROGRESS_WORK_COUNTERS".to_string(),
+        ],
+    )
+    .unwrap_or_else(|error| panic!("assemble native work-multiplication harness: {error}"));
+    assert!(out.join("build/opasm_progress_harness").is_file());
+}
+
+#[test]
+fn native_work_multiplication_fs_uae_confirms_counter_contract() {
+    // Proof level D. The guest exits zero only after deterministic pass, flow,
+    // layout, image, classification, saturation, and terminal-state checks.
+    // It does not prove corpus-wide counts or a performance improvement.
+    match crate::fs_uae_smoke::run_native_progress_harness_from_env(&workspace_root())
+        .expect("native work-multiplication FS-UAE harness should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native work-multiplication harness failed under FS-UAE\nprotocol completed: {}\nguest exit: {:?}\nstdout:\n{}\nstderr:\n{}",
                 run.protocol_completed, run.exit_code, run.stdout, run.stderr
             );
         }

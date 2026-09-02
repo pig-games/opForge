@@ -298,7 +298,7 @@ localization evidence but never a completed assembly or Level D result.
   - Commit outcome: `feat(native-perf): expose bounded assembly progress`.
   - Definition of done: bounded production-path runs expose trustworthy phase/pass/statement progress and a complete or explicitly incomplete report with measured overhead.
 
-- [ ] Item 0b — Count native pass, statement, flow, and layout multiplication
+- [x] Item 0b — Count native pass, statement, flow, and layout multiplication
   - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-MEAS, SR-PAR, F4, F6, F12.
   - Rationale/mechanism: determine whether elapsed time comes from repeated whole-input visits, control-flow rescans, backward redirects, layout retries, or repeated emission.
   - Architectural boundaries: observe generic opasm lifecycle only; no route caching, pass reduction, emission suppression, or changed convergence behavior.
@@ -310,7 +310,8 @@ localization evidence but never a completed assembly or Level D result.
   - Rollback/kill/reference strategy: independently gate the counter group and retain Item 0a progress-only mode.
   - Effort/risk and stop/go: M/High; stop if instrumentation changes pass decisions, PC/layout, flow, images, or exceeds bounded storage.
   - Full quality gates: native format, staged native porting gate, Rust quality gate, focused FS-UAE confirmation.
-  - Plan-compliance review evidence: reviewer verifies counters observe rather than alter pass/flow/layout invariants.
+  - Plan-compliance review evidence: `PASS` — the independent reviewer verified that `OFWM` is fixed-size, saturating, correlated fail-closed to `OFPR`, and independently gated; passive routines preserve registers/CCR/stack, flow sites restore D3, and pass-end restores zero status; counters observe existing pass/flow/layout/classification/image work without changing decisions or artifacts; Level-D claims remain fresh-protocol/exact-oracle bounded; B01-B10 slopes remain deferred to Items 2/0f; full self-hosting remains excluded from profiling; inventory updates validate exactly; and no optimization is included.
+  - Completion evidence (2026-09-02): a separately gated, correlated 128-byte `OFWM` companion now counts pass-mode statement visits, layout rounds/reasons, flow direction/spans, retained classifications, and convergence/final image bytes with saturating groups and visible overflow. Deterministic decoder/source/harness tests pass; fresh focused and whole-CLI FS-UAE runs complete with explicit zero guest exit and exact Rust artifact parity; release and progress-only Hunk digests remain unchanged from Item 0a. The staged native gate, workflow gate, and final single-thread canonical Rust gate pass, including all 1,567 assembly-library tests. The bounded perturbation triplet measured 47.95s release, 48.32s progress-only, and 48.57s work-enabled, explicitly as end-to-end host/emulator observations rather than vintage-runtime estimates. B01-B10 attribution remains deferred to Items 2/0f; the full self-host remains terminal correctness/scalability proof only.
   - Commit outcome: `feat(native-perf): count assembly work multiplication`.
   - Definition of done: bounded reports show whether statement, flow, layout, or image work grows and at what rate without changing results.
 

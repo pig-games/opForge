@@ -1,6 +1,6 @@
 # Native Assembly Progress Bridge Record v1
 
-Status: provisional performance bridge for optimization-plan Item 0a. This is
+Status: provisional performance bridge for optimization-plan Items 0a-0b. This is
 not an OFTB/OFTB-stable result format and is not semantic proof.
 
 The native debug-contract build owns one fixed, big-endian, 128-byte `OFPR`
@@ -64,7 +64,64 @@ final emission, and artifacts (`0` through `8`). The current native frontend
 interleaves source ingestion and statement construction, so phase 3 measures
 that combined boundary honestly; phase 4 is reserved until a measured split is
 introduced. IDs and flow counters are present but remain zero until Items
-0b-0e populate them.
+0c-0e populate them. Item 0b deliberately leaves the Item 0a envelope stable
+and uses the correlated `OFWM` companion below.
+
+## Work-multiplication companion
+
+Defining both `OPFORGE_DEBUG_CONTRACTS` and
+`OPFORGE_PROGRESS_WORK_COUNTERS` adds one independently removable, big-endian,
+128-byte `OFWM` record. Its run ID must equal the `OFPR` run ID. The decoder
+rejects run-ID/state/exit mismatches, unknown flags/modes/overflow bits,
+nonzero reserved bytes, contradictory terminal state, and incomplete input
+requested as proof:
+
+```sh
+python3 scripts/performance/decode_native_progress.py progress.ofpr \
+  --work-record work.ofwm --require-complete
+```
+
+| Offset | Bytes | Field |
+|---:|---:|---|
+| 0 | 4 | magic `OFWM` |
+| 4 | 2 | schema version (`1`) |
+| 6 | 2 | active/complete/incomplete flags |
+| 8 | 4 | correlated `OFPR` run ID |
+| 12 | 2 | current mode: none/pass one/layout/final emission |
+| 14 | 2 | reserved |
+| 16 | 4 | pass-one statement visits |
+| 20 | 4 | layout statement visits |
+| 24 | 4 | final-emission statement visits |
+| 28 | 4 | layout rounds |
+| 32 | 4 | final emissions |
+| 36 | 4 | label-value layout changes |
+| 40 | 4 | placement/extent layout changes |
+| 44 | 4 | flow-control rows |
+| 48 | 4 | forward redirects |
+| 52 | 4 | backward redirects |
+| 56 | 4 | module rows visited |
+| 60 | 4 | endmodule rows visited |
+| 64 | 4 | use rows visited |
+| 68 | 4 | generic rows visited |
+| 72 | 4 | maximum statement index reached |
+| 76 | 4 | maximum forward redirect span |
+| 80 | 4 | maximum backward redirect span |
+| 84 | 4 | convergence image-byte work |
+| 88 | 4 | final image-byte work |
+| 92 | 4 | overflow bits |
+| 96 | 4 | terminal CLI status |
+| 100 | 28 | reserved, must be zero |
+
+Overflow bits report saturation for visits (`0x01`), layout counts (`0x02`),
+flow counts (`0x04`), classifications (`0x08`), and image bytes (`0x10`). All
+counter groups saturate at `0xffffffff`. Flow rows count callback-selected next
+rows; forward/backward counts include only actual redirects, not the callback's
+explicit sequential-arrival marker. Statement classifications are counted per
+visit, intentionally exposing pass multiplication rather than unique rows.
+
+The companion adds no timers or I/O. Pass-end image observation restores the
+already-proven zero engine status after passing the byte count to the passive
+recorder; a structural contract locks that status-preservation invariant.
 
 ## Timing and controls
 

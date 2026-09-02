@@ -34,6 +34,137 @@ start	.block
 	cmpi.l #10, progress.OPASM_PROGRESS_RUN_ID_OFFSET(a0)
 	bne.w fail
 
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	jsr progress.opasmProgressGetWorkRecordV1
+	movea.l a0, a1
+	moveq #24, d7
+	cmpi.l #progress.OPASM_WORK_MAGIC, progress.OPASM_WORK_MAGIC_OFFSET(a1)
+	bne.w fail
+	cmpi.l #10, progress.OPASM_WORK_RUN_ID_OFFSET(a1)
+	bne.w fail
+
+	; Deterministic work-multiplication oracle across all three pass modes.
+	moveq #25, d7
+	moveq #progress.OPASM_WORK_MODE_PASS_ONE, d0
+	jsr progress.opasmProgressWorkPassBeginV1
+	moveq #2, d0
+	moveq #1, d1
+	jsr progress.opasmProgressWorkStatementV1
+	moveq #7, d0
+	moveq #4, d1
+	jsr progress.opasmProgressWorkStatementV1
+	moveq #2, d0
+	moveq #8, d1
+	moveq #1, d2
+	jsr progress.opasmProgressWorkFlowV1
+	moveq #8, d0
+	moveq #3, d1
+	moveq #1, d2
+	jsr progress.opasmProgressWorkFlowV1
+	moveq #3, d0
+	moveq #4, d1
+	moveq #0, d2
+	jsr progress.opasmProgressWorkFlowV1
+	moveq #progress.OPASM_WORK_LAYOUT_CHANGE_LABEL, d0
+	jsr progress.opasmProgressWorkLayoutChangeV1
+	moveq #progress.OPASM_WORK_LAYOUT_CHANGE_PLACEMENT, d0
+	jsr progress.opasmProgressWorkLayoutChangeV1
+
+	moveq #progress.OPASM_WORK_MODE_LAYOUT, d0
+	jsr progress.opasmProgressWorkPassBeginV1
+	moveq #4, d0
+	moveq #3, d1
+	jsr progress.opasmProgressWorkStatementV1
+	moveq #100, d0
+	jsr progress.opasmProgressWorkPassEndV1
+	moveq #progress.OPASM_WORK_MODE_LAYOUT, d0
+	jsr progress.opasmProgressWorkPassBeginV1
+	moveq #5, d0
+	moveq #2, d1
+	jsr progress.opasmProgressWorkStatementV1
+	moveq #50, d0
+	jsr progress.opasmProgressWorkPassEndV1
+
+	moveq #progress.OPASM_WORK_MODE_FINAL_EMISSION, d0
+	jsr progress.opasmProgressWorkPassBeginV1
+	moveq #9, d0
+	moveq #4, d1
+	jsr progress.opasmProgressWorkStatementV1
+	moveq #64, d0
+	jsr progress.opasmProgressWorkPassEndV1
+	cmpi.l #2, progress.OPASM_WORK_PASS_ONE_VISITS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #2, progress.OPASM_WORK_LAYOUT_VISITS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #1, progress.OPASM_WORK_FINAL_VISITS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #2, progress.OPASM_WORK_LAYOUT_ROUNDS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #1, progress.OPASM_WORK_FINAL_EMISSIONS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #1, progress.OPASM_WORK_LAYOUT_LABEL_CHANGES_OFFSET(a1)
+	bne.w fail
+	cmpi.l #1, progress.OPASM_WORK_LAYOUT_PLACEMENT_CHANGES_OFFSET(a1)
+	bne.w fail
+	cmpi.l #3, progress.OPASM_WORK_FLOW_ROWS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #1, progress.OPASM_WORK_FORWARD_REDIRECTS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #1, progress.OPASM_WORK_BACKWARD_REDIRECTS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #1, progress.OPASM_WORK_MODULE_ROWS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #1, progress.OPASM_WORK_ENDMODULE_ROWS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #1, progress.OPASM_WORK_USE_ROWS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #2, progress.OPASM_WORK_GENERIC_ROWS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #9, progress.OPASM_WORK_MAX_STATEMENT_OFFSET(a1)
+	bne.w fail
+	cmpi.l #6, progress.OPASM_WORK_MAX_FORWARD_SPAN_OFFSET(a1)
+	bne.w fail
+	cmpi.l #5, progress.OPASM_WORK_MAX_BACKWARD_SPAN_OFFSET(a1)
+	bne.w fail
+	cmpi.l #150, progress.OPASM_WORK_CONVERGENCE_IMAGE_BYTES_OFFSET(a1)
+	bne.w fail
+	cmpi.l #64, progress.OPASM_WORK_FINAL_IMAGE_BYTES_OFFSET(a1)
+	bne.w fail
+
+	; Execute every saturating counter group through the public routines.
+	moveq #26, d7
+	move.l #$fffffffe, progress.OPASM_WORK_PASS_ONE_VISITS_OFFSET(a1)
+	moveq #progress.OPASM_WORK_MODE_PASS_ONE, d0
+	jsr progress.opasmProgressWorkPassBeginV1
+	moveq #10, d0
+	moveq #0, d1
+	jsr progress.opasmProgressWorkStatementV1
+	jsr progress.opasmProgressWorkStatementV1
+	move.l #$ffffffff, progress.OPASM_WORK_LAYOUT_ROUNDS_OFFSET(a1)
+	moveq #progress.OPASM_WORK_MODE_LAYOUT, d0
+	jsr progress.opasmProgressWorkPassBeginV1
+	move.l #$ffffffff, progress.OPASM_WORK_FLOW_ROWS_OFFSET(a1)
+	moveq #1, d0
+	moveq #2, d1
+	moveq #0, d2
+	jsr progress.opasmProgressWorkFlowV1
+	move.l #$ffffffff, progress.OPASM_WORK_GENERIC_ROWS_OFFSET(a1)
+	moveq #11, d0
+	moveq #4, d1
+	jsr progress.opasmProgressWorkStatementV1
+	move.l #$fffffffe, progress.OPASM_WORK_CONVERGENCE_IMAGE_BYTES_OFFSET(a1)
+	moveq #4, d0
+	jsr progress.opasmProgressWorkPassEndV1
+	cmpi.l #$ffffffff, progress.OPASM_WORK_PASS_ONE_VISITS_OFFSET(a1)
+	bne.w fail
+	cmpi.l #$ffffffff, progress.OPASM_WORK_CONVERGENCE_IMAGE_BYTES_OFFSET(a1)
+	bne.w fail
+	cmpi.l #31, progress.OPASM_WORK_OVERFLOW_OFFSET(a1)
+	bne.w fail
+.endif
+
+	jsr progress.opasmProgressGetRecordV1
+
 	moveq #30, d7
 	moveq #progress.OPASM_PROGRESS_PHASE_PACKAGE, d0
 	moveq #0, d1
@@ -123,6 +254,15 @@ start	.block
 	bne.w fail
 	cmpi.l #HARNESS_FAIL, progress.OPASM_PROGRESS_EXIT_STATUS_OFFSET(a0)
 	bne.w fail
+.ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	jsr progress.opasmProgressGetWorkRecordV1
+	movea.l a0, a1
+	move.w progress.OPASM_WORK_FLAGS_OFFSET(a1), d0
+	andi.w #progress.OPASM_WORK_FLAG_INCOMPLETE, d0
+	beq.w fail
+	cmpi.l #HARNESS_FAIL, progress.OPASM_WORK_EXIT_STATUS_OFFSET(a1)
+	bne.w fail
+.endif
 
 	moveq #0, d0
 	rts

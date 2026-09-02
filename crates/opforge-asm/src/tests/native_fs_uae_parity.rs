@@ -26819,7 +26819,7 @@ fn external_fs_uae_native_opforge_full_product_artifact_parity() {
         .collect::<Vec<_>>();
     assert_eq!(
         guest_files.len(),
-        95,
+        96,
         "measured canonical product staging set changed"
     );
 

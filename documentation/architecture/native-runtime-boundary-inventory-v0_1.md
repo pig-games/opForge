@@ -140,7 +140,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   numeric-data owner, engine, events, conditional/navigation/repetition/scope/struct
   flow modules, text encoding, tkpkg bridge, the architecture-neutral tkpkg ABI
   and shared pipeline buffers, the CLI-owned imported-label resolver callback,
-  and approved debug contracts/events.
+  the default-off passive symbol/expression observer, and approved debug
+  contracts/events.
 - Mutable state: module-local pass/session request pointers, flow/repetition
   scratch, text scratch/output state, and one bounded copy of the request-selected
   package CPU id used to restore the same initial pipeline before each pass.

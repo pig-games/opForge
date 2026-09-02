@@ -16,6 +16,9 @@
 	.cpu 68020
 	.pub
 	.use exprvm.amigaos.runtime
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	.use debug.amigaos.symbol_expr_profile as symbol_expr_profile
+.endif
 
 ; Matches opasm's label-only row: 107 Rust-valid fully scoped name bytes plus
 ; the terminating NUL.
@@ -96,6 +99,14 @@ opcoreExvmEvalOperandWithResolverV1	.block
 ; @opforge-slice: documentation/plans/slices/native-porting-slice-scalar-register-encoding-v3.toml
 ; @opforge-role: delegation
 opcoreExvmEvalOperandCommon	.block
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	movem.l d0-d2, -(sp)
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_REQUEST, d0
+	moveq #0, d1
+	moveq #0, d2
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	movem.l (sp)+, d0-d2
+.endif
 	move.w d4, OpcoreExvmSelectedOpcodeVersion
 	movem.l d1-d2/d6-d7/a0-a5, -(sp)
 	cmpi.w #2, d5
@@ -142,6 +153,20 @@ fail
 	moveq #1, d0
 
 return
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	movem.l d0-d4, -(sp)
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_FAILURE, d4
+	tst.l d0
+	bne.s expressionOutcomeReady
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_SUCCESS, d4
+expressionOutcomeReady
+	move.w d4, d0
+	moveq #0, d1
+	moveq #0, d2
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	movem.l (sp)+, d0-d4
+	tst.l d0  ; restore the public CCR-reflects-D0 result contract
+.endif
 	movem.l (sp)+, d1-d2/d6-d7/a0-a5
 	rts
 	.bend  ; opcoreExvmEvalOperandCommon
@@ -183,6 +208,16 @@ opcodeParseExpression
 	tst.l d4
 	bne.w programFail
 	movem.l d1/d4/a1, -(sp)
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	movem.l d0-d2, -(sp)
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_PARSE, d0
+	moveq #0, d1
+	moveq #0, d2
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_COMPILE, d0
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	movem.l (sp)+, d0-d2
+.endif
 	bsr.w compileExpression
 	move.l d0, d2
 	beq.s compileOk
@@ -216,6 +251,14 @@ ensureEndOk
 	move.l a5, d2
 	moveq #0, d6
 	move.w runtime.ExprvmSelectedOpcodeVersion, d6
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	movem.l d0-d2, -(sp)
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_EVALUATE, d0
+	moveq #0, d1
+	moveq #0, d2
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	movem.l (sp)+, d0-d2
+.endif
 	jsr runtime.exprvmEvalProgramV1
 	move.l d0, d2
 	beq.s restore
@@ -1882,11 +1925,19 @@ resolveLabelIndex	.block
 	movem.l d1-d2/d4-d6/a0-a2, -(sp)
 	movea.l a0, a2
 	move.l d0, d6
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	moveq #0, d0
+	move.l d0, -(sp)  ; compared-byte count
+	move.l d0, -(sp)  ; candidate count
+.endif
 	clr.w d4
 
 loop
 	cmp.w d7, d4
 	bhs.s fail
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	addq.l #1, (sp)
+.endif
 	moveq #0, d5
 	move.w d4, d5
 	move.l d5, d1
@@ -1903,7 +1954,13 @@ loop
 	adda.l d5, a0
 	movea.l a2, a1
 	move.l d6, d0
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL
+	bsr.w labelEqualsCounted
+	add.l d1, 4(sp)
+	tst.l d0
+.else
 	bsr.w labelEquals
+.endif
 	bne.s found
 	addq.w #1, d4
 	bra.s loop
@@ -1911,10 +1968,24 @@ loop
 found
 	moveq #0, d3
 	move.w d4, d3
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_BIND, d0
+	move.l (sp), d1
+	move.l 4(sp), d2
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	addq.l #8, sp
+.endif
 	moveq #0, d0
 	bra.s return
 
 fail
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_BIND, d0
+	move.l (sp), d1
+	move.l 4(sp), d2
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	addq.l #8, sp
+.endif
 	moveq #1, d0
 
 return
@@ -1946,6 +2017,41 @@ return
 	movem.l (sp)+, d1-d3/a0-a1
 	rts
 	.bend  ; labelEquals
+
+; Snapshot comparison variant that reports exact compared-byte positions.
+; Inputs: A0/A1 = text; D0.L = requested length.
+; Outputs: D0 = boolean match; D1.L = compared byte positions.
+; Clobbers: D0-D1/CCR. A0/A1 and other registers preserved.
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL
+; @opforge-owner: opcore.amigaos.expr_bridge
+; @opforge-slice: documentation/plans/slices/native-porting-slice-symbol-expression-work-v1.toml
+; @opforge-role: delegation
+labelEqualsCounted	.block
+	movem.l d2-d4/a0-a1, -(sp)
+	move.l d0, d3
+	moveq #0, d4
+	beq.s no
+loop
+	addq.l #1, d4
+	move.b (a0)+, d1
+	move.b (a1)+, d2
+	cmp.b d2, d1
+	bne.s no
+	subq.l #1, d3
+	bne.s loop
+	addq.l #1, d4
+	tst.b (a0)
+	bne.s no
+	moveq #1, d0
+	bra.s done
+no
+	moveq #0, d0
+done
+	move.l d4, d1
+	movem.l (sp)+, d2-d4/a0-a1
+	rts
+	.bend  ; labelEqualsCounted
+.endif
 
 OpcoreExvmDefaultProgram
 	.byte EXVM_OPCODE_PARSE_EXPRESSION, EXVM_OPCODE_END

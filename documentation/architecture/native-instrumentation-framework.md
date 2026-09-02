@@ -84,6 +84,24 @@ span, retained statement classifications, and convergence/final image bytes.
 Every group saturates and sets a defined overflow bit. The companion's code,
 call sites, and storage emit nothing in release or Item 0a progress-only builds.
 
+Item 0c optionally adds a separately gated 256-byte `OFSE` companion with
+`OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS`. Aggregate mode counts
+exact/scoped/imported/final-component lookup calls and outcomes, expression
+request/parse/compile/bind/evaluate outcomes, and lookup/request phase identity.
+`OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL` adds actual candidates, compared byte
+positions, a bounded exact-probe histogram, and maximum chain depth. Detailed
+mode owns one private fixed 512-byte scratch table; aggregate mode has no such
+storage and leaves every detailed field zero.
+
+The `OFSE` module observes existing lookup and expression boundaries. It never
+changes lookup order, ambiguity, diagnostics, source position, expression
+results, hash chains, or callbacks. Its passive routines preserve D0-D7,
+A0-A6, CCR, and stack depth; its record-pointer getter returns A0 as its sole
+documented ABI output. Scoped and imported counters retain their logical class
+while nested exact/final comparisons remain attributed to their actual owner.
+Release, Item 0a, and Item 0b-only builds emit none of the Item 0c code or
+storage.
+
 Heartbeat and graceful diagnostic abort are separately default-off. Builds may
 set `OPFORGE_PROGRESS_HEARTBEAT_QUANTUM` or
 `OPFORGE_PROGRESS_ABORT_VISITS`; reaching the latter follows the normal failure

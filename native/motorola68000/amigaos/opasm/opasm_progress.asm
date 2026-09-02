@@ -9,6 +9,9 @@
 
 	.use opforge.debug.contracts as contracts
 	.use opforge.debug.events as debug_events
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	.use debug.amigaos.symbol_expr_profile as symbol_expr_profile
+.endif
 	.include "debug_macros.i"
 
 	.pub
@@ -172,6 +175,10 @@ clearWorkLoop
 	move.w #OPASM_WORK_FLAG_ACTIVE, OPASM_WORK_FLAGS_OFFSET(a4)
 	move.l OPASM_PROGRESS_RUN_ID_OFFSET(a5), OPASM_WORK_RUN_ID_OFFSET(a4)
 .endif
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	move.l OPASM_PROGRESS_RUN_ID_OFFSET(a5), d0
+	jsr symbol_expr_profile.opforgeSymbolExprProfileBeginRunV1
+.endif
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
 	rts
@@ -194,6 +201,11 @@ opasmProgressSetPhaseV1	.block
 	move.w d4, OPASM_PROGRESS_PHASE_OFFSET(a5)
 	move.w d5, OPASM_PROGRESS_PASS_OFFSET(a5)
 	move.w d6, OPASM_PROGRESS_LAYOUT_ROUND_OFFSET(a5)
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	move.w d4, d0
+	move.w d5, d1
+	jsr symbol_expr_profile.opforgeSymbolExprProfileSetContextV1
+.endif
 return
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
@@ -527,9 +539,17 @@ finishWork
 	tst.l d6
 	bne.s workIncomplete
 	ori.w #OPASM_WORK_FLAG_COMPLETE, OPASM_WORK_FLAGS_OFFSET(a4)
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	move.l d6, d0
+	jsr symbol_expr_profile.opforgeSymbolExprProfileFinishV1
+.endif
 	bra.s return
 workIncomplete
 	ori.w #OPASM_WORK_FLAG_INCOMPLETE, OPASM_WORK_FLAGS_OFFSET(a4)
+.endif
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	move.l d6, d0
+	jsr symbol_expr_profile.opforgeSymbolExprProfileFinishV1
 .endif
 return
 	movem.l (sp)+, d0-d7/a0-a6

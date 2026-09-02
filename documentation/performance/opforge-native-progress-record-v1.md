@@ -1,6 +1,6 @@
 # Native Assembly Progress Bridge Record v1
 
-Status: provisional performance bridge for optimization-plan Items 0a-0b. This is
+Status: provisional performance bridge for optimization-plan Items 0a-0c. This is
 not an OFTB/OFTB-stable result format and is not semantic proof.
 
 The native debug-contract build owns one fixed, big-endian, 128-byte `OFPR`
@@ -122,6 +122,73 @@ visit, intentionally exposing pass multiplication rather than unique rows.
 The companion adds no timers or I/O. Pass-end image observation restores the
 already-proven zero engine status after passing the byte count to the passive
 recorder; a structural contract locks that status-preservation invariant.
+
+## Symbol/expression work companion
+
+Defining `OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS` with
+`OPFORGE_DEBUG_CONTRACTS` adds a separately removable, big-endian, 256-byte
+`OFSE` record. Its run ID, terminal state, exit status, phase, and pass must
+correlate with `OFPR`. Aggregate mode records lookup calls/outcomes, expression
+lifecycle calls, and request phase. Defining
+`OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL` as well enables candidate, compared-byte,
+probe-distribution, and chain-maximum fields. The decoder rejects detail mode
+without aggregate mode at assembly time and rejects malformed, contradictory,
+unknown, incomplete, overflowing, uncorrelated, or falsely populated aggregate
+records at decode time:
+
+```sh
+python3 scripts/performance/decode_native_progress.py progress.ofpr \
+  --symbol-expression-record work.ofse --require-complete
+```
+
+| Offset | Bytes | Field |
+|---:|---:|---|
+| 0 | 4 | magic `OFSE` |
+| 4 | 2 | schema version (`1`) |
+| 6 | 2 | active/complete/incomplete/detail flags |
+| 8 | 4 | correlated `OFPR` run ID |
+| 12 | 2 | current phase |
+| 14 | 2 | current pass |
+| 16 | 4 | reserved, must be zero |
+| 20 | 16 | exact/scoped/imported/final-component lookup calls |
+| 36 | 16 | exact/scoped/imported/final-component candidates |
+| 52 | 16 | exact/scoped/imported/final-component compared bytes |
+| 68 | 16 | exact/scoped/imported/final-component hits |
+| 84 | 16 | exact/scoped/imported/final-component misses |
+| 100 | 4 | final-component ambiguous results |
+| 104 | 4 | expression-snapshot candidates |
+| 108 | 4 | expression-snapshot compared bytes |
+| 112 | 28 | expression request/parse/compile/bind/evaluate/success/failure calls |
+| 140 | 20 | exact-hash probe histogram: 0/1/2/3/4+ |
+| 160 | 4 | maximum exact-hash probes |
+| 164 | 4 | maximum hash-chain depth observed during insertion |
+| 168 | 16 | lookup calls in pass one/layout/final/other |
+| 184 | 16 | expression requests in pass one/layout/final/other |
+| 200 | 4 | overflow bits |
+| 204 | 4 | terminal CLI status |
+| 208 | 48 | reserved, must be zero |
+
+Overflow bits report saturation for lookup calls (`0x01`), candidates (`0x02`),
+compared bytes (`0x04`), lookup outcomes (`0x08`), expression lifecycle
+(`0x10`), probe histograms/max probes (`0x20`), and maximum chain depth
+(`0x40`). Every counter saturates at `0xffffffff`.
+
+Exact hash lookups count actual visited chain candidates and compared byte
+positions. Scoped lookups count logical cascade calls and qualified-name
+candidates; the nested exact lookup owns its actual comparisons and bytes so
+the aggregate does not double-count them. Imported lookups count the callback
+request, candidate, and result; comparisons inside the opaque callback are not
+observable and therefore contribute zero imported bytes. Final-component scans
+count visited label rows and suffix byte positions, including distinct
+ambiguous outcomes. Expression bind counts each symbol-snapshot resolution;
+snapshot candidate and byte counts reflect its actual scan.
+
+Detailed mode adds a private fixed 512-byte chain-depth scratch table alongside
+the 256-byte record. It observes insertion depth without walking or modifying
+the production chain. Aggregate mode keeps all detailed fields zero. Neither
+mode performs timing, console output, file I/O, lookup caching, index creation,
+interning, or expression preparation, and neither changes lookup order,
+ambiguity, diagnostics, source position, or expression results.
 
 ## Timing and controls
 

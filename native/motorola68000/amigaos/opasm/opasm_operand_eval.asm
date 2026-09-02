@@ -6,6 +6,9 @@
 	.use opasm.amigaos.callback_abi as abi
 	.use opasm.amigaos.engine as eng
 	.use opasm.amigaos.flow_scopes as scopes
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	.use debug.amigaos.symbol_expr_profile as symbol_expr_profile
+.endif
 
 ; Rust evaluates against the complete session symbol table. Native keeps a
 ; fixed snapshot, so both the qualified source rows and their possible active
@@ -687,7 +690,11 @@ selectedAliasTryImport
 	move.l d4, d0
 	movea.l a4, a1
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	bsr.w invokeSelectedImportResolverProfiled
+.else
 	jsr (a2)
+.endif
 	move.l d1, -(sp)
 	move.l d0, -(sp)
 	move.l a0, -(sp)
@@ -901,7 +908,11 @@ importMemberBaseFail
 ; Outputs: D0 = status; D3 = value on success.
 resolveSelectedImportedPrefixV1	.block
 	movem.l d1-d2/d4-d7/a0-a5, -(sp)
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	bsr.w invokeSelectedImportResolverProfiled
+.else
 	jsr (a2)
+.endif
 	tst.l d1
 	bne.s importedPrefixFail
 	jsr eng.opasmEngineResolveLabelValueV1
@@ -918,6 +929,30 @@ importedPrefixFail
 	moveq #1, d0
 	rts
 	.bend  ; resolveSelectedImportedPrefixV1
+
+; Invoke the embedding import resolver and passively classify its outcome.
+; Inputs/outputs/clobbers: exactly the callback contract in A2. Callback CCR,
+; registers, and stack result are preserved after the observation call.
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+invokeSelectedImportResolverProfiled	.block
+	jsr (a2)
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_MISS, d4
+	tst.l d1
+	bne.s outcomeReady
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_HIT, d4
+outcomeReady
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_IMPORTED, d0
+	move.w d4, d1
+	moveq #1, d2
+	moveq #0, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; invokeSelectedImportResolverProfiled
+.endif
 
 ; Append one already-authorized alias/value to the bounded selected snapshot.
 ; Inputs: A0/D0 = alias text/length; D3 = value. Outputs: D0 = status.

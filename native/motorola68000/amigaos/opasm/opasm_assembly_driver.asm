@@ -22,6 +22,9 @@
 	.use tkpkg.amigaos.abi as tkabi
 	.use tkpkg.amigaos.buffers as buffers
 	.use tkpkg.amigaos.state_service as state_service
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	.use debug.amigaos.symbol_expr_profile as symbol_expr_profile
+.endif
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opforge.debug.contracts as debug_contracts
 	.use opforge.debug.events as debug_events
@@ -3636,7 +3639,11 @@ resolveImportedLabelValue	.block
 	move.l d0, d1
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	bsr.w invokeDriverImportResolverProfiled
+.else
 	jsr (a2)
+.endif
 	tst.l d1
 	bne.s importedResolveFail
 	jsr eng.opasmEngineResolveLabelValueV1
@@ -3645,6 +3652,33 @@ importedResolveFail
 	moveq #1, d0
 	rts
 	.bend  ; resolveImportedLabelValue
+
+; Invoke the embedding import resolver and passively classify its outcome.
+; Inputs/outputs/clobbers: exactly the callback contract in A2. Callback CCR,
+; registers, and stack result are preserved after the observation call.
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-slice: documentation/plans/slices/native-porting-slice-symbol-expression-work-v1.toml
+; @opforge-role: delegation
+invokeDriverImportResolverProfiled	.block
+	jsr (a2)
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_MISS, d4
+	tst.l d1
+	bne.s outcomeReady
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_HIT, d4
+outcomeReady
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_IMPORTED, d0
+	move.w d4, d1
+	moveq #1, d2
+	moveq #0, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; invokeDriverImportResolverProfiled
+.endif
 
 ; Resolve the final segment of an alias-qualified imported symbol token.
 ; Inputs: A0/D0 = trimmed text slice.

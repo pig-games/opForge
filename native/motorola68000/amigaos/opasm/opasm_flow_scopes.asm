@@ -3,6 +3,9 @@
 	.module opasm.amigaos.flow_scopes
 	.cpu 68020
 	.use opasm.amigaos.engine as eng
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	.use debug.amigaos.symbol_expr_profile as symbol_expr_profile
+.endif
 
 OPASM_SCOPE_DEPTH_CAPACITY = 8
 ; Recursive `.use` tokenization interleaves the canonical 18-edge module graph
@@ -427,12 +430,25 @@ verifyFail
 ; CCR: reflects D0 on return.
 resolveLabelValueV1	.block
 	movem.l d1-d2/d4-d6/a0-a2, -(sp)
-	move.w ScopeDepth.l, d1
-	beq.s fail
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
 	movea.l a0, a2
 	move.l d0, d6
+	moveq #0, d4
+	move.l d4, -(sp)
+.endif
+	move.w ScopeDepth.l, d1
+	beq.s fail
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+.else
+	movea.l a0, a2
+	move.l d0, d6
+.endif
 	movea.l a0, a1
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	move.l d6, d4
+.else
 	move.l d0, d4
+.endif
 dotScan
 	tst.l d4
 	beq.s noDot
@@ -456,16 +472,37 @@ scan
 	movem.l (sp)+, d6/a2
 	bne.s next
 	move.l d1, d0
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	addq.l #1, (sp)
+.endif
 	jsr eng.opasmEngineResolveLabelValueV1
 	beq.s ok
 next
 	subq.w #1, d2
 	bra.s scan
 ok
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	move.l d3, -(sp)
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_SCOPED, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_HIT, d1
+	move.l 4(sp), d2
+	moveq #0, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	move.l (sp)+, d3
+	addq.l #4, sp
+.endif
 	movem.l (sp)+, d1-d2/d4-d6/a0-a2
 	moveq #0, d0
 	rts
 fail
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_SCOPED, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_MISS, d1
+	move.l (sp), d2
+	moveq #0, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	addq.l #4, sp
+.endif
 	movem.l (sp)+, d1-d2/d4-d6/a0-a2
 	moveq #1, d0
 	rts

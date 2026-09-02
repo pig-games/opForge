@@ -11,6 +11,9 @@
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opasm.amigaos.progress as progress
 .endif
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	.use debug.amigaos.symbol_expr_profile as symbol_expr_profile
+.endif
 
 	.pub
 
@@ -746,8 +749,17 @@ opasmEngineResolveUniqueLabelFinalComponentV1	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
 	movea.l a0, a2
 	move.l d0, d6
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	moveq #0, d0
+	move.l d0, -(sp)  ; compared-byte count
+	move.l d0, -(sp)  ; candidate count
+.endif
 	movea.l a0, a1
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	move.l d6, d5
+.else
 	move.l d0, d5
+.endif
 authorizedComponentScan
 	tst.l d5
 	beq.s authorizedComponentReady
@@ -761,12 +773,19 @@ authorizedComponentNext
 	bra.s authorizedComponentScan
 authorizedComponentReady
 	tst.l d6
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	beq.w uniqueComponentMiss
+.else
 	beq.w uniqueComponentFail
+.endif
 	moveq #-1, d7
 	moveq #0, d4
 uniqueLabelLoop
 	cmp.w OpasmEngineLabelCount.l, d4
 	bhs.s uniqueLabelDone
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL
+	addq.l #1, (sp)
+.endif
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w labelNamePtr
@@ -794,19 +813,38 @@ storedComponentReady
 	move.l d6, d5
 uniqueComponentCompare
 	move.b (a0)+, d1
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL
+	addq.l #1, 4(sp)
+.endif
 	cmp.b (a1)+, d1
 	bne.s uniqueLabelNext
 	subq.l #1, d5
 	bne.s uniqueComponentCompare
 	tst.l d7
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	bpl.s uniqueComponentAmbiguous
+.else
 	bpl.s uniqueComponentFail
+.endif
 	move.w d4, d7
 uniqueLabelNext
 	addq.w #1, d4
 	bra.s uniqueLabelLoop
 uniqueLabelDone
 	tst.l d7
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	bmi.s uniqueComponentMiss
+.else
 	bmi.s uniqueComponentFail
+.endif
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_FINAL_COMPONENT, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_HIT, d1
+	move.l (sp), d2
+	move.l 4(sp), d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	addq.l #8, sp
+.endif
 	move.w d7, OpasmEngineLastResolvedLabelIndex.l
 	move.l d7, d0
 	lsl.l #2, d0
@@ -814,8 +852,28 @@ uniqueLabelDone
 	move.l 0(a0, d0.l), d3
 	moveq #0, d0
 	bra.s uniqueComponentReturn
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+uniqueComponentAmbiguous
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_FINAL_COMPONENT, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_AMBIGUOUS, d1
+	move.l (sp), d2
+	move.l 4(sp), d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	addq.l #8, sp
+	moveq #1, d0
+	bra.s uniqueComponentReturn
+uniqueComponentMiss
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_FINAL_COMPONENT, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_MISS, d1
+	move.l (sp), d2
+	move.l 4(sp), d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	addq.l #8, sp
+	moveq #1, d0
+.else
 uniqueComponentFail
 	moveq #1, d0
+.endif
 uniqueComponentReturn
 	movem.l (sp)+, d1-d2/d4-d7/a0-a3
 	rts
@@ -3087,6 +3145,10 @@ findExactLabelIndexV1	.block
 	movem.l d1-d5/a0-a2, -(sp)
 	movea.l a0, a2
 	move.l d0, d5
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	moveq #0, d3
+	moveq #0, d4
+.endif
 	bsr.w labelHashV1
 	lsl.l #2, d0
 	lea OpasmEngineLabelHashHeadTable.l, a0
@@ -3095,11 +3157,20 @@ findExactLabelLoop
 	tst.l d6
 	beq.s findExactLabelAbsent
 	subq.l #1, d6
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL
+	addq.l #1, d4
+.endif
 	move.l d6, d0
 	bsr.w labelNamePtr
 	movea.l a2, a1
 	move.l d5, d0
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL
+	bsr.w labelEqualsCounted
+	add.l d1, d3
+	tst.l d0
+.else
 	bsr.w labelEquals
+.endif
 	bne.s findExactLabelFound
 	move.l d6, d0
 	lsl.l #2, d0
@@ -3112,6 +3183,14 @@ findExactLabelFound
 findExactLabelAbsent
 	moveq #1, d0
 findExactLabelReturn
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	move.l d0, -(sp)
+	move.w d0, d1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_EXACT, d0
+	move.l d4, d2
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	move.l (sp)+, d0
+.endif
 	movem.l (sp)+, d1-d5/a0-a2
 	rts
 	.bend  ; findExactLabelIndexV1
@@ -3123,6 +3202,9 @@ indexLabelNameV1	.block
 	move.l d0, d4
 	move.l d1, d0
 	bsr.w labelHashV1
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordChainInsertV1
+.endif
 	lsl.l #2, d0
 	lea OpasmEngineLabelHashHeadTable.l, a1
 	adda.l d0, a1
@@ -3174,6 +3256,50 @@ done
 	movem.l (sp)+, d1-d3/a0-a1
 	rts
 	.bend  ; labelEquals
+
+; Compare one hash candidate while returning exact compared-byte work.
+; Inputs: A0/A1 = text; D0.W = requested length.
+; Outputs: D0 = boolean match; D1.L = compared byte positions.
+; Clobbers: D0-D1/CCR. A0/A1 and other registers preserved.
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL
+labelEqualsCounted	.block
+	movem.l d2-d4/a0-a1, -(sp)
+	move.w d0, d3
+	moveq #0, d4
+	beq.s no
+loop
+	addq.l #1, d4
+	move.b (a0)+, d1
+	move.b (a1)+, d2
+	cmpi.b #'A', d1
+	bcs.s foldRight
+	cmpi.b #'Z', d1
+	bhi.s foldRight
+	ori.b #$20, d1
+foldRight
+	cmpi.b #'A', d2
+	bcs.s compare
+	cmpi.b #'Z', d2
+	bhi.s compare
+	ori.b #$20, d2
+compare
+	cmp.b d1, d2
+	bne.s no
+	subq.w #1, d3
+	bne.s loop
+	addq.l #1, d4
+	tst.b (a0)
+	bne.s no
+	moveq #1, d0
+	bra.s done
+no
+	moveq #0, d0
+done
+	move.l d4, d1
+	movem.l (sp)+, d2-d4/a0-a1
+	rts
+	.bend  ; labelEqualsCounted
+.endif
 
 skipLineWhitespace	.block
 	tst.l d0

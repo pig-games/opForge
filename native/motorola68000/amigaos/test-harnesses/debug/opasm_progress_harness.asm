@@ -7,6 +7,9 @@
 	.use opasm.amigaos.progress as progress
 	.use opforge.debug.contracts as contracts
 	.use opforge.debug.events as events
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	.use debug.amigaos.symbol_expr_profile as symbol_expr_profile
+.endif
 
 HARNESS_FAIL = 20
 HARNESS_PACKAGE_TICKS_OFFSET = progress.OPASM_PROGRESS_PHASE_TICKS_OFFSET + 4
@@ -33,6 +36,15 @@ start	.block
 	moveq #23, d7
 	cmpi.l #10, progress.OPASM_PROGRESS_RUN_ID_OFFSET(a0)
 	bne.w fail
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	jsr symbol_expr_profile.opforgeSymbolExprProfileGetRecordV1
+	movea.l a0, a2
+	moveq #27, d7
+	cmpi.l #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_MAGIC, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_MAGIC_OFFSET(a2)
+	bne.w fail
+	cmpi.l #10, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_RUN_ID_OFFSET(a2)
+	bne.w fail
+.endif
 
 .ifdef OPFORGE_PROGRESS_WORK_COUNTERS
 	jsr progress.opasmProgressGetWorkRecordV1
@@ -177,6 +189,178 @@ start	.block
 	cmpi.l #10, HARNESS_PACKAGE_TICKS_OFFSET(a0)
 	bne.w fail
 
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	; Deterministic exact/scoped/imported/final lookup and expression oracle.
+	moveq #36, d7
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_EXACT, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_HIT, d1
+	moveq #2, d2
+	moveq #7, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_EXACT, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_MISS, d1
+	moveq #0, d2
+	moveq #0, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_SCOPED, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_HIT, d1
+	moveq #3, d2
+	moveq #0, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_SCOPED, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_MISS, d1
+	moveq #2, d2
+	moveq #0, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_IMPORTED, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_HIT, d1
+	moveq #1, d2
+	moveq #0, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_IMPORTED, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_MISS, d1
+	moveq #1, d2
+	moveq #0, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_FINAL_COMPONENT, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_HIT, d1
+	moveq #5, d2
+	moveq #8, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_FINAL_COMPONENT, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_MISS, d1
+	moveq #4, d2
+	moveq #6, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_FINAL_COMPONENT, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_AMBIGUOUS, d1
+	moveq #2, d2
+	moveq #5, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_REQUEST, d0
+	moveq #0, d1
+	moveq #0, d2
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_PARSE, d0
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_COMPILE, d0
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_BIND, d0
+	moveq #4, d1
+	moveq #10, d2
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	moveq #6, d1
+	moveq #12, d2
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_EVALUATE, d0
+	moveq #0, d1
+	moveq #0, d2
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_SUCCESS, d0
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_FAILURE, d0
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL
+	moveq #7, d0
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordChainInsertV1
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordChainInsertV1
+	moveq #8, d0
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordChainInsertV1
+.endif
+
+	cmpi.l #2, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EXACT_CALLS_OFFSET(a2)
+	bne.w fail
+	cmpi.l #2, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_SCOPED_CALLS_OFFSET(a2)
+	bne.w fail
+	cmpi.l #2, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_IMPORTED_CALLS_OFFSET(a2)
+	bne.w fail
+	cmpi.l #3, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_FINAL_CALLS_OFFSET(a2)
+	bne.w fail
+	cmpi.l #1, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EXACT_HITS_OFFSET(a2)
+	bne.w fail
+	cmpi.l #1, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EXACT_MISSES_OFFSET(a2)
+	bne.w fail
+	cmpi.l #1, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_FINAL_AMBIGUOUS_OFFSET(a2)
+	bne.w fail
+	cmpi.l #2, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_REQUESTS_OFFSET(a2)
+	bne.w fail
+	cmpi.l #2, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_PARSE_CALLS_OFFSET(a2)
+	bne.w fail
+	cmpi.l #2, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_COMPILE_CALLS_OFFSET(a2)
+	bne.w fail
+	cmpi.l #2, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_BIND_CALLS_OFFSET(a2)
+	bne.w fail
+	cmpi.l #1, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVALUATE_CALLS_OFFSET(a2)
+	bne.w fail
+	cmpi.l #1, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_SUCCESSES_OFFSET(a2)
+	bne.w fail
+	cmpi.l #1, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_FAILURES_OFFSET(a2)
+	bne.w fail
+	cmpi.l #9, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_LOOKUP_PASS_ONE_OFFSET(a2)
+	bne.w fail
+	cmpi.l #2, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EXPR_PASS_ONE_OFFSET(a2)
+	bne.w fail
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL
+	cmpi.l #2, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EXACT_CANDIDATES_OFFSET(a2)
+	bne.w fail
+	cmpi.l #5, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_SCOPED_CANDIDATES_OFFSET(a2)
+	bne.w fail
+	cmpi.l #2, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_IMPORTED_CANDIDATES_OFFSET(a2)
+	bne.w fail
+	cmpi.l #11, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_FINAL_CANDIDATES_OFFSET(a2)
+	bne.w fail
+	cmpi.l #7, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EXACT_BYTES_OFFSET(a2)
+	bne.w fail
+	cmpi.l #19, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_FINAL_BYTES_OFFSET(a2)
+	bne.w fail
+	cmpi.l #10, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_SNAPSHOT_CANDIDATES_OFFSET(a2)
+	bne.w fail
+	cmpi.l #22, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_SNAPSHOT_BYTES_OFFSET(a2)
+	bne.w fail
+	cmpi.l #1, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_PROBE_ZERO_OFFSET(a2)
+	bne.w fail
+	cmpi.l #1, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_PROBE_TWO_OFFSET(a2)
+	bne.w fail
+	cmpi.l #2, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_MAX_PROBES_OFFSET(a2)
+	bne.w fail
+	cmpi.l #2, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_MAX_CHAIN_OFFSET(a2)
+	bne.w fail
+
+	; Saturate every externally writable group through the public APIs.
+	move.l #$ffffffff, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EXACT_CALLS_OFFSET(a2)
+	move.l #$ffffffff, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_SCOPED_CANDIDATES_OFFSET(a2)
+	move.l #$ffffffff, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_IMPORTED_BYTES_OFFSET(a2)
+	move.l #$ffffffff, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EXACT_HITS_OFFSET(a2)
+	move.l #$ffffffff, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_REQUESTS_OFFSET(a2)
+	move.l #$ffffffff, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_PROBE_ZERO_OFFSET(a2)
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_EXACT, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_HIT, d1
+	moveq #0, d2
+	moveq #0, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_SCOPED, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_HIT, d1
+	moveq #1, d2
+	moveq #0, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_CLASS_IMPORTED, d0
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OUTCOME_HIT, d1
+	moveq #0, d2
+	moveq #1, d3
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordLookupV1
+	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_REQUEST, d0
+	moveq #0, d1
+	moveq #0, d2
+	jsr symbol_expr_profile.opforgeSymbolExprProfileRecordExpressionV1
+	cmpi.l #63, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_OVERFLOW_OFFSET(a2)
+	bne.w fail
+.endif
+.endif
+
 	moveq #31, d7
 	moveq #2, d0
 	jsr progress.opasmProgressSetHeartbeatV1
@@ -261,6 +445,27 @@ start	.block
 	andi.w #progress.OPASM_WORK_FLAG_INCOMPLETE, d0
 	beq.w fail
 	cmpi.l #HARNESS_FAIL, progress.OPASM_WORK_EXIT_STATUS_OFFSET(a1)
+	bne.w fail
+.endif
+.ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
+	jsr symbol_expr_profile.opforgeSymbolExprProfileGetRecordV1
+	movea.l a0, a2
+	move.w symbol_expr_profile.OPFORGE_SYMBOL_EXPR_FLAGS_OFFSET(a2), d0
+	andi.w #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_FLAG_INCOMPLETE, d0
+	beq.w fail
+	cmpi.l #HARNESS_FAIL, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EXIT_STATUS_OFFSET(a2)
+	bne.w fail
+	; The work-record success branch must not bypass OFSE terminal sealing.
+	lea nextTick, a0
+	jsr progress.opasmProgressBeginRunV1
+	moveq #0, d0
+	jsr progress.opasmProgressFinishV1
+	jsr symbol_expr_profile.opforgeSymbolExprProfileGetRecordV1
+	movea.l a0, a2
+	move.w symbol_expr_profile.OPFORGE_SYMBOL_EXPR_FLAGS_OFFSET(a2), d0
+	andi.w #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_FLAG_COMPLETE, d0
+	beq.w fail
+	tst.l symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EXIT_STATUS_OFFSET(a2)
 	bne.w fail
 .endif
 

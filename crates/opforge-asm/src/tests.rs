@@ -522,6 +522,161 @@ fn native_work_multiplication_fs_uae_confirms_counter_contract() {
 }
 
 #[test]
+fn native_symbol_expression_work_source_contract_is_bounded_and_observational() {
+    // Proof level B. This locks fixed storage, independent aggregate/detail
+    // gates, saturation, correlation, and all production observation sites.
+    // It does not prove native execution or corpus-wide attribution.
+    let root = workspace_root();
+    let profile = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/debug/opforge_symbol_expr_profile.asm"),
+    )
+    .expect("read native symbol/expression profile module");
+    let progress =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_progress.asm"))
+            .expect("read native progress correlation sites");
+    let engine =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm"))
+            .expect("read native engine symbol sites");
+    let scopes =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm"))
+            .expect("read native scoped lookup sites");
+    let operands =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_operand_eval.asm"))
+            .expect("read native imported lookup sites");
+    let driver = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
+    )
+    .expect("read native direct imported lookup sites");
+    let expressions =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm"))
+            .expect("read native expression lifecycle sites");
+
+    for required in [
+        "OPFORGE_SYMBOL_EXPR_MAGIC                 = $4f465345",
+        "OPFORGE_SYMBOL_EXPR_RECORD_BYTES          = 256",
+        "OPFORGE_SYMBOL_EXPR_FLAG_DETAIL           = 8",
+        "OPFORGE_SYMBOL_EXPR_OVERFLOW_CHAIN         = 64",
+        "opforgeSymbolExprProfileBeginRunV1\t.block",
+        "opforgeSymbolExprProfileRecordLookupV1\t.block",
+        "opforgeSymbolExprProfileRecordExpressionV1\t.block",
+        "opforgeSymbolExprProfileRecordChainInsertV1\t.block",
+        "opforgeSymbolExprProfileFinishV1\t.block",
+        "cmpi.l #-1, (a0)\n\tbeq.s overflow",
+    ] {
+        assert!(
+            profile.contains(required),
+            "missing symbol/expression contract {required:?}"
+        );
+    }
+    assert_eq!(
+        profile.matches("move.w ccr, -(sp)").count(),
+        profile.matches("move.w (sp)+, ccr").count(),
+        "passive symbol/expression routines must balance CCR saves/restores"
+    );
+    assert_eq!(
+        profile.matches("movem.l d0-d7/a0-a6, -(sp)").count(),
+        profile.matches("movem.l (sp)+, d0-d7/a0-a6").count(),
+        "passive symbol/expression routines must balance full register saves/restores"
+    );
+    for source in [
+        &progress,
+        &engine,
+        &scopes,
+        &operands,
+        &driver,
+        &expressions,
+    ] {
+        assert!(source.contains("OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS"));
+    }
+    assert!(progress.contains("opforgeSymbolExprProfileBeginRunV1"));
+    assert!(progress.contains("opforgeSymbolExprProfileSetContextV1"));
+    assert!(progress.contains("opforgeSymbolExprProfileFinishV1"));
+    assert!(engine.contains("OPFORGE_SYMBOL_EXPR_CLASS_EXACT"));
+    assert!(engine.contains("OPFORGE_SYMBOL_EXPR_CLASS_FINAL_COMPONENT"));
+    assert!(scopes.contains("OPFORGE_SYMBOL_EXPR_CLASS_SCOPED"));
+    assert!(operands.contains("OPFORGE_SYMBOL_EXPR_CLASS_IMPORTED"));
+    assert!(operands.contains("bsr.w invokeSelectedImportResolverProfiled"));
+    assert!(driver.contains("bsr.w invokeDriverImportResolverProfiled"));
+    assert!(driver.contains("OPFORGE_SYMBOL_EXPR_CLASS_IMPORTED"));
+    assert!(expressions.contains("OPFORGE_SYMBOL_EXPR_EVENT_PARSE"));
+    assert!(expressions.contains("OPFORGE_SYMBOL_EXPR_EVENT_COMPILE"));
+    assert!(expressions.contains("OPFORGE_SYMBOL_EXPR_EVENT_BIND"));
+    assert!(expressions.contains("OPFORGE_SYMBOL_EXPR_EVENT_EVALUATE"));
+    assert!(!profile.contains("dos.putStr"));
+    assert!(!profile.contains("dos.write"));
+}
+
+#[test]
+fn native_symbol_expression_work_harness_assembles() {
+    // Proof level C. This proves the deterministic lookup/lifecycle oracle and
+    // real bounded profile modules assemble together. It does not prove guest
+    // execution, arbitrary production counts, or performance value.
+    let root = workspace_root();
+    let asm_path =
+        root.join("native/motorola68000/amigaos/test-harnesses/debug/opasm_progress_harness.asm");
+    let out = create_temp_dir("native-symbol-expression-work-harness");
+    assemble_example_with_base_and_defines(
+        &asm_path,
+        &out,
+        "opasm_progress_harness",
+        false,
+        &[
+            "OPFORGE_DEBUG_CONTRACTS".to_string(),
+            "OPFORGE_PROGRESS_WORK_COUNTERS".to_string(),
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS".to_string(),
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL".to_string(),
+        ],
+    )
+    .unwrap_or_else(|error| panic!("assemble native symbol/expression harness: {error}"));
+    assert!(out.join("build/opasm_progress_harness").is_file());
+}
+
+#[test]
+fn native_symbol_expression_work_full_cli_assembles() {
+    // Proof level C. This compiles every production observation site together
+    // in the real native CLI graph. It does not prove guest execution or exact
+    // artifact parity.
+    let root = workspace_root();
+    let asm_path = root.join("native/motorola68000/amigaos/main.asm");
+    let out = create_temp_dir("native-symbol-expression-work-cli");
+    assemble_example_with_base_and_defines(
+        &asm_path,
+        &out,
+        "main",
+        false,
+        &[
+            "OPFORGE_DEBUG_CONTRACTS".to_string(),
+            "OPFORGE_PROGRESS_WORK_COUNTERS".to_string(),
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS".to_string(),
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL".to_string(),
+        ],
+    )
+    .unwrap_or_else(|error| panic!("assemble native symbol/expression CLI: {error}"));
+    assert!(out.join("main.lst").is_file());
+}
+
+#[test]
+fn native_symbol_expression_work_fs_uae_confirms_counter_contract() {
+    // Proof level D. The guest must complete freshly and exit zero after exact
+    // lookup classes, expression lifecycle, detail, saturation, and terminal
+    // checks. It does not prove B01-B10 slopes or an optimization.
+    match crate::fs_uae_smoke::run_native_progress_harness_from_env(&workspace_root())
+        .expect("native symbol/expression FS-UAE harness should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native symbol/expression harness failed under FS-UAE\nprotocol completed: {}\nguest exit: {:?}\nstdout:\n{}\nstderr:\n{}",
+                run.protocol_completed, run.exit_code, run.stdout, run.stderr
+            );
+        }
+    }
+}
+
+#[test]
 fn native_debug_contract_console_capture_prepares_mounted_harness() {
     let Some(launch) =
         crate::fs_uae_smoke::prepare_native_debug_contract_console_from_env(&workspace_root())
@@ -2195,7 +2350,11 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
             .join("motorola68000")
             .join("amigaos");
         if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("opasm_progress_harness") {
-            return vec![amigaos_dir.join("opasm"), amigaos_dir.join("debug")];
+            return vec![
+                amigaos_dir.join("opasm"),
+                amigaos_dir.join("opcore"),
+                amigaos_dir.join("debug"),
+            ];
         }
         return vec![amigaos_dir.join("debug")];
     }
@@ -2214,6 +2373,7 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
             amigaos_dir.join("exprvm"),
             amigaos_dir.join("opcore"),
             amigaos_dir.join("opasm"),
+            amigaos_dir.join("debug"),
         ];
     }
 
@@ -2283,7 +2443,7 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
 fn example_include_paths(asm_path: &Path) -> Vec<PathBuf> {
     if matches!(
         asm_path.file_stem().and_then(|stem| stem.to_str()),
-        Some("debug_contract_harness" | "opasm_progress_harness")
+        Some("debug_contract_harness" | "opasm_progress_harness" | "main")
     ) {
         return vec![workspace_root()
             .join("native")
@@ -20720,7 +20880,13 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
         .map(str::trim)
         .filter(|line| line.starts_with(".use "))
         .collect::<Vec<_>>();
-    assert_eq!(imports, vec![".use exprvm.amigaos.runtime"]);
+    assert_eq!(
+        imports,
+        vec![
+            ".use exprvm.amigaos.runtime",
+            ".use debug.amigaos.symbol_expr_profile as symbol_expr_profile",
+        ]
+    );
     for prohibited_owner in [
         "opasm.amigaos.engine",
         "tkpkg.amigaos.expression_service",

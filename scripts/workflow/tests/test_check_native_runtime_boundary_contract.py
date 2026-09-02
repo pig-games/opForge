@@ -30,7 +30,11 @@ class NativeRuntimeBoundaryContractTests(unittest.TestCase):
             RETAINED_ITEM_511_IMPORTS[
                 "native/motorola68000/amigaos/opasm/opasm_engine.asm"
             ],
-            ("opasm.amigaos.events", "opasm.amigaos.progress"),
+            (
+                "opasm.amigaos.events",
+                "opasm.amigaos.progress",
+                "debug.amigaos.symbol_expr_profile",
+            ),
         )
         self.assertEqual(
             RETAINED_ITEM_511_IMPORTS[

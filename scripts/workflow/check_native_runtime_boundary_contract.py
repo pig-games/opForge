@@ -44,6 +44,7 @@ RETAINED_ITEM_511_IMPORTS = {
     "native/motorola68000/amigaos/opasm/opasm_engine.asm": (
         "opasm.amigaos.events",
         "opasm.amigaos.progress",
+        "debug.amigaos.symbol_expr_profile",
     ),
     "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": (
         "tkpkg.amigaos.abi",

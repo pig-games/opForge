@@ -57,6 +57,33 @@ def work_record(
     return bytes(data)
 
 
+def symbol_expression_record(
+    flags: int,
+    *,
+    run_id: int = 0x1234,
+    phase: int = 6,
+    pass_number: int = 2,
+    overflow_bits: int = 0,
+    exit_status: int = 0,
+) -> bytes:
+    data = bytearray(decoder.SYMBOL_EXPR_RECORD_BYTES)
+    struct.pack_into(
+        ">IHHIHH",
+        data,
+        0,
+        decoder.SYMBOL_EXPR_MAGIC,
+        decoder.SYMBOL_EXPR_SCHEMA_VERSION,
+        flags,
+        run_id,
+        phase,
+        pass_number,
+    )
+    for value, offset in enumerate(range(20, 200, 4), start=1):
+        struct.pack_into(">I", data, offset, value)
+    struct.pack_into(">II", data, 200, overflow_bits, exit_status)
+    return bytes(data)
+
+
 class NativeProgressDecoderTests(unittest.TestCase):
     def test_decodes_complete_big_endian_record(self) -> None:
         report = decoder.decode_progress(record(decoder.FLAG_COMPLETE), require_complete=True)
@@ -152,6 +179,93 @@ class NativeProgressDecoderTests(unittest.TestCase):
         with self.assertRaisesRegex(decoder.ProgressDecodeError, "zero exit"):
             decoder.decode_work_multiplication(
                 work_record(decoder.WORK_FLAG_ACTIVE, exit_status=1)
+            )
+
+    def test_decodes_correlated_symbol_expression_work(self) -> None:
+        report = decoder.decode_symbol_expression_work(
+            symbol_expression_record(
+                decoder.SYMBOL_EXPR_FLAG_COMPLETE | decoder.SYMBOL_EXPR_FLAG_DETAIL
+            ),
+            expected_run_id=0x1234,
+            expected_state="complete",
+            expected_exit_status=0,
+            expected_phase=6,
+            expected_pass=2,
+            require_complete=True,
+        )
+        self.assertEqual(report["state"], "complete")
+        self.assertTrue(report["detail_enabled"])
+        self.assertEqual(report["phase"], "layout")
+        self.assertEqual(report["lookups"]["exact"]["calls"], 1)
+        self.assertEqual(report["lookups"]["final_component"]["candidates"], 8)
+        self.assertEqual(report["final_component_ambiguous"], 21)
+        self.assertEqual(report["expression"]["requests"], 24)
+        self.assertEqual(report["max_hash_chain"], 37)
+
+    def test_rejects_overflowing_symbol_expression_proof(self) -> None:
+        complete = decoder.SYMBOL_EXPR_FLAG_COMPLETE | decoder.SYMBOL_EXPR_FLAG_DETAIL
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "not complete proof"):
+            decoder.decode_symbol_expression_work(
+                symbol_expression_record(complete, overflow_bits=0x01),
+                require_complete=True,
+            )
+
+        report = decoder.decode_symbol_expression_work(
+            symbol_expression_record(complete, overflow_bits=0x01)
+        )
+        self.assertEqual(report["overflow_bits"], 0x01)
+
+    def test_rejects_malformed_or_uncorrelated_symbol_expression_work(self) -> None:
+        complete = decoder.SYMBOL_EXPR_FLAG_COMPLETE | decoder.SYMBOL_EXPR_FLAG_DETAIL
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "run id"):
+            decoder.decode_symbol_expression_work(
+                symbol_expression_record(complete), expected_run_id=7
+            )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "state complete"):
+            decoder.decode_symbol_expression_work(
+                symbol_expression_record(complete), expected_state="active"
+            )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "phase 6"):
+            decoder.decode_symbol_expression_work(
+                symbol_expression_record(complete), expected_phase=5
+            )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "pass 2"):
+            decoder.decode_symbol_expression_work(
+                symbol_expression_record(complete), expected_pass=1
+            )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "unknown symbol/expression flag"):
+            decoder.decode_symbol_expression_work(symbol_expression_record(0x10))
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "unknown symbol/expression overflow"):
+            decoder.decode_symbol_expression_work(
+                symbol_expression_record(
+                    decoder.SYMBOL_EXPR_FLAG_ACTIVE | decoder.SYMBOL_EXPR_FLAG_DETAIL,
+                    overflow_bits=0x80,
+                )
+            )
+        malformed = bytearray(symbol_expression_record(complete))
+        malformed[255] = 1
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "reserved"):
+            decoder.decode_symbol_expression_work(bytes(malformed))
+        detail_disabled = bytearray(
+            symbol_expression_record(decoder.SYMBOL_EXPR_FLAG_ACTIVE)
+        )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "detail-disabled"):
+            decoder.decode_symbol_expression_work(bytes(detail_disabled))
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "not proof"):
+            decoder.decode_symbol_expression_work(
+                symbol_expression_record(
+                    decoder.SYMBOL_EXPR_FLAG_INCOMPLETE
+                    | decoder.SYMBOL_EXPR_FLAG_DETAIL,
+                    exit_status=20,
+                ),
+                require_complete=True,
+            )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "nonzero exit"):
+            decoder.decode_symbol_expression_work(
+                symbol_expression_record(
+                    decoder.SYMBOL_EXPR_FLAG_INCOMPLETE
+                    | decoder.SYMBOL_EXPR_FLAG_DETAIL
+                )
             )
 
 

@@ -620,7 +620,12 @@ pub(crate) fn run_native_progress_harness_from_env(
         FS_UAE_PROGRESS_HARNESS_NAME,
         FS_UAE_PROGRESS_HARNESS_SOURCE_PATH,
         "68020",
-        &["OPFORGE_DEBUG_CONTRACTS", "OPFORGE_PROGRESS_WORK_COUNTERS"],
+        &[
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_PROGRESS_WORK_COUNTERS",
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS",
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL",
+        ],
     )? {
         ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
@@ -805,6 +810,8 @@ pub(crate) fn run_native_progress_cli_parity_from_env(
             FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE,
             "OPFORGE_DEBUG_CONTRACTS",
             "OPFORGE_PROGRESS_WORK_COUNTERS",
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS",
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL",
         ],
         source_override: Some(FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT.as_bytes()),
         command_template: Some("{input} --bin {bin} --cpu m6502"),

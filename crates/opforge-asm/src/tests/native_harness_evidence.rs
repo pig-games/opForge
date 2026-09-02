@@ -86,11 +86,11 @@ fn external_fs_uae_native_cli_directive_router_emits_org_and_data_fixture() {
 
 #[test]
 fn external_fs_uae_native_progress_cli_preserves_exact_artifact_and_exit() {
-    // Proof level D. This runs the real CLI with progress and work-multiplication
-    // counters enabled while heartbeat and diagnostic abort remain disabled,
-    // requires fresh protocol completion and explicit exit zero, and compares
-    // the exact artifact to the live Rust oracle. It does not prove corpus-wide
-    // counts or runtime overhead.
+    // Proof level D. This runs the real CLI with progress, work-multiplication,
+    // and detailed symbol/expression counters enabled while heartbeat and
+    // diagnostic abort remain disabled. It requires fresh protocol completion,
+    // explicit exit zero, and exact equality to the live Rust oracle. It does
+    // not prove corpus-wide counts or runtime overhead.
     let rust_oracle = native_harness_live_rust_cli_oracle(
         "native-progress-cli-live-rust-cli",
         crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT,

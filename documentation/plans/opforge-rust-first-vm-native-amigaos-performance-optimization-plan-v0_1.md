@@ -323,7 +323,7 @@ localization evidence but never a completed assembly or Level D result.
   - Commit outcome: `feat(native-perf): count assembly work multiplication`.
   - Definition of done: bounded reports show whether statement, flow, layout, or image work grows and at what rate without changing results.
 
-- [ ] Item 0c — Count native symbol and expression work
+- [x] Item 0c — Count native symbol and expression work
   - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-MEAS, SR-PAR, F5, F8, F12.
   - Rationale/mechanism: test the statically plausible full-label scans and repeated expression lifecycle against dynamic call/candidate/byte counts.
   - Architectural boundaries: no index, cache, interning, prepared expression, lookup-order, ambiguity, or diagnostic change.
@@ -336,7 +336,8 @@ localization evidence but never a completed assembly or Level D result.
   - Effort/risk and stop/go: M/High; stop if lookup ordering, ambiguity, source position, diagnostics, or expression result changes.
   - Gate tier and required focused gates: focused sub-item — native format, architecture/instrumentation/inventory guards, staged native porting gate, focused decoder/source/harness/full-CLI Rust tests, and focused fresh FS-UAE counter plus exact-artifact confirmations.
   - Full quality gates: deferred to the Phase 0 closure at Item 0f unless focused evidence escalates this item.
-  - Plan-compliance review evidence: reviewer verifies dynamic evidence covers every cited full-scan/cascade mechanism and introduces no fix.
+  - Plan-compliance review evidence: `PASS` — the independent reviewer verified that staged Item 0c covers every exact/scoped/imported/final-component and expression lifecycle boundary, including the assembly-driver import callback, while preserving disabled and callback semantics. `OFSE` remains fixed, separately gated, observation-only, architecture-compliant, saturating, and fail-closed on overflow; focused Rust/native gates, refreshed contracts/inventory, fresh FS-UAE counter/artifact parity, and corrected size/digest evidence pass under the approved Item 0f full-gate deferral.
+  - Completion evidence (2026-09-02): a correlated 256-byte `OFSE` record counts lookup calls/outcomes and expression lifecycle work; optional detail mode adds actual candidates, compared bytes, probe distribution/maxima, chain depth, and expression-snapshot scans without changing lookup or expression behavior. Eight decoder tests reject malformed, incomplete, uncorrelated, falsely populated aggregate, and any overflowing proof record. The focused Item 0c Rust/native group passes 4/4, the full-product capacity group passes 6/6, boundary contract/inventory and `make workflow-gate` pass, and the exact staged native porting gate passes all instrumentation, ownership, architecture/no-growth, proof-contract, and 238-file formatter checks. After closing the reviewer's missed assembly-driver imported-callback finding, fresh detail and progress-only production CLI guests completed challenged protocols with explicit zero exit and byte-for-byte live-Rust artifact equality in 46.22s and 46.35s; the focused deterministic OFSE guest had already completed in 17.04s. Same-tool Hunks are release 554,500 bytes (`17a2b255…`), Item 0b work-only 556,972 (`88265708…`), aggregate 558,064 (`d0d5bc7d…`), and detail 558,432 (`ae423af0…`). The single-run -0.13s/-0.28% delta is noise, not a speed or vintage-hardware claim. Full Rust and complete native wrapper gates remain mandatory at Phase 0 closure Item 0f.
   - Commit outcome: `feat(native-perf): count symbol and expression work`.
   - Definition of done: a bounded report can confirm or reject lookup/expression multiplication by call, candidate, byte, phase, and pass.
 

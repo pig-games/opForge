@@ -1,0 +1,71 @@
+[slice]
+schema_version = 2
+name = "bounded native symbol and expression work v1"
+kind = "native-observability"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "0c"
+requirements = ["SR-BRIDGE", "SR-PROG", "SR-NOGUESS", "SR-MEAS", "SR-PAR", "F5", "F8", "F12"]
+rust_reference = [
+  "crates/opforge-core/src/expr_vm.rs",
+  "crates/opforge-engine/src/lib.rs",
+  "crates/opforge-asm/src/tests.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/debug/opforge_symbol_expr_profile.asm",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm",
+  "native/motorola68000/amigaos/opasm/opasm_flow_scopes.asm",
+  "native/motorola68000/amigaos/opasm/opasm_operand_eval.asm",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm"
+]
+invariant = "Observation counts generic symbol lookup and expression lifecycle work without changing lookup order, ambiguity, source position, diagnostics, callbacks, expression results, artifacts, or exit status."
+assertion_decision = "Use a separately gated fixed 256-byte correlated companion; preserve all registers, CCR, and stack at passive sites; saturate every counter group visibly; keep candidate/byte/histogram/chain detail independently removable; fail closed in the host decoder on malformed, contradictory, unknown, incomplete, overflowing, uncorrelated, or falsely populated aggregate input."
+expected_inputs = "A bounded native CLI assembly with OPFORGE_DEBUG_CONTRACTS and OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS, optionally OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL, or deterministic focused calls covering every lookup class and expression lifecycle outcome."
+expected_outputs = "Release and Item 0b work-only assemblies are unchanged; aggregate builds own one correlated 256-byte OFSE record; detail builds additionally own one fixed 512-byte scratch table; exact artifacts, diagnostics, lookup/expression behavior, and guest exit remain unchanged."
+known_non_equivalences = "Imported callback-private comparison bytes are opaque and remain zero; nested exact or final comparisons keep their actual class. Item 0c supplies the bounded counting mechanism and deterministic oracle, not B01-B10 slopes or hotspot ranking. Those remain Items 2 and 0f; the full self-host is terminal correctness/scalability proof only and is excluded from profiling."
+fast_proof_command = "python3 -m unittest scripts.workflow.tests.test_decode_native_progress && cargo test -p asm native_symbol_expression_work_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_symbol_expression_work_fs_uae_confirms_counter_contract -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_progress_cli_preserves_exact_artifact_and_exit -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_progress_only_cli_preserves_exact_artifact_and_exit -- --nocapture --test-threads=1"
+regression_command = "RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate_summary.sh"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_symbol_expression_work_decoder_accepts_correlated_complete_records"
+proof_level = "C"
+proves = "The big-endian decoder reports every aggregate and detail field and fails closed on bad magic, schema, flags, reserved bytes, overflow, terminal state, false aggregate detail, or OFPR/OFSE correlation."
+does_not_prove = "Native assembly, guest execution, bounded-corpus attribution, or performance value."
+
+[[tests]]
+name = "native_symbol_expression_work_source_contract_is_bounded_and_observational"
+proof_level = "B"
+proves = "OFSE is fixed-size, separately gated, saturating, I/O-free, and wired to generic lookup/expression boundaries while preserving registers, CCR, stack, and public result flags."
+does_not_prove = "Real guest execution, arbitrary-source counts, corpus slopes, or acceptable vintage-hardware overhead."
+
+[[tests]]
+name = "native_symbol_expression_work_harness_assembles"
+proof_level = "C"
+proves = "The focused harness assembles with deterministic exact/scoped/imported/final, ambiguity, expression lifecycle, phase/pass, terminal, detail, and saturation oracles."
+does_not_prove = "Execution on AmigaOS, whole-CLI parity, or corpus-wide attribution."
+
+[[tests]]
+name = "native_symbol_expression_work_full_cli_assembles"
+proof_level = "C"
+proves = "The real native CLI composition assembles with aggregate and detail flags and the expected include boundaries."
+does_not_prove = "Guest execution, artifact equality, or a performance claim."
+
+[[tests]]
+name = "native_symbol_expression_work_fs_uae_confirms_counter_contract"
+proof_level = "D"
+proves = "A fresh focused guest executes the actual OFSE routines, reaches protocol completion, and exits zero only after every deterministic counter, terminal, and overflow check passes."
+does_not_prove = "Whole-CLI behavior, Rust artifact equality, corpus attribution, performance improvement, or the parked self-host proof."
+
+[[tests]]
+name = "external_fs_uae_native_progress_cli_preserves_exact_artifact_and_exit"
+proof_level = "D"
+proves = "The real detail-enabled CLI completes a fresh bounded assembly with explicit zero guest exit and byte-for-byte equality to its live in-memory Rust oracle."
+does_not_prove = "Full self-host completion, performance improvement, corpus attribution, or vintage-hardware overhead."
+
+[[tests]]
+name = "external_fs_uae_native_progress_only_cli_preserves_exact_artifact_and_exit"
+proof_level = "D"
+proves = "The retained progress-only control completes the same bounded assembly with explicit zero guest exit and byte-for-byte equality to its live in-memory Rust oracle."
+does_not_prove = "OFSE values, full self-host completion, or a vintage-hardware overhead estimate."

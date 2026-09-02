@@ -197,12 +197,20 @@ Each item ends in one new focused commit before another starts. A stopped or
 rejected experiment still ends in a decision-record/revert commit if it changed
 the integration branch.
 
-Every item below requires a `plan-compliance-reviewer` PASS before commit. Rust
-changes run focused tests plus `scripts/workflow/run_rust_quality_gate.sh`.
-Native changes additionally run the current formatter, staged native porting
-gate, focused proof-level tests, and the authoritative FS-UAE confirmation named
-by the active native rules. Workflow/plan/report changes run `make workflow-gate`.
-No checkbox is marked complete before its listed gates pass and its commit exists.
+Every item below requires a `plan-compliance-reviewer` PASS before commit.
+Commit-sized sub-items use risk-matched focused Rust tests plus the affected
+formatter, architecture, inventory, staged native, and external proof gates.
+They do not rerun the complete Rust workspace by default. Each `### Phase`
+boundary is a high-level group; its final item is the closure checkpoint and
+must run `scripts/workflow/run_rust_quality_gate.sh`, the complete current native
+wrapper where native behavior changed, and the other phase gates before the
+next phase begins. Phase 0's closure checkpoint is Item 0f after Items 0a-0e and
+Item 2. A cross-cutting change or focused failure can escalate any sub-item to a
+full gate when the plan-compliance reviewer finds focused evidence insufficient.
+Workflow/plan/report changes run `make workflow-gate`. Each non-closure item's
+`Full quality gates` field names the closure checkpoint to which that suite is
+deferred; closure items list the mandatory full suite. No checkbox is marked
+complete before its applicable gates pass and its commit exists.
 
 ## Requirement and finding identifiers
 
@@ -326,7 +334,8 @@ localization evidence but never a completed assembly or Level D result.
   - Correctness/parity/failure validation: Level A-C exact counts for exact/scoped/imported/suffix/ambiguous/missing symbols and expression success/failure; focused Level D parity; overflow visible.
   - Rollback/kill/reference strategy: independently gate histograms and detailed byte counts while retaining aggregate calls if overhead is excessive.
   - Effort/risk and stop/go: M/High; stop if lookup ordering, ambiguity, source position, diagnostics, or expression result changes.
-  - Full quality gates: native format, staged native porting gate, Rust quality gate, focused FS-UAE confirmation.
+  - Gate tier and required focused gates: focused sub-item — native format, architecture/instrumentation/inventory guards, staged native porting gate, focused decoder/source/harness/full-CLI Rust tests, and focused fresh FS-UAE counter plus exact-artifact confirmations.
+  - Full quality gates: deferred to the Phase 0 closure at Item 0f unless focused evidence escalates this item.
   - Plan-compliance review evidence: reviewer verifies dynamic evidence covers every cited full-scan/cascade mechanism and introduces no fix.
   - Commit outcome: `feat(native-perf): count symbol and expression work`.
   - Definition of done: a bounded report can confirm or reject lookup/expression multiplication by call, candidate, byte, phase, and pass.
@@ -342,7 +351,8 @@ localization evidence but never a completed assembly or Level D result.
   - Correctness/parity/failure validation: Level A-C service-boundary counter oracles, unknown-ID and saturation tests, focused Level D artifact/diagnostic/exit parity.
   - Rollback/kill/reference strategy: retain phase/service invocation counts if opcode totals materially perturb the run; runtime/build disable remains available.
   - Effort/risk and stop/go: M/High; stop if identifiers encode CPU-specific semantics, addresses, or unstable ordering, or instrumentation alters VM state.
-  - Full quality gates: native format, staged native porting gate, Rust quality gate, focused FS-UAE confirmation.
+  - Gate tier and required focused gates: focused sub-item — native format, affected guards/inventories, staged native porting gate, focused VM/service counter tests, and focused FS-UAE confirmation.
+  - Full quality gates: deferred to the Phase 0 closure at Item 0f unless focused evidence escalates this item.
   - Plan-compliance review evidence: reviewer verifies CPU-neutral observation boundaries and absence of a VM optimization.
   - Commit outcome: `feat(native-perf): count coarse runtime execution`.
   - Definition of done: the report ranks native VM/service aggregate work sufficiently to decide whether deeper VM profiling is warranted.
@@ -358,7 +368,8 @@ localization evidence but never a completed assembly or Level D result.
   - Correctness/parity/failure validation: Level A-C exact success/short-read/EOF/error/range counter oracles, clear/copy saturation tests, focused Level D artifact/diagnostic/exit parity, incomplete abort stays explicit.
   - Rollback/kill/reference strategy: independently gate platform counter groups; retain coarser phase/progress evidence if call-site detail perturbs the run.
   - Effort/risk and stop/go: M/High; stop if DOS return/error behavior, memory contents, artifacts, diagnostics, or boundedness changes.
-  - Full quality gates: native format, staged native porting gate, Rust quality gate, focused FS-UAE confirmation.
+  - Gate tier and required focused gates: focused sub-item — native format, affected guards/inventories, staged native porting gate, focused platform-counter tests, and focused FS-UAE confirmation.
+  - Full quality gates: deferred to the Phase 0 closure at Item 0f unless focused evidence escalates this item.
   - Plan-compliance review evidence: reviewer verifies complete F1-F3 observation coverage and absence of work elimination.
   - Commit outcome: `feat(native-perf): count platform io and memory work`.
   - Definition of done: bounded records distinguish startup I/O, clears, and copies from steady-state compute with exact operation and byte counts.
@@ -374,7 +385,8 @@ localization evidence but never a completed assembly or Level D result.
   - Correctness/parity/failure validation: generated/reused corpora produce expected artifacts/diagnostics; malformed-result and missing-artifact checks fail closed.
   - Rollback/kill/reference strategy: fixture manifests are versioned; remove synthetic cases that perturb the target or duplicate real coverage.
   - Effort/risk and stop/go: M/Medium; stop if B10 is not representative, bounded, and reproducible; fix the corpus before attribution.
-  - Full quality gates: focused corpus tests, Rust quality gate, workflow gate for report/schema docs.
+  - Gate tier and required focused gates: focused sub-item — focused corpus/schema tests and workflow gate for report/schema docs.
+  - Full quality gates: deferred to the Phase 0 closure at Item 0f unless focused evidence escalates this item.
   - Plan-compliance review evidence: reviewer checks all ten matrix categories, B10 coverage/runtime envelope, and real-path commands.
   - Commit outcome: `test(perf): establish reproducible production benchmark corpus`.
   - Definition of done: B01-B10 are named, digestible, repeatable, parity-checked, and emit a comparable result ledger before Item 0f consumes them.
@@ -390,7 +402,8 @@ localization evidence but never a completed assembly or Level D result.
   - Correctness/parity/failure validation: manifests/digests/configuration, repeated bounded snapshots, decoder integrity, explicit incomplete state, exact artifacts/diagnostics/exit only for completed runs; Level D rules unchanged.
   - Rollback/kill/reference strategy: if counters perturb ranking, rerun with successively coarser groups and PC sampling; if attribution remains ambiguous, amend a narrower instrumentation item rather than guess.
   - Effort/risk and stop/go: M/Medium; proceed to Item 3 only with a reviewed attribution report, or after a reviewed amendment naming the missing measurement—not an assumed fix.
-  - Full quality gates: focused report/schema validation and `make workflow-gate`; production instrumentation commits already carry native/Rust/FS-UAE gates.
+  - Gate tier and required focused gates: Phase 0 high-level closure — focused report/schema validation, `make workflow-gate`, native format/staged porting gate, and focused confirmations accumulated by the phase.
+  - Full quality gates: authoritative full Rust quality gate and the complete current native FS-UAE wrapper; earlier focused production receipts remain supporting evidence but do not replace this closure gate.
   - Plan-compliance review evidence: reviewer verifies raw evidence, field/emulator distinction, completeness flags, overhead, ranked mechanisms, and absence of an optimization claim.
   - Commit outcome: `docs(perf): attribute native assembly compute work`.
   - Definition of done: bounded representative runs provide a reproducible progress diagnosis and ranked measured owners; the historical multi-hour self-host observation remains motivation, not the profiling workload or proof.
@@ -1533,14 +1546,18 @@ and no optimization is pre-approved.
 
 ## Validation and Quality Gates
 
-- Rust implementation item: focused unit/integration/differential tests, corpus
-  parity, then `scripts/workflow/run_rust_quality_gate.sh` (or the current
-  equivalent full Rust gate).
-- Native assembly item: `make native-68000-format-check`,
-  `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`, Rust
-  quality gate, proof-level-labelled focused tests, then the authoritative FS-UAE
-  confirmation required by the loaded native rule packs. Phase closures use the
-  complete current wrapper.
+- Rust sub-item: focused unit/integration/differential tests and the affected
+  corpus/invariant guards. The full workspace gate is not repeated by default.
+- Native assembly sub-item: `make native-68000-format-check`,
+  `python3 scripts/workflow/run_native_porting_quality_gate.py --staged`,
+  proof-level-labelled focused Rust/native tests, affected architecture,
+  inventory, and instrumentation guards, then the focused authoritative FS-UAE
+  confirmation required by the loaded native rule packs.
+- High-level phase closure: `scripts/workflow/run_rust_quality_gate.sh` (or the
+  current equivalent full Rust gate), every accumulated workflow/native gate,
+  and the complete current FS-UAE wrapper where the phase changed native
+  behavior. A phase cannot close or hand work to the next phase without this
+  receipt.
 - Workflow/plan/report item: focused schema/report verifier and
   `make workflow-gate`.
 - Before every commit: `plan-compliance-reviewer` PASS against the active item,

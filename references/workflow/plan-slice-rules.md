@@ -5,7 +5,9 @@ All executable plans should follow these rules:
 - one active work item at a time
 - each work item is commit-sized
 - each work item or phase ends in a new commit
-- each work item has full quality-gate validation
+- each sub-item has risk-matched focused validation
+- each plan names its high-level phase/epic closure checkpoints; those
+  checkpoints run the full quality gates before the next high-level group
 - each work item requires `plan-compliance-reviewer` before commit
 - each work item has checkbox tracking
 - no item is marked done before validation is green

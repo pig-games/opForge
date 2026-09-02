@@ -104,8 +104,15 @@ At the end of each work block, report:
 
 ## Validation baseline
 
-- Before committing Rust code changes, run `scripts/workflow/run_rust_quality_gate.sh`
-  or `make quality-gate`, plus focused tests for the slice when useful.
+- Commit-sized sub-items run the smallest risk-matched focused validation that
+  proves their changed behavior and affected invariants. Include relevant
+  formatter, architecture, inventory, staged native, and external proof gates;
+  do not substitute a broad suite for a missing focused oracle.
+- Run `scripts/workflow/run_rust_quality_gate.sh` or `make quality-gate` at each
+  plan's explicit high-level phase/epic closure checkpoint, before release, and
+  whenever a focused failure or cross-cutting change shows that narrower
+  evidence is insufficient. A plan must name those closure checkpoints and may
+  not advance beyond one until its full gate passes.
 - For workflow, agent, skill, plan, spec, review, closure, CI, or template
   changes, run `make workflow-gate` or the relevant `scripts/workflow/check_*.py`
   validator and record the result.

@@ -102,6 +102,17 @@ while nested exact/final comparisons remain attributed to their actual owner.
 Release, Item 0a, and Item 0b-only builds emit none of the Item 0c code or
 storage.
 
+Item 0d optionally adds a separately gated 192-byte `OFVE` companion with
+`OPFORGE_PROGRESS_RUNTIME_COUNTERS`. It counts only provisional CPU-neutral
+TKVM/PRVM/EXVM/ExprVM and program invocations/opcodes, coarse service entries,
+selector candidates, encoder program rows, and marginal phase totals. Fixed
+four-entry private stacks restore enclosing VM/program and service contexts for
+nested executor, selection/value, and encoding/branch/fixup calls. Every passive
+routine preserves D0-D7/A0-A6, CCR, and stack depth; every counter saturates with a visible bit;
+there is no per-opcode identity, PC, address, timing, event I/O, VM rewrite, or
+target-semantic decision. Release and earlier counter-only builds emit none of
+the Item 0d imports, calls, code, or storage.
+
 Heartbeat and graceful diagnostic abort are separately default-off. Builds may
 set `OPFORGE_PROGRESS_HEARTBEAT_QUANTUM` or
 `OPFORGE_PROGRESS_ABORT_VISITS`; reaching the latter follows the normal failure

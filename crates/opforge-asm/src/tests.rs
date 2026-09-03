@@ -677,6 +677,145 @@ fn native_symbol_expression_work_fs_uae_confirms_counter_contract() {
 }
 
 #[test]
+fn native_runtime_execution_profile_source_contract_is_bounded_and_observational() {
+    // Proof level B. This locks fixed CPU-neutral storage, independent gating,
+    // context nesting, saturation, and production observation sites. It does
+    // not prove guest execution, B01-B10 ranking, or performance value.
+    let root = workspace_root();
+    let profile = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/debug/opforge_runtime_profile.asm"),
+    )
+    .expect("read native runtime execution profile");
+    let progress =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_progress.asm"))
+            .expect("read native progress correlation sites");
+    for required in [
+        "OPFORGE_RUNTIME_MAGIC                    = $4f465645",
+        "OPFORGE_RUNTIME_RECORD_BYTES             = 192",
+        "OPFORGE_RUNTIME_VM_COUNT                 = 4",
+        "OPFORGE_RUNTIME_VM_STACK_CAPACITY        = 4",
+        "OPFORGE_RUNTIME_SERVICE_COUNT            = 8",
+        "OPFORGE_RUNTIME_SERVICE_STACK_CAPACITY   = 4",
+        "OpforgeRuntimeVmStack",
+        "OpforgeRuntimeVmDepth",
+        "opforgeRuntimeProfileBeginRunV1\t.block",
+        "opforgeRuntimeProfileEnterVmV1\t.block",
+        "opforgeRuntimeProfileRecordOpcodeV1\t.block",
+        "opforgeRuntimeProfileEnterServiceV1\t.block",
+        "opforgeRuntimeProfileRecordCandidateV1\t.block",
+        "opforgeRuntimeProfileFinishV1\t.block",
+        "cmpi.l #-1, (a0)\n\tbeq.s overflow",
+    ] {
+        assert!(
+            profile.contains(required),
+            "missing runtime profile contract {required:?}"
+        );
+    }
+    assert_eq!(
+        profile.matches("move.w ccr, -(sp)").count(),
+        profile.matches("move.w (sp)+, ccr").count(),
+        "passive runtime routines must balance CCR saves/restores"
+    );
+    assert_eq!(
+        profile.matches("movem.l d0-d7/a0-a6, -(sp)").count(),
+        profile.matches("movem.l (sp)+, d0-d7/a0-a6").count(),
+        "passive runtime routines must balance full register saves/restores"
+    );
+    assert!(progress.contains("OPFORGE_PROGRESS_RUNTIME_COUNTERS"));
+    assert!(progress.contains("opforgeRuntimeProfileBeginRunV1"));
+    assert!(progress.contains("opforgeRuntimeProfileSetContextV1"));
+    assert!(progress.contains("opforgeRuntimeProfileFinishV1"));
+    for relative in [
+        "native/motorola68000/amigaos/tkvm/tkvm_runtime.asm",
+        "native/motorola68000/amigaos/prvm/prvm_runtime.asm",
+        "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm",
+        "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_operand_record_service.asm",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm",
+    ] {
+        let source = fs::read_to_string(root.join(relative)).expect("read runtime profile site");
+        assert!(
+            source.contains("OPFORGE_PROGRESS_RUNTIME_COUNTERS"),
+            "missing runtime gate in {relative}"
+        );
+    }
+    assert!(!profile.contains("dos.putStr"));
+    assert!(!profile.contains("dos.write"));
+}
+
+#[test]
+fn native_runtime_execution_profile_harness_assembles() {
+    // Proof level C. The deterministic oracle and production profile assemble
+    // together; this does not prove AmigaOS execution or whole-CLI parity.
+    let root = workspace_root();
+    let asm_path =
+        root.join("native/motorola68000/amigaos/test-harnesses/debug/opasm_progress_harness.asm");
+    let out = create_temp_dir("native-runtime-execution-profile-harness");
+    assemble_example_with_base_and_defines(
+        &asm_path,
+        &out,
+        "opasm_progress_harness",
+        false,
+        &[
+            "OPFORGE_DEBUG_CONTRACTS".to_string(),
+            "OPFORGE_PROGRESS_WORK_COUNTERS".to_string(),
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS".to_string(),
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL".to_string(),
+            "OPFORGE_PROGRESS_RUNTIME_COUNTERS".to_string(),
+        ],
+    )
+    .unwrap_or_else(|error| panic!("assemble native runtime profile harness: {error}"));
+    assert!(out.join("build/opasm_progress_harness").is_file());
+}
+
+#[test]
+fn native_runtime_execution_profile_full_cli_assembles() {
+    // Proof level C. Every production site composes in the real native CLI;
+    // this does not prove guest execution, artifact equality, or speed.
+    let root = workspace_root();
+    let asm_path = root.join("native/motorola68000/amigaos/main.asm");
+    let out = create_temp_dir("native-runtime-execution-profile-cli");
+    assemble_example_with_base_and_defines(
+        &asm_path,
+        &out,
+        "main",
+        false,
+        &[
+            "OPFORGE_DEBUG_CONTRACTS".to_string(),
+            "OPFORGE_PROGRESS_WORK_COUNTERS".to_string(),
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS".to_string(),
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL".to_string(),
+            "OPFORGE_PROGRESS_RUNTIME_COUNTERS".to_string(),
+        ],
+    )
+    .unwrap_or_else(|error| panic!("assemble native runtime profile CLI: {error}"));
+    assert!(out.join("main.lst").is_file());
+}
+
+#[test]
+fn native_runtime_execution_profile_fs_uae_confirms_counter_contract() {
+    // Proof level D. The fresh guest exits zero only after deterministic VM,
+    // program, nested-service, candidate, phase, overflow, and terminal checks.
+    match crate::fs_uae_smoke::run_native_progress_harness_from_env(&workspace_root())
+        .expect("native runtime profile FS-UAE harness should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native runtime profile harness failed under FS-UAE\nprotocol completed: {}\nguest exit: {:?}\nstdout:\n{}\nstderr:\n{}",
+                run.protocol_completed, run.exit_code, run.stdout, run.stderr
+            );
+        }
+    }
+}
+
+#[test]
 fn native_debug_contract_console_capture_prepares_mounted_harness() {
     let Some(launch) =
         crate::fs_uae_smoke::prepare_native_debug_contract_console_from_env(&workspace_root())

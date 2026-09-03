@@ -12,6 +12,9 @@
 .ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
 	.use debug.amigaos.symbol_expr_profile as symbol_expr_profile
 .endif
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	.use debug.amigaos.runtime_profile as runtime_profile
+.endif
 	.include "debug_macros.i"
 
 	.pub
@@ -179,6 +182,12 @@ clearWorkLoop
 	move.l OPASM_PROGRESS_RUN_ID_OFFSET(a5), d0
 	jsr symbol_expr_profile.opforgeSymbolExprProfileBeginRunV1
 .endif
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	move.l OPASM_PROGRESS_RUN_ID_OFFSET(a5), d0
+	lea OPASM_PROGRESS_VM_SERVICE_ID_OFFSET(a5), a0
+	lea OPASM_PROGRESS_PROGRAM_ID_OFFSET(a5), a1
+	jsr runtime_profile.opforgeRuntimeProfileBeginRunV1
+.endif
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
 	rts
@@ -205,6 +214,11 @@ opasmProgressSetPhaseV1	.block
 	move.w d4, d0
 	move.w d5, d1
 	jsr symbol_expr_profile.opforgeSymbolExprProfileSetContextV1
+.endif
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	move.w d4, d0
+	move.w d5, d1
+	jsr runtime_profile.opforgeRuntimeProfileSetContextV1
 .endif
 return
 	movem.l (sp)+, d0-d7/a0-a6
@@ -532,6 +546,10 @@ opasmProgressFinishV1	.block
 incomplete
 	ori.w #OPASM_PROGRESS_FLAG_INCOMPLETE, OPASM_PROGRESS_FLAGS_OFFSET(a5)
 finishWork
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	move.l d6, d0
+	jsr runtime_profile.opforgeRuntimeProfileFinishV1
+.endif
 .ifdef OPFORGE_PROGRESS_WORK_COUNTERS
 	lea OpasmWorkRecord, a4
 	move.l d6, OPASM_WORK_EXIT_STATUS_OFFSET(a4)

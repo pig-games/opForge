@@ -1,6 +1,6 @@
 # Native Assembly Progress Bridge Record v1
 
-Status: provisional performance bridge for optimization-plan Items 0a-0c. This is
+Status: provisional performance bridge for optimization-plan Items 0a-0d. This is
 not an OFTB/OFTB-stable result format and is not semantic proof.
 
 The native debug-contract build owns one fixed, big-endian, 128-byte `OFPR`
@@ -63,9 +63,11 @@ Phases are idle, startup, package, frontend, statement build, pass one, layout,
 final emission, and artifacts (`0` through `8`). The current native frontend
 interleaves source ingestion and statement construction, so phase 3 measures
 that combined boundary honestly; phase 4 is reserved until a measured split is
-introduced. IDs and flow counters are present but remain zero until Items
-0c-0e populate them. Item 0b deliberately leaves the Item 0a envelope stable
-and uses the correlated `OFWM` companion below.
+introduced. Flow counters remain reserved for later bridge items. With Item 0d
+enabled, the VM/service field packs the current provisional VM ID in its high
+word and service ID in its low word, while the program field carries its
+provisional CPU-neutral program ID. Item 0b deliberately leaves the Item 0a
+envelope stable and uses the correlated `OFWM` companion below.
 
 ## Work-multiplication companion
 
@@ -189,6 +191,57 @@ the production chain. Aggregate mode keeps all detailed fields zero. Neither
 mode performs timing, console output, file I/O, lookup caching, index creation,
 interning, or expression preparation, and neither changes lookup order,
 ambiguity, diagnostics, source position, or expression results.
+
+## Runtime-execution companion
+
+Defining `OPFORGE_PROGRESS_RUNTIME_COUNTERS` with
+`OPFORGE_DEBUG_CONTRACTS` adds one separately removable, big-endian, 192-byte
+`OFVE` record. Its run ID, terminal state, exit status, phase, and pass must
+correlate with `OFPR`. The decoder rejects malformed, contradictory, unknown,
+incomplete, overflowing, uncorrelated, or nonzero-reserved-byte records:
+
+```sh
+python3 scripts/performance/decode_native_progress.py progress.ofpr \
+  --runtime-record execution.ofve --require-complete
+```
+
+| Offset | Bytes | Field |
+|---:|---:|---|
+| 0 | 4 | magic `OFVE` |
+| 4 | 2 | schema version (`1`) |
+| 6 | 2 | active/complete/incomplete flags |
+| 8 | 4 | correlated `OFPR` run ID |
+| 12 | 2 | current phase |
+| 14 | 2 | current pass |
+| 16 | 2 | current VM ID |
+| 18 | 2 | current program ID |
+| 20 | 2 | current service ID |
+| 22 | 2 | reserved, must be zero |
+| 24 | 16 | VM invocations: TKVM/PRVM/EXVM/ExprVM |
+| 40 | 16 | VM executed opcodes in the same order |
+| 56 | 16 | program invocations: tokenizer/parser/expression frontend/evaluator |
+| 72 | 16 | program executed opcodes in the same order |
+| 88 | 32 | service invocations: expression/selection/encoding/operand/state/branch/fixup/value |
+| 120 | 4 | selector candidates attempted |
+| 124 | 4 | encoder program rows examined |
+| 128 | 4 | overflow bits |
+| 132 | 4 | terminal CLI status |
+| 136 | 16 | opcodes in pass one/layout/final/other |
+| 152 | 16 | service entries in pass one/layout/final/other |
+| 168 | 24 | reserved, must be zero |
+
+Overflow bits report saturation for invocations (`0x01`), opcodes (`0x02`),
+services (`0x04`), candidates (`0x08`), unknown IDs or service-stack overflow
+(`0x10`), and phase buckets (`0x20`). Every counter saturates at
+`0xffffffff`. VM/program and service contexts each use fixed four-entry private
+stacks, so nested executor calls and nested selection/value or
+encoding/branch/fixup calls restore the enclosing IDs shown in `OFPR`.
+
+These IDs are provisional, CPU-neutral bridge identities and intentionally do
+not encode an opcode, PC, address, CPU, family, dialect, instruction, or
+benchmark. Item 6b replaces them with the shared identities defined by Item 3.
+Phase fields are marginal totals, not a VM-by-phase matrix. The observer adds
+no timing or event I/O and does not rewrite or accelerate a VM.
 
 ## Timing and controls
 

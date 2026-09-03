@@ -6,6 +6,9 @@
 	.module exprvm.amigaos.runtime
 	.cpu 68020
 	.pub
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	.use debug.amigaos.runtime_profile as runtime_profile
+.endif
 
 EXPRVM_OPCODE_END               = $00
 EXPRVM_OPCODE_PUSH_LITERAL      = $01
@@ -78,6 +81,13 @@ EXPRVM_STACK_CAPACITY           = 8
 ; ---------------------------------------------------------------------------
 exprvmEvalProgramV1	.block
 	movem.l d1-d2/d6-d7/a0-a6, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_VM_EXPRVM, d0
+	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_EVALUATOR, d1
+	jsr runtime_profile.opforgeRuntimeProfileEnterVmV1
+	movem.l (sp)+, d0-d1
+.endif
 	movea.l a1, a3
 	movea.l a2, a4
 	movea.l d2, a5
@@ -92,6 +102,13 @@ evalLoop
 	moveq #0, d6
 	move.b (a0)+, d6
 	subq.l #1, d0
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_VM_EXPRVM, d0
+	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_EVALUATOR, d1
+	jsr runtime_profile.opforgeRuntimeProfileRecordOpcodeV1
+	movem.l (sp)+, d0-d1
+.endif
 	moveq #0, d2
 	move.w ExprvmSelectedOpcodeVersion, d2
 	cmpi.w #2, d2
@@ -489,6 +506,9 @@ popFail
 	moveq #57, d0
 
 return
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileLeaveVmV1
+.endif
 	movem.l (sp)+, d1-d2/d6-d7/a0-a6
 	rts
 	.bend  ; exprvmEvalProgramV1

@@ -7,6 +7,9 @@
 	.pub
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	.use debug.amigaos.runtime_profile as runtime_profile
+.endif
 
 COMPACT_RECORD_CHUNK_VERSION_V1      = 1
 OPERAND_RECORD_SCHEMA_VERSION_V1     = 1
@@ -144,6 +147,12 @@ SelectedProgramRank
 ; ---------------------------------------------------------------------------
 executeRequestV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_OPERAND, d0
+	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
+	movem.l (sp)+, d0-d1
+.endif
 	btst #1, buffers.PackageStateFlags
 	beq.w needsPipeline
 	bsr.w parseRequestV1
@@ -173,6 +182,9 @@ badRequest
 	moveq #abi.STATUS_BAD_REQUEST_V1, d0
 
 return
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileLeaveServiceV1
+.endif
 	movem.l (sp)+, d2-d7/a2-a6
 	tst.l d0
 	rts

@@ -84,6 +84,37 @@ def symbol_expression_record(
     return bytes(data)
 
 
+def runtime_record(
+    flags: int,
+    *,
+    run_id: int = 0x1234,
+    phase: int = 6,
+    pass_number: int = 2,
+    current_ids: tuple[int, int, int] = (0, 0, 0),
+    overflow_bits: int = 0,
+    exit_status: int = 0,
+) -> bytes:
+    data = bytearray(decoder.RUNTIME_RECORD_BYTES)
+    struct.pack_into(
+        ">IHHIHHHHH",
+        data,
+        0,
+        decoder.RUNTIME_MAGIC,
+        decoder.RUNTIME_SCHEMA_VERSION,
+        flags,
+        run_id,
+        phase,
+        pass_number,
+        *current_ids,
+    )
+    for value, offset in enumerate(range(24, 128, 4), start=1):
+        struct.pack_into(">I", data, offset, value)
+    struct.pack_into(">II", data, 128, overflow_bits, exit_status)
+    for value, offset in enumerate(range(136, 168, 4), start=27):
+        struct.pack_into(">I", data, offset, value)
+    return bytes(data)
+
+
 class NativeProgressDecoderTests(unittest.TestCase):
     def test_decodes_complete_big_endian_record(self) -> None:
         report = decoder.decode_progress(record(decoder.FLAG_COMPLETE), require_complete=True)
@@ -267,6 +298,42 @@ class NativeProgressDecoderTests(unittest.TestCase):
                     | decoder.SYMBOL_EXPR_FLAG_DETAIL
                 )
             )
+
+    def test_decodes_correlated_runtime_execution(self) -> None:
+        report = decoder.decode_runtime_execution(
+            runtime_record(decoder.RUNTIME_FLAG_COMPLETE),
+            expected_run_id=0x1234,
+            expected_state="complete",
+            expected_exit_status=0,
+            expected_phase=6,
+            expected_pass=2,
+            require_complete=True,
+        )
+        self.assertEqual(report["state"], "complete")
+        self.assertEqual(report["vm_invocations"]["tkvm"], 1)
+        self.assertEqual(report["vm_opcodes"]["exprvm"], 8)
+        self.assertEqual(report["service_invocations"]["value"], 24)
+        self.assertEqual(report["candidates"]["selection"], 25)
+        self.assertEqual(report["services_by_phase"]["other"], 34)
+
+    def test_rejects_malformed_uncorrelated_or_overflowing_runtime(self) -> None:
+        complete = decoder.RUNTIME_FLAG_COMPLETE
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "run id"):
+            decoder.decode_runtime_execution(runtime_record(complete), expected_run_id=7)
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "current runtime VM"):
+            decoder.decode_runtime_execution(
+                runtime_record(complete, current_ids=(5, 0, 0))
+            )
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "unknown runtime overflow"):
+            decoder.decode_runtime_execution(runtime_record(complete, overflow_bits=0x40))
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "not complete proof"):
+            decoder.decode_runtime_execution(
+                runtime_record(complete, overflow_bits=1), require_complete=True
+            )
+        malformed = bytearray(runtime_record(complete))
+        malformed[191] = 1
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "reserved runtime"):
+            decoder.decode_runtime_execution(bytes(malformed))
 
 
 if __name__ == "__main__":

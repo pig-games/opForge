@@ -3,6 +3,9 @@
 	.module prvm.amigaos.runtime
 	.cpu 68020
 	.pub
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	.use debug.amigaos.runtime_profile as runtime_profile
+.endif
 
 PRVM_MAGIC_OPRP                     = $4F505250
 PRVM_REQUEST_FRAME_SIZE             = 112
@@ -166,6 +169,13 @@ AbiMarker
 ; ---------------------------------------------------------------------------
 prvmRun68000	.block
 	movem.l d4-d7/a4-a6, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_VM_PRVM, d0
+	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER, d1
+	jsr runtime_profile.opforgeRuntimeProfileEnterVmV1
+	movem.l (sp)+, d0-d1
+.endif
 	move.l a0, d1  ; null-check the frame before touching any offset fields
 	beq.w invalidArgument
 	cmpi.l #PRVM_REQUEST_FRAME_SIZE, d0
@@ -298,6 +308,13 @@ programLoop
 
 	moveq #0, d7
 	move.b (a5)+, d7
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_VM_PRVM, d0
+	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER, d1
+	jsr runtime_profile.opforgeRuntimeProfileRecordOpcodeV1
+	movem.l (sp)+, d0-d1
+.endif
 	cmpi.b #PRVM_OPCODE_END, d7
 	beq opcodeEnd
 	cmpi.b #PRVM_OPCODE_JUMP, d7
@@ -756,6 +773,9 @@ invalidArgumentWithLocals
 	bra returnWithLocals
 
 returnWithLocals
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileLeaveVmV1
+.endif
 	adda.l #LOCAL_SIZE, sp
 	movem.l (sp)+, d4-d7/a4-a6
 	rts
@@ -765,6 +785,9 @@ invalidArgument
 	clr.l d2
 	clr.l d3
 	moveq #PRVM_STATUS_INVALID_ARGUMENT, d0
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileLeaveVmV1
+.endif
 	movem.l (sp)+, d4-d7/a4-a6
 	rts
 	.bend  ; prvmRun68000

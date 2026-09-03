@@ -56,6 +56,35 @@ SYMBOL_EXPR_KNOWN_FLAGS = (
 )
 SYMBOL_EXPR_KNOWN_OVERFLOW_BITS = 0x7F
 
+RUNTIME_MAGIC = 0x4F465645
+RUNTIME_SCHEMA_VERSION = 1
+RUNTIME_RECORD_BYTES = 192
+RUNTIME_FLAG_ACTIVE = 1
+RUNTIME_FLAG_COMPLETE = 2
+RUNTIME_FLAG_INCOMPLETE = 4
+RUNTIME_KNOWN_FLAGS = (
+    RUNTIME_FLAG_ACTIVE | RUNTIME_FLAG_COMPLETE | RUNTIME_FLAG_INCOMPLETE
+)
+RUNTIME_KNOWN_OVERFLOW_BITS = 0x3F
+RUNTIME_VMS = ("tkvm", "prvm", "exvm", "exprvm")
+RUNTIME_PROGRAMS = (
+    "tokenizer",
+    "parser",
+    "expression_frontend",
+    "expression_evaluator",
+)
+RUNTIME_SERVICES = (
+    "expression",
+    "selection",
+    "encoding",
+    "operand",
+    "state",
+    "branch",
+    "fixup",
+    "value",
+)
+RUNTIME_PHASE_BUCKETS = ("pass_one", "layout", "final_emission", "other")
+
 PHASES = (
     "idle",
     "startup",
@@ -430,11 +459,131 @@ def decode_symbol_expression_work(
     }
 
 
+def decode_runtime_execution(
+    data: bytes,
+    *,
+    expected_run_id: int | None = None,
+    expected_state: str | None = None,
+    expected_exit_status: int | None = None,
+    expected_phase: int | None = None,
+    expected_pass: int | None = None,
+    require_complete: bool = False,
+) -> dict[str, object]:
+    if len(data) != RUNTIME_RECORD_BYTES:
+        raise ProgressDecodeError(
+            f"expected {RUNTIME_RECORD_BYTES} runtime bytes, got {len(data)}"
+        )
+    if _u32(data, 0) != RUNTIME_MAGIC:
+        raise ProgressDecodeError("runtime record magic is not OFVE")
+    version = _u16(data, 4)
+    if version != RUNTIME_SCHEMA_VERSION:
+        raise ProgressDecodeError(f"unsupported runtime schema version {version}")
+    flags = _u16(data, 6)
+    unknown_flags = flags & ~RUNTIME_KNOWN_FLAGS
+    if unknown_flags:
+        raise ProgressDecodeError(f"unknown runtime flag bits 0x{unknown_flags:04x}")
+    active = bool(flags & RUNTIME_FLAG_ACTIVE)
+    complete = bool(flags & RUNTIME_FLAG_COMPLETE)
+    incomplete = bool(flags & RUNTIME_FLAG_INCOMPLETE)
+    if complete and incomplete:
+        raise ProgressDecodeError("runtime record cannot be both complete and incomplete")
+    if active and (complete or incomplete):
+        raise ProgressDecodeError("terminal runtime record cannot remain active")
+    if not active and not (complete or incomplete):
+        raise ProgressDecodeError("runtime record must be active, complete, or incomplete")
+    if require_complete and not complete:
+        raise ProgressDecodeError("incomplete or active runtime record is not proof")
+    state = "complete" if complete else "incomplete" if incomplete else "active"
+    if expected_state is not None and state != expected_state:
+        raise ProgressDecodeError(
+            f"runtime record state {state} does not match progress state {expected_state}"
+        )
+    run_id = _u32(data, 8)
+    if expected_run_id is not None and run_id != expected_run_id:
+        raise ProgressDecodeError(
+            f"runtime record run id {run_id} does not match progress run id {expected_run_id}"
+        )
+    phase = _u16(data, 12)
+    if phase >= len(PHASES):
+        raise ProgressDecodeError(f"unknown runtime phase {phase}")
+    pass_number = _u16(data, 14)
+    if expected_phase is not None and phase != expected_phase:
+        raise ProgressDecodeError(
+            f"runtime phase {phase} does not match progress phase {expected_phase}"
+        )
+    if expected_pass is not None and pass_number != expected_pass:
+        raise ProgressDecodeError(
+            f"runtime pass {pass_number} does not match progress pass {expected_pass}"
+        )
+    current_vm = _u16(data, 16)
+    current_program = _u16(data, 18)
+    current_service = _u16(data, 20)
+    if current_vm > len(RUNTIME_VMS):
+        raise ProgressDecodeError(f"unknown current runtime VM id {current_vm}")
+    if current_program > len(RUNTIME_PROGRAMS):
+        raise ProgressDecodeError(f"unknown current runtime program id {current_program}")
+    if current_service > len(RUNTIME_SERVICES):
+        raise ProgressDecodeError(f"unknown current runtime service id {current_service}")
+    if any(data[22:24]) or any(data[168:]):
+        raise ProgressDecodeError("reserved runtime record bytes must be zero")
+    overflow_bits = _u32(data, 128)
+    unknown_overflow_bits = overflow_bits & ~RUNTIME_KNOWN_OVERFLOW_BITS
+    if unknown_overflow_bits:
+        raise ProgressDecodeError(
+            f"unknown runtime overflow bits 0x{unknown_overflow_bits:08x}"
+        )
+    if require_complete and overflow_bits:
+        raise ProgressDecodeError("overflowing runtime record is not complete proof")
+    exit_status = _u32(data, 132)
+    if complete and exit_status != 0:
+        raise ProgressDecodeError("complete runtime record must have zero exit status")
+    if incomplete and exit_status == 0:
+        raise ProgressDecodeError("incomplete runtime record must have nonzero exit status")
+    if active and exit_status != 0:
+        raise ProgressDecodeError("active runtime record must have zero exit status")
+    if expected_exit_status is not None and exit_status != expected_exit_status:
+        raise ProgressDecodeError(
+            f"runtime record exit status {exit_status} does not match progress exit status {expected_exit_status}"
+        )
+
+    def named_counts(names: tuple[str, ...], offset: int) -> dict[str, int]:
+        return {name: _u32(data, offset + index * 4) for index, name in enumerate(names)}
+
+    return {
+        "schema_version": version,
+        "run_id": run_id,
+        "state": state,
+        "phase": PHASES[phase],
+        "phase_id": phase,
+        "pass": pass_number,
+        "current_vm": None if current_vm == 0 else RUNTIME_VMS[current_vm - 1],
+        "current_vm_id": current_vm,
+        "current_program": None if current_program == 0 else RUNTIME_PROGRAMS[current_program - 1],
+        "current_program_id": current_program,
+        "current_service": None if current_service == 0 else RUNTIME_SERVICES[current_service - 1],
+        "current_service_id": current_service,
+        "vm_invocations": named_counts(RUNTIME_VMS, 24),
+        "vm_opcodes": named_counts(RUNTIME_VMS, 40),
+        "program_invocations": named_counts(RUNTIME_PROGRAMS, 56),
+        "program_opcodes": named_counts(RUNTIME_PROGRAMS, 72),
+        "service_invocations": named_counts(RUNTIME_SERVICES, 88),
+        "candidates": {
+            "selection": _u32(data, 120),
+            "encoding": _u32(data, 124),
+        },
+        "opcodes_by_phase": named_counts(RUNTIME_PHASE_BUCKETS, 136),
+        "services_by_phase": named_counts(RUNTIME_PHASE_BUCKETS, 152),
+        "overflow_bits": overflow_bits,
+        "exit_status": exit_status,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("record", type=Path)
     parser.add_argument("--work-record", type=Path)
     parser.add_argument("--symbol-expression-record", type=Path)
+    parser.add_argument("--runtime-record", type=Path)
     parser.add_argument("--require-complete", action="store_true")
     args = parser.parse_args()
     try:
@@ -452,6 +601,16 @@ def main() -> int:
         if args.symbol_expression_record is not None:
             report["symbol_expression_work"] = decode_symbol_expression_work(
                 args.symbol_expression_record.read_bytes(),
+                expected_run_id=int(report["run_id"]),
+                expected_state=str(report["state"]),
+                expected_exit_status=int(report["exit_status"]),
+                expected_phase=int(report["phase_id"]),
+                expected_pass=int(report["pass"]),
+                require_complete=args.require_complete,
+            )
+        if args.runtime_record is not None:
+            report["runtime_execution"] = decode_runtime_execution(
+                args.runtime_record.read_bytes(),
                 expected_run_id=int(report["run_id"]),
                 expected_state=str(report["state"]),
                 expected_exit_status=int(report["exit_status"]),

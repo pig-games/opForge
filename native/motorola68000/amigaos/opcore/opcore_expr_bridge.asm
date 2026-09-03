@@ -19,6 +19,9 @@
 .ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
 	.use debug.amigaos.symbol_expr_profile as symbol_expr_profile
 .endif
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	.use debug.amigaos.runtime_profile as runtime_profile
+.endif
 
 ; Matches opasm's label-only row: 107 Rust-valid fully scoped name bytes plus
 ; the terminating NUL.
@@ -187,6 +190,13 @@ version1
 
 runEvalProgram	.block
 	moveq #0, d4  ; output expression count, matching Rust's stack-depth 1 contract
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_VM_EXVM, d0
+	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_FRONTEND, d1
+	jsr runtime_profile.opforgeRuntimeProfileEnterVmV1
+	movem.l (sp)+, d0-d1
+.endif
 
 loop
 	tst.l d1
@@ -194,6 +204,13 @@ loop
 	moveq #0, d6
 	move.b (a1)+, d6
 	subq.l #1, d1
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_VM_EXVM, d0
+	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_FRONTEND, d1
+	jsr runtime_profile.opforgeRuntimeProfileRecordOpcodeV1
+	movem.l (sp)+, d0-d1
+.endif
 	cmpi.b #EXVM_OPCODE_END, d6
 	beq.w opcodeEnd
 	cmpi.b #EXVM_OPCODE_PARSE_EXPRESSION, d6
@@ -277,15 +294,27 @@ opcodeEnd
 	cmpi.l #1, d4
 	bne.s programFail
 	moveq #0, d0
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	bra.s runtimeReturn
+.else
 	rts
+.endif
 
 missingEnd
 programFail
 	moveq #1, d0
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	bra.s runtimeReturn
+.else
 	rts
+.endif
 
 failWithCode
 	move.l d2, d0
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+runtimeReturn
+	jsr runtime_profile.opforgeRuntimeProfileLeaveVmV1
+.endif
 	rts
 	.bend  ; runEvalProgram
 

@@ -93,6 +93,13 @@ answers opaque state requirements. CPU names, directive names, target values,
 profile legality, and selector diagnostics remain in the unchanged Rust-built
 package; the native runtime contains no FPU or Apollo target table.
 
+Performance-plan Item 0d refreshes the audited snapshots for the coarse native
+runtime observation sites. The affected VM and service owners conditionally
+import `debug.amigaos.runtime_profile`; that dependency is a default-off,
+CPU-neutral passive observer and owns no package, CPU, instruction, selection,
+encoding, expression, diagnostic, or output semantics. Disabled compositions
+retain the previously recorded Hunk bytes exactly.
+
 ## Dependency direction
 
 ```text
@@ -117,7 +124,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm`.
 - Public entries: `initializeActiveV1`, `resetActiveV1`, `applyDirectiveV1`,
   `getFlagV1`, and `requirementAllowsV1`.
-- Imports/outbound dependencies: `tkpkg.amigaos.buffers` only.
+- Imports/outbound dependencies: `tkpkg.amigaos.buffers`; the default-off
+  `debug.amigaos.runtime_profile` observer in Item 0d builds.
 - Mutable state: the selected package-program cursor and directive-table cursor;
   bounded active key pointers, lengths, values, profile index, and program bounds
   live in the shared package buffers.
@@ -261,7 +269,7 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Imports/outbound dependencies: tkpkg ABI/buffers, dedicated request-lifecycle,
   status-projection, parser-adapter, expression-service, and selection-service
   owners; operand-record service, engine, expression bridge, package loader,
-  pipeline, and tokenizer VM.
+  pipeline, and tokenizer VM; plus the default-off Item 0d runtime observer.
   The expression service now reaches pass/finalization state only through the
   neutral `tkpkg.amigaos.runtime_context` façade.
 - Mutable state: request/control-block pointers, output and last-error buffers,
@@ -299,7 +307,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Public entries: `selectInstructionV1`, `buildSelectedEnvelopeV1`,
   `noOutputErrorV1`, and `tkpkgProjectBoundedRegisterV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers, operand runtime, neutral
-  runtime context, and the expression bridge transition boundary.
+  runtime context, the expression bridge transition boundary, and the
+  default-off Item 0d runtime observer.
 - Mutable state: selected request envelope and candidate traversal cursor; the
   unchanged operand scratch state is shared through the internal selection-state
   module. Item 21 adds one bounded deferred-rejection text buffer so traversal
@@ -376,7 +385,7 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Public entries: `encodeInstructionV1` and `encodeSelectedInstructionV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers, private selection state,
   the existing selection-service boundary, and the generic compact-table
-  boundary.
+  boundary; plus the default-off Item 0d runtime observer.
 - Mutable state: writes the same existing package-service output buffer; it does
   not own pipeline selection, package loading, or status projection.
 - Routine responsibility groups: selected-envelope encoding, legacy
@@ -413,7 +422,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Public entry: `executeRequestV1`; it parses one bounded neutral request,
   resolves an opaque CPRD id by dialect/CPU/family precedence, and executes one
   exact OPRD schema-v1 base program or schema-v2 nested-address program.
-- Imports/outbound dependencies: only the tkpkg ABI and shared buffers.
+- Imports/outbound dependencies: the tkpkg ABI and shared buffers; plus the
+  default-off Item 0d runtime observer.
 - Mutable state: bounded request cursors, active-owner indices, selected-program
   metadata, and the dedicated neutral result buffer (24-byte v1 or 40-byte v2).
 - Routine responsibility groups: little-endian bounded CPRD reading; complete
@@ -523,7 +533,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Source: `native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm`.
 - Public entries: `opcoreExprEvalOperandV1`, `opcoreExvmEvalOperandV1`, and
   `opcoreExvmEvalOperandWithResolverV1`.
-- Imports/outbound dependencies: expression VM runtime.
+- Imports/outbound dependencies: expression VM runtime and the default-off
+  Item 0c symbol/expression and Item 0d runtime observers.
 - Mutable state: selected opcode version plus the private ExprVM program length
   and byte buffer. Parser cursor, literal value, and symbol index are bounded
   call-local register state; evaluator state belongs to the ExprVM runtime.
@@ -550,7 +561,7 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Source: `native/motorola68000/amigaos/prvm/prvm_runtime.asm`.
 - Public entry: `prvmRun68000`.
 - Imports/outbound dependencies: PRVM ABI/state/bytecode support and the
-  package line-router boundary.
+  package line-router boundary; plus the default-off Item 0d runtime observer.
 - Mutable state: VM token cursor, checkpoint stack, result records, emitted
   statement fields, and expression resume state.
 - Routine responsibility groups: bytecode execution, token access,

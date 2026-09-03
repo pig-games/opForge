@@ -1,0 +1,76 @@
+[slice]
+schema_version = 2
+name = "bounded native runtime execution v1"
+kind = "native-observability"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "0d"
+requirements = ["SR-BRIDGE", "SR-PROG", "SR-NOGUESS", "SR-ID", "SR-MEAS", "SR-PAR", "F10", "F11", "F12"]
+rust_reference = [
+  "crates/opforge-core/src/expr_vm.rs",
+  "crates/opforge-engine/src/lib.rs",
+  "crates/opforge-asm/src/tests.rs"
+]
+native_boundary = [
+  "native/motorola68000/amigaos/debug/opforge_runtime_profile.asm",
+  "native/motorola68000/amigaos/opasm/opasm_progress.asm",
+  "native/motorola68000/amigaos/tkvm/tkvm_runtime.asm",
+  "native/motorola68000/amigaos/prvm/prvm_runtime.asm",
+  "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm",
+  "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_record_service.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm"
+]
+invariant = "Observation counts CPU-neutral VM/program invocations, executed opcodes, service invocations, and selector/encoder candidates without changing VM state, package semantics, selection order, encoded bytes, diagnostics, artifacts, callbacks, or exit status."
+assertion_decision = "Use a separately gated fixed 192-byte correlated companion; preserve all registers, CCR, and stack at passive sites; retain four nested VM/program and four nested service contexts; saturate every counter group visibly; fail closed in the host decoder on malformed, contradictory, unknown, incomplete, overflowing, uncorrelated, or reserved-byte input."
+expected_inputs = "A bounded native CLI assembly with OPFORGE_DEBUG_CONTRACTS and OPFORGE_PROGRESS_RUNTIME_COUNTERS, optionally composed with the earlier work and symbol/expression counter groups, or deterministic focused calls covering every record group."
+expected_outputs = "Disabled builds have no runtime profile imports or calls. Enabled builds own one 192-byte OFVE record plus 36 bytes of private nesting/pointer state; progress exposes only current provisional CPU-neutral VM/service/program IDs. Exact normal artifacts, diagnostics, VM results, and guest exit remain unchanged."
+known_non_equivalences = "Item 0d IDs are deliberately provisional and are replaced by shared Item 3 identities in Item 6b. Phase arrays are marginal aggregate totals, not a VM-by-phase matrix. No opcode identity, PC, timing, address, CPU-specific meaning, optimization, B01-B10 slope, or hotspot conclusion is recorded. The full self-host remains excluded from profiling."
+fast_proof_command = "python3 -m unittest scripts.workflow.tests.test_decode_native_progress && cargo test -p asm native_runtime_execution_profile_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_runtime_execution_profile_fs_uae_confirms_counter_contract -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_progress_cli_preserves_exact_artifact_and_exit -- --nocapture --test-threads=1 && OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_progress_only_cli_preserves_exact_artifact_and_exit -- --nocapture --test-threads=1"
+regression_command = "RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate_summary.sh"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_runtime_execution_decoder_accepts_correlated_complete_records"
+proof_level = "C"
+proves = "The big-endian decoder reports every OFVE field and fails closed on bad magic, schema, flags, IDs, reserved bytes, overflow, terminal state, or OFPR correlation."
+does_not_prove = "Native assembly, guest execution, bounded-corpus attribution, or performance value."
+
+[[tests]]
+name = "native_runtime_execution_profile_source_contract_is_bounded_and_observational"
+proof_level = "B"
+proves = "OFVE is fixed-size, independently gated, saturating, I/O-free, CPU-neutral, nesting-safe, and wired to the intended VM and service boundaries while passive routines preserve registers, CCR, and stack."
+does_not_prove = "Real guest execution, arbitrary-source counts, corpus slopes, or acceptable vintage-hardware overhead."
+
+[[tests]]
+name = "native_runtime_execution_profile_harness_assembles"
+proof_level = "C"
+proves = "The focused deterministic VM/program/service/candidate/phase/overflow oracle assembles with the real profile module."
+does_not_prove = "Execution on AmigaOS, whole-CLI parity, or corpus-wide attribution."
+
+[[tests]]
+name = "native_runtime_execution_profile_full_cli_assembles"
+proof_level = "C"
+proves = "Every production observation site composes in the real native CLI graph with all Phase 0 counter groups enabled."
+does_not_prove = "Guest execution, artifact equality, or a speed claim."
+
+[[tests]]
+name = "native_runtime_execution_profile_fs_uae_confirms_counter_contract"
+proof_level = "D"
+proves = "A fresh focused guest executes the actual OFVE routines and exits zero only after deterministic VM/program, nested-service, candidate, phase, overflow, and terminal checks pass."
+does_not_prove = "Whole-CLI behavior, Rust artifact equality, corpus attribution, performance improvement, or the parked self-host proof."
+
+[[tests]]
+name = "external_fs_uae_native_progress_cli_preserves_exact_artifact_and_exit"
+proof_level = "D"
+proves = "The real OFVE/detail-enabled CLI completes a fresh bounded assembly with explicit zero guest exit and byte-for-byte equality to its live in-memory Rust oracle."
+does_not_prove = "Full self-host completion, performance improvement, corpus attribution, or vintage-hardware overhead."
+
+[[tests]]
+name = "external_fs_uae_native_progress_only_cli_preserves_exact_artifact_and_exit"
+proof_level = "D"
+proves = "The retained progress-only control completes the same bounded assembly with explicit zero guest exit and byte-for-byte equality to its live in-memory Rust oracle."
+does_not_prove = "OFVE values, full self-host completion, or a vintage-hardware overhead estimate."

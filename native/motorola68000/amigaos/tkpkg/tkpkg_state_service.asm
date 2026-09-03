@@ -6,6 +6,9 @@
 	.cpu 68020
 	.pub
 	.use tkpkg.amigaos.buffers
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	.use debug.amigaos.runtime_profile as runtime_profile
+.endif
 
 SCOPED_OWNER_FAMILY = 0
 SCOPED_OWNER_CPU = 1
@@ -268,6 +271,12 @@ resetReturn
 ; Outputs: D0 = 0 not handled, 1 applied, 2 rejected/malformed; A1/D1 message on 2.
 applyDirectiveV1	.block
 	movem.l d2-d7/a0/a2-a6, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE, d0
+	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
+	movem.l (sp)+, d0-d1
+.endif
 	lea -32(sp), sp
 	move.l a0, (sp)
 	move.w d0, 4(sp)
@@ -427,6 +436,9 @@ directiveNotHandled
 	moveq #0, d0
 directiveReturn
 	lea 32(sp), sp
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileLeaveServiceV1
+.endif
 	movem.l (sp)+, d2-d7/a0/a2-a6
 	tst.l d0
 	rts

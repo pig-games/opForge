@@ -8,6 +8,9 @@
 	.use tkvm.amigaos.state
 	.use tkvm.amigaos.char_predicates
 	.use tkvm.amigaos.scanner
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	.use debug.amigaos.runtime_profile as runtime_profile
+.endif
 
 ; Positive VM statuses mirror the native tokenization result contract.
 TK_STATUS_SUCCESS               = 0
@@ -158,6 +161,13 @@ LOCAL_SIZE                      = 36
 ; ---------------------------------------------------------------------------
 tkvmRun68000	.block
 	movem.l d4-d7/a4-a6, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_VM_TKVM, d0
+	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_TOKENIZER, d1
+	jsr runtime_profile.opforgeRuntimeProfileEnterVmV1
+	movem.l (sp)+, d0-d1
+.endif
 	movea.l a2, a6  ; preserve scratch base separately so A2 can become the interpreter-local frame pointer
 	movea.l a0, a4  ; source bytes base, equivalent to VmTokenizerInputStream.bytes
 	movea.l a1, a5  ; token record output base
@@ -264,6 +274,13 @@ programLoop
 dispatchOpcode
 	moveq #0, d0
 	move.b (a0)+, d0
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_VM_TKVM, d0
+	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_TOKENIZER, d1
+	jsr runtime_profile.opforgeRuntimeProfileRecordOpcodeV1
+	movem.l (sp)+, d0-d1
+.endif
 
 	; The native slice only implements opcode values 0..18.
 	; Unsupported shared VM slots still get explicit table entries so the
@@ -289,7 +306,7 @@ TkvmOpcodeDispatchTable
 	.long opcodeJumpIfByteEq
 	.long opcodeJumpIfClass
 	.long opcodeFail
-	.long opcodeEmitDiag
+	.long opcodeEmitFailure
 	.long invalidProgramAtCursor
 	.long invalidProgramAtCursor
 	.long opcodeScanIdentifier
@@ -401,7 +418,7 @@ opcodeFail
 	move.w d0, state.TkvmLastFailureOperand
 	bra vmFailureAtCursor
 
-opcodeEmitDiag
+opcodeEmitFailure
 	move.l a0, d0
 	sub.l a3, d0
 	addq.l #1, d0
@@ -608,6 +625,9 @@ invalidProgramAtCursor
 	moveq #TK_STATUS_INVALID_PROGRAM, d0
 
 return
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileLeaveVmV1
+.endif
 	adda.l #LOCAL_SIZE, sp
 	movem.l (sp)+, d4-d7/a4-a6
 	rts

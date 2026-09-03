@@ -341,7 +341,7 @@ localization evidence but never a completed assembly or Level D result.
   - Commit outcome: `feat(native-perf): count symbol and expression work`.
   - Definition of done: a bounded report can confirm or reject lookup/expression multiplication by call, candidate, byte, phase, and pass.
 
-- [ ] Item 0d — Count coarse native VM and service execution
+- [x] Item 0d — Count coarse native VM and service execution
   - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-ID, SR-MEAS, SR-PAR, F10-F12.
   - Rationale/mechanism: determine whether VM/service execution dominates before considering threaded dispatch, AOT translation, superinstructions, or another portable execution design.
   - Architectural boundaries: invocation and aggregate-opcode counts only; provisional CPU-neutral IDs later map to Item 3; no per-opcode timing, VM rewrite, accelerator, target semantics, or changed ABI.
@@ -354,7 +354,8 @@ localization evidence but never a completed assembly or Level D result.
   - Effort/risk and stop/go: M/High; stop if identifiers encode CPU-specific semantics, addresses, or unstable ordering, or instrumentation alters VM state.
   - Gate tier and required focused gates: focused sub-item — native format, affected guards/inventories, staged native porting gate, focused VM/service counter tests, and focused FS-UAE confirmation.
   - Full quality gates: deferred to the Phase 0 closure at Item 0f unless focused evidence escalates this item.
-  - Plan-compliance review evidence: reviewer verifies CPU-neutral observation boundaries and absence of a VM optimization.
+  - Plan-compliance review evidence: `PASS` — the independent reviewer verified that Item 0d remains CPU-neutral and observation-only, that the four-entry VM/program nesting stack restores enclosing context without changing VM state, that Level B/C/D proofs and inventory/format/staged-native/workflow gates match the focused sub-item, and that full quality gates remain deferred to Item 0f.
+  - Completion evidence (2026-09-03): a separately gated 192-byte `OFVE` companion counts TKVM/PRVM/EXVM/ExprVM and program invocations/opcodes, eight coarse services, selector/encoder candidates, and marginal phase totals. Nested VM/program and service stacks restore enclosing IDs in `OFPR`. Decoder, source-contract, harness, and full-CLI assemble tests pass; native format, inventory, staged native porting, and `make workflow-gate` pass. Fresh focused FS-UAE completed in 17.23s; all-counter CLI exact-artifact completed in 48.79s; progress-only control completed in 47.88s, each with explicit zero guest exit. Same-tool Hunks are release 554,500 (`17a2b255…`), Item 0c detail 558,432 (`ae423af0…`), and Item 0d combined 560,176 (`04318972…`). The +1.90% single-run delta is noise, not a speed or vintage-hardware claim. B01-B10 ranking remains Item 0f; the full self-host remains excluded from profiling.
   - Commit outcome: `feat(native-perf): count coarse runtime execution`.
   - Definition of done: the report ranks native VM/service aggregate work sufficiently to decide whether deeper VM profiling is warranted.
 

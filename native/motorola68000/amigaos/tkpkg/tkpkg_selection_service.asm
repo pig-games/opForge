@@ -13,6 +13,9 @@
 	.use tkpkg.amigaos.runtime_context as context
 	.use tkpkg.amigaos.state_service as state_service
 	.use opcore.amigaos.expr_bridge
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	.use debug.amigaos.runtime_profile as runtime_profile
+.endif
 
 TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE = 9
 TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE = 16
@@ -375,6 +378,12 @@ DirectDirectShapeText
 
 selectInstructionV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_SELECTION, d0
+	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
+	movem.l (sp)+, d0-d1
+.endif
 	btst #1, buffers.PackageStateFlags
 	bne.s havePipeline
 	lea EvaluateExprNeedsPipelineText, a1
@@ -391,6 +400,9 @@ havePipeline
 	moveq #0, d0
 
 return
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileLeaveServiceV1
+.endif
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 
@@ -925,6 +937,12 @@ skipShapeCompare
 	move.b 2(a2), d4
 	move.l a2, -(sp)
 	move.w d7, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_CANDIDATE_SELECTION, d0
+	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
+	movem.l (sp)+, d0-d1
+.endif
 	jsr operand.tkpkgMselTryBuildCandidateV1
 	move.w (sp)+, d7
 	movea.l (sp)+, a2
@@ -1569,6 +1587,12 @@ cmseCandidateShapeReady
 	bset #0, state.EncodeSelectedMselMatchFlags
 	move.l a2, -(sp)
 	move.w d7, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_CANDIDATE_SELECTION, d0
+	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
+	movem.l (sp)+, d0-d1
+.endif
 	jsr operand.tkpkgMselTryBuildCandidateV1
 	move.w (sp)+, d7
 	movea.l (sp)+, a2
@@ -1604,6 +1628,12 @@ cmseStructuredCandidate
 	movea.l state.EncodeSelectedSemanticPlanPtr, a1
 	move.l a2, -(sp)
 	move.w d7, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_CANDIDATE_SELECTION, d0
+	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
+	movem.l (sp)+, d0-d1
+.endif
 	bsr.w tkpkgBuildCompactSemanticRejectCandidateV2
 	move.w (sp)+, d7
 	movea.l (sp)+, a2
@@ -1612,6 +1642,12 @@ cmseBuildBranch
 	movea.l state.EncodeSelectedSemanticPlanPtr, a1
 	move.l a2, -(sp)
 	move.w d7, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_CANDIDATE_SELECTION, d0
+	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
+	movem.l (sp)+, d0-d1
+.endif
 	bsr.w tkpkgBuildCompactSemanticBranchCandidateV2
 	move.w (sp)+, d7
 	movea.l (sp)+, a2
@@ -1620,6 +1656,12 @@ cmseBuildSequence
 	movea.l state.EncodeSelectedSemanticPlanPtr, a1
 	move.l a2, -(sp)
 	move.w d7, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_CANDIDATE_SELECTION, d0
+	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
+	movem.l (sp)+, d0-d1
+.endif
 	bsr.w tkpkgBuildCompactSemanticSequenceCandidateV2
 	move.w (sp)+, d7
 	movea.l (sp)+, a2
@@ -1628,6 +1670,12 @@ cmseBuildState
 	movea.l state.EncodeSelectedSemanticPlanPtr, a1
 	move.l a2, -(sp)
 	move.w d7, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_CANDIDATE_SELECTION, d0
+	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
+	movem.l (sp)+, d0-d1
+.endif
 	bsr.w tkpkgBuildCompactStateCandidateV2
 	move.w (sp)+, d7
 	movea.l (sp)+, a2
@@ -1636,6 +1684,12 @@ cmseBuildStructured
 	movea.l state.EncodeSelectedSemanticPlanPtr, a1
 	move.l a2, -(sp)
 	move.w d7, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_CANDIDATE_SELECTION, d0
+	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
+	movem.l (sp)+, d0-d1
+.endif
 	bsr.w tkpkgBuildCompactSemanticCandidateV2
 	move.w (sp)+, d7
 	movea.l (sp)+, a2
@@ -8357,6 +8411,12 @@ valpReturn
 ; Inputs: D0 = opcode version; A1/D1 = program bytes; D3 = input zero.
 ; Outputs: D0 = 0 success, 1 malformed, or 2 constraint violation; D3 = value.
 tkpkgExecuteValueProgramBytesV2	.block
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_VALUE, d0
+	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
+	movem.l (sp)+, d0-d1
+.endif
 	movea.l a1, a0
 	move.w d1, d7
 	movea.l d0, a3
@@ -8572,12 +8632,24 @@ valueEnd
 	tst.b d6
 	beq.w valueFail
 	moveq #0, d0
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	bra.s valueReturn
+.else
 	rts
+.endif
 valueConstraintFail
 	moveq #2, d0
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	bra.s valueReturn
+.else
 	rts
+.endif
 valueFail
 	moveq #1, d0
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+valueReturn
+	jsr runtime_profile.opforgeRuntimeProfileLeaveServiceV1
+.endif
 	rts
 	.bend  ; tkpkgExecuteValueProgramBytesV2
 

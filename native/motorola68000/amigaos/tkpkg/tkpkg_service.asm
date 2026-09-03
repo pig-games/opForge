@@ -16,6 +16,9 @@
 	.use tkpkg.amigaos.parse_service as parser
 	.use tkpkg.amigaos.pipeline
 	.use tkpkg.amigaos.tokenizer_vm
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	.use debug.amigaos.runtime_profile as runtime_profile
+.endif
 
 TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE   = 9
 TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE = 16
@@ -663,7 +666,16 @@ evaluateExpressionV1	.block
 	move.w d6, d4
 	moveq #0, d5
 	move.w d7, d5
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_EXPRESSION, d0
+	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
+	movem.l (sp)+, d0-d1
+.endif
 	jsr expression.executePreparedV1
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileLeaveServiceV1
+.endif
 
 return
 	movem.l (sp)+, d2-d7/a2-a6

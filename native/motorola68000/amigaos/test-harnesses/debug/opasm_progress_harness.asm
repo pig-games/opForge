@@ -10,6 +10,9 @@
 .ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
 	.use debug.amigaos.symbol_expr_profile as symbol_expr_profile
 .endif
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	.use debug.amigaos.runtime_profile as runtime_profile
+.endif
 
 HARNESS_FAIL = 20
 HARNESS_PACKAGE_TICKS_OFFSET = progress.OPASM_PROGRESS_PHASE_TICKS_OFFSET + 4
@@ -43,6 +46,15 @@ start	.block
 	cmpi.l #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_MAGIC, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_MAGIC_OFFSET(a2)
 	bne.w fail
 	cmpi.l #10, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_RUN_ID_OFFSET(a2)
+	bne.w fail
+.endif
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileGetRecordV1
+	movea.l a0, a3
+	moveq #28, d7
+	cmpi.l #runtime_profile.OPFORGE_RUNTIME_MAGIC, runtime_profile.OPFORGE_RUNTIME_MAGIC_OFFSET(a3)
+	bne.w fail
+	cmpi.l #10, runtime_profile.OPFORGE_RUNTIME_RUN_ID_OFFSET(a3)
 	bne.w fail
 .endif
 
@@ -361,6 +373,112 @@ start	.block
 .endif
 .endif
 
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	; Deterministic VM/program/service nesting, phase, candidate, and overflow oracle.
+	moveq #37, d7
+	moveq #runtime_profile.OPFORGE_RUNTIME_VM_TKVM, d0
+	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_TOKENIZER, d1
+	jsr runtime_profile.opforgeRuntimeProfileEnterVmV1
+	jsr runtime_profile.opforgeRuntimeProfileRecordOpcodeV1
+	jsr runtime_profile.opforgeRuntimeProfileRecordOpcodeV1
+	jsr runtime_profile.opforgeRuntimeProfileRecordOpcodeV1
+	moveq #runtime_profile.OPFORGE_RUNTIME_VM_EXVM, d0
+	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_FRONTEND, d1
+	jsr runtime_profile.opforgeRuntimeProfileEnterVmV1
+	moveq #runtime_profile.OPFORGE_RUNTIME_VM_EXPRVM, d0
+	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_EVALUATOR, d1
+	jsr runtime_profile.opforgeRuntimeProfileEnterVmV1
+	cmpi.l #$00040000, progress.OPASM_PROGRESS_VM_SERVICE_ID_OFFSET(a0)
+	bne.w fail
+	cmpi.l #runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_EVALUATOR, progress.OPASM_PROGRESS_PROGRAM_ID_OFFSET(a0)
+	bne.w fail
+	jsr runtime_profile.opforgeRuntimeProfileLeaveVmV1
+	cmpi.l #$00030000, progress.OPASM_PROGRESS_VM_SERVICE_ID_OFFSET(a0)
+	bne.w fail
+	cmpi.l #runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_FRONTEND, progress.OPASM_PROGRESS_PROGRAM_ID_OFFSET(a0)
+	bne.w fail
+	jsr runtime_profile.opforgeRuntimeProfileLeaveVmV1
+	cmpi.l #$00010000, progress.OPASM_PROGRESS_VM_SERVICE_ID_OFFSET(a0)
+	bne.w fail
+	cmpi.l #runtime_profile.OPFORGE_RUNTIME_PROGRAM_TOKENIZER, progress.OPASM_PROGRESS_PROGRAM_ID_OFFSET(a0)
+	bne.w fail
+	moveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_SELECTION, d0
+	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
+	cmpi.l #$00010002, progress.OPASM_PROGRESS_VM_SERVICE_ID_OFFSET(a0)
+	bne.w fail
+	cmpi.l #runtime_profile.OPFORGE_RUNTIME_PROGRAM_TOKENIZER, progress.OPASM_PROGRESS_PROGRAM_ID_OFFSET(a0)
+	bne.w fail
+	moveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_VALUE, d0
+	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
+	cmpi.l #$00010008, progress.OPASM_PROGRESS_VM_SERVICE_ID_OFFSET(a0)
+	bne.w fail
+	jsr runtime_profile.opforgeRuntimeProfileLeaveServiceV1
+	cmpi.l #$00010002, progress.OPASM_PROGRESS_VM_SERVICE_ID_OFFSET(a0)
+	bne.w fail
+	jsr runtime_profile.opforgeRuntimeProfileLeaveServiceV1
+	jsr runtime_profile.opforgeRuntimeProfileLeaveVmV1
+	tst.l progress.OPASM_PROGRESS_VM_SERVICE_ID_OFFSET(a0)
+	bne.w fail
+	tst.l progress.OPASM_PROGRESS_PROGRAM_ID_OFFSET(a0)
+	bne.w fail
+	moveq #runtime_profile.OPFORGE_RUNTIME_CANDIDATE_SELECTION, d0
+	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
+	moveq #runtime_profile.OPFORGE_RUNTIME_CANDIDATE_ENCODING, d0
+	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
+	jsr runtime_profile.opforgeRuntimeProfileGetRecordV1
+	movea.l a0, a3
+	lea runtime_profile.OPFORGE_RUNTIME_VM_INVOCATIONS_OFFSET(a3), a4
+	cmpi.l #1, (a4)
+	bne.w fail
+	cmpi.l #1, 8(a4)
+	bne.w fail
+	cmpi.l #1, 12(a4)
+	bne.w fail
+	cmpi.l #3, runtime_profile.OPFORGE_RUNTIME_VM_OPCODES_OFFSET(a3)
+	bne.w fail
+	lea runtime_profile.OPFORGE_RUNTIME_PROGRAM_INVOCATIONS_OFFSET(a3), a4
+	cmpi.l #1, (a4)
+	bne.w fail
+	cmpi.l #1, 8(a4)
+	bne.w fail
+	cmpi.l #1, 12(a4)
+	bne.w fail
+	lea runtime_profile.OPFORGE_RUNTIME_SERVICE_INVOCATIONS_OFFSET(a3), a4
+	cmpi.l #1, 4(a4)
+	bne.w fail
+	cmpi.l #1, 28(a4)
+	bne.w fail
+	cmpi.l #3, runtime_profile.OPFORGE_RUNTIME_OPCODE_PHASE_OFFSET(a3)
+	bne.w fail
+	cmpi.l #2, runtime_profile.OPFORGE_RUNTIME_SERVICE_PHASE_OFFSET(a3)
+	bne.w fail
+	cmpi.l #1, runtime_profile.OPFORGE_RUNTIME_SELECTION_CANDIDATES_OFFSET(a3)
+	bne.w fail
+	cmpi.l #1, runtime_profile.OPFORGE_RUNTIME_ENCODING_CANDIDATES_OFFSET(a3)
+	bne.w fail
+
+	; Saturate all five counter groups and issue an unknown ID visibly.
+	move.l #$ffffffff, runtime_profile.OPFORGE_RUNTIME_VM_INVOCATIONS_OFFSET(a3)
+	move.l #$ffffffff, runtime_profile.OPFORGE_RUNTIME_VM_OPCODES_OFFSET(a3)
+	move.l #$ffffffff, runtime_profile.OPFORGE_RUNTIME_SERVICE_INVOCATIONS_OFFSET(a3)
+	move.l #$ffffffff, runtime_profile.OPFORGE_RUNTIME_SELECTION_CANDIDATES_OFFSET(a3)
+	move.l #$ffffffff, runtime_profile.OPFORGE_RUNTIME_OPCODE_PHASE_OFFSET(a3)
+	moveq #runtime_profile.OPFORGE_RUNTIME_VM_TKVM, d0
+	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_TOKENIZER, d1
+	jsr runtime_profile.opforgeRuntimeProfileEnterVmV1
+	jsr runtime_profile.opforgeRuntimeProfileRecordOpcodeV1
+	moveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_EXPRESSION, d0
+	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
+	moveq #runtime_profile.OPFORGE_RUNTIME_CANDIDATE_SELECTION, d0
+	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
+	moveq #99, d0
+	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
+	cmpi.l #63, runtime_profile.OPFORGE_RUNTIME_OVERFLOW_OFFSET(a3)
+	bne.w fail
+	; Restore the authoritative OFPR pointer before the existing bridge checks.
+	jsr progress.opasmProgressGetRecordV1
+.endif
+
 	moveq #31, d7
 	moveq #2, d0
 	jsr progress.opasmProgressSetHeartbeatV1
@@ -455,6 +573,17 @@ start	.block
 	beq.w fail
 	cmpi.l #HARNESS_FAIL, symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EXIT_STATUS_OFFSET(a2)
 	bne.w fail
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileGetRecordV1
+	movea.l a0, a3
+	move.w runtime_profile.OPFORGE_RUNTIME_FLAGS_OFFSET(a3), d0
+	andi.w #runtime_profile.OPFORGE_RUNTIME_FLAG_INCOMPLETE, d0
+	beq.w fail
+	cmpi.l #HARNESS_FAIL, runtime_profile.OPFORGE_RUNTIME_EXIT_STATUS_OFFSET(a3)
+	bne.w fail
+	cmpi.l #63, runtime_profile.OPFORGE_RUNTIME_OVERFLOW_OFFSET(a3)
+	bne.w fail
+.endif
 	; The work-record success branch must not bypass OFSE terminal sealing.
 	lea nextTick, a0
 	jsr progress.opasmProgressBeginRunV1
@@ -466,6 +595,17 @@ start	.block
 	andi.w #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_FLAG_COMPLETE, d0
 	beq.w fail
 	tst.l symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EXIT_STATUS_OFFSET(a2)
+	bne.w fail
+.endif
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileGetRecordV1
+	movea.l a0, a3
+	move.w runtime_profile.OPFORGE_RUNTIME_FLAGS_OFFSET(a3), d0
+	andi.w #runtime_profile.OPFORGE_RUNTIME_FLAG_COMPLETE, d0
+	beq.w fail
+	tst.l runtime_profile.OPFORGE_RUNTIME_EXIT_STATUS_OFFSET(a3)
+	bne.w fail
+	tst.l runtime_profile.OPFORGE_RUNTIME_OVERFLOW_OFFSET(a3)
 	bne.w fail
 .endif
 

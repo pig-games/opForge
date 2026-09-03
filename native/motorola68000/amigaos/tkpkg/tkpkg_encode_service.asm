@@ -9,6 +9,9 @@
 	.use tkpkg.amigaos.selection_service as selection
 	.use tkpkg.amigaos.selection_state as state
 	.use tkpkg.amigaos.compact_table as compact
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	.use debug.amigaos.runtime_profile as runtime_profile
+.endif
 
 ENCODE_ENVELOPE_MALFORMED_TEXT_LEN = 33
 ENCODE_TABLE_MALFORMED_TEXT_LEN = 30
@@ -37,6 +40,12 @@ BranchDisplacementRangeSuffix
 
 encodeSelectedInstructionV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_ENCODING, d0
+	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
+	movem.l (sp)+, d0-d1
+.endif
 	; Rust returns a fresh PortableFixupResult for every selected encode.
 	; Reset the native side channel at the same request boundary so semantic
 	; sequence calls cannot replay a pass-one fixup during pass two.
@@ -83,6 +92,9 @@ haveEnvelope
 	jsr selection.noOutputErrorV1
 
 return
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileLeaveServiceV1
+.endif
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 	.bend  ; encodeSelectedInstructionV1
@@ -498,6 +510,12 @@ legacyTableLookup
 	subq.w #1, d7
 
 loop
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_CANDIDATE_ENCODING, d0
+	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
+	movem.l (sp)+, d0-d1
+.endif
 	move.b (a0)+, d0
 	move.w d6, -(sp)
 	move.b d0, d6
@@ -678,6 +696,12 @@ semanticOwnerNext
 	subq.w #1, d7
 
 semanticProgramLoop
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_CANDIDATE_ENCODING, d0
+	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
+	movem.l (sp)+, d0-d1
+.endif
 	jsr selection.tkpkgServiceReadU16LeV1
 	bne.w semanticMalformed
 	move.w d0, d6
@@ -786,6 +810,12 @@ semanticReturn
 ; Outputs: D0 status; D1 total output length in LastErrorBuffer.
 tkpkgEncodeExecuteBranchProgramV5	.block
 	movem.l d2-d7/a0/a2-a6, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_BRANCH, d0
+	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
+	movem.l (sp)+, d0-d1
+.endif
 	lea -60(sp), sp
 	movea.l a1, a0
 	moveq #0, d0
@@ -1113,6 +1143,9 @@ branchFail
 	moveq #1, d0
 branchReturn
 	lea 60(sp), sp
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileLeaveServiceV1
+.endif
 	movem.l (sp)+, d2-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgEncodeExecuteBranchProgramV5
@@ -1155,6 +1188,12 @@ branchDoesNotFit
 ; Outputs: D0 status; D1 total output length in LastErrorBuffer.
 tkpkgEncodeExecuteFixupProgramV4	.block
 	movem.l d2-d7/a0/a2-a5, -(sp)
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	movem.l d0-d1, -(sp)
+	moveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_FIXUP, d0
+	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
+	movem.l (sp)+, d0-d1
+.endif
 	move.w d4, d7
 	cmpi.w #4, d7
 	beq.s fixupVersionReady
@@ -1306,6 +1345,9 @@ fixupEnd
 	bls.s fixupFail
 	moveq #0, d0
 fixupReturn
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	jsr runtime_profile.opforgeRuntimeProfileLeaveServiceV1
+.endif
 	movem.l (sp)+, d2-d7/a0/a2-a5
 	rts
 	.bend  ; tkpkgEncodeExecuteFixupProgramV4

@@ -1,0 +1,502 @@
+{
+  "backend": "rust-release-unprofiled",
+  "binary_bytes": 4324912,
+  "binary_sha256": "9f207b431f6a7ecf034da9db0f76de55a857890a3335d3cb7ace525dc0db90a0",
+  "build": {
+    "artifact_profile": {
+      "debug_assertions": false,
+      "debuginfo": 0,
+      "opt_level": "3",
+      "overflow_checks": false,
+      "test": false
+    },
+    "cargo_lock_sha256": "fbf53ca66c5deebf6eb1cce80e0f67abce8277d87516900aa1b79f9dfdbde3ee",
+    "command": [
+      "cargo",
+      "build",
+      "--release",
+      "--locked",
+      "-p",
+      "cli",
+      "--bin",
+      "opforge",
+      "--message-format=json-render-diagnostics"
+    ],
+    "default_features": true,
+    "environment": {},
+    "executable": "/Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance/target/release/opforge",
+    "profile": "release"
+  },
+  "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+  "cases": [
+    {
+      "argv": [
+        "opforge_6502_native_cli_smoke.asm",
+        "--cpu",
+        "m6502",
+        "--bin",
+        "output.bin",
+        "--opasm-package",
+        "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"
+      ],
+      "artifacts": {
+        "output.bin": {
+          "bytes": 9,
+          "sha256": "11120a441dafcfe58ab17e99547cfb77933868def43a16924171d5a81c549bbb"
+        }
+      },
+      "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+      "complete": true,
+      "diagnostics": [],
+      "exit_status": 0,
+      "id": "B01",
+      "samples_ns": [
+        137370375,
+        136837375,
+        140076209,
+        131244833,
+        138235666,
+        131642958,
+        135812250
+      ],
+      "statistics": {
+        "maximum_ns": 140076209,
+        "median_ns": 136837375,
+        "minimum_ns": 131244833,
+        "p95_ns": 140076209,
+        "runs": 7
+      }
+    },
+    {
+      "argv": [
+        "opforge_6502_native_cli_smoke.asm",
+        "--cpu",
+        "m6502",
+        "--bin",
+        "output.bin",
+        "--opasm-package",
+        "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"
+      ],
+      "artifacts": {
+        "output.bin": {
+          "bytes": 1,
+          "sha256": "df7e70e5021544f4834bbee64a9e3789febc4be81470df629cad6ddb03320a5c"
+        }
+      },
+      "case_sha256": "defb0ea02fd64c54c955f1efb217a411dc7e7c13a676330d88e5e5bd15db632a",
+      "complete": true,
+      "diagnostics": [],
+      "exit_status": 0,
+      "id": "B02",
+      "samples_ns": [
+        139514208,
+        140821375,
+        142090333,
+        138601333,
+        139685041,
+        140065625,
+        145007083
+      ],
+      "statistics": {
+        "maximum_ns": 145007083,
+        "median_ns": 140065625,
+        "minimum_ns": 138601333,
+        "p95_ns": 145007083,
+        "runs": 7
+      }
+    },
+    {
+      "argv": [
+        "opforge_6502_native_cli_smoke.asm",
+        "--cpu",
+        "m6502",
+        "--bin",
+        "output.bin",
+        "--opasm-package",
+        "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"
+      ],
+      "artifacts": {
+        "output.bin": {
+          "bytes": 256,
+          "sha256": "efeb90a3936df7228abd66a34e0a7773a436e327fcbe618b09ff8775bd611190"
+        }
+      },
+      "case_sha256": "be04f9426a0ffb55278cdb05d1d604f5895e85a2cee0b6894ac43c9df1359acf",
+      "complete": true,
+      "diagnostics": [],
+      "exit_status": 0,
+      "id": "B03",
+      "samples_ns": [
+        135914958,
+        135747250,
+        135171125,
+        134171167,
+        133676167,
+        155237250,
+        136015584
+      ],
+      "statistics": {
+        "maximum_ns": 155237250,
+        "median_ns": 135747250,
+        "minimum_ns": 133676167,
+        "p95_ns": 155237250,
+        "runs": 7
+      }
+    },
+    {
+      "argv": [
+        "opforge_6502_native_cli_smoke.asm",
+        "--cpu",
+        "m6502",
+        "--bin",
+        "output.bin",
+        "--opasm-package",
+        "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"
+      ],
+      "artifacts": {
+        "output.bin": {
+          "bytes": 384,
+          "sha256": "cfaa87ac713371ada62f53b3e476c32605872da281107e34268448df02e7bae8"
+        }
+      },
+      "case_sha256": "c55ed4d1299edec10f1d8d2618a75616b383e21b5cfabd4a049b9eeb99ab06b0",
+      "complete": true,
+      "diagnostics": [],
+      "exit_status": 0,
+      "id": "B04",
+      "samples_ns": [
+        136736250,
+        135741917,
+        135549917,
+        137289250,
+        135942833,
+        134414458,
+        136387959
+      ],
+      "statistics": {
+        "maximum_ns": 137289250,
+        "median_ns": 135942833,
+        "minimum_ns": 134414458,
+        "p95_ns": 137289250,
+        "runs": 7
+      }
+    },
+    {
+      "argv": [
+        "opforge_6502_native_cli_smoke.asm",
+        "--cpu",
+        "m6502",
+        "--bin",
+        "output.bin",
+        "--opasm-package",
+        "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"
+      ],
+      "artifacts": {
+        "output.bin": {
+          "bytes": 2051,
+          "sha256": "ac3b6de79c66ef73a39d25d8b083e071d17a2bb3191c8eda1eb0155b989f3a66"
+        }
+      },
+      "case_sha256": "689e1c652d075ed219a99ddb2116bd248e74cd7918a277f12a1b208f0faa9de1",
+      "complete": true,
+      "diagnostics": [],
+      "exit_status": 0,
+      "id": "B05",
+      "samples_ns": [
+        135093833,
+        134983583,
+        135930041,
+        135161125,
+        134221125,
+        134441416,
+        137279375
+      ],
+      "statistics": {
+        "maximum_ns": 137279375,
+        "median_ns": 135093833,
+        "minimum_ns": 134221125,
+        "p95_ns": 137279375,
+        "runs": 7
+      }
+    },
+    {
+      "argv": [
+        "opforge_6502_native_cli_smoke.asm",
+        "--cpu",
+        "m6502",
+        "--bin",
+        "output.bin",
+        "--opasm-package",
+        "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"
+      ],
+      "artifacts": {
+        "output.bin": {
+          "bytes": 256,
+          "sha256": "59848a66f2a323d4dcaed946bc584f5ad200394339b70ab02d24f9ab0ca2426a"
+        }
+      },
+      "case_sha256": "932a67a9eb833e37cd806dc5e23173d2b2478202a6fd90a4b7538676c76cfd6c",
+      "complete": true,
+      "diagnostics": [],
+      "exit_status": 0,
+      "id": "B06",
+      "samples_ns": [
+        135449292,
+        132737917,
+        132269417,
+        134266917,
+        135400584,
+        135287709,
+        135351500
+      ],
+      "statistics": {
+        "maximum_ns": 135449292,
+        "median_ns": 135287709,
+        "minimum_ns": 132269417,
+        "p95_ns": 135449292,
+        "runs": 7
+      }
+    },
+    {
+      "argv": [
+        "opforge_6502_native_cli_smoke.asm",
+        "--cpu",
+        "m6502",
+        "--bin",
+        "output.bin",
+        "--opasm-package",
+        "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"
+      ],
+      "artifacts": {
+        "output.bin": {
+          "bytes": 32,
+          "sha256": "425ed4e4a36b30ea21b90e21c712c649e8214c29b7eaf68089d1039c6e55384c"
+        }
+      },
+      "case_sha256": "83d065619595873261d6e191fdee950d82cd547fcb26654be24f7020843dd923",
+      "complete": true,
+      "diagnostics": [],
+      "exit_status": 0,
+      "id": "B07",
+      "samples_ns": [
+        131817250,
+        133386458,
+        137758875,
+        134429458,
+        134503125,
+        133107250,
+        132802209
+      ],
+      "statistics": {
+        "maximum_ns": 137758875,
+        "median_ns": 133386458,
+        "minimum_ns": 131817250,
+        "p95_ns": 137758875,
+        "runs": 7
+      }
+    },
+    {
+      "argv": [
+        "opforge_6502_native_cli_smoke.asm",
+        "--cpu",
+        "m6502",
+        "--bin",
+        "output.bin",
+        "-M",
+        "modules",
+        "-I",
+        "includes",
+        "--opasm-package",
+        "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"
+      ],
+      "artifacts": {
+        "output.bin": {
+          "bytes": 3,
+          "sha256": "3648ca97b6635a202d1016adf49092e5bc4fda3857d8b18141f4ddb0a0b2c1d0"
+        }
+      },
+      "case_sha256": "8801d52fdee932ce46b1d938f9478b0503c26fd5f8be7614d9c6697429b3177a",
+      "complete": true,
+      "diagnostics": [],
+      "exit_status": 0,
+      "id": "B08",
+      "samples_ns": [
+        136954709,
+        135153459,
+        135548958,
+        136711708,
+        135682041,
+        137926959,
+        139343084
+      ],
+      "statistics": {
+        "maximum_ns": 139343084,
+        "median_ns": 136711708,
+        "minimum_ns": 135153459,
+        "p95_ns": 139343084,
+        "runs": 7
+      }
+    },
+    {
+      "argv": [
+        "opforge_6502_native_cli_smoke.asm",
+        "--cpu",
+        "m6502",
+        "--bin",
+        "output.bin",
+        "--srec",
+        "build/full.srec",
+        "--opasm-package",
+        "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"
+      ],
+      "artifacts": {
+        "build/full-image.bin": {
+          "bytes": 17,
+          "sha256": "8558ef8fdeb3ffc9b289305619e44edad7973d43f602c7f452c86ed781927383"
+        },
+        "build/full.hex": {
+          "bytes": 52,
+          "sha256": "aeb250fcce1addc32591034505902a59140e52f53df124b548f74f99b2d639ee"
+        },
+        "build/full.hunk": {
+          "bytes": 100,
+          "sha256": "d66e8852ce3a27b87a8b3fb73770ccb3a9e61a03b557872d3f86698893af37c3"
+        },
+        "build/full.map": {
+          "bytes": 244,
+          "sha256": "7de8bdb8ce8d79d19d0260eb6b7a22bf01e6bf29dcfa26ca2aa7aed84309950f"
+        },
+        "build/full.prg": {
+          "bytes": 10,
+          "sha256": "aa5dd5975e47d5f01c3e596bb2a1b881607f714bb8cd711b4b15ddd6783e8857"
+        },
+        "build/full.srec": {
+          "bytes": 49,
+          "sha256": "f5f384ae347b4d684b09cc1b602b832eebef69e91154888446e0dee58e15dc08"
+        },
+        "build/full_sections/code.bin": {
+          "bytes": 5,
+          "sha256": "ed5fb5373c91028f804c031cb93954dbee17352d05f24bef5272a7d34c01916f"
+        },
+        "build/full_sections/data.bin": {
+          "bytes": 3,
+          "sha256": "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81"
+        },
+        "build/full_sections/zero.bin": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "opforge_6502_native_cli_smoke.lst": {
+          "bytes": 2799,
+          "sha256": "7adf84502afa33c742629c1e9a70fdc4b7bcacfe3d369811b8a0b097eec45862"
+        },
+        "output.bin": {
+          "bytes": 9,
+          "sha256": "ce7f9e11d069ad48f29297ea4072227a36279d5e612e958b73b54deeb32bba7f"
+        }
+      },
+      "case_sha256": "b76f0308e0f6adfce5e997e3f39b92597a990f99716e745cd643a9f815fc768b",
+      "complete": true,
+      "diagnostics": [],
+      "exit_status": 0,
+      "id": "B09",
+      "samples_ns": [
+        145937041,
+        150485292,
+        149607750,
+        149417042,
+        149601042,
+        150400041,
+        145236209
+      ],
+      "statistics": {
+        "maximum_ns": 150485292,
+        "median_ns": 149601042,
+        "minimum_ns": 145236209,
+        "p95_ns": 150485292,
+        "runs": 7
+      }
+    },
+    {
+      "argv": [
+        "opforge_6502_native_cli_smoke.asm",
+        "--cpu",
+        "m6502",
+        "--bin",
+        "output.bin",
+        "-M",
+        "modules",
+        "-I",
+        "includes",
+        "--opasm-package",
+        "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"
+      ],
+      "artifacts": {
+        "build/integrated.map": {
+          "bytes": 13771,
+          "sha256": "3775c008a14dfbdb2bac3ad7214bdb5327473d34ddc3d5d7cc956de77a3cd5da"
+        },
+        "build/integrated.prg": {
+          "bytes": 2068,
+          "sha256": "8384cf6c8179a9c485c70465fed34ce834617bda3097f200fc6e90e6525ece35"
+        },
+        "output.bin": {
+          "bytes": 2066,
+          "sha256": "c17ac6205b2d90ffbcc2d39d33ce68e6fc8955eee3c72850737ff796357c7bec"
+        }
+      },
+      "case_sha256": "0e8c45ef53ca91471524bbb030720fc4bb4e7601fa30f5b12b0e94d02ec9484c",
+      "complete": true,
+      "diagnostics": [],
+      "exit_status": 0,
+      "id": "B10",
+      "samples_ns": [
+        157264292,
+        156762791,
+        157245833,
+        158236833,
+        158713667,
+        156963000,
+        157131375
+      ],
+      "statistics": {
+        "maximum_ns": 158713667,
+        "median_ns": 157245833,
+        "minimum_ns": 156762791,
+        "p95_ns": 158713667,
+        "runs": 7
+      }
+    }
+  ],
+  "comparison_eligible": true,
+  "corpus_sha256": "fece2121b487b37e1217b4854b74308366399938e26520e06d124ed63559aed9",
+  "generator_sha256": "13763ebe1625fd4ad48cb3a3df4a0a60911a89718b9c0a75fa94658671fccca1",
+  "head": "8c0f6b6090844b1d6bead578214341b3eb202ed0",
+  "host": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "package": {
+    "bytes": 368278,
+    "path": "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm",
+    "sha256": "46a56a5bd436b012c596c65d1f7d85fe6cd8fadbd702362955804415e00c0d41"
+  },
+  "policy": {
+    "cache": "fresh process, warm host filesystem after one unmeasured run; no cache flush",
+    "native_envelope_seconds": 120,
+    "physical_a6000_envelope": "target <=120 seconds per integrated run; not hardware-validated",
+    "retained_runs": 7,
+    "warmups": 1
+  },
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "schema_version": 1,
+  "selected_cases": [
+    "B01",
+    "B02",
+    "B03",
+    "B04",
+    "B05",
+    "B06",
+    "B07",
+    "B08",
+    "B09",
+    "B10"
+  ]
+}

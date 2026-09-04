@@ -28,7 +28,7 @@ fn native_harness_live_rust_cli_oracle(label: &str, source: &str) -> Vec<u8> {
     fs::read(&bin_path).expect("read native-harness live Rust CLI oracle")
 }
 
-fn native_harness_decode_exported_profile(
+pub(super) fn native_harness_decode_exported_profile(
     run: &crate::fs_uae_smoke::FsUaeSmokeRun,
     require_complete: bool,
 ) -> serde_json::Value {

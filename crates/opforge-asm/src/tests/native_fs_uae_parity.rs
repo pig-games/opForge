@@ -26819,9 +26819,23 @@ fn external_fs_uae_native_opforge_full_product_artifact_parity() {
         .collect::<Vec<_>>();
     assert_eq!(
         guest_files.len(),
-        96,
+        99,
         "measured canonical product staging set changed"
     );
+    for bridge_file in [
+        "opasm/opasm_progress.asm",
+        "debug/opforge_symbol_expr_profile.asm",
+        "debug/opforge_runtime_profile.asm",
+        "debug/opforge_platform_profile.asm",
+        "debug/opforge_profile_export.asm",
+    ] {
+        assert!(
+            guest_files
+                .iter()
+                .any(|file| file.relative_path.ends_with(bridge_file)),
+            "full product staging omitted bridge source {bridge_file}"
+        );
+    }
 
     let package = fs::read(amigaos.join("opforge-cli/opforge_cli_package.opasm"))
         .expect("read exact full-product package");

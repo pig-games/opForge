@@ -1,0 +1,35 @@
+[slice]
+schema_version = 2
+name = "corpus integration profiler preflight repairs"
+kind = "native-observability"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "2"
+requirements = ["SR-MEAS", "SR-PAR", "SR-BRIDGE"]
+rust_reference = ["crates/opforge-asm/src/tests.rs", "scripts/performance/decode_native_progress.py"]
+native_boundary = ["native/motorola68000/amigaos/debug/opforge_runtime_profile.asm", "native/motorola68000/amigaos/debug/opforge_platform_profile.asm"]
+invariant = "Remove only two redundant TST.W instructions immediately after MOVE.W to the same data register. Both instructions set identical NZVC and preserve X; branches, returned registers/CCR, buffers and stack balance remain unchanged. This is a full-gate preflight repair, not an assembler optimization."
+assertion_decision = "Retain existing fixed-record counter and register/CCR harness oracles; no new guest instrumentation or assertions."
+expected_inputs = "Existing debug-enabled runtime/platform counter harnesses, including independently disabled platform subgroups."
+expected_outputs = "Exactly the existing counter, buffer, register/CCR and terminal-state contracts. Default-off production paths are unchanged."
+known_non_equivalences = "Focused counter guests use the known-good emulator correctness template, not the corpus timing configuration. They do not prove corpus parity, overhead, physical A6000 performance or self-hosting. Corpus failed/incomplete statuses remain open under the approved diagnostic entry amendment."
+fast_proof_command = "python3 scripts/workflow/check_native_68000_redundant_tests.py native/motorola68000 --fail"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm profile_fs_uae_confirms_counter_contract -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native redundant test preflight and formatter"
+proof_level = "B"
+proves = "The affected source passes the deterministic safe redundant-test and formatter rules."
+does_not_prove = "Guest execution or native corpus completion."
+
+[[tests]]
+name = "native_runtime_execution_profile_fs_uae_confirms_counter_contract"
+proof_level = "D"
+proves = "A fresh completed zero-exit guest verifies the existing runtime counter and preservation contract."
+does_not_prove = "Corpus attribution, timing or self-hosting."
+
+[[tests]]
+name = "native_platform_profile_fs_uae_confirms_counter_contract"
+proof_level = "D"
+proves = "Four fresh completed zero-exit guests verify platform all/io/bulk/off subgroup counters and existing preservation oracles."
+does_not_prove = "All real OS failure paths, corpus completion, timing or self-hosting."

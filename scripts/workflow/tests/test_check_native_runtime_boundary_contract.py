@@ -34,6 +34,7 @@ class NativeRuntimeBoundaryContractTests(unittest.TestCase):
                 "opasm.amigaos.events",
                 "opasm.amigaos.progress",
                 "debug.amigaos.symbol_expr_profile",
+                "debug.amigaos.platform_profile",
             ),
         )
         self.assertEqual(

@@ -175,6 +175,10 @@ const OPFORGE_SELF_HOST_SOURCE_DIRS: &[&str] = &[
 ];
 const OPFORGE_SELF_HOST_SHORT_COMPONENT_MAP: &[(&str, &str)] = &[
     (
+        "opforge_symbol_expr_profile.asm",
+        "opforge_symexpr_profile.asm",
+    ),
+    (
         "tkpkg_engine_context_adapter.asm",
         "tkpkg_engine_ctx_adapter.asm",
     ),
@@ -4709,6 +4713,10 @@ mod tests {
         assert_eq!(
             mapped,
             [
+                (
+                    "opforge_symbol_expr_profile.asm".to_string(),
+                    "opforge_symexpr_profile.asm".to_string(),
+                ),
                 (
                     "tkpkg_engine_context_adapter.asm".to_string(),
                     "tkpkg_engine_ctx_adapter.asm".to_string(),

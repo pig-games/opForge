@@ -632,7 +632,6 @@ profileIsActive	.block
 classOffset	.block
 	moveq #0, d4
 	move.w OPFORGE_PLATFORM_CURRENT_CLASS_OFFSET(a5), d4
-	tst.w d4
 	beq.s unknown
 	cmpi.w #OPFORGE_PLATFORM_CLASS_COUNT, d4
 	bhi.s unknown

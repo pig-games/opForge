@@ -17,7 +17,7 @@ MODULES = (
     "native_reference_shards",
     "native_fs_uae_parity",
 )
-ADDITIONAL_FILTER_MODULES = ("native_mos_forward_ref_stability",)
+ADDITIONAL_FILTER_MODULES = ("native_mos_forward_ref_stability", "native_production_corpus")
 TEST_RE = re.compile(r"(?m)^#\[test\]\nfn ([A-Za-z_][A-Za-z0-9_]*)\(")
 
 

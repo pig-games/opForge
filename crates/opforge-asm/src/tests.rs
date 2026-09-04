@@ -132,6 +132,8 @@ mod native_hunk_output_contract;
 mod native_label_capacity;
 #[path = "tests/native_mos_forward_ref_stability.rs"]
 mod native_mos_forward_ref_stability;
+#[path = "tests/native_production_corpus.rs"]
+mod native_production_corpus;
 #[path = "tests/native_reference_shards.rs"]
 mod native_reference_shards;
 #[path = "tests/native_srec_output_contract.rs"]

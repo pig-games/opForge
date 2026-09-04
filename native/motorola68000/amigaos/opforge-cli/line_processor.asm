@@ -41,6 +41,9 @@
 	.use opforge.debug.events as debug_events
 	.include "debug_macros.i"
 .endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 	.section code, kind=code
 	.pub
@@ -713,6 +716,9 @@ directiveReady
 	jsr include_use.opforgeNativeCliResolveIncludePath
 	bne.w malformed
 	lea state.NativeCliIncludePath, a0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.openInput
 	tst.l d0
 	beq.w malformed
@@ -723,6 +729,9 @@ readChunk
 	lea IncbinBytes.l, a0
 	moveq #16, d0
 	move.l d7, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.readInput
 	cmpi.l #-1, d0
 	beq.w readFail
@@ -797,6 +806,9 @@ fileDone
 	bne.s readFail
 closeSuccess
 	move.l d7, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.close
 	movem.l (sp)+, d4-d7/a2-a4
 	moveq #1, d0
@@ -804,6 +816,9 @@ closeSuccess
 
 readFail
 	move.l d7, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.close
 malformed
 	movem.l (sp)+, d4-d7/a2-a4

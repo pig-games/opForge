@@ -11,6 +11,9 @@
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opasm.amigaos.progress as progress
 .endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 	.use opforge.cli.state
 	.use opforge.cli.constants
 	.use opforge.cli.strings
@@ -130,6 +133,9 @@ return
 ; CCR: reflects D0 on return.
 opforgeNativeCliBootstrapSourceOutputFromInput	.block
 	lea state.NativeCliInputPath, a0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassBootstrapV1
+.endif
 	jsr dos.openInput
 	tst.l d0
 	bne.s openOk
@@ -145,6 +151,9 @@ loop
 	lea state.NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassBootstrapV1
+.endif
 	jsr dos.readInput
 	cmp.l #-1, d0
 	beq.w closeFail
@@ -195,6 +204,9 @@ fileEof
 
 closeOk
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassBootstrapV1
+.endif
 	jsr dos.close
 	move.w #1, state.NativeCliOutputBootstrapFromSource
 	moveq #0, d0
@@ -202,6 +214,9 @@ closeOk
 
 closeFail
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassBootstrapV1
+.endif
 	jsr dos.close
 	moveq #1, d0
 	rts
@@ -234,6 +249,9 @@ fail
 ; Clobbers: D0-D5/A0-A1/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliTokenizeFileAtPath	.block
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.openInput
 	tst.l d0
 	bne.s openOk
@@ -261,6 +279,9 @@ skipResolvedPrefix
 	lea state.NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.readInput
 	cmpi.l #1, d0
 	bne.w close
@@ -287,6 +308,9 @@ readNextChar
 	lea state.NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.readInput
 	cmp.l #-1, d0
 	beq.w close
@@ -329,6 +353,9 @@ crDone
 
 lineDone
 	; The line processor and pending include/module drainers use D5 as scratch.
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRecordLogicalLineV1
+.endif
 	; Keep this file's DOS handle intact so the next read continues the same
 	; source stream rather than issuing Read against a clobbered handle.
 	move.l d5, -(sp)
@@ -368,6 +395,9 @@ fileEof
 	beq.s checkModuleDepth
 	; See lineDone: the active source-file handle must survive every per-line
 	; callback before the EOF close path consumes it.
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRecordLogicalLineV1
+.endif
 	move.l d5, -(sp)
 	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
 	bne.s fileEofProcessFail
@@ -416,12 +446,18 @@ macroDefinitionsFinished
 
 successClose
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.close
 	moveq #0, d0
 	rts
 
 close
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.close
 	moveq #1, d0
 	rts
@@ -500,6 +536,9 @@ return
 ; CCR: reflects D0 on return.
 opforgeNativeCliBootstrapSourceCpuNameFromInput	.block
 	lea state.NativeCliInputPath, a0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassBootstrapV1
+.endif
 	jsr dos.openInput
 	tst.l d0
 	bne.s openOk
@@ -515,6 +554,9 @@ loop
 	lea state.NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassBootstrapV1
+.endif
 	jsr dos.readInput
 	cmp.l #-1, d0
 	beq.w closeFail
@@ -565,12 +607,18 @@ fileEof
 
 closeOk
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassBootstrapV1
+.endif
 	jsr dos.close
 	moveq #0, d0
 	rts
 
 closeFail
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassBootstrapV1
+.endif
 	jsr dos.close
 	moveq #1, d0
 	rts

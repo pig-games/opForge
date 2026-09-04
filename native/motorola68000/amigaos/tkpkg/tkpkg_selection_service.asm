@@ -1168,7 +1168,11 @@ classifyPair
 	bne.s registerDirect
 	lea RegisterRegisterShapeText, a0
 	moveq #17, d0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	bra.w setShape
+.else
 	bra.s setShape
+.endif
 
 registerImmediate
 	lea RegisterImmediateShapeText, a0

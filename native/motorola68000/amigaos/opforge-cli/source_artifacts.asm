@@ -9,6 +9,9 @@
 	.use opforge.cli.directive_handlers
 	.use opforge.cli.dos
 	.use opforge.cli.line_text
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 	.use opforge.cli.output
 	.use opforge.cli.path
 	.use opforge.cli.state
@@ -577,6 +580,9 @@ copySelectedName
 	jsr path.opforgeNativeCliAppendPathBuffer
 	bne.w fail
 	lea state.NativeCliArtifactPathScratch, a0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+.endif
 	jsr dos.openOutput
 	tst.l d0
 	beq.w fail
@@ -601,12 +607,18 @@ copySelectedName
 	adda.l d1, a0
 	move.l d3, d0
 	move.l NativeSourceExportHandle, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+.endif
 	jsr dos.writeOutput
 	move.l NativeSourceExportSectionSize, d3
 	cmp.l d3, d0
 	bne.w closeExportFail
 closeExport
 	move.l NativeSourceExportHandle, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+.endif
 	jsr dos.close
 next
 	move.l NativeSourceExportSectionIndex, d6
@@ -623,6 +635,9 @@ return
 	rts
 closeExportFail
 	move.l NativeSourceExportHandle, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+.endif
 	jsr dos.close
 	moveq #1, d0
 	bra.s return
@@ -733,6 +748,9 @@ return
 
 writeMapArtifactV1	.block
 	movem.l d1-d4/a0, -(sp)
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+.endif
 	jsr dos.openOutput
 	tst.l d0
 	beq.s fail
@@ -741,15 +759,24 @@ writeMapArtifactV1	.block
 	move.l NativeSourceMapLength, d0
 	move.l d0, d3
 	move.l d4, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+.endif
 	jsr dos.writeOutput
 	cmp.l d3, d0
 	bne.s closeFail
 	move.l d4, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+.endif
 	jsr dos.close
 	moveq #0, d0
 	bra.s return
 closeFail
 	move.l d4, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+.endif
 	jsr dos.close
 fail
 	moveq #1, d0

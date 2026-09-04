@@ -8,6 +8,9 @@
 	.use tkpkg.amigaos.selection_state as state
 	.use tkpkg.amigaos.runtime_context as context
 	.use opcore.amigaos.expr_bridge
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 TKPKG_SELECTED_STATUS_OK = 0
 TKPKG_SELECTED_STATUS_NO_OUTPUT = 1
@@ -939,6 +942,12 @@ operandError
 	.bend  ; tkpkgMselWriteCandidateEnvelopeV1
 
 tkpkgMselCopyBytesV1	.block
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	andi.l #$ffff, d0
+	jsr platform_profile.opforgePlatformProfileCopyRequestedV1
+	move.l (sp), d0
+.endif
 	tst.w d0
 	beq.s done
 	subq.w #1, d0
@@ -948,6 +957,16 @@ loop
 	dbf d0, loop
 
 done
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l 6(sp), d0
+	andi.l #$ffff, d0
+	jsr platform_profile.opforgePlatformProfileCopyCompletedV1
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+	lea 4(sp), sp
+.endif
 	rts
 	.bend  ; tkpkgMselCopyBytesV1
 

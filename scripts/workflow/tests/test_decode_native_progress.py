@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import importlib.util
+import contextlib
+import io
+import json
 import struct
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 MODULE_PATH = ROOT / "scripts/performance/decode_native_progress.py"
@@ -115,7 +119,62 @@ def runtime_record(
     return bytes(data)
 
 
+def platform_record(
+    flags: int,
+    *,
+    run_id: int = 0x1234,
+    phase: int = 6,
+    pass_number: int = 2,
+    current_ids: tuple[int, int] = (0, 0),
+    overflow_bits: int = 0,
+    exit_status: int = 0,
+) -> bytes:
+    data = bytearray(decoder.PLATFORM_RECORD_BYTES)
+    struct.pack_into(
+        ">IHHIHHHH",
+        data,
+        0,
+        decoder.PLATFORM_MAGIC,
+        decoder.PLATFORM_SCHEMA_VERSION,
+        flags | decoder.PLATFORM_FLAG_IO_ENABLED | decoder.PLATFORM_FLAG_BULK_ENABLED,
+        run_id,
+        phase,
+        pass_number,
+        *current_ids,
+    )
+    for value, offset in enumerate(range(20, 184, 4), start=1):
+        struct.pack_into(">I", data, offset, value)
+    # One internally consistent bulk row, projected into two dimensions.
+    struct.pack_into(">I", data, 140, 0)
+    struct.pack_into(">IIIIII", data, 144, 32, 33, 33, 35, 36, 36)
+    data[192:216] = data[144:168]
+    phase_offset = decoder.PLATFORM_BULK_PHASES_OFFSET + 6 * decoder.PLATFORM_BULK_ROW_BYTES
+    data[phase_offset:phase_offset + 24] = data[144:168]
+    struct.pack_into(">II", data, 184, overflow_bits, exit_status)
+    return bytes(data)
+
+
 class NativeProgressDecoderTests(unittest.TestCase):
+    def test_platform_disabled_groups_are_explicit_and_empty(self) -> None:
+        for bit, spans in [
+            (decoder.PLATFORM_FLAG_IO_ENABLED, [(20, 140), (168, 184)]),
+            (decoder.PLATFORM_FLAG_BULK_ENABLED, [(144, 168), (192, 528)]),
+        ]:
+            data = bytearray(platform_record(decoder.PLATFORM_FLAG_COMPLETE))
+            flags = struct.unpack_from(">H", data, 6)[0]
+            struct.pack_into(">H", data, 6, flags & ~bit)
+            with self.assertRaisesRegex(decoder.ProgressDecodeError, "disabled platform"):
+                decoder.decode_platform_io(bytes(data))
+            for start, end in spans:
+                data[start:end] = bytes(end - start)
+            report = decoder.decode_platform_io(bytes(data), require_complete=True)
+            group = "io" if bit == decoder.PLATFORM_FLAG_IO_ENABLED else "bulk"
+            self.assertFalse(report["enabled_groups"][group])
+        data = bytearray(platform_record(decoder.PLATFORM_FLAG_COMPLETE))
+        struct.pack_into(">I", data, 140, 1)
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "seek count"):
+            decoder.decode_platform_io(bytes(data))
+
     def test_decodes_complete_big_endian_record(self) -> None:
         report = decoder.decode_progress(record(decoder.FLAG_COMPLETE), require_complete=True)
         self.assertEqual(report["state"], "complete")
@@ -334,6 +393,114 @@ class NativeProgressDecoderTests(unittest.TestCase):
         malformed[191] = 1
         with self.assertRaisesRegex(decoder.ProgressDecodeError, "reserved runtime"):
             decoder.decode_runtime_execution(bytes(malformed))
+
+    def test_decodes_correlated_platform_io(self) -> None:
+        report = decoder.decode_platform_io(
+            platform_record(decoder.PLATFORM_FLAG_COMPLETE),
+            expected_run_id=0x1234,
+            expected_state="complete",
+            expected_exit_status=0,
+            expected_phase=6,
+            expected_pass=2,
+            require_complete=True,
+        )
+        self.assertEqual(report["state"], "complete")
+        self.assertEqual(report["opens"]["source"], 1)
+        self.assertEqual(report["read_bytes"]["bootstrap"], 17)
+        self.assertEqual(report["clears"]["requested_bytes"], 33)
+        self.assertEqual(report["copies"]["completed_bytes"], 36)
+        self.assertEqual(report["bulk_by_range"]["other"]["clears"], report["clears"])
+        self.assertEqual(report["bulk_by_phase"]["layout"]["copies"], report["copies"])
+        self.assertEqual(report["logical_lines"], 39)
+
+    def test_rejects_malformed_uncorrelated_or_overflowing_platform(self) -> None:
+        complete = decoder.PLATFORM_FLAG_COMPLETE
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "run id"):
+            decoder.decode_platform_io(platform_record(complete), expected_run_id=7)
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "current platform class"):
+            decoder.decode_platform_io(platform_record(complete, current_ids=(6, 0)))
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "unknown platform overflow"):
+            decoder.decode_platform_io(platform_record(complete, overflow_bits=0x800))
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "not complete proof"):
+            decoder.decode_platform_io(
+                platform_record(complete, overflow_bits=1), require_complete=True
+            )
+
+    def test_platform_decoder_rejects_bad_headers_states_and_context(self) -> None:
+        complete = decoder.PLATFORM_FLAG_COMPLETE
+        for offset, format_, value in [
+            (0, ">I", 0), (4, ">H", 1), (6, ">H", 0),
+            (6, ">H", 3), (6, ">H", 6), (6, ">H", 8),
+            (12, ">H", 99), (18, ">H", 5), (188, ">I", 20),
+        ]:
+            with self.subTest(offset=offset, value=value):
+                malformed = bytearray(platform_record(complete))
+                struct.pack_into(format_, malformed, offset, value)
+                with self.assertRaises(decoder.ProgressDecodeError):
+                    decoder.decode_platform_io(bytes(malformed))
+        for data in [
+            platform_record(complete)[:-1],
+            platform_record(complete, current_ids=(1, 0)),
+            platform_record(complete, current_ids=(0, 1)),
+            platform_record(decoder.PLATFORM_FLAG_INCOMPLETE),
+            platform_record(decoder.PLATFORM_FLAG_ACTIVE, exit_status=1),
+        ]:
+            with self.subTest(data=data):
+                with self.assertRaises(decoder.ProgressDecodeError):
+                    decoder.decode_platform_io(data)
+        for kwargs in [
+            {"expected_state": "active"}, {"expected_exit_status": 20},
+            {"expected_phase": 2}, {"expected_pass": 1},
+        ]:
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(decoder.ProgressDecodeError):
+                    decoder.decode_platform_io(platform_record(complete), **kwargs)
+
+    def test_platform_bulk_breakdowns_and_partial_work_fail_closed(self) -> None:
+        complete = decoder.PLATFORM_FLAG_COMPLETE
+        phase_row = decoder.PLATFORM_BULK_PHASES_OFFSET + 6 * decoder.PLATFORM_BULK_ROW_BYTES
+        for offset in [192, phase_row + 4]:
+            data = bytearray(platform_record(complete))
+            struct.pack_into(">I", data, offset, 123)
+            with self.subTest(offset=offset), self.assertRaisesRegex(
+                decoder.ProgressDecodeError, "breakdown disagrees"
+            ):
+                decoder.decode_platform_io(bytes(data))
+        for completed in [32, 34]:
+            data = bytearray(platform_record(complete))
+            for offset in [152, 200, phase_row + 8]:
+                struct.pack_into(">I", data, offset, completed)
+            with self.subTest(completed=completed), self.assertRaisesRegex(
+                decoder.ProgressDecodeError, "unfinished bulk|exceed requests"
+            ):
+                decoder.decode_platform_io(bytes(data))
+        # An active interrupted operation is observable, but never complete proof.
+        data = bytearray(platform_record(decoder.PLATFORM_FLAG_ACTIVE))
+        for offset in [152, 200, phase_row + 8]:
+            struct.pack_into(">I", data, offset, 0)
+        report = decoder.decode_platform_io(bytes(data))
+        self.assertEqual(report["clears"]["requested_bytes"], 33)
+        self.assertEqual(report["clears"]["completed_bytes"], 0)
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "not proof"):
+            decoder.decode_platform_io(bytes(data), require_complete=True)
+
+    def test_platform_cli_decodes_companion_and_rejects_mismatched_run(self) -> None:
+        args = ["decode_native_progress.py", "progress.bin", "--platform-record",
+                "platform.bin", "--require-complete"]
+        for run_id, expected_exit in [(0x1234, 0), (7, 1)]:
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with self.subTest(run_id=run_id), mock.patch("sys.argv", args), \
+                    mock.patch.object(Path, "read_bytes", side_effect=[
+                        record(decoder.FLAG_COMPLETE),
+                        platform_record(decoder.PLATFORM_FLAG_COMPLETE, run_id=run_id),
+                    ]), contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                self.assertEqual(decoder.main(), expected_exit)
+            if expected_exit == 0:
+                self.assertEqual(json.loads(stdout.getvalue())["platform_io"]["run_id"], run_id)
+                self.assertEqual(stderr.getvalue(), "")
+            else:
+                self.assertEqual(stdout.getvalue(), "")
+                self.assertIn("run id", stderr.getvalue())
 
 
 if __name__ == "__main__":

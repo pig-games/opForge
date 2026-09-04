@@ -1471,7 +1471,11 @@ transformRangeResolved
 	tst.w 8(sp)
 	beq.w transformFail
 	move.l (sp), d3
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	bra.w transformOk
+.else
 	bra.s transformOk
+.endif
 
 transformAlignedBitOr
 	moveq #8, d0

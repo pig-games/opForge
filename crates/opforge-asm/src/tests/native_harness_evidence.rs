@@ -28,6 +28,45 @@ fn native_harness_live_rust_cli_oracle(label: &str, source: &str) -> Vec<u8> {
     fs::read(&bin_path).expect("read native-harness live Rust CLI oracle")
 }
 
+fn native_harness_decode_exported_profile(
+    run: &crate::fs_uae_smoke::FsUaeSmokeRun,
+    require_complete: bool,
+) -> serde_json::Value {
+    // Inputs are captured from this already-completed fresh guest, never a
+    // stored report/oracle. All decoder scratch files are ephemeral as well.
+    let case_dir = create_temp_dir("native-profile-decode");
+    let _case_dir_guard = NativeHarnessOracleDir(case_dir.clone());
+    let mut command = std::process::Command::new("python3");
+    command.arg(workspace_root().join("scripts/performance/decode_native_progress.py"));
+    for (extension, flag, expected_size) in [
+        ("ofpr", None, 128),
+        ("ofwk", Some("--work-record"), 128),
+        ("ofse", Some("--symbol-expression-record"), 256),
+        ("ofvm", Some("--runtime-record"), 192),
+        ("ofio", Some("--platform-record"), 528),
+    ] {
+        let name = format!("opforge-profile.{extension}");
+        let bytes = captured_fs_uae_artifact(run, &format!("Work/{name}"));
+        assert_eq!(bytes.len(), expected_size, "invalid exported {name}");
+        let path = case_dir.join(&name);
+        fs::write(&path, bytes).expect("write ephemeral native profile decoder input");
+        if let Some(flag) = flag {
+            command.arg(flag);
+        }
+        command.arg(path);
+    }
+    if require_complete {
+        command.arg("--require-complete");
+    }
+    let result = command.output().expect("run strict native profile decoder");
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    serde_json::from_slice(&result.stdout).expect("decode native profile JSON")
+}
+
 #[test]
 fn native_debug_contract_cli_header_fs_uae_proves_real_site_behavior() {
     match crate::fs_uae_smoke::run_native_cli_debug_event_from_env(&workspace_root())
@@ -111,6 +150,159 @@ fn external_fs_uae_native_progress_cli_preserves_exact_artifact_and_exit() {
                 run.protocol_completed, run.exit_code, run.stdout, run.stderr
             );
             assert_eq!(run.verified_output.as_deref(), Some(rust_oracle.as_slice()));
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_platform_profile_cli_preserves_exact_artifact_and_exit() {
+    // Proof level D: the real CLI with platform counters must complete its
+    // fresh guest protocol and match the actual source's live Rust oracle.
+    // This does not prove counter coverage, corpus attribution, or speed.
+    let rust_oracle = native_harness_live_rust_cli_oracle(
+        "native-platform-profile-cli-live-rust-cli",
+        crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT,
+    );
+    match crate::fs_uae_smoke::run_native_platform_profile_cli_parity_from_env(
+        &workspace_root(),
+        &rust_oracle,
+    )
+    .expect("platform profile CLI parity should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(
+                run.protocol_completed,
+                "guest protocol did not complete: {}",
+                run.stderr
+            );
+            assert_eq!(run.exit_code, Some(0), "{}\n{}", run.stdout, run.stderr);
+            assert!(run.success, "platform profile CLI failed: {}", run.stderr);
+            assert_eq!(run.verified_output.as_deref(), Some(rust_oracle.as_slice()));
+            let profile = native_harness_decode_exported_profile(run, true);
+            let mode =
+                std::env::var("OPFORGE_NATIVE_PROFILE_PLATFORM_MODE").unwrap_or("all".into());
+            let io_enabled = matches!(mode.as_str(), "all" | "io");
+            let bulk_enabled = matches!(mode.as_str(), "all" | "bulk");
+            assert_eq!(profile["platform_io"]["enabled_groups"]["io"], io_enabled);
+            assert_eq!(
+                profile["platform_io"]["enabled_groups"]["bulk"],
+                bulk_enabled
+            );
+            assert_eq!(
+                profile["platform_io"]["logical_lines"].as_u64().unwrap() > 0,
+                io_enabled
+            );
+            if io_enabled {
+                let source =
+                    crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT;
+                assert_eq!(profile["platform_io"]["source_bytes"], source.len());
+                assert_eq!(profile["platform_io"]["reads"]["source"], source.len() + 1);
+                assert_eq!(
+                    profile["platform_io"]["logical_lines"],
+                    source.lines().count()
+                );
+                assert_eq!(profile["platform_io"]["short_reads"], 1);
+                assert_eq!(profile["platform_io"]["writes"]["artifact"], 1);
+                assert_eq!(
+                    profile["platform_io"]["write_bytes"]["artifact"],
+                    rust_oracle.len()
+                );
+            }
+            if bulk_enabled {
+                let resets = 1
+                    + profile["work_multiplication"]["layout_rounds"]
+                        .as_u64()
+                        .unwrap()
+                    + profile["work_multiplication"]["final_emissions"]
+                        .as_u64()
+                        .unwrap();
+                let presence = &profile["platform_io"]["bulk_by_range"]["presence"]["clears"];
+                assert_eq!(presence["calls"], resets);
+                assert_eq!(presence["completed_bytes"], resets * 1_048_576);
+            }
+            assert!(
+                (profile["platform_io"]["clears"]["completed_bytes"]
+                    .as_u64()
+                    .unwrap()
+                    > 0)
+                    == bulk_enabled
+            );
+            eprintln!(
+                "PLATFORM_PROFILE {}",
+                serde_json::to_string(&profile).unwrap()
+            );
+            eprintln!(
+                "PLATFORM_EXECUTABLE_BYTES {}",
+                captured_fs_uae_artifact(run, "Work/build/opforge_cli").len()
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_native_platform_profile_output_open_failure() {
+    // Proof level D for a real DOS error with profiling enabled: exact fresh
+    // completion, explicit nonzero guest exit, and the required diagnostic.
+    // This does not prove arbitrary short writes or corpus-wide counter values.
+    use crate::fs_uae_smoke::{
+        OpforgeNativeCliPackageMode, OpforgeNativeCliParityCase, OpforgeNativeCliProof,
+    };
+    let case = OpforgeNativeCliParityCase {
+        name: "native-platform-output-open-failure",
+        cpu_override: "68020",
+        extra_assembly_defines: &[
+            crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE,
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_PROGRESS_PLATFORM_COUNTERS",
+            "OPFORGE_PROGRESS_EXPORT_RECORDS",
+            "OPFORGE_PROGRESS_WORK_COUNTERS",
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS",
+            "OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL",
+            "OPFORGE_PROGRESS_RUNTIME_COUNTERS",
+        ],
+        source_override: Some(
+            crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT.as_bytes(),
+        ),
+        command_template: Some("{input} --bin Work:absent-platform-dir/out.bin --cpu m6502"),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExpectedFailureContaining(
+            "ERROR OPC-NCLI043: native output file open failed",
+        ),
+    };
+    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &[case],
+    )
+    .expect("profiled output failure must complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert!(run.protocol_completed, "{}", run.stderr);
+            assert!(
+                run.exit_code.is_some_and(|code| code != 0),
+                "{}\n{}",
+                run.stdout,
+                run.stderr
+            );
+            // `success` means guest exit zero, not expected-negative proof.
+            // The runner already validated the fresh failure protocol/diagnostic.
+            assert!(!run.success);
+            assert!(format!("{}\n{}", run.stdout, run.stderr)
+                .contains("ERROR OPC-NCLI043: native output file open failed"));
+            let profile = native_harness_decode_exported_profile(run, false);
+            assert_eq!(profile["state"], "incomplete");
+            assert_eq!(
+                profile["exit_status"].as_i64(),
+                run.exit_code.map(i64::from)
+            );
+            assert_eq!(profile["platform_io"]["state"], "incomplete");
+            assert_eq!(profile["platform_io"]["overflow_bits"], 0);
         }
     }
 }

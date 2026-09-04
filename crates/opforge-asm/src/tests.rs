@@ -796,6 +796,174 @@ fn native_runtime_execution_profile_full_cli_assembles() {
 }
 
 #[test]
+fn native_platform_profile_dos_wrappers_keep_one_operation_and_return_state() {
+    // Proof level B: lock down the recovered wrapper instruction contract.
+    // This is not a simulator or proof of arbitrary DOS/IoErr behavior.
+    let source = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/dos.asm"),
+    )
+    .unwrap();
+    for (name, operation) in [("readInput", "READ"), ("writeOutput", "WRITE")] {
+        let body = source
+            .split(&format!("{name}\t.block"))
+            .nth(1)
+            .unwrap()
+            .split("\t.bend")
+            .next()
+            .unwrap();
+        assert_eq!(
+            body.matches(&format!("jsr constants.{operation}(a6)"))
+                .count(),
+            1
+        );
+        assert!(body.contains("move.l 6(sp), d1"));
+        assert!(body.contains("move.l (sp)+, d1\n\tmove.w (sp)+, ccr\n\tlea 4(sp), sp"));
+    }
+}
+
+#[test]
+fn native_platform_profile_io_sites_and_source_eof_are_explicit() {
+    // Proof level B: all current file operations choose their own class.
+    // Actual nested guest behavior and arbitrary I/O failures require Level D.
+    let dir = workspace_root().join("native/motorola68000/amigaos/opforge-cli");
+    let mut sites = 0;
+    for entry in fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("asm") {
+            continue;
+        }
+        let source = fs::read_to_string(&path).unwrap();
+        let lines: Vec<_> = source.lines().collect();
+        for (index, line) in lines.iter().enumerate() {
+            if [
+                "openInput",
+                "openOutput",
+                "readInput",
+                "writeOutput",
+                "close",
+            ]
+            .iter()
+            .any(|operation| line.trim() == format!("jsr dos.{operation}"))
+            {
+                sites += 1;
+                assert!(index >= 3, "{}", path.display());
+                assert_eq!(
+                    lines[index - 3],
+                    ".ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS"
+                );
+                assert!(
+                    lines[index - 2].contains("jsr platform_profile.opforgePlatformProfileClass"),
+                    "{}:{index}",
+                    path.display()
+                );
+                assert_eq!(lines[index - 1], ".endif");
+            }
+        }
+    }
+    assert!(
+        sites >= 40,
+        "unexpectedly missing audited I/O sites: {sites}"
+    );
+    let reader = fs::read_to_string(dir.join("source_reader.asm")).unwrap();
+    assert_eq!(
+        reader
+            .matches("jsr platform_profile.opforgePlatformProfileRecordLogicalLineV1")
+            .count(),
+        2
+    );
+    let eof = reader
+        .split("\nfileEof\n")
+        .nth(1)
+        .unwrap()
+        .split("\nfileEofProcessFail\n")
+        .next()
+        .unwrap();
+    assert!(eof.contains("jsr platform_profile.opforgePlatformProfileRecordLogicalLineV1"));
+    let run = fs::read_to_string(dir.join("run.asm")).unwrap();
+    assert!(
+        run.find("jsr progress.opasmProgressBeginRunV1").unwrap()
+            < run
+                .find("jsr session_init.opforgeNativeCliInitModuleUseState")
+                .unwrap()
+    );
+}
+
+#[test]
+fn native_platform_profile_harness_and_cli_assemble() {
+    // Proof level C: independent and combined counter builds compose. This
+    // does not prove guest execution, numeric accuracy, or artifact parity.
+    let root = workspace_root();
+    for (combined, disabled) in [
+        (false, &[][..]),
+        (true, &[][..]),
+        (false, &["OPFORGE_PROGRESS_PLATFORM_NO_IO"][..]),
+        (false, &["OPFORGE_PROGRESS_PLATFORM_NO_BULK"][..]),
+        (
+            false,
+            &[
+                "OPFORGE_PROGRESS_PLATFORM_NO_IO",
+                "OPFORGE_PROGRESS_PLATFORM_NO_BULK",
+            ][..],
+        ),
+    ] {
+        let mut defines = vec![
+            "OPFORGE_DEBUG_CONTRACTS".to_string(),
+            "OPFORGE_PROGRESS_PLATFORM_COUNTERS".to_string(),
+        ];
+        defines.extend(disabled.iter().map(|flag| (*flag).to_string()));
+        if combined {
+            defines.extend([
+                "OPFORGE_PROGRESS_WORK_COUNTERS".to_string(),
+                "OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS".to_string(),
+                "OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL".to_string(),
+                "OPFORGE_PROGRESS_RUNTIME_COUNTERS".to_string(),
+            ]);
+        }
+        for relative in [
+            "native/motorola68000/amigaos/test-harnesses/debug/opasm_progress_harness.asm",
+            "native/motorola68000/amigaos/main.asm",
+        ] {
+            let out = create_temp_dir("native-platform-profile");
+            assemble_example_with_base_and_defines(
+                &root.join(relative),
+                &out,
+                "platform_profile",
+                false,
+                &defines,
+            )
+            .unwrap_or_else(|error| panic!("assemble {relative} (combined={combined}): {error}"));
+        }
+    }
+}
+
+#[test]
+fn native_platform_profile_fs_uae_confirms_counter_contract() {
+    // Proof level D for the deterministic record oracle only. This does not
+    // establish complete platform coverage or whole-CLI artifact parity.
+    match crate::fs_uae_smoke::run_native_platform_profile_harness_from_env(&workspace_root())
+        .expect("platform profile harness should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 4);
+            for run in &runs {
+                assert!(
+                    run.protocol_completed,
+                    "guest protocol did not complete: {}",
+                    run.stderr
+                );
+                assert_eq!(run.exit_code, Some(0), "{}\n{}", run.stdout, run.stderr);
+                assert!(
+                    run.success,
+                    "platform profile harness failed: {}",
+                    run.stderr
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn native_runtime_execution_profile_fs_uae_confirms_counter_contract() {
     // Proof level D. The fresh guest exits zero only after deterministic VM,
     // program, nested-service, candidate, phase, overflow, and terminal checks.
@@ -2490,6 +2658,7 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
             .join("amigaos");
         if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("opasm_progress_harness") {
             return vec![
+                amigaos_dir.join("opforge-cli"),
                 amigaos_dir.join("opasm"),
                 amigaos_dir.join("opcore"),
                 amigaos_dir.join("debug"),

@@ -414,7 +414,11 @@ absoluteRefreshPass
 	moveq #0, d4
 absoluteRefreshLabel
 	cmp.w d5, d4
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	bhs.w absoluteRefreshPassDone
+.else
 	bhs.s absoluteRefreshPassDone
+.endif
 	move.w d4, d0
 	jsr eng.opasmEngineGetPcBackedLabelValueV1
 	tst.l d1

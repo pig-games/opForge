@@ -13,6 +13,9 @@
 	.use opforge.debug.events as debug_events
 	.include "debug_macros.i"
 .endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 	.section code, kind=code
 	.pub
@@ -23,6 +26,9 @@
 ; Clobbers: D0-D1/A0/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliResetPreprocessorV1	.block
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeStateV1
+.endif
 	lea state.NativeCliPreprocessStateStart, a0
 	move.l #state.NATIVE_CLI_PREPROCESS_STATE_BYTES, d0
 	jsr copy.clearBytes

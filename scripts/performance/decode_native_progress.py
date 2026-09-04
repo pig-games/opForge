@@ -85,6 +85,25 @@ RUNTIME_SERVICES = (
 )
 RUNTIME_PHASE_BUCKETS = ("pass_one", "layout", "final_emission", "other")
 
+PLATFORM_MAGIC = 0x4F46494F
+PLATFORM_SCHEMA_VERSION = 2
+PLATFORM_RECORD_BYTES = 528
+PLATFORM_FLAG_ACTIVE = 1
+PLATFORM_FLAG_COMPLETE = 2
+PLATFORM_FLAG_INCOMPLETE = 4
+PLATFORM_FLAG_IO_ENABLED = 8
+PLATFORM_FLAG_BULK_ENABLED = 16
+PLATFORM_KNOWN_FLAGS = (
+    PLATFORM_FLAG_ACTIVE | PLATFORM_FLAG_COMPLETE | PLATFORM_FLAG_INCOMPLETE
+    | PLATFORM_FLAG_IO_ENABLED | PLATFORM_FLAG_BULK_ENABLED
+)
+PLATFORM_KNOWN_OVERFLOW_BITS = 0x7FF
+PLATFORM_CLASSES = ("source", "bootstrap", "module", "package", "artifact")
+PLATFORM_RANGES = ("other", "session", "package", "state", "presence")
+PLATFORM_BULK_RANGES_OFFSET = 192
+PLATFORM_BULK_PHASES_OFFSET = 312
+PLATFORM_BULK_ROW_BYTES = 24
+
 PHASES = (
     "idle",
     "startup",
@@ -578,12 +597,168 @@ def decode_runtime_execution(
     }
 
 
+def decode_platform_io(
+    data: bytes,
+    *,
+    expected_run_id: int | None = None,
+    expected_state: str | None = None,
+    expected_exit_status: int | None = None,
+    expected_phase: int | None = None,
+    expected_pass: int | None = None,
+    require_complete: bool = False,
+) -> dict[str, object]:
+    if len(data) != PLATFORM_RECORD_BYTES:
+        raise ProgressDecodeError(
+            f"expected {PLATFORM_RECORD_BYTES} platform bytes, got {len(data)}"
+        )
+    if _u32(data, 0) != PLATFORM_MAGIC:
+        raise ProgressDecodeError("platform record magic is not OFIO")
+    version = _u16(data, 4)
+    if version != PLATFORM_SCHEMA_VERSION:
+        raise ProgressDecodeError(f"unsupported platform schema version {version}")
+    flags = _u16(data, 6)
+    unknown_flags = flags & ~PLATFORM_KNOWN_FLAGS
+    if unknown_flags:
+        raise ProgressDecodeError(f"unknown platform flag bits 0x{unknown_flags:04x}")
+    active = bool(flags & PLATFORM_FLAG_ACTIVE)
+    complete = bool(flags & PLATFORM_FLAG_COMPLETE)
+    incomplete = bool(flags & PLATFORM_FLAG_INCOMPLETE)
+    io_enabled = bool(flags & PLATFORM_FLAG_IO_ENABLED)
+    bulk_enabled = bool(flags & PLATFORM_FLAG_BULK_ENABLED)
+    if complete and incomplete:
+        raise ProgressDecodeError("platform record cannot be both complete and incomplete")
+    if active and (complete or incomplete):
+        raise ProgressDecodeError("terminal platform record cannot remain active")
+    if not active and not (complete or incomplete):
+        raise ProgressDecodeError("platform record must be active, complete, or incomplete")
+    if require_complete and not complete:
+        raise ProgressDecodeError("incomplete or active platform record is not proof")
+    state = "complete" if complete else "incomplete" if incomplete else "active"
+    if expected_state is not None and state != expected_state:
+        raise ProgressDecodeError(
+            f"platform record state {state} does not match progress state {expected_state}"
+        )
+    run_id = _u32(data, 8)
+    if expected_run_id is not None and run_id != expected_run_id:
+        raise ProgressDecodeError(
+            f"platform record run id {run_id} does not match progress run id {expected_run_id}"
+        )
+    phase = _u16(data, 12)
+    if phase >= len(PHASES):
+        raise ProgressDecodeError(f"unknown platform phase {phase}")
+    pass_number = _u16(data, 14)
+    if expected_phase is not None and phase != expected_phase:
+        raise ProgressDecodeError(
+            f"platform phase {phase} does not match progress phase {expected_phase}"
+        )
+    if expected_pass is not None and pass_number != expected_pass:
+        raise ProgressDecodeError(
+            f"platform pass {pass_number} does not match progress pass {expected_pass}"
+        )
+    current_class = _u16(data, 16)
+    current_range = _u16(data, 18)
+    if current_class > len(PLATFORM_CLASSES):
+        raise ProgressDecodeError(f"unknown current platform class id {current_class}")
+    if current_range >= len(PLATFORM_RANGES):
+        raise ProgressDecodeError(f"unknown current platform range id {current_range}")
+    if not active and (current_class or current_range):
+        raise ProgressDecodeError("terminal platform record must clear current context")
+    overflow_bits = _u32(data, 184)
+    unknown_overflow_bits = overflow_bits & ~PLATFORM_KNOWN_OVERFLOW_BITS
+    if unknown_overflow_bits:
+        raise ProgressDecodeError(
+            f"unknown platform overflow bits 0x{unknown_overflow_bits:08x}"
+        )
+    if require_complete and overflow_bits:
+        raise ProgressDecodeError("overflowing platform record is not complete proof")
+    exit_status = _u32(data, 188)
+    if complete and exit_status != 0:
+        raise ProgressDecodeError("complete platform record must have zero exit status")
+    if incomplete and exit_status == 0:
+        raise ProgressDecodeError("incomplete platform record must have nonzero exit status")
+    if active and exit_status != 0:
+        raise ProgressDecodeError("active platform record must have zero exit status")
+    if expected_exit_status is not None and exit_status != expected_exit_status:
+        raise ProgressDecodeError(
+            f"platform record exit status {exit_status} does not match progress exit status {expected_exit_status}"
+        )
+
+    def named_counts(names: tuple[str, ...], offset: int) -> dict[str, int]:
+        return {name: _u32(data, offset + index * 4) for index, name in enumerate(names)}
+
+    # There is no native DOS seek operation in this bridge implementation.
+    # Keep the reserved slot fail-closed instead of inventing attribution.
+    if _u32(data, 140):
+        raise ProgressDecodeError("reserved platform seek count must be zero")
+    if not io_enabled and (current_class or any(data[20:140]) or any(data[168:184])):
+        raise ProgressDecodeError("disabled platform I/O group contains observations")
+    if not bulk_enabled and (current_range or any(data[144:168]) or any(data[192:])):
+        raise ProgressDecodeError("disabled platform bulk group contains observations")
+
+    def bulk_row(offset: int) -> dict[str, dict[str, int]]:
+        fields = ("calls", "requested_bytes", "completed_bytes")
+        return {
+            "clears": named_counts(fields, offset),
+            "copies": named_counts(fields, offset + 12),
+        }
+
+    bulk = bulk_row(144)
+    ranges = {name: bulk_row(PLATFORM_BULK_RANGES_OFFSET + index * PLATFORM_BULK_ROW_BYTES)
+              for index, name in enumerate(PLATFORM_RANGES)}
+    phases = {name: bulk_row(PLATFORM_BULK_PHASES_OFFSET + index * PLATFORM_BULK_ROW_BYTES)
+              for index, name in enumerate(PHASES)}
+    if not overflow_bits:
+        for dimension in (ranges, phases):
+            for kind in ("clears", "copies"):
+                for field, total in bulk[kind].items():
+                    if sum(row[kind][field] for row in dimension.values()) != total:
+                        raise ProgressDecodeError("platform bulk breakdown disagrees with aggregate")
+        for row in (bulk, *ranges.values(), *phases.values()):
+            for values in row.values():
+                if values["completed_bytes"] > values["requested_bytes"]:
+                    raise ProgressDecodeError("platform bulk completed bytes exceed requests")
+                if complete and values["completed_bytes"] != values["requested_bytes"]:
+                    raise ProgressDecodeError("complete platform record has unfinished bulk work")
+
+    return {
+        "schema_version": version,
+        "run_id": run_id,
+        "state": state,
+        "phase": PHASES[phase],
+        "phase_id": phase,
+        "pass": pass_number,
+        "current_class": None if current_class == 0 else PLATFORM_CLASSES[current_class - 1],
+        "current_class_id": current_class,
+        "current_range": PLATFORM_RANGES[current_range],
+        "current_range_id": current_range,
+        "enabled_groups": {"io": io_enabled, "bulk": bulk_enabled},
+        "opens": named_counts(PLATFORM_CLASSES, 20),
+        "closes": named_counts(PLATFORM_CLASSES, 40),
+        "reads": named_counts(PLATFORM_CLASSES, 60),
+        "read_bytes": named_counts(PLATFORM_CLASSES, 80),
+        "writes": named_counts(PLATFORM_CLASSES, 100),
+        "write_bytes": named_counts(PLATFORM_CLASSES, 120),
+        "seeks": _u32(data, 140),
+        "seeks_by_class": {name: 0 for name in PLATFORM_CLASSES},
+        **bulk,
+        "bulk_by_range": ranges,
+        "bulk_by_phase": phases,
+        "source_bytes": _u32(data, 168),
+        "logical_lines": _u32(data, 172),
+        "module_candidates": _u32(data, 176),
+        "short_reads": _u32(data, 180),
+        "overflow_bits": overflow_bits,
+        "exit_status": exit_status,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("record", type=Path)
     parser.add_argument("--work-record", type=Path)
     parser.add_argument("--symbol-expression-record", type=Path)
     parser.add_argument("--runtime-record", type=Path)
+    parser.add_argument("--platform-record", type=Path)
     parser.add_argument("--require-complete", action="store_true")
     args = parser.parse_args()
     try:
@@ -611,6 +786,16 @@ def main() -> int:
         if args.runtime_record is not None:
             report["runtime_execution"] = decode_runtime_execution(
                 args.runtime_record.read_bytes(),
+                expected_run_id=int(report["run_id"]),
+                expected_state=str(report["state"]),
+                expected_exit_status=int(report["exit_status"]),
+                expected_phase=int(report["phase_id"]),
+                expected_pass=int(report["pass"]),
+                require_complete=args.require_complete,
+            )
+        if args.platform_record is not None:
+            report["platform_io"] = decode_platform_io(
+                args.platform_record.read_bytes(),
                 expected_run_id=int(report["run_id"]),
                 expected_state=str(report["state"]),
                 expected_exit_status=int(report["exit_status"]),

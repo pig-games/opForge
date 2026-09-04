@@ -9,6 +9,9 @@
 
 	.use opforge.cli.state
 	.use opforge.cli.constants
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 	.section code, kind=code
 	.pub
@@ -60,6 +63,9 @@ unavailable
 
 ; Open an existing AmigaDOS input file.
 openInput	.block
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRecordOpenV1
+.endif
 	move.l a0, d1
 	move.l #constants.MODE_OLDFILE, d2
 	movea.l state.NativeCliDosBase, a6
@@ -69,6 +75,9 @@ openInput	.block
 
 ; Close an AmigaDOS file handle in D1.
 close	.block
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRecordCloseV1
+.endif
 	movea.l state.NativeCliDosBase, a6
 	jsr constants.CLOSE(a6)
 	rts
@@ -76,10 +85,22 @@ close	.block
 
 ; Read D0 bytes from file handle D1 into buffer A0.
 readInput	.block
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+.endif
 	move.l a0, d2
 	move.l d0, d3
 	movea.l state.NativeCliDosBase, a6
 	jsr constants.READ(a6)
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.w ccr, -(sp)
+	move.l d1, -(sp)
+	move.l 6(sp), d1
+	jsr platform_profile.opforgePlatformProfileRecordReadV1
+	move.l (sp)+, d1
+	move.w (sp)+, ccr
+	lea 4(sp), sp
+.endif
 	rts
 	.bend  ; readInput
 
@@ -135,6 +156,9 @@ ioErr	.block
 
 ; Open or create an AmigaDOS output file.
 openOutput	.block
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRecordOpenV1
+.endif
 	move.l a0, d1
 	move.l #constants.MODE_NEWFILE, d2
 	movea.l state.NativeCliDosBase, a6
@@ -167,10 +191,22 @@ addPart	.block
 
 ; Write D0 bytes from buffer A0 to file handle D1.
 writeOutput	.block
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+.endif
 	move.l a0, d2
 	move.l d0, d3
 	movea.l state.NativeCliDosBase, a6
 	jsr constants.WRITE(a6)
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.w ccr, -(sp)
+	move.l d1, -(sp)
+	move.l 6(sp), d1
+	jsr platform_profile.opforgePlatformProfileRecordWriteV1
+	move.l (sp)+, d1
+	move.w (sp)+, ccr
+	lea 4(sp), sp
+.endif
 	rts
 	.bend  ; writeOutput
 

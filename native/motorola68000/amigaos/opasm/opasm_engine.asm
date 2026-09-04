@@ -14,6 +14,9 @@
 .ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
 	.use debug.amigaos.symbol_expr_profile as symbol_expr_profile
 .endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 	.pub
 
@@ -159,6 +162,9 @@ initSessionV1	.block
 	movem.l d1/a0-a1, -(sp)
 	lea OpasmEngineAssemblySessionStart.l, a1
 	move.l #OPASM_ENGINE_ASSEMBLY_SESSION_BYTES, d0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+.endif
 	bsr.w clearBytes
 	lea OpasmEngineSessionCpuName.l, a1
 	move.l #TOKEN_BUFFER_CAPACITY - 1, d0
@@ -234,7 +240,11 @@ opasmEngineRecordSourceLineV1	.block
 lengthReady
 	move.l OpasmEngineSourceRecordCount.l, d2
 	cmpi.l #NATIVE_SOURCE_RECORD_CAPACITY, d2
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	bhs.w fail
+.else
 	bhs.s fail
+.endif
 	move.l OpasmEngineSourceTextPoolLen.l, d6
 	move.l d6, d3
 	add.l d4, d3
@@ -258,6 +268,13 @@ lengthReady
 	move.l d4, d3
 
 copyReady
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l d3, d0
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+	jsr platform_profile.opforgePlatformProfileCopyRequestedV1
+	move.l (sp)+, d0
+	.endif
 	move.l d3, d1
 	beq.s copyDone
 	subq.l #1, d1
@@ -267,6 +284,12 @@ copyLoop
 	dbra d1, copyLoop
 
 copyDone
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l d4, d0
+	jsr platform_profile.opforgePlatformProfileCopyCompletedV1
+	move.l (sp)+, d0
+	.endif
 	clr.b (a1)
 	move.l d4, d0
 	addq.l #1, d0
@@ -381,17 +404,43 @@ opasmEngineBeginPassOneV1	.block
 	move.w #-1, OpasmEngineLastResolvedLabelIndex.l
 	lea OpasmEngineLabelFinalizedTable.l, a0
 	lea OpasmEngineLabelAbsoluteConstantTable.l, a1
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l #NATIVE_LABEL_TABLE_CAPACITY * 2, d0
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+	jsr platform_profile.opforgePlatformProfileClearRequestedV1
+	move.l (sp)+, d0
+	.endif
 	move.w #NATIVE_LABEL_TABLE_CAPACITY - 1, d0
 
 clearLoop
 	clr.b (a0)+
 	clr.b (a1)+
 	dbf d0, clearLoop
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l #NATIVE_LABEL_TABLE_CAPACITY * 2, d0
+	jsr platform_profile.opforgePlatformProfileClearCompletedV1
+	move.l (sp)+, d0
+	.endif
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l #NATIVE_LABEL_HASH_BUCKET_CAPACITY * 4, d0
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+	jsr platform_profile.opforgePlatformProfileClearRequestedV1
+	move.l (sp)+, d0
+	.endif
 	lea OpasmEngineLabelHashHeadTable.l, a0
 	move.w #NATIVE_LABEL_HASH_BUCKET_CAPACITY - 1, d0
 clearHashLoop
 	clr.l (a0)+
 	dbf d0, clearHashLoop
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l #NATIVE_LABEL_HASH_BUCKET_CAPACITY * 4, d0
+	jsr platform_profile.opforgePlatformProfileClearCompletedV1
+	move.l (sp)+, d0
+	.endif
 	clr.l OpasmEngineImageByteCount.l
 	clr.l OpasmEngineImageWriteOffset.l
 	clr.l OpasmEngineSessionOrigin.l
@@ -523,6 +572,9 @@ storeLabel
 	movea.l a3, a0
 
 haveStoreLabelLen
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+.endif
 	bsr.w copyFixedString
 	clr.b (a1)
 	move.l d7, d5
@@ -637,6 +689,9 @@ storeLabel
 	movea.l a3, a0
 
 haveStoreLabelLen
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+.endif
 	bsr.w copyFixedString
 	clr.b (a1)
 	move.l d7, d5
@@ -1051,10 +1106,30 @@ opasmEngineAppendImageBytesV1	.block
 	lea OpasmEngineImageBuffer.l, a1
 	adda.l d3, a1
 	sub.l d3, d1
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d1, -(sp)
+	.endif
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l d1, d0
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+	jsr platform_profile.opforgePlatformProfileClearRequestedV1
+	move.l (sp)+, d0
+	.endif
+
 mainGapLoop
 	clr.b (a1)+
 	subq.l #1, d1
 	bne.s mainGapLoop
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l (sp)+, d1
+	.endif
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l d1, d0
+	jsr platform_profile.opforgePlatformProfileClearCompletedV1
+	move.l (sp)+, d0
+	.endif
 	move.l OpasmEngineImageWriteOffset.l, d1
 mainCopyReady
 	lea OpasmEngineImageBuffer.l, a1
@@ -1062,6 +1137,13 @@ mainCopyReady
 	lea OpasmEngineImagePresentBuffer.l, a2
 	adda.l d1, a2
 	move.l d0, d3
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l d3, d0
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+	jsr platform_profile.opforgePlatformProfileCopyRequestedV1
+	move.l (sp)+, d0
+	.endif
 	move.l d3, d1
 	beq.s done
 
@@ -1072,6 +1154,12 @@ copyLoop
 	bne.s copyLoop
 
 done
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l d3, d0
+	jsr platform_profile.opforgePlatformProfileCopyCompletedV1
+	move.l (sp)+, d0
+	.endif
 	add.l d3, OpasmEngineImageWriteOffset.l
 	move.l OpasmEngineImageWriteOffset.l, d1
 	move.l OpasmEngineImageByteCount.l, d2
@@ -1088,6 +1176,13 @@ mapped
 	move.l OpasmEngineMappedImageByteCount.l, d1
 	lea OpasmEngineMappedImageBuffer.l, a1
 	adda.l d1, a1
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l d3, d0
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+	jsr platform_profile.opforgePlatformProfileCopyRequestedV1
+	move.l (sp)+, d0
+	.endif
 	move.l d3, d1
 	beq.s mappedDone
 
@@ -1097,6 +1192,12 @@ mappedCopyLoop
 	bne.s mappedCopyLoop
 
 mappedDone
+	.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l d3, d0
+	jsr platform_profile.opforgePlatformProfileCopyCompletedV1
+	move.l (sp)+, d0
+	.endif
 	add.l d3, OpasmEngineMappedImageByteCount.l
 
 success
@@ -1119,10 +1220,20 @@ clearImagePresentV1	.block
 	movem.l d0/a0, -(sp)
 	lea OpasmEngineImagePresentBuffer.l, a0
 	move.l #NATIVE_IMAGE_BUFFER_CAPACITY, d0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangePresenceV1
+	jsr platform_profile.opforgePlatformProfileClearRequestedV1
+.endif
 clearPresentLoop
 	clr.b (a0)+
 	subq.l #1, d0
 	bne.s clearPresentLoop
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.w ccr, -(sp)
+	move.l #NATIVE_IMAGE_BUFFER_CAPACITY, d0
+	jsr platform_profile.opforgePlatformProfileClearCompletedV1
+	move.w (sp)+, ccr
+.endif
 	movem.l (sp)+, d0/a0
 	rts
 	.bend  ; clearImagePresentV1
@@ -2942,6 +3053,10 @@ restoreOutputMode
 	.priv
 
 clearBytes	.block
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	jsr platform_profile.opforgePlatformProfileClearRequestedV1
+.endif
 	tst.l d0
 	beq.s done
 
@@ -2951,10 +3066,25 @@ loop
 	bne.s loop
 
 done
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l 6(sp), d0
+	jsr platform_profile.opforgePlatformProfileClearCompletedV1
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+	lea 4(sp), sp
+.endif
 	rts
 	.bend  ; clearBytes
 
 copyFixedString	.block
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	andi.l #$ffff, d0
+	jsr platform_profile.opforgePlatformProfileCopyRequestedV1
+	move.l (sp)+, d0
+.endif
 	move.w d0, d6
 	beq.s done
 
@@ -2964,6 +3094,14 @@ loop
 	bne.s loop
 
 done
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	andi.l #$ffff, d0
+	jsr platform_profile.opforgePlatformProfileCopyCompletedV1
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
 	rts
 	.bend  ; copyFixedString
 
@@ -3546,6 +3684,9 @@ storeStatementRecord	.block
 	move.l OPASM_ENGINE_STMT_REQ_OWNER_LEN(a5), d0
 	beq.s ownerDone
 	movea.l OPASM_ENGINE_STMT_REQ_OWNER_PTR(a5), a0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+.endif
 	bsr.w copyFixedString
 	clr.b (a1)
 	move.l OpasmEngineStmtCount.l, d0
@@ -3565,6 +3706,9 @@ ownerDone
 	subq.l #1, d1
 	movea.l a3, a0
 	adda.l d1, a0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+.endif
 	bsr.w copyFixedString
 	clr.b (a1)
 

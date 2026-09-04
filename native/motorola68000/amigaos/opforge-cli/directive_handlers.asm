@@ -18,6 +18,9 @@
 	.use opforge.cli.token_util
 	.use opasm.amigaos.engine
 	.use tkpkg.amigaos.buffers
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 	.section code, kind=code
 	.pub
@@ -53,6 +56,12 @@ opforgeNativeCliCaptureArtifactRequestLineV1	.block
 	lea state.NativeCliArtifactRequestTexts, a1
 	adda.l d6, a1
 	lea state.NativeCliSourceLine, a0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	moveq #0, d0
+	move.w d5, d0
+	jsr platform_profile.opforgePlatformProfileRangeStateV1
+	jsr platform_profile.opforgePlatformProfileCopyRequestedV1
+.endif
 	moveq #0, d4
 	move.w d5, d4
 	beq.s stored
@@ -63,6 +72,11 @@ copyLoop
 	dbra d4, copyLoop
 
 stored
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	moveq #0, d0
+	move.w d5, d0
+	jsr platform_profile.opforgePlatformProfileCopyCompletedV1
+.endif
 	addq.w #1, d7
 	move.w d7, state.NativeCliArtifactRequestCount
 	moveq #0, d0
@@ -97,13 +111,17 @@ endOk
 	lea state.NativeCliSourceLine, a0
 	adda.l d6, a0
 	sub.l d6, d0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeStateV1
+	jsr platform_profile.opforgePlatformProfileCopyRequestedV1
+.endif
 	moveq #0, d5
 
 copyLoop
 	tst.l d0
 	beq.w done
 	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY - 1, d5
-	bhs.w fail
+	bhs.w copyFail
 	move.b (a0)+, (a1)+
 	addq.l #1, d5
 	subq.l #1, d0
@@ -112,9 +130,18 @@ copyLoop
 done
 	clr.b (a1)
 	move.w d5, state.NativeCliParserTailLen
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d5, d0
+	jsr platform_profile.opforgePlatformProfileCopyCompletedV1
+.endif
 	moveq #0, d0
 	bra.s return
 
+copyFail
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d5, d0
+	jsr platform_profile.opforgePlatformProfileCopyCompletedV1
+.endif
 fail
 	clr.b state.NativeCliParserTailBuffer
 	clr.w state.NativeCliParserTailLen

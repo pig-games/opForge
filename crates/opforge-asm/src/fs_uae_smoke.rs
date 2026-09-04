@@ -604,6 +604,37 @@ pub(crate) fn run_native_debug_contract_from_env(
 pub(crate) fn run_native_progress_harness_from_env(
     workspace_root: &Path,
 ) -> Result<FsUaeSmokeOutcome, String> {
+    run_native_progress_harness_with_platform_from_env(workspace_root, false, &[])
+}
+
+pub(crate) fn run_native_platform_profile_harness_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let mut runs = Vec::new();
+    for disabled in [
+        &[][..],
+        &["OPFORGE_PROGRESS_PLATFORM_NO_IO"][..],
+        &["OPFORGE_PROGRESS_PLATFORM_NO_BULK"][..],
+        &[
+            "OPFORGE_PROGRESS_PLATFORM_NO_IO",
+            "OPFORGE_PROGRESS_PLATFORM_NO_BULK",
+        ][..],
+    ] {
+        match run_native_progress_harness_with_platform_from_env(workspace_root, true, disabled)? {
+            FsUaeSmokeOutcome::Skipped(reason) => return Ok(FsUaeSmokeOutcome::Skipped(reason)),
+            FsUaeSmokeOutcome::Completed {
+                runs: mut mode_runs,
+            } => runs.append(&mut mode_runs),
+        }
+    }
+    Ok(FsUaeSmokeOutcome::Completed { runs })
+}
+
+fn run_native_progress_harness_with_platform_from_env(
+    workspace_root: &Path,
+    platform: bool,
+    disabled_groups: &[&str],
+) -> Result<FsUaeSmokeOutcome, String> {
     let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
@@ -613,6 +644,17 @@ pub(crate) fn run_native_progress_harness_from_env(
         }
     };
     let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    let mut defines = vec![
+        "OPFORGE_DEBUG_CONTRACTS",
+        "OPFORGE_PROGRESS_WORK_COUNTERS",
+        "OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS",
+        "OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL",
+        "OPFORGE_PROGRESS_RUNTIME_COUNTERS",
+    ];
+    if platform {
+        defines.push("OPFORGE_PROGRESS_PLATFORM_COUNTERS");
+    }
+    defines.extend_from_slice(disabled_groups);
     match run_example_smoke_with_extra_defines(
         workspace_root,
         &fs_uae_bin,
@@ -620,13 +662,7 @@ pub(crate) fn run_native_progress_harness_from_env(
         FS_UAE_PROGRESS_HARNESS_NAME,
         FS_UAE_PROGRESS_HARNESS_SOURCE_PATH,
         "68020",
-        &[
-            "OPFORGE_DEBUG_CONTRACTS",
-            "OPFORGE_PROGRESS_WORK_COUNTERS",
-            "OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS",
-            "OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL",
-            "OPFORGE_PROGRESS_RUNTIME_COUNTERS",
-        ],
+        &defines,
     )? {
         ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
@@ -804,17 +840,54 @@ pub(crate) fn run_native_progress_cli_parity_from_env(
     workspace_root: &Path,
     rust_oracle: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
+    run_native_progress_cli_parity_with_platform_from_env(workspace_root, rust_oracle, false)
+}
+
+pub(crate) fn run_native_platform_profile_cli_parity_from_env(
+    workspace_root: &Path,
+    rust_oracle: &[u8],
+) -> Result<FsUaeSmokeOutcome, String> {
+    run_native_progress_cli_parity_with_platform_from_env(workspace_root, rust_oracle, true)
+}
+
+fn run_native_progress_cli_parity_with_platform_from_env(
+    workspace_root: &Path,
+    rust_oracle: &[u8],
+    platform: bool,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let mut defines = vec![
+        FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE,
+        "OPFORGE_DEBUG_CONTRACTS",
+        "OPFORGE_PROGRESS_WORK_COUNTERS",
+        "OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS",
+        "OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL",
+        "OPFORGE_PROGRESS_RUNTIME_COUNTERS",
+    ];
+    if platform {
+        defines.push("OPFORGE_PROGRESS_PLATFORM_COUNTERS");
+        defines.push("OPFORGE_PROGRESS_EXPORT_RECORDS");
+        match std::env::var("OPFORGE_NATIVE_PROFILE_PLATFORM_MODE")
+            .as_deref()
+            .unwrap_or("all")
+        {
+            "all" => {}
+            "io" => defines.push("OPFORGE_PROGRESS_PLATFORM_NO_BULK"),
+            "bulk" => defines.push("OPFORGE_PROGRESS_PLATFORM_NO_IO"),
+            "neither" => {
+                defines.push("OPFORGE_PROGRESS_PLATFORM_NO_IO");
+                defines.push("OPFORGE_PROGRESS_PLATFORM_NO_BULK");
+            }
+            mode => {
+                return Err(format!(
+                    "unknown OPFORGE_NATIVE_PROFILE_PLATFORM_MODE: {mode}"
+                ))
+            }
+        }
+    }
     let cases = [OpforgeNativeCliParityCase {
         name: "native-progress-cli-parity",
         cpu_override: "68020",
-        extra_assembly_defines: &[
-            FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE,
-            "OPFORGE_DEBUG_CONTRACTS",
-            "OPFORGE_PROGRESS_WORK_COUNTERS",
-            "OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS",
-            "OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL",
-            "OPFORGE_PROGRESS_RUNTIME_COUNTERS",
-        ],
+        extra_assembly_defines: &defines,
         source_override: Some(FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_INPUT_TEXT.as_bytes()),
         command_template: Some("{input} --bin {bin} --cpu m6502"),
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,

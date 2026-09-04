@@ -11,6 +11,9 @@
 	.use opforge.cli.copy
 	.use opforge.cli.preprocessor
 	.use opforge.cli.statement_owners as statement_owners
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 	.section code, kind=code
 	.pub
@@ -30,12 +33,18 @@ haveCpu
 
 ; Clear module/use and statement collection state before parsing input.
 opforgeNativeCliInitModuleUseState	.block
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeStateV1
+.endif
 	movem.l d0-d1/a0, -(sp)
 	lea state.NativeCliModuleUseStateStart, a0
 	move.l #state.NATIVE_CLI_MODULE_USE_STATE_BYTES, d0
 	jsr copy.clearBytes
 	lea state.NativeCliArtifactRequestStateStart, a0
 	move.l #state.NATIVE_CLI_ARTIFACT_REQUEST_STATE_BYTES, d0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeStateV1
+.endif
 	jsr copy.clearBytes
 	clr.w state.NativeCliOutputBootstrapFromSource
 	jsr preprocessor.opforgeNativeCliResetPreprocessorV1

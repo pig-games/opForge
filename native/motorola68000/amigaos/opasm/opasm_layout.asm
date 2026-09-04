@@ -3,6 +3,9 @@
 	.module opasm.amigaos.layout
 	.cpu 68020
 	.use opasm.amigaos.engine as eng
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 	.section code, kind=code
 	.pub
@@ -67,11 +70,22 @@ resetStateV1	.block
 	lea OpasmLayoutStatementSectionIndices.l, a0
 	lea OpasmLayoutStatementMappedFlags.l, a1
 	move.l #OPASM_LAYOUT_STATEMENT_CAPACITY, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l d1, d0
+	jsr platform_profile.opforgePlatformProfileRangeStateV1
+	jsr platform_profile.opforgePlatformProfileClearRequestedV1
+	move.l (sp)+, d0
+.endif
 statementResetLoop
 	move.w #OPASM_LAYOUT_INDEX_NONE, (a0)+
 	clr.b (a1)+
 	subq.l #1, d1
 	bne.s statementResetLoop
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
+	jsr platform_profile.opforgePlatformProfileClearCompletedV1
+.endif
 	movem.l (sp)+, d1/a0-a1
 	moveq #0, d0
 	rts

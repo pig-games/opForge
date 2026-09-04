@@ -1,0 +1,464 @@
+{
+  "abort_after_visits": 0,
+  "abort_requested": false,
+  "active": false,
+  "backward_redirects": 0,
+  "current_module_id": 0,
+  "current_program_id": 0,
+  "current_source_id": 0,
+  "current_statement": 7,
+  "current_vm_service_id": 0,
+  "exit_status": 0,
+  "flow_redirects": 0,
+  "heartbeat_enabled": false,
+  "heartbeat_quantum": 0,
+  "last_completed_statement": 7,
+  "last_progress_tick": 3788734957,
+  "layout_round": 0,
+  "next_heartbeat": 0,
+  "overflow_bits": 0,
+  "pass": 0,
+  "phase": "artifacts",
+  "phase_elapsed_ticks": {
+    "artifacts": 0,
+    "final_emission": 3,
+    "frontend": 1,
+    "layout": 4,
+    "package": 56,
+    "pass_one": 3,
+    "startup": 0,
+    "statement_build": 0
+  },
+  "phase_id": 8,
+  "platform_io": {
+    "bulk_by_phase": {
+      "artifacts": {
+        "clears": {
+          "calls": 0,
+          "completed_bytes": 0,
+          "requested_bytes": 0
+        },
+        "copies": {
+          "calls": 0,
+          "completed_bytes": 0,
+          "requested_bytes": 0
+        }
+      },
+      "final_emission": {
+        "clears": {
+          "calls": 1,
+          "completed_bytes": 1048576,
+          "requested_bytes": 1048576
+        },
+        "copies": {
+          "calls": 14,
+          "completed_bytes": 37,
+          "requested_bytes": 37
+        }
+      },
+      "frontend": {
+        "clears": {
+          "calls": 17,
+          "completed_bytes": 72266,
+          "requested_bytes": 72266
+        },
+        "copies": {
+          "calls": 70,
+          "completed_bytes": 6013,
+          "requested_bytes": 6013
+        }
+      },
+      "idle": {
+        "clears": {
+          "calls": 0,
+          "completed_bytes": 0,
+          "requested_bytes": 0
+        },
+        "copies": {
+          "calls": 0,
+          "completed_bytes": 0,
+          "requested_bytes": 0
+        }
+      },
+      "layout": {
+        "clears": {
+          "calls": 1,
+          "completed_bytes": 1048576,
+          "requested_bytes": 1048576
+        },
+        "copies": {
+          "calls": 4,
+          "completed_bytes": 19,
+          "requested_bytes": 19
+        }
+      },
+      "package": {
+        "clears": {
+          "calls": 2,
+          "completed_bytes": 41224606,
+          "requested_bytes": 41224606
+        },
+        "copies": {
+          "calls": 2,
+          "completed_bytes": 368284,
+          "requested_bytes": 368284
+        }
+      },
+      "pass_one": {
+        "clears": {
+          "calls": 4,
+          "completed_bytes": 1182368,
+          "requested_bytes": 1182368
+        },
+        "copies": {
+          "calls": 5,
+          "completed_bytes": 24,
+          "requested_bytes": 24
+        }
+      },
+      "startup": {
+        "clears": {
+          "calls": 3,
+          "completed_bytes": 516003,
+          "requested_bytes": 516003
+        },
+        "copies": {
+          "calls": 0,
+          "completed_bytes": 0,
+          "requested_bytes": 0
+        }
+      },
+      "statement_build": {
+        "clears": {
+          "calls": 0,
+          "completed_bytes": 0,
+          "requested_bytes": 0
+        },
+        "copies": {
+          "calls": 0,
+          "completed_bytes": 0,
+          "requested_bytes": 0
+        }
+      }
+    },
+    "bulk_by_range": {
+      "other": {
+        "clears": {
+          "calls": 16,
+          "completed_bytes": 8192,
+          "requested_bytes": 8192
+        },
+        "copies": {
+          "calls": 74,
+          "completed_bytes": 5973,
+          "requested_bytes": 5973
+        }
+      },
+      "package": {
+        "clears": {
+          "calls": 1,
+          "completed_bytes": 2678,
+          "requested_bytes": 2678
+        },
+        "copies": {
+          "calls": 1,
+          "completed_bytes": 368278,
+          "requested_bytes": 368278
+        }
+      },
+      "presence": {
+        "clears": {
+          "calls": 3,
+          "completed_bytes": 3145728,
+          "requested_bytes": 3145728
+        },
+        "copies": {
+          "calls": 0,
+          "completed_bytes": 0,
+          "requested_bytes": 0
+        }
+      },
+      "session": {
+        "clears": {
+          "calls": 3,
+          "completed_bytes": 41255720,
+          "requested_bytes": 41255720
+        },
+        "copies": {
+          "calls": 20,
+          "completed_bytes": 126,
+          "requested_bytes": 126
+        }
+      },
+      "state": {
+        "clears": {
+          "calls": 5,
+          "completed_bytes": 680077,
+          "requested_bytes": 680077
+        },
+        "copies": {
+          "calls": 0,
+          "completed_bytes": 0,
+          "requested_bytes": 0
+        }
+      }
+    },
+    "clears": {
+      "calls": 28,
+      "completed_bytes": 45092395,
+      "requested_bytes": 45092395
+    },
+    "closes": {
+      "artifact": 1,
+      "bootstrap": 0,
+      "module": 0,
+      "package": 0,
+      "source": 2
+    },
+    "copies": {
+      "calls": 95,
+      "completed_bytes": 374377,
+      "requested_bytes": 374377
+    },
+    "current_class": null,
+    "current_class_id": 0,
+    "current_range": "other",
+    "current_range_id": 0,
+    "enabled_groups": {
+      "bulk": true,
+      "io": true
+    },
+    "exit_status": 0,
+    "logical_lines": 8,
+    "module_candidates": 0,
+    "opens": {
+      "artifact": 1,
+      "bootstrap": 0,
+      "module": 0,
+      "package": 0,
+      "source": 2
+    },
+    "overflow_bits": 0,
+    "pass": 0,
+    "phase": "artifacts",
+    "phase_id": 8,
+    "read_bytes": {
+      "artifact": 0,
+      "bootstrap": 0,
+      "module": 0,
+      "package": 0,
+      "source": 106
+    },
+    "reads": {
+      "artifact": 0,
+      "bootstrap": 0,
+      "module": 0,
+      "package": 0,
+      "source": 107
+    },
+    "run_id": 3788734890,
+    "schema_version": 2,
+    "seeks": 0,
+    "seeks_by_class": {
+      "artifact": 0,
+      "bootstrap": 0,
+      "module": 0,
+      "package": 0,
+      "source": 0
+    },
+    "short_reads": 1,
+    "source_bytes": 106,
+    "state": "complete",
+    "write_bytes": {
+      "artifact": 18,
+      "bootstrap": 0,
+      "module": 0,
+      "package": 0,
+      "source": 0
+    },
+    "writes": {
+      "artifact": 1,
+      "bootstrap": 0,
+      "module": 0,
+      "package": 0,
+      "source": 0
+    }
+  },
+  "run_id": 3788734890,
+  "run_start_tick": 3788734890,
+  "runtime_execution": {
+    "candidates": {
+      "encoding": 222,
+      "selection": 3
+    },
+    "current_program": null,
+    "current_program_id": 0,
+    "current_service": null,
+    "current_service_id": 0,
+    "current_vm": null,
+    "current_vm_id": 0,
+    "exit_status": 0,
+    "opcodes_by_phase": {
+      "final_emission": 4,
+      "layout": 4,
+      "other": 588,
+      "pass_one": 4
+    },
+    "overflow_bits": 0,
+    "pass": 0,
+    "phase": "artifacts",
+    "phase_id": 8,
+    "program_invocations": {
+      "expression_evaluator": 3,
+      "expression_frontend": 3,
+      "parser": 34,
+      "tokenizer": 8
+    },
+    "program_opcodes": {
+      "expression_evaluator": 6,
+      "expression_frontend": 6,
+      "parser": 300,
+      "tokenizer": 288
+    },
+    "run_id": 3788734890,
+    "schema_version": 1,
+    "service_invocations": {
+      "branch": 0,
+      "encoding": 3,
+      "expression": 0,
+      "fixup": 0,
+      "operand": 0,
+      "selection": 0,
+      "state": 28,
+      "value": 0
+    },
+    "services_by_phase": {
+      "final_emission": 15,
+      "layout": 8,
+      "other": 0,
+      "pass_one": 8
+    },
+    "state": "complete",
+    "vm_invocations": {
+      "exprvm": 3,
+      "exvm": 3,
+      "prvm": 34,
+      "tkvm": 8
+    },
+    "vm_opcodes": {
+      "exprvm": 6,
+      "exvm": 6,
+      "prvm": 300,
+      "tkvm": 288
+    }
+  },
+  "schema_version": 1,
+  "state": "complete",
+  "statement_visits": 24,
+  "symbol_expression_work": {
+    "detail_enabled": true,
+    "exact_probe_histogram": {
+      "0": 1,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4_plus": 0
+    },
+    "exit_status": 0,
+    "expression": {
+      "bind_calls": 0,
+      "compile_calls": 3,
+      "evaluate_calls": 3,
+      "failures": 0,
+      "parse_calls": 3,
+      "requests": 3,
+      "successes": 3
+    },
+    "expression_requests_by_phase": {
+      "final_emission": 1,
+      "layout": 1,
+      "other": 0,
+      "pass_one": 1
+    },
+    "expression_snapshot_candidates": 0,
+    "expression_snapshot_compared_bytes": 0,
+    "final_component_ambiguous": 0,
+    "lookup_calls_by_phase": {
+      "final_emission": 0,
+      "layout": 0,
+      "other": 0,
+      "pass_one": 1
+    },
+    "lookups": {
+      "exact": {
+        "calls": 1,
+        "candidates": 0,
+        "compared_bytes": 0,
+        "hits": 0,
+        "misses": 1
+      },
+      "final_component": {
+        "calls": 0,
+        "candidates": 0,
+        "compared_bytes": 0,
+        "hits": 0,
+        "misses": 0
+      },
+      "imported": {
+        "calls": 0,
+        "candidates": 0,
+        "compared_bytes": 0,
+        "hits": 0,
+        "misses": 0
+      },
+      "scoped": {
+        "calls": 0,
+        "candidates": 0,
+        "compared_bytes": 0,
+        "hits": 0,
+        "misses": 0
+      }
+    },
+    "max_exact_probes": 0,
+    "max_hash_chain": 1,
+    "overflow_bits": 0,
+    "pass": 0,
+    "phase": "artifacts",
+    "phase_id": 8,
+    "run_id": 3788734890,
+    "schema_version": 1,
+    "state": "complete"
+  },
+  "total_elapsed_ticks": 67,
+  "total_statements": 8,
+  "work_multiplication": {
+    "backward_redirects": 0,
+    "convergence_image_bytes": 0,
+    "exit_status": 0,
+    "final_emission_visits": 8,
+    "final_emissions": 1,
+    "final_image_bytes": 18,
+    "flow_rows": 0,
+    "forward_redirects": 0,
+    "layout_label_changes": 0,
+    "layout_placement_changes": 0,
+    "layout_rounds": 1,
+    "layout_visits": 8,
+    "max_backward_span": 0,
+    "max_forward_span": 0,
+    "max_statement": 7,
+    "mode": "final_emission",
+    "mode_id": 3,
+    "overflow_bits": 0,
+    "pass_one_visits": 8,
+    "run_id": 3788734890,
+    "schema_version": 1,
+    "state": "complete",
+    "statement_classifications": {
+      "endmodule": 0,
+      "generic": 18,
+      "module": 0,
+      "use": 0
+    }
+  }
+}

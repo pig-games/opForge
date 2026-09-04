@@ -2,6 +2,14 @@
 
 ## Scope and method
 
+The Item 0e platform-observer continuation refreshes the engine, layout, and
+operand-runtime manifests for default-off byte-work observers. Layout and
+operand runtime gain a dependency only on `debug.amigaos.platform_profile`;
+their production ownership and public routine inventory remain unchanged.
+Assembly-driver, selection-service, and encode-service hashes also change for
+profile-only branch-width corrections required by the larger debug build.
+Release-mode instructions remain the reference; no package semantics move.
+
 This is the Item 5.2 Level B inventory for the eight modules named by
 NR-001 through NR-008.  It records static ownership evidence only: module
 imports, `.pub` entry surfaces, `.block` routine groups, module-local state
@@ -484,7 +492,9 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   callback-context construction, pass execution, labels and their PC-backed
   target-reference property, PC/image access, and selector/expression request
   preparation APIs.
-- Imports/outbound dependencies: event projection only.
+- Imports/outbound dependencies: event projection plus default-off progress,
+  symbol/expression, and platform-profile observers. The observers own bounded
+  private counters, not package semantics or assembly-session state.
 - Mutable state: assembly session allocation, source/statement records, label
   table, pass/PC/image state, one byte-presence bit per bounded image address,
   callback context, and diagnostic/event state.
@@ -494,7 +504,8 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Inbound users: CLI session/source/report components, assembly driver, tkpkg
   service, and test/debug harnesses import the engine API.
 - Decision: retain cohesive after the Item 5.11 conditional audit. It imports
-  only event projection and owns one assembly-session aggregate: collected
+  event projection plus the default-off observation dependencies and owns one
+  assembly-session aggregate: collected
   statements, pass/PC/image/label state, callback context, and bounded request
   serialization over that state. The request writers do not select packages or
   encode output, and the selected-shape helper has no mnemonic classifier or

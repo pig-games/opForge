@@ -9,6 +9,9 @@
 	.use opforge.cli.constants
 	.use opforge.cli.dos
 	.use opforge.cli.strings
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 	.use opforge.cli.hunk_output as hunk_output
 	.use opforge.cli.srec_output as srec_output
 
@@ -170,6 +173,9 @@ payloadSrecPath
 	lea state.NativeCliSrecPath, a0
 
 payloadOpen
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+.endif
 	jsr dos.openOutput
 	tst.l d0
 	beq.s openFail
@@ -177,10 +183,16 @@ payloadOpen
 	movea.l a2, a0
 	move.l d3, d0
 	move.l d4, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+.endif
 	jsr dos.writeOutput
 	cmp.l d3, d0
 	bne.s writeFail
 	move.l d4, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+.endif
 	jsr dos.close
 	moveq #0, d0
 	bra.s return
@@ -196,6 +208,9 @@ unsupportedArtifactFail
 
 writeFail
 	move.l d4, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+.endif
 	jsr dos.close
 	move.l #strings.NativeOutputShortWriteText, d1
 	jsr dos.putErrStr

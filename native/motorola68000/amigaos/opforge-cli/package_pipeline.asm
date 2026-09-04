@@ -26,6 +26,9 @@
 	.use opforge.debug.events as debug_events
 	.include "debug_macros.i"
 .endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 	.section code, kind=code
 	.pub
@@ -178,6 +181,9 @@ opforgeNativeCliStagePackage	.block
 	lea opforgeNativeCliPackageData.l, a1
 	lea buffers.packageStorage, a2
 	move.l d0, state.NativeCliPackageLenActive
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangePackageV1
+.endif
 	jsr copy.copyBytes
 	moveq #0, d0
 	rts
@@ -190,6 +196,9 @@ embeddedPackageTooLarge
 
 externalPackage
 	lea state.NativeCliPackagePath, a0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassPackageV1
+.endif
 	jsr dos.openInput
 	tst.l d0
 	bne.s externalOpenOk
@@ -201,6 +210,9 @@ externalOpenOk
 	lea buffers.packageStorage, a0
 	move.l #buffers.PACKAGE_STORAGE_CAPACITY, d0
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassPackageV1
+.endif
 	jsr dos.readInput
 	move.l d0, d6
 	cmp.l #-1, d6
@@ -210,6 +222,9 @@ externalOpenOk
 	lea state.NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassPackageV1
+.endif
 	jsr dos.readInput
 	move.l d0, d7
 	cmp.l #-1, d7
@@ -217,6 +232,9 @@ externalOpenOk
 	tst.l d7
 	beq.s externalReadOk
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassPackageV1
+.endif
 	jsr dos.close
 	move.l #strings.PackageTooLargeText, d1
 	jsr dos.putErrStr
@@ -225,6 +243,9 @@ externalOpenOk
 
 externalReadOk
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassPackageV1
+.endif
 	jsr dos.close
 	move.l d6, state.NativeCliPackageLenActive
 	moveq #0, d0
@@ -232,6 +253,9 @@ externalReadOk
 
 externalReadFail
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassPackageV1
+.endif
 	jsr dos.close
 	moveq #1, d0
 	rts

@@ -1,0 +1,85 @@
+[slice]
+schema_version = 2
+name = "platform profile coverage and subgroup checkpoint"
+kind = "native-observability"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "0e"
+requirements = ["SR-BRIDGE", "SR-PROG", "SR-NOGUESS", "SR-MEAS", "SR-PAR", "F1", "F2", "F3", "F12"]
+rust_reference = ["crates/opforge-asm/src/tests/native_harness_evidence.rs", "crates/opforge-asm/src/fs_uae_smoke.rs"]
+native_boundary = [
+  "native/motorola68000/amigaos/debug/opforge_platform_profile.asm",
+  "native/motorola68000/amigaos/debug/opforge_profile_export.asm",
+  "native/motorola68000/amigaos/opasm/opasm_progress.asm",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm",
+  "native/motorola68000/amigaos/opasm/opasm_layout.asm",
+  "native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm",
+  "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm",
+  "native/motorola68000/amigaos/opforge-cli/args.asm",
+  "native/motorola68000/amigaos/opforge-cli/directive_handlers.asm",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_package_loader.asm",
+  "native/motorola68000/amigaos/opforge-cli/dos.asm",
+  "native/motorola68000/amigaos/opforge-cli/copy.asm",
+  "native/motorola68000/amigaos/opforge-cli/source_reader.asm",
+  "native/motorola68000/amigaos/opforge-cli/include_use.asm",
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm",
+  "native/motorola68000/amigaos/opforge-cli/module_discovery.asm",
+  "native/motorola68000/amigaos/opforge-cli/output.asm",
+  "native/motorola68000/amigaos/opforge-cli/package_pipeline.asm",
+  "native/motorola68000/amigaos/opforge-cli/preprocessor.asm",
+  "native/motorola68000/amigaos/opforge-cli/run.asm",
+  "native/motorola68000/amigaos/opforge-cli/session_init.asm",
+  "native/motorola68000/amigaos/opforge-cli/source_artifacts.asm"
+]
+invariant = "Each audited DOS operation selects its own class. Fixed-size bulk helpers record requests before the loop and completion afterward, consume their range selection, and accumulate matching aggregate/range/phase totals without changing buffers, returned registers/CCR, or release instructions. Initial state clears and EOF line visits are observed. Item 0e focused implementation and review are complete."
+assertion_decision = "Default-off fixed private record, bounded saturating arithmetic, terminal-state correlation and fail-closed decoder; explicit DOS wrapper source contract plus native deterministic oracle and real CLI artifact parity."
+expected_inputs = "OPFORGE_DEBUG_CONTRACTS and OPFORGE_PROGRESS_PLATFORM_COUNTERS, independently or combined with earlier counter flags; optional NO_IO/NO_BULK subgroup switches and explicit OPFORGE_PROGRESS_EXPORT_RECORDS in a fresh scratch invocation directory; bounded CLI source or deterministic direct profile calls."
+expected_outputs = "Provisional schema-2 528-byte OFIO record with five range and nine phase rows; ordinary guest artifacts and exit remain unchanged on the tested bounded input. Disabled release Hunk retains its exact previous identity."
+known_non_equivalences = "Item 0e focused implementation, staged gates and independent review are complete. GetRecord remains available; the explicit framework exporter now writes fixed companions after terminal sealing. Fresh positive and negative CLI runs validate correlated exports and artifacts/diagnostics/exits; representative counters and coarse enabled/disabled timing are recorded. Seven-run corpus calibration and pinned-CPU attribution remain Item 0f. Observed totals cover named mechanisms, not all memory instructions; residual copy/reset families and nonzero sentinel fills are documented. Subgroup-disabled observers are RTS stubs but call-site envelopes remain. The test template is 68040, not physical A6000/68020 performance evidence."
+fast_proof_command = "python3 -m unittest scripts.workflow.tests.test_decode_native_progress && cargo test -p asm native_platform_profile_ -- --nocapture"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' RUST_TEST_THREADS=1 cargo test -p asm native_platform_profile_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_platform_profile_dos_wrappers_keep_one_operation_and_return_state"
+proof_level = "B"
+proves = "The read/write wrappers contain one DOS call and restore returned D1 and CCR after observation."
+does_not_prove = "Execution of every DOS error path or actual OS register preservation."
+
+[[tests]]
+name = "native_platform_profile_harness_and_cli_assemble"
+proof_level = "C"
+proves = "Five platform/combined/subgroup configurations compose for the harness and real CLI."
+does_not_prove = "Guest execution, complete coverage, numeric accuracy on arbitrary input, or performance."
+
+[[tests]]
+name = "NativeProgressDecoderTests platform cases"
+proof_level = "C"
+proves = "Decoder fields, malformed/terminal/correlation rejection, and actual companion CLI argument handling."
+does_not_prove = "Native counter values or guest execution."
+
+[[tests]]
+name = "native_platform_profile_fs_uae_confirms_counter_contract"
+proof_level = "D"
+proves = "Fresh completed guest with zero exit after exact aggregate/range/phase counters, request/completion separation, non-sticky range, actual clear/copy buffers, zero-length and low-word copy behavior, CCR, error/EOF, saturation, and terminal checks."
+does_not_prove = "Whole-CLI counter coverage or arbitrary DOS failures and memory ranges."
+
+[[tests]]
+name = "external_fs_uae_native_platform_profile_cli_preserves_exact_artifact_and_exit"
+proof_level = "D"
+proves = "Real platform-enabled CLI completes a fresh challenged guest with zero exit and exact live-Rust artifact equality; all five exported companions strict-decode with correlated terminal state, plus exact source/read/artifact and presence-reset formulas."
+does_not_prove = "Complete Item 0e coverage, negative diagnostic paths, full self-hosting, or performance gains."
+
+[[tests]]
+name = "native_platform_profile_io_sites_and_source_eof_are_explicit"
+proof_level = "B"
+proves = "Every current CLI DOS file operation selects a class, startup profiling precedes state clearing, and EOF logical-line visitation is instrumented."
+does_not_prove = "Actual nested guest counts or all inline memory work."
+
+[[tests]]
+name = "external_fs_uae_native_platform_profile_output_open_failure"
+proof_level = "D"
+proves = "A real output-open failure returns the expected diagnostic and nonzero guest exit through a fresh completed protocol, with strictly decoded incomplete exports matching that exit."
+does_not_prove = "Arbitrary short writes or complete I/O-error coverage."

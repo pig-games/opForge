@@ -13,6 +13,9 @@
 	.use opforge.cli.dos
 	.use opforge.cli.line_text
 	.use opforge.cli.path
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 	.section code, kind=code
 	.pub
@@ -248,10 +251,16 @@ fail
 ; CCR: reflects D0 on return.
 opforgeNativeCliProbeResolvedIncludePath	.block
 	lea state.NativeCliIncludePath, a0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.openInput
 	tst.l d0
 	beq.s fail
 	move.l d0, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.close
 	moveq #0, d0
 	rts

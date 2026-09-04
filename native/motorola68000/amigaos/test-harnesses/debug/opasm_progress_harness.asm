@@ -13,9 +13,32 @@
 .ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	.use debug.amigaos.runtime_profile as runtime_profile
 .endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+	.use opforge.cli.copy as copy
+.endif
 
 HARNESS_FAIL = 20
 HARNESS_PACKAGE_TICKS_OFFSET = progress.OPASM_PROGRESS_PHASE_TICKS_OFFSET + 4
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+HARNESS_BOOTSTRAP_OPENS_OFFSET = platform_profile.OPFORGE_PLATFORM_OPENS_OFFSET + 4
+HARNESS_MODULE_OPENS_OFFSET = platform_profile.OPFORGE_PLATFORM_OPENS_OFFSET + 8
+HARNESS_PACKAGE_OPENS_OFFSET = platform_profile.OPFORGE_PLATFORM_OPENS_OFFSET + 12
+HARNESS_MODULE_CLOSES_OFFSET = platform_profile.OPFORGE_PLATFORM_CLOSES_OFFSET + 8
+HARNESS_PACKAGE_CLOSES_OFFSET = platform_profile.OPFORGE_PLATFORM_CLOSES_OFFSET + 12
+HARNESS_MODULE_READS_OFFSET = platform_profile.OPFORGE_PLATFORM_READS_OFFSET + 8
+HARNESS_PACKAGE_READS_OFFSET = platform_profile.OPFORGE_PLATFORM_READS_OFFSET + 12
+HARNESS_MODULE_READ_BYTES_OFFSET = platform_profile.OPFORGE_PLATFORM_READ_BYTES_OFFSET + 8
+HARNESS_PACKAGE_READ_BYTES_OFFSET = platform_profile.OPFORGE_PLATFORM_READ_BYTES_OFFSET + 12
+HARNESS_PLATFORM_INCOMPLETE = platform_profile.OPFORGE_PLATFORM_FLAG_INCOMPLETE + platform_profile.OPFORGE_PLATFORM_FLAG_IO_ENABLED + platform_profile.OPFORGE_PLATFORM_FLAG_BULK_ENABLED
+HARNESS_PLATFORM_COMPLETE = platform_profile.OPFORGE_PLATFORM_FLAG_COMPLETE + platform_profile.OPFORGE_PLATFORM_FLAG_IO_ENABLED + platform_profile.OPFORGE_PLATFORM_FLAG_BULK_ENABLED
+HARNESS_ARTIFACT_OPENS_OFFSET = platform_profile.OPFORGE_PLATFORM_OPENS_OFFSET + 16
+HARNESS_ARTIFACT_WRITE_BYTES_OFFSET = platform_profile.OPFORGE_PLATFORM_WRITE_BYTES_OFFSET + 16
+HARNESS_SESSION_CLEAR_REQUESTED = platform_profile.OPFORGE_PLATFORM_BULK_RANGES_OFFSET + 24 + 4
+HARNESS_SESSION_CLEAR_COMPLETED = platform_profile.OPFORGE_PLATFORM_BULK_RANGES_OFFSET + 24 + 8
+HARNESS_OTHER_COPY_COMPLETED = platform_profile.OPFORGE_PLATFORM_BULK_RANGES_OFFSET + 20
+HARNESS_LAYOUT_CLEAR_COMPLETED = platform_profile.OPFORGE_PLATFORM_BULK_PHASES_OFFSET + 6 * 24 + 8
+.endif
 HARNESS_PASS_ONE_TICKS_OFFSET = progress.OPASM_PROGRESS_PHASE_TICKS_OFFSET + 16
 
 	.section entry, kind=code
@@ -29,6 +52,15 @@ start	.block
 	lea nextTick, a0
 	jsr progress.opasmProgressBeginRunV1
 
+.ifdef OPFORGE_PROGRESS_PLATFORM_NO_IO
+	bsr.w verifyPlatformSubgroups
+	rts
+.else
+.ifdef OPFORGE_PROGRESS_PLATFORM_NO_BULK
+	bsr.w verifyPlatformSubgroups
+	rts
+.endif
+.endif
 	jsr progress.opasmProgressGetRecordV1
 	moveq #21, d7
 	cmpi.l #progress.OPASM_PROGRESS_MAGIC, progress.OPASM_PROGRESS_MAGIC_OFFSET(a0)
@@ -55,6 +87,15 @@ start	.block
 	cmpi.l #runtime_profile.OPFORGE_RUNTIME_MAGIC, runtime_profile.OPFORGE_RUNTIME_MAGIC_OFFSET(a3)
 	bne.w fail
 	cmpi.l #10, runtime_profile.OPFORGE_RUNTIME_RUN_ID_OFFSET(a3)
+	bne.w fail
+.endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileGetRecordV1
+	movea.l a0, a4
+	moveq #29, d7
+	cmpi.l #platform_profile.OPFORGE_PLATFORM_MAGIC, platform_profile.OPFORGE_PLATFORM_MAGIC_OFFSET(a4)
+	bne.w fail
+	cmpi.l #10, platform_profile.OPFORGE_PLATFORM_RUN_ID_OFFSET(a4)
 	bne.w fail
 .endif
 
@@ -478,6 +519,152 @@ start	.block
 	; Restore the authoritative OFPR pointer before the existing bridge checks.
 	jsr progress.opasmProgressGetRecordV1
 .endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	moveq #38, d7
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+	jsr platform_profile.opforgePlatformProfileRecordOpenV1
+	moveq #1, d0
+	moveq #1, d1
+	jsr platform_profile.opforgePlatformProfileRecordReadV1
+	moveq #-1, d0
+	moveq #8, d1
+	jsr platform_profile.opforgePlatformProfileRecordReadV1
+	moveq #3, d0
+	jsr platform_profile.opforgePlatformProfileRecordReadV1
+	jsr platform_profile.opforgePlatformProfileRecordCloseV1
+	jsr platform_profile.opforgePlatformProfileClassBootstrapV1
+	jsr platform_profile.opforgePlatformProfileRecordOpenV1
+	moveq #0, d0
+	moveq #1, d1
+	jsr platform_profile.opforgePlatformProfileRecordReadV1
+	jsr platform_profile.opforgePlatformProfileRecordCloseV1
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+	jsr platform_profile.opforgePlatformProfileClassModuleV1
+	jsr platform_profile.opforgePlatformProfileRecordOpenV1
+	moveq #6, d0
+	moveq #6, d1
+	jsr platform_profile.opforgePlatformProfileRecordReadV1
+	jsr platform_profile.opforgePlatformProfileRecordCloseV1
+	jsr platform_profile.opforgePlatformProfileClassPackageV1
+	jsr platform_profile.opforgePlatformProfileRecordOpenV1
+	moveq #7, d0
+	moveq #7, d1
+	jsr platform_profile.opforgePlatformProfileRecordReadV1
+	jsr platform_profile.opforgePlatformProfileRecordCloseV1
+	jsr platform_profile.opforgePlatformProfileClassArtifactV1
+	jsr platform_profile.opforgePlatformProfileRecordOpenV1
+	moveq #4, d0
+	moveq #4, d1
+	jsr platform_profile.opforgePlatformProfileRecordWriteV1
+	moveq #-1, d0
+	jsr platform_profile.opforgePlatformProfileRecordWriteV1
+	moveq #2, d0
+	jsr platform_profile.opforgePlatformProfileRecordWriteV1
+	jsr platform_profile.opforgePlatformProfileRecordCloseV1
+	moveq #6, d0
+	moveq #1, d1
+	jsr platform_profile.opforgePlatformProfileSetContextV1
+	jsr platform_profile.opforgePlatformProfileGetRecordV1
+	movea.l a0, a4
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+	move.l #8, d0
+	jsr platform_profile.opforgePlatformProfileClearRequestedV1
+	cmpi.l #8, HARNESS_SESSION_CLEAR_REQUESTED(a4)
+	bne.w fail
+	tst.l HARNESS_SESSION_CLEAR_COMPLETED(a4)
+	bne.w fail
+	jsr platform_profile.opforgePlatformProfileClearCompletedV1
+	cmpi.l #8, HARNESS_SESSION_CLEAR_COMPLETED(a4)
+	bne.w fail
+	cmpi.l #8, HARNESS_LAYOUT_CLEAR_COMPLETED(a4)
+	bne.w fail
+	tst.w platform_profile.OPFORGE_PLATFORM_CURRENT_RANGE_OFFSET(a4)
+	bne.w fail
+	move.l #3, d0
+	jsr platform_profile.opforgePlatformProfileRecordCopyV1
+	jsr platform_profile.opforgePlatformProfileRecordLogicalLineV1
+	jsr platform_profile.opforgePlatformProfileRecordModuleCandidateV1
+	jsr platform_profile.opforgePlatformProfileGetRecordV1
+	movea.l a0, a4
+	cmpi.l #1, platform_profile.OPFORGE_PLATFORM_OPENS_OFFSET(a4)
+	bne.w fail
+	cmpi.l #1, HARNESS_BOOTSTRAP_OPENS_OFFSET(a4)
+	bne.w fail
+	cmpi.l #1, HARNESS_ARTIFACT_OPENS_OFFSET(a4)
+	bne.w fail
+	cmpi.l #1, HARNESS_MODULE_OPENS_OFFSET(a4)
+	bne.w fail
+	cmpi.l #1, HARNESS_PACKAGE_OPENS_OFFSET(a4)
+	bne.w fail
+	cmpi.l #1, HARNESS_MODULE_CLOSES_OFFSET(a4)
+	bne.w fail
+	cmpi.l #1, HARNESS_PACKAGE_CLOSES_OFFSET(a4)
+	bne.w fail
+	cmpi.l #1, HARNESS_MODULE_READS_OFFSET(a4)
+	bne.w fail
+	cmpi.l #1, HARNESS_PACKAGE_READS_OFFSET(a4)
+	bne.w fail
+	cmpi.l #6, HARNESS_MODULE_READ_BYTES_OFFSET(a4)
+	bne.w fail
+	cmpi.l #7, HARNESS_PACKAGE_READ_BYTES_OFFSET(a4)
+	bne.w fail
+	cmpi.l #4, platform_profile.OPFORGE_PLATFORM_READ_BYTES_OFFSET(a4)
+	bne.w fail
+	cmpi.l #4, platform_profile.OPFORGE_PLATFORM_SOURCE_BYTES_OFFSET(a4)
+	bne.w fail
+	cmpi.l #3, platform_profile.OPFORGE_PLATFORM_READS_OFFSET(a4)
+	bne.w fail
+	cmpi.l #2, platform_profile.OPFORGE_PLATFORM_SHORT_READS_OFFSET(a4)
+	bne.w fail
+	cmpi.l #6, HARNESS_ARTIFACT_WRITE_BYTES_OFFSET(a4)
+	bne.w fail
+	cmpi.l #8, platform_profile.OPFORGE_PLATFORM_CLEAR_REQUESTED_OFFSET(a4)
+	bne.w fail
+	cmpi.l #3, platform_profile.OPFORGE_PLATFORM_COPY_COMPLETED_OFFSET(a4)
+	bne.w fail
+	cmpi.l #3, HARNESS_OTHER_COPY_COMPLETED(a4)
+	bne.w fail
+	cmpi.l #1, platform_profile.OPFORGE_PLATFORM_LOGICAL_LINES_OFFSET(a4)
+	bne.w fail
+	cmpi.l #1, platform_profile.OPFORGE_PLATFORM_MODULE_CANDIDATES_OFFSET(a4)
+	bne.w fail
+	; Exercise both bulk groups at saturation without touching a real buffer.
+	move.l #$ffffffff, platform_profile.OPFORGE_PLATFORM_CLEAR_CALLS_OFFSET(a4)
+	move.l #$fffffffe, platform_profile.OPFORGE_PLATFORM_CLEAR_REQUESTED_OFFSET(a4)
+	move.l #$fffffffe, platform_profile.OPFORGE_PLATFORM_CLEAR_COMPLETED_OFFSET(a4)
+	move.l #$ffffffff, platform_profile.OPFORGE_PLATFORM_COPY_CALLS_OFFSET(a4)
+	move.l #$fffffffe, platform_profile.OPFORGE_PLATFORM_COPY_REQUESTED_OFFSET(a4)
+	move.l #$fffffffe, platform_profile.OPFORGE_PLATFORM_COPY_COMPLETED_OFFSET(a4)
+	moveq #8, d0
+	jsr platform_profile.opforgePlatformProfileRecordClearV1
+	jsr platform_profile.opforgePlatformProfileRecordCopyV1
+	cmpi.l #$ffffffff, platform_profile.OPFORGE_PLATFORM_CLEAR_REQUESTED_OFFSET(a4)
+	bne.w fail
+	cmpi.l #$ffffffff, platform_profile.OPFORGE_PLATFORM_CLEAR_COMPLETED_OFFSET(a4)
+	bne.w fail
+	cmpi.l #$ffffffff, platform_profile.OPFORGE_PLATFORM_COPY_REQUESTED_OFFSET(a4)
+	bne.w fail
+	cmpi.l #$ffffffff, platform_profile.OPFORGE_PLATFORM_COPY_COMPLETED_OFFSET(a4)
+	bne.w fail
+	move.l platform_profile.OPFORGE_PLATFORM_OVERFLOW_OFFSET(a4), d0
+	andi.l #platform_profile.OPFORGE_PLATFORM_OVERFLOW_CLEAR, d0
+	beq.w fail
+	move.l platform_profile.OPFORGE_PLATFORM_OVERFLOW_OFFSET(a4), d0
+	andi.l #platform_profile.OPFORGE_PLATFORM_OVERFLOW_COPY, d0
+	beq.w fail
+	move.l #$ffffffff, platform_profile.OPFORGE_PLATFORM_OPENS_OFFSET(a4)
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+	jsr platform_profile.opforgePlatformProfileRecordOpenV1
+	moveq #99, d0
+	jsr platform_profile.opforgePlatformProfileSetClassV1
+	move.l platform_profile.OPFORGE_PLATFORM_OVERFLOW_OFFSET(a4), d0
+	andi.l #platform_profile.OPFORGE_PLATFORM_OVERFLOW_OPENS, d0
+	beq.w fail
+	move.l platform_profile.OPFORGE_PLATFORM_OVERFLOW_OFFSET(a4), d0
+	andi.l #platform_profile.OPFORGE_PLATFORM_OVERFLOW_UNKNOWN_ID, d0
+	beq.w fail
+	jsr progress.opasmProgressGetRecordV1
+.endif
 
 	moveq #31, d7
 	moveq #2, d0
@@ -584,6 +771,89 @@ start	.block
 	cmpi.l #63, runtime_profile.OPFORGE_RUNTIME_OVERFLOW_OFFSET(a3)
 	bne.w fail
 .endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileGetRecordV1
+	movea.l a0, a4
+	cmpi.w #HARNESS_PLATFORM_INCOMPLETE, platform_profile.OPFORGE_PLATFORM_FLAGS_OFFSET(a4)
+	bne.w fail
+	cmpi.l #HARNESS_FAIL, platform_profile.OPFORGE_PLATFORM_EXIT_STATUS_OFFSET(a4)
+	bne.w fail
+	moveq #0, d0
+	jsr platform_profile.opforgePlatformProfileFinishV1
+	cmpi.l #HARNESS_FAIL, platform_profile.OPFORGE_PLATFORM_EXIT_STATUS_OFFSET(a4)
+	bne.w fail
+	; Exercise the actual bulk helpers, not just direct counter calls.
+	moveq #39, d7
+	lea nextTick, a0
+	jsr progress.opasmProgressBeginRunV1
+	move.l #$aabbccdd, HarnessBulkBuffer
+	move.l #$aabbccdd, HarnessBulkBufferTail
+	move.l #$11223344, HarnessBulkSource
+	jsr platform_profile.opforgePlatformProfileRangeStateV1
+	lea HarnessBulkBuffer, a0
+	addq.l #1, a0
+	moveq #5, d0
+	jsr copy.clearBytes
+	tst.l d0
+	bne.w fail
+	cmpi.l #$aa000000, HarnessBulkBuffer
+	bne.w fail
+	cmpi.l #$0000ccdd, HarnessBulkBufferTail
+	bne.w fail
+	jsr platform_profile.opforgePlatformProfileRangePackageV1
+	lea HarnessBulkSource, a1
+	lea HarnessBulkBuffer, a2
+	addq.l #1, a2
+	moveq #3, d0
+	jsr copy.copyBytes
+	tst.l d0
+	bne.w fail
+	cmpi.l #$aa112233, HarnessBulkBuffer
+	bne.w fail
+	; Fixed strings retain the high half of D0 while copying only its low word.
+	lea HarnessBulkSource, a0
+	lea HarnessBulkBuffer, a1
+	move.l #$abcd0003, d0
+	jsr copy.copyFixedString
+	cmpi.l #$abcd0003, d0
+	bne.w fail
+	cmpi.l #$11223333, HarnessBulkBuffer
+	bne.w fail
+	; Zero length must not access either null pointer and must retain X/Z.
+	suba.l a1, a1
+	suba.l a2, a2
+	moveq #0, d0
+	move.w #$15, ccr
+	jsr copy.copyBytes
+	move.w ccr, -(sp)
+	move.w (sp)+, d3
+	cmpi.w #$14, d3
+	bne.w fail
+	jsr platform_profile.opforgePlatformProfileGetRecordV1
+	movea.l a0, a4
+	cmpi.l #5, platform_profile.OPFORGE_PLATFORM_CLEAR_COMPLETED_OFFSET(a4)
+	bne.w fail
+	cmpi.l #3, platform_profile.OPFORGE_PLATFORM_COPY_CALLS_OFFSET(a4)
+	bne.w fail
+	cmpi.l #6, platform_profile.OPFORGE_PLATFORM_COPY_COMPLETED_OFFSET(a4)
+	bne.w fail
+	moveq #0, d0
+	jsr progress.opasmProgressFinishV1
+	jsr platform_profile.opforgePlatformProfileGetRecordV1
+	movea.l a0, a4
+	move.w platform_profile.OPFORGE_PLATFORM_FLAGS_OFFSET(a4), d0
+	andi.w #platform_profile.OPFORGE_PLATFORM_FLAG_COMPLETE, d0
+	beq.w fail
+	tst.l platform_profile.OPFORGE_PLATFORM_EXIT_STATUS_OFFSET(a4)
+	bne.w fail
+	; Repeated sealing also preserves a successful terminal state.
+	moveq #HARNESS_FAIL, d0
+	jsr platform_profile.opforgePlatformProfileFinishV1
+	cmpi.w #HARNESS_PLATFORM_COMPLETE, platform_profile.OPFORGE_PLATFORM_FLAGS_OFFSET(a4)
+	bne.w fail
+	tst.l platform_profile.OPFORGE_PLATFORM_EXIT_STATUS_OFFSET(a4)
+	bne.w fail
+.endif
 	; The work-record success branch must not bypass OFSE terminal sealing.
 	lea nextTick, a0
 	jsr progress.opasmProgressBeginRunV1
@@ -608,6 +878,15 @@ start	.block
 	tst.l runtime_profile.OPFORGE_RUNTIME_OVERFLOW_OFFSET(a3)
 	bne.w fail
 .endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileGetRecordV1
+	movea.l a0, a4
+	move.w platform_profile.OPFORGE_PLATFORM_FLAGS_OFFSET(a4), d0
+	andi.w #platform_profile.OPFORGE_PLATFORM_FLAG_COMPLETE, d0
+	beq.w fail
+	tst.l platform_profile.OPFORGE_PLATFORM_EXIT_STATUS_OFFSET(a4)
+	bne.w fail
+.endif
 
 	moveq #0, d0
 	rts
@@ -617,6 +896,63 @@ fail
 	.bend  ; start
 
 ; Deterministic coarse-tick callback. Every sampled boundary advances 10 ticks.
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+; Exact subgroup oracle: a disabled observer is a CCR/register-preserving RTS,
+; while the other group still records its own operation and terminal metadata.
+verifyPlatformSubgroups	.block
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+	moveq #3, d0
+	moveq #8, d1
+	jsr platform_profile.opforgePlatformProfileRecordReadV1
+	jsr platform_profile.opforgePlatformProfileRangeStateV1
+	moveq #5, d0
+	jsr platform_profile.opforgePlatformProfileRecordClearV1
+	jsr platform_profile.opforgePlatformProfileGetRecordV1
+	movea.l a0, a4
+	move.w platform_profile.OPFORGE_PLATFORM_FLAGS_OFFSET(a4), d2
+.ifdef OPFORGE_PROGRESS_PLATFORM_NO_IO
+	andi.w #platform_profile.OPFORGE_PLATFORM_FLAG_IO_ENABLED, d2
+	bne.s fail
+	tst.l platform_profile.OPFORGE_PLATFORM_READS_OFFSET(a4)
+	bne.s fail
+	tst.w platform_profile.OPFORGE_PLATFORM_CURRENT_CLASS_OFFSET(a4)
+	bne.s fail
+.else
+	andi.w #platform_profile.OPFORGE_PLATFORM_FLAG_IO_ENABLED, d2
+	beq.s fail
+	cmpi.l #1, platform_profile.OPFORGE_PLATFORM_READS_OFFSET(a4)
+	bne.s fail
+	cmpi.l #3, platform_profile.OPFORGE_PLATFORM_READ_BYTES_OFFSET(a4)
+	bne.s fail
+.endif
+	move.w platform_profile.OPFORGE_PLATFORM_FLAGS_OFFSET(a4), d2
+.ifdef OPFORGE_PROGRESS_PLATFORM_NO_BULK
+	andi.w #platform_profile.OPFORGE_PLATFORM_FLAG_BULK_ENABLED, d2
+	bne.s fail
+	tst.l platform_profile.OPFORGE_PLATFORM_CLEAR_CALLS_OFFSET(a4)
+	bne.s fail
+.else
+	andi.w #platform_profile.OPFORGE_PLATFORM_FLAG_BULK_ENABLED, d2
+	beq.s fail
+	cmpi.l #1, platform_profile.OPFORGE_PLATFORM_CLEAR_CALLS_OFFSET(a4)
+	bne.s fail
+	cmpi.l #5, platform_profile.OPFORGE_PLATFORM_CLEAR_COMPLETED_OFFSET(a4)
+	bne.s fail
+.endif
+	tst.w platform_profile.OPFORGE_PLATFORM_CURRENT_RANGE_OFFSET(a4)
+	bne.s fail
+	tst.l platform_profile.OPFORGE_PLATFORM_OVERFLOW_OFFSET(a4)
+	bne.s fail
+	moveq #0, d0
+	jsr progress.opasmProgressFinishV1
+	rts
+fail
+	moveq #HARNESS_FAIL, d0
+	jsr progress.opasmProgressFinishV1
+	rts
+	.bend  ; verifyPlatformSubgroups
+.endif
+
 nextTick	.block
 	addq.l #5, HarnessTick
 	addq.l #5, HarnessTick
@@ -630,6 +966,14 @@ nextTick	.block
 	.align 4
 HarnessTick
 	.res long, 1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+HarnessBulkBuffer
+	.res long, 1
+HarnessBulkBufferTail
+	.res long, 1
+HarnessBulkSource
+	.res long, 1
+.endif
 	.endsection
 
 	.output "build/opasm_progress_harness", format=hunk, sections=entry, code, bss

@@ -26,7 +26,13 @@
 	.use opforge.debug.contracts as debug_contracts
 	.use opforge.debug.events as debug_events
 	.use opasm.amigaos.progress as progress
+.ifdef OPFORGE_PROGRESS_EXPORT_RECORDS
+	.use debug.amigaos.profile_export as profile_export
+.endif
 	.include "debug_macros.i"
+.endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
 .endif
 
 	.section code, kind=code
@@ -73,6 +79,22 @@ opforgeNativeCliRun	.block
 
 haveDos
 	move.l d0, state.NativeCliDosBase  ; all file/console calls below dispatch through dos.library base
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	; Include the initial state clears in startup accounting. Preserve the DOS
+	; base in D0 across observer arguments; parsed must not reset these counts.
+	move.w ccr, -(sp)
+	movem.l d0-d2/a0, -(sp)
+	lea progressTickV1, a0
+	jsr progress.opasmProgressBeginRunV1
+	moveq #progress.OPASM_PROGRESS_PHASE_STARTUP, d0
+	moveq #0, d1
+	moveq #0, d2
+	jsr progress.opasmProgressSetPhaseV1
+	movem.l (sp)+, d0-d2/a0
+	move.w (sp)+, ccr
+.endif
+.endif
 	jsr session_init.opforgeNativeCliInitModuleUseState
 	movea.l d0, a6
 	jsr constants.GET_ARG_STR(a6)
@@ -113,8 +135,11 @@ parsed
 	; coarse progress boundaries. It preserves D0-D7/A0-A6, CCR, and stack depth
 	; and writes only the dedicated progress block. Argument parsing has already
 	; selected an assembly invocation; input resolution has not started.
+	; Platform profiling already began before the startup clears.
+.ifndef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	lea progressTickV1, a0
 	jsr progress.opasmProgressBeginRunV1
+.endif
 	moveq #progress.OPASM_PROGRESS_PHASE_STARTUP, d0
 	moveq #0, d1
 	moveq #0, d2
@@ -132,6 +157,9 @@ parsed
 	tst.l d0
 	bne.w inputOpenFailed
 	lea state.NativeCliInputPath, a0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.openInput
 	tst.l d0
 	bne.s inputOpened
@@ -147,6 +175,9 @@ inputOpenFailed
 
 inputOpened
 	move.l d0, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
 	jsr dos.close
 	tst.w state.NativeCliOutputFormat
 	bne.s outputFormatReady
@@ -307,6 +338,10 @@ closeDos
 	; registers/CCR and stack depth, and touches only the bounded progress block.
 	move.l state.NativeCliReturnCode, d0
 	jsr progress.opasmProgressFinishV1
+.ifdef OPFORGE_PROGRESS_EXPORT_RECORDS
+	movea.l state.NativeCliDosBase, a6
+	jsr profile_export.opforgeProfileExportV1
+.endif
 .endif
 	move.l state.NativeCliDosBase, d0
 	beq.s done

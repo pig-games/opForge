@@ -1,6 +1,6 @@
 # Native Assembly Progress Bridge Record v1
 
-Status: provisional performance bridge for optimization-plan Items 0a-0d. This is
+Status: provisional performance bridge for optimization-plan Items 0a-0e. This is
 not an OFTB/OFTB-stable result format and is not semantic proof.
 
 The native debug-contract build owns one fixed, big-endian, 128-byte `OFPR`
@@ -267,13 +267,115 @@ memory record remains authoritative. Neither the record nor heartbeat changes
 artifacts, diagnostics, or exit status unless the explicit diagnostic abort
 limit is configured.
 
+## Platform and memory companion — provisional OFIO schema 2
+
+`OPFORGE_DEBUG_CONTRACTS` plus `OPFORGE_PROGRESS_PLATFORM_COUNTERS` adds a
+fixed 528-byte `OFIO` record, available through
+`debug.amigaos.platform_profile.opforgePlatformProfileGetRecordV1`. It uses the
+same memory-resident bridge boundary as the earlier companions; copying exactly
+528 bytes lets the host decode it alongside the matching OFPR record:
+
+```sh
+python3 scripts/performance/decode_native_progress.py progress.ofpr \
+  --platform-record platform.ofio --require-complete
+```
+
+`OPFORGE_PROGRESS_EXPORT_RECORDS` is a separate, explicit debug-only export
+switch. At the existing controlled terminal boundary, after all records/timing
+are sealed and before closing dos.library, the debug framework writes
+`opforge-profile.ofpr` and each enabled `.ofwk`, `.ofse`, `.ofvm`, `.ofio`
+companion to the invocation directory. Run this mode only in a fresh scratch
+directory: these fixed filenames are overwritten. Export does not change the
+CLI's exit or normal artifacts; missing/short exports invalidate profile
+evidence, and no stored file is accepted in place of a fresh completed guest.
+The focused runner captures the files in memory and deletes the entire guest
+artifact tree before returning. Export I/O is excluded from sealed phase times
+and operation counters, but remains part of externally timed process duration.
+
+Schema 1's unfinished 192-byte draft is rejected, not silently interpreted as
+schema 2. Item 0e is still in progress: these records are not yet a complete
+all-sites memory audit or B01-B10 attribution result.
+
+| Offset | Bytes | Field |
+|---:|---:|---|
+| 0 | 4 | Magic `OFIO` |
+| 4 | 2 | Schema version 2 |
+| 6 | 2 | Active=1, complete=2, incomplete=4; I/O enabled=8, bulk enabled=16 |
+| 8 | 4 | Correlated OFPR run ID |
+| 12, 14 | 2 each | Current phase and pass |
+| 16, 18 | 2 each | Current I/O class and next bulk range; terminal records clear both |
+| 20, 40, 60 | 20 each | Open attempts, close attempts, read calls by I/O class |
+| 80, 100, 120 | 20 each | Completed read bytes, write calls, completed write bytes by I/O class |
+| 140 | 4 | Reserved zero: audited native CLI has no seek operation; nonzero is rejected |
+| 144 | 12 | Clear calls, requested bytes, completed bytes |
+| 156 | 12 | Copy calls, requested bytes, completed bytes |
+| 168, 172, 176, 180 | 4 each | Source read bytes, logical-line visits, module candidates, short reads including EOF |
+| 184, 188 | 4 each | Overflow bits and CLI exit status |
+| 192 | 120 | Five bulk range rows, 24 bytes each |
+| 312 | 216 | Nine bulk phase rows, 24 bytes each |
+
+I/O classes 1-5 are source, bootstrap, module, package, artifact. Every current
+CLI file operation chooses its own class immediately before its DOS wrapper,
+so a nested include or module scan cannot misclassify the enclosing close or
+next read. Error returns count as calls but add no completed bytes. Source
+bytes count actual source-class reads, including rereads; they are not unique
+input size. Logical-line visits count lines delivered to the source frontend,
+including a nonempty EOF line without a newline and lines that later fail.
+
+Bulk range IDs 0-4 are other, session, package, state, presence. Phase rows use
+the OFPR phase IDs 0-8, including idle. Each row contains clear calls/requested/
+completed bytes followed by copy calls/requested/completed bytes. These are
+two marginal breakdowns, not a range-by-phase cross product.
+
+With the master platform flag enabled, `OPFORGE_PROGRESS_PLATFORM_NO_IO`
+disables class/read/write/source observers and
+`OPFORGE_PROGRESS_PLATFORM_NO_BULK` disables clear/copy/range observers.
+Both switches may be combined. Disabled public observer bodies compile to
+register/CCR-preserving returns; their existing call-site envelopes remain,
+so these modes are not equivalent to an uninstrumented release build.
+Record flags and decoded `enabled_groups` distinguish disabled groups from
+measured zero work. The decoder rejects observations in a disabled group.
+`seeks_by_class` contains audited zeros, not inferred filesystem behavior.
+
+Fixed-size helpers record requested bytes before their loop and completed bytes
+after it returns, preserving the original output registers and CCR. Completion
+consumes the range selection so it cannot leak to later operations. Variable
+C-string copies record their observed byte count, including NUL, on return.
+The session arena, CLI state helpers, package staging copy, package-derived
+state clear, source-text copies, label/hash resets, image gap/main/mapped work,
+layout flag resets, fixed-string copies, PRG payload, directive scratch copies,
+operand-copy primitive, and per-pass image-presence clear are instrumented.
+Only known session destinations select Session; caller-owned request buffers
+remain Other. Scalar record construction, encoded output generation, NUL stores,
+and nonzero sentinel fills are not byte-copy/zero-clear operations. In particular,
+each layout capacity reset clears 100,000 flag bytes and also writes 200,000
+sentinel bytes; only the first is included in the clear count. This distinction
+must remain explicit in the attribution report. Final coverage review is pending.
+
+This bridge measures the named F1-F3 mechanisms, not every memory instruction.
+Residual unmeasured families include text-encoding/struct state resets (1,184
+array bytes plus 8 bytes respectively), token/path copy/append helpers, and
+small field/string construction inside directive, flow, package and VM services.
+Their work must not be reported as zero or included in an inferred total from
+these counters; symbolized samples determine whether finer observation is needed.
+The PRG payload completion uses actual source-pointer advancement, including the
+existing low-word loop bound; a larger requested count cannot silently become
+complete-byte evidence.
+
+Platform-enabled CLI profiling begins before initial state clearing, not after
+argument parsing. The platform-disabled progress-only boundary is unchanged.
+The decoder requires each dimension to sum to the corresponding aggregate;
+completed bytes cannot exceed requests, and a successful terminal record
+cannot contain unfinished bulk work. Any overflow rejects complete proof.
+No per-byte observation, loop elimination, buffering, or output change is added.
+
 ## Evidence boundary
 
 Host decoder tests are Level C. Source/assembly and deterministic harness tests
 are Levels B/C. The harness seeds both saturating fields at `0xfffffffe`, drives
 the real update routines across the boundary, and verifies `0xffffffff` plus
 the matching overflow bit. A fresh FS-UAE harness run confirms those checks on
-real 68020 execution but
+native execution of the 68020-targeted build under the recorded emulator CPU, but
 does not prove a full assembly. Only an independently complete, fresh guest run
 with explicit zero exit and exact Rust artifact equality can be Level D parity
 proof. An `OFPR` complete bit never substitutes for that contract.

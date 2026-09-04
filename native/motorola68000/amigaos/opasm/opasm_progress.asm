@@ -15,6 +15,9 @@
 .ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	.use debug.amigaos.runtime_profile as runtime_profile
 .endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 	.include "debug_macros.i"
 
 	.pub
@@ -188,6 +191,10 @@ clearWorkLoop
 	lea OPASM_PROGRESS_PROGRAM_ID_OFFSET(a5), a1
 	jsr runtime_profile.opforgeRuntimeProfileBeginRunV1
 .endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l OPASM_PROGRESS_RUN_ID_OFFSET(a5), d0
+	jsr platform_profile.opforgePlatformProfileBeginRunV1
+.endif
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
 	rts
@@ -214,6 +221,11 @@ opasmProgressSetPhaseV1	.block
 	move.w d4, d0
 	move.w d5, d1
 	jsr symbol_expr_profile.opforgeSymbolExprProfileSetContextV1
+.endif
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.w d4, d0
+	move.w d5, d1
+	jsr platform_profile.opforgePlatformProfileSetContextV1
 .endif
 .ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	move.w d4, d0
@@ -546,6 +558,10 @@ opasmProgressFinishV1	.block
 incomplete
 	ori.w #OPASM_PROGRESS_FLAG_INCOMPLETE, OPASM_PROGRESS_FLAGS_OFFSET(a5)
 finishWork
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d6, d0
+	jsr platform_profile.opforgePlatformProfileFinishV1
+.endif
 .ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	move.l d6, d0
 	jsr runtime_profile.opforgeRuntimeProfileFinishV1

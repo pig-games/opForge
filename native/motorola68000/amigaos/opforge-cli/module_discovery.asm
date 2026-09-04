@@ -10,6 +10,9 @@
 	.use opforge.cli.path
 	.use opforge.cli.state
 	.use opforge.cli.token_util
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 	.section code, kind=code
 	.pub
@@ -339,10 +342,17 @@ scanCandidateFile	.block
 	clr.w ModuleScanTargetFound
 	clr.w ModuleScanTargetOpen
 	clr.l ModuleScanByteOffset.l
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassModuleV1
+	jsr platform_profile.opforgePlatformProfileRecordModuleCandidateV1
+.endif
 	clr.l ModuleScanLineStartOffset.l
 	clr.l ModuleScanCandidateStartOffset.l
 	clr.l ModuleScanCandidateEndOffset.l
 	lea ModuleScanCandidatePath.l, a0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassModuleV1
+.endif
 	jsr dos.openInput
 	tst.l d0
 	beq.w candidateFail
@@ -352,6 +362,9 @@ candidateReadLoop
 	lea ModuleScanChar.l, a0
 	moveq #1, d0
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassModuleV1
+.endif
 	jsr dos.readInput
 	cmp.l #-1, d0
 	beq.w candidateCloseFail
@@ -423,6 +436,9 @@ candidateEofClosed
 
 candidateCloseNo
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassModuleV1
+.endif
 	jsr dos.close
 	move.l ModuleScanByteOffset.l, d0
 	move.l d0, ModuleScanCandidateEndOffset.l
@@ -434,6 +450,9 @@ candidateCloseNo
 
 candidateCloseFound
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassModuleV1
+.endif
 	jsr dos.close
 	clr.l ModuleScanTargetOpen.l
 	clr.l ModuleScanByteOffset.l
@@ -443,6 +462,9 @@ candidateCloseFound
 
 candidateCloseFail
 	move.l d5, d1
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassModuleV1
+.endif
 	jsr dos.close
 
 candidateFail

@@ -5,6 +5,9 @@
 
 	.use opasm.amigaos.engine
 	.use opasm.amigaos.flow_scopes as scopes
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 OPASM_OUTPUT_PRG_BUFFER_CAPACITY = 4098
 OPASM_OUTPUT_HEX_BUFFER_CAPACITY = 12000
@@ -94,6 +97,13 @@ haveLoadAddr
 	move.b d0, (a2)+
 	jsr opasmOutputBuildBinArtifactV1
 	bne.s fail
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l d1, d0
+	jsr platform_profile.opforgePlatformProfileCopyRequestedV1
+	move.l (sp)+, d0
+	move.l a0, -(sp)
+.endif
 	move.l d1, d3
 	beq.s doneCopy
 	subq.l #1, d3
@@ -103,6 +113,14 @@ copyLoop
 	dbra d3, copyLoop
 
 doneCopy
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.l d0, -(sp)
+	move.l a0, d0
+	sub.l 4(sp), d0
+	jsr platform_profile.opforgePlatformProfileCopyCompletedV1
+	move.l (sp)+, d0
+	lea 4(sp), sp
+.endif
 	addi.l #2, d1
 	lea OpasmPrgArtifactBuffer.l, a0
 	moveq #0, d0

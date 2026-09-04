@@ -354,7 +354,11 @@ outputPathDefaults
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0
 	beq.s defaultLstPath
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_SREC, d0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	beq.w defaultSrecPath
+.else
 	beq.s defaultSrecPath
+.endif
 	bra.w usage
 
 defaultBinPath
@@ -365,7 +369,11 @@ defaultBinPath
 	lea state.NativeCliOutfileBase, a0
 	lea state.NativeCliBinPath, a1
 	jsr token_util.opforgeNativeCliCopyTokenBuffer
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	bra.w parseOk
+.else
 	bra.s parseOk
+.endif
 
 defaultHunkPath
 	tst.b state.NativeCliHunkPath

@@ -5,6 +5,9 @@
 	.pub
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	.use debug.amigaos.platform_profile as platform_profile
+.endif
 
 OPASM_HEADER_SIZE                    = 12
 OPASM_TOC_ENTRY_SIZE                 = 12
@@ -141,12 +144,29 @@ done
 ;   zeroed as one contiguous longword range.
 ; ---------------------------------------------------------------------------
 clearLoadedState	.block
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l #buffers.PACKAGE_STATE_CLEAR_BYTE_COUNT, d0
+	jsr platform_profile.opforgePlatformProfileRangePackageV1
+	jsr platform_profile.opforgePlatformProfileClearRequestedV1
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
 	lea buffers.PackageStateFlags, a3
 	move.w #PACKAGE_STATE_CLEAR_BYTE_LAST, d0
 
 loop
 	clr.b (a3)+
 	dbf d0, loop
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l #buffers.PACKAGE_STATE_CLEAR_BYTE_COUNT, d0
+	jsr platform_profile.opforgePlatformProfileClearCompletedV1
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
 	rts
 	.bend  ; clearLoadedState
 

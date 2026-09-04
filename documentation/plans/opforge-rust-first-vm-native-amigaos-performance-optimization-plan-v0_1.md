@@ -45,6 +45,14 @@ bounded progress/counters, coarse timing, symbolized sampling support, and
 incomplete abort reports before any optimization. They may not change output
 behavior, relax proof requirements, or turn incomplete evidence into proof.
 
+User-approved sequencing amendment (2026-09-04): freeze the corpus inputs and
+result protocol separately from successful native parity. Item 2 may retain
+explicit failed/incomplete native baselines and then feed Item 0f diagnosis;
+native completion is not a prerequisite for investigating why completion fails.
+This changes only the diagnostic entry gate. It does not close parity findings,
+authorize a semantic fix or optimization, or waive any Phase 0/full-plan closure
+gate. Every failed case remains tracked until its actual correctness proof passes.
+
 ## Version Impact
 
 - Versioning impact: Patch while profiler controls and optimizations remain
@@ -286,7 +294,8 @@ produces a reviewed no-go/reorder amendment, not implementation.
 
 These measurement items are the mandatory post-activation foundation. Items
 0a-0e run sequentially after Item 1, Item 2 then freezes B01-B10, and Item 0f
-publishes attribution from that corpus. An incomplete profile is useful
+publishes attribution from that corpus, including explicitly failed/incomplete
+native baselines under the approved diagnostic entry gate. An incomplete profile is useful
 localization evidence but never a completed assembly or Level D result.
 
 - [x] Item 0a — Add bounded native progress and coarse phase timing
@@ -381,28 +390,29 @@ localization evidence but never a completed assembly or Level D result.
   - Range/phase continuation (2026-09-04): implemented the fixed 528-byte OFIO schema 2 with separate bulk request/completion hooks, five range and nine phase rows, one-shot range selection, package-state and per-pass presence clears, startup-before-clear accounting, per-operation I/O classes, and EOF line visits. Fifteen decoder tests, independent/combined builds, the actual buffer/CCR guest oracle, exact real-CLI artifact parity, and a real output-open negative proof pass; disabled release identity is unchanged. This supersedes those recovery gaps, not Item 0e's checkbox. Separate subgroup gates, remaining inline-memory/seek coverage audit, representative-value/error/overhead evidence, staged gate, and review remain before commit. See `documentation/performance/results/opforge-native-platform-range-phase-2026-09-04.md`.
 
 - [ ] Item 2 — Freeze the production-path benchmark corpus and result protocol
+  - In-progress evidence (2026-09-04): deterministic B01-B10 generation, independent B01-B08 BIN contracts, a verified locked-release runner, fail-closed JSON ledger, and a live-oracle native adapter are implemented. All ten current cases pass seven retained Rust invocations; workflow validation passes. Initial native B01/B04/B06/B07 complete, B02/B03/B05 exceed the 120-second cutoff, and nested-include B08/B10 drafts exposed the native one-level include limit. B08/B10 now use sibling includes and a transitive module graph: corrected B08 matches BIN bytes with zero exit but fails the empty-stdout contract; enlarged 256-group B10 times out. B09 completes with a real unresolved-label error and is not parity proof. Focused counter confirmation passes; staging/capacity repairs pass focused host checks without increasing allocation limits. See `documentation/performance/opforge-production-corpus-v1.md`. The user approved diagnosis of these explicitly failed/incomplete cases before successful native parity. The corpus remains unfrozen pending the Item 2 manifest/result ledger, review, and commit; no Item 0f completion is implied.
   - Source requirement or finding IDs: SR-MEAS, SR-PAR, SR-REMOTE, F1-F12.
   - Rationale/mechanism: make the attribution report and every later mechanism/end-to-end result comparable.
   - Architectural boundaries: fixtures traverse real CLI/package paths; synthetic cases isolate mechanisms but cannot replace the bounded representative integrated B10 workload. Neither B10 nor any reduced case is terminal self-host proof.
   - Expected files: `crates/opforge-asm/tests` or existing benchmark-fixture area, `scripts/performance/**`, `documentation/performance/results/**`.
-  - Steps: map/reuse B01-B10; define B10's integrated composition, coverage, digest, and repeatable A6000 runtime envelope; add deterministic generators/manifests only for gaps; record commands, outputs, cold/warm policy, seven-run default, median/range/p95, and comparison schema; add artifact/diagnostic checks.
+  - Steps: map/reuse B01-B10; define B10's integrated composition, coverage, digest, and bounded observation window; add deterministic generators/manifests only for gaps; record commands, outputs, cold/warm policy, seven-run default, median/range/p95, and comparison schema; add artifact/diagnostic checks. Freeze exact inputs and a per-case native status ledger even when native runs fail or time out; mark physical-A6000 runtime and successful native completion unvalidated where evidence is absent.
   - Dependencies/worktree: Item 0e after Item 1; integration worktree unless fixture generation merits a child slice.
   - Before/after metrics: establish unprofiled Rust release wall times and sizes; capture native wall time only for corpus cases with reliable completion.
   - Correctness/parity/failure validation: generated/reused corpora produce expected artifacts/diagnostics; malformed-result and missing-artifact checks fail closed.
   - Rollback/kill/reference strategy: fixture manifests are versioned; remove synthetic cases that perturb the target or duplicate real coverage.
-  - Effort/risk and stop/go: M/Medium; stop if B10 is not representative, bounded, and reproducible; fix the corpus before attribution.
+  - Effort/risk and stop/go: M/Medium; stop if B10's inputs/composition are not representative and reproducible or its observation is unbounded. Native timeout/failure does not block diagnostic attribution; it blocks correctness/performance acceptance and stays an open finding. Do not shrink away a failing mechanism to obtain a green corpus.
   - Gate tier and required focused gates: focused sub-item — focused corpus/schema tests and workflow gate for report/schema docs.
   - Full quality gates: deferred to the Phase 0 closure at Item 0f unless focused evidence escalates this item.
-  - Plan-compliance review evidence: reviewer checks all ten matrix categories, B10 coverage/runtime envelope, and real-path commands.
+  - Plan-compliance review evidence: reviewer checks all ten matrix categories, B10 coverage/observation bounds, real-path commands, explicit failed/incomplete statuses, and absence of inferred native completion or physical runtime.
   - Commit outcome: `test(perf): establish reproducible production benchmark corpus`.
-  - Definition of done: B01-B10 are named, digestible, repeatable, parity-checked, and emit a comparable result ledger before Item 0f consumes them.
+  - Definition of done: B01-B10 inputs/commands/package are frozen and digestible, Rust artifacts repeat, the result protocol is validated, and each native attempt has an explicit passed/failed/incomplete status with evidence provenance. Successful native parity is not required for Item 0f diagnostic entry; failures remain open, never comparison-eligible successful timings, and all final correctness gates are unchanged. Review and a focused commit precede Item 0f.
 
 - [ ] Item 0f — Publish the bounded native compute-attribution report
   - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-MEAS, SR-PAR, F1-F12.
   - Rationale/mechanism: replace competing guesses with measured slopes, a ranked owner/mechanism decision, and the smallest justified next profiling or optimization slice.
   - Architectural boundaries: investigation/report only; a timed-out or aborted run remains localization evidence; no terminal-proof checkbox closes without actual fresh completion and explicit zero guest exit.
   - Expected files: `documentation/performance/results/**` raw manifests/reports, symbol/map and sampling command manifest, this plan/baseline only if measured evidence changes priorities.
-  - Steps: run the frozen B01-B10 corpus under reproducible bounded FS-UAE configurations and retain targeted symbolized PC samples; run the same representative cases on the physical A6000 where feasible; compare statement/pass/lookup/expression/flow/image/VM/DOS/clear/copy slopes; distinguish progress from spin; rank measured owners and publish stop/go evidence without implementing a fix. Do not run or require the full self-host assembly for this report.
+  - Steps: run the frozen B01-B10 corpus under reproducible bounded FS-UAE configurations and retain targeted symbolized PC samples, including bounded incomplete-run captures of failed cases; run the same representative cases on the physical A6000 where feasible; compare statement/pass/lookup/expression/flow/image/VM/DOS/clear/copy slopes; distinguish progress from spin; rank measured owners and publish stop/go evidence without implementing a fix. Use only the approved debug/assert framework for guest instrumentation and read-only, bounded host sampling; preserve fresh run identity and ephemeral case-tree cleanup. Do not run or require the full self-host assembly for this report.
   - Dependencies/worktree: Item 2 commit after Item 0e and access to its frozen representative native B01-B10 workloads; same sequential bridge lineage; physical runs may be collected manually into the reviewed result envelope.
   - Before/after metrics: elapsed and progress deltas, operations/second and operations/statement-visit, phase shares, PC sample shares, counter overhead/control comparison, overflow/completeness; no speed claim.
   - Correctness/parity/failure validation: manifests/digests/configuration, repeated bounded snapshots, decoder integrity, explicit incomplete state, exact artifacts/diagnostics/exit only for completed runs; Level D rules unchanged.
@@ -1581,7 +1591,9 @@ and no optimization is pre-approved.
 - Item 1 activates only from fetched remote checkpoint `68cc693c`; it does not
   complete or waive the parked self-hosting plan.
 - Items 0a-0e follow Item 1 and may instrument only; Item 2 freezes the corpus;
-  Item 0f then reports attribution without optimizing.
+  Item 0f then reports attribution without optimizing. The user-approved
+  diagnostic entry exception allows explicit failed/incomplete native baselines;
+  it waives neither parity acceptance nor any final correctness gate.
 - One work item is active at a time. A blocked item prevents the next item until
   the plan is explicitly amended and reviewed.
 - No F1-F10 optimization, candidate reordering, or generic VM optimization claim

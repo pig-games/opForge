@@ -1,3 +1,13 @@
+PASS: Independent plan-quality and plan-compliance reviewer plan_review approves the documentation-only A-test-throughput amendment after Step16. New Step17 measures one opt-level1 test-profile candidate with debug assertions and overflow checks retained, identical tests/oracles and mandatory non-LSP gate, explicit cold/warm amortization and revert/no-go. No implementation or savings are claimed yet. Step18 B10 and Step19 A-close retain all qualification debt; LSP-close remains last at Step28.
+
+Artifact SHA-256: 478cd966e5e65fbc71c828db16755321f8ff3c057a3ccb1b916346667b148f94
+Independent metadata audit by step16_metadata confirms unique Step01–28, unchanged completed01–16 and stable Item IDs. The Step15 historical numbering sentence is clarified to distinguish its original01–27 from the current01–28. No runtime/source change is bundled.
+Validation: /private/tmp/opforge-test-throughput-plan-amendment.log, explicit exit0, 1824 bytes, SHA256 de9efba1a589939579cc890dec87b4e2a8a8faa7ebe15e44080448074f0bd7eb.
+Validation: /private/tmp/opforge-test-throughput-workflow-amendment-r2.log, explicit exit0, 6363 bytes, SHA256 5f50866b00058a7888e483c541756272d6b3ac4c4e03e0d1b72d789cb708d269.
+The first workflow attempt rejected descriptive profile wording as an FS-UAE command; rephrasing it as test-profile settings passed the unchanged policy check.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Independent plan-compliance reviewer plan_review approves Step16 / Item A-branch and focused commit fix(native): resolve later-pass relative branch targets. The reviewed 15-file staged diff SHA256 is 208c09b399ffb30eeec51ea19ac720933bef7a427e74bba3e3ba30e066eb9946; this sidecar adds only the final receipt. The generic resolved-target correction preserves pass-one, expression errors, displacement/range checks and public exports.
 
 Artifact SHA-256: 0a35c196d5a498f1cb9b7905f794936eafbb434f0ae12987d02701245c127954

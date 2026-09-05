@@ -1,3 +1,15 @@
+PASS: Independent plan-compliance reviewer plan_review approves Step13 / Item16a and the focused commit perf(native): initialize statement storage by live state. The reviewed 12-file scope preserves all non-statement clear intervals, privately defines layout constants, and initializes all 24 row fields before use. This sidecar adds only the final receipt.
+
+Artifact SHA-256: ffee0ca5532d1c0e8d2d3bfcb876c2c24f36187351b04a182a262c974f02bf26
+Validation: step13-rust-non-lsp-private-20260905.log, explicit exit0, 344463 bytes, SHA256 50cf884e2e1aed2d1c873f6f4f5adb2ecd3991c20970e5971542b28ef0e1b988.
+Validation: step13-staged-native-private.log, explicit exit0, 4643 bytes, SHA256 05e9cea7f56c23368eb391d12f51b9fb9d59db2ddf7022778d7a2ba83c353186.
+Validation: step13-workflow-final-corrected-report.log, explicit exit0, 7031 bytes, SHA256 44f32e13a2d80ccadbda8dca897b090621edf9aea777bfa9889db68de3c1ff4d.
+Validation: step13-plan-final-corrected-report.log, explicit exit0, 1746 bytes, SHA256 29e59d40c5cc158e6e1153c4e837794c39b9b05b6fbaf5d115166b7a8a4f8d92.
+Validation: step13-private-host-proof.log, explicit exit0, 2533 bytes, SHA256 a0514bdec5aa59c6f0b32866245a58401befdd3927a0c99a0bb4fab0697adaaf.
+Non-LSP Rust PASS: 1,589 assembler tests, 1903.892450s whole gate; LSP deferred. Native B01 median44.755913s to37.055650s (17.2050%); three exact alternating pairs, stable distinct images, live513 and early-error Level D PASS. Private-constant correction preserves measured executable bytes exactly. Initial export snapshot failure and deliberate obsolete-gate cancellation remain recorded. B03/B10 timeouts remain unresolved; provisional foundation exception does not close Phase A. Step14 begins after this focused commit.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Independent plan-compliance reviewer plan_review (2026-09-05) approves Step12 / Item10 and the focused commit perf(vm): remove measured repeated runtime work. Exact six-file staged scope matches the measured candidate; this sidecar adds only the final receipt. Minimal explicit-package early return preserves error/precedence/cfg semantics, and all 55 embedded evidence entries match raw bytes/hashes.
 
 Artifact SHA-256: 2ae746f726f6caf4888eaeafcb935dfc1df5738a6f41b36562eb7471120c963e

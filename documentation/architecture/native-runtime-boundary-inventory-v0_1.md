@@ -108,6 +108,20 @@ CPU-neutral passive observer and owns no package, CPU, instruction, selection,
 encoding, expression, diagnostic, or output semantics. Disabled compositions
 retain the previously recorded Hunk bytes exactly.
 
+Performance-plan Step 13 / Item 16a refreshes the `opasm.amigaos.engine`
+source-driven inventory after adding live statement-row initialization and
+split session clearing. The audited source snapshot is SHA-256
+`d608a3efddc98d9395e7b78508cdbcf1fb91e7464c643718fb760bd87e769b0c`, with
+102 `.block` routines, four imports, `code`/`bss` sections, and 35
+diagnostic/status/event lines, as derived by
+`scripts/workflow/check_native_runtime_boundary_inventory.py`. The new
+`clearStatementRecord` routine zeroes the 24 SoA fields for the current
+validated row before storage; the explicit `OPFORGE_SESSION_CLEAR_ALL_STATEMENTS`
+composition preserves the prior full-range clear for the reference build.
+This remains an architecture-neutral storage-lifetime change: statement
+semantics, package ownership, CPU behavior, and the documented six-byte
+declared/emitted-range discrepancy are unchanged.
+
 ## Dependency direction
 
 ```text

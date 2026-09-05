@@ -1,0 +1,68 @@
+[slice]
+schema_version = 2
+name = "live native statement-row initialization"
+kind = "native-performance"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "16a / Step 13"
+rust_reference = [
+  "crates/opforge-asm/src/tests/native_production_corpus.rs::run_native_production_corpus",
+  "crates/opforge-asm/src/tests/native_statement_capacity.rs::native_statement_capacity_over_512_fs_uae",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::initSessionV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::clearStatementRecord",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineStoreStatementRecordV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::resetStatementCollectionV1",
+  "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineRollbackCollectionV1",
+]
+invariant = "The native session initializer preserves the existing clear interval outside the 30,800,000-byte statement arena, while every validated statement insertion zeroes all 24 SoA fields for its target row before storage. The live count remains the sole committed-row boundary; reset/retry ordering is modeled, while rollback reuse and the pre-commit module owner staging read are source-audited paths."
+assertion_decision = "No ad-hoc runtime assertion or instrumentation: the source-driven Level C model proves row initialization and split-range arithmetic, while B01 exact fresh Level D parity plus fresh live 513-statement capacity and early-error Level D PASS prove the provisional focused CLI boundary. Full/live B03 and B10 incomplete attempts remain unresolved, and completed B03 plus full B01-B10 A-close qualification remain mandatory."
+expected_inputs = "A fresh native CLI session with zero or nonzero prior arena contents, bounded statement requests below NATIVE_STATEMENT_TABLE_CAPACITY, rollback/reset reuse, and the existing explicit OPFORGE_SESSION_CLEAR_ALL_STATEMENTS reference composition."
+expected_outputs = "All non-statement session regions retain their prior positions and clear-byte semantics; the explicit full-clear composition retains the prior 41,221,928-byte interval and six-byte declared/emitted discrepancy; each live row has deterministic zero defaults before store fields are written; exact Rust artifacts and diagnostics remain unchanged."
+known_non_equivalences = "The statement arena is 24 separate arrays rather than one contiguous 308-byte struct. The six-byte declared/emitted session-range discrepancy is preserved. The full-clear define remains an explicit reference build; this slice claims no timing percentage or behavior on physical hardware."
+foundation_exception = "An incomplete full/live B03 attempt at the unchanged fixed 120s bound may be retained provisionally for Step13 only after independent review and all of: three stable B01 matched control/candidate pairs with exact native parity, distinct mode-image identities, and improvement greater than max(5%, noise); fresh live 513-statement capacity Level D PASS; fresh early-error Level D PASS; existing all-24-field host proof and native guards; full non-LSP Rust gate; and final independent compliance PASS. B03 is 256 trivial NOPs; the 513 case exercises the actual CLI/store/pass/emission path with more live rows. Preserve all attempted B03/B10 failures as unresolved with no speed/parity claim. Unchanged-bound completed B03 and full B01-B10 A-close qualification remain mandatory and unchanged."
+foundation_exception_review = "Under the user's authorization to reorder the plan, independent plan review covers this scheduling amendment; it changes focused provisional qualification only, leaves final gates unchanged, and does not change the Step13 checkbox or current-step pointer to complete."
+fast_proof_command = "python3 -m unittest scripts/performance/tests/test_statement_initialization.py -v"
+level_d_command = "OPFORGE_PERFORMANCE_CORPUS=1 OPFORGE_NATIVE_CORPUS_CASES=B01 OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR=live OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_production_corpus_parity -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "statement_initialization_source_contract"
+proof_level = "C"
+proves = "The source-driven model extracts the candidate and reference init/store blocks, verifies split-range arithmetic, all 24 row fields, row reuse, count boundaries, modeled wrapper/order/reset/retry behavior, and preservation of the six-byte discrepancy; rollbackCollection and the caller's pre-commit staging read are source-audited paths only."
+does_not_prove = "68000 instruction encoding, AmigaOS execution, performance, or complete artifact parity."
+
+[[tests]]
+name = "external_fs_uae_native_production_corpus_parity / B01"
+proof_level = "D"
+command = "OPFORGE_PERFORMANCE_CORPUS=1 OPFORGE_NATIVE_CORPUS_CASES=B01 OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR=live OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_production_corpus_parity -- --nocapture --test-threads=1"
+proves = "A fresh completed B01 native CLI run uses live-row initialization and matches the same-case in-memory Rust artifacts with explicit guest completion and zero exit."
+does_not_prove = "B03, B10, the capacity/error paths, or all native groups."
+
+[[tests]]
+name = "external_fs_uae_native_production_corpus_parity / B03"
+proof_level = "D"
+command = "OPFORGE_PERFORMANCE_CORPUS=1 OPFORGE_NATIVE_CORPUS_CASES=B03 OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR=live OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_production_corpus_parity -- --nocapture --test-threads=1"
+proves = "A fresh completed B03 native CLI run preserves exact Rust-authoritative artifacts under live-row initialization."
+does_not_prove = "B01, B10, the capacity/error paths, or all native groups."
+
+[[tests]]
+name = "external_fs_uae_native_production_corpus_parity / B10"
+proof_level = "D"
+command = "OPFORGE_PERFORMANCE_CORPUS=1 OPFORGE_NATIVE_CORPUS_CASES=B10 OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR=live OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_production_corpus_parity -- --nocapture --test-threads=1"
+proves = "A fresh completed B10 native CLI run exercises the larger statement population and preserves exact Rust-authoritative artifacts under live-row initialization."
+does_not_prove = "B01, B03, the capacity/error paths, or all native groups."
+
+[[tests]]
+name = "external_fs_uae_session_clear_early_error_preserves_diagnostic"
+proof_level = "D"
+command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_session_clear_early_error_preserves_diagnostic -- --nocapture --test-threads=1"
+proves = "A fresh completed unknown-mnemonic case retains the required diagnostic and explicit nonzero guest exit after split session initialization."
+does_not_prove = "Every error path or complete diagnostic rendering parity."
+
+[[tests]]
+name = "native_statement_capacity_over_512_fs_uae"
+proof_level = "D"
+command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm native_statement_capacity_over_512_fs_uae -- --nocapture --test-threads=1"
+proves = "A fresh completed 513-statement native case exercises row allocation beyond the historical boundary and matches the Rust-authoritative output."
+does_not_prove = "Maximum capacity, every alignment, B01/B03/B10, or full-product behavior."

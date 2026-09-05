@@ -5809,6 +5809,7 @@ mod tests {
         for (index, defines) in [
             &[][..],
             &["OPFORGE_SESSION_CLEAR_BYTE_REFERENCE"][..],
+            &["OPFORGE_SESSION_CLEAR_ALL_STATEMENTS"][..],
             &[
                 "OPFORGE_DEBUG_CONTRACTS",
                 "OPFORGE_PROGRESS_PLATFORM_COUNTERS",

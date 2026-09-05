@@ -6,6 +6,7 @@
 
 - Source: original Rust-first performance instruction and companion baseline; 2026-09-01 activation, 2026-09-02 bounded-corpus direction, 2026-09-04 diagnostic-entry and terminal-gate amendments; 2026-09-05 user instruction to reorder for the cheapest largest early gains, faster subsequent work, token efficiency, and increasing certainty toward completion.
 - LSP source amendment (2026-09-05): user explicitly permits LSP to remain broken until the very end; all LSP repair and final qualification belong to Step 25 / Item LSP-close.
+- Step13 scheduling amendment (2026-09-05): under the user’s authorization to reorder the plan, independently reviewed language changes focused provisional qualification only; final gates remain unchanged.
 - Mode: implementation plan with measured experiments and explicit rejection decisions.
 - Owner: opForge maintainers and implementing Codex tasks.
 - AGENTS binding: The active worktree `AGENTS.md`, applicable rule packs, and explicit conversation instructions remain binding during execution. This plan does not override a mandatory gate in that contract.
@@ -97,8 +98,8 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 13 of 25 · Item 16a — audit unused native statement-arena
-clearing after the Step12 optimization commit.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 14 of 25 · Item 14m — buffer the measured module-candidate
+scan after the Step13 optimization decision.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -129,6 +130,19 @@ clearing after the Step12 optimization commit.** Update this pointer and total w
   B10 result as the baseline for subsequent candidates. Otherwise use matched
   completed B10 non-regression checks. Terminal acceptance never relies on
   partial profiles. Do not shrink/relabel B10 to manufacture success.
+- **Step13 foundation exception:** an incomplete full/live B03 attempt at the
+  unchanged fixed 120s bound may be retained provisionally for Step13 only when
+  an independent review approves the exception and all of the following are
+  already complete: three stable B01 matched control/candidate pairs with exact
+  native parity, distinct mode-image identities, and improvement greater than
+  `max(5%, noise)`; a fresh live 513-statement Level D capacity PASS; a fresh
+  early-error Level D PASS; the existing all-24-field host proof and native
+  guards; the full non-LSP Rust gate; and a final independent compliance PASS.
+  The B03 fixture is 256 trivial NOPs, while the 513-statement case exercises
+  the actual CLI/store/pass/emission path with more live rows. This exception
+  preserves every attempted B03/B10 failure as unresolved and makes no B03/B10
+  speed or parity claim. The unchanged-bound completed B03 requirement and the
+  full B01–B10 A-close qualification remain mandatory and unchanged.
 - Use existing counters with I/O detail disabled for compute timing and separate
   all-counter structural I/O runs. Use observer-off completed timings where
   possible; do not pool different observer/CPU configurations. Pin 68020 as the
@@ -294,18 +308,19 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `perf(vm): remove measured repeated runtime work`, or `docs(perf): record Rust candidate no-go` for the rejection path; exactly one focused commit before the next item.
   - Definition of done: one measured Rust win or honest rejection is committed; generic semantics remain unchanged. Record an immediate transfer disposition: native counterpart applicability, measured native owner/cost, expected reuse, eligibility and proof effort. If a positive Rust win plus native evidence outranks 16a/14m, insert one concrete reviewed 25.x native port and cleanup owner immediately after Item 10; otherwise explicitly defer. A Rust rejection never authorizes native speculation.
 
-- [ ] Step 13 · Item 16a — Eliminate unused statement-arena clearing before smaller regions
+- [x] Step 13 · Item 16a — Eliminate unused statement-arena clearing before smaller regions
+  - Completion evidence (2026-09-05; final focused commit and independent compliance receipt pending): completed B01 full/live matched evidence records a 17.2050% observed gain above the 5% threshold with exact parity and stable distinct native FNV identities; fresh 513-statement capacity and early-error Level D proofs pass; private/full and live native images are byte-identical to their prior artifacts; all six B03 and both B10 fixed-bound attempts remain unresolved timeouts and are mandatory A-close debt. See `documentation/performance/results/opforge-step13-native-statement-performance-2026-09-05.md` and `opforge-step13-native-statement-comparison-2026-09-05.json`.
   - Source requirement or finding IDs: SR-EARLY, SR-PAR, F2, F7.
   - Expected files: opasm session/statement insertion and access paths, debug poison/assert harness, results.
   - Dependencies/worktree: Item 10 decision commit; high-risk child worktree. Old Item 16 source reset is not a prerequisite.
   - Steps and boundaries: Audit all statement zero dependencies and byte-region boundaries. Reset authoritative live counts and fully initialize rows on insertion; omit only the proven-unused 30.8MB statement range from startup clear. Keep all other regions and layout resets initially unchanged. Retain statement-only legacy reset and poison unused records. A generation-map redesign or record compaction is outside this item; schedule separately only if needed.
-  - Before/after and stop/go: target work reduction is 30.8MB minus any required initialized live bytes, not a promised timing percentage. Apply B01/B03 matched timings and bounded B10. If zero-dependency audit cannot close in this slice, record defer and proceed to module buffering; do not broaden to all-region redesign.
+  - Before/after and stop/go: target work reduction is 30.8MB minus any required initialized live bytes, not a promised timing percentage. Apply B01/B03 matched timings and bounded B10. If full/live B03 remains incomplete at the unchanged fixed 120s bound, an independently reviewed narrow foundation exception may retain Step13 provisionally only after three stable B01 matched control/candidate pairs show exact native parity with distinct mode-image identities and improvement greater than `max(5%, noise)`, fresh live 513-statement capacity Level D and early-error Level D PASS, existing all-24-field host proof/native guards, full non-LSP Rust gate, and final independent compliance PASS. B03 is 256 trivial NOPs; the 513 case is the actual CLI/store/pass/emission path with more live rows. Preserve every B03/B10 attempted failure as unresolved and make no speed/parity claim. The unchanged-bound completed B03 requirement and full B01–B10 A-close remain mandatory. If this exception cannot be justified, record defer and proceed to module buffering; do not broaden to all-region redesign.
   - Gate tier: focused sub-item.
   - Required focused gates: native gates, Level A–C poison/reuse/capacity/early-error oracles; focused Level D source/statement/layout CLI parity; common execution/gate policy applies.
   - Full quality gates: deferred to A-close, except mandatory per-commit contract gates.
   - Plan-compliance review evidence: independent PASS citing this item, exact diff, required gate receipts, evidence limitations and rollback/disposition.
   - Commit outcome: `perf(native): initialize statement storage by live state`; exactly one focused commit before the next item.
-  - Definition of done: unused statement capacity is neither cleared nor read with exact focused parity, or explicit bounded defer; F2 remains partial while other regions clear.
+  - Definition of done: unused statement capacity is neither cleared nor read with exact focused parity, or explicit bounded defer; a narrowly reviewed foundation exception may retain this item provisionally under the stated B01/live-513/early-error/host-proof/gate conditions while B03/B10 failures remain unresolved; F2 remains partial while other regions clear. Step13 closes only after its provisional-retention or bounded-defer decision is committed; B03/B10 debt remains open at A-close.
 
 - [ ] Step 14 · Item 14m — Buffer the measured module-candidate scan first
   - Source requirement or finding IDs: SR-EARLY, SR-PAR, F1.

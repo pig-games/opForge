@@ -62,10 +62,11 @@ def _extract_block(source: str, name: str) -> list[tuple[int, str]]:
 def _select_conditionals(
     lines: list[tuple[int, str]], enabled_symbols: frozenset[str]
 ) -> list[tuple[int, str]]:
-    """Apply only the two conditionals permitted in clearBytes."""
+    """Apply only the conditionals used by the covered clear routines."""
 
     known_symbols = {
         "OPFORGE_PROGRESS_PLATFORM_COUNTERS",
+        "OPFORGE_SESSION_CLEAR_ALL_STATEMENTS",
         "OPFORGE_SESSION_CLEAR_BYTE_REFERENCE",
     }
     active = True
@@ -414,23 +415,56 @@ class SessionClearLevelCTests(unittest.TestCase):
         if length > ClearBytesMachine.ACCELERATION_THRESHOLD:
             self.assertTrue(machine.accelerated_blocks)
 
-    def test_source_contract_has_one_exact_session_clear(self) -> None:
+    def test_source_contract_has_reference_selective_and_row_clears(self) -> None:
         expressions = _constant_expressions(self.source)
         self.assertEqual(
             _evaluate_constant("OPASM_ENGINE_ASSEMBLY_SESSION_BYTES", expressions),
             SESSION_BYTES,
         )
         calls = re.findall(r"(?m)^\s*bsr\.w\s+clearBytes\s*$", self.source)
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls), 6)
 
-        init_lines = _select_conditionals(_extract_block(self.source, "initSessionV1"), frozenset())
-        normalized = [re.sub(r"\s+", "", line).lower() for _, line in init_lines]
-        call_index = normalized.index("bsr.wclearbytes")
-        self.assertEqual(normalized[call_index - 2], "leaopasmengineassemblysessionstart.l,a1")
+        reference_init = _select_conditionals(
+            _extract_block(self.source, "initSessionV1"),
+            frozenset({"OPFORGE_SESSION_CLEAR_ALL_STATEMENTS"}),
+        )
+        reference = [re.sub(r"\s+", "", line).lower() for _, line in reference_init]
+        reference_call = reference.index("bsr.wclearbytes")
+        self.assertEqual(reference.count("bsr.wclearbytes"), 1)
         self.assertEqual(
-            normalized[call_index - 1],
+            reference[reference_call - 2],
+            "leaopasmengineassemblysessionstart.l,a1",
+        )
+        self.assertEqual(
+            reference[reference_call - 1],
             "move.l#opasm_engine_assembly_session_bytes,d0",
         )
+
+        default_init = _select_conditionals(
+            _extract_block(self.source, "initSessionV1"), frozenset()
+        )
+        default = [re.sub(r"\s+", "", line).lower() for _, line in default_init]
+        self.assertEqual(default.count("bsr.wclearbytes"), 2)
+        first_call = default.index("bsr.wclearbytes")
+        second_call = default.index("bsr.wclearbytes", first_call + 1)
+        self.assertEqual(default[first_call - 2], "leaopasmengineassemblysessionstart.l,a1")
+        self.assertEqual(
+            default[first_call - 1],
+            "move.l#opasm_engine_session_statement_offset,d0",
+        )
+        self.assertEqual(default[second_call - 2], "leaopasmenginelabelvaluetable.l,a1")
+        self.assertEqual(
+            default[second_call - 1],
+            "move.l#opasm_engine_session_after_statement_bytes,d0",
+        )
+
+        row_clear = _select_conditionals(
+            _extract_block(self.source, "clearStatementRecord"), frozenset()
+        )
+        row = [re.sub(r"\s+", "", line).lower() for _, line in row_clear]
+        self.assertEqual(row.count("bsr.wclearbytes"), 3)
+        self.assertIn("move.l#label_name_capacity,d0", row)
+        self.assertEqual(row.count("move.l#token_buffer_capacity,d0"), 2)
 
     def test_zero_length_preserves_each_x_state_in_both_branches(self) -> None:
         for program_name in self.programs:

@@ -54,6 +54,14 @@ OPASM_ENGINE_SESSION_TAIL_BYTES = 12
 OPASM_ENGINE_SESSION_IMAGE_BYTES = NATIVE_IMAGE_BUFFER_CAPACITY * 3
 OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = OPASM_ENGINE_SESSION_HEADER_BYTES + OPASM_ENGINE_SESSION_SOURCE_BYTES + OPASM_ENGINE_SESSION_STATEMENT_BYTES + OPASM_ENGINE_SESSION_LABEL_BYTES + OPASM_ENGINE_SESSION_TAIL_BYTES + OPASM_ENGINE_SESSION_IMAGE_BYTES
 
+	.priv
+; The emitted header is six bytes larger than the historical clear contract.
+; Keep that existing contract, and use absolute lengths accepted by Hunk output.
+OPASM_ENGINE_SESSION_EMITTED_HEADER_BYTES = 98
+OPASM_ENGINE_SESSION_STATEMENT_OFFSET = OPASM_ENGINE_SESSION_EMITTED_HEADER_BYTES + OPASM_ENGINE_SESSION_SOURCE_BYTES
+OPASM_ENGINE_SESSION_AFTER_STATEMENT_BYTES = OPASM_ENGINE_ASSEMBLY_SESSION_BYTES - OPASM_ENGINE_SESSION_STATEMENT_OFFSET - OPASM_ENGINE_SESSION_STATEMENT_BYTES
+	.pub
+
 	.section code
 
 OPASM_ENGINE_CTX_SESSION_PASS_PTR = 0
@@ -160,12 +168,29 @@ OPASM_ENGINE_EVAL_REQ_EXPR_SPAN_END   = OPASM_ENGINE_EVAL_REQ_EXPR_META + OPASM_
 ; - D0: 0 on success.
 initSessionV1	.block
 	movem.l d1/a0-a1, -(sp)
+.ifdef OPFORGE_SESSION_CLEAR_ALL_STATEMENTS
 	lea OpasmEngineAssemblySessionStart.l, a1
 	move.l #OPASM_ENGINE_ASSEMBLY_SESSION_BYTES, d0
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	jsr platform_profile.opforgePlatformProfileRangeSessionV1
 .endif
 	bsr.w clearBytes
+.else
+	; Preserve the original interval outside the statement tables, including
+	; the existing six-byte difference between declared and emitted session size.
+	lea OpasmEngineAssemblySessionStart.l, a1
+	move.l #OPASM_ENGINE_SESSION_STATEMENT_OFFSET, d0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+.endif
+	bsr.w clearBytes
+	lea OpasmEngineLabelValueTable.l, a1
+	move.l #OPASM_ENGINE_SESSION_AFTER_STATEMENT_BYTES, d0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+.endif
+	bsr.w clearBytes
+.endif
 	lea OpasmEngineSessionCpuName.l, a1
 	move.l #TOKEN_BUFFER_CAPACITY - 1, d0
 
@@ -338,6 +363,9 @@ ownerRequestReady
 	move.l OpasmEngineStmtCount.l, d0
 	cmpi.l #NATIVE_STATEMENT_TABLE_CAPACITY, d0
 	bhs.w fail
+.ifndef OPFORGE_SESSION_CLEAR_ALL_STATEMENTS
+	bsr.w clearStatementRecord
+.endif
 	bsr.w storeStatementRecord
 	tst.l d0
 	bne.s fail
@@ -3052,7 +3080,7 @@ restoreOutputMode
 	.bend  ; opasmEngineRunTwoPassV1
 	.priv
 
-; Zero exactly D0.L bytes at A1; the session initializer is the only caller.
+; Zero exactly D0.L bytes at A1 for session regions and live-row text buffers.
 ; Outputs: D0 = 0, A1 advanced by the input length. Clobbers: D0/A1/CCR.
 ; CCR: Z set, N/V/C clear; X unchanged for zero length, clear otherwise.
 ; The byte-reference build keeps the original loop for matched trials.
@@ -3665,6 +3693,89 @@ setEnd
 done
 	rts
 	.bend  ; trimOperandText
+
+; Initialize every byte of a validated statement row before it can become live.
+; Inputs: D0 = statement index below NATIVE_STATEMENT_TABLE_CAPACITY.
+; Outputs: all row fields are zero; input registers are unchanged.
+; CCR: unspecified on return. No live count or adjacent row is changed.
+clearStatementRecord	.block
+	movem.l d0-d3/a0-a1, -(sp)
+	move.l d0, d1
+	lsl.l #2, d1
+	move.l d0, d2
+	add.l d2, d2
+	move.l d0, d3
+	lea OpasmEngineStmtLineTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtSourceRecordIndexTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtLabelLenTable.l, a1
+	clr.w 0(a1, d2.l)
+	lea OpasmEngineStmtMnemLenTable.l, a1
+	clr.w 0(a1, d2.l)
+	lea OpasmEngineStmtOperandLenTable.l, a1
+	clr.w 0(a1, d2.l)
+	lea OpasmEngineStmtOwnerLenTable.l, a1
+	clr.w 0(a1, d2.l)
+	lea OpasmEngineStmtDirectiveKindTable.l, a1
+	clr.w 0(a1, d2.l)
+	lea OpasmEngineStmtOutputAddrTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtOperandStartTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtOperandEndTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtOutputOffsetTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtOutputByteCountTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtMnemStartTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtExprFlagsTable.l, a1
+	clr.w 0(a1, d2.l)
+	lea OpasmEngineStmtExprOperandIndexTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtExprSlotIndexTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtExprStartTokenTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtExprEndTokenTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtExprSpanLineTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtExprSpanStartTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtExprSpanEndTable.l, a1
+	clr.l 0(a1, d1.l)
+	move.l d3, d0
+	bsr.w statementLabelNamePtr
+	movea.l a0, a1
+	move.l #LABEL_NAME_CAPACITY, d0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+.endif
+	bsr.w clearBytes
+	move.l d3, d0
+	lsl.l #6, d0
+	lea OpasmEngineStmtOperandNameTable.l, a1
+	adda.l d0, a1
+	move.l #TOKEN_BUFFER_CAPACITY, d0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+.endif
+	bsr.w clearBytes
+	move.l d3, d0
+	lsl.l #6, d0
+	lea OpasmEngineStmtOwnerNameTable.l, a1
+	adda.l d0, a1
+	move.l #TOKEN_BUFFER_CAPACITY, d0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileRangeSessionV1
+.endif
+	bsr.w clearBytes
+	movem.l (sp)+, d0-d3/a0-a1
+	rts
+	.bend  ; clearStatementRecord
 
 storeStatementRecord	.block
 	move.l OpasmEngineStmtCount.l, d1

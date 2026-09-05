@@ -1,3 +1,11 @@
+PASS: Independent `plan_review` (2026-09-05) approves the explicit user LSP deferral as plan-quality and workflow-amendment compliance. Only package lsp clippy/tests are excluded by --defer-lsp through Item 30; default full-gate commands and success wording are unchanged. All other packages and native/architecture/format/audit checks remain mandatory. Final Step 25 / Item LSP-close requires actual LSP repair and the default unfiltered Rust gate before archive. Existing 34/14 failure evidence remains historical, with no cause or fix inferred.
+
+Artifact SHA-256: 519eb47baf7d587ae030f7f0dba3255a7398e87e2c7f19b70d78f2c58c65dbd2
+Commit scope: this plan and sidecar, scripts/workflow/run_rust_quality_gate.sh, scripts/workflow/tests/test_rust_quality_gate_scope.py. No product/runtime or pending Step08 observation files belong to this amendment.
+Validation: four gate command-contract tests PASS (default, exact exclusion, other failure propagation, invalid option rejection); shell syntax, plan/bundle and diff checks PASS; workflow gate PASS (134 tests, 238 native-format files). The live non-LSP Rust run is Step08 evidence and is not represented as passed here.
+
+Prior receipts below identify earlier revisions only.
+
 PASS: Independent plan-quality and plan-compliance review by `plan_review` (2026-09-05) approves the user-requested sequential tracking labels. All 24 items have unique contiguous numbers: completed history 01–07, pending work 08–24. The current pointer is Step 08 of 24 / Item 0f. Stable Item IDs, order, states, dependencies, gates and receipt bodies are unchanged. New sub-items trigger sequential renumbering while stable IDs remain intact; progress records include both labels.
 
 Artifact SHA-256: 027aee1032f13cf1d48d7e1a5489f76828b8dd01afaed14395e8dea4d5845fb8

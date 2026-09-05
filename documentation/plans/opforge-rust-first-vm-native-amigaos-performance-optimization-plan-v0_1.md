@@ -5,11 +5,12 @@
 ## Metadata
 
 - Source: original Rust-first performance instruction and companion baseline; 2026-09-01 activation, 2026-09-02 bounded-corpus direction, 2026-09-04 diagnostic-entry and terminal-gate amendments; 2026-09-05 user instruction to reorder for the cheapest largest early gains, faster subsequent work, token efficiency, and increasing certainty toward completion.
+- LSP source amendment (2026-09-05): user explicitly permits LSP to remain broken until the very end; all LSP repair and final qualification belong to Step 25 / Item LSP-close.
 - Mode: implementation plan with measured experiments and explicit rejection decisions.
 - Owner: opForge maintainers and implementing Codex tasks.
 - AGENTS binding: The active worktree `AGENTS.md`, applicable rule packs, and explicit conversation instructions remain binding during execution. This plan does not override a mandatory gate in that contract.
 - Worktree: `/Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance`, branch `codex/rust-vm-native-performance`; activation checkpoint `68cc693c40fd27e30bed11e08974d3263d6cb6f6`, inspected HEAD `8fd492904b090e80a3cdedc7f4dfc6531ddc6ce1`.
-- Amendment scope: scheduling and evidence thresholds only. No runtime change or performance success is claimed. Existing uncommitted Item 0f code/results remain owned by that unfinished slice. This plan amendment has its own documentation-only commit.
+- Amendment scope: scheduling and evidence thresholds only. No runtime change or performance success is claimed. Existing uncommitted Item 0f code/results remain owned by that unfinished slice. The LSP deferral amendment has its own focused workflow-scope commit with no product/runtime change.
 - Workflow: `skills/opforge-plan-authoring/SKILL.md`, `scripts/workflow/run_plan_workflow.sh`; independent quality/compliance receipt in the adjacent `.quality-gate.txt`.
 
 ## Goal
@@ -96,7 +97,7 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 08 of 24 · Item 0f — close the bounded investigation
+**Current step: Step 08 of 25 · Item 0f — close the bounded investigation
 deliverable.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
@@ -157,13 +158,18 @@ Every item requires plan-compliance PASS and its listed focused evidence before
 commit. Native production changes require formatter, architecture/inventory,
 staged native gate, risk-matched Level A–C evidence and focused authoritative
 Level D confirmation. Workflow artifacts require `make workflow-gate` plus plan
-validators. Any Rust code commit must also run the full Rust quality gate as
-required by the explicit conversation AGENTS contract; narrower plan wording is
-not permission to omit it. Where the active contract demands a passing gate,
-a failure blocks that commit.
+validators. The user's explicit LSP deferral supersedes the earlier requirement
+to block interim work on LSP failures. Every otherwise-required Rust gate through
+Item 30 now runs `bash scripts/workflow/run_rust_quality_gate.sh --defer-lsp`:
+all native guards, formatting, audit and non-LSP packages remain required;
+only package `lsp` clippy/tests are excluded. Its receipt explicitly says
+non-LSP and deferred, never full-workspace PASS. Do not repair, suppress or
+reclassify LSP failures in Phase A. Retain the 34/14 integration failure receipt
+for Item LSP-close, which runs the default unfiltered gate at the very end.
+Other failures still block their required commits and checkpoints.
 
 Full broad qualification checkpoints are **A-close**, **B-close**, **28** and
-**30**, not each small native experiment. A-close/B-close use the full Rust gate
+**30**, not each small native experiment. A-close/B-close use the non-LSP Rust gate
 and `run_native_existing_parity_completion.sh --verify-phase-zero` (all 51
 nonterminal groups in the inspected 53-group inventory); check the current
 inventory for growth. The two named full-product and two-generation groups stay
@@ -177,7 +183,8 @@ Item 0f now closes its observation deliverable with its own required focused
 checks and any mandatory Rust gate. That is an explicit gate scheduling change,
 not a passing Phase 0 receipt. Related/unclassified failures require the E0
 classification before a candidate; unrelated classified failures remain open
-and block A-close. Never suppress tests, relax timeouts, bless changed output or
+and block A-close, except explicitly deferred LSP failures owned by LSP-close.
+Never suppress other tests, relax timeouts, bless changed output or
 claim a baseline failure is harmless without evidence. Cross-cutting changes or
 focused regression escalate validation immediately.
 
@@ -219,9 +226,9 @@ improvement does not close a whole finding; closure review is still required.
   - Expected files: existing Item 0f host tools/tests, corpus adapter, wrapper and results/ledger; no native optimization.
   - Dependencies/worktree: current active unfinished slice; preserve all dirty work and establish its reviewed commit before E0.
   - Steps and boundaries: Stop sampling. Audit and persist the already pending work as the observation slice, with exact raw hashes and corrected input/observer provenance. Preserve both failed full-gate receipts and every unresolved case. Record the new A-close owner of broad qualification; update historical reports only to point to this scheduling amendment, never alter results.
-  - Before/after and stop/go: no speed claim; do not repeat the 13.85h native suite to close an observation report. If its required Rust gate still fails, classify/repair the exact LSP or changed-contract blocker within this slice and review it; do not mark 0f complete on failure.
+  - Before/after and stop/go: no speed claim; do not repeat the 13.85h native suite to close an observation report. If its required non-LSP gate still fails, classify/repair the exact non-LSP blocker within this slice and review it; do not mark 0f complete on failure.
   - Gate tier: focused sub-item.
-  - Required focused gates: focused capture/control/corpus/wrapper and static-contract tests, workflow gate; full Rust gate for the pending Rust changes; common execution/gate policy applies.
+  - Required focused gates: focused capture/control/corpus/wrapper and static-contract tests, workflow gate; non-LSP Rust gate for the pending Rust changes; common execution/gate policy applies.
   - Full quality gates: deferred to A-close, except mandatory per-commit contract gates.
   - Plan-compliance review evidence: independent PASS citing this item, exact diff, required gate receipts, evidence limitations and rollback/disposition.
   - Commit outcome: `docs(perf): close bounded attribution with tracked qualification debt`; exactly one focused commit before the next item.
@@ -238,7 +245,7 @@ improvement does not close a whole finding; closure review is still required.
   - Full quality gates: deferred to A-close, except mandatory per-commit contract gates.
   - Plan-compliance review evidence: independent PASS citing this item, exact diff, required gate receipts, evidence limitations and rollback/disposition.
   - Commit outcome: `docs(perf): classify early optimization correctness boundaries`; exactly one focused commit before the next item.
-  - Definition of done: ledger links all failed groups/LSP/corpus statuses to owners; first candidate has a trustworthy focused oracle and no hidden relevant failure.
+  - Definition of done: ledger links all failed groups/corpus statuses to owners and retains LSP failures under Item LSP-close; first candidate has a trustworthy focused oracle and no hidden relevant failure.
 
 - [ ] Step 10 · Item 17c — Speed the exact existing session clear at one call site
   - Source requirement or finding IDs: SR-EARLY, SR-PAR, SR-ARCH, F2, F3.
@@ -260,7 +267,7 @@ improvement does not close a whole finding; closure review is still required.
   - Steps and boundaries: Use current release real CLI corpus and available host sampler first. B10 total is about 157ms against 133–140ms small cases; investigate fixed costs without asserting the difference is setup attribution. Use bounded repeated invocations for sampling, retaining individual-run identity. Add only one missing owner/helper counter needed to distinguish the leading alternatives. Select one removable repeated check/decode/allocation/clone cost; no full opcode inventory prerequisite.
   - Before/after and stop/go: record owner evidence, coverage and overhead. After one bounded sampling session and at most one targeted counter slice, either select a supported candidate or report no-go and proceed to dispositions.
   - Gate tier: focused sub-item.
-  - Required focused gates: exact Rust artifacts; focused tests for any new counter; workflow for report; mandatory full Rust gate if Rust changes; common execution/gate policy applies.
+  - Required focused gates: exact Rust artifacts; focused tests for any new counter; workflow for report; mandatory non-LSP Rust gate if Rust changes; common execution/gate policy applies.
   - Full quality gates: A-close; mandatory per-commit contract gates still apply.
   - Plan-compliance review evidence: independent PASS citing this item, exact diff, required gate receipts, evidence limitations and rollback/disposition.
   - Commit outcome: `docs(perf): select first measured Rust cost`; exactly one focused commit before the next item.
@@ -273,8 +280,8 @@ improvement does not close a whole finding; closure review is still required.
   - Steps and boundaries: Implement only the selected repeated-work elimination. Keep generic reference and off/generic/accelerated/dual modes as applicable; bounded differential comparisons, eligibility/invalidation/fallback counters. No new execution IR or broad VM refactor without a separately approved candidate.
   - Before/after and stop/go: matched complete production B10 and affected cases; policy improvement threshold, zero mismatch, setup/code/memory and fallback coverage. Reject local-bucket wins that regress the integrated path.
   - Gate tier: focused sub-item.
-  - Required focused gates: focused exact artifact/diagnostic/error and differential tests; full Rust gate for Rust commit; common execution/gate policy applies.
-  - Full quality gates: A-close plus mandatory full Rust before Rust commit.
+  - Required focused gates: focused exact artifact/diagnostic/error and differential tests; non-LSP Rust gate for Rust commit; common execution/gate policy applies.
+  - Full quality gates: A-close plus mandatory non-LSP Rust before Rust commit.
   - Plan-compliance review evidence: independent PASS citing this item, exact diff, required gate receipts, evidence limitations and rollback/disposition.
   - Commit outcome: `perf(vm): remove measured repeated runtime work`, or `docs(perf): record Rust candidate no-go` for the rejection path; exactly one focused commit before the next item.
   - Definition of done: one measured Rust win or honest rejection is committed; generic semantics remain unchanged. Record an immediate transfer disposition: native counterpart applicability, measured native owner/cost, expected reuse, eligibility and proof effort. If a positive Rust win plus native evidence outranks 16a/14m, insert one concrete reviewed 25.x native port and cleanup owner immediately after Item 10; otherwise explicitly defer. A Rust rejection never authorizes native speculation.
@@ -322,14 +329,14 @@ improvement does not close a whole finding; closure review is still required.
   - Source requirement or finding IDs: SR-PAR, SR-MEAS, SR-TERM.
   - Expected files: qualification results, failure ledger and plan receipts.
   - Dependencies/worktree: A-triage and all inserted repair/optimization commits; no Phase B starts before PASS.
-  - Steps and boundaries: After focused repairs are green, run completed frozen B01–B10 controls/candidates, full Rust and all current nonterminal native groups, preserving attempt-all behavior. Resolve every prior failure with proof or remain blocked. Do not extend timeout or suppress a test to turn it green. Report provisional accepted/reverted candidates and development-loop cost.
+  - Steps and boundaries: After focused repairs are green, run completed frozen B01–B10 controls/candidates, non-LSP Rust and all current nonterminal native groups, preserving attempt-all behavior. Resolve every non-LSP prior failure with proof or remain blocked; LSP remains deferred to LSP-close. Do not extend timeout or suppress a test to turn it green. Report provisional accepted/reverted candidates and development-loop cost.
   - Before/after and stop/go: completed B10 repeated non-regression: candidate median may not exceed matched control by more than max(2%, measured noise); high variance over 5% requires investigation. For a censored historical control use the five-run completed-candidate qualification rule above and retain the original failure; never compute a speedup ratio from it. Mechanism wins remain provisional until this gate.
   - Gate tier: high-level closure.
   - Required focused gates: all applicable focused contracts plus workflow gate; exact corpus artifacts/diagnostics/exits; common execution/gate policy applies.
-  - Full quality gates: full Rust quality gate, all current --verify-phase-zero groups, native formatter/staged/architecture/inventory, workflow and independent compliance PASS.
+  - Full quality gates: non-LSP Rust quality gate, all current --verify-phase-zero groups, native formatter/staged/architecture/inventory, workflow and independent compliance PASS.
   - Plan-compliance review evidence: independent PASS citing this item, exact diff, required gate receipts, evidence limitations and rollback/disposition.
   - Commit outcome: `docs(perf): qualify native throughput foundation`; exactly one focused commit before the next item.
-  - Definition of done: full Rust and 51-group/current nonterminal gate pass; B01–B10 parity and B10 matched non-regression or explicitly censored-baseline completion qualification are established; all failure debt is closed with required review.
+  - Definition of done: non-LSP Rust and 51-group/current nonterminal gate pass; B01–B10 parity and B10 matched non-regression or explicitly censored-baseline completion qualification are established; all non-LSP failure debt is closed with required review; LSP debt remains assigned to LSP-close.
 
 ### Phase B — residual measured work and complete profiling
 
@@ -393,10 +400,10 @@ improvement does not close a whole finding; closure review is still required.
   - Before/after and stop/go: complete repeated B10 non-regression and zero differential mismatches; code/memory/overhead reported.
   - Gate tier: high-level closure.
   - Required focused gates: all focused contracts, exact B01–B10 and workflow gate; common execution/gate policy applies.
-  - Full quality gates: full Rust quality gate, current --verify-phase-zero, native gates and workflow/compliance PASS.
+  - Full quality gates: non-LSP Rust quality gate, current --verify-phase-zero, native gates and workflow/compliance PASS.
   - Plan-compliance review evidence: independent PASS citing this item, exact diff, required gate receipts, evidence limitations and rollback/disposition.
   - Commit outcome: `docs(perf): qualify measured optimization program`; exactly one focused commit before the next item.
-  - Definition of done: full intermediate gates pass and terminal qualification has no hidden implementation dependency.
+  - Definition of done: all required intermediate gates pass and terminal qualification has no hidden implementation dependency.
 
 ### Phase C — broad certainty, cleanup and terminal proof
 
@@ -408,7 +415,7 @@ improvement does not close a whole finding; closure review is still required.
   - Before/after and stop/go: compare original, post-A and current medians/ranges plus code/memory/coverage; no terminal waiver or stale proof.
   - Gate tier: high-level closure.
   - Required focused gates: full artifact/diagnostic/state/layout/fixup/exit checks; fresh guest protocol and exact self-host artifacts; common execution/gate policy applies.
-  - Full quality gates: full Rust, complete native --verify including both terminal groups, native/workflow and compliance gates.
+  - Full quality gates: non-LSP Rust, complete native --verify including both terminal groups, native/workflow and compliance gates.
   - Plan-compliance review evidence: independent PASS citing this item, exact diff, required gate receipts, evidence limitations and rollback/disposition.
   - Commit outcome: `docs(perf): qualify performance and terminal parity`; exactly one focused commit before the next item.
   - Definition of done: all complete pre-cleanup gates and terminal proof pass; every actual temporary path has a concrete cleanup owner.
@@ -420,13 +427,13 @@ improvement does not close a whole finding; closure review is still required.
   - Steps and boundaries: Insert one focused 29.x checkbox per actual reference/comparison representation, with files, invariants and validation. Remove prototype duplicate state and temporary legacy native resets/readers; retain portable interpreters and supported production fallback/mode contracts. Do not create ten no-op cleanup commits for rejected candidates. Each cleanup is separately reviewed and committed before the next.
   - Before/after and stop/go: mechanism counts and code/memory do not regress; any mismatch blocks cleanup.
   - Gate tier: focused sub-item.
-  - Required focused gates: focused mechanism/ownership/parity gates per inserted item, no stale references; full Rust for Rust changes; common execution/gate policy applies.
+  - Required focused gates: focused mechanism/ownership/parity gates per inserted item, no stale references; non-LSP Rust for Rust changes; common execution/gate policy applies.
   - Full quality gates: 30; mandatory per-commit gates.
   - Plan-compliance review evidence: independent PASS citing this item, exact diff, required gate receipts, evidence limitations and rollback/disposition.
   - Commit outcome: `docs(perf): scope qualification-backed cleanup`; exactly one focused commit before the next item.
   - Definition of done: every actual temporary path maps to one concrete reviewed 29.x cleanup item, or is explicitly identified as a supported permanent contract; this scoping commit claims no removal. Each 29.x item requires actual removal and its focused proof before commit; Item 30 depends on all those commits.
 
-- [ ] Step 24 · Item 30 — Prove the final production shape and close the program
+- [ ] Step 24 · Item 30 — Prove the final performance production shape
   - Source requirement or finding IDs: SR-MEAS, SR-PAR, SR-TERM.
   - Expected files: final result report, ledger and plan receipts.
   - Dependencies/worktree: all cleanup commits; performance integration worktree.
@@ -434,10 +441,23 @@ improvement does not close a whole finding; closure review is still required.
   - Before/after and stop/go: compare original and pre-cleanup performance; failures/timeouts block completion regardless of earlier proof.
   - Gate tier: high-level closure.
   - Required focused gates: exact post-cleanup parity and complete terminal protocol; final plan-compliance and required finding-closure reviews; common execution/gate policy applies.
-  - Full quality gates: full Rust, complete native --verify including both terminal groups, native/workflow and final review gates.
+  - Full quality gates: non-LSP Rust, complete native --verify including both terminal groups, native/workflow and final review gates.
   - Plan-compliance review evidence: independent PASS citing this item, exact diff, required gate receipts, evidence limitations and rollback/disposition.
   - Commit outcome: `docs(perf): close measured performance program`; exactly one focused commit before the next item.
-  - Definition of done: complete final correctness/performance gates pass, temporary paths resolved, reproducible reports published; archive this plan only after every active checkbox and required closure review passes.
+  - Definition of done: complete final correctness/performance gates pass, temporary paths resolved, reproducible reports published; leave the plan active for the final LSP-close item; archive only after every active checkbox and required closure review passes.
+
+- [ ] Step 25 · Item LSP-close — Repair and qualify LSP at the very end
+  - Source requirement or finding IDs: 2026-09-05 explicit user LSP deferral; SR-PAR, SR-TERM.
+  - Expected files: `crates/opforge-lsp/src/**`, its integration harness/tests only as the actual failure requires, retained failure/closure report and plan receipts.
+  - Dependencies/worktree: Item 30 and every earlier implementation/cleanup commit; this is the last planned work.
+  - Steps and boundaries: Reproduce the retained LSP failures on the final code, find their actual cause and repair the earliest broken production or harness boundary without relaxing waits/assertions to hide failures. Insert one reviewed commit-sized LSP repair checkbox per distinct invariant immediately before this closure item, renumbering Step labels while preserving Item IDs. This closure checkbox itself records final qualification after those repair commits; no mixed multi-fix commit.
+  - Before/after and stop/go: retain original 34 passed / 14 failed integration evidence as history; require all current LSP tests and the unfiltered workspace gate to pass. A timeout or missing response is never a success.
+  - Gate tier: high-level closure.
+  - Required focused gates: exact failing request/diagnostic tests, complete LSP integration suite, workflow/plan validators; changes to shared VM/native behavior also rerun their affected correctness/performance proof.
+  - Full quality gates: `bash scripts/workflow/run_rust_quality_gate.sh` with no deferral flag, plus all gates affected by actual repair changes. No LSP exception remains at final program closure.
+  - Plan-compliance review evidence: independent PASS on final diff, repair commits, LSP results, unfiltered gate and preservation of Item 30 production proof.
+  - Commit outcome: `docs(perf): close deferred LSP qualification`; one focused closure commit after all repair commits.
+  - Definition of done: every current LSP test and the unfiltered Rust gate pass; all previous items remain proven and the plan can be archived. No earlier phase is blocked solely by LSP.
 
 ## Legacy roadmap disposition map
 
@@ -476,7 +496,8 @@ Original requirement IDs and baseline findings remain traceable in each decision
 | Faster iteration and balanced first wins | A-close | Completed corpus/B10 parity, repeated measurements, all nonterminal/Rust gates green |
 | Measured final candidates and profiles | B-close | Complete owner coverage, bounded calibrated profiles, budgets, all intermediate gates green |
 | Qualified before cleanup | 28 | All modes/outputs, full native suite and terminal self-host proof |
-| Final product | 30 | Fresh post-cleanup complete proof and reported performance; no provisional wins |
+| Performance product | 30 | Fresh post-cleanup native/non-LSP proof and reported performance; no provisional wins |
+| Complete program including LSP | LSP-close | All LSP repairs and the default unfiltered Rust gate pass at the very end |
 
 ## Blocking Rules
 
@@ -487,7 +508,8 @@ Original requirement IDs and baseline findings remain traceable in each decision
 - No optimization before 0f/E0. No generic native VM acceleration without a
   positive Rust implementation decision. Native clear/I/O experiments need
   their named evidence, not the entire Rust instrumentation backlog.
-- No advancement beyond A-close, B-close, 28 or 30 without its full PASS.
+- No advancement beyond A-close, B-close, 28 or 30 without its required PASS;
+  the named LSP exclusion applies until the final LSP-close checkpoint.
   Unresolved baseline defects cannot be reclassified as successes by deferral.
 - A regression in an affected correctness contract blocks the candidate even
   during provisional early integration. Incomplete timings never justify a
@@ -509,11 +531,13 @@ optimizations have exact production parity, completed repeated measurements,
 coverage/setup/code/memory costs and rollback/cleanup decisions. The complete
 native suite and fresh final gen0→gen1→gen2 proof pass after cleanup; parked
 self-host work closes only with its required evidence. Publish remaining limits
-and archive using the repository workflow after true completion.
+and archive using the repository workflow only after final LSP-close passes.
 
 ## Commit Outcome
 
-This amendment: one plan-and-sidecar-only commit on
+This LSP deferral amendment: one focused commit containing this plan, its
+sidecar, `scripts/workflow/run_rust_quality_gate.sh` and
+`scripts/workflow/tests/test_rust_quality_gate_scope.py` on
 `codex/rust-vm-native-performance`. Preserve pending implementation files and
 failed evidence. Subsequent implementation: one focused commit per active item,
 including reasoned no-go decisions. No remote update is authorized.

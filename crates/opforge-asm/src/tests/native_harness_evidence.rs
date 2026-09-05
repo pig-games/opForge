@@ -32,22 +32,47 @@ pub(super) fn native_harness_decode_exported_profile(
     run: &crate::fs_uae_smoke::FsUaeSmokeRun,
     require_complete: bool,
 ) -> serde_json::Value {
+    native_harness_decode_exported_profile_with_projection(
+        run,
+        require_complete,
+        NativeProfileProjection::All,
+    )
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum NativeProfileProjection {
+    All,
+    Platform,
+}
+
+pub(super) fn native_harness_decode_exported_profile_with_projection(
+    run: &crate::fs_uae_smoke::FsUaeSmokeRun,
+    require_complete: bool,
+    projection: NativeProfileProjection,
+) -> serde_json::Value {
     // Inputs are captured from this already-completed fresh guest, never a
     // stored report/oracle. All decoder scratch files are ephemeral as well.
     let case_dir = create_temp_dir("native-profile-decode");
     let _case_dir_guard = NativeHarnessOracleDir(case_dir.clone());
     let mut command = std::process::Command::new("python3");
     command.arg(workspace_root().join("scripts/performance/decode_native_progress.py"));
-    for (extension, flag, expected_size) in [
-        ("ofpr", None, 128),
-        ("ofwk", Some("--work-record"), 128),
-        ("ofse", Some("--symbol-expression-record"), 256),
-        ("ofvm", Some("--runtime-record"), 192),
-        ("ofio", Some("--platform-record"), 528),
-    ] {
+    let records: &[(&str, Option<&str>, usize)] = match projection {
+        NativeProfileProjection::All => &[
+            ("ofpr", None, 128),
+            ("ofwk", Some("--work-record"), 128),
+            ("ofse", Some("--symbol-expression-record"), 256),
+            ("ofvm", Some("--runtime-record"), 192),
+            ("ofio", Some("--platform-record"), 528),
+        ],
+        NativeProfileProjection::Platform => &[
+            ("ofpr", None, 128),
+            ("ofio", Some("--platform-record"), 528),
+        ],
+    };
+    for (extension, flag, expected_size) in records {
         let name = format!("opforge-profile.{extension}");
         let bytes = captured_fs_uae_artifact(run, &format!("Work/{name}"));
-        assert_eq!(bytes.len(), expected_size, "invalid exported {name}");
+        assert_eq!(bytes.len(), *expected_size, "invalid exported {name}");
         let path = case_dir.join(&name);
         fs::write(&path, bytes).expect("write ephemeral native profile decoder input");
         if let Some(flag) = flag {

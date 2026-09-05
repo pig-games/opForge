@@ -337,7 +337,7 @@ def emulator_config(template: str) -> str:
     return "\n".join([*lines, *(f"{key} = {value}" for key, value in overrides.items())]) + "\n"
 
 
-def validate_diagnostic_capture(row: dict, case: dict, frozen: dict, visits: int) -> None:
+def validate_diagnostic_capture(row: dict, case: dict, frozen: dict, visits: int, profile_mode: str = "all") -> None:
     """A controlled incomplete capture is never a successful corpus result."""
     if not isinstance(row, dict):
         raise ValueError("diagnostic capture must be an object")
@@ -354,8 +354,11 @@ def validate_diagnostic_capture(row: dict, case: dict, frozen: dict, visits: int
             or type(profile.get("abort_after_visits")) is not int or type(profile.get("statement_visits")) is not int
             or profile.get("exit_status") != row["exit_status"]):
         raise ValueError("capture is not the requested controlled visit abort")
-    for group in [profile, *(profile.get(name, {}) for name in
-                            ("work_multiplication", "symbol_expression_work", "runtime_execution", "platform_io"))]:
+    if profile_mode not in ("all", "all-no-io", "platform"):
+        raise ValueError("unknown diagnostic profile")
+    groups = ("platform_io",) if profile_mode == "platform" else (
+        "work_multiplication", "symbol_expression_work", "runtime_execution", "platform_io")
+    for group in [profile, *(profile.get(name, {}) for name in groups)]:
         if not isinstance(group, dict) or type(group.get("overflow_bits")) is not int or group["overflow_bits"] != 0:
             raise ValueError("missing or overflowing diagnostic counter group")
 
@@ -363,8 +366,10 @@ def validate_diagnostic_capture(row: dict, case: dict, frozen: dict, visits: int
 def diagnose(case_id: str, visits: int, frozen: dict, sample_after: int | None = None,
              control_mode: str | None = None, binding_register: str | None = None,
              resample_after: int | None = None, profile_mode: str = "all") -> dict:
-    if profile_mode not in ("all", "all-no-io"):
-        raise ValueError("diagnostic profile must be all or all-no-io")
+    if profile_mode not in ("all", "all-no-io", "platform"):
+        raise ValueError("diagnostic profile must be all, all-no-io or platform")
+    if profile_mode == "platform" and (sample_after is not None or control_mode is not None):
+        raise ValueError("platform profile supports sealed exports only, not live sampling")
     if type(visits) is not int or not 1 <= visits <= 100_000:
         raise ValueError("--abort-visits must be in 1..100000")
     if sample_after is not None and (type(sample_after) is not int or not 1 <= sample_after <= 100):
@@ -420,8 +425,8 @@ def diagnose(case_id: str, visits: int, frozen: dict, sample_after: int | None =
     reason = None
     if valid:
         try:
-            validate_diagnostic_capture(rows[0], case, frozen, visits)
-            if rows[0]["profile"]["platform_io"].get("enabled_groups") != {"io": profile_mode == "all", "bulk": True}:
+            validate_diagnostic_capture(rows[0], case, frozen, visits, profile_mode)
+            if rows[0]["profile"]["platform_io"].get("enabled_groups") != {"io": profile_mode != "all-no-io", "bulk": True}:
                 raise ValueError("diagnostic counter groups do not match the requested profile mode")
         except ValueError as error:
             valid, reason = False, str(error)
@@ -453,8 +458,8 @@ def main() -> int:
     parser.add_argument("--abort-visits", type=int)
     parser.add_argument("--sample-after-seconds", type=int, help="opt-in live stop; always incomplete Level E")
     parser.add_argument("--resample-after-seconds", type=int, help="resume the same guest and sample again by 100 seconds")
-    parser.add_argument("--diagnostic-profile", choices=("all", "all-no-io"), default="all",
-                        help="diagnostic-only existing I/O-counter kill switch; bulk and other counters stay enabled")
+    parser.add_argument("--diagnostic-profile", choices=("all", "all-no-io", "platform"), default="all",
+                        help="diagnostic counters: all, all with I/O disabled, or platform-only sealed exports")
     parser.add_argument("--control-mode", choices=("app", "pty", "console"), help="non-interrupting launcher control")
     parser.add_argument("--binding-register", help="one optional code-address candidate if sampled PC is outside the Hunk")
     args = parser.parse_args()

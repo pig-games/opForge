@@ -84,14 +84,15 @@ fn external_fs_uae_native_production_corpus_diagnostic() {
     );
     assert!(matches!(
         std::env::var("OPFORGE_NATIVE_CORPUS_PROFILE").as_deref(),
-        Ok("all" | "all-no-io")
+        Ok("all" | "all-no-io" | "platform")
     ));
     run_native_production_corpus(Some(visits));
 }
 
 fn native_corpus_profile_defines(profile_mode: &str, diagnostic: bool) -> Vec<String> {
     assert!(
-        matches!(profile_mode, "off" | "all") || (diagnostic && profile_mode == "all-no-io"),
+        matches!(profile_mode, "off" | "all")
+            || (diagnostic && matches!(profile_mode, "all-no-io" | "platform")),
         "unknown or non-diagnostic corpus profile mode"
     );
     if profile_mode == "off" {
@@ -100,6 +101,16 @@ fn native_corpus_profile_defines(profile_mode: &str, diagnostic: bool) -> Vec<St
             "diagnosis requires progress and abort counters"
         );
         return Vec::new();
+    }
+    if profile_mode == "platform" {
+        return [
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_PROGRESS_PLATFORM_COUNTERS",
+            "OPFORGE_PROGRESS_EXPORT_RECORDS",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
     }
     let mut defines: Vec<String> = [
         "OPFORGE_DEBUG_CONTRACTS",
@@ -128,7 +139,20 @@ fn native_corpus_io_kill_switch_is_diagnostic_only_and_preserves_other_defines()
     assert_eq!(&disabled[all.len()..], ["OPFORGE_PROGRESS_PLATFORM_NO_IO"]);
     assert_eq!(native_corpus_profile_defines("all", false), all);
     assert!(native_corpus_profile_defines("off", false).is_empty());
-    for (mode, diagnostic) in [("all-no-io", false), ("off", true), ("unknown", true)] {
+    assert_eq!(
+        native_corpus_profile_defines("platform", true),
+        [
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_PROGRESS_PLATFORM_COUNTERS",
+            "OPFORGE_PROGRESS_EXPORT_RECORDS",
+        ]
+    );
+    for (mode, diagnostic) in [
+        ("all-no-io", false),
+        ("platform", false),
+        ("off", true),
+        ("unknown", true),
+    ] {
         assert!(
             std::panic::catch_unwind(|| native_corpus_profile_defines(mode, diagnostic)).is_err()
         );
@@ -317,10 +341,14 @@ fn run_native_production_corpus(abort_visits: Option<u32>) {
                     );
                     if let Some(visits) = abort_visits {
                         assert!(!run.success && run.exit_code.is_some_and(|code| code != 0));
-                        let profile =
-                            super::native_harness_evidence::native_harness_decode_exported_profile(
-                                run, false,
-                            );
+                        let projection = if profile_mode == "platform" {
+                            super::native_harness_evidence::NativeProfileProjection::Platform
+                        } else {
+                            super::native_harness_evidence::NativeProfileProjection::All
+                        };
+                        let profile = super::native_harness_evidence::native_harness_decode_exported_profile_with_projection(
+                            run, false, projection,
+                        );
                         assert_eq!(profile["state"], "incomplete");
                         assert_eq!(profile["abort_requested"], true);
                         assert_eq!(profile["abort_after_visits"], visits);
@@ -329,12 +357,17 @@ fn run_native_production_corpus(abort_visits: Option<u32>) {
                             profile["exit_status"].as_i64(),
                             run.exit_code.map(i64::from)
                         );
-                        for group in [
-                            "work_multiplication",
-                            "symbol_expression_work",
-                            "runtime_execution",
-                            "platform_io",
-                        ] {
+                        let overflow_groups: &[&str] = if profile_mode == "platform" {
+                            &["platform_io"]
+                        } else {
+                            &[
+                                "work_multiplication",
+                                "symbol_expression_work",
+                                "runtime_execution",
+                                "platform_io",
+                            ]
+                        };
+                        for group in overflow_groups {
                             assert_eq!(profile[group]["overflow_bits"], 0);
                         }
                         assert_eq!(profile["overflow_bits"], 0);
@@ -342,11 +375,16 @@ fn run_native_production_corpus(abort_visits: Option<u32>) {
                             profile["platform_io"]["enabled_groups"],
                             serde_json::json!({"io": profile_mode != "all-no-io", "bulk": true})
                         );
-                        let raw_records: BTreeMap<_, _> = ["ofpr", "ofwk", "ofse", "ofvm", "ofio"]
-                            .into_iter()
+                        let raw_record_extensions: &[&str] = if profile_mode == "platform" {
+                            &["ofpr", "ofio"]
+                        } else {
+                            &["ofpr", "ofwk", "ofse", "ofvm", "ofio"]
+                        };
+                        let raw_records: BTreeMap<_, _> = raw_record_extensions
+                            .iter()
                             .map(|extension| {
                                 (
-                                    extension,
+                                    *extension,
                                     captured_fs_uae_artifact(
                                         run,
                                         &format!("Work/opforge-profile.{extension}"),

@@ -69,6 +69,20 @@ class ProductionCorpusTests(unittest.TestCase):
                "package_sha256": self.frozen["package"]["sha256"], "proof_level": "E", "complete": False,
                "parity_passed": False, "protocol_completed": True, "exit_status": 1, "profile": profile}
         corpus.validate_diagnostic_capture(row, case, self.frozen, 1)
+        minimal = copy.deepcopy(row)
+        for name in ("work_multiplication", "symbol_expression_work", "runtime_execution"):
+            del minimal["profile"][name]
+        corpus.validate_diagnostic_capture(minimal, case, self.frozen, 1, "platform")
+        with self.assertRaises(ValueError):
+            corpus.validate_diagnostic_capture(minimal, case, self.frozen, 1)
+        for invalid in ({}, {"overflow_bits": 1}):
+            changed = copy.deepcopy(minimal)
+            changed["profile"]["platform_io"] = invalid
+            with self.assertRaises(ValueError):
+                corpus.validate_diagnostic_capture(changed, case, self.frozen, 1, "platform")
+        for options in ({"sample_after": 60}, {"control_mode": "app"}):
+            with self.assertRaisesRegex(ValueError, "sealed exports"):
+                corpus.diagnose("B10", 1, self.frozen, profile_mode="platform", **options)
         for field, value in (("complete", True), ("parity_passed", True), ("protocol_completed", False),
                              ("exit_status", 0), ("exit_status", True), ("case_sha256", "a" * 64),
                              ("proof_level", "D"), ("profile", None)):

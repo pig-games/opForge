@@ -1,3 +1,11 @@
+PASS: Independent plan-quality and plan-compliance reviewer plan_review approves the corrected Step15 two-file decision amendment and focused commit docs(perf): rerank after native throughput experiments. Step16 covers all four completed branch failures with original case identity, a bounded causal inquiry and explicit blocked disposition; Step17 permits at most one fixed120s B10 launch after validated observer preflight. Full Phase A qualification and all51groups remain mandatory, with LSP-close last.
+
+Artifact SHA-256: 962c55f03f389797731a185e0534db4b4f87bce4755c436005c7d7a3c30e0309
+Validation: /private/tmp/opforge-step15-plan-final.log, explicit exit0, 1712 bytes, SHA256 2bc4d8ed7f9f2825f755cc0355b80b3ae50148fa361b40b745a23f47a3feed8c.
+Unique contiguous Step01–27 and source hashes PASS. No production change or new performance gain: this decision selects the next correctness boundary and a bounded route toward completed B10. Final workflow gate PASS after reviewed corrections: /private/tmp/opforge-step15-workflow-final.log, explicit exit0, 6363 bytes, SHA256 a0d47d6b0dbfc0ce4aca844f0d9dc14e2908839671e5f8a6afd3dc915a0f3ba3.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Independent plan-compliance reviewer plan_review approves Step14 / Item14m and focused commit perf(native): buffer module candidate input. The reviewed staged 12-file diff SHA256 is 00b50922ffb45fcebca6f20b781ed95fb5756eb0f995b5af7b3f46ed214df545; this sidecar adds only the final receipt. Private 8KiB candidate refill state preserves cursor reset, EOF/error/short reads, CRLF/offset behavior and public ABI.
 
 Artifact SHA-256: ef039fd7fdd9818bd8e97c32c2c1375f4a0f9aae983f9fb1e2a6d10389fd0495

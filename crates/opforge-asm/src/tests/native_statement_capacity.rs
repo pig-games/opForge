@@ -66,7 +66,7 @@ fn native_item38_full_product_source_line_budget_contract() {
         "full-product source line exceeds the native 512-byte owner"
     );
     assert_eq!(
-        loadable_source_bytes, 1_669_707,
+        loadable_source_bytes, 1_672_135,
         "canonical loadable source-byte budget changed"
     );
     assert!(
@@ -88,11 +88,11 @@ fn native_item38_full_product_source_line_budget_contract() {
     );
     assert_eq!(
         graph.lines.len(),
-        91_950,
+        92_032,
         "Rust-processed row budget changed"
     );
     assert_eq!(
-        rust_processed_source_bytes, 3_522_243,
+        rust_processed_source_bytes, 3_524_240,
         "Rust-processed byte budget changed"
     );
     assert!(

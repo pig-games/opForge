@@ -1,0 +1,50 @@
+[slice]
+schema_version = 2
+name = "buffered native source-stream reads"
+kind = "native-performance"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "19 / Step 19 / Item A-source-buffer"
+rust_reference = [
+  "crates/opforge-asm/src/tests/native_source_buffer.rs::native_source_buffer_refill_boundaries_fs_uae",
+  "crates/opforge-asm/src/tests/native_fs_uae_parity.rs::item7_live_rust_cli_binary_oracle",
+  "crates/opforge-asm/src/tests/native_production_corpus.rs::run_native_production_corpus",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/source_reader.asm::opforgeNativeCliTokenizeFileAtPath",
+  "native/motorola68000/amigaos/opforge-cli/source_reader.asm::opforgeNativeCliReadSourceByte",
+]
+invariant = "Buffer only the source stream in the existing TokenizeFileAtPath/ReadSourceByte path. Preserve exact logical byte delivery, CR/LF handling, EOF and DOS error behavior, suspended parent resumption after one include, selected module extent limits, diagnostics, ABI and stack state; a bounded read-ahead must be reported separately from consumed source bytes."
+assertion_decision = "A restricted source-driven helper model checks short refills, EOF/error return and per-slot cursor behavior (Level C only). The first proof is one complete Level D exact-binary fixture combining source refill, a CRLF boundary, include parent resumption, and a selected module declaration later in the module file. The existing include success/missing-include confirmation passed with fresh guest completion. B10 candidate/reference attempts remain timeout evidence only under the unchanged 120-second bound; Phase A debt remains open."
+expected_inputs = "A fresh 65C02 native CLI source with 512-byte buffers in 34 independently owned active-source slots, CRLF across the source refill boundary, one non-nested include, and one selected module imported from a later region after a decoy declaration. The byte-reader reference switch remains available."
+expected_outputs = "Exact native binary [17, 34] matching the Rust oracle, with the existing native stdout assertion INCLUDE-LINE 1 1\\n preserved. Logical source line counts remain 22; source/module DOS reads and bounded read-ahead are recorded independently."
+known_non_equivalences = "The Level D fixture proves exact binary output and the existing native include stdout contract, not Rust stdout parity. Physical source bytes read increase from 1606 to 1654 because of 48 bytes of bounded read-ahead (at most 511 bytes); consumed logical bytes remain the authority. Three matched pairs measured 4.2048% below the 5% threshold, but the user explicitly authorized retaining the DOS-read mechanism result of 1608 to 8. The 4.2048% gain applies only to the completed focused workload; no B10 speed or elapsed-time share claim is made."
+fast_proof_command = "python3 -m unittest scripts.performance.tests.test_source_buffer -v"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_source_buffer_refill_boundaries_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "SourceBufferProof"
+proof_level = "C"
+proves = "The restricted interpreter executes the source helper for modeled short refills, EOF/read error, cursor/length and child-slot isolation."
+does_not_prove = "Encoding, real DOS execution, production stream entry/exit, parser semantics or timing; entry/exit is source-reviewed and real nesting is covered by the native fixture."
+
+[[tests]]
+name = "native_source_buffer_refill_boundaries_fs_uae"
+proof_level = "D"
+command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_source_buffer_refill_boundaries_fs_uae -- --nocapture --test-threads=1"
+proves = "A fresh native CLI run crosses the source refill and CRLF boundary, resumes the parent after one include, selects a later-region module, returns the exact Rust-authoritative binary [17, 34], and preserves the existing native stdout assertion INCLUDE-LINE 1 1\\n with explicit guest completion and zero exit."
+does_not_prove = "Rust stdout parity, include-error behavior, production-corpus timing, the timeout owner, or every source/module graph shape."
+
+[[tests]]
+name = "external_fs_uae_native_production_corpus_parity / B10 buffered source and byte reference"
+proof_level = "D"
+command = "Candidate and reference use the unchanged bounded B10 command with OPFORGE_SOURCE_READ=buffered and OPFORGE_SOURCE_READ=byte respectively; both retain the fixed OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 bound."
+proves = "Only that each attempted composition is evaluated under the common fresh-guest protocol and retains its own result."
+does_not_prove = "A completed B10, timeout parity, source-buffer speedup, or Phase A completion; the current B10 timeout remains unresolved debt."
+
+[[tests]]
+name = "external_fs_uae_opforge_native_cli_item10_include_roots_match_rust_guided_bytes"
+proof_level = "D"
+command = "cargo test --locked -p asm external_fs_uae_opforge_native_cli_item10_include_roots_match_rust_guided_bytes -- --nocapture --test-threads=1 (with the same explicit FS-UAE environment as level_d_command)"
+proves = "The existing include success and missing-include cases completed under the buffered implementation; the negative requires explicit nonzero guest exit and OPC-NCLI014."
+does_not_prove = "The new source refill mechanism or its performance."

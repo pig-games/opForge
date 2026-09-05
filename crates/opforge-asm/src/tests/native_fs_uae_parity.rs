@@ -5,6 +5,9 @@ use super::*;
 #[path = "native_module_buffer.rs"]
 mod module_buffer;
 
+#[path = "native_source_buffer.rs"]
+mod source_buffer;
+
 #[path = "native_branch_failures.rs"]
 mod branch_failures;
 

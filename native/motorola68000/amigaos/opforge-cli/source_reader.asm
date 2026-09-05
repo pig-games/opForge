@@ -35,6 +35,11 @@
 	.use opforge.cli.tkpkg_control_block
 
 	.section code, kind=code
+	.priv
+
+SOURCE_READ_BUFFER_CAPACITY = 512
+SOURCE_READ_STREAM_CAPACITY = constants.NATIVE_MODULE_RESOLVE_DEPTH_LIMIT + constants.NATIVE_INCLUDE_DEPTH_LIMIT + 1
+
 	.pub
 
 ; ---------------------------------------------------------------------------
@@ -260,6 +265,16 @@ opforgeNativeCliTokenizeFileAtPath	.block
 
 openOk
 	move.l d0, d5
+	moveq #0, d3
+	move.w SourceReadStreamDepth, d3
+	cmpi.w #SOURCE_READ_STREAM_CAPACITY, d3
+	bhs.w closeWithoutStream
+	addq.w #1, SourceReadStreamDepth
+	add.w d3, d3
+	lea SourceReadCursor, a1
+	clr.w 0(a1, d3.l)
+	lea SourceReadLength, a1
+	clr.w 0(a1, d3.l)
 	tst.w state.NativeCliModuleResolveDepth
 	beq.s initializeLineState
 	moveq #0, d3
@@ -276,6 +291,7 @@ openOk
 skipResolvedPrefix
 	tst.l d4
 	beq.s initializeLineState
+.ifdef OPFORGE_SOURCE_READ_BYTE_REFERENCE
 	lea state.NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
@@ -283,6 +299,9 @@ skipResolvedPrefix
 	jsr platform_profile.opforgePlatformProfileClassSourceV1
 .endif
 	jsr dos.readInput
+.else
+	bsr.w opforgeNativeCliReadSourceByte
+.endif
 	cmpi.l #1, d0
 	bne.w close
 	subq.l #1, d4
@@ -305,6 +324,7 @@ loop
 	beq.w fileEof
 
 readNextChar
+.ifdef OPFORGE_SOURCE_READ_BYTE_REFERENCE
 	lea state.NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
@@ -312,6 +332,9 @@ readNextChar
 	jsr platform_profile.opforgePlatformProfileClassSourceV1
 .endif
 	jsr dos.readInput
+.else
+	bsr.w opforgeNativeCliReadSourceByte
+.endif
 	cmp.l #-1, d0
 	beq.w close
 	tst.l d0
@@ -445,6 +468,7 @@ macroDefinitionsFinished
 	bra.s close
 
 successClose
+	subq.w #1, SourceReadStreamDepth
 	move.l d5, d1
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	jsr platform_profile.opforgePlatformProfileClassSourceV1
@@ -454,6 +478,9 @@ successClose
 	rts
 
 close
+	subq.w #1, SourceReadStreamDepth
+
+closeWithoutStream
 	move.l d5, d1
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	jsr platform_profile.opforgePlatformProfileClassSourceV1
@@ -462,6 +489,65 @@ close
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliTokenizeFileAtPath
+
+; Read one logical byte from the active source stream. The buffered build refills
+; an independently owned fixed buffer for each recursive source-reader frame.
+; Inputs: D5 = active AmigaDOS file handle; SourceReadStreamDepth is nonzero.
+; Outputs: D0 = 1 with NativeCliInputChar set, 0 on EOF, or -1 on read error.
+; Clobbers: D0-D3/A0-A1/A6/CCR.
+; CCR: unspecified on return; callers must test D0 explicitly.
+.ifndef OPFORGE_SOURCE_READ_BYTE_REFERENCE
+opforgeNativeCliReadSourceByte	.block
+	moveq #0, d3
+	move.w SourceReadStreamDepth, d3
+	subq.l #1, d3
+	add.l d3, d3
+	lea SourceReadCursor, a0
+	moveq #0, d0
+	move.w 0(a0, d3.l), d0
+	lea SourceReadLength, a1
+	cmp.w 0(a1, d3.l), d0
+	blo.s deliver
+
+	move.l d3, d2
+	lsr.l #1, d2
+	lsl.l #8, d2
+	add.l d2, d2
+	lea SourceReadBuffer, a0
+	adda.l d2, a0
+	move.l #SOURCE_READ_BUFFER_CAPACITY, d0
+	move.l d5, d1
+	move.l d3, -(sp)
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassSourceV1
+.endif
+	jsr dos.readInput
+	move.l (sp)+, d3
+	tst.l d0
+	ble.s return
+	lea SourceReadLength, a1
+	move.w d0, 0(a1, d3.l)
+	lea SourceReadCursor, a0
+	clr.w 0(a0, d3.l)
+	moveq #0, d0
+
+deliver
+	move.l d3, d2
+	lsr.l #1, d2
+	lsl.l #8, d2
+	add.l d2, d2
+	lea SourceReadBuffer, a1
+	adda.l d2, a1
+	moveq #0, d2
+	move.w 0(a0, d3.l), d2
+	move.b 0(a1, d2.l), state.NativeCliInputChar
+	addq.w #1, 0(a0, d3.l)
+	moveq #1, d0
+
+return
+	rts
+	.bend  ; opforgeNativeCliReadSourceByte
+.endif
 
 ; Drain one pending include request, tokenizing the staged file when present.
 ; Inputs: include pending state and saved-path state in opforge.cli.state.
@@ -800,6 +886,21 @@ return
 	movem.l (sp)+, d1-d2/a0-a1
 	rts
 	.bend  ; opforgeNativeCliTokenizeResolvedUseModule
+
+	.endsection
+
+	.section bss, kind=bss
+	.align 4
+	.priv
+SourceReadStreamDepth
+	.res word, 1
+SourceReadCursor
+	.res word, SOURCE_READ_STREAM_CAPACITY
+SourceReadLength
+	.res word, SOURCE_READ_STREAM_CAPACITY
+	.align 4
+SourceReadBuffer
+	.res byte, SOURCE_READ_STREAM_CAPACITY * SOURCE_READ_BUFFER_CAPACITY
 
 	.endsection
 	.endmodule

@@ -3180,15 +3180,23 @@ fn qualified_use_performance_fixture(module_count: usize, helper_count: usize) -
 }
 
 fn create_temp_dir(label: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join(format!("test-{label}-{}-{nanos}", process::id()));
-    fs::create_dir_all(&dir).expect("Create temp dir");
-    dir
+    let parent = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target");
+    fs::create_dir_all(&parent).expect("Create temp parent");
+    // Timestamp resolution may be coarser than concurrent oracle creation.
+    // Only exclusive creation gives this caller ownership of RAII cleanup.
+    for _ in 0..128 {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = parent.join(format!("test-{label}-{}-{nanos}", process::id()));
+        match fs::create_dir(&dir) {
+            Ok(()) => return dir,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => panic!("Create temp dir {}: {error}", dir.display()),
+        }
+    }
+    panic!("Create temp dir: timestamp collisions exhausted retries for {label}");
 }
 
 fn workspace_root() -> PathBuf {

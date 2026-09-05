@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "item": "0f",
+  "proof_level": "E",
+  "description": "Retained diagnostic/control receipt identities. No inventory entry is promoted to native parity or complete assembly evidence. Original receipt flags and failures remain authoritative.",
+  "receipts": [
+    {
+      "path": "documentation/performance/results/opforge-b03-abort1-2026-09-04.json",
+      "bytes": 40342,
+      "sha256": "0038e85a4cb376529d368920cb514fff5a9356ca67636a39f2ebb1e3b9f45a1e"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-abort16-2026-09-04.json",
+      "bytes": 40228,
+      "sha256": "01b1c273ee32c466a240e7b76801d7775445eb4f12ab535d024b4fde3cf37e57"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-abort64-2026-09-04.json",
+      "bytes": 40248,
+      "sha256": "eff5dfe7eb544d7c58264fed00a927cf6b7411a0a58604f651f1b59729ff4153"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-boundary-all-r1-2026-09-04.json",
+      "bytes": 46867,
+      "sha256": "426d75ae4384f1ca917b44008c4d85d3d041745bbedb5a2d989c74523b519f00"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-boundary-all-r2-2026-09-04.json",
+      "bytes": 46889,
+      "sha256": "d319316e19a0ceadef023465c6ef651978b211d6718bbe150af0ac3cbf6aec0f"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-boundary-comparison-2026-09-04.json",
+      "bytes": 11043,
+      "sha256": "704d45d7777b723d79cd2d3e952116632505cc08ec3db4f405a14f1175ae62a3"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-boundary-noio-r1-2026-09-04.json",
+      "bytes": 46922,
+      "sha256": "76cf47822fe46d85147168b3224b71e62334d7e6eeed8b1f0011927a7b8aa14b"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-boundary-noio-r2-2026-09-04.json",
+      "bytes": 46942,
+      "sha256": "261b8bb2fc9ed45f89fa002c805b6e6ee9e8cdf7e13914423e7c6f9e9af89db6"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-control-app-r1-2026-09-04.json",
+      "bytes": 44356,
+      "sha256": "aecbf45778f5dcc9d2d2207997f2260907d1593801fd77728f1c1c0a447a7ece"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-control-console-r1-2026-09-04.json",
+      "bytes": 40287,
+      "sha256": "8f67681677da7a59930b17bf75c78a6e05372070d0fdd3ae8847f9d355d5c2f1"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-control-console-r2-2026-09-04.json",
+      "bytes": 46068,
+      "sha256": "12eea6e08e039bbfd86c48a40f0788fce60222003b8ca22e79669cb1eecd05e8"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-control-pty-r1-2026-09-04.json",
+      "bytes": 40275,
+      "sha256": "170d53b8e85fde57157b0d023add7340882485ecba3d2e98bb2544418e0c35c9"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-control-pty-r2-2026-09-04.json",
+      "bytes": 46048,
+      "sha256": "77b20504054218f2a33ed92e7a728737120bb3889576b5746331177ba6b1cb2f"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-abort1-2026-09-04.json",
+      "bytes": 3659,
+      "sha256": "200dd0deae52eb265734a8044d838ef3a5d5ecbc53c9978b18f20f07dc620f69"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-debugger-ack-confirmation-2026-09-04.json",
+      "bytes": 239110,
+      "sha256": "58bd21e5ec0eef858baa6e553b0cd6410b7b75c3e500cb2b98ca327f469b09b4"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-exact-all-live60-resume100-2026-09-04.json",
+      "bytes": 238148,
+      "sha256": "5f5dd6b7928a416053f294de750d57552f31497eb5cec0c547da8036b2c96528"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-exact-noio-live60-resume100-2026-09-04.json",
+      "bytes": 237016,
+      "sha256": "1653019faedeca97119bba714a2145a9b346870928a3da0d36260a0c94b83f33"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-exact-noio-live60-resume100-r2-2026-09-04.json",
+      "bytes": 236778,
+      "sha256": "0d0537e23dce91fe2d2f681d22e6475c1200521e9570249b6cb204dfad71b0be"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-exact-noio-live60-resume100-r3-2026-09-04.json",
+      "bytes": 78503,
+      "sha256": "48a2b9842aa14b8d1e874d1ab967c944b67cf969646d27ffdfd929a5cf80bfe0"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-exact-noio-live60-resume100-r4-2026-09-04.json",
+      "bytes": 18423,
+      "sha256": "b436cd0ac62ed07d89a976f74e77a4789b5539f5c7e37f0c83d173cd5497d539"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-live100-2026-09-04.json",
+      "bytes": 19240,
+      "sha256": "59edfcf5dc54bd22606386a726dd41cfdfdca3b0b7256145a89fd89681a6c50f"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-live100-bound-2026-09-04.json",
+      "bytes": 21912,
+      "sha256": "29c66293755af52e0c9773e3be40c2aa7f5ff7d05ccb8ffaa6d2afa7b1ab85c6"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-live30-2026-09-04.json",
+      "bytes": 31735,
+      "sha256": "9c6666559e39d0e604609454743e90be05b879bcf4ae41c376078c9e806fa597"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-live60-2026-09-04.json",
+      "bytes": 4489,
+      "sha256": "d5e91a56b8e7c43cee0537274992c7dee9db790d18223c5294b50940d05551d2"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-live60-resume100-2026-09-04.json",
+      "bytes": 234129,
+      "sha256": "4ed4c9ee691c2542f343fdc66335d968c4639b25cd0640a43444f2e87d58986c"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-live60-retry-2026-09-04.json",
+      "bytes": 83647,
+      "sha256": "0c2156d506c82640849bd6dc8bbfbb030b181d39beb4e55fa2cd0f054cf6977c"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b10-noio-live60-resume100-2026-09-04.json",
+      "bytes": 233646,
+      "sha256": "98a519ed068534efe6d5d052c5a8ea1e06a01ae4dc67c6cbfcc496e12d55d82f"
+    }
+  ]
+}

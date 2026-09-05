@@ -1,0 +1,436 @@
+{
+  "abort_visits": 1,
+  "all_minus_noio_mean_seconds": 0.2029228120809421,
+  "case_id": "B03",
+  "case_sha256": "be04f9426a0ffb55278cdb05d1d604f5895e85a2cee0b6894ac43c9df1359acf",
+  "comparison": "controlled-abort-only",
+  "complete": false,
+  "limitations": "Two runs per mode; START-to-DONE includes load/export, not full assembly. No physical-hardware or total-counter-overhead claim.",
+  "modes": {
+    "all": {
+      "max_seconds": 76.5983895000536,
+      "mean_seconds": 76.56611147907097,
+      "min_seconds": 76.53383345808834,
+      "seconds": [
+        76.53383345808834,
+        76.5983895000536
+      ]
+    },
+    "all-no-io": {
+      "max_seconds": 76.39704916696064,
+      "mean_seconds": 76.36318866699003,
+      "min_seconds": 76.32932816701941,
+      "seconds": [
+        76.39704916696064,
+        76.32932816701941
+      ]
+    }
+  },
+  "parity_passed": false,
+  "proof_level": "E",
+  "receipts": [
+    {
+      "path": "documentation/performance/results/opforge-b03-boundary-all-r1-2026-09-04.json",
+      "sha256": "426d75ae4384f1ca917b44008c4d85d3d041745bbedb5a2d989c74523b519f00"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-boundary-noio-r1-2026-09-04.json",
+      "sha256": "76cf47822fe46d85147168b3224b71e62334d7e6eeed8b1f0011927a7b8aa14b"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-boundary-noio-r2-2026-09-04.json",
+      "sha256": "261b8bb2fc9ed45f89fa002c805b6e6ee9e8cdf7e13914423e7c6f9e9af89db6"
+    },
+    {
+      "path": "documentation/performance/results/opforge-b03-boundary-all-r2-2026-09-04.json",
+      "sha256": "d319316e19a0ceadef023465c6ef651978b211d6718bbe150af0ac3cbf6aec0f"
+    }
+  ],
+  "shared_work": {
+    "abort_after_visits": 1,
+    "abort_requested": true,
+    "active": false,
+    "backward_redirects": 0,
+    "current_module_id": 0,
+    "current_program_id": 0,
+    "current_source_id": 0,
+    "current_statement": 0,
+    "current_vm_service_id": 0,
+    "exit_status": 1,
+    "flow_redirects": 0,
+    "heartbeat_enabled": false,
+    "heartbeat_quantum": 0,
+    "last_completed_statement": null,
+    "layout_round": 0,
+    "next_heartbeat": 0,
+    "overflow_bits": 0,
+    "pass": 1,
+    "phase": "pass_one",
+    "phase_id": 5,
+    "platform_io": {
+      "bulk_by_phase": {
+        "artifacts": {
+          "clears": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          },
+          "copies": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          }
+        },
+        "final_emission": {
+          "clears": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          },
+          "copies": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          }
+        },
+        "frontend": {
+          "clears": {
+            "calls": 515,
+            "completed_bytes": 327242,
+            "requested_bytes": 327242
+          },
+          "copies": {
+            "calls": 1802,
+            "completed_bytes": 125909,
+            "requested_bytes": 125909
+          }
+        },
+        "idle": {
+          "clears": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          },
+          "copies": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          }
+        },
+        "layout": {
+          "clears": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          },
+          "copies": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          }
+        },
+        "package": {
+          "clears": {
+            "calls": 2,
+            "completed_bytes": 41224606,
+            "requested_bytes": 41224606
+          },
+          "copies": {
+            "calls": 1,
+            "completed_bytes": 6,
+            "requested_bytes": 6
+          }
+        },
+        "pass_one": {
+          "clears": {
+            "calls": 4,
+            "completed_bytes": 1182368,
+            "requested_bytes": 1182368
+          },
+          "copies": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          }
+        },
+        "startup": {
+          "clears": {
+            "calls": 3,
+            "completed_bytes": 516003,
+            "requested_bytes": 516003
+          },
+          "copies": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          }
+        },
+        "statement_build": {
+          "clears": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          },
+          "copies": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          }
+        }
+      },
+      "bulk_by_range": {
+        "other": {
+          "clears": {
+            "calls": 514,
+            "completed_bytes": 263168,
+            "requested_bytes": 263168
+          },
+          "copies": {
+            "calls": 1546,
+            "completed_bytes": 123089,
+            "requested_bytes": 123089
+          }
+        },
+        "package": {
+          "clears": {
+            "calls": 1,
+            "completed_bytes": 2678,
+            "requested_bytes": 2678
+          },
+          "copies": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          }
+        },
+        "presence": {
+          "clears": {
+            "calls": 1,
+            "completed_bytes": 1048576,
+            "requested_bytes": 1048576
+          },
+          "copies": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          }
+        },
+        "session": {
+          "clears": {
+            "calls": 3,
+            "completed_bytes": 41255720,
+            "requested_bytes": 41255720
+          },
+          "copies": {
+            "calls": 257,
+            "completed_bytes": 2826,
+            "requested_bytes": 2826
+          }
+        },
+        "state": {
+          "clears": {
+            "calls": 5,
+            "completed_bytes": 680077,
+            "requested_bytes": 680077
+          },
+          "copies": {
+            "calls": 0,
+            "completed_bytes": 0,
+            "requested_bytes": 0
+          }
+        }
+      },
+      "clears": {
+        "calls": 524,
+        "completed_bytes": 43250219,
+        "requested_bytes": 43250219
+      },
+      "copies": {
+        "calls": 1803,
+        "completed_bytes": 125915,
+        "requested_bytes": 125915
+      },
+      "current_range": "other",
+      "current_range_id": 0,
+      "exit_status": 1,
+      "overflow_bits": 0,
+      "pass": 1,
+      "phase": "pass_one",
+      "phase_id": 5,
+      "schema_version": 2,
+      "state": "incomplete"
+    },
+    "runtime_execution": {
+      "candidates": {
+        "encoding": 0,
+        "selection": 0
+      },
+      "current_program": null,
+      "current_program_id": 0,
+      "current_service": null,
+      "current_service_id": 0,
+      "current_vm": null,
+      "current_vm_id": 0,
+      "exit_status": 1,
+      "opcodes_by_phase": {
+        "final_emission": 0,
+        "layout": 0,
+        "other": 21572,
+        "pass_one": 0
+      },
+      "overflow_bits": 0,
+      "pass": 1,
+      "phase": "pass_one",
+      "phase_id": 5,
+      "program_invocations": {
+        "expression_evaluator": 0,
+        "expression_frontend": 0,
+        "parser": 516,
+        "tokenizer": 257
+      },
+      "program_opcodes": {
+        "expression_evaluator": 0,
+        "expression_frontend": 0,
+        "parser": 8742,
+        "tokenizer": 12830
+      },
+      "schema_version": 1,
+      "service_invocations": {
+        "branch": 0,
+        "encoding": 0,
+        "expression": 0,
+        "fixup": 0,
+        "operand": 0,
+        "selection": 0,
+        "state": 0,
+        "value": 0
+      },
+      "services_by_phase": {
+        "final_emission": 0,
+        "layout": 0,
+        "other": 0,
+        "pass_one": 0
+      },
+      "state": "incomplete",
+      "vm_invocations": {
+        "exprvm": 0,
+        "exvm": 0,
+        "prvm": 516,
+        "tkvm": 257
+      },
+      "vm_opcodes": {
+        "exprvm": 0,
+        "exvm": 0,
+        "prvm": 8742,
+        "tkvm": 12830
+      }
+    },
+    "schema_version": 1,
+    "state": "incomplete",
+    "statement_visits": 1,
+    "symbol_expression_work": {
+      "detail_enabled": true,
+      "exact_probe_histogram": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4_plus": 0
+      },
+      "exit_status": 1,
+      "expression": {
+        "bind_calls": 0,
+        "compile_calls": 0,
+        "evaluate_calls": 0,
+        "failures": 0,
+        "parse_calls": 0,
+        "requests": 0,
+        "successes": 0
+      },
+      "expression_requests_by_phase": {
+        "final_emission": 0,
+        "layout": 0,
+        "other": 0,
+        "pass_one": 0
+      },
+      "expression_snapshot_candidates": 0,
+      "expression_snapshot_compared_bytes": 0,
+      "final_component_ambiguous": 0,
+      "lookup_calls_by_phase": {
+        "final_emission": 0,
+        "layout": 0,
+        "other": 0,
+        "pass_one": 0
+      },
+      "lookups": {
+        "exact": {
+          "calls": 0,
+          "candidates": 0,
+          "compared_bytes": 0,
+          "hits": 0,
+          "misses": 0
+        },
+        "final_component": {
+          "calls": 0,
+          "candidates": 0,
+          "compared_bytes": 0,
+          "hits": 0,
+          "misses": 0
+        },
+        "imported": {
+          "calls": 0,
+          "candidates": 0,
+          "compared_bytes": 0,
+          "hits": 0,
+          "misses": 0
+        },
+        "scoped": {
+          "calls": 0,
+          "candidates": 0,
+          "compared_bytes": 0,
+          "hits": 0,
+          "misses": 0
+        }
+      },
+      "max_exact_probes": 0,
+      "max_hash_chain": 0,
+      "overflow_bits": 0,
+      "pass": 1,
+      "phase": "pass_one",
+      "phase_id": 5,
+      "schema_version": 1,
+      "state": "incomplete"
+    },
+    "total_statements": 257,
+    "work_multiplication": {
+      "backward_redirects": 0,
+      "convergence_image_bytes": 0,
+      "exit_status": 1,
+      "final_emission_visits": 0,
+      "final_emissions": 0,
+      "final_image_bytes": 0,
+      "flow_rows": 0,
+      "forward_redirects": 0,
+      "layout_label_changes": 0,
+      "layout_placement_changes": 0,
+      "layout_rounds": 0,
+      "layout_visits": 0,
+      "max_backward_span": 0,
+      "max_forward_span": 0,
+      "max_statement": 0,
+      "mode": "pass_one",
+      "mode_id": 1,
+      "overflow_bits": 0,
+      "pass_one_visits": 1,
+      "schema_version": 1,
+      "state": "incomplete",
+      "statement_classifications": {
+        "endmodule": 0,
+        "generic": 0,
+        "module": 0,
+        "use": 0
+      }
+    }
+  },
+  "shared_work_sha256": "0e330ed5fd40861bef349cf67769d18505cf4ee9733a6eab8a0a76348b268546"
+}

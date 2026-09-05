@@ -1,0 +1,32 @@
+{
+  "abort_visits": 1,
+  "capture": null,
+  "capture_ok": false,
+  "case_id": "B10",
+  "case_sha256": "0e8c45ef53ca91471524bbb030720fc4bb4e7601fa30f5b12b0e94d02ec9484c",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "asm",
+    "external_fs_uae_native_production_corpus_diagnostic",
+    "--",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "comparison_eligible": false,
+  "complete": false,
+  "corpus_sha256": "fece2121b487b37e1217b4854b74308366399938e26520e06d124ed63559aed9",
+  "generator_sha256": "34ee3221ba0e8a74df925779f8beca2dea7e9f06210eca80707cd2f0d55927b7",
+  "head": "8fd492904b090e80a3cdedc7f4dfc6531ddc6ce1",
+  "host": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "mode": "native-controlled-abort-diagnostic",
+  "parity_passed": false,
+  "proof_level": "E",
+  "schema_version": 1,
+  "test_exit": 101,
+  "transcript": "\nrunning 1 test\ntest tests::native_production_corpus::external_fs_uae_native_production_corpus_diagnostic ... FAILED\n\nfailures:\n\nfailures:\n    tests::native_production_corpus::external_fs_uae_native_production_corpus_diagnostic\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1582 filtered out; finished in 172.92s\n\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s\n     Running unittests src/lib.rs (target/debug/deps/asm-22353e31de565cf3)\nCORPUS_CONFIG {\"corpus_sha256\":\"fece2121b487b37e1217b4854b74308366399938e26520e06d124ed63559aed9\",\"package_mode\":\"explicit\",\"package_sha256\":\"46a56a5bd436b012c596c65d1f7d85fe6cd8fadbd702362955804415e00c0d41\",\"post_start_timeout_ms\":120000,\"profile_mode\":\"all\",\"template\":\"# Dedicated disposable config for the opForge tkpkg smoke run.\\n\\n[fs-uae]\\namiga_model = A4000\\nchip_memory = 2048\\nfast_memory = 8192\\nhard_drive_0 = /Users/erik/Documents/FS-UAE/Hard Drives/opforge-tkpkg-test\\nhard_drive_1 = /Users/erik/Documents/FS-UAE/opforge-tkpkg-workmount/Work\\ngraphics_card = uaegfx-z3\\ngraphics_memory = 16384\\nkickstart_file = /Users/erik/Documents/FS-UAE/Kickstarts/321/kicka4000.rom\\nsave_disk = 0\\ncpu = 68020\\nuae_cpu_speed = max\\njit_compiler = 0\\n\"}\nCORPUS_START B10\nkill: 51726: No such process\nCORPUS_FAILURE B10: FS-UAE smoke for opforge_cli exceeded the post-start timeout of 120000 ms after /Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance/target/fs-uae-hunk-smoke-opforge_cli-1788523418823791000/Work/case_artifacts/case_0000/opforge_fsuae_smoke.started appeared without producing /Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance/target/fs-uae-hunk-smoke-opforge_cli-1788523418823791000/Work/case_artifacts/case_0000/opforge_fsuae_smoke.done\ncase 0 partial stdout:\n\ncase 0 partial stderr:\n\n\nthread 'tests::native_production_corpus::external_fs_uae_native_production_corpus_diagnostic' (23876590) panicked at crates/opforge-asm/src/tests/native_production_corpus.rs:371:5:\n1 corpus cases failed after all were attempted:\nB10: FS-UAE smoke for opforge_cli exceeded the post-start timeout of 120000 ms after /Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance/target/fs-uae-hunk-smoke-opforge_cli-1788523418823791000/Work/case_artifacts/case_0000/opforge_fsuae_smoke.started appeared without producing /Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance/target/fs-uae-hunk-smoke-opforge_cli-1788523418823791000/Work/case_artifacts/case_0000/opforge_fsuae_smoke.done\ncase 0 partial stdout:\n\ncase 0 partial stderr:\n\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p asm --lib`\n",
+  "transcript_truncated": false,
+  "validation_error": null
+}

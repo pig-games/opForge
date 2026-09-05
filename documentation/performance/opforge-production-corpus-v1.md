@@ -1,5 +1,18 @@
 # Production-path performance corpus v1
 
+## Current scheduling amendment (2026-09-05)
+
+The active performance plan now assigns broad nonterminal native qualification
+to Step 16 / Item A-close. The user subsequently deferred all LSP work until
+the final Item LSP-close. Step 08 / Item 0f requires its focused observation
+checks and the explicit `run_rust_quality_gate.sh --defer-lsp` gate; it does not
+rerun the 51-group native gate or repair LSP. Older scheduling statements below
+are historical and superseded by that reviewed plan. All recorded failures,
+proof limitations and raw observations remain unchanged. Raw B03/B10 receipt
+SHA-256 identities and byte counts are inventoried in
+`documentation/performance/results/opforge-item0f-observation-inventory-2026-09-05.json`.
+
+
 Status (2026-09-04): Item 2 frozen-input/result-protocol review and focused gates
 pass under the approved diagnostic entry exception. All ten current cases pass
 seven retained Rust release invocations with repeatable artifacts.
@@ -141,6 +154,34 @@ complete, zero-overflow records. Timed-out runs cannot supply terminal proof.
 package placeholder) and package digest. They are reports of that invocation,
 never reusable proof inputs.
 
+### Controlled incomplete capture (Item 0f)
+
+The diagnostic entry point uses the existing debug framework's build-time
+`OPFORGE_PROGRESS_ABORT_VISITS` control and sealed-record exporter; it does not
+truncate the frozen source. Exactly one case and a limit from 1 to 100,000 visits
+are required. The ordinary parity test remains separate and unchanged in proof
+requirements. Example, with the same explicitly opt-in FS-UAE environment above:
+
+```sh
+python3 scripts/performance/production_corpus.py diagnose --case B03 \
+  --abort-visits 1 --output /tmp/b03-abort1.json
+```
+
+Each command makes one capture (`--runs` is for Rust baselines). The guest keeps
+the 120-second post-start ceiling. The result contains the exact case/package
+identity, command/defines, guest challenge messages, raw fixed-size records,
+decoded correlated counters, host test transcript and capture status. Output
+paths must be new. Guest case and decoder scratch trees remain ephemeral.
+
+`capture_ok: true` means a fresh completed protocol returned nonzero, the abort
+flag and visit limit matched, and all five incomplete counter groups decoded
+without overflow. It **never** means successful assembly: `complete`,
+`parity_passed` and `comparison_eligible` remain false. A timeout, skipped guest,
+unexpected error, missing record or mismatched counter returns a failed capture.
+Raw diagnostic records are retained for report auditing, never as parity oracles.
+Native executable digests and observer calibration are still required before
+any quantitative performance acceptance; these initial captures are Level E.
+
 The configuration pins actual CPU 68020, `uae_cpu_speed=max`, and
 `jit_compiler=0`; boot ROM/device mappings are inherited and printed in the run
 configuration. The existing runner replaces the Work mount and supplies 64 MiB
@@ -151,6 +192,24 @@ higher CPU models, so CPU selection alone does not define comparable timing.
 Max-speed emulation is host-dependent and is not calibrated to the A6000's MIPS.
 
 ## Current evidence and open gates
+
+The current consolidated stop/go decision is
+`results/opforge-native-item0f-attribution-decision-2026-09-04.md`. The repeated
+B10 sampling loop is stopped: startup clearing is localized and frontend
+progress is observed, but backend/hardware attribution remains unproven. One
+new host-entry confirmation records verified foreground PID and fresh prompts
+for both pauses. The user-approved Phase 0 gate runs all 51 nonterminal native
+groups; full-product assembly and two-generation self-hosting remain mandatory
+at terminal qualification. Both required gates completed and failed; closure
+now depends on focused failure classification and remediation, then fresh gate
+results and final compliance review—not more identical snapshots.
+Neither deferred self-host group is counted as passed.
+The final native result is 38/51 groups passed and 13 failed, including 29 exact
+300-second timeout events, four completed pass-2 branch rejections and one wrong
+negative-case diagnostic. The Rust quality gate also failed at the LSP client
+integration suite (34 passed / 14 failed) after all 1,586 assembler tests passed.
+Exact results are in `results/opforge-item0f-closure-gates-2026-09-05.md`. No
+further B10 sampling is scheduled.
 
 - Level A/B: corpus/schema tests cover negative cases and Cargo-selected paths.
   These do not prove native execution or representative hardware performance.
@@ -211,14 +270,106 @@ are implemented. Final independent Item 2 plan-compliance review passed, as did
 the actual staged workflow/native gate (104 tests; 238 formatted native files).
 The full native wrapper has not run. The user approved incomplete-run diagnosis without accepting these
 native failures. Runtime bounds, complete native coverage and counter overhead
-remain open for investigation/closure. Item 0f and later optimizations have not begun.
+remain open for investigation/closure. Item 0f has begun controlled incomplete
+captures; no later optimization has begun.
 
 ## Focused hypothesis ledger
+
+Source-inventory correction (2026-09-04): profiling flags previously selected an
+extra generic main-source alias in the guest harness. Earlier profiled captures
+remain observations of that extra-file workload, not exact-frozen-discovery
+measurements. The selector is corrected and new console receipts verify every
+discoverable `.asm`/`.inc` path/size/hash against the frozen manifest before
+launch. See `results/opforge-native-io-counter-calibration-2026-09-04.md`.
+
+For I/O-counter calibration, `diagnose --diagnostic-profile all-no-io` enables
+the existing I/O-counter kill switch while retaining bulk and the other counter
+groups. The default is `all`; ordinary corpus parity cannot select `all-no-io`.
+Decoded enabled-group flags must match the request. Disabled I/O fields are
+unavailable observations, not measured zero work.
+
+The full-B03 common-boundary ABBA control (all/no-I/O/no-I/O/all) reaches the
+existing one-visit abort with identical shared work. Mean START-to-DONE times
+are 76.566 and 76.363 seconds. This small four-run difference supports using
+`all-no-io` provisionally for compute/bulk attribution, not an overhead percentage
+or B10 timing correction. B03 has no module candidates. Raw receipts and the
+fail-closed comparison are documented in
+`results/opforge-native-common-boundary-controls-2026-09-04.md`; all remain
+Level E controlled-abort evidence, not complete assembly or parity.
+
+Repeated B10 no-I/O sampling subsequently yields one additional usable 60/100s
+pair (20,985 VM opcodes at 100.739s versus baseline 20,837 at 100.702s), one
+early-only capture and one retry with no debugger frame. The missing responses
+are retained, not converted into zero progress or guest stalls. The intended
+three usable pairs are not available; debugger-entry acknowledgement must be
+localized before more sampling. See
+`results/opforge-native-b10-repeatability-2026-09-04.md`. Inputs, executable,
+capture tools and the 120-second ceiling are unchanged.
+
+For the user-authorized local console diagnostic, add
+`OPFORGE_FS_UAE_CONSOLE_DEBUGGER_AUTOMATE=1` and
+`--sample-after-seconds 30` (integer 1–100) to a single-case `diagnose` invocation.
+This launches stock FS-UAE on a PTY, waits for the exact fresh START challenge,
+then sends Cmd+D only to that launched process. Fixed read-only commands capture
+registers/disassembly and, when uniquely bound to the actual Hunk, the existing
+five counter records. The coordinator removes the config, symbol map, binary,
+guest files and logs on return. The JSON retains bounded Level E observations,
+not an executable or reusable oracle. The unchanged proof check rejects missing
+guest completion/exit; `sample_observed: true` is not `capture_ok`, parity or a
+successful assembly. Live active-record exit fields are not guest exit evidence.
+
+For two snapshots in the same guest, use `--sample-after-seconds 60
+--resample-after-seconds 100`. The second delay is absolute from fresh START,
+at least five seconds after the first and no greater than 100. Before sending
+bare `g` to resume, the sampler requires all five strictly decoded, correlated,
+active records without overflow. It retains only that process's verified
+mapping, then rechecks getter opcodes/pointers and run identity at the later
+pause. Each pause has independent transcript parsing: missing later bytes
+cannot be filled from the first stop. Exact completion checks prevent sampling
+after guest completion. The coordinator's 120-second bound is unchanged.
+
+Two-stop reports put binding attribution, PCs, times and records in `snapshots`;
+they omit top-level counter/binding aliases so a failed second stop cannot
+inherit first-stop evidence. `resample_observed` requires two accepted snapshots
+and complete cleanup; it does not mean guest completion, parity or an elapsed
+assembly measurement. Recorded host intervals include debugger interruption,
+and sending `g` alone does not prove execution resumed.
+
+For non-interrupting observation controls, omit the sample delay and use
+`--control-mode app`, `--control-mode pty`, or `--control-mode console` instead.
+All use the same complete frozen case and visit-abort control. The first uses
+the normal macOS app launch path with console disabled; the latter two launch
+through a PTY with console disabled/enabled respectively. No control sends
+Cmd+D or debugger commands. The host records exact fresh START/DONE and explicit
+exit observations before teardown, at 100 ms polling granularity. The existing
+coordinator still independently validates protocol, expected nonzero diagnostic
+exit and counters. A timing receipt without that valid controlled-abort capture
+is not a comparable control. These observations do not measure counter-disabled
+overhead, debugger-entry pause cost, completed-workload performance or A6000
+throughput. Control waits stop at 115 seconds after START; sampling reserves
+15 seconds after the chosen stop for bounded reads/cleanup. The coordinator's
+120-second post-start ceiling is unchanged.
+
+If a live sample lands outside the loaded opForge CODE, optional
+`--binding-register d6` requests one bounded disassembly at the actual captured
+register value. Only a unique match against the current Hunk may locate its
+counter getters. The receipt keeps the actual PC and labels this anchor as a
+register candidate, not sampled-PC attribution. No fixed runtime address or
+previous run's mapping is reused. A fresh completed guest protocol stops the
+sampler rather than reading a finished process as though it were still active.
+
+The 2026-09-04 B10 live30 and live60-retry captures identify the session-init
+bulk-clear loop, with a 41,221,928-byte request. The latter independently decodes
+all five correlated active records: package/setup phase, no statement visits,
+no source/package reads or VM opcodes yet. This localizes an early setup cost,
+not the entire original timeout or later self-hosting runtime. The first live60
+attempt failed in the host Hunk parser before guest launch and remains recorded.
+See the Item 0f first-captures report for exact provenance and limitations.
 
 | ID | Hypothesis | Evidence for | Evidence against | Status | Next discriminator |
 |---|---|---|---|---|---|
 | C1 | Nested include exceeds current native support | Nonzero guest include errors; `PreparePendingInclude` rejects nonzero depth; limit is one | Rust permits the nested input | confirmed | Confirm the documented sibling-include candidate without changing native semantics |
-| C2 | The bounded source/statement/branch cases need compute or I/O attribution | B02/B03/B05 and enlarged B10 lack completion after 120 seconds; B04/B06/B07 complete | No PC samples or partial counter snapshots yet identify the owner | open | Approved incomplete-run snapshots/PC sampling, or an explicitly longer bounded run |
+| C2 | The bounded source/statement/branch cases need compute or I/O attribution | Corrected B10 module counts match its root-scan prediction; two usable no-I/O pairs reach frontend with 20,837/20,985 VM opcodes near 100.7s; B03 shared-work observer controls are recorded | Two later attempts miss debugger frames; intended repeat check, B10 overhead, backend work and complete runtime remain unproven; older captures include an unintended alias | open | Localize debugger-entry acknowledgement, then isolate frontend costs with approved instrumentation |
 | C3 | B09 diverges at section-symbol/layout resolution | Fresh nonzero exit, `OPC-NCLI022`, Rust emits all eleven artifacts | Earliest internal divergence has not been localized; no fix claim | open | Focused Rust/native boundary comparison of the actual forward section-symbol case |
 | C4 | Unconditional include reporting violates B08's empty-stdout contract | Corrected B08 fails only the stdout assertion after exact BIN/zero-exit proof; include processing calls the reporting routine without a debug flag | Actual unexpected text was not retained by that run | open | Fresh focused run capturing the strict assertion's stream text; retain failed parity until resolved |
 

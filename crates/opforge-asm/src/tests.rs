@@ -21195,6 +21195,7 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
         vec![
             ".use exprvm.amigaos.runtime",
             ".use debug.amigaos.symbol_expr_profile as symbol_expr_profile",
+            ".use debug.amigaos.runtime_profile as runtime_profile",
         ]
     );
     for prohibited_owner in [
@@ -23835,7 +23836,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        JSR expression.prepareV1\n        BNE.S return\n        BSR.W resolveExpressionContractVersionsV1\n        BNE.S return\n        MOVEQ #0,D4\n        MOVE.W D6,D4\n        MOVEQ #0,D5\n        MOVE.W D7,D5\n        JSR expression.executePreparedV1\n\nreturn\n        MOVEM.L (SP)+,D2-D7/A2-A6\n        RTS"
+        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        JSR expression.prepareV1\n        BNE.S return\n        BSR.W resolveExpressionContractVersionsV1\n        BNE.S return\n        MOVEQ #0,D4\n        MOVE.W D6,D4\n        MOVEQ #0,D5\n        MOVE.W D7,D5\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n        MOVEM.L D0-D1,-(SP)\n        MOVEQ #runtime_profile.OPFORGE_RUNTIME_SERVICE_EXPRESSION,D0\n        JSR runtime_profile.opforgeRuntimeProfileEnterServiceV1\n        MOVEM.L (SP)+,D0-D1\n.endif\n        JSR expression.executePreparedV1\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n        JSR runtime_profile.opforgeRuntimeProfileLeaveServiceV1\n.endif\n\nreturn\n        MOVEM.L (SP)+,D2-D7/A2-A6\n        RTS"
     ));
     assert!(tkpkg_source_contains(
         &expression,
@@ -23847,7 +23848,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &selection,
-        "selectInstructionV1\t.block\n\tmovem.l d2-d7/a2-a6, -(sp)\n\tbtst #1, buffers.PackageStateFlags"
+        "selectInstructionV1\t.block\n\tmovem.l d2-d7/a2-a6, -(sp)\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n\tmovem.l d0-d1, -(sp)\n\tmoveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_SELECTION, d0\n\tjsr runtime_profile.opforgeRuntimeProfileEnterServiceV1\n\tmovem.l (sp)+, d0-d1\n.endif\n\tbtst #1, buffers.PackageStateFlags"
     ));
     assert!(source_contains_in_order(
         &encoding,
@@ -24231,7 +24232,7 @@ fn motorola68020_tkpkg_expression_service_has_one_implementation_owner() {
 
     assert!(tkpkg_source_contains(
         &facade,
-        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        JSR expression.prepareV1\n        BNE.S return\n        BSR.W resolveExpressionContractVersionsV1\n        BNE.S return\n        MOVEQ #0,D4\n        MOVE.W D6,D4\n        MOVEQ #0,D5\n        MOVE.W D7,D5\n        JSR expression.executePreparedV1\n\nreturn\n        MOVEM.L (SP)+,D2-D7/A2-A6\n        RTS"
+        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        JSR expression.prepareV1\n        BNE.S return\n        BSR.W resolveExpressionContractVersionsV1\n        BNE.S return\n        MOVEQ #0,D4\n        MOVE.W D6,D4\n        MOVEQ #0,D5\n        MOVE.W D7,D5\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n        MOVEM.L D0-D1,-(SP)\n        MOVEQ #runtime_profile.OPFORGE_RUNTIME_SERVICE_EXPRESSION,D0\n        JSR runtime_profile.opforgeRuntimeProfileEnterServiceV1\n        MOVEM.L (SP)+,D0-D1\n.endif\n        JSR expression.executePreparedV1\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n        JSR runtime_profile.opforgeRuntimeProfileLeaveServiceV1\n.endif\n\nreturn\n        MOVEM.L (SP)+,D2-D7/A2-A6\n        RTS"
     ));
     assert!(!facade.contains("evaluateExpressionLegacyV1"));
     assert!(tkpkg_source_contains(
@@ -27523,7 +27524,7 @@ fn motorola68020_tokvm_interpreter_records_operand_aware_vm_failures() {
     assert!(
         tokvm_source_contains(
             &source,
-            ".long opcodeJumpIfClass\n        .long opcodeFail\n        .long opcodeEmitDiag"
+            ".long opcodeJumpIfClass\n        .long opcodeFail\n        .long opcodeEmitFailure"
         ),
         "expected the dispatch table to route Fail and EmitDiag into dedicated native handlers"
     );
@@ -27537,7 +27538,7 @@ fn motorola68020_tokvm_interpreter_records_operand_aware_vm_failures() {
     assert!(
         tokvm_source_contains(
             &source,
-            "opcodeEmitDiag:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #1,D0\n        CMP.L D7,D0\n        BHI invalidProgramAtCursor"
+            "opcodeEmitFailure:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #1,D0\n        CMP.L D7,D0\n        BHI invalidProgramAtCursor"
         ),
         "expected EmitDiag to read one inline diagnostic-slot operand and report VM failure"
     );

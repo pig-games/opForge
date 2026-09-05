@@ -61,6 +61,57 @@ class NativeExistingParityCompletionTests(unittest.TestCase):
         self.assertIn("running 1 test", source)
         self.assertIn("parent-plan Items 7.4-7.7 remain open", source)
 
+    def run_phase_zero(self, behavior="pass"):
+        # Level A/B wrapper contract only: fake cargo supplies no native proof.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cargo = root / "cargo"
+            cargo.write_text(
+                '#!/usr/bin/env bash\n'
+                'if [[ "$4" == external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli ]]; then\n'
+                '  case "$FAKE_BEHAVIOR" in\n'
+                '    fail) echo "failed first group"; exit 1 ;;\n'
+                '    skip) echo "SKIP: unavailable" ;;\n'
+                '    empty) echo "running 0 tests"; exit 0 ;;\n'
+                '  esac\n'
+                'fi\n'
+                'printf "running 1 test\\ntest tests::%s ... ok\\ntest result: ok. 1 passed; 0 failed;\\n" "$4"\n',
+                encoding="utf-8",
+            )
+            cargo.chmod(0o755)
+            config = root / "config.fs-uae"
+            config.write_text("", encoding="utf-8")
+            env = {**os.environ, "CARGO": str(cargo), "FAKE_BEHAVIOR": behavior,
+                   "OPFORGE_FS_UAE_SMOKE": "1", "OPFORGE_FS_UAE_BIN": str(cargo),
+                   "OPFORGE_FS_UAE_CONFIG_TEMPLATE": str(config), "OPFORGE_FS_UAE_ARGS": "{fsuae_config}"}
+            return subprocess.run(["bash", str(self.wrapper), "--verify-phase-zero"], cwd=self.root,
+                                  env=env, capture_output=True, text=True, check=False)
+
+    def test_phase_zero_defers_exactly_two_terminal_groups(self):
+        source = self.wrapper.read_text(encoding="utf-8")
+        test_array = source.split("tests=(\n", 1)[1].split("\n)", 1)[0]
+        complete = [line.strip() for line in test_array.splitlines()
+                    if line.startswith("  ") and not line.lstrip().startswith("#")]
+        deferred = {"external_fs_uae_native_opforge_full_product_artifact_parity",
+                    "external_fs_uae_native_opforge_two_generation_self_host_parity"}
+        result = self.run_phase_zero()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        selected = [line.split(": ", 1)[1] for line in result.stdout.splitlines()
+                    if line.startswith("==> Established native Level D parity:")]
+        self.assertEqual(selected, [name for name in complete if name not in deferred])
+        self.assertEqual(len(selected), 51)
+        self.assertIn("PASS: Phase 0 nonterminal native Level D gate verified (51 tests; 2 terminal groups deferred)", result.stdout)
+        self.assertNotIn("PASS: complete established", result.stdout)
+
+    def test_phase_zero_attempts_later_groups_but_rejects_fail_skip_and_empty(self):
+        for behavior in ("fail", "skip", "empty"):
+            with self.subTest(behavior=behavior):
+                result = self.run_phase_zero(behavior)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout.count("==> Established native Level D parity:"), 51)
+                self.assertIn("1 of 51 groups failed; all selected groups attempted", result.stderr)
+                self.assertNotIn("PASS: Phase 0", result.stdout)
+
     def test_generation_two_bonus_delegates_the_same_complete_inventory(self):
         source = self.wrapper.read_text(encoding="utf-8")
         bonus = self.generation_two_bonus_wrapper.read_text(encoding="utf-8")

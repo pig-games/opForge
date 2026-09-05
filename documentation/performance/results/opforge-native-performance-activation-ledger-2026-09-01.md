@@ -109,9 +109,20 @@ attribute work and establish numeric thresholds first.
 - `make workflow-gate`
 - independent plan-quality and plan-compliance reviews
 
-## Next active item
+## Historical next item at activation
 
 Item 0a: add bounded native progress and coarse phase timing. It must load the
 native parity, safe-instrumentation, 68000, and FS-UAE rule packs before any
 production edit. Instrumentation is observation-only; incomplete snapshots are
 localization evidence and never terminal proof.
+
+## Step 08 / Item 0f continuation (2026-09-05)
+
+- Prerequisite integration commit: `495e9a96` (reviewed LSP scheduling amendment); slice code base `8fd49290`, with reviewed plan/numbering amendments retained.
+- Branch/worktree: `codex/rust-vm-native-performance`, `/Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance`.
+- Active item: Step 08 / Item 0f; bounded observation deliverable only.
+- Expected commit: `docs(perf): close bounded attribution with tracked qualification debt`.
+- Evidence inventory: `opforge-item0f-observation-inventory-2026-09-05.json`; all raw observations remain Level E, not parity proof.
+- Required validation: focused capture/control/corpus/wrapper checks, explicit non-LSP Rust gate, staged workflow gate and independent compliance review.
+- Integration dependency: no Step 09 implementation before the Step 08 focused commit. Native failed qualification remains owned by A-close; LSP failure cause remains unproven and repair is deferred to LSP-close.
+- Current disposition: required non-LSP Rust and staged workflow gates PASS; see `opforge-item0f-completion-gates-2026-09-05.md`. Observation slice accepted subject to final compliance/commit; no native or LSP fix claimed.

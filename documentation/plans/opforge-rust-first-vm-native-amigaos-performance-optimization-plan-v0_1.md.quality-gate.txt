@@ -1,3 +1,11 @@
+PASS: Final independent plan-compliance review by `observation_review` (2026-09-05) accepts Step 08 / Item 0f. The reviewed 50-file staged diff includes all bounded observation code, raw evidence, exact inventory, completion receipt, ledger and Step08/Step09 bookkeeping; no unstaged changes remained. This sidecar is the final receipt-only addition.
+
+Artifact SHA-256: 9fda9176b153e7d9764cbacd651ffaf3bf1c6c4e0849dcd101d24faf9c530e76
+Required gates: explicit exit0 for non-LSP Rust (log SHA256 c22327070e321fb96e7ceb87af6dd1d9e17903ddaa5a88391419e20a859982f2, 343239bytes; asm1586/1586 in1881.30s and all remaining non-LSP suites passed) and staged workflow (SHA256 d84752810cd66adb95b6f1411155c0159f3bd13e22cfc90eae5d4e2bf2ee94e3, 6363bytes; 134 tests,238 native formats and staged guards). Final staged diff/plan/bundle/evidence validators PASS.
+Review: source inventory, diagnostic/Level D separation, ephemeral proof handling, corrected first-pause frame boundary, exact27/27 receipt hashes and historical-transcript audit PASS. No new Level D run or speedup is claimed. Native38/51 and LSP34/14 failures remain open under A-close/LSP-close. Approved focused commit: docs(perf): close bounded attribution with tracked qualification debt. Step09 is next only after this commit.
+
+Prior receipts below apply to their recorded revisions and scopes.
+
 PASS: Independent `plan_review` (2026-09-05) approves the explicit user LSP deferral as plan-quality and workflow-amendment compliance. Only package lsp clippy/tests are excluded by --defer-lsp through Item 30; default full-gate commands and success wording are unchanged. All other packages and native/architecture/format/audit checks remain mandatory. Final Step 25 / Item LSP-close requires actual LSP repair and the default unfiltered Rust gate before archive. Existing 34/14 failure evidence remains historical, with no cause or fix inferred.
 
 Artifact SHA-256: 519eb47baf7d587ae030f7f0dba3255a7398e87e2c7f19b70d78f2c58c65dbd2

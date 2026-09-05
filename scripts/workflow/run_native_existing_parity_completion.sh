@@ -6,17 +6,22 @@ usage() {
 Usage:
   scripts/workflow/run_native_existing_parity_completion.sh --verify
   scripts/workflow/run_native_existing_parity_completion.sh --verify-generation-two-first
+  scripts/workflow/run_native_existing_parity_completion.sh --verify-phase-zero
   scripts/workflow/run_native_existing_parity_completion.sh --check-config
 
 Runs every established fail-closed native CLI Level D parity group required by
 the runtime-stabilization plan. The command accepts a staged worktree and
 writes no retained receipt; source-identity receipts remain owned by their
 feature-specific completion wrappers.
+
+--verify-phase-zero runs every nonterminal group, deferring only the full-product
+assembly and two-generation self-host tests to terminal qualification. It is not
+the complete 53-group gate and attempts all selected groups even after failure.
 EOF
 }
 
 mode="${1:-}"
-[[ $# -eq 1 && ( "${mode}" == "--verify" || "${mode}" == "--verify-generation-two-first" || "${mode}" == "--check-config" ) ]] || {
+[[ $# -eq 1 && ( "${mode}" == "--verify" || "${mode}" == "--verify-generation-two-first" || "${mode}" == "--verify-phase-zero" || "${mode}" == "--check-config" ) ]] || {
   usage >&2
   exit 2
 }
@@ -96,6 +101,25 @@ tests=(
   external_fs_uae_native_opforge_two_generation_self_host_parity
 )
 
+if [[ "${mode}" == "--verify-phase-zero" ]]; then
+  phase_zero_tests=()
+  terminal_deferrals=0
+  for test_name in "${tests[@]}"; do
+    case "${test_name}" in
+      external_fs_uae_native_opforge_full_product_artifact_parity|external_fs_uae_native_opforge_two_generation_self_host_parity)
+        terminal_deferrals=$((terminal_deferrals + 1))
+        ;;
+      *) phase_zero_tests+=("${test_name}") ;;
+    esac
+  done
+  [[ ${terminal_deferrals} -eq 2 && ${#phase_zero_tests[@]} -eq $((${#tests[@]} - 2)) ]] || {
+    echo "error: Phase 0 must defer exactly the two named terminal groups" >&2
+    exit 2
+  }
+  tests=("${phase_zero_tests[@]}")
+  echo "Phase 0 nonterminal gate: ${#tests[@]} groups; 2 self-host groups deferred, not passed"
+fi
+
 if [[ "${mode}" == "--verify-generation-two-first" ]]; then
   generation_two_test=external_fs_uae_native_opforge_two_generation_self_host_parity
   generation_two_first_tests=("${generation_two_test}")
@@ -118,14 +142,15 @@ for test_name in "${tests[@]}"; do
 done
 
 cargo_bin="${CARGO:-cargo}"
+failed_tests=()
 for test_name in "${tests[@]}"; do
   output_file="$(mktemp)"
   trap 'rm -f "${output_file}"' EXIT
   printf '==> Established native Level D parity: %s\n' "${test_name}"
+  group_ok=1
   if ! "${cargo_bin}" test -p asm "${test_name}" -- --nocapture --test-threads=1 >"${output_file}" 2>&1; then
-    cat "${output_file}"
+    group_ok=0
     echo "error: required Level D test failed: ${test_name}" >&2
-    exit 1
   fi
   cat "${output_file}"
   if rg -q '^SKIP:' "${output_file}" \
@@ -133,10 +158,25 @@ for test_name in "${tests[@]}"; do
     || ! rg -q "test .*${test_name}" "${output_file}" \
     || ! rg -q '^test result: ok\. 1 passed; 0 failed;' "${output_file}"; then
     echo "error: required Level D test did not run and pass exactly once: ${test_name}" >&2
-    exit 1
+    group_ok=0
   fi
   rm -f "${output_file}"
   trap - EXIT
+  if [[ ${group_ok} -ne 1 ]]; then
+    if [[ "${mode}" != "--verify-phase-zero" ]]; then
+      exit 1
+    fi
+    failed_tests+=("${test_name}")
+  fi
 done
 
+if [[ ${#failed_tests[@]} -ne 0 ]]; then
+  echo "FAIL: Phase 0 nonterminal gate: ${#failed_tests[@]} of ${#tests[@]} groups failed; all selected groups attempted" >&2
+  printf 'FAILED_GROUP: %s\n' "${failed_tests[@]}" >&2
+  exit 1
+fi
+if [[ "${mode}" == "--verify-phase-zero" ]]; then
+  echo "PASS: Phase 0 nonterminal native Level D gate verified (${#tests[@]} tests; 2 terminal groups deferred)"
+  exit 0
+fi
 echo "PASS: complete established native Level D parity corpus verified (${#tests[@]} tests)"

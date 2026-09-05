@@ -52,6 +52,76 @@ class ProductionCorpusTests(unittest.TestCase):
         self.assertGreaterEqual(self.frozen["cases"][1]["source_bytes"], 1024 * 1024)
         self.assertIn("nested flow", self.frozen["cases"][-1]["coverage"])
 
+    def test_resample_requires_an_earlier_sample_and_the_existing_ceiling(self):
+        with self.assertRaises(ValueError):
+            corpus.diagnose("B10", 1, self.frozen, profile_mode="off")
+        for first, second in ((None, 100), (60, 64), (100, 105), (60, 101), (60, True)):
+            with self.assertRaises(ValueError):
+                corpus.diagnose("B10", 1, self.frozen, first, resample_after=second)
+
+    def test_controlled_diagnostic_is_incomplete_and_fail_closed(self):
+        case = self.frozen["cases"][2]
+        profile = {"state": "incomplete", "abort_requested": True, "abort_after_visits": 1,
+                   "statement_visits": 1, "exit_status": 1, "overflow_bits": 0,
+                   **{name: {"overflow_bits": 0} for name in
+                      ("work_multiplication", "symbol_expression_work", "runtime_execution", "platform_io")}}
+        row = {"id": case["id"], "case_sha256": case["sha256"], "corpus_sha256": self.frozen["sha256"],
+               "package_sha256": self.frozen["package"]["sha256"], "proof_level": "E", "complete": False,
+               "parity_passed": False, "protocol_completed": True, "exit_status": 1, "profile": profile}
+        corpus.validate_diagnostic_capture(row, case, self.frozen, 1)
+        for field, value in (("complete", True), ("parity_passed", True), ("protocol_completed", False),
+                             ("exit_status", 0), ("exit_status", True), ("case_sha256", "a" * 64),
+                             ("proof_level", "D"), ("profile", None)):
+            changed = {**row, field: value}
+            with self.assertRaises(ValueError, msg=field):
+                corpus.validate_diagnostic_capture(changed, case, self.frozen, 1)
+        for field, value in (("state", "complete"), ("abort_requested", False), ("statement_visits", 2),
+                             ("abort_after_visits", True), ("overflow_bits", False), ("platform_io", {})):
+            changed = {**row, "profile": {**profile, field: value}}
+            with self.assertRaises(ValueError, msg=field):
+                corpus.validate_diagnostic_capture(changed, case, self.frozen, 1)
+        for visits in (None, 0, -1, True, 100_001):
+            with self.assertRaises(ValueError):
+                corpus.diagnose("B03", visits, self.frozen)
+        self.assertEqual(self.frozen, corpus.read_json(corpus.ROOT / "documentation/performance/results/opforge-corpus-v1-manifest.json"))
+
+    def test_live_observation_does_not_turn_failed_guest_into_success(self):
+        live = {"sample_observed": True, "complete": False, "parity_passed": False}
+        transcript = "CORPUS_LIVE_CAPTURE " + json.dumps(live) + "\n"
+        with mock.patch.dict(corpus.os.environ, {"OPFORGE_FS_UAE_CONSOLE_DEBUGGER_AUTOMATE": "1",
+                                               "OPFORGE_NATIVE_CORPUS_RESAMPLE_AFTER_SECONDS": "99"}), \
+                mock.patch.object(corpus.subprocess, "run", return_value=SimpleNamespace(
+                    returncode=101, stdout=transcript, stderr=transcript)) as run, \
+                mock.patch.object(corpus.subprocess, "check_output", return_value="a" * 40), \
+                mock.patch.object(corpus.platform, "platform", return_value="test host"):
+            result = corpus.diagnose("B10", 1, self.frozen, 30)
+            self.assertEqual(result["live_sample"], live)
+            for field in ("capture_ok", "complete", "parity_passed", "comparison_eligible"):
+                self.assertIs(result[field], False)
+            self.assertEqual(result["test_exit"], 101)
+            self.assertEqual(run.call_args.kwargs["env"]["OPFORGE_NATIVE_CORPUS_SAMPLE_AFTER_SECONDS"], "30")
+            self.assertNotIn("OPFORGE_NATIVE_CORPUS_RESAMPLE_AFTER_SECONDS", run.call_args.kwargs["env"])
+            result = corpus.diagnose("B10", 1, self.frozen, 60, resample_after=100)
+            self.assertEqual(run.call_args.kwargs["env"]["OPFORGE_NATIVE_CORPUS_RESAMPLE_AFTER_SECONDS"], "100")
+            self.assertEqual(result["resample_after_seconds"], 100)
+            self.assertFalse(result["capture_ok"])
+            result = corpus.diagnose("B10", 1, self.frozen, 60, resample_after=100, profile_mode="all-no-io")
+            self.assertEqual(run.call_args.kwargs["env"]["OPFORGE_NATIVE_CORPUS_PROFILE"], "all-no-io")
+            self.assertEqual(result["profile_mode"], "all-no-io")
+            self.assertFalse(result["capture_ok"])
+        for delay in (0, -1, 101, True, float("nan")):
+            with self.assertRaises(ValueError):
+                corpus.diagnose("B10", 1, self.frozen, delay)
+        with mock.patch.dict(corpus.os.environ, {}, clear=True):
+            with self.assertRaises(ValueError):
+                corpus.diagnose("B10", 1, self.frozen, 30)
+        for mode, delay in (("unknown", None), ("app", 30)):
+            with self.assertRaises(ValueError):
+                corpus.diagnose("B03", 1, self.frozen, delay, mode)
+        for register, delay in (("d8", 100), ("d6", None), ("d6; q", 100)):
+            with self.assertRaises(ValueError):
+                corpus.diagnose("B10", 1, self.frozen, delay, None, register)
+
     def test_valid_full_and_explicit_smoke_results(self):
         corpus.validate_result(self.result(), self.frozen)
         result = self.result(1)

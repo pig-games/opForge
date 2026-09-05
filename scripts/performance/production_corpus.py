@@ -337,16 +337,129 @@ def emulator_config(template: str) -> str:
     return "\n".join([*lines, *(f"{key} = {value}" for key, value in overrides.items())]) + "\n"
 
 
+def validate_diagnostic_capture(row: dict, case: dict, frozen: dict, visits: int) -> None:
+    """A controlled incomplete capture is never a successful corpus result."""
+    if not isinstance(row, dict):
+        raise ValueError("diagnostic capture must be an object")
+    if (row.get("proof_level") != "E" or row.get("complete") is not False
+            or row.get("parity_passed") is not False or row.get("protocol_completed") is not True
+            or type(row.get("exit_status")) is not int or row["exit_status"] == 0
+            or row.get("id") != case["id"] or row.get("case_sha256") != case["sha256"]
+            or row.get("corpus_sha256") != frozen["sha256"]
+            or row.get("package_sha256") != frozen["package"]["sha256"]):
+        raise ValueError("invalid incomplete diagnostic identity/protocol")
+    profile = row.get("profile", {})
+    if (not isinstance(profile, dict) or profile.get("state") != "incomplete" or profile.get("abort_requested") is not True
+            or profile.get("abort_after_visits") != visits or profile.get("statement_visits") != visits
+            or type(profile.get("abort_after_visits")) is not int or type(profile.get("statement_visits")) is not int
+            or profile.get("exit_status") != row["exit_status"]):
+        raise ValueError("capture is not the requested controlled visit abort")
+    for group in [profile, *(profile.get(name, {}) for name in
+                            ("work_multiplication", "symbol_expression_work", "runtime_execution", "platform_io"))]:
+        if not isinstance(group, dict) or type(group.get("overflow_bits")) is not int or group["overflow_bits"] != 0:
+            raise ValueError("missing or overflowing diagnostic counter group")
+
+
+def diagnose(case_id: str, visits: int, frozen: dict, sample_after: int | None = None,
+             control_mode: str | None = None, binding_register: str | None = None,
+             resample_after: int | None = None, profile_mode: str = "all") -> dict:
+    if profile_mode not in ("all", "all-no-io"):
+        raise ValueError("diagnostic profile must be all or all-no-io")
+    if type(visits) is not int or not 1 <= visits <= 100_000:
+        raise ValueError("--abort-visits must be in 1..100000")
+    if sample_after is not None and (type(sample_after) is not int or not 1 <= sample_after <= 100):
+        raise ValueError("--sample-after-seconds must be in 1..100")
+    if resample_after is not None and (sample_after is None or type(resample_after) is not int
+                                       or not sample_after + 5 <= resample_after <= 100):
+        raise ValueError("resample requires a sample at least 5 seconds earlier and a delay no greater than 100")
+    if control_mode is not None and (control_mode not in ("app", "pty", "console") or sample_after is not None):
+        raise ValueError("observer control must be app/pty/console, without a sample delay")
+    if binding_register is not None and (binding_register not in [f"{kind}{i}" for kind in "da" for i in range(8)]
+                                         or sample_after is None):
+        raise ValueError("binding register requires a live sample and one d0-d7/a0-a7 register")
+    if sample_after is not None and os.environ.get("OPFORGE_FS_UAE_CONSOLE_DEBUGGER_AUTOMATE") != "1":
+        raise ValueError("live sampling requires explicit OPFORGE_FS_UAE_CONSOLE_DEBUGGER_AUTOMATE=1")
+    case = next((row for row in frozen["cases"] if row["id"] == case_id), None)
+    if case is None:
+        raise ValueError("diagnosis requires one known frozen case")
+    stored = read_json(ROOT / "documentation/performance/results/opforge-corpus-v1-manifest.json")
+    if frozen != stored:
+        raise ValueError("diagnosis inputs differ from the frozen corpus")
+    env = {**os.environ, "OPFORGE_PERFORMANCE_CORPUS": "1",
+           "OPFORGE_NATIVE_CORPUS_DIAGNOSTIC": "1", "OPFORGE_NATIVE_CORPUS_CASES": case_id,
+           "OPFORGE_NATIVE_CORPUS_PROFILE": profile_mode, "OPFORGE_NATIVE_CORPUS_ABORT_VISITS": str(visits),
+           "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000", "RUST_TEST_THREADS": "1"}
+    env.pop("OPFORGE_NATIVE_CORPUS_LIVE_CAPTURE", None)
+    env.pop("OPFORGE_NATIVE_CORPUS_SAMPLE_AFTER_SECONDS", None)
+    env.pop("OPFORGE_NATIVE_CORPUS_CONTROL_MODE", None)
+    env.pop("OPFORGE_NATIVE_CORPUS_BINDING_REGISTER", None)
+    env.pop("OPFORGE_NATIVE_CORPUS_RESAMPLE_AFTER_SECONDS", None)
+    if resample_after is not None:
+        env["OPFORGE_NATIVE_CORPUS_RESAMPLE_AFTER_SECONDS"] = str(resample_after)
+    if binding_register is not None:
+        env["OPFORGE_NATIVE_CORPUS_BINDING_REGISTER"] = binding_register
+    if sample_after is not None:
+        env.update(OPFORGE_NATIVE_CORPUS_LIVE_CAPTURE="1", OPFORGE_NATIVE_CORPUS_SAMPLE_AFTER_SECONDS=str(sample_after))
+    if control_mode is not None:
+        env.update(OPFORGE_NATIVE_CORPUS_LIVE_CAPTURE="1", OPFORGE_NATIVE_CORPUS_SAMPLE_AFTER_SECONDS="0",
+                   OPFORGE_NATIVE_CORPUS_CONTROL_MODE=control_mode)
+    command = ["cargo", "test", "--locked", "-p", "asm",
+               "external_fs_uae_native_production_corpus_diagnostic", "--", "--nocapture", "--test-threads=1"]
+    # The existing Rust coordinator owns bounded boot/post-start waits and
+    # cleanup, including failure. Do not kill its parent and orphan its guest.
+    result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True)
+    transcript = result.stdout + result.stderr
+    rows = [json.loads(line.removeprefix("CORPUS_DIAGNOSTIC ")) for line in transcript.splitlines()
+            if line.startswith("CORPUS_DIAGNOSTIC ")]
+    # Error reporting can repeat a launcher transcript. Preserve one identical
+    # observation, never promote it into protocol or parity success.
+    live_lines = set(line.removeprefix("CORPUS_LIVE_CAPTURE ") for line in transcript.splitlines()
+                     if line.startswith("CORPUS_LIVE_CAPTURE "))
+    live_rows = [json.loads(line) for line in live_lines]
+    valid = result.returncode == 0 and len(rows) == 1 and len(transcript) <= 1_048_576
+    reason = None
+    if valid:
+        try:
+            validate_diagnostic_capture(rows[0], case, frozen, visits)
+            if rows[0]["profile"]["platform_io"].get("enabled_groups") != {"io": profile_mode == "all", "bulk": True}:
+                raise ValueError("diagnostic counter groups do not match the requested profile mode")
+        except ValueError as error:
+            valid, reason = False, str(error)
+    return {"schema_version": 1, "mode": "native-controlled-abort-diagnostic", "proof_level": "E",
+            "capture_ok": valid, "complete": False, "parity_passed": False,
+            "comparison_eligible": False, "case_id": case_id, "case_sha256": case["sha256"],
+            "corpus_sha256": frozen["sha256"], "abort_visits": visits, "command": command,
+            "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+            "generator_sha256": digest(Path(__file__).read_bytes()), "host": platform.platform(),
+            "test_exit": result.returncode, "validation_error": reason,
+            "capture": rows[0] if len(rows) == 1 else None,
+            "sample_after_seconds": sample_after,
+            "profile_mode": profile_mode,
+            "resample_after_seconds": resample_after,
+            "control_mode": control_mode,
+            "binding_register": binding_register,
+            "live_sample": live_rows[0] if (sample_after is not None or control_mode is not None) and len(live_rows) == 1 else None,
+            "transcript": transcript[:1_048_576], "transcript_truncated": len(transcript) > 1_048_576}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["manifest", "rust", "validate", "native-input", "fs-uae-config"])
+    parser.add_argument("command", choices=["manifest", "rust", "validate", "native-input", "fs-uae-config", "diagnose"])
     parser.add_argument("--runs", type=int, default=7)
     parser.add_argument("--case", action="append")
     parser.add_argument("--result", type=Path)
     parser.add_argument("--output", type=Path, help="write new JSON file; refuses to overwrite")
     parser.add_argument("--template", type=Path)
+    parser.add_argument("--abort-visits", type=int)
+    parser.add_argument("--sample-after-seconds", type=int, help="opt-in live stop; always incomplete Level E")
+    parser.add_argument("--resample-after-seconds", type=int, help="resume the same guest and sample again by 100 seconds")
+    parser.add_argument("--diagnostic-profile", choices=("all", "all-no-io"), default="all",
+                        help="diagnostic-only existing I/O-counter kill switch; bulk and other counters stay enabled")
+    parser.add_argument("--control-mode", choices=("app", "pty", "console"), help="non-interrupting launcher control")
+    parser.add_argument("--binding-register", help="one optional code-address candidate if sampled PC is outside the Hunk")
     args = parser.parse_args()
     frozen = manifest()
+    exit_status = 0
     try:
         if args.command == "fs-uae-config":
             if not args.template or not args.output:
@@ -355,7 +468,15 @@ def main() -> int:
                 destination.write(emulator_config(args.template.read_text()))
             print(f"Wrote {args.output}")
             return 0
-        if args.command == "manifest":
+        if args.command == "diagnose":
+            if not args.case or len(args.case) != 1:
+                raise ValueError("diagnose requires exactly one --case")
+            if args.output and args.output.exists():
+                raise ValueError("diagnostic output already exists")
+            output = diagnose(args.case[0], args.abort_visits, frozen, args.sample_after_seconds, args.control_mode,
+                              args.binding_register, args.resample_after_seconds, args.diagnostic_profile)
+            exit_status = 0 if output["capture_ok"] else 1
+        elif args.command == "manifest":
             output = frozen
         elif args.command == "validate":
             if not args.result:
@@ -402,7 +523,7 @@ def main() -> int:
             print(encoded, end="")
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         parser.exit(1, f"error: {error}\n")
-    return 0
+    return exit_status
 
 
 if __name__ == "__main__":

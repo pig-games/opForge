@@ -1942,7 +1942,43 @@ fn opforge_native_cli_run_challenge() -> String {
 }
 
 fn opforge_native_cli_case_define<'a>(case: &'a OpforgeNativeCliParityCase<'a>) -> Option<&'a str> {
-    case.extra_assembly_defines.first().copied()
+    // Instrumentation is not a fixture selector: it must not add a second
+    // discoverable source alias or change command-template interpolation.
+    case.extra_assembly_defines.iter().copied().find(|define| {
+        matches!(
+            *define,
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE
+                | FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE
+                | FS_UAE_OPFORGE_NATIVE_CLI_DIRECTIVE_ROUTER_DEFINE
+                | FS_UAE_OPFORGE_NATIVE_CLI_FLOW_NAVIGATION_DEFINE
+                | FS_UAE_OPFORGE_NATIVE_CLI_MACRO_DEBUG_DEFINE
+                | FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE
+                | FS_UAE_OPFORGE_NATIVE_CLI_MISSING_INCLUDE_DEFINE
+                | FS_UAE_OPFORGE_NATIVE_CLI_ITEM13_OUTPUT_DIRECTIVE_DEFINE
+                | FS_UAE_OPFORGE_NATIVE_CLI_ITEM14_OUTPUT_DIRECTIVE_DEFINE
+                | FS_UAE_OPFORGE_NATIVE_CLI_ITEM15_OUTPUT_DIRECTIVE_DEFINE
+                | FS_UAE_OPFORGE_NATIVE_CLI_ITEM16_LIST_OUTPUT_DEFINE
+                | FS_UAE_OPFORGE_NATIVE_CLI_ITEM17_ARTIFACT_MATRIX_DEFINE
+                | FS_UAE_OPFORGE_NATIVE_CLI_ITEM17_SOURCE_CPU_ONLY_DEFINE
+                | "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_UNMATCHED_ENDMODULE"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_UNTERMINATED_MODULE"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_HUNK_OUTPUT"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT"
+                | "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK"
+        )
+    })
 }
 
 fn opforge_native_cli_case_source_relative_path(
@@ -2410,6 +2446,8 @@ fn run_native_cli_parity_batch_cases(
             )?
         }
     };
+    let live_capture = std::env::var("OPFORGE_NATIVE_CORPUS_LIVE_CAPTURE").as_deref() == Ok("1");
+    let live_labels_path = artifact_dir.join("live-labels.txt");
     run_assembly(AssemblyExecutionRequest {
         root_path: &source_path,
         input_base: example_name,
@@ -2430,7 +2468,7 @@ fn run_native_cli_parity_batch_cases(
         fill_byte: 0xff,
         fill_byte_set: false,
         default_outputs: false,
-        labels_file: None,
+        labels_file: live_capture.then_some(live_labels_path.as_path()),
         label_output_format: CliLabelOutputFormat::Default,
         dependency_output: None,
         outfile_override: None,
@@ -2531,6 +2569,52 @@ fn run_native_cli_parity_batch_cases(
         })
         .collect::<Vec<_>>();
 
+    let mut launch_command = if live_capture {
+        let control_mode =
+            std::env::var("OPFORGE_NATIVE_CORPUS_CONTROL_MODE").unwrap_or_else(|_| "sample".into());
+        if std::env::var("OPFORGE_NATIVE_CORPUS_DIAGNOSTIC").as_deref() != Ok("1")
+            || std::env::var("OPFORGE_PERFORMANCE_CORPUS").as_deref() != Ok("1")
+            || (control_mode == "sample"
+                && std::env::var("OPFORGE_FS_UAE_CONSOLE_DEBUGGER_AUTOMATE").as_deref() != Ok("1"))
+            || cases.len() != 1
+            || args_text.trim() != "{fsuae_config}"
+        {
+            return Err(
+                "live capture requires one opt-in diagnostic corpus case and canonical args".into(),
+            );
+        }
+        let config = generated_config_path
+            .as_ref()
+            .ok_or("live capture requires a generated config")?;
+        let mut command = Command::new("python3");
+        command
+            .arg(workspace_root.join("scripts/performance/capture_native_live.py"))
+            .arg("--binary")
+            .arg(fs_uae_bin)
+            .arg("--config")
+            .arg(config)
+            .arg("--hunk")
+            .arg(&mounted_hunk_alias_path)
+            .arg("--labels")
+            .arg(&live_labels_path)
+            .arg("--start-file")
+            .arg(&batch_paths[0].started_path)
+            .arg("--expected-start")
+            .arg(&batch_paths[0].expected_started)
+            .arg("--done-file")
+            .arg(&batch_paths[0].done_path)
+            .arg("--expected-done")
+            .arg(&batch_paths[0].expected_done)
+            .arg("--exit-file")
+            .arg(&batch_paths[0].exit_code_path)
+            .arg("--control-mode")
+            .arg(control_mode)
+            .arg("--after-start-seconds")
+            .arg(std::env::var("OPFORGE_NATIVE_CORPUS_SAMPLE_AFTER_SECONDS").unwrap_or_default());
+        command
+    } else {
+        fs_uae_launch_command(fs_uae_bin, &args)
+    };
     terminate_preexisting_fs_uae_processes()?;
     let baseline_process_ids = snapshot_fs_uae_process_ids()?;
     let launcher_stdout_path = artifact_dir.join(FS_UAE_LAUNCHER_STDOUT_FILE);
@@ -2540,7 +2624,7 @@ fn run_native_cli_parity_batch_cases(
     let launcher_stderr = fs::File::create(&launcher_stderr_path)
         .map_err(|err| format!("create {}: {err}", launcher_stderr_path.display()))?;
 
-    let mut child = match fs_uae_launch_command(fs_uae_bin, &args)
+    let mut child = match launch_command
         .current_dir(&artifact_dir)
         .stdout(Stdio::from(launcher_stdout))
         .stderr(Stdio::from(launcher_stderr))
@@ -2571,6 +2655,12 @@ fn run_native_cli_parity_batch_cases(
         Err(err) => {
             let _ = cleanup_spawned_fs_uae_processes(&baseline_process_ids);
             let _ = wait_for_spawned_fs_uae_processes_to_exit(&baseline_process_ids);
+            if live_capture {
+                eprintln!(
+                    "{}",
+                    read_optional_text(&launcher_stdout_path)?.unwrap_or_default()
+                );
+            }
             let partial = batch_paths
                 .iter()
                 .enumerate()
@@ -2593,6 +2683,12 @@ fn run_native_cli_parity_batch_cases(
         }
     };
     if wait_outcome == FsUaeWaitOutcome::Captured {
+        if live_capture {
+            // The opt-in observer records DONE before cleaning its child and
+            // printing the receipt. The normal 500ms force-kill grace is too
+            // short for that bounded cleanup. Never relax guest proof checks.
+            let _ = wait_for_diagnostic_observer_exit(&mut child, Duration::from_secs(8))?;
+        }
         wait_for_process_exit_after_capture(&mut child, example_name)?;
     }
     let launcher_status = child
@@ -2603,6 +2699,11 @@ fn run_native_cli_parity_batch_cases(
 
     let launcher_stdout = read_optional_text(&launcher_stdout_path)?;
     let launcher_stderr = read_optional_text(&launcher_stderr_path)?;
+    if live_capture {
+        // Retain Level E observations before the ordinary fail-closed protocol
+        // check and ephemeral-tree cleanup. This cannot supply guest evidence.
+        eprintln!("{}", launcher_stdout.as_deref().unwrap_or_default());
+    }
     let launcher_status_text = fs_uae_launcher_status_text(launcher_status);
     let launcher_success = launcher_status.success();
     let common_stderr = merge_output(
@@ -3899,6 +4000,26 @@ fn wait_for_capture_or_exit(
     }
 }
 
+fn wait_for_diagnostic_observer_exit(
+    child: &mut std::process::Child,
+    max_wait: Duration,
+) -> Result<bool, String> {
+    let deadline = Instant::now() + max_wait;
+    loop {
+        if child
+            .try_wait()
+            .map_err(|err| format!("poll diagnostic observer: {err}"))?
+            .is_some()
+        {
+            return Ok(true);
+        }
+        if Instant::now() >= deadline {
+            return Ok(false);
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
 fn wait_for_process_exit_after_capture(
     child: &mut std::process::Child,
     example_name: &str,
@@ -4765,6 +4886,25 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_observer_gets_bounded_receipt_cleanup_time() {
+        let mut child = Command::new("python3")
+            .args(["-c", "import time; time.sleep(0.7)"])
+            .spawn()
+            .expect("host observer stand-in");
+        assert!(!wait_for_diagnostic_observer_exit(&mut child, Duration::ZERO).unwrap());
+        let finished =
+            wait_for_diagnostic_observer_exit(&mut child, Duration::from_secs(4)).unwrap();
+        if !finished {
+            let _ = child.kill();
+        }
+        let status = child.wait().unwrap();
+        assert!(
+            finished && status.success(),
+            "observer should finish after the old 500ms grace"
+        );
+    }
+
+    #[test]
     fn launcher_handoff_waits_for_a_spawned_emulator() {
         let launcher_exited_at = Instant::now();
         let after_grace =
@@ -5613,6 +5753,78 @@ mod tests {
             opforge_native_cli_case_command(&case, &paths),
             "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu 6502 -I Work:opforge_include_root_b -I Work:opforge_include_root_a"
         );
+    }
+
+    #[test]
+    fn profiling_defines_preserve_guest_source_inventory_and_legacy_selectors() {
+        // Level B staging/command contract only; no native execution proof.
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("opforge-profile-inventory-{unique}"));
+        let ephemeral_root = EphemeralArtifactDir(root.clone());
+        let mut baseline = None;
+        for (index, defines) in [
+            &[][..],
+            &[
+                "OPFORGE_DEBUG_CONTRACTS",
+                "OPFORGE_PROGRESS_PLATFORM_COUNTERS",
+            ][..],
+            &[
+                "OPFORGE_DEBUG_CONTRACTS",
+                "OPFORGE_PROGRESS_PLATFORM_COUNTERS",
+                "OPFORGE_PROGRESS_PLATFORM_NO_IO",
+            ][..],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let work = root.join(index.to_string());
+            fs::create_dir_all(&work).unwrap();
+            let paths = opforge_native_cli_batch_case_paths(&work, 0, "challenge", "case");
+            let mut case = OpforgeNativeCliParityCase {
+                name: "profile-inventory",
+                cpu_override: "68020",
+                extra_assembly_defines: defines,
+                source_override: Some(b".module main\n.endmodule\n"),
+                command_template: Some("{input} --cpu m6502 --bin {bin}"),
+                package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+                extra_guest_files: &[],
+                proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
+            };
+            stage_opforge_native_cli_case_guest_inputs(&paths, &case, None).unwrap();
+            let mut inventory: Vec<_> = fs::read_dir(&work)
+                .unwrap()
+                .map(|entry| {
+                    let entry = entry.unwrap();
+                    (entry.file_name(), fs::read(entry.path()).unwrap())
+                })
+                .collect();
+            inventory.sort();
+            assert_eq!(inventory.len(), 1);
+            assert_eq!(inventory[0].0, FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_FILE);
+            let evidence = (inventory, opforge_native_cli_case_command(&case, &paths));
+            if let Some(expected) = &baseline {
+                assert_eq!(&evidence, expected);
+            } else {
+                baseline = Some(evidence);
+            }
+            let legacy_defines = [
+                "OPFORGE_DEBUG_CONTRACTS",
+                FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE,
+            ];
+            case.extra_assembly_defines = &legacy_defines;
+            case.command_template = None;
+            assert_eq!(
+                opforge_native_cli_case_define(&case),
+                Some(FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE)
+            );
+            assert!(opforge_native_cli_case_command(&case, &paths)
+                .contains(" -I Work:opforge_include_root_b -I Work:opforge_include_root_a"));
+        }
+        drop(ephemeral_root);
+        assert!(!root.exists());
     }
 
     #[test]

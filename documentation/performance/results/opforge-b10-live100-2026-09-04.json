@@ -1,0 +1,113 @@
+{
+  "abort_visits": 1,
+  "capture": null,
+  "capture_ok": false,
+  "case_id": "B10",
+  "case_sha256": "0e8c45ef53ca91471524bbb030720fc4bb4e7601fa30f5b12b0e94d02ec9484c",
+  "command": [
+    "cargo",
+    "test",
+    "--locked",
+    "-p",
+    "asm",
+    "external_fs_uae_native_production_corpus_diagnostic",
+    "--",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "comparison_eligible": false,
+  "complete": false,
+  "control_mode": null,
+  "corpus_sha256": "fece2121b487b37e1217b4854b74308366399938e26520e06d124ed63559aed9",
+  "generator_sha256": "76b4cb7f37ec9aad99379cf89ed5c6d30fdfb2a22649b595ba122d1ba33d1b80",
+  "head": "8fd492904b090e80a3cdedc7f4dfc6531ddc6ce1",
+  "host": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "live_sample": {
+    "after_start_seconds": 100,
+    "binding_error": "runtime code binding is ambiguous: 0 matches",
+    "cleanup": "complete",
+    "commands": [
+      "r",
+      "d 00f81754 16",
+      "m 07802300 16",
+      "Zl",
+      "H 32"
+    ],
+    "complete": false,
+    "config": "# Dedicated disposable config for the opForge tkpkg smoke run.\n\n[fs-uae]\namiga_model = A4000\nchip_memory = 2048\nfast_memory = 8192\nhard_drive_0 = /Users/erik/Documents/FS-UAE/Hard Drives/opforge-tkpkg-test\nhard_drive_1 = /Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance/target/fs-uae-hunk-smoke-opforge_cli-1788527217435366000/Work\ngraphics_card = uaegfx-z3\ngraphics_memory = 16384\nkickstart_file = /Users/erik/Documents/FS-UAE/Kickstarts/321/kicka4000.rom\nsave_disk = 0\ncpu = 68020\nuae_cpu_speed = max\njit_compiler = 0\nzorro_iii_memory = 65536\nconsole_debugger = 1\n",
+    "config_sha256": "206419558340b71de45cf52d347da3056b0f2ca2f7ef55e3cc16e415219e7ed9",
+    "control_completion": null,
+    "control_mode": "sample",
+    "debugger_requested_after_start_seconds": 100.93856033403426,
+    "expected_start": "OPFORGE-FS-UAE-PROOF-V1 START ecaf-18d220073a6dceb8 3b6cfa62f00b78b4",
+    "frame_after_start_seconds": 100.99515458405949,
+    "fs_uae_version": "3.1.66 (Built for macOS ?)",
+    "guest_start_observed": true,
+    "host_signal": null,
+    "labels_sha256": "9eb68678a002ec112f2bc40fde701fd9deddd50a273b69946a7dd737e3a1d2bb",
+    "mode": "native-live-console",
+    "native_binary_bytes": 563268,
+    "native_binary_sha256": "b69242f0106a86c86c5861e94ec43bfe5f09d0a6578cb39e5c13e0c9415c50fe",
+    "parity_passed": false,
+    "pc": "0x00F81754",
+    "process_id": 60674,
+    "proof_level": "E",
+    "protocol_completed": false,
+    "raw_transcript_sha256": "4fab4a12e5a2c3ccd7e920a787c77a0d522f8ae15fffaa8e71b2f1b5e7ac6e31",
+    "registers": {
+      "a0": "0x07800A1A",
+      "a1": "0x07800A1E",
+      "a2": "0x0781D75C",
+      "a3": "0x07813F00",
+      "a4": "0x00F8174E",
+      "a5": "0x078156FE",
+      "a6": "0x07800884",
+      "a7": "0x07802300",
+      "d0": "0x07800A00",
+      "d1": "0x00000020",
+      "d2": "0xFFFFFFFF",
+      "d3": "0x0000006D",
+      "d4": "0x4294A06A",
+      "d5": "0x00000001",
+      "d6": "0x078E15D8",
+      "d7": "0x0781D75C"
+    },
+    "sample_observed": true,
+    "sampler_sha256": "363522aedbb90e0cff3742f5693d63cd2f1205f820974dd94ee168f83a51634f",
+    "schema_version": 1,
+    "segments": [
+      {
+        "allocation_bytes": 84,
+        "index": 0,
+        "kind": 1001
+      },
+      {
+        "allocation_bytes": 155404,
+        "index": 1,
+        "kind": 1001
+      },
+      {
+        "allocation_bytes": 382448,
+        "index": 2,
+        "kind": 1002
+      },
+      {
+        "allocation_bytes": 52662688,
+        "index": 3,
+        "kind": 1003
+      }
+    ],
+    "sr": "0x2004",
+    "stop_reason": "deadline",
+    "transcript": "FS-UAE 3.1.66 (Built for macOS ?)\nCopyright 1995-2002 Bernd Schmidt, 1999-2017 Toni Wilen,\n2003-2007 Richard Drummond, 2006-2011 Mustafa 'GnoStiC' Tufan,\n2011-2017 Frode Solheim, and contributors.\n\nThis is free software; see the file COPYING for copying conditions. There\nis NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR\nPURPOSE. See the README for more copyright info, and the source code for\na full list of contributors\n\nUAE: Initializing core derived from WinUAE 3300b2\nLOG: /Users/erik/Documents/FS-UAE/Cache/Logs/fs-uae.log.txt\n# Keyboards path: /Users/erik/Documents/FS-UAE/Data/Devs/Keyboards\nUAE: KS ROM 9bb8fc93 (524288 bytes)\n -- stub -- my_resolvesoftlink \n -- stub -- my_resolvesoftlink \nres_initcode context = 0x0\n\n\npicasso96_alloc2\n\n\nmonitor: 0\nsetting gwwpagesize to something...\nWARNING: Activated debugger\n -- stub -- activate_console \n  D0 07800A00   D1 00000020   D2 FFFFFFFF   D3 0000006D \n  D4 4294A06A   D5 00000001   D6 078E15D8   D7 0781D75C \n  A0 07800A1A   A1 07800A1E   A2 0781D75C   A3 07813F00 \n  A4 00F8174E   A5 078156FE   A6 07800884   A7 07802300 \nUSP  07962808 ISP  07802300 SFC  00000000 DFC  00000000 \nCACR 00000001 VBR  00000000 CAAR 00000000 MSP  00000000 \nT=00 S=1 M=0 X=0 N=0 Z=1 V=0 C=0 IMASK=0 STP=0\nFP0: 0 FP1: 0 FP2: 0 FP3: 0 \nFP4: 0 FP5: 0 FP6: 0 FP7: 0 \nFPSR: 4000000 FPCR: 00000080 FPIAR: 00f81770 N=0 Z=1 I=0 NAN=0\n00F81752 671c                     BEQ.B #$0000001c == $00f81770 (T)\nNext PC: 00f81754\n>r\nd 00f81754 16\nm 07802300 16\nZl\nH 32\n  D0 07800A00   D1 00000020   D2 FFFFFFFF   D3 0000006D \n  D4 4294A06A   D5 00000001   D6 078E15D8   D7 0781D75C \n  A0 07800A1A   A1 07800A1E   A2 0781D75C   A3 07813F00 \n  A4 00F8174E   A5 078156FE   A6 07800884   A7 07802300 \nUSP  07962808 ISP  07802300 SFC  00000000 DFC  00000000 \nCACR 00000001 VBR  00000000 CAAR 00000000 MSP  00000000 \nT=00 S=1 M=0 X=0 N=0 Z=1 V=0 C=0 IMASK=0 STP=0\nFP0: 0 FP1: 0 FP2: 0 FP3: 0 \nFP4: 0 FP5: 0 FP6: 0 FP7: 0 \nFPSR: 4000000 FPCR: 00000080 FPIAR: 00f81770 N=0 Z=1 I=0 NAN=0\n00F81752 671c                     BEQ.B #$0000001c == $00f81770 (T)\nNext PC: 00f81754\n>00F81754 548d                     ADDA.L #$00000002,A5\n00F81756 f21d 9c00                FMOVEM.L (A5)+,FPIAR/FPSR/FPCR\n00F8175A f21d d0ff                FMOVEM.X (A5)+,FP0-FP7\n00F8175E b03c 0090                CMP.B #$90,D0\n00F81762 660a                     BNE.B #$0000000a == $00f8176e (F)\n00F81764 2f1d                     MOVE.L (A5)+,-(A7)\n00F81766 2f1d                     MOVE.L (A5)+,-(A7)\n00F81768 2f1d                     MOVE.L (A5)+,-(A7)\n00F8176A 323c 9020                MOVE.W #$9020,D1\n00F8176E 548d                     ADDA.L #$00000002,A5\n00F81770 f35d                     FRESTORE (A5)+\n00F81772 45ed 0042                LEA.L (A5, $0042) == $07815740,A2\n00F81776 4e62                     MVR2USP.L A2\n00F81778 3f01                     MOVE.W D1,-(A7)\n00F8177A 2f1d                     MOVE.L (A5)+,-(A7)\n00F8177C 3f1d                     MOVE.W (A5)+,-(A7)\n00F8177E 4cd5 7fff                MOVEM.L (A5),D0-D7/A0-A6\n00F81782 4e73                     RTE \n00F81784 204d                     MOVEA.L A5,A0\n00F81786 4bfa 0006                LEA.L (PC,$0006) == $00f8178e,A5\n00F8178A 4eee ffe2                JMP (A6, -$001e) == $07800866\n00F8178E 2a48                     MOVEA.L A0,A5\n>07802300 0000 0145 0000 0000 01E0 E6D5 0000 0000  ...E............\n07802310 0000 0000 01E0 3F41 0000 0000 0000 0000  ......?A........\n07802320 0F00 0000 0000 0000 0780 232C 0000 0000  ..........#,....\n07802330 0780 2328 0000 0000 0000 0000 0000 0000  ..#(............\n07802340 0000 0000 FFFF 0000 0000 0000 0000 0F00  ................\n07802350 0000 0000 0000 0780 235A 0000 0000 0780  ........#Z......\n07802360 2356 0000 0000 0000 0000 0000 0000 0000  #V..............\n07802370 0000 FFFF 0000 0000 0000 0000 0F00 0000  ................\n07802380 0000 0000 0780 2388 0000 0000 0780 2384  ......#.......#.\n07802390 0000 0000 0000 0000 0000 0000 0000 0000  ................\n078023A0 FFFF 0000 0000 0050 0000 0000 4EF9 00F8  .......P....N...\n078023B0 F614 2456 4552 3A63 6F6E 2D68 616E 646C  ..$VER:con-handl\n078023C0 6572 2034 372E 3139 2028 352E 3132 2E32  er 47.19 (5.12.2\n078023D0 3032 3029 0D0A 0000 0000 0000 0000 0000  020)............\n078023E0 0000 0000 0000 0000 0000 0000 0000 0000  ................\n078023F0 0000 0000 0000 0050 0000 0000 4EF9 00FC  .......P....N...\n07802400 325C 2456 4552 3A72 616D 2034 372E 3720  2\\$VER:ram 47.7 \n07802410 2838 2E31 2E32 3032 3029 0D0A 0000 0000  (8.1.2020)......\n07802420 0000 0000 0000 0000 0000 0000 0000 0000  ................\n07802430 0000 0000 0000 0000 0000 0000 0000 0000  ................\n07802440 0000 0000 0000 0000 0000 0068 0780 F58C  ...........h....\n07802450 0780 F588 0000 0001 0780 245C 0000 0014  ..........$\\....\n>found 0 seglists.\n>-1 00F81752 671c                     BEQ.B #$0000001c == $00f81770 (T)\n>"
+  },
+  "mode": "native-controlled-abort-diagnostic",
+  "parity_passed": false,
+  "proof_level": "E",
+  "sample_after_seconds": 100,
+  "schema_version": 1,
+  "test_exit": 101,
+  "transcript": "\nrunning 1 test\ntest tests::native_production_corpus::external_fs_uae_native_production_corpus_diagnostic ... FAILED\n\nfailures:\n\nfailures:\n    tests::native_production_corpus::external_fs_uae_native_production_corpus_diagnostic\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1583 filtered out; finished in 173.33s\n\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s\n     Running unittests src/lib.rs (target/debug/deps/asm-22353e31de565cf3)\nCORPUS_CONFIG {\"corpus_sha256\":\"fece2121b487b37e1217b4854b74308366399938e26520e06d124ed63559aed9\",\"package_mode\":\"explicit\",\"package_sha256\":\"46a56a5bd436b012c596c65d1f7d85fe6cd8fadbd702362955804415e00c0d41\",\"post_start_timeout_ms\":120000,\"profile_mode\":\"all\",\"template\":\"# Dedicated disposable config for the opForge tkpkg smoke run.\\n\\n[fs-uae]\\namiga_model = A4000\\nchip_memory = 2048\\nfast_memory = 8192\\nhard_drive_0 = /Users/erik/Documents/FS-UAE/Hard Drives/opforge-tkpkg-test\\nhard_drive_1 = /Users/erik/Documents/FS-UAE/opforge-tkpkg-workmount/Work\\ngraphics_card = uaegfx-z3\\ngraphics_memory = 16384\\nkickstart_file = /Users/erik/Documents/FS-UAE/Kickstarts/321/kicka4000.rom\\nsave_disk = 0\\ncpu = 68020\\nuae_cpu_speed = max\\njit_compiler = 0\\n\"}\nCORPUS_START B10\nCORPUS_LIVE_CAPTURE {\"schema_version\":1,\"proof_level\":\"E\",\"mode\":\"native-live-console\",\"complete\":false,\"parity_passed\":false,\"protocol_completed\":false,\"expected_start\":\"OPFORGE-FS-UAE-PROOF-V1 START ecaf-18d220073a6dceb8 3b6cfa62f00b78b4\",\"guest_start_observed\":true,\"after_start_seconds\":100,\"native_binary_sha256\":\"b69242f0106a86c86c5861e94ec43bfe5f09d0a6578cb39e5c13e0c9415c50fe\",\"native_binary_bytes\":563268,\"config_sha256\":\"206419558340b71de45cf52d347da3056b0f2ca2f7ef55e3cc16e415219e7ed9\",\"config\":\"# Dedicated disposable config for the opForge tkpkg smoke run.\\n\\n[fs-uae]\\namiga_model = A4000\\nchip_memory = 2048\\nfast_memory = 8192\\nhard_drive_0 = /Users/erik/Documents/FS-UAE/Hard Drives/opforge-tkpkg-test\\nhard_drive_1 = /Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance/target/fs-uae-hunk-smoke-opforge_cli-1788527217435366000/Work\\ngraphics_card = uaegfx-z3\\ngraphics_memory = 16384\\nkickstart_file = /Users/erik/Documents/FS-UAE/Kickstarts/321/kicka4000.rom\\nsave_disk = 0\\ncpu = 68020\\nuae_cpu_speed = max\\njit_compiler = 0\\nzorro_iii_memory = 65536\\nconsole_debugger = 1\\n\",\"sampler_sha256\":\"363522aedbb90e0cff3742f5693d63cd2f1205f820974dd94ee168f83a51634f\",\"sample_observed\":true,\"cleanup\":\"complete\",\"commands\":[\"r\",\"d 00f81754 16\",\"m 07802300 16\",\"Zl\",\"H 32\"],\"labels_sha256\":\"9eb68678a002ec112f2bc40fde701fd9deddd50a273b69946a7dd737e3a1d2bb\",\"control_mode\":\"sample\",\"control_completion\":null,\"segments\":[{\"index\":0,\"kind\":1001,\"allocation_bytes\":84},{\"index\":1,\"kind\":1001,\"allocation_bytes\":155404},{\"index\":2,\"kind\":1002,\"allocation_bytes\":382448},{\"index\":3,\"kind\":1003,\"allocation_bytes\":52662688}],\"stop_reason\":\"deadline\",\"process_id\":60674,\"debugger_requested_after_start_seconds\":100.93856033403426,\"frame_after_start_seconds\":100.99515458405949,\"binding_error\":\"runtime code binding is ambiguous: 0 matches\",\"pc\":\"0x00F81754\",\"sr\":\"0x2004\",\"registers\":{\"d0\":\"0x07800A00\",\"d1\":\"0x00000020\",\"d2\":\"0xFFFFFFFF\",\"d3\":\"0x0000006D\",\"d4\":\"0x4294A06A\",\"d5\":\"0x00000001\",\"d6\":\"0x078E15D8\",\"d7\":\"0x0781D75C\",\"a0\":\"0x07800A1A\",\"a1\":\"0x07800A1E\",\"a2\":\"0x0781D75C\",\"a3\":\"0x07813F00\",\"a4\":\"0x00F8174E\",\"a5\":\"0x078156FE\",\"a6\":\"0x07800884\",\"a7\":\"0x07802300\"},\"transcript\":\"FS-UAE 3.1.66 (Built for macOS ?)\\nCopyright 1995-2002 Bernd Schmidt, 1999-2017 Toni Wilen,\\n2003-2007 Richard Drummond, 2006-2011 Mustafa 'GnoStiC' Tufan,\\n2011-2017 Frode Solheim, and contributors.\\n\\nThis is free software; see the file COPYING for copying conditions. There\\nis NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR\\nPURPOSE. See the README for more copyright info, and the source code for\\na full list of contributors\\n\\nUAE: Initializing core derived from WinUAE 3300b2\\nLOG: /Users/erik/Documents/FS-UAE/Cache/Logs/fs-uae.log.txt\\n# Keyboards path: /Users/erik/Documents/FS-UAE/Data/Devs/Keyboards\\nUAE: KS ROM 9bb8fc93 (524288 bytes)\\n -- stub -- my_resolvesoftlink \\n -- stub -- my_resolvesoftlink \\nres_initcode context = 0x0\\n\\n\\npicasso96_alloc2\\n\\n\\nmonitor: 0\\nsetting gwwpagesize to something...\\nWARNING: Activated debugger\\n -- stub -- activate_console \\n  D0 07800A00   D1 00000020   D2 FFFFFFFF   D3 0000006D \\n  D4 4294A06A   D5 00000001   D6 078E15D8   D7 0781D75C \\n  A0 07800A1A   A1 07800A1E   A2 0781D75C   A3 07813F00 \\n  A4 00F8174E   A5 078156FE   A6 07800884   A7 07802300 \\nUSP  07962808 ISP  07802300 SFC  00000000 DFC  00000000 \\nCACR 00000001 VBR  00000000 CAAR 00000000 MSP  00000000 \\nT=00 S=1 M=0 X=0 N=0 Z=1 V=0 C=0 IMASK=0 STP=0\\nFP0: 0 FP1: 0 FP2: 0 FP3: 0 \\nFP4: 0 FP5: 0 FP6: 0 FP7: 0 \\nFPSR: 4000000 FPCR: 00000080 FPIAR: 00f81770 N=0 Z=1 I=0 NAN=0\\n00F81752 671c                     BEQ.B #$0000001c == $00f81770 (T)\\nNext PC: 00f81754\\n>r\\nd 00f81754 16\\nm 07802300 16\\nZl\\nH 32\\n  D0 07800A00   D1 00000020   D2 FFFFFFFF   D3 0000006D \\n  D4 4294A06A   D5 00000001   D6 078E15D8   D7 0781D75C \\n  A0 07800A1A   A1 07800A1E   A2 0781D75C   A3 07813F00 \\n  A4 00F8174E   A5 078156FE   A6 07800884   A7 07802300 \\nUSP  07962808 ISP  07802300 SFC  00000000 DFC  00000000 \\nCACR 00000001 VBR  00000000 CAAR 00000000 MSP  00000000 \\nT=00 S=1 M=0 X=0 N=0 Z=1 V=0 C=0 IMASK=0 STP=0\\nFP0: 0 FP1: 0 FP2: 0 FP3: 0 \\nFP4: 0 FP5: 0 FP6: 0 FP7: 0 \\nFPSR: 4000000 FPCR: 00000080 FPIAR: 00f81770 N=0 Z=1 I=0 NAN=0\\n00F81752 671c                     BEQ.B #$0000001c == $00f81770 (T)\\nNext PC: 00f81754\\n>00F81754 548d                     ADDA.L #$00000002,A5\\n00F81756 f21d 9c00                FMOVEM.L (A5)+,FPIAR/FPSR/FPCR\\n00F8175A f21d d0ff                FMOVEM.X (A5)+,FP0-FP7\\n00F8175E b03c 0090                CMP.B #$90,D0\\n00F81762 660a                     BNE.B #$0000000a == $00f8176e (F)\\n00F81764 2f1d                     MOVE.L (A5)+,-(A7)\\n00F81766 2f1d                     MOVE.L (A5)+,-(A7)\\n00F81768 2f1d                     MOVE.L (A5)+,-(A7)\\n00F8176A 323c 9020                MOVE.W #$9020,D1\\n00F8176E 548d                     ADDA.L #$00000002,A5\\n00F81770 f35d                     FRESTORE (A5)+\\n00F81772 45ed 0042                LEA.L (A5, $0042) == $07815740,A2\\n00F81776 4e62                     MVR2USP.L A2\\n00F81778 3f01                     MOVE.W D1,-(A7)\\n00F8177A 2f1d                     MOVE.L (A5)+,-(A7)\\n00F8177C 3f1d                     MOVE.W (A5)+,-(A7)\\n00F8177E 4cd5 7fff                MOVEM.L (A5),D0-D7/A0-A6\\n00F81782 4e73                     RTE \\n00F81784 204d                     MOVEA.L A5,A0\\n00F81786 4bfa 0006                LEA.L (PC,$0006) == $00f8178e,A5\\n00F8178A 4eee ffe2                JMP (A6, -$001e) == $07800866\\n00F8178E 2a48                     MOVEA.L A0,A5\\n>07802300 0000 0145 0000 0000 01E0 E6D5 0000 0000  ...E............\\n07802310 0000 0000 01E0 3F41 0000 0000 0000 0000  ......?A........\\n07802320 0F00 0000 0000 0000 0780 232C 0000 0000  ..........#,....\\n07802330 0780 2328 0000 0000 0000 0000 0000 0000  ..#(............\\n07802340 0000 0000 FFFF 0000 0000 0000 0000 0F00  ................\\n07802350 0000 0000 0000 0780 235A 0000 0000 0780  ........#Z......\\n07802360 2356 0000 0000 0000 0000 0000 0000 0000  #V..............\\n07802370 0000 FFFF 0000 0000 0000 0000 0F00 0000  ................\\n07802380 0000 0000 0780 2388 0000 0000 0780 2384  ......#.......#.\\n07802390 0000 0000 0000 0000 0000 0000 0000 0000  ................\\n078023A0 FFFF 0000 0000 0050 0000 0000 4EF9 00F8  .......P....N...\\n078023B0 F614 2456 4552 3A63 6F6E 2D68 616E 646C  ..$VER:con-handl\\n078023C0 6572 2034 372E 3139 2028 352E 3132 2E32  er 47.19 (5.12.2\\n078023D0 3032 3029 0D0A 0000 0000 0000 0000 0000  020)............\\n078023E0 0000 0000 0000 0000 0000 0000 0000 0000  ................\\n078023F0 0000 0000 0000 0050 0000 0000 4EF9 00FC  .......P....N...\\n07802400 325C 2456 4552 3A72 616D 2034 372E 3720  2\\\\$VER:ram 47.7 \\n07802410 2838 2E31 2E32 3032 3029 0D0A 0000 0000  (8.1.2020)......\\n07802420 0000 0000 0000 0000 0000 0000 0000 0000  ................\\n07802430 0000 0000 0000 0000 0000 0000 0000 0000  ................\\n07802440 0000 0000 0000 0000 0000 0068 0780 F58C  ...........h....\\n07802450 0780 F588 0000 0001 0780 245C 0000 0014  ..........$\\\\....\\n>found 0 seglists.\\n>-1 00F81752 671c                     BEQ.B #$0000001c == $00f81770 (T)\\n>\",\"raw_transcript_sha256\":\"4fab4a12e5a2c3ccd7e920a787c77a0d522f8ae15fffaa8e71b2f1b5e7ac6e31\",\"fs_uae_version\":\"3.1.66 (Built for macOS ?)\",\"host_signal\":null}\n\nCORPUS_FAILURE B10: FS-UAE smoke for opforge_cli exceeded the post-start timeout of 120000 ms after /Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance/target/fs-uae-hunk-smoke-opforge_cli-1788527217435366000/Work/case_artifacts/case_0000/opforge_fsuae_smoke.started appeared without producing /Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance/target/fs-uae-hunk-smoke-opforge_cli-1788527217435366000/Work/case_artifacts/case_0000/opforge_fsuae_smoke.done\ncase 0 partial stdout:\n\ncase 0 partial stderr:\n\n\nthread 'tests::native_production_corpus::external_fs_uae_native_production_corpus_diagnostic' (23953779) panicked at crates/opforge-asm/src/tests/native_production_corpus.rs:371:5:\n1 corpus cases failed after all were attempted:\nB10: FS-UAE smoke for opforge_cli exceeded the post-start timeout of 120000 ms after /Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance/target/fs-uae-hunk-smoke-opforge_cli-1788527217435366000/Work/case_artifacts/case_0000/opforge_fsuae_smoke.started appeared without producing /Users/erik/Code/Retro/opForge-wt-rust-vm-native-performance/target/fs-uae-hunk-smoke-opforge_cli-1788527217435366000/Work/case_artifacts/case_0000/opforge_fsuae_smoke.done\ncase 0 partial stdout:\n\ncase 0 partial stderr:\n\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p asm --lib`\n",
+  "transcript_truncated": false,
+  "validation_error": null
+}

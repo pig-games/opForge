@@ -97,8 +97,8 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 08 of 25 · Item 0f — close the bounded investigation
-deliverable.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 09 of 25 · Item E0 — classify failures relevant to the
+first native experiments.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -221,7 +221,8 @@ improvement does not close a whole finding; closure review is still required.
 
 ### Phase A — native startup, Rust VM gain, then larger native work elimination
 
-- [ ] Step 08 · Item 0f — Close the bounded investigation deliverable; retain failed qualification
+- [x] Step 08 · Item 0f — Close the bounded investigation deliverable; retain failed qualification
+  - Completion evidence (2026-09-05): `documentation/performance/results/opforge-item0f-completion-gates-2026-09-05.md` records explicit zero exits for the non-LSP Rust gate (1,586 assembler tests, 1,881.30s) and staged workflow gate (134 tests, 238 formatter files), 27 verified raw receipt hashes and the independently reviewed first-pause fix. Native qualification and LSP debt remain open under their named later owners. This checkbox is part of the focused Step 08 commit, not a claim of completed Phase A.
   - Source requirement or finding IDs: SR-MEAS, SR-WT, SR-PAR, F12.
   - Expected files: existing Item 0f host tools/tests, corpus adapter, wrapper and results/ledger; no native optimization.
   - Dependencies/worktree: current active unfinished slice; preserve all dirty work and establish its reviewed commit before E0.

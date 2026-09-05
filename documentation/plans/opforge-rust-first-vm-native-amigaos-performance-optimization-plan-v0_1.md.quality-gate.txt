@@ -1,3 +1,11 @@
+PASS: Independent plan-compliance review by observation_review (2026-09-05) accepts Step 09 / Item E0 as a focused documentation-only classification commit. All 13 failed native groups and B01–B10/LSP have owners; baseline versus introduced status remains unresolved; the six-byte header/range discrepancy is bounded without repair. Fresh strict B01 Level D parity establishes an unaffected oracle for the exact existing-range 17c experiment. No defect fix, repeated benchmark gain or broader parity is claimed. Step10 begins only after this focused commit.
+
+Artifact SHA-256: b6b84be2fa512b79073e6c3a2085c949d820da50e89ef7c88ebe363174a42492
+Validation: workflow gate explicit exit0, 134 tests and 238 formatter files; log step09-workflow-20260905.log, 6363 bytes, SHA256 530a5093cf701cb573a2ce390cab936ed782c4785fb5697177f146415173bb23. Plan checkbox/bundle, diff, unique contiguous Step01–25 and guest-tree cleanup checks PASS. B01 transcript is identified in the E0 ledger: explicit host/guest exit0, one passed, exact live Rust artifact, 127.46s whole test cost (not product timing). Existing completed branch/negative failure logs suffice for this unaffected oracle; no repeat or baseline-cause inference is required.
+Commit scope: plan, this sidecar and documentation/performance/results/opforge-step09-early-failure-ledger-2026-09-05.md. Approved commit: docs(perf): classify early optimization correctness boundaries.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Final independent plan-compliance review by `observation_review` (2026-09-05) accepts Step 08 / Item 0f. The reviewed 50-file staged diff includes all bounded observation code, raw evidence, exact inventory, completion receipt, ledger and Step08/Step09 bookkeeping; no unstaged changes remained. This sidecar is the final receipt-only addition.
 
 Artifact SHA-256: 9fda9176b153e7d9764cbacd651ffaf3bf1c6c4e0849dcd101d24faf9c530e76

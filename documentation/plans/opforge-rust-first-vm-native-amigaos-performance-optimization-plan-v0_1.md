@@ -97,8 +97,8 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 09 of 25 · Item E0 — classify failures relevant to the
-first native experiments.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 10 of 25 · Item 17c — accelerate the exact existing
+session clear.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -235,7 +235,8 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): close bounded attribution with tracked qualification debt`; exactly one focused commit before the next item.
   - Definition of done: observation work committed with honest proof statuses; A-close remains open and no claim of passed Phase 0 or corpus parity.
 
-- [ ] Step 09 · Item E0 — Classify failures relevant to the first native experiments
+- [x] Step 09 · Item E0 — Classify failures relevant to the first native experiments
+  - Completion evidence (2026-09-05): `documentation/performance/results/opforge-step09-early-failure-ledger-2026-09-05.md` assigns all 13 failed groups, B01–B10 statuses, LSP and the six-byte range discrepancy to explicit owners. Fresh strict B01 Level D parity passed at `47009f6c` with guest/host exit 0 and exact live Rust output. No defect is claimed fixed, no performance ratio is inferred, and 17c preserves the existing range. This checkbox closes only with the focused E0 commit after workflow/compliance PASS.
   - Source requirement or finding IDs: SR-EARLY, SR-PAR.
   - Expected files: performance failure ledger and one focused reproducer/oracle where missing.
   - Dependencies/worktree: Item 0f commit; integration worktree, read-only classification first.

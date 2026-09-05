@@ -38460,6 +38460,33 @@ fn runtime_model_explicit_package_path_branch_matches_shared_bootstrap() {
     assert_runtime_model_supports_cpu(&shared_model, m6502_cpu_id);
 }
 
+#[test]
+fn runtime_model_invalid_explicit_package_never_uses_available_fallback() {
+    let registry = default_registry();
+    let directory = create_temp_dir("runtime-model-explicit-no-fallback");
+    let artifact_path = directory.join("valid.opasm");
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("build valid fallback");
+    fs::write(&artifact_path, &package_bytes).expect("write valid fallback");
+    assert!(crate::runtime_model::load_execution_model_from_path(&artifact_path).is_some());
+
+    let malformed = directory.join("malformed.opasm");
+    fs::write(&malformed, b"not an opasm package").expect("write malformed package");
+    for explicit in [directory.join("missing.opasm"), malformed] {
+        let model = crate::runtime_model::build_execution_model_for_request_with_artifact_path(
+            &registry,
+            m6502_cpu_id,
+            Some(&explicit),
+            Some(&artifact_path),
+        );
+        assert!(
+            model.is_none(),
+            "invalid explicit package must not fall back"
+        );
+        assert_eq!(fs::read(&artifact_path).unwrap(), package_bytes);
+    }
+}
+
 #[cfg(not(feature = "vm-runtime-opasm-unbundled"))]
 #[test]
 fn runtime_model_fallback_package_branch_loads_known_cpu() {

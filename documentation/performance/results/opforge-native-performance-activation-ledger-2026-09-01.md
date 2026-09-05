@@ -137,3 +137,14 @@ on B01/B10. No shipped speedup yet. Rust probe restored exactly; documentation
 only. Required workflow and compliance receipts live in the active plan sidecar.
 Expected commit: `docs(perf): select first measured Rust cost`. Step12 begins
 after that commit and owns matched gain/correctness and native-transfer decisions.
+
+## Step 12 / Item 10 implementation (2026-09-05)
+
+Base `a162373e`, same branch/worktree. Production owner `crates/opforge-asm/src/runtime_model.rs`,
+focused test `crates/opforge-asm/src/tests.rs`; results in
+`opforge-step12-explicit-package-performance-2026-09-05.md` and comparison evidence.
+Matched B10 saves103.940499ms (63.9820%); B01 saves102.143417ms (72.7808%),
+with exact outputs. Native transfer not applicable: native already selects the
+external package before embedded fallback staging. Required full non-LSP Rust
+and workflow gates PASS; final compliance receipt precedes the expected focused commit
+`perf(vm): remove measured repeated runtime work`. No Step13 work before commit.

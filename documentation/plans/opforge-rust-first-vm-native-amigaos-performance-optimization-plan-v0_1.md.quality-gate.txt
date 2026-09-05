@@ -1,3 +1,12 @@
+PASS: Independent plan-compliance reviewer plan_review (2026-09-05) approves Step12 / Item10 and the focused commit perf(vm): remove measured repeated runtime work. Exact six-file staged scope matches the measured candidate; this sidecar adds only the final receipt. Minimal explicit-package early return preserves error/precedence/cfg semantics, and all 55 embedded evidence entries match raw bytes/hashes.
+
+Artifact SHA-256: 2ae746f726f6caf4888eaeafcb935dfc1df5738a6f41b36562eb7471120c963e
+Validation: step12-rust-non-lsp-20260905.log, explicit exit0, 345756 bytes, SHA256 c23842d805e8e0f8b7f4d295511e1ac559b822f219f06995e141e373e3764677.
+Validation: step12-workflow-20260905.log, explicit exit0, 6363 bytes, SHA256 530dd4d219776c977b58a9fe9669c1d2ca5f1ed34a26e2d87c5446e7294e6496.
+Non-LSP Rust: 1,589 assembler tests and all other required checks PASS; LSP remains deferred. Focused default and both feature checks, corrected source-budget test, plan/bundle/diff PASS. Six matched B01/B10 pairs preserve exact artifacts and empty streams; gains72.7808%/63.9820% pass the noise-adjusted thresholds. Native has no direct discarded-build counterpart, so no port inserted. Step13 begins after this commit; Phase A remains open.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Independent plan-compliance reviewer plan_review (2026-09-05) approves Step11 / Item R0. Four staged documentation/evidence files match the bounded attribution plan; this sidecar is the final receipt-only addition. All 68 embedded evidence entries match raw bytes and hashes, all 12 paired rows preserve exact artifacts, and the transient Rust timer is restored exactly to HEAD.
 
 Artifact SHA-256: d14d5a7170b58bdea46f648fd01bb2e0af24280c01525fe7cdeaa6c0be99c802

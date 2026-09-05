@@ -48,6 +48,16 @@ pub(crate) fn build_execution_model_for_request_with_artifact_path(
     opasm_package_path: Option<&Path>,
     cwd_artifact_path: Option<&Path>,
 ) -> Option<HierarchyExecutionModel> {
+    // Explicit packages are authoritative; their loader never uses bundled fallback bytes.
+    if let Some(path) = opasm_package_path {
+        return runtime_bootstrap::bootstrap_execution_model_for_request(
+            Some(path),
+            cwd_artifact_path,
+            None,
+            false,
+        );
+    }
+
     #[cfg(any(feature = "vm-runtime-only", feature = "vm-runtime-opasm-unbundled"))]
     let _ = cpu;
 

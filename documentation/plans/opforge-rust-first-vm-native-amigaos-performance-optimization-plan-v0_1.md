@@ -97,8 +97,8 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 12 of 25 · Item 10 — remove measured discarded Rust fallback
-construction after the Step11 decision commit.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 13 of 25 · Item 16a — audit unused native statement-arena
+clearing after the Step12 optimization commit.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -280,7 +280,8 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): select first measured Rust cost`; exactly one focused commit before the next item.
   - Definition of done: a concrete Rust candidate has trustworthy attribution, baseline and rollback, or an explicit no-go.
 
-- [ ] Step 12 · Item 10 — Remove the selected Rust cost and measure immediately
+- [x] Step 12 · Item 10 — Remove the selected Rust cost and measure immediately
+  - Completion evidence (2026-09-05): `documentation/performance/results/opforge-step12-explicit-package-performance-2026-09-05.md` records exact matched B01/B10 gains of 72.7808%/63.9820% from skipping discarded fallback construction for explicit packages. Focused feature/error checks, 1,589 assembler tests and the full non-LSP Rust/workflow gates PASS. No direct native counterpart; proceed to16a. This checkbox closes only with the focused Item10 commit after final compliance PASS; no Phase A closure claimed.
   - Source requirement or finding IDs: SR-RF, SR-MEAS, SR-PAR, SR-ACC, F11.
   - Expected files: exact owner and tests selected by R0; record paths in ledger before edits.
   - Dependencies/worktree: R0 decision commit. On a positive decision implement the selected cost; on an R0 no-go close Item 10 through one documentation-only disposition commit, explicitly marked rejected/unimplemented.

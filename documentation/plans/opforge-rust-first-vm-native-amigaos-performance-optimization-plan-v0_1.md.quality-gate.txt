@@ -1,1 +1,20 @@
-PASS: Independent plan-quality and plan-compliance review (2026-09-04) confirms the user-approved Item 2 -> Item 0f diagnostic entry amendment keeps failed/incomplete cases explicit, preserves parity and Phase 0/full-plan closure gates, forbids unapproved fixes/optimizations, and requires the frozen-input/result-protocol Item 2 review and commit before diagnosis. The plan-only commit excludes pending implementation changes. Plan bundle, checkbox, diff and workflow gates pass (104 workflow tests and 238 native format files); full Rust and complete native FS-UAE gates remain mandatory at Item 0f closure.
+PASS: Independent Plan Quality Reviewer and Plan Compliance Reviewer `plan_review` (gpt-5.6-sol, high; 2026-09-05) approved the user-authorized early-return and balanced Rust/native plan rewrite. Root coordinator adjudicated the measurement ranking; read-only `measurement_digest` (gpt-5.6-luna, medium) extracted raw evidence and limitations. No runtime optimization or gate success is claimed.
+
+Artifact SHA-256: f20def36c5fe8a5698a222abfb1baded5b4a0c3a960dfacaa4acda0d63faf37f
+Scope: exactly the active plan and this sidecar on codex/rust-vm-native-performance. Pre-existing Item 0f implementation and raw evidence remain outside this amendment commit.
+
+Review: PASS for executable ordered slices, source/F1-F12 traceability, native startup then early Rust hotspot/optimization and immediate transfer decision, bounded evidence-based trials, explicit rejected/deferred candidates, mandatory full Rust gate for Rust commits, focused fail-closed native proof, named full checkpoints and unchanged pre/post-cleanup terminal proof. Item 10 no-go and Item 29 parent/child scheduling ambiguities were corrected and independently re-reviewed. Censored B10 retains historical failure, prohibits invented ratios/non-regression claims and requires five completed candidate runs plus exact live-Rust and focused control proof before establishing a future baseline.
+
+Validation: post-correction check_plan_checkboxes.py PASS; check_workflow_artifact_bundle.py PASS; git diff --check PASS. make workflow-gate PASS: 130 workflow tests, architecture enforcement, 238 native formatter files, native/workflow guards and existing sidecar validation. This is documentation-amendment validation, not Rust/native runtime or Item 0f closure evidence. Plan workflow wrapper and staged scope are verified before commit.
+
+Historical receipts below apply only to their original amendments and evidence; this review supersedes their scheduling approval, not their recorded failures.
+
+PASS: Independent Plan Quality Reviewer and plan-compliance review by platform_coverage_review (2026-09-04) approves the user-authorized Phase 0 gate-scope amendment: --verify-phase-zero retains every 51 nonterminal group and the full Rust gate, defers exactly full-product artifact self-assembly and two-generation self-hosting to terminal Items 28/30, preserves both existing complete 53-group modes, attempts all Phase 0 groups after failures, and cannot label its result complete-wrapper or terminal proof. Seven focused wrapper tests, shell syntax and plan-bundle/diff checks pass; workflow gate passes 130 tests and the 238-file native formatter. This is plan-quality approval, not Item 0f closure or a claim that either runtime gate has passed. The earlier diagnostic-entry amendment remains binding; all failed/incomplete corpus results remain explicit and unapproved optimization is forbidden.
+
+2026-09-05 execution-evidence review by `platform_coverage_review`: PASS for
+accurate failure reporting only, not Item 0f closure. The reviewer independently
+matched all 51 attempted native groups (38 pass / 13 fail), per-group durations,
+29 timeout events, four branch failures, one diagnostic mismatch, the Rust
+1,586-test assembler pass and LSP 34/14 failure, both transcript identities and
+ephemeral cleanup. Item 0f remains unchecked and uncommitted; no cause,
+regression, parity, benchmark or closure inference is approved.

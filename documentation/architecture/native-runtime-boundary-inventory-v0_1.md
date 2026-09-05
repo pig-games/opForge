@@ -122,6 +122,24 @@ This remains an architecture-neutral storage-lifetime change: statement
 semantics, package ownership, CPU behavior, and the documented six-byte
 declared/emitted-range discrepancy are unchanged.
 
+Performance-plan Step 14 refreshes the `opforge.cli.module_discovery` source at
+`native/motorola68000/amigaos/opforge-cli/module_discovery.asm` after adding
+the candidate-owned 8 KiB refill helper.
+The audited source snapshot is SHA-256
+`1fccdf6168ff4d68ea660fc551018349be977e02c7de8d981239cffbbb8d40ea`, with
+20 `.block` routines, six imports, `code`/`data`/`bss` sections, and two
+diagnostic/status/event lines, from the supplemental source audit. The
+`readCandidateByte` helper is private and preserves the existing public
+module-discovery boundary; `OPFORGE_MODULE_SCAN_BYTE_READ_REFERENCE` remains
+the explicit byte-read control composition. The 8 KiB buffer is a bounded,
+CPU-neutral I/O refill implementation with no new public API or package
+ownership. This is a supplemental module-boundary source audit kept outside
+the canonical inventory checker's frozen 21-target set; it does not add a
+22nd canonical inventory target. The focused Item38 host contracts measured
+1,669,662 loadable source bytes, 91,952 processed graph lines / 3,522,198 bytes, 419 imports,
+and 6,575 public declarations / 128,293 packed name bytes; each remains
+under its existing native capacity.
+
 ## Dependency direction
 
 ```text

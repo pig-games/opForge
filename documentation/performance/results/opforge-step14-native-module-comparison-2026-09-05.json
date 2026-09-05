@@ -1,0 +1,367 @@
+{
+  "artifact_type": "performance_evidence_report",
+  "step": 14,
+  "date": "2026-09-05",
+  "workflow_provenance": {
+    "skill": "opforge-plan-authoring",
+    "entrypoint": "run_plan_workflow.sh",
+    "validation": "read-back and JSON parse only"
+  },
+  "disposition": "provisional retain; required Rust and native gates passed; final compliance and focused commit pending",
+  "identities": {
+    "measured_native_source_sha256": "b19587ad3a3427d015876813bde87c2bd58990b5378d5f0e75f6ba1b64cdc2aa",
+    "current_source_sha256_comment_a1_only": "1fccdf6168ff4d68ea660fc551018349be977e02c7de8d981239cffbbb8d40ea",
+    "config_sha256": "937a5756808116a2ce5a135b7b7cc64e2278529846fc5862e993812a29052ba6",
+    "measured_mode_images": {
+      "byte": "fnv1a64:27592e80cb8a3113",
+      "buffered": "fnv1a64:8f4d610d968907cf"
+    },
+    "comment_only_binary_equivalence": {
+      "status": "PASS; root-confirmed exit 0",
+      "receipt": "target/workflow-logs/step14-host-comment-equivalence.json",
+      "receipt_sha256": "8ebd642505f808a5cc7d8b9f28fe2e4d77201626100974c56cd3994972adb358",
+      "before_sha256": "33778c983cc323dac8917c3a79fe44d639e3a45ba5a25f68aa62d6c37a7e4007",
+      "after_sha256": "33778c983cc323dac8917c3a79fe44d639e3a45ba5a25f68aa62d6c37a7e4007",
+      "byte_identical": true,
+      "current_source_sha256": "1fccdf6168ff4d68ea660fc551018349be977e02c7de8d981239cffbbb8d40ea"
+    }
+  },
+  "timing": {
+    "matched_pairs": [
+      1,
+      2,
+      4,
+      5
+    ],
+    "byte_seconds": [
+      64.891421084,
+      65.345264667,
+      65.251569583,
+      65.258599583
+    ],
+    "buffered_seconds": [
+      50.044794334,
+      49.806161375,
+      50.093854791,
+      49.844901542
+    ],
+    "byte_median_seconds": 65.255084583,
+    "buffered_median_seconds": 49.944847938,
+    "observed_improvement_percent": 23.4621359,
+    "final_six_runs_pass": true,
+    "final_run_composition": "4 observer-off timing runs + 2 platform-counter runs",
+    "corrected_pair3_buffered": {
+      "status": "FAIL",
+      "timeout": true,
+      "post_start_timeout_seconds": 120,
+      "receipt": "target/workflow-logs/step14-native-corrected/06-buffered-pair3.json"
+    },
+    "ranges_seconds": {
+      "byte": [
+        64.891421084,
+        65.345264667
+      ],
+      "buffered": [
+        49.806161375,
+        50.093854791
+      ]
+    },
+    "noise_percent": {
+      "byte": 0.6954915,
+      "buffered": 0.5760222,
+      "selected": 0.6954915
+    },
+    "acceptance_threshold_percent": 5.0
+  },
+  "platform_discriminator": {
+    "status": "PASS",
+    "module_payload_bytes": {
+      "byte": 16538,
+      "buffered": 16538
+    },
+    "module_reads": {
+      "byte": 16541,
+      "buffered": 8
+    },
+    "module_candidates": {
+      "byte": 3,
+      "buffered": 3
+    },
+    "exact_rust_output": [
+      34
+    ],
+    "guest_exit": {
+      "byte": 0,
+      "buffered": 0
+    },
+    "receipt_labels": [
+      "byte-platform",
+      "buffered-platform"
+    ],
+    "mechanism_validation": true,
+    "counter_errors": []
+  },
+  "proof_levels": {
+    "level_c_helper": {
+      "status": "PASS",
+      "tests": 7,
+      "receipt": "target/workflow-logs/step14-module-buffer-host-final.log",
+      "receipt_sha256": "8909f47d65e595d46b9af5f0c68e731ccf6244874867fef66faf4ee5a9c433f6",
+      "scope": "helper model only; not DOS/parser proof"
+    },
+    "level_d_exact_rust_output": {
+      "status": "PASS for successful cases",
+      "output": [
+        34
+      ],
+      "requirements": [
+        "fresh protocol completion",
+        "explicit guest exit 0",
+        "exact Rust-authoritative output"
+      ]
+    }
+  },
+  "failures_preserved": [
+    {
+      "evidence": "initial comparison rows 1-2",
+      "status": "INVALID HARNESS CHECK",
+      "detail": "merged launcher streams caused the assertion; not native regression or qualified timing",
+      "receipts": [
+        {
+          "label": "byte-pair1",
+          "process_exit": 101,
+          "raw_log": "target/workflow-logs/step14-native-comparison/01-byte-pair1.log",
+          "raw_log_sha256": "24491742a3afc62882351d2a48c65086c616bf31e64946d13aebca825a2eb94a"
+        },
+        {
+          "label": "buffered-pair1",
+          "process_exit": 101,
+          "raw_log": "target/workflow-logs/step14-native-comparison/02-buffered-pair1.log",
+          "raw_log_sha256": "709021c358635a0e4aacad3fd02ea40653321645d1648c28ee4c236d22b9f261"
+        }
+      ]
+    },
+    {
+      "evidence": "original module boundaries",
+      "status": "PASS",
+      "cases": 4,
+      "raw_log": "target/workflow-logs/step14-native-comparison/03-module-boundaries.log",
+      "raw_log_sha256": "dcc307c187bdcec73b32d62ebc6067203436cf3ddbb2fdb29811772d498a6278"
+    },
+    {
+      "evidence": "original B10",
+      "status": "FAIL timeout",
+      "detail": "both byte and buffered reached the 120-second post-start bound",
+      "receipts": [
+        {
+          "label": "B10-byte",
+          "timeout": true,
+          "raw_log": "target/workflow-logs/step14-native-comparison/04-B10-byte.log",
+          "raw_log_sha256": "44d485e6632521667d71d4d710d7ea37c05a3770b99bc8aa06026f1536f16519"
+        },
+        {
+          "label": "B10-buffered",
+          "timeout": true,
+          "raw_log": "target/workflow-logs/step14-native-comparison/05-B10-buffered.log",
+          "raw_log_sha256": "d260334cc858199a1d8f9252e8b510e4d999c5de958ed9d3635b9ed0b536e0b5"
+        }
+      ]
+    },
+    {
+      "evidence": "corrected pair 3 buffered",
+      "status": "FAIL timeout",
+      "timeout_seconds": 120,
+      "raw_log": "target/workflow-logs/step14-native-corrected/06-buffered-pair3.log",
+      "raw_log_sha256": "a9e3c0f35bdc8ba5f84e563819dc0abaf2bd371706341421797201addc617dba"
+    },
+    {
+      "evidence": "all-counter valid exact-module oracle",
+      "status": "FAIL unexpected diagnostic",
+      "detail": "both modes completed fresh protocol with guest exit 1 and OPC-NCLI027; shared failure attributed to instrumentation composition; provenance before HEAD unknown",
+      "receipts": [
+        {
+          "label": "byte-counters",
+          "guest_exit": 1,
+          "diagnostic": "OPC-NCLI027",
+          "raw_log": "target/workflow-logs/step14-native-corrected/07-byte-counters.log",
+          "raw_log_sha256": "743aa47bfc638e639bf007f26783cfd8c6efb992803484da952805346624871a"
+        },
+        {
+          "label": "buffered-counters",
+          "guest_exit": 1,
+          "diagnostic": "OPC-NCLI027",
+          "raw_log": "target/workflow-logs/step14-native-corrected/08-buffered-counters.log",
+          "raw_log_sha256": "512cc50f45925fad268d2d7dbad19a3132119d0ec9779bd61a985e3f03ea4b0b"
+        }
+      ]
+    }
+  ],
+  "raw_receipts": {
+    "corrected_passes": [
+      {
+        "label": "byte-pair1",
+        "seconds": 64.891421084,
+        "raw_log_sha256": "b26050225385c1749f8e04a3cf6523a8de726328a866c509428916e6876869be",
+        "raw_log": "target/workflow-logs/step14-native-corrected/01-byte-pair1.log",
+        "raw_log_bytes": 66399
+      },
+      {
+        "label": "buffered-pair1",
+        "seconds": 50.044794334,
+        "raw_log_sha256": "e49760a5bfdc5206ed9fbc15d2bbd1d93972494f79ab803400e9c8dfb9a1f987",
+        "raw_log": "target/workflow-logs/step14-native-corrected/02-buffered-pair1.log",
+        "raw_log_bytes": 66290
+      },
+      {
+        "label": "buffered-pair2",
+        "seconds": 49.806161375,
+        "raw_log_sha256": "62d7ca5e2248e4e7b0130a210bb54277ac7c78d4a677da4854427ec329ca1e10",
+        "raw_log": "target/workflow-logs/step14-native-corrected/03-buffered-pair2.log",
+        "raw_log_bytes": 66290
+      },
+      {
+        "label": "byte-pair2",
+        "seconds": 65.345264667,
+        "raw_log_sha256": "70690af54294a1ad094137e0d49a5dc529dee0ac8a3d176431b3f61bc65f9327",
+        "raw_log": "target/workflow-logs/step14-native-corrected/04-byte-pair2.log",
+        "raw_log_bytes": 66286
+      },
+      {
+        "label": "byte-pair3",
+        "seconds": 65.240853084,
+        "raw_log_sha256": "233766d74689bfa829ecf0a1ec4a667aaef5ec11db5b0632bd976e8d7e349551",
+        "raw_log": "target/workflow-logs/step14-native-corrected/05-byte-pair3.log",
+        "raw_log_bytes": 66286
+      }
+    ],
+    "bounded_passes": [
+      {
+        "label": "buffered-pair4",
+        "seconds": 50.093854791,
+        "raw_log_sha256": "e77c03835ae3e38e8d22c7eabbb89afca44fe6d7798b3c5b59c182b341fcc640",
+        "raw_log": "target/workflow-logs/step14-bounded-discriminator/01-buffered-pair4.log",
+        "raw_log_bytes": 66314
+      },
+      {
+        "label": "byte-pair4",
+        "seconds": 65.251569583,
+        "raw_log_sha256": "8cd98e423a2f45dad714ac10297a99c20b1b356068050491db9a7485a6b43777",
+        "raw_log": "target/workflow-logs/step14-bounded-discriminator/02-byte-pair4.log",
+        "raw_log_bytes": 66310
+      },
+      {
+        "label": "byte-pair5",
+        "seconds": 65.258599583,
+        "raw_log_sha256": "a4b0395a1a214acf12fb37b7a462be9c228052025b89549629830552ecb3e599",
+        "raw_log": "target/workflow-logs/step14-bounded-discriminator/03-byte-pair5.log",
+        "raw_log_bytes": 66310
+      },
+      {
+        "label": "buffered-pair5",
+        "seconds": 49.844901542,
+        "raw_log_sha256": "a5d384c849edd5749494adeeb41cc65b87fb8261356813df7a9388f708fb8c2c",
+        "raw_log": "target/workflow-logs/step14-bounded-discriminator/04-buffered-pair5.log",
+        "raw_log_bytes": 66314
+      },
+      {
+        "label": "byte-platform",
+        "raw_log_sha256": "c114e86b4e58f7a4c79efbd86597b3e4b8f8803f36ab575b2b5b568f48843c79",
+        "raw_log": "target/workflow-logs/step14-bounded-discriminator/05-byte-platform.log",
+        "raw_log_bytes": 67812
+      },
+      {
+        "label": "buffered-platform",
+        "raw_log_sha256": "a9ec2267d42dc6ceba84a137f45dab5d9033e57038c96e29f9233eca99932dfd",
+        "raw_log": "target/workflow-logs/step14-bounded-discriminator/06-buffered-platform.log",
+        "raw_log_bytes": 67809
+      }
+    ]
+  },
+  "pending": {
+    "final_commit": true,
+    "final_review": true
+  },
+  "measurement_contract": {
+    "timer": "host-observed guest START-to-DONE seconds",
+    "cpu": "68020",
+    "uae_cpu_speed": "max",
+    "jit": 0,
+    "post_start_timeout_seconds": 120,
+    "exact_rust_output": [
+      34
+    ],
+    "guest_stdout": "",
+    "guest_stderr": "",
+    "payload_and_config": "identical across matched modes; checked by bounded driver",
+    "mode_image_identities": {
+      "byte": "fnv1a64:27592e80cb8a3113",
+      "buffered": "fnv1a64:8f4d610d968907cf"
+    },
+    "completion": "fresh guest protocol and explicit zero guest exit for every accepted timing or counter row"
+  },
+  "source_indexes": [
+    {
+      "path": "target/workflow-logs/step14-native-comparison/summary.json",
+      "bytes": 7458,
+      "sha256": "e558f0e6f0bb5543f2f7ccf30663d5516c5ae4ad091c441ac6fa24ce5ac5f0d8"
+    },
+    {
+      "path": "target/workflow-logs/step14-native-comparison/driver.py",
+      "bytes": 5390,
+      "sha256": "7fa7be95aa43688459df119a2a43d655fb437f96fed8184fb6f5927fe8abe458"
+    },
+    {
+      "path": "target/workflow-logs/step14-native-corrected/summary.json",
+      "bytes": 1250541,
+      "sha256": "0c52bb7ef2efea8a13c78362994cd355cd336b0b41667a3af9318409a64bf0a4"
+    },
+    {
+      "path": "target/workflow-logs/step14-native-corrected/driver.py",
+      "bytes": 1879,
+      "sha256": "3549c8f7ed320c29762d192f55388f0f1e4d1a43838c0326d6a9a4da633a7735"
+    },
+    {
+      "path": "target/workflow-logs/step14-bounded-discriminator/summary.json",
+      "bytes": 1531763,
+      "sha256": "7bf5e4310c901b82c016d9345cffe0affc26fd970d90f6571051f23cbb6fc6c1"
+    },
+    {
+      "path": "target/workflow-logs/step14-bounded-discriminator/driver.py",
+      "bytes": 4274,
+      "sha256": "9a07ea4c908380c3c8c54cc9b4fdf62f051959128362d9839ccdfee7a2609a98"
+    }
+  ],
+  "gates": {
+    "workflow": {
+      "path": "target/workflow-logs/step14-workflow-final.log",
+      "sha256": "20fd92911d76b73c190f65a31cdf1ec402c2b81bc74642b918eac1e5142278c2",
+      "bytes": 6482,
+      "exit_code": 0,
+      "whole_wall_seconds": null
+    },
+    "rust": {
+      "path": "target/workflow-logs/step14-rust-non-lsp-final.log",
+      "sha256": "ec00cd6d8ac0decda2f3a8ec3c4dc7dd1b84bcedb33a345840f82efe9c3ec6f9",
+      "bytes": 343687,
+      "exit_code": 0,
+      "whole_wall_seconds": null,
+      "assembler_tests": 1590,
+      "assembler_suite_seconds": 1855.83,
+      "lsp": "deferred"
+    },
+    "staged_native": {
+      "path": "target/workflow-logs/step14-staged-native-final.log",
+      "sha256": "9d8ca10c15ac0096f08b8e1ecef7f73ffba401be8acb0b3936abf4ef56074c6f",
+      "bytes": 4077,
+      "exit_code": 0,
+      "whole_wall_seconds": null
+    },
+    "plan": {
+      "path": "target/workflow-logs/step14-plan-final.log",
+      "sha256": "526031c73524ee0124a443e96c9b0b008eba3d0b40f3882ba737ae253663ee82",
+      "bytes": 1770,
+      "exit_code": 0,
+      "whole_wall_seconds": null
+    }
+  }
+}

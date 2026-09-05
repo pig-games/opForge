@@ -215,6 +215,12 @@ fn run_native_production_corpus(abort_visits: Option<u32>) {
         "full" => owned_defines.push("OPFORGE_SESSION_CLEAR_ALL_STATEMENTS".into()),
         _ => panic!("OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR must be live or full"),
     }
+    let module_read_mode = std::env::var("OPFORGE_MODULE_SCAN_READ").unwrap_or("buffered".into());
+    match module_read_mode.as_str() {
+        "buffered" => {}
+        "byte" => owned_defines.push("OPFORGE_MODULE_SCAN_BYTE_READ_REFERENCE".into()),
+        _ => panic!("OPFORGE_MODULE_SCAN_READ must be buffered or byte"),
+    }
     let defines: Vec<&str> = owned_defines.iter().map(String::as_str).collect();
     let mut command = std::process::Command::new("python3");
     command
@@ -398,7 +404,7 @@ fn run_native_production_corpus(abort_visits: Option<u32>) {
                     "complete": true, "exit_status": 0, "exact_artifacts": artifact_paths,
                     "command_template": command, "package_sha256": input.package_sha256,
                     "profile_mode": profile_mode, "profile": profile,
-                    "clear_mode": clear_mode, "statement_clear_mode": statement_clear_mode,
+                    "clear_mode": clear_mode, "statement_clear_mode": statement_clear_mode, "module_read_mode": module_read_mode,
                     "native_image_digest": run.native_image_digest,
                     "start_to_done_host_seconds": run.start_to_done_host_seconds,
                     "timing_poll_interval_ms": 250,

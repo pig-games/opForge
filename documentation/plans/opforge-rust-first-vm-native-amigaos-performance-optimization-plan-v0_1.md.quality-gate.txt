@@ -1,3 +1,15 @@
+PASS: Independent plan-compliance reviewer plan_review approves Step14 / Item14m and focused commit perf(native): buffer module candidate input. The reviewed staged 12-file diff SHA256 is 00b50922ffb45fcebca6f20b781ed95fb5756eb0f995b5af7b3f46ed214df545; this sidecar adds only the final receipt. Private 8KiB candidate refill state preserves cursor reset, EOF/error/short reads, CRLF/offset behavior and public ABI.
+
+Artifact SHA-256: ef039fd7fdd9818bd8e97c32c2c1375f4a0f9aae983f9fb1e2a6d10389fd0495
+Validation: step14-rust-non-lsp-final.log, explicit exit0, 343687 bytes, SHA256 ec00cd6d8ac0decda2f3a8ec3c4dc7dd1b84bcedb33a345840f82efe9c3ec6f9.
+Validation: step14-staged-native-final.log, explicit exit0, 4077 bytes, SHA256 9d8ca10c15ac0096f08b8e1ecef7f73ffba401be8acb0b3936abf4ef56074c6f.
+Validation: step14-plan-completion.log, explicit exit0, 1720 bytes, SHA256 0ce39eb5afb499deea626b3513ecfdf089a2fa74a580ed7b1b0b66de35f728f6.
+Validation: step14-workflow-completion.log, explicit exit0, 6481 bytes, SHA256 5c5e941596a65de4d761a35ebf07594447e497fdf359b14ae6914744d1edcad3.
+Validation: step14-module-buffer-host-final.log, explicit exit0, 1250 bytes, SHA256 8909f47d65e595d46b9af5f0c68e731ccf6244874867fef66faf4ee5a9c433f6.
+Non-LSP Rust PASS: 1,590 assembler tests, 1,855.83s assembler suite; LSP deferred. Four complete matched pairs improve median65.255084583s to49.944847938s (23.4621%); module DOS reads16541 to8 with identical16538bytes and3candidates. Seven Level-C tests and complete focused Level-D exact-Rust cases PASS; final comment-only rebuild is byte-identical. The isolated buffered timeout, both B10 timeouts, invalid initial harness rows and unexpected full-counter failures remain explicit A-close debt. Retention stays provisional; Phase A remains open. Step15 begins after this focused commit.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Independent plan-compliance reviewer plan_review approves Step13 / Item16a and the focused commit perf(native): initialize statement storage by live state. The reviewed 12-file scope preserves all non-statement clear intervals, privately defines layout constants, and initializes all 24 row fields before use. This sidecar adds only the final receipt.
 
 Artifact SHA-256: ffee0ca5532d1c0e8d2d3bfcb876c2c24f36187351b04a182a262c974f02bf26

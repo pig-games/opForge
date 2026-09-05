@@ -1,0 +1,52 @@
+[slice]
+schema_version = 2
+name = "buffered native module-candidate reads"
+kind = "native-performance"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "14m / Step 14"
+rust_reference = [
+  "crates/opforge-asm/src/tests/native_module_buffer.rs::native_module_buffer_refill_boundaries_fs_uae",
+  "crates/opforge-asm/src/tests/native_fs_uae_parity.rs::native_module_discovery_boundaries_fs_uae",
+  "crates/opforge-asm/src/tests/native_fs_uae_parity.rs::item7_live_rust_cli_binary_oracle",
+  "crates/opforge-asm/src/tests/native_production_corpus.rs::run_native_production_corpus",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/module_discovery.asm::resolveDeclaredModuleV1",
+  "native/motorola68000/amigaos/opforge-cli/module_discovery.asm::scanCandidateFile",
+  "native/motorola68000/amigaos/opforge-cli/module_discovery.asm::readCandidateByte",
+]
+invariant = "Candidate enumeration, module declaration matching, EOF/error status, short-read consumption, CR/LF handling, and parser byte ownership remain unchanged; only candidate scan I/O uses the bounded 8 KiB refill buffer."
+assertion_decision = "The Level C source-driven model proves the helper's bounded buffer state, byte/status contract, short reads, EOF, and error handling for modeled inputs. The existing module-discovery boundary oracle plus the independent refill oracle provide the complete focused Level D route; the byte-read reference define remains available. Bounded B10 candidate/reference attempts remain common-policy evidence and are explicitly allowed to remain incomplete; a production-corpus PASS is not required for Step14 retention."
+expected_inputs = "A fresh candidate scan with decoy and target declarations crossing 8 KiB boundaries, short positive DOS reads, EOF, and DOS read failure, with buffered and explicit byte-read reference compositions."
+expected_outputs = "The same selected module declaration and exact Rust-authoritative output under buffered and reference reads; no extra public routine, package ownership, or parser state mutation."
+known_non_equivalences = "The Level C interpreter models readCandidateByte and does not execute the real DOS reader, parser, instruction encoding, or AmigaOS process. The 8 KiB size is an implementation bound, not a physical timing claim."
+fast_proof_command = "python3 -m unittest scripts/performance/tests/test_module_buffer.py -v"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_module_buffer_refill_boundaries_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "module_buffer_source_contract"
+proof_level = "C"
+proves = "The source-driven helper model verifies the 8 KiB refill bound, cursor/count transitions, byte result, EOF and error statuses, and short-read refill behavior."
+does_not_prove = "The caller's candidate-consumer wiring is source-audited only; this model does not prove 68000 instruction encoding, AmigaOS DOS execution, parser semantics, performance, or complete artifact parity."
+
+[[tests]]
+name = "native_module_buffer_refill_boundaries_fs_uae"
+proof_level = "D"
+command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_module_buffer_refill_boundaries_fs_uae -- --nocapture --test-threads=1"
+proves = "A fresh completed native module-candidate scan crosses 8 KiB refill boundaries, selects the Rust-authoritative target declaration, and completes with explicit guest zero exit and exact output."
+does_not_prove = "Production-corpus timing, every module graph shape, or all native reader callers."
+
+[[tests]]
+name = "external_fs_uae_native_production_corpus_parity / bounded B10 buffered candidate and byte reference"
+proof_level = "D"
+command = "Candidate: OPFORGE_PERFORMANCE_CORPUS=1 OPFORGE_NATIVE_CORPUS_CASES=B10 OPFORGE_MODULE_SCAN_READ=buffered OPFORGE_NATIVE_CORPUS_PROFILE=off OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm external_fs_uae_native_production_corpus_parity -- --nocapture --test-threads=1; Reference: repeat with OPFORGE_MODULE_SCAN_READ=byte"
+proves = "The bounded common-policy B10 attempt compares the buffered candidate composition with the explicit byte-read reference using the same Rust-authoritative case and fresh guest protocol."
+does_not_prove = "A completed B10, timeout parity, production-corpus PASS required for Step14 retention, timing acceptance, or Phase A completion; either composition may remain incomplete under the existing common policy."
+
+[[tests]]
+name = "native_module_discovery_boundaries_fs_uae"
+proof_level = "D"
+command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_module_discovery_boundaries_fs_uae -- --nocapture --test-threads=1"
+proves = "A fresh completed module-discovery boundary run proves one positive multi-declaration selection against the live Rust oracle and missing, ambiguous, and depth-capacity negative cases with exact OPC-NCLI018 diagnostics and explicit nonzero guest exits."
+does_not_prove = "Buffered refill timing, production-corpus completion, B10 completion, timeout parity, or every native module graph shape."

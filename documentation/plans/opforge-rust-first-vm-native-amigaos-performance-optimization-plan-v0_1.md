@@ -98,8 +98,8 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 14 of 25 · Item 14m — buffer the measured module-candidate
-scan after the Step13 optimization decision.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 15 of 25 · Item A-triage — choose the next action from
+post-win evidence after the focused Step14 commit.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -322,7 +322,8 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `perf(native): initialize statement storage by live state`; exactly one focused commit before the next item.
   - Definition of done: unused statement capacity is neither cleared nor read with exact focused parity, or explicit bounded defer; a narrowly reviewed foundation exception may retain this item provisionally under the stated B01/live-513/early-error/host-proof/gate conditions while B03/B10 failures remain unresolved; F2 remains partial while other regions clear. Step13 closes only after its provisional-retention or bounded-defer decision is committed; B03/B10 debt remains open at A-close.
 
-- [ ] Step 14 · Item 14m — Buffer the measured module-candidate scan first
+- [x] Step 14 · Item 14m — Buffer the measured module-candidate scan first
+  - Retention evidence (2026-09-05; final compliance and focused commit pending): four complete matched pairs show 65.255084583s byte-reader versus 49.944847938s buffered medians (23.4621% improvement), exact live-Rust module output, and stable image identities. Minimal platform counters confirm 16,541 to 8 module DOS reads for identical 16,538 logical bytes and three candidates. The isolated buffered timeout was not reproduced in the two final bounded pairs; all five candidate attempts remain recorded (four complete, one timeout). The independent reviewer approves provisional retention only; both bounded B10 timeouts and the failed full-counter compositions remain explicit debt, with no B10 or Phase A completion claim. See `documentation/performance/results/opforge-step14-native-module-performance-2026-09-05.md` and its comparison JSON. The final A1 clobber comment correction rebuilds to the identical host native image. Full non-LSP Rust passed (1,590 assembler tests, 1,855.83s suite); workflow, staged native and focused host gates passed. This checkbox closes only with final independent compliance and the focused commit; all remaining A-close debt stays open.
   - Source requirement or finding IDs: SR-EARLY, SR-PAR, F1.
   - Expected files: opforge-cli DOS/reader and module_discovery paths, reader harness/tests/results.
   - Dependencies/worktree: 16a decision commit; existing 23,865/23,858 module read evidence authorizes trial; no shared schema or root consolidation prerequisite.

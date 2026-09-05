@@ -2,6 +2,9 @@
 
 use super::*;
 
+#[path = "native_module_buffer.rs"]
+mod module_buffer;
+
 #[test]
 fn external_fs_uae_hunk_smoke() {
     match crate::fs_uae_smoke::run_hunk_smoke_from_env(&workspace_root())

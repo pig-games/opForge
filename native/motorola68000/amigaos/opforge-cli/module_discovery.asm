@@ -332,10 +332,45 @@ scanFibPtr	.block
 	rts
 	.bend  ; scanFibPtr
 
+; Read one byte through a candidate-owned 8 KiB refill buffer.
+; Inputs: D1 = open file handle; cursor/count reset before each candidate.
+; Outputs: D0 = 1 and ModuleScanChar set, 0 at EOF, -1 on DOS read failure.
+; Clobbers: D0-D3/A0-A1/A6/CCR. CCR: reflects D0.
+; Short positive reads are consumed completely before another refill. Read-ahead
+; never advances parser offsets; the caller counts only consumed bytes.
+readCandidateByte	.block
+	moveq #0, d2
+	move.w ModuleScanReadCursor.l, d2
+	cmp.w ModuleScanReadCount.l, d2
+	bcs.s bufferedByte
+	lea ModuleScanReadBuffer.l, a0
+	move.l #8192, d0
+.ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
+	jsr platform_profile.opforgePlatformProfileClassModuleV1
+.endif
+	jsr dos.readInput
+	tst.l d0
+	ble.s readReturn
+	move.w d0, ModuleScanReadCount.l
+	clr.w ModuleScanReadCursor.l
+	moveq #0, d2
+
+bufferedByte
+	lea ModuleScanReadBuffer.l, a0
+	move.b 0(a0, d2.w), ModuleScanChar.l
+	addq.w #1, ModuleScanReadCursor.l
+	moveq #1, d0
+
+readReturn
+	rts
+	.bend  ; readCandidateByte
+
 ; Scan one candidate without touching the active CLI source-line state.
 ; Outputs: D0 = 1 target declaration found, 0 not found, -1 read/line failure.
 ; Clobbers: D0-D5/A0-A1/CCR. CCR: reflects D0.
 scanCandidateFile	.block
+	clr.w ModuleScanReadCursor
+	clr.w ModuleScanReadCount
 	clr.w ModuleScanLineLen
 	clr.w ModuleScanSawCr
 	clr.w ModuleScanSawExplicit
@@ -359,13 +394,17 @@ scanCandidateFile	.block
 	move.l d0, d5
 
 candidateReadLoop
+	move.l d5, d1
+.ifdef OPFORGE_MODULE_SCAN_BYTE_READ_REFERENCE
 	lea ModuleScanChar.l, a0
 	moveq #1, d0
-	move.l d5, d1
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	jsr platform_profile.opforgePlatformProfileClassModuleV1
 .endif
 	jsr dos.readInput
+.else
+	bsr.w readCandidateByte
+.endif
 	cmp.l #-1, d0
 	beq.w candidateCloseFail
 	tst.l d0
@@ -966,6 +1005,12 @@ EndmoduleDirectiveText
 
 	.section bss, kind=bss
 	.align 4
+ModuleScanReadCursor
+	.res word, 1
+ModuleScanReadCount
+	.res word, 1
+ModuleScanReadBuffer
+	.res byte, 8192
 ModuleScanMatchCount
 	.res word, 1
 ModuleScanIndexBuilt

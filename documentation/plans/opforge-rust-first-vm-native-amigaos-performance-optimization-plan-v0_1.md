@@ -88,10 +88,16 @@ isolation from unfinished work. Never modify `main`, unrelated dirty work, push,
 or merge remotely as part of this plan. Checked historical items remain checked;
 open findings do not become fixed through a scheduling amendment.
 
-The numeric order in **Work Items** is authoritative. Legacy IDs are retained
-where useful, with an explicit mapping below. Historical receipts at the end are
-non-operative chronology; their old prerequisites and phase gates do not
-reactivate the superseded sequence.
+The sequential **Step NN** labels are the personal tracking order; stable
+**Item** IDs remain unchanged for dependencies and evidence references. Steps
+01–07 are completed history, retained at the end for auditability; the active
+Work Items run from Step 08 onward. Historical prerequisites and phase gates do
+not reactivate the superseded sequence. When inserting a reviewed sub-item,
+renumber subsequent Step labels to keep the sequence contiguous while retaining
+all Item IDs. Include both labels in progress updates and ledger entries.
+
+**Current step: Step 08 of 24 · Item 0f — close the bounded investigation
+deliverable.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -208,7 +214,7 @@ improvement does not close a whole finding; closure review is still required.
 
 ### Phase A — native startup, Rust VM gain, then larger native work elimination
 
-- [ ] Item 0f — Close the bounded investigation deliverable; retain failed qualification
+- [ ] Step 08 · Item 0f — Close the bounded investigation deliverable; retain failed qualification
   - Source requirement or finding IDs: SR-MEAS, SR-WT, SR-PAR, F12.
   - Expected files: existing Item 0f host tools/tests, corpus adapter, wrapper and results/ledger; no native optimization.
   - Dependencies/worktree: current active unfinished slice; preserve all dirty work and establish its reviewed commit before E0.
@@ -221,7 +227,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): close bounded attribution with tracked qualification debt`; exactly one focused commit before the next item.
   - Definition of done: observation work committed with honest proof statuses; A-close remains open and no claim of passed Phase 0 or corpus parity.
 
-- [ ] Item E0 — Classify failures relevant to the first native experiments
+- [ ] Step 09 · Item E0 — Classify failures relevant to the first native experiments
   - Source requirement or finding IDs: SR-EARLY, SR-PAR.
   - Expected files: performance failure ledger and one focused reproducer/oracle where missing.
   - Dependencies/worktree: Item 0f commit; integration worktree, read-only classification first.
@@ -234,7 +240,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): classify early optimization correctness boundaries`; exactly one focused commit before the next item.
   - Definition of done: ledger links all failed groups/LSP/corpus statuses to owners; first candidate has a trustworthy focused oracle and no hidden relevant failure.
 
-- [ ] Item 17c — Speed the exact existing session clear at one call site
+- [ ] Step 10 · Item 17c — Speed the exact existing session clear at one call site
   - Source requirement or finding IDs: SR-EARLY, SR-PAR, SR-ARCH, F2, F3.
   - Expected files: native opasm session init/clear helper, primitive harness and focused tests/results.
   - Dependencies/worktree: E0; narrow integration slice or isolated child if unfinished work remains.
@@ -247,7 +253,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `perf(native): accelerate same-range session initialization`; exactly one focused commit before the next item.
   - Definition of done: one startup call site is faster with exact clear semantics and focused CLI parity, or a documented rejected trial; speed is provisional until A-close.
 
-- [ ] Item R0 — Find one Rust cost with existing phase timing and host sampling
+- [ ] Step 11 · Item R0 — Find one Rust cost with existing phase timing and host sampling
   - Source requirement or finding IDs: SR-RF, SR-MEAS, F11.
   - Expected files: existing phase_profile/runtime profile paths only if needed; scripts/performance and decision report.
   - Dependencies/worktree: 17c accepted/rejected decision commit; integration worktree.
@@ -260,7 +266,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): select first measured Rust cost`; exactly one focused commit before the next item.
   - Definition of done: a concrete Rust candidate has trustworthy attribution, baseline and rollback, or an explicit no-go.
 
-- [ ] Item 10 — Remove the selected Rust cost and measure immediately
+- [ ] Step 12 · Item 10 — Remove the selected Rust cost and measure immediately
   - Source requirement or finding IDs: SR-RF, SR-MEAS, SR-PAR, SR-ACC, F11.
   - Expected files: exact owner and tests selected by R0; record paths in ledger before edits.
   - Dependencies/worktree: R0 decision commit. On a positive decision implement the selected cost; on an R0 no-go close Item 10 through one documentation-only disposition commit, explicitly marked rejected/unimplemented.
@@ -273,7 +279,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `perf(vm): remove measured repeated runtime work`, or `docs(perf): record Rust candidate no-go` for the rejection path; exactly one focused commit before the next item.
   - Definition of done: one measured Rust win or honest rejection is committed; generic semantics remain unchanged. Record an immediate transfer disposition: native counterpart applicability, measured native owner/cost, expected reuse, eligibility and proof effort. If a positive Rust win plus native evidence outranks 16a/14m, insert one concrete reviewed 25.x native port and cleanup owner immediately after Item 10; otherwise explicitly defer. A Rust rejection never authorizes native speculation.
 
-- [ ] Item 16a — Eliminate unused statement-arena clearing before smaller regions
+- [ ] Step 13 · Item 16a — Eliminate unused statement-arena clearing before smaller regions
   - Source requirement or finding IDs: SR-EARLY, SR-PAR, F2, F7.
   - Expected files: opasm session/statement insertion and access paths, debug poison/assert harness, results.
   - Dependencies/worktree: Item 10 decision commit; high-risk child worktree. Old Item 16 source reset is not a prerequisite.
@@ -286,7 +292,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `perf(native): initialize statement storage by live state`; exactly one focused commit before the next item.
   - Definition of done: unused statement capacity is neither cleared nor read with exact focused parity, or explicit bounded defer; F2 remains partial while other regions clear.
 
-- [ ] Item 14m — Buffer the measured module-candidate scan first
+- [ ] Step 14 · Item 14m — Buffer the measured module-candidate scan first
   - Source requirement or finding IDs: SR-EARLY, SR-PAR, F1.
   - Expected files: opforge-cli DOS/reader and module_discovery paths, reader harness/tests/results.
   - Dependencies/worktree: 16a decision commit; existing 23,865/23,858 module read evidence authorizes trial; no shared schema or root consolidation prerequisite.
@@ -299,7 +305,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `perf(native): buffer module candidate input`; exactly one focused commit before the next item.
   - Definition of done: measured module DOS reads block-scale with unchanged logical bytes and focused parity, or rejected trial.
 
-- [ ] Item A-triage — Choose the next action from post-win evidence
+- [ ] Step 15 · Item A-triage — Choose the next action from post-win evidence
   - Source requirement or finding IDs: SR-EARLY, SR-MEAS, SR-PAR.
   - Expected files: performance ledger and this plan only.
   - Dependencies/worktree: 14m decision commit; integration worktree.
@@ -312,7 +318,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): rerank after native throughput experiments`; exactly one focused commit before the next item.
   - Definition of done: one explicit route to completed B10 and remaining gate repair is selected, or the phase remains honestly blocked; any inserted items are individually reviewable.
 
-- [ ] Item A-close — Qualify early wins and clear the recorded failure debt
+- [ ] Step 16 · Item A-close — Qualify early wins and clear the recorded failure debt
   - Source requirement or finding IDs: SR-PAR, SR-MEAS, SR-TERM.
   - Expected files: qualification results, failure ledger and plan receipts.
   - Dependencies/worktree: A-triage and all inserted repair/optimization commits; no Phase B starts before PASS.
@@ -327,7 +333,7 @@ improvement does not close a whole finding; closure review is still required.
 
 ### Phase B — residual measured work and complete profiling
 
-- [ ] Item C0 — Dispose of the old roadmap and select only residual winners
+- [ ] Step 17 · Item C0 — Dispose of the old roadmap and select only residual winners
   - Source requirement or finding IDs: SR-EARLY, SR-RF, SR-MEAS, SR-ACC, F1–F11.
   - Expected files: decision ledger, this plan and baseline annotations if findings change.
   - Dependencies/worktree: A-close PASS and Item 10 decision; inserted candidates run serially from reviewed integration commits.
@@ -340,7 +346,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): select residual work by measured return`; exactly one focused commit before the next item.
   - Definition of done: every original pending optimization has an explicit disposition and each selected candidate has a commit-sized executable item; deferred items remain labelled unimplemented.
 
-- [ ] Item P0 — Finish profile foundations after the early product wins
+- [ ] Step 18 · Item P0 — Finish profile foundations after the early product wins
   - Source requirement or finding IDs: SR-ID, SR-MEAS, SR-ACC, F11.
   - Expected files: profile schema/catalog/exporter, Rust executor/service owners, native bridge adapters, bounded report tests.
   - Dependencies/worktree: C0 and selected candidate decisions; focused profiling may be pulled forward only for one named blocked decision via reviewed amendment.
@@ -353,7 +359,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): scope remaining profile coverage`; exactly one focused commit before the next item.
   - Definition of done: reviewed concrete instrumentation sub-items exist for actual gaps; no unimplemented profile contract is called complete.
 
-- [ ] Item P-close — Verify profile coverage and final hotspot decisions
+- [ ] Step 19 · Item P-close — Verify profile coverage and final hotspot decisions
   - Source requirement or finding IDs: SR-ID, SR-MEAS, SR-ACC, F11.
   - Expected files: profile inventory and machine-readable result/decision reports.
   - Dependencies/worktree: all P0 sub-items committed.
@@ -366,7 +372,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): verify profiling coverage and decisions`; exactly one focused commit before the next item.
   - Definition of done: stable profiles, calibrated overhead and complete owner inventory exist and every candidate has evidence/disposition.
 
-- [ ] Item 27 — Install regression budgets for accepted mechanisms
+- [ ] Step 20 · Item 27 — Install regression budgets for accepted mechanisms
   - Source requirement or finding IDs: SR-MEAS, SR-ACC, SR-TERM.
   - Expected files: existing performance checks/results and optional CI lane.
   - Dependencies/worktree: P-close and all accepted candidate commits.
@@ -379,7 +385,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `test(perf): enforce accepted mechanism budgets`; exactly one focused commit before the next item.
   - Definition of done: accepted mechanisms have reproducible affordable regression detection.
 
-- [ ] Item B-close — Qualify residual optimizations and observability
+- [ ] Step 21 · Item B-close — Qualify residual optimizations and observability
   - Source requirement or finding IDs: SR-PAR, SR-MEAS, SR-ID.
   - Expected files: results/ledger/plan receipts.
   - Dependencies/worktree: 27 and all inserted Phase B items.
@@ -394,7 +400,7 @@ improvement does not close a whole finding; closure review is still required.
 
 ### Phase C — broad certainty, cleanup and terminal proof
 
-- [ ] Item 28 — Qualify optimized and reference modes before cleanup
+- [ ] Step 22 · Item 28 — Qualify optimized and reference modes before cleanup
   - Source requirement or finding IDs: SR-PAR, SR-ACC, SR-TERM.
   - Expected files: raw qualification reports and temporary-path inventory.
   - Dependencies/worktree: B-close PASS.
@@ -407,7 +413,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): qualify performance and terminal parity`; exactly one focused commit before the next item.
   - Definition of done: all complete pre-cleanup gates and terminal proof pass; every actual temporary path has a concrete cleanup owner.
 
-- [ ] Item 29 — Schedule and execute only cleanup that actually exists
+- [ ] Step 23 · Item 29 — Schedule and execute only cleanup that actually exists
   - Source requirement or finding IDs: SR-PAR, SR-ACC, SR-TERM.
   - Expected files: exact temporary paths named by 28, associated tests/results and plan.
   - Dependencies/worktree: 28 PASS; all inserted cleanup items before 30.
@@ -420,7 +426,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): scope qualification-backed cleanup`; exactly one focused commit before the next item.
   - Definition of done: every actual temporary path maps to one concrete reviewed 29.x cleanup item, or is explicitly identified as a supported permanent contract; this scoping commit claims no removal. Each 29.x item requires actual removal and its focused proof before commit; Item 30 depends on all those commits.
 
-- [ ] Item 30 — Prove the final production shape and close the program
+- [ ] Step 24 · Item 30 — Prove the final production shape and close the program
   - Source requirement or finding IDs: SR-MEAS, SR-PAR, SR-TERM.
   - Expected files: final result report, ledger and plan receipts.
   - Dependencies/worktree: all cleanup commits; performance integration worktree.
@@ -514,7 +520,8 @@ including reasoned no-go decisions. No remote update is authorized.
 
 ## Historical completed receipts (non-operative chronology)
 
-The original checked receipts below are preserved verbatim for auditability.
+The original checked receipt bodies below are preserved for auditability;
+only their item headings have gained sequential tracking labels.
 Their old dependency order, future gates and contemporaneous pending notes are
 superseded by the active Work Items above. They do not certify Item 0f, A-close
 or any new optimization. Current open Item 0f observations and failed gate
@@ -522,7 +529,7 @@ results remain in the linked 2026-09-04/05 evidence reports; the pre-amendment
 working plan had SHA-256
 `57ab229e3083ba844e441e119368b365d473bf0bb59dcb44d5e517444fcc095b`.
 
-- [x] Item 1 — Activate on the latest remote self-host parking checkpoint and publish the performance ledger
+- [x] Step 01 · Item 1 — Activate on the latest remote self-host parking checkpoint and publish the performance ledger
   - Source requirement or finding IDs: SR-ACT, SR-WT, SR-MEAS, SR-TERM, SR-NOGUESS, F12.
   - Rationale/mechanism: start from the exact committed six-hour parking state while preserving the open fail-closed terminal proof and preventing stale anchors.
   - Architectural boundaries: no production change; no history rewrite; no terminal-proof success claim; primary checkout and its unrelated files remain untouched.
@@ -547,7 +554,7 @@ publishes attribution from that corpus, including explicitly failed/incomplete
 native baselines under the approved diagnostic entry gate. An incomplete profile is useful
 localization evidence but never a completed assembly or Level D result.
 
-- [x] Item 0a — Add bounded native progress and coarse phase timing
+- [x] Step 02 · Item 0a — Add bounded native progress and coarse phase timing
   - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-WT, SR-PAR, F12.
   - Rationale/mechanism: motivated by the historical multi-hour observation, make bounded B01-B10 runs observable and distinguish forward progress, repeated passes, and a local stall before choosing a fix.
   - Architectural boundaries: approved native debug/assert framework only; bounded memory; no CPU semantics, optimization, per-operation I/O, output change, or proof relaxation.
@@ -564,7 +571,7 @@ localization evidence but never a completed assembly or Level D result.
   - Commit outcome: `feat(native-perf): expose bounded assembly progress`.
   - Definition of done: bounded production-path runs expose trustworthy phase/pass/statement progress and a complete or explicitly incomplete report with measured overhead.
 
-- [x] Item 0b — Count native pass, statement, flow, and layout multiplication
+- [x] Step 03 · Item 0b — Count native pass, statement, flow, and layout multiplication
   - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-MEAS, SR-PAR, F4, F6, F12.
   - Rationale/mechanism: determine whether elapsed time comes from repeated whole-input visits, control-flow rescans, backward redirects, layout retries, or repeated emission.
   - Architectural boundaries: observe generic opasm lifecycle only; no route caching, pass reduction, emission suppression, or changed convergence behavior.
@@ -581,7 +588,7 @@ localization evidence but never a completed assembly or Level D result.
   - Commit outcome: `feat(native-perf): count assembly work multiplication`.
   - Definition of done: bounded reports show whether statement, flow, layout, or image work grows and at what rate without changing results.
 
-- [x] Item 0c — Count native symbol and expression work
+- [x] Step 04 · Item 0c — Count native symbol and expression work
   - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-MEAS, SR-PAR, F5, F8, F12.
   - Rationale/mechanism: test the statically plausible full-label scans and repeated expression lifecycle against dynamic call/candidate/byte counts.
   - Architectural boundaries: no index, cache, interning, prepared expression, lookup-order, ambiguity, or diagnostic change.
@@ -599,7 +606,7 @@ localization evidence but never a completed assembly or Level D result.
   - Commit outcome: `feat(native-perf): count symbol and expression work`.
   - Definition of done: a bounded report can confirm or reject lookup/expression multiplication by call, candidate, byte, phase, and pass.
 
-- [x] Item 0d — Count coarse native VM and service execution
+- [x] Step 05 · Item 0d — Count coarse native VM and service execution
   - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-ID, SR-MEAS, SR-PAR, F10-F12.
   - Rationale/mechanism: determine whether VM/service execution dominates before considering threaded dispatch, AOT translation, superinstructions, or another portable execution design.
   - Architectural boundaries: invocation and aggregate-opcode counts only; provisional CPU-neutral IDs later map to Item 3; no per-opcode timing, VM rewrite, accelerator, target semantics, or changed ABI.
@@ -617,7 +624,7 @@ localization evidence but never a completed assembly or Level D result.
   - Commit outcome: `feat(native-perf): count coarse runtime execution`.
   - Definition of done: the report ranks native VM/service aggregate work sufficiently to decide whether deeper VM profiling is warranted.
 
-- [x] Item 0e — Count native platform I/O, clear, and copy work
+- [x] Step 06 · Item 0e — Count native platform I/O, clear, and copy work
   - Source requirement or finding IDs: SR-BRIDGE, SR-PROG, SR-NOGUESS, SR-MEAS, SR-PAR, F1-F3, F12.
   - Rationale/mechanism: quantify drive-active startup and fixed memory work across B01-B10 so the bridge report can compare them with steady-state compute rather than dismiss or overstate them based on the historical self-host observation.
   - Architectural boundaries: observe platform operations only; no buffering, read consolidation, clear elimination, package in-place use, bulk primitive, or changed DOS/error behavior.
@@ -638,7 +645,7 @@ localization evidence but never a completed assembly or Level D result.
   - In-progress recovery checkpoint (2026-09-04): resumed the uncommitted intervening-agent draft after completed Item 0d `edcb6466`; repaired damaged conditional/decoder insertions, duplicate DOS operations, and source-reader control flow. Independent/combined profile builds, focused native counter execution, bounded CLI artifact parity, and exact disabled release identity are now checked. Item 0e remains unchecked and uncommitted: complete range/phase breakdowns, audited nested I/O/line attribution, platform subgroup gates/export, and remaining error/diagnostic proofs are still required. See `documentation/performance/results/opforge-native-platform-item0e-recovery-2026-09-04.md`; do not use the provisional counters for corpus attribution or start Item 2 yet.
   - Range/phase continuation (2026-09-04): implemented the fixed 528-byte OFIO schema 2 with separate bulk request/completion hooks, five range and nine phase rows, one-shot range selection, package-state and per-pass presence clears, startup-before-clear accounting, per-operation I/O classes, and EOF line visits. Fifteen decoder tests, independent/combined builds, the actual buffer/CCR guest oracle, exact real-CLI artifact parity, and a real output-open negative proof pass; disabled release identity is unchanged. This supersedes those recovery gaps, not Item 0e's checkbox. Separate subgroup gates, remaining inline-memory/seek coverage audit, representative-value/error/overhead evidence, staged gate, and review remain before commit. See `documentation/performance/results/opforge-native-platform-range-phase-2026-09-04.md`.
 
-- [x] Item 2 — Freeze the production-path benchmark corpus and result protocol
+- [x] Step 07 · Item 2 — Freeze the production-path benchmark corpus and result protocol
   - Completion evidence (2026-09-04, diagnostic entry only): frozen manifest `documentation/performance/results/opforge-corpus-v1-manifest.json` has SHA-256 `fece2121b487b37e1217b4854b74308366399938e26520e06d124ed63559aed9`; the adjacent current-format Rust baseline records seven retained exact-artifact runs for all ten cases, verified Cargo-selected release identity, commands and package provenance. `opforge-corpus-v1-native-status-2026-09-04.md` retains every failed/incomplete case and historical proof limitation. Eight corpus/schema tests, baseline validation, six capacity checks, host staging/name-map/oracle checks, fresh runtime/platform counter confirmations (five guests), Rust formatting, inventory/runtime-boundary guards, and the actual staged workflow/native gate pass. Independent plan-compliance review passed the amended Item 2 boundary. Full Rust gate remains failed/incomplete and the full native wrapper remains unrun; neither is waived, and both remain required at Item 0f closure. This supersedes only the unfrozen/pending-review status below, never its native failures.
   - In-progress evidence (2026-09-04): deterministic B01-B10 generation, independent B01-B08 BIN contracts, a verified locked-release runner, fail-closed JSON ledger, and a live-oracle native adapter are implemented. All ten current cases pass seven retained Rust invocations; workflow validation passes. Initial native B01/B04/B06/B07 complete, B02/B03/B05 exceed the 120-second cutoff, and nested-include B08/B10 drafts exposed the native one-level include limit. B08/B10 now use sibling includes and a transitive module graph: corrected B08 matches BIN bytes with zero exit but fails the empty-stdout contract; enlarged 256-group B10 times out. B09 completes with a real unresolved-label error and is not parity proof. Focused counter confirmation passes; staging/capacity repairs pass focused host checks without increasing allocation limits. See `documentation/performance/opforge-production-corpus-v1.md`. The user approved diagnosis of these explicitly failed/incomplete cases before successful native parity. The corpus remains unfrozen pending the Item 2 manifest/result ledger, review, and commit; no Item 0f completion is implied.
   - Source requirement or finding IDs: SR-MEAS, SR-PAR, SR-REMOTE, F1-F12.

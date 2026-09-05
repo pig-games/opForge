@@ -126,3 +126,14 @@ localization evidence and never terminal proof.
 - Required validation: focused capture/control/corpus/wrapper checks, explicit non-LSP Rust gate, staged workflow gate and independent compliance review.
 - Integration dependency: no Step 09 implementation before the Step 08 focused commit. Native failed qualification remains owned by A-close; LSP failure cause remains unproven and repair is deferred to LSP-close.
 - Current disposition: required non-LSP Rust and staged workflow gates PASS; see `opforge-item0f-completion-gates-2026-09-05.md`. Observation slice accepted subject to final compliance/commit; no native or LSP fix claimed.
+
+## Step 11 / Item R0 decision (2026-09-05)
+
+Base `9af54933`, same performance branch/worktree. Decision/report and embedded
+attribution evidence: `opforge-step11-rust-cost-decision-2026-09-05.md` and
+`opforge-step11-rust-attribution-evidence-2026-09-05.json`. GO for one explicit
+package early return, with ~100ms discarded fallback construction directly timed
+on B01/B10. No shipped speedup yet. Rust probe restored exactly; documentation
+only. Required workflow and compliance receipts live in the active plan sidecar.
+Expected commit: `docs(perf): select first measured Rust cost`. Step12 begins
+after that commit and owns matched gain/correctness and native-transfer decisions.

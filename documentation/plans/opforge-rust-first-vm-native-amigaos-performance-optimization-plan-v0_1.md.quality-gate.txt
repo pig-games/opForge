@@ -1,3 +1,11 @@
+PASS: Independent plan-compliance reviewer plan_review (2026-09-05) approves Step11 / Item R0. Four staged documentation/evidence files match the bounded attribution plan; this sidecar is the final receipt-only addition. All 68 embedded evidence entries match raw bytes and hashes, all 12 paired rows preserve exact artifacts, and the transient Rust timer is restored exactly to HEAD.
+
+Artifact SHA-256: d14d5a7170b58bdea46f648fd01bb2e0af24280c01525fe7cdeaa6c0be99c802
+Validation: workflow gate explicit exit0, 7034 bytes, SHA256 4b304e7ff829597d1481a354ae3bef13fd336223d06bb627750994401af1992b, step11-workflow-20260905.log. No Rust code change is committed, so no additional Rust gate is required for this documentation-only item.
+Decision: GO for explicit-package early return, directly timed discarded fallback construction B01 100.479ms / B10 101.305ms. No realized runtime gain or native timing claim. Step12 owns matched correctness/performance and full non-LSP Rust gate before its code commit. Approved focused commit: docs(perf): select first measured Rust cost.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Independent plan-compliance reviewer plan_review (2026-09-05) approves Step 10 / Item 17c and the focused commit perf(native): accelerate same-range session initialization. The reviewed 13-file staged scope preserves the exact 41,221,928-byte clear range and byte-reference rollback. This sidecar adds only the final receipt.
 
 Artifact SHA-256: 3879a6e8485ff2c1242941eecd3b5d4fe83dcaaf5c01b7002773c070d4bdb8e6

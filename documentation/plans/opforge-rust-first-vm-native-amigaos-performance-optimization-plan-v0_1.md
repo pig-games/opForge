@@ -97,8 +97,8 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 11 of 25 · Item R0 — find one Rust cost with existing
-phase timing and host sampling.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 12 of 25 · Item 10 — remove measured discarded Rust fallback
+construction after the Step11 decision commit.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -266,7 +266,8 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `perf(native): accelerate same-range session initialization`; exactly one focused commit before the next item.
   - Definition of done: one startup call site is faster with exact clear semantics and focused CLI parity, or a documented rejected trial; speed is provisional until A-close.
 
-- [ ] Step 11 · Item R0 — Find one Rust cost with existing phase timing and host sampling
+- [x] Step 11 · Item R0 — Find one Rust cost with existing phase timing and host sampling
+  - Completion evidence (2026-09-05): `documentation/performance/results/opforge-step11-rust-cost-decision-2026-09-05.md` selects the explicit-package early return. One transient timer measures fallback construction at B01 100.479ms and B10 101.305ms, exact artifacts and overhead recorded; both sampler attempts had empty stacks. Production source restored exactly. This checkbox closes only with the focused R0 commit after workflow/compliance PASS; no runtime gain or Phase A closure claimed.
   - Source requirement or finding IDs: SR-RF, SR-MEAS, F11.
   - Expected files: existing phase_profile/runtime profile paths only if needed; scripts/performance and decision report.
   - Dependencies/worktree: 17c accepted/rejected decision commit; integration worktree.

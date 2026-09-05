@@ -98,8 +98,8 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 17 of 28 · Item A-test-throughput — measure cheaper Rust
-validation after the focused Step16 branch correction commit.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 18 of 28 · Item A-b10-localize — identify the remaining B10
+evidence boundary after the focused Step17 validation-throughput commit.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -364,7 +364,8 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: one focused invariant repair commit, a focused evidence decision if current behavior already passes, or a precise blocked/disposition evidence commit when the observation budget ends without a causal boundary; unresolved branch failures still prevent dependent B10 work and A-close.
   - Definition of done: recorded completed branch rejections have current exact proof and a reviewed disposition, or a precise unresolved boundary stops this item pending a reviewed next action; no silent advancement to A-close.
 
-- [ ] Step 17 · Item A-test-throughput — Reduce repeated Rust validation cost if measured safe
+- [x] Step 17 · Item A-test-throughput — Reduce repeated Rust validation cost if measured safe
+  - Completion evidence (2026-09-05; final workflow/compliance and focused commit pending): retained candidate test profile opt-level1 with debug assertions/overflow checks true. The existing ten-configuration host test improves 78.2102%, with all executable/listing/hex bytes identical. Full non-LSP gate passes in278.294873s versus1889.188706s control (85.2691% less time); including71.229001s cold preparation still saves1539.664832s on the first pass. Complete3030-result inventory matches across34Cargo suites/38summaries. Warm full suite passes in227.927479s, assembler207.04s versus208.20s in the gate. See the Step17 performance report and comparison JSON. No product/native runtime speedup or Phase A closure is claimed; this checkbox closes with the reviewed focused commit.
   - Source requirement or finding IDs: SR-EARLY, SR-MEAS, SR-RF; user-requested developer-loop acceleration.
   - Expected files: Cargo.toml test-profile settings only on acceptance; bounded measurement driver if needed; performance decision/evidence, this plan and receipts. No VM/native behavior or cached oracle changes.
   - Dependencies/worktree: committed Step16 at c64a8d4c or a documentation-only descendant; isolated child preserving the existing unoptimized build cache. Complete this decision before new B10 Rust harness edits.

@@ -8,6 +8,11 @@ strip = "symbols"
 inherits = "release"
 panic = "unwind"
 
+[profile.test]
+opt-level = 1
+debug-assertions = true
+overflow-checks = true
+
 [workspace]
 members = [
 	"crates/opforge-types",

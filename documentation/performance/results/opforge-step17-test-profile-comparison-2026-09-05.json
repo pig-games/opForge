@@ -1,0 +1,361 @@
+{
+  "step": "Step17 / A-test-throughput",
+  "worktree": "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance",
+  "control_identity": {
+    "head": "2428fe26d10d19304b9bf4d1aca2bc76f9ff48ee",
+    "worktree": "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance",
+    "source_digest_excluding_cargo_toml": "08cc0fad5f184b083d14e1eff5792617ac5a81bb626c297861429c0808a1dd00",
+    "cargo_toml_sha256": "0633f407404f985fa23f1ced11c86454ad5979c260f20bebd45c3f03377e02a8",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)\n",
+    "cpu_count": 16,
+    "environment": {
+      "RUSTFLAGS": null,
+      "CARGO_ENCODED_RUSTFLAGS": null,
+      "CARGO_PROFILE_TEST_OPT_LEVEL": null,
+      "CARGO_PROFILE_TEST_DEBUG_ASSERTIONS": null,
+      "CARGO_PROFILE_TEST_OVERFLOW_CHECKS": null,
+      "RUST_TEST_THREADS": null,
+      "CARGO_BUILD_JOBS": null,
+      "OPFORGE_FS_UAE_ARGS": null,
+      "OPFORGE_FS_UAE_SMOKE": null
+    }
+  },
+  "candidate_manifest_sha256": "8ddc1598a721251fb9d7f57527cdc5b7fcbd743ee4f27cca38b6998f1a795c05",
+  "non_manifest_tracked_source_identity_matches": true,
+  "candidate_profile": {
+    "opt-level": 1,
+    "debug-assertions": true,
+    "overflow-checks": true
+  },
+  "control": {
+    "mode": "control",
+    "complete": true,
+    "rows": [
+      {
+        "label": "compile",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "--lib",
+          "--no-run",
+          "-vv"
+        ],
+        "exit_code": 0,
+        "whole_seconds": 0.04269349994137883,
+        "log_path": "target/workflow-logs/step17-test-throughput/control-compile.log",
+        "log_bytes": 2438,
+        "log_sha256": "82ec9f695af1366c83bea928737244c612880b11d5b6ccc32fe64393b759e114"
+      },
+      {
+        "label": "warm-1",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "--lib",
+          "tests::native_platform_profile_harness_and_cli_assemble",
+          "--",
+          "--exact",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "whole_seconds": 162.94206270901486,
+        "log_path": "target/workflow-logs/step17-test-throughput/control-warm-1.log",
+        "log_bytes": 333,
+        "log_sha256": "c2f9a8a68935edd7806904148af9a5f5f18eb0d58405288369bbaf0d2e03f96d",
+        "exact_focused_result": true,
+        "test_seconds": 162.85
+      },
+      {
+        "label": "warm-2",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "--lib",
+          "tests::native_platform_profile_harness_and_cli_assemble",
+          "--",
+          "--exact",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "whole_seconds": 162.7240173330065,
+        "log_path": "target/workflow-logs/step17-test-throughput/control-warm-2.log",
+        "log_bytes": 333,
+        "log_sha256": "db9a0d6d598bbfaf58197ce115d48bb34f2be481fb7a90b814497fe51258ae37",
+        "exact_focused_result": true,
+        "test_seconds": 162.67
+      }
+    ]
+  },
+  "candidate": {
+    "mode": "candidate",
+    "complete": true,
+    "rows": [
+      {
+        "label": "compile",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "--lib",
+          "--no-run",
+          "-vv"
+        ],
+        "exit_code": 0,
+        "whole_seconds": 35.87995945895091,
+        "log_path": "target/workflow-logs/step17-test-throughput/candidate-compile.log",
+        "log_bytes": 170648,
+        "log_sha256": "aa8e9dc731248404fa832290f706d069dc5e2afd57ab06456df16a08d33211bb"
+      },
+      {
+        "label": "warm-1",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "--lib",
+          "tests::native_platform_profile_harness_and_cli_assemble",
+          "--",
+          "--exact",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "whole_seconds": 35.7690161250066,
+        "log_path": "target/workflow-logs/step17-test-throughput/candidate-warm-1.log",
+        "log_bytes": 342,
+        "log_sha256": "09b49751f77745747e7167e140109faa7bd06f4ad8b7e8b1ac99aec765c88cee",
+        "exact_focused_result": true,
+        "test_seconds": 35.3
+      },
+      {
+        "label": "warm-2",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "--lib",
+          "tests::native_platform_profile_harness_and_cli_assemble",
+          "--",
+          "--exact",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "exit_code": 0,
+        "whole_seconds": 35.19311950006522,
+        "log_path": "target/workflow-logs/step17-test-throughput/candidate-warm-2.log",
+        "log_bytes": 342,
+        "log_sha256": "79f0f35741a65ef8cc874958ba9ba5a04e5b7fd1b0891d5cf6b92450a9d94778",
+        "exact_focused_result": true,
+        "test_seconds": 35.14
+      }
+    ]
+  },
+  "focused": {
+    "control_median_seconds": 162.83304002101067,
+    "candidate_median_seconds": 35.48106781253591,
+    "improvement_percent": 78.21015451903513,
+    "control_variation_percent": 0.1339073298516331,
+    "candidate_variation_percent": 1.6231096199926296,
+    "all_executable_listing_hex_bytes_equal": true,
+    "configurations_per_run": 10,
+    "runs_per_profile": 2,
+    "proof_level": "C; no native guest execution"
+  },
+  "candidate_cold_preparation_seconds": 71.22900108410977,
+  "full_control_gate": {
+    "command": [
+      "bash",
+      "scripts/workflow/run_rust_quality_gate.sh",
+      "--defer-lsp"
+    ],
+    "exit_code": 0,
+    "whole_gate_seconds": 1889.188705791952,
+    "log_path": "target/workflow-logs/step16-rust-non-lsp-contract-corrected.log",
+    "log_bytes": 343150,
+    "log_sha256": "8aa2a302be42e259c69083ddfd3958b24da149247f977c55ad3228dfe21d39ac"
+  },
+  "full_candidate_gate": {
+    "command": [
+      "bash",
+      "scripts/workflow/run_rust_quality_gate.sh",
+      "--defer-lsp"
+    ],
+    "exit_code": 0,
+    "whole_seconds": 278.2948730830103,
+    "target_dir": "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/target/step17-opt1",
+    "log_path": "target/workflow-logs/step17-test-throughput/gate.log",
+    "log_bytes": 336080,
+    "log_sha256": "65a7ab4e9a2fa50cb954a5b904d1109868a23348feb3a4ce4c7605c068c2c928"
+  },
+  "warm_candidate_suite": {
+    "command": [
+      "cargo",
+      "test",
+      "--workspace",
+      "--exclude",
+      "lsp",
+      "--locked"
+    ],
+    "exit_code": 0,
+    "whole_seconds": 227.92747858399525,
+    "target_dir": "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/target/step17-opt1",
+    "log_path": "target/workflow-logs/step17-test-throughput/warm-suite.log",
+    "log_bytes": 262906,
+    "log_sha256": "46b173b582e86d9e83669d78f9bfb2df892294568ca00f00d3b0128e5e368630"
+  },
+  "retention": "retain; performance/correctness conditions satisfied, final workflow/compliance/commit pending",
+  "performance_scope": "Developer-loop test execution only; no product Rust release/native 68020 runtime speedup claimed",
+  "receipts": [
+    {
+      "path": "target/workflow-logs/step17-test-throughput/identity.json",
+      "bytes": 976,
+      "sha256": "986249aed2454bd15548c2fd96a97c509c01063e00c91a3825ca1fdf0ec056ca"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/Cargo.toml.control.txt",
+      "bytes": 536,
+      "sha256": "0633f407404f985fa23f1ced11c86454ad5979c260f20bebd45c3f03377e02a8"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/control-results.json",
+      "bytes": 1804,
+      "sha256": "95b0091fc13caff642fe172c65d795a993f0b130ff06422daf59f321422405d6"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/candidate-results.json",
+      "bytes": 1807,
+      "sha256": "4ce9e18251edc85e502713543b923f62745de7a7ad7f48056a2d1b46a54792fe"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/control-outputs.json",
+      "bytes": 16368,
+      "sha256": "834608ea749376a96fbeb8dd2deef3b9c94c94bdc720e4b2c1a49cfed4f94407"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/candidate-outputs.json",
+      "bytes": 16370,
+      "sha256": "29ccc2363b606f8c83cfca09f2569f573626ec8fbf668e67e019050975bf35e2"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/control-inventory.json",
+      "bytes": 439978,
+      "sha256": "6f10eae79b7049bae82e1f958f42b8d9868f30ebc438c666e7d96ff99ed80852"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/profile-checks.json",
+      "bytes": 3819,
+      "sha256": "3d5bdb38c19d7e8817d9b6108ef3b5a9184406e2f3fc622e7cb7d6fa224bf4a0"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/profile-checks-compile.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/profile-checks-run.log",
+      "bytes": 249,
+      "sha256": "3a73d598799789a62dd56a5a07740c04385225d7ef8f4a8036cc3a2c420c88fb"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/profile_checks.rs",
+      "bytes": 338,
+      "sha256": "b402163249874d1825c5b3f283d25fbab20f600a2e3112c22083e59a287ebcb0"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/workspace-compile-result.json",
+      "bytes": 489,
+      "sha256": "87446f7f7dbbf30979cbfff966e86aea486fc2d0b58336012b5e78324f985673"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/workspace-compile.log",
+      "bytes": 201562,
+      "sha256": "ef0fb87e2225d34cf2b6cd87b9aeb6a6f78bec63f4820db9fb8ed8df94332d91"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/workspace-test-flags.json",
+      "bytes": 8199,
+      "sha256": "7ed5073c34696e3d9b9ed3a93728283a6589ec43bc72298aba3fb0ca69651408"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/measure.py",
+      "bytes": 1934,
+      "sha256": "8c525631ff20db28b1b567119133f2b023ec4e92974f1e8941804890bc8b3ff1"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/capture_outputs.py",
+      "bytes": 1890,
+      "sha256": "5d69616bfac04280c3938836a941771f6b1da26f83e9178ef4916a702ebe4ff3"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/inventory.py",
+      "bytes": 2524,
+      "sha256": "287ff903eae74d18896683ad6af29bbbd9158d7c2572984736fcaad04bfb50e5"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/check_profile.py",
+      "bytes": 2654,
+      "sha256": "6261d70ebe5765b65778f98b64095257ada236d3e975baae1497ec13aaf660d2"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/run_stage.py",
+      "bytes": 1167,
+      "sha256": "8a6989e64b24753c463cfc3cad1aa98be105c3e76ca6ad1d2f764e012a238259"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/gate-result.json",
+      "bytes": 441,
+      "sha256": "be749c855ba14afcee3fd2ae60aa90ec918645baee6d399ec2e17250214620cc"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/gate.log",
+      "bytes": 336080,
+      "sha256": "65a7ab4e9a2fa50cb954a5b904d1109868a23348feb3a4ce4c7605c068c2c928"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/candidate-gate-inventory.json",
+      "bytes": 439978,
+      "sha256": "6f10eae79b7049bae82e1f958f42b8d9868f30ebc438c666e7d96ff99ed80852"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/warm-suite-result.json",
+      "bytes": 456,
+      "sha256": "3d57177b81894864a2489df27102f8e88b95f0541a00c965fc9cbc9547371e2e"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/warm-suite.log",
+      "bytes": 262906,
+      "sha256": "46b173b582e86d9e83669d78f9bfb2df892294568ca00f00d3b0128e5e368630"
+    },
+    {
+      "path": "target/workflow-logs/step17-test-throughput/candidate-warm-inventory.json",
+      "bytes": 439978,
+      "sha256": "6f10eae79b7049bae82e1f958f42b8d9868f30ebc438c666e7d96ff99ed80852"
+    }
+  ],
+  "complete_gate_inventory_matches": true,
+  "full_candidate_assembler_seconds": 208.2,
+  "whole_gate_improvement_percent": 85.26908020200405,
+  "candidate_first_pass_including_cold_preparation_seconds": 349.5238741671201,
+  "first_pass_saving_including_cold_preparation_seconds": 1539.664831624832,
+  "warm_candidate_assembler_seconds": 207.04,
+  "warm_inventory_matches_control": true,
+  "candidate_assembler_repeat_variation_percent": 0.5587130334264505
+}

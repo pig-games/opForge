@@ -1,3 +1,13 @@
+PASS: Independent plan-compliance reviewer plan_review approves Step17 / A-test-throughput and focused commit perf(test): optimize validation with safety checks retained. The reviewed four-file staged diff SHA256 is 21d1aff30a353727d0d5c254e6a7cd706fe9631c3fd678c4278fe52713639e77; this sidecar adds only the final approval receipt.
+
+Artifact SHA-256: e4640e9790af405d54cd20b12bc6439f68b1a4b8c29acf6d750d97d90e44b7cc
+Validation: target/workflow-logs/step17-test-throughput/gate.log, explicit exit0, 336080 bytes, SHA256 65a7ab4e9a2fa50cb954a5b904d1109868a23348feb3a4ce4c7605c068c2c928.
+Validation: target/workflow-logs/step17-test-throughput/warm-suite.log, explicit exit0, 262906 bytes, SHA256 46b173b582e86d9e83669d78f9bfb2df892294568ca00f00d3b0128e5e368630.
+Validation: target/workflow-logs/step17-test-throughput/workflow.log, explicit exit0, 6482 bytes, SHA256 290804c2b1304384137ecd43ddb1473a325b5e22f3f55ab443cb1dc69662436d.
+Retain test opt-level1 with explicit debug assertions and overflow checks. Effective compiler flags and three runtime probes PASS; all executable/listing/hex bytes across10compositions and2runs perprofile match. Both complete3030-result inventories match control across34Cargo suites/38summaries, preserving FFI child records. Focused commands improve78.2102%; full non-LSP gate1889.188706s to278.294873s improves85.2691%. Including71.229001s cold preparation, the first candidate pass saves1539.664832s. Warm suite227.927479s passes with assembler207.04s versus208.20s. All34 indexed receipts verify. This final approval supersedes pending workflow/compliance wording in the Step17 evidence. No product/native runtime speedup is claimed. Step18 and all B10/native/Phase A debt remain mandatory; LSP stays last at Step28.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Independent plan-quality and plan-compliance reviewer plan_review approves the documentation-only A-test-throughput amendment after Step16. New Step17 measures one opt-level1 test-profile candidate with debug assertions and overflow checks retained, identical tests/oracles and mandatory non-LSP gate, explicit cold/warm amortization and revert/no-go. No implementation or savings are claimed yet. Step18 B10 and Step19 A-close retain all qualification debt; LSP-close remains last at Step28.
 
 Artifact SHA-256: 478cd966e5e65fbc71c828db16755321f8ff3c057a3ccb1b916346667b148f94

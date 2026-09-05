@@ -192,10 +192,21 @@ fn run_native_production_corpus(abort_visits: Option<u32>) {
         std::env::var("OPFORGE_FS_UAE_POST_START_TIMEOUT_MS").as_deref(),
         Ok("120000")
     );
+    let poll_ms = std::env::var("OPFORGE_FS_UAE_POLL_MS").unwrap_or("250".into());
+    assert_eq!(
+        poll_ms, "250",
+        "matched corpus runs require the default 250ms polling interval"
+    );
     let profile_mode = std::env::var("OPFORGE_NATIVE_CORPUS_PROFILE").unwrap_or("off".into());
     let mut owned_defines = native_corpus_profile_defines(&profile_mode, abort_visits.is_some());
     if let Some(visits) = abort_visits {
         owned_defines.push(format!("OPFORGE_PROGRESS_ABORT_VISITS={visits}"));
+    }
+    let clear_mode = std::env::var("OPFORGE_NATIVE_CORPUS_CLEAR").unwrap_or("longword".into());
+    match clear_mode.as_str() {
+        "longword" => {}
+        "byte" => owned_defines.push("OPFORGE_SESSION_CLEAR_BYTE_REFERENCE".into()),
+        _ => panic!("OPFORGE_NATIVE_CORPUS_CLEAR must be longword or byte"),
     }
     let defines: Vec<&str> = owned_defines.iter().map(String::as_str).collect();
     let mut command = std::process::Command::new("python3");
@@ -379,7 +390,11 @@ fn run_native_production_corpus(abort_visits: Option<u32>) {
                         serde_json::json!({"id": case.id, "case_sha256": case.sha256,
                     "complete": true, "exit_status": 0, "exact_artifacts": artifact_paths,
                     "command_template": command, "package_sha256": input.package_sha256,
-                    "profile_mode": profile_mode, "profile": profile})
+                    "profile_mode": profile_mode, "profile": profile,
+                    "clear_mode": clear_mode, "native_image_digest": run.native_image_digest,
+                    "start_to_done_host_seconds": run.start_to_done_host_seconds,
+                    "timing_poll_interval_ms": 250,
+                    "timing_boundary": "host-observed case START to DONE; polling uncertainty applies"})
                     );
                 }
                 Ok(FsUaeSmokeOutcome::Skipped(reason)) => {

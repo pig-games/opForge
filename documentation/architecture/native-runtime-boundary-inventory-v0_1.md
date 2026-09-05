@@ -487,6 +487,15 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 
 ### `opasm.amigaos.engine` (NR-001, conditional decomposition)
 
+Step 10 / Item 17c (2026-09-05) changes only the private single-caller session
+clear to aligned longword stores with a byte-reference build switch. The full
+audited surface remains 101 routines, 4 imports, code/BSS sections and 35
+diagnostic paths; no capacity, public ABI, owner or cross-subsystem boundary
+changed. The companion manifest now binds source SHA-256 `3ab6e60b940fd80245cf0687dcf36a225c197197b6b2b74fd8a02bc7c3022ec1`.
+Memory/ABI proof and completed CLI timing are recorded in
+`documentation/performance/results/opforge-step10-session-clear-2026-09-05.md`.
+
+
 - Source: `native/motorola68000/amigaos/opasm/opasm_engine.asm`.
 - Public surface: session initialization, source/statement collection,
   callback-context construction, pass execution, labels and their PC-backed

@@ -1,3 +1,12 @@
+PASS: Independent plan-compliance reviewer plan_review (2026-09-05) approves Step 10 / Item 17c and the focused commit perf(native): accelerate same-range session initialization. The reviewed 13-file staged scope preserves the exact 41,221,928-byte clear range and byte-reference rollback. This sidecar adds only the final receipt.
+
+Artifact SHA-256: 3879a6e8485ff2c1242941eecd3b5d4fe83dcaaf5c01b7002773c070d4bdb8e6
+Validation: step10-rust-non-lsp-20260905.log, explicit exit0, 343923 bytes, SHA256 b119e007ae1704aaac85d6d12e506a90ffe17d511bd30c7bdb93118577ccbbfe.
+Validation: step10-staged-workflow-r2-20260905.log, explicit exit0, 6912 bytes, SHA256 f0986190476f666a99b41ac54205f3abecbfa60c5f493933411b9d04f69b4855.
+Non-LSP Rust: 1,588 assembler tests and remaining checks PASS; LSP remains deferred. Workflow: 134 tests, 238 native formats and staged guards PASS. Three alternating B01 pairs show 40.62% lower case median and 24.00% lower whole-test median with strict fresh Level D proof. Capacity and early-error confirmations PASS. Both B10 runs remain 120s timeout failures, with no parity or speed claim. Retention is provisional until A-close. Step11 starts after this commit; Phase A remains open.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Independent plan-compliance review by observation_review (2026-09-05) accepts Step 09 / Item E0 as a focused documentation-only classification commit. All 13 failed native groups and B01–B10/LSP have owners; baseline versus introduced status remains unresolved; the six-byte header/range discrepancy is bounded without repair. Fresh strict B01 Level D parity establishes an unaffected oracle for the exact existing-range 17c experiment. No defect fix, repeated benchmark gain or broader parity is claimed. Step10 begins only after this focused commit.
 
 Artifact SHA-256: b6b84be2fa512b79073e6c3a2085c949d820da50e89ef7c88ebe363174a42492

@@ -97,8 +97,8 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 10 of 25 · Item 17c — accelerate the exact existing
-session clear.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 11 of 25 · Item R0 — find one Rust cost with existing
+phase timing and host sampling.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -146,6 +146,9 @@ session clear.** Update this pointer and total when the active item or plan chan
   together by measured return; a track has no guaranteed quota of speculative
   work. A blocked native case must not force repeated native profiling when a
   supported Rust candidate can proceed through a reviewed reorder.
+- Every user-facing results report must explain how the last work contributed
+  to performance: measured runtime improvement, faster development/validation,
+  or enabling evidence. Distinguish these explicitly from unmeasured expectations.
 - Track developer throughput as well as product cost: elapsed focused test,
   native build and gate time, guest startup where separable, and proof status.
   Estimate payback as expected seconds saved per invocation × remaining
@@ -249,7 +252,8 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): classify early optimization correctness boundaries`; exactly one focused commit before the next item.
   - Definition of done: ledger links all failed groups/corpus statuses to owners and retains LSP failures under Item LSP-close; first candidate has a trustworthy focused oracle and no hidden relevant failure.
 
-- [ ] Step 10 · Item 17c — Speed the exact existing session clear at one call site
+- [x] Step 10 · Item 17c — Speed the exact existing session clear at one call site
+  - Completion evidence (2026-09-05): `documentation/performance/results/opforge-step10-session-clear-2026-09-05.md` and the six-run B01 JSON record 40.62% median case-time improvement (75.5636s to 44.8694s), 24.00% lower whole-test cost, exact same-range memory/ABI checks, strict native parity and capacity/error confirmations. Both B10 builds retain their unchanged 120s timeout failures; no B10 gain or Phase A closure is claimed. Non-LSP Rust passed (1,588 assembler tests) and staged workflow passed. This checkbox closes only with final independent compliance and the focused 17c commit; retention remains provisional through A-close.
   - Source requirement or finding IDs: SR-EARLY, SR-PAR, SR-ARCH, F2, F3.
   - Expected files: native opasm session init/clear helper, primitive harness and focused tests/results.
   - Dependencies/worktree: E0; narrow integration slice or isolated child if unfinished work remains.

@@ -227,6 +227,9 @@ pub(crate) struct FsUaeSmokeRun {
     pub(crate) stderr: String,
     pub(crate) exit_code: Option<i32>,
     pub(crate) protocol_completed: bool,
+    // Single-case host observation only; parity checks remain authoritative.
+    pub(crate) start_to_done_host_seconds: Option<f64>,
+    pub(crate) native_image_digest: Option<String>,
     pub(crate) success: bool,
     pub(crate) verified_output: Option<Vec<u8>>,
     pub(crate) captured_artifacts: BTreeMap<PathBuf, Vec<u8>>,
@@ -2682,7 +2685,7 @@ fn run_native_cli_parity_batch_cases(
             return Err(format!("{err}\n{partial}"));
         }
     };
-    if wait_outcome == FsUaeWaitOutcome::Captured {
+    if matches!(wait_outcome, FsUaeWaitOutcome::Captured(_)) {
         if live_capture {
             // The opt-in observer records DONE before cleaning its child and
             // printing the receipt. The normal 500ms force-kill grace is too
@@ -2778,6 +2781,11 @@ fn run_native_cli_parity_batch_cases(
             ),
             exit_code,
             protocol_completed,
+            start_to_done_host_seconds: wait_outcome.single_case_seconds(cases.len(), success),
+            native_image_digest: Some(opforge_self_host_package_digest(
+                &fs::read(&mounted_hunk_alias_path)
+                    .map_err(|err| format!("read measured native image: {err}"))?,
+            )),
             success,
             verified_output: None,
             captured_artifacts: opforge_native_cli_case_captured_artifacts(
@@ -3478,7 +3486,18 @@ struct FsUaeCaptureConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FsUaeWaitOutcome {
     Exited,
-    Captured,
+    Captured(Option<Duration>),
+}
+
+impl FsUaeWaitOutcome {
+    fn single_case_seconds(self, case_count: usize, success: bool) -> Option<f64> {
+        match self {
+            Self::Captured(Some(duration)) if case_count == 1 && success => {
+                Some(duration.as_secs_f64())
+            }
+            _ => None,
+        }
+    }
 }
 
 fn capture_config_from_env(
@@ -3950,7 +3969,9 @@ fn wait_for_capture_or_exit(
     let mut launcher_exited_at = None;
     loop {
         if capture_path_exists(&capture.ready_paths) {
-            return Ok(FsUaeWaitOutcome::Captured);
+            return Ok(FsUaeWaitOutcome::Captured(
+                smoke_started_at.map(|started: Instant| started.elapsed()),
+            ));
         }
 
         if smoke_started_at.is_none() && capture_path_exists(&capture.start_paths) {
@@ -4317,7 +4338,7 @@ fn run_example_smoke_with_request(
                 return Err(err);
             }
         };
-    if wait_outcome == FsUaeWaitOutcome::Captured {
+    if matches!(wait_outcome, FsUaeWaitOutcome::Captured(_)) {
         wait_for_process_exit_after_capture(&mut child, example_name)?;
     }
     let launcher_status = child
@@ -4353,6 +4374,8 @@ fn run_example_smoke_with_request(
         ),
         exit_code: guest_exit_code,
         protocol_completed,
+        start_to_done_host_seconds: None,
+        native_image_digest: None,
         success: protocol_completed && guest_exit_code == Some(0),
         verified_output: None,
         captured_artifacts,
@@ -4596,7 +4619,7 @@ fn run_example_smoke_with_guest_input(
             return Err(err);
         }
     };
-    if wait_outcome == FsUaeWaitOutcome::Captured {
+    if matches!(wait_outcome, FsUaeWaitOutcome::Captured(_)) {
         wait_for_process_exit_after_capture(&mut child, spec.example_name)?;
     }
     let launcher_status = child
@@ -4632,6 +4655,8 @@ fn run_example_smoke_with_guest_input(
         ),
         exit_code: guest_exit_code,
         protocol_completed,
+        start_to_done_host_seconds: None,
+        native_image_digest: None,
         success: protocol_completed && guest_exit_code == Some(0),
         verified_output: None,
         captured_artifacts,
@@ -4714,6 +4739,20 @@ mod tests {
             .join("../..")
             .canonicalize()
             .expect("canonical test workspace root")
+    }
+
+    #[test]
+    fn completed_timing_never_promotes_missing_failed_or_batch_evidence() {
+        // Level B receipt contract; not native parity or a timing calibration.
+        let timed = FsUaeWaitOutcome::Captured(Some(Duration::from_millis(1250)));
+        assert_eq!(timed.single_case_seconds(1, true), Some(1.25));
+        for outcome in [FsUaeWaitOutcome::Exited, FsUaeWaitOutcome::Captured(None)] {
+            assert_eq!(outcome.single_case_seconds(1, true), None);
+        }
+        for count in [0, 2, 10] {
+            assert_eq!(timed.single_case_seconds(count, true), None);
+        }
+        assert_eq!(timed.single_case_seconds(1, false), None);
     }
 
     #[test]
@@ -5086,6 +5125,8 @@ mod tests {
             stderr: "diagnostic".to_string(),
             exit_code,
             protocol_completed,
+            start_to_done_host_seconds: None,
+            native_image_digest: None,
             success: protocol_completed && exit_code == Some(0),
             verified_output: None,
             captured_artifacts,
@@ -5767,6 +5808,7 @@ mod tests {
         let mut baseline = None;
         for (index, defines) in [
             &[][..],
+            &["OPFORGE_SESSION_CLEAR_BYTE_REFERENCE"][..],
             &[
                 "OPFORGE_DEBUG_CONTRACTS",
                 "OPFORGE_PROGRESS_PLATFORM_COUNTERS",

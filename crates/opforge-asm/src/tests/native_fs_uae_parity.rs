@@ -28572,3 +28572,30 @@ fn external_fs_uae_native_opforge_two_generation_self_host_parity() {
         generation_two_list.len(),
     );
 }
+
+#[test]
+fn external_fs_uae_session_clear_early_error_preserves_diagnostic() {
+    // Level D early-error contract after session initialization, not a claim
+    // about every diagnostic or the outstanding completed branch failures.
+    let _guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native session-clear smoke lock");
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+        name: "session-clear-unknown-mnemonic",
+        define: "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC",
+        expected_diagnostic: "ERROR OPC-NCLI025: unknown native mnemonic",
+    }];
+    match crate::fs_uae_smoke::run_opforge_native_cli_failure_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("session-clear early-error guest contract")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed);
+            assert_eq!(runs[0].exit_code, Some(1));
+        }
+    }
+}

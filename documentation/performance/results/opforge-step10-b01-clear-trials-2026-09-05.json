@@ -1,0 +1,221 @@
+{
+  "status": "B01 threshold passed; Step10 qualification pending",
+  "proof_scope": "completed fresh B01 exact parity only; no B10 or PhaseA closure",
+  "base_revision": "4c1df043",
+  "sequence": [
+    "longword",
+    "byte",
+    "byte",
+    "longword",
+    "longword",
+    "byte"
+  ],
+  "sets": {
+    "byte": {
+      "seconds": [
+        75.34104825,
+        75.563602708,
+        75.568435375
+      ],
+      "median": 75.563602708,
+      "min": 75.34104825,
+      "max": 75.568435375,
+      "relative_range": 0.0030092149771987152,
+      "whole_test_median": 129.2550518750213,
+      "native_image_digest": "fnv1a64:8e371eaf0399891b"
+    },
+    "longword": {
+      "seconds": [
+        44.869376417,
+        44.678804584,
+        44.874342083
+      ],
+      "median": 44.869376417,
+      "min": 44.678804584,
+      "max": 44.874342083,
+      "relative_range": 0.00435792771405486,
+      "whole_test_median": 98.23494274984114,
+      "native_image_digest": "fnv1a64:2ce75c60d00d1f24"
+    }
+  },
+  "median_improvement_fraction": 0.40620384935339215,
+  "noise_fraction": 0.00435792771405486,
+  "threshold_fraction": 0.05,
+  "seconds_saved_per_case": 30.694226291000007,
+  "rows": [
+    {
+      "trial": 1,
+      "mode": "longword",
+      "host_exit": 0,
+      "whole_test_seconds": 99.57158300001174,
+      "log": "target/workflow-logs/step10-b01-1-longword-20260905.log",
+      "results": [
+        {
+          "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+          "clear_mode": "longword",
+          "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+          "complete": true,
+          "exact_artifacts": [
+            "Work/output.bin"
+          ],
+          "exit_status": 0,
+          "id": "B01",
+          "native_image_digest": "fnv1a64:2ce75c60d00d1f24",
+          "package_sha256": "46a56a5bd436b012c596c65d1f7d85fe6cd8fadbd702362955804415e00c0d41",
+          "profile": null,
+          "profile_mode": "off",
+          "start_to_done_host_seconds": 44.869376417,
+          "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+          "timing_poll_interval_ms": 250
+        }
+      ],
+      "log_bytes": 1805,
+      "log_sha256": "872ad68a3e1878fc1d9eee0dc186a749afaf32e5235a5c1f214365f5f1bfce03"
+    },
+    {
+      "trial": 2,
+      "mode": "byte",
+      "host_exit": 0,
+      "whole_test_seconds": 130.11879479209892,
+      "log": "target/workflow-logs/step10-b01-2-byte-20260905.log",
+      "results": [
+        {
+          "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+          "clear_mode": "byte",
+          "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+          "complete": true,
+          "exact_artifacts": [
+            "Work/output.bin"
+          ],
+          "exit_status": 0,
+          "id": "B01",
+          "native_image_digest": "fnv1a64:8e371eaf0399891b",
+          "package_sha256": "46a56a5bd436b012c596c65d1f7d85fe6cd8fadbd702362955804415e00c0d41",
+          "profile": null,
+          "profile_mode": "off",
+          "start_to_done_host_seconds": 75.34104825,
+          "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+          "timing_poll_interval_ms": 250
+        }
+      ],
+      "log_bytes": 1801,
+      "log_sha256": "04d012ef7609b568a61298694786dc6bc4944eaf93c0e181a12491a33a021030"
+    },
+    {
+      "trial": 3,
+      "mode": "byte",
+      "host_exit": 0,
+      "whole_test_seconds": 129.2550518750213,
+      "log": "target/workflow-logs/step10-b01-3-byte-20260905.log",
+      "results": [
+        {
+          "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+          "clear_mode": "byte",
+          "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+          "complete": true,
+          "exact_artifacts": [
+            "Work/output.bin"
+          ],
+          "exit_status": 0,
+          "id": "B01",
+          "native_image_digest": "fnv1a64:8e371eaf0399891b",
+          "package_sha256": "46a56a5bd436b012c596c65d1f7d85fe6cd8fadbd702362955804415e00c0d41",
+          "profile": null,
+          "profile_mode": "off",
+          "start_to_done_host_seconds": 75.563602708,
+          "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+          "timing_poll_interval_ms": 250
+        }
+      ],
+      "log_bytes": 1802,
+      "log_sha256": "a77f6bddb02d66900c37796b148a7a58e1c7d850cfa7b7a00725050a52a34289"
+    },
+    {
+      "trial": 4,
+      "mode": "longword",
+      "host_exit": 0,
+      "whole_test_seconds": 98.23494274984114,
+      "log": "target/workflow-logs/step10-b01-4-longword-20260905.log",
+      "results": [
+        {
+          "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+          "clear_mode": "longword",
+          "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+          "complete": true,
+          "exact_artifacts": [
+            "Work/output.bin"
+          ],
+          "exit_status": 0,
+          "id": "B01",
+          "native_image_digest": "fnv1a64:2ce75c60d00d1f24",
+          "package_sha256": "46a56a5bd436b012c596c65d1f7d85fe6cd8fadbd702362955804415e00c0d41",
+          "profile": null,
+          "profile_mode": "off",
+          "start_to_done_host_seconds": 44.678804584,
+          "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+          "timing_poll_interval_ms": 250
+        }
+      ],
+      "log_bytes": 1805,
+      "log_sha256": "3e338cab1e5e20fe4fdbb0add3fe348bc1c495b7f51f94d3208c2339c4c849a6"
+    },
+    {
+      "trial": 5,
+      "mode": "longword",
+      "host_exit": 0,
+      "whole_test_seconds": 97.68283133301884,
+      "log": "target/workflow-logs/step10-b01-5-longword-20260905.log",
+      "results": [
+        {
+          "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+          "clear_mode": "longword",
+          "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+          "complete": true,
+          "exact_artifacts": [
+            "Work/output.bin"
+          ],
+          "exit_status": 0,
+          "id": "B01",
+          "native_image_digest": "fnv1a64:2ce75c60d00d1f24",
+          "package_sha256": "46a56a5bd436b012c596c65d1f7d85fe6cd8fadbd702362955804415e00c0d41",
+          "profile": null,
+          "profile_mode": "off",
+          "start_to_done_host_seconds": 44.874342083,
+          "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+          "timing_poll_interval_ms": 250
+        }
+      ],
+      "log_bytes": 1805,
+      "log_sha256": "223f41b03cadc216bc3e9b920ddf4b38eba1128b4f8a8cd6b328e970f8519eeb"
+    },
+    {
+      "trial": 6,
+      "mode": "byte",
+      "host_exit": 0,
+      "whole_test_seconds": 128.98971120920032,
+      "log": "target/workflow-logs/step10-b01-6-byte-20260905.log",
+      "results": [
+        {
+          "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+          "clear_mode": "byte",
+          "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+          "complete": true,
+          "exact_artifacts": [
+            "Work/output.bin"
+          ],
+          "exit_status": 0,
+          "id": "B01",
+          "native_image_digest": "fnv1a64:8e371eaf0399891b",
+          "package_sha256": "46a56a5bd436b012c596c65d1f7d85fe6cd8fadbd702362955804415e00c0d41",
+          "profile": null,
+          "profile_mode": "off",
+          "start_to_done_host_seconds": 75.568435375,
+          "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+          "timing_poll_interval_ms": 250
+        }
+      ],
+      "log_bytes": 1802,
+      "log_sha256": "264f7fed8da6911a85eb309a071e8a8e1231ac5691e2641a9c0d114dc56b6252"
+    }
+  ]
+}

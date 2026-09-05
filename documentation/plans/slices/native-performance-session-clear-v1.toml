@@ -1,0 +1,51 @@
+[slice]
+schema_version = 2
+name = "same-range session initialization clear"
+kind = "native-performance"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "17c / Step 10"
+rust_reference = ["crates/opforge-asm/src/tests/native_production_corpus.rs::run_native_production_corpus", "crates/opforge-asm/src/tests/native_statement_capacity.rs::native_statement_capacity_over_512_fs_uae"]
+native_boundary = ["native/motorola68000/amigaos/opasm/opasm_engine.asm::initSessionV1", "native/motorola68000/amigaos/opasm/opasm_engine.asm::clearBytes"]
+invariant = "Clear precisely the existing input range at the one session-init call; preserve guard bytes, D0=0, A1 advancement, other registers, stack balance and CCR, while ordinary CLI artifacts remain equal to each fresh Rust oracle."
+expected_inputs = "D0.L unsigned byte count and A1 destination; the production call requests exactly 41,221,928 bytes."
+expected_outputs = "Exactly that range is zeroed. D0=0 and A1 advances by the count. N/V/C=0, Z=1; X is unchanged on zero input and clear otherwise. All other registers and stack depth are preserved."
+known_non_equivalences = "Native fixed-arena storage and ABI have no identical Rust layout. The existing six-byte declared/emitted range discrepancy is preserved, not repaired. The byte-reference define selects the original loop; the candidate aligns and clears longwords with a 32-bit count."
+fast_proof_command = "python3 -m unittest scripts/performance/tests/test_session_clear.py -v"
+level_d_command = "OPFORGE_PERFORMANCE_CORPUS=1 OPFORGE_NATIVE_CORPUS_CASES=B01 OPFORGE_NATIVE_CORPUS_CLEAR=longword OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test -p asm external_fs_uae_native_production_corpus_parity -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "SessionClearLevelCTests"
+proof_level = "C"
+proves = "Source-driven modeled memory, alignment, ABI, stack and CCR contracts for candidate/reference at zero, small/tail, all alignments, beyond 16-bit and full-session lengths, against independent slice-fill memory."
+does_not_prove = "Instruction encoding, real CPU execution, AmigaOS or timing; exact large loop triples are accelerated in the model."
+
+[[tests]]
+name = "completed_timing_never_promotes_missing_failed_or_batch_evidence"
+proof_level = "B"
+proves = "Only a completed successful single-case observation can provide elapsed time; missing timing, failure and multi-case duration remain unmeasured."
+does_not_prove = "Native parity or timing calibration."
+
+[[tests]]
+name = "profiling_defines_preserve_guest_source_inventory_and_legacy_selectors"
+proof_level = "B"
+proves = "The byte-reference flag preserves the native case source inventory and command interpolation."
+does_not_prove = "Execution or performance."
+
+[[tests]]
+name = "external_fs_uae_native_production_corpus_parity / B01"
+proof_level = "D"
+proves = "Each successful real CLI case completes a fresh case-bound protocol with explicit zero guest exit, exact live Rust artifacts and strict streams. Three alternating B01 pairs supply bounded performance evidence."
+does_not_prove = "B10, all native groups, physical hardware or full Phase A completion."
+
+[[tests]]
+name = "external_fs_uae_session_clear_early_error_preserves_diagnostic"
+proof_level = "D"
+proves = "A completed post-session-init unknown-mnemonic case retains its required native diagnostic and explicit nonzero exit under the fresh guest protocol."
+does_not_prove = "Every error path or equality of all Rust/native diagnostic rendering."
+
+[[tests]]
+name = "native_statement_capacity_over_512_fs_uae"
+proof_level = "D"
+proves = "A completed real CLI case crossing the former 512-row boundary emits the exact in-memory Rust output with fresh protocol and explicit zero exit."
+does_not_prove = "Maximum capacity, every alignment or full-product behavior."

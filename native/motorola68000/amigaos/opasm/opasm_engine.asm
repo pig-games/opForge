@@ -3052,6 +3052,10 @@ restoreOutputMode
 	.bend  ; opasmEngineRunTwoPassV1
 	.priv
 
+; Zero exactly D0.L bytes at A1; the session initializer is the only caller.
+; Outputs: D0 = 0, A1 advanced by the input length. Clobbers: D0/A1/CCR.
+; CCR: Z set, N/V/C clear; X unchanged for zero length, clear otherwise.
+; The byte-reference build keeps the original loop for matched trials.
 clearBytes	.block
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	move.l d0, -(sp)
@@ -3060,10 +3064,46 @@ clearBytes	.block
 	tst.l d0
 	beq.s done
 
+.ifdef OPFORGE_SESSION_CLEAR_BYTE_REFERENCE
 loop
 	clr.b (a1)+
 	subq.l #1, d0
 	bne.s loop
+.else
+	movem.l d1, -(sp)
+
+alignLoop
+	move.l a1, d1
+	andi.l #3, d1
+	beq.s aligned
+	clr.b (a1)+
+	subq.l #1, d0
+	beq.s restore
+	bra.s alignLoop
+
+aligned
+	move.l d0, d1
+	lsr.l #2, d1
+	beq.s byteTail
+
+longLoop
+	clr.l (a1)+
+	subq.l #1, d1
+	bne.s longLoop
+	andi.l #3, d0
+
+byteTail
+	tst.l d0
+	beq.s restore
+
+byteLoop
+	clr.b (a1)+
+	subq.l #1, d0
+	bne.s byteLoop
+
+restore
+	movem.l (sp)+, d1
+.endif
 
 done
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS

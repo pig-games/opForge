@@ -136,10 +136,8 @@ tryBranchEvaluate
 	bsr.w tkpkgMselEvalOperandV1
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.w return
-	tst.b state.EncodeSelectedMselUnstable
-	beq.s tryBranchStable
-	moveq #1, d6
-	bra.w tryUnstablePassOneOperand
+	; Later passes use the resolved target even before its defining row refreshes.
+	; Rust's relative operand plan checks displacement, not symbol stability.
 
 tryBranchStable
 	move.l state.EncodeSelectedMselValue, d3

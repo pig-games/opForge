@@ -101,6 +101,24 @@ answers opaque state requirements. CPU names, directive names, target values,
 profile legality, and selector diagnostics remain in the unchanged Rust-built
 package; the native runtime contains no FPU or Apollo target table.
 
+Performance-plan Step 16 refreshes the branch-selection disposition after the
+exact recorded branch cases identified a resolved-target invariant at the
+operand runtime boundary. The source change removes the later-pass rejection
+based only on `EncodeSelectedMselUnstable` and adds two explanatory comments:
+the native operand runtime is 35,259 bytes / 1,736 lines in this worktree,
+versus 35,214 bytes / 1,738 lines at the Step15 baseline (+45 bytes, -2
+lines). Its audited static surface remains 23 `.block` routines, five
+imports, `data`/`code` sections, and 60 diagnostic/status/event lines; the
+updated source SHA-256 is
+`8ccf698f85b2fa2e675109ab119f8918c478fb3bc94f661980a14d0fee1d65d8`.
+Because `tkpkg_selection_service.asm` imports this module transitively once,
+the canonical source-budget snapshot changes by the same file delta: 1,669,707
+loadable source bytes (+45), 91,950 processed graph lines (-2) / 3,522,243
+bytes (+45), 419 imports, and 6,575 public declarations / 128,293 packed name
+bytes. The new focused test
+attempts the four original branch cases with `OPFORGE_BRANCH_CASE=all` and
+the original 300-second bounds; it does not add a canonical inventory target.
+
 Performance-plan Item 0d refreshes the audited snapshots for the coarse native
 runtime observation sites. The affected VM and service owners conditionally
 import `debug.amigaos.runtime_profile`; that dependency is a default-off,

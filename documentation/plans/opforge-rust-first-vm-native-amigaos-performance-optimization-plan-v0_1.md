@@ -98,8 +98,8 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 16 of 27 · Item A-branch — resolve completed branch-selection
-failures after the focused Step15 decision commit.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 17 of 27 · Item A-b10-localize — identify the remaining B10
+evidence boundary after the focused Step16 branch correction commit.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -350,7 +350,8 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): rerank after native throughput experiments`; exactly one focused commit before the next item.
   - Definition of done: one explicit route to completed B10 and remaining gate repair is selected, or the phase remains honestly blocked; any inserted items are individually reviewable.
 
-- [ ] Step 16 · Item A-branch — Resolve the completed pass-two branch rejection
+- [x] Step 16 · Item A-branch — Resolve the completed pass-two branch rejection
+  - Completion evidence (2026-09-05; final compliance and focused commit pending): full non-LSP Rust passed (1,591 assembler tests), as did staged native/workflow gates and independent E0-1 finding-closure review. One unchanged first-run schema reproduction completed with the original BEQ/OPC-NCLI026 failure. The generic rel8 path discarded an available later-pass target solely for symbol instability, unlike Rust encode_expr_relative. Removing that rejection preserves pass-one deferral, evaluation errors and range checks. All four original branch cases now pass fresh exact-Rust Level D confirmation. Restoring the existing public label preserves the original export surface and yields an identical native image. See the Step16 correction report, evidence JSON and E0-1 closure artifact; all other A-close debt remains open.
   - Source requirement or finding IDs: SR-PAR, SR-EARLY, E0-1, G1.
   - Expected files: native tkpkg selection service and CLI encode-request boundary; package definitions only if the proven invariant belongs there; a child native test module, slice metadata, results and plan receipts.
   - Dependencies/worktree: committed A-triage decision at Step15, based on f4cf38c5 or its reviewed descendant; isolated child with existing build cache.

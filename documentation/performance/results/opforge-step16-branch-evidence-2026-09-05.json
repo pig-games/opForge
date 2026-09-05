@@ -1,0 +1,275 @@
+{
+  "artifact": "Step16 branch resolved-target evidence",
+  "date": "2026-09-05",
+  "scope": "Four original completed native branch rejections",
+  "production_source": {
+    "path": "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm",
+    "sha256": "8ccf698f85b2fa2e675109ab119f8918c478fb3bc94f661980a14d0fee1d65d8",
+    "confirmed_source_sha256": "c2fbcc1b8ec5d10f7b6897a5c2e8dd32178a9b9ae3eb771904bb532d9e4ba0bb"
+  },
+  "cases": [
+    "examples/mos6502/6502_first_run_artifact_contract.asm",
+    "examples/mos6502/65c02_simple.asm",
+    "examples/mos6502/65c02_allmodes.asm",
+    "source-cpu-package-aliases"
+  ],
+  "reproduction": {
+    "status": "FAILED",
+    "native_guest_exit": 1,
+    "case_count": 1,
+    "diagnostic": "OPC-NCLI026",
+    "whole_test_seconds": 103.44082054216415,
+    "receipts": [
+      {
+        "path": "target/workflow-logs/step16-branch-reproduction/identity.json",
+        "bytes": 704,
+        "sha256": "60d7148a07d0f124afe71e9c366c27f96f0ed4128ccf4ccecd1b1761f0d53fb5"
+      },
+      {
+        "path": "target/workflow-logs/step16-branch-reproduction/result.json",
+        "bytes": 151,
+        "sha256": "89686ae4f1ab16efde4e34fb84c1c7d547716ec08dead2c83edc38fda9132fe8"
+      },
+      {
+        "path": "target/workflow-logs/step16-branch-reproduction/run.log",
+        "bytes": 2553,
+        "sha256": "a09951065e67a0bf40d9c3c8dfa4824e3ea785b9ce1fb5edaf92a2d1e48f5abc"
+      }
+    ]
+  },
+  "confirmation": {
+    "status": "PASSED",
+    "native_guest_exit": 0,
+    "case_count": 4,
+    "passed_cases": [
+      "examples/mos6502/6502_first_run_artifact_contract.asm",
+      "examples/mos6502/65c02_simple.asm",
+      "examples/mos6502/65c02_allmodes.asm",
+      "source-cpu-package-aliases"
+    ],
+    "whole_test_seconds": 730.07084983401,
+    "receipts": [
+      {
+        "path": "target/workflow-logs/step16-branch-confirmation/identity.json",
+        "bytes": 607,
+        "sha256": "ecde48e6e72bad99d40a587c31e12bc3bcd9b44eea02121b749a33e17d96ee8e"
+      },
+      {
+        "path": "target/workflow-logs/step16-branch-confirmation/result.json",
+        "bytes": 146,
+        "sha256": "5dc25a99c4c88ae99214b3c8c75ea295dcbaa92b1dff0b9e59c541f22c300df3"
+      },
+      {
+        "path": "target/workflow-logs/step16-branch-confirmation/run.log",
+        "bytes": 697,
+        "sha256": "f036d4bb61d47656d30ad9109b9bc99a55dda30551bc09a5d8c64ecf70fb4540"
+      }
+    ]
+  },
+  "supporting_receipts": [
+    {
+      "path": "target/workflow-logs/step16-branch-host-oracles.log",
+      "bytes": 682,
+      "sha256": "9cfd1ee34179a1eef4749a5d86240d8c7ec40a05013cfa56e53bd3e3441f4ddc"
+    },
+    {
+      "path": "target/workflow-logs/step16-native-format.log",
+      "bytes": 1455,
+      "sha256": "7cd31478ed26407e62d6c4217ed9f6f316df510fa440b1223662efbff44a3243"
+    },
+    {
+      "path": "target/workflow-logs/step16-test-ownership.log",
+      "bytes": 35,
+      "sha256": "9acba1dc9904819d76e7176c0ab2edc6c6e452898654c8ab2399f8f3fb0828e0"
+    },
+    {
+      "path": "target/workflow-logs/step16-proof-contract.log",
+      "bytes": 35,
+      "sha256": "7e16d78b15f64419c622ab73183133500176cf67cff4faad50f7e451b502473f"
+    },
+    {
+      "path": "target/workflow-logs/step16-slice-check.log",
+      "bytes": 48,
+      "sha256": "e8be9b701f09554f6b1edb34f289c27f70492cf21f7cfab4457b545c716fe615"
+    },
+    {
+      "path": "target/workflow-logs/step16-boundary-contract.txt",
+      "bytes": 1206,
+      "sha256": "4a449e3f6962f96bf5fab832e8e18942418827c6a8eae6d7bcbce69ad7f94fa2"
+    },
+    {
+      "path": "target/workflow-logs/step16-confirmed-operand-runtime.txt",
+      "bytes": 35242,
+      "sha256": "c2fbcc1b8ec5d10f7b6897a5c2e8dd32178a9b9ae3eb771904bb532d9e4ba0bb"
+    },
+    {
+      "path": "target/workflow-logs/step16-host-confirmed.log",
+      "bytes": 866,
+      "sha256": "9e7bb1a6be0d2878a1c382f92e19b59f097f4090a34b05178a1fc3b05f9e329f"
+    }
+  ],
+  "proof_contract": {
+    "level": "D",
+    "fresh_challenge": true,
+    "exact_source_cpu_command_oracle_identity": true,
+    "explicit_guest_exit_required": true,
+    "byte_for_byte_rust_equality_required": true,
+    "attempt_all_cases_after_failure": true,
+    "speed_claim": false,
+    "full_rust_gate": "PASSED (non-LSP; LSP deferred)",
+    "first_full_non_lsp_gate": {
+      "status": "FAILED",
+      "exit_code": 101,
+      "tests_passed": 1590,
+      "tests_failed": 1,
+      "failure": "obsolete rel8 source contract still required later-pass instability rejection",
+      "result_receipt": {
+        "path": "target/workflow-logs/step16-rust-gate-result.json",
+        "bytes": 340,
+        "sha256": "e67681f5a789fa8ac4a05ab475d21ca3c9f49383172b56ddd5c8430e916f920f"
+      },
+      "log_receipt": {
+        "path": "target/workflow-logs/step16-rust-non-lsp-final.log",
+        "bytes": 219605,
+        "sha256": "3e361a5330cfac4c3d47638dd7620cc38d9c44930e622b419325f1dd53c46d90"
+      }
+    },
+    "corrected_rel8_contract": {
+      "status": "PASSED",
+      "tests_passed": 2,
+      "tests_failed": 0,
+      "behavior": "tests.rs now requires evaluation success and forbids later-pass instability rejection",
+      "receipt": {
+        "path": "target/workflow-logs/step16-rel8-contract-final.log",
+        "bytes": 552,
+        "sha256": "6c5a98cc9b5c0b377eb7cee45fa95154fa77b483d9b6c5fe665df0fe768c97a8"
+      }
+    },
+    "current_corrected_full_gate": {
+      "status": "PASSED",
+      "exit_code": 0,
+      "assembler_tests_passed": 1591,
+      "assembler_seconds": 1819.78,
+      "whole_gate_seconds": 1889.188705791952,
+      "lsp_status": "deferred by --defer-lsp",
+      "receipt": {
+        "path": "target/workflow-logs/step16-rust-contract-corrected-result.json",
+        "bytes": 351,
+        "sha256": "a27a8be188231ed367369cbc112060d06db87329d8fade0f598e8bf9318d6a61"
+      },
+      "log_receipt": {
+        "path": "target/workflow-logs/step16-rust-non-lsp-contract-corrected.log",
+        "bytes": 343150,
+        "sha256": "8aa2a302be42e259c69083ddfd3958b24da149247f977c55ad3228dfe21d39ac"
+      }
+    }
+  },
+  "corrected_gate_receipts": [
+    {
+      "path": "target/workflow-logs/step16-staged-native-contract-corrected.log",
+      "bytes": 3998,
+      "sha256": "64d051857ffdb2f901a18b165db241fe4479bb12b047e61e346d00aef8a7b4c6",
+      "exit_code": 0,
+      "scope": "23 native contracts, FS-UAE policy, architecture/no-growth, evidence classification, ownership, proof contract, and 238-file formatter check"
+    },
+    {
+      "path": "target/workflow-logs/step16-workflow-contract-corrected.log",
+      "bytes": 6481,
+      "sha256": "afc40306d083db16420bbd22d917b67da604a7c6d77dbcf786355463840ea326",
+      "exit_code": 0,
+      "scope": "134 workflow tests plus quality-gate evidence, reference-scope, and release-note policy checks"
+    }
+  ],
+  "label_image_equivalence": {
+    "result": {
+      "builds": [
+        {
+          "mode": "confirmed",
+          "source_sha256": "c2fbcc1b8ec5d10f7b6897a5c2e8dd32178a9b9ae3eb771904bb532d9e4ba0bb",
+          "image_sha256": "2f21c513ae9a1a62ef0e807de603ad37b4dfe16b61a187e168e4b0bae4174f89",
+          "image_bytes": 555052,
+          "exit_code": 0,
+          "seconds": 26.29237495898269
+        },
+        {
+          "mode": "label-restored",
+          "source_sha256": "8ccf698f85b2fa2e675109ab119f8918c478fb3bc94f661980a14d0fee1d65d8",
+          "image_sha256": "2f21c513ae9a1a62ef0e807de603ad37b4dfe16b61a187e168e4b0bae4174f89",
+          "image_bytes": 555052,
+          "exit_code": 0,
+          "seconds": 26.602443125098944
+        }
+      ],
+      "byte_identical": true,
+      "initial_host_attempt": "failed ambiguous module because backup had .asm extension; renamed backup .txt; production restored before retry"
+    },
+    "receipt": {
+      "path": "target/workflow-logs/step16-label-image-equivalence.json",
+      "bytes": 809,
+      "sha256": "44456a66d0070fc6a961c823912c79672215d640e45317dd4bfda0ba0a2f2352"
+    }
+  },
+  "focused_budget_initial_failure": {
+    "path": "target/workflow-logs/step16-source-budget.log",
+    "reason": "removed public label changed declaration count; label restored without changing executable bytes",
+    "exit_code": 101
+  },
+  "gate_receipts": [
+    {
+      "path": "target/workflow-logs/step16-source-budget.log",
+      "bytes": 6664,
+      "sha256": "a16c02a533e76b5778b1ba7d7aa7d1e95b15ce5bba298d8ec8c81f6322926a1c",
+      "exit_code": 101,
+      "note": "initial public label count mismatch"
+    },
+    {
+      "path": "target/workflow-logs/step16-source-budget-final.log",
+      "bytes": 6119,
+      "sha256": "d8db388558791d9dc3a1055d09f1de7939b210efdd047d04b43eb21ed578df84",
+      "exit_code": 0,
+      "note": "21 selected tests exited0; unavailable FS-UAE cases skipped; host source/import/export checks are actual budget proof"
+    },
+    {
+      "path": "target/workflow-logs/step16-staged-native.log",
+      "bytes": 1442,
+      "sha256": "b9b7f1429508130fb9f8399928effdd2280481a7034869866b8cb3f1b12f6efc",
+      "exit_code": 1,
+      "note": "known-good invocation wording missing"
+    },
+    {
+      "path": "target/workflow-logs/step16-staged-native-r2.log",
+      "bytes": 4074,
+      "sha256": "cb8f42130fd6c75a0ae5f47c1144165d3c8dd2796d8a66c803a1a5a78db291da",
+      "exit_code": 0,
+      "note": "staged native checks pass"
+    },
+    {
+      "path": "target/workflow-logs/step16-workflow.log",
+      "bytes": 3033,
+      "sha256": "d254725c0b6b4ec6013d34db30d584219911e37cc066fb4ac7a7da3c253c9605",
+      "exit_code": 2,
+      "note": "audited operand-runtime source hash needed refresh"
+    },
+    {
+      "path": "target/workflow-logs/step16-workflow-r2.log",
+      "bytes": 6481,
+      "sha256": "70f4c47cf3e972f0c6624fb8999d0f047f395d79d03eed379420a3a338da6184",
+      "exit_code": 0,
+      "note": "workflow after source inventory and command documentation correction"
+    },
+    {
+      "path": "target/workflow-logs/step16-closure-final.log",
+      "bytes": 1397,
+      "sha256": "a5d95282487d9bb4d64d1a077023a20ca29c2e99b20afe45e2343d5ac985630a",
+      "exit_code": 1,
+      "scope": "Initial closure wrapper rejected unregistered E0-1 ledger ID; corrected by formal same-finding RVW alias without validator changes"
+    }
+  ],
+  "finding_closure": {
+    "ledger_id": "E0-1",
+    "formal_review_id": "RVW-2026-09-05-001",
+    "status": "fixed",
+    "reviewer": "plan_review",
+    "scope": "Only the four original completed branch failures; all other Phase A debt remains open"
+  }
+}

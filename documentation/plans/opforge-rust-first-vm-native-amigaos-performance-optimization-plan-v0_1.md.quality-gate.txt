@@ -1,3 +1,14 @@
+PASS: Independent plan-compliance reviewer plan_review approves Step16 / Item A-branch and focused commit fix(native): resolve later-pass relative branch targets. The reviewed 15-file staged diff SHA256 is 208c09b399ffb30eeec51ea19ac720933bef7a427e74bba3e3ba30e066eb9946; this sidecar adds only the final receipt. The generic resolved-target correction preserves pass-one, expression errors, displacement/range checks and public exports.
+
+Artifact SHA-256: 0a35c196d5a498f1cb9b7905f794936eafbb434f0ae12987d02701245c127954
+Validation: target/workflow-logs/step16-rust-non-lsp-contract-corrected.log, explicit exit0, 343150 bytes, SHA256 8aa2a302be42e259c69083ddfd3958b24da149247f977c55ad3228dfe21d39ac.
+Validation: target/workflow-logs/step16-staged-closure-final.log, explicit exit0, 3998 bytes, SHA256 64d051857ffdb2f901a18b165db241fe4479bb12b047e61e346d00aef8a7b4c6.
+Validation: target/workflow-logs/step16-workflow-closure-final.log, explicit exit0, 6481 bytes, SHA256 d6efb30111e3af873d5e2a2b41c2a9ab79bc7e06e47ed101fbf1f1c20401b14c.
+Validation: target/workflow-logs/step16-closure-registered-final.log, explicit exit0, 1449 bytes, SHA256 10cf3045a2b952331435aa31617f1e8dc439bca94f4474b0173b6298dcc245e4.
+Four original branch cases pass fresh exact-Rust Level D confirmation. Corrected non-LSP Rust gate PASS: 1591 assembler tests in1819.78s; all remaining included packages pass; whole gate1889.188705791952s. LSP remains deferred. Independent finding-closure and review-quality PASS for E0-1 / RVW-2026-09-05-001; the latter is an explicit registration alias, not a separate finding. All29 indexed receipts match. The first Rust failure, source-budget failure, observer/build failures and initial unregistered-ID closure failure remain recorded. This final receipt supersedes earlier pending-review wording for Step16 only. No new speedup is claimed; this correctness repair unblocks qualification of earlier gains. All B10, aggregate, diagnostic and other Phase A debt remains open. Step17 begins only after this focused commit.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Independent plan-quality and plan-compliance reviewer plan_review approves the corrected Step15 two-file decision amendment and focused commit docs(perf): rerank after native throughput experiments. Step16 covers all four completed branch failures with original case identity, a bounded causal inquiry and explicit blocked disposition; Step17 permits at most one fixed120s B10 launch after validated observer preflight. Full Phase A qualification and all51groups remain mandatory, with LSP-close last.
 
 Artifact SHA-256: 962c55f03f389797731a185e0534db4b4f87bce4755c436005c7d7a3c30e0309

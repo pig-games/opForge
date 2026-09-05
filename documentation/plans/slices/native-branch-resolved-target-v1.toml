@@ -1,0 +1,37 @@
+[slice]
+schema_version = 2
+name = "native branch resolved-target selection"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "16 / Item A-branch"
+source = "The active worktree AGENTS.md remains binding during execution."
+workflow = "skills/opforge-plan-authoring/SKILL.md; run_plan_workflow.sh"
+rust_reference = [
+  "crates/opforge-vm/src/execution_model/selector_encoding.rs::encode_expr_relative",
+  "crates/opforge-vm/src/execution_model/encoding_bridge.rs",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm::tkpkgMselTryBuildCandidateV1",
+  "native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm",
+]
+assertion_decision = "No new native assertion or instrumentation is needed: the removed check contradicts the source-proven Rust relative-plan contract; existing expression-error and signed-range checks remain unchanged. The source audit is not an executed native proof. Fresh exact-case Level D confirmation remains required."
+invariant = "A later pass uses the resolved target value to evaluate relative displacement even when the defining label row has not refreshed its stability bit; branch acceptance follows Rust encode_expr_relative displacement/range semantics and does not reject a valid resolved target solely for instability."
+expected_inputs = "The four original completed branch-rejection cases, with their original source bytes, command surfaces, CPU/package inputs, and in-memory Rust oracles: 6502_first_run_artifact_contract, 65c02_simple, 65c02_allmodes, and source-cpu-package-aliases."
+expected_outputs = "Exact Rust-authoritative output bytes, fresh completion markers, and explicit guest exit zero for every attempted case; a failure preserves its exact diagnostic and is reported independently without suppressing later cases."
+known_non_equivalences = "This slice does not qualify B10 timing, repair unrelated aggregate failures, change package/family data, add instrumentation, or alter the canonical inventory target list."
+fast_proof_command = "python3 scripts/workflow/check_cpu_specific_arch_boundary.py"
+level_d_command = "OPFORGE_BRANCH_CASE=all OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/tmp/opforge-performance.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=300000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_recorded_branch_failures_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_recorded_branch_failures_fs_uae"
+proof_level = "D"
+command = "OPFORGE_BRANCH_CASE=all OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/tmp/opforge-performance.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=300000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_recorded_branch_failures_fs_uae -- --nocapture --test-threads=1"
+proves = "The four original branch cases are attempted with fresh per-case challenges, exact source/CPU/command/oracle identity, explicit guest exit zero, and byte-for-byte Rust equality; one case failure does not prevent subsequent cases."
+does_not_prove = "B10 completion or speed, unrelated native groups, branch cases outside the four recorded originals, or a general selector/encoder redesign."
+
+[[tests]]
+name = "native_branch_source_boundary_audit"
+proof_level = "B"
+proves = "Rust selector_encoding.rs encode_expr_relative uses the resolved displacement/range result, while native tkpkgMselTryBuildCandidateV1 no longer rejects a resolved later-pass target only because its defining row remains unstable."
+does_not_prove = "Real Amiga execution, exact output parity, or timing."

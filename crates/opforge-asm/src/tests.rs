@@ -14518,6 +14518,7 @@ fn motorola68020_item6_3_covers_generic_single_operand_selected_emission_plans()
 
 #[test]
 fn motorola68020_item6_3_native_tkpkg_implements_rel8_as_generic_plan() {
+    // Level B source contract; exact native behavior is proved by the recorded branch cases.
     let operand = tkpkg_amigaos_source("tkpkg_operand_runtime.asm");
 
     assert!(operand.contains("TkpkgMselPlanBranch8Text"));
@@ -14528,7 +14529,8 @@ fn motorola68020_item6_3_native_tkpkg_implements_rel8_as_generic_plan() {
             ".byte \"rel8\", 0",
             "tryBranchOffset8",
             "bsr.w tkpkgMselEvalOperandV1",
-            "tst.b state.EncodeSelectedMselUnstable",
+            "cmpi.l #TKPKG_SELECTED_STATUS_OK, d0",
+            "bne.w return",
             "move.l state.EncodeSelectedMselValue, d3",
             "move.l state.EncodeSelectedCurrentPc, d4",
             "addq.l #2, d4",
@@ -14539,6 +14541,17 @@ fn motorola68020_item6_3_native_tkpkg_implements_rel8_as_generic_plan() {
             "bra.w buildOperand",
         ],
     ));
+    let later_pass = operand
+        .split_once("\ntryBranchEvaluate")
+        .expect("later-pass relative operand path")
+        .1
+        .split_once("\ntryPairU8Rel8")
+        .expect("end of relative operand path")
+        .0;
+    assert!(
+        !later_pass.contains("EncodeSelectedMselUnstable"),
+        "a resolved later-pass relative target must not be rejected for symbol instability"
+    );
 }
 
 #[test]

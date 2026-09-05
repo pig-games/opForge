@@ -98,8 +98,8 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 20 of 30 · Item A-include-stdout — restore quiet normal
-include processing after the retained Step19 source-buffer commit.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 21 of 30 · Item A-close — clear remaining native failure debt
+and qualify Phase A after the Step20 include-output repair.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -416,7 +416,7 @@ improvement does not close a whole finding; closure review is still required.
   - User disposition (2026-09-05): retain the bounded source buffer for its verified 1,608-to-8 DOS-call reduction despite the ordinary timing threshold miss (4.2048% gain, 1.2394% measured noise). Three exact focused pairs and separate strict platform records pass; 48 bytes of physical read-ahead are bounded by the 511-byte limit and do not alter logical lines or output. Both frozen B10 modes time out and remain unresolved. The native include success/error check, five Level C helper tests, corrected full non-LSP Rust (267.05s), native staged and workflow gates pass. `documentation/performance/results/opforge-step19-source-buffer-performance-2026-09-05.md` and matching JSON preserve all evidence and failures. This checkbox closes with the independently approved focused commit.
   - Definition of done: source-read experiment is independently dispositioned with measured developer/product impact and remaining B10 debt explicit. No Phase A completion follows from a focused pass alone.
 
-- [ ] Step 20 · Item A-include-stdout — Gate include records on explicit debug mode
+- [x] Step 20 · Item A-include-stdout — Gate include records on explicit debug mode
   - Source requirement or finding IDs: SR-PAR, E0-3; Step19's fresh normal-mode stdout divergence and the recorded B08 failure debt.
   - Expected files: `line_processor.asm`, existing debug-output source contracts, focused include/debug parity cases, B08 evidence and plan.
   - Dependencies/worktree: committed A-source-buffer; keep its measured implementation and all historical receipts.
@@ -428,6 +428,8 @@ improvement does not close a whole finding; closure review is still required.
   - Plan-compliance review evidence: independent PASS for the corrected normal/debug invariant and exact fresh proof. Any formal finding closure still requires the closure reviewer.
   - Commit outcome: one focused include-output repair commit before A-close or a resulting repair.
   - Definition of done: normal include output matches Rust, explicit native debug retains its report, and fresh B08 disposition is recorded; other Phase A failures and B10 remain open. Avoiding unsolicited output is a correctness gain and removes work, but no runtime percentage is claimed without measurement.
+
+  - Execution evidence (2026-09-06): `documentation/performance/results/opforge-step20-include-stdout-2026-09-06.md` and `.json` record fresh normal/debug include and frozen B08 PASS, exact Rust-authoritative artifacts, empty normal streams and retained explicit debug include reporting. Source-order, native staged/formatter, workflow and non-LSP Rust gates PASS (261.2439 seconds). Normal mode avoids unnecessary report formatting/output; no runtime percentage is claimed. The checkbox closes with independent compliance PASS and the focused commit; B10 and all other Phase A debt remain open.
 
 - [ ] Step 21 · Item A-close — Qualify early wins and clear the recorded failure debt
   - Source requirement or finding IDs: SR-PAR, SR-MEAS, SR-TERM.

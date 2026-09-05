@@ -180,6 +180,8 @@ invocationPass
 	bne.w record
 	tst.w state.NativeCliIncludeDepth
 	beq.s record
+	tst.w state.NativeCliDebugEnabled
+	beq.s record
 	jsr report.opforgeNativeCliEmitIncludeLineRecord
 
 record

@@ -1,0 +1,50 @@
+[slice]
+schema_version = 2
+name = "debug-gated native include stdout"
+kind = "native-performance"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "20 / Step 20 / Item A-include-stdout"
+artifact_type = "plan-slice-metadata"
+source_instruction = "Step20 A-include-stdout: gate the existing include-line report on explicit native debug mode."
+skill = "agents/rules/workflow-artifacts.md"
+validator = "scripts/workflow/check_native_porting_slice.py"
+validation_status = "native staged, workflow and non-LSP Rust gates passed; independent plan compliance passed"
+rust_reference = [
+  "crates/opforge-asm/src/tests/native_fs_uae_parity.rs::native_debug_output_sites_are_gated_before_progress_emission",
+  "crates/opforge-asm/src/tests/native_source_buffer.rs::native_source_buffer_refill_boundaries_fs_uae",
+  "crates/opforge-asm/src/tests/native_source_buffer.rs::native_source_buffer_debug_include_fs_uae",
+  "scripts/performance/production_corpus.py::B08 module include graph",
+]
+native_boundary = [
+  "native/motorola68000/amigaos/opforge-cli/line_processor.asm::invocationPass",
+  "native/motorola68000/amigaos/opforge-cli/report.asm::opforgeNativeCliEmitIncludeLineRecord",
+  "native/motorola68000/amigaos/opforge-cli/state.asm::NativeCliDebugEnabled",
+]
+invariant = "The existing include-line report is reachable only when state.NativeCliDebugEnabled is nonzero; normal CLI include processing emits no include record on stdout or stderr, explicit native debug retains the exact INCLUDE-LINE record, and binary artifacts, parser behavior, ABI, public report exports and all other output sites remain unchanged."
+assertion_decision = "The source-order contract must prove the established debug test and branch occur in source order before the existing report call. The existing refill fixture supplies normal-mode exact artifact coverage, while native_source_buffer_debug_include_fs_uae supplies a separate simple debug include artifact and include-record check; both require fresh guest completion with explicit zero exit. A fresh frozen B08 normal-mode run is required before Step20 or Phase A closure claims; historical B08 stream text was not retained and must not be reconstructed."
+expected_inputs = "The existing source-buffer refill/include fixture in normal mode, the separate simple debug include fixture with --native-debug, and the frozen B08 module include graph in normal mode; each uses the current package, command, timeout and fresh guest protocol."
+expected_outputs = "Normal refill mode produces the exact Rust-authoritative [17, 34] binary with empty stdout and stderr after the repair. The debug fixture produces exact Rust-authoritative [17] bytes, includes the existing INCLUDE-LINE 1 1\\n record, and has empty stderr; other established debug reports are outside this assertion. B08 must complete in normal mode under the unchanged bound with exact per-case artifacts, streams and exit semantics."
+known_non_equivalences = "The report routine remains a native debug-only diagnostic and is not part of Rust normal-mode stdout. Debug mode may emit other established debug reports beyond the include record. This slice proves the include-report gate and focused artifact parity only; it makes no runtime percentage claim, does not alter other output sites, and does not close B10 or other Phase A failure debt. Fresh normal/debug include and B08 runs passed; broader Phase A qualification remains open."
+fast_proof_command = "cargo test --locked -p asm native_debug_output_sites_are_gated_before_progress_emission -- --nocapture --test-threads=1"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_source_buffer_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_debug_output_sites_are_gated_before_progress_emission"
+proof_level = "B"
+proves = "The existing invocationPass path tests the source order of tst.w state.NativeCliDebugEnabled, beq.s record, and the unchanged report.opforgeNativeCliEmitIncludeLineRecord call."
+does_not_prove = "68000 instruction encoding, AmigaOS execution, exact guest streams, binary parity, B08 completion, or behavior of unrelated output sites."
+
+[[tests]]
+name = "native_source_buffer_refill_boundaries_and_debug_include_fs_uae"
+proof_level = "D"
+command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_source_buffer_ -- --nocapture --test-threads=1"
+proves = "Fresh normal refill and separate explicit-debug native include guests complete with explicit zero exit and exact Rust-authoritative binary artifacts; normal mode has empty stdout/stderr, while debug mode includes the required INCLUDE-LINE 1 1\\n record and empty stderr."
+does_not_prove = "Frozen B08 completion, every include graph shape, other debug/progress output sites, performance, B10, or Phase A closure."
+
+[[tests]]
+name = "external_fs_uae_native_production_corpus_parity / B08"
+proof_level = "D"
+command = "OPFORGE_PERFORMANCE_CORPUS=1 OPFORGE_NATIVE_CORPUS_CASES=B08 OPFORGE_NATIVE_CORPUS_PROFILE=off OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm external_fs_uae_native_production_corpus_parity -- --nocapture --test-threads=1"
+proves = "A fresh frozen B08 normal-mode module-include case completes under the unchanged protocol with explicit guest exit semantics, exact Rust-authoritative artifacts, empty stdout/stderr, and the corrected normal include-output behavior."
+does_not_prove = "Debug-mode output, B01-B07 or B09-B10 completion, a timing improvement, all native groups, or Phase A closure; any timeout, crash, mismatch or missing protocol marker is incomplete evidence."

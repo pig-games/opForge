@@ -3782,6 +3782,10 @@ fn native_debug_output_sites_are_gated_before_progress_emission() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/source_reader.asm"),
     )
     .expect("read native CLI source reader");
+    let line_processor = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/line_processor.asm"),
+    )
+    .expect("read native CLI line processor");
     assert!(source_contains_in_order(
         &run,
         &[
@@ -3810,6 +3814,14 @@ fn native_debug_output_sites_are_gated_before_progress_emission() {
             "tst.w state.NativeCliDebugEnabled",
             "beq.s packageUnavailable",
             "TokenizerOkText",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "tst.w state.NativeCliDebugEnabled",
+            "beq.s record",
+            "jsr report.opforgeNativeCliEmitIncludeLineRecord",
         ]
     ));
 }

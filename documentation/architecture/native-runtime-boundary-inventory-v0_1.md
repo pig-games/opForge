@@ -335,7 +335,9 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   placement through the same transition owner, word/long table-index
   calculation, and bounded fixup normalization-state updates and queries. The
   driver retains statement tokenization, callback dispatch, and engine/image
-  projection only.
+  projection only. Step 25 adds the read-only `getListingSectionNameV1`
+  projection over the existing statement section indices and final active
+  section; it adds no layout state and does not change semantic ownership.
 - Decision: layout state and all region/section/place transitions are owned by
   this module. The completed transfer preserves existing arithmetic and adds no
   layout syntax or semantics; the assembly driver has no direct layout-state
@@ -604,7 +606,11 @@ Memory/ABI proof and completed CLI timing are recorded in
   Item 38 widens only the label-specific statement and symbol rows to the
   measured 108-byte native representation required by Rust's 107-byte fully
   scoped product maximum; generic token rows and all symbol semantics remain
-  unchanged.
+  unchanged. Step 25 adds the read-only
+  `opasmEngineGetStatementSourceRecordIndexV1` accessor over the existing
+  statement/source association so listing output can project post-state; it
+  adds no session state and does not change statement, label, or fixup
+  ownership.
 
 ### `tkpkg.amigaos.tokenizer_vm` (NR-005, retain cohesive)
 

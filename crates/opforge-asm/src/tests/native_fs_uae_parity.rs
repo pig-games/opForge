@@ -20,6 +20,9 @@ mod native_hex_records;
 #[path = "native_map_symbols.rs"]
 mod native_map_symbols;
 
+#[path = "native_listing_sections.rs"]
+mod native_listing_sections;
+
 #[path = "native_branch_failures.rs"]
 mod branch_failures;
 

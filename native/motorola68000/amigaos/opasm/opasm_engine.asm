@@ -1512,6 +1512,23 @@ opasmEngineGetSourceRecordLineNumberV1	.block
 	rts
 	.bend  ; opasmEngineGetSourceRecordLineNumberV1
 
+; Return the collection-order source record owning a retained statement.
+; Inputs: D0.L = statement index. Outputs: D0.L = source record, -1 if invalid.
+; Clobbers: D0/A0/CCR. CCR: reflects D0.
+opasmEngineGetStatementSourceRecordIndexV1	.block
+	.priv
+	cmp.l OpasmEngineStmtCount.l, d0
+	bhs.s invalid
+	lsl.l #2, d0
+	lea OpasmEngineStmtSourceRecordIndexTable.l, a0
+	move.l 0(a0, d0.l), d0
+	rts
+invalid
+	moveq #-1, d0
+	rts
+	.bend  ; opasmEngineGetStatementSourceRecordIndexV1
+	.pub
+
 ; Return exact text for one source record.
 ; Inputs: D0 = source record index.
 ; Outputs: D0 = text length; A0 = text pointer.

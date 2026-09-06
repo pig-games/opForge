@@ -1,0 +1,151 @@
+{
+  "step": 25,
+  "item": "A-listing-sections",
+  "parent_commit": "2f0abccd",
+  "status": "Step25 required gates and independent compliance PASS; focused commit authorized; Phase A remains open",
+  "hypotheses": [
+    {
+      "id": "H1",
+      "status": "confirmed",
+      "evidence": "Rust listing samples post-directive active section; native listing omitted all section annotations."
+    },
+    {
+      "id": "H2",
+      "status": "fixed",
+      "evidence": "Added uniform listing-only reserve wrappers and direct-write bounds after review identified unsafe suffix-only checks; corrected positive and over-capacity native proofs pass."
+    },
+    {
+      "id": "H3",
+      "status": "confirmed",
+      "evidence": "Small isolated Hunk CODE and RELOC32 probes retain correct addends, but fresh full native event reports end-base=3221249432 rather than24000 atcursor193/source0. Construct end directly from loaded A2 base plus numeric capacity; general full-Hunk expression relocation cause remains unproven."
+    }
+  ],
+  "receipts": [
+    {
+      "name": "native",
+      "proof_level": "D",
+      "passed": false,
+      "exit_code": 101,
+      "guest_exit": 1,
+      "scope": "Small complete BIN/listing fixture: BIN exists, listing build rejects with OPC-NCLI044 and OPC-NCLI023; no parity.",
+      "sha256": "5a1efebbb561fa4f2dfbc479323e5cb378fc6f9f0e94098d2da2fd7f515a8aaf",
+      "log_bytes": 2566,
+      "log_path": "target/workflow-logs/step25-listing/native.log"
+    },
+    {
+      "name": "probe",
+      "proof_level": "E",
+      "passed": true,
+      "guest_exit": 1,
+      "fields": {
+        "cursor_offset": 193,
+        "end_offset": 3221249432,
+        "source_record": 0,
+        "raw_d0": 0
+      },
+      "sha256": "fe405b981e31c86d92d141236927382567e4144f777f6a197245cd08e13bb893",
+      "log_bytes": 606,
+      "log_path": "target/workflow-logs/step25-listing/probe.log",
+      "scope": "Fresh fixed226byte event export; exactevent1012/contract0204/routine1. Localization only, no parity."
+    },
+    {
+      "name": "native-corrected",
+      "proof_level": "A/B/C/D",
+      "passed": true,
+      "exit_code": 0,
+      "scope": "Six focused tests pass without SKIP: exact native BIN/listing, explicit oversized-listing rejection, live Rust annotations/boundary-label ownership, source and machine-code contracts.",
+      "sha256": "02466c03e0e25f8fe671eeacc630a59eec6abdc3f961797687162f61730a6095",
+      "log_bytes": 1207,
+      "log_path": "target/workflow-logs/step25-listing/native-corrected.log"
+    },
+    {
+      "name": "workflow",
+      "proof_level": "workflow",
+      "passed": true,
+      "exit_code": 0,
+      "scope": "Workflow, staged native, formatter, architecture, source budgets and inventory pass.",
+      "sha256": "e3e7dcf656369537f8563e66e51a254c2b90e87e6f4af98ad269f795bac8e13c",
+      "log_bytes": 7044,
+      "log_path": "target/workflow-logs/step25-listing/workflow.log"
+    },
+    {
+      "name": "B09",
+      "proof_level": "D",
+      "passed": false,
+      "exit_code": 101,
+      "whole_seconds": 67.95852954080328,
+      "artifacts_exact": 10,
+      "artifacts_total": 11,
+      "scope": "All eleven declared artifacts checked; listing alone differs. First mismatch offset464: native advances to source line7 while Rust includes .pub at source line6.",
+      "sha256": "bb64ca20f2beba1a95e0a31bf2b5560c8b5e1fac91273cf5d1394bc8967629a2",
+      "log_bytes": 27602,
+      "log_path": "target/workflow-logs/step25-listing/B09.log"
+    },
+    {
+      "name": "rust-gate-first",
+      "proof_level": "quality-gate",
+      "passed": false,
+      "exit_code": 101,
+      "whole_seconds": 243.08396791713312,
+      "assembler_tests_passed": 1609,
+      "assembler_tests_failed": 1,
+      "scope": "Only native_item38_full_product_import_budget_contract failed: measured .use graph420, stale expectation419.",
+      "sha256": "0d898d491c3a986eb0a2d9e3fa3085f9557b0165d37f957f118da7108c7dd327",
+      "log_bytes": 208017,
+      "log_path": "target/workflow-logs/step25-listing/rust-gate.log"
+    },
+    {
+      "name": "import-budget-corrected",
+      "proof_level": "B",
+      "passed": true,
+      "exit_code": 0,
+      "scope": "Focused budget check passes with the one intentional layout import: uses420 within capacity512.",
+      "sha256": "2b1f736c9915764961e2cb765d8de0c8bf84bb4f02bf531c2436c22f591eba92",
+      "log_bytes": 525,
+      "log_path": "target/workflow-logs/step25-listing/import-count.log"
+    },
+    {
+      "name": "rust-gate-corrected",
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 254.2236739168875,
+      "sha256": "493229c81d9879c7cb5b1604dfed246e308c279b3252ab684d1f3b893367d088",
+      "log_bytes": 332939,
+      "log_path": "target/workflow-logs/step25-listing-corrected/rust-gate.log",
+      "proof_level": "Rust gate",
+      "passed": true,
+      "scope": "Full required non-LSP Rust gate; LSP remains explicitly deferred."
+    },
+    {
+      "name": "workflow-corrected",
+      "proof_level": "workflow",
+      "passed": true,
+      "exit_code": 0,
+      "sha256": "6bf982b6ebfefd31f8c4372f37dde88f8538ff19198b19dac5e91fef294f76b9",
+      "log_bytes": 7032,
+      "log_path": "target/workflow-logs/step25-listing-corrected/workflow.log",
+      "scope": "Refreshed staged workflow after import count420, evidence and reviewed36-step plan amendment."
+    }
+  ],
+  "performance": {
+    "step_runtime_gain": "unmeasured; no matched timing experiment, no new BSS or per-statement capture, bounded requested-listing work only",
+    "total_phase_a_runtime_gain": "unmeasured; no matched initial/current comparison with the same workload, mode, package and measurement scope",
+    "retained_source_dos_calls": {
+      "before": 1608,
+      "after": 8,
+      "reduction_percent": 99.5,
+      "matched_start_to_done_median_reduction_percent": 4.2048,
+      "scope": "Step19 matched 22-line source fixture; cumulative retained mechanism evidence, not whole-product runtime"
+    }
+  },
+  "temporary_probe_removed": true,
+  "review": {
+    "reviewer": "step20_review",
+    "verdict": "PASS",
+    "scope": "Final Step25 whole diff and Step26 footer-neutral plan amendment; no blocking findings"
+  }
+}

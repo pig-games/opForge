@@ -4,6 +4,7 @@
 	.cpu 68020
 
 	.use opasm.amigaos.engine
+	.use opasm.amigaos.layout
 	.use opasm.amigaos.flow_scopes as scopes
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	.use debug.amigaos.platform_profile as platform_profile
@@ -258,15 +259,23 @@ fail
 ; - A0 = opasm-owned listing artifact buffer pointer.
 ; - D1.L = text byte count.
 opasmOutputBuildListingArtifactV1	.block
+	.priv
 	movem.l d2-d7/a2-a6, -(sp)
 	lea OpasmListingArtifactBuffer.l, a2
+	movea.l a2, a4
+	adda.l #OPASM_OUTPUT_LISTING_BUFFER_CAPACITY, a4
 	lea OpasmListingTitle.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 	lea OpasmListingHeader.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 	jsr engine.opasmEngineGetSourceRecordCountV1
 	move.l d0, d6
 	moveq #0, d7
+	suba.l a5, a5
+	jsr engine.opasmEngineGetStatementCountV1
+	movea.l d0, a6
 
 lineLoop
 	cmp.l d6, d7
@@ -276,44 +285,52 @@ lineLoop
 	move.l d0, d5
 	bsr.w opasmOutputFindStatementForLineV1
 	move.l d0, d2
-	bmi.s noLineBytes
+	bmi.w noLineBytes
 	move.l d2, d0
 	jsr engine.opasmEngineGetStatementOutputByteCountV1
 	move.l d0, d5
-	beq.s checkOrg
+	beq.w checkOrg
 	move.l d2, d0
 	jsr engine.opasmEngineGetStatementOutputAddrV1
-	bsr.w opasmOutputAppendHexWord
+	bsr.w opasmListingAppendHexWord
+	bne.w listingCapacityFail
 	moveq #2, d0
-	bsr.w opasmOutputAppendSpaces
-	bra.s locDone
+	bsr.w opasmListingAppendSpaces
+	bne.w listingCapacityFail
+	bra.w locDone
 
 checkOrg
 	move.l d2, d0
 	jsr engine.opasmEngineStatementIsOrgV1
-	beq.s noLineBytes
+	beq.w noLineBytes
 	lea OpasmListingNoLocation.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 	moveq #2, d0
-	bsr.w opasmOutputAppendSpaces
+	bsr.w opasmListingAppendSpaces
+	bne.w listingCapacityFail
 	lea OpasmListingEquPrefix.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 	jsr engine.opasmEngineGetSessionOriginV1
-	bsr.w opasmOutputAppendHexWord
+	bsr.w opasmListingAppendHexWord
+	bne.w listingCapacityFail
 	moveq #8, d4
-	bra.s bytesDone
+	bra.w bytesDone
 
 noLineBytes
 	moveq #0, d5
 	lea OpasmListingNoLocation.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 
 locDone
 	moveq #2, d0
-	bsr.w opasmOutputAppendSpaces
+	bsr.w opasmListingAppendSpaces
+	bne.w listingCapacityFail
 	moveq #0, d4
 	tst.l d5
-	beq.s bytesDone
+	beq.w bytesDone
 	move.l d2, d0
 	jsr engine.opasmEngineGetStatementOutputOffsetV1
 	move.l d0, d3
@@ -330,73 +347,125 @@ locDone
 byteLoop
 	moveq #0, d0
 	move.b (a3)+, d0
-	bsr.w opasmOutputEmitHexByte
+	bsr.w opasmListingEmitHexByte
+	bne.w listingCapacityFail
 	tst.l d3
-	beq.s bytesDone
+	beq.w bytesDone
+	cmpa.l a4, a2
+	bhs.w listingCapacityFail
 	move.b #' ', (a2)+
 	subq.l #1, d3
-	bra.s byteLoop
+	bra.w byteLoop
 
 bytesDone
 	move.l #23, d0
 	cmp.l d0, d4
-	bhs.s byteColumnDone
+	bhs.w byteColumnDone
 	sub.l d4, d0
-	bsr.w opasmOutputAppendSpaces
+	bsr.w opasmListingAppendSpaces
+	bne.w listingCapacityFail
 
 byteColumnDone
 	moveq #2, d0
-	bsr.w opasmOutputAppendSpaces
+	bsr.w opasmListingAppendSpaces
+	bne.w listingCapacityFail
 	move.l d7, d0
 	jsr engine.opasmEngineGetSourceRecordLineNumberV1
-	bsr.w opasmOutputAppendRight4Decimal
+	bsr.w opasmListingAppendRight4Decimal
+	bne.w listingCapacityFail
 	moveq #2, d0
-	bsr.w opasmOutputAppendSpaces
+	bsr.w opasmListingAppendSpaces
+	bne.w listingCapacityFail
 	move.l d7, d0
 	jsr engine.opasmEngineGetSourceRecordTextV1
 	tst.l d0
-	beq.s sourceDone
+	beq.w sourceDone
+	bsr.w opasmListingReserve
+	bcs.w listingCapacityFail
 	move.l d0, d3
 
 sourceLoop
 	move.b (a0)+, (a2)+
 	subq.l #1, d3
-	bne.s sourceLoop
+	bne.w sourceLoop
 
 sourceDone
+	; Collection indices include blank/include records; line numbers may repeat.
+listingSuccessor
+	cmpa.l a6, a5
+	bhs.w listingFinalState
+	move.l a5, d0
+	jsr engine.opasmEngineGetStatementSourceRecordIndexV1
+	cmp.l d7, d0
+	bhi.w listingSuccessorFound
+	addq.l #1, a5
+	bra.w listingSuccessor
+listingSuccessorFound
+	move.l a5, d0
+	bra.w listingSectionName
+listingFinalState
+	moveq #-1, d0
+listingSectionName
+	jsr layout.getListingSectionNameV1
+	beq.w listingNewline
+	movea.l a0, a3
+	move.l d0, d3
+	lea OpasmListingSectionPrefix.l, a0
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
+	move.l d3, d0
+	addq.l #1, d0
+	bsr.w opasmListingReserve
+	bcs.w listingCapacityFail
+listingSectionCopy
+	move.b (a3)+, (a2)+
+	subq.l #1, d3
+	bne.w listingSectionCopy
+	move.b #']', (a2)+
+listingNewline
+	cmpa.l a4, a2
+	bhs.w listingCapacityFail
 	move.b #10, (a2)+
 	addq.l #1, d7
 	bra.w lineLoop
 
 footer
 	lea OpasmListingLinesPrefix.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 	move.l d6, d0
-	bsr.w opasmOutputAppendU16Decimal
+	bsr.w opasmListingAppendU16Decimal
+	bne.w listingCapacityFail
 	lea OpasmListingCountsSuffix.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 	jsr engine.opasmEngineGetLabelCountV1
 	move.l d0, d3
 	beq.w symbolNone
 	lea OpasmListingSymbolHeader.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 	moveq #0, d2
 
 symbolLoop
 	moveq #0, d4
 	jsr scopes.rootModuleNameV1
 	tst.l d0
-	beq.s symbolRawName
+	beq.w symbolRawName
 	move.l d0, d6
 symbolModuleLoop
 	cmpi.l #15, d4
-	bhs.s symbolRawName
+	bhs.w symbolRawName
+	cmpa.l a4, a2
+	bhs.w listingCapacityFail
 	move.b (a0)+, (a2)+
 	addq.l #1, d4
 	subq.l #1, d6
-	bne.s symbolModuleLoop
+	bne.w symbolModuleLoop
 	cmpi.l #15, d4
-	bhs.s symbolRawName
+	bhs.w symbolRawName
+	cmpa.l a4, a2
+	bhs.w listingCapacityFail
 	move.b #'.', (a2)+
 	addq.l #1, d4
 
@@ -406,43 +475,53 @@ symbolRawName
 
 symbolNameLoop
 	tst.b (a0)
-	beq.s symbolNameDone
+	beq.w symbolNameDone
+	cmpa.l a4, a2
+	bhs.w listingCapacityFail
 	move.b (a0)+, (a2)+
 	addq.l #1, d4
 	cmpi.l #15, d4
-	blo.s symbolNameLoop
+	blo.w symbolNameLoop
 
 symbolNameDone
 	move.l #17, d0
 	sub.l d4, d0
-	bsr.w opasmOutputAppendSpaces
+	bsr.w opasmListingAppendSpaces
+	bne.w listingCapacityFail
 	move.l d2, d0
 	jsr engine.opasmEngineGetLabelValueV1
-	bsr.w opasmOutputAppendHexWord
+	bsr.w opasmListingAppendHexWord
+	bne.w listingCapacityFail
 	lea OpasmListingSymbolSuffix.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 	addq.l #1, d2
 	cmp.l d3, d2
-	blo.s symbolLoop
-	bra.s symbolsDone
+	blo.w symbolLoop
+	bra.w symbolsDone
 
 symbolNone
 	lea OpasmListingSymbolNone.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 
 symbolsDone
 	jsr engine.opasmEngineGetImageByteCountV1
 	move.l d0, d5
 	lea OpasmListingMemoryPrefix.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 	move.l d5, d0
-	bsr.w opasmOutputAppendU16Decimal
+	bsr.w opasmListingAppendU16Decimal
+	bne.w listingCapacityFail
 	lea OpasmListingMemorySuffix.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 	lea OpasmListingGeneratedHeader.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 	tst.l d5
-	beq.s generatedNone
+	beq.w generatedNone
 	jsr engine.opasmEngineGetImageBufferPtrV1
 	movea.l a0, a3
 	jsr engine.opasmEngineGetSessionOriginV1
@@ -451,35 +530,45 @@ symbolsDone
 
 generatedLoop
 	move.l d4, d0
-	bsr.w opasmOutputAppendHexWord
+	bsr.w opasmListingAppendHexWord
+	bne.w listingCapacityFail
 	moveq #4, d0
-	bsr.w opasmOutputAppendSpaces
+	bsr.w opasmListingAppendSpaces
+	bne.w listingCapacityFail
 	moveq #16, d2
 
 generatedByteLoop
 	moveq #0, d0
 	move.b (a3)+, d0
-	bsr.w opasmOutputEmitHexByte
+	bsr.w opasmListingEmitHexByte
+	bne.w listingCapacityFail
 	subq.l #1, d3
 	addq.l #1, d4
 	tst.l d3
-	beq.s generatedDone
+	beq.w generatedDone
 	subq.l #1, d2
-	beq.s generatedNextLine
+	beq.w generatedNextLine
+	cmpa.l a4, a2
+	bhs.w listingCapacityFail
 	move.b #' ', (a2)+
-	bra.s generatedByteLoop
+	bra.w generatedByteLoop
 
 generatedNextLine
+	cmpa.l a4, a2
+	bhs.w listingCapacityFail
 	move.b #10, (a2)+
-	bra.s generatedLoop
+	bra.w generatedLoop
 
 generatedDone
+	cmpa.l a4, a2
+	bhs.w listingCapacityFail
 	move.b #10, (a2)+
-	bra.s finish
+	bra.w finish
 
 generatedNone
 	lea OpasmListingNoneLine.l, a0
-	bsr.w opasmOutputAppendCString
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
 
 finish
 	lea OpasmListingArtifactBuffer.l, a0
@@ -489,7 +578,146 @@ finish
 	moveq #0, d0
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
+listingCapacityFail
+	movem.l (sp)+, d2-d7/a2-a6
+	moveq #1, d0
+	rts
 	.bend  ; opasmOutputBuildListingArtifactV1
+	.pub
+
+; Listing-only appenders validate each span before using shared formatters.
+; A2 is the cursor and A4 the exclusive end; all return D0=0/1 and CCR.
+; No other artifact builder depends on A4 or this bounded append contract.
+	.priv
+
+; Inputs: D0 = requested span, A2 = cursor, A4 = exclusive end.
+; Outputs: C set when insufficient. Clobbers: CCR; D0 is unchanged.
+opasmListingReserve	.block
+	move.l d1, -(sp)
+	move.l a4, d1
+	sub.l a2, d1
+	cmp.l d0, d1
+	movem.l (sp)+, d1
+	rts
+	.bend  ; opasmListingReserve
+
+opasmListingAppendCString	.block
+	movem.l d1/a1, -(sp)
+	movea.l a0, a1
+	moveq #0, d0
+scan
+	tst.b (a1)+
+	beq.s reserve
+	addq.l #1, d0
+	bra.s scan
+reserve
+	bsr.w opasmListingReserve
+	bcs.s fail
+	bsr.w opasmOutputAppendCString
+	moveq #0, d0
+	bra.s done
+fail
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a1
+	rts
+	.bend  ; opasmListingAppendCString
+
+opasmListingAppendSpaces	.block
+	bsr.w opasmListingReserve
+	bcs.s fail
+	bsr.w opasmOutputAppendSpaces
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opasmListingAppendSpaces
+
+opasmListingEmitHexByte	.block
+	move.l d0, -(sp)
+	moveq #2, d0
+	bsr.w opasmListingReserve
+	bcs.s fail
+	move.l (sp)+, d0
+	bsr.w opasmOutputEmitHexByte
+	moveq #0, d0
+	rts
+fail
+	addq.l #4, sp
+	moveq #1, d0
+	rts
+	.bend  ; opasmListingEmitHexByte
+
+opasmListingAppendHexWord	.block
+	move.l d0, -(sp)
+	moveq #4, d0
+	bsr.w opasmListingReserve
+	bcs.s fail
+	move.l (sp)+, d0
+	bsr.w opasmOutputAppendHexWord
+	moveq #0, d0
+	rts
+fail
+	addq.l #4, sp
+	moveq #1, d0
+	rts
+	.bend  ; opasmListingAppendHexWord
+
+opasmListingAppendU16Decimal	.block
+	move.l d0, -(sp)
+	move.l d1, -(sp)
+	move.l d0, d1
+	moveq #5, d0
+	cmpi.l #10000, d1
+	bhs.s widthReady
+	moveq #4, d0
+	cmpi.l #1000, d1
+	bhs.s widthReady
+	moveq #3, d0
+	cmpi.l #100, d1
+	bhs.s widthReady
+	moveq #2, d0
+	cmpi.l #10, d1
+	bhs.s widthReady
+	moveq #1, d0
+widthReady
+	move.l (sp)+, d1
+	bsr.w opasmListingReserve
+	bcs.s fail
+	move.l (sp)+, d0
+	bsr.w opasmOutputAppendU16Decimal
+	moveq #0, d0
+	rts
+fail
+	addq.l #4, sp
+	moveq #1, d0
+	rts
+	.bend  ; opasmListingAppendU16Decimal
+
+opasmListingAppendRight4Decimal	.block
+	move.l d0, -(sp)
+	move.l d1, -(sp)
+	move.l d0, d1
+	moveq #5, d0
+	cmpi.l #10000, d1
+	bhs.s widthReady
+	moveq #4, d0
+widthReady
+	move.l (sp)+, d1
+	bsr.w opasmListingReserve
+	bcs.s fail
+	move.l (sp)+, d0
+	bsr.w opasmOutputAppendRight4Decimal
+	moveq #0, d0
+	rts
+fail
+	addq.l #4, sp
+	moveq #1, d0
+	rts
+	.bend  ; opasmListingAppendRight4Decimal
+
+	.pub
 
 ; Find the statement associated with one source line.
 ; Inputs: D5 = source line number.
@@ -661,6 +889,9 @@ OpasmListingNoLocation
 	.byte "----  ", 0
 OpasmListingEquPrefix
 	.byte "EQU ", 0
+OpasmListingSectionPrefix
+	.byte "  ; [section ", 0
+
 OpasmListingLinesPrefix
 	.byte 10, "Lines: ", 0
 OpasmListingCountsSuffix

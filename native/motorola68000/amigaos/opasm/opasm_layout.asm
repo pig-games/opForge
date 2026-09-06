@@ -1083,6 +1083,39 @@ invalid
 	rts
 	.bend  ; getSectionNameV1
 
+; Project listing post-state from the first statement in a later source record.
+; Inputs: D0.L = successor statement index, or -1 for final active state.
+; Outputs: A0 = section name; D0.L = length, zero when absent/invalid.
+; Clobbers: D0/A0/CCR. CCR: reflects D0.
+; Semantic pre-dispatch ownership remains unchanged for labels and fixups.
+getListingSectionNameV1	.block
+	.priv
+	movem.l d2/d5, -(sp)
+	cmpi.l #-1, d0
+	beq.s finalState
+	cmpi.l #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
+	bhs.s absent
+	add.l d0, d0
+	lea OpasmLayoutStatementSectionIndices.l, a0
+	moveq #0, d5
+	move.w 0(a0, d0.l), d5
+	bra.s name
+finalState
+	moveq #0, d5
+	move.w OpasmLayoutActiveSectionIndex.l, d5
+name
+	bsr.w getSectionNameV1
+	bra.s return
+absent
+	suba.l a0, a0
+	moveq #0, d0
+return
+	movem.l (sp)+, d2/d5
+	tst.l d0
+	rts
+	.bend  ; getListingSectionNameV1
+	.pub
+
 ; Return one retained section's numeric state.
 ; Inputs: D5.W = section index.
 ; Outputs: D0=base, D1=size, D2=kind, D3=region index.

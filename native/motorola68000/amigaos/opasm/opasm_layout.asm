@@ -414,7 +414,8 @@ haveSectionAlign
 	bne.w fail
 	; Rust ordinary sections merge by structural section name across module
 	; owners. Compute the complete concrete group size before reserving space.
-	moveq #0, d2
+	; Table-pointer helpers clobber D2; completed alignment releases D3.
+	moveq #0, d3
 	moveq #0, d7
 groupSizeLoop
 	lea OpasmLayoutSectionCount.l, a0
@@ -433,17 +434,17 @@ groupSizeLoop
 	bne.w fail
 	lea OpasmLayoutSectionSizes.l, a0
 	jsr longTablePtrV1
-	add.l (a0), d2
+	add.l (a0), d3
 	bcs.w fail
 groupSizeNext
 	addq.w #1, d7
 	bra.s groupSizeLoop
 
 groupSizeReady
-	tst.l d2
+	tst.l d3
 	beq.s storeCursor
 	move.l d1, d0
-	add.l d2, d0
+	add.l d3, d0
 	bcs.w fail
 	subq.l #1, d0
 	lea OpasmLayoutRegionEnds.l, a0

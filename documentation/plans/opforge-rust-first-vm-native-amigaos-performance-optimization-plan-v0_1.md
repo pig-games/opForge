@@ -98,8 +98,8 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 22 of 33 · Item A-layout-size — preserve the section-size accumulator
-across table-pointer helpers.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 23 of 33 · Item A-hex-records — preserve sparse addresses
+and the 32-byte record boundary in native HEX output.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -450,13 +450,14 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: one focused MOS relocation-package commit before A-close or any resulting repair.
   - Definition of done: MOS symbolic `.long` has the Rust-owned semantic role; exact B09 disposition and all required checks are recorded. Other Phase A failure debt remains open.
 
-- [ ] Step 22 · Item A-layout-size — Preserve placed-section group size
+- [x] Step 22 · Item A-layout-size — Preserve placed-section group size
   - Source requirement or finding IDs: SR-PAR, SR-TERM; B09 map region usage and BSS base differ after A-mos-abs32.
   - Expected files: native layout placement routine, focused layout oracle tests, source snapshots and evidence.
   - Dependencies/worktree: committed A-mos-abs32; warmed worktree and explicit repaired package identity.
   - Steps and boundaries: `placeSectionV1` accumulates group size in D2 while `wordTablePtrV1` and `longTablePtrV1` overwrite D2 with scaled indices. Preserve the accumulated sum across those helpers without changing group membership, ordering or alignment. Rust placement remains authoritative; no CPU-specific native semantics.
-  - Evidence and proof: B09 reserves singleton sizes as index*4+size, exactly explaining native used25 and BSS base$800D versus Rust used17 and base$8009. Use a complete three-section source with sizes5/3/4 and alignments1/2/1, no symbol-map differences, and require exact live Rust map plus BIN with fresh zero-exit guest proof. Source/host evidence must cover more than one group member where applicable. Rerun B09 once for all eleven-artifact disposition; symbol prefix/visibility, listing, HEX and compound-expression debt remain open until their own proof.
+  - Evidence and proof: B09 reserves singleton sizes as index*4+size, exactly explaining native used25 and BSS base$800D versus live Rust used13 and base$8009. Use a complete three-section source with sizes5/3/4 and alignments1/2/1, no symbol-map differences, and require exact live Rust map plus BIN with fresh zero-exit guest proof. Source/host evidence must cover more than one group member where applicable. Rerun B09 once for all eleven-artifact disposition; symbol prefix/visibility, listing, HEX and compound-expression debt remain open until their own proof.
   - Before/after and stop/go: correctness repair first; unchanged placement complexity and no new capacity. Removes inflated reserved spans, but claim runtime improvement only after matching measurements. Report step and total gains separately.
+  - Completion evidence (2026-09-06; focused commit follows final artifact validation): exact complete BIN/map LevelD PASS64.69s; liveRust used13/free243 and bases8000/8006/8009, correcting prior17estimate. SameB09 nowreports correctedlayout but remains8of11exact withHEX/map-symbol/listing debt. Grouped2+3 Rustoracle/source contract pass; non-LSP Rust PASS267.733176875s, native/workflow/formatter/inventory and independentreview PASS. Runtime and current totalruntime gain unmeasured.
   - Gate tier: one bounded shared layout invariant repair, prioritized before artifact formatting.
   - Required focused gates: Rust placement oracle and native accumulator contract (Levels A/B), exact BIN/map guest proof (Level D), B09 disposition, native formatter, architecture, inventory and source budgets.
   - Full quality gates: mandatory non-LSP Rust, staged native and workflow/plan validators; full Phase A qualification remains at A-close.

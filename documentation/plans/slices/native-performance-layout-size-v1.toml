@@ -1,0 +1,34 @@
+[slice]
+schema_version = 2
+name = "native placed-section group size preservation"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "22 / Item A-layout-size"
+rust_reference = ["crates/opforge-asm/src/asmline_directives_layout.rs::AsmLine::place_section_in_region"]
+native_boundary = ["native/motorola68000/amigaos/opasm/opasm_layout.asm::placeSectionV1"]
+invariant = "After aligning the selected region cursor, native placement retains the complete concrete same-name section-group size across table-pointer helpers and reserves exactly that sum. Group membership, source order, alignment, bases, region usage, and existing capacities remain Rust-owned and unchanged."
+assertion_decision = "Use a source-level register-lifetime contract and a complete multi-section live Rust BIN/map oracle. The correction reuses an existing register after alignment and adds no state, capacity, instrumentation, or CPU-specific behavior."
+expected_inputs = "A placed concrete section group with more than one same-name member, discriminating sizes and alignments, its selected region bounds, and the aligned region cursor."
+expected_outputs = "Rust-equivalent section bases, total reserved span, region used size, BIN bytes, map text, and fail-closed overflow/range status."
+known_non_equivalences = "This slice does not change section grouping, placement order, alignment rules, Hunk/HEX/listing formatting, package identity, symbol visibility, or compound-expression behavior. It makes no runtime-gain or Phase A completion claim."
+fast_proof_command = "cargo test --locked -p asm native_layout_group_size_ -- --nocapture --test-threads=1"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_layout_group_size_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_layout_group_size_accumulator_survives_table_pointer_helpers"
+proof_level = "B"
+proves = "Rust placement remains authoritative and the native group-size accumulator survives every table-pointer helper after alignment."
+does_not_prove = "Native encoding, AmigaOS execution, artifact parity, timing, or unrelated layout paths."
+
+[[tests]]
+name = "native_layout_group_size_map_and_bin_fs_uae"
+proof_level = "D"
+proves = "A fresh completed guest with explicit zero exit matches the same-source live Rust BIN and map for the complete multi-section discriminator."
+does_not_prove = "B09, other artifact formats, timing gains, or Phase A closure."
+
+[[tests]]
+name = "native_layout_group_size_multi_member_structural_name_group"
+proof_level = "A"
+proves = "The live Rust structural-name group combines two concrete members of two and three bytes into one five-byte placement."
+does_not_prove = "Native multi-member execution, unrelated layout or performance."

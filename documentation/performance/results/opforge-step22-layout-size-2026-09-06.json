@@ -1,0 +1,77 @@
+{
+  "step": 22,
+  "item": "A-layout-size",
+  "parent_commit": "967694e9",
+  "status": "Step22 required proof/gates/reviewPASS;focusedcommitpending",
+  "performance": {
+    "step_runtime_gain": "unmeasured",
+    "total_runtime_gain": "unmeasured",
+    "layout_reservation": {
+      "previous_B09_used": 25,
+      "focused_correct_used": 13,
+      "correct_free": 243,
+      "note": "Same frozenB09 now reportsused13/free243, zero8009; focusedmapexactRust; fullmap symbolrowsstilldiffer",
+      "correct_B09_used": 13,
+      "bytes_of_erroneous_reservation_removed": 12
+    }
+  },
+  "receipts": [
+    {
+      "name": "native",
+      "proof_level": "D",
+      "passed": true,
+      "whole_test_seconds": 64.69,
+      "sha256": "233e7a4eddf1d75623a302fe92c8ead3be593352c19d39e8587e3006b772a620",
+      "log_bytes": 528,
+      "log_path": "target/workflow-logs/step22-layout-size/native.log",
+      "scope": "complete three-section exactliveRustBIN/map freshprotocolzeroexit"
+    },
+    {
+      "name": "B09",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "external_fs_uae_native_production_corpus_parity",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 75.628538625082,
+      "sha256": "59016ecf793c738582467ae231662a121673613f0abdfe5d9e9386256e2eb5ba",
+      "log_bytes": 29501,
+      "log_path": "target/workflow-logs/step22-layout-size/B09.log",
+      "artifact_mismatches": [
+        "Work/build/full.hex",
+        "Work/build/full.map",
+        "Work/opforge_6502_native_cli_smoke.lst"
+      ],
+      "all_artifacts_checked": 11,
+      "exact_artifacts": 8,
+      "parity_passed": false
+    },
+    {
+      "name": "rust-gate",
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 267.7331768749282,
+      "sha256": "c1cb0e34eb89352f45c4812190d5525b9af11356e19de5ac4e2acf2d3b0b1193",
+      "log_bytes": 331299,
+      "log_path": "target/workflow-logs/step22-layout-size/rust-gate.log"
+    },
+    {
+      "name": "workflow",
+      "exit_code": 0,
+      "sha256": "ad47dda949c8699a00796b75db8088d9a639dc71c8057354841d1a831f58c8d4",
+      "log_bytes": 7044,
+      "log_path": "target/workflow-logs/step22-layout-size/workflow.log"
+    }
+  ]
+}

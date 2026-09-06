@@ -33,4 +33,4 @@ Full B09 then compared all eleven artifacts: eight match exactly; `full.hex`, `f
 
 Step performance gain: no measured speedup; the repair removes a correctness barrier to qualification. Total Phase A runtime gain: unmeasured for the current build, because no matched initial/current series exists and package identity changed. The retained source-I/O mechanism reduces DOS calls from 1,608 to 8 on the Step19 fixture; this is not a whole-product runtime total.
 
-The next item fixes the layout accumulator clobbered by table-pointer helpers: the retained sizes explain B09 used25 versus Rust17 and BSS base$800D versus$8009. HEX segmentation follows; symbol-map and listing differences remain separate debt. No performance percentage is inferred from this source audit.
+The next item fixes the layout accumulator clobbered by table-pointer helpers: the retained sizes explain B09 used25 versus live Rust13 (correcting the initial source-audit estimate17) and BSS base$800D versus$8009. HEX segmentation follows; symbol-map and listing differences remain separate debt. No performance percentage is inferred from this source audit.

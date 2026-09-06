@@ -129,6 +129,12 @@ section, diagnostic, and ownership surface. Hunk normalization state remains in
 the layout owner; CPU, instruction, expression, encoding, and relocation inputs
 remain package or engine data.
 
+Performance-plan Step 22 refreshes the layout source after preserving the
+placed-section group-size accumulator across its existing word/long table
+pointer helpers. The correction reuses a released register after alignment;
+the 63-routine public/private ABI, imports, code/BSS sections, mutable state,
+capacities, diagnostics, and layout ownership remain unchanged.
+
 Performance-plan Item 0d refreshes the audited snapshots for the coarse native
 runtime observation sites. The affected VM and service owners conditionally
 import `debug.amigaos.runtime_profile`; that dependency is a default-off,

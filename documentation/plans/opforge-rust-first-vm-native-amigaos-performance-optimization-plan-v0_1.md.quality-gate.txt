@@ -1,3 +1,12 @@
+PASS: Independent Step26 plan-compliance review by step20_review (2026-09-06) accepts the whole diff without blocking findings. The existing visibility update is followed by exactly one bounded source-record call, with failure propagation and consumed return before statement/package routing. Complete focused native listing/BIN matches live Rust with fresh zero-exit proof; separate host contracts establish row order and visibility authority. No BSS allocation or opcode work was added. B09 remains10/11, next mismatch1260 is reservation row19 before the footer; Phase A remains open.
+
+Artifact SHA-256: f7caf5eb454cc835677c9fea29c3e1975dc0469381fbc9c9a87004f44b684987
+Required gates: focused A/B/D filter3/3 PASS without SKIP; non-LSP Rust terminal exit0 in264.400876 seconds, SHA256 d651c92a91ec57cb4c8135b01b962c23b76019cbce4adbf243cef7075257619f,333370bytes; staged workflow terminal exit0 in30.985681 seconds, SHA256 d7582681094d2364088bc656202f0bc6f597276dfd6816d0bd5cd648b2697149,6494bytes. Plan bundle and final diff checks PASS. LSP remains deferred.
+Plan-quality PASS: Step27 A-listing-reservation explicitly retains the discarded RES extent in existing storage, preserves emitted-byte getter semantics, requires a complete reader/writer/width audit and footer-neutral exact whole artifacts. All37 steps remain sequential and LSP last. Step and cumulative runtime gains remain unmeasured; the separate source DOS-read mechanism is not a runtime total.
+Commit scope: native line_processor, focused visibility listing tests/registration and measured source budgets, slice metadata, Step26 evidence, plan and this sidecar. No push authorized.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Independent Step25 plan-compliance review by step20_review (2026-09-06) accepts the final whole diff with no blocking findings. Authoritative post-directive section projection preserves semantic ownership without new BSS or per-statement capture; uniform bounds and the A2-derived end pointer pass complete exact BIN/listing and explicit oversized-listing rejection. Temporary diagnostic instrumentation is removed; original failures and Level E limitations remain recorded. The corrected import count is420. B09 remains10/11, listing source omission owned by the separately reviewed footer-neutral Step26. Step25 is complete for this focused commit; Phase A remains open.
 
 Artifact SHA-256: ec185c0012c1cb7e03fa1280ed92fe5aef18cb6d520c552ad67532c6e3890430

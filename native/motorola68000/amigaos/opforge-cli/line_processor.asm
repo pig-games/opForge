@@ -98,6 +98,9 @@ metadataPass
 	bpl.s visibilityPass
 	jsr preprocessor.opforgeNativeCliTrackVisibilityV1
 	beq.s visibilityPass
+	; Consumed metadata still owns a listing row, but no assembly statement.
+	jsr assembly_session.opforgeNativeCliRecordSourceLine
+	bne.w fail
 	moveq #0, d0
 	rts
 visibilityPass

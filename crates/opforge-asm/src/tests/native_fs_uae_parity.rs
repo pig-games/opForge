@@ -23,6 +23,9 @@ mod native_map_symbols;
 #[path = "native_listing_sections.rs"]
 mod native_listing_sections;
 
+#[path = "native_listing_visibility_source_rows.rs"]
+mod native_listing_visibility_source_rows;
+
 #[path = "native_branch_failures.rs"]
 mod branch_failures;
 

@@ -212,6 +212,8 @@ badRequest
 resolveHierarchyV1	.block
 	bsr.w findCpuEntryV1
 	bne.w cpuUnresolved
+	bsr.w resolveCpuExecutionPropertiesV1
+	bne.w cpuUnresolved
 	bsr.w findFamilyEntryV1
 	bne.w familyUnresolved
 	bsr.w resolveSelectedDialectV1
@@ -405,6 +407,73 @@ cpuIndexMissing
 	moveq #1, d0
 	rts
 	.bend  ; findCpuEntryByIndexV1
+
+; Stage optional execution properties for the resolved canonical CPU.
+; Legacy packages leave the pending property record explicitly absent.
+; Inputs: PendingCpu locator names the canonical CPUS entry.
+; Outputs: D0 = 0 on match/absence, 1 on impossible validated-chunk miss.
+; Clobbers: D0-D7/A0-A6/CCR.
+; CCR: reflects D0 on return.
+resolveCpuExecutionPropertiesV1	.block
+	clr.b buffers.PendingCpuExecutionPresent
+	clr.l buffers.PendingCpuWordSizeBytes
+	clr.l buffers.PendingCpuMaxProgramAddress
+	btst #4, buffers.PackageChunkFlagsExtra
+	beq.w found
+	lea buffers.PendingCpuOffsetLo, a3
+	bsr.w readLocatorPtrLenV1
+	movea.l a1, a5
+	move.w d3, d5
+	lea buffers.CpexChunkOffsetLo, a3
+	bsr.w chunkPtrFromLocatorV1
+	moveq #8, d0
+	bsr.w requireBytesV1
+	bne.w missing
+	moveq #0, d7
+	move.b 4(a2), d7
+	moveq #0, d0
+	move.b 5(a2), d0
+	lsl.w #8, d0
+	or.w d0, d7
+	lea 8(a2), a2
+	tst.w d7
+	beq.w missing
+	subq.w #1, d7
+
+loop
+	bsr.w locateStringV1
+	bne.w missing
+	move.w d0, d6
+	movea.l a1, a4
+	move.l a2, -(sp)
+	move.w d6, d0
+	move.w d5, d1
+	movea.l a4, a1
+	movea.l a5, a2
+	bsr.w stringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
+	move.b d0, d4
+	bsr.w readU32LeV1
+	bne.w missing
+	move.l d0, d6
+	bsr.w readU32LeV1
+	bne.w missing
+	tst.b d4
+	bne.s matched
+	dbf d7, loop
+	bra.s missing
+
+matched
+	move.l d6, buffers.PendingCpuWordSizeBytes
+	move.l d0, buffers.PendingCpuMaxProgramAddress
+	move.b #1, buffers.PendingCpuExecutionPresent
+found
+	moveq #0, d0
+	rts
+missing
+	moveq #1, d0
+	rts
+	.bend  ; resolveCpuExecutionPropertiesV1
 
 ; Find the FAMS record matching the family referenced by the selected CPU.
 findFamilyEntryV1	.block
@@ -926,6 +995,7 @@ parserSkipBoundsFail
 ; Outputs:
 ; - D0: 0 on success, abi.STATUS_RUNTIME_ERROR_V1 when any identifier copy overflows.
 ; - active pipeline locator/tag state committed into buffers.Active* fields on success.
+; - failure leaves the pipeline unselected and execution properties unavailable.
 ; - A1/D1: failure text pointer/length when D0 is runtime error.
 ;
 ; Clobbers:
@@ -934,6 +1004,9 @@ parserSkipBoundsFail
 ; CCR:
 ; - Reflects D0 on return.
 commitActiveSelectionV1	.block
+	; Publish selection only after identity, state, and properties all commit.
+	bclr #1, buffers.PackageStateFlags
+	clr.b buffers.ActiveCpuExecutionPresent
 	lea buffers.PendingCpuOffsetLo, a3
 	lea buffers.ActiveCpuBuffer.l, a2
 	bsr.w copyLocatorToBufferV1
@@ -964,6 +1037,10 @@ commitActiveSelectionV1	.block
 	jsr state_service.initializeActiveV1
 	tst.l d0
 	bne.s commitDone
+	move.l buffers.PendingCpuWordSizeBytes, buffers.ActiveCpuWordSizeBytes
+	move.l buffers.PendingCpuMaxProgramAddress, buffers.ActiveCpuMaxProgramAddress
+	move.b buffers.PendingCpuExecutionPresent, d0
+	move.b d0, buffers.ActiveCpuExecutionPresent
 	bset #1, buffers.PackageStateFlags
 	moveq #0, d0
 
@@ -1314,6 +1391,38 @@ readU32BoundsFail
 	moveq #1, d1
 	rts
 	.bend  ; readU32LeLow16V1
+
+; Read one bounded little-endian u32 field and advance the package cursor.
+; Inputs: A2 cursor, A6 exclusive end. Outputs: D0 value, D1 status.
+; Clobbers: D0-D2/CCR. CCR reflects D1 on return.
+readU32LeV1	.block
+	moveq #4, d0
+	bsr.w requireBytesV1
+	bne.s fail
+	moveq #0, d0
+	move.b (a2)+, d0
+	moveq #0, d1
+	move.b (a2)+, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a2)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a2)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	rts
+fail
+	moveq #0, d0
+	moveq #1, d1
+	rts
+	.bend  ; readU32LeV1
 
 ; Verify that D0 bytes remain between A2 and the exclusive end pointer in A6.
 ; Inputs: D0 = required byte count; A2 = current package cursor; A6 = exclusive end.

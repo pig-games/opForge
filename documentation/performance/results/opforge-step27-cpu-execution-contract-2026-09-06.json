@@ -1,0 +1,479 @@
+{
+  "step": 27,
+  "item": "A-cpu-execution-contract",
+  "parent_commit": "41b8105dd8f35d03b9170b6c8881ccba562a0e63",
+  "status": "Step27 required gates and independent plan-compliance PASS; focused local commit next. Phase A remains open.",
+  "packages": [
+    {
+      "path": "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm",
+      "before_bytes": 368316,
+      "before_sha256": "cafd1cb9b22f48c5e4598da24584a2f4935fb7a0a8a75193d1fe4e18adaf5dfd",
+      "candidate_bytes": 368579,
+      "candidate_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872"
+    },
+    {
+      "path": "native/motorola68000/amigaos/tkpkg/tkpkg_debug_cli_package.opasm",
+      "before_bytes": 7732,
+      "before_sha256": "75552a351fe525503d97888a29150c2b89eb2061688ee47d27b798e80df5ca52",
+      "candidate_bytes": 7860,
+      "candidate_sha256": "14af49750c24709475c64c264b1aab8255c6cd809d17c92fbc5b059e223ec7d0"
+    }
+  ],
+  "receipts": [
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 4.223088207887486,
+      "sha256": "22beed5e006f77605845b381d9c20fe57ab7fbc549e0dce1068de0a6a47e8603",
+      "log_bytes": 1339,
+      "log_path": "target/workflow-logs/step27-cpex/budgets-final.log",
+      "name": "budgets-final",
+      "passed": true
+    },
+    {
+      "command": [
+        "cargo",
+        "run",
+        "-p",
+        "cli",
+        "--bin",
+        "opforge",
+        "--",
+        "--cpu",
+        "68020",
+        "-M",
+        "native/motorola68000/amigaos/opforge-cli",
+        "-M",
+        "native/motorola68000/amigaos/tkpkg",
+        "-M",
+        "native/motorola68000/amigaos/tkvm",
+        "-M",
+        "native/motorola68000/amigaos/prvm",
+        "-M",
+        "native/motorola68000/amigaos/exprvm",
+        "-M",
+        "native/motorola68000/amigaos/opcore",
+        "-M",
+        "native/motorola68000/amigaos/opasm",
+        "-M",
+        "native/motorola68000/amigaos/debug",
+        "-I",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/tkpkg",
+        "-i",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_cpex_harness.asm",
+        "--fmt-check",
+        "--fmt-config",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/.opforgefmt.toml"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 1.254501499934122,
+      "sha256": "b9632c1c1a0a5dd3b94702bcc7c8b17aeac5ebbbda1923be0630e3ab6f2087b0",
+      "log_bytes": 856,
+      "log_path": "target/workflow-logs/step27-cpex/harness-format-check.log",
+      "name": "harness-format-check",
+      "passed": true
+    },
+    {
+      "command": [
+        "cargo",
+        "run",
+        "-p",
+        "cli",
+        "--bin",
+        "opforge",
+        "--",
+        "--cpu",
+        "68020",
+        "-M",
+        "native/motorola68000/amigaos/opforge-cli",
+        "-M",
+        "native/motorola68000/amigaos/tkpkg",
+        "-M",
+        "native/motorola68000/amigaos/tkvm",
+        "-M",
+        "native/motorola68000/amigaos/prvm",
+        "-M",
+        "native/motorola68000/amigaos/exprvm",
+        "-M",
+        "native/motorola68000/amigaos/opcore",
+        "-M",
+        "native/motorola68000/amigaos/opasm",
+        "-M",
+        "native/motorola68000/amigaos/debug",
+        "-I",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/tkpkg",
+        "-i",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_cpex_harness.asm",
+        "--fmt-write",
+        "--fmt-config",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/.opforgefmt.toml"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 1.1802433328703046,
+      "sha256": "195af80f1ad058a6ef9181cec0e7abde7fe6ad9cdc9c78c9013f1fd68b24e2d5",
+      "log_bytes": 853,
+      "log_path": "target/workflow-logs/step27-cpex/harness-format-r2.log",
+      "name": "harness-format-r2"
+    },
+    {
+      "command": [
+        "cargo",
+        "run",
+        "-p",
+        "cli",
+        "--bin",
+        "opforge",
+        "--",
+        "--cpu",
+        "68020",
+        "-M",
+        "native/motorola68000/amigaos/opforge-cli",
+        "-M",
+        "native/motorola68000/amigaos/tkpkg",
+        "-M",
+        "native/motorola68000/amigaos/tkvm",
+        "-M",
+        "native/motorola68000/amigaos/prvm",
+        "-M",
+        "native/motorola68000/amigaos/exprvm",
+        "-M",
+        "native/motorola68000/amigaos/opcore",
+        "-M",
+        "native/motorola68000/amigaos/opasm",
+        "-M",
+        "native/motorola68000/amigaos/debug",
+        "-i",
+        "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_cpex_harness.asm",
+        "--fmt-write",
+        "--fmt-config",
+        ".opforgefmt.toml"
+      ],
+      "exit_code": 1,
+      "whole_seconds": 0.7244501251261681,
+      "sha256": "6053958a9c93f190b0ec7ec7b92919158b5d86774786f3909d73b63f0f4cee42",
+      "log_bytes": 951,
+      "log_path": "target/workflow-logs/step27-cpex/harness-format.log",
+      "name": "harness-format"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 0.5266875000670552,
+      "sha256": "6ded9b0924f48a548bd472bc091d478f064b64653bbca41fb3e6e7523688797d",
+      "log_bytes": 1226,
+      "log_path": "target/workflow-logs/step27-cpex/host-final.log",
+      "name": "host-final"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_cpex_harness_fs_uae",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 61.28515474987216,
+      "sha256": "0d66db9a3098294b628d70f14462257315debc19b330cec54f707f58ffd80191",
+      "log_bytes": 2649,
+      "log_path": "target/workflow-logs/step27-cpex/native-localize-r2.log",
+      "name": "native-localize-r2",
+      "proof_level": "E",
+      "scope": "Temporary approved debug-event localization only; not parity. Probe removed before native-r9."
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_cpex_harness_fs_uae",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 12.995953999925405,
+      "sha256": "34638dd162c6e264ffc8894ab1e2b7e235ce9d5d455c1d40e828860fda1e7068",
+      "log_bytes": 2344,
+      "log_path": "target/workflow-logs/step27-cpex/native-localize.log",
+      "name": "native-localize",
+      "proof_level": "E",
+      "scope": "Temporary approved debug-event localization only; not parity. Probe removed before native-r9."
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_cpex_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 2.519377499818802,
+      "sha256": "58e33c9ccb20a3d034f64fb474c06fe4c271c80c2bf6b0dfe548f5b6fbbb4e97",
+      "log_bytes": 1411557,
+      "log_path": "target/workflow-logs/step27-cpex/native-r3.log",
+      "name": "native-r3",
+      "scope": "Retained failed pre-proof attempt; not parity."
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_cpex_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 3.6289024581201375,
+      "sha256": "89097171206515fb4b30c07991463411b4d99a13b8d21a3effa87b77913ea8c5",
+      "log_bytes": 4176,
+      "log_path": "target/workflow-logs/step27-cpex/native-r4.log",
+      "name": "native-r4",
+      "scope": "Retained failed pre-proof attempt; not parity."
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_cpex_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 7.466314374934882,
+      "sha256": "0dd2831d8e1833d365c7d2255592c310be1e573eaf02babdeb19a31979275948",
+      "log_bytes": 2922,
+      "log_path": "target/workflow-logs/step27-cpex/native-r5.log",
+      "name": "native-r5",
+      "scope": "Retained failed pre-proof attempt; not parity."
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_cpex_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 97.35569804208353,
+      "sha256": "f3ad9a27a22856775d92f9c55b1815383cbfad09e2cfbca289fe0445896108bc",
+      "log_bytes": 2670,
+      "log_path": "target/workflow-logs/step27-cpex/native-r6.log",
+      "name": "native-r6",
+      "scope": "Retained failed pre-proof attempt; not parity."
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_cpex_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 97.3700006250292,
+      "sha256": "fcbe59ea181d31f2cc17721326780d3622987b7afd191074eaabb17ee8b83394",
+      "log_bytes": 2777,
+      "log_path": "target/workflow-logs/step27-cpex/native-r7.log",
+      "name": "native-r7",
+      "scope": "Retained failed pre-proof attempt; not parity."
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_cpex_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 109.83030204102397,
+      "sha256": "fb0a4c7e71bcc3ea597afdf34a81fcd313e84fbc75990aab92086baeb87e85ec",
+      "log_bytes": 2568,
+      "log_path": "target/workflow-logs/step27-cpex/native-r8.log",
+      "name": "native-r8",
+      "scope": "Retained failed pre-proof attempt; not parity."
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_cpex_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 107.98806545813568,
+      "sha256": "7dc1ebdc7d51d87ec20e11b87850e63209392710d38d7b862aa96c66e531764f",
+      "log_bytes": 864,
+      "log_path": "target/workflow-logs/step27-cpex/native-r9.log",
+      "name": "native-r9",
+      "proof_level": "D",
+      "passed": true,
+      "scope": "Four focused tests including fresh exact positive property bytes and separate legacy-negative diagnostic, no SKIP."
+    },
+    {
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 267.9663267082069,
+      "sha256": "c3aeb4c567555386602274cd1a9e6f9b8c26a335d4db8a2424e8de930a48a084",
+      "log_bytes": 216994,
+      "log_path": "target/workflow-logs/step27-cpex/rust-gate.log",
+      "name": "rust-gate"
+    },
+    {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "exit_code": 2,
+      "whole_seconds": 23.62834700010717,
+      "sha256": "def1fd68f6151e77e1e09a73d8ca8c6612dec8c684e3e6d42ad0a8f70e5bc34a",
+      "log_bytes": 4281,
+      "log_path": "target/workflow-logs/step27-cpex/workflow-pre-final.log",
+      "name": "workflow-pre-final"
+    },
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 17.89713683282025,
+      "sha256": "d523f7330c25d89b8525322d3b19ef32b83712c11087b1685eb02ff698177a55",
+      "log_bytes": 473,
+      "log_path": "target/workflow-logs/step27-cpex/pipeline-contract-r2.log",
+      "name": "pipeline-contract-r2",
+      "passed": true
+    },
+    {
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts/workflow/tests",
+        "-p",
+        "test_production_corpus.py"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 0.0939457081258297,
+      "sha256": "fc523972b6a1714a1d54810e5e0468e39c4bd3e3d5232a86ffd2e808fc829bd9",
+      "log_bytes": 111,
+      "log_path": "target/workflow-logs/step27-cpex/corpus-contract-final.log",
+      "name": "corpus-contract-final",
+      "passed": true
+    },
+    {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 30.152137832948938,
+      "sha256": "1a430f2f5ebf8ed0d98e6e840ce50857881219206650dc093e3a78b70a549a96",
+      "log_bytes": 7097,
+      "log_path": "target/workflow-logs/step27-cpex/workflow-check.log",
+      "name": "workflow-check",
+      "passed": true
+    },
+    {
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 288.54082758305594,
+      "sha256": "57904ebe92858f2cc7206f20fef52e06d8ff00f3ef2e997d084cfeabf1da4060",
+      "log_bytes": 338112,
+      "log_path": "target/workflow-logs/step27-cpex/rust-gate-complete.log",
+      "name": "rust-gate-complete",
+      "passed": true
+    }
+  ],
+  "performance": {
+    "step_runtime_gain_percent": null,
+    "cumulative_phase_a_runtime_gain_percent": null,
+    "reason": "Correctness prerequisite. No matched initial/current runtime series.",
+    "separate_verified_source_read_mechanism": {
+      "before_dos_calls": 1608,
+      "after_dos_calls": 8,
+      "reduction_percent": 99.50248756218906
+    },
+    "separate_validation_time_reduction_percent": 85.2691
+  },
+  "remaining": [
+    "Focused local commit before Step28",
+    "Step28 reservation semantics and listing retention",
+    "Remaining full Phase A qualification and repairs"
+  ]
+}

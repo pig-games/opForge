@@ -7,6 +7,7 @@
 	.cpu 68020
 	.pub
 	.use tkpkg.amigaos.engine_context_adapter as adapter
+	.use tkpkg.amigaos.buffers
 	.use tkpkg.amigaos.state_service as state_service
 
 RUNTIME_CONTEXT_ABI_VERSION = 1
@@ -65,6 +66,37 @@ isSymbolFinalV1	.block
 getCpuStateFlagV1	.block
 	jmp state_service.getFlagV1
 	.bend  ; getCpuStateFlagV1
+
+; Return the selected package CPU's authoritative native word size.
+; Inputs: none. Outputs: D0 = 0/D1 = value, or D0 = 1 when unavailable.
+; Clobbers: D0-D1/CCR. CCR reflects D0 on return.
+getCpuWordSizeBytesV1	.block
+	tst.b buffers.ActiveCpuExecutionPresent
+	beq.s missing
+	move.l buffers.ActiveCpuWordSizeBytes, d1
+	moveq #0, d0
+	rts
+missing
+	moveq #0, d1
+	moveq #1, d0
+	rts
+	.bend  ; getCpuWordSizeBytesV1
+
+; Return the selected package CPU's inclusive maximum program address.
+; Zero is a valid value and is distinguished by the presence byte.
+; Inputs: none. Outputs: D0 = 0/D1 = value, or D0 = 1 when unavailable.
+; Clobbers: D0-D1/CCR. CCR reflects D0 on return.
+getCpuMaxProgramAddressV1	.block
+	tst.b buffers.ActiveCpuExecutionPresent
+	beq.s missing
+	move.l buffers.ActiveCpuMaxProgramAddress, d1
+	moveq #0, d0
+	rts
+missing
+	moveq #0, d1
+	moveq #1, d0
+	rts
+	.bend  ; getCpuMaxProgramAddressV1
 
 ; Materialize a bounded, read-only stability snapshot for one consumer call.
 ; Inputs: D0 = symbol count.

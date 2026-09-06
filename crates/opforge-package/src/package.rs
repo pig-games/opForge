@@ -10,6 +10,7 @@
 //! - `TOKS` (token policy hints)
 //! - `FAMS` (family descriptors)
 //! - `CPUS` (cpu descriptors)
+//! - `CPEX` (optional canonical CPU execution properties)
 //! - `CALS` (compact, losslessly representable canonical-CPU aliases for state-capable packages)
 //! - `DIAL` (dialect descriptors)
 //! - `REGS` (scoped register descriptors)
@@ -27,8 +28,8 @@
 use std::collections::HashMap;
 
 use types::hierarchy::{
-    CpuDescriptor, DialectDescriptor, FamilyDescriptor, HierarchyError, HierarchyPackage,
-    ScopedFormDescriptor, ScopedOwner, ScopedRegisterDescriptor,
+    CpuDescriptor, CpuExecutionProperties, DialectDescriptor, FamilyDescriptor, HierarchyError,
+    HierarchyPackage, ScopedFormDescriptor, ScopedOwner, ScopedRegisterDescriptor,
 };
 
 mod branch_program;
@@ -53,6 +54,14 @@ pub use canonicalize::{
 pub use encoding_program::*;
 pub use fixup_program::*;
 pub use state_program::*;
+
+/// Validate a present CPEX contract against the package's CPU descriptors.
+pub fn validate_cpu_execution_properties_contract(
+    properties: &[CpuExecutionProperties],
+    cpus: &[CpuDescriptor],
+) -> Result<(), OpcpuCodecError> {
+    codec::validate_cpu_execution_properties(properties, cpus)
+}
 pub use structured_encoding_program::*;
 
 pub const OPASM_MAGIC: [u8; 4] = *b"OPCP";
@@ -83,6 +92,7 @@ const CHUNK_DIAG: [u8; 4] = *b"DIAG";
 const CHUNK_TOKS: [u8; 4] = *b"TOKS";
 const CHUNK_FAMS: [u8; 4] = *b"FAMS";
 const CHUNK_CPUS: [u8; 4] = *b"CPUS";
+const CHUNK_CPEX: [u8; 4] = *b"CPEX";
 const CHUNK_DIAL: [u8; 4] = *b"DIAL";
 const CHUNK_REGS: [u8; 4] = *b"REGS";
 const CHUNK_RENC: [u8; 4] = *b"RENC";
@@ -1917,6 +1927,8 @@ pub struct HierarchyChunks {
     pub expr_parser_contracts: Vec<ExprParserContractDescriptor>,
     pub families: Vec<FamilyDescriptor>,
     pub cpus: Vec<CpuDescriptor>,
+    /// `None` means the optional CPEX contract was absent from a legacy package.
+    pub cpu_execution_properties: Option<Vec<CpuExecutionProperties>>,
     pub dialects: Vec<DialectDescriptor>,
     pub registers: Vec<ScopedRegisterDescriptor>,
     pub register_encodings: Vec<RegisterEncodingDescriptor>,

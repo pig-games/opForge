@@ -25,7 +25,8 @@ use package::{
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
 use types::hierarchy::{
-    HierarchyError, HierarchyPackage, ResolvedHierarchy, ScopedOwner, ScopedRegisterDescriptor,
+    CpuExecutionProperties, HierarchyError, HierarchyPackage, ResolvedHierarchy, ScopedOwner,
+    ScopedRegisterDescriptor,
 };
 
 use crate::branch_vm::{
@@ -189,6 +190,7 @@ impl From<HierarchyError> for RuntimeModelLoadError {
 #[derive(Debug)]
 pub struct RuntimeModelCore {
     pub bridge: HierarchyRuntimeBridge,
+    pub cpu_execution_properties: Option<HashMap<String, CpuExecutionProperties>>,
     pub family_forms: HashMap<String, HashSet<String>>,
     pub cpu_forms: HashMap<String, HashSet<String>>,
     pub dialect_forms: HashMap<String, HashSet<String>>,
@@ -241,6 +243,7 @@ impl RuntimeModelCore {
             expr_parser_contracts,
             families,
             cpus,
+            cpu_execution_properties,
             dialects,
             registers,
             register_encodings,
@@ -253,7 +256,16 @@ impl RuntimeModelCore {
             selectors,
             state_programs,
         } = chunks;
+        if let Some(properties) = cpu_execution_properties.as_deref() {
+            package::validate_cpu_execution_properties_contract(properties, &cpus)?;
+        }
         let package = HierarchyPackage::new(families, cpus, dialects)?;
+        let cpu_execution_properties = cpu_execution_properties.map(|properties| {
+            properties
+                .into_iter()
+                .map(|property| (property.cpu_id.to_ascii_lowercase(), property))
+                .collect()
+        });
         let mut interner = LowercaseIdInterner::default();
         let mut scoped_register_encodings = HashMap::new();
         for entry in register_encodings {
@@ -522,6 +534,7 @@ impl RuntimeModelCore {
 
         Ok(Self {
             bridge: HierarchyRuntimeBridge::new(package),
+            cpu_execution_properties,
             family_forms,
             cpu_forms,
             dialect_forms,
@@ -565,6 +578,17 @@ impl RuntimeModelCore {
         dialect_override: Option<&str>,
     ) -> Result<ResolvedHierarchy, HierarchyRuntimeBridgeError> {
         self.bridge.resolve_pipeline(cpu_id, dialect_override)
+    }
+
+    pub fn cpu_execution_properties(
+        &self,
+        cpu_id: &str,
+    ) -> Result<Option<&CpuExecutionProperties>, HierarchyRuntimeBridgeError> {
+        let resolved = self.resolve_pipeline(cpu_id, None)?;
+        Ok(self
+            .cpu_execution_properties
+            .as_ref()
+            .and_then(|properties| properties.get(&resolved.cpu_id.to_ascii_lowercase())))
     }
 
     pub fn supports_mnemonic(

@@ -395,7 +395,7 @@ loadPackageError
 
 handleSetPipeline
 	move.l a0, -(sp)
-	bsr.w pipeline.tkpkgPipelineSetActiveV1
+	jsr pipeline.tkpkgPipelineSetActiveV1
 	movea.l (sp)+, a0
 	tst.b d0
 	beq.s setPipelineOk

@@ -1,5 +1,119 @@
+use super::codec::{decode_cpex_chunk, encode_cpex_chunk};
 use super::*;
 use proptest::prelude::*;
+
+fn sample_cpex() -> Vec<CpuExecutionProperties> {
+    sample_cpus()
+        .into_iter()
+        .map(|cpu| CpuExecutionProperties {
+            cpu_id: cpu.id,
+            word_size_bytes: if cpu.family_id == "intel8080" { 3 } else { 2 },
+            max_program_address: if cpu.family_id == "intel8080" {
+                0x01ff_ffff
+            } else {
+                0xffff
+            },
+        })
+        .collect()
+}
+
+fn legacy_sample_chunks() -> HierarchyChunks {
+    decode_hierarchy_chunks(
+        &encode_hierarchy_chunks(
+            &sample_families(),
+            &sample_cpus(),
+            &sample_dialects(),
+            &sample_registers(),
+            &sample_forms(),
+            &sample_tables(),
+        )
+        .expect("encode legacy sample package"),
+    )
+    .expect("decode legacy sample package")
+}
+
+#[test]
+fn cpex_v1_round_trips_and_legacy_absence_remains_distinct() {
+    let mut chunks = legacy_sample_chunks();
+    assert_eq!(chunks.cpu_execution_properties, None);
+    let mut properties = sample_cpex();
+    properties[0].cpu_id.make_ascii_uppercase();
+    properties[1].max_program_address = 0;
+    chunks.cpu_execution_properties = Some(properties);
+
+    let encoded = encode_hierarchy_chunks_from_chunks(&chunks).expect("encode CPEX package");
+    let decoded = decode_hierarchy_chunks(&encoded).expect("decode CPEX package");
+    let properties = decoded.cpu_execution_properties.expect("CPEX present");
+    assert_eq!(properties.len(), 3);
+    assert!(properties.iter().any(|property| {
+        property.cpu_id == "z80"
+            && property.word_size_bytes == 3
+            && property.max_program_address == 0x01ff_ffff
+    }));
+    assert!(properties
+        .iter()
+        .any(|property| property.cpu_id == "8085" && property.max_program_address == 0));
+}
+
+#[test]
+fn cpex_rejects_missing_alias_duplicate_and_zero_word_properties() {
+    let mut chunks = legacy_sample_chunks();
+    chunks.cpu_execution_properties = Some(sample_cpex()[..2].to_vec());
+    assert!(encode_hierarchy_chunks_from_chunks(&chunks).is_err());
+
+    let mut properties = sample_cpex();
+    properties[1].cpu_id = properties[0].cpu_id.to_ascii_uppercase();
+    chunks.cpu_execution_properties = Some(properties);
+    assert!(encode_hierarchy_chunks_from_chunks(&chunks).is_err());
+
+    let mut properties = sample_cpex();
+    properties[0].cpu_id = "6502-alias".to_string();
+    chunks.cpu_execution_properties = Some(properties);
+    assert!(encode_hierarchy_chunks_from_chunks(&chunks).is_err());
+
+    let mut properties = sample_cpex();
+    properties[0].word_size_bytes = 0;
+    chunks.cpu_execution_properties = Some(properties);
+    assert!(encode_hierarchy_chunks_from_chunks(&chunks).is_err());
+}
+
+#[test]
+fn cpex_accepts_direct_alias_and_rejects_alias_chains() {
+    let mut direct = legacy_sample_chunks();
+    direct.cpus.push(CpuDescriptor {
+        id: "z80-alias".to_string(),
+        family_id: "intel8080".to_string(),
+        default_dialect: None,
+        canonical_cpu_id: Some("Z80".to_string()),
+    });
+    direct.cpu_execution_properties = Some(sample_cpex());
+    assert!(encode_hierarchy_chunks_from_chunks(&direct).is_ok());
+
+    direct.cpus.push(CpuDescriptor {
+        id: "z80-chain".to_string(),
+        family_id: "intel8080".to_string(),
+        default_dialect: None,
+        canonical_cpu_id: Some("z80-alias".to_string()),
+    });
+    assert!(encode_hierarchy_chunks_from_chunks(&direct).is_err());
+}
+
+#[test]
+fn cpex_decoder_rejects_version_reserved_absurd_count_and_trailing_bytes() {
+    let payload = encode_cpex_chunk(&sample_cpex()).expect("encode CPEX payload");
+    let mut malformed = payload.clone();
+    malformed[0..2].copy_from_slice(&2u16.to_le_bytes());
+    assert!(decode_cpex_chunk(&malformed).is_err());
+    malformed = payload.clone();
+    malformed[2..4].copy_from_slice(&1u16.to_le_bytes());
+    assert!(decode_cpex_chunk(&malformed).is_err());
+    malformed = payload.clone();
+    malformed[4..8].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(decode_cpex_chunk(&malformed).is_err());
+    malformed = payload;
+    malformed.push(0);
+    assert!(decode_cpex_chunk(&malformed).is_err());
+}
 
 fn sample_families() -> Vec<FamilyDescriptor> {
     vec![
@@ -791,6 +905,7 @@ fn register_encoding_container_is_optional_and_rejects_broken_register_reference
         expr_parser_contracts: Vec::new(),
         families: sample_families(),
         cpus: sample_cpus(),
+        cpu_execution_properties: None,
         dialects: sample_dialects(),
         registers: registers.clone(),
         register_encodings: valid.clone(),
@@ -980,6 +1095,7 @@ fn ultimate64_abi_header_is_little_endian_v1() {
         expr_parser_contracts: sample_expr_parser_contracts(),
         families: sample_families(),
         cpus: sample_cpus(),
+        cpu_execution_properties: None,
         dialects: sample_dialects(),
         registers: sample_registers(),
         register_encodings: Vec::new(),
@@ -1018,6 +1134,7 @@ fn ultimate64_abi_toc_payload_layout_is_contiguous() {
         expr_parser_contracts: sample_expr_parser_contracts(),
         families: sample_families(),
         cpus: sample_cpus(),
+        cpu_execution_properties: None,
         dialects: sample_dialects(),
         registers: sample_registers(),
         register_encodings: Vec::new(),
@@ -1231,6 +1348,7 @@ fn encode_decode_round_trip_preserves_toks_policy() {
         expr_parser_contracts: Vec::new(),
         families: sample_families(),
         cpus: sample_cpus(),
+        cpu_execution_properties: None,
         dialects: sample_dialects(),
         registers: sample_registers(),
         register_encodings: Vec::new(),
@@ -1296,6 +1414,7 @@ fn encode_decode_round_trip_preserves_parser_contracts() {
         expr_parser_contracts: Vec::new(),
         families: sample_families(),
         cpus: sample_cpus(),
+        cpu_execution_properties: None,
         dialects: sample_dialects(),
         registers: sample_registers(),
         register_encodings: Vec::new(),
@@ -1354,6 +1473,7 @@ fn encode_decode_round_trip_preserves_parser_vm_programs() {
         expr_parser_contracts: Vec::new(),
         families: sample_families(),
         cpus: sample_cpus(),
+        cpu_execution_properties: None,
         dialects: sample_dialects(),
         registers: sample_registers(),
         register_encodings: Vec::new(),
@@ -1462,6 +1582,7 @@ fn encode_decode_round_trip_preserves_expr_contracts() {
         expr_parser_contracts: Vec::new(),
         families: sample_families(),
         cpus: sample_cpus(),
+        cpu_execution_properties: None,
         dialects: sample_dialects(),
         registers: sample_registers(),
         register_encodings: Vec::new(),
@@ -1511,6 +1632,7 @@ fn encode_decode_round_trip_preserves_expr_parser_contracts() {
         expr_parser_contracts: sample_expr_parser_contracts(),
         families: sample_families(),
         cpus: sample_cpus(),
+        cpu_execution_properties: None,
         dialects: sample_dialects(),
         registers: sample_registers(),
         register_encodings: Vec::new(),

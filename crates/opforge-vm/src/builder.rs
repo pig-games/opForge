@@ -5,8 +5,8 @@
 
 use crate::bytecode::{OP_EMIT_OPERAND, OP_EMIT_U8, OP_END};
 use crate::hierarchy::{
-    CpuDescriptor, DialectDescriptor, FamilyDescriptor, HierarchyError, HierarchyPackage,
-    ScopedFormDescriptor, ScopedOwner, ScopedRegisterDescriptor,
+    CpuDescriptor, CpuExecutionProperties, DialectDescriptor, FamilyDescriptor, HierarchyError,
+    HierarchyPackage, ScopedFormDescriptor, ScopedOwner, ScopedRegisterDescriptor,
 };
 use crate::intel8080_vm::{
     compile_vm_program_for_instruction_entry, compile_vm_program_for_z80_cb_register,
@@ -142,6 +142,7 @@ pub fn build_hierarchy_chunks_from_registry(
     let cpu_ids = registry.cpu_ids();
     let cpu_name_list = registry.cpu_name_list();
     let mut cpus = Vec::with_capacity(cpu_ids.len());
+    let mut cpu_execution_properties = Vec::with_capacity(cpu_ids.len());
     for cpu in cpu_ids {
         let family_id =
             registry
@@ -150,6 +151,16 @@ pub fn build_hierarchy_chunks_from_registry(
                     cpu_id: cpu.as_str().to_string(),
                 })?;
         let default_dialect = registry.cpu_default_dialect(cpu).map(ToString::to_string);
+        let resolved = registry.resolve_pipeline(cpu, None).map_err(|_| {
+            HierarchyBuildError::MissingCpuMetadata {
+                cpu_id: cpu.as_str().to_string(),
+            }
+        })?;
+        cpu_execution_properties.push(CpuExecutionProperties {
+            cpu_id: cpu.as_str().to_string(),
+            word_size_bytes: resolved.cpu.native_word_size_bytes(),
+            max_program_address: resolved.cpu.max_program_address(),
+        });
         cpus.push(CpuDescriptor {
             id: cpu.as_str().to_string(),
             family_id: family_id.as_str().to_string(),
@@ -806,6 +817,7 @@ pub fn build_hierarchy_chunks_from_registry(
         expr_parser_contracts,
         families,
         cpus,
+        cpu_execution_properties: Some(cpu_execution_properties),
         dialects,
         registers,
         register_encodings,

@@ -11,8 +11,8 @@ use crate::fixup_vm::{
     PortableOutputFixupKind,
 };
 use crate::hierarchy::{
-    CpuDescriptor, DialectDescriptor, FamilyDescriptor, HierarchyError, HierarchyPackage,
-    ResolvedHierarchy, ScopedOwner,
+    CpuDescriptor, CpuExecutionProperties, DialectDescriptor, FamilyDescriptor, HierarchyError,
+    HierarchyPackage, ResolvedHierarchy, ScopedOwner,
 };
 use crate::intel8080_vm::{mode_key_for_instruction_entry, mode_key_for_z80_ld_indirect};
 use crate::native6502::{
@@ -103,8 +103,11 @@ use package::{
     SEMANTIC_VM_OPCODE_VERSION_V4, SEMANTIC_VM_OPCODE_VERSION_V5, SEMANTIC_VM_OPCODE_VERSION_V6,
     SEMANTIC_VM_OPCODE_VERSION_V7, SEMANTIC_VM_OPCODE_VERSION_V8, TOKENIZER_VM_OPCODE_VERSION_V1,
 };
+use registry::cpu::{CpuFamily, CpuType};
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult, FamilyHandler};
-use registry::registry::{ModuleRegistry, VmEncodeCandidate};
+use registry::registry::{
+    CpuModule, FamilyOperandSet, ModuleRegistry, OperandSet, VmEncodeCandidate,
+};
 use registry::syntax::register_checker_none;
 use std::collections::HashMap;
 use std::fs;
@@ -311,6 +314,80 @@ fn native6502_m6502_registry() -> ModuleRegistry {
     registry.register_family(Box::new(MOS6502FamilyModule));
     registry.register_cpu(Box::new(M6502CpuModule));
     registry
+}
+
+struct ThreeByteM6502CpuModule;
+
+impl CpuModule for ThreeByteM6502CpuModule {
+    fn cpu_id(&self) -> CpuType {
+        M6502CpuModule.cpu_id()
+    }
+
+    fn family_id(&self) -> CpuFamily {
+        M6502CpuModule.family_id()
+    }
+
+    fn cpu_name(&self) -> &'static str {
+        M6502CpuModule.cpu_name()
+    }
+
+    fn cpu_aliases(&self) -> &'static [&'static str] {
+        &["three-byte-word"]
+    }
+
+    fn default_dialect(&self) -> &'static str {
+        M6502CpuModule.default_dialect()
+    }
+
+    fn handler(&self) -> Box<dyn registry::registry::CpuHandlerDyn> {
+        Box::new(ThreeByteCpuHandler {
+            inner: M6502CpuModule.handler(),
+        })
+    }
+}
+
+struct ThreeByteCpuHandler {
+    inner: Box<dyn registry::registry::CpuHandlerDyn>,
+}
+
+impl registry::registry::CpuHandlerDyn for ThreeByteCpuHandler {
+    fn cpu_id(&self) -> CpuType {
+        self.inner.cpu_id()
+    }
+
+    fn family_id(&self) -> CpuFamily {
+        self.inner.family_id()
+    }
+
+    fn resolve_operands(
+        &self,
+        mnemonic: &str,
+        family_operands: &dyn FamilyOperandSet,
+        ctx: &dyn AssemblerContext,
+    ) -> Result<Box<dyn OperandSet>, String> {
+        self.inner.resolve_operands(mnemonic, family_operands, ctx)
+    }
+
+    fn encode_instruction(
+        &self,
+        mnemonic: &str,
+        operands: &dyn OperandSet,
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        self.inner.encode_instruction(mnemonic, operands, ctx)
+    }
+
+    fn supports_mnemonic(&self, mnemonic: &str) -> bool {
+        self.inner.supports_mnemonic(mnemonic)
+    }
+
+    fn native_word_size_bytes(&self) -> u32 {
+        3
+    }
+
+    fn max_program_address(&self) -> u32 {
+        0x01ff_ffff
+    }
 }
 
 fn mos6502_and_motorola68000_registry() -> ModuleRegistry {
@@ -963,6 +1040,7 @@ fn intel_only_chunks() -> HierarchyChunks {
             default_dialect: Some("intel".to_string()),
             canonical_cpu_id: None,
         }],
+        cpu_execution_properties: None,
         dialects: vec![DialectDescriptor {
             id: "intel".to_string(),
             family_id: "intel8080".to_string(),
@@ -984,6 +1062,82 @@ fn intel_only_chunks() -> HierarchyChunks {
         state_programs: Vec::new(),
         selectors: Vec::new(),
     }
+}
+
+#[test]
+fn package_cpu_execution_properties_resolve_alias_without_legacy_fallback() {
+    let legacy =
+        HierarchyExecutionModel::from_chunks(intel_only_chunks()).expect("load legacy chunks");
+    assert_eq!(
+        legacy
+            .cpu_execution_properties("8085")
+            .expect("resolve legacy CPU"),
+        None
+    );
+
+    let mut chunks = intel_only_chunks();
+    chunks.cpus.push(CpuDescriptor {
+        id: "three-byte-alias".to_string(),
+        family_id: "intel8080".to_string(),
+        default_dialect: None,
+        canonical_cpu_id: Some("8085".to_string()),
+    });
+    chunks.cpu_execution_properties = Some(vec![CpuExecutionProperties {
+        cpu_id: "8085".to_string(),
+        word_size_bytes: 3,
+        max_program_address: 0x01ff_ffff,
+    }]);
+    let encoded =
+        package::encode_hierarchy_chunks_from_chunks(&chunks).expect("encode execution properties");
+    let model =
+        HierarchyExecutionModel::from_package_bytes(&encoded).expect("load execution properties");
+    let property = model
+        .cpu_execution_properties("THREE-BYTE-ALIAS")
+        .expect("resolve alias")
+        .expect("CPEX property");
+    assert_eq!(property.cpu_id, "8085");
+    assert_eq!(property.word_size_bytes, 3);
+    assert_eq!(property.max_program_address, 0x01ff_ffff);
+}
+
+#[test]
+fn from_chunks_rejects_present_but_invalid_cpu_execution_properties() {
+    let mut missing = intel_only_chunks();
+    missing.cpu_execution_properties = Some(Vec::new());
+    assert!(HierarchyExecutionModel::from_chunks(missing).is_err());
+
+    let mut zero_word = intel_only_chunks();
+    zero_word.cpu_execution_properties = Some(vec![CpuExecutionProperties {
+        cpu_id: "8085".to_string(),
+        word_size_bytes: 0,
+        max_program_address: 0,
+    }]);
+    assert!(HierarchyExecutionModel::from_chunks(zero_word).is_err());
+}
+
+#[test]
+fn registry_builder_captures_authoritative_cpu_execution_properties() {
+    let mut registry = ModuleRegistry::new();
+    registry.register_family(Box::new(MOS6502FamilyModule));
+    registry.register_cpu(Box::new(ThreeByteM6502CpuModule));
+    let chunks = build_hierarchy_chunks_from_registry(&registry).expect("build registry chunks");
+    let properties = chunks
+        .cpu_execution_properties
+        .expect("registry builds CPEX properties");
+    assert_eq!(properties.len(), 1);
+    assert_eq!(properties[0].word_size_bytes, 3);
+    assert_eq!(properties[0].max_program_address, 0x01ff_ffff);
+
+    let encoded =
+        build_hierarchy_package_from_registry(&registry).expect("encode registry package");
+    let model =
+        HierarchyExecutionModel::from_package_bytes(&encoded).expect("load registry package");
+    let property = model
+        .cpu_execution_properties("THREE-BYTE-WORD")
+        .expect("resolve package alias")
+        .expect("CPEX property");
+    assert_eq!(property.word_size_bytes, 3);
+    assert_eq!(property.max_program_address, 0x01ff_ffff);
 }
 
 fn intel_test_expr_resolver(

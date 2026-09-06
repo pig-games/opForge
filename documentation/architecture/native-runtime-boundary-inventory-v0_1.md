@@ -528,13 +528,16 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Public entries: `getAbiVersionV1`, `getPassV1`, `getAddressV1`,
   `lookupSymbolV1`, `isSymbolTargetReferenceV1`,
   `getSymbolStabilityTableV1`, `getSymbolTableSnapshotV1`,
-  `reportDiagnosticV1`, and `getLastDiagnosticV1`.
-- Imports/outbound dependencies: only the engine-context adapter.
+  `reportDiagnosticV1`, `getLastDiagnosticV1`, `getCpuWordSizeBytesV1`, and
+  `getCpuMaxProgramAddressV1`.
+- Imports/outbound dependencies: engine-context adapter, state service and
+  package-owned buffers for the selected CPU execution-property cache.
 - Mutable state: private neutral diagnostic, symbol-stability, and bounded
   copied symbol-table records; none is engine, CLI, or package-service storage.
 - Routine responsibility groups: versioned read-only context projection,
   bounded diagnostic handoff, bounded stability snapshot materialization, and
-  read-only projection of engine-owned label target-reference metadata.
+  read-only projection of engine-owned label target-reference metadata and
+  explicit-presence access to selected package CPU word size/address bounds.
 - Decision: Items 5.7.1 and 5.7.2 migrate expression, selection, and operand
   consumers through bounded context snapshots. Neither change adds CPU, family,
   dialect, instruction, selector, plan-tag, or encoding support.
@@ -675,10 +678,10 @@ Memory/ABI proof and completed CLI timing are recorded in
 - Public entry: `tkpkgPipelineSetActiveV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers and token policy.
 - Mutable state: active package selection and CPU/family/dialect/tokenizer/
-  parser locator buffers.
+  parser locator buffers plus pending/active CPEX property values and presence.
 - Routine responsibility groups: request parsing, package hierarchy lookup,
   CPU/family/dialect selection, tokenizer/parser locator resolution, and
-  selection commit.
+  canonical CPU execution-property staging and selection commit.
 - Inbound users: tkpkg service and package-facing setup paths.
 - Decision: retain cohesive after the Item 5.11 conditional audit. The sole
   public transaction parses one request, resolves the package-owned CPU,

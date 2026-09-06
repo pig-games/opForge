@@ -1,3 +1,12 @@
+PASS: Independent Step27 plan-compliance review by step27_independent_review (2026-09-06) accepts the CPU execution-property transport slice. Authoritative Rust properties survive versioned CPEX encoding and native canonical/alias selection; valid legacy absence remains explicit. Fresh positive and legacy-negative cases use the actual package and live Rust oracle, exact guest completion and explicit exit status. No reservation semantics or Phase A closure is claimed.
+
+Artifact SHA-256: 258c9a44464529f9f7b7da52541ff15a8c9591de5e9aa09ef7990fd249822003
+Required gates: native-r9 4/4 PASS without SKIP, log SHA256 7dc1ebdc7d51d87ec20e11b87850e63209392710d38d7b862aa96c66e531764f; final non-LSP Rust exit0 in288.540828s, SHA256 57904ebe92858f2cc7206f20fef52e06d8ff00f3ef2e997d084cfeabf1da4060,338112bytes; staged workflow/native exit0 in30.152138s, SHA256 1a430f2f5ebf8ed0d98e6e840ce50857881219206650dc093e3a78b70a549a96,7097bytes. Six capacity tests and standalone harness formatter PASS. Temporary Level E instrumentation was removed before native-r9. LSP remains deferred.
+Review: wire compatibility, direct canonical aliases, atomic selection/property publication, legacy absence, preserved staged length, status-based CCR and exact proof PASS. The candidate manifest changes package identity only; all ten workload cases remain exact. Step27 is checked; Step28 is the next implementation item after this focused commit. All38 steps remain sequential and LSP last. Step and cumulative runtime gains remain unmeasured.
+Commit scope: Step27 Rust/package/native implementation, focused harness/tests and measured budgets, candidate fixtures/manifest, format and inventory docs, evidence, current plan and this sidecar. No push authorized.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Independent plan-quality and compliance review by step20_review (2026-09-06) approves the evidence-driven CPU execution-contract prerequisite and the final CPEX v1 design audit. The native RES operand count is not a scaled byte extent, and current package metadata lacks Rust word-size/address-limit authority. Step27 now carries those properties through optional canonical-CPU CPEX metadata before Step28 computes checked reservation semantics and listing retention. No production fix, native parity or Phase A completion is claimed. All38 steps remain sequential; LSP is last.
 
 Artifact SHA-256: c56db209a91c784eecd570f621b34e2402743964f8cf626e407aeb56a2befd0e

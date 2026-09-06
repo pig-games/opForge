@@ -174,6 +174,30 @@ CpusChunkLenMidHi
 CpusChunkLenHi
 	.res byte, 1
 
+CpexChunkOffsetLo
+	.res byte, 1
+
+CpexChunkOffsetMidLo
+	.res byte, 1
+
+CpexChunkOffsetMidHi
+	.res byte, 1
+
+CpexChunkOffsetHi
+	.res byte, 1
+
+CpexChunkLenLo
+	.res byte, 1
+
+CpexChunkLenMidLo
+	.res byte, 1
+
+CpexChunkLenMidHi
+	.res byte, 1
+
+CpexChunkLenHi
+	.res byte, 1
+
 CalsChunkOffsetLo
 	.res byte, 1
 
@@ -659,6 +683,14 @@ SemanticOutputFixupEncodedAddends
 ActiveCpuBuffer
 	.res byte, PIPELINE_ID_BUFFER_CAPACITY
 
+ActiveCpuExecutionPresent
+	.res byte, 1
+	.align 4
+ActiveCpuWordSizeBytes
+	.res long, 1
+ActiveCpuMaxProgramAddress
+	.res long, 1
+
 ActiveDialectBuffer
 	.res byte, PIPELINE_ID_BUFFER_CAPACITY
 
@@ -1006,6 +1038,14 @@ PendingParserVmLenHi
 
 PendingParserVmOwnerTag
 	.res byte, 1
+
+PendingCpuExecutionPresent
+	.res byte, 1
+	.align 4
+PendingCpuWordSizeBytes
+	.res long, 1
+PendingCpuMaxProgramAddress
+	.res long, 1
 
 StoredLastErrorLen
 	.res byte, 1

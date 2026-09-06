@@ -18,6 +18,7 @@ UNEXPECTED_EOF_TEXT_LEN              = 30
 DUPLICATE_CHUNK_TEXT_LEN             = 33
 MISSING_CHUNK_TEXT_LEN               = 30
 CHUNK_BOUNDS_TEXT_LEN                = 27
+CPEX_INVALID_TEXT_LEN                = 34
 PACKAGE_STATE_CLEAR_BYTE_LAST        = buffers.PACKAGE_STATE_CLEAR_BYTE_COUNT - 1
 
 	.section data, kind=data
@@ -42,6 +43,9 @@ MissingChunkText
 
 ChunkBoundsText
 	.byte "OPC007: chunk out of bounds", 0
+
+CpexInvalidText
+	.byte "OPC008: invalid CPU execution data", 0
 
 	.endsection
 
@@ -108,7 +112,9 @@ tkpkgPackageLoaderLoadV1	.block
 ; - package chunk locators are updated on success.
 ; ---------------------------------------------------------------------------
 tkpkgPackageLoaderLoadStagedV1	.block
+	move.l d0, -(sp)
 	bsr.w clearLoadedState
+	move.l (sp)+, d0
 	bsr.w validateStagedPackageV1
 	rts
 	.bend  ; tkpkgPackageLoaderLoadStagedV1
@@ -125,6 +131,8 @@ validateStagedPackageV1	.block
 	bsr.w validateHeader
 	bne.s done
 	bsr.w validateToc
+	bne.s done
+	bsr.w validateCpexV1
 	bne.s done
 	move.b #buffers.PACKAGE_STATE_LOADED, buffers.PackageStateFlags
 	moveq #0, d0
@@ -350,18 +358,34 @@ tocLoop
 
 checkCpus
 	cmpi.b #'C', (a2)
-	bne.s checkCals
+	bne.s checkCpex
 	cmpi.b #'P', 1(a2)
-	bne.s checkCals
+	bne.s checkCpex
 	cmpi.b #'U', 2(a2)
-	bne.s checkCals
+	bne.s checkCpex
 	cmpi.b #'S', 3(a2)
-	bne.s checkCals
+	bne.s checkCpex
 	btst #1, buffers.PackageChunkFlags
 	bne.w duplicateChunk
 	lea buffers.CpusChunkOffsetLo, a3
 	bsr.w storeLocator
 	bset #1, buffers.PackageChunkFlags
+	bra.w nextTocEntry
+
+checkCpex
+	cmpi.b #'C', (a2)
+	bne.s checkCals
+	cmpi.b #'P', 1(a2)
+	bne.s checkCals
+	cmpi.b #'E', 2(a2)
+	bne.s checkCals
+	cmpi.b #'X', 3(a2)
+	bne.s checkCals
+	btst #4, buffers.PackageChunkFlagsExtra
+	bne.w duplicateChunk
+	lea buffers.CpexChunkOffsetLo, a3
+	bsr.w storeLocator
+	bset #4, buffers.PackageChunkFlagsExtra
 	bra.w nextTocEntry
 
 checkCals
@@ -646,6 +670,499 @@ nextTocEntry
 	moveq #0, d0
 	rts
 	.bend  ; validateToc
+
+; Validate the optional CPEX-v1 CPU execution-property chunk once at load.
+; Every record must name one canonical CPUS entry exactly once.
+; Outputs: D0 = 0 when absent/valid, 1 with CpexInvalidText on failure.
+; Clobbers: D0-D1/A1/CCR. Other registers are preserved.
+; CCR: reflects D0 on return.
+validateCpexV1	.block
+	movem.l d2-d7/a0/a2-a6, -(sp)
+	btst #4, buffers.PackageChunkFlagsExtra
+	beq.w valid
+	lea buffers.CpexChunkOffsetLo, a3
+	bsr.w locatorPtrsV1
+	bne.w invalid
+	moveq #8, d0
+	bsr.w cpexRequireBytesV1
+	bne.w invalid
+	cmpi.b #1, (a2)
+	bne.w invalid
+	tst.b 1(a2)
+	bne.w invalid
+	tst.b 2(a2)
+	bne.w invalid
+	tst.b 3(a2)
+	bne.w invalid
+	lea 4(a2), a2
+	bsr.w cpexReadU32V1
+	bne.w invalid
+	swap d0
+	tst.w d0
+	bne.w invalid
+	swap d0
+	move.w d0, d7
+
+	; CPEX must cover the canonical CPUS table exactly.
+	bsr.w cpexCountCanonicalCpusV1
+	bne.w invalid
+	cmp.w d7, d0
+	bne.w invalid
+
+	lea buffers.CpexChunkOffsetLo, a3
+	bsr.w locatorPtrsV1
+	addq.l #8, a2
+	moveq #0, d6
+	tst.w d7
+	beq.s recordsDone
+
+recordLoop
+	bsr.w cpexReadU32V1
+	bne.w invalid
+	tst.l d0
+	beq.w invalid
+	move.l d0, d5
+	move.l d5, d0
+	bsr.w cpexRequireBytesV1
+	bne.w invalid
+	movea.l a2, a4
+	adda.l d5, a2
+	movea.l a4, a0
+	move.l d5, d0
+	bsr.w cpexUtf8ValidV1
+	tst.l d0
+	beq.w invalid
+	bsr.w cpexReadU32V1
+	bne.w invalid
+	tst.l d0
+	beq.w invalid
+	move.l d0, d4
+	bsr.w cpexReadU32V1
+	bne.w invalid
+	move.l d0, d3
+	movea.l a2, a5
+	movea.l a4, a0
+	move.l d5, d0
+	bsr.w cpexNameInCanonicalCpusV1
+	tst.l d0
+	beq.w invalid
+	movea.l a4, a0
+	move.l d5, d0
+	move.w d6, d1
+	bsr.w cpexNameUniqueBeforeV1
+	tst.l d0
+	beq.w invalid
+	movea.l a5, a2
+	addq.w #1, d6
+	cmp.w d7, d6
+	blo.w recordLoop
+recordsDone
+	cmpa.l a6, a2
+	bne.w invalid
+
+valid
+	moveq #0, d0
+	bra.s done
+
+invalid
+	lea CpexInvalidText, a1
+	moveq #CPEX_INVALID_TEXT_LEN, d1
+	moveq #1, d0
+
+done
+	movem.l (sp)+, d2-d7/a0/a2-a6
+	rts
+	.bend  ; validateCpexV1
+
+; Resolve one stored locator into a bounded package cursor.
+; Inputs: A3 = eight-byte offset/length locator. Outputs: A2=start, A6=end, D0=status.
+locatorPtrsV1	.block
+	lea buffers.PackageStorage, a2
+	bsr.w readU32Le
+	adda.l d0, a2
+	lea 4(a3), a3
+	bsr.w readU32Le
+	movea.l a2, a6
+	adda.l d0, a6
+	moveq #0, d0
+	rts
+	.bend  ; locatorPtrsV1
+
+; Read one bounded little-endian u32 from the CPEX/CPUS cursor.
+; Inputs: A2 cursor, A6 exclusive end. Outputs: D0=value, D1=status; A2 advances.
+cpexReadU32V1	.block
+	moveq #4, d0
+	bsr.w cpexRequireBytesV1
+	bne.s fail
+	movea.l a2, a3
+	bsr.w readU32Le
+	addq.l #4, a2
+	moveq #0, d1
+	rts
+fail
+	moveq #0, d0
+	moveq #1, d1
+	rts
+	.bend  ; cpexReadU32V1
+
+; Inputs: D0 required bytes, A2 cursor, A6 exclusive end. Outputs: D1 status.
+cpexRequireBytesV1	.block
+	cmpa.l a6, a2
+	bhi.s fail
+	move.l a6, d1
+	sub.l a2, d1
+	cmp.l d1, d0
+	bhi.s fail
+	moveq #0, d1
+	rts
+fail
+	moveq #1, d1
+	rts
+	.bend  ; cpexRequireBytesV1
+
+; Return true only when A0/D0 exactly names a canonical CPUS record.
+cpexNameInCanonicalCpusV1	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a4
+	move.l d0, d5
+	lea buffers.CpusChunkOffsetLo, a3
+	bsr.w locatorPtrsV1
+	bsr.w cpexReadU32V1
+	bne.s no
+	move.w d0, d7
+	beq.s no
+	subq.w #1, d7
+
+loop
+	bsr.w cpexReadU32V1
+	bne.s no
+	move.l d0, d6
+	move.l d6, d0
+	bsr.w cpexRequireBytesV1
+	bne.s no
+	movea.l a2, a1
+	movea.l a4, a0
+	move.l d5, d0
+	move.l d6, d1
+	bsr.w cpexNamesEqualV1
+	move.l d0, -(sp)
+	adda.l d6, a2
+	bsr.w cpexSkipCpuTailV1
+	bne.s popNo
+	move.l (sp)+, d0
+	beq.s next
+	tst.b d2
+	beq.s yes
+next
+	dbf d7, loop
+	bra.s no
+popNo
+	addq.l #4, sp
+no
+	moveq #0, d0
+	bra.s done
+yes
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	rts
+	.bend  ; cpexNameInCanonicalCpusV1
+
+; Reject a CPEX id equal to any earlier record id.
+; Inputs: A0/D0 id, D1.W number of earlier records. Outputs: D0=1 unique, 0 duplicate/malformed.
+cpexNameUniqueBeforeV1	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a4
+	move.l d0, d5
+	move.w d1, d7
+	beq.s unique
+	lea buffers.CpexChunkOffsetLo, a3
+	bsr.w locatorPtrsV1
+	addq.l #8, a2
+	subq.w #1, d7
+loop
+	bsr.w cpexReadU32V1
+	bne.s duplicate
+	move.l d0, d6
+	move.l d6, d0
+	bsr.w cpexRequireBytesV1
+	bne.s duplicate
+	movea.l a2, a1
+	movea.l a4, a0
+	move.l d5, d0
+	move.l d6, d1
+	bsr.w cpexNamesEqualV1
+	tst.l d0
+	bne.s duplicate
+	adda.l d6, a2
+	moveq #8, d0
+	bsr.w cpexRequireBytesV1
+	bne.s duplicate
+	adda.l #8, a2
+	dbf d7, loop
+unique
+	moveq #1, d0
+	bra.s done
+duplicate
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	rts
+	.bend  ; cpexNameUniqueBeforeV1
+
+; Skip a CPUS tail and report whether it is an alias record.
+; Outputs: D1 status, D2=1 when canonical_cpu_id is present, else zero.
+; For aliases, A0/D3 identify the bounded canonical target string.
+; Clobbers: D0-D3/A0/A2-A3/CCR. CCR reflects D1 on return.
+cpexSkipCpuTailV1	.block
+	bsr.w cpexSkipStringV1
+	bne.s done
+	bsr.w cpexSkipOptionalStringV1
+	bne.s done
+	moveq #1, d0
+	bsr.w cpexRequireBytesV1
+	bne.s done
+	moveq #0, d2
+	move.b (a2)+, d2
+	beq.s ok
+	cmpi.b #1, d2
+	bne.s fail
+	bsr.w cpexReadU32V1
+	bne.s done
+	movea.l a2, a0
+	move.l d0, d3
+	bsr.w cpexRequireBytesV1
+	bne.s done
+	adda.l d0, a2
+	moveq #0, d1
+	rts
+ok
+	moveq #0, d1
+	rts
+fail
+	moveq #1, d1
+done
+	rts
+	.bend  ; cpexSkipCpuTailV1
+
+; Count canonical CPUS records and require every inline alias to target one.
+; Outputs: D0 count, D1 status. Other registers are preserved.
+; CCR reflects D1, not the returned count.
+cpexCountCanonicalCpusV1	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	lea buffers.CpusChunkOffsetLo, a3
+	bsr.w locatorPtrsV1
+	bsr.w cpexReadU32V1
+	bne.s fail
+	swap d0
+	tst.w d0
+	bne.s fail
+	swap d0
+	move.w d0, d7
+	moveq #0, d6
+	tst.w d7
+	beq.s success
+	subq.w #1, d7
+loop
+	bsr.w cpexSkipStringV1
+	bne.s fail
+	bsr.w cpexSkipCpuTailV1
+	bne.s fail
+	tst.b d2
+	beq.s canonical
+	move.l d3, d0
+	bsr.w cpexNameInCanonicalCpusV1
+	tst.l d0
+	beq.s fail
+	bra.s next
+canonical
+	addq.w #1, d6
+next
+	dbf d7, loop
+	cmpa.l a6, a2
+	bne.s fail
+success
+	moveq #0, d1
+	move.l d6, d0
+	bra.s done
+fail
+	moveq #1, d1
+	moveq #0, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d1
+	rts
+	.bend  ; cpexCountCanonicalCpusV1
+
+cpexSkipStringV1	.block
+	bsr.w cpexReadU32V1
+	bne.s done
+	bsr.w cpexRequireBytesV1
+	bne.s done
+	adda.l d0, a2
+	moveq #0, d1
+done
+	rts
+	.bend  ; cpexSkipStringV1
+
+cpexSkipOptionalStringV1	.block
+	moveq #1, d0
+	bsr.w cpexRequireBytesV1
+	bne.s done
+	move.b (a2)+, d0
+	beq.s ok
+	cmpi.b #1, d0
+	bne.s fail
+	bsr.w cpexSkipStringV1
+	rts
+ok
+	moveq #0, d1
+	rts
+fail
+	moveq #1, d1
+done
+	rts
+	.bend  ; cpexSkipOptionalStringV1
+
+; ASCII-casefolded equality for package identifiers.
+; Inputs: A0/D0 and A1/D1 text. Outputs: D0=1 equal, 0 different.
+cpexNamesEqualV1	.block
+	cmp.l d1, d0
+	bne.s no
+	tst.l d0
+	beq.s yes
+	move.l d0, d2
+loop
+	moveq #0, d0
+	move.b (a0)+, d0
+	cmpi.b #'A', d0
+	blo.s leftReady
+	cmpi.b #'Z', d0
+	bhi.s leftReady
+	ori.b #$20, d0
+leftReady
+	moveq #0, d1
+	move.b (a1)+, d1
+	cmpi.b #'A', d1
+	blo.s rightReady
+	cmpi.b #'Z', d1
+	bhi.s rightReady
+	ori.b #$20, d1
+rightReady
+	cmp.b d1, d0
+	bne.s no
+	subq.l #1, d2
+	bne.s loop
+yes
+	moveq #1, d0
+	rts
+no
+	moveq #0, d0
+	rts
+	.bend  ; cpexNamesEqualV1
+
+; Validate one nonempty UTF-8 identifier without allocating decoded text.
+; Inputs: A0 bytes, D0 length. Outputs: D0=1 valid, 0 invalid.
+cpexUtf8ValidV1	.block
+	move.l d0, d3
+	beq.w invalid
+next
+	moveq #0, d0
+	move.b (a0)+, d0
+	subq.l #1, d3
+	cmpi.b #$7f, d0
+	bls.w scalarDone
+	cmpi.b #$c2, d0
+	blo.w invalid
+	cmpi.b #$df, d0
+	bls.s twoByte
+	cmpi.b #$ef, d0
+	bls.s threeByte
+	cmpi.b #$f4, d0
+	bls.s fourByte
+	bra.w invalid
+
+twoByte
+	moveq #1, d2
+	bra.w continuationTail
+
+threeByte
+	cmpi.l #2, d3
+	blo.w invalid
+	moveq #0, d1
+	move.b (a0)+, d1
+	subq.l #1, d3
+	cmpi.b #$e0, d0
+	bne.s notE0
+	cmpi.b #$a0, d1
+	blo.w invalid
+	bra.s firstThreeReady
+notE0
+	cmpi.b #$ed, d0
+	bne.s ordinaryThree
+	cmpi.b #$9f, d1
+	bhi.w invalid
+	bra.s firstThreeReady
+ordinaryThree
+	cmpi.b #$80, d1
+	blo.w invalid
+firstThreeReady
+	cmpi.b #$80, d1
+	blo.w invalid
+	cmpi.b #$bf, d1
+	bhi.w invalid
+	moveq #1, d2
+	bra.s continuationTail
+
+fourByte
+	cmpi.l #3, d3
+	blo.w invalid
+	moveq #0, d1
+	move.b (a0)+, d1
+	subq.l #1, d3
+	cmpi.b #$f0, d0
+	bne.s notF0
+	cmpi.b #$90, d1
+	blo.w invalid
+	bra.s firstFourReady
+notF0
+	cmpi.b #$f4, d0
+	bne.s ordinaryFour
+	cmpi.b #$8f, d1
+	bhi.w invalid
+	bra.s firstFourReady
+ordinaryFour
+	cmpi.b #$80, d1
+	blo.w invalid
+firstFourReady
+	cmpi.b #$80, d1
+	blo.w invalid
+	cmpi.b #$bf, d1
+	bhi.w invalid
+	moveq #2, d2
+
+continuationTail
+	tst.l d3
+	beq.s invalid
+	moveq #0, d1
+	move.b (a0)+, d1
+	subq.l #1, d3
+	cmpi.b #$80, d1
+	blo.s invalid
+	cmpi.b #$bf, d1
+	bhi.s invalid
+	subq.w #1, d2
+	bne.s continuationTail
+
+scalarDone
+	tst.l d3
+	bne.w next
+	moveq #1, d0
+	rts
+invalid
+	moveq #0, d0
+	rts
+	.bend  ; cpexUtf8ValidV1
 
 storePackageStorageLen	.block
 	move.b d0, buffers.PackageStorageLen

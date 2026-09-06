@@ -128,6 +128,8 @@ const FS_UAE_TKPKG_MANIFEST_INPUT_DIR: &str = "opforge_fsuae_tkpkg_inputs";
 const FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME: &str = "tkpkg_debug_cli";
 const FS_UAE_TKPKG_DEBUG_CLI_SOURCE_PATH: &str =
     "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm";
+const FS_UAE_TKPKG_CPEX_HARNESS_SOURCE_PATH: &str =
+    "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_cpex_harness.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME: &str = "opforge_cli";
 const FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH: &str = "native/motorola68000/amigaos/main.asm";
 const FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME: &str = "debug_contract_harness";
@@ -545,6 +547,7 @@ enum NativeCliParityExecutable {
     OpforgeCli,
     OpforgeSelfHostGenerationOne,
     TkpkgDebugCliOperandRecord,
+    TkpkgCpexHarness,
 }
 
 struct OpforgeNativeCliStagedInputs<'a> {
@@ -1175,6 +1178,70 @@ pub(crate) fn run_tkpkg_debug_cli_operand_record_parity_cases_from_env(
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord,
         None,
     )
+}
+
+pub(crate) fn run_tkpkg_cpex_harness_from_env(
+    workspace_root: &Path,
+    cpex_package: &[u8],
+    legacy_package: &[u8],
+    rust_oracle: &[u8],
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set; configure FS-UAE for the CPEX harness"
+            )))
+        }
+    };
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    let expected = [OpforgeNativeCliExpectedArtifact {
+        relative_path: "Work/build/cpex-values.bin",
+        rust_oracle,
+    }];
+    let positive = OpforgeNativeCliParityCase {
+        name: "tkpkg-cpex-values",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: None,
+        command_template: None,
+        package_mode: OpforgeNativeCliPackageMode::Explicit(cpex_package),
+        extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifacts(&expected),
+    };
+    let negative = OpforgeNativeCliParityCase {
+        name: "tkpkg-cpex-legacy-missing",
+        cpu_override: "68020",
+        extra_assembly_defines: &["OPFORGE_TKPKG_CPEX_LEGACY"],
+        source_override: None,
+        command_template: None,
+        package_mode: OpforgeNativeCliPackageMode::Explicit(legacy_package),
+        extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExpectedFailureContaining("CPEX property unavailable"),
+    };
+    let mut runs = Vec::new();
+    let mut errors = Vec::new();
+    for case in [&positive, &negative] {
+        match run_native_cli_parity_batch_cases(
+            workspace_root,
+            &fs_uae_bin,
+            &args_text,
+            std::slice::from_ref(case),
+            NativeCliParityExecutable::TkpkgCpexHarness,
+            None,
+        ) {
+            Ok(FsUaeSmokeOutcome::Completed { runs: completed }) => runs.extend(completed),
+            Ok(FsUaeSmokeOutcome::Skipped(reason)) => {
+                return Ok(FsUaeSmokeOutcome::Skipped(reason))
+            }
+            Err(error) => errors.push(format!("{}: {error}", case.name)),
+        }
+    }
+    if errors.is_empty() {
+        Ok(FsUaeSmokeOutcome::Completed { runs })
+    } else {
+        Err(errors.join("\n"))
+    }
 }
 
 fn native_cli_output_define_for_cpu(cpu_id: &str, case_name: &str) -> Result<&'static str, String> {
@@ -1869,6 +1936,7 @@ fn opforge_native_cli_case_identity(
             NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
                 b"tkpkg-debug-cli-operand-record"
             }
+            NativeCliParityExecutable::TkpkgCpexHarness => b"tkpkg-cpex-harness",
         },
     );
     state = fnv1a64_update(state, &[0]);
@@ -2282,6 +2350,7 @@ fn run_native_cli_parity_batch_cases(
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
             FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME
         }
+        NativeCliParityExecutable::TkpkgCpexHarness => "tkpkg_cpex_harness",
     };
     let source_path = workspace_root.join(match executable {
         NativeCliParityExecutable::OpforgeCli
@@ -2289,6 +2358,7 @@ fn run_native_cli_parity_batch_cases(
             FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH
         }
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord => FS_UAE_TKPKG_DEBUG_CLI_SOURCE_PATH,
+        NativeCliParityExecutable::TkpkgCpexHarness => FS_UAE_TKPKG_CPEX_HARNESS_SOURCE_PATH,
     });
     if !source_path.is_file() {
         return Err(format!(
@@ -2357,6 +2427,7 @@ fn run_native_cli_parity_batch_cases(
                     })?,
                 )?;
             }
+            NativeCliParityExecutable::TkpkgCpexHarness => {}
         }
         let command = match executable {
             NativeCliParityExecutable::OpforgeCli => format!(
@@ -2369,6 +2440,9 @@ fn run_native_cli_parity_batch_cases(
             ),
             NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
                 "Work:build/tkpkg_debug_cli_bin".to_string()
+            }
+            NativeCliParityExecutable::TkpkgCpexHarness => {
+                "Work:build/tkpkg_cpex_harness".to_string()
             }
         };
         batch_script.push_str("Echo \"");
@@ -2431,6 +2505,9 @@ fn run_native_cli_parity_batch_cases(
             "OPFORGE_FS_UAE_SMOKE".to_string(),
             "OPFORGE_FS_UAE_TKPKG_OPERAND_RECORD".to_string(),
         ],
+        NativeCliParityExecutable::TkpkgCpexHarness => {
+            opforge_native_cli_case_assembly_defines(&cases[0])
+        }
     };
     let include_paths = example_include_paths(workspace_root, example_name);
     let module_paths = example_module_paths(workspace_root, example_name);
@@ -2442,6 +2519,16 @@ fn run_native_cli_parity_batch_cases(
                 resolve_opforge_native_cli_package_bytes(workspace_root, &cases[0])?.ok_or_else(
                     || "tkpkg operand-record parity requires explicit package bytes".to_string(),
                 )?;
+            materialize_tkpkg_debug_cli_package_override_source(
+                &source_path,
+                &artifact_dir,
+                &package_bytes,
+            )?
+        }
+        NativeCliParityExecutable::TkpkgCpexHarness => {
+            let package_bytes =
+                resolve_opforge_native_cli_package_bytes(workspace_root, &cases[0])?
+                    .ok_or_else(|| "CPEX harness requires explicit package bytes".to_string())?;
             materialize_tkpkg_debug_cli_package_override_source(
                 &source_path,
                 &artifact_dir,
@@ -2510,6 +2597,9 @@ fn run_native_cli_parity_batch_cases(
         NativeCliParityExecutable::OpforgeSelfHostGenerationOne => mounted_work_dir.join("opforge"),
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
             mounted_work_dir.join("build/tkpkg_debug_cli_bin")
+        }
+        NativeCliParityExecutable::TkpkgCpexHarness => {
+            mounted_work_dir.join("build/tkpkg_cpex_harness")
         }
     };
     if let Some(bytes) = bootstrap_executable {
@@ -3113,7 +3203,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
         ];
     }
 
-    if example_name == "tkpkg_debug_cli" {
+    if matches!(example_name, "tkpkg_debug_cli" | "tkpkg_cpex_harness") {
         let amigaos_dir = workspace_root
             .join("native")
             .join("motorola68000")
@@ -3126,6 +3216,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             amigaos_dir.join("exprvm"),
             amigaos_dir.join("opcore"),
             amigaos_dir.join("opasm"),
+            amigaos_dir.join("debug"),
         ];
     }
 

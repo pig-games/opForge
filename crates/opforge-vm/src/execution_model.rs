@@ -26,7 +26,7 @@ use package::{
 use registry::family::AssemblerContext;
 use registry::registry::{ModuleRegistry, OperandSet, VmEncodeCandidate};
 use registry::syntax::RegisterChecker;
-use types::hierarchy::ResolvedHierarchy;
+use types::hierarchy::{CpuExecutionProperties, ResolvedHierarchy};
 
 use crate::operand_record_vm::{PortableOperandRecord, PortableRegisterRef};
 use crate::portable_contract::{PortableLineAst, PortableToken};
@@ -438,6 +438,15 @@ impl HierarchyExecutionModel {
         dialect_override: Option<&str>,
     ) -> Result<ResolvedHierarchy, RuntimeBridgeError> {
         Ok(self.core.resolve_pipeline(cpu_id, dialect_override)?)
+    }
+
+    /// Return package-owned execution properties for a CPU or alias.
+    /// `None` means the optional CPEX contract was absent from the package.
+    pub fn cpu_execution_properties(
+        &self,
+        cpu_id: &str,
+    ) -> Result<Option<&CpuExecutionProperties>, RuntimeBridgeError> {
+        Ok(self.core.cpu_execution_properties(cpu_id)?)
     }
 
     /// Resolve a package-owned selector choice for one opaque input key.

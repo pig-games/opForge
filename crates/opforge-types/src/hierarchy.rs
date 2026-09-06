@@ -38,6 +38,14 @@ pub struct CpuDescriptor {
     pub canonical_cpu_id: Option<String>,
 }
 
+/// Package-owned execution properties for one canonical CPU.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CpuExecutionProperties {
+    pub cpu_id: String,
+    pub word_size_bytes: u32,
+    pub max_program_address: u32,
+}
+
 /// Dialect descriptor from package metadata.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DialectDescriptor {

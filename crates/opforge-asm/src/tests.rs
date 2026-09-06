@@ -15484,14 +15484,15 @@ fn motorola68020_embedded_native_cli_package_matches_rust_default_runtime_packag
 }
 
 #[test]
-fn motorola68020_item14_native_compact_fixed_opcode_uses_item13_exact_package_digest() {
+fn motorola68020_step27_cpex_uses_exact_package_digest() {
     // Keep the historical test entrypoint used by the Item 14 slice manifest,
-    // while pinning the Step21 MOS fix.abs32 candidate package. The previous
-    // Item14.3 digest was 0x37aa_f6a8_f1f4_66a3; its corpus manifest is retained.
-    const STEP21_PACKAGE_FNV1A64: u64 = 0x756bce35d984f708;
+    // while pinning the Step27 CPEX candidate package. The previous Step21
+    // digest was 0x756b_ce35_d984_f708 and its corpus manifest is retained;
+    // the Item14.3 digest was 0x37aa_f6a8_f1f4_66a3.
+    const STEP27_CPEX_PACKAGE_FNV1A64: u64 = 0x150c_f578_81f4_d47f;
     let package_path =
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
-    let embedded_package = fs::read(&package_path).expect("read Step21 embedded candidate package");
+    let embedded_package = fs::read(&package_path).expect("read Step27 embedded candidate package");
     let rust_package = build_hierarchy_package_from_registry(&default_registry())
         .expect("build current Rust package");
     assert_eq!(
@@ -15504,12 +15505,12 @@ fn motorola68020_item14_native_compact_fixed_opcode_uses_item13_exact_package_di
             (state ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
         });
     assert_eq!(
-        digest, STEP21_PACKAGE_FNV1A64,
-        "Step21 candidate package input digest changed"
+        digest, STEP27_CPEX_PACKAGE_FNV1A64,
+        "Step27 CPEX candidate package input digest changed"
     );
 
     let chunks = package::decode_hierarchy_chunks(&embedded_package)
-        .expect("decode exact Step21 candidate package");
+        .expect("decode exact Step27 CPEX candidate package");
     let fixed = chunks
         .tables
         .iter()
@@ -22187,6 +22188,11 @@ fn tkpkg_m68020_single_pipeline_package_bytes() -> Vec<u8> {
 
     chunks.cpus.retain(|cpu| cpu.id == m68020_cpu_id.as_str());
     chunks
+        .cpu_execution_properties
+        .as_mut()
+        .expect("registry package CPEX")
+        .retain(|property| property.cpu_id == m68020_cpu_id.as_str());
+    chunks
         .dialects
         .retain(|dialect| dialect.id == "motorola68k" && dialect.family_id == "motorola68000");
     for dialect in &mut chunks.dialects {
@@ -22242,6 +22248,11 @@ fn tkpkg_m68020_package_with_pipeline_ids(
         .retain(|family| family.id == "motorola68000");
     chunks.cpus.retain(|cpu| cpu.id == m68020_cpu_id.as_str());
     chunks
+        .cpu_execution_properties
+        .as_mut()
+        .expect("registry package CPEX")
+        .retain(|property| property.cpu_id == m68020_cpu_id.as_str());
+    chunks
         .dialects
         .retain(|dialect| dialect.id == "motorola68k" && dialect.family_id == "motorola68000");
     chunks
@@ -22277,6 +22288,11 @@ fn tkpkg_m68020_package_with_pipeline_ids(
     chunks.cpus[0].id = cpu_id.to_string();
     chunks.cpus[0].family_id = family_id.to_string();
     chunks.cpus[0].default_dialect = Some(dialect_id.to_string());
+    chunks
+        .cpu_execution_properties
+        .as_mut()
+        .expect("registry package CPEX")[0]
+        .cpu_id = cpu_id.to_string();
     chunks.dialects[0].id = dialect_id.to_string();
     chunks.dialects[0].family_id = family_id.to_string();
     chunks.dialects[0].cpu_allow_list = Some(vec![cpu_id.to_string()]);
@@ -24752,7 +24768,7 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
     ));
     assert!(tkpkg_source_contains(
         &service,
-        "handleSetPipeline:\n        MOVE.L A0, -(SP)\n        BSR.W pipeline.tkpkgPipelineSetActiveV1\n        MOVEA.L (SP)+, A0\n        TST.B D0\n        BEQ.S setPipelineOk\n        CMPI.B #abi.STATUS_BAD_REQUEST_V1, D0"
+        "handleSetPipeline:\n        MOVE.L A0, -(SP)\n        JSR pipeline.tkpkgPipelineSetActiveV1\n        MOVEA.L (SP)+, A0\n        TST.B D0\n        BEQ.S setPipelineOk\n        CMPI.B #abi.STATUS_BAD_REQUEST_V1, D0"
     ));
     assert!(source_contains_in_order(
         &pipeline,
@@ -24782,7 +24798,7 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "resolveHierarchyV1\t.block\n        BSR.W findCpuEntryV1\n        BNE.W cpuUnresolved\n        BSR.W findFamilyEntryV1"
+        "resolveHierarchyV1\t.block\n        BSR.W findCpuEntryV1\n        BNE.W cpuUnresolved\n        BSR.W resolveCpuExecutionPropertiesV1\n        BNE.W cpuUnresolved\n        BSR.W findFamilyEntryV1"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
@@ -24808,9 +24824,16 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
         &pipeline,
         "readRequestLocatorPtrLenV1\t.block\n        MOVEQ #0, D2\n        MOVE.B (A3)+, D2"
     ));
-    assert!(tkpkg_source_contains(
+    assert!(source_contains_in_order(
         &pipeline,
-        "commitActiveSelectionV1\t.block\n        LEA buffers.PendingCpuOffsetLo, A3\n        LEA buffers.ActiveCpuBuffer.L, A2\n        BSR.W copyLocatorToBufferV1"
+        &[
+            "commitActiveSelectionV1\t.block",
+            "bclr #1, buffers.PackageStateFlags",
+            "clr.b buffers.ActiveCpuExecutionPresent",
+            "lea buffers.PendingCpuOffsetLo, a3",
+            "lea buffers.ActiveCpuBuffer.l, a2",
+            "bsr.w copyLocatorToBufferV1",
+        ]
     ));
     assert!(tkpkg_source_contains(
         &buffers,
@@ -27096,7 +27119,7 @@ fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_p
     ));
     assert!(tkpkg_source_contains(
         &service_source,
-        "handleSetPipeline:\n        MOVE.L A0, -(SP)\n        BSR.W pipeline.tkpkgPipelineSetActiveV1\n        MOVEA.L (SP)+, A0"
+        "handleSetPipeline:\n        MOVE.L A0, -(SP)\n        JSR pipeline.tkpkgPipelineSetActiveV1\n        MOVEA.L (SP)+, A0"
     ));
     assert!(tkpkg_source_contains(
         &source,

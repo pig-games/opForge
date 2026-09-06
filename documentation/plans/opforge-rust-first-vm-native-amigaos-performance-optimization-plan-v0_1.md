@@ -104,7 +104,7 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 27 of 38 · Item A-cpu-execution-contract — carry authoritative CPU word size and address bounds into native execution.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 28 of 38 · Item A-listing-reservation — implement checked reservation extent and retain it for source rows.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -528,7 +528,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: one focused source-record retention commit before footer repair or A-close.
   - Definition of done: both visibility directives are retained in source order without changing assembly statements or visibility behavior, supported by the stated proof and required gates/review; all remaining listing and Phase A debt stays open.
 
-- [ ] Step 27 · Item A-cpu-execution-contract — Carry authoritative CPU word size and address bounds into native execution
+- [x] Step 27 · Item A-cpu-execution-contract — Carry authoritative CPU word size and address bounds into native execution
   - Source requirement or finding IDs: SR-PAR; reservation audit found that native advances operand-2 count without unit scaling, while package CPU descriptors omit Rust's active word size and maximum program address.
   - Expected files: target-neutral CPU/package types, registry-to-package builder, package codec/runtime accessors, native package CPU selection state/service, focused package/native contract tests, package format documentation and candidate identity evidence.
   - Dependencies/worktree: committed A-listing-visibility-source-rows; this prerequisite precedes reservation arithmetic and listing retention. Use the warm worktree, with the integration branch as the committed checkpoint.
@@ -542,6 +542,7 @@ improvement does not close a whole finding; closure review is still required.
   - Plan-compliance review evidence: independent wire compatibility, ownership, canonical alias/selection lifecycle, missing-value and exact native-proof review before commit.
   - Commit outcome: one focused CPU execution-contract commit before reservation semantics and listing repair.
   - Definition of done: authoritative properties survive Rust package generation/decoding and native selection with exact case-bound proof, no guessed legacy values, and all required gates/review pass; reservation and Phase A debt remain open.
+  - Completion evidence (2026-09-06): Step27 CPU execution-contract evidence and candidate manifest record exact native positive/legacy proof (4 focused tests, no SKIP), final non-LSP Rust PASS, staged workflow/native PASS and independent plan-compliance PASS by step27_independent_review. Six capacity tests and the standalone harness formatter pass. Canonical count returns CCR from status, staged load preserves its length, and failed selection is unselected. Step and total runtime gains remain unmeasured. Reservation work, corpus requalification and Phase A closure remain open.
 
 - [ ] Step 28 · Item A-listing-reservation — Render reservation status, address and size in source rows
   - Source requirement or finding IDs: SR-PAR; post-Step26 B09 first mismatch1260 is BSS reservation source row19, before the symbol footer.

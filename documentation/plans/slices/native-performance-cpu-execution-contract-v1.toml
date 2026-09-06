@@ -1,0 +1,46 @@
+[slice]
+schema_version = 2
+name = "CPU execution properties package contract"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "27 / Item A-cpu-execution-contract"
+rust_reference = ["crates/opforge-vm/src/builder.rs", "crates/opforge-package/src/package/codec.rs", "crates/opforge-vm/src/execution_model.rs::cpu_execution_properties"]
+native_boundary = ["native/motorola68000/amigaos/tkpkg/tkpkg_package_loader.asm::validateCpexV1", "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm::commitActiveSelectionV1", "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm::getCpuWordSizeBytesV1", "native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm::getCpuMaxProgramAddressV1"]
+invariant = "Optional CPEX v1 records transport authoritative nonzero word size and maximum program address for every canonical CPU; aliases resolve canonical properties, legacy absence stays unavailable, and native properties become available only with a successfully committed CPU selection."
+assertion_decision = "Use Rust wire validation and registry authority tests, native source-order contracts, and fresh positive and legacy-negative native guests through production load, selection and getter boundaries."
+expected_inputs = "A valid registry package; focused package properties including a three-byte word and distinct address limits for alias-selected and subsequently selected CPUs; a separate legacy package without CPEX."
+expected_outputs = "Positive guest exits zero and emits exactly sixteen big-endian bytes matching the live Rust accessor on the same encoded package; legacy property request completes with explicit nonzero exit and the unavailable diagnostic."
+known_non_equivalences = "This transports properties only: reservation semantics, listing reservation rows, B09 footer parity, cumulative runtime improvement and Phase A closure remain unproven. Failed-commit invalidation has Level B source-order coverage, not a dedicated guest failure case."
+fast_proof_command = "env -u OPFORGE_FS_UAE_SMOKE -u OPFORGE_FS_UAE_ARGS -u OPFORGE_FS_UAE_CONFIG_TEMPLATE cargo test --locked -p asm native_cpex_ -- --nocapture --test-threads=1"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_cpex_harness_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "registry_builder_captures_authoritative_cpu_execution_properties"
+proof_level = "A"
+proves = "Rust package construction derives word size and maximum program address from the registered handler and resolves aliases to those serialized properties."
+does_not_prove = "Native loader behavior, guest execution, reservation semantics or performance."
+
+[[tests]]
+name = "native_cpex_harness_uses_real_loader_selection_and_getters"
+proof_level = "B"
+proves = "The native harness uses the production loader, alias-aware selector and both runtime getters without embedding expected property values."
+does_not_prove = "Real guest execution, wire rejection coverage or runtime performance."
+
+[[tests]]
+name = "native_cpex_failed_commit_invalidates_selection_and_properties"
+proof_level = "B"
+proves = "The commit path invalidates active selection and property availability before fallible identity mutation and publishes selection only after properties commit."
+does_not_prove = "A real guest failing replacement or all selection consumers."
+
+[[tests]]
+name = "native_cpex_harness_fs_uae"
+proof_level = "D"
+proves = "Fresh positive guest completes with zero exit and exact live-Rust property bytes from the same package; separate legacy guest completes with explicit failure and the missing-property diagnostic."
+does_not_prove = "Every malformed wire input, reservation behavior, B09, runtime gains or Phase A closure."
+
+[[tests]]
+name = "native_cpex_staged_length_and_request_wire_contract"
+proof_level = "B"
+proves = "The staged-load boundary preserves its D0 length across clearing, and harness selection fields are serialized in the production control-block ABI's little-endian order."
+does_not_prove = "Real guest completion, exact property bytes or performance."

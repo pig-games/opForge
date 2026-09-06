@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::HashSet;
 
 mod scoped_schema;
 
@@ -45,6 +46,7 @@ pub(super) fn encode_hierarchy_chunks_full(
         expr_parser_contracts: Vec::new(),
         families: families.to_vec(),
         cpus: cpus.to_vec(),
+        cpu_execution_properties: None,
         dialects: dialects.to_vec(),
         registers: registers.to_vec(),
         register_encodings: Vec::new(),
@@ -81,6 +83,7 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
     let mut expr_parser_contracts = chunks.expr_parser_contracts.to_vec();
     let mut fams = chunks.families.to_vec();
     let mut cpus = chunks.cpus.to_vec();
+    let mut cpu_execution_properties = chunks.cpu_execution_properties.clone();
     let mut dials = chunks.dialects.to_vec();
     let mut regs = chunks.registers.to_vec();
     let mut register_encodings = chunks.register_encodings.to_vec();
@@ -101,6 +104,22 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
         &mut tables,
         &mut selectors,
     );
+    if let Some(properties) = cpu_execution_properties.as_mut() {
+        for property in properties.iter_mut() {
+            if let Some(cpu) = cpus.iter().find(|cpu| {
+                cpu.canonical_cpu_id.is_none() && cpu.id.eq_ignore_ascii_case(&property.cpu_id)
+            }) {
+                property.cpu_id.clone_from(&cpu.id);
+            }
+        }
+        properties.sort_by(|left, right| {
+            left.cpu_id
+                .to_ascii_lowercase()
+                .cmp(&right.cpu_id.to_ascii_lowercase())
+                .then_with(|| left.cpu_id.cmp(&right.cpu_id))
+        });
+        validate_cpu_execution_properties(properties, &cpus)?;
+    }
     canonicalize_register_encodings(&mut register_encodings);
     validate_register_encoding_set(&register_encodings, &regs)?;
     canonicalize_semantic_programs(&mut semantic_programs);
@@ -193,6 +212,9 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
         (CHUNK_FAMS, encode_fams_chunk(&fams)?),
         (CHUNK_CPUS, encode_cpus_chunk(&cpus_chunk)?),
     ]);
+    if let Some(properties) = cpu_execution_properties.as_deref() {
+        chunks.push((CHUNK_CPEX, encode_cpex_chunk(properties)?));
+    }
     if !cpu_aliases.is_empty() {
         chunks.push((CHUNK_CALS, encode_cals_chunk(&cpus_chunk, &cpu_aliases)?));
     }
@@ -426,6 +448,7 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
     }
     let fams_bytes = slice_for_chunk(bytes, &toc, CHUNK_FAMS)?;
     let cpus_bytes = slice_for_chunk(bytes, &toc, CHUNK_CPUS)?;
+    let cpex_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_CPEX)?;
     let cals_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_CALS)?;
     let dial_bytes = slice_for_chunk(bytes, &toc, CHUNK_DIAL)?;
     let regs_bytes = slice_for_chunk(bytes, &toc, CHUNK_REGS)?;
@@ -453,6 +476,14 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
     if let Some(payload) = cals_bytes {
         cpus.extend(decode_cals_chunk(payload, &cpus)?);
     }
+    let cpu_execution_properties = match cpex_bytes {
+        Some(payload) => {
+            let properties = decode_cpex_chunk(payload)?;
+            validate_cpu_execution_properties(&properties, &cpus)?;
+            Some(properties)
+        }
+        None => None,
+    };
 
     let registers = decode_regs_chunk(regs_bytes)?;
     let register_encodings = match renc_bytes {
@@ -500,6 +531,7 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
         },
         families: decode_fams_chunk(fams_bytes)?,
         cpus,
+        cpu_execution_properties,
         dialects: decode_dial_chunk(dial_bytes)?,
         registers,
         register_encodings,
@@ -890,6 +922,124 @@ pub(super) fn encode_cpus_chunk(cpus: &[CpuDescriptor]) -> Result<Vec<u8>, Opcpu
 
 pub(super) fn decode_cpus_chunk(bytes: &[u8]) -> Result<Vec<CpuDescriptor>, OpcpuCodecError> {
     decode_simple_schema_chunk(bytes)
+}
+
+const CPU_EXECUTION_PROPERTIES_VERSION_V1: u16 = 1;
+
+pub(super) fn encode_cpex_chunk(
+    properties: &[CpuExecutionProperties],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    let mut out = Vec::new();
+    write_u16(&mut out, CPU_EXECUTION_PROPERTIES_VERSION_V1);
+    write_u16(&mut out, 0);
+    write_u32(
+        &mut out,
+        u32_count(properties.len(), "CPEX CPU property count")?,
+    );
+    for property in properties {
+        write_string(&mut out, "CPEX", &property.cpu_id)?;
+        write_u32(&mut out, property.word_size_bytes);
+        write_u32(&mut out, property.max_program_address);
+    }
+    Ok(out)
+}
+
+pub(super) fn decode_cpex_chunk(
+    bytes: &[u8],
+) -> Result<Vec<CpuExecutionProperties>, OpcpuCodecError> {
+    let mut cursor = Decoder::new(bytes, "CPEX");
+    let version = cursor.read_u16()?;
+    if version != CPU_EXECUTION_PROPERTIES_VERSION_V1 {
+        return Err(OpcpuCodecError::InvalidChunkFormat {
+            chunk: "CPEX".to_string(),
+            detail: format!("unsupported version: {version}"),
+        });
+    }
+    let reserved = cursor.read_u16()?;
+    if reserved != 0 {
+        return Err(OpcpuCodecError::InvalidChunkFormat {
+            chunk: "CPEX".to_string(),
+            detail: format!("reserved field must be zero, found {reserved}"),
+        });
+    }
+    let count = read_bounded_count(&mut cursor, 13, "CPU property")?;
+    let mut properties = Vec::with_capacity(count);
+    for _ in 0..count {
+        properties.push(CpuExecutionProperties {
+            cpu_id: cursor.read_string()?,
+            word_size_bytes: cursor.read_u32()?,
+            max_program_address: cursor.read_u32()?,
+        });
+    }
+    if cursor.has_remaining() {
+        return Err(OpcpuCodecError::InvalidChunkFormat {
+            chunk: "CPEX".to_string(),
+            detail: "trailing bytes".to_string(),
+        });
+    }
+    Ok(properties)
+}
+
+pub(super) fn validate_cpu_execution_properties(
+    properties: &[CpuExecutionProperties],
+    cpus: &[CpuDescriptor],
+) -> Result<(), OpcpuCodecError> {
+    let canonical = cpus
+        .iter()
+        .filter(|cpu| cpu.canonical_cpu_id.is_none())
+        .map(|cpu| (cpu.id.to_ascii_lowercase(), cpu.id.as_str()))
+        .collect::<HashMap<_, _>>();
+    let canonical_count = cpus
+        .iter()
+        .filter(|cpu| cpu.canonical_cpu_id.is_none())
+        .count();
+    if canonical.len() != canonical_count {
+        return Err(OpcpuCodecError::InvalidChunkFormat {
+            chunk: "CPEX".to_string(),
+            detail: "canonical CPUS keys are not unique under ASCII case folding".to_string(),
+        });
+    }
+    for alias in cpus.iter().filter(|cpu| cpu.canonical_cpu_id.is_some()) {
+        let target = alias.canonical_cpu_id.as_deref().unwrap_or_default();
+        if !canonical.contains_key(&target.to_ascii_lowercase()) {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "CPEX".to_string(),
+                detail: format!(
+                    "CPU alias '{}' must target a canonical CPU, found '{target}'",
+                    alias.id
+                ),
+            });
+        }
+    }
+    if properties.len() != canonical.len() {
+        return Err(OpcpuCodecError::InvalidChunkFormat {
+            chunk: "CPEX".to_string(),
+            detail: "properties must cover every canonical CPU exactly once".to_string(),
+        });
+    }
+    let mut seen = HashSet::new();
+    for property in properties {
+        let key = property.cpu_id.to_ascii_lowercase();
+        if property.cpu_id.is_empty() || !seen.insert(key.clone()) {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "CPEX".to_string(),
+                detail: format!("empty or duplicate CPU property key '{}'", property.cpu_id),
+            });
+        }
+        if !canonical.contains_key(&key) {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "CPEX".to_string(),
+                detail: format!("CPU property '{}' is not a canonical CPU", property.cpu_id),
+            });
+        }
+        if property.word_size_bytes == 0 {
+            return Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: "CPEX".to_string(),
+                detail: format!("CPU property '{}' has zero word size", property.cpu_id),
+            });
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn encode_cals_chunk(

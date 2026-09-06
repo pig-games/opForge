@@ -26,6 +26,9 @@ mod native_listing_sections;
 #[path = "native_listing_visibility_source_rows.rs"]
 mod native_listing_visibility_source_rows;
 
+#[path = "native_cpex.rs"]
+mod native_cpex;
+
 #[path = "native_branch_failures.rs"]
 mod branch_failures;
 

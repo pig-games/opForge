@@ -73,17 +73,18 @@ fn native_expression_logical_parser_runtime_contract() {
         &runtime,
         &[
             "applyBinaryLogicOr",
+            "OR.L D0, D2",
+            "OR.L D1, D3",
             "OR.L D2, D3",
             "applyBinaryLogicAnd",
-            "TST.L D3",
-            "TST.L D2",
+            "OR.L D2, D3",
             "MOVEQ #1, D3",
-            "applyBinaryLogicFalse",
+            "binaryFalse",
             "MOVEQ #0, D3",
             "applyBinaryLogicXor",
             "SNE D3",
-            "SNE D2",
-            "EOR.L D2, D3",
+            "SNE D1",
+            "EOR.L D1, D3",
         ]
     ));
 }

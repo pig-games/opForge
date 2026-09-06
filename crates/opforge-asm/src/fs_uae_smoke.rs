@@ -548,6 +548,8 @@ enum NativeCliParityExecutable {
     OpforgeSelfHostGenerationOne,
     TkpkgDebugCliOperandRecord,
     TkpkgCpexHarness,
+    ExprvmI64Harness,
+    ExpressionI64Harness,
 }
 
 struct OpforgeNativeCliStagedInputs<'a> {
@@ -1176,6 +1178,116 @@ pub(crate) fn run_tkpkg_debug_cli_operand_record_parity_cases_from_env(
         &args_text,
         &parity_cases,
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord,
+        None,
+    )
+}
+
+/// Execute actual caller-supplied scalar cases against their live Rust oracle.
+/// The existing runner supplies a fresh challenge, guest start/completion/exit
+/// evidence, exact artifact comparison, and ephemeral cleanup.
+pub(crate) fn run_exprvm_i64_harness_from_env(
+    workspace_root: &Path,
+    case_bytes: &[u8],
+    rust_oracle: &[u8],
+) -> Result<FsUaeSmokeOutcome, String> {
+    run_i64_harness_from_env(
+        workspace_root,
+        case_bytes,
+        rust_oracle,
+        "Work/build/exprvm-i64-values.bin",
+        NativeCliParityExecutable::ExprvmI64Harness,
+    )
+}
+
+pub(crate) fn run_expression_i64_harness_from_env(
+    workspace_root: &Path,
+    case_bytes: &[u8],
+    rust_oracle: &[u8],
+) -> Result<FsUaeSmokeOutcome, String> {
+    run_i64_harness_from_env(
+        workspace_root,
+        case_bytes,
+        rust_oracle,
+        "Work/build/expression-i64-values.bin",
+        NativeCliParityExecutable::ExpressionI64Harness,
+    )
+}
+
+/// Negative service invocations require their own fresh completion, nonzero
+/// guest exit and the actual service diagnostic; successful status-data rows
+/// in the ordinary scalar harness do not substitute for this proof.
+pub(crate) fn run_expression_i64_failures_from_env(
+    workspace_root: &Path,
+    inputs: &[(&str, &[u8], &str)],
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set"
+            )))
+        }
+    };
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".into());
+    let cases = inputs
+        .iter()
+        .map(|(name, input, diagnostic)| OpforgeNativeCliParityCase {
+            name,
+            cpu_override: "68020",
+            extra_assembly_defines: &["OPFORGE_EXPRESSION_I64_EXPECT_FAILURE"],
+            source_override: Some(input),
+            command_template: None,
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExpectedFailureContaining(diagnostic),
+        })
+        .collect::<Vec<_>>();
+    run_native_cli_parity_batch_cases(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        &cases,
+        NativeCliParityExecutable::ExpressionI64Harness,
+        None,
+    )
+}
+
+fn run_i64_harness_from_env(
+    workspace_root: &Path,
+    case_bytes: &[u8],
+    rust_oracle: &[u8],
+    artifact_path: &'static str,
+    executable: NativeCliParityExecutable,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set; configure FS-UAE for the scalar harness"
+            )))
+        }
+    };
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    let expected = [OpforgeNativeCliExpectedArtifact {
+        relative_path: artifact_path,
+        rust_oracle,
+    }];
+    let case = OpforgeNativeCliParityCase {
+        name: "exprvm-i64-live-oracle",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(case_bytes),
+        command_template: None,
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifacts(&expected),
+    };
+    run_native_cli_parity_batch_cases(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        &[case],
+        executable,
         None,
     )
 }
@@ -1937,6 +2049,8 @@ fn opforge_native_cli_case_identity(
                 b"tkpkg-debug-cli-operand-record"
             }
             NativeCliParityExecutable::TkpkgCpexHarness => b"tkpkg-cpex-harness",
+            NativeCliParityExecutable::ExprvmI64Harness => b"exprvm-i64-harness",
+            NativeCliParityExecutable::ExpressionI64Harness => b"expression-i64-harness",
         },
     );
     state = fnv1a64_update(state, &[0]);
@@ -2351,6 +2465,8 @@ fn run_native_cli_parity_batch_cases(
             FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME
         }
         NativeCliParityExecutable::TkpkgCpexHarness => "tkpkg_cpex_harness",
+        NativeCliParityExecutable::ExprvmI64Harness => "exprvm_i64_harness",
+        NativeCliParityExecutable::ExpressionI64Harness => "tkpkg_expression_i64_harness",
     };
     let source_path = workspace_root.join(match executable {
         NativeCliParityExecutable::OpforgeCli
@@ -2359,6 +2475,12 @@ fn run_native_cli_parity_batch_cases(
         }
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord => FS_UAE_TKPKG_DEBUG_CLI_SOURCE_PATH,
         NativeCliParityExecutable::TkpkgCpexHarness => FS_UAE_TKPKG_CPEX_HARNESS_SOURCE_PATH,
+        NativeCliParityExecutable::ExprvmI64Harness => {
+            "native/motorola68000/amigaos/test-harnesses/exprvm/exprvm_i64_harness.asm"
+        }
+        NativeCliParityExecutable::ExpressionI64Harness => {
+            "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_expression_i64_harness.asm"
+        }
     });
     if !source_path.is_file() {
         return Err(format!(
@@ -2428,6 +2550,24 @@ fn run_native_cli_parity_batch_cases(
                 )?;
             }
             NativeCliParityExecutable::TkpkgCpexHarness => {}
+            NativeCliParityExecutable::ExprvmI64Harness
+            | NativeCliParityExecutable::ExpressionI64Harness => {
+                if cases.len() != 1 {
+                    return Err(
+                        "ExprVM scalar harness requires one dynamically generated batch".into(),
+                    );
+                }
+                stage_guest_input_bytes(
+                    &mounted_work_dir,
+                    if matches!(executable, NativeCliParityExecutable::ExprvmI64Harness) {
+                        "exprvm-i64-cases.bin"
+                    } else {
+                        "expression-i64-cases.bin"
+                    },
+                    case.source_override
+                        .ok_or("ExprVM scalar harness requires case bytes")?,
+                )?;
+            }
         }
         let command = match executable {
             NativeCliParityExecutable::OpforgeCli => format!(
@@ -2443,6 +2583,12 @@ fn run_native_cli_parity_batch_cases(
             }
             NativeCliParityExecutable::TkpkgCpexHarness => {
                 "Work:build/tkpkg_cpex_harness".to_string()
+            }
+            NativeCliParityExecutable::ExprvmI64Harness => {
+                "Work:build/exprvm_i64_harness".to_string()
+            }
+            NativeCliParityExecutable::ExpressionI64Harness => {
+                "Work:build/tkpkg_expression_i64_harness".to_string()
             }
         };
         batch_script.push_str("Echo \"");
@@ -2505,7 +2651,9 @@ fn run_native_cli_parity_batch_cases(
             "OPFORGE_FS_UAE_SMOKE".to_string(),
             "OPFORGE_FS_UAE_TKPKG_OPERAND_RECORD".to_string(),
         ],
-        NativeCliParityExecutable::TkpkgCpexHarness => {
+        NativeCliParityExecutable::TkpkgCpexHarness
+        | NativeCliParityExecutable::ExprvmI64Harness
+        | NativeCliParityExecutable::ExpressionI64Harness => {
             opforge_native_cli_case_assembly_defines(&cases[0])
         }
     };
@@ -2513,7 +2661,9 @@ fn run_native_cli_parity_batch_cases(
     let module_paths = example_module_paths(workspace_root, example_name);
     let source_path = match executable {
         NativeCliParityExecutable::OpforgeCli
-        | NativeCliParityExecutable::OpforgeSelfHostGenerationOne => source_path,
+        | NativeCliParityExecutable::OpforgeSelfHostGenerationOne
+        | NativeCliParityExecutable::ExprvmI64Harness
+        | NativeCliParityExecutable::ExpressionI64Harness => source_path,
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
             let package_bytes =
                 resolve_opforge_native_cli_package_bytes(workspace_root, &cases[0])?.ok_or_else(
@@ -2600,6 +2750,12 @@ fn run_native_cli_parity_batch_cases(
         }
         NativeCliParityExecutable::TkpkgCpexHarness => {
             mounted_work_dir.join("build/tkpkg_cpex_harness")
+        }
+        NativeCliParityExecutable::ExprvmI64Harness => {
+            mounted_work_dir.join("build/exprvm_i64_harness")
+        }
+        NativeCliParityExecutable::ExpressionI64Harness => {
+            mounted_work_dir.join("build/tkpkg_expression_i64_harness")
         }
     };
     if let Some(bytes) = bootstrap_executable {
@@ -3203,7 +3359,13 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
         ];
     }
 
-    if matches!(example_name, "tkpkg_debug_cli" | "tkpkg_cpex_harness") {
+    if matches!(
+        example_name,
+        "tkpkg_debug_cli"
+            | "tkpkg_cpex_harness"
+            | "exprvm_i64_harness"
+            | "tkpkg_expression_i64_harness"
+    ) {
         let amigaos_dir = workspace_root
             .join("native")
             .join("motorola68000")

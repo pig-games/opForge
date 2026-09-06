@@ -97,11 +97,15 @@ fn native_expression_comparison_parser_runtime_contract() {
         assert!(
             source_contains_in_order(
                 &runtime,
-                &[handler, "CMP.L D2, D3", condition, "ANDI.L #1, D3"]
+                &[handler, "BSR.W compareI64", condition, "ANDI.L #1, D3"]
             ),
             "missing native comparison projection for {handler}"
         );
     }
+    assert!(source_contains_in_order(
+        &runtime,
+        &["compareI64:", "CMP.L D0, D2", "CMP.L D1, D3"]
+    ));
 }
 
 #[test]

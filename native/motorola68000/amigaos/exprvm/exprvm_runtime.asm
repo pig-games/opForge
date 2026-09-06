@@ -5,6 +5,7 @@
 
 	.module exprvm.amigaos.runtime
 	.cpu 68020
+	.use exprvm.amigaos.i64_math as i64_math
 	.pub
 .ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	.use debug.amigaos.runtime_profile as runtime_profile
@@ -56,19 +57,20 @@ EXPRVM_STACK_CAPACITY           = 8
 	.pub
 
 ; ---------------------------------------------------------------------------
-; Evaluate one portable ExprVM bytecode program for the native 6502 scalar
-; first-run subset.
+; Evaluate one portable ExprVM bytecode program with signed i64 scalars.
 ;
 ; Inputs:
 ; - A0/D0: ExprVM bytecode pointer and byte length.
 ; - A1: fixed-width symbol-name table pointer.
-; - A2: symbol-value table pointer parallel to A1.
+; - A2: unsigned 32-bit symbol-value table pointer parallel to A1.
+; - A6: byte-per-symbol stability table; nonzero means finalized.
 ; - D1: number of symbol entries.
 ; - D2: current assembly PC for PushCurrentAddress.
 ;
 ; Outputs:
 ; - D0: 0 on success, 1 on invalid program/evaluation failure.
-; - D3: resolved scalar value on success.
+; - D3: low 32 bits of the resolved scalar on success.
+; - exprvmGetLastResultHighV1 exposes its high word after successful evaluation.
 ; - D4: nonzero when the program referenced at least one symbol.
 ; - D5: nonzero when the program referenced a symbol that is unstable for the
 ;   current pass.
@@ -80,6 +82,7 @@ EXPRVM_STACK_CAPACITY           = 8
 ; - Reflects D0 on return.
 ; ---------------------------------------------------------------------------
 exprvmEvalProgramV1	.block
+	.priv
 	movem.l d1-d2/d6-d7/a0-a6, -(sp)
 .ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	movem.l d0-d1, -(sp)
@@ -88,7 +91,10 @@ exprvmEvalProgramV1	.block
 	jsr runtime_profile.opforgeRuntimeProfileEnterVmV1
 	movem.l (sp)+, d0-d1
 .endif
-	movea.l a1, a3
+	; Keep the symbol count independent of arithmetic scratch register D1.
+	movea.l d1, a3
+	clr.w ExprvmLastResultPresent
+	clr.l ExprvmLastResultHigh
 	movea.l a2, a4
 	movea.l d2, a5
 	clr.l d3
@@ -145,7 +151,7 @@ evalLoopV2
 	bra.w unknownOpcode
 
 opcodePushLiteral
-	bsr.w readI64Low32
+	bsr.w readI64
 	bmi.w literalReadFail
 	move.l d0, ExprvmEvalRemaining
 	bsr.w pushD3
@@ -154,6 +160,7 @@ opcodePushLiteral
 	bra.w evalLoop
 
 opcodePushCurrent
+	moveq #0, d2
 	move.l a5, d3
 	move.l d0, ExprvmEvalRemaining
 	bsr.w pushD3
@@ -164,8 +171,8 @@ opcodePushCurrent
 opcodePushSymbol
 	bsr.w readU16
 	bmi.w fail
-	cmp.w d1, d3
-	bhs.w fail
+	cmpa.l d3, a3
+	bls.w fail
 	moveq #1, d4
 	moveq #0, d6
 	move.w d3, d6
@@ -182,6 +189,7 @@ pushSymbolStable
 	lsl.l #2, d6
 	movea.l a4, a2
 	move.l 0(a2, d6.l), d3
+	moveq #0, d2
 	bsr.w pushD3
 	bmi.w fail
 	move.l ExprvmEvalRemaining, d0
@@ -195,45 +203,43 @@ opcodeApplyUnary
 	bsr.w popD3
 	bmi.w fail
 	cmpi.b #EXPRVM_UNARY_PLUS, d6
-	beq.s applyUnaryDone
+	beq.w applyUnaryDone
 	cmpi.b #EXPRVM_UNARY_MINUS, d6
-	beq.s applyUnaryMinus
+	beq.w applyUnaryMinus
 	cmpi.b #EXPRVM_UNARY_BIT_NOT, d6
-	beq.s applyUnaryBitNot
+	beq.w applyUnaryBitNot
 	cmpi.b #EXPRVM_UNARY_LOGIC_NOT, d6
-	beq.s applyUnaryLogicNot
+	beq.w applyUnaryLogicNot
 	cmpi.b #EXPRVM_UNARY_HIGH, d6
-	beq.s applyUnaryHigh
+	beq.w applyUnaryHigh
 	cmpi.b #EXPRVM_UNARY_LOW, d6
-	beq.s applyUnaryLow
+	beq.w applyUnaryLow
 	bra.w fail
-
 applyUnaryMinus
-	neg.l d3
-	bra.s applyUnaryDone
-
-applyUnaryBitNot
-	not.l d3
-	bra.s applyUnaryDone
-
-applyUnaryLogicNot
+	cmpi.l #$80000000, d2
+	bne.s negate
 	tst.l d3
-	beq.s applyUnaryLogicNotTrue
-	clr.l d3
-	bra.s applyUnaryDone
-
-applyUnaryLogicNotTrue
-	moveq #1, d3
-	bra.s applyUnaryDone
-
+	beq.w fail
+negate
+	neg.l d3
+	negx.l d2
+	bra.w applyUnaryDone
+applyUnaryBitNot
+	not.l d2
+	not.l d3
+	bra.w applyUnaryDone
+applyUnaryLogicNot
+	move.l d2, d0
+	or.l d3, d0
+	seq d3
+	andi.l #1, d3
+	moveq #0, d2
+	bra.w applyUnaryDone
 applyUnaryHigh
 	lsr.l #8, d3
-	andi.l #$000000FF, d3
-	bra.s applyUnaryDone
-
 applyUnaryLow
-	andi.l #$000000FF, d3
-
+	andi.l #$ff, d3
+	moveq #0, d2
 applyUnaryDone
 	bsr.w pushD3
 	bmi.w fail
@@ -247,18 +253,16 @@ opcodeApplyBinary
 	move.l d3, d6
 	bsr.w popD3
 	bmi.w fail
-	move.l d3, -(sp)
+	movem.l d2-d3, -(sp)
 	bsr.w popD3
 	bmi.w applyBinaryRestoreFail
-	move.l (sp)+, d2
+	movem.l (sp)+, d0-d1
 	cmpi.b #EXPRVM_BINARY_ADD, d6
 	beq.w applyBinaryAdd
 	cmpi.b #EXPRVM_BINARY_SUBTRACT, d6
 	beq.w applyBinarySubtract
 	cmpi.b #EXPRVM_BINARY_LOGIC_OR, d6
 	beq.w applyBinaryLogicOr
-	cmpi.b #EXPRVM_TERNARY_SELECT, d6
-	beq.w applyTernarySelect
 	cmpi.b #EXPRVM_BINARY_POWER, d6
 	beq.w applyBinaryPower
 	cmpi.b #EXPRVM_BINARY_MULTIPLY, d6
@@ -293,168 +297,152 @@ opcodeApplyBinary
 	beq.w applyBinaryLogicAnd
 	cmpi.b #EXPRVM_BINARY_LOGIC_XOR, d6
 	beq.w applyBinaryLogicXor
+	cmpi.b #EXPRVM_TERNARY_SELECT, d6
+	beq.w applyTernarySelect
 	bra.w fail
-
 applyBinaryRestoreFail
-	addq.l #4, sp
+	addq.l #8, sp
 	bra.w fail
-
 applyBinaryAdd
-	add.l d2, d3
+	add.l d1, d3
+	addx.l d0, d2
 	bra.w applyBinaryDone
-
 applyBinarySubtract
-	sub.l d2, d3
+	sub.l d1, d3
+	subx.l d0, d2
 	bra.w applyBinaryDone
-
-applyBinaryLogicOr
-	or.l d2, d3
-	beq.s applyBinaryLogicOrDone
-	moveq #1, d3
-
-applyBinaryLogicOrDone
-	bra.w applyBinaryDone
-
-applyBinaryPower
-	tst.l d2
-	bmi.w fail
-	move.l d3, d1
-	moveq #1, d3
-
-applyBinaryPowerLoop
-	tst.l d2
-	beq.w applyBinaryDone
-	btst #0, d2
-	beq.s applyBinaryPowerSquare
-	mulu.l d1, d3
-
-applyBinaryPowerSquare
-	lsr.l #1, d2
-	beq.w applyBinaryDone
-	mulu.l d1, d1
-	bra.s applyBinaryPowerLoop
-
 applyBinaryMultiply
-	muls.l d2, d3
+	jsr i64_math.multiplyV1
 	bra.w applyBinaryDone
-
+applyBinaryPower
+	jsr i64_math.powerV1
+	bne.w fail
+	bra.w applyBinaryDone
 applyBinaryDivide
-	tst.l d2
-	beq.w fail
-	move.l d3, d1
-	divs.l d2, d1
-	move.l d1, d3
-	bra.w applyBinaryDone
-
+	moveq #0, d6
+	bra.s divideOrMod
 applyBinaryMod
-	tst.l d2
-	beq.w fail
-	move.l d2, d6
-	move.l d3, d1
-	swap d3
-	ext.l d3
-	divs.l d6, d3:d1
+	moveq #1, d6
+divideOrMod
+	jsr i64_math.divideModuloV1
+	bne.w fail
 	bra.w applyBinaryDone
-
 applyBinaryShiftLeft
-	andi.l #31, d2
-	lsl.l d2, d3
+	andi.l #31, d1
+	beq.w applyBinaryDone
+	moveq #32, d6
+	sub.l d1, d6
+	move.l d3, d0
+	lsr.l d6, d0
+	lsl.l d1, d2
+	or.l d0, d2
+	lsl.l d1, d3
 	bra.w applyBinaryDone
-
 applyBinaryShiftRight
-	andi.l #31, d2
-	lsr.l d2, d3
+	andi.l #31, d1
+	beq.w applyBinaryDone
+	moveq #32, d6
+	sub.l d1, d6
+	move.l d2, d0
+	lsl.l d6, d0
+	lsr.l d1, d3
+	or.l d0, d3
+	lsr.l d1, d2
 	bra.w applyBinaryDone
-
 applyBinaryEq
-	cmp.l d2, d3
+	bsr.w compareI64
 	seq d3
 	andi.l #1, d3
+	moveq #0, d2
 	bra.w applyBinaryDone
-
 applyBinaryNe
-	cmp.l d2, d3
+	bsr.w compareI64
 	sne d3
 	andi.l #1, d3
+	moveq #0, d2
 	bra.w applyBinaryDone
-
 applyBinaryGe
-	cmp.l d2, d3
+	bsr.w compareI64
 	sge d3
 	andi.l #1, d3
+	moveq #0, d2
 	bra.w applyBinaryDone
-
 applyBinaryGt
-	cmp.l d2, d3
+	bsr.w compareI64
 	sgt d3
 	andi.l #1, d3
+	moveq #0, d2
 	bra.w applyBinaryDone
-
 applyBinaryLe
-	cmp.l d2, d3
+	bsr.w compareI64
 	sle d3
 	andi.l #1, d3
+	moveq #0, d2
 	bra.w applyBinaryDone
-
 applyBinaryLt
-	cmp.l d2, d3
+	bsr.w compareI64
 	slt d3
 	andi.l #1, d3
+	moveq #0, d2
 	bra.w applyBinaryDone
-
 applyBinaryBitAnd
-	and.l d2, d3
+	and.l d0, d2
+	and.l d1, d3
 	bra.w applyBinaryDone
-
 applyBinaryBitOr
-	or.l d2, d3
+	or.l d0, d2
+	or.l d1, d3
 	bra.w applyBinaryDone
-
 applyBinaryBitXor
-	eor.l d2, d3
+	eor.l d0, d2
+	eor.l d1, d3
 	bra.w applyBinaryDone
-
-applyBinaryLogicAnd
-	tst.l d3
-	beq.s applyBinaryLogicFalse
-	tst.l d2
-	beq.s applyBinaryLogicFalse
-	moveq #1, d3
-	bra.w applyBinaryDone
-
-applyBinaryLogicFalse
-	moveq #0, d3
-	bra.w applyBinaryDone
-
-applyBinaryLogicXor
-	tst.l d3
+applyBinaryLogicOr
+	or.l d0, d2
+	or.l d1, d3
+	or.l d2, d3
 	sne d3
 	andi.l #1, d3
-	tst.l d2
-	sne d2
-	andi.l #1, d2
-	eor.l d2, d3
+	moveq #0, d2
 	bra.w applyBinaryDone
-
+applyBinaryLogicAnd
+	or.l d2, d3
+	beq.s binaryFalse
+	or.l d0, d1
+	beq.s binaryFalse
+	moveq #1, d3
+	moveq #0, d2
+	bra.w applyBinaryDone
+binaryFalse
+	moveq #0, d3
+	moveq #0, d2
+	bra.w applyBinaryDone
+applyBinaryLogicXor
+	or.l d2, d3
+	sne d3
+	andi.l #1, d3
+	or.l d0, d1
+	sne d1
+	andi.l #1, d1
+	eor.l d1, d3
+	moveq #0, d2
+	bra.w applyBinaryDone
 applyTernarySelect
-	move.l d2, d1
-	move.l d3, -(sp)
+	movem.l d0-d3, -(sp)
 	bsr.w popD3
-	bmi.s applyTernaryRestoreFail
-	tst.l d3
-	beq.s applyTernaryFalse
-	move.l (sp)+, d3
+	bmi.s ternaryFail
+	or.l d2, d3
+	beq.s ternaryFalse
+	movem.l 8(sp), d2-d3
+	bra.s ternaryDone
+ternaryFalse
+	movem.l (sp), d2-d3
+ternaryDone
+	adda.l #16, sp
 	bra.w applyBinaryDone
-
-applyTernaryFalse
-	addq.l #4, sp
-	move.l d1, d3
-	bra.w applyBinaryDone
-
-applyTernaryRestoreFail
-	addq.l #4, sp
+ternaryFail
+	adda.l #16, sp
 	bra.w fail
-
 applyBinaryDone
 	bsr.w pushD3
 	bmi.w fail
@@ -471,6 +459,8 @@ opcodeEnd
 	bne.w endStackFail
 	bsr.w popD3
 	bmi.w popFail
+	move.l d2, ExprvmLastResultHigh
+	move.w #1, ExprvmLastResultPresent
 	moveq #0, d0
 	bra.s return
 
@@ -513,44 +503,77 @@ return
 	rts
 	.bend  ; exprvmEvalProgramV1
 
-; Push D3 onto the private ExprVM value stack.
-; Inputs: D3 = value to push; D7 = current stack depth.
-; Outputs: D0 = 0 on success or -1 on overflow; D7 incremented on success.
-; Clobbers: D2/A2.
-; CCR: reflects D0 on return.
+	.pub
+
+; Read the high word of the most recent successful evaluation.
+; Inputs: none. Outputs: D0=0/D1=high word, or D0=1/D1=0 if unavailable.
+; Clobbers: D0-D1/CCR. CCR: reflects D0 on return.
+exprvmGetLastResultHighV1	.block
+	.priv
+	moveq #0, d1
+	tst.w ExprvmLastResultPresent
+	beq.s missing
+	move.l ExprvmLastResultHigh, d1
+	moveq #0, d0
+	rts
+missing
+	moveq #1, d0
+	rts
+	.bend  ; exprvmGetLastResultHighV1
+
+; Compare signed i64 left D2:D3 with right D0:D1.
+; Outputs: D0=-1/0/1 for less/equal/greater. Clobbers: D0/CCR.
+; CCR: reflects the signed ordering in D0; all other input registers unchanged.
+compareI64	.block
+	cmp.l d0, d2
+	blt.s less
+	bgt.s greater
+	cmp.l d1, d3
+	blo.s less
+	bhi.s greater
+	moveq #0, d0
+	rts
+less
+	moveq #-1, d0
+	rts
+greater
+	moveq #1, d0
+	rts
+	.bend  ; compareI64
+
+; Push signed pair D2:D3 into one of eight logical stack slots.
+; Inputs: D2:D3=value, D7=depth. Outputs: D0=0/-1, D7 increments on success.
+; Clobbers: D0/A2/CCR. CCR: reflects D0. Pair and operator register D6 survive.
 pushD3	.block
 	cmpi.l #EXPRVM_STACK_CAPACITY, d7
 	bhs.s fail
-	move.l d7, d2
-	lsl.l #2, d2
+	move.l d7, d0
+	lsl.l #3, d0
 	lea ExprvmStack, a2
-	move.l d3, 0(a2, d2.l)
+	move.l d2, 0(a2, d0.l)
+	move.l d3, 4(a2, d0.l)
 	addq.l #1, d7
 	moveq #0, d0
 	rts
-
 fail
 	moveq #-1, d0
 	rts
 	.bend  ; pushD3
 
-; Pop the private ExprVM value stack into D3.
-; Inputs: D7 = current stack depth.
-; Outputs: D0 = 0 on success or -1 on underflow; D3 = popped value on success;
-; D7 decremented on success.
-; Clobbers: D2/A2.
-; CCR: reflects D0 on return.
+; Pop one signed pair into D2:D3.
+; Inputs: D7=depth. Outputs: D0=0/-1, D2:D3=value and D7 decrements on success.
+; Clobbers: D0/D2-D3/A2/CCR. CCR: reflects D0. Operator register D6 survives.
 popD3	.block
 	tst.l d7
 	beq.s fail
 	subq.l #1, d7
-	move.l d7, d2
-	lsl.l #2, d2
+	move.l d7, d0
+	lsl.l #3, d0
 	lea ExprvmStack, a2
-	move.l 0(a2, d2.l), d3
+	move.l 0(a2, d0.l), d2
+	move.l 4(a2, d0.l), d3
 	moveq #0, d0
 	rts
-
 fail
 	moveq #-1, d0
 	rts
@@ -575,7 +598,7 @@ fail
 	rts
 	.bend  ; readU8
 
-; Read one big-endian unsigned 16-bit value from the bytecode stream.
+; Read one little-endian unsigned 16-bit value from the bytecode stream.
 ; Inputs: A0 = bytecode cursor; D0 = remaining byte count.
 ; Outputs: D0 = remaining byte count after consume or -1 on underflow; D3 =
 ; zero-extended 16-bit value on success; A0 advanced by 2 on success.
@@ -598,40 +621,40 @@ fail
 	rts
 	.bend  ; readU16
 
-; Read the low 32 bits of one big-endian 64-bit literal from the bytecode stream.
-; Inputs: A0 = bytecode cursor; D0 = remaining byte count.
-; Outputs: D0 = remaining byte count after consume or -1 on underflow; D3 =
-; low 32 literal bits on success; A0 advanced by 8 on success.
-; Clobbers: D2/CCR.
-; CCR: reflects D0 on return.
-readI64Low32	.block
+; Read both little-endian words of an i64 literal.
+; Inputs: A0=cursor,D0=remaining. Outputs: D2:D3=high:low,D0=remaining or -1.
+; Clobbers: D2-D3/A0/CCR. CCR: reflects D0. Failure consumes no bytes.
+readI64	.block
 	cmpi.l #8, d0
 	bcs.s fail
-	moveq #0, d3
-	move.b (a0)+, d3
-	moveq #0, d2
-	move.b (a0)+, d2
-	lsl.l #8, d2
-	or.l d2, d3
-	moveq #0, d2
-	move.b (a0)+, d2
-	lsl.l #8, d2
-	lsl.l #8, d2
-	or.l d2, d3
-	moveq #0, d2
-	move.b (a0)+, d2
-	lsl.l #8, d2
-	lsl.l #8, d2
-	lsl.l #8, d2
-	or.l d2, d3
-	addq.l #4, a0
-	subq.l #8, d0
+	bsr.s readLiteralLong
+	move.l d3, -(sp)
+	bsr.s readLiteralLong
+	move.l d3, d2
+	move.l (sp)+, d3
+	tst.l d0
 	rts
-
 fail
 	moveq #-1, d0
 	rts
-	.bend  ; readI64Low32
+	.bend  ; readI64
+
+; Read a little-endian long after readI64 proves eight available bytes.
+; Inputs: A0=cursor,D0>=4. Outputs: D3=value,D0 reduced by four,A0 advanced.
+; Clobbers: D2-D3/A0/CCR. CCR: reflects D0.
+readLiteralLong	.block
+	moveq #0, d3
+	move.b 3(a0), d3
+	lsl.l #8, d3
+	move.b 2(a0), d3
+	lsl.l #8, d3
+	move.b 1(a0), d3
+	lsl.l #8, d3
+	move.b (a0), d3
+	addq.l #4, a0
+	subq.l #4, d0
+	rts
+	.bend  ; readLiteralLong
 
 	.priv
 
@@ -642,13 +665,18 @@ fail
 	.pub
 
 ExprvmStack
-	.res long, EXPRVM_STACK_CAPACITY
+	.res long, EXPRVM_STACK_CAPACITY*2
 ExprvmSelectedOpcodeVersion
 	.res word, 1
 ExprvmCurrentPass
 	.res word, 1
 ExprvmEvalRemaining
 	.res long, 1
+	.priv
+ExprvmLastResultHigh
+	.res long, 1
+ExprvmLastResultPresent
+	.res word, 1
 
 	.endsection
 	.endmodule

@@ -110,6 +110,8 @@ mod native_expression_bitwise;
 mod native_expression_comparison;
 #[path = "tests/native_expression_digit_separators.rs"]
 mod native_expression_digit_separators;
+#[path = "tests/native_expression_i64.rs"]
+mod native_expression_i64;
 #[path = "tests/native_expression_label_boundary.rs"]
 mod native_expression_label_boundary;
 #[path = "tests/native_expression_logical.rs"]
@@ -21328,12 +21330,14 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
             "body",
             "cmpi.b #'*', (a0)",
             "beq.w currentPc",
+            "cmpi.b #39, (a0)",
+            "beq.w stringLiteral",
             "cmpi.b #'$', (a0)",
             "beq.w dollar",
             "cmpi.b #'%', (a0)",
             "beq.w binaryLiteral",
-            "cmpi.b #'x', 1(a0)",
-            "beq.w hex0x",
+            "cmpi.b #'0', (a0)",
+            "beq.w numberOrLabel",
         ]
     ));
     assert!(routine_contains_in_order(
@@ -21484,19 +21488,13 @@ fn native_expression_multiplicative_runtime_operand_order_contract() {
         &formatted,
         &[
             "applyBinaryDivide:",
-            "TST.L D2",
-            "BEQ.W fail",
-            "MOVE.L D3, D1",
-            "DIVS.L D2, D1",
-            "MOVE.L D1, D3",
+            "MOVEQ #0, D6",
+            "BRA.S divideOrMod",
             "applyBinaryMod:",
-            "TST.L D2",
-            "BEQ.W fail",
-            "MOVE.L D2, D6",
-            "MOVE.L D3, D1",
-            "SWAP D3",
-            "EXT.L D3",
-            "DIVS.L D6, D3:D1",
+            "MOVEQ #1, D6",
+            "divideOrMod:",
+            "JSR I64_MATH.DIVIDEMODULOV1",
+            "BNE.W fail",
             "BRA.W applyBinaryDone",
         ]
     ));
@@ -21514,12 +21512,12 @@ fn native_expression_shift_runtime_operand_order_contract() {
         &formatted,
         &[
             "applyBinaryShiftLeft:",
-            "ANDI.L #31, D2",
-            "LSL.L D2, D3",
+            "ANDI.L #31, D1",
+            "LSL.L D1, D3",
             "BRA.W applyBinaryDone",
             "applyBinaryShiftRight:",
-            "ANDI.L #31, D2",
-            "LSR.L D2, D3",
+            "ANDI.L #31, D1",
+            "LSR.L D1, D3",
             "BRA.W applyBinaryDone",
         ]
     ));
@@ -23882,7 +23880,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &expression,
-        "executePreparedV1\t.block\n        BTST #0,PreparedFlags\n        BNE.S haveLabelContext"
+        "executePreparedV1\t.block\n        MOVEQ #0,D0\n        MOVE.W PreparedExtensionLen,D0\n        CMPI.W #TKPKG_EVAL_EXPR_EXTENSION_TYPED_RESULT_SIZE,D0\n        BCS.S typedResultInvalidated\n        MOVEA.L PreparedExtensionPtr,A5\n        CLR.L TKPKG_EVAL_EXPR_EXTENSION_RESULT_WIDTH_OFF(A5)\n\ntypedResultInvalidated\n        BTST #0,PreparedFlags\n        BNE.S haveLabelContext"
     ));
     assert!(tkpkg_source_contains(
         &selection,
@@ -24292,7 +24290,7 @@ fn motorola68020_tkpkg_expression_service_has_one_implementation_owner() {
     assert!(!expression.contains(".use opasm.amigaos.engine"));
     assert!(tkpkg_source_contains(
         &expression,
-        "haveLabelContext\n        JSR context.getPassV1\n        MOVE.L D0,D6\n        MOVE.L PreparedLabelCount,D0\n        JSR context.getSymbolStabilityTableV1\n        TST.B D0\n        BNE.S missingContext\n        MOVEA.L A0,A6"
+        "haveLabelContext\n        JSR context.getPassV1\n        MOVE.L D0,D6\n        MOVE.L PreparedLabelCount,D0\n        JSR context.getSymbolStabilityTableV1\n        TST.B D0\n        BNE.W missingContext\n        MOVEA.L A0,A6"
     ));
     assert!(!context.contains(".use opasm.amigaos.engine"));
     assert!(context.contains("getSymbolStabilityTableV1"));

@@ -12,6 +12,11 @@ TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE = 9
 TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE = 16
 TKPKG_EVAL_EXPR_EXTENSION_RESOLVER_INPUT_SIZE = 32
 TKPKG_EVAL_EXPR_EXTENSION_RESULT_OFF = 16
+TKPKG_EVAL_EXPR_EXTENSION_RESULT_LOW_SIZE = 20
+TKPKG_EVAL_EXPR_EXTENSION_RESULT_HIGH_OFF = 20
+TKPKG_EVAL_EXPR_EXTENSION_RESULT_WIDTH_OFF = 24
+TKPKG_EVAL_EXPR_EXTENSION_TYPED_RESULT_SIZE = 28
+TKPKG_EVAL_EXPR_RESULT_WIDTH_I64 = 64
 EVAL_EXPR_NEEDS_PIPELINE_TEXT_LEN = 45
 EVAL_EXPR_FAILED_TEXT_LEN = 36
 EVAL_EXPR_VALUE_PREFIX_LEN = 6
@@ -62,6 +67,26 @@ DecimalPowers
 	.long 100
 	.long 10
 	.long 1
+DecimalPowers64
+	.long $0de0b6b3, $a7640000
+	.long $01634578, $5d8a0000
+	.long $002386f2, $6fc10000
+	.long $00038d7e, $a4c68000
+	.long $00005af3, $107a4000
+	.long $00000918, $4e72a000
+	.long $000000e8, $d4a51000
+	.long $00000017, $4876e800
+	.long $00000002, $540be400
+	.long $00000000, $3b9aca00
+	.long $00000000, $05f5e100
+	.long $00000000, $00989680
+	.long $00000000, $000f4240
+	.long $00000000, $000186a0
+	.long $00000000, $00002710
+	.long $00000000, $000003e8
+	.long $00000000, $00000064
+	.long $00000000, $0000000a
+	.long $00000000, $00000001
 
 	.endsection
 
@@ -81,12 +106,14 @@ PreparedCurrentPc
 	.res long, 1
 PreparedExtensionPtr
 	.res long, 1
+PreparedExtensionLen
+	.res word, 1
 PreparedSymbolResolverPtr
 	.res long, 1
 PreparedFlags
 	.res word, 1
 DecimalBuffer
-	.res byte, 16
+	.res byte, 24
 
 	.endsection
 
@@ -186,6 +213,7 @@ havePipeline
 	move.b 27(a0), d5
 	lsl.w #8, d5
 	or.w d5, d1
+	move.w d1, PreparedExtensionLen
 	clr.w PreparedFlags
 	clr.l PreparedLabelNamePtr
 	clr.l PreparedLabelValuePtr
@@ -230,7 +258,9 @@ badPayload
 ;
 ; Outputs:
 ; - D0: 0 on success, ABI status on failure.
-; - D1/A1: output length or diagnostic length/text.
+; - D1: output length on success, diagnostic length on failure.
+; - buffers.LastErrorBuffer: output payload on success.
+; - A1: diagnostic text on runtime failure.
 ;
 ; Clobbers:
 ; - D0-D7/A0-A6/CCR.
@@ -239,6 +269,14 @@ badPayload
 ; - Reflects D0 on return.
 ; ---------------------------------------------------------------------------
 executePreparedV1	.block
+	moveq #0, d0
+	move.w PreparedExtensionLen, d0
+	cmpi.w #TKPKG_EVAL_EXPR_EXTENSION_TYPED_RESULT_SIZE, d0
+	bcs.s typedResultInvalidated
+	movea.l PreparedExtensionPtr, a5
+	clr.l TKPKG_EVAL_EXPR_EXTENSION_RESULT_WIDTH_OFF(a5)
+
+typedResultInvalidated
 	btst #0, PreparedFlags
 	bne.s haveLabelContext
 	lea NoLabelContextText, a1
@@ -252,7 +290,7 @@ haveLabelContext
 	move.l PreparedLabelCount, d0
 	jsr context.getSymbolStabilityTableV1
 	tst.b d0
-	bne.s missingContext
+	bne.w missingContext
 	movea.l a0, a6
 	movea.l PreparedOperandPtr, a0
 	move.l PreparedOperandLen, d0
@@ -269,9 +307,23 @@ evaluateSnapshotOnly
 	jsr expr_bridge.opcoreExvmEvalOperandV1
 evaluateDone
 	tst.b d0
-	bne.s bridgeFail
+	bne.w bridgeFail
+	jsr expr_bridge.opcoreExvmGetLastResultHighV1
+	tst.l d0
+	bne.w bridgeFail
+	move.l d1, d2
+	moveq #0, d6
+	move.w PreparedExtensionLen, d6
+	cmpi.w #TKPKG_EVAL_EXPR_EXTENSION_RESULT_LOW_SIZE, d6
+	bcs.s resultExtensionWritten
 	movea.l PreparedExtensionPtr, a5
 	move.l d3, TKPKG_EVAL_EXPR_EXTENSION_RESULT_OFF(a5)
+	cmpi.w #TKPKG_EVAL_EXPR_EXTENSION_TYPED_RESULT_SIZE, d6
+	bcs.s resultExtensionWritten
+	move.l d2, TKPKG_EVAL_EXPR_EXTENSION_RESULT_HIGH_OFF(a5)
+	move.l #TKPKG_EVAL_EXPR_RESULT_WIDTH_I64, TKPKG_EVAL_EXPR_EXTENSION_RESULT_WIDTH_OFF(a5)
+
+resultExtensionWritten
 	bsr.w writeValueOutputV1
 	tst.w d1
 	bne.s ok
@@ -349,6 +401,20 @@ prefixLoop
 	move.b (a1)+, (a2)+
 	subq.w #1, d5
 	bne.s prefixLoop
+	tst.l d2
+	beq.s maybePositiveI32
+	cmpi.l #-1, d2
+	bne.s wideValue
+	tst.l d3
+	bmi.s signedI32
+	bra.s wideValue
+
+maybePositiveI32
+	tst.l d3
+	bpl.s signedI32
+	bra.s wideValue
+
+signedI32
 	move.l d3, d0
 	bpl.s positive
 	cmpi.l #$80000000, d0
@@ -362,9 +428,29 @@ negative
 	addq.w #1, d6
 	neg.l d0
 positive
+	move.l d6, -(sp)
 	bsr.w appendUnsignedDecimalV1
+	move.l (sp)+, d6
 	add.w d2, d6
 	lea DecimalBuffer, a1
+	bra.s copyDigits
+
+wideValue
+	tst.l d2
+	bpl.s wideMagnitudeReady
+	move.b #'-', (a2)+
+	addq.w #1, d6
+	neg.l d3
+	negx.l d2
+
+wideMagnitudeReady
+	move.l d6, -(sp)
+	bsr.w appendUnsignedDecimal64V1
+	move.l (sp)+, d6
+	move.l d0, d2
+	add.w d2, d6
+	lea DecimalBuffer, a1
+
 copyDigits
 	tst.w d2
 	beq.s done
@@ -374,6 +460,7 @@ digitsLoop
 	bne.s digitsLoop
 done
 	clr.b (a2)
+	moveq #0, d1
 	move.w d6, d1
 	movem.l (sp)+, d0/d2-d7/a0-a2
 	rts
@@ -411,6 +498,55 @@ next
 	dbf d3, loop
 	rts
 	.bend  ; appendUnsignedDecimalV1
+
+; Format an unsigned pair no greater than 2^63 into DecimalBuffer.
+; Inputs: D2:D3=high:low magnitude. Outputs: D0=digit count.
+; Clobbers: D0-D7/A0-A1/CCR.
+appendUnsignedDecimal64V1	.block
+	lea DecimalPowers64, a1
+	lea DecimalBuffer, a0
+	moveq #18, d7
+	moveq #0, d0
+	moveq #0, d4
+
+powerLoop
+	move.l (a1)+, d5
+	move.l (a1)+, d6
+	moveq #0, d1
+
+countLoop
+	cmp.l d5, d2
+	bcs.s digitReady
+	bhi.s subtractPower
+	cmp.l d6, d3
+	bcs.s digitReady
+
+subtractPower
+	sub.l d6, d3
+	subx.l d5, d2
+	addq.b #1, d1
+	bra.s countLoop
+
+digitReady
+	tst.b d4
+	bne.s emit
+	tst.b d1
+	bne.s startEmit
+	tst.w d7
+	bne.s next
+
+startEmit
+	moveq #1, d4
+
+emit
+	addi.b #'0', d1
+	move.b d1, (a0)+
+	addq.w #1, d0
+
+next
+	dbf d7, powerLoop
+	rts
+	.bend  ; appendUnsignedDecimal64V1
 
 	.endsection
 	.endmodule

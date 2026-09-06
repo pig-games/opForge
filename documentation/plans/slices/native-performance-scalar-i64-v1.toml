@@ -1,0 +1,58 @@
+[slice]
+schema_version = 2
+name = "Native signed i64 scalar authority"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "28 / Item A-scalar-i64"
+rust_reference = ["crates/opforge-core/src/expr.rs", "crates/opforge-core/src/tokenizer.rs", "crates/opforge-core/src/expr_vm.rs", "crates/opforge-asm/src/asmline_eval.rs"]
+native_boundary = ["native/motorola68000/amigaos/exprvm/exprvm_runtime.asm::exprvmEvalProgramV1", "native/motorola68000/amigaos/exprvm/exprvm_i64_math.asm", "native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm::opcoreExvmGetLastResultHighV1", "native/motorola68000/amigaos/tkpkg/tkpkg_expression_service.asm::executePreparedV1"]
+invariant = "Scalar stack slots, arithmetic, literal compilation and typed service results retain both i64 words; authoritative u32 symbols/current addresses zero-extend; failed evaluations invalidate the high-result accessor; legacy result writes respect the actual extension length."
+assertion_decision = "Use live Rust arithmetic/text oracles and fresh exact binary native harness outputs, a complete CLI fixture, and separate negative guests forwarding actual service diagnostics. Zero-exit failure-status rows prove positive harness rejection contracts only."
+expected_inputs = "Both native opcode versions; boundary i64 operator pairs and malformed programs; accepted wide literal formats; high-bit u32 symbols; valid service envelopes with extension lengths 16/19/20/27/28/32/36; separate overflow, zero-divisor, malformed-prefix and unary-minimum requests."
+expected_outputs = "Successful native guests exit zero and return exact live-Rust values/text plus documented native status/canary fields. Negative service guests freshly complete with nonzero exit and the named service diagnostic."
+known_non_equivalences = "Native bridge operator IDs predate this slice and differ from portable Rust IDs; tests encode the native ABI independently and use live Rust operator authority. Rust MIN negation is profile-dependent; native deliberately fails closed, not a claim of release-profile successful-value parity. Direct service harness sets selected context and versions without package loading; separate CLI proof covers package/facade integration. Pre-existing compact-symbol operator parsing in termLength remains Phase A frontend debt. Reservation, listing/footer/corpus parity, total runtime gain and Phase A closure remain open."
+fast_proof_command = "env -u OPFORGE_FS_UAE_SMOKE -u OPFORGE_FS_UAE_ARGS -u OPFORGE_FS_UAE_CONFIG_TEMPLATE cargo test --locked -p asm native_expression_ -- --nocapture --test-threads=1"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_expression_i64_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_expression_i64_live_rust_oracle"
+proof_level = "A"
+proves = "Live Rust operator results and bounded serialization of actual native scalar cases."
+does_not_prove = "Native execution, full parser grammar or runtime performance."
+
+[[tests]]
+name = "native_expression_i64_rust_division_overflow_domain"
+proof_level = "A"
+proves = "Rust MIN divided/modulo minus one lies in the panic domain."
+does_not_prove = "Successful scalar parity in that domain."
+
+[[tests]]
+name = "native_expression_i64_rust_unary_minimum_domain"
+proof_level = "A"
+proves = "Records actual Rust profile-dependent minimum negation behavior."
+does_not_prove = "Native successful-value parity for release-profile wrapping."
+
+[[tests]]
+name = "native_expression_i64_fs_uae"
+proof_level = "D"
+proves = "Fresh 414-case native runtime output matches live Rust values and explicitly scoped native rejection/status/accessor contracts for both opcode versions."
+does_not_prove = "CLI negative-process diagnostics, bridge/service behavior or throughput."
+
+[[tests]]
+name = "native_expression_i64_bridge_fs_uae"
+proof_level = "D"
+proves = "The complete native CLI emits exact live-Rust bytes for wide literal forms, operators, separators and unsigned high-bit symbol transport."
+does_not_prove = "All pre-existing symbol grammar, typed extension bounds or B01-B10 qualification."
+
+[[tests]]
+name = "native_expression_i64_service_fs_uae"
+proof_level = "D"
+proves = "64 direct prepared-service cases return exact Rust signed text, high/low values, width markers and untouched short-client/tail canaries."
+does_not_prove = "Package loading, facade contract selection or negative guest exit behavior."
+
+[[tests]]
+name = "native_expression_i64_service_negative_fs_uae"
+proof_level = "D"
+proves = "Every requested negative service guest is attempted and must freshly complete with explicit nonzero exit and its actual OTR923/OTR925/OTR922 diagnostic."
+does_not_prove = "Exact Rust diagnostic wording or all malformed source classes."

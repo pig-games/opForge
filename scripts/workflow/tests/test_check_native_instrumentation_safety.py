@@ -38,6 +38,21 @@ class InstrumentationSafetyTests(unittest.TestCase):
             )
         )
 
+    def test_scalar_negative_process_output_exception_is_exact(self):
+        path = "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_expression_i64_harness.asm"
+        call = "bsr.w writeFailureDiagnostic"
+        self.assertEqual(validate_text(path, call), [])
+        self.assertTrue(validate_text("native/motorola68000/amigaos/tkpkg/runtime.asm", call))
+        for text in (
+            "bsr.w debugPrint",
+            "bsr.w writeFailureDiagnosticOther",
+            "temporaryDebug .block",
+            "move.l d0, RequestBuffer ; debug",
+            ".DEBUG_ASSERT_UNKNOWN CONTRACT_X",
+        ):
+            with self.subTest(text=text):
+                self.assertTrue(validate_text(path, text))
+
     def test_standalone_harness_still_rejects_prohibited_debug_buffers(self):
         path = "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm"
         self.assertTrue(validate_text(path, "move.l d0, RequestBuffer ; debug"))

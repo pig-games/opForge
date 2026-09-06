@@ -31,6 +31,11 @@ semantics-preserving explicit branch-width corrections required by stricter
 resolved-branch assembly. Their routines, imports, sections, diagnostic paths,
 ownership decisions, and dependency directions are unchanged.
 
+The signed-scalar authority refresh adds the cohesive `exprvm.amigaos.i64_math`
+module and widens the expression bridge with its high-result accessor, resolver
+facade/common path, and counted-literal helper. The math module owns paired
+high/low-word arithmetic; the bridge remains the text-to-ExprVM owner.
+
 Item 38 refreshes seven audited hashes after measured full-product capacity,
 packed-storage, label-indexing, and layout-stability work. Imports and section
 ownership remain unchanged. The complete inventory adds one layout helper, five
@@ -632,19 +637,20 @@ Memory/ABI proof and completed CLI timing are recorded in
 ### `opcore.amigaos.expr_bridge` (NR-008, retained cohesive frontend)
 
 - Source: `native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm`.
-- Public entries: `opcoreExprEvalOperandV1`, `opcoreExvmEvalOperandV1`, and
-  `opcoreExvmEvalOperandWithResolverV1`.
+- Public entries: `opcoreExprEvalOperandV1`, `opcoreExvmEvalOperandV1`,
+  `opcoreExvmEvalOperandWithResolverV1`, and `opcoreExvmGetLastResultHighV1`.
 - Imports/outbound dependencies: expression VM runtime and the default-off
   Item 0c symbol/expression and Item 0d runtime observers.
-- Mutable state: selected opcode version plus the private ExprVM program length
-  and byte buffer. Parser cursor, literal value, and symbol index are bounded
-  call-local register state; evaluator state belongs to the ExprVM runtime.
+- Mutable state: selected opcode version, private ExprVM program length and
+  byte buffer, and a private four-byte last-result high word plus two-byte
+  availability marker. Parser cursor, paired literal value, and symbol index
+  are bounded call-local register state; evaluator state belongs to ExprVM.
 - Routine responsibility groups: bounded scalar grammar/literal/symbol-index
   compilation into versioned ExprVM bytecode, optional neutral
   lexical-context resolution before immutable-snapshot fallback, default EXVM
   program selection, and invocation of the ExprVM runtime.
 - Inbound users: the tkpkg expression service and operand runtime through the
-  two documented public entries.
+  evaluation entries; typed consumers read the explicit high-result accessor.
 - Decision: retain cohesive. This module is the sole native scalar
   text-to-ExprVM frontend; its parser and emitter share one cursor/register ABI
   and private program buffer. It owns no request-envelope, diagnostic, evaluator,
@@ -656,6 +662,17 @@ Memory/ABI proof and completed CLI timing are recorded in
   line-count split, is its deletion criterion. Item 38 keeps its read-only
   label-row stride aligned with the engine's measured 108-byte native row; it
   adds no grammar, lookup, or evaluation behavior.
+
+### `exprvm.amigaos.i64_math` (Step 28, paired scalar arithmetic)
+
+- Source: `native/motorola68000/amigaos/exprvm/exprvm_i64_math.asm`.
+- Public entries: `multiplyV1`, `powerV1`, and `divideModuloV1`.
+- Imports/outbound dependencies: none; the expression runtime delegates paired
+  arithmetic here using high:low register pairs.
+- Mutable state: none; `multiplyCore` is a private helper.
+- Decision: retain cohesive. This module owns wrapping 64-bit multiplication
+  and power, and signed division/remainder with explicit invalid-input failure,
+  while preserving the existing ExprVM dispatch boundary.
 
 ### `prvm.amigaos.runtime` (NR-005, retain cohesive)
 

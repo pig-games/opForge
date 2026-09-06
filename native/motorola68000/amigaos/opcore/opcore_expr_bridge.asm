@@ -36,6 +36,32 @@ EXVM_OPCODE_FAIL                = $03
 	.pub
 
 ; ---------------------------------------------------------------------------
+; Read the high word of the most recent successful bridge evaluation.
+;
+; Outputs:
+; - D0: 0 when available, 1 when no successful bridge result is available.
+; - D1: high 32 bits when available, zero otherwise.
+;
+; Clobbers:
+; - D0-D1/CCR.
+;
+; CCR:
+; - Reflects D0 on return.
+; ---------------------------------------------------------------------------
+opcoreExvmGetLastResultHighV1	.block
+	moveq #0, d1
+	tst.w OpcoreExvmLastResultPresent
+	beq.s missing
+	move.l OpcoreExvmLastResultHigh, d1
+	moveq #0, d0
+	rts
+
+missing
+	moveq #1, d0
+	rts
+	.bend  ; opcoreExvmGetLastResultHighV1
+
+; ---------------------------------------------------------------------------
 ; Evaluate one scalar operand expression through the native EXVM default path.
 ;
 ; opcoreExprEvalOperandV1 is the compatibility entry used by the current
@@ -112,6 +138,8 @@ opcoreExvmEvalOperandCommon	.block
 .endif
 	move.w d4, OpcoreExvmSelectedOpcodeVersion
 	movem.l d1-d2/d6-d7/a0-a5, -(sp)
+	clr.w OpcoreExvmLastResultPresent
+	clr.l OpcoreExvmLastResultHigh
 	cmpi.w #2, d5
 	beq.s selectedVersionReady
 	moveq #1, d5
@@ -146,10 +174,19 @@ operandPrefixDone
 	bsr.w runEvalProgram
 	tst.l d0
 	bne.w return
+	jsr runtime.exprvmGetLastResultHighV1
+	tst.l d0
+	bne.s missingWideResult
+	move.l d1, OpcoreExvmLastResultHigh
+	move.w #1, OpcoreExvmLastResultPresent
 	tst.b OpcoreExvmSawUnresolvedSymbol
 	beq.w return
 	moveq #1, d4
 	moveq #1, d5
+	bra.w return
+
+missingWideResult
+	moveq #5, d0
 	bra.w return
 
 fail
@@ -989,13 +1026,7 @@ notParenthesized
 	cmpi.b #'%', (a0)
 	beq.w binaryLiteral
 	cmpi.b #'0', (a0)
-	bne.w numberOrLabel
-	cmpi.l #2, d0
-	bcs.w numberOrLabel
-	cmpi.b #'x', 1(a0)
-	beq.w hex0x
-	cmpi.b #'X', 1(a0)
-	beq.w hex0x
+	beq.w numberOrLabel
 
 numberOrLabel
 	moveq #0, d1
@@ -1069,6 +1100,8 @@ dollarUpperHex
 	bls.w hex
 
 dollarLowerHex
+	cmpi.b #'_', d1
+	beq.w hex
 	cmpi.b #'a', d1
 	blo.w currentPc
 	cmpi.b #'f', d1
@@ -1111,6 +1144,14 @@ hex0x
 	bra.w maybeApplyUnary
 
 binaryLiteral
+	cmpi.l #2, d0
+	bcs.w fail
+	cmpi.b #'0', 1(a0)
+	beq.s binaryLiteralBody
+	cmpi.b #'1', 1(a0)
+	bne.w fail
+
+binaryLiteralBody
 	addq.l #1, a0
 	subq.l #1, d0
 	bsr.w parseBinary
@@ -1176,11 +1217,11 @@ stringEscapedHex
 	cmpi.l #2, d0
 	bcs.w stringFail
 	move.l d0, -(sp)
-	move.l d3, -(sp)
+	movem.l d2-d3, -(sp)
 	moveq #2, d0
 	bsr.w parseHex
 	move.l d3, d1
-	move.l (sp)+, d3
+	movem.l (sp)+, d2-d3
 	move.l (sp)+, d0
 	tst.l d5
 	bne.w stringFail
@@ -1198,6 +1239,7 @@ stringClose
 	tst.l d2
 	beq.w stringFail
 	moveq #0, d5
+	moveq #0, d2
 	move.l d0, -(sp)
 	bsr.w emitPushLiteralD3
 	move.l d0, d5
@@ -1234,10 +1276,13 @@ label
 	movem.l (sp)+, d2/d6/a0
 	tst.l d0
 	bne.s labelSnapshot
+	move.l d2, -(sp)
+	moveq #0, d2
 	move.l d0, -(sp)
 	bsr.w emitPushLiteralD3
 	move.l d0, d5
 	move.l (sp)+, d0
+	move.l (sp)+, d2
 	bne.w maybeApplyUnary
 	adda.l d2, a0
 	move.l d6, d0
@@ -1257,9 +1302,12 @@ labelSnapshot
 	cmpi.w #1, d3
 	bne.w maybeApplyUnary
 	move.b #1, OpcoreExvmSawUnresolvedSymbol
+	move.l d2, -(sp)
+	clr.l d2
 	clr.l d3
 	bsr.w emitPushLiteralD3
 	move.l d0, d5
+	move.l (sp)+, d2
 	bne.w maybeApplyUnary
 	adda.l d2, a0
 	move.l d6, d0
@@ -1431,9 +1479,8 @@ return
 	rts
 	.bend  ; emitPushSymbolD3
 
-; Append the selected-version PushLiteral opcode plus the 64-bit literal with
-; the low 32 bits from D3 and a zero high word.
-; Inputs: D3 = low 32 literal bits; runtime.ExprvmSelectedOpcodeVersion =
+; Append the selected-version PushLiteral opcode plus one signed 64-bit literal.
+; Inputs: D2:D3 = high:low literal bits; runtime.ExprvmSelectedOpcodeVersion =
 ; evaluator opcode version.
 ; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
 ; Clobbers: D2/D6/CCR.
@@ -1455,7 +1502,7 @@ ready
 	movem.l (sp), d2-d3/d6
 	bsr.w emitU32D3
 	bne.s return
-	clr.l d3
+	move.l d2, d3
 	bsr.w emitU32D3
 
 return
@@ -1595,10 +1642,82 @@ done
 	rts
 	.bend  ; termLength
 
+; Accumulate one radix-2/8/10/16 digit into a nonnegative signed i64 pair.
+; Inputs: D1=digit,D2:D3=current value,D6=radix. Outputs: D2:D3=updated value,
+; D5=0 or 1 on overflow. Clobbers: CCR. Other registers survive.
+accumulateLiteralDigit	.block
+	tst.l d2
+	bne.s wide
+	cmpi.l #$0fffffff, d3
+	bhi.s wide
+	mulu.l d6, d3
+	add.l d1, d3
+	moveq #0, d5
+	rts
+
+wide
+	movem.l d0/d4/d6-d7, -(sp)
+	cmpi.l #10, d6
+	beq.s decimal
+	moveq #1, d7
+	cmpi.l #8, d6
+	bne.s maybeHex
+	moveq #3, d7
+	bra.s shift
+
+maybeHex
+	cmpi.l #16, d6
+	bne.s shift
+	moveq #4, d7
+
+shift
+	add.l d3, d3
+	addx.l d2, d2
+	bcs.s overflow
+	subq.l #1, d7
+	bne.s shift
+	bra.s addDigit
+
+decimal
+	add.l d3, d3
+	addx.l d2, d2
+	bcs.s overflow
+	move.l d2, d4
+	move.l d3, d7
+	add.l d3, d3
+	addx.l d2, d2
+	bcs.s overflow
+	add.l d3, d3
+	addx.l d2, d2
+	bcs.s overflow
+	add.l d7, d3
+	addx.l d4, d2
+	bcs.s overflow
+
+addDigit
+	add.l d1, d3
+	moveq #0, d0
+	addx.l d0, d2
+	bcs.s overflow
+	tst.l d2
+	bmi.s overflow
+	moveq #0, d5
+	bra.s return
+
+overflow
+	moveq #1, d5
+
+return
+	movem.l (sp)+, d0/d4/d6-d7
+	rts
+	.bend  ; accumulateLiteralDigit
+
 parseHex	.block
-	movem.l d1-d2, -(sp)
-	clr.l d3
+	movem.l d1/d4/d6, -(sp)
 	clr.l d2
+	clr.l d3
+	clr.l d4
+	moveq #16, d6
 
 loop
 	tst.l d0
@@ -1610,7 +1729,25 @@ loop
 	beq.w endBeforeOperator
 	cmpi.b #'-', d1
 	beq.w endBeforeOperator
+	cmpi.b #'*', d1
+	beq.w endBeforeOperator
+	cmpi.b #'/', d1
+	beq.w endBeforeOperator
+	cmpi.b #'%', d1
+	beq.w endBeforeOperator
+	cmpi.b #'<', d1
+	beq.w endBeforeOperator
+	cmpi.b #'>', d1
+	beq.w endBeforeOperator
+	cmpi.b #'=', d1
+	beq.w endBeforeOperator
+	cmpi.b #'!', d1
+	beq.w endBeforeOperator
+	cmpi.b #'&', d1
+	beq.w endBeforeOperator
 	cmpi.b #'|', d1
+	beq.w endBeforeOperator
+	cmpi.b #'^', d1
 	beq.w endBeforeOperator
 	cmpi.b #'?', d1
 	beq.w endBeforeOperator
@@ -1619,11 +1756,11 @@ loop
 	cmpi.b #')', d1
 	beq.w endBeforeOperator
 	cmpi.b #' ', d1
-	beq.s ok
+	beq.w ok
 	cmpi.b #9, d1
-	beq.s ok
+	beq.w ok
 	cmpi.b #'_', d1
-	beq.s loop
+	beq.w loop
 	cmpi.b #'0', d1
 	bcs.s fail
 	cmpi.b #'9', d1
@@ -1647,13 +1784,14 @@ digit
 	subi.b #'0', d1
 
 haveDigit
-	moveq #1, d2
-	lsl.l #4, d3
-	or.b d1, d3
+	moveq #1, d4
+	bsr.w accumulateLiteralDigit
+	tst.l d5
+	bne.s return
 	bra.w loop
 
 ok
-	tst.l d2
+	tst.l d4
 	beq.s fail
 	moveq #0, d5
 	bra.s return
@@ -1667,173 +1805,308 @@ fail
 	moveq #1, d5
 
 return
-	movem.l (sp)+, d1-d2
+	movem.l (sp)+, d1/d4/d6
 	rts
 	.bend  ; parseHex
 
 parseBinary	.block
-	movem.l d1-d2, -(sp)
-	clr.l d3
+	movem.l d1/d4/d6, -(sp)
 	clr.l d2
+	clr.l d3
+	clr.l d4
+	moveq #2, d6
 
 loop
 	tst.l d0
-	beq.s ok
+	beq.w ok
 	moveq #0, d1
 	move.b (a0)+, d1
 	subq.l #1, d0
 	cmpi.b #'+', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
 	cmpi.b #'-', d1
-	beq.s endBeforeOperator
+	beq.w endBeforeOperator
+	cmpi.b #'*', d1
+	beq.w endBeforeOperator
+	cmpi.b #'/', d1
+	beq.w endBeforeOperator
+	cmpi.b #'%', d1
+	beq.w endBeforeOperator
+	cmpi.b #'<', d1
+	beq.w endBeforeOperator
+	cmpi.b #'>', d1
+	beq.w endBeforeOperator
+	cmpi.b #'=', d1
+	beq.w endBeforeOperator
+	cmpi.b #'!', d1
+	beq.w endBeforeOperator
+	cmpi.b #'&', d1
+	beq.w endBeforeOperator
+	cmpi.b #'|', d1
+	beq.w endBeforeOperator
+	cmpi.b #'^', d1
+	beq.w endBeforeOperator
+	cmpi.b #'?', d1
+	beq.w endBeforeOperator
+	cmpi.b #':', d1
+	beq.w endBeforeOperator
+	cmpi.b #')', d1
+	beq.w endBeforeOperator
 	cmpi.b #' ', d1
-	beq.s ok
+	beq.w ok
 	cmpi.b #9, d1
-	beq.s ok
+	beq.w ok
 	cmpi.b #'_', d1
-	beq.s loop
+	beq.w loop
 	cmpi.b #'0', d1
-	beq.s digit
+	beq.w digit
 	cmpi.b #'1', d1
-	bne.s fail
+	bne.w fail
 
 digit
 	subi.b #'0', d1
-	moveq #1, d2
-	lsl.l #1, d3
-	or.b d1, d3
-	bra.s loop
+	moveq #1, d4
+	bsr.w accumulateLiteralDigit
+	tst.l d5
+	bne.w return
+	bra.w loop
 
 ok
-	tst.l d2
-	beq.s fail
+	tst.l d4
+	beq.w fail
 	moveq #0, d5
-	bra.s return
+	bra.w return
 
 endBeforeOperator
 	subq.l #1, a0
 	addq.l #1, d0
-	bra.s ok
+	bra.w ok
 
 fail
 	moveq #1, d5
 
 return
-	movem.l (sp)+, d1-d2
+	movem.l (sp)+, d1/d4/d6
 	rts
 	.bend  ; parseBinary
 
-; Parse a digit-led scalar token with an optional 64tass-style base suffix.
+; Parse a digit-led scalar token using the Rust tokenizer/number format order.
 ; Inputs: A0/D0 = token text and remaining expression length.
-; Outputs: A0/D0 advanced past exactly one token; D3 = value; D5 = status.
-; Clobbers: D1-D2/A1/CCR.
+; Outputs: A0/D0 advanced past exactly one token; D2:D3 = signed i64 value;
+; D5 = status.
+; Clobbers: D1-D3/A1/CCR.
 ; CCR: reflects D5 on return.
 parseSuffixedNumber	.block
-	movem.l d1-d2/a1, -(sp)
+	movem.l d1/d4/d6/a1-a3, -(sp)
 	movea.l a0, a1
-	move.l d0, d2
+	move.l d0, d6
 
 scanToken
-	tst.l d2
+	tst.l d6
 	beq.s tokenScanned
 	moveq #0, d1
 	move.b (a1)+, d1
-	subq.l #1, d2
-	cmpi.b #'+', d1
-	beq.s tokenDelimiter
-	cmpi.b #'-', d1
-	beq.s tokenDelimiter
-	cmpi.b #'*', d1
-	beq.s tokenDelimiter
-	cmpi.b #'/', d1
-	beq.s tokenDelimiter
-	cmpi.b #'%', d1
-	beq.s tokenDelimiter
-	cmpi.b #'&', d1
-	beq.s tokenDelimiter
-	cmpi.b #'|', d1
-	beq.s tokenDelimiter
-	cmpi.b #'^', d1
-	beq.s tokenDelimiter
-	cmpi.b #'?', d1
-	beq.s tokenDelimiter
-	cmpi.b #':', d1
-	beq.s tokenDelimiter
-	cmpi.b #')', d1
-	beq.s tokenDelimiter
-	cmpi.b #' ', d1
-	beq.s tokenDelimiter
-	cmpi.b #9, d1
-	beq.s tokenDelimiter
-	bra.s scanToken
+	subq.l #1, d6
+	cmpi.b #'0', d1
+	bcs.s tokenDelimiter
+	cmpi.b #'9', d1
+	bls.s scanToken
+	cmpi.b #'A', d1
+	bcs.s maybeUnderscore
+	cmpi.b #'Z', d1
+	bls.s scanToken
+	cmpi.b #'a', d1
+	bcs.s maybeUnderscore
+	cmpi.b #'z', d1
+	bls.s scanToken
+
+maybeUnderscore
+	cmpi.b #'_', d1
+	beq.s scanToken
 
 tokenDelimiter
 	subq.l #1, a1
-	addq.l #1, d2
+	addq.l #1, d6
 
 tokenScanned
-	move.b -1(a1), d1
+	move.l d0, d4
+	sub.l d6, d4
+	beq.w fail
+	movea.l a1, a2
+
+trimTrailingSeparators
+	cmpi.b #'_', -1(a1)
+	bne.s tokenTrimmed
+	subq.l #1, a1
+	subq.l #1, d4
+	bne.s trimTrailingSeparators
+	bra.w fail
+
+tokenTrimmed
+	movea.l a1, a3
+	cmpi.l #2, d4
+	bcs.s checkSuffix
+	cmpi.b #'0', (a0)
+	bne.s checkSuffix
+	lea 1(a0), a1
+	move.l d4, d0
+	subq.l #1, d0
+
+prefixKindScan
+	moveq #0, d1
+	move.b (a1)+, d1
+	subq.l #1, d0
+	cmpi.b #'_', d1
+	beq.s prefixKindMore
+	ori.b #32, d1
+	cmpi.b #'x', d1
+	beq.s selectHexPrefix
+	cmpi.b #'o', d1
+	beq.s selectOctalPrefix
+	bra.s checkSuffix
+
+prefixKindMore
+	tst.l d0
+	bne.s prefixKindScan
+	bra.s checkSuffix
+
+selectHexPrefix
+	movea.l a1, a0
+	bra.w parseHexPrefix
+
+selectOctalPrefix
+	movea.l a1, a0
+	bra.w parseOctalPrefix
+
+checkSuffix
+	moveq #0, d1
+	move.b -1(a3), d1
 	ori.b #32, d1
 	cmpi.b #'h', d1
-	beq.s parseHexSuffix
+	beq.w parseHexSuffix
+	cmpi.l #2, d4
+	bcs.s checkBinarySuffix
+	cmpi.b #'0', (a0)
+	bne.s checkBinarySuffix
+	lea 1(a0), a1
+	move.l d4, d0
+	subq.l #1, d0
+
+binaryPrefixScan
+	moveq #0, d1
+	move.b (a1)+, d1
+	subq.l #1, d0
+	cmpi.b #'_', d1
+	beq.s binaryPrefixMore
+	ori.b #32, d1
 	cmpi.b #'b', d1
-	beq.s parseBinarySuffix
+	bne.s checkBinarySuffix
+	movea.l a1, a0
+	bra.w parseBinaryPrefix
+
+binaryPrefixMore
+	tst.l d0
+	bne.s binaryPrefixScan
+
+checkBinarySuffix
+	move.b -1(a3), d1
+	ori.b #32, d1
+	cmpi.b #'b', d1
+	beq.w chooseBinaryOrHexSuffix
 	cmpi.b #'o', d1
-	beq.s parseOctalSuffix
+	beq.w parseOctalSuffix
 	cmpi.b #'q', d1
-	beq.s parseOctalSuffix
+	beq.w parseOctalSuffix
 	cmpi.b #'d', d1
-	beq.s parseDecimalSuffix
+	beq.w parseDecimalSuffix
+	move.l a3, d0
+	sub.l a0, d0
 	bsr.w parseDecimal
-	bra.s return
+	bra.w tokenParsed
+
+parseHexPrefix
+	move.l a3, d0
+	sub.l a0, d0
+	bsr.w parseHex
+	bra.w tokenParsed
+
+parseOctalPrefix
+	move.l a3, d0
+	sub.l a0, d0
+	bsr.w parseOctal
+	bra.w tokenParsed
+
+parseBinaryPrefix
+	move.l a3, d0
+	sub.l a0, d0
+	bsr.w parseBinary
+	bra.w tokenParsed
 
 parseHexSuffix
-	move.l d0, d1
-	sub.l d2, d1
-	subq.l #1, d1
-	move.l d2, -(sp)
-	move.l d1, d0
+	move.l a3, d0
+	sub.l a0, d0
+	subq.l #1, d0
 	bsr.w parseHex
-	move.l (sp)+, d2
 	bra.s consumeSuffix
 
 parseBinarySuffix
-	move.l d0, d1
-	sub.l d2, d1
-	subq.l #1, d1
-	move.l d2, -(sp)
-	move.l d1, d0
+	move.l a3, d0
+	sub.l a0, d0
+	subq.l #1, d0
 	bsr.w parseBinary
-	move.l (sp)+, d2
 	bra.s consumeSuffix
 
 parseOctalSuffix
-	move.l d0, d1
-	sub.l d2, d1
-	subq.l #1, d1
-	move.l d2, -(sp)
-	move.l d1, d0
+	move.l a3, d0
+	sub.l a0, d0
+	subq.l #1, d0
 	bsr.w parseOctal
-	move.l (sp)+, d2
 	bra.s consumeSuffix
 
 parseDecimalSuffix
-	move.l d0, d1
-	sub.l d2, d1
-	subq.l #1, d1
-	move.l d2, -(sp)
-	move.l d1, d0
+	move.l a3, d0
+	sub.l a0, d0
+	subq.l #1, d0
 	bsr.w parseDecimal
-	move.l (sp)+, d2
 
 consumeSuffix
 	tst.l d5
 	bne.s return
 	addq.l #1, a0
-	move.l d2, d0
+	bra.s tokenParsed
+
+chooseBinaryOrHexSuffix
+	movea.l a0, a1
+	move.l a3, d0
+	sub.l a0, d0
+	subq.l #1, d0
+binarySuffixScan
+	tst.l d0
+	beq.w parseBinarySuffix
+	moveq #0, d1
+	move.b (a1)+, d1
+	subq.l #1, d0
+	cmpi.b #'_', d1
+	beq.s binarySuffixScan
+	cmpi.b #'0', d1
+	beq.s binarySuffixScan
+	cmpi.b #'1', d1
+	beq.s binarySuffixScan
+	bra.w parseHexSuffix
+
+tokenParsed
+	tst.l d5
+	bne.s return
+	movea.l a2, a0
+	move.l d6, d0
+	moveq #0, d5
+	bra.s return
+
+fail
+	moveq #1, d5
 
 return
-	movem.l (sp)+, d1-d2/a1
+	movem.l (sp)+, d1/d4/d6/a1-a3
 	rts
 	.bend  ; parseSuffixedNumber
 
@@ -1843,9 +2116,11 @@ return
 ; Clobbers: D1/CCR.
 ; CCR: reflects D5 on return.
 parseOctal	.block
-	movem.l d1-d2, -(sp)
-	clr.l d3
+	movem.l d1/d4/d6, -(sp)
 	clr.l d2
+	clr.l d3
+	clr.l d4
+	moveq #8, d6
 
 scanDigit
 	tst.l d0
@@ -1860,13 +2135,14 @@ scanDigit
 	cmpi.b #'7', d1
 	bhi.s fail
 	subi.b #'0', d1
-	moveq #1, d2
-	lsl.l #3, d3
-	or.b d1, d3
+	moveq #1, d4
+	bsr.w accumulateLiteralDigit
+	tst.l d5
+	bne.s return
 	bra.s scanDigit
 
 ok
-	tst.l d2
+	tst.l d4
 	beq.s fail
 	moveq #0, d5
 	bra.s return
@@ -1875,14 +2151,16 @@ fail
 	moveq #1, d5
 
 return
-	movem.l (sp)+, d1-d2
+	movem.l (sp)+, d1/d4/d6
 	rts
 	.bend  ; parseOctal
 
 parseDecimal	.block
-	movem.l d1-d2/d4, -(sp)
+	movem.l d1/d4/d6, -(sp)
+	clr.l d2
 	clr.l d3
 	clr.l d4
+	moveq #10, d6
 
 loop
 	tst.l d0
@@ -1924,11 +2202,9 @@ loop
 	bhi.s fail
 	subi.b #'0', d1
 	moveq #1, d4
-	move.l d3, d2
-	lsl.l #3, d3
-	add.l d2, d3
-	add.l d2, d3
-	add.l d1, d3
+	bsr.w accumulateLiteralDigit
+	tst.l d5
+	bne.s return
 	bra.w loop
 
 ok
@@ -1946,7 +2222,7 @@ fail
 	moveq #1, d5
 
 return
-	movem.l (sp)+, d1-d2/d4
+	movem.l (sp)+, d1/d4/d6
 	rts
 	.bend  ; parseDecimal
 
@@ -2100,6 +2376,10 @@ OpcoreExvmSawUnresolvedSymbol
 	.align 2
 OpcoreExvmSymbolResolverPtr
 	.res long, 1
+OpcoreExvmLastResultHigh
+	.res long, 1
+OpcoreExvmLastResultPresent
+	.res word, 1
 OpcoreExprVmProgramLen
 	.res word, 1
 OpcoreExprVmProgramBuffer

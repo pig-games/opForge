@@ -14527,6 +14527,10 @@ fn external_fs_uae_native_item40_exact_expression_service_parity() {
             "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm",
         ),
         (
+            "item40_exprvm_i64_math.asm",
+            "native/motorola68000/amigaos/exprvm/exprvm_i64_math.asm",
+        ),
+        (
             "item40_expression.asm",
             "native/motorola68000/amigaos/tkpkg/tkpkg_expression_service.asm",
         ),
@@ -14703,6 +14707,10 @@ fn external_fs_uae_native_item40_exact_operand_runtime_parity() {
         (
             "item40_exprvm_runtime.asm",
             "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm",
+        ),
+        (
+            "item40_exprvm_i64_math.asm",
+            "native/motorola68000/amigaos/exprvm/exprvm_i64_math.asm",
         ),
         (
             "item40_expression_service.asm",
@@ -26861,7 +26869,7 @@ fn external_fs_uae_native_opforge_full_product_artifact_parity() {
         .collect::<Vec<_>>();
     assert_eq!(
         guest_files.len(),
-        99,
+        100,
         "measured canonical product staging set changed"
     );
     for bridge_file in [

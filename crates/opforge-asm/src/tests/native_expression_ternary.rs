@@ -45,16 +45,17 @@ fn native_expression_ternary_runtime_contract() {
         &runtime,
         &[
             "applyTernarySelect",
-            "MOVE.L D2, D1",
-            "MOVE.L D3, -(SP)",
+            "MOVEM.L D0-D3, -(SP)",
             "BSR.W popD3",
-            "TST.L D3",
-            "BEQ.S applyTernaryFalse",
-            "MOVE.L (SP)+, D3",
+            "OR.L D2, D3",
+            "BEQ.S ternaryFalse",
+            "MOVEM.L 8(SP), D2-D3",
+            "BRA.S ternaryDone",
+            "ternaryFalse",
+            "MOVEM.L (SP), D2-D3",
+            "ternaryDone",
+            "ADDA.L #16, SP",
             "BRA.W applyBinaryDone",
-            "applyTernaryFalse",
-            "ADDQ.L #4, SP",
-            "MOVE.L D1, D3",
         ]
     ));
 }

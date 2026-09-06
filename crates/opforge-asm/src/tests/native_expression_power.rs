@@ -74,17 +74,29 @@ fn native_expression_power_parser_runtime_contract() {
         &runtime,
         &[
             "EXPRVM_BINARY_POWER = 3",
-            "CMPI.B #EXPRVM_BINARY_POWER, D6",
             "BEQ.W applyBinaryPower",
             "applyBinaryPower:",
-            "TST.L D2",
-            "BMI.W fail",
-            "MOVEQ #1, D3",
-            "BTST #0, D2",
-            "MULU.L D1, D3",
-            "LSR.L #1, D2",
-            "MULU.L D1, D1",
+            "JSR I64_MATH.POWERV1",
+            "BNE.W FAIL"
         ]
+    ));
+    let math = normalize_tkpkg_fragment(
+        &fs::read_to_string(root.join("native/motorola68000/amigaos/exprvm/exprvm_i64_math.asm"))
+            .expect("read native i64 math"),
+    );
+    assert!(source_contains_in_order(
+        &math,
+        &[
+            "POWERV1:",
+            "MOVEA.L D2, A0",
+            "MOVEA.L D3, A1",
+            "MOVE.L D1, D6",
+            "BSR.W MULTIPLYCORE"
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &runtime,
+        &["pushD3", "MOVE.L D2, 0(A2, D0.L)", "MOVE.L D3, 4(A2, D0.L)"]
     ));
 }
 

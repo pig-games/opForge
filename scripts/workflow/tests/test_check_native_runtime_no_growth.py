@@ -41,9 +41,13 @@ class NativeRuntimeNoGrowthTests(unittest.TestCase):
 
     def test_repository_baseline_and_current_sources_pass(self):
         baseline = load_baseline(BASELINE)
-        self.assertEqual(len(baseline.hotspot_blocks), 3)
+        self.assertEqual(len(baseline.hotspot_blocks), 4)
         self.assertIn(
             "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm",
+            baseline.hotspot_blocks,
+        )
+        self.assertIn(
+            "native/motorola68000/amigaos/exprvm/exprvm_i64_math.asm",
             baseline.hotspot_blocks,
         )
         self.assertEqual(validate(), [])

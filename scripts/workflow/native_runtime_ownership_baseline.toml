@@ -1,6 +1,7 @@
 schema_version = 1
 
 certified_modules = [
+  "native/motorola68000/amigaos/exprvm/exprvm_i64_math.asm",
   "native/motorola68000/amigaos/exprvm/exprvm_runtime.asm",
   "native/motorola68000/amigaos/main.asm",
   "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm",
@@ -132,10 +133,14 @@ blocks = [
 
 [hotspots."native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm"]
 blocks = [
-  "opcoreExprEvalOperandV1", "opcoreExvmEvalOperandV1", "selectProgram", "runEvalProgram",
+  "opcoreExvmGetLastResultHighV1", "opcoreExprEvalOperandV1", "opcoreExvmEvalOperandV1",
+  "opcoreExvmEvalOperandWithResolverV1", "opcoreExvmEvalOperandCommon", "selectProgram", "runEvalProgram",
   "compileExpression", "compileTernary", "compileLogicalOr", "compileAdditive", "compileShift",
   "compileMultiplicative", "compileSingleTerm", "resetProgram", "finalizeProgram", "emitPushCurrent",
   "emitApplyUnaryD6", "emitApplyBinaryD6", "emitPushSymbolD3", "emitPushLiteralD3", "emitU32D3",
   "emitU16D3", "emitU8D6", "skipWhitespace", "termLength", "parseHex", "parseBinary",
-  "parseSuffixedNumber", "parseOctal", "parseDecimal", "resolveLabelIndex", "labelEquals",
+  "accumulateLiteralDigit", "parseSuffixedNumber", "parseOctal", "parseDecimal", "resolveLabelIndex", "labelEquals", "labelEqualsCounted",
 ]
+
+[hotspots."native/motorola68000/amigaos/exprvm/exprvm_i64_math.asm"]
+blocks = ["multiplyV1", "powerV1", "divideModuloV1", "multiplyCore"]

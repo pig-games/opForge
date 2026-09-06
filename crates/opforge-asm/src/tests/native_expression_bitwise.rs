@@ -74,12 +74,17 @@ fn native_expression_bitwise_parser_runtime_contract() {
     assert!(source_contains_in_order(
         &suffix[..suffix_end],
         &[
-            "CMPI.B #'&', D1",
-            "CMPI.B #'|', D1",
-            "CMPI.B #'^', D1",
+            "CMPI.B #'0', D1",
+            "BCS.S tokenDelimiter",
+            "CMPI.B #'9', D1",
+            "BLS.S scanToken",
+            "CMPI.B #'z', D1",
+            "BLS.S scanToken",
+            "CMPI.B #'_', D1",
+            "BEQ.S scanToken",
             "tokenDelimiter",
             "SUBQ.L #1, A1",
-            "ADDQ.L #1, D2",
+            "ADDQ.L #1, D6",
         ]
     ));
 
@@ -91,11 +96,14 @@ fn native_expression_bitwise_parser_runtime_contract() {
         &runtime,
         &[
             "applyBinaryBitAnd",
-            "AND.L D2, D3",
+            "AND.L D0, D2",
+            "AND.L D1, D3",
             "applyBinaryBitOr",
-            "OR.L D2, D3",
+            "OR.L D0, D2",
+            "OR.L D1, D3",
             "applyBinaryBitXor",
-            "EOR.L D2, D3",
+            "EOR.L D0, D2",
+            "EOR.L D1, D3",
         ]
     ));
 }

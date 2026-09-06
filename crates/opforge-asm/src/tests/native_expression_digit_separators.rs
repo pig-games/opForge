@@ -59,7 +59,7 @@ fn native_expression_digit_separator_parser_contract() {
             "{block} must recognize digit separators"
         );
         assert!(
-            body.contains("beq.s fail"),
+            body.contains("tst.l d4\n\tbeq.s fail") || body.contains("tst.l d4\n\tbeq.w fail"),
             "{block} must reject a token with no real digit"
         );
     }

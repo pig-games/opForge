@@ -10,8 +10,9 @@ class NativeRuntimeBoundaryInventoryTests(unittest.TestCase):
     def test_inventory_matches_all_audited_sources(self):
         self.assertEqual(validate(), [])
 
-    def test_audit_set_covers_exactly_twenty_one_modules(self):
-        self.assertEqual(len(TARGETS), 21)
+    def test_audit_set_covers_exactly_twenty_two_modules(self):
+        self.assertEqual(len(TARGETS), 22)
+        self.assertIn("exprvm.amigaos.i64_math", TARGETS)
         self.assertIn("opasm.amigaos.assembly_driver", TARGETS)
         self.assertIn("opasm.amigaos.directive_router", TARGETS)
         self.assertIn("opasm.amigaos.operand_eval", TARGETS)

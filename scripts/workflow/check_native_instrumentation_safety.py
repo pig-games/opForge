@@ -23,6 +23,15 @@ STANDALONE_DIAGNOSTIC_HARNESSES = {
     "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm",
 }
 
+# Permanent negative-process proof forwards the service's actual error text.
+# This exact call is executable output, not injected runtime instrumentation.
+FUNCTIONAL_SERVICE_ERROR_HARNESS = (
+    "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_expression_i64_harness.asm"
+)
+FUNCTIONAL_SERVICE_ERROR_CALL = re.compile(
+    r"^\s*bsr\.w\s+writeFailureDiagnostic\s*(?:;.*)?$", re.I
+)
+
 
 def validate_text(path: str, text: str) -> list[str]:
     if "/debug/" in path:
@@ -35,7 +44,11 @@ def validate_text(path: str, text: str) -> list[str]:
         # production instrumentation framework. Its DebugCli namespace is not
         # instrumentation injected into runtime control flow. Keep the buffer,
         # macro, and flag/branch checks active below.
-        if not standalone_diagnostic_harness and RAW_CALL.search(line):
+        functional_service_error_call = (
+            path == FUNCTIONAL_SERVICE_ERROR_HARNESS
+            and FUNCTIONAL_SERVICE_ERROR_CALL.fullmatch(line) is not None
+        )
+        if not standalone_diagnostic_harness and not functional_service_error_call and RAW_CALL.search(line):
             errors.append(f"{path}:{index + 1}: raw debug/diagnostic call is forbidden")
         if PROHIBITED.search(line) and ("debug" in line.lower() or "diag" in line.lower()):
             errors.append(f"{path}:{index + 1}: instrumentation touches a prohibited buffer")

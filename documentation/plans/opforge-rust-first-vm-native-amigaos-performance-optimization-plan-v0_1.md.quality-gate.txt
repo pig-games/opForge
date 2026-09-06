@@ -1,3 +1,13 @@
+PASS: Independent plan-quality and compliance review by step20_review (2026-09-06) approves the evidence-driven CPU execution-contract prerequisite and the final CPEX v1 design audit. The native RES operand count is not a scaled byte extent, and current package metadata lacks Rust word-size/address-limit authority. Step27 now carries those properties through optional canonical-CPU CPEX metadata before Step28 computes checked reservation semantics and listing retention. No production fix, native parity or Phase A completion is claimed. All38 steps remain sequential; LSP is last.
+
+Artifact SHA-256: c56db209a91c784eecd570f621b34e2402743964f8cf626e407aeb56a2befd0e
+Audit SHA-256: f717970bd3ca6d0f9a32395c6eb49376b47b28ac89b7c4a7aba08f1b83ad7f48
+Validation: workflow gate terminal exit0, log SHA256 aa870ea7472bbc4a3637f2645ab14f52d8c234897f4d4581ddcefb7e5b989f1a,6483bytes; plan bundle, quality evidence and final diff checks PASS. This is a docs-only amendment; no Rust/native implementation changed and no runtime gate is represented as fresh proof.
+Review: additive versioned wire records, exact canonical coverage, alias resolution, nonzero word width, zero-valid maximum address, explicit legacy absence, atomic CPU/property selection, real loader/accessor native proof and separate candidate package identity PASS. Stage the final audit additions with this sidecar. Step and total runtime gains remain unmeasured; the earlier scoped DOS-call reduction is not a total runtime ratio.
+Commit scope: exactly the active plan, this sidecar and reservation-authority audit. Approved local amendment commit: docs(perf): schedule authoritative CPU execution properties. No push authorized.
+
+Prior receipts apply only to their recorded revisions and scopes.
+
 PASS: Independent Step26 plan-compliance review by step20_review (2026-09-06) accepts the whole diff without blocking findings. The existing visibility update is followed by exactly one bounded source-record call, with failure propagation and consumed return before statement/package routing. Complete focused native listing/BIN matches live Rust with fresh zero-exit proof; separate host contracts establish row order and visibility authority. No BSS allocation or opcode work was added. B09 remains10/11, next mismatch1260 is reservation row19 before the footer; Phase A remains open.
 
 Artifact SHA-256: f7caf5eb454cc835677c9fea29c3e1975dc0469381fbc9c9a87004f44b684987

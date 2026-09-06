@@ -1,0 +1,101 @@
+{
+  "step": 23,
+  "item": "A-hex-records",
+  "parent_commit": "e3b7b67c",
+  "status": "Step 23 required gates and independent review PASS; B09 9/11 exact, map/listing remain open",
+  "receipts": [
+    {
+      "name": "native.log",
+      "proof_level": "B",
+      "passed": false,
+      "sha256": "15d8630984c7861f057586e3ac83e4bf1928d268b7a2e57b82c3e484cc9b2d34",
+      "log_bytes": 1562,
+      "log_path": "target/workflow-logs/step23-hex/native.log",
+      "disposition": "Host assembly rejected relocatable SUBI immediate; no guest launch"
+    },
+    {
+      "name": "native-corrected.log",
+      "proof_level": "D",
+      "passed": false,
+      "sha256": "1c6bd074f558eed80956d239ddef4a6c0a0686e64e753b556d01c1de59a70a82",
+      "log_bytes": 2514,
+      "log_path": "target/workflow-logs/step23-hex/native-corrected.log",
+      "disposition": "Guest returned exit1 at documented64-token source-line limit beforeHEX output"
+    },
+    {
+      "name": "native-final",
+      "proof_level": "A/B/D",
+      "passed": true,
+      "whole_test_seconds": 63.56,
+      "sha256": "b229bbab750269b3b8af6b36828c11d2a232c6ff9c231785c3528dab294a6817",
+      "log_bytes": 769,
+      "log_path": "target/workflow-logs/step23-hex/native-final.log",
+      "scope": "fresh exactBIN/HEX sparse5/32/1records plusunchanged39byteBIN"
+    },
+    {
+      "name": "B09",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "external_fs_uae_native_production_corpus_parity",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 64.14980883407407,
+      "sha256": "519404a59b8d97b057ffb245d3fcd2603f93cb605f422fc113f248895fc307c9",
+      "log_bytes": 28647,
+      "log_path": "target/workflow-logs/step23-hex/B09.log",
+      "artifact_mismatches": [
+        "Work/build/full.map",
+        "Work/opforge_6502_native_cli_smoke.lst"
+      ],
+      "all_artifacts_checked": 11,
+      "exact_artifacts": 9,
+      "parity_passed": false
+    },
+    {
+      "name": "rust-gate",
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 243.42769520916045,
+      "sha256": "28d59f792c7d3159ff1ef89f5fa91e4687d8a15a2a1a3e3d39e39293afc184f6",
+      "log_bytes": 207087,
+      "log_path": "target/workflow-logs/step23-hex/rust-gate.log",
+      "disposition": "1600 passed; one obsolete structural assertion expected 255-byte records instead of Rust-compatible 32-byte records. Updated assertion; corrected gate pending."
+    },
+    {
+      "name": "rust-gate",
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 267.8168524168432,
+      "sha256": "8e522bfe4ac2a5fa69b4413d390afaa1795504e229a3f76027c9809746a702df",
+      "log_bytes": 331650,
+      "log_path": "target/workflow-logs/step23-hex-corrected/rust-gate.log"
+    },
+    {
+      "name": "workflow",
+      "exit_code": 0,
+      "sha256": "1449b998d2d26a107833104a5e2f180eacaf4df63355096163c581e6f6ca1680",
+      "log_bytes": 6494,
+      "log_path": "target/workflow-logs/step23-hex/workflow.log"
+    }
+  ],
+  "performance": {
+    "step_runtime_gain": "unmeasured;output parity enables qualification",
+    "total_runtime_gain": "unmeasured;no matched initial/current comparison"
+  },
+  "fixture_transition": "Original33value line exceeded64tokenlimit; splitinto16+17value directives preservingalladdresses and exactexpected39byteBIN and5/32/1HEXrecords. No single-line acceptance claim. FrozenB09unchanged."
+}

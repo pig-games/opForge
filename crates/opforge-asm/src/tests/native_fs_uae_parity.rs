@@ -14,6 +14,9 @@ mod native_mos_abs32;
 #[path = "native_layout_group_size.rs"]
 mod native_layout_group_size;
 
+#[path = "native_hex_records.rs"]
+mod native_hex_records;
+
 #[path = "native_branch_failures.rs"]
 mod branch_failures;
 

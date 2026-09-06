@@ -131,13 +131,16 @@ fail
 	rts
 	.bend  ; opasmOutputBuildPrgArtifactV1
 
-; Build an Intel HEX artifact from the current contiguous engine image.
+; Build an Intel HEX artifact from present engine-image bytes, split at gaps and 32 bytes.
 ; Outputs:
-; - D0.L = 0 on success, 1 when output exceeds 16-bit HEX address range.
+; - D0.L = 0 on success, 1 on address range or artifact-buffer overflow.
 ; - A0 = opasm-owned HEX artifact buffer pointer.
 ; - D1.L = text byte count.
+; Clobbers: D0-D1/A0-A1/CCR.
+; CCR: reflects D0 on return.
 opasmOutputBuildHexArtifactV1	.block
-	movem.l d2-d7/a2-a3, -(sp)
+	.priv
+	movem.l d2-d7/a2-a4, -(sp)
 	jsr engine.opasmEngineGetSessionOriginV1
 	cmpi.l #$0000FFFF, d0
 	bhi.w fail
@@ -146,6 +149,8 @@ opasmOutputBuildHexArtifactV1	.block
 	bne.w fail
 	movea.l a0, a3
 	move.l d1, d5
+	jsr engine.opasmEngineGetImagePresentBufferPtrV1
+	movea.l a0, a4
 	lea OpasmHexArtifactBuffer.l, a2
 	tst.l d5
 	beq.w eofRecord
@@ -156,12 +161,39 @@ opasmOutputBuildHexArtifactV1	.block
 	bhi.w fail
 
 recordLoop
-	move.l #255, d7
-	cmp.l d7, d5
+	; BIN materializes gaps; HEX must retain only written address entries.
+	tst.l d5
+	beq.w eofRecord
+	tst.b (a4)
+	bne.s recordStart
+	addq.l #1, a3
+	addq.l #1, a4
+	addq.l #1, d6
+	subq.l #1, d5
+	bra.s recordLoop
+recordStart
+	moveq #0, d7
+measureRecord
+	cmp.l d5, d7
 	bhs.s haveRecordLen
-	move.l d5, d7
+	cmpi.l #32, d7
+	bhs.s haveRecordLen
+	tst.b 0(a4, d7.l)
+	beq.s haveRecordLen
+	addq.l #1, d7
+	bra.s measureRecord
 
 haveRecordLen
+	; Reserve this record's 12 fixed characters and the 12-byte EOF record.
+	move.l a2, d0
+	lea OpasmHexArtifactBuffer.l, a0
+	move.l a0, d2
+	sub.l d2, d0
+	add.l d7, d0
+	add.l d7, d0
+	addi.l #24, d0
+	cmpi.l #OPASM_OUTPUT_HEX_BUFFER_CAPACITY, d0
+	bhi.w fail
 	move.b #':', (a2)+
 	move.l d7, d3
 	move.l d7, d0
@@ -191,6 +223,7 @@ dataLoop
 	andi.l #$000000FF, d0
 	bsr.w opasmOutputEmitHexByte
 	move.b #10, (a2)+
+	adda.l d7, a4
 	sub.l d7, d5
 	add.l d7, d6
 	tst.l d5
@@ -208,14 +241,15 @@ copyEof
 	move.l a0, d0
 	sub.l d0, d1
 	moveq #0, d0
-	movem.l (sp)+, d2-d7/a2-a3
+	movem.l (sp)+, d2-d7/a2-a4
 	rts
 
 fail
 	moveq #1, d0
-	movem.l (sp)+, d2-d7/a2-a3
+	movem.l (sp)+, d2-d7/a2-a4
 	rts
 	.bend  ; opasmOutputBuildHexArtifactV1
+	.pub
 
 ; Build a Rust-style `.lst` artifact from every preserved source record,
 ; attaching statement/image data when the source line produced a statement.

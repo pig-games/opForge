@@ -19335,7 +19335,7 @@ fn motorola68020_item15_native_hex_output_routes_through_artifact_layer() {
             "jsr opasmOutputBuildBinArtifactV1",
             "add.l d5, d0",
             "cmpi.l #$0000FFFF, d0",
-            "move.l #255, d7",
+            "cmpi.l #32, d7",
             "move.b #':', (a2)+",
             "bsr.w opasmOutputEmitHexByte",
             "OpasmHexEofRecord",

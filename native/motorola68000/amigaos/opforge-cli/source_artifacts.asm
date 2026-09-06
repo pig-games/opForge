@@ -785,20 +785,38 @@ return
 	rts
 	.bend  ; writeMapArtifactV1
 
-; Emit labels in Rust's ASCII-case-folded lexical order.
+; Emit canonical labels in stable ASCII-folded order without a visited bitmap.
+; Inputs: A4 = map cursor, NativeSourceMapSymbolsMode = visibility filter.
+; Outputs: A4 = advanced cursor. Clobbers: D0/CCR. CCR: unspecified.
 mapAppendSymbolsV1	.block
+	.priv
 	movem.l d1-d7/a0-a3, -(sp)
 	jsr engine.opasmEngineGetLabelCountV1
 	move.l d0, d6
-	clr.l d5
+	moveq #-1, d5
 nextSymbol
 	moveq #-1, d7
 	moveq #0, d4
 scan
 	cmp.l d6, d4
-	bhs.s selected
-	btst d4, d5
-	bne.s scanNext
+	bhs.w selected
+	; D5 is the preceding emitted index; ties retain original index order.
+	tst.l d5
+	bmi.s afterPrevious
+	move.l d4, d0
+	jsr engine.opasmEngineGetLabelNameV1
+	movea.l a0, a3
+	move.l d5, d0
+	jsr engine.opasmEngineGetLabelNameV1
+	movea.l a0, a1
+	movea.l a3, a0
+	bsr.w compareFoldedNamesV1
+	tst.l d0
+	bmi.w scanNext
+	bne.s afterPrevious
+	cmp.l d5, d4
+	bls.w scanNext
+afterPrevious
 	cmpi.w #constants.NATIVE_MAP_SYMBOLS_PUBLIC, NativeSourceMapSymbolsMode
 	bne.s eligible
 	move.l d4, d0
@@ -822,13 +840,11 @@ choose
 	move.l d4, d7
 scanNext
 	addq.l #1, d4
-	bra.s scan
+	bra.w scan
 selected
 	tst.l d7
 	bmi.s done
-	bset d7, d5
-	bsr.w appendRootModuleNameV1
-	move.b #'.', (a4)+
+	move.l d7, d5
 	move.l d7, d0
 	jsr engine.opasmEngineGetLabelNameV1
 	bsr.w mapAppendCStringV1
@@ -853,6 +869,7 @@ done
 	movem.l (sp)+, d1-d7/a0-a3
 	rts
 	.bend  ; mapAppendSymbolsV1
+	.pub
 
 appendRootModuleNameV1	.block
 	moveq #0, d0
@@ -864,8 +881,11 @@ appendRootModuleNameV1	.block
 	rts
 	.bend  ; appendRootModuleNameV1
 
-; Return D0=1 when label index D0 is a public export of the root module.
+; Inputs: D0 = engine label index. Outputs: D0 = root export boolean.
+; Clobbers: D0/CCR. CCR: reflects D0.
+; Exports retain raw names; engine labels already include their owner prefix.
 labelIsPublicV1	.block
+	.priv
 	movem.l d1-d7/a0-a3, -(sp)
 	move.l d0, d7
 	jsr engine.opasmEngineGetLabelNameV1
@@ -873,12 +893,43 @@ labelIsPublicV1	.block
 	moveq #0, d6
 loop
 	cmp.w state.NativeCliOrdinaryExportCount, d6
-	bhs.s no
+	bhs.w no
 	move.l d6, d0
 	add.l d0, d0
 	lea state.NativeCliOrdinaryExportOwnerTable, a0
 	move.w 0(a0, d0.l), d1
 	cmp.w state.NativeCliRootModuleId, d1
+	bne.w next
+	; Match the owner prefix in place, then compare the raw export suffix.
+	moveq #0, d0
+	move.w d1, d0
+	lsl.l #6, d0
+	lea state.NativeCliModuleNameTable, a1
+	adda.l d0, a1
+	movea.l a3, a0
+ownerCharacter
+	moveq #0, d2
+	move.b (a1)+, d2
+	beq.s ownerEnd
+	moveq #0, d3
+	move.b (a0)+, d3
+	cmpi.b #'A', d2
+	blo.s foldLabel
+	cmpi.b #'Z', d2
+	bhi.s foldLabel
+	ori.b #$20, d2
+foldLabel
+	cmpi.b #'A', d3
+	blo.s compareOwner
+	cmpi.b #'Z', d3
+	bhi.s compareOwner
+	ori.b #$20, d3
+compareOwner
+	cmp.b d2, d3
+	bne.s next
+	bra.s ownerCharacter
+ownerEnd
+	cmpi.b #'.', (a0)+
 	bne.s next
 	move.l d6, d0
 	lsl.l #2, d0
@@ -886,13 +937,12 @@ loop
 	move.l 0(a1, d0.l), d0
 	lea state.NativeCliOrdinaryExportNamePool, a1
 	adda.l d0, a1
-	movea.l a3, a0
 	bsr.w namesEqualFoldedV1
 	tst.l d0
 	bne.s yes
 next
 	addq.l #1, d6
-	bra.s loop
+	bra.w loop
 yes
 	moveq #1, d0
 	bra.s return
@@ -902,6 +952,7 @@ return
 	movem.l (sp)+, d1-d7/a0-a3
 	rts
 	.bend  ; labelIsPublicV1
+	.pub
 
 ; Compare NUL strings A0 and A1 case-insensitively. D0=-1/0/1.
 compareFoldedNamesV1	.block

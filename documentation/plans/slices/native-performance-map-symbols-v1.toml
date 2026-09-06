@@ -1,0 +1,34 @@
+[slice]
+schema_version = 2
+name = "native canonical root map symbols"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "24 / Item A-map-symbols"
+rust_reference = ["crates/opforge-vm/src/output_artifacts.rs::build_mapfile_text"]
+native_boundary = ["native/motorola68000/amigaos/opforge-cli/source_artifacts.asm::mapAppendSymbolsV1", "native/motorola68000/amigaos/opforge-cli/source_artifacts.asm::labelIsPublicV1"]
+invariant = "Native root-module map output emits each canonical engine label name once in Rust's stable ASCII-folded lexical order, traverses every retained label beyond index 32, and filters public symbols by the matching recorded owner plus raw export name identity."
+assertion_decision = "Use live Rust all/public map oracles, source-level traversal and owner/raw-name ABI checks, and fresh exact native BIN plus all/public map artifacts from the same source. The bounded successor scan reuses existing label/export storage and adds no capacity, state, instrumentation, or public API."
+expected_inputs = "One root module with at least 35 zero-padded labels, public and private declarations on both sides of index 32, canonical qualified engine names, recorded export owner/raw-name identities, and an explicit --bin output on both Rust and native invocations."
+expected_outputs = "Rust-identical BIN plus symbols=all and symbols=public map artifacts with canonical names, stable lexical ordering, exact visibility, no duplicate root prefix, and no 32-label truncation."
+known_non_equivalences = "This first proof covers root-module labels with an explicit BIN output. A map-only native invocation currently fails during preassembly with OPC-NCLI007 and is not claimed as supported. Imported and block-scope map identity, listing output, other artifact formats, runtime gains, B09 completion, and Phase A closure remain outside this slice."
+fast_proof_command = "env -u OPFORGE_FS_UAE_SMOKE -u OPFORGE_FS_UAE_ARGS -u OPFORGE_FS_UAE_CONFIG_TEMPLATE cargo test --locked -p asm native_map_symbols_ -- --nocapture --test-threads=1"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 cargo test --locked -p asm native_map_symbols_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_map_symbols_live_rust_complete_order_and_visibility"
+proof_level = "A"
+proves = "Rust defines canonical symbol names, lexical ordering, and public filtering for the complete root-module discriminator."
+does_not_prove = "Native source behavior, AmigaOS execution, or broader symbol scopes."
+
+[[tests]]
+name = "native_map_symbols_canonical_successor_and_export_contract"
+proof_level = "B"
+proves = "Native successor traversal reaches labels beyond index 32 and compares public identity through owner plus raw export-name storage."
+does_not_prove = "Native instruction encoding, OS execution, exact map bytes, or imported/block-scope parity."
+
+[[tests]]
+name = "native_map_symbols_all_and_public_fs_uae"
+proof_level = "D"
+proves = "Fresh zero-exit guests using explicit BIN output produce exact live Rust BIN and symbols=all/symbols=public map artifacts for the complete root-module discriminator."
+does_not_prove = "Map-only native invocation support, imported/block-scope maps, listing parity, B09 completion, timing gains, or Phase A closure."

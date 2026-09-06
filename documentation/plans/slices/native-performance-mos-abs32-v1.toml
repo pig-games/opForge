@@ -1,0 +1,34 @@
+[slice]
+schema_version = 2
+name = "MOS absolute-long relocation package role"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "21 / Item A-mos-abs32"
+rust_reference = ["crates/opforge-asm/src/line.rs::hunk_abs32_target_section_for_data_expr", "crates/opforge-families/src/mos6502/package_programs.rs::semantic_programs"]
+native_boundary = ["native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm::emitPackageLongDirectiveForStatement", "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm::executeNamedSemanticProgramV1"]
+invariant = "MOS supplies the missing scoped fix.abs32 program using existing semantic VM v4, preserving Rust little-endian four-byte encoding and absolute relocation metadata; generic directive metadata transport re-encodes explicit-section normalized addends through the same package without extra fixups and marks payload bytes for selected Hunk preservation; flat and instruction paths remain unchanged; no CPU-specific behavior enters generic native code."
+assertion_decision = "Use a serialized-package live Rust relocation oracle and the complete original B09 workload, preserving all eleven required artifacts. Fresh failure on the prior package is retained. Package regeneration is an explicit candidate identity transition, never a silent baseline rewrite."
+expected_inputs = "MOS symbolic .long values and cross-section relocation with a nonzero target offset; exact B09 source/arguments/artifacts remain unchanged."
+expected_outputs = "Exact Rust-authoritative encoded bytes and portable fixup metadata on host; B09 requires fresh protocol, zero guest exit and eleven byte-identical artifacts on native."
+known_non_equivalences = "Candidate package bytes intentionally differ from the historical frozen package; separate manifests retain both identities. No cross-package speedup or Phase A completion claim. Any newly exposed failure remains open."
+fast_proof_command = "cargo test --locked -p asm native_mos_abs32 -- --nocapture"
+level_d_command = "OPFORGE_PERFORMANCE_CORPUS=1 OPFORGE_NATIVE_CORPUS_CASES=B09 OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 OPFORGE_FS_UAE_POLL_MS=250 cargo test --locked -p asm external_fs_uae_native_production_corpus_parity -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_mos_abs32"
+proof_level = "B"
+proves = "Serialized MOS package execution agrees with the live Rust directive relocation oracle, including little-endian bytes and portable fixup metadata."
+does_not_prove = "Native encoding/OS behavior, all workloads or timing."
+
+[[tests]]
+name = "external_fs_uae_native_production_corpus_parity / B09"
+proof_level = "D"
+proves = "Only a fresh completed run with zero exit and all eleven exact live Rust artifacts proves B09 parity."
+does_not_prove = "Other corpus cases, all native groups, speedup, or Phase A completion; timeout or a moved failure is not proof."
+
+[[tests]]
+name = "native_mos_abs32_long_fs_uae"
+proof_level = "D"
+proves = "Fresh zero-exit guest completion with exact live Rust BIN and relocation-bearing Hunk bytes for a bare symbolic long with nonzero section-relative addend."
+does_not_prove = "Compound symbolic expressions, full B09, other workloads, timing gains or Phase A closure."

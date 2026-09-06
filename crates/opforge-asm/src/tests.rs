@@ -15486,16 +15486,17 @@ fn motorola68020_embedded_native_cli_package_matches_rust_default_runtime_packag
 #[test]
 fn motorola68020_item14_native_compact_fixed_opcode_uses_item13_exact_package_digest() {
     // Keep the historical test entrypoint used by the Item 14 slice manifest,
-    // while pinning the exact Rust-built package consumed after Item 14.3.
-    const ITEM14_3_PACKAGE_FNV1A64: u64 = 0x37aa_f6a8_f1f4_66a3;
+    // while pinning the Step21 MOS fix.abs32 candidate package. The previous
+    // Item14.3 digest was 0x37aa_f6a8_f1f4_66a3; its corpus manifest is retained.
+    const STEP21_PACKAGE_FNV1A64: u64 = 0x756bce35d984f708;
     let package_path =
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
-    let embedded_package = fs::read(&package_path).expect("read Item 13 embedded package");
+    let embedded_package = fs::read(&package_path).expect("read Step21 embedded candidate package");
     let rust_package = build_hierarchy_package_from_registry(&default_registry())
-        .expect("build current unmodified Rust package");
+        .expect("build current Rust package");
     assert_eq!(
         embedded_package, rust_package,
-        "Item 14 native input must remain byte-identical to Item 13 Rust output"
+        "native input must remain byte-identical to current Rust package output"
     );
     let digest = embedded_package
         .iter()
@@ -15503,12 +15504,12 @@ fn motorola68020_item14_native_compact_fixed_opcode_uses_item13_exact_package_di
             (state ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
         });
     assert_eq!(
-        digest, ITEM14_3_PACKAGE_FNV1A64,
-        "Item 14.3 package input digest changed"
+        digest, STEP21_PACKAGE_FNV1A64,
+        "Step21 candidate package input digest changed"
     );
 
-    let chunks =
-        package::decode_hierarchy_chunks(&embedded_package).expect("decode exact Item 13 package");
+    let chunks = package::decode_hierarchy_chunks(&embedded_package)
+        .expect("decode exact Step21 candidate package");
     let fixed = chunks
         .tables
         .iter()
@@ -15517,7 +15518,7 @@ fn motorola68020_item14_native_compact_fixed_opcode_uses_item13_exact_package_di
                 && entry.mnemonic.eq_ignore_ascii_case("nop")
                 && entry.mode_key.eq_ignore_ascii_case("implied")
         })
-        .expect("frozen package fixed-opcode row");
+        .expect("unchanged fixed-opcode row");
     assert_eq!(fixed.program, [0x01, 0x4e, 0x01, 0x71, 0xff]);
 
     let compact_source = tkpkg_amigaos_source("tkpkg_compact_table.asm");

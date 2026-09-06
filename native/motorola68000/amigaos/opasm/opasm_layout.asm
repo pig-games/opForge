@@ -1230,6 +1230,8 @@ recordOutputFixupStore
 	move.l d7, 0(a0, d0.l)
 	lea OpasmLayoutOutputFixupEncodedAddends.l, a0
 	move.l d3, 0(a0, d0.l)
+	lea OpasmLayoutOutputFixupBytesNormalizedFlags.l, a0
+	clr.b 0(a0, d6.l)
 	addq.w #1, OpasmLayoutOutputFixupCount.l
 	moveq #0, d0
 	bra.s recordOutputFixupReturn
@@ -1345,6 +1347,59 @@ getOutputFixupFail
 	moveq #1, d0
 	rts
 	.bend  ; getOutputFixupV1
+
+; Mark one explicit-section fixup whose image bytes already contain the
+; package-encoded section-relative addend.
+; Inputs: D0.W=index. Outputs: D0=0 success/1 invalid or flat-source fixup.
+; Clobbers: D0/CCR; D1/A0 are preserved.
+; CCR: reflects D0 on return.
+markOutputFixupBytesNormalizedV1	.block
+	.priv
+	movem.l d1/a0, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	cmp.w OpasmLayoutOutputFixupCount.l, d1
+	bhs.s normalizedMarkFail
+	move.l d1, d0
+	add.w d0, d0
+	lea OpasmLayoutOutputFixupSourceSectionIndices.l, a0
+	cmpi.w #OPASM_LAYOUT_INDEX_NONE, 0(a0, d0.w)
+	beq.s normalizedMarkFail
+	lea OpasmLayoutOutputFixupBytesNormalizedFlags.l, a0
+	move.b #1, 0(a0, d1.l)
+	moveq #0, d0
+	bra.s normalizedMarkReturn
+normalizedMarkFail
+	moveq #1, d0
+normalizedMarkReturn
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; markOutputFixupBytesNormalizedV1
+	.pub
+
+; Report whether one retained fixup's image bytes are package-normalized.
+; Inputs: D0.W=index. Outputs: D0=0 success/1 invalid; D1.W=0/1 flag.
+; Clobbers: D0-D1/A0/CCR. CCR: reflects D0 on return.
+getOutputFixupBytesNormalizedV1	.block
+	.priv
+	moveq #0, d1
+	move.w d0, d1
+	cmp.w OpasmLayoutOutputFixupCount.l, d1
+	bhs.s normalizedGetFail
+	lea OpasmLayoutOutputFixupBytesNormalizedFlags.l, a0
+	move.b 0(a0, d1.l), d0
+	moveq #0, d1
+	move.b d0, d1
+	moveq #0, d0
+	bra.s normalizedGetReturn
+normalizedGetFail
+	moveq #1, d0
+normalizedGetReturn
+	tst.l d0
+	rts
+	.bend  ; getOutputFixupBytesNormalizedV1
+	.pub
 
 ; Return the flat-image origin candidate for one finalized placed, concrete,
 ; nonempty, non-BSS section. Logical and unplaced sections route to discard or
@@ -2330,6 +2385,11 @@ OpasmLayoutOutputFixupOffsets
 
 OpasmLayoutOutputFixupEncodedAddends
 	.res long, OPASM_LAYOUT_OUTPUT_FIXUP_CAPACITY
+
+	.priv
+OpasmLayoutOutputFixupBytesNormalizedFlags
+	.res byte, OPASM_LAYOUT_OUTPUT_FIXUP_CAPACITY
+	.pub
 
 OpasmLayoutReachableLabelIndices
 	.res word, OPASM_LAYOUT_REACHABLE_CAPACITY

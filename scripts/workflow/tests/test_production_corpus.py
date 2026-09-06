@@ -19,6 +19,7 @@ class ProductionCorpusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.frozen = corpus.manifest()
+        cls.candidate = corpus.ROOT / "documentation/performance/results/opforge-step21-mos-abs32-candidate-manifest-2026-09-06.json"
 
     def result(self, runs=7):
         frozen = self.frozen
@@ -97,7 +98,26 @@ class ProductionCorpusTests(unittest.TestCase):
         for visits in (None, 0, -1, True, 100_001):
             with self.assertRaises(ValueError):
                 corpus.diagnose("B03", visits, self.frozen)
-        self.assertEqual(self.frozen, corpus.read_json(corpus.ROOT / "documentation/performance/results/opforge-corpus-v1-manifest.json"))
+        self.assertEqual(self.frozen, corpus.diagnostic_manifest(self.frozen, self.candidate))
+
+    def test_diagnostic_candidate_changes_only_current_package_identity(self):
+        with self.assertRaisesRegex(ValueError, "requires --manifest"):
+            corpus.diagnostic_manifest(self.frozen)
+        changed_workload = copy.deepcopy(self.frozen)
+        changed_workload["cases"][0]["argv"] = []
+        changed_workload["sha256"] = corpus.digest(corpus.canonical(
+            {key: value for key, value in changed_workload.items() if key != "sha256"}))
+        stale_package = copy.deepcopy(self.frozen)
+        stale_package["package"]["sha256"] = "0" * 64
+        stale_package["sha256"] = corpus.digest(corpus.canonical(
+            {key: value for key, value in stale_package.items() if key != "sha256"}))
+        for current, selected, message in ((changed_workload, changed_workload, "frozen workload"),
+                                           (self.frozen, stale_package, "stale or differs")):
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "candidate.json"
+                path.write_text(json.dumps(selected))
+                with self.assertRaisesRegex(ValueError, message):
+                    corpus.diagnostic_manifest(current, path)
 
     def test_live_observation_does_not_turn_failed_guest_into_success(self):
         live = {"sample_observed": True, "complete": False, "parity_passed": False}
@@ -108,18 +128,19 @@ class ProductionCorpusTests(unittest.TestCase):
                     returncode=101, stdout=transcript, stderr=transcript)) as run, \
                 mock.patch.object(corpus.subprocess, "check_output", return_value="a" * 40), \
                 mock.patch.object(corpus.platform, "platform", return_value="test host"):
-            result = corpus.diagnose("B10", 1, self.frozen, 30)
+            result = corpus.diagnose("B10", 1, self.frozen, 30, manifest_path=self.candidate)
             self.assertEqual(result["live_sample"], live)
             for field in ("capture_ok", "complete", "parity_passed", "comparison_eligible"):
                 self.assertIs(result[field], False)
             self.assertEqual(result["test_exit"], 101)
             self.assertEqual(run.call_args.kwargs["env"]["OPFORGE_NATIVE_CORPUS_SAMPLE_AFTER_SECONDS"], "30")
             self.assertNotIn("OPFORGE_NATIVE_CORPUS_RESAMPLE_AFTER_SECONDS", run.call_args.kwargs["env"])
-            result = corpus.diagnose("B10", 1, self.frozen, 60, resample_after=100)
+            result = corpus.diagnose("B10", 1, self.frozen, 60, resample_after=100, manifest_path=self.candidate)
             self.assertEqual(run.call_args.kwargs["env"]["OPFORGE_NATIVE_CORPUS_RESAMPLE_AFTER_SECONDS"], "100")
             self.assertEqual(result["resample_after_seconds"], 100)
             self.assertFalse(result["capture_ok"])
-            result = corpus.diagnose("B10", 1, self.frozen, 60, resample_after=100, profile_mode="all-no-io")
+            result = corpus.diagnose("B10", 1, self.frozen, 60, resample_after=100, profile_mode="all-no-io",
+                                     manifest_path=self.candidate)
             self.assertEqual(run.call_args.kwargs["env"]["OPFORGE_NATIVE_CORPUS_PROFILE"], "all-no-io")
             self.assertEqual(result["profile_mode"], "all-no-io")
             self.assertFalse(result["capture_ok"])

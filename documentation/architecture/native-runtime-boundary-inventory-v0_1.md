@@ -119,6 +119,16 @@ bytes. The new focused test
 attempts the four original branch cases with `OPFORGE_BRANCH_CASE=all` and
 the original 300-second bounds; it does not add a canonical inventory target.
 
+Performance-plan Step 21 refreshes the layout and assembly-driver inventories
+after preserving package-emitted absolute bytes while recording Hunk relocation
+metadata. Layout adds two bounded public ABI helpers to mark and query whether
+one retained explicit-section fixup already contains a section-relative addend,
+plus one byte of state per existing 256-entry fixup slot. The assembly driver
+uses that neutral layout contract while retaining its existing routine, import,
+section, diagnostic, and ownership surface. Hunk normalization state remains in
+the layout owner; CPU, instruction, expression, encoding, and relocation inputs
+remain package or engine data.
+
 Performance-plan Item 0d refreshes the audited snapshots for the coarse native
 runtime observation sites. The affected VM and service owners conditionally
 import `debug.amigaos.runtime_profile`; that dependency is a default-off,
@@ -304,21 +314,27 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 
 - Source: `native/motorola68000/amigaos/opasm/opasm_layout.asm`.
 - Public entries: region/section/place state transitions, bounded layout-name
-  request APIs, `alignCursorV1`, and `alignPadV1`.
-- Imports/outbound dependencies: none.
+  request APIs, `alignCursorV1`, `alignPadV1`,
+  `markOutputFixupBytesNormalizedV1`, and
+  `getOutputFixupBytesNormalizedV1`.
+- Imports/outbound dependencies: the architecture-neutral engine query API and,
+  in observer builds, the default-off platform profiler.
 - Mutable state: region/section/place counters, names, bounds, cursors,
   alignment values, placement indices, Hunk memory attributes, and scratch
-  storage.
+  storage; retained output fixups also own one bounded normalization flag per
+  existing 256-entry slot.
 - Routine responsibility groups: overflow-safe positive alignment,
   power-of-two padding arithmetic, bounded layout-name copy/comparison,
   region/section/place validation and transitions, including sequential `.pack`
-  placement through the same transition owner, and word/long table-index
-  calculation. The driver retains statement tokenization, callback dispatch,
-  and engine/image projection only.
+  placement through the same transition owner, word/long table-index
+  calculation, and bounded fixup normalization-state updates and queries. The
+  driver retains statement tokenization, callback dispatch, and engine/image
+  projection only.
 - Decision: layout state and all region/section/place transitions are owned by
   this module. The completed transfer preserves existing arithmetic and adds no
   layout syntax or semantics; the assembly driver has no direct layout-state
-  access.
+  access. Step 21 keeps the new Hunk byte-normalization flag and its two public
+  accessors within this same owner.
 
 ### `tkpkg.amigaos.service` (NR-002/003/004, mandatory decomposition)
 

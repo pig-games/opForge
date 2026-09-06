@@ -8,6 +8,9 @@ mod module_buffer;
 #[path = "native_source_buffer.rs"]
 mod source_buffer;
 
+#[path = "native_mos_abs32.rs"]
+mod native_mos_abs32;
+
 #[path = "native_branch_failures.rs"]
 mod branch_failures;
 

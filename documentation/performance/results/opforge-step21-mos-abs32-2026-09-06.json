@@ -1,0 +1,194 @@
+{
+  "step": 21,
+  "item": "A-mos-abs32",
+  "status": "Step21 focused invariant complete; commit pending final artifact checks; Phase A open",
+  "old_package": {
+    "bytes": 368278,
+    "path": "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm",
+    "sha256": "46a56a5bd436b012c596c65d1f7d85fe6cd8fadbd702362955804415e00c0d41"
+  },
+  "candidate_package": {
+    "bytes": 368316,
+    "path": "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm",
+    "sha256": "cafd1cb9b22f48c5e4598da24584a2f4935fb7a0a8a75193d1fe4e18adaf5dfd"
+  },
+  "cases_identical": true,
+  "receipts": [
+    {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "external_fs_uae_native_production_corpus_parity",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 63.88961416692473,
+      "sha256": "ef70860ab590724664d565da4ddff98d5f3f86173b3fcb4c32f6c239d857e193",
+      "log_bytes": 4756,
+      "baseline_commit": "f1b00e32",
+      "timeout_ms": 120000,
+      "artifact_mismatches": []
+    },
+    {
+      "name": "B09-candidate",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "external_fs_uae_native_production_corpus_parity",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "passed": false,
+      "whole_seconds": 93.73528783302754,
+      "sha256": "2382a55d2dc2d9513a92a69f940ac114ab7890786800820ba3e12a206c4f3912",
+      "log_bytes": 32354,
+      "log_path": "target/workflow-logs/step21-b09/B09-candidate.log",
+      "artifact_mismatches": [
+        "Work/build/full-image.bin",
+        "Work/build/full.hex",
+        "Work/build/full.map",
+        "Work/build/full.prg",
+        "Work/build/full.srec",
+        "Work/build/full_sections/code.bin",
+        "Work/opforge_6502_native_cli_smoke.lst",
+        "Work/output.bin"
+      ]
+    },
+    {
+      "name": "B09-normalized-final",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "external_fs_uae_native_production_corpus_parity",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "passed": false,
+      "whole_seconds": 68.39057008293457,
+      "sha256": "de2ce95f409c5ebbb6e127ab8f1748d38bcfe3d35e7bebb73b0eb7cd686e228a",
+      "log_bytes": 29498,
+      "log_path": "target/workflow-logs/step21-b09/B09-normalized-final.log",
+      "artifact_mismatches": [
+        "Work/build/full.hex",
+        "Work/build/full.map",
+        "Work/opforge_6502_native_cli_smoke.lst"
+      ],
+      "all_artifacts_checked": 11,
+      "exact_artifacts": 8
+    },
+    {
+      "name": "normalized-host.log",
+      "proof_level": "B",
+      "passed": true,
+      "sha256": "e4ec6f91b98308efd82e47ebed4196bf5685b1320f01cdccbb26d377b159e2c5",
+      "log_bytes": 512,
+      "log_path": "target/workflow-logs/step21-b09/normalized-host.log",
+      "proves": "Serialized non-target re-encoding preserves exact bytes and creates zero extra fixups"
+    },
+    {
+      "name": "normalized-native-final.log",
+      "proof_level": "D",
+      "passed": true,
+      "sha256": "ac190232e81acbbe2d7472c0cbe2731b7504c99a91bc3c28d2902b4c76f29500",
+      "log_bytes": 391,
+      "log_path": "target/workflow-logs/step21-b09/normalized-native-final.log",
+      "proves": "Fresh exact BIN and Hunk with nonzero section-relative addend"
+    },
+    {
+      "name": "rust-gate",
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 101,
+      "passed": false,
+      "whole_seconds": 270.93767604092136,
+      "sha256": "552a8b01e141982e17046b6dd13a8715fccd0e03675678581e66aef469a54aa4",
+      "log_bytes": 208073,
+      "log_path": "target/workflow-logs/step21-b09/rust-gate.log"
+    },
+    {
+      "name": "rust-gate-final",
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 0,
+      "passed": true,
+      "whole_seconds": 307.155961584067,
+      "sha256": "dfce1c13429f22ef710bc5a28553e8c562a552cdf371e8221e0709989cce32dc",
+      "log_bytes": 331736,
+      "log_path": "target/workflow-logs/step21-b09/rust-gate-final.log"
+    }
+  ],
+  "performance": {
+    "step_runtime_gain": "unmeasured; correctness enables qualification",
+    "total_phase_a_runtime_gain": "unmeasured; no matched initial-to-current comparison",
+    "retained_source_dos_calls": {
+      "before": 1608,
+      "after": 8,
+      "scope": "Step19 matched 22-line fixture; not whole-product runtime"
+    }
+  },
+  "logs": [
+    {
+      "path": "target/workflow-logs/step21-b09/host-proof.log",
+      "bytes": 2720,
+      "sha256": "16cd4ecbf692e8fe79210ff06171fe1f7bc79a76c5a2136607a5a49c452467e0"
+    },
+    {
+      "path": "target/workflow-logs/step21-b09/host-proof-corrected.log",
+      "bytes": 490,
+      "sha256": "a6323b1302c5a593c69ece89e2de05f05971d1096a59ff9f60fda3ca00866bab"
+    },
+    {
+      "path": "target/workflow-logs/step21-b09/focused-preflight.log",
+      "bytes": 993,
+      "sha256": "5436959d5ede2e46351a98b4e0c7b34aa7cd78069e7bc8824ca560530b5d2c95"
+    },
+    {
+      "path": "target/workflow-logs/step21-b09/native-staged.log",
+      "bytes": 5021,
+      "sha256": "b4fde74d3e8e0da2ed80c1098bc428e5e30b45c76bcfed42001b7e644b1223ca"
+    },
+    {
+      "path": "target/workflow-logs/step21-b09/workflow.log",
+      "bytes": 3964,
+      "sha256": "89a85696b06f2169c850fe6db7792f98b3fe099c7ed82ecc9e2880f1f086b5b9"
+    }
+  ],
+  "focused_compound_native": {
+    "result": "FAIL; fresh guest exit1 during second pass-two visit; unresolved-label event",
+    "source_expression": ".long target + 5",
+    "target_section_offset": 1,
+    "log": "target/workflow-logs/step21-b09/focused-native-corrected.log",
+    "log_bytes": 2487,
+    "sha256": "8438ceecee25d3d8a6939bef59f2363acd5243136900b26c758b10775c9ff1a6"
+  },
+  "native_cost": {
+    "flag_bytes": 256,
+    "added_public_apis": 2,
+    "loadable_source_bytes": 1675214,
+    "public_declarations": 6577,
+    "public_name_bytes": 128358,
+    "rust_graph_rows": 92157,
+    "rust_graph_bytes": 3527519
+  }
+}

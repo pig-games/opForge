@@ -412,6 +412,11 @@ applyLoop
 	addq.l #4, d0
 	cmp.l d6, d0
 	bhi.s fail
+	move.w 2(sp), d0
+	jsr layout.getOutputFixupBytesNormalizedV1
+	bne.s fail
+	tst.w d1
+	bne.s next
 	move.l d4, 0(a2, d3.l)
 next
 	addq.w #1, 2(sp)

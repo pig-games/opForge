@@ -3963,15 +3963,18 @@ emitKindReturn
 ; @opforge-slice: documentation/plans/slices/native-porting-slice-hunk-fixup-relocation-v1.toml
 ; @opforge-role: delegation
 ; Inputs: D0.L=statement, D1=directive-relative base, D2=output length,
-; A0=package output bytes. Outputs: D0=0/1; fixup metadata retained while the
-; ordinary absolute package bytes remain unchanged for non-Hunk artifacts.
+; A0=package output bytes. Outputs: D0=0/1; fixup metadata retained and explicit
+; section bytes package-normalized while flat-source absolute bytes remain.
+; Clobbers: D0/CCR. CCR: reflects D0 on return.
 recordDirectiveOutputFixupsV1	.block
 	movem.l d1-d7/a0-a3, -(sp)
-	lea -16(sp), sp
+	lea -24(sp), sp
 	move.l d0, (sp)
 	move.l d1, 4(sp)
 	move.l d2, 8(sp)
 	move.l a0, 12(sp)
+	jsr layout.getOutputFixupCountV1
+	move.w d0, 20(sp)
 	jsr tkpkg.getOutputFixupCountV1
 	move.w d0, d7
 	moveq #0, d6
@@ -3980,32 +3983,85 @@ directiveFixupLoop
 	bhs.s directiveFixupDone
 	move.l d6, d0
 	jsr tkpkg.getOutputFixupV1
-	bne.s directiveFixupFail
+	bne.w directiveFixupFail
 	cmpi.w #4, d2
-	bne.s directiveFixupFail
+	bne.w directiveFixupFail
+	tst.l d1
+	bne.w directiveFixupFail
 	move.l d1, d5
 	addq.l #4, d5
 	cmp.l 8(sp), d5
-	bhi.s directiveFixupFail
+	bhi.w directiveFixupFail
 	move.l d1, d5
 	add.l 4(sp), d1
-	bcs.s directiveFixupFail
+	bcs.w directiveFixupFail
 	move.w d3, d2
 	move.l d4, d3
+	; Preserve the package bytes as opaque data across metadata scratch use.
+	movea.l 12(sp), a0
+	move.l 0(a0, d5.l), 16(sp)
 	move.l (sp), d0
 	jsr layout.recordAbsoluteOutputFixupV1
-	bne.s directiveFixupFail
+	bne.w directiveFixupFail
 	movea.l 12(sp), a0
-	move.l d4, 0(a0, d5.l)
+	move.l 16(sp), 0(a0, d5.l)
 	addq.w #1, d6
 	bra.s directiveFixupLoop
 directiveFixupDone
+	jsr layout.getOutputFixupCountV1
+	moveq #0, d1
+	move.w 20(sp), d1
+	cmp.l d1, d0
+	beq.w directiveFixupSuccess
+	addq.l #1, d1
+	cmp.l d1, d0
+	bne.w directiveFixupFail
+	subq.w #1, d0
+	move.w d0, d6
+	jsr layout.getOutputFixupV1
+	bne.w directiveFixupFail
+	cmpi.w #layout.OPASM_LAYOUT_INDEX_NONE, d1
+	beq.w directiveFixupSuccess
+	lea OpasmDirectiveFixupInput.l, a1
+	clr.b (a1)
+	move.l d4, d0
+	move.b d0, 1(a1)
+	lsr.l #8, d0
+	move.b d0, 2(a1)
+	lsr.l #8, d0
+	move.b d0, 3(a1)
+	lsr.l #8, d0
+	move.b d0, 4(a1)
+	move.b #$ff, 5(a1)
+	move.b #$ff, 6(a1)
+	jsr eng.opasmEngineGetSessionCurrentPcV1
+	move.l d0, d3
+	lea DirectiveAbsolute32ProgramId.l, a0
+	moveq #9, d0
+	moveq #7, d1
+	moveq #1, d2
+	jsr tkpkg.executeNamedSemanticProgramV1
+	tst.l d0
+	bne.w directiveFixupFail
+	cmpi.w #4, d1
+	bne.w directiveFixupFail
+	movea.l a0, a2
+	jsr tkpkg.getOutputFixupCountV1
+	tst.l d0
+	bne.w directiveFixupFail
+	move.l (a2), d5
+	movea.l 12(sp), a1
+	move.l d5, (a1)
+	move.w d6, d0
+	jsr layout.markOutputFixupBytesNormalizedV1
+	bne.w directiveFixupFail
+directiveFixupSuccess
 	moveq #0, d0
 	bra.s directiveFixupReturn
 directiveFixupFail
 	moveq #1, d0
 directiveFixupReturn
-	lea 16(sp), sp
+	lea 24(sp), sp
 	movem.l (sp)+, d1-d7/a0-a3
 	tst.l d0
 	rts

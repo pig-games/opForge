@@ -19,6 +19,7 @@ pub const VALUE_LITERAL_ZERO: &str = "scalar.literal-zero";
 pub const RECORD_ABSOLUTE_WORD: &str = "operand.absolute-word";
 pub const RECORD_IMMEDIATE: &str = "operand.immediate";
 pub const FIXUP_RELATIVE_BYTE: &str = "fix.rel8";
+pub const FIXUP_ABSOLUTE_LONG: &str = "fix.abs32";
 pub const ENCODING_UNSIGNED_BYTE: &str = "enc.u8";
 pub const ENCODING_UNSIGNED_WORD: &str = "enc.u16le";
 
@@ -48,7 +49,7 @@ pub fn value_programs() -> Result<Vec<ValueProgramDescriptor>, OpcpuCodecError> 
     ])
 }
 
-/// Compile the MOS relative-byte projection with the shared neutral fixup VM.
+/// Compile MOS scalar encodings and relocations with the neutral semantic VM.
 pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecError> {
     let owner = ScopedOwner::Family("mos6502".to_string());
     let scalar = |id: &str, width: u8, max: i64| -> Result<_, OpcpuCodecError> {
@@ -68,6 +69,21 @@ pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecE
     Ok(vec![
         scalar(ENCODING_UNSIGNED_BYTE, 1, 0xff)?,
         scalar(ENCODING_UNSIGNED_WORD, 2, 0xffff)?,
+        SemanticProgramDescriptor {
+            owner: owner.clone(),
+            id: FIXUP_ABSOLUTE_LONG.to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V4,
+            program: compile_fixup_program(&[FixupEncodingStep {
+                input: 0,
+                width: 4,
+                endian: EncodingEndian::Little,
+                base: FixupBase::Value,
+                range: FixupRange::BitPattern,
+                unresolved: UnresolvedValuePolicy::Placeholder(0),
+                relocation: PortableRelocationKind::Absolute,
+                transform: FixupTransform::Identity,
+            }])?,
+        },
         SemanticProgramDescriptor {
             owner,
             id: FIXUP_RELATIVE_BYTE.to_string(),

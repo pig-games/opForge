@@ -171,13 +171,92 @@ fn native_item36_hunk_abs32_transport_contract() {
     assert!(selected_fixup.contains("move.l d4, 0(a0, d1.l)"));
     assert!(
         !directive_fixup.contains("move.l d3, 0(a0, d5.l)"),
-        "generic directive assembly must retain absolute BIN bytes"
+        "generic directive assembly must not store a host-endian numeric addend"
     );
-    assert!(directive_fixup.contains("move.l d4, 0(a0, d5.l)"));
+    assert!(source_contains_in_order(
+        directive_fixup,
+        &[
+            "move.l 0(a0, d5.l), 16(sp)",
+            "jsr layout.recordAbsoluteOutputFixupV1",
+            "move.l 16(sp), 0(a0, d5.l)",
+        ],
+    ));
+    assert!(!directive_fixup.contains("move.l d4, 0(a0, d5.l)"));
+
+    assert!(source_contains_in_order(
+        directive_fixup,
+        &[
+            "lea -24(sp), sp",
+            "move.w d0, 20(sp)",
+            "tst.l d1",
+            "jsr layout.recordAbsoluteOutputFixupV1",
+            "cmpi.w #layout.OPASM_LAYOUT_INDEX_NONE, d1",
+            "clr.b (a1)",
+            "jsr tkpkg.executeNamedSemanticProgramV1",
+            "cmpi.w #4, d1",
+            "jsr tkpkg.getOutputFixupCountV1",
+            "tst.l d0",
+            "bne.w directiveFixupFail",
+            "move.l d5, (a1)",
+            "jsr layout.markOutputFixupBytesNormalizedV1",
+            "lea 24(sp), sp",
+        ]
+    ));
+    let layout =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_layout.asm"))
+            .expect("read layout normalized-byte ownership");
+    assert!(source_contains_in_order(
+        &layout,
+        &[
+            "recordOutputFixupStore",
+            "lea OpasmLayoutOutputFixupBytesNormalizedFlags.l, a0",
+            "clr.b 0(a0, d6.l)",
+            "addq.w #1, OpasmLayoutOutputFixupCount.l",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &layout,
+        &[
+            "markOutputFixupBytesNormalizedV1\t.block",
+            "cmp.w OpasmLayoutOutputFixupCount.l, d1",
+            "bhs.s normalizedMarkFail",
+            "cmpi.w #OPASM_LAYOUT_INDEX_NONE",
+            "beq.s normalizedMarkFail",
+            "move.b #1, 0(a0, d1.l)",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &layout,
+        &[
+            "getOutputFixupBytesNormalizedV1\t.block",
+            "cmp.w OpasmLayoutOutputFixupCount.l, d1",
+            "bhs.s normalizedGetFail",
+            "move.b 0(a0, d1.l), d0",
+            "moveq #0, d1",
+            "move.b d0, d1",
+        ]
+    ));
 
     let hunk =
         fs::read_to_string(root.join("native/motorola68000/amigaos/opforge-cli/hunk_output.asm"))
             .expect("read native Hunk writer");
+    let selected_addends = hunk
+        .split("applySelectedRelocationAddendsV1\t.block")
+        .nth(1)
+        .expect("selected relocation loop");
+    assert!(source_contains_in_order(
+        selected_addends,
+        &[
+            "cmp.w d7, d1",
+            "cmp.l d6, d0",
+            "bhi.s fail",
+            "jsr layout.getOutputFixupBytesNormalizedV1",
+            "bne.s fail",
+            "tst.w d1",
+            "bne.s next",
+            "move.l d4, 0(a2, d3.l)",
+        ]
+    ));
     for required in [
         "HUNK_RELOC32 = $000003ec",
         "applyFlatRelocationAddendsV1",

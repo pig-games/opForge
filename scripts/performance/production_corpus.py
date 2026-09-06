@@ -363,9 +363,36 @@ def validate_diagnostic_capture(row: dict, case: dict, frozen: dict, visits: int
             raise ValueError("missing or overflowing diagnostic counter group")
 
 
+def diagnostic_manifest(frozen: dict, selected_path: Path | None = None) -> dict:
+    """Accept the historical corpus or one explicit current package candidate."""
+    historical = read_json(ROOT / "documentation/performance/results/opforge-corpus-v1-manifest.json")
+    if selected_path is None:
+        if frozen != historical:
+            raise ValueError("diagnosis requires --manifest for a changed current package")
+        return frozen
+    selected = read_json(selected_path)
+    if selected != frozen:
+        raise ValueError("selected diagnostic manifest is stale or differs from the current corpus")
+    for key in historical:
+        if key not in ("package", "sha256") and selected.get(key) != historical[key]:
+            raise ValueError("selected diagnostic manifest changes the frozen workload")
+    if set(selected) != set(historical):
+        raise ValueError("selected diagnostic manifest changes the frozen manifest shape")
+    if selected.get("sha256") != digest(canonical({key: value for key, value in selected.items() if key != "sha256"})):
+        raise ValueError("selected diagnostic manifest digest is invalid")
+    package = selected.get("package")
+    if (not isinstance(package, dict) or package.get("path") != PACKAGE
+            or type(package.get("bytes")) is not int
+            or package["bytes"] != (ROOT / PACKAGE).stat().st_size
+            or package.get("sha256") != digest((ROOT / PACKAGE).read_bytes())):
+        raise ValueError("selected diagnostic package does not match the current package")
+    return selected
+
+
 def diagnose(case_id: str, visits: int, frozen: dict, sample_after: int | None = None,
              control_mode: str | None = None, binding_register: str | None = None,
-             resample_after: int | None = None, profile_mode: str = "all") -> dict:
+             resample_after: int | None = None, profile_mode: str = "all",
+             manifest_path: Path | None = None) -> dict:
     if profile_mode not in ("all", "all-no-io", "platform"):
         raise ValueError("diagnostic profile must be all, all-no-io or platform")
     if profile_mode == "platform" and (sample_after is not None or control_mode is not None):
@@ -384,12 +411,10 @@ def diagnose(case_id: str, visits: int, frozen: dict, sample_after: int | None =
         raise ValueError("binding register requires a live sample and one d0-d7/a0-a7 register")
     if sample_after is not None and os.environ.get("OPFORGE_FS_UAE_CONSOLE_DEBUGGER_AUTOMATE") != "1":
         raise ValueError("live sampling requires explicit OPFORGE_FS_UAE_CONSOLE_DEBUGGER_AUTOMATE=1")
+    frozen = diagnostic_manifest(frozen, manifest_path)
     case = next((row for row in frozen["cases"] if row["id"] == case_id), None)
     if case is None:
         raise ValueError("diagnosis requires one known frozen case")
-    stored = read_json(ROOT / "documentation/performance/results/opforge-corpus-v1-manifest.json")
-    if frozen != stored:
-        raise ValueError("diagnosis inputs differ from the frozen corpus")
     env = {**os.environ, "OPFORGE_PERFORMANCE_CORPUS": "1",
            "OPFORGE_NATIVE_CORPUS_DIAGNOSTIC": "1", "OPFORGE_NATIVE_CORPUS_CASES": case_id,
            "OPFORGE_NATIVE_CORPUS_PROFILE": profile_mode, "OPFORGE_NATIVE_CORPUS_ABORT_VISITS": str(visits),
@@ -462,6 +487,7 @@ def main() -> int:
                         help="diagnostic counters: all, all with I/O disabled, or platform-only sealed exports")
     parser.add_argument("--control-mode", choices=("app", "pty", "console"), help="non-interrupting launcher control")
     parser.add_argument("--binding-register", help="one optional code-address candidate if sampled PC is outside the Hunk")
+    parser.add_argument("--manifest", type=Path, help="explicit current diagnostic candidate manifest")
     args = parser.parse_args()
     frozen = manifest()
     exit_status = 0
@@ -479,7 +505,7 @@ def main() -> int:
             if args.output and args.output.exists():
                 raise ValueError("diagnostic output already exists")
             output = diagnose(args.case[0], args.abort_visits, frozen, args.sample_after_seconds, args.control_mode,
-                              args.binding_register, args.resample_after_seconds, args.diagnostic_profile)
+                              args.binding_register, args.resample_after_seconds, args.diagnostic_profile, args.manifest)
             exit_status = 0 if output["capture_ok"] else 1
         elif args.command == "manifest":
             output = frozen

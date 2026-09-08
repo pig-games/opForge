@@ -137,11 +137,7 @@ pub fn build_mapfile_text(
         out.push_str("name value visibility\n");
 
         let mut entries: Vec<&SymbolTableEntry> = symbols.entries().iter().collect();
-        entries.sort_by(|a, b| {
-            a.name
-                .to_ascii_lowercase()
-                .cmp(&b.name.to_ascii_lowercase())
-        });
+        entries.sort_by_cached_key(|entry| entry.name.to_ascii_lowercase());
         for entry in entries {
             if directive.symbols == MapSymbolsMode::Public
                 && entry.visibility != SymbolVisibility::Public

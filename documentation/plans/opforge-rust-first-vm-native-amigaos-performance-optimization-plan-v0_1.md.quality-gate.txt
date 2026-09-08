@@ -1,3 +1,19 @@
+PASS: Independent step28_scalar_review final Step31 plan compliance. Exact map outputs, measured allocation/time benefit with explicit scope and memory tradeoff, supported-state tests, non-LSP Rust and workflow gates pass. Approved mechanical completion marks Step31 and advances to Step32/41; native footer and Phase A debt remain open.
+
+Artifact SHA-256: f5db53dffcedb8d2dbc0b4df62f179ddedf50098da59c30eca8a42a0375f15f6
+Review basis: final independent compliance on 2026-09-08; focused validators required after metadata-only completion.
+Non-LSP Rust receipt SHA-256: 073e6fe13474c677b20e21edc6d83780f64986a459ec7074a87f8be741afb7b6
+Workflow receipt SHA-256: 97e9482ff12e74622bdbed7761902ff7c97575f501311660502d50d3aaa7c7a4
+
+Prior scoped receipts:
+
+PASS: Independent step28_scalar_review approves executable Step31 A-map-key-cache: isolated actual-function measurements, valid-domain exact outputs, explicit stop/go and memory tradeoff, mandatory non-LSP/workflow/compliance gates; no native gain or Phase A closure claim.
+
+Artifact SHA-256: cb596b7efd2b43d9059165cbc95cf3fb20a279bc878dff60bc1370c0373c58dd
+Review basis: independent plan-quality PASS on 2026-09-08; implementation qualification remains pending.
+
+Prior scoped receipts:
+
 PASS: Final Step30 implementation compliance by independent step28_scalar_review. Six fresh final-code exact native BIN cases, current measured capacities, staged-native, workflow, plan and the single full non-LSP Rust gate pass. Approved mechanical completion marks Step30 and advances to Step31/40; Phase A and all retained debt remain open.
 
 Artifact SHA-256: b59024e913cae87f288d6d34932d86cacf161dd397af8f09fbb40d871d945774

@@ -41,7 +41,7 @@ fn native_map_symbols_canonical_successor_and_export_contract() {
             "scan",
             "move.l d5, d0",
             "jsr engine.opasmEngineGetLabelNameV1",
-            "bsr.w compareFoldedNamesV1",
+            "jsr symbol_metadata.compareFoldedNamesV1",
             "cmp.l d5, d4",
             "move.l d7, d5",
             "move.l d7, d0",
@@ -54,11 +54,17 @@ fn native_map_symbols_canonical_successor_and_export_contract() {
     assert!(!append.contains("bset"));
     assert!(!append.contains("appendRootModuleNameV1"));
 
-    let visibility = native
+    assert!(append.contains("jsr symbol_metadata.labelIsPublicV1"));
+    assert!(!native.contains("labelIsPublicV1\t.block"));
+    let metadata = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/symbol_metadata.asm"),
+    )
+    .expect("read shared native symbol metadata owner");
+    let visibility = metadata
         .split("labelIsPublicV1\t.block")
         .nth(1)
         .and_then(|tail| tail.split(".bend  ; labelIsPublicV1").next())
-        .expect("native map visibility body");
+        .expect("shared native visibility body");
     assert!(source_contains_in_order(
         visibility,
         &[

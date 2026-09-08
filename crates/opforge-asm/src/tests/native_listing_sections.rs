@@ -178,13 +178,13 @@ fn native_listing_sections_uses_monotonic_post_state_projection() {
     )
     .expect("read native output-artifact owner");
     let listing = output
-        .split("opasmOutputBuildListingArtifactV1\t.block")
+        .split("opasmOutputBuildListingArtifactV2\t.block")
         .nth(1)
         .and_then(|tail| {
-            tail.split(".bend  ; opasmOutputBuildListingArtifactV1")
+            tail.split(".bend  ; opasmOutputBuildListingArtifactV2")
                 .next()
         })
-        .expect("native listing writer body");
+        .expect("native listing V2 writer body");
     assert!(source_contains_in_order(
         listing,
         &[
@@ -224,11 +224,25 @@ fn native_listing_sections_uses_monotonic_post_state_projection() {
         &[
             "jsr engine.opasmEngineGetSourceRecordTextV1",
             "tst.l d0",
+            "bsr.w opasmListingAppendSource",
+            "bne.w listingCapacityFail",
+        ]
+    ));
+    let append_source = output
+        .split("opasmListingAppendSource\t.block")
+        .nth(1)
+        .and_then(|tail| tail.split(".bend  ; opasmListingAppendSource").next())
+        .expect("bounded source-row normalizer body");
+    assert!(source_contains_in_order(
+        append_source,
+        &[
             "bsr.w opasmListingReserve",
-            "bcs.w listingCapacityFail",
-            "move.l d0, d3",
-            "sourceLoop",
+            "bcs.s fail",
+            "copy",
+            "cmpa.l a1, a0",
+            "beq.s skipColon",
             "move.b (a0)+, (a2)+",
+            "skipColon",
         ]
     ));
 }

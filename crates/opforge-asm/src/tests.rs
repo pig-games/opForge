@@ -19456,7 +19456,7 @@ fn motorola68020_item16_native_listing_output_routes_through_artifact_layer() {
     assert!(source_contains_in_order(
         &artifact_source,
         &[
-            "opasmOutputBuildListingArtifactV1 .block",
+            "opasmOutputBuildListingArtifactV2\t.block",
             "OpasmListingTitle",
             "jsr engine.opasmEngineGetSourceRecordCountV1",
             "jsr engine.opasmEngineGetSourceRecordLineNumberV1",
@@ -19473,7 +19473,8 @@ fn motorola68020_item16_native_listing_output_routes_through_artifact_layer() {
         &[
             "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d0",
             "buildLst",
-            "jsr artifacts.opasmOutputBuildListingArtifactV1",
+            "lea symbol_metadata.labelIsPublicV1, a0",
+            "jsr artifacts.opasmOutputBuildListingArtifactV2",
             "lea state.NativeCliLstPath, a0",
         ]
     ));

@@ -23,6 +23,9 @@ mod native_map_symbols;
 #[path = "native_listing_sections.rs"]
 mod native_listing_sections;
 
+#[path = "native_listing_symbols.rs"]
+mod native_listing_symbols;
+
 #[path = "native_listing_visibility_source_rows.rs"]
 mod native_listing_visibility_source_rows;
 
@@ -26875,7 +26878,7 @@ fn external_fs_uae_native_opforge_full_product_artifact_parity() {
         .collect::<Vec<_>>();
     assert_eq!(
         guest_files.len(),
-        100,
+        101,
         "measured canonical product staging set changed"
     );
     for bridge_file in [

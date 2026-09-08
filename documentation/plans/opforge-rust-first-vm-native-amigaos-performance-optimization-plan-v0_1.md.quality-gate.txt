@@ -1,3 +1,38 @@
+PASS: Independent `step28_scalar_review` approves Step32 / Item A-listing-symbol-footer and focused commit `fix(native): render canonical listing labels`. The final 15-path staged scope implements bounded Rust-compatible source-label normalization, canonical untruncated immutable root symbols in uppercase-key order, final placed 4/6/8-digit values, and CLI-owned public/private visibility without changing map semantics or adding persistent storage. Fresh representative, placed-address and unchanged-map Level D artifacts match their same-case live Rust oracles with explicit zero guest exits. B09 remains 10/11 exact solely at the recorded generated/ORG footer debt; leading-underscore, mutable/non-root metadata and Phase A closure remain open.
+
+Artifact SHA-256: 7ad8310faec44a190982fbf0c5a7dd95cb2787ff198c48191507f45885abc9e9
+Validation: final non-LSP Rust PASS (`footer-quality-second.log`, SHA-256 `9549704f3d7bb60340dc8d7655b7367f362fae6c1e3e9d8bc255712276358332`); final staged-native PASS (`footer-staged-native-final2.log`, SHA-256 `b8b28ff627d091cdfbcfca457a66d0a935f710b02014809b4b73bc7104f25ea9`); workflow PASS (`footer-workflow-final.log`, SHA-256 `bb48223b1a92b438f8ba55a4575a4861c06531144f406092ffcfc7e955e8cf41`); plan workflow PASS (`footer-plan-final.log`, SHA-256 `5cbb253676a9b0c95621254f83ce552828aa32506825101a5161aa389e1f0675`). All 25 embedded receipt identities and current source/fixture hashes independently match.
+
+Prior scoped receipts:
+
+PASS: Independent step28_scalar_review approves final Step32 fixture/proof scope. Valid column-one spaced and unspaced labels plus comment preservation retain complete native discriminators; indentation is covered at the actual Rust ListingWriter boundary after the CLI rejected that attempted declaration.
+
+Artifact SHA-256: 6630110fd5d867c81f8a5da66281fe830d96027a0e810e20c0a209a1b13326cb
+Review basis: final plan-quality and fixture PASS on 2026-09-08; required native and final gates remain pending.
+
+Prior scoped receipts:
+
+PASS: Independent step28_scalar_review approves the cohesive Step32 canonical source-label display amendment. Exact Rust identifier classes, bounded immediate-colon normalization, preserved comments/operands, discriminating whole-listing proof and wider debt are explicit.
+
+Artifact SHA-256: 41fc797301c09341138a5c924df63c77f759b73b047cc37fce14dbaf35d7724d
+Review basis: independent plan-quality PASS on 2026-09-08; final native proof and gates remain pending.
+
+Prior scoped receipts:
+
+PASS: Independent step28_scalar_review approves Step32 internal-underscore discriminator and separate retained leading-underscore frontend debt. Exact failed source/exit remain evidence; canonical ordering, placed values and full-artifact proof requirements are unchanged.
+
+Artifact SHA-256: 9d04e51057e975b526f530319b81e7b37572b743904d361f2540b706a0c8402e
+Review basis: independent plan-quality PASS on 2026-09-08; native proof and final qualification remain pending.
+
+Prior scoped receipts:
+
+PASS: Independent step28_scalar_review plan-quality approval for Step32 native listing-symbol footer. Exact PC-backed placed-BSS address and upper-versus-lower ordering discriminators, callback ownership, bounded cost, required gates and retained wider Phase A debt are explicit.
+
+Artifact SHA-256: 13072ff65fa12485da5634b18eaafbec5d5e88ca82781605c5ec7643805c8090
+Review basis: independent plan-quality PASS on 2026-09-08; implementation and final qualification pending.
+
+Prior scoped receipts:
+
 PASS: Independent step28_scalar_review final Step31 plan compliance. Exact map outputs, measured allocation/time benefit with explicit scope and memory tradeoff, supported-state tests, non-LSP Rust and workflow gates pass. Approved mechanical completion marks Step31 and advances to Step32/41; native footer and Phase A debt remain open.
 
 Artifact SHA-256: f5db53dffcedb8d2dbc0b4df62f179ddedf50098da59c30eca8a42a0375f15f6

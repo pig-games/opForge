@@ -9,6 +9,7 @@
 	.use opforge.cli.constants
 	.use opforge.cli.dos
 	.use opforge.cli.strings
+	.use opforge.cli.symbol_metadata
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	.use debug.amigaos.platform_profile as platform_profile
 .endif
@@ -113,7 +114,8 @@ buildHex
 	bra.s artifactBuilt
 
 buildLst
-	jsr artifacts.opasmOutputBuildListingArtifactV1
+	lea symbol_metadata.labelIsPublicV1, a0
+	jsr artifacts.opasmOutputBuildListingArtifactV2
 	bra.s artifactBuilt
 
 buildBin

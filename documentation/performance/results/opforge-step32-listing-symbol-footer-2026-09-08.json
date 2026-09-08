@@ -1,0 +1,424 @@
+{
+  "schema_version": 1,
+  "status": "qualified-pending-focused-commit",
+  "step": "32 / Item A-listing-symbol-footer",
+  "worktree_head": "600ce722329f5fb273bbf0e475b14716f87f516d",
+  "package": {
+    "path": "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm",
+    "sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872"
+  },
+  "native_sources": {
+    "native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm": "9da8f9e2ddc9ede36d65c049f8f18ee8a14e1c20a9acba5930a018a91bc44994",
+    "native/motorola68000/amigaos/opforge-cli/output.asm": "e1e24617be36e5ec6764aea7405537c5bd5269df9be3383e5f6b2c886dbb9cef",
+    "native/motorola68000/amigaos/opforge-cli/source_artifacts.asm": "1a6816f7ed54baf397b7fc901f3f1c6f005728cbe72b1373f55d1cda5ac0f982",
+    "native/motorola68000/amigaos/opforge-cli/symbol_metadata.asm": "431345db74e8199357b16ea12745ed3f96bc58a5e3d59e59536f669bad01ca70"
+  },
+  "fixtures": {
+    "representative": {
+      "bytes": 260,
+      "sha256": "5315205ec5041d90e134ce2b4dc8c97bc1a8b27b9e7139ba207ef08113bbe5e1",
+      "command": "{input} --bin {guest_work_dir}build/symbols.bin --list {guest_work_dir}build/symbols.lst --cpu 68020 --opasm-package {package}",
+      "expected_bin_hex": "aa",
+      "native_status": "Level D PASS; fresh protocol, explicit guest exit 0, exact BIN and listing"
+    },
+    "placed_addresses": {
+      "bytes": 531,
+      "sha256": "1bfd6e7592cf33ff9ee5a2627df3b44c56d3f3610818f23ae42acca19de18f11",
+      "command": "{input} --bin {guest_work_dir}build/symbols.bin --list {guest_work_dir}build/symbols.lst --cpu 68020 --opasm-package {package}",
+      "expected_bin_hex": "aa",
+      "native_status": "Level D PASS; fresh protocol, explicit guest exit 0, exact BIN and listing"
+    }
+  },
+  "focused_host": {
+    "status": "pass",
+    "tests": {
+      "native_listing_symbols_live_rust_canonical_footer_and_addresses": "Level A PASS",
+      "native_map_symbols_canonical_successor_and_export_contract": "Level B PASS",
+      "native_listing_sections_uses_monotonic_post_state_projection": "Level B PASS",
+      "native_map_symbols_all_and_public_fs_uae": "Level D PASS",
+      "native_listing_symbols_live_rust_normalizes_only_leading_label_colons": "Level A PASS"
+    },
+    "level_d_host_invocations": "environment SKIP only; not native proof"
+  },
+  "history": {
+    "native_representative_first": {
+      "result": "fresh guest exit 1 before artifact construction with OPC-NCLI038, OPC-NCLI039 and OPC-NCLI010",
+      "cause": "the 243-byte source began a label with underscore, outside captureInvocationLabel's alphabetic first-character grammar",
+      "source_sha256": "e0418c29e4f6d1b387760b2dc8d00a70f4e35f7fa7b47bbd69665f47adb46e63",
+      "source": ".module main\n.cpu 68020\n.org 0\n.byte $aa\n.region low, $1000, $10ff\n.section symbols, kind=bss\n.priv\n_private_name_longer_than_fifteen: .res byte,1\n.pub\nalphaPublicNameLongerThanFifteen: .res byte,1\n.endsection\n.place symbols in low\n.endmodule\n",
+      "proof_classification": "retained fixture/frontend failure; not listing-footer evidence"
+    },
+    "native_representative_second": {
+      "result": "fresh protocol completed with guest exit 0 and exact BIN; listing length 1343 versus Rust 1341, first mismatch offset 630 native 0x3a versus Rust 0x20",
+      "cause": "native source rows retained the two leading label colons that Rust normalize_leading_label_colon removes",
+      "source_bytes": 244,
+      "source_sha256": "84e8c0ebcb6fb9f3af13431dc14f056cafacbc391124560498ed5b84e5c7d5e7",
+      "proof_classification": "retained localization failure; exact listing parity not established"
+    },
+    "assembly_first": "failed because the new module lacked required closing directives; retained, not product evidence",
+    "assembly_second": "PASS after closing-directive repair, before final private helper/label scoping and source-row normalization; retained intermediate evidence",
+    "formatter": "PASS after final private helper/label scoping",
+    "capacity_first_second": "both retained stale-snapshot failures; not final evidence",
+    "capacity_fifth": "PASS 6/6 with loadable source 1729024, processed rows 94706, processed bytes 3582080, imports 426, public declarations 6506, public name bytes 127952",
+    "quality_first": "retained FAIL after 1641 passes: three stale V1/staging-count/raw-source-loop test contracts",
+    "focused_contract_repairs": "PASS: V2 callback route, 101-file staging, bounded source-row normalizer",
+    "quality_second": "PASS; single final non-LSP gate after focused repairs"
+  },
+  "resource_contract": {
+    "sorting": "listing lexical successor traversal is O(N^2)",
+    "callback_stack_bytes": 4,
+    "helper_stack": "bounded fixed register-save frames per call",
+    "persistent_storage_bytes": 0,
+    "runtime_gain": "unmeasured"
+  },
+  "cumulative_context": {
+    "step31_test_profile_map_time_reduction_pct_range": [
+      63.17,
+      77.51
+    ],
+    "native_source_dos_reads": [
+      1608,
+      8
+    ],
+    "native_source_dos_read_reduction_pct": 99.5025,
+    "changed_by_step32": false,
+    "total_runtime_gain": "unmeasured"
+  },
+  "limits": [
+    "Root-owned immutable PC-backed labels only.",
+    "Mutable var/set kind metadata and non-root/imported public visibility remain open.",
+    "Generated/ORG footer debt, unrelated B09 artifacts and Phase A closure remain open."
+  ],
+  "receipts": {
+    "footer-assembly-first": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step28-assemble.py"
+      ],
+      "exit_code": 1,
+      "whole_seconds": 17.878223791951314,
+      "sha256": "b8659b470334b5df3e2254aad201ae0d98847df7a6f90ffc75bbab3ef71b3ae8",
+      "log_bytes": 1573408,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-assembly-first.log"
+    },
+    "footer-assembly-second": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step28-assemble.py"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 28.398218374932185,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-assembly-second.log"
+    },
+    "footer-format-first": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_native_68000_format_gate.sh",
+        "--write"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 5.374788166023791,
+      "sha256": "b79e05063e7e0914f36de15f6fb7de94bdc124c0675347f784b67c078ecc61f1",
+      "log_bytes": 1464,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-format-first.log"
+    },
+    "footer-capacity-first": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 21.751537165837362,
+      "sha256": "ab1ac823b462c882a94e832ae9f98c3c7bf30e53e8ff958bf9a71dcd72a6cb3e",
+      "log_bytes": 3117,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-capacity-first.log"
+    },
+    "footer-capacity-second": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 0.5084013328887522,
+      "sha256": "3b537e9ee9f8e9f21571f37a9571cd938a1aa69682f0590c862e6cc202fc890b",
+      "log_bytes": 2516,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-capacity-second.log"
+    },
+    "footer-plan-first": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_plan_workflow.sh",
+        "--check-once",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md",
+        "Native listing symbol footer parity with preserved Phase A debt"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 0.1059266661759466,
+      "sha256": "18f252dab66c85f693bb5b4cd8d530b66792571b5c69dc1889e874bbaf581725",
+      "log_bytes": 1732,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-plan-first.log"
+    },
+    "footer-native-representative-first": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_listing_symbols_representative_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 60.45573595794849,
+      "sha256": "cf52aec34f3178373958981621e80d1da51f1d2a4e90cbff61b547370dded8dd",
+      "log_bytes": 2331,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-native-representative-first.log"
+    },
+    "footer-host-second": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_symbols_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 16.39770537498407,
+      "sha256": "5da4ed7b9901eee20c7202a40533f5772ff42267ef362fb9657113adfce8ae78",
+      "log_bytes": 1157,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-host-second.log"
+    },
+    "footer-native-representative-second": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_listing_symbols_representative_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 64.28922312497161,
+      "sha256": "a6e3c483105f003d6cb5d47e5c9b48f4b1b9328cf8db049f215cca1c0e65007b",
+      "log_bytes": 7746,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-native-representative-second.log"
+    },
+    "footer-host-third": {
+      "exit_code": 101,
+      "whole_seconds": 13.699531625024974,
+      "sha256": "8ea0a76403166196f0de050da48d080108851f22e4027bb0d1796760e9edc44a",
+      "log_bytes": 4364,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-host-third.log",
+      "note": "retained invalid indented-label fixture failure; not product evidence"
+    },
+    "footer-host-fourth": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_symbols_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 3.2242547078058124,
+      "sha256": "86e31f1d21bca533d1488091a7020acb79a4d68dfaa6c79a6739708b3fff277c",
+      "log_bytes": 1291,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-host-fourth.log"
+    },
+    "footer-native-representative-third": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_listing_symbols_representative_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 63.739027332980186,
+      "sha256": "9c2ad525b5906bbdb2a74f19bb6fcbaca44c1aaa8d167be2174a8f526fdf8390",
+      "log_bytes": 254,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-native-representative-third.log"
+    },
+    "footer-native-placed-first": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_listing_symbols_placed_addresses_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 63.866653374861926,
+      "sha256": "404b0c48e668b85ac5a2e99602d132eb0006250b649d40961529ed6b012cdb72",
+      "log_bytes": 256,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-native-placed-first.log"
+    },
+    "footer-native-map-first": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_map_symbols_all_and_public_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 64.3787282910198,
+      "sha256": "e99a9a67ed586f5430d5531d186fcd1ea9cde739e7a308a4cca46179672a2ebb",
+      "log_bytes": 246,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-native-map-first.log"
+    },
+    "footer-native-b09-first": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "external_fs_uae_native_production_corpus_parity",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 64.42470916593447,
+      "sha256": "2a95a66808d8e5a0f1c414d501c9bd61f6d64834c7d5e0519d30aca25381371a",
+      "log_bytes": 28283,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-native-b09-first.log",
+      "artifact_disposition": "10 of 11 exact; only listing differs at offset 2686 (native total memory 9 versus Rust 8, with Rust final generated-output row absent natively)"
+    },
+    "footer-assembly-third": {
+      "exit_code": 0,
+      "whole_seconds": 28.43394604208879,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-assembly-third.log"
+    },
+    "footer-format-second": {
+      "exit_code": 0,
+      "whole_seconds": 5.343529124977067,
+      "sha256": "0bd4e32d7b51607c000866e4bcfa962afe8fd2a9cb6c813a35f3d9a1ad55dad4",
+      "log_bytes": 1467,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-format-second.log"
+    },
+    "footer-capacity-fifth": {
+      "exit_code": 0,
+      "whole_seconds": 10.976271249819547,
+      "sha256": "b4f05eadcda7f25cf13d35ddbeb70c543b9d3a62782aad40dd9c0f72e4f2163d",
+      "log_bytes": 1397,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-capacity-fifth.log"
+    },
+    "footer-staged-native-first": {
+      "command": [
+        "python3",
+        "scripts/workflow/run_native_porting_quality_gate.py",
+        "--staged",
+        "--metadata",
+        "documentation/plans/slices/native-performance-listing-symbol-footer-v1.toml"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 5.855683207977563,
+      "sha256": "b8b28ff627d091cdfbcfca457a66d0a935f710b02014809b4b73bc7104f25ea9",
+      "log_bytes": 4097,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-staged-native-first.log"
+    },
+    "footer-workflow-first": {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 28.423745666863397,
+      "sha256": "d9b4366e5eed011f309af80fff3d9062fd25730ab0933545e3a529a4fc06e82b",
+      "log_bytes": 6495,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-workflow-first.log"
+    },
+    "footer-quality-first": {
+      "command": [
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 238.20247945794836,
+      "sha256": "33a53d2ff7908df49e1f93fbc0229cf66af68907cfe953cf98dc91317a993d40",
+      "log_bytes": 218235,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-quality-first.log"
+    },
+    "footer-quality-second": {
+      "command": [
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 275.5757740000263,
+      "sha256": "9549704f3d7bb60340dc8d7655b7367f362fae6c1e3e9d8bc255712276358332",
+      "log_bytes": 342766,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-quality-second.log"
+    },
+    "footer-plan-final": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_plan_workflow.sh",
+        "--check-once",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md",
+        "Step32 completed checked listing symbol footer proof and retained Phase A debts"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 0.1060324169229716,
+      "sha256": "5cbb253676a9b0c95621254f83ce552828aa32506825101a5161aa389e1f0675",
+      "log_bytes": 1764,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-plan-final.log"
+    },
+    "footer-staged-native-final": {
+      "command": [
+        "python3",
+        "scripts/workflow/run_native_porting_quality_gate.py",
+        "--staged",
+        "--metadata",
+        "documentation/plans/slices/native-performance-listing-symbol-footer-v1.toml"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 5.909305999986827,
+      "sha256": "b8b28ff627d091cdfbcfca457a66d0a935f710b02014809b4b73bc7104f25ea9",
+      "log_bytes": 4097,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-staged-native-final.log"
+    },
+    "footer-workflow-final": {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 29.872960791923106,
+      "sha256": "bb48223b1a92b438f8ba55a4575a4861c06531144f406092ffcfc7e955e8cf41",
+      "log_bytes": 6495,
+      "log_path": "target/workflow-logs/step32-listing-symbol-footer/footer-workflow-final.log"
+    }
+  },
+  "b09_workload": {
+    "case": "B09",
+    "source": "examples/opcore/linker_regions_full.asm",
+    "reused_source": "examples/opcore/module_metadata_outputs.asm",
+    "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+    "profile": "off",
+    "post_start_timeout_ms": 120000,
+    "artifact_count": 11,
+    "result": "10 exact; listing-only generated/ORG footer debt retained"
+  },
+  "source_cost": {
+    "loadable_source_bytes_delta": 4788,
+    "processed_rows_delta": 217,
+    "processed_bytes_delta": 4569,
+    "runtime_gain": "unmeasured"
+  }
+}

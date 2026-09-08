@@ -5,7 +5,6 @@
 
 	.use opasm.amigaos.engine
 	.use opasm.amigaos.layout
-	.use opasm.amigaos.flow_scopes as scopes
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	.use debug.amigaos.platform_profile as platform_profile
 .endif
@@ -252,15 +251,23 @@ fail
 	.bend  ; opasmOutputBuildHexArtifactV1
 	.pub
 
-; Build a Rust-style `.lst` artifact from every preserved source record,
-; attaching statement/image data when the source line produced a statement.
-; Outputs:
-; - D0.L = 0 on success.
-; - A0 = opasm-owned listing artifact buffer pointer.
-; - D1.L = text byte count.
+; Legacy listing entry: render symbols with private visibility.
+; Outputs: D0 = 0 success/1 capacity failure, A0 = buffer, D1 = length.
+; Clobbers: D0-D1/A0-A1/CCR. CCR: reflects D0.
 opasmOutputBuildListingArtifactV1	.block
+	suba.l a0, a0
+	bra.w opasmOutputBuildListingArtifactV2
+	.bend  ; opasmOutputBuildListingArtifactV1
+
+; Build the complete listing using caller-owned symbol visibility metadata.
+; Inputs: A0 = optional callback, D0 label index -> D0 public boolean.
+; The callback must preserve D1-D7/A0-A6; CCR may change. Zero means private.
+; Outputs: D0 = 0 success/1 capacity failure, A0 = buffer, D1 = length.
+; Clobbers: D0-D1/A0-A1/CCR. CCR: reflects D0.
+opasmOutputBuildListingArtifactV2	.block
 	.priv
 	movem.l d2-d7/a2-a6, -(sp)
+	move.l a0, -(sp)
 	lea OpasmListingArtifactBuffer.l, a2
 	movea.l a2, a4
 	adda.l #OPASM_OUTPUT_LISTING_BUFFER_CAPACITY, a4
@@ -408,14 +415,8 @@ byteColumnDone
 	jsr engine.opasmEngineGetSourceRecordTextV1
 	tst.l d0
 	beq.w sourceDone
-	bsr.w opasmListingReserve
-	bcs.w listingCapacityFail
-	move.l d0, d3
-
-sourceLoop
-	move.b (a0)+, (a2)+
-	subq.l #1, d3
-	bne.w sourceLoop
+	bsr.w opasmListingAppendSource
+	bne.w listingCapacityFail
 
 sourceDone
 	; Collection indices include blank/include records; line numbers may repeat.
@@ -473,60 +474,55 @@ footer
 	lea OpasmListingSymbolHeader.l, a0
 	bsr.w opasmListingAppendCString
 	bne.w listingCapacityFail
-	moveq #0, d2
+	movea.l (sp), a6
+	moveq #-1, d2
 
 symbolLoop
-	moveq #0, d4
-	jsr scopes.rootModuleNameV1
-	tst.l d0
-	beq.w symbolRawName
-	move.l d0, d6
-symbolModuleLoop
-	cmpi.l #15, d4
-	bhs.w symbolRawName
-	cmpa.l a4, a2
-	bhs.w listingCapacityFail
-	move.b (a0)+, (a2)+
-	addq.l #1, d4
-	subq.l #1, d6
-	bne.w symbolModuleLoop
-	cmpi.l #15, d4
-	bhs.w symbolRawName
-	cmpa.l a4, a2
-	bhs.w listingCapacityFail
-	move.b #'.', (a2)+
-	addq.l #1, d4
-
-symbolRawName
+	bsr.w opasmListingNextSymbol
+	tst.l d2
+	bmi.w symbolsDone
 	move.l d2, d0
 	jsr engine.opasmEngineGetLabelNameV1
-
-symbolNameLoop
-	tst.b (a0)
-	beq.w symbolNameDone
-	cmpa.l a4, a2
-	bhs.w listingCapacityFail
-	move.b (a0)+, (a2)+
+	movea.l a0, a1
+	moveq #0, d4
+symbolNameLength
+	tst.b (a1)+
+	beq.s symbolNameReady
 	addq.l #1, d4
+	bra.s symbolNameLength
+symbolNameReady
+	bsr.w opasmListingAppendCString
+	bne.w listingCapacityFail
+	moveq #2, d0
 	cmpi.l #15, d4
-	blo.w symbolNameLoop
-
-symbolNameDone
-	move.l #17, d0
+	bhs.s symbolNamePadding
+	moveq #17, d0
 	sub.l d4, d0
+symbolNamePadding
 	bsr.w opasmListingAppendSpaces
 	bne.w listingCapacityFail
 	move.l d2, d0
-	jsr engine.opasmEngineGetLabelValueV1
-	bsr.w opasmListingAppendHexWord
+	jsr engine.opasmEngineGetLabelPlacedValueV1
+	bsr.w opasmListingAppendAddress
 	bne.w listingCapacityFail
-	lea OpasmListingSymbolSuffix.l, a0
+	moveq #10, d0
+	sub.l d1, d0
+	bsr.w opasmListingAppendSpaces
+	bne.w listingCapacityFail
+	move.l a6, d0
+	beq.s symbolPrivate
+	move.l d2, d0
+	jsr (a6)
+	tst.l d0
+	beq.s symbolPrivate
+	lea OpasmListingSymbolPublic.l, a0
+	bra.s symbolVisibility
+symbolPrivate
+	lea OpasmListingSymbolPrivate.l, a0
+symbolVisibility
 	bsr.w opasmListingAppendCString
 	bne.w listingCapacityFail
-	addq.l #1, d2
-	cmp.l d3, d2
-	blo.w symbolLoop
-	bra.w symbolsDone
+	bra.w symbolLoop
 
 symbolNone
 	lea OpasmListingSymbolNone.l, a0
@@ -604,19 +600,219 @@ finish
 	move.l a0, d0
 	sub.l d0, d1
 	moveq #0, d0
+	adda.l #4, sp
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 listingCapacityFail
+	adda.l #4, sp
 	movem.l (sp)+, d2-d7/a2-a6
 	moveq #1, d0
 	rts
-	.bend  ; opasmOutputBuildListingArtifactV1
+	.bend  ; opasmOutputBuildListingArtifactV2
 	.pub
 
 ; Listing-only appenders validate each span before using shared formatters.
 ; A2 is the cursor and A4 the exclusive end; all return D0=0/1 and CCR.
 ; No other artifact builder depends on A4 or this bounded append contract.
 	.priv
+
+; Match Rust normalize_leading_label_colon without modifying the source record.
+; Inputs: A0 = source bytes, D0 = length, A2 = cursor, A4 = exclusive limit.
+; Outputs: D0 = 0 success/1 capacity failure, A2 = advanced cursor.
+; Clobbers: D0-D1/A0-A1/A2/CCR. CCR: reflects D0.
+; Only a leading identifier's immediate colon may be removed or replaced.
+opasmListingAppendSource	.block
+	movem.l d2-d4/a3, -(sp)
+	move.l d0, d3
+	move.l d0, d4
+	moveq #0, d2
+	suba.l a1, a1
+	movea.l a0, a3
+indent
+	tst.l d0
+	beq.w ready
+	move.b (a3), d1
+	cmpi.b #' ', d1
+	beq.s skipIndent
+	cmpi.b #9, d1
+	bne.s first
+skipIndent
+	addq.l #1, a3
+	subq.l #1, d0
+	bra.s indent
+first
+	cmpi.b #'_', d1
+	beq.s identifier
+	andi.b #$df, d1
+	cmpi.b #'A', d1
+	blo.w ready
+	cmpi.b #'Z', d1
+	bhi.w ready
+identifier
+	addq.l #1, a3
+	subq.l #1, d0
+	beq.w ready
+	move.b (a3), d1
+	cmpi.b #':', d1
+	beq.s colon
+	cmpi.b #'_', d1
+	beq.s identifier
+	cmpi.b #'.', d1
+	beq.s identifier
+	cmpi.b #'$', d1
+	beq.s identifier
+	cmpi.b #'0', d1
+	blo.s letter
+	cmpi.b #'9', d1
+	bls.s identifier
+letter
+	andi.b #$df, d1
+	cmpi.b #'A', d1
+	blo.w ready
+	cmpi.b #'Z', d1
+	bls.s identifier
+	bra.w ready
+colon
+	movea.l a3, a1
+	subq.l #1, d4
+	subq.l #1, d0
+	beq.s ready
+	move.b 1(a3), d1
+	cmpi.b #' ', d1
+	beq.s ready
+	cmpi.b #9, d1
+	beq.s ready
+	; With a comment immediately after the colon, the code remainder is empty.
+	cmpi.b #';', d1
+	beq.s ready
+	moveq #1, d2
+	addq.l #1, d4
+ready
+	move.l d4, d0
+	bsr.w opasmListingReserve
+	bcs.s fail
+	tst.l d3
+	beq.s success
+copy
+	cmpa.l a1, a0
+	beq.s skipColon
+	move.b (a0)+, (a2)+
+	bra.s advance
+skipColon
+	addq.l #1, a0
+	tst.l d2
+	beq.s advance
+	move.b #' ', (a2)+
+advance
+	subq.l #1, d3
+	bne.s copy
+success
+	moveq #0, d0
+	bra.s return
+fail
+	moveq #1, d0
+return
+	movem.l (sp)+, d2-d4/a3
+	rts
+	.bend  ; opasmListingAppendSource
+
+; Find the next immutable label in Rust listing order without persistent state.
+; Inputs: D2 = previous index or -1, D3 = label count.
+; Outputs: D2 = next index or -1. Clobbers: D0-D2/A0-A1/CCR.
+; CCR: reflects D2. Each call scans at most D3 labels.
+opasmListingNextSymbol	.block
+	movem.l d4-d6/a3, -(sp)
+	move.l d2, d6
+	moveq #-1, d5
+	moveq #0, d4
+scan
+	cmp.l d3, d4
+	bhs.w done
+	tst.l d6
+	bmi.s afterPrevious
+	move.l d4, d0
+	jsr engine.opasmEngineGetLabelNameV1
+	movea.l a0, a3
+	move.l d6, d0
+	jsr engine.opasmEngineGetLabelNameV1
+	movea.l a0, a1
+	movea.l a3, a0
+	bsr.w opasmListingCompareNames
+	bmi.s next
+	bne.s afterPrevious
+	cmp.l d6, d4
+	bls.s next
+afterPrevious
+	tst.l d5
+	bmi.s choose
+	move.l d4, d0
+	jsr engine.opasmEngineGetLabelNameV1
+	movea.l a0, a3
+	move.l d5, d0
+	jsr engine.opasmEngineGetLabelNameV1
+	movea.l a0, a1
+	movea.l a3, a0
+	bsr.w opasmListingCompareNames
+	bpl.s next
+choose
+	move.l d4, d5
+next
+	addq.l #1, d4
+	bra.w scan
+done
+	move.l d5, d2
+	movem.l (sp)+, d4-d6/a3
+	rts
+	.bend  ; opasmListingNextSymbol
+
+; Inputs: A0/A1 = canonical NUL strings. Outputs: D0 = -1/0/1.
+; Compare ASCII-uppercase keys, then original bytes on folded ties.
+; Clobbers: D0-D1/A0-A1/CCR. CCR: reflects D0.
+opasmListingCompareNames	.block
+	movem.l a0-a1, -(sp)
+folded
+	moveq #0, d0
+	moveq #0, d1
+	move.b (a0)+, d0
+	move.b (a1)+, d1
+	cmpi.b #'a', d0
+	blo.s right
+	cmpi.b #'z', d0
+	bhi.s right
+	andi.b #$df, d0
+right
+	cmpi.b #'a', d1
+	blo.s compare
+	cmpi.b #'z', d1
+	bhi.s compare
+	andi.b #$df, d1
+compare
+	cmp.b d1, d0
+	blo.s less
+	bhi.s greater
+	tst.b d0
+	bne.s folded
+	movem.l (sp), a0-a1
+raw
+	move.b (a0)+, d0
+	move.b (a1)+, d1
+	cmp.b d1, d0
+	blo.s less
+	bhi.s greater
+	tst.b d0
+	bne.s raw
+	addq.l #8, sp
+	moveq #0, d0
+	rts
+less
+	addq.l #8, sp
+	moveq #-1, d0
+	rts
+greater
+	addq.l #8, sp
+	moveq #1, d0
+	rts
+	.bend  ; opasmListingCompareNames
 
 ; Inputs: D0 = requested span, A2 = cursor, A4 = exclusive end.
 ; Outputs: C set when insufficient. Clobbers: CCR; D0 is unchanged.
@@ -969,8 +1165,10 @@ OpasmListingSymbolHeader
 	.byte "---------------  --------  ---  ----", 10, 0
 OpasmListingSymbolNone
 	.byte "(none)", 10, 0
-OpasmListingSymbolSuffix
-	.byte "      prv  lbl ", 10, 0
+OpasmListingSymbolPrivate
+	.byte "prv  lbl ", 10, 0
+OpasmListingSymbolPublic
+	.byte "pub  lbl ", 10, 0
 OpasmListingMemoryPrefix
 	.byte 10, "Total memory is ", 0
 OpasmListingMemorySuffix

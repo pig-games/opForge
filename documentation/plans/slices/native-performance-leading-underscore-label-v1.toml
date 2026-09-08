@@ -1,0 +1,34 @@
+[slice]
+schema_version = 2
+name = "native leading-underscore source label"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "33 / Item A-leading-underscore-label"
+rust_reference = ["crates/opforge-core/src/text_utils.rs::is_ident_start", "crates/opforge-core/src/macro_processor_args_subst.rs::parse_label", "crates/opforge-core/src/macro_processor_definitions.rs::parse_macro_invocation"]
+native_boundary = ["native/motorola68000/amigaos/opforge-cli/preprocessor_invocation.asm::captureInvocationLabel"]
+invariant = "Native preprocessing accepts underscore as a Rust-valid first identifier byte while preserving the existing continuation, colon, capacity, macro and failure contracts."
+assertion_decision = "Reuse the exact retained 243-byte Step32 source as a complete live Rust BIN/listing oracle and fresh native case, plus the unchanged macro-invocation Level D control and a source/ABI review of the one-branch boundary."
+expected_inputs = "The exact retained 243-byte source with `_private_name_longer_than_fifteen`, SHA-256 e0418c29e4f6d1b387760b2dc8d00a70f4e35f7fa7b47bbd69665f47adb46e63, CPU 68020 and the same shipped package; the existing macro invocation fixture remains unchanged."
+expected_outputs = "Exact one-byte AA BIN and exact whole live Rust listing from a fresh zero-exit guest; unchanged macro invocation output and zero exit."
+known_non_equivalences = "Compact symbol/operator grammar, mutable/non-root symbol metadata, generated/ORG footer, zero-image emission, section-start behavior, performance gains and Phase A closure remain outside this first-byte repair."
+fast_proof_command = "env -u OPFORGE_FS_UAE_SMOKE -u OPFORGE_FS_UAE_ARGS -u OPFORGE_FS_UAE_CONFIG_TEMPLATE CARGO_TARGET_DIR=target/step17-opt1 cargo test --locked -p asm native_listing_symbols_leading_underscore_ -- --nocapture --test-threads=1"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 CARGO_TARGET_DIR=target/step17-opt1 cargo test --locked -p asm native_listing_symbols_leading_underscore_fs_uae -- --nocapture --test-threads=1; OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 CARGO_TARGET_DIR=target/step17-opt1 cargo test --locked -p asm native_macro_invocation_fixture_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_listing_symbols_leading_underscore_live_rust_oracle"
+proof_level = "A"
+proves = "The exact retained 243-byte source is a complete accepted Rust program with authoritative BIN/listing output."
+does_not_prove = "Native preprocessing or execution."
+
+[[tests]]
+name = "native_listing_symbols_leading_underscore_fs_uae"
+proof_level = "D"
+proves = "A fresh zero-exit native guest produces exact live Rust BIN/listing artifacts for the retained source that previously failed before rendering."
+does_not_prove = "Other frontend grammar, mutable/non-root metadata, generated/ORG footer parity or performance."
+
+[[tests]]
+name = "native_macro_invocation_fixture_fs_uae"
+proof_level = "D"
+proves = "The existing fresh macro-invocation control retains its exact output and zero exit after the first-byte change."
+does_not_prove = "Listing output, unrelated macro grammar or broader frontend parity."

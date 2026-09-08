@@ -118,6 +118,8 @@ loop
 checkFirst
 	tst.w d3
 	bne.s copy
+	cmpi.b #'_', d1
+	beq.s copy
 	cmpi.b #'A', d1
 	bcs.s fail
 	cmpi.b #'Z', d1

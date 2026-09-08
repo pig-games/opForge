@@ -1,3 +1,20 @@
+PASS: Independent `step28_scalar_review` approves Step33 / Item A-leading-underscore-label and focused commit `fix(native): accept leading underscore labels`. The exact eight-path staged set adds only the two-instruction underscore first-byte branch before the existing ASCII-letter gate. The retained 243-byte source and shipped package identities match; its actual Rust oracle and fresh native BIN/whole-listing Level D proof pass with explicit zero guest exit, and the unchanged macro-invocation Level D control also passes. Measured capacity, native assembly/format, non-LSP Rust, staged-native, plan and workflow gates pass. No storage or runtime gain is claimed; compact grammar, generated/ORG footer, zero-image, section-start, mutable/non-root metadata and Phase A closure remain open.
+
+Artifact SHA-256: 9ceab34c0edb2cf005c46d09986f4cf1de6ebacf66192c837ed3d9ca5b721bbf
+Slice SHA-256: 10119bac7ffc96ed47465c634a6b70b926ff4c23ecfa69e75684a7a3c0c52954
+Validation: non-LSP Rust `7100a1aae946f5fe28c33f2d13a61975428f14c21b2f655a70731b8e44893306`; staged-native `038c64fc10280e1c4af59e47f8e4a9ee515e3a138882b5b8c3df1d5dabc71801`; plan `849c12076fc2c303a649e14354ea47afda09b1a1a1ada63b3c63bc67698a9877`; workflow `f9ac32964d3950a163c118f02ba34f47b925bebac433de62555e65dd6225acd5`.
+Review basis: final independent implementation compliance on 2026-09-08; focused validators required after receipt-only completion metadata, before commit.
+
+Prior scoped receipts:
+
+PASS: Independent `step28_scalar_review` approves Step33 / Item A-leading-underscore-label plan quality. Exact Rust/native boundaries, the two-instruction first-byte scope, retained 243-byte source identity, Level A/manual-B/D proof, attempt-all macro control, full gates, Step34 dependency, all retained debt, contiguous renumbering and LSP-last are correct.
+
+Artifact SHA-256: bd9257e09a9fa7ace93243d37e888a6554ef78073b783f6f8d3e0b07f786a109
+Slice SHA-256: 10119bac7ffc96ed47465c634a6b70b926ff4c23ecfa69e75684a7a3c0c52954
+Review basis: independent plan-quality PASS on 2026-09-08; implementation qualification remains pending.
+
+Prior scoped receipts:
+
 PASS: Independent `step28_scalar_review` approves Step32 / Item A-listing-symbol-footer and focused commit `fix(native): render canonical listing labels`. The final 15-path staged scope implements bounded Rust-compatible source-label normalization, canonical untruncated immutable root symbols in uppercase-key order, final placed 4/6/8-digit values, and CLI-owned public/private visibility without changing map semantics or adding persistent storage. Fresh representative, placed-address and unchanged-map Level D artifacts match their same-case live Rust oracles with explicit zero guest exits. B09 remains 10/11 exact solely at the recorded generated/ORG footer debt; leading-underscore, mutable/non-root metadata and Phase A closure remain open.
 
 Artifact SHA-256: 7ad8310faec44a190982fbf0c5a7dd95cb2787ff198c48191507f45885abc9e9

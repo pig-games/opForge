@@ -7,6 +7,9 @@ const REPRESENTATIVE_SOURCE: &[u8] = b".module main\n.cpu 68020\n.org 0\n.byte $
 
 const PLACED_ADDRESS_SOURCE: &[u8] = b".module main\n.cpu 68020\n.org 0\n.byte $aa\n.region low, $1000, $10ff\n.region middle, $010000, $0100ff\n.region high, $12345678, $12345777\n.section low_symbols, kind=bss\n.priv\nzetaLowPrivateNameLongerThanFifteen: .res byte,1\n.endsection\n.section high_symbols, kind=bss\n.priv\nz_highPrivateNameLongerThanFifteen: .res byte,1\n.endsection\n.section middle_symbols, kind=bss\n.pub\nalphaMiddlePublicNameLongerThanFifteen: .res byte,1\n.endsection\n.place low_symbols in low\n.place middle_symbols in middle\n.place high_symbols in high\n.endmodule\n";
 
+// Retained complete Step32 input that failed native macro preprocessing.
+const LEADING_UNDERSCORE_SOURCE: &[u8] = b".module main\n.cpu 68020\n.org 0\n.byte $aa\n.region low, $1000, $10ff\n.section symbols, kind=bss\n.priv\n_private_name_longer_than_fifteen: .res byte,1\n.pub\nalphaPublicNameLongerThanFifteen: .res byte,1\n.endsection\n.place symbols in low\n.endmodule\n";
+
 #[test]
 fn native_listing_symbols_live_rust_normalizes_only_leading_label_colons() {
     // Level A: exercise the actual Rust ListingWriter normalization boundary.
@@ -97,6 +100,30 @@ fn native_listing_symbols_representative_fs_uae() {
 #[test]
 fn native_listing_symbols_placed_addresses_fs_uae() {
     run_listing_symbol_case("listing-symbols-placed-addresses", PLACED_ADDRESS_SOURCE);
+}
+
+#[test]
+fn native_listing_symbols_leading_underscore_live_rust_oracle() {
+    // Level A: actual Rust accepts the complete retained source. Native
+    // preprocessing and artifact parity require the separate Level D case.
+    let oracle = build_listing_symbol_oracle("leading-underscore", LEADING_UNDERSCORE_SOURCE);
+    assert_eq!(oracle.bin, [0xaa]);
+    let listing = std::str::from_utf8(&oracle.listing).expect("listing UTF-8");
+    let expected = format!(
+        "{:<15}  {:<8}  {:<3}  {:<4}",
+        "main._private_name_longer_than_fifteen", "1000", "prv", "lbl"
+    );
+    assert!(listing.lines().any(|line| line == expected));
+}
+
+#[test]
+fn native_listing_symbols_leading_underscore_fs_uae() {
+    // Level D: reuse the exact previously rejected source, never a reduced
+    // or renamed substitute. The helper compares whole BIN and listing bytes.
+    run_listing_symbol_case(
+        "listing-symbols-leading-underscore",
+        LEADING_UNDERSCORE_SOURCE,
+    );
 }
 
 fn run_listing_symbol_case(name: &'static str, source: &'static [u8]) {

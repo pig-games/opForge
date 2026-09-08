@@ -96,6 +96,8 @@ use vm::rollout::{
 
 #[path = "tests/native_cli_diagnostic_routing.rs"]
 mod native_cli_diagnostic_routing;
+#[path = "tests/native_compact_memo.rs"]
+mod native_compact_memo;
 #[path = "tests/native_data_expression_zero.rs"]
 mod native_data_expression_zero;
 #[path = "tests/native_data_string.rs"]

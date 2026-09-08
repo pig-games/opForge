@@ -550,6 +550,7 @@ enum NativeCliParityExecutable {
     TkpkgCpexHarness,
     ExprvmI64Harness,
     ExpressionI64Harness,
+    CompactMemoHarness,
 }
 
 struct OpforgeNativeCliStagedInputs<'a> {
@@ -1210,6 +1211,20 @@ pub(crate) fn run_expression_i64_harness_from_env(
         rust_oracle,
         "Work/build/expression-i64-values.bin",
         NativeCliParityExecutable::ExpressionI64Harness,
+    )
+}
+
+pub(crate) fn run_compact_memo_harness_from_env(
+    workspace_root: &Path,
+    case_bytes: &[u8],
+    rust_oracle: &[u8],
+) -> Result<FsUaeSmokeOutcome, String> {
+    run_i64_harness_from_env(
+        workspace_root,
+        case_bytes,
+        rust_oracle,
+        "Work/build/compact-memo-results.bin",
+        NativeCliParityExecutable::CompactMemoHarness,
     )
 }
 
@@ -2051,6 +2066,7 @@ fn opforge_native_cli_case_identity(
             NativeCliParityExecutable::TkpkgCpexHarness => b"tkpkg-cpex-harness",
             NativeCliParityExecutable::ExprvmI64Harness => b"exprvm-i64-harness",
             NativeCliParityExecutable::ExpressionI64Harness => b"expression-i64-harness",
+            NativeCliParityExecutable::CompactMemoHarness => b"compact-memo-harness",
         },
     );
     state = fnv1a64_update(state, &[0]);
@@ -2467,6 +2483,7 @@ fn run_native_cli_parity_batch_cases(
         NativeCliParityExecutable::TkpkgCpexHarness => "tkpkg_cpex_harness",
         NativeCliParityExecutable::ExprvmI64Harness => "exprvm_i64_harness",
         NativeCliParityExecutable::ExpressionI64Harness => "tkpkg_expression_i64_harness",
+        NativeCliParityExecutable::CompactMemoHarness => "tkpkg_compact_memo_harness",
     };
     let source_path = workspace_root.join(match executable {
         NativeCliParityExecutable::OpforgeCli
@@ -2480,6 +2497,9 @@ fn run_native_cli_parity_batch_cases(
         }
         NativeCliParityExecutable::ExpressionI64Harness => {
             "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_expression_i64_harness.asm"
+        }
+        NativeCliParityExecutable::CompactMemoHarness => {
+            "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_compact_memo_harness.asm"
         }
     });
     if !source_path.is_file() {
@@ -2568,6 +2588,19 @@ fn run_native_cli_parity_batch_cases(
                         .ok_or("ExprVM scalar harness requires case bytes")?,
                 )?;
             }
+            NativeCliParityExecutable::CompactMemoHarness => {
+                if cases.len() != 1 {
+                    return Err(
+                        "compact memo harness requires one dynamically generated batch".into(),
+                    );
+                }
+                stage_guest_input_bytes(
+                    &mounted_work_dir,
+                    "compact-memo-cases.bin",
+                    case.source_override
+                        .ok_or("compact memo harness requires batch bytes")?,
+                )?;
+            }
         }
         let command = match executable {
             NativeCliParityExecutable::OpforgeCli => format!(
@@ -2589,6 +2622,9 @@ fn run_native_cli_parity_batch_cases(
             }
             NativeCliParityExecutable::ExpressionI64Harness => {
                 "Work:build/tkpkg_expression_i64_harness".to_string()
+            }
+            NativeCliParityExecutable::CompactMemoHarness => {
+                "Work:build/tkpkg_compact_memo_harness".to_string()
             }
         };
         batch_script.push_str("Echo \"");
@@ -2653,7 +2689,8 @@ fn run_native_cli_parity_batch_cases(
         ],
         NativeCliParityExecutable::TkpkgCpexHarness
         | NativeCliParityExecutable::ExprvmI64Harness
-        | NativeCliParityExecutable::ExpressionI64Harness => {
+        | NativeCliParityExecutable::ExpressionI64Harness
+        | NativeCliParityExecutable::CompactMemoHarness => {
             opforge_native_cli_case_assembly_defines(&cases[0])
         }
     };
@@ -2663,7 +2700,8 @@ fn run_native_cli_parity_batch_cases(
         NativeCliParityExecutable::OpforgeCli
         | NativeCliParityExecutable::OpforgeSelfHostGenerationOne
         | NativeCliParityExecutable::ExprvmI64Harness
-        | NativeCliParityExecutable::ExpressionI64Harness => source_path,
+        | NativeCliParityExecutable::ExpressionI64Harness
+        | NativeCliParityExecutable::CompactMemoHarness => source_path,
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
             let package_bytes =
                 resolve_opforge_native_cli_package_bytes(workspace_root, &cases[0])?.ok_or_else(
@@ -2756,6 +2794,9 @@ fn run_native_cli_parity_batch_cases(
         }
         NativeCliParityExecutable::ExpressionI64Harness => {
             mounted_work_dir.join("build/tkpkg_expression_i64_harness")
+        }
+        NativeCliParityExecutable::CompactMemoHarness => {
+            mounted_work_dir.join("build/tkpkg_compact_memo_harness")
         }
     };
     if let Some(bytes) = bootstrap_executable {
@@ -3365,6 +3406,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             | "tkpkg_cpex_harness"
             | "exprvm_i64_harness"
             | "tkpkg_expression_i64_harness"
+            | "tkpkg_compact_memo_harness"
     ) {
         let amigaos_dir = workspace_root
             .join("native")

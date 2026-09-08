@@ -251,6 +251,12 @@ fn run_native_production_corpus(abort_visits: Option<u32>) {
         "byte" => owned_defines.push("OPFORGE_SOURCE_READ_BYTE_REFERENCE".into()),
         _ => panic!("OPFORGE_SOURCE_READ must be buffered or byte"),
     }
+    let compact_zero_lookup = std::env::var("OPFORGE_COMPACT_ZERO_LOOKUP").unwrap_or("memo".into());
+    match compact_zero_lookup.as_str() {
+        "memo" => {}
+        "uncached" => owned_defines.push("OPFORGE_COMPACT_ZERO_UNCACHED_REFERENCE".into()),
+        _ => panic!("OPFORGE_COMPACT_ZERO_LOOKUP must be memo or uncached"),
+    }
     let defines: Vec<&str> = owned_defines.iter().map(String::as_str).collect();
     let mut command = std::process::Command::new("python3");
     command
@@ -275,7 +281,7 @@ fn run_native_production_corpus(abort_visits: Option<u32>) {
         "CORPUS_CONFIG {}",
         serde_json::json!({"template": config, "profile_mode": profile_mode,
         "corpus_sha256": input.corpus_sha256, "package_sha256": input.package_sha256,
-        "package_mode": "explicit", "post_start_timeout_ms": 120000})
+        "package_mode": "explicit", "compact_zero_lookup": compact_zero_lookup, "post_start_timeout_ms": 120000})
     );
     let mut failures = Vec::new();
     for case in input.cases {
@@ -449,6 +455,7 @@ fn run_native_production_corpus(abort_visits: Option<u32>) {
                     "command_template": command, "package_sha256": input.package_sha256,
                     "profile_mode": profile_mode, "profile": profile,
                     "clear_mode": clear_mode, "statement_clear_mode": statement_clear_mode, "module_read_mode": module_read_mode, "source_read_mode": source_read_mode,
+                    "compact_zero_lookup": compact_zero_lookup,
                     "native_image_digest": run.native_image_digest,
                     "start_to_done_host_seconds": run.start_to_done_host_seconds,
                     "timing_poll_interval_ms": 250,

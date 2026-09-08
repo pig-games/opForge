@@ -48,6 +48,13 @@ execution. The refresh includes the affected opasm bridge/layout routines and
 the tkpkg service, pipeline, selection, operand, encoding, and compact-table
 owners; no CPU-family semantic owner moved into the generic native runtime.
 
+Performance-plan Step 35 refreshes the compact-table and pipeline snapshots for
+one bounded successful zero-shape lookup memo. The compact-table owner adds two
+private lookup/publication helpers; pipeline retains its existing routine and
+import surface while invalidating the package-derived memo at selection entry.
+The memo stores only exact mnemonic bytes from an eligible zero-shape request and a bounded package-relative result;
+CPU, instruction, opcode, and output semantics remain package-owned.
+
 Item 15 refreshed the complete audited manifest after directly porting Rust's
 CPU-neutral CSEM-v2 scalar/register projection and encoding behavior. The
 refresh covers the assembly-driver, operand-evaluation, selection, operand,
@@ -498,11 +505,13 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
 - Public entry: `findFixedProgramFromRequestV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers and the existing neutral
   scoped-owner/string/bounds helpers in the selection service.
-- Mutable state: bounded compact-reader scratch fields in tkpkg buffers and the
-  existing output scratch buffer while reconstructing prefix-compressed strings.
+- Mutable state: bounded compact-reader scratch fields in tkpkg buffers, the
+  existing output scratch buffer while reconstructing prefix-compressed strings,
+  and one bounded valid-last zero-shape successful-program memo.
 - Routine responsibility groups: exact CTBL version validation, bounded owner
   and string-table reconstruction, dialect/CPU/family scope-order selection
-  among matching rows, ambiguity rejection, and program-byte location.
+  among matching rows, ambiguity rejection, program-byte location, and bounded
+  zero-shape memo lookup/publication with cold fallback.
 - Decision: this module interprets only the frozen CPU-neutral compact wire
   format. All names, target meanings, and emitted opcode bytes remain package
   data; later semantic program versions, operand records, fixups, and branch
@@ -708,8 +717,9 @@ preserves the same 106-routine, four-import, code/BSS ownership boundary.
 - Mutable state: active package selection and CPU/family/dialect/tokenizer/
   parser locator buffers plus pending/active CPEX property values and presence.
 - Routine responsibility groups: request parsing, package hierarchy lookup,
-  CPU/family/dialect selection, tokenizer/parser locator resolution, and
-  canonical CPU execution-property staging and selection commit.
+  CPU/family/dialect selection, tokenizer/parser locator resolution, canonical
+  CPU execution-property staging, selection commit, and package-derived memo
+  invalidation before each selection attempt.
 - Inbound users: tkpkg service and package-facing setup paths.
 - Decision: retain cohesive after the Item 5.11 conditional audit. The sole
   public transaction parses one request, resolves the package-owned CPU,

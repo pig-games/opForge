@@ -23,7 +23,10 @@ CTBL_LOCAL_MODE_INDEX = 14
 CTBL_LOCAL_PROGRAM_INDEX = 16
 CTBL_LOCAL_PREVIOUS_STRING_LEN = 18
 CTBL_LOCAL_PROGRAM_TABLE_PTR = 20
-CTBL_LOCAL_BYTES = 24
+CTBL_LOCAL_MEMO_KEY_PTR = 24
+CTBL_LOCAL_MEMO_KEY_LEN = 28
+CTBL_LOCAL_MEMO_ELIGIBLE = 30
+CTBL_LOCAL_BYTES = 32
 
 	.section data, kind=data
 	.priv
@@ -61,6 +64,7 @@ findFixedProgramFromRequestV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	lea -CTBL_LOCAL_BYTES(sp), sp
 	movea.l sp, a4
+	clr.w CTBL_LOCAL_MEMO_ELIGIBLE(a4)
 	move.l a1, CTBL_LOCAL_MODE_PTR(a4)
 	move.w d0, CTBL_LOCAL_MODE_LEN(a4)
 	moveq #0, d0
@@ -95,6 +99,7 @@ findFixedProgramFromRequestV1	.block
 	subq.w #4, d7
 	or.w d3, d2
 	bne.s requestHasShape
+	move.w #1, CTBL_LOCAL_MEMO_ELIGIBLE(a4)
 	lea ZeroShapeModeKey, a1
 	move.l a1, CTBL_LOCAL_MODE_PTR(a4)
 	move.w #ZERO_SHAPE_MODE_KEY_LEN, CTBL_LOCAL_MODE_LEN(a4)
@@ -111,9 +116,15 @@ requestShapeReady
 	beq.w noMatch
 	cmp.w d7, d4
 	bhi.w noMatch
+	move.l a5, CTBL_LOCAL_MEMO_KEY_PTR(a4)
+	move.w d4, CTBL_LOCAL_MEMO_KEY_LEN(a4)
 	lea buffers.CtblChunkOffsetLo, a3
 	jsr selection.tkpkgServiceChunkPtrFromLocatorV1
 	bne.w noMatch
+.ifndef OPFORGE_COMPACT_ZERO_UNCACHED_REFERENCE
+	bsr.w tryZeroMemoV1
+	bne.w memoFound
+.endif
 	jsr selection.tkpkgServiceReadU16LeV1
 	bne.w malformed
 	cmpi.w #COMPACT_TABLE_VERSION_V1, d0
@@ -322,6 +333,10 @@ programLoop
 found
 	move.w d0, d1
 	movea.l a2, a1
+.ifndef OPFORGE_COMPACT_ZERO_UNCACHED_REFERENCE
+	bsr.w storeZeroMemoV1
+.endif
+memoFound
 	moveq #0, d0
 	bra.s return
 
@@ -343,6 +358,101 @@ return
 	.bend  ; findFixedProgramFromRequestV1
 
 	.priv
+
+.ifndef OPFORGE_COMPACT_ZERO_UNCACHED_REFERENCE
+; Probe only a validated zero-shape mnemonic. Shaped traffic never evicts it.
+; Inputs: A4 locals, A2/A6 CTBL start/end, A5/D4 mnemonic bytes/length.
+; Outputs: D0 = 1 hit (A1/D1 program), 0 cold fallback; CCR reflects D0.
+; Clobbers: D0-D3/A1/A3/CCR. CTBL cursor and request key remain intact.
+tryZeroMemoV1	.block
+	tst.w CTBL_LOCAL_MEMO_ELIGIBLE(a4)
+	beq.w miss
+	cmpi.w #buffers.COMPACT_ZERO_MEMO_KEY_CAPACITY, d4
+	bhi.w miss
+	tst.b buffers.CompactZeroMemoValid
+	beq.w miss
+	moveq #0, d0
+	move.b buffers.CompactZeroMemoKeyLen, d0
+	cmp.w d4, d0
+	bne.w miss
+	tst.w d0
+	beq.w miss
+	movea.l a5, a1
+	lea buffers.CompactZeroMemoKey, a3
+compareKey
+	move.b (a1)+, d1
+	cmp.b (a3)+, d1
+	bne.w miss
+	subq.w #1, d0
+	bne.s compareKey
+
+	move.l buffers.CompactZeroMemoProgramOffset, d2
+	moveq #0, d3
+	move.w buffers.CompactZeroMemoProgramLen, d3
+	beq.w invalid
+	add.l d2, d3
+	bcs.w invalid
+	; Package length is the existing little-endian four-byte storage field.
+	moveq #0, d0
+	move.b buffers.PackageStorageLenHi, d0
+	lsl.l #8, d0
+	move.b buffers.PackageStorageLenMidHi, d0
+	lsl.l #8, d0
+	move.b buffers.PackageStorageLenMidLo, d0
+	lsl.l #8, d0
+	move.b buffers.PackageStorageLen, d0
+	cmp.l d0, d3
+	bhi.s invalid
+	lea buffers.PackageStorage, a1
+	adda.l d2, a1
+	cmpa.l a2, a1
+	blo.s invalid
+	cmpa.l a6, a1
+	bhi.s invalid
+	move.l a6, d0
+	sub.l a1, d0
+	moveq #0, d1
+	move.w buffers.CompactZeroMemoProgramLen, d1
+	cmp.l d0, d1
+	bhi.s invalid
+	moveq #1, d0
+	rts
+invalid
+	clr.b buffers.CompactZeroMemoValid
+miss
+	moveq #0, d0
+	rts
+	.bend  ; tryZeroMemoV1
+
+; Publish only successful bounded zero-shape results; never cache output bytes.
+; Inputs: A4 locals, A1/D1.W program. Clobbers: D0/D2-D3/A3/A5/CCR.
+storeZeroMemoV1	.block
+	tst.w CTBL_LOCAL_MEMO_ELIGIBLE(a4)
+	beq.s done
+	move.w CTBL_LOCAL_MEMO_KEY_LEN(a4), d2
+	beq.s done
+	cmpi.w #buffers.COMPACT_ZERO_MEMO_KEY_CAPACITY, d2
+	bhi.s done
+	tst.w d1
+	beq.s done
+	clr.b buffers.CompactZeroMemoValid
+	move.b d2, buffers.CompactZeroMemoKeyLen
+	move.w d1, buffers.CompactZeroMemoProgramLen
+	move.l a1, d0
+	lea buffers.PackageStorage, a3
+	sub.l a3, d0
+	move.l d0, buffers.CompactZeroMemoProgramOffset
+	movea.l CTBL_LOCAL_MEMO_KEY_PTR(a4), a5
+	lea buffers.CompactZeroMemoKey, a3
+copyKey
+	move.b (a5)+, (a3)+
+	subq.w #1, d2
+	bne.s copyKey
+	move.b #1, buffers.CompactZeroMemoValid
+done
+	rts
+	.bend  ; storeZeroMemoV1
+.endif
 
 ; Find one `(owner-index, mnemonic-index)` row in the sorted compact entry
 ; table. The Rust package serializer emits this fixed-width table ordered by

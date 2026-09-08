@@ -1,0 +1,1049 @@
+{
+  "schema_version": 1,
+  "step": 35,
+  "date": "2026-09-08",
+  "status": "qualified-pending-focused-commit",
+  "identity": {
+    "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+    "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+    "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+    "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+    "native_files": {
+      "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+      "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+      "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+    }
+  },
+  "pre_screen": {
+    "plan_quality_artifact_sha256": "e9d2b3c96374119f97f4338f923430ca32acbb97c86e997c365a362baf953ac0",
+    "plan_receipt": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_plan_workflow.sh",
+        "--check-once",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md",
+        "Step35 plan quality approved before bounded compact zero memo experiment"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "11989583c7be071ac72f9bf9c690013517f58c9369ceb9098156b59778e8b3db",
+      "native_source_file_sha256": {},
+      "exit_code": 0,
+      "whole_seconds": 0.10283429082483053,
+      "sha256": "51ee38fa37d61eef03bc7ee3736119d3445bbf2c3eb3348ed54d89fa78aa11f4",
+      "log_bytes": 1750,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-plan-first.log"
+    },
+    "candidate_assembly": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step28-assemble.py"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+      },
+      "exit_code": 0,
+      "whole_seconds": 27.966154125053436,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-assembly-candidate-first.log"
+    },
+    "reference_assembly": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step35-assemble-reference.py"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+      },
+      "exit_code": 0,
+      "whole_seconds": 27.887168624904007,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-assembly-reference-first.log"
+    },
+    "source_abi_review": "independent pre-screen and final focused source/ABI review PASS"
+  },
+  "b01_runs": [
+    {
+      "name": "compact-B01-reference-screen",
+      "receipt": {
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "external_fs_uae_native_production_corpus_parity",
+          "--",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "mode": "B01-reference",
+        "environment": {
+          "OPFORGE_FS_UAE_SMOKE": "1",
+          "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+          "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+          "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+          "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+          "OPFORGE_FS_UAE_POLL_MS": "250",
+          "RUST_TEST_THREADS": "1",
+          "OPFORGE_PERFORMANCE_CORPUS": "1",
+          "OPFORGE_NATIVE_CORPUS_CASES": "B01",
+          "OPFORGE_NATIVE_CORPUS_PROFILE": "off",
+          "OPFORGE_NATIVE_CORPUS_CLEAR": "longword",
+          "OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR": "live",
+          "OPFORGE_MODULE_SCAN_READ": "buffered",
+          "OPFORGE_SOURCE_READ": "buffered",
+          "OPFORGE_SOURCE_PROFILE": "off",
+          "OPFORGE_COMPACT_ZERO_LOOKUP": "uncached"
+        },
+        "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+        "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+        "native_source_file_sha256": {
+          "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+          "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+          "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+        },
+        "exit_code": 0,
+        "whole_seconds": 81.69725204189308,
+        "sha256": "b12d5676e73abea2d37299dd72e1e62c9575b05254a32c8df015d843b2df2ffe",
+        "log_bytes": 2085,
+        "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-B01-reference-screen.log"
+      },
+      "corpus_result": {
+        "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+        "clear_mode": "longword",
+        "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+        "compact_zero_lookup": "uncached",
+        "complete": true,
+        "exact_artifacts": [
+          "Work/output.bin"
+        ],
+        "exit_status": 0,
+        "id": "B01",
+        "module_read_mode": "buffered",
+        "native_image_digest": "fnv1a64:2ee18e29474c76c5",
+        "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+        "profile": null,
+        "profile_mode": "off",
+        "source_read_mode": "buffered",
+        "start_to_done_host_seconds": 36.996669833,
+        "statement_clear_mode": "live",
+        "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+        "timing_poll_interval_ms": 250
+      }
+    },
+    {
+      "name": "compact-B01-candidate-screen",
+      "receipt": {
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "external_fs_uae_native_production_corpus_parity",
+          "--",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "mode": "B01-candidate",
+        "environment": {
+          "OPFORGE_FS_UAE_SMOKE": "1",
+          "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+          "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+          "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+          "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+          "OPFORGE_FS_UAE_POLL_MS": "250",
+          "RUST_TEST_THREADS": "1",
+          "OPFORGE_PERFORMANCE_CORPUS": "1",
+          "OPFORGE_NATIVE_CORPUS_CASES": "B01",
+          "OPFORGE_NATIVE_CORPUS_PROFILE": "off",
+          "OPFORGE_NATIVE_CORPUS_CLEAR": "longword",
+          "OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR": "live",
+          "OPFORGE_MODULE_SCAN_READ": "buffered",
+          "OPFORGE_SOURCE_READ": "buffered",
+          "OPFORGE_SOURCE_PROFILE": "off",
+          "OPFORGE_COMPACT_ZERO_LOOKUP": "memo"
+        },
+        "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+        "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+        "native_source_file_sha256": {
+          "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+          "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+          "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+        },
+        "exit_code": 0,
+        "whole_seconds": 64.61389466701075,
+        "sha256": "04c41b8b9b576cee35ac304f387f330a1e22f12b2f1c85102815ffe648b91818",
+        "log_bytes": 1963,
+        "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-B01-candidate-screen.log"
+      },
+      "corpus_result": {
+        "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+        "clear_mode": "longword",
+        "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+        "compact_zero_lookup": "memo",
+        "complete": true,
+        "exact_artifacts": [
+          "Work/output.bin"
+        ],
+        "exit_status": 0,
+        "id": "B01",
+        "module_read_mode": "buffered",
+        "native_image_digest": "fnv1a64:018cba33cd59bc8d",
+        "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+        "profile": null,
+        "profile_mode": "off",
+        "source_read_mode": "buffered",
+        "start_to_done_host_seconds": 34.447279375,
+        "statement_clear_mode": "live",
+        "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+        "timing_poll_interval_ms": 250
+      }
+    },
+    {
+      "name": "compact-B01-candidate-pair2",
+      "receipt": {
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "external_fs_uae_native_production_corpus_parity",
+          "--",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "mode": "B01-candidate",
+        "environment": {
+          "OPFORGE_FS_UAE_SMOKE": "1",
+          "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+          "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+          "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+          "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+          "OPFORGE_FS_UAE_POLL_MS": "250",
+          "RUST_TEST_THREADS": "1",
+          "OPFORGE_PERFORMANCE_CORPUS": "1",
+          "OPFORGE_NATIVE_CORPUS_CASES": "B01",
+          "OPFORGE_NATIVE_CORPUS_PROFILE": "off",
+          "OPFORGE_NATIVE_CORPUS_CLEAR": "longword",
+          "OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR": "live",
+          "OPFORGE_MODULE_SCAN_READ": "buffered",
+          "OPFORGE_SOURCE_READ": "buffered",
+          "OPFORGE_SOURCE_PROFILE": "off",
+          "OPFORGE_COMPACT_ZERO_LOOKUP": "memo"
+        },
+        "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+        "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+        "native_source_file_sha256": {
+          "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+          "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+          "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+        },
+        "exit_code": 0,
+        "whole_seconds": 64.1918776249513,
+        "sha256": "a1bb707e3a9d315925a0ff7aa0f3793d5c5f61cc177a97ab65eac47ca056b568",
+        "log_bytes": 1963,
+        "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-B01-candidate-pair2.log"
+      },
+      "corpus_result": {
+        "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+        "clear_mode": "longword",
+        "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+        "compact_zero_lookup": "memo",
+        "complete": true,
+        "exact_artifacts": [
+          "Work/output.bin"
+        ],
+        "exit_status": 0,
+        "id": "B01",
+        "module_read_mode": "buffered",
+        "native_image_digest": "fnv1a64:018cba33cd59bc8d",
+        "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+        "profile": null,
+        "profile_mode": "off",
+        "source_read_mode": "buffered",
+        "start_to_done_host_seconds": 34.428058125,
+        "statement_clear_mode": "live",
+        "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+        "timing_poll_interval_ms": 250
+      }
+    },
+    {
+      "name": "compact-B01-reference-pair2",
+      "receipt": {
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "external_fs_uae_native_production_corpus_parity",
+          "--",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "mode": "B01-reference",
+        "environment": {
+          "OPFORGE_FS_UAE_SMOKE": "1",
+          "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+          "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+          "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+          "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+          "OPFORGE_FS_UAE_POLL_MS": "250",
+          "RUST_TEST_THREADS": "1",
+          "OPFORGE_PERFORMANCE_CORPUS": "1",
+          "OPFORGE_NATIVE_CORPUS_CASES": "B01",
+          "OPFORGE_NATIVE_CORPUS_PROFILE": "off",
+          "OPFORGE_NATIVE_CORPUS_CLEAR": "longword",
+          "OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR": "live",
+          "OPFORGE_MODULE_SCAN_READ": "buffered",
+          "OPFORGE_SOURCE_READ": "buffered",
+          "OPFORGE_SOURCE_PROFILE": "off",
+          "OPFORGE_COMPACT_ZERO_LOOKUP": "uncached"
+        },
+        "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+        "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+        "native_source_file_sha256": {
+          "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+          "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+          "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+        },
+        "exit_code": 0,
+        "whole_seconds": 67.199444625061,
+        "sha256": "c6a00ac9a89a8ac7692a3f413bfb03281cbafe4bdce30d1968d6d23089bf9eb8",
+        "log_bytes": 1971,
+        "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-B01-reference-pair2.log"
+      },
+      "corpus_result": {
+        "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+        "clear_mode": "longword",
+        "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+        "compact_zero_lookup": "uncached",
+        "complete": true,
+        "exact_artifacts": [
+          "Work/output.bin"
+        ],
+        "exit_status": 0,
+        "id": "B01",
+        "module_read_mode": "buffered",
+        "native_image_digest": "fnv1a64:2ee18e29474c76c5",
+        "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+        "profile": null,
+        "profile_mode": "off",
+        "source_read_mode": "buffered",
+        "start_to_done_host_seconds": 37.234600708,
+        "statement_clear_mode": "live",
+        "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+        "timing_poll_interval_ms": 250
+      }
+    },
+    {
+      "name": "compact-B01-reference-pair3",
+      "receipt": {
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "external_fs_uae_native_production_corpus_parity",
+          "--",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "mode": "B01-reference",
+        "environment": {
+          "OPFORGE_FS_UAE_SMOKE": "1",
+          "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+          "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+          "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+          "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+          "OPFORGE_FS_UAE_POLL_MS": "250",
+          "RUST_TEST_THREADS": "1",
+          "OPFORGE_PERFORMANCE_CORPUS": "1",
+          "OPFORGE_NATIVE_CORPUS_CASES": "B01",
+          "OPFORGE_NATIVE_CORPUS_PROFILE": "off",
+          "OPFORGE_NATIVE_CORPUS_CLEAR": "longword",
+          "OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR": "live",
+          "OPFORGE_MODULE_SCAN_READ": "buffered",
+          "OPFORGE_SOURCE_READ": "buffered",
+          "OPFORGE_SOURCE_PROFILE": "off",
+          "OPFORGE_COMPACT_ZERO_LOOKUP": "uncached"
+        },
+        "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+        "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+        "native_source_file_sha256": {
+          "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+          "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+          "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+        },
+        "exit_code": 0,
+        "whole_seconds": 66.95463358401321,
+        "sha256": "9a90907091e8b72577ec9e75c38f203acaef52ca87ba82bed8c07144417f489e",
+        "log_bytes": 1971,
+        "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-B01-reference-pair3.log"
+      },
+      "corpus_result": {
+        "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+        "clear_mode": "longword",
+        "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+        "compact_zero_lookup": "uncached",
+        "complete": true,
+        "exact_artifacts": [
+          "Work/output.bin"
+        ],
+        "exit_status": 0,
+        "id": "B01",
+        "module_read_mode": "buffered",
+        "native_image_digest": "fnv1a64:2ee18e29474c76c5",
+        "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+        "profile": null,
+        "profile_mode": "off",
+        "source_read_mode": "buffered",
+        "start_to_done_host_seconds": 36.914197583,
+        "statement_clear_mode": "live",
+        "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+        "timing_poll_interval_ms": 250
+      }
+    },
+    {
+      "name": "compact-B01-candidate-pair3",
+      "receipt": {
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "external_fs_uae_native_production_corpus_parity",
+          "--",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "mode": "B01-candidate",
+        "environment": {
+          "OPFORGE_FS_UAE_SMOKE": "1",
+          "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+          "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+          "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+          "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+          "OPFORGE_FS_UAE_POLL_MS": "250",
+          "RUST_TEST_THREADS": "1",
+          "OPFORGE_PERFORMANCE_CORPUS": "1",
+          "OPFORGE_NATIVE_CORPUS_CASES": "B01",
+          "OPFORGE_NATIVE_CORPUS_PROFILE": "off",
+          "OPFORGE_NATIVE_CORPUS_CLEAR": "longword",
+          "OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR": "live",
+          "OPFORGE_MODULE_SCAN_READ": "buffered",
+          "OPFORGE_SOURCE_READ": "buffered",
+          "OPFORGE_SOURCE_PROFILE": "off",
+          "OPFORGE_COMPACT_ZERO_LOOKUP": "memo"
+        },
+        "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+        "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+        "native_source_file_sha256": {
+          "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+          "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+          "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+        },
+        "exit_code": 0,
+        "whole_seconds": 64.2452900831122,
+        "sha256": "61772fee30d2e90b6a97c4f6479e574e1ad3d64a66a867293c843990ce82c022",
+        "log_bytes": 1963,
+        "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-B01-candidate-pair3.log"
+      },
+      "corpus_result": {
+        "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+        "clear_mode": "longword",
+        "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+        "compact_zero_lookup": "memo",
+        "complete": true,
+        "exact_artifacts": [
+          "Work/output.bin"
+        ],
+        "exit_status": 0,
+        "id": "B01",
+        "module_read_mode": "buffered",
+        "native_image_digest": "fnv1a64:018cba33cd59bc8d",
+        "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+        "profile": null,
+        "profile_mode": "off",
+        "source_read_mode": "buffered",
+        "start_to_done_host_seconds": 34.384722292,
+        "statement_clear_mode": "live",
+        "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+        "timing_poll_interval_ms": 250
+      }
+    }
+  ],
+  "summary": {
+    "uncached_seconds": [
+      36.996669833,
+      37.234600708,
+      36.914197583
+    ],
+    "memo_seconds": [
+      34.447279375,
+      34.428058125,
+      34.384722292
+    ],
+    "uncached_median_seconds": 36.996669833,
+    "uncached_range_seconds": [
+      36.914197583,
+      37.234600708
+    ],
+    "memo_median_seconds": 34.428058125,
+    "memo_range_seconds": [
+      34.384722292,
+      34.447279375
+    ],
+    "median_delta_seconds": 2.568611707999999,
+    "median_reduction_percent": 6.942818690424046,
+    "poll_interval_ms": 250,
+    "paired_poll_uncertainty_percent": 1.3514729900203448,
+    "retention_threshold_percent": 5,
+    "screen_passed": true,
+    "artifacts": "all six exact Work/output.bin with explicit guest exit 0 and fresh completion",
+    "stable_images": {
+      "uncached": "fnv1a64:2ee18e29474c76c5",
+      "memo": "fnv1a64:018cba33cd59bc8d"
+    },
+    "uncached_range_percent_of_median": 0.8660323387112208,
+    "memo_range_percent_of_median": 0.18170378001823917,
+    "retention_threshold_basis": "max(5%, each observed mode range, 500ms paired polling uncertainty/control median)"
+  },
+  "focused_evidence": {
+    "host_oracle": {
+      "proof_scope": "Live RuntimeModelCore CTBL decode, alias/pipeline resolution, encode-candidate execution, unique emitted-byte-to-program mapping, 24-row request/lifecycle ABI oracle, and live Rust CLI nine-byte mixed-statement artifact.",
+      "first_attempt": {
+        "outcome": "failed-after-compile",
+        "reason": "mixed CLI fixture used unsupported column-zero instruction and inline-label syntax; no product defect",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "native_compact_memo_",
+          "--",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "mode": "host",
+        "environment": {},
+        "exit_code": 101,
+        "whole_seconds": 18.27939908299595,
+        "sha256": "76121b871164ef1d86bdeb63496657c758082f774f56b614a04446624c4cd7ff",
+        "log_bytes": 3874,
+        "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-host-first.log"
+      },
+      "corrected_attempt": {
+        "outcome": "passed-3-tests",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "native_compact_memo_",
+          "--",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "mode": "host",
+        "environment": {},
+        "exit_code": 0,
+        "whole_seconds": 3.177680667024106,
+        "sha256": "3ed084296db1b4a7cce8e92721505fa94fef86598aa97feedadbb9e0a9ae7ef5",
+        "log_bytes": 905,
+        "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-host-second.log",
+        "mixed_cli_rust_artifact_hex": "eaa912ead001eaea60"
+      }
+    },
+    "native_lifecycle_and_mixed_cli": {
+      "outcome": "passed-3-tests-including-2-actual-guests",
+      "proof_scope": "Fresh challenged guest completion, explicit exit zero, and byte-exact live Rust output for the 24-row lifecycle batch and mixed CLI artifact. The batch covers bounds/no-match, repeat/case/mnemonic behavior, shaped bypass retention, length fallbacks, CPU selection success/failure, shifted in-bounds package reload, and failed load.",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_compact_memo_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "mode": "native",
+      "environment": {
+        "OPFORGE_FS_UAE_SMOKE": "1",
+        "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+        "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+        "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+        "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+        "OPFORGE_FS_UAE_POLL_MS": "250",
+        "RUST_TEST_THREADS": "1"
+      },
+      "exit_code": 0,
+      "whole_seconds": 122.07882783305831,
+      "sha256": "a62f2151546793da76b40207e0da567bc62efa9233f04e4969c460aa069a107c",
+      "log_bytes": 565,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-lifecycle-native-first.log"
+    },
+    "native_malformed_compact_program": {
+      "outcome": "passed-1-test-with-2-actual-guests",
+      "proof_scope": "Unchanged fail-closed native parity proof for compact fixed-program version and opcode mutations, each with fresh guest protocol and expected rejection.",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "external_fs_uae_native_compact_fixed_opcode_rejects_version_and_opcode_mutations",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "mode": "native",
+      "environment": {
+        "OPFORGE_FS_UAE_SMOKE": "1",
+        "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+        "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+        "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+        "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+        "OPFORGE_FS_UAE_POLL_MS": "250",
+        "RUST_TEST_THREADS": "1"
+      },
+      "exit_code": 0,
+      "whole_seconds": 122.19893904193304,
+      "sha256": "17819a3aab41982b74af47a2344b3776e9a3bc3796962d1e352d0a88e8eff8c1",
+      "log_bytes": 455,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-malformed-native-first.log"
+    },
+    "b03_candidate": {
+      "outcome": "passed",
+      "proof_scope": "Fresh B03 completion with explicit guest exit zero and exact Work/output.bin; no speedup ratio because the historical Step 34 reference timed out.",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "external_fs_uae_native_production_corpus_parity",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "mode": "B03-candidate",
+      "environment": {
+        "OPFORGE_FS_UAE_SMOKE": "1",
+        "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+        "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+        "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+        "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+        "OPFORGE_FS_UAE_POLL_MS": "250",
+        "RUST_TEST_THREADS": "1",
+        "OPFORGE_PERFORMANCE_CORPUS": "1",
+        "OPFORGE_NATIVE_CORPUS_CASES": "B03",
+        "OPFORGE_NATIVE_CORPUS_PROFILE": "off",
+        "OPFORGE_NATIVE_CORPUS_CLEAR": "longword",
+        "OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR": "live",
+        "OPFORGE_MODULE_SCAN_READ": "buffered",
+        "OPFORGE_SOURCE_READ": "buffered",
+        "OPFORGE_SOURCE_PROFILE": "off",
+        "OPFORGE_COMPACT_ZERO_LOOKUP": "memo"
+      },
+      "exit_code": 0,
+      "whole_seconds": 67.6757624160964,
+      "sha256": "4b0405c8b1d107f24a6cf157dd18528ff78347656a74de25b0be5669fe937889",
+      "log_bytes": 1963,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-B03-candidate-first.log",
+      "corpus_result": {
+        "case_sha256": "be04f9426a0ffb55278cdb05d1d604f5895e85a2cee0b6894ac43c9df1359acf",
+        "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+        "native_image_digest": "fnv1a64:018cba33cd59bc8d",
+        "start_to_done_host_seconds": 37.735005375,
+        "timing_poll_interval_ms": 250,
+        "complete": true,
+        "exit_status": 0,
+        "exact_artifacts": [
+          "Work/output.bin"
+        ]
+      }
+    },
+    "b10_candidate": {
+      "outcome": "fresh-start-timeout",
+      "proof_scope": "Fresh START was observed, but no DONE marker, result, guest exit, native image digest, or artifact proof was produced. B10 remains open wider-corpus debt.",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "external_fs_uae_native_production_corpus_parity",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "mode": "B10-candidate",
+      "environment": {
+        "OPFORGE_FS_UAE_SMOKE": "1",
+        "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+        "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+        "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+        "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+        "OPFORGE_FS_UAE_POLL_MS": "250",
+        "RUST_TEST_THREADS": "1",
+        "OPFORGE_PERFORMANCE_CORPUS": "1",
+        "OPFORGE_NATIVE_CORPUS_CASES": "B10",
+        "OPFORGE_NATIVE_CORPUS_PROFILE": "off",
+        "OPFORGE_NATIVE_CORPUS_CLEAR": "longword",
+        "OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR": "live",
+        "OPFORGE_MODULE_SCAN_READ": "buffered",
+        "OPFORGE_SOURCE_READ": "buffered",
+        "OPFORGE_SOURCE_PROFILE": "off",
+        "OPFORGE_COMPACT_ZERO_LOOKUP": "memo"
+      },
+      "post_start_timeout_ms": 120000,
+      "poll_interval_ms": 250,
+      "exit_code": 101,
+      "whole_seconds": 149.81112891691737,
+      "sha256": "76f5035e3f60113161dfcced990749b02efe13150842ec3612b6de0b36ea7f6b",
+      "log_bytes": 2729,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-B10-candidate-first.log"
+    },
+    "final_rust_quality_gate": {
+      "outcome": "passed",
+      "command": [
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "mode": "host",
+      "environment": {},
+      "exit_code": 0,
+      "whole_seconds": 273.45939199998975,
+      "sha256": "bc836c1e988e710f89d6b36e1b6cca9a62703fde57a655d62a072d0c6b593e52",
+      "log_bytes": 344064,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-quality-first.log"
+    },
+    "pending": [
+      "staged validation",
+      "workflow validation",
+      "compliance review",
+      "focused commit"
+    ]
+  },
+  "cost": {
+    "persistent_record_bytes": 40,
+    "alignment_bytes": 3,
+    "additional_clear_and_bss_bytes": 43,
+    "helper_stack_bytes": 8,
+    "package_storage_control_block_offset": 12812,
+    "control_block_offset_limit": 65536,
+    "layout_abi_capacity_verified": true,
+    "qualification": "focused lifecycle and malformed native proof plus final Rust quality gate passed; staged native/workflow/compliance/commit work pending"
+  },
+  "limits": [
+    "The six B01 runs plus focused lifecycle/malformed proof, B03 completion, and the final Rust quality gate qualify retention of this mechanism; staged native/workflow/compliance gates and commit remain pending.",
+    "B03 has no valid speedup ratio because its historical Step 34 reference timed out.",
+    "B10 produced fresh START only and remains open wider-corpus debt; no B10 completion, guest exit, native image digest, artifact proof, or timing result is claimed.",
+    "No total end-to-end Phase A gain is inferred."
+  ],
+  "cumulative_context": {
+    "source_dos_reads": {
+      "before": 1608,
+      "after": 8,
+      "reduction_percent": 99.5025,
+      "unchanged_this_step": true
+    },
+    "step31_test_profile_map_runtime_reduction_percent_range": [
+      63.17,
+      77.51
+    ],
+    "unchanged_this_step": true,
+    "combined_gain": null,
+    "total_phase_a_runtime": "unmeasured"
+  },
+  "layout_and_capacity": {
+    "status": "passed",
+    "assembled_symbols": {
+      "ControlBlockV1": 0,
+      "NextRequestIdHi": 12768,
+      "old_clear_end_after_byte": 12769,
+      "CompactZeroMemoValid": 12772,
+      "CompactZeroMemoKey": 12780,
+      "PackageStateClearEnd": 12812,
+      "PackageStorage": 12812,
+      "PackageStateClearStart": 10060,
+      "package_state_clear_byte_count": 2752,
+      "package_storage_control_block_offset": 12812
+    },
+    "cost": {
+      "memo_payload_bytes": 40,
+      "alignment_bytes": 3,
+      "additional_clear_and_bss_bytes": 43,
+      "additional_local_stack_bytes": 8
+    },
+    "layout_receipt": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step35-layout.py"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+      },
+      "exit_code": 0,
+      "whole_seconds": 7.851795082911849,
+      "sha256": "7306061286e24037284189fa414f7bb4110d51a826b8f479fb9922e8ebff5180",
+      "log_bytes": 1476,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-layout-first.log"
+    },
+    "labels_sha256": "153575f9e5eb01e73e1e5e4a07934818d6b2661c2e90d0763fee5ed512306951",
+    "capacity_receipt": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+      },
+      "exit_code": 0,
+      "whole_seconds": 2.804695582948625,
+      "sha256": "4ad66dafd2f5da455b2fca322c866485c067d9d954248bce232f6f6f64db540d",
+      "log_bytes": 1339,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-capacity-final.log"
+    },
+    "capacity_values": {
+      "loadable_source_bytes": 1732309,
+      "processed_rows": 94827,
+      "processed_bytes": 3585200,
+      "imports": 426,
+      "public_declarations": 6516,
+      "public_name_bytes": 128183
+    },
+    "harness_source_sha256": "314847a4459af16750633aad771c7181af740f1408351fbb54937a87120b366b",
+    "harness_assembly_receipt": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step35-assemble-harness.py"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+      },
+      "exit_code": 0,
+      "whole_seconds": 7.744427040917799,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-harness-assembly-first.log"
+    },
+    "harness_formatter_receipt": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step35-format-harness.py"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+      },
+      "exit_code": 0,
+      "whole_seconds": 0.6440789161715657,
+      "sha256": "1fb39652f62ff11b2b3aa267551d5c144a7687831b07c637cda85780cd94cb6e",
+      "log_bytes": 54,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-harness-format-first.log"
+    },
+    "source_review": "PASS after API status/diagnostic corrections"
+  },
+  "final_validation": {
+    "non_lsp_rust": {
+      "command": [
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "28eec707d2b6cfbe269719c0067313380f4f151f9fc598fe3f86f1b95f58e20f",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+      },
+      "exit_code": 0,
+      "whole_seconds": 273.45939199998975,
+      "sha256": "bc836c1e988e710f89d6b36e1b6cca9a62703fde57a655d62a072d0c6b593e52",
+      "log_bytes": 344064,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-quality-first.log"
+    },
+    "staged_native": {
+      "command": [
+        "python3",
+        "scripts/workflow/run_native_porting_quality_gate.py",
+        "--staged",
+        "--metadata",
+        "documentation/plans/slices/native-performance-compact-zero-memo-v1.toml"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "c932827d4286ad80bb9e777e93e9285f1597f4a3944cff34d9081cd4711ed955",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_compact_memo_harness.asm": "314847a4459af16750633aad771c7181af740f1408351fbb54937a87120b366b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+      },
+      "exit_code": 0,
+      "whole_seconds": 5.903748499928042,
+      "sha256": "c801853d776bc514177023a0002858f3a846eb632f28f20c57c4e9ccd4c5dfdc",
+      "log_bytes": 4093,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-staged-native-first.log"
+    },
+    "workflow_first_stale_inventory_failure": {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "c932827d4286ad80bb9e777e93e9285f1597f4a3944cff34d9081cd4711ed955",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_compact_memo_harness.asm": "314847a4459af16750633aad771c7181af740f1408351fbb54937a87120b366b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+      },
+      "exit_code": 2,
+      "whole_seconds": 24.17536187497899,
+      "sha256": "0f00487330f5389df0d1225be904c2c2b2ee3c8fc6680f2a381e68ddc1ac7469",
+      "log_bytes": 3223,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-workflow-first.log"
+    },
+    "workflow_after_inventory_refresh": {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "c932827d4286ad80bb9e777e93e9285f1597f4a3944cff34d9081cd4711ed955",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_compact_memo_harness.asm": "314847a4459af16750633aad771c7181af740f1408351fbb54937a87120b366b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+      },
+      "exit_code": 0,
+      "whole_seconds": 28.316666416823864,
+      "sha256": "5ae35d6d4e7e7c732e2cc61d0d014ab40f145a8dbdcd1819cf4fc66016cdf0df",
+      "log_bytes": 6495,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-workflow-second.log"
+    },
+    "artifact_bundle": {
+      "command": [
+        "python3",
+        "scripts/workflow/check_workflow_artifact_bundle.py",
+        "plan",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "c932827d4286ad80bb9e777e93e9285f1597f4a3944cff34d9081cd4711ed955",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_compact_memo_harness.asm": "314847a4459af16750633aad771c7181af740f1408351fbb54937a87120b366b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+      },
+      "exit_code": 0,
+      "whole_seconds": 0.03732929192483425,
+      "sha256": "8f8915466fadb5eebd1849c0f610fbdffec71a663c809845ba42dc0bf12af7b9",
+      "log_bytes": 123,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-artifact-first.log"
+    },
+    "plan_workflow": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_plan_workflow.sh",
+        "--check-once",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md",
+        "Step35 completed bounded compact zero memo qualification and retained all A-close debt"
+      ],
+      "mode": "host",
+      "environment": {},
+      "code_commit": "4c1e7869902bcea6288dd4945c0c8b26084bfb96",
+      "native_source_aggregate_sha256": "c932827d4286ad80bb9e777e93e9285f1597f4a3944cff34d9081cd4711ed955",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_compact_memo_harness.asm": "314847a4459af16750633aad771c7181af740f1408351fbb54937a87120b366b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "b5ecd0463fbc58cf4fb118c447518a012811b4e0b7920fcdf9755415c009a82b",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm": "24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a2802bc7aae4a2d4842d2b979d091a36195bf212ebbb1c63177d239cbdc54afa"
+      },
+      "exit_code": 0,
+      "whole_seconds": 0.10075987502932549,
+      "sha256": "27a0b00f34c9ae570f3c861ac7a0f1557650f4924b7d0c92c3d13376d24e60d2",
+      "log_bytes": 1778,
+      "log_path": "target/workflow-logs/step35-compact-zero-memo/compact-plan-final.log"
+    },
+    "diff_check": "PASS",
+    "inventory_refresh": [
+      "documentation/architecture/native-runtime-boundary-inventory-v0_1.md",
+      "scripts/workflow/check_native_runtime_boundary_inventory.py"
+    ]
+  },
+  "final_independent_compliance": {
+    "status": "PASS",
+    "reviewer": "step28_scalar_review",
+    "plan_sha256": "21b02c8e1be16e9af3a1010495c14f87b150e12a51d45306d1d97a00fdbae6f7",
+    "date": "2026-09-08"
+  }
+}

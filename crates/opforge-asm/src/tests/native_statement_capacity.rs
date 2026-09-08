@@ -66,7 +66,7 @@ fn native_item38_full_product_source_line_budget_contract() {
         "full-product source line exceeds the native 512-byte owner"
     );
     assert_eq!(
-        loadable_source_bytes, 1_729_053,
+        loadable_source_bytes, 1_732_309,
         "canonical loadable source-byte budget changed"
     );
     assert!(
@@ -88,11 +88,11 @@ fn native_item38_full_product_source_line_budget_contract() {
     );
     assert_eq!(
         graph.lines.len(),
-        94_708,
+        94_827,
         "Rust-processed row budget changed"
     );
     assert_eq!(
-        rust_processed_source_bytes, 3_582_109,
+        rust_processed_source_bytes, 3_585_200,
         "Rust-processed byte budget changed"
     );
     assert!(
@@ -345,11 +345,11 @@ fn native_item38_full_product_public_export_budget_contract() {
         public_declaration_name_bytes,
     );
     assert_eq!(
-        public_declaration_count, 6_506,
+        public_declaration_count, 6_516,
         "canonical public-declaration budget changed"
     );
     assert_eq!(
-        public_declaration_name_bytes, 127_952,
+        public_declaration_name_bytes, 128_183,
         "canonical packed public-export name budget changed"
     );
     let constants = fs::read_to_string(amigaos.join("opforge-cli/constants.asm"))

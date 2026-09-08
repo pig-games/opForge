@@ -63,6 +63,7 @@ IdentifierTooLongText
 ; - A1/D1: runtime failure text pointer/length when D0 is runtime error.
 ; ---------------------------------------------------------------------------
 tkpkgPipelineSetActiveV1	.block
+	clr.b buffers.CompactZeroMemoValid  ; every selection attempt may change package-derived context
 	btst #0, buffers.PackageStateFlags  ; require load_package before selecting any runtime pipeline
 	bne.s parseRequest
 	lea NoPackageText, a1

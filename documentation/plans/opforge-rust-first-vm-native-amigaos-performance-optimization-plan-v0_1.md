@@ -104,7 +104,7 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 35 of 44 · Item A-close — qualify early wins and clear the recorded failure debt.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 36 of 45 · Item A-close — qualify early wins and clear the recorded failure debt.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -651,10 +651,28 @@ improvement does not close a whole finding; closure review is still required.
   - Definition of done: both cases have authoritative terminal receipts and honest independent dispositions, the current next-action decision is recorded, workflow/compliance passes and the focused commit is complete. This does not close either B10's five-completed-run censored-baseline requirement or Phase A.
   - Completion evidence (2026-09-08; focused result commit pending): exactly one current profile-off B03 attempt and one current profile-off B10 attempt used the unchanged 120000ms post-start boundary, 250ms polling, longword/live/buffered modes, shipped package and actual live Rust case oracle. Both produced a fresh `CORPUS_START`, then timed out without `CORPUS_DONE`, `CORPUS_RESULT`, explicit guest exit or artifact comparison; both remain incomplete and supply no runtime or parity result. The result ledger retains their exact commands, environments, identities and terminal receipts. A bounded one-entry successful CTBL lookup memo experiment is selected ahead of listing repair from static package/source work evidence only; it is not attributed as either timeout cause and has no measured gain. The B10 five-completed-candidate rule, every wider Phase A debt and A-close remain unchanged.
 
-- [ ] Step 35 · Item A-close — Qualify early wins and clear the recorded failure debt
+- [x] Step 35 · Item A-compact-zero-memo — Reuse the last successful zero-operand compact program lookup
+  - Source requirement or finding IDs: SR-EARLY, SR-MEAS, SR-PAR; Step34 current B03/B10 timeouts and static CTBL work audit. Both remain incomplete, and the proposed mechanism is not established as their cause. Active `AGENTS.md`, plan-authoring skill and native parity/68000/FS-UAE rules remain binding.
+  - Expected files: `native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm`, `tkpkg_buffers.asm`, `tkpkg_pipeline.asm`; a focused `test-harnesses/tkpkg/tkpkg_compact_memo_harness.asm`; `crates/opforge-asm/src/tests/native_compact_memo.rs`, existing test-module/FS-UAE harness and production-corpus wiring, measured source-capacity expectations, this plan/sidecar, one slice manifest and result MD/JSON. Adjust only affected inventory/formatter metadata when required.
+  - Dependencies/worktree: A-throughput-refresh committed and safely integrated; use the warm worktree, preserve the integration worktree's pending CLI rename, and do not push. This item precedes listing repair and A-close; all recorded debt remains binding.
+  - Rust reference boundary: `crates/opforge-package/src/package/codec.rs` decodes actual package CTBL programs; actual Rust model selection/CLI output remains authoritative. Native boundary: `tkpkg_compact_table.asm::findFixedProgramFromRequestV1`, package-derived buffers and public `tkpkgPipelineSetActiveV1`. This reuses a selected program, never encoded output or CPU-specific semantics.
+  - Steps and boundaries: Add one successful-result memo eligible only when the validated request has zero shape counts and the existing code chooses its canonical mode. Key exact mnemonic bytes plus length, bounded to 32 bytes; case variants safely miss and use the unchanged casefold lookup. Shaped, oversized, missing and malformed requests retain the original lookup behavior and do not publish or evict the memo. This allows shaped instructions between repeated zero-operand requests without thrashing the entry. Store only a package-relative program offset and nonzero length; validate the complete request shape/window/mnemonic before probing, check offset-plus-length overflow and package length as well as the current CTBL extent on a hit, invalidate a corrupt memo and fall through the unchanged cold parser, publish validity last, and preserve caller registers/status/stack behavior. Keep all memo storage inside the existing package-state clear range and clear validity at public pipeline-selection entry before every fallible operation, covering successful/failed selection and same-address package reload. Preserve the existing service-init contract. No package mutation between load and use is introduced or supported.
+  - Bounded cost: fixed mnemonic storage plus offset/length/validity metadata, no allocation, sorting, unbounded table, per-opcode I/O or new instrumentation. Record exact BSS, stack, source and native-image changes and verify the public 16-bit control-block window remains valid. An assembly-time `OPFORGE_COMPACT_ZERO_UNCACHED_REFERENCE` bypass and explicit corpus selector may compare the same source with memo hit/store disabled; reference and candidate share storage/clear costs and all other modes. Retain this distinction in results; do not call the instrument-free control the exact historical binary.
+  - Cheap screen before expanded proof: implement production first, inspect source/ABI/lifecycle and assemble, then run one completed uncached-reference B01 followed by one candidate B01 through the unchanged fresh live-Rust corpus proof. Use frozen input/package/argv, profile off, longword/live/buffered modes, 120000ms post-start timeout and 250ms polling. Continue only if both are exact zero-exit completions and candidate START-to-DONE time improves by more than max(5%, the 500ms paired polling uncertainty divided by control time). This first pair is screening only, not retention evidence. If either fails or no clear gain appears, stop expansion, retain failure/no-go receipts and revert the candidate unless one bounded, independently reviewed first-divergence correction is justified; never blindly repeat a failed run.
+  - Retention proof after positive screen: use a dedicated native harness patterned after the existing CPEX loader/selection harness to emit actual returned program bytes/status to a binary artifact, with live Rust-decoded actual package expectations. Cover repeat zero key, changed zero mnemonic, shaped explicit-mode bypass with distinct expected program, case variant and over-cap fallback, successful pipeline selection with the same mnemonic resolving to distinct program bytes, failed reselection followed by an old-context request, successful same-address reload with a second valid package yielding a distinct result, and failed reload/malformed table. Use genuine API transitions and package fixtures; do not mutate loaded package bytes merely to demonstrate a hit. Level A establishes actual package and selection/output expectations; Level B independently reviews eligibility, bounds, invalidation, ABI and storage; Level D proves complete fresh guest outcomes and bytes. Reuse existing malformed CTBL/version/opcode controls where they directly apply. A small complete mixed-instruction CLI fixture must match the same-case live Rust output. Attempt all planned cases even after an individual failure.
+  - Before/after and stop/go: after the screen, add two B01 pairs in candidate/control then control/candidate order (three total per mode); report raw START-to-DONE samples, medians/ranges, 250ms polling uncertainty, complete artifact identities, stable per-mode native-image digests and whole-test cost separately. Require zero mismatches and median benefit greater than max(5%, observed range/noise, paired polling uncertainty); otherwise revert/defer. Only after focused proof and benefit pass, attempt one current B03 and one B10 independently at the unchanged 120000ms limit; timeouts remain debt and never provide speedup ratios. Existing B10 five-completed-candidate or matched non-regression closure remains at A-close. Report step and cumulative scoped gains separately; total end-to-end gain remains unmeasured without a matched initial/current series.
+  - Gate tier: screened native performance experiment with mandatory retention checks; wider certainty and all nonterminal groups remain at A-close.
+  - Required focused gates: source/ABI/lifecycle review; both reference/candidate native assembly; focused Level A/B/D package/selection/mixed-CLI proof, malformed controls, measured source and ABI capacity, native formatter/staged/architecture/inventory and exact receipt checks. Fresh challenge/start/completion, explicit guest exit, actual in-memory Rust oracle and ephemeral cleanup remain fail-closed for every case; actual process-negative CLI cases require their exact nonzero guest exit and diagnostic scope; harness-contained negative API rows require exact returned status/diagnostic bytes as data and explicit guest exit zero for successful proof.
+  - Full quality gates: one final non-LSP `scripts/workflow/run_rust_quality_gate.sh` after focused checks for the Rust runner/test changes; workflow/artifact/plan validators, staged native slice and independent plan compliance before commit. Do not restart live gates or rerun a broad gate for receipt-only edits. Full corpus/nonterminal native qualification stays at A-close.
+  - Plan-compliance review evidence: independent PASS must inspect the production eligibility/key/result/invalidation boundaries, all accepted and rejected attempts, exact proof levels and inputs, measured gain/noise and memory cost, required gate receipts and preserved failure debt. Plan-quality PASS is required before production execution.
+  - Commit outcome: one focused `perf(native): memoize zero-operand compact lookups` if retained, or a focused documented no-go with candidate production reverted; safe local integration only. Commit this item before the next begins.
+  - Definition of done: the candidate has a supported retain/revert decision, required proof/gates and final independent compliance pass, result evidence and focused commit are complete, and all wider Phase A debt remains open until independently qualified.
+  - Completion evidence (2026-09-08; focused commit requires final gated compliance): retain the zero-shape memo after three alternating B01 pairs, each with fresh exact artifacts and guest exit zero. Median START-to-DONE improves from 36.996669833s to 34.428058125s (6.9428%); ranges and paired polling uncertainty remain below the 5% retention threshold. B03 now completes in 37.735005375s with exact live Rust BIN parity on the same memo image; its Step34 timeout stays historical evidence, not a denominator for a speedup ratio. The independent B10 candidate again times out at the unchanged 120000ms post-start boundary without completion, explicit guest exit or artifacts, and remains open under the existing five-completed-candidate/matched-control A-close rule. The 24-command lifecycle batch, mixed CLI and unchanged malformed version/opcode controls pass fresh native proof. Source/ABI review, assembled layout (40-byte record plus 3-byte alignment; 8 extra stack bytes; package CB offset 12812), six capacity checks, formatter and the single final non-LSP Rust gate pass. Final staged/workflow and independent compliance receipts govern the focused commit. Current B03 timeout debt is superseded by this exact completion; every other Phase A debt and LSP-last remain unchanged. Total Phase A runtime gain remains unmeasured.
+
+- [ ] Step 36 · Item A-close — Qualify early wins and clear the recorded failure debt
   - Source requirement or finding IDs: SR-PAR, SR-MEAS, SR-TERM.
   - Expected files: qualification results, failure ledger and plan receipts.
-  - Dependencies/worktree: A-triage, A-map-key-cache, A-listing-symbol-footer, A-leading-underscore-label, A-throughput-refresh, A-branch, A-b10-localize, A-source-buffer, A-include-stdout, A-mos-abs32, A-layout-size, A-hex-records, A-map-symbols, A-listing-sections, A-listing-visibility-source-rows, A-cpu-execution-contract, A-scalar-i64, A-listing-reservation, A-bss-image-origin and all resulting repair/optimization commits; no Phase B starts before PASS.
+  - Dependencies/worktree: A-triage, A-map-key-cache, A-listing-symbol-footer, A-leading-underscore-label, A-throughput-refresh, A-compact-zero-memo, A-branch, A-b10-localize, A-source-buffer, A-include-stdout, A-mos-abs32, A-layout-size, A-hex-records, A-map-symbols, A-listing-sections, A-listing-visibility-source-rows, A-cpu-execution-contract, A-scalar-i64, A-listing-reservation, A-bss-image-origin and all resulting repair/optimization commits; no Phase B starts before PASS.
   - Steps and boundaries: After focused repairs are green, run completed frozen B01–B10 controls/candidates, non-LSP Rust and all current nonterminal native groups, preserving attempt-all behavior. Resolve every non-LSP prior failure with proof or remain blocked, including the pre-existing `INCLUDE-LINE 1 1` stdout divergence exposed by Step19; LSP remains deferred to LSP-close. Do not extend timeout or suppress a test to turn it green. Report provisional accepted/reverted candidates and development-loop cost.
   - Additional recorded output debt: Step30 closed the BSS-origin BIN invariant, including placed and unplaced BSS below CODE and nonzero BSS alignment. ORG/listing generated-footer parity remains open and must be repaired in its own numbered, reviewed item before A-close.
   - Additional recorded output debt: zero-image non-SREC requests still fail at the native CLI emitter guard (OPC-NCLI009), as exposed by Step29 BSS-only listing/BIN cases. Mixed code/BSS reservation proof does not close this boundary; any repair needs its own numbered, reviewed item before A-close.
@@ -672,11 +690,12 @@ improvement does not close a whole finding; closure review is still required.
 
 ### Phase B — residual measured work and complete profiling
 
-- [ ] Step 36 · Item C0 — Dispose of the old roadmap and select only residual winners
+- [ ] Step 37 · Item C0 — Dispose of the old roadmap and select only residual winners
   - Source requirement or finding IDs: SR-EARLY, SR-RF, SR-MEAS, SR-ACC, F1–F11.
   - Expected files: decision ledger, this plan and baseline annotations if findings change.
   - Dependencies/worktree: A-close PASS and Item 10 decision; inserted candidates run serially from reviewed integration commits.
   - Steps and boundaries: For every row in the legacy mapping below record retained, rejected, deferred with reason, or selected with positive current evidence. Re-rank using remaining cost, implementation/proof effort, expected repeated-run savings and memory risk. Insert one concrete checkbox per selected experiment and its cleanup before B-close; independent plan-quality PASS before execution. A native VM transfer requires a successful Rust implementation record, not a Rust profile alone. No standing obligation to build all speculative optimizations.
+  - Post-Phase A results analysis (user requirement, 2026-09-08): after A-close passes, analyse the combined Phase A results before selecting further work. Report individual step gains and cumulative gains only where baselines, workloads and modes are comparable; identify unmeasured totals and remaining uncertainty explicitly. Compare residual Rust VM and native 68020 costs, including opportunities for Rust improvements to transfer to native. Propose revised or new optimization approaches only where the results justify them, ranking likely product performance benefit and repeated development/validation time saved against implementation cost, memory cost and proof effort. Present the evidence, uncertainty and a bounded experiment for each proposal, then add warranted approaches as sequentially numbered, reviewed items. Keep LSP work last.
   - Before/after and stop/go: no new evidence means defer, not implement. Native-only primitive/layout/lifecycle changes may use native evidence; generic execution representation is Rust-first. Each candidate uses the shared bounded trial and exact proof policy.
   - Gate tier: focused sub-item.
   - Required focused gates: workflow/plan gates; review numeric evidence and exact prerequisite/rollback/cleanup for selected candidates; common execution/gate policy applies.
@@ -685,7 +704,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): select residual work by measured return`; exactly one focused commit before the next item.
   - Definition of done: every original pending optimization has an explicit disposition and each selected candidate has a commit-sized executable item; deferred items remain labelled unimplemented.
 
-- [ ] Step 37 · Item P0 — Finish profile foundations after the early product wins
+- [ ] Step 38 · Item P0 — Finish profile foundations after the early product wins
   - Source requirement or finding IDs: SR-ID, SR-MEAS, SR-ACC, F11.
   - Expected files: profile schema/catalog/exporter, Rust executor/service owners, native bridge adapters, bounded report tests.
   - Dependencies/worktree: C0 and selected candidate decisions; focused profiling may be pulled forward only for one named blocked decision via reviewed amendment.
@@ -698,7 +717,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): scope remaining profile coverage`; exactly one focused commit before the next item.
   - Definition of done: reviewed concrete instrumentation sub-items exist for actual gaps; no unimplemented profile contract is called complete.
 
-- [ ] Step 38 · Item P-close — Verify profile coverage and final hotspot decisions
+- [ ] Step 39 · Item P-close — Verify profile coverage and final hotspot decisions
   - Source requirement or finding IDs: SR-ID, SR-MEAS, SR-ACC, F11.
   - Expected files: profile inventory and machine-readable result/decision reports.
   - Dependencies/worktree: all P0 sub-items committed.
@@ -711,7 +730,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): verify profiling coverage and decisions`; exactly one focused commit before the next item.
   - Definition of done: stable profiles, calibrated overhead and complete owner inventory exist and every candidate has evidence/disposition.
 
-- [ ] Step 39 · Item 27 — Install regression budgets for accepted mechanisms
+- [ ] Step 40 · Item 27 — Install regression budgets for accepted mechanisms
   - Source requirement or finding IDs: SR-MEAS, SR-ACC, SR-TERM.
   - Expected files: existing performance checks/results and optional CI lane.
   - Dependencies/worktree: P-close and all accepted candidate commits.
@@ -724,7 +743,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `test(perf): enforce accepted mechanism budgets`; exactly one focused commit before the next item.
   - Definition of done: accepted mechanisms have reproducible affordable regression detection.
 
-- [ ] Step 40 · Item B-close — Qualify residual optimizations and observability
+- [ ] Step 41 · Item B-close — Qualify residual optimizations and observability
   - Source requirement or finding IDs: SR-PAR, SR-MEAS, SR-ID.
   - Expected files: results/ledger/plan receipts.
   - Dependencies/worktree: 27 and all inserted Phase B items.
@@ -739,7 +758,7 @@ improvement does not close a whole finding; closure review is still required.
 
 ### Phase C — broad certainty, cleanup and terminal proof
 
-- [ ] Step 41 · Item 28 — Qualify optimized and reference modes before cleanup
+- [ ] Step 42 · Item 28 — Qualify optimized and reference modes before cleanup
   - Source requirement or finding IDs: SR-PAR, SR-ACC, SR-TERM.
   - Expected files: raw qualification reports and temporary-path inventory.
   - Dependencies/worktree: B-close PASS.
@@ -752,7 +771,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): qualify performance and terminal parity`; exactly one focused commit before the next item.
   - Definition of done: all complete pre-cleanup gates and terminal proof pass; every actual temporary path has a concrete cleanup owner.
 
-- [ ] Step 42 · Item 29 — Schedule and execute only cleanup that actually exists
+- [ ] Step 43 · Item 29 — Schedule and execute only cleanup that actually exists
   - Source requirement or finding IDs: SR-PAR, SR-ACC, SR-TERM.
   - Expected files: exact temporary paths named by 28, associated tests/results and plan.
   - Dependencies/worktree: 28 PASS; all inserted cleanup items before 30.
@@ -765,7 +784,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): scope qualification-backed cleanup`; exactly one focused commit before the next item.
   - Definition of done: every actual temporary path maps to one concrete reviewed 29.x cleanup item, or is explicitly identified as a supported permanent contract; this scoping commit claims no removal. Each 29.x item requires actual removal and its focused proof before commit; Item 30 depends on all those commits.
 
-- [ ] Step 43 · Item 30 — Prove the final performance production shape
+- [ ] Step 44 · Item 30 — Prove the final performance production shape
   - Source requirement or finding IDs: SR-MEAS, SR-PAR, SR-TERM.
   - Expected files: final result report, ledger and plan receipts.
   - Dependencies/worktree: all cleanup commits; performance integration worktree.
@@ -778,7 +797,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): close measured performance program`; exactly one focused commit before the next item.
   - Definition of done: complete final correctness/performance gates pass, temporary paths resolved, reproducible reports published; leave the plan active for the final LSP-close item; archive only after every active checkbox and required closure review passes.
 
-- [ ] Step 44 · Item LSP-close — Repair and qualify LSP at the very end
+- [ ] Step 45 · Item LSP-close — Repair and qualify LSP at the very end
   - Source requirement or finding IDs: 2026-09-05 explicit user LSP deferral; SR-PAR, SR-TERM.
   - Expected files: `crates/opforge-lsp/src/**`, its integration harness/tests only as the actual failure requires, retained failure/closure report and plan receipts.
   - Dependencies/worktree: Item 30 and every earlier implementation/cleanup commit; this is the last planned work.

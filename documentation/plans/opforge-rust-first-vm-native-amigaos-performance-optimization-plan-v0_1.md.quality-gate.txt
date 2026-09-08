@@ -1,3 +1,17 @@
+PASS: Independent `step28_scalar_review` approves Step34 / Item A-throughput-refresh and the focused result commit. The exact four-path staged set records one independent current B03 attempt and one B10 attempt through the unchanged fail-closed runner with the declared 120000 ms post-start timeout, 250 ms polling, profile-off, longword/live/buffered modes, actual inputs, shipped package and live Rust oracle. Both produced a fresh start and then timed out without completion, `CORPUS_RESULT`, explicit guest exit or artifact comparison; therefore neither supplies runtime, parity or a native-image digest. The corrected CTBL source boundaries and static package counts support only a bounded one-entry successful-result memo investigation, with no timeout attribution or measured gain. Step34 is checked and the pointer advances to Step35 of 44; the B10 five-completed-run rule, every wider Phase A debt and LSP-last remain binding. Workflow, artifact, corrected plan and cached-diff validators pass. Receipt-only status/hash updates and focused validators may proceed without rerunning broad gates because no production, test, runner or oracle code changed.
+
+Artifact SHA-256: `87866ca5389a8c3c7fbba41f7a5ec46b3203404f6ce44b104764f6203cf2a2c0`
+Review basis: final independent implementation-compliance PASS on 2026-09-08; B03/B10 remain incomplete and A-close remains open.
+
+Prior scoped receipts:
+
+PASS: Independent `step28_scalar_review` approves Step34 / Item A-throughput-refresh. Exactly one independent current B03 and one B10 attempt use the unchanged fail-closed corpus runner with 120000ms post-start/250ms polling, profile off, longword/live/buffered modes and actual source/package/Rust oracles. Attempt both, retain every terminal failure, do not retry automatically or compute ratios from historical timeouts. Result-only commit, workflow/compliance gates, the five-completed B10 closure rule, all wider Phase A debt and LSP-last remain binding.
+
+Artifact SHA-256: 61047f48bbd3371dea6b1bc9d2937159edfa7256726a07d5e8720e9678d9ef2c
+Review basis: independent plan-quality PASS on 2026-09-08; measurements and final compliance pending.
+
+Prior scoped receipts:
+
 PASS: Independent `step28_scalar_review` approves Step33 / Item A-leading-underscore-label and focused commit `fix(native): accept leading underscore labels`. The exact eight-path staged set adds only the two-instruction underscore first-byte branch before the existing ASCII-letter gate. The retained 243-byte source and shipped package identities match; its actual Rust oracle and fresh native BIN/whole-listing Level D proof pass with explicit zero guest exit, and the unchanged macro-invocation Level D control also passes. Measured capacity, native assembly/format, non-LSP Rust, staged-native, plan and workflow gates pass. No storage or runtime gain is claimed; compact grammar, generated/ORG footer, zero-image, section-start, mutable/non-root metadata and Phase A closure remain open.
 
 Artifact SHA-256: 9ceab34c0edb2cf005c46d09986f4cf1de6ebacf66192c837ed3d9ca5b721bbf

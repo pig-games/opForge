@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "step": 34,
+  "date": "2026-09-08",
+  "status": "both-current-workload-attempts-failed-post-start-timeout",
+  "scope": "unchanged current B03 and B10 profile-off qualification attempts",
+  "identity": {
+    "code_commit": "40a81b4c349e26d62c0629c2f7c48829a388a26a",
+    "corpus_sha256": "8483da832f779eca8a4544580ef48f66feb55c7344311c0d14e43f0b04a9b46d",
+    "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+    "native_run_asm_sha256": "155052f1078c01bec914652ac8c5f98b089a57ee863da6c7b3f7eeee0b6914da"
+  },
+  "cases": {
+    "B03": {
+      "case_sha256": "be04f9426a0ffb55278cdb05d1d604f5895e85a2cee0b6894ac43c9df1359acf",
+      "mechanism": "statement throughput",
+      "cpu": "m6502",
+      "source": "opforge_6502_native_cli_smoke.asm",
+      "source_bytes": 3083,
+      "source_lines": 257,
+      "argv": [
+        "opforge_6502_native_cli_smoke.asm",
+        "--cpu",
+        "m6502",
+        "--bin",
+        "output.bin"
+      ],
+      "outputs": [
+        "output.bin"
+      ],
+      "attempt": {
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "external_fs_uae_native_production_corpus_parity",
+          "--",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "environment": {
+          "OPFORGE_FS_UAE_SMOKE": "1",
+          "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+          "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+          "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+          "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+          "OPFORGE_FS_UAE_POLL_MS": "250",
+          "RUST_TEST_THREADS": "1",
+          "OPFORGE_PERFORMANCE_CORPUS": "1",
+          "OPFORGE_NATIVE_CORPUS_CASES": "B03",
+          "OPFORGE_NATIVE_CORPUS_PROFILE": "off",
+          "OPFORGE_NATIVE_CORPUS_CLEAR": "longword",
+          "OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR": "live",
+          "OPFORGE_MODULE_SCAN_READ": "buffered",
+          "OPFORGE_SOURCE_READ": "buffered",
+          "OPFORGE_SOURCE_PROFILE": "off"
+        },
+        "code_commit": "40a81b4c349e26d62c0629c2f7c48829a388a26a",
+        "exit_code": 101,
+        "whole_seconds": 149.51394312502816,
+        "sha256": "d1da7eae2df39a80c0e584316c3bed1440c0dfa4e931adfc9d36f65e4fbd171a",
+        "log_bytes": 2700,
+        "log_path": "target/workflow-logs/step34-throughput-refresh/throughput-B03-first.log",
+        "corpus_start_seen": true,
+        "corpus_done_seen": false,
+        "corpus_result_seen": false,
+        "failure": "post-start timeout after 120000 ms; fresh started marker appeared and no done marker was produced",
+        "native_image_digest": null,
+        "native_image_digest_note": "Unavailable because the corpus runner failed before returning its FsUaeSmokeRun record; the ephemeral artifact tree was removed."
+      }
+    },
+    "B10": {
+      "case_sha256": "0e8c45ef53ca91471524bbb030720fc4bb4e7601fa30f5b12b0e94d02ec9484c",
+      "mechanism": "integrated production",
+      "cpu": "m6502",
+      "source": "opforge_6502_native_cli_smoke.asm",
+      "source_bytes": 23770,
+      "source_lines": 1358,
+      "argv": [
+        "opforge_6502_native_cli_smoke.asm",
+        "--cpu",
+        "m6502",
+        "-M",
+        "modules",
+        "-I",
+        "includes",
+        "--bin",
+        "output.bin"
+      ],
+      "outputs": [
+        "output.bin",
+        "build/integrated.prg",
+        "build/integrated.map"
+      ],
+      "attempt": {
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "asm",
+          "external_fs_uae_native_production_corpus_parity",
+          "--",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "environment": {
+          "OPFORGE_FS_UAE_SMOKE": "1",
+          "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+          "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+          "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+          "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+          "OPFORGE_FS_UAE_POLL_MS": "250",
+          "RUST_TEST_THREADS": "1",
+          "OPFORGE_PERFORMANCE_CORPUS": "1",
+          "OPFORGE_NATIVE_CORPUS_CASES": "B10",
+          "OPFORGE_NATIVE_CORPUS_PROFILE": "off",
+          "OPFORGE_NATIVE_CORPUS_CLEAR": "longword",
+          "OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR": "live",
+          "OPFORGE_MODULE_SCAN_READ": "buffered",
+          "OPFORGE_SOURCE_READ": "buffered",
+          "OPFORGE_SOURCE_PROFILE": "off"
+        },
+        "code_commit": "40a81b4c349e26d62c0629c2f7c48829a388a26a",
+        "exit_code": 101,
+        "whole_seconds": 149.62802049983293,
+        "sha256": "b0cfef4392a9045a573e696b60ae00da7157ff637157131c52905f7c1b4812f3",
+        "log_bytes": 2700,
+        "log_path": "target/workflow-logs/step34-throughput-refresh/throughput-B10-first.log",
+        "corpus_start_seen": true,
+        "corpus_done_seen": false,
+        "corpus_result_seen": false,
+        "failure": "post-start timeout after 120000 ms; fresh started marker appeared and no done marker was produced",
+        "native_image_digest": null,
+        "native_image_digest_note": "Unavailable because the corpus runner failed before returning its FsUaeSmokeRun record; the ephemeral artifact tree was removed."
+      }
+    }
+  },
+  "interpretation": {
+    "parity_proven": false,
+    "runtime_measured": false,
+    "start_to_done_seconds": null,
+    "timeout_ratio": null,
+    "reason": "Neither attempt produced a fresh done marker, explicit guest exit, CORPUS_RESULT, or artifact comparison."
+  },
+  "cumulative_context": {
+    "source_dos_reads": {
+      "before": 1608,
+      "after": 8,
+      "reduction_percent": 99.5025,
+      "unchanged_this_step": true
+    },
+    "step31_test_profile_map_runtime_reduction_percent_range": [
+      63.17,
+      77.51
+    ],
+    "step31_metric_unchanged_this_step": true,
+    "total_phase_a_runtime": "unmeasured",
+    "matched_initial_to_current_runtime_series": false
+  },
+  "next_investigation": {
+    "priority": "bounded generic CTBL repeat-lookup investigation before listing repair",
+    "evidence_level": "B static package/source analysis only",
+    "source_boundaries": [
+      "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm:63",
+      "native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm:477",
+      "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm:60"
+    ],
+    "observation": "findFixedProgramFromRequestV1 scans prefix strings and skips programs for each lookup. This is a static work hypothesis, not attribution for either timeout and not a measured speed gain.",
+    "ctbl": {
+      "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+      "bytes": 52396,
+      "owners": 16,
+      "strings": 1585,
+      "decoded_string_bytes": 15902,
+      "programs": 1157,
+      "program_bytes": 6295,
+      "entries": 3459
+    },
+    "receipt": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step34-ctbl-audit.py"
+      ],
+      "environment": {},
+      "code_commit": "40a81b4c349e26d62c0629c2f7c48829a388a26a",
+      "exit_code": 0,
+      "whole_seconds": 0.023991040885448456,
+      "sha256": "b4a48a9900c90682753c86d152fee85adf79ad47103f2cede80c3b3cb4cb477d",
+      "log_bytes": 373,
+      "log_path": "target/workflow-logs/step34-throughput-refresh/throughput-ctbl-static.log"
+    },
+    "audit_script": "/private/tmp/opforge-step34-ctbl-audit.py",
+    "audit_contract": "checks actual CTBL entries and terminal ASCII structure against the Rust codec"
+  }
+}

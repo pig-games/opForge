@@ -1,3 +1,10 @@
+PASS: Independent Plan Quality Reviewer step28_scalar_review approves Step30 / A-bss-image-origin. The amended item covers both BSS-origin suppression and placed-BSS alignment-byte suppression, preserves ordinary non-BSS origin and routing behavior, adds no storage, and requires complete exact Rust/native BIN proof with explicit limitations. Step30 remains plan-only here; Phase A and the zero-image, listing-footer, corpus and LSP debts remain open.
+
+Artifact SHA-256: cb646b995d23bee43d42f8cdadcc27d83e5459e8f8c9244d6c2ea1ff87938cbd
+Review basis: agents/plan-quality-reviewer.agent.md and the active native parity workflow rules; independent review relayed by the root task on 2026-09-08. This approval authorizes the focused plan amendment, not Step30 implementation completion.
+
+Prior scoped receipts:
+
 PASS: Step29 implementation compliance by independent step28_scalar_review; all final gate conditions satisfied. Mechanical Step29 completion and Step30 pointer edits were independently authorized. BSS-origin, empty-image, symbol-footer and other Phase A debts remain open; no Phase A closure or runtime speedup is claimed.
 
 Artifact SHA-256: 4feb093c87f5073e84b3a417a517294328b7e0836a4f76c414da9dfa30692c02

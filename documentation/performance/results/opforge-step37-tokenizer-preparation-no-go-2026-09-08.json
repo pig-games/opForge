@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "item": "Step37 / A-tkvm-descriptor-prepare",
+  "date": "2026-09-08",
+  "status": "qualified-rejected-restored-pending-focused-docs-commit",
+  "decision": "Matched controlled frontend improvement was 3.3898305085%, below the required greater-than-5% threshold; stop expanded proof and restore.",
+  "baseline_commit": "4455866e7521f41a4ea896f723d7b520a69b4559",
+  "identities": {
+    "case_sha256": "0e8c45ef53ca91471524bbb030720fc4bb4e7601fa30f5b12b0e94d02ec9484c",
+    "corpus_sha256": "8483da832f779eca8a4544580ef48f66feb55c7344311c0d14e43f0b04a9b46d",
+    "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+    "manifest_sha256": "01d3b67e623ef1e38b59a28ee009c23b5f2cb48abf7cd4695e6e487af09566cd",
+    "prototype_source_sha256": {
+      "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm": "30010a97c3ce68352b6cea1db5c22c99485caf26b557a7752ffd1b2e72905576",
+      "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": "a31ce177fcded10e9990388d244d4a470deccd80f3906d2eebf67ec2993d5c16",
+      "native/motorola68000/amigaos/tkpkg/tkpkg_tokenizer_vm.asm": "5f7f4cc43fcf2efb4bcbdca848ab1748e5547f50de272a675d38c03f8b7eb831"
+    }
+  },
+  "matched_platform_screen": {
+    "common": {"profile": "platform", "abort_visits": 1, "post_start_timeout_ms": 120000, "poll_ms": 250, "modes": ["longword", "live", "buffered"], "proof_level": "E"},
+    "reference": {"mode": "decode", "compile_define": "OPFORGE_TOKENIZER_UNPREPARED_REFERENCE", "frontend_ticks": 708, "duration_seconds": 89.81769394874573, "guest_exit": 1, "protocol_completed": true, "result_sha256": "13f991b1d08df4058d98e91a65565758d900eab9d7be2255d3d96769d2b6cf4d", "log_sha256": "9addf44654ff115cafa7f161075fb0ae310a8b20cb6a8923329bcab919420d0f", "receipt": "target/workflow-logs/step37-tokenizer-prepared/reference-screen-decode-20260908T112155Z.json"},
+    "candidate": {"mode": "prepared", "frontend_ticks": 684, "duration_seconds": 75.66647219657898, "guest_exit": 1, "protocol_completed": true, "result_sha256": "e6f8dd63ec853c456bf3d25eecc3a80705deb787ac795d00a218f590076f6e05", "log_sha256": "64b98660a6f33551322988166c351dbccf860ca969ae0d46f0ca3a44183edeac", "receipt": "target/workflow-logs/step37-tokenizer-prepared/candidate-screen-prepared-20260908T112338Z.json"},
+    "normalized_non_timing_match": {"diagnostic": "ERROR OPC-NCLI020: native pass engine failed", "stdout": "STAGE pass1", "phase_id": 5, "statement_visits": 1, "total_statements": 1350, "platform_counters_excluding_run_id": true},
+    "reduction_percent": 3.3898305085,
+    "threshold_percent": 5.0,
+    "retention_passed": false,
+    "limitations": "Controlled Level E development-loop metric only; not product timing or parity. Whole durations and other elapsed counters are not compared."
+  },
+  "prior_attempts": {
+    "missing_manifest_preflight": {"exit_code": 1, "duration_seconds": 0.05135989189147949, "guest_launched": false, "log_sha256": "c7924eb38f363bca1ed0c8faf8be1f1dffdf2404a0f0df4b96a4912aec8be8ae", "receipt": "target/workflow-logs/step37-b10-frontend/b10-abort1-all-20260908T105550Z.json"},
+    "all_profile_localization": {"exit_code": 0, "duration_seconds": 96.16515183448792, "frontend_ticks": 977, "tokenizer_invocations": 1356, "tkvm_invocations": 1356, "parser_invocations": 2446, "prvm_invocations": 2446, "tokenizer_opcodes": 67914, "result_sha256": "d095214b507011de9e5087e9bc41d38aa55559064b0fc958c2009e8c483c6b21", "log_sha256": "9ceb31563dadd89a2becc43587a473da0ff7aafc919f5202547b1c41c7d50589", "receipt": "target/workflow-logs/step37-b10-frontend/b10-abort1-all-20260908T105745Z.json", "comparison_eligible_with_platform_screen": false}
+  },
+  "host_evidence": {"source_abi_review": "PASS", "reference_assembly_seconds": 28.05198816698976, "candidate_assembly_seconds": 28.075447042007, "formatter_seconds": 5.327203333843499, "does_not_prove": "Native product behavior, parity, or retained performance"},
+  "restoration": {"prototype_retained": false, "native_and_rust_diff_empty": true, "expanded_proof_run": false},
+  "separate_historical_observations": {"b01_cross_revision": {"old_seconds": 75.563602708, "latest_seconds": 34.428058125, "less_percent": 54.4383050951, "ratio": 2.19482616, "saved_seconds": 41.135544583, "matched_total_phase_a": false}, "module_buffering_percent": 23.462, "rust_map_timing_percent_range": [63.17, 77.51], "rust_map_allocation_percent_range": [76.19, 88.62], "source_dos_reads": [1608, 8], "module_dos_reads": [16541, 8], "b03_exact_seconds": 37.735005375, "compounded": false, "total_phase_a_runtime": "unmeasured"},
+  "direct_path_assessment": [{"candidate": "records-only internal tokenizer service", "possible_avoided_work": "CLI-unused public report", "isolated_gain": null}, {"candidate": "count-owned PRVM result buffer", "possible_avoided_work": "697344 captured frontend clear bytes (1362 × 512)", "isolated_gain": null}],
+  "claims": {"product_timing": false, "parity": false, "retained_gain": false, "b10_closed": false, "phase_a_closed": false}
+}

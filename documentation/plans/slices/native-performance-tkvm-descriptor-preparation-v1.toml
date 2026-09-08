@@ -1,0 +1,46 @@
+[slice]
+schema_version = 2
+name = "native lazy selected TKVM descriptor preparation"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "37 / Item A-tkvm-descriptor-prepare"
+rust_reference = ["crates/opforge-vm/src/runtime_model_core.rs", "crates/opforge-asm/src/tests/native_compact_memo.rs", "crates/opforge-asm/src/tests/native_production_corpus.rs"]
+native_boundary = ["native/motorola68000/amigaos/tkpkg/tkpkg_tokenizer_vm.asm::readProgram", "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm::tkpkgPipelineSetActiveV1", "native/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm"]
+invariant = "The selected TKVM descriptor may be prepared lazily once per valid package/pipeline context while every cold validation and lazy error remains unchanged, the caller checks both TKVM program-header bytes on every request and publishes valid only after cold header success, and per-line state setup, TKVM execution and public rendered output remain unchanged; every package clear and pipeline-selection attempt invalidates it."
+assertion_decision = "The approved matched B10 abort-after-one platform Level E screen completed at 708 reference and 684 candidate frontend ticks, only 3.3898305085% lower and below the required greater-than-5% threshold. The prototype was rejected and restored before expanded lifecycle, B03, full-B10 or broad gates; source/ABI and host assembly remain localization evidence only."
+expected_inputs = "The sealed current B10 abort-after-one diagnostic source with its explicit manifest asset and unchanged package/argv/modes, actual packages with output-distinct selected tokenizer programs and malformed selected records, and the current complete B03 corpus source."
+expected_outputs = "Identical controlled diagnostic boundary, non-timing counters and phase ID with reduced frontend ticks for the timing screen; elapsed counters are recorded but may vary. After retention gating, exact selected program/status/token bytes, public ENTRY_ORD_TOKENIZE_LINE success/error reports and complete B03 CLI artifacts have fresh explicit guest outcomes."
+known_non_equivalences = "The rejected prototype has no Level D lifecycle/product proof, B03 or full-B10 attempt, native product timing, parity, retained gain, or debt closure. The earlier 977-tick all-profile localization is not compared with the platform-only 708/684 screen. Current production remains Step35 behavior."
+fast_proof_command = "env -u OPFORGE_FS_UAE_SMOKE -u OPFORGE_FS_UAE_ARGS -u OPFORGE_FS_UAE_CONFIG_TEMPLATE CARGO_TARGET_DIR=target/step17-opt1 cargo test --locked -p asm native_compact_memo_ -- --nocapture --test-threads=1"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 CARGO_TARGET_DIR=target/step17-opt1 cargo test --locked -p asm native_compact_memo_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "external_fs_uae_native_production_corpus_diagnostic"
+proof_level = "E"
+proves = "A fresh controlled B10 abort-after-one run reaches the same deliberate diagnostic boundary and exposes comparable frontend ticks and counters."
+does_not_prove = "Product timing, parity, full B10 completion or A-close."
+
+[[tests]]
+name = "native_compact_memo_live_rust_oracle"
+proof_level = "A"
+proves = "Actual decoded packages and RuntimeModelCore define selected tokenizer program and token expectations across lifecycle transitions."
+does_not_prove = "Native execution, private descriptor state or timing."
+
+[[tests]]
+name = "native_item38_full_product_source_line_budget_contract"
+proof_level = "B"
+proves = "The canonical native product graph remains within fixed source/processed capacities; independent review owns private descriptor ordering, bounds and ABI."
+does_not_prove = "Native lifecycle execution or timing."
+
+[[tests]]
+name = "native_compact_memo_fs_uae"
+proof_level = "D"
+proves = "Fresh native selected-program lifecycle and token outputs match actual decoded-package expectations with explicit guest completion."
+does_not_prove = "B03 or B10 complete CLI parity, product timing or Phase A closure."
+
+[[tests]]
+name = "external_fs_uae_native_production_corpus_parity"
+proof_level = "D"
+proves = "A successful retained candidate produces exact current B03 artifacts and explicit guest exit; a later full B10 attempt is evidence only if it independently completes."
+does_not_prove = "Any parity or ratio for an incomplete B10 run, total runtime gain or A-close."

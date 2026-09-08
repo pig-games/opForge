@@ -1,3 +1,17 @@
+PASS: Independent `step28_scalar_review` approves Step38 no-go compliance and the exact five-document bundle. Production/Rust diffs are empty at `cc19cbef`; evidence, no-claim, debt, and Phase A stop-boundary audits pass. The controlled screen's 706→678 frontend ticks are 3.9660056657% lower, below the strict greater-than-5% threshold, and the reference overlap limitation remains explicit. Workflow, artifact, plan, and cached diff checks pass. Receipt-only updates and focused validators may proceed without broad reruns.
+
+Artifact SHA-256: `5a67a5dd149340a782b8cb119489c5d629426b7b5c43b8f7ac7dc9f986f05a35`
+Review basis: final independent no-go compliance PASS on 2026-09-08; focused docs commit and safe integration pending.
+
+Prior scoped receipts:
+
+PASS: Independent step28_scalar_review approves Step38 plan quality. Exact unsigned count, zero/null, range, D0/A0/D1, preserved registers/SP and conditional X contract; nine-row native matrix; explicit byte reference; bounded repeated frontend timing; B03 parity/nonregression; honest B10 disposition; gates, rollback, rename preservation and all Phase A debt remain binding. Production may proceed; completion pending.
+
+Artifact SHA-256: `59022c97a4be699f46a3dcde18de58651c29ab12b2b353b16a93426af9dc68e1`
+Slice SHA-256: `965d9c0b0a091af1e8053f409a4ec909f768ac2a2c335c53622e966725891484`
+
+Prior scoped receipts:
+
 PASS: Independent `step28_scalar_review` approves Step37 no-go compliance and the exact five-document bundle. Production and test diffs are empty against `4455866e`. The matched platform-only Level E screen measured 708→684 frontend ticks, 3.3898305085%, below the strict >5% retention threshold, with identical manifest/case/corpus/package/modes, controlled boundary, diagnostic and normalized non-timing counters. The all-profile 977-tick localization and whole durations are excluded from comparison. Prototype and selector are restored; no product timing, parity, retained gain, B10 or Phase A closure is claimed. Historical cumulative figures are non-compounded and cross-revision where applicable. Workflow, artifact, plan and diff checks pass. Step37 closes and pointer advances to A-close Step38/47. The user's Phase A stop boundary and new-instruction requirement for C0 remain explicit. Receipt-only updates and focused validators require no broad rerun.
 
 Artifact SHA-256: `cc74406f281afbaa6058d7d61ba6db971523362488dcfa07b0e0c01b1145613b`

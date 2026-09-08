@@ -29,6 +29,9 @@ mod native_listing_visibility_source_rows;
 #[path = "native_listing_reservation.rs"]
 mod native_listing_reservation;
 
+#[path = "native_bss_image_origin.rs"]
+mod native_bss_image_origin;
+
 #[path = "native_cpex.rs"]
 mod native_cpex;
 

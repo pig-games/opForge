@@ -344,11 +344,23 @@ beginSectionPassTwoV1	.block
 	lea OpasmLayoutSectionCount.l, a0
 	cmp.w (a0), d5
 	bhs.w fail
+	move.l d0, OpasmLayoutActiveSectionStartPc.l
+	lea OpasmLayoutSectionPlacedFlags.l, a0
+	jsr wordTablePtrV1
+	tst.w (a0)
+	bne.s activate
+	; The flat-image base may rise between layout and final emission. An
+	; unplaced section keeps its own retained start across those passes.
+	lea OpasmLayoutSectionStartPcs.l, a0
+	jsr longTablePtrV1
+	move.l (a0), d0
+	move.l d0, OpasmLayoutActiveSectionStartPc.l
+	jsr eng.opasmEngineSetCurrentPcV1
+activate
 	lea OpasmLayoutSectionActive.l, a0
 	move.w #1, (a0)
 	lea OpasmLayoutActiveSectionIndex.l, a0
 	move.w d5, (a0)
-	move.l d0, OpasmLayoutActiveSectionStartPc.l
 	moveq #0, d0
 	rts
 
@@ -1884,16 +1896,26 @@ notMapped
 
 ; Select pass-two image routing for one statement.
 ; Inputs: D0.L = statement index. Outputs: D0.L = 0 main, 1 discard, 2 mapped.
+; Clobbers: D0-D2/D5/A0/CCR.
+; CCR: reflects D0 on return.
 statementImageRouteV1	.block
 	cmpi.l #OPASM_LAYOUT_STATEMENT_CAPACITY, d0
 	bhs.s main
 	move.l d0, d1
+	move.l d1, d2
+	add.l d2, d2
+	lea OpasmLayoutStatementSectionIndices.l, a0
+	move.w 0(a0, d2.l), d5
+	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
+	beq.s checkMapped
+	lea OpasmLayoutSectionKinds.l, a0
+	jsr wordTablePtrV1
+	cmpi.w #OPASM_LAYOUT_SECTION_KIND_BSS, (a0)
+	beq.s discard
+checkMapped
 	lea OpasmLayoutStatementMappedFlags.l, a0
 	tst.b 0(a0, d1.l)
 	bne.s mapped
-	add.l d1, d1
-	lea OpasmLayoutStatementSectionIndices.l, a0
-	move.w 0(a0, d1.l), d5
 	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
 	beq.s main
 	lea OpasmLayoutSectionLogicalFlags.l, a0

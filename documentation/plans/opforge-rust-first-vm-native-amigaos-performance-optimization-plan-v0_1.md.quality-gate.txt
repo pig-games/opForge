@@ -1,3 +1,27 @@
+PASS: Final Step30 implementation compliance by independent step28_scalar_review. Six fresh final-code exact native BIN cases, current measured capacities, staged-native, workflow, plan and the single full non-LSP Rust gate pass. Approved mechanical completion marks Step30 and advances to Step31/40; Phase A and all retained debt remain open.
+
+Artifact SHA-256: b59024e913cae87f288d6d34932d86cacf161dd397af8f09fbb40d871d945774
+Final non-LSP receipt: bss-quality-first SHA-256 ee3b00359ee86c3d1d399a39c1cd0dd7695d49cbe8a00da8abaa44404dcc3fcf.
+Final staged-native receipt: bss-staged-native-first SHA-256 a7d227fe9c6ad6276f8ce0332d98cf20e2b2ec88d2548df6b0b5e71bbce9a62d.
+Final workflow receipt: bss-workflow-second SHA-256 dbadf7d76e2126c3725ee3b272dbf8bdac2f4004678bfeaca7add2729b0069f0.
+Review basis: independent final implementation compliance on 2026-09-08; focused validators must pass after completion mechanics, before commit.
+
+Prior scoped receipts:
+
+PASS: Independent step28_scalar_review plan-quality review approves the cohesive Step30 image-origin and independent unplaced-section convergence amendment. All unplaced sections retain pass-one start; placed bases, mapped packing/reachability and broader nonzero-parent debt remain unchanged. Final native, capacity, gates and implementation compliance remain required.
+
+Artifact SHA-256: f43d5dc0b243849f5be91f2d0253ec5ac6bb1de851035eeb676eca738368161b
+Review basis: independent plan-quality/source review on 2026-09-08 after exact prior-code reproduction of the mapped convergence failure.
+
+Prior scoped receipts:
+
+PASS: Independent step28_scalar_review prefinal source/test/plan review approves the Step30 retained-start correction and explicit nonzero-parent BSS debt addition. This is plan/scope approval only; native matrix, final gates and implementation compliance remain required.
+
+Artifact SHA-256: 7f4ba05fc2491742dc4c98d424ffc4b1d537d3b1e79c0f6a0a3d56f26940f09a
+Review basis: independent source/test/plan review on 2026-09-08; exact Rust/native BIN contracts and proof limits retained.
+
+Prior scoped receipts:
+
 PASS: Independent Plan Quality Reviewer step28_scalar_review approves Step30 / A-bss-image-origin. The amended item covers both BSS-origin suppression and placed-BSS alignment-byte suppression, preserves ordinary non-BSS origin and routing behavior, adds no storage, and requires complete exact Rust/native BIN proof with explicit limitations. Step30 remains plan-only here; Phase A and the zero-image, listing-footer, corpus and LSP debts remain open.
 
 Artifact SHA-256: cb646b995d23bee43d42f8cdadcc27d83e5459e8f8c9244d6c2ea1ff87938cbd

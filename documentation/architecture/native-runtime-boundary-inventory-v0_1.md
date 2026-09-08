@@ -756,3 +756,11 @@ preserves the same 106-routine, four-import, code/BSS ownership boundary.
 - No routine is moved by this document.  Each mandatory or conditional target
   has a stated retain/decomposition decision before Item 5.3 contracts and
   subsequent ownership-only commits begin.
+
+Step 30 excludes active BSS origins from the driver image-base update and routes
+BSS statement writes to discard in the layout owner, including alignment.
+Unplaced sections reuse their retained section start across layout and final emission,
+so a raised image base cannot change their sizes or labels. The
+complete driver/layout source manifests are refreshed; routine, import, state,
+and diagnostic inventories are unchanged. No new storage or semantic owner is
+introduced. This is static Level B ownership evidence, not native parity.

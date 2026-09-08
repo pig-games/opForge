@@ -3183,6 +3183,8 @@ return
 setPlacedSectionOriginWithImageGap	.block
 	movem.l d1-d4/a0, -(sp)
 	move.l d0, d4
+	jsr layout.activeSectionIsBssV1
+	bne.s setCurrentPc
 	jsr eng.opasmEngineGetSessionPassV1
 	cmpi.w #1, d0
 	bne.s setCurrentPc

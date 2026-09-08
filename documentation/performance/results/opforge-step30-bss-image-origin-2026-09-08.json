@@ -1,0 +1,494 @@
+{
+  "step": 30,
+  "item": "A-bss-image-origin",
+  "status": "qualified pending focused commit",
+  "date": "2026-09-08",
+  "plan_commit": "a893636e86ce9cdddd6289dc7fe013d69680bd31",
+  "invariant": "BSS origins and alignment do not establish or extend the flat emitted image; all unplaced sections retain their independent pass-one start across retries/final emission; placed bases and non-BSS image routes remain unchanged.",
+  "sources": {
+    "UNPLACED_SMALL": ".module main\n.cpu 68020\n.region rom, $8000, $80ff\n.section code, align=1\n.byte $aa\n.endsection\n.section zero, kind=bss, align=1\n.org 0\n.res byte, 4\n.endsection\n.place code in rom\n.endmodule\n",
+    "PLACED_SMALL": ".module main\n.cpu 68020\n.region rom, $8000, $80ff\n.region ram, $0000, $00ff\n.section code, align=1\n.byte $aa\n.endsection\n.section zero, kind=bss, align=1\n.org 0\n.res byte, 4\n.endsection\n.place code in rom\n.place zero in ram\n.endmodule\n",
+    "UNPLACED_FULL_U32": ".module main\n.cpu 68020\n.region rom, $8000, $80ff\n.section code, align=1\n.byte $aa\n.endsection\n.section zero, kind=bss, align=1\n.org 0\n.res byte, ($ffffffff+1)-1\n.endsection\n.place code in rom\n.endmodule\n",
+    "PLACED_ALIGNED": ".module main\n.cpu 68020\n.region rom, $8000, $80ff\n.region ram, $0000, $00ff\n.section code, align=1\n.byte $aa\n.endsection\n.section zero, kind=bss, align=4\n.org 0\n.res byte, 1\n.align 4\n.endsection\n.place code in rom\n.place zero in ram\n.endmodule\n",
+    "ORDINARY_ORIGINS": ".module main\n.cpu 68020\n.org $1000\n.byte $11\n.org $1002\n.byte $22\n.org $1001\n.byte $33\n.endmodule\n",
+    "MAPPED_LOGICAL": "; Qualified module import with logical section map and reference-driven reachability.\n\n.module opasm.amigaos.engine\n    .cpu 65c02\n    .pub\n    .section code, kind=code, logical\nsessionPass:\n    rts\nunusedPass:\n    rts\n    .endsection\n.endmodule\n\n.module app.main\n    .cpu 65c02\n    .region rom, $1000, $10ff\n    .use opasm.amigaos.engine as engine map { code -> app_code }\n    .section app_code, kind=code\nstart:\n    jsr engine.sessionPass\n    rts\n    .endsection\n    .place app_code in rom\n.endmodule\n\n.end\n"
+  },
+  "source_sha256": {
+    "UNPLACED_SMALL": "ae28988b051464da84f25615b1865e61b4de1746e5da65a1f99db39d395bd20e",
+    "PLACED_SMALL": "b6c3fb90eb5198d732d6e0a7c68a6176a9835dfe9f44e7ed9120933d907d2707",
+    "UNPLACED_FULL_U32": "a3d92ebe2e305cc615133f4b7b17062cf4bf6fae141b3294c85026b5dedef143",
+    "PLACED_ALIGNED": "90a8f5849d59d9903eb5c9828b68cdc21912eadf5d0abbd74abec5ac063aeeea",
+    "ORDINARY_ORIGINS": "eef1a9239f8c26bcd4e66d3c206ed8e0b0f313764fc0152eaab67f52cf351251",
+    "MAPPED_LOGICAL": "b885d7f2deb1f15e3701243ceb6b30600abe7ee18ee7617080ed3217311c17b4"
+  },
+  "file_sha256": {
+    "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm": "66a856cfeb0f728d70c94ad8271536fb37720f15bed9c3724ec991870e680110",
+    "native/motorola68000/amigaos/opasm/opasm_layout.asm": "8c2e0e3353da78c09c0cc005cc8fc32fe0e7a11d33c705020a81d38c156d0646",
+    "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+    "crates/opforge-asm/src/tests/native_bss_image_origin.rs": "f051418bde29ebf1546d0613b13a86d8616d47fa20888d871c13fd37ab6021e4"
+  },
+  "receipts": {
+    "bss-assembly-first": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step28-assemble.py"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 27.526362834032625,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-assembly-first.log"
+    },
+    "bss-assembly-second": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step28-assemble.py"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 25.999995707999915,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-assembly-second.log"
+    },
+    "bss-assembly-third": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step28-assemble.py"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 26.38246462494135,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-assembly-third.log"
+    },
+    "bss-capacity-first": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_item38_full_product",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 0.45501799997873604,
+      "sha256": "760989160391545ac9e36b5f1a54b10929571e16fc92c54c1b7c1e1c8a0baec5",
+      "log_bytes": 1943,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-capacity-first.log"
+    },
+    "bss-capacity-second": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 0.4733361250255257,
+      "sha256": "5d19fdcb6a05f0f21f42d50504d7b4fa154a41345fe83a9dc68d8bb59a5f2e7e",
+      "log_bytes": 1226,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-capacity-second.log"
+    },
+    "bss-capacity-third": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 2.6080207501072437,
+      "sha256": "0b149ae77f9fb298de17b6366e41e81de5db05db8716072c7e903105846db8f7",
+      "log_bytes": 1339,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-capacity-third.log"
+    },
+    "bss-checkbox-final": {
+      "command": [
+        "python3",
+        "scripts/workflow/check_plan_checkboxes.py",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 0.03077837498858571,
+      "sha256": "c1e32340e240f94caab557f556aeedca353de4fc275ed95c60483625449351e2",
+      "log_bytes": 101,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-checkbox-final.log"
+    },
+    "bss-format-first": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_native_68000_format_gate.sh"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 5.147149333031848,
+      "sha256": "ace4308e9d7c8e8b1822d2cdcb4f696847d2e239af6a27ba1e2d32ff33836dad",
+      "log_bytes": 1467,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-format-first.log"
+    },
+    "bss-format-second": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_native_68000_format_gate.sh"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 5.071079124929383,
+      "sha256": "ace4308e9d7c8e8b1822d2cdcb4f696847d2e239af6a27ba1e2d32ff33836dad",
+      "log_bytes": 1467,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-format-second.log"
+    },
+    "bss-host-fifth": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_bss_image_origin_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 12.63675683317706,
+      "sha256": "e2639da873778ac88549b251a4a8fe8b2e29b81d7707a39dd1336b6b025795d0",
+      "log_bytes": 1577,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-host-fifth.log"
+    },
+    "bss-host-first": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_bss_image_origin_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 14.890544208930805,
+      "sha256": "a1ceb5b02468e2370e454227e134bb4766284ea86c9e0b39d13c6c6e3e971946",
+      "log_bytes": 1134,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-host-first.log"
+    },
+    "bss-host-fourth": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_bss_image_origin_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 12.479386874940246,
+      "sha256": "59bc8065cf0f19381cf8215914fb4d0b3a5acafd91c9eeee556e587483294122",
+      "log_bytes": 1248,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-host-fourth.log"
+    },
+    "bss-host-second": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_bss_image_origin_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 2.716679875040427,
+      "sha256": "1f79e12799af75b10d5a94e603bf64184454dc4039ecb79178d77607f726ee7b",
+      "log_bytes": 1133,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-host-second.log"
+    },
+    "bss-host-third": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_bss_image_origin_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 12.43668520799838,
+      "sha256": "ffeadc7641083e82df81474303caf9eb0d30d895822ffd38a13e6355e67b9481",
+      "log_bytes": 1248,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-host-third.log"
+    },
+    "bss-mapped-baseline-first": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step30-baseline.py",
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_bss_image_origin_mapped_logical_control_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 69.150613124948,
+      "sha256": "451f7b61ecf89b953cdc485de36057fba5f6f90202a3d734c60716c271c00179",
+      "log_bytes": 3530,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-mapped-baseline-first.log"
+    },
+    "bss-mapped-candidate-second": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_bss_image_origin_mapped_logical_control_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 69.14789295801893,
+      "sha256": "a17aed575d794cd6fbe069597e7c9247491e651e6123a6a628d40e6faf40d5a2",
+      "log_bytes": 265,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-mapped-candidate-second.log"
+    },
+    "bss-native-final-excluding-mapped-first": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_bss_image_origin_",
+        "--skip",
+        "native_bss_image_origin_mapped_logical_control_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 315.7981154578738,
+      "sha256": "44e3028fe3ee964d63975bb04ae0aeb745dc74ffcdb6995cc310f414bc6e1081",
+      "log_bytes": 705,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-native-final-excluding-mapped-first.log"
+    },
+    "bss-native-matrix-first": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_bss_image_origin_matrix_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 321.72709191706963,
+      "sha256": "cbd9b3692711cb6cc57d57177fd4a4562f72a41d58479810b33af6220ea4ba88",
+      "log_bytes": 2632,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-native-matrix-first.log"
+    },
+    "bss-native-representative-first": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_bss_image_origin_unplaced_small_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 63.57472116686404,
+      "sha256": "b86be34192156185437c28b6942820a626e64962add3ad027913653643ec4c82",
+      "log_bytes": 2187,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-native-representative-first.log"
+    },
+    "bss-native-representative-second": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_bss_image_origin_unplaced_small_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 63.041259333025664,
+      "sha256": "d289cf0b048e27f5c61a278a5add6d6c82d3fab424487a198d31a40906024171",
+      "log_bytes": 257,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-native-representative-second.log"
+    },
+    "bss-plan-final": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_plan_workflow.sh",
+        "--check-once",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md",
+        "Step30 qualified completion and Step31 pointer"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 0.09097558306530118,
+      "sha256": "1d7ee035c7e4c70e7bdeb3871fc1f31094802a6bb280f6ac0c032d395d9d3d13",
+      "log_bytes": 1698,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-plan-final.log"
+    },
+    "bss-plan-first": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_plan_workflow.sh",
+        "--check-once",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md",
+        "Step30 BSS image-origin and placed-alignment repair scope"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 0.09471300011500716,
+      "sha256": "bf07662378f3e498994a9243ba4db907f3e89b8dd638954342a295b53ab75d11",
+      "log_bytes": 1720,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-plan-first.log"
+    },
+    "bss-plan-second": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_plan_workflow.sh",
+        "--check-once",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md",
+        "Step30 BSS proof scope and retained section-start debt"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 0.09238129109144211,
+      "sha256": "b21603a8b2edfece4bceff44be6b8597fa6fa388a88da2124e5205cd6d561f46",
+      "log_bytes": 1714,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-plan-second.log"
+    },
+    "bss-plan-third": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_plan_workflow.sh",
+        "--check-once",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md",
+        "Step30 shared unplaced-section convergence and BSS image exclusion"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 0.09907712484709918,
+      "sha256": "0d9eb074692448cac73b2691371eb8be103e98c9a6dba9c6fcaadb798de36727",
+      "log_bytes": 1738,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-plan-third.log"
+    },
+    "bss-quality-first": {
+      "command": [
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 262.6549469169695,
+      "sha256": "ee3b00359ee86c3d1d399a39c1cd0dd7695d49cbe8a00da8abaa44404dcc3fcf",
+      "log_bytes": 341934,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-quality-first.log"
+    },
+    "bss-staged-native-first": {
+      "command": [
+        "python3",
+        "scripts/workflow/run_native_porting_quality_gate.py",
+        "--staged",
+        "--metadata",
+        "documentation/plans/slices/native-performance-bss-image-origin-v1.toml"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 5.813647582894191,
+      "sha256": "a7d227fe9c6ad6276f8ce0332d98cf20e2b2ec88d2548df6b0b5e71bbce9a62d",
+      "log_bytes": 4643,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-staged-native-first.log"
+    },
+    "bss-workflow-first": {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 27.397803500061855,
+      "sha256": "f0beceb56503dfef5370e12292c760ecfb3da2b0a0de7a2450364a3d4c415890",
+      "log_bytes": 6496,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-workflow-first.log"
+    },
+    "bss-workflow-second": {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 27.59163654083386,
+      "sha256": "dbadf7d76e2126c3725ee3b272dbf8bdac2f4004678bfeaca7add2729b0069f0",
+      "log_bytes": 6496,
+      "log_path": "target/workflow-logs/step30-bss-origin/bss-workflow-second.log"
+    }
+  },
+  "capacity": {
+    "loadable_source_bytes": 1724236,
+    "processed_rows": 94489,
+    "processed_bytes": 3577511,
+    "imports": 423,
+    "public_declarations": 6511,
+    "public_name_bytes": 127950,
+    "runtime_storage_delta_bytes": 0,
+    "hard_bounds_changed": false
+  },
+  "performance": {
+    "step_runtime_gain": null,
+    "total_runtime_gain": null,
+    "predicted_artificial_gap_bytes_avoided": 32768,
+    "prediction_basis": "Step29 source analysis; previous BIN length was not captured. Native proof must establish final exact bytes, not an inferred measured before/after speedup.",
+    "cumulative_source_dos_reads": {
+      "baseline": 1608,
+      "candidate": 8,
+      "avoided": 1600,
+      "reduction_percent": 99.50248756218906
+    },
+    "note": "Gate and emulator harness durations are validation cost, not product runtime benchmarks."
+  },
+  "prior_failure_history": "documentation/performance/results/opforge-step29-reservation-listing-2026-09-06.json",
+  "hypotheses": [
+    {
+      "id": "H1",
+      "hypothesis": "BSS origins extend flat-image range",
+      "status": "fixed",
+      "evidence": "Six final same-code native cases, including exact one-byte BSS/code outputs."
+    },
+    {
+      "id": "H2",
+      "hypothesis": "Image-base finalization replaces independent unplaced section start",
+      "status": "fixed for complete start-zero cases",
+      "evidence": "BSS candidate failure and exact prior-code mapped failure followed by final same-case positive proof after shared retained-start correction; broader parent-nonzero semantics remain debt."
+    }
+  ],
+  "historical_host_scope": {
+    "bss-host-first": "Before explicit alignment directive; superseded",
+    "bss-host-second": "Explicit alignment, before mapped control; superseded",
+    "bss-host-third": "Pack control was placed/main, not mapped route; superseded",
+    "bss-host-fourth": "Actual mapped logical fixture plus explicit alignment before mapped test factoring; superseded by fifth",
+    "bss-host-fifth": "Final five-test host coverage with isolated mapped control; PASS"
+  },
+  "remaining_debt": [
+    "Unplaced sections first encountered under nonzero parent PC retain native historical start rather than Rust zero; separate Aclose debt",
+    "Listing ORG row and generated-image/symbol footer parity",
+    "Empty-image CLI output",
+    "All remaining Phase A repair and corpus/nonterminal qualification obligations; no Phase B closure",
+    "LSP remains final Step40"
+  ],
+  "native_qualification": {
+    "mapped_receipt": "bss-mapped-candidate-second",
+    "remaining_five_cases_receipt": "bss-native-final-excluding-mapped-first",
+    "exact_case_count": 6,
+    "positive_contract": "Fresh challenged guest completion, explicit zero exit, exact actual-case live Rust BIN and ephemeral artifacts for each case.",
+    "production_sha256": {
+      "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm": "66a856cfeb0f728d70c94ad8271536fb37720f15bed9c3724ec991870e680110",
+      "native/motorola68000/amigaos/opasm/opasm_layout.asm": "8c2e0e3353da78c09c0cc005cc8fc32fe0e7a11d33c705020a81d38c156d0646"
+    },
+    "reuse": "Mapped control proved separately on identical final native files and was excluded only from its redundant rerun."
+  },
+  "compliance": {
+    "reviewer": "step28_scalar_review",
+    "verdict": "PASS",
+    "scope": "Step30 only; Phase A remains active",
+    "plan_sha256": "b59024e913cae87f288d6d34932d86cacf161dd397af8f09fbb40d871d945774",
+    "post_review_requirement": "Focused plan/evidence validators after approved completion mechanics",
+    "post_review_validation": "PASS: bss-plan-final validates bundle and quality evidence; bss-checkbox-final validates numbered checkbox structure; git diff --check passes."
+  }
+}

@@ -1,0 +1,64 @@
+[slice]
+schema_version = 2
+name = "Checked reservation extent and listing retention"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "29 / Item A-listing-reservation"
+rust_reference = ["crates/opforge-asm/src/line.rs::res_directive_ast", "crates/opforge-asm/src/line.rs::parse_emit_unit_bytes", "crates/opforge-asm/src/line.rs::update_addresses", "crates/opforge-vm/src/listing.rs::ListingWriter::write_line", "crates/opforge-types/src/artifacts.rs::format_addr"]
+native_boundary = ["native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm", "native/motorola68000/amigaos/opasm/opasm_engine.asm::opasmEngineSetStatementReservationV1", "native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm::opasmOutputBuildListingArtifactV1"]
+invariant = "BSS reservations use checked authoritative unit-scaled extents for PC advancement and full-u32 retention in existing statement storage; listing rows show their resolved address and plus-prefixed extent, including zero, without emitting image bytes."
+assertion_decision = "Use live Rust semantics, native ownership and accessor contracts, exact fresh whole listing/BIN proof and explicit negative guest completion."
+expected_inputs = "Complete code-plus-BSS sources with byte, selected-CPU word, long, numeric-expression and zero-count reservations; full-u32 compound counts, invalid unit/count, overflow, address-span and next-PC cases."
+expected_outputs = "Exact same-case live Rust listing and BIN for positive cases, explicit failure with required diagnostic for invalid reservations, and no reserved BSS image bytes."
+known_non_equivalences = "Later listing footer differences, unrelated corpus failures and Phase A closure remain open. Step and cumulative runtime gains are unmeasured. DOS reduction is a call metric only (1608 to 8; 99.5025%)."
+fast_proof_command = "cargo test --locked -p asm native_listing_reservation_ -- --nocapture --test-threads=1"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test --locked -p asm native_listing_reservation_ -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_listing_reservation_host_unit_scaling_and_empty_image"
+proof_level = "A"
+proves = "Live Rust owns unit scaling, zero-count semantics and absent reservation image bytes."
+does_not_prove = "Native execution, artifact equality or performance."
+
+[[tests]]
+name = "native_listing_reservation_host_rejects_invalid_extent"
+proof_level = "A"
+proves = "Live Rust rejects invalid unit/count, multiplication overflow and out-of-range reservation spans."
+does_not_prove = "Native rejection or diagnostic parity."
+
+[[tests]]
+name = "native_listing_reservation_engine_contract_owns_full_extent_and_zero_emission"
+proof_level = "B"
+proves = "The engine retains full-u32 reservation extent in existing storage and ordinary emitted-byte access excludes reservations."
+does_not_prove = "Real native execution or runtime improvement."
+
+[[tests]]
+name = "native_listing_reservation_bin_and_listing_fs_uae"
+proof_level = "D"
+proves = "Fresh completed native cases with explicit zero exits match their exact live Rust whole listing and BIN."
+does_not_prove = "Unrelated listing footer cases, corpus closure or performance."
+
+[[tests]]
+name = "native_listing_reservation_whole_program_rejects_next_pc_past_cpu_max"
+proof_level = "A"
+proves = "The complete Rust program rejects the next section PC beyond the CPU maximum even when the last reserved byte fits."
+does_not_prove = "Native rejection or diagnostic wording parity."
+
+[[tests]]
+name = "native_listing_reservation_full_u32_counts_fs_uae"
+proof_level = "D"
+proves = "Complete mixed CODE+BSS native sources accept actual compound counts through U32_MAX and match live Rust whole listings and exact one-byte BIN artifacts; BSS contributes no emitted bytes."
+does_not_prove = "Runtime speed or all placement layouts."
+
+[[tests]]
+name = "native_listing_reservation_negative_cases_fs_uae"
+proof_level = "D"
+proves = "Every requested invalid reservation freshly completes with explicit nonzero guest exit and the named native diagnostic."
+does_not_prove = "Exact Rust diagnostic text; native unsigned-range rejection retains its existing non-negative count category."
+
+[[tests]]
+name = "native_listing_reservation_final_binary_fs_uae"
+proof_level = "D"
+proves = "One complete original byte/four-count fixture binds fresh executable linkage to exact live Rust whole listing and BIN through the shared full proof helper."
+does_not_prove = "The full reservation matrix, B09 or performance."

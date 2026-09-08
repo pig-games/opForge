@@ -118,6 +118,9 @@ OPASM_ENGINE_STMT_KIND_MODULE     = 1
 OPASM_ENGINE_STMT_KIND_ENDMODULE  = 2
 OPASM_ENGINE_STMT_KIND_USE        = 3
 OPASM_ENGINE_STMT_KIND_GENERIC    = 4
+; Internal reservation flag; public queries retain the original parser kind.
+OPASM_ENGINE_STMT_RESERVATION_FLAG = $8000
+OPASM_ENGINE_STMT_PARSER_KIND_MASK = $7fff
 OPASM_ENGINE_LABEL_EVENT_NONE      = 0
 OPASM_ENGINE_LABEL_EVENT_STORED    = 1
 OPASM_ENGINE_LABEL_EVENT_DUPLICATE = 2
@@ -1563,15 +1566,18 @@ opasmEngineGetStatementCountV1	.block
 ; Outputs: D0.W = OPASM_ENGINE_STMT_KIND_*.
 ; Clobbers: D0/CCR.
 opasmEngineGetStatementKindV1	.block
+	.priv
 	movem.l d1/a0, -(sp)
 	move.l d0, d1
 	add.l d1, d1
 	lea OpasmEngineStmtDirectiveKindTable.l, a0
 	moveq #0, d0
 	move.w 0(a0, d1.l), d0
+	andi.w #OPASM_ENGINE_STMT_PARSER_KIND_MASK, d0
 	movem.l (sp)+, d1/a0
 	rts
 	.bend  ; opasmEngineGetStatementKindV1
+	.pub
 
 ; Return the label count.
 ;
@@ -1710,22 +1716,95 @@ opasmEngineGetStatementOutputOffsetV1	.block
 	rts
 	.bend  ; opasmEngineGetStatementOutputOffsetV1
 
-; Return the recorded output byte count for one statement.
-;
-; Inputs:
-; - D0: statement index.
-;
-; Outputs:
-; - D0: byte count.
+; Retain a validated reservation after EndStatementOutput and before PC advance.
+; The existing count slot holds its full extent; it never represents image bytes.
+; Inputs: D0.L = valid statement index, D1.L = checked reservation byte extent.
+; Outputs: D0.L = 0 on success, 1 for an invalid/structural statement.
+; Clobbers: D0/CCR. CCR: reflects D0 on return.
+opasmEngineSetStatementReservationV1	.block
+	.priv
+	movem.l d2/a0-a1, -(sp)
+	cmp.l OpasmEngineStmtCount.l, d0
+	bhs.s fail
+	move.l d0, d2
+	add.l d2, d2
+	lea OpasmEngineStmtDirectiveKindTable.l, a0
+	move.w 0(a0, d2.l), d0
+	andi.w #OPASM_ENGINE_STMT_PARSER_KIND_MASK, d0
+	beq.s store
+	cmpi.w #OPASM_ENGINE_STMT_KIND_GENERIC, d0
+	bne.s fail
+store
+	ori.w #OPASM_ENGINE_STMT_RESERVATION_FLAG, 0(a0, d2.l)
+	add.l d2, d2
+	lea OpasmEngineStmtOutputByteCountTable.l, a0
+	move.l d1, 0(a0, d2.l)
+	lea OpasmEngineStmtOutputAddrTable.l, a0
+	movea.l OpasmEngineSessionCurrentPc.l, a1
+	move.l a1, 0(a0, d2.l)
+	movem.l (sp)+, d2/a0-a1
+	moveq #0, d0
+	rts
+fail
+	movem.l (sp)+, d2/a0-a1
+	moveq #1, d0
+	rts
+	.bend  ; opasmEngineSetStatementReservationV1
+	.pub
+
+; Read retained reservation semantics, including a valid zero-byte reservation.
+; Inputs: D0.L = statement index.
+; Outputs: D0.L = 0 for a reservation, 1 otherwise; D1.L = extent or zero.
+; Clobbers: D0-D1/CCR. CCR: reflects D0 on return.
+opasmEngineGetStatementReservationV1	.block
+	.priv
+	movem.l d2/a0, -(sp)
+	moveq #0, d1
+	cmp.l OpasmEngineStmtCount.l, d0
+	bhs.s absent
+	move.l d0, d2
+	add.l d2, d2
+	lea OpasmEngineStmtDirectiveKindTable.l, a0
+	tst.w 0(a0, d2.l)
+	bpl.s absent
+	add.l d2, d2
+	lea OpasmEngineStmtOutputByteCountTable.l, a0
+	move.l 0(a0, d2.l), d1
+	movem.l (sp)+, d2/a0
+	moveq #0, d0
+	rts
+absent
+	movem.l (sp)+, d2/a0
+	moveq #1, d0
+	rts
+	.bend  ; opasmEngineGetStatementReservationV1
+	.pub
+
+; Return emitted bytes only; the retained RES extent is not emitted data.
+; Inputs: D0.L = statement index.
+; Outputs: D0.L = emitted byte count, zero for a reservation or invalid index.
+; Clobbers: D0/CCR. CCR: reflects D0 on return.
 opasmEngineGetStatementOutputByteCountV1	.block
-	move.l d1, -(sp)
+	.priv
+	movem.l d1/a0, -(sp)
+	cmp.l OpasmEngineStmtCount.l, d0
+	bhs.s noBytes
 	move.l d0, d1
-	lsl.l #2, d1
+	add.l d1, d1
+	lea OpasmEngineStmtDirectiveKindTable.l, a0
+	tst.w 0(a0, d1.l)
+	bmi.s noBytes
+	add.l d1, d1
 	lea OpasmEngineStmtOutputByteCountTable.l, a0
 	move.l 0(a0, d1.l), d0
-	move.l (sp)+, d1
+	movem.l (sp)+, d1/a0
+	rts
+noBytes
+	movem.l (sp)+, d1/a0
+	moveq #0, d0
 	rts
 	.bend  ; opasmEngineGetStatementOutputByteCountV1
+	.pub
 
 ; Return stored source-line text for one statement.
 ;
@@ -3961,6 +4040,35 @@ storeFail
 	rts
 	.bend  ; storeStatementRecord
 
+; Forget reservations from earlier passes before any flow can skip their rows.
+; Inputs: live statement count and retained engine tables.
+; Outputs: original parser kinds restored; no retained reservation extent/address.
+; Clobbers: CCR only. CCR: unspecified on return.
+; A single bounded linear kind scan avoids a new per-statement presence table.
+clearStatementReservationsV1	.block
+	movem.l d0-d2/a0-a1, -(sp)
+	move.l OpasmEngineStmtCount.l, d0
+	beq.s done
+	lea OpasmEngineStmtDirectiveKindTable.l, a0
+	moveq #0, d1
+loop
+	tst.w (a0)
+	bpl.s next
+	andi.w #OPASM_ENGINE_STMT_PARSER_KIND_MASK, (a0)
+	lea OpasmEngineStmtOutputByteCountTable.l, a1
+	clr.l 0(a1, d1.l)
+	lea OpasmEngineStmtOutputAddrTable.l, a1
+	clr.l 0(a1, d1.l)
+next
+	addq.l #2, a0
+	addq.l #4, d1
+	subq.l #1, d0
+	bne.s loop
+done
+	movem.l (sp)+, d0-d2/a0-a1
+	rts
+	.bend  ; clearStatementReservationsV1
+
 ; Inputs:
 ; - pass-one callback pointers and session context in OPASM_ENGINE_CTX_*.
 ;
@@ -3973,6 +4081,7 @@ storeFail
 ; CCR:
 ; - reflects D0 on return.
 runPassOne	.block
+	bsr.w clearStatementReservationsV1
 	movea.l OPASM_ENGINE_CTX_SESSION_PASS_PTR(a5), a0
 	move.w #1, (a0)
 .ifdef OPFORGE_DEBUG_CONTRACTS
@@ -4011,13 +4120,14 @@ loop
 	move.l d7, d0
 	jsr progress.opasmProgressStatementBeginV1
 .ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	; Preserve the observer's parser-kind ABI for internal reservation rows.
+	; This preparation is before callback flag production; the getter balances
+	; its stack and touches no request, service, error or observer buffers.
 	move.l d7, d0
-	move.l d7, d1
-	add.l d1, d1
-	lea OpasmEngineStmtDirectiveKindTable.l, a0
-	moveq #0, d2
-	move.w 0(a0, d1.l), d2
+	bsr.w opasmEngineGetStatementKindV1
+	move.l d0, d2
 	move.l d2, d1
+	move.l d7, d0
 	jsr progress.opasmProgressWorkStatementV1
 .endif
 	jsr progress.opasmProgressAbortRequestedV1
@@ -4110,6 +4220,7 @@ return
 ; CCR:
 ; - reflects D0 on return.
 runPassTwo	.block
+	bsr.w clearStatementReservationsV1
 	movea.l OPASM_ENGINE_CTX_SESSION_PASS_PTR(a5), a0
 	move.w #2, (a0)
 .ifdef OPFORGE_DEBUG_CONTRACTS
@@ -4158,13 +4269,14 @@ loop
 	move.l d7, d0
 	jsr progress.opasmProgressStatementBeginV1
 .ifdef OPFORGE_PROGRESS_WORK_COUNTERS
+	; Preserve the observer's parser-kind ABI for internal reservation rows.
+	; This preparation is before callback flag production; the getter balances
+	; its stack and touches no request, service, error or observer buffers.
 	move.l d7, d0
-	move.l d7, d1
-	add.l d1, d1
-	lea OpasmEngineStmtDirectiveKindTable.l, a0
-	moveq #0, d2
-	move.w 0(a0, d1.l), d2
+	bsr.w opasmEngineGetStatementKindV1
+	move.l d0, d2
 	move.l d2, d1
+	move.l d7, d0
 	jsr progress.opasmProgressWorkStatementV1
 .endif
 	jsr progress.opasmProgressAbortRequestedV1

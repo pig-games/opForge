@@ -1,3 +1,32 @@
+PASS: Step29 implementation compliance by independent step28_scalar_review; all final gate conditions satisfied. Mechanical Step29 completion and Step30 pointer edits were independently authorized. BSS-origin, empty-image, symbol-footer and other Phase A debts remain open; no Phase A closure or runtime speedup is claimed.
+
+Artifact SHA-256: 4feb093c87f5073e84b3a417a517294328b7e0836a4f76c414da9dfa30692c02
+Final non-LSP receipt: reservation-quality-fifth SHA-256 bc96030c1c799408a4d2851d25eedc2adcacbdd75bc88cfdacda85a8c5387d9f.
+Final staged-native receipt: reservation-staged-native-third SHA-256 56317cdc9268c98cf37288f3cd513680dc58dbaab882c9be9889187589fe575e.
+Final workflow receipt: reservation-workflow-third SHA-256 8b741f0ae76c44522b1531011014b9bfe414c1e7ff0b058de6fa35f524f56d19.
+Full-u32 receipt: reservation-u32-zero-first SHA-256 dc48cd29b9369eec2dd2f0309b77631d700590815679b533e7f77a4c0ba5c29d.
+
+Prior scoped receipts:
+
+PASS: Independent reviewer step28_scalar_review approves the final Step29 implementation and the explicit BSS-origin/zero-image Phase A debts. Mechanical Step29 completion and Step30 pointer are authorized only after final non-LSP, staged-native and workflow receipts pass and are recorded. Native reservation proof is complete; B09 symbol-footer and all other Phase A debts remain open.
+
+Artifact SHA-256: b50d0a850cb8d9d98c2f12fe5faa1f3a51db48456e87a4a128c20653904b7860
+Review basis: agents/plan-compliance-reviewer.agent.md and agents/plan-quality-reviewer.agent.md; independent review in this task. This does not qualify Phase A closure.
+
+Prior scoped receipts:
+
+PASS: Independent Plan Quality Reviewer step28_scalar_review approves Step29 next-PC authority and explicit Phase A zero-image output debt. Revised full-u32 mixed CODE/BSS proof retains exact counts and no BSS emission; unchanged nine positive and nine negative per-case proofs remain valid within the failed aggregate receipt. Only the two replacement cases need fresh execution. Completion still requires B09, final evidence/gates and independent compliance.
+
+Artifact SHA-256: 4fe2361a3274af46ecc1c6c317b4904393d98c6af430a8f44dc66cd87be5fa42
+
+Prior scoped receipts:
+
+PASS: Independent Plan Quality Reviewer step28_scalar_review approves the narrow Step29 next-PC bound amendment against Rust update_addresses. No scope expansion, Step29 remains active and Phase A remains open. This is plan quality only; implementation compliance awaits native matrix, B09 and final gates.
+
+Artifact SHA-256: 4463edcb5e55150851aa1d65a1c1e571dfb59295a04ce9a8b7c27dd6261f8a59
+
+Prior scoped receipts:
+
 PASS: Step28 implementation compliance by independent step28_scalar_review; Plan Quality by independent step20_tests. All required focused native proofs, seven native regressions, non-LSP Rust, staged native, inventory/capacity, formatter and workflow checks pass. Mechanical Step28 completion and Step29 pointer edits are approved for this atomic commit.
 
 Artifact SHA-256: bd22ea56faef0d25ae78665854f716764fcb58e1adadb4e3f6148c921af363fe

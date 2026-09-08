@@ -1,0 +1,956 @@
+{
+  "step": 29,
+  "item": "A-listing-reservation",
+  "status": "qualified",
+  "base_commit": "914ad23a15871a4bb891d541f2359a92830d9a3a",
+  "runtime_gain": null,
+  "cumulative_runtime_gain": null,
+  "native_execution": "nine_mixed_positive_two_full_u32_nine_negative_pass",
+  "historical_step28_draft_receipts": {
+    "assemble-first": {
+      "command": [
+        "target/step17-opt1/debug/opforge",
+        "-i",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/main.asm",
+        "--hunk",
+        "/private/tmp/opforge-step28-check.hunk",
+        "--cpu",
+        "68020",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/opforge-cli",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/tkpkg",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/tkvm",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/prvm",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/exprvm",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/opcore",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/opasm",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/debug",
+        "-I",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/debug"
+      ],
+      "exit_code": 1,
+      "whole_seconds": 27.16948708379641,
+      "sha256": "dbf6f713f9cf878850b22a8ea33ed984c11c32e5a46db29ea6cc8ce3c0ae15ba",
+      "log_bytes": 3354,
+      "log_path": "target/workflow-logs/step28-reservation/assemble-first.log"
+    },
+    "assemble-fourth": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step28-assemble.py"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 27.37876012502238,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step28-reservation/assemble-fourth.log"
+    },
+    "assemble-second": {
+      "command": [
+        "target/step17-opt1/debug/opforge",
+        "-i",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/main.asm",
+        "--hunk",
+        "/private/tmp/opforge-step28-check.hunk",
+        "--cpu",
+        "68020",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/opforge-cli",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/tkpkg",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/tkvm",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/prvm",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/exprvm",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/opcore",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/opasm",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/debug",
+        "-I",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/debug"
+      ],
+      "exit_code": 1,
+      "whole_seconds": 27.211066832998767,
+      "sha256": "6824663013e4fcc701440871c96f9d7c0f396eb5a8eda735a8c5f49cd6653b68",
+      "log_bytes": 742,
+      "log_path": "target/workflow-logs/step28-reservation/assemble-second.log"
+    },
+    "assemble-third": {
+      "command": [
+        "target/step17-opt1/debug/opforge",
+        "-i",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/main.asm",
+        "--hunk",
+        "/private/tmp/opforge-step28-check.hunk",
+        "--cpu",
+        "68020",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/opforge-cli",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/tkpkg",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/tkvm",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/prvm",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/exprvm",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/opcore",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/opasm",
+        "-M",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/debug",
+        "-I",
+        "/Users/erik/Code/Retro/opForge-wt-native-statement-live-performance/native/motorola68000/amigaos/debug"
+      ],
+      "exit_code": 1,
+      "whole_seconds": 27.3854686669074,
+      "sha256": "b26ac5e5332ae9889b4decdc09d18f6ff59bef25a287f4d79c97e4a57772359a",
+      "log_bytes": 192,
+      "log_path": "target/workflow-logs/step28-reservation/assemble-third.log"
+    },
+    "capacity-first": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_statement_capacity",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 16.103231417015195,
+      "sha256": "dfddc3dd203449d13f6d119eea902daa468f8fab7a9333251eee66dde1f2de97",
+      "log_bytes": 3895,
+      "log_path": "target/workflow-logs/step28-reservation/capacity-first.log"
+    },
+    "host-first": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_reservation_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 21.077908334089443,
+      "sha256": "7ef7ad1589d69e0b841491dea90ff5dde0e6c59dddf55147f34d19834efed3c4",
+      "log_bytes": 2593,
+      "log_path": "target/workflow-logs/step28-reservation/host-first.log"
+    },
+    "host-scalar-domain": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_reservation_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 14.68448487506248,
+      "sha256": "ee5f30b2b2978371afe9373784e1ae0004ec5e88b5d8d38a41bee1856cd628d7",
+      "log_bytes": 1584,
+      "log_path": "target/workflow-logs/step28-reservation/host-scalar-domain.log"
+    },
+    "host-second": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_reservation_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 13.70080545800738,
+      "sha256": "10e8111cc95db3e1541c10c9c79d70a70e4f855a77944e7e4a16559d754636ef",
+      "log_bytes": 1444,
+      "log_path": "target/workflow-logs/step28-reservation/host-second.log"
+    },
+    "slice-metadata": {
+      "command": [
+        "python3",
+        "scripts/workflow/check_native_porting_slice.py",
+        "--metadata",
+        "documentation/plans/slices/native-performance-reservation-listing-v1.toml",
+        "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm",
+        "native/motorola68000/amigaos/opasm/opasm_engine.asm",
+        "native/motorola68000/amigaos/opasm/opasm_layout.asm",
+        "native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 0.03411287488415837,
+      "sha256": "e8be9b701f09554f6b1edb34f289c27f70492cf21f7cfab4457b545c716fe615",
+      "log_bytes": 48,
+      "log_path": "target/workflow-logs/step28-reservation/slice-metadata.log"
+    }
+  },
+  "source_sha256": {
+    "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm": "7e6de627de2503aa7e7cc6ae6b09c3d9d95875b11241e367a16658e3dbfe7c43",
+    "native/motorola68000/amigaos/opasm/opasm_engine.asm": "854d1f785912cd54a7967372e2c07e44a108efa0f7da5f73bd96bb858830ad24",
+    "native/motorola68000/amigaos/opasm/opasm_layout.asm": "c9ce64d59196fcae74e54347a28f53edf775e27ecdc50f6bd1d62e3eedae28d7",
+    "native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm": "8bbc85eac537f799b3fefd850bdadbdecb2c399217da5e4207fdb3724a384463",
+    "crates/opforge-asm/src/tests/native_listing_reservation.rs": "3427caaa9b79884910a355f5f7910abfcef0dad9b3ab4c9ee3ea991920b56e91"
+  },
+  "remaining": [
+    "exact native listing/BIN and negative proof",
+    "B09 attempt-all dispositions",
+    "capacity snapshots",
+    "architecture and inventory",
+    "formatter",
+    "non-LSP Rust and workflow gates",
+    "independent plan compliance",
+    "focused commit and integration"
+  ],
+  "next_action": "Implement and qualify the reservation runtime using the Step 28 typed transport, checked unit-times-count extent and inclusive last-address validation; preserve whole-listing/BIN and negative native proof requirements.",
+  "receipts": {
+    "reservation-assemble-first": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step28-assemble.py"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 28.093491540988907,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-assemble-first.log"
+    },
+    "reservation-assemble-second": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step28-assemble.py"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 28.369561291998252,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-assemble-second.log"
+    },
+    "reservation-assemble-third": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step28-assemble.py"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 27.524987416807562,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-assemble-third.log"
+    },
+    "reservation-capacity-first": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 0.1760727078653872,
+      "sha256": "640dd2baac79bf870db7d9ccf31880249c4d319714ae5c0201547307026049c2",
+      "log_bytes": 2480,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-capacity-first.log"
+    },
+    "reservation-capacity-second": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 2.6978294998407364,
+      "sha256": "33e67ab650a91efd56cabfdca88a2eab688b06f7d238697bd2991285ca855559",
+      "log_bytes": 1871,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-capacity-second.log"
+    },
+    "reservation-capacity-third": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 2.6800395830068737,
+      "sha256": "8ecad21401c9c7461c51955cdc6ef489ef079ff342f8963d5fb8fc2ce04f0485",
+      "log_bytes": 1339,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-capacity-third.log"
+    },
+    "reservation-host-fifth": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_reservation_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 14.237225417047739,
+      "sha256": "6b7dd54450ef05c58a754462cd10fd4ac422766a09097df85c42e4bf84810d45",
+      "log_bytes": 4289,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-host-fifth.log"
+    },
+    "reservation-host-fourth": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_reservation_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 15.068956166971475,
+      "sha256": "68d6dfaed5c182c574d46bd010183d142a2bcb69cac80e17c841f1b7f35281a4",
+      "log_bytes": 2051,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-host-fourth.log"
+    },
+    "reservation-host-seventh": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_reservation_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 15.770719459047541,
+      "sha256": "255300cd5abf04f2ceec327c25ff6397d29574b13c0cf5fbefc858d34c604568",
+      "log_bytes": 2376,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-host-seventh.log"
+    },
+    "reservation-host-sixth": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_reservation_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 14.675265624886379,
+      "sha256": "cd6e21f248e48cde9e06f633a0df73ce8230d0a2c8b1768fea437d27b8fe07f4",
+      "log_bytes": 2051,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-host-sixth.log"
+    },
+    "reservation-host-third": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_reservation_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 15.240413000108674,
+      "sha256": "1e903c2888bc53b48f8507d1df97e1da9bc39f6ca871d66cc3aac341e18e73dc",
+      "log_bytes": 1912,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-host-third.log"
+    },
+    "reservation-quality-first": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 1,
+      "whole_seconds": 5.3230669589247555,
+      "sha256": "5be4bb0b2471e7b45fa9c6d817929136d64a50d7c12fb2cfa5908f00c84af354",
+      "log_bytes": 61298,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-quality-first.log"
+    },
+    "reservation-native-first": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_listing_reservation_",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 1199.9981008749455,
+      "sha256": "9ab91234fe0f807048e8153aa5e4b2eb80d7549ae65dc15fd4f0cec2b802e12c",
+      "log_bytes": 23221,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-native-first.log"
+    },
+    "reservation-assemble-fourth": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step28-assemble.py"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 28.355982582783327,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-assemble-fourth.log"
+    },
+    "reservation-single-first": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_listing_reservation_final_binary_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 61.164231332950294,
+      "sha256": "83335cc113ec503e56658ad6a9bbdd8334eda6f272dc5db5f16b2b49f51acd16",
+      "log_bytes": 2161,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-single-first.log"
+    },
+    "reservation-quality-second": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 265.7538278331049,
+      "sha256": "1c5aedba51e48fa85e65ff1dc55fd8150143c1132e7767a6a139287db38ee28e",
+      "log_bytes": 341372,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-quality-second.log"
+    },
+    "reservation-assemble-fifth": {
+      "command": [
+        "python3",
+        "/private/tmp/opforge-step28-assemble.py"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 6.220540791051462,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log_bytes": 0,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-assemble-fifth.log"
+    },
+    "reservation-host-eighth": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_reservation_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 15.513454208848998,
+      "sha256": "9b65c17e8eee778afb5ae396d11e3b42684931d1a4ccf2332b84c222b1a0f08c",
+      "log_bytes": 2376,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-host-eighth.log"
+    },
+    "reservation-capacity-sixth": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 2.6076701669953763,
+      "sha256": "938875257a3f9ed5ff1aab21b155a0af594fbddbba48499cd5fe6b92631dad91",
+      "log_bytes": 1339,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-capacity-sixth.log"
+    },
+    "reservation-single-second": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_listing_reservation_final_binary_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 63.29153429111466,
+      "sha256": "e2d755c4406b3893be589795c3ea8705f8c5b7f4a7e054fe213883d486b2f5e4",
+      "log_bytes": 261,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-single-second.log"
+    },
+    "reservation-host-ninth": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_reservation_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 15.871906583895907,
+      "sha256": "5c1cda42e47e7d082825772da38cb0aa4f605560dc7ca80db0b299eb9766ab3b",
+      "log_bytes": 2376,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-host-ninth.log"
+    },
+    "reservation-capacity-ninth": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 2.6691400418058038,
+      "sha256": "405346e63ae5b141fe0dfa7b9e5742895998dbb350d7bd99db48ef6a01b9b668",
+      "log_bytes": 1339,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-capacity-ninth.log"
+    },
+    "reservation-quality-third": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 264.7944744999986,
+      "sha256": "4059bd17b846b8dab99fa751d955c2b5bd421906a39ac3a03b7bbe6bdbf0395b",
+      "log_bytes": 341372,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-quality-third.log"
+    },
+    "reservation-staged-native-first": {
+      "command": [
+        "python3",
+        "scripts/workflow/run_native_porting_quality_gate.py",
+        "--staged",
+        "--metadata",
+        "documentation/plans/slices/native-performance-reservation-listing-v1.toml"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 5.899360042065382,
+      "sha256": "56317cdc9268c98cf37288f3cd513680dc58dbaab882c9be9889187589fe575e",
+      "log_bytes": 4646,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-staged-native-first.log"
+    },
+    "reservation-workflow-first": {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 28.78713770909235,
+      "sha256": "51bb6264322dd61db413a6a451367dc8cda55c96398b56d8ffe9b00569b863f8",
+      "log_bytes": 7046,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-workflow-first.log"
+    },
+    "reservation-native-second": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_listing_reservation_",
+        "--skip",
+        "native_listing_reservation_final_binary_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 1257.9858659170568,
+      "sha256": "94053835173de6f978d12b8539137bb8381cfd53a841329d6db59a4910247667",
+      "log_bytes": 5186,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-native-second.log"
+    },
+    "reservation-quality-fourth": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 270.05500495783053,
+      "sha256": "500bc527410a1d086079a491552fd8a17837cf62f20158071473a1b0d8d75695",
+      "log_bytes": 341372,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-quality-fourth.log"
+    },
+    "reservation-host-tenth": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_reservation_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 16.575124207884073,
+      "sha256": "6646bff5c3aa0884ae64dc7f70b2b8c82f0c41ec1cea27916ac32591fc28ea37",
+      "log_bytes": 2376,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-host-tenth.log"
+    },
+    "B09": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "external_fs_uae_native_production_corpus_parity",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 98.34962533414364,
+      "sha256": "76dd928dfb04a0e9c9b6e07454435fffd6d2479363d4bc318e5090c8ceea77fc",
+      "log_bytes": 28284,
+      "log_path": "target/workflow-logs/step29-reservation/B09.log"
+    },
+    "reservation-staged-native-second": {
+      "command": [
+        "python3",
+        "scripts/workflow/run_native_porting_quality_gate.py",
+        "--staged",
+        "--metadata",
+        "documentation/plans/slices/native-performance-reservation-listing-v1.toml"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 5.8246338330209255,
+      "sha256": "56317cdc9268c98cf37288f3cd513680dc58dbaab882c9be9889187589fe575e",
+      "log_bytes": 4646,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-staged-native-second.log"
+    },
+    "reservation-workflow-second": {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 28.54694675002247,
+      "sha256": "5a95a81264f03a0ad17330b6ecbb60df94ff4f19ceb7a687a14a14c0e5d6a423",
+      "log_bytes": 7046,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-workflow-second.log"
+    },
+    "reservation-u32-mixed-first": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_listing_reservation_full_u32_counts_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 101,
+      "whole_seconds": 127.49811258399859,
+      "sha256": "f85294fd947337c1e2aaea8d620d955b0797db55b57c49f072a781784b3a92a2",
+      "log_bytes": 3979,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-u32-mixed-first.log"
+    },
+    "reservation-host-eleventh": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_listing_reservation_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 15.044022291898727,
+      "sha256": "37a94f9d74377939b0f52232460ac6d7a112c72afae494ae17f8ba60c906c710",
+      "log_bytes": 2376,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-host-eleventh.log"
+    },
+    "reservation-u32-zero-first": {
+      "command": [
+        "target/step17-opt1/debug/deps/asm-5d01a576d9a2b0d5",
+        "native_listing_reservation_full_u32_counts_fs_uae",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 126.9562150829006,
+      "sha256": "dc48cd29b9369eec2dd2f0309b77631d700590815679b533e7f77a4c0ba5c29d",
+      "log_bytes": 294,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-u32-zero-first.log"
+    },
+    "reservation-quality-fifth": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 268.10054587502964,
+      "sha256": "bc96030c1c799408a4d2851d25eedc2adcacbdd75bc88cfdacda85a8c5387d9f",
+      "log_bytes": 341372,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-quality-fifth.log"
+    },
+    "reservation-staged-native-third": {
+      "command": [
+        "python3",
+        "scripts/workflow/run_native_porting_quality_gate.py",
+        "--staged",
+        "--metadata",
+        "documentation/plans/slices/native-performance-reservation-listing-v1.toml"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 6.686553500127047,
+      "sha256": "56317cdc9268c98cf37288f3cd513680dc58dbaab882c9be9889187589fe575e",
+      "log_bytes": 4646,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-staged-native-third.log"
+    },
+    "reservation-workflow-third": {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 30.184370666975155,
+      "sha256": "8b741f0ae76c44522b1531011014b9bfe414c1e7ff0b058de6fa35f524f56d19",
+      "log_bytes": 7046,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-workflow-third.log"
+    },
+    "reservation-plan-wrapper-third": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_plan_workflow.sh",
+        "--check-once",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md",
+        "Step29 reservation listing qualification evidence and preserved Phase A debt"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 0.10747112496756017,
+      "sha256": "eb9cd660fbf47adf335ad6af61c1d9e5eff0f3b87c216729546a094a2a2396d1",
+      "log_bytes": 1758,
+      "log_path": "target/workflow-logs/step29-reservation/reservation-plan-wrapper-third.log"
+    }
+  },
+  "pre_tst_deletion_native_sources": {
+    "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm": "b3e290f2792f8dac874e0b821ce12f4666d48a2f19506beee0b5599f6b2a933f",
+    "native/motorola68000/amigaos/opasm/opasm_engine.asm": "854d1f785912cd54a7967372e2c07e44a108efa0f7da5f73bd96bb858830ad24",
+    "native/motorola68000/amigaos/opasm/opasm_layout.asm": "c9ce64d59196fcae74e54347a28f53edf775e27ecdc50f6bd1d62e3eedae28d7",
+    "native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm": "8bbc85eac537f799b3fefd850bdadbdecb2c399217da5e4207fdb3724a384463"
+  },
+  "canonical_capacity_before_tst_deletion": {
+    "loadable_bytes": 1723656,
+    "processed_rows": 94465,
+    "processed_bytes": 3576931,
+    "imports": 423,
+    "public_declarations": 6508,
+    "public_name_bytes": 127894,
+    "hard_bounds_changed": false
+  },
+  "production_fixed_bss_growth_bytes": 8,
+  "per_statement_table_growth_bytes": 0,
+  "falsified_hypothesis": {
+    "claim": "Parenthesized unit keywords reduce to special bare keyword semantics",
+    "evidence": "reservation-host-fifth",
+    "disposition": "Falsified by actual Rust directive oracle; normalization fully reverted"
+  },
+  "repaired_native_sources": {
+    "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm": "325dbf063ad10dd1db783eac35f2cd4843aa977a4e48067dd154af9de02636e9",
+    "native/motorola68000/amigaos/opasm/opasm_engine.asm": "854d1f785912cd54a7967372e2c07e44a108efa0f7da5f73bd96bb858830ad24",
+    "native/motorola68000/amigaos/opasm/opasm_layout.asm": "c9ce64d59196fcae74e54347a28f53edf775e27ecdc50f6bd1d62e3eedae28d7",
+    "native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm": "8bbc85eac537f799b3fefd850bdadbdecb2c399217da5e4207fdb3724a384463"
+  },
+  "first_native_batch_disposition": "All 20 cases attempted; 11 positive cases rejected at incorrect caller CCR tests; nine negative commands omitted output selection and never reached reservation evaluation. No reservation Level D qualification.",
+  "reservation_metadata": "High-bit flag in existing kind word preserves NONE/GENERIC base kind through public reads and pass reset.",
+  "marker_repaired_native_sources": {
+    "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm": "325dbf063ad10dd1db783eac35f2cd4843aa977a4e48067dd154af9de02636e9",
+    "native/motorola68000/amigaos/opasm/opasm_engine.asm": "1cf1ec31272cb4e39733f4b0ae0de7196edaab52bd4aa0351acafef2eaacae3f",
+    "native/motorola68000/amigaos/opasm/opasm_layout.asm": "c9ce64d59196fcae74e54347a28f53edf775e27ecdc50f6bd1d62e3eedae28d7",
+    "native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm": "8bbc85eac537f799b3fefd850bdadbdecb2c399217da5e4207fdb3724a384463"
+  },
+  "canonical_capacity_final": {
+    "loadable_bytes": 1723532,
+    "processed_rows": 94465,
+    "processed_bytes": 3576807,
+    "imports": 423,
+    "public_declarations": 6509,
+    "public_name_bytes": 127929,
+    "hard_bounds_changed": false
+  },
+  "empty_image_failure": {
+    "status": "open_phase_a_debt",
+    "diagnostic": "STAGE emitter; ERROR OPC-NCLI009: native emitter VM not implemented",
+    "native_boundary": "native/motorola68000/amigaos/opforge-cli/run.asm::checkImage",
+    "production_unchanged": true,
+    "sources": [
+      ".module main\n.cpu 68020\n.section zero, kind=bss, align=1\n.org 0\n.res byte, $80000000+0\n.endsection\n.endmodule\n",
+      ".module main\n.cpu 68020\n.section zero, kind=bss, align=1\n.org 0\n.res byte, ($ffffffff+1)-1\n.endsection\n.endmodule\n"
+    ],
+    "command_template": "{input} --bin {guest_work_dir}build/reservation.bin --list {guest_work_dir}build/reservation.lst --cpu 68020 --opasm-package {package}",
+    "guest_exit": 1,
+    "review": "step28_scalar_review accepts complete mixed CODE/BSS replacement preserving actual counts and exact whole listing/one-byte BIN; no empty-image fix claimed"
+  },
+  "native_second_disposition": {
+    "mixed_positive_cases": {
+      "passed": 9,
+      "total": 9
+    },
+    "negative_cases": {
+      "passed": 9,
+      "total": 9
+    },
+    "bss_only_cases": {
+      "failed": 2,
+      "total": 2,
+      "status": "open unchanged empty-image guard; replacement count proof pending"
+    },
+    "production_unchanged_after_receipt": true
+  },
+  "B09": {
+    "status": "failed_listing_only",
+    "exact_artifacts": 10,
+    "declared_artifacts": 11,
+    "corpus_sha256": "8483da832f779eca8a4544580ef48f66feb55c7344311c0d14e43f0b04a9b46d",
+    "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+    "source_sha256": "b76f0308e0f6adfce5e997e3f39b92597a990f99716e745cd643a9f815fc768b",
+    "profile": "off",
+    "timeout_ms": 120000,
+    "original_source_bytes_commands_artifacts_unchanged": true,
+    "artifacts": [
+      {
+        "path": "Work/output.bin",
+        "status": "exact"
+      },
+      {
+        "path": "Work/build/full.prg",
+        "status": "exact"
+      },
+      {
+        "path": "Work/build/full-image.bin",
+        "status": "exact"
+      },
+      {
+        "path": "Work/build/full.map",
+        "status": "exact"
+      },
+      {
+        "path": "Work/build/full_sections/code.bin",
+        "status": "exact"
+      },
+      {
+        "path": "Work/build/full_sections/data.bin",
+        "status": "exact"
+      },
+      {
+        "path": "Work/build/full_sections/zero.bin",
+        "status": "exact"
+      },
+      {
+        "path": "Work/build/full.srec",
+        "status": "exact"
+      },
+      {
+        "path": "Work/build/full.hunk",
+        "status": "exact"
+      },
+      {
+        "path": "Work/build/full.hex",
+        "status": "exact"
+      },
+      {
+        "path": "Work/opforge_6502_native_cli_smoke.lst",
+        "status": "mismatch",
+        "native_bytes": 2794,
+        "rust_bytes": 2799,
+        "first_mismatch": 2600,
+        "native_first_byte": 109,
+        "rust_first_byte": 100,
+        "last_reported_mismatch": 2793
+      }
+    ],
+    "prior_first_mismatch": 1260,
+    "remaining_boundary": "SYMBOL TABLE footer; duplicate qualification, truncation and insertion order",
+    "runtime_gain": null
+  },
+  "bss_image_origin_failure": {
+    "status": "open_prior_invariant_failure_before_phase_a_close",
+    "diagnostics": [
+      "OPC-NCLI044: native output artifact build failed",
+      "OPC-NCLI023: native flat output write failed"
+    ],
+    "guest_exit": 1,
+    "production_unchanged": true,
+    "sources": [
+      ".module main\n.cpu 68020\n.region rom, $8000, $80ff\n.section code, align=1\n.byte $aa\n.endsection\n.section zero, kind=bss, align=1\n.org 0\n.res byte, $80000000+0\n.endsection\n.place code in rom\n.endmodule\n",
+      ".module main\n.cpu 68020\n.region rom, $8000, $80ff\n.section code, align=1\n.byte $aa\n.endsection\n.section zero, kind=bss, align=1\n.org 0\n.res byte, ($ffffffff+1)-1\n.endsection\n.place code in rom\n.endmodule\n"
+    ],
+    "source_analysis": "BSS first explicit origin sets global image base zero; placed CODE at 0x8000 materializes 0x8000 gap bytes; generated listing dumps 0x8001 bytes beyond its 24000-byte capacity. BIN length not directly verified in this failed guest proof.",
+    "prior_contract": "documentation/plans/slices/native-porting-slice-overlapping-origin-image.toml",
+    "review": "step28_scalar_review: use CODE region 0..0xff for reservation-only full-u32 proof; unchanged count/origin/one-byte BIN and whole listing; repair BSS-origin independently"
+  },
+  "final_native_sources": {
+    "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm": "325dbf063ad10dd1db783eac35f2cd4843aa977a4e48067dd154af9de02636e9",
+    "native/motorola68000/amigaos/opasm/opasm_engine.asm": "1cf1ec31272cb4e39733f4b0ae0de7196edaab52bd4aa0351acafef2eaacae3f",
+    "native/motorola68000/amigaos/opasm/opasm_layout.asm": "c9ce64d59196fcae74e54347a28f53edf775e27ecdc50f6bd1d62e3eedae28d7",
+    "native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm": "8bbc85eac537f799b3fefd850bdadbdecb2c399217da5e4207fdb3724a384463"
+  },
+  "qualification_scope": {
+    "mixed_positive_cases": 9,
+    "zero_origin_full_u32_cases": 2,
+    "negative_cases": 9,
+    "additional_complete_single_fixture": 1,
+    "b09_exact_artifacts": 10,
+    "b09_declared_artifacts": 11,
+    "empty_image_support": false,
+    "bss_origin_nonzero_code_placement": false
+  },
+  "phase_a_status": "open",
+  "independent_compliance": "PASS: step28_scalar_review; final gate conditions satisfied; mechanical completion approved."
+}

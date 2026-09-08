@@ -289,7 +289,7 @@ lineLoop
 	move.l d2, d0
 	jsr engine.opasmEngineGetStatementOutputByteCountV1
 	move.l d0, d5
-	beq.w checkOrg
+	beq.w checkReservation
 	move.l d2, d0
 	jsr engine.opasmEngineGetStatementOutputAddrV1
 	bsr.w opasmListingAppendHexWord
@@ -298,6 +298,34 @@ lineLoop
 	bsr.w opasmListingAppendSpaces
 	bne.w listingCapacityFail
 	bra.w locDone
+
+checkReservation
+	move.l d2, d0
+	jsr engine.opasmEngineGetStatementReservationV1
+	bne.w checkOrg
+	move.l d1, d5
+	move.l d2, d0
+	jsr engine.opasmEngineGetStatementOutputAddrV1
+	bsr.w opasmListingAppendAddress
+	bne.w listingCapacityFail
+	moveq #6, d0
+	sub.l d1, d0
+	bpl.s reservationPad
+	moveq #0, d0
+reservationPad
+	addq.l #2, d0
+	bsr.w opasmListingAppendSpaces
+	bne.w listingCapacityFail
+	moveq #1, d0
+	bsr.w opasmListingReserve
+	bcs.w listingCapacityFail
+	move.b #'+', (a2)+
+	move.l d5, d0
+	bsr.w opasmListingAppendAddress
+	bne.w listingCapacityFail
+	move.l d1, d4
+	addq.l #1, d4
+	bra.w bytesDone
 
 checkOrg
 	move.l d2, d0
@@ -663,6 +691,46 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; opasmListingAppendHexWord
+
+; Match Rust format_addr for a full-u32 reservation address or extent.
+; Inputs: D0.L = value, A2 = output cursor, A4 = exclusive buffer limit.
+; Outputs: D0.L = 0 success/1 capacity failure, D1.L = 4/6/8 columns.
+; Clobbers: D0-D1/A2/CCR. CCR: reflects D0 on return.
+opasmListingAppendAddress	.block
+	move.l d2, -(sp)
+	move.l d0, d2
+	moveq #4, d1
+	cmpi.l #$ffff, d2
+	bls.s widthReady
+	moveq #6, d1
+	cmpi.l #$ffffff, d2
+	bls.s widthReady
+	moveq #8, d1
+widthReady
+	move.l d1, d0
+	bsr.w opasmListingReserve
+	bcs.s fail
+	cmpi.l #4, d1
+	beq.s lowWord
+	move.l d2, d0
+	swap d0
+	cmpi.l #6, d1
+	beq.s highByte
+	bsr.w opasmOutputAppendHexWord
+	bra.s lowWord
+highByte
+	bsr.w opasmOutputEmitHexByte
+lowWord
+	move.l d2, d0
+	bsr.w opasmOutputAppendHexWord
+	move.l (sp)+, d2
+	moveq #0, d0
+	rts
+fail
+	move.l (sp)+, d2
+	moveq #1, d0
+	rts
+	.bend  ; opasmListingAppendAddress
 
 opasmListingAppendU16Decimal	.block
 	move.l d0, -(sp)

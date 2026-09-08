@@ -555,6 +555,28 @@ return
 	rts
 	.bend  ; sectionActiveV1
 
+; Return whether the current active section is kind=bss.
+; Outputs: D0.L = 1 only for an active BSS section, otherwise 0.
+; Clobbers: D0-D1/A0/CCR.
+; CCR: reflects D0 on return.
+activeSectionIsBssV1	.block
+	.priv
+	moveq #0, d0
+	tst.w OpasmLayoutSectionActive.l
+	beq.s return
+	moveq #0, d1
+	move.w OpasmLayoutActiveSectionIndex.l, d1
+	add.l d1, d1
+	lea OpasmLayoutSectionKinds.l, a0
+	cmpi.w #OPASM_LAYOUT_SECTION_KIND_BSS, 0(a0, d1.l)
+	bne.s return
+	moveq #1, d0
+return
+	tst.l d0
+	rts
+	.bend  ; activeSectionIsBssV1
+	.pub
+
 ; Find a region by a caller-supplied bounded name.
 ; Inputs: A0/D0 = name and length.
 ; Outputs: D0.L = 0 on found, 1 when missing; D5.W = index on found.

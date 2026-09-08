@@ -21,6 +21,7 @@
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
 	.use tkpkg.amigaos.abi as tkabi
 	.use tkpkg.amigaos.buffers as buffers
+	.use tkpkg.amigaos.runtime_context as runtime_context
 	.use tkpkg.amigaos.state_service as state_service
 .ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
 	.use debug.amigaos.symbol_expr_profile as symbol_expr_profile
@@ -2064,25 +2065,113 @@ pack
 
 align
 	bsr.w readAlignPadForStatement
-	beq.s advanceLayoutD3
+	beq.w advanceLayoutD3
 	bra.s orgBad
 
 ds
 	moveq #2, d5
 	bsr.w readOperandValueForStatement
-	beq.s advanceLayoutD3
+	beq.w advanceLayoutD3
 	bra.s orgBad
 
 res
-	moveq #2, d6
-	bsr.w readCommaOperandValueForStatement
-	beq.s advanceLayoutD3
-	bra.s orgBad
+	jsr layout.activeSectionIsBssV1
+	tst.l d0
+	beq.w resBssOnly
+	bsr.w prepareResOperandsForStatement
+	bne.w resArityBad
+	bsr.w readResUnitForStatement
+	bne.w resUnitInvalid
+	move.l d3, d4
+	beq.w resUnitZero
+	movea.l OpasmDriverResCountPtr, a0
+	move.l OpasmDriverResCountLen, d0
+	bsr.w evaluateResOperandSlice
+	bne.w resCountInvalid
+	move.l d3, d5
+	beq.s resExtentReady
+	moveq #0, d2
+	moveq #-1, d3
+	divu.l d5, d2:d3
+	cmp.l d3, d4
+	bhi.w resExtentOverflow
+	move.l d5, d3
+	mulu.l d4, d3
+resExtentReady
+	move.l d3, d4
+	beq.s resRecord
+	jsr runtime_context.getCpuMaxProgramAddressV1
+	tst.l d0
+	bne.w resSpanInvalid
+	move.l d1, d5
+	jsr eng.opasmEngineGetSessionCurrentPcV1
+	move.l d0, d2
+	move.l d4, d3
+	subq.l #1, d3
+	add.l d2, d3
+	bcs.w resSpanInvalid
+	cmp.l d5, d3
+	bhi.w resSpanInvalid
+	; Rust update_addresses also bounds the next section program counter.
+	addq.l #1, d3
+	bcs.w resPcInvalid
+	cmp.l d5, d3
+	bhi.w resPcInvalid
+resRecord
+	move.l d7, d0
+	move.l d4, d1
+	jsr eng.opasmEngineSetStatementReservationV1
+	bne.w resRecordInvalid
+	move.l d4, d3
+	bra.w advanceLayoutD3
+
+resBssOnly
+	lea ResBssOnlyFailureText, a0
+	moveq #40, d1  ; ResBssOnlyFailureText..ResBssOnlyFailureTextEnd
+	bra.w resTextFailure
+resArityBad
+	lea ResArityFailureText, a0
+	moveq #29, d1  ; ResArityFailureText..ResArityFailureTextEnd
+	bra.w resTextFailure
+resUnitInvalid
+	lea ResUnitInvalidFailureText, a0
+	moveq #64, d1  ; ResUnitInvalidFailureText..ResUnitInvalidFailureTextEnd
+	bra.w resTextFailure
+resUnitZero
+	lea ResUnitZeroFailureText, a0
+	moveq #35, d1  ; ResUnitZeroFailureText..ResUnitZeroFailureTextEnd
+	bra.w resTextFailure
+resCountInvalid
+	lea ResCountInvalidFailureText, a0
+	moveq #42, d1  ; ResCountInvalidFailureText..ResCountInvalidFailureTextEnd
+	bra.w resTextFailure
+resExtentOverflow
+	lea ResExtentOverflowFailureText, a0
+	moveq #24, d1  ; ResExtentOverflowFailureText..ResExtentOverflowFailureTextEnd
+	bra.w resTextFailure
+resSpanInvalid
+	lea ResSpanFailureText, a0
+	moveq #21, d1  ; ResSpanFailureText..ResSpanFailureTextEnd
+	bra.w resTextFailure
+resPcInvalid
+	lea ResPcFailureText, a0
+	moveq #32, d1  ; ResPcFailureText..ResPcFailureTextEnd
+	bra.w resTextFailure
+resRecordInvalid
+	lea ResRecordFailureText, a0
+	moveq #30, d1  ; ResRecordFailureText..ResRecordFailureTextEnd
+resTextFailure
+	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
+	bsr.w appendTextEvent
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d0-d7/a0-a5
+	moveq #1, d0
+	rts
 
 fill
 	moveq #2, d6
 	bsr.w readCommaOperandValueForStatement
-	bne.s orgBad
+	bne.w orgBad
 
 advanceLayoutD3
 	tst.l d3
@@ -3441,6 +3530,263 @@ lowerD3	.block
 	jsr layout.lowerD3
 	rts
 	.bend  ; lowerD3
+
+; Capture exactly two `.res` operands and retain the trimmed first slice.
+; Inputs: D7.L = statement index.
+; Outputs: D0.L = 0 success/1 failure; fallback pointer/length = first operand.
+; Clobbers: D0-D5/A0-A3/CCR.
+; CCR: reflects D0 on return.
+prepareResOperandsForStatement	.block
+	movem.l d1-d5/a0-a3, -(sp)
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	move.l d7, d0
+	movea.l sp, a0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w fail
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
+	beq.w fail
+	bsr.w skipLineWhitespace
+	movea.l a0, a2
+	move.l d0, d2
+	movea.l a0, a3
+	moveq #0, d5
+	moveq #0, d1
+	moveq #0, d3
+
+scanFirst
+	tst.l d2
+	beq.w fail
+	move.b (a2), d0
+	tst.b d1
+	beq.s firstUnquoted
+	tst.b d3
+	beq.s firstQuotedByte
+	clr.b d3
+	bra.s advanceFirst
+firstQuotedByte
+	cmpi.b #92, d0
+	bne.s firstQuotedEnd
+	moveq #1, d3
+	bra.s advanceFirst
+firstQuotedEnd
+	cmp.b d1, d0
+	bne.s advanceFirst
+	clr.b d1
+	bra.s advanceFirst
+firstUnquoted
+	cmpi.b #'"', d0
+	beq.s openFirstQuote
+	cmpi.b #39, d0
+	beq.s openFirstQuote
+	cmpi.b #',', d0
+	beq.s firstDone
+	bra.s advanceFirst
+openFirstQuote
+	move.b d0, d1
+advanceFirst
+	addq.l #1, a2
+	subq.l #1, d2
+	addq.l #1, d5
+	bra.s scanFirst
+
+firstDone
+	tst.b d1
+	bne.w fail
+	movea.l a3, a0
+	move.l d5, d0
+	bsr.w trimPartTrailing
+	beq.w fail
+	move.l a0, OpasmDriverEvalFallbackPtr
+	move.l d0, OpasmDriverEvalFallbackLen
+	addq.l #1, a2
+	subq.l #1, d2
+	movea.l a2, a0
+	move.l d2, d0
+	bsr.w skipLineWhitespace
+	movea.l a0, a2
+	move.l d0, d2
+	moveq #0, d1
+	moveq #0, d3
+	moveq #0, d5
+
+scanSecond
+	tst.l d2
+	beq.s secondDone
+	move.b (a2)+, d0
+	subq.l #1, d2
+	tst.b d1
+	beq.s secondUnquoted
+	tst.b d3
+	beq.s secondQuotedByte
+	clr.b d3
+	bra.s countSecond
+secondQuotedByte
+	cmpi.b #92, d0
+	bne.s secondQuotedEnd
+	moveq #1, d3
+	bra.s countSecond
+secondQuotedEnd
+	cmp.b d1, d0
+	bne.s countSecond
+	clr.b d1
+	bra.s countSecond
+secondUnquoted
+	cmpi.b #'"', d0
+	beq.s openSecondQuote
+	cmpi.b #39, d0
+	beq.s openSecondQuote
+	cmpi.b #',', d0
+	beq.s fail
+	bra.s countSecond
+openSecondQuote
+	move.b d0, d1
+countSecond
+	addq.l #1, d5
+	bra.s scanSecond
+
+secondDone
+	tst.b d1
+	bne.s fail
+	move.l d5, d0
+	bsr.w trimPartTrailing
+	beq.s fail
+	move.l a0, OpasmDriverResCountPtr
+	move.l d0, OpasmDriverResCountLen
+	moveq #0, d0
+	bra.s return
+fail
+	moveq #1, d0
+return
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d1-d5/a0-a3
+	tst.l d0
+	rts
+	.bend  ; prepareResOperandsForStatement
+
+; Resolve one `.res` unit as a positive byte extent.
+; Inputs: D7.L = statement index.
+; Outputs: D0.L = 0 success/1 failure; D3.L = unit bytes on success.
+; Clobbers: D0-D6/A0-A3/CCR.
+; CCR: reflects D0 on return.
+readResUnitForStatement	.block
+	move.l OpasmDriverEvalFallbackLen, d0
+	cmpi.l #4, d0
+	bne.w numericExpression
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	moveq #0, d1
+	move.b (a0)+, d1
+	ori.b #32, d1
+	cmpi.b #'b', d1
+	beq.s byteName
+	cmpi.b #'w', d1
+	beq.s wordName
+	cmpi.b #'l', d1
+	bne.w numericExpression
+	moveq #'o', d2
+	moveq #'n', d3
+	moveq #'g', d4
+	bra.s matchTail
+byteName
+	moveq #'y', d2
+	moveq #'t', d3
+	moveq #'e', d4
+	bra.s matchTail
+wordName
+	moveq #'o', d2
+	moveq #'r', d3
+	moveq #'d', d4
+matchTail
+	moveq #0, d1
+	move.b (a0)+, d1
+	ori.b #32, d1
+	cmp.b d2, d1
+	bne.w numericExpression
+	moveq #0, d1
+	move.b (a0)+, d1
+	ori.b #32, d1
+	cmp.b d3, d1
+	bne.w numericExpression
+	moveq #0, d1
+	move.b (a0), d1
+	ori.b #32, d1
+	cmp.b d4, d1
+	bne.w numericExpression
+	cmpi.b #'w', -3(a0)
+	beq.s selectedWord
+	cmpi.b #'W', -3(a0)
+	beq.s selectedWord
+	cmpi.b #'l', -3(a0)
+	beq.s fixedLong
+	cmpi.b #'L', -3(a0)
+	beq.s fixedLong
+	moveq #1, d3
+	moveq #0, d0
+	rts
+fixedLong
+	moveq #4, d3
+	moveq #0, d0
+	rts
+selectedWord
+	jsr runtime_context.getCpuWordSizeBytesV1
+	tst.l d0
+	bne.s fail
+	move.l d1, d3
+	bra.s numeric
+numericExpression
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w evaluateResOperandSlice
+	bne.s fail
+numeric
+	moveq #0, d0
+	rts
+fail
+	moveq #1, d0
+	rts
+	.bend  ; readResUnitForStatement
+
+; Evaluate a complete `.res` operand through the shared typed scalar service.
+; Rust eval_expr_for_non_negative_directive accepts exactly 0..=U32_MAX.
+; A successful i64 width marker and zero high word prove that entire domain;
+; neither low-word sign nor a literal/text fallback selects scalar authority.
+; Inputs: A0/D0 = operand text; D7 = owning statement index.
+; Outputs: D0.L = 0 success/1 failure; D3.L = unsigned value on success.
+; Clobbers: D0-D3/A0/CCR.
+; CCR: reflects D0 on return.
+evaluateResOperandSlice	.block
+	movem.l d4-d7/a1-a3, -(sp)
+	bsr.w prepareEvaluateExpressionRequest
+	bne.s fail
+	bsr.w serviceFramePtr
+	moveq #0, d0
+	move.w OpasmDriverEvalRequestLen, d0
+	jsr operand_eval.prepareExpressionExtensionV1
+	tst.l d0
+	bne.s fail
+	bsr.w serviceFramePtr
+	move.w OpasmDriverEvalRequestLen, d0
+	jsr tkpkg.dispatchEvaluateExpressionV1
+	tst.b d0
+	bne.s fail
+	bsr.w serviceFramePtr
+	cmpi.w #28, abi.OPASM_SERVICE_EVAL_EXTENSION_BYTES(a0)
+	bcs.s fail
+	movea.l abi.OPASM_SERVICE_EVAL_EXTENSION_PTR(a0), a0
+	cmpi.l #64, 24(a0)
+	bne.s fail
+	tst.l 20(a0)
+	bne.s fail
+	move.l 16(a0), d3
+	moveq #0, d0
+	bra.s return
+fail
+	moveq #1, d0
+return
+	movem.l (sp)+, d4-d7/a1-a3
+	tst.l d0
+	rts
+	.bend  ; evaluateResOperandSlice
 
 ; Evaluate a comma-separated directive operand part. Commas inside quoted text
 ; belong to that operand, matching the Rust directive parser.
@@ -5318,6 +5664,34 @@ LayoutMapRangeFailureText
 LayoutMapEmptyFailureText
 	.byte "layout finalize: no structural section map was retained", 0
 
+ResBssOnlyFailureText
+	.byte ".res is only allowed in kind=bss section"
+ResBssOnlyFailureTextEnd
+ResArityFailureText
+	.byte "Expected .res <unit>, <count>"
+ResArityFailureTextEnd
+ResUnitInvalidFailureText
+	.byte "Expected byte, word, long, or a non-negative value for .res unit"
+ResUnitInvalidFailureTextEnd
+ResUnitZeroFailureText
+	.byte "Unit size must be greater than zero"
+ResUnitZeroFailureTextEnd
+ResCountInvalidFailureText
+	.byte "Expected non-negative value for .res count"
+ResCountInvalidFailureTextEnd
+ResExtentOverflowFailureText
+	.byte ".res total size overflow"
+ResExtentOverflowFailureTextEnd
+ResSpanFailureText
+	.byte ".res span exceeds max"
+ResSpanFailureTextEnd
+ResPcFailureText
+	.byte ".res program counter exceeds max"
+ResPcFailureTextEnd
+ResRecordFailureText
+	.byte ".res reservation record failed"
+ResRecordFailureTextEnd
+
 DirectiveAbsolute32ProgramId
 	.byte "fix.abs32"
 
@@ -5338,6 +5712,12 @@ OpasmDriverEvalFallbackPtr
 	.res long, 1
 
 OpasmDriverEvalFallbackLen
+	.res long, 1
+
+OpasmDriverResCountPtr
+	.res long, 1
+
+OpasmDriverResCountLen
 	.res long, 1
 
 OpasmDriverForceStoredOperand

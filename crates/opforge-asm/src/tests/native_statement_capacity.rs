@@ -66,7 +66,7 @@ fn native_item38_full_product_source_line_budget_contract() {
         "full-product source line exceeds the native 512-byte owner"
     );
     assert_eq!(
-        loadable_source_bytes, 1_709_313,
+        loadable_source_bytes, 1_723_532,
         "canonical loadable source-byte budget changed"
     );
     assert!(
@@ -88,11 +88,11 @@ fn native_item38_full_product_source_line_budget_contract() {
     );
     assert_eq!(
         graph.lines.len(),
-        93_885,
+        94_465,
         "Rust-processed row budget changed"
     );
     assert_eq!(
-        rust_processed_source_bytes, 3_562_944,
+        rust_processed_source_bytes, 3_576_807,
         "Rust-processed byte budget changed"
     );
     assert!(
@@ -155,7 +155,7 @@ fn native_item38_full_product_import_budget_contract() {
         })
         .sum::<usize>();
     eprintln!("ITEM38_IMPORT_BUDGET uses={use_count} capacity=512");
-    assert_eq!(use_count, 422, "full-product `.use` graph changed");
+    assert_eq!(use_count, 423, "full-product `.use` graph changed");
     let constants = fs::read_to_string(amigaos.join("opforge-cli/constants.asm"))
         .expect("read native CLI constants");
     assert!(constants.contains("NATIVE_IMPORT_TABLE_CAPACITY    = 512"));
@@ -345,11 +345,11 @@ fn native_item38_full_product_public_export_budget_contract() {
         public_declaration_name_bytes,
     );
     assert_eq!(
-        public_declaration_count, 6_504,
+        public_declaration_count, 6_509,
         "canonical public-declaration budget changed"
     );
     assert_eq!(
-        public_declaration_name_bytes, 127_764,
+        public_declaration_name_bytes, 127_929,
         "canonical packed public-export name budget changed"
     );
     let constants = fs::read_to_string(amigaos.join("opforge-cli/constants.asm"))

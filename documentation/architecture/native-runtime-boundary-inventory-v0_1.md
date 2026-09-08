@@ -247,6 +247,11 @@ import; the engine-context adapter is now the sole tkpkg engine reader.
   Rust Hunk section-memory aliases into the layout owner; event projection.
 - Inbound users: the CLI engine-callback adapter imports this driver; the
   driver is the session orchestration boundary, not a package or CPU owner.
+- Step 29 reservation handling adds the driver consumers
+  `prepareResOperandsForStatement`, `readResUnitForStatement`, and
+  `evaluateResOperandSlice`. The driver checks the unit-times-count extent and
+  inclusive last address, then passes the typed result to engine-owned RES
+  storage; no per-statement table is added.
 - Decision: orchestration stays here. Item 5.8 moves non-structural directive
   text classification to `opasm.amigaos.directive_router`; the driver consumes
   only its numeric result. Item 5.8.1 moves future-statement structural scans
@@ -619,6 +624,12 @@ Memory/ABI proof and completed CLI timing are recorded in
   statement/source association so listing output can project post-state; it
   adds no session state and does not change statement, label, or fixup
   ownership.
+
+Step 29 reservation state retains the original NONE or GENERIC parser kind via
+an internal high-bit reservation flag; public reads and pass resets mask only
+that flag. Its listing path uses no source fallback: the engine-owned
+extent/address state is authoritative after execution. The high-bit repair
+preserves the same 106-routine, four-import, code/BSS ownership boundary.
 
 ### `tkpkg.amigaos.tokenizer_vm` (NR-005, retain cohesive)
 

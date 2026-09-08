@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 ENGINE_SOURCE = ROOT / "native/motorola68000/amigaos/opasm/opasm_engine.asm"
-SESSION_BYTES = 41_221_928
+SESSION_BYTES = 41_221_934
 U32_MASK = 0xFFFF_FFFF
 
 

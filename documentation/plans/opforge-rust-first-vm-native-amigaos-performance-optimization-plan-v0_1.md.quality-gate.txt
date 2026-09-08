@@ -1,3 +1,16 @@
+PASS: Independent `step28_scalar_review` approves final Step39 implementation compliance for the exact session-tail repair. The 92-to-98 header correction reaches the 41,221,934-byte emitted session end without allocation, offset, ABI or live-row-liveness changes. Host bounds, fresh live/full native reuse proof, exact B01 parity, capacity, non-LSP Rust, staged-native, inventory, workflow, artifact and plan checks pass. The actual native-pair timeout setting deviation is disclosed and accepted only for correctness because the entire serial two-guest process completed within 120 seconds. No speed gain, E0-5 cause, B10 result, wider Phase A debt or LSP closure is claimed. Step39 closes and the pointer advances to Step40/49 A-close; the user's Phase A stop boundary remains binding.
+
+Review basis: final independent compliance PASS on 2026-09-08 at pre-receipt plan SHA-256 `7c180529e49169e9d6b86f17f0e188387925382dc2c7a6965418d3a95f00f663`; focused commit and safe integration follow.
+
+Prior scoped receipts:
+
+PASS: Independent step28_scalar_review approves Step39 plan quality. Exact header92 to98 extent repair, unchanged offsets/allocations, final-six reuse native proof in live/full modes, host guards/liveness, B01, full gates and attempt-all protocol are complete. No speed or wider debt closure is claimed. Phase A stop and LSP49 remain binding. Production may proceed; completion pending.
+
+Artifact SHA-256: `7c180529e49169e9d6b86f17f0e188387925382dc2c7a6965418d3a95f00f663`
+Slice SHA-256: `dad303cc020f3fd579f580837578cf489ea88e94ac3c365d86a1e78724a010c3`
+
+Prior scoped receipts:
+
 PASS: Independent `step28_scalar_review` approves Step38 no-go compliance and the exact five-document bundle. Production/Rust diffs are empty at `cc19cbef`; evidence, no-claim, debt, and Phase A stop-boundary audits pass. The controlled screen's 706→678 frontend ticks are 3.9660056657% lower, below the strict greater-than-5% threshold, and the reference overlap limitation remains explicit. Workflow, artifact, plan, and cached diff checks pass. Receipt-only updates and focused validators may proceed without broad reruns.
 
 Artifact SHA-256: `5a67a5dd149340a782b8cb119489c5d629426b7b5c43b8f7ac7dc9f986f05a35`

@@ -1,0 +1,40 @@
+[slice]
+schema_version = 2
+name = "native complete session reset extent"
+kind = "native-rust-parity"
+plan = "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+plan_item = "39 / Item A-session-tail"
+rust_reference = ["crates/opforge-types/src/image.rs::ImageStore::new"]
+native_boundary = ["native/motorola68000/amigaos/opasm/opasm_engine.asm::initSessionV1"]
+invariant = "Both initialization modes reset the final six image-presence bytes through the emitted session end; live mode still preserves unused statement storage, full mode clears it, with no allocation/offset or ABI changes."
+assertion_decision = "Permanent focused native harness assertions on poisoned real engine storage plus existing source-driven host layout/guard models; no new production instrumentation."
+expected_inputs = "Existing session state with two distinct poison patterns, non-null pointer to a NUL-terminated CPU name, live/full mode."
+expected_outputs = "Fresh zero guest exit only after final six presence bytes clear on both initializations, prefix sentinel remains and statement liveness matches mode; exact B01 Rust artifacts."
+known_non_equivalences = "Native fixed storage differs from Rust ImageStore; six extra cleared bytes repair correctness and do not establish a performance gain. Level C models are not native proof."
+fast_proof_command = "python3 -m unittest scripts.performance.tests.test_session_clear scripts.performance.tests.test_statement_initialization -v"
+level_d_command = "OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE=/tmp/opforge-performance.fs-uae OPFORGE_FS_UAE_ARGS='{fsuae_config}' OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 RUST_TEST_THREADS=1 CARGO_TARGET_DIR=target/step17-opt1 cargo test --locked -p asm native_session_init_fs_uae -- --nocapture --test-threads=1"
+level_d_fail_closed = true
+
+[[tests]]
+name = "native_session_init_harness_assembles"
+proof_level = "B"
+proves = "Real engine and harness assemble in both initialization modes."
+does_not_prove = "Guest state or speed."
+
+[[tests]]
+name = "native_session_init_fs_uae"
+proof_level = "D"
+proves = "Fresh real native reset clears poisoned final presence bytes on reuse in both modes, preserving named outside/session-state invariants."
+does_not_prove = "All corpus or total performance qualification."
+
+[[tests]]
+name = "StatementInitializationLevelCTests"
+proof_level = "C"
+proves = "Source-driven modeled exact session extent, guards and live/full storage effects."
+does_not_prove = "Native execution."
+
+[[tests]]
+name = "external_fs_uae_native_production_corpus_parity"
+proof_level = "D"
+proves = "Complete B01 exact live Rust artifacts and fresh explicit guest zero exit."
+does_not_prove = "B10, other debt, or matched runtime gain."

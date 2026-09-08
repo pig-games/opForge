@@ -789,7 +789,7 @@ class StatementInitializationLevelCTests(unittest.TestCase):
         )
         self.assertEqual(
             self.session_end - self.session_start,
-            self.constants.get("OPASM_ENGINE_ASSEMBLY_SESSION_BYTES") + 6,
+            self.constants.get("OPASM_ENGINE_ASSEMBLY_SESSION_BYTES"),
         )
 
     def test_init_executes_exact_selective_and_reference_memory_effects(self) -> None:
@@ -819,8 +819,11 @@ class StatementInitializationLevelCTests(unittest.TestCase):
             bytes(declared_end - self.statement_end),
         )
         self.assertEqual(
-            candidate_memory[declared_end : self.session_end], bytes([POISON]) * 6
+            candidate_memory[self.session_end - 6 : self.session_end], bytes(6)
         )
+        self.assertEqual(declared_end, self.session_end)
+        self.assertEqual(candidate_memory[self.session_start - 1], POISON)
+        self.assertEqual(candidate_memory[self.session_end : self.session_end + 16], bytes([POISON]) * 16)
         self.assertEqual(candidate.registers["d0"], 0)
         for register in [f"d{i}" for i in range(1, 8)] + [f"a{i}" for i in range(7)]:
             self.assertEqual(candidate.registers[register], before_registers[register], register)
@@ -842,8 +845,10 @@ class StatementInitializationLevelCTests(unittest.TestCase):
             reference_memory[self.session_start : declared_end], expected_reference
         )
         self.assertEqual(
-            reference_memory[declared_end : self.session_end], bytes([POISON]) * 6
+            reference_memory[self.session_end - 6 : self.session_end], bytes(6)
         )
+        self.assertEqual(reference_memory[self.session_start - 1], POISON)
+        self.assertEqual(reference_memory[self.session_end : self.session_end + 16], bytes([POISON]) * 16)
 
     def test_clear_statement_executes_all_fields_at_boundary_indices(self) -> None:
         for index in (0, 1, 65_535, 65_536, 99_999):

@@ -46,7 +46,7 @@ OPASM_ENGINE_CONTEXT_LONGS      = 12
 ; Exact factored byte count from OpasmEngineAssemblySessionStart through the
 ; three image buffers. Source text is packed once and statements retain its
 ; record index instead of a second fixed 512-byte copy.
-OPASM_ENGINE_SESSION_HEADER_BYTES = 92
+OPASM_ENGINE_SESSION_HEADER_BYTES = 98
 OPASM_ENGINE_SESSION_SOURCE_BYTES = (NATIVE_SOURCE_RECORD_CAPACITY * 10) + NATIVE_SOURCE_TEXT_POOL_CAPACITY
 OPASM_ENGINE_SESSION_STATEMENT_BYTES = NATIVE_STATEMENT_TABLE_CAPACITY * 308
 OPASM_ENGINE_SESSION_LABEL_BYTES = (NATIVE_LABEL_TABLE_CAPACITY * 127) + (NATIVE_LABEL_HASH_BUCKET_CAPACITY * 4)
@@ -55,9 +55,8 @@ OPASM_ENGINE_SESSION_IMAGE_BYTES = NATIVE_IMAGE_BUFFER_CAPACITY * 3
 OPASM_ENGINE_ASSEMBLY_SESSION_BYTES = OPASM_ENGINE_SESSION_HEADER_BYTES + OPASM_ENGINE_SESSION_SOURCE_BYTES + OPASM_ENGINE_SESSION_STATEMENT_BYTES + OPASM_ENGINE_SESSION_LABEL_BYTES + OPASM_ENGINE_SESSION_TAIL_BYTES + OPASM_ENGINE_SESSION_IMAGE_BYTES
 
 	.priv
-; The emitted header is six bytes larger than the historical clear contract.
-; Keep that existing contract, and use absolute lengths accepted by Hunk output.
-OPASM_ENGINE_SESSION_EMITTED_HEADER_BYTES = 98
+; Use absolute factored lengths accepted by Hunk output.
+OPASM_ENGINE_SESSION_EMITTED_HEADER_BYTES = OPASM_ENGINE_SESSION_HEADER_BYTES
 OPASM_ENGINE_SESSION_STATEMENT_OFFSET = OPASM_ENGINE_SESSION_EMITTED_HEADER_BYTES + OPASM_ENGINE_SESSION_SOURCE_BYTES
 OPASM_ENGINE_SESSION_AFTER_STATEMENT_BYTES = OPASM_ENGINE_ASSEMBLY_SESSION_BYTES - OPASM_ENGINE_SESSION_STATEMENT_OFFSET - OPASM_ENGINE_SESSION_STATEMENT_BYTES
 	.pub
@@ -179,8 +178,8 @@ initSessionV1	.block
 .endif
 	bsr.w clearBytes
 .else
-	; Preserve the original interval outside the statement tables, including
-	; the existing six-byte difference between declared and emitted session size.
+	; Clear the complete session prefix and suffix, leaving unused statement
+	; storage untouched until each row becomes live.
 	lea OpasmEngineAssemblySessionStart.l, a1
 	move.l #OPASM_ENGINE_SESSION_STATEMENT_OFFSET, d0
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS

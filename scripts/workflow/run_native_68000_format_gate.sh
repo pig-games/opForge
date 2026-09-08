@@ -70,6 +70,7 @@ args=(
   -i native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm
   -i native/motorola68000/amigaos/test-harnesses/debug/cli_debug_event_harness.asm
   -i native/motorola68000/amigaos/test-harnesses/debug/opasm_progress_harness.asm
+  -i native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm
   "${mode}"
   --fmt-config "${config_path}"
 )

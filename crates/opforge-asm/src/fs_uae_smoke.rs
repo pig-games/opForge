@@ -614,6 +614,60 @@ pub(crate) fn run_native_debug_contract_from_env(
     }
 }
 
+/// Confirm the complete session reset without adding large clears to progress tests.
+/// Both modes run before errors are returned; each owns its fresh guest protocol.
+// @opforge-evidence: level=D; role=focused-contract; authority=focused-contract; lifecycle=permanent
+pub(crate) fn run_native_session_init_harness_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set"
+            )))
+        }
+    };
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    let mut runs = Vec::new();
+    let mut errors = Vec::new();
+    for (mode, defines) in [
+        ("live", &[][..]),
+        ("full", &["OPFORGE_SESSION_CLEAR_ALL_STATEMENTS"][..]),
+    ] {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_example_smoke_with_extra_defines(
+                workspace_root,
+                &fs_uae_bin,
+                &args_text,
+                "opasm_session_init_harness",
+                "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm",
+                "68020",
+                defines,
+            )
+        }))
+        .unwrap_or_else(|_| Err("session-init runner panicked".to_string()));
+        match outcome {
+            Ok(ExampleSmokeResult::Run(run)) => {
+                eprintln!(
+                    "SESSION_INIT_MODE {mode}: protocol={} exit={:?}",
+                    run.protocol_completed, run.exit_code
+                );
+                runs.push(run);
+            }
+            Ok(ExampleSmokeResult::Skipped(reason)) => {
+                errors.push(format!("{mode}: skipped: {reason}"))
+            }
+            Err(error) => errors.push(format!("{mode}: {error}")),
+        }
+    }
+    if errors.is_empty() {
+        Ok(FsUaeSmokeOutcome::Completed { runs })
+    } else {
+        Err(errors.join("\n"))
+    }
+}
+
 pub(crate) fn run_native_progress_harness_from_env(
     workspace_root: &Path,
 ) -> Result<FsUaeSmokeOutcome, String> {
@@ -3351,6 +3405,7 @@ fn example_assembly_defines(example_name: &str) -> Vec<String> {
 fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBuf> {
     if example_name == FS_UAE_CLI_DEBUG_EVENT_EXAMPLE_NAME
         || example_name == FS_UAE_PROGRESS_HARNESS_NAME
+        || example_name == "opasm_session_init_harness"
         || example_name == FS_UAE_MACRO_PREPROCESSOR_HARNESS_NAME
         || example_name == FS_UAE_PIPELINE_SELECT_HARNESS_NAME
         || example_name == FS_UAE_MACRO_CLI_DEBUG_EVENT_HARNESS_NAME
@@ -3439,6 +3494,7 @@ fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathB
     if example_name == FS_UAE_DEBUG_CONTRACT_EXAMPLE_NAME
         || example_name == FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME
         || example_name == FS_UAE_PROGRESS_HARNESS_NAME
+        || example_name == "opasm_session_init_harness"
         || example_name == FS_UAE_CLI_DEBUG_EVENT_EXAMPLE_NAME
         || example_name == FS_UAE_MACRO_PREPROCESSOR_HARNESS_NAME
         || example_name == FS_UAE_PIPELINE_SELECT_HARNESS_NAME

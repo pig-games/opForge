@@ -400,6 +400,62 @@ fn native_bounded_progress_source_contract_is_observation_only() {
 }
 
 #[test]
+fn native_session_init_harness_assembles() {
+    // Level B: real helper and assertions assemble in both initialization modes.
+    // This does not prove guest memory effects or performance.
+    struct AssemblyDir(PathBuf);
+    impl Drop for AssemblyDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    let root = workspace_root();
+    for defines in [
+        vec![],
+        vec!["OPFORGE_SESSION_CLEAR_ALL_STATEMENTS".to_string()],
+    ] {
+        let out = AssemblyDir(create_temp_dir("session-init-assembly"));
+        assemble_example_with_base_and_defines(
+            &root.join(
+                "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm",
+            ),
+            &out.0,
+            "opasm_session_init_harness",
+            false,
+            &defines,
+        )
+        .expect("session-init harness must assemble");
+        assert!(out.0.join("build/opasm_session_init_harness").is_file());
+    }
+}
+
+#[test]
+fn native_session_init_fs_uae() {
+    // Level D: actual reset clears the poisoned emitted tail on reuse in both
+    // modes, with fresh explicit zero exits. Not whole-CLI parity or timing.
+    match crate::fs_uae_smoke::run_native_session_init_harness_from_env(&workspace_root())
+        .expect("both session-init modes must complete")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            assert_ne!(
+                std::env::var("OPFORGE_FS_UAE_SMOKE").as_deref(),
+                Ok("1"),
+                "{reason}"
+            );
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 2);
+            for run in runs {
+                assert!(run.protocol_completed, "{}", run.stderr);
+                assert_eq!(run.exit_code, Some(0), "{}\n{}", run.stdout, run.stderr);
+                assert!(run.success, "{}", run.stderr);
+            }
+        }
+    }
+}
+
+#[test]
 fn native_bounded_progress_harness_assembles() {
     // Proof level C. This proves the focused harness and production progress
     // routines assemble together. It does not prove execution on AmigaOS.
@@ -2656,13 +2712,16 @@ fn example_requests_hunk_output(asm_path: &Path) -> bool {
 fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
     if matches!(
         asm_path.file_stem().and_then(|stem| stem.to_str()),
-        Some("debug_contract_harness" | "opasm_progress_harness")
+        Some("debug_contract_harness" | "opasm_progress_harness" | "opasm_session_init_harness")
     ) {
         let amigaos_dir = workspace_root()
             .join("native")
             .join("motorola68000")
             .join("amigaos");
-        if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("opasm_progress_harness") {
+        if matches!(
+            asm_path.file_stem().and_then(|stem| stem.to_str()),
+            Some("opasm_progress_harness" | "opasm_session_init_harness")
+        ) {
             return vec![
                 amigaos_dir.join("opforge-cli"),
                 amigaos_dir.join("opasm"),

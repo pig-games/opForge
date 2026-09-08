@@ -5,7 +5,7 @@
 ## Metadata
 
 - Source: original Rust-first performance instruction and companion baseline; 2026-09-01 activation, 2026-09-02 bounded-corpus direction, 2026-09-04 diagnostic-entry and terminal-gate amendments; 2026-09-05 user instruction to reorder for the cheapest largest early gains, faster subsequent work, token efficiency, and increasing certainty toward completion.
-- LSP source amendment (2026-09-05): user explicitly permits LSP to remain broken until the very end; all LSP repair and final qualification belong to Step 48 / Item LSP-close.
+- LSP source amendment (2026-09-05): user explicitly permits LSP to remain broken until the very end; all LSP repair and final qualification belong to Step 49 / Item LSP-close.
 - Step13 scheduling amendment (2026-09-05): under the user’s authorization to reorder the plan, independently reviewed language changes focused provisional qualification only; final gates remain unchanged.
 - Mode: implementation plan with measured experiments and explicit rejection decisions.
 - Owner: opForge maintainers and implementing Codex tasks.
@@ -104,7 +104,7 @@ not reactivate the superseded sequence. When inserting a reviewed sub-item,
 renumber subsequent Step labels to keep the sequence contiguous while retaining
 all Item IDs. Include both labels in progress updates and ledger entries.
 
-**Current step: Step 39 of 48 · Item A-close — qualify early wins and clear recorded failure debt.** Update this pointer and total when the active item or plan changes.
+**Current step: Step 40 of 49 · Item A-close — qualify early wins and clear the recorded failure debt.** Update this pointer and total when the active item or plan changes.
 
 ### Evidence sufficient to try versus evidence sufficient to keep
 
@@ -729,10 +729,27 @@ improvement does not close a whole finding; closure review is still required.
 
   - Completion evidence (2026-09-08; focused no-go commit pending): reviewed source/ABI and both assemblies pass; fresh controlled Level E reference/candidate frontend ticks are 706/678 (3.9660056657% lower), below strict >5%. The reference outer process overlaps a cached formatter check; guest timing overlap cannot be excluded, adding a comparison limitation. All normalized non-timing counters and diagnostics match. Restore prototype and selector exactly to cc19cbef; no repeated screen, expanded native matrix, B03/full-B10 or full Rust gate for reverted code. The Step38 no-go MD/JSON retains receipts and limitations. No retained gain or debt closure; final workflow/compliance and focused commit required.
 
-- [ ] Step 39 · Item A-close — Qualify early wins and clear the recorded failure debt
+- [x] Step 39 · Item A-session-tail — Reset all session storage, including the final six presence bytes
+  - Source requirement or finding IDs: SR-PAR; recorded Step09/Step10/Step13 six-byte initialization debt. Active `AGENTS.md` and native parity/68000/FS-UAE/workflow rules remain binding.
+  - Expected files: `native/motorola68000/amigaos/opasm/opasm_engine.asm`; `scripts/performance/tests/test_session_clear.py` and `test_statement_initialization.py`; focused `test-harnesses/debug/opasm_session_init_harness.asm`; existing Rust test/FS-UAE wiring; source inventory/formatter metadata only as required; plan/sidecar, slice and evidence.
+  - Dependencies/worktree: Step38 committed at `f233b99e`; implement in the warm worktree and integrate locally while preserving the pending CLI rename. No push. This item precedes A-close; all other debt and the Phase A stop remain unchanged.
+  - Rust/native authority: `crates/opforge-types/src/image.rs::ImageStore::new` starts with no written entries. Native `opasm_engine.asm::initSessionV1` resets session state and its image-presence map. The header emits 98 bytes but its factored clear count uses 92; both full and live-statement initialization leave the final six presence bytes untouched.
+  - First concrete code change: set the public factored header count to 98; derive the internal emitted-header alias from it and remove comments preserving the discrepancy. Keep all allocations, field offsets, capacities, clear primitives and statement-liveness behavior unchanged. Total requested session extent increases by exactly six bytes to 41,221,934; this is a correctness fix, not a speed claim.
+  - Boundary contract: initialize through the actual `opasmEngineAssemblySessionEnd` exactly. Full mode clears the complete session; default live mode clears prefix/suffix while leaving unused statement tables untouched and clearing each newly live row as before. D0 success, CPU-name copy, preserved registers/stack and profiler ownership remain unchanged. Do not add production instrumentation or test-specific production APIs.
+  - Focused host proof: update the existing source-driven Level C models to require computed clear end equals the emitted session end, final six bytes zero, outside-session guards intact, unused live-mode statement poison intact, and full-mode zeroed statements. Preserve existing alignment/register/stack/CCR and boundary-index checks. Host models prove modeled memory effects only; source/assembly layout provides Level B extent evidence, not native execution.
+  - Focused native proof: add a minimal permanent-contract harness using existing exported engine state/accessors, poison the actual final six presence bytes before `initSessionV1`, and assert zero afterwards; repeat with a different poison to prove reuse. Check an outside-session prefix sentinel, CPU-name/status and representative unused statement storage (preserved live, cleared full). Do not write outside allocated memory to manufacture a trailing guard. Pair source-derived exact-end/guard proof with these actual-native assertions. Assemble and execute both live and full-statement modes with the existing fail-closed fresh challenge/start/completion/explicit zero-exit/ephemeral cleanup runner, attempting the second mode even if the first fails. No Level C simulator substitutes for Level D. The existing byte/longword primitive behavior is unchanged.
+  - Product proof: one complete current profile-off B01 CLI run with exact live Rust artifact parity and explicit guest exit zero; report its elapsed time as a current observation, never infer a step gain from unmatched historical timings. Six more cleared bytes imply no claimed performance benefit. Preserve the historical cumulative tally and its comparability limitations.
+  - Required focused gates: initialization and clear Python suites, candidate native harness/CLI assembly, exact layout/source capacity, focused Level D both modes and B01, native formatter, architecture/inventory/staged slice, workflow/artifact/plan validators and independent compliance.
+  - Full quality gates: one final non-LSP `scripts/workflow/run_rust_quality_gate.sh` for retained Rust wiring after focused proof. Do not restart a live gate or rerun broad tests for receipt-only edits. Full corpus/current nonterminal qualification remains at A-close.
+  - Plan-compliance review evidence: independent PASS must verify the exact extent correction, no allocation/offset/liveness drift, final-six and reuse native proof in both modes, host bounds/guards, fresh product proof, required receipts and preserved wider debt/stop boundary.
+  - Commit outcome: one focused `fix(native): reset the complete session presence map` after all required gates and compliance pass; no next item before commit.
+  - Definition of done: the named six-byte initialization debt is repaired and proven in both modes, committed and safely integrated; no other correctness debt or total performance qualification is claimed closed.
+  - Completion evidence (2026-09-08; focused commit and safe integration follow this recorded evidence): `documentation/performance/results/opforge-step39-session-tail-2026-09-08.md` and `.json` record the exact 92-to-98 header repair and 41,221,934-byte session extent, unchanged allocation/offset/live-row behavior, 12 host model checks, fresh live/full native reuse proof with explicit zero exits, current exact B01 parity, six capacity checks, final non-LSP Rust, staged-native, inventory, workflow, artifact and plan PASS receipts, and independent compliance PASS. The native pair timeout-variable deviation is disclosed and accepted only as correctness proof because the entire two-guest process completed within 120 seconds. No step speed gain, stale-output cause, B10 result, wider debt closure or total Phase A gain is claimed.
+
+- [ ] Step 40 · Item A-close — Qualify early wins and clear the recorded failure debt
   - Source requirement or finding IDs: SR-PAR, SR-MEAS, SR-TERM.
   - Expected files: qualification results, failure ledger and plan receipts.
-  - Dependencies/worktree: A-triage, A-map-key-cache, A-listing-symbol-footer, A-leading-underscore-label, A-throughput-refresh, A-compact-zero-memo, A-compact-shaped-memo, A-tkvm-descriptor-prepare, A-cli-clear-longword, A-branch, A-b10-localize, A-source-buffer, A-include-stdout, A-mos-abs32, A-layout-size, A-hex-records, A-map-symbols, A-listing-sections, A-listing-visibility-source-rows, A-cpu-execution-contract, A-scalar-i64, A-listing-reservation, A-bss-image-origin and all resulting repair/optimization commits; no Phase B starts before PASS.
+  - Dependencies/worktree: A-triage, A-map-key-cache, A-listing-symbol-footer, A-leading-underscore-label, A-throughput-refresh, A-compact-zero-memo, A-compact-shaped-memo, A-tkvm-descriptor-prepare, A-cli-clear-longword, A-session-tail, A-branch, A-b10-localize, A-source-buffer, A-include-stdout, A-mos-abs32, A-layout-size, A-hex-records, A-map-symbols, A-listing-sections, A-listing-visibility-source-rows, A-cpu-execution-contract, A-scalar-i64, A-listing-reservation, A-bss-image-origin and all resulting repair/optimization commits; no Phase B starts before PASS.
   - Steps and boundaries: After focused repairs are green, run completed frozen B01–B10 controls/candidates, non-LSP Rust and all current nonterminal native groups, preserving attempt-all behavior. Resolve every non-LSP prior failure with proof or remain blocked, including the pre-existing `INCLUDE-LINE 1 1` stdout divergence exposed by Step19; LSP remains deferred to LSP-close. Do not extend timeout or suppress a test to turn it green. Report provisional accepted/reverted candidates and development-loop cost.
   - Additional recorded output debt: Step30 closed the BSS-origin BIN invariant, including placed and unplaced BSS below CODE and nonzero BSS alignment. ORG/listing generated-footer parity remains open and must be repaired in its own numbered, reviewed item before A-close.
   - Additional recorded output debt: zero-image non-SREC requests still fail at the native CLI emitter guard (OPC-NCLI009), as exposed by Step29 BSS-only listing/BIN cases. Mixed code/BSS reservation proof does not close this boundary; any repair needs its own numbered, reviewed item before A-close.
@@ -751,7 +768,7 @@ improvement does not close a whole finding; closure review is still required.
 
 ### Phase B — residual measured work and complete profiling
 
-- [ ] Step 40 · Item C0 — Dispose of the old roadmap and select only residual winners
+- [ ] Step 41 · Item C0 — Dispose of the old roadmap and select only residual winners
   - Source requirement or finding IDs: SR-EARLY, SR-RF, SR-MEAS, SR-ACC, F1–F11.
   - Expected files: decision ledger, this plan and baseline annotations if findings change.
   - Dependencies/worktree: A-close PASS, a new user instruction to continue beyond the Phase A stop boundary, and Item 10 decision; inserted candidates run serially from reviewed integration commits.
@@ -766,7 +783,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): select residual work by measured return`; exactly one focused commit before the next item.
   - Definition of done: every original pending optimization has an explicit disposition and each selected candidate has a commit-sized executable item; deferred items remain labelled unimplemented.
 
-- [ ] Step 41 · Item P0 — Finish profile foundations after the early product wins
+- [ ] Step 42 · Item P0 — Finish profile foundations after the early product wins
   - Source requirement or finding IDs: SR-ID, SR-MEAS, SR-ACC, F11.
   - Expected files: profile schema/catalog/exporter, Rust executor/service owners, native bridge adapters, bounded report tests.
   - Dependencies/worktree: C0 and selected candidate decisions; focused profiling may be pulled forward only for one named blocked decision via reviewed amendment.
@@ -779,7 +796,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): scope remaining profile coverage`; exactly one focused commit before the next item.
   - Definition of done: reviewed concrete instrumentation sub-items exist for actual gaps; no unimplemented profile contract is called complete.
 
-- [ ] Step 42 · Item P-close — Verify profile coverage and final hotspot decisions
+- [ ] Step 43 · Item P-close — Verify profile coverage and final hotspot decisions
   - Source requirement or finding IDs: SR-ID, SR-MEAS, SR-ACC, F11.
   - Expected files: profile inventory and machine-readable result/decision reports.
   - Dependencies/worktree: all P0 sub-items committed.
@@ -792,7 +809,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): verify profiling coverage and decisions`; exactly one focused commit before the next item.
   - Definition of done: stable profiles, calibrated overhead and complete owner inventory exist and every candidate has evidence/disposition.
 
-- [ ] Step 43 · Item 27 — Install regression budgets for accepted mechanisms
+- [ ] Step 44 · Item 27 — Install regression budgets for accepted mechanisms
   - Source requirement or finding IDs: SR-MEAS, SR-ACC, SR-TERM.
   - Expected files: existing performance checks/results and optional CI lane.
   - Dependencies/worktree: P-close and all accepted candidate commits.
@@ -805,7 +822,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `test(perf): enforce accepted mechanism budgets`; exactly one focused commit before the next item.
   - Definition of done: accepted mechanisms have reproducible affordable regression detection.
 
-- [ ] Step 44 · Item B-close — Qualify residual optimizations and observability
+- [ ] Step 45 · Item B-close — Qualify residual optimizations and observability
   - Source requirement or finding IDs: SR-PAR, SR-MEAS, SR-ID.
   - Expected files: results/ledger/plan receipts.
   - Dependencies/worktree: 27 and all inserted Phase B items.
@@ -820,7 +837,7 @@ improvement does not close a whole finding; closure review is still required.
 
 ### Phase C — broad certainty, cleanup and terminal proof
 
-- [ ] Step 45 · Item 28 — Qualify optimized and reference modes before cleanup
+- [ ] Step 46 · Item 28 — Qualify optimized and reference modes before cleanup
   - Source requirement or finding IDs: SR-PAR, SR-ACC, SR-TERM.
   - Expected files: raw qualification reports and temporary-path inventory.
   - Dependencies/worktree: B-close PASS.
@@ -833,7 +850,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): qualify performance and terminal parity`; exactly one focused commit before the next item.
   - Definition of done: all complete pre-cleanup gates and terminal proof pass; every actual temporary path has a concrete cleanup owner.
 
-- [ ] Step 46 · Item 29 — Schedule and execute only cleanup that actually exists
+- [ ] Step 47 · Item 29 — Schedule and execute only cleanup that actually exists
   - Source requirement or finding IDs: SR-PAR, SR-ACC, SR-TERM.
   - Expected files: exact temporary paths named by 28, associated tests/results and plan.
   - Dependencies/worktree: 28 PASS; all inserted cleanup items before 30.
@@ -846,7 +863,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): scope qualification-backed cleanup`; exactly one focused commit before the next item.
   - Definition of done: every actual temporary path maps to one concrete reviewed 29.x cleanup item, or is explicitly identified as a supported permanent contract; this scoping commit claims no removal. Each 29.x item requires actual removal and its focused proof before commit; Item 30 depends on all those commits.
 
-- [ ] Step 47 · Item 30 — Prove the final performance production shape
+- [ ] Step 48 · Item 30 — Prove the final performance production shape
   - Source requirement or finding IDs: SR-MEAS, SR-PAR, SR-TERM.
   - Expected files: final result report, ledger and plan receipts.
   - Dependencies/worktree: all cleanup commits; performance integration worktree.
@@ -859,7 +876,7 @@ improvement does not close a whole finding; closure review is still required.
   - Commit outcome: `docs(perf): close measured performance program`; exactly one focused commit before the next item.
   - Definition of done: complete final correctness/performance gates pass, temporary paths resolved, reproducible reports published; leave the plan active for the final LSP-close item; archive only after every active checkbox and required closure review passes.
 
-- [ ] Step 48 · Item LSP-close — Repair and qualify LSP at the very end
+- [ ] Step 49 · Item LSP-close — Repair and qualify LSP at the very end
   - Source requirement or finding IDs: 2026-09-05 explicit user LSP deferral; SR-PAR, SR-TERM.
   - Expected files: `crates/opforge-lsp/src/**`, its integration harness/tests only as the actual failure requires, retained failure/closure report and plan receipts.
   - Dependencies/worktree: Item 30 and every earlier implementation/cleanup commit; this is the last planned work.

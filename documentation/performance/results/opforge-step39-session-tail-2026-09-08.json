@@ -1,0 +1,520 @@
+{
+  "schema_version": 1,
+  "step": 39,
+  "status": "Complete: all required focused/native/product/capacity/non-LSP Rust/staged/workflow/artifact/plan gates and independent compliance passed; focused commit and safe integration follow this evidence",
+  "base_commit": "f233b99eb52d86e2ccc38ed886ae83892a7a8549",
+  "repair": {
+    "header_bytes_before": 92,
+    "header_bytes_after": 98,
+    "session_bytes_before": 41221928,
+    "session_bytes_after": 41221934,
+    "allocations_or_offsets_changed": false,
+    "live_statement_liveness_changed": false,
+    "extra_cleared_bytes": 6
+  },
+  "source_sha256": {
+    "native/motorola68000/amigaos/opasm/opasm_engine.asm": "ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef",
+    "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm": "efb5df8d7700792593ea86451643b2b6498e45617a9e947de175f6f24abbd2f6"
+  },
+  "receipts": {
+    "b01-current.json": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "external_fs_uae_native_production_corpus_parity",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "mode": "B01-candidate",
+      "environment": {
+        "RUST_TEST_THREADS": "1",
+        "OPFORGE_FS_UAE_SMOKE": "1",
+        "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+        "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+        "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+        "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "120000",
+        "OPFORGE_FS_UAE_POLL_MS": "250",
+        "OPFORGE_PERFORMANCE_CORPUS": "1",
+        "OPFORGE_NATIVE_CORPUS_CASES": "B01",
+        "OPFORGE_NATIVE_CORPUS_PROFILE": "off",
+        "OPFORGE_NATIVE_CORPUS_CLEAR": "longword",
+        "OPFORGE_NATIVE_CORPUS_STATEMENT_CLEAR": "live",
+        "OPFORGE_MODULE_SCAN_READ": "buffered",
+        "OPFORGE_SOURCE_READ": "buffered",
+        "OPFORGE_SOURCE_PROFILE": "off",
+        "OPFORGE_COMPACT_ZERO_LOOKUP": "memo"
+      },
+      "code_commit": "f233b99eb52d86e2ccc38ed886ae83892a7a8549",
+      "native_source_aggregate_sha256": "b56f8cab01f5bf3303e3313a4d8a1cf0db830a1cd8d217084c1fb971b18e2c0a",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/opasm/opasm_engine.asm": "ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef",
+        "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm": "efb5df8d7700792593ea86451643b2b6498e45617a9e947de175f6f24abbd2f6"
+      },
+      "exit_code": 0,
+      "whole_seconds": 64.78006133297458,
+      "sha256": "ddf26e087e57ef85f755022deaa09d4bd12db1f94cd4f028b893ef7ad68dbd7e",
+      "log_bytes": 1962,
+      "log_path": "target/workflow-logs/step39-session-tail/b01-current.log"
+    },
+    "capacity-host-final.json": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "mode": "host",
+      "environment": {
+        "RUST_TEST_THREADS": "1"
+      },
+      "code_commit": "f233b99eb52d86e2ccc38ed886ae83892a7a8549",
+      "native_source_aggregate_sha256": "b56f8cab01f5bf3303e3313a4d8a1cf0db830a1cd8d217084c1fb971b18e2c0a",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/opasm/opasm_engine.asm": "ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef",
+        "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm": "efb5df8d7700792593ea86451643b2b6498e45617a9e947de175f6f24abbd2f6"
+      },
+      "exit_code": 0,
+      "whole_seconds": 3.3218152499757707,
+      "sha256": "0ca03d5b6174ee13a6ea0feb55d644e70b1ed14ae6bd686c36d6913cb93e0245",
+      "log_bytes": 1339,
+      "log_path": "target/workflow-logs/step39-session-tail/capacity-host-final.log"
+    },
+    "capacity-host.json": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product_",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "mode": "host",
+      "environment": {
+        "RUST_TEST_THREADS": "1"
+      },
+      "code_commit": "f233b99eb52d86e2ccc38ed886ae83892a7a8549",
+      "native_source_aggregate_sha256": "b56f8cab01f5bf3303e3313a4d8a1cf0db830a1cd8d217084c1fb971b18e2c0a",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/opasm/opasm_engine.asm": "ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef",
+        "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm": "efb5df8d7700792593ea86451643b2b6498e45617a9e947de175f6f24abbd2f6"
+      },
+      "exit_code": 101,
+      "whole_seconds": 0.1915609159041196,
+      "sha256": "b20621622e9fa10cd34e9e1da1bd3a60359d52887d6d70fe3a6818e2839f43e2",
+      "log_bytes": 1722,
+      "log_path": "target/workflow-logs/step39-session-tail/capacity-host.log"
+    },
+    "capacity-measure.json": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_item38_full_product_source_line_budget_contract",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "mode": "host",
+      "environment": {
+        "RUST_TEST_THREADS": "1"
+      },
+      "code_commit": "f233b99eb52d86e2ccc38ed886ae83892a7a8549",
+      "native_source_aggregate_sha256": "b56f8cab01f5bf3303e3313a4d8a1cf0db830a1cd8d217084c1fb971b18e2c0a",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/opasm/opasm_engine.asm": "ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef",
+        "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm": "efb5df8d7700792593ea86451643b2b6498e45617a9e947de175f6f24abbd2f6"
+      },
+      "exit_code": 101,
+      "whole_seconds": 3.371601541992277,
+      "sha256": "3d47b3c7029f380490d833672ac0f5ea7622fb5c96deca444e8185efcaadd4b6",
+      "log_bytes": 1206,
+      "log_path": "target/workflow-logs/step39-session-tail/capacity-measure.log"
+    },
+    "host-assembly-receipt-2.json": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_session_init_harness_assembles",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "environment": {
+        "CARGO_TARGET_DIR": "target/step17-opt1",
+        "cleared_prefixes": [
+          "OPFORGE_",
+          "FS_UAE"
+        ]
+      },
+      "exit_code": 101,
+      "whole_seconds": 18.43996745813638,
+      "log_path": "target/workflow-logs/step39-session-tail/host-assembly-2.log",
+      "log_bytes": 865,
+      "sha256": "a052b2c015ce8f3be37f63c341f5e718287fb80dd847baa27de674eecdb9e673"
+    },
+    "host-assembly-receipt-3.json": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_session_init_harness_assembles",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "environment": {
+        "CARGO_TARGET_DIR": "target/step17-opt1",
+        "cleared_prefixes": [
+          "OPFORGE_",
+          "FS_UAE"
+        ]
+      },
+      "exit_code": 0,
+      "whole_seconds": 18.44403004203923,
+      "log_path": "target/workflow-logs/step39-session-tail/host-assembly-3.log",
+      "log_bytes": 444,
+      "sha256": "fc4ce708e8e38b4deb8070acff5843449de5878c2654613e019798c20660768b"
+    },
+    "host-assembly-receipt.json": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_session_init_harness_assembles",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "environment": {
+        "CARGO_TARGET_DIR": "target/step17-opt1",
+        "cleared_prefixes": [
+          "OPFORGE_",
+          "FS_UAE"
+        ]
+      },
+      "exit_code": 101,
+      "whole_seconds": 3.1416817500721663,
+      "log_path": "target/workflow-logs/step39-session-tail/host-assembly.log",
+      "log_bytes": 638,
+      "sha256": "537b1c29f4ac3167920c43dc1b21abf41d4eeb0865d8715330bfd1b1eb70e716"
+    },
+    "native-session-init-receipt.json": {
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "asm",
+        "native_session_init_fs_uae",
+        "--",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "environment": {
+        "OPFORGE_FS_UAE_SMOKE": "1",
+        "OPFORGE_FS_UAE_BIN": "/Applications/FS-UAE.app/Contents/MacOS/fs-uae",
+        "OPFORGE_FS_UAE_CONFIG_TEMPLATE": "/tmp/opforge-performance.fs-uae",
+        "OPFORGE_FS_UAE_ARGS": "{fsuae_config}",
+        "OPFORGE_FS_UAE_TIMEOUT_MS": "120000",
+        "OPFORGE_FS_UAE_POLL_MS": "250",
+        "RUST_TEST_THREADS": "1",
+        "CARGO_TARGET_DIR": "target/step17-opt1"
+      },
+      "cleared_prefixes": [
+        "OPFORGE_",
+        "FS_UAE"
+      ],
+      "exit_code": 0,
+      "whole_seconds": 115.07291016704403,
+      "log_path": "target/workflow-logs/step39-session-tail/native-session-init.log",
+      "log_bytes": 481,
+      "sha256": "694e415a9c28f3bf5a4d2f87bb7911508daa08358b126c43187ed2de7a9b2819"
+    },
+    "rust-quality.json": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_rust_quality_gate.sh",
+        "--defer-lsp"
+      ],
+      "mode": "host",
+      "environment": {
+        "RUST_TEST_THREADS": "1"
+      },
+      "code_commit": "f233b99eb52d86e2ccc38ed886ae83892a7a8549",
+      "native_source_aggregate_sha256": "b56f8cab01f5bf3303e3313a4d8a1cf0db830a1cd8d217084c1fb971b18e2c0a",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/opasm/opasm_engine.asm": "ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef",
+        "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm": "efb5df8d7700792593ea86451643b2b6498e45617a9e947de175f6f24abbd2f6"
+      },
+      "exit_code": 0,
+      "whole_seconds": 812.5228976658545,
+      "sha256": "4fbb369146aff20bbbdb7dadd6de6fdc1c26763609e46d52878a4c3a1c3d1a47",
+      "log_bytes": 344361,
+      "log_path": "target/workflow-logs/step39-session-tail/rust-quality.log"
+    },
+    "staged-native.json": {
+      "command": [
+        "python3",
+        "scripts/workflow/run_native_porting_quality_gate.py",
+        "--staged",
+        "--metadata",
+        "documentation/plans/slices/native-performance-session-tail-v1.toml"
+      ],
+      "mode": "host",
+      "environment": {
+        "RUST_TEST_THREADS": "1"
+      },
+      "code_commit": "f233b99eb52d86e2ccc38ed886ae83892a7a8549",
+      "native_source_aggregate_sha256": "b56f8cab01f5bf3303e3313a4d8a1cf0db830a1cd8d217084c1fb971b18e2c0a",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/opasm/opasm_engine.asm": "ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef",
+        "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm": "efb5df8d7700792593ea86451643b2b6498e45617a9e947de175f6f24abbd2f6"
+      },
+      "exit_code": 0,
+      "whole_seconds": 6.053336041979492,
+      "sha256": "452cebf7f4e97035b9fb19493fd3b37f8ffe40e0c80da9545c6a01811ed1febf",
+      "log_bytes": 4722,
+      "log_path": "target/workflow-logs/step39-session-tail/staged-native.log"
+    },
+    "workflow.json": {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "mode": "host",
+      "environment": {
+        "RUST_TEST_THREADS": "1"
+      },
+      "code_commit": "f233b99eb52d86e2ccc38ed886ae83892a7a8549",
+      "native_source_aggregate_sha256": "b56f8cab01f5bf3303e3313a4d8a1cf0db830a1cd8d217084c1fb971b18e2c0a",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/opasm/opasm_engine.asm": "ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef",
+        "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm": "efb5df8d7700792593ea86451643b2b6498e45617a9e947de175f6f24abbd2f6"
+      },
+      "exit_code": 2,
+      "whole_seconds": 24.286067709093913,
+      "sha256": "e448f30d935fa72160c621b8c53f8917c0d911ecc867e3dd2e1e2b324eae7fa2",
+      "log_bytes": 3034,
+      "log_path": "target/workflow-logs/step39-session-tail/workflow.log"
+    },
+    "inventory-final.json": {
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "scripts.workflow.tests.test_check_native_runtime_boundary_inventory"
+      ],
+      "mode": "host",
+      "environment": {
+        "RUST_TEST_THREADS": "1"
+      },
+      "code_commit": "f233b99eb52d86e2ccc38ed886ae83892a7a8549",
+      "native_source_aggregate_sha256": "b56f8cab01f5bf3303e3313a4d8a1cf0db830a1cd8d217084c1fb971b18e2c0a",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/opasm/opasm_engine.asm": "ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef",
+        "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm": "efb5df8d7700792593ea86451643b2b6498e45617a9e947de175f6f24abbd2f6"
+      },
+      "exit_code": 0,
+      "whole_seconds": 0.07971570803783834,
+      "sha256": "6abe9da26c1cd37fc617ec8a2f159fb9e60113988a7640866262fc12246b302b",
+      "log_bytes": 100,
+      "log_path": "target/workflow-logs/step39-session-tail/inventory-final.log"
+    },
+    "workflow-final.json": {
+      "command": [
+        "make",
+        "workflow-gate"
+      ],
+      "mode": "host",
+      "environment": {
+        "RUST_TEST_THREADS": "1"
+      },
+      "code_commit": "f233b99eb52d86e2ccc38ed886ae83892a7a8549",
+      "native_source_aggregate_sha256": "b56f8cab01f5bf3303e3313a4d8a1cf0db830a1cd8d217084c1fb971b18e2c0a",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/opasm/opasm_engine.asm": "ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef",
+        "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm": "efb5df8d7700792593ea86451643b2b6498e45617a9e947de175f6f24abbd2f6"
+      },
+      "exit_code": 0,
+      "whole_seconds": 28.46152550005354,
+      "sha256": "885e792933d71f0e2715fc99c5a0a557793a898a41c4ee97d285a342c3eddf47",
+      "log_bytes": 7129,
+      "log_path": "target/workflow-logs/step39-session-tail/workflow-final.log"
+    },
+    "artifact-final.json": {
+      "command": [
+        "python3",
+        "scripts/workflow/check_workflow_artifact_bundle.py",
+        "plan",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md"
+      ],
+      "mode": "host",
+      "environment": {
+        "RUST_TEST_THREADS": "1"
+      },
+      "code_commit": "f233b99eb52d86e2ccc38ed886ae83892a7a8549",
+      "native_source_aggregate_sha256": "b56f8cab01f5bf3303e3313a4d8a1cf0db830a1cd8d217084c1fb971b18e2c0a",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/opasm/opasm_engine.asm": "ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef",
+        "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm": "efb5df8d7700792593ea86451643b2b6498e45617a9e947de175f6f24abbd2f6"
+      },
+      "exit_code": 0,
+      "whole_seconds": 0.038188999984413385,
+      "sha256": "8f8915466fadb5eebd1849c0f610fbdffec71a663c809845ba42dc0bf12af7b9",
+      "log_bytes": 123,
+      "log_path": "target/workflow-logs/step39-session-tail/artifact-final.log"
+    },
+    "plan-final.json": {
+      "command": [
+        "bash",
+        "scripts/workflow/run_plan_workflow.sh",
+        "--check-once",
+        "documentation/plans/opforge-rust-first-vm-native-amigaos-performance-optimization-plan-v0_1.md",
+        "Step39 final session-tail evidence and Phase A stop boundary recorded before focused commit"
+      ],
+      "mode": "host",
+      "environment": {
+        "RUST_TEST_THREADS": "1"
+      },
+      "code_commit": "f233b99eb52d86e2ccc38ed886ae83892a7a8549",
+      "native_source_aggregate_sha256": "b56f8cab01f5bf3303e3313a4d8a1cf0db830a1cd8d217084c1fb971b18e2c0a",
+      "native_source_file_sha256": {
+        "native/motorola68000/amigaos/opasm/opasm_engine.asm": "ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef",
+        "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm": "efb5df8d7700792593ea86451643b2b6498e45617a9e947de175f6f24abbd2f6"
+      },
+      "exit_code": 0,
+      "whole_seconds": 0.1024968340061605,
+      "sha256": "eb03b0ede0a5f0aa0f7d89fe775d17b82d4420d1aad070f042aace4ddec8c81a",
+      "log_bytes": 1788,
+      "log_path": "target/workflow-logs/step39-session-tail/plan-final.log"
+    }
+  },
+  "native_modes": {
+    "live": {
+      "protocol_completed": true,
+      "guest_exit": 0
+    },
+    "full": {
+      "protocol_completed": true,
+      "guest_exit": 0
+    }
+  },
+  "native_timeout_deviation": {
+    "configured_pre_start_ms": 120000,
+    "configured_post_start_ms": 300000,
+    "planned_post_start_ms": 120000,
+    "whole_two_mode_process_seconds": 115.07291016704403,
+    "assessment": "Independent reviewer accepts focused correctness proof: entire serial process bounds each guest below the planned 120 seconds. Preserve actual configuration; no timing comparison or benefit claim."
+  },
+  "host_model": {
+    "tests_passed": 12,
+    "proof_level": "C",
+    "seconds": 0.066,
+    "log": "/private/tmp/opforge-step39-python.log",
+    "does_not_prove": "Native execution."
+  },
+  "capacity": {
+    "checks_passed": 6,
+    "loadable_bytes": 1732210,
+    "processed_rows": 94826,
+    "processed_bytes": 3585101,
+    "capacity_limits_changed": false
+  },
+  "b01": {
+    "case_sha256": "114ecc1e524a209c1756dd4cfec5cbcc010cbe483f17097bc5eefa8b4d45057d",
+    "clear_mode": "longword",
+    "command_template": "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --bin Work:output.bin --opasm-package {package}",
+    "compact_zero_lookup": "memo",
+    "complete": true,
+    "exact_artifacts": [
+      "Work/output.bin"
+    ],
+    "exit_status": 0,
+    "id": "B01",
+    "module_read_mode": "buffered",
+    "native_image_digest": "fnv1a64:d0404c095b1838a3",
+    "package_sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872",
+    "profile": null,
+    "profile_mode": "off",
+    "source_read_mode": "buffered",
+    "start_to_done_host_seconds": 34.43573325,
+    "statement_clear_mode": "live",
+    "timing_boundary": "host-observed case START to DONE; polling uncertainty applies",
+    "timing_poll_interval_ms": 250
+  },
+  "performance": {
+    "step_speed_gain_measured": false,
+    "current_b01_single_observation_seconds": 34.43573325,
+    "prior_b01_median_seconds": 34.428058125,
+    "comparison": "No matched step speedup claimed; difference is below 250ms polling interval. Historical cumulative series remains separately qualified.",
+    "historical": {
+      "b01_cross_revision": {
+        "old_seconds": 75.563602708,
+        "latest_seconds": 34.428058125,
+        "less_percent": 54.4383050951,
+        "ratio": 2.19482616,
+        "saved_seconds": 41.135544583,
+        "matched_total_phase_a": false
+      },
+      "module_buffering_percent": 23.462,
+      "rust_map_timing_percent_range": [
+        63.17,
+        77.51
+      ],
+      "rust_map_allocation_percent_range": [
+        76.19,
+        88.62
+      ],
+      "source_dos_reads": [
+        1608,
+        8
+      ],
+      "module_dos_reads": [
+        16541,
+        8
+      ],
+      "b03_exact_seconds": 37.735005375,
+      "compounded": false,
+      "total_phase_a_runtime": "unmeasured"
+    }
+  },
+  "debt_scope": {
+    "E0-4": "Emitted-session initialization extent repaired with all required gates and independent compliance passed.",
+    "E0-5": "Historical CLI-output impact was not proven; both pass-entry paths already clear the presence map. This repair proves reset state only.",
+    "other_phase_a_debt_closed": false,
+    "phase_a_complete": false
+  },
+  "full_rust_gate": {
+    "exit_code": 0,
+    "whole_seconds": 812.522898,
+    "log_sha256": "4fbb369146aff20bbbdb7dadd6de6fdc1c26763609e46d52878a4c3a1c3d1a47",
+    "lsp_deferred": true
+  },
+  "final_compliance": {
+    "status": "PASS",
+    "reviewer": "step28_scalar_review",
+    "approved_plan_sha256": "7c180529e49169e9d6b86f17f0e188387925382dc2c7a6965418d3a95f00f663",
+    "scope": "Exact six-byte initialization repair only; no speed, E0-5, B10, wider Phase A, or LSP closure."
+  }
+}

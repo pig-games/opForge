@@ -24,6 +24,26 @@ lifecycle = "permanent"
 deletion_condition = ""
 
 [[artifacts]]
+id = "opasm-session-init-harness"
+path = "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm"
+marker = "@opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent"
+proof_level = "D"
+role = "permanent-contract"
+authority = "focused-contract"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
+id = "opasm-session-init-helper"
+path = "crates/opforge-asm/src/fs_uae_smoke.rs"
+marker = "@opforge-evidence: level=D; role=focused-contract; authority=focused-contract; lifecycle=permanent"
+proof_level = "D"
+role = "focused-contract"
+authority = "focused-contract"
+lifecycle = "permanent"
+deletion_condition = ""
+
+[[artifacts]]
 id = "cli-debug-event-harness"
 path = "native/motorola68000/amigaos/test-harnesses/debug/cli_debug_event_harness.asm"
 marker = "@opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent"

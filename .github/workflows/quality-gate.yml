@@ -18,111 +18,27 @@ jobs:
       - name: Validate workflow hygiene
         run: make workflow-gate
 
-  workflow-artifacts:
-    name: workflow artifact validators
-    runs-on: ubuntu-latest
+      - name: Validate native engineering contracts
+        run: python3 scripts/workflow/run_native_porting_quality_gate.py
 
+  release-note-integrity:
+    name: tagged release-note integrity
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Validate changed workflow artifacts
+      - name: Check changed release notes
+        env:
+          COMPARISON_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         shell: bash
         run: |
           set -euo pipefail
-
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            base="${{ github.event.pull_request.base.sha }}"
-          else
-            base="${{ github.event.before }}"
+          base="$COMPARISON_BASE"
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+            base="$(git hash-object -t tree /dev/null)"
           fi
-
-          if [[ -z "${base}" || "${base}" =~ ^0+$ ]] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
-            if git rev-parse HEAD~1 >/dev/null 2>&1; then
-              base="HEAD~1"
-            else
-              echo "No comparison base found; skipping changed-artifact validation."
-              exit 0
-            fi
-          fi
-
-          mapfile -t changed_files < <(git diff --name-only --diff-filter=ACMR "${base}" HEAD)
-          plan_files=()
-          spec_files=()
-          review_files=()
-          closure_files=()
-          gate_files=()
-          reference_scope_files=()
-          release_note_scope_files=()
-
-          for path in "${changed_files[@]}"; do
-            case "${path}" in
-              documentation/plans/*.md|dev-docs/*plan*.md|dev-docs/**/*plan*.md)
-                plan_files+=("${path}")
-                ;;
-            esac
-            case "${path}" in
-              documentation/*spec*.md|dev-docs/*spec*.md|dev-docs/**/*spec*.md)
-                spec_files+=("${path}")
-                ;;
-            esac
-            case "${path}" in
-              documentation/reviews/*.md|dev-docs/reviews/*.md|dev-docs/**/reviews/*.md)
-                review_files+=("${path}")
-                ;;
-            esac
-            case "${path}" in
-              *closure*.md)
-                closure_files+=("${path}")
-                ;;
-            esac
-            case "${path}" in
-              *.quality-gate.txt)
-                gate_files+=("${path}")
-                ;;
-            esac
-            case "${path}" in
-              examples/reference/*|examples/reference/**/*|crates/opforge-asm/tests/goldens/*|crates/opforge-asm/tests/goldens/**/*|documentation/*.md|documentation/**/*.md|dev-docs/*.md|dev-docs/**/*.md)
-                reference_scope_files+=("${path}")
-                ;;
-            esac
-            case "${path}" in
-              RELEASE_NOTES_v*.md|documentation/*.md|documentation/**/*.md|dev-docs/*.md|dev-docs/**/*.md)
-                release_note_scope_files+=("${path}")
-                ;;
-            esac
-          done
-
-          if (( ${#plan_files[@]} )); then
-            python3 scripts/workflow/check_plan_checkboxes.py "${plan_files[@]}"
-            python3 scripts/workflow/check_version_impact.py "${plan_files[@]}"
-            python3 scripts/workflow/check_traceability.py "${plan_files[@]}"
-          fi
-          if (( ${#spec_files[@]} )); then
-            python3 scripts/workflow/check_spec_artifact.py "${spec_files[@]}"
-          fi
-          if (( ${#review_files[@]} )); then
-            python3 scripts/workflow/check_review_report.py "${review_files[@]}"
-          fi
-          if (( ${#closure_files[@]} )); then
-            python3 scripts/workflow/check_closure_report.py "${closure_files[@]}"
-            python3 scripts/workflow/check_traceability.py "${closure_files[@]}"
-          fi
-
-          gated_files=("${plan_files[@]}" "${spec_files[@]}" "${review_files[@]}" "${gate_files[@]}")
-          if (( ${#gated_files[@]} )); then
-            python3 scripts/workflow/check_quality_gate_evidence.py "${gated_files[@]}"
-          fi
-          if (( ${#reference_scope_files[@]} )); then
-            python3 scripts/workflow/check_reference_update_scope.py "${reference_scope_files[@]}"
-          fi
-          if (( ${#release_note_scope_files[@]} )); then
-            python3 scripts/workflow/check_release_notes_policy.py "${release_note_scope_files[@]}"
-          fi
-
-          echo "Validated changed workflow artifacts."
+          python3 scripts/workflow/check_release_notes_policy.py --base "$base"
 
   quality-gate:
     name: fmt + clippy + audit + test

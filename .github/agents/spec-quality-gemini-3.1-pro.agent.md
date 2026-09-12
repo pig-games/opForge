@@ -1,1 +1,0 @@
-../../agents/spec-quality-gemini-3.1-pro.agent.md

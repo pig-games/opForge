@@ -10,12 +10,13 @@ Behavior:
   - Prints `git status --short`.
   - Stages only the explicit paths you provide.
   - Prints `git diff --cached --stat` and `git diff --cached --name-only`.
+  - Refuses pre-existing staged changes outside the explicit paths.
   - Creates the commit with the provided message.
 
 Rules:
   - You must provide at least one explicit path.
   - The script never stages everything implicitly.
-  - Use this wrapper instead of chaining `git status`, `git add`, and
+  - Optionally use this wrapper instead of chaining `git status`, `git add`, and
     `git commit` in one ad hoc shell command.
 
 Example:
@@ -67,11 +68,29 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 cd "${repo_root}"
 
+# Compare NUL-delimited paths so whitespace and renames cannot hide staged work.
+python3 - "${paths[@]}" <<'CHECK_STAGED'
+import subprocess
+import sys
+
+def staged(*paths):
+    return set(filter(None, subprocess.check_output([
+        "git", "diff", "--cached", "--no-renames", "--name-only", "-z", "--", *paths
+    ]).split(b"\0")))
+
+outside = staged() - staged(*sys.argv[1:])
+if outside:
+    print("Refusing to commit pre-existing staged changes outside selected paths:", file=sys.stderr)
+    for path in sorted(outside):
+        print("  " + path.decode(errors="backslashreplace"), file=sys.stderr)
+    sys.exit(1)
+CHECK_STAGED
+
 printf '==> Git status\n'
 git status --short
 
 printf '\n==> Staging explicit paths\n'
-git add "${paths[@]}"
+git add -- "${paths[@]}"
 
 printf '\n==> Staged diff summary\n'
 git diff --cached --stat

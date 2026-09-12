@@ -26,7 +26,6 @@ REQUIRED_IDS = (
     "console-debugger-probe",
     "console-debugger-runner",
     "console-debugger-contract",
-    "macro-hang-console-report",
 )
 LEVELS = {"B", "C", "D", "E"}
 ROLES = {

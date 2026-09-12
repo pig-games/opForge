@@ -26,26 +26,15 @@ Instrumentation must not:
 - inline variable-length logic at a call site
 - print from mutable request or service buffers
 - enlarge event or request buffers as a diagnostic tactic without explicit
-  approval
+  discussion of the resulting memory and behavior impact
 - change production control flow
 
 Instrumentation is production code until preservation, branch neutrality, and
 build-mode behavior are proven.
 
-## Required safety note
+## Verification
 
-Record this with every instrumentation patch:
-
-```text
-Instrumentation point:
-Macro/routine used:
-Registers preserved:
-SR/CCR preserved:
-Stack delta at return:
-Shared buffers touched:
-Why this cannot change branch decisions:
-Removal/stabilization plan:
-```
-
-Do not use evidence from an unsafe probe. Classify temporary probes as proof
-Level E and remove them before claiming a fix.
+Verify register and flags preservation, zero stack delta, shared-buffer safety
+and build-mode behavior for the actual instrumentation point. Explain any
+non-obvious risk and whether the probe will be removed or maintained. No separate
+safety-note artifact is required. Do not use unsafe probes as fix evidence.

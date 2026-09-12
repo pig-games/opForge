@@ -1,41 +1,14 @@
 ---
 name: opforge-plan-authoring
-description: Create execution-ready opForge plans from specs, reviews, or explicitly scoped user requests. Use when implementation or remediation work needs ordered, commit-sized slices with checkboxes, validations, and definition-of-done rules.
+description: Write a concise opForge implementation or remediation plan when the user requests one or coordination needs a written plan. Do not create plans automatically for ordinary coding.
 ---
 
 # opForge Plan Authoring
 
-## Use when
-
-- creating an implementation, remediation, migration, or explicitly approved cleanup plan
-- converting a spec or review into executable work items
-- preparing plan-driven commits
-
-## Required output
-
-Use `templates/plan-template.md` without changing its validator-facing headings.
-
-A valid plan includes:
-
-- source, mode, objective, constraints, version impact, work items, milestones, and blocking rules
-- an explicit statement that active `AGENTS.md` rules remain binding
-- ordered commit-sized checkbox work items
-- source requirements or finding IDs per work item
-- expected files, full gates, plan-compliance evidence, commit outcome, and done criteria per item
-
-For remediation plans, list finding IDs and whether each item fully or partially closes them.
-
-## Guardrails
-
-- One active item at a time.
-- Do not silently widen scope beyond the source.
-- Each work item or phase must end in a new commit before the next begins.
-- Full quality gates and `plan-compliance-reviewer` are mandatory before plan-driven commits.
-- Rust items should name `scripts/workflow/run_rust_quality_gate.sh` or `make quality-gate`.
-- Native 68000 items should load `agents/rules/native-68000.md` and name the native formatter gate.
-
-## Validate with
-
-- `scripts/workflow/check_plan_checkboxes.py`
-- `scripts/workflow/check_workflow_artifact_bundle.py`
-- `scripts/workflow/run_plan_workflow.sh`
+Describe the desired inspectable outcome, scope, constraints and unresolved decisions.
+Group work by coherent outcomes, with focused validation and meaningful completion
+boundaries. Explain dependencies and major risks; avoid predicting every file or
+helper. Keep detail proportional to uncertainty. The active AGENTS.md remains
+binding. Plans do not impose commit counts, review chains or gate sidecars.
+For remediation, connect work to the original findings. Keep the plan current;
+remove it when finished after transferring enduring facts to maintained docs.

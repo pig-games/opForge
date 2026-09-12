@@ -1,1 +1,0 @@
-../../agents/spec-quality-claude-opus-4.6.agent.md

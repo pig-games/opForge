@@ -359,22 +359,16 @@ or symbols have been emitted.
       `OPC-NCLI` compatibility error text.
 - [ ] The spec defines an emitter-boundary marker and explicitly keeps object
       generation out of this roadmap slice.
-- [ ] The roadmap Work item 4 and Milestone 2 can be marked complete after the
-      spec validator, roadmap validator, full quality gates, and compliance
-      review pass.
 
 ## Validation Expectations
 
 Minimum validation for this spec-only slice:
 
-- `python3 scripts/workflow/check_spec_artifact.py documentation/opForge-native-vm-pipeline-report-v0_1.md`
-- `python3 scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-portable-vm-68020-amigaos-roadmap-v0_1.md`
 - `cargo fmt --all --check`
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo audit --no-fetch`
 - `cargo test --workspace`
 - `cargo test --locked`
-- plan-compliance review before commit
 
 Additional validation for later implementation slices:
 

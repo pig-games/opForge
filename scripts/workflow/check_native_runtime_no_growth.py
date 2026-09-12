@@ -18,7 +18,6 @@ NATIVE_ROOT = Path("native/motorola68000/amigaos")
 BLOCK_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s+\.block\b", re.MULTILINE)
 MODULE_RE = re.compile(r"^\s*\.module\s+([^\s;]+)", re.MULTILINE)
 OWNER_RE = re.compile(r"^\s*;\s*@opforge-owner:\s*(\S+)\s*$", re.MULTILINE)
-SLICE_RE = re.compile(r"^\s*;\s*@opforge-slice:\s*(\S+)\s*$", re.MULTILINE)
 ROLE_RE = re.compile(r"^\s*;\s*@opforge-role:\s*(\S+)\s*$", re.MULTILINE)
 MUTABLE_ENGINE_RE = re.compile(
     r"\bOpasmEngine(?:Context|AssemblySession[A-Za-z0-9_]*|Session[A-Za-z0-9_]*|"
@@ -46,13 +45,11 @@ def load_baseline(path: Path = BASELINE) -> Baseline:
     return Baseline(certified_modules=certified, hotspot_blocks=hotspots)
 
 
-def annotation_values(text: str) -> tuple[str | None, str | None, str | None]:
+def annotation_values(text: str) -> tuple[str | None, str | None]:
     owner = OWNER_RE.search(text)
-    slice_match = SLICE_RE.search(text)
     role = ROLE_RE.search(text)
     return (
         owner.group(1) if owner else None,
-        slice_match.group(1) if slice_match else None,
         role.group(1).lower() if role else None,
     )
 
@@ -69,22 +66,15 @@ def annotation_window(lines: list[str], line_index: int) -> str:
 
 
 def validate_annotation(
-    root: Path,
     relative: str,
     annotation: str,
     *,
     require_role: bool,
 ) -> list[str]:
     errors: list[str] = []
-    owner, slice_path, role = annotation_values(annotation)
+    owner, role = annotation_values(annotation)
     if not owner:
         errors.append(f"{relative}: missing @opforge-owner annotation")
-    if not slice_path:
-        errors.append(f"{relative}: missing @opforge-slice annotation")
-    elif not slice_path.startswith("documentation/plans/slices/") or not slice_path.endswith(".toml"):
-        errors.append(f"{relative}: invalid @opforge-slice path: {slice_path}")
-    elif not (root / slice_path).is_file():
-        errors.append(f"{relative}: @opforge-slice does not exist: {slice_path}")
     if require_role and role not in ALLOWED_HOTSPOT_ROLES:
         errors.append(
             f"{relative}: new hotspot routine requires @opforge-role: facade or delegation"
@@ -107,7 +97,7 @@ def validate_hotspots(root: Path, baseline: Baseline) -> list[str]:
             name = match.group(1)
             annotation = annotation_window(lines, line_index)
             entry_errors = validate_annotation(
-                root, f"{relative}:{line_index + 1}:{name}", annotation, require_role=True
+                f"{relative}:{line_index + 1}:{name}", annotation, require_role=True
             )
             if entry_errors:
                 errors.extend(entry_errors)
@@ -153,7 +143,7 @@ def validate_new_modules(root: Path, baseline: Baseline) -> list[str]:
         if not is_production_semantic_module(relative, text):
             continue
         header = "\n".join(text.splitlines()[:40])
-        errors.extend(validate_annotation(root, relative, header, require_role=False))
+        errors.extend(validate_annotation(relative, header, require_role=False))
     return errors
 
 

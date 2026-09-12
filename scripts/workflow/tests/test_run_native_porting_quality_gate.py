@@ -11,7 +11,7 @@ from run_native_porting_quality_gate import CHECKS, commands, run_gate
 
 class NativePortingGateTests(unittest.TestCase):
     def test_order_is_deterministic_and_default_has_no_external_launch(self):
-        result = commands(Path("/repo"), True, None)
+        result = commands(Path("/repo"), True)
         self.assertEqual([Path(command[1]).name for command in result[:-1]], list(CHECKS))
         joined = "\n".join(" ".join(command) for command in result)
         self.assertIn("check_native_runtime_no_growth.py", CHECKS)
@@ -33,7 +33,7 @@ class NativePortingGateTests(unittest.TestCase):
             ) as runner,
             redirect_stderr(stderr),
         ):
-            self.assertEqual(run_gate(Path("/repo"), True, None), 7)
+            self.assertEqual(run_gate(Path("/repo"), True), 7)
         self.assertEqual(runner.call_count, 1)
         self.assertIn("first.py", stderr.getvalue())
 

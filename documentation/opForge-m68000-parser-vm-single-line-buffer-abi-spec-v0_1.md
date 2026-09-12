@@ -475,14 +475,9 @@ Unsupported native opcode during early implementation slices:
 
 This specification must pass:
 
-- `python3 scripts/workflow/check_spec_artifact.py documentation/opForge-m68000-parser-vm-single-line-buffer-abi-spec-v0_1.md`
-- spec quality review before it is treated as an implementation authority
-- `plan-compliance-reviewer` before the Work item 1 commit
 
-Implementation work derived from this specification must also run the relevant
-full quality gate for its work item, including `cargo fmt --all`, `cargo clippy
---all-targets --all-features -- -D warnings`, `cargo audit`, and `cargo test
---workspace`, subject only to explicitly recorded user-waived baseline failures.
+Choose implementation validation according to the current repository workflow
+and the affected behavior; the focused ABI cases below remain useful.
 
 The first host-side ABI tests derived from this spec should decode:
 

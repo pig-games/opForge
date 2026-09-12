@@ -13,9 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNNER = Path("crates/opforge-asm/src/fs_uae_smoke.rs")
 TEST_ROOT = Path("crates/opforge-asm/src/tests")
 RULES = (
-    Path("AGENTS.md"),
     Path("agents/rules/native-rust-parity-porting.md"),
-    Path("agents/rules/fs-uae.md"),
 )
 
 

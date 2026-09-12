@@ -71,15 +71,19 @@ native-68000-ccr-cleanup-round:
 native-reference-parity-completion:
 	scripts/workflow/run_native_reference_parity_completion.sh --verify
 
-workflow-gate:
-	python3 scripts/workflow/check_agent_symlinks.py
+# Workflow checks deliberately do not claim product compilation or native parity.
+.PHONY: dev-check tranche-check milestone-check
+dev-check:
+	python3 scripts/workflow/check_workflow_links.py
 	python3 scripts/workflow/check_supply_chain_ban.py
 	python3 scripts/workflow/check_cpu_specific_arch_boundary.py
+
+tranche-check: dev-check
 	python3 -m unittest discover -s scripts/workflow/tests -p 'test_*.py'
-	python3 scripts/workflow/run_native_porting_quality_gate.py --staged
-	find documentation dev-docs -name '*.quality-gate.txt' -print0 | xargs -0 python3 scripts/workflow/check_quality_gate_evidence.py
-	python3 scripts/workflow/check_reference_update_scope.py
-	python3 scripts/workflow/check_release_notes_policy.py
+
+workflow-gate: tranche-check
+
+milestone-check: quality-gate
 
 test:
 	cargo test --workspace

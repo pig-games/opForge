@@ -11,70 +11,30 @@ Also load:
 - `agents/rules/native-68000-safe-instrumentation.md` before instrumenting
 - `agents/rules/fs-uae.md` when running FS-UAE tests
 
-## Boundary contract
+## Reference boundaries and debugging
 
-Before editing production code, record:
+Identify the Rust reference and native boundary, their inputs, outputs and known
+non-equivalences. Record only the detail needed to understand and test the change.
+Preserve existing Rust/native semantic equivalence; representation and host-specific
+implementation may differ. Investigate the first divergence through source loading,
+parsing, state, selection, encoding and output as appropriate. This is a debugging
+technique, not a restriction to one file or one boundary per change.
 
-```text
-Slice name:
-Rust reference files/functions:
-Native target files/functions:
-Boundary type:
-Contract:
-Expected native inputs:
-Expected native outputs:
-Known non-equivalences:
-Proof-level tests:
-Fast proof:
-FS-UAE proof:
-```
+## Evidence limits
 
-Boundary types include source reader, tokenizer, parser, statement store,
-expression request, EXVM result, selector, encoder, and output.
-
-Do not invent native behavior when Rust reference behavior exists. Native
-divergence is limited to memory layout, calling convention, register pressure,
-fixed-buffer constraints, AmigaOS host I/O, and 68000 control-flow
-representation. Document the divergence and preserve Rust semantics.
-
-## Find the first divergence
-
-Compare boundaries in this order:
-
-1. Source line read
-2. Tokenization
-3. Parser or portable AST/statement shape
-4. Native statement/session record
-5. Expression request envelope
-6. EXVM/EXPR parse/evaluation result
-7. Selector candidate
-8. Encoder output
-9. Session image bytes
-10. Output artifact
-
-Patch only the first divergent boundary. One slice corrects one named invariant.
-
-## Evidence levels
-
-Classify every test or observation:
+Existing harnesses use these labels:
 
 | Level | Evidence |
 |---|---|
-| A | Pure Rust semantic oracle |
+| A | Rust semantic oracle |
 | B | Rust-side package/native harness contract |
 | C | Host-side native request-shape simulator |
-| D | Real native 68000/AmigaOS execution through FS-UAE |
-| E | Temporary localization or debug probe |
+| D | Real native execution through FS-UAE |
+| E | Localization or debug probe |
 
-Every test summary must state:
-
-```text
-This test proves:
-This test does not prove:
-```
-
-Levels A-C can provide fast boundary proof but cannot replace a required Level D
-confirmation. Level E never proves production behavior.
+Explain material limits of the evidence used. Host-side checks cannot replace
+required real-native confirmation; probes cannot establish production parity.
+Routine reporting does not need a separate form for every observation.
 
 ## Singular Level D parity proof contract
 

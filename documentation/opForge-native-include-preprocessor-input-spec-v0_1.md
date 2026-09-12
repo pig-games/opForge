@@ -229,9 +229,6 @@ the include layer must not silently drop or reinterpret them.
 
 Minimum validation for a spec-only slice:
 
-- `python3 scripts/workflow/check_spec_artifact.py documentation/opForge-native-include-preprocessor-input-spec-v0_1.md`
-- `python3 scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-portable-vm-68020-amigaos-roadmap-v0_1.md`
-- plan-quality review for this specification and roadmap linkage
 
 Minimum validation for the first native implementation slice:
 

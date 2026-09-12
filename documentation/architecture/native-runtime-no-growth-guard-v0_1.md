@@ -2,8 +2,7 @@
 
 ## Purpose
 
-Item 5.12 converts the certified native runtime boundaries into deterministic
-workflow enforcement. The guard protects ownership and dependency structure;
+The guard checks the existing certified native runtime boundaries. The guard protects ownership and dependency structure;
 it is not a semantic parity test and does not use file length as a proxy for
 responsibility.
 
@@ -33,17 +32,15 @@ certified for:
 - `opcore_expr_bridge.asm`.
 
 Removing or delegating existing routines remains possible. A new routine is
-rejected unless its immediately preceding comment block declares all three:
+rejected unless its immediately preceding comment block declares both ownership and role:
 
 ```asm
 ; @opforge-owner: opasm.amigaos.example_owner
-; @opforge-slice: documentation/plans/slices/example.toml
 ; @opforge-role: delegation
 exampleDelegateV1 .block
 ```
 
-The only permitted roles are `facade` and `delegation`, and the named slice
-must exist. This allows narrow compatibility surfaces while rejecting silent
+The only permitted roles are `facade` and `delegation`. This allows narrow compatibility surfaces while rejecting silent
 private semantic growth. Updating the baseline merely to admit a new routine
 is prohibited; the declaration is the reviewable exception mechanism.
 
@@ -54,15 +51,14 @@ engine-owned context, session, source, statement, label, or image symbols.
 Package consumers must use the neutral runtime context and documented engine
 getter adapter instead of mutable engine tables.
 
-### New semantic module provenance
+### New semantic module ownership
 
 The baseline lists production native modules that existed at certification.
 A later production `.asm` file containing both `.module` and `.block` must name
-an owner and an existing slice in its first 40 lines:
+an owner in its first 40 lines:
 
 ```asm
 ; @opforge-owner: tkpkg.amigaos.example
-; @opforge-slice: documentation/plans/slices/example.toml
 ```
 
 Test harnesses and debug tools are classified separately and are outside this

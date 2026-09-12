@@ -1,53 +1,55 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from check_native_runtime_boundary_contract import (
     FORBIDDEN_IMPORTS,
-    LEDGER_ITEMS,
-    RETAINED_ITEM_511_IMPORTS,
+    RETAINED_OWNER_IMPORTS,
     validate,
 )
 
 
 class NativeRuntimeBoundaryContractTests(unittest.TestCase):
-    def test_checked_contract_and_dependency_model_pass(self):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tempdir.cleanup)
+        self.root = Path(self.tempdir.name)
+        paths = set(FORBIDDEN_IMPORTS) | set(RETAINED_OWNER_IMPORTS)
+        paths.add("native/motorola68000/amigaos/tkpkg/tkpkg_service.asm")
+        for relative in paths:
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("".join(
+                f".use {module}\n"
+                for module in RETAINED_OWNER_IMPORTS.get(relative, ())
+            ))
+
+    def test_repository_imports_pass(self):
         self.assertEqual(validate(), [])
 
-    def test_contract_has_a_lifecycle_entry_for_each_future_extraction(self):
-        self.assertEqual(len(LEDGER_ITEMS), 19)
-        self.assertIn("5.7", LEDGER_ITEMS)
-        self.assertIn("5.9.4", LEDGER_ITEMS)
+    def test_valid_imports_pass_without_plans_or_prose_ledgers(self):
+        self.assertFalse((self.root / "documentation").exists())
+        self.assertEqual(validate(self.root), [])
 
-    def test_reverse_edge_scope_covers_engine_driver_and_runtime_consumers(self):
-        self.assertEqual(len(FORBIDDEN_IMPORTS), 6)
-        self.assertIn("native/motorola68000/amigaos/opasm/opasm_engine.asm", FORBIDDEN_IMPORTS)
+    def test_prohibited_reverse_import_fails(self):
+        path = self.root / "native/motorola68000/amigaos/prvm/prvm_runtime.asm"
+        path.write_text(".use opasm.amigaos.engine\n")
+        self.assertTrue(any("prohibited current reverse import" in error
+                            for error in validate(self.root)))
 
-    def test_item_511_pins_exact_retained_owner_imports(self):
-        self.assertEqual(len(RETAINED_ITEM_511_IMPORTS), 2)
-        self.assertEqual(
-            RETAINED_ITEM_511_IMPORTS[
-                "native/motorola68000/amigaos/opasm/opasm_engine.asm"
-            ],
-            (
-                "opasm.amigaos.events",
-                "opasm.amigaos.progress",
-                "debug.amigaos.symbol_expr_profile",
-                "debug.amigaos.platform_profile",
-            ),
-        )
-        self.assertEqual(
-            RETAINED_ITEM_511_IMPORTS[
-                "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm"
-            ],
-            (
-                "tkpkg.amigaos.abi",
-                "tkpkg.amigaos.buffers",
-                "tkpkg.amigaos.state_service",
-                "tkpkg.amigaos.token_policy",
-            ),
-        )
+    def test_retained_owner_import_change_fails(self):
+        path = self.root / "native/motorola68000/amigaos/opasm/opasm_engine.asm"
+        path.write_text("")
+        self.assertTrue(any("retained-owner imports changed" in error
+                            for error in validate(self.root)))
+
+    def test_obsolete_service_to_engine_import_fails(self):
+        path = self.root / "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm"
+        path.write_text(".use opasm.amigaos.engine\n")
+        self.assertTrue(any("obsolete service-to-engine import" in error
+                            for error in validate(self.root)))
 
 
 if __name__ == "__main__":

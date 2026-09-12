@@ -321,7 +321,6 @@ FS-UAE not installed:
 
 Spec validation:
 
-- `python3 scripts/workflow/check_spec_artifact.py documentation/opForge-amiga-hunk-output-component-spec-v0_1.md`
 
 Expected implementation validation derived from this spec:
 

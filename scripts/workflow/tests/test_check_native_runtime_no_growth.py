@@ -66,13 +66,10 @@ class NativeRuntimeNoGrowthTests(unittest.TestCase):
     def test_declared_hotspot_delegation_is_allowed(self):
         hotspot = "native/motorola68000/amigaos/opasm/hotspot.asm"
         baseline = self.baseline(hotspot, ("existingV1",))
-        slice_path = "documentation/plans/slices/delegation.toml"
-        self.write(slice_path, "[slice]\nschema_version = 2\n")
         self.write(
             hotspot,
             ".module opasm.hotspot\nexistingV1 .block\n"
             "; @opforge-owner: opasm.owner\n"
-            f"; @opforge-slice: {slice_path}\n"
             "; @opforge-role: delegation\n"
             "delegateV1 .block\n",
         )
@@ -81,13 +78,10 @@ class NativeRuntimeNoGrowthTests(unittest.TestCase):
     def test_declared_hotspot_facade_is_allowed(self):
         hotspot = "native/motorola68000/amigaos/opasm/hotspot.asm"
         baseline = self.baseline(hotspot, ("existingV1",))
-        slice_path = "documentation/plans/slices/facade.toml"
-        self.write(slice_path, "[slice]\nschema_version = 2\n")
         self.write(
             hotspot,
             ".module opasm.hotspot\nexistingV1 .block\n"
             "; @opforge-owner: opasm.owner\n"
-            f"; @opforge-slice: {slice_path}\n"
             "; @opforge-role: facade\n"
             "facadeV1 .block\n",
         )
@@ -110,7 +104,7 @@ class NativeRuntimeNoGrowthTests(unittest.TestCase):
         )
         self.assertEqual(validate(self.root, baseline), [])
 
-    def test_new_semantic_module_requires_owner_and_slice(self):
+    def test_new_semantic_module_requires_owner(self):
         baseline = self.baseline()
         self.write(
             "native/motorola68000/amigaos/opasm/new_owner.asm",
@@ -118,30 +112,30 @@ class NativeRuntimeNoGrowthTests(unittest.TestCase):
         )
         errors = validate(self.root, baseline)
         self.assertTrue(any("missing @opforge-owner" in error for error in errors))
-        self.assertTrue(any("missing @opforge-slice" in error for error in errors))
 
-    def test_new_semantic_module_with_existing_slice_is_allowed(self):
+    def test_new_semantic_module_with_owner_is_allowed_without_slice(self):
         baseline = self.baseline()
-        slice_path = "documentation/plans/slices/new-owner.toml"
-        self.write(slice_path, "[slice]\nschema_version = 2\n")
         self.write(
             "native/motorola68000/amigaos/opasm/new_owner.asm",
             "; @opforge-owner: opasm.new_owner\n"
-            f"; @opforge-slice: {slice_path}\n"
             ".module opasm.new_owner\nrunV1 .block\n",
         )
         self.assertEqual(validate(self.root, baseline), [])
 
-    def test_declared_module_with_missing_slice_file_fails(self):
-        baseline = self.baseline()
+    def test_hotspot_invalid_role_fails(self):
+        hotspot = "native/motorola68000/amigaos/opasm/hotspot.asm"
+        baseline = self.baseline(hotspot)
         self.write(
-            "native/motorola68000/amigaos/opasm/new_owner.asm",
-            "; @opforge-owner: opasm.new_owner\n"
-            "; @opforge-slice: documentation/plans/slices/missing.toml\n"
-            ".module opasm.new_owner\nrunV1 .block\n",
+            hotspot,
+            "; @opforge-owner: opasm.owner\n"
+            "; @opforge-role: implementation\n"
+            ".module opasm.hotspot\n"
+            "; @opforge-owner: opasm.owner\n"
+            "; @opforge-role: implementation\n"
+            "newRoutine .block\n",
         )
         errors = validate(self.root, baseline)
-        self.assertTrue(any("does not exist" in error for error in errors))
+        self.assertTrue(any("@opforge-role" in error for error in errors))
 
     def test_cpu_boundary_guard_receives_staged_mode(self):
         with patch(

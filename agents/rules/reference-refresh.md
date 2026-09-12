@@ -1,12 +1,8 @@
-# Reference and Golden Artifact Refresh Rule Pack
+# Reference and golden refreshes
 
-Load this only when updating reference or golden artifacts.
-
-- Update only the minimum references or goldens directly affected by the current slice.
-- Do not run broad refresh commands unless the user explicitly asked for a full
-  refresh or an evidence artifact explicitly approves a bulk refresh.
-- Refresh evidence must include an allowlist naming the exact artifacts expected
-  to change.
-- Prefer `scripts/workflow/update_references.sh` with explicit paths over ad hoc
-  broad regeneration commands.
-- If unexpected references change, stop and report the mismatch before staging.
+Regenerate only the affected fixtures with explicit paths; prefer
+`scripts/workflow/update_references.sh`. Review the generated diff against the
+intended behavior. Investigate unexpected changes before including them.
+Do not use a blanket refresh to hide a regression. Discuss materially broader
+refreshes when they exceed the agreed scope. No separate approval artifact or
+allowlist document is required.

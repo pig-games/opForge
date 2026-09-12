@@ -16,11 +16,11 @@ Runs the canonical Rust quality gate for opForge code changes:
   7. C compiler availability check for FFI ABI coverage
   8. cargo test "${cargo_scope[@]}" --locked
 
-Use this single command when a plan, review, or implementation slice requires
+Use this command when the integration or qualification scope requires
 the full Rust quality gate.
 
 --defer-lsp explicitly excludes the lsp package from clippy and tests.
-Use only for a user-approved plan deferral; the receipt is not full-workspace
+This scoped result is not full-workspace
 qualification. Formatter, audit, native guards and all other packages remain.
 EOF
 }

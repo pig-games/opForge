@@ -19,7 +19,7 @@ class ProductionCorpusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.frozen = corpus.manifest()
-        cls.candidate = corpus.ROOT / "documentation/performance/results/opforge-step27-cpex-candidate-manifest-2026-09-06.json"
+        cls.candidate = corpus.ROOT / "scripts/performance/fixtures/cpex-candidate-manifest.json"
 
     def result(self, runs=7):
         frozen = self.frozen

@@ -387,10 +387,6 @@ The current FS-UAE native CLI coverage includes:
   `OPFORGE-NATIVE 1` report and handoff record contract.
 - `documentation/opforge-assembler-vm-path-guide-v0_1.md`: Rust VM assembler
   path guide used as the architecture reference.
-- `documentation/plans/opforge-native-amigaos-6502-full-assembly-first-run-plan-v0_1.md`:
-  plan for completing first-run native 6502 assembly support.
-- `documentation/reviews/opforge-native-amigaos-deliverable-review-2026-05-06.md`:
-  review of the native deliverable structure and architecture risks.
 
 ## Current Known Transitional Pieces
 

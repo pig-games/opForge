@@ -171,3 +171,8 @@ Additional build and test lanes are listed in [`Makefile`](Makefile).
 The external-oracle lane expects a local `vasm` installation plus the
 `opforge-vasm68k` wrapper described in
 [`documentation/opForge-vasm-contributor-install-guide.md`](documentation/opForge-vasm-contributor-install-guide.md).
+
+## Contributor workflow
+
+See the [documentation index](documentation/README.md) and
+[workflow guide](documentation/workflow/README.md).

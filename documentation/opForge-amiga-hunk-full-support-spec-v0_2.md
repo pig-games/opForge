@@ -86,9 +86,9 @@ authoring.
 The current working Hunk subset is a floor, not a disposable prototype.
 
 - existing runnable examples such as
-  [examples/motorola68000/amigaos/helloworld.asm](examples/motorola68000/amigaos/helloworld.asm)
+  [examples/motorola68000/amigaos/helloworld.asm](../examples/motorola68000/amigaos/helloworld.asm)
   and
-  [examples/motorola68000/amigaos/writefile.asm](examples/motorola68000/amigaos/writefile.asm)
+  [examples/motorola68000/amigaos/writefile.asm](../examples/motorola68000/amigaos/writefile.asm)
   must remain buildable throughout the follow-on work
 - sections referenced by `.output` remain subject to the existing pass1
   placement requirement; this specification only removes the writer-side

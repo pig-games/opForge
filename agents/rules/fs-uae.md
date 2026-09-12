@@ -59,8 +59,7 @@ For a focused check, replace `external_fs_uae_` with a specific filter such as
   details in memory. The runner removes their on-disk `target/fs-uae-*` tree
   before returning; persistent files are never an evidence channel.
 - Run focused parity confirmations with `--test-threads=1`.
-- Classify FS-UAE results as proof Level D and state what each test proves and
-  does not prove.
+- State whether the run supplies real-native proof and disclose material limits.
 - Do not treat a moved failure as proof of the corrected invariant. A reduced
   fixture or prefix scan is localization only and is proof Level E, never the
   Level D confirmation.

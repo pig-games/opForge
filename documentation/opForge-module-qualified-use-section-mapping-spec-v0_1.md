@@ -1,4 +1,3 @@
-<!-- workflow-provenance: skill=opforge-spec-authoring; entrypoint=run_spec_workflow.sh -->
 # Specification: opForge Qualified Module Use, Section Mapping, and Selective Inclusion v0.1
 
 ## Summary
@@ -12,7 +11,6 @@ only referenced or explicitly selected units in final executable/library output.
 
 This specification combines:
 
-- `documentation/plans/opforge-module-qualified-use-symbol-resolution-plan-v0_1.md`
 - `documentation/architecture/opforge-module-qualified-use-section-mapping-concept-spec-v0_1.md`
 
 ## Problem

@@ -1,21 +1,10 @@
-# opForge Workflow Skills
+# Optional workflow skills
 
-This directory contains the workflow skills for the merged opForge repository.
+These skills support requested artifact work; they do not impose a development
+pipeline. The [operating contract](../AGENTS.md) and
+[workflow guide](../documentation/workflow/README.md) govern the work.
 
-Repository safety rule:
-
-- Workflow skills and any agent following them must never install, import, add,
-  recommend, or otherwise touch `litellm`.
-- If a workflow would normally suggest `litellm`, that is a hard stop: report
-  the conflict and use direct provider SDKs or official APIs instead.
-
-Included skills:
-
-- `opforge-review-reporting`
-- `opforge-plan-authoring`
-- `opforge-spec-authoring`
-- `opforge-review-closure`
-
-These skills are for workflow artifacts and gates, not for opForge feature
-implementation itself. They are intended to make planning, review, and closure
-work consistent inside this repository.
+- [Specifications](opforge-spec-authoring/SKILL.md): explicit behavior contracts.
+- [Plans](opforge-plan-authoring/SKILL.md): concise coordination when useful.
+- [Reviews](opforge-review-reporting/SKILL.md): actionable, evidence-based findings.
+- [Review follow-up](opforge-review-closure/SKILL.md): verify the original defect.

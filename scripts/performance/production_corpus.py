@@ -365,7 +365,7 @@ def validate_diagnostic_capture(row: dict, case: dict, frozen: dict, visits: int
 
 def diagnostic_manifest(frozen: dict, selected_path: Path | None = None) -> dict:
     """Accept the historical corpus or one explicit current package candidate."""
-    historical = read_json(ROOT / "documentation/performance/results/opforge-corpus-v1-manifest.json")
+    historical = read_json(ROOT / "scripts/performance/fixtures/corpus-v1-manifest.json")
     if selected_path is None:
         if frozen != historical:
             raise ValueError("diagnosis requires --manifest for a changed current package")

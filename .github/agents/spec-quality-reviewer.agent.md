@@ -1,1 +1,0 @@
-../../agents/spec-quality-reviewer.agent.md

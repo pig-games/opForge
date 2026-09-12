@@ -1,1 +1,0 @@
-../../agents/spec-quality-gpt-5.4.agent.md

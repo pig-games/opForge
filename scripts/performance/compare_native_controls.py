@@ -145,7 +145,7 @@ def main():
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
-        frozen = json.loads((ROOT / "documentation/performance/results/opforge-corpus-v1-manifest.json").read_text())
+        frozen = json.loads((ROOT / "scripts/performance/fixtures/corpus-v1-manifest.json").read_text())
         result = compare_controls([json.loads(path.read_text()) for path in args.receipts], frozen)
         result["receipts"] = [{"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} for path in args.receipts]
         text = json.dumps(result, indent=2, sort_keys=True) + "\n"

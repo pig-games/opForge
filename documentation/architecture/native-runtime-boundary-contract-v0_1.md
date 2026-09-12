@@ -82,53 +82,10 @@ removal milestone: module/import integration must supply the neutral context
 without a tkpkg-to-opasm import, then delete the adapter and its
 inventory/no-growth allowance in the same focused slice.
 
-## Extraction ledger
+## Verification
 
-Every future extraction has one source owner, destination owner, temporary
-adapter, and deletion criterion.  “None” means no adapter is authorized.
-
-| Plan item | Source owner | Destination owner | Temporary adapter | Deletion criterion |
-| --- | --- | --- | --- | --- |
-| 5.4 | tkpkg facade status/error routines | tkpkg status service | facade-to-status call | facade has no reusable status/error implementation |
-| 5.4.1 | tkpkg facade bootstrap/request routines | tkpkg request service | facade-to-request call | facade no longer decodes reusable control-block details |
-| 5.5 | tkpkg facade parser route | tkpkg parser service | facade-to-parser call | dispatch delegates without parser envelope logic |
-| 5.5.1 | tkpkg facade expression route | expression service | neutral-context transition adapter | expression service has no direct engine-table access |
-| 5.6 | tkpkg facade selection traversal | tkpkg selection service | facade-to-selection call | facade has no selected-instruction/candidate traversal |
-| 5.6.1 | selection/facade operand-plan handling | tkpkg operand runtime | selection-to-operand call | neither prior owner interprets plans |
-| 5.6.2 | selection/facade package encoding | tkpkg encoding service | selection-to-encoding call | prior owners contain no encoding interpreter |
-| 5.7 | direct service/engine context access | neutral context plus engine adapter | engine context adapter | parent parity Item 7.7 supplies neutral context without a tkpkg-to-opasm import, then deletes the adapter and its inventory/no-growth allowance |
-| 5.7.1 | expression consumer direct context | expression service/context ABI | Item 5.7 adapter | expression service imports only neutral context; temporary context adapter deleted |
-| 5.7.2 | selection/encoding consumer direct context | selection/encoding context ABI | Item 5.7 adapter | no tkpkg engine-table import/address remains |
-| 5.8 | driver directive routing | directive router | driver-to-router dispatch | driver has no directive/mnemonic string chains |
-| 5.8.1 | driver structural scans | structural-flow owner | driver-to-flow dispatch | driver has no domain terminator scans |
-| 5.9 | driver operand/eval request construction | operand-evaluation owner | driver-to-eval dispatch | driver constructs no operand/eval requests |
-| 5.9.1 | driver selector/encode adaptation | selector-encode owner | driver-to-selector dispatch | driver has no selector adaptation |
-| 5.9.2 | driver numeric data work | data directive owner | driver-to-data dispatch | driver has no numeric size/emission implementation |
-| 5.9.3 | driver text work | text directive owner | driver-to-text dispatch | driver has no text size/emission implementation |
-| 5.9.4 | driver layout work | layout owner | driver-to-layout dispatch | driver has no region/section/place/alignment implementation |
-| 5.10 | expression bridge audit | retained cohesive scalar frontend | none | only two public entries remain; compiler state, dependency, callers, long-term owner, and replacement criterion are explicit |
-| 5.11 | engine/pipeline conditional audit | retained `opasm.amigaos.engine` and `tkpkg.amigaos.pipeline` owners | none | exact imports and retained responsibility decisions are recorded; no prohibited edge or independent extraction boundary exists |
-
-## Item 5.11 retained-owner audit
-
-| Audited owner | Retained responsibility | Exact dependency evidence | Why no extraction is authorized |
-| --- | --- | --- | --- |
-| `opasm.amigaos.engine` | one assembly-session aggregate: statement collection, pass/PC/image/label state, callback context, and bounded serialization of that owned state | imports `opasm.amigaos.events`, `opasm.amigaos.progress`, and the default-off `debug.amigaos.symbol_expr_profile`; no tkpkg, opcore, or CLI edge | request writers access the same private statement/session tables and neither select packages nor encode output; the debug dependency is passive observation and owns no semantic state; moving the request writers would split state access without removing a prohibited edge |
-| `tkpkg.amigaos.pipeline` | one atomic package-hierarchy selection transaction from request parsing through complete-selection commit | imports only tkpkg ABI, buffers, and token policy; no opasm engine or CLI edge | all private locator/string helpers share the pipeline traversal cursor/register contract; consolidating similar readers elsewhere would add a cross-runtime utility dependency without an independent owner |
-
-This is a documented no-change decision. It does not validate or alter CPU,
-family, dialect, selector, tokenizer, parser, request, diagnostic, or emitted
-byte semantics. Any later CPU/selector remediation remains a separate programme.
-
-## Verification and evolution rules
-
-- `scripts/workflow/check_native_runtime_boundary_contract.py` validates this
-  record’s required ownership, context, prohibited-edge, and ledger fields and
-  checks current source imports against the permitted transitional model.
-- The affected slice metadata records this as a Level B/C architecture slice;
-  no Level D claim is made until an extraction changes a real CLI path.
-- A later extraction may update the contract only in the same focused commit
-  that supplies its source/API and C/D evidence.  It may not loosen a
-  prohibited edge without an explicit successor item and reviewer approval.
-- Segment, statement, export, or new CPU semantics are not activated by this
-  contract.
+`scripts/workflow/check_native_runtime_boundary_contract.py` checks existing
+source import restrictions. It does not validate plan ledgers or require a
+planning artifact. These are structural checks, not runtime parity proof.
+Use the [current workflow](../workflow/README.md) for development and validation
+cadence. No future extraction is scheduled by this reference document.

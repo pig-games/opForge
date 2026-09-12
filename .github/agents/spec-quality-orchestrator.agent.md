@@ -1,1 +1,0 @@
-../../agents/spec-quality-orchestrator.agent.md

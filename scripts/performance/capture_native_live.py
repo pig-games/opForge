@@ -335,7 +335,7 @@ def main() -> int:
     segments = hunk_segments(hunk) if args.control_mode == "sample" else []
     labels_text = args.labels.read_text()
     labels = {name: int(value, 16) for name, value in re.findall(r"^(.+) = \$([0-9A-Fa-f]+)$", labels_text, re.MULTILINE)}
-    manifest_path = Path(__file__).resolve().parents[2] / "documentation/performance/results/opforge-corpus-v1-manifest.json"
+    manifest_path = Path(__file__).resolve().parents[2] / "scripts/performance/fixtures/corpus-v1-manifest.json"
     frozen = json.loads(manifest_path.read_text())
     selected = [case for case in frozen["cases"] if case["id"] == os.environ.get("OPFORGE_NATIVE_CORPUS_CASES")]
     if len(selected) != 1 or args.hunk.parent.name != "build":

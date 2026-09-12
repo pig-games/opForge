@@ -589,7 +589,7 @@ audited surface remains 101 routines, 4 imports, code/BSS sections and 35
 diagnostic paths; no capacity, public ABI, owner or cross-subsystem boundary
 changed. The companion manifest now binds source SHA-256 `3ab6e60b940fd80245cf0687dcf36a225c197197b6b2b74fd8a02bc7c3022ec1`.
 Memory/ABI proof and completed CLI timing are recorded in
-`documentation/performance/results/opforge-step10-session-clear-2026-09-05.md`.
+the session-clear measurements retained in Git history at commit `9575734b`.
 
 
 - Source: `native/motorola68000/amigaos/opasm/opasm_engine.asm`.

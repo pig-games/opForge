@@ -298,7 +298,6 @@ Invalid token kind code for the contract:
 
 Spec validation:
 
-- `python3 scripts/workflow/check_spec_artifact.py documentation/opForge-m68000-tokenizer-vm-single-line-buffer-abi-spec-v0_1.md`
 
 Expected implementation validation derived from this spec:
 

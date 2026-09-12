@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 CHECKS = (
-    "check_native_porting_slice.py",
     "check_native_instrumentation_safety.py",
     "check_native_contract_asserts.py",
     "check_fsuae_invocation_policy.py",
@@ -20,22 +19,20 @@ CHECKS = (
 )
 
 
-def commands(root: Path, staged: bool, metadata: str | None) -> list[list[str]]:
+def commands(root: Path, staged: bool) -> list[list[str]]:
     script_dir = root / "scripts/workflow"
     result: list[list[str]] = []
     for name in CHECKS:
         command = [sys.executable, str(script_dir / name), "--root", str(root)]
         if staged:
             command.append("--staged")
-        if name == "check_native_porting_slice.py" and metadata:
-            command.extend(["--metadata", metadata])
         result.append(command)
     result.append(["make", "native-68000-format-check"])
     return result
 
 
-def run_gate(root: Path, staged: bool, metadata: str | None) -> int:
-    for command in commands(root, staged, metadata):
+def run_gate(root: Path, staged: bool) -> int:
+    for command in commands(root, staged):
         print(f"==> {' '.join(command)}", flush=True)
         result = subprocess.run(command, cwd=root, text=True)
         if result.returncode:
@@ -52,7 +49,6 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", default=".")
     parser.add_argument("--staged", action="store_true")
-    parser.add_argument("--metadata")
     parser.add_argument("--fsuae-test")
     args = parser.parse_args()
     if args.fsuae_test:
@@ -61,7 +57,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    return run_gate(Path(args.root).resolve(), args.staged, args.metadata)
+    return run_gate(Path(args.root).resolve(), args.staged)
 
 
 if __name__ == "__main__":

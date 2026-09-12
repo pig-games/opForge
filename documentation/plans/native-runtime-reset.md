@@ -17,6 +17,10 @@ directions to refine from evidence.
 - First improve general VM execution efficiency in Rust: eliminate repeated
   work, identify hotspots and provide explicit acceleration points. Native
   platform optimization follows, with early native feasibility checks.
+- Optimize shared execution mechanisms for all supported assembly targets, not
+  one CPU/family's encoding path. The 68020 product requirement describes the
+  execution platform. Use several assembly families as evidence of generality;
+  do not equate representative coverage with measured gains on every target.
 - Canonical packages remain authoritative. Derive runtime representations from
   them for selected assembly-target capabilities and execution-platform resource
   profiles. These are independent dimensions. Start with one experimental runtime
@@ -84,26 +88,32 @@ execution. No implementation work has started.
 
 | Work | Status | Reviewable result | Depends on |
 | --- | --- | --- | --- |
-| W1 — Measure a focused package-VM assembly path | Proposed: scope below | One runnable bounded benchmark, inspectable source/output, verified execution path and one ranked optimization recommendation | Agreement on W1 |
+| W1 — Measure shared package-VM work across families | Proposed: scope below | One bounded benchmark with representative family cases, inspectable source/output, verified execution paths and one general optimization recommendation | Agreement on W1 |
 | W2 — Eliminate the largest justified repeated operation | Direction only | Same complete workload on reference and improved Rust paths, with correctness/work/time/space comparison | W1 evidence and agreement on the exact change |
 | W3 — Prove one acceleration boundary if it is justified | Direction only | Generic and specialized execution selectable for comparison, including unsupported/error cases | Measured hotspot; may be replaced by further VM simplification |
 | W4 — Test the compact representation on native 68020 | Direction only | Bounded complete native assembly with fresh parity and resource measurements | A useful Rust representation; move earlier if native feasibility is the largest uncertainty |
 
 ## W1 agreement: focused package-VM baseline
 
-**Hypothesis:** varied instruction selection and operand processing repeat work
-across statements or passes that can be removed by preparation or binding. W1
-tests this hypothesis; it does not presume that dispatch is the dominant cost.
+**Hypothesis:** shared instruction selection and operand processing repeat work
+across statements or passes that can be removed by preparation or binding across
+families. W1 tests this hypothesis; it does not presume dispatch is the dominant
+cost or prioritize whichever family has the largest absolute runtime.
 
-**Concrete workload:** one deterministic 68020 assembly source generator with
-8, 32 and 128 independently labelled blocks. Each block uses approximately six
-to eight statements mixing immediate, register and memory operands, a local
-forward branch, a symbol-derived expression and a data value. Vary registers and
-constants without making branch distances grow with the whole file. Use valid
-forms already covered by existing fixtures. This targets selection/operand and
-pass work; module loading, macros, broad CPU coverage and full self-hosting are
-deliberately not claims of this case. Add one small expected-failure companion
-to check that the chosen execution route retains diagnostic behavior.
+**Concrete workload:** a deterministic shared workload shape with representative
+MOS 6502, Z80 and Motorola 68000-family source variants, using 8, 32 and 128
+independently labelled blocks. Each block uses approximately six to eight
+statements exercising operand selection, a local forward branch, a symbol-derived
+expression and a data value. Use each family's appropriate immediate/register/
+memory forms; do not force identical instruction counts or encodings to imply
+equal work. Vary operands and constants without making branch distances grow
+with the whole file. Reuse forms already covered by existing fixtures.
+
+These are representative probes of shared mechanisms, not target-specific
+optimization tracks or an exhaustive CPU matrix. Report the executed programs
+and shared operations, and compare each case against its own baseline. This
+iteration covers selection/operand and pass work, not module loading, macros or
+full self-hosting. Include a small expected-failure companion for each family.
 
 **Files and entrypoint:** implement `scripts/performance/vm_efficiency.py` and
 focused tests under `scripts/performance/tests/`, with a short usage section in
@@ -121,16 +131,19 @@ executable for all runs. The runner must not silently rebuild on every sample.
 Retain source, binary output and a compact machine-readable summary only in a
 user-selected output directory or ignored build directory for inspection; no
 committed measurement ledger. Use one warmup and three uninstrumented samples per
-size, plus one attribution run at the middle size, all within the batch deadline.
+size and family, plus one attribution run per family at the middle size, all
+within the same five-minute batch deadline, not five minutes per family.
 If variance prevents a useful timing conclusion, report work counts and the
 uncertainty rather than adding unbounded repetitions. Native measurements are
 not part of W1.
 
 **Acceptance:** the command completes within the agreed measurement caps; the
 successful cases produce independently checked output through the actual
-package-VM path; the negative companion yields the expected failure; the summary
+package-VM paths; the negative companions yield the expected failures; the summary
 separates setup/execution and shows which repeated operation is worth addressing
-next (or why none is established). Report the chosen reference boundary and
+next across families (or why none is established). Show per-family work counts
+and timings; an aggregate improvement must not hide a regression. Report the
+chosen reference boundaries and
 prove that a host family-handler bypass did not supply the measured VM result.
 Test timeout/batch-budget failure behavior as well as workload correctness.
 The tool's source, generated assembly, output and concise result are Erik's
@@ -139,7 +152,8 @@ review surface. No runtime-package or accelerator implementation is required.
 **Budget and review:** use the proposed 30–60 minute / approximately 15k-token
 iteration budget and the 60-second invocation / five-minute batch limits above.
 Reduce block counts if necessary while preserving the mechanism and documenting
-the change. If execution-path attribution or an independent comparison cannot be
+the change. Retain representative family coverage rather than silently reverting
+to a single target. If execution-path attribution or an independent comparison cannot be
 established within budget, stop with a precise blocker; do not claim W1 done.
 Review the result with Erik before choosing W2's optimization and success target.
 
@@ -178,6 +192,12 @@ several iterations; each must still end with a useful implementation to inspect.
 - Derive size and emission behavior from shared semantics if separating them.
   Exercise unresolved symbols, relaxation and changing state; do not maintain
   independent encoders that merely agree on easy fixtures.
+- Choose optimizations and accelerator boundaries by shared operations or
+  validated program structure. Family-specific fixture syntax is expected;
+  family-name dispatch or hand-coded target semantics in generic runtime paths
+  is not. Extend representative coverage when a new program shape matters, and
+  run relevant cross-target correctness checks at integration. Gains need not be
+  identical across families; report regressions and unmeasured targets honestly.
 - A runtime package is reproducible derived data. Validate its canonical input
   identity, representation version and required executor capabilities. An initial
   in-memory prototype need not invent a persistent file format. Keep one supported

@@ -1,40 +1,27 @@
-# Native 68000 Safe Instrumentation Rule Pack
+# Native instrumentation
 
-Load this rule pack before adding debug output, an assertion, a trace, an event,
-or any other diagnostic to native 68000 assembly. Also load
-`agents/rules/native-68000.md`.
+Use this guide before adding debug output, assertions, traces or events to native
+assembly. Use the approved debug/assert framework; ad-hoc injected instrumentation
+remains forbidden. The [framework reference](../../documentation/architecture/native-instrumentation-framework.md)
+owns the macro/event ABI and build-mode details; the [contract catalog](../../documentation/architecture/native-debug-contracts.md)
+owns assertion identities and meanings.
 
-## Hard rules
+## Safety at the call site
 
-Ad-hoc instrumentation is forbidden. Use only approved macros and routines from
-the native debug/assert framework.
+Instrumentation must preserve its documented registers and SR/CCR unless its API
+explicitly returns changed flags, return with zero stack delta, and avoid request,
+service and last-error buffers. Use debug/contract build flags and bounded structured
+events. Documented framework outputs must not be mistaken for passive observations.
 
-Instrumentation must:
+Do not insert instrumentation between a flag setter and its conditional branch,
+inline variable-length logic at the call site, print from mutable request/service
+buffers, or change production control flow. Discuss the memory and behavior impact
+before enlarging event/request buffers as a diagnostic tactic. These restrictions
+remain in force; this guide does not authorize new instrumentation interfaces.
 
-- be controlled by debug/contract build flags
-- preserve every documented register
-- preserve SR/CCR unless its API explicitly documents a no-flags variant
-- return with zero stack delta
-- avoid request, service, and last-error buffers
-- prefer structured event records over free-form text
-- have a removal or stabilization plan
-
-Instrumentation must not:
-
-- appear between a flag-setting `cmp`, `tst`, arithmetic, or logical instruction
-  and its conditional branch
-- inline variable-length logic at a call site
-- print from mutable request or service buffers
-- enlarge event or request buffers as a diagnostic tactic without explicit
-  discussion of the resulting memory and behavior impact
-- change production control flow
-
-Instrumentation is production code until preservation, branch neutrality, and
-build-mode behavior are proven.
-
-## Verification
-
-Verify register and flags preservation, zero stack delta, shared-buffer safety
-and build-mode behavior for the actual instrumentation point. Explain any
-non-obvious risk and whether the probe will be removed or maintained. No separate
-safety-note artifact is required. Do not use unsafe probes as fix evidence.
+Verify preservation, branch neutrality, buffer safety and build-mode behavior for
+the actual use. Treat instrumentation as production code until those properties
+are proven. Explain non-obvious risks and whether a probe will be removed or
+maintained; no separate safety-note artifact is required. Unsafe probes cannot
+supply fix evidence. Use the [parity contract](native-rust-parity-porting.md) for
+what the resulting observations can establish.

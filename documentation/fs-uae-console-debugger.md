@@ -2,13 +2,14 @@
 
 <!-- @opforge-evidence: level=E; role=diagnostic-contract; authority=none; lifecycle=permanent -->
 
-This document defines the first, deliberately narrow contract for opForge's
+This document describes the deliberately narrow interface for opForge's
 opt-in FS-UAE console-debugger tooling. It applies to the stock FS-UAE binary
 used by the native smoke harness; it is not a general remote-debugging API.
 
 ## Scope and proof level
 
-The normal FS-UAE smoke path remains the Level D confirmation gate. Console
+The [native parity contract](../agents/rules/native-rust-parity-porting.md)
+defines valid test evidence and smoke/parity runner cleanup. Console
 debugger captures are Level E localization evidence: they identify a native
 guest control-flow position but do not, by themselves, prove Rust/native
 parity.
@@ -32,24 +33,16 @@ The current smoke template is:
 ```
 
 The binary contains the UAE debugger help text and accepts the
-`console_debugger` option. This is a binary-capability check only; a future
-PTY runner must record the exact FS-UAE version and live transcript for every
+`console_debugger` option. This is a binary-capability check only; the
+PTY runner records the exact FS-UAE version and live transcript for every
 capture.
 
-## PTY feasibility result
+## PTY entry constraints
 
-On 2026-07-15, `scripts/workflow/probe_fs_uae_console_debugger.py` launched
-the installed stock binary through a PTY for eight seconds with an otherwise
-unchanged smoke template and `console_debugger = 1`. Its generated Level E
-report recorded FS-UAE `3.1.66`, `entry = manual-debugger-entry-required`,
-`stop_reason = timeout`, and `cleanup = complete` (raw transcript SHA-256
-`ba0d39ca261ba7d68de88eeaf2b995586981c15a864cd709946003ac507f9261`).
-
-The transcript reached normal emulator initialization but did not show a UAE
-debugger prompt. This confirms the terminal/PTY launch path and rejects
-automatic command injection before macOS `Cmd+D` entry. The v0.1 runner must
-therefore preserve its manual-entry outcome and must not infer debugger access
-from startup output.
+Startup output does not prove debugger entry. The runner waits for an actual
+UAE debugger prompt before injecting commands and otherwise reports that manual
+entry is required. The bounded probe can establish PTY launch/capture behavior;
+it does not establish native parity.
 
 The probe is explicitly gated:
 
@@ -171,20 +164,14 @@ the Hunk at `Work:build/opforge_fsuae_smoke.hunk`, and creates the normal
 and preservation checks pass, the test-only build emits
 `EVENT_CONSOLE_DEBUGGER_READY` and loops at `consoleDebuggerStopLoop`.
 
-On 2026-07-15, an authorized local capture stopped in that loop at
-`PC=0x078E7A54`; it recorded D0-D7/A0-A7, a PC disassembly, A7 stack dump,
-empty breakpoint list, one CPU-history entry (`BT.B -2` at the loop), and a
-clean debugger quit. The report recorded `entry=pty-command`,
-`commands_sent=true`, `automation=sent`, `cleanup=complete`, and raw
-transcript SHA-256
-`e4a92099cdc75c31649ff394a408e47bef46c69018f60b863161d24844519d50`.
-This is Level E plumbing proof only; it does not prove macro parity.
+The controlled stop is diagnostic plumbing only. A captured PC, register frame
+or successful debugger quit does not prove macro or assembler parity.
 
 ## Opt-in runner
 
 `scripts/workflow/run_fs_uae_console_debugger.py` is the bounded capture
 runner. It is separately gated by `OPFORGE_FS_UAE_CONSOLE_DEBUGGER=1`, requires
-a reviewed command file, and launches no normal smoke tests. It waits for the
+an inspected command file, and launches no normal smoke tests. It waits for the
 operator to focus FS-UAE and enter its console with `Cmd+D`; only after seeing
 the UAE debugger banner in the PTY transcript does it inject the command file.
 If entry never happens, the report retains
@@ -202,9 +189,9 @@ ran for eight seconds and wrote a complete-cleanup report with
 `commands_sent: false`; this is the expected outcome without an operator
 pressing `Cmd+D`.
 
-## Macro-hang investigation script
+## Focused stop inspection
 
-Once a controlled stop can be entered, the first macro-hang collection is:
+For a controlled stop, a useful bounded collection is:
 
 ```text
 r

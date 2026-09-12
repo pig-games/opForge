@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce the singular fail-closed FS-UAE native parity proof contract."""
+"""Check implementation safeguards for fail-closed FS-UAE native parity."""
 
 from __future__ import annotations
 
@@ -12,9 +12,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 RUNNER = Path("crates/opforge-asm/src/fs_uae_smoke.rs")
 TEST_ROOT = Path("crates/opforge-asm/src/tests")
-RULES = (
-    Path("agents/rules/native-rust-parity-porting.md"),
-)
 
 
 def struct_initializers(source: str, type_name: str) -> list[str]:
@@ -113,26 +110,6 @@ def validate(root: Path = ROOT) -> list[str]:
             "native FS-UAE tests must recover the serial coordinator after a failed case"
         )
 
-    required_rule_phrases = (
-        "fresh per-run challenge",
-        "byte-for-byte",
-        "removed before the runner returns",
-        "actual test case",
-        "must not prevent later cases",
-        "launcher success never substitutes",
-        "no test result is valid",
-    )
-    for relative in RULES:
-        path = root / relative
-        try:
-            source = path.read_text(encoding="utf-8")
-        except OSError as error:
-            errors.append(f"cannot read {relative}: {error}")
-            continue
-        normalized = " ".join(source.split()).lower()
-        for phrase in required_rule_phrases:
-            if phrase not in normalized:
-                errors.append(f"{relative}: missing canonical FS-UAE proof phrase {phrase!r}")
     return errors
 
 

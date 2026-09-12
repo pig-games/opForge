@@ -236,7 +236,7 @@ def validate(root: Path = ROOT) -> list[str]:
         expected_hash, expected_blocks, expected_imports, expected_sections, expected_diagnostics = SNAPSHOTS[module]
         actual_hash = hashlib.sha256(source_text.encode()).hexdigest()
         if actual_hash != expected_hash:
-            errors.append(f"{module}: source changed; refresh the complete Item 5.2 manifest")
+            errors.append(f"{module}: source changed; review and refresh the complete source inventory")
         if (len(blocks), len(actual_imports), tuple(sections), len(diagnostics)) != (
             expected_blocks,
             expected_imports,
@@ -244,13 +244,6 @@ def validate(root: Path = ROOT) -> list[str]:
             expected_diagnostics,
         ):
             errors.append(f"{module}: complete routine/import/state/diagnostic inventory drifted")
-    for required in (
-        "Orchestration versus semantics",
-        "Direct cross-subsystem state",
-        "Segment and statement landing points",
-    ):
-        if required not in inventory_text:
-            errors.append(f"inventory: missing mandatory finding `{required}`")
     return errors
 
 

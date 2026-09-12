@@ -1,8 +1,12 @@
 # Native Debug Contracts
 
 Native debug contracts are executable documentation of Rust-derived invariants
-at a named 68000 boundary. Each call site must identify its Rust reference,
-native boundary, condition, failure meaning, allowed build mode, and stability.
+at a named 68000 boundary. The catalog below owns each assertion's reference,
+condition, failure meaning and stability; the source call site identifies the
+contract ID and any context needed to interpret that use. Do not copy the entire
+catalog entry into every caller. Follow the [instrumentation guide](../../agents/rules/native-68000-safe-instrumentation.md)
+for safety and the [parity contract](../../agents/rules/native-rust-parity-porting.md)
+for evidence limits.
 
 Contract IDs are stable 16-bit values in
 `native/motorola68000/amigaos/debug/debug_contract_ids.asm`. IDs are grouped by
@@ -10,7 +14,7 @@ expression request, buffer, result, statement, pass, selector, and encoder
 contracts. Renaming a symbolic constant does not authorize reusing its numeric
 ID for a different invariant.
 
-Use this comment form:
+A call site may use a brief explanatory comment; for example:
 
 ```asm
 ; CONTRACT_EXPR_REQ_001

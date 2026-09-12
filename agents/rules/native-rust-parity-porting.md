@@ -1,28 +1,22 @@
-# Native Rust-to-68000 Parity Porting Rule Pack
+# Native parity
 
-Load this rule pack when porting Rust VM or CLI behavior to native
-68000/AmigaOS, fixing native behavior expected to match Rust, or adding native
-parser, expression, selector, encoder, output, source, or session behavior.
+Use this guide when implementing or checking native behavior against Rust.
+The [repository workflow](../../documentation/workflow/README.md) determines
+scope, checkpoints and validation cadence. This document defines what a native
+parity result means; it does not require emulator qualification for every edit.
 
-Also load:
-
-- `agents/rules/native-68000.md` when changing 68000 assembly
-- `agents/rules/native-parity-failure-triage.md` when investigating a failure
-- `agents/rules/native-68000-safe-instrumentation.md` before instrumenting
-- `agents/rules/fs-uae.md` when running FS-UAE tests
-
-## Reference boundaries and debugging
+## Reference comparison
 
 Identify the Rust reference and native boundary, their inputs, outputs and known
-non-equivalences. Record only the detail needed to understand and test the change.
-Preserve existing Rust/native semantic equivalence; representation and host-specific
-implementation may differ. Investigate the first divergence through source loading,
-parsing, state, selection, encoding and output as appropriate. This is a debugging
-technique, not a restriction to one file or one boundary per change.
+non-equivalences. Preserve existing semantic equivalence; representation and
+host-specific implementation may differ. Compare the actual case's results,
+diagnostics, state or artifacts as relevant. Investigating the first divergence
+is useful debugging, not a restriction to one file or one boundary per change.
 
 ## Evidence limits
 
-Existing harnesses use these labels:
+Existing harness labels describe different kinds of evidence, not a sequence
+of mandatory approval gates:
 
 | Level | Evidence |
 |---|---|
@@ -32,40 +26,42 @@ Existing harnesses use these labels:
 | D | Real native execution through FS-UAE |
 | E | Localization or debug probe |
 
-Explain material limits of the evidence used. Host-side checks cannot replace
-required real-native confirmation; probes cannot establish production parity.
-Routine reporting does not need a separate form for every observation.
+State material limits. Host simulation cannot replace required native execution;
+a probe cannot establish parity. A semantically complete reduced case can prove
+its own behavior, but cannot claim the coverage of an omitted full workload.
 
-## Singular Level D parity proof contract
+## Native result validity
 
-There is one authoritative rule for using FS-UAE to prove native parity. The
-actual test case is the CPU, exact source bytes, command surface, package bytes,
-and the Rust oracle held directly by that case in memory. A stored evidence file,
-display name, manifest alias, or output filename must never select or resolve the
-Rust oracle.
+For a positive artifact-parity case, all of the following must hold in the same run:
 
-A positive Level D parity result exists only when all of these are true in the
-same run:
+- The actual CPU, source bytes, command and package bytes identify the case.
+  Its Rust oracle is carried directly by that case in memory. A stored evidence
+  filename, display name, manifest alias or output path must not select the oracle.
+- Exact guest start and completion responses match a fresh per-run challenge bound
+  to that case. Prior capture/output files cannot supply any part of the result.
+- The guest reports an explicit zero exit and the required output exists and
+  matches that case's Rust oracle byte-for-byte.
 
-1. The host removed all prior capture and output files before launch.
-2. The guest returned the exact start and done messages for a fresh per-run challenge
-   bound to a fingerprint of the actual test case.
-3. The guest wrote an explicit exit code of exactly zero.
-4. The expected output exists and is byte-for-byte equal to the Rust oracle
-   carried by that test case.
-5. Every on-disk case input, output, marker, log, and derived evidence artifact is
-   removed before the runner returns, whether the run passes, fails, times out,
-   crashes, or unwinds.
-6. A failed case must not prevent later cases from executing. The serial test
-   coordinator recovers from a poisoned lock, and a case counts only when that
-   case itself reaches the emulator proof contract.
+An expected-failure case instead requires the same fresh completion protocol,
+an explicit nonzero guest exit and the required diagnostic. Distinguish a passing
+negative test from successful assembly. Other smoke/diagnostic checks still need
+fresh guest completion and an explicit exit before they can claim a valid result.
 
-There is no fallback success condition and no optional confirmation. Launcher
-success, marker existence without exact contents, partial output, a previous
-green record, a diagnostic probe, or a caller-side comparison cannot promote a
-run to Level D parity. Negative cases use the same fresh completion protocol and
-must additionally return a nonzero guest exit with the required diagnostic.
-Outside byte parity, launcher success never substitutes for guest completion and
-an explicit guest exit, and the same ephemeral artifact cleanup remains mandatory.
-No test result is valid unless its fresh guest protocol completed and supplied an
-explicit exit code, including tests that expect failure.
+A timeout, crash, absent or stale response, missing output, mismatch, launcher
+success or previous green record never substitutes for the required evidence.
+A failed case must not prevent later cases from executing and receiving their
+own result; lock-poison fallout is not emulator evidence.
+
+## Current runner safeguards
+
+The [FS-UAE runner](../../crates/opforge-asm/src/fs_uae_smoke.rs) clears previous
+case outputs before launch, binds the guest challenge to case identity, checks
+completion/exit/output and recovers the serial coordinator after a failed case.
+Its parity, smoke and diagnostic run trees are ephemeral: case inputs, outputs,
+markers, logs and derived evidence are removed before the runner returns on
+success, failure, timeout, crash or unwind. This retention policy remains in force;
+it is separate from the conditions that make a result valid.
+
+The [structural check](../../scripts/workflow/check_native_fs_uae_proof_contract.py)
+checks runner safeguards. It is not execution proof. For commands and environment,
+use the [FS-UAE guide](fs-uae.md); for investigation, use [failure triage](native-parity-failure-triage.md).

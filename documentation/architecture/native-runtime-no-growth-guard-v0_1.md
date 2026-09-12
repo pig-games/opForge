@@ -77,9 +77,10 @@ fails unless an existing narrow allowlist rule supplies a reviewed reason.
 Positive and negative workflow tests prove that the structural checks accept
 the certified sources and declared delegations, and reject undeclared hotspot
 routines, direct mutable-table access, and missing module provenance. They are
-Level B ownership evidence only. The established real-CLI Level D corpus must
-still pass separately; the guard itself makes no runtime or output claim. The
-fail-closed aggregate command is:
+Level B ownership evidence only; the guard makes no runtime or output claim.
+When the changed behavior requires real-native confirmation, select affected
+cases under the [repository workflow](../workflow/README.md). For broad native
+qualification, the existing fail-closed aggregate command is:
 
 ```text
 scripts/workflow/run_native_existing_parity_completion.sh --verify

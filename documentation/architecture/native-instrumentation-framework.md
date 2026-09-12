@@ -22,9 +22,10 @@ contract. Its record-pointer getter returns A0, and its explicitly queried
 diagnostic-abort routine returns status in D0/CCR. Those are documented ABI
 outputs rather than hidden instrumentation clobbers.
 
-Instrumentation may not sit between a flag-setting instruction and its branch.
-Every use must carry the safety note required by
-`agents/rules/native-68000-safe-instrumentation.md`.
+Use the [instrumentation guide](../../agents/rules/native-68000-safe-instrumentation.md)
+for call-site placement and verification. It requires safety evidence, not a
+separate safety-note form. The ABI and build-mode descriptions here do not grant
+permission to add new macros or relax preservation requirements.
 
 ## Event ABI
 
@@ -63,12 +64,10 @@ until a concrete need exists.
 
 ## Bounded assembly progress bridge
 
-`opasm.amigaos.progress` is an Item 0a provisional bridge for diagnosing long
+`opasm.amigaos.progress` is a diagnostic bridge for diagnosing long
 native assembly runs. It is linked into the production composition only when
 `OPFORGE_DEBUG_CONTRACTS` is defined; its module and call sites emit zero bytes
-in an ordinary release build. Item 0a's result ledger separately attributes the
-release-binary difference from the fetched checkpoint to mandatory native guard
-cleanup, not to this bridge.
+in an ordinary release build.
 
 The module owns one 128-byte memory record and two private tick words. Passive
 updates preserve D0-D7/A0-A6, CCR, and stack depth and never write production
@@ -77,14 +76,14 @@ request, VM, image, diagnostic, or output storage. The CLI samples AmigaDOS
 Statement visits perform bounded memory updates but no clock, console, or file
 operation.
 
-Item 0b optionally adds a separately gated 128-byte `OFWM` companion with
+The work-counter option adds a separately gated 128-byte `OFWM` companion with
 `OPFORGE_PROGRESS_WORK_COUNTERS`. It is correlated to `OFPR` by run ID and
 counts statement visits by pass mode, layout rounds/reasons, flow direction and
 span, retained statement classifications, and convergence/final image bytes.
 Every group saturates and sets a defined overflow bit. The companion's code,
-call sites, and storage emit nothing in release or Item 0a progress-only builds.
+call sites, and storage emit nothing in release or progress-only builds.
 
-Item 0c optionally adds a separately gated 256-byte `OFSE` companion with
+The symbol/expression-counter option adds a separately gated 256-byte `OFSE` companion with
 `OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS`. Aggregate mode counts
 exact/scoped/imported/final-component lookup calls and outcomes, expression
 request/parse/compile/bind/evaluate outcomes, and lookup/request phase identity.
@@ -99,10 +98,10 @@ results, hash chains, or callbacks. Its passive routines preserve D0-D7,
 A0-A6, CCR, and stack depth; its record-pointer getter returns A0 as its sole
 documented ABI output. Scoped and imported counters retain their logical class
 while nested exact/final comparisons remain attributed to their actual owner.
-Release, Item 0a, and Item 0b-only builds emit none of the Item 0c code or
-storage.
+Release, progress-only and work-counter-only builds emit none of the
+symbol/expression-counter code or storage.
 
-Item 0d optionally adds a separately gated 192-byte `OFVE` companion with
+The runtime-counter option adds a separately gated 192-byte `OFVE` companion with
 `OPFORGE_PROGRESS_RUNTIME_COUNTERS`. It counts only provisional CPU-neutral
 TKVM/PRVM/EXVM/ExprVM and program invocations/opcodes, coarse service entries,
 selector candidates, encoder program rows, and marginal phase totals. Fixed
@@ -111,7 +110,7 @@ nested executor, selection/value, and encoding/branch/fixup calls. Every passive
 routine preserves D0-D7/A0-A6, CCR, and stack depth; every counter saturates with a visible bit;
 there is no per-opcode identity, PC, address, timing, event I/O, VM rewrite, or
 target-semantic decision. Release and earlier counter-only builds emit none of
-the Item 0d imports, calls, code, or storage.
+the runtime-counter imports, calls, code, or storage.
 
 Heartbeat and graceful diagnostic abort are separately default-off. Builds may
 set `OPFORGE_PROGRESS_HEARTBEAT_QUANTUM` or

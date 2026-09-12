@@ -28,6 +28,15 @@ def check(path: Path) -> list[str]:
 def main() -> int:
     paths = [ROOT / "AGENTS.md", ROOT / "documentation/README.md",
              ROOT / "documentation/workflow/README.md", ROOT / "skills/README.md"]
+    paths += [ROOT / name for name in (
+        "documentation/architecture/native-debug-contracts.md",
+        "documentation/architecture/native-instrumentation-framework.md",
+        "documentation/architecture/native-runtime-boundary-contract-v0_1.md",
+        "documentation/architecture/native-runtime-boundary-inventory-v0_1.md",
+        "documentation/architecture/native-runtime-no-growth-guard-v0_1.md",
+        "documentation/architecture/native-porting-workflow.md",
+        "documentation/fs-uae-console-debugger.md",
+    )]
     paths += sorted((ROOT / "agents/rules").glob("*.md"))
     paths += sorted((ROOT / "skills").glob("*/SKILL.md"))
     errors = [error for path in paths for error in check(path)]

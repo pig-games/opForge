@@ -4,12 +4,28 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_native_fs_uae_proof_contract import validate
+from check_native_fs_uae_proof_contract import ROOT, RUNNER, validate
 
 
 class NativeFsUaeProofContractTests(unittest.TestCase):
     def test_repository_contract_passes(self):
         self.assertEqual(validate(), [])
+
+    def test_runner_checks_remain_required_without_document_wording_constraints(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runner = root / RUNNER
+            runner.parent.mkdir(parents=True)
+            source = (ROOT / RUNNER).read_text(encoding="utf-8")
+            runner.write_text(source)
+            case = root / "crates/opforge-asm/src/tests/case.rs"
+            case.parent.mkdir(parents=True)
+            case.write_text("// structural fixture: poisoned.into_inner()\n")
+            # No prose files are needed to inspect implementation safeguards.
+            self.assertEqual(validate(root), [])
+            runner.write_text(source.replace("require_completed_guest_protocol", "unchecked_guest_protocol"))
+            errors = validate(root)
+            self.assertTrue(any("require_completed_guest_protocol" in error for error in errors))
 
     def test_missing_case_proof_and_persistent_evidence_fail(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -24,14 +40,6 @@ class NativeFsUaeProofContractTests(unittest.TestCase):
                 "OpforgeNativeCliMosFixtureCase { name: \"mos\" }\n",
                 encoding="utf-8",
             )
-            for relative in (
-                "AGENTS.md",
-                "agents/rules/native-rust-parity-porting.md",
-                "agents/rules/fs-uae.md",
-            ):
-                path = root / relative
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("", encoding="utf-8")
 
             errors = validate(root)
             self.assertTrue(any("persistent stale-evidence" in error for error in errors))

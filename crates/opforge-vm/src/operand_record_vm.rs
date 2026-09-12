@@ -188,8 +188,10 @@ pub fn execute_operand_record_program_with_records(
     values: &[i64],
     records: &[PortableOperandRecord],
 ) -> Result<PortableOperandRecord, OperandRecordVmError> {
+    let run = types::vm_work::ProgramRun::new("operand_record", schema_version, program);
     validate_operand_record_program(schema_version, program)
         .map_err(|error| OperandRecordVmError::InvalidProgram(error.to_string()))?;
+    run.step(0, program[0]);
     match program[0] {
         OPERAND_RECORD_OP_REGISTER => Ok(PortableOperandRecord::Register(register_input(
             registers, program[1],

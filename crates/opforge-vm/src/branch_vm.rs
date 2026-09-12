@@ -194,8 +194,12 @@ pub fn execute_branch_program(
     request: PortableBranchRequest,
     context: PortableBranchContext,
 ) -> Result<PortableBranchResult, BranchVmError> {
+    let run =
+        types::vm_work::ProgramRun::new("branch.steps", SEMANTIC_VM_OPCODE_VERSION_V5, program);
     let spec = decode_branch_program(SEMANTIC_VM_OPCODE_VERSION_V5, program)
         .map_err(BranchVmError::Program)?;
+    // Branch programs decode to one CHOOSE instruction (opcode 0x01) at byte 0.
+    run.step(0, 0x01);
     let opcode = *scalar_inputs.get(spec.opcode_input as usize).ok_or(
         BranchVmError::MissingScalarInput {
             index: spec.opcode_input as usize,

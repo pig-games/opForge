@@ -7,6 +7,7 @@ use crate::expr::{apply_binary, apply_unary, parse_number};
 use crate::parser::{BinaryOp, Expr, UnaryOp};
 use crate::tokenizer::Span;
 use types::symbol_stability::is_symbol_unstable;
+use types::vm_work::ProgramRun;
 
 pub const EXPR_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const EXPR_VM_OPCODE_VERSION_V2: u16 = 0x0002;
@@ -875,6 +876,7 @@ fn eval_portable_expr_program_v1(
     ctx: &dyn PortableExprEvalContext,
     budgets: PortableExprBudgets,
 ) -> Result<PortableExprEvaluation, PortableExprError> {
+    let work = ProgramRun::new("expression", program.opcode_version, &program.code);
     enforce_program_budgets_v1(program, budgets)?;
 
     let mut stack: Vec<i64> = Vec::new();
@@ -895,7 +897,9 @@ fn eval_portable_expr_program_v1(
             ));
         }
 
+        let opcode_offset = ip;
         let opcode = read_opcode_v1(&program.code, &mut ip)?;
+        work.step(opcode_offset, opcode as u8);
         match opcode {
             ExprVmOpcode::End => break,
             ExprVmOpcode::PushLiteral => {
@@ -1042,9 +1046,11 @@ fn expr_program_has_unstable_symbols_v1(
     budgets: PortableExprBudgets,
 ) -> Result<bool, PortableExprError> {
     enforce_program_budgets_v1(program, budgets)?;
+    types::vm_work::event("expression.unstable_scan_calls", 1);
     let mut ip = 0usize;
 
     while ip < program.code.len() {
+        types::vm_work::event("expression.unstable_scan_opcodes", 1);
         let opcode = read_opcode_v1(&program.code, &mut ip)?;
         match opcode {
             ExprVmOpcode::End => return Ok(false),
@@ -1092,9 +1098,11 @@ fn expr_program_has_unstable_symbols_v2_scalar(
     budgets: PortableExprBudgets,
 ) -> Result<bool, PortableExprError> {
     enforce_program_budgets_v2_scalar(program, budgets.into())?;
+    types::vm_work::event("expression.unstable_scan_calls", 1);
     let mut ip = 0usize;
 
     while ip < program.code.len() {
+        types::vm_work::event("expression.unstable_scan_opcodes", 1);
         let opcode = read_opcode_v2(&program.code, &mut ip)?;
         match opcode {
             ExprVmOpcodeV2::End => return Ok(false),
@@ -1323,6 +1331,7 @@ fn eval_portable_expr_program_v2_internal(
     ctx: &dyn PortableExprEvalContext,
     budgets: PortableExprBudgetLimitsV2,
 ) -> Result<PortableExprEvaluationV2, PortableExprError> {
+    let work = ProgramRun::new("expression", opcode_version, code);
     enforce_program_budgets_v2_parts(
         opcode_version,
         code.len(),
@@ -1349,7 +1358,9 @@ fn eval_portable_expr_program_v2_internal(
             ));
         }
 
+        let opcode_offset = ip;
         let opcode = read_opcode_v2(code, &mut ip)?;
+        work.step(opcode_offset, opcode as u8);
         match opcode {
             ExprVmOpcodeV2::End => break,
             ExprVmOpcodeV2::PushLiteral => {

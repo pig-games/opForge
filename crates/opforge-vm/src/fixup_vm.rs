@@ -179,12 +179,15 @@ pub fn execute_fixup_program_for_version(
     inputs: &[PortableFixupInput],
     context: PortableFixupContext,
 ) -> Result<PortableFixupResult, FixupVmError> {
+    let run = types::vm_work::ProgramRun::new("fixup.steps", version, program);
     let steps = decode_fixup_program(version, program).map_err(FixupVmError::Program)?;
     let mut bytes = Vec::new();
     let mut fixups = Vec::new();
     let mut deferred_inputs = Vec::new();
 
-    for step in steps {
+    for (ordinal, step) in steps.into_iter().enumerate() {
+        // Decoded-step positions are ordinals; each fixup encoding step is PROJECT (0x01).
+        run.step(ordinal, 0x01);
         let input = inputs
             .get(step.input as usize)
             .ok_or(FixupVmError::MissingInput {

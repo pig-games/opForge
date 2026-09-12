@@ -382,6 +382,7 @@ impl HierarchyExecutionModel {
             });
 
             for selector in selectors {
+                types::vm_work::event("selection.selectors_scanned", 1);
                 selectors_scanned += 1;
                 if selectors_scanned
                     > self
@@ -400,8 +401,10 @@ impl HierarchyExecutionModel {
                 if unstable_expr && selector.unstable_widen && has_wider {
                     continue;
                 }
+                types::vm_work::event("selection.candidate_attempts", 1);
                 match selector_to_candidate(selector, &input, &upper_mnemonic, &expr_ctx) {
                     Ok(Some(candidate)) => {
+                        types::vm_work::event("selection.candidates_produced", 1);
                         candidates.push(candidate);
                         if candidates.len() > self.core.budget_limits.max_candidate_count {
                             return Err(Self::budget_error(
@@ -411,8 +414,11 @@ impl HierarchyExecutionModel {
                             ));
                         }
                     }
-                    Ok(None) => {}
+                    Ok(None) => {
+                        types::vm_work::event("selection.candidate_rejected", 1);
+                    }
                     Err(message) => {
+                        types::vm_work::event("selection.candidate_errors", 1);
                         if owner_candidate_error
                             .as_ref()
                             .is_none_or(|(priority, _)| selector.priority > *priority)

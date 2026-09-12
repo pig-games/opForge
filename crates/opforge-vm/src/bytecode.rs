@@ -35,10 +35,16 @@ impl std::fmt::Display for VmError {
 impl std::error::Error for VmError {}
 
 pub fn execute_program(program: &[u8], operands: &[&[u8]]) -> Result<Vec<u8>, VmError> {
+    let run = types::vm_work::ProgramRun::new(
+        "bytecode",
+        package::SEMANTIC_VM_OPCODE_VERSION_V1,
+        program,
+    );
     let mut out = Vec::new();
     let mut pc = 0usize;
     loop {
         let opcode = *program.get(pc).ok_or(VmError::TruncatedProgram)?;
+        run.step(pc, opcode);
         pc += 1;
         match opcode {
             OP_EMIT_U8 => {
@@ -53,9 +59,12 @@ pub fn execute_program(program: &[u8], operands: &[&[u8]]) -> Result<Vec<u8>, Vm
                     index,
                     len: operands.len(),
                 })?;
+                run.event("bytecode.operand_bytes_copied", bytes.len() as u64);
                 out.extend_from_slice(bytes);
             }
-            OP_END => return Ok(out),
+            OP_END => {
+                return Ok(out);
+            }
             _ => return Err(VmError::InvalidOpcode { opcode, pc: pc - 1 }),
         }
     }

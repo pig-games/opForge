@@ -169,6 +169,7 @@ fn with_current_profile<R>(f: impl FnOnce(&PhaseProfileHandle) -> R) -> Option<R
 }
 
 pub struct InstalledPhaseProfile {
+    _work: Option<types::vm_work::Session>,
     previous: Option<PhaseProfileHandle>,
 }
 
@@ -182,9 +183,11 @@ impl Drop for InstalledPhaseProfile {
 }
 
 pub fn install_for_current_thread_if_enabled() -> Option<InstalledPhaseProfile> {
-    if !profile_enabled() {
+    let work_enabled = std::env::var_os("OPFORGE_PROFILE_VM_WORK").is_some();
+    if !profile_enabled() && !work_enabled {
         return None;
     }
+    let work = work_enabled.then(types::vm_work::install);
     let handle = PhaseProfileHandle::new();
     let previous = CURRENT_PROFILE.with(|slot| slot.replace(Some(handle)));
     ACTIVE_SCOPES.with(|stack| stack.borrow_mut().clear());
@@ -193,7 +196,10 @@ pub fn install_for_current_thread_if_enabled() -> Option<InstalledPhaseProfile> 
         let path_handle = PathProfileHandle::new();
         let _prev = CURRENT_PATH_PROFILE.with(|slot| slot.replace(Some(path_handle)));
     }
-    Some(InstalledPhaseProfile { previous })
+    Some(InstalledPhaseProfile {
+        previous,
+        _work: work,
+    })
 }
 
 pub fn record_direct(bucket: PhaseBucket, duration: Duration) {
@@ -220,12 +226,16 @@ pub fn record_execution_path_for_active_scope(label: &str, duration: Duration) {
 }
 
 pub struct PhaseScopeGuard {
+    _work: types::vm_work::PhaseGuard,
     enabled: bool,
 }
 
 impl PhaseScopeGuard {
     pub fn disabled() -> Self {
-        Self { enabled: false }
+        Self {
+            enabled: false,
+            _work: types::vm_work::PhaseGuard::disabled(),
+        }
     }
 }
 
@@ -250,8 +260,12 @@ impl Drop for PhaseScopeGuard {
 }
 
 pub fn scope(bucket: PhaseBucket) -> PhaseScopeGuard {
+    let work = types::vm_work::phase(phase_name(bucket));
     if with_current_profile(|_| ()).is_none() {
-        return PhaseScopeGuard::disabled();
+        return PhaseScopeGuard {
+            enabled: false,
+            _work: work,
+        };
     }
     ACTIVE_SCOPES.with(|stack| {
         stack.borrow_mut().push(ActiveScope {
@@ -260,7 +274,10 @@ pub fn scope(bucket: PhaseBucket) -> PhaseScopeGuard {
             child_time: Duration::default(),
         });
     });
-    PhaseScopeGuard { enabled: true }
+    PhaseScopeGuard {
+        enabled: true,
+        _work: work,
+    }
 }
 
 fn phase_name(bucket: PhaseBucket) -> &'static str {
@@ -391,6 +408,9 @@ fn print_stat(bucket: PhaseBucket, stat: PhaseStat, assembly_total: Duration) {
 }
 
 pub fn emit_summary_if_active() {
+    if let Some(work) = types::vm_work::snapshot() {
+        eprintln!("[opforge vm work] {work}");
+    }
     let snapshot = with_current_profile(|profile| profile.snapshot());
     let Some(stats) = snapshot else {
         return;

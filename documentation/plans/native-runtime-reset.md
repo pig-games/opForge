@@ -1,6 +1,6 @@
 # Iterative VM and native runtime reset
 
-Status: W2 implemented and locally validated; awaiting Erik's review of the result.
+Status: W3 implemented and locally validated; awaiting review before further optimization.
 The active [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md)
 remain binding. This plan captures the current discussion, not instructions from
 historical plans. Only the next iteration is detailed; later outcomes are
@@ -84,13 +84,13 @@ unchanged full-suite reruns. Keep one living plan, no per-iteration sidecars.
 This table tracks outcomes, not individual edits or commits. Update the current
 row in place with the run command, concise result and relevant commit when work
 finishes. Proposed means awaiting agreement on scope, not queued for automatic
-execution. W1 and W2 were authorized in conversation; later work is not yet authorized.
+execution. W1–W3 were authorized in conversation; later work is not yet authorized.
 
 | Work | Status | Reviewable result | Depends on |
 | --- | --- | --- | --- |
 | W1 — Measure shared package-VM work across families | Complete; reviewed | Runnable cross-family baseline and verified VM attribution; brief results below | Authorized in conversation |
-| W2 — Reduce shared runtime-model setup cost | Complete; review pending | Compact selector string validation uses a temporary index; comparative results below | W1; authorized in conversation |
-| W3 — Prove one acceleration boundary if it is justified | Direction only | Generic and specialized execution selectable for comparison, including unsupported/error cases | Measured hotspot; may be replaced by further VM simplification |
+| W2 — Reduce shared runtime-model setup cost | Complete; reviewed | Compact selector string validation uses a temporary index; comparative results below | W1; authorized in conversation |
+| W3 — Measure VM work and repetition | Complete; review pending | Per-engine/pass/program dispatch and repetition counts at all three workload sizes | W2; authorized in conversation |
 | W4 — Test the compact representation on native 68020 | Direction only | Bounded complete native assembly with fresh parity and resource measurements | A useful Rust representation; move earlier if native feasibility is the largest uncertainty |
 
 ## W1 agreement: focused package-VM baseline
@@ -257,6 +257,73 @@ operand-record validation and again for retention; selector plans also expand
 compact fields into strings. Measure one of these paths and remove one justified
 piece of repeated work while accounting for preparation memory. Agree the next
 slice after reviewing W2; W3's acceleration direction remains conditional.
+
+## W3 result: VM work, repetition and tokenizer equivalence
+
+Opt-in aggregate counters separate bytecode dispatch, decoded operations, repeated
+invocations and repeated positions within calls. Timing samples disable collection.
+Every case runs automatic and forced-generic tokenizer modes with the same binary,
+package and source. The [guide](../performance/vm-efficiency.md) defines coverage,
+units, mode selection and exclusions. This is not a whole-machine instruction count.
+
+```sh
+python3 scripts/performance/vm_efficiency.py selection --blocks 8,32,128
+cargo test -p vm --lib tokenizer_fast_equivalence --locked
+```
+
+At 32 blocks (160 assembled instructions and 259 source lines):
+
+| Family | Automatic operations | Forced-generic operations | Generic operations/instruction | Tokenizer dispatches added |
+| --- | ---: | ---: | ---: | ---: |
+| 6502 | 6,476 | 14,998 | 93.74 | 8,522 |
+| Z80 | 6,732 | 17,302 | 108.14 | 10,570 |
+| 68000 | 7,020 | 18,070 | 112.94 | 11,050 |
+
+Both modes include 320 decoded steps for the 68000 case; the rest are dispatched
+bytecode operations. Automatic tokenization uses an existing Rust fast path whose
+logical budget counts exactly match the added generic dispatches on all nine
+paired workloads. Those logical counts never enter automatic-mode dispatch totals.
+Observed growth is linear at 8/32/128 blocks. Generic mode disables only this
+specialization: helper internals, decoding, declarative state and other Rust work
+still remain outside these counts, so neither mode establishes native feasibility.
+
+Generic tokenizer execution is the largest measured instruction contribution.
+At the middle size it visits 16 distinct bytecode positions over 259 invocations,
+with 4,870/6,790/7,398 repeated visits within invocations respectively. The shared
+statement parser executes 4,166 operations over 258 invocations and 24 positions,
+with no within-invocation repeats; its repetition is across statements. Parsing
+is already reused for pass 2. These cases do not exercise the instrumented EXVM
+expression-parser executor, which limits generality.
+
+There is also repeated selection work: 68000 descriptor selection attempts 480
+candidates per pass, rejects 352 and produces 128; 6502 attempts 192, produces
+160 and returns 32 intermediate candidate errors. Z80 uses a different selection
+route, so these counters do not quantify its candidate work. Repeated bytecode or
+candidate discovery does not itself prove equivalent inputs/state or redundancy.
+
+The paired measurement batch took 4.42 seconds (0.34 seconds cached setup; the
+preceding rebuild took 31.69 seconds). All eighteen positive cases and six negative
+companions passed; paired sources, outputs and negative diagnostics match. The
+small host timing samples show no consistent fast-path advantage; they are not a
+native speed estimate. Fast/generic tokenizer equivalence tests passed for full
+tokens/spans and exact diagnostics across three families, explicit edge inputs,
+128 deterministic fuzz lines and reduced token/lexeme/step budgets. Successful
+logical-step and generic-dispatch correspondence is checked explicitly.
+
+Other qualification: 410 existing VM tests, 27 expression tests, three collector
+tests, one actual-executor count test and ten runner tests; affected-core Clippy,
+formatting and engineering guards. The VM-only CLI retains existing unused-code
+warnings. No full-workspace or native qualification is claimed. Measurement
+artifacts remain in ignored `build/w3-*` directories.
+
+**Next decision for review:** choose between reducing generic tokenizer dispatch
+through package-derived preparation and reusing prepared candidate discovery
+across passes. The tokenizer loop is a demonstrated generic hotspot, but copying
+its hand-maintained Rust fast path into native would create another correspondence
+to maintain. Any specialization needs the canonical generic path and explicit
+equivalence checks; any selection reuse must preserve changing values, instability
+and layout and reuse the existing prepared-route mechanism where possible. Do not
+select a native strategy from modern-host timing alone.
 
 ## Longer-term direction
 

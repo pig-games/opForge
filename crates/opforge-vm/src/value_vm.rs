@@ -68,6 +68,7 @@ pub fn execute_value_program(
     program: &[u8],
     inputs: &[i64],
 ) -> Result<i64, ValueVmError> {
+    let run = types::vm_work::ProgramRun::new("value", opcode_version, program);
     if opcode_version != VALUE_VM_OPCODE_VERSION_V1 && opcode_version != VALUE_VM_OPCODE_VERSION_V2
     {
         return Err(ValueVmError::InvalidProgram(format!(
@@ -81,6 +82,7 @@ pub fn execute_value_program(
         let opcode = *program
             .get(pc)
             .ok_or_else(|| ValueVmError::InvalidProgram("truncated before END".to_string()))?;
+        run.step(pc, opcode);
         pc += 1;
         match opcode {
             VALUE_VM_OP_PUSH_LITERAL_I64 => {
@@ -192,7 +194,9 @@ pub fn execute_value_program(
                     "program ends without a source".to_string(),
                 ));
             }
-            VALUE_VM_OP_END if pc == program.len() => return Ok(value.expect("checked value")),
+            VALUE_VM_OP_END if pc == program.len() => {
+                return Ok(value.expect("checked value"));
+            }
             VALUE_VM_OP_END => {
                 return Err(ValueVmError::InvalidProgram(
                     "trailing bytes after END".to_string(),

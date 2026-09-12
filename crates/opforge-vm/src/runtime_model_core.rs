@@ -28,6 +28,7 @@ use types::hierarchy::{
     CpuExecutionProperties, HierarchyError, HierarchyPackage, ResolvedHierarchy, ScopedOwner,
     ScopedRegisterDescriptor,
 };
+use types::vm_work::ProgramRun;
 
 use crate::branch_vm::{
     execute_branch_program, PortableBranchContext, PortableBranchRequest, PortableBranchResult,
@@ -1033,6 +1034,11 @@ impl RuntimeModelCore {
         let mut emitted_errors = 0u32;
         let mut step_count = 0u32;
         let mut core_tokenizer: Option<Tokenizer<'_>> = None;
+        let work = ProgramRun::new(
+            "tokenizer",
+            vm_program.opcode_version,
+            vm_program.program.as_slice(),
+        );
         let mut push_token = |token: PortableToken| -> Result<(), RuntimeBridgeError> {
             if tokens.len() >= max_tokens_per_line_usize {
                 return Err(RuntimeBridgeError::Resolve(format!(
@@ -1062,6 +1068,7 @@ impl RuntimeModelCore {
                 )));
             }
 
+            let opcode_offset = pc;
             let opcode_byte = vm_read_u8(
                 vm_program.program.as_slice(),
                 &mut pc,
@@ -1074,6 +1081,7 @@ impl RuntimeModelCore {
                     vm_program.diagnostics.invalid_char, opcode_byte
                 )));
             };
+            work.step(opcode_offset, opcode_byte);
 
             match opcode {
                 TokenizerVmOpcode::End => break,
@@ -1355,7 +1363,14 @@ impl RuntimeModelCore {
         let mut tokens = Vec::with_capacity(token_capacity);
         let mut step_count = 0u32;
 
+        let work = ProgramRun::new(
+            "tokenizer.fast",
+            vm_program.opcode_version,
+            &vm_program.program,
+        );
+        work.event("tokenizer.fast.input_bytes", bytes.len() as u64);
         let mut consume_steps = |count: u32| -> Result<(), RuntimeBridgeError> {
+            work.event("tokenizer.fast.logical_budget_steps", u64::from(count));
             for _ in 0..count {
                 step_count = step_count.saturating_add(1);
                 if step_count > max_steps_per_line {

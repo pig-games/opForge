@@ -76,6 +76,7 @@ pub fn execute_selector_program(
     program: &[u8],
     input: &str,
 ) -> Result<Option<PortableSelectorOutcome>, SelectorVmError> {
+    let run = types::vm_work::ProgramRun::new("selector", opcode_version, program);
     if opcode_version != SELECTOR_VM_OPCODE_VERSION_V1 {
         return Err(SelectorVmError::UnsupportedVersion(opcode_version));
     }
@@ -83,6 +84,7 @@ pub fn execute_selector_program(
     let matcher_opcode = *program
         .get(pc)
         .ok_or_else(|| SelectorVmError::MalformedProgram("empty program".to_string()))?;
+    run.step(pc, matcher_opcode);
     pc += 1;
     if matcher_opcode == SELECTOR_VM_OP_MAP_EXACT {
         let count = *program.get(pc).ok_or_else(|| {
@@ -98,6 +100,7 @@ pub fn execute_selector_program(
         for _ in 0..count {
             let candidate = read_one_string(program, &mut pc)?;
             let target = read_one_string(program, &mut pc)?;
+            run.event("selector.mapping_entries", 1);
             if candidate.eq_ignore_ascii_case(input) {
                 selected = Some(target.to_string());
             }
@@ -136,6 +139,7 @@ pub fn execute_selector_program(
             ));
         }
         for (candidate, target) in mappings {
+            run.event("selector.mapping_entries", 1);
             let Some(remainder) = input.get(candidate.len()..) else {
                 continue;
             };
@@ -178,6 +182,9 @@ pub fn execute_selector_program(
     let outcome_opcode = *program
         .get(pc)
         .ok_or_else(|| SelectorVmError::MalformedProgram("missing outcome".to_string()))?;
+    if matched {
+        run.step(pc, outcome_opcode);
+    }
     pc += 1;
     let outcomes = read_strings(program, &mut pc)?;
     if outcomes.len() != 1

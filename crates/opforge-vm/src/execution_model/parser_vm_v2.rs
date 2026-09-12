@@ -18,6 +18,7 @@ use package::{
 };
 use types::line_ast::{AssignmentAst, StatementAst};
 use types::processing::ProcessingRequestKind;
+use types::vm_work::ProgramRun;
 
 const MAX_STEPS_PER_LINE: usize = 2048;
 const MAX_VALUE_STACK_DEPTH: usize = 64;
@@ -146,6 +147,7 @@ struct ParserVmV2State<'contract, 'exec> {
 
 impl ParserVmV2State<'_, '_> {
     fn run(&mut self) -> Result<LineAst, ParseError> {
+        let work = ProgramRun::new("parser", self.parser_contract.opcode_version, self.program);
         if self.tokens.is_empty() {
             self.parsed_line = Some(LineAst::Empty);
         }
@@ -157,6 +159,7 @@ impl ParserVmV2State<'_, '_> {
                     "parser VM v2 step budget exceeded",
                 );
             }
+            let opcode_offset = self.pc;
             let opcode_byte = self.read_u8("opcode")?;
             let Some(opcode) = ParserVmOpcodeV2::from_u8(opcode_byte) else {
                 if opcode_byte == RETIRED_V1_PARSE_INSTRUCTION_ENVELOPE {
@@ -170,6 +173,7 @@ impl ParserVmV2State<'_, '_> {
                     format!("invalid parser VM v2 opcode 0x{opcode_byte:02X}"),
                 );
             };
+            work.step(opcode_offset, opcode_byte);
             match opcode {
                 ParserVmOpcodeV2::End => {
                     return self.parsed_line.clone().ok_or_else(|| {

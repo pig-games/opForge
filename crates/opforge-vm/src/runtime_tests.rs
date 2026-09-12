@@ -1,3 +1,5 @@
+mod tokenizer_fast_equivalence;
+
 use crate::branch_vm::{BranchVmError, PortableBranchContext, PortableBranchRequest};
 use crate::builder::{build_hierarchy_chunks_from_registry, build_hierarchy_package_from_registry};
 use crate::bytecode::{OP_EMIT_OPERAND, OP_EMIT_U8, OP_END};

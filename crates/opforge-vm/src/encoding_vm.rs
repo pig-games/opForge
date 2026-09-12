@@ -3,7 +3,11 @@
 
 //! CPU-neutral execution of fixed-field and scalar `SEMV` v2/v6 programs.
 
-use package::{decode_encoding_program, EncodingEndian, EncodingStep, OpcpuCodecError};
+use package::{
+    decode_encoding_program, EncodingEndian, EncodingStep, OpcpuCodecError, ENCODING_VM_OP_FIELDS,
+    ENCODING_VM_OP_INPUT_FIELDS, ENCODING_VM_OP_INTEGER_TO_IEEE754, ENCODING_VM_OP_LITERAL,
+    ENCODING_VM_OP_SCALAR,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EncodingVmError {
@@ -97,10 +101,20 @@ pub fn execute_encoding_program(
     program: &[u8],
     inputs: &[i64],
 ) -> Result<Vec<u8>, EncodingVmError> {
+    let run = types::vm_work::ProgramRun::new("encoding.steps", opcode_version, program);
     let steps =
         decode_encoding_program(opcode_version, program).map_err(EncodingVmError::Program)?;
     let mut out = Vec::new();
-    for step in steps {
+    for (ordinal, step) in steps.into_iter().enumerate() {
+        // Decoded-step positions are ordinals; opcodes retain the encoding bytecode mapping.
+        let opcode = match &step {
+            EncodingStep::Literal { .. } => ENCODING_VM_OP_LITERAL,
+            EncodingStep::Scalar { .. } => ENCODING_VM_OP_SCALAR,
+            EncodingStep::Fields { .. } => ENCODING_VM_OP_FIELDS,
+            EncodingStep::InputFields { .. } => ENCODING_VM_OP_INPUT_FIELDS,
+            EncodingStep::IntegerToIeee754 { .. } => ENCODING_VM_OP_INTEGER_TO_IEEE754,
+        };
+        run.step(ordinal, opcode);
         match step {
             EncodingStep::Literal {
                 value,

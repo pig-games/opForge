@@ -654,6 +654,7 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
     }
 
     fn execute_from(&mut self, program: &[u8], mut pc: usize) -> Result<B::Value, ParseError> {
+        let work = types::vm_work::ProgramRun::new("expression_parser", 2, program);
         let mut output_stack = Vec::new();
         let mut call_stack = Vec::new();
 
@@ -668,6 +669,7 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
                 span: self.current_span(),
             })?;
 
+            work.step(opcode_pc, opcode_byte);
             match opcode {
                 ExvmOpcodeV2::End => {
                     if !call_stack.is_empty() {

@@ -237,10 +237,23 @@ pub fn execute_structured_encoding_program(
     program: &[u8],
     records: &[PortableOperandRecord],
 ) -> Result<Vec<u8>, StructuredEncodingVmError> {
+    let work = types::vm_work::ProgramRun::new(
+        "structured_encoding.steps",
+        SEMANTIC_VM_OPCODE_VERSION_V3,
+        program,
+    );
     let steps = decode_structured_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V3, program)
         .map_err(StructuredEncodingVmError::Program)?;
     let mut out = Vec::new();
-    for step in steps {
+    for (ordinal, step) in steps.into_iter().enumerate() {
+        // Opcode mapping from the structured encoding contract; positions are step ordinals.
+        let opcode = match &step {
+            StructuredEncodingStep::RegisterMask { .. } => 1,
+            StructuredEncodingStep::RegisterPair { .. } => 2,
+            StructuredEncodingStep::FieldSelectors { .. } => 3,
+            StructuredEncodingStep::CompositeValues { .. } => 4,
+        };
+        work.step(ordinal, opcode);
         match step {
             StructuredEncodingStep::RegisterMask {
                 record: index,

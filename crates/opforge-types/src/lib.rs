@@ -16,3 +16,5 @@ pub mod source_map;
 pub mod symbol;
 pub mod symbol_stability;
 pub mod text_encoding;
+
+pub mod vm_work;

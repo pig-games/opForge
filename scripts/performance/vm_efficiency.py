@@ -57,12 +57,17 @@ def workload(cpu, blocks):
     return '\n'.join(lines) + '\n', bytes(expected)
 
 
-def clean_env(profile=False):
+def clean_env(profile=False, tokenizer_mode="auto"):
     # Ambient experiment toggles must not silently change the measured route.
     env = {k: v for k, v in os.environ.items() if not k.startswith('OPFORGE_')}
     env['NO_COLOR'] = '1'
+    if tokenizer_mode not in ('auto', 'generic'):
+        raise ValueError('unknown tokenizer execution mode')
+    if tokenizer_mode == 'generic':
+        env['OPFORGE_TOKENIZER_FORCE_GENERIC'] = '1'
     if profile:
-        env.update(OPFORGE_PROFILE_PHASES='1', OPFORGE_PROFILE_EXECUTION_PATHS='1')
+        env.update(OPFORGE_PROFILE_PHASES='1', OPFORGE_PROFILE_EXECUTION_PATHS='1',
+                   OPFORGE_PROFILE_VM_WORK='1')
     return env
 
 
@@ -146,12 +151,63 @@ def parse_profile(text):
     return rows
 
 
-def assemble(binary, directory, cpu, budget, expected, *, profile=False, negative=False):
+def parse_vm_work(text, blocks, source_bytes, source_lines):
+    prefix = '[opforge vm work] '
+    reports = [json.loads(line[len(prefix):]) for line in text.splitlines() if line.startswith(prefix)]
+    if len(reports) != 1 or reports[0].get('schema') != 1 or reports[0].get('overflow') is not False:
+        raise ValueError('missing, duplicate or incomplete VM work attribution')
+    report = reports[0]
+    programs = {p['id']: p for p in report['programs']}
+    if len(programs) != len(report['programs']):
+        raise ValueError('duplicate VM program identity')
+    engines, phases, totals, calls = {}, {}, {}, {}
+    for row in report['rows']:
+        program = programs[row['program']]
+        steps = row['steps']
+        if (row['calls'] < 1 or steps < 0 or not 0 <= row['repeated_within_call'] <= steps
+                or any(p['count'] < 1 for p in row['positions'])
+                or sum(p['count'] for p in row['positions']) != steps):
+            raise ValueError('inconsistent VM step attribution')
+        engine = program['engine']
+        engines[engine] = engines.get(engine, 0) + steps
+        calls[engine] = calls.get(engine, 0) + row['calls']
+        phases[row['phase']] = phases.get(row['phase'], 0) + steps
+        total = totals.setdefault(row['program'], {'calls': 0, 'steps': 0,
+                                 'repeated_within_call': 0, 'positions': set()})
+        for key in ('calls', 'steps', 'repeated_within_call'):
+            total[key] += row[key]
+        total['positions'].update((p['position'], p['opcode']) for p in row['positions'])
+    steps = sum(engines.values())
+    if steps <= 0:
+        raise ValueError('VM work attribution contains no dispatched operations')
+    ranked = []
+    for program_id, total in totals.items():
+        program = programs[program_id]
+        ranked.append({'program': program_id, 'engine': program['engine'],
+                       'bytecode_sha256': digest(bytes.fromhex(program['bytes_hex'])),
+                       'calls': total['calls'], 'steps': total['steps'],
+                       'distinct_executed_positions': len(total['positions']),
+                       'repeated_within_call': total['repeated_within_call'],
+                       'repeated_between_calls': total['steps'] - total['repeated_within_call'] - len(total['positions'])})
+    report['aggregate'] = {
+        'dispatch_steps': steps,
+        'decoded_steps': sum(v for k, v in engines.items() if k.endswith('.steps')),
+        'bytecode_steps': sum(v for k, v in engines.items() if not k.endswith('.steps')),
+        'steps_per_assembly_instruction': steps / (blocks * 5),
+        'steps_per_source_line': steps / source_lines,
+        'steps_per_source_byte': steps / source_bytes,
+        'by_engine': engines, 'calls_by_engine': calls, 'by_phase': phases,
+        'top_programs': sorted(ranked, key=lambda p: p['steps'], reverse=True)[:10],
+    }
+    return report
+
+
+def assemble(binary, directory, cpu, budget, expected, *, profile=False, negative=False, tokenizer_mode="auto"):
     output = directory / 'output.bin'
     output.unlink(missing_ok=True)
     command = [str(binary), '--cpu', cpu, '--infile', 'input.asm', '--bin', 'output.bin',
                '--opasm-package', str(directory.parent / 'runtime.opasm')]
-    code, stdout, stderr, elapsed = run_process(command, directory, clean_env(profile), budget)
+    code, stdout, stderr, elapsed = run_process(command, directory, clean_env(profile, tokenizer_mode), budget)
     text = stderr.decode(errors='replace')
     if negative:
         if code < 0 or 'ERROR' not in text:
@@ -166,34 +222,72 @@ def assemble(binary, directory, cpu, budget, expected, *, profile=False, negativ
 def measure(binary, directory, sizes, budget):
     results = []
     for cpu in FAMILIES:
-        for blocks in sizes:
-            case = directory / f'{cpu}-{blocks}'
-            case.mkdir()
-            source, expected = workload(cpu, blocks)
-            (case / 'input.asm').write_text(source)
-            (case / 'expected.bin').write_bytes(expected)
-            _, _, command = assemble(binary, case, cpu, budget, expected)  # warmup
-            samples = [assemble(binary, case, cpu, budget, expected)[0] for _ in range(3)]
-            row = {'cpu': cpu, 'blocks': blocks, 'source_bytes': len(source.encode()),
-                   'source_lines': len(source.splitlines()), 'output_bytes': len(expected),
-                   'source_sha256': digest(source.encode()), 'output_sha256': digest(expected),
-                   'command': command, 'samples_seconds': samples,
-                   'median_seconds': statistics.median(samples), 'min_seconds': min(samples),
-                   'max_seconds': max(samples)}
-            if blocks == sizes[len(sizes) // 2]:
-                _, profile, _ = assemble(binary, case, cpu, budget, expected, profile=True)
+        negative_diagnostic = None
+        for tokenizer_mode in ("auto", "generic"):
+            for blocks in sizes:
+                case = directory / f'{cpu}-{blocks}-{tokenizer_mode}'
+                case.mkdir()
+                source, expected = workload(cpu, blocks)
+                (case / 'input.asm').write_text(source)
+                (case / 'expected.bin').write_bytes(expected)
+                _, _, command = assemble(binary, case, cpu, budget, expected, tokenizer_mode=tokenizer_mode)  # warmup
+                samples = [assemble(binary, case, cpu, budget, expected, tokenizer_mode=tokenizer_mode)[0] for _ in range(3)]
+                row = {'cpu': cpu, 'tokenizer_mode': tokenizer_mode, 'blocks': blocks, 'source_bytes': len(source.encode()),
+                       'source_lines': len(source.splitlines()), 'output_bytes': len(expected),
+                       'source_sha256': digest(source.encode()), 'output_sha256': digest(expected),
+                       'command': command, 'samples_seconds': samples,
+                       'median_seconds': statistics.median(samples), 'min_seconds': min(samples),
+                       'max_seconds': max(samples)}
+                # Attribution at every size reveals fixed, linear and superlinear work.
+                _, profile, _ = assemble(binary, case, cpu, budget, expected, profile=True, tokenizer_mode=tokenizer_mode)
                 (case / 'profile.txt').write_text(profile)
                 row['profile'] = parse_profile(profile)
+                row['vm_work'] = parse_vm_work(profile, blocks, len(source.encode()), len(source.splitlines()))
                 row['work_counts'] = {label: sum(r['count'] or 0 for r in row['profile'] if r['label'] == label)
                                       for label in ('vm.parse', 'vm.parse_cache_hit', 'vm.encode', 'vm.model.bootstrap')}
-            results.append(row)
-            print(f'{cpu:8} {blocks:3} blocks: {row["median_seconds"]:.4f}s; bytes verified', flush=True)
-        case = directory / f'{cpu}-negative'
-        case.mkdir()
-        (case / 'input.asm').write_text(f'.cpu {cpu}\n.byte missing_symbol\n.end\n')
-        _, diagnostic, _ = assemble(binary, case, cpu, budget, b'', negative=True)
-        (case / 'diagnostic.txt').write_text(diagnostic)
+                aggregate = row['vm_work']['aggregate']
+                if any(aggregate['by_engine'].get(engine, 0) <= 0 for engine in ('parser', 'expression', 'bytecode')):
+                    raise ValueError('missing expected workload interpreter coverage')
+                calls = aggregate['calls_by_engine']
+                if tokenizer_mode == 'generic':
+                    if calls.get('tokenizer.fast', 0) or not aggregate['by_engine'].get('tokenizer', 0):
+                        raise ValueError('forced generic tokenizer was not demonstrated')
+                elif not calls.get('tokenizer.fast', 0):
+                    raise ValueError('automatic tokenizer did not demonstrate the fast path')
+                results.append(row)
+                print(f'{cpu:8} {tokenizer_mode:7} {blocks:3} blocks: {row["median_seconds"]:.4f}s; bytes verified; '
+                      f'{aggregate["dispatch_steps"]} operations '
+                      f'({aggregate["steps_per_assembly_instruction"]:.1f}/instruction)', flush=True)
+            case = directory / f'{cpu}-negative-{tokenizer_mode}'
+            case.mkdir()
+            (case / 'input.asm').write_text(f'.cpu {cpu}\n.byte missing_symbol\n.end\n')
+            _, diagnostic, _ = assemble(binary, case, cpu, budget, b'', negative=True, tokenizer_mode=tokenizer_mode)
+            (case / 'diagnostic.txt').write_text(diagnostic)
+            if negative_diagnostic is not None and negative_diagnostic != diagnostic:
+                raise ValueError('tokenizer modes produced different negative diagnostics')
+            negative_diagnostic = diagnostic
     return results
+
+
+def compare_tokenizer_modes(cases):
+    comparisons = []
+    for fast in (row for row in cases if row['tokenizer_mode'] == 'auto'):
+        generic = next(row for row in cases if row['tokenizer_mode'] == 'generic'
+                       and (row['cpu'], row['blocks']) == (fast['cpu'], fast['blocks']))
+        if any(fast[key] != generic[key] for key in ('source_sha256', 'output_sha256')):
+            raise ValueError('tokenizer comparison used different input or produced different output')
+        logical = sum(event['count'] for event in fast['vm_work']['events']
+                      if event['label'] == 'tokenizer.fast.logical_budget_steps')
+        dispatched = generic['vm_work']['aggregate']['by_engine']['tokenizer']
+        if logical != dispatched:
+            raise ValueError('fast tokenizer logical steps disagree with generic dispatch count')
+        comparisons.append({'cpu': fast['cpu'], 'blocks': fast['blocks'],
+                            'auto_seconds': fast['median_seconds'],
+                            'generic_seconds': generic['median_seconds'],
+                            'generic_tokenizer_steps': dispatched,
+                            'fast_logical_steps': logical,
+                            'identical_input_and_output': True})
+    return comparisons
 
 
 def main():
@@ -220,6 +314,8 @@ def main():
                    'runner_sha256': digest(Path(__file__).read_bytes()),
                    'limitations': ['Z80 uses supported MVI spelling; LD r,n VM-only support is not established.',
                                    'Fixed-order small sample baseline, not a statistically qualified speedup.',
+                                   'VM dispatch counts exclude helper internals, validation, decoding and state-table work; fast-tokenizer logical steps are separate events.',
+                                   'Repeated bytecode does not establish identical inputs or redundant work; decoded-step engines use ordinal positions.',
                                    'No native execution or full-self-host performance claim.'],
                    'memory': {'peak_bytes': None, 'native_footprint_bytes': None,
                               'limitation': 'Not measured; host heap is not native footprint.'}}
@@ -233,6 +329,7 @@ def main():
                                             if k.startswith(('CARGO_', 'RUST'))}
             start = time.monotonic()
             summary['cases'] = measure(binary, directory, sizes, Budget())
+            summary['tokenizer_comparisons'] = compare_tokenizer_modes(summary['cases'])
             summary['measurement_seconds'] = time.monotonic() - start
             summary['memory']['sensitivity_only'] = {
                 'explanation': 'Illustrative source+output+canonical-package+statement-record storage; excludes OS, '

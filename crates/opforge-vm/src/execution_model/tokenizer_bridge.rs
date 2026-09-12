@@ -68,7 +68,12 @@ impl HierarchyExecutionModel {
         line_num: u32,
     ) -> Result<Vec<PortableToken>, RuntimeBridgeError> {
         let route = self.resolve_tokenizer_vm_route_for_assembler(cpu_id, dialect_override)?;
-        let tokens = if route.use_default_dispatch_fast_path {
+        // Explicit reference execution for diagnostics and equivalence measurements.
+        // Disable only the specialization; the package and generic interpreter stay authoritative.
+        static FORCE_GENERIC: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let force_generic = *FORCE_GENERIC
+            .get_or_init(|| std::env::var_os("OPFORGE_TOKENIZER_FORCE_GENERIC").is_some());
+        let tokens = if route.use_default_dispatch_fast_path && !force_generic {
             self.tokenize_with_default_dispatch_core(
                 source_line,
                 line_num,

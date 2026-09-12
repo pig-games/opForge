@@ -32,11 +32,50 @@ class VmEfficiencyTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 runner.parse_profile(invalid)
 
+    def test_vm_work_repetition_and_ratios(self):
+        import json
+        report = {'schema': 1, 'overflow': False,
+                  'programs': [{'id': 0, 'engine': 'parser', 'version': 2, 'bytes_hex': '0102'}],
+                  'rows': [{'program': 0, 'phase': 'pass1', 'calls': 2, 'steps': 5,
+                            'repeated_within_call': 1,
+                            'positions': [{'position': 0, 'opcode': 1, 'count': 3},
+                                          {'position': 1, 'opcode': 2, 'count': 2}]}], 'events': []}
+        text = '[opforge vm work] ' + json.dumps(report)
+        aggregate = runner.parse_vm_work(text, 1, 10, 3)['aggregate']
+        self.assertEqual(aggregate['steps_per_assembly_instruction'], 1)
+        self.assertEqual(aggregate['top_programs'][0]['repeated_between_calls'], 2)
+        for invalid in ('', text + '\n' + text, text.replace('false', 'true'),
+                        text.replace('"steps": 5', '"steps": 6')):
+            with self.assertRaises(ValueError):
+                runner.parse_vm_work(invalid, 1, 10, 3)
+
+    def test_tokenizer_mode_comparison_rejects_different_inputs_or_work(self):
+        import copy
+        auto = {'cpu': 'fixture', 'blocks': 1, 'tokenizer_mode': 'auto',
+                'source_sha256': 'source', 'output_sha256': 'output', 'median_seconds': 1,
+                'vm_work': {'events': [{'label': 'tokenizer.fast.logical_budget_steps', 'count': 7}]}}
+        generic = {'cpu': 'fixture', 'blocks': 1, 'tokenizer_mode': 'generic',
+                   'source_sha256': 'source', 'output_sha256': 'output', 'median_seconds': 2,
+                   'vm_work': {'aggregate': {'by_engine': {'tokenizer': 7}}}}
+        self.assertTrue(runner.compare_tokenizer_modes([auto, generic])[0]['identical_input_and_output'])
+        for key in ('source_sha256', 'output_sha256'):
+            changed = copy.deepcopy(generic)
+            changed[key] = 'different'
+            with self.assertRaises(ValueError):
+                runner.compare_tokenizer_modes([auto, changed])
+        generic['vm_work']['aggregate']['by_engine']['tokenizer'] = 8
+        with self.assertRaises(ValueError):
+            runner.compare_tokenizer_modes([auto, generic])
+        self.assertEqual(runner.clean_env(tokenizer_mode='generic')['OPFORGE_TOKENIZER_FORCE_GENERIC'], '1')
+
     def test_ambient_experiment_environment_is_not_inherited(self):
         from unittest.mock import patch
-        with patch.dict(os.environ, {'OPFORGE_OPASM_PACKAGE': 'wrong', 'OPFORGE_PROFILE_PHASES': '1'}):
+        with patch.dict(os.environ, {'OPFORGE_OPASM_PACKAGE': 'wrong', 'OPFORGE_PROFILE_PHASES': '1', 'OPFORGE_TOKENIZER_FORCE_GENERIC': '1'}):
             self.assertNotIn('OPFORGE_OPASM_PACKAGE', runner.clean_env())
             self.assertNotIn('OPFORGE_PROFILE_PHASES', runner.clean_env())
+            self.assertNotIn('OPFORGE_PROFILE_VM_WORK', runner.clean_env())
+            self.assertNotIn('OPFORGE_TOKENIZER_FORCE_GENERIC', runner.clean_env())
+            self.assertEqual(runner.clean_env(True)['OPFORGE_PROFILE_VM_WORK'], '1')
             self.assertEqual(runner.clean_env()['NO_COLOR'], '1')
 
     def test_exhausted_batch_does_not_launch_child(self):

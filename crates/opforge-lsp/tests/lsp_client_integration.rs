@@ -1218,6 +1218,11 @@ fn config_change_revalidates_open_documents_without_followup_edit() {
 #[test]
 fn definition_resolves_local_symbol_declaration() {
     let temp_file = unique_temp_file("definition.asm");
+    let unrelated_module = temp_file
+        .parent()
+        .expect("temp directory")
+        .join("label.asm");
+    write_text(&unrelated_module, ".module label\n.endmodule\n");
     let uri = path_to_file_uri(&temp_file);
     let mut client = LspTestClient::spawn().expect("spawn lsp");
     let _ = client.initialize(json!({}));
@@ -1243,7 +1248,11 @@ fn definition_resolves_local_symbol_declaration() {
         }),
     );
     let entries = definitions.as_array().expect("definition array");
-    assert!(!entries.is_empty(), "expected at least one definition");
+    assert_eq!(
+        entries.len(),
+        1,
+        "ordinary symbols must not resolve as modules"
+    );
     let first = &entries[0];
     assert_eq!(
         first

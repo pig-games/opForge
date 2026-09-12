@@ -98,17 +98,29 @@ pub fn definition_locations(
         }));
     }
 
-    for path in resolve_module_target(word, config, current_uri) {
-        out.push(json!({
-            "uri": crate::lsp::session::path_to_file_uri(&path),
-            "range": {
-                "start": {"line": 0, "character": 0},
-                "end": {"line": 0, "character": 0},
-            }
-        }));
+    // Module-file fallback can recursively search ancestor roots. Only run it
+    // when the cursor is on a `.use` module path, not for ordinary symbols.
+    if is_import_module_path(doc, request_line, word) {
+        for path in resolve_module_target(word, config, current_uri) {
+            out.push(json!({
+                "uri": crate::lsp::session::path_to_file_uri(&path),
+                "range": {
+                    "start": {"line": 0, "character": 0},
+                    "end": {"line": 0, "character": 0},
+                }
+            }));
+        }
     }
 
     dedup_locations(out)
+}
+
+fn is_import_module_path(doc: Option<&DocumentState>, request_line: u32, word: &str) -> bool {
+    doc.is_some_and(|doc| {
+        doc.imports.iter().any(|import| {
+            import.line == request_line && import.module_id.eq_ignore_ascii_case(word)
+        })
+    })
 }
 
 fn dedup_locations(items: Vec<Value>) -> Vec<Value> {

@@ -316,9 +316,12 @@ formatting and engineering guards. The VM-only CLI retains existing unused-code
 warnings. No full-workspace or native qualification is claimed. Measurement
 artifacts remain in ignored `build/w3-*` directories.
 
-**Next decision for review:** choose between reducing generic tokenizer dispatch
-through package-derived preparation and reusing prepared candidate discovery
-across passes. The tokenizer loop is a demonstrated generic hotspot, but copying
+**Next decision for review:** follow the short
+[package-execution boundary plan](package-execution-boundaries.md) to expose
+target-semantic callbacks and compare the corresponding native paths before
+choosing further optimization. Afterwards, candidates include reducing generic
+tokenizer dispatch through package-derived preparation and reusing prepared
+candidate discovery across passes. The tokenizer loop is a demonstrated generic hotspot, but copying
 its hand-maintained Rust fast path into native would create another correspondence
 to maintain. Any specialization needs the canonical generic path and explicit
 equivalence checks; any selection reuse must preserve changing values, instability

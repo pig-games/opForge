@@ -25,6 +25,8 @@ fn unique_temp_dir(prefix: &str) -> PathBuf {
 fn opforge(args: &[String]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_opforge"))
         .args(args)
+        // Text assertions must not depend on the caller's color environment.
+        .env("NO_COLOR", "1")
         .output()
         .expect("run opforge")
 }

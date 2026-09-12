@@ -1,6 +1,6 @@
 # Iterative VM and native runtime reset
 
-Status: proposed execution plan for discussion; implementation has not started.
+Status: W1 implemented and locally validated; awaiting Erik's review before W2.
 The active [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md)
 remain binding. This plan captures the current discussion, not instructions from
 historical plans. Only the next iteration is detailed; later outcomes are
@@ -84,12 +84,12 @@ unchanged full-suite reruns. Keep one living plan, no per-iteration sidecars.
 This table tracks outcomes, not individual edits or commits. Update the current
 row in place with the run command, concise result and relevant commit when work
 finishes. Proposed means awaiting agreement on scope, not queued for automatic
-execution. No implementation work has started.
+execution. W1 is complete; later work is not yet authorized.
 
 | Work | Status | Reviewable result | Depends on |
 | --- | --- | --- | --- |
-| W1 — Measure shared package-VM work across families | Proposed: scope below | One bounded benchmark with representative family cases, inspectable source/output, verified execution paths and one general optimization recommendation | Agreement on W1 |
-| W2 — Eliminate the largest justified repeated operation | Direction only | Same complete workload on reference and improved Rust paths, with correctness/work/time/space comparison | W1 evidence and agreement on the exact change |
+| W1 — Measure shared package-VM work across families | Complete; review pending | Runnable cross-family baseline and verified VM attribution; brief results below | Authorized in conversation |
+| W2 — Reduce shared runtime-model setup cost | Proposed direction from W1 | Same workloads on reference and improved Rust paths, with setup/work/time/space comparison | Review W1; agree exact preparation experiment |
 | W3 — Prove one acceleration boundary if it is justified | Direction only | Generic and specialized execution selectable for comparison, including unsupported/error cases | Measured hotspot; may be replaced by further VM simplification |
 | W4 — Test the compact representation on native 68020 | Direction only | Bounded complete native assembly with fresh parity and resource measurements | A useful Rust representation; move earlier if native feasibility is the largest uncertainty |
 
@@ -120,11 +120,36 @@ focused tests under `scripts/performance/tests/`, with a short usage section in
 the performance documentation. Keep workload generation with the runner unless
 a hand-written fixture is clearer. Reuse existing profiling and package-loading
 APIs; do not create a generic benchmark framework or duplicate the corpus runner.
-These paths and the command below are proposed deliverables, not existing tools:
+The entrypoint and focused tests are implemented. See the
+[measurement guide](../performance/vm-efficiency.md) for evidence limits and output:
 
 ```sh
 python3 scripts/performance/vm_efficiency.py selection --blocks 8,32,128
 ```
+
+### W1 result for review
+
+The 8/32/128-block batch completed in 2.14 seconds (27.94 seconds build/setup on
+the qualifying run). All nine cases matched independently calculated bytes on
+every warmup, sample and attribution invocation; all three negative cases passed.
+Eight runner tests cover byte contracts, VM attribution, environment isolation,
+wrong-output rejection, crash rejection and invocation/batch timeout behavior.
+The actual middle-size workloads contain 259 source lines and 160 instructions.
+Each family recorded 259 VM parses and 320 VM encodes across two passes.
+
+Uninstrumented medians were approximately 38–53 ms across sizes/families. Separate
+32-block profiles attributed 19–21 ms to one assembler model-bootstrap call
+versus 0.8–1.1 ms to instruction encoding across both passes. That favors investigating
+shared model preparation before specialized instruction fragments. It does not
+yet isolate generation, decoding or indexing within bootstrap, nor establish
+native payoff. W2 should first distinguish avoidable model construction from
+necessary preparation, then implement one cheaper path within its own budget.
+
+The canonical package was 368,579 bytes. Peak memory was not measured; the guide
+explains the limited storage sensitivity estimate. Z80 used supported `MVI r,n`
+because VM-only `LD r,n` failed in the smoke test; that syntax gap remains open.
+No native or full-self-host run was performed. Results live under ignored build
+directories and can be regenerated; this paragraph is the retained decision.
 
 Build once as a separately reported setup step, then reuse that identified
 executable for all runs. The runner must not silently rebuild on every sample.

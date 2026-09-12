@@ -34,12 +34,20 @@ pub fn build_execution_model_for_request(
     #[cfg(not(feature = "vm-runtime-opasm-artifact"))]
     let cwd_artifact_path = None;
 
-    build_execution_model_for_request_with_artifact_path(
+    let started = crate::phase_profile::path_profile_is_enabled().then(std::time::Instant::now);
+    let result = build_execution_model_for_request_with_artifact_path(
         registry,
         cpu,
         opasm_package_path,
         cwd_artifact_path,
-    )
+    );
+    if let Some(started) = started {
+        crate::phase_profile::record_execution_path_for_active_scope(
+            "vm.model.bootstrap",
+            started.elapsed(),
+        );
+    }
+    result
 }
 
 pub(crate) fn build_execution_model_for_request_with_artifact_path(

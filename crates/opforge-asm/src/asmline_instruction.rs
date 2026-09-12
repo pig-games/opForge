@@ -2048,14 +2048,25 @@ impl<'a> AsmLine<'a> {
         operands: &[Expr],
     ) -> Option<LineStatus> {
         let model = self.opthread_execution_model.as_ref()?;
-        match vm::vm_opasm::encode_instruction_from_exprs_with_effects(
+        let vm_start =
+            crate::phase_profile::path_profile_is_enabled().then(std::time::Instant::now);
+        let vm_result = vm::vm_opasm::encode_instruction_from_exprs_with_effects(
             model,
             self.cpu.as_str(),
             None,
             mnemonic,
             operands,
             self,
-        ) {
+        );
+        if let Some(vm_start) = vm_start {
+            crate::phase_profile::record_execution_path(
+                Some(self.line_route_bucket()),
+                "vm.encode",
+                vm_start.elapsed(),
+            );
+        }
+
+        match vm_result {
             Ok(Some((bytes, effects))) => {
                 if bytes.is_empty() {
                     return Some(self.failure(

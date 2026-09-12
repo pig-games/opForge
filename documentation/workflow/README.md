@@ -17,6 +17,34 @@ span related modules. Discuss consequential tradeoffs and scope changes; use
 judgment for routine details. Deliver a state that can be inspected or tested,
 not just a list of helpers completed. Interactive requests set discussion points.
 
+## Controlled experiments and integration
+
+Before investing in an experiment, state the hypothesis, the baseline it will be
+compared with, a focused correctness comparison, and what would count as success
+or a reason to stop. Use a short note or conversation; no prescribed artifact is
+required. Keep the work isolated and retain a working reference path while the
+replacement is evaluated. Temporary duplication and incomplete prototypes are
+acceptable within the agreed scope. Mark experimental interfaces as non-public.
+
+For performance work, use reproducible before/after measurements with identified
+inputs, build settings and environment. Distinguish measured gains from predictions
+and incomplete diagnostic runs. Choose a useful result before investing further;
+retain, revise or abandon the experiment according to the evidence. Discuss a
+material change of direction, rather than automatically extending an unsuccessful
+approach. There is no extra approval gate for routine experimental steps.
+
+Before declaring integration readiness, inspect the combined diff and resulting
+responsibilities, not just each intermediate patch. Remove superseded experiments,
+dead switches and duplication where appropriate. Explain retained fallback paths
+and unresolved compromises. Verify the integrated behavior and, for performance
+work, measure the integrated result. A successful prototype alone is not the final
+maintained implementation.
+
+At a meaningful completion boundary, identify affected user and technical docs,
+update descriptions whose truth changed, and validate relevant commands, examples,
+diagrams, cross-links and paths. Maintain stable interfaces as they become ready;
+keep experimental notes provisional. Update affected documents, not every document.
+
 ## Recoverable commits
 
 Commit when a recovery point is useful, not because a plan item changed state.
@@ -41,14 +69,24 @@ none of these command names promises coverage outside the selected checks.
 
 | Point in work | Expected evidence | Commands |
 |---|---|---|
-| Development | Fast checks for changed behavior and relevant invariants | `make dev-check` for workflow changes; targeted `cargo test -p <crate> <filter>`, compile or assembly commands for product changes |
-| Integration | Affected subsystem tests, engineering guards, focused differential/native checks when relevant | `make tranche-check` for workflow integration; selected subsystem commands for product changes |
-| Qualification | Broad checks appropriate to the completed capability | `make milestone-check` runs the existing Rust quality gate; select native/corpus/self-host commands separately when applicable |
+| Development | Fast checks for changed behavior and relevant invariants | `make workflow-check` for workflow changes; targeted `cargo test -p <crate> <filter>`, compile or assembly commands for product changes |
+| Integration | Affected subsystem tests, engineering guards, focused differential/native checks when relevant | `make workflow-test` for workflow integration; selected subsystem commands for product changes |
+| Qualification | Broad checks appropriate to the completed capability | `make quality-gate` runs the existing Rust quality gate; select native/corpus/self-host commands separately when applicable |
 
-`make dev-check` checks workflow links, the existing dependency ban and CPU boundary.
-`make tranche-check` adds the workflow Python test suite. `make workflow-gate` is
-its CI alias. These commands do not compile or qualify product code.
-`make -n milestone-check` inspects wiring without launching qualification.
+`make workflow-check` checks workflow links, the dependency ban, CPU boundary and
+known benchmark selectors in production source. `make workflow-test` adds the
+workflow Python test suite. `make workflow-gate` is its CI alias. These commands
+do not compile or qualify product code. `make -n quality-gate` inspects Rust
+qualification wiring without launching it. Product checks retain their existing
+specific command names; select the affected scope explicitly.
+
+`check_benchmark_selectors.py` is a narrow tripwire for known B01–B10 identities
+and performance-fixture paths in production Rust/native source. Test files,
+harnesses and performance tools are excluded; inline test code in production
+files is still scanned. It ignores comments and native hexadecimal constants.
+This lexical check does not detect arbitrary output-path or self-host-generation
+switches, constructed identities or every form of test detection. Review remains
+responsible for the broader prohibition in AGENTS.md.
 The native deterministic gate remains available as
 `python3 scripts/workflow/run_native_porting_quality_gate.py`; real-native proof
 is governed by the [native parity contract](../../agents/rules/native-rust-parity-porting.md).

@@ -72,18 +72,17 @@ native-reference-parity-completion:
 	scripts/workflow/run_native_reference_parity_completion.sh --verify
 
 # Workflow checks deliberately do not claim product compilation or native parity.
-.PHONY: dev-check tranche-check milestone-check
-dev-check:
+.PHONY: workflow-check workflow-test
+workflow-check:
 	python3 scripts/workflow/check_workflow_links.py
+	python3 scripts/workflow/check_benchmark_selectors.py
 	python3 scripts/workflow/check_supply_chain_ban.py
 	python3 scripts/workflow/check_cpu_specific_arch_boundary.py
 
-tranche-check: dev-check
+workflow-test: workflow-check
 	python3 -m unittest discover -s scripts/workflow/tests -p 'test_*.py'
 
-workflow-gate: tranche-check
-
-milestone-check: quality-gate
+workflow-gate: workflow-test
 
 test:
 	cargo test --workspace

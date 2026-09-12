@@ -17,8 +17,8 @@ historical documents do not activate work or grant authority.
 - CPU/family/dialect semantics belong in package definitions, fixtures and their
   specialized implementation boundaries, never in generic VM, native, workflow
   or CLI paths. Preserve the existing architecture-boundary checks.
-- Production behavior must not depend on a test, benchmark, fixture name or
-  expected output. Do not weaken tests or substitute stale results for proof.
+- Production behavior must not be selected by test or benchmark identity, fixture
+  or output paths, self-host generation, or expected output. Do not weaken tests or substitute stale results for proof.
 - Preserve the approved native instrumentation and fresh-run parity safeguards.
   A timeout, crash, partial capture or launcher success is not native completion.
 
@@ -39,6 +39,11 @@ historical documents do not activate work or grant authority.
   expensive capable model when savings exceed briefing, coordination, verification
   and rework. Keep small, context-heavy tasks local. The coordinator owns integration.
   Keep model selection configurable; do not hardcode model generations here.
+- For experiments, establish a hypothesis, baseline, correctness comparison and
+  success/stop conditions. Preserve a working reference path while evaluating a
+  replacement. Performance claims require reproducible comparative measurements.
+- Before integration, inspect the combined result, remove superseded experiments
+  and duplication where appropriate, and explain any remaining compromises.
 
 ## Commits and validation
 
@@ -62,8 +67,10 @@ historical documents do not activate work or grant authority.
 - Keep only active work artifacts and current reference documentation in the tree.
   Before deleting completed or superseded artifacts, preserve enduring facts in
   current documentation. Git history is the archive; do not create archive trees.
-- Update affected documentation when behavior becomes stable, before declaring
-  the corresponding work complete. Verify changed examples and links.
+- At meaningful completion boundaries, identify and update affected user and
+  technical documentation. Validate relevant commands, examples, diagrams, links
+  and referenced paths before declaring the work complete. Experimental behavior
+  needs brief provisional notes, not continuously polished product documentation.
 - Stop for an actual blocker, missing authorization or consequential unresolved
   choice. Do not stop solely because a procedure expects an approval record.
 

@@ -1,6 +1,7 @@
 # opForge Language Server Specification v0.1 (LSP 3.17, Hybrid Engine)
 
-Status: Draft for implementation handoff
+Status: Retained design reference; implementation coverage has not been audited.
+This document records intended behavior and does not activate development work.
 Date: 2026-02-25
 
 ## Summary

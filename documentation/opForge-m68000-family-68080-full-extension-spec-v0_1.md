@@ -7,9 +7,9 @@ assembler coverage in opForge.  It catalogues **every** missing instruction
 with its binary encoding, operand constraints, and required dotless/sized
 aliases so that implementation produces correct assembled bytes for all forms.
 
-It supersedes the bounded implementation scope of
-`documentation/opForge-m68000-family-68080-extension-spec-v0_1.md` for new
-implementation work while preserving existing 68000‑68040 behavior.
+This is the retained full-surface design reference. The superseded bounded
+specification is available in Git history. This document describes intended
+coverage, not a verified inventory of the currently shipped implementation.
 
 ### Reference Documents
 

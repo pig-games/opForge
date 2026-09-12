@@ -75,31 +75,75 @@ whose savings exceed coordination and verification costs. Run focused checks
 during development and broader checks at affected integration boundaries; avoid
 unchanged full-suite reruns. Keep one living plan, no per-iteration sidecars.
 
-## Next iteration: a runnable efficiency baseline
+## Work tracker
 
-Question: which repeated VM work offers the strongest opportunity within the
-Amiga's memory budget, and can we measure it without a new profiling framework?
+This table tracks outcomes, not individual edits or commits. Update the current
+row in place with the run command, concise result and relevant commit when work
+finishes. Proposed means awaiting agreement on scope, not queued for automatic
+execution. No implementation work has started.
 
-Deliver a small repository-local comparison entrypoint, built on existing
-performance tools and Rust profiling, with a documented quick command that Erik
-can run. Its demonstration uses bounded, focused workloads only. Exact invocation
-and initial results replace this paragraph when
-implemented; no command is claimed to exist yet.
+| Work | Status | Reviewable result | Depends on |
+| --- | --- | --- | --- |
+| W1 — Measure a focused package-VM assembly path | Proposed: scope below | One runnable bounded benchmark, inspectable source/output, verified execution path and one ranked optimization recommendation | Agreement on W1 |
+| W2 — Eliminate the largest justified repeated operation | Direction only | Same complete workload on reference and improved Rust paths, with correctness/work/time/space comparison | W1 evidence and agreement on the exact change |
+| W3 — Prove one acceleration boundary if it is justified | Direction only | Generic and specialized execution selectable for comparison, including unsupported/error cases | Measured hotspot; may be replaced by further VM simplification |
+| W4 — Test the compact representation on native 68020 | Direction only | Bounded complete native assembly with fresh parity and resource measurements | A useful Rust representation; move earlier if native feasibility is the largest uncertainty |
 
-Choose one focused, moderately sized, semantically complete workload for the
-iteration's question. Use realistic patterns from native source or existing
-fixtures without assembling the full self-host source. Start with tens to hundreds
-of statements, then choose two or three bounded sizes that expose repeated work
-without exceeding the measurement budget. Statement count is a calibration aid,
-not a fixed target or a proxy for complexity.
+## W1 agreement: focused package-VM baseline
 
-Exercise the selected mechanism and its important interactions. For example,
-selection/binding needs varied operand forms and state changes; layout needs
-forward/backward references and size changes; lookup needs distinct symbols or
-modules. Avoid both a single trivial instruction repeated indefinitely and an
-all-features corpus that obscures the cause. Preserve complete syntax, dependencies
-and a checkable output. Select a different workload when the next iteration asks
-a different question; keep a small regression case for behavior already changed.
+**Hypothesis:** varied instruction selection and operand processing repeat work
+across statements or passes that can be removed by preparation or binding. W1
+tests this hypothesis; it does not presume that dispatch is the dominant cost.
+
+**Concrete workload:** one deterministic 68020 assembly source generator with
+8, 32 and 128 independently labelled blocks. Each block uses approximately six
+to eight statements mixing immediate, register and memory operands, a local
+forward branch, a symbol-derived expression and a data value. Vary registers and
+constants without making branch distances grow with the whole file. Use valid
+forms already covered by existing fixtures. This targets selection/operand and
+pass work; module loading, macros, broad CPU coverage and full self-hosting are
+deliberately not claims of this case. Add one small expected-failure companion
+to check that the chosen execution route retains diagnostic behavior.
+
+**Files and entrypoint:** implement `scripts/performance/vm_efficiency.py` and
+focused tests under `scripts/performance/tests/`, with a short usage section in
+the performance documentation. Keep workload generation with the runner unless
+a hand-written fixture is clearer. Reuse existing profiling and package-loading
+APIs; do not create a generic benchmark framework or duplicate the corpus runner.
+These paths and the command below are proposed deliverables, not existing tools:
+
+```sh
+python3 scripts/performance/vm_efficiency.py selection --blocks 8,32,128
+```
+
+Build once as a separately reported setup step, then reuse that identified
+executable for all runs. The runner must not silently rebuild on every sample.
+Retain source, binary output and a compact machine-readable summary only in a
+user-selected output directory or ignored build directory for inspection; no
+committed measurement ledger. Use one warmup and three uninstrumented samples per
+size, plus one attribution run at the middle size, all within the batch deadline.
+If variance prevents a useful timing conclusion, report work counts and the
+uncertainty rather than adding unbounded repetitions. Native measurements are
+not part of W1.
+
+**Acceptance:** the command completes within the agreed measurement caps; the
+successful cases produce independently checked output through the actual
+package-VM path; the negative companion yields the expected failure; the summary
+separates setup/execution and shows which repeated operation is worth addressing
+next (or why none is established). Report the chosen reference boundary and
+prove that a host family-handler bypass did not supply the measured VM result.
+Test timeout/batch-budget failure behavior as well as workload correctness.
+The tool's source, generated assembly, output and concise result are Erik's
+review surface. No runtime-package or accelerator implementation is required.
+
+**Budget and review:** use the proposed 30–60 minute / approximately 15k-token
+iteration budget and the 60-second invocation / five-minute batch limits above.
+Reduce block counts if necessary while preserving the mechanism and documenting
+the change. If execution-path attribution or an independent comparison cannot be
+established within budget, stop with a precise blocker; do not claim W1 done.
+Review the result with Erik before choosing W2's optimization and success target.
+
+### W1 measurement details
 
 Compare baseline and candidate on identical workload sizes and inputs. Record
 what the workload represents and what it omits. Completed small cases establish
@@ -120,31 +164,14 @@ measurements and their limits, plus a first native footprint estimate distinguis
 fixed package/runtime data, per-statement/symbol state and temporary storage.
 Do not equate Rust heap size with native memory consumption.
 
-Done when the quick command completes, checks actual assembly output against the
-reference, and exposes enough evidence to select one optimization with an explicit
-correctness boundary and expected benefit for the complete focused workload.
-Full-self-host speed predictions remain unproven. Record only the brief
-decision and reproducible command here. If profiling cannot identify a useful
-candidate within budget, report exactly what is missing; do not start cleanup or
-invent an optimization to satisfy the plan.
+## Longer-term direction
 
-No native rewrite, global semantic audit, version purge, general accelerator
-framework or multi-platform package compiler belongs in this iteration.
-
-## Subsequent outcomes, refined one at a time
-
-| Outcome | Implementation Erik can inspect and run | Evidence needed before extending it |
-| --- | --- | --- |
-| One cheaper VM path | Rust assembles a complete focused workload through a derived runtime representation, compared with canonical/reference execution | Less repeated work, matching artifacts and relevant diagnostics/state; preparation, execution and memory costs reported |
-| One useful acceleration point | The same path can use one specialized fragment or generic VM execution through a defined boundary | Equal results and failure behavior, material benefit attributable to the fragment; unsupported cases retain generic execution |
-| An early native feasibility slice | The compact representation runs a complete focused assembly on the 68020 | Fresh native proof, measured native time and memory, updated estimate against the 2 MB/15-minute target |
-| Growing useful coverage | A small set of focused workloads covers additional mechanisms; each iteration stays inside the measurement limits | End-to-end gains on completed cases, controlled invalidation across state/layout changes, and manageable code/data growth |
-| A maintained native product path | Complete self-assembly with the replacement integrated and superseded implementation removed | Correct executable/artifacts, hardware-budget qualification, relevant broad checks and current technical/user documentation |
-
-These rows are not five promised single-iteration tasks. Split large outcomes into
-complete testable workloads at the next planning boundary. Choose acceleration,
-preparation or size/emission separation based on measured cost; do not force every
-mechanism into the design. Reach native feasibility before broad coverage work.
+After W4, grow coverage through bounded complete workloads, then qualify full
+self-assembly only when feasibility evidence justifies it and Erik selects that
+step. Integration removes superseded code and updates the affected technical and
+user documentation. No native rewrite, global semantic audit, version purge or
+multi-platform package compiler is a prerequisite for W1. Later outcomes may need
+several iterations; each must still end with a useful implementation to inspect.
 
 ## Constraints on experimentation and integration
 

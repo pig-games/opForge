@@ -1,6 +1,6 @@
 # Iterative VM and native runtime reset
 
-Status: W3 and boundary-plan B2 locally validated; review before B3 native work.
+Status: W3/B2 validated; B3 checkpoint exposes a native shared-data byte-order gap.
 The active [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md)
 remain binding. This plan captures the current discussion, not instructions from
 historical plans. Only the next iteration is detailed; later outcomes are
@@ -318,8 +318,10 @@ artifacts remain in ignored `build/w3-*` directories.
 
 **Next decision for review:** B2 of the short
 [package-execution boundary plan](package-execution-boundaries.md) removes family
-consultation from core directive grammar and shared instruction atoms. Review its
-results before comparing that boundary on native in B3. Afterwards, candidates include reducing generic
+consultation from core directive grammar and shared instruction atoms. B3 now
+preserves that ownership on native, including source-fallback parsing, but its
+68020 data comparison exposes fixed little-endian word emission. Review the
+proposed shared-data repair before further optimization. Afterwards, candidates include reducing generic
 tokenizer dispatch through package-derived preparation and reusing prepared
 candidate discovery across passes. The tokenizer loop is a demonstrated generic hotspot, but copying
 its hand-maintained Rust fast path into native would create another correspondence

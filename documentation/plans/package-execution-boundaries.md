@@ -1,6 +1,6 @@
 # Package-controlled execution: Rust and native
 
-Status: B2 complete and locally validated; review before B3 native work. Companion to [the runtime reset](native-runtime-reset.md),
+Status: B3 checkpoint; directive ownership implemented, native data parity still incomplete. Companion to [the runtime reset](native-runtime-reset.md),
 following W3's measurements. The active [AGENTS.md](../../AGENTS.md) remains binding.
 
 ## Outcome and scope
@@ -103,8 +103,62 @@ targets exposed four existing warnings in untouched native smoke/parity test cod
 check is not clean. The bounded B1 runner also passed. Results
 remain under ignored `build/b2-*`; reproducible comparison commands live in the
 [measurement guide](../performance/vm-efficiency.md#comparing-operand-routing-changes).
-B3 should now compare core/instruction grammar ownership on native, preserving
-these boundaries instead of porting unnecessary family consultations.
+
+## B3: native shared directive boundary
+
+Rust's B2 contract distinguishes dot statements before parsing instruction operands
+or selecting encodings. Native PRVM emits `DIRECTIVE_TEXT`; the CLI stores a generic
+or structural directive kind alongside statement text, whose mnemonic omits the dot.
+The source-fallback parser also normalizes that text, but had failed to retain its
+directive kind. The native implementation now preserves that invariant on both
+parser routes, including labeled directives.
+
+The driver classifies only parser-owned directives in both sizing and emission.
+Unresolved dot names report a source-associated `Unknown directive` error before
+selection. This replaces the PACK-only collision exception and source-column scan.
+A non-dot instruction remains eligible for package selection even when its name
+matches a shared directive.
+
+Directive expression requests now use the existing base-only evaluation extension.
+They retain request-local scoped/imported symbol snapshots and the resolver, but
+skip instruction-shape inference. Ordinary instruction requests retain shape work.
+This does not replace the native expression compiler: it still compiles text into
+its local EXVM v1 program, not Rust's EXVM v2 parsing contract. No package format or
+bytecode version changed, and no compatibility executor was added.
+
+The focused test module is
+[the native shared-directive boundary test](../../crates/opforge-asm/src/tests/native_shared_directive_boundary.rs).
+Its two complete positive sources contain eight labeled data groups, grouped and
+immediate expressions, and an ordinary complex instruction operand (75/76 output
+bytes for 6502/68020). Two negative cases require `.nop` to fail as a directive,
+including a preceding label. Rust oracles are constructed live from each source;
+real-native tests require the existing fresh guest protocol and explicit exit.
+The first guest batch exposed the source-fallback kind loss; no failed run counts
+as parity. After its correction, the 6502 positive and negative cases passed their
+fresh guest proof contracts. The 68020 positive case completed with exit zero and
+76 bytes, but its eight words were little-endian: 16 bytes differ from Rust. Its
+instruction bytes and long values matched. This is a pre-existing defect in
+`opasm_directive_data.asm`: the common numeric packer explicitly uses a fixed
+little-endian order. The original 68020 negative case timed out at 60 seconds, supplying no
+proof. An independently runnable labeled 68020 `.nop` case subsequently passed
+its fresh negative proof in 22.67 seconds. Each native case now has its own test
+filter, so follow-ups need not rerun already characterized cases.
+
+**Next decision:** repair shared numeric-data emission using the active package's
+byte-order contract, retaining these exact-output tests. Do not add a CPU-name
+branch or weaken the Rust oracle. That is a distinct data-emission slice; B3 must
+not be marked fully qualified until its 68020 data comparison passes. The separate
+native EXVM representation gap also remains explicit. No native speed or Amiga
+resource-feasibility claim follows from these cases.
+
+Validation: four focused host tests covering live Rust oracles and source boundaries
+(levels A/B),
+real-native results as above (level D), targeted assembly formatting, architecture
+boundary and fresh-proof structural guards. The 175-second four-case batch stayed
+within the five-minute cap; guest deadlines remained 60 seconds. Source review and
+passing structural checks do not waive the remaining native byte mismatch.
+Ephemeral guest artifacts were removed by the runner; local command logs are under
+ignored `build/b3-*`. This is a checkpoint, not full native qualification.
 
 ## Bounded steps
 

@@ -1,3 +1,6 @@
+#[path = "tests/native_shared_directive_boundary.rs"]
+mod native_shared_directive_boundary;
+
 #[path = "tests/generic_statement_boundary.rs"]
 mod generic_statement_boundary;
 
@@ -20060,9 +20063,9 @@ fn motorola68020_item81_native_pack_reuses_ordered_section_placement() {
     assert!(source_contains_in_order(
         &driver,
         &[
-            "CMPI.W #directives.OPASM_DIRECTIVE_PACK, D3",
-            "BSR.W statementStartsWithDirectiveSigilV1",
-            "CLR.W D3",
+            "BSR.W classifyStatementDirectiveV1",
+            "CMPI.W #-1, D3",
+            "BEQ.W unknownDirective",
             "CMPI.W #directives.OPASM_DIRECTIVE_PLACE, D3",
             "BEQ.W place",
             "CMPI.W #directives.OPASM_DIRECTIVE_PACK, D3",
@@ -20074,11 +20077,10 @@ fn motorola68020_item81_native_pack_reuses_ordered_section_placement() {
     assert!(source_contains_in_order(
         &driver,
         &[
-            "statementStartsWithDirectiveSigilV1 .BLOCK",
-            "JSR eng.opasmEngineGetStatementSourceTextV1",
-            "BSR.W skipLineWhitespace",
-            "CMPI.B #'.', (A0)",
-            ".bend ; statementStartsWithDirectiveSigilV1",
+            "statementIsDirectiveV1 .BLOCK",
+            "JSR eng.opasmEngineGetStatementKindV1",
+            "BEQ.S instruction",
+            ".bend ; statementIsDirectiveV1",
         ]
     ));
     assert!(source_contains_in_order(
@@ -20475,7 +20477,7 @@ fn motorola68020_item8_native_data_text_directives_route_before_selected_encodin
         &driver,
         &[
             "opasmDriverEmitImageBytes .BLOCK",
-            "JSR directives.classifyV1",
+            "BSR.W classifyStatementDirectiveV1",
             "CMPI.W #directives.OPASM_DIRECTIVE_BYTE, D3",
             "BEQ.W emitByte",
             "CMPI.W #directives.OPASM_DIRECTIVE_WORD, D3",
@@ -20495,7 +20497,7 @@ fn motorola68020_item8_native_data_text_directives_route_before_selected_encodin
         &driver,
         &[
             "opasmDriverAdvancePc .BLOCK",
-            "JSR directives.classifyV1",
+            "BSR.W classifyStatementDirectiveV1",
             "CMPI.W #directives.OPASM_DIRECTIVE_BYTE, D3",
             "BEQ.W byte",
             "CMPI.W #directives.OPASM_DIRECTIVE_WORD, D3",

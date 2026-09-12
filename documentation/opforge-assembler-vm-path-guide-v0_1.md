@@ -53,7 +53,16 @@ instruction surfaces still consult family extensions where required. This remove
 unnecessary host consultations without claiming that every helper executes bytecode
 or that all target-specific callbacks have been eliminated. The Rust-side native
 request adapters carry the same distinction; real native execution is a separate
-qualification boundary. See the [boundary probe](performance/vm-efficiency.md#target-callback-boundary-probe).
+qualification boundary. Native PRVM's directive result and the CLI source-fallback
+parser both retain statement kind before omitting the leading dot from mnemonic
+text. Native sizing/emission use that kind to keep directives out of instruction
+selection. Directive expression extensions preserve scoped/imported symbol lookup
+while omitting selected-instruction shape inference. The underlying native scalar
+expression compiler still targets its local EXVM v1 program; this routing boundary
+does not establish equivalence to Rust's EXVM v2 expression grammar. A separate
+native data-emission gap remains: numeric `.word` packing is fixed little-endian,
+so it does not yet match the active big-endian package's Rust output. The
+[boundary plan](plans/package-execution-boundaries.md) retains that failing comparison. See the [boundary probe](performance/vm-efficiency.md#target-callback-boundary-probe).
 
 ## 2. Short Version
 

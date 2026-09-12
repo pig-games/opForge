@@ -594,6 +594,12 @@ opforgeNativeCliRecordSourceStatementMnemonic	.block
 	; mnemonic text and its logical token span.
 	cmpi.b #'.', (a2)
 	bne.s copyMnemonic
+	; Match PRVM's DIRECTIVE_TEXT result even when this line uses source fallback.
+	; Preserve specialized module/use kinds already supplied by the parser bridge.
+	tst.w state.NativeCliStmtDirectiveKind
+	bne.s directiveKindReady
+	move.w #constants.NCLI_PARSER_DIRECTIVE_GENERIC, state.NativeCliStmtDirectiveKind
+directiveKindReady
 	cmpi.w #1, d3
 	beq.s copyMnemonic
 	addq.l #1, state.NativeCliStmtMnemStart

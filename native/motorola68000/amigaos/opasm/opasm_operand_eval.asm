@@ -553,8 +553,17 @@ prepareExtensionCommon	.block
 	movea.l abi.OPASM_SERVICE_IO_BUFFER_PTR(a0), a2
 	movea.l abi.OPASM_SERVICE_EVAL_EXTENSION_PTR(a0), a3
 	movea.l a3, a1
+	move.l SelectedStatementIndex.l, d0
+	jsr eng.opasmEngineGetStatementKindV1
+	tst.w d0
+	beq.s instructionExtension
+	jsr eng.prepareDirectiveEvaluateExpressionExtensionV1
+	bra.s extensionReady
+instructionExtension
 	movea.l a2, a0
+	move.l d4, d0
 	jsr eng.prepareEvaluateExpressionExtensionV1
+extensionReady
 	move.l d0, d3
 	movea.l a3, a0
 	movea.l a4, a1

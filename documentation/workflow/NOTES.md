@@ -16,3 +16,9 @@ then remove notes once incorporated or obsolete. These are observations, not rul
   the selected changes had entered the index. We inspected the index before
   continuing. Possible improvement: make the helper report partial completion
   clearly and handle tracked deletions under ignored directories reliably.
+
+- **Host test startup delays.** Fresh Rust debug test executables have sometimes
+  produced no harness output for a long interval; one B3 host-only invocation hit
+  its 60-second deadline before any test output. Keep build/startup delays separate
+  from workload and guest timings. Identify the cause before changing automation
+  or raising timeouts; a host startup timeout is not native failure evidence.

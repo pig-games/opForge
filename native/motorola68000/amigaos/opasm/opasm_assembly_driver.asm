@@ -1536,7 +1536,7 @@ opasmDriverEmitImageBytes	.block
 	jsr eng.opasmEngineStatementMnemonicDuplicatesLabelV1
 	bne.w ok
 	move.l d6, d0
-	bsr.w statementStartsWithDirectiveSigilV1
+	bsr.w statementIsDirectiveV1
 	bne.s emitPackageStateReady
 	movea.l d5, a0
 	move.w d4, d0
@@ -1554,16 +1554,11 @@ opasmDriverEmitImageBytes	.block
 
 emitPackageStateReady
 	movea.l d5, a0
-	moveq #0, d0
-	move.w d4, d0
-	jsr directives.classifyV1
-	cmpi.w #directives.OPASM_DIRECTIVE_PACK, d3
-	bne.s emitDirectiveReady
 	move.l d6, d0
-	bsr.w statementStartsWithDirectiveSigilV1
-	beq.s emitDirectiveReady
-	clr.w d3
-emitDirectiveReady
+	move.l d4, d1
+	bsr.w classifyStatementDirectiveV1
+	cmpi.w #-1, d3
+	beq.w unknownDirective
 	cmpi.w #directives.OPASM_DIRECTIVE_ALIGN, d3
 	beq.w emitAlign
 	cmpi.w #directives.OPASM_DIRECTIVE_DS, d3
@@ -1635,6 +1630,11 @@ fail
 	move.l d6, d2
 	bsr.w appendTextValueEvent
 	moveq #1, d0
+	bra.w return
+
+unknownDirective
+	move.l d6, d0
+	bsr.w reportUnknownDirectiveV1
 	bra.w return
 
 serviceFail
@@ -1879,7 +1879,7 @@ statementLayoutRecorded
 	jsr eng.opasmEngineStatementMnemonicDuplicatesLabelV1
 	bne.w done
 	move.l d7, d0
-	bsr.w statementStartsWithDirectiveSigilV1
+	bsr.w statementIsDirectiveV1
 	bne.s advancePackageStateReady
 	movea.l d5, a0
 	move.w d6, d0
@@ -1900,16 +1900,11 @@ statementLayoutRecorded
 
 advancePackageStateReady
 	movea.l d5, a0
-	moveq #0, d0
-	move.w d6, d0
-	jsr directives.classifyV1
-	cmpi.w #directives.OPASM_DIRECTIVE_PACK, d3
-	bne.s advanceDirectiveReady
 	move.l d7, d0
-	bsr.w statementStartsWithDirectiveSigilV1
-	beq.s advanceDirectiveReady
-	clr.w d3
-advanceDirectiveReady
+	move.l d6, d1
+	bsr.w classifyStatementDirectiveV1
+	cmpi.w #-1, d3
+	beq.w unknownDirective
 	cmpi.w #directives.OPASM_DIRECTIVE_CPU, d3
 	beq.w cpu
 	cmpi.w #directives.OPASM_DIRECTIVE_ORG, d3
@@ -1957,6 +1952,14 @@ advanceDirectiveReady
 	beq.s selectedSizeDispatch
 	moveq #0, d0
 	bra.s selectedSizeOk
+
+unknownDirective
+	move.l d7, d0
+	bsr.w reportUnknownDirectiveV1
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d0-d7/a0-a5
+	moveq #1, d0
+	rts
 
 cpu
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
@@ -4855,32 +4858,57 @@ done
 	rts
 	.bend  ; skipSourceHeadToken
 
-; Distinguish explicit directives from a package-owned instruction that shares
-; the same normalized mnemonic.  The text metadata intentionally omits the
-; leading directive sigil, so consult the original statement before routing.
-; Inputs: D0.L = statement index.
-; Outputs: D0 = 0 when the first non-whitespace source byte is `.`, else 1.
-; @opforge-owner: opasm.amigaos.assembly_driver
-; @opforge-slice: documentation/plans/slices/native-porting-slice-m68020-later-integer-group-b-v1.toml
-; @opforge-role: facade
-statementStartsWithDirectiveSigilV1	.block
-	movem.l d1/a0, -(sp)
-	jsr eng.opasmEngineGetStatementSourceTextV1
-	tst.l d0
-	beq.s no
-	bsr.w skipLineWhitespace
-	beq.s no
-	cmpi.b #'.', (a0)
-	bne.s no
+; Use the parser's directive identity, including statements preceded by labels.
+; Text metadata omits the dot; source-column heuristics cannot recover ownership.
+; Inputs: D0.L = valid statement index.
+; Outputs: D0 = 0 for a directive, 1 for an instruction. Preserves other registers.
+; CCR: reflects D0 on return.
+statementIsDirectiveV1	.block
+	jsr eng.opasmEngineGetStatementKindV1
+	tst.w d0
+	beq.s instruction
 	moveq #0, d0
-	bra.s return
-no
-	moveq #1, d0
-return
-	movem.l (sp)+, d1/a0
-	tst.l d0
 	rts
-	.bend  ; statementStartsWithDirectiveSigilV1
+instruction
+	moveq #1, d0
+	rts
+	.bend  ; statementIsDirectiveV1
+
+; Classify only parser-owned directives, never an instruction with the same name.
+; Inputs: D0.L = statement index, A0 = mnemonic, D1.L = mnemonic length.
+; Outputs: D0 = 0; D3.W = directive kind, NONE for instructions, -1 for unknown directives.
+; Clobbers: D0-D4/A0-A2. CCR: reflects D0 on return.
+classifyStatementDirectiveV1	.block
+	jsr eng.opasmEngineGetStatementKindV1
+	tst.w d0
+	beq.s instruction
+	move.l d1, d0
+	jsr directives.classifyV1
+	tst.w d3
+	bne.s done
+	moveq #-1, d3
+	bra.s done
+instruction
+	moveq #directives.OPASM_DIRECTIVE_NONE, d3
+done
+	moveq #0, d0
+	rts
+	.bend  ; classifyStatementDirectiveV1
+
+; Reject an unresolved dot statement before instruction selection in either pass.
+; Inputs: D0.L = statement index. Outputs: D0 = 1. Preserves other registers.
+; Appends a source-associated service diagnostic. CCR: reflects D0 on return.
+reportUnknownDirectiveV1	.block
+	movem.l d1/d7/a0, -(sp)
+	move.l d0, d7
+	lea UnknownDirectiveText, a0
+	moveq #17, d1  ; byte length of UnknownDirectiveText
+	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
+	bsr.w appendStatementTextEvent
+	movem.l (sp)+, d1/d7/a0
+	moveq #1, d0
+	rts
+	.bend  ; reportUnknownDirectiveV1
 
 trimPartTrailing	.block
 	tst.l d0
@@ -5644,6 +5672,10 @@ ModuleMnemonicText
 
 EndmoduleMnemonicText
 	.byte "endmodule", 0
+
+UnknownDirectiveText
+	.byte "Unknown directive"
+	.byte 0
 
 DriverSelectorUnknownRawText
 	.byte "OTR901: selector unknown mnemonic", 0

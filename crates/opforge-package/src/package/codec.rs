@@ -2696,6 +2696,9 @@ fn decode_compact_selector_plan(
     }
 }
 
+#[cfg(test)]
+mod compact_selector_tests;
+
 pub(super) fn decode_compact_msel_chunk(
     bytes: &[u8],
 ) -> Result<Vec<ModeSelectorDescriptor>, OpcpuCodecError> {
@@ -2728,6 +2731,9 @@ pub(super) fn decode_compact_msel_chunk(
     }
     let string_count = cur.read_u16()? as usize;
     let mut strings = Vec::with_capacity(string_count);
+    // Keep wire order for prefix decoding and references; index only uniqueness.
+    // Borrow through indices so validation does not copy string contents.
+    let mut string_index: Vec<usize> = Vec::with_capacity(string_count);
     for _ in 0..string_count {
         let value = if version >= COMPACT_MODE_SELECTOR_CHUNK_VERSION_V2 {
             let prefix_len = cur.read_u16()? as usize;
@@ -2743,14 +2749,17 @@ pub(super) fn decode_compact_msel_chunk(
         } else {
             cur.read_string()?
         };
-        if strings.contains(&value) {
+        let position = string_index.binary_search_by(|&index| strings[index].cmp(&value));
+        if position.is_ok() {
             return Err(OpcpuCodecError::InvalidChunkFormat {
                 chunk: "CMSE".to_string(),
                 detail: "duplicate string table entry".to_string(),
             });
         }
+        string_index.insert(position.unwrap_err(), strings.len());
         strings.push(value);
     }
+    drop(string_index);
     let selector_count = cur.read_u32()? as usize;
     if selector_count > MAX_DECODE_ENTRY_COUNT {
         return Err(OpcpuCodecError::CountOutOfRange {

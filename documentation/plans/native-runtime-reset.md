@@ -1,6 +1,6 @@
 # Iterative VM and native runtime reset
 
-Status: W1 implemented and locally validated; awaiting Erik's review before W2.
+Status: W2 implemented and locally validated; awaiting Erik's review of the result.
 The active [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md)
 remain binding. This plan captures the current discussion, not instructions from
 historical plans. Only the next iteration is detailed; later outcomes are
@@ -84,12 +84,12 @@ unchanged full-suite reruns. Keep one living plan, no per-iteration sidecars.
 This table tracks outcomes, not individual edits or commits. Update the current
 row in place with the run command, concise result and relevant commit when work
 finishes. Proposed means awaiting agreement on scope, not queued for automatic
-execution. W1 is complete; later work is not yet authorized.
+execution. W1 and W2 were authorized in conversation; later work is not yet authorized.
 
 | Work | Status | Reviewable result | Depends on |
 | --- | --- | --- | --- |
-| W1 — Measure shared package-VM work across families | Complete; review pending | Runnable cross-family baseline and verified VM attribution; brief results below | Authorized in conversation |
-| W2 — Reduce shared runtime-model setup cost | Proposed direction from W1 | Same workloads on reference and improved Rust paths, with setup/work/time/space comparison | Review W1; agree exact preparation experiment |
+| W1 — Measure shared package-VM work across families | Complete; reviewed | Runnable cross-family baseline and verified VM attribution; brief results below | Authorized in conversation |
+| W2 — Reduce shared runtime-model setup cost | Complete; review pending | Compact selector string validation uses a temporary index; comparative results below | W1; authorized in conversation |
 | W3 — Prove one acceleration boundary if it is justified | Direction only | Generic and specialized execution selectable for comparison, including unsupported/error cases | Measured hotspot; may be replaced by further VM simplification |
 | W4 — Test the compact representation on native 68020 | Direction only | Bounded complete native assembly with fresh parity and resource measurements | A useful Rust representation; move earlier if native feasibility is the largest uncertainty |
 
@@ -202,6 +202,61 @@ without detailed tracing; collect attribution separately. Report available memor
 measurements and their limits, plus a first native footprint estimate distinguishing
 fixed package/runtime data, per-statement/symbol state and temporary storage.
 Do not equate Rust heap size with native memory consumption.
+
+## W2 result for review
+
+**Question:** can shared model setup be reduced without changing canonical packages
+or adding a persistent runtime cache? The assembler already retains its model
+between passes. A register-validation index showed no useful timing gain and was
+discarded. Temporary decode probes identified compact selector decoding as the
+largest decoder cost; those probes were removed after localization.
+
+The retained change replaces repeated linear duplicate-string scans in the compact
+selector decoder with a sorted index of wire positions. Prefix reconstruction,
+string references, exact case-sensitive uniqueness and first-error order remain
+unchanged. It supports every existing compact selector version. Comparisons become
+O(N log N); arbitrary unsorted tables can still require O(N²) index moves. The
+current generated table is sorted, so insertion appends. No CPU semantics changed.
+
+Run the same W1 command to inspect the candidate:
+
+```sh
+python3 scripts/performance/vm_efficiency.py selection --blocks 8,32,128
+cargo test -p package --lib --locked
+```
+
+Two reference/candidate comparisons used identical package, source and output
+hashes. Each complete measurement batch took about two seconds; repeat build/setup
+was 36 seconds for reference and 41 seconds for candidate. The repeat's 32-block
+measurements were:
+
+| Family | Whole-process median, reference → candidate | Model-bootstrap attribution, reference → candidate |
+| --- | --- | --- |
+| 6502 | 39.83 → 35.93 ms | 20.04 → 17.31 ms |
+| Z80 | 40.80 → 36.77 ms | 20.35 → 17.44 ms |
+| 68000 | 41.14 → 38.96 ms | 20.08 → 17.08 ms |
+
+Bootstrap decreased across all three families in both comparisons, about 10–15%.
+Whole-process results are noisier: the first 8-block 68000 median rose from
+37.61 to 39.39 ms; the repeat fell from 40.40 to 38.31 ms. These small fixed-order
+samples support the setup improvement, not a universal throughput guarantee.
+All nine positive cases and three negative companions passed in both comparisons.
+All 101 package tests passed, including new randomized uniqueness comparisons,
+wire-order/case coverage, prefix reconstruction and error-precedence checks.
+
+The package remains 368,579 bytes and the measured host executable 4,291,808 bytes.
+The 2,958-string table needs 23,664 bytes of temporary indices on this 64-bit host
+(11,832 with 32-bit indices), freed before selector decoding. This is additional
+scratch capacity, not measured peak memory or a native implementation claim.
+String contents are not duplicated by the index. No native/self-host run occurred.
+Comparative artifacts remain under ignored `build/w2-*` directories.
+
+**Next proposed outcome:** continue simplifying shared preparation before adding
+specialized fragments. Semantic programs are currently decoded once for compact
+operand-record validation and again for retention; selector plans also expand
+compact fields into strings. Measure one of these paths and remove one justified
+piece of repeated work while accounting for preparation memory. Agree the next
+slice after reviewing W2; W3's acceleration direction remains conditional.
 
 ## Longer-term direction
 

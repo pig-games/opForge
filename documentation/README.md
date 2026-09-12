@@ -25,6 +25,7 @@
 
 - [Operating contract](../AGENTS.md)
 - [Workflow](workflow/README.md)
+- [Shared workflow notebook](workflow/NOTES.md)
 - [Optional artifact skills](../skills/README.md)
 
 Completed plans, reviews, backups and captured results belong in Git history.

@@ -64,6 +64,9 @@ historical documents do not activate work or grant authority.
 
 - Briefly explain intended work, meaningful progress, results and remaining
   uncertainty. Use the format that helps Erik inspect the outcome; no fixed forms.
+- Erik and agents can add useful observations to the shared [workflow notebook](documentation/workflow/NOTES.md).
+  Revisit it at natural work boundaries or when friction repeats; use it to discuss
+  improvements, not as a source of new rules or automatic tasks.
 - Keep only active work artifacts and current reference documentation in the tree.
   Before deleting completed or superseded artifacts, preserve enduring facts in
   current documentation. Git history is the archive; do not create archive trees.

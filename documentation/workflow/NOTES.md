@@ -1,0 +1,18 @@
+# Workflow notebook
+
+A shared scratchpad for Erik and agents: recurring friction, promising approaches
+not yet incorporated, and ideas worth trying. Add a few sentences when useful.
+We revisit these at natural checkpoints using the [workflow](README.md#learn-as-we-work),
+then remove notes once incorporated or obsolete. These are observations, not rules.
+
+- **Repeated workspace approvals.** During the workflow cleanup, editing the sibling
+  worktree repeatedly required escalation because it was outside the session's
+  writable roots. Worth exploring: start future work in a session whose writable
+  workspace includes the chosen worktree. Verify that setup before assuming it
+  removes the friction; do not bypass permissions.
+
+- **Staging failure can leave a staged result.** The commit helper reported an
+  ignored-directory error while staging tracked historical deletions, although
+  the selected changes had entered the index. We inspected the index before
+  continuing. Possible improvement: make the helper report partial completion
+  clearly and handle tracked deletions under ignored directories reliably.

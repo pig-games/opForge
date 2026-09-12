@@ -107,6 +107,18 @@ Use the cheapest capable configured model; escalate when uncertainty erases savi
 Return compact deliverables and evidence, not repeated conversation histories.
 Avoid default reviewer chains or parallel agents with overlapping assignments.
 
+## Learn as we work
+
+[NOTES.md](NOTES.md) is a shared notebook for recurring friction, promising
+approaches not yet incorporated, and ideas worth trying. Erik and agents add brief
+notes when useful. No required fields, scores or entry after every task.
+
+Revisit it together at natural checkpoints, such as starting substantial work,
+finishing a coherent change or encountering repeated friction. Decide whether to
+try an idea, improve the workflow, scripts or automation, or drop it. Entries are
+observations and suggestions, not instructions or authorization to create tasks
+or automation. Remove notes once incorporated or obsolete; Git keeps the history.
+
 ## Keep a current working tree
 
 Keep active artifacts and maintained references, tests, fixtures and benchmark tools.

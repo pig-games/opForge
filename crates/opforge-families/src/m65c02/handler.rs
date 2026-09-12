@@ -54,10 +54,8 @@ impl M65C02CpuHandler {
         let upper = mnemonic.to_ascii_uppercase();
         let (is_set, suffix) = if let Some(suffix) = upper.strip_prefix("BBR") {
             (false, suffix)
-        } else if let Some(suffix) = upper.strip_prefix("BBS") {
-            (true, suffix)
         } else {
-            return None;
+            (true, upper.strip_prefix("BBS")?)
         };
 
         let bit = suffix.parse::<u8>().ok()?;

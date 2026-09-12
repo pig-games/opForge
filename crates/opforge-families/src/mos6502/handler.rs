@@ -101,8 +101,6 @@ impl MOS6502FamilyHandler {
             // Binary with comma - check for indexed modes
             Expr::Binary {
                 op: opcore::parser::BinaryOp::Add,
-                left: _,
-                right: _,
                 ..
             } => {
                 // This doesn't capture expr,X syntax - that's handled differently

@@ -1,3 +1,4 @@
+mod target_callback_audit;
 mod tokenizer_fast_equivalence;
 
 use crate::branch_vm::{BranchVmError, PortableBranchContext, PortableBranchRequest};

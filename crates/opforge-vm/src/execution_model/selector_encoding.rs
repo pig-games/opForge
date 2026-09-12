@@ -441,18 +441,26 @@ pub(super) fn selector_to_candidate(
                 )?);
                 packed
             }],
-            _ => match encode_m65816_runtime_operand_plan(
-                selector.operand_plan.as_str(),
-                input.expr0,
-                input.expr1,
-                upper_mnemonic,
-                expr_ctx.assembler_ctx,
-                |expr| expr_ctx.eval_expr(expr),
-                |expr| expr_ctx.has_unstable_symbols(expr),
-            )? {
-                Some(operand_bytes) => operand_bytes,
-                None => return Ok(None),
-            },
+            _ => {
+                types::target_callbacks::attempt(
+                    "family_operand_plan",
+                    &expr_ctx.resolved.family_id,
+                    &expr_ctx.resolved.cpu_id,
+                    &selector.operand_plan,
+                )?;
+                match encode_m65816_runtime_operand_plan(
+                    selector.operand_plan.as_str(),
+                    input.expr0,
+                    input.expr1,
+                    upper_mnemonic,
+                    expr_ctx.assembler_ctx,
+                    |expr| expr_ctx.eval_expr(expr),
+                    |expr| expr_ctx.has_unstable_symbols(expr),
+                )? {
+                    Some(operand_bytes) => operand_bytes,
+                    None => return Ok(None),
+                }
+            }
         }
     };
 

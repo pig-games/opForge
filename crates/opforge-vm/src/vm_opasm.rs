@@ -409,6 +409,16 @@ pub(crate) fn parse_operand_expr_range(
     }
     let family_id = resolve_operand_family_id(expr_parse_ctx, expr_end_span)?;
     if family_allows_m6800_indexed_register_postfix(family_id.as_str()) {
+        types::target_callbacks::attempt(
+            "family_indexed_postfix",
+            &family_id,
+            expr_parse_ctx.cpu_id,
+            hints.mnemonic.unwrap_or(""),
+        )
+        .map_err(|message| ParseError {
+            message,
+            span: expr_end_span,
+        })?;
         if let Some(expr) = parse_indexed_register_postfix_operand(&tokens[start..end]) {
             operands.push(expr);
             return Ok(());
@@ -434,6 +444,7 @@ pub(crate) fn parse_operand_expr_range(
         };
     if let Some(expr) = expr_parse_ctx.model.parse_family_operand_surface_expr(
         family_id.as_str(),
+        expr_parse_ctx.cpu_id,
         &tokens[start..end],
         hints.mnemonic,
         hints.operand_index,

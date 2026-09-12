@@ -316,10 +316,11 @@ formatting and engineering guards. The VM-only CLI retains existing unused-code
 warnings. No full-workspace or native qualification is claimed. Measurement
 artifacts remain in ignored `build/w3-*` directories.
 
-**Next decision for review:** follow the short
-[package-execution boundary plan](package-execution-boundaries.md) to expose
-target-semantic callbacks and compare the corresponding native paths before
-choosing further optimization. Afterwards, candidates include reducing generic
+**Next decision for review:** B1 of the short
+[package-execution boundary plan](package-execution-boundaries.md) now exposes
+target-semantic callback attempts and includes the corresponding native source
+scan. Review its findings and select one shared operation before further
+optimization. Afterwards, candidates include reducing generic
 tokenizer dispatch through package-derived preparation and reusing prepared
 candidate discovery across passes. The tokenizer loop is a demonstrated generic hotspot, but copying
 its hand-maintained Rust fast path into native would create another correspondence

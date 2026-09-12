@@ -1,7 +1,7 @@
 # Package-controlled execution: Rust and native
 
-Status: proposed implementation; initial source scan complete. Review this plan
-before starting B1. Companion to [the runtime reset](native-runtime-reset.md),
+Status: B1 complete and locally validated. Review the findings
+before selecting B2. Companion to [the runtime reset](native-runtime-reset.md),
 following W3's measurements. The active [AGENTS.md](../../AGENTS.md) remains binding.
 
 ## Outcome and scope
@@ -37,6 +37,46 @@ resolution callbacks must not be confused with target-specific encoding callback
 Likewise, `vm-runtime-only` is not proof that Rust avoids family handlers, and
 `OPFORGE_TOKENIZER_FORCE_GENERIC` only controls tokenizer specialization. Existing
 architecture-guard success does not prove semantic independence of these paths.
+
+## B1 findings
+
+`OPFORGE_TARGET_CALLBACKS=report|refuse` now instruments the four identified host
+boundaries, with sticky refusal through candidate/parser recovery and a check
+before binary publication. The [bounded runner](../../scripts/performance/package_boundaries.py)
+compares identical baseline/report/refuse inputs; [usage and limits](../performance/vm-efficiency.md#target-callback-boundary-probe)
+are maintained with the measurement tooling.
+
+| 32-block case (160 instructions) | Host callback attempts, complete assembly | First refused boundary |
+|---|---:|---|
+| 6502 | 320 family candidate resolver calls | `lda`: family candidate resolver |
+| Z80 | 320 family candidate resolver calls | `mvi`: family candidate resolver |
+| 68000 | 226 family operand-surface parser calls | `.cpu`: family operand-surface parser |
+
+6502/Z80 consult the resolver once per instruction per pass, including NOP.
+68000's parsing calls include `.cpu`, `.org`, `.word` and `.long`; this is broader
+than complex instruction addressing syntax. Its instruction emission in this
+workload does not hit the family candidate resolver. At 8/128 blocks the respective
+counts are 80/1280, 80/1280 and 58/898. Attempts include helpers that decline input;
+these numbers do not establish that every consultation is necessary. Existing
+32-block VM dispatch totals remain 6,476 / 6,732 / 7,020 in automatic tokenizer
+mode; the callback work is a separate category, not additional VM instructions.
+
+**B2 decision:** start by checking whether shared package-described operand
+classification can replace family-parser consultation for scalar/register operands
+and ordinary directive expressions. Compare ASTs, spans, errors and package-defined
+surface precedence across targets before retaining a change. Do not treat skipping
+callbacks until these benchmarks pass as semantic equivalence, or promise that one
+operation will remove both the parsing and candidate-resolution dependencies.
+The bounded batch completed in 2.40 seconds (29.45 seconds separately reported
+cached build/setup). All 18 baseline/report positive runs matched independent
+bytes, nine strict runs exited 1 without a binary, and 18 negative companions
+preserved diagnostics. The callback-free package NOP control succeeded in refuse
+mode. Detailed artifacts are local in ignored `build/b1-complete`; failed
+experimental batches remain explicitly incomplete. Validation passed: 58 shared-type
+and 416 VM library tests, the focused engine refusal/output test, 38 performance-tool
+tests, scoped Clippy, formatting and workflow/architecture guards. No full-workspace
+qualification is claimed. The native scan above remains source-only; B1 supplies Rust-side
+evidence only.
 
 ## Bounded steps
 

@@ -64,6 +64,47 @@ encoding attempts. `vm.model.bootstrap` measures the assembler runtime-model
 bootstrap wrapper while profiling is active; it is not a count of every model
 construction elsewhere in the process.
 
+## Target-callback boundary probe
+
+```sh
+python3 scripts/performance/package_boundaries.py --blocks 8,32,128
+python3 -m unittest discover -s scripts/performance/tests -p test_package_boundaries.py
+```
+
+This companion runner uses the same build, canonical package, inputs and deadlines.
+It compares baseline with `OPFORGE_TARGET_CALLBACKS=report`, then runs `refuse` on
+identical inputs. Report mode preserves execution; refuse mode rejects an attempted
+call before invoking it. The engine accepts the environment switch only with a
+`vm-runtime-only` build and VM execution; invalid values or other routes fail.
+Library probes can install a scoped `types::target_callbacks` session explicitly.
+
+The four instrumented boundaries are registered family candidate resolvers,
+registered family operand-surface parsers, the inline family indexed-postfix parser,
+and the family operand-plan fallback. These are conservative boundaries: even a
+helper that declines the input or internally uses package data counts as an attempt.
+They do not inventory every target-specific rule or every Rust helper in the code.
+No reported callbacks is therefore not proof of wholly package-controlled execution.
+
+`[opforge target callbacks]` emits one JSON report per assembly, including boundary,
+family, CPU, operation detail, attempt count and first refusal. Refusal stays fatal
+through candidate/parser recovery and is checked before binary publication. A
+pass-two-only refusal may leave diagnostic listing output, but cannot produce a
+successful assembly. Reports cap distinct keys at 256 and mark overflow incomplete;
+these diagnostic allocations are not a target-memory estimate. Existing VM-work
+reports separately count callback attempts/refusals by phase, descriptor work,
+bytecode dispatch and tokenizer specialization. Callback counts are not VM steps
+or successful-handling counts, and do not measure time inside helpers.
+
+The runner checks 18 successful baseline/report assemblies against independent
+bytes, nine refused assemblies for exit 1 with no binary, and 18 negative companions
+for identical undefined-symbol diagnostics. A callback-free NOP control must still
+succeed in refuse mode; it selects its CPU through the CLI because even a `.cpu`
+operand currently consults the family surface parser on the 68000 route. Profiles
+are excluded from diagnostic comparison; actual diagnostics remain compared.
+Artifacts and `summary.json` go to a fresh ignored `build/package-boundaries-*`
+directory. Interrupted/failed batches remain incomplete. The fixed run order and
+instrumentation make this a boundary classification, not a speed qualification.
+
 ## VM work and repetition
 
 Attribution enables `OPFORGE_PROFILE_VM_WORK=1`. The existing assembly-profile

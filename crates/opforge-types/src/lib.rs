@@ -15,6 +15,7 @@ pub mod processing;
 pub mod source_map;
 pub mod symbol;
 pub mod symbol_stability;
+pub mod target_callbacks;
 pub mod text_encoding;
 
 pub mod vm_work;

@@ -624,6 +624,7 @@ impl HierarchyExecutionModel {
     pub(crate) fn parse_family_operand_surface_expr(
         &self,
         family_id: &str,
+        cpu_id: &str,
         tokens: &[Token],
         mnemonic: Option<&str>,
         operand_index: usize,
@@ -636,6 +637,16 @@ impl HierarchyExecutionModel {
         let Some(parser) = self.operand_surface_parsers.get(key.as_str()) else {
             return Ok(None);
         };
+        types::target_callbacks::attempt(
+            "family_operand_surface",
+            family_id,
+            cpu_id,
+            mnemonic.unwrap_or(""),
+        )
+        .map_err(|message| ParseError {
+            message,
+            span: end_span,
+        })?;
         parser(
             tokens,
             mnemonic,

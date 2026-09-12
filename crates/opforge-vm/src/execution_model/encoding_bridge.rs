@@ -202,14 +202,35 @@ impl HierarchyExecutionModel {
         RuntimeBridgeError,
     > {
         let resolved = self.core.resolve_pipeline(cpu_id, dialect_override)?;
-        let (candidates, require_program) = match self
-            .expr_resolver_entry(resolved.family_id.as_str())
-        {
-            Some(resolver) => match resolver
-                .resolver
-                .resolve_candidates(self, &resolved, mnemonic, operands, ctx)?
-            {
-                Some(candidates) => (candidates, true),
+        let (candidates, require_program) =
+            match self.expr_resolver_entry(resolved.family_id.as_str()) {
+                Some(resolver) => {
+                    types::target_callbacks::attempt(
+                        "family_candidate_resolver",
+                        &resolved.family_id,
+                        &resolved.cpu_id,
+                        mnemonic,
+                    )
+                    .map_err(RuntimeBridgeError::Resolve)?;
+                    match resolver
+                        .resolver
+                        .resolve_candidates(self, &resolved, mnemonic, operands, ctx)?
+                    {
+                        Some(candidates) => (candidates, true),
+                        None => {
+                            let Some(input) = package_shape_input(self, &resolved, operands) else {
+                                return Ok(None);
+                            };
+                            let Some(candidates) = self.select_candidates_from_package_shape(
+                                &resolved, mnemonic, input, ctx,
+                            )?
+                            else {
+                                return Ok(None);
+                            };
+                            (candidates, true)
+                        }
+                    }
+                }
                 None => {
                     let Some(input) = package_shape_input(self, &resolved, operands) else {
                         return Ok(None);
@@ -221,19 +242,7 @@ impl HierarchyExecutionModel {
                     };
                     (candidates, true)
                 }
-            },
-            None => {
-                let Some(input) = package_shape_input(self, &resolved, operands) else {
-                    return Ok(None);
-                };
-                let Some(candidates) =
-                    self.select_candidates_from_package_shape(&resolved, mnemonic, input, ctx)?
-                else {
-                    return Ok(None);
-                };
-                (candidates, true)
-            }
-        };
+            };
         self.enforce_candidate_budget(&candidates)?;
         match self
             .core

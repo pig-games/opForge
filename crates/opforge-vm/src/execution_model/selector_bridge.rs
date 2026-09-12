@@ -402,7 +402,10 @@ impl HierarchyExecutionModel {
                     continue;
                 }
                 types::vm_work::event("selection.candidate_attempts", 1);
-                match selector_to_candidate(selector, &input, &upper_mnemonic, &expr_ctx) {
+                let candidate = selector_to_candidate(selector, &input, &upper_mnemonic, &expr_ctx);
+                // A diagnostic refusal is fatal even when another candidate could succeed.
+                types::target_callbacks::check().map_err(RuntimeBridgeError::Resolve)?;
+                match candidate {
                     Ok(Some(candidate)) => {
                         types::vm_work::event("selection.candidates_produced", 1);
                         candidates.push(candidate);

@@ -1499,7 +1499,35 @@ pub fn resolve_output_plan(
     })
 }
 
+// This audit covers VM bridge callbacks, not the independent Rust execution route.
+fn install_target_callback_audit(
+    execution_mode: ExecutionMode,
+) -> Result<Option<types::target_callbacks::Session>, AsmRunError> {
+    let Some(value) = std::env::var_os("OPFORGE_TARGET_CALLBACKS") else {
+        return Ok(None);
+    };
+    let install = || -> Result<_, String> {
+        let mode = types::target_callbacks::Mode::parse(&value.to_string_lossy())?;
+        if !cfg!(feature = "vm-runtime-only") || execution_mode != ExecutionMode::Vm {
+            return Err(
+                "target callback audit requires a vm-runtime-only build and VM execution".into(),
+            );
+        }
+        let mut session = types::target_callbacks::install(mode);
+        session.emit_on_drop = true;
+        Ok(Some(session))
+    };
+    install().map_err(|message| {
+        AsmRunError::new(
+            AsmError::new(AsmErrorKind::Cli, &message, None),
+            Vec::new(),
+            Vec::new(),
+        )
+    })
+}
+
 pub fn run_assembly(request: AssemblyExecutionRequest<'_>) -> Result<AsmRunReport, AsmRunError> {
+    let _target_callbacks = install_target_callback_audit(request.execution_mode)?;
     let _phase_profile = phase_profile::install_for_current_thread_if_enabled();
     let assembly_started_at = Instant::now();
     let fs_output_sink = FsOutputSink;
@@ -1546,6 +1574,7 @@ pub fn run_assembly(request: AssemblyExecutionRequest<'_>) -> Result<AsmRunRepor
 pub fn run_prepared_assembly(
     request: PreparedAssemblyExecutionRequest<'_>,
 ) -> Result<AsmRunReport, AsmRunError> {
+    let _target_callbacks = install_target_callback_audit(request.execution_mode)?;
     let _phase_profile = phase_profile::install_for_current_thread_if_enabled();
     let assembly_started_at = Instant::now();
     let fs_output_sink = FsOutputSink;
@@ -1642,6 +1671,15 @@ fn run_assembly_with_prepared(
 
     assembler.clear_diagnostics();
     let pass1 = assembler.pass1(&expanded_lines);
+    // Refusals remain fatal even if candidate selection or parser recovery consumed
+    // the immediate error. Check before opening any output files.
+    types::target_callbacks::check().map_err(|message| {
+        AsmRunError::new(
+            AsmError::new(AsmErrorKind::Instruction, &message, None),
+            remap_diags(assembler.take_diagnostics()),
+            expanded_lines.clone(),
+        )
+    })?;
     let output_plan = resolve_output_plan(OutputPlanningRequest {
         input_base: request.input_base,
         source_lines: &expanded_lines,
@@ -1720,6 +1758,13 @@ fn run_assembly_with_prepared(
                 ));
             }
         };
+        types::target_callbacks::check().map_err(|message| {
+            AsmRunError::new(
+                AsmError::new(AsmErrorKind::Instruction, &message, None),
+                remap_diags(assembler.take_diagnostics()),
+                expanded_lines.clone(),
+            )
+        })?;
         generated_output = assembler.image().entries().map_err(|err| {
             let traces = assembler.runtime_processing_traces().to_vec();
             AsmRunError::new_with_traces(
@@ -3553,45 +3598,57 @@ mod tests {
     #[test]
     fn run_assembly_supports_in_memory_io_boundaries() {
         let source_provider = MemorySourceProvider::default()
-            .with_file("/virtual/main.asm", ".module main\nnop\n.endmodule\n");
+            .with_file("/virtual/main.asm", ".module main\n nop\n.endmodule\n");
         let output_sink = MemoryOutputSink::default();
 
-        let report = run_assembly(AssemblyExecutionRequest {
-            root_path: Path::new("/virtual/main.asm"),
-            execution_mode: ExecutionMode::Vm,
-            input_base: "/virtual/main",
-            defines: &[],
-            include_paths: &[],
-            module_paths: &[],
-            pp_macro_depth: 32,
-            cpu_override: None,
-            default_cpu: CpuType::new("8085"),
-            max_loop_iterations: 1000,
-            opasm_package_path: None,
-            out_dir: None,
-            debug_conditionals: false,
-            tab_size: None,
-            output_format: OutputFormat::Text,
-            go_addr: None,
-            bin_specs: &[],
-            fill_byte: 0,
-            fill_byte_set: false,
-            default_outputs: true,
-            labels_file: None,
-            label_output_format: LabelOutputFormat::Vice,
-            dependency_output: None,
-            outfile_override: None,
-            list_name_override: None,
-            hex_name_override: None,
-            srec_name_override: Some(""),
-            hunk_name_override: None,
-            header_title: "test",
-            output_sink: Some(&output_sink),
-            source_provider: Some(&source_provider),
-            collect_runtime_traces: true,
-            suppress_outputs: false,
-        })
-        .expect("assembly should run from memory");
+        let assemble = |sink: &MemoryOutputSink| {
+            run_assembly(AssemblyExecutionRequest {
+                root_path: Path::new("/virtual/main.asm"),
+                execution_mode: ExecutionMode::Vm,
+                input_base: "/virtual/main",
+                defines: &[],
+                include_paths: &[],
+                module_paths: &[],
+                pp_macro_depth: 32,
+                cpu_override: None,
+                default_cpu: CpuType::new("8085"),
+                max_loop_iterations: 1000,
+                opasm_package_path: None,
+                out_dir: None,
+                debug_conditionals: false,
+                tab_size: None,
+                output_format: OutputFormat::Text,
+                go_addr: None,
+                bin_specs: &[],
+                fill_byte: 0,
+                fill_byte_set: false,
+                default_outputs: true,
+                labels_file: None,
+                label_output_format: LabelOutputFormat::Vice,
+                dependency_output: None,
+                outfile_override: None,
+                list_name_override: None,
+                hex_name_override: None,
+                srec_name_override: Some(""),
+                hunk_name_override: None,
+                header_title: "test",
+                output_sink: Some(sink),
+                source_provider: Some(&source_provider),
+                collect_runtime_traces: true,
+                suppress_outputs: false,
+            })
+        };
+        let report = assemble(&output_sink).expect("assembly should run from memory");
+        {
+            let refused_sink = MemoryOutputSink::default();
+            let _audit = types::target_callbacks::install(types::target_callbacks::Mode::Refuse);
+            let error = assemble(&refused_sink)
+                .err()
+                .expect("refusal must survive assembly recovery");
+            assert!(error.to_string().contains("target callback refused"));
+            assert!(refused_sink.text("/virtual/main.lst").unwrap().is_none());
+            assert!(refused_sink.text("/virtual/main.hex").unwrap().is_none());
+        }
 
         assert_eq!(
             report.error_count(),

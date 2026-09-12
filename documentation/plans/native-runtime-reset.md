@@ -39,6 +39,21 @@ spending. Report available usage honestly; do not invent exact token accounting.
 Report long compile/emulator waits separately and include them in elapsed time.
 Recalibrate these budgets with Erik after the first two iterations.
 
+Measurements must fit inside the iteration, not become hours-long background
+work. Proposed starting limits: 60 seconds wall time per measurement invocation
+and five minutes for the whole measurement batch, including setup, warmups,
+repetitions and attribution runs. Enforce both limits in the measurement tool;
+terminate and clean up owned child processes on timeout. Count emulator startup
+in the wall-time budget even when reporting guest execution time separately.
+Tune workload size downward when needed, not the timeout upward. If useful
+coverage cannot fit, report that limitation and change the experiment with Erik.
+
+Do not run the current native self-host test for this work: it does not finish
+in a useful time. Neither Rust nor native full-self-host profiling is an initial
+deliverable or an automatic option in the new comparison command. Full
+self-assembly remains a later product acceptance target for the replacement,
+selected with Erik only after bounded workloads give credible feasibility evidence.
+
 Each iteration answers one consequential question and ends with something Erik
 can run and inspect: an executable comparison, working assembly path, or a
 measured replacement. Inspection alone is bounded preparation within an iteration.
@@ -67,14 +82,30 @@ Amiga's memory budget, and can we measure it without a new profiling framework?
 
 Deliver a small repository-local comparison entrypoint, built on existing
 performance tools and Rust profiling, with a documented quick command that Erik
-can run. Its default demonstration must be short; full-workload profiling is an
-explicit mode. Exact invocation and initial results replace this paragraph when
+can run. Its demonstration uses bounded, focused workloads only. Exact invocation
+and initial results replace this paragraph when
 implemented; no command is claimed to exist yet.
 
-Use the actual native self-host source/package as the primary workload. Add one
-small, semantically complete workload exercising repeated instructions, forward
-references/layout and a state change. Prefix/abort probes may localize cost but
-must be labelled incomplete and must not claim full correctness or throughput.
+Choose one focused, moderately sized, semantically complete workload for the
+iteration's question. Use realistic patterns from native source or existing
+fixtures without assembling the full self-host source. Start with tens to hundreds
+of statements, then choose two or three bounded sizes that expose repeated work
+without exceeding the measurement budget. Statement count is a calibration aid,
+not a fixed target or a proxy for complexity.
+
+Exercise the selected mechanism and its important interactions. For example,
+selection/binding needs varied operand forms and state changes; layout needs
+forward/backward references and size changes; lookup needs distinct symbols or
+modules. Avoid both a single trivial instruction repeated indefinitely and an
+all-features corpus that obscures the cause. Preserve complete syntax, dependencies
+and a checkable output. Select a different workload when the next iteration asks
+a different question; keep a small regression case for behavior already changed.
+
+Compare baseline and candidate on identical workload sizes and inputs. Record
+what the workload represents and what it omits. Completed small cases establish
+their own correctness and cost, not full-product throughput. Prefix/abort probes
+may localize cost but must be labelled incomplete; a timeout is a failed
+measurement, never a speed sample or justification for a longer automatic retry.
 
 Reuse current prepared-package and prepared-line mechanisms. Trace only the
 dominant path needed to distinguish remaining decoding, lookup, parsing, dispatch,
@@ -91,7 +122,8 @@ Do not equate Rust heap size with native memory consumption.
 
 Done when the quick command completes, checks actual assembly output against the
 reference, and exposes enough evidence to select one optimization with an explicit
-correctness boundary and expected whole-workload benefit. Record only the brief
+correctness boundary and expected benefit for the complete focused workload.
+Full-self-host speed predictions remain unproven. Record only the brief
 decision and reproducible command here. If profiling cannot identify a useful
 candidate within budget, report exactly what is missing; do not start cleanup or
 invent an optimization to satisfy the plan.
@@ -106,7 +138,7 @@ framework or multi-platform package compiler belongs in this iteration.
 | One cheaper VM path | Rust assembles a complete focused workload through a derived runtime representation, compared with canonical/reference execution | Less repeated work, matching artifacts and relevant diagnostics/state; preparation, execution and memory costs reported |
 | One useful acceleration point | The same path can use one specialized fragment or generic VM execution through a defined boundary | Equal results and failure behavior, material benefit attributable to the fragment; unsupported cases retain generic execution |
 | An early native feasibility slice | The compact representation runs a complete focused assembly on the 68020 | Fresh native proof, measured native time and memory, updated estimate against the 2 MB/15-minute target |
-| Growing useful coverage | Broader source workloads use the improved path; bounded additional iterations add only evidence-backed mechanisms | End-to-end gains, controlled invalidation across state/layout changes, and manageable code/data growth |
+| Growing useful coverage | A small set of focused workloads covers additional mechanisms; each iteration stays inside the measurement limits | End-to-end gains on completed cases, controlled invalidation across state/layout changes, and manageable code/data growth |
 | A maintained native product path | Complete self-assembly with the replacement integrated and superseded implementation removed | Correct executable/artifacts, hardware-budget qualification, relevant broad checks and current technical/user documentation |
 
 These rows are not five promised single-iteration tasks. Split large outcomes into
@@ -130,8 +162,10 @@ mechanism into the design. Reach native feasibility before broad coverage work.
   Temporary parallel paths are experimental; integration removes replaced code
   rather than accumulating delegates and permanent experiment switches.
 - Judge gains on complete workloads including preparation. A fast microbenchmark,
-  dispatch reduction or timeout escape is not product success. Keep correctness
-  cases beyond the self-host workload to detect workload-specific assumptions.
+  dispatch reduction or timeout escape is not product success. Here "complete"
+  means the selected focused case completes assembly, not that every iteration
+  assembles the whole product. Keep correctness cases with different shapes to
+  detect workload-specific assumptions.
 - Stop, revise or discard experiments that do not justify their complexity or
   memory. Generated/AOT code is another hypothesis, not an automatic fallback plan.
 - Update this plan in place after review. Move durable decisions into maintained

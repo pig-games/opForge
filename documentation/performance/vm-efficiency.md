@@ -79,7 +79,7 @@ call before invoking it. The engine accepts the environment switch only with a
 Library probes can install a scoped `types::target_callbacks` session explicitly.
 
 The four instrumented boundaries are registered family candidate resolvers,
-registered family operand-surface parsers, the inline family indexed-postfix parser,
+registered family parsers for compound instruction operands, the inline family indexed-postfix parser,
 and the family operand-plan fallback. These are conservative boundaries: even a
 helper that declines the input or internally uses package data counts as an attempt.
 They do not inventory every target-specific rule or every Rust helper in the code.
@@ -96,14 +96,52 @@ bytecode dispatch and tokenizer specialization. Callback counts are not VM steps
 or successful-handling counts, and do not measure time inside helpers.
 
 The runner checks 18 successful baseline/report assemblies against independent
-bytes, nine refused assemblies for exit 1 with no binary, and 18 negative companions
-for identical undefined-symbol diagnostics. A callback-free NOP control must still
-succeed in refuse mode; it selects its CPU through the CLI because even a `.cpu`
-operand currently consults the family surface parser on the 68000 route. Profiles
+bytes, nine strict attempts, and 18 negative companions for identical undefined-symbol
+diagnostics. A strict attempt must either exit 1 without a binary after encountering
+a callback, or complete callback-free with the independently expected bytes. A
+callback-free NOP control must still succeed in refuse mode; it selects its CPU
+through the CLI to isolate instruction emission. Profiles
 are excluded from diagnostic comparison; actual diagnostics remain compared.
 Artifacts and `summary.json` go to a fresh ignored `build/package-boundaries-*`
 directory. Interrupted/failed batches remain incomplete. The fixed run order and
 instrumentation make this a boundary classification, not a speed qualification.
+
+## Comparing operand routing changes
+
+Preserve the baseline executable and its canonical package in ignored build output
+before rebuilding. Capture its results, then compare the candidate on the same
+source cases. Supply explicit paths so an old summary cannot silently use a newer
+executable for timing:
+
+```sh
+python3 scripts/performance/operand_routing.py \
+  --reference-binary build/b2-reference/opforge \
+  --reference-package build/b2-reference/runtime.opasm \
+  --output build/operand-reference
+python3 scripts/performance/operand_routing.py \
+  --reference-binary build/b2-reference/opforge \
+  --reference-package build/b2-reference/runtime.opasm \
+  --reference-summary build/operand-reference/summary.json \
+  --candidate-binary target/release/opforge \
+  --candidate-package build/b2-candidate-build/runtime.opasm
+```
+
+The supplied binaries must be VM-only builds; normal report-mode invocation
+rejects an unsupported build or execution mode. The runner compares nine scaling
+cases and twelve focused directive, expression and addressing cases. It keeps
+output bytes, errors/spans and callback attempts separate. A diagnostic difference
+returns a nonzero result and is recorded even when both runs reject invalid input;
+review any intentional change explicitly. No fixture-specific waivers are applied.
+A timeout preserves an incomplete summary. Each stage uses the same 60-second
+invocation and five-minute batch limits; building the binaries is separate setup.
+
+Three paired, unprofiled samples per side on the 32-block cases include process
+startup and model preparation; warmups are excluded. These short samples describe
+the observed cost and do not qualify a speedup. The B2 change removes family
+consultation for directive grammar and shared instruction atoms. Its 68000
+32-block callback count is 32, down from 226; 6502/Z80 candidate-resolver counts
+remain 320. VM dispatch totals are unchanged. Complex addressing hooks remain.
+Temporary executable/package oracles and result directories are not committed.
 
 ## VM work and repetition
 

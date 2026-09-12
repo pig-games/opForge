@@ -344,8 +344,18 @@ pub fn render_dependencies(
     types::artifacts::render_dependencies(output_format, targets, dependencies, make_phony)
 }
 
+/// Grammar ownership, independent of the selected target. Directive operands
+/// are core expressions; only instruction operands admit addressing surfaces.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) enum OperandExprSyntax {
+    #[default]
+    Core,
+    Instruction,
+}
+
 #[derive(Clone, Copy, Default)]
 pub(crate) struct OperandExprParseHints<'a> {
+    pub(crate) syntax: OperandExprSyntax,
     pub(crate) mnemonic: Option<&'a str>,
     pub(crate) operand_index: usize,
 }
@@ -389,6 +399,39 @@ pub(crate) fn parse_operand_expr_range(
     let expr_end_span = boundary_token
         .map(|token| token.span)
         .unwrap_or(boundary.end_span);
+    // The existing expression contract owns directive grammar and atomic
+    // instruction operands. Do not ask a family adapter to interpret them.
+    let expression_tokens = &tokens[start..end];
+    let shared_atom = matches!(
+        expression_tokens,
+        [Token {
+            kind: TokenKind::Number(_)
+                | TokenKind::Identifier(_)
+                | TokenKind::Register(_)
+                | TokenKind::String(_),
+            ..
+        }]
+    );
+    // Directive operands already accept an optional immediate marker. Preserve
+    // that shared spelling through the wrapper below, without family dispatch.
+    let core_expression = matches!(hints.syntax, OperandExprSyntax::Core)
+        && !matches!(
+            expression_tokens.first().map(|token| &token.kind),
+            Some(TokenKind::Hash)
+        );
+    if core_expression || shared_atom {
+        types::vm_work::event("operand.shared_expression_calls", 1);
+        let expr = crate::vm_opcore::parse_expr_with_authoritative_exvm_contract_and_boundary(
+            expr_parse_ctx,
+            expression_tokens,
+            expr_end_span,
+            boundary.end_token_text,
+            boundary_token,
+        )
+        .unwrap_or_else(|err| Expr::Error(err.message, err.span));
+        operands.push(expr);
+        return Ok(());
+    }
     let mut parse_inner =
         |inner_tokens: &[Token], inner_end_span: Span, inner_end_token_text: Option<String>| {
             parse_expr_slice(

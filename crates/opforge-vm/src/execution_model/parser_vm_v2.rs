@@ -3,7 +3,9 @@ use crate::runtime_diagnostics::RuntimeBridgeDiagnostic;
 use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_model_types::{RuntimeParserContract, RuntimeParserVmProgram};
 use crate::runtime_parse_utils::{parse_error_at_end, runtime_bridge_error_to_parse_error};
-use crate::vm_opasm::{split_top_level_comma_ranges, OperandExprBoundary, OperandExprParseHints};
+use crate::vm_opasm::{
+    split_top_level_comma_ranges, OperandExprBoundary, OperandExprParseHints, OperandExprSyntax,
+};
 use crate::vm_opasm_parse::ParserVmExecContext;
 use crate::vm_opcore::parse_expr_with_vm_contract;
 use opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError};
@@ -53,6 +55,7 @@ struct ParserVmV2AstBuilder {
     label: Option<Label>,
     mnemonic: Option<String>,
     operands: Vec<Expr>,
+    operand_syntax: OperandExprSyntax,
 }
 
 #[derive(Clone, Debug)]
@@ -331,6 +334,7 @@ impl ParserVmV2State<'_, '_> {
                             end_token_text: self.end_token_text.clone(),
                         },
                         OperandExprParseHints {
+                            syntax: self.builder.operand_syntax,
                             mnemonic: self.builder.mnemonic.as_deref(),
                             operand_index: self.builder.operands.len(),
                         },
@@ -357,10 +361,12 @@ impl ParserVmV2State<'_, '_> {
                         self.advance_mnemonic_suffix_plus = true;
                     }
                     self.builder.mnemonic = Some(mnemonic);
+                    self.builder.operand_syntax = OperandExprSyntax::Instruction;
                 }
                 ParserVmOpcodeV2::SetDotMnemonic => {
                     let mnemonic = self.pop_text("SetDotMnemonic")?;
                     self.builder.mnemonic = Some(format!(".{mnemonic}"));
+                    self.builder.operand_syntax = OperandExprSyntax::Core;
                 }
                 ParserVmOpcodeV2::PushOperand => {
                     let expr = self.pop_expr("PushOperand")?;
@@ -657,6 +663,7 @@ impl ParserVmV2State<'_, '_> {
                     end_token_text: self.end_token_text.clone(),
                 },
                 OperandExprParseHints {
+                    syntax: self.builder.operand_syntax,
                     mnemonic: mnemonic.as_deref(),
                     operand_index: range_idx,
                 },

@@ -3,7 +3,7 @@
 # opForge Assembler VM Path Guide (v0.1 Draft)
 
 Status: first draft working guide  
-Last updated: 2026-05-11
+Last updated: 2026-09-12
 
 See also:
 - [VM Boundary & Protocol Specification (v1)](vm-boundary-protocol-v1.md)
@@ -20,6 +20,40 @@ It is written as a human-oriented walkthrough rather than a normative specificat
 - Which steps still belong to ordinary Rust orchestration?
 - How do tokenization, parsing, expression work, and instruction encoding fit together?
 - Which VM instruction sets exist, and what does each one do?
+
+### Current bytecode version policy
+
+Before 1.0, only the latest supported state of each VM contract is retained.
+Version identifiers validate package/executor agreement; they do not require
+backward-compatible execution of old bytecode. Change affected package generation
+and Rust/native consumers together and remove superseded program versions.
+Existing implementation/version gaps require migration, not compatibility layers.
+This policy does not remove the need to check assembly-source behavior.
+
+### Operand grammar ownership
+
+Generic data/location directives such as `.byte`, `.word` and `.org` belong to
+shared core processing for every CPU. CPU/family-specific operand parsing and
+instruction encoding are not part of their execution path. In statement position,
+a leading dot selects shared directive/macro/segment handling. An unresolved dot
+name is a shared diagnostic, never an instruction-selection fallback. The older
+Rust parser also uses core expression grammar for these statements.
+
+The current Rust statement parser uses `SetMnemonic` for instruction operands and
+`SetDotMnemonic` for core directive expressions. The builder carries that grammar
+choice through expression requests and checkpoints; deferred directive parsers
+explicitly request core grammar. Core operands do not consult family addressing
+parsers. Parentheses group core expressions; instruction parentheses can describe
+indirection. The already-accepted immediate marker in forms such as `.byte #1`
+continues through the shared wrapper.
+
+Single literal, identifier and register instruction operands also use the existing
+shared expression contract, preserving its validation, errors and spans. Compound
+instruction surfaces still consult family extensions where required. This removes
+unnecessary host consultations without claiming that every helper executes bytecode
+or that all target-specific callbacks have been eliminated. The Rust-side native
+request adapters carry the same distinction; real native execution is a separate
+qualification boundary. See the [boundary probe](performance/vm-efficiency.md#target-callback-boundary-probe).
 
 ## 2. Short Version
 

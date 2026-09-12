@@ -1,3 +1,4 @@
+mod operand_routing;
 mod target_callback_audit;
 mod tokenizer_fast_equivalence;
 

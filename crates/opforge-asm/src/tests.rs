@@ -1,3 +1,6 @@
+#[path = "tests/generic_statement_boundary.rs"]
+mod generic_statement_boundary;
+
 use crate::engine::Assembler;
 use crate::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, Severity};
 use crate::line::{set_host_expr_eval_failpoint_for_tests, AsmLine};

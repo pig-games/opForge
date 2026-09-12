@@ -2711,17 +2711,14 @@ impl<'a> AsmLine<'a> {
         Some((mnemonic.to_string(), start + 1, idx + 1))
     }
 
-    pub fn failure_for_unknown_directive_with_fixit(
-        &mut self,
-        mnemonic: &str,
-    ) -> Option<LineStatus> {
+    pub fn failure_for_unknown_directive(&mut self, mnemonic: &str) -> LineStatus {
         let suggestion = match mnemonic.to_ascii_uppercase().as_str() {
-            ".EDIF" | ".ENDFI" | ".ENIDF" => ".ENDIF",
-            ".ESLEIF" | ".ELSIEF" | ".ELSIF" | ".ELIF" | ".ELSFI" | ".ELSEFI" => ".ELSEIF",
-            ".ENDMOD" | ".ENDMODUL" | ".ENDMODLE" | ".ENDMODUEL" => ".ENDMODULE",
-            ".ENDSECT" | ".ENDSECTON" | ".ENDSEC" | ".ENDSECTIO" => ".ENDSECTION",
-            ".ENDMACH" | ".ENDMTACH" | ".ENDMATC" => ".ENDMATCH",
-            _ => return None,
+            ".EDIF" | ".ENDFI" | ".ENIDF" => Some(".ENDIF"),
+            ".ESLEIF" | ".ELSIEF" | ".ELSIF" | ".ELIF" | ".ELSFI" | ".ELSEFI" => Some(".ELSEIF"),
+            ".ENDMOD" | ".ENDMODUL" | ".ENDMODLE" | ".ENDMODUEL" => Some(".ENDMODULE"),
+            ".ENDSECT" | ".ENDSECTON" | ".ENDSEC" | ".ENDSECTIO" => Some(".ENDSECTION"),
+            ".ENDMACH" | ".ENDMTACH" | ".ENDMATC" => Some(".ENDMATCH"),
+            _ => None,
         };
 
         let (col_start, col_end) = self
@@ -2739,18 +2736,19 @@ impl<'a> AsmLine<'a> {
             None,
             Some(col_start),
         );
-        self.diagnostics.last_error_help =
-            Some(format!("did you mean {}?", suggestion.to_ascii_lowercase()));
-        self.diagnostics.last_error_fixits = vec![Fixit {
-            file: None,
-            line: self.current_line_num,
-            col_start: Some(col_start),
-            col_end: Some(col_end),
-            replacement: suggestion.to_string(),
-            applicability: "machine-applicable".to_string(),
-        }];
-
-        Some(status)
+        if let Some(suggestion) = suggestion {
+            self.diagnostics.last_error_help =
+                Some(format!("did you mean {}?", suggestion.to_ascii_lowercase()));
+            self.diagnostics.last_error_fixits = vec![Fixit {
+                file: None,
+                line: self.current_line_num,
+                col_start: Some(col_start),
+                col_end: Some(col_end),
+                replacement: suggestion.to_string(),
+                applicability: "machine-applicable".to_string(),
+            }];
+        }
+        status
     }
 }
 

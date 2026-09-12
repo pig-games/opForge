@@ -47,6 +47,8 @@ The `.cpu` directive currently accepts:
   (`.org`, `.if`, `.ifdef`).
 - `#` prefixes immediate operands (for example `LDA #$10`).
 - Macro invocation is dot-prefixed (for example `.COPY src,dst`).
+- Dot-prefixed statement names belong to shared directive or macro/segment
+  handling, never CPU instruction selection. Unresolved dot names are errors.
 - Labels may end with `:` or omit it.
 - The program counter can be set with `* = expr` or `.org expr`.
 - If no outputs are specified for a single input, the assembler defaults to
@@ -97,8 +99,12 @@ Symbols are names bound to values. A symbol can be defined by a label
 
 ### 2.5 Expressions
 
-Expressions are used in directives and operands. Unary `<` and `>` select the
-low or high byte of a value:
+Expressions are used in directives and operands. Directive expression grammar is
+independent of the selected CPU: parentheses group expressions, while target
+addressing forms such as `(a0)+` belong to instruction operands. Data operands
+continue to accept an immediate marker, for example `.byte #1`.
+
+Unary `<` and `>` select the low or high byte of a value:
 
 ```
 <($1234+1)

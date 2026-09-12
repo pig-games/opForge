@@ -890,6 +890,11 @@ impl Native6502Harness {
                     end_token_text: None,
                 },
                 OperandExprParseHints {
+                    syntax: if mnemonic.is_some_and(|name| !name.starts_with('.')) {
+                        crate::vm_opasm::OperandExprSyntax::Instruction
+                    } else {
+                        crate::vm_opasm::OperandExprSyntax::Core
+                    },
                     mnemonic,
                     operand_index,
                 },

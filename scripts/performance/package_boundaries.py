@@ -92,9 +92,15 @@ def assemble(binary, directory, cpu, blocks, source, expected, budget, mode):
               'diagnostics': text}
     if mode == 'refuse':
         report = parse_callbacks(text, 'refuse')
-        if code != 1 or output.exists() or not report['first_refusal']:
-            raise ValueError(f'{cpu}/{blocks}: refuse mode did not fail closed')
+        if report['attempts']:
+            if code != 1 or output.exists() or not report['first_refusal']:
+                raise ValueError(f'{cpu}/{blocks}: refuse mode did not fail closed')
+        elif (code or stdout or report['first_refusal'] is not None or not output.is_file()
+              or output.read_bytes() != expected):
+            raise ValueError(f'{cpu}/{blocks}: callback-free refuse mode failed or changed output')
         result['callbacks'] = report
+        if output.is_file():
+            result['output_sha256'] = digest(output.read_bytes())
         return result
 
     if code or stdout or not output.is_file() or output.read_bytes() != expected:

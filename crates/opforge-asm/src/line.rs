@@ -2468,11 +2468,7 @@ impl<'a> AsmLine<'a> {
                 let mut status = self.process_directive_ast(&mnemonic, &operands);
                 if status == LineStatus::NothingDone {
                     if mnemonic.starts_with('.') {
-                        if let Some(status_with_fixit) =
-                            self.failure_for_unknown_directive_with_fixit(&mnemonic)
-                        {
-                            return status_with_fixit;
-                        }
+                        return self.failure_for_unknown_directive(&mnemonic);
                     }
                     status = self.process_instruction_ast(&mnemonic, &operands, prepared_line);
                 }

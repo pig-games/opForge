@@ -70,6 +70,52 @@ class PackageBoundariesTests(unittest.TestCase):
                     runner.assemble(Path('/unused'), directory, 'z80', 8, '.cpu z80\n', b'',
                                      runner.vm.Budget(), 'refuse')
 
+    def test_refusal_mode_accepts_verified_callback_free_success(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+        payload = {'schema': 1, 'mode': 'refuse', 'attempts': [],
+                   'first_refusal': None, 'overflow': False}
+        report = runner.CALLBACK_PREFIX + json.dumps(payload)
+        expected = bytes.fromhex('4e71')
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / 'input.asm').write_text(' nop\n.end\n')
+
+            def successful(command, cwd, env, budget, cap=60):
+                (Path(cwd) / 'output.bin').write_bytes(expected)
+                return 0, b'', report.encode(), 0.01
+
+            with patch.object(runner.vm, 'run_process', side_effect=successful):
+                result = runner.assemble(Path('/unused'), directory, 'm68000', 1,
+                                         ' nop\n.end\n', expected,
+                                         runner.vm.Budget(), 'refuse')
+            self.assertEqual(result['callbacks']['attempts'], [])
+            self.assertEqual(result['output_sha256'], runner.digest(expected))
+
+    def test_refusal_mode_does_not_accept_success_after_callback_attempt(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+        payload = {'schema': 1, 'mode': 'refuse', 'attempts': [
+            {'boundary': 'operand_surface', 'family': 'm68000', 'cpu': 'm68000',
+             'detail': '', 'count': 1}], 'first_refusal': 'operand_surface', 'overflow': False}
+        report = runner.CALLBACK_PREFIX + json.dumps(payload)
+        expected = bytes.fromhex('4e71')
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / 'input.asm').write_text(' nop\n.end\n')
+
+            def unsafe_success(command, cwd, env, budget, cap=60):
+                (Path(cwd) / 'output.bin').write_bytes(expected)
+                return 0, b'', report.encode(), 0.01
+
+            with patch.object(runner.vm, 'run_process', side_effect=unsafe_success):
+                with self.assertRaisesRegex(ValueError, 'fail closed'):
+                    runner.assemble(Path('/unused'), directory, 'm68000', 1,
+                                    ' nop\n.end\n', expected,
+                                    runner.vm.Budget(), 'refuse')
+
 
 if __name__ == '__main__':
     unittest.main()

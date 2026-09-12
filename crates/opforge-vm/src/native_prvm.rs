@@ -210,6 +210,15 @@ impl<'a> NativePrvmHostExpressionBridge<'a> {
                 end_token_text: self.boundary_token_text(end),
             },
             OperandExprParseHints {
+                syntax: if self
+                    .mnemonic
+                    .as_deref()
+                    .is_some_and(|name| !name.starts_with('.'))
+                {
+                    crate::vm_opasm::OperandExprSyntax::Instruction
+                } else {
+                    crate::vm_opasm::OperandExprSyntax::Core
+                },
                 mnemonic: self.mnemonic.as_deref(),
                 operand_index: request.operand_index as usize,
             },

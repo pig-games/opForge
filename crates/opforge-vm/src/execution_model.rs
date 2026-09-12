@@ -83,6 +83,8 @@ pub type ExprResolverFn = fn(
 pub(crate) type OperandSurfaceExprSubparser<'a> =
     dyn for<'tokens> FnMut(&'tokens [Token], Span, Option<String>) -> Result<Expr, ParseError> + 'a;
 
+/// Instruction-only extension for compound operand surfaces. Core directive
+/// operands and shared atomic expressions have already been handled.
 pub(crate) type OperandSurfaceExprParserFn = fn(
     &[Token],
     Option<&str>,

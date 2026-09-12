@@ -17,6 +17,15 @@ historical documents do not activate work or grant authority.
 - CPU/family/dialect semantics belong in package definitions, fixtures and their
   specialized implementation boundaries, never in generic VM, native, workflow
   or CLI paths. Preserve the existing architecture-boundary checks.
+- Generic directives such as `.byte`, `.word` and `.org` belong to shared core
+  processing. They must not dispatch through CPU/family-specific operand parsers
+  or instruction encoders. Dot-prefixed statement names are resolved by shared
+  directive/macro/segment handling; unresolved names must not fall through to
+  instruction processing.
+- Before 1.0, retain only the latest supported state of each bytecode/VM contract.
+  Version identifiers detect mismatches; they do not require legacy executors.
+  Migrate affected package generation and Rust/native execution together, removing
+  superseded program versions rather than adding compatibility paths.
 - Production behavior must not be selected by test or benchmark identity, fixture
   or output paths, self-host generation, or expected output. Do not weaken tests or substitute stale results for proof.
 - Preserve the approved native instrumentation and fresh-run parity safeguards.

@@ -1,6 +1,6 @@
 # Iterative VM and native runtime reset
 
-Status: W3 implemented and locally validated; awaiting review before further optimization.
+Status: W3 and boundary-plan B2 locally validated; review before B3 native work.
 The active [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md)
 remain binding. This plan captures the current discussion, not instructions from
 historical plans. Only the next iteration is detailed; later outcomes are
@@ -316,11 +316,10 @@ formatting and engineering guards. The VM-only CLI retains existing unused-code
 warnings. No full-workspace or native qualification is claimed. Measurement
 artifacts remain in ignored `build/w3-*` directories.
 
-**Next decision for review:** B1 of the short
-[package-execution boundary plan](package-execution-boundaries.md) now exposes
-target-semantic callback attempts and includes the corresponding native source
-scan. Review its findings and select one shared operation before further
-optimization. Afterwards, candidates include reducing generic
+**Next decision for review:** B2 of the short
+[package-execution boundary plan](package-execution-boundaries.md) removes family
+consultation from core directive grammar and shared instruction atoms. Review its
+results before comparing that boundary on native in B3. Afterwards, candidates include reducing generic
 tokenizer dispatch through package-derived preparation and reusing prepared
 candidate discovery across passes. The tokenizer loop is a demonstrated generic hotspot, but copying
 its hand-maintained Rust fast path into native would create another correspondence
@@ -352,7 +351,10 @@ several iterations; each must still end with a useful implementation to inspect.
 - A runtime package is reproducible derived data. Validate its canonical input
   identity, representation version and required executor capabilities. An initial
   in-memory prototype need not invent a persistent file format. Keep one supported
-  current version per affected contract; migrate only when the chosen work needs it.
+  current version per affected contract. Before 1.0 there is no bytecode backward
+  compatibility requirement: migrate package generation and Rust/native consumers
+  together and remove superseded versions. Version tags validate compatibility;
+  they do not require keeping old executors.
 - Avoid requiring complete canonical and prepared representations simultaneously
   in the target's RAM. Include preparation peak and generic fallback in the budget.
 - Do not add responsibilities to the selection-service monolith. Each replacement

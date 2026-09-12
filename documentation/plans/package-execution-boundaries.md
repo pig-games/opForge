@@ -1,7 +1,6 @@
 # Package-controlled execution: Rust and native
 
-Status: B1 complete and locally validated. Review the findings
-before selecting B2. Companion to [the runtime reset](native-runtime-reset.md),
+Status: B2 complete and locally validated; review before B3 native work. Companion to [the runtime reset](native-runtime-reset.md),
 following W3's measurements. The active [AGENTS.md](../../AGENTS.md) remains binding.
 
 ## Outcome and scope
@@ -16,6 +15,11 @@ The requirement is package-owned target semantics, not that every operation must
 be many tiny bytecodes. Generic descriptor interpreters and substantial shared
 primitives are legitimate. Specializations need explicit selection conditions and
 equivalence to the canonical operation, including errors and changing state.
+Before 1.0 there is only the latest supported state of each VM/bytecode contract;
+version identifiers reject mismatches, not select retained old executors. Migrate
+package generation and Rust/native consumers together when changing a contract.
+Temporary differential oracles belong in ignored experiment output or Git history,
+not permanent legacy bytecode paths. This does not waive assembly-source compatibility.
 
 ## Initial high-level source scan
 
@@ -38,49 +42,73 @@ Likewise, `vm-runtime-only` is not proof that Rust avoids family handlers, and
 `OPFORGE_TOKENIZER_FORCE_GENERIC` only controls tokenizer specialization. Existing
 architecture-guard success does not prove semantic independence of these paths.
 
-## B1 findings
+## B1 audit boundary
 
-`OPFORGE_TARGET_CALLBACKS=report|refuse` now instruments the four identified host
-boundaries, with sticky refusal through candidate/parser recovery and a check
-before binary publication. The [bounded runner](../../scripts/performance/package_boundaries.py)
-compares identical baseline/report/refuse inputs; [usage and limits](../performance/vm-efficiency.md#target-callback-boundary-probe)
-are maintained with the measurement tooling.
+B1 added `OPFORGE_TARGET_CALLBACKS=report|refuse` at four host boundaries, with
+sticky refusal through candidate/parser recovery and a check before binary
+publication. It exposed family-parser consultation even for `.cpu`, `.org` and
+data directives, leading to B2 below. The [bounded runner](../../scripts/performance/package_boundaries.py)
+remains the reproducible probe; [usage and limits](../performance/vm-efficiency.md#target-callback-boundary-probe)
+are maintained with the measurement tooling. B1's detailed baseline is in Git.
 
-| 32-block case (160 instructions) | Host callback attempts, complete assembly | First refused boundary |
-|---|---:|---|
-| 6502 | 320 family candidate resolver calls | `lda`: family candidate resolver |
-| Z80 | 320 family candidate resolver calls | `mvi`: family candidate resolver |
-| 68000 | 226 family operand-surface parser calls | `.cpu`: family operand-surface parser |
+## B2 result: shared operand grammar
 
-6502/Z80 consult the resolver once per instruction per pass, including NOP.
-68000's parsing calls include `.cpu`, `.org`, `.word` and `.long`; this is broader
-than complex instruction addressing syntax. Its instruction emission in this
-workload does not hit the family candidate resolver. At 8/128 blocks the respective
-counts are 80/1280, 80/1280 and 58/898. Attempts include helpers that decline input;
-these numbers do not establish that every consultation is necessary. Existing
-32-block VM dispatch totals remain 6,476 / 6,732 / 7,020 in automatic tokenizer
-mode; the callback work is a separate category, not additional VM instructions.
+Generic directives are not a CPU/family feature. `.byte`, `.word` and `.org` must
+stay in shared core processing across targets, without target-specific operand
+parsers or instruction encoders. The existing parser opcodes now select core versus
+instruction grammar explicitly;
+that state follows expression requests and parser checkpoints. Directive operands
+and single literal/identifier/register instruction operands use the shared
+expression contract without family consultation. Existing immediate syntax such as
+`.byte #1` is preserved. Compound instruction surfaces retain their existing
+extension route. No bytecode format/version or package contents changed, and no
+legacy executor or compatibility switch was added.
 
-**B2 decision:** start by checking whether shared package-described operand
-classification can replace family-parser consultation for scalar/register operands
-and ordinary directive expressions. Compare ASTs, spans, errors and package-defined
-surface precedence across targets before retaining a change. Do not treat skipping
-callbacks until these benchmarks pass as semantic equivalence, or promise that one
-operation will remove both the parsing and candidate-resolution dependencies.
-The bounded batch completed in 2.40 seconds (29.45 seconds separately reported
-cached build/setup). All 18 baseline/report positive runs matched independent
-bytes, nine strict runs exited 1 without a binary, and 18 negative companions
-preserved diagnostics. The callback-free package NOP control succeeded in refuse
-mode. Detailed artifacts are local in ignored `build/b1-complete`; failed
-experimental batches remain explicitly incomplete. Validation passed: 58 shared-type
-and 416 VM library tests, the focused engine refusal/output test, 38 performance-tool
-tests, scoped Clippy, formatting and workflow/architecture guards. No full-workspace
-qualification is claimed. The native scan above remains source-only; B1 supplies Rust-side
-evidence only.
+Dot-prefixed statement names belong to shared directive/macro/segment handling.
+A final dispatch check also closes an existing hole: unresolved dot names now
+produce a shared directive error even when no typo suggestion exists, instead of
+falling through to CPU instruction processing. Cross-target refusal-mode tests
+cover unknown names and dot-prefixed instruction spellings. The older Rust parser's
+dot-statement path now uses shared expression grammar too, removing an AST
+lockstep disagreement for grouped directive expressions.
+
+All nine scale cases preserve output and diagnostics. Across 21 differential cases,
+19 match bytes and exact normalized diagnostics/spans; two rejected inputs now use
+core-expression diagnostics: `.byte (1,2)` reports an unexpected comma rather than
+an unsupported instruction tuple, and `.word (a0)+` reports an incomplete expression
+rather than an undefined register-named symbol. Neither produces output. These are
+reviewed corrections to invalid-input diagnostics, not successful equivalence cases.
+
+68000 family-parser attempts fell 58→8, 226→32 and 898→128 at 8/32/128 blocks. The
+remaining calls are compound instruction operands. Directive-only probes complete
+in strict mode with zero calls. 6502/Z80 resolver counts and all three VM dispatch
+totals are unchanged. Three unprofiled 32-block samples per side showed no consistent
+speedup: medians were 36.59→40.96 ms, 37.77→37.47 ms and 38.49→37.68 ms respectively.
+Do not infer native performance from this small process-level sample.
+
+The measured operand-routing snapshot, before the final unknown-dot diagnostic fix,
+kept canonical package and release executable sizes unchanged (368,579 and
+4,324,864 bytes). The implementation adds a small grammar tag to parser state and
+no heap cache. One unprofiled 68000/32 paired process-memory probe using fresh-worker
+`RUSAGE_CHILDREN` measured 18,087,936 versus 16,875,520 peak RSS bytes; this is noisy
+whole-Rust-process evidence, not an attributable saving or a native memory estimate.
+The alternative `/usr/bin/time` RSS probe was unavailable under the host sandbox.
+
+Validation: 200 core library tests; two cross-target dot-statement/Rust-VM lockstep
+tests; 15 directive-typo tests; 419 VM library tests; 10 parser parity tests; 10 Rust-side native-ABI
+contract tests (not real-native proof); one actual VM-work counter test; 42 performance-tool tests; scoped
+Clippy, formatting and workflow guards. Expanding Clippy to all assembler test
+targets exposed four existing warnings in untouched native smoke/parity test code
+(`large_enum_variant`, two `manual_range_patterns`, and `useless_vec`); that broader
+check is not clean. The bounded B1 runner also passed. Results
+remain under ignored `build/b2-*`; reproducible comparison commands live in the
+[measurement guide](../performance/vm-efficiency.md#comparing-operand-routing-changes).
+B3 should now compare core/instruction grammar ownership on native, preserving
+these boundaries instead of porting unnecessary family consultations.
 
 ## Bounded steps
 
-1. **B1 — Make the boundary observable.** Add an opt-in Rust diagnostic mode that
+1. **B1 — Make the boundary observable (complete).** Add an opt-in Rust diagnostic mode that
    reports target-semantic callbacks and can refuse them at their invocation.
    Run the existing bounded 6502, Z80 and 68000 workloads; distinguish callback
    attempts, shared descriptor/helper work, bytecode execution and specializations.
@@ -90,7 +118,7 @@ evidence only.
    normal output/diagnostics with the existing baseline. A blocked strict run is
    useful evidence, not a performance or correctness result.
 
-2. **B2 — Replace one demonstrated dependency.** Review B1 and select one shared
+2. **B2 — Replace one demonstrated dependency (complete).** Review B1 and select one shared
    operation. First check whether existing package data or native execution already
    supplies the needed semantics; do not invent duplicate contracts. Implement a
    package-controlled Rust path and compare against the retained working reference

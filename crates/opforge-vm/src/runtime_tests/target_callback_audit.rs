@@ -56,7 +56,7 @@ fn target_callback_refusal_prevents_invocation_and_package_fallback() {
 fn target_callback_audit_distinguishes_surface_parsing_from_shared_emission() {
     let model =
         HierarchyExecutionModel::from_registry(&mos6502_and_motorola68000_registry()).unwrap();
-    let line = " moveq #7,d0";
+    let line = " move.l (a0)+,d0";
     let baseline = model
         .parse_portable_line_for_assembler("m68000", None, line, 1)
         .unwrap();

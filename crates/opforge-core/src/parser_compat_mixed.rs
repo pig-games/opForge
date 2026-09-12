@@ -497,6 +497,25 @@ fn take_statement_operand_tokens(parser: &mut Parser) -> (Vec<Token>, Span, Opti
     (tokens, end_span, end_token_text)
 }
 
+// Dot statements use expression grammar, regardless of the active target.
+fn parse_core_statement_operand(parser: &mut Parser) -> Result<Expr, ParseError> {
+    let (tokens, end_span, end_token_text) = take_statement_operand_tokens(parser);
+    if matches!(
+        tokens.first().map(|token| &token.kind),
+        Some(TokenKind::Hash)
+    ) {
+        return Ok(
+            parse_generic_operand_wrapper(&tokens, end_span, end_token_text)
+                .expect("shared immediate wrapper handles a leading hash"),
+        );
+    }
+    Ok(parse_expression_slice_or_error(
+        &tokens,
+        end_span,
+        end_token_text,
+    ))
+}
+
 fn parse_m68k_statement_operand(
     parser: &mut Parser,
     mnemonic: Option<&str>,
@@ -745,8 +764,7 @@ pub(super) fn parse_compat_mixed_line(parser: &mut Parser) -> Result<LineAst, Pa
                 let mut operands = Vec::new();
                 let mnemonic = Some(format!(".{name}"));
                 if parser.index < parser.tokens.len() {
-                    match parse_m68k_statement_operand(parser, mnemonic.as_deref(), operands.len())
-                    {
+                    match parse_core_statement_operand(parser) {
                         Ok(expr) => operands.push(expr),
                         Err(err) => {
                             operands.push(Expr::Error(err.message, err.span));
@@ -758,11 +776,7 @@ pub(super) fn parse_compat_mixed_line(parser: &mut Parser) -> Result<LineAst, Pa
                         }
                     }
                     while parser.consume_comma() {
-                        match parse_m68k_statement_operand(
-                            parser,
-                            mnemonic.as_deref(),
-                            operands.len(),
-                        ) {
+                        match parse_core_statement_operand(parser) {
                             Ok(expr) => operands.push(expr),
                             Err(err) => {
                                 operands.push(Expr::Error(err.message, err.span));

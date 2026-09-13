@@ -2806,17 +2806,33 @@ impl<'a> AsmLine<'a> {
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
+    fn is_absolute_symbol(&self, name: &str) -> bool {
+        // Dotted identifiers and member ASTs must resolve the same struct field.
+        if let Some((owner, field)) = name.rsplit_once('.') {
+            if let Ok(Some(struct_name)) = self.resolve_scoped_name(owner) {
+                if let Some(def) = self.struct_table.get(&struct_name) {
+                    if let Some(member) = def
+                        .fields
+                        .iter()
+                        .find(|member| member.name.eq_ignore_ascii_case(field))
+                    {
+                        return self
+                            .layout
+                            .absolute_constant_symbols
+                            .contains(&format!("{}.{}", def.name, member.name));
+                    }
+                }
+            }
+        }
+        self.resolve_symbol_name_for_relocation(name)
+            .is_some_and(|resolved| self.layout.absolute_constant_symbols.contains(&resolved))
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
     fn expr_is_absolute_constant_symbol_expr(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Number(_, _) | Expr::String(_, _) => true,
-            Expr::Identifier(name, _) => {
-                let Some(resolved_name) = self.resolve_symbol_name_for_relocation(name) else {
-                    return false;
-                };
-                self.layout
-                    .absolute_constant_symbols
-                    .contains(&resolved_name)
-            }
+            Expr::Identifier(name, _) => self.is_absolute_symbol(name),
             Expr::Indirect(inner, _)
             | Expr::IndirectLong(inner, _)
             | Expr::Immediate(inner, _)
@@ -2871,14 +2887,7 @@ impl<'a> AsmLine<'a> {
                 let Expr::Identifier(owner, _) = base.as_ref() else {
                     return false;
                 };
-                let qualified_name = format!("{owner}.{field}");
-                let Some(resolved_name) = self.resolve_symbol_name_for_relocation(&qualified_name)
-                else {
-                    return false;
-                };
-                self.layout
-                    .absolute_constant_symbols
-                    .contains(&resolved_name)
+                self.is_absolute_symbol(&format!("{owner}.{field}"))
             }
             Expr::Error(_, _)
             | Expr::Placeholder(_)

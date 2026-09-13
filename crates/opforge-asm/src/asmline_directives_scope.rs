@@ -606,7 +606,7 @@ impl<'a> AsmLine<'a> {
                 None => SymbolTableResult::NotFound,
             }
         };
-        match result {
+        let status = match result {
             SymbolTableResult::Ok => None,
             SymbolTableResult::Duplicate => Some(self.failure(
                 LineStatus::Error,
@@ -650,7 +650,15 @@ impl<'a> AsmLine<'a> {
                     )),
                 }
             }
+        };
+        if status.is_none() {
+            if let Some(entry) = self.symbols.entry(name) {
+                self.layout
+                    .absolute_constant_symbols
+                    .insert(entry.name.clone());
+            }
         }
+        status
     }
 
     pub fn close_scope(

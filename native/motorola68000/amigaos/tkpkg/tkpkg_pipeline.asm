@@ -5,6 +5,7 @@
 	.pub
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
+	.use tkpkg.amigaos.compact_table as compact
 	.use tkpkg.amigaos.state_service as state_service
 	.use tkpkg.amigaos.token_policy as policy  ;(tkpkgTokenPolicyResolveLocatorV1)
 
@@ -63,7 +64,6 @@ IdentifierTooLongText
 ; - A1/D1: runtime failure text pointer/length when D0 is runtime error.
 ; ---------------------------------------------------------------------------
 tkpkgPipelineSetActiveV1	.block
-	clr.b buffers.CompactZeroMemoValid  ; every selection attempt may change package-derived context
 	btst #0, buffers.PackageStateFlags  ; require load_package before selecting any runtime pipeline
 	bne.s parseRequest
 	lea NoPackageText, a1
@@ -85,6 +85,7 @@ parseRequest
 	bne.w done
 	bsr.w commitActiveSelectionV1
 	bne.w done
+	jsr compact.bind
 	moveq #0, d0
 
 done

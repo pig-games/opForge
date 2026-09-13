@@ -31,3 +31,11 @@ then remove notes once incorporated or obsolete. These are observations, not rul
   rejecting every valid edit. The native inventory still pins whole-file hashes;
   consider whether checks of responsibility boundaries can retain its value with
   less refresh work. Do not silently raise capacity limits to pass a test.
+
+- **Exercise assembly language features in real output formats.** The first native
+  prepared-table implementation exposed two struct inconsistencies: the documented
+  numeric struct-size expression is rejected by the instruction expression path,
+  and struct-derived constants were treated as relocatable in Hunk output. Keep
+  a small Hunk regression alongside the native use; named fields still express
+  the layout, with frame size derived from the final field until the scalar-size
+  contract is resolved.

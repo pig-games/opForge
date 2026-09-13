@@ -17,7 +17,7 @@ import vm_efficiency as base
 TEST = 'tests::native_runtime_comparison::native_runtime_comparison_fs_uae'
 
 
-def native(binary, source, package, budget, log, profile="off"):
+def native(binary, source, package, budget, log, profile="off", native_root=None):
     env = dict(base.clean_env(), OPFORGE_COMPARE_SOURCE=str(source),
                OPFORGE_COMPARE_PACKAGE=str(package), OPFORGE_FS_UAE_SMOKE='1',
                OPFORGE_COMPARE_PROFILE=profile,
@@ -26,10 +26,13 @@ def native(binary, source, package, budget, log, profile="off"):
                 if key.startswith('OPFORGE_FS_UAE_') and key not in {
                     'OPFORGE_FS_UAE_POLL_MS', 'OPFORGE_FS_UAE_TIMEOUT_MS',
                     'OPFORGE_FS_UAE_POST_START_TIMEOUT_MS', 'OPFORGE_FS_UAE_SMOKE'}})
+    if native_root is not None:
+        env["OPFORGE_COMPARE_NATIVE_ROOT"] = str(native_root)
     # The existing runner owns normal cleanup. Also cover external timeout/unwind
     # of this serial test process; only newly created runner trees are candidates.
     pattern = 'fs-uae-hunk-smoke-opforge_cli-*'
-    before = set((base.ROOT / 'target').glob(pattern))
+    target = (native_root or base.ROOT) / 'target'
+    before = set(target.glob(pattern))
     try:
         code, stdout, stderr, elapsed = base.run_process(
             [str(binary), TEST, '--exact', '--ignored', '--nocapture'], base.ROOT, env, budget)
@@ -43,7 +46,7 @@ def native(binary, source, package, budget, log, profile="off"):
             raise ValueError('requested native telemetry was not decoded from the completed run')
         return dict(rows[0], invocation_seconds=elapsed)
     finally:
-        for tree in set((base.ROOT / 'target').glob(pattern)) - before:
+        for tree in set(target.glob(pattern)) - before:
             # A surviving emulator can have detached from the test process group.
             result = subprocess.run(['pgrep', '-f', re.escape(str(tree))],
                                     capture_output=True, text=True, timeout=5)
@@ -57,6 +60,15 @@ def native(binary, source, package, budget, log, profile="off"):
             shutil.rmtree(tree)
 
 
+def native_source_digest(root):
+    """Hash source paths and bytes, including untracked new native modules."""
+    entries = []
+    for path in sorted((root / "native").rglob("*")):
+        if path.is_file() and path.suffix in {".asm", ".i"}:
+            entries.append([str(path.relative_to(root)), base.digest(path.read_bytes())])
+    return base.digest(json.dumps(entries, separators=(",", ":")).encode())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--rust-binary', type=Path, required=True)
@@ -65,7 +77,10 @@ def main():
     parser.add_argument('--cpus', nargs='+', choices=('m6502', 'm68020'), default=['m6502', 'm68020'])
     parser.add_argument('--blocks', nargs='+', type=int, choices=(8, 16, 32), default=[8, 32])
     parser.add_argument('--native-profile', choices=('off', 'runtime', 'all'), default='off', help='collect existing native counters; timings are instrumented')
+    parser.add_argument('--native-source-root', type=Path, help='explicit source snapshot for a baseline build')
     args = parser.parse_args()
+    if args.native_source_root is not None:
+        args.native_source_root = args.native_source_root.resolve(strict=True)
     rust, native_test = args.rust_binary.resolve(strict=True), args.native_test.resolve(strict=True)
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -83,6 +98,8 @@ def main():
               'runner_sha256': base.digest(Path(__file__).read_bytes()),
               'emulator_template': template.read_text(),
               'native_profile': args.native_profile,
+              'native_source_root': str(args.native_source_root or base.ROOT),
+              'native_source_sha256': native_source_digest(args.native_source_root or base.ROOT),
               'runner_config_overrides': {'zorro_iii_memory_kib': 65536},
               'limits': {'batch_seconds': 300, 'invocation_seconds': 60, 'guest_seconds': 35, 'poll_ms': 20},
               'limitations': ['Native is one observation per case, not a statistically stable speed ratio.',
@@ -116,7 +133,7 @@ def main():
                     row['rust'][mode] = {'seconds': samples, 'median_seconds': statistics.median(samples),
                                          'command': command, 'work': work['aggregate']}
                 try:
-                    receipt = native(native_test, folder / 'input.asm', package, budget, folder / 'native.log', args.native_profile)
+                    receipt = native(native_test, folder / 'input.asm', package, budget, folder / 'native.log', args.native_profile, args.native_source_root)
                     if bytes(receipt.pop('exact_output')) != expected:
                         raise ValueError('live native/Rust result differs from independent workload bytes')
                     row['native'] = receipt

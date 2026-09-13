@@ -1066,20 +1066,6 @@ NextRequestIdLo
 NextRequestIdHi
 	.res byte, 1
 
-; One successful zero-shape CTBL lookup, invalidated with package state.
-COMPACT_ZERO_MEMO_KEY_CAPACITY = 32
-	.align 4
-CompactZeroMemoValid
-	.res byte, 1
-CompactZeroMemoKeyLen
-	.res byte, 1
-CompactZeroMemoProgramLen
-	.res word, 1
-CompactZeroMemoProgramOffset
-	.res long, 1
-CompactZeroMemoKey
-	.res byte, COMPACT_ZERO_MEMO_KEY_CAPACITY
-
 PACKAGE_STATE_CLEAR_END
 
 PACKAGE_STATE_CLEAR_BYTE_COUNT = PACKAGE_STATE_CLEAR_END - PackageStateClearStart

@@ -3499,6 +3499,13 @@ fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathB
         || example_name == FS_UAE_MACRO_PREPROCESSOR_HARNESS_NAME
         || example_name == FS_UAE_PIPELINE_SELECT_HARNESS_NAME
         || example_name == FS_UAE_MACRO_CLI_DEBUG_EVENT_HARNESS_NAME
+        || matches!(
+            example_name,
+            "tkpkg_cpex_harness"
+                | "exprvm_i64_harness"
+                | "tkpkg_expression_i64_harness"
+                | "tkpkg_compact_memo_harness"
+        )
     {
         let amigaos_dir = workspace_root
             .join("native")
@@ -3512,7 +3519,11 @@ fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathB
             .join("native")
             .join("motorola68000")
             .join("amigaos");
-        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("tkvm")];
+        return vec![
+            amigaos_dir.join("tkpkg"),
+            amigaos_dir.join("tkvm"),
+            amigaos_dir.join("debug"),
+        ];
     }
 
     Vec::new()

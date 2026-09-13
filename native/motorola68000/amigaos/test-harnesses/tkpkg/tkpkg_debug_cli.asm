@@ -8,6 +8,7 @@
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
 	.use tkpkg.amigaos.compact_table as compact
+	.use tkpkg.amigaos.compact_prepare as prepared
 	.use tkpkg.amigaos.package_loader
 	.use tkpkg.amigaos.service
 
@@ -165,7 +166,7 @@ tkpkgDebugCliCopyDefaultSmokePathLoop
 	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
 	moveq #FIXED_NOP_REQUEST_LEN, d1
 	bsr.w tkpkgDebugCliWriteInputWindowV1
-	jsr compact.findFixedProgramFromRequestV1
+	jsr compact.find
 	bne.w tkpkgDebugCliReportFixedTableMalformed
 	tst.w d1
 	beq.w tkpkgDebugCliReportFixedTableNoMatch
@@ -259,6 +260,7 @@ tkpkgDebugCliCheckLastErrorClear
 	lea buffers.ControlBlockV1, a0
 	bsr.w tkpkgDebugCliRunLastErrorV1
 	bne.w tkpkgDebugCliCloseDos
+	jsr prepared.reset
 	bsr.w tkpkgDebugCliReadOutputLenV1
 	bne.w tkpkgDebugCliReportLastErrorBuffer
 
@@ -306,6 +308,7 @@ tkpkgDebugCliReportFixedTableMismatch
 	bsr.w tkpkgDebugCliPutStrV1
 
 tkpkgDebugCliCloseDos
+	jsr prepared.reset
 	bsr.w tkpkgDebugCliCloseDosV1
 
 tkpkgDebugCliDone

@@ -96,11 +96,22 @@ TARGETS = {
     ),
     "tkpkg.amigaos.compact_table": (
         "native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm",
-        "findFixedProgramFromRequestV1",
+        "find",
         (
             "tkpkg.amigaos.abi",
             "tkpkg.amigaos.buffers",
             "tkpkg.amigaos.selection_service",
+            "tkpkg.amigaos.compact_prepare",
+            "debug.amigaos.runtime_profile",
+        ),
+    ),
+    "tkpkg.amigaos.compact_prepare": (
+        "native/motorola68000/amigaos/tkpkg/tkpkg_compact_prepare.asm",
+        "prepare",
+        (
+            "tkpkg.amigaos.buffers",
+            "tkpkg.amigaos.selection_service",
+            "debug.amigaos.runtime_profile",
         ),
     ),
     "tkpkg.amigaos.operand_record_service": (
@@ -159,7 +170,11 @@ TARGETS = {
     "tkpkg.amigaos.pipeline": (
         "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm",
         "tkpkgPipelineSetActiveV1",
-        ("tkpkg.amigaos.token_policy", "tkpkg.amigaos.state_service"),
+        (
+            "tkpkg.amigaos.token_policy",
+            "tkpkg.amigaos.state_service",
+            "tkpkg.amigaos.compact_table",
+        ),
     ),
     "tkpkg.amigaos.state_service": (
         "native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm",
@@ -182,8 +197,9 @@ SNAPSHOTS = {
     "tkpkg.amigaos.service": ('8144838404c499305b79fd2d28a16163d69a0b79ef404b9bb98f8b105e623631', 42, 14, ('data', 'bss', 'code'), 118),
     "tkpkg.amigaos.selection_service": ("dda348947ac2505b7fbb3b26bb4a10248c5f9112074608c45556b5a86112fc00", 86, 8, ("data", "code"), 233),
     "tkpkg.amigaos.operand_runtime": ("8ccf698f85b2fa2e675109ab119f8918c478fb3bc94f661980a14d0fee1d65d8", 23, 5, ("data", "code"), 60),
-    "tkpkg.amigaos.encode_service": ("3161d50e60d5ea92cc2853bdd7cea5ceefe7f3318b2e9a305822672379cacc7a", 33, 6, ("data", "code"), 36),
-    "tkpkg.amigaos.compact_table": ("24332d3212888433a826b9d0e8a2f11ed8d30332923b6ec5acdb950d18750c20", 7, 3, ("data", "code"), 1),
+    "tkpkg.amigaos.encode_service": ("0649ad259c46b146c3ac087a0961c2f11556e5d6ca25f77db696e2cc618842f4", 33, 6, ("data", "code"), 36),
+    "tkpkg.amigaos.compact_table": ('495b7a6dccdb5e5631f25769d671c460ac0af606513595246fcdb4ce03901d88', 5, 5, ('data', 'bss', 'code'), 1),
+    "tkpkg.amigaos.compact_prepare": ('58d7c18e2613c4a693b950c7d21925e8b443251ffeacc64e5768a91c659f2ee7', 7, 3, ('data', 'bss', 'code'), 4),
     "tkpkg.amigaos.operand_record_service": ("ca1211dcfe387d26304b0bc29ebfebc1f70f5824efe0442863dbf188a6cd78b2", 27, 3, ("data", "bss", "code"), 14),
     "tkpkg.amigaos.runtime_context": ('dd070f06b891604963876064267209be0beeab21cbbed83cebc89d8a2037cfcb', 15, 3, ('code', 'bss'), 19),
     "tkpkg.amigaos.engine_context_adapter": ("e6dde6ed66b083488f8ff5911a6a1aca7d24d73f7488eefdb208d5aec4f01504", 11, 1, ("code",), 0),
@@ -192,7 +208,7 @@ SNAPSHOTS = {
     "opcore.amigaos.expr_bridge": ('37c664c2db68e549fbcedde2b8d595cc42d1333b6282774064a7f0dd78b19917', 35, 3, ('code', 'bss'), 16),
     "exprvm.amigaos.i64_math": ("a2aab311913ced26dd94eedac949ab019d7eac91f7b6723014e2ce667179ef8c", 4, 0, ("code",), 0),
     "prvm.amigaos.runtime": ("ab6aee2ef4ba63d13ad6f98bb16102c57b2e7ef17779dd6fdd59343dbcd6eec6", 20, 1, ("data", "code"), 38),
-    "tkpkg.amigaos.pipeline": ('47966b9ebd4acddbb22ccca056e1745ea154d7ddb787eaae09ebe86abe4bd9de', 40, 4, ('data', 'code'), 20),
+    "tkpkg.amigaos.pipeline": ('19960f741ea07bcb1904c8d4136949302fe784738a66741621f9d996bc87e376', 40, 5, ('data', 'code'), 20),
     "tkpkg.amigaos.state_service": ("85ba591d2904a184a3ae8f1985321e1de969662d8c585ce3b6a2b4063e31ab40", 21, 2, ("data", "code", "bss"), 15),
     "opasm.amigaos.flow_text_encoding": ("17fd0bac93c8e91ce9355ac37b9b1bfcb7afc428320e164884e49a19dc892bc0", 16, 0, ("code", "bss", "data"), 0),
 }

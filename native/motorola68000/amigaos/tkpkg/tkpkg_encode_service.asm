@@ -60,7 +60,7 @@ encodeSelectedInstructionV1	.block
 havePipeline
 	moveq #0, d0
 	movea.l d0, a1
-	jsr compact.findFixedProgramFromRequestV1
+	jsr compact.find
 	bne.s return
 	tst.w d1
 	beq.s useSelectedEnvelope
@@ -474,7 +474,7 @@ tkpkgEncodeFindAndExecuteTableProgram	.block
 	moveq #0, d0
 	move.w d4, d0
 	movem.l d5-d6/a3, -(sp)
-	jsr compact.findFixedProgramFromRequestV1
+	jsr compact.find
 	movem.l (sp)+, d5-d6/a3
 	tst.l d0
 	bne.w return

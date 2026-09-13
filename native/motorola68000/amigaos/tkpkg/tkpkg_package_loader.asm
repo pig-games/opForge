@@ -5,6 +5,7 @@
 	.pub
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
+	.use tkpkg.amigaos.compact_prepare as prepared
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	.use debug.amigaos.platform_profile as platform_profile
 .endif
@@ -134,6 +135,8 @@ validateStagedPackageV1	.block
 	bne.s done
 	bsr.w validateCpexV2
 	bne.s done
+	jsr prepared.prepare
+	bne.s done
 	move.b #buffers.PACKAGE_STATE_LOADED, buffers.PackageStateFlags
 	moveq #0, d0
 
@@ -152,6 +155,7 @@ done
 ;   zeroed as one contiguous longword range.
 ; ---------------------------------------------------------------------------
 clearLoadedState	.block
+	jsr prepared.reset
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	move.w ccr, -(sp)
 	move.l d0, -(sp)

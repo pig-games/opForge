@@ -10,7 +10,7 @@
 	.pub
 
 OPFORGE_RUNTIME_MAGIC                    = $4f465645; "OFVE"
-OPFORGE_RUNTIME_SCHEMA_VERSION           = 1
+OPFORGE_RUNTIME_SCHEMA_VERSION           = 2
 OPFORGE_RUNTIME_RECORD_BYTES             = 192
 
 OPFORGE_RUNTIME_FLAG_ACTIVE              = 1
@@ -50,6 +50,15 @@ OPFORGE_RUNTIME_OVERFLOW_SERVICES        = 4
 OPFORGE_RUNTIME_OVERFLOW_CANDIDATES      = 8
 OPFORGE_RUNTIME_OVERFLOW_UNKNOWN_ID      = 16
 OPFORGE_RUNTIME_OVERFLOW_PHASE           = 32
+OPFORGE_RUNTIME_OVERFLOW_COMPACT         = 64
+
+compactPrepare                           = 1
+compactLookup                            = 2
+compactStrings                           = 3
+compactProgramRows                       = 4
+compactTableRows                         = 5
+compactMetadataBytes                     = 6
+compactKindCount                         = 6
 
 OPFORGE_RUNTIME_MAGIC_OFFSET             = 0
 OPFORGE_RUNTIME_SCHEMA_OFFSET            = 4
@@ -71,6 +80,12 @@ OPFORGE_RUNTIME_OVERFLOW_OFFSET          = 128
 OPFORGE_RUNTIME_EXIT_STATUS_OFFSET       = 132
 OPFORGE_RUNTIME_OPCODE_PHASE_OFFSET      = 136
 OPFORGE_RUNTIME_SERVICE_PHASE_OFFSET     = 152
+OPFORGE_RUNTIME_COMPACT_PREPARE_OFFSET   = 168
+OPFORGE_RUNTIME_COMPACT_LOOKUP_OFFSET    = 172
+OPFORGE_RUNTIME_COMPACT_STRINGS_OFFSET   = 176
+OPFORGE_RUNTIME_COMPACT_PREPARE_ROWS_OFFSET = 180
+OPFORGE_RUNTIME_COMPACT_TABLE_ROWS_OFFSET = 184
+OPFORGE_RUNTIME_COMPACT_METADATA_BYTES_OFFSET = 188
 
 OPFORGE_RUNTIME_PHASE_PASS_ONE           = 5
 OPFORGE_RUNTIME_PHASE_LAYOUT             = 6
@@ -354,6 +369,53 @@ return
 	move.w (sp)+, ccr
 	rts
 	.bend  ; opforgeRuntimeProfileRecordCandidateV1
+
+; Record bounded CPU-neutral compact-table work. Kinds 1-5 add D1.L to a
+; saturating counter; kind 6 retains the peak allocated metadata byte count.
+; Inputs: D0.W = compact* kind; D1.L = amount.
+; Outputs/clobbers: none; all registers and CCR preserved; stack delta zero.
+recordCompact	.block
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	lea OpforgeRuntimeRecord, a5
+	bsr.w profileIsActive
+	beq.s return
+	moveq #0, d4
+	move.w d0, d4
+	beq.s unknown
+	cmpi.w #compactKindCount, d4
+	bhi.s unknown
+	subq.w #1, d4
+	lsl.w #2, d4
+	lea OPFORGE_RUNTIME_COMPACT_PREPARE_OFFSET(a5), a0
+	adda.w d4, a0
+	cmpi.w #compactMetadataBytes, d0
+	beq.s peak
+	tst.l d1
+	beq.s return
+	move.l (a0), d2
+	cmpi.l #-1, d2
+	beq.s overflow
+	add.l d1, d2
+	bcs.s overflow
+	move.l d2, (a0)
+	bra.s return
+peak
+	cmp.l (a0), d1
+	bls.s return
+	move.l d1, (a0)
+	bra.s return
+overflow
+	move.l #-1, (a0)
+	ori.l #OPFORGE_RUNTIME_OVERFLOW_COMPACT, OPFORGE_RUNTIME_OVERFLOW_OFFSET(a5)
+	bra.s return
+unknown
+	ori.l #OPFORGE_RUNTIME_OVERFLOW_UNKNOWN_ID, OPFORGE_RUNTIME_OVERFLOW_OFFSET(a5)
+return
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; recordCompact
 
 ; Seal the correlated record and clear bound OFPR current-context fields.
 ; Inputs: D0.L = guest/CLI status. Outputs/clobbers: none; CCR preserved.

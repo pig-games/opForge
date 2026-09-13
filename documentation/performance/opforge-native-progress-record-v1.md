@@ -208,7 +208,7 @@ python3 scripts/performance/decode_native_progress.py progress.ofpr \
 | Offset | Bytes | Field |
 |---:|---:|---|
 | 0 | 4 | magic `OFVE` |
-| 4 | 2 | schema version (`1`) |
+| 4 | 2 | schema version (`2`) |
 | 6 | 2 | active/complete/incomplete flags |
 | 8 | 4 | correlated `OFPR` run ID |
 | 12 | 2 | current phase |
@@ -228,12 +228,17 @@ python3 scripts/performance/decode_native_progress.py progress.ofpr \
 | 132 | 4 | terminal CLI status |
 | 136 | 16 | opcodes in pass one/layout/final/other |
 | 152 | 16 | service entries in pass one/layout/final/other |
-| 168 | 24 | reserved, must be zero |
+| 168 | 4 | compact-table preparations |
+| 172 | 4 | compact-table lookups |
+| 176 | 4 | compact strings examined |
+| 180 | 4 | compact program rows traversed during preparation |
+| 184 | 4 | compact table rows examined during lookup |
+| 188 | 4 | peak allocated compact metadata bytes |
 
 Overflow bits report saturation for invocations (`0x01`), opcodes (`0x02`),
 services (`0x04`), candidates (`0x08`), unknown IDs or service-stack overflow
-(`0x10`), and phase buckets (`0x20`). Every counter saturates at
-`0xffffffff`. VM/program and service contexts each use fixed four-entry private
+(`0x10`), phase buckets (`0x20`), and compact-table work (`0x40`). Every counter
+saturates at `0xffffffff`. VM/program and service contexts each use fixed four-entry private
 stacks, so nested executor calls and nested selection/value or
 encoding/branch/fixup calls restore the enclosing IDs shown in `OFPR`.
 

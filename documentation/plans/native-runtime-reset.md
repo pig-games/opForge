@@ -1,7 +1,7 @@
 # Iterative VM and native runtime reset
 
-Status: controlled reimplementation approved; R1 is active. The shared-data repair
-and bounded comparison form the working baseline; broader qualification remains incomplete.
+Status: R1 prepared-CTBL experiment is implemented and awaiting review. The bounded
+comparison shows no meaningful speed gain; broader qualification remains incomplete.
 The active [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md)
 remain binding. This plan captures the current discussion, not instructions from
 historical plans. Only the next iteration is detailed; later outcomes are
@@ -91,7 +91,7 @@ once the evidence is available. Stop and discuss if the boundary requires a larg
 semantic migration than fits one reviewable slice; do not disguise an unfinished
 architecture as a micro-optimization.
 
-### R1 checkpoint: reusable telemetry and selected boundary
+### R1 setup baseline: reusable telemetry and selected boundary
 
 The user refined R1 to establish reusable, compile-time-gated telemetry as code is
 adapted. Runtime enter/opcode/leave calls in the expression frontend and evaluator
@@ -151,6 +151,84 @@ Validation: two focused host macro/source-contract tests and both real-native
 macro-enabled comparisons pass. All 136 workflow tests, native formatting (247
 files), workflow links, ownership inventory, CPU boundary and fresh-proof guards
 pass. Full workspace qualification remains outside this checkpoint.
+
+
+### R1 experiment: prepared CTBL and committed owner binding
+
+The replacement prepares CTBL at package load, validates native structural bounds,
+row indices and strict key ordering, and allocates a direct program-pointer directory.
+Successful pipeline selection binds owners; failed selection keeps the previous
+binding. Reload invalidates and frees the directory; failed preparation frees any
+pending allocation; the CLI and affected harnesses release it at shutdown. Per-lookup
+owner discovery, program-table traversal and the zero-shape memo are removed.
+Compressed-string reconstruction remains in lookup. The canonical CTBL format is
+unchanged; no persistent runtime-package format or target-specific semantics were added.
+
+The isolated review baseline is `a4debf56`. The comparison built that commit's native
+source snapshot and the candidate with identical package, source and expected output
+bytes. Both unprofiled cases and both runtime-counter cases pass fresh real-native
+exact-output comparison with their live Rust oracles (Level D).
+
+| 8-block source target | Baseline native interval | Prepared CTBL interval | CTBL lookups | Strings reconstructed | Binary-search rows examined |
+|---|---:|---:|---:|---:|---:|
+| m6502 | 4.773 s | 4.815 s | 120 | 190,200 | 1,392 |
+| m68020 | 6.886 s | 6.918 s | 24 | 38,040 | 552 |
+
+Each instrumented case prepares once, visits 1,157 program entries during preparation,
+and records a 4,628-byte directory allocation. VM/service totals remain consistent
+with the setup baseline. Both cases perform 120 encode calls: CTBL therefore covers
+all of those calls for this 6502 workload but only one fifth for this 68020 workload.
+Every CTBL lookup still reconstructs the entire 1,585-string dictionary. These counts
+identify repeated work and uneven coverage; they do not establish cycle attribution.
+
+The unprofiled native executable grows from 563,220 to 563,768 bytes (+548).
+The directory adds 4,628 allocated bytes, excluding allocator overhead and fixed state;
+preparation also needs a 52-byte local frame before saved registers. The prior 40-byte
+memo is removed. Neither executable size nor these local figures measure total native
+peak RAM or establish feasibility on the proposed 2 MB machine. The unchanged package
+is 368,635 bytes. The emulator remains uncalibrated and configured with a 68040 and
+substantially more RAM than the product target.
+
+The baseline, candidate and counter batches took 77.52, 57.06 and 56.17 seconds,
+respectively (190.75 seconds total); every measurement invocation retained its
+60-second cap. Build/startup troubleshooting was separate and made this iteration
+longer than intended. Receipts remain in ignored `build/ctbl-before`, `build/ctbl-after`
+and `build/ctbl-profile`. One sample per configuration does **not** establish a
+regression or improvement at these small timing differences.
+
+Using named struct layouts exposed a host Hunk bug: struct offsets and constants
+derived from them were mistaken for relocatable addresses. The scoped constant
+classification now handles both dotted identifiers and member expressions; a focused
+Hunk regression checks the stack displacement and retains a real address relocation.
+The separate documented struct-name-as-size expression gap remains recorded in the
+workflow notebook; native frame sizes are derived from final named fields.
+
+Native validation still differs from Rust for UTF-8 and duplicate owner/string/program
+payloads; the existing chunk locator also treats a zero-length CTBL as absent.
+Existing native limits remain: 16-bit program lengths/row counts and the
+4,096-byte reconstruction scratch capacity. This is not a claim of complete malformed
+package equivalence. The default-off telemetry extension uses the existing 192-byte
+OFVE record at schema 2, with no retained schema-1 decoder. Disabled macro expansions
+have been checked to emit no bytes or observer imports.
+
+Validation also passes the real-native lifecycle batch (29 commands, including
+failed selection, reload, malformed program-index rejection and recovery), 14 host
+struct tests, nine host Hunk checks, disabled-telemetry byte equivalence, enabled
+full-CLI assembly, assembler-library Clippy, formatting of 250 native files, and
+`make workflow-gate` including all 136 workflow tests. The lifecycle harness needed
+the shared debug include path after telemetry became a runtime dependency; its
+fresh challenge/oracle/exit checks remain unchanged. The Hunk repair is committed
+separately as `332e3960` so the native experiment can be reverted without losing it.
+No full-workspace, real-hardware, allocation-failure or complete malformed-package
+qualification is claimed.
+
+**Decision for review:** this is a recoverable implementation experiment, not a
+performance success or authorization to continue adding CTBL metadata. Review whether
+to retain the preparation boundary as a foundation or revert its directory cost.
+The next useful design question is shared name/program lookup preparation across
+execution routes: removing repeated compressed-string work could help, but a CTBL-only
+change has limited reach in the measured 68020 case. Agree that next slice and its
+memory/coverage tradeoff before implementing it.
 
 ## Iteration size and interaction
 

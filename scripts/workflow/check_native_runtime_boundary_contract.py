@@ -27,6 +27,7 @@ RETAINED_OWNER_IMPORTS = {
     "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm": (
         "tkpkg.amigaos.abi",
         "tkpkg.amigaos.buffers",
+        "tkpkg.amigaos.compact_table",
         "tkpkg.amigaos.state_service",
         "tkpkg.amigaos.token_policy",
     ),

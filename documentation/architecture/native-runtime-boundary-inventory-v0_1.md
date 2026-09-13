@@ -212,16 +212,35 @@ scope, validation and completion. No future feature or migration is scheduled he
 ### `tkpkg.amigaos.compact_table`
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm`.
-- Public entry: `findFixedProgramFromRequestV1`.
-- Imports/outbound dependencies: tkpkg ABI/buffers and the existing neutral
-  scoped-owner/string/bounds helpers in the selection service.
-- Mutable state: bounded compact-reader scratch fields in tkpkg buffers, the
-  existing output scratch buffer while reconstructing prefix-compressed strings,
-  and one bounded valid-last zero-shape successful-program memo.
-- Routine responsibility groups: exact CTBL version validation, bounded owner
-  and string-table reconstruction, dialect/CPU/family scope-order selection
-  among matching rows, ambiguity rejection, program-byte location, and bounded
-  zero-shape memo lookup/publication with cold fallback.
+- Public entries: `find` and `bind`.
+- Imports/outbound dependencies: tkpkg ABI/buffers, the existing neutral
+  scoped-owner/string helpers in the selection service, the prepared compact
+  table boundary, and the default-off runtime observer through its telemetry
+  macro include.
+- Mutable state: the active dialect/CPU/family owner indices. `bind` publishes
+  these indices only after pipeline selection succeeds; failed selection leaves
+  the previous binding intact. There is no lookup memo.
+- Routine responsibility groups: lookup against the immutable prepared CTBL,
+  bounded reconstruction of prefix-compressed strings, scope-order selection
+  among matching rows and direct prepared program lookup.
+
+### `tkpkg.amigaos.compact_prepare`
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_compact_prepare.asm`.
+- Public entries: `prepare` and `reset`.
+- Imports/outbound dependencies: tkpkg buffers, the neutral chunk locator in
+  the selection service, and the default-off runtime observer through its
+  telemetry macro include.
+- Mutable state: the validated CTBL bounds and counts plus an allocated program
+  pointer directory. `reset` invalidates and frees that directory; package reload
+  prepares a replacement, and package shutdown resets it.
+- Routine responsibility groups: CTBL structural validation before publication,
+  owner/string/program/row traversal, strict row-order and index validation,
+  exact chunk-consumption checks, program-directory allocation, and transactional
+  publication or cleanup on failure. Native limits remain 16-bit program lengths
+  and row counts, and the existing string scratch capacity. UTF-8 and duplicate
+  owner/string/program-payload validation remain gaps against Rust; the existing
+  locator also treats a zero-length CTBL as absent.
 
 ### `tkpkg.amigaos.operand_record_service`
 
@@ -349,13 +368,14 @@ scope, validation and completion. No future feature or migration is scheduled he
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm`.
 - Public entry: `tkpkgPipelineSetActiveV1`.
-- Imports/outbound dependencies: tkpkg ABI/buffers and token policy.
+- Imports/outbound dependencies: tkpkg ABI/buffers, token policy, state service,
+  and the compact-table owner binding.
 - Mutable state: active package selection and CPU/family/dialect/tokenizer/
   parser locator buffers plus pending/active CPEX property values and presence.
 - Routine responsibility groups: request parsing, package hierarchy lookup,
   CPU/family/dialect selection, tokenizer/parser locator resolution, canonical
-  CPU word-size/address-bound/byte-order staging, selection commit, and package-derived memo
-  invalidation before each selection attempt.
+  CPU word-size/address-bound/byte-order staging, selection commit, and compact
+  owner binding only after a successful commit.
 - Inbound users: tkpkg service and package-facing setup paths.
 
 ### `opasm.amigaos.flow_text_encoding`

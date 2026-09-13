@@ -57,7 +57,7 @@ SYMBOL_EXPR_KNOWN_FLAGS = (
 SYMBOL_EXPR_KNOWN_OVERFLOW_BITS = 0x7F
 
 RUNTIME_MAGIC = 0x4F465645
-RUNTIME_SCHEMA_VERSION = 1
+RUNTIME_SCHEMA_VERSION = 2
 RUNTIME_RECORD_BYTES = 192
 RUNTIME_FLAG_ACTIVE = 1
 RUNTIME_FLAG_COMPLETE = 2
@@ -65,7 +65,7 @@ RUNTIME_FLAG_INCOMPLETE = 4
 RUNTIME_KNOWN_FLAGS = (
     RUNTIME_FLAG_ACTIVE | RUNTIME_FLAG_COMPLETE | RUNTIME_FLAG_INCOMPLETE
 )
-RUNTIME_KNOWN_OVERFLOW_BITS = 0x3F
+RUNTIME_KNOWN_OVERFLOW_BITS = 0x7F
 RUNTIME_VMS = ("tkvm", "prvm", "exvm", "exprvm")
 RUNTIME_PROGRAMS = (
     "tokenizer",
@@ -84,6 +84,14 @@ RUNTIME_SERVICES = (
     "value",
 )
 RUNTIME_PHASE_BUCKETS = ("pass_one", "layout", "final_emission", "other")
+RUNTIME_COMPACT_FIELDS = (
+    "preparations",
+    "lookups",
+    "strings_examined",
+    "preparation_rows",
+    "table_rows_examined",
+    "metadata_bytes_peak",
+)
 
 PLATFORM_MAGIC = 0x4F46494F
 PLATFORM_SCHEMA_VERSION = 2
@@ -543,7 +551,7 @@ def decode_runtime_execution(
         raise ProgressDecodeError(f"unknown current runtime program id {current_program}")
     if current_service > len(RUNTIME_SERVICES):
         raise ProgressDecodeError(f"unknown current runtime service id {current_service}")
-    if any(data[22:24]) or any(data[168:]):
+    if any(data[22:24]):
         raise ProgressDecodeError("reserved runtime record bytes must be zero")
     overflow_bits = _u32(data, 128)
     unknown_overflow_bits = overflow_bits & ~RUNTIME_KNOWN_OVERFLOW_BITS
@@ -592,6 +600,7 @@ def decode_runtime_execution(
         },
         "opcodes_by_phase": named_counts(RUNTIME_PHASE_BUCKETS, 136),
         "services_by_phase": named_counts(RUNTIME_PHASE_BUCKETS, 152),
+        "compact": named_counts(RUNTIME_COMPACT_FIELDS, 168),
         "overflow_bits": overflow_bits,
         "exit_status": exit_status,
     }

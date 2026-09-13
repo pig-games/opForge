@@ -54,11 +54,12 @@ fn native_runtime_comparison_fs_uae() {
             rust_oracle: &oracle,
         },
     };
-    let result = crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
-        &workspace_root(),
-        &[case],
-    )
-    .expect("completed native comparison");
+    let native_root = std::env::var_os("OPFORGE_COMPARE_NATIVE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(workspace_root);
+    let result =
+        crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&native_root, &[case])
+            .expect("completed native comparison");
     let FsUaeSmokeOutcome::Completed { runs } = result else {
         panic!("explicit comparison requires real native execution");
     };
@@ -85,6 +86,7 @@ fn native_runtime_comparison_fs_uae() {
         serde_json::json!({
             "guest_start_to_done_host_seconds": run.start_to_done_host_seconds.expect("single-case timing"),
             "native_image_digest": run.native_image_digest,
+            "native_image_bytes": captured_fs_uae_artifact(run, "Work/build/opforge_cli").len(),
             "exact_output": oracle, "guest_exit": run.exit_code,
             "profile": profile, "counters": counters,
         })

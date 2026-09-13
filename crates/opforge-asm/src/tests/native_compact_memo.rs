@@ -10,6 +10,7 @@ const STATUS_OK: u32 = 0;
 const STATUS_FAILURE: u32 = 1;
 const STATUS_RUNTIME_ERROR: u32 = 3;
 const INVALID_MAGIC: &[u8] = b"OPC001: invalid package magic";
+const COMPACT_MALFORMED: &[u8] = b"OTR901: compact table malformed";
 const UNRESOLVED_CPU: &[u8] = b"OTR004: unresolved package cpu id";
 
 #[derive(Clone)]
@@ -24,11 +25,31 @@ fn fixed_program(byte: u8) -> Vec<u8> {
 }
 
 fn package_has_chunk(bytes: &[u8], tag: &[u8; 4]) -> bool {
-    let count = u16::from_le_bytes([bytes[8], bytes[9]]) as usize;
+    let Some(count_bytes) = bytes.get(8..10) else {
+        return false;
+    };
+    let count = u16::from_le_bytes(count_bytes.try_into().unwrap()) as usize;
     (0..count).any(|index| {
         let start = 12 + index * 12;
         bytes.get(start..start + 4) == Some(tag.as_slice())
     })
+}
+
+fn malformed_compact_package(valid: &[u8]) -> Vec<u8> {
+    let mut malformed = valid.to_vec();
+    let range = compact_chunk_range(&malformed);
+    assert!(range.len() >= 8, "CTBL must contain a row");
+    // Corrupt the final program index, after native directory allocation.
+    malformed[range.end - 2..range.end].copy_from_slice(&u16::MAX.to_le_bytes());
+    assert!(
+        package::decode_hierarchy_chunks(&malformed).is_err(),
+        "Rust package decoder must reject the malformed CTBL program index"
+    );
+    assert!(
+        RuntimeModelCore::from_package_bytes(&malformed).is_err(),
+        "Rust runtime model must reject the malformed CTBL"
+    );
+    malformed
 }
 
 fn compact_memo_package(nop_68020_byte: u8, perturb_layout: bool) -> Vec<u8> {
@@ -222,6 +243,7 @@ fn resolved_table_program(
 fn compact_memo_batch() -> (Vec<u8>, Vec<u8>) {
     let package_a = compact_memo_package(0x21, false);
     let package_b = compact_memo_package(0x51, true);
+    let malformed_compact = malformed_compact_package(&package_a);
     let target_a_offset = unique_program_offset(&package_a, &fixed_program(0x20));
     let target_b_offset = unique_program_offset(&package_b, &fixed_program(0x20));
     assert_ne!(
@@ -318,6 +340,17 @@ fn compact_memo_batch() -> (Vec<u8>, Vec<u8>) {
             request: lookup_request("nop", false),
             mode: vec![],
         },
+        CompactMemoCommand::Load(malformed_compact),
+        CompactMemoCommand::Lookup {
+            request: lookup_request("nop", false),
+            mode: vec![],
+        },
+        CompactMemoCommand::Load(package_a.clone()),
+        CompactMemoCommand::Select(select_request("68020")),
+        CompactMemoCommand::Lookup {
+            request: lookup_request("nop", false),
+            mode: vec![],
+        },
     ];
     assert!(commands.len() <= 64);
 
@@ -337,7 +370,13 @@ fn compact_memo_batch() -> (Vec<u8>, Vec<u8>) {
                 push_record(
                     &mut expected,
                     if valid { STATUS_OK } else { STATUS_FAILURE },
-                    if valid { &[] } else { INVALID_MAGIC },
+                    if valid {
+                        &[]
+                    } else if package_has_chunk(package, b"CTBL") {
+                        COMPACT_MALFORMED
+                    } else {
+                        INVALID_MAGIC
+                    },
                 );
                 active_package = valid.then_some(package.as_slice());
                 active_cpu = None;
@@ -445,7 +484,7 @@ fn native_compact_memo_live_rust_oracle() {
 #[test]
 fn native_compact_memo_mixed_cli_live_rust_oracle() {
     // Level A plus optional Level D: exercise a real statement mix whose NOPs
-    // reuse the zero-shape key across intervening mnemonics. The Rust CLI owns
+    // cross repeated prepared-table lookups and intervening mnemonics. The Rust CLI owns
     // the exact artifact supplied to the existing fail-closed native runner.
     let source = "    .org $0800\n    nop\n    lda #$12\n    nop\n    bne done\n    nop\ndone\n    nop\n    rts\n";
     let rust_oracle = compact_memo_live_rust_cli_oracle(source);
@@ -482,8 +521,8 @@ fn native_compact_memo_mixed_cli_live_rust_oracle() {
 fn native_compact_memo_fs_uae() {
     // Level D: one immutable dynamic batch, fresh challenged guest, explicit
     // zero exit, and byte-exact comparison with the in-memory Rust oracle.
-    // This proves memo transparency and lifecycle invalidation at the native
-    // request boundary; B01/B03/B10 separately prove a performance benefit.
+    // This proves prepared-table load, invalidation, malformed-load recovery,
+    // and lookup behavior at the native request boundary.
     let (input, expected) = compact_memo_batch();
     match crate::fs_uae_smoke::run_compact_memo_harness_from_env(
         &workspace_root(),

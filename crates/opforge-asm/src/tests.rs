@@ -761,6 +761,7 @@ fn native_runtime_execution_profile_source_contract_is_bounded_and_observational
             .expect("read native progress correlation sites");
     for required in [
         "OPFORGE_RUNTIME_MAGIC                    = $4f465645",
+        "OPFORGE_RUNTIME_SCHEMA_VERSION           = 2",
         "OPFORGE_RUNTIME_RECORD_BYTES             = 192",
         "OPFORGE_RUNTIME_VM_COUNT                 = 4",
         "OPFORGE_RUNTIME_VM_STACK_CAPACITY        = 4",
@@ -773,6 +774,11 @@ fn native_runtime_execution_profile_source_contract_is_bounded_and_observational
         "opforgeRuntimeProfileRecordOpcodeV1\t.block",
         "opforgeRuntimeProfileEnterServiceV1\t.block",
         "opforgeRuntimeProfileRecordCandidateV1\t.block",
+        "recordCompact\t.block",
+        "compactPrepare                           = 1",
+        "compactMetadataBytes                     = 6",
+        "OPFORGE_RUNTIME_COMPACT_METADATA_BYTES_OFFSET = 188",
+        "OPFORGE_RUNTIME_OVERFLOW_COMPACT         = 64",
         "opforgeRuntimeProfileFinishV1\t.block",
         "cmpi.l #-1, (a0)\n\tbeq.s overflow",
     ] {

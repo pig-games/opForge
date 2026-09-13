@@ -83,3 +83,33 @@ TELEMETRY_CANDIDATE	.macro candidate_kind
 .endif
 .endif
 .endmacro
+
+TELEMETRY_COMPACT	.macro kind, amount
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	move.w ccr, -(sp)
+	movem.l d0-d1, -(sp)
+	move.l .amount, d1
+	moveq #.kind, d0
+	jsr runtime_profile.recordCompact
+	movem.l (sp)+, d0-d1
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+
+; Widen a word counter inside the gates; disabled callers emit no setup code.
+TELEMETRY_COMPACT_WORD	.macro kind, amount
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+	move.w ccr, -(sp)
+	movem.l d0-d1, -(sp)
+	move.w .amount, d1
+	andi.l #$ffff, d1
+	moveq #.kind, d0
+	jsr runtime_profile.recordCompact
+	movem.l (sp)+, d0-d1
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro

@@ -6,7 +6,9 @@ fn telemetry_source(with_stub: bool, with_sites: bool) -> String {
     let mut stub = String::new();
     if with_stub {
         stub.push_str(
-            ".module debug.amigaos.runtime_profile\n.cpu 68020\n.pub\n.section code, kind=code\n",
+            ".module debug.amigaos.runtime_profile\n.cpu 68020\n.pub\n\
+             compactPrepare = 1\ncompactLookup = 2\n\
+             .section code, kind=code\n",
         );
         for name in [
             "EnterVm",
@@ -20,6 +22,7 @@ fn telemetry_source(with_stub: bool, with_sites: bool) -> String {
                 "opforgeRuntimeProfile{name}V1 .block\n    rts\n.bend\n"
             ));
         }
+        stub.push_str("recordCompact .block\n    rts\n.bend\n");
         stub.push_str(".endsection\n.endmodule\n");
     }
     let sites = if with_sites {
@@ -30,6 +33,9 @@ fn telemetry_source(with_stub: bool, with_sites: bool) -> String {
     .TELEMETRY_SERVICE_ENTER 1
     .TELEMETRY_SERVICE_LEAVE
     .TELEMETRY_VM_LEAVE
+    .TELEMETRY_COMPACT runtime_profile.compactPrepare, d0
+    .TELEMETRY_COMPACT runtime_profile.compactLookup, d1
+    .TELEMETRY_COMPACT_WORD runtime_profile.compactLookup, d0
 "#
     } else {
         ""

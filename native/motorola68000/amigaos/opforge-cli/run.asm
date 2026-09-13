@@ -4,6 +4,7 @@
 	.cpu 68020
 
 	.use opasm.amigaos.engine
+	.use tkpkg.amigaos.compact_prepare as prepared
 
 	.use opforge.cli.constants
 	.use opforge.cli.state
@@ -331,6 +332,7 @@ emitStub
 	move.l #constants.RETURN_NOT_IMPLEMENTED, state.NativeCliReturnCode
 
 closeDos
+	jsr prepared.reset
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	; Instrumentation point: single controlled terminal export boundary.
 	; Complete is set only for RETURN_OK; every failure or configured diagnostic

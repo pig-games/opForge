@@ -10,6 +10,7 @@
 	.use tkpkg.amigaos.package_loader as loader
 	.use tkpkg.amigaos.pipeline
 	.use tkpkg.amigaos.compact_table as compact
+	.use tkpkg.amigaos.compact_prepare
 
 SYS_BASE = 4
 OPEN_LIBRARY = -552
@@ -54,6 +55,7 @@ start	.block
 	bne.w closeDos
 	clr.l ReturnCode
 closeDos
+	jsr compact_prepare.reset
 	movea.l DosBase, a1
 	movea.l SYS_BASE.w, a6
 	jsr CLOSE_LIBRARY(a6)
@@ -189,7 +191,7 @@ lookup
 	adda.l d6, a3
 	move.l d6, d0
 	movem.l d2-d7/a2-a6, -(sp)
-	jsr compact.findFixedProgramFromRequestV1
+	jsr compact.find
 	movem.l (sp)+, d2-d7/a2-a6
 recordPayload
 	move.l d0, (a5)

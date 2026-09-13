@@ -116,6 +116,8 @@ def runtime_record(
     struct.pack_into(">II", data, 128, overflow_bits, exit_status)
     for value, offset in enumerate(range(136, 168, 4), start=27):
         struct.pack_into(">I", data, offset, value)
+    for value, offset in enumerate(range(168, 192, 4), start=35):
+        struct.pack_into(">I", data, offset, value)
     return bytes(data)
 
 
@@ -374,9 +376,15 @@ class NativeProgressDecoderTests(unittest.TestCase):
         self.assertEqual(report["service_invocations"]["value"], 24)
         self.assertEqual(report["candidates"]["selection"], 25)
         self.assertEqual(report["services_by_phase"]["other"], 34)
+        self.assertEqual(report["compact"]["preparations"], 35)
+        self.assertEqual(report["compact"]["metadata_bytes_peak"], 40)
 
     def test_rejects_malformed_uncorrelated_or_overflowing_runtime(self) -> None:
         complete = decoder.RUNTIME_FLAG_COMPLETE
+        previous_schema = bytearray(runtime_record(complete))
+        struct.pack_into(">H", previous_schema, 4, 1)
+        with self.assertRaisesRegex(decoder.ProgressDecodeError, "unsupported runtime schema"):
+            decoder.decode_runtime_execution(bytes(previous_schema))
         with self.assertRaisesRegex(decoder.ProgressDecodeError, "run id"):
             decoder.decode_runtime_execution(runtime_record(complete), expected_run_id=7)
         with self.assertRaisesRegex(decoder.ProgressDecodeError, "current runtime VM"):
@@ -384,13 +392,13 @@ class NativeProgressDecoderTests(unittest.TestCase):
                 runtime_record(complete, current_ids=(5, 0, 0))
             )
         with self.assertRaisesRegex(decoder.ProgressDecodeError, "unknown runtime overflow"):
-            decoder.decode_runtime_execution(runtime_record(complete, overflow_bits=0x40))
+            decoder.decode_runtime_execution(runtime_record(complete, overflow_bits=0x80))
         with self.assertRaisesRegex(decoder.ProgressDecodeError, "not complete proof"):
             decoder.decode_runtime_execution(
-                runtime_record(complete, overflow_bits=1), require_complete=True
+                runtime_record(complete, overflow_bits=0x40), require_complete=True
             )
         malformed = bytearray(runtime_record(complete))
-        malformed[191] = 1
+        malformed[22] = 1
         with self.assertRaisesRegex(decoder.ProgressDecodeError, "reserved runtime"):
             decoder.decode_runtime_execution(bytes(malformed))
 

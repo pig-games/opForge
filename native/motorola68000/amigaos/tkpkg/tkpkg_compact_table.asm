@@ -1,4 +1,4 @@
-; Compact package-table lookup for package-owned fixed programs.
+; Lookup against immutable prepared package tables and the active owner binding.
 ; @opforge-owner: tkpkg.amigaos.compact_table
 ; @opforge-slice: documentation/plans/slices/native-porting-slice-m68k-fixed-opcode-package-v1.toml
 
@@ -8,35 +8,42 @@
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
 	.use tkpkg.amigaos.selection_service as selection
+	.use tkpkg.amigaos.compact_prepare as prepared
+	.include "telemetry_macros.i"
+	.priv
 
-COMPACT_TABLE_VERSION_V1 = 1
-COMPACT_INDEX_NONE = $FFFF
-COMPACT_TABLE_MALFORMED_TEXT_LEN = 31
-ZERO_SHAPE_MODE_KEY_LEN = 7
-CTBL_LOCAL_MODE_PTR = 0
-CTBL_LOCAL_MODE_LEN = 4
-CTBL_LOCAL_FAMILY_OWNER = 6
-CTBL_LOCAL_CPU_OWNER = 8
-CTBL_LOCAL_DIALECT_OWNER = 10
-CTBL_LOCAL_MNEMONIC_INDEX = 12
-CTBL_LOCAL_MODE_INDEX = 14
-CTBL_LOCAL_PROGRAM_INDEX = 16
-CTBL_LOCAL_PREVIOUS_STRING_LEN = 18
-CTBL_LOCAL_PROGRAM_TABLE_PTR = 20
-CTBL_LOCAL_MEMO_KEY_PTR = 24
-CTBL_LOCAL_MEMO_KEY_LEN = 28
-CTBL_LOCAL_MEMO_ELIGIBLE = 30
-CTBL_LOCAL_BYTES = 32
+NONE = $FFFF
+MALFORMED_LENGTH = 31
+ZERO_MODE_LENGTH = 7
+
+Lookup	.struct
+Mode	.long ?
+ModeLength	.word ?
+Mnemonic	.word ?
+ModeIndex	.word ?
+Program	.word ?
+PreviousLength	.word ?
+Padding	.word ?
+.endstruct
+
+FRAME_BYTES = Lookup.Padding + 2
 
 	.section data, kind=data
 	.priv
 
-CompactTableMalformedText
+MalformedText
 	.byte "OTR901: compact table malformed", 0
 
-ZeroShapeModeKey
+ZeroModeText
 	.byte $69, $6D, $70, $6C, $69, $65, $64
 
+	.endsection
+
+	.section bss, kind=bss
+	.priv
+; Replaced only after a successful pipeline commit; lookups also require its flag.
+ActiveOwners
+	.res word, 3
 	.endsection
 
 	.section code, kind=code
@@ -56,17 +63,16 @@ ZeroShapeModeKey
 ; - A1: program bytes on success, diagnostic text on failure.
 ;
 ; Clobbers:
-; - D0-D7/A1-A6/CCR.
+; - D0-D1/A1/CCR; other registers preserved.
 ;
 ; CCR:
 ; - Reflects D0 on return.
-findFixedProgramFromRequestV1	.block
+find	.block
 	movem.l d2-d7/a2-a6, -(sp)
-	lea -CTBL_LOCAL_BYTES(sp), sp
+	lea -FRAME_BYTES(sp), sp
 	movea.l sp, a4
-	clr.w CTBL_LOCAL_MEMO_ELIGIBLE(a4)
-	move.l a1, CTBL_LOCAL_MODE_PTR(a4)
-	move.w d0, CTBL_LOCAL_MODE_LEN(a4)
+	move.l a1, Lookup.Mode(a4)
+	move.w d0, Lookup.ModeLength(a4)
 	moveq #0, d0
 	move.b abi.CB_INPUT_PTR(a0), d0
 	moveq #0, d1
@@ -99,14 +105,13 @@ findFixedProgramFromRequestV1	.block
 	subq.w #4, d7
 	or.w d3, d2
 	bne.s requestHasShape
-	move.w #1, CTBL_LOCAL_MEMO_ELIGIBLE(a4)
-	lea ZeroShapeModeKey, a1
-	move.l a1, CTBL_LOCAL_MODE_PTR(a4)
-	move.w #ZERO_SHAPE_MODE_KEY_LEN, CTBL_LOCAL_MODE_LEN(a4)
+	lea ZeroModeText, a1
+	move.l a1, Lookup.Mode(a4)
+	move.w #ZERO_MODE_LENGTH, Lookup.ModeLength(a4)
 	bra.s requestShapeReady
 
 requestHasShape
-	tst.w CTBL_LOCAL_MODE_LEN(a4)
+	tst.w Lookup.ModeLength(a4)
 	beq.w noMatch
 
 requestShapeReady
@@ -116,87 +121,35 @@ requestShapeReady
 	beq.w noMatch
 	cmp.w d7, d4
 	bhi.w noMatch
-	move.l a5, CTBL_LOCAL_MEMO_KEY_PTR(a4)
-	move.w d4, CTBL_LOCAL_MEMO_KEY_LEN(a4)
-	lea buffers.CtblChunkOffsetLo, a3
-	jsr selection.tkpkgServiceChunkPtrFromLocatorV1
-	bne.w noMatch
-.ifndef OPFORGE_COMPACT_ZERO_UNCACHED_REFERENCE
-	bsr.w tryZeroMemoV1
-	bne.w memoFound
-.endif
-	jsr selection.tkpkgServiceReadU16LeV1
-	bne.w malformed
-	cmpi.w #COMPACT_TABLE_VERSION_V1, d0
-	bne.w malformed
-	jsr selection.tkpkgServiceReadU16LeV1
-	bne.w malformed
-	tst.w d0
-	beq.w malformed
-	move.w d0, d7
-	move.w #COMPACT_INDEX_NONE, CTBL_LOCAL_FAMILY_OWNER(a4)
-	move.w #COMPACT_INDEX_NONE, CTBL_LOCAL_CPU_OWNER(a4)
-	move.w #COMPACT_INDEX_NONE, CTBL_LOCAL_DIALECT_OWNER(a4)
-	moveq #0, d5
-
-ownerLoop
-	moveq #1, d0
-	jsr selection.tkpkgServiceRequireBytesV1
-	bne.w malformed
-	moveq #0, d6
-	move.b (a2)+, d6
-	bsr.w locateCompactStringV1
-	bne.w malformed
-	move.l a2, -(sp)
-	jsr selection.tkpkgSelectedMselOwnerMatchesV1
-	movea.l (sp)+, a2
-	tst.b d0
-	beq.s nextOwner
-	tst.b d6
-	beq.s selectFamilyOwner
-	cmpi.b #1, d6
-	beq.s selectCpuOwner
-	cmpi.b #2, d6
-	bne.s nextOwner
-	move.w d5, CTBL_LOCAL_DIALECT_OWNER(a4)
-	bra.s nextOwner
-
-selectCpuOwner
-	move.w d5, CTBL_LOCAL_CPU_OWNER(a4)
-	bra.s nextOwner
-
-selectFamilyOwner
-	move.w d5, CTBL_LOCAL_FAMILY_OWNER(a4)
-
-nextOwner
-	addq.w #1, d5
-	subq.w #1, d7
-	bne.w ownerLoop
-
-	jsr selection.tkpkgServiceReadU16LeV1
-	bne.w malformed
-	tst.w d0
-	beq.w malformed
-	move.w d0, d7
-	clr.w CTBL_LOCAL_PREVIOUS_STRING_LEN(a4)
-	move.w #COMPACT_INDEX_NONE, CTBL_LOCAL_MNEMONIC_INDEX(a4)
-	move.w #COMPACT_INDEX_NONE, CTBL_LOCAL_MODE_INDEX(a4)
+	.TELEMETRY_COMPACT runtime_profile.compactLookup, #1
+	tst.b prepared.valid
+	beq.w noMatch
+	btst #1, buffers.PackageStateFlags
+	beq.w noMatch
+	movea.l prepared.strings, a2
+	movea.l prepared.end, a6
+	move.w prepared.stringCount, d7
+	tst.w d7
+	beq.w noMatch
+	clr.w Lookup.PreviousLength(a4)
+	move.w #NONE, Lookup.Mnemonic(a4)
+	move.w #NONE, Lookup.ModeIndex(a4)
 	moveq #0, d5
 
 stringLoop
 	jsr selection.tkpkgServiceReadU16LeV1
 	bne.w malformed
 	move.w d0, d6
-	cmp.w CTBL_LOCAL_PREVIOUS_STRING_LEN(a4), d6
+	cmp.w Lookup.PreviousLength(a4), d6
 	bhi.w malformed
-	bsr.w locateCompactStringV1
+	bsr.w readString
 	bne.w malformed
 	move.w d0, d2
 	add.w d6, d0
 	bcs.w malformed
 	cmpi.w #buffers.COMPACT_STRING_SCRATCH_CAPACITY, d0
 	bhi.w malformed
-	move.w d0, CTBL_LOCAL_PREVIOUS_STRING_LEN(a4)
+	move.w d0, Lookup.PreviousLength(a4)
 	lea buffers.CompactStringScratchBuffer, a3
 	adda.w d6, a3
 	move.w d2, d0
@@ -212,131 +165,81 @@ compareString
 	move.w d4, -(sp)
 	lea buffers.CompactStringScratchBuffer, a1
 	movea.l a5, a2
-	move.w CTBL_LOCAL_PREVIOUS_STRING_LEN(a4), d0
+	move.w Lookup.PreviousLength(a4), d0
 	move.w d4, d1
 	jsr selection.tkpkgServiceStringEqAsciiCasefoldV1
 	move.w (sp)+, d4
 	movea.l (sp)+, a2
 	tst.b d0
 	beq.s compareModeString
-	move.w d5, CTBL_LOCAL_MNEMONIC_INDEX(a4)
+	move.w d5, Lookup.Mnemonic(a4)
 
 compareModeString
-	tst.w CTBL_LOCAL_MODE_LEN(a4)
+	tst.w Lookup.ModeLength(a4)
 	beq.s nextString
 	move.l a2, -(sp)
 	move.w d4, -(sp)
 	lea buffers.CompactStringScratchBuffer, a1
-	movea.l CTBL_LOCAL_MODE_PTR(a4), a2
-	move.w CTBL_LOCAL_PREVIOUS_STRING_LEN(a4), d0
-	move.w CTBL_LOCAL_MODE_LEN(a4), d1
+	movea.l Lookup.Mode(a4), a2
+	move.w Lookup.PreviousLength(a4), d0
+	move.w Lookup.ModeLength(a4), d1
 	jsr selection.tkpkgServiceStringEqAsciiCasefoldV1
 	move.w (sp)+, d4
 	movea.l (sp)+, a2
 	tst.b d0
 	beq.s nextString
-	move.w d5, CTBL_LOCAL_MODE_INDEX(a4)
+	move.w d5, Lookup.ModeIndex(a4)
 
 nextString
 	addq.w #1, d5
 	subq.w #1, d7
 	bne.w stringLoop
-	move.w CTBL_LOCAL_MNEMONIC_INDEX(a4), d0
-	cmpi.w #COMPACT_INDEX_NONE, d0
+	.TELEMETRY_COMPACT runtime_profile.compactStrings, d5
+	move.w Lookup.Mnemonic(a4), d0
+	cmpi.w #NONE, d0
 	beq.w noMatch
-	tst.w CTBL_LOCAL_MODE_LEN(a4)
-	beq.s haveSelectedStrings
-	move.w CTBL_LOCAL_MODE_INDEX(a4), d0
-	cmpi.w #COMPACT_INDEX_NONE, d0
-	beq.w noMatch
-
-haveSelectedStrings
-
-	jsr selection.tkpkgServiceReadU16LeV1
-	bne.w malformed
-	move.w d0, d7
-	move.l a2, CTBL_LOCAL_PROGRAM_TABLE_PTR(a4)
-	tst.w d7
-	beq.w malformed
-
-skipProgramLoop
-	bsr.w readCompactLengthV1
-	bne.w malformed
-	adda.w #4, a2
-	move.w d0, d6
-	jsr selection.tkpkgServiceRequireBytesV1
-	bne.w malformed
-	adda.w d6, a2
-	subq.w #1, d7
-	bne.w skipProgramLoop
-
-	bsr.w readCompactLengthV1
-	bne.w malformed
-	adda.w #4, a2
 	moveq #0, d4
-	move.w d0, d4
-	move.w #COMPACT_INDEX_NONE, CTBL_LOCAL_PROGRAM_INDEX(a4)
+	move.l prepared.rowCount, d4
+	move.w #NONE, Lookup.Program(a4)
 	tst.w d4
 	beq.w noMatch
-	moveq #0, d0
-	move.w d4, d0
-	lsl.l #3, d0
-	jsr selection.tkpkgServiceRequireBytesV1
-	bne.w malformed
-	movea.l a2, a5
+	movea.l prepared.rows, a5
 
-	move.w CTBL_LOCAL_FAMILY_OWNER(a4), d6
-	bsr.w findTableProgramForOwnerV1
+	move.w ActiveOwners, d6
+	bsr.w findOwner
 	tst.l d0
-	bmi.w noMatch
 	beq.s checkCpuProgram
-	move.w d1, CTBL_LOCAL_PROGRAM_INDEX(a4)
+	move.w d1, Lookup.Program(a4)
 
 checkCpuProgram
-	move.w CTBL_LOCAL_CPU_OWNER(a4), d6
-	bsr.w findTableProgramForOwnerV1
+	move.w ActiveOwners+2, d6
+	bsr.w findOwner
 	tst.l d0
-	bmi.w noMatch
 	beq.s checkDialectProgram
-	move.w d1, CTBL_LOCAL_PROGRAM_INDEX(a4)
+	move.w d1, Lookup.Program(a4)
 
 checkDialectProgram
-	move.w CTBL_LOCAL_DIALECT_OWNER(a4), d6
-	bsr.w findTableProgramForOwnerV1
+	move.w ActiveOwners+4, d6
+	bsr.w findOwner
 	tst.l d0
-	bmi.w noMatch
 	beq.s tableSelectionReady
-	move.w d1, CTBL_LOCAL_PROGRAM_INDEX(a4)
+	move.w d1, Lookup.Program(a4)
 
 tableSelectionReady
-	move.w CTBL_LOCAL_PROGRAM_INDEX(a4), d0
-	cmpi.w #COMPACT_INDEX_NONE, d0
+	move.w Lookup.Program(a4), d0
+	cmpi.w #NONE, d0
 	beq.w noMatch
 
-	movea.l CTBL_LOCAL_PROGRAM_TABLE_PTR(a4), a2
-	moveq #0, d7
-	move.w CTBL_LOCAL_PROGRAM_INDEX(a4), d7
-
-programLoop
-	bsr.w readCompactLengthV1
+	cmp.w prepared.programCount, d0
+	bcc.w malformed
+	andi.l #$ffff, d0
+	lsl.l #2, d0
+	movea.l prepared.programs, a1
+	movea.l 0(a1, d0.l), a2
+	bsr.w readLength
 	bne.w malformed
-	adda.w #4, a2
-	tst.w d7
-	beq.s found
-	move.w d0, d6
-	jsr selection.tkpkgServiceRequireBytesV1
-	bne.w malformed
-	adda.w d6, a2
-	subq.w #1, d7
-	bra.w programLoop
-
-found
 	move.w d0, d1
-	movea.l a2, a1
-.ifndef OPFORGE_COMPACT_ZERO_UNCACHED_REFERENCE
-	bsr.w storeZeroMemoV1
-.endif
-memoFound
+	lea 4(a2), a1
 	moveq #0, d0
 	bra.s return
 
@@ -346,123 +249,65 @@ noMatch
 	bra.s return
 
 malformed
-	lea CompactTableMalformedText, a1
-	moveq #COMPACT_TABLE_MALFORMED_TEXT_LEN, d1
+	lea MalformedText, a1
+	moveq #MALFORMED_LENGTH, d1
 	moveq #1, d0
 
 return
-	lea CTBL_LOCAL_BYTES(sp), sp
+	lea FRAME_BYTES(sp), sp
 	movem.l (sp)+, d2-d7/a2-a6
 	tst.l d0
 	rts
-	.bend  ; findFixedProgramFromRequestV1
+	.bend  ; find
+
+	.pub
+; Bind validated CTBL owners after pipeline commit. No allocation or failure path.
+; Inputs: active pipeline in buffers. Outputs: D0=0; CCR reflects D0.
+; Other registers preserved. Reloaded packages cannot use this binding until selected.
+bind	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	move.w #NONE, ActiveOwners
+	move.w #NONE, ActiveOwners+2
+	move.w #NONE, ActiveOwners+4
+	tst.b prepared.valid
+	beq.w done
+	movea.l prepared.owners, a2
+	movea.l prepared.end, a6
+	move.w prepared.ownerCount, d7
+	beq.w done
+	moveq #0, d5
+loop
+	moveq #0, d6
+	move.b (a2)+, d6
+	bsr.w readString
+	jsr selection.tkpkgSelectedMselOwnerMatchesV1
+	tst.b d0
+	beq.s next
+	move.w d6, d0
+	add.w d0, d0
+	lea ActiveOwners, a3
+	move.w d5, 0(a3, d0.w)
+next
+	addq.w #1, d5
+	subq.w #1, d7
+	bne.s loop
+done
+	moveq #0, d0
+	movem.l (sp)+, d1-d7/a0-a6
+	rts
+	.bend  ; bind
 
 	.priv
 
-.ifndef OPFORGE_COMPACT_ZERO_UNCACHED_REFERENCE
-; Probe only a validated zero-shape mnemonic. Shaped traffic never evicts it.
-; Inputs: A4 locals, A2/A6 CTBL start/end, A5/D4 mnemonic bytes/length.
-; Outputs: D0 = 1 hit (A1/D1 program), 0 cold fallback; CCR reflects D0.
-; Clobbers: D0-D3/A1/A3/CCR. CTBL cursor and request key remain intact.
-tryZeroMemoV1	.block
-	tst.w CTBL_LOCAL_MEMO_ELIGIBLE(a4)
-	beq.w miss
-	cmpi.w #buffers.COMPACT_ZERO_MEMO_KEY_CAPACITY, d4
-	bhi.w miss
-	tst.b buffers.CompactZeroMemoValid
-	beq.w miss
-	moveq #0, d0
-	move.b buffers.CompactZeroMemoKeyLen, d0
-	cmp.w d4, d0
-	bne.w miss
-	tst.w d0
-	beq.w miss
-	movea.l a5, a1
-	lea buffers.CompactZeroMemoKey, a3
-compareKey
-	move.b (a1)+, d1
-	cmp.b (a3)+, d1
-	bne.w miss
-	subq.w #1, d0
-	bne.s compareKey
-
-	move.l buffers.CompactZeroMemoProgramOffset, d2
-	moveq #0, d3
-	move.w buffers.CompactZeroMemoProgramLen, d3
-	beq.w invalid
-	add.l d2, d3
-	bcs.w invalid
-	; Package length is the existing little-endian four-byte storage field.
-	moveq #0, d0
-	move.b buffers.PackageStorageLenHi, d0
-	lsl.l #8, d0
-	move.b buffers.PackageStorageLenMidHi, d0
-	lsl.l #8, d0
-	move.b buffers.PackageStorageLenMidLo, d0
-	lsl.l #8, d0
-	move.b buffers.PackageStorageLen, d0
-	cmp.l d0, d3
-	bhi.s invalid
-	lea buffers.PackageStorage, a1
-	adda.l d2, a1
-	cmpa.l a2, a1
-	blo.s invalid
-	cmpa.l a6, a1
-	bhi.s invalid
-	move.l a6, d0
-	sub.l a1, d0
-	moveq #0, d1
-	move.w buffers.CompactZeroMemoProgramLen, d1
-	cmp.l d0, d1
-	bhi.s invalid
-	moveq #1, d0
-	rts
-invalid
-	clr.b buffers.CompactZeroMemoValid
-miss
-	moveq #0, d0
-	rts
-	.bend  ; tryZeroMemoV1
-
-; Publish only successful bounded zero-shape results; never cache output bytes.
-; Inputs: A4 locals, A1/D1.W program. Clobbers: D0/D2-D3/A3/A5/CCR.
-storeZeroMemoV1	.block
-	tst.w CTBL_LOCAL_MEMO_ELIGIBLE(a4)
-	beq.s done
-	move.w CTBL_LOCAL_MEMO_KEY_LEN(a4), d2
-	beq.s done
-	cmpi.w #buffers.COMPACT_ZERO_MEMO_KEY_CAPACITY, d2
-	bhi.s done
-	tst.w d1
-	beq.s done
-	clr.b buffers.CompactZeroMemoValid
-	move.b d2, buffers.CompactZeroMemoKeyLen
-	move.w d1, buffers.CompactZeroMemoProgramLen
-	move.l a1, d0
-	lea buffers.PackageStorage, a3
-	sub.l a3, d0
-	move.l d0, buffers.CompactZeroMemoProgramOffset
-	movea.l CTBL_LOCAL_MEMO_KEY_PTR(a4), a5
-	lea buffers.CompactZeroMemoKey, a3
-copyKey
-	move.b (a5)+, (a3)+
-	subq.w #1, d2
-	bne.s copyKey
-	move.b #1, buffers.CompactZeroMemoValid
-done
-	rts
-	.bend  ; storeZeroMemoV1
-.endif
-
-; Find one `(owner-index, mnemonic-index)` row in the sorted compact entry
+; Find one `(owner, mnemonic, mode)` row in the validated compact entry
 ; table. The Rust package serializer emits this fixed-width table ordered by
 ; owner and mnemonic, so binary lookup keeps combined-family packages bounded
 ; without introducing family-specific runtime logic.
 ; Inputs: A5 = entry table; D4.W = entry count; D6.W = owner index.
-; Outputs: D0 = 1 found, 0 absent, -1 duplicate key; D1.W = program index.
-findTableProgramForOwnerV1	.block
+; Outputs: D0 = 1 found, 0 absent; D1.W = program index.
+findOwner	.block
 	movem.l d2-d7/a0-a2, -(sp)
-	cmpi.w #COMPACT_INDEX_NONE, d6
+	cmpi.w #NONE, d6
 	beq.w tableKeyAbsent
 	moveq #0, d2
 	moveq #0, d3
@@ -477,6 +322,7 @@ tableBinaryLoop
 	move.l d5, d7
 	lsl.l #3, d7
 	lea 0(a5, d7.l), a1
+	.TELEMETRY_COMPACT runtime_profile.compactTableRows, #1
 	moveq #0, d7
 	move.b (a1), d7
 	moveq #0, d0
@@ -492,42 +338,21 @@ tableBinaryLoop
 	move.b 3(a1), d0
 	lsl.w #8, d0
 	or.w d0, d7
-	move.w CTBL_LOCAL_MNEMONIC_INDEX(a4), d0
+	move.w Lookup.Mnemonic(a4), d0
 	cmp.w d0, d7
 	blo.s tableKeyIsLower
 	bhi.s tableKeyIsHigher
-	tst.w CTBL_LOCAL_MODE_LEN(a4)
-	beq.s tableKeyMatched
 	moveq #0, d7
 	move.b 4(a1), d7
 	moveq #0, d0
 	move.b 5(a1), d0
 	lsl.w #8, d0
 	or.w d0, d7
-	move.w CTBL_LOCAL_MODE_INDEX(a4), d0
+	move.w Lookup.ModeIndex(a4), d0
 	cmp.w d0, d7
 	blo.s tableKeyIsLower
 	bhi.s tableKeyIsHigher
 
-tableKeyMatched
-
-	; A duplicate key is ambiguous for the zero-operand fixed-program slice.
-	tst.l d5
-	beq.s checkNextTableKey
-	lea -8(a1), a0
-	bsr.s tableKeyAtPtrMatchesV1
-	bne.s tableKeyDuplicate
-
-checkNextTableKey
-	move.l d5, d7
-	addq.l #1, d7
-	cmp.l d4, d7
-	bcc.s tableKeyUnique
-	lea 8(a1), a0
-	bsr.s tableKeyAtPtrMatchesV1
-	bne.s tableKeyDuplicate
-
-tableKeyUnique
 	moveq #0, d1
 	move.b 6(a1), d1
 	moveq #0, d0
@@ -546,11 +371,6 @@ tableKeyIsHigher
 	move.l d5, d3
 	bra.w tableBinaryLoop
 
-tableKeyDuplicate
-	moveq #-1, d0
-	moveq #0, d1
-	bra.s tableLookupReturn
-
 tableKeyAbsent
 	moveq #0, d0
 	moveq #0, d1
@@ -558,51 +378,12 @@ tableKeyAbsent
 tableLookupReturn
 	movem.l (sp)+, d2-d7/a0-a2
 	rts
-	.bend  ; findTableProgramForOwnerV1
-
-; Compare the compact row at A0 with the active owner/mnemonic key.
-; Outputs: D0 = 1 equal, 0 different. Clobbers D0-D1/CCR.
-tableKeyAtPtrMatchesV1	.block
-	moveq #0, d0
-	move.b (a0), d0
-	moveq #0, d1
-	move.b 1(a0), d1
-	lsl.w #8, d1
-	or.w d1, d0
-	cmp.w d6, d0
-	bne.s tablePtrKeyNo
-	moveq #0, d0
-	move.b 2(a0), d0
-	moveq #0, d1
-	move.b 3(a0), d1
-	lsl.w #8, d1
-	or.w d1, d0
-	cmp.w CTBL_LOCAL_MNEMONIC_INDEX(a4), d0
-	bne.s tablePtrKeyNo
-	tst.w CTBL_LOCAL_MODE_LEN(a4)
-	beq.s tablePtrKeyYes
-	moveq #0, d0
-	move.b 4(a0), d0
-	moveq #0, d1
-	move.b 5(a0), d1
-	lsl.w #8, d1
-	or.w d1, d0
-	cmp.w CTBL_LOCAL_MODE_INDEX(a4), d0
-	bne.s tablePtrKeyNo
-
-tablePtrKeyYes
-	moveq #1, d0
-	rts
-
-tablePtrKeyNo
-	moveq #0, d0
-	rts
-	.bend  ; tableKeyAtPtrMatchesV1
+	.bend  ; findOwner
 
 ; Read a bounded u32 length whose native fixed-program path requires high zero.
 ; Inputs: A2/A6 = field cursor/chunk end.
 ; Outputs: D0.W = length and D1 = 0, or D1 = 1 on bounds/range failure.
-readCompactLengthV1	.block
+readLength	.block
 	moveq #4, d0
 	jsr selection.tkpkgServiceRequireBytesV1
 	bne.s compactLengthFail
@@ -622,21 +403,22 @@ readCompactLengthV1	.block
 compactLengthFail
 	moveq #1, d1
 	rts
-	.bend  ; readCompactLengthV1
+	.bend  ; readLength
 
 ; Locate one bounded u32-length string and advance the compact cursor.
 ; Inputs: A2/A6 = string record cursor/chunk end.
 ; Outputs: D0.W = byte length, A1 = bytes, D1 = 0; D1 = 1 on failure.
-locateCompactStringV1	.block
-	bsr.s readCompactLengthV1
+readString	.block
+	bsr.s readLength
 	bne.s compactStringFail
+	moveq #0, d2
 	move.w d0, d2
 	addq.l #4, d0
 	jsr selection.tkpkgServiceRequireBytesV1
 	bne.s compactStringFail
 	lea 4(a2), a1
 	lea 4(a2), a2
-	adda.w d2, a2
+	adda.l d2, a2
 	move.w d2, d0
 	moveq #0, d1
 	rts
@@ -644,7 +426,7 @@ locateCompactStringV1	.block
 compactStringFail
 	moveq #1, d1
 	rts
-	.bend  ; locateCompactStringV1
+	.bend  ; readString
 
 	.endsection
 	.endmodule

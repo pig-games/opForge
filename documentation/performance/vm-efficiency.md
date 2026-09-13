@@ -276,7 +276,17 @@ nor package file size establishes 68020/2 MB feasibility. Peak RAM and native
 VM-work counts are unmeasured. Current findings and the next decision belong in
 the [reset plan](../plans/native-runtime-reset.md).
 
-Add `--native-profile runtime` for existing VM/service/candidate work counters.
+For a native before/after comparison, use `--blocks 8` and pass
+`--native-source-root <snapshot-root>` for the baseline. The snapshot must contain
+its `native/` tree; both runs still use identical current benchmark source and
+explicit package bytes. The summary records the actual native source-tree hash,
+linked executable bytes and digest. Compare the source/package/output hashes
+before interpreting timings. Executable file size excludes BSS and allocated RAM.
+
+Add `--native-profile runtime` for VM/service/candidate work and prepared-CTBL
+counters: successful preparations, lookups, strings reconstructed, program entries
+prepared, binary-search rows examined, and peak program-directory allocation bytes.
+The last counter excludes fixed state and allocator overhead.
 Those samples are instrumented: compare their work counts with unprofiled timing,
 not as release-speed measurements. The decoder requires complete, correlated,
 non-overflowing records from the same fresh successful guest. `--native-profile all`

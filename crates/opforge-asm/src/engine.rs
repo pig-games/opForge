@@ -550,6 +550,7 @@ qualified_share={:.2}%",
             .unwrap_or(u32::MAX.saturating_sub(1))
             .saturating_add(1);
         let mut counts = PassCounts::new();
+        self.prepare_runtime_execution_model();
         let diagnostics = &mut self.diagnostics;
 
         {
@@ -558,13 +559,7 @@ qualified_share={:.2}%",
             } else {
                 RootMetadata::default()
             };
-            let runtime_execution_model = self.runtime_execution_model.take().or_else(|| {
-                crate::runtime_model::build_execution_model_for_request(
-                    &self.registry,
-                    self.cpu,
-                    self.opasm_package_path.as_deref(),
-                )
-            });
+            let runtime_execution_model = self.runtime_execution_model.take();
             let mut asm_line = AsmLine::with_cpu_metadata_and_execution_model(
                 &mut self.symbols,
                 self.cpu,
@@ -1019,6 +1014,19 @@ qualified_share={:.2}%",
         }
     }
 
+    /// Prepare the current request's package before timed assembly work.
+    /// Normal passes still initialize lazily; repeated calls reuse the model.
+    pub(crate) fn prepare_runtime_execution_model(&mut self) -> bool {
+        if self.runtime_execution_model.is_none() {
+            self.runtime_execution_model = crate::runtime_model::build_execution_model_for_request(
+                &self.registry,
+                self.cpu,
+                self.opasm_package_path.as_deref(),
+            );
+        }
+        self.runtime_execution_model.is_some()
+    }
+
     pub fn cpu(&self) -> CpuType {
         self.cpu
     }
@@ -1252,13 +1260,8 @@ qualified_share={:.2}%",
         let pass1_loop_trace = self.loop_iteration_trace_pass1.clone();
         let uses_implicit_hunk_code_section =
             Self::uses_implicit_hunk_code_section(lines, self.implicit_hunk_output_requested);
-        let runtime_execution_model = self.runtime_execution_model.take().or_else(|| {
-            crate::runtime_model::build_execution_model_for_request(
-                &self.registry,
-                self.cpu,
-                self.opasm_package_path.as_deref(),
-            )
-        });
+        self.prepare_runtime_execution_model();
+        let runtime_execution_model = self.runtime_execution_model.take();
         let mut asm_line = AsmLine::with_cpu_metadata_and_execution_model(
             &mut self.symbols,
             self.cpu,

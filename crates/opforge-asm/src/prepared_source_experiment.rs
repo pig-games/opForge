@@ -17,6 +17,9 @@ use types::hierarchy::ResolvedHierarchy;
 use vm::prepared_encoding::{EncodingPreparation, PreparedEncodings, ProgramRef};
 use vm::runtime_model_core::RuntimeModelCore;
 
+mod packed;
+pub use packed::{PackedLayout, PackedProbeReport, RecordAlignment, TokenWidth};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceExperimentError {
     pub line: u32,
@@ -383,6 +386,16 @@ impl PreparedSourceExperiment {
     pub fn replay_workspace_bytes(&self) -> usize {
         self.symbol_count * std::mem::size_of::<Option<u32>>()
             + self.max_expression_ops * std::mem::size_of::<i64>()
+    }
+
+    /// Pack this prepared program into explicit length-prefixed records, verify
+    /// one full decode against S1, then time bounded checksum-only decodes.
+    pub fn packed_probe(
+        &self,
+        layout: PackedLayout,
+        decode_iterations: usize,
+    ) -> Result<PackedProbeReport> {
+        packed::probe(self, layout, decode_iterations).map_err(|detail| source_error(1, detail))
     }
 
     fn operand_ranges(&self, line: &PreparedLine) -> &[ExprRange] {

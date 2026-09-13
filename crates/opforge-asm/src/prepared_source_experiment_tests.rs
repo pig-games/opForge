@@ -5,7 +5,7 @@ use crate::engine::Assembler;
 use crate::listing::ListingWriter;
 use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
-    register_motorola68000_family_stack,
+    register_motorola68000_family_stack, register_motorola6800_family_stack,
 };
 use registry::cpu::CpuType;
 use registry::registry::ModuleRegistry;
@@ -17,6 +17,7 @@ fn registry() -> ModuleRegistry {
     register_intel8080_family_stack(&mut registry);
     register_mos6502_family_stack(&mut registry);
     register_motorola68000_family_stack(&mut registry);
+    register_motorola6800_family_stack(&mut registry);
     registry
 }
 
@@ -193,52 +194,146 @@ fn prepared_source_telemetry_separates_prepare_and_replay_when_enabled() {
     );
 }
 
+fn benchmark_source(blocks: usize) -> String {
+    let mut source = String::new();
+    for index in 0..blocks {
+        source.push_str(&format!(
+            "start{index}:\n  NOP\n.byte end{index} - start{index}\n.word end{index} + 1\nend{index}:\n  NOP\n"
+        ));
+    }
+    source
+}
+
+#[test]
+#[ignore = "bounded raw-layout decoding probe, not an assembly benchmark"]
+fn prepared_source_packed_benchmark() {
+    use super::prepared_source_experiment::{PackedLayout, RecordAlignment, TokenWidth};
+    for blocks in [8usize, 32] {
+        let source = benchmark_source(blocks);
+        for cpu in ["m6502", "m68000"] {
+            let prepared = prepared_assembly(cpu, &source);
+            for alignment in [RecordAlignment::BytePacked, RecordAlignment::WordAligned] {
+                for token_width in [TokenWidth::Byte, TokenWidth::Word] {
+                    let report = prepared
+                        .packed_probe(
+                            PackedLayout {
+                                token_width,
+                                alignment,
+                            },
+                            256,
+                        )
+                        .unwrap();
+                    println!("packed cpu={cpu} blocks={blocks} source_bytes={} token={token_width:?} alignment={alignment:?} packed_bytes={} records={} expressions={} pack_us={:.3} decode_scan_us={:.3} scans={} checksum={:x}", source.len(), report.packed_bytes, report.line_records, report.expression_records, report.pack_time.as_secs_f64()*1e6, report.decode_time.as_secs_f64()*1e6 / report.decode_iterations as f64, report.decode_iterations, report.checksum);
+                }
+            }
+        }
+    }
+}
+
+// Medians of independent samples; timing and telemetry are deliberately separate.
+fn median_us(samples: &mut [f64]) -> f64 {
+    samples.sort_by(f64::total_cmp);
+    samples[samples.len() / 2]
+}
+
 #[test]
 #[ignore = "bounded manual source preparation/replay comparison"]
 fn prepared_source_experiment_benchmark() {
+    assert!(
+        !vm::prepared_encoding::TELEMETRY_ENABLED,
+        "measure counters in a separate run"
+    );
+    let package = vm::builder::build_hierarchy_package_from_registry(&registry()).unwrap();
+    let native_package = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"
+    ))
+    .unwrap();
+    assert_eq!(
+        package, native_package,
+        "host/native package definitions must match"
+    );
     for blocks in [8usize, 32] {
-        let mut source = String::new();
-        for index in 0..blocks {
-            source.push_str(&format!(
-                "start{index}:\n  NOP\n.byte end{index} - start{index}\n.word end{index} + 1\nend{index}:\n  NOP\n"
-            ));
-        }
-        let source_bytes = source.len();
+        let source = benchmark_source(blocks);
         for cpu in ["m6502", "m68000"] {
-            let registry = registry();
-            let model_started = Instant::now();
-            let model = RuntimeModelCore::from_registry(&registry).expect("package model");
-            let model_time = model_started.elapsed();
-            let resolved = model.resolve_pipeline(cpu, None).unwrap();
-            let started = Instant::now();
-            let prepared = PreparedSourceExperiment::prepare(&source, &model, &resolved)
-                .expect("prepare benchmark source");
-            let preparation_time = started.elapsed();
-            drop(resolved);
-            drop(model);
-            drop(registry);
-
-            let oracle_started = Instant::now();
-            let expected = ordinary_assembly(cpu, &source, 0x100);
-            let oracle_time = oracle_started.elapsed();
-            let actual = prepared.run(0x100).expect("prepared replay");
-            assert_eq!(
-                actual, expected,
-                "benchmark correctness for {blocks} blocks on {cpu}"
-            );
-            let replay_started = Instant::now();
-            for _ in 0..16 {
-                std::hint::black_box(prepared.run(0x100).expect("prepared replay"));
+            let mut samples = vec![Vec::new(); 8];
+            for sample in 0..5 {
+                // Both paths construct the same registry. The bootstrap implementations
+                // differ, so report them separately and do not subtract one from the other.
+                let mut ordinary = || {
+                    let started = Instant::now();
+                    let mut assembler =
+                        Assembler::with_cpu_and_registry(CpuType::new(cpu), registry());
+                    assembler.set_collect_runtime_traces(false);
+                    assert!(assembler.prepare_runtime_execution_model());
+                    let setup = started.elapsed().as_secs_f64() * 1e6;
+                    let started = Instant::now();
+                    let mut lines = vec![".org $100".to_string()];
+                    lines.extend(source.lines().map(str::to_string));
+                    assert_eq!(assembler.pass1(&lines).errors, 0);
+                    let pass1 = started.elapsed().as_secs_f64() * 1e6;
+                    let started = Instant::now();
+                    let mut sink = Vec::new();
+                    assert_eq!(
+                        assembler
+                            .pass2(&lines, &mut ListingWriter::new(&mut sink, false))
+                            .unwrap()
+                            .errors,
+                        0
+                    );
+                    let output = assembler.image().entries().unwrap();
+                    let pass2 = started.elapsed().as_secs_f64() * 1e6;
+                    samples[0].push(setup);
+                    samples[1].push(pass1);
+                    samples[2].push(pass2);
+                    samples[3].push(setup + pass1 + pass2);
+                    output
+                };
+                // Alternate ordering to reduce systematic warm-cache/order bias.
+                let first = if sample % 2 == 0 {
+                    Some(ordinary())
+                } else {
+                    None
+                };
+                let started = Instant::now();
+                let registry = registry();
+                let model = RuntimeModelCore::from_registry(&registry).unwrap();
+                let resolved = model.resolve_pipeline(cpu, None).unwrap();
+                let setup = started.elapsed().as_secs_f64() * 1e6;
+                let started = Instant::now();
+                let prepared =
+                    PreparedSourceExperiment::prepare(&source, &model, &resolved).unwrap();
+                let prepare = started.elapsed().as_secs_f64() * 1e6;
+                if sample == 0 {
+                    let mut names = std::collections::HashSet::new();
+                    for (forms, owner) in [
+                        (&model.family_forms, &resolved.family_id),
+                        (&model.cpu_forms, &resolved.cpu_id),
+                        (&model.dialect_forms, &resolved.dialect_id),
+                    ] {
+                        if let Some(forms) = forms.get(owner) {
+                            names.extend(forms.iter().map(|name| name.to_ascii_lowercase()));
+                        }
+                    }
+                    println!("layout cpu={cpu} blocks={blocks} source_bytes={} retained_bytes={} workspace_bytes={} package_mnemonic_spellings={} normalized_instruction_count=unmeasured", source.len(), prepared.retained_bytes(), prepared.replay_workspace_bytes(), names.len());
+                }
+                drop(resolved);
+                drop(model);
+                drop(registry);
+                let expected = first.unwrap_or_else(&mut ordinary);
+                assert_eq!(prepared.run(0x100).unwrap(), expected);
+                let started = Instant::now();
+                for _ in 0..128 {
+                    std::hint::black_box(prepared.run(0x100).unwrap());
+                }
+                let replay = started.elapsed().as_secs_f64() * 1e6 / 128.0;
+                samples[4].push(setup);
+                samples[5].push(prepare);
+                samples[6].push(replay);
+                samples[7].push(setup + prepare + replay);
             }
-            let replay_16_time = replay_started.elapsed();
-            println!(
-                "cpu={cpu} blocks={blocks} source_bytes={source_bytes} source_records_bytes={} expression_bytes={} directory_bytes={} replay_workspace_bytes={} retained_total_bytes={} model_build={model_time:?} source_prepare={preparation_time:?} replay_16={replay_16_time:?} ordinary_total={oracle_time:?} ordinary_oracle_includes_model_build=true",
-                prepared.retained_source_bytes(),
-                prepared.retained_expression_bytes(),
-                prepared.retained_encoding_bytes(),
-                prepared.replay_workspace_bytes(),
-                prepared.retained_bytes(),
-            );
+            let medians: Vec<_> = samples.iter_mut().map(|values| median_us(values)).collect();
+            println!("timing_us cpu={cpu} blocks={blocks} samples=5 ordinary_setup={:.3} ordinary_parse_layout={:.3} ordinary_final_output={:.3} ordinary_total={:.3} prepared_setup={:.3} prepared_parse_bind={:.3} prepared_two_pass_replay={:.3} prepared_total={:.3}", medians[0],medians[1],medians[2],medians[3],medians[4],medians[5],medians[6],medians[7]);
         }
     }
 }

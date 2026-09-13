@@ -410,7 +410,7 @@ cpuIndexMissing
 	.bend  ; findCpuEntryByIndexV1
 
 ; Stage optional execution properties for the resolved canonical CPU.
-; Legacy packages leave the pending property record explicitly absent.
+; Packages without CPEX leave the pending property record explicitly absent.
 ; Inputs: PendingCpu locator names the canonical CPUS entry.
 ; Outputs: D0 = 0 on match/absence, 1 on impossible validated-chunk miss.
 ; Clobbers: D0-D7/A0-A6/CCR.
@@ -419,6 +419,7 @@ resolveCpuExecutionPropertiesV1	.block
 	clr.b buffers.PendingCpuExecutionPresent
 	clr.l buffers.PendingCpuWordSizeBytes
 	clr.l buffers.PendingCpuMaxProgramAddress
+	clr.l buffers.PendingCpuDataByteOrder
 	btst #4, buffers.PackageChunkFlagsExtra
 	beq.w found
 	lea buffers.PendingCpuOffsetLo, a3
@@ -459,6 +460,9 @@ loop
 	move.l d0, d6
 	bsr.w readU32LeV1
 	bne.w missing
+	move.l d0, d3
+	bsr.w readU32LeV1
+	bne.w missing
 	tst.b d4
 	bne.s matched
 	dbf d7, loop
@@ -466,7 +470,8 @@ loop
 
 matched
 	move.l d6, buffers.PendingCpuWordSizeBytes
-	move.l d0, buffers.PendingCpuMaxProgramAddress
+	move.l d3, buffers.PendingCpuMaxProgramAddress
+	move.l d0, buffers.PendingCpuDataByteOrder
 	move.b #1, buffers.PendingCpuExecutionPresent
 found
 	moveq #0, d0
@@ -1040,6 +1045,7 @@ commitActiveSelectionV1	.block
 	bne.s commitDone
 	move.l buffers.PendingCpuWordSizeBytes, buffers.ActiveCpuWordSizeBytes
 	move.l buffers.PendingCpuMaxProgramAddress, buffers.ActiveCpuMaxProgramAddress
+	move.l buffers.PendingCpuDataByteOrder, buffers.ActiveCpuDataByteOrder
 	move.b buffers.PendingCpuExecutionPresent, d0
 	move.b d0, buffers.ActiveCpuExecutionPresent
 	bset #1, buffers.PackageStateFlags

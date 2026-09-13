@@ -160,6 +160,7 @@ pub fn build_hierarchy_chunks_from_registry(
             cpu_id: cpu.as_str().to_string(),
             word_size_bytes: resolved.cpu.native_word_size_bytes(),
             max_program_address: resolved.cpu.max_program_address(),
+            data_little_endian: resolved.cpu.is_little_endian(),
         });
         cpus.push(CpuDescriptor {
             id: cpu.as_str().to_string(),

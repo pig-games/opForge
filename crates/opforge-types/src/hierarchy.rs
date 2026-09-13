@@ -44,6 +44,7 @@ pub struct CpuExecutionProperties {
     pub cpu_id: String,
     pub word_size_bytes: u32,
     pub max_program_address: u32,
+    pub data_little_endian: bool,
 }
 
 /// Dialect descriptor from package metadata.

@@ -13,6 +13,7 @@ fn sample_cpex() -> Vec<CpuExecutionProperties> {
             } else {
                 0xffff
             },
+            data_little_endian: cpu.family_id == "mos6502",
         })
         .collect()
 }
@@ -33,7 +34,7 @@ fn legacy_sample_chunks() -> HierarchyChunks {
 }
 
 #[test]
-fn cpex_v1_round_trips_and_legacy_absence_remains_distinct() {
+fn cpex_v2_round_trips_and_legacy_absence_remains_distinct() {
     let mut chunks = legacy_sample_chunks();
     assert_eq!(chunks.cpu_execution_properties, None);
     let mut properties = sample_cpex();
@@ -49,6 +50,7 @@ fn cpex_v1_round_trips_and_legacy_absence_remains_distinct() {
         property.cpu_id == "z80"
             && property.word_size_bytes == 3
             && property.max_program_address == 0x01ff_ffff
+            && !property.data_little_endian
     }));
     assert!(properties
         .iter()
@@ -99,16 +101,21 @@ fn cpex_accepts_direct_alias_and_rejects_alias_chains() {
 }
 
 #[test]
-fn cpex_decoder_rejects_version_reserved_absurd_count_and_trailing_bytes() {
+fn cpex_decoder_rejects_v1_reserved_absurd_count_invalid_order_and_trailing_bytes() {
     let payload = encode_cpex_chunk(&sample_cpex()).expect("encode CPEX payload");
     let mut malformed = payload.clone();
-    malformed[0..2].copy_from_slice(&2u16.to_le_bytes());
+    malformed[0..2].copy_from_slice(&1u16.to_le_bytes());
     assert!(decode_cpex_chunk(&malformed).is_err());
     malformed = payload.clone();
     malformed[2..4].copy_from_slice(&1u16.to_le_bytes());
     assert!(decode_cpex_chunk(&malformed).is_err());
     malformed = payload.clone();
     malformed[4..8].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(decode_cpex_chunk(&malformed).is_err());
+    malformed = payload.clone();
+    let first_cpu_id_len = u32::from_le_bytes(malformed[8..12].try_into().unwrap()) as usize;
+    let first_order_offset = 12 + first_cpu_id_len + 8;
+    malformed[first_order_offset..first_order_offset + 4].copy_from_slice(&2u32.to_le_bytes());
     assert!(decode_cpex_chunk(&malformed).is_err());
     malformed = payload;
     malformed.push(0);

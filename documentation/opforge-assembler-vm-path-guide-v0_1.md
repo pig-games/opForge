@@ -59,10 +59,11 @@ text. Native sizing/emission use that kind to keep directives out of instruction
 selection. Directive expression extensions preserve scoped/imported symbol lookup
 while omitting selected-instruction shape inference. The underlying native scalar
 expression compiler still targets its local EXVM v1 program; this routing boundary
-does not establish equivalence to Rust's EXVM v2 expression grammar. A separate
-native data-emission gap remains: numeric `.word` packing is fixed little-endian,
-so it does not yet match the active big-endian package's Rust output. The
-[boundary plan](plans/package-execution-boundaries.md) retains that failing comparison. See the [boundary probe](performance/vm-efficiency.md#target-callback-boundary-probe).
+does not establish equivalence to Rust's EXVM v2 expression grammar. Shared native numeric emission uses the active package's
+[CPEX v2 data byte order](cpu-execution-properties-v2.md), including after CPU
+switches; Rust shared emission prefers the same property. The
+[boundary plan](plans/package-execution-boundaries.md) records exact native/Rust
+comparisons for both byte orders. See the [boundary probe](performance/vm-efficiency.md#target-callback-boundary-probe).
 
 ## 2. Short Version
 

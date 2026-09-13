@@ -6,7 +6,7 @@ use super::*;
 #[test]
 fn native_cpex_harness_uses_real_loader_selection_and_getters() {
     // Level B: the focused executable uses the production loader, alias-aware
-    // pipeline selector, and both public runtime-context getters. Expected
+    // pipeline selector, and all public runtime-context property getters. Expected
     // property values remain absent from native source.
     let source = fs::read_to_string(
         workspace_root()
@@ -178,9 +178,11 @@ fn cpex_harness_packages_and_oracle() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
         if property.cpu_id == "m68000" {
             property.word_size_bytes = 3;
             property.max_program_address = 0x01ff_ffff;
+            property.data_little_endian = true; // Deliberately differs from registry.
         } else if property.cpu_id == "m68020" {
             property.word_size_bytes = 2;
             property.max_program_address = 0xffff;
+            property.data_little_endian = false;
         }
     }
     let cpex_package =
@@ -190,7 +192,7 @@ fn cpex_harness_packages_and_oracle() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
         model.canonical_cpu_id_for_input("68000").as_deref(),
         Some("m68000")
     );
-    let mut oracle = Vec::with_capacity(16);
+    let mut oracle = Vec::with_capacity(24);
     for cpu in ["68000", "m68020"] {
         let property = model
             .cpu_execution_properties(cpu)
@@ -198,10 +200,11 @@ fn cpex_harness_packages_and_oracle() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
             .expect("CPEX property present");
         oracle.extend_from_slice(&property.word_size_bytes.to_be_bytes());
         oracle.extend_from_slice(&property.max_program_address.to_be_bytes());
+        oracle.extend_from_slice(&u32::from(!property.data_little_endian).to_be_bytes());
     }
     assert_eq!(
         oracle,
-        [0, 0, 0, 3, 1, 255, 255, 255, 0, 0, 0, 2, 0, 0, 255, 255]
+        [0, 0, 0, 3, 1, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 255, 255, 0, 0, 0, 1]
     );
 
     chunks.cpu_execution_properties = None;

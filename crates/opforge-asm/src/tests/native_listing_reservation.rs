@@ -9,6 +9,8 @@ fn native_listing_reservation_host_unit_scaling_and_empty_image() {
         ("byte", "4", 4),
         ("word", "2", 4),
         ("long", "1", 4),
+        ("(WoRd)", "2", 4),
+        ("(( long ))", "1", 4),
         ("1+2", "2", 6),
         ("byte", "0", 0),
     ] {
@@ -73,8 +75,6 @@ fn native_listing_reservation_host_rejects_invalid_extent() {
         (".res -1, 2", "non-negative"),
         (".res byte, -1", "non-negative"),
         (".res $ffffffff, 2", "overflow"),
-        (".res (WoRd), 2", "greater than zero"),
-        (".res (( long )), 1", "greater than zero"),
     ] {
         let mut symbols = SymbolTable::new();
         let registry = default_registry();
@@ -514,6 +514,8 @@ fn native_listing_reservation_full_u32_counts_fs_uae() {
 fn native_listing_reservation_negative_cases_fs_uae() {
     // Level D: fresh explicit guest failure with the named production diagnostic.
     // Does not prove positive artifact parity or all expression semantics.
+    // The grouped-keyword case characterizes a known native rejection gap:
+    // Rust accepts grouping here. Its native failure is not Rust parity.
     let _guard = fs_uae_native_cli_smoke_lock()
         .lock()
         .expect("recovering native CLI coordinator");

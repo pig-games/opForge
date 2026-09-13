@@ -57,6 +57,9 @@ copyPackage
 	jsr runtime_context.getCpuMaxProgramAddressV1
 	tst.l d0
 	beq.w closeDos
+	jsr runtime_context.getCpuDataByteOrderV1
+	tst.l d0
+	beq.w closeDos
 	move.l #MissingText, d1
 	movea.l DosBase, a6
 	jsr PUT_STR(a6)
@@ -121,6 +124,10 @@ captureProperties	.block
 	tst.l d0
 	bne.s fail
 	move.l d1, (a3)+
+	jsr runtime_context.getCpuDataByteOrderV1
+	tst.l d0
+	bne.s fail
+	move.l d1, (a3)+
 	moveq #0, d0
 	rts
 fail
@@ -128,7 +135,7 @@ fail
 	rts
 	.bend  ; captureProperties
 
-; A0 path. Write the exact 16-byte getter payload.
+; A0 path. Write the exact 24-byte getter payload.
 writeResult	.block
 	movem.l d1-d4/a6, -(sp)
 	move.l a0, d1
@@ -140,13 +147,13 @@ writeResult	.block
 	move.l d0, d4
 	move.l d0, d1
 	move.l #ResultBytes, d2
-	moveq #16, d3
+	moveq #24, d3
 	jsr -48(a6)
 	move.l d0, -(sp)
 	move.l d4, d1
 	jsr -36(a6)
 	move.l (sp)+, d0
-	cmpi.l #16, d0
+	cmpi.l #24, d0
 	bne.s fail
 	moveq #0, d0
 	bra.s return
@@ -191,7 +198,7 @@ DosBase
 ReturnCode
 	.res long, 1
 ResultBytes
-	.res byte, 16
+	.res byte, 24
 	.endsection
 
 	.output "build/tkpkg_cpex_harness", format=hunk, sections=entry, code, data, bss

@@ -4863,6 +4863,8 @@ done
 ; Inputs: D0.L = valid statement index.
 ; Outputs: D0 = 0 for a directive, 1 for an instruction. Preserves other registers.
 ; CCR: reflects D0 on return.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-role: delegation
 statementIsDirectiveV1	.block
 	jsr eng.opasmEngineGetStatementKindV1
 	tst.w d0
@@ -4878,6 +4880,8 @@ instruction
 ; Inputs: D0.L = statement index, A0 = mnemonic, D1.L = mnemonic length.
 ; Outputs: D0 = 0; D3.W = directive kind, NONE for instructions, -1 for unknown directives.
 ; Clobbers: D0-D4/A0-A2. CCR: reflects D0 on return.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-role: delegation
 classifyStatementDirectiveV1	.block
 	jsr eng.opasmEngineGetStatementKindV1
 	tst.w d0
@@ -4898,6 +4902,8 @@ done
 ; Reject an unresolved dot statement before instruction selection in either pass.
 ; Inputs: D0.L = statement index. Outputs: D0 = 1. Preserves other registers.
 ; Appends a source-associated service diagnostic. CCR: reflects D0 on return.
+; @opforge-owner: opasm.amigaos.assembly_driver
+; @opforge-role: delegation
 reportUnknownDirectiveV1	.block
 	movem.l d1/d7/a0, -(sp)
 	move.l d0, d7

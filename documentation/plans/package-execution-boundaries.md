@@ -123,8 +123,8 @@ Directive expression requests now use the existing base-only evaluation extensio
 They retain request-local scoped/imported symbol snapshots and the resolver, but
 skip instruction-shape inference. Ordinary instruction requests retain shape work.
 This does not replace the native expression compiler: it still compiles text into
-its local EXVM v1 program, not Rust's EXVM v2 parsing contract. No package format or
-bytecode version changed, and no compatibility executor was added.
+its local EXVM v1 program, not Rust's EXVM v2 parsing contract. The subsequent data-emission repair below updates only the CPU-property record;
+no compatibility executor was added.
 
 The focused test module is
 [the native shared-directive boundary test](../../crates/opforge-asm/src/tests/native_shared_directive_boundary.rs).
@@ -133,32 +133,48 @@ immediate expressions, and an ordinary complex instruction operand (75/76 output
 bytes for 6502/68020). Two negative cases require `.nop` to fail as a directive,
 including a preceding label. Rust oracles are constructed live from each source;
 real-native tests require the existing fresh guest protocol and explicit exit.
-The first guest batch exposed the source-fallback kind loss; no failed run counts
-as parity. After its correction, the 6502 positive and negative cases passed their
-fresh guest proof contracts. The 68020 positive case completed with exit zero and
-76 bytes, but its eight words were little-endian: 16 bytes differ from Rust. Its
-instruction bytes and long values matched. This is a pre-existing defect in
-`opasm_directive_data.asm`: the common numeric packer explicitly uses a fixed
-little-endian order. The original 68020 negative case timed out at 60 seconds, supplying no
-proof. An independently runnable labeled 68020 `.nop` case subsequently passed
-its fresh negative proof in 22.67 seconds. Each native case now has its own test
-filter, so follow-ups need not rerun already characterized cases.
+The initial comparison exposed fixed little-endian `.word` packing. Shared numeric
+emission now reads data byte order from the selected package's
+[CPEX v2 properties](../cpu-execution-properties-v2.md). Rust's shared emission also
+prefers this property over the registry. Native selection stages and commits it
+with the CPU identity, and emission fails when the property is absent. No CPU-name
+branch or instruction-parser dispatch was added. CPEX v1 is rejected by both
+loaders; both tracked package fixtures were regenerated. The full package grew by
+56 bytes to 368,635 bytes. The existing package fixup path for `.long` is retained.
 
-**Next decision:** repair shared numeric-data emission using the active package's
-byte-order contract, retaining these exact-output tests. Do not add a CPU-name
-branch or weaken the Rust oracle. That is a distinct data-emission slice; B3 must
-not be marked fully qualified until its 68020 data comparison passes. The separate
-native EXVM representation gap also remains explicit. No native speed or Amiga
-resource-feasibility claim follows from these cases.
+The real-native comparison now passes both 75/76-byte sources and both labeled
+unknown-directive cases. A new 21-byte source switches big→little→big within one
+assembly and checks `.byte`, `.word` and `.long` against an independent expected
+Rust result and fresh native output. All five guests completed their fresh proof
+contracts; the eight-test batch (including three host checks) took 116.01 seconds,
+with unchanged 60-second guest deadlines. Initial host assembly failures from an
+overlong short branch supplied no native evidence; the branch was widened before
+this successful rerun. A separate two-guest CPEX check passed in 35.23 seconds:
+registry-disagreeing properties survived alias selection and a CPU switch, and
+absent properties returned an explicit unavailable result. One earlier host startup
+exceeded 60 seconds before any tests ran and was terminated; it supplied no guest
+evidence. Guest artifacts remain ephemeral.
 
-Validation: four focused host tests covering live Rust oracles and source boundaries
-(levels A/B),
-real-native results as above (level D), targeted assembly formatting, architecture
-boundary and fresh-proof structural guards. The 175-second four-case batch stayed
-within the five-minute cap; guest deadlines remained 60 seconds. Source review and
-passing structural checks do not waive the remaining native byte mismatch.
-Ephemeral guest artifacts were removed by the runner; local command logs are under
-ignored `build/b3-*`. This is a checkpoint, not full native qualification.
+B3's scoped shared-directive comparison is complete. The native EXVM representation
+gap remains explicit. Broad checks also exposed a stale Rust rejection expectation
+for grouped reservation units: `.res (WoRd), 2` correctly reserves four bytes in
+Rust, while native still rejects that spelling. The host expectation now follows
+the documented shared expression grammar; the native rejection test explicitly
+records a known gap, not parity. Repairing that unit parser is a separate slice.
+These cases establish neither full expression parity nor
+native speed or Amiga resource feasibility. The next optimization remains a separate
+reviewable decision, using the existing generic-path measurements.
+
+Qualification of this repair: all 1,662 assembler tests pass, including the package
+byte-order override and refreshed macro/segment error references. The workflow
+gate passes all 136 tests; strict Clippy, formatting, audit (with its three allowed
+warnings), native ownership/inventory guards and the fresh-proof guard also pass.
+The broader workspace run exposed one further stale CLI caret expectation for
+`.bogus`, now corrected to the directive start. Its rebuilt diagnostic executable
+repeatedly stalled before harness startup, including a final 60-second direct
+retry; signature verification passed. Remaining workspace qualification is
+incomplete, not green. Engine (66 tests), CLI core (60 tests), and assembler/CLI
+doctests passed separately. No native self-host or long measurement run was used.
 
 ## Bounded steps
 
@@ -182,7 +198,7 @@ ignored `build/b3-*`. This is a checkpoint, not full native qualification.
    implementation with measured total preparation/execution cost and memory impact;
    revise or stop if the complexity is not justified.
 
-3. **B3 — Check the same operation on native.** Map the exact Rust input, output and
+3. **B3 — Check the same operation on native (scoped comparison complete).** Map the exact Rust input, output and
    state contract to its native boundary. Determine whether native already executes
    it generically, needs a shared operation, or retains a semantic shortcut. Make
    only the agreed coherent change, removing the responsibility it replaces rather

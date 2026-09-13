@@ -392,6 +392,10 @@ impl registry::registry::CpuHandlerDyn for ThreeByteCpuHandler {
     fn max_program_address(&self) -> u32 {
         0x01ff_ffff
     }
+
+    fn is_little_endian(&self) -> bool {
+        false
+    }
 }
 
 fn mos6502_and_motorola68000_registry() -> ModuleRegistry {
@@ -1090,6 +1094,7 @@ fn package_cpu_execution_properties_resolve_alias_without_legacy_fallback() {
         cpu_id: "8085".to_string(),
         word_size_bytes: 3,
         max_program_address: 0x01ff_ffff,
+        data_little_endian: true,
     }]);
     let encoded =
         package::encode_hierarchy_chunks_from_chunks(&chunks).expect("encode execution properties");
@@ -1102,6 +1107,7 @@ fn package_cpu_execution_properties_resolve_alias_without_legacy_fallback() {
     assert_eq!(property.cpu_id, "8085");
     assert_eq!(property.word_size_bytes, 3);
     assert_eq!(property.max_program_address, 0x01ff_ffff);
+    assert!(property.data_little_endian);
 }
 
 #[test]
@@ -1115,6 +1121,7 @@ fn from_chunks_rejects_present_but_invalid_cpu_execution_properties() {
         cpu_id: "8085".to_string(),
         word_size_bytes: 0,
         max_program_address: 0,
+        data_little_endian: true,
     }]);
     assert!(HierarchyExecutionModel::from_chunks(zero_word).is_err());
 }
@@ -1131,6 +1138,7 @@ fn registry_builder_captures_authoritative_cpu_execution_properties() {
     assert_eq!(properties.len(), 1);
     assert_eq!(properties[0].word_size_bytes, 3);
     assert_eq!(properties[0].max_program_address, 0x01ff_ffff);
+    assert!(!properties[0].data_little_endian);
 
     let encoded =
         build_hierarchy_package_from_registry(&registry).expect("encode registry package");
@@ -1142,6 +1150,7 @@ fn registry_builder_captures_authoritative_cpu_execution_properties() {
         .expect("CPEX property");
     assert_eq!(property.word_size_bytes, 3);
     assert_eq!(property.max_program_address, 0x01ff_ffff);
+    assert!(!property.data_little_endian);
 }
 
 fn intel_test_expr_resolver(

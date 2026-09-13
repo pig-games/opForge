@@ -53,8 +53,8 @@ scope, validation and completion. No future feature or migration is scheduled he
   package CPU id used to restore the same initial pipeline before each pass.
   Layout region/section/place storage is owned by `opasm.amigaos.layout`.
 - Routine responsibility groups: pass callback orchestration; router-result
-  dispatch, including original-source sigil disambiguation when a normalized
-  directive name collides with a package mnemonic; structural-flow state
+  dispatch using retained parser statement kind, with unresolved dot statements
+  rejected before instruction selection; structural-flow state
   transitions and explicit `.case` evaluation
   callback; scoped-struct repeat-label qualification callback; operand/evaluation request
   construction, including delegation of imported-label lookup without owning
@@ -91,7 +91,8 @@ scope, validation and completion. No future feature or migration is scheduled he
 - Source: `native/motorola68000/amigaos/opasm/opasm_operand_eval.asm`.
 - Public entries: selected-instruction request construction, textual expression
   request construction, their evaluation-extension adapters, and bounded
-  materialization of imported aliases supplied through the callback ABI.
+  materialization of imported aliases supplied through the callback ABI. Directive
+  requests retain those snapshots but omit instruction-shape inference.
 - Imports/outbound dependencies: callback ABI, engine request builders, and the
   flow-scope owner's bounded active-label alias query.
 - Mutable state: a bounded evaluation-only snapshot of local, imported, and
@@ -103,12 +104,14 @@ scope, validation and completion. No future feature or migration is scheduled he
 
 - Source: `native/motorola68000/amigaos/opasm/opasm_directive_data.asm`.
 - Public entries: `sizeNumericDirectiveV1` and `emitNumericDirectiveV1`.
-- Imports/outbound dependencies: engine image append; the driver supplies its
+- Imports/outbound dependencies: engine image append and runtime-context data
+  byte order; the driver supplies its
   existing comma-count and statement-aware operand-resolution callbacks.
-- Mutable state: per-session callback pointers, unit-width scratch, and a
+- Mutable state: per-session callback pointers, unit-width/byte-order scratch, and a
   four-byte packing buffer.
 - Routine responsibility groups: numeric list sizing, byte range validation,
-  MOS little-endian packing, and image append.
+  package-selected byte-order packing, and image append. Missing execution
+  properties fail explicitly before emission.
 
 ### `opasm.amigaos.directive_text`
 
@@ -246,7 +249,7 @@ scope, validation and completion. No future feature or migration is scheduled he
   `lookupSymbolV1`, `isSymbolTargetReferenceV1`,
   `getSymbolStabilityTableV1`, `getSymbolTableSnapshotV1`,
   `reportDiagnosticV1`, `getLastDiagnosticV1`, `getCpuWordSizeBytesV1`, and
-  `getCpuMaxProgramAddressV1`.
+  `getCpuMaxProgramAddressV1`, and `getCpuDataByteOrderV1`.
 - Imports/outbound dependencies: engine-context adapter, state service and
   package-owned buffers for the selected CPU execution-property cache.
 - Mutable state: private neutral diagnostic, symbol-stability, and bounded
@@ -254,7 +257,7 @@ scope, validation and completion. No future feature or migration is scheduled he
 - Routine responsibility groups: versioned read-only context projection,
   bounded diagnostic handoff, bounded stability snapshot materialization, and
   read-only projection of engine-owned label target-reference metadata and
-  explicit-presence access to selected package CPU word size/address bounds.
+  explicit-presence access to selected package CPU word size/address bounds/data byte order.
 
 ### `tkpkg.amigaos.engine_context_adapter`
 
@@ -349,7 +352,7 @@ scope, validation and completion. No future feature or migration is scheduled he
   parser locator buffers plus pending/active CPEX property values and presence.
 - Routine responsibility groups: request parsing, package hierarchy lookup,
   CPU/family/dialect selection, tokenizer/parser locator resolution, canonical
-  CPU execution-property staging, selection commit, and package-derived memo
+  CPU word-size/address-bound/byte-order staging, selection commit, and package-derived memo
   invalidation before each selection attempt.
 - Inbound users: tkpkg service and package-facing setup paths.
 

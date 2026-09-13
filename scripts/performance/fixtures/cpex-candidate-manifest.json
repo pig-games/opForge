@@ -463,9 +463,9 @@
     }
   ],
   "package": {
-    "bytes": 368579,
+    "bytes": 368635,
     "path": "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm",
-    "sha256": "4d6a03d5718bc9380f02452294c404ec82e4e3716471ad5c95b349c8c6e25872"
+    "sha256": "ae77de3ff1a7966af7f33f89b89062ef4aa5bdb0ce209fedee2e6b3e44826e4a"
   },
   "policy": {
     "cache": "fresh process, warm host filesystem after one unmeasured run; no cache flush",
@@ -476,5 +476,5 @@
   },
   "revision": "native-bridge-corpus-v1",
   "schema_version": 1,
-  "sha256": "8483da832f779eca8a4544580ef48f66feb55c7344311c0d14e43f0b04a9b46d"
+  "sha256": "aff786fe4a943033515c3f88e526fc0842015167f0b853ff0be7dde5553c8e90"
 }

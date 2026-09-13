@@ -82,6 +82,21 @@ missing
 	rts
 	.bend  ; getCpuWordSizeBytesV1
 
+; Return the selected package CPU's data byte order: 0 little, 1 big.
+; Inputs: none. Outputs: D0 = 0/D1 = order, or D0 = 1 when unavailable.
+; Clobbers: D0-D1/CCR. CCR reflects D0 on return.
+getCpuDataByteOrderV1	.block
+	tst.b buffers.ActiveCpuExecutionPresent
+	beq.s missing
+	move.l buffers.ActiveCpuDataByteOrder, d1
+	moveq #0, d0
+	rts
+missing
+	moveq #0, d1
+	moveq #1, d0
+	rts
+	.bend  ; getCpuDataByteOrderV1
+
 ; Return the selected package CPU's inclusive maximum program address.
 ; Zero is a valid value and is distinguished by the presence byte.
 ; Inputs: none. Outputs: D0 = 0/D1 = value, or D0 = 1 when unavailable.

@@ -924,13 +924,13 @@ pub(super) fn decode_cpus_chunk(bytes: &[u8]) -> Result<Vec<CpuDescriptor>, Opcp
     decode_simple_schema_chunk(bytes)
 }
 
-const CPU_EXECUTION_PROPERTIES_VERSION_V1: u16 = 1;
+const CPU_EXECUTION_PROPERTIES_VERSION_V2: u16 = 2;
 
 pub(super) fn encode_cpex_chunk(
     properties: &[CpuExecutionProperties],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
     let mut out = Vec::new();
-    write_u16(&mut out, CPU_EXECUTION_PROPERTIES_VERSION_V1);
+    write_u16(&mut out, CPU_EXECUTION_PROPERTIES_VERSION_V2);
     write_u16(&mut out, 0);
     write_u32(
         &mut out,
@@ -940,6 +940,7 @@ pub(super) fn encode_cpex_chunk(
         write_string(&mut out, "CPEX", &property.cpu_id)?;
         write_u32(&mut out, property.word_size_bytes);
         write_u32(&mut out, property.max_program_address);
+        write_u32(&mut out, u32::from(!property.data_little_endian));
     }
     Ok(out)
 }
@@ -949,7 +950,7 @@ pub(super) fn decode_cpex_chunk(
 ) -> Result<Vec<CpuExecutionProperties>, OpcpuCodecError> {
     let mut cursor = Decoder::new(bytes, "CPEX");
     let version = cursor.read_u16()?;
-    if version != CPU_EXECUTION_PROPERTIES_VERSION_V1 {
+    if version != CPU_EXECUTION_PROPERTIES_VERSION_V2 {
         return Err(OpcpuCodecError::InvalidChunkFormat {
             chunk: "CPEX".to_string(),
             detail: format!("unsupported version: {version}"),
@@ -962,13 +963,27 @@ pub(super) fn decode_cpex_chunk(
             detail: format!("reserved field must be zero, found {reserved}"),
         });
     }
-    let count = read_bounded_count(&mut cursor, 13, "CPU property")?;
+    let count = read_bounded_count(&mut cursor, 17, "CPU property")?;
     let mut properties = Vec::with_capacity(count);
     for _ in 0..count {
+        let cpu_id = cursor.read_string()?;
+        let word_size_bytes = cursor.read_u32()?;
+        let max_program_address = cursor.read_u32()?;
+        let data_little_endian = match cursor.read_u32()? {
+            0 => true,
+            1 => false,
+            order => {
+                return Err(OpcpuCodecError::InvalidChunkFormat {
+                    chunk: "CPEX".to_string(),
+                    detail: format!("CPU property '{cpu_id}' has invalid data byte order {order}"),
+                });
+            }
+        };
         properties.push(CpuExecutionProperties {
-            cpu_id: cursor.read_string()?,
-            word_size_bytes: cursor.read_u32()?,
-            max_program_address: cursor.read_u32()?,
+            cpu_id,
+            word_size_bytes,
+            max_program_address,
+            data_little_endian,
         });
     }
     if cursor.has_remaining() {

@@ -210,9 +210,9 @@ fn native_cli_unknown_mnemonic_uses_stderr_and_failure_status_one() {
 #[test]
 fn source_failures_render_bounded_context_in_default_and_classic_styles() {
     let temp_dir = unique_temp_dir("opforge-cli-source-context");
-    let tokenizer = write_source(
+    let directive = write_source(
         &temp_dir,
-        "tokenizer.asm",
+        "directive.asm",
         ".cpu \"68020\"\n.org $1000\n.bogus\nnop\n.end\n",
     );
     let parser = write_source(
@@ -226,19 +226,19 @@ fn source_failures_render_bounded_context_in_default_and_classic_styles() {
         ".cpu \"68020\"\n.org $1000\n.byte missing_symbol\nnop\n.end\n",
     );
 
-    let tokenizer_rendered =
-        assert_failed_with_output(&opforge(&["--infile".to_string(), arg(&tokenizer)]));
+    let directive_rendered =
+        assert_failed_with_output(&opforge(&["--infile".to_string(), arg(&directive)]));
     assert!(
-        tokenizer_rendered.contains("    3 | .bogus"),
-        "{tokenizer_rendered}"
+        directive_rendered.contains("    3 | .bogus"),
+        "{directive_rendered}"
     );
     assert!(
-        tokenizer_rendered.contains("      |       ^"),
-        "{tokenizer_rendered}"
+        directive_rendered.contains("      | ^"),
+        "{directive_rendered}"
     );
     assert!(
-        tokenizer_rendered.contains("    5 | .end"),
-        "{tokenizer_rendered}"
+        directive_rendered.contains("    5 | .end"),
+        "{directive_rendered}"
     );
 
     let parser_rendered =

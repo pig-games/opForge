@@ -7617,6 +7617,8 @@ fn item9_staged_cases() -> Vec<Item9StagedCase> {
 fn item9_normalize_native_diagnostic(stderr: &str) -> Result<Item9DiagnosticKind, String> {
     let primary = if stderr.contains("ERROR OPC-NCLI025: unknown native mnemonic") {
         Item9DiagnosticKind::UnknownInstruction
+    } else if stderr.contains("Unknown directive") {
+        Item9DiagnosticKind::UnknownDirective
     } else if stderr.contains("OTR901: selected operand empty") {
         Item9DiagnosticKind::UnexpectedEndExpression
     } else {
@@ -7626,6 +7628,9 @@ fn item9_normalize_native_diagnostic(stderr: &str) -> Result<Item9DiagnosticKind
         Item9DiagnosticKind::UnknownInstruction => stderr
             .find("ERROR OPC-NCLI025: unknown native mnemonic")
             .expect("classified unknown-instruction diagnostic is present"),
+        Item9DiagnosticKind::UnknownDirective => stderr
+            .find("Unknown directive")
+            .expect("classified unknown-directive diagnostic is present"),
         Item9DiagnosticKind::UnexpectedEndExpression => stderr
             .find("OTR901: selected operand empty")
             .expect("classified empty-expression diagnostic is present"),

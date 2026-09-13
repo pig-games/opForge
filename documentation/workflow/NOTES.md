@@ -22,3 +22,12 @@ then remove notes once incorporated or obsolete. These are observations, not rul
   its 60-second deadline before any test output. Keep build/startup delays separate
   from workload and guest timings. Identify the cause before changing automation
   or raising timeouts; a host startup timeout is not native failure evidence.
+  This recurred during shared-data qualification even with valid executable
+  signatures; parallel test-list probing did not reliably resolve it.
+
+- **Historical snapshots in broad checks.** The shared-data repair exposed stale
+  B3 source assertions and tests pinning exact source bytes/import/export counts.
+  Capacity tests now retain their real limits and report measured usage without
+  rejecting every valid edit. The native inventory still pins whole-file hashes;
+  consider whether checks of responsibility boundaries can retain its value with
+  less refresh work. Do not silently raise capacity limits to pass a test.

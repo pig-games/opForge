@@ -690,6 +690,8 @@ ActiveCpuWordSizeBytes
 	.res long, 1
 ActiveCpuMaxProgramAddress
 	.res long, 1
+ActiveCpuDataByteOrder
+	.res long, 1
 
 ActiveDialectBuffer
 	.res byte, PIPELINE_ID_BUFFER_CAPACITY
@@ -1045,6 +1047,8 @@ PendingCpuExecutionPresent
 PendingCpuWordSizeBytes
 	.res long, 1
 PendingCpuMaxProgramAddress
+	.res long, 1
+PendingCpuDataByteOrder
 	.res long, 1
 
 StoredLastErrorLen

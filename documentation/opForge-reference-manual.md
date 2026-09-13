@@ -1461,7 +1461,7 @@ See also:
 - In `vm-runtime-only` + `vm-runtime-opasm-unbundled` builds, runtime package sourcing is mandatory:
   - either provide `--opasm-package <FILE>`
   - or enable artifact mode and provide the default artifact file
-- Runtime packages may carry optional [CPU execution properties (`CPEX` v1)](cpu-execution-properties-v1.md), including canonical CPU word size and address bounds. Legacy packages remain loadable, but property access reports absence rather than guessing values. This metadata transport alone does not add reservation behavior.
+- Runtime packages may carry optional [CPU execution properties (`CPEX` v2)](cpu-execution-properties-v2.md), including canonical CPU word size, address bounds and data byte order. Earlier CPEX versions are rejected; regenerate packages with the current builder. Missing metadata remains explicit, and native numeric data emission requires it. This metadata transport alone does not add reservation behavior.
 - Lower-level engine/editor helpers such as `libopforge::processing`, `editor_parse_line`, and `editor_route_line` do not broaden this into CLI-style fallback behavior.
 - In `vm-runtime-only` mode, those helpers should be called with an explicit runtime model via the `*_with_model` entrypoints, or with the default artifact file present when `vm-runtime-opasm-artifact` is enabled.
 - If neither an explicit model nor the default artifact is available, those helpers report an unavailable runtime model instead of generating or bundling one implicitly.

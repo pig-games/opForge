@@ -319,9 +319,10 @@ artifacts remain in ignored `build/w3-*` directories.
 **Next decision for review:** B2 of the short
 [package-execution boundary plan](package-execution-boundaries.md) removes family
 consultation from core directive grammar and shared instruction atoms. B3 now
-preserves that ownership on native, including source-fallback parsing, but its
-68020 data comparison exposes fixed little-endian word emission. Review the
-proposed shared-data repair before further optimization. Afterwards, candidates include reducing generic
+preserves that ownership on native, including source-fallback parsing. Its shared
+data-emission repair now uses package-owned byte order and passes both target
+comparisons plus CPU switching. Review this coherent result before further
+optimization. Candidates include reducing generic
 tokenizer dispatch through package-derived preparation and reusing prepared
 candidate discovery across passes. The tokenizer loop is a demonstrated generic hotspot, but copying
 its hand-maintained Rust fast path into native would create another correspondence

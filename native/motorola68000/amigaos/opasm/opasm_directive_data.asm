@@ -4,6 +4,7 @@
 	.cpu 68020
 
 	.use opasm.amigaos.engine as eng
+	.use tkpkg.amigaos.runtime_context as runtime_context
 .ifdef OPFORGE_DEBUG_CONTRACTS
 	.use opforge.debug.contracts as debug_contracts
 	.use opforge.debug.events as debug_events
@@ -35,10 +36,10 @@ return
 	rts
 	.bend  ; sizeNumericDirectiveV1
 
-; Emit numeric directive values in first-run MOS little-endian order.
+; Emit numeric directive values in the selected package CPU's data byte order.
 ; Inputs: D7.L = statement; D5.W = unit bytes; A0 = count callback;
 ;         A1 = resolver callback. The resolver returns D3.L.
-; Outputs: D0.L = 0 on success, 1 on malformed data or image overflow.
+; Outputs: D0.L = 0 on success, 1 on missing properties, malformed data or image overflow.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0 on return.
 emitNumericDirectiveV1	.block
@@ -47,6 +48,9 @@ emitNumericDirectiveV1	.block
 	move.l a1, DataResolveCallback
 	move.w d5, d4
 	move.w d5, DataUnitBytes
+	jsr runtime_context.getCpuDataByteOrderV1
+	bne.w fail
+	move.w d1, DataByteOrder
 	movea.l DataCountCallback, a0
 	jsr (a0)
 	bne.w fail
@@ -92,22 +96,27 @@ pack
 	move.b d3, (a0)
 	cmpi.w #1, d4
 	beq.s append
-	move.l d3, d0
-	lsr.l #8, d0
-	move.b d0, 1(a0)
 	cmpi.w #2, d4
-	beq.s append
+	beq.s packWide
 	cmpi.w #4, d4
 	bne.w fail
+packWide
 	move.l d3, d0
+	move.w d4, d1
+	subq.w #1, d1
+	tst.w DataByteOrder
+	beq.s packLittle
+	adda.w d4, a0
+packBigLoop
+	move.b d0, -(a0)
 	lsr.l #8, d0
+	dbf d1, packBigLoop
+	bra.s append
+packLittle
+	move.b d0, (a0)+
 	lsr.l #8, d0
-	move.b d0, 2(a0)
-	move.l d3, d0
-	lsr.l #8, d0
-	lsr.l #8, d0
-	lsr.l #8, d0
-	move.b d0, 3(a0)
+	dbf d1, packLittle
+	lea DataScratch, a0
 append
 	move.w d4, d0
 	jsr eng.opasmEngineAppendImageBytesV1
@@ -155,6 +164,8 @@ DataCountCallback
 DataResolveCallback
 	.res long, 1
 DataUnitBytes
+	.res word, 1
+DataByteOrder
 	.res word, 1
 DataScratch
 	.res byte, 4

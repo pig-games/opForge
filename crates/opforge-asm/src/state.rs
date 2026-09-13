@@ -140,6 +140,9 @@ impl AsmCpuModeState {
                 .ok()
                 .flatten()
         });
+        let package_execution_properties = model
+            .and_then(|model| model.cpu_execution_properties(cpu.as_str()).ok())
+            .flatten();
         Self {
             program_address_max: resolved
                 .as_ref()
@@ -149,9 +152,13 @@ impl AsmCpuModeState {
                 .as_ref()
                 .map(|pipeline| pipeline.cpu.native_word_size_bytes().max(1))
                 .unwrap_or(2),
-            little_endian: resolved
-                .as_ref()
-                .map(|pipeline| pipeline.cpu.is_little_endian())
+            little_endian: package_execution_properties
+                .map(|properties| properties.data_little_endian)
+                .or_else(|| {
+                    resolved
+                        .as_ref()
+                        .map(|pipeline| pipeline.cpu.is_little_endian())
+                })
                 .unwrap_or(true),
             state_flags: package_state.unwrap_or_else(|| {
                 resolved

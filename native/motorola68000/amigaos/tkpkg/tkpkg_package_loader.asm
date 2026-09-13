@@ -132,7 +132,7 @@ validateStagedPackageV1	.block
 	bne.s done
 	bsr.w validateToc
 	bne.s done
-	bsr.w validateCpexV1
+	bsr.w validateCpexV2
 	bne.s done
 	move.b #buffers.PACKAGE_STATE_LOADED, buffers.PackageStateFlags
 	moveq #0, d0
@@ -671,12 +671,12 @@ nextTocEntry
 	rts
 	.bend  ; validateToc
 
-; Validate the optional CPEX-v1 CPU execution-property chunk once at load.
+; Validate the optional CPEX-v2 CPU execution-property chunk once at load.
 ; Every record must name one canonical CPUS entry exactly once.
 ; Outputs: D0 = 0 when absent/valid, 1 with CpexInvalidText on failure.
 ; Clobbers: D0-D1/A1/CCR. Other registers are preserved.
 ; CCR: reflects D0 on return.
-validateCpexV1	.block
+validateCpexV2	.block
 	movem.l d2-d7/a0/a2-a6, -(sp)
 	btst #4, buffers.PackageChunkFlagsExtra
 	beq.w valid
@@ -686,7 +686,7 @@ validateCpexV1	.block
 	moveq #8, d0
 	bsr.w cpexRequireBytesV1
 	bne.w invalid
-	cmpi.b #1, (a2)
+	cmpi.b #2, (a2)
 	bne.w invalid
 	tst.b 1(a2)
 	bne.w invalid
@@ -714,7 +714,7 @@ validateCpexV1	.block
 	addq.l #8, a2
 	moveq #0, d6
 	tst.w d7
-	beq.s recordsDone
+	beq.w recordsDone
 
 recordLoop
 	bsr.w cpexReadU32V1
@@ -740,6 +740,10 @@ recordLoop
 	bsr.w cpexReadU32V1
 	bne.w invalid
 	move.l d0, d3
+	bsr.w cpexReadU32V1
+	bne.w invalid
+	cmpi.l #1, d0
+	bhi.w invalid
 	movea.l a2, a5
 	movea.l a4, a0
 	move.l d5, d0
@@ -772,7 +776,7 @@ invalid
 done
 	movem.l (sp)+, d2-d7/a0/a2-a6
 	rts
-	.bend  ; validateCpexV1
+	.bend  ; validateCpexV2
 
 ; Resolve one stored locator into a bounded package cursor.
 ; Inputs: A3 = eight-byte offset/length locator. Outputs: A2=start, A6=end, D0=status.
@@ -895,10 +899,10 @@ loop
 	tst.l d0
 	bne.s duplicate
 	adda.l d6, a2
-	moveq #8, d0
+	moveq #12, d0
 	bsr.w cpexRequireBytesV1
 	bne.s duplicate
-	adda.l #8, a2
+	adda.l #12, a2
 	dbf d7, loop
 unique
 	moveq #1, d0

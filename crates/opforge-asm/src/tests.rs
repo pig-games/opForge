@@ -7369,6 +7369,37 @@ fn cpu_68000_data_directives_use_big_endian_order() {
 }
 
 #[test]
+fn package_data_byte_order_overrides_registry_for_shared_word_emission() {
+    let registry = default_registry();
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("build package hierarchy");
+    let properties = chunks
+        .cpu_execution_properties
+        .as_mut()
+        .expect("registry-built CPEX properties");
+    let m68000 = properties
+        .iter_mut()
+        .find(|property| property.cpu_id.eq_ignore_ascii_case("m68000"))
+        .expect("68000 CPEX property");
+    assert!(!m68000.data_little_endian);
+    m68000.data_little_endian = true;
+
+    let mut symbols = SymbolTable::new();
+    let mut asm = AsmLine::with_cpu_metadata_and_execution_model(
+        &mut symbols,
+        m68000_cpu_id,
+        &registry,
+        RootMetadata::default(),
+        Some(load_opasm_model_from_chunks(chunks)),
+    );
+    assert_eq!(
+        process_line(&mut asm, "    .word $1234", 0, 1),
+        LineStatus::Ok
+    );
+    assert_eq!(asm.bytes(), &[0x34, 0x12]);
+}
+
+#[test]
 fn m68000_movement_and_addressing_slice_emits_expected_bytes() {
     assert_eq!(
         assemble_bytes(m68000_cpu_id, "    MOVE.W #$1234,D0"),
@@ -15553,15 +15584,12 @@ fn motorola68020_embedded_native_cli_package_matches_rust_default_runtime_packag
 }
 
 #[test]
-fn motorola68020_step27_cpex_uses_exact_package_digest() {
-    // Keep the historical test entrypoint used by the Item 14 slice manifest,
-    // while pinning the Step27 CPEX candidate package. The previous Step21
-    // digest was 0x756b_ce35_d984_f708 and its corpus manifest is retained;
-    // the Item14.3 digest was 0x37aa_f6a8_f1f4_66a3.
-    const STEP27_CPEX_PACKAGE_FNV1A64: u64 = 0x150c_f578_81f4_d47f;
+fn native_current_cpex_package_uses_exact_package_digest() {
+    // Pin the reviewed current package, while also checking live builder equality.
+    const CPEX_PACKAGE_FNV1A64: u64 = 0xbfc1ddc7dc19f677;
     let package_path =
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
-    let embedded_package = fs::read(&package_path).expect("read Step27 embedded candidate package");
+    let embedded_package = fs::read(&package_path).expect("read current embedded package");
     let rust_package = build_hierarchy_package_from_registry(&default_registry())
         .expect("build current Rust package");
     assert_eq!(
@@ -15574,12 +15602,12 @@ fn motorola68020_step27_cpex_uses_exact_package_digest() {
             (state ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
         });
     assert_eq!(
-        digest, STEP27_CPEX_PACKAGE_FNV1A64,
-        "Step27 CPEX candidate package input digest changed"
+        digest, CPEX_PACKAGE_FNV1A64,
+        "current CPEX package input digest changed"
     );
 
     let chunks = package::decode_hierarchy_chunks(&embedded_package)
-        .expect("decode exact Step27 CPEX candidate package");
+        .expect("decode exact current CPEX package");
     let fixed = chunks
         .tables
         .iter()
@@ -19759,7 +19787,7 @@ fn motorola68020_opasm_failure_events_preserve_32_bit_statement_identity() {
             "jsr dos.putErrStr",
         ]
     ));
-    assert_eq!(driver.matches("bsr.w appendStatementTextEvent").count(), 2);
+    assert_eq!(driver.matches("bsr.w appendStatementTextEvent").count(), 3);
     assert!(source_contains_in_order(
         &driver,
         &[
@@ -19868,7 +19896,7 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &driver,
         &[
             "opasmDriverEmitImageBytes .BLOCK",
-            "JSR directives.classifyV1",
+            "BSR.W classifyStatementDirectiveV1",
             "CMPI.W #directives.OPASM_DIRECTIVE_ALIGN, D3",
             "BEQ.W emitAlign",
             "CMPI.W #directives.OPASM_DIRECTIVE_DS, D3",
@@ -19882,7 +19910,7 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &driver,
         &[
             "opasmDriverAdvancePc .BLOCK",
-            "JSR directives.classifyV1",
+            "BSR.W classifyStatementDirectiveV1",
             "CMPI.W #directives.OPASM_DIRECTIVE_REGION, D3",
             "BEQ.W region",
             "CMPI.W #directives.OPASM_DIRECTIVE_SECTION, D3",
@@ -20613,7 +20641,7 @@ fn motorola68020_item9_native_symbol_config_directives_route_before_selected_enc
         &driver,
         &[
             "opasmDriverEmitImageBytes .BLOCK",
-            "JSR directives.classifyV1",
+            "BSR.W classifyStatementDirectiveV1",
             "CMPI.W #directives.OPASM_DIRECTIVE_PTEXT, D3",
             "BEQ.W emitPtext",
             "TST.W D3",
@@ -20625,7 +20653,7 @@ fn motorola68020_item9_native_symbol_config_directives_route_before_selected_enc
         &driver,
         &[
             "opasmDriverAdvancePc .BLOCK",
-            "JSR directives.classifyV1",
+            "BSR.W classifyStatementDirectiveV1",
             "CMPI.W #directives.OPASM_DIRECTIVE_PTEXT, D3",
             "BEQ.W ptext",
             "TST.W D3",
@@ -20702,10 +20730,16 @@ fn motorola68020_opasm_directive_router_owns_non_structural_mnemonic_classificat
             .split("\t.bend")
             .next()
             .expect("driver routine should terminate");
-        assert!(body.contains("jsr directives.classifyV1"));
+        assert!(
+            body.contains("jsr directives.classifyV1")
+                || body.contains("bsr.w classifyStatementDirectiveV1")
+        );
         assert!(!body.contains("MnemonicText"));
         assert!(!body.contains("lineStartsWith"));
     }
+    let classifier = routine_body(&driver, "classifyStatementDirectiveV1")
+        .expect("driver directive classifier should exist");
+    assert!(classifier.contains("jsr directives.classifyV1"));
     assert!(source_contains_in_order(
         &router,
         &[

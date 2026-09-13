@@ -20,6 +20,25 @@ fn data_source(cpu: &str) -> String {
     source
 }
 
+fn switched_data_source() -> String {
+    ["m68020", "m6502", "m68020"]
+        .into_iter()
+        .map(|cpu| format!(".cpu {cpu}\n.byte $80\n.word $1234\n.long $12345678\n"))
+        .collect()
+}
+
+#[test]
+fn native_shared_directive_switch_rust_oracle() {
+    // Level A: byte order changes with the active CPU; byte data is invariant.
+    assert_eq!(
+        rust_bytes(&switched_data_source()),
+        [
+            0x80, 0x12, 0x34, 0x12, 0x34, 0x56, 0x78, 0x80, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12,
+            0x80, 0x12, 0x34, 0x12, 0x34, 0x56, 0x78,
+        ]
+    );
+}
+
 fn rust_bytes(source: &str) -> Vec<u8> {
     let lines = source.lines().collect::<Vec<_>>();
     let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&lines, true)
@@ -125,16 +144,20 @@ fn native_shared_directive_boundary_contract() {
 }
 
 fn run_native_case(cpu: &str, negative: bool) {
-    // Level D only when Completed: fresh guest protocol and live Rust bytes.
-    let root = workspace_root();
-    let package =
-        fs::read(root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"))
-            .unwrap();
     let source = if negative {
         format!(".cpu {cpu}\nlabel .nop\n")
     } else {
         data_source(cpu)
     };
+    run_native_source(source, negative);
+}
+
+fn run_native_source(source: String, negative: bool) {
+    // Level D only when Completed: fresh guest protocol and live Rust bytes.
+    let root = workspace_root();
+    let package =
+        fs::read(root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"))
+            .unwrap();
     let oracle = if negative {
         Vec::new()
     } else {
@@ -194,4 +217,9 @@ fn native_shared_directive_m68020_data_fs_uae() {
 #[test]
 fn native_shared_directive_m68020_unknown_fs_uae() {
     run_native_case("m68020", true);
+}
+
+#[test]
+fn native_shared_directive_cpu_switch_fs_uae() {
+    run_native_source(switched_data_source(), false);
 }

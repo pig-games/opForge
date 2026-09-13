@@ -43,6 +43,7 @@ pub(super) fn native_harness_decode_exported_profile(
 pub(super) enum NativeProfileProjection {
     All,
     Platform,
+    Runtime,
 }
 
 pub(super) fn native_harness_decode_exported_profile_with_projection(
@@ -64,6 +65,9 @@ pub(super) fn native_harness_decode_exported_profile_with_projection(
             ("ofvm", Some("--runtime-record"), 192),
             ("ofio", Some("--platform-record"), 528),
         ],
+        NativeProfileProjection::Runtime => {
+            &[("ofpr", None, 128), ("ofvm", Some("--runtime-record"), 192)]
+        }
         NativeProfileProjection::Platform => &[
             ("ofpr", None, 128),
             ("ofio", Some("--platform-record"), 528),

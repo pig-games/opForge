@@ -189,7 +189,7 @@ SNAPSHOTS = {
     "tkpkg.amigaos.engine_context_adapter": ("e6dde6ed66b083488f8ff5911a6a1aca7d24d73f7488eefdb208d5aec4f01504", 11, 1, ("code",), 0),
     "opasm.amigaos.engine": ("ad02f0cdd333cedae7d8315f0fbb09421403d4730fbf9a6a4580be1429eee8ef", 106, 4, ("code", "bss"), 37),
     "tkpkg.amigaos.tokenizer_vm": ("7bbafa635dcded0236c9a65368db47e0e10aded6b328d4389e580654125e5b65", 31, 5, ("data", "code"), 124),
-    "opcore.amigaos.expr_bridge": ("d3587c97b1e5462eb66292ec72cdb905e71089391ae11a517e0c047072205d61", 35, 3, ("code", "bss"), 17),
+    "opcore.amigaos.expr_bridge": ('37c664c2db68e549fbcedde2b8d595cc42d1333b6282774064a7f0dd78b19917', 35, 3, ('code', 'bss'), 16),
     "exprvm.amigaos.i64_math": ("a2aab311913ced26dd94eedac949ab019d7eac91f7b6723014e2ce667179ef8c", 4, 0, ("code",), 0),
     "prvm.amigaos.runtime": ("ab6aee2ef4ba63d13ad6f98bb16102c57b2e7ef17779dd6fdd59343dbcd6eec6", 20, 1, ("data", "code"), 38),
     "tkpkg.amigaos.pipeline": ('47966b9ebd4acddbb22ccca056e1745ea154d7ddb787eaae09ebe86abe4bd9de', 40, 4, ('data', 'code'), 20),
@@ -198,10 +198,16 @@ SNAPSHOTS = {
 }
 
 
-def extract_inventory(source_text: str) -> tuple[list[str], list[str], list[str], list[str]]:
+def extract_inventory(source_text: str, root: Path = ROOT) -> tuple[list[str], list[str], list[str], list[str]]:
     """Extract the complete static Item 5.2 surface from one assembly module."""
     blocks = re.findall(r"^([A-Za-z_][A-Za-z0-9_]*)\s+\.block\b", source_text, re.MULTILINE)
     imports = re.findall(r"^\s*\.use\s+([^\s;]+)", source_text, re.MULTILINE)
+    # Telemetry owns its conditional imports so call sites stay declarative.
+    # Include those dependencies without mistaking macro bodies for routines.
+    if re.search(r'^\s*\.include "telemetry_macros\.i"', source_text, re.MULTILINE):
+        telemetry = root / "native/motorola68000/amigaos/debug/telemetry_macros.i"
+        if telemetry.exists():
+            imports.extend(re.findall(r"^\s*\.use\s+([^\s;]+)", telemetry.read_text(), re.MULTILINE))
     sections = re.findall(r"^\s*\.section\s+([^,\s]+)", source_text, re.MULTILINE)
     diagnostics = [
         f"{line_number}: {line.strip()}"
@@ -223,7 +229,7 @@ def validate(root: Path = ROOT) -> list[str]:
             errors.append(f"{module}: missing source {relative}")
             continue
         source_text = source.read_text(encoding="utf-8")
-        blocks, actual_imports, sections, diagnostics = extract_inventory(source_text)
+        blocks, actual_imports, sections, diagnostics = extract_inventory(source_text, root)
         if f".module {module}" not in source_text:
             errors.append(f"{module}: source module declaration missing")
         if entry not in source_text:
@@ -231,7 +237,7 @@ def validate(root: Path = ROOT) -> list[str]:
         if f"`{module}`" not in inventory_text or f"`{relative}`" not in inventory_text:
             errors.append(f"{module}: inventory section/source citation missing")
         for imported in imports:
-            if f".use {imported}" not in source_text:
+            if imported not in actual_imports:
                 errors.append(f"{module}: expected import `{imported}` missing")
         expected_hash, expected_blocks, expected_imports, expected_sections, expected_diagnostics = SNAPSHOTS[module]
         actual_hash = hashlib.sha256(source_text.encode()).hexdigest()
@@ -251,7 +257,7 @@ def report(root: Path = ROOT) -> None:
     """Print the complete checked inventory for human review and evidence capture."""
     for module, (relative, _entry, _imports) in TARGETS.items():
         source_text = (root / relative).read_text(encoding="utf-8")
-        blocks, imports, sections, diagnostics = extract_inventory(source_text)
+        blocks, imports, sections, diagnostics = extract_inventory(source_text, root)
         print(f"## {module}")
         print(f"source: {relative}")
         print("routines: " + ", ".join(blocks))

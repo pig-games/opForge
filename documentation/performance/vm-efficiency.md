@@ -225,3 +225,61 @@ The next representation experiment must account for those missing terms.
 
 The current work and brief decision are tracked in the
 [reset plan](../plans/native-runtime-reset.md), not in this tool guide.
+
+## Minimal Rust/native comparison
+
+Build the current release CLI with `vm-runtime-only` and the assembler test
+executable separately (ten-minute preparation cap). Cargo's JSON
+`compiler-artifact.executable` identifies the actual test executable:
+
+```sh
+cargo build --release --locked -p cli --bin opforge --features vm-runtime-only
+cargo test -p asm --lib --locked --no-run --message-format=json
+```
+
+With the FS-UAE environment from the [emulator guide](../../agents/rules/fs-uae.md), run:
+
+```sh
+python3 scripts/performance/runtime_comparison.py \
+  --rust-binary target/release/opforge \
+  --native-test <assembler-test-executable> \
+  --output build/runtime-comparison-new
+```
+
+This deliberately small comparison reuses the mixed instruction/data generator
+at 8 and 32 blocks, for m6502 and m68020 source targets. Use
+`--cpus m68020 --blocks 16` for a smaller complete case when the larger one
+cannot finish within the deadline. Both CLIs start with
+m6502; the identical source selects the actual target. Both Rust tokenizer modes
+get a warmup, three unprofiled samples and a separate VM-work attribution run.
+Forced-generic affects the tokenizer only. Each native case runs once, unprofiled,
+through the existing fresh-challenge, zero-exit, exact-artifact proof runner
+(Level D). Its oracle is assembled in memory from the actual source and checked
+against independent workload bytes. The supplied package must equal the live
+Rust registry package. This is output equivalence for these cases, not evidence
+that both implementations execute identical VM programs or dispatch counts.
+
+The batch cap is five minutes, each invocation at most 60 seconds, and the emulator
+wait (including boot) and post-start wait are capped at 35 seconds within that
+invocation budget.
+No self-host case or timeout retry is included. Native failures are recorded and
+later cases still run while budget remains. Owned guest run trees are ephemeral;
+local inputs, timing receipts and summaries remain under ignored `build/`.
+
+Rust timing covers a fresh host CLI process. Native timing is the host-observed
+interval from guest START to DONE, with 20 ms polling; it excludes emulator boot
+but includes command loading, package processing, assembly, output and protocol
+overhead. These are descriptive end-to-end observations, not comparable hardware
+cycles or calibrated speed ratios. The summary records the template and the
+runner's effective 64 MiB Zorro III memory override. Neither this emulator setup
+nor package file size establishes 68020/2 MB feasibility. Peak RAM and native
+VM-work counts are unmeasured. Current findings and the next decision belong in
+the [reset plan](../plans/native-runtime-reset.md).
+
+Add `--native-profile runtime` for existing VM/service/candidate work counters.
+Those samples are instrumented: compare their work counts with unprofiled timing,
+not as release-speed measurements. The decoder requires complete, correlated,
+non-overflowing records from the same fresh successful guest. `--native-profile all`
+selects all existing counter families for explicit diagnosis; that combination
+failed the initial mixed-workload checks during expression compilation and has
+not been requalified after the macro conversion; it is not valid attribution evidence. It must not be silently substituted for release behavior.

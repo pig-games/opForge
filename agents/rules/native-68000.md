@@ -5,6 +5,25 @@ Use this guide when changing `native/motorola68000` assembly. The
 checkpoints and validation cadence. This guide preserves existing calling and
 style conventions; it does not prescribe a new native architecture.
 
+## Use opForge as a source language
+
+New or substantially adapted assembly should use opForge's available language
+features to express intent clearly: dot statements, reusable macros, compile-time
+loops, structs and named fields, lists and declarative tables. Prefer these over
+hand-maintained offset arithmetic, repeated boilerplate and manually expanded
+regular data/code. Choose features for readable ownership and maintainability;
+use them where applicable, not to demonstrate every feature. Straightforward
+assembly is appropriate when it is clearest. Keep expansion and generated size
+understandable. Compile-time abstraction should
+not silently introduce runtime work, extra storage or opaque control flow.
+
+Put telemetry conditionals and preservation inside reusable telemetry macros.
+Call sites should name the measurement, with no repeated conditional/save/restore
+scaffolding. Verify generated code in enabled and disabled builds. When a language
+feature exposes an assembler or self-hosting gap, report and test that boundary
+explicitly rather than silently duplicating its semantics or weakening the source
+style to conceal the gap.
+
 ## Routine structure and public boundaries
 
 Keep each logical routine in a `.block` / `.bend` pair, with `.block` on the
@@ -24,6 +43,16 @@ Public entry points are module ABI. Preserve caller-visible registers unless the
 contract explicitly declares outputs or clobbers, keep output meanings stable,
 and use named status constants. Do not assume undocumented behavior across an
 OS, library or module boundary.
+
+## Names inside modules
+
+Use short, responsibility-specific names inside a module. The qualified module
+name already supplies namespace and ownership; do not repeat it in routine,
+constant, macro, field or storage names. Prefer `profile.enterVm` and
+`expr.evaluate` over names that embed their module qualification again. Retain
+words that distinguish behavior, not redundant project/platform/module prefixes.
+Apply this to new interfaces and update callers coherently when reworking existing
+ones; avoid unrelated mass renaming or permanent compatibility aliases before 1.0.
 
 ## Caller-facing documentation
 

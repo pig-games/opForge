@@ -806,8 +806,9 @@ fn native_runtime_execution_profile_source_contract_is_bounded_and_observational
     ] {
         let source = fs::read_to_string(root.join(relative)).expect("read runtime profile site");
         assert!(
-            source.contains("OPFORGE_PROGRESS_RUNTIME_COUNTERS"),
-            "missing runtime gate in {relative}"
+            source.contains("OPFORGE_PROGRESS_RUNTIME_COUNTERS")
+                || source.contains(".include \"telemetry_macros.i\""),
+            "missing runtime gate or gated macro include in {relative}"
         );
     }
     assert!(!profile.contains("dos.putStr"));
@@ -42597,3 +42598,9 @@ fn motorola68020_item33_native_package_composition_boundary_matches_rust() {
         NATIVE_PACKAGE_STORAGE_CAPACITY,
     );
 }
+
+#[path = "tests/native_runtime_comparison.rs"]
+mod native_runtime_comparison;
+
+#[path = "tests/native_telemetry_macros.rs"]
+mod native_telemetry_macros;

@@ -27,6 +27,34 @@ for call-site placement and verification. It requires safety evidence, not a
 separate safety-note form. The ABI and build-mode descriptions here do not grant
 permission to add new macros or relax preservation requirements.
 
+## Reusable telemetry calls
+
+`native/motorola68000/amigaos/debug/telemetry_macros.i` owns the conditional
+runtime-observer import and the `OPFORGE_DEBUG_CONTRACTS` plus
+`OPFORGE_PROGRESS_RUNTIME_COUNTERS` gates. Call sites include it and invoke:
+
+```asm
+    .include "telemetry_macros.i"
+    ; At the appropriate VM boundary:
+    .TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_EXPRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_EVALUATOR
+    .TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_EXPRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_EVALUATOR
+    .TELEMETRY_VM_LEAVE
+```
+
+Service enter/leave and candidate macros wrap the same existing bounded observer.
+IDs are existing compile-time constants; new measurements must use meaningful
+shared operation identities and the approved bounded record contract. The macros
+preserve CCR before argument setup, preserve setup registers and rely on the
+observer routines' documented full preservation. They introduce no runtime toggle,
+I/O or new counter storage. Missing either build gate emits no macro bytes or
+observer import; release linking continues to omit the observer module/storage.
+The host macro test compares disabled output byte-for-byte with removed call sites.
+Full native comparisons qualify the actual enabled expression call sites separately.
+
+Use these macros in new/adapted runtime code. Other legacy counter families retain
+their existing implementation until adapted; this is a reusable entry point into
+the current framework, not a mandate for a repository-wide instrumentation rewrite.
+
 ## Event ABI
 
 Each 28-byte record contains:

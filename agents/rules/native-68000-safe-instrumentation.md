@@ -6,6 +6,19 @@ remains forbidden. The [framework reference](../../documentation/architecture/na
 owns the macro/event ABI and build-mode details; the [contract catalog](../../documentation/architecture/native-debug-contracts.md)
 owns assertion identities and meanings.
 
+## Conditional measurement in new and adapted code
+
+When adding or replacing a runtime responsibility, include useful bounded work
+counters at its owned boundaries through this framework. Put conditionals, argument
+setup and preservation in reusable telemetry macros; call sites name the measurement
+without repeating that machinery. Prefer counts of actual
+work and preparation/reuse over per-event logging. Gate instrumentation calls,
+updates, storage and telemetry-only imports at assembly time: an ordinary release
+build must carry none of their code or data. A runtime-off branch is not zero-cost
+telemetry. Verify enabled preservation and disabled emission for the affected
+boundary. Report instrumented work separately from release timing; avoid adding
+an instrumentation framework or a counter to every helper mechanically.
+
 ## Safety at the call site
 
 Instrumentation must preserve its documented registers and SR/CCR unless its API

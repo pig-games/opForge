@@ -310,7 +310,9 @@ scope, validation and completion. No future feature or migration is scheduled he
 - Public entries: `opcoreExprEvalOperandV1`, `opcoreExvmEvalOperandV1`,
   `opcoreExvmEvalOperandWithResolverV1`, and `opcoreExvmGetLastResultHighV1`.
 - Imports/outbound dependencies: expression VM runtime and the default-off
-  symbol/expression and runtime observers.
+  symbol/expression observer and the runtime observer imported conditionally by
+  `debug/telemetry_macros.i`. The frontend uses reusable VM enter/opcode/leave
+  macros; the include owns gates and CCR/register preservation.
 - Mutable state: selected opcode version, private ExprVM program length and
   byte buffer, and a private four-byte last-result high word plus two-byte
   availability marker. Parser cursor, paired literal value, and symbol index

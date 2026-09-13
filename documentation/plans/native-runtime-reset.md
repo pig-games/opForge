@@ -1,6 +1,7 @@
 # Iterative VM and native runtime reset
 
-Status: W3/B2 validated; B3 checkpoint exposes a native shared-data byte-order gap.
+Status: controlled reimplementation approved; R1 is active. The shared-data repair
+and bounded comparison form the working baseline; broader qualification remains incomplete.
 The active [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md)
 remain binding. This plan captures the current discussion, not instructions from
 historical plans. Only the next iteration is detailed; later outcomes are
@@ -14,17 +15,19 @@ directions to refine from evidence.
   application memory must allow for the OS and required resident components.
   Choose a baseline clock, memory configuration and storage before hardware
   qualification; maximum-speed emulator timings are not hardware calibration.
-- First improve general VM execution efficiency in Rust: eliminate repeated
-  work, identify hotspots and provide explicit acceleration points. Native
-  platform optimization follows, with early native feasibility checks.
+- Use Rust as the semantic reference and rapid laboratory for general VM efficiency.
+  Native representations follow explicit resource constraints rather than a literal
+  translation of Rust abstractions. Compare bounded native work early; host elapsed
+  time alone cannot rank native costs.
 - Optimize shared execution mechanisms for all supported assembly targets, not
   one CPU/family's encoding path. The 68020 product requirement describes the
   execution platform. Use several assembly families as evidence of generality;
   do not equate representative coverage with measured gains on every target.
 - Canonical packages remain authoritative. Derive runtime representations from
   them for selected assembly-target capabilities and execution-platform resource
-  profiles. These are independent dimensions. Start with one experimental runtime
-  representation, not a C64/Amiga/modern-host implementation matrix.
+  profiles when measurements justify preparation. These are independent dimensions.
+  Optimizing canonical programs does not require another format; prototype derived
+  representations in memory before introducing persistent runtime packages.
 - Specialized fragments implement package-defined operations; they do not become
   a second manually maintained set of CPU semantics. Bind through validated
   program structure or explicit package bindings, never benchmark identity.
@@ -33,6 +36,121 @@ directions to refine from evidence.
   The reference need not be resident alongside a runtime package on the Amiga.
 - Compact source, executable size, package size and working memory are separate
   concerns. Runtime preparation must earn its cost in both time and space.
+
+## Approved execution strategy: controlled replacement
+
+The existing native implementation is a runnable reference and source of reusable
+components; its internal architecture is not the destination. Default to replacing
+an owned responsibility with a compact implementation, rather than extending the
+current structure with isolated optimizations. Correctness repairs remain appropriate
+when they unblock an agreed replacement or its reference comparison.
+
+- Preserve the CLI and complete small assembly cases as the observable boundary.
+  Integrate one useful replacement at a time; avoid a large unfinished second product.
+- For each replacement, identify the Rust semantic boundary, package authority,
+  owned state, preparation lifetime and invalidation. Reuse proven I/O, arithmetic,
+  output and VM primitives only where their contracts fit the intended design.
+- Distinguish immutable package/source preparation from pass-dependent values,
+  symbols, CPU state, layout and fixups. No cache may assume repeated inputs merely
+  because program bytes or source locations repeat.
+- Define which old responsibility disappears. Comparison paths may coexist during
+  an experiment; qualified integration deletes the superseded path. Do not grow
+  another selection monolith or keep adapter layers merely to preserve old internals.
+- Before 1.0, migrate the affected contract atomically and remove obsolete execution
+  versions. Retain mismatch rejection; do not launch an unrelated global version purge.
+- Write new assembly with opForge language features that improve readability:
+  structs/named fields, lists, compile-time loops and reusable macros rather than
+  repeated low-level scaffolding. Names inside a module stay short and do not
+  repeat its qualification. Inspect the generated size and runtime behavior.
+- Add conditional telemetry at meaningful boundaries in new or adapted runtime
+  code. Put the conditionals and preservation in reusable macros over the approved
+  counter framework; gate calls, counter updates, storage
+  and telemetry-only dependencies at build time so release builds contain none of
+  them. Record preparation/reuse, bytes/rows examined, dispatch and memory where
+  relevant. Keep records bounded, preserve registers/CCR/state, and distinguish
+  instrumented work attribution from uninstrumented release timing. Verify disabled
+  build output rather than assuming a runtime-disabled flag has zero overhead.
+- Judge each slice by complete-case correctness, work avoided, elapsed time,
+  executable/package size, memory requirements and clarity. Record unmeasured
+  quantities explicitly; an incomplete checkpoint is not an integration claim.
+
+### R1 — Select and begin the first replacement
+
+Authorized outcome: a compact first replacement participating in complete small
+assemblies, with an explicit removed responsibility and a recoverable reference.
+Use one short attribution pass through existing approved native counters on the
+completed 8-block comparison cases to choose the boundary. This preparation is
+bounded within R1, not a separate audit or a new instrumentation framework.
+
+Initial candidates are package preparation and repeated selection/program lookup.
+Confirm the actual boundary before choosing; counters quantify work, not cycle
+cost. Prefer a shared mechanism with evidence across assembly targets. Implement
+or model its portable semantics against Rust before any native-specific lowering.
+Record the selected ownership, invalidation, resource budget and validation below
+once the evidence is available. Stop and discuss if the boundary requires a larger
+semantic migration than fits one reviewable slice; do not disguise an unfinished
+architecture as a micro-optimization.
+
+### R1 checkpoint: reusable telemetry and selected boundary
+
+The user refined R1 to establish reusable, compile-time-gated telemetry as code is
+adapted. Runtime enter/opcode/leave calls in the expression frontend and evaluator
+now use `debug/telemetry_macros.i`; service/candidate forms are ready for the first
+replacement. The include owns conditional imports, argument setup and register/CCR
+preservation. Disabled builds are tested against removed sites, including absence
+of the observer dependency. Assembly language features are chosen for clarity;
+module-local names must not repeat their module's qualification.
+
+Two complete 8-block native cases pass exact-output parity with decoded, correlated,
+non-overflowing runtime counters. These are instrumented observations, not release
+speed measurements. The final attribution batch took 59.96 seconds; preliminary
+combined/runtime-only checks took 75.14/76.37 seconds (211.47 seconds total).
+The preliminary runtime-only cases proved output parity but did not yet decode
+counter records; the final batch supplies the actual attribution. Results remain
+in ignored `build/runtime-replacement-macro-counters/summary.json`.
+
+| Native 8-block source | TKVM ops | PRVM ops | EXVM ops | ExprVM ops | Encode calls | Package / pass-one / layout / final ticks |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| m6502 | 2,170 | 2,121 | 208 | 232 | 120 | 4 / 69 / 69 / 70 |
+| m68020 | 1,978 | 1,577 | 248 | 248 | 120 | 4 / 104 / 105 / 107 |
+
+Ticks are the instrumented guest's 50 Hz phase clock, on the uncalibrated 68040
+emulator. Counted VM instructions are not machine instructions and omit substantial
+helper/lookup work. Both cases visit 66 retained statements three times. The
+cost is concentrated in repeated assembly passes rather than recorded package
+setup. This supports investigating work repeated per encode; it does not measure
+CTBL's share of cycles or prove redundant state-dependent evaluation.
+
+The selected first substantive replacement is **a prepared CTBL view and active
+pipeline owner binding**, following Rust's `decode_compact_tabl_chunk` and
+`RuntimeModelCore::from_chunks`/prepared map lookup. Native currently reconstructs
+strings and walks the program table during individual lookups. In the measured
+canonical package, CTBL is 52,396 bytes: 16 owners, 1,585 strings, 1,157 programs
+and 3,459 rows. A four-byte-per-program offset directory alone would need 4,628
+bytes, excluding other metadata and allocation overhead; this is a design input,
+not an allocated buffer or proof of fitting 2 MB.
+
+Preparation owns validated offsets/counts and a bounded program directory. Package
+reload invalidates it; successful pipeline selection commits owner binding, while
+failed selection must preserve the previous binding. Request operands, symbols and
+pass state stay outside immutable preparation. Preserve owner precedence and
+malformed-data behavior against Rust. The intended removal is per-request CTBL
+structural decoding/program-table traversal and the narrow zero-shape memo. Keep
+prefix-compressed strings initially rather than copying the complete string table.
+No CTBL replacement code is integrated at this checkpoint. Do not choose arbitrary
+fixed capacities or claim complete Rust validation equivalence before testing them.
+
+The initial all-counter build failed final-pass expression compilation on both
+otherwise passing workloads. Runtime-only telemetry preserves behavior. The cause
+of the combined-counter failure remains unresolved; neither the macro conversion
+nor speculative callback changes are claimed to fix it. Do not use that combination
+as parity/performance evidence. This is recorded as a focused instrumentation gap,
+not a reason to expand R1 into a global debug rewrite.
+
+Validation: two focused host macro/source-contract tests and both real-native
+macro-enabled comparisons pass. All 136 workflow tests, native formatting (247
+files), workflow links, ownership inventory, CPU boundary and fresh-proof guards
+pass. Full workspace qualification remains outside this checkpoint.
 
 ## Iteration size and interaction
 
@@ -84,14 +202,15 @@ unchanged full-suite reruns. Keep one living plan, no per-iteration sidecars.
 This table tracks outcomes, not individual edits or commits. Update the current
 row in place with the run command, concise result and relevant commit when work
 finishes. Proposed means awaiting agreement on scope, not queued for automatic
-execution. W1–W3 were authorized in conversation; later work is not yet authorized.
+execution. W1–W3 and the bounded comparison are reviewed baseline work. R1 is
+authorized in conversation; subsequent replacement slices need review.
 
 | Work | Status | Reviewable result | Depends on |
 | --- | --- | --- | --- |
 | W1 — Measure shared package-VM work across families | Complete; reviewed | Runnable cross-family baseline and verified VM attribution; brief results below | Authorized in conversation |
 | W2 — Reduce shared runtime-model setup cost | Complete; reviewed | Compact selector string validation uses a temporary index; comparative results below | W1; authorized in conversation |
-| W3 — Measure VM work and repetition | Complete; review pending | Per-engine/pass/program dispatch and repetition counts at all three workload sizes | W2; authorized in conversation |
-| W4 — Test the compact representation on native 68020 | Direction only | Bounded complete native assembly with fresh parity and resource measurements | A useful Rust representation; move earlier if native feasibility is the largest uncertainty |
+| W3 — Measure VM work and repetition | Complete; reviewed | Per-engine/pass/program dispatch and repetition counts at all three workload sizes | W2; authorized in conversation |
+| R1 — Replace the first owned native responsibility | Active | Bounded attribution, selected replacement, complete-case comparison and resource accounting | Controlled replacement approved; existing working baseline |
 
 ## W1 agreement: focused package-VM baseline
 
@@ -316,24 +435,100 @@ formatting and engineering guards. The VM-only CLI retains existing unused-code
 warnings. No full-workspace or native qualification is claimed. Measurement
 artifacts remain in ignored `build/w3-*` directories.
 
-**Next decision for review:** B2 of the short
-[package-execution boundary plan](package-execution-boundaries.md) removes family
-consultation from core directive grammar and shared instruction atoms. B3 now
-preserves that ownership on native, including source-fallback parsing. Its shared
-data-emission repair now uses package-owned byte order and passes both target
-comparisons plus CPU switching. Review this coherent result before further
-optimization. Candidates include reducing generic
-tokenizer dispatch through package-derived preparation and reusing prepared
-candidate discovery across passes. The tokenizer loop is a demonstrated generic hotspot, but copying
-its hand-maintained Rust fast path into native would create another correspondence
-to maintain. Any specialization needs the canonical generic path and explicit
-equivalence checks; any selection reuse must preserve changing values, instability
-and layout and reuse the existing prepared-route mechanism where possible. Do not
-select a native strategy from modern-host timing alone.
+## Rust/native comparison and reset decision
+
+The shared-data repair is the baseline for this comparison. Its focused correctness
+results and remaining expression/reservation gaps are recorded in the
+[boundary plan](package-execution-boundaries.md). The reusable
+[comparison command](../performance/vm-efficiency.md#minimal-rustnative-comparison)
+adds no production runtime changes. Results below are from the current working
+code, including the uncommitted shared-data repair, with one identical 368,635-byte
+canonical package. Raw receipts and hashes remain in ignored
+`build/runtime-comparison-initial/summary.json` and
+`build/runtime-comparison-reduced/summary.json`.
+
+| Source target | Blocks / instructions | Rust auto | Rust generic tokenizer | Native guest interval |
+|---|---:|---:|---:|---:|
+| m6502 | 8 / 40 | 37.32 ms | 30.68 ms | 4.81 s |
+| m6502 | 32 / 160 | 43.90 ms | 34.75 ms | 16.05 s |
+| m68020 | 8 / 40 | 38.48 ms | 32.00 ms | 6.73 s |
+| m68020 | 32 / 160 | 39.90 ms | 38.72 ms | No completed result (deadline) |
+| m68020 | 16 / 80 | 1885.60 ms | 1658.42 ms | 13.41 s |
+
+The initial batch took 158.29 seconds; preparation built the release CLI and test
+executable in 66.60 seconds separately. The larger native m68020 case hit the
+35-second emulator wait deadline, which includes boot: this supplies neither
+completed parity nor a 35-second lower bound on assembly time. It was reduced
+rather than extending the deadline. The reduced batch took 60.48 seconds;
+combined measurement execution took 218.77 seconds. Rust timings are medians of three unprofiled
+fresh-process samples; the reduced batch jumped to 1.66–1.89 seconds despite
+the same binary/package, versus 31–44 ms in the initial batch. The cause was
+not investigated in this bounded slice, so cross-batch Rust timing comparisons
+and a tokenizer speed claim are not supported; each native success is one host-observed guest START/DONE
+interval with fresh protocol, explicit zero exit and exact output equality
+(Level D). Rust output also matches independently constructed workload bytes.
+Native samples exclude boot, but include command loading and output overhead.
+
+The emulator is configured as an A4000/68040 with 2 MiB chip, 8 MiB fast RAM and
+an additional runner-forced 64 MiB Zorro III RAM (plus RTG configuration). It is
+not clock-calibrated and is not the proposed 68020/2 MB machine. No native peak
+RAM, native VM-opcode count or total compatibility-code footprint was measured.
+Do not extrapolate these cases to full self-assembly or report a hardware speed
+ratio. The Rust executable is 4,324,880 bytes on this host; that is not native
+executable size or application working memory.
+
+### What this changes in the reset
+
+Four times the 6502 workload raised native time from 4.81 to 16.05 seconds:
+there is substantial cost beyond fixed startup. Rust's initial tens-of-milliseconds
+process samples and the later timing instability show no reliable
+automatic-tokenizer advantage and cannot
+rank native bottlenecks. At 32 blocks, forced-generic Rust dispatched 14,998
+counted VM steps for 6502 and 19,545 for m68020 (about 94 and 122 per assembled
+instruction, including data/labels and both passes). These are nonuniform work
+units, excluding many helper internals; they are not native work counts.
+
+Keep the reset's Rust semantic reference and general VM-first direction, but use
+bounded native evidence early. Neither indiscriminate native tuning nor a runtime
+package compiler follows from these timings. The next proposed slice is one
+bounded attribution comparison on the completed small workloads using the
+existing approved native runtime counters, alongside Rust counters. Identify
+whether repeated parsing, program execution, lookup/decoding or service traffic
+is the useful common target. Then select one general prepare-once/reuse or
+program-optimization experiment, measuring work avoided, complete-case time,
+representation size and correctness. This is now the authorized preparation for R1; it does not authorize a new
+instrumentation framework or a prolonged inventory.
+
+### Canonical optimization and version overhead
+
+Optimizing canonical bytecode programs is a valid first layer: eliminate redundant
+operations or unreachable paths, simplify branching and improve generated program
+structure while preserving state, errors, source spans and budget behavior.
+That does not require a second package format. Decoded operations, resolved
+references, fused handlers or platform lowering form a derived runtime
+representation; prototype in memory before deciding a persistent format is useful.
+Neither approach should create independently hand-maintained target semantics.
+
+Version numbers must be interpreted per contract. TKVM, PRVM, EXVM and EXPR are
+different machines; SEMV tags also distinguish different program kinds. An exact
+current-version package-load check is useful validation, not legacy execution.
+Real multiple-version paths remain in expression parsing/evaluation, scalar value
+and operand-record execution. Some encoding/fixup variants share executors and
+pay selection/decoding cost per program rather than per opcode.
+
+The concrete hot-loop example is native `exprvm_runtime.asm:evalLoop`: four
+68000 instructions clear/load the selected version, compare with V2 and branch
+on every expression opcode, followed by separate V1/V2 dispatch paths. Rust's
+`eval_portable_expr_program` selects its V1/V2 evaluator once per evaluation.
+Removing obsolete contracts can save handlers, compiler/decoder paths and this
+recurring native selection work. Exact linked bytes and elapsed-time savings
+remain unmeasured; they require a controlled latest-only A/B migration, not
+source-line counts. Keep mismatch rejection and migrate generators plus both
+executors atomically; do not treat all older-numbered program kinds as obsolete.
 
 ## Longer-term direction
 
-After W4, grow coverage through bounded complete workloads, then qualify full
+After the first qualified replacement, grow coverage through bounded complete workloads, then qualify full
 self-assembly only when feasibility evidence justifies it and Erik selects that
 step. Integration removes superseded code and updates the affected technical and
 user documentation. No native rewrite, global semantic audit, version purge or

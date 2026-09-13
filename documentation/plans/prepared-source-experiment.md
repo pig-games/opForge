@@ -87,8 +87,8 @@ or its peak memory. Time decoding separately from validation and assembly.
 
 Choose token width from the package-defined normalized dictionary and reserved-tag
 budget, not hardcoded CPU names or machine opcodes. A byte may suffice for a package
-with at most 256 identities, while aliases/size variants can enlarge its current
-namespace. Native execution-platform alignment is independent of source target CPU
+with at most 256 normalized identities. Aliases share an identity and meaningful
+qualifiers remain separate fields. Native execution-platform alignment is independent of source target CPU
 and emitted data byte order. For Amiga execution, aligned words may be cheaper than
 maximum byte packing. Performance takes precedence over minimizing input bytes.
 
@@ -97,6 +97,22 @@ numeric lookup/replay boundary. Do not expand the Rust-only language subset firs
 No production format or runtime-package contract is adopted by this probe.
 
 ## Next slice: bounded native confirmation
+
+The NOP-only S1 case is a correctness smoke, not the main performance workload.
+Use the existing `vm_efficiency.workload` mixed case as the default: eight complete blocks,
+40 instructions, 67 source lines, varied immediate values, register operands,
+absolute memory stores, forward conditional branches, labels and address-valued
+data expressions. Run m6502 and m68000 independently against their exact live
+Rust oracle and independent bytes. The S1 packed prototype currently rejects these
+operand forms. Extend the native candidate to this complete workload before using
+it to claim a performance improvement; do not reduce the benchmark to what the
+prototype happens to support.
+
+This remains a focused instruction-selection workload, not a miniature self-host
+or representative whole-project corpus. It omits macro/module expansion, include
+I/O, backward branches and convergence-sensitive relaxation. Those are explicit
+later workloads when their costs matter. Keep the current small case for isolating
+record/lookup regressions, with the explicit `--workload replay-smoke` option.
 
 Lower the justified representation to compact native records and reusable telemetry
 macros. Compare complete small cases under the existing fresh native proof contract,
@@ -234,45 +250,77 @@ a second general expression evaluator.
 
 ## S1M measurements and native decision
 
-### Fresh native baseline
+### Current native baseline: mixed instructions
 
-Eight S1 blocks contain 16 instructions, 16 labels, eight forward bytes and eight
-forward words. Native inputs add `.cpu`, `.org $0100` and `.end` around the same
-488-byte body used by the Rust experiment. Both cases use the current 368,635-byte
+The default is now eight complete blocks from the existing
+[VM-efficiency workload](../../scripts/performance/vm_efficiency.py): 40 instructions,
+67 lines, and varied immediates, register operands, absolute stores, forward branches,
+labels and address-valued data. This is a selection/lookup workload, not a general
+assembler corpus. Both sources use origin $1000 and the same current 368,635-byte
 canonical package (SHA-256 `ae77de3ff1a7966af7f33f89b89062ef4aa5bdb0ce209fedee2e6b3e44826e4a`).
 
-| Source target | Wrapped source | Exact output | Guest START–DONE, telemetry off | Whole invocation |
+| Source target | Source | Exact output | Guest START–DONE, telemetry off | Whole invocation |
 |---|---:|---:|---:|---:|
-| m6502 | 515 B | 40 B | 1.0778 s | 23.22 s |
-| m68000 | 516 B | 56 B | 1.0302 s | 23.15 s |
+| m6502 | 688 B | 104 B | 4.8044 s | 27.56 s |
+| m68000 | 865 B | 144 B | 6.8635 s | 28.84 s |
 
 These are single observations, not stable speed ratios. START–DONE is host-observed,
 includes input/package/assembly/output and excludes emulator boot. The uninstrumented
-native executable is 563,768 bytes (`fnv1a64:106b19ba51b9effc`). Both actual cases
-passed Level D: fresh challenge, guest start/completion, explicit zero exit and
-byte-for-byte equality with their live in-memory Rust oracle. The native executable
-build target is 68020; **the actual emulator is A4000/68040 with 2 MiB chip, 8 MiB
-fast and 64 MiB Zorro III RAM**. This is not a 68020/2 MiB feasibility demonstration.
+native executable is unchanged: 563,768 bytes (`fnv1a64:106b19ba51b9effc`). Both actual
+cases passed Level D: fresh challenge, guest start/completion, explicit zero exit and
+byte-for-byte equality with the live in-memory Rust oracle. The wrapper additionally
+checks the receipt against independent expected bytes from the shared workload.
+The actual emulator remains A4000/68040 with 2 MiB chip, 8 MiB fast and 64 MiB
+Zorro III; the native executable build target is 68020. These timings do not prove
+68020/2 MiB feasibility.
 
-Separate runtime-instrumented runs took 1.0442/1.0303 seconds START–DONE. The
-instrumented executable is 567,776 bytes, 4,008 bytes larger. Existing 50 Hz phase
-telemetry reports 15 ticks (0.30 s) for each case; this internal interval and the
-host protocol interval measure different boundaries. Coarse ticks and host timing
-noise do not support claims about the telemetry's timing overhead.
+Separate instrumented runs also passed fresh Level D proof, with no counter overflow.
+Their internal 50 Hz totals were 200 ticks (4.00 s) and 310 ticks (6.20 s), while
+host START–DONE intervals were 4.7446/6.9579 seconds. These boundaries differ; single
+observations do not measure telemetry overhead. Instrumented image size remains
+567,776 bytes.
 
-Both instrumented cases report 150 statement visits over 50 statements, 48 encoding
-calls, 48 compact lookups and **76,080 strings examined**. TKVM/PRVM/EXVM/ExprVM
-operation counts are 1,554/1,401/80/184. CTBL rows examined differ: 528 for m6502,
-1,104 for m68000. Peak compact metadata is 4,628 bytes, not total or peak process RAM.
-This is concrete evidence for binding names once, but it does not by itself measure
-the fraction of runtime removable by doing so.
+| Work counter, eight mixed blocks | m6502 | m68000 |
+|---|---:|---:|
+| Statement visits / statements | 198 / 66 | 198 / 66 |
+| Encoding service calls | 120 | 120 |
+| Encoder candidate visits | 0 | 23,192 |
+| Selector candidate visits | 120 | 360 |
+| Compact-path lookups | 120 | 24 |
+| Compact-path strings examined | 190,200 | 38,040 |
+| TKVM / PRVM / EXVM / ExprVM opcodes | 2,170 / 2,121 / 208 / 232 | 1,978 / 1,577 / 248 / 248 |
+
+The encoder-candidate counter increments inside package encoding/semantic program
+search loops; it does not count successfully executed instructions or unique
+programs. Zero on the compact route is not zero selection work. Likewise compact
+string counters omit other routes' string processing. Both cases spend most of
+their internal measured time in the three assembly passes: pass-one/layout/final
+are 66/65/64 ticks for m6502 and 102/102/101 for m68000; package setup is four ticks
+each. This is materially different from the setup-dominated Rust smoke.
+
+The mixed case exposes repeated package selection that source packing alone may
+not remove. The next candidate must bind package-normalized instruction identity
+and prepare relevant selection state without freezing value-dependent decisions;
+compare these counters as well as full output and time. Do not claim eliminating
+compact lookups eliminates every name lookup or all candidate discovery.
+
+The first 32-block probe (160 instructions) completed on m6502 in 16.7622 seconds
+START–DONE, but m68000 hit the runner's 35-second completion timeout. The latter
+has no valid timing or parity result. The default was reduced to eight **complete**
+blocks, preserving every block's forward labels and data. The timeout was not
+extended; this is a smaller measurement case, not a fix for the larger failure.
+
+The previous NOP-only S1 baseline remains available as `--workload replay-smoke`
+for correctness/localization. It took about one second per target and does not
+exercise operand selection. Its raw-record/decoder results below remain smoke
+results; the packed prototype does not yet support the mixed workload.
 
 The [bounded native runner](../../scripts/performance/prepared_source_native.py)
-generates the exact sources, checks the live receipt against an independent byte
-contract, records package/source/executable/config hashes, and reuses the existing
-fresh-proof runner. It caps each invocation at 60 seconds and the batch at 150
-seconds; guest timeout is 35 seconds. Build the ASM library test executable first
-with `cargo test -p asm --lib --no-run --locked`, then pass the emitted executable:
+records hashes and configuration and caps each invocation at 60 seconds, the batch
+at 150 seconds, and guest completion waits at 35 seconds. A failed case is recorded
+and later cases still run under the remaining batch budget; any failed case keeps
+the batch failed. Build the ASM library test executable first with
+`cargo test -p asm --lib --no-run --locked`, then pass the emitted executable:
 
 ```sh
 python3 scripts/performance/prepared_source_native.py --native-test <asm-test-executable> --profile off
@@ -282,16 +330,14 @@ python3 scripts/performance/prepared_source_native.py --native-test <asm-test-ex
 Set `OPFORGE_FS_UAE_BIN`, `OPFORGE_FS_UAE_CONFIG_TEMPLATE` and
 `OPFORGE_FS_UAE_ARGS` for the installed emulator as described in the
 [FS-UAE guide](../../agents/rules/fs-uae.md). Reports default to unique ignored build
-directories. Actual guest protocol/output trees remain ephemeral. These initial
-observations used the same underlying runner before the convenience script was
-added; the new wrapper was checked without rerunning the four completed cases.
+directories; guest protocol/output trees remain ephemeral. `--blocks 32` is an
+explicit larger probe with unchanged limits, not the default inner-loop workload.
 
 There is no native prepared-source candidate yet. The next performance claim needs
-a complete small native path that consumes numeric statement/symbol identities and
-executes bound package programs, measured against this baseline. A native decoder
-alone or Rust replay timing cannot establish that claim. Keep initial parsing/binding
-in total time, and show that the same final bytes are produced without per-pass
-source/package name lookup before adding instruction-selection coverage.
+a complete mixed native path using normalized statement/symbol identities and bound
+package programs, measured against this baseline. A decoder alone or Rust replay
+timing cannot establish that claim. Include initial parsing/binding in total time
+and prove exact output without per-pass source/package name lookup.
 
 ### Packed layout probe
 
@@ -367,3 +413,11 @@ Clippy/audit/full-test steps; the separate affected-library Clippy result above
 must not be reported as full qualification. Earlier unrelated ASM test-target
 Clippy warnings also remain outside this slice. This is an experimental measurement
 checkpoint, not a release-qualified integration.
+
+Mixed-workload update validation: both targets passed with telemetry off and on
+through the updated wrapper. Python compilation/help, unchanged smoke-source hash,
+default workload dimensions and a mocked first-case failure followed by a successful
+second case were checked. The batch correctly remains failed after a case failure.
+The workflow gate passes all 136 tests. No Rust/native production source changed
+in this update. The larger m68000 timeout
+remains an explicitly failed measurement, not a successful larger-scale test.

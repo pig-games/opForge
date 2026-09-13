@@ -1,10 +1,13 @@
 # Iterative VM and native runtime reset
 
-Status: S1 of [string-free source and package replay](prepared-source-experiment.md)
-is implemented and measured in Rust, awaiting review. It demonstrates string-free
-replay for its subset but does not yet demonstrate compact storage or native gains.
-R1's prepared-CTBL comparison showed no meaningful speed gain; broader qualification
-remains incomplete. Further isolated CTBL tuning is not the current direction.
+Status: the [binary-source experiment](prepared-source-experiment.md) now completes
+both native mixed8 workloads, with roughly 8–11× observed gains over the optimized
+text path for its subset. The next agreed approach is the
+[compact native runtime](prepared-source-experiment.md#next-implementation-compact-native-runtime): remove legacy state dependencies,
+own preparation/execution memory, and qualify bounded cases within 2 MiB.
+R1's earlier prepared-CTBL comparison showed no meaningful speed gain; further
+isolated CTBL tuning is not the current direction. Full native language coverage
+and product qualification remain incomplete.
 The active [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md)
 remain binding. This plan captures the current discussion, not instructions from
 historical plans. Only the next iteration is detailed; later outcomes are
@@ -283,15 +286,17 @@ unchanged full-suite reruns. Keep one living plan, no per-iteration sidecars.
 This table tracks outcomes, not individual edits or commits. Update the current
 row in place with the run command, concise result and relevant commit when work
 finishes. Proposed means awaiting agreement on scope, not queued for automatic
-execution. W1–W3 and the bounded comparison are reviewed baseline work. R1 is
-authorized in conversation; subsequent replacement slices need review.
+execution. W1–W3 and the bounded comparisons are reviewed baseline work. The
+current implementation sequence is M1 then M2 in the linked binary-source plan.
 
 | Work | Status | Reviewable result | Depends on |
 | --- | --- | --- | --- |
 | W1 — Measure shared package-VM work across families | Complete; reviewed | Runnable cross-family baseline and verified VM attribution; brief results below | Authorized in conversation |
 | W2 — Reduce shared runtime-model setup cost | Complete; reviewed | Compact selector string validation uses a temporary index; comparative results below | W1; authorized in conversation |
 | W3 — Measure VM work and repetition | Complete; reviewed | Per-engine/pass/program dispatch and repetition counts at all three workload sizes | W2; authorized in conversation |
-| R1 — Replace the first owned native responsibility | Active | Bounded attribution, selected replacement, complete-case comparison and resource accounting | Controlled replacement approved; existing working baseline |
+| R1 — First native replacement experiment | Measured; no meaningful timing gain | Prepared CTBL comparison and resource accounting below | Retained reference implementation |
+| Binary-source experiment | Implemented and measured | Complete mixed8 parity on both targets; observed 8–11× combined-path gains | `a378ec48` |
+| M1 / M2 — Compact native runtime | Planned; M1 next | Remove legacy state dependency, then qualify memory lifetime and bounded scaling within 2 MiB | Binary-source experiment; review M1 before M2 |
 
 ## W1 agreement: focused package-VM baseline
 

@@ -2,6 +2,7 @@
 
 Status: experimental native binary-source path implemented and measured on both
 complete mixed8 workloads. The normal native CLI remains the reference.
+Next agreed work: [compact native runtime, M1 then M2](#next-implementation-compact-native-runtime).
 The active
 [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md) remain binding.
 
@@ -596,7 +597,111 @@ affected-library Clippy, formatting, CPU boundary, native ownership/no-growth,
 inventory and fresh-proof guards pass. The full Rust quality gate still stops at
 the four unchanged compact-table redundant-test failures documented above.
 
-This establishes a working native binary-source experiment. The next decision
-should address how to preserve this gain while removing oversized legacy runtime
-dependencies and extending semantic coverage in bounded steps, rather than treating
-this harness as ready for the normal CLI or the 2 MiB product target.
+This establishes a working native binary-source experiment. The agreed next steps
+below preserve this gain while removing oversized legacy runtime dependencies.
+The harness is not yet ready for the normal CLI or the 2 MiB product target.
+
+## Next implementation: compact native runtime
+
+Status: planned; approach agreed, implementation not started. Start with M1;
+review its working result before moving to M2. The plan-authoring skill, active
+AGENTS.md and workflow linked above remain binding.
+
+The outcome is the same working binary-source subset with small owned state and
+completed 68020 / AmigaOS 3.1+ cases within **2 MiB total installed RAM**, including
+the OS. Reference checkpoint: `a378ec48`; the measured timing, image/package sizes
+and provisional memory breakdown immediately above are the baseline. Confirm
+the allocation breakdown from the linked image before choosing the first dependency
+to remove. This is a step toward the product goal, not self-host qualification.
+
+### Implementation checkpoints
+
+| Item | State | Inspectable result |
+|---|---|---|
+| M1 — Detach interpreter execution from legacy assembler state | Next | Both mixed8 cases work through shared interpreters with the large legacy state dependency removed; linked-memory comparison identifies what disappeared |
+| M2 — Own memory by lifetime and qualify the constrained runtime | Pending M1 review | Right-sized allocations, preparation storage actually released, bounded scaling results, and completed 2 MiB guest cases |
+
+#### M1: one coherent interpreter boundary
+
+Trace the experiment's imports to the large allocations, then separate the
+required TABL/CSEM/VALP execution responsibility from the surrounding selection,
+service and full-assembler state. Reuse canonical program interpreters with explicit
+small contexts and bounded input/output buffers. The existing native path must use
+the same maintained interpreter implementation through thin adapters where needed;
+do not fork the VM implementations or copy target semantics into native code.
+
+Rust reference: canonical package execution and selector/value semantics. Native
+starting boundaries: `experimental/binary_encoding.asm`,
+`tkpkg/tkpkg_encode_service.asm`, `tkpkg/tkpkg_selection_service.asm` and their
+actual state dependencies, all under `native/motorola68000/amigaos/`.
+Keep the current CLI runnable; remove superseded interpreter bodies when sharing
+their replacement. Do not extract unrelated legacy services just to tidy files.
+
+Done: mixed8 on both targets passes the fresh native proof contract; affected
+existing interpreter/service contracts pass; the linked-image breakdown proves
+which legacy allocations are no longer reachable. Measure final image size and
+unprofiled mixed8 time against the reference on the same emulator configuration.
+This checkpoint need not yet fit 2 MiB: its owned remaining storage is M2's work.
+If removing the dependency requires a larger semantic migration, stop at a working
+recovery point and discuss the specific boundary rather than expanding the rewrite.
+
+#### M2: preparation and execution memory lifetimes
+
+Separate immutable numeric package/source storage, mutable pass state, and temporary
+lexical/binding workspace. Use compact raw blocks and named layouts; allocate from
+actual requirements or explicit bounded growth rather than maximum legacy capacities.
+Account for growth/copy peaks, alignment, stack, output and allocator overhead.
+Read source incrementally into the line tokenizer and its packed-record writer.
+Discard consumed source and release binding dictionaries/scratch before assembly;
+clearing bytes while retaining their allocation does not meet this requirement.
+Retain numeric source locations; original text may be reread only for diagnostics.
+
+If the provisional capsule must change to separate lexical and executable storage,
+update its Rust producer and native consumer together. Retain only the new contract
+and reject mismatches; no compatibility layer or permanent disk-format commitment.
+Host package preparation remains explicit and outside guest timing.
+
+Use reusable, compile-time-gated telemetry for preparation/assembly phases and
+memory accounting. Verify that disabled builds omit telemetry code, storage and
+imports. Report instrumented accounting separately from release timing.
+
+Done: both targets complete mixed8 and mixed32 with exact output, no text lookup
+after preparation, and no material unexplained timing regression. Demonstrate the
+same cases on a reproducible 68020 / AmigaOS 3.1+ guest with 2 MiB installed RAM.
+Record effective CPU/memory settings, OS image/version, free memory and largest
+free block before launch, executable/BSS/stack requirements, and peak runtime
+allocations including transient overlap. Account for OS/resident memory and report
+remaining headroom; a 2 MiB application allocation budget on a larger guest is not
+the acceptance test. Check that the runner does not silently restore its current
+64 MiB Zorro III override or other expansion memory. Constrained timing is a
+separate result from the existing 68040 comparison, not a calibrated hardware claim.
+
+### Validation, limits and follow-on decision
+
+- Keep existing mixed8/mixed32 source generation, varied operands, forward labels,
+  shared data emission and complete-case meaning. Never reduce inputs to fit the
+  implementation. Current arithmetic rejection remains a regression contract.
+- Use focused host checks for capsule/layout/lifecycle changes and real-native
+  positive/negative contracts for the affected boundary. Preserve fresh challenges,
+  completion, explicit guest exit, live Rust oracles and ephemeral guest artifacts
+  under the [parity contract](../../agents/rules/native-rust-parity-porting.md).
+- Reuse the bounded measurement scripts: at most 60 seconds per invocation,
+  150 seconds per batch, and 10 seconds after START for the binary path. Run
+  comparison and constrained-memory batches separately. Do not rerun the old
+  non-completing large case or self-host, automatically increase deadlines, or
+  turn a timeout into a timing result. Mixed32 measures candidate scaling; an
+  unavailable old-path result is explicitly missing, not required to finish M2.
+- Report source/record/package/image bytes, linked reserved memory, peak allocated
+  memory, released preparation storage, phase work and unprofiled end-to-end time.
+  Separate fixed startup from growth with input size. Investigate a substantial
+  regression with one focused discriminator rather than prolonged sampling.
+- Each checkpoint ends with a working result, focused evidence and a local recovery
+  commit. Keep details and the two status rows here current; Git holds historical
+  artifacts. Existing unrelated gate failures remain explicit qualification limits.
+
+Do not add language features, variable-width IDs, target-specific fast paths or
+attempt general CLI integration in M1/M2. After review, choose the next small
+coverage slice from representative real source—expressions, macros or modules—
+with explicit scope and tests. The numeric-source boundary remains mandatory.
+Do not automatically start that next slice or retain parallel experimental products
+after a replacement has been qualified for integration.

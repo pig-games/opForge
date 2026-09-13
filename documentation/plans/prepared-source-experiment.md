@@ -614,6 +614,21 @@ and provisional memory breakdown immediately above are the baseline. Confirm
 the allocation breakdown from the linked image before choosing the first dependency
 to remove. This is a step toward the product goal, not self-host qualification.
 
+### Binary representation invariant
+
+Binary source and package representations contain **no actual memory pointers**.
+References use numeric IDs or offsets from a defined base: the whole block or a
+specified enclosing region. Each offset field has an unambiguous base, width and
+bounded target; nested offsets are allowed. Validate ranges and arithmetic overflow
+before resolving references. Moving a block to a different address must not require
+patching its records. Test that property by copying the representation to another
+base and obtaining the same result. Live execution contexts may resolve pointers
+for access, but those pointers remain outside the binary representation.
+
+This preserves the option of an editable tokenized source file on constrained
+platforms. Optional formatting metadata and persistent package-vocabulary identity
+remain a later slice; M1/M2 do not introduce that file-format contract.
+
 ### Implementation checkpoints
 
 | Item | State | Inspectable result |

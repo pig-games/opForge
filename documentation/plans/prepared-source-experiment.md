@@ -1,6 +1,7 @@
 # String-free assembly replay experiment
 
-Status: S1 implemented; S1M measures the native baseline and packed-record tradeoffs before expanding semantics.
+Status: experimental native binary-source path implemented and measured on both
+complete mixed8 workloads. The normal native CLI remains the reference.
 The active
 [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md) remain binding.
 
@@ -501,3 +502,101 @@ remove one repeated lookup boundary, but do not explain total native time. Take
 one bounded native source-record reader/replay slice next, preserving this mixed
 workload for comparison, and measure where its time actually moves before
 expanding the migration.
+
+### Native binary-source execution: current experimental boundary
+
+The native frontend reads the supplied text block line by line, runs the canonical
+TKVM tokenizer once per line, and immediately writes a packed binary line. The
+one-byte prefix stores total line length minus one (maximum 256 bytes). Records
+contain numeric mnemonic/identifier IDs, qualifiers, literal values, punctuation
+and source line numbers. Aliases bind to the same normalized mnemonic ID. This
+slice uses uniform 16-bit IDs; package-dependent ID widths remain untested.
+
+Both assembly passes consume those records. They recompute expressions, symbol
+values, candidate selection, branch displacements and emitted bytes. The harness
+erases the original source and every package dictionary spelling before either
+pass; frontend symbol/lexeme scratch is also erased. No string reconstruction or
+fallback to the textual assembler is available. The input file is still read as
+one block: incremental file I/O and releasing its allocation are not implemented.
+
+Rust prepares a provisional single-pipeline `BSP1` package capsule from the current
+canonical package. It resolves immutable program names and register classes to
+numeric references and copies canonical TKVM/TABL/CSEM/VALP programs unchanged.
+Native execution retains the existing program interpreters. This deliberately
+combines source representation and derived runtime-package preparation; timing it
+against the existing CLI does **not** isolate the benefit of binary source alone.
+Host capsule preparation is reported separately and excludes registry construction.
+There is no old-bytecode compatibility path or adopted production package format.
+
+The bounded syntax covers the complete mixed8 workloads: immediate values,
+package-defined register operands, parenthesized member operands, forward branches,
+labels, current PC, parentheses and unary/binary addition/subtraction. Shared core
+handles `.cpu`, `.org`, `.byte`, `.word`, `.long` and `.end`. Unknown candidate plans
+fail closed unless a necessary package match predicate proves them inapplicable.
+The small numeric expression reader is provisional duplication of expression
+evaluation, not a migration of the full EXVM frontend.
+
+Restrictions: one CPU pipeline, two fixed layout passes, no general relaxation,
+macros/includes/modules, scoped names, strings or general expression operators.
+Expression literals must fit nonnegative signed 32-bit values; unary/binary
+arithmetic checks signed overflow. Wider unsigned literals are rejected before
+arithmetic, rather than reinterpreted as negative numbers.
+Labels require a colon and cannot reuse reserved package spellings. `.org` cannot
+create discontiguous output. Capacity limits include 64 tokenizer tokens per line,
+512 source names and a 64 KiB record block. Malformed/unsupported input returns
+failure with a generic harness diagnostic; full diagnostic parity is not implemented. This is a separate experimental
+harness, not the normal native CLI or a completed native language replacement.
+
+Memory is not qualified for the 2 MiB goal: the proof harness reserves about 1.5 MiB
+itself and imports existing services with roughly 42 MiB of additional BSS. Erasing
+text proves independence from its contents, not reduced allocation or peak RAM.
+Any next migration decision must address those imported runtime responsibilities.
+
+Reproduce the bounded comparison with the configured FS-UAE environment and a
+fresh ASM test executable:
+
+```sh
+cargo test -p asm binary_source_packages_prepare
+python3 scripts/performance/prepared_source_native.py \
+  --native-test target/debug/deps/asm-<current-test-hash> --binary-source
+```
+
+The runner limits the batch to 150 seconds and binary guest work to 10 seconds
+after START. Each success requires fresh completion, explicit zero guest exit,
+equality with the current Rust oracle and independent workload bytes. Guest timing
+includes native tokenization/packing, input/output and package loading, but excludes
+emulator boot and host package export. Results and guest artifacts are not retained
+as tracked historical evidence; record the meaningful measurements here.
+
+Final reviewed-code observations (telemetry off, same-session serial comparison):
+
+| Mixed8 input | Current text path | Native binary-source path | Derived capsule |
+|---|---:|---:|---:|
+| m6502: 688 source bytes → 104 output bytes | 4.761 s | 0.622 s | 7,268 B |
+| m68000: 865 source bytes → 144 output bytes | 6.811 s | 0.606 s | 96,444 B |
+
+Both paths match the live Rust oracle and independently calculated workload bytes
+with fresh zero-exit completion (Level D). The binary path erases text before its
+two passes. A preceding comparison observed 4.712/0.618 s and 7.122/0.629 s;
+these short observations show a substantial combined-path improvement, not a
+stable speed ratio, isolated tokenization gain or self-host prediction. The final
+experimental image is 70,308 B versus 564,236 B for the current native CLI. Their
+language coverage differs; this is not an equivalent full-product size comparison.
+Host capsule export took 1.26 ms and 5.76 ms, excluding registry bootstrap. The
+canonical text-path package remains 368,635 B. The emulator uses the existing
+68040/expanded-memory configuration, not physical 68020 hardware or a 2 MiB limit.
+
+Three VM exporter tests and the ASM capsule-preparation test pass (host evidence).
+The signed-domain regression `lda #(-$ffffffff)` is rejected by the live Rust
+assembler and completes natively with exit 20 and the expected diagnostic; it
+cannot silently emit `A9 01`. A bounded independent review found and corrected
+that arithmetic issue and two capsule-bound checks. Malformed-capsule checks were
+reviewed but have not received directed guest cases. The workflow gate (136 tests),
+affected-library Clippy, formatting, CPU boundary, native ownership/no-growth,
+inventory and fresh-proof guards pass. The full Rust quality gate still stops at
+the four unchanged compact-table redundant-test failures documented above.
+
+This establishes a working native binary-source experiment. The next decision
+should address how to preserve this gain while removing oversized legacy runtime
+dependencies and extending semantic coverage in bounded steps, rather than treating
+this harness as ready for the normal CLI or the 2 MiB product target.

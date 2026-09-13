@@ -1,0 +1,713 @@
+; Numeric instruction selection for experimental binary source records.
+; @opforge-owner: experimental.amigaos.binary_encoding
+
+	.module experimental.amigaos.binary_encoding
+	.cpu 68020
+	.include "telemetry_macros.i"
+	.use experimental.amigaos.binary_package as package
+	.use experimental.amigaos.binary_shapes as shapes
+	.use opasm.amigaos.binary_expression as expression
+	.use tkpkg.amigaos.encode_service as encoding
+	.use tkpkg.amigaos.selection_service as selection
+	.use tkpkg.amigaos.buffers as buffers
+	.use tkpkg.amigaos.selection_state as state
+
+TOKEN_SYMBOL_0 = 0
+TOKEN_SYMBOL_1 = 1
+TOKEN_COMMA = 4
+TOKEN_DOT = 7
+TOKEN_HASH = 8
+TOKEN_OPEN_PAREN = 14
+TOKEN_CLOSE_PAREN = 15
+
+SHAPE_EMPTY = 0
+SHAPE_SINGLE = 1
+SHAPE_PREFIXED = 2
+SHAPE_PREFIXED_PAIR = 3
+SHAPE_PAIR = 4
+
+RECIPE_NONE = 0
+RECIPE_U8 = 1
+RECIPE_U16 = 2
+RECIPE_REL8 = 3
+RECIPE_SEMANTIC_INPUTS = 4
+RECIPE_SEMANTIC_BRANCH = 5
+RECIPE_UNSUPPORTED = 6
+
+PROGRAM_TABLE = 1
+PROGRAM_SEMANTIC = 2
+PROGRAM_VALUE = 3
+MISSING_PROGRAM = $ffff
+HEADER_BYTES = 72
+ROW_BYTES = 24
+PROJECTION_BYTES = 12
+PROGRAM_BYTES = 12
+
+	.section bss, kind=bss
+	.priv
+OperandStart	.res long, 2
+OperandEnd	.res long, 2
+OperandCount	.res word, 1
+OperandShape	.res word, 1
+MemberMask	.res word, 1
+Unresolved	.res word, 1
+Records	.res byte, 24
+	.endsection
+
+	.section code, kind=code
+	.pub
+
+; A0=operand token cursor, A1=bounded end, A2=package.Context,
+; D0.W=base mnemonic id, D1.B=0 or qualifier-index+1.
+; Returns D0=0 on success, D1=byte count, A1=output. A0 may change;
+; D2-D7/A2-A6 are preserved. No source spelling is consulted.
+encode	.block
+	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_SELECTION
+	movem.l d2-d7/a2-a6, -(sp)
+	move.w d0, d6
+	moveq #0, d7
+	move.b d1, d7
+	bsr.w splitOperands
+	tst.l d0
+	bne.w fail
+	clr.w MemberMask
+	tst.w OperandCount
+	beq.w shapesReady
+	movea.l OperandStart, a0
+	movea.l OperandEnd, a1
+	jsr shapes.isMember
+	move.w d0, MemberMask
+	cmpi.w #2, OperandCount
+	bne.w shapesReady
+	movea.l OperandStart+4, a0
+	movea.l OperandEnd+4, a1
+	jsr shapes.isMember
+	add.w d0, d0
+	or.w d0, MemberMask
+shapesReady
+	movea.l package.Context.Package(a2), a5
+	move.l a5, d0
+	beq.w fail
+	move.l package.Header.Bytes(a5), d0
+	cmpi.l #HEADER_BYTES, d0
+	blo.w fail
+	move.l package.Header.Rows(a5), d2
+	move.l package.Header.RowCount(a5), d3
+	cmpi.l #$ffff, d3
+	bhi.w fail
+	move.l d3, d0
+	mulu.w #ROW_BYTES, d0
+	add.l d2, d0
+	bcs.w fail
+	cmp.l package.Header.Bytes(a5), d0
+	bhi.w fail
+	adda.l d2, a5
+rowLoop
+	tst.l d3
+	beq.w fail
+	cmp.w package.Row.Name(a5), d6
+	bne.w nextRow
+	cmp.b package.Row.Qualifier(a5), d7
+	bne.w nextRow
+	move.w OperandShape, d0
+	cmp.b package.Row.Shape(a5), d0
+	bne.w nextRow
+	moveq #0, d0
+	move.b package.Row.MemberExcluded(a5), d0
+	and.w MemberMask, d0
+	bne.w nextRow  ; a necessary package match predicate is conclusively false
+	cmpi.b #RECIPE_UNSUPPORTED, package.Row.Recipe(a5)
+	beq.w fail
+	movem.l d3/d6-d7/a2/a5, -(sp)
+	bsr.w tryRow
+	movem.l (sp)+, d3/d6-d7/a2/a5
+	tst.l d0
+	beq.w success
+nextRow
+	adda.w #ROW_BYTES, a5
+	subq.l #1, d3
+	bra.w rowLoop
+success
+	movem.l (sp)+, d2-d7/a2-a6
+	.TELEMETRY_SERVICE_LEAVE
+	tst.l d0
+	rts
+fail
+	moveq #1, d0
+	moveq #0, d1
+	suba.l a1, a1
+	movem.l (sp)+, d2-d7/a2-a6
+	.TELEMETRY_SERVICE_LEAVE
+	tst.l d0
+	rts
+	.bend  ; encode
+
+	.priv
+
+; Record at most two top-level operands and derive their numeric shape.
+splitOperands	.block
+	move.l a0, OperandStart
+	move.l a1, OperandEnd
+	clr.w OperandCount
+	clr.w OperandShape
+	cmpa.l a1, a0
+	beq.w emptyOperands
+	moveq #0, d2
+	movea.l a0, a3
+scan
+	cmpa.l a1, a3
+	bhs.w one
+	moveq #0, d0
+	move.b (a3), d0
+	cmpi.b #TOKEN_OPEN_PAREN, d0
+	bne.w close
+	addq.w #1, d2
+	bra.w step
+close
+	cmpi.b #TOKEN_CLOSE_PAREN, d0
+	bne.w comma
+	tst.w d2
+	beq.w malformed
+	subq.w #1, d2
+	bra.w step
+comma
+	cmpi.b #TOKEN_COMMA, d0
+	bne.w step
+	tst.w d2
+	bne.w step
+	cmpa.l a0, a3
+	beq.w malformed
+	move.l a3, OperandEnd
+	addq.l #1, a3
+	cmpa.l a1, a3
+	bhs.w malformed
+	move.l a3, OperandStart+4
+	move.l a1, OperandEnd+4
+	move.w #2, OperandCount
+	cmpi.b #TOKEN_HASH, (a0)
+	beq.w prefixedPair
+	move.w #SHAPE_PAIR, OperandShape
+	moveq #0, d0
+	rts
+step
+	bsr.w skipToken
+	tst.l d0
+	bne.w malformed
+	bra.w scan
+one
+	tst.w d2
+	bne.w malformed
+	move.w #1, OperandCount
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w singleOperand
+	move.w #SHAPE_PREFIXED, OperandShape
+	moveq #0, d0
+	rts
+singleOperand
+	move.w #SHAPE_SINGLE, OperandShape
+	moveq #0, d0
+	rts
+prefixedPair
+	move.w #SHAPE_PREFIXED_PAIR, OperandShape
+	moveq #0, d0
+	rts
+emptyOperands
+	moveq #0, d0
+	rts
+malformed
+	moveq #1, d0
+	rts
+	.bend  ; splitOperands
+
+; Advance A3 over one bounded binary token.
+skipToken	.block
+	cmpa.l a1, a3
+	bhs.w bad
+	moveq #0, d0
+	move.b (a3)+, d0
+	cmpi.b #2, d0
+	bhi.w ok
+	moveq #3, d1
+	cmpi.b #2, d0
+	blo.w sized
+	moveq #4, d1
+sized
+	move.l a1, d0
+	sub.l a3, d0
+	cmp.l d1, d0
+	blo.w bad
+	adda.l d1, a3
+ok
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; skipToken
+
+tryRow	.block
+	clr.w Unresolved
+	moveq #0, d0
+	move.b package.Row.Recipe(a5), d0
+	cmpi.b #RECIPE_NONE, d0
+	beq.w tableNone
+	cmpi.b #RECIPE_U8, d0
+	beq.w tableU8
+	cmpi.b #RECIPE_U16, d0
+	beq.w tableU16
+	cmpi.b #RECIPE_REL8, d0
+	beq.w tableRel8
+	cmpi.b #RECIPE_SEMANTIC_INPUTS, d0
+	beq.w semantic
+	cmpi.b #RECIPE_SEMANTIC_BRANCH, d0
+	beq.w semantic
+	bra.w bad
+tableU8
+	bsr.w evaluateOperandZero
+	tst.l d0
+	bne.w bad
+	tst.w Unresolved
+	bne.w unresolvedFixed
+	tst.l d1
+	bmi.w bad
+	cmpi.l #255, d1
+	bhi.w bad
+	move.b d1, Records
+	moveq #1, d5
+	moveq #1, d6
+	bra.w table
+tableU16
+	bsr.w evaluateOperandZero
+	tst.l d0
+	bne.w bad
+	tst.w Unresolved
+	bne.w unresolvedFixed
+	tst.l d1
+	bmi.w bad
+	cmpi.l #65535, d1
+	bhi.w bad
+	bsr.w storeWord
+	moveq #1, d5
+	moveq #2, d6
+	bra.w table
+tableRel8
+	bsr.w evaluateOperandZero
+	tst.l d0
+	bne.w bad
+	tst.w Unresolved
+	bne.w unresolvedFixed
+	sub.l package.Context.Pc(a2), d1
+	subq.l #2, d1
+	cmpi.l #-128, d1
+	blt.w bad
+	cmpi.l #127, d1
+	bgt.w bad
+	move.b d1, Records
+	moveq #1, d5
+	moveq #1, d6
+	bra.w table
+unresolvedFixed
+	cmpi.w #1, package.Context.Pass(a2)
+	bne.w bad
+	clr.l d1
+	cmpi.b #RECIPE_U16, package.Row.Recipe(a5)
+	beq.w unresolvedWord
+	clr.b Records
+	moveq #1, d5
+	moveq #1, d6
+	bra.w table
+unresolvedWord
+	clr.w Records
+	moveq #1, d5
+	moveq #2, d6
+	bra.w table
+tableNone
+	moveq #0, d5
+	moveq #0, d6
+table
+	bsr.w program
+	tst.l d0
+	bne.w bad
+	cmpi.w #PROGRAM_TABLE, d2
+	bne.w bad
+	lea Records, a3
+	jsr encoding.executeNumericTableV1
+	rts
+semantic
+	bsr.w project
+	tst.l d0
+	bne.w bad
+	bsr.w program
+	tst.l d0
+	bne.w bad
+	cmpi.w #PROGRAM_SEMANTIC, d2
+	bne.w bad
+	move.l package.Context.Pc(a2), state.EncodeSelectedCurrentPc
+	move.w package.Context.Pass(a2), state.EncodeSelectedSessionPass
+	move.b package.Row.Unstable(a5), state.EncodeSelectedMselUnstable
+	clr.b state.EncodeSelectedDeferUnstableBranchTarget
+	clr.b state.EncodeSelectedMselHasSymbolReference
+	tst.w Unresolved
+	beq.w branchStateReady
+	move.b #1, state.EncodeSelectedDeferUnstableBranchTarget
+	move.b #1, state.EncodeSelectedMselHasSymbolReference
+branchStateReady
+	lea Records, a3
+	move.l a3, buffers.SemanticInputRecordPtr
+	move.w package.Row.InputCount(a5), buffers.SemanticInputRecordCount
+	move.w #4, buffers.SemanticFirstInputLen
+	move.l d4, d0
+	jsr encoding.executeNumericSemanticV1
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; tryRow
+
+evaluateOperandZero	.block
+	movea.l OperandStart, a0
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w cursorReady
+	addq.l #1, a0
+cursorReady
+	movea.l OperandEnd, a1
+	jsr expression.evaluate
+	tst.l d0
+	bne.w return
+	cmpa.l a1, a0
+	bne.w malformed
+	tst.l d2
+	beq.w return
+	move.w #1, Unresolved
+return
+	rts
+malformed
+	moveq #1, d0
+	rts
+	.bend  ; evaluateOperandZero
+
+storeWord	.block
+	movea.l package.Context.Package(a2), a4
+	tst.w package.Header.LittleEndian(a4)
+	beq.w big
+	move.b d1, Records
+	lsr.w #8, d1
+	move.b d1, Records+1
+	rts
+big
+	move.w d1, Records
+	rts
+	.bend  ; storeWord
+
+; Resolve Row.Program. Returns D0 status, D2 kind, D4 version, A1/D1 bytes.
+program	.block
+	move.l d5, -(sp)
+	movea.l package.Context.Package(a2), a4
+	moveq #0, d0
+	move.w package.Row.Program(a5), d0
+	cmp.l package.Header.ProgramCount(a4), d0
+	bhs.w bad
+	mulu.w #PROGRAM_BYTES, d0
+	add.l package.Header.Programs(a4), d0
+	bcs.w bad
+	move.l d0, d1
+	add.l #PROGRAM_BYTES, d1
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d1
+	bhi.w bad
+	movea.l a4, a3
+	adda.l d0, a3
+	moveq #0, d2
+	move.w package.Program.Kind(a3), d2
+	moveq #0, d4
+	move.w package.Program.Version(a3), d4
+	move.l package.Program.Offset(a3), d1
+	move.l d1, d5
+	add.l package.Program.Bytes(a3), d5
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d5
+	bhi.w bad
+	movea.l a4, a1
+	adda.l d1, a1
+	move.l package.Program.Bytes(a3), d1
+	moveq #0, d0
+	move.l (sp)+, d5
+	rts
+bad
+	moveq #1, d0
+	move.l (sp)+, d5
+	tst.l d0
+	rts
+	.bend  ; program
+
+; Materialize Row projections in the existing CSEM little-endian scalar ABI.
+project	.block
+	moveq #0, d7
+	move.w package.Row.InputCount(a5), d7
+	cmpi.w #4, d7
+	bhi.w bad
+	move.l d7, d0
+	mulu.w #PROJECTION_BYTES, d0
+	move.l package.Row.Inputs(a5), d1
+	add.l d1, d0
+	bcs.w bad
+	movea.l package.Context.Package(a2), a4
+	cmp.l package.Header.Bytes(a4), d0
+	bhi.w bad
+	adda.l d1, a4
+	lea Records, a3
+	moveq #0, d6
+loop
+	cmp.w d7, d6
+	bhs.w done
+	tst.w d6
+	beq.w recordReady
+	move.b #4, (a3)+
+recordReady
+	moveq #0, d0
+	move.b package.Projection.Kind(a4), d0
+	cmpi.b #0, d0
+	beq.w expressionValue
+	cmpi.b #1, d0
+	beq.w registerValue
+	cmpi.b #2, d0
+	beq.w memberValue
+	cmpi.b #3, d0
+	beq.w constantValue
+	bra.w bad
+expressionValue
+	bsr.w projectionExpression
+	bra.w valueReady
+registerValue
+	bsr.w projectionRegister
+	bra.w valueReady
+memberValue
+	bsr.w projectionMember
+	bra.w valueReady
+constantValue
+	move.l package.Projection.Literal(a4), d3
+	moveq #0, d0
+valueReady
+	tst.l d0
+	bne.w bad
+	move.w package.Projection.ValueProgram(a4), d0
+	cmpi.w #MISSING_PROGRAM, d0
+	beq.w store
+	bsr.w valueProgram
+	tst.l d0
+	bne.w bad
+store
+	move.b d3, (a3)
+	lsr.l #8, d3
+	move.b d3, 1(a3)
+	lsr.l #8, d3
+	move.b d3, 2(a3)
+	lsr.l #8, d3
+	move.b d3, 3(a3)
+	adda.w #4, a3
+	adda.w #PROJECTION_BYTES, a4
+	addq.w #1, d6
+	bra.w loop
+done
+	tst.w Unresolved
+	beq.w ok
+	cmpi.w #1, package.Context.Pass(a2)
+	bne.w bad
+ok
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; project
+
+projectionExpression	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w ready
+	addq.l #1, a0
+ready
+	jsr expression.evaluate
+	tst.l d0
+	bne.w return
+	cmpa.l a1, a0
+	bne.w bad
+	move.l d1, d3
+	tst.l d2
+	beq.w return
+	move.w #1, Unresolved
+return
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectionExpression
+
+projectionRegister	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	bsr.w register
+return
+	rts
+	.bend  ; projectionRegister
+
+projectionMember	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	cmpi.b #TOKEN_OPEN_PAREN, (a0)+
+	bne.w bad
+	movea.l a1, a6
+	subq.l #6, a6
+	cmpa.l a0, a6
+	blo.w bad
+	cmpi.b #TOKEN_CLOSE_PAREN, (a6)
+	bne.w bad
+	cmpi.b #TOKEN_DOT, 1(a6)
+	bne.w bad
+	moveq #0, d0
+	move.b 2(a6), d0
+	cmpi.b #TOKEN_SYMBOL_0, d0
+	beq.w word
+	cmpi.b #TOKEN_SYMBOL_1, d0
+	bne.w bad
+word
+	moveq #0, d0
+	move.b 3(a6), d0
+	lsl.w #8, d0
+	move.b 4(a6), d0
+	cmp.w package.Projection.Class(a4), d0
+	bne.w bad
+	tst.b 5(a6)
+	bne.w bad
+	movea.l a6, a1
+	jsr expression.evaluate
+	tst.l d0
+	bne.w return
+	cmpa.l a6, a0
+	bne.w bad
+	move.l d1, d3
+	tst.l d2
+	beq.w return
+	move.w #1, Unresolved
+return
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectionMember
+
+operandSpan	.block
+	moveq #0, d0
+	move.b package.Projection.Operand(a4), d0
+	cmp.w OperandCount, d0
+	bhs.w bad
+	lsl.w #2, d0
+	lea OperandStart, a1
+	movea.l 0(a1, d0.w), a0
+	lea OperandEnd, a1
+	movea.l 0(a1, d0.w), a1
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; operandSpan
+
+; Exact numeric register token + package register-row lookup.
+register	.block
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	bne.w bad
+	moveq #0, d0
+	move.b (a0)+, d0
+	cmpi.b #TOKEN_SYMBOL_0, d0
+	beq.w symbol
+	cmpi.b #TOKEN_SYMBOL_1, d0
+	bne.w bad
+symbol
+	moveq #0, d1
+	move.b (a0)+, d1
+	lsl.w #8, d1
+	move.b (a0)+, d1
+	tst.b (a0)+
+	bne.w bad
+	movea.l package.Context.Package(a2), a6
+	move.l package.Header.RegisterRows(a6), d0
+	move.l package.Header.RegisterCount(a6), d2
+	cmpi.l #$ffff, d2
+	bhi.w bad  ; MULU.W must cover the complete count used by the scan
+	move.l d2, d4
+	mulu.w #6, d4
+	add.l d0, d4
+	bcs.w bad
+	cmp.l package.Header.Bytes(a6), d4
+	bhi.w bad
+	adda.l d0, a6
+loop
+	tst.l d2
+	beq.w bad
+	cmp.w (a6), d1
+	bne.w next
+	move.w package.Projection.Class(a4), d0
+	cmp.w 2(a6), d0
+	bne.w next
+	moveq #0, d3
+	move.w 4(a6), d3
+	moveq #0, d0
+	rts
+next
+	addq.l #6, a6
+	subq.l #1, d2
+	bra.w loop
+bad
+	moveq #1, d0
+	rts
+	.bend  ; register
+
+valueProgram	.block
+	move.w d0, -(sp)
+	movea.l package.Context.Package(a2), a6
+	moveq #0, d1
+	move.w d0, d1
+	cmp.l package.Header.ProgramCount(a6), d1
+	bhs.w badPop
+	mulu.w #PROGRAM_BYTES, d1
+	add.l package.Header.Programs(a6), d1
+	bcs.w badPop
+	move.l d1, d2
+	addi.l #PROGRAM_BYTES, d2
+	bcs.w badPop
+	cmp.l package.Header.Bytes(a6), d2
+	bhi.w badPop  ; validate the descriptor before reading any of its fields
+	movea.l a6, a0
+	adda.l d1, a0
+	cmpi.w #PROGRAM_VALUE, package.Program.Kind(a0)
+	bne.w badPop
+	move.l package.Program.Offset(a0), d1
+	move.l package.Program.Bytes(a0), d2
+	move.l d1, d4
+	add.l d2, d4
+	bcs.w badPop
+	cmp.l package.Header.Bytes(a6), d4
+	bhi.w badPop
+	moveq #0, d0
+	move.w package.Program.Version(a0), d0
+	movea.l a6, a1
+	adda.l d1, a1
+	move.l d2, d1
+	jsr selection.executeNumericValueV1
+	addq.l #2, sp
+	rts
+badPop
+	addq.l #2, sp
+	moveq #1, d0
+	rts
+	.bend  ; valueProgram
+
+	.endsection
+	.endmodule

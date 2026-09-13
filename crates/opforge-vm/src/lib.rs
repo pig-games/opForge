@@ -12,6 +12,7 @@
 //! Existing top-level modules remain available during migration, but new code
 //! should prefer these partition surfaces when choosing ownership.
 
+pub mod binary_source_package;
 pub mod branch_vm;
 pub mod builder;
 pub mod bytecode;

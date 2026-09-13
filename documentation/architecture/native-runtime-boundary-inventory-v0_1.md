@@ -163,7 +163,8 @@ scope, validation and completion. No future feature or migration is scheduled he
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm`.
 - Public entries: `selectInstructionV1`, `buildSelectedEnvelopeV1`,
-  `noOutputErrorV1`, and `tkpkgProjectBoundedRegisterV1`.
+  `noOutputErrorV1`, `tkpkgProjectBoundedRegisterV1`, and experimental
+  `executeNumericValueV1` (already-bound VALP bytes, with caller registers preserved).
 - Imports/outbound dependencies: tkpkg ABI/buffers, operand runtime, neutral
   runtime context, the expression bridge transition boundary, and the
   default-off runtime observer.
@@ -198,7 +199,10 @@ scope, validation and completion. No future feature or migration is scheduled he
 ### `tkpkg.amigaos.encode_service`
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm`.
-- Public entries: `encodeInstructionV1` and `encodeSelectedInstructionV1`.
+- Public entries: `encodeInstructionV1` and `encodeSelectedInstructionV1`, plus
+  experimental `executeNumericTableV1` and `executeNumericSemanticV1` over bound
+  canonical programs and fresh numeric operands. These wrappers reuse the existing
+  interpreters and output buffer without name lookup or additional state.
 - Imports/outbound dependencies: tkpkg ABI/buffers, private selection state,
   the existing selection-service boundary, and the generic compact-table
   boundary and numeric semantic bindings; plus the default-off runtime observer.

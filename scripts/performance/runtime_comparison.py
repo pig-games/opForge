@@ -17,17 +17,23 @@ import vm_efficiency as base
 TEST = 'tests::native_runtime_comparison::native_runtime_comparison_fs_uae'
 
 
-def native(binary, source, package, budget, log, profile="off", native_root=None):
+def native(binary, source, package, budget, log, profile="off", native_root=None,
+           *, test=TEST, result_prefix='RUNTIME_COMPARISON ', extra_env=None,
+           guest_timeout_ms=35000, post_start_timeout_ms=35000):
     env = dict(base.clean_env(), OPFORGE_COMPARE_SOURCE=str(source),
                OPFORGE_COMPARE_PACKAGE=str(package), OPFORGE_FS_UAE_SMOKE='1',
                OPFORGE_COMPARE_PROFILE=profile,
-               OPFORGE_FS_UAE_POLL_MS='20', OPFORGE_FS_UAE_TIMEOUT_MS='35000', OPFORGE_FS_UAE_POST_START_TIMEOUT_MS='35000')
+               OPFORGE_FS_UAE_POLL_MS='20',
+               OPFORGE_FS_UAE_TIMEOUT_MS=str(guest_timeout_ms),
+               OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=str(post_start_timeout_ms))
     env.update({key: value for key, value in os.environ.items()
                 if key.startswith('OPFORGE_FS_UAE_') and key not in {
                     'OPFORGE_FS_UAE_POLL_MS', 'OPFORGE_FS_UAE_TIMEOUT_MS',
                     'OPFORGE_FS_UAE_POST_START_TIMEOUT_MS', 'OPFORGE_FS_UAE_SMOKE'}})
     if native_root is not None:
         env["OPFORGE_COMPARE_NATIVE_ROOT"] = str(native_root)
+    if extra_env:
+        env.update(extra_env)
     # The existing runner owns normal cleanup. Also cover external timeout/unwind
     # of this serial test process; only newly created runner trees are candidates.
     pattern = 'fs-uae-hunk-smoke-opforge_cli-*'
@@ -35,14 +41,16 @@ def native(binary, source, package, budget, log, profile="off", native_root=None
     before = set(target.glob(pattern))
     try:
         code, stdout, stderr, elapsed = base.run_process(
-            [str(binary), TEST, '--exact', '--ignored', '--nocapture'], base.ROOT, env, budget)
+            [str(binary), test, '--exact', '--ignored', '--nocapture'], base.ROOT, env, budget)
         text = (stdout + stderr).decode(errors='replace')
         log.write_text(text)
-        rows = [json.loads(line.split('RUNTIME_COMPARISON ', 1)[1])
-                for line in text.splitlines() if line.startswith('RUNTIME_COMPARISON ')]
+        rows = [json.loads(line.split(result_prefix, 1)[1])
+                for line in text.splitlines() if line.startswith(result_prefix)]
         if code or len(rows) != 1 or rows[0]['guest_exit'] != 0:
             raise ValueError(f'native completion/parity failed: {log}')
-        if rows[0].get('profile') != profile or (profile != 'off' and not rows[0].get('counters')):
+        if result_prefix == 'RUNTIME_COMPARISON ' and (
+                rows[0].get('profile') != profile
+                or (profile != 'off' and not rows[0].get('counters'))):
             raise ValueError('requested native telemetry was not decoded from the completed run')
         return dict(rows[0], invocation_seconds=elapsed)
     finally:

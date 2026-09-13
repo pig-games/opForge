@@ -39,3 +39,9 @@ then remove notes once incorporated or obsolete. These are observations, not rul
   a small Hunk regression alongside the native use; named fields still express
   the layout, with frame size derived from the final field until the scalar-size
   contract is resolved.
+  The binary-source harness exposed a further Hunk relocation gap: an absolute
+  address written as `buffer + imported.Struct.field` was emitted without the
+  buffer relocation. Loading the buffer address with `lea` and using the named
+  field as an address-register displacement avoids that form. The authorized
+  debugger localized the hang; this workaround does not fix the assembler's
+  relocation handling. Cover this expression form in the future Hunk regression.

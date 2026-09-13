@@ -11,6 +11,8 @@ import time
 import runtime_comparison as runtime
 import vm_efficiency as base
 
+BINARY_TEST = "tests::binary_source_experiment::binary_source_fs_uae"
+
 
 def replay_smoke(cpu, blocks=8):
     if cpu not in ("m6502", "m68000") or blocks != 8:
@@ -79,12 +81,18 @@ def main():
     parser.add_argument("--blocks", type=int, choices=(8, 32),
                         help="defaults to 8; 32 is an explicit larger probe subject to the same timeout")
     parser.add_argument("--profile", choices=("off", "runtime"), default="off")
+    parser.add_argument("--binary-source", action="store_true",
+                        help="also run the opt-in BSP1 binary-source native harness")
     parser.add_argument("--cpus", nargs="+", choices=("m6502", "m68000"), default=["m6502", "m68000"])
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     blocks = args.blocks if args.blocks is not None else 8
     if args.workload == "replay-smoke" and blocks != 8:
         parser.error("replay-smoke supports exactly 8 blocks")
+    if args.binary_source and args.workload == "binding-switch":
+        parser.error("binary-source currently supports one CPU pipeline per input")
+    if args.binary_source and args.profile != "off":
+        parser.error("binary-source timing comparison requires --profile off")
 
     native_test = args.native_test.resolve(strict=True)
     package = args.package.resolve(strict=True)
@@ -99,6 +107,7 @@ def main():
         "working_diff_sha256": base.digest(subprocess.check_output(["git", "diff", "HEAD", "--binary"], cwd=base.ROOT)),
         "host": platform.platform(),
         "profile": args.profile,
+        "binary_source": args.binary_source,
         "workload": args.workload,
         "package": {"path": str(package), "bytes": package.stat().st_size, "sha256": base.digest(package.read_bytes())},
         "native_test": {"path": str(native_test), "bytes": native_test.stat().st_size, "sha256": base.digest(native_test.read_bytes())},
@@ -108,13 +117,21 @@ def main():
         "workload_helper_sha256": base.digest(Path(base.__file__).read_bytes()),
         "emulator_template": {"path": str(template), "sha256": base.digest(template.read_bytes()), "text": template.read_text()},
         "runner_config_overrides": {"zorro_iii_memory_kib": 65536},
-        "limits": {"batch_seconds": 150, "invocation_seconds": 60, "guest_seconds": 35, "poll_ms": 20},
+        "limits": {
+            "batch_seconds": 150,
+            "invocation_seconds": 60,
+            "text_guest_seconds": 35,
+            "binary_boot_seconds": 60,
+            "binary_post_start_seconds": 10,
+            "poll_ms": 20,
+        },
         "cases": [],
         "limitations": [
             "Each native case is one observation, not a statistically stable speed ratio.",
             "START-to-DONE includes input, package, assembly, and output work but excludes emulator boot.",
             "Full invocation time includes harness setup/build and emulator startup/teardown.",
-            "This runs native source-text processing, including any current numeric package bindings; it does not run packed source records.",
+            "The native field runs source-text processing, including any current numeric package bindings.",
+            "The opt-in binary_source field combines native source packing with a Rust-derived single-pipeline BSP1 runtime capsule; it does not isolate tokenization speedup or package preparation cost.",
         ],
     }
     budget = base.Budget(150)
@@ -146,8 +163,30 @@ def main():
                 # A failed case is evidence only for itself; attempt later cases
                 # under the same batch deadline and keep the batch fail-closed.
                 row["error"] = str(error)
+            if args.binary_source:
+                try:
+                    receipt = runtime.native(
+                        native_test, source_path, package, budget,
+                        case_dir / "binary-source.log", "off",
+                        test=BINARY_TEST,
+                        result_prefix="BINARY_SOURCE_COMPARISON ",
+                        extra_env={"OPFORGE_COMPARE_CPU": cpu},
+                        guest_timeout_ms=60000,
+                        post_start_timeout_ms=10000,
+                    )
+                    if bytes(receipt["exact_output"]) != expected:
+                        raise ValueError(
+                            f"{cpu} binary-source output differs from independent workload bytes"
+                        )
+                    receipt.pop("exact_output")
+                    row["binary_source"] = receipt
+                except Exception as error:
+                    row["binary_source_error"] = str(error)
             (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
-        report["complete"] = all("native" in row for row in report["cases"])
+        report["complete"] = all(
+            "native" in row and (not args.binary_source or "binary_source" in row)
+            for row in report["cases"]
+        )
     except Exception as error:
         report["error"] = str(error)
     finally:

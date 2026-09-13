@@ -42610,5 +42610,8 @@ fn motorola68020_item33_native_package_composition_boundary_matches_rust() {
 #[path = "tests/native_runtime_comparison.rs"]
 mod native_runtime_comparison;
 
+#[path = "tests/binary_source_experiment.rs"]
+mod binary_source_experiment;
+
 #[path = "tests/native_telemetry_macros.rs"]
 mod native_telemetry_macros;

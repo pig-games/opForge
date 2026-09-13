@@ -8385,6 +8385,19 @@ valpReturn
 	rts
 	.bend  ; tkpkgExecuteScopedValueProgramV2
 
+; Numeric experimental entry over an already selected VALP program.
+; Inputs and outputs match tkpkgExecuteValueProgramBytesV2. No scoped name
+; lookup or package scan is performed.
+	.pub
+executeNumericValueV1	.block
+	movem.l d1-d2/d4-d7/a0-a6, -(sp)
+	bsr.w tkpkgExecuteValueProgramBytesV2
+	movem.l (sp)+, d1-d2/d4-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; executeNumericValueV1
+	.priv
+
 ; Direct Rust VALUE_VM v1/v2 port over the native signed-32 scalar transport.
 ; Inputs: D0 = opcode version; A1/D1 = program bytes; D3 = input zero.
 ; Outputs: D0 = 0 success, 1 malformed, or 2 constraint violation; D3 = value.

@@ -19,6 +19,7 @@ mod prepared_source_experiment_tests;
 #[cfg(test)]
 mod tests;
 
+pub mod binary_source_experiment;
 pub mod engine;
 pub mod error;
 pub mod expression;

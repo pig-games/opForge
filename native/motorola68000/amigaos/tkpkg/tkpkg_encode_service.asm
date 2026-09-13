@@ -2388,6 +2388,36 @@ getOutputFixupFail
 	rts
 	.bend  ; getOutputFixupV1
 
+; Numeric experimental entry over an already selected TABL program.
+; Inputs: A1/D1=program, A3=length-prefixed operand records,
+; D5.W=count, D6.W=first record length. Outputs: D0 status, D1 bytes,
+; A1=LastErrorBuffer on success. No name or package scan is performed.
+	.pub
+executeNumericTableV1	.block
+	bsr.w tkpkgEncodeExecuteProgram
+	tst.l d0
+	bne.s return
+	lea buffers.LastErrorBuffer, a1
+return
+	rts
+	.bend  ; executeNumericTableV1
+
+; Numeric experimental entry over an already selected CSEM program.
+; Inputs: D0.W=version, A1/D1=program; scalar records are installed in
+; buffers.SemanticInputRecord*. Outputs: D0 status, D1 bytes, A1 output.
+executeNumericSemanticV1	.block
+	move.w d0, d4
+	clr.w buffers.SemanticOutputWriteOffset
+	clr.w buffers.SemanticOutputFixupCount
+	bsr.w executeBoundProgram
+	tst.l d0
+	bne.s return
+	lea buffers.LastErrorBuffer, a1
+return
+	rts
+	.bend  ; executeNumericSemanticV1
+	.priv
+
 tkpkgEncodeExecuteProgram	.block
 	movem.l d2-d7/a0/a2-a4, -(sp)
 	movea.l a1, a0

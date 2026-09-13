@@ -1950,8 +1950,9 @@ stateCandidateReturn
 	.bend  ; tkpkgBuildCompactStateCandidateV2
 
 ; Build the existing candidate envelope from one CMSE v7 scalar/input plan.
-; The envelope carries an opaque CSEM program id and four-byte neutral scalar
-; records.  No family spelling or encoding meaning is interpreted here.
+; The internal envelope carries the numeric CMSE string id for an opaque CSEM
+; program and four-byte neutral scalar records. No family spelling or encoding
+; meaning is interpreted here; this is not part of the public service ABI.
 ; Inputs: D0.B = compact plan kind (1 inputs, 2 scalar); A1 = plan body;
 ;         A5/D2 = selected mnemonic; A6 = CMSE chunk end.
 ; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D1 = envelope length on success.
@@ -1962,16 +1963,9 @@ tkpkgBuildCompactSemanticCandidateV2	.block
 	movea.l a1, a2
 	bsr.w tkpkgServiceReadU16LeV1
 	bne.w semanticMalformed
-	lea buffers.CompactSelectorPlanText, a0
-	bsr.w resolveCompactSelectorStringV1
-	bne.w semanticMalformed
-	tst.w d0
-	beq.w semanticMalformed
-	cmpi.w #buffers.COMPACT_SELECTOR_TEXT_CAPACITY, d0
-	bhi.w semanticMalformed
-	lea buffers.CompactSelectorPlanText, a1
-	move.l a1, state.EncodeSelectedMselModePtr
-	move.w d0, state.EncodeSelectedMselModeLen
+	cmp.w buffers.CompactSelectorStringCount, d0
+	bhs.w semanticMalformed
+	move.w d0, state.SemanticProgramId
 	move.l state.EncodeSelectedMselShapePtr, d1
 	move.l d1, state.EncodeSelectedCurrentShapePtr
 	move.w state.EncodeSelectedMselShapeLen, d1
@@ -1986,12 +1980,11 @@ tkpkgBuildCompactSemanticCandidateV2	.block
 	movea.l a5, a0
 	jsr operand.tkpkgMselCopyBytesV1
 	move.b #1, (a4)+
-	move.w state.EncodeSelectedMselModeLen, d0
-	cmpi.w #255, d0
-	bhi.w semanticMalformed
+	clr.b (a4)+  ; internal numeric semantic-program id tag
+	move.w state.SemanticProgramId, d0
 	move.b d0, (a4)+
-	movea.l state.EncodeSelectedMselModePtr, a0
-	jsr operand.tkpkgMselCopyBytesV1
+	lsr.w #8, d0
+	move.b d0, (a4)+
 
 	cmpi.b #2, d7
 	beq.w semanticScalar
@@ -2094,9 +2087,9 @@ semanticReturn
 	.bend  ; tkpkgBuildCompactSemanticCandidateV2
 
 ; Build the neutral four-input envelope for Rust's CMSE v7 semantic-branch
-; plan.  The package supplies opcode, target source, requested candidate (or
-; `auto`), and automatic class; native transports those values unchanged to
-; the SEMV v5 branch interpreter.
+; plan. The internal envelope carries the numeric CMSE program-name id. The
+; package supplies opcode, target source, requested candidate (or `auto`), and
+; automatic class; native transports those values unchanged to SEMV v5.
 ; Inputs: A1 = kind-3 plan body; A5/D2 = mnemonic; A6 = CMSE chunk end.
 ; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D1 = envelope length on success.
 tkpkgBuildCompactSemanticBranchCandidateV2	.block
@@ -2104,16 +2097,9 @@ tkpkgBuildCompactSemanticBranchCandidateV2	.block
 	movea.l a1, a2
 	bsr.w tkpkgServiceReadU16LeV1
 	bne.w branchMalformed
-	lea buffers.CompactSelectorPlanText, a0
-	bsr.w resolveCompactSelectorStringV1
-	bne.w branchMalformed
-	tst.w d0
-	beq.w branchMalformed
-	cmpi.w #buffers.COMPACT_SELECTOR_TEXT_CAPACITY, d0
-	bhi.w branchMalformed
-	lea buffers.CompactSelectorPlanText, a1
-	move.l a1, state.EncodeSelectedMselModePtr
-	move.w d0, state.EncodeSelectedMselModeLen
+	cmp.w buffers.CompactSelectorStringCount, d0
+	bhs.w branchMalformed
+	move.w d0, state.SemanticProgramId
 	move.l state.EncodeSelectedMselShapePtr, d1
 	move.l d1, state.EncodeSelectedCurrentShapePtr
 	move.w state.EncodeSelectedMselShapeLen, d1
@@ -2128,12 +2114,11 @@ tkpkgBuildCompactSemanticBranchCandidateV2	.block
 	movea.l a5, a0
 	jsr operand.tkpkgMselCopyBytesV1
 	move.b #1, (a4)+
-	move.w state.EncodeSelectedMselModeLen, d0
-	cmpi.w #255, d0
-	bhi.w branchMalformed
+	clr.b (a4)+  ; internal numeric semantic-program id tag
+	move.w state.SemanticProgramId, d0
 	move.b d0, (a4)+
-	movea.l state.EncodeSelectedMselModePtr, a0
-	jsr operand.tkpkgMselCopyBytesV1
+	lsr.w #8, d0
+	move.b d0, (a4)+
 
 	moveq #1, d0
 	bsr.w tkpkgServiceRequireBytesV1
@@ -2235,9 +2220,9 @@ branchReturn
 	.bend  ; tkpkgBuildCompactSemanticBranchCandidateV2
 
 ; Build one bounded native envelope for Rust CMSE v7 semantic sequences.
-; Match steps only prove that every neutral input projects. Encode and fixup
-; steps retain their opaque program id and projected scalar records in package
-; order, matching Rust selector_encoding.rs sequence execution.
+; Numeric program-name ids are retained for encode and fixup steps. Match steps
+; only prove that every neutral input projects and contribute no bytes, exactly
+; as in Rust selector_encoding.rs.
 ; Inputs: A1 = kind-4 plan body; A5/D2 = mnemonic; A6 = CMSE chunk end.
 ; Outputs: D0 = TKPKG_SELECTED_STATUS_*; D1 = envelope length on success.
 tkpkgBuildCompactSemanticSequenceCandidateV2	.block
@@ -2272,28 +2257,19 @@ sequenceStepLoop
 	bhi.w sequenceMalformed
 	bsr.w tkpkgServiceReadU16LeV1
 	bne.w sequenceMalformed
-	move.w d0, -(sp)
-	lea buffers.CompactSelectorPlanText, a0
-	bsr.w resolveCompactSelectorStringV1
-	bne.w sequenceProgramStackMalformed
-	tst.w d0
-	beq.w sequenceProgramStackMalformed
-	cmpi.w #255, d0
-	bhi.w sequenceProgramStackMalformed
-	move.w d0, d4
-	move.w (sp)+, d0
+	cmp.w buffers.CompactSelectorStringCount, d0
+	bhs.w sequenceMalformed
 
 	tst.b d5
 	beq.s sequenceInputs
-	moveq #1, d0
-	add.w d4, d0
-	addq.w #1, d0
+	move.w d0, d4
+	moveq #4, d0
 	bsr.w tkpkgSequenceRequireCandidateBytesV2
 	bne.w sequenceMalformed
+	clr.b (a4)+  ; zero text length tags an internal numeric program id
 	move.b d4, (a4)+
-	lea buffers.CompactSelectorPlanText, a0
-	move.w d4, d0
-	jsr operand.tkpkgMselCopyBytesV1
+	lsr.w #8, d4
+	move.b d4, (a4)+
 	movea.l a4, a0
 	clr.b (a4)+
 
@@ -2456,8 +2432,6 @@ sequenceStepNext
 	moveq #TKPKG_SELECTED_STATUS_OK, d0
 	bra.s sequenceReturn
 
-sequenceProgramStackMalformed
-	addq.l #2, sp
 sequenceMalformed
 	moveq #0, d1
 	moveq #TKPKG_SELECTED_STATUS_RUNTIME_ERROR, d0

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded current-native baseline: mixed instruction work, or the S1 replay smoke."""
+"""Bounded native comparison: mixed instruction work and focused correctness cases."""
 import argparse
 import json
 import os
@@ -41,9 +41,32 @@ def replay_smoke(cpu, blocks=8):
     return "\n".join(lines) + "\n", bytes(expected)
 
 
+def binding_switch(cpu, blocks):
+    """Alternate pipelines, vary values, and exercise equivalent branch aliases."""
+    lines = [".org $1000"]
+    expected = bytearray()
+    other = "m68000" if cpu == "m6502" else "m6502"
+    for index in range(blocks):
+        for target in (cpu, other, cpu):
+            lines.append(f".cpu {target}")
+            value = index + 1
+            if target == "m6502":
+                lines.extend([f"  lda #{value}", "  sta $2000"])
+                expected.extend((0xA9, value, 0x8D, 0, 0x20))
+            else:
+                label = f"next{len(expected)}"
+                alias = "bcc.s" if index % 2 else "bhs.s"
+                lines.extend([f"  moveq #{value},d0", f"  {alias} {label}", ".word 0", f"{label}:"])
+                expected.extend((0x70, value, 0x64, 2, 0, 0))
+    lines.append(".end")
+    return "\n".join(lines) + "\n", bytes(expected)
+
+
 def workload(cpu, blocks, kind):
     if kind == "mixed":
         return base.workload(cpu, blocks)
+    if kind == "binding-switch":
+        return binding_switch(cpu, blocks)
     return replay_smoke(cpu, blocks)
 
 
@@ -51,8 +74,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native-test", type=Path, required=True)
     parser.add_argument("--package", type=Path, default=base.ROOT / "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm")
-    parser.add_argument("--workload", choices=("mixed", "replay-smoke"), default="mixed",
-                        help="mixed exercises operands/selection; replay-smoke is the NOP-only S1 subset")
+    parser.add_argument("--workload", choices=("mixed", "replay-smoke", "binding-switch"), default="mixed",
+                        help="mixed measures selection; binding-switch checks invalidation/aliases; replay-smoke checks S1")
     parser.add_argument("--blocks", type=int, choices=(8, 32),
                         help="defaults to 8; 32 is an explicit larger probe subject to the same timeout")
     parser.add_argument("--profile", choices=("off", "runtime"), default="off")
@@ -91,7 +114,7 @@ def main():
             "Each native case is one observation, not a statistically stable speed ratio.",
             "START-to-DONE includes input, package, assembly, and output work but excludes emulator boot.",
             "Full invocation time includes harness setup/build and emulator startup/teardown.",
-            "This is the existing native source path; no native prepared-source candidate exists.",
+            "This runs native source-text processing, including any current numeric package bindings; it does not run packed source records.",
         ],
     }
     budget = base.Budget(150)

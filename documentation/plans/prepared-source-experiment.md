@@ -114,9 +114,13 @@ I/O, backward branches and convergence-sensitive relaxation. Those are explicit
 later workloads when their costs matter. Keep the current small case for isolating
 record/lookup regressions, with the explicit `--workload replay-smoke` option.
 
-Lower the justified representation to compact native records and reusable telemetry
-macros. Compare complete small cases under the existing fresh native proof contract,
-with a 60-second invocation and 300-second batch ceiling. Account for executable
+The agreed first native component is numeric package-program binding. Carry
+existing package identities through selected semantic execution and reuse immutable
+program resolution, while projecting inputs and evaluating branches/fixups afresh.
+Do not claim this replaces textual source processing. Bound metadata independently
+of statement count and invalidate it on package and effective pipeline changes.
+Then lower source records to native in a later inspectable slice. Compare complete small cases under the existing fresh native proof contract,
+with a 60-second invocation and 150-second batch ceiling. Account for executable
 size, preparation peak, retained RAM and total time. No long-running self-host test.
 Delete superseded responsibilities on integration instead of retaining permanent
 parallel pipelines. Review before expanding into a general native migration.
@@ -343,8 +347,11 @@ and prove exact output without per-pass source/package name lookup.
 
 The [raw block probe](../../crates/opforge-asm/src/prepared_source_experiment/packed.rs)
 uses one owned byte block and borrowed readers. Its 12-byte header carries record
-and symbol counts plus layout options. Each line has a u16 byte-length prefix,
-u16 source line, flags and only its present fields. Labels use u16 identities;
+and symbol counts plus layout options. Each line starts with one byte storing total record length minus one, then flags
+and a u16 source line, followed by only its present fields. The total includes the
+prefix and trailing alignment padding and cannot exceed 256 bytes; oversized
+records fail explicitly. Flags follow the length byte so the source-line word is
+aligned without a redundant padding byte. Labels use u16 identities;
 instruction identities independently use one or two bytes. Shared data directives
 use their own statement kinds. Operands contain length-prefixed postfix expressions;
 expression tags are always bytes, symbol references are u16, and constants use
@@ -358,10 +365,10 @@ operation slots, pending a complete package-normalized instruction dictionary.
 
 | Layout | 8 blocks / 488 text bytes | 32 blocks / 2,062 text bytes |
 |---|---:|---:|
-| Byte packed, byte instruction IDs | 540 B | 2,124 B |
-| Byte packed, word instruction IDs | 556 B | 2,188 B |
-| Word aligned, byte instruction IDs | 604 B | 2,380 B |
-| Word aligned, word instruction IDs | 604 B | 2,380 B |
+| Byte packed, byte instruction IDs | 492 B | 1,932 B |
+| Byte packed, word instruction IDs | 508 B | 1,996 B |
+| Word aligned, byte instruction IDs | 540 B | 2,124 B |
+| Word aligned, word instruction IDs | 572 B | 2,252 B |
 
 Both assembly targets have identical packed source payloads. Output endian rules
 and instruction program bytes are external. Counts include header, lengths, source
@@ -371,11 +378,12 @@ object and keeps it during validation: **this is not a measured pipeline RAM sav
 or a direct packed-tokenizer implementation**. There is no compressed-string or
 comment pool. This comment-free, short-line fixture offers no comment-removal saving.
 
-The byte-packed form is close to text size, but does not yet beat it. Word alignment
-costs more bytes; using word IDs then costs no additional space because it replaces
-padding. Avoid choosing byte IDs solely for their nominal width on a word-oriented
-execution platform. Reducing per-line metadata or combining label-only records may
-save more, but is deferred until native read/dispatch costs can guide the decision.
+With the one-byte prefix the 32-block byte-packed payload is now smaller than the
+comment-free text, before adding the excluded dispatch/program storage. Alignment
+and token width remain independent tradeoffs. In this revised field order word
+instruction IDs add two bytes per instruction in the word-aligned profile; the
+previous equality between byte/word-ID sizes no longer applies. Native read costs,
+not the Rust decoder microbenchmark, must guide the eventual execution layout.
 
 The decoder validates one pass against every original line/operand/expression field,
 then times 256 bounds-checked checksum scans without comparing to the typed source.
@@ -389,12 +397,11 @@ as a speed ratio.
 cargo test -p asm --lib prepared_source_packed_benchmark --locked -- --ignored --nocapture --test-threads=1
 ```
 
-For 32 blocks on the m6502 source, byte-packed byte/word-ID decoding took
-7.58/7.28 us per scan; word-aligned byte/word-ID decoding took 7.82/7.69 us.
-Packing took 5.17–7.08 us across those layouts. These are arm64 observations,
-not native cycle estimates; the checksum and bounds checks are included. Small
-host differences do not select a native winner. The identical m68000 source records
-produce the same checksums and sizes.
+For 32 blocks on the m6502 source, revised byte-packed byte/word-ID decoding took
+8.13/7.90 us per scan; word-aligned byte/word-ID decoding took 8.42/8.74 us.
+Packing took 5.42–6.50 us across those layouts. These are arm64 observations,
+not native cycle estimates; checksum and bounds checks are included. Small host
+differences do not select a native winner. Payload checksums are unchanged.
 
 ### Current validation and checkpoint limits
 
@@ -421,3 +428,76 @@ second case were checked. The batch correctly remains failed after a case failur
 The workflow gate passes all 136 tests. No Rust/native production source changed
 in this update. The larger m68000 timeout
 remains an explicitly failed measurement, not a successful larger-scale test.
+
+
+### Native numeric package binding: implemented checkpoint
+
+The native selector now carries existing CMSE numeric program-name IDs through
+scalar, branch and sequence envelopes. The encoder resolves a name and performs
+the existing full owner-ranked CSEM scan on a miss, then retains the validated
+program pointer, length and version in a 64-entry, 12-byte-per-entry raw table.
+Hits execute the same interpreter with fresh operand records, current PC and
+fixups. The public named semantic-service boundary still accepts text. No new
+package version or old bytecode executor was introduced.
+
+Bindings are invalidated on package clear/load (including failed replacement)
+and every successful pipeline commit. This deliberately also invalidates on a
+repeated selection of the same CPU; more selective invalidation is deferred.
+A full table falls back to uncached resolution. The table uses 768 bytes, plus
+count/alignment and six bytes of ID/pending state across existing modules.
+No output bytes or source statements are cached. Cache-capacity exhaustion,
+malformed replacement packages and custom owner overrides have not received
+new directed real-native coverage in this slice.
+
+The source path remains textual. This is the first numeric package component,
+not native execution of the packed-source laboratory. Its Rust reference is
+package owner resolution and `selector_encoding.rs` semantic execution; its native
+boundary is `selection_service` → `encode_service` with `semantic_bindings`.
+The one-byte packed-line prefix is a separate Rust laboratory layout change.
+
+Current mixed8 observations use the same inputs/package/emulator as the baseline
+above. The m6502 route does not use this CSEM binding path.
+
+| Workload | Baseline, profile off | Numeric bindings, profile off |
+|---|---:|---:|
+| m6502 | 4.804 s | 4.848 s |
+| m68000 | 6.863 s | 6.826 s |
+
+These are single host-observed START-to-DONE observations, not stable speed ratios.
+The m68000 result is a repeat on the final code; m6502 was measured before the
+sequence-boundary CCR fix on a route that does not execute that sequence path. Uninstrumented image size is 564,156 bytes
+versus 563,768 baseline (+388 bytes); the package is unchanged at 368,635 bytes.
+The emulator remains a 68040 configuration with additional RAM, not a physical
+68020/2 MB feasibility measurement, and peak RAM is still unmeasured.
+
+With existing reusable telemetry enabled, m68000 CSEM candidate visits fall from
+23,192 to 3,791 (83.65%). Selection visits remain 360 and statement visits remain
+198. m6502 encoding candidates remain zero and selection visits remain 120.
+Instrumented elapsed time is approximately unchanged (m68000 6.958 → 6.859 s on the final candidate).
+This establishes less repeated program resolution, not an end-to-end speedup.
+Final runtime counters report no overflow. The existing counters do not separately
+count binding hits or miss-time name
+expansion; they establish the reduction in scanned CSEM candidates.
+
+Correctness checks use fresh in-memory Rust oracles, explicit zero guest exit
+and exact output equality (Level D). Mixed8 passes for both targets with telemetry
+off and on. The added `--workload binding-switch --cpus m6502` case passes: it
+alternates both CPU pipelines, varies values and uses BHS.S/BCC.S aliases, with
+independently calculated output bytes in addition to the Rust oracle. Its initial
+unindented fixture was rejected by Rust before guest launch and was corrected.
+The existing state-guard semantic-sequence test passes after correcting the
+numeric sequence decoder to test remaining bytes explicitly rather than inherit
+CCR from clearing the text-length register. The existing qualified-symbol JSR
+sequence/fixup case also passes on the final code.
+
+Focused Rust checks pass (seven tests, two manual benchmarks ignored); packed
+microbenchmarks were also run separately. ASM library Clippy, native formatting,
+CPU/no-growth/import/inventory checks and the workflow gate (136 tests) pass.
+The full quality-gate attempt still stops at the four pre-existing compact-table
+redundant-test findings described above. This remains an experimental checkpoint.
+
+Next decision: stop spending this iteration on cache tuning. Numeric bindings
+remove one repeated lookup boundary, but do not explain total native time. Take
+one bounded native source-record reader/replay slice next, preserving this mixed
+workload for comparison, and measure where its time actually moves before
+expanding the migration.

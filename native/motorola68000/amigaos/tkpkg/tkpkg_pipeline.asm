@@ -6,6 +6,7 @@
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
 	.use tkpkg.amigaos.compact_table as compact
+	.use tkpkg.amigaos.semantic_bindings as semantic_bindings
 	.use tkpkg.amigaos.state_service as state_service
 	.use tkpkg.amigaos.token_policy as policy  ;(tkpkgTokenPolicyResolveLocatorV1)
 
@@ -86,6 +87,7 @@ parseRequest
 	bsr.w commitActiveSelectionV1
 	bne.w done
 	jsr compact.bind
+	jsr semantic_bindings.reset
 	moveq #0, d0
 
 done

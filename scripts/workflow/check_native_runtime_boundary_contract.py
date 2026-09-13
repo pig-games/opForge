@@ -28,6 +28,7 @@ RETAINED_OWNER_IMPORTS = {
         "tkpkg.amigaos.abi",
         "tkpkg.amigaos.buffers",
         "tkpkg.amigaos.compact_table",
+        "tkpkg.amigaos.semantic_bindings",
         "tkpkg.amigaos.state_service",
         "tkpkg.amigaos.token_policy",
     ),

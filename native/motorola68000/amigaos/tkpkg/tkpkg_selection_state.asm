@@ -77,6 +77,8 @@ EncodeSelectedSemanticPlanPtr
 EncodeSelectedSemanticPlanKind
 	.res byte, 1
 	.align 2
+SemanticProgramId
+	.res word, 1
 EncodeSelectedSemanticDiagnosticIndex
 	.res word, 1
 EncodeSelectedSemanticValue

@@ -6,6 +6,7 @@
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
 	.use tkpkg.amigaos.compact_prepare as prepared
+	.use tkpkg.amigaos.semantic_bindings as semantic_bindings
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	.use debug.amigaos.platform_profile as platform_profile
 .endif
@@ -156,6 +157,7 @@ done
 ; ---------------------------------------------------------------------------
 clearLoadedState	.block
 	jsr prepared.reset
+	jsr semantic_bindings.reset
 .ifdef OPFORGE_PROGRESS_PLATFORM_COUNTERS
 	move.w ccr, -(sp)
 	move.l d0, -(sp)

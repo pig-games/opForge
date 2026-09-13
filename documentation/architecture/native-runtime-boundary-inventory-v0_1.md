@@ -201,13 +201,25 @@ scope, validation and completion. No future feature or migration is scheduled he
 - Public entries: `encodeInstructionV1` and `encodeSelectedInstructionV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers, private selection state,
   the existing selection-service boundary, and the generic compact-table
-  boundary; plus the default-off runtime observer.
+  boundary and numeric semantic bindings; plus the default-off runtime observer.
 - Mutable state: writes the same existing package-service output buffer; it does
   not own pipeline selection, package loading, or status projection.
 - Routine responsibility groups: selected-envelope encoding, legacy
   package-table lookup, neutral CSEM owner/program lookup, direct CSEM-v2
   Literal/Scalar/Fields execution with bounds/overlap/endianness validation,
   compact fixed-row delegation, and encoded-output construction.
+
+### `tkpkg.amigaos.semantic_bindings`
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_semantic_bindings.asm`.
+- Public entries: `reset`, `find`, `store`; no outbound dependencies.
+- Mutable state: 64 raw 12-byte descriptors plus count/alignment. Each descriptor
+  holds a numeric CMSE name ID, program version, length and package pointer.
+- Responsibility: bounded reuse of validated, owner-selected program metadata;
+  full capacity falls back to ordinary resolution. No operand values, emitted
+  bytes or source statements are retained.
+- Inbound users: encoding resolves misses; package loading and every successful
+  pipeline commit invalidate all descriptors before subsequent execution.
 
 ### `tkpkg.amigaos.compact_table`
 
@@ -369,7 +381,7 @@ scope, validation and completion. No future feature or migration is scheduled he
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm`.
 - Public entry: `tkpkgPipelineSetActiveV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers, token policy, state service,
-  and the compact-table owner binding.
+  the compact-table owner binding, and semantic-binding invalidation.
 - Mutable state: active package selection and CPU/family/dialect/tokenizer/
   parser locator buffers plus pending/active CPEX property values and presence.
 - Routine responsibility groups: request parsing, package hierarchy lookup,

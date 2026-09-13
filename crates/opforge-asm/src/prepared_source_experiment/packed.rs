@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use super::{ExprOp, Operation, PreparedSourceExperiment};
 
-const MAGIC: &[u8; 4] = b"PSP1";
+const MAGIC: &[u8; 4] = b"PSP2";
 const MAX_ITERATIONS: usize = 10_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,8 +90,9 @@ pub(super) fn probe(
     })
 }
 
-// Format: 12-byte header; each line is u16 byte length, u16 source line,
-// flags (label/statement), then optional label u16. Statements have kind;
+// Format: 12-byte header; each line is u8 (total length - 1), flags,
+// u16 source line, then optional label u16. Total length includes the prefix
+// and trailing alignment padding, and cannot exceed 256 bytes. Statements have kind;
 // instructions additionally carry selected-width NameId; all statements have
 // u16 operand count and inline u16-length postfix expressions. Package program
 // references/encoding directory are external and excluded from this byte count.
@@ -109,10 +110,10 @@ fn pack(source: &PreparedSourceExperiment, layout: PackedLayout) -> Result<Block
     for line in source.lines.iter() {
         align(&mut out, layout);
         let length_at = out.len();
-        out.extend_from_slice(&[0, 0]);
-        put_u16(&mut out, line.line, layout)?;
+        out.push(0);
         let flags = u8::from(line.label.is_some()) | (u8::from(line.statement.is_some()) << 1);
         out.push(flags);
+        put_u16(&mut out, line.line, layout)?;
         if let Some(id) = line.label {
             put_u16(&mut out, id.0, layout)?;
         }
@@ -135,11 +136,16 @@ fn pack(source: &PreparedSourceExperiment, layout: PackedLayout) -> Result<Block
                 pack_expression(&mut out, source, *range, layout)?;
             }
         }
-        let length =
-            u16::try_from(out.len() - length_at - 2).map_err(|_| "line record exceeds u16")?;
-        out[length_at..length_at + 2].copy_from_slice(&length.to_be_bytes());
+        finish_line(&mut out, length_at, layout)?;
     }
     Ok(Block(out.into_boxed_slice()))
+}
+
+fn finish_line(out: &mut Vec<u8>, start: usize, layout: PackedLayout) -> Result<(), String> {
+    align(out, layout);
+    out[start] = u8::try_from(out.len() - start - 1)
+        .map_err(|_| "tokenized line exceeds 256 bytes including header and padding")?;
+    Ok(())
 }
 
 fn pack_expression(
@@ -216,9 +222,9 @@ fn decode(
     let mut hash = 0xcbf29ce484222325u64;
     let mut expression_records = 0u32;
     for i in 0..lines {
-        let mut r = c.record()?;
-        let line = r.u16()?;
+        let mut r = c.line_record()?;
         let flags = r.byte()?;
+        let line = r.u16()?;
         if flags & !3 != 0 {
             return Err("unknown packed line flags".into());
         }
@@ -275,6 +281,7 @@ fn decode(
         } else if flags & 1 == 0 {
             return Err("empty source records are not packed".into());
         }
+        align_cursor(&mut r)?;
         r.finish()?;
     }
     c.finish()?;
@@ -344,7 +351,7 @@ fn align(out: &mut Vec<u8>, layout: PackedLayout) {
 }
 fn align_cursor(c: &mut Cursor<'_>) -> Result<(), String> {
     if c.layout.alignment == RecordAlignment::WordAligned
-        && !c.pos.is_multiple_of(2)
+        && !(c.offset + c.pos).is_multiple_of(2)
         && c.byte()? != 0
     {
         return Err("nonzero alignment padding".into());
@@ -381,6 +388,7 @@ fn align_code(a: RecordAlignment) -> u8 {
 struct Cursor<'a> {
     bytes: &'a [u8],
     pos: usize,
+    offset: usize,
     layout: PackedLayout,
 }
 impl<'a> Cursor<'a> {
@@ -388,6 +396,7 @@ impl<'a> Cursor<'a> {
         Self {
             bytes,
             pos: 0,
+            offset: 0,
             layout,
         }
     }
@@ -429,8 +438,22 @@ impl<'a> Cursor<'a> {
     fn record(&mut self) -> Result<Cursor<'a>, String> {
         align_cursor(self)?;
         let length = usize::from(self.u16()?);
-        let data = self.take(length)?;
-        Ok(Cursor::new(data, self.layout))
+        self.child(length)
+    }
+    fn line_record(&mut self) -> Result<Cursor<'a>, String> {
+        align_cursor(self)?;
+        let payload_length = usize::from(self.byte()?);
+        self.child(payload_length)
+    }
+    fn child(&mut self, length: usize) -> Result<Cursor<'a>, String> {
+        let offset = self.offset + self.pos;
+        let bytes = self.take(length)?;
+        Ok(Cursor {
+            bytes,
+            pos: 0,
+            offset,
+            layout: self.layout,
+        })
     }
     fn done(&self) -> bool {
         self.pos == self.bytes.len()
@@ -450,6 +473,32 @@ mod tests {
     use families::register_mos6502_family_stack;
     use registry::registry::ModuleRegistry;
     use vm::runtime_model_core::RuntimeModelCore;
+
+    #[test]
+    fn line_length_prefix_includes_header_and_padding() {
+        for layout in [PackedLayout::BYTE_PACKED, PackedLayout::NATIVE_WORD_ALIGNED] {
+            for length in [255usize, 256, 257] {
+                let mut bytes = vec![0; length];
+                let result = finish_line(&mut bytes, 0, layout);
+                if length == 257 {
+                    assert!(result.is_err());
+                    continue;
+                }
+                result.unwrap();
+                let expected = if layout.alignment == RecordAlignment::WordAligned {
+                    256
+                } else {
+                    length
+                };
+                assert_eq!(usize::from(bytes[0]) + 1, expected);
+                let mut cursor = Cursor::new(&bytes, layout);
+                let record = cursor.line_record().unwrap();
+                assert_eq!(record.bytes.len(), expected - 1);
+                assert_eq!(record.offset, 1);
+                cursor.finish().unwrap();
+            }
+        }
+    }
 
     #[test]
     fn compact_records_decode_same_source_in_all_layouts() {
@@ -511,5 +560,20 @@ mod tests {
         assert!(prepared
             .packed_probe(PackedLayout::BYTE_PACKED, MAX_ITERATIONS + 1)
             .is_err());
+        for (layout, largest) in [
+            (PackedLayout::BYTE_PACKED, 49),
+            (PackedLayout::NATIVE_WORD_ALIGNED, 41),
+        ] {
+            for count in [largest, largest + 1] {
+                let text = format!(".byte {}\n", vec!["1"; count].join(","));
+                let source = PreparedSourceExperiment::prepare(&text, &model, &resolved).unwrap();
+                let result = source.packed_probe(layout, 1);
+                if count == largest {
+                    result.unwrap();
+                } else {
+                    assert!(result.unwrap_err().detail.contains("exceeds 256 bytes"));
+                }
+            }
+        }
     }
 }

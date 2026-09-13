@@ -9,6 +9,7 @@
 	.use tkpkg.amigaos.selection_service as selection
 	.use tkpkg.amigaos.selection_state as state
 	.use tkpkg.amigaos.compact_table as compact
+	.use tkpkg.amigaos.semantic_bindings as bindings
 .ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	.use debug.amigaos.runtime_profile as runtime_profile
 .endif
@@ -33,6 +34,15 @@ EncodeTableMalformedText
 BranchDisplacementRangeSuffix
 	.byte " branch displacement out of range"
 
+	.endsection
+
+	.section bss, kind=bss
+	.priv
+BindingId
+	.res word, 1
+BindingPending
+	.res byte, 1
+	.align 2
 	.endsection
 
 	.section code, kind=code
@@ -290,12 +300,28 @@ tkpkgEncodeInstructionEnvelopeV1	.block
 	move.b (a4)+, d4
 	subq.w #1, d7
 	tst.w d4
+	bne.s selectedTextProgram
+	tst.b state.EncodeSelectedSemanticPlanKind
 	beq.w fail
+	cmpi.w #2, d7
+	bcs.w fail
+	moveq #0, d0
+	move.b (a4)+, d0
+	moveq #0, d1
+	move.b (a4)+, d1
+	lsl.w #8, d1
+	or.w d1, d0
+	move.w d0, state.SemanticProgramId
+	subq.w #2, d7
+	movea.l a4, a6
+	bra.s selectedProgramReady
+selectedTextProgram
 	cmp.w d7, d4
 	bhi.w fail
 	movea.l a4, a6
 	adda.w d4, a4
 	sub.w d4, d7
+selectedProgramReady
 	beq.w fail
 	moveq #0, d5
 	move.b (a4)+, d5
@@ -348,7 +374,15 @@ encodeCandidate
 	tst.b state.EncodeSelectedSemanticPlanKind
 	beq.s encodeLegacyCandidate
 	clr.w buffers.SemanticOutputWriteOffset
+	tst.w d4
+	bne.s encodeTextSemanticProgram
+	moveq #0, d0
+	move.w state.SemanticProgramId, d0
+	bsr.w encodeById
+	bra.s semanticProgramExecutedStatus
+encodeTextSemanticProgram
 	bsr.w tkpkgEncodeFindAndExecuteSemanticProgramV2
+semanticProgramExecutedStatus
 	tst.l d0
 	beq.s semanticProgramExecuted
 	cmpi.w #$FFFF, state.EncodeSelectedSemanticDiagnosticIndex
@@ -388,12 +422,28 @@ semanticSequenceStepLoop
 	move.b (a4)+, d4
 	subq.w #1, d7
 	tst.w d4
-	beq.w fail
+	bne.s semanticSequenceTextProgram
+	cmpi.w #2, d7
+	bcs.w fail
+	moveq #0, d0
+	move.b (a4)+, d0
+	moveq #0, d4
+	move.b (a4)+, d4
+	lsl.w #8, d4
+	or.w d4, d0
+	move.w d0, state.SemanticProgramId
+	subq.w #2, d7
+	moveq #0, d4
+	movea.l a4, a6
+	bra.s semanticSequenceProgramReady
+semanticSequenceTextProgram
 	cmp.w d7, d4
 	bhi.w fail
 	movea.l a4, a6
 	adda.w d4, a4
 	sub.w d4, d7
+semanticSequenceProgramReady
+	tst.w d7
 	beq.w fail
 	moveq #0, d5
 	move.b (a4)+, d5
@@ -438,7 +488,15 @@ semanticSequenceRecordsReady
 	move.l a3, buffers.SemanticInputRecordPtr
 	move.w d5, buffers.SemanticInputRecordCount
 	move.w d6, buffers.SemanticFirstInputLen
+	tst.w d4
+	beq.s semanticSequenceNumericProgram
 	bsr.w tkpkgEncodeFindAndExecuteSemanticProgramV2
+	bra.s semanticSequenceProgramExecuted
+semanticSequenceNumericProgram
+	moveq #0, d0
+	move.w state.SemanticProgramId, d0
+	bsr.w encodeById
+semanticSequenceProgramExecuted
 	tst.l d0
 	bne.s return
 	tst.b d3
@@ -625,6 +683,48 @@ namedReturn
 	.bend  ; executeNamedSemanticProgramV1
 
 	.priv
+; Resolve and execute one CMSE numeric semantic-program id. Bindings retain
+; package program metadata only; projected inputs and current PC stay fresh.
+; Inputs: D0.W=CMSE string id; semantic input/current-PC state already set.
+; Outputs: D0 status, D1 encoded length, D3.B found flag.
+encodeById	.block
+	movem.l d2/d4-d7/a0/a2-a6, -(sp)
+	move.w d0, d6
+	cmp.w buffers.CompactSelectorStringCount, d6
+	bhs.s bindingMalformed
+	jsr bindings.find
+	tst.l d0
+	beq.s bindingHit
+	lea buffers.CompactSelectorPlanText, a0
+	move.w d6, d0
+	jsr selection.resolveCompactSelectorStringV1
+	bne.s bindingMalformed
+	tst.w d0
+	beq.s bindingMalformed
+	move.w d6, BindingId
+	move.b #1, BindingPending
+	move.w d0, d4
+	lea buffers.CompactSelectorPlanText, a6
+	bsr.w tkpkgEncodeFindAndExecuteSemanticProgramV2
+	clr.b BindingPending
+	bra.s bindingReturn
+bindingHit
+	move.w d1, d4
+	move.w d2, d1
+	bsr.w executeBoundProgram
+	moveq #1, d3
+	bra.s bindingReturn
+bindingMalformed
+	lea EncodeTableMalformedText, a1
+	moveq #ENCODE_TABLE_MALFORMED_TEXT_LEN, d1
+	moveq #1, d0
+	moveq #1, d3
+bindingReturn
+	movem.l (sp)+, d2/d4-d7/a0/a2-a6
+	tst.l d0
+	rts
+	.bend  ; encodeById
+
 ; Resolve an opaque selected mode as a CSEM program using Rust's
 ; dialect/cpu/family precedence, then execute encoding v2/v6, branch v5, or
 ; fixup v4/v7.
@@ -758,31 +858,28 @@ semanticProgramNext
 	beq.s semanticNotFound
 	move.w 2(sp), d4
 	cmpi.w #2, d4
-	beq.s semanticEncodingReady
-	cmpi.w #6, d4
-	beq.s semanticEncodingReady
-	cmpi.w #5, d4
-	beq.s semanticBranchReady
-	cmpi.w #7, d4
-	beq.s semanticFixupReady
+	beq.s semanticBindingVersionReady
 	cmpi.w #4, d4
+	beq.s semanticBindingVersionReady
+	cmpi.w #5, d4
+	beq.s semanticBindingVersionReady
+	cmpi.w #6, d4
+	beq.s semanticBindingVersionReady
+	cmpi.w #7, d4
 	bne.s semanticMalformed
-semanticFixupReady
+semanticBindingVersionReady
+	tst.b BindingPending
+	beq.s semanticBindingReady
+	move.w BindingId, d0
+	move.w d4, d1
+	move.w 4(sp), d2
+	movea.l 6(sp), a1
+	jsr bindings.store
+	clr.b BindingPending
+semanticBindingReady
 	movea.l 6(sp), a1
 	move.w 4(sp), d1
-	bsr.w tkpkgEncodeExecuteFixupProgramV4
-	moveq #1, d3
-	bra.s semanticReturn
-semanticBranchReady
-	movea.l 6(sp), a1
-	move.w 4(sp), d1
-	bsr.w tkpkgEncodeExecuteBranchProgramV5
-	moveq #1, d3
-	bra.s semanticReturn
-semanticEncodingReady
-	movea.l 6(sp), a1
-	move.w 4(sp), d1
-	bsr.w tkpkgEncodeExecuteSemanticProgramV2
+	bsr.w executeBoundProgram
 	moveq #1, d3
 	bra.s semanticReturn
 
@@ -801,6 +898,35 @@ semanticReturn
 	movem.l (sp)+, d2/d4-d7/a0/a2-a6
 	rts
 	.bend  ; tkpkgEncodeFindAndExecuteSemanticProgramV2
+
+; Execute one already owner-selected CSEM descriptor.
+; Inputs: D4.W=opcode version, A1/D1=program. Outputs: D0/D1 as interpreter.
+executeBoundProgram	.block
+	cmpi.w #2, d4
+	beq.s encoding
+	cmpi.w #6, d4
+	beq.s encoding
+	cmpi.w #5, d4
+	beq.s branch
+	cmpi.w #7, d4
+	beq.s fixup
+	cmpi.w #4, d4
+	bne.s malformed
+fixup
+	bsr.w tkpkgEncodeExecuteFixupProgramV4
+	rts
+branch
+	bsr.w tkpkgEncodeExecuteBranchProgramV5
+	rts
+encoding
+	bsr.w tkpkgEncodeExecuteSemanticProgramV2
+	rts
+malformed
+	lea EncodeTableMalformedText, a1
+	moveq #ENCODE_TABLE_MALFORMED_TEXT_LEN, d1
+	moveq #1, d0
+	rts
+	.bend  ; executeBoundProgram
 
 ; Direct Rust branch_vm::execute_branch_program port for SEMV/CSEM v5.  The
 ; selected envelope supplies opcode, target, requested candidate (`-1` means

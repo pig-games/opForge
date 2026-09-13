@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 
+[features]
+prepared-telemetry = []
+
 [dependencies]
 types = { path = "../opforge-types" }
 opcore = { path = "../opforge-core" }

@@ -32,6 +32,7 @@ pub(crate) mod output_components;
 pub(crate) mod output_hunk;
 pub mod output_model;
 pub mod portable_contract;
+pub mod prepared_encoding;
 pub mod rewrite;
 pub mod rollout;
 pub mod runtime_bootstrap;

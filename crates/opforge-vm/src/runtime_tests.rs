@@ -1,4 +1,5 @@
 mod operand_routing;
+mod prepared_encoding;
 mod target_callback_audit;
 mod tokenizer_fast_equivalence;
 

@@ -3706,7 +3706,13 @@ impl<'a> AsmLine<'a> {
                 }
             };
             if size == 1 {
-                if val > 0xff {
+                // An unresolved forward expression may temporarily underflow
+                // (for example end - start). It still occupies one byte during
+                // layout; range diagnostics belong to the resolved value.
+                if val > 0xff
+                    && !(self.should_defer_unstable_symbols()
+                        && registry::family::expr_has_unstable_symbols(expr, self))
+                {
                     return self.failure(
                         LineStatus::Warning,
                         AsmErrorKind::Expression,

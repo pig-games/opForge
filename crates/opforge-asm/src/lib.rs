@@ -3,6 +3,8 @@
 //! Assembler processing for libopforge.
 
 #[cfg(test)]
+mod data_layout_tests;
+#[cfg(test)]
 mod external_oracle;
 #[cfg(test)]
 mod fs_uae_smoke;
@@ -12,6 +14,8 @@ mod native_reference_parity;
 mod normalization;
 #[cfg(test)]
 mod oracle;
+#[cfg(test)]
+mod prepared_source_experiment_tests;
 #[cfg(test)]
 mod tests;
 
@@ -25,6 +29,7 @@ pub mod operand;
 pub mod output;
 pub mod phase_profile;
 mod prepared_line;
+pub mod prepared_source_experiment;
 pub mod preprocess;
 mod repetition_driver;
 pub mod runtime_config;

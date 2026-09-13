@@ -1,7 +1,10 @@
 # Iterative VM and native runtime reset
 
-Status: R1 prepared-CTBL experiment is implemented and awaiting review. The bounded
-comparison shows no meaningful speed gain; broader qualification remains incomplete.
+Status: S1 of [string-free source and package replay](prepared-source-experiment.md)
+is implemented and measured in Rust, awaiting review. It demonstrates string-free
+replay for its subset but does not yet demonstrate compact storage or native gains.
+R1's prepared-CTBL comparison showed no meaningful speed gain; broader qualification
+remains incomplete. Further isolated CTBL tuning is not the current direction.
 The active [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md)
 remain binding. This plan captures the current discussion, not instructions from
 historical plans. Only the next iteration is detailed; later outcomes are

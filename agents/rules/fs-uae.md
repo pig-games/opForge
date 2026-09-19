@@ -12,7 +12,7 @@ The maintained local setup uses the macOS FS-UAE application and requires GUI/pr
 access. Distinguish a host permission or initialization failure from a guest failure;
 request needed execution permissions before interpreting a launch abort as a product bug.
 
-Choose a focused test filter. The configured local invocation is:
+Choose a focused test filter. The known-good invocation for this local setup is:
 
 ```sh
 OPFORGE_FS_UAE_SMOKE=1 \
@@ -38,3 +38,19 @@ localization evidence, not completed parity.
 The [console debugger](../../documentation/fs-uae-console-debugger.md) is a separate,
 explicitly enabled diagnostic tool with PTY and GUI-entry constraints. Its transcript
 is not a native test result. Ordinary parity checks do not require debugger entry.
+
+## Experimental constrained-memory comparison
+
+For the binary-source harness, `OPFORGE_FS_UAE_MEMORY_PROFILE=2m` generates a
+68020 configuration with 2 MiB chip RAM and zero fast/slow/motherboard/Zorro/RTG
+memory. The template's machine model, ROM and system disk remain selected; use a
+compatible local template. Unset or `existing` retains the normal expanded-memory
+profile. The saved template is never modified.
+
+`scripts/performance/prepared_source_native.py --binary-source --binary-only
+--memory-profile 2m --blocks 32 --native-test <test-binary>` explicitly selects
+binary-only qualification; the existing text runtime is not claimed to fit.
+Add `--compare-memory` for a separate gated accounting run. It captures guest
+Version/CPU/Stack/Avail before START and validates native allocation/free accounting.
+Release timings must come from runs without that flag. Both modes retain fresh
+challenge, completion, exact-output and ephemeral-artifact requirements.

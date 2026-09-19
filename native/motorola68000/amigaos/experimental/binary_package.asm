@@ -29,6 +29,7 @@ NameCount	.word ?
 LittleEndian	.word ?
 Reserved	.word ?
 MaxAddress	.long ?
+RuntimeBytes	.long ?
 .endstruct
 
 Context	.struct

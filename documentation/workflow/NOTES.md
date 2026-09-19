@@ -45,3 +45,9 @@ then remove notes once incorporated or obsolete. These are observations, not rul
   field as an address-register displacement avoids that form. The authorized
   debugger localized the hang; this workaround does not fix the assembler's
   relocation handling. Cover this expression form in the future Hunk regression.
+
+- **Document checks still depend on magic phrases.** M2's FS-UAE guide update
+  exposed a check that rejects an existing valid invocation unless the document
+  contains a literal allowance phrase. The guide now satisfies that check;
+  consider replacing this wording requirement with validation of actual commands
+  and execution safeguards when next improving workflow automation.

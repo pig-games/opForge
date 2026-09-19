@@ -9,15 +9,77 @@ mod hunk;
 
 #[test]
 fn binary_source_packages_prepare() {
+    fn long(bytes: &[u8], offset: usize) -> usize {
+        u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize
+    }
+
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BSP1");
-        assert_eq!(
-            u32::from_be_bytes(bytes[4..8].try_into().unwrap()) as usize,
-            bytes.len()
-        );
+        assert_eq!(&bytes[..4], b"BSP2");
+        assert_eq!(long(&bytes, 4), bytes.len());
+
+        let runtime_bytes = long(&bytes, 72);
+        assert!((76..=bytes.len()).contains(&runtime_bytes));
+        assert_eq!(runtime_bytes % 2, 0);
+
+        let rows = long(&bytes, 16);
+        let row_count = long(&bytes, 20);
+        let registers = long(&bytes, 24);
+        let register_count = long(&bytes, 28);
+        let programs = long(&bytes, 32);
+        let program_count = long(&bytes, 36);
+        for (offset, count, width) in [
+            (rows, row_count, 24),
+            (registers, register_count, 6),
+            (programs, program_count, 12),
+        ] {
+            assert!(offset >= 76);
+            assert!(offset + count * width <= runtime_bytes);
+        }
+
+        let mut runtime_references = vec![
+            (rows, row_count * 24),
+            (registers, register_count * 6),
+            (programs, program_count * 12),
+        ];
+        for index in 0..row_count {
+            let row = rows + index * 24;
+            let input_count =
+                u16::from_be_bytes(bytes[row + 10..row + 12].try_into().unwrap()) as usize;
+            let inputs = long(&bytes, row + 12);
+            if input_count == 0 {
+                assert_eq!(inputs, 0);
+            } else {
+                assert!(inputs >= programs + program_count * 12);
+                assert!(inputs + input_count * 12 <= runtime_bytes);
+                runtime_references.push((inputs, input_count * 12));
+            }
+        }
+        for index in 0..program_count {
+            let program = programs + index * 12;
+            let offset = long(&bytes, program + 4);
+            let length = long(&bytes, program + 8);
+            assert!(offset >= programs + program_count * 12);
+            assert!(offset + length <= runtime_bytes);
+            runtime_references.push((offset, length));
+        }
+
+        let dictionary = long(&bytes, 8);
+        let tokenizer = long(&bytes, 40);
+        let tokenizer_bytes = long(&bytes, 44);
+        assert!(dictionary >= runtime_bytes);
+        assert!(tokenizer >= dictionary);
+        assert!(tokenizer + tokenizer_bytes <= bytes.len());
+
+        let relocated_runtime = bytes[..runtime_bytes].to_vec();
+        for (offset, length) in runtime_references {
+            assert_eq!(
+                &relocated_runtime[offset..offset + length],
+                &bytes[offset..offset + length]
+            );
+        }
         assert_eq!(bytes, prepare_package(&core, &resolved).unwrap());
     }
 }
@@ -57,6 +119,36 @@ fn binary_source_fs_uae() {
         .get(&PathBuf::from("Work/build/binary_source_harness"))
         .expect("fresh native image capture");
     let allocation = hunk::allocation(image).expect("valid captured native Hunk allocation table");
+    let memory = if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
+        let record = run
+            .captured_artifacts
+            .get(&PathBuf::from("Work/memory.bin"))
+            .expect("fresh memory telemetry capture");
+        assert_eq!(record.len(), 64);
+        let words: Vec<u32> = record
+            .chunks_exact(4)
+            .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
+            .collect();
+        assert_eq!(words[0], 0x4d454d32);
+        assert_eq!(words[1], 0, "all tracked allocations released");
+        assert_eq!(words[3], words[4], "allocated and freed capacities balance");
+        assert_eq!(words[11], 0, "cleanup has no live allocation");
+        assert!(words[2] >= words[5] && words[2] >= words[10]);
+        assert!(
+            words[6] > 0,
+            "preparation allocations were freed before assembly"
+        );
+        serde_json::json!({
+            "peak_allocated_bytes": words[2], "total_allocated_bytes": words[3],
+            "retained_after_preparation_bytes": words[5], "freed_before_assembly_bytes": words[6],
+            "free_bytes_at_program_entry": words[7], "largest_free_block_at_program_entry": words[8],
+            "exec_version": words[9], "allocated_after_assembly_bytes": words[10],
+            "live_after_cleanup_bytes": words[11], "dos_version": words[12],
+            "runtime_prefix_bytes": words[13], "packed_source_bytes": words[14], "source_bytes": words[15],
+        })
+    } else {
+        serde_json::Value::Null
+    };
     eprintln!(
         "BINARY_SOURCE_COMPARISON {}",
         serde_json::json!({
@@ -71,7 +163,9 @@ fn binary_source_fs_uae() {
             "guest_start_to_done_host_seconds": run.start_to_done_host_seconds,
             "native_image_digest": run.native_image_digest,
             "exact_output": oracle, "guest_exit": run.exit_code,
-            "source_and_dictionary_erased_before_passes": true,
+            "preparation_storage_released_before_passes": true,
+            "memory": memory,
+            "guest_memory_before_launch": run.captured_artifacts.get(&PathBuf::from("Work/guest-memory.txt")).map(|bytes| String::from_utf8_lossy(bytes).into_owned()),
         })
     );
 }
@@ -103,4 +197,19 @@ fn binary_source_rejection_fs_uae() {
     assert_eq!(runs.len(), 1);
     assert!(runs[0].protocol_completed);
     assert_eq!(runs[0].exit_code, Some(20));
+    if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
+        let record = runs[0]
+            .captured_artifacts
+            .get(&PathBuf::from("Work/memory.bin"))
+            .expect("fresh negative-path memory telemetry");
+        assert_eq!(record.len(), 64);
+        let words: Vec<u32> = record
+            .chunks_exact(4)
+            .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
+            .collect();
+        assert_eq!(words[0], 0x4d454d32);
+        assert_eq!(words[1], 0, "failure releases all owned blocks");
+        assert_eq!(words[3], words[4]);
+        assert_eq!(words[11], 0);
+    }
 }

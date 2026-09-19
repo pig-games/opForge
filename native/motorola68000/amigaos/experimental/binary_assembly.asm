@@ -17,6 +17,7 @@ Capacity	.long ?
 Used	.long ?
 Line	.word ?
 Reserved	.word ?
+Allocate	.long ?
 .endstruct
 
 	.section bss, kind=bss
@@ -31,6 +32,8 @@ DataBytes
 
 ; A0=Frame. Context values/defined arrays cover Count entries. The caller owns
 ; all buffers. Returns D0=0 only for two complete passes; Used=output bytes.
+; Allocate callback: A0=Frame, D0=pass-one output size; returns D0/CCR status,
+; preserves other registers, supplies Frame.Output/Capacity before pass two.
 ; Other registers preserved; CCR reflects D0. No text/dictionary pointer enters
 ; this module. Variable-size convergence and discontiguous origins are unsupported.
 assemble	.block
@@ -90,6 +93,15 @@ line
 	adda.l d6, a4
 	bra.w line
 passDone
+	cmpi.w #1, d7
+	bne.w nextPass
+	movea.l Frame.Allocate(a5), a1
+	movea.l a5, a0
+	move.l Frame.Used(a5), d0
+	jsr (a1)
+	tst.l d0
+	bne.w fail
+nextPass
 	addq.w #1, d7
 	cmpi.w #3, d7
 	blo.w pass
@@ -322,8 +334,11 @@ emit	.block
 	move.l d1, d2
 	add.l d0, d2
 	bcs.w fail
+	cmpi.w #1, pkg.Context.Pass(a2)
+	beq.w capacityReady
 	cmp.l Frame.Capacity(a3), d2
 	bhi.w fail
+capacityReady
 	move.l pkg.Context.Pc(a2), d3
 	add.l d0, d3
 	bcs.w fail

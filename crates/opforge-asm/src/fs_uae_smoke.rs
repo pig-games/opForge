@@ -26,6 +26,7 @@ const FS_UAE_EXIT_CODE_FILE_ENV: &str = "OPFORGE_FS_UAE_EXIT_CODE_FILE";
 const FS_UAE_TIMEOUT_MS_ENV: &str = "OPFORGE_FS_UAE_TIMEOUT_MS";
 const FS_UAE_POLL_MS_ENV: &str = "OPFORGE_FS_UAE_POLL_MS";
 const FS_UAE_POST_START_TIMEOUT_MS_ENV: &str = "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS";
+const FS_UAE_MEMORY_PROFILE_ENV: &str = "OPFORGE_FS_UAE_MEMORY_PROFILE";
 const FS_UAE_DEFAULT_START_FILE: &str = "opforge_fsuae_smoke.start";
 const FS_UAE_DEFAULT_READY_FILE: &str = "opforge_fsuae_smoke.done";
 const FS_UAE_DEFAULT_STDOUT_FILE: &str = "opforge_fsuae_smoke.stdout";
@@ -1309,10 +1310,15 @@ pub(crate) fn run_binary_source_rejection_from_env(
 ) -> Result<FsUaeSmokeOutcome, String> {
     let args = std::env::var(FS_UAE_ARGS_ENV).map_err(|err| err.to_string())?;
     let binary = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".into());
+    let memory_telemetry = std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1");
+    let extra_assembly_defines = exact_harness_assembly_defines(
+        NativeCliParityExecutable::BinarySourceHarness,
+        memory_telemetry,
+    );
     let case = OpforgeNativeCliParityCase {
         name: "binary-source-rejection",
         cpu_override: "68020",
-        extra_assembly_defines: &[],
+        extra_assembly_defines: &extra_assembly_defines,
         source_override: Some(input),
         command_template: None,
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
@@ -1390,10 +1396,12 @@ fn run_exact_harness_from_env(
         relative_path: artifact_path,
         rust_oracle,
     }];
+    let memory_telemetry = std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1");
+    let extra_assembly_defines = exact_harness_assembly_defines(executable, memory_telemetry);
     let case = OpforgeNativeCliParityCase {
         name: "native-harness-live-oracle",
         cpu_override: "68020",
-        extra_assembly_defines: &[],
+        extra_assembly_defines: &extra_assembly_defines,
         source_override: Some(case_bytes),
         command_template: None,
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
@@ -1408,6 +1416,17 @@ fn run_exact_harness_from_env(
         executable,
         None,
     )
+}
+
+fn exact_harness_assembly_defines(
+    executable: NativeCliParityExecutable,
+    memory_telemetry: bool,
+) -> Vec<&'static str> {
+    if memory_telemetry && matches!(executable, NativeCliParityExecutable::BinarySourceHarness) {
+        vec!["OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY"]
+    } else {
+        Vec::new()
+    }
 }
 
 pub(crate) fn run_tkpkg_cpex_harness_from_env(
@@ -2126,7 +2145,7 @@ fn opforge_native_cli_case_captured_artifacts(
     captured_artifacts: &BTreeMap<PathBuf, Vec<u8>>,
     case_paths: &OpforgeNativeCliBatchCasePaths,
 ) -> BTreeMap<PathBuf, Vec<u8>> {
-    captured_artifacts
+    let mut selected = captured_artifacts
         .iter()
         .filter_map(|(path, bytes)| {
             path.strip_prefix(&case_paths.captured_relative_prefix)
@@ -2138,7 +2157,14 @@ fn opforge_native_cli_case_captured_artifacts(
                     )
                 })
         })
-        .collect()
+        .collect::<BTreeMap<_, _>>();
+    for file_name in ["memory.bin", "guest-memory.txt"] {
+        let path = PathBuf::from(FS_UAE_MOUNTED_WORK_DIR_NAME).join(file_name);
+        if let Some(bytes) = captured_artifacts.get(&path) {
+            selected.insert(path, bytes.clone());
+        }
+    }
+    selected
 }
 
 fn fnv1a64_update(mut state: u64, bytes: &[u8]) -> u64 {
@@ -2749,6 +2775,16 @@ fn run_native_cli_parity_batch_cases(
                 "Work:build/binary_source_harness".to_string()
             }
         };
+        if matches!(executable, NativeCliParityExecutable::BinarySourceHarness)
+            && case
+                .extra_assembly_defines
+                .contains(&"OPFORGE_MEMORY_TELEMETRY")
+        {
+            batch_script.push_str("C:Version >Work:guest-memory.txt\n");
+            batch_script.push_str("C:CPU >>Work:guest-memory.txt\n");
+            batch_script.push_str("Stack >>Work:guest-memory.txt\n");
+            batch_script.push_str("C:Avail >>Work:guest-memory.txt\n");
+        }
         batch_script.push_str("Echo \"");
         batch_script.push_str(case_paths.expected_started.as_str());
         batch_script.push_str("\" >");
@@ -4220,8 +4256,12 @@ fn maybe_materialize_fs_uae_config(
             template_path.display()
         )
     })?;
-    let config_text =
-        rewrite_fs_uae_config_work_mount(&template_text, &work_mount_dir.to_string_lossy());
+    let memory_profile = fs_uae_memory_profile_from_env()?;
+    let config_text = rewrite_fs_uae_config_work_mount(
+        &template_text,
+        &work_mount_dir.to_string_lossy(),
+        memory_profile,
+    );
     let config_path = artifact_dir.join(FS_UAE_CONFIG_FILE_NAME);
     fs::write(&config_path, config_text).map_err(|err| {
         format!(
@@ -4232,20 +4272,75 @@ fn maybe_materialize_fs_uae_config(
     Ok(Some(config_path))
 }
 
-fn rewrite_fs_uae_config_work_mount(template_text: &str, work_mount_path: &str) -> String {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FsUaeMemoryProfile {
+    Existing,
+    Constrained2MiB,
+}
+
+fn fs_uae_memory_profile_from_env() -> Result<FsUaeMemoryProfile, String> {
+    match std::env::var(FS_UAE_MEMORY_PROFILE_ENV) {
+        Err(std::env::VarError::NotPresent) => Ok(FsUaeMemoryProfile::Existing),
+        Ok(value) if value.trim().is_empty() || value == "existing" => {
+            Ok(FsUaeMemoryProfile::Existing)
+        }
+        Ok(value) if value == "2m" => Ok(FsUaeMemoryProfile::Constrained2MiB),
+        Ok(value) => Err(format!(
+            "unsupported {FS_UAE_MEMORY_PROFILE_ENV} value '{value}'; expected 'existing' or '2m'"
+        )),
+        Err(error) => Err(format!("read {FS_UAE_MEMORY_PROFILE_ENV}: {error}")),
+    }
+}
+
+const CONSTRAINED_2M_FS_UAE_SETTINGS: &[(&str, &str)] = &[
+    ("cpu", "68020"),
+    ("chip_memory", "2048"),
+    ("slow_memory", "0"),
+    ("fast_memory", "0"),
+    ("motherboard_ram", "0"),
+    ("zorro_iii_memory", "0"),
+    ("graphics_card", "none"),
+    ("graphics_memory", "0"),
+    ("graphics_card_memory", "0"),
+];
+
+fn constrained_fs_uae_setting(key: Option<&str>) -> Option<(&'static str, &'static str)> {
+    let key = key?;
+    CONSTRAINED_2M_FS_UAE_SETTINGS
+        .iter()
+        .copied()
+        .find(|(candidate, _)| *candidate == key)
+}
+
+fn rewrite_fs_uae_config_work_mount(
+    template_text: &str,
+    work_mount_path: &str,
+    memory_profile: FsUaeMemoryProfile,
+) -> String {
     let mut lines = Vec::new();
     let mut replaced_work_mount = false;
     let mut replaced_zorro_memory = false;
+    let mut constrained_keys = BTreeSet::new();
     for line in template_text.lines() {
         let trimmed = line.trim_start();
         if trimmed.starts_with("hard_drive_1") {
             lines.push(format!("hard_drive_1 = {work_mount_path}"));
             replaced_work_mount = true;
-        } else if trimmed.starts_with("zorro_iii_memory") {
+        } else if memory_profile == FsUaeMemoryProfile::Existing
+            && trimmed.starts_with("zorro_iii_memory")
+        {
             lines.push(format!(
                 "zorro_iii_memory = {FS_UAE_NATIVE_ZORRO_III_MEMORY_KIB}"
             ));
             replaced_zorro_memory = true;
+        } else if memory_profile == FsUaeMemoryProfile::Constrained2MiB {
+            let key = trimmed.split_once('=').map(|(key, _)| key.trim());
+            if let Some((key, value)) = constrained_fs_uae_setting(key) {
+                lines.push(format!("{key} = {value}"));
+                constrained_keys.insert(key);
+            } else {
+                lines.push(line.to_string());
+            }
         } else {
             lines.push(line.to_string());
         }
@@ -4253,10 +4348,17 @@ fn rewrite_fs_uae_config_work_mount(template_text: &str, work_mount_path: &str) 
     if !replaced_work_mount {
         lines.push(format!("hard_drive_1 = {work_mount_path}"));
     }
-    if !replaced_zorro_memory {
+    if memory_profile == FsUaeMemoryProfile::Existing && !replaced_zorro_memory {
         lines.push(format!(
             "zorro_iii_memory = {FS_UAE_NATIVE_ZORRO_III_MEMORY_KIB}"
         ));
+    }
+    if memory_profile == FsUaeMemoryProfile::Constrained2MiB {
+        for (key, value) in CONSTRAINED_2M_FS_UAE_SETTINGS {
+            if !constrained_keys.contains(key) {
+                lines.push(format!("{key} = {value}"));
+            }
+        }
     }
     let mut rewritten = lines.join("\n");
     rewritten.push('\n');
@@ -5883,7 +5985,8 @@ mod tests {
     #[test]
     fn rewrite_fs_uae_config_work_mount_replaces_hard_drive_1() {
         let template = "[fs-uae]\nhard_drive_0 = /sys\nhard_drive_1 = /old/work\nzorro_iii_memory = 16384\nsave_disk = 0\n";
-        let rewritten = rewrite_fs_uae_config_work_mount(template, "/new/work");
+        let rewritten =
+            rewrite_fs_uae_config_work_mount(template, "/new/work", FsUaeMemoryProfile::Existing);
 
         assert!(rewritten.contains("hard_drive_0 = /sys"));
         assert!(rewritten.contains("hard_drive_1 = /new/work"));
@@ -5895,11 +5998,47 @@ mod tests {
     #[test]
     fn rewrite_fs_uae_config_work_mount_appends_missing_hard_drive_1() {
         let template = "[fs-uae]\nhard_drive_0 = /sys\n";
-        let rewritten = rewrite_fs_uae_config_work_mount(template, "/new/work");
+        let rewritten =
+            rewrite_fs_uae_config_work_mount(template, "/new/work", FsUaeMemoryProfile::Existing);
 
         assert!(rewritten.contains("hard_drive_0 = /sys"));
         assert!(rewritten.contains("hard_drive_1 = /new/work"));
         assert!(rewritten.contains("zorro_iii_memory = 65536"));
+    }
+
+    #[test]
+    fn rewrite_fs_uae_config_work_mount_constrains_total_guest_ram_to_2m() {
+        let template = "[fs-uae]\namiga_model = A4000\ncpu = 68040\nchip_memory = 1024\nfast_memory = 8192\nhard_drive_0 = /sys\nhard_drive_1 = /old/work\ngraphics_card = uaegfx-z3\ngraphics_memory = 16384\nzorro_iii_memory = 65536\nsave_disk = 0\n";
+        let rewritten = rewrite_fs_uae_config_work_mount(
+            template,
+            "/new/work",
+            FsUaeMemoryProfile::Constrained2MiB,
+        );
+
+        for required in [
+            "amiga_model = A4000",
+            "cpu = 68020",
+            "chip_memory = 2048",
+            "slow_memory = 0",
+            "fast_memory = 0",
+            "motherboard_ram = 0",
+            "zorro_iii_memory = 0",
+            "graphics_card = none",
+            "graphics_memory = 0",
+            "graphics_card_memory = 0",
+            "hard_drive_1 = /new/work",
+        ] {
+            assert!(
+                rewritten.contains(required),
+                "missing {required}:\n{rewritten}"
+            );
+        }
+        for removed in ["68040", "8192", "uaegfx-z3", "16384", "65536"] {
+            assert!(
+                !rewritten.contains(removed),
+                "retained {removed}:\n{rewritten}"
+            );
+        }
     }
 
     #[test]
@@ -6460,6 +6599,57 @@ mod tests {
         );
         drop(ephemeral_root);
         assert!(!root.exists(), "isolated case trees must be ephemeral");
+    }
+
+    #[test]
+    fn binary_source_memory_comparison_enables_only_gated_telemetry_defines() {
+        assert_eq!(
+            exact_harness_assembly_defines(NativeCliParityExecutable::BinarySourceHarness, true),
+            vec!["OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY"]
+        );
+        assert!(exact_harness_assembly_defines(
+            NativeCliParityExecutable::CompactMemoHarness,
+            true
+        )
+        .is_empty());
+        assert!(exact_harness_assembly_defines(
+            NativeCliParityExecutable::BinarySourceHarness,
+            false
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn binary_source_memory_receipt_is_retained_with_case_artifacts() {
+        let paths = opforge_native_cli_batch_case_paths(
+            Path::new("/tmp/opforge-fsuae/Work"),
+            0,
+            "challenge",
+            "case",
+        );
+        let captured = BTreeMap::from([
+            (PathBuf::from("Work/memory.bin"), vec![0x4d, 0x45, 0x4d]),
+            (
+                PathBuf::from("Work/guest-memory.txt"),
+                b"Kickstart 47.102\nMaximum 123456\n".to_vec(),
+            ),
+            (
+                paths.captured_relative_prefix.join("output.bin"),
+                vec![0x42],
+            ),
+        ]);
+
+        assert_eq!(
+            opforge_native_cli_case_captured_artifacts(&captured, &paths),
+            BTreeMap::from([
+                (PathBuf::from("Work/memory.bin"), vec![0x4d, 0x45, 0x4d]),
+                (
+                    PathBuf::from("Work/guest-memory.txt"),
+                    b"Kickstart 47.102\nMaximum 123456\n".to_vec(),
+                ),
+                (PathBuf::from("Work/output.bin"), vec![0x42]),
+            ])
+        );
     }
 
     fn normalize_cli_surface_tokens(tokens: &[String]) -> Vec<String> {

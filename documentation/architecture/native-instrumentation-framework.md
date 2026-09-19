@@ -55,6 +55,26 @@ Use these macros in new/adapted runtime code. Other legacy counter families reta
 their existing implementation until adapted; this is a reusable entry point into
 the current framework, not a mandate for a repository-wide instrumentation rewrite.
 
+## Bounded memory accounting
+
+`debug/memory_telemetry.i` supplies `MEMORY_ALLOC`, `MEMORY_FREE`, `MEMORY_PHASE`,
+`MEMORY_LAYOUT` and terminal `MEMORY_SAVE`. Both `OPFORGE_DEBUG_CONTRACTS` and
+`OPFORGE_MEMORY_TELEMETRY` are required; missing either gate emits no calls, imports
+or storage. These macros and the dedicated `debug.amigaos.memory_profile` owner
+preserve registers/CCR, never use request/output/error buffers, and keep a bounded
+64-byte record. The terminal export writes that record separately as `Work:memory.bin`;
+a missing/partial record fails the host accounting check. Ordinary release builds
+perform no accounting I/O.
+
+The MEM2 record is sixteen big-endian u32 fields: magic, live capacity, peak live
+capacity, cumulative allocated, cumulative freed, live after preparation, cumulative
+freed before assembly, entry free memory, entry largest free block, Exec version,
+live after assembly, live after cleanup, DOS version, retained runtime-prefix bytes,
+packed-record bytes and source bytes. Allocation amounts are actual reserved block
+capacities; allocation precedes old-block release so copy/growth overlap is counted.
+These counters do not claim to trace OS-wide allocations. Configuration and pre-entry
+Version/CPU/Stack/Avail observations accompany constrained guest measurements.
+
 ## Event ABI
 
 Each 28-byte record contains:

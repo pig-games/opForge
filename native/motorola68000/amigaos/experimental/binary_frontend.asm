@@ -1,5 +1,5 @@
-; One-shot line tokenization and numeric lowering. Scratch is session-owned,
-; non-reentrant, and erased before return; no source text enters packed records.
+; Streaming line tokenization and numeric lowering. Scratch is caller-owned and
+; bounded; no source text enters packed records.
 ; @opforge-owner: experimental.amigaos.binary_frontend
 	.module experimental.amigaos.binary_frontend
 	.cpu 68020
@@ -16,176 +16,183 @@ Output	.long ?
 Capacity	.long ?
 Used	.long ?
 NameCount	.long ?
+Scratch	.long ?
 	.endstruct
 	.priv
 ARENA_BYTES = 16384
 SYMBOL_LIMIT = 512
+PROGRAM = 0
+PROGRAM_BYTES = 4
+DICTIONARY = 8
+DICTIONARY_COUNT = 12
+PACKAGE_END = 16
+LINE_NUMBER = 20
+NEXT_ID = 24
+SYMBOL_COUNT = 28
+ARENA_USED = 32
+LINE_FRAME = 36
+TOKENS = 76
+LEXEMES = TOKENS+64*20
+ENTRIES = LEXEMES+1024
+ARENA = ENTRIES+SYMBOL_LIMIT*8
+	.pub
+SCRATCH_BYTES = ARENA+ARENA_BYTES
+	.priv
 Entry	.struct
 Name	.long ?
 Length	.word ?
 Id	.word ?
 	.endstruct
-	.section bss, kind=bss
-	.align 4
-Session	.res long, 1
-Cursor	.res long, 1
-SourceEnd	.res long, 1
-Output	.res long, 1
-Remaining	.res long, 1
-Program	.res long, 1
-ProgramBytes	.res long, 1
-Dictionary	.res long, 1
-DictionaryCount	.res long, 1
-PackageEnd	.res long, 1
-LineNumber	.res long, 1
-NextId	.res long, 1
-SymbolCount	.res long, 1
-ArenaUsed	.res long, 1
-LineFrame	.res byte, writer.Frame.Used+2
-Tokens	.res byte, 64*20
-Lexemes	.res byte, 1024
-Entries	.res byte, SYMBOL_LIMIT*8
-Arena	.res byte, ARENA_BYTES
-	.endsection
 	.section code, kind=code
 	.pub
-; A0=Frame; caller validates readable package capsule against Header.Bytes and
-; provides nonoverlapping input/output storage. D0=0 success, 1 invalid/bounded
-; subset failure. Preserves other registers; CCR reflects D0. Used=0 on failure.
-; NameCount is the first free numeric ID after package and source bindings.
-prepare	.block
+; Begin a streaming frontend session. A0=Frame with a readable package capsule
+; and SCRATCH_BYTES of caller-owned aligned scratch. D0=0 success, 1 invalid.
+; Resets symbols and source-line numbering. Preserves other registers; CCR=D0.
+begin	.block
 	movem.l d1-d7/a0-a6, -(sp)
-	move.l a0, Session
 	movea.l a0, a5
 	clr.l Frame.Used(a5)
 	clr.l Frame.NameCount(a5)
-	clr.l SymbolCount
-	clr.l ArenaUsed
+	movea.l Frame.Scratch(a5), a6
+	move.l a6, d0
+	beq.w failed
+	move.l a6, d0
+	andi.l #3, d0
+	bne.w failed
+	clr.l SYMBOL_COUNT(a6)
+	clr.l ARENA_USED(a6)
 	bsr.w configure
 	bne.w failed
-	movea.l Session, a5
-	move.l Frame.Source(a5), Cursor
+	move.l #1, LINE_NUMBER(a6)
+	move.l NEXT_ID(a6), Frame.NameCount(a5)
+	moveq #0, d0
+	bra.w done
+failed
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	rts
+	.bend  ; begin
+; Lower one caller-bounded line. A0=the session Frame; Source excludes its line
+; ending and Output has per-line packed-record capacity. D0=0 success, 1 failure.
+; Used is this line's packed byte count; NameCount is the next free identifier.
+; Preserves other registers; CCR reflects D0. Used=0 on failure.
+line	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	clr.l Frame.Used(a5)
+	movea.l Frame.Scratch(a5), a6
+	move.l a6, d0
+	beq.w failed
+	cmpi.l #65535, LINE_NUMBER(a6)
+	bhi.w failed
+	movea.l Frame.Source(a5), a0
 	move.l Frame.SourceBytes(a5), d0
 	bmi.w failed
-	add.l Cursor, d0
+	move.l a0, d1
+	add.l d0, d1
 	bcs.w failed
-	move.l d0, SourceEnd
-	move.l Frame.Output(a5), Output
-	move.l Frame.Capacity(a5), Remaining
-	move.l Remaining, d0
-	add.l Output, d0
+	movea.l Frame.Output(a5), a4
+	move.l Frame.Capacity(a5), d1
+	beq.w failed
+	move.l a4, d2
+	add.l d1, d2
 	bcs.w failed
-	move.l #1, LineNumber
-lineLoop
-	movea.l Cursor, a0
-	cmpa.l SourceEnd, a0
-	beq.w complete
-	cmpi.l #65535, LineNumber
-	bhi.w failed
-	movea.l a0, a1
-scan
-	cmpa.l SourceEnd, a1
-	beq.w lastLine
-	cmpi.b #10, (a1)+
-	bne.w scan
-	move.l a1, Cursor
-	subq.l #1, a1
-	bra.w trim
-lastLine
-	move.l a1, Cursor
-trim
-	cmpa.l a0, a1
-	beq.w tokenize
-	cmpi.b #13, -1(a1)
-	bne.w tokenize
-	subq.l #1, a1
-tokenize
-	move.l a1, d0
-	sub.l a0, d0
-	lea Tokens, a1
-	lea Lexemes, a2
-	movea.l Program, a3
+	lea TOKENS(a6), a1
+	lea LEXEMES(a6), a2
+	movea.l PROGRAM(a6), a3
 	moveq #64, d1
 	move.l #1024, d2
-	move.l ProgramBytes, d3
+	move.l PROGRAM_BYTES(a6), d3
 	jsr tokenizer.tkvmRun68000
 	bne.w failed
-	lea LineFrame, a0
-	move.l #Tokens, writer.Frame.Tokens(a0)
+	lea LINE_FRAME(a6), a0
+	lea TOKENS(a6), a1
+	move.l a1, writer.Frame.Tokens(a0)
 	move.l #64*20, writer.Frame.TokenBytes(a0)
 	move.l d1, writer.Frame.Count(a0)
-	move.l #Lexemes, writer.Frame.Lexemes(a0)
+	lea LEXEMES(a6), a1
+	move.l a1, writer.Frame.Lexemes(a0)
 	move.l d3, writer.Frame.LexemeBytes(a0)
-	move.l Output, writer.Frame.Output(a0)
-	move.l Remaining, writer.Frame.Capacity(a0)
+	move.l Frame.Output(a5), writer.Frame.Output(a0)
+	move.l Frame.Capacity(a5), writer.Frame.Capacity(a0)
 	move.l #bind, writer.Frame.Binder(a0)
-	clr.l writer.Frame.Context(a0)
-	move.l LineNumber, d0
-	lea LineFrame, a0
+	move.l a6, writer.Frame.Context(a0)
+	move.l LINE_NUMBER(a6), d0
 	move.w d0, writer.Frame.SourceLine(a0)
 	jsr writer.writeLine
 	bne.w failed
-	add.l d1, Output
-	sub.l d1, Remaining
-	addq.l #1, LineNumber
-	bra.w lineLoop
-complete
-	movea.l Session, a5
-	move.l Frame.Capacity(a5), d0
-	sub.l Remaining, d0
-	move.l d0, Frame.Used(a5)
-	move.l NextId, Frame.NameCount(a5)
-	moveq #0, d7
-	bra.w cleanup
+	move.l d1, Frame.Used(a5)
+	move.l NEXT_ID(a6), Frame.NameCount(a5)
+	addq.l #1, LINE_NUMBER(a6)
+	moveq #0, d0
+	bra.w done
 failed
-	moveq #1, d7
-cleanup
-	lea Lexemes, a0
-	move.l #1024/4, d0
-	bsr.w erase
-	lea Arena, a0
-	move.l #ARENA_BYTES/4, d0
-	bsr.w erase
-	lea Entries, a0
-	move.l #SYMBOL_LIMIT*8/4, d0
-	bsr.w erase
-	clr.l Cursor
-	clr.l SourceEnd
-	move.l d7, d0
+	moveq #1, d0
+done
 	movem.l (sp)+, d1-d7/a0-a6
 	rts
-	.bend  ; prepare
+	.bend  ; line
+; End a streaming session. A0=Frame. Clears scratch-resident pointers and resets
+; tokenizer control state before the caller frees scratch. D0=0. Preserves other
+; registers; CCR reflects D0.
+finish	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l Frame.Scratch(a0), a6
+	move.l a6, d0
+	beq.w resetControl
+	clr.l PROGRAM(a6)
+	clr.l PROGRAM_BYTES(a6)
+	clr.l DICTIONARY(a6)
+	clr.l DICTIONARY_COUNT(a6)
+	clr.l PACKAGE_END(a6)
+	lea LINE_FRAME(a6), a1
+	moveq #10-1, d0
+clearFrame
+	clr.l (a1)+
+	dbra d0, clearFrame
+resetControl
+	moveq #0, d0
+	jsr control.tkvmSetStepBudget68000
+	moveq #0, d0
+	moveq #0, d1
+	suba.l a0, a0
+	jsr control.tkvmSetProgramStateTable68000
+	moveq #0, d0
+	movem.l (sp)+, d1-d7/a0-a6
+	rts
+	.bend  ; finish
 	.priv
 ; Validate only the package surfaces consumed by this frontend. Execution has
 ; independent bounds checks for candidate/program tables.
 configure	.block
 	movea.l Frame.Package(a5), a4
-	cmpi.l #$42535031, package.Header.Magic(a4)
+	cmpi.l #$42535032, package.Header.Magic(a4)
 	bne.w bad
 	move.l package.Header.Bytes(a4), d7
-	cmpi.l #72, d7
+	cmpi.l #76, d7
 	blo.w bad
 	move.l a4, d0
 	add.l d7, d0
 	bcs.w bad
-	move.l d0, PackageEnd
+	move.l d0, PACKAGE_END(a6)
 	moveq #0, d0
 	move.w package.Header.NameCount(a4), d0
-	move.l d0, NextId
+	move.l d0, NEXT_ID(a6)
 	move.l package.Header.Dictionary(a4), d0
-	cmpi.l #72, d0
+	cmpi.l #76, d0
 	blo.w bad
 	cmp.l d7, d0
 	bhi.w bad
 	movea.l a4, a2
 	adda.l d0, a2
-	move.l a2, Dictionary
+	move.l a2, DICTIONARY(a6)
 	move.l package.Header.DictionaryCount(a4), d6
-	move.l d6, DictionaryCount
+	move.l d6, DICTIONARY_COUNT(a6)
 dictLoop
 	tst.l d6
 	beq.w configureTokenizer
-	move.l PackageEnd, d0
+	move.l PACKAGE_END(a6), d0
 	sub.l a2, d0
 	cmpi.l #6, d0
 	blo.w bad
@@ -194,7 +201,7 @@ dictLoop
 	beq.w bad
 	moveq #0, d2
 	move.w 2(a2), d2
-	cmp.l NextId, d2
+	cmp.l NEXT_ID(a6), d2
 	bhs.w bad
 	addi.l #6, d1
 	addq.l #1, d1
@@ -206,7 +213,7 @@ dictLoop
 	bra.w dictLoop
 configureTokenizer
 	move.l package.Header.Tokenizer(a4), d0
-	cmpi.l #72, d0
+	cmpi.l #76, d0
 	blo.w bad
 	cmp.l d7, d0
 	bhi.w bad
@@ -232,9 +239,9 @@ configureTokenizer
 	cmp.l d6, d0
 	bhs.w bad
 	sub.l d0, d6
-	move.l d6, ProgramBytes
+	move.l d6, PROGRAM_BYTES(a6)
 	lea 0(a2, d0.l), a0
-	move.l a0, Program
+	move.l a0, PROGRAM(a6)
 	lea 12(a2), a0
 	move.l d4, d0
 checkStates
@@ -257,13 +264,14 @@ bad
 	rts
 	.bend  ; configure
 ; Writer callback ABI: lexical bytes A0/D0; D1=id,D2=qualifier,D0=status.
-; Preserves D3-D7/A2-A6. Its symbol arena exists only during prepare.
+; A1=Scratch context. Preserves D3-D7/A2-A6.
 bind	.block
 	movem.l d3-d7/a2-a6, -(sp)
+	movea.l a1, a6
 	movea.l a0, a2
 	move.l d0, d6
-	movea.l Dictionary, a3
-	move.l DictionaryCount, d7
+	movea.l DICTIONARY(a6), a3
+	move.l DICTIONARY_COUNT(a6), d7
 findPackage
 	tst.l d7
 	beq.w findSymbol
@@ -288,8 +296,8 @@ advance
 	subq.l #1, d7
 	bra.w findPackage
 findSymbol
-	lea Entries, a3
-	move.l SymbolCount, d7
+	lea ENTRIES(a6), a3
+	move.l SYMBOL_COUNT(a6), d7
 symbolLoop
 	tst.l d7
 	beq.w create
@@ -313,23 +321,23 @@ create
 	bhi.w bad
 	tst.l d6
 	beq.w bad
-	cmpi.l #SYMBOL_LIMIT, SymbolCount
+	cmpi.l #SYMBOL_LIMIT, SYMBOL_COUNT(a6)
 	bhs.w bad
-	cmpi.l #65535, NextId
+	cmpi.l #65535, NEXT_ID(a6)
 	bhi.w bad
-	move.l ArenaUsed, d0
+	move.l ARENA_USED(a6), d0
 	add.l d6, d0
 	cmpi.l #ARENA_BYTES, d0
 	bhi.w bad
-	lea Arena, a1
-	adda.l ArenaUsed, a1
+	lea ARENA(a6), a1
+	adda.l ARENA_USED(a6), a1
 	move.l a1, Entry.Name(a3)
 	move.w d6, Entry.Length(a3)
-	move.l NextId, d1
+	move.l NEXT_ID(a6), d1
 	move.w d1, Entry.Id(a3)
-	move.l d0, ArenaUsed
-	addq.l #1, NextId
-	addq.l #1, SymbolCount
+	move.l d0, ARENA_USED(a6)
+	addq.l #1, NEXT_ID(a6)
+	addq.l #1, SYMBOL_COUNT(a6)
 	move.l d6, d0
 copy
 	move.b (a2)+, (a1)+
@@ -375,13 +383,5 @@ different
 	moveq #1, d0
 	rts
 	.bend  ; equal
-; Clear D0 longwords at A0; clobbers A0/D0/CCR.
-erase	.block
-loop
-	clr.l (a0)+
-	subq.l #1, d0
-	bne.w loop
-	rts
-	.bend  ; erase
 	.endsection
 	.endmodule

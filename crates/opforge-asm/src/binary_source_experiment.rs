@@ -10,7 +10,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 72;
+const HEADER: usize = 76;
 
 struct Program<'a> {
     kind: u16,
@@ -65,7 +65,7 @@ impl<'a> Programs<'a> {
     }
 }
 
-/// Prepare a self-contained BSP1 block for one resolved package hierarchy.
+/// Prepare a self-contained BSP2 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -181,15 +181,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BSP1");
-    let dictionary_offset = out.len();
-    for (spelling, (id, q)) in &dictionary {
-        push_word(&mut out, word(spelling.len())?);
-        push_word(&mut out, *id);
-        out.extend_from_slice(&[*q, 0]);
-        out.extend_from_slice(spelling.as_bytes());
-        align(&mut out);
-    }
+    out[..4].copy_from_slice(b"BSP2");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), 24)?;
     let registers_offset = out.len();
@@ -200,6 +192,15 @@ pub fn prepare_package(
     }
     let programs_offset = out.len();
     reserve(&mut out, programs.rows.len(), 12)?;
+    for (index, candidate) in candidates.iter().enumerate() {
+        write_candidate(
+            &mut out,
+            rows_offset + index * 24,
+            candidate,
+            &names,
+            &programs,
+        )?;
+    }
     for (index, program) in programs.rows.iter().enumerate() {
         let offset = out.len();
         out.extend_from_slice(program.bytes);
@@ -210,14 +211,15 @@ pub fn prepare_package(
         set_long(&mut out, row + 4, long(offset)?);
         set_long(&mut out, row + 8, long(program.bytes.len())?);
     }
-    for (index, candidate) in candidates.iter().enumerate() {
-        write_candidate(
-            &mut out,
-            rows_offset + index * 24,
-            candidate,
-            &names,
-            &programs,
-        )?;
+    align(&mut out);
+    let runtime_bytes = long(out.len())?;
+    let dictionary_offset = out.len();
+    for (spelling, (id, q)) in &dictionary {
+        push_word(&mut out, word(spelling.len())?);
+        push_word(&mut out, *id);
+        out.extend_from_slice(&[*q, 0]);
+        out.extend_from_slice(spelling.as_bytes());
+        align(&mut out);
     }
     let tokenizer_offset = out.len();
     let state_count = word(tokenizer.state_entry_offsets.len())?;
@@ -255,6 +257,7 @@ pub fn prepare_package(
         (40, long(tokenizer_offset)?),
         (44, long(tokenizer_length)?),
         (68, properties.max_program_address),
+        (72, runtime_bytes),
     ] {
         set_long(&mut out, offset, value);
     }

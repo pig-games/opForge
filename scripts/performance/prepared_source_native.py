@@ -12,6 +12,43 @@ import runtime_comparison as runtime
 import vm_efficiency as base
 
 BINARY_TEST = "tests::binary_source_experiment::binary_source_fs_uae"
+MEMORY_PROFILE_ENV = "OPFORGE_FS_UAE_MEMORY_PROFILE"
+CONSTRAINED_2M_SETTINGS = {
+    "cpu": "68020",
+    "chip_memory": "2048",
+    "slow_memory": "0",
+    "fast_memory": "0",
+    "motherboard_ram": "0",
+    "zorro_iii_memory": "0",
+    "graphics_card": "none",
+    "graphics_memory": "0",
+    "graphics_card_memory": "0",
+}
+
+
+def effective_emulator_config(template_text, memory_profile):
+    """Mirror the Rust runner's generated config using a stable mount placeholder."""
+    settings = ({"zorro_iii_memory": "65536"} if memory_profile == "existing"
+                else CONSTRAINED_2M_SETTINGS)
+    seen = set()
+    lines = []
+    replaced_mount = False
+    for line in template_text.splitlines():
+        key = line.lstrip().partition("=")[0].strip() if "=" in line else None
+        if key == "hard_drive_1":
+            lines.append("hard_drive_1 = {ephemeral_work_mount}")
+            replaced_mount = True
+        elif key in settings:
+            lines.append(f"{key} = {settings[key]}")
+            seen.add(key)
+        else:
+            lines.append(line)
+    if not replaced_mount:
+        lines.append("hard_drive_1 = {ephemeral_work_mount}")
+    for key, value in settings.items():
+        if key not in seen:
+            lines.append(f"{key} = {value}")
+    return "\n".join(lines) + "\n"
 
 
 def replay_smoke(cpu, blocks=8):
@@ -82,7 +119,14 @@ def main():
                         help="defaults to 8; 32 is an explicit larger probe subject to the same timeout")
     parser.add_argument("--profile", choices=("off", "runtime"), default="off")
     parser.add_argument("--binary-source", action="store_true",
-                        help="also run the opt-in BSP1 binary-source native harness")
+                        help="also run the opt-in BSP2 binary-source native harness")
+    parser.add_argument("--binary-only", action="store_true",
+                        help="run only the binary-source harness; requires --binary-source")
+    parser.add_argument("--memory-profile", choices=("existing", "2m"),
+                        default=os.environ.get(MEMORY_PROFILE_ENV, "existing"),
+                        help="FS-UAE guest RAM profile; 2m selects 68020 with 2 MiB total RAM")
+    parser.add_argument("--compare-memory", action="store_true",
+                        help="enable binary-harness memory telemetry (requires --binary-source)")
     parser.add_argument("--cpus", nargs="+", choices=("m6502", "m68000"), default=["m6502", "m68000"])
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -93,10 +137,16 @@ def main():
         parser.error("binary-source currently supports one CPU pipeline per input")
     if args.binary_source and args.profile != "off":
         parser.error("binary-source timing comparison requires --profile off")
+    if args.compare_memory and not args.binary_source:
+        parser.error("--compare-memory requires --binary-source")
+    if args.binary_only and not args.binary_source:
+        parser.error("--binary-only requires --binary-source")
 
     native_test = args.native_test.resolve(strict=True)
     package = args.package.resolve(strict=True)
     template = Path(os.environ["OPFORGE_FS_UAE_CONFIG_TEMPLATE"]).resolve(strict=True)
+    os.environ[MEMORY_PROFILE_ENV] = args.memory_profile
+    template_text = template.read_text()
     output = (args.output or base.ROOT / "build" / f"prepared-source-native-{time.time_ns()}-{os.getpid()}").resolve()
     output.mkdir(parents=True, exist_ok=False)
 
@@ -108,6 +158,8 @@ def main():
         "host": platform.platform(),
         "profile": args.profile,
         "binary_source": args.binary_source,
+        "binary_only": args.binary_only,
+        "compare_memory": args.compare_memory,
         "workload": args.workload,
         "package": {"path": str(package), "bytes": package.stat().st_size, "sha256": base.digest(package.read_bytes())},
         "native_test": {"path": str(native_test), "bytes": native_test.stat().st_size, "sha256": base.digest(native_test.read_bytes())},
@@ -115,8 +167,12 @@ def main():
         "runner_sha256": base.digest(Path(__file__).read_bytes()),
         "runtime_runner_sha256": base.digest(Path(runtime.__file__).read_bytes()),
         "workload_helper_sha256": base.digest(Path(base.__file__).read_bytes()),
-        "emulator_template": {"path": str(template), "sha256": base.digest(template.read_bytes()), "text": template.read_text()},
-        "runner_config_overrides": {"zorro_iii_memory_kib": 65536},
+        "emulator_template": {"path": str(template), "sha256": base.digest(template.read_bytes()), "text": template_text},
+        "emulator_effective_config": {
+            "memory_profile": args.memory_profile,
+            "environment": {MEMORY_PROFILE_ENV: args.memory_profile},
+            "text": effective_emulator_config(template_text, args.memory_profile),
+        },
         "limits": {
             "batch_seconds": 150,
             "invocation_seconds": 60,
@@ -131,7 +187,7 @@ def main():
             "START-to-DONE includes input, package, assembly, and output work but excludes emulator boot.",
             "Full invocation time includes harness setup/build and emulator startup/teardown.",
             "The native field runs source-text processing, including any current numeric package bindings.",
-            "The opt-in binary_source field combines native source packing with a Rust-derived single-pipeline BSP1 runtime capsule; it does not isolate tokenization speedup or package preparation cost.",
+            "The opt-in binary_source field combines native source packing with a Rust-derived single-pipeline BSP2 runtime capsule; it does not isolate tokenization speedup or package preparation cost.",
         ],
     }
     budget = base.Budget(150)
@@ -153,16 +209,17 @@ def main():
                 "output_sha256": base.digest(expected),
             }
             report["cases"].append(row)
-            try:
-                receipt = runtime.native(native_test, source_path, package, budget, case_dir / "native.log", args.profile)
-                if bytes(receipt["exact_output"]) != expected:
-                    raise ValueError(f"{cpu} live native/Rust output differs from independent workload bytes")
-                receipt.pop("exact_output")
-                row["native"] = receipt
-            except Exception as error:
-                # A failed case is evidence only for itself; attempt later cases
-                # under the same batch deadline and keep the batch fail-closed.
-                row["error"] = str(error)
+            if not args.binary_only:
+                try:
+                    receipt = runtime.native(native_test, source_path, package, budget, case_dir / "native.log", args.profile)
+                    if bytes(receipt["exact_output"]) != expected:
+                        raise ValueError(f"{cpu} live native/Rust output differs from independent workload bytes")
+                    receipt.pop("exact_output")
+                    row["native"] = receipt
+                except Exception as error:
+                    # A failed case is evidence only for itself; attempt later cases
+                    # under the same batch deadline and keep the batch fail-closed.
+                    row["error"] = str(error)
             if args.binary_source:
                 try:
                     receipt = runtime.native(
@@ -170,7 +227,10 @@ def main():
                         case_dir / "binary-source.log", "off",
                         test=BINARY_TEST,
                         result_prefix="BINARY_SOURCE_COMPARISON ",
-                        extra_env={"OPFORGE_COMPARE_CPU": cpu},
+                        extra_env={
+                            "OPFORGE_COMPARE_CPU": cpu,
+                            "OPFORGE_COMPARE_MEMORY": "1" if args.compare_memory else "0",
+                        },
                         guest_timeout_ms=60000,
                         post_start_timeout_ms=10000,
                     )
@@ -184,7 +244,8 @@ def main():
                     row["binary_source_error"] = str(error)
             (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
         report["complete"] = all(
-            "native" in row and (not args.binary_source or "binary_source" in row)
+            (args.binary_only or "native" in row)
+            and (not args.binary_source or "binary_source" in row)
             for row in report["cases"]
         )
     except Exception as error:

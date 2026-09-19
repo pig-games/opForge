@@ -1,8 +1,8 @@
 # String-free assembly replay experiment
 
-Status: experimental native binary-source path implemented and measured on both
-complete mixed8 workloads. The normal native CLI remains the reference.
-Next agreed work: [compact native runtime, M1 then M2](#next-implementation-compact-native-runtime).
+Status: M1/M2 implemented; mixed8 and mixed32 complete on both targets in a
+68020 / 2 MiB guest. Review the [compact runtime result](#m2-result-2026-09-19)
+before selecting the next coverage slice. The normal native CLI remains the reference.
 The active
 [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md) remain binding.
 
@@ -506,7 +506,7 @@ expanding the migration.
 
 ### Native binary-source execution: current experimental boundary
 
-The native frontend reads the supplied text block line by line, runs the canonical
+The native frontend receives incrementally read source lines, runs the canonical
 TKVM tokenizer once per line, and immediately writes a packed binary line. The
 one-byte prefix stores total line length minus one (maximum 256 bytes). Records
 contain numeric mnemonic/identifier IDs, qualifiers, literal values, punctuation
@@ -514,13 +514,12 @@ and source line numbers. Aliases bind to the same normalized mnemonic ID. This
 slice uses uniform 16-bit IDs; package-dependent ID widths remain untested.
 
 Both assembly passes consume those records. They recompute expressions, symbol
-values, candidate selection, branch displacements and emitted bytes. The harness
-erases the original source and every package dictionary spelling before either
-pass; frontend symbol/lexeme scratch is also erased. No string reconstruction or
-fallback to the textual assembler is available. The input file is still read as
-one block: incremental file I/O and releasing its allocation are not implemented.
+values, candidate selection, branch displacements and emitted bytes. Before either
+pass, the harness frees line/input buffers, frontend symbol/lexeme scratch and the
+full lexical package. Only a relocated executable prefix and numeric records remain.
+No string reconstruction or fallback to the textual assembler is available.
 
-Rust prepares a provisional single-pipeline `BSP1` package capsule from the current
+Rust prepares a provisional single-pipeline `BSP2` package capsule from the current
 canonical package. It resolves immutable program names and register classes to
 numeric references and copies canonical TKVM/TABL/CSEM/VALP programs unchanged.
 Native execution retains the existing program interpreters. This deliberately
@@ -529,7 +528,7 @@ against the existing CLI does **not** isolate the benefit of binary source alone
 Host capsule preparation is reported separately and excludes registry construction.
 There is no old-bytecode compatibility path or adopted production package format.
 
-The bounded syntax covers the complete mixed8 workloads: immediate values,
+The bounded syntax covers the complete mixed8 and mixed32 workloads: immediate values,
 package-defined register operands, parenthesized member operands, forward branches,
 labels, current PC, parentheses and unary/binary addition/subtraction. Shared core
 handles `.cpu`, `.org`, `.byte`, `.word`, `.long` and `.end`. Unknown candidate plans
@@ -544,14 +543,15 @@ arithmetic checks signed overflow. Wider unsigned literals are rejected before
 arithmetic, rather than reinterpreted as negative numbers.
 Labels require a colon and cannot reuse reserved package spellings. `.org` cannot
 create discontiguous output. Capacity limits include 64 tokenizer tokens per line,
-512 source names and a 64 KiB record block. Malformed/unsupported input returns
+512 source names, 4 KiB textual lines, 256-byte packed lines, and a 1 MiB ceiling
+per growing block. These are explicit experimental limits, not preallocations. Malformed/unsupported input returns
 failure with a generic harness diagnostic; full diagnostic parity is not implemented. This is a separate experimental
 harness, not the normal native CLI or a completed native language replacement.
 
-Memory is not qualified for the 2 MiB goal: the proof harness reserves about 1.5 MiB
-itself and imports existing services with roughly 42 MiB of additional BSS. Erasing
-text proves independence from its contents, not reduced allocation or peak RAM.
-Any next migration decision must address those imported runtime responsibilities.
+M1 removed the imported legacy state. M2 qualifies the listed workloads on a
+2 MiB guest, with about 20 KiB linked reservation and measured owned-allocation
+peaks below 271,000 bytes. This is subset qualification, not full-language or
+self-host qualification; see the current results below.
 
 Reproduce the bounded comparison with the configured FS-UAE environment and a
 fresh ASM test executable:
@@ -569,7 +569,8 @@ includes native tokenization/packing, input/output and package loading, but excl
 emulator boot and host package export. Results and guest artifacts are not retained
 as tracked historical evidence; record the meaningful measurements here.
 
-Final reviewed-code observations (telemetry off, same-session serial comparison):
+Reference `a378ec48` observations (telemetry off, same-session serial comparison;
+BSP1 and the former fixed-allocation harness):
 
 | Mixed8 input | Current text path | Native binary-source path | Derived capsule |
 |---|---:|---:|---:|
@@ -597,14 +598,13 @@ affected-library Clippy, formatting, CPU boundary, native ownership/no-growth,
 inventory and fresh-proof guards pass. The full Rust quality gate still stops at
 the four unchanged compact-table redundant-test failures documented above.
 
-This establishes a working native binary-source experiment. The agreed next steps
-below preserve this gain while removing oversized legacy runtime dependencies.
-The harness is not yet ready for the normal CLI or the 2 MiB product target.
+This established the binary-source reference for M1/M2 below. General CLI
+integration remains outside the qualified subset.
 
 ## Next implementation: compact native runtime
 
-Status: M1 implemented; focused native validation recorded below. Review its
-working result before moving to M2. The plan-authoring skill, active
+Status: M1/M2 implemented; focused validation and remaining limits are recorded
+below. Review M2 before selecting further implementation. The plan-authoring skill, active
 AGENTS.md and workflow linked above remain binding.
 
 The outcome is the same working binary-source subset with small owned state and
@@ -633,8 +633,8 @@ remain a later slice; M1/M2 do not introduce that file-format contract.
 
 | Item | State | Inspectable result |
 |---|---|---|
-| M1 — Detach interpreter execution from legacy assembler state | Implemented; review before M2 | Both mixed8 cases work through shared interpreters with the large legacy state dependency removed; linked-memory comparison identifies what disappeared |
-| M2 — Own memory by lifetime and qualify the constrained runtime | Pending M1 review | Right-sized allocations, preparation storage actually released, bounded scaling results, and completed 2 MiB guest cases |
+| M1 — Detach interpreter execution from legacy assembler state | Complete; reviewed | Both mixed8 cases work through shared interpreters with the large legacy state dependency removed; linked-memory comparison identifies what disappeared |
+| M2 — Own memory by lifetime and qualify the constrained runtime | Implemented; review before further coverage | Right-sized allocations, preparation storage actually released, bounded scaling results, and completed 2 MiB guest cases |
 
 #### M1: one coherent interpreter boundary
 
@@ -656,7 +656,7 @@ Done: mixed8 on both targets passes the fresh native proof contract; affected
 existing interpreter/service contracts pass; the linked-image breakdown proves
 which legacy allocations are no longer reachable. Measure final image size and
 unprofiled mixed8 time against the reference on the same emulator configuration.
-This checkpoint need not yet fit 2 MiB: its owned remaining storage is M2's work.
+This checkpoint did not need to fit 2 MiB; its remaining owned storage was M2's work.
 If removing the dependency requires a larger semantic migration, stop at a working
 recovery point and discuss the specific boundary rather than expanding the rewrite.
 
@@ -712,7 +712,9 @@ above. For the old
 binary path, materialize `a378ec48`'s `native` tree and `.opforgefmt.toml` in a temporary
 root, then run `tests::binary_source_experiment::binary_source_fs_uae` with the same
 source/CPU, `--exact --ignored`, and test-only `OPFORGE_COMPARE_NATIVE_ROOT` pointing
-to that root. The live Rust oracle and fresh-run safeguards still apply. The Hunk
+to that root. Producer and native capsule versions must match: reconstruct historical
+BSP1 runs using the corresponding Rust checkpoint, not the current BSP2 producer.
+The live Rust oracle and fresh-run safeguards still apply. The Hunk
 accounting helper rejects malformed/truncated load files instead of estimating BSS
 from file size. Test artifacts remain ephemeral; this note retains the comparison.
 
@@ -761,6 +763,94 @@ remaining headroom; a 2 MiB application allocation budget on a larger guest is n
 the acceptance test. Check that the runner does not silently restore its current
 64 MiB Zorro III override or other expansion memory. Constrained timing is a
 separate result from the existing 68040 comparison, not a calibrated hardware claim.
+
+#### M2 result (2026-09-19)
+
+The frontend now has begin/line/finish operations over caller-owned preparation
+scratch. Buffered reads feed one textual line directly to the tokenizer and packed
+writer; no whole-source allocation remains. Record storage grows geometrically
+from 256 bytes, with a 1 MiB per-block ceiling and old/new overlap accounted for.
+Symbol arrays are sized from the prepared numeric ID extent. The first assembly
+pass sizes output; a caller callback allocates it before pass two. All failure and
+success paths release owned blocks. Generic directives and canonical VM programs
+are unchanged; the normal CLI still uses M1's shared interpreter implementation.
+
+Latest-only BSP2 has a 76-byte header, retaining prior field offsets and adding
+`RuntimeBytes` at offset 72. Rows, projections and programs occupy the executable
+prefix; dictionary and tokenizer data occupy the tail. After preparation, native
+code copies the prefix to a different allocation, clears its lexical metadata and
+frees the full capsule and preparation workspace. Binary references remain offsets;
+producer bounds/relocation tests and real-native relocated execution pass. BSP1
+is rejected. There is no new persistent source-file format or compatibility layer.
+
+Release image: **17,012 B** (`fnv1a64:b34280f43ed3fbd8`); linked reservation:
+**20,148 B** (15,344 code, 316 data, 4,488 BSS), versus M1's 1,549,284 B.
+The separately instrumented image reserves 20,692 B. Memory telemetry has no code,
+data or imports in release; host byte-transparency tests cover either absent gate.
+
+| Target / blocks | Source / packed records | Capsule / retained prefix | Peak owned allocation | Live allocation after assembly | Release time, 68020 / 2 MiB |
+|---|---:|---:|---:|---:|---:|
+| m6502 / 8 | 688 / 900 B | 7,272 / 6,546 B | 42,496 B | 25,856 B | 0.470 s |
+| m6502 / 32 | 2,788 / 3,492 B | same | 47,104 B | 29,184 B | 1.148 s |
+| m68000 / 8 | 865 / 1,076 B | 96,448 / 91,298 B | 264,192 B | 166,144 B | 1.187 s |
+| m68000 / 32 | 3,493 / 4,196 B | same | 270,336 B | 173,056 B | 3.624 s |
+
+The packed records are currently larger than these comment-light sources; no
+compression gain is claimed. Preparation workspace is bounded at 22,860 B plus
+4 KiB I/O, 4 KiB line and 256 B packed-line buffers (one 32 KiB allocation).
+Power-of-two growth leaves capacity slack. The largest peak is dominated by the
+old and relocated 128 KiB package allocations overlapping, not assembly output.
+Cumulative capacities freed before assembly are 41,728 / 44,800 B (6502) and
+165,632 / 171,776 B (68000), including replaced record blocks. Every instrumented
+case reports zero live allocations after cleanup and balanced allocation/free totals.
+
+The reproducible guest retains the installed A4000 template and Kickstart image,
+sets CPU=68020, chip RAM=2048 KiB, and disables fast/slow/motherboard/Zorro/RTG
+memory. Guest commands confirm `68020 68882`, Kickstart 47.96, Workbench 47.2,
+a 4,096-byte stack, 2,080,768 managed chip bytes and **zero fast RAM**. No FPU
+instructions are used by this implementation. Before program launch, available
+memory was 1,226,728 B and the largest block approximately 1,221,496–1,222,712 B.
+After executable loading, telemetry observed about 1,205,712 B free. The largest
+tracked peak plus instrumented linked reservation and configured stack totals
+295,124 B; roughly 0.93 MB remains relative to entry free memory after subtracting
+owned peak allocation. This is headroom accounting, not an OS-wide peak profiler:
+loader/OS allocations are reflected in available-memory observations, while telemetry
+counts this implementation's requested capacities and their transient overlap.
+Actual completion on the constrained guest is the memory acceptance proof.
+
+Timings are one START-to-DONE observation per case, with 20 ms polling; they include
+loading and I/O and exclude emulator boot and host package preparation. Mixed32
+was remeasured on the final release binary; mixed8 preceded a redundant-test removal
+and clearing two unused preparation-pointer fields. On the original expanded-memory
+68040 comparison configuration, mixed8 measured 24 ms for 68000; the 6502 case
+completed too quickly for a separate START timestamp. There is no measurable large
+regression against M1's 30–50 ms observations, but neither a precise speedup ratio
+nor calibrated physical-hardware timing is established. Do not compare the 68020
+column directly with those 68040 times or extrapolate it to self-host completion.
+
+Reproduce using the configured FS-UAE environment and a current test executable:
+
+```sh
+python3 scripts/performance/prepared_source_native.py \
+  --native-test target/debug/deps/asm-<current-test-hash> \
+  --binary-source --binary-only --memory-profile 2m --blocks 32
+```
+
+Run blocks 8 separately; add `--compare-memory` for the separate accounting build.
+Use `--memory-profile existing` for the earlier 68040 configuration. Reports record
+the effective config, input/image identities, completion and memory receipts.
+Each batch remains capped at 150 seconds, each invocation at 60 seconds, and binary
+work at 10 seconds after START. Saved user configuration and disks are not edited.
+
+Both targets pass mixed8/mixed32 exact live Rust and independent workload-byte
+comparisons in release and accounting builds. A 6,753-byte CRLF variant with a
+long comment, a 4 KiB read-boundary crossing and no final newline also passes on
+the final code. The signed-arithmetic rejection completes with exit 20 and proves
+all failure-path allocations released. Host package/relocation, telemetry gating,
+runner configuration/capture, Clippy, formatting, native guards and workflow checks
+pass. General language coverage, physical-machine timings, memory-exhaustion fault
+injection, and full diagnostic parity remain unqualified. The pre-existing TRAP
+diagnostic mismatch recorded under M1 remains outside this change.
 
 ### Validation, limits and follow-on decision
 

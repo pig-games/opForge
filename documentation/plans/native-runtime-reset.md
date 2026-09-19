@@ -287,7 +287,8 @@ This table tracks outcomes, not individual edits or commits. Update the current
 row in place with the run command, concise result and relevant commit when work
 finishes. Proposed means awaiting agreement on scope, not queued for automatic
 execution. W1–W3 and the bounded comparisons are reviewed baseline work. The
-current implementation sequence is M1 then M2 in the linked binary-source plan.
+M1/M2 implementation is complete; review the constrained-runtime result in the
+linked binary-source plan before selecting the next coverage slice.
 
 | Work | Status | Reviewable result | Depends on |
 | --- | --- | --- | --- |
@@ -296,7 +297,7 @@ current implementation sequence is M1 then M2 in the linked binary-source plan.
 | W3 — Measure VM work and repetition | Complete; reviewed | Per-engine/pass/program dispatch and repetition counts at all three workload sizes | W2; authorized in conversation |
 | R1 — First native replacement experiment | Measured; no meaningful timing gain | Prepared CTBL comparison and resource accounting below | Retained reference implementation |
 | Binary-source experiment | Implemented and measured | Complete mixed8 parity on both targets; observed 8–11× combined-path gains | `a378ec48` |
-| M1 / M2 — Compact native runtime | M1 implemented; review before M2 | Shared interpreter extraction reduces binary-harness linked reservation from 44.35 MB to 1.55 MB; M2 qualifies memory lifetime and scaling within 2 MiB | Binary-source experiment; review M1 before M2 |
+| M1 / M2 — Compact native runtime | Implemented; M2 ready for review | Shared interpreters, streaming preparation and released lexical storage; both mixed8/mixed32 targets complete on a 68020 / 2 MiB guest | Binary-source experiment; review before further coverage |
 
 ## W1 agreement: focused package-VM baseline
 

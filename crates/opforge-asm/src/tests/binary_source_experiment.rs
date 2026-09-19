@@ -92,7 +92,7 @@ fn binary_source_fs_uae() {
     assert_binary_source(source, cpu);
 }
 
-fn assert_binary_source(source: String, cpu: String) {
+fn assert_binary_source(source: String, cpu: String) -> serde_json::Value {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline(&cpu, None).unwrap();
     let preparation_started = std::time::Instant::now();
@@ -188,6 +188,7 @@ fn assert_binary_source(source: String, cpu: String) {
             "guest_memory_before_launch": run.captured_artifacts.get(&PathBuf::from("Work/guest-memory.txt")).map(|bytes| String::from_utf8_lossy(bytes).into_owned()),
         })
     );
+    memory
 }
 
 #[test]
@@ -282,6 +283,37 @@ expression_limit_case!(binary_expression_limit_incomplete_fs_uae, "1+", false);
 // Shared Rust data emission accepts this wrapped result; the native experiment
 // deliberately rejects its high-bit literal under the existing signed32 limit.
 expression_limit_case!(binary_expression_limit_literal_fs_uae, "-$ffffffff", true);
+expression_limit_case!(
+    binary_expression_limit_multiply_overflow_fs_uae,
+    "(50000*50000)*0",
+    true
+);
+expression_limit_case!(
+    binary_expression_limit_negate_overflow_fs_uae,
+    "-(-$7fffffff-1)+(-$7fffffff-1)",
+    true
+);
+
+#[test]
+#[ignore = "requires configured FS-UAE; constant and dynamic subtree folding"]
+fn binary_expression_folding_fs_uae() {
+    let memory = assert_binary_source(
+        ".cpu m6502\n.org $1000\n\
+         .byte 5*3-2,-(-5),(-7)*(-3)\n\
+         .word fold_target+(3*2),(3*2)+fold_target,($-$)+(3*2),fold_target-fold_target+(3*2)\n\
+         .long ($7fffffff-1)-$7fffffff,-$7fffffff-1\n\
+         fold_target:\n nop\n.end\n"
+            .into(),
+        "m6502".into(),
+    );
+    if !memory.is_null() {
+        // Ten expressions: literals shrink to ten-byte programs; symbol/PC
+        // subtrees retain their operators. This proves folding actually ran,
+        // in addition to the complete output comparison with live Rust.
+        assert_eq!(memory["expressions_compiled"], 10);
+        assert_eq!(memory["compiled_program_bytes"], 126);
+    }
+}
 
 #[test]
 #[ignore = "requires configured FS-UAE; complete positive expression boundary case"]

@@ -289,7 +289,8 @@ finishes. Proposed means awaiting agreement on scope, not queued for automatic
 execution. W1–W3 and the bounded comparisons are reviewed baseline work. The
 M1/M2 implementation is complete. M3 compiles expressions once and passes its
 bounded native cases, but the measured expression workload is about 5–10% slower.
-Review the experimental checkpoint before widening coverage.
+M4 folds constants correctly but its measured release totals do not improve on
+M3. Review preparation cost before widening coverage.
 
 | Work | Status | Reviewable result | Depends on |
 | --- | --- | --- | --- |
@@ -300,6 +301,7 @@ Review the experimental checkpoint before widening coverage.
 | Binary-source experiment | Implemented and measured | Complete mixed8 parity on both targets; observed 8–11× combined-path gains | `a378ec48` |
 | M1 / M2 — Compact native runtime | Complete | Shared interpreters, streaming preparation and released lexical storage; both mixed8/mixed32 targets complete on a 68020 / 2 MiB guest | Binary-source experiment |
 | M3 — Prepared numeric expressions | Measured; review tradeoff | Shared execution and multiplication work within 2 MiB; expression-replay32 takes 2.18/4.69 s versus M2 1.98/4.48 s | M2; no CLI migration |
+| M4 — Preparation-time constant folding | Measured; no total-time gain | Shared arithmetic folds constants; unchanged workloads are about 1–4% slower in single observations including preparation | M3; unchanged format, limits and coverage |
 
 ## W1 agreement: focused package-VM baseline
 

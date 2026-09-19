@@ -1,8 +1,8 @@
 # String-free assembly replay experiment
 
-Status: M3 measured: compile-once execution works, but release time regresses
-about 5–10% on the expression comparison. Review this experimental checkpoint
-before widening coverage.
+Status: M4 measured: constant folding works but shows no total release-time
+improvement against M3 `68cd4c73`. Keep this experimental checkpoint for review;
+do not widen coverage or migrate it into the normal CLI on these results.
 M1/M2 completed mixed8 and mixed32 on both targets in a 68020 / 2 MiB guest;
 see the [compact runtime result](#m2-result-2026-09-19). The normal native CLI remains the reference.
 The active
@@ -1063,3 +1063,101 @@ individually with the configured FS-UAE environment, `OPFORGE_COMPARE_MEMORY=1`,
 `OPFORGE_FS_UAE_MEMORY_PROFILE=2m`, `OPFORGE_FS_UAE_TIMEOUT_MS=60000` and
 `OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=10000`. These preserve the same per-case
 bounds and fresh-run/cleanup proof contract as the comparison runner.
+
+## M4: fold constants during preparation
+
+Agreed scope: reduce repeated expression work without changing the runtime bytecode
+format or widening language coverage. Compile and validate as in M3, then replace
+constant-only subexpressions with literals: `5*3-2` becomes `13`, while
+`label+(3*2)` retains the symbol and becomes `label+6`. Never fold symbols or the
+current address, reassociate operators, or hide an intermediate signed32 overflow.
+Reuse the checked shared evaluator rather than introduce a second arithmetic engine.
+Original syntax, pre-fold program-size and stack limits remain unchanged. Temporary
+compiler scratch may contain pointers; stored programs continue to contain only
+values and numeric identities.
+
+Baseline: M3 `68cd4c73`, snapshotted outside the working tree. Compare identical
+unchanged expression-replay32 and expression-layout32 inputs for both m6502 and
+m68000 in the same 68020 / 2 MiB guest. Include preparation in release totals;
+separate instrumented runs report program bytes, compile/evaluation counts, phase
+times and allocation cleanup. Preserve 10-second post-start, 60-second invocation
+and 150-second batch limits. No full self-host or broad benchmark expansion.
+
+Correctness: exact live Rust and independent workload bytes, plus constant and
+mixed dynamic subtrees, precedence, signed endpoints, intermediate overflow and
+unchanged capacity rejection cases. Inspect linked image and scratch growth.
+Success requires a reproducible total-time benefit, not merely fewer bytes or
+operations. If costs outweigh savings or results are inconclusive, retain an honest
+experimental checkpoint and reassess; do not migrate it into the production CLI.
+Compact literal/runtime encoding and further coverage are separate future decisions.
+
+### M4 result
+
+The compiler now folds maximal constant-only subtrees after original validation.
+A bounded postfix scan records their spans; a compacting copy evaluates each
+nontrivial span once with the shared checked evaluator and writes a standard
+eight-byte literal payload. Programs of ten bytes or less bypass the folder.
+There is no second arithmetic implementation, new bytecode version or persistent
+pointer. Temporary scratch is 288 bytes plus saved registers, inside the existing
+4096-byte guest stack; allocation telemetry does not count this stack scratch.
+
+Identical-input release measurements on the same 68020 / 2 MiB configuration:
+
+| Workload / target | M3 | M4 | Observed change |
+|---|---:|---:|---:|
+| expression-replay32 / m6502 | 2.152 s | 2.246 s | +4.4% |
+| expression-replay32 / m68000 | 4.664 s | 4.780 s | +2.5% |
+| expression-layout32 / m6502 | 2.159 s | 2.232 s | +3.4% |
+| expression-layout32 / m68000 | 4.712 s | 4.757 s | +0.9% |
+
+These are single observations with 20 ms polling, not statistically stable ratios.
+They include preparation and I/O; every case has exact live Rust and independent
+workload output checks. They establish no total-time improvement. The unchanged
+benchmark definitions and bounded commands from M3 apply, using a native snapshot
+of `68cd4c73` for `--native-source-root` instead of M2.
+
+Release image: 20,224 bytes, `fnv1a64:75150875487e3fd5`; linked reservation:
+23,300 bytes (388 bytes more than M3). No new persistent storage or telemetry
+format is introduced. Existing compiled-program bytes report the folded payload;
+the evaluation counter still counts assembly calls, not preparation-time folding.
+
+The focused folding fixture checks exact output and a 126-byte total across ten
+compiled expressions, including constants on both sides of forward references,
+current-address expressions, negative literals and signed endpoints. Its first
+draft used reserved label `end`; both M3 and M4 rejected it. The corrected fixture
+uses `fold_target`, retaining the existing package-name reservation boundary.
+
+Separate instrumented expression-layout32 comparison (M3 → M4):
+
+| Target | Packed records | Peak owned allocation | Preparation | Assembly |
+|---|---:|---:|---:|---:|
+| m6502 | 8,107 → 6,571 B | 53,248 → 53,248 B | 1.60 → 1.64 s | 0.44 → 0.38 s |
+| m68000 | 8,811 → 7,275 B | 278,528 → 270,336 B | 2.58 → 2.58 s | 2.00 → 1.96 s |
+
+Expression payloads shrink from 4,842 to 3,306 bytes on both targets (31.7%).
+Counts remain 225 compiled and 514/578 assembly evaluations. Both runs clean up
+all owned allocations. Records now occupy slightly less space than these source
+files, but runtime/package tables and allocation capacity remain separate costs.
+The 68000 retained allocation falls by 8 KiB; 6502 capacity stays unchanged despite
+the smaller payload. Phase clocks have 20 ms resolution and accounting overhead;
+their small gains do not override the separate release-time observations.
+One 6502 accounting invocation hit the unchanged 60-second host deadline without
+a receipt; a bounded retry completed. The timeout supplies no timing or native
+failure result.
+
+**Decision:** stop at this measured checkpoint. Folding demonstrably reduces
+stored work and helps assembly-phase cost, but this post-compilation scan/copy
+does not establish an end-to-end speedup. Before another implementation step,
+discuss folding while compiling versus a more compact runtime literal encoding;
+neither change is automatically activated by this result. No production CLI
+migration or broader language coverage is included.
+
+Qualification: the native folding fixture and positive boundary fixture pass;
+additive, multiplicative and unary-negation intermediate overflow are rejected;
+the original program-size, stack and nesting rejection cases pass. These eight
+focused cases include fresh completion and balanced allocation cleanup. Package
+preparation, unchanged workload byte-contract tests, Rust formatting/library Clippy,
+workflow boundaries, the staged native engineering gate and explicit formatting
+of all 21 experimental harness modules pass. The shared evaluator was unchanged;
+its broader M3 qualification is not claimed as a fresh M4 run. No general language
+parity, physical-hardware timing or full self-host qualification is claimed.

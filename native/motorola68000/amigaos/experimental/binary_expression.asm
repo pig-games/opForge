@@ -3,6 +3,7 @@
 	.module opasm.amigaos.binary_expression
 	.cpu 68020
 	.use exprvm.amigaos.runtime as runtime
+	.use opasm.amigaos.binary_fold as folder
 	.include "telemetry_macros.i"
 	.include "memory_telemetry.i"
 	.pub
@@ -48,6 +49,15 @@ compile	.block
 	subq.l #1, d1
 	cmpi.l #255, d1
 	bhi.w output
+	move.l a0, -(sp)
+	lea 1(a5), a0
+	move.l d1, d0
+	jsr folder.fold
+	movea.l (sp)+, a0
+	tst.l d0
+	bne.w malformed
+	lea 1(a5), a3
+	adda.l d1, a3
 	move.b d1, (a5)
 	.MEMORY_WORK #0, #1
 	.MEMORY_WORK #2, d1

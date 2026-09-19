@@ -62,11 +62,11 @@ the current framework, not a mandate for a repository-wide instrumentation rewri
 `OPFORGE_MEMORY_TELEMETRY` are required; missing either gate emits no calls, imports
 or storage. These macros and the dedicated `debug.amigaos.memory_profile` owner
 preserve registers/CCR, never use request/output/error buffers, and keep a bounded
-192-byte record. The terminal export writes that record separately as `Work:memory.bin`;
+1756-byte record. The terminal export writes that record separately as `Work:memory.bin`;
 a missing/partial record fails the host accounting check. Ordinary release builds
 perform no accounting I/O.
 
-The current MEM4 record starts with sixteen big-endian u32 fields: magic, live capacity, peak live
+The current MEM5 record starts with sixteen big-endian u32 fields: magic, live capacity, peak live
 capacity, cumulative allocated, cumulative freed, live after preparation, cumulative
 freed before assembly, entry free memory, entry largest free block, Exec version,
 live after assembly, live after cleanup, DOS version, retained runtime-prefix bytes,
@@ -75,7 +75,7 @@ compiled expressions, evaluation calls and compiled program bytes; nine fields
 store three DOS DateStamps (days/minutes/50-Hz ticks), taken before preparation,
 after preparation and after assembly. These clocks include instrumentation cost
 and have 20 ms resolution; use separate release runs for performance claims.
-MEM4 appends the E-clock frequency and error flags (u32 each), six exclusive
+The stage portion appends the E-clock frequency and error flags (u32 each), six exclusive
 elapsed totals (u64, high word first), then six stage-entry counts (u32). Stages
 are other preparation, package setup, tokenization, binding/raw records, expression
 preparation, and runtime finalization. `MEMORY_STAGE` changes the active stage;
@@ -90,6 +90,21 @@ stage, 4 changed frequency, 8 arithmetic overflow, and 16 incomplete preparation
 at terminal save. Positive runs require zero flags; rejection checks permit only
 16. Stage totals include probe overhead, with no calibration subtraction; compare
 coarse phases against the preceding accounting baseline before interpreting rank.
+
+MEM5 adds 19 opcode counters at byte 192, 361 ordered adjacent-opcode pairs at
+268, and seven work counters at 1712: line bytes, committed tokens, committed
+lexeme bytes, source-byte reads, and taken EOL/byte/class branches. Two u64
+E-clock totals at 1740 measure scanner/emission helpers and nested token commits.
+`TOKEN_BEGIN` resets adjacency per invocation; `TOKEN_OPCODE` and `TOKEN_WORK`
+count work; `TOKEN_SCOPE_BEGIN/END` bracket the two nested scopes, while
+`TOKEN_SCOPE_CLOSE` closes an active scope on a shared success/failure return.
+All share the existing two gates and passive ABI. Error bit 32 reports scope
+imbalance. Invalid opcodes break adjacency without indexing outside the record.
+Nested scope times must not be added to stage totals. Source reads include the
+newline prescan and rereads; committed payload excludes failed staging attempts.
+The hot probes add substantial overhead: use counts to identify repeated work and
+separate release runs to judge performance. Previous telemetry schemas have no
+compatibility decoder.
 
 The compiler/evaluator counters describe actual calls, not a semantic redundancy
 proof. The previous telemetry record is superseded, with no compatibility decoder.

@@ -305,6 +305,7 @@ M3. Review preparation cost before widening coverage.
 | M5 — Compact runtime expressions | Measured; ready for review | Expression bytes shrink another 54.4%, packed records 25–27%; release totals broadly unchanged, linked code +428 B | M4; unchanged semantic coverage |
 | M6 — Preparation-cost attribution | Measured | Tokenization/binding dominate (~72–74%); expression preparation ~8–11%; release image unchanged | Indexed binding proposed next; not started |
 | M7 — Indexed name binding | Measured | Release totals −11% / −19%; temporary capacity +32 KiB, retained memory unchanged | M6; same 2 MiB guest and semantic limits |
+| M8 — Tokenizer attribution | Measured | 83–84% of conditional branches untaken; deferred target decoding gives modest 1–3% elapsed reduction, image −8 B | M7; VM counts/semantics and owned allocation unchanged |
 
 ## W1 agreement: focused package-VM baseline
 

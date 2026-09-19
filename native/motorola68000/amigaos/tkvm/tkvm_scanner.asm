@@ -2,6 +2,7 @@
 
 	.module tkvm.amigaos.scanner
 	.cpu 68020
+	.include "memory_telemetry.i"
 	.pub
 	.use tkvm.amigaos.demo_program
 	.use tkvm.amigaos.char_predicates
@@ -88,6 +89,7 @@ LOCAL_TEMP_U32                  = 20
 ; Clobbers: A0-A1/CCR.
 ; CCR: reflects D0 on return.
 commitPendingToken	.block
+	.TOKEN_SCOPE_BEGIN #1
 	cmp.l d5, d1  ; token_count < token_capacity
 	bcc pendingTokenOverflow
 	move.l d3, d0  ; scratch_used + pending_len must stay within scratch_capacity
@@ -118,7 +120,10 @@ commitPendingToken	.block
 	move.l LOCAL_PENDING_LEX_LEN(a2), 16(a1)  ; field 16: lexeme length in bytes
 	addq.l #1, d1
 	add.l LOCAL_PENDING_LEX_LEN(a2), d3
+	.TOKEN_WORK #1, #1
+	.TOKEN_WORK #2, LOCAL_PENDING_LEX_LEN(a2)
 	moveq #TK_STATUS_SUCCESS, d0
+	.TOKEN_SCOPE_END #1
 	rts
 
 ; Overflow exits report the start column of the token that could not be fully
@@ -127,11 +132,13 @@ commitPendingToken	.block
 pendingTokenOverflow
 	move.l LOCAL_PENDING_START(a2), d2
 	moveq #TK_STATUS_TOKEN_OVERFLOW, d0
+	.TOKEN_SCOPE_END #1
 	rts
 
 pendingLexemeOverflow
 	move.l LOCAL_PENDING_START(a2), d2
 	moveq #TK_STATUS_LEXEME_OVERFLOW, d0
+	.TOKEN_SCOPE_END #1
 	rts
 	.bend  ; commitPendingToken
 
@@ -167,6 +174,7 @@ loop
 	cmp.l d4, d2
 	bcc done
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0
 	jsr char_predicates.tkvmIsIdentifierContinue  ; mirrors vm_matches_identifier_continue_class()
 	beq done
@@ -175,6 +183,7 @@ loop
 	cmp.l d6, d0
 	bcc pendingLexemeOverflow
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0
 	cmpi.b #'A', d0
 	blo copyIdentifierByte
@@ -192,6 +201,7 @@ done
 	; identifier/register lexeme for Z80 alternate-register spellings like AF'.
 	cmp.l d4, d2
 	bcc commit
+	.TOKEN_WORK #3, #1
 	cmpi.b #39, 0(a4, d2.l)
 	bne commit
 	move.l d3, d0
@@ -239,6 +249,7 @@ loop
 	cmp.l d4, d2
 	bcc done
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0
 	cmpi.b #'%', d0
 	bne checkBody
@@ -252,6 +263,7 @@ acceptByte
 	add.l LOCAL_PENDING_LEX_LEN(a2), d0
 	cmp.l d6, d0
 	bcc pendingLexemeOverflow
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), (a0)+
 	addq.l #1, d2
 	addq.l #1, LOCAL_PENDING_LEX_LEN(a2)
@@ -284,6 +296,7 @@ scanStringToken	.block
 	move.l d2, LOCAL_PENDING_START(a2)
 	clr.l LOCAL_PENDING_LEX_LEN(a2)
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0  ; remember whether the string opened with ' or " so we can require the same closer
 	move.l d0, LOCAL_CURRENT_BYTE(a2)
 	addq.l #1, d2
@@ -297,6 +310,7 @@ loop
 	cmp.l d4, d2
 	bcc malformedString
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0
 	cmp.l LOCAL_CURRENT_BYTE(a2), d0
 	beq close
@@ -306,6 +320,7 @@ loop
 	cmp.l d4, d2
 	bcc malformedString
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0
 	cmpi.b #'n', d0
 	beq newLine
@@ -338,6 +353,7 @@ hex
 	cmp.l d4, d2
 	bcc malformedString
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0
 	jsr char_predicates.tkvmHexDigitValue
 	bmi malformedString
@@ -346,6 +362,7 @@ hex
 	cmp.l d4, d2
 	bcc malformedString
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0
 	jsr char_predicates.tkvmHexDigitValue
 	bmi malformedString
@@ -419,6 +436,7 @@ scanSymbolToken	.block
 	; same precedence as in the Rust helper.
 	move.l d2, LOCAL_PENDING_START(a2)
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0
 	cmpi.b #';', d0
 	beq commentToEol
@@ -488,11 +506,13 @@ dotLike
 	addq.l #1, d2
 	cmp.l d4, d2
 	bcc stageDot
+	.TOKEN_WORK #3, #1
 	cmpi.b #'.', 0(a4, d2.l)
 	bne stageDot
 	addq.l #1, d2
 	cmp.l d4, d2
 	bcc stageRange
+	.TOKEN_WORK #3, #1
 	cmpi.b #'=', 0(a4, d2.l)
 	bne stageRange
 	addq.l #1, d2
@@ -522,6 +542,7 @@ dollarOrPrefixedNumber
 	cmp.l d4, d2
 	bcc stageDollar
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0
 	jsr char_predicates.tkvmIsHexDigitOrUnderscore  ; '$' starts either a hex literal or a standalone dollar token
 	beq stageDollar
@@ -541,6 +562,7 @@ percentOrPrefixedNumber
 	cmp.l d4, d2
 	bcc stagePercent
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0
 	cmpi.b #'0', d0
 	beq percentAsNumber
@@ -653,6 +675,7 @@ scanStarLike
 	addq.l #1, d2
 	cmp.l d4, d2
 	bcc stageMultiply
+	.TOKEN_WORK #3, #1
 	cmpi.b #'*', 0(a4, d2.l)
 	beq stagePower
 
@@ -689,6 +712,7 @@ equalLike
 	addq.l #1, d2
 	cmp.l d4, d2
 	bcc stageEq
+	.TOKEN_WORK #3, #1
 	cmpi.b #'=', 0(a4, d2.l)
 	bne stageEq
 	addq.l #1, d2
@@ -706,6 +730,7 @@ bangLike
 	addq.l #1, d2
 	cmp.l d4, d2
 	bcc stageLogicNot
+	.TOKEN_WORK #3, #1
 	cmpi.b #'=', 0(a4, d2.l)
 	bne stageLogicNot
 	addq.l #1, d2
@@ -727,6 +752,7 @@ andLike
 	addq.l #1, d2
 	cmp.l d4, d2
 	bcc stageBitAnd
+	.TOKEN_WORK #3, #1
 	cmpi.b #'&', 0(a4, d2.l)
 	bne stageBitAnd
 	addq.l #1, d2
@@ -746,6 +772,7 @@ orLike
 	addq.l #1, d2
 	cmp.l d4, d2
 	bcc bitOr
+	.TOKEN_WORK #3, #1
 	cmpi.b #'|', 0(a4, d2.l)
 	bne bitOr
 	addq.l #1, d2
@@ -766,6 +793,7 @@ caretLike
 	addq.l #1, d2
 	cmp.l d4, d2
 	bcc stageBitXor
+	.TOKEN_WORK #3, #1
 	cmpi.b #'^', 0(a4, d2.l)
 	bne stageBitXor
 	addq.l #1, d2
@@ -785,10 +813,13 @@ lessLike
 	addq.l #1, d2
 	cmp.l d4, d2
 	bcc stageLt
+	.TOKEN_WORK #3, #1
 	cmpi.b #'<', 0(a4, d2.l)
 	beq stageShl
+	.TOKEN_WORK #3, #1
 	cmpi.b #'=', 0(a4, d2.l)
 	beq stageLe
+	.TOKEN_WORK #3, #1
 	cmpi.b #'>', 0(a4, d2.l)
 	beq stageAltNe
 	bra stageLt
@@ -827,8 +858,10 @@ greaterLike
 	addq.l #1, d2
 	cmp.l d4, d2
 	bcc stageGt
+	.TOKEN_WORK #3, #1
 	cmpi.b #'>', 0(a4, d2.l)
 	beq stageShr
+	.TOKEN_WORK #3, #1
 	cmpi.b #'=', 0(a4, d2.l)
 	beq stageGe
 	bra stageGt
@@ -927,6 +960,7 @@ tkvmPercentHasPrefixContext	.block
 	move.l d0, LOCAL_TEMP_U32(a2)
 	lea 0(a4, d0.l), a1
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b (a1), d0
 	cmpi.b #' ', d0
 	beq markLeadingSpace
@@ -944,6 +978,7 @@ loop
 	move.l d0, LOCAL_TEMP_U32(a2)
 	lea 0(a4, d0.l), a1
 	moveq #0, d0
+	.TOKEN_WORK #3, #1
 	move.b (a1), d0
 
 checkPrevNonSpaceByte

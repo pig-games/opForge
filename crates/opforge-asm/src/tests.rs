@@ -1,3 +1,6 @@
+#[path = "tests/native_tokenizer_branches.rs"]
+mod native_tokenizer_branches;
+
 #[path = "tests/native_shared_directive_boundary.rs"]
 mod native_shared_directive_boundary;
 
@@ -2833,7 +2836,13 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
 fn example_include_paths(asm_path: &Path) -> Vec<PathBuf> {
     if matches!(
         asm_path.file_stem().and_then(|stem| stem.to_str()),
-        Some("debug_contract_harness" | "opasm_progress_harness" | "main")
+        Some(
+            "debug_contract_harness"
+                | "opasm_progress_harness"
+                | "main"
+                | "tokvm_interpreter"
+                | "tkpkg_entry"
+        )
     ) {
         return vec![workspace_root()
             .join("native")
@@ -2847,7 +2856,11 @@ fn example_include_paths(asm_path: &Path) -> Vec<PathBuf> {
             .join("native")
             .join("motorola68000")
             .join("amigaos");
-        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("tkvm")];
+        return vec![
+            amigaos_dir.join("tkpkg"),
+            amigaos_dir.join("tkvm"),
+            amigaos_dir.join("debug"),
+        ];
     }
 
     Vec::new()
@@ -22150,6 +22163,14 @@ fn tokvm_amigaos_source(file_name: &str) -> String {
         ))
     };
     let source = fs::read_to_string(&asm_path).expect("read tokvm AmigaOS source");
+    // These structural assertions describe execution without optional probes.
+    // Macro byte transparency and passive register/CCR behavior have their own
+    // executable tests; retain every production instruction and bounds check.
+    let source = source
+        .lines()
+        .filter(|line| !line.trim_start().starts_with(".TOKEN_"))
+        .collect::<Vec<_>>()
+        .join("\n");
     format_tokvm_amigaos_fragment(&source)
 }
 

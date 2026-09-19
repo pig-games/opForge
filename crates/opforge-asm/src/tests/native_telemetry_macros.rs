@@ -109,6 +109,24 @@ clock .block
 stage .block
     rts
 .bend
+tokenBegin .block
+    rts
+.bend
+tokenOpcode .block
+    rts
+.bend
+tokenWork .block
+    rts
+.bend
+tokenScopeBegin .block
+    rts
+.bend
+tokenScopeEnd .block
+    rts
+.bend
+tokenScopeClose .block
+    rts
+.bend
 .endsection
 .endmodule
 "#
@@ -125,6 +143,12 @@ stage .block
     .MEMORY_WORK #1, d0
     .MEMORY_CLOCK a1, #2
     .MEMORY_STAGE #2
+    .TOKEN_BEGIN d0
+    .TOKEN_OPCODE d1
+    .TOKEN_WORK #3, d2
+    .TOKEN_SCOPE_BEGIN #0
+    .TOKEN_SCOPE_END #0
+    .TOKEN_SCOPE_CLOSE #0
 "#
     } else {
         ""

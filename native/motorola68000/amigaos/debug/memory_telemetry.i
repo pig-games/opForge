@@ -110,3 +110,83 @@ MEMORY_STAGE	.macro index
 .endif
 .endif
 .endmacro
+
+TOKEN_BEGIN	.macro amount
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .amount, d0
+	jsr memory_profile.tokenBegin
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+
+TOKEN_OPCODE	.macro opcode
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .opcode, d0
+	jsr memory_profile.tokenOpcode
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+
+TOKEN_SCOPE_BEGIN	.macro index
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .index, d0
+	jsr memory_profile.tokenScopeBegin
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+
+TOKEN_SCOPE_END	.macro index
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .index, d0
+	jsr memory_profile.tokenScopeEnd
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+
+TOKEN_WORK	.macro index, amount
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	movem.l d0-d1, -(sp)
+	move.l .amount, d1
+	move.l .index, d0
+	jsr memory_profile.tokenWork
+	movem.l (sp)+, d0-d1
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+
+; Close a scope if active, for shared success/failure return boundaries.
+TOKEN_SCOPE_CLOSE	.macro index
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .index, d0
+	jsr memory_profile.tokenScopeClose
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro

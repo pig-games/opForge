@@ -4,6 +4,7 @@
 
 	.module tkvm.amigaos.runtime
 	.cpu 68020
+	.include "memory_telemetry.i"
 	.pub
 	.use tkvm.amigaos.state
 	.use tkvm.amigaos.char_predicates
@@ -160,6 +161,7 @@ LOCAL_SIZE                      = 36
 ; - Reflects D0 on return.
 ; ---------------------------------------------------------------------------
 tkvmRun68000	.block
+	.TOKEN_BEGIN d0
 	movem.l d4-d7/a4-a6, -(sp)
 .ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	movem.l d0-d1, -(sp)
@@ -225,8 +227,10 @@ checkProgramPointer
 newlineScanLoop
 	cmp.l d4, d0
 	bcc newlineScanDone
+	.TOKEN_WORK #3, #1
 	cmpi.b #10, 0(a4, d0.l)
 	beq newlineUnsupported
+	.TOKEN_WORK #3, #1
 	cmpi.b #13, 0(a4, d0.l)
 	beq newlineUnsupported
 	addq.l #1, d0
@@ -282,6 +286,7 @@ dispatchOpcode
 	movem.l (sp)+, d0-d1
 .endif
 
+	.TOKEN_OPCODE d0
 	; The native slice only implements opcode values 0..18.
 	; Unsupported shared VM slots still get explicit table entries so the
 	; opcode-to-handler mapping stays visible and future additions stay local.
@@ -326,6 +331,7 @@ opcodeReadChar
 	moveq #0, d0
 	cmp.l d4, d2
 	bcc storeEofByte
+	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0
 	bra storeCurrentByte
 storeEofByte
@@ -373,8 +379,10 @@ opcodeEmitToken
 	move.b (a0)+, d0
 	move.w d0, LOCAL_PENDING_KIND(a2)
 	move.l a0, LOCAL_OPCODE_CURSOR(a2)
+	.TOKEN_SCOPE_BEGIN #0
 	jsr scanner.commitPendingToken
 	bne return
+	.TOKEN_SCOPE_END #0
 	movea.l LOCAL_OPCODE_CURSOR(a2), a0
 	bra programLoop
 
@@ -446,19 +454,22 @@ opcodeJump
 	lea 0(a3, d0.l), a0
 	bra programLoop
 
+; Validate operands eagerly; decode targets only on a taken branch. A0 always
+; advances past the complete operand, preserving VM steps and failure ordering.
 opcodeJumpIfEol
 	move.l a0, d0
 	sub.l a3, d0
 	addq.l #4, d0
 	cmp.l d7, d0
 	bhi invalidProgramAtCursor
-	move.l (a0), d0
-	ror.w #8, d0
-	swap d0
-	ror.w #8, d0
 	adda.l #4, a0
 	cmp.l d4, d2
 	bne programLoop
+	.TOKEN_WORK #4, #1
+	move.l -4(a0), d0
+	ror.w #8, d0
+	swap d0
+	ror.w #8, d0
 	cmp.l d7, d0
 	bhi invalidProgramAtCursor
 	lea 0(a3, d0.l), a0
@@ -473,17 +484,16 @@ opcodeJumpIfByteEq
 	moveq #0, d0
 	move.b (a0)+, d0  ; operand 0 = byte literal to compare against LOCAL_CURRENT_BYTE
 	move.w d0, LOCAL_PENDING_KIND(a2)
-	move.l (a0), d0
-	ror.w #8, d0
-	swap d0
-	ror.w #8, d0
 	adda.l #4, a0
-	move.l d0, LOCAL_TEMP_U32(a2)
 	move.l LOCAL_CURRENT_BYTE(a2), d0  ; no jump fires at EOF, matching Rust's Option<u8>-based predicate path
 	bmi programLoop
 	cmp.w LOCAL_PENDING_KIND(a2), d0
 	bne programLoop
-	move.l LOCAL_TEMP_U32(a2), d0
+	.TOKEN_WORK #5, #1
+	move.l -4(a0), d0
+	ror.w #8, d0
+	swap d0
+	ror.w #8, d0
 	cmp.l d7, d0
 	bhi invalidProgramAtCursor
 	lea 0(a3, d0.l), a0
@@ -498,12 +508,7 @@ opcodeJumpIfClass
 	moveq #0, d0
 	move.b (a0)+, d0  ; operand 0 = compact character-class id from builder.rs default demo loop
 	move.w d0, LOCAL_PENDING_KIND(a2)
-	move.l (a0), d0
-	ror.w #8, d0
-	swap d0
-	ror.w #8, d0
 	adda.l #4, a0
-	move.l d0, LOCAL_TEMP_U32(a2)
 	move.l LOCAL_CURRENT_BYTE(a2), d0  ; EOF never matches a class, same as vm_char_class_matches(None, ...)
 	bmi programLoop
 	moveq #0, d0
@@ -561,7 +566,11 @@ classQuote
 	beq programLoop
 
 applyClassJump
-	move.l LOCAL_TEMP_U32(a2), d0
+	.TOKEN_WORK #6, #1
+	move.l -4(a0), d0
+	ror.w #8, d0
+	swap d0
+	ror.w #8, d0
 	cmp.l d7, d0
 	bhi invalidProgramAtCursor
 	lea 0(a3, d0.l), a0
@@ -573,29 +582,37 @@ applyClassJump
 ; saves and restores the native program counter around each call.
 opcodeScanIdentifier
 	move.l a0, LOCAL_OPCODE_CURSOR(a2)
+	.TOKEN_SCOPE_BEGIN #0
 	jsr scanner.scanIdentifierToken
 	bne return
+	.TOKEN_SCOPE_END #0
 	movea.l LOCAL_OPCODE_CURSOR(a2), a0
 	bra programLoop
 
 opcodeScanNumber
 	move.l a0, LOCAL_OPCODE_CURSOR(a2)
+	.TOKEN_SCOPE_BEGIN #0
 	jsr scanner.scanNumberToken
 	bne return
+	.TOKEN_SCOPE_END #0
 	movea.l LOCAL_OPCODE_CURSOR(a2), a0
 	bra programLoop
 
 opcodeScanString
 	move.l a0, LOCAL_OPCODE_CURSOR(a2)
+	.TOKEN_SCOPE_BEGIN #0
 	jsr scanner.scanStringToken
 	bne return
+	.TOKEN_SCOPE_END #0
 	movea.l LOCAL_OPCODE_CURSOR(a2), a0
 	bra programLoop
 
 opcodeScanSymbol
 	move.l a0, LOCAL_OPCODE_CURSOR(a2)
+	.TOKEN_SCOPE_BEGIN #0
 	jsr scanner.scanSymbolToken
 	bne return
+	.TOKEN_SCOPE_END #0
 	movea.l LOCAL_OPCODE_CURSOR(a2), a0
 	bra programLoop
 
@@ -625,6 +642,7 @@ invalidProgramAtCursor
 	moveq #TK_STATUS_INVALID_PROGRAM, d0
 
 return
+	.TOKEN_SCOPE_CLOSE #0
 .ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	jsr runtime_profile.opforgeRuntimeProfileLeaveVmV1
 .endif

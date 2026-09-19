@@ -1,8 +1,8 @@
 # String-free assembly replay experiment
 
-Status: M7 measured: indexed binding reduces bounded native totals by 11–19%,
-with temporary allocation growth. M6 `50b02bc2` is the comparison baseline.
-Coverage, packed representation and the normal native CLI remain unchanged.
+Status: M8 measured: gated tokenizer attribution and deferred conditional target
+decoding. Two bounded release comparisons show a modest 1–3% elapsed reduction.
+Baseline is M7 `5459d117`; coverage and packed representation are unchanged.
 M1/M2 completed mixed8 and mixed32 on both targets in a 68020 / 2 MiB guest;
 see the [compact runtime result](#m2-result-2026-09-19). The normal native CLI remains the reference.
 The active
@@ -1497,3 +1497,131 @@ run with memory accounting enabled to include success/rejection cleanup checks.
 The next performance candidate is tokenization, now about half of preparation.
 Attribute its dispatch/scanning work before choosing a VM-level or native change;
 this checkpoint does not activate that work.
+
+## M8: tokenizer attribution and one bounded optimization
+
+Measured; baseline M7 `5459d117`. First count tokenizer opcodes, adjacent opcode
+pairs (reset per invocation), taken conditional branches, source-byte reads,
+committed tokens and lexeme bytes. Time scanner/emission helpers and nested token
+record construction separately from the enclosing tokenizer stage. Reuse gated,
+passive telemetry; disabled builds must remain byte-identical before optimization.
+Source reads include newline prescan and repeated reads; committed lexeme bytes
+are successful staged payload, not all writes on rejected input. Pair counts
+identify repeated execution, not semantic redundancy by themselves.
+
+Measure expression-layout32 on both targets, same 68020/2 MiB and 10/60/150-second
+limits. Use release runs for gains; per-opcode instrumentation has substantial
+observer cost. If dispatch/branch work dominates, evaluate deferring conditional
+jump-target decoding until the branch is taken, preserving operand truncation,
+step budgets, diagnostics and taken-target validation. This is a candidate until
+measurements justify it. Otherwise discuss a revised direction. No tokenizer-to-
+packed interface change, package version change or CPU-specific fast path.
+
+Require focused native branch-boundary proof and unchanged exact assembly output,
+then compare baseline/changed release totals and instrumented work on identical
+inputs. Keep only one coherent optimization if evidence supports it; report size,
+memory and measurement limitations. No full self-host or unbounded profiling.
+
+### M8 attribution and selected change
+
+The pre-optimization probe build is byte-identical to M7 with both telemetry gates
+disabled: 20,996 bytes, `fnv1a64:c8d5ed17419647a2`. MEM5 measurements on the
+unchanged expression-layout32 workload (323 lines) report:
+
+| Work | m6502 | m68000 |
+|---|---:|---:|
+| Source bytes excluding LF | 6,418 | 7,155 |
+| Tokenizer VM instructions | 28,778 | 31,306 |
+| Committed tokens | 2,376 | 2,696 |
+| Committed lexeme bytes | 4,848 | 5,585 |
+| Source-byte reads including prescan/rereads | 26,388 | 29,560 |
+| Conditional branches | 16,294 | 17,862 |
+| Taken conditional branches | 2,700 | 2,860 |
+
+The most repeated adjacent pairs are ReadChar → JumpIfEol (4,269 / 4,589),
+Jump → ReadChar and JumpIfEol → JumpIfClass (each 3,946 / 4,266), and
+JumpIfClass → JumpIfClass (3,426 / 3,746). Adjacency resets on every VM call;
+these counts do not imply interchangeable source/state or redundant instructions.
+
+The VM runs about 12.1 / 11.6 instructions per committed token, including whitespace
+handling. About 83.4% / 84.0% of conditional branches are untaken. Every source
+byte is first read twice by the CR/LF prescan; further reads occur in ReadChar,
+scanner classification/lookahead and copying. Committed token records occupy
+47,520 / 53,920 bytes of cumulative writes (20 bytes each), in reused line scratch;
+these are writes performed, not simultaneously retained memory.
+
+Nested instrumented scanner/emission scopes take 1.261 / 1.433 s, including
+0.398 / 0.454 s of token-record commit; enclosing tokenization takes 3.440 / 3.851 s.
+M7's lighter stage probes observed about 0.878 / 0.970 s for tokenization. The
+per-instruction/per-read/nested-timer probes substantially perturb those timings,
+so their proportions are **not** a release-cost decomposition. No calibration is
+subtracted. The untaken-branch counts justify the small experiment independently
+of a claim that dispatch dominates uninstrumented runtime.
+
+Chosen change: validate the full operand before evaluating the condition as before,
+but load/endian-convert its four-byte target only after the condition succeeds.
+Untaken branches still advance past the entire operand; only taken targets receive
+target bounds validation, matching the existing generic Rust VM behavior. This
+removes 13,594 / 15,002 unnecessary target decodes on these inputs, without removing
+logical VM steps, changing bytecode, caching source-dependent state or changing
+package semantics. Token scanner/record algorithms are unchanged.
+
+### M8 result — 2026-09-19
+
+Two bounded release comparison rounds, on identical expression-layout32 source,
+output hashes, guest configuration and 20 ms polling. Times are START-to-DONE:
+
+| Target | Baseline runs | Optimized runs | Mean elapsed reduction |
+|---|---:|---:|---:|
+| m6502 | 1.989 / 1.997 s | 1.924 / 1.959 s | 2.6% |
+| m68000 | 3.888 / 3.880 s | 3.797 / 3.829 s | 1.8% |
+
+Both rounds improve, but the per-round reductions span roughly 1–3%, close enough
+to polling/run variation that this is a modest observed gain, not a precise speed
+guarantee or physical-hardware result. The release image also shrinks eight bytes
+(20,996 → 20,988), with linked reservation 24,028 → 24,020 bytes;
+`fnv1a64:5c23a01ee3b1adaa`. No retained or peak owned allocation changes.
+
+Before/after MEM5 measurements have identical opcode histograms, all 361 pair
+counts, taken-branch counts, token counts, source reads and committed lexeme bytes.
+Thus this change reduces native work per VM branch, not the number of VM steps or
+source operations. Exact output, packed bytes (4,773 / 5,477), expression payload
+(1,508 bytes), and peak owned allocation (86,016 / 270,336 bytes) are unchanged.
+Instrumented tokenizer times are 3.440 → 3.397 / 3.851 → 3.774 s, reported only as
+probe-bearing observations; release comparisons above supply the performance claim.
+
+Retain the compact conditional-decoding change and reusable measurement capability.
+The data does not yet justify rewriting the tokenizer-to-packed interface. A
+future VM-level experiment should examine the repeated ReadChar/classification
+loop and source prescan, with semantic/error precedence tests; no such work is
+activated by this result.
+
+Reproduce release comparison using the existing FS-UAE environment:
+
+```sh
+python3 scripts/performance/prepared_source_native.py \
+  --native-test target/debug/deps/asm-5d01a576d9a2b0d5 \
+  --binary-source --binary-only --memory-profile 2m \
+  --workload expression-layout --blocks 32 \
+  --output /tmp/opforge-m8-release
+```
+
+For baseline release runs, extract `git archive 5459d117 native` into a temporary
+root and add `--native-source-root <root>`; the current host runner can execute
+that release baseline. For current work-count attribution, add `--compare-memory`
+and use a fresh output directory. Old MEM4 accounting requires its matching old
+host reader; no compatibility decoder is retained. Before/after counters are equal,
+so current MEM5 reproduces the opcode/pair/read attribution above. Keep unchanged
+10 s post-START, 60 s invocation and 150 s batch limits. No full self-host run.
+
+Qualification: 47 actual-native VM branch cases match the live generic Rust oracle
+in one batch (taken/untaken invalid targets, operand truncation, EOF, unknown class
+and exact step-budget boundary). Both instrumented expression-overflow rejection
+and tokenizer-internal unterminated-string rejection pass with clean scopes and
+balanced owned allocations. All eight release workload runs and four instrumented
+workload runs have fresh completion, zero exit and exact output. Fourteen tokenizer
+host contracts, the live branch oracle, two telemetry macro tests, library Clippy,
+Rust/native formatting, workflow checks and staged native engineering guards pass.
+The shared native tokenizer implementation changes; the normal CLI was not separately
+qualified end to end, and no whole-language/self-host claim is made. The new probes
+are intentionally expensive when enabled; keep profiling runs small and bounded.

@@ -550,6 +550,7 @@ enum NativeCliParityExecutable {
     TkpkgDebugCliOperandRecord,
     TkpkgCpexHarness,
     ExprvmI64Harness,
+    TkvmBranchHarness,
     ExpressionI64Harness,
     CompactMemoHarness,
     BinarySourceHarness,
@@ -1253,6 +1254,20 @@ pub(crate) fn run_exprvm_i64_harness_from_env(
         rust_oracle,
         "Work/build/exprvm-i64-values.bin",
         NativeCliParityExecutable::ExprvmI64Harness,
+    )
+}
+
+pub(crate) fn run_tkvm_branch_harness_from_env(
+    workspace_root: &Path,
+    case_bytes: &[u8],
+    rust_oracle: &[u8],
+) -> Result<FsUaeSmokeOutcome, String> {
+    run_exact_harness_from_env(
+        workspace_root,
+        case_bytes,
+        rust_oracle,
+        "Work/build/tkvm-branch-values.bin",
+        NativeCliParityExecutable::TkvmBranchHarness,
     )
 }
 
@@ -2194,6 +2209,7 @@ fn opforge_native_cli_case_identity(
             }
             NativeCliParityExecutable::TkpkgCpexHarness => b"tkpkg-cpex-harness",
             NativeCliParityExecutable::ExprvmI64Harness => b"exprvm-i64-harness",
+            NativeCliParityExecutable::TkvmBranchHarness => b"tkvm-branch-harness",
             NativeCliParityExecutable::ExpressionI64Harness => b"expression-i64-harness",
             NativeCliParityExecutable::CompactMemoHarness => b"compact-memo-harness",
             NativeCliParityExecutable::BinarySourceHarness => b"binary-source-harness",
@@ -2612,6 +2628,7 @@ fn run_native_cli_parity_batch_cases(
         }
         NativeCliParityExecutable::TkpkgCpexHarness => "tkpkg_cpex_harness",
         NativeCliParityExecutable::ExprvmI64Harness => "exprvm_i64_harness",
+        NativeCliParityExecutable::TkvmBranchHarness => "tkvm_branch_harness",
         NativeCliParityExecutable::ExpressionI64Harness => "tkpkg_expression_i64_harness",
         NativeCliParityExecutable::CompactMemoHarness => "tkpkg_compact_memo_harness",
         NativeCliParityExecutable::BinarySourceHarness => "binary_source_harness",
@@ -2623,6 +2640,9 @@ fn run_native_cli_parity_batch_cases(
         }
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord => FS_UAE_TKPKG_DEBUG_CLI_SOURCE_PATH,
         NativeCliParityExecutable::TkpkgCpexHarness => FS_UAE_TKPKG_CPEX_HARNESS_SOURCE_PATH,
+        NativeCliParityExecutable::TkvmBranchHarness => {
+            "native/motorola68000/amigaos/test-harnesses/tkvm/tkvm_branch_harness.asm"
+        }
         NativeCliParityExecutable::ExprvmI64Harness => {
             "native/motorola68000/amigaos/test-harnesses/exprvm/exprvm_i64_harness.asm"
         }
@@ -2722,6 +2742,17 @@ fn run_native_cli_parity_batch_cases(
                         .ok_or("ExprVM scalar harness requires case bytes")?,
                 )?;
             }
+            NativeCliParityExecutable::TkvmBranchHarness => {
+                if cases.len() != 1 {
+                    return Err("tokenizer branch harness requires one batch".into());
+                }
+                stage_guest_input_bytes(
+                    &mounted_work_dir,
+                    "tkvm-branch-cases.bin",
+                    case.source_override
+                        .ok_or("tokenizer branch harness requires case bytes")?,
+                )?;
+            }
             NativeCliParityExecutable::CompactMemoHarness => {
                 if cases.len() != 1 {
                     return Err(
@@ -2761,6 +2792,9 @@ fn run_native_cli_parity_batch_cases(
             }
             NativeCliParityExecutable::TkpkgCpexHarness => {
                 "Work:build/tkpkg_cpex_harness".to_string()
+            }
+            NativeCliParityExecutable::TkvmBranchHarness => {
+                "Work:build/tkvm_branch_harness".to_string()
             }
             NativeCliParityExecutable::ExprvmI64Harness => {
                 "Work:build/exprvm_i64_harness".to_string()
@@ -2847,6 +2881,7 @@ fn run_native_cli_parity_batch_cases(
         ],
         NativeCliParityExecutable::TkpkgCpexHarness
         | NativeCliParityExecutable::ExprvmI64Harness
+        | NativeCliParityExecutable::TkvmBranchHarness
         | NativeCliParityExecutable::ExpressionI64Harness
         | NativeCliParityExecutable::CompactMemoHarness
         | NativeCliParityExecutable::BinarySourceHarness => {
@@ -2859,6 +2894,7 @@ fn run_native_cli_parity_batch_cases(
         NativeCliParityExecutable::OpforgeCli
         | NativeCliParityExecutable::OpforgeSelfHostGenerationOne
         | NativeCliParityExecutable::ExprvmI64Harness
+        | NativeCliParityExecutable::TkvmBranchHarness
         | NativeCliParityExecutable::ExpressionI64Harness
         | NativeCliParityExecutable::CompactMemoHarness
         | NativeCliParityExecutable::BinarySourceHarness => source_path,
@@ -2948,6 +2984,9 @@ fn run_native_cli_parity_batch_cases(
         }
         NativeCliParityExecutable::TkpkgCpexHarness => {
             mounted_work_dir.join("build/tkpkg_cpex_harness")
+        }
+        NativeCliParityExecutable::TkvmBranchHarness => {
+            mounted_work_dir.join("build/tkvm_branch_harness")
         }
         NativeCliParityExecutable::ExprvmI64Harness => {
             mounted_work_dir.join("build/exprvm_i64_harness")
@@ -3569,6 +3608,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
         "tkpkg_debug_cli"
             | "tkpkg_cpex_harness"
             | "exprvm_i64_harness"
+            | "tkvm_branch_harness"
             | "tkpkg_expression_i64_harness"
             | "tkpkg_compact_memo_harness"
             | "binary_source_harness"
@@ -3616,7 +3656,9 @@ fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathB
         || matches!(
             example_name,
             "tkpkg_cpex_harness"
+                | "tokvm_interpreter"
                 | "exprvm_i64_harness"
+                | "tkvm_branch_harness"
                 | "tkpkg_expression_i64_harness"
                 | "tkpkg_compact_memo_harness"
                 | "binary_source_harness"

@@ -128,12 +128,12 @@ fn assert_binary_source(source: String, cpu: String) -> serde_json::Value {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh memory telemetry capture");
-        assert_eq!(record.len(), 192);
+        assert_eq!(record.len(), 1756);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d34);
+        assert_eq!(words[0], 0x4d454d35);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocated and freed capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -188,7 +188,37 @@ fn assert_binary_source(source: String, cpu: String) -> serde_json::Value {
             "E-clock stages reconcile with coarse preparation: {stage_seconds}"
         );
 
+        let opcodes = &words[48..67];
+        let pairs = &words[67..428];
+        let work = &words[428..435];
+        let opcode_total: u64 = opcodes.iter().map(|n| u64::from(*n)).sum();
+        let pair_total: u64 = pairs.iter().map(|n| u64::from(*n)).sum();
+        assert_eq!(opcodes[0], words[44], "each successful line ends once");
+        assert_eq!(pair_total + u64::from(words[44]), opcode_total);
+        assert_eq!(
+            work[0] as usize,
+            source.bytes().filter(|b| *b != b'\n').count()
+        );
+        for (taken, opcode) in [(4, 8), (5, 9), (6, 10)] {
+            assert!(work[taken] <= opcodes[opcode]);
+        }
+        let scope = |index: usize| {
+            let offset = 435 + index * 2;
+            let ticks = (u64::from(words[offset]) << 32) | u64::from(words[offset + 1]);
+            ticks as f64 / f64::from(words[28])
+        };
+        let helpers_seconds = scope(0);
+        let commit_seconds = scope(1);
+        assert!(commit_seconds <= helpers_seconds);
+        assert!(helpers_seconds <= stages["tokenization"]["seconds"].as_f64().unwrap());
         serde_json::json!({
+            "tokenizer": {
+                "opcodes": opcodes, "opcode_pairs": pairs, "opcode_total": opcode_total,
+                "line_bytes": work[0], "tokens": work[1], "lexeme_bytes": work[2],
+                "source_reads": work[3], "taken_eol": work[4], "taken_byte": work[5],
+                "taken_class": work[6], "helpers_seconds": helpers_seconds,
+                "commit_seconds": commit_seconds,
+            },
             "preparation_stages": stages, "stage_total_seconds": stage_seconds,
             "eclock_frequency": words[28], "profiling_errors": words[29],
             "expressions_compiled": words[16], "expressions_evaluated": words[17],
@@ -263,12 +293,12 @@ fn assert_native_rejection(source: &str, cpu: &str) {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh negative-path memory telemetry");
-        assert_eq!(record.len(), 192);
+        assert_eq!(record.len(), 1756);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d34);
+        assert_eq!(words[0], 0x4d454d35);
         assert!(words[28] > 0, "E-clock initialized on rejection path");
         assert_eq!(words[29] & !16, 0, "only incomplete preparation is allowed");
         assert_eq!(words[1], 0, "failure releases all owned blocks");

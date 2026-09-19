@@ -27,6 +27,10 @@ Frequency	.long ?
 Error	.long ?
 Elapsed	.res 6*8
 Entries	.res 6*4
+Opcodes	.res 19*4
+Pairs	.res 19*19*4
+TokenWork	.res 7*4
+TokenElapsed	.res 2*8
 	.endstruct
 	.section data, kind=data
 	.priv
@@ -35,7 +39,7 @@ TimerName	.byte "timer.device", 0
 	.endsection
 	.section bss, kind=bss
 	.align 4
-Record	.res byte, 192
+Record	.res byte, 1756
 Port	.res long, 1
 Request	.res long, 1
 Timer	.res long, 1
@@ -43,6 +47,9 @@ Active	.res long, 1
 Current	.res long, 1
 Previous	.res long, 2
 Stamp	.res long, 2
+PreviousOpcode	.res long, 1
+ScopeActive	.res long, 2
+ScopeStamp	.res long, 4
 	.endsection
 	.section code, kind=code
 	.pub
@@ -80,7 +87,7 @@ phase	.block
 	lea Record, a2
 	tst.l d0
 	bne.w later
-	move.l #$4d454d34, Fields.Magic(a2)
+	move.l #$4d454d35, Fields.Magic(a2)
 	movea.l 4.w, a6
 	moveq #0, d0
 	move.w 20(a6), d0
@@ -130,7 +137,7 @@ save	.block
 	move.l d0, d4
 	move.l d4, d1
 	move.l #Record, d2
-	move.l #192, d3
+	move.l #1756, d3
 	jsr -48(a6)
 	move.l d4, d1
 	jsr -36(a6)
@@ -257,6 +264,191 @@ done
 	move.w (sp)+, ccr
 	rts
 	.bend  ; stage
+; D0=source-line bytes. Reset adjacency at each VM invocation. Passive ABI.
+tokenBegin	.block
+	move.w ccr, -(sp)
+	movem.l d0-d1, -(sp)
+	move.l #-1, PreviousOpcode
+	move.l d0, d1
+	moveq #0, d0
+	bsr.w tokenWork
+	movem.l (sp)+, d0-d1
+	move.w (sp)+, ccr
+	rts
+	.bend  ; tokenBegin
+; D0=dense opcode 0..18. Count ordered pairs within an invocation only.
+tokenOpcode	.block
+	move.w ccr, -(sp)
+	movem.l d0-d1/a0-a1, -(sp)
+	lea Record, a0
+	cmpi.l #18, d0
+	bhi.w invalid
+	move.l d0, d1
+	lsl.l #2, d1
+	lea Fields.Opcodes(a0), a1
+	adda.l d1, a1
+	addq.l #1, (a1)
+	bcs.w overflow
+	move.l PreviousOpcode, d1
+	move.l d0, PreviousOpcode
+	tst.l d1
+	bmi.w done
+	mulu.w #19, d1
+	add.l d0, d1
+	lsl.l #2, d1
+	lea Fields.Pairs(a0), a1
+	adda.l d1, a1
+	addq.l #1, (a1)
+	bcs.w overflow
+	bra.w done
+invalid
+	move.l #-1, PreviousOpcode
+	bra.w done
+overflow
+	ori.l #8, Fields.Error(a0)
+done
+	movem.l (sp)+, d0-d1/a0-a1
+	move.w (sp)+, ccr
+	rts
+	.bend  ; tokenOpcode
+; D0=work index 0..6, D1=amount. Passive ABI.
+; Line bytes, committed tokens/lexemes, source reads, taken EOL/byte/class.
+tokenWork	.block
+	move.w ccr, -(sp)
+	movem.l d0/a0-a1, -(sp)
+	lea Record, a0
+	cmpi.l #6, d0
+	bhi.w invalid
+	lsl.l #2, d0
+	lea Fields.TokenWork(a0), a1
+	adda.l d0, a1
+	add.l d1, (a1)
+	bcs.w overflow
+	bra.w done
+invalid
+	ori.l #2, Fields.Error(a0)
+	bra.w done
+overflow
+	ori.l #8, Fields.Error(a0)
+done
+	movem.l (sp)+, d0/a0-a1
+	move.w (sp)+, ccr
+	rts
+	.bend  ; tokenWork
+; D0=scope 0 scanner+commit,1 commit only. Different scopes may nest.
+; Timing includes probe overhead and is separate from exclusive stage totals.
+tokenScopeBegin	.block
+	move.w ccr, -(sp)
+	movem.l d0-d4/d7/a0-a3/a6, -(sp)
+	lea Record, a2
+	cmpi.l #1, d0
+	bhi.w invalid
+	tst.l Active
+	beq.w done
+	move.l d0, d7
+	lsl.l #2, d0
+	lea ScopeActive, a3
+	adda.l d0, a3
+	tst.l (a3)
+	bne.w mismatch
+	move.l #1, (a3)
+	lsl.l #3, d7
+	lea ScopeStamp, a0
+	adda.l d7, a0
+	movea.l Timer, a6
+	jsr -60(a6)
+	cmp.l Fields.Frequency(a2), d0
+	bne.w frequency
+	bra.w done
+invalid
+	ori.l #2, Fields.Error(a2)
+	bra.w done
+mismatch
+	ori.l #32, Fields.Error(a2)
+	bra.w done
+frequency
+	ori.l #4, Fields.Error(a2)
+done
+	movem.l (sp)+, d0-d4/d7/a0-a3/a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; tokenScopeBegin
+tokenScopeEnd	.block
+	move.w ccr, -(sp)
+	movem.l d0-d4/d7/a0-a3/a6, -(sp)
+	lea Record, a2
+	cmpi.l #1, d0
+	bhi.w invalid
+	tst.l Active
+	beq.w done
+	move.l d0, d7
+	lsl.l #2, d0
+	lea ScopeActive, a3
+	adda.l d0, a3
+	tst.l (a3)
+	beq.w mismatch
+	clr.l (a3)
+	lea Stamp, a0
+	movea.l Timer, a6
+	jsr -60(a6)
+	cmp.l Fields.Frequency(a2), d0
+	bne.w frequency
+	lsl.l #3, d7
+	lea ScopeStamp, a1
+	adda.l d7, a1
+	lea Stamp, a0
+	move.l (a0), d2
+	move.l 4(a0), d3
+	sub.l 4(a1), d3
+	move.l (a1), d4
+	subx.l d4, d2
+	bcs.w overflow
+	lea Fields.TokenElapsed(a2), a0
+	adda.l d7, a0
+	add.l d3, 4(a0)
+	move.l (a0), d4
+	addx.l d2, d4
+	bcs.w overflow
+	move.l d4, (a0)
+	bra.w done
+invalid
+	ori.l #2, Fields.Error(a2)
+	bra.w done
+mismatch
+	ori.l #32, Fields.Error(a2)
+	bra.w done
+frequency
+	ori.l #4, Fields.Error(a2)
+	bra.w done
+overflow
+	ori.l #8, Fields.Error(a2)
+done
+	movem.l (sp)+, d0-d4/d7/a0-a3/a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; tokenScopeEnd
+; D0=scope 0..1. Close only if active; passive ABI, safe at common returns.
+tokenScopeClose	.block
+	move.w ccr, -(sp)
+	movem.l d0-d1/a0, -(sp)
+	cmpi.l #1, d0
+	bhi.w invalid
+	move.l d0, d1
+	lsl.l #2, d1
+	lea ScopeActive, a0
+	adda.l d1, a0
+	tst.l (a0)
+	beq.w done
+	bsr.w tokenScopeEnd
+	bra.w done
+invalid
+	lea Record, a0
+	ori.l #2, Fields.Error(a0)
+done
+	movem.l (sp)+, d0-d1/a0
+	move.w (sp)+, ccr
+	rts
+	.bend  ; tokenScopeClose
 	.priv
 ; No I/O requests are submitted. Private helpers clobber D0-D1/A0-A2/A6/CCR.
 ; Exec V36 port/request vectors; timer ReadEClock is the V36 -60 vector.
@@ -301,6 +493,12 @@ closeTimer	.block
 	ori.l #16, Fields.Error(a2)
 	clr.l Active
 device
+	lea ScopeActive, a0
+	move.l (a0), d0
+	or.l 4(a0), d0
+	beq.w scopesClosed
+	ori.l #32, Fields.Error(a2)
+scopesClosed
 	movea.l 4.w, a6
 	tst.l Timer
 	beq.w freeRequest

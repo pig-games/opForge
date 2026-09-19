@@ -51,3 +51,9 @@ then remove notes once incorporated or obsolete. These are observations, not rul
   contains a literal allowance phrase. The guide now satisfies that check;
   consider replacing this wording requirement with validation of actual commands
   and execution safeguards when next improving workflow automation.
+
+- **Guest startup dominates tiny native contracts.** M3's individual boundary
+  checks took roughly 25 seconds per invocation, while small guest work completed
+  in under a second. Consider batching independent cases through the existing
+  runner while retaining each case's fresh challenge, exit, diagnostic/output and
+  cleanup proof. This is an automation opportunity, not a reason to raise deadlines.

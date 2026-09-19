@@ -225,12 +225,22 @@ skipToken	.block
 	bhs.w bad
 	moveq #0, d0
 	move.b (a3)+, d0
+	cmpi.b #$80, d0
+	beq.w compiled
 	cmpi.b #2, d0
 	bhi.w ok
 	moveq #3, d1
 	cmpi.b #2, d0
 	blo.w sized
 	moveq #4, d1
+	bra.w sized
+compiled
+	cmpa.l a1, a3
+	bhs.w bad
+	moveq #0, d1
+	move.b (a3)+, d1
+	tst.l d1
+	beq.w bad
 sized
 	move.l a1, d0
 	sub.l a3, d0

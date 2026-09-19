@@ -287,8 +287,9 @@ This table tracks outcomes, not individual edits or commits. Update the current
 row in place with the run command, concise result and relevant commit when work
 finishes. Proposed means awaiting agreement on scope, not queued for automatic
 execution. W1–W3 and the bounded comparisons are reviewed baseline work. The
-M1/M2 implementation is complete; review the constrained-runtime result in the
-linked binary-source plan before selecting the next coverage slice.
+M1/M2 implementation is complete. M3 compiles expressions once and passes its
+bounded native cases, but the measured expression workload is about 5–10% slower.
+Review the experimental checkpoint before widening coverage.
 
 | Work | Status | Reviewable result | Depends on |
 | --- | --- | --- | --- |
@@ -297,7 +298,8 @@ linked binary-source plan before selecting the next coverage slice.
 | W3 — Measure VM work and repetition | Complete; reviewed | Per-engine/pass/program dispatch and repetition counts at all three workload sizes | W2; authorized in conversation |
 | R1 — First native replacement experiment | Measured; no meaningful timing gain | Prepared CTBL comparison and resource accounting below | Retained reference implementation |
 | Binary-source experiment | Implemented and measured | Complete mixed8 parity on both targets; observed 8–11× combined-path gains | `a378ec48` |
-| M1 / M2 — Compact native runtime | Implemented; M2 ready for review | Shared interpreters, streaming preparation and released lexical storage; both mixed8/mixed32 targets complete on a 68020 / 2 MiB guest | Binary-source experiment; review before further coverage |
+| M1 / M2 — Compact native runtime | Complete | Shared interpreters, streaming preparation and released lexical storage; both mixed8/mixed32 targets complete on a 68020 / 2 MiB guest | Binary-source experiment |
+| M3 — Prepared numeric expressions | Measured; review tradeoff | Shared execution and multiplication work within 2 MiB; expression-replay32 takes 2.18/4.69 s versus M2 1.98/4.48 s | M2; no CLI migration |
 
 ## W1 agreement: focused package-VM baseline
 

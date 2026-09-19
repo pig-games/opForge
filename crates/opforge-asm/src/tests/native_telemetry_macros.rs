@@ -100,6 +100,12 @@ save .block
 layout .block
     rts
 .bend
+work .block
+    rts
+.bend
+clock .block
+    rts
+.bend
 .endsection
 .endmodule
 "#
@@ -113,6 +119,8 @@ layout .block
     .MEMORY_PHASE #2
     .MEMORY_SAVE a1
     .MEMORY_LAYOUT d3, d4, #4096
+    .MEMORY_WORK #1, d0
+    .MEMORY_CLOCK a1, #2
 "#
     } else {
         ""

@@ -89,6 +89,10 @@ fn binary_source_packages_prepare() {
 fn binary_source_fs_uae() {
     let source = fs::read_to_string(std::env::var("OPFORGE_COMPARE_SOURCE").unwrap()).unwrap();
     let cpu = std::env::var("OPFORGE_COMPARE_CPU").unwrap();
+    assert_binary_source(source, cpu);
+}
+
+fn assert_binary_source(source: String, cpu: String) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline(&cpu, None).unwrap();
     let preparation_started = std::time::Instant::now();
@@ -124,12 +128,12 @@ fn binary_source_fs_uae() {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh memory telemetry capture");
-        assert_eq!(record.len(), 64);
+        assert_eq!(record.len(), 112);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d32);
+        assert_eq!(words[0], 0x4d454d33);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocated and freed capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -138,7 +142,23 @@ fn binary_source_fs_uae() {
             words[6] > 0,
             "preparation allocations were freed before assembly"
         );
+        let stamp = |offset: usize| -> u64 {
+            u64::from(words[offset]) * 24 * 60 * 60 * 50
+                + u64::from(words[offset + 1]) * 60 * 50
+                + u64::from(words[offset + 2])
+        };
+        let preparation_ticks = stamp(22)
+            .checked_sub(stamp(19))
+            .expect("ordered preparation clock");
+        let assembly_ticks = stamp(25)
+            .checked_sub(stamp(22))
+            .expect("ordered assembly clock");
+        assert!(u64::from(words[18]) >= u64::from(words[16]) * 2);
         serde_json::json!({
+            "expressions_compiled": words[16], "expressions_evaluated": words[17],
+            "compiled_program_bytes": words[18],
+            "instrumented_preparation_seconds": preparation_ticks as f64 / 50.0,
+            "instrumented_assembly_seconds": assembly_ticks as f64 / 50.0,
             "peak_allocated_bytes": words[2], "total_allocated_bytes": words[3],
             "retained_after_preparation_bytes": words[5], "freed_before_assembly_bytes": words[6],
             "free_bytes_at_program_entry": words[7], "largest_free_block_at_program_entry": words[8],
@@ -184,8 +204,12 @@ fn binary_source_rejection_fs_uae() {
         },
         "negative case must be rejected by the live Rust assembler",
     );
+    assert_native_rejection(&source, &cpu);
+}
+
+fn assert_native_rejection(source: &str, cpu: &str) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    let resolved = core.resolve_pipeline(&cpu, None).unwrap();
+    let resolved = core.resolve_pipeline(cpu, None).unwrap();
     let mut input = prepare_package(&core, &resolved).unwrap();
     input.extend_from_slice(source.as_bytes());
     let result =
@@ -202,14 +226,73 @@ fn binary_source_rejection_fs_uae() {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh negative-path memory telemetry");
-        assert_eq!(record.len(), 64);
+        assert_eq!(record.len(), 112);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d32);
+        assert_eq!(words[0], 0x4d454d33);
         assert_eq!(words[1], 0, "failure releases all owned blocks");
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);
     }
+}
+
+fn assert_expression_limit(expression: &str, rust_accepts: bool) {
+    let source = format!(".cpu m6502\n.org $1000\n.byte {expression}\n.end\n");
+    let rust = assemble_source_entries_with_runtime_mode(&source.lines().collect::<Vec<_>>(), true);
+    let accepted = matches!(rust, Ok((_, ref diagnostics)) if diagnostics.is_empty());
+    assert_eq!(accepted, rust_accepts, "live Rust domain for {expression}");
+    assert_native_rejection(&source, "m6502");
+}
+
+// Each test is a separate bounded real-native invocation, including allocation
+// cleanup when OPFORGE_COMPARE_MEMORY=1. Rust-accepted cases identify explicit
+// experimental limits; they are not claims of diagnostic/language parity.
+macro_rules! expression_limit_case {
+    ($name:ident, $expression:expr, $accepted:expr) => {
+        #[test]
+        #[ignore = "requires configured FS-UAE; one bounded rejection case"]
+        fn $name() {
+            assert_expression_limit(&$expression, $accepted);
+        }
+    };
+}
+expression_limit_case!(
+    binary_expression_limit_overflow_fs_uae,
+    "($7fffffff+1)-$7fffffff",
+    true
+);
+expression_limit_case!(
+    binary_expression_limit_program_fs_uae,
+    ["1"; 24].join("+"),
+    true
+);
+expression_limit_case!(
+    binary_expression_limit_stack_fs_uae,
+    format!("{}1{}", "1+(".repeat(8), ")".repeat(8)),
+    true
+);
+expression_limit_case!(
+    binary_expression_limit_depth_fs_uae,
+    format!("{}1{}", "(".repeat(17), ")".repeat(17)),
+    true
+);
+expression_limit_case!(binary_expression_limit_incomplete_fs_uae, "1+", false);
+// Shared Rust data emission accepts this wrapped result; the native experiment
+// deliberately rejects its high-bit literal under the existing signed32 limit.
+expression_limit_case!(binary_expression_limit_literal_fs_uae, "-$ffffffff", true);
+
+#[test]
+#[ignore = "requires configured FS-UAE; complete positive expression boundary case"]
+fn binary_expression_boundary_fs_uae() {
+    let source = format!(
+        ".cpu m6502\n.org $1000\n.byte {}1{}\n.byte {}1{}\n\
+         .byte +(+1),1+2*3,(1+2)*3\n.long $7fffffff,-$7fffffff-1\n.end\n",
+        "1+(".repeat(7),
+        ")".repeat(7),
+        "(".repeat(16),
+        ")".repeat(16),
+    );
+    assert_binary_source(source, "m6502".into());
 }

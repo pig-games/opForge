@@ -101,20 +101,92 @@ def binding_switch(cpu, blocks):
     return "\n".join(lines) + "\n", bytes(expected)
 
 
+def expression_workload(cpu, blocks, layout=False):
+    """Bounded expression-heavy source with an independent byte contract.
+
+    The expressions deliberately stay scalar and use only labels, the current
+    address, unary/additive arithmetic, grouping, and (for ``layout``)
+    multiplication.  This mirrors the real binary frontend's layout arithmetic
+    without depending on modules, macros, or equates.
+    """
+    if cpu not in ("m6502", "m68000") or blocks not in (8, 32):
+        raise ValueError("expression workloads support 8 or 32 m6502/m68000 blocks")
+    lines = [f".cpu {cpu}", ".org $1000"]
+    expected = bytearray()
+    for index in range(blocks):
+        lines.append(f"expr_start{index}:")
+        if cpu == "m6502":
+            lines.extend([
+                "  lda #(-(-(5 * 3 - 2)))" if layout
+                else f"  lda #(-(-(({index} + 3) - 1)))",
+                "  ldx #(($ - $) + 6)",
+                f"  sta $2000 + ({index} - {index})",
+                f"  bne expr_end{index}",
+                "  .byte (($ - $) + 25)" if layout
+                else "  .byte (($ - $) + 12)",
+                "  .byte (($ - $) + 1)",
+                f"  .word (expr_end{index} - expr_start{index}) * 2 + $4000" if layout
+                else f"  .word (expr_end{index} - expr_start{index}) + $2000",
+                f"expr_end{index}:",
+                "  nop",
+            ])
+            distance = 13
+            first = 25 if layout else 12
+            lda_value = 13 if layout else index + 2
+            expected.extend((0xA9, lda_value, 0xA2, 6,
+                             0x8D, 0x00, 0x20, 0xD0, 4, first,
+                             1))
+            expected.extend((distance * 2 + 0x4000 if layout else distance + 0x2000).to_bytes(2, "little"))
+            expected.append(0xEA)
+        else:
+            lines.extend([
+                "  moveq #(-(-(3 * 2 - 1))),d0" if layout
+                else f"  moveq #(-(-(({index} + 3) - 1))),d0",
+                "  move.w #(($ - $) + 6),d1",
+                f"  move.b d0,($2000 + ({index} - {index})).w",
+                f"  bne.s expr_end{index}",
+                "  .byte (($ - $) + 25)" if layout
+                else "  .byte (($ - $) + 12)",
+                "  .byte (($ - $) + 1)",
+                f"  .word (expr_end{index} - expr_start{index}) * 2 + $4000" if layout
+                else f"  .word (expr_end{index} - expr_start{index}) + $2000",
+                f"expr_end{index}:",
+                "  nop",
+            ])
+            distance = 16
+            first = 25 if layout else 12
+            moveq_value = 5 if layout else index + 2
+            expected.extend((0x70, moveq_value, 0x32, 0x3C,
+                             0, 6,
+                             0x11, 0xC0, 0x20, 0x00, 0x66, 4,
+                             first, 1))
+            expected.extend((distance * 2 + 0x4000 if layout else distance + 0x2000).to_bytes(2, "big"))
+            expected.extend((0x4E, 0x71))
+    lines.append(".end")
+    return "\n".join(lines) + "\n", bytes(expected)
+
+
 def workload(cpu, blocks, kind):
     if kind == "mixed":
         return base.workload(cpu, blocks)
     if kind == "binding-switch":
         return binding_switch(cpu, blocks)
+    if kind == "expression-replay":
+        return expression_workload(cpu, blocks)
+    if kind == "expression-layout":
+        return expression_workload(cpu, blocks, layout=True)
     return replay_smoke(cpu, blocks)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native-test", type=Path, required=True)
+    parser.add_argument("--native-source-root", type=Path, default=base.ROOT,
+                        help="native source snapshot used by both live runners (default: repository root)")
     parser.add_argument("--package", type=Path, default=base.ROOT / "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm")
-    parser.add_argument("--workload", choices=("mixed", "replay-smoke", "binding-switch"), default="mixed",
-                        help="mixed measures selection; binding-switch checks invalidation/aliases; replay-smoke checks S1")
+    parser.add_argument("--workload", choices=("mixed", "replay-smoke", "binding-switch",
+                                                "expression-replay", "expression-layout"), default="mixed",
+                        help="mixed measures selection; expression workloads exercise bounded label/current-PC arithmetic")
     parser.add_argument("--blocks", type=int, choices=(8, 32),
                         help="defaults to 8; 32 is an explicit larger probe subject to the same timeout")
     parser.add_argument("--profile", choices=("off", "runtime"), default="off")
@@ -143,6 +215,7 @@ def main():
         parser.error("--binary-only requires --binary-source")
 
     native_test = args.native_test.resolve(strict=True)
+    native_source_root = args.native_source_root.resolve(strict=True)
     package = args.package.resolve(strict=True)
     template = Path(os.environ["OPFORGE_FS_UAE_CONFIG_TEMPLATE"]).resolve(strict=True)
     os.environ[MEMORY_PROFILE_ENV] = args.memory_profile
@@ -163,7 +236,11 @@ def main():
         "workload": args.workload,
         "package": {"path": str(package), "bytes": package.stat().st_size, "sha256": base.digest(package.read_bytes())},
         "native_test": {"path": str(native_test), "bytes": native_test.stat().st_size, "sha256": base.digest(native_test.read_bytes())},
-        "native_source_sha256": runtime.native_source_digest(base.ROOT),
+        "native_source_root": str(native_source_root),
+        "native_source_sha256": runtime.native_source_digest(native_source_root),
+        "native_source_commit": subprocess.run(
+            ["git", "-C", str(native_source_root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=False).stdout.strip() or None,
         "runner_sha256": base.digest(Path(__file__).read_bytes()),
         "runtime_runner_sha256": base.digest(Path(runtime.__file__).read_bytes()),
         "workload_helper_sha256": base.digest(Path(base.__file__).read_bytes()),
@@ -211,7 +288,8 @@ def main():
             report["cases"].append(row)
             if not args.binary_only:
                 try:
-                    receipt = runtime.native(native_test, source_path, package, budget, case_dir / "native.log", args.profile)
+                    receipt = runtime.native(native_test, source_path, package, budget, case_dir / "native.log", args.profile,
+                                             native_source_root)
                     if bytes(receipt["exact_output"]) != expected:
                         raise ValueError(f"{cpu} live native/Rust output differs from independent workload bytes")
                     receipt.pop("exact_output")
@@ -225,6 +303,7 @@ def main():
                     receipt = runtime.native(
                         native_test, source_path, package, budget,
                         case_dir / "binary-source.log", "off",
+                        native_source_root,
                         test=BINARY_TEST,
                         result_prefix="BINARY_SOURCE_COMPARISON ",
                         extra_env={

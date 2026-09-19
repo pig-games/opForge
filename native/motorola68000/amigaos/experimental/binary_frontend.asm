@@ -5,6 +5,7 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_source as writer
+	.use experimental.amigaos.binary_prepare as prepare
 	.use tkvm.amigaos.runtime as tokenizer
 	.use tkvm.amigaos.control as control
 	.pub
@@ -36,7 +37,8 @@ LEXEMES = TOKENS+64*20
 ENTRIES = LEXEMES+1024
 ARENA = ENTRIES+SYMBOL_LIMIT*8
 	.pub
-SCRATCH_BYTES = ARENA+ARENA_BYTES
+PREPARED_LINE = ARENA+ARENA_BYTES
+SCRATCH_BYTES = PREPARED_LINE+256
 	.priv
 Entry	.struct
 Name	.long ?
@@ -122,6 +124,20 @@ line	.block
 	move.w d0, writer.Frame.SourceLine(a0)
 	jsr writer.writeLine
 	bne.w failed
+	movea.l Frame.Output(a5), a0
+	lea PREPARED_LINE(a6), a1
+	movea.l Frame.Package(a5), a2
+	jsr prepare.line
+	bne.w failed
+	cmp.l Frame.Capacity(a5), d1
+	bhi.w failed
+	lea PREPARED_LINE(a6), a0
+	movea.l Frame.Output(a5), a1
+	move.l d1, d0
+copyPrepared
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w copyPrepared
 	move.l d1, Frame.Used(a5)
 	move.l NEXT_ID(a6), Frame.NameCount(a5)
 	addq.l #1, LINE_NUMBER(a6)

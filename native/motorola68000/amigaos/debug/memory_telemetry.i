@@ -16,6 +16,35 @@ MEMORY_ALLOC	.macro amount
 .endif
 .endif
 .endmacro
+
+; Bounded work and phase-clock accounting uses the same optional record.
+MEMORY_WORK	.macro index, amount
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	movem.l d0-d1, -(sp)
+	move.l .amount, d1
+	move.l .index, d0
+	jsr memory_profile.work
+	movem.l (sp)+, d0-d1
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+
+MEMORY_CLOCK	.macro dosbase, index
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	movem.l d0/a0, -(sp)
+	move.l .index, d0
+	movea.l .dosbase, a0
+	jsr memory_profile.clock
+	movem.l (sp)+, d0/a0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
 MEMORY_FREE	.macro amount
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY

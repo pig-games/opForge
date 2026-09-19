@@ -19,6 +19,10 @@ DosVersion	.long ?
 RuntimeBytes	.long ?
 RecordBytes	.long ?
 SourceBytes	.long ?
+Compiled	.long ?
+Evaluated	.long ?
+ProgramBytes	.long ?
+Clocks	.res 9*4
 	.endstruct
 	.section data, kind=data
 	.priv
@@ -26,7 +30,7 @@ Path	.byte "Work:memory.bin", 0
 	.endsection
 	.section bss, kind=bss
 	.align 4
-Record	.res long, 16
+Record	.res long, 28
 	.endsection
 	.section code, kind=code
 	.pub
@@ -64,7 +68,7 @@ phase	.block
 	lea Record, a2
 	tst.l d0
 	bne.w later
-	move.l #$4d454d32, Fields.Magic(a2)
+	move.l #$4d454d33, Fields.Magic(a2)
 	movea.l 4.w, a6
 	moveq #0, d0
 	move.w 20(a6), d0
@@ -112,7 +116,7 @@ save	.block
 	move.l d0, d4
 	move.l d4, d1
 	move.l #Record, d2
-	moveq #64, d3
+	moveq #112, d3
 	jsr -48(a6)
 	move.l d4, d1
 	jsr -36(a6)
@@ -133,5 +137,40 @@ layout	.block
 	move.w (sp)+, ccr
 	rts
 	.bend  ; layout
+; D0=work counter 0..2, D1=amount. Passive ABI, bounded dedicated storage.
+work	.block
+	move.w ccr, -(sp)
+	movem.l d0/a0, -(sp)
+	cmpi.l #2, d0
+	bhi.w done
+	lsl.l #2, d0
+	lea Record, a0
+	lea Fields.Compiled(a0), a0
+	adda.l d0, a0
+	add.l d1, (a0)
+done
+	movem.l (sp)+, d0/a0
+	move.w (sp)+, ccr
+	rts
+	.bend  ; work
+; A0=dos.library, D0=phase 0..2. Save DOS DateStamp (50 ticks/s), separately
+; from uninstrumented START-to-DONE timing. All registers/CCR preserved.
+clock	.block
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	cmpi.l #2, d0
+	bhi.w done
+	movea.l a0, a6
+	mulu.w #12, d0
+	lea Record, a0
+	lea Fields.Clocks(a0), a0
+	adda.l d0, a0
+	move.l a0, d1
+	jsr -192(a6)
+done
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; clock
 	.endsection
 	.endmodule

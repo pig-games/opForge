@@ -54,13 +54,34 @@ EXPRVM_STACK_CAPACITY           = 8
 	.section code, kind=code
 	.pub
 
+; Evaluate an ExprVM v2 program with checked signed-32 values. The bytecode
+; and tables use the same ABI as exprvmEvalProgramV1; the wrapper selects v2
+; and restores the caller's selected version before returning. A1 is unused;
+; symbols are numeric IDs. Outputs/clobbers match the shared evaluator below;
+; CCR reflects D0. No symbol dictionary or preparation storage is accessed.
+evalNumeric32	.block
+	.priv
+	move.l d6, -(sp)
+	move.w ExprvmSelectedOpcodeVersion, d6
+	move.w d6, -(sp)
+	move.w #1, Checked32
+	move.w #2, ExprvmSelectedOpcodeVersion
+	jsr exprvmEvalProgramV1
+	move.w (sp)+, d6
+	move.w d6, ExprvmSelectedOpcodeVersion
+	move.l (sp)+, d6
+	clr.w Checked32
+	tst.l d0
+	rts
+	.bend  ; evalNumeric32
+
 ; ---------------------------------------------------------------------------
 ; Evaluate one portable ExprVM bytecode program with signed i64 scalars.
 ;
 ; Inputs:
 ; - A0/D0: ExprVM bytecode pointer and byte length.
-; - A1: fixed-width symbol-name table pointer.
-; - A2: unsigned 32-bit symbol-value table pointer parallel to A1.
+; - A1: unused; names are resolved before execution.
+; - A2: unsigned 32-bit symbol-value table indexed by bytecode u16 IDs.
 ; - A6: byte-per-symbol stability table; nonzero means finalized.
 ; - D1: number of symbol entries.
 ; - D2: current assembly PC for PushCurrentAddress.
@@ -441,6 +462,11 @@ opcodeRequireScalar
 	bra.w evalLoop
 
 opcodeEnd
+	tst.w Checked32
+	beq.s endLengthChecked
+	tst.l d0
+	bne.w endStackFail
+endLengthChecked
 	cmpi.l #1, d7
 	bne.w endStackFail
 	bsr.w popD3
@@ -529,6 +555,16 @@ greater
 ; Inputs: D2:D3=value, D7=depth. Outputs: D0=0/-1, D7 increments on success.
 ; Clobbers: D0/A2/CCR. CCR: reflects D0. Pair and operator register D6 survive.
 pushD3	.block
+	tst.w Checked32
+	beq.s checkedCapacity
+	moveq #0, d0
+	tst.l d3
+	bpl.s checkedHighReady
+	moveq #-1, d0
+checkedHighReady
+	cmp.l d2, d0
+	bne.s checkedFail
+checkedCapacity
 	cmpi.l #EXPRVM_STACK_CAPACITY, d7
 	bhs.s fail
 	move.l d7, d0
@@ -540,6 +576,9 @@ pushD3	.block
 	moveq #0, d0
 	rts
 fail
+	moveq #-1, d0
+	rts
+checkedFail
 	moveq #-1, d0
 	rts
 	.bend  ; pushD3
@@ -657,6 +696,8 @@ ExprvmCurrentPass
 ExprvmEvalRemaining
 	.res long, 1
 	.priv
+Checked32
+	.res word, 1
 ExprvmLastResultHigh
 	.res long, 1
 ExprvmLastResultPresent

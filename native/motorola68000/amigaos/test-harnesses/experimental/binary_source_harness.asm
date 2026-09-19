@@ -27,11 +27,14 @@ start	.block
 	tst.l d0
 	beq.w cleanup
 	move.l d0, DosBase
+	.MEMORY_CLOCK DosBase, #0
 	bsr.w prepare
 	bne.w failed
+	.MEMORY_CLOCK DosBase, #1
 	.MEMORY_PHASE #1
 	bsr.w run
 	bne.w failed
+	.MEMORY_CLOCK DosBase, #2
 	.MEMORY_PHASE #2
 	bsr.w writeOutput
 	bne.w failed

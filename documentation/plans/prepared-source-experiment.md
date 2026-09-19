@@ -1,8 +1,10 @@
 # String-free assembly replay experiment
 
-Status: M1/M2 implemented; mixed8 and mixed32 complete on both targets in a
-68020 / 2 MiB guest. Review the [compact runtime result](#m2-result-2026-09-19)
-before selecting the next coverage slice. The normal native CLI remains the reference.
+Status: M3 measured: compile-once execution works, but release time regresses
+about 5–10% on the expression comparison. Review this experimental checkpoint
+before widening coverage.
+M1/M2 completed mixed8 and mixed32 on both targets in a 68020 / 2 MiB guest;
+see the [compact runtime result](#m2-result-2026-09-19). The normal native CLI remains the reference.
 The active
 [AGENTS.md](../../AGENTS.md) and [workflow](../workflow/README.md) remain binding.
 
@@ -533,8 +535,9 @@ package-defined register operands, parenthesized member operands, forward branch
 labels, current PC, parentheses and unary/binary addition/subtraction. Shared core
 handles `.cpu`, `.org`, `.byte`, `.word`, `.long` and `.end`. Unknown candidate plans
 fail closed unless a necessary package match predicate proves them inapplicable.
-The small numeric expression reader is provisional duplication of expression
-evaluation, not a migration of the full EXVM frontend.
+At the M2 baseline, the small numeric expression reader duplicated evaluation.
+M3 below replaces it with compilation and shared ExprVM execution; it is still
+not a migration of the full EXVM frontend.
 
 Restrictions: one CPU pipeline, two fixed layout passes, no general relaxation,
 macros/includes/modules, scoped names, strings or general expression operators.
@@ -604,7 +607,7 @@ integration remains outside the qualified subset.
 ## Next implementation: compact native runtime
 
 Status: M1/M2 implemented; focused validation and remaining limits are recorded
-below. Review M2 before selecting further implementation. The plan-authoring skill, active
+below. This result is the baseline for the authorized M3 experiment. The plan-authoring skill, active
 AGENTS.md and workflow linked above remain binding.
 
 The outcome is the same working binary-source subset with small owned state and
@@ -881,3 +884,182 @@ coverage slice from representative real source—expressions, macros or modules�
 with explicit scope and tests. The numeric-source boundary remains mandatory.
 Do not automatically start that next slice or retain parallel experimental products
 after a replacement has been qualified for integration.
+
+
+## M3 — Prepare expressions once
+
+Approved 2026-09-19; implemented and measured as an experimental checkpoint.
+Baseline: `a8f707f1` (M2).
+
+**Hypothesis:** preserving expression structure as compact executable numeric
+operations removes repeated precedence/parenthesis parsing from assembly passes
+and candidate evaluation. Preparation and record growth may outweigh that saving
+for short inputs; measure the complete tradeoff before claiming improvement.
+
+**Inspectable outcome:** the streaming frontend prepares expressions line by line;
+assembly only evaluates numeric operations against current symbol values and PC.
+Original text and lexical dictionaries are released before execution as in M2.
+No pointers enter the representation. Expressions in shared data directives and
+instruction operands use the same evaluator. Package register/member syntax and
+instruction selection remain package-owned; this is not early assembly.
+
+Scope starts with the existing unary/binary plus/minus, grouping, numeric symbols
+and current-PC forms. Add multiplication with normal precedence, motivated by
+actual native layout expressions such as `TOKENS+64*20` and
+`ENTRIES+SYMBOL_LIMIT*8` in `binary_frontend.asm`. Use reduced, complete sources
+that exercise those shapes without requiring equates, modules or macros. Do not
+claim those larger source files can already assemble through this path.
+Investigate sharing existing ExprVM arithmetic before extending the provisional
+reader. Preserve the explicit signed-32-bit subset and overflow rejection in this
+slice; full i64 and additional operators remain outside its qualification.
+
+Implementation and evidence:
+
+- Introduce bounded compiled expressions in packed records, with numeric symbol
+  IDs and explicit lengths. Compile once; no parsing/text fallback during passes.
+  Keep the old implementation recoverable at the baseline commit, not as a new
+  permanent production switch or version-compatibility branch.
+- Validate precedence, nesting, unary operators, current PC, forward symbols,
+  malformed/truncated expressions, overflow and bounded stack/record rejection.
+  Compare completed native output with the live Rust oracle and independent bytes.
+- Retain mixed8/mixed32 on both targets. Add `expression-replay` (existing syntax)
+  for identical-input before/after comparison and `expression-layout` (multiplication)
+  for new coverage. Unsupported baseline cases are not timing comparisons.
+- Use the same 68020 / 2 MiB guest. Report release end-to-end time, prepared bytes,
+  peak allocation and linked image size; distinguish preparation and evaluation
+  work through gated reusable telemetry where available. Instrumented timings
+  never substitute for release timing. Preserve the 10-second post-START,
+  60-second invocation and 150-second batch bounds; no full self-host run.
+
+Success: correct completed cases, no expression-structure parsing after preparation,
+useful additional coverage, and explained measured time/memory costs. Stop to
+reconsider if reuse requires importing string lookup/legacy state, package syntax
+must be guessed, or regressions erase the benefit. Do not widen the step to macros,
+modules, relaxation, general CLI integration or persistent binary file formats.
+
+End with a focused local commit, updated results and a comparison against M2.
+No remote push is included.
+
+
+### M3 implementation and measurements
+
+The native frontend now compiles each scalar expression once, immediately after
+numeric token lowering for that line. Packed scalar fields contain
+`0x80, u8 program_bytes, ExprVM-v2 bytes`; literals and symbol operands inside
+that existing VM contract are little-endian, while the enclosing source record
+retains its big-endian numeric fields. Programs use global numeric symbol IDs,
+contain no pointers, and fit inside the existing 256-byte line bound. Register
+names and parenthesized member wrappers stay outside scalar programs. Operand
+shape readers skip the complete compiled block, never its interior literal bytes.
+
+The old recursive expression evaluator is replaced by a small adapter to the
+shared native ExprVM. Its new checked-signed-32 entry enforces the existing subset's
+intermediate overflow policy on every stack push, requires complete program
+consumption, and restores the caller's opcode selection. The ordinary i64 entry
+retains its domain. No name table is used by native execution; its misleading
+old parameter comment was corrected. The compiler supports multiplication plus
+existing additive/unary/grouped forms. Eight value-stack slots and sixteen syntax
+nesting levels are explicit bounds. Full i64 literals, other operators, macros,
+modules and general CLI integration remain outside this experiment.
+
+Identical-input release comparison against M2 `a8f707f1`, same 68020 / 2 MiB
+configuration and live Rust output checks:
+
+| Expression-replay workload | M2 | M3 | Observed change |
+|---|---:|---:|---:|
+| m6502 / 8 | 0.656 s | 0.712 s | +8.5% |
+| m68000 / 8 | 1.435 s | 1.505 s | +4.9% |
+| m6502 / 32 | 1.977 s | 2.183 s | +10.4% |
+| m68000 / 32 | 4.484 s | 4.693 s | +4.7% |
+
+These are single START-to-DONE observations with 20 ms polling, not statistically
+qualified ratios or physical-hardware calibration. They include preparation and
+I/O, exclude host package preparation and emulator boot, and do **not** establish
+a performance improvement. The eight-block 6502 candidate preceded the member-reader correction needed for
+68000; final 32-block release results use the completed implementation.
+
+Separate instrumented multiplication workload (`expression-layout`, 32 blocks):
+
+| Target | Source / packed bytes | Peak owned allocation | Compiled / evaluated | Preparation / assembly |
+|---|---:|---:|---:|---:|
+| m6502 | 6,741 / 8,107 | 53,248 B | 225 / 514 | 1.62 / 0.44 s |
+| m68000 | 7,478 / 8,811 | 278,528 B | 225 / 578 | 2.58 / 2.00 s |
+
+Both targets emit 4,842 expression-program bytes. Counts include `.org` and
+candidate evaluations; they prove compilation/evaluation work, not that every
+repeated evaluation can be eliminated. DOS DateStamp phase measurements have
+20 ms resolution and include accounting overhead. They are not release timings,
+and no before/after phase-speedup claim is made. Every accounting run releases
+all owned allocations, balances allocation/free totals and completes within 2 MiB.
+
+The current reusable accounting record is MEM3 (112 bytes), adding compile/evaluate
+counts, program bytes and three phase clocks. Both debug/accounting gates remain
+required; disabled builds omit code, data, imports and accounting I/O. The older
+record is superseded. The shared allocator's capacity slack and relocation overlap
+remain visible; packed records are larger than these comment-light sources.
+
+**Decision:** preserve this as a measured experimental checkpoint, not a speedup
+or a migration into the main CLI. The structural objective and multiplication
+coverage work, but the total-time hypothesis is not supported by these observations.
+Before widening language coverage, discuss a bounded revision focused on preparation
+cost and expression representation. Reusing eight-byte literal payloads is a concrete
+size cost; whether a compact runtime encoding or constant folding pays for itself
+still requires a separate measured experiment.
+
+Reproduction: use the M2 native tree as `--native-source-root <baseline-root>` and
+current native tree as the default, with the same current test binary:
+
+```sh
+python3 scripts/performance/prepared_source_native.py \
+  --native-test target/debug/deps/asm-<current-test-hash> \
+  --binary-source --binary-only --memory-profile 2m \
+  --workload expression-replay --blocks 32
+```
+
+Use `--workload expression-layout` for multiplication and add `--compare-memory`
+only for separate accounting runs. `mixed` remains the default regression workload.
+The baseline cannot execute multiplication; it is never counted as a timing result.
+Release image: **19,828 B**, `fnv1a64:a0860a07268a1333`; linked reservation:
+**22,912 B** (18,028 code, 316 data, 4,568 BSS). M2 reserved 20,148 B.
+The separately instrumented image reserves 23,772 B. Both images remain small
+relative to the measured 2 MiB guest budget.
+
+Final release regressions complete with exact live Rust and independent bytes:
+
+| Workload | m6502 | m68000 |
+|---|---:|---:|
+| mixed8 | 0.490 s | 1.300 s |
+| mixed32 | 1.244 s | 3.714 s |
+| expression-layout32 | 2.174 s | 4.696 s |
+
+The first 68000 layout-release invocation hit the unchanged 60-second host limit
+without a result receipt. A bounded retry completed; the timeout supplies no timing
+or native failure claim. Source/program semantics were not changed for that retry.
+
+Focused qualification: mixed8/mixed32 and expression-replay8/32 complete on both
+targets; expression-layout32 completes in release and accounting builds. The
+positive boundary case covers exactly eight stack values, sixteen grouping levels,
+unary plus, multiplication precedence and both signed32 endpoints. Rejection
+contracts cover intermediate overflow, compiled-record capacity, excess value-stack
+and syntax depth, incomplete expressions and high-bit literals. The original M2
+`lda #(-$ffffffff)` rejection also passes, with fresh nonzero
+exit/diagnostics and balanced cleanup. Rust acceptance is checked separately:
+`.byte -$ffffffff` is accepted by Rust data emission but deliberately outside this
+native subset, not a syntax/parity failure.
+
+The shared evaluator's existing **414 real-native i64 cases** pass. Host package,
+Hunk-allocation/relocation bounds, telemetry gating, workload byte-contract tests,
+formatting, library Clippy, workflow boundaries and staged native engineering
+checks pass. Broad `cargo clippy -p asm --tests -- -D warnings` still fails on five
+findings in unchanged test infrastructure (`large_enum_variant`,
+`assertions_on_constants`, two `manual_range_patterns`, and `useless_vec`); these
+are not included in this change. No full self-host, physical-hardware performance,
+general language parity or arbitrary persisted-bytecode fuzzing is claimed.
+
+The focused native boundary/rejection tests are named
+`binary_expression_boundary_fs_uae` and `binary_expression_limit_*_fs_uae` in
+`crates/opforge-asm/src/tests/binary_source_experiment.rs`. Run each ignored test
+individually with the configured FS-UAE environment, `OPFORGE_COMPARE_MEMORY=1`,
+`OPFORGE_FS_UAE_MEMORY_PROFILE=2m`, `OPFORGE_FS_UAE_TIMEOUT_MS=60000` and
+`OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=10000`. These preserve the same per-case
+bounds and fresh-run/cleanup proof contract as the comparison runner.

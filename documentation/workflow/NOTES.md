@@ -57,3 +57,10 @@ then remove notes once incorporated or obsolete. These are observations, not rul
   in under a second. Consider batching independent cases through the existing
   runner while retaining each case's fresh challenge, exit, diagnostic/output and
   cleanup proof. This is an automation opportunity, not a reason to raise deadlines.
+
+- **Case-insensitive local shadowing.** M6 timer cleanup used local `request` and
+  `port` labels that shadowed module storage `Request` and `Port`. Host assembly
+  succeeded; both native exits hung. The listing exposed code addresses where
+  resource pointers belonged. Action names (`freeRequest`, `freePort`) fixed it.
+  Consider a focused shadowing warning for code labels versus storage symbols;
+  this does not justify restoring long module-qualified names everywhere.

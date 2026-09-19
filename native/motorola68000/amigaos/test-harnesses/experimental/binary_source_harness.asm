@@ -28,6 +28,7 @@ start	.block
 	beq.w cleanup
 	move.l d0, DosBase
 	.MEMORY_CLOCK DosBase, #0
+	.MEMORY_STAGE #1
 	bsr.w prepare
 	bne.w failed
 	.MEMORY_CLOCK DosBase, #1
@@ -181,6 +182,7 @@ prepare	.block
 	move.l #1, FrontStarted
 	jsr frontend.begin
 	bne.w closeBad
+	.MEMORY_STAGE #0
 	clr.l LineUsed
 sourceLoop
 	bsr.w readByte
@@ -208,6 +210,7 @@ sourceDone
 	bsr.w lowerLine
 	bne.w closeBad
 prepared
+	.MEMORY_STAGE #5
 	bsr.w closeInput
 	bne.w bad
 	lea Front, a0

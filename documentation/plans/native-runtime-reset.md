@@ -303,6 +303,7 @@ M3. Review preparation cost before widening coverage.
 | M3 — Prepared numeric expressions | Measured; review tradeoff | Shared execution and multiplication work within 2 MiB; expression-replay32 takes 2.18/4.69 s versus M2 1.98/4.48 s | M2; no CLI migration |
 | M4 — Preparation-time constant folding | Retained for size savings | Expression payloads shrink 31.7%; no demonstrated total-time gain | M3; unchanged format, limits and coverage |
 | M5 — Compact runtime expressions | Measured; ready for review | Expression bytes shrink another 54.4%, packed records 25–27%; release totals broadly unchanged, linked code +428 B | M4; unchanged semantic coverage |
+| M6 — Preparation-cost attribution | Measured | Tokenization/binding dominate (~72–74%); expression preparation ~8–11%; release image unchanged | Indexed binding proposed next; not started |
 
 ## W1 agreement: focused package-VM baseline
 

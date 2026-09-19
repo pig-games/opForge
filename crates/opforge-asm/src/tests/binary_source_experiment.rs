@@ -128,12 +128,12 @@ fn assert_binary_source(source: String, cpu: String) -> serde_json::Value {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh memory telemetry capture");
-        assert_eq!(record.len(), 112);
+        assert_eq!(record.len(), 192);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d33);
+        assert_eq!(words[0], 0x4d454d34);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocated and freed capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -154,7 +154,43 @@ fn assert_binary_source(source: String, cpu: String) -> serde_json::Value {
             .checked_sub(stamp(22))
             .expect("ordered assembly clock");
         assert!(u64::from(words[18]) >= u64::from(words[16]) * 2);
+        assert!(words[28] > 0, "E-clock frequency is available");
+        assert_eq!(words[29], 0, "preparation profiling completed cleanly");
+        let names = [
+            "other",
+            "package_setup",
+            "tokenization",
+            "binding_and_raw_records",
+            "expression_preparation",
+            "runtime_finalization",
+        ];
+        let mut stages = serde_json::Map::new();
+        let mut total_ticks = 0_u64;
+        for (index, name) in names.iter().enumerate() {
+            let ticks = (u64::from(words[30 + 2 * index]) << 32) | u64::from(words[31 + 2 * index]);
+            total_ticks = total_ticks.checked_add(ticks).expect("bounded stage total");
+            stages.insert(
+                (*name).to_owned(),
+                serde_json::json!({
+                    "ticks": ticks, "seconds": ticks as f64 / f64::from(words[28]),
+                    "calls": words[42 + index],
+                }),
+            );
+        }
+        assert_eq!(words[43], 1, "one package setup");
+        assert_eq!(words[47], 1, "one finalization");
+        assert_eq!(words[44], words[45], "each tokenized line binds once");
+        assert_eq!(words[45], words[46], "each bound line prepares once");
+        assert_eq!(words[44] as usize, source.lines().count());
+        let stage_seconds = total_ticks as f64 / f64::from(words[28]);
+        assert!(
+            (stage_seconds - preparation_ticks as f64 / 50.0).abs() <= 0.04,
+            "E-clock stages reconcile with coarse preparation: {stage_seconds}"
+        );
+
         serde_json::json!({
+            "preparation_stages": stages, "stage_total_seconds": stage_seconds,
+            "eclock_frequency": words[28], "profiling_errors": words[29],
             "expressions_compiled": words[16], "expressions_evaluated": words[17],
             "compiled_program_bytes": words[18],
             "instrumented_preparation_seconds": preparation_ticks as f64 / 50.0,
@@ -227,12 +263,14 @@ fn assert_native_rejection(source: &str, cpu: &str) {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh negative-path memory telemetry");
-        assert_eq!(record.len(), 112);
+        assert_eq!(record.len(), 192);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d33);
+        assert_eq!(words[0], 0x4d454d34);
+        assert!(words[28] > 0, "E-clock initialized on rejection path");
+        assert_eq!(words[29] & !16, 0, "only incomplete preparation is allowed");
         assert_eq!(words[1], 0, "failure releases all owned blocks");
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);

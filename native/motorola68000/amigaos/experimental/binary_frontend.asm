@@ -3,6 +3,7 @@
 ; @opforge-owner: experimental.amigaos.binary_frontend
 	.module experimental.amigaos.binary_frontend
 	.cpu 68020
+	.include "memory_telemetry.i"
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_source as writer
 	.use experimental.amigaos.binary_prepare as prepare
@@ -106,8 +107,10 @@ line	.block
 	moveq #64, d1
 	move.l #1024, d2
 	move.l PROGRAM_BYTES(a6), d3
+	.MEMORY_STAGE #2
 	jsr tokenizer.tkvmRun68000
 	bne.w failed
+	.MEMORY_STAGE #3
 	lea LINE_FRAME(a6), a0
 	lea TOKENS(a6), a1
 	move.l a1, writer.Frame.Tokens(a0)
@@ -124,11 +127,13 @@ line	.block
 	move.w d0, writer.Frame.SourceLine(a0)
 	jsr writer.writeLine
 	bne.w failed
+	.MEMORY_STAGE #4
 	movea.l Frame.Output(a5), a0
 	lea PREPARED_LINE(a6), a1
 	movea.l Frame.Package(a5), a2
 	jsr prepare.line
 	bne.w failed
+	.MEMORY_STAGE #0
 	cmp.l Frame.Capacity(a5), d1
 	bhi.w failed
 	lea PREPARED_LINE(a6), a0

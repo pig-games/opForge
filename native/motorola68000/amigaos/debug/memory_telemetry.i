@@ -96,3 +96,17 @@ MEMORY_LAYOUT	.macro runtime_bytes, record_bytes, source_bytes
 .endif
 .endif
 .endmacro
+
+; Exclusive preparation stage transition, D0/CCR and all other registers preserved.
+MEMORY_STAGE	.macro index
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .index, d0
+	jsr memory_profile.stage
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro

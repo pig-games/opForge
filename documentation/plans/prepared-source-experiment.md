@@ -1,8 +1,8 @@
 # String-free assembly replay experiment
 
-Status: M4 retained by agreement for its size savings. M5 measured against M4
-`74bbd35b`: expression programs shrink another 54.4%, with broadly unchanged
-release time. Coverage and the normal native CLI remain unchanged.
+Status: M6 measured: tokenization and name binding dominate preparation; compact
+expression compilation is a smaller share. Baseline is M5 `e46f1a6f`; release
+image, coverage, representation and the normal native CLI remain unchanged.
 M1/M2 completed mixed8 and mixed32 on both targets in a 68020 / 2 MiB guest;
 see the [compact runtime result](#m2-result-2026-09-19). The normal native CLI remains the reference.
 The active
@@ -1277,3 +1277,118 @@ and scalar harness roots pass. No physical-hardware measurement, general-languag
 parity or full native self-host run is claimed. Reproduce with the existing M4
 commands and a `74bbd35b` native snapshot as the baseline; the current sources
 select only the latest compact prepared form.
+
+## M6: preparation-cost attribution
+
+Measurement-only checkpoint. Use gated reusable stage-transition timing to divide
+preparation into native package loading/setup, tokenization, numeric name binding
+and raw-record writing, expression compilation/folding/compaction, runtime
+finalization, and remaining source streaming/control/record retention. Timings
+are exclusive, not nested; name each bucket's included work. Rust-side capsule
+generation remains outside native preparation. No optimization or language change.
+
+Use the OS E-clock for short scopes; retain existing coarse phase clocks as a
+cross-check. Preserve all registers/CCR at macro sites, account for failed setup,
+close timer resources on every exit and keep all instrumentation absent when
+disabled. Replace the passive telemetry schema coherently rather than retain old
+readers. Verify release image identity against M5 and exact output in both modes.
+
+Run unchanged expression-replay32 and expression-layout32 on both targets, same
+68020 / 2 MiB guest, same 10/60/150-second limits. Report stage times and entry
+counts, their reconciliation with preparation totals, measurement overhead and
+limitations. Existing M5 phase measurements supply an overhead reference; they
+are not new runs. No full self-host or expanded workload matrix.
+
+Done means a reviewable attribution with a justified next-step recommendation.
+If clock failures, probe overhead or inconsistent totals prevent a useful ranking,
+report that limitation and revise measurement before optimizing. Selecting or
+implementing the next optimization remains a discussion after this checkpoint.
+
+### M6 result — 2026-09-19
+
+Fresh exact-output/native completion checks pass for all four instrumented cases.
+Exclusive E-clock stage seconds in the same 68020 / 2 MiB guest:
+
+| Workload | Target | Package setup | Tokenization | Binding / raw records | Expressions | Finalization | Other | Total |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| replay32 | m6502 | 0.018 | 0.875 | 0.406 | 0.201 | 0.013 | 0.277 | 1.790 |
+| replay32 | m68000 | 0.044 | 0.963 | 1.065 | 0.208 | 0.159 | 0.295 | 2.733 |
+| layout32 | m6502 | 0.018 | 0.881 | 0.407 | 0.203 | 0.014 | 0.279 | 1.801 |
+| layout32 | m68000 | 0.044 | 0.966 | 1.063 | 0.212 | 0.161 | 0.298 | 2.744 |
+
+Each run processes 323 lines, with exactly 323 entries each into tokenization,
+binding and expression preparation. Package setup and finalization each enter once;
+other enters 326 times, including the initial and terminal transitions. E-clock
+frequency is 709,379 Hz with no errors. Stage sums differ from coarse preparation
+by at most 0.014 s, within its 0.020 s granularity. Timings are single observations,
+not physical-hardware measurements or isolated costs with probe overhead removed.
+
+Included work: package setup covers capsule input, workspace allocation and
+frontend initialization. Tokenization covers the tokenizer call; binding includes
+writer frame setup, name discovery and raw records; expressions include preparation,
+compilation, folding and compact lowering. Finalization closes input, releases
+scratch, retains/copies the execution prefix and releases the capsule. Other covers
+source streaming, control, prepared-record copies/retention and residual transitions.
+Host Rust capsule generation is excluded. Timer transitions charge their overhead
+across adjacent stages; totals include all active-interval probes.
+
+On layout32, the recorded M5 preparation times were 1.64 / 2.58 s; M6 observes
+1.80 / 2.74 s, an increase of 0.16 s (9.8% / 6.2%). Assembly remains approximately
+0.36 / 1.94 s versus M5's 0.36 / 1.96 s. This is an overhead estimate against
+previous observations, not a fresh controlled calibration. No cost is subtracted
+from individual buckets. The broad ranking is clear: tokenization plus binding
+accounts for about 72% / 74%; expression preparation about 11% / 8%.
+
+Packed layout32 sizes remain 4,773 / 5,477 bytes, expression payload 1,508 bytes,
+and tracked peaks 53,248 / 270,336 bytes. Cleanup balances all owned allocations.
+The instrumented image is 22,364 bytes with 25,356 bytes linked reservation;
+`fnv1a64:9972a0cf591bec94`. Timer port/request allocations are additional OS-owned
+profiling resources, outside these assembler allocation counters, and are released
+before telemetry export.
+
+Positive folding and intermediate-overflow rejection checks pass with MEM4,
+including owned-memory cleanup. Initial checks exposed local-label shadowing in
+new timer cleanup; corrected labels were confirmed in the assembled listing and
+both native checks rerun successfully. The two initial post-START timeouts supply
+no measurement evidence. No timeout was extended.
+
+Reproduce each instrumented workload with the existing FS-UAE environment:
+
+```sh
+python3 scripts/performance/prepared_source_native.py \
+  --native-test target/debug/deps/asm-5d01a576d9a2b0d5 \
+  --binary-source --binary-only --memory-profile 2m \
+  --workload expression-layout --blocks 32 --compare-memory \
+  --output /tmp/opforge-m6-layout32-memory
+```
+
+Use `expression-replay` and a fresh output directory for the second workload.
+Omit `--compare-memory` for release validation. Keep the 10 s post-START,
+60 s invocation and 150 s batch limits. Both instrumented batches completed in
+under 57 s. Build the test executable for the current checkout before running.
+
+Release validation passes on both targets, with the M5 image unchanged:
+20,692 bytes, 23,728 bytes linked reservation, `fnv1a64:dffcd691646a4981`.
+Thus disabled instrumentation has no release-image overhead. Fresh layout32
+START-to-DONE observations are 2.221 / 4.773 s; these are validation observations,
+not an optimization claim. Macro gate/byte-transparency tests, three measurement
+script tests, library Clippy, formatting, workflow checks and native engineering
+guards pass. Experimental harness formatting covers all 21 linked source files.
+
+### M6 interpretation and proposed next checkpoint
+
+The binding bucket includes raw-record construction as well as lookup; its timing
+alone is not proof that every comparison is redundant. Code inspection shows
+`binary_frontend.bind` scans the package dictionary, then the session symbol list,
+for each name. Tokenization is also substantial. Expression preparation is much
+smaller, so direct compact-expression compilation is not the first recommendation.
+
+Propose one bounded follow-up: measure and replace linear name discovery with a
+compact indexed binding path shared by all target packages. Preserve normalization,
+alias identity, first-use IDs, forward references and rejection behavior. Keep the
+reference path during comparison, include index construction in preparation time,
+and report temporary allocation and packed/output identity on these same workloads.
+Choose the index representation after examining dictionary and symbol distributions;
+use offsets in stored data, with no CPU-specific shortcuts. This is a proposal for
+discussion, not an activated implementation step. A later tokenizer experiment
+should attribute dispatch/scanning work before changing its execution contract.

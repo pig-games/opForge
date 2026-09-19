@@ -106,6 +106,9 @@ work .block
 clock .block
     rts
 .bend
+stage .block
+    rts
+.bend
 .endsection
 .endmodule
 "#
@@ -121,6 +124,7 @@ clock .block
     .MEMORY_LAYOUT d3, d4, #4096
     .MEMORY_WORK #1, d0
     .MEMORY_CLOCK a1, #2
+    .MEMORY_STAGE #2
 "#
     } else {
         ""

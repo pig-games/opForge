@@ -58,15 +58,15 @@ the current framework, not a mandate for a repository-wide instrumentation rewri
 ## Bounded memory accounting
 
 `debug/memory_telemetry.i` supplies `MEMORY_ALLOC`, `MEMORY_FREE`, `MEMORY_PHASE`,
-`MEMORY_LAYOUT`, `MEMORY_WORK`, `MEMORY_CLOCK` and terminal `MEMORY_SAVE`. Both `OPFORGE_DEBUG_CONTRACTS` and
+`MEMORY_LAYOUT`, `MEMORY_WORK`, `MEMORY_CLOCK`, `MEMORY_STAGE` and terminal `MEMORY_SAVE`. Both `OPFORGE_DEBUG_CONTRACTS` and
 `OPFORGE_MEMORY_TELEMETRY` are required; missing either gate emits no calls, imports
 or storage. These macros and the dedicated `debug.amigaos.memory_profile` owner
 preserve registers/CCR, never use request/output/error buffers, and keep a bounded
-112-byte record. The terminal export writes that record separately as `Work:memory.bin`;
+192-byte record. The terminal export writes that record separately as `Work:memory.bin`;
 a missing/partial record fails the host accounting check. Ordinary release builds
 perform no accounting I/O.
 
-The current MEM3 record starts with sixteen big-endian u32 fields: magic, live capacity, peak live
+The current MEM4 record starts with sixteen big-endian u32 fields: magic, live capacity, peak live
 capacity, cumulative allocated, cumulative freed, live after preparation, cumulative
 freed before assembly, entry free memory, entry largest free block, Exec version,
 live after assembly, live after cleanup, DOS version, retained runtime-prefix bytes,
@@ -75,6 +75,22 @@ compiled expressions, evaluation calls and compiled program bytes; nine fields
 store three DOS DateStamps (days/minutes/50-Hz ticks), taken before preparation,
 after preparation and after assembly. These clocks include instrumentation cost
 and have 20 ms resolution; use separate release runs for performance claims.
+MEM4 appends the E-clock frequency and error flags (u32 each), six exclusive
+elapsed totals (u64, high word first), then six stage-entry counts (u32). Stages
+are other preparation, package setup, tokenization, binding/raw records, expression
+preparation, and runtime finalization. `MEMORY_STAGE` changes the active stage;
+clock 0 initializes it and clock 1 flushes and stops it. The stage sum must agree
+with the coarse preparation clock within 40 ms. All values are big-endian.
+
+The profiler uses [timer.device ReadEClock](https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node04FB.html)
+for short intervals. Terminal save closes the device and deletes its request and
+message port, including on source rejection. These OS allocations are outside
+assembler-owned allocation counters. Error bits are 1 setup failure, 2 invalid
+stage, 4 changed frequency, 8 arithmetic overflow, and 16 incomplete preparation
+at terminal save. Positive runs require zero flags; rejection checks permit only
+16. Stage totals include probe overhead, with no calibration subtraction; compare
+coarse phases against the preceding accounting baseline before interpreting rank.
+
 The compiler/evaluator counters describe actual calls, not a semantic redundancy
 proof. The previous telemetry record is superseded, with no compatibility decoder.
 Allocation amounts are actual reserved block

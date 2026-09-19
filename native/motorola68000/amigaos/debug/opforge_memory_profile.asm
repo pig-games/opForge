@@ -23,14 +23,26 @@ Compiled	.long ?
 Evaluated	.long ?
 ProgramBytes	.long ?
 Clocks	.res 9*4
+Frequency	.long ?
+Error	.long ?
+Elapsed	.res 6*8
+Entries	.res 6*4
 	.endstruct
 	.section data, kind=data
 	.priv
 Path	.byte "Work:memory.bin", 0
+TimerName	.byte "timer.device", 0
 	.endsection
 	.section bss, kind=bss
 	.align 4
-Record	.res long, 28
+Record	.res byte, 192
+Port	.res long, 1
+Request	.res long, 1
+Timer	.res long, 1
+Active	.res long, 1
+Current	.res long, 1
+Previous	.res long, 2
+Stamp	.res long, 2
 	.endsection
 	.section code, kind=code
 	.pub
@@ -68,7 +80,7 @@ phase	.block
 	lea Record, a2
 	tst.l d0
 	bne.w later
-	move.l #$4d454d33, Fields.Magic(a2)
+	move.l #$4d454d34, Fields.Magic(a2)
 	movea.l 4.w, a6
 	moveq #0, d0
 	move.w 20(a6), d0
@@ -103,7 +115,9 @@ done
 save	.block
 	move.w ccr, -(sp)
 	movem.l d0-d7/a0-a6, -(sp)
-	movea.l a0, a6
+	move.l a0, -(sp)
+	bsr.w closeTimer
+	movea.l (sp)+, a6
 	lea Record, a0
 	moveq #0, d0
 	move.w 20(a6), d0
@@ -116,7 +130,7 @@ save	.block
 	move.l d0, d4
 	move.l d4, d1
 	move.l #Record, d2
-	moveq #112, d3
+	move.l #192, d3
 	jsr -48(a6)
 	move.l d4, d1
 	jsr -36(a6)
@@ -160,7 +174,21 @@ clock	.block
 	movem.l d0-d7/a0-a6, -(sp)
 	cmpi.l #2, d0
 	bhi.w done
-	movea.l a0, a6
+	move.l d0, d7
+	movea.l a0, a5
+	tst.l d7
+	bne.w finish
+	bsr.w openTimer
+	bra.w stamp
+finish
+	cmpi.l #1, d7
+	bne.w stamp
+	moveq #0, d0
+	bsr.w stage
+	clr.l Active
+stamp
+	movea.l a5, a6
+	move.l d7, d0
 	mulu.w #12, d0
 	lea Record, a0
 	lea Fields.Clocks(a0), a0
@@ -172,5 +200,127 @@ done
 	move.w (sp)+, ccr
 	rts
 	.bend  ; clock
+; D0=new stage 0..5. Exclusive, non-nesting; passive ABI.
+; Disabled after preparation clock 1, so assembly cannot enter these totals.
+stage	.block
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	tst.l Active
+	beq.w done
+	lea Record, a2
+	cmpi.l #5, d0
+	bhi.w invalid
+	move.l d0, d7
+	movea.l Timer, a6
+	lea Stamp, a0
+	jsr -60(a6)
+	cmp.l Fields.Frequency(a2), d0
+	bne.w frequency
+	lea Stamp, a0
+	lea Previous, a1
+	move.l (a0), d2
+	move.l 4(a0), d3
+	sub.l 4(a1), d3
+	move.l (a1), d4
+	subx.l d4, d2
+	bcs.w overflow
+	move.l (a0), (a1)
+	move.l 4(a0), 4(a1)
+	move.l Current, d0
+	lsl.l #3, d0
+	lea Fields.Elapsed(a2), a0
+	adda.l d0, a0
+	add.l d3, 4(a0)
+	move.l (a0), d4
+	addx.l d2, d4
+	bcs.w overflow
+	move.l d4, (a0)
+	move.l d7, Current
+	lsl.l #2, d7
+	lea Fields.Entries(a2), a0
+	adda.l d7, a0
+	addq.l #1, (a0)
+	bcs.w overflow
+	bra.w done
+invalid
+	ori.l #2, Fields.Error(a2)
+	bra.w stop
+frequency
+	ori.l #4, Fields.Error(a2)
+	bra.w stop
+overflow
+	ori.l #8, Fields.Error(a2)
+stop
+	clr.l Active
+done
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; stage
+	.priv
+; No I/O requests are submitted. Private helpers clobber D0-D1/A0-A2/A6/CCR.
+; Exec V36 port/request vectors; timer ReadEClock is the V36 -60 vector.
+openTimer	.block
+	movea.l 4.w, a6
+	jsr -666(a6)
+	move.l d0, Port
+	beq.w failed
+	movea.l d0, a0
+	moveq #40, d0
+	jsr -654(a6)
+	move.l d0, Request
+	beq.w failed
+	movea.l d0, a1
+	lea TimerName, a0
+	moveq #2, d0
+	moveq #0, d1
+	jsr -444(a6)
+	tst.l d0
+	bne.w failed
+	movea.l Request, a0
+	move.l 20(a0), Timer
+	movea.l Timer, a6
+	lea Previous, a0
+	jsr -60(a6)
+	lea Record, a2
+	move.l d0, Fields.Frequency(a2)
+	beq.w failed
+	clr.l Current
+	move.l #1, Active
+	move.l #1, Fields.Entries(a2)
+	rts
+failed
+	lea Record, a2
+	ori.l #1, Fields.Error(a2)
+	rts
+	.bend  ; openTimer
+closeTimer	.block
+	lea Record, a2
+	tst.l Active
+	beq.w device
+	ori.l #16, Fields.Error(a2)
+	clr.l Active
+device
+	movea.l 4.w, a6
+	tst.l Timer
+	beq.w freeRequest
+	movea.l Request, a1
+	jsr -450(a6)
+	clr.l Timer
+freeRequest
+	tst.l Request
+	beq.w freePort
+	movea.l Request, a0
+	jsr -660(a6)
+	clr.l Request
+freePort
+	tst.l Port
+	beq.w done
+	movea.l Port, a0
+	jsr -672(a6)
+	clr.l Port
+done
+	rts
+	.bend  ; closeTimer
 	.endsection
 	.endmodule

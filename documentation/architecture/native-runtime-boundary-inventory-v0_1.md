@@ -163,11 +163,10 @@ scope, validation and completion. No future feature or migration is scheduled he
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm`.
 - Public entries: `selectInstructionV1`, `buildSelectedEnvelopeV1`,
-  `noOutputErrorV1`, `tkpkgProjectBoundedRegisterV1`, and experimental
-  `executeNumericValueV1` (already-bound VALP bytes, with caller registers preserved).
+  `noOutputErrorV1`, and `tkpkgProjectBoundedRegisterV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers, operand runtime, neutral
-  runtime context, the expression bridge transition boundary, and the
-  default-off runtime observer.
+  runtime context, the expression bridge transition boundary, the shared
+  VALUE_VM execution owner, and the default-off runtime observer.
 - Mutable state: selected request envelope and candidate traversal cursor; the
   unchanged operand scratch state is shared through the internal selection-state
   module. One bounded deferred-rejection text buffer is used so traversal
@@ -175,7 +174,7 @@ scope, validation and completion. No future feature or migration is scheduled he
   search.
 - Routine responsibility groups: selected-request decoding; package MSEL and
   CSEM-owner traversal; CPU-neutral CMSE-v7 scalar input projection; scoped
-  RENC/VALP program lookup and execution; neutral register-list mask,
+  RENC/VALP program lookup and adaptation to shared execution; neutral register-list mask,
   duplicate, and distinct-register detection; direct and indirect call-argument
   register projection; neutral tuple identity-scale projection; candidate
   construction; package-declared named-register comparison and signed
@@ -200,18 +199,55 @@ scope, validation and completion. No future feature or migration is scheduled he
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm`.
 - Public entries: `encodeInstructionV1` and `encodeSelectedInstructionV1`, plus
-  experimental `executeNumericTableV1` and `executeNumericSemanticV1` over bound
-  canonical programs and fresh numeric operands. These wrappers reuse the existing
-  interpreters and output buffer without name lookup or additional state.
+  `executeNamedSemanticProgramV1` for an already selected semantic role and
+  fixup side-channel queries. The public service entries retain the legacy ABI
+  while adapting service-owned buffers and selection state into a caller-owned
+  execution context.
 - Imports/outbound dependencies: tkpkg ABI/buffers, private selection state,
   the existing selection-service boundary, and the generic compact-table
-  boundary and numeric semantic bindings; plus the default-off runtime observer.
+  boundary, numeric semantic bindings, and shared encoding-execution owner;
+  plus the default-off runtime observer.
 - Mutable state: writes the same existing package-service output buffer; it does
-  not own pipeline selection, package loading, or status projection.
+  not own interpreter state, pipeline selection, package loading, or status
+  projection. A module-local execution context projects the existing buffers
+  and counters for each interpreter call.
 - Routine responsibility groups: selected-envelope encoding, legacy
-  package-table lookup, neutral CSEM owner/program lookup, direct CSEM-v2
-  Literal/Scalar/Fields execution with bounds/overlap/endianness validation,
-  compact fixed-row delegation, and encoded-output construction.
+  package-table lookup, neutral CSEM owner/program lookup, execution-context
+  preparation, compact fixed-row delegation, fixup side-channel adaptation,
+  and encoded-output construction.
+
+### `tkpkg.amigaos.encoding_execution`
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_encoding_execution.asm`.
+- Public entries: `semantic`, `normalizeFixupLength`, and `table`; `Context` is
+  the 56-byte caller-owned runtime-state contract used by each entry.
+- Imports/outbound dependencies: only the default-off runtime observer through
+  its telemetry macro include. It imports no service, assembler, package-loader,
+  or selection globals.
+- Owned mutable state: none. Callers supply bounded input records, output storage,
+  current pass/PC/branch state, and optional parallel fixup arrays in `Context`.
+- Routine responsibility groups: canonical TABL byte/operand execution;
+  CSEM/SEMV v2/v6 encoding, v5 branch, and v4/v7 fixup interpretation;
+  width/range/endianness validation; bounded byte emission; fixup recording and
+  output-length normalization; and branch-range diagnostic rendering.
+- Inbound users: the encode-service adapter and the experimental
+  binary-source encoder. The latter owns its runtime buffers while serialized
+  binary package records remain offset-only.
+
+### `tkpkg.amigaos.value_execution`
+
+- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_value_execution.asm`.
+- Public entry: `execute`, the stateless VALUE_VM v1/v2 interpreter over the
+  native signed-32 scalar transport.
+- Imports/outbound dependencies: only the default-off runtime observer through
+  its telemetry macro include.
+- Mutable state: none.
+- Routine responsibility groups: literal/input selection, normalization,
+  signed/unsigned/range constraints, upper-bound-as-zero projection, exact
+  signed-i64-to-i32 validation, and malformed/constraint status projection.
+- Inbound users: scoped VALP lookup in the selection service and the
+  experimental binary-source encoder after it resolves an offset-only program
+  descriptor.
 
 ### `tkpkg.amigaos.semantic_bindings`
 

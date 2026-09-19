@@ -4,6 +4,9 @@ use crate::binary_source_experiment::prepare_package;
 use crate::fs_uae_smoke::FsUaeSmokeOutcome;
 use vm::runtime_model_core::RuntimeModelCore;
 
+#[path = "binary_source_hunk.rs"]
+mod hunk;
+
 #[test]
 fn binary_source_packages_prepare() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
@@ -36,8 +39,11 @@ fn binary_source_fs_uae() {
             .expect("live Rust source oracle");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
     let oracle: Vec<u8> = entries.into_iter().map(|(_, byte)| byte).collect();
+    let native_root = std::env::var_os("OPFORGE_COMPARE_NATIVE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(workspace_root);
     let result =
-        crate::fs_uae_smoke::run_binary_source_harness_from_env(&workspace_root(), &input, &oracle)
+        crate::fs_uae_smoke::run_binary_source_harness_from_env(&native_root, &input, &oracle)
             .expect("completed native binary-source comparison");
     let FsUaeSmokeOutcome::Completed { runs } = result else {
         panic!("explicit comparison requires real native execution");
@@ -50,12 +56,18 @@ fn binary_source_fs_uae() {
         .captured_artifacts
         .get(&PathBuf::from("Work/build/binary_source_harness"))
         .expect("fresh native image capture");
+    let allocation = hunk::allocation(image).expect("valid captured native Hunk allocation table");
     eprintln!(
         "BINARY_SOURCE_COMPARISON {}",
         serde_json::json!({
             "cpu": cpu, "source_bytes": source.len(), "runtime_package_bytes": package_bytes,
             "host_package_preparation_seconds": package_preparation_seconds,
             "native_image_bytes": image.len(),
+            "native_linked_reserved_bytes": allocation.total(),
+            "native_linked_code_reserved_bytes": allocation.code,
+            "native_linked_data_reserved_bytes": allocation.data,
+            "native_linked_bss_reserved_bytes": allocation.bss,
+            "native_linked_segments": allocation.segments,
             "guest_start_to_done_host_seconds": run.start_to_done_host_seconds,
             "native_image_digest": run.native_image_digest,
             "exact_output": oracle, "guest_exit": run.exit_code,

@@ -603,8 +603,8 @@ The harness is not yet ready for the normal CLI or the 2 MiB product target.
 
 ## Next implementation: compact native runtime
 
-Status: planned; approach agreed, implementation not started. Start with M1;
-review its working result before moving to M2. The plan-authoring skill, active
+Status: M1 implemented; focused native validation recorded below. Review its
+working result before moving to M2. The plan-authoring skill, active
 AGENTS.md and workflow linked above remain binding.
 
 The outcome is the same working binary-source subset with small owned state and
@@ -633,7 +633,7 @@ remain a later slice; M1/M2 do not introduce that file-format contract.
 
 | Item | State | Inspectable result |
 |---|---|---|
-| M1 — Detach interpreter execution from legacy assembler state | Next | Both mixed8 cases work through shared interpreters with the large legacy state dependency removed; linked-memory comparison identifies what disappeared |
+| M1 — Detach interpreter execution from legacy assembler state | Implemented; review before M2 | Both mixed8 cases work through shared interpreters with the large legacy state dependency removed; linked-memory comparison identifies what disappeared |
 | M2 — Own memory by lifetime and qualify the constrained runtime | Pending M1 review | Right-sized allocations, preparation storage actually released, bounded scaling results, and completed 2 MiB guest cases |
 
 #### M1: one coherent interpreter boundary
@@ -659,6 +659,77 @@ unprofiled mixed8 time against the reference on the same emulator configuration.
 This checkpoint need not yet fit 2 MiB: its owned remaining storage is M2's work.
 If removing the dependency requires a larger semantic migration, stop at a working
 recovery point and discuss the specific boundary rather than expanding the rewrite.
+
+#### M1 result (2026-09-19)
+
+TABL/CSEM execution now lives in `tkpkg.amigaos.encoding_execution`, with a
+56-byte caller-owned runtime context and bounded output/fixup buffers. VALP lives
+in the stateless `tkpkg.amigaos.value_execution`. The existing native text services
+adapt their state to those same interpreters; their former interpreter bodies and
+experimental numeric wrappers are removed. The binary path owns a 4 KiB output
+buffer and no longer imports selection services, legacy package buffers or assembler
+state. No canonical program, source-record or BSP1 representation changed; resolved
+pointers exist only in runtime contexts, outside the offset-only binary blocks.
+
+Fresh captured HUNK_HEADER reservations, with profiling disabled:
+
+| Linked resource | Reference `a378ec48` | M1 |
+|---|---:|---:|
+| Executable file | 70,308 B | 16,048 B |
+| Code reservation | 60,464 B | 14,456 B |
+| Data reservation | 3,452 B | 316 B |
+| BSS reservation | 44,290,044 B | 1,534,512 B |
+| Total linked reservation | 44,353,960 B | 1,549,284 B |
+
+The import removal eliminates a net 42,755,532 B of BSS, including the legacy
+package/selection/assembler allocations. Remaining storage is owned by the binary
+harness, frontend and execution helpers. These are linked reservations, **not peak
+RAM**: heap, stack, loader and OS costs are not included. M2 still needs to right-size
+buffers and release preparation storage; this does not qualify a 2 MiB guest.
+
+One fresh observation per path/CPU on the same A4000/68040 configuration, 2 MiB
+chip + 8 MiB fast RAM and the runner's 64 MiB Zorro III override:
+
+| mixed8 target | Reference binary path | M1 binary path | Current text path |
+|---|---:|---:|---:|
+| m6502 (688 B source, 104 B output) | 0.5840 s | 0.0500 s | 4.6167 s |
+| m68000 (865 B source, 144 B output) | 0.6145 s | 0.0300 s | 6.7909 s |
+
+All four current cases and both reference cases completed with fresh guest zero
+exit and exact live Rust output; the current batch additionally checked independent
+workload bytes. The binary passes retain the source/dictionary erasure proof.
+START-to-DONE includes executable loading/initialization and I/O, excludes emulator
+boot and host package preparation. At 20 ms host polling, the new times are too
+short for a precise speedup ratio or isolated interpreter-cost claim. Reduced load
+and initialization work is a plausible contributor, not separately measured here.
+Runtime capsules remain 7,268 B / 96,444 B; the text executable is 564,624 B.
+Captured binary image digests (FNV-1a64) are `7b5fa2cd78e871bc` for the reference
+and `a857005f7ac4cdfb` for M1.
+
+Reproduce with `scripts/performance/prepared_source_native.py` and arguments
+`--native-test <current-asm-test-binary> --binary-source`, using the FS-UAE environment
+above. For the old
+binary path, materialize `a378ec48`'s `native` tree and `.opforgefmt.toml` in a temporary
+root, then run `tests::binary_source_experiment::binary_source_fs_uae` with the same
+source/CPU, `--exact --ignored`, and test-only `OPFORGE_COMPARE_NATIVE_ROOT` pointing
+to that root. The live Rust oracle and fresh-run safeguards still apply. The Hunk
+accounting helper rejects malformed/truncated load files instead of estimating BSS
+from file size. Test artifacts remain ephemeral; this note retains the comparison.
+
+Focused validation: both mixed8 text/binary pairs, state-guard sequence continuation,
+qualified JSR, required value-program expression, absolute-long fixup, and binary
+arithmetic rejection passed real-native checks. The TRAP #16 diagnostic contract
+**fails identically on M1 and unmodified `a378ec48`**: both produce `OTR901: encode
+table malformed` instead of the expected range diagnostic. This is an existing
+native parity gap, left explicit rather than weakening the expected diagnostic.
+M1 is qualified for the listed passing cases, not full native parity.
+
+Host validation passed: package preparation and three Hunk-accounting tests;
+telemetry enabled/disabled byte-transparency test; affected-library Clippy; Rust
+format; native instrumentation/contracts/invocation/no-growth/proof/format gate;
+updated ownership inventory; CPU boundary checks; 136 workflow tests. The affected
+five assembly files have no mechanically redundant-test findings (70 advisory
+call/CCR sites remain). No full self-host or long measurement suite was run.
 
 #### M2: preparation and execution memory lifetimes
 

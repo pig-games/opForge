@@ -7,10 +7,8 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_shapes as shapes
 	.use opasm.amigaos.binary_expression as expression
-	.use tkpkg.amigaos.encode_service as encoding
-	.use tkpkg.amigaos.selection_service as selection
-	.use tkpkg.amigaos.buffers as buffers
-	.use tkpkg.amigaos.selection_state as state
+	.use tkpkg.amigaos.encoding_execution as encoding
+	.use tkpkg.amigaos.value_execution as value
 
 TOKEN_SYMBOL_0 = 0
 TOKEN_SYMBOL_1 = 1
@@ -52,6 +50,8 @@ OperandShape	.res word, 1
 MemberMask	.res word, 1
 Unresolved	.res word, 1
 Records	.res byte, 24
+Execution	.res byte, encoding.Context.FixupTargets+4
+Output	.res byte, 4096
 	.endsection
 
 	.section code, kind=code
@@ -331,7 +331,8 @@ table
 	cmpi.w #PROGRAM_TABLE, d2
 	bne.w bad
 	lea Records, a3
-	jsr encoding.executeNumericTableV1
+	bsr.w prepareExecution
+	jsr encoding.table
 	rts
 semantic
 	bsr.w project
@@ -342,22 +343,21 @@ semantic
 	bne.w bad
 	cmpi.w #PROGRAM_SEMANTIC, d2
 	bne.w bad
-	move.l package.Context.Pc(a2), state.EncodeSelectedCurrentPc
-	move.w package.Context.Pass(a2), state.EncodeSelectedSessionPass
-	move.b package.Row.Unstable(a5), state.EncodeSelectedMselUnstable
-	clr.b state.EncodeSelectedDeferUnstableBranchTarget
-	clr.b state.EncodeSelectedMselHasSymbolReference
+	bsr.w prepareExecution
+	move.l package.Context.Pc(a2), encoding.Context.Pc(a6)
+	move.w package.Context.Pass(a2), encoding.Context.Pass(a6)
+	move.b package.Row.Unstable(a5), encoding.Context.Unstable(a6)
+	clr.b encoding.Context.Defer(a6)
+	clr.b encoding.Context.HasSymbol(a6)
 	tst.w Unresolved
 	beq.w branchStateReady
-	move.b #1, state.EncodeSelectedDeferUnstableBranchTarget
-	move.b #1, state.EncodeSelectedMselHasSymbolReference
+	move.b #1, encoding.Context.Defer(a6)
+	move.b #1, encoding.Context.HasSymbol(a6)
 branchStateReady
-	lea Records, a3
-	move.l a3, buffers.SemanticInputRecordPtr
-	move.w package.Row.InputCount(a5), buffers.SemanticInputRecordCount
-	move.w #4, buffers.SemanticFirstInputLen
-	move.l d4, d0
-	jsr encoding.executeNumericSemanticV1
+	move.l #Records, encoding.Context.Input(a6)
+	move.w package.Row.InputCount(a5), encoding.Context.InputCount(a6)
+	move.w #4, encoding.Context.FirstInputLen(a6)
+	jsr encoding.semantic
 	rts
 bad
 	moveq #1, d0
@@ -700,7 +700,9 @@ valueProgram	.block
 	movea.l a6, a1
 	adda.l d1, a1
 	move.l d2, d1
-	jsr selection.executeNumericValueV1
+	movem.l d1-d2/d4-d7/a0-a6, -(sp)
+	jsr value.execute
+	movem.l (sp)+, d1-d2/d4-d7/a0-a6
 	addq.l #2, sp
 	rts
 badPop
@@ -709,5 +711,17 @@ badPop
 	rts
 	.bend  ; valueProgram
 
+; Own the minimal execution state; no service or assembler globals are imported.
+; A6=context, all other registers preserved. This subset emits no output fixups.
+prepareExecution	.block
+	lea Execution, a6
+	move.l #Output, encoding.Context.Output(a6)
+	move.l #4096, encoding.Context.Capacity(a6)
+	clr.w encoding.Context.WriteOffset(a6)
+	clr.w encoding.Context.FixupCount(a6)
+	clr.w encoding.Context.FixupCapacity(a6)
+	clr.w encoding.Context.MnemonicLength(a6)
+	rts
+	.bend  ; prepareExecution
 	.endsection
 	.endmodule

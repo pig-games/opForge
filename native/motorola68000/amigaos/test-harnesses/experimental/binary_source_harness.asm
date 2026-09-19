@@ -11,7 +11,7 @@ HEADER_BYTES = 76
 IO_BYTES = 4096
 LINE_BYTES = 4096
 RECORD_BYTES = 256
-PREP_BYTES = frontend.SCRATCH_BYTES+IO_BYTES+LINE_BYTES+RECORD_BYTES
+IO_SCRATCH_BYTES = IO_BYTES+LINE_BYTES+RECORD_BYTES
 	.section entry, kind=code
 	.pub
 ; AmigaDOS entry. D0=0 only after complete preparation, assembly and output.
@@ -161,8 +161,13 @@ prepare	.block
 	bhi.w closeBad
 	cmp.l package.Header.Tokenizer(a4), d0
 	bhi.w closeBad
+	movea.l a4, a0
+	jsr frontend.scratchSize
+	bne.w closeBad
+	move.l d1, d0
+	addi.l #IO_SCRATCH_BYTES, d0
+	bcs.w closeBad
 	lea PrepBlock, a0
-	move.l #PREP_BYTES, d0
 	jsr memory.reserve
 	bne.w closeBad
 	lea PrepBlock, a0
@@ -170,7 +175,7 @@ prepare	.block
 	lea Front, a0
 	move.l a4, frontend.Frame.Package(a0)
 	move.l a1, frontend.Frame.Scratch(a0)
-	adda.l #frontend.SCRATCH_BYTES, a1
+	adda.l d1, a1
 	move.l a1, IoBuffer
 	move.l a1, IoCursor
 	move.l a1, IoEnd

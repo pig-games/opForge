@@ -1,8 +1,8 @@
 # String-free assembly replay experiment
 
-Status: M6 measured: tokenization and name binding dominate preparation; compact
-expression compilation is a smaller share. Baseline is M5 `e46f1a6f`; release
-image, coverage, representation and the normal native CLI remain unchanged.
+Status: M7 measured: indexed binding reduces bounded native totals by 11–19%,
+with temporary allocation growth. M6 `50b02bc2` is the comparison baseline.
+Coverage, packed representation and the normal native CLI remain unchanged.
 M1/M2 completed mixed8 and mixed32 on both targets in a 68020 / 2 MiB guest;
 see the [compact runtime result](#m2-result-2026-09-19). The normal native CLI remains the reference.
 The active
@@ -1378,8 +1378,8 @@ guards pass. Experimental harness formatting covers all 21 linked source files.
 ### M6 interpretation and proposed next checkpoint
 
 The binding bucket includes raw-record construction as well as lookup; its timing
-alone is not proof that every comparison is redundant. Code inspection shows
-`binary_frontend.bind` scans the package dictionary, then the session symbol list,
+alone is not proof that every comparison is redundant. M6 code inspection showed
+`binary_frontend.bind` scanned the package dictionary, then the session symbol list,
 for each name. Tokenization is also substantial. Expression preparation is much
 smaller, so direct compact-expression compilation is not the first recommendation.
 
@@ -1389,6 +1389,111 @@ alias identity, first-use IDs, forward references and rejection behavior. Keep t
 reference path during comparison, include index construction in preparation time,
 and report temporary allocation and packed/output identity on these same workloads.
 Choose the index representation after examining dictionary and symbol distributions;
-use offsets in stored data, with no CPU-specific shortcuts. This is a proposal for
-discussion, not an activated implementation step. A later tokenizer experiment
+use offsets in stored data, with no CPU-specific shortcuts. This proposal was accepted as M7 below. A later tokenizer experiment
 should attribute dispatch/scanning work before changing its execution contract.
+
+## M7: indexed preparation-time name binding
+
+Measured. Baseline: M6 `50b02bc2`, preserved as a native source snapshot while the
+replacement is evaluated. Hypothesis: bounded hash buckets with offset chains
+reduce repeated package/symbol comparisons enough to improve full preparation,
+after paying for index construction. All target semantics stay in packages.
+
+Use count-proportional package nodes and a bounded session-symbol index; preserve
+first dictionary match, ASCII case folding, aliases/qualifiers, first-use IDs,
+forward references and existing rejection limits. Indexes contain offsets, not
+stored pointers. Release all indexing scratch before assembly. No source-format,
+expression, tokenizer or production CLI change; no permanent selection switch.
+
+Compare fresh baseline/replacement release and MEM4 accounting runs on unchanged
+expression-layout32 for both targets, same 68020/2 MiB and 10/60/150-second limits.
+Check colliding names, repeated and forward references, aliases, and symbol-count
+boundaries with live Rust output or explicit native rejection evidence. Report
+construction/lookup timing together, executable size, actual peak allocations and
+retained packed size. Success is a clear repeatable preparation/total-time gain
+with equivalent output and acceptable temporary storage. Stop/revise if lookup
+savings disappear into setup or memory growth, or semantics diverge. Use a second
+bounded pair only if the first result is too close to distinguish from noise.
+
+### M7 implementation and validation
+
+Package lookup uses 256 four-byte bucket heads and an eight-byte node per
+validated dictionary entry: capsule-relative entry offset plus scratch-relative
+next-node offset. Reverse insertion preserves the original first matching entry
+when folded spellings repeat. Symbols use 256 two-byte bucket heads; the existing
+eight-byte entry now holds arena-relative name offset, length, first-use ID and
+next entry index plus one. Zero terminates chains. Hashing and equality both fold
+ASCII A–Z, and equality still checks full spelling after bucket selection.
+
+`frontend.scratchSize` derives temporary capacity from the actual dictionary count,
+checks arithmetic and the capsule's minimum record-size bound, and introduces no
+new dictionary-count ceiling. The caller checks addition of its I/O scratch and
+retains the existing allocation limit. Added requested scratch is 1,536 bytes plus
+8 bytes per dictionary entry. Stored indexes contain no memory pointers; the live
+frontend frame still has its transient package/scratch pointers. Index storage is
+freed with all other preparation scratch before assembly begins.
+
+Focused live-native tests pass for colliding identifiers, mixed-case mnemonics,
+68000 BCC/BHS aliases, forward/repeated references, exactly 512 distinct symbols,
+and explicit rejection at 513. The 512-name case necessarily exercises collisions
+in 256 buckets, including names interned before their definitions. Host Rust
+oracles verify independent expected bytes and that the 513-name source itself is
+valid Rust input. Rejection is the existing experimental limit, not a Rust parity
+claim. All instrumented tests check balanced cleanup and fresh completion.
+
+### M7 measurement — 2026-09-19
+
+Fresh release runs, M6 `50b02bc2` → indexed implementation, on identical
+expression-layout32 source/output hashes in the same 68020 / 2 MiB guest:
+
+| Target | Baseline total | Indexed total | Elapsed reduction |
+|---|---:|---:|---:|
+| m6502 | 2.235 s | 1.988 s | 11.1% |
+| m68000 | 4.766 s | 3.857 s | 19.1% |
+
+These are single bounded START-to-DONE observations with 20 ms polling, not
+physical-hardware measurements or a statistical speed guarantee. The changes
+are substantially larger than polling granularity. Native exact output matches
+both live Rust and the workload's independent expected bytes in each run.
+The release image grows 304 bytes (20,692 → 20,996); linked reservation grows
+300 bytes (23,728 → 24,028), entirely in code. Release image identity is
+`fnv1a64:c8d5ed17419647a2`.
+
+Separate instrumented stage comparison, including index construction:
+
+| Target | Package setup | Binding / records | Preparation total | Peak owned allocation |
+|---|---:|---:|---:|---:|
+| m6502 | 0.016 → 0.027 s | 0.409 → 0.171 s | 1.800 → 1.572 s | 53,248 → 86,016 B |
+| m68000 | 0.042 → 0.065 s | 1.058 → 0.190 s | 2.743 → 1.890 s | 270,336 → 270,336 B |
+
+Binding/record time falls approximately 58% / 82%; setup grows about 11 / 23 ms.
+Thus construction cost is included and much smaller than the saved lookup work.
+Tokenization, expression work and assembly remain broadly unchanged. These are
+instrumented observations, including unchanged M6 probe overhead.
+
+**Memory compromise:** the requested scratch increase crosses the allocator's
+32 KiB → 64 KiB capacity boundary on both targets. Total allocated/freed capacity
+therefore rises by 32 KiB on both. On 6502 this also raises peak owned allocation
+by 32 KiB; on 68000 the later runtime-prefix copy already has the larger peak.
+Retained preparation memory stays 16,384 / 139,264 bytes, packed source remains
+4,773 / 5,477 bytes, and all scratch is released before assembly. Both complete
+in the same 2 MiB configuration. Keep the measured speed gain for this experimental
+checkpoint; the allocation rounding remains an explicit compromise, not a claim
+that hash indexing inherently needs another 32 KiB. No allocator redesign was made.
+
+Qualification: both release and accounting comparisons pass for both targets;
+three focused native binding cases and two host byte-oracle tests pass. Library
+Clippy, Rust/linked-native formatting, workflow checks and native engineering
+guards pass. No full self-host or general native-language qualification is claimed.
+
+Reproduce with the M6/M7 command above using `expression-layout --blocks 32`.
+For the baseline, extract `git archive 50b02bc2 native` into a temporary root and
+pass `--native-source-root <root>`; use current sources for the replacement. Use
+fresh output directories and separate release/`--compare-memory` runs. All four
+comparison batches stayed within 60 seconds, with unchanged 10/60/150 limits.
+The three native binding cases are opt-in `binary_binding_*_fs_uae` tests;
+run with memory accounting enabled to include success/rejection cleanup checks.
+
+The next performance candidate is tokenization, now about half of preparation.
+Attribute its dispatch/scanning work before choosing a VM-level or native change;
+this checkpoint does not activate that work.

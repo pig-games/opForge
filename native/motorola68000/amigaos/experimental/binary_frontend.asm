@@ -25,7 +25,7 @@ ARENA_BYTES = 16384
 SYMBOL_LIMIT = 512
 PROGRAM = 0
 PROGRAM_BYTES = 4
-DICTIONARY = 8
+PACKAGE_BASE = 8
 DICTIONARY_COUNT = 12
 PACKAGE_END = 16
 LINE_NUMBER = 20
@@ -37,19 +37,54 @@ TOKENS = 76
 LEXEMES = TOKENS+64*20
 ENTRIES = LEXEMES+1024
 ARENA = ENTRIES+SYMBOL_LIMIT*8
+PACKAGE_BUCKETS = ARENA+ARENA_BYTES
+SYMBOL_BUCKETS = PACKAGE_BUCKETS+256*4
 	.pub
-PREPARED_LINE = ARENA+ARENA_BYTES
+PREPARED_LINE = SYMBOL_BUCKETS+256*2
 SCRATCH_BYTES = PREPARED_LINE+256
 	.priv
+; Symbol links use entry index + 1 (zero ends a chain); names are arena offsets.
 Entry	.struct
-Name	.long ?
+Name	.word ?
 Length	.word ?
 Id	.word ?
+Next	.word ?
+	.endstruct
+; Package nodes hold capsule-relative entries and scratch-relative chain links.
+Node	.struct
+Entry	.long ?
+Next	.long ?
 	.endstruct
 	.section code, kind=code
 	.pub
+; Compute scratch including one offset-chain node per dictionary entry.
+; A0=readable capsule header; D0=status, D1=bytes on success; CCR=D0.
+; Other registers preserved. The capsule byte bound limits count, not a new cap.
+scratchSize	.block
+	movem.l d2, -(sp)
+	cmpi.l #$42535032, package.Header.Magic(a0)
+	bne.w bad
+	move.l package.Header.Bytes(a0), d2
+	cmpi.l #76, d2
+	blo.w bad
+	subi.l #76, d2
+	lsr.l #3, d2
+	move.l package.Header.DictionaryCount(a0), d1
+	cmp.l d2, d1
+	bhi.w bad
+	lsl.l #3, d1
+	addi.l #SCRATCH_BYTES, d1
+	bcs.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2
+	rts
+	.bend  ; scratchSize
 ; Begin a streaming frontend session. A0=Frame with a readable package capsule
-; and SCRATCH_BYTES of caller-owned aligned scratch. D0=0 success, 1 invalid.
+; and scratchSize bytes of caller-owned aligned scratch. D0=0 success, 1 invalid.
 ; Resets symbols and source-line numbering. Preserves other registers; CCR=D0.
 begin	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -64,6 +99,11 @@ begin	.block
 	bne.w failed
 	clr.l SYMBOL_COUNT(a6)
 	clr.l ARENA_USED(a6)
+	lea PACKAGE_BUCKETS(a6), a0
+	move.l #384-1, d0
+clearBuckets
+	clr.l (a0)+
+	dbra d0, clearBuckets
 	bsr.w configure
 	bne.w failed
 	move.l #1, LINE_NUMBER(a6)
@@ -164,7 +204,7 @@ finish	.block
 	beq.w resetControl
 	clr.l PROGRAM(a6)
 	clr.l PROGRAM_BYTES(a6)
-	clr.l DICTIONARY(a6)
+	clr.l PACKAGE_BASE(a6)
 	clr.l DICTIONARY_COUNT(a6)
 	clr.l PACKAGE_END(a6)
 	lea LINE_FRAME(a6), a1
@@ -187,6 +227,9 @@ resetControl
 ; Validate only the package surfaces consumed by this frontend. Execution has
 ; independent bounds checks for candidate/program tables.
 configure	.block
+	movea.l Frame.Package(a5), a0
+	bsr.w scratchSize
+	bne.w bad
 	movea.l Frame.Package(a5), a4
 	cmpi.l #$42535032, package.Header.Magic(a4)
 	bne.w bad
@@ -207,12 +250,13 @@ configure	.block
 	bhi.w bad
 	movea.l a4, a2
 	adda.l d0, a2
-	move.l a2, DICTIONARY(a6)
+	move.l a4, PACKAGE_BASE(a6)
 	move.l package.Header.DictionaryCount(a4), d6
 	move.l d6, DICTIONARY_COUNT(a6)
+	lea SCRATCH_BYTES(a6), a3
 dictLoop
 	tst.l d6
-	beq.w configureTokenizer
+	beq.w indexDictionary
 	move.l PACKAGE_END(a6), d0
 	sub.l a2, d0
 	cmpi.l #6, d0
@@ -229,9 +273,35 @@ dictLoop
 	andi.l #$fffffffe, d1
 	cmp.l d0, d1
 	bhi.w bad
+	move.l a2, d2
+	sub.l a4, d2
+	move.l d2, Node.Entry(a3)
+	addq.l #8, a3
 	adda.l d1, a2
 	subq.l #1, d6
 	bra.w dictLoop
+; Insert backwards so duplicate folded spellings retain original first-match order.
+indexDictionary
+	move.l DICTIONARY_COUNT(a6), d6
+indexLoop
+	tst.l d6
+	beq.w configureTokenizer
+	subq.l #8, a3
+	movea.l a4, a2
+	adda.l Node.Entry(a3), a2
+	moveq #0, d0
+	move.w (a2), d0
+	lea 6(a2), a0
+	bsr.w hash
+	lsl.l #2, d0
+	lea PACKAGE_BUCKETS(a6), a1
+	adda.l d0, a1
+	move.l (a1), Node.Next(a3)
+	move.l a3, d0
+	sub.l a6, d0
+	move.l d0, (a1)
+	subq.l #1, d6
+	bra.w indexLoop
 configureTokenizer
 	move.l package.Header.Tokenizer(a4), d0
 	cmpi.l #76, d0
@@ -291,14 +361,19 @@ bind	.block
 	movea.l a1, a6
 	movea.l a0, a2
 	move.l d0, d6
-	movea.l DICTIONARY(a6), a3
-	move.l DICTIONARY_COUNT(a6), d7
+	bsr.w hash
+	move.l d0, d4
+	lsl.l #2, d0
+	lea PACKAGE_BUCKETS(a6), a1
+	move.l 0(a1, d0.l), d7
 findPackage
 	tst.l d7
 	beq.w findSymbol
-	moveq #0, d5
-	move.w (a3), d5
-	cmp.l d6, d5
+	movea.l a6, a4
+	adda.l d7, a4
+	movea.l PACKAGE_BASE(a6), a3
+	adda.l Node.Entry(a4), a3
+	cmp.w (a3), d6
 	bne.w advance
 	movea.l a2, a0
 	lea 6(a3), a1
@@ -311,21 +386,27 @@ findPackage
 	move.b 4(a3), d2
 	bra.w good
 advance
-	addi.l #7, d5
-	andi.l #$fffffffe, d5
-	adda.l d5, a3
-	subq.l #1, d7
+	move.l Node.Next(a4), d7
 	bra.w findPackage
 findSymbol
-	lea ENTRIES(a6), a3
-	move.l SYMBOL_COUNT(a6), d7
+	add.l d4, d4
+	lea SYMBOL_BUCKETS(a6), a1
+	moveq #0, d7
+	move.w 0(a1, d4.l), d7
 symbolLoop
 	tst.l d7
 	beq.w create
+	subq.l #1, d7
+	lsl.l #3, d7
+	lea ENTRIES(a6), a3
+	adda.l d7, a3
 	cmp.w Entry.Length(a3), d6
 	bne.w nextSymbol
 	movea.l a2, a0
-	movea.l Entry.Name(a3), a1
+	lea ARENA(a6), a1
+	moveq #0, d0
+	move.w Entry.Name(a3), d0
+	adda.l d0, a1
 	move.l d6, d0
 	bsr.w equal
 	bne.w nextSymbol
@@ -334,8 +415,8 @@ symbolLoop
 	moveq #0, d2
 	bra.w good
 nextSymbol
-	addq.l #8, a3
-	subq.l #1, d7
+	moveq #0, d7
+	move.w Entry.Next(a3), d7
 	bra.w symbolLoop
 create
 	cmpi.l #63, d6
@@ -350,9 +431,20 @@ create
 	add.l d6, d0
 	cmpi.l #ARENA_BYTES, d0
 	bhi.w bad
+	move.l SYMBOL_COUNT(a6), d7
+	lsl.l #3, d7
+	lea ENTRIES(a6), a3
+	adda.l d7, a3
+	lea SYMBOL_BUCKETS(a6), a4
+	adda.l d4, a4
+	move.w (a4), Entry.Next(a3)
+	move.l SYMBOL_COUNT(a6), d7
+	addq.l #1, d7
+	move.w d7, (a4)
 	lea ARENA(a6), a1
-	adda.l ARENA_USED(a6), a1
-	move.l a1, Entry.Name(a3)
+	move.l ARENA_USED(a6), d7
+	adda.l d7, a1
+	move.w d7, Entry.Name(a3)
 	move.w d6, Entry.Length(a3)
 	move.l NEXT_ID(a6), d1
 	move.w d1, Entry.Id(a3)
@@ -374,6 +466,32 @@ done
 	movem.l (sp)+, d3-d7/a2-a6
 	rts
 	.bend  ; bind
+; Case-insensitive ASCII hash shared by dictionary construction and binding.
+; A0/D0=bytes/count; D0=8-bit bucket. Clobbers D1-D3/A0; other registers kept.
+hash	.block
+	moveq #0, d1
+	tst.l d0
+	beq.w done
+loop
+	moveq #0, d2
+	move.b (a0)+, d2
+	cmpi.b #'A', d2
+	blo.w ready
+	cmpi.b #'Z', d2
+	bhi.w ready
+	addi.b #32, d2
+ready
+	move.l d1, d3
+	lsl.l #5, d1
+	add.l d3, d1
+	add.l d2, d1
+	subq.l #1, d0
+	bne.w loop
+done
+	move.l d1, d0
+	andi.l #255, d0
+	rts
+	.bend  ; hash
 ; Compare D0 nonempty ASCII lexical bytes, A0/A1; D0=0 equal, 1 unequal.
 ; Clobbers D1/D2/A0/A1; preserves remaining registers; CCR reflects D0.
 equal	.block

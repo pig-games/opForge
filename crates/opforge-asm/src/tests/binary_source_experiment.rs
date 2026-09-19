@@ -383,3 +383,103 @@ fn binary_expression_widths_fs_uae() {
         assert_eq!(memory["compiled_program_bytes"], 50);
     }
 }
+
+fn binding_capacity_source(count: usize) -> String {
+    let mut source = String::from(".cpu m6502\n.org $1000\n.word bound_511-bound_000\n");
+    for index in 0..count {
+        source.push_str(&format!("bound_{index:03}:\n.byte {}\n", index & 255));
+    }
+    source.push_str(".word bound_511-bound_000\n.end\n");
+    source
+}
+
+#[test]
+fn binary_binding_capacity_live_oracle() {
+    for count in [512, 513] {
+        let source = binding_capacity_source(count);
+        let (entries, diagnostics) =
+            assemble_source_entries_with_runtime_mode(&source.lines().collect::<Vec<_>>(), true)
+                .unwrap();
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let mut expected = vec![255, 1];
+        expected.extend((0..count).map(|index| (index & 255) as u8));
+        expected.extend([255, 1]);
+        assert_eq!(
+            entries
+                .into_iter()
+                .map(|(_, byte)| byte)
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; colliding symbols at the existing capacity"]
+fn binary_binding_capacity_fs_uae() {
+    // More than 256 distinct names necessarily collide in a 256-bucket index.
+    // Both first/last names are interned by a forward reference before definitions.
+    assert_binary_source(binding_capacity_source(512), "m6502".into());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; unchanged 512-symbol experimental limit"]
+fn binary_binding_capacity_overflow_fs_uae() {
+    // Rust accepts this complete source; the experimental native boundary is 512.
+    assert_native_rejection(&binding_capacity_source(513), "m6502");
+}
+
+fn binding_alias_source() -> String {
+    // These distinct names share the index bucket used by `moveq`; exact spelling
+    // comparison must still separate them and package lookup must precede symbols.
+    let names = [
+        "item_136",
+        "item_217",
+        "item_370",
+        "item_451",
+        "item_532",
+        "item_613",
+        "item_1988",
+        "item_2798",
+    ];
+    let mut source = String::from(".cpu m68000\n.org $1000\n");
+    for (index, name) in names.iter().enumerate() {
+        source.push_str(&format!(
+            "  MoVeQ #{index},D0\n  BcC.S {name}\n.word 0\n{name}:\n"
+        ));
+    }
+    source.push_str("  BhS.S finish\n.word 0\nfinish:\n");
+    for (index, name) in names.iter().enumerate() {
+        source.push_str(&format!(".word {name}-item_136-{}\n", index * 6));
+    }
+    source.push_str(".end\n");
+    source
+}
+
+#[test]
+fn binary_binding_alias_live_oracle() {
+    let source = binding_alias_source();
+    let (entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&source.lines().collect::<Vec<_>>(), true)
+            .unwrap();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    let mut expected = Vec::new();
+    for index in 0..8 {
+        expected.extend([0x70, index, 0x64, 2, 0, 0]);
+    }
+    expected.extend([0x64, 2, 0, 0]);
+    expected.extend([0; 16]);
+    assert_eq!(
+        entries
+            .into_iter()
+            .map(|(_, byte)| byte)
+            .collect::<Vec<_>>(),
+        expected
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; collisions, mnemonic case, aliases and references"]
+fn binary_binding_alias_fs_uae() {
+    assert_binary_source(binding_alias_source(), "m68000".into());
+}

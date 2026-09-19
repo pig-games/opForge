@@ -7,7 +7,7 @@
 	.include "telemetry_macros.i"
 	.include "memory_telemetry.i"
 	.pub
-COMPILED_TAG = $80
+COMPILED_TAG = $81
 MAX_DEPTH = 16
 STATUS_OK = 0
 STATUS_MALFORMED = 1
@@ -23,7 +23,8 @@ Pc	.long ?
 ; A0=input tokens, A1=bounded end, A3=output, A4=bounded output end.
 ; Returns D0/CCR=status, A0=first delimiter/end, A3=after compiled wrapper.
 ; Preserves D1-D7/A1-A2/A4-A6. Failed output is uncommitted scratch.
-; Wrapper: $80,u8 payload length, current ExprVM v2 program (LE payloads).
+; Wrapper: $81,u8 payload length, compact runtime expression (LE payloads).
+; Canonical v2 scratch is checked/folded before lowering; only compact bytes persist.
 compile	.block
 	movem.l d1-d7/a1-a2/a4-a6, -(sp)
 	move.l a4, d0
@@ -52,7 +53,7 @@ compile	.block
 	move.l a0, -(sp)
 	lea 1(a5), a0
 	move.l d1, d0
-	jsr folder.fold
+	jsr folder.prepare
 	movea.l (sp)+, a0
 	tst.l d0
 	bne.w malformed
@@ -103,7 +104,7 @@ evaluate	.block
 	move.l Frame.Pc(a5), d2
 	movea.l Frame.Values(a5), a2
 	movea.l Frame.Defined(a5), a6
-	jsr runtime.evalNumeric32
+	jsr runtime.evalCompact32
 	movea.l a4, a0
 	move.l d3, d1
 	move.l d5, d2

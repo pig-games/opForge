@@ -104,8 +104,18 @@ caseLoop
 	cmpi.w #1, d6
 	beq.s versionOk
 	cmpi.w #2, d6
-	bne.w fail
+	beq.s versionOk
+	; 0x8000 is a harness-only selector for the experimental compact
+	; signed-32 evaluator. It is not an ExprVM bytecode version.
+	cmpi.w #$8000, d6
+	beq.s compactSelector
+	bra.w fail
 versionOk
+	moveq #0, d5
+	bra.s selectorReady
+compactSelector
+	moveq #1, d5
+selectorReady
 	moveq #0, d0
 	move.w (a3)+, d0
 	cmpi.l #PROGRAM_CAPACITY, d0
@@ -122,7 +132,6 @@ versionOk
 	suba.l a3, a0
 	cmp.l a0, d1
 	bhi.w fail
-	move.w d6, runtime.ExprvmSelectedOpcodeVersion
 	movea.l a3, a0
 	move.l ProgramLength, d0
 	lea SymbolName, a1
@@ -130,7 +139,14 @@ versionOk
 	moveq #1, d1
 	move.l CurrentPc, d2
 	lea SymbolStable, a6
+	tst.l d5
+	bne.s compactEval
+	move.w d6, runtime.ExprvmSelectedOpcodeVersion
 	jsr runtime.exprvmEvalProgramV1
+	bra.s evalComplete
+compactEval
+	jsr runtime.evalCompact32
+evalComplete
 	move.l d0, (a5)
 	move.l d3, 12(a5)
 	move.l d4, 16(a5)

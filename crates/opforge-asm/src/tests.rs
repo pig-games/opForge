@@ -114,6 +114,8 @@ mod native_default_origin;
 mod native_ds_reservation;
 #[path = "tests/native_expression_bitwise.rs"]
 mod native_expression_bitwise;
+#[path = "tests/native_expression_compact.rs"]
+mod native_expression_compact;
 #[path = "tests/native_expression_comparison.rs"]
 mod native_expression_comparison;
 #[path = "tests/native_expression_digit_separators.rs"]

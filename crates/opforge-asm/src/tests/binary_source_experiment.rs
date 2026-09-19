@@ -307,11 +307,11 @@ fn binary_expression_folding_fs_uae() {
         "m6502".into(),
     );
     if !memory.is_null() {
-        // Ten expressions: literals shrink to ten-byte programs; symbol/PC
-        // subtrees retain their operators. This proves folding actually ran,
+        // Ten expressions: literals use explicit signed widths; symbol/PC
+        // subtrees retain their compact operators. This proves folding actually ran,
         // in addition to the complete output comparison with live Rust.
         assert_eq!(memory["expressions_compiled"], 10);
-        assert_eq!(memory["compiled_program_bytes"], 126);
+        assert_eq!(memory["compiled_program_bytes"], 54);
     }
 }
 
@@ -327,4 +327,21 @@ fn binary_expression_boundary_fs_uae() {
         ")".repeat(16),
     );
     assert_binary_source(source, "m6502".into());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; compact literal width transitions"]
+fn binary_expression_widths_fs_uae() {
+    let memory = assert_binary_source(
+        ".cpu m6502\n.org $1000\n\
+         .long 127,128,-128,-129\n\
+         .long 32767,32768,-32768,-32769\n\
+         .long -$7fffffff-1,$7fffffff\n.end\n"
+            .into(),
+        "m6502".into(),
+    );
+    if !memory.is_null() {
+        assert_eq!(memory["expressions_compiled"], 11);
+        assert_eq!(memory["compiled_program_bytes"], 50);
+    }
 }

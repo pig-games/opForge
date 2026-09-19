@@ -301,7 +301,8 @@ M3. Review preparation cost before widening coverage.
 | Binary-source experiment | Implemented and measured | Complete mixed8 parity on both targets; observed 8–11× combined-path gains | `a378ec48` |
 | M1 / M2 — Compact native runtime | Complete | Shared interpreters, streaming preparation and released lexical storage; both mixed8/mixed32 targets complete on a 68020 / 2 MiB guest | Binary-source experiment |
 | M3 — Prepared numeric expressions | Measured; review tradeoff | Shared execution and multiplication work within 2 MiB; expression-replay32 takes 2.18/4.69 s versus M2 1.98/4.48 s | M2; no CLI migration |
-| M4 — Preparation-time constant folding | Measured; no total-time gain | Shared arithmetic folds constants; unchanged workloads are about 1–4% slower in single observations including preparation | M3; unchanged format, limits and coverage |
+| M4 — Preparation-time constant folding | Retained for size savings | Expression payloads shrink 31.7%; no demonstrated total-time gain | M3; unchanged format, limits and coverage |
+| M5 — Compact runtime expressions | Measured; ready for review | Expression bytes shrink another 54.4%, packed records 25–27%; release totals broadly unchanged, linked code +428 B | M4; unchanged semantic coverage |
 
 ## W1 agreement: focused package-VM baseline
 

@@ -225,7 +225,7 @@ skipToken	.block
 	bhs.w bad
 	moveq #0, d0
 	move.b (a3)+, d0
-	cmpi.b #$80, d0
+	cmpi.b #expression.COMPILED_TAG, d0
 	beq.w compiled
 	cmpi.b #2, d0
 	bhi.w ok

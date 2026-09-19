@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_shapes
 	.module experimental.amigaos.binary_shapes
 	.cpu 68020
+	.use opasm.amigaos.binary_expression as expression
 	.section code, kind=code
 	.pub
 ; A0/A1=bounded operand. D0=1 only for a complete parenthesized member root,
@@ -27,7 +28,7 @@ isMember	.block
 	bne.w no
 	; A compiled expression is opaque: literal bytes must never be scanned
 	; as punctuation or symbol tokens.
-	cmpi.b #$80, (a0)+
+	cmpi.b #expression.COMPILED_TAG, (a0)+
 	bne.w no
 	cmpa.l a2, a0
 	bhs.w no

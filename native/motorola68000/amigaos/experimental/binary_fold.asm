@@ -1,4 +1,4 @@
-; Fold maximal constant subtrees using the checked shared ExprVM arithmetic.
+; Fold constant subtrees and lower once to compact runtime expressions.
 ; @opforge-owner: opasm.amigaos.binary_fold
 	.module opasm.amigaos.binary_fold
 	.cpu 68020
@@ -14,20 +14,27 @@ SCRATCH_BYTES = MAP_BYTES+runtime.EXPRVM_STACK_CAPACITY*ENTRY_BYTES
 	.pub
 	.section code, kind=code
 ; A0/D0=compiler-validated v2 payload and length, including END (1..255).
-; Returns D0/CCR=status (0=success, 1=arithmetic failure), D1=new length.
+; Returns D0/CCR=status (0=success, 1=failure), D1=compact payload length.
 ; Preserves D2-D7/A0-A6. Uses bounded temporary stack storage; no source access.
 ; Original compiler limits apply before this call. Rewrites only on success
 ; paths; a failed expression remains uncommitted preparation scratch.
-fold	.block
-	; A literal plus END occupies ten bytes; no shorter program can contain
-	; a nontrivial constant subtree. Avoid allocating/scanning scratch for it.
-	move.l d0, d1
-	cmpi.l #10, d0
-	bhi.w prepare
-	moveq #0, d0
-	rts
-prepare
+prepare	.block
 	movem.l d2-d7/a0-a6, -(sp)
+	; A lone literal needs narrowing but no subtree analysis or span map.
+	cmpi.l #10, d0
+	bne.w scratch
+	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, (a0)
+	bne.w scratch
+	movea.l a0, a6
+	lea 1(a0), a3
+	bsr.w readLiteral
+	bsr.w writeLiteral
+	clr.b (a6)+
+	move.l a6, d1
+	sub.l a0, d1
+	moveq #0, d0
+	bra.w restore
+scratch
 	lea -SCRATCH_BYTES(sp), sp
 	movea.l sp, a1
 	lea MAP_BYTES(a1), a2
@@ -48,7 +55,7 @@ scan
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, d0
 	beq.w scanned
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, d0
-	beq.w literal
+	beq.w constant
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d0
 	beq.w unary
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
@@ -60,7 +67,7 @@ dynamic
 	move.w d6, (a5)+
 	clr.w (a5)+
 	bra.w scan
-literal
+constant
 	addq.l #8, a3
 	move.w d6, (a5)+
 	move.w #1, (a5)+
@@ -103,13 +110,52 @@ rewrite
 	movea.l a4, a6
 	moveq #0, d6
 next
+	cmp.w d7, d6
+	bhs.w complete
 	moveq #0, d0
 	move.b 0(a1, d6.w), d0
 	bne.w evaluate
-	move.b (a3)+, (a6)+
+	move.b (a3)+, d0
 	addq.w #1, d6
-	cmp.w d7, d6
-	blo.w next
+	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, d0
+	beq.w literal
+	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d0
+	beq.w negate
+	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
+	beq.w binaryOperator
+	move.b d0, (a6)+
+	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d0
+	bne.w next
+	move.b (a3)+, (a6)+
+	move.b (a3)+, (a6)+
+	addq.w #2, d6
+	bra.w next
+literal
+	bsr.w readLiteral
+	addq.w #8, d6
+	bsr.w writeLiteral
+	bra.w next
+negate
+	addq.l #1, a3
+	addq.w #1, d6
+	move.b #runtime.COMPACT_NEGATE, (a6)+
+	bra.w next
+binaryOperator
+	move.b (a3)+, d0
+	addq.w #1, d6
+	cmpi.b #runtime.EXPRVM_BINARY_ADD, d0
+	beq.w add
+	cmpi.b #runtime.EXPRVM_BINARY_SUBTRACT, d0
+	beq.w subtract
+	move.b #runtime.COMPACT_MULTIPLY, (a6)+
+	bra.w next
+add
+	move.b #runtime.COMPACT_ADD, (a6)+
+	bra.w next
+subtract
+	move.b #runtime.COMPACT_SUBTRACT, (a6)+
+	bra.w next
+complete
 	move.l a6, d1
 	sub.l a4, d1
 	moveq #0, d0
@@ -134,26 +180,60 @@ evaluate
 	move.b d1, (a5)
 	tst.l d0
 	bne.w done
-	move.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, (a6)+
-	tst.l d3
-	smi d1
-	.for 4
-	move.b d3, (a6)+
-	lsr.l #8, d3
-	.endfor
-	.for 4
-	move.b d1, (a6)+
-	.endfor
 	adda.l d2, a3
 	add.w d2, d6
+	bsr.w writeLiteral
 	bra.w next
 done
 	lea SCRATCH_BYTES(sp), sp
+restore
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; fold
+	.bend  ; prepare
 	.priv
+
+; Read the low signed32 value of a validated canonical literal at A3.
+; Advances A3 by eight payload bytes. Clobbers D3/CCR.
+readLiteral	.block
+	moveq #0, d3
+	move.b 3(a3), d3
+	lsl.l #8, d3
+	move.b 2(a3), d3
+	lsl.l #8, d3
+	move.b 1(a3), d3
+	lsl.l #8, d3
+	move.b (a3), d3
+	addq.l #8, a3
+	rts
+	.bend  ; readLiteral
+
+; Write signed D3 at A6 with the narrowest explicit width. Output is always
+; smaller than its canonical source span. Clobbers D0-D3/A6/CCR.
+writeLiteral	.block
+	move.l d3, d1
+	ext.w d1
+	ext.l d1
+	moveq #runtime.COMPACT_I8, d0
+	moveq #0, d2
+	cmp.l d3, d1
+	beq.w bytes
+	move.l d3, d1
+	ext.l d1
+	moveq #runtime.COMPACT_I16, d0
+	moveq #1, d2
+	cmp.l d3, d1
+	beq.w bytes
+	moveq #runtime.COMPACT_I32, d0
+	moveq #3, d2
+bytes
+	move.b d0, (a6)+
+loop
+	move.b d3, (a6)+
+	lsr.l #8, d3
+	dbra d2, loop
+	rts
+	.bend  ; writeLiteral
 
 ; D0=start offset, D1=end offset. Record only nontrivial constant subtrees.
 ; A1=zeroed span map. Clobbers D1/CCR; scan state and other registers survive.

@@ -50,6 +50,15 @@ EXPRVM_BINARY_BIT_XOR           = 23
 EXPRVM_BINARY_LOGIC_AND         = 24
 EXPRVM_BINARY_LOGIC_XOR         = 25
 EXPRVM_STACK_CAPACITY           = 8
+; Latest experimental prepared-expression format. Payloads are little-endian;
+; signed literal widths are explicit, operators have no following operand byte.
+COMPACT_I8 = $13
+COMPACT_I16 = $14
+COMPACT_I32 = $15
+COMPACT_NEGATE = $30
+COMPACT_ADD = $31
+COMPACT_SUBTRACT = $32
+COMPACT_MULTIPLY = $33
 
 	.section code, kind=code
 	.pub
@@ -74,6 +83,27 @@ evalNumeric32	.block
 	tst.l d0
 	rts
 	.bend  ; evalNumeric32
+
+; Evaluate the compact prepared-expression form directly with checked i32
+; semantics. Same inputs, outputs and preservation as evalNumeric32. Canonical
+; literal/operator opcodes are rejected here; arithmetic/stack logic is shared.
+	.pub
+evalCompact32	.block
+	.priv
+	move.l d6, -(sp)
+	move.w ExprvmSelectedOpcodeVersion, d6
+	move.w d6, -(sp)
+	move.w #2, Checked32
+	move.w #2, ExprvmSelectedOpcodeVersion
+	jsr exprvmEvalProgramV1
+	move.w (sp)+, d6
+	move.w d6, ExprvmSelectedOpcodeVersion
+	move.l (sp)+, d6
+	clr.w Checked32
+	tst.l d0
+	rts
+	.bend  ; evalCompact32
+	.pub
 
 ; ---------------------------------------------------------------------------
 ; Evaluate one portable ExprVM bytecode program with signed i64 scalars.
@@ -114,6 +144,17 @@ exprvmEvalProgramV1	.block
 	clr.l d4
 	clr.l d5
 	clr.l d7
+	; A1 is unused by the scalar ABI and preserved by arithmetic helpers.
+	; Select this call's decoder once instead of checking format per opcode.
+	lea evalLoopV1, a1
+	cmpi.w #2, Checked32
+	beq.s selectCompact
+	cmpi.w #2, ExprvmSelectedOpcodeVersion
+	bne.s evalLoop
+	lea evalLoopV2, a1
+	bra.s evalLoop
+selectCompact
+	lea evalCompact, a1
 
 evalLoop
 	tst.l d0
@@ -122,10 +163,9 @@ evalLoop
 	move.b (a0)+, d6
 	subq.l #1, d0
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_EXPRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_EVALUATOR
-	moveq #0, d2
-	move.w ExprvmSelectedOpcodeVersion, d2
-	cmpi.w #2, d2
-	beq.s evalLoopV2
+	jmp (a1)
+
+evalLoopV1
 	cmpi.b #EXPRVM_OPCODE_END, d6
 	beq.w opcodeEnd
 	cmpi.b #EXPRVM_OPCODE_PUSH_LITERAL, d6
@@ -157,9 +197,64 @@ evalLoopV2
 	beq.w opcodeRequireScalar
 	bra.w unknownOpcode
 
+evalCompact
+	cmpi.b #EXPRVM_V2_OPCODE_END, d6
+	beq.w opcodeEnd
+	cmpi.b #COMPACT_I8, d6
+	beq.w compactByte
+	cmpi.b #COMPACT_I16, d6
+	beq.w compactWord
+	cmpi.b #COMPACT_I32, d6
+	beq.w compactLong
+	cmpi.b #EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d6
+	beq.w opcodePushCurrent
+	cmpi.b #EXPRVM_V2_OPCODE_PUSH_SYMBOL, d6
+	beq.w opcodePushSymbol
+	cmpi.b #COMPACT_NEGATE, d6
+	beq.w compactNegate
+	cmpi.b #COMPACT_ADD, d6
+	beq.w compactAdd
+	cmpi.b #COMPACT_SUBTRACT, d6
+	beq.w compactSubtract
+	cmpi.b #COMPACT_MULTIPLY, d6
+	bne.w unknownOpcode
+	moveq #EXPRVM_BINARY_MULTIPLY, d6
+	bra.w binaryReady
+compactAdd
+	moveq #EXPRVM_BINARY_ADD, d6
+	bra.w binaryReady
+compactSubtract
+	moveq #EXPRVM_BINARY_SUBTRACT, d6
+	bra.w binaryReady
+compactNegate
+	moveq #EXPRVM_UNARY_MINUS, d6
+	bra.w unaryReady
+compactByte
+	bsr.w readU8
+	bmi.w literalReadFail
+	ext.w d3
+	ext.l d3
+	bra.w compactSigned
+compactWord
+	bsr.w readU16
+	bmi.w literalReadFail
+	ext.l d3
+	bra.w compactSigned
+compactLong
+	cmpi.l #4, d0
+	blo.w literalReadFail
+	bsr.w readLiteralLong
+compactSigned
+	moveq #0, d2
+	tst.l d3
+	bpl.w literalReady
+	moveq #-1, d2
+	bra.w literalReady
+
 opcodePushLiteral
 	bsr.w readI64
 	bmi.w literalReadFail
+literalReady
 	move.l d0, ExprvmEvalRemaining
 	bsr.w pushD3
 	bmi.w literalPushFail
@@ -205,8 +300,9 @@ pushSymbolStable
 opcodeApplyUnary
 	bsr.w readU8
 	bmi.w fail
-	move.l d0, ExprvmEvalRemaining
 	move.l d3, d6
+unaryReady
+	move.l d0, ExprvmEvalRemaining
 	bsr.w popD3
 	bmi.w fail
 	cmpi.b #EXPRVM_UNARY_PLUS, d6
@@ -256,8 +352,9 @@ applyUnaryDone
 opcodeApplyBinary
 	bsr.w readU8
 	bmi.w fail
-	move.l d0, ExprvmEvalRemaining
 	move.l d3, d6
+binaryReady
+	move.l d0, ExprvmEvalRemaining
 	bsr.w popD3
 	bmi.w fail
 	movem.l d2-d3, -(sp)

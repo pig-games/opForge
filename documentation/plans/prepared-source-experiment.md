@@ -1,8 +1,8 @@
 # String-free assembly replay experiment
 
-Status: M4 measured: constant folding works but shows no total release-time
-improvement against M3 `68cd4c73`. Keep this experimental checkpoint for review;
-do not widen coverage or migrate it into the normal CLI on these results.
+Status: M4 retained by agreement for its size savings. M5 measured against M4
+`74bbd35b`: expression programs shrink another 54.4%, with broadly unchanged
+release time. Coverage and the normal native CLI remain unchanged.
 M1/M2 completed mixed8 and mixed32 on both targets in a 68020 / 2 MiB guest;
 see the [compact runtime result](#m2-result-2026-09-19). The normal native CLI remains the reference.
 The active
@@ -1161,3 +1161,119 @@ workflow boundaries, the staged native engineering gate and explicit formatting
 of all 21 experimental harness modules pass. The shared evaluator was unchanged;
 its broader M3 qualification is not claimed as a fresh M4 run. No general language
 parity, physical-hardware timing or full self-host qualification is claimed.
+
+## M5: compact runtime expressions
+
+M4's size reduction is valuable even without a total-time win; retain folding.
+Hypothesis: typed signed 1/2/4-byte literals and single-byte arithmetic operators
+reduce retained expression bytes and decoding work without duplicating arithmetic.
+Fold and compact in the existing preparation traversal. The shared native VM reads
+the compact form directly; do not expand it to canonical bytes on every evaluation.
+
+The compiler still validates the same bounded canonical expression and the folder
+uses its checked arithmetic. Only the retained runtime form changes. Use a new
+prepared-expression tag, replace the previous reader contract, and reject old or
+malformed forms. This is an experimental runtime representation, not another
+canonical package version or a legacy compatibility executor. Preserve symbolic
+IDs, PC dependence, evaluation order, signed32 intermediate overflow and existing
+pre-fold program/stack/syntax limits. No target-family logic or stored pointers.
+
+Compare unchanged expression-replay32 and expression-layout32 for m6502/m68000,
+same 68020 / 2 MiB configuration, against a snapshot of M4. Report release totals,
+separate accounting phase times, program/record sizes, linked image and allocation
+cost. Keep 10-second post-start, 60-second invocation and 150-second batch limits.
+Exact live Rust and independent workload bytes remain required. Add a batched
+direct evaluator contract for width boundaries, checked arithmetic and malformed
+programs; qualify the shared general evaluator as well as source-level folding.
+
+Success can be worthwhile size savings with acceptable timing, not solely a speed
+ratio. Stop and review a material time/code-size regression or architectural
+complexity. No new operators, wider arithmetic domain, CLI migration or additional
+optimization step is activated by this experiment.
+
+Provisional runtime layout: `0x81, u8 payload_bytes, payload`. All multibyte
+payload fields are little-endian; the outer source record retains its existing
+layout. The previous `0x80` wrapper is superseded, not accepted as another mode.
+
+| Payload opcode (hex) | Following bytes | Meaning |
+|---|---|---|
+| `00` | none | End; exactly one value and no trailing bytes |
+| `11` | none | Current address |
+| `12` | u16 | Numeric symbol ID |
+| `13` / `14` / `15` | i8 / i16 / i32 | Sign-extended literal, narrowest fitting width |
+| `30` | none | Negate |
+| `31` / `32` / `33` | none | Add / subtract / multiply |
+
+For example, a folded constant now occupies 3, 4 or 6 payload bytes including
+END, rather than 10. `label+6` occupies 7 rather than 15. Width selection depends
+on the value, not the assembly target. The native evaluator selects its decoder
+once per call using a saved execution register, shares arithmetic/stack/error
+logic with canonical execution, and restores the caller's state. No decode
+pointer is stored in the source representation. Canonical package generation
+and its Rust/native bytecode contract are unchanged.
+
+### M5 result
+
+The runtime representation is implemented as specified, retaining M4 folding.
+Preparation compacts during the existing rewrite rather than adding another
+traversal. The shared evaluator directly decodes narrow literals and operator
+bytes; canonical scratch is not retained or reconstructed during replay.
+
+Identical-input release comparison against the M4 native snapshot, same 68020 /
+2 MiB guest, exact live Rust and independent workload bytes:
+
+| Workload / target | M4 | M5 | Observed change |
+|---|---:|---:|---:|
+| expression-replay32 / m6502 | 2.244 s | 2.211 s | −1.5% |
+| expression-replay32 / m68000 | 4.735 s | 4.746 s | +0.2% |
+| expression-layout32 / m6502 | 2.209 s | 2.242 s | +1.5% |
+| expression-layout32 / m68000 | 4.770 s | 4.765 s | −0.1% |
+
+These are single observations with 20 ms polling, not evidence of a stable speedup
+or slowdown. Totals include preparation and I/O. This compares representation and
+decoder changes together, not their isolated contributions. One layout6502
+invocation reached the unchanged 60-second limit without a receipt; its bounded
+retry completed and supplies the table entry. No deadline was increased.
+
+Separate instrumented expression-layout32 accounting (M4 → M5):
+
+| Target | Expression payload | Packed source records | Preparation / assembly |
+|---|---:|---:|---:|
+| m6502 | 3,306 → 1,508 B | 6,571 → 4,773 B | 1.64 / 0.38 → 1.64 / 0.36 s |
+| m68000 | 3,306 → 1,508 B | 7,275 → 5,477 B | 2.60 / 1.96 → 2.58 / 1.96 s |
+
+Expression bytes shrink **54.4%**, packed records **27.4% / 24.7%**. Compile and
+assembly-evaluation counts remain 225 and 514/578. Peak owned allocation remains
+53,248 / 270,336 bytes and retained preparation allocation remains 16,384 / 139,264
+bytes: capacity slack absorbs this reduction. All owned allocations are freed.
+Thus this is a packed-size gain, not a demonstrated reduction in allocated RAM.
+Phase observations include accounting overhead and have 20 ms resolution.
+
+Release image grows from 20,224 to 20,692 bytes;
+`fnv1a64:dffcd691646a4981`. Linked reservation grows 428 bytes, from 23,300 to
+23,728 (18,844 code, 316 data, 4,568 BSS). Stack scratch remains bounded as in M4;
+no new persistent data or telemetry record is added. The instrumented image
+reserves 24,584 bytes. Both builds complete within the same 2 MiB guest setting.
+
+**Assessment:** worthwhile additional size savings with broadly unchanged total
+time and modest decoder/code cost. Keep this reviewable experimental checkpoint;
+no further optimization, semantic expansion or production migration follows
+automatically. Pre-tokenized files on 8-bit platforms remain a future application,
+not a platform-performance claim from these measurements.
+
+Qualification: 30 batched native compact/entry-boundary cases and the existing
+414 general evaluator cases pass. The compact batch covers signed widths, mixed
+arithmetic, PC/symbol references, malformed/truncated payloads, stack errors,
+overflow, rejection of canonical-only opcodes and general wide arithmetic after a
+compact call. Source-level folding and width fixtures verify exact byte totals
+(54 bytes across ten expressions; 50 across eleven), with live Rust output parity.
+The positive source boundary, intermediate-overflow rejection and original
+pre-compaction program-capacity rejection also pass. All source/accounting cases
+check balanced cleanup; all native cases retain fresh completion/exit/output proof.
+
+Host compact-oracle and workload tests, library Clippy, Rust formatting, workflow
+checks, the staged native engineering gate, and explicit formatting of experimental
+and scalar harness roots pass. No physical-hardware measurement, general-language
+parity or full native self-host run is claimed. Reproduce with the existing M4
+commands and a `74bbd35b` native snapshot as the baseline; the current sources
+select only the latest compact prepared form.

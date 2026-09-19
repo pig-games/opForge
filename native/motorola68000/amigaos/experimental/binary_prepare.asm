@@ -36,6 +36,8 @@ line	.block
 	blo.w statement
 	cmpi.b #1, (a0)
 	bhi.w statement
+	cmpi.b #34, 4(a0)
+	beq.w constant
 	cmpi.b #5, 4(a0)
 	bne.w statement
 	moveq #5, d6
@@ -49,6 +51,16 @@ statement
 	bsr.w name
 	bne.w bad
 	bra.w operands
+constant
+	; Assignment is a shared statement, independent of the package operand grammar.
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+	bsr.w compile
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	bra.w complete
 directive
 	moveq #1, d6
 	bsr.w copy

@@ -136,6 +136,27 @@ fn compact_cases() -> Vec<CompactCase> {
         symbol_refs: 1,
     });
 
+    // Identical table bits have signed meaning in the checked-i32 entry and
+    // unsigned meaning in the canonical entry. Alternate entries to detect
+    // leaked evaluator mode, including both signed boundaries.
+    for value in [i32::MIN, -7, -1, i32::MAX] {
+        for selector in [COMPACT_SELECTOR, 2, COMPACT_SELECTOR] {
+            cases.push(CompactCase {
+                name: "symbol-signedness-by-entry",
+                selector,
+                code: vec![0x12, 0, 0, 0],
+                expected: Ok(if selector == COMPACT_SELECTOR {
+                    i64::from(value)
+                } else {
+                    i64::from(value as u32)
+                }),
+                pc: 0,
+                symbol: value as u32,
+                symbol_refs: 1,
+            });
+        }
+    }
+
     for (name, code, expected) in vec![
         ("missing-end", vec![0x13, 1], Err(51)),
         ("unknown", vec![0xff], Err(52)),

@@ -131,6 +131,8 @@ statement	.block
 	blo.w dispatch
 	cmpi.b #1, (a0)
 	bhi.w dispatch
+	cmpi.b #34, 4(a0)
+	beq.w constant
 	cmpi.b #5, 4(a0)
 	bne.w dispatch
 	tst.b 3(a0)
@@ -176,6 +178,43 @@ dispatch
 	move.l d1, d0
 	bsr.w emit
 	bra.w done
+constant
+	; Immutable, resolved-at-definition constants need no pending-value storage.
+	; A forward dependency fails in pass one rather than publishing a placeholder.
+	bsr.w name
+	bne.w bad
+	tst.l d1
+	bne.w bad
+	cmp.w pkg.Header.NameCount(a3), d0
+	blo.w bad
+	cmp.l pkg.Context.Count(a2), d0
+	bhs.w bad
+	move.l d0, d4
+	move.l d0, d5
+	lsl.l #2, d5
+	addq.l #1, a0
+	movea.l a2, a6
+	jsr expr.evaluate
+	movea.l a6, a2
+	tst.l d0
+	bne.w bad
+	tst.l d2
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	movea.l pkg.Context.Defined(a2), a4
+	movea.l pkg.Context.Values(a2), a5
+	cmpi.w #1, pkg.Context.Pass(a2)
+	bne.w existingConstant
+	tst.b 0(a4, d4.l)
+	bne.w bad
+	move.l d1, 0(a5, d5.l)
+	move.b #1, 0(a4, d4.l)
+	bra.w ok
+existingConstant
+	cmp.l 0(a5, d5.l), d1
+	bne.w bad
+	bra.w ok
 directive
 	addq.l #1, a0
 	bsr.w name

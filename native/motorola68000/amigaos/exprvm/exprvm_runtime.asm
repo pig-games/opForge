@@ -85,7 +85,8 @@ evalNumeric32	.block
 	.bend  ; evalNumeric32
 
 ; Evaluate the compact prepared-expression form directly with checked i32
-; semantics. Same inputs, outputs and preservation as evalNumeric32. Canonical
+; semantics, including signed i32 symbol-table entries. Same inputs, outputs and
+; preservation as evalNumeric32. Canonical
 ; literal/operator opcodes are rejected here; arithmetic/stack logic is shared.
 	.pub
 evalCompact32	.block
@@ -292,6 +293,13 @@ pushSymbolStable
 	movea.l a4, a2
 	move.l 0(a2, d6.l), d3
 	moveq #0, d2
+	; Prepared constants are signed; canonical symbol tables remain unsigned.
+	cmpi.w #2, Checked32
+	bne.s symbolHighReady
+	tst.l d3
+	bpl.s symbolHighReady
+	moveq #-1, d2
+symbolHighReady
 	bsr.w pushD3
 	bmi.w fail
 	move.l ExprvmEvalRemaining, d0

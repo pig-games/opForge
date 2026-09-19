@@ -7,6 +7,9 @@ use vm::runtime_model_core::RuntimeModelCore;
 #[path = "binary_source_hunk.rs"]
 mod hunk;
 
+#[path = "binary_source_constants.rs"]
+mod constants;
+
 #[test]
 fn binary_source_packages_prepare() {
     fn long(bytes: &[u8], offset: usize) -> usize {

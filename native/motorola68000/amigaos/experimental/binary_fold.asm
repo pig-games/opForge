@@ -136,9 +136,15 @@ literal
 	bsr.w writeLiteral
 	bra.w next
 negate
-	addq.l #1, a3
+	move.b (a3)+, d0
 	addq.w #1, d6
+	cmpi.b #runtime.EXPRVM_UNARY_MINUS, d0
+	bne.w unaryPair
 	move.b #runtime.COMPACT_NEGATE, (a6)+
+	bra.w next
+unaryPair
+	move.b #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, (a6)+
+	move.b d0, (a6)+
 	bra.w next
 binaryOperator
 	move.b (a3)+, d0
@@ -147,7 +153,13 @@ binaryOperator
 	beq.w add
 	cmpi.b #runtime.EXPRVM_BINARY_SUBTRACT, d0
 	beq.w subtract
+	cmpi.b #runtime.EXPRVM_BINARY_MULTIPLY, d0
+	bne.w binaryPair
 	move.b #runtime.COMPACT_MULTIPLY, (a6)+
+	bra.w next
+binaryPair
+	move.b #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, (a6)+
+	move.b d0, (a6)+
 	bra.w next
 add
 	move.b #runtime.COMPACT_ADD, (a6)+

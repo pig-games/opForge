@@ -1,6 +1,8 @@
 # Binary-source native runtime
 
-Status: F2 operand selection implemented; current design and measurements below.
+Status: F2 is the last qualified checkpoint; its design and measurements are below.
+F3 work is in progress with a known Rust dependency defect; see the
+[F3 checkpoint](native-runtime-reset.md#f3-checkpoint-reference-defect-and-scope-decision).
 The compact native path completes the bounded mixed and expression workloads on a 68020 / 2 MiB guest.
 It is not yet the normal native CLI and does not implement the full language. The
 [native runtime migration plan](native-runtime-reset.md) defines the breadth-first

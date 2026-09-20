@@ -6,6 +6,7 @@
 	.use experimental.amigaos.binary_package as pkg
 	.use opasm.amigaos.binary_expression as expr
 	.use experimental.amigaos.binary_encoding as encoding
+	.use experimental.amigaos.binary_dependencies as dependencies
 	.pub
 
 Frame	.struct
@@ -53,6 +54,12 @@ clearSymbols
 	clr.b (a1)+
 	subq.l #1, d0
 	bne.w clearSymbols
+	movea.l Frame.Records(a5), a0
+	move.l Frame.RecordBytes(a5), d0
+	movea.l a6, a2
+	jsr dependencies.resolve
+	tst.l d0
+	bne.w fail
 	moveq #1, d7
 pass
 	move.w d7, pkg.Context.Pass(a6)
@@ -179,8 +186,8 @@ dispatch
 	bsr.w emit
 	bra.w done
 constant
-	; Immutable, resolved-at-definition constants need no pending-value storage.
-	; A forward dependency fails in pass one rather than publishing a placeholder.
+	; Absolute constants were resolved once before layout. Remaining constants
+	; retain definition-site PC/label semantics and must resolve in source order.
 	bsr.w name
 	bne.w bad
 	tst.l d1
@@ -193,6 +200,9 @@ constant
 	move.l d0, d5
 	lsl.l #2, d5
 	addq.l #1, a0
+	movea.l pkg.Context.Defined(a2), a4
+	cmpi.b #dependencies.ABSOLUTE, 0(a4, d4.l)
+	beq.w ok  ; dependency preparation validated and evaluated this definition
 	movea.l a2, a6
 	jsr expr.evaluate
 	movea.l a6, a2

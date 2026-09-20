@@ -89,7 +89,6 @@ fn binary_constants_arithmetic_fs_uae() {
 // In particular Rust currently accepts this cycle through provisional pass-one
 // values; native rejects it rather than reproducing that convergence defect.
 const REJECTIONS: &[(&str, &str, bool)] = &[
-    ("forward", "early = later+1\nlater = 4\n.byte early", true),
     ("cycle", "left = right+1\nright = left+1\n.byte left", true),
     ("duplicate", "value = 1\nvalue = 2\n.byte value", false),
     ("label_collision", "value:\nvalue = 2\n.byte value", false),

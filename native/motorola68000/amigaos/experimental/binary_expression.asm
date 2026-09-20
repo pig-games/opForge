@@ -37,7 +37,7 @@ compile	.block
 	clr.b (a3)+
 	moveq #0, d6
 	moveq #0, d7
-	bsr.w sum
+	bsr.w bitOr
 	tst.l d0
 	bne.w done
 	cmpi.w #1, d7
@@ -120,6 +120,76 @@ done
 
 ; Compiler helpers share bounded cursors A0/A1 and A3/A4. D6=syntax nesting,
 ; D7=postfix stack depth; D0-D3 scratch. An operator is saved across recursion.
+; Canonical precedence, lowest first: OR, XOR, AND, shifts, sum, product.
+; The three single-operator levels share one left-associative parser template.
+BIT_LEVEL	.macro tighter, token, operator
+	bsr.w .tighter
+	tst.l d0
+	bne.w done
+loop
+	cmpa.l a1, a0
+	bhs.w ok
+	cmpi.b #.token, (a0)
+	bne.w ok
+	addq.l #1, a0
+	bsr.w .tighter
+	tst.l d0
+	bne.w done
+	moveq #.operator, d1
+	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
+	bsr.w pair
+	bne.w done
+	subq.w #1, d7
+	bra.w loop
+ok
+	moveq #STATUS_OK, d0
+done
+	rts
+	.endmacro
+
+bitOr	.block
+	.BIT_LEVEL bitXor, 29, runtime.EXPRVM_BINARY_BIT_OR
+	.bend  ; bitOr
+
+bitXor	.block
+	.BIT_LEVEL bitAnd, 30, runtime.EXPRVM_BINARY_BIT_XOR
+	.bend  ; bitXor
+
+bitAnd	.block
+	.BIT_LEVEL shift, 28, runtime.EXPRVM_BINARY_BIT_AND
+	.bend  ; bitAnd
+
+shift	.block
+	bsr.w sum
+	tst.l d0
+	bne.w done
+loop
+	cmpa.l a1, a0
+	bhs.w ok
+	moveq #runtime.EXPRVM_BINARY_SHIFT_LEFT, d3
+	cmpi.b #24, (a0)
+	beq.w operator
+	moveq #runtime.EXPRVM_BINARY_SHIFT_RIGHT, d3
+	cmpi.b #25, (a0)
+	bne.w ok
+operator
+	addq.l #1, a0
+	move.l d3, -(sp)
+	bsr.w sum
+	move.l (sp)+, d1
+	tst.l d0
+	bne.w done
+	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
+	bsr.w pair
+	bne.w done
+	subq.w #1, d7
+	bra.w loop
+ok
+	moveq #STATUS_OK, d0
+done
+	rts
+	.bend  ; shift
+
 sum	.block
 	bsr.w product
 	tst.l d0
@@ -184,6 +254,8 @@ unary	.block
 	cmpi.b #18, d3
 	beq.w signed
 	cmpi.b #19, d3
+	beq.w signed
+	cmpi.b #26, d3
 	bne.w primary
 signed
 	addq.l #1, a0
@@ -196,9 +268,13 @@ signed
 	subq.w #1, d6
 	tst.l d0
 	bne.w done
-	cmpi.b #19, d3
-	bne.w ok
+	cmpi.b #18, d3
+	beq.w ok
 	moveq #runtime.EXPRVM_UNARY_MINUS, d1
+	cmpi.b #19, d3
+	beq.w apply
+	moveq #runtime.EXPRVM_UNARY_BIT_NOT, d1
+apply
 	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d0
 	bra.w pair
 ok
@@ -230,7 +306,7 @@ primary	.block
 	addq.w #1, d6
 	cmpi.w #MAX_DEPTH, d6
 	bhi.w depth
-	bsr.w sum
+	bsr.w bitOr
 	subq.w #1, d6
 	tst.l d0
 	bne.w done

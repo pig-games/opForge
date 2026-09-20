@@ -51,7 +51,8 @@ EXPRVM_BINARY_LOGIC_AND         = 24
 EXPRVM_BINARY_LOGIC_XOR         = 25
 EXPRVM_STACK_CAPACITY           = 8
 ; Latest experimental prepared-expression format. Payloads are little-endian;
-; signed literal widths are explicit, operators have no following operand byte.
+; signed literal widths are explicit. Common arithmetic uses one-byte operators;
+; other operators retain canonical APPLY plus the one-byte operator ID.
 COMPACT_I8 = $13
 COMPACT_I16 = $14
 COMPACT_I32 = $15
@@ -87,7 +88,8 @@ evalNumeric32	.block
 ; Evaluate the compact prepared-expression form directly with checked i32
 ; semantics, including signed i32 symbol-table entries. Same inputs, outputs and
 ; preservation as evalNumeric32. Canonical
-; literal/operator opcodes are rejected here; arithmetic/stack logic is shared.
+; literals are rejected here; APPLY operator pairs and arithmetic/stack logic
+; are shared with canonical evaluation.
 	.pub
 evalCompact32	.block
 	.priv
@@ -218,7 +220,13 @@ evalCompact
 	cmpi.b #COMPACT_SUBTRACT, d6
 	beq.w compactSubtract
 	cmpi.b #COMPACT_MULTIPLY, d6
-	bne.w unknownOpcode
+	beq.w compactMultiply
+	cmpi.b #EXPRVM_V2_OPCODE_APPLY_UNARY, d6
+	beq.w opcodeApplyUnary
+	cmpi.b #EXPRVM_V2_OPCODE_APPLY_BINARY, d6
+	beq.w opcodeApplyBinary
+	bra.w unknownOpcode
+compactMultiply
 	moveq #EXPRVM_BINARY_MULTIPLY, d6
 	bra.w binaryReady
 compactAdd

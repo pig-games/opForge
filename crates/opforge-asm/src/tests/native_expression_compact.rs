@@ -157,9 +157,88 @@ fn compact_cases() -> Vec<CompactCase> {
         }
     }
 
+    // Generic operator pairs must work on dynamic symbols, not just on folded
+    // literals. Alternate canonical calls so compact signedness never leaks.
+    for (name, value, right, operator) in [
+        ("bit-and", -1i32, 0x5ai32, 21u8),
+        ("bit-or", i32::MIN, 0x55, 22),
+        ("bit-xor", i32::MAX, -1, 23),
+        ("shift-left", 3, 5, 13),
+        ("shift-left-overflow", i32::MAX, 1, 13),
+        ("shift-right", i32::MAX, 7, 14),
+        ("shift-right-negative", -2, 1, 14),
+        ("shift-count-wrap", i32::MIN, 32, 14),
+        ("shift-count-negative", i32::MAX, -1, 14),
+    ] {
+        for selector in [COMPACT_SELECTOR, 2, COMPACT_SELECTOR] {
+            let compact = selector == COMPACT_SELECTOR;
+            let mut code = vec![0x12, 0, 0];
+            if compact {
+                lit32(&mut code, right);
+            } else {
+                code.push(0x10);
+                code.extend(i64::from(right).to_le_bytes());
+            }
+            code.extend([0x21, operator, 0]);
+            let left = if compact {
+                i64::from(value)
+            } else {
+                i64::from(value as u32)
+            };
+            let right = i64::from(right);
+            let result = match operator {
+                13 => left.wrapping_shl((right & 31) as u32),
+                14 => (left as u64).wrapping_shr((right & 31) as u32) as i64,
+                21 => left & right,
+                22 => left | right,
+                23 => left ^ right,
+                _ => unreachable!(),
+            };
+            cases.push(CompactCase {
+                name,
+                selector,
+                code,
+                expected: if compact {
+                    i32::try_from(result).map(i64::from).map_err(|_| 1)
+                } else {
+                    Ok(result)
+                },
+                pc: 0,
+                symbol: value as u32,
+                symbol_refs: 1,
+            });
+        }
+    }
+    for value in [i32::MIN, i32::MAX, -1] {
+        for selector in [COMPACT_SELECTOR, 2, COMPACT_SELECTOR] {
+            let left = if selector == COMPACT_SELECTOR {
+                i64::from(value)
+            } else {
+                i64::from(value as u32)
+            };
+            cases.push(CompactCase {
+                name: "bit-not-symbol",
+                selector,
+                code: vec![0x12, 0, 0, 0x20, 2, 0],
+                expected: Ok(!left),
+                pc: 0,
+                symbol: value as u32,
+                symbol_refs: 1,
+            });
+        }
+    }
+
     for (name, code, expected) in vec![
         ("missing-end", vec![0x13, 1], Err(51)),
         ("unknown", vec![0xff], Err(52)),
+        ("truncated-unary-pair", vec![0x20], Err(1)),
+        ("truncated-binary-pair", vec![0x21], Err(1)),
+        ("unknown-unary-pair", vec![0x13, 1, 0x20, 255, 0], Err(1)),
+        (
+            "unknown-binary-pair",
+            vec![0x13, 1, 0x13, 2, 0x21, 255, 0],
+            Err(1),
+        ),
         ("literal-underflow", vec![0x13], Err(53)),
         ("literal-i16-underflow", vec![0x14, 1], Err(53)),
         ("literal-overflow", vec![0x15, 1, 2, 3], Err(53)),
@@ -274,7 +353,9 @@ fn compact_batch(cases: &[CompactCase]) -> (Vec<u8>, Vec<u8>) {
                 case.symbol_refs,
                 0,
             ],
-            Err(status) => [status, 1, 0, 0, 0, 0],
+            // The runtime preserves observed symbol-reference flags on failure;
+            // only the failed result is unavailable.
+            Err(status) => [status, 1, 0, 0, case.symbol_refs, 0],
         };
         for word in words {
             output.extend(word.to_be_bytes());

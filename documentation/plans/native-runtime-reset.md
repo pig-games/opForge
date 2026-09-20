@@ -83,9 +83,11 @@ implementation:
    register and rejection predicates required by indexed/register operands through
    the capsule and native selection boundary. Prove the same package-owned decision as Rust; do not accept
    unchecked token pairs or add CPU-specific recognition to generic native code.
-3. **Expression and deferred-binding breadth.** Add the operators and dependency
-   resolution required by the next real cases, including explicit cycle behavior,
-   without freezing layout-dependent values.
+3. **F3 — active: bit operations and forward absolute constants.** Add `&`, `|`,
+   `^`, `~`, `<<` and `>>` with canonical precedence, and resolve forward immutable
+   constant chains that are independent of layout. Detect cycles and missing names.
+   Keep definition-site PC/label-dependent constants source-ordered; broader
+   dependency/layout convergence follows as a separate increment.
 4. **Files, modules and scopes.** Give symbols stable scoped identities and define
    include/module lifetime without restoring string lookup during assembly.
 5. **Source expansion.** Encode macro, conditional and loop syntax once as binary
@@ -149,3 +151,59 @@ forward constant dependencies and cycles. Rust currently accepts some cyclic
 cycle behavior before extending that boundary, rather than copying the defect.
 Files/modules, expansion and product integration remain later increments. Do not
 start them automatically from this plan.
+
+## F3 increment contract
+
+Hypothesis: masks/shifts and forward absolute constants let practical routines use
+clear symbolic configuration without repeated text parsing or repeated full-source
+resolution passes. Index numeric definitions once, walk compact expression
+references with an explicit dependency stack, and evaluate each absolute constant
+after its dependencies resolve. Reuse symbol storage during this prelayout phase;
+release bounded offset-based scratch before layout. Never publish an expression
+offset or provisional value as a resolved symbol.
+
+Prove complete small mask/configuration routines for m6502 and m68000 against
+live Rust, including reversed declaration order, shared dependencies and signed
+boundaries. Explicit negative coverage includes cycles (including PC-tainted
+cycles), missing names, duplicate/colliding definitions, arithmetic range failure
+and unsupported forward layout dependencies. Preserve earlier-label and
+definition-site-PC behavior. Rust's existing cyclic-constant defect is not an
+oracle to reproduce.
+
+The compact expression path retains its checked signed32 range. Operator
+precedence and shift-count behavior follow the canonical Rust language; results
+outside the supported range reject rather than truncate. Source/package lookups
+remain numeric after preparation. New measurement code uses existing gated macros.
+
+Baseline: F2 `6decb730`. Compare identical expression-layout workloads under the
+same 68020 / 2 MiB emulator settings; CPU clock is not calibrated, so interpret
+relative results only. Report complete routine output, release image size,
+retained/peak owned memory and fresh completion/cleanup. Existing 10-second guest,
+60-second invocation and 150-second batch limits remain unchanged. No self-host run.
+
+Stop for review if this requires source reconstruction, a general layout solver,
+full-source repeated convergence sweeps or a new unbounded storage structure.
+Keep normal native package loading/CLI integration and other source-target
+qualification out of this increment. Finish with a local checkpoint and an F3-only
+review; no push is authorized.
+
+### F3 checkpoint: reference defect and scope decision
+
+The native bit operators and absolute-constant dependency walk are implemented.
+Fresh native proof passes the 82-case compact/canonical evaluator batch, the
+control-word routine, precedence/definition-site-PC data, and ordinary plus
+PC-tainted cycle rejection. This is partial qualification, not F3 completion.
+
+Two new live-Rust tests deliberately fail: a reversed 128-definition chain emits
+`2,2,1` instead of `128,65,1`; the pixel-mask routine computes mask `3` instead of
+`48`. Production Rust publishes provisional assignment values in pass one and
+updates them only once in pass two for these CPUs. Its CPU-gated, eight-retry
+layout loop is not an efficient dependency resolver.
+
+The open scope decision is whether to include a Rust dependency phase now or
+complete the operator increment separately. A coherent Rust repair must cover
+active immutable `=` and `.const` definitions, scoped binding, synchronized scalar
+and value-symbol state, explicit cycles, and layout refresh when corrected values
+change instruction widths. Do not reorder oracle input, reproduce incorrect
+values, or raise pass counts to conceal the defect. No Rust resolver changes have
+been made pending that decision. Relative F3 performance qualification is pending.

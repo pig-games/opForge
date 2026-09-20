@@ -64,3 +64,9 @@ then remove notes once incorporated or obsolete. These are observations, not rul
   resource pointers belonged. Action names (`freeRequest`, `freePort`) fixed it.
   Consider a focused shadowing warning for code labels versus storage symbols;
   this does not justify restoring long module-qualified names everywhere.
+
+- **Instruction alignment after embedded tables.** F4's odd-sized directive-name
+  table left subsequent modules at odd instruction addresses in a shared 68020
+  code section. Host assembly passed; native execution hung even on flat input.
+  The generated listing exposed the issue, and explicit alignment fixed it.
+  Consider a cheap emitted-instruction alignment check before emulator runs.

@@ -579,6 +579,11 @@ Symbol lookup searches in this order:
 
 Inner scope symbols shadow outer symbols with the same name:
 
+Forward scalar references obey this rule too: a local definition later in the
+block takes precedence over an already-defined outer symbol. Qualified names
+select their explicit binding. Blocks and namespaces must be closed before
+`.end` or the end of the source; an unfinished scope is an error.
+
 ```
 VAL    .const 1         ; global
 

@@ -16,6 +16,9 @@ mod selection;
 #[path = "binary_source_dependencies.rs"]
 mod dependencies;
 
+#[path = "binary_source_scopes.rs"]
+mod scopes;
+
 #[test]
 fn binary_source_packages_prepare() {
     fn long(bytes: &[u8], offset: usize) -> usize {

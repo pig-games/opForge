@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_source as writer
 	.use experimental.amigaos.binary_prepare as prepare
+	.use experimental.amigaos.binary_scopes as scopes
 	.use tkvm.amigaos.runtime as tokenizer
 	.use tkvm.amigaos.control as control
 	.pub
@@ -21,8 +22,6 @@ NameCount	.long ?
 Scratch	.long ?
 	.endstruct
 	.priv
-ARENA_BYTES = 16384
-SYMBOL_LIMIT = 512
 PROGRAM = 0
 PROGRAM_BYTES = 4
 PACKAGE_BASE = 8
@@ -30,26 +29,15 @@ DICTIONARY_COUNT = 12
 PACKAGE_END = 16
 LINE_NUMBER = 20
 NEXT_ID = 24
-SYMBOL_COUNT = 28
-ARENA_USED = 32
-LINE_FRAME = 36
-TOKENS = 76
+LINE_FRAME = 28
+TOKENS = 68
 LEXEMES = TOKENS+64*20
-ENTRIES = LEXEMES+1024
-ARENA = ENTRIES+SYMBOL_LIMIT*8
-PACKAGE_BUCKETS = ARENA+ARENA_BYTES
-SYMBOL_BUCKETS = PACKAGE_BUCKETS+256*4
+SCOPE_STATE = LEXEMES+1024
+PACKAGE_BUCKETS = SCOPE_STATE+scopes.SCRATCH_BYTES
 	.pub
-PREPARED_LINE = SYMBOL_BUCKETS+256*2
+PREPARED_LINE = PACKAGE_BUCKETS+256*4
 SCRATCH_BYTES = PREPARED_LINE+256
 	.priv
-; Symbol links use entry index + 1 (zero ends a chain); names are arena offsets.
-Entry	.struct
-Name	.word ?
-Length	.word ?
-Id	.word ?
-Next	.word ?
-	.endstruct
 ; Package nodes hold capsule-relative entries and scratch-relative chain links.
 Node	.struct
 Entry	.long ?
@@ -97,17 +85,23 @@ begin	.block
 	move.l a6, d0
 	andi.l #3, d0
 	bne.w failed
-	clr.l SYMBOL_COUNT(a6)
-	clr.l ARENA_USED(a6)
 	lea PACKAGE_BUCKETS(a6), a0
-	move.l #384-1, d0
+	move.l #256-1, d0
 clearBuckets
 	clr.l (a0)+
 	dbra d0, clearBuckets
 	bsr.w configure
 	bne.w failed
+	lea SCOPE_STATE(a6), a0
+	move.l NEXT_ID(a6), d0
+	movea.l Frame.Package(a5), a1
+	moveq #0, d1
+	move.w package.Header.EndDirective(a1), d1
+	jsr scopes.begin
+	bne.w failed
 	move.l #1, LINE_NUMBER(a6)
-	move.l NEXT_ID(a6), Frame.NameCount(a5)
+	jsr scopes.count
+	move.l d0, Frame.NameCount(a5)
 	moveq #0, d0
 	bra.w done
 failed
@@ -151,6 +145,8 @@ line	.block
 	jsr tokenizer.tkvmRun68000
 	bne.w failed
 	.MEMORY_STAGE #3
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.startLine
 	lea LINE_FRAME(a6), a0
 	lea TOKENS(a6), a1
 	move.l a1, writer.Frame.Tokens(a0)
@@ -166,6 +162,10 @@ line	.block
 	move.l LINE_NUMBER(a6), d0
 	move.w d0, writer.Frame.SourceLine(a0)
 	jsr writer.writeLine
+	bne.w failed
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a1
+	jsr scopes.line
 	bne.w failed
 	.MEMORY_STAGE #4
 	movea.l Frame.Output(a5), a0
@@ -184,7 +184,9 @@ copyPrepared
 	subq.l #1, d0
 	bne.w copyPrepared
 	move.l d1, Frame.Used(a5)
-	move.l NEXT_ID(a6), Frame.NameCount(a5)
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.count
+	move.l d0, Frame.NameCount(a5)
 	addq.l #1, LINE_NUMBER(a6)
 	moveq #0, d0
 	bra.w done
@@ -194,6 +196,18 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	rts
 	.bend  ; line
+; Finalize scoped identities before lexical scratch is released. A0=Frame,
+; A1=packed records,D0=record bytes. D0/CCR=status; other registers preserved.
+complete	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	movea.l a1, a0
+	lea SCOPE_STATE(a2), a1
+	jsr scopes.finish
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; complete
 ; End a streaming session. A0=Frame. Clears scratch-resident pointers and resets
 ; tokenizer control state before the caller frees scratch. D0=0. Preserves other
 ; registers; CCR reflects D0.
@@ -389,74 +403,11 @@ advance
 	move.l Node.Next(a4), d7
 	bra.w findPackage
 findSymbol
-	add.l d4, d4
-	lea SYMBOL_BUCKETS(a6), a1
-	moveq #0, d7
-	move.w 0(a1, d4.l), d7
-symbolLoop
-	tst.l d7
-	beq.w create
-	subq.l #1, d7
-	lsl.l #3, d7
-	lea ENTRIES(a6), a3
-	adda.l d7, a3
-	cmp.w Entry.Length(a3), d6
-	bne.w nextSymbol
 	movea.l a2, a0
-	lea ARENA(a6), a1
-	moveq #0, d0
-	move.w Entry.Name(a3), d0
-	adda.l d0, a1
 	move.l d6, d0
-	bsr.w equal
-	bne.w nextSymbol
-	moveq #0, d1
-	move.w Entry.Id(a3), d1
-	moveq #0, d2
-	bra.w good
-nextSymbol
-	moveq #0, d7
-	move.w Entry.Next(a3), d7
-	bra.w symbolLoop
-create
-	cmpi.l #63, d6
-	bhi.w bad
-	tst.l d6
-	beq.w bad
-	cmpi.l #SYMBOL_LIMIT, SYMBOL_COUNT(a6)
-	bhs.w bad
-	cmpi.l #65535, NEXT_ID(a6)
-	bhi.w bad
-	move.l ARENA_USED(a6), d0
-	add.l d6, d0
-	cmpi.l #ARENA_BYTES, d0
-	bhi.w bad
-	move.l SYMBOL_COUNT(a6), d7
-	lsl.l #3, d7
-	lea ENTRIES(a6), a3
-	adda.l d7, a3
-	lea SYMBOL_BUCKETS(a6), a4
-	adda.l d4, a4
-	move.w (a4), Entry.Next(a3)
-	move.l SYMBOL_COUNT(a6), d7
-	addq.l #1, d7
-	move.w d7, (a4)
-	lea ARENA(a6), a1
-	move.l ARENA_USED(a6), d7
-	adda.l d7, a1
-	move.w d7, Entry.Name(a3)
-	move.w d6, Entry.Length(a3)
-	move.l NEXT_ID(a6), d1
-	move.w d1, Entry.Id(a3)
-	move.l d0, ARENA_USED(a6)
-	addq.l #1, NEXT_ID(a6)
-	addq.l #1, SYMBOL_COUNT(a6)
-	move.l d6, d0
-copy
-	move.b (a2)+, (a1)+
-	subq.l #1, d0
-	bne.w copy
-	moveq #0, d2
+	lea SCOPE_STATE(a6), a1
+	jsr scopes.bind
+	bra.w done
 good
 	moveq #0, d0
 	bra.w done

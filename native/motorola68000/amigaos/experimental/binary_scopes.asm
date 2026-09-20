@@ -1,0 +1,637 @@
+; Preparation-only lexical scopes. Packed records retain numeric identities only.
+; @opforge-owner: experimental.amigaos.binary_scopes
+	.module experimental.amigaos.binary_scopes
+	.cpu 68020
+	.include "telemetry_macros.i"
+	.use experimental.amigaos.binary_binding_records as records
+	.pub
+LIMIT = 512
+ARENA_BYTES = 16384
+ENTRY_BYTES = records.ENTRY_BYTES
+State	.struct
+Base	.word ?
+Count	.word ?
+Current	.word ?
+Ended	.word ?
+ArenaUsed	.word ?
+FirstBound	.word ?
+FirstExplicit	.word ?
+EndDirective	.word ?
+Changed	.word ?
+Reserved	.word ?
+.endstruct
+ENTRIES = State.Reserved+2
+BUCKETS = ENTRIES+LIMIT*ENTRY_BYTES
+ARENA = BUCKETS+256*2
+BUFFER = ARENA+ARENA_BYTES
+SCRATCH_BYTES = BUFFER+64
+DECLARED = 1
+REFERENCED = 2
+EXPLICIT = 4
+	.section code, kind=code
+
+; A0=caller-owned SCRATCH_BYTES, D0=first source ID, D1=.end ID. D0/CCR=status;
+; other registers preserved. All stored names and links are offsets or indices.
+begin	.block
+	movem.l d1/a0, -(sp)
+	cmpi.l #65536-LIMIT, d0
+	bhi.w bad
+	move.w d0, State.Base(a0)
+	move.w d1, State.EndDirective(a0)
+	clr.w State.Changed(a0)
+	clr.w State.Count(a0)
+	clr.w State.Current(a0)
+	clr.w State.Ended(a0)
+	clr.w State.ArenaUsed(a0)
+	clr.w State.FirstBound(a0)
+	clr.w State.FirstExplicit(a0)
+	lea BUCKETS(a0), a0
+	move.w #255, d1
+clear
+	clr.w (a0)+
+	dbra d1, clear
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; begin
+
+; A0=state. Returns D0=next unused source ID, other registers preserved.
+count	.block
+	move.l d1, -(sp)
+	moveq #0, d0
+	move.w State.Base(a0), d0
+	moveq #0, d1
+	move.w State.Count(a0), d1
+	add.l d1, d0
+	move.l (sp)+, d1
+	rts
+	.bend  ; count
+
+; A0=state. Reset source-name metadata for the next writer record; no clobbers.
+startLine	.block
+	clr.w State.FirstBound(a0)
+	clr.w State.FirstExplicit(a0)
+	rts
+	.bend  ; startLine
+
+; Writer callback: A0/D0=lexical bytes, A1=state; D0/CCR=status,
+; D1=numeric ID, D2=preparation-only explicit-name marker. Preserves D3-D7/A2-A6.
+; Package lookup precedes this callback; only source names arrive here.
+bind	.block
+	movem.l d3-d7/a2-a6, -(sp)
+	movea.l a1, a6
+	moveq #0, d5
+	moveq #0, d3
+	move.w State.Current(a6), d3
+	bsr.w compose
+	bne.w bad
+	tst.w State.FirstBound(a6)
+	bne.w find
+	move.w #1, State.FirstBound(a6)
+	move.w d5, State.FirstExplicit(a6)
+find
+	bsr.w lookup
+	beq.w found
+	cmpi.w #LIMIT, State.Count(a6)
+	bhs.w bad
+	moveq #0, d0
+	move.w State.ArenaUsed(a6), d0
+	add.l d6, d0
+	cmpi.l #ARENA_BYTES, d0
+	bhi.w bad
+	moveq #0, d1
+	move.w State.Count(a6), d1
+	move.l d1, d2
+	lsl.l #4, d2
+	lea ENTRIES(a6), a3
+	adda.l d2, a3
+	move.w State.ArenaUsed(a6), records.Entry.Name(a3)
+	move.w d6, records.Entry.Length(a3)
+	move.w d3, records.Entry.Owner(a3)
+	move.w d7, records.Entry.Leaf(a3)
+	clr.w records.Entry.Flags(a3)
+	clr.w records.Entry.Reserved(a3)
+	move.w State.Base(a6), d2
+	add.w d1, d2
+	move.w d2, records.Entry.Target(a3)
+	lea BUCKETS(a6), a4
+	add.w d4, d4
+	move.w 0(a4, d4.w), records.Entry.Next(a3)
+	addq.w #1, d1
+	move.w d1, 0(a4, d4.w)
+	addq.w #1, State.Count(a6)
+	lea ARENA(a6), a1
+	moveq #0, d1
+	move.w State.ArenaUsed(a6), d1
+	adda.l d1, a1
+	move.w d0, State.ArenaUsed(a6)
+	movea.l a2, a0
+	move.l d6, d0
+copy
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w copy
+found
+	tst.w d5
+	beq.w bound
+	ori.w #EXPLICIT, records.Entry.Flags(a3)
+bound
+	moveq #0, d1
+	move.w records.Entry.Target(a3), d1
+	move.l d5, d2
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d3-d7/a2-a6
+	tst.l d0
+	rts
+	.bend  ; bind
+
+; A0=writer record, A1=state. Mark declarations/references and consume scope
+; directives before expression preparation. Named blocks lower to entry labels;
+; close directives lower to empty records. D0/CCR=status, other registers kept.
+line	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a1, a6
+	movea.l a0, a5
+	tst.w State.Ended(a6)
+	bne.w empty
+	moveq #0, d6
+	move.b (a5), d6
+	addq.w #1, d6
+	movea.l a5, a4
+	adda.w d6, a4
+	lea 4(a5), a0
+	moveq #-1, d7
+	cmpi.w #9, d6
+	blo.w ok
+	cmpi.b #1, (a0)
+	bhi.w statement
+	cmpi.b #34, 4(a0)
+	beq.w declaration
+	cmpi.b #5, 4(a0)
+	beq.w declaration
+	cmpi.b #7, 4(a0)
+	bne.w statement
+	; The sole accepted uncolonized label form is name .block.
+	moveq #0, d7
+	move.w 1(a0), d7
+	addq.l #4, a0
+	bra.w directive
+declaration
+	bsr.w declare
+	bne.w bad
+	moveq #0, d7
+	move.w 1(a0), d7
+	cmpi.b #34, 4(a0)
+	beq.w assignment
+	addq.l #5, a0
+	bra.w statement
+assignment
+	addq.l #5, a0
+	bra.w references
+statement
+	cmpa.l a4, a0
+	beq.w ok
+	cmpi.b #7, (a0)
+	beq.w directive
+	; The instruction name is package-owned, not a source-symbol reference.
+	cmpi.b #1, (a0)
+	bhi.w bad
+	addq.l #4, a0
+	bra.w references
+directive
+	move.l a4, d0
+	sub.l a0, d0
+	cmpi.l #5, d0
+	blo.w bad
+	cmpi.b #7, (a0)
+	bne.w bad
+	cmpi.b #1, 1(a0)
+	bhi.w bad
+	tst.b 4(a0)
+	bne.w bad
+	moveq #0, d0
+	move.w 2(a0), d0
+	bsr.w keyword
+	cmpi.l #1, d0
+	beq.w open
+	cmpi.l #2, d0
+	beq.w close
+	cmpi.l #3, d0
+	beq.w end
+	; Other directives retain their existing generic preparation/assembly route.
+	addq.l #5, a0
+	bra.w references
+open
+	tst.l d7
+	bmi.w bad  ; anonymous blocks are outside this increment
+	tst.w State.FirstExplicit(a6)
+	bne.w bad  ; dotted block declarations have distinct Rust naming semantics
+	addq.l #5, a0
+	cmpa.l a4, a0
+	bne.w bad
+	lea 4(a5), a0
+	cmpi.b #5, 4(a0)
+	beq.w alreadyDeclared
+	bsr.w declare
+	bne.w bad
+alreadyDeclared
+	move.l d7, d0
+	sub.w State.Base(a6), d0
+	bcs.w bad
+	addq.w #1, d0
+	move.w d0, State.Current(a6)
+	move.b #8, (a5)
+	move.b #5, 8(a5)
+	bra.w ok
+close
+	tst.l d7
+	bpl.w bad
+	addq.l #5, a0
+	cmpa.l a4, a0
+	bne.w bad
+	moveq #0, d0
+	move.w State.Current(a6), d0
+	beq.w bad
+	subq.w #1, d0
+	lsl.l #4, d0
+	lea ENTRIES(a6), a3
+	adda.l d0, a3
+	move.w records.Entry.Owner(a3), State.Current(a6)
+	bra.w empty
+end
+	tst.w State.Current(a6)
+	bne.w bad
+	move.w #1, State.Ended(a6)
+	bra.w ok  ; existing preparation validates the end directive's operands
+references
+	cmpa.l a4, a0
+	beq.w ok
+	bhi.w bad
+	moveq #0, d0
+	move.b (a0), d0
+	cmpi.b #1, d0
+	bls.w reference
+	cmpi.b #2, d0
+	bne.w punctuation
+	addq.l #5, a0
+	bra.w references
+punctuation
+	addq.l #1, a0
+	bra.w references
+reference
+	moveq #0, d0
+	move.w 1(a0), d0
+	sub.w State.Base(a6), d0
+	bcs.w packageName
+	cmp.w State.Count(a6), d0
+	bhs.w bad
+	lsl.l #4, d0
+	lea ENTRIES(a6), a3
+	adda.l d0, a3
+	ori.w #REFERENCED, records.Entry.Flags(a3)
+	clr.b 3(a0)
+packageName
+	addq.l #4, a0
+	bra.w references
+empty
+	move.b #3, (a5)
+ok
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; line
+
+; A0=packed records, D0=bytes, A1=state. Complete binding then patch IDs in
+; records and compact expressions. D0/CCR=status; other registers preserved.
+; No source string survives this preparation boundary.
+finish	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
+	movea.l a1, a6
+	tst.w State.Current(a6)
+	bne.w bad
+	movea.l a0, a5
+	move.l d0, -(sp)
+	moveq #0, d7
+resolve
+	cmp.w State.Count(a6), d7
+	bhs.w rewrite
+	move.l d7, d0
+	lsl.l #4, d0
+	lea ENTRIES(a6), a4
+	adda.l d0, a4
+	move.w records.Entry.Flags(a4), d0
+	andi.w #DECLARED+REFERENCED, d0
+	beq.w next
+	btst #0, records.Entry.Flags+1(a4)
+	bne.w next
+	btst #2, records.Entry.Flags+1(a4)
+	bne.w failSaved
+	moveq #0, d3
+	move.w records.Entry.Owner(a4), d3
+parent
+	tst.w d3
+	beq.w failSaved
+	move.l d3, d0
+	subq.w #1, d0
+	lsl.l #4, d0
+	lea ENTRIES(a6), a3
+	adda.l d0, a3
+	moveq #0, d3
+	move.w records.Entry.Owner(a3), d3
+	lea ARENA(a6), a0
+	moveq #0, d0
+	move.w records.Entry.Name(a4), d0
+	add.w records.Entry.Leaf(a4), d0
+	adda.l d0, a0
+	moveq #0, d0
+	move.w records.Entry.Length(a4), d0
+	sub.w records.Entry.Leaf(a4), d0
+	movem.l d7/a4, -(sp)
+	bsr.w compose
+	bne.w lookupFailed
+	bsr.w lookup
+lookupFailed
+	movem.l (sp)+, d7/a4
+	tst.l d0
+	bne.w parent
+	btst #0, records.Entry.Flags+1(a3)
+	beq.w parent
+	move.w records.Entry.Target(a3), records.Entry.Target(a4)
+	move.w #1, State.Changed(a6)
+next
+	addq.w #1, d7
+	bra.w resolve
+rewrite
+	move.l (sp)+, d0
+	tst.w State.Changed(a6)
+	beq.w unchanged
+	movea.l a5, a0
+	lea ENTRIES(a6), a1
+	moveq #0, d1
+	move.w State.Base(a6), d1
+	moveq #0, d2
+	move.w State.Count(a6), d2
+	jsr records.remap
+	bra.w done
+unchanged
+	moveq #0, d0
+	bra.w done
+failSaved
+	addq.l #4, sp
+bad
+	moveq #1, d0
+done
+	.TELEMETRY_SERVICE_LEAVE
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; finish
+	.priv
+
+; A0=name token, A6=state. D0/status, D1/A3 scratch; other registers kept.
+declare	.block
+	cmpi.b #1, 3(a0)
+	bhi.w bad
+	moveq #0, d0
+	move.w 1(a0), d0
+	sub.w State.Base(a6), d0
+	bcs.w bad
+	cmp.w State.Count(a6), d0
+	bhs.w bad
+	lsl.l #4, d0
+	lea ENTRIES(a6), a3
+	adda.l d0, a3
+	btst #0, records.Entry.Flags+1(a3)
+	bne.w bad
+	clr.b 3(a0)
+	ori.w #DECLARED, records.Entry.Flags(a3)
+	move.w State.Current(a6), records.Entry.Owner(a3)
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; declare
+
+; A0/D0=name, D3=scope index+1. Returns folded lookup input A2/D6, leaf
+; offset D7 and D5=explicitly qualified. Clobbers D0-D2/A0-A1/A3; keeps D3/D4.
+compose	.block
+	movea.l a0, a2
+	move.l d0, d6
+	moveq #0, d7
+	moveq #0, d5
+	tst.l d0
+	beq.w bad
+	cmpi.l #63, d0
+	bhi.w bad
+scan
+	cmpi.b #'.', (a0)+
+	beq.w qualified
+	subq.l #1, d0
+	bne.w scan
+	tst.w d3
+	beq.w ready
+	move.l d3, d0
+	subq.w #1, d0
+	lsl.l #4, d0
+	lea ENTRIES(a6), a3
+	adda.l d0, a3
+	moveq #0, d7
+	move.w records.Entry.Length(a3), d7
+	addq.w #1, d7
+	move.l d6, d0
+	add.l d7, d0
+	cmpi.l #63, d0
+	bhi.w bad
+	lea ARENA(a6), a0
+	moveq #0, d1
+	move.w records.Entry.Name(a3), d1
+	adda.l d1, a0
+	lea BUFFER(a6), a1
+	move.l d7, d1
+	subq.w #1, d1
+prefix
+	move.b (a0)+, (a1)+
+	subq.w #1, d1
+	bne.w prefix
+	move.b #'.', (a1)+
+	movea.l a2, a0
+	move.l d6, d1
+leaf
+	move.b (a0)+, (a1)+
+	subq.w #1, d1
+	bne.w leaf
+	lea BUFFER(a6), a2
+	add.l d7, d6
+	bra.w ready
+qualified
+	moveq #1, d5
+ready
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; compose
+
+; A2/D6=lookup bytes. D0/CCR=found status, A3=entry; D4=bucket (even on miss).
+; Clobbers D0-D2/A0-A1/A3; preserves other registers.
+lookup	.block
+	movea.l a2, a0
+	move.l d6, d0
+	moveq #0, d4
+hash
+	moveq #0, d1
+	move.b (a0)+, d1
+	bsr.w fold
+	move.l d4, d2
+	lsl.l #5, d4
+	add.l d2, d4
+	add.l d1, d4
+	subq.l #1, d0
+	bne.w hash
+	andi.l #255, d4
+	move.l d4, d0
+	add.w d0, d0
+	lea BUCKETS(a6), a0
+	moveq #0, d2
+	move.w 0(a0, d0.w), d2
+chain
+	tst.w d2
+	beq.w missing
+	subq.w #1, d2
+	lsl.l #4, d2
+	lea ENTRIES(a6), a3
+	adda.l d2, a3
+	cmp.w records.Entry.Length(a3), d6
+	bne.w next
+	lea ARENA(a6), a1
+	moveq #0, d0
+	move.w records.Entry.Name(a3), d0
+	adda.l d0, a1
+	movea.l a2, a0
+	move.l d6, d0
+compare
+	moveq #0, d1
+	move.b (a0)+, d1
+	bsr.w fold
+	move.w d1, d2
+	move.b (a1)+, d1
+	bsr.w fold
+	cmp.b d1, d2
+	bne.w next
+	subq.l #1, d0
+	bne.w compare
+	moveq #0, d0
+	rts
+next
+	moveq #0, d2
+	move.w records.Entry.Next(a3), d2
+	bra.w chain
+missing
+	moveq #1, d0
+	rts
+	.bend  ; lookup
+
+; D1=ASCII byte, fold uppercase letters only. Other registers preserved.
+fold	.block
+	cmpi.b #'A', d1
+	blo.w done
+	cmpi.b #'Z', d1
+	bhi.w done
+	addi.b #32, d1
+done
+	rts
+	.bend  ; fold
+
+; D0=numeric directive ID. D0=1 block,2 endblock/bend,3 end,0 other.
+; A6=state; preserves other registers. Package .end is supplied by caller.
+keyword	.block
+	movem.l d1-d4/a0-a3, -(sp)
+	cmp.w State.EndDirective(a6), d0
+	beq.w end
+	sub.w State.Base(a6), d0
+	bcs.w none
+	cmp.w State.Count(a6), d0
+	bhs.w none
+	lsl.l #4, d0
+	lea ENTRIES(a6), a3
+	adda.l d0, a3
+	lea ARENA(a6), a0
+	moveq #0, d0
+	move.w records.Entry.Name(a3), d0
+	adda.l d0, a0
+	moveq #0, d4
+	move.w records.Entry.Length(a3), d4
+	movea.l a0, a1
+	move.l d4, d0
+leafScan
+	cmpi.b #'.', (a1)+
+	bne.w leafNext
+	movea.l a1, a0
+	move.l d0, d4
+	subq.w #1, d4
+leafNext
+	subq.w #1, d0
+	bne.w leafScan
+	lea Words, a2
+	moveq #1, d3
+word
+	moveq #0, d2
+	move.b (a2)+, d2
+	beq.w none
+	cmp.w d4, d2
+	bne.w skip
+	movea.l a0, a1
+	move.l d2, d0
+character
+	moveq #0, d1
+	move.b (a1)+, d1
+	bsr.w fold
+	cmp.b (a2)+, d1
+	bne.w mismatch
+	subq.w #1, d0
+	bne.w character
+	move.l d3, d0
+	cmpi.w #3, d0
+	bne.w done
+	moveq #2, d0  ; .bend is the close alias
+	bra.w done
+mismatch
+	subq.w #1, d0
+	adda.w d0, a2
+	bra.w next
+skip
+	adda.w d2, a2
+next
+	addq.w #1, d3
+	bra.w word
+end
+	moveq #3, d0
+	bra.w done
+none
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d4/a0-a3
+	rts
+	.bend  ; keyword
+Words
+	.byte 5, "block", 8, "endblock", 4, "bend", 0
+	.align 2  ; the next module shares this instruction section
+	.endsection
+	.endmodule

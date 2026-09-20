@@ -670,6 +670,16 @@ qualified_share={:.2}%",
                 counts.errors += 1;
             }
 
+            if let Some((open, close)) = asm_line.unclosed_lexical_scope() {
+                let err = AsmError::new(
+                    AsmErrorKind::Directive,
+                    &format!("Found {open} without {close}"),
+                    None,
+                );
+                diagnostics.push(Diagnostic::new(line_num, Severity::Error, err));
+                counts.errors += 1;
+            }
+
             if asm_line.in_module() {
                 let err = AsmError::new(
                     AsmErrorKind::Directive,
@@ -1397,6 +1407,22 @@ qualified_share={:.2}%",
             );
             listing.write_diagnostic_with_annotations(&diag, lines)?;
             asm_line.clear_conditionals();
+            counts.errors += 1;
+        }
+
+        if let Some((open, close)) = asm_line.unclosed_lexical_scope() {
+            let err = AsmError::new(
+                AsmErrorKind::Directive,
+                &format!("Found {open} without {close}"),
+                None,
+            );
+            let diag = Diagnostic::new(line_num, Severity::Error, err);
+            diagnostics.push(diag.clone());
+            phase_profile::record_direct(
+                PhaseBucket::Pass2DiagnosticsGeneration,
+                Duration::default(),
+            );
+            listing.write_diagnostic_with_annotations(&diag, lines)?;
             counts.errors += 1;
         }
 

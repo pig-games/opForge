@@ -941,6 +941,18 @@ impl<'a> AsmLine<'a> {
         self.symbol_scope.module_active.as_deref()
     }
 
+    pub(crate) fn unclosed_lexical_scope(&self) -> Option<(&'static str, &'static str)> {
+        // These enclosing constructs already have their own completion errors.
+        if self.in_module() || self.in_struct_definition() {
+            return None;
+        }
+        match self.symbol_scope.scope_stack.top_kind()? {
+            opcore::scope::ScopeKind::Block => Some((".block", ".endblock")),
+            opcore::scope::ScopeKind::Namespace => Some((".namespace", ".endnamespace")),
+            _ => None,
+        }
+    }
+
     pub fn in_section(&self) -> bool {
         self.layout.current_section.is_some()
     }
@@ -1089,38 +1101,12 @@ impl<'a> AsmLine<'a> {
     }
 
     fn resolve_scoped_scalar_value_name(&self, name: &str) -> Option<String> {
-        if name.contains('.') {
-            let candidate = self
-                .resolve_qualified_imported_name(name)
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| name.to_string());
-            if self.has_scalar_value_symbol(&candidate) {
-                return Some(candidate);
-            }
-            return None;
-        }
-
-        let mut depth = self.symbol_scope.scope_stack.depth();
-        while depth > 0 {
-            let prefix = self.symbol_scope.scope_stack.prefix(depth);
-            let candidate = format!("{prefix}.{name}");
-            if self.has_scalar_value_symbol(&candidate) {
-                return Some(candidate);
-            }
-            depth = depth.saturating_sub(1);
-        }
-
-        if self.has_scalar_value_symbol(name) {
-            return Some(name.to_string());
-        }
-
-        let imported = self.resolve_imported_name(name)?;
-        if self.has_scalar_value_symbol(&imported) {
-            Some(imported)
-        } else {
-            None
-        }
+        // Scalar markers are rebuilt in source order each pass. Resolve the
+        // actual binding first so a forward local symbol from the previous
+        // pass cannot be bypassed for an already-visited parent marker.
+        let candidate = self.resolve_scoped_name(name).ok()??;
+        self.has_scalar_value_symbol(&candidate)
+            .then_some(candidate)
     }
 
     pub fn push_loop_var(&mut self, name: &str, value: u32) {

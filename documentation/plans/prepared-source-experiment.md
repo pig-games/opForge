@@ -1,9 +1,9 @@
 # Binary-source native runtime
 
-Status: F3 implements bit operators and forward absolute constants. The Rust
-reference defect is repaired and bounded native checks pass. See the
-[F3 checkpoint](native-runtime-reset.md#f3-checkpoint-reference-defect-and-scope-decision)
-for qualification limits; repository-wide checks still have baseline failures.
+Status: F4 adds named block scopes with binding completed before assembly.
+Bounded native checks pass; repository-wide checks still have the same 160
+baseline failures. See the [F4 checkpoint](native-runtime-reset.md#f4-increment-contract--implemented-named-block-scopes)
+for scope and qualification limits.
 The compact native path completes the bounded mixed and expression workloads on a 68020 / 2 MiB guest.
 It is not yet the normal native CLI and does not implement the full language. The
 [native runtime migration plan](native-runtime-reset.md) defines the breadth-first
@@ -62,15 +62,26 @@ The compact evaluator preserves signed symbol values within its checked signed32
 range. Shift counts follow the canonical `count & 31` rule; right shifts are
 logical over the canonical 64-bit value and out-of-range signed32 results reject.
 
+Named `.block` scopes and `.endblock`/`.bend` now support nesting, parent lookup,
+absolute qualified references and forward local shadowing. Preparation assigns
+provisional IDs, records declarations and finalizes bindings before freeing the
+scope/name dictionary. It rewrites IDs in packed records and compact expressions
+only when aliases need resolving. Scope opens lower to ordinary entry labels;
+closes lower to empty records. Assembly and dependency evaluation stay numeric.
+Aliases and unused directive entries still occupy provisional ID/value slots;
+this increment does not compact the final symbol table.
+
 Other limits remain explicit:
 
-- no files/includes, modules, scopes, macros, conditionals, loops, structs or lists;
+- no files/includes, modules, namespaces, anonymous or dotted block declarations,
+  macros, conditionals, loops, structs or lists;
 - no strings, general sections, relocations, relaxation or complete expression
   operator set;
 - no discontiguous `.org` after output has started;
 - literals are limited to the currently checked signed 32-bit subset, and labels
   cannot reuse reserved package spellings;
-- maximums include 64 tokenizer tokens per line, 512 source names, 4 KiB textual
+- maximums include 64 tokenizer tokens per line, 512 provisional source IDs,
+  63-byte qualified source names, a 16 KiB preparation name arena, 4 KiB textual
   line, 256-byte packed line and 1 MiB per growing allocation;
 - diagnostics are provisional and the normal native CLI is not qualified through
   this route.
@@ -353,3 +364,91 @@ Use the FS-UAE environment from the [runner guide](../../agents/rules/fs-uae.md)
 The existing 10-second post-start, 60-second invocation and 150-second batch
 limits apply. No self-host measurement was used. Fresh proof is required when
 reproducing these observations; archived logs are not a substitute.
+
+
+## F4: named block scopes
+
+F4 completes lexical binding during preparation, including declarations that
+shadow outer names later in the source. Two narrow Rust reference fixes accompany
+it: scalar lookup respects the nearest actual binding before pass-local scalar
+markers, and unterminated blocks/namespaces produce an error at assembly end.
+
+The m6502 copy/fold and m68000 control-word fixtures each have a flat equivalent
+and independently checked output bytes. Nested checks exercise forward local
+shadowing, parent lookup, absolute qualified names, case folding and ID rewriting
+inside compact expressions while preserving literal operands. These prove
+assembly output, not execution of the emitted routines on their target CPUs.
+
+Separate instrumented native observations on the 68020 / 2 MiB profile:
+
+| Case | Packed scoped / flat | Compiles / evaluations (both) | Retained after preparation (both) | Peak owned (both) |
+|---|---:|---:|---:|---:|
+| Copy/fold | 472 / 464 B | 24 / 41 | 16,896 B | 82,688 B |
+| Control word | 307 / 299 B | 15 / 26 | 131,584 B | 262,656 B |
+
+Scope closes account for the extra eight packed bytes in each pair. Preparation
+scratch grows by 4,172 B before allocation rounding; these cases remain within
+the same rounded allocation sizes. Both pairs return tracked memory to zero with
+no profiling errors. These figures cover owned allocations, not total machine
+memory. Provisional aliases remain allocated ID slots; no final-ID compaction is
+claimed.
+
+The initial image failed because an odd-sized embedded name table misaligned
+following instructions. Explicit alignment corrects that defect; only fresh
+runs of the corrected image count as native evidence.
+
+All nine scope rejection cases complete with the expected error and allocation
+cleanup, including cross-scope cycles, unclosed/unmatched scopes, duplicates,
+sibling leakage, missing qualified names, close operands, and intentionally
+unsupported anonymous/dotted block declarations. The 512-ID case completes in
+6.356 s with telemetry enabled; 513 IDs reject. The reversed 128-definition chain
+also passes. The ordinary 10-second guest and 60-second invocation bounds remain.
+One unsupported-form invocation timed out; it was not counted as evidence, and
+the separate fresh run completed within the original bound.
+
+### Release comparison
+
+Frozen F3 `92a78722` and final F4 use the same package, source and output digests
+for each 323-line expression-layout workload. Telemetry is off and each native
+output also matches the live Rust oracle.
+
+| Source target | F3 | F4 | Observed difference |
+|---|---:|---:|---:|
+| m6502 | 1.9707 s | 2.0432 s | +3.7% |
+| m68000 | 3.9041 s | 3.9760 s | +1.8% |
+
+These are one observation per revision/target with 20 ms polling, not precise
+slowdown bounds. The release image grows **23,300 → 25,240 B** (+1,940 B, 8.3%);
+linked reservation grows **26,204 → 28,100 B** (+1,896 B). Release identity is
+`fnv1a64:93830dd37f3e79fa`. The package and numeric assembly/dependency modules
+are unchanged. This step adds scope functionality at a modest observed cost.
+
+The same final release image also produced these single scoped/flat observations:
+
+| Routine | Scoped | Flat |
+|---|---:|---:|
+| Copy/fold | 0.3749 s | 0.3752 s |
+| Control word | 0.6225 s | 0.6508 s |
+
+Each pair emits identical bytes. These small inputs and host polling do not
+establish a speed difference; the sources also differ in textual name lengths,
+so the comparison includes their tokenization cost rather than isolating scope
+resolution.
+
+Reproduce the before/after workload with the command in the F3 section, using
+each revision's matching native source and test producer. For practical scope
+cases, use the FS-UAE environment from the runner guide,
+`OPFORGE_FS_UAE_MEMORY_PROFILE=2m`, `OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=10000`,
+`OPFORGE_FS_UAE_TIMEOUT_MS=60000` and `OPFORGE_FS_UAE_POLL_MS=20`, then run:
+
+```sh
+cargo test -p asm binary_scopes_copy_fs_uae --lib -- --ignored --nocapture --test-threads=1
+```
+
+Replace `copy` with `copy_flat`, `control`, `control_flat` or `nested` for the
+other positive cases. Set `OPFORGE_COMPARE_MEMORY=1` for separate accounting
+runs; leave it unset or set it to `0` for release timing. Negative checks use
+`binary_scopes_rejection_fs_uae` and `OPFORGE_SCOPE_REJECTION` with a selector
+from `binary_source_scopes.rs`. Keep invocations serialized and batches below
+150 seconds. Build the matching test executable before collecting comparisons;
+do not rebuild or change native inputs during a measurement batch.

@@ -88,8 +88,11 @@ implementation:
    constant chains that are independent of layout. Detect cycles and missing names.
    Keep definition-site PC/label-dependent constants source-ordered; broader
    dependency/layout convergence follows as a separate increment.
-4. **Files, modules and scopes.** Give symbols stable scoped identities and define
-   include/module lifetime without restoring string lookup during assembly.
+4. **F4 — implemented: named block scopes.** Bind nested scopes, parent and
+   absolute qualified references to final numeric identities during preparation,
+   including forward local shadowing. Files, modules/imports, namespaces and
+   include lifetime remain the next part of this migration area; do not restore
+   string lookup during assembly.
 5. **Source expansion.** Encode macro, conditional and loop syntax once as binary
    records. Expansion and control flow that depend on layout, the program counter
    or symbols must evaluate against the appropriate pass state without falling
@@ -229,3 +232,61 @@ and prior-case owned memory is unchanged. See the
 [F3 measurements](prepared-source-experiment.md#f3-bit-operators-and-absolute-dependencies).
 This completes the bounded F3 increment, not full native product or repository
 qualification. Review before choosing the next breadth increment.
+
+## F4 increment contract — implemented: named block scopes
+
+Hypothesis: scope binding can be completed during preparation, allowing several
+real routines to share short local names without introducing name lookup into
+assembly or enlarging its per-symbol value state.
+
+Support simple named `.block` scopes, `.endblock`/`.bend`, nesting, parent lookup,
+absolute qualified references, forward references and scoped immutable constant
+DAGs. A block declaration defines its entry label in its parent scope. A later
+local declaration shadows an earlier outer declaration: do not bind a reference
+permanently on first encounter. Match Rust's case-insensitive names and binding
+rules. Anonymous blocks, dotted block declarations, namespaces, modules/imports,
+includes and expansion remain explicit exclusions for this increment.
+
+Preparation may retain source-name dictionaries and scope metadata. Assign
+provisional numeric identities while streaming each line into binary records;
+once declarations are known, resolve references and rewrite numeric identities
+before freeing lexical scratch. Existing assembly and dependency evaluation must
+consume final IDs only. Binary structures contain offsets and IDs, not process
+pointers. Reuse the current 512 provisional source-name bound, 16 KiB name arena
+and 256-byte packed-record limit; reject exhaustion rather than silently expand
+limits. Report extra preparation storage and work through the gated framework.
+
+Prove complete copy/fold routines for m6502 and control-word routines for m68000,
+with repeated local labels/constants and qualified references. Each scoped source
+has an equivalent flat fixture and independent byte expectations. Add a nested
+lookup case covering forward local shadowing, parent constants, qualified names
+and literal bytes that must not be mistaken for IDs. Negative checks cover scope
+imbalance, duplicate definitions, sibling-name leakage, missing qualified names,
+malformed closes and explicit unsupported scope forms.
+
+Baseline: F3 `92a78722`. Measure unchanged 32-block expression-layout workloads
+before/after, plus scoped versus flat routines on the final image. Use matching
+frozen source/test producers, telemetry-off relative timing and separate gated
+memory/work observations. Same 68020 / 2 MiB profile and 10-second post-start,
+60-second invocation, 150-second batch limits; no calibrated clock or self-host
+claim. Preserve the existing broad-suite qualification limitations.
+
+Stop and discuss if this requires text replay during assembly, a general layout
+solver, a package/CPU semantic change or a substantially larger language migration.
+Finish with a local review checkpoint and current coverage/measurement notes. No
+remote push is authorized.
+
+
+F4 checkpoint: scoped/flat copy and control-word routines plus nested bindings
+match live Rust and independent bytes on the native 68020 / 2 MiB path. All nine
+scope rejection cases, the 512-ID boundary/overflow and the 128-definition chain
+pass with cleanup proof. Two narrow Rust reference repairs cover forward local
+scalar shadowing and unclosed lexical scopes. The full host suite has 1,548 passing
+tests and the same 160 failing test names as the F3 baseline; focused default and
+VM-only scope tests, production library lint and engineering guards pass.
+
+One matched release comparison observes +3.7% m6502 and +1.8% m68000 time, with
+1,940 B added to the image. This is language coverage with a modest observed cost,
+not a speedup or full product qualification. See the
+[F4 measurements](prepared-source-experiment.md#f4-named-block-scopes). Review this
+checkpoint before selecting the next breadth increment.

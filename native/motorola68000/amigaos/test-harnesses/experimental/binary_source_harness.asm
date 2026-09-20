@@ -218,7 +218,12 @@ prepared
 	.MEMORY_STAGE #5
 	bsr.w closeInput
 	bne.w bad
+	lea Records, a0
+	movea.l memory.Block.Pointer(a0), a1
+	move.l memory.Block.Used(a0), d0
 	lea Front, a0
+	jsr frontend.complete
+	bne.w bad
 	move.l frontend.Frame.NameCount(a0), NameCount
 	jsr frontend.finish
 	clr.l FrontStarted

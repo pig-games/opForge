@@ -11,6 +11,7 @@ use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
 const HEADER: usize = 76;
+const ROW: usize = 32;
 
 struct Program<'a> {
     kind: u16,
@@ -65,7 +66,7 @@ impl<'a> Programs<'a> {
     }
 }
 
-/// Prepare a self-contained BSP2 block for one resolved package hierarchy.
+/// Prepare a self-contained BSP3 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -95,7 +96,7 @@ pub fn prepare_package(
     }
     let mut registers = BTreeMap::new();
     for row in &package.registers {
-        registers.entry((row.name, row.class)).or_insert(row.index);
+        registers.entry(row.name).or_insert((row.class, row.index));
         bind(&mut dictionary, name(&names, row.name)?.into(), row.name, 0)?;
     }
     for row in &package.candidates {
@@ -165,6 +166,7 @@ pub fn prepare_package(
             width_rank: 0,
             unstable_widen: false,
             member_excluded: 0,
+            known_name_excluded: Vec::new(),
             recipe: CandidateRecipe::None,
         });
     }
@@ -181,25 +183,49 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BSP2");
+    out[..4].copy_from_slice(b"BSP3");
     let rows_offset = out.len();
-    reserve(&mut out, candidates.len(), 24)?;
+    reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
-    for ((name, class), index) in &registers {
+    for (name, (class, index)) in &registers {
         for value in [*name, *class, *index] {
             push_word(&mut out, value);
         }
     }
     let programs_offset = out.len();
     reserve(&mut out, programs.rows.len(), 12)?;
+    let mut exclusions = BTreeMap::new();
     for (index, candidate) in candidates.iter().enumerate() {
         write_candidate(
             &mut out,
-            rows_offset + index * 24,
+            rows_offset + index * ROW,
             candidate,
             &names,
             &programs,
         )?;
+        // This runtime has at most two operands. Predicates on other operands
+        // cannot disprove a candidate here and remain unsupported barriers.
+        let supported_exclusions: Vec<_> = candidate
+            .known_name_excluded
+            .iter()
+            .copied()
+            .filter(|(operand, _)| *operand < 2)
+            .collect();
+        if !supported_exclusions.is_empty() {
+            let offset = if let Some(offset) = exclusions.get(&supported_exclusions) {
+                *offset
+            } else {
+                let offset = long(out.len())?;
+                push_word(&mut out, word(supported_exclusions.len())?);
+                for (operand, name) in &supported_exclusions {
+                    push_word(&mut out, u16::from(*operand));
+                    push_word(&mut out, *name);
+                }
+                exclusions.insert(supported_exclusions, offset);
+                offset
+            };
+            set_long(&mut out, rows_offset + index * ROW + 24, offset);
+        }
     }
     for (index, program) in programs.rows.iter().enumerate() {
         let offset = out.len();
@@ -305,12 +331,26 @@ fn write_candidate(
         ),
         CandidateRecipe::Unsupported { .. } => (6, MISSING, &[][..]),
     };
+    // Only an exact identity TABL may be elided. SEMV normally supplies the
+    // operand payload; TABL still owns the surrounding instruction bytes.
+    let identity_table = programs
+        .rows
+        .get(usize::from(table))
+        .is_some_and(|row| row.bytes == [vm::bytecode::OP_EMIT_OPERAND, 0, vm::bytecode::OP_END]);
+    if recipe == 4 && !identity_table {
+        recipe = if table == MISSING { 6 } else { 7 };
+    }
+    if recipe == 5 && !identity_table {
+        recipe = 6;
+    }
     let shape = match name(names, candidate.shape)? {
         "implied" => 0,
         "direct" => 1,
         "immediate" => 2,
         "immediate_register" => 3,
         "register_direct" => 4,
+        "register_register" => 5,
+        "direct_register" => 6,
         _ => 255,
     };
     if program == MISSING || shape == 255 {
@@ -351,6 +391,7 @@ fn write_candidate(
     out[row + 17] = u8::from(candidate.unstable_widen);
     out[row + 18] = candidate.member_excluded;
     set_word(out, row + 20, candidate.mode);
+    set_word(out, row + 28, if recipe == 7 { table } else { MISSING });
     Ok(())
 }
 
@@ -372,6 +413,7 @@ fn write_projection(
         Projection::Expression(operand) => (0, *operand, 0, 0),
         Projection::Register { operand, class } => (1, *operand, *class, 0),
         Projection::Member { operand, qualifier } => (2, *operand, *qualifier, 0),
+        Projection::NamedRegister { operand, name } => (4, *operand, *name, 0),
         Projection::Constant(value) => {
             let Ok(value) = i32::try_from(*value) else {
                 return Ok(false);
@@ -394,7 +436,10 @@ fn bind_member(
     dictionary: &mut BTreeMap<String, (u16, u8)>,
 ) -> Result<(), String> {
     match projection {
-        Projection::Member { qualifier, .. } => {
+        Projection::NamedRegister {
+            name: qualifier, ..
+        }
+        | Projection::Member { qualifier, .. } => {
             bind(dictionary, name(names, *qualifier)?.into(), *qualifier, 0)
         }
         Projection::RequiredValueProgram { source, .. } => bind_member(source, names, dictionary),

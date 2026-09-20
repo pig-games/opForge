@@ -1373,6 +1373,15 @@ fn emit_mos_style_table_programs<T, I, FFilter, FMnemonic, FMode, FOpcode>(
             selectors.push(selector);
         }
 
+        // Indexed source syntax is also described by a generic package shape.
+        // The family parser's rows remain necessary for unmigrated CPU variants.
+        if !is_m65816 {
+            if let Some(selector) = compile_indexed_register_selector(owner.clone(), mnemonic, mode)
+            {
+                selectors.push(selector);
+            }
+        }
+
         if include_m65816_immediate_width_selectors {
             if let Some(selector) = compile_m65816_immediate_width_selector(mnemonic, mode) {
                 selectors.push(selector);
@@ -1408,6 +1417,32 @@ fn compile_mode_selector(
         ),
         width_rank: selector_width_rank(mode),
     })
+}
+
+fn compile_indexed_register_selector(
+    owner: ScopedOwner,
+    mnemonic: &str,
+    mode: AddressMode,
+) -> Option<ModeSelectorDescriptor> {
+    use families::mos6502::package_programs::{
+        ENCODING_UNSIGNED_BYTE, ENCODING_UNSIGNED_WORD, VALUE_UNSIGNED_BYTE, VALUE_UNSIGNED_WORD,
+    };
+    let (register, program, value_program) = match mode {
+        AddressMode::ZeroPageX => ("X", ENCODING_UNSIGNED_BYTE, VALUE_UNSIGNED_BYTE),
+        AddressMode::ZeroPageY => ("Y", ENCODING_UNSIGNED_BYTE, VALUE_UNSIGNED_BYTE),
+        AddressMode::AbsoluteX => ("X", ENCODING_UNSIGNED_WORD, VALUE_UNSIGNED_WORD),
+        AddressMode::AbsoluteY => ("Y", ENCODING_UNSIGNED_WORD, VALUE_UNSIGNED_WORD),
+        _ => return None,
+    };
+    let mut selector = compile_mode_selector(owner, mnemonic, mode, false)?;
+    selector.shape_key = "direct_register".to_string();
+    // Plain semantic expr projections exclude relocatable target references.
+    // Explicit package value programs preserve scalar address evaluation and
+    // width checking for labels as well as literal addresses.
+    selector.operand_plan = format!(
+        "semv.inputs.v1:{program}@required_value_program:{value_program}:expr0,named_register1={register}"
+    );
+    Some(selector)
 }
 
 fn compile_m65c02_bit_branch_selectors() -> Vec<ModeSelectorDescriptor> {

@@ -1,6 +1,6 @@
 # Binary-source native runtime
 
-Status: F1 named constants implemented; current design and M8 baseline below.
+Status: F2 operand selection implemented; current design and measurements below.
 The compact native path completes the bounded mixed and expression workloads on a 68020 / 2 MiB guest.
 It is not yet the normal native CLI and does not implement the full language. The
 [native runtime migration plan](native-runtime-reset.md) defines the breadth-first
@@ -29,9 +29,9 @@ for diagnostics.
 - Lexical dictionaries, source buffers and preparation scratch are released before
   replay. Compact source locations remain for diagnostics. Growth/copy overlap is
   included in owned-memory accounting.
-- The current BSP2 capsule is an experimental host-to-native vehicle. It is not a
+- The current BSP3 capsule is an experimental host-to-native vehicle. It is not a
   persistent source-file or runtime-package format. Producer and consumer move
-  together; BSP1 is rejected and no compatibility executor is retained.
+  together; earlier capsules are rejected and no compatibility executor is retained.
 
 The design intentionally leaves room for an editable tokenized source format on
 constrained platforms. Such a format would need optional spelling/format metadata
@@ -41,7 +41,7 @@ offsets and numeric IDs. No disk-format contract has been adopted.
 ## Current implementation coverage
 
 The current path supports one selected package pipeline; package-defined
-registers and immediate operands; parenthesized member operands; colon labels; forward branches;
+registers, register pairs, indexed and immediate operands; parenthesized member operands; colon labels; forward branches;
 the program counter; parentheses; unary `+`/`-`; checked signed addition,
 subtraction and multiplication; and shared `.cpu`, `.org`, `.byte`, `.word`,
 `.long` and `.end` directives. It performs a fixed two-pass layout and emission
@@ -69,7 +69,7 @@ Other limits remain explicit:
 - diagnostics are provisional and the normal native CLI is not qualified through
   this route.
 
-The host builds the current BSP2 package capsule and passes it with raw source to
+The host builds the current BSP3 package capsule and passes it with raw source to
 the native harness. Native tokenization creates the packed records; preparation
 compiles expressions and binds names; assembly consumes those records without
 consulting source text. This proves the execution boundary, but normal native
@@ -181,108 +181,111 @@ measurement or turn a timeout into a timing result. Preserve the fresh challenge
 guest completion, explicit exit, live Rust oracle and ephemeral guest-artifact
 requirements in the [native parity contract](../../agents/rules/native-rust-parity-porting.md).
 
-## F1 breadth checkpoint
+## Current breadth checkpoint: F2
 
-F1 is implemented: named constants in a purpose-written 6502 byte-reversal
-routine (`reverse-byte.asm`, 10 bytes of code, using zero-page destructive scratch)
-and a 68000 range-check routine, plus generic data cases for negative constants,
-chains, label differences and program-counter references. These are standalone
-representative routines, not full existing applications. The tokenizer must emit
-the binary form directly and assembly must not recover text or string spellings.
-Success requires exact live-Rust/native output for both routines, focused constant/data contracts
-and the existing bounded workload as a regression. Unsupported dependencies reject
-explicitly. Stop if the slice requires a general dependency resolver, new textual
-lookup or another owned preparation buffer. Measure the complete bounded cases and
-representation cost, then review the F2 package-owned operand-shape increment in the
-[migration plan](native-runtime-reset.md#breadth-migration-plan).
+F1 introduced definition-order immutable constants. F2 makes the retained 6502
+page-copy and 68000 register-copy cases assemble through the binary path. The
+package defines which indexed register and width applies; generic native code
+uses numeric shapes, name IDs and register classes. The base m6502 Rust selector
+consumes the same canonical rows, including in a package-mutation test. Existing package value programs preserve
+Rust label-address evaluation, unresolved wide reservation and width convergence. Other MOS
+CPU variants keep their specialized selection routes; this is not their migration.
 
-The original 6502 page-copy candidate remains an explicit expected native
-rejection. Its indexed operands require `direct_x`/`direct_y` recognition supplied
-by the Rust family parser, while the capsule lacks equivalent package-owned
-structural and register predicates. Native must not accept an unchecked token pair
-or add a CPU-specific shortcut to generic code. F2 should carry those predicates
-through the package/capsule boundary and prove equivalent selection.
+BSP3 retains the 76-byte header and uses 32-byte candidate rows. New fields hold a
+base-relative exclusion-list offset and an optional table-program ID. Equal
+exclusion lists share storage. Each list contains an unsigned word count followed
+by operand/name-ID word pairs. Scoped register lookup is first-name-wins.
 
-Negative constants exposed an unsigned symbol-load error in the shared evaluator;
-F1 corrects it only for compact execution. Cyclic constants expose a separate Rust
-reference gap: the current 6502 path accepts them through provisional zeros and
-pass-two updates, whereas native rejects them. Leave that behavior unresolved in
-F1 and address explicit cycle/deferred-dependency semantics with the later
-expression resolver work.
+Exclusions are conservative proofs derived from canonical rejection predicates:
+only actual known registers that fail a recognized class or named-range conjunct
+can exclude a candidate. Unsupported forms and unknown names provide no proof;
+they cannot bypass a higher-priority unsupported row. The native runtime does not
+perform string or register-range parsing. Named-register projections compare IDs
+and supply the canonical scalar zero.
 
-The register-copy case `move.l d0,d1` also rejects: a higher-priority package
-rejection predicate is not yet executable in this view. Merely enabling the
-register-pair shape or skipping unsupported candidates is insufficient. F2 must
-carry the predicate semantics before claiming that coverage. The F1 range-check
-routine instead calculates and returns directly in D0; it is 22 bytes of code.
+Semantic programs can emit operand payloads rather than whole instructions.
+Native now composes these with the package table program. It elides only the exact
+identity table, and otherwise copies at most 24 payload bytes into the now-dead
+projection buffer before table execution, avoiding input/output overlap. No additional
+owned buffer or retained source-text representation is introduced; the runtime
+package itself grows.
 
+The broader limits above remain. In particular, fixed two-pass layout is not a
+general relaxation/dependency solver: forward indexed references reject explicitly
+rather than select a provisional short width and move later labels. The existing
+Rust cyclic-constant gap is
+still recorded for the next expression increment; native rejects those cycles.
+The selection module is now about 940 lines. Before further operand expansion,
+reassess separation of operand projection from row selection rather than keep
+adding responsibilities to it.
 
-### F1 validation and reproduction
+### Validation and reproduction
 
-Fresh FS-UAE runs on the same 68020 / 2 MiB profile matched live Rust bytes for
-both complete routines and the generic arithmetic case. The instrumented cases
-released all tracked allocations, with no profiling errors. Seven separate native
-rejection cases passed: forward dependency, cycle, duplicate constant,
-label/constant collision in each order, missing name and trailing expression
-syntax. Page-copy and register-copy cases passed as explicit subset rejections,
-not successful assembly or diagnostic parity.
+F2 host coverage includes independent exact-byte routine/boundary oracles, twelve
+invalid-operand oracles, canonical package mutation, numeric predicate scope/range
+checks and capsule relocation/bounds checks. All 431 VM unit tests pass, as do the
+focused assembler contracts, library Clippy, formatting, workflow checks and native
+engineering guards.
 
-The 42-case native compact-expression batch includes twelve new alternating
-compact/canonical calls checking signed symbol boundaries and preserving the
-canonical unsigned table contract. Focused host oracles, package relocation
-checks, library Clippy, Rust/native formatting, workflow checks and staged native
-engineering guards passed. No full native CLI or full-project qualification is
-claimed.
+Fresh native completion and exact live-Rust output passed for page-copy,
+indexed boundaries, register-copy and register/signed-immediate boundaries. Nine
+invalid-operand cases passed native rejection checks: accumulator/wrong index,
+byte/word address overflow, banked register, leading-zero banked name, extended
+register, wrong register class and signed upper overflow. The forward indexed
+reference separately passed as an explicit native subset rejection; Rust accepts
+it. These checks establish rejection behavior, not matching diagnostic wording.
 
-| Instrumented routine | Source bytes | Packed bytes | Expression bytes | Compiles / evaluations | Retained after preparation | Peak owned |
+All instrumented cases released their tracked allocations without profiling
+errors. Final positive-case accounting on the 68020 / 2 MiB guest:
+
+| Case | Source bytes | Packed bytes | Expression bytes | Compiles / evaluations | Retained after preparation | Peak owned |
 |---|---:|---:|---:|---:|---:|---:|
-| 6502 byte reversal | 571 | 243 | 53 | 12 / 24 | 8,448 B | 73,984 B |
-| 68000 range check | 526 | 297 | 67 | 14 / 28 | 131,584 B | 262,656 B |
+| 6502 page copy | 517 | 258 | 59 | 13 / 30 | 16,896 B | 82,688 B |
+| 6502 indexed boundaries | 330 | 251 | 49 | 12 / 42 | 16,640 B | 82,176 B |
+| 68000 register boundaries | 238 | 130 | 10 | 3 / 6 | 131,328 B | 262,400 B |
 
-The source sizes include comments and formatting. This is representation and
-assembly evidence; these routines were not executed on their target CPUs.
-Constant support adds no owned buffer or per-symbol storage. Definitions reuse
-the existing values/defined arrays and compact-expression work counters.
+Capsules grew from F1's **7,272 / 96,448 B** to **10,874 / 126,550 B** for
+m6502 / m68000. The retained runtime prefixes are **10,124 / 121,400 B**;
+lexical dictionaries and tokenizer data are released before assembly. This is a
+real metadata cost of added coverage, not a memory optimization. The release
+page-copy run completed in **0.340 seconds**; this is one observation, including
+input/preparation/output and excluding emulator boot.
 
-Run host contracts with `cargo test -p asm binary_constants -- --nocapture`.
-For native proof, use the known-good invocation environment from the emulator
-guide, set
-`OPFORGE_FS_UAE_SMOKE=1`, `OPFORGE_FS_UAE_MEMORY_PROFILE=2m`,
-`OPFORGE_FS_UAE_TIMEOUT_MS=60000`, `OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=10000`,
-`OPFORGE_FS_UAE_POLL_MS=20`, and run individual tests:
+For native reproduction, use the known-good invocation environment from the
+[FS-UAE guide](../../agents/rules/fs-uae.md), set `OPFORGE_FS_UAE_SMOKE=1`,
+`OPFORGE_FS_UAE_MEMORY_PROFILE=2m`, `OPFORGE_FS_UAE_TIMEOUT_MS=60000`,
+`OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=10000` and `OPFORGE_FS_UAE_POLL_MS=20`:
 
 ```sh
-OPFORGE_COMPARE_MEMORY=1 cargo test -p asm binary_constants_reverse_byte_fs_uae -- --ignored --nocapture --test-threads=1
-OPFORGE_COMPARE_MEMORY=1 cargo test -p asm binary_constants_range_check_fs_uae -- --ignored --nocapture --test-threads=1
-OPFORGE_COMPARE_MEMORY=1 OPFORGE_CONSTANT_REJECTION=cycle cargo test -p asm binary_constants_rejection_fs_uae -- --ignored --nocapture --test-threads=1
+OPFORGE_COMPARE_MEMORY=1 cargo test -p asm binary_constants_page_copy_fs_uae -- --ignored --nocapture --test-threads=1
+OPFORGE_COMPARE_MEMORY=1 cargo test -p asm binary_selection_indexed_fs_uae -- --ignored --nocapture --test-threads=1
+OPFORGE_COMPARE_MEMORY=1 cargo test -p asm binary_selection_registers_fs_uae -- --ignored --nocapture --test-threads=1
+OPFORGE_COMPARE_MEMORY=1 OPFORGE_SELECTION_REJECTION=banked_leading_zero cargo test -p asm binary_selection_rejection_fs_uae -- --ignored --nocapture --test-threads=1
 ```
 
-The other rejection selectors are `forward`, `duplicate`, `label_collision`,
-`constant_collision`, `missing` and `trailing`. Run the ignored arithmetic and
-operand-gap tests individually by their names in
-[binary_source_constants.rs](../../crates/opforge-asm/src/tests/binary_source_constants.rs).
-`native_expression_compact_fs_uae` runs the compact/canonical entry batch without
-`--ignored`. Keep invocations serialized and enforce the 150-second outer batch
-bound when grouping them. Set `OPFORGE_COMPARE_MEMORY=0` for release routine timing.
+Other rejection selectors are listed in
+[binary_source_selection.rs](../../crates/opforge-asm/src/tests/binary_source_selection.rs).
+Keep emulator invocations serialized and each batch under 150 seconds. Set
+`OPFORGE_COMPARE_MEMORY=0` for release timing. These cases prove assembly output,
+not execution of the resulting routine on its target CPU.
 
+### Release regression comparison
 
-### F1 release regression comparison
+One fresh matched `expression-layout32` observation per target compared F1
+`e83d290c` with F2 using each revision's matching native tree and package producer:
 
-One fresh matched `expression-layout32` observation per target, comparing M8
-`0c560e98` with F1, measured **1.934 → 1.921 seconds** for m6502 and
-**3.823 → 3.840 seconds** for m68000. Outputs matched live Rust in all four runs;
-package capsules were unchanged. These differences are within the 20 ms polling
-interval and ordinary run variation: no large regression was observed, and this
-is not evidence of a speed improvement or a precise performance bound.
+| Source target | F1 | F2 |
+|---|---:|---:|
+| m6502 | 1.923 s | 1.950 s |
+| m68000 | 3.806 s | 3.850 s |
 
-The release image grew **20,988 → 21,176 bytes** (+188 B, about 0.9%); linked
-reservation grew **24,020 → 24,200 bytes** (+180 B). F1 image identity is
-`fnv1a64:f1c6d37284799a4c`. Both measurements use the uninstrumented image.
-The baseline used M8 native sources and its unchanged capsule producer, while F1
-used the final current sources. Use the reproduction command above with each
-revision's matching test executable and native tree for a fresh comparison.
+Source and output digests match across revisions; each output also matches its
+live Rust oracle. START-to-DONE includes input, preparation, assembly and output,
+but excludes boot. These small increases are single observations with 20 ms
+polling and run variation, not precise slowdown bounds or evidence of a speedup.
+All runs remained within the existing 10-second guest limit on the 2 MiB profile.
 
-Fresh uninstrumented routine observations were **0.326 seconds** for byte
-reversal and **0.623 seconds** for range checking, using that same release
-image. These small cases include I/O and program/protocol overhead and are
-coverage measurements, not throughput benchmarks.
+The release image grew **21,176 → 21,792 B** (+616 B, 2.9%), and linked reservation
+**24,200 → 24,764 B** (+564 B). F2 release image identity is
+`fnv1a64:af3d0912815c5e71`; telemetry is absent. This step buys language coverage,
+with the package-size cost recorded above; it is not a new optimization claim.

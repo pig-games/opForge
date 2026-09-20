@@ -129,7 +129,7 @@ prepare	.block
 	bsr.w readExact
 	bne.w closeBad
 	lea Header, a4
-	cmpi.l #$42535032, package.Header.Magic(a4)
+	cmpi.l #$42535033, package.Header.Magic(a4)
 	bne.w closeBad
 	move.l package.Header.Bytes(a4), d0
 	cmpi.l #HEADER_BYTES, d0

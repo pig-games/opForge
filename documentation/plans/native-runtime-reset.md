@@ -79,7 +79,7 @@ implementation:
    the program counter may be referenced; forward or otherwise deferred constant
    dependencies reject explicitly in this fixed two-pass increment. Existing unary
    `+`/`-` and binary `+`, `-`, `*` form the initial expression set.
-2. **F2 — package-owned operand shapes and predicates.** Carry the structural and
+2. **F2 — implemented: package-owned operand shapes and predicates.** Carry the structural and
    register and rejection predicates required by indexed/register operands through
    the capsule and native selection boundary. Prove the same package-owned decision as Rust; do not accept
    unchecked token pairs or add CPU-specific recognition to generic native code.
@@ -128,41 +128,24 @@ boundaries. Pushes remain separately authorized.
 
 ## Current decision boundary
 
-F1 is implemented and its bounded native correctness checks pass. Its positive cases are a purpose-written 6502
-byte-reversal routine (`reverse-byte.asm`, 10 bytes of code, using zero-page
-destructive scratch) and a 68000 range-check routine, plus generic data cases for
-negative constants, chains, label differences and program-counter references. They are
-standalone representative routines, not claims that an existing full application
-now assembles.
+F1 and F2 cover complete standalone byte-reversal, page-copy and range-check
+routines, plus indexed-address and register-pair boundary cases. These are
+representative small sources, not full-application or native CLI qualification.
+The [runtime note](prepared-source-experiment.md) records current proof and costs.
 
-The hypothesis is that definition-order immutable constants fit the current
-numeric-symbol and compact-expression boundary without reintroducing textual
-lookup or another retained buffer. Success requires exact live-Rust/native output
-for both routines, the focused constant/data contracts, and unchanged completion
-of the existing bounded workload. Reject unsupported dependencies explicitly.
-Stop and review if the cases require a general dependency resolver, new text lookup
-or additional owned preparation storage; those would change the scope rather than
-finish F1. Review the complete cases, representation cost and correctness evidence
-before starting F2.
+F2 adds canonical package predicates for indexed operands and lowers the required
+register names/classes into numeric runtime metadata. Native can exclude a
+higher-priority rejection only when a known package register conclusively fails
+one of its match predicates. Unknown names and unsupported predicates remain
+fail-closed. Semantic operand encoding and table opcode emission both execute;
+only a verified identity table is elided. The normal Rust m6502 route consumes the
+same new package rows; other MOS CPU variants retain their existing specialized
+selection routes until migrated and qualified.
 
-The attempted 6502 page-copy case remains an expected native rejection. Its indexed
-operands depend on `direct_x`/`direct_y` recognition currently owned by the Rust
-family parser; the capsule does not yet carry the corresponding package-owned
-structural and register predicates. Mapping an unchecked token pair or recognizing
-6502 syntax in generic native code would violate the architecture boundary. This
-defines F2 rather than expanding F1.
-
-F1 also exposed two expression issues. Loading a negative symbol value through the
-shared evaluator treated it as unsigned; F1 applies the signed correction only in
-the compact path. Cyclic constants currently pass in the Rust 6502 reference due to
-provisional zero values and pass-two updates, while native fails closed. Record this
-as a reference gap for the later dependency resolver; do not imitate that behavior
-or broaden F1 to repair the full Rust contract.
-
-A second F2 case is `move.l d0,d1`. The package already contains the valid
-register-copy recipe, but a higher-priority rejection candidate has an unlowered
-register-class predicate. Native must evaluate or safely exclude that predicate
-before trying the valid row; it must not skip unsupported candidates wholesale.
-The register-pair case is retained as an expected rejection. The F1 range check
-uses D0 directly for its calculation and return value (22 bytes of code), so it
-does not claim register-copy coverage.
+The next breadth decision is expression and deferred-binding coverage, selected
+from complete practical sources. The current fixed two-pass experiment rejects
+forward constant dependencies and cycles. Rust currently accepts some cyclic
+6502 constants through provisional zeros and pass-two updates; define explicit
+cycle behavior before extending that boundary, rather than copying the defect.
+Files/modules, expansion and product integration remain later increments. Do not
+start them automatically from this plan.

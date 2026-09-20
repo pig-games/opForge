@@ -58,6 +58,9 @@ MemberExcluded	.byte ?
 Reserved	.byte ?
 Mode	.word ?
 Padding	.word ?
+Exclusions	.long ?
+TableProgram	.word ?
+Reserved2	.word ?
 .endstruct
 
 Projection	.struct

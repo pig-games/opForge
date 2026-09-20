@@ -10,6 +10,9 @@ mod hunk;
 #[path = "binary_source_constants.rs"]
 mod constants;
 
+#[path = "binary_source_selection.rs"]
+mod selection;
+
 #[test]
 fn binary_source_packages_prepare() {
     fn long(bytes: &[u8], offset: usize) -> usize {
@@ -20,7 +23,7 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BSP2");
+        assert_eq!(&bytes[..4], b"BSP3");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
@@ -34,7 +37,7 @@ fn binary_source_packages_prepare() {
         let programs = long(&bytes, 32);
         let program_count = long(&bytes, 36);
         for (offset, count, width) in [
-            (rows, row_count, 24),
+            (rows, row_count, 32),
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
@@ -43,15 +46,38 @@ fn binary_source_packages_prepare() {
         }
 
         let mut runtime_references = vec![
-            (rows, row_count * 24),
+            (rows, row_count * 32),
             (registers, register_count * 6),
             (programs, program_count * 12),
         ];
         for index in 0..row_count {
-            let row = rows + index * 24;
+            let row = rows + index * 32;
             let input_count =
                 u16::from_be_bytes(bytes[row + 10..row + 12].try_into().unwrap()) as usize;
             let inputs = long(&bytes, row + 12);
+            let exclusions = long(&bytes, row + 24);
+            if exclusions != 0 {
+                assert!(exclusions >= programs + program_count * 12);
+                assert!(exclusions + 2 <= runtime_bytes);
+                let count =
+                    u16::from_be_bytes(bytes[exclusions..exclusions + 2].try_into().unwrap())
+                        as usize;
+                assert!(count > 0);
+                assert!(exclusions + 2 + count * 4 <= runtime_bytes);
+                runtime_references.push((exclusions, 2 + count * 4));
+                let name_count = u16::from_be_bytes(bytes[62..64].try_into().unwrap());
+                for predicate in bytes[exclusions + 2..exclusions + 2 + count * 4].chunks_exact(4) {
+                    assert!(u16::from_be_bytes(predicate[..2].try_into().unwrap()) < 2);
+                    assert!(u16::from_be_bytes(predicate[2..].try_into().unwrap()) < name_count);
+                }
+            }
+            let table = u16::from_be_bytes(bytes[row + 28..row + 30].try_into().unwrap());
+            if bytes[row + 5] == 7 {
+                assert!(usize::from(table) < program_count);
+                assert_eq!(&bytes[programs + usize::from(table) * 12..][..2], &[0, 1]);
+            } else {
+                assert_eq!(table, u16::MAX);
+            }
             if input_count == 0 {
                 assert_eq!(inputs, 0);
             } else {

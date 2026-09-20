@@ -39,12 +39,9 @@ fn binary_constants_routine_oracles() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; indexed package-selection gap"]
-fn binary_constants_indexed_gap_fs_uae() {
-    // The package's direct_x/direct_y predicates are not yet lowered into the
-    // numeric view. Retain the real case for that next increment; do not erase
-    // the register distinction by mapping both to an unchecked operand pair.
-    assert_native_rejection(PAGE_COPY, "m6502");
+#[ignore = "requires configured FS-UAE; complete indexed page-copy routine"]
+fn binary_constants_page_copy_fs_uae() {
+    assert_binary_source(PAGE_COPY.into(), "m6502".into());
 }
 
 #[test]
@@ -121,10 +118,10 @@ fn binary_constants_rejection_oracles() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; package rejection-predicate gap"]
-fn binary_constants_register_pair_gap_fs_uae() {
+#[ignore = "requires configured FS-UAE; package-controlled register pair"]
+fn binary_constants_register_pair_fs_uae() {
     assert_eq!(bytes(REGISTER_PAIR), [0x22, 0]);
-    assert_native_rejection(REGISTER_PAIR, "m68000");
+    assert_binary_source(REGISTER_PAIR.into(), "m68000".into());
 }
 
 #[test]

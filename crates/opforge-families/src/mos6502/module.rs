@@ -55,6 +55,19 @@ impl FamilyModule for MOS6502FamilyModule {
         FAMILY_REGISTER_IDS
     }
 
+    fn register_encodings(&self) -> Vec<package::RegisterEncodingDescriptor> {
+        FAMILY_REGISTER_IDS
+            .iter()
+            .enumerate()
+            .map(|(index, id)| package::RegisterEncodingDescriptor {
+                owner: types::hierarchy::ScopedOwner::Family(FAMILY_ID.as_str().to_string()),
+                id: (*id).to_string(),
+                class: 0,
+                index: index as u16,
+            })
+            .collect()
+    }
+
     fn form_mnemonics(&self) -> Vec<String> {
         family_form_mnemonics()
     }

@@ -191,7 +191,7 @@ def main():
                         help="defaults to 8; 32 is an explicit larger probe subject to the same timeout")
     parser.add_argument("--profile", choices=("off", "runtime"), default="off")
     parser.add_argument("--binary-source", action="store_true",
-                        help="also run the opt-in BSP2 binary-source native harness")
+                        help="also run the opt-in binary-source native harness")
     parser.add_argument("--binary-only", action="store_true",
                         help="run only the binary-source harness; requires --binary-source")
     parser.add_argument("--memory-profile", choices=("existing", "2m"),
@@ -264,7 +264,7 @@ def main():
             "START-to-DONE includes input, package, assembly, and output work but excludes emulator boot.",
             "Full invocation time includes harness setup/build and emulator startup/teardown.",
             "The native field runs source-text processing, including any current numeric package bindings.",
-            "The opt-in binary_source field combines native source packing with a Rust-derived single-pipeline BSP2 runtime capsule; it does not isolate tokenization speedup or package preparation cost.",
+            "The opt-in binary_source field combines native source packing with a Rust-derived single-pipeline runtime capsule; it does not isolate tokenization speedup or package preparation cost.",
         ],
     }
     budget = base.Budget(150)

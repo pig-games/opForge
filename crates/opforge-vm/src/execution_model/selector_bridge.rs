@@ -5,7 +5,7 @@ use families::m6800::module::vm_encode_candidates_for_operands as vm_candidates_
 use families::m6800::M6800FamilyHandler;
 use families::m6809::M6809CpuHandler;
 use families::mos6502::{
-    selector_input_from_exprs as mos6502_selector_input_from_exprs,
+    selector_input_for_cpu as mos6502_selector_input_from_exprs,
     OperandForce as Mos6502OperandForce,
 };
 use opcore::parser::Expr;
@@ -308,10 +308,11 @@ impl HierarchyExecutionModel {
         operands: &[Expr],
         ctx: &dyn AssemblerContext,
     ) -> Result<Option<Vec<VmEncodeCandidate>>, RuntimeBridgeError> {
-        let family_input = match mos6502_selector_input_from_exprs(mnemonic, operands) {
-            Ok(Some(input)) => input,
-            Ok(None) | Err(_) => return Ok(None),
-        };
+        let family_input =
+            match mos6502_selector_input_from_exprs(&resolved.cpu_id, mnemonic, operands) {
+                Ok(Some(input)) => input,
+                Ok(None) | Err(_) => return Ok(None),
+            };
         let input = SelectorInput {
             shape_key: family_input.shape_key,
             expr0: family_input.expr0.as_ref(),

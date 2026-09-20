@@ -23,6 +23,8 @@ SHAPE_SINGLE = 1
 SHAPE_PREFIXED = 2
 SHAPE_PREFIXED_PAIR = 3
 SHAPE_PAIR = 4
+SHAPE_REGISTER_PAIR = 5
+SHAPE_VALUE_REGISTER = 6
 
 RECIPE_NONE = 0
 RECIPE_U8 = 1
@@ -31,13 +33,14 @@ RECIPE_REL8 = 3
 RECIPE_SEMANTIC_INPUTS = 4
 RECIPE_SEMANTIC_BRANCH = 5
 RECIPE_UNSUPPORTED = 6
+RECIPE_SEMANTIC_TABLE = 7
 
 PROGRAM_TABLE = 1
 PROGRAM_SEMANTIC = 2
 PROGRAM_VALUE = 3
 MISSING_PROGRAM = $ffff
 HEADER_BYTES = 76
-ROW_BYTES = 24
+ROW_BYTES = 32
 PROJECTION_BYTES = 12
 PROGRAM_BYTES = 12
 
@@ -116,6 +119,11 @@ rowLoop
 	move.b package.Row.MemberExcluded(a5), d0
 	and.w MemberMask, d0
 	bne.w nextRow  ; a necessary package match predicate is conclusively false
+	bsr.w excludedName
+	cmpi.l #2, d0
+	beq.w fail
+	tst.l d0
+	bne.w nextRow
 	cmpi.b #RECIPE_UNSUPPORTED, package.Row.Recipe(a5)
 	beq.w fail
 	movem.l d3/d6-d7/a2/a5, -(sp)
@@ -187,6 +195,23 @@ comma
 	cmpi.b #TOKEN_HASH, (a0)
 	beq.w prefixedPair
 	move.w #SHAPE_PAIR, OperandShape
+	movea.l OperandStart+4, a0
+	movea.l OperandEnd+4, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w pairReady
+	move.w #SHAPE_VALUE_REGISTER, OperandShape
+	movea.l OperandStart, a0
+	movea.l OperandEnd, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w pairReady
+	move.w #SHAPE_REGISTER_PAIR, OperandShape
+pairReady
 	moveq #0, d0
 	rts
 step
@@ -218,6 +243,110 @@ malformed
 	moveq #1, d0
 	rts
 	.bend  ; splitOperands
+
+; D0=0 for an active package register, 1 for another operand, 2 for bad metadata.
+; Preserves all other registers; CCR reflects D0.
+knownRegister	.block
+	movem.l d1-d4/a0-a1/a6, -(sp)
+	bsr.w exactName
+	tst.l d0
+	bne.w done
+	movea.l package.Context.Package(a2), a6
+	move.l package.Header.RegisterRows(a6), d0
+	move.l package.Header.RegisterCount(a6), d2
+	cmpi.l #$ffff, d2
+	bhi.w malformed
+	move.l d2, d4
+	mulu.w #6, d4
+	add.l d0, d4
+	bcs.w malformed
+	cmp.l package.Header.Bytes(a6), d4
+	bhi.w malformed
+	adda.l d0, a6
+loop
+	tst.l d2
+	beq.w no
+	cmp.w (a6), d1
+	beq.w yes
+	addq.l #6, a6
+	subq.l #1, d2
+	bra.w loop
+yes
+	moveq #0, d0
+	bra.w done
+no
+	moveq #1, d0
+	bra.w done
+malformed
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d4/a0-a1/a6
+	tst.l d0
+	rts
+	.bend  ; knownRegister
+
+; D0=1 only when an exact package name disproves this row's match predicate;
+; 0 is unknown/no exclusion, 2 is malformed metadata. Other registers preserved.
+excludedName	.block
+	movem.l d1-d4/a0-a1/a3-a4/a6, -(sp)
+	move.l package.Row.Exclusions(a5), d0
+	beq.w no
+	movea.l package.Context.Package(a2), a6
+	move.l d0, d2
+	addq.l #2, d2
+	bcs.w malformed
+	cmp.l package.Header.Bytes(a6), d2
+	bhi.w malformed
+	movea.l a6, a3
+	adda.l d0, a3
+	moveq #0, d3
+	move.w (a3)+, d3
+	move.l d3, d4
+	lsl.l #2, d4
+	add.l d2, d4
+	bcs.w malformed
+	cmp.l package.Header.Bytes(a6), d4
+	bhi.w malformed
+	moveq #0, d4
+loop
+	tst.l d3
+	beq.w complete
+	moveq #0, d0
+	move.w (a3)+, d0
+	cmpi.w #2, d0
+	bhs.w malformed
+	move.w (a3)+, d2
+	cmp.w package.Header.NameCount(a6), d2
+	bhs.w malformed
+	cmp.w OperandCount, d0
+	bhs.w next
+	lsl.w #2, d0
+	lea OperandStart, a4
+	movea.l 0(a4, d0.w), a0
+	lea OperandEnd, a4
+	movea.l 0(a4, d0.w), a1
+	bsr.w exactName
+	tst.l d0
+	bne.w next
+	cmp.w d1, d2
+	bne.w next
+	moveq #1, d4
+next
+	subq.l #1, d3
+	bra.w loop
+complete
+	move.l d4, d0
+	bra.w done
+no
+	moveq #0, d0
+	bra.w done
+malformed
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d4/a0-a1/a3-a4/a6
+	tst.l d0
+	rts
+	.bend  ; excludedName
 
 ; Advance A3 over one bounded binary token.
 skipToken	.block
@@ -270,6 +399,8 @@ tryRow	.block
 	cmpi.b #RECIPE_SEMANTIC_INPUTS, d0
 	beq.w semantic
 	cmpi.b #RECIPE_SEMANTIC_BRANCH, d0
+	beq.w semantic
+	cmpi.b #RECIPE_SEMANTIC_TABLE, d0
 	beq.w semantic
 	bra.w bad
 tableU8
@@ -348,6 +479,13 @@ semantic
 	bsr.w project
 	tst.l d0
 	bne.w bad
+	; Indexed payload width can change with the resolved address. Without
+	; layout convergence, a deferred short candidate could invalidate labels.
+	cmpi.b #RECIPE_SEMANTIC_TABLE, package.Row.Recipe(a5)
+	bne.w resolvedInputs
+	tst.w Unresolved
+	bne.w bad
+resolvedInputs
 	bsr.w program
 	tst.l d0
 	bne.w bad
@@ -368,6 +506,36 @@ branchStateReady
 	move.w package.Row.InputCount(a5), encoding.Context.InputCount(a6)
 	move.w #4, encoding.Context.FirstInputLen(a6)
 	jsr encoding.semantic
+	tst.l d0
+	bne.w bad
+	cmpi.b #RECIPE_SEMANTIC_TABLE, package.Row.Recipe(a5)
+	bne.w return
+	; Semantic inputs are dead. Reuse their storage so TABL output cannot
+	; overwrite its own source while inserting the package opcode prefix.
+	cmpi.l #24, d1
+	bhi.w bad
+	move.l d1, d6
+	lea Records, a3
+	move.l d1, d0
+copyPayload
+	tst.l d0
+	beq.w payloadReady
+	move.b (a1)+, (a3)+
+	subq.l #1, d0
+	bra.w copyPayload
+payloadReady
+	moveq #0, d0
+	move.w package.Row.TableProgram(a5), d0
+	bsr.w programId
+	tst.l d0
+	bne.w bad
+	cmpi.w #PROGRAM_TABLE, d2
+	bne.w bad
+	moveq #1, d5
+	lea Records, a3
+	bsr.w prepareExecution
+	jsr encoding.table
+return
 	rts
 bad
 	moveq #1, d0
@@ -411,10 +579,15 @@ big
 
 ; Resolve Row.Program. Returns D0 status, D2 kind, D4 version, A1/D1 bytes.
 program	.block
-	move.l d5, -(sp)
-	movea.l package.Context.Package(a2), a4
 	moveq #0, d0
 	move.w package.Row.Program(a5), d0
+	bra.w programId
+	.bend  ; program
+
+; D0=program ID; same outputs as program. D5 is preserved.
+programId	.block
+	move.l d5, -(sp)
+	movea.l package.Context.Package(a2), a4
 	cmp.l package.Header.ProgramCount(a4), d0
 	bhs.w bad
 	mulu.w #PROGRAM_BYTES, d0
@@ -448,7 +621,7 @@ bad
 	move.l (sp)+, d5
 	tst.l d0
 	rts
-	.bend  ; program
+	.bend  ; programId
 
 ; Materialize Row projections in the existing CSEM little-endian scalar ABI.
 project	.block
@@ -484,12 +657,17 @@ recordReady
 	beq.w memberValue
 	cmpi.b #3, d0
 	beq.w constantValue
+	cmpi.b #4, d0
+	beq.w namedValue
 	bra.w bad
 expressionValue
 	bsr.w projectionExpression
 	bra.w valueReady
 registerValue
 	bsr.w projectionRegister
+	bra.w valueReady
+namedValue
+	bsr.w projectionNamed
 	bra.w valueReady
 memberValue
 	bsr.w projectionMember
@@ -564,6 +742,24 @@ return
 	rts
 	.bend  ; projectionRegister
 
+projectionNamed	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	bsr.w exactName
+	tst.l d0
+	bne.w return
+	cmp.w package.Projection.Class(a4), d1
+	bne.w bad
+	moveq #0, d3
+	moveq #0, d0
+return
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectionNamed
+
 projectionMember	.block
 	bsr.w operandSpan
 	tst.l d0
@@ -627,8 +823,9 @@ bad
 	rts
 	.bend  ; operandSpan
 
-; Exact numeric register token + package register-row lookup.
-register	.block
+; A0/A1=operand; D0=status, D1=name ID on success. Advances A0; CCR=D0.
+; Only an exact unqualified numeric name can prove a package predicate.
+exactName	.block
 	move.l a1, d0
 	sub.l a0, d0
 	cmpi.l #4, d0
@@ -645,6 +842,18 @@ symbol
 	lsl.w #8, d1
 	move.b (a0)+, d1
 	tst.b (a0)+
+	bne.w bad
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; exactName
+
+; Exact numeric name plus package register-class lookup.
+register	.block
+	bsr.w exactName
+	tst.l d0
 	bne.w bad
 	movea.l package.Context.Package(a2), a6
 	move.l package.Header.RegisterRows(a6), d0

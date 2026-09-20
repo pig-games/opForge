@@ -1,3 +1,4 @@
+mod indexed_package;
 mod operand_routing;
 mod prepared_encoding;
 mod target_callback_audit;

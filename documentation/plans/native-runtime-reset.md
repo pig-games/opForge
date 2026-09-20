@@ -91,9 +91,10 @@ implementation:
 4. **F4/F5 — implemented: named blocks, namespaces and canonical labels.** Bind
    nested scopes, parent and absolute qualified references to final numeric
    identities during preparation, including forward local shadowing. F5 adds
-   namespace reopening, typed closes and canonical column-one bare labels. Files,
-   modules/imports and include lifetime remain the next part of this migration
-   area; do not restore string lookup during assembly.
+   namespace reopening, typed closes and canonical column-one bare labels.
+   **F6** extends preparation to sequential single-source modules, visibility and
+   fully qualified public cross-module references. Imports, files and include
+   lifetime remain later work; do not restore string lookup during assembly.
 5. **Source expansion.** Encode macro, conditional and loop syntax once as binary
    records. Expansion and control flow that depend on layout, the program counter
    or symbols must evaluate against the appropriate pass state without falling
@@ -150,9 +151,11 @@ selection routes until migrated and qualified.
 
 F3 extends the expression and deferred-binding boundary with forward absolute
 constants and explicit cycle rejection in both Rust and native. Native PC/label
-dependencies retain fixed two-pass/source-order semantics. Files/modules, expansion
-and product integration remain later increments. F4/F5 now finalize named block
+dependencies retain fixed two-pass/source-order semantics. Files/imports, expansion
+and product integration remain later increments. F4/F5 finalize named block
 and namespace bindings during preparation and accept canonical bare labels.
+F6 adds single-source module ownership and public/private access checks before
+assembly.
 Select the next coherent breadth
 step for review; do not start those increments automatically from this plan.
 
@@ -335,3 +338,47 @@ baseline failures remain unresolved. One matched release pair observes +0.7% /
 +0.1% time (below the polling interval), +360 B image size and no fixed-scratch
 growth. See the [F5 measurements](prepared-source-experiment.md#f5-namespaces-and-canonical-labels).
 Review this checkpoint before selecting files/modules or another breadth slice.
+
+## F6 increment contract — implemented: single-source modules and visibility
+
+Support sequential `.module dotted.id` / `.endmodule` regions, `.pub`/`.priv`,
+existing blocks/namespaces inside modules, and absolute public references between
+modules in one source file. Module ownership is distinct from lexical name
+prefixes; dotted module IDs preserve parent-prefix lookup. Default visibility is
+private, inherited on scope entry and restored on exit. Private module-owned
+references are allowed only within their owning module, including forward
+references; global labels retain Rust's global access behavior. A numeric ID used
+from multiple modules must not conceal an illegal private use.
+
+Hypothesis: bounded preparation-only ownership/reference metadata can finish
+visibility checks before lexical storage is released, leaving assembly and
+expression execution numeric and unchanged. Keep stored offsets/IDs, existing
+512 provisional-ID/name-arena/record bounds and gated accounting. Measure any
+extra preparation storage and timing. Preserve the non-module path and canonical
+bare labels. Reject nested/duplicate/unclosed modules, unmatched closes, open
+child scopes and program content outside explicit modules. `.cpu`/`.org` and
+other program statements belong inside modules; `.end` may follow them.
+
+Do not implement imports, `.use`, include/file loading, module metadata, sections
+or expansion in this slice; keep explicit rejection. Prove practical routines
+for m6502 and m68000, private internal/public external access, visibility restore,
+forward cross-module references and dotted-prefix ownership distinctions against
+live Rust plus independent bytes. Check private-access and malformed-boundary
+failures with fresh native completion/error/cleanup.
+
+Baseline F5 `5067b41d`; compare unchanged expression-layout32 release workloads
+and separately account memory on module cases. Same 68020 / 2 MiB profile,
+10-second guest, 60-second invocation and 150-second batch limits. Stop to discuss
+if this needs text replay, unbounded reference logs, a package semantic change or
+imports/file loading. End with current notes and a local step-only review; no push.
+
+F6 checkpoint: module ownership and visibility finish during preparation with
+three bounded side arrays (+3,084 B temporary storage), leaving 16-byte symbol
+entries and runtime records unchanged. Practical m6502/m68000 module routines,
+labelled directives, sixteen rejection cases and three retained scope regressions
+pass on native: 22 functional checks. Canonical bare labels remain covered.
+The 26 focused host tests and three VM-only module tests pass; no production Rust
+change or broad-host qualification is claimed. Imports and multiple-file loading
+remain future work. The matched release pair shows no meaningful regression
+(about −0.75% observed time on both workloads); image size grows 1,068 B.
+See the [F6 measurements](prepared-source-experiment.md#f6-single-source-modules-and-visibility).

@@ -16,6 +16,9 @@ mod selection;
 #[path = "binary_source_dependencies.rs"]
 mod dependencies;
 
+#[path = "binary_source_modules.rs"]
+mod modules;
+
 #[path = "binary_source_namespaces.rs"]
 mod namespaces;
 

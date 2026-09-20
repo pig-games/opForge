@@ -4,6 +4,7 @@
 	.cpu 68020
 	.include "telemetry_macros.i"
 	.use experimental.amigaos.binary_binding_records as records
+	.use experimental.amigaos.binary_modules as modules
 	.pub
 LIMIT = 512
 ARENA_BYTES = 16384
@@ -24,7 +25,8 @@ ENTRIES = State.Reserved+2
 BUCKETS = ENTRIES+LIMIT*ENTRY_BYTES
 ARENA = BUCKETS+256*2
 BUFFER = ARENA+ARENA_BYTES
-SCRATCH_BYTES = BUFFER+64
+MODULE_STATE = BUFFER+64
+SCRATCH_BYTES = MODULE_STATE+modules.SCRATCH_BYTES
 DECLARED = 1
 REFERENCED = 2
 EXPLICIT = 4
@@ -35,12 +37,17 @@ KEY_ENDBLOCK = 2
 KEY_END = 3
 KEY_NAMESPACE = 4
 KEY_ENDNAMESPACE = 5
+KEY_MODULE = 6
+KEY_ENDMODULE = 7
+KEY_PUB = 8
+KEY_PRIV = 9
 	.section code, kind=code
 
 ; A0=caller-owned SCRATCH_BYTES, D0=first source ID, D1=.end ID. D0/CCR=status;
 ; other registers preserved. All stored names and links are offsets or indices.
 begin	.block
-	movem.l d1/a0, -(sp)
+	movem.l d1/a0-a1, -(sp)
+	movea.l a0, a1
 	cmpi.l #65536-LIMIT, d0
 	bhi.w bad
 	move.w d0, State.Base(a0)
@@ -57,12 +64,16 @@ begin	.block
 clear
 	clr.w (a0)+
 	dbra d1, clear
+	lea MODULE_STATE(a1), a0
+	moveq #0, d0
+	move.w State.Base(a1), d0
+	jsr modules.begin
 	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
 done
-	movem.l (sp)+, d1/a0
+	movem.l (sp)+, d1/a0-a1
 	tst.l d0
 	rts
 	.bend  ; begin
@@ -173,6 +184,8 @@ line	.block
 	bne.w empty
 	bsr.w normalizeLabel
 	bne.w bad
+	bsr.w authorizeLine
+	bne.w bad
 	moveq #0, d6
 	move.b (a5), d6
 	addq.w #1, d6
@@ -225,6 +238,14 @@ directive
 	moveq #0, d0
 	move.w 2(a0), d0
 	bsr.w keyword
+	cmpi.l #KEY_MODULE, d0
+	beq.w module
+	cmpi.l #KEY_ENDMODULE, d0
+	beq.w endModule
+	cmpi.l #KEY_PUB, d0
+	beq.w public
+	cmpi.l #KEY_PRIV, d0
+	beq.w private
 	cmpi.l #KEY_BLOCK, d0
 	beq.w block
 	cmpi.l #KEY_ENDBLOCK, d0
@@ -238,6 +259,39 @@ directive
 	; Other directives retain their existing generic preparation/assembly route.
 	addq.l #5, a0
 	bra.w references
+module
+	bsr.w openModule
+	bne.w bad
+	bra.w retainedLabel
+endModule
+	addq.l #5, a0
+	cmpa.l a4, a0
+	bne.w bad
+	lea MODULE_STATE(a6), a0
+	moveq #0, d0
+	move.w State.Current(a6), d0
+	jsr modules.close
+	bne.w bad
+	clr.w State.Current(a6)
+	bra.w retainedLabel
+public
+	moveq #1, d1
+	bra.w visibility
+private
+	moveq #0, d1
+visibility
+	addq.l #5, a0
+	cmpa.l a4, a0
+	bne.w bad
+	lea MODULE_STATE(a6), a0
+	move.w d1, modules.State.Visibility(a0)
+retainedLabel
+	tst.l d7
+	bmi.w empty
+	move.b #8, (a5)
+	move.b #5, 8(a5)
+	bra.w ok
+
 block
 	moveq #KIND_BLOCK, d2
 	bra.w opening
@@ -287,6 +341,11 @@ reference
 	adda.l d0, a3
 	ori.w #REFERENCED, records.Entry.Flags(a3)
 	clr.b 3(a0)
+	lsr.l #4, d0
+	move.l a0, -(sp)
+	lea MODULE_STATE(a6), a0
+	jsr modules.reference
+	movea.l (sp)+, a0
 packageName
 	addq.l #4, a0
 	bra.w references
@@ -326,7 +385,7 @@ resolve
 	andi.w #DECLARED+REFERENCED, d0
 	beq.w next
 	btst #0, records.Entry.Flags+1(a4)
-	bne.w next
+	bne.w access
 	btst #2, records.Entry.Flags+1(a4)
 	bne.w failSaved
 	moveq #0, d3
@@ -361,6 +420,14 @@ lookupFailed
 	beq.w parent
 	move.w records.Entry.Target(a3), records.Entry.Target(a4)
 	move.w #1, State.Changed(a6)
+access
+	move.l d7, d0
+	moveq #0, d1
+	move.w records.Entry.Target(a4), d1
+	sub.w State.Base(a6), d1
+	lea MODULE_STATE(a6), a0
+	jsr modules.check
+	bne.w failSaved
 next
 	addq.w #1, d7
 	bra.w resolve
@@ -390,6 +457,94 @@ done
 	rts
 	.bend  ; finish
 	.priv
+
+; Classify the whole statement before declaring an optional label. Module
+; boundary directives and .end may carry labels without becoming outside content.
+; A0=normalized record,A6=state. D0/CCR=status; other registers preserved.
+authorizeLine	.block
+	movem.l d1-d2/a0-a1, -(sp)
+	moveq #0, d1
+	move.b (a0), d1
+	addq.w #1, d1
+	cmpi.w #4, d1
+	beq.w ok
+	movea.l a0, a1
+	adda.w d1, a1
+	addq.l #4, a0
+	cmpi.w #9, d1
+	blo.w content
+	cmpi.b #1, (a0)
+	bhi.w directive
+	cmpi.b #5, 4(a0)
+	bne.w content
+	addq.l #5, a0
+directive
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #5, d0
+	blo.w content
+	cmpi.b #7, (a0)
+	bne.w content
+	tst.b 4(a0)
+	bne.w content
+	moveq #0, d0
+	move.w 2(a0), d0
+	bsr.w keyword
+	cmpi.l #KEY_MODULE, d0
+	beq.w ok
+	cmpi.l #KEY_ENDMODULE, d0
+	beq.w ok
+	cmpi.l #KEY_END, d0
+	beq.w ok
+content
+	lea MODULE_STATE(a6), a0
+	jsr modules.content
+	bra.w done
+ok
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	rts
+	.bend  ; authorizeLine
+
+; A0=directive,A4=end,A6=scope state. Validate the single dotted module name,
+; then delegate identity, prefix construction and ownership to modules.
+; D0/CCR=status; other registers preserved.
+openModule	.block
+	movem.l d1-d3/a0-a4, -(sp)
+	tst.w State.Current(a6)
+	bne.w bad
+	addq.l #5, a0
+	move.l a4, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	bne.w bad
+	cmpi.b #1, (a0)
+	bhi.w bad
+	moveq #0, d0
+	move.w 1(a0), d0
+	sub.w State.Base(a6), d0
+	bcs.w bad
+	cmp.w State.Count(a6), d0
+	bhs.w bad
+	lea ENTRIES(a6), a1
+	lea ARENA(a6), a2
+	movea.l a6, a3
+	lea bind, a4
+	lea MODULE_STATE(a6), a0
+	jsr modules.open
+	bne.w bad
+	move.w modules.State.Active(a0), State.Current(a6)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a4
+	tst.l d0
+	rts
+	.bend  ; openModule
 
 ; Canonical column-one Identifier/Register prefixes are labels regardless of
 ; instruction spelling. A0=record,D0=capacity,A6=state. D0/CCR=status;
@@ -513,7 +668,11 @@ enter
 	; Only opening a path owns its parent metadata. A later qualified value
 	; declaration must not change an existing namespace's lexical parent.
 	move.w State.Current(a6), records.Entry.Owner(a3)
-	move.w d2, records.Entry.ScopeKind(a3)
+	lea MODULE_STATE(a6), a0
+	move.w modules.State.Visibility(a0), d1
+	lsl.w #8, d1
+	or.w d2, d1
+	move.w d1, records.Entry.ScopeKind(a3)
 	addq.w #1, d0
 	move.w d0, State.Current(a6)
 	moveq #0, d0
@@ -538,8 +697,16 @@ closeScope	.block
 	lsl.l #4, d0
 	lea ENTRIES(a6), a3
 	adda.l d0, a3
-	cmp.w records.Entry.ScopeKind(a3), d2
+	move.w records.Entry.ScopeKind(a3), d0
+	andi.w #$ff, d0
+	cmp.w d0, d2
 	bne.w bad
+	move.w records.Entry.ScopeKind(a3), d0
+	lsr.w #8, d0
+	move.l a0, -(sp)
+	lea MODULE_STATE(a6), a0
+	move.w d0, modules.State.Visibility(a0)
+	movea.l (sp)+, a0
 	move.w records.Entry.Owner(a3), State.Current(a6)
 	moveq #0, d0
 	rts
@@ -565,6 +732,11 @@ declare	.block
 	bne.w bad
 	clr.b 3(a0)
 	ori.w #DECLARED, records.Entry.Flags(a3)
+	lsr.l #4, d0
+	move.l a0, -(sp)
+	lea MODULE_STATE(a6), a0
+	jsr modules.claim
+	movea.l (sp)+, a0
 	moveq #0, d0
 	rts
 bad
@@ -778,6 +950,10 @@ Words
 	.byte KEY_NAMESPACE, 9, "namespace"
 	.byte KEY_ENDNAMESPACE, 12, "endnamespace"
 	.byte KEY_ENDNAMESPACE, 4, "endn"
+	.byte KEY_MODULE, 6, "module"
+	.byte KEY_ENDMODULE, 9, "endmodule"
+	.byte KEY_PUB, 3, "pub"
+	.byte KEY_PRIV, 4, "priv"
 	.byte 0
 	.align 2  ; the next module shares this instruction section
 	.endsection

@@ -1,7 +1,7 @@
 # Binary-source native runtime
 
-Status: F5 adds named namespaces and canonical bare labels, with binding
-completed before assembly. Bounded native checks pass. The last broad host run
+Status: F6 adds single-source modules and visibility during preparation.
+Bounded native checks and a matched release comparison pass. The last broad host run
 (F4) still had 160 baseline failures; this slice does not claim repository-wide
 qualification. See the [migration plan](native-runtime-reset.md) for the remaining
 language and product boundaries.
@@ -75,12 +75,23 @@ closes lower to empty records. Simple named namespaces use `.namespace name`,
 namespace. Labelled openings preserve the ordinary parent-scope address label.
 Blocks and namespaces nest, and closing kinds must match. Namespace identity can
 coexist with a same-named scalar. Assembly and dependency evaluation stay numeric.
+
+Single-source sequential `.module dotted.id` / `.endmodule` regions support
+`.pub`/`.priv`, private-by-default definitions and fully qualified public references
+between modules without imports. Visibility is inherited and restored across
+blocks/namespaces. Owning module identity is separate from lexical dotted prefixes:
+a child module can find a parent's public symbol, but cannot access its private
+symbols. Ordinary labels on module and visibility directives retain their address
+and the visibility in effect before the directive. Explicit-module sources allow
+only module boundaries and `.end` outside modules.
+
 Aliases and unused directive entries still occupy provisional ID/value slots;
 this increment does not compact the final symbol table.
 
 Other limits remain explicit:
 
-- no files/includes, modules, anonymous blocks or dotted scope declarations,
+- no files/includes, `.use`/imports, module metadata, anonymous blocks or dotted
+  block/namespace declarations,
   macros, conditionals, loops, structs or lists;
 - no strings, general sections, relocations, relaxation or complete expression
   operator set;
@@ -535,3 +546,77 @@ are unchanged. The same 68020 / 2 MiB profile and 10-second guest, 60-second
 invocation and 150-second batch limits apply; no clock calibration or self-host
 claim. Reproduce using the unchanged workload command above with each revision's
 matching frozen source and producer.
+
+## F6: single-source modules and visibility
+
+Module ownership and visibility are resolved during preparation. Three bounded
+512-word side arrays record declaration ownership, reference origin and flags.
+A mixed-origin flag prevents a legal local use from hiding an illegal use of the
+same numeric ID from another module. Final access checks cover declared IDs and
+forward aliases alike. Public definitions allow any origin; private definitions
+require their owning module (global-owned labels follow Rust's global visibility).
+Dotted module prefixes remain lexical parents without becoming owning modules.
+
+The new `binary_modules.asm` owns this metadata and module lifecycle; existing
+scope processing classifies directives, preserves ordinary labels and restores
+visibility on scope close. The 16-byte symbol entry and runtime record formats are
+unchanged. Temporary scope/module storage grows **25,172 → 28,256 B** (+3,084 B),
+and is freed before assembly. There is no runtime module table or string lookup.
+Provisional module/prefix IDs still consume slots under the existing 512-ID limit.
+
+Separate gated native accounting on the 68020 / 2 MiB profile:
+
+| Case | Source / packed | Compiles / evaluations | Retained after preparation | Peak owned |
+|---|---:|---:|---:|---:|
+| Module copy/fold | 709 / 585 B | 29 / 48 | 17,408 B | 83,456 B |
+| Module control word | 630 / 419 B | 19 / 32 | 131,584 B | 262,656 B |
+| Module visibility and labelled directives | 336 / 238 B | 12 / 21 | 16,640 B | 82,176 B |
+
+All three match live Rust and independent expected bytes, with zero live tracked
+allocation after cleanup and zero profiling errors. The routines use canonical
+bare labels. These fixtures add exported aliases and expressions, so their work
+counts and sizes are not an isolated measurement of module overhead.
+
+Sixteen native rejection cases cover private and forward private access, mixed
+reference origins, dotted-prefix ownership, restored visibility, labels retaining
+previous visibility, duplicate/nested/unclosed modules, illegal scope placement,
+open child scopes, unmatched closes, outside content, malformed names and extra
+operands. Each requires fresh completion, the expected error and allocation cleanup.
+Retained mixed-namespace, nested-scope and optional-colon copy/fold cases also pass
+on the final image: 22 native functional checks in total.
+
+Use the F4 reproduction environment and deadlines with
+`binary_modules_copy_fs_uae`, `binary_modules_control_fs_uae` or
+`binary_modules_mixed_fs_uae`. For negative cases, run
+`binary_modules_rejection_fs_uae` with `OPFORGE_MODULE_REJECTION` selecting a case
+from `binary_source_modules.rs`. Accounting uses `OPFORGE_COMPARE_MEMORY=1`;
+release timing must leave it off.
+
+Focused host checks pass: 26 binary-source tests and three VM-only module tests.
+Rust and native formatting, changed-file redundant-test checks, workflow/CPU
+boundaries and the native proof-contract guard pass. The whole-tree redundant-test
+check reports the same four autofixable findings in `tkpkg_compact_table.asm` as
+the frozen F5 baseline; they are outside this change. Production Rust is unchanged;
+the broad host suite was not rerun and its recorded baseline failures remain.
+
+### F6 release comparison
+
+The unchanged expression-layout32 workloads compare frozen F5 `5067b41d` with
+final F6 using their matching producers/native trees. Package, source, output,
+runner and effective emulator-configuration digests match; both revisions produce
+the live Rust oracle's exact bytes.
+
+| Source target | F5 | F6 | Observed difference |
+|---|---:|---:|---:|
+| m6502 | 2.0953 s | 2.0797 s | −0.75% |
+| m68000 | 4.0161 s | 3.9858 s | −0.75% |
+
+These small single observations do not establish a speedup or a meaningful
+regression. The release image grows **25,600 → 26,668 B** (+1,068 B, 4.2%);
+linked reservation grows **28,460 → 29,496 B** (+1,036 B). Release identity is
+`fnv1a64:5303e715e573341f`. The extra preparation metadata is freed before assembly;
+no module metadata is retained in runtime records. The same 68020 / 2 MiB profile,
+10-second guest, 60-second invocation and 150-second batch limits apply, without
+clock calibration or a self-host claim. Reproduce with the unchanged workload
+command above, each revision's matching producer/native tree, and memory
+instrumentation disabled.

@@ -11,6 +11,12 @@ HEADER_BYTES = 76
 IO_BYTES = 4096
 LINE_BYTES = 4096
 RECORD_BYTES = 256
+Span	.struct
+Start	.long ?
+End	.long ?
+File	.long ?
+	.endstruct
+SPAN_BYTES = Span.File+4
 IO_SCRATCH_BYTES = IO_BYTES+LINE_BYTES+RECORD_BYTES
 	.section entry, kind=code
 	.pub
@@ -44,6 +50,8 @@ start	.block
 failed
 	bsr.w reportFailure
 cleanup
+	bsr.w closeSource
+	bsr.w closeInput
 	tst.l FrontStarted
 	beq.w freeBlocks
 	lea Front, a0
@@ -61,6 +69,8 @@ freeBlocks
 	jsr memory.release
 	lea Output, a0
 	jsr memory.release
+	lea FileSpans, a0
+	jsr memory.release
 	.MEMORY_PHASE #3
 	move.l DosBase, d0
 	beq.w done
@@ -75,6 +85,16 @@ done
 	.bend  ; start
 	.priv
 reportFailure	.block
+	tst.l InAssembly
+	beq.w located
+	bsr.w locateFailure
+located
+	move.l SourceOrdinal, d0
+	lea FailureFile, a0
+	bsr.w hexField
+	move.l SourceLine, d0
+	lea FailureLine, a0
+	bsr.w hexField
 	movea.l DosBase, a6
 	jsr -60(a6)
 	move.l d0, d1
@@ -86,6 +106,62 @@ reportFailure	.block
 done
 	rts
 	.bend  ; reportFailure
+
+; Locate the failing record in numeric provenance only; no source strings survive.
+; A missing location (e.g. failure before dispatch) reports file/line zero.
+locateFailure	.block
+	clr.l SourceOrdinal
+	clr.l SourceLine
+	lea Work, a0
+	move.l assembly.Frame.RecordOffset(a0), d4
+	lea Records, a0
+	move.l d4, d0
+	addq.l #4, d0
+	bcs.w done
+	cmp.l memory.Block.Used(a0), d0
+	bhi.w done
+	movea.l memory.Block.Pointer(a0), a2
+	adda.l d4, a2
+	move.l SourceCount, d3
+	lea FileSpans, a0
+	movea.l memory.Block.Pointer(a0), a0
+loop
+	tst.l d3
+	beq.w done
+	cmp.l Span.Start(a0), d4
+	blo.w next
+	cmp.l Span.End(a0), d4
+	bhs.w next
+	move.l Span.File(a0), SourceOrdinal
+	moveq #0, d0
+	move.w 2(a2), d0
+	move.l d0, SourceLine
+	rts
+next
+	adda.w #SPAN_BYTES, a0
+	subq.l #1, d3
+	bra.w loop
+done
+	rts
+	.bend  ; locateFailure
+
+; Render a fixed-width hexadecimal diagnostic field. D0=value,A0=8 byte field.
+; Clobbers D0-D2/A0/CCR; normal failure formatting, not instrumentation.
+hexField	.block
+	moveq #7, d2
+loop
+	rol.l #4, d0
+	move.l d0, d1
+	andi.l #15, d1
+	cmpi.b #9, d1
+	bls.w digit
+	addq.b #7, d1
+digit
+	addi.b #'0', d1
+	move.b d1, (a0)+
+	dbra d2, loop
+	rts
+	.bend  ; hexField
 
 ; Read exactly D3 bytes into D2 from the open InputHandle. D0/CCR=status.
 ; Preserves all other registers. No seek, whole-source buffer or byte-at-a-time I/O.
@@ -188,7 +264,32 @@ prepare	.block
 	jsr frontend.begin
 	bne.w closeBad
 	.MEMORY_STAGE #0
+	move.l #ManifestWord, d2
+	moveq #2, d3
+	bsr.w readExact
+	bne.w closeBad
+	moveq #0, d0
+	move.w ManifestWord, d0
+	beq.w closeBad
+	move.l d0, SourceCount
+	mulu.w #SPAN_BYTES, d0
+	lea FileSpans, a0
+	jsr memory.reserve
+	bne.w closeBad
+	move.l SourceCount, d0
+	mulu.w #SPAN_BYTES, d0
+	move.l d0, memory.Block.Used(a0)
+	move.l #1, SourceOrdinal
+nextFile
+	clr.l SourceLine
+	bsr.w openSource
+	bne.w closeBad
+	bsr.w fileSpan
+	lea Records, a1
+	move.l memory.Block.Used(a1), Span.Start(a0)
+	move.l SourceOrdinal, Span.File(a0)
 	clr.l LineUsed
+	move.l #1, SourceLine
 sourceLoop
 	bsr.w readByte
 	cmpi.l #-1, d0
@@ -211,10 +312,33 @@ lineReady
 	bra.w sourceLoop
 sourceDone
 	tst.l LineUsed
-	beq.w prepared
+	beq.w fileDone
 	bsr.w lowerLine
 	bne.w closeBad
+fileDone
+	bsr.w closeSource
+	bne.w closeBad
+	move.l SourceCount, d0
+	subq.l #1, d0
+	lea Front, a0
+	jsr frontend.endFile
+	bne.w closeBad
+	bsr.w fileSpan
+	lea Records, a1
+	move.l memory.Block.Used(a1), Span.End(a0)
+	addq.l #1, SourceOrdinal
+	move.l SourceCount, d0
+	cmp.l SourceOrdinal, d0
+	bhs.w nextFile
+	movea.l DosBase, a6
+	move.l InputHandle, d1
+	move.l #ManifestWord, d2
+	moveq #1, d3
+	jsr -42(a6)
+	tst.l d0
+	bne.w closeBad  ; trailing manifest bytes and read errors are invalid
 prepared
+	move.l SourceCount, SourceOrdinal
 	.MEMORY_STAGE #5
 	bsr.w closeInput
 	bne.w bad
@@ -223,7 +347,7 @@ prepared
 	move.l memory.Block.Used(a0), d0
 	lea Front, a0
 	jsr frontend.complete
-	bne.w bad
+	bne.w completionBad
 	move.l frontend.Frame.NameCount(a0), NameCount
 	jsr frontend.finish
 	clr.l FrontStarted
@@ -265,20 +389,103 @@ prepared
 	clr.l frontend.Frame.Output(a0)
 	moveq #0, d0
 	rts
+completionBad
+	clr.l SourceOrdinal
+	clr.l SourceLine
+	bra.w bad
 closeBad
+	bsr.w closeSource
 	bsr.w closeInput
 bad
 	moveq #1, d0
 	rts
 	.bend  ; prepare
 
+; Consume one explicit manifest path and open that actual guest file.
+; The manifest remains open independently. Each source has fresh buffered I/O.
+openSource	.block
+	move.l #ManifestWord, d2
+	moveq #2, d3
+	bsr.w readExact
+	bne.w bad
+	moveq #0, d4
+	move.w ManifestWord, d4
+	beq.w bad
+	cmpi.l #255, d4
+	bhi.w bad
+	move.l #SourcePath, d2
+	move.l d4, d3
+	bsr.w readExact
+	bne.w bad
+	lea SourcePath, a0
+	move.l d4, d0
+check
+	move.b (a0)+, d1
+	cmpi.b #32, d1
+	blo.w bad
+	cmpi.b #126, d1
+	bhi.w bad
+	subq.l #1, d0
+	bne.w check
+	clr.b (a0)
+	movea.l DosBase, a6
+	move.l #SourcePath, d1
+	move.l #1005, d2
+	jsr -30(a6)
+	tst.l d0
+	beq.w bad
+	move.l d0, SourceHandle
+	move.l IoBuffer, IoCursor
+	move.l IoBuffer, IoEnd
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; openSource
+
+closeSource	.block
+	move.l SourceHandle, d1
+	beq.w good
+	clr.l SourceHandle
+	movea.l DosBase, a6
+	jsr -36(a6)
+	tst.l d0
+	beq.w bad
+	lea SourcePath, a0
+	moveq #63, d0
+clearPath
+	clr.l (a0)+
+	dbra d0, clearPath
+good
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; closeSource
+
+; A0=current numeric span, each {start offset,end offset,file ordinal};
+; clobbers D0/A0. SourceOrdinal is validated by the manifest loop.
+fileSpan	.block
+	move.l SourceOrdinal, d0
+	subq.l #1, d0
+	mulu.w #SPAN_BYTES, d0
+	lea FileSpans, a0
+	movea.l memory.Block.Pointer(a0), a0
+	adda.l d0, a0
+	rts
+	.bend  ; fileSpan
+
 closeInput	.block
 	movea.l DosBase, a6
 	move.l InputHandle, d1
+	beq.w good
 	clr.l InputHandle
 	jsr -36(a6)
 	tst.l d0
 	beq.w bad
+good
 	moveq #0, d0
 	rts
 bad
@@ -293,7 +500,7 @@ readByte	.block
 	cmpa.l IoEnd, a0
 	bne.w available
 	movea.l DosBase, a6
-	move.l InputHandle, d1
+	move.l SourceHandle, d1
 	move.l IoBuffer, d2
 	move.l #IO_BYTES, d3
 	jsr -42(a6)
@@ -351,6 +558,7 @@ trimmed
 	movea.l a2, a1
 	bsr.w copy
 	clr.l LineUsed
+	addq.l #1, SourceLine
 	moveq #0, d0
 	rts
 bad
@@ -359,6 +567,7 @@ bad
 	.bend  ; lowerLine
 
 run	.block
+	move.l #1, InAssembly
 	move.l NameCount, d0
 	beq.w bad
 	cmpi.l #65536, d0
@@ -464,7 +673,10 @@ done
 DosName	.byte "dos.library", 0
 InputPath	.byte "Work:input.bin", 0
 OutputPath	.byte "Work:output.bin", 0
-FailureMessage	.byte "binary source: unsupported or invalid input", 10
+FailureMessage	.byte "binary source: unsupported or invalid input [file "
+FailureFile	.byte "00000000"
+	.byte ", line "
+FailureLine	.byte "00000000", "]", 10
 FailureMessageEnd
 	.endsection
 	.section bss, kind=bss
@@ -472,6 +684,15 @@ FailureMessageEnd
 DosBase	.res long, 1
 ReturnCode	.res long, 1
 InputHandle	.res long, 1
+SourceHandle	.res long, 1
+SourceCount	.res long, 1
+SourceOrdinal	.res long, 1
+SourceLine	.res long, 1
+InAssembly	.res long, 1
+FileSpans	.res byte, memory.Block.Used+4
+ManifestWord	.res word, 1
+SourcePath	.res byte, 256
+	.align 4
 FrontStarted	.res long, 1
 IoBuffer	.res long, 1
 IoCursor	.res long, 1
@@ -482,7 +703,7 @@ SourceBytes	.res long, 1
 NameCount	.res long, 1
 Header	.res byte, HEADER_BYTES
 Front	.res byte, frontend.Frame.Scratch+4
-Work	.res byte, assembly.Frame.Allocate+4
+Work	.res byte, assembly.Frame.RecordOffset+4
 Context	.res byte, package.Context.Reserved+2
 PackageBlock	.res byte, memory.Block.Used+4
 RuntimeBlock	.res byte, memory.Block.Used+4

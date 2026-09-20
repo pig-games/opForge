@@ -16,6 +16,9 @@ mod selection;
 #[path = "binary_source_dependencies.rs"]
 mod dependencies;
 
+#[path = "binary_source_files.rs"]
+mod files;
+
 #[path = "binary_source_modules.rs"]
 mod modules;
 
@@ -134,24 +137,35 @@ fn binary_source_fs_uae() {
 }
 
 fn assert_binary_source(source: String, cpu: String) -> serde_json::Value {
-    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    let resolved = core.resolve_pipeline(&cpu, None).unwrap();
-    let preparation_started = std::time::Instant::now();
-    let mut input = prepare_package(&core, &resolved).unwrap();
-    let package_preparation_seconds = preparation_started.elapsed().as_secs_f64();
-    let package_bytes = input.len();
-    input.extend_from_slice(source.as_bytes());
     let (entries, diagnostics) =
         assemble_source_entries_with_runtime_mode(&source.lines().collect::<Vec<_>>(), true)
             .expect("live Rust source oracle");
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    let oracle: Vec<u8> = entries.into_iter().map(|(_, byte)| byte).collect();
+    let oracle = entries.into_iter().map(|(_, byte)| byte).collect();
+    assert_binary_files(&[("input.asm", &source)], &cpu, oracle)
+}
+
+fn assert_binary_files(files: &[(&str, &str)], cpu: &str, oracle: Vec<u8>) -> serde_json::Value {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline(cpu, None).unwrap();
+    let preparation_started = std::time::Instant::now();
+    let input = prepare_package(&core, &resolved).unwrap();
+    let package_preparation_seconds = preparation_started.elapsed().as_secs_f64();
+    let package_bytes = input.len();
+    let sources = files
+        .iter()
+        .map(|(name, text)| (*name, text.as_bytes()))
+        .collect::<Vec<_>>();
     let native_root = std::env::var_os("OPFORGE_COMPARE_NATIVE_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(workspace_root);
-    let result =
-        crate::fs_uae_smoke::run_binary_source_harness_from_env(&native_root, &input, &oracle)
-            .expect("completed native binary-source comparison");
+    let result = crate::fs_uae_smoke::run_binary_source_harness_from_env(
+        &native_root,
+        &input,
+        &sources,
+        &oracle,
+    )
+    .expect("completed native binary-source comparison");
     let FsUaeSmokeOutcome::Completed { runs } = result else {
         panic!("explicit comparison requires real native execution");
     };
@@ -222,7 +236,13 @@ fn assert_binary_source(source: String, cpu: String) -> serde_json::Value {
         assert_eq!(words[47], 1, "one finalization");
         assert_eq!(words[44], words[45], "each tokenized line binds once");
         assert_eq!(words[45], words[46], "each bound line prepares once");
-        assert_eq!(words[44] as usize, source.lines().count());
+        assert_eq!(
+            words[44] as usize,
+            files
+                .iter()
+                .map(|(_, text)| text.lines().count())
+                .sum::<usize>()
+        );
         let stage_seconds = total_ticks as f64 / f64::from(words[28]);
         assert!(
             (stage_seconds - preparation_ticks as f64 / 50.0).abs() <= 0.04,
@@ -238,7 +258,10 @@ fn assert_binary_source(source: String, cpu: String) -> serde_json::Value {
         assert_eq!(pair_total + u64::from(words[44]), opcode_total);
         assert_eq!(
             work[0] as usize,
-            source.bytes().filter(|b| *b != b'\n').count()
+            files
+                .iter()
+                .map(|(_, text)| text.bytes().filter(|b| *b != b'\n').count())
+                .sum::<usize>()
         );
         for (taken, opcode) in [(4, 8), (5, 9), (6, 10)] {
             assert!(work[taken] <= opcodes[opcode]);
@@ -279,7 +302,8 @@ fn assert_binary_source(source: String, cpu: String) -> serde_json::Value {
     eprintln!(
         "BINARY_SOURCE_COMPARISON {}",
         serde_json::json!({
-            "cpu": cpu, "source_bytes": source.len(), "runtime_package_bytes": package_bytes,
+            "cpu": cpu, "source_bytes": sources.iter().map(|(_, bytes)| bytes.len()).sum::<usize>(),
+            "source_files": files.iter().map(|(name, _)| name).collect::<Vec<_>>(), "runtime_package_bytes": package_bytes,
             "host_package_preparation_seconds": package_preparation_seconds,
             "native_image_bytes": image.len(),
             "native_linked_reserved_bytes": allocation.total(),
@@ -316,13 +340,24 @@ fn binary_source_rejection_fs_uae() {
 }
 
 fn assert_native_rejection(source: &str, cpu: &str) {
+    assert_native_files_rejection(&[("input.asm", source)], cpu, None);
+}
+
+fn assert_native_files_rejection(files: &[(&str, &str)], cpu: &str, diagnostic: Option<&str>) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline(cpu, None).unwrap();
-    let mut input = prepare_package(&core, &resolved).unwrap();
-    input.extend_from_slice(source.as_bytes());
-    let result =
-        crate::fs_uae_smoke::run_binary_source_rejection_from_env(&workspace_root(), &input)
-            .expect("fresh completed native rejection with diagnostic");
+    let input = prepare_package(&core, &resolved).unwrap();
+    let sources = files
+        .iter()
+        .map(|(name, text)| (*name, text.as_bytes()))
+        .collect::<Vec<_>>();
+    let result = crate::fs_uae_smoke::run_binary_source_rejection_from_env(
+        &workspace_root(),
+        &input,
+        &sources,
+        diagnostic,
+    )
+    .expect("fresh completed native rejection with diagnostic");
     let FsUaeSmokeOutcome::Completed { runs } = result else {
         panic!("explicit rejection contract requires native execution");
     };

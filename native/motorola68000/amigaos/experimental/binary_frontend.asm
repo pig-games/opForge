@@ -32,11 +32,12 @@ NEXT_ID = 24
 LINE_FRAME = 28
 TOKENS = 68
 LEXEMES = TOKENS+64*20
-SCOPE_STATE = LEXEMES+1024
-PACKAGE_BUCKETS = SCOPE_STATE+scopes.SCRATCH_BYTES
+; Keep directly addressed regions below signed d16 displacement limits.
+PACKAGE_BUCKETS = LEXEMES+1024
 	.pub
 PREPARED_LINE = PACKAGE_BUCKETS+256*4
-SCRATCH_BYTES = PREPARED_LINE+256
+SCOPE_STATE = PREPARED_LINE+256
+SCRATCH_BYTES = SCOPE_STATE+scopes.SCRATCH_BYTES
 	.priv
 ; Package nodes hold capsule-relative entries and scratch-relative chain links.
 Node	.struct
@@ -197,6 +198,21 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	rts
 	.bend  ; line
+; Finish one source file without discarding identities shared by the session.
+; A0=Frame,D0=nonzero to require explicit modules for file content.
+; D0/CCR=status, others preserved. Successful EOF resets local lines.
+endFile	.block
+	movem.l a0-a1, -(sp)
+	movea.l Frame.Scratch(a0), a1
+	lea SCOPE_STATE(a1), a0
+	jsr scopes.endFile
+	bne.w done
+	move.l #1, LINE_NUMBER(a1)
+done
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; endFile
 ; Finalize scoped identities before lexical scratch is released. A0=Frame,
 ; A1=packed records,D0=record bytes. D0/CCR=status; other registers preserved.
 complete	.block
@@ -268,7 +284,8 @@ configure	.block
 	move.l a4, PACKAGE_BASE(a6)
 	move.l package.Header.DictionaryCount(a4), d6
 	move.l d6, DICTIONARY_COUNT(a6)
-	lea SCRATCH_BYTES(a6), a3
+	movea.l a6, a3
+	adda.l #SCRATCH_BYTES, a3
 dictLoop
 	tst.l d6
 	beq.w indexDictionary

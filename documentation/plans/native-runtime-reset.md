@@ -93,8 +93,10 @@ implementation:
    identities during preparation, including forward local shadowing. F5 adds
    namespace reopening, typed closes and canonical column-one bare labels.
    **F6** extends preparation to sequential single-source modules, visibility and
-   fully qualified public cross-module references. Imports, files and include
-   lifetime remain later work; do not restore string lookup during assembly.
+   fully qualified public cross-module references. **F7** adds explicitly ordered
+   physical files and module-local imports. Native discovery, dependency ordering
+   and include lifetime remain later work; do not restore string lookup during
+   assembly.
 5. **Source expansion.** Encode macro, conditional and loop syntax once as binary
    records. Expansion and control flow that depend on layout, the program counter
    or symbols must evaluate against the appropriate pass state without falling
@@ -151,11 +153,11 @@ selection routes until migrated and qualified.
 
 F3 extends the expression and deferred-binding boundary with forward absolute
 constants and explicit cycle rejection in both Rust and native. Native PC/label
-dependencies retain fixed two-pass/source-order semantics. Files/imports, expansion
-and product integration remain later increments. F4/F5 finalize named block
+dependencies retain fixed two-pass/source-order semantics. File discovery/includes,
+expansion and product integration remain later increments. F4/F5 finalize named block
 and namespace bindings during preparation and accept canonical bare labels.
-F6 adds single-source module ownership and public/private access checks before
-assembly.
+F6 adds module ownership and public/private access checks; F7 resolves imports
+across explicitly ordered files before assembly.
 Select the next coherent breadth
 step for review; do not start those increments automatically from this plan.
 
@@ -282,7 +284,6 @@ solver, a package/CPU semantic change or a substantially larger language migrati
 Finish with a local review checkpoint and current coverage/measurement notes. No
 remote push is authorized.
 
-
 F4 checkpoint: scoped/flat copy and control-word routines plus nested bindings
 match live Rust and independent bytes on the native 68020 / 2 MiB path. All nine
 scope rejection cases, the 512-ID boundary/overflow and the 128-definition chain
@@ -296,7 +297,6 @@ One matched release comparison observes +3.7% m6502 and +1.8% m68000 time, with
 not a speedup or full product qualification. See the
 [F4 measurements](prepared-source-experiment.md#f4-named-block-scopes). Review this
 checkpoint before selecting the next breadth increment.
-
 
 ## F5 increment contract — implemented: namespaces and canonical labels
 
@@ -382,3 +382,48 @@ change or broad-host qualification is claimed. Imports and multiple-file loading
 remain future work. The matched release pair shows no meaningful regression
 (about −0.75% observed time on both workloads); image size grows 1,068 B.
 See the [F6 measurements](prepared-source-experiment.md#f6-single-source-modules-and-visibility).
+
+## F7 increment contract — implemented: explicit source files and imports
+
+Stream an explicitly ordered list of real guest source files through one native
+preparation session. Each file has independent EOF/line numbering and complete
+module/scope boundaries; declarations, module identities and bindings are shared.
+Retain compact numeric file/record spans for diagnostics, with no stored pointers
+or source text used during assembly. Existing one-file inputs use the same path.
+
+Add module-local `.use module.id` and `.use module.id as alias`, including
+forward availability within the owning module, case-insensitive qualifiers,
+public/private access, duplicate aliases and missing/ambiguous module checks.
+Resolve imports and references before freeing lexical scratch. Reuse the existing
+512 provisional-ID limit and measure additional bounded metadata. Preserve bare
+labels. Explicitly reject unsupported import forms and imports in child scopes.
+
+The caller supplies assembly order. Native discovery, search paths, dependency
+ordering, implicit file-derived modules and `.include` remain outside this slice.
+The Rust file-graph oracle may order dependencies first; test manifests explicitly
+match that order rather than claiming native graph loading. Source `.end` must
+not swallow later files; keep the current terminal-marker restriction explicit.
+
+Hypothesis: one shared preparation session can bind identical one-file and split
+programs, with bounded per-file I/O/provenance overhead and no runtime string
+lookup. Prove identical output against live Rust, exercise genuine guest file
+opens, forward imports, alias reuse and private/missing references, and test file
+boundary errors plus source-local diagnostic locations. Compare one/split release
+times and gated peak memory, and unchanged expression-layout32 against F6
+`36bc145c`. Same 68020/2MiB profile and 10s guest/60s invocation/150s batch limits.
+Stop for a need to broaden language/layout semantics or restore source replay.
+Finish with current notes, a local commit and step-only review; no push.
+
+F7 checkpoint: real ordered source files stream through shared preparation;
+module-local aliases resolve before assembly, including forward targets and
+qualified-name interning order. File-local error locations use numeric spans;
+final-binding/dependency error attribution still reports unknown. Native file
+discovery, dependency ordering and includes remain deferred.
+
+Eighteen native functional checks pass, plus joined/split and F6/F7 comparisons.
+Host checks pass 30 binary-source, four VM-only and 45 runner tests. Joined/split
+programs have identical output and measured memory peaks. Single release pairs
+observe +39/+9 ms for splitting the small 6502/68000 fixtures and +1.9%/−0.2% on
+unchanged F6 workloads. Cost: +2,476 B release image, +4,610 B preparation metadata
+and a retained 12-byte numeric span per source (subject to allocation granularity).
+See the [F7 results](prepared-source-experiment.md#f7-explicit-source-files-and-imports).

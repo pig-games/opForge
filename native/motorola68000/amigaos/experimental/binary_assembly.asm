@@ -19,6 +19,7 @@ Used	.long ?
 Line	.word ?
 Reserved	.word ?
 Allocate	.long ?
+RecordOffset	.long ?
 .endstruct
 
 	.section bss, kind=bss
@@ -42,6 +43,7 @@ assemble	.block
 	movea.l a0, a5
 	move.l a0, Active
 	clr.l Frame.Used(a5)
+	move.l #-1, Frame.RecordOffset(a5)
 	movea.l Frame.Context(a5), a6
 	move.l pkg.Context.Count(a6), d0
 	beq.w fail
@@ -71,6 +73,9 @@ pass
 	bcs.w fail
 	movea.l d0, a3
 line
+	move.l a4, d0
+	sub.l Frame.Records(a5), d0
+	move.l d0, Frame.RecordOffset(a5)
 	cmpa.l a3, a4
 	beq.w passDone
 	bhi.w fail

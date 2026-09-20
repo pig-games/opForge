@@ -1,7 +1,7 @@
 # Binary-source native runtime
 
-Status: F6 adds single-source modules and visibility during preparation.
-Bounded native checks and a matched release comparison pass. The last broad host run
+Status: F7 supports explicitly ordered source files and module-local imports.
+Bounded native functional checks and release comparisons pass. The last broad host run
 (F4) still had 160 baseline failures; this slice does not claim repository-wide
 qualification. See the [migration plan](native-runtime-reset.md) for the remaining
 language and product boundaries.
@@ -78,7 +78,10 @@ coexist with a same-named scalar. Assembly and dependency evaluation stay numeri
 
 Single-source sequential `.module dotted.id` / `.endmodule` regions support
 `.pub`/`.priv`, private-by-default definitions and fully qualified public references
-between modules without imports. Visibility is inherited and restored across
+between modules. Module-local `.use target` and `.use target as alias` support
+forward targets and references before imports. Explicitly ordered physical files
+share one preparation session, with independent EOF and line numbering.
+Visibility is inherited and restored across
 blocks/namespaces. Owning module identity is separate from lexical dotted prefixes:
 a child module can find a parent's public symbol, but cannot access its private
 symbols. Ordinary labels on module and visibility directives retain their address
@@ -90,7 +93,8 @@ this increment does not compact the final symbol table.
 
 Other limits remain explicit:
 
-- no files/includes, `.use`/imports, module metadata, anonymous blocks or dotted
+- no native file discovery/dependency ordering, `.include`, implicit file-derived
+  modules, module metadata, dotted import aliases, anonymous blocks or dotted
   block/namespace declarations,
   macros, conditionals, loops, structs or lists;
 - no strings, general sections, relocations, relaxation or complete expression
@@ -104,7 +108,8 @@ Other limits remain explicit:
 - diagnostics are provisional and the normal native CLI is not qualified through
   this route.
 
-The host builds the current BSP3 package capsule and passes it with raw source to
+The host builds the current BSP3 package capsule, stages explicit source files
+and supplies their ordered path manifest to
 the native harness. Native tokenization creates the packed records; preparation
 compiles expressions and binds names; assembly consumes those records without
 consulting source text. This proves the execution boundary, but normal native
@@ -324,7 +329,6 @@ The release image grew **21,176 → 21,792 B** (+616 B, 2.9%), and linked reserv
 `fnv1a64:af3d0912815c5e71`; telemetry is absent. This step buys language coverage,
 with the package-size cost recorded above; it is not a new optimization claim.
 
-
 ## F3: bit operators and absolute dependencies
 
 F3 adds symbolic masks/configuration routines without source replay or dependency
@@ -382,7 +386,6 @@ Use the FS-UAE environment from the [runner guide](../../agents/rules/fs-uae.md)
 The existing 10-second post-start, 60-second invocation and 150-second batch
 limits apply. No self-host measurement was used. Fresh proof is required when
 reproducing these observations; archived logs are not a substitute.
-
 
 ## F4: named block scopes
 
@@ -470,7 +473,6 @@ runs; leave it unset or set it to `0` for release timing. Negative checks use
 from `binary_source_scopes.rs`. Keep invocations serialized and batches below
 150 seconds. Build the matching test executable before collecting comparisons;
 do not rebuild or change native inputs during a measurement batch.
-
 
 ## F5: namespaces and canonical labels
 
@@ -620,3 +622,125 @@ no module metadata is retained in runtime records. The same 68020 / 2 MiB profil
 clock calibration or a self-host claim. Reproduce with the unchanged workload
 command above, each revision's matching producer/native tree, and memory
 instrumentation disabled.
+
+## F7: explicit source files and imports
+
+The experimental harness accepts the current BSP3 package followed by a
+big-endian file count and length-prefixed guest paths. It opens each supplied
+file separately and streams lines through one frontend session. The runner binds
+all file paths and contents into the fresh case challenge. The former appended
+text input is replaced; no legacy input reader is retained.
+
+The caller supplies assembly order. Native module discovery, search paths,
+dependency ordering and `.include` remain deferred. Multi-file inputs require
+complete explicit modules in each nonempty file; the one-file global source
+form remains available. EOF resets local line numbering and file-termination
+state, without discarding declarations or module identities. `.end` terminates
+its own input only; this remains narrower than Rust's no-op `.end` semantics for
+statements following it. The comparison fixtures use terminal `.end` consistently.
+
+Module-local `.use target` and `.use target as alias` are resolved after every
+file is prepared, so references can precede imports or target definitions.
+Simple aliases are case-insensitive; imports in blocks/namespaces reject.
+Reference IDs are keyed by their originating module to distinguish identical
+alias spellings bound to different targets. They share interned spelling bytes
+and resolve to canonical declaration IDs before assembly. Visibility checks
+still apply to the resolved declaration. Alias matching uses the final spelling
+component, independently of how the symbol was first interned.
+
+`binary_imports.asm` owns import/proxy handling; `binary_scope_layout.asm` shares
+preparation layout without circular module dependencies. Import scratch adds
+**4,610 B**, raising scope/module/import storage from **28,256 to 32,866 B**.
+Proxy IDs use the existing 512-ID budget; the final value table is not compacted.
+Fixed frontend regions precede variable scope storage so 68020 signed-16-bit
+address displacements remain valid. The dynamic dictionary-node base uses a
+full-width offset addition.
+
+Packed lines retain their existing local line word. A separate numeric table
+uses 12 bytes per input file (record-start/end offsets and file ordinal), retained
+for diagnostics and freed at cleanup. No path or source text is consulted during
+assembly. Preparation errors and record-dispatch failures report hexadecimal
+file ordinal/local line; global binding and pre-dispatch dependency errors still
+report zero/zero rather than a misleading last-file location. Those remaining
+diagnostic attribution limits are explicit future work.
+
+The 6502 reversal/call and 68000 mask/call fixtures each span three actual files.
+Every comparison obtains a live Rust file-graph oracle, checks independent
+23/26-byte outputs and verifies the joined source has identical semantics. A
+second case distinguishes the same alias spelling in two modules with different
+forward targets, including target/alias/`as` names first interned by qualified
+declarations. Canonical bare labels are used throughout.
+
+Separate gated native accounting on the 68020 / 2 MiB profile:
+
+| Case | Source / packed | Compiles / evaluations | Retained after preparation | Peak owned |
+|---|---:|---:|---:|---:|
+| Three-file reversal/calls | 451 / 311 B | 13 / 23 | 17,152 B | 82,944 B |
+| Three-file masks/calls | 396 / 250 B | 8 / 15 | 131,584 B | 262,656 B |
+| Two-file forward alias ownership | 287 / 191 B | 9 / 13 | 16,896 B | 82,432 B |
+
+All release their tracked memory with zero profiling errors. Native error-location
+checks require the actual `[file 00000002, line 00000003]` diagnostic both during
+preparation and record dispatch. The latter deliberately exercises the existing
+native signed32 range limit; Rust accepts the wider result, which is separately
+asserted rather than treated as Rust error parity.
+
+Twelve native rejection cases cover private imports, duplicate qualifiers, missing
+modules (including unused imports), ambiguous qualified paths, scope restrictions,
+missing members without alias fallback, duplicate modules across files, unfinished
+EOF, diagnostic locations and the explicit-module requirement. Retained module
+visibility, module copy/fold and mixed-namespace cases also pass: 18 native
+functional checks on the final image, each with fresh protocol/exit and the
+appropriate exact output or error plus cleanup checks.
+
+Host validation passes 30 binary-source tests, four VM-only file/import tests and
+45 shared-runner tests. Native/Rust formatting, changed-file redundant-test checks,
+architecture and proof-contract guards pass. No broad host-suite qualification is
+claimed; the recorded baseline failures remain outside this slice.
+
+Reproduce using the earlier FS-UAE environment and deadlines with
+`binary_files_copy_fs_uae`, `binary_files_control_fs_uae` and
+`binary_files_aliases_fs_uae`. Set `OPFORGE_FILES_JOINED=1` for the joined copy/control
+inputs. Select a negative case from `binary_source_files.rs` with
+`OPFORGE_FILE_REJECTION` and run `binary_files_rejection_fs_uae`. Memory accounting
+uses `OPFORGE_COMPARE_MEMORY=1`; release timing leaves it unset. All source files
+are staged into the disposable guest tree and removed by the shared runner.
+
+### F7 joined versus split comparison
+
+The same final release image assembles each program as one joined file or three
+physical files, in identical module order, with exact output equality:
+
+| Source target | Joined | Three files | Observed difference |
+|---|---:|---:|---:|
+| m6502 | 0.3836 s | 0.4227 s | +39 ms (+10.2%) |
+| m68000 | 0.6801 s | 0.6893 s | +9 ms (+1.4%) |
+
+These single observations include guest file-open/read/close work; they do not
+isolate filesystem cost from timing variability. The 68000 difference is below
+the 20 ms polling interval. Separate instrumented runs show identical retained
+memory and peak allocation for joined/split copies: **17,152 / 82,944 B** for
+m6502 and **131,584 / 262,656 B** for m68000. The 12-byte versus 36-byte file-span
+tables occupy the same minimum allocation size. Joined packed sources are
+303/242 bytes versus split 311/250 bytes: the two additional terminal `.end`
+lines lower to empty records. Expression work and final bytes are unchanged.
+
+### F7 release comparison against F6
+
+Frozen F6 `36bc145c` and final F7 use their matching producers/native trees on
+the unchanged expression-layout32 inputs. Package, source, output, Python runner
+and effective emulator settings match. F7's producer stages a separate source
+file and manifest, so the measured guest work includes the new file handling.
+
+| Source target | F6 | F7 | Observed difference |
+|---|---:|---:|---:|
+| m6502 | 2.0825 s | 2.1213 s | +1.9% |
+| m68000 | 4.0093 s | 4.0007 s | −0.2% |
+
+These are single observations: the 6502 case adds about 39 ms; the 68000 difference
+is below the 20 ms polling interval. No general speedup is claimed. The release
+image grows **26,668 → 29,144 B** (+2,476 B, 9.3%); linked reservation grows
+**29,496 → 32,004 B** (+2,508 B). Final release identity is
+`fnv1a64:8ea5afe318096ef9`. The same 68020 / 2 MiB profile, uncalibrated clock and
+10-second guest / 60-second invocation / 150-second batch bounds apply. This is
+bounded experimental-path qualification, not native CLI or self-host coverage.

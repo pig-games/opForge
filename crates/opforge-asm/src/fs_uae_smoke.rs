@@ -1299,48 +1299,101 @@ pub(crate) fn run_compact_memo_harness_from_env(
     )
 }
 
-/// Compare the experimental binary-source path against the caller's live oracle.
-/// Input is staged at Work:input.bin; output is read from Work:output.bin.
-/// The shared runner requires fresh start/completion challenges, zero guest exit,
-/// exact output bytes and ephemeral cleanup, just as for other native harnesses.
+/// Compare explicitly ordered source files against the caller's live oracle.
+/// The guest reads each actual file; the manifest carries only bounded paths.
+/// File contents participate in the shared fresh-run challenge and cleanup.
 pub(crate) fn run_binary_source_harness_from_env(
     workspace_root: &Path,
-    input: &[u8],
+    package: &[u8],
+    sources: &[(&str, &[u8])],
     expected: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
-    run_exact_harness_from_env(
-        workspace_root,
-        input,
-        expected,
-        "Work/output.bin",
-        NativeCliParityExecutable::BinarySourceHarness,
-    )
+    run_binary_source_files_from_env(workspace_root, package, sources, Some(expected), None)
 }
 
-/// A negative binary-source contract still requires fresh guest completion,
-/// a nonzero exit and the harness's own failure diagnostic.
+/// Expected failures retain fresh completion, nonzero exit and diagnostic proof.
 pub(crate) fn run_binary_source_rejection_from_env(
     workspace_root: &Path,
-    input: &[u8],
+    package: &[u8],
+    sources: &[(&str, &[u8])],
+    diagnostic: Option<&str>,
+) -> Result<FsUaeSmokeOutcome, String> {
+    run_binary_source_files_from_env(workspace_root, package, sources, None, diagnostic)
+}
+
+fn run_binary_source_files_from_env(
+    workspace_root: &Path,
+    package: &[u8],
+    sources: &[(&str, &[u8])],
+    expected: Option<&[u8]>,
+    diagnostic: Option<&str>,
 ) -> Result<FsUaeSmokeOutcome, String> {
     let args = std::env::var(FS_UAE_ARGS_ENV).map_err(|err| err.to_string())?;
     let binary = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".into());
+    let count = u16::try_from(sources.len()).map_err(|_| "too many source files")?;
+    if count == 0 {
+        return Err("no source files".into());
+    }
+    let mut input = package.to_vec();
+    input.extend_from_slice(&count.to_be_bytes());
+    let mut paths = Vec::with_capacity(sources.len());
+    for (name, _) in sources {
+        if name.is_empty()
+            || !name.is_ascii()
+            || name
+                .bytes()
+                .any(|byte| byte < 32 || byte == 127 || byte == b':' || byte == b'\\')
+            || Path::new(name)
+                .components()
+                .any(|part| !matches!(part, std::path::Component::Normal(_)))
+        {
+            return Err(format!("invalid source filename: {name}"));
+        }
+        let path = format!("sources/{name}");
+        if paths.contains(&path) {
+            return Err(format!("duplicate source filename: {name}"));
+        }
+        let guest_path = format!("Work:sources/{name}");
+        if guest_path.len() > 255 {
+            return Err("source path exceeds 255 bytes".into());
+        }
+        input.extend_from_slice(&(guest_path.len() as u16).to_be_bytes());
+        input.extend_from_slice(guest_path.as_bytes());
+        paths.push(path);
+    }
+    let files = paths
+        .iter()
+        .zip(sources)
+        .map(|(path, (_, bytes))| OpforgeNativeCliGuestFile {
+            relative_path: path,
+            bytes,
+        })
+        .collect::<Vec<_>>();
+    let expected_artifacts = expected.map(|rust_oracle| {
+        [OpforgeNativeCliExpectedArtifact {
+            relative_path: "Work/output.bin",
+            rust_oracle,
+        }]
+    });
     let memory_telemetry = std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1");
     let extra_assembly_defines = exact_harness_assembly_defines(
         NativeCliParityExecutable::BinarySourceHarness,
         memory_telemetry,
     );
     let case = OpforgeNativeCliParityCase {
-        name: "binary-source-rejection",
+        name: "binary-source-files",
         cpu_override: "68020",
         extra_assembly_defines: &extra_assembly_defines,
-        source_override: Some(input),
+        source_override: Some(&input),
         command_template: None,
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-        extra_guest_files: &[],
-        proof: OpforgeNativeCliProof::ExpectedFailureContaining(
-            "binary source: unsupported or invalid input",
-        ),
+        extra_guest_files: &files,
+        proof: match &expected_artifacts {
+            Some(artifacts) => OpforgeNativeCliProof::ExactArtifacts(artifacts),
+            None => OpforgeNativeCliProof::ExpectedFailureContaining(
+                diagnostic.unwrap_or("binary source: unsupported or invalid input"),
+            ),
+        },
     };
     run_native_cli_parity_batch_cases(
         workspace_root,
@@ -2776,6 +2829,9 @@ fn run_native_cli_parity_batch_cases(
                     case.source_override
                         .ok_or("binary source harness requires input bytes")?,
                 )?;
+                for file in case.extra_guest_files {
+                    stage_guest_input_bytes(&mounted_work_dir, file.relative_path, file.bytes)?;
+                }
             }
         }
         let command = match executable {

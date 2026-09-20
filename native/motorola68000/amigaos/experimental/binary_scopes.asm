@@ -5,28 +5,19 @@
 	.include "telemetry_macros.i"
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_modules as modules
+	.use experimental.amigaos.binary_scope_layout as layout
+	.use experimental.amigaos.binary_imports as imports
 	.pub
-LIMIT = 512
-ARENA_BYTES = 16384
+LIMIT = layout.LIMIT
+ARENA_BYTES = layout.ARENA_BYTES
 ENTRY_BYTES = records.ENTRY_BYTES
-State	.struct
-Base	.word ?
-Count	.word ?
-Current	.word ?
-Ended	.word ?
-ArenaUsed	.word ?
-FirstBound	.word ?
-FirstExplicit	.word ?
-EndDirective	.word ?
-Changed	.word ?
-Reserved	.word ?
-.endstruct
-ENTRIES = State.Reserved+2
-BUCKETS = ENTRIES+LIMIT*ENTRY_BYTES
-ARENA = BUCKETS+256*2
-BUFFER = ARENA+ARENA_BYTES
-MODULE_STATE = BUFFER+64
-SCRATCH_BYTES = MODULE_STATE+modules.SCRATCH_BYTES
+ENTRIES = layout.ENTRIES
+BUCKETS = layout.BUCKETS
+ARENA = layout.ARENA
+BUFFER = layout.BUFFER
+MODULE_STATE = layout.MODULE_STATE
+IMPORT_STATE = layout.IMPORT_STATE
+SCRATCH_BYTES = IMPORT_STATE+imports.SCRATCH_BYTES
 DECLARED = 1
 REFERENCED = 2
 EXPLICIT = 4
@@ -41,6 +32,7 @@ KEY_MODULE = 6
 KEY_ENDMODULE = 7
 KEY_PUB = 8
 KEY_PRIV = 9
+KEY_USE = 10
 	.section code, kind=code
 
 ; A0=caller-owned SCRATCH_BYTES, D0=first source ID, D1=.end ID. D0/CCR=status;
@@ -50,15 +42,16 @@ begin	.block
 	movea.l a0, a1
 	cmpi.l #65536-LIMIT, d0
 	bhi.w bad
-	move.w d0, State.Base(a0)
-	move.w d1, State.EndDirective(a0)
-	clr.w State.Changed(a0)
-	clr.w State.Count(a0)
-	clr.w State.Current(a0)
-	clr.w State.Ended(a0)
-	clr.w State.ArenaUsed(a0)
-	clr.w State.FirstBound(a0)
-	clr.w State.FirstExplicit(a0)
+	move.w d0, layout.State.Base(a0)
+	move.w d1, layout.State.EndDirective(a0)
+	clr.w layout.State.Changed(a0)
+	clr.w layout.State.FileContent(a0)
+	clr.w layout.State.Count(a0)
+	clr.w layout.State.Current(a0)
+	clr.w layout.State.Ended(a0)
+	clr.w layout.State.ArenaUsed(a0)
+	clr.w layout.State.FirstBound(a0)
+	clr.w layout.State.FirstExplicit(a0)
 	lea BUCKETS(a0), a0
 	move.w #255, d1
 clear
@@ -66,8 +59,10 @@ clear
 	dbra d1, clear
 	lea MODULE_STATE(a1), a0
 	moveq #0, d0
-	move.w State.Base(a1), d0
+	move.w layout.State.Base(a1), d0
 	jsr modules.begin
+	lea IMPORT_STATE(a1), a0
+	jsr imports.begin
 	moveq #0, d0
 	bra.w done
 bad
@@ -78,13 +73,38 @@ done
 	rts
 	.bend  ; begin
 
+; A0=state. End one source without discarding shared definitions/imports.
+; D0=nonzero requires explicit modules for nonempty files. D0/CCR=status;
+; other registers preserved. Reject unfinished lexical/module scopes.
+endFile	.block
+	tst.l d0
+	beq.w scopes
+	tst.w layout.State.FileContent(a0)
+	beq.w scopes
+	tst.w MODULE_STATE+modules.State.Explicit(a0)
+	beq.w bad
+scopes
+	tst.w layout.State.Current(a0)
+	bne.w bad
+	clr.w layout.State.Ended(a0)
+	clr.w layout.State.FileContent(a0)
+	clr.w MODULE_STATE+modules.State.Explicit(a0)
+	clr.w MODULE_STATE+modules.State.Outside(a0)
+	clr.w MODULE_STATE+modules.State.Visibility(a0)
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; endFile
+
 ; A0=state. Returns D0=next unused source ID, other registers preserved.
 count	.block
 	move.l d1, -(sp)
 	moveq #0, d0
-	move.w State.Base(a0), d0
+	move.w layout.State.Base(a0), d0
 	moveq #0, d1
-	move.w State.Count(a0), d1
+	move.w layout.State.Count(a0), d1
 	add.l d1, d0
 	move.l (sp)+, d1
 	rts
@@ -92,8 +112,8 @@ count	.block
 
 ; A0=state. Reset source-name metadata for the next writer record; no clobbers.
 startLine	.block
-	clr.w State.FirstBound(a0)
-	clr.w State.FirstExplicit(a0)
+	clr.w layout.State.FirstBound(a0)
+	clr.w layout.State.FirstExplicit(a0)
 	rts
 	.bend  ; startLine
 
@@ -105,36 +125,36 @@ bind	.block
 	movea.l a1, a6
 	moveq #0, d5
 	moveq #0, d3
-	move.w State.Current(a6), d3
+	move.w layout.State.Current(a6), d3
 	bsr.w compose
 	bne.w bad
-	tst.w State.FirstBound(a6)
+	tst.w layout.State.FirstBound(a6)
 	bne.w find
-	move.w #1, State.FirstBound(a6)
-	move.w d5, State.FirstExplicit(a6)
+	move.w #1, layout.State.FirstBound(a6)
+	move.w d5, layout.State.FirstExplicit(a6)
 find
 	bsr.w lookup
 	beq.w found
-	cmpi.w #LIMIT, State.Count(a6)
+	cmpi.w #LIMIT, layout.State.Count(a6)
 	bhs.w bad
 	moveq #0, d0
-	move.w State.ArenaUsed(a6), d0
+	move.w layout.State.ArenaUsed(a6), d0
 	add.l d6, d0
 	cmpi.l #ARENA_BYTES, d0
 	bhi.w bad
 	moveq #0, d1
-	move.w State.Count(a6), d1
+	move.w layout.State.Count(a6), d1
 	move.l d1, d2
 	lsl.l #4, d2
 	lea ENTRIES(a6), a3
 	adda.l d2, a3
-	move.w State.ArenaUsed(a6), records.Entry.Name(a3)
+	move.w layout.State.ArenaUsed(a6), records.Entry.Name(a3)
 	move.w d6, records.Entry.Length(a3)
 	move.w d3, records.Entry.Owner(a3)
 	move.w d7, records.Entry.Leaf(a3)
 	clr.w records.Entry.Flags(a3)
 	clr.w records.Entry.ScopeKind(a3)
-	move.w State.Base(a6), d2
+	move.w layout.State.Base(a6), d2
 	add.w d1, d2
 	move.w d2, records.Entry.Target(a3)
 	lea BUCKETS(a6), a4
@@ -142,12 +162,12 @@ find
 	move.w 0(a4, d4.w), records.Entry.Next(a3)
 	addq.w #1, d1
 	move.w d1, 0(a4, d4.w)
-	addq.w #1, State.Count(a6)
+	addq.w #1, layout.State.Count(a6)
 	lea ARENA(a6), a1
 	moveq #0, d1
-	move.w State.ArenaUsed(a6), d1
+	move.w layout.State.ArenaUsed(a6), d1
 	adda.l d1, a1
-	move.w d0, State.ArenaUsed(a6)
+	move.w d0, layout.State.ArenaUsed(a6)
 	movea.l a2, a0
 	move.l d6, d0
 copy
@@ -180,7 +200,7 @@ line	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a1, a6
 	movea.l a0, a5
-	tst.w State.Ended(a6)
+	tst.w layout.State.Ended(a6)
 	bne.w empty
 	bsr.w normalizeLabel
 	bne.w bad
@@ -238,6 +258,8 @@ directive
 	moveq #0, d0
 	move.w 2(a0), d0
 	bsr.w keyword
+	cmpi.l #KEY_USE, d0
+	beq.w importing
 	cmpi.l #KEY_MODULE, d0
 	beq.w module
 	cmpi.l #KEY_ENDMODULE, d0
@@ -259,6 +281,14 @@ directive
 	; Other directives retain their existing generic preparation/assembly route.
 	addq.l #5, a0
 	bra.w references
+importing
+	tst.l d7
+	bpl.w bad
+	movea.l a6, a1
+	lea bind, a2
+	jsr imports.line
+	bne.w bad
+	bra.w empty
 module
 	bsr.w openModule
 	bne.w bad
@@ -269,10 +299,10 @@ endModule
 	bne.w bad
 	lea MODULE_STATE(a6), a0
 	moveq #0, d0
-	move.w State.Current(a6), d0
+	move.w layout.State.Current(a6), d0
 	jsr modules.close
 	bne.w bad
-	clr.w State.Current(a6)
+	clr.w layout.State.Current(a6)
 	bra.w retainedLabel
 public
 	moveq #1, d1
@@ -310,10 +340,13 @@ closing
 	bne.w bad
 	bra.w empty
 end
-	tst.w State.Current(a6)
+	tst.w layout.State.Current(a6)
 	bne.w bad
-	move.w #1, State.Ended(a6)
-	bra.w ok  ; existing preparation validates the end directive's operands
+	addq.l #5, a0
+	cmpa.l a4, a0
+	bne.w bad
+	move.w #1, layout.State.Ended(a6)
+	bra.w retainedLabel  ; EOF continues with the next explicit source
 references
 	cmpa.l a4, a0
 	beq.w ok
@@ -330,11 +363,14 @@ punctuation
 	addq.l #1, a0
 	bra.w references
 reference
+	movea.l a6, a1
+	jsr imports.reference
+	bne.w bad
 	moveq #0, d0
 	move.w 1(a0), d0
-	sub.w State.Base(a6), d0
+	sub.w layout.State.Base(a6), d0
 	bcs.w packageName
-	cmp.w State.Count(a6), d0
+	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	lsl.l #4, d0
 	lea ENTRIES(a6), a3
@@ -369,13 +405,17 @@ finish	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
 	movea.l a1, a6
-	tst.w State.Current(a6)
+	tst.w layout.State.Current(a6)
 	bne.w bad
 	movea.l a0, a5
 	move.l d0, -(sp)
+	movea.l a6, a0
+	lea bind, a1
+	jsr imports.finish
+	bne.w failSaved
 	moveq #0, d7
 resolve
-	cmp.w State.Count(a6), d7
+	cmp.w layout.State.Count(a6), d7
 	bhs.w rewrite
 	move.l d7, d0
 	lsl.l #4, d0
@@ -419,12 +459,12 @@ lookupFailed
 	btst #0, records.Entry.Flags+1(a3)
 	beq.w parent
 	move.w records.Entry.Target(a3), records.Entry.Target(a4)
-	move.w #1, State.Changed(a6)
+	move.w #1, layout.State.Changed(a6)
 access
 	move.l d7, d0
 	moveq #0, d1
 	move.w records.Entry.Target(a4), d1
-	sub.w State.Base(a6), d1
+	sub.w layout.State.Base(a6), d1
 	lea MODULE_STATE(a6), a0
 	jsr modules.check
 	bne.w failSaved
@@ -433,14 +473,14 @@ next
 	bra.w resolve
 rewrite
 	move.l (sp)+, d0
-	tst.w State.Changed(a6)
+	tst.w layout.State.Changed(a6)
 	beq.w unchanged
 	movea.l a5, a0
 	lea ENTRIES(a6), a1
 	moveq #0, d1
-	move.w State.Base(a6), d1
+	move.w layout.State.Base(a6), d1
 	moveq #0, d2
-	move.w State.Count(a6), d2
+	move.w layout.State.Count(a6), d2
 	jsr records.remap
 	bra.w done
 unchanged
@@ -468,6 +508,7 @@ authorizeLine	.block
 	addq.w #1, d1
 	cmpi.w #4, d1
 	beq.w ok
+	move.w #1, layout.State.FileContent(a6)
 	movea.l a0, a1
 	adda.w d1, a1
 	addq.l #4, a0
@@ -513,7 +554,7 @@ done
 ; D0/CCR=status; other registers preserved.
 openModule	.block
 	movem.l d1-d3/a0-a4, -(sp)
-	tst.w State.Current(a6)
+	tst.w layout.State.Current(a6)
 	bne.w bad
 	addq.l #5, a0
 	move.l a4, d0
@@ -524,9 +565,9 @@ openModule	.block
 	bhi.w bad
 	moveq #0, d0
 	move.w 1(a0), d0
-	sub.w State.Base(a6), d0
+	sub.w layout.State.Base(a6), d0
 	bcs.w bad
-	cmp.w State.Count(a6), d0
+	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	lea ENTRIES(a6), a1
 	lea ARENA(a6), a2
@@ -535,7 +576,7 @@ openModule	.block
 	lea MODULE_STATE(a6), a0
 	jsr modules.open
 	bne.w bad
-	move.w modules.State.Active(a0), State.Current(a6)
+	move.w modules.State.Active(a0), layout.State.Current(a6)
 	moveq #0, d0
 	bra.w done
 bad
@@ -578,7 +619,7 @@ indentation
 	bne.w instruction
 	moveq #0, d2
 	move.w 5(a0), d2
-	cmp.w State.Base(a6), d2
+	cmp.w layout.State.Base(a6), d2
 	blo.w bad  ; package-reserved label names remain outside the native subset
 	cmpi.w #256, d1
 	bhs.w bad
@@ -642,7 +683,7 @@ labelScope
 label
 	tst.l d7
 	bmi.w noLabel
-	tst.w State.FirstExplicit(a6)
+	tst.w layout.State.FirstExplicit(a6)
 	bne.w bad
 	lea 4(a5), a0
 	cmpi.b #5, 4(a0)
@@ -657,9 +698,9 @@ noLabel
 	move.b #3, (a5)
 enter
 	move.l d3, d0
-	sub.w State.Base(a6), d0
+	sub.w layout.State.Base(a6), d0
 	bcs.w bad
-	cmp.w State.Count(a6), d0
+	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	move.l d0, d1
 	lsl.l #4, d1
@@ -667,14 +708,14 @@ enter
 	adda.l d1, a3
 	; Only opening a path owns its parent metadata. A later qualified value
 	; declaration must not change an existing namespace's lexical parent.
-	move.w State.Current(a6), records.Entry.Owner(a3)
+	move.w layout.State.Current(a6), records.Entry.Owner(a3)
 	lea MODULE_STATE(a6), a0
 	move.w modules.State.Visibility(a0), d1
 	lsl.w #8, d1
 	or.w d2, d1
 	move.w d1, records.Entry.ScopeKind(a3)
 	addq.w #1, d0
-	move.w d0, State.Current(a6)
+	move.w d0, layout.State.Current(a6)
 	moveq #0, d0
 	rts
 bad
@@ -691,7 +732,7 @@ closeScope	.block
 	cmpa.l a4, a0
 	bne.w bad
 	moveq #0, d0
-	move.w State.Current(a6), d0
+	move.w layout.State.Current(a6), d0
 	beq.w bad
 	subq.w #1, d0
 	lsl.l #4, d0
@@ -707,7 +748,7 @@ closeScope	.block
 	lea MODULE_STATE(a6), a0
 	move.w d0, modules.State.Visibility(a0)
 	movea.l (sp)+, a0
-	move.w records.Entry.Owner(a3), State.Current(a6)
+	move.w records.Entry.Owner(a3), layout.State.Current(a6)
 	moveq #0, d0
 	rts
 bad
@@ -721,9 +762,9 @@ declare	.block
 	bhi.w bad
 	moveq #0, d0
 	move.w 1(a0), d0
-	sub.w State.Base(a6), d0
+	sub.w layout.State.Base(a6), d0
 	bcs.w bad
-	cmp.w State.Count(a6), d0
+	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	lsl.l #4, d0
 	lea ENTRIES(a6), a3
@@ -879,11 +920,11 @@ done
 ; A6=state; preserves other registers. Package .end is supplied by caller.
 keyword	.block
 	movem.l d1-d4/a0-a3, -(sp)
-	cmp.w State.EndDirective(a6), d0
+	cmp.w layout.State.EndDirective(a6), d0
 	beq.w end
-	sub.w State.Base(a6), d0
+	sub.w layout.State.Base(a6), d0
 	bcs.w none
-	cmp.w State.Count(a6), d0
+	cmp.w layout.State.Count(a6), d0
 	bhs.w none
 	lsl.l #4, d0
 	lea ENTRIES(a6), a3
@@ -954,6 +995,7 @@ Words
 	.byte KEY_ENDMODULE, 9, "endmodule"
 	.byte KEY_PUB, 3, "pub"
 	.byte KEY_PRIV, 4, "priv"
+	.byte KEY_USE, 3, "use"
 	.byte 0
 	.align 2  ; the next module shares this instruction section
 	.endsection

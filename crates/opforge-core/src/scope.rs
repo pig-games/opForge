@@ -31,12 +31,14 @@ pub enum ScopePopError {
     },
 }
 
+#[derive(Clone)]
 struct ScopeFrame {
     segment_count: usize,
     kind: ScopeKind,
 }
 
 /// Stack of scopes for qualified symbol names.
+#[derive(Clone)]
 pub struct ScopeStack {
     segments: Vec<String>,
     frames: Vec<ScopeFrame>,

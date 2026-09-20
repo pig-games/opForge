@@ -24,6 +24,47 @@ class CpuSpecificArchitectureBoundaryTests(unittest.TestCase):
 
         self.assertEqual(files, [root / "native" / "runtime.asm"])
 
+    def scan_native(self, source):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "runtime.asm"
+            path.write_text(source)
+            return boundary.scan_native_asm_file(
+                path, "native/runtime.asm", "enforced", ["bsr"], []
+            )
+
+    def test_declared_macro_parameter_operand_is_not_a_directive(self):
+        findings = self.scan_native(
+            "LEVEL .macro tighter, token\n"
+            "\tbsr.w .tighter\n"
+            "\tbsr .TIGHTER ; case-insensitive parameter\n"
+            "\t.endmacro\n"
+        )
+        self.assertEqual(findings, [])
+
+    def test_macro_parameters_do_not_hide_definitions_or_data(self):
+        findings = self.scan_native(
+            "LEVEL .macro tighter, block, byte, word\n"
+            "\tbsr .block\n"
+            "\tbsr .byte 1\n"
+            "\tbsr .word 1\n"
+            "bsr .macro target\n"
+            "\t.endmacro\n"
+            "\t.endmacro\n"
+        )
+        self.assertEqual([finding.line for finding in findings], [2, 3, 4, 5])
+
+    def test_parameter_exception_does_not_escape_its_macro(self):
+        findings = self.scan_native(
+            "LEVEL .macro tighter\n"
+            "\tbsr.w .tighter\n"
+            "\t.endmacro\n"
+            "\tbsr.w .tighter\n"
+            "OTHER .macro other\n"
+            "\tbsr.w .tighter\n"
+            "\t.endmacro\n"
+        )
+        self.assertEqual([finding.line for finding in findings], [4, 6])
+
     def test_print_violations_can_skip_report_mutation(self):
         violation = boundary.Violation(
             path="native/runtime.asm",

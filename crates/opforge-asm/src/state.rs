@@ -70,7 +70,7 @@ impl AsmLayoutState {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct AsmSymbolScopeState {
     pub scope_stack: ScopeStack,
     pub visibility_stack: Vec<SymbolVisibility>,

@@ -77,13 +77,13 @@ fn binary_dependencies_chain_fs_uae() {
 }
 
 // Accepted by Rust where marked; native intentionally rejects unsupported
-// layout dependencies and cycles instead of treating provisional zeros as proof.
+// layout dependencies. Both implementations reject cyclic immutable definitions.
 const REJECTIONS: &[(&str, &str, bool)] = &[
-    ("cycle", "left = right+1\nright = left+1\n.byte left", true),
+    ("cycle", "left = right+1\nright = left+1\n.byte left", false),
     (
         "tainted_cycle",
         "left = $+right\nright = left\n.byte 0",
-        true,
+        false,
     ),
     ("missing", "left = right+1\n.byte 0", false),
     (

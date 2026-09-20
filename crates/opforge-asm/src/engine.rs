@@ -70,6 +70,7 @@ pub struct Assembler {
     pub runtime_processing_traces: Vec<(u8, u32, LineProcessingTrace)>,
     pub runtime_lockstep_report: LockstepReport,
     implicit_hunk_output_requested: bool,
+    constant_layout_changed: bool,
     qualified_reachability_profile: QualifiedReachabilityProfile,
     module_timing_profile: ModuleTimingProfile,
 }
@@ -617,6 +618,16 @@ qualified_share={:.2}%",
                 pass_num,
             );
 
+            if pass_num == 1 && counts.errors == 0 {
+                match asm_line.resolve_absolute_constants() {
+                    Ok(changed) => self.constant_layout_changed = changed,
+                    Err((line, error)) => {
+                        diagnostics.push(Diagnostic::new(line, Severity::Error, error));
+                        counts.errors += 1;
+                    }
+                }
+            }
+
             if capture_runtime_trace {
                 if self.collect_runtime_traces {
                     self.runtime_processing_traces.extend(
@@ -1009,6 +1020,7 @@ qualified_share={:.2}%",
             runtime_processing_traces: Vec::new(),
             runtime_lockstep_report: LockstepReport::default(),
             implicit_hunk_output_requested: false,
+            constant_layout_changed: false,
             qualified_reachability_profile: QualifiedReachabilityProfile::default(),
             module_timing_profile: ModuleTimingProfile::default(),
         }
@@ -1121,6 +1133,7 @@ qualified_share={:.2}%",
         self.module_timing_profile = ModuleTimingProfile::default();
         self.runtime_parse_cache.borrow_mut().clear();
         self.prepared_source = Some(PreparedSource::from_lines(lines));
+        self.constant_layout_changed = false;
         self.loop_iteration_trace_pass1.clear();
         self.runtime_processing_traces.clear();
         self.runtime_lockstep_report = LockstepReport::default();
@@ -1148,7 +1161,7 @@ qualified_share={:.2}%",
             self.emit_rust_symbol_profile();
             return counts;
         }
-        if !self.cpu_requires_layout_stabilization() {
+        if !self.cpu_requires_layout_stabilization() && !self.constant_layout_changed {
             self.qualified_reachability_profile.pass1_total_time = pass1_started_at.elapsed();
             phase_profile::record_direct(
                 PhaseBucket::Pass1Total,
@@ -1217,7 +1230,7 @@ qualified_share={:.2}%",
                 Severity::Error,
                 AsmError::new(
                     AsmErrorKind::Directive,
-                    "layout did not stabilize after residual branch sizing retries",
+                    "layout did not stabilize after bounded sizing retries",
                     None,
                 ),
             ));

@@ -368,6 +368,27 @@ Compound assignment operators:
 
 `.const` and `.var` mirror `=` and `:=` semantics; `.set` is an alias for `.var`.
 
+Immutable scalar constants may form forward dependency chains using numeric
+literals, symbol references, unary/binary operators and ternary expressions.
+The assembler resolves these chains after the initial layout, then refreshes
+instruction sizes and label addresses when the corrected values require it.
+Cycles are errors, including cycles containing the program counter.
+
+```
+MASK = (1 << BITS) - 1
+BITS .const WIDTH + 1
+WIDTH = 3
+      .byte MASK       ; emits 15
+```
+
+This dependency step applies to active definitions and preserves their scope and
+imports. Definitions involving labels, the program counter, mutable variables,
+strings, structured values, indexing, member access or compile-time calls retain
+their existing pass/source-order evaluation; they are not general deferred
+expressions. An expression that already errors during the initial pass, such as
+division by an unresolved zero-valued symbol, still rejects. Forward constants
+do not provide a separate pre-evaluation phase for conditional assembly or loops.
+
 For `=`, `:=`, `:?=`, `.const`, `.var`, and `.set`, symbol values may be scalar, list, or struct-instance values.
 Compound assignment operators (`+=`, `-=`, etc.) are scalar-only and reject non-scalar symbols.
 

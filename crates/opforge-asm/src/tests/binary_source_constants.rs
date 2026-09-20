@@ -85,11 +85,9 @@ fn binary_constants_arithmetic_fs_uae() {
 }
 
 // Each case gets its own fresh native invocation. The boolean records current
-// Rust acceptance, not a declaration that the program is semantically valid.
-// In particular Rust currently accepts this cycle through provisional pass-one
-// values; native rejects it rather than reproducing that convergence defect.
+// Rust acceptance; both implementations reject cyclic immutable definitions.
 const REJECTIONS: &[(&str, &str, bool)] = &[
-    ("cycle", "left = right+1\nright = left+1\n.byte left", true),
+    ("cycle", "left = right+1\nright = left+1\n.byte left", false),
     ("duplicate", "value = 1\nvalue = 2\n.byte value", false),
     ("label_collision", "value:\nvalue = 2\n.byte value", false),
     (

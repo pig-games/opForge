@@ -197,6 +197,9 @@ pub fn set_host_expr_eval_failpoint_for_tests(enabled: bool) {
     HOST_EXPR_EVAL_FAILPOINT.with(|flag| flag.set(enabled));
 }
 
+#[path = "asmline_constants.rs"]
+mod asmline_constants;
+
 #[path = "asmline_conditionals.rs"]
 mod asmline_conditionals;
 #[path = "asmline_directives.rs"]
@@ -228,6 +231,7 @@ pub struct AsmLine<'a> {
     pub layout: AsmLayoutState,
     struct_table: StructTable,
     value_symbols: HashMap<String, AsmValue>,
+    constant_definitions: Vec<asmline_constants::Definition>,
     scalar_value_symbols: HashSet<String>,
     repeat_iteration_scopes: HashMap<String, Vec<String>>,
     active_struct: Option<ActiveStructDefinition>,
@@ -428,6 +432,7 @@ impl<'a> AsmLine<'a> {
             layout: AsmLayoutState::new(),
             struct_table: StructTable::new(),
             value_symbols: HashMap::new(),
+            constant_definitions: Vec::new(),
             scalar_value_symbols: HashSet::new(),
             repeat_iteration_scopes: HashMap::new(),
             active_struct: None,
@@ -2636,6 +2641,9 @@ impl<'a> AsmLine<'a> {
                     );
                 }
                 self.sync_value_symbol(&full_name, &value);
+                if self.pass == 1 && op == AssignOp::Const {
+                    self.capture_constant(&full_name, expr);
+                }
                 if op == AssignOp::Const && self.expr_is_absolute_constant_symbol_expr(expr) {
                     self.layout
                         .absolute_constant_symbols

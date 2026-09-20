@@ -7,6 +7,9 @@ mod native_shared_directive_boundary;
 #[path = "tests/generic_statement_boundary.rs"]
 mod generic_statement_boundary;
 
+#[path = "tests/constant_dependencies.rs"]
+mod constant_dependencies;
+
 use crate::engine::Assembler;
 use crate::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, Severity};
 use crate::line::{set_host_expr_eval_failpoint_for_tests, AsmLine};

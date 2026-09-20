@@ -151,7 +151,8 @@ WARNING_ONLY_TERMS = {
 
 
 NATIVE_ASM_EXTENSIONS = {".asm", ".s"}
-NATIVE_DEFINITION_DIRECTIVES = {".block", ".macro"}
+NATIVE_DEFINITION_DIRECTIVES = {".block", ".macro", ".struct", ".union"}
+NATIVE_STORAGE_DIRECTIVES = {".word", ".long", ".dword", ".quad", ".res", ".fill"}
 NATIVE_CONTEXT_DIRECTIVES = {".module", ".namespace", ".section", ".segment"}
 NATIVE_DATA_DIRECTIVE_RE = re.compile(r"^\s*(?:\.(?:ascii|asciz|byte|string|text)|dc\.[bwl])\b", re.IGNORECASE)
 NATIVE_CONTEXT_DIRECTIVE_RE = re.compile(
@@ -487,6 +488,7 @@ def scan_native_asm_file(
 
     violations: list[Violation] = []
     pending_data_label: tuple[str, bool] | None = None
+    macro_parameters: list[set[str]] = []
 
     for line_no, raw_line in enumerate(text.splitlines(), start=1):
         line = strip_asm_comment(raw_line)
@@ -529,8 +531,34 @@ def scan_native_asm_file(
             )
             continue
 
+        if stripped.lower() == ".endmacro":
+            if macro_parameters:
+                macro_parameters.pop()
+            pending_data_label = None
+            continue
+
         definition_match = NATIVE_LABEL_WITH_DIRECTIVE_RE.match(line)
         if definition_match:
+            directive = definition_match.group("directive").lower()
+            # A declared macro parameter in operand position is not a directive.
+            # Keep real definition/data directives scanned, even inside macros.
+            if (
+                line[0].isspace()
+                and macro_parameters
+                and directive[1:] in macro_parameters[-1]
+                and not line[definition_match.end("directive"):].strip()
+                and directive not in NATIVE_DEFINITION_DIRECTIVES | NATIVE_STORAGE_DIRECTIVES
+                and not NATIVE_DATA_DIRECTIVE_RE.match(directive)
+            ):
+                pending_data_label = None
+                continue
+            if directive == ".macro":
+                parameters = line[definition_match.end("directive"):]
+                macro_parameters.append({
+                    match.group(1).lower()
+                    for parameter in parameters.split(",")
+                    if (match := re.match(r"\s*([A-Za-z_][\w]*)", parameter))
+                })
             pending_data_label = None
             name = definition_match.group("name")
             directive = definition_match.group("directive").lower()

@@ -83,8 +83,8 @@ implementation:
    register and rejection predicates required by indexed/register operands through
    the capsule and native selection boundary. Prove the same package-owned decision as Rust; do not accept
    unchecked token pairs or add CPU-specific recognition to generic native code.
-3. **F3 — active: bit operations and forward absolute constants.** Add `&`, `|`,
-   `^`, `~`, `<<` and `>>` with canonical precedence, and resolve forward immutable
+3. **F3 — implemented: bit operations and forward absolute constants.** Added `&`, `|`,
+   `^`, `~`, `<<` and `>>` with canonical precedence, and resolved forward immutable
    constant chains that are independent of layout. Detect cycles and missing names.
    Keep definition-site PC/label-dependent constants source-ordered; broader
    dependency/layout convergence follows as a separate increment.
@@ -144,13 +144,11 @@ only a verified identity table is elided. The normal Rust m6502 route consumes t
 same new package rows; other MOS CPU variants retain their existing specialized
 selection routes until migrated and qualified.
 
-The next breadth decision is expression and deferred-binding coverage, selected
-from complete practical sources. The current fixed two-pass experiment rejects
-forward constant dependencies and cycles. Rust currently accepts some cyclic
-6502 constants through provisional zeros and pass-two updates; define explicit
-cycle behavior before extending that boundary, rather than copying the defect.
-Files/modules, expansion and product integration remain later increments. Do not
-start them automatically from this plan.
+F3 extends the expression and deferred-binding boundary with forward absolute
+constants and explicit cycle rejection in both Rust and native. Native PC/label
+dependencies retain fixed two-pass/source-order semantics. Files/modules, expansion
+and product integration remain later increments. Select the next coherent breadth
+step for review; do not start those increments automatically from this plan.
 
 ## F3 increment contract
 
@@ -167,8 +165,8 @@ live Rust, including reversed declaration order, shared dependencies and signed
 boundaries. Explicit negative coverage includes cycles (including PC-tainted
 cycles), missing names, duplicate/colliding definitions, arithmetic range failure
 and unsupported forward layout dependencies. Preserve earlier-label and
-definition-site-PC behavior. Rust's existing cyclic-constant defect is not an
-oracle to reproduce.
+definition-site-PC behavior. Rust cycle handling is repaired as part of this work;
+provisional cyclic values are not an oracle to reproduce.
 
 The compact expression path retains its checked signed32 range. Operator
 precedence and shift-count behavior follow the canonical Rust language; results
@@ -189,21 +187,45 @@ review; no push is authorized.
 
 ### F3 checkpoint: reference defect and scope decision
 
-The native bit operators and absolute-constant dependency walk are implemented.
-Fresh native proof passes the 82-case compact/canonical evaluator batch, the
-control-word routine, precedence/definition-site-PC data, and ordinary plus
-PC-tainted cycle rejection. This is partial qualification, not F3 completion.
+Erik approved repairing production Rust before completing native F3 comparisons.
+The repair resolves executed immutable `=` and `.const` scalar dependency graphs
+with an explicit work stack, scoped/import-aware bindings and synchronized symbol
+values/classification. Corrected values trigger the existing bounded layout
+refresh; dependency depth does not require additional source passes. Already
+correct absolute constants avoid a second expression evaluation.
 
-Two new live-Rust tests deliberately fail: a reversed 128-definition chain emits
-`2,2,1` instead of `128,65,1`; the pixel-mask routine computes mask `3` instead of
-`48`. Production Rust publishes provisional assignment values in pass one and
-updates them only once in pass two for these CPUs. Its CPU-gated, eight-retry
-layout loop is not an efficient dependency resolver.
+The reversed 128-definition chain now emits `128,65,1` rather than `2,2,1`; the
+pixel-mask routine computes mask `48` rather than `3`. Both independent byte
+oracles and fresh native comparisons pass. Seven focused Rust regressions pass in
+default and VM-only builds, covering definition forms, instruction widths/labels,
+block/import binding, inactive definitions, mutable snapshots, PC/list values and
+cycles. Production asm/core library lint passes.
 
-The open scope decision is whether to include a Rust dependency phase now or
-complete the operator increment separately. A coherent Rust repair must cover
-active immutable `=` and `.const` definitions, scoped binding, synchronized scalar
-and value-symbol state, explicit cycles, and layout refresh when corrected values
-change instruction widths. Do not reorder oracle input, reproduce incorrect
-values, or raise pass counts to conceal the defect. No Rust resolver changes have
-been made pending that decision. Relative F3 performance qualification is pending.
+The repair intentionally does not defer expressions that already error in the
+initial pass or resolve structured/PC/label/mutable-dependent expressions as
+absolute DAGs. See the [symbol contract](../opForge-reference-manual.md#36-symbols-and-assignments).
+
+The full host assembler suite reports 1,544 passed, 160 failed and 35 ignored.
+All 160 failing test names also fail with the frozen F2 test executable against
+the same working tree (1,527 passed, 165 failed, 30 ignored). This is no-new-failure
+evidence, not a passing repository qualification. The embedded package differs
+from current package generation, causing equality failures and poisoned-lock
+cascades; other baseline failures remain. All-target lint additionally reports
+five findings in unchanged test/harness code. Do not regenerate packages or alter
+baseline measurements to conceal these limitations.
+
+Final-image bounded native proof now passes the pixel-mask and control-word
+routines, the 128-definition chain, precedence/definition-site-PC data, retained
+page-copy/indexed/register cases and all 82 compact/canonical evaluator cases.
+Explicit native rejections pass for ordinary and PC-tainted cycles, missing
+symbols, duplicates, label collisions, overflow and forward layout dependencies.
+Fresh completion/exit/output checks and cleanup passed within existing deadlines.
+The architecture guard now recognizes declared macro-parameter operands without
+misclassifying them as labelled directives; its five tests and workflow checks pass.
+
+Release throughput on identical expression-layout sources is approximately
+unchanged in one pair (+1.3% m6502, +0.7% m68000), while image size grows by 1,508 B
+and prior-case owned memory is unchanged. See the
+[F3 measurements](prepared-source-experiment.md#f3-bit-operators-and-absolute-dependencies).
+This completes the bounded F3 increment, not full native product or repository
+qualification. Review before choosing the next breadth increment.

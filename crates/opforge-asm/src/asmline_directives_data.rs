@@ -257,6 +257,9 @@ impl<'a> AsmLine<'a> {
             );
         }
         self.sync_value_symbol(&full_name, &value);
+        if self.pass == 1 && directive == "CONST" {
+            self.capture_constant(&full_name, expr);
+        }
         if directive == "CONST" && self.expr_is_absolute_constant_symbol_expr(expr) {
             self.layout
                 .absolute_constant_symbols

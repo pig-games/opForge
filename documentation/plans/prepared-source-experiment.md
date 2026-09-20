@@ -1,8 +1,9 @@
 # Binary-source native runtime
 
-Status: F2 is the last qualified checkpoint; its design and measurements are below.
-F3 work is in progress with a known Rust dependency defect; see the
-[F3 checkpoint](native-runtime-reset.md#f3-checkpoint-reference-defect-and-scope-decision).
+Status: F3 implements bit operators and forward absolute constants. The Rust
+reference defect is repaired and bounded native checks pass. See the
+[F3 checkpoint](native-runtime-reset.md#f3-checkpoint-reference-defect-and-scope-decision)
+for qualification limits; repository-wide checks still have baseline failures.
 The compact native path completes the bounded mixed and expression workloads on a 68020 / 2 MiB guest.
 It is not yet the normal native CLI and does not implement the full language. The
 [native runtime migration plan](native-runtime-reset.md) defines the breadth-first
@@ -44,19 +45,22 @@ offsets and numeric IDs. No disk-format contract has been adopted.
 
 The current path supports one selected package pipeline; package-defined
 registers, register pairs, indexed and immediate operands; parenthesized member operands; colon labels; forward branches;
-the program counter; parentheses; unary `+`/`-`; checked signed addition,
-subtraction and multiplication; and shared `.cpu`, `.org`, `.byte`, `.word`,
+the program counter; parentheses; unary `+`/`-`/`~`; checked signed addition,
+subtraction and multiplication; bitwise `&`/`|`/`^` and shifts `<<`/`>>`; and shared `.cpu`, `.org`, `.byte`, `.word`,
 `.long` and `.end` directives. It performs a fixed two-pass layout and emission
 over contiguous output.
 
-F1 adds the bounded `name = expression` form. An immutable constant is resolved
-when its definition is reached in pass one and must evaluate to the same value in
-pass two. It may use earlier constants, earlier labels and the current program
-counter. Forward and deferred constant dependencies reject rather than being
-silently bound to a provisional value. This is deliberately narrower than the
-complete Rust language contract; later expression/dependency work will be selected
-from representative cases. The compact evaluator also preserves signed symbol
-values; this correction is currently limited to the compact path.
+The bounded `name = expression` form now supports forward absolute constant
+chains. Before layout, F3 indexes definitions and walks numeric expression
+references with an explicit dependency stack. Each absolute constant evaluates
+once, after its dependencies; cycles and missing symbols reject. Temporary
+expression offsets never become published symbol values, and dependency scratch
+is released before layout. Earlier-label and definition-site-PC expressions keep
+the source-order two-pass check; forward layout dependencies remain unsupported.
+The native route remains narrower than Rust and does not yet accept `.const`.
+The compact evaluator preserves signed symbol values within its checked signed32
+range. Shift counts follow the canonical `count & 31` rule; right shifts are
+logical over the canonical 64-bit value and out-of-range signed32 results reject.
 
 Other limits remain explicit:
 
@@ -183,7 +187,7 @@ measurement or turn a timeout into a timing result. Preserve the fresh challenge
 guest completion, explicit exit, live Rust oracle and ephemeral guest-artifact
 requirements in the [native parity contract](../../agents/rules/native-rust-parity-porting.md).
 
-## Current breadth checkpoint: F2
+## F2 baseline for the current breadth increment
 
 F1 introduced definition-order immutable constants. F2 makes the retained 6502
 page-copy and 68000 register-copy cases assemble through the binary path. The
@@ -214,9 +218,8 @@ package itself grows.
 
 The broader limits above remain. In particular, fixed two-pass layout is not a
 general relaxation/dependency solver: forward indexed references reject explicitly
-rather than select a provisional short width and move later labels. The existing
-Rust cyclic-constant gap is
-still recorded for the next expression increment; native rejects those cycles.
+rather than select a provisional short width and move later labels. F3 repairs the Rust cyclic-constant gap; both Rust and native now reject those
+cycles.
 The selection module is now about 940 lines. Before further operand expansion,
 reassess separation of operand projection from row selection rather than keep
 adding responsibilities to it.
@@ -291,3 +294,62 @@ The release image grew **21,176 → 21,792 B** (+616 B, 2.9%), and linked reserv
 **24,200 → 24,764 B** (+564 B). F2 release image identity is
 `fnv1a64:af3d0912815c5e71`; telemetry is absent. This step buys language coverage,
 with the package-size cost recorded above; it is not a new optimization claim.
+
+
+## F3: bit operators and absolute dependencies
+
+F3 adds symbolic masks/configuration routines without source replay or dependency
+propagation by repeated assembly passes. Production Rust was repaired first so
+native comparisons use correct independent outputs, including a reversed
+128-definition chain and mixed `.const`/`=` host definitions. The main native CLI
+and full language migration remain outside this checkpoint.
+
+The same 32-block expression-layout sources, package and exact outputs were
+compared with frozen F2 `6decb730` on the 68020 / 2 MiB profile. Clock speed remains
+uncalibrated. Release runs have telemetry off; these are single observations,
+including host polling, not statistically established small regressions.
+
+| Source target | F2 release | F3 release | Observed difference |
+|---|---:|---:|---:|
+| m6502 | 1.9532 s | 1.9793 s | +1.3% |
+| m68000 | 3.8569 s | 3.8833 s | +0.7% |
+
+The release image grows **21,792 → 23,300 B** (+1,508 B, 6.9%); linked reservation
+is **24,764 → 26,204 B** (+1,440 B). Final release identity is
+`fnv1a64:6b4a113a82e97323`. The package is unchanged. This is added language coverage
+at approximately unchanged measured throughput, not a speedup claim.
+
+Instrumented page-copy, indexed and register-boundary reruns retain exactly the
+F2 owned-memory figures above. Page-copy expression evaluations fall from 30 to
+27 because its three absolute constants no longer evaluate twice. New cases:
+
+| Case | Source / packed bytes | Compiles / evaluations | Retained after preparation | Peak owned |
+|---|---:|---:|---:|---:|
+| Pixel mask | 643 / 362 | 19 / 28 | 16,896 B | 82,688 B |
+| 128-definition chain | 2,646 / 2,366 | 132 / 136 | 20,480 B | 88,064 B |
+
+Final-image validation also passes the control-word routine, precedence and
+PC/earlier-label behavior, all 82 compact/canonical evaluator cases, and retained
+F1/F2 page-copy/indexed/register routines. Native explicitly rejects ordinary and
+PC-tainted cycles, missing symbols, duplicate/colliding definitions, signed32
+range overflow and unsupported forward layout dependencies.
+
+Both new cases match the repaired live Rust oracle and independent expected bytes.
+Tracked memory returns to zero after cleanup, with no profiling errors. Memory
+figures are tracked allocations, not total machine/process memory.
+
+Reproduce the release comparison using each revision's matching frozen test
+producer and native source tree:
+
+```sh
+python3 scripts/performance/prepared_source_native.py \
+  --native-test /path/to/matching-asm-test \
+  --native-source-root /path/to/matching-source-tree \
+  --binary-source --binary-only --memory-profile 2m \
+  --workload expression-layout --blocks 32 --output /tmp/f3-comparison
+```
+
+Use the FS-UAE environment from the [runner guide](../../agents/rules/fs-uae.md).
+The existing 10-second post-start, 60-second invocation and 150-second batch
+limits apply. No self-host measurement was used. Fresh proof is required when
+reproducing these observations; archived logs are not a substitute.

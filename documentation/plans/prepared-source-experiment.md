@@ -1,9 +1,10 @@
 # Binary-source native runtime
 
-Status: F4 adds named block scopes with binding completed before assembly.
-Bounded native checks pass; repository-wide checks still have the same 160
-baseline failures. See the [F4 checkpoint](native-runtime-reset.md#f4-increment-contract--implemented-named-block-scopes)
-for scope and qualification limits.
+Status: F5 adds named namespaces and canonical bare labels, with binding
+completed before assembly. Bounded native checks pass. The last broad host run
+(F4) still had 160 baseline failures; this slice does not claim repository-wide
+qualification. See the [migration plan](native-runtime-reset.md) for the remaining
+language and product boundaries.
 The compact native path completes the bounded mixed and expression workloads on a 68020 / 2 MiB guest.
 It is not yet the normal native CLI and does not implement the full language. The
 [native runtime migration plan](native-runtime-reset.md) defines the breadth-first
@@ -44,7 +45,8 @@ offsets and numeric IDs. No disk-format contract has been adopted.
 ## Current implementation coverage
 
 The current path supports one selected package pipeline; package-defined
-registers, register pairs, indexed and immediate operands; parenthesized member operands; colon labels; forward branches;
+registers, register pairs, indexed and immediate operands; parenthesized member operands;
+column-one labels with optional colons, standalone or before statements; forward branches;
 the program counter; parentheses; unary `+`/`-`/`~`; checked signed addition,
 subtraction and multiplication; bitwise `&`/`|`/`^` and shifts `<<`/`>>`; and shared `.cpu`, `.org`, `.byte`, `.word`,
 `.long` and `.end` directives. It performs a fixed two-pass layout and emission
@@ -67,18 +69,23 @@ absolute qualified references and forward local shadowing. Preparation assigns
 provisional IDs, records declarations and finalizes bindings before freeing the
 scope/name dictionary. It rewrites IDs in packed records and compact expressions
 only when aliases need resolving. Scope opens lower to ordinary entry labels;
-closes lower to empty records. Assembly and dependency evaluation stay numeric.
+closes lower to empty records. Simple named namespaces use `.namespace name`,
+`name .namespace` or `label .namespace name`, and close with `.endnamespace` or
+`.endn`. Operand-only openings create no address value and may reopen an existing
+namespace. Labelled openings preserve the ordinary parent-scope address label.
+Blocks and namespaces nest, and closing kinds must match. Namespace identity can
+coexist with a same-named scalar. Assembly and dependency evaluation stay numeric.
 Aliases and unused directive entries still occupy provisional ID/value slots;
 this increment does not compact the final symbol table.
 
 Other limits remain explicit:
 
-- no files/includes, modules, namespaces, anonymous or dotted block declarations,
+- no files/includes, modules, anonymous blocks or dotted scope declarations,
   macros, conditionals, loops, structs or lists;
 - no strings, general sections, relocations, relaxation or complete expression
   operator set;
 - no discontiguous `.org` after output has started;
-- literals are limited to the currently checked signed 32-bit subset, and labels
+- literals are limited to the currently checked signed 32-bit subset, and source names
   cannot reuse reserved package spellings;
 - maximums include 64 tokenizer tokens per line, 512 provisional source IDs,
   63-byte qualified source names, a 16 KiB preparation name arena, 4 KiB textual
@@ -452,3 +459,79 @@ runs; leave it unset or set it to `0` for release timing. Negative checks use
 from `binary_source_scopes.rs`. Keep invocations serialized and batches below
 150 seconds. Build the matching test executable before collecting comparisons;
 do not rebuild or change native inputs during a measurement batch.
+
+
+## F5: namespaces and canonical labels
+
+Namespace identity is preparation-only metadata, separate from symbol value and
+declaration status. Reopening an operand-named namespace reuses its qualified
+names; labelled namespace forms still define their ordinary address labels. A
+kind stored in an existing entry word validates mixed block/namespace closes.
+No scope table, entry-size increase or new runtime record fields are needed.
+
+Canonical labels are recognized from the column information retained by the
+tokenizer. Column-one identifiers normalize to the existing binary label prefix,
+including standalone labels and labels before instructions or shared directives.
+An optional adjacent colon remains supported. The normalizer checks record
+capacity and the 256-byte limit before inserting the prefix marker; assembly does
+not consult text. Indented labels reject. A column-one package-reserved spelling
+is rejected under the existing native naming limit, rather than silently emitted
+as an instruction; Rust permits such label names.
+
+The namespaced copy/fold and control-word fixtures use bare labels and match both
+live Rust and independent expected bytes. A mixed case checks reopening, forward
+shadowing, parent lookup, namespace/value name coexistence, distinct label/operand
+names and the addresses of standalone and labelled-data forms.
+
+Separate gated native accounting on the 68020 / 2 MiB profile:
+
+| Case | Source / packed | Compiles / evaluations | Retained after preparation | Peak owned |
+|---|---:|---:|---:|---:|
+| Namespaced copy/fold | 434 / 472 B | 24 / 41 | 16,896 B | 82,688 B |
+| Namespaced control word | 394 / 328 B | 15 / 26 | 131,584 B | 262,656 B |
+| Mixed namespaces/labels | 402 / 334 B | 19 / 33 | 16,896 B | 82,688 B |
+
+The practical routines retain F4's expression work and measured allocation peaks.
+These fixtures differ in source formatting and scope records, so their sizes do
+not isolate namespace overhead. All three free their tracked memory with no
+profiling errors. Provisional namespace/alias IDs still occupy symbol slots; the
+existing 512-ID and name-arena limits apply.
+
+Fourteen native rejection checks cover label placement/reserved spellings,
+namespace-only names used as values, missing/invalid/extra namespace operands,
+close-kind mismatches, scope imbalance, duplicate definitions after reopening,
+close operands and intentionally unsupported dotted scope names. Each validates
+fresh completion, the expected error and allocation cleanup. Retained F4 nested
+bindings and the optional-colon copy/fold fixture also pass on the final image.
+
+Focused host checks pass: 23 binary-source tests and three VM-only namespace
+tests. Native formatting, redundant-test checks and workflow/architecture guards
+pass. Production Rust is unchanged; the broad host suite was not rerun, and the
+previously recorded baseline failures are not resolved by this slice.
+
+Use the F4 reproduction environment and deadlines with
+`binary_namespaces_copy_fs_uae`, `binary_namespaces_control_fs_uae` or
+`binary_namespaces_mixed_fs_uae`. For negative cases, run
+`binary_namespaces_rejection_fs_uae` with `OPFORGE_NAMESPACE_REJECTION` selecting
+a case from `binary_source_namespaces.rs`. Accounting uses
+`OPFORGE_COMPARE_MEMORY=1`; release timing must leave it off.
+
+### F5 release comparison
+
+The unchanged expression-layout32 workloads use matching frozen F4 `11561735`
+and final F5 producers/native trees. Package, source and output digests match
+between revisions, and each output matches its live Rust oracle.
+
+| Source target | F4 | F5 | Observed difference |
+|---|---:|---:|---:|
+| m6502 | 2.0624 s | 2.0764 s | +0.7% |
+| m68000 | 3.9640 s | 3.9699 s | +0.1% |
+
+These single observations differ by less than the 20 ms polling interval and do
+not establish a slowdown or a speedup. The release image grows **25,240 →
+25,600 B** (+360 B, 1.4%); linked reservation grows **28,100 → 28,460 B**. Release
+identity is `fnv1a64:3d614b5020946b35`. Fixed preparation storage and entry sizes
+are unchanged. The same 68020 / 2 MiB profile and 10-second guest, 60-second
+invocation and 150-second batch limits apply; no clock calibration or self-host
+claim. Reproduce using the unchanged workload command above with each revision's
+matching frozen source and producer.

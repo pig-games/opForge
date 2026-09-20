@@ -13,9 +13,9 @@ Leaf	.word ?
 Flags	.word ?
 Target	.word ?
 Next	.word ?
-Reserved	.word ?
+ScopeKind	.word ?
 .endstruct
-ENTRY_BYTES = Entry.Reserved+2
+ENTRY_BYTES = Entry.ScopeKind+2
 	.section code, kind=code
 
 ; A0=packed records,D0=bytes,A1=Entry array,

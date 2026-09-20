@@ -165,6 +165,7 @@ line	.block
 	bne.w failed
 	movea.l Frame.Output(a5), a0
 	lea SCOPE_STATE(a6), a1
+	move.l Frame.Capacity(a5), d0
 	jsr scopes.line
 	bne.w failed
 	.MEMORY_STAGE #4

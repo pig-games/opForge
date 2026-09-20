@@ -88,11 +88,12 @@ implementation:
    constant chains that are independent of layout. Detect cycles and missing names.
    Keep definition-site PC/label-dependent constants source-ordered; broader
    dependency/layout convergence follows as a separate increment.
-4. **F4 — implemented: named block scopes.** Bind nested scopes, parent and
-   absolute qualified references to final numeric identities during preparation,
-   including forward local shadowing. Files, modules/imports, namespaces and
-   include lifetime remain the next part of this migration area; do not restore
-   string lookup during assembly.
+4. **F4/F5 — implemented: named blocks, namespaces and canonical labels.** Bind
+   nested scopes, parent and absolute qualified references to final numeric
+   identities during preparation, including forward local shadowing. F5 adds
+   namespace reopening, typed closes and canonical column-one bare labels. Files,
+   modules/imports and include lifetime remain the next part of this migration
+   area; do not restore string lookup during assembly.
 5. **Source expansion.** Encode macro, conditional and loop syntax once as binary
    records. Expansion and control flow that depend on layout, the program counter
    or symbols must evaluate against the appropriate pass state without falling
@@ -150,7 +151,9 @@ selection routes until migrated and qualified.
 F3 extends the expression and deferred-binding boundary with forward absolute
 constants and explicit cycle rejection in both Rust and native. Native PC/label
 dependencies retain fixed two-pass/source-order semantics. Files/modules, expansion
-and product integration remain later increments. Select the next coherent breadth
+and product integration remain later increments. F4/F5 now finalize named block
+and namespace bindings during preparation and accept canonical bare labels.
+Select the next coherent breadth
 step for review; do not start those increments automatically from this plan.
 
 ## F3 increment contract
@@ -290,3 +293,45 @@ One matched release comparison observes +3.7% m6502 and +1.8% m68000 time, with
 not a speedup or full product qualification. See the
 [F4 measurements](prepared-source-experiment.md#f4-named-block-scopes). Review this
 checkpoint before selecting the next breadth increment.
+
+
+## F5 increment contract — implemented: namespaces and canonical labels
+
+Add simple named namespaces as the next scope slice: `.namespace name`,
+`name .namespace`, labelled operand form, `.endnamespace`/`.endn`, nesting with
+blocks and reopening operand-named namespaces. Match Rust's distinction: an
+operand supplies a scope name, not an address symbol; a label still defines its
+ordinary parent-scope address. Closing directives must match the opening kind.
+Forward shadowing, parent lookup and absolute qualified references remain numeric
+after preparation. Namespace identity may coexist with a value of the same name.
+
+Hypothesis: reuse preparation-only scope metadata without increasing persistent
+record or per-symbol runtime storage. Reuse gated preparation/accounting telemetry.
+No original-text lookup during assembly, package changes or legacy executor. Keep
+the current name/arena/record bounds. Dotted scope declarations, anonymous blocks,
+files, modules/imports and expansion remain excluded; reject unsupported forms.
+
+Prove a practical namespaced routine for each existing source family against live
+Rust and independent expected bytes, plus reopening/mixed nesting/name-vs-value
+contracts and malformed/duplicate/mismatched-close failures. Recheck retained F4
+behavior. Measure unchanged expression-layout32 release workloads against frozen
+F4 `11561735`, plus separate memory accounting on the new cases. Same 68020 /
+2 MiB profile, 10-second guest, 60-second invocation and 150-second batch bounds.
+No self-host or calibrated-clock claim. Preserve known baseline qualification
+failures and finish with a local step-only review checkpoint; no push.
+
+User clarification: exercise canonical bare labels directly. This increment also
+normalizes column-one standalone labels and labels before instructions/directives
+during preparation, preserving optional adjacent-colon forms and rejecting
+indented labels. The prior compact path's colon-only restriction is removed;
+reserved package spellings remain an explicit native naming restriction.
+
+F5 checkpoint: both practical routines use canonical bare labels and match live
+Rust plus independent expected bytes. The mixed namespace case, fourteen
+rejections and two retained F4 cases pass natively with cleanup proof. Focused
+default and VM-only host checks, native formatting and engineering guards pass.
+No production Rust changes or new broad-suite qualification are claimed; the F4
+baseline failures remain unresolved. One matched release pair observes +0.7% /
++0.1% time (below the polling interval), +360 B image size and no fixed-scratch
+growth. See the [F5 measurements](prepared-source-experiment.md#f5-namespaces-and-canonical-labels).
+Review this checkpoint before selecting files/modules or another breadth slice.

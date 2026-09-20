@@ -28,6 +28,13 @@ SCRATCH_BYTES = BUFFER+64
 DECLARED = 1
 REFERENCED = 2
 EXPLICIT = 4
+KIND_BLOCK = 1
+KIND_NAMESPACE = 2
+KEY_BLOCK = 1
+KEY_ENDBLOCK = 2
+KEY_END = 3
+KEY_NAMESPACE = 4
+KEY_ENDNAMESPACE = 5
 	.section code, kind=code
 
 ; A0=caller-owned SCRATCH_BYTES, D0=first source ID, D1=.end ID. D0/CCR=status;
@@ -115,7 +122,7 @@ find
 	move.w d3, records.Entry.Owner(a3)
 	move.w d7, records.Entry.Leaf(a3)
 	clr.w records.Entry.Flags(a3)
-	clr.w records.Entry.Reserved(a3)
+	clr.w records.Entry.ScopeKind(a3)
 	move.w State.Base(a6), d2
 	add.w d1, d2
 	move.w d2, records.Entry.Target(a3)
@@ -154,7 +161,8 @@ done
 	rts
 	.bend  ; bind
 
-; A0=writer record, A1=state. Mark declarations/references and consume scope
+; A0=writer record, A1=state, D0=record buffer capacity. Normalize labels,
+; mark declarations/references and consume scope
 ; directives before expression preparation. Named blocks lower to entry labels;
 ; close directives lower to empty records. D0/CCR=status, other registers kept.
 line	.block
@@ -163,6 +171,8 @@ line	.block
 	movea.l a0, a5
 	tst.w State.Ended(a6)
 	bne.w empty
+	bsr.w normalizeLabel
+	bne.w bad
 	moveq #0, d6
 	move.b (a5), d6
 	addq.w #1, d6
@@ -178,13 +188,7 @@ line	.block
 	beq.w declaration
 	cmpi.b #5, 4(a0)
 	beq.w declaration
-	cmpi.b #7, 4(a0)
-	bne.w statement
-	; The sole accepted uncolonized label form is name .block.
-	moveq #0, d7
-	move.w 1(a0), d7
-	addq.l #4, a0
-	bra.w directive
+	bra.w statement
 declaration
 	bsr.w declare
 	bne.w bad
@@ -221,51 +225,35 @@ directive
 	moveq #0, d0
 	move.w 2(a0), d0
 	bsr.w keyword
-	cmpi.l #1, d0
-	beq.w open
-	cmpi.l #2, d0
-	beq.w close
-	cmpi.l #3, d0
+	cmpi.l #KEY_BLOCK, d0
+	beq.w block
+	cmpi.l #KEY_ENDBLOCK, d0
+	beq.w endBlock
+	cmpi.l #KEY_NAMESPACE, d0
+	beq.w namespace
+	cmpi.l #KEY_ENDNAMESPACE, d0
+	beq.w endNamespace
+	cmpi.l #KEY_END, d0
 	beq.w end
 	; Other directives retain their existing generic preparation/assembly route.
 	addq.l #5, a0
 	bra.w references
-open
-	tst.l d7
-	bmi.w bad  ; anonymous blocks are outside this increment
-	tst.w State.FirstExplicit(a6)
-	bne.w bad  ; dotted block declarations have distinct Rust naming semantics
-	addq.l #5, a0
-	cmpa.l a4, a0
+block
+	moveq #KIND_BLOCK, d2
+	bra.w opening
+namespace
+	moveq #KIND_NAMESPACE, d2
+opening
+	bsr.w openScope
+	bra.w done
+endBlock
+	moveq #KIND_BLOCK, d2
+	bra.w closing
+endNamespace
+	moveq #KIND_NAMESPACE, d2
+closing
+	bsr.w closeScope
 	bne.w bad
-	lea 4(a5), a0
-	cmpi.b #5, 4(a0)
-	beq.w alreadyDeclared
-	bsr.w declare
-	bne.w bad
-alreadyDeclared
-	move.l d7, d0
-	sub.w State.Base(a6), d0
-	bcs.w bad
-	addq.w #1, d0
-	move.w d0, State.Current(a6)
-	move.b #8, (a5)
-	move.b #5, 8(a5)
-	bra.w ok
-close
-	tst.l d7
-	bpl.w bad
-	addq.l #5, a0
-	cmpa.l a4, a0
-	bne.w bad
-	moveq #0, d0
-	move.w State.Current(a6), d0
-	beq.w bad
-	subq.w #1, d0
-	lsl.l #4, d0
-	lea ENTRIES(a6), a3
-	adda.l d0, a3
-	move.w records.Entry.Owner(a3), State.Current(a6)
 	bra.w empty
 end
 	tst.w State.Current(a6)
@@ -403,6 +391,163 @@ done
 	.bend  ; finish
 	.priv
 
+; Canonical column-one Identifier/Register prefixes are labels regardless of
+; instruction spelling. A0=record,D0=capacity,A6=state. D0/CCR=status;
+; D1-D3/A1-A2 scratch. Normalize in place only after proving one spare byte.
+; Assignment syntax keeps its existing indentation-independent behavior.
+normalizeLabel	.block
+	moveq #0, d1
+	move.b (a0), d1
+	addq.w #1, d1
+	cmpi.w #4, d1
+	blo.w bad
+	cmp.l d0, d1
+	bhi.w bad
+	cmpi.w #4, d1
+	beq.w ok
+	cmpi.b #1, 4(a0)
+	bhi.w ok
+	cmpi.w #8, d1
+	blo.w bad
+	cmpi.w #9, d1
+	blo.w indentation
+	cmpi.b #34, 8(a0)
+	beq.w ok
+	cmpi.b #5, 8(a0)
+	bne.w indentation
+	tst.b 1(a0)
+	bne.w bad
+	bra.w ok
+indentation
+	tst.b 1(a0)
+	bne.w instruction
+	moveq #0, d2
+	move.w 5(a0), d2
+	cmp.w State.Base(a6), d2
+	blo.w bad  ; package-reserved label names remain outside the native subset
+	cmpi.w #256, d1
+	bhs.w bad
+	cmp.l d0, d1
+	bhs.w bad
+	movea.l a0, a1
+	adda.l d1, a1
+	movea.l a1, a2
+	addq.l #1, a2
+	move.l d1, d2
+	subq.l #8, d2
+	beq.w colon
+shift
+	move.b -(a1), -(a2)
+	subq.l #1, d2
+	bne.w shift
+colon
+	move.b #5, 8(a0)
+	addq.b #1, (a0)
+	bra.w ok
+instruction
+	; An indented identifier followed by a dot is not an entry label for a
+	; scope directive. Leave ordinary operand parsing to existing preparation.
+	cmpi.w #9, d1
+	blo.w ok
+	cmpi.b #7, 8(a0)
+	beq.w bad
+ok
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; normalizeLabel
+
+; Shared scope-open boundary. A0=directive,A4=end,A5=record,A6=state,
+; D7=optional parent-scope label ID (-1 absent), D2=kind. D0/CCR=status;
+; D1/D3/A0/A3 scratch. Namespace identity is independent of DECLARED: an
+; operand opener creates no value, and can reopen a path or share a symbol name.
+openScope	.block
+	addq.l #5, a0
+	move.l d7, d3
+	cmpa.l a4, a0
+	beq.w labelScope
+	cmpi.w #KIND_NAMESPACE, d2
+	bne.w bad
+	move.l a4, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	bne.w bad
+	cmpi.b #1, (a0)
+	bhi.w bad
+	tst.b 3(a0)
+	bne.w bad  ; dotted namespace declarations remain outside this increment
+	moveq #0, d3
+	move.w 1(a0), d3
+	bra.w label
+labelScope
+	tst.l d3
+	bmi.w bad  ; anonymous scopes are unsupported
+label
+	tst.l d7
+	bmi.w noLabel
+	tst.w State.FirstExplicit(a6)
+	bne.w bad
+	lea 4(a5), a0
+	cmpi.b #5, 4(a0)
+	beq.w labelReady
+	bsr.w declare
+	bne.w bad
+labelReady
+	move.b #8, (a5)
+	move.b #5, 8(a5)
+	bra.w enter
+noLabel
+	move.b #3, (a5)
+enter
+	move.l d3, d0
+	sub.w State.Base(a6), d0
+	bcs.w bad
+	cmp.w State.Count(a6), d0
+	bhs.w bad
+	move.l d0, d1
+	lsl.l #4, d1
+	lea ENTRIES(a6), a3
+	adda.l d1, a3
+	; Only opening a path owns its parent metadata. A later qualified value
+	; declaration must not change an existing namespace's lexical parent.
+	move.w State.Current(a6), records.Entry.Owner(a3)
+	move.w d2, records.Entry.ScopeKind(a3)
+	addq.w #1, d0
+	move.w d0, State.Current(a6)
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; openScope
+
+; Same line/state inputs as openScope, D2=expected kind. D0/CCR=status;
+; A0/A3 scratch. Kind lives in the otherwise unused entry word; no extra table.
+closeScope	.block
+	tst.l d7
+	bpl.w bad
+	addq.l #5, a0
+	cmpa.l a4, a0
+	bne.w bad
+	moveq #0, d0
+	move.w State.Current(a6), d0
+	beq.w bad
+	subq.w #1, d0
+	lsl.l #4, d0
+	lea ENTRIES(a6), a3
+	adda.l d0, a3
+	cmp.w records.Entry.ScopeKind(a3), d2
+	bne.w bad
+	move.w records.Entry.Owner(a3), State.Current(a6)
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; closeScope
+
 ; A0=name token, A6=state. D0/status, D1/A3 scratch; other registers kept.
 declare	.block
 	cmpi.b #1, 3(a0)
@@ -420,7 +565,6 @@ declare	.block
 	bne.w bad
 	clr.b 3(a0)
 	ori.w #DECLARED, records.Entry.Flags(a3)
-	move.w State.Current(a6), records.Entry.Owner(a3)
 	moveq #0, d0
 	rts
 bad
@@ -559,7 +703,7 @@ done
 	rts
 	.bend  ; fold
 
-; D0=numeric directive ID. D0=1 block,2 endblock/bend,3 end,0 other.
+; D0=numeric directive ID. Returns D0=KEY_* code, zero for other directives.
 ; A6=state; preserves other registers. Package .end is supplied by caller.
 keyword	.block
 	movem.l d1-d4/a0-a3, -(sp)
@@ -590,11 +734,12 @@ leafNext
 	subq.w #1, d0
 	bne.w leafScan
 	lea Words, a2
-	moveq #1, d3
 word
+	moveq #0, d3
+	move.b (a2)+, d3
+	beq.w none
 	moveq #0, d2
 	move.b (a2)+, d2
-	beq.w none
 	cmp.w d4, d2
 	bne.w skip
 	movea.l a0, a1
@@ -608,9 +753,6 @@ character
 	subq.w #1, d0
 	bne.w character
 	move.l d3, d0
-	cmpi.w #3, d0
-	bne.w done
-	moveq #2, d0  ; .bend is the close alias
 	bra.w done
 mismatch
 	subq.w #1, d0
@@ -619,10 +761,9 @@ mismatch
 skip
 	adda.w d2, a2
 next
-	addq.w #1, d3
 	bra.w word
 end
-	moveq #3, d0
+	moveq #KEY_END, d0
 	bra.w done
 none
 	moveq #0, d0
@@ -631,7 +772,13 @@ done
 	rts
 	.bend  ; keyword
 Words
-	.byte 5, "block", 8, "endblock", 4, "bend", 0
+	.byte KEY_BLOCK, 5, "block"
+	.byte KEY_ENDBLOCK, 8, "endblock"
+	.byte KEY_ENDBLOCK, 4, "bend"
+	.byte KEY_NAMESPACE, 9, "namespace"
+	.byte KEY_ENDNAMESPACE, 12, "endnamespace"
+	.byte KEY_ENDNAMESPACE, 4, "endn"
+	.byte 0
 	.align 2  ; the next module shares this instruction section
 	.endsection
 	.endmodule

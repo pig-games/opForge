@@ -143,6 +143,29 @@ unit order, and resolve address-dependent bytes after final placement. Compare
 fall-through, cross-unit dependencies, absolute/relative references and unowned
 data against an unpruned reference before claiming this capability.
 
+Rust correctness checkpoint (pending): three executable cases in
+`crates/opforge-asm/src/tests.rs` currently fail when run with
+`cargo test -p asm reachable_block -- --ignored`. A selected named block is
+truncated at an internal label; a helper referenced after that label is not
+copied; and `.word entry` stays `$0002` after a preceding block is omitted and
+the target section is placed at `$1000`. They are ignored in the normal suite
+until the replacement is ready, rather than asserting the incorrect bytes.
+The older `integrated_output_emits_only_reachable_mapped_units` test treats
+ordinary labels as removable units and must be revised with this change.
+
+The current post-pass-2 byte copier cannot meet the checkpoint by changing its
+range end: it has already encoded references against the unpruned logical
+section, and it does not retain general fixups for `.word`, branches and other
+address-dependent forms. The next implementation therefore needs unit ownership
+and reference collection during prepared statement processing, followed by
+selection, final concrete-section layout and re-encoding of selected units.
+Use the prepared/binary statement representation for replay; original source
+text remains diagnostic material. Preserve source order among selected units
+and keep unowned code/data. Qualify with the three cases above, relative and
+absolute cross-unit references, then compare Rust and fresh native output.
+This is a linker/layout increment, not a safe local change to the existing
+mapper; agree its scope before proceeding with code replacement.
+
 ## Increment contract
 
 For every increment, state the hypothesis, reference behavior, resource budget

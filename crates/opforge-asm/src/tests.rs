@@ -34512,6 +34512,103 @@ fn integrated_output_emits_only_reachable_mapped_units() {
     assert_eq!(payload, vec![0x11]);
 }
 
+// These are executable specifications for the pending logical-section relayout.
+// Run explicitly with `cargo test -p asm reachable_block -- --ignored`.
+// The current post-assembly byte copier cannot satisfy them; keeping the expected
+// outputs here prevents a future block-boundary-only repair from hiding that gap.
+#[test]
+#[ignore = "logical-section mapping still splits at internal labels"]
+fn reachable_block_keeps_fallthrough_after_internal_label() {
+    let assembler = run_passes(&[
+        ".module dep",
+        ".cpu 68000",
+        ".pub",
+        ".section code, kind=code, logical",
+        "entry .block",
+        "    .byte $11",
+        "inside:",
+        "    .byte $22",
+        "    .bend",
+        "unused .block",
+        "    .byte $33",
+        "    .bend",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".cpu 68000",
+        ".section app_code, kind=code",
+        ".endsection",
+        ".use dep (entry) as d map { code -> app_code }",
+        ".endmodule",
+    ]);
+
+    assert_eq!(assembler.sections()["app_code"].bytes, [0x11, 0x22]);
+}
+
+#[test]
+#[ignore = "logical-section mapping still loses references after internal labels"]
+fn reachable_block_keeps_dependency_referenced_after_internal_label() {
+    let assembler = run_passes(&[
+        ".module dep",
+        ".cpu 68000",
+        ".pub",
+        ".section code, kind=code, logical",
+        "entry .block",
+        "    .byte $11",
+        "inside:",
+        "    .word helper",
+        "    .bend",
+        "helper .block",
+        "    .byte $22",
+        "    .bend",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".cpu 68000",
+        ".section app_code, kind=code",
+        ".endsection",
+        ".use dep (entry) as d map { code -> app_code }",
+        ".endmodule",
+    ]);
+
+    assert_eq!(
+        assembler.sections()["app_code"].bytes,
+        [0x11, 0x00, 0x03, 0x22]
+    );
+}
+
+#[test]
+#[ignore = "logical-section mapping copies address bytes before final placement"]
+fn reachable_block_reencodes_address_after_pruning_and_placement() {
+    let assembler = run_passes(&[
+        ".module dep",
+        ".cpu 68000",
+        ".pub",
+        ".section code, kind=code, logical",
+        "unused .block",
+        "    .byte $aa, $bb",
+        "    .bend",
+        "entry .block",
+        "    .word entry",
+        "    .bend",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".cpu 68000",
+        ".region rom, $1000, $10ff",
+        ".section app_code, kind=code",
+        ".endsection",
+        ".place app_code in rom",
+        ".use dep (entry) as d map { code -> app_code }",
+        ".output \"build/app.bin\", format=bin, sections=app_code",
+        ".endmodule",
+    ]);
+
+    let output = assembler.root_metadata.linker_outputs.first().unwrap();
+    let payload = build_linker_output_payload(output, assembler.sections()).unwrap();
+    assert_eq!(payload, [0x10, 0x00]);
+}
+
 fn hunk_output_directive(
     path: &str,
     section_names: &[&str],

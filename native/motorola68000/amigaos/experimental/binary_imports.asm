@@ -10,6 +10,8 @@
 Item	.struct
 Target	.word ?
 Qualifier	.word ?
+Selected	.word ?
+Unqualified	.word ?
 Next	.word ?
 .endstruct
 ITEM_BYTES = Item.Next+2
@@ -34,7 +36,7 @@ clear
 	.bend  ; begin
 
 ; A0=.use token,A1=scope state,A2=binder callback,A4=record end.
-; Only module-level simple imports; declarations and references stay separate.
+; One optional selected name and module alias; declarations and references stay separate.
 ; D0/CCR=status; other registers preserved.
 line	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -50,22 +52,73 @@ line	.block
 	move.l a4, d0
 	sub.l a3, d0
 	cmpi.l #4, d0
-	beq.w target
-	cmpi.l #12, d0
-	bne.w bad
-target
+	blo.w bad
 	bsr.w tokenName
 	bne.w bad
 	bsr.w globalBind
 	bne.w bad
 	move.l d1, d7
 	sub.w layout.State.Base(a6), d7
-	movea.l a3, a0
-	addq.l #4, a0
-	cmpa.l a4, a0
+	addq.l #4, a3
+	moveq #0, d4  ; selected entry index+1; zero means no selection
+	moveq #0, d3  ; direct unqualified access
+	cmpa.l a4, a3
 	beq.w defaultQualifier
-	tst.b 3(a0)
+	cmpi.b #14, (a3)
+	bne.w afterSelection
+	move.l a4, d0
+	sub.l a3, d0
+	cmpi.l #6, d0
+	blo.w bad
+	tst.b 4(a3)
+	bne.w bad  ; this bounded form selects one unqualified name
+	lea 1(a3), a0
+	bsr.w tokenName
 	bne.w bad
+	movea.l a0, a2
+	move.l d0, d3
+	cmpi.b #15, 5(a3)
+	bne.w bad
+	move.l d7, d0
+	bsr.w entryName
+	add.l d0, d3
+	addq.l #1, d3
+	cmpi.l #63, d3
+	bhi.w bad
+	lea layout.BUFFER(a6), a1
+	move.l d0, d1
+copyTarget
+	move.b (a0)+, (a1)+
+	subq.l #1, d1
+	bne.w copyTarget
+	move.b #'.', (a1)+
+	movea.l a2, a0
+	move.l d3, d1
+	sub.l d0, d1
+	subq.l #1, d1
+copySelected
+	move.b (a0)+, (a1)+
+	subq.l #1, d1
+	bne.w copySelected
+	lea layout.BUFFER(a6), a0
+	move.l d3, d0
+	bsr.w globalBind
+	bne.w bad
+	move.l d1, d4
+	sub.w layout.State.Base(a6), d4
+	addq.w #1, d4
+	addq.l #6, a3
+	moveq #1, d3
+afterSelection
+	cmpa.l a4, a3
+	beq.w defaultQualifier
+	move.l a4, d0
+	sub.l a3, d0
+	cmpi.l #8, d0
+	bne.w bad
+	tst.b 3(a3)
+	bne.w bad
+	movea.l a3, a0
 	bsr.w tokenName
 	bne.w bad
 	cmpi.l #2, d0
@@ -74,15 +127,22 @@ target
 	ori.w #$2020, d0
 	cmpi.w #$6173, d0  ; as
 	bne.w bad
-	lea 8(a3), a0
+	lea 4(a3), a0
 	tst.b 3(a0)
 	bne.w bad
 	bsr.w tokenName
 	bne.w bad
+	moveq #0, d3
 	bra.w qualifier
 defaultQualifier
+	tst.w d4
+	bne.w noQualifier
 	move.l d7, d0
 	bsr.w entryLeaf
+	bra.w qualifier
+noQualifier
+	moveq #0, d5
+	bra.w collisionStart
 qualifier
 	movea.l a6, a1
 	jsr (a5)
@@ -90,6 +150,7 @@ qualifier
 	bne.w bad
 	sub.w layout.State.Base(a6), d1
 	move.l d1, d5
+collisionStart
 	lea layout.IMPORT_STATE(a6), a4
 	move.l d6, d0
 	subq.w #1, d0
@@ -105,8 +166,11 @@ collision
 	mulu.w #ITEM_BYTES, d2
 	lea ITEMS(a4), a0
 	adda.l d2, a0
+	tst.w d5
+	beq.w nextCollision
 	cmp.w Item.Qualifier(a0), d5
 	beq.w bad
+nextCollision
 	moveq #0, d2
 	move.w Item.Next(a0), d2
 	bra.w collision
@@ -121,6 +185,8 @@ append
 	adda.l d1, a0
 	move.w d7, Item.Target(a0)
 	move.w d5, Item.Qualifier(a0)
+	move.w d4, Item.Selected(a0)
+	move.w d3, Item.Unqualified(a0)
 	move.w (a3), Item.Next(a0)
 	addq.w #1, d0
 	move.w d0, (a3)
@@ -135,17 +201,29 @@ done
 	rts
 	.bend  ; line
 
-; A0=name token,A1=scope state. Dotted references inside modules get a proxy
-; keyed by (module, original ID), sharing name bytes. D0/CCR=status; others kept.
+; A0=name token,A1=scope state. Imported references get a proxy keyed by
+; (module, original ID), sharing name bytes. D0/CCR=status; others kept.
 reference	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a1, a6
 	movea.l a0, a5
-	tst.b 3(a0)
-	beq.w ok
+	moveq #0, d4
 	moveq #0, d7
 	move.w layout.MODULE_STATE+modules.State.Active(a6), d7
 	beq.w ok
+	tst.b 3(a0)
+	bne.w referenceProxy
+	moveq #0, d0
+	move.w 1(a0), d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w ok  ; package-owned names have no import selection
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	bsr.w selectedTarget
+	bne.w bad
+	tst.w d4
+	beq.w ok
+referenceProxy
 	moveq #0, d6
 	move.w 1(a0), d6
 	sub.w layout.State.Base(a6), d6
@@ -156,7 +234,8 @@ reference	.block
 	eor.w d7, d0
 	andi.w #255, d0
 	add.w d0, d0
-	lea layout.IMPORT_STATE+PROXIES(a6), a4
+	lea layout.IMPORT_STATE(a6), a4
+	lea PROXIES(a4), a4
 	adda.w d0, a4
 	moveq #0, d2
 	move.w (a4), d2
@@ -194,7 +273,7 @@ allocate
 	move.w records.Entry.Name(a0), records.Entry.Name(a3)
 	move.w records.Entry.Length(a0), records.Entry.Length(a3)
 	move.w d7, records.Entry.Owner(a3)
-	clr.w records.Entry.Leaf(a3)
+	move.w d4, records.Entry.Leaf(a3)  ; selected target index+1, or zero
 	move.w #PROXY, records.Entry.Flags(a3)
 	move.w d6, records.Entry.ScopeKind(a3)
 	addq.w #1, records.Entry.ScopeKind(a3)
@@ -218,6 +297,59 @@ done
 	tst.l d0
 	rts
 	.bend  ; reference
+
+; A5=unqualified name token,A6=scope state,D7=active module. D4=selected
+; target index+1 (zero when not imported), D0/CCR=status. Other registers kept.
+selectedTarget	.block
+	movem.l d1-d3/d5-d7/a0-a4, -(sp)
+	lea layout.IMPORT_STATE(a6), a4
+	move.l d7, d0
+	subq.w #1, d0
+	add.w d0, d0
+	lea HEADS(a4), a0
+	moveq #0, d7
+	move.w 0(a0, d0.w), d7
+	beq.w ok
+	movea.l a5, a0
+	bsr.w tokenName
+	bne.w bad
+	movea.l a0, a2
+	move.l d0, d5
+scan
+	tst.w d7
+	beq.w ok
+	move.l d7, d0
+	subq.w #1, d0
+	mulu.w #ITEM_BYTES, d0
+	lea ITEMS(a4), a3
+	adda.l d0, a3
+	tst.w Item.Unqualified(a3)
+	beq.w next
+	moveq #0, d0
+	move.w Item.Selected(a3), d0
+	subq.w #1, d0
+	bsr.w entryLeaf
+	cmp.w d5, d0
+	bne.w next
+	bsr.w prefixEqual
+	bne.w next
+	tst.w d4
+	bne.w bad  ; two direct imports claim the same name
+	move.w Item.Selected(a3), d4
+next
+	moveq #0, d7
+	move.w Item.Next(a3), d7
+	bra.w scan
+ok
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/d5-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; selectedTarget
 
 ; A0=scope state,A1=binder callback. Validate forward modules and resolve every
 ; proxy after all imports are known. D0/CCR=status; other registers preserved.
@@ -243,6 +375,12 @@ modulesLoop
 	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
 	btst #3, 1(a0, d0.w)
 	beq.w bad
+	move.l d7, d0
+	mulu.w #ITEM_BYTES, d0
+	lea ITEMS(a4), a3
+	adda.l d0, a3
+	bsr.w validateSelected
+	bne.w bad
 	addq.w #1, d7
 	bra.w modulesLoop
 selectedModules
@@ -272,6 +410,8 @@ selectedItem
 	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
 	btst #3, 1(a0, d0.w)
 	beq.w bad
+	bsr.w validateSelected
+	bne.w bad
 	moveq #0, d7
 	move.w Item.Next(a3), d7
 	bra.w selectedItem
@@ -321,10 +461,43 @@ done
 	.bend  ; finish
 	.priv
 
+; A3=import item,A6=scope state. Selected names must be declared and public
+; even when no reached code references them. D0/CCR=status; others preserved.
+validateSelected	.block
+	movem.l d1/a0-a1, -(sp)
+	moveq #0, d0
+	move.w Item.Selected(a3), d0
+	beq.w ok
+	subq.w #1, d0
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	move.l d0, d1
+	lsl.l #4, d0
+	lea layout.ENTRIES(a6), a0
+	adda.l d0, a0
+	btst #0, records.Entry.Flags+1(a0)
+	beq.w bad
+	add.w d1, d1
+	lea layout.MODULE_STATE+modules.FLAGS(a6), a1
+	btst #0, 1(a1, d1.w)
+	beq.w bad
+ok
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	rts
+	.bend  ; validateSelected
+
 ; A3=proxy,A4=import state,A5=binder,A6=scope state. D1=canonical numeric ID,
 ; D0/CCR=status; other registers preserved. Alias precedence precedes exact names.
 resolve	.block
 	movem.l d2-d7/a0-a4, -(sp)
+	tst.w records.Entry.Leaf(a3)
+	bne.w resolveSelected
 	moveq #0, d0
 	move.w records.Entry.Name(a3), d0
 	lea layout.ARENA(a6), a2
@@ -437,6 +610,31 @@ bind
 	adda.l d0, a0
 	btst #0, records.Entry.Flags+1(a0)
 	beq.w bad
+	moveq #0, d0
+	bra.w done
+resolveSelected
+	moveq #0, d0
+	move.w records.Entry.ScopeKind(a3), d0
+	subq.w #1, d0
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	lsl.l #4, d0
+	lea layout.ENTRIES(a6), a0
+	adda.l d0, a0
+	btst #0, records.Entry.Flags+1(a0)
+	bne.w selectedBound
+	moveq #0, d0
+	move.w records.Entry.Leaf(a3), d0
+	subq.w #1, d0
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	lsl.l #4, d0
+	lea layout.ENTRIES(a6), a0
+	adda.l d0, a0
+	btst #0, records.Entry.Flags+1(a0)
+	beq.w bad
+selectedBound
+	move.w records.Entry.Target(a0), d1
 	moveq #0, d0
 	bra.w done
 bad

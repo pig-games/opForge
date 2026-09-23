@@ -76,6 +76,57 @@ const BLOCK_ENTRY_ROOT: &[(&str, &str)] = &[
     ),
 ];
 
+const SELECTED_UNUSED: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep (entry)\n.byte $aa\n.endmodule\n.end\n",
+    ),
+    (
+        "dep.asm",
+        ".module dep\n.cpu m6502\n.pub\nentry .block\n.byte $11\n.bend\nunused .block\n.byte $99\n.bend\n.endmodule\n.end\n",
+    ),
+];
+
+const SELECTED_REFERENCED: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep (entry)\n.word entry\n.endmodule\n.end\n",
+    ),
+    SELECTED_UNUSED[1],
+];
+
+const SELECTED_ALIASED: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep (entry) as d\n.word d.entry\n.endmodule\n.end\n",
+    ),
+    SELECTED_UNUSED[1],
+];
+
+const SELECTED_MISSING: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep (missing)\n.byte $aa\n.endmodule\n.end\n",
+    ),
+    SELECTED_UNUSED[1],
+];
+
+const SELECTED_LOCAL_SHADOW: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep (entry)\nentry:\n.byte $aa\n.word entry\n.endmodule\n.end\n",
+    ),
+    SELECTED_UNUSED[1],
+];
+
+const SELECTED_PRIVATE: &[(&str, &str)] = &[
+    SELECTED_UNUSED[0],
+    (
+        "dep.asm",
+        ".module dep\n.cpu m6502\n.priv\nentry .block\n.byte $11\n.bend\n.endmodule\n.end\n",
+    ),
+];
+
 fn oracle(files: &[(&str, &str)]) -> Result<Vec<u8>, String> {
     oracle_with_roots(files, &[])
 }
@@ -289,6 +340,32 @@ fn binary_graph_block_entry_root_fs_uae() {
         Some(&[0x22, 0x11, 0x00, 0x10]),
         None,
     );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; selected imports are available but not output roots"]
+fn binary_graph_selected_import_fs_uae() {
+    native(SELECTED_UNUSED, "m6502", Some(&[0xaa]), None);
+    native(
+        SELECTED_REFERENCED,
+        "m6502",
+        Some(&[0x11, 0x00, 0x00]),
+        None,
+    );
+    native(SELECTED_ALIASED, "m6502", Some(&[0x11, 0x00, 0x00]), None);
+    native(SELECTED_MISSING, "m6502", None, None);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; selected name validation and local precedence"]
+fn binary_graph_selected_import_binding_fs_uae() {
+    native(
+        SELECTED_LOCAL_SHADOW,
+        "m6502",
+        Some(&[0xaa, 0x00, 0x00]),
+        None,
+    );
+    native(SELECTED_PRIVATE, "m6502", None, None);
 }
 
 #[test]

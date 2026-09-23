@@ -900,8 +900,11 @@ indexing, layout and emission skip them. Other records remain in order, so
 fallthrough inside a retained block is never pruned by label reachability.
 
 This is still the bounded single-PC path. It has no logical section mapping,
-and selection currently uses entry-file roots and numeric references rather
-than Rust's explicit `.use` selected-root syntax. Binding still validates
+and selection uses entry-file roots and numeric references. A bounded native
+`.use dep (entry)` form now makes one unqualified name available without
+making its block an output root; `as alias` enables qualified access instead.
+Binding validates the selected name even if no code references it. Multi-item,
+per-item alias and wildcard selection remain unsupported here. Binding still validates
 unreachable source during preparation, and the declaration scan is bounded but
 not yet optimized for large block graphs. These native smoke cases demonstrate
 selection behavior, not same-source byte parity with Rust's mapped-section
@@ -914,3 +917,12 @@ transitive block reference, and a referenced label immediately before a
 block. An unreferenced entry-file block also stayed live while an unused
 imported sibling was omitted. The full-language native CLI and self-host path
 were not exercised by these cases.
+
+The selective-import follow-up passed fresh 68020 / 2 MiB cases for an unused
+selection, an unqualified reference, a qualified alias reference and a local
+declaration shadowing the import. Missing and private selected names produced
+fresh expected failures. The pre-existing native block reachability case still
+passed. The release harness image was 39,152 bytes and linked reservation was
+43,764 bytes in the final focused run; guest assembly took about 0.50 seconds
+for the local-shadow case. These are resource observations, not a controlled
+performance comparison or mapped-section parity claim.

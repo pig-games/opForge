@@ -153,9 +153,12 @@ each packed line's flag byte, then indexes offset-based spans after numeric
 binding and module ordering. The experimental selector retains entry-file
 blocks, follows numeric references into imported blocks (including internal
 labels), and skips unreachable imported records before its two assembly passes.
-Unowned code/data remain. Focused live FS-UAE cases cover this selection, but
-the native import parser does not yet accept the selective `.use dep (entry)`
-spelling.
+Unowned code/data remain. The native import parser now accepts one unqualified
+selected name in `.use dep (entry)`, optionally followed by `as alias`. It
+validates that name even when unused, but does not retain its block until
+reached code references it. Multiple selected names, per-item aliases, wildcard
+imports, and section maps remain outside this bounded native path. Focused live
+FS-UAE cases cover selection and binding, not Rust's mapped-section output.
 The experimental native path currently has only a single output PC and simple
 `.use` imports; logical-to-concrete section mapping and placed-region checks
 remain a separate, necessary boundary before claiming parity with Rust's

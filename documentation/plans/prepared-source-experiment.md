@@ -935,3 +935,12 @@ qualified reference, a repeated name, and a missing second name. The prior
 single-name cases passed again. The release harness image was 39,332 bytes
 and linked reservation was 43,944 bytes, each 180 bytes above the previous
 selective-import checkpoint. This size observation is not a speed comparison.
+
+Ordered packed-record materialization and physical-origin remapping now live in
+`binary_ordered_records`, behind a caller-owned frame and block descriptors;
+the harness retains file I/O and orchestration. No packed format or output
+behavior changed. Fresh 2 MiB native checks retained the explicit-order versus
+numeric-graph output comparison, included-file diagnostic origin, and reachable
+block output. The release harness image grew 39,332 → 39,356 bytes, and linked
+reservation grew 43,944 → 44,052 bytes. One graph timing differed substantially
+between runs; this refactor does not establish a performance change.

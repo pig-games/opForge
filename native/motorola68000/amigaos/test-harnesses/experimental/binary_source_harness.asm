@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_discovery as discovery
 	.use experimental.amigaos.binary_declarations as declarations
 	.use experimental.amigaos.binary_graph as graph
+	.use experimental.amigaos.binary_ordered_records as ordered
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
 	.include "memory_telemetry.i"
@@ -24,7 +25,7 @@ Start	.long ?
 End	.long ?
 File	.long ?
 	.endstruct
-SPAN_BYTES = Span.File+4
+SPAN_BYTES = graph.SPAN_BYTES
 IO_SCRATCH_BYTES = IO_BYTES*(INCLUDE_DEPTH+1)+LINE_BYTES+RECORD_BYTES
 IncludeFrame	.struct
 Handle	.long ?
@@ -549,8 +550,20 @@ orderReady
 	move.l frontend.Frame.NameCount(a0), NameCount
 	tst.l GraphMode
 	beq.w selected
-	bsr.w materializeOrder
+	lea OrderFrame, a0
+	move.l OrderedCount, ordered.Frame.OrderCount(a0)
+	move.l SourceCount, ordered.Frame.SourceCount(a0)
+	move.l #FileSpans, ordered.Frame.SourceSpans(a0)
+	move.l SpanCount, ordered.Frame.SourceSpanCount(a0)
+	move.l #GraphSpans, ordered.Frame.Spans(a0)
+	move.l #Records, ordered.Frame.Records(a0)
+	move.l #OriginSpans, ordered.Frame.Origins(a0)
+	move.l OriginCount, ordered.Frame.OriginCount(a0)
+	move.l #OrderedRecords, ordered.Frame.OrderedRecords(a0)
+	move.l #OrderedFiles, ordered.Frame.OrderedOrigins(a0)
+	jsr ordered.materialize
 	bne.w completionBad
+	move.l ordered.Frame.OriginCount(a0), OriginCount
 selected
 	lea Records, a0
 	movea.l memory.Block.Pointer(a0), a1
@@ -1001,7 +1014,6 @@ loop
 done
 	rts
 	.bend  ; copy
-	.include "binary_source_graph_records.i"
 	.include "binary_source_discovery_index.i"
 	.include "binary_source_selection.i"
 	.include "binary_source_includes.i"
@@ -1042,6 +1054,7 @@ SelectionState	.res long, 1
 OrderedCount	.res long, 1
 GraphBlock	.res byte, memory.Block.Used+4
 GraphSpans	.res byte, memory.Block.Used+4
+OrderFrame	.res byte, ordered.FRAME_BYTES
 OrderedRecords	.res byte, memory.Block.Used+4
 OrderedFiles	.res byte, memory.Block.Used+4
 OriginSpans	.res byte, memory.Block.Used+4

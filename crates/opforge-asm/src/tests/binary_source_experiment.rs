@@ -16,6 +16,9 @@ mod selection;
 #[path = "binary_source_dependencies.rs"]
 mod dependencies;
 
+#[path = "binary_source_graph.rs"]
+mod graph;
+
 #[path = "binary_source_files.rs"]
 mod files;
 

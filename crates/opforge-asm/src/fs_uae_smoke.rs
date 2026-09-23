@@ -1308,7 +1308,15 @@ pub(crate) fn run_binary_source_harness_from_env(
     sources: &[(&str, &[u8])],
     expected: &[u8],
 ) -> Result<FsUaeSmokeOutcome, String> {
-    run_binary_source_files_from_env(workspace_root, package, sources, Some(expected), None)
+    run_binary_source_files_from_env(
+        workspace_root,
+        package,
+        sources,
+        Some(expected),
+        None,
+        false,
+        None,
+    )
 }
 
 /// Expected failures retain fresh completion, nonzero exit and diagnostic proof.
@@ -1318,7 +1326,55 @@ pub(crate) fn run_binary_source_rejection_from_env(
     sources: &[(&str, &[u8])],
     diagnostic: Option<&str>,
 ) -> Result<FsUaeSmokeOutcome, String> {
-    run_binary_source_files_from_env(workspace_root, package, sources, None, diagnostic)
+    run_binary_source_files_from_env(
+        workspace_root,
+        package,
+        sources,
+        None,
+        diagnostic,
+        false,
+        None,
+    )
+}
+
+/// Numeric module graph execution: first file is the entry, remaining files are candidates.
+/// Candidates remain in supplied order; the guest builds the dependency order.
+pub(crate) fn run_binary_graph_from_env(
+    workspace_root: &Path,
+    package: &[u8],
+    sources: &[(&str, &[u8])],
+    expected: Option<&[u8]>,
+    diagnostic: Option<&str>,
+) -> Result<FsUaeSmokeOutcome, String> {
+    run_binary_source_files_from_env(
+        workspace_root,
+        package,
+        sources,
+        expected,
+        diagnostic,
+        true,
+        None,
+    )
+}
+
+/// Search the staged guest source directory starting from the entry file.
+pub(crate) fn run_binary_discovery_from_env(
+    workspace_root: &Path,
+    package: &[u8],
+    sources: &[(&str, &[u8])],
+    expected: Option<&[u8]>,
+    diagnostic: Option<&str>,
+    module_roots: &[&str],
+) -> Result<FsUaeSmokeOutcome, String> {
+    run_binary_source_files_from_env(
+        workspace_root,
+        package,
+        sources,
+        expected,
+        diagnostic,
+        true,
+        Some(module_roots),
+    )
 }
 
 fn run_binary_source_files_from_env(
@@ -1327,15 +1383,28 @@ fn run_binary_source_files_from_env(
     sources: &[(&str, &[u8])],
     expected: Option<&[u8]>,
     diagnostic: Option<&str>,
+    graph: bool,
+    module_roots: Option<&[&str]>,
 ) -> Result<FsUaeSmokeOutcome, String> {
     let args = std::env::var(FS_UAE_ARGS_ENV).map_err(|err| err.to_string())?;
     let binary = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".into());
     let count = u16::try_from(sources.len()).map_err(|_| "too many source files")?;
-    if count == 0 {
-        return Err("no source files".into());
+    if count == 0 || count > 0x7fff {
+        return Err("source file count must be 1..32767".into());
     }
     let mut input = package.to_vec();
-    input.extend_from_slice(&count.to_be_bytes());
+    let discovery = module_roots.is_some();
+    let manifest_entries = if let Some(roots) = module_roots {
+        u16::try_from(2 + roots.len()).map_err(|_| "too many module search roots")?
+    } else {
+        count
+    };
+    if manifest_entries > 0x3fff {
+        return Err("too many manifest entries".into());
+    }
+    let manifest_count =
+        manifest_entries | if graph { 0x8000 } else { 0 } | if discovery { 0x4000 } else { 0 };
+    input.extend_from_slice(&manifest_count.to_be_bytes());
     let mut paths = Vec::with_capacity(sources.len());
     for (name, _) in sources {
         if name.is_empty()
@@ -1357,9 +1426,39 @@ fn run_binary_source_files_from_env(
         if guest_path.len() > 255 {
             return Err("source path exceeds 255 bytes".into());
         }
+        paths.push(path);
+    }
+    let manifest_paths = if let Some(roots) = module_roots {
+        let entry = format!("Work:{}", paths[0]);
+        let parent = Path::new(&paths[0])
+            .parent()
+            .ok_or("entry has no search directory")?;
+        let mut paths = vec![entry, format!("Work:{}", parent.display())];
+        for root in roots {
+            let relative = Path::new(root);
+            if relative.as_os_str().is_empty()
+                || relative
+                    .components()
+                    .any(|part| !matches!(part, std::path::Component::Normal(_)))
+                || !root.is_ascii()
+                || root
+                    .bytes()
+                    .any(|byte| byte < 32 || byte == 127 || byte == b':' || byte == b'\\')
+            {
+                return Err(format!("invalid module search root: {root}"));
+            }
+            paths.push(format!("Work:sources/{root}"));
+        }
+        paths
+    } else {
+        paths.iter().map(|path| format!("Work:{path}")).collect()
+    };
+    for guest_path in &manifest_paths {
+        if guest_path.len() > 255 {
+            return Err("manifest path exceeds 255 bytes".into());
+        }
         input.extend_from_slice(&(guest_path.len() as u16).to_be_bytes());
         input.extend_from_slice(guest_path.as_bytes());
-        paths.push(path);
     }
     let files = paths
         .iter()

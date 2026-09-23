@@ -227,6 +227,8 @@ finish	.block
 	movea.l a0, a6
 	movea.l a1, a5
 	lea layout.IMPORT_STATE(a6), a4
+	tst.w layout.MODULE_STATE+modules.State.Selection(a6)
+	bne.w selectedModules
 	moveq #0, d7
 modulesLoop
 	cmp.w COUNT(a4), d7
@@ -243,6 +245,39 @@ modulesLoop
 	beq.w bad
 	addq.w #1, d7
 	bra.w modulesLoop
+selectedModules
+	moveq #0, d6
+selectedModule
+	cmp.w layout.State.Count(a6), d6
+	bhs.w proxies
+	move.l d6, d0
+	add.w d0, d0
+	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
+	btst #4, 1(a0, d0.w)
+	beq.w nextSelectedModule
+	lea HEADS(a4), a0
+	moveq #0, d7
+	move.w 0(a0, d0.w), d7
+selectedItem
+	tst.w d7
+	beq.w nextSelectedModule
+	move.l d7, d0
+	subq.w #1, d0
+	mulu.w #ITEM_BYTES, d0
+	lea ITEMS(a4), a3
+	adda.l d0, a3
+	moveq #0, d0
+	move.w Item.Target(a3), d0
+	add.w d0, d0
+	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
+	btst #3, 1(a0, d0.w)
+	beq.w bad
+	moveq #0, d7
+	move.w Item.Next(a3), d7
+	bra.w selectedItem
+nextSelectedModule
+	addq.w #1, d6
+	bra.w selectedModule
 proxies
 	moveq #0, d7
 loop
@@ -254,6 +289,17 @@ loop
 	adda.l d0, a3
 	btst #3, records.Entry.Flags+1(a3)
 	beq.w next
+	tst.w layout.MODULE_STATE+modules.State.Selection(a6)
+	beq.w resolveProxy
+	moveq #0, d0
+	move.w records.Entry.Owner(a3), d0
+	beq.w next
+	subq.w #1, d0
+	add.w d0, d0
+	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
+	btst #4, 1(a0, d0.w)
+	beq.w next
+resolveProxy
 	bsr.w resolve
 	bne.w bad
 	move.w d1, records.Entry.Target(a3)

@@ -167,7 +167,28 @@ mod tests {
     }
 
     #[test]
-    fn load_module_graph_scans_root_uses_only_from_selected_root_module() {
+    fn load_module_graph_uses_active_entry_declaration_after_inactive_duplicate() {
+        let project = temp_dir();
+        let root = project.join("main.asm");
+        fs::write(
+            &root,
+            ".if 0\n.module main\n.byte 9\n.endmodule\n.endif\n.module main\n.byte 1\n.endmodule\n",
+        )
+        .unwrap();
+
+        let (root_lines, _) = expand_source_file_with_dependencies(&root, &[], &[], 64).unwrap();
+        let graph = load_module_graph(&root, root_lines, &[], &[], &[], 64).unwrap();
+        let active_start = graph
+            .lines
+            .iter()
+            .rposition(|line| line == ".module main")
+            .unwrap();
+        assert_eq!(graph.lines[active_start + 1], ".byte 1");
+        fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
+    fn load_module_graph_scans_imports_from_every_entry_module() {
         let project = temp_dir();
         let src = project.join("src");
         fs::create_dir_all(&src).unwrap();
@@ -180,13 +201,9 @@ mod tests {
         .unwrap();
 
         let (root_lines, _) = expand_source_file_with_dependencies(&root, &[], &[], 64).unwrap();
-        let graph = load_module_graph(&root, root_lines, &[], &[], &[], 64)
-            .expect("non-root helper module imports must not participate in root bootstrap");
-
-        assert!(
-            graph.dependency_files.is_empty(),
-            "helper module import should not be treated as root dependency"
-        );
+        let err = load_module_graph(&root, root_lines, &[], &[], &[], 64)
+            .expect_err("every entry module participates in dependency discovery");
+        assert!(err.to_string().contains("unknown module: missing.module"));
     }
 
     #[test]
@@ -261,32 +278,98 @@ mod tests {
     }
 
     #[test]
-    fn load_module_graph_allows_importing_available_main() {
+    fn load_module_graph_rejects_cycles_through_entry_modules() {
+        for entry_use in ["main", "helper"] {
+            let project = temp_dir();
+            let root = project.join("main.asm");
+            fs::write(
+                &root,
+                format!(".module main\n.use {entry_use}\n.endmodule\n"),
+            )
+            .unwrap();
+            fs::write(
+                project.join("helper.asm"),
+                ".module helper\n.use main\n.endmodule\n",
+            )
+            .unwrap();
+            let (lines, _) = expand_source_file_with_dependencies(&root, &[], &[], 64).unwrap();
+            let err = load_module_graph(&root, lines, &[], &[], &[], 64).unwrap_err();
+            assert!(err.to_string().contains("cyclic module import: main ->"));
+        }
+    }
+
+    #[test]
+    fn load_module_graph_orders_entry_modules_and_shared_dependencies_once() {
         let project = temp_dir();
-        let src = project.join("src");
-        fs::create_dir_all(&src).unwrap();
-
-        let root = src.join("main.asm");
-        fs::write(
+        let root = project.join("main.asm");
+        // The supplied prepared source intentionally differs from disk.
+        fs::write(&root, ".module stale\n.endmodule\n").unwrap();
+        fs::write(project.join("deps.asm"), ".module left\n.use shared\n.endmodule\n.module right\n.use shared\n.endmodule\n.module unused\n.use missing\n.endmodule\n").unwrap();
+        fs::write(project.join("shared.asm"), ".module shared\n.endmodule\n").unwrap();
+        let source = "; prefix\n.module main\n.use helper\n.use right\n.endmodule\n; between\n.module helper\n.use left\n.endmodule\n.end\n";
+        let graph = load_module_graph(
             &root,
-            ".module main\n.use main\n.use helper\nmain: nop\n.endmodule\n",
+            source.lines().map(str::to_owned).collect(),
+            &[],
+            &[],
+            &[],
+            64,
         )
         .unwrap();
-        fs::write(
-            src.join("helper.asm"),
-            ".module helper\n.use main\nhelper_label: nop\n.endmodule\n",
-        )
-        .unwrap();
-
-        let (root_lines, _) = expand_source_file_with_dependencies(&root, &[], &[], 64).unwrap();
-        let graph = load_module_graph(&root, root_lines, &[], &[], &[], 64)
-            .expect("available root module imports should not be treated as cycles");
-        assert!(
+        let modules = graph
+            .lines
+            .iter()
+            .filter(|line| line.starts_with(".module"))
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            modules,
+            [
+                ".module shared",
+                ".module left",
+                ".module helper",
+                ".module right",
+                ".module main"
+            ]
+        );
+        assert_eq!(graph.lines.first().unwrap(), "; prefix");
+        assert_eq!(graph.lines.last().unwrap(), ".end");
+        let helper = graph
+            .lines
+            .iter()
+            .position(|line| line == ".module helper")
+            .unwrap();
+        assert_eq!(graph.source_map.origins()[helper].line, 7);
+        assert_eq!(
+            graph.source_map.origins()[helper].file.as_deref(),
+            root.to_str()
+        );
+        assert_eq!(
             graph
                 .lines
                 .iter()
-                .any(|line| line.trim().eq_ignore_ascii_case(".module helper")),
-            "helper module should still load"
+                .filter(|line| *line == "; between")
+                .count(),
+            1
         );
+    }
+
+    #[test]
+    fn load_module_graph_exports_macros_between_entry_modules() {
+        let project = temp_dir();
+        let root = project.join("main.asm");
+        let source = ".module main\n.use helper\n.helper.emit\n.endmodule\n.module helper\n.pub\nemit .macro\n.byte 7\n.endmacro\n.endmodule\n";
+        fs::write(&root, source).unwrap();
+        let graph = load_module_graph(
+            &root,
+            source.lines().map(str::to_owned).collect(),
+            &[],
+            &[],
+            &[],
+            64,
+        )
+        .unwrap();
+        assert!(graph.lines.iter().any(|line| line.trim() == ".byte 7"));
+        assert!(!graph.lines.iter().any(|line| line.trim() == ".helper.emit"));
     }
 }

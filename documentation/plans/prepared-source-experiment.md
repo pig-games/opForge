@@ -744,3 +744,57 @@ image grows **26,668 → 29,144 B** (+2,476 B, 9.3%); linked reservation grows
 `fnv1a64:8ea5afe318096ef9`. The same 68020 / 2 MiB profile, uncalibrated clock and
 10-second guest / 60-second invocation / 150-second batch bounds apply. This is
 bounded experimental-path qualification, not native CLI or self-host coverage.
+
+## F8: numeric module graph and guest-side search
+
+F8 adds an opt-in graph mode to the experimental native harness. The first guest
+file is the entry. Candidate files can be supplied explicitly, or the guest can
+scan the entry directory followed by configured roots recursively for `.asm` and
+`.inc`. Duplicate discovered paths are read once. This search runs during
+preparation; it does not select an instruction implementation or alter the
+CPU-neutral packed format.
+
+Preparation captures each explicit module as a packed-record offset span and each
+module-level `.use` as a numeric edge. An iterative depth-first walk starts from
+**all** entry-file modules, follows imports in source order, rejects missing
+modules and cycles (including entry-file cycles), and emits each selected span
+once after its dependencies. The harness copies only those packed spans and their
+numeric file ordinals into the assembly input. Source paths and directory scratch
+are released before assembly, and original source text is never consulted by the
+assembly passes. Per-record diagnostic location still uses numeric file/line
+metadata. A pre-dispatch graph error currently reports file/line zero.
+
+Rust's maintained module graph was changed with this checkpoint: every entry-file
+module participates in dependency traversal, and an import back to an entry-file
+module is a cycle. The entry file determines search roots, not an ordering
+exception. The former behavior that traversed only one selected entry module and
+preloaded its siblings has been removed. Host tests cover dependency diamonds,
+entry-file imports and cycles; native tests use fresh FS-UAE completion and exact
+Rust output for a diamond, entry-file siblings, unused candidate, recursive
+`.inc`, and overlapping roots. Missing imports and cycles have fresh nonzero-exit
+proof. The F7 explicit-file path remains available for direct comparison.
+
+The native discovery path **still eagerly prepares every candidate**. It therefore
+cannot yet match Rust's selective loading when a search root contains irrelevant
+invalid source, files with implicit module identity, unsupported `.include` input,
+or duplicate declarations for an unused module. All loaded nonempty candidate
+files currently need explicit `.module` blocks. The scanner bounds path bytes
+at 255, recursion depth at eight and discovered file count at 128, returning
+failure when exceeded. Resolving only requested identities from a declaration
+index is the next functional breadth step; these experiment limits are not
+language semantics.
+
+On the same four-file 6502 diamond under the 2 MiB FS-UAE profile, the F7
+explicit-order and F8 numeric-graph modes produced identical bytes. Both modes
+use the same F8 harness image (32,364 bytes; 34,968 bytes linked reservation),
+so these are mode comparisons rather than independent binary-size measurements.
+Relative to the preceding F7 harness checkpoint, the F8 image adds 3,220 bytes
+and linked reservation adds 2,964 bytes. With conditional memory accounting,
+peak owned allocation was 82,432 bytes for explicit order and 107,520 bytes for
+the graph (+25,088 bytes); retained allocation after preparation was 16,896
+bytes in both. These counters cover the harness's owned allocations, not total
+AmigaOS process memory. In the same instrumented run, native start-to-completion
+was 0.759 and 0.759 seconds respectively. A separate uninstrumented release run
+reported 0.507 and 0.252 seconds, but one short emulator sample per mode is too
+variable to support a speedup claim. Discovery enumeration is not isolated by
+this comparison, and the bounded workload says nothing about self-hosting time.

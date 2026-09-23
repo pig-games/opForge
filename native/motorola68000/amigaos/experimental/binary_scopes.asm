@@ -424,6 +424,25 @@ resolve
 	move.w records.Entry.Flags(a4), d0
 	andi.w #DECLARED+REFERENCED, d0
 	beq.w next
+	tst.w MODULE_STATE+modules.State.Selection(a6)
+	beq.w selectedReference
+	move.l d7, d1
+	add.w d1, d1
+	lea MODULE_STATE+modules.FLAGS(a6), a0
+	btst #1, 1(a0, d1.w)
+	beq.w selectedReference  ; a declaration may serve a selected module
+	btst #2, 1(a0, d1.w)
+	bne.w selectedReference  ; mixed origins need normal validation
+	lea MODULE_STATE+modules.ORIGINS(a6), a0
+	moveq #0, d0
+	move.w 0(a0, d1.w), d0
+	beq.w selectedReference
+	subq.w #1, d0
+	add.w d0, d0
+	lea MODULE_STATE+modules.FLAGS(a6), a0
+	btst #4, 1(a0, d0.w)
+	beq.w next
+selectedReference
 	btst #0, records.Entry.Flags+1(a4)
 	bne.w access
 	btst #2, records.Entry.Flags+1(a4)

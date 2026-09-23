@@ -33,11 +33,18 @@ struct ModuleIndex {
     modules: HashMap<String, Vec<ModuleFileInfo>>,
 }
 
+#[derive(Debug, Clone)]
+struct ModuleSource {
+    path: PathBuf,
+    lines: Vec<String>,
+    first_line: u32,
+}
+
 struct ModuleLoadContext<'a> {
     index: &'a ModuleIndex,
     loaded: &'a mut HashSet<String>,
-    preloaded: &'a HashSet<String>,
-    order: &'a mut Vec<(String, PathBuf, Vec<String>)>,
+    entry_modules: &'a HashMap<String, ModuleSource>,
+    order: &'a mut Vec<(String, ModuleSource)>,
     stack: &'a mut Vec<String>,
     defines: &'a [String],
     include_roots: &'a [PathBuf],
@@ -273,8 +280,28 @@ fn scan_active_module_items(lines: &[String]) -> Vec<LineAst> {
 }
 
 pub(crate) fn scan_module_ids_from_processing(lines: &[String]) -> Vec<String> {
+    scan_module_starts_from_processing(lines)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect()
+}
+
+fn scan_module_starts_from_processing(lines: &[String]) -> Vec<(String, usize)> {
     let mut modules = Vec::new();
-    for ast in scan_active_module_items(lines) {
+    let mut stack = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        let ProcessingOutcome::Done(ast) =
+            Parser::process_opcore_line_request(line, index as u32 + 1)
+        else {
+            continue;
+        };
+        if let LineAst::Conditional(cond) = &ast {
+            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs);
+            continue;
+        }
+        if !current_branch_is_active(&stack) {
+            continue;
+        }
         let LineAst::Statement(statement) = ast else {
             continue;
         };
@@ -286,7 +313,7 @@ pub(crate) fn scan_module_ids_from_processing(lines: &[String]) -> Vec<String> {
         }
         if let Some(expr) = statement.operands.first() {
             if let Some(name) = expr_to_ident(expr) {
-                modules.push(name);
+                modules.push((name, index));
             }
         }
     }
@@ -363,6 +390,8 @@ fn collect_source_files(
 
 fn build_module_index(
     roots: &[PathBuf],
+    entry_path: &Path,
+    entry_lines: &[String],
     source_provider: &dyn SourceProvider,
 ) -> Result<ModuleIndex, AsmRunError> {
     let mut index = ModuleIndex::default();
@@ -377,14 +406,18 @@ fn build_module_index(
             })?;
 
         for path in files {
-            let contents = source_provider.read_string(&path).map_err(|err| {
-                AsmRunError::new(
-                    AsmError::new(AsmErrorKind::Io, "Error reading module source", None),
-                    vec![],
-                    vec![err.to_string()],
-                )
-            })?;
-            let lines: Vec<String> = contents.lines().map(|s| s.to_string()).collect();
+            let lines = if path == entry_path {
+                entry_lines.to_vec()
+            } else {
+                let contents = source_provider.read_string(&path).map_err(|err| {
+                    AsmRunError::new(
+                        AsmError::new(AsmErrorKind::Io, "Error reading module source", None),
+                        vec![],
+                        vec![err.to_string()],
+                    )
+                })?;
+                contents.lines().map(str::to_owned).collect()
+            };
             let explicit_modules = scan_module_ids_from_processing(&lines);
             if explicit_modules.is_empty() {
                 let implicit_id = module_id_from_path(&path)?;
@@ -448,84 +481,97 @@ fn load_module_recursive(
             importing_lines,
         ));
     }
-    if ctx.loaded.contains(&canonical) || ctx.preloaded.contains(&canonical) {
+    if ctx.loaded.contains(&canonical) {
         return Ok(());
     }
-    let infos = ctx.index.modules.get(&canonical).ok_or_else(|| {
-        let mut message = format!("unknown module: {module_id}");
-        if !ctx.stack.is_empty() {
-            let chain = ctx.stack.join(" -> ");
-            message.push_str(&format!(" (import stack: {chain})"));
-        }
-        module_import_error(
-            &message,
-            Some(module_id),
-            import,
-            importing_path,
-            importing_lines,
-        )
-    })?;
-    if infos.len() > 1 {
-        let mut message = format!("Ambiguous module: {module_id}");
-        if !ctx.stack.is_empty() {
-            let chain = ctx.stack.join(" -> ");
-            message.push_str(&format!(" (import stack: {chain})"));
-        }
-        let candidates = infos
-            .iter()
-            .map(|info| {
-                format!(
-                    "{} [root: {}]",
-                    info.path.to_string_lossy(),
-                    info.source_root.to_string_lossy()
-                )
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        message.push_str(&format!("; candidates: {candidates}"));
-        return Err(AsmRunError::new(
-            AsmError::new(AsmErrorKind::Directive, &message, None),
-            vec![],
-            vec![],
-        ));
-    }
-    let info = &infos[0];
-
-    ctx.stack.push(module_id.to_string());
-    let (source_lines, dependency_files) =
-        crate::expand_source_file_with_dependencies_with_provider(
-            &info.path,
-            ctx.defines,
-            ctx.include_roots,
-            ctx.pp_macro_depth,
-            ctx.source_provider,
-        )?;
-    for path in dependency_files {
-        ctx.dependency_files.insert(path);
-    }
-    let module_lines = if info.has_explicit_modules {
-        extract_module_block(&source_lines, module_id).ok_or_else(|| {
-            AsmRunError::new(
-                AsmError::new(
-                    AsmErrorKind::Directive,
-                    "Module not found in source",
-                    Some(module_id),
-                ),
-                vec![],
-                vec![],
-            )
-        })?
+    let source = if let Some(source) = ctx.entry_modules.get(&canonical) {
+        source.clone()
     } else {
-        source_lines
-    };
+        let infos = ctx.index.modules.get(&canonical).ok_or_else(|| {
+            let mut message = format!("unknown module: {module_id}");
+            if !ctx.stack.is_empty() {
+                let chain = ctx.stack.join(" -> ");
+                message.push_str(&format!(" (import stack: {chain})"));
+            }
+            module_import_error(
+                &message,
+                Some(module_id),
+                import,
+                importing_path,
+                importing_lines,
+            )
+        })?;
+        if infos.len() > 1 {
+            let mut message = format!("Ambiguous module: {module_id}");
+            if !ctx.stack.is_empty() {
+                let chain = ctx.stack.join(" -> ");
+                message.push_str(&format!(" (import stack: {chain})"));
+            }
+            let candidates = infos
+                .iter()
+                .map(|info| {
+                    format!(
+                        "{} [root: {}]",
+                        info.path.to_string_lossy(),
+                        info.source_root.to_string_lossy()
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            message.push_str(&format!("; candidates: {candidates}"));
+            return Err(AsmRunError::new(
+                AsmError::new(AsmErrorKind::Directive, &message, None),
+                vec![],
+                vec![],
+            ));
+        }
+        let info = &infos[0];
 
-    for dep in collect_use_directives_from_processing(&module_lines) {
-        load_module_recursive(&dep, ctx, &info.path, &module_lines)?;
+        let (source_lines, dependency_files) =
+            crate::expand_source_file_with_dependencies_with_provider(
+                &info.path,
+                ctx.defines,
+                ctx.include_roots,
+                ctx.pp_macro_depth,
+                ctx.source_provider,
+            )?;
+        for path in dependency_files {
+            ctx.dependency_files.insert(path);
+        }
+        let module_lines = if info.has_explicit_modules {
+            extract_module_block(&source_lines, module_id).ok_or_else(|| {
+                AsmRunError::new(
+                    AsmError::new(
+                        AsmErrorKind::Directive,
+                        "Module not found in source",
+                        Some(module_id),
+                    ),
+                    vec![],
+                    vec![],
+                )
+            })?
+        } else {
+            source_lines.clone()
+        };
+
+        let first_line = source_lines
+            .windows(module_lines.len().max(1))
+            .position(|window| window == module_lines.as_slice())
+            .map_or(1, |offset| offset as u32 + 1);
+        ModuleSource {
+            path: info.path.clone(),
+            lines: module_lines,
+            first_line,
+        }
+    };
+    ctx.stack.push(module_id.to_string());
+    for mut dep in collect_use_directives_from_processing(&source.lines) {
+        dep.span.line += source.first_line - 1;
+        load_module_recursive(&dep, ctx, &source.path, &source.lines)?;
     }
 
     ctx.loaded.insert(canonical);
-    ctx.order
-        .push((module_id.to_string(), info.path.clone(), module_lines));
+    ctx.order.push((module_id.to_string(), source));
     ctx.stack.pop();
     Ok(())
 }
@@ -594,32 +640,73 @@ pub fn load_module_graph_with_provider(
             search_roots.push(root.clone());
         }
     }
-    let index = build_module_index(&search_roots, source_provider)?;
+    let index = build_module_index(&search_roots, root_path, &root_lines, source_provider)?;
 
-    let mut preloaded = HashSet::new();
-    let mut explicit_modules = scan_module_ids_from_processing(&root_lines);
+    // Entry modules are graph nodes, not already-loaded dependencies. Keep the
+    // caller's prepared lines: rereading the file loses preprocessing results.
+    let explicit_modules = scan_module_starts_from_processing(&root_lines);
+    let mut entry_modules = HashMap::new();
+    let mut entry_order = Vec::new();
+    let mut prefix = Vec::new();
+    let mut suffix = Vec::new();
+    let mut suffix_line = 1;
     if explicit_modules.is_empty() {
-        explicit_modules.push(module_id_from_path(root_path)?);
-    }
-    for module_id in explicit_modules {
-        preloaded.insert(canonical_module_id(&module_id));
-    }
-
-    let root_module_id = crate::root_module_id_from_lines(root_path, &root_lines)?;
-    let root_module_lines = if scan_module_ids_from_processing(&root_lines).is_empty() {
-        root_lines.clone()
+        let id = module_id_from_path(root_path)?;
+        entry_order.push(id.clone());
+        entry_modules.insert(
+            canonical_module_id(&id),
+            ModuleSource {
+                path: root_path.to_path_buf(),
+                lines: root_lines.clone(),
+                first_line: 1,
+            },
+        );
     } else {
-        extract_module_block(&root_lines, &root_module_id).unwrap_or_else(|| root_lines.clone())
-    };
+        let mut cursor = 0;
+        for (id, start) in explicit_modules {
+            let lines = extract_module_block(&root_lines[start..], &id).ok_or_else(|| {
+                AsmRunError::new(
+                    AsmError::new(AsmErrorKind::Directive, "Entry module not found", Some(&id)),
+                    vec![],
+                    root_lines.clone(),
+                )
+            })?;
+            let end = start + lines.len();
+            if cursor == 0 {
+                prefix.extend_from_slice(&root_lines[..start]);
+            }
+            let block_start = if cursor == 0 { start } else { cursor };
+            let canonical = canonical_module_id(&id);
+            if entry_modules.contains_key(&canonical) {
+                return Err(AsmRunError::new(
+                    AsmError::new(AsmErrorKind::Directive, "Duplicate entry module", Some(&id)),
+                    vec![],
+                    root_lines,
+                ));
+            }
+            entry_order.push(id);
+            entry_modules.insert(
+                canonical,
+                ModuleSource {
+                    path: root_path.to_path_buf(),
+                    lines: root_lines[block_start..end].to_vec(),
+                    first_line: block_start as u32 + 1,
+                },
+            );
+            cursor = end;
+        }
+        suffix.extend_from_slice(&root_lines[cursor..]);
+        suffix_line = cursor as u32 + 1;
+    }
 
     let mut loaded = HashSet::new();
-    let mut order: Vec<(String, PathBuf, Vec<String>)> = Vec::new();
+    let mut order = Vec::new();
     let mut stack = Vec::new();
     let mut dependency_files = HashSet::new();
     let mut ctx = ModuleLoadContext {
         index: &index,
         loaded: &mut loaded,
-        preloaded: &preloaded,
+        entry_modules: &entry_modules,
         order: &mut order,
         stack: &mut stack,
         defines,
@@ -628,14 +715,23 @@ pub fn load_module_graph_with_provider(
         pp_macro_depth,
         source_provider,
     };
-    for dep in collect_use_directives_from_processing(&root_module_lines) {
-        load_module_recursive(&dep, &mut ctx, root_path, &root_module_lines)?;
+    for id in entry_order {
+        let import = ModuleUseRef {
+            module_id: id,
+            span: Span {
+                line: 1,
+                col_start: 1,
+                col_end: 1,
+            },
+        };
+        load_module_recursive(&import, &mut ctx, root_path, &root_lines)?;
     }
 
     let mut module_exports: HashMap<String, AsmMacroExports> = HashMap::new();
-    let mut expanded_deps: Vec<(PathBuf, Vec<String>)> = Vec::new();
+    let mut expanded_deps: Vec<ModuleSource> = Vec::new();
 
-    for (module_id, module_path, module_lines) in &order {
+    for (module_id, source) in &order {
+        let module_lines = &source.lines;
         let canonical = canonical_module_id(module_id);
         let use_directives: Vec<UseDirectiveSpec> =
             collect_use_directives_with_items_from_processing(module_lines);
@@ -659,42 +755,35 @@ pub fn load_module_graph_with_provider(
 
         let expanded = expand_with_processor(&mut mp, module_lines)?;
         module_exports.insert(canonical, mp.take_native_exports());
-        expanded_deps.push((module_path.clone(), expanded));
+        expanded_deps.push(ModuleSource {
+            lines: expanded,
+            ..source.clone()
+        });
     }
-
-    let root_uses = collect_use_directives_with_items_from_processing(&root_module_lines);
-    let mut mp = AsmMacroProcessor::new(pp_macro_depth);
-    for import in &root_uses {
-        let dep_canonical = canonical_module_id(&import.module_id);
-        if let Some(dep_exports) = module_exports.get(&dep_canonical) {
-            if is_wildcard_selective(&import.items) {
-                mp.inject_all(dep_exports);
-            } else if !import.items.is_empty() {
-                mp.inject_from(dep_exports, &import.items);
-            } else {
-                mp.inject_qualified(dep_exports, &import.module_id);
-                if let Some(alias) = import.alias.as_deref() {
-                    mp.inject_qualified(dep_exports, alias);
-                }
-            }
-        }
-    }
-
-    let expanded_root = expand_with_processor(&mut mp, &root_lines)?;
 
     let mut combined = Vec::new();
     let mut origins = Vec::new();
-    for (module_path, dep_lines) in expanded_deps {
-        let file_name = stable_path_string(&module_path);
-        for (idx, line) in dep_lines.iter().enumerate() {
-            combined.push(line.clone());
-            origins.push(SourceOrigin::new(Some(file_name.clone()), idx as u32 + 1));
+    let root_file = stable_path_string(root_path);
+    for (idx, line) in prefix.into_iter().enumerate() {
+        combined.push(line);
+        origins.push(SourceOrigin::new(Some(root_file.clone()), idx as u32 + 1));
+    }
+    for source in expanded_deps {
+        let file_name = stable_path_string(&source.path);
+        for (idx, line) in source.lines.into_iter().enumerate() {
+            combined.push(line);
+            origins.push(SourceOrigin::new(
+                Some(file_name.clone()),
+                source.first_line + idx as u32,
+            ));
         }
     }
-    let root_file = stable_path_string(root_path);
-    for (idx, line) in expanded_root.iter().enumerate() {
-        combined.push(line.clone());
-        origins.push(SourceOrigin::new(Some(root_file.clone()), idx as u32 + 1));
+    for (idx, line) in suffix.into_iter().enumerate() {
+        combined.push(line);
+        origins.push(SourceOrigin::new(
+            Some(root_file.clone()),
+            suffix_line + idx as u32,
+        ));
     }
 
     let module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>> = module_exports

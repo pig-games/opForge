@@ -6,11 +6,14 @@
 	.use experimental.amigaos.binary_assembly as assembly
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_discovery as discovery
 	.include "memory_telemetry.i"
 HEADER_BYTES = 76
 IO_BYTES = 4096
 LINE_BYTES = 4096
 RECORD_BYTES = 256
+DISCOVERY_LIMIT = 128
+PATH_BYTES = 256
 Span	.struct
 Start	.long ?
 End	.long ?
@@ -71,6 +74,16 @@ freeBlocks
 	jsr memory.release
 	lea FileSpans, a0
 	jsr memory.release
+	lea DiscoveryBlock, a0
+	jsr memory.release
+	lea GraphBlock, a0
+	jsr memory.release
+	lea GraphSpans, a0
+	jsr memory.release
+	lea OrderedRecords, a0
+	jsr memory.release
+	lea OrderedFiles, a0
+	jsr memory.release
 	.MEMORY_PHASE #3
 	move.l DosBase, d0
 	beq.w done
@@ -122,7 +135,7 @@ locateFailure	.block
 	bhi.w done
 	movea.l memory.Block.Pointer(a0), a2
 	adda.l d4, a2
-	move.l SourceCount, d3
+	move.l SpanCount, d3
 	lea FileSpans, a0
 	movea.l memory.Block.Pointer(a0), a0
 loop
@@ -270,8 +283,58 @@ prepare	.block
 	bne.w closeBad
 	moveq #0, d0
 	move.w ManifestWord, d0
+	move.l d0, d1
+	andi.l #$8000, d1
+	move.l d1, GraphMode
+	move.l d0, d1
+	andi.l #$4000, d1
+	move.l d1, DiscoverMode
+	andi.l #$3fff, d0
 	beq.w closeBad
+	tst.l DiscoverMode
+	beq.w sourceCountReady
+	tst.l GraphMode
+	beq.w closeBad
+	cmpi.l #2, d0
+	blo.w closeBad
+	move.l d0, SearchPathCount
+	move.l #discovery.SCRATCH_BYTES+DISCOVERY_LIMIT*PATH_BYTES, d0
+	lea DiscoveryBlock, a0
+	jsr memory.reserve
+	bne.w closeBad
+	movea.l memory.Block.Pointer(a0), a1
+	move.l a1, DiscoveryScratch
+	adda.l #discovery.SCRATCH_BYTES, a1
+	move.l a1, DiscoveryPaths
+	bsr.w readManifestPath
+	bne.w closeBad
+	lea SourcePath, a0
+	bsr.w appendCandidate
+	bne.w closeBad
+	subq.l #1, SearchPathCount
+searchRoot
+	bsr.w readManifestPath
+	bne.w closeBad
+	movea.l DiscoveryScratch, a0
+	lea SourcePath, a1
+	lea appendCandidate, a2
+	suba.l a3, a3
+	movea.l DosBase, a4
+	jsr discovery.scan
+	bne.w closeBad
+	subq.l #1, SearchPathCount
+	bne.w searchRoot
+	movea.l DosBase, a6
+	move.l InputHandle, d1
+	move.l #ManifestWord, d2
+	moveq #1, d3
+	jsr -42(a6)
+	tst.l d0
+	bne.w closeBad
+	move.l CandidateCount, d0
+sourceCountReady
 	move.l d0, SourceCount
+	move.l d0, SpanCount
 	mulu.w #SPAN_BYTES, d0
 	lea FileSpans, a0
 	jsr memory.reserve
@@ -279,6 +342,17 @@ prepare	.block
 	move.l SourceCount, d0
 	mulu.w #SPAN_BYTES, d0
 	move.l d0, memory.Block.Used(a0)
+	tst.l GraphMode
+	beq.w manifestReady
+	move.l #frontend.GRAPH_BYTES, d0
+	lea GraphBlock, a0
+	jsr memory.reserve
+	bne.w closeBad
+	movea.l memory.Block.Pointer(a0), a1
+	lea Front, a0
+	jsr frontend.beginGraph
+	bne.w closeBad
+manifestReady
 	move.l #1, SourceOrdinal
 nextFile
 	clr.l SourceLine
@@ -330,6 +404,8 @@ fileDone
 	move.l SourceCount, d0
 	cmp.l SourceOrdinal, d0
 	bhs.w nextFile
+	tst.l DiscoverMode
+	bne.w prepared
 	movea.l DosBase, a6
 	move.l InputHandle, d1
 	move.l #ManifestWord, d2
@@ -342,6 +418,26 @@ prepared
 	.MEMORY_STAGE #5
 	bsr.w closeInput
 	bne.w bad
+	tst.l DiscoverMode
+	beq.w pathsCleared
+	lea DiscoveryBlock, a0
+	jsr memory.release
+	clr.l DiscoveryScratch
+	clr.l DiscoveryPaths
+pathsCleared
+	tst.l GraphMode
+	beq.w orderReady
+	move.l #frontend.GRAPH_SPAN_BYTES, d0
+	lea GraphSpans, a0
+	jsr memory.reserve
+	bne.w completionBad
+	movea.l memory.Block.Pointer(a0), a1
+	move.l memory.Block.Capacity(a0), d0
+	lea Front, a0
+	jsr frontend.orderGraph
+	bne.w completionBad
+	move.l d1, OrderedCount
+orderReady
 	lea Records, a0
 	movea.l memory.Block.Pointer(a0), a1
 	move.l memory.Block.Used(a0), d0
@@ -349,8 +445,18 @@ prepared
 	jsr frontend.complete
 	bne.w completionBad
 	move.l frontend.Frame.NameCount(a0), NameCount
+	tst.l GraphMode
+	beq.w selected
+	bsr.w materializeOrder
+	bne.w completionBad
+selected
+	lea Front, a0
 	jsr frontend.finish
 	clr.l FrontStarted
+	lea GraphBlock, a0
+	jsr memory.release
+	lea GraphSpans, a0
+	jsr memory.release
 	lea PrepBlock, a0
 	jsr memory.release
 	clr.l IoBuffer
@@ -404,6 +510,41 @@ bad
 ; Consume one explicit manifest path and open that actual guest file.
 ; The manifest remains open independently. Each source has fresh buffered I/O.
 openSource	.block
+	tst.l DiscoverMode
+	beq.w manifestSource
+	move.l SourceOrdinal, d0
+	subq.l #1, d0
+	lsl.l #8, d0
+	movea.l DiscoveryPaths, a0
+	adda.l d0, a0
+	lea SourcePath, a1
+	move.w #PATH_BYTES/4-1, d0
+copyDiscovered
+	move.l (a0)+, (a1)+
+	dbra d0, copyDiscovered
+	bra.w openPath
+manifestSource
+	bsr.w readManifestPath
+	bne.w bad
+openPath
+	movea.l DosBase, a6
+	move.l #SourcePath, d1
+	move.l #1005, d2
+	jsr -30(a6)
+	tst.l d0
+	beq.w bad
+	move.l d0, SourceHandle
+	move.l IoBuffer, IoCursor
+	move.l IoBuffer, IoEnd
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; openSource
+
+; Read and validate a manifest path without opening it. D0/CCR=status.
+readManifestPath	.block
 	move.l #ManifestWord, d2
 	moveq #2, d3
 	bsr.w readExact
@@ -428,21 +569,64 @@ check
 	subq.l #1, d0
 	bne.w check
 	clr.b (a0)
-	movea.l DosBase, a6
-	move.l #SourcePath, d1
-	move.l #1005, d2
-	jsr -30(a6)
-	tst.l d0
-	beq.w bad
-	move.l d0, SourceHandle
-	move.l IoBuffer, IoCursor
-	move.l IoBuffer, IoEnd
 	moveq #0, d0
 	rts
 bad
 	moveq #1, d0
 	rts
-	.bend  ; openSource
+	.bend  ; readManifestPath
+
+; A0=temporary discovered path, A1=unused callback context. Record each
+; physical file once in the preparation-only path list. D0/CCR=status;
+; preserves D3-D7/A2-A6 as required by discovery.scan.
+appendCandidate	.block
+	movem.l d1-d3/a0-a3, -(sp)
+	movea.l a0, a3
+	moveq #0, d3
+findPath
+	cmp.l CandidateCount, d3
+	bhs.w addPath
+	move.l d3, d0
+	lsl.l #8, d0
+	movea.l DiscoveryPaths, a1
+	adda.l d0, a1
+	movea.l a3, a0
+comparePath
+	move.b (a0)+, d1
+	cmp.b (a1)+, d1
+	bne.w nextPath
+	tst.b d1
+	bne.w comparePath
+	moveq #0, d0
+	bra.w done
+nextPath
+	addq.l #1, d3
+	bra.w findPath
+addPath
+	cmpi.l #DISCOVERY_LIMIT, d3
+	bhs.w bad
+	move.l d3, d0
+	lsl.l #8, d0
+	movea.l DiscoveryPaths, a1
+	adda.l d0, a1
+	move.w #PATH_BYTES-1, d2
+	movea.l a3, a0
+copyPath
+	move.b (a0)+, (a1)+
+	beq.w added
+	dbra d2, copyPath
+	bra.w bad
+added
+	addq.l #1, CandidateCount
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a3
+	tst.l d0
+	rts
+	.bend  ; appendCandidate
 
 closeSource	.block
 	move.l SourceHandle, d1
@@ -668,6 +852,7 @@ loop
 done
 	rts
 	.bend  ; copy
+	.include "binary_source_graph_records.i"
 	.endsection
 	.section data, kind=data
 DosName	.byte "dos.library", 0
@@ -686,6 +871,19 @@ ReturnCode	.res long, 1
 InputHandle	.res long, 1
 SourceHandle	.res long, 1
 SourceCount	.res long, 1
+SpanCount	.res long, 1
+GraphMode	.res long, 1
+DiscoverMode	.res long, 1
+SearchPathCount	.res long, 1
+CandidateCount	.res long, 1
+DiscoveryBlock	.res byte, memory.Block.Used+4
+DiscoveryScratch	.res long, 1
+DiscoveryPaths	.res long, 1
+OrderedCount	.res long, 1
+GraphBlock	.res byte, memory.Block.Used+4
+GraphSpans	.res byte, memory.Block.Used+4
+OrderedRecords	.res byte, memory.Block.Used+4
+OrderedFiles	.res byte, memory.Block.Used+4
 SourceOrdinal	.res long, 1
 SourceLine	.res long, 1
 InAssembly	.res long, 1
@@ -702,7 +900,7 @@ LineUsed	.res long, 1
 SourceBytes	.res long, 1
 NameCount	.res long, 1
 Header	.res byte, HEADER_BYTES
-Front	.res byte, frontend.Frame.Scratch+4
+Front	.res byte, frontend.Frame.GraphBefore+4
 Work	.res byte, assembly.Frame.RecordOffset+4
 Context	.res byte, package.Context.Reserved+2
 PackageBlock	.res byte, memory.Block.Used+4

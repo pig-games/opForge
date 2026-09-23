@@ -8,6 +8,8 @@
 	.use experimental.amigaos.binary_source as writer
 	.use experimental.amigaos.binary_prepare as prepare
 	.use experimental.amigaos.binary_scopes as scopes
+	.use experimental.amigaos.binary_graph as graph
+	.use experimental.amigaos.binary_modules as modules
 	.use tkvm.amigaos.runtime as tokenizer
 	.use tkvm.amigaos.control as control
 	.pub
@@ -20,7 +22,12 @@ Capacity	.long ?
 Used	.long ?
 NameCount	.long ?
 Scratch	.long ?
+Graph	.long ?
+GraphBefore	.long ?
 	.endstruct
+	.pub
+GRAPH_BYTES = graph.SCRATCH_BYTES
+GRAPH_SPAN_BYTES = graph.MAX_SPANS*graph.SPAN_BYTES
 	.priv
 PROGRAM = 0
 PROGRAM_BYTES = 4
@@ -80,6 +87,7 @@ begin	.block
 	movea.l a0, a5
 	clr.l Frame.Used(a5)
 	clr.l Frame.NameCount(a5)
+	clr.l Frame.Graph(a5)
 	movea.l Frame.Scratch(a5), a6
 	move.l a6, d0
 	beq.w failed
@@ -111,6 +119,25 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	rts
 	.bend  ; begin
+; Opt in to numeric module graph ordering. A0=Frame, A1=caller-owned graph
+; scratch. D0/CCR=status; other registers preserved.
+beginGraph	.block
+	movem.l a0-a2, -(sp)
+	move.l a1, d0
+	beq.w badGraph
+	andi.l #3, d0
+	bne.w badGraph
+	move.l a1, Frame.Graph(a0)
+	movea.l a1, a0
+	jsr graph.begin
+	bra.w graphDone
+badGraph
+	moveq #1, d0
+graphDone
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; beginGraph
 ; Lower one caller-bounded line. A0=the session Frame; Source excludes its line
 ; ending and Output has per-line packed-record capacity. D0=0 success, 1 failure.
 ; Used is this line's packed byte count; NameCount is the next free identifier.
@@ -118,6 +145,15 @@ done
 line	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
+	clr.l Frame.GraphBefore(a5)
+	movea.l Frame.Graph(a5), a0
+	move.l a0, d0
+	beq.w graphBeforeDone
+	movea.l Frame.Scratch(a5), a1
+	moveq #0, d0
+	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a1), d0
+	move.l d0, Frame.GraphBefore(a5)
+graphBeforeDone
 	clr.l Frame.Used(a5)
 	movea.l Frame.Scratch(a5), a6
 	move.l a6, d0
@@ -186,6 +222,17 @@ copyPrepared
 	subq.l #1, d0
 	bne.w copyPrepared
 	move.l d1, Frame.Used(a5)
+	movea.l Frame.Graph(a5), a0
+	move.l a0, d0
+	beq.w graphLineDone
+	move.l Frame.Used(a5), d0
+	move.l Frame.GraphBefore(a5), d1
+	movea.l Frame.Scratch(a5), a1
+	moveq #0, d2
+	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a1), d2
+	jsr graph.line
+	bne.w failed
+graphLineDone
 	lea SCOPE_STATE(a6), a0
 	jsr scopes.count
 	move.l d0, Frame.NameCount(a5)
@@ -202,17 +249,48 @@ done
 ; A0=Frame,D0=nonzero to require explicit modules for file content.
 ; D0/CCR=status, others preserved. Successful EOF resets local lines.
 endFile	.block
-	movem.l a0-a1, -(sp)
+	movem.l a0-a2, -(sp)
+	movea.l a0, a2
 	movea.l Frame.Scratch(a0), a1
 	lea SCOPE_STATE(a1), a0
 	jsr scopes.endFile
 	bne.w done
+	movea.l Frame.Graph(a2), a0
+	move.l a0, d1
+	beq.w resetFileLine
+	jsr graph.endFile
+	bne.w done
+resetFileLine
 	move.l #1, LINE_NUMBER(a1)
 done
-	movem.l (sp)+, a0-a1
+	movem.l (sp)+, a0-a2
 	tst.l d0
 	rts
 	.bend  ; endFile
+; A0=Frame,A1=caller-owned span output,D0=bytes. Dependency-first spans
+; refer to original packed records and original file ordinals. D0/CCR=status,
+; D1=span count; other registers preserved.
+orderGraph	.block
+	movem.l a0-a3, -(sp)
+	movea.l a0, a3
+	movea.l Frame.Graph(a3), a0
+	move.l a0, d1
+	beq.w orderBad
+	movea.l Frame.Scratch(a3), a2
+	lea SCOPE_STATE(a2), a2
+	movea.l a2, a3
+	movea.l a1, a2
+	movea.l a3, a1
+	jsr graph.order
+	bra.w orderDone
+orderBad
+	moveq #1, d0
+	moveq #0, d1
+orderDone
+	movem.l (sp)+, a0-a3
+	tst.l d0
+	rts
+	.bend  ; orderGraph
 ; Finalize scoped identities before lexical scratch is released. A0=Frame,
 ; A1=packed records,D0=record bytes. D0/CCR=status; other registers preserved.
 complete	.block

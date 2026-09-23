@@ -756,6 +756,11 @@ v0.1; requests such as `format=hunklib`, `format=hunk-object`, and
   used only when a file contains no explicit module declaration.
 - If a file defines multiple modules, only the requested module is extracted.
 - Missing or ambiguous module ids are **errors**; errors include an import stack.
+- The entry file determines the first search directory. Every module declared in
+  that file participates in the dependency graph; it is not exempt from ordering.
+  Imports are traversed in source order, each dependency is placed before its
+  importer, and each module is included once. Cycles are errors, including cycles
+  through an entry-file module. Modules in other files are loaded only when used.
 
 #### 3.10.4 Visibility rules
 

@@ -12,9 +12,9 @@ Explicit	.word ?
 Outside	.word ?
 Visibility	.word ?
 Base	.word ?
-Reserved	.word ?
+Selection	.word ?
 .endstruct
-OWNERS = State.Reserved+2
+OWNERS = State.Selection+2
 ORIGINS = OWNERS+LIMIT*2
 FLAGS = ORIGINS+LIMIT*2
 SCRATCH_BYTES = FLAGS+LIMIT*2
@@ -22,6 +22,7 @@ PUBLIC = 1
 USED = 2
 MIXED = 4
 MODULE_ID = 8
+SELECTED = 16
 KIND_MODULE = 3
 	.section code, kind=code
 

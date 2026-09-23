@@ -427,3 +427,50 @@ observe +39/+9 ms for splitting the small 6502/68000 fixtures and +1.9%/−0.2% 
 unchanged F6 workloads. Cost: +2,476 B release image, +4,610 B preparation metadata
 and a retained 12-byte numeric span per source (subject to allocation granularity).
 See the [F7 results](prepared-source-experiment.md#f7-explicit-source-files-and-imports).
+
+## F8 increment contract — experimental graph and discovery checkpoint
+
+The entry file anchors search and identifies the initial modules to include;
+its modules receive no exception from dependency ordering. Resolve every included
+module's imports in source order, emit dependencies before their importers, and
+include each module once. Reject cycles consistently, including entry-file cycles.
+All modules declared in the entry file participate; unrelated modules in candidate
+files do not join the graph. Update Rust and native together for this behavior
+change; previous Rust entry-file ordering and preloaded-cycle exemptions retire.
+
+The first reviewable checkpoint implements opt-in native graph execution over explicit candidate
+files (first file is the entry), using numeric module IDs and packed-record spans.
+Keep F7's explicitly ordered execution as the comparison path. Preparation captures
+module boundaries and import edges once; ordering and assembly never reconstruct
+or consult source text. Preserve file/line diagnostic provenance after reordering.
+Native candidate preparation is initially eager: unused modules' missing imports
+and unresolved values must not fail selected execution, but malformed/unsupported
+candidate syntax can still fail preparation. This limit retires with selective
+loading; it is not a new language requirement.
+
+The second checkpoint adds native AmigaDOS directory enumeration from the entry
+directory and additional roots. It scans `.asm` and `.inc` recursively, deduplicates
+identical guest paths and prepares candidates for the same numeric graph. Search
+does not choose the first match across roots. `.include` remains separate.
+
+This is a bounded experimental capability, not yet general module autoloading.
+Native discovery eagerly prepares every candidate before numeric selection, so
+unrelated invalid syntax, unsupported `.include` fragments, implicit modules or
+duplicate declarations can fail the session. Rust resolves only requested module
+identities and does not share these limits. The next breadth step should build a
+declaration index and load only the dependency closure before preparation. The
+experimental scanner currently bounds paths to 255 bytes, directory nesting to
+eight levels and discovered files to 128; a bound is an explicit failure.
+
+Validation: live Rust output comparison for shuffled candidate order, diamonds,
+entry-file dependencies, multiple modules per file and unused siblings; fresh
+native rejection for missing modules and self/indirect cycles. Retain bare-label
+coverage. Measure bounded release timing and allocation accounting against F7;
+report feature cost, not an assumed speedup. No long self-hosting measurement.
+
+The bounded 2 MiB diamond comparison is recorded in the
+[prepared-source experiment](prepared-source-experiment.md#f8-numeric-module-graph-and-guest-side-search).
+F8 added 3,220 image bytes and 2,964 linked reserved bytes relative to F7;
+graph mode's conditional peak owned allocation exceeded explicit order by
+25,088 bytes. The instrumented native elapsed times were effectively equal,
+so F8 is a breadth checkpoint rather than a demonstrated performance win.

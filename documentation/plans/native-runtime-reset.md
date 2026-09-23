@@ -116,6 +116,33 @@ fit the implementation. Use more than one source-target family where the boundar
 is intended to be generic. A complete small case is preferable to a wide set of
 helpers that cannot produce an artifact Erik can inspect.
 
+## Selected modules and reachable output: next boundary
+
+The next native discovery increment selects the requested `.module` from a
+candidate file, including when that file declares other modules. Selection is by
+module identity, not by file identity; two requested modules in one file must both
+work. The entry file remains the search root, not an ordering shortcut. Selected
+modules retain their physical source and include provenance. This increment does
+not prune code or data inside a selected module.
+
+Imported logical-section pruning needs a separate correctness repair in the Rust
+reference before native parity work. Today Rust treats every label as an output
+unit boundary. A reachable routine with an internal fall-through label can lose
+the instructions after that label, even inside a named `.block`. The mapper also
+copies selected byte ranges without rebasing embedded addresses: when an unused
+two-byte block precedes a used block containing `.word entry`, the mapped output
+still contains the old offset `2`. Therefore neither label-based nor block-based
+byte slicing is sufficient proof of correct executable output.
+
+Use named `.block` boundaries as the initial removable code units. Ordinary labels
+inside a block belong to that block, including fall-through targets; macro and
+segment expansions inherit their enclosing unit. Retain unowned data/code until
+an explicit unit convention and its linking behavior are established. Correct
+pruning must account for references from every line in a block, preserve intended
+unit order, and resolve address-dependent bytes after final placement. Compare
+fall-through, cross-unit dependencies, absolute/relative references and unowned
+data against an unpruned reference before claiming this capability.
+
 ## Increment contract
 
 For every increment, state the hypothesis, reference behavior, resource budget

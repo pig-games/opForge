@@ -127,6 +127,48 @@ const SELECTED_PRIVATE: &[(&str, &str)] = &[
     ),
 ];
 
+const MULTI_SELECTED_DEP: &str = ".module dep\n.cpu m6502\n.pub\nentry .block\n.byte $11\n.bend\nother .block\n.byte $22\n.bend\nunused .block\n.byte $99\n.bend\n.endmodule\n.end\n";
+
+const MULTI_SELECTED_ONE_REFERENCE: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep (entry, other)\n.word other\n.endmodule\n.end\n",
+    ),
+    ("dep.asm", MULTI_SELECTED_DEP),
+];
+
+const MULTI_SELECTED_BOTH_REFERENCES: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep (entry, other)\n.word other\n.word entry\n.endmodule\n.end\n",
+    ),
+    ("dep.asm", MULTI_SELECTED_DEP),
+];
+
+const MULTI_SELECTED_ALIASED: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep (entry, other) as d\n.word d.other\n.endmodule\n.end\n",
+    ),
+    ("dep.asm", MULTI_SELECTED_DEP),
+];
+
+const MULTI_SELECTED_MISSING: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep (entry, missing)\n.byte $aa\n.endmodule\n.end\n",
+    ),
+    ("dep.asm", MULTI_SELECTED_DEP),
+];
+
+const MULTI_SELECTED_REPEAT: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep (entry, other, entry)\n.word entry\n.endmodule\n.end\n",
+    ),
+    ("dep.asm", MULTI_SELECTED_DEP),
+];
+
 fn oracle(files: &[(&str, &str)]) -> Result<Vec<u8>, String> {
     oracle_with_roots(files, &[])
 }
@@ -366,6 +408,41 @@ fn binary_graph_selected_import_binding_fs_uae() {
         None,
     );
     native(SELECTED_PRIVATE, "m6502", None, None);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; multiple selected names and reference-driven output"]
+fn binary_graph_multi_selected_import_fs_uae() {
+    native(
+        MULTI_SELECTED_ONE_REFERENCE,
+        "m6502",
+        Some(&[0x22, 0x00, 0x00]),
+        None,
+    );
+    native(
+        MULTI_SELECTED_BOTH_REFERENCES,
+        "m6502",
+        Some(&[0x11, 0x22, 0x01, 0x00, 0x00, 0x00]),
+        None,
+    );
+    native(
+        MULTI_SELECTED_ALIASED,
+        "m6502",
+        Some(&[0x22, 0x00, 0x00]),
+        None,
+    );
+    native(MULTI_SELECTED_MISSING, "m6502", None, None);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; repeated names share one numeric selection"]
+fn binary_graph_multi_selected_repeat_fs_uae() {
+    native(
+        MULTI_SELECTED_REPEAT,
+        "m6502",
+        Some(&[0x11, 0x00, 0x00]),
+        None,
+    );
 }
 
 #[test]

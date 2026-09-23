@@ -901,11 +901,12 @@ fallthrough inside a retained block is never pruned by label reachability.
 
 This is still the bounded single-PC path. It has no logical section mapping,
 and selection uses entry-file roots and numeric references. A bounded native
-`.use dep (entry)` form now makes one unqualified name available without
-making its block an output root; `as alias` enables qualified access instead.
-Binding validates the selected name even if no code references it. Multi-item,
-per-item alias and wildcard selection remain unsupported here. Binding still validates
-unreachable source during preparation, and the declaration scan is bounded but
+`.use dep (entry, helper)` form now makes selected unqualified names available
+without making their blocks output roots; `as alias` enables qualified access
+instead. Binding validates every selected name even if no code references it.
+Repeated names within a list are deduplicated. Per-item aliases and wildcard
+selection remain unsupported here. Binding still validates unreachable source
+during preparation, and the declaration scan is bounded but
 not yet optimized for large block graphs. These native smoke cases demonstrate
 selection behavior, not same-source byte parity with Rust's mapped-section
 linker. A controlled Rust/native parity comparison needs section mapping in
@@ -926,3 +927,11 @@ passed. The release harness image was 39,152 bytes and linked reservation was
 43,764 bytes in the final focused run; guest assembly took about 0.50 seconds
 for the local-shadow case. These are resource observations, not a controlled
 performance comparison or mapped-section parity claim.
+
+The multi-name follow-up retains one import item per `.use` and stores selected
+numeric IDs in a separate linked list. Its fresh 68020 / 2 MiB cases covered
+one referenced name with another unused, two referenced names, an aliased
+qualified reference, a repeated name, and a missing second name. The prior
+single-name cases passed again. The release harness image was 39,332 bytes
+and linked reservation was 43,944 bytes, each 180 bytes above the previous
+selective-import checkpoint. This size observation is not a speed comparison.

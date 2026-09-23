@@ -14,11 +14,18 @@ Selected	.word ?
 Unqualified	.word ?
 Next	.word ?
 .endstruct
+Selection	.struct
+Name	.word ?
+Next	.word ?
+.endstruct
 ITEM_BYTES = Item.Next+2
+SELECTION_BYTES = Selection.Next+2
 COUNT = 0
 HEADS = 2
 ITEMS = HEADS+layout.LIMIT*2
-PROXIES = ITEMS+layout.LIMIT*ITEM_BYTES
+SELECTED_COUNT = ITEMS+layout.LIMIT*ITEM_BYTES
+SELECTIONS = SELECTED_COUNT+2
+PROXIES = SELECTIONS+layout.LIMIT*SELECTION_BYTES
 SCRATCH_BYTES = PROXIES+256*2
 PROXY = 8
 	.section code, kind=code
@@ -36,7 +43,7 @@ clear
 	.bend  ; begin
 
 ; A0=.use token,A1=scope state,A2=binder callback,A4=record end.
-; One optional selected name and module alias; declarations and references stay separate.
+; One or more selected names and an optional module alias; references stay separate.
 ; D0/CCR=status; other registers preserved.
 line	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -60,25 +67,25 @@ line	.block
 	move.l d1, d7
 	sub.w layout.State.Base(a6), d7
 	addq.l #4, a3
-	moveq #0, d4  ; selected entry index+1; zero means no selection
+	moveq #0, d4  ; selected-name list head, zero means no selection
 	moveq #0, d3  ; direct unqualified access
 	cmpa.l a4, a3
 	beq.w defaultQualifier
 	cmpi.b #14, (a3)
 	bne.w afterSelection
+	addq.l #1, a3
+selectedName
 	move.l a4, d0
 	sub.l a3, d0
-	cmpi.l #6, d0
+	cmpi.l #4, d0
 	blo.w bad
-	tst.b 4(a3)
-	bne.w bad  ; this bounded form selects one unqualified name
-	lea 1(a3), a0
+	tst.b 3(a3)
+	bne.w bad  ; this bounded form selects unqualified names
+	movea.l a3, a0
 	bsr.w tokenName
 	bne.w bad
 	movea.l a0, a2
 	move.l d0, d3
-	cmpi.b #15, 5(a3)
-	bne.w bad
 	move.l d7, d0
 	bsr.w entryName
 	add.l d0, d3
@@ -104,11 +111,51 @@ copySelected
 	move.l d3, d0
 	bsr.w globalBind
 	bne.w bad
-	move.l d1, d4
-	sub.w layout.State.Base(a6), d4
+	sub.w layout.State.Base(a6), d1
+	addq.w #1, d1
+	lea layout.IMPORT_STATE(a6), a2
+	move.l d4, d2
+seenName
+	tst.w d2
+	beq.w appendName
+	move.l d2, d0
+	subq.w #1, d0
+	lsl.l #2, d0
+	lea SELECTIONS(a2), a0
+	adda.l d0, a0
+	cmp.w Selection.Name(a0), d1
+	beq.w nextNameToken
+	moveq #0, d2
+	move.w Selection.Next(a0), d2
+	bra.w seenName
+appendName
+	moveq #0, d2
+	move.w SELECTED_COUNT(a2), d2
+	cmpi.w #layout.LIMIT, d2
+	bhs.w bad
+	move.l d2, d0
+	lsl.l #2, d0
+	lea SELECTIONS(a2), a0
+	adda.l d0, a0
+	move.w d1, Selection.Name(a0)
+	move.w d4, Selection.Next(a0)
+	move.l d2, d4
 	addq.w #1, d4
-	addq.l #6, a3
+	move.w d4, SELECTED_COUNT(a2)
+nextNameToken
+	addq.l #4, a3
+	cmpa.l a4, a3
+	bhs.w bad
+	cmpi.b #4, (a3)
+	beq.w anotherName
+	cmpi.b #15, (a3)
+	bne.w bad
+	addq.l #1, a3
 	moveq #1, d3
+	bra.w afterSelection
+anotherName
+	addq.l #1, a3
+	bra.w selectedName
 afterSelection
 	cmpa.l a4, a3
 	beq.w defaultQualifier
@@ -325,17 +372,33 @@ scan
 	adda.l d0, a3
 	tst.w Item.Unqualified(a3)
 	beq.w next
-	moveq #0, d0
-	move.w Item.Selected(a3), d0
+	moveq #0, d6
+	move.w Item.Selected(a3), d6
+selected
+	tst.w d6
+	beq.w next
+	move.l d6, d0
+	subq.w #1, d0
+	lsl.l #2, d0
+	lea SELECTIONS(a4), a1
+	adda.l d0, a1
+	moveq #0, d2
+	move.w Selection.Next(a1), d2
+	moveq #0, d3
+	move.w Selection.Name(a1), d3
+	move.l d3, d0
 	subq.w #1, d0
 	bsr.w entryLeaf
 	cmp.w d5, d0
-	bne.w next
+	bne.w nextSelected
 	bsr.w prefixEqual
-	bne.w next
+	bne.w nextSelected
 	tst.w d4
 	bne.w bad  ; two direct imports claim the same name
-	move.w Item.Selected(a3), d4
+	move.w d3, d4
+nextSelected
+	move.l d2, d6
+	bra.w selected
 next
 	moveq #0, d7
 	move.w Item.Next(a3), d7
@@ -464,10 +527,23 @@ done
 ; A3=import item,A6=scope state. Selected names must be declared and public
 ; even when no reached code references them. D0/CCR=status; others preserved.
 validateSelected	.block
-	movem.l d1/a0-a1, -(sp)
-	moveq #0, d0
-	move.w Item.Selected(a3), d0
+	movem.l d1-d2/a0-a2, -(sp)
+	moveq #0, d2
+	move.w Item.Selected(a3), d2
+selected
+	tst.w d2
 	beq.w ok
+	lea layout.IMPORT_STATE(a6), a2
+	move.l d2, d0
+	subq.w #1, d0
+	cmp.w SELECTED_COUNT(a2), d0
+	bhs.w bad
+	lsl.l #2, d0
+	lea SELECTIONS(a2), a1
+	adda.l d0, a1
+	move.w Selection.Next(a1), d2
+	moveq #0, d0
+	move.w Selection.Name(a1), d0
 	subq.w #1, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
@@ -481,13 +557,14 @@ validateSelected	.block
 	lea layout.MODULE_STATE+modules.FLAGS(a6), a1
 	btst #0, 1(a1, d1.w)
 	beq.w bad
+	bra.w selected
 ok
 	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
 done
-	movem.l (sp)+, d1/a0-a1
+	movem.l (sp)+, d1-d2/a0-a2
 	tst.l d0
 	rts
 	.bend  ; validateSelected

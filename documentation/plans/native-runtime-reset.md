@@ -554,11 +554,16 @@ focused parity cases instead of growing a parallel text preprocessor blindly.
 ## First CLI integration checkpoint
 
 `opforge_compact PACKAGE.bsp3 SOURCE.asm OUTPUT.bin` is a separate 68020 Hunk
-executable. It accepts exactly three unquoted, space-free Shell paths, reads a
-host-prepared BSP3 package and one source file, and writes flat binary output.
+executable. It requires three unquoted, space-free positional Shell paths, reads a
+host-prepared BSP3 package, starts from the specified source file, and writes
+flat binary output.
 The test harness and CLI call the same compact engine; the manifest-backed
-multi-file path remains available for focused language tests. The standalone CLI
-does not yet generate or load canonical packages natively, accept discovery
-roots or include roots as arguments, or replace `opforge_cli`. Unsupported input
-returns nonzero. Focused native proof and current constraints are in the
+multi-file path remains available for focused language tests. The CLI now accepts
+`-M DIR` module roots and `-I DIR` include roots after the three paths. Either
+option selects dependency-ordered discovery; the entry directory is searched
+first, while the dependency graph decides output order. Without search roots,
+the CLI keeps direct single-source processing for sources without modules. The
+standalone CLI does not yet generate or load canonical packages natively or
+replace `opforge_cli`. Unsupported input returns nonzero. Focused native proof
+and current constraints are in the
 [runtime note](prepared-source-experiment.md#first-compact-cli-checkpoint).

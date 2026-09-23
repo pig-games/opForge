@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_discovery as discovery
+	.use experimental.amigaos.binary_input_plan as inputs
 	.use experimental.amigaos.binary_declarations as declarations
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_ordered_records as ordered
@@ -42,7 +43,12 @@ Frame	.struct
 PackagePath	.long ?
 SourcePath	.long ?
 OutputPath	.long ?
-Mode	.word ?  ; zero: manifest harness; nonzero: single-source CLI
+Mode	.word ?  ; zero: manifest harness; one: single source; two: discovery
+Reserved	.word ?
+ModuleRoots	.long ?
+ModuleCount	.long ?
+IncludeRoots	.long ?
+IncludeCount	.long ?
 	.endstruct
 	.section code, kind=code
 	.pub
@@ -53,17 +59,35 @@ execute	.block
 	move.l Frame.PackagePath(a0), InputName
 	move.l Frame.OutputPath(a0), OutputName
 	move.w Frame.Mode(a0), CliMode
+	move.l Frame.ModuleRoots(a0), CliModuleRoots
+	move.l Frame.ModuleCount(a0), CliModuleCount
+	move.l Frame.IncludeRoots(a0), CliIncludeRoots
+	move.l Frame.IncludeCount(a0), CliIncludeCount
 	tst.l InputName
 	beq.w invalidConfig
 	tst.l OutputName
 	beq.w invalidConfig
 	tst.w CliMode
 	beq.w configured
+	cmpi.l #8, CliModuleCount
+	bhi.w invalidConfig
+	cmpi.l #16, CliIncludeCount
+	bhi.w invalidConfig
+	tst.l CliModuleCount
+	beq.w includesReady
+	tst.l CliModuleRoots
+	beq.w invalidConfig
+includesReady
+	tst.l CliIncludeCount
+	beq.w entryReady
+	tst.l CliIncludeRoots
+	beq.w invalidConfig
+entryReady
 	movea.l Frame.SourcePath(a0), a1
 	move.l a1, d0
 	beq.w invalidConfig
 	lea SourcePath, a0
-	move.w #PATH_BYTES-1, d0
+	move.w #PATH_BYTES, d0
 copyPath
 	move.b (a1)+, (a0)+
 	beq.w configured
@@ -331,12 +355,18 @@ prepare	.block
 	jsr frontend.begin
 	bne.w closeBad
 	.MEMORY_STAGE #0
+	cmpi.w #2, CliMode
+	beq.w cliDiscovery
 	tst.w CliMode
 	beq.w readManifest
 	moveq #1, d0
 	clr.l GraphMode
 	clr.l DiscoverMode
 	bra.w sourceCountReady
+cliDiscovery
+	bsr.w prepareCliInputs
+	bne.w closeBad
+	bra.w rootsDone
 readManifest
 	move.l #ManifestWord, d2
 	moveq #2, d3
@@ -682,6 +712,48 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; prepare
+
+; Configure the CLI's preparation-only discovery and include search storage.
+; D0/CCR=status. The caller owns all blocks and releases them on either path.
+prepareCliInputs	.block
+	move.l #1, GraphMode
+	move.l #1, DiscoverMode
+	move.l #discovery.SCRATCH_BYTES+DISCOVERY_LIMIT*PATH_BYTES, d0
+	lea DiscoveryBlock, a0
+	jsr memory.reserve
+	bne.w bad
+	movea.l memory.Block.Pointer(a0), a1
+	move.l a1, DiscoveryScratch
+	adda.l #discovery.SCRATCH_BYTES, a1
+	move.l a1, DiscoveryPaths
+	lea InputPlan, a0
+	move.l #SourcePath, inputs.Frame.Entry(a0)
+	move.l CliModuleRoots, inputs.Frame.Roots(a0)
+	move.l CliModuleCount, inputs.Frame.Count(a0)
+	move.l DiscoveryScratch, inputs.Frame.Scratch(a0)
+	move.l #appendCandidate, inputs.Frame.Callback(a0)
+	move.l DosBase, inputs.Frame.Dos(a0)
+	move.l #IncludePath, inputs.Frame.Directory(a0)
+	jsr inputs.seed
+	bne.w bad
+	move.l CliIncludeCount, RootCount
+	move.l RootCount, d0
+	lsl.l #8, d0
+	lea RootPaths, a0
+	jsr memory.reserve
+	bne.w bad
+	move.l RootCount, d0
+	lsl.l #8, d0
+	move.l d0, memory.Block.Used(a0)
+	movea.l memory.Block.Pointer(a0), a1
+	movea.l CliIncludeRoots, a0
+	bsr.w copy
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; prepareCliInputs
 
 ; Consume one explicit manifest path and open that actual guest file.
 ; The manifest remains open independently. Each source has fresh buffered I/O.
@@ -1075,6 +1147,11 @@ InputName	.res long, 1
 OutputName	.res long, 1
 CliMode	.res word, 1
 	.align 4
+CliModuleRoots	.res long, 1
+CliModuleCount	.res long, 1
+CliIncludeRoots	.res long, 1
+CliIncludeCount	.res long, 1
+InputPlan	.res byte, inputs.Frame.Directory+4
 ReturnCode	.res long, 1
 InputHandle	.res long, 1
 SourceHandle	.res long, 1

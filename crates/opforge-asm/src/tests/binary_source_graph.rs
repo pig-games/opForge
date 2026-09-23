@@ -325,6 +325,49 @@ fn native_with_roots(
     );
 }
 
+fn compact_cli(
+    files: &[(&str, &str)],
+    module_roots: &[&str],
+    include_roots: &[&str],
+    expected: &[u8],
+    bare_entry: bool,
+) {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let sources = files
+        .iter()
+        .map(|(path, source)| (*path, source.as_bytes()))
+        .collect::<Vec<_>>();
+    let result = crate::fs_uae_smoke::run_compact_cli_files_from_env(
+        &workspace_root(),
+        &package,
+        &sources,
+        module_roots,
+        include_roots,
+        Some(expected),
+        bare_entry,
+    )
+    .expect("fresh compact CLI source-set completion");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("native execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+    let image = runs[0]
+        .captured_artifacts
+        .get(&PathBuf::from("Work/build/opforge_compact"))
+        .expect("fresh compact CLI Hunk");
+    let allocation = hunk::allocation(image).expect("valid compact CLI Hunk");
+    assert!(allocation.total() < 2 * 1024 * 1024);
+    eprintln!(
+        "COMPACT_CLI_SOURCE_SET seconds={:?} linked_reserved_bytes={}",
+        runs[0].start_to_done_host_seconds,
+        allocation.total()
+    );
+}
+
 #[test]
 fn binary_graph_rust_ordering() {
     assert_eq!(oracle(DIAMOND).unwrap(), [1, 2, 3, 4]);
@@ -519,6 +562,15 @@ fn binary_discovery_search_roots_fs_uae() {
         Some(&expected),
         Some(&["library", "library/nested"]),
     );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; compact CLI search roots and graph order"]
+fn compact_cli_search_roots_fs_uae() {
+    let roots = &["library", "library/nested"];
+    let expected = oracle_with_roots(SEARCH_ROOTS, roots).unwrap();
+    assert_eq!(expected, [1, 2, 3, 4]);
+    compact_cli(SEARCH_ROOTS, roots, &[], &expected, false);
 }
 
 const SELECTIVE_CANDIDATES: &[(&str, &str)] = &[
@@ -745,6 +797,33 @@ fn binary_discovery_include_root_fs_uae() {
         &["common"],
         None,
     );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; compact CLI selected include search"]
+fn compact_cli_include_root_fs_uae() {
+    let expected = oracle_with_search_roots(INCLUDED_FROM_ROOT, &["library"], &["common"]).unwrap();
+    assert_eq!(expected, [1, 2]);
+    compact_cli(
+        INCLUDED_FROM_ROOT,
+        &["library"],
+        &["common"],
+        &expected,
+        false,
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; bare entry anchors current-directory discovery"]
+fn compact_cli_bare_entry_fs_uae() {
+    let files = &[
+        ("main.asm", ROOT),
+        ("library/alpha.asm", A),
+        ("library/beta.asm", B),
+        ("library/shared.asm", SHARED),
+    ];
+    let expected = oracle_with_search_roots(files, &[], &["library"]).unwrap();
+    compact_cli(files, &[], &["library"], &expected, true);
 }
 
 const INCLUDE_ASSEMBLY_FAILURE: &[(&str, &str)] = &[

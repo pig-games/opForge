@@ -1328,12 +1328,82 @@ pub(crate) fn run_compact_cli_from_env(
     source: &[u8],
     expected: Option<&[u8]>,
 ) -> Result<FsUaeSmokeOutcome, String> {
+    run_compact_cli_files_from_env(
+        workspace_root,
+        package,
+        &[("input.asm", source)],
+        &[],
+        &[],
+        expected,
+        false,
+    )
+}
+
+/// Run the compact Shell command with real source paths and explicit search roots.
+pub(crate) fn run_compact_cli_files_from_env(
+    workspace_root: &Path,
+    package: &[u8],
+    sources: &[(&str, &[u8])],
+    module_roots: &[&str],
+    include_roots: &[&str],
+    expected: Option<&[u8]>,
+    bare_entry: bool,
+) -> Result<FsUaeSmokeOutcome, String> {
     let args = std::env::var(FS_UAE_ARGS_ENV).map_err(|err| err.to_string())?;
     let binary = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".into());
-    let files = [OpforgeNativeCliGuestFile {
-        relative_path: "sources/input.asm",
-        bytes: source,
-    }];
+    if sources.is_empty() || module_roots.len() > 8 || include_roots.len() > 16 {
+        return Err("compact CLI requires an entry and bounded search roots".into());
+    }
+    let valid = |path: &str| {
+        !path.is_empty()
+            && path.is_ascii()
+            && !path.bytes().any(|byte| {
+                byte <= 32 || byte == 127 || byte == b':' || byte == b'\\' || byte == b'"'
+            })
+            && Path::new(path)
+                .components()
+                .all(|part| matches!(part, std::path::Component::Normal(_)))
+    };
+    if (bare_entry && sources[0].0.contains('/'))
+        || sources.iter().any(|(name, _)| !valid(name))
+        || module_roots.iter().any(|root| !valid(root))
+        || include_roots.iter().any(|root| !valid(root))
+    {
+        return Err("compact CLI source and search paths must be safe relative paths".into());
+    }
+    let entry_path = if bare_entry {
+        sources[0].0.to_string()
+    } else {
+        format!("Work:sources/{}", sources[0].0)
+    };
+    let mut command = format!("Work:input.bin {entry_path} Work:output.bin");
+    for root in module_roots {
+        command.push_str(&format!(" -M Work:sources/{root}"));
+    }
+    for root in include_roots {
+        command.push_str(&format!(" -I Work:sources/{root}"));
+    }
+    let paths = sources
+        .iter()
+        .enumerate()
+        .map(|(index, (name, bytes))| {
+            (
+                if bare_entry && index == 0 {
+                    (*name).to_string()
+                } else {
+                    format!("sources/{name}")
+                },
+                *bytes,
+            )
+        })
+        .collect::<Vec<_>>();
+    let files = paths
+        .iter()
+        .map(|(path, bytes)| OpforgeNativeCliGuestFile {
+            relative_path: path.as_str(),
+            bytes,
+        })
+        .collect::<Vec<_>>();
     let artifacts = expected.map(|rust_oracle| {
         [OpforgeNativeCliExpectedArtifact {
             relative_path: "Work/output.bin",
@@ -1341,11 +1411,11 @@ pub(crate) fn run_compact_cli_from_env(
         }]
     });
     let case = OpforgeNativeCliParityCase {
-        name: "compact-cli-single-source",
+        name: "compact-cli-source-set",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(package),
-        command_template: None,
+        command_template: Some(&command),
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &files,
         proof: match &artifacts {
@@ -3051,8 +3121,11 @@ fn run_native_cli_parity_batch_cases(
                 "Work:build/binary_source_harness".to_string()
             }
             NativeCliParityExecutable::CompactCli => {
-                "Work:build/opforge_compact Work:input.bin Work:sources/input.asm Work:output.bin"
-                    .to_string()
+                format!(
+                    "Work:build/opforge_compact {}",
+                    case.command_template
+                        .ok_or("compact CLI requires an explicit source command")?
+                )
             }
         };
         if matches!(executable, NativeCliParityExecutable::BinarySourceHarness)

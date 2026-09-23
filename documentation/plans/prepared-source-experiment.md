@@ -948,13 +948,13 @@ between runs; this refactor does not establish a performance change.
 ## First compact CLI checkpoint
 
 The shared compact engine now has two entry modules: the original manifest-backed
-test harness and `opforge_compact`, a separate Amiga Shell executable. The latter
-takes `PACKAGE.bsp3 SOURCE.asm OUTPUT.bin` as three positional paths, skips the
-test manifest, and processes one source file. BSP3 still comes from Rust's
-`prepare_package`; this checkpoint does not solve native canonical package
-loading or full product CLI integration. The intentionally small argument parser
-rejects quoted paths, spaces, missing or extra arguments, and paths over 255
-bytes. The compact language subset still applies.
+test harness and `opforge_compact`, a separate Amiga Shell executable. The first
+CLI checkpoint took `PACKAGE.bsp3 SOURCE.asm OUTPUT.bin` as three positional
+paths, skipped the test manifest, and processed one source file. BSP3 still
+comes from Rust's `prepare_package`; this checkpoint does not solve native
+canonical package loading or full product CLI integration. The intentionally
+small argument parser rejects quoted paths, spaces, missing or unrecognized
+arguments, and paths over 255 bytes. The compact language subset still applies.
 
 Fresh 68020 / 2 MiB FS-UAE execution produced Rust-identical bytes for a small
 6502 source with a label, two instructions and shared data emission. A separate
@@ -963,3 +963,23 @@ diagnostic. The captured compact Hunk's linked reservation was below 2 MiB. The
 manifest harness still completed a three-file copy/reversal comparison after
 engine extraction. These are functional and resource checks, not a native
 self-hosting or performance claim.
+
+The next CLI slice exposes existing native dependency discovery and selected-file
+includes as `opforge_compact PACKAGE.bsp3 ENTRY.asm OUTPUT.bin [-M DIR] [-I DIR]`.
+The entry path anchors the first search directory (the current directory for
+a bare filename); it does not force output order. `-M` roots are scanned
+recursively and `-I` roots resolve selected-file includes after the including
+file's directory. Search-root mode requires the
+supported module syntax. With no roots the original direct single-source mode
+remains available. The parser accepts up to eight module and sixteen include
+roots, all unquoted paths of at most 255 bytes. Preparation-only root planning
+lives in `binary_input_plan`; discovered paths and include-root copies are
+released before the assembly passes. The CLI's bounded argument buffers remain
+in its linked BSS until exit.
+
+Fresh 68020 / 2 MiB FS-UAE cases assembled a four-module dependency graph, a
+selected module whose include resolved through `-I`, and a bare entry filename
+searching the current directory. All were byte-identical to the live Rust
+oracles. The compact Hunk linked reservation was 52,380 bytes in the final
+focused case. This is functional breadth, not a performance claim; canonical
+package conversion remains host-side.

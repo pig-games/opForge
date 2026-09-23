@@ -1,8 +1,10 @@
-; Provisional Shell entry: opforge_compact PACKAGE.bsp3 SOURCE.asm OUTPUT.bin.
+; Provisional Shell entry with source-root search on the packed engine.
 	.module main
 	.cpu 68020
 	.use experimental.amigaos.binary_app as app
 PATH_BYTES = 256
+MODULE_ROOT_LIMIT = 8
+INCLUDE_ROOT_LIMIT = 16
 	.section entry, kind=code
 	.pub
 start	.block
@@ -28,9 +30,43 @@ start	.block
 	lea OutputPath, a1
 	bsr.w nextPath
 	bne.w usage
+options
 	bsr.w skipSpace
 	tst.b (a3)
+	beq.w ready
+	cmpi.b #'-', (a3)
 	bne.w usage
+	move.b 1(a3), d2
+	cmpi.b #'M', d2
+	beq.w moduleRoot
+	cmpi.b #'I', d2
+	bne.w usage
+	cmpi.l #INCLUDE_ROOT_LIMIT, IncludeCount
+	bhs.w usage
+	bsr.w optionValue
+	bne.w usage
+	move.l IncludeCount, d0
+	lsl.l #8, d0
+	lea IncludePaths, a1
+	adda.l d0, a1
+	bsr.w nextPath
+	bne.w usage
+	addq.l #1, IncludeCount
+	bra.w options
+moduleRoot
+	cmpi.l #MODULE_ROOT_LIMIT, ModuleCount
+	bhs.w usage
+	bsr.w optionValue
+	bne.w usage
+	move.l ModuleCount, d0
+	lsl.l #8, d0
+	lea ModulePaths, a1
+	adda.l d0, a1
+	bsr.w nextPath
+	bne.w usage
+	addq.l #1, ModuleCount
+	bra.w options
+ready
 	movea.l DosBase, a1
 	movea.l 4.w, a6
 	jsr -414(a6)
@@ -39,6 +75,17 @@ start	.block
 	move.l #SourcePath, app.Frame.SourcePath(a0)
 	move.l #OutputPath, app.Frame.OutputPath(a0)
 	move.w #1, app.Frame.Mode(a0)
+	tst.l ModuleCount
+	bne.w graphMode
+	tst.l IncludeCount
+	beq.w modeReady
+graphMode
+	move.w #2, app.Frame.Mode(a0)
+modeReady
+	move.l #ModulePaths, app.Frame.ModuleRoots(a0)
+	move.l ModuleCount, app.Frame.ModuleCount(a0)
+	move.l #IncludePaths, app.Frame.IncludeRoots(a0)
+	move.l IncludeCount, app.Frame.IncludeCount(a0)
 	jsr app.execute
 	bra.w done
 usage
@@ -88,6 +135,25 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; nextPath
+; Consume the whitespace after -M or -I. A3 advances to its path value.
+optionValue	.block
+	move.b 2(a3), d0
+	cmpi.b #' ', d0
+	beq.w advance
+	cmpi.b #9, d0
+	beq.w advance
+	cmpi.b #10, d0
+	beq.w advance
+	cmpi.b #13, d0
+	bne.w bad
+advance
+	addq.l #2, a3
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; optionValue
 skipSpace	.block
 again
 	cmpi.b #' ', (a3)
@@ -107,15 +173,19 @@ done
 	.endsection
 	.section data, kind=data
 DosName	.byte "dos.library", 0
-UsageText	.byte "Usage: opforge_compact PACKAGE.bsp3 SOURCE.asm OUTPUT.bin", 10, 0
+UsageText	.byte "Usage: opforge_compact PACKAGE.bsp3 ENTRY.asm OUTPUT.bin [-M DIR] [-I DIR]", 10, 0
 	.endsection
 	.section bss, kind=bss
 	.align 4
 DosBase	.res long, 1
-Config	.res byte, app.Frame.Mode+2
+Config	.res byte, app.Frame.IncludeCount+4
 PackagePath	.res byte, PATH_BYTES
 SourcePath	.res byte, PATH_BYTES
 OutputPath	.res byte, PATH_BYTES
+ModuleCount	.res long, 1
+IncludeCount	.res long, 1
+ModulePaths	.res byte, MODULE_ROOT_LIMIT*PATH_BYTES
+IncludePaths	.res byte, INCLUDE_ROOT_LIMIT*PATH_BYTES
 	.endsection
 	.output "build/opforge_compact", format=hunk, sections=entry, code, data, bss
 	.endmodule

@@ -20,7 +20,7 @@ OutputPath	.byte "Work:output.bin", 0
 	.endsection
 	.section bss, kind=bss
 	.align 4
-Config	.res byte, app.Frame.Mode+2
+Config	.res byte, app.Frame.IncludeCount+4
 	.endsection
 	.output "build/binary_source_harness", format=hunk, sections=entry, code, data, bss
 	.endmodule

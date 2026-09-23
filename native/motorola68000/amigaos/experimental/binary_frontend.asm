@@ -138,6 +138,27 @@ graphDone
 	tst.l d0
 	rts
 	.bend  ; beginGraph
+; Set the physical source line before lowering a line from an included file.
+; A0=active Frame, D0=1..65535. D0/CCR=status; other registers preserved.
+setLine	.block
+	movem.l d1/a1, -(sp)
+	movea.l Frame.Scratch(a0), a1
+	move.l a1, d1
+	beq.w invalidLine
+	tst.l d0
+	beq.w invalidLine
+	cmpi.l #65535, d0
+	bhi.w invalidLine
+	move.l d0, LINE_NUMBER(a1)
+	moveq #0, d0
+	bra.w lineSet
+invalidLine
+	moveq #1, d0
+lineSet
+	movem.l (sp)+, d1/a1
+	tst.l d0
+	rts
+	.bend  ; setLine
 ; Lower one caller-bounded line. A0=the session Frame; Source excludes its line
 ; ending and Output has per-line packed-record capacity. D0=0 success, 1 failure.
 ; Used is this line's packed byte count; NameCount is the next free identifier.

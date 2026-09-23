@@ -1,6 +1,6 @@
 # Binary-source native runtime
 
-Status: F7 supports explicitly ordered source files and module-local imports.
+Status: F9 adds selected-file includes to the experimental native discovery path.
 Bounded native functional checks and release comparisons pass. The last broad host run
 (F4) still had 160 baseline failures; this slice does not claim repository-wide
 qualification. See the [migration plan](native-runtime-reset.md) for the remaining
@@ -91,10 +91,16 @@ only module boundaries and `.end` outside modules.
 Aliases and unused directive entries still occupy provisional ID/value slots;
 this increment does not compact the final symbol table.
 
+F8 discovers candidate modules and prepares only requested files. F9 expands
+whole-line `.include` directives in those files during streaming preparation,
+with nested relative includes and separate include roots. Both dependency
+ordering and assembly consume packed records only. Numeric origin spans preserve
+physical file/line locations through graph reordering.
+
 Other limits remain explicit:
 
-- no native file discovery/dependency ordering, `.include`, implicit file-derived
-  modules, module metadata, dotted import aliases, anonymous blocks or dotted
+- no implicit file-derived modules, module metadata, dotted import aliases,
+  preprocessor-generated includes, anonymous blocks or dotted
   block/namespace declarations,
   macros, conditionals, loops, structs or lists;
 - no strings, general sections, relocations, relaxation or complete expression
@@ -109,7 +115,7 @@ Other limits remain explicit:
   this route.
 
 The host builds the current BSP3 package capsule, stages explicit source files
-and supplies their ordered path manifest to
+and supplies an ordered-file or discovery/search-root manifest to
 the native harness. Native tokenization creates the packed records; preparation
 compiles expressions and binds names; assembly consumes those records without
 consulting source text. This proves the execution boundary, but normal native
@@ -821,3 +827,34 @@ identities from filenames, or avoid lowering unused modules *within* a selected
 file. These remain experimental-path differences from Rust's module loader.
 Declaration count and name storage are bounded at 512 entries and 16 KiB; an
 exceeded bound fails rather than silently dropping a requested module.
+
+## F9: selected-file includes
+
+The selected-file reader now expands literal, whole-line `.include` directives
+as it tokenizes. Each active source keeps its own buffered file position; nested
+fragments remain in the enclosing module and scope. The including directory is
+searched before explicit include roots, which are distinct from module-discovery
+roots in the experimental capsule. Missing files, cycles and depth beyond eight
+fail preparation. An unused candidate with a broken include is still skipped.
+Relative paths with `.` or `..` components, labelled includes and generated
+include statements remain outside this checkpoint.
+
+Packed execution records contain no source paths or pointers. A preparation-only
+file stack owns handles and path strings. Compact `{start,end,file}` offset runs
+identify each fragment's packed records; graph materialization intersects and
+rebases these runs as it reorders modules. A fresh 68020 / 2 MiB failure proof
+reported the included fragment's numeric file identity and physical line after
+dependency ordering. The earlier explicit-file and discovery paths still pass
+their bounded checks.
+
+Live Rust and fresh native runs matched exact bytes for a selected module with
+nested includes, a bare label and `.use` in the inner fragment, and for an include
+resolved from a separate root. Missing and cyclic includes completed with nonzero
+native exits. A same-source manual-inline comparison produced identical bytes;
+single release guest samples were 0.512 seconds with includes and 0.507 seconds
+inlined. That difference is below the useful timing resolution here and does not
+establish a speed effect. The release image is 36,316 bytes with 41,252 linked
+reserved bytes, up 2,572 and 4,940 bytes from the selective F8 checkpoint. The
+extra nine-slot I/O scratch is preparation-only; retained and peak allocation
+were not separately measured for F9. This remains a bounded feature proof, not
+full native module/include parity or a self-host performance claim.

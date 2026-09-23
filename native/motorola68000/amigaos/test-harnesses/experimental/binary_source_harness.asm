@@ -14,6 +14,7 @@
 	.include "memory_telemetry.i"
 HEADER_BYTES = 76
 IO_BYTES = 4096
+INCLUDE_DEPTH = 8
 LINE_BYTES = 4096
 RECORD_BYTES = 256
 DISCOVERY_LIMIT = 128
@@ -24,7 +25,17 @@ End	.long ?
 File	.long ?
 	.endstruct
 SPAN_BYTES = Span.File+4
-IO_SCRATCH_BYTES = IO_BYTES+LINE_BYTES+RECORD_BYTES
+IO_SCRATCH_BYTES = IO_BYTES*(INCLUDE_DEPTH+1)+LINE_BYTES+RECORD_BYTES
+IncludeFrame	.struct
+Handle	.long ?
+Buffer	.long ?
+Cursor	.long ?
+End	.long ?
+Line	.long ?
+Origin	.long ?
+Path	.byte ?
+	.endstruct
+INCLUDE_FRAME_BYTES = IncludeFrame.Path+PATH_BYTES
 	.section entry, kind=code
 	.pub
 ; AmigaDOS entry. D0=0 only after complete preparation, assembly and output.
@@ -57,6 +68,7 @@ start	.block
 failed
 	bsr.w reportFailure
 cleanup
+	bsr.w closeIncludes
 	bsr.w closeSource
 	bsr.w closeInput
 	tst.l FrontStarted
@@ -77,6 +89,10 @@ freeBlocks
 	lea Output, a0
 	jsr memory.release
 	lea FileSpans, a0
+	jsr memory.release
+	lea OriginSpans, a0
+	jsr memory.release
+	lea RootPaths, a0
 	jsr memory.release
 	lea DiscoveryBlock, a0
 	jsr memory.release
@@ -141,8 +157,8 @@ locateFailure	.block
 	bhi.w done
 	movea.l memory.Block.Pointer(a0), a2
 	adda.l d4, a2
-	move.l SpanCount, d3
-	lea FileSpans, a0
+	move.l OriginCount, d3
+	lea OriginSpans, a0
 	movea.l memory.Block.Pointer(a0), a0
 loop
 	tst.l d3
@@ -274,7 +290,7 @@ prepare	.block
 	move.l a1, IoBuffer
 	move.l a1, IoCursor
 	move.l a1, IoEnd
-	adda.l #IO_BYTES, a1
+	adda.l #IO_BYTES*(INCLUDE_DEPTH+1), a1
 	move.l a1, LineBuffer
 	adda.l #LINE_BYTES, a1
 	move.l a1, frontend.Frame.Output(a0)
@@ -330,6 +346,33 @@ searchRoot
 	bne.w closeBad
 	subq.l #1, SearchPathCount
 	bne.w searchRoot
+	move.l #ManifestWord, d2
+	moveq #2, d3
+	bsr.w readExact
+	bne.w closeBad
+	moveq #0, d0
+	move.w ManifestWord, d0
+	cmpi.l #16, d0
+	bhi.w closeBad
+	move.l d0, RootCount
+	move.l d0, IncludeRootsRemaining
+	lsl.l #8, d0
+	lea RootPaths, a0
+	jsr memory.reserve
+	bne.w closeBad
+	move.l RootCount, d0
+	lsl.l #8, d0
+	move.l d0, memory.Block.Used(a0)
+includeRoot
+	tst.l IncludeRootsRemaining
+	beq.w rootsDone
+	bsr.w readManifestPath
+	bne.w closeBad
+	bsr.w saveRoot
+	bne.w closeBad
+	subq.l #1, IncludeRootsRemaining
+	bra.w includeRoot
+rootsDone
 	movea.l DosBase, a6
 	move.l InputHandle, d1
 	move.l #ManifestWord, d2
@@ -375,6 +418,7 @@ manifestReady
 	bne.w closeBad
 filesReady
 	move.l #1, SourceOrdinal
+	move.l SourceCount, NextOrigin
 nextFile
 	tst.l DiscoverMode
 	beq.w ordinalReady
@@ -385,6 +429,7 @@ ordinalReady
 	clr.l SourceLine
 	bsr.w openSource
 	bne.w closeBad
+	move.l SourceOrdinal, OriginId
 	bsr.w fileSpan
 	lea Records, a1
 	move.l memory.Block.Used(a1), Span.Start(a0)
@@ -413,9 +458,17 @@ lineReady
 	bra.w sourceLoop
 sourceDone
 	tst.l LineUsed
-	beq.w fileDone
+	beq.w sourceReady
 	bsr.w lowerLine
 	bne.w closeBad
+	bra.w sourceLoop
+sourceReady
+	tst.l IncludeDepthNow
+	beq.w sourceEnd
+	bsr.w popInclude
+	bne.w closeBad
+	bra.w sourceLoop
+sourceEnd
 fileDone
 	bsr.w closeSource
 	bne.w closeBad
@@ -462,6 +515,8 @@ prepared
 	clr.l DiscoveryScratch
 	clr.l DiscoveryPaths
 pathsCleared
+	lea RootPaths, a0
+	jsr memory.release
 	tst.l GraphMode
 	beq.w orderReady
 	tst.l OrderedCount
@@ -486,6 +541,7 @@ orderReady
 	bsr.w materializeOrder
 	bne.w completionBad
 selected
+	bsr.w clearIncludeText
 	lea Front, a0
 	jsr frontend.finish
 	clr.l FrontStarted
@@ -496,6 +552,8 @@ selected
 	lea DeclarationBlock, a0
 	jsr memory.release
 	lea PrepBlock, a0
+	jsr memory.release
+	lea FileSpans, a0
 	jsr memory.release
 	clr.l IoBuffer
 	clr.l IoCursor
@@ -538,6 +596,7 @@ completionBad
 	clr.l SourceLine
 	bra.w bad
 closeBad
+	bsr.w closeIncludes
 	bsr.w closeSource
 	bsr.w closeInput
 bad
@@ -751,6 +810,10 @@ done
 	.bend  ; readByte
 
 lowerLine	.block
+	bsr.w handleInclude
+	tst.l d0
+	bmi.w bad
+	bne.w included
 	lea Front, a0
 	move.l LineBuffer, frontend.Frame.Source(a0)
 	move.l LineUsed, d0
@@ -761,10 +824,15 @@ lowerLine	.block
 	subq.l #1, d0
 trimmed
 	move.l d0, frontend.Frame.SourceBytes(a0)
+	move.l SourceLine, d0
+	jsr frontend.setLine
+	bne.w bad
+	lea Front, a0
 	jsr frontend.line
 	bne.w bad
 	lea Records, a0
 	move.l memory.Block.Used(a0), d0
+	move.l d0, LineOffset
 	lea Front, a1
 	add.l frontend.Frame.Used(a1), d0
 	bcs.w bad
@@ -779,11 +847,18 @@ trimmed
 	movea.l frontend.Frame.Output(a0), a0
 	movea.l a2, a1
 	bsr.w copy
+	bsr.w appendOrigin
+	bne.w bad
 	clr.l LineUsed
 	addq.l #1, SourceLine
 	moveq #0, d0
 	rts
+included
+	clr.l LineUsed
+	moveq #0, d0
+	rts
 bad
+	move.l OriginId, SourceOrdinal
 	moveq #1, d0
 	rts
 	.bend  ; lowerLine
@@ -892,6 +967,7 @@ done
 	.bend  ; copy
 	.include "binary_source_graph_records.i"
 	.include "binary_source_discovery_index.i"
+	.include "binary_source_includes.i"
 	.endsection
 	.section data, kind=data
 DosName	.byte "dos.library", 0
@@ -926,6 +1002,19 @@ GraphBlock	.res byte, memory.Block.Used+4
 GraphSpans	.res byte, memory.Block.Used+4
 OrderedRecords	.res byte, memory.Block.Used+4
 OrderedFiles	.res byte, memory.Block.Used+4
+OriginSpans	.res byte, memory.Block.Used+4
+OriginCount	.res long, 1
+RootPaths	.res byte, memory.Block.Used+4
+RootCount	.res long, 1
+IncludeRootsRemaining	.res long, 1
+NextOrigin	.res long, 1
+OriginId	.res long, 1
+LineOffset	.res long, 1
+IncludeDepthNow	.res long, 1
+IncludeStack	.res byte, INCLUDE_FRAME_BYTES*INCLUDE_DEPTH
+IncludePath	.res byte, PATH_BYTES
+IncludeName	.res byte, PATH_BYTES
+IncludeHandle	.res long, 1
 SourceOrdinal	.res long, 1
 SourceLine	.res long, 1
 InAssembly	.res long, 1

@@ -24,6 +24,14 @@ fn oracle(files: &[(&str, &str)]) -> Result<Vec<u8>, String> {
 }
 
 fn oracle_with_roots(files: &[(&str, &str)], roots: &[&str]) -> Result<Vec<u8>, String> {
+    oracle_with_search_roots(files, roots, &[])
+}
+
+fn oracle_with_search_roots(
+    files: &[(&str, &str)],
+    module_roots: &[&str],
+    include_roots: &[&str],
+) -> Result<Vec<u8>, String> {
     let dir = create_temp_dir("binary-module-graph");
     for (name, source) in files {
         let path = dir.join(name);
@@ -31,15 +39,22 @@ fn oracle_with_roots(files: &[(&str, &str)], roots: &[&str]) -> Result<Vec<u8>, 
         fs::write(path, source).unwrap();
     }
     let root = dir.join(files[0].0);
-    let result = if roots.is_empty() {
+    let result = if module_roots.is_empty() && include_roots.is_empty() {
         assemble_example_entries_with_runtime_mode(&root, true)
     } else {
-        let root_lines =
-            expand_source_file(&root, &[], &[], 64).map_err(|error| format!("{error:?}"))?;
+        let module_roots = module_roots
+            .iter()
+            .map(|root| dir.join(root))
+            .collect::<Vec<_>>();
+        let include_roots = include_roots
+            .iter()
+            .map(|root| dir.join(root))
+            .collect::<Vec<_>>();
+        let root_lines = expand_source_file(&root, &[], &include_roots, 64)
+            .map_err(|error| format!("{error:?}"))?;
         let root_module_id =
             root_module_id_from_lines(&root, &root_lines).map_err(|error| format!("{error:?}"))?;
-        let module_roots = roots.iter().map(|root| dir.join(root)).collect::<Vec<_>>();
-        let graph = load_module_graph(&root, root_lines, &[], &[], &module_roots, 64)
+        let graph = load_module_graph(&root, root_lines, &[], &include_roots, &module_roots, 64)
             .map_err(|error| format!("{error:?}"))?;
         let mut assembler = Assembler::new();
         assembler.root_metadata.root_module_id = Some(root_module_id);
@@ -82,6 +97,27 @@ fn oracle_with_roots(files: &[(&str, &str)], roots: &[&str]) -> Result<Vec<u8>, 
 }
 
 fn native(files: &[(&str, &str)], cpu: &str, expected: Option<&[u8]>, roots: Option<&[&str]>) {
+    native_with_diagnostic(files, cpu, expected, roots, None);
+}
+
+fn native_with_diagnostic(
+    files: &[(&str, &str)],
+    cpu: &str,
+    expected: Option<&[u8]>,
+    roots: Option<&[&str]>,
+    diagnostic: Option<&str>,
+) {
+    native_with_roots(files, cpu, expected, roots, &[], diagnostic);
+}
+
+fn native_with_roots(
+    files: &[(&str, &str)],
+    cpu: &str,
+    expected: Option<&[u8]>,
+    roots: Option<&[&str]>,
+    include_roots: &[&str],
+    diagnostic: Option<&str>,
+) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline(cpu, None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
@@ -90,13 +126,14 @@ fn native(files: &[(&str, &str)], cpu: &str, expected: Option<&[u8]>, roots: Opt
         .map(|(path, source)| (*path, source.as_bytes()))
         .collect::<Vec<_>>();
     let result = if let Some(roots) = roots {
-        crate::fs_uae_smoke::run_binary_discovery_from_env(
+        crate::fs_uae_smoke::run_binary_discovery_with_includes_from_env(
             &workspace_root(),
             &package,
             &sources,
             expected,
-            None,
+            diagnostic,
             roots,
+            include_roots,
         )
     } else {
         crate::fs_uae_smoke::run_binary_graph_from_env(
@@ -104,7 +141,7 @@ fn native(files: &[(&str, &str)], cpu: &str, expected: Option<&[u8]>, roots: Opt
             &package,
             &sources,
             expected,
-            None,
+            diagnostic,
         )
     }
     .expect("fresh native graph completion");
@@ -258,6 +295,159 @@ fn binary_discovery_selective_fs_uae() {
         Some(&expected),
         Some(&["library"]),
     );
+}
+
+const INCLUDED_GRAPH: &[(&str, &str)] = &[
+    (
+        "entry/main.asm",
+        ".module main\n.cpu m6502\n.use chosen\n.byte 3\n.endmodule\n.end\n",
+    ),
+    (
+        "library/chosen.asm",
+        ".module chosen\n.cpu m6502\n.include \"detail/outer.inc\"\n.endmodule\n.end\n",
+    ),
+    (
+        "library/detail/outer.inc",
+        ".include \"inner.inc\"\n.byte 2\n",
+    ),
+    (
+        "library/detail/inner.inc",
+        ".use helper\nmark\n.byte helper.value - $1000\n",
+    ),
+    (
+        "library/helper.asm",
+        ".module helper\n.cpu m6502\n.org $1000\n.pub\nvalue\n.byte 1\n.endmodule\n.end\n",
+    ),
+    (
+        "library/unused.asm",
+        ".module unused\n.include \"missing.inc\"\n.endmodule\n",
+    ),
+];
+
+#[test]
+fn binary_discovery_nested_include_rust() {
+    assert_eq!(
+        oracle_with_roots(INCLUDED_GRAPH, &["library"]).unwrap(),
+        [1, 0, 2, 3]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; selected nested includes and numeric graph"]
+fn binary_discovery_nested_include_fs_uae() {
+    let expected = oracle_with_roots(INCLUDED_GRAPH, &["library"]).unwrap();
+    native(INCLUDED_GRAPH, "m6502", Some(&expected), Some(&["library"]));
+}
+
+const INLINED_GRAPH: &[(&str, &str)] = &[
+    INCLUDED_GRAPH[0],
+    (
+        "library/chosen.asm",
+        ".module chosen\n.cpu m6502\n.use helper\nmark\n.byte helper.value - $1000\n.byte 2\n.endmodule\n.end\n",
+    ),
+    INCLUDED_GRAPH[2],
+    INCLUDED_GRAPH[3],
+    INCLUDED_GRAPH[4],
+    INCLUDED_GRAPH[5],
+];
+
+#[test]
+#[ignore = "requires configured FS-UAE; bounded include versus manual inlining"]
+fn binary_discovery_include_inline_comparison_fs_uae() {
+    let expected = oracle_with_roots(INCLUDED_GRAPH, &["library"]).unwrap();
+    assert_eq!(
+        oracle_with_roots(INLINED_GRAPH, &["library"]).unwrap(),
+        expected
+    );
+    eprintln!("BINARY_INCLUDE_COMPARISON mode=include");
+    native(INCLUDED_GRAPH, "m6502", Some(&expected), Some(&["library"]));
+    eprintln!("BINARY_INCLUDE_COMPARISON mode=inline");
+    native(INLINED_GRAPH, "m6502", Some(&expected), Some(&["library"]));
+}
+
+const INCLUDED_FROM_ROOT: &[(&str, &str)] = &[
+    (
+        "entry/main.asm",
+        ".module main\n.cpu m6502\n.use chosen\n.byte 2\n.endmodule\n.end\n",
+    ),
+    (
+        "library/chosen.asm",
+        ".module chosen\n.cpu m6502\n.include \"defs.inc\"\n.endmodule\n.end\n",
+    ),
+    ("common/defs.inc", ".org $1000\n.byte 1\n"),
+];
+
+#[test]
+fn binary_discovery_include_root_rust() {
+    assert_eq!(
+        oracle_with_search_roots(INCLUDED_FROM_ROOT, &["library"], &["common"]).unwrap(),
+        [1, 2]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; selected include search root"]
+fn binary_discovery_include_root_fs_uae() {
+    let expected = oracle_with_search_roots(INCLUDED_FROM_ROOT, &["library"], &["common"]).unwrap();
+    native_with_roots(
+        INCLUDED_FROM_ROOT,
+        "m6502",
+        Some(&expected),
+        Some(&["library"]),
+        &["common"],
+        None,
+    );
+}
+
+const INCLUDE_ASSEMBLY_FAILURE: &[(&str, &str)] = &[
+    (
+        "entry/main.asm",
+        ".module main\n.cpu m6502\n.use chosen\n.byte 2\n.endmodule\n.end\n",
+    ),
+    (
+        "library/chosen.asm",
+        ".module chosen\n.cpu m6502\n.include \"part.inc\"\n.endmodule\n.end\n",
+    ),
+    ("library/part.inc", ".org $1000\n.long $+2147483647\n"),
+];
+
+#[test]
+#[ignore = "requires configured FS-UAE; included record origin after graph ordering"]
+fn binary_discovery_include_origin_fs_uae() {
+    native_with_diagnostic(
+        INCLUDE_ASSEMBLY_FAILURE,
+        "m6502",
+        None,
+        Some(&["library"]),
+        Some("[file 00000004, line 00000002]"),
+    );
+}
+
+const INCLUDE_MISSING: &[(&str, &str)] = &[(
+    "entry/main.asm",
+    ".module main\n.cpu m6502\n.include \"missing.inc\"\n.endmodule\n.end\n",
+)];
+const INCLUDE_CYCLE: &[(&str, &str)] = &[
+    (
+        "entry/main.asm",
+        ".module main\n.cpu m6502\n.include \"a.inc\"\n.endmodule\n.end\n",
+    ),
+    ("entry/a.inc", ".include \"b.inc\"\n"),
+    ("entry/b.inc", ".include \"a.inc\"\n"),
+];
+
+#[test]
+fn binary_discovery_include_rejections_rust() {
+    assert!(oracle(INCLUDE_MISSING).is_err());
+    assert!(oracle(INCLUDE_CYCLE).is_err());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; bounded missing and cyclic include failures"]
+fn binary_discovery_include_rejections_fs_uae() {
+    for files in [INCLUDE_MISSING, INCLUDE_CYCLE] {
+        native(files, "m6502", None, Some(&[]));
+    }
 }
 
 const ORDERED_DIAMOND: &[(&str, &str)] = &[

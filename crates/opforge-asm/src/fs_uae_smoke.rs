@@ -1316,6 +1316,7 @@ pub(crate) fn run_binary_source_harness_from_env(
         None,
         false,
         None,
+        &[],
     )
 }
 
@@ -1334,6 +1335,7 @@ pub(crate) fn run_binary_source_rejection_from_env(
         diagnostic,
         false,
         None,
+        &[],
     )
 }
 
@@ -1354,17 +1356,20 @@ pub(crate) fn run_binary_graph_from_env(
         diagnostic,
         true,
         None,
+        &[],
     )
 }
 
-/// Search the staged guest source directory starting from the entry file.
-pub(crate) fn run_binary_discovery_from_env(
+/// Search for modules from the entry directory and configured module roots;
+/// selected files resolve includes from their own directory and include roots.
+pub(crate) fn run_binary_discovery_with_includes_from_env(
     workspace_root: &Path,
     package: &[u8],
     sources: &[(&str, &[u8])],
     expected: Option<&[u8]>,
     diagnostic: Option<&str>,
     module_roots: &[&str],
+    include_roots: &[&str],
 ) -> Result<FsUaeSmokeOutcome, String> {
     run_binary_source_files_from_env(
         workspace_root,
@@ -1374,6 +1379,7 @@ pub(crate) fn run_binary_discovery_from_env(
         diagnostic,
         true,
         Some(module_roots),
+        include_roots,
     )
 }
 
@@ -1385,6 +1391,7 @@ fn run_binary_source_files_from_env(
     diagnostic: Option<&str>,
     graph: bool,
     module_roots: Option<&[&str]>,
+    include_roots: &[&str],
 ) -> Result<FsUaeSmokeOutcome, String> {
     let args = std::env::var(FS_UAE_ARGS_ENV).map_err(|err| err.to_string())?;
     let binary = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".into());
@@ -1459,6 +1466,35 @@ fn run_binary_source_files_from_env(
         }
         input.extend_from_slice(&(guest_path.len() as u16).to_be_bytes());
         input.extend_from_slice(guest_path.as_bytes());
+    }
+    if discovery {
+        let count = u16::try_from(include_roots.len()).map_err(|_| "too many include roots")?;
+        if count > 16 {
+            return Err("include roots exceed native limit of 16".into());
+        }
+        input.extend_from_slice(&count.to_be_bytes());
+        for root in include_roots {
+            let relative = Path::new(root);
+            if relative.as_os_str().is_empty()
+                || relative
+                    .components()
+                    .any(|part| !matches!(part, std::path::Component::Normal(_)))
+                || !root.is_ascii()
+                || root
+                    .bytes()
+                    .any(|byte| byte < 32 || byte == 127 || byte == b':' || byte == b'\\')
+            {
+                return Err(format!("invalid include root: {root}"));
+            }
+            let guest_path = format!("Work:sources/{root}");
+            if guest_path.len() > 255 {
+                return Err("include root path exceeds 255 bytes".into());
+            }
+            input.extend_from_slice(&(guest_path.len() as u16).to_be_bytes());
+            input.extend_from_slice(guest_path.as_bytes());
+        }
+    } else if !include_roots.is_empty() {
+        return Err("include roots require discovery mode".into());
     }
     let files = paths
         .iter()

@@ -479,3 +479,24 @@ so F8 is a breadth checkpoint rather than a demonstrated performance win.
 The selective follow-up adds 1,380 release-image bytes and 1,344 linked-reserved
 bytes beyond initial F8. Its bounded 2 MiB proof and limits are recorded in the
 [experiment note](prepared-source-experiment.md#selective-native-discovery-follow-up).
+
+## F9 increment contract — selected-file includes
+
+Selected native source files expand whole-line `.include "relative/path"` while
+streaming through the binary frontend. Resolve the including file's directory
+first, then the separately configured include roots. Nested includes share the
+enclosing module/scope session; only the top-level candidate closes a file in
+the module graph. Missing files, cycles and the eight-level include bound fail
+within preparation. The unused candidate index does not expand includes.
+
+Keep physical file/line provenance as numeric packed-offset runs. Rebase these
+runs when dependency ordering copies module spans, so assembly diagnostics point
+to the included fragment. No include path, source buffer or lexical lookup may
+survive preparation. Preserve F7 explicit files and F8 discovery for comparison.
+The current bounded checkpoint is described in the
+[runtime note](prepared-source-experiment.md#f9-selected-file-includes).
+
+This does not complete Rust's include language. Relative path components `.`
+and `..`, labels on an include line, preprocessor-generated includes and larger
+depths are outside this experiment. Broader language coverage should follow
+focused parity cases instead of growing a parallel text preprocessor blindly.

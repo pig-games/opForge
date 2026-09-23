@@ -1,8 +1,8 @@
 # Native runtime direction and migration plan
 
-Status: active direction. The compact binary-source runtime is a successful
-experimental foundation, but it implements only a bounded language subset and is
-not yet the normal native CLI path. Its current representation, measurements and
+Status: active direction. The compact binary-source runtime now has a separate
+provisional Shell executable, but it implements only a bounded language subset and
+is not yet the normal native CLI path. Its current representation, measurements and
 reproduction details are in the
 [binary-source runtime note](prepared-source-experiment.md). Git history contains
 the completed W1–W3, R1 and M1–M8 investigation records.
@@ -550,3 +550,15 @@ This does not complete Rust's include language. Relative path components `.`
 and `..`, labels on an include line, preprocessor-generated includes and larger
 depths are outside this experiment. Broader language coverage should follow
 focused parity cases instead of growing a parallel text preprocessor blindly.
+
+## First CLI integration checkpoint
+
+`opforge_compact PACKAGE.bsp3 SOURCE.asm OUTPUT.bin` is a separate 68020 Hunk
+executable. It accepts exactly three unquoted, space-free Shell paths, reads a
+host-prepared BSP3 package and one source file, and writes flat binary output.
+The test harness and CLI call the same compact engine; the manifest-backed
+multi-file path remains available for focused language tests. The standalone CLI
+does not yet generate or load canonical packages natively, accept discovery
+roots or include roots as arguments, or replace `opforge_cli`. Unsupported input
+returns nonzero. Focused native proof and current constraints are in the
+[runtime note](prepared-source-experiment.md#first-compact-cli-checkpoint).

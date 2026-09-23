@@ -554,6 +554,7 @@ enum NativeCliParityExecutable {
     ExpressionI64Harness,
     CompactMemoHarness,
     BinarySourceHarness,
+    CompactCli,
 }
 
 struct OpforgeNativeCliStagedInputs<'a> {
@@ -1317,6 +1318,50 @@ pub(crate) fn run_binary_source_harness_from_env(
         false,
         None,
         &[],
+    )
+}
+
+/// Exercise the standalone Shell entry with a plain BSP3 package and one source.
+pub(crate) fn run_compact_cli_from_env(
+    workspace_root: &Path,
+    package: &[u8],
+    source: &[u8],
+    expected: Option<&[u8]>,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args = std::env::var(FS_UAE_ARGS_ENV).map_err(|err| err.to_string())?;
+    let binary = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".into());
+    let files = [OpforgeNativeCliGuestFile {
+        relative_path: "sources/input.asm",
+        bytes: source,
+    }];
+    let artifacts = expected.map(|rust_oracle| {
+        [OpforgeNativeCliExpectedArtifact {
+            relative_path: "Work/output.bin",
+            rust_oracle,
+        }]
+    });
+    let case = OpforgeNativeCliParityCase {
+        name: "compact-cli-single-source",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(package),
+        command_template: None,
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &files,
+        proof: match &artifacts {
+            Some(artifacts) => OpforgeNativeCliProof::ExactArtifacts(artifacts),
+            None => OpforgeNativeCliProof::ExpectedFailureContaining(
+                "binary source: unsupported or invalid input",
+            ),
+        },
+    };
+    run_native_cli_parity_batch_cases(
+        workspace_root,
+        &binary,
+        &args,
+        &[case],
+        NativeCliParityExecutable::CompactCli,
+        None,
     )
 }
 
@@ -2401,6 +2446,7 @@ fn opforge_native_cli_case_identity(
             NativeCliParityExecutable::ExpressionI64Harness => b"expression-i64-harness",
             NativeCliParityExecutable::CompactMemoHarness => b"compact-memo-harness",
             NativeCliParityExecutable::BinarySourceHarness => b"binary-source-harness",
+            NativeCliParityExecutable::CompactCli => b"compact-cli",
         },
     );
     state = fnv1a64_update(state, &[0]);
@@ -2820,6 +2866,7 @@ fn run_native_cli_parity_batch_cases(
         NativeCliParityExecutable::ExpressionI64Harness => "tkpkg_expression_i64_harness",
         NativeCliParityExecutable::CompactMemoHarness => "tkpkg_compact_memo_harness",
         NativeCliParityExecutable::BinarySourceHarness => "binary_source_harness",
+        NativeCliParityExecutable::CompactCli => "opforge_compact",
     };
     let source_path = workspace_root.join(match executable {
         NativeCliParityExecutable::OpforgeCli
@@ -2842,6 +2889,9 @@ fn run_native_cli_parity_batch_cases(
         }
         NativeCliParityExecutable::BinarySourceHarness => {
             "native/motorola68000/amigaos/test-harnesses/experimental/binary_source_harness.asm"
+        }
+        NativeCliParityExecutable::CompactCli => {
+            "native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"
         }
     });
     if !source_path.is_file() {
@@ -2954,7 +3004,8 @@ fn run_native_cli_parity_batch_cases(
                         .ok_or("compact memo harness requires batch bytes")?,
                 )?;
             }
-            NativeCliParityExecutable::BinarySourceHarness => {
+            NativeCliParityExecutable::BinarySourceHarness
+            | NativeCliParityExecutable::CompactCli => {
                 if cases.len() != 1 {
                     return Err("binary source harness requires one live input".into());
                 }
@@ -2998,6 +3049,10 @@ fn run_native_cli_parity_batch_cases(
             }
             NativeCliParityExecutable::BinarySourceHarness => {
                 "Work:build/binary_source_harness".to_string()
+            }
+            NativeCliParityExecutable::CompactCli => {
+                "Work:build/opforge_compact Work:input.bin Work:sources/input.asm Work:output.bin"
+                    .to_string()
             }
         };
         if matches!(executable, NativeCliParityExecutable::BinarySourceHarness)
@@ -3075,7 +3130,8 @@ fn run_native_cli_parity_batch_cases(
         | NativeCliParityExecutable::TkvmBranchHarness
         | NativeCliParityExecutable::ExpressionI64Harness
         | NativeCliParityExecutable::CompactMemoHarness
-        | NativeCliParityExecutable::BinarySourceHarness => {
+        | NativeCliParityExecutable::BinarySourceHarness
+        | NativeCliParityExecutable::CompactCli => {
             opforge_native_cli_case_assembly_defines(&cases[0])
         }
     };
@@ -3088,7 +3144,8 @@ fn run_native_cli_parity_batch_cases(
         | NativeCliParityExecutable::TkvmBranchHarness
         | NativeCliParityExecutable::ExpressionI64Harness
         | NativeCliParityExecutable::CompactMemoHarness
-        | NativeCliParityExecutable::BinarySourceHarness => source_path,
+        | NativeCliParityExecutable::BinarySourceHarness
+        | NativeCliParityExecutable::CompactCli => source_path,
         NativeCliParityExecutable::TkpkgDebugCliOperandRecord => {
             let package_bytes =
                 resolve_opforge_native_cli_package_bytes(workspace_root, &cases[0])?.ok_or_else(
@@ -3191,6 +3248,7 @@ fn run_native_cli_parity_batch_cases(
         NativeCliParityExecutable::BinarySourceHarness => {
             mounted_work_dir.join("build/binary_source_harness")
         }
+        NativeCliParityExecutable::CompactCli => mounted_work_dir.join("build/opforge_compact"),
     };
     if let Some(bytes) = bootstrap_executable {
         fs::write(&mounted_hunk_alias_path, bytes).map_err(|err| {
@@ -3803,6 +3861,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             | "tkpkg_expression_i64_harness"
             | "tkpkg_compact_memo_harness"
             | "binary_source_harness"
+            | "opforge_compact"
     ) {
         let amigaos_dir = workspace_root
             .join("native")
@@ -3818,7 +3877,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             amigaos_dir.join("opasm"),
             amigaos_dir.join("debug"),
         ];
-        if example_name == "binary_source_harness" {
+        if matches!(example_name, "binary_source_harness" | "opforge_compact") {
             paths.push(amigaos_dir.join("experimental"));
         }
         return paths;
@@ -3853,6 +3912,7 @@ fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathB
                 | "tkpkg_expression_i64_harness"
                 | "tkpkg_compact_memo_harness"
                 | "binary_source_harness"
+                | "opforge_compact"
         )
     {
         let amigaos_dir = workspace_root

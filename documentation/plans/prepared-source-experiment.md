@@ -944,3 +944,22 @@ numeric-graph output comparison, included-file diagnostic origin, and reachable
 block output. The release harness image grew 39,332 → 39,356 bytes, and linked
 reservation grew 43,944 → 44,052 bytes. One graph timing differed substantially
 between runs; this refactor does not establish a performance change.
+
+## First compact CLI checkpoint
+
+The shared compact engine now has two entry modules: the original manifest-backed
+test harness and `opforge_compact`, a separate Amiga Shell executable. The latter
+takes `PACKAGE.bsp3 SOURCE.asm OUTPUT.bin` as three positional paths, skips the
+test manifest, and processes one source file. BSP3 still comes from Rust's
+`prepare_package`; this checkpoint does not solve native canonical package
+loading or full product CLI integration. The intentionally small argument parser
+rejects quoted paths, spaces, missing or extra arguments, and paths over 255
+bytes. The compact language subset still applies.
+
+Fresh 68020 / 2 MiB FS-UAE execution produced Rust-identical bytes for a small
+6502 source with a label, two instructions and shared data emission. A separate
+unsupported-directive invocation completed with exit code 20 and the expected
+diagnostic. The captured compact Hunk's linked reservation was below 2 MiB. The
+manifest harness still completed a three-file copy/reversal comparison after
+engine extraction. These are functional and resource checks, not a native
+self-hosting or performance claim.

@@ -139,6 +139,63 @@ fn binary_source_fs_uae() {
     assert_binary_source(source, cpu);
 }
 
+#[test]
+#[ignore = "requires configured FS-UAE; standalone compact Shell CLI"]
+fn compact_cli_fs_uae() {
+    let source = ".cpu m6502\nstart:\n lda #$12\n sta $40\n .byte 7\n.end\n";
+    let (entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&source.lines().collect::<Vec<_>>(), true)
+            .expect("live Rust source oracle");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    let oracle = entries
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect::<Vec<_>>();
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+        &workspace_root(),
+        &package,
+        source.as_bytes(),
+        Some(&oracle),
+    )
+    .expect("compact CLI must complete with Rust-identical output");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+    let image = runs[0]
+        .captured_artifacts
+        .get(&PathBuf::from("Work/build/opforge_compact"))
+        .expect("fresh compact CLI image");
+    let allocation = hunk::allocation(image).expect("valid compact CLI Hunk");
+    assert!(allocation.total() < 2 * 1024 * 1024);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; compact CLI rejects unsupported input"]
+fn compact_cli_rejection_fs_uae() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+        &workspace_root(),
+        &package,
+        b" .unsupported 1\n",
+        None,
+    )
+    .expect("compact CLI must reject unsupported input");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(20));
+}
+
 fn assert_binary_source(source: String, cpu: String) -> serde_json::Value {
     let (entries, diagnostics) =
         assemble_source_entries_with_runtime_mode(&source.lines().collect::<Vec<_>>(), true)

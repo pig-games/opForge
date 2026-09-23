@@ -383,14 +383,15 @@ rootsDone
 	move.l CandidateCount, d0
 sourceCountReady
 	move.l d0, SourceCount
-	move.l d0, SpanCount
+	clr.l SpanCount
+	tst.l DiscoverMode
+	beq.w spanCapacityReady
+	move.l #graph.MAX_SPANS, d0
+spanCapacityReady
 	mulu.w #SPAN_BYTES, d0
 	lea FileSpans, a0
 	jsr memory.reserve
 	bne.w closeBad
-	move.l SourceCount, d0
-	mulu.w #SPAN_BYTES, d0
-	move.l d0, memory.Block.Used(a0)
 	tst.l GraphMode
 	beq.w manifestReady
 	move.l #frontend.GRAPH_BYTES, d0
@@ -429,6 +430,12 @@ ordinalReady
 	clr.l SourceLine
 	bsr.w openSource
 	bne.w closeBad
+	tst.l DiscoverMode
+	beq.w spanAllowed
+	move.l SpanCount, d0
+	cmpi.l #graph.MAX_SPANS, d0
+	bhs.w closeBad
+spanAllowed
 	move.l SourceOrdinal, OriginId
 	bsr.w fileSpan
 	lea Records, a1
@@ -469,6 +476,11 @@ sourceReady
 	bne.w closeBad
 	bra.w sourceLoop
 sourceEnd
+	tst.l RequestedModule
+	beq.w selectionComplete
+	cmpi.l #2, SelectionState
+	bne.w closeBad
+selectionComplete
 fileDone
 	bsr.w closeSource
 	bne.w closeBad
@@ -480,12 +492,11 @@ fileDone
 	bsr.w fileSpan
 	lea Records, a1
 	move.l memory.Block.Used(a1), Span.End(a0)
+	addq.l #1, SpanCount
+	lea FileSpans, a0
+	addi.l #SPAN_BYTES, memory.Block.Used(a0)
 	tst.l DiscoverMode
 	beq.w sequential
-	move.l SourceOrdinal, d0
-	subq.l #1, d0
-	lea LoadedCandidates, a0
-	move.b #1, 0(a0, d0.w)
 	bsr.w resolveGraph
 	beq.w prepared
 	cmpi.l #2, d0
@@ -747,10 +758,9 @@ bad
 	.bend  ; closeSource
 
 ; A0=current numeric span, each {start offset,end offset,file ordinal};
-; clobbers D0/A0. SourceOrdinal is validated by the manifest loop.
+; clobbers D0/A0. SpanCount identifies this preparation load.
 fileSpan	.block
-	move.l SourceOrdinal, d0
-	subq.l #1, d0
+	move.l SpanCount, d0
 	mulu.w #SPAN_BYTES, d0
 	lea FileSpans, a0
 	movea.l memory.Block.Pointer(a0), a0
@@ -814,6 +824,10 @@ lowerLine	.block
 	tst.l d0
 	bmi.w bad
 	bne.w included
+	bsr.w selectLine
+	tst.l d0
+	bmi.w bad
+	beq.w skipped
 	lea Front, a0
 	move.l LineBuffer, frontend.Frame.Source(a0)
 	move.l LineUsed, d0
@@ -855,6 +869,11 @@ trimmed
 	rts
 included
 	clr.l LineUsed
+	moveq #0, d0
+	rts
+skipped
+	clr.l LineUsed
+	addq.l #1, SourceLine
 	moveq #0, d0
 	rts
 bad
@@ -967,10 +986,13 @@ done
 	.bend  ; copy
 	.include "binary_source_graph_records.i"
 	.include "binary_source_discovery_index.i"
+	.include "binary_source_selection.i"
 	.include "binary_source_includes.i"
 	.endsection
 	.section data, kind=data
 DosName	.byte "dos.library", 0
+SelectedModuleKeyword	.byte "module"
+SelectedEndmoduleKeyword	.byte "endmodule"
 InputPath	.byte "Work:input.bin", 0
 OutputPath	.byte "Work:output.bin", 0
 FailureMessage	.byte "binary source: unsupported or invalid input [file "
@@ -995,8 +1017,11 @@ DiscoveryBlock	.res byte, memory.Block.Used+4
 DiscoveryScratch	.res long, 1
 DiscoveryPaths	.res long, 1
 DeclarationBlock	.res byte, memory.Block.Used+4
-LoadedCandidates	.res byte, DISCOVERY_LIMIT
 IndexOverflow	.res long, 1
+RequestedModule	.res long, 1
+RequestedName	.res long, 1
+RequestedNameBytes	.res long, 1
+SelectionState	.res long, 1
 OrderedCount	.res long, 1
 GraphBlock	.res byte, memory.Block.Used+4
 GraphSpans	.res byte, memory.Block.Used+4

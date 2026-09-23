@@ -113,6 +113,7 @@ selectCandidate .block
 	movem.l d1-d7/a0-a6, -(sp)
 	move.l d1, d7
 	beq.w bad
+	move.l d7, RequestedModule
 	subq.l #1, d7
 	lea Front, a0
 	movea.l frontend.Frame.Scratch(a0), a5
@@ -126,10 +127,12 @@ selectCandidate .block
 	moveq #0, d0
 	move.w records.Entry.Length(a4), d0
 	beq.w bad
+	move.l d0, RequestedNameBytes
 	lea layout.ARENA(a5), a1
 	moveq #0, d1
 	move.w records.Entry.Name(a4), d1
 	adda.l d1, a1
+	move.l a1, RequestedName
 	lea DeclarationBlock, a0
 	movea.l memory.Block.Pointer(a0), a0
 	jsr declarations.find
@@ -138,12 +141,8 @@ selectCandidate .block
 	beq.w bad
 	cmp.l CandidateCount, d7
 	bhi.w bad
-	subq.l #1, d7
-	lea LoadedCandidates, a0
-	tst.b 0(a0, d7.w)
-	bne.w bad
-	addq.l #1, d7
 	move.l d7, SourceOrdinal
+	clr.l SelectionState
 	moveq #0, d0
 	bra.w done
 bad

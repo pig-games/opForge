@@ -118,7 +118,7 @@ helpers that cannot produce an artifact Erik can inspect.
 
 ## Selected modules and reachable output: next boundary
 
-The next native discovery increment selects the requested `.module` from a
+Native discovery now selects the requested `.module` from a
 candidate file, including when that file declares other modules. Selection is by
 module identity, not by file identity; two requested modules in one file must both
 work. The entry file remains the search root, not an ordering shortcut. Selected

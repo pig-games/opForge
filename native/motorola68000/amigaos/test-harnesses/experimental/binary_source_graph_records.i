@@ -22,19 +22,28 @@ validate
 	beq.w bad
 	cmp.l SourceCount, d0
 	bhi.w bad
-	subq.l #1, d0
-	mulu.w #SPAN_BYTES, d0
 	lea FileSpans, a0
-	movea.l memory.Block.Pointer(a0), a1
-	adda.l d0, a1
+	movea.l memory.Block.Pointer(a0), a2
+	move.l SpanCount, d1
+findLoad
+	tst.l d1
+	beq.w bad
+	cmp.l Span.File(a2), d0
+	bne.w nextLoad
 	move.l Span.Start(a4), d4
-	cmp.l Span.Start(a1), d4
-	blo.w bad
+	cmp.l Span.Start(a2), d4
+	blo.w nextLoad
 	move.l Span.End(a4), d3
-	cmp.l Span.End(a1), d3
-	bhi.w bad
+	cmp.l Span.End(a2), d3
+	bhi.w nextLoad
 	cmp.l d4, d3
 	blo.w bad
+	bra.w loadFound
+nextLoad
+	adda.w #SPAN_BYTES, a2
+	subq.l #1, d1
+	bra.w findLoad
+loadFound
 	lea Records, a0
 	cmp.l memory.Block.Used(a0), d3
 	bhi.w bad

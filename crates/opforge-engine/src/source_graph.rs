@@ -539,6 +539,19 @@ fn load_module_recursive(
             ctx.dependency_files.insert(path);
         }
         let module_lines = if info.has_explicit_modules {
+            let matching_declarations = scan_module_ids_from_processing(&source_lines)
+                .into_iter()
+                .filter(|name| name.eq_ignore_ascii_case(module_id))
+                .count();
+            if matching_declarations > 1 {
+                return Err(module_import_error(
+                    &format!("Ambiguous module declaration: {module_id}"),
+                    Some(module_id),
+                    import,
+                    importing_path,
+                    importing_lines,
+                ));
+            }
             extract_module_block(&source_lines, module_id).ok_or_else(|| {
                 AsmRunError::new(
                     AsmError::new(

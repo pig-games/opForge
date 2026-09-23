@@ -297,6 +297,91 @@ fn binary_discovery_selective_fs_uae() {
     );
 }
 
+const SELECTED_SIBLING: &[(&str, &str)] = &[
+    (
+        "entry/main.asm",
+        ".module main\n.cpu m6502\n.use chosen\n.byte 2\n.endmodule\n.end\n",
+    ),
+    (
+        "library/mixed.asm",
+        ".module unused\nbroken_instruction\n.invalid_directive\n.endmodule\n.module chosen\n.cpu m6502\n.org $1000\n.byte 1\n.endmodule\n.end\n",
+    ),
+];
+
+const TWO_SELECTED_FROM_FILE: &[(&str, &str)] = &[
+    (
+        "entry/main.asm",
+        ".module main\n.cpu m6502\n.use alpha\n.use beta\n.byte 3\n.endmodule\n.end\n",
+    ),
+    (
+        "library/mixed.asm",
+        ".module ALPHA\n.cpu m6502\n.org $1000\n.byte 1\n.endmodule\n.module unused\nbroken_instruction\n.invalid_directive\n.endmodule\n.module beta\n.cpu m6502\n.byte 2\n.endmodule\n.end\n",
+    ),
+];
+
+#[test]
+fn binary_discovery_selected_modules_rust() {
+    assert_eq!(
+        oracle_with_roots(SELECTED_SIBLING, &["library"]).unwrap(),
+        [1, 2]
+    );
+    assert_eq!(
+        oracle_with_roots(TWO_SELECTED_FROM_FILE, &["library"]).unwrap(),
+        [1, 2, 3]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; selected module bodies in one candidate file"]
+fn binary_discovery_selected_modules_fs_uae() {
+    for files in [SELECTED_SIBLING, TWO_SELECTED_FROM_FILE] {
+        let expected = oracle_with_roots(files, &["library"]).unwrap();
+        native(files, "m6502", Some(&expected), Some(&["library"]));
+    }
+}
+
+const SELECTED_FILE_MISSING_INCLUDE: &[(&str, &str)] = &[
+    (
+        "entry/main.asm",
+        ".module main\n.cpu m6502\n.use chosen\n.byte 2\n.endmodule\n.end\n",
+    ),
+    (
+        "library/mixed.asm",
+        ".module unused\n.include \"missing.inc\"\n.endmodule\n.module chosen\n.cpu m6502\n.org $1000\n.byte 1\n.endmodule\n.end\n",
+    ),
+];
+const SELECTED_FILE_DUPLICATE_MODULE: &[(&str, &str)] = &[
+    (
+        "entry/main.asm",
+        ".module main\n.cpu m6502\n.use chosen\n.byte 2\n.endmodule\n.end\n",
+    ),
+    (
+        "library/mixed.asm",
+        ".module chosen\n.cpu m6502\n.org $1000\n.byte 1\n.endmodule\n.module CHOSEN\n.byte 3\n.endmodule\n.end\n",
+    ),
+];
+
+#[test]
+fn binary_discovery_selected_file_rejections_rust() {
+    for files in [
+        SELECTED_FILE_MISSING_INCLUDE,
+        SELECTED_FILE_DUPLICATE_MODULE,
+    ] {
+        assert!(oracle_with_roots(files, &["library"]).is_err());
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; selected-file include and duplicate rejection"]
+fn binary_discovery_selected_file_rejections_fs_uae() {
+    for files in [
+        SELECTED_FILE_MISSING_INCLUDE,
+        SELECTED_FILE_DUPLICATE_MODULE,
+    ] {
+        native(files, "m6502", None, Some(&["library"]));
+    }
+}
+
 const INCLUDED_GRAPH: &[(&str, &str)] = &[
     (
         "entry/main.asm",

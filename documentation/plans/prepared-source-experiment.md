@@ -1,6 +1,6 @@
 # Binary-source native runtime
 
-Status: F9 adds selected-file includes to the experimental native discovery path.
+Status: native discovery selects module bodies within multi-module candidate files.
 Bounded native functional checks and release comparisons pass. The last broad host run
 (F4) still had 160 baseline failures; this slice does not claim repository-wide
 qualification. See the [migration plan](native-runtime-reset.md) for the remaining
@@ -858,3 +858,31 @@ reserved bytes, up 2,572 and 4,940 bytes from the selective F8 checkpoint. The
 extra nine-slot I/O scratch is preparation-only; retained and peak allocation
 were not separately measured for F9. This remains a bounded feature proof, not
 full native module/include parity or a self-host performance claim.
+
+## Selected modules within candidate files
+
+Discovery now reloads a candidate file for each newly requested module and lowers
+only that module's lines into packed records. The declaration index still selects
+files by folded module name; a preparation-only line filter selects the requested
+body. The graph retains separate offset spans for multiple loads of the same
+physical file, while provenance still identifies the original file and line.
+Entry-file modules continue to follow declaration/dependency order. Include
+expansion still covers the whole selected file before module extraction, matching
+Rust's current preprocessing behavior: a missing include in an unused sibling of
+a selected file remains an error. Unused candidate files are indexed but not lowered.
+The Rust graph loader now rejects duplicate declarations of the requested module
+within one selected candidate file; it previously extracted the first silently.
+
+Fresh 68020 / 2 MiB native runs matched live Rust bytes for one selected module
+beside an invalid unused sibling, and for two modules selected from the same file
+with an invalid sibling between them and mixed-case spelling. The sibling cases
+include both dotted and ordinary invalid source lines. The existing nested
+include and explicit-order diamond cases passed, as did missing/ambiguous-module
+failure cases and selected-file missing-include and duplicate-module failures.
+The release harness image was 36,984 bytes; linked reservation was 41,720 bytes.
+Those are increases of 668 and 468 bytes from F9. The two positive native runs
+completed in about 0.52 and 0.51 seconds.
+These are bounded observations, not a controlled speed comparison. Peak and
+retained owned memory were not separately measured. The implementation still
+requires explicit module declarations in discovered candidates and does not
+prune code or data within a selected module.

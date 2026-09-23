@@ -54,6 +54,30 @@ pub struct AsmLayoutState {
     pub current_section: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct ReachableBlock {
+    pub symbol: String,
+    pub section: String,
+    pub first_line: u32,
+    pub last_line: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ReachableBlockRelayout {
+    pub skipped_lines: HashSet<u32>,
+    pub virtual_origins: HashMap<String, u32>,
+    pub mapped_sections: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PendingUnitReference {
+    pub source: Option<String>,
+    pub name: String,
+    pub candidates: Vec<String>,
+    pub module: Option<String>,
+    pub section: Option<String>,
+}
+
 impl AsmLayoutState {
     #[must_use]
     pub fn new() -> Self {

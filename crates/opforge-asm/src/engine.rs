@@ -12,6 +12,7 @@ use crate::repetition_driver::{
     execute_lines as execute_repetition_lines, RegularLineExecution, RepetitionPass,
     UnscopedRepeatKind,
 };
+use crate::state::{PendingUnitReference, ReachableBlock, ReachableBlockRelayout};
 use asm::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, PassCounts, Severity};
 use asm::listing::{ListingLine, ListingWriter};
 use asm::output::{LinkerOutputDirective, RegionState, RootMetadata, SectionKind, SectionState};
@@ -31,8 +32,8 @@ use types::image::ImageStore;
 use types::lockstep::LockstepReport;
 use types::processing::LineProcessingTrace;
 use types::symbol::{
-    LogicalSectionContract, LogicalSectionKind, ModuleImport, ReachableUnit,
-    SymbolProfileStatSnapshot, SymbolTable, SymbolVisibility,
+    ImportedSymbolResolution, LogicalSectionContract, LogicalSectionKind, ModuleImport,
+    ReachableUnit, SymbolProfileStatSnapshot, SymbolTable, SymbolVisibility,
 };
 use vm::output_model::{LinkerOutputFormat, IMPLICIT_HUNK_CODE_SECTION_NAME};
 use vm::vm_opasm::HierarchyExecutionModel;
@@ -73,6 +74,8 @@ pub struct Assembler {
     constant_layout_changed: bool,
     qualified_reachability_profile: QualifiedReachabilityProfile,
     module_timing_profile: ModuleTimingProfile,
+    reachable_blocks: Vec<ReachableBlock>,
+    block_relayout: Option<Rc<ReachableBlockRelayout>>,
 }
 
 const MAX_LAYOUT_STABILIZATION_PASSES: usize = 8;
@@ -99,7 +102,6 @@ struct LayoutStabilitySnapshot {
 struct QualifiedReachabilityIndexes {
     reachable_units: Vec<ReachableUnit>,
     reachable_units_by_import: HashMap<(String, String), Vec<usize>>,
-    section_symbols_by_section: HashMap<String, Vec<u32>>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -112,8 +114,6 @@ struct QualifiedReachabilityProfile {
     validation_count: usize,
     apply_section_maps_time: Duration,
     apply_section_maps_count: usize,
-    section_range_lookup_time: Duration,
-    section_range_lookup_count: usize,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -142,11 +142,7 @@ struct ExecuteRegularLinePass1Context<'a, 'b> {
 }
 
 impl QualifiedReachabilityIndexes {
-    fn build(
-        symbols: &SymbolTable,
-        section_symbol_sections: &HashMap<String, String>,
-        profile: &mut QualifiedReachabilityProfile,
-    ) -> Self {
+    fn build(symbols: &SymbolTable, profile: &mut QualifiedReachabilityProfile) -> Self {
         let reachable_units = symbols.reachable_units_from_selected_roots();
         let index_build_started_at = Instant::now();
         let mut reachable_units_by_import: HashMap<(String, String), Vec<usize>> = HashMap::new();
@@ -160,26 +156,12 @@ impl QualifiedReachabilityIndexes {
                 .push(idx);
         }
 
-        let mut section_symbols_by_section: HashMap<String, Vec<u32>> = HashMap::new();
-        for entry in symbols.entries() {
-            let Some(section_name) = section_symbol_sections.get(&entry.name) else {
-                continue;
-            };
-            section_symbols_by_section
-                .entry(section_name.to_ascii_uppercase())
-                .or_default()
-                .push(entry.val);
-        }
-        for addresses in section_symbols_by_section.values_mut() {
-            addresses.sort_unstable();
-        }
         profile.index_build_time += index_build_started_at.elapsed();
         profile.index_build_count += 1;
 
         Self {
             reachable_units,
             reachable_units_by_import,
-            section_symbols_by_section,
         }
     }
 
@@ -193,14 +175,6 @@ impl QualifiedReachabilityIndexes {
             .get(&key)
             .map(Vec::as_slice)
             .unwrap_or(&EMPTY)
-    }
-
-    fn next_section_symbol_address_after(&self, section_name: &str, address: u32) -> Option<u32> {
-        let addresses = self
-            .section_symbols_by_section
-            .get(&section_name.to_ascii_uppercase())?;
-        let idx = addresses.partition_point(|candidate| *candidate <= address);
-        addresses.get(idx).copied()
     }
 }
 
@@ -268,10 +242,7 @@ impl Assembler {
         let qualified_total = reachable_units_time
             + self.qualified_reachability_profile.index_build_time
             + self.qualified_reachability_profile.validation_time
-            + self.qualified_reachability_profile.apply_section_maps_time
-            + self
-                .qualified_reachability_profile
-                .section_range_lookup_time;
+            + self.qualified_reachability_profile.apply_section_maps_time;
         let assembly_total = self.qualified_reachability_profile.pass1_total_time
             + self.qualified_reachability_profile.pass2_total_time;
         let qualified_share = if assembly_total.is_zero() {
@@ -285,7 +256,6 @@ reachable_units={:.3}ms ({} calls), \
 index_build={:.3}ms ({} builds), \
 validation={:.3}ms ({} passes), \
 apply_maps={:.3}ms ({} passes), \
-section_range={:.3}ms ({} lookups), \
 pass1_total={:.3}ms, \
 pass2_total={:.3}ms, \
 qualified_total={:.3}ms, \
@@ -308,12 +278,6 @@ qualified_share={:.2}%",
                 .as_secs_f64()
                 * 1000.0,
             self.qualified_reachability_profile.apply_section_maps_count,
-            self.qualified_reachability_profile
-                .section_range_lookup_time
-                .as_secs_f64()
-                * 1000.0,
-            self.qualified_reachability_profile
-                .section_range_lookup_count,
             self.qualified_reachability_profile
                 .pass1_total_time
                 .as_secs_f64()
@@ -551,6 +515,7 @@ qualified_share={:.2}%",
             .unwrap_or(u32::MAX.saturating_sub(1))
             .saturating_add(1);
         let mut counts = PassCounts::new();
+        let mut pending_unit_references = Vec::new();
         self.prepare_runtime_execution_model();
         let diagnostics = &mut self.diagnostics;
 
@@ -569,6 +534,7 @@ qualified_share={:.2}%",
                 runtime_execution_model,
             );
             asm_line.set_runtime_line_router(self.runtime_line_router.clone());
+            asm_line.set_reachable_block_relayout(self.block_relayout.clone());
             asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));
             asm_line.set_collect_runtime_traces(self.collect_runtime_traces);
             asm_line.set_profile_phase(if pass_num > 1 {
@@ -820,13 +786,48 @@ qualified_share={:.2}%",
             self.root_metadata = asm_line.take_root_metadata();
             self.sections = asm_line.take_sections();
             self.regions = asm_line.take_regions();
+            if pass_num == 1 {
+                self.reachable_blocks = std::mem::take(&mut asm_line.reachable_blocks);
+                pending_unit_references = std::mem::take(&mut asm_line.pending_unit_references);
+            }
             self.runtime_execution_model = asm_line.opthread_execution_model.take();
         }
 
         let _ = diagnostics;
+        for PendingUnitReference {
+            source,
+            name,
+            candidates,
+            module,
+            section,
+        } in pending_unit_references
+        {
+            let target = candidates
+                .iter()
+                .find_map(|candidate| {
+                    self.symbols
+                        .entry(candidate)
+                        .map(|entry| entry.name.clone())
+                })
+                .or_else(|| {
+                    let module = module.as_deref()?;
+                    match self.symbols.resolve_imported_symbol(module, &name) {
+                        ImportedSymbolResolution::Resolved { full_name, .. } => Some(full_name),
+                        ImportedSymbolResolution::Unresolved
+                        | ImportedSymbolResolution::Ambiguous => None,
+                    }
+                });
+            if let Some(target) = target {
+                if let Some(source) = source {
+                    self.symbols.record_symbol_reference(&source, &target);
+                } else if let (Some(module), Some(section)) = (module, section) {
+                    self.symbols
+                        .record_unowned_reference(&module, &section, &target);
+                }
+            }
+        }
         let qualified_reachability = QualifiedReachabilityIndexes::build(
             &self.symbols,
-            &self.section_symbol_sections,
             &mut self.qualified_reachability_profile,
         );
         let validation_started_at = Instant::now();
@@ -985,10 +986,6 @@ qualified_share={:.2}%",
             counts.errors += 1;
         }
 
-        if counts.errors == 0 {
-            self.apply_reachable_section_maps(&qualified_reachability);
-        }
-
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
         counts
     }
@@ -1033,6 +1030,8 @@ qualified_share={:.2}%",
             constant_layout_changed: false,
             qualified_reachability_profile: QualifiedReachabilityProfile::default(),
             module_timing_profile: ModuleTimingProfile::default(),
+            reachable_blocks: Vec::new(),
+            block_relayout: None,
         }
     }
 
@@ -1142,7 +1141,13 @@ qualified_share={:.2}%",
         self.qualified_reachability_profile = QualifiedReachabilityProfile::default();
         self.module_timing_profile = ModuleTimingProfile::default();
         self.runtime_parse_cache.borrow_mut().clear();
-        self.prepared_source = Some(PreparedSource::from_lines(lines));
+        if !self
+            .prepared_source
+            .as_ref()
+            .is_some_and(|prepared| prepared.matches_lines(lines))
+        {
+            self.prepared_source = Some(PreparedSource::from_lines(lines));
+        }
         self.constant_layout_changed = false;
         self.loop_iteration_trace_pass1.clear();
         self.runtime_processing_traces.clear();
@@ -1169,7 +1174,7 @@ qualified_share={:.2}%",
             );
             self.emit_qualified_reachability_profile();
             self.emit_rust_symbol_profile();
-            return counts;
+            return self.finish_reachable_block_layout(lines, counts);
         }
         if !self.cpu_requires_layout_stabilization() && !self.constant_layout_changed {
             self.qualified_reachability_profile.pass1_total_time = pass1_started_at.elapsed();
@@ -1183,7 +1188,7 @@ qualified_share={:.2}%",
                 PhaseBucket::Pass1DiagnosticsDedup,
                 dedup_started_at.elapsed(),
             );
-            return counts;
+            return self.finish_reachable_block_layout(lines, counts);
         }
 
         self.finalize_stabilization_symbols();
@@ -1263,7 +1268,189 @@ qualified_share={:.2}%",
             self.emit_rust_symbol_profile();
             self.emit_module_timing_profile();
         }
-        counts
+        self.finish_reachable_block_layout(lines, counts)
+    }
+
+    fn finish_reachable_block_layout(
+        &mut self,
+        lines: &[String],
+        mut counts: PassCounts,
+    ) -> PassCounts {
+        if counts.errors != 0 {
+            return counts;
+        }
+        // A qualified reference to any symbol inside a block retains the block,
+        // including its fall-through code and the block's outgoing dependencies.
+        let ownership_edges: Vec<_> = self
+            .reachable_blocks
+            .iter()
+            .flat_map(|block| {
+                let prefix = format!("{}.", block.symbol.to_ascii_uppercase());
+                self.symbols
+                    .entries()
+                    .iter()
+                    .filter(move |entry| entry.name.to_ascii_uppercase().starts_with(&prefix))
+                    .map(move |entry| (entry.name.clone(), block.symbol.clone()))
+            })
+            .collect();
+        for (inside, owner) in ownership_edges {
+            self.symbols.record_symbol_reference(&inside, &owner);
+        }
+        let mut symbols_by_module_section: HashMap<(String, String), Vec<String>> = HashMap::new();
+        for (symbol, section) in &self.section_symbol_sections {
+            if let Some(module) = self
+                .symbols
+                .entry(symbol)
+                .and_then(|entry| entry.module_id.as_deref())
+            {
+                symbols_by_module_section
+                    .entry((module.to_ascii_uppercase(), section.to_ascii_uppercase()))
+                    .or_default()
+                    .push(symbol.clone());
+            }
+        }
+        let mut section_references = Vec::new();
+        for module in self.symbols.modules() {
+            for (section, references) in &module.unowned_references {
+                let key = (
+                    module.name.to_ascii_uppercase(),
+                    section.to_ascii_uppercase(),
+                );
+                if let Some(symbols) = symbols_by_module_section.get(&key) {
+                    for symbol in symbols {
+                        section_references.extend(
+                            references
+                                .iter()
+                                .map(|target| (symbol.clone(), target.clone())),
+                        );
+                    }
+                }
+            }
+        }
+        for (source, target) in section_references {
+            self.symbols.record_symbol_reference(&source, &target);
+        }
+        if self.block_relayout.is_some() {
+            return counts;
+        }
+
+        let mut plan = ReachableBlockRelayout::default();
+        let reachable_units = self.symbols.reachable_units_from_selected_roots();
+        for module in self.symbols.modules() {
+            for import in &module.imports {
+                for unit in reachable_units.iter().filter(|unit| {
+                    unit.importing_module.eq_ignore_ascii_case(&module.name)
+                        && unit.module_id.eq_ignore_ascii_case(&import.module_id)
+                }) {
+                    let Some(source) = self.section_symbol_sections.get(&unit.full_name) else {
+                        continue;
+                    };
+                    let Some(logical_section) =
+                        self.symbols.logical_section(&import.module_id, source)
+                    else {
+                        continue;
+                    };
+                    let Some(target) = Self::resolved_import_section_target(
+                        &self.sections,
+                        &self.concrete_section_declarations,
+                        &module.name,
+                        import,
+                        logical_section,
+                        true,
+                    ) else {
+                        continue;
+                    };
+                    if let Some(previous) = plan.mapped_sections.get(source) {
+                        if !previous.eq_ignore_ascii_case(&target) {
+                            self.diagnostics.push(Diagnostic::new(
+                                import.span.line,
+                                Severity::Error,
+                                AsmError::new(
+                                    AsmErrorKind::Directive,
+                                    "A reachable logical section cannot map to multiple concrete sections in one assembly",
+                                    Some(source),
+                                ),
+                            ));
+                            counts.errors += 1;
+                            return counts;
+                        }
+                    }
+                    plan.mapped_sections.insert(source.clone(), target);
+                }
+            }
+        }
+        if plan.mapped_sections.is_empty() {
+            return counts;
+        }
+
+        let reachable: HashSet<_> = reachable_units
+            .into_iter()
+            .map(|unit| unit.full_name.to_ascii_uppercase())
+            .collect();
+        for block in &self.reachable_blocks {
+            if !plan.mapped_sections.contains_key(&block.section) {
+                continue;
+            }
+            let symbol = block.symbol.to_ascii_uppercase();
+            let prefix = format!("{symbol}.");
+            if reachable.contains(&symbol) || reachable.iter().any(|name| name.starts_with(&prefix))
+            {
+                continue;
+            }
+            plan.skipped_lines
+                .extend(block.first_line..=block.last_line);
+        }
+        let mut source_by_target = HashMap::new();
+        for (source, target) in &plan.mapped_sections {
+            if source.eq_ignore_ascii_case(target) {
+                continue;
+            }
+            if let Some(previous) = source_by_target.insert(target.to_ascii_uppercase(), source) {
+                self.diagnostics.push(Diagnostic::new(
+                    0,
+                    Severity::Error,
+                    AsmError::new(
+                        AsmErrorKind::Directive,
+                        &format!(
+                            "Logical sections '{previous}' and '{source}' cannot yet share mapped target '{target}'"
+                        ),
+                        Some(target),
+                    ),
+                ));
+                counts.errors += 1;
+                return counts;
+            }
+            let Some(section) = self.sections.get(target) else {
+                continue;
+            };
+            let Some(origin) = section.base_addr.unwrap_or(0).checked_add(section.max_pc) else {
+                self.diagnostics.push(Diagnostic::new(
+                    0,
+                    Severity::Error,
+                    AsmError::new(
+                        AsmErrorKind::Directive,
+                        "Mapped section origin exceeds address range",
+                        Some(target),
+                    ),
+                ));
+                counts.errors += 1;
+                return counts;
+            };
+            plan.virtual_origins.insert(source.clone(), origin);
+        }
+
+        let registry = std::mem::replace(&mut self.registry, ModuleRegistry::new());
+        let mut replay = Assembler::with_cpu_and_registry(self.cpu, registry);
+        replay.max_loop_iterations = self.max_loop_iterations;
+        replay.opasm_package_path = self.opasm_package_path.clone();
+        replay.runtime_line_router = self.runtime_line_router.clone();
+        replay.collect_runtime_traces = self.collect_runtime_traces;
+        replay.implicit_hunk_output_requested = self.implicit_hunk_output_requested;
+        replay.prepared_source = self.prepared_source.take();
+        replay.block_relayout = Some(Rc::new(plan));
+        let result = replay.pass1(lines);
+        *self = replay;
+        result
     }
 
     pub fn pass2<W: Write>(
@@ -1293,6 +1480,7 @@ qualified_share={:.2}%",
             runtime_execution_model,
         );
         asm_line.set_runtime_line_router(self.runtime_line_router.clone());
+        asm_line.set_reachable_block_relayout(self.block_relayout.clone());
         asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));
         asm_line.set_collect_runtime_traces(self.collect_runtime_traces);
         asm_line.set_profile_phase(AsmProfilePhase::Pass2);
@@ -1553,12 +1741,11 @@ qualified_share={:.2}%",
         self.concrete_section_declarations = asm_line.layout.concrete_section_declarations.clone();
         self.sections = sections;
         if counts.errors == 0 {
-            let qualified_reachability = QualifiedReachabilityIndexes::build(
-                &self.symbols,
-                &self.section_symbol_sections,
-                &mut self.qualified_reachability_profile,
-            );
-            self.apply_reachable_section_maps(&qualified_reachability);
+            if let Err(error) = self.apply_reachable_section_maps() {
+                self.diagnostics
+                    .push(Diagnostic::new(line_num, Severity::Error, error));
+                counts.errors += 1;
+            }
         }
         self.refresh_hunk_output_relocation_dispositions();
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
@@ -1706,113 +1893,98 @@ qualified_share={:.2}%",
         }
     }
 
-    fn apply_reachable_section_maps(
-        &mut self,
-        qualified_reachability: &QualifiedReachabilityIndexes,
-    ) {
-        let apply_started_at = Instant::now();
-        let mut section_range_lookup_time = Duration::default();
-        let mut section_range_lookup_count = 0usize;
-        let imported_modules = self.imported_module_keys();
-        let mut copied_units = HashSet::new();
-        for module in self.symbols.modules() {
-            let allow_same_name_default =
-                !imported_modules.contains(&module.name.to_ascii_uppercase());
-            for import in &module.imports {
-                for &unit_idx in
-                    qualified_reachability.reachable_unit_indices(&module.name, &import.module_id)
-                {
-                    let unit = &qualified_reachability.reachable_units[unit_idx];
-                    if !copied_units.insert(unit.full_name.to_ascii_uppercase()) {
-                        continue;
-                    }
-                    let Some(source_section_name) =
-                        self.section_symbol_sections.get(&unit.full_name).cloned()
-                    else {
-                        continue;
-                    };
-                    let Some(_dep) = self.symbols.module(&import.module_id) else {
-                        continue;
-                    };
-                    let Some(logical_section) = self
-                        .symbols
-                        .logical_section(&import.module_id, &source_section_name)
-                    else {
-                        continue;
-                    };
-                    let Some(target_section_name) = Self::resolved_import_section_target(
-                        &self.sections,
-                        &self.concrete_section_declarations,
-                        &module.name,
-                        import,
-                        logical_section,
-                        allow_same_name_default,
-                    ) else {
-                        continue;
-                    };
-                    let section_range_started_at = Instant::now();
-                    let Some((start, end)) = self.reachable_unit_section_range(
-                        qualified_reachability,
-                        &unit.full_name,
-                        &source_section_name,
-                    ) else {
-                        section_range_lookup_time += section_range_started_at.elapsed();
-                        section_range_lookup_count += 1;
-                        continue;
-                    };
-                    section_range_lookup_time += section_range_started_at.elapsed();
-                    section_range_lookup_count += 1;
-                    let Some(source_section) = self.sections.get(&source_section_name) else {
-                        continue;
-                    };
-                    let start = start.min(source_section.bytes.len());
-                    let end = end.min(source_section.bytes.len());
-                    if start > end {
-                        continue;
-                    }
-                    let bytes = source_section.bytes[start..end].to_vec();
-                    if target_section_name.eq_ignore_ascii_case(&source_section_name) {
-                        continue;
-                    }
-                    let Some(target_section) = self.sections.get_mut(&target_section_name) else {
-                        continue;
-                    };
-                    let image_addr = target_section
-                        .base_addr
-                        .map(|base_addr| base_addr + target_section.bytes.len() as u32);
-                    target_section.bytes.extend_from_slice(&bytes);
-                    target_section.max_pc = target_section
-                        .max_pc
-                        .max(u32::try_from(target_section.bytes.len()).unwrap_or(u32::MAX));
-                    target_section.pc = target_section.max_pc;
-                    if let Some(image_addr) = image_addr {
-                        self.image.store_slice(image_addr, &bytes);
+    fn apply_reachable_section_maps(&mut self) -> Result<(), AsmError> {
+        let Some(plan) = &self.block_relayout else {
+            return Ok(());
+        };
+        let started_at = Instant::now();
+        for (source, target) in &plan.mapped_sections {
+            if source.eq_ignore_ascii_case(target) {
+                continue;
+            }
+            let Some(source_section) = self.sections.get(source) else {
+                continue;
+            };
+            let bytes = source_section.bytes.clone();
+            let size = source_section.max_pc;
+            let fixups = source_section.output_fixups.clone();
+            let relocation_free = source_section.relocation_free_certified;
+            let hunk_compatible = source_section.hunk_relocation_compatible;
+            let hunk_error = source_section.hunk_fixup_error.clone();
+            let Some(target_section) = self.sections.get_mut(target) else {
+                continue;
+            };
+            let base_offset = target_section.max_pc;
+            let new_size = base_offset.checked_add(size).ok_or_else(|| {
+                AsmError::new(
+                    AsmErrorKind::Directive,
+                    "Mapped section size overflows address range",
+                    Some(target),
+                )
+            })?;
+            if let Some(base) = target_section.base_addr {
+                let end = base
+                    .checked_add(new_size.saturating_sub(1))
+                    .ok_or_else(|| {
+                        AsmError::new(
+                            AsmErrorKind::Directive,
+                            "Mapped section address overflows",
+                            Some(target),
+                        )
+                    })?;
+                if let Some(region) = self.regions.values().find(|region| {
+                    region
+                        .placed
+                        .iter()
+                        .any(|placed| placed.name.eq_ignore_ascii_case(target))
+                }) {
+                    if end > region.end {
+                        return Err(AsmError::new(
+                            AsmErrorKind::Directive,
+                            "Mapped section exceeds its placed region",
+                            Some(target),
+                        ));
                     }
                 }
             }
+            if !target_section.is_bss() {
+                let offset = usize::try_from(base_offset).map_err(|_| {
+                    AsmError::new(
+                        AsmErrorKind::Directive,
+                        "Mapped section offset exceeds host range",
+                        Some(target),
+                    )
+                })?;
+                target_section.bytes.resize(offset, 0);
+                target_section.bytes.extend_from_slice(&bytes);
+            }
+            for mut fixup in fixups {
+                fixup.offset = fixup.offset.checked_add(base_offset).ok_or_else(|| {
+                    AsmError::new(
+                        AsmErrorKind::Directive,
+                        "Mapped relocation offset overflows",
+                        Some(target),
+                    )
+                })?;
+                target_section.output_fixups.push(fixup);
+            }
+            target_section.relocation_free_certified &= relocation_free;
+            target_section.hunk_relocation_compatible &= hunk_compatible;
+            if target_section.hunk_fixup_error.is_none() {
+                target_section.hunk_fixup_error = hunk_error;
+            }
+            target_section.max_pc = new_size;
+            target_section.pc = new_size;
+            if let Some(image_addr) = target_section
+                .base_addr
+                .and_then(|base| base.checked_add(base_offset))
+            {
+                self.image.store_slice(image_addr, &bytes);
+            }
         }
-        self.qualified_reachability_profile.apply_section_maps_time += apply_started_at.elapsed();
+        self.qualified_reachability_profile.apply_section_maps_time += started_at.elapsed();
         self.qualified_reachability_profile.apply_section_maps_count += 1;
-        self.qualified_reachability_profile
-            .section_range_lookup_time += section_range_lookup_time;
-        self.qualified_reachability_profile
-            .section_range_lookup_count += section_range_lookup_count;
-    }
-
-    fn reachable_unit_section_range(
-        &self,
-        qualified_reachability: &QualifiedReachabilityIndexes,
-        full_name: &str,
-        section_name: &str,
-    ) -> Option<(usize, usize)> {
-        let entry = self.symbols.entry(full_name)?;
-        let section = self.sections.get(section_name)?;
-        let start = entry.val.checked_sub(section.start_pc)? as usize;
-        let end = qualified_reachability
-            .next_section_symbol_address_after(section_name, entry.val)
-            .map(|address| address.saturating_sub(section.start_pc) as usize)
-            .unwrap_or(section.bytes.len());
-        Some((start, end))
+        Ok(())
     }
 
     pub fn hunk_output_relocation_disposition_for(

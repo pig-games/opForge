@@ -302,6 +302,15 @@ impl<'a> AsmLine<'a> {
             }
             section.default_region = options.region;
             section.logical = options.logical;
+            if options.logical {
+                if let Some(origin) = self
+                    .relayout
+                    .as_ref()
+                    .and_then(|plan| plan.virtual_origins.get(&name))
+                {
+                    section.start_pc = *origin;
+                }
+            }
             self.layout.sections.insert(name.clone(), section);
         }
         if options.logical {

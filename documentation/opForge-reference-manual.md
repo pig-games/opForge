@@ -717,14 +717,22 @@ start:
 
 Availability and executable inclusion are separate. A module made available by
 `.use` can expose public symbols for resolution, but integrated executable output
-includes only reachable units: selected roots, qualified references from the root
-module, and their recursively referenced dependencies. Public exports that are
-not selected or referenced remain available for resolution but are excluded from
-mapped executable output. At the root/composition module boundary, reachable
+selects named `.block` units from selected roots, qualified references to a block
+entry or an internal label, and their recursively referenced dependencies.
+Ordinary labels inside a block do not divide that block. Code and data outside
+named blocks remain in the mapped section; a logical section without named
+blocks is retained as a whole once reached. Public exports that are not selected
+or referenced remain available for resolution, but their named blocks are omitted
+from mapped output. Mapped material is encoded at its final address, including
+address-bearing data and branches. At the root/composition module boundary, reachable
 logical sections default-map to same-name concrete sections when the concrete
 section exists and has a compatible kind. Use an explicit map entry when section
 names differ, when routing dependencies from one reusable module to another, or
 when you want to route the imported material elsewhere.
+
+Each logical section currently has one concrete target per assembly. Distinct
+logical sections cannot yet share a mapped target; these cases report an error
+instead of emitting overlapping addresses.
 
 `.output` currently supports integrated executable payloads for `bin`, `prg`,
 and `hunk`. Library/object packaging over the module graph is not implemented in

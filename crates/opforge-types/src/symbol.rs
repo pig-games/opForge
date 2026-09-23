@@ -105,6 +105,7 @@ pub struct ModuleInfo {
     pub imports: Vec<ModuleImport>,
     pub logical_sections: Vec<LogicalSectionContract>,
     pub symbol_references: HashMap<String, HashSet<String>>,
+    pub unowned_references: HashMap<String, HashSet<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -260,6 +261,7 @@ impl SymbolTable {
             imports: Vec::new(),
             logical_sections: Vec::new(),
             symbol_references: HashMap::new(),
+            unowned_references: HashMap::new(),
         });
         self.module_index.insert(key, idx);
         self.module_logical_section_index
@@ -426,6 +428,20 @@ impl SymbolTable {
         }
     }
 
+    pub fn record_unowned_reference(
+        &mut self,
+        module: &str,
+        section: &str,
+        target_full_name: &str,
+    ) {
+        if let Some(info) = self.module_info_mut(module) {
+            info.unowned_references
+                .entry(section.to_string())
+                .or_default()
+                .insert(target_full_name.to_string());
+        }
+    }
+
     #[must_use]
     pub fn reachable_units_from_selected_roots(&self) -> Vec<ReachableUnit> {
         let reachability_started_at = Instant::now();
@@ -466,6 +482,12 @@ impl SymbolTable {
                 .symbol_references
                 .values()
                 .flat_map(|references| references.iter())
+                .chain(
+                    module
+                        .unowned_references
+                        .values()
+                        .flat_map(|references| references.iter()),
+                )
             {
                 if let Some((module_id, symbol_name)) = self.module_symbol_for_full_name(reference)
                 {

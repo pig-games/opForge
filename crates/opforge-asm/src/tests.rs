@@ -10,6 +10,9 @@ mod generic_statement_boundary;
 #[path = "tests/constant_dependencies.rs"]
 mod constant_dependencies;
 
+#[path = "tests/reachable_block_relayout.rs"]
+mod reachable_block_relayout;
+
 use crate::engine::Assembler;
 use crate::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, Severity};
 use crate::line::{set_host_expr_eval_failpoint_for_tests, AsmLine};
@@ -29838,7 +29841,9 @@ fn selected_root_reachability_follows_qualified_symbol_references() {
         ".endsection".to_string(),
         ".pub".to_string(),
         ".section code, kind=code, logical".to_string(),
-        "entry: .long u.helper".to_string(),
+        "entry .block".to_string(),
+        "    .long u.helper".to_string(),
+        "    .bend".to_string(),
         ".endsection".to_string(),
         ".endmodule".to_string(),
         ".module main".to_string(),
@@ -29888,18 +29893,21 @@ fn root_qualified_reference_uses_same_name_concrete_section_by_default() {
 }
 
 #[test]
-fn root_qualified_reference_pulls_code_dependencies_into_mapped_output() {
+fn root_qualified_reference_pulls_named_block_dependencies_into_mapped_output() {
     let assembler = run_passes(&[
         ".module engine",
         ".cpu 68000",
         ".pub",
         ".section code, kind=code, logical",
-        "entry:",
+        "entry .block",
         "    jsr helper",
-        "helper:",
+        "    .bend",
+        "helper .block",
         "    rts",
-        "unused:",
+        "    .bend",
+        "unused .block",
         "    rts",
+        "    .bend",
         ".endsection",
         ".endmodule",
         ".module main",
@@ -29930,9 +29938,9 @@ fn root_qualified_reference_pulls_code_dependencies_into_mapped_output() {
     assert_eq!(
         section.bytes,
         vec![
-            0x4E, 0xB9, 0x00, 0x00, 0x00, 0x00, // jsr e.entry
+            0x4E, 0xB9, 0x00, 0x00, 0x00, 0x08, // jsr e.entry
             0x4E, 0x75, // main rts
-            0x4E, 0xB9, 0x00, 0x00, 0x00, 0x06, // engine.entry jsr helper
+            0x4E, 0xB9, 0x00, 0x00, 0x00, 0x0E, // engine.entry jsr helper
             0x4E, 0x75, // engine.helper rts
         ]
     );
@@ -29975,7 +29983,7 @@ fn qualified_use_reachability_perf_regression_multi_module_fixture() {
             .map(|diag| format!("{}:{}", diag.line, diag.error.message()))
             .collect::<Vec<_>>()
     );
-    assert_eq!(assembler.symbols.reachable_units_compute_count(), 2);
+    assert_eq!(assembler.symbols.reachable_units_compute_count(), 1);
 
     let reachability_time = assembler.symbols.reachable_units_compute_time();
     assert!(
@@ -30044,7 +30052,7 @@ fn reachable_map_diagnostic_uses_actual_importing_module() {
 }
 
 #[test]
-fn top_level_unit_boundary_excludes_later_unselected_references() {
+fn named_block_boundary_excludes_later_unselected_references() {
     let mut assembler = Assembler::new();
     let pass1 = assembler.pass1(&[
         ".module util".to_string(),
@@ -30057,8 +30065,12 @@ fn top_level_unit_boundary_excludes_later_unselected_references() {
         ".use util as u".to_string(),
         ".pub".to_string(),
         ".section code, kind=code, logical".to_string(),
-        "entry: .long 1".to_string(),
-        "unused: .long u.helper".to_string(),
+        "entry .block".to_string(),
+        "    .long 1".to_string(),
+        "    .bend".to_string(),
+        "unused .block".to_string(),
+        "    .long u.helper".to_string(),
+        "    .bend".to_string(),
         ".endsection".to_string(),
         ".endmodule".to_string(),
         ".module main".to_string(),
@@ -34484,7 +34496,7 @@ fn linker_output_rejects_unsupported_library_object_policies() {
 }
 
 #[test]
-fn integrated_output_emits_only_reachable_mapped_units() {
+fn integrated_output_retains_unowned_code_after_ordinary_labels() {
     let assembler = run_passes(&[
         ".module dep",
         ".pub",
@@ -34509,104 +34521,7 @@ fn integrated_output_emits_only_reachable_mapped_units() {
         .expect("output directive");
     let payload = build_linker_output_payload(output, assembler.sections()).expect("bin payload");
 
-    assert_eq!(payload, vec![0x11]);
-}
-
-// These are executable specifications for the pending logical-section relayout.
-// Run explicitly with `cargo test -p asm reachable_block -- --ignored`.
-// The current post-assembly byte copier cannot satisfy them; keeping the expected
-// outputs here prevents a future block-boundary-only repair from hiding that gap.
-#[test]
-#[ignore = "logical-section mapping still splits at internal labels"]
-fn reachable_block_keeps_fallthrough_after_internal_label() {
-    let assembler = run_passes(&[
-        ".module dep",
-        ".cpu 68000",
-        ".pub",
-        ".section code, kind=code, logical",
-        "entry .block",
-        "    .byte $11",
-        "inside:",
-        "    .byte $22",
-        "    .bend",
-        "unused .block",
-        "    .byte $33",
-        "    .bend",
-        ".endsection",
-        ".endmodule",
-        ".module main",
-        ".cpu 68000",
-        ".section app_code, kind=code",
-        ".endsection",
-        ".use dep (entry) as d map { code -> app_code }",
-        ".endmodule",
-    ]);
-
-    assert_eq!(assembler.sections()["app_code"].bytes, [0x11, 0x22]);
-}
-
-#[test]
-#[ignore = "logical-section mapping still loses references after internal labels"]
-fn reachable_block_keeps_dependency_referenced_after_internal_label() {
-    let assembler = run_passes(&[
-        ".module dep",
-        ".cpu 68000",
-        ".pub",
-        ".section code, kind=code, logical",
-        "entry .block",
-        "    .byte $11",
-        "inside:",
-        "    .word helper",
-        "    .bend",
-        "helper .block",
-        "    .byte $22",
-        "    .bend",
-        ".endsection",
-        ".endmodule",
-        ".module main",
-        ".cpu 68000",
-        ".section app_code, kind=code",
-        ".endsection",
-        ".use dep (entry) as d map { code -> app_code }",
-        ".endmodule",
-    ]);
-
-    assert_eq!(
-        assembler.sections()["app_code"].bytes,
-        [0x11, 0x00, 0x03, 0x22]
-    );
-}
-
-#[test]
-#[ignore = "logical-section mapping copies address bytes before final placement"]
-fn reachable_block_reencodes_address_after_pruning_and_placement() {
-    let assembler = run_passes(&[
-        ".module dep",
-        ".cpu 68000",
-        ".pub",
-        ".section code, kind=code, logical",
-        "unused .block",
-        "    .byte $aa, $bb",
-        "    .bend",
-        "entry .block",
-        "    .word entry",
-        "    .bend",
-        ".endsection",
-        ".endmodule",
-        ".module main",
-        ".cpu 68000",
-        ".region rom, $1000, $10ff",
-        ".section app_code, kind=code",
-        ".endsection",
-        ".place app_code in rom",
-        ".use dep (entry) as d map { code -> app_code }",
-        ".output \"build/app.bin\", format=bin, sections=app_code",
-        ".endmodule",
-    ]);
-
-    let output = assembler.root_metadata.linker_outputs.first().unwrap();
-    let payload = build_linker_output_payload(output, assembler.sections()).unwrap();
-    assert_eq!(payload, [0x10, 0x00]);
+    assert_eq!(payload, vec![0x11, 0x22]);
 }
 
 fn hunk_output_directive(

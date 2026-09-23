@@ -23,7 +23,7 @@ use crate::runtime_model::{
 use crate::state::{
     build_package_register_checker, build_register_checker, ActiveStructDefinition,
     AsmCpuModeState, AsmDiagnosticsState, AsmLayoutState, AsmOutputState, AsmSymbolScopeState,
-    EncodingScopeState,
+    EncodingScopeState, PendingUnitReference, ReachableBlock, ReachableBlockRelayout,
 };
 #[cfg(not(feature = "vm-runtime-only"))]
 use families::intel8080::module::Intel8080FamilyOperands;
@@ -248,6 +248,10 @@ pub struct AsmLine<'a> {
     label: Option<String>,
     mnemonic: Option<String>,
     pub(crate) current_unit_symbol: Option<String>,
+    pub(crate) reachable_blocks: Vec<ReachableBlock>,
+    pub(crate) pending_unit_references: Vec<PendingUnitReference>,
+    block_unit_stack: Vec<(Option<usize>, Option<String>)>,
+    relayout: Option<Rc<ReachableBlockRelayout>>,
     pub cpu: CpuType,
     pub register_checker: RegisterChecker,
     runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
@@ -449,6 +453,10 @@ impl<'a> AsmLine<'a> {
             label: None,
             mnemonic: None,
             current_unit_symbol: None,
+            reachable_blocks: Vec::new(),
+            pending_unit_references: Vec::new(),
+            block_unit_stack: Vec::new(),
+            relayout: None,
             cpu,
             register_checker,
             runtime_line_router: None,
@@ -525,6 +533,13 @@ impl<'a> AsmLine<'a> {
 
     pub(crate) fn set_collect_runtime_traces(&mut self, collect_runtime_traces: bool) {
         self.collect_runtime_traces = collect_runtime_traces;
+    }
+
+    pub(crate) fn set_reachable_block_relayout(
+        &mut self,
+        relayout: Option<Rc<ReachableBlockRelayout>>,
+    ) {
+        self.relayout = relayout;
     }
 
     pub(crate) fn set_profile_phase(&mut self, profile_phase: AsmProfilePhase) {
@@ -809,6 +824,9 @@ impl<'a> AsmLine<'a> {
         self.symbol_scope.saw_explicit_module = false;
         self.symbol_scope.top_level_content_seen = false;
         self.current_unit_symbol = None;
+        self.reachable_blocks.clear();
+        self.pending_unit_references.clear();
+        self.block_unit_stack.clear();
         self.reset_cpu_runtime_profile();
         self.reset_text_encoding_profile();
     }
@@ -1943,15 +1961,55 @@ impl<'a> AsmLine<'a> {
     }
 
     fn record_named_reference(&mut self, name: &str) {
-        let Some(source) = self.current_unit_symbol.clone() else {
+        let inside_owned_block = self
+            .block_unit_stack
+            .iter()
+            .any(|(index, _)| index.is_some());
+        let unowned_logical = self
+            .layout
+            .current_section
+            .as_ref()
+            .and_then(|name| self.layout.sections.get(name))
+            .is_some_and(|section| section.logical && !inside_owned_block);
+        let source = if unowned_logical {
+            None
+        } else {
+            self.current_unit_symbol.clone()
+        };
+        let module = self.symbol_scope.module_active.clone();
+        let section = self.layout.current_section.clone();
+        if !self.in_section() && source.is_none() {
             return;
+        }
+        if source.is_none() && module.is_none() {
+            return;
+        }
+        if let Ok(Some(target)) = self.resolve_scoped_name(name) {
+            if let Some(source) = source {
+                self.symbols.record_symbol_reference(&source, &target);
+            } else if let (Some(module), Some(section)) = (module, section) {
+                self.symbols
+                    .record_unowned_reference(&module, &section, &target);
+            }
+            return;
+        }
+        let candidates = if name.contains('.') {
+            vec![name.to_string()]
+        } else {
+            let mut candidates = (1..=self.symbol_scope.scope_stack.depth())
+                .rev()
+                .map(|depth| format!("{}.{}", self.symbol_scope.scope_stack.prefix(depth), name))
+                .collect::<Vec<_>>();
+            candidates.push(name.to_string());
+            candidates
         };
-        let target = match self.resolve_scoped_name(name) {
-            Ok(Some(target)) => target,
-            Ok(None) if !name.contains('.') => self.scoped_define_name(name),
-            Ok(None) | Err(_) => return,
-        };
-        self.symbols.record_symbol_reference(&source, &target);
+        self.pending_unit_references.push(PendingUnitReference {
+            source,
+            name: name.to_string(),
+            candidates,
+            module,
+            section,
+        });
     }
 
     fn selective_import_conflict(&self, name: &str) -> bool {
@@ -2215,6 +2273,13 @@ impl<'a> AsmLine<'a> {
         ast: LineAst,
         prepared_line: Option<&PreparedLine>,
     ) -> LineStatus {
+        if self
+            .relayout
+            .as_ref()
+            .is_some_and(|plan| plan.skipped_lines.contains(&self.current_line_num))
+        {
+            return LineStatus::Skip;
+        }
         let _route_scope = phase_profile::scope(self.line_route_bucket());
         if self.statement_depth > 0 {
             return match ast {
@@ -2519,7 +2584,7 @@ impl<'a> AsmLine<'a> {
 
         if res == SymbolTableResult::Ok {
             self.track_section_symbol(&full_name);
-            if self.pass == 1 {
+            if self.pass == 1 && self.block_unit_stack.is_empty() {
                 self.current_unit_symbol = Some(full_name);
             }
         }
@@ -2541,7 +2606,9 @@ impl<'a> AsmLine<'a> {
             AssignOp::Const | AssignOp::Var | AssignOp::VarIfUndef => {
                 let full_name = self.scoped_define_name(&label.name);
                 if self.pass == 1 {
-                    self.current_unit_symbol = Some(full_name.clone());
+                    if self.block_unit_stack.is_empty() {
+                        self.current_unit_symbol = Some(full_name.clone());
+                    }
                     self.record_expr_references(expr);
                 }
                 if op == AssignOp::VarIfUndef {

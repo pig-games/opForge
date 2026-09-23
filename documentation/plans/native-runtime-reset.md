@@ -116,7 +116,7 @@ fit the implementation. Use more than one source-target family where the boundar
 is intended to be generic. A complete small case is preferable to a wide set of
 helpers that cannot produce an artifact Erik can inspect.
 
-## Selected modules and reachable output: next boundary
+## Selected modules and reachable output
 
 Native discovery now selects the requested `.module` from a
 candidate file, including when that file declares other modules. Selection is by
@@ -125,46 +125,25 @@ work. The entry file remains the search root, not an ordering shortcut. Selected
 modules retain their physical source and include provenance. This increment does
 not prune code or data inside a selected module.
 
-Imported logical-section pruning needs a separate correctness repair in the Rust
-reference before native parity work. Today Rust treats every label as an output
-unit boundary. A reachable routine with an internal fall-through label can lose
-the instructions after that label, even inside a named `.block`. The mapper also
-copies selected byte ranges without rebasing embedded addresses: when an unused
-two-byte block precedes a used block containing `.word entry`, the mapped output
-still contains the old offset `2`. Therefore neither label-based nor block-based
-byte slicing is sufficient proof of correct executable output.
+The Rust reference now uses named `.block` boundaries as its removable units.
+Ordinary labels inside a block, including fall-through targets, belong to that
+block. Qualified references to the entry or an internal label include the
+whole block, and references from anywhere inside it include dependencies.
+Unowned code/data remain in a reached logical section. A section with no named
+blocks remains whole. The selected source is laid out and encoded at its final
+mapped address before its bytes are appended; the old label-range byte copier
+has been removed.
 
-Use named `.block` boundaries as the initial removable code units. Ordinary labels
-inside a block belong to that block, including fall-through targets; macro and
-segment expansions inherit their enclosing unit. Retain unowned data/code until
-an explicit unit convention and its linking behavior are established. Correct
-pruning must account for references from every line in a block, preserve intended
-unit order, and resolve address-dependent bytes after final placement. Compare
-fall-through, cross-unit dependencies, absolute/relative references and unowned
-data against an unpruned reference before claiming this capability.
-
-Rust correctness checkpoint (pending): three executable cases in
-`crates/opforge-asm/src/tests.rs` currently fail when run with
-`cargo test -p asm reachable_block -- --ignored`. A selected named block is
-truncated at an internal label; a helper referenced after that label is not
-copied; and `.word entry` stays `$0002` after a preceding block is omitted and
-the target section is placed at `$1000`. They are ignored in the normal suite
-until the replacement is ready, rather than asserting the incorrect bytes.
-The older `integrated_output_emits_only_reachable_mapped_units` test treats
-ordinary labels as removable units and must be revised with this change.
-
-The current post-pass-2 byte copier cannot meet the checkpoint by changing its
-range end: it has already encoded references against the unpruned logical
-section, and it does not retain general fixups for `.word`, branches and other
-address-dependent forms. The next implementation therefore needs unit ownership
-and reference collection during prepared statement processing, followed by
-selection, final concrete-section layout and re-encoding of selected units.
-Use the prepared/binary statement representation for replay; original source
-text remains diagnostic material. Preserve source order among selected units
-and keep unowned code/data. Qualify with the three cases above, relative and
-absolute cross-unit references, then compare Rust and fresh native output.
-This is a linker/layout increment, not a safe local change to the existing
-mapper; agree its scope before proceeding with code replacement.
+Focused Rust cases compare final branch and address bytes with directly placed
+source, cover 68000 and 68020 layout, unowned bytes and references, and reject
+a mapped section that exceeds its region. This is a Rust-only correctness
+checkpoint; native pruning and fresh Rust/native parity are still pending.
+Rust replay reuses prepared lines when cached, but the native implementation
+must operate on binary source records rather than reopening source strings.
+Multiple concrete targets for one logical section, and multiple logical
+sections targeting one concrete section, currently fail explicitly; ordered
+multi-source mapping needs its own bounded increment. Performance measurement
+is also pending before treating this as a fast path.
 
 ## Increment contract
 

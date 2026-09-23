@@ -278,6 +278,12 @@ impl<'a> AsmLine<'a> {
                 None,
             );
         }
+        let block_symbol = self
+            .label
+            .as_deref()
+            .map(|label| self.scoped_define_name(label));
+        let enclosing_unit = self.current_unit_symbol.clone();
+        let outer_block = !self.block_unit_stack.is_empty();
         if let Some(label) = self.label.clone() {
             if let Err(message) = self
                 .symbol_scope
@@ -295,6 +301,28 @@ impl<'a> AsmLine<'a> {
             self.symbol_scope
                 .scope_stack
                 .push_anonymous_with_kind(ScopeKind::Block);
+        }
+        let unit_index = if self.pass == 1 && !outer_block {
+            block_symbol.as_ref().and_then(|symbol| {
+                let section = self.layout.current_section.as_ref()?;
+                self.layout.sections.get(section)?.logical.then(|| {
+                    let index = self.reachable_blocks.len();
+                    self.reachable_blocks.push(crate::state::ReachableBlock {
+                        symbol: symbol.clone(),
+                        section: section.clone(),
+                        first_line: self.current_line_num,
+                        last_line: self.current_line_num,
+                    });
+                    index
+                })
+            })
+        } else {
+            None
+        };
+        self.block_unit_stack
+            .push((unit_index, if outer_block { enclosing_unit } else { None }));
+        if self.pass == 1 && !outer_block && unit_index.is_some() {
+            self.current_unit_symbol = block_symbol;
         }
         self.push_visibility();
         LineStatus::Ok
@@ -670,6 +698,16 @@ impl<'a> AsmLine<'a> {
     ) -> LineStatus {
         match self.symbol_scope.scope_stack.pop_expected(expected) {
             Ok(()) => {
+                if expected == ScopeKind::Block {
+                    if let Some((unit_index, previous_unit)) = self.block_unit_stack.pop() {
+                        if let Some(index) = unit_index {
+                            self.reachable_blocks[index].last_line = self.current_line_num;
+                        }
+                        if self.pass == 1 {
+                            self.current_unit_symbol = previous_unit;
+                        }
+                    }
+                }
                 self.pop_visibility();
                 LineStatus::Ok
             }

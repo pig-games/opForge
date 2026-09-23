@@ -261,8 +261,15 @@ Consumers map logical sections into concrete sections:
 }
 ```
 
-Only reachable units from `scanner` are placed through the map. Unreachable
-units are excluded from executable output.
+Named `.block` declarations are the removable units in the current Rust
+integrated output. A selected root or qualified reference to a block entry or
+internal label includes the whole block, and references from any line in that
+block include its dependencies. Ordinary labels do not divide a unit. Code and
+data outside named blocks remain in a reached logical section; a logical
+section with no named blocks is retained whole. Selected material is encoded
+at its final mapped address. Mapping one logical section to multiple concrete
+targets, or distinct logical sections to one concrete target, is not yet
+supported and diagnoses rather than silently emitting overlapping bytes.
 
 Reachable logical sections may use a same-name default mapping at the
 root/composition module boundary when the importing/root module declares a

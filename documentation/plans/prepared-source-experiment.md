@@ -1,6 +1,7 @@
 # Binary-source native runtime
 
-Status: native discovery selects module bodies within multi-module candidate files.
+Status: native discovery selects module bodies within multi-module candidate files;
+the experimental graph can also omit unreachable imported named blocks.
 Bounded native functional checks and release comparisons pass. The last broad host run
 (F4) still had 160 baseline failures; this slice does not claim repository-wide
 qualification. See the [migration plan](native-runtime-reset.md) for the remaining
@@ -883,6 +884,33 @@ The release harness image was 36,984 bytes; linked reservation was 41,720 bytes.
 Those are increases of 668 and 468 bytes from F9. The two positive native runs
 completed in about 0.52 and 0.51 seconds.
 These are bounded observations, not a controlled speed comparison. Peak and
-retained owned memory were not separately measured. The implementation still
-requires explicit module declarations in discovered candidates and does not
-prune code or data within a selected module.
+retained owned memory were not separately measured. At that checkpoint, the
+implementation still required explicit module declarations in discovered
+candidates and did not prune code or data within a selected module.
+
+## Experimental native block reachability
+
+The dependency-ordered native graph now marks whole named `.block` spans before
+its two assembly passes. Blocks in the entry file are roots. References from
+retained records can pull in imported blocks, including references to labels
+inside a block and references chained through another retained block. A
+standalone label immediately before a block is part of that block's selectable
+span. Unreachable imported block records receive a compact omit flag; constant
+indexing, layout and emission skip them. Other records remain in order, so
+fallthrough inside a retained block is never pruned by label reachability.
+
+This is still the bounded single-PC path. It has no logical section mapping,
+and selection currently uses entry-file roots and numeric references rather
+than Rust's explicit `.use` selected-root syntax. Binding still validates
+unreachable source during preparation, and the declaration scan is bounded but
+not yet optimized for large block graphs. These native smoke cases demonstrate
+selection behavior, not same-source byte parity with Rust's mapped-section
+linker. A controlled Rust/native parity comparison needs section mapping in
+the native path.
+
+Fresh 68020 / 2 MiB FS-UAE completion produced the expected bytes for a
+qualified reference to an internal label with an unused sibling block, a
+transitive block reference, and a referenced label immediately before a
+block. An unreferenced entry-file block also stayed live while an unused
+imported sibling was omitted. The full-language native CLI and self-host path
+were not exercised by these cases.

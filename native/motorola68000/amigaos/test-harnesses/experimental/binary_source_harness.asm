@@ -558,6 +558,17 @@ selected
 	lea Front, a0
 	jsr frontend.indexBlocks
 	bne.w completionBad
+	tst.l d1
+	beq.w blocksSelected
+	tst.l GraphMode
+	beq.w blocksSelected
+	lea Records, a0
+	movea.l memory.Block.Pointer(a0), a1
+	move.l memory.Block.Used(a0), d0
+	lea Front, a0
+	jsr frontend.selectBlocks
+	bne.w completionBad
+blocksSelected
 	bsr.w clearIncludeText
 	lea Front, a0
 	jsr frontend.finish

@@ -293,6 +293,8 @@ line
 	bhi.w bad
 	cmpi.b #source.FLAG_ALLOWED, 1(a0)
 	bhi.w bad
+	btst #3, 1(a0)
+	bne.w next
 	cmpi.w #9, d6
 	blo.w next
 	lea 4(a0), a3

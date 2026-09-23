@@ -347,6 +347,27 @@ indexDone
 	tst.l d0
 	rts
 	.bend  ; indexBlocks
+; A0=Frame,A1=ordered records,D0=bytes,D1=indexed span count. Select blocks
+; from numeric references while the preparation metadata and graph still exist.
+; D0/CCR=status; other registers preserved.
+selectBlocks	.block
+	movem.l d2/a0-a3, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	movea.l Frame.Graph(a0), a3
+	move.l a3, d2
+	beq.w selectBad
+	movea.l a1, a0
+	lea SCOPE_STATE(a2), a2
+	lea scopes.ARENA(a2), a1
+	jsr blocks.select
+	bra.w selectDone
+selectBad
+	moveq #1, d0
+selectDone
+	movem.l (sp)+, d2/a0-a3
+	tst.l d0
+	rts
+	.bend  ; selectBlocks
 ; End a streaming session. A0=Frame. Clears scratch-resident pointers and resets
 ; tokenizer control state before the caller frees scratch. D0=0. Preserves other
 ; registers; CCR reflects D0.

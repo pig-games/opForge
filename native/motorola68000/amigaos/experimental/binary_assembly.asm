@@ -94,6 +94,8 @@ line
 	move.b 1(a4), d0
 	cmpi.b #source.FLAG_ALLOWED, d0
 	bhi.w fail
+	btst #3, d0
+	bne.w omitted
 	andi.w #source.FLAG_INDENT, d0
 	lea 4(a4), a0
 	movea.l a4, a1
@@ -104,6 +106,7 @@ line
 	beq.w passDone
 	tst.l d0
 	bne.w fail
+omitted
 	adda.l d6, a4
 	bra.w line
 passDone

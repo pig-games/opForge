@@ -29,6 +29,53 @@ const BLOCK_BOUNDARIES: &[(&str, &str)] = &[
     ),
 ];
 
+// Native's current single-PC experiment selects whole blocks before its two
+// passes. Rust's mapped-section linker is the semantic reference, but this
+// unsectioned source cannot be compared as an identical Rust output yet.
+const BLOCK_REACHABILITY: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep\n.word dep.entry.inside\n.endmodule\n.end\n",
+    ),
+    (
+        "dep.asm",
+        ".module dep\n.cpu m6502\n.org $1000\n.pub\nentry .block\n.byte $11\ninside:\n.byte $22\n.bend\nunused .block\n.byte $99\n.bend\n.endmodule\n.end\n",
+    ),
+];
+
+const BLOCK_TRANSITIVE: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep\n.word dep.entry\n.endmodule\n.end\n",
+    ),
+    (
+        "dep.asm",
+        ".module dep\n.cpu m6502\n.org $1000\n.pub\nentry .block\n.word dep.next\n.bend\nnext .block\n.byte $22\n.bend\nunused .block\n.byte $99\n.bend\n.endmodule\n.end\n",
+    ),
+];
+
+const BLOCK_PRECEDING_LABEL: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep\n.word dep.before\n.endmodule\n.end\n",
+    ),
+    (
+        "dep.asm",
+        ".module dep\n.cpu m6502\n.org $1000\n.pub\nbefore:\nentry .block\n.byte $11\n.bend\nunused .block\n.byte $99\n.bend\n.endmodule\n.end\n",
+    ),
+];
+
+const BLOCK_ENTRY_ROOT: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep\nroot .block\n.byte $11\n.bend\n.word dep.entry\n.endmodule\n.end\n",
+    ),
+    (
+        "dep.asm",
+        ".module dep\n.cpu m6502\n.org $1000\n.pub\nentry .block\n.byte $22\n.bend\nunused .block\n.byte $99\n.bend\n.endmodule\n.end\n",
+    ),
+];
+
 fn oracle(files: &[(&str, &str)]) -> Result<Vec<u8>, String> {
     oracle_with_roots(files, &[])
 }
@@ -198,6 +245,50 @@ fn binary_graph_rust_ordering() {
 fn binary_graph_block_boundaries_fs_uae() {
     let expected = oracle(BLOCK_BOUNDARIES).unwrap();
     native(BLOCK_BOUNDARIES, "m6502", Some(&expected), None);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; experimental native block reachability smoke"]
+fn binary_graph_block_reachability_fs_uae() {
+    native(
+        BLOCK_REACHABILITY,
+        "m6502",
+        Some(&[0x11, 0x22, 0x01, 0x10]),
+        None,
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; transitive native block reachability smoke"]
+fn binary_graph_block_transitive_fs_uae() {
+    native(
+        BLOCK_TRANSITIVE,
+        "m6502",
+        Some(&[0x02, 0x10, 0x22, 0x00, 0x10]),
+        None,
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; native block preceded by referenced label"]
+fn binary_graph_block_preceding_label_fs_uae() {
+    native(
+        BLOCK_PRECEDING_LABEL,
+        "m6502",
+        Some(&[0x11, 0x00, 0x10]),
+        None,
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; entry-file blocks remain roots"]
+fn binary_graph_block_entry_root_fs_uae() {
+    native(
+        BLOCK_ENTRY_ROOT,
+        "m6502",
+        Some(&[0x22, 0x11, 0x00, 0x10]),
+        None,
+    );
 }
 
 #[test]

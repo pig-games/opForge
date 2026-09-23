@@ -7,6 +7,10 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_discovery as discovery
+	.use experimental.amigaos.binary_declarations as declarations
+	.use experimental.amigaos.binary_graph as graph
+	.use experimental.amigaos.binary_scope_layout as layout
+	.use experimental.amigaos.binary_binding_records as records
 	.include "memory_telemetry.i"
 HEADER_BYTES = 76
 IO_BYTES = 4096
@@ -75,6 +79,8 @@ freeBlocks
 	lea FileSpans, a0
 	jsr memory.release
 	lea DiscoveryBlock, a0
+	jsr memory.release
+	lea DeclarationBlock, a0
 	jsr memory.release
 	lea GraphBlock, a0
 	jsr memory.release
@@ -352,9 +358,30 @@ sourceCountReady
 	lea Front, a0
 	jsr frontend.beginGraph
 	bne.w closeBad
+	move.l #frontend.GRAPH_SPAN_BYTES, d0
+	lea GraphSpans, a0
+	jsr memory.reserve
+	bne.w closeBad
 manifestReady
+	tst.l DiscoverMode
+	beq.w filesReady
+	move.l #declarations.SCRATCH_BYTES, d0
+	lea DeclarationBlock, a0
+	jsr memory.reserve
+	bne.w closeBad
+	movea.l memory.Block.Pointer(a0), a0
+	jsr declarations.begin
+	bsr.w indexCandidates
+	bne.w closeBad
+filesReady
 	move.l #1, SourceOrdinal
 nextFile
+	tst.l DiscoverMode
+	beq.w ordinalReady
+	lea GraphBlock, a0
+	movea.l memory.Block.Pointer(a0), a0
+	move.l SourceOrdinal, graph.GraphState.SourceIndex(a0)
+ordinalReady
 	clr.l SourceLine
 	bsr.w openSource
 	bne.w closeBad
@@ -400,12 +427,22 @@ fileDone
 	bsr.w fileSpan
 	lea Records, a1
 	move.l memory.Block.Used(a1), Span.End(a0)
+	tst.l DiscoverMode
+	beq.w sequential
+	move.l SourceOrdinal, d0
+	subq.l #1, d0
+	lea LoadedCandidates, a0
+	move.b #1, 0(a0, d0.w)
+	bsr.w resolveGraph
+	beq.w prepared
+	cmpi.l #2, d0
+	beq.w nextFile
+	bra.w closeBad
+sequential
 	addq.l #1, SourceOrdinal
 	move.l SourceCount, d0
 	cmp.l SourceOrdinal, d0
 	bhs.w nextFile
-	tst.l DiscoverMode
-	bne.w prepared
 	movea.l DosBase, a6
 	move.l InputHandle, d1
 	move.l #ManifestWord, d2
@@ -427,10 +464,9 @@ prepared
 pathsCleared
 	tst.l GraphMode
 	beq.w orderReady
-	move.l #frontend.GRAPH_SPAN_BYTES, d0
+	tst.l OrderedCount
+	bne.w orderReady
 	lea GraphSpans, a0
-	jsr memory.reserve
-	bne.w completionBad
 	movea.l memory.Block.Pointer(a0), a1
 	move.l memory.Block.Capacity(a0), d0
 	lea Front, a0
@@ -456,6 +492,8 @@ selected
 	lea GraphBlock, a0
 	jsr memory.release
 	lea GraphSpans, a0
+	jsr memory.release
+	lea DeclarationBlock, a0
 	jsr memory.release
 	lea PrepBlock, a0
 	jsr memory.release
@@ -853,6 +891,7 @@ done
 	rts
 	.bend  ; copy
 	.include "binary_source_graph_records.i"
+	.include "binary_source_discovery_index.i"
 	.endsection
 	.section data, kind=data
 DosName	.byte "dos.library", 0
@@ -879,6 +918,9 @@ CandidateCount	.res long, 1
 DiscoveryBlock	.res byte, memory.Block.Used+4
 DiscoveryScratch	.res long, 1
 DiscoveryPaths	.res long, 1
+DeclarationBlock	.res byte, memory.Block.Used+4
+LoadedCandidates	.res byte, DISCOVERY_LIMIT
+IndexOverflow	.res long, 1
 OrderedCount	.res long, 1
 GraphBlock	.res byte, memory.Block.Used+4
 GraphSpans	.res byte, memory.Block.Used+4

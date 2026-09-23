@@ -124,9 +124,17 @@ fn native(files: &[(&str, &str)], cpu: &str, expected: Option<&[u8]>, roots: Opt
         runs[0].exit_code,
         Some(if expected.is_some() { 0 } else { 20 })
     );
+    let image = runs[0]
+        .captured_artifacts
+        .get(&PathBuf::from("Work/build/binary_source_harness"))
+        .unwrap();
+    let allocation = hunk::allocation(image).unwrap();
     eprintln!(
-        "BINARY_GRAPH_REPORT seconds={:?} image={:?}",
-        runs[0].start_to_done_host_seconds, runs[0].native_image_digest
+        "BINARY_GRAPH_REPORT seconds={:?} image={:?} image_bytes={} linked_reserved_bytes={}",
+        runs[0].start_to_done_host_seconds,
+        runs[0].native_image_digest,
+        image.len(),
+        allocation.total()
     );
 }
 
@@ -210,6 +218,45 @@ fn binary_discovery_search_roots_fs_uae() {
         "m6502",
         Some(&expected),
         Some(&["library", "library/nested"]),
+    );
+}
+
+const SELECTIVE_CANDIDATES: &[(&str, &str)] = &[
+    (
+        "entry/main.asm",
+        ".module main\n.cpu m6502\n.use chosen\n.byte 2\n.endmodule\n.end\n",
+    ),
+    (
+        "library/chosen.asm",
+        ".module chosen\n.cpu m6502\n.org $1000\n.byte 1\n.endmodule\n.end\n",
+    ),
+    (
+        "library/unused.asm",
+        ".module unused\n.invalid_directive\n.endmodule\n",
+    ),
+    ("library/duplicate-a.asm", ".module duplicate\n.endmodule\n"),
+    ("library/duplicate-b.asm", ".module duplicate\n.endmodule\n"),
+    ("library/fragment.inc", ".include \"missing.inc\"\n"),
+];
+
+#[test]
+fn binary_discovery_rust_selective() {
+    assert_eq!(
+        oracle_with_roots(SELECTIVE_CANDIDATES, &["library"]).unwrap(),
+        [1, 2]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; only the dependency closure is lowered"]
+fn binary_discovery_selective_fs_uae() {
+    let expected = oracle_with_roots(SELECTIVE_CANDIDATES, &["library"]).unwrap();
+    assert_eq!(expected, [1, 2]);
+    native(
+        SELECTIVE_CANDIDATES,
+        "m6502",
+        Some(&expected),
+        Some(&["library"]),
     );
 }
 

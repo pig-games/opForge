@@ -268,8 +268,9 @@ done
 	rts
 	.bend  ; endFile
 ; A0=Frame,A1=caller-owned span output,D0=bytes. Dependency-first spans
-; refer to original packed records and original file ordinals. D0/CCR=status,
-; D1=span count; other registers preserved.
+; refer to original packed records and original file ordinals. D0=0,D1=span
+; count; D0=2,D1=missing module index+1; D0=1,D1=0 for invalid graph.
+; CCR reflects D0; other registers preserved.
 orderGraph	.block
 	movem.l a0-a3, -(sp)
 	movea.l a0, a3

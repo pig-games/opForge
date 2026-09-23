@@ -130,10 +130,10 @@ bad
 	rts
 	.bend  ; endFile
 
-; A0=graph,A1=scope state,A2=span buffer,D0=buffer bytes. Returns D0/CCR=status,
-; D1=span count (zero on failure), other registers preserved. Visit every entry-
-; file module in declaration order and dependencies in .use source order.
-; Iterative DFS rejects reachable cycles/missing modules and emits each once.
+; A0=graph,A1=scope state,A2=span buffer,D0=buffer bytes. D0=0,D1=span
+; count on success; D0=2,D1=missing module index+1 for a discovery retry;
+; D0=1,D1=0 for invalid graph. CCR reflects D0; other registers preserved.
+; Visit entry-file modules in declaration order and imports in source order.
 order	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
@@ -146,6 +146,27 @@ order	.block
 	bne.w bad
 	tst.w GraphState.Ordered(a6)
 	bne.w bad
+	; A missing dependency can cause discovery to load another file and retry.
+	; Recompute selection from the complete graph on every attempt.
+	moveq #0, d7
+reset
+	cmp.w GraphState.Count(a6), d7
+	bhs.w headsStart
+	move.l d7, d0
+	add.w d0, d0
+	lea 6160(a6), a0
+	moveq #0, d1
+	move.w 0(a0, d0.w), d1
+	bsr.w getNode
+	clr.w Node.Color(a0)
+	move.l d1, d0
+	subq.w #1, d0
+	add.w d0, d0
+	lea layout.MODULE_STATE+modules.FLAGS(a5), a0
+	andi.w #$ffef, 0(a0, d0.w)
+	addq.w #1, d7
+	bra.w reset
+headsStart
 	; Reverse the preparation import lists into source-order numeric links.
 	moveq #0, d7
 heads
@@ -163,6 +184,7 @@ heads
 	move.w 0(a0, d1.w), d2
 	lea 10256(a6), a1
 	adda.w d1, a1
+	clr.w (a1)  ; rebuild this head on every discovery retry
 reverse
 	tst.w d2
 	beq.w headNext
@@ -228,7 +250,7 @@ walk
 	addq.w #1, d1
 	bsr.w getNode
 	tst.w Node.File(a0)
-	beq.w bad
+	beq.w missing
 	cmpi.w #1, Node.Color(a0)
 	beq.w bad
 	cmpi.w #2, Node.Color(a0)
@@ -267,6 +289,9 @@ ok
 bad
 	moveq #0, d1
 	moveq #1, d0
+	bra.w done
+missing
+	moveq #2, d0  ; D1 remains the requested module index+1
 done
 	.TELEMETRY_SERVICE_LEAVE
 	movem.l (sp)+, d2-d7/a0-a6

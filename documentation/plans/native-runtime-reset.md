@@ -453,14 +453,15 @@ directory and additional roots. It scans `.asm` and `.inc` recursively, deduplic
 identical guest paths and prepares candidates for the same numeric graph. Search
 does not choose the first match across roots. `.include` remains separate.
 
-This is a bounded experimental capability, not yet general module autoloading.
-Native discovery eagerly prepares every candidate before numeric selection, so
-unrelated invalid syntax, unsupported `.include` fragments, implicit modules or
-duplicate declarations can fail the session. Rust resolves only requested module
-identities and does not share these limits. The next breadth step should build a
-declaration index and load only the dependency closure before preparation. The
-experimental scanner currently bounds paths to 255 bytes, directory nesting to
-eight levels and discovered files to 128; a bound is an explicit failure.
+The initial discovery checkpoint eagerly prepared every candidate. The selective
+follow-up now builds a declaration index and prepares only files in the requested
+dependency closure. It skips unrelated invalid source, `.include` fragments and
+duplicate unused declarations. The index remains syntactic: implicit module
+identity, conditional or macro-generated declarations, and unused modules within
+a selected file are outside this experimental path. Rust's loader covers those
+cases. The scanner bounds paths to 255 bytes, directory nesting to eight levels,
+discovered files to 128, declarations to 512 and declaration names to 16 KiB;
+an exceeded bound is an explicit failure.
 
 Validation: live Rust output comparison for shuffled candidate order, diamonds,
 entry-file dependencies, multiple modules per file and unused siblings; fresh
@@ -474,3 +475,7 @@ F8 added 3,220 image bytes and 2,964 linked reserved bytes relative to F7;
 graph mode's conditional peak owned allocation exceeded explicit order by
 25,088 bytes. The instrumented native elapsed times were effectively equal,
 so F8 is a breadth checkpoint rather than a demonstrated performance win.
+
+The selective follow-up adds 1,380 release-image bytes and 1,344 linked-reserved
+bytes beyond initial F8. Its bounded 2 MiB proof and limits are recorded in the
+[experiment note](prepared-source-experiment.md#selective-native-discovery-follow-up).

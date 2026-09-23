@@ -774,15 +774,10 @@ Rust output for a diamond, entry-file siblings, unused candidate, recursive
 `.inc`, and overlapping roots. Missing imports and cycles have fresh nonzero-exit
 proof. The F7 explicit-file path remains available for direct comparison.
 
-The native discovery path **still eagerly prepares every candidate**. It therefore
-cannot yet match Rust's selective loading when a search root contains irrelevant
-invalid source, files with implicit module identity, unsupported `.include` input,
-or duplicate declarations for an unused module. All loaded nonempty candidate
-files currently need explicit `.module` blocks. The scanner bounds path bytes
-at 255, recursion depth at eight and discovered file count at 128, returning
-failure when exceeded. Resolving only requested identities from a declaration
-index is the next functional breadth step; these experiment limits are not
-language semantics.
+At the initial F8 checkpoint, native discovery eagerly prepared every candidate.
+The selective-loading follow-up below supersedes that limitation. The scanner
+bounds paths at 255 bytes, recursion depth at eight and discovered files at 128;
+exceeding a bound is an explicit failure, not a language rule.
 
 On the same four-file 6502 diamond under the 2 MiB FS-UAE profile, the F7
 explicit-order and F8 numeric-graph modes produced identical bytes. Both modes
@@ -798,3 +793,31 @@ was 0.759 and 0.759 seconds respectively. A separate uninstrumented release run
 reported 0.507 and 0.252 seconds, but one short emulator sample per mode is too
 variable to support a speedup claim. Discovery enumeration is not isolated by
 this comparison, and the bounded workload says nothing about self-hosting time.
+
+### Selective native discovery follow-up
+
+The guest now reads discovered candidate files once to index leading explicit
+`.module` declarations. This compact index holds folded names, offsets and file
+ordinals; it does not tokenize or retain candidate bodies. The entry file is
+prepared first. If numeric graph traversal reaches a missing module, preparation
+looks up its unique declaring file, loads that file, and retries the traversal.
+Each retry rebuilds temporary graph state. Only files in the dependency closure
+reach the binary frontend. The declaration index and source paths are released
+before assembly; the packed execution input still uses numeric identities and
+offsets. The F7 explicit-order and F8 explicit-candidate paths remain available.
+
+A 2 MiB mixed-source proof matched live Rust output while skipping an unrelated
+invalid module, duplicate unused declarations and an unused `.include` fragment.
+The existing diamond, configured-root search and fresh missing/ambiguous-module
+failure cases also passed. The release harness image is 33,744 bytes and linked
+reservation is 36,312 bytes: increases of 1,380 and 1,344 bytes from the initial
+F8 checkpoint. This is feature cost, not a performance claim. The bounded native
+completion sample for configured-root search was about 0.50 seconds; it is not a
+controlled before/after timing comparison.
+
+The index recognizes syntactically leading explicit `.module` lines. It does not
+evaluate conditional or macro-generated declarations, derive implicit module
+identities from filenames, or avoid lowering unused modules *within* a selected
+file. These remain experimental-path differences from Rust's module loader.
+Declaration count and name storage are bounded at 512 entries and 16 KiB; an
+exceeded bound fails rather than silently dropping a requested module.

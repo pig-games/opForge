@@ -107,6 +107,42 @@ Use the cheapest capable configured model; escalate when uncertainty erases savi
 Return compact deliverables and evidence, not repeated conversation histories.
 Avoid default reviewer chains or parallel agents with overlapping assignments.
 
+### Delegation with GPT-6 Sol and Luna
+
+Select the delegate model explicitly rather than inheriting the coordinator's
+model by default. Current project defaults are:
+
+| Model | Use when |
+|---|---|
+| GPT-6 Luna (`gpt-6-luna`) | Work is straightforward, bounded and easy to verify: targeted code searches, inventories, mechanical edits, focused documentation updates, or running established checks and summarizing failures. |
+| GPT-6 Sol (`gpt-6-sol`) | Default for implementation, debugging, test design, code review, integration and routine planning or coordination. |
+| GPT-6 Astra (`gpt-6-astra`) | Reserve for genuinely complex problems and high-level architectural design and planning where Sol is unlikely to be sufficient. |
+
+These are project routing defaults, consistent with [OpenAI's model guidance](https://developers.openai.com/api/docs/models),
+not guarantees about capability or savings. Choose Sol directly when a task's
+complexity warrants it; there is no mandatory Luna attempt. If a Luna task grows
+ambiguous or its result needs substantial repair, hand the findings to Sol or the
+coordinator. Avoid repeated cheap attempts whose combined cost exceeds one capable
+attempt. Escalate Sol work to Astra only when the problem warrants that level of
+reasoning; ordinary uncertainty, coordination or integration is not sufficient.
+Return bounded implementation work to Sol or Luna after resolving the difficult
+decision. The coordinator is a responsibility, not a reason to select Astra. Keep
+small, context-heavy work local when delegation would cost more. Use scripts for
+deterministic recurring operations before adding agents.
+
+Give each delegate a concise brief: intended outcome, relevant files and contracts,
+owned edit scope, validation and stop conditions. Supply only the context it needs;
+do not copy the full conversation by default. Request a compact result with changed
+files, evidence and unresolved issues. Parallelize independent work with distinct
+ownership while the coordinator makes useful progress. The coordinator inspects
+and validates the combined result; delegation does not transfer that responsibility.
+
+Use model IDs actually available in the current tool. If a preferred model is
+unavailable, report the substitution and use another capable available model or
+work locally. Keep automation model choices configurable. Revisit these defaults
+through the workflow notebook when observed quality, rework or overhead warrants
+it; do not add per-task accounting paperwork.
+
 ## Learn as we work
 
 [NOTES.md](NOTES.md) is a shared notebook for recurring friction, promising

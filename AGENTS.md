@@ -47,7 +47,12 @@ historical documents do not activate work or grant authority.
 - Automate recurring deterministic work. Delegate bounded tasks to the least
   expensive capable model when savings exceed briefing, coordination, verification
   and rework. Keep small, context-heavy tasks local. The coordinator owns integration.
-  Keep model selection configurable; do not hardcode model generations here.
+  Explicitly select GPT-6 Luna (`gpt-6-luna`) for straightforward bounded tasks
+  and GPT-6 Sol (`gpt-6-sol`) for implementation, debugging, review and routine
+  coordination. Reserve GPT-6 Astra (`gpt-6-astra`) for genuinely complex problems
+  and high-level architectural design and planning.
+  Follow the workflow guide's delegation guidance; keep tool/model selection
+  configurable and account for availability and demonstrated task performance.
 - For experiments, establish a hypothesis, baseline, correctness comparison and
   success/stop conditions. Preserve a working reference path while evaluating a
   replacement. Performance claims require reproducible comparative measurements.

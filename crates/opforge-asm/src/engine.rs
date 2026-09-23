@@ -143,7 +143,7 @@ struct ExecuteRegularLinePass1Context<'a, 'b> {
 
 impl QualifiedReachabilityIndexes {
     fn build(symbols: &SymbolTable, profile: &mut QualifiedReachabilityProfile) -> Self {
-        let reachable_units = symbols.reachable_units_from_selected_roots();
+        let reachable_units = symbols.reachable_units_from_root_references();
         let index_build_started_at = Instant::now();
         let mut reachable_units_by_import: HashMap<(String, String), Vec<usize>> = HashMap::new();
         for (idx, unit) in reachable_units.iter().enumerate() {
@@ -313,8 +313,8 @@ qualified_share={:.2}%",
             ("record_symbol_reference", snapshot.record_symbol_reference),
             ("validate_imports", snapshot.validate_imports),
             (
-                "reachable_units_from_selected_roots",
-                snapshot.reachable_units_from_selected_roots,
+                "reachable_units_from_root_references",
+                snapshot.reachable_units_from_root_references,
             ),
             ("resolve_import_alias", snapshot.resolve_import_alias),
         ];
@@ -826,6 +826,7 @@ qualified_share={:.2}%",
                 }
             }
         }
+        self.record_reachability_edges();
         let qualified_reachability = QualifiedReachabilityIndexes::build(
             &self.symbols,
             &mut self.qualified_reachability_profile,
@@ -877,44 +878,6 @@ qualified_share={:.2}%",
                         );
                         counts.errors += 1;
                     }
-                }
-                for section in self
-                    .symbols
-                    .module(&import.module_id)
-                    .into_iter()
-                    .flat_map(|dep| dep.logical_sections.iter())
-                    .filter(|section| {
-                        import.selected_roots.iter().any(|root| {
-                            root.name != "*"
-                                && root.alias.is_none()
-                                && !self
-                                    .section_symbol_sections
-                                    .contains_key(&format!("{}.{}", import.module_id, root.name))
-                                && Self::resolved_import_section_target(
-                                    &self.sections,
-                                    &self.concrete_section_declarations,
-                                    &module.name,
-                                    import,
-                                    section,
-                                    allow_same_name_default,
-                                )
-                                .is_none()
-                        })
-                    })
-                {
-                    let err = AsmError::new(
-                        AsmErrorKind::Directive,
-                        &format!(
-                            "Reachable logical section '{}' from module '{}' requires an import section map or compatible same-name concrete section",
-                            section.name, import.module_id
-                        ),
-                        Some(&section.name),
-                    );
-                    self.diagnostics.push(
-                        Diagnostic::new(import.span.line, Severity::Error, err)
-                            .with_column(Some(import.span.col_start)),
-                    );
-                    counts.errors += 1;
                 }
                 for map in &import.section_maps {
                     let Some(target) = self.sections.get(&map.concrete) else {
@@ -1271,14 +1234,7 @@ qualified_share={:.2}%",
         self.finish_reachable_block_layout(lines, counts)
     }
 
-    fn finish_reachable_block_layout(
-        &mut self,
-        lines: &[String],
-        mut counts: PassCounts,
-    ) -> PassCounts {
-        if counts.errors != 0 {
-            return counts;
-        }
+    fn record_reachability_edges(&mut self) {
         // A qualified reference to any symbol inside a block retains the block,
         // including its fall-through code and the block's outgoing dependencies.
         let ownership_edges: Vec<_> = self
@@ -1330,12 +1286,22 @@ qualified_share={:.2}%",
         for (source, target) in section_references {
             self.symbols.record_symbol_reference(&source, &target);
         }
+    }
+
+    fn finish_reachable_block_layout(
+        &mut self,
+        lines: &[String],
+        mut counts: PassCounts,
+    ) -> PassCounts {
+        if counts.errors != 0 {
+            return counts;
+        }
         if self.block_relayout.is_some() {
             return counts;
         }
 
         let mut plan = ReachableBlockRelayout::default();
-        let reachable_units = self.symbols.reachable_units_from_selected_roots();
+        let reachable_units = self.symbols.reachable_units_from_root_references();
         for module in self.symbols.modules() {
             for import in &module.imports {
                 for unit in reachable_units.iter().filter(|unit| {

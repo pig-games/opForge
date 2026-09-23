@@ -136,8 +136,11 @@ has been removed.
 
 Focused Rust cases compare final branch and address bytes with directly placed
 source, cover 68000 and 68020 layout, unowned bytes and references, and reject
-a mapped section that exceeds its region. This is a Rust-only correctness
-checkpoint; native pruning and fresh Rust/native parity are still pending.
+a mapped section that exceeds its region. A selective `.use dep (entry)` makes
+the named import available and validates it; it does not retain `entry` without
+a reference from reached code. References inside discarded blocks do not retain
+their targets. Native block pruning exists in the experimental single-PC path,
+but fresh parity with Rust's mapped-section behavior is still pending.
 Rust replay reuses prepared lines when cached, but the native implementation
 must operate on binary source records rather than reopening source strings.
 Multiple concrete targets for one logical section, and multiple logical
@@ -145,18 +148,14 @@ sections targeting one concrete section, currently fail explicitly; ordered
 multi-source mapping needs its own bounded increment. Performance measurement
 is also pending before treating this as a fast path.
 
-The first native preparation checkpoint now preserves named `.block` open and
-close markers as bits in each packed line's existing flag byte. After numeric
-binding and module ordering, the native frontend validates and indexes their
-offset-based spans in the name arena that preparation no longer needs. The
-assembly pass still emits every selected module's records; this checkpoint
-does not claim block pruning or Rust linker parity. Focused live FS-UAE cases
-confirm unchanged output for ordered modules and nested blocks.
-
-Native follow-up must resolve selected roots and qualified references to the
-owning outer block, traverse dependencies from every retained line, and leave
-unowned code/data intact. It can then skip unreachable records before its
-existing two assembly passes, so addresses are encoded after selection.
+Native preparation preserves named `.block` open and close markers as bits in
+each packed line's flag byte, then indexes offset-based spans after numeric
+binding and module ordering. The experimental selector retains entry-file
+blocks, follows numeric references into imported blocks (including internal
+labels), and skips unreachable imported records before its two assembly passes.
+Unowned code/data remain. Focused live FS-UAE cases cover this selection, but
+the native import parser does not yet accept the selective `.use dep (entry)`
+spelling.
 The experimental native path currently has only a single output PC and simple
 `.use` imports; logical-to-concrete section mapping and placed-region checks
 remain a separate, necessary boundary before claiming parity with Rust's

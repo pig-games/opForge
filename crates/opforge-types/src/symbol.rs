@@ -197,7 +197,7 @@ impl SymbolProfileStat {
 #[derive(Debug, Default)]
 struct SymbolTableRustProfile {
     record_symbol_reference: SymbolProfileStat,
-    reachable_units_from_selected_roots: SymbolProfileStat,
+    reachable_units_from_root_references: SymbolProfileStat,
     module_symbol_for_full_name: SymbolProfileStat,
     resolve_import_alias: SymbolProfileStat,
     resolve_selective_import: SymbolProfileStat,
@@ -214,7 +214,7 @@ pub struct SymbolProfileStatSnapshot {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SymbolTableRustProfileSnapshot {
     pub record_symbol_reference: SymbolProfileStatSnapshot,
-    pub reachable_units_from_selected_roots: SymbolProfileStatSnapshot,
+    pub reachable_units_from_root_references: SymbolProfileStatSnapshot,
     pub module_symbol_for_full_name: SymbolProfileStatSnapshot,
     pub resolve_import_alias: SymbolProfileStatSnapshot,
     pub resolve_selective_import: SymbolProfileStatSnapshot,
@@ -443,7 +443,7 @@ impl SymbolTable {
     }
 
     #[must_use]
-    pub fn reachable_units_from_selected_roots(&self) -> Vec<ReachableUnit> {
+    pub fn reachable_units_from_root_references(&self) -> Vec<ReachableUnit> {
         let reachability_started_at = Instant::now();
         self.reachable_units_compute_count
             .set(self.reachable_units_compute_count.get().saturating_add(1));
@@ -452,22 +452,6 @@ impl SymbolTable {
         let mut reachable = HashMap::new();
         let mut seen = HashSet::new();
         let mut queue = Vec::new();
-        for module in &self.module_info {
-            for import in &module.imports {
-                for root in &import.selected_roots {
-                    if root.name == "*" && root.alias.is_none() {
-                        continue;
-                    }
-                    let full_name = format!("{}.{}", import.module_id, root.name);
-                    queue.push(ReachableUnit {
-                        importing_module: module.name.clone(),
-                        module_id: import.module_id.clone(),
-                        symbol_name: root.name.clone(),
-                        full_name,
-                    });
-                }
-            }
-        }
         let imported_modules: HashSet<_> = self
             .module_info
             .iter()
@@ -545,7 +529,7 @@ impl SymbolTable {
             .set(self.reachable_units_compute_time.get() + reachability_started_at.elapsed());
         if let Some(profiled_started_at) = profiled_started_at {
             self.rust_profile
-                .reachable_units_from_selected_roots
+                .reachable_units_from_root_references
                 .record(profiled_started_at.elapsed());
         }
         reachable
@@ -1024,9 +1008,9 @@ impl SymbolTable {
     pub fn rust_profile_snapshot(&self) -> SymbolTableRustProfileSnapshot {
         SymbolTableRustProfileSnapshot {
             record_symbol_reference: self.rust_profile.record_symbol_reference.snapshot(),
-            reachable_units_from_selected_roots: self
+            reachable_units_from_root_references: self
                 .rust_profile
-                .reachable_units_from_selected_roots
+                .reachable_units_from_root_references
                 .snapshot(),
             module_symbol_for_full_name: self.rust_profile.module_symbol_for_full_name.snapshot(),
             resolve_import_alias: self.rust_profile.resolve_import_alias.snapshot(),
@@ -1248,7 +1232,7 @@ mod tests {
     }
 
     #[test]
-    fn reachable_units_start_from_selected_roots() {
+    fn selected_import_without_reference_is_not_a_reachability_root() {
         let mut table = SymbolTable::new();
         assert_eq!(table.register_module("alpha"), SymbolTableResult::Ok);
         let span = SourceSpan {
@@ -1272,13 +1256,9 @@ mod tests {
         };
         assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
 
-        let reachable = table.reachable_units_from_selected_roots();
+        let reachable = table.reachable_units_from_root_references();
 
-        assert_eq!(reachable.len(), 1);
-        assert_eq!(reachable[0].importing_module, "alpha");
-        assert_eq!(reachable[0].module_id, "dep");
-        assert_eq!(reachable[0].symbol_name, "entry");
-        assert_eq!(reachable[0].full_name, "dep.entry");
+        assert!(reachable.is_empty());
     }
 
     #[test]
@@ -1314,8 +1294,9 @@ mod tests {
         );
         table.record_symbol_reference("dep.entry", "util.helper");
         table.record_symbol_reference("util.helper", "dep.entry");
+        table.record_symbol_reference("alpha.start", "dep.entry");
 
-        let reachable = table.reachable_units_from_selected_roots();
+        let reachable = table.reachable_units_from_root_references();
         let names: Vec<_> = reachable
             .iter()
             .map(|unit| unit.full_name.as_str())
@@ -1352,7 +1333,7 @@ mod tests {
         );
         table.record_symbol_reference("main.entry", "dep.entry");
 
-        let reachable = table.reachable_units_from_selected_roots();
+        let reachable = table.reachable_units_from_root_references();
 
         assert_eq!(reachable.len(), 1);
         assert_eq!(reachable[0].full_name, "dep.entry");
@@ -1389,13 +1370,13 @@ mod tests {
             ImportResult::Ok
         );
 
-        let reachable = table.reachable_units_from_selected_roots();
+        let reachable = table.reachable_units_from_root_references();
         let names: Vec<_> = reachable
             .iter()
             .map(|unit| unit.full_name.as_str())
             .collect();
 
-        assert_eq!(names, vec!["dep.entry"]);
+        assert!(names.is_empty());
     }
 
     #[test]

@@ -29783,7 +29783,7 @@ fn use_section_map_rejects_incompatible_kind() {
 }
 
 #[test]
-fn selected_root_requires_map_or_same_name_concrete_for_logical_section() {
+fn referenced_selected_import_requires_map_or_same_name_concrete_for_logical_section() {
     let mut assembler = Assembler::new();
     let pass1 = assembler.pass1(&[
         ".module dep".to_string(),
@@ -29794,6 +29794,9 @@ fn selected_root_requires_map_or_same_name_concrete_for_logical_section() {
         ".endmodule".to_string(),
         ".module main".to_string(),
         ".use dep (entry) as d".to_string(),
+        ".section refs, kind=data".to_string(),
+        "    .word d.entry".to_string(),
+        ".endsection".to_string(),
         ".endmodule".to_string(),
     ]);
 
@@ -29818,6 +29821,9 @@ fn selected_root_uses_same_name_compatible_concrete_section_by_default() {
         ".section code, kind=code",
         ".endsection",
         ".use dep (entry) as d",
+        ".section refs, kind=data",
+        "    .word d.entry",
+        ".endsection",
         ".endmodule",
     ]);
 
@@ -29850,13 +29856,16 @@ fn selected_root_reachability_follows_qualified_symbol_references() {
         ".section app_code, kind=code".to_string(),
         ".endsection".to_string(),
         ".use dep (entry) as d map { code -> app_code }".to_string(),
+        ".section refs, kind=data".to_string(),
+        "    .word d.entry".to_string(),
+        ".endsection".to_string(),
         ".endmodule".to_string(),
     ]);
 
     assert!(pass1.errors > 0);
     assert!(assembler
         .symbols
-        .reachable_units_from_selected_roots()
+        .reachable_units_from_root_references()
         .iter()
         .any(|unit| unit.full_name == "util.helper"));
     assert!(assembler.diagnostics.iter().any(|diag| {
@@ -29887,7 +29896,7 @@ fn root_qualified_reference_uses_same_name_concrete_section_by_default() {
     assert_eq!(pass1.errors, 0);
     assert!(assembler
         .symbols
-        .reachable_units_from_selected_roots()
+        .reachable_units_from_root_references()
         .iter()
         .any(|unit| unit.full_name == "dep.entry"));
 }
@@ -29923,7 +29932,7 @@ fn root_qualified_reference_pulls_named_block_dependencies_into_mapped_output() 
 
     let reachable: Vec<_> = assembler
         .symbols
-        .reachable_units_from_selected_roots()
+        .reachable_units_from_root_references()
         .into_iter()
         .map(|unit| unit.full_name)
         .collect();
@@ -30035,6 +30044,9 @@ fn reachable_map_diagnostic_uses_actual_importing_module() {
         ".endsection".to_string(),
         ".use dep1 (entry) as d1 map { code -> app_code }".to_string(),
         ".use dep2 (other) as d2 map { code -> app_code }".to_string(),
+        ".section refs, kind=data".to_string(),
+        "    .word d1.entry".to_string(),
+        ".endsection".to_string(),
         ".endmodule".to_string(),
     ]);
 
@@ -30077,13 +30089,16 @@ fn named_block_boundary_excludes_later_unselected_references() {
         ".section app_code, kind=code".to_string(),
         ".endsection".to_string(),
         ".use dep (entry) as d map { code -> app_code }".to_string(),
+        ".section refs, kind=data".to_string(),
+        "    .word d.entry".to_string(),
+        ".endsection".to_string(),
         ".endmodule".to_string(),
     ]);
 
     assert_eq!(pass1.errors, 0);
     let reachable: Vec<_> = assembler
         .symbols
-        .reachable_units_from_selected_roots()
+        .reachable_units_from_root_references()
         .into_iter()
         .map(|unit| unit.full_name)
         .collect();
@@ -35954,7 +35969,7 @@ fn m68k_jsr_accepts_qualified_imported_symbol_operand() {
     );
     assert!(assembler
         .symbols
-        .reachable_units_from_selected_roots()
+        .reachable_units_from_root_references()
         .iter()
         .any(|unit| unit.full_name == "demo.routines.drawSprite"));
     let entries = assembler.image().entries().expect("entries");

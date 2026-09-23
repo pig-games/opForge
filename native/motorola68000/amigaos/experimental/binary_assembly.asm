@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_encoding as encoding
 	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_sections as sections
 	.pub
 
 Frame	.struct
@@ -29,6 +30,8 @@ Active
 	.res long, 1
 DataBytes
 	.res byte, 4
+SectionState
+	.res byte, sections.SCRATCH_BYTES
 	.endsection
 	.section code, kind=code
 	.pub
@@ -63,11 +66,20 @@ clearSymbols
 	jsr dependencies.resolve
 	tst.l d0
 	bne.w fail
+	movea.l Frame.Records(a5), a0
+	move.l Frame.RecordBytes(a5), d0
+	lea SectionState, a1
+	movea.l pkg.Context.Package(a6), a2
+	move.l pkg.Header.MaxAddress(a2), d1
+	jsr sections.scan
+	bne.w fail
 	moveq #1, d7
 pass
 	move.w d7, pkg.Context.Pass(a6)
 	clr.l pkg.Context.Pc(a6)
 	clr.l Frame.Used(a5)
+	lea SectionState, a0
+	jsr sections.beginPass
 	movea.l Frame.Records(a5), a4
 	move.l a4, d0
 	add.l Frame.RecordBytes(a5), d0
@@ -94,6 +106,8 @@ line
 	move.b 1(a4), d0
 	cmpi.b #source.FLAG_ALLOWED, d0
 	bhi.w fail
+	btst #4, d0
+	bne.w layoutControl
 	btst #3, d0
 	bne.w omitted
 	andi.w #source.FLAG_INDENT, d0
@@ -106,10 +120,20 @@ line
 	beq.w passDone
 	tst.l d0
 	bne.w fail
+	bra.w omitted
+layoutControl
+	lea SectionState, a0
+	movea.l a6, a1
+	movea.l a4, a2
+	jsr sections.control
+	bne.w fail
 omitted
 	adda.l d6, a4
 	bra.w line
 passDone
+	lea SectionState, a0
+	jsr sections.finishPass
+	bne.w fail
 	cmpi.w #1, d7
 	bne.w nextPass
 	movea.l Frame.Allocate(a5), a1
@@ -152,6 +176,12 @@ statement	.block
 	beq.w constant
 	cmpi.b #5, 4(a0)
 	bne.w dispatch
+	lea SectionState, a4
+	tst.w sections.State.Mode(a4)
+	beq.w labelSectionReady
+	tst.w sections.State.Active(a4)
+	beq.w bad
+labelSectionReady
 	tst.b 3(a0)
 	bne.w bad
 	moveq #0, d0
@@ -268,6 +298,9 @@ cpu
 	bne.w bad
 	bra.w ok
 origin
+	lea SectionState, a4
+	tst.w sections.State.Mode(a4)
+	bne.w bad
 	movea.l a2, a6
 	jsr expr.evaluate
 	movea.l a6, a2
@@ -388,6 +421,14 @@ fail
 ; D0=status; other registers preserved. CCR reflects D0.
 emit	.block
 	movem.l d1-d4/a0-a3, -(sp)
+	movea.l a0, a3
+	move.l d0, d4
+	lea SectionState, a0
+	movea.l a2, a1
+	jsr sections.checkEmit
+	bne.w fail
+	movea.l a3, a0
+	move.l d4, d0
 	movea.l Active, a3
 	move.l Frame.Used(a3), d1
 	move.l d1, d2

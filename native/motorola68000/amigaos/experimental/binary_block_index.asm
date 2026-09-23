@@ -67,7 +67,7 @@ line
 	moveq #0, d4
 	move.b 1(a3), d4
 	move.l d4, d5
-	andi.w #$f8, d5
+	andi.w #$e8, d5  ; block bits and numeric layout controls are allowed
 	bne.w bad
 	btst #1, d4
 	beq.w closing
@@ -251,6 +251,8 @@ nextOwner
 	addq.w #1, d7
 	bra.w owner
 scan
+	btst #4, 1(a4)
+	bne.w nextLine
 	lea 4(a4), a0
 	movea.l a4, a1
 	adda.w d6, a1

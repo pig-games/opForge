@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_section_prepare as sections
 	.pub
 LIMIT = layout.LIMIT
 ARENA_BYTES = layout.ARENA_BYTES
@@ -18,7 +19,6 @@ ARENA = layout.ARENA
 BUFFER = layout.BUFFER
 MODULE_STATE = layout.MODULE_STATE
 IMPORT_STATE = layout.IMPORT_STATE
-SCRATCH_BYTES = IMPORT_STATE+imports.SCRATCH_BYTES
 DECLARED = 1
 REFERENCED = 2
 EXPLICIT = 4
@@ -34,6 +34,12 @@ KEY_ENDMODULE = 7
 KEY_PUB = 8
 KEY_PRIV = 9
 KEY_USE = 10
+KEY_SECTION = 11
+KEY_ENDSECTION = 12
+KEY_REGION = 13
+KEY_PLACE = 14
+SECTION_STATE = IMPORT_STATE+imports.SCRATCH_BYTES
+SCRATCH_BYTES = SECTION_STATE+sections.SCRATCH_BYTES
 	.section code, kind=code
 
 ; A0=caller-owned SCRATCH_BYTES, D0=first source ID, D1=.end ID. D0/CCR=status;
@@ -64,6 +70,9 @@ clear
 	jsr modules.begin
 	lea IMPORT_STATE(a1), a0
 	jsr imports.begin
+	movea.l a1, a0
+	adda.l #SECTION_STATE, a0
+	jsr sections.begin
 	moveq #0, d0
 	bra.w done
 bad
@@ -86,6 +95,12 @@ endFile	.block
 	beq.w bad
 scopes
 	tst.w layout.State.Current(a0)
+	bne.w bad
+	move.l a1, -(sp)
+	movea.l a0, a1
+	adda.l #SECTION_STATE, a1
+	tst.w sections.State.Active(a1)
+	movea.l (sp)+, a1
 	bne.w bad
 	clr.w layout.State.Ended(a0)
 	clr.w layout.State.FileContent(a0)
@@ -279,9 +294,26 @@ directive
 	beq.w endNamespace
 	cmpi.l #KEY_END, d0
 	beq.w end
+	cmpi.l #KEY_SECTION, d0
+	beq.w sectionControl
+	cmpi.l #KEY_ENDSECTION, d0
+	beq.w sectionControl
+	cmpi.l #KEY_REGION, d0
+	beq.w sectionControl
+	cmpi.l #KEY_PLACE, d0
+	beq.w sectionControl
 	; Other directives retain their existing generic preparation/assembly route.
 	addq.l #5, a0
 	bra.w references
+sectionControl
+	movea.l a5, a0
+	movea.l a6, a1
+	movea.l a6, a2
+	adda.l #SECTION_STATE, a2
+	subi.l #KEY_SECTION-1, d0
+	jsr sections.line
+	bne.w bad
+	bra.w ok
 importing
 	tst.l d7
 	bpl.w bad
@@ -1020,6 +1052,10 @@ Words
 	.byte KEY_PUB, 3, "pub"
 	.byte KEY_PRIV, 4, "priv"
 	.byte KEY_USE, 3, "use"
+	.byte KEY_SECTION, 7, "section"
+	.byte KEY_ENDSECTION, 10, "endsection"
+	.byte KEY_REGION, 6, "region"
+	.byte KEY_PLACE, 5, "place"
 	.byte 0
 	.align 2  ; the next module shares this instruction section
 	.endsection

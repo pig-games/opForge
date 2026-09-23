@@ -56,7 +56,7 @@ pushLiteral
 	subi.w #8, d7
 	moveq #0, d2
 	tst.l d1
-	bpl.s valueLiteralHighReady
+	bpl.w valueLiteralHighReady
 	moveq #-1, d2
 valueLiteralHighReady
 	cmp.l d2, d0

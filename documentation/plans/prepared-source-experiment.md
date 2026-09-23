@@ -899,8 +899,8 @@ span. Unreachable imported block records receive a compact omit flag; constant
 indexing, layout and emission skip them. Other records remain in order, so
 fallthrough inside a retained block is never pruned by label reachability.
 
-This is still the bounded single-PC path. It has no logical section mapping,
-and selection uses entry-file roots and numeric references. A bounded native
+This was initially the bounded single-PC path. Selection uses entry-file roots
+and numeric references. A bounded native
 `.use dep (entry, helper)` form now makes selected unqualified names available
 without making their blocks output roots; `as alias` enables qualified access
 instead. Binding validates every selected name even if no code references it.
@@ -983,3 +983,23 @@ searching the current directory. All were byte-identical to the live Rust
 oracles. The compact Hunk linked reservation was 52,380 bytes in the final
 focused case. This is functional breadth, not a performance claim; canonical
 package conversion remains host-side.
+
+## First bounded section placement
+
+The compact CLI now lowers one named concrete section, one same-name logical
+section from a discovered module, one literal `.region`, and `.place SECTION in
+REGION` into numeric packed controls during source preparation. The runtime
+scans the region once, then applies those controls during both assembly passes.
+It bounds emission to the placed region and rejects `.org` in this sectioned
+mode. The source text is not consulted after preparation. The logical section
+can be discovered after the root file's `.place` in preparation order; ordered
+execution still emits the dependency before the importer.
+
+A focused two-file 6502 case selects one imported `.block`, omits its unused
+sibling, and emits a root `.word` reference. A fresh native FS-UAE run produced
+the live Rust bytes `11 00 10`; the compact Hunk linked reservation was 54,196
+bytes. This run used the existing expanded-memory FS-UAE profile. A separate
+2 MiB attempt and its unchanged CLI control timed out before guest start, so
+this checkpoint does not claim fresh 2 MiB execution or a speedup. Explicit
+`.map`, multiple sections, discontiguous placement, expressions in region
+bounds, and broader layout syntax remain outside this bounded path.

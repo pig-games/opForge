@@ -567,3 +567,9 @@ standalone CLI does not yet generate or load canonical packages natively or
 replace `opforge_cli`. Unsupported input returns nonzero. Focused native proof
 and current constraints are in the
 [runtime note](prepared-source-experiment.md#first-compact-cli-checkpoint).
+
+The first bounded layout increment adds same-name logical/concrete section
+placement and a literal region to this compact CLI. It is limited to one
+contiguous placed section; the focused identical-source Rust/native proof and
+the unresolved 2 MiB emulator startup check are recorded in the
+[runtime note](prepared-source-experiment.md#first-bounded-section-placement).

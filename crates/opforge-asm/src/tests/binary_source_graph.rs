@@ -376,6 +376,33 @@ fn binary_graph_rust_ordering() {
     assert_eq!(oracle(BLOCK_BOUNDARIES).unwrap(), [0x11, 0x22, 1, 0x10]);
 }
 
+const SINGLE_MAPPED_SECTION: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.region rom, $1000, $10ff\n.use dep (entry) as d\n.section code\n.word d.entry\n.endsection\n.place code in rom\n.endmodule\n.end\n",
+    ),
+    (
+        "library/dep.asm",
+        ".module dep\n.cpu m6502\n.pub\n.section code, logical\nentry .block\n.byte $11\n.bend\nunused .block\n.byte $99\n.bend\n.endsection\n.endmodule\n.end\n",
+    ),
+];
+
+#[test]
+fn binary_graph_single_mapped_section_rust_oracle() {
+    assert_eq!(
+        oracle_with_roots(SINGLE_MAPPED_SECTION, &["library"]).unwrap(),
+        [0x11, 0x00, 0x10]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; bounded same-name section placement"]
+fn compact_cli_single_mapped_section_fs_uae() {
+    let expected =
+        oracle_with_roots(SINGLE_MAPPED_SECTION, &["library"]).expect("live Rust section oracle");
+    compact_cli(SINGLE_MAPPED_SECTION, &["library"], &[], &expected, false);
+}
+
 #[test]
 #[ignore = "requires configured FS-UAE; numeric block markers through graph ordering"]
 fn binary_graph_block_boundaries_fs_uae() {

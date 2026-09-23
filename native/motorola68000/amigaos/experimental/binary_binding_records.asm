@@ -4,6 +4,7 @@
 	.cpu 68020
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
+	.use experimental.amigaos.binary_source as source
 	.pub
 Entry	.struct
 Name	.word ?
@@ -42,6 +43,11 @@ line
 	adda.w d0, a4
 	cmpa.l a5, a4
 	bhi.w bad
+	btst #4, 1(a0)
+	beq.w tokens
+	movea.l a4, a0
+	bra.w line
+tokens
 	addq.l #4, a0
 token
 	cmpa.l a4, a0

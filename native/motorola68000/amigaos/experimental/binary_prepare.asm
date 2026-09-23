@@ -26,6 +26,8 @@ line	.block
 	blo.w bad
 	movea.l a0, a1
 	adda.w d0, a1
+	btst #4, 1(a0)
+	bne.w layoutControl
 	moveq #4, d6
 	bsr.w copy
 	bne.w bad
@@ -51,6 +53,12 @@ statement
 	bsr.w name
 	bne.w bad
 	bra.w operands
+layoutControl
+	move.l a1, d6
+	sub.l a0, d6
+	bsr.w copy
+	bne.w bad
+	bra.w complete
 constant
 	; Assignment is a shared statement, independent of the package operand grammar.
 	moveq #5, d6

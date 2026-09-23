@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
+	.use experimental.amigaos.binary_source as source
 	.pub
 ABSOLUTE = 2
 	.priv
@@ -290,7 +291,7 @@ line
 	sub.l a0, d0
 	cmp.l d0, d6
 	bhi.w bad
-	cmpi.b #1, 1(a0)
+	cmpi.b #source.FLAG_ALLOWED, 1(a0)
 	bhi.w bad
 	cmpi.w #9, d6
 	blo.w next

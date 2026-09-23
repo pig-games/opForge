@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_prepare as prepare
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_graph as graph
+	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_modules as modules
 	.use tkvm.amigaos.runtime as tokenizer
 	.use tkvm.amigaos.control as control
@@ -325,6 +326,27 @@ complete	.block
 	tst.l d0
 	rts
 	.bend  ; complete
+; A0=Frame,A1=ordered prepared records,D0=bytes. Index numeric block spans
+; in the no-longer-needed name arena, before lexical scratch is released.
+; D0/CCR=status,D1=span count; all other registers preserved.
+indexBlocks	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	move.l a2, d1
+	beq.w indexBad
+	lea SCOPE_STATE+scopes.ARENA(a2), a2
+	movea.l a1, a0
+	movea.l a2, a1
+	jsr blocks.index
+	bra.w indexDone
+indexBad
+	moveq #0, d1
+	moveq #1, d0
+indexDone
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; indexBlocks
 ; End a streaming session. A0=Frame. Clears scratch-resident pointers and resets
 ; tokenizer control state before the caller frees scratch. D0=0. Preserves other
 ; registers; CCR reflects D0.

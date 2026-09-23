@@ -552,6 +552,12 @@ orderReady
 	bsr.w materializeOrder
 	bne.w completionBad
 selected
+	lea Records, a0
+	movea.l memory.Block.Pointer(a0), a1
+	move.l memory.Block.Used(a0), d0
+	lea Front, a0
+	jsr frontend.indexBlocks
+	bne.w completionBad
 	bsr.w clearIncludeText
 	lea Front, a0
 	jsr frontend.finish

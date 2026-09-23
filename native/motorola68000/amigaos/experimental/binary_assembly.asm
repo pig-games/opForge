@@ -7,6 +7,7 @@
 	.use opasm.amigaos.binary_expression as expr
 	.use experimental.amigaos.binary_encoding as encoding
 	.use experimental.amigaos.binary_dependencies as dependencies
+	.use experimental.amigaos.binary_source as source
 	.pub
 
 Frame	.struct
@@ -91,8 +92,9 @@ line
 	move.w 2(a4), Frame.Line(a5)
 	moveq #0, d0
 	move.b 1(a4), d0
-	cmpi.b #1, d0
+	cmpi.b #source.FLAG_ALLOWED, d0
 	bhi.w fail
+	andi.w #source.FLAG_INDENT, d0
 	lea 4(a4), a0
 	movea.l a4, a1
 	adda.l d6, a1

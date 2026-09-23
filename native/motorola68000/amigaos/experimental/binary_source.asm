@@ -11,6 +11,10 @@ STATUS_OVERFLOW = 2
 STATUS_UNSUPPORTED = 3
 STATUS_BIND_FAILED = 4
 MAX_LINE = 256
+FLAG_INDENT = 1
+FLAG_BLOCK_OPEN = 2
+FLAG_BLOCK_CLOSE = 4
+FLAG_ALLOWED = FLAG_INDENT+FLAG_BLOCK_OPEN+FLAG_BLOCK_CLOSE
 
 Frame	.struct
 Tokens	.long ?
@@ -42,10 +46,11 @@ Length	.long ?
 ; Binder: A0=lexeme, D0=length, A1=Context; returns D0=0, D1=u16 canonical
 ; identifier ID, D2=u8 qualifier. It preserves D3-D7/A2-A6; CCR unspecified.
 ; Binder owns namespace/alias resolution; this writer contains no CPU semantics.
-; Result: [u8(total length-1), u8(indented), u16 source line], followed by
+; Result: [u8(total length-1), u8(flags), u16 source line], followed by
 ; TKVM kind bytes: kinds 0/1 have u16 ID,u8 qualifier; kind2 has u32 value;
 ; kinds 4..39 have no payload. All multibyte output fields are big-endian,
 ; with no alignment padding. Strings and unknown kinds are unsupported.
+; Bit zero is indentation; scope lowering adds numeric block-open/close bits.
 ; Returns D0=status, D1=length; Frame.Used equals D1. Preserves other registers.
 ; CCR reflects D0. On failure Used/D1 are zero, and any written prefix is zero
 ; (an invalid record length). Payload bytes and binder side effects may remain.

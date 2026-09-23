@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_imports as imports
+	.use experimental.amigaos.binary_source as source
 	.pub
 LIMIT = layout.LIMIT
 ARENA_BYTES = layout.ARENA_BYTES
@@ -324,13 +325,17 @@ retainedLabel
 
 block
 	moveq #KIND_BLOCK, d2
-	bra.w opening
+	bsr.w openScope
+	bne.w done
+	ori.b #source.FLAG_BLOCK_OPEN, 1(a5)
+	bra.w done
 namespace
 	moveq #KIND_NAMESPACE, d2
 opening
 	bsr.w openScope
 	bra.w done
 endBlock
+	ori.b #source.FLAG_BLOCK_CLOSE, 1(a5)
 	moveq #KIND_BLOCK, d2
 	bra.w closing
 endNamespace

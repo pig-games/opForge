@@ -18,6 +18,16 @@ const UNUSED: &[(&str, &str)] = &[
     ("main.asm", ".module main\n.cpu m6502\n.use chosen\n.byte 2\n.endmodule\n.end\n"),
     ("library.asm", ".module unused\n.use absent\n.byte missing\n.endmodule\n.module chosen\n.cpu m6502\n.org $1000\n.byte 1\n.endmodule\n.end\n"),
 ];
+const BLOCK_BOUNDARIES: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep\n.word dep.entry.inside\n.endmodule\n.end\n",
+    ),
+    (
+        "dep.asm",
+        ".module dep\n.cpu m6502\n.org $1000\n.pub\nentry .block\n.byte $11\ninside:\n.byte $22\n.bend\n.endmodule\n.end\n",
+    ),
+];
 
 fn oracle(files: &[(&str, &str)]) -> Result<Vec<u8>, String> {
     oracle_with_roots(files, &[])
@@ -180,6 +190,14 @@ fn binary_graph_rust_ordering() {
     assert_eq!(oracle(DIAMOND).unwrap(), [1, 2, 3, 4]);
     assert_eq!(oracle(ENTRY_SIBLINGS).unwrap(), [1, 2]);
     assert_eq!(oracle(UNUSED).unwrap(), [1, 2]);
+    assert_eq!(oracle(BLOCK_BOUNDARIES).unwrap(), [0x11, 0x22, 1, 0x10]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; numeric block markers through graph ordering"]
+fn binary_graph_block_boundaries_fs_uae() {
+    let expected = oracle(BLOCK_BOUNDARIES).unwrap();
+    native(BLOCK_BOUNDARIES, "m6502", Some(&expected), None);
 }
 
 #[test]

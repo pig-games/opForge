@@ -145,6 +145,24 @@ sections targeting one concrete section, currently fail explicitly; ordered
 multi-source mapping needs its own bounded increment. Performance measurement
 is also pending before treating this as a fast path.
 
+The first native preparation checkpoint now preserves named `.block` open and
+close markers as bits in each packed line's existing flag byte. After numeric
+binding and module ordering, the native frontend validates and indexes their
+offset-based spans in the name arena that preparation no longer needs. The
+assembly pass still emits every selected module's records; this checkpoint
+does not claim block pruning or Rust linker parity. Focused live FS-UAE cases
+confirm unchanged output for ordered modules and nested blocks.
+
+Native follow-up must resolve selected roots and qualified references to the
+owning outer block, traverse dependencies from every retained line, and leave
+unowned code/data intact. It can then skip unreachable records before its
+existing two assembly passes, so addresses are encoded after selection.
+The experimental native path currently has only a single output PC and simple
+`.use` imports; logical-to-concrete section mapping and placed-region checks
+remain a separate, necessary boundary before claiming parity with Rust's
+integrated output. Keep unsupported mapping cases explicit rather than
+silently assembling all imported blocks.
+
 ## Increment contract
 
 For every increment, state the hypothesis, reference behavior, resource budget

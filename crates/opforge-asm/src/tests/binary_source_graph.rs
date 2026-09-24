@@ -8,6 +8,8 @@ mod measurement;
 mod implicit_modules;
 #[path = "binary_source_include_parent.rs"]
 mod include_parent;
+#[path = "binary_source_parameters.rs"]
+mod parameters;
 #[path = "binary_source_wildcard.rs"]
 mod wildcard;
 

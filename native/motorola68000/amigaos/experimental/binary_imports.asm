@@ -832,11 +832,11 @@ done
 	rts
 	.bend  ; resolve
 
-; A0=first import suffix token,A4=end,A6=scope. Strip an optional trailing
-; `with (name=expression[, ...])` clause. Parameters are syntax only for now.
-; D0/CCR=status; A4 is shortened to the `with` token on success.
+; A0=first import suffix token,A4=end,A6=scope. Reject a `with` clause until
+; its values can be evaluated in the importer and bound in the target module.
+; D0/CCR=status; A4 is unchanged.
 parameters	.block
-	movem.l d1-d5/a0-a3, -(sp)
+	movem.l d1-d4/a0/a3, -(sp)
 	movea.l a0, a3
 	moveq #0, d4
 scanParameterSuffix
@@ -868,71 +868,7 @@ scanWith
 	ori.l #$20202020, d0
 	cmpi.l #$77697468, d0  ; with
 	bne.w scanAdvance
-	movea.l a3, a2
-	movea.l a3, a0
-	bsr.w nextParameterToken
-	bne.w parametersBad
-	cmpa.l a4, a0
-	bhs.w parametersBad
-	cmpi.b #14, (a0)+
-	bne.w scanAdvance
-parameterName
-	cmpa.l a4, a0
-	bhs.w parametersBad
-	cmpi.b #1, (a0)
-	bhi.w parametersBad
-	tst.b 3(a0)
-	bne.w parametersBad
-	bsr.w nextParameterToken
-	bne.w parametersBad
-	cmpa.l a4, a0
-	bhs.w parametersBad
-	cmpi.b #34, (a0)+
-	bne.w parametersBad
-	moveq #0, d5  ; nested expression parentheses
-	moveq #0, d3  ; expression token count
-parameterValue
-	cmpa.l a4, a0
-	bhs.w parametersBad
-	cmpi.b #14, (a0)
-	bne.w valueClose
-	addq.w #1, d5
-	bra.w valueAdvance
-valueClose
-	cmpi.b #15, (a0)
-	bne.w valueComma
-	tst.w d5
-	beq.w parameterEnd
-	subq.w #1, d5
-	bra.w valueAdvance
-valueComma
-	cmpi.b #4, (a0)
-	bne.w valueAdvance
-	tst.w d5
-	beq.w parameterNext
-valueAdvance
-	cmpi.b #14, (a0)
-	beq.w skipValueCount
-	cmpi.b #15, (a0)
-	beq.w skipValueCount
-	addq.w #1, d3
-skipValueCount
-	bsr.w nextParameterToken
-	bne.w parametersBad
-	bra.w parameterValue
-parameterNext
-	tst.w d3
-	beq.w parametersBad
-	addq.l #1, a0
-	bra.w parameterName
-parameterEnd
-	tst.w d3
-	beq.w parametersBad
-	addq.l #1, a0
-	cmpa.l a4, a0
-	bne.w parametersBad
-	movea.l a2, a4
-	bra.w parametersOk
+	bra.w parametersBad
 scanAdvance
 	movea.l a3, a0
 	bsr.w nextParameterToken
@@ -948,7 +884,7 @@ parametersOk
 parametersBad
 	moveq #1, d0
 parametersDone
-	movem.l (sp)+, d1-d5/a0-a3
+	movem.l (sp)+, d1-d4/a0/a3
 	tst.l d0
 	rts
 	.bend  ; parameters

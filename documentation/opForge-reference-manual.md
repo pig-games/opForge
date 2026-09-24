@@ -665,7 +665,7 @@ block (or `.meta.output.*` inline), `.name` sets the output base name.
 .use util.math (add16) as M
 .use util.math map { code -> app_code }
 .use util.math (add16) as M map { code -> app_code }
-.use util.math with (FEATURE=1, MODE="fast")
+.use util.math with (FEATURE=1, COUNT=2)
 ```
 
 Notes:
@@ -684,8 +684,15 @@ Notes:
 - Selective imports with a module qualifier keep the names qualified. In
   `.use util.math (add16) as M`, `M.add16` is available and `add16` is not
   directly imported. The same reference-driven block rule applies.
-- `with (...)` parameters are currently parsed and retained but have no effect
-  on the imported module or its output.
+- On the Rust assembly path, `with (NAME=expression, ...)` evaluates each value
+  in the importing module at the `.use` site. Numeric literals, earlier constant
+  assignments, and incoming parameters are available; forward or assembly-time
+  values are errors. Each value becomes a private symbol in the imported module.
+  The current graph requires repeated imports of one module to agree on its
+  parameter values. Strings are not symbol values. Compound values remain
+  unsupported at this graph boundary.
+  The experimental compact native CLI currently rejects `with` rather than
+  ignoring its values; native parameter binding is still pending.
 - A `map { logical -> concrete }` clause maps logical sections declared by the
   imported module into concrete sections in the importing/root module. Map
   clauses require a namespace binding, so `.use util.math (add16) map { ... }`

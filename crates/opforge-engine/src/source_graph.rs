@@ -38,11 +38,13 @@ struct ModuleSource {
     path: PathBuf,
     lines: Vec<String>,
     first_line: u32,
+    params: HashMap<String, i64>,
 }
 
 struct ModuleLoadContext<'a> {
     index: &'a ModuleIndex,
     loaded: &'a mut HashSet<String>,
+    configurations: &'a mut HashMap<String, HashMap<String, i64>>,
     entry_modules: &'a HashMap<String, ModuleSource>,
     order: &'a mut Vec<(String, ModuleSource)>,
     stack: &'a mut Vec<String>,
@@ -57,6 +59,7 @@ struct ModuleLoadContext<'a> {
 struct ModuleUseRef {
     module_id: String,
     span: Span,
+    params: HashMap<String, i64>,
 }
 
 fn canonical_module_id(module_id: &str) -> String {
@@ -120,11 +123,13 @@ struct ActiveConditionalFrame {
 }
 
 #[derive(Debug, Default)]
-struct StaticConditionalEvalContext;
+struct StaticConditionalEvalContext {
+    values: HashMap<String, i64>,
+}
 
 impl EvalContext for StaticConditionalEvalContext {
-    fn lookup_symbol(&self, _name: &str) -> Option<i64> {
-        None
+    fn lookup_symbol(&self, name: &str) -> Option<i64> {
+        self.values.get(&name.to_ascii_uppercase()).copied()
     }
 
     fn current_address(&self) -> Option<i64> {
@@ -139,16 +144,149 @@ fn current_branch_is_active(stack: &[ActiveConditionalFrame]) -> bool {
         .unwrap_or(true)
 }
 
-fn eval_static_condition(expr: &Expr) -> Option<bool> {
-    eval_core_expr(expr, &StaticConditionalEvalContext)
-        .ok()
-        .map(|value| value != 0)
+fn eval_static_condition(expr: &Expr, values: &StaticConditionalEvalContext) -> Option<bool> {
+    eval_core_expr(expr, values).ok().map(|value| value != 0)
+}
+
+fn record_compile_time_constant(ast: &LineAst, values: &mut StaticConditionalEvalContext) {
+    let (name, expr) = match ast {
+        LineAst::Assignment(assignment) if assignment.op == opcore::parser::AssignOp::Const => {
+            (&assignment.label.name, &assignment.expr)
+        }
+        LineAst::Statement(statement)
+            if statement
+                .mnemonic
+                .as_deref()
+                .is_some_and(|name| name.eq_ignore_ascii_case(".const"))
+                && statement.operands.len() == 1 =>
+        {
+            let Some(label) = &statement.label else {
+                return;
+            };
+            (&label.name, &statement.operands[0])
+        }
+        _ => return,
+    };
+    let key = name.to_ascii_uppercase();
+    if let Ok(value) = eval_core_expr(expr, values) {
+        values.values.insert(key, value);
+    } else {
+        values.values.remove(&key);
+    }
+}
+
+fn parse_graph_line(line: &str, line_num: u32) -> Option<LineAst> {
+    match Parser::process_opcore_line_request(line, line_num) {
+        ProcessingOutcome::Done(ast) => Some(ast),
+        ProcessingOutcome::Return(_)
+            if line
+                .as_bytes()
+                .windows(6)
+                .any(|part| part.eq_ignore_ascii_case(b".const"))
+                || line
+                    .as_bytes()
+                    .windows(5)
+                    .any(|part| part.eq_ignore_ascii_case(b".bend")) =>
+        {
+            let ast = Parser::from_line(line, line_num)
+                .ok()?
+                .parse_compat_mixed_line()
+                .ok()?;
+            match &ast {
+                LineAst::Statement(statement)
+                    if statement.mnemonic.as_deref().is_some_and(|name| {
+                        name.eq_ignore_ascii_case(".const") || name.eq_ignore_ascii_case(".bend")
+                    }) =>
+                {
+                    Some(ast)
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn update_nested_scope_depth(ast: &LineAst, depth: &mut usize) {
+    let LineAst::Statement(statement) = ast else {
+        return;
+    };
+    let Some(name) = statement.mnemonic.as_deref() else {
+        return;
+    };
+    if [".module", ".endmodule"]
+        .iter()
+        .any(|keyword| name.eq_ignore_ascii_case(keyword))
+    {
+        *depth = 0;
+    } else if [".block", ".namespace", ".macro", ".segment", ".struct"]
+        .iter()
+        .any(|keyword| name.eq_ignore_ascii_case(keyword))
+    {
+        *depth += 1;
+    } else if [
+        ".bend",
+        ".endblock",
+        ".endn",
+        ".endnamespace",
+        ".endmacro",
+        ".endm",
+        ".endsegment",
+        ".ends",
+        ".endstruct",
+    ]
+    .iter()
+    .any(|keyword| name.eq_ignore_ascii_case(keyword))
+    {
+        *depth = depth.saturating_sub(1);
+    }
+}
+
+fn contains_string_literal(expr: &Expr) -> bool {
+    match expr {
+        Expr::String(_, _) => true,
+        Expr::List(items, _) | Expr::Tuple(items, _) => items.iter().any(contains_string_literal),
+        Expr::Index { base, index, .. } => {
+            contains_string_literal(base) || contains_string_literal(index)
+        }
+        Expr::Member { base, .. }
+        | Expr::Indirect(base, _)
+        | Expr::Immediate(base, _)
+        | Expr::IndirectLong(base, _)
+        | Expr::Unary { expr: base, .. } => contains_string_literal(base),
+        Expr::StructLiteral { fields, .. } => fields
+            .iter()
+            .any(|(_, value)| contains_string_literal(value)),
+        Expr::Call { args, .. } => args.iter().any(contains_string_literal),
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+            ..
+        } => {
+            contains_string_literal(cond)
+                || contains_string_literal(then_expr)
+                || contains_string_literal(else_expr)
+        }
+        Expr::Binary { left, right, .. } => {
+            contains_string_literal(left) || contains_string_literal(right)
+        }
+        Expr::Range {
+            start, end, step, ..
+        } => {
+            contains_string_literal(start)
+                || contains_string_literal(end)
+                || step.as_deref().is_some_and(contains_string_literal)
+        }
+        _ => false,
+    }
 }
 
 fn apply_conditional_ast(
     stack: &mut Vec<ActiveConditionalFrame>,
     kind: ConditionalKind,
     exprs: &[Expr],
+    values: &StaticConditionalEvalContext,
 ) {
     let parent_active = current_branch_is_active(stack);
     match kind {
@@ -156,7 +294,7 @@ fn apply_conditional_ast(
             let branch_active = parent_active
                 && exprs
                     .first()
-                    .and_then(eval_static_condition)
+                    .and_then(|expr| eval_static_condition(expr, values))
                     .unwrap_or(false);
             stack.push(ActiveConditionalFrame {
                 kind: ActiveConditionalKind::If,
@@ -177,7 +315,7 @@ fn apply_conditional_ast(
                 && !frame.branch_taken
                 && exprs
                     .first()
-                    .and_then(eval_static_condition)
+                    .and_then(|expr| eval_static_condition(expr, values))
                     .unwrap_or(false);
             frame.current_active = branch_active;
             frame.branch_taken |= branch_active;
@@ -205,7 +343,7 @@ fn apply_conditional_ast(
             let switch_value = if parent_active {
                 exprs
                     .first()
-                    .and_then(|expr| eval_core_expr(expr, &StaticConditionalEvalContext).ok())
+                    .and_then(|expr| eval_core_expr(expr, values).ok())
             } else {
                 None
             };
@@ -228,7 +366,7 @@ fn apply_conditional_ast(
                 && !frame.branch_taken
                 && frame.switch_value.is_some()
                 && exprs.iter().any(|expr| {
-                    eval_core_expr(expr, &StaticConditionalEvalContext)
+                    eval_core_expr(expr, values)
                         .ok()
                         .zip(frame.switch_value)
                         .is_some_and(|(value, switch)| value == switch)
@@ -262,17 +400,21 @@ fn scan_active_module_items(lines: &[String]) -> Vec<LineAst> {
     let _parse_scope = phase_profile::scope(PhaseBucket::PrepareParseLineAst);
     let mut out = Vec::new();
     let mut stack = Vec::new();
+    let mut values = StaticConditionalEvalContext::default();
+    let mut scope_depth = 0;
     for (idx, line) in lines.iter().enumerate() {
-        let ProcessingOutcome::Done(ast) =
-            Parser::process_opcore_line_request(line, idx as u32 + 1)
-        else {
+        let Some(ast) = parse_graph_line(line, idx as u32 + 1) else {
             continue;
         };
         if let LineAst::Conditional(cond) = &ast {
-            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs);
+            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs, &values);
             continue;
         }
         if current_branch_is_active(&stack) {
+            update_nested_scope_depth(&ast, &mut scope_depth);
+            if scope_depth == 0 {
+                record_compile_time_constant(&ast, &mut values);
+            }
             out.push(ast);
         }
     }
@@ -289,6 +431,7 @@ pub(crate) fn scan_module_ids_from_processing(lines: &[String]) -> Vec<String> {
 fn scan_module_starts_from_processing(lines: &[String]) -> Vec<(String, usize)> {
     let mut modules = Vec::new();
     let mut stack = Vec::new();
+    let values = StaticConditionalEvalContext::default();
     for (index, line) in lines.iter().enumerate() {
         let ProcessingOutcome::Done(ast) =
             Parser::process_opcore_line_request(line, index as u32 + 1)
@@ -296,7 +439,7 @@ fn scan_module_starts_from_processing(lines: &[String]) -> Vec<(String, usize)> 
             continue;
         };
         if let LineAst::Conditional(cond) = &ast {
-            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs);
+            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs, &values);
             continue;
         }
         if !current_branch_is_active(&stack) {
@@ -320,18 +463,80 @@ fn scan_module_starts_from_processing(lines: &[String]) -> Vec<(String, usize)> 
     modules
 }
 
-fn collect_use_directives_from_processing(lines: &[String]) -> Vec<ModuleUseRef> {
+// Module configuration is needed before the dependency is assembled. Evaluate
+// imports in source order using only constants already defined by the caller.
+fn collect_configured_uses(source: &ModuleSource) -> Result<Vec<ModuleUseRef>, AsmRunError> {
+    let mut values = StaticConditionalEvalContext {
+        values: source.params.clone(),
+    };
+    let mut stack = Vec::new();
+    let mut scope_depth = 0;
     let mut uses = Vec::new();
-    for ast in scan_active_module_items(lines) {
-        let LineAst::Use(use_ast) = ast else {
+    for (idx, line) in source.lines.iter().enumerate() {
+        let Some(ast) = parse_graph_line(line, idx as u32 + 1) else {
             continue;
         };
-        uses.push(ModuleUseRef {
-            module_id: use_ast.module_id,
-            span: use_ast.span,
-        });
+        if let LineAst::Conditional(cond) = &ast {
+            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs, &values);
+            continue;
+        }
+        if !current_branch_is_active(&stack) {
+            continue;
+        }
+        update_nested_scope_depth(&ast, &mut scope_depth);
+        if scope_depth == 0 {
+            record_compile_time_constant(&ast, &mut values);
+        }
+        match ast {
+            LineAst::Use(use_ast) => {
+                let mut import = ModuleUseRef {
+                    module_id: use_ast.module_id,
+                    span: Span {
+                        line: use_ast.span.line + source.first_line - 1,
+                        ..use_ast.span
+                    },
+                    params: HashMap::new(),
+                };
+                for param in use_ast.params {
+                    let key = param.name.to_ascii_uppercase();
+                    if import.params.contains_key(&key) {
+                        return Err(module_import_error(
+                            &format!("duplicate .use parameter: {}", param.name),
+                            Some(&param.name),
+                            &import,
+                            &source.path,
+                            &source.lines,
+                        ));
+                    }
+                    if contains_string_literal(&param.value) {
+                        return Err(module_import_error(
+                            &format!(
+                                ".use parameter {}: string values are not supported",
+                                param.name
+                            ),
+                            Some(&param.name),
+                            &import,
+                            &source.path,
+                            &source.lines,
+                        ));
+                    }
+                    let value = eval_core_expr(&param.value, &values).map_err(|err| {
+                        module_import_error(
+                            &format!(".use parameter {}: {}", param.name, err.message),
+                            Some(&param.name),
+                            &import,
+                            &source.path,
+                            &source.lines,
+                        )
+                    })?;
+                    import.params.insert(key, value);
+                }
+                uses.push(import);
+            }
+            _ => {}
+        }
     }
-    uses
+    Ok(uses)
 }
 
 fn collect_use_directives_with_items_from_processing(lines: &[String]) -> Vec<UseDirectiveSpec> {
@@ -481,6 +686,20 @@ fn load_module_recursive(
             importing_lines,
         ));
     }
+    if let Some(existing) = ctx.configurations.get(&canonical) {
+        if existing != &import.params {
+            return Err(module_import_error(
+                &format!("conflicting .use parameters for module: {module_id}"),
+                Some(module_id),
+                import,
+                importing_path,
+                importing_lines,
+            ));
+        }
+    } else {
+        ctx.configurations
+            .insert(canonical.clone(), import.params.clone());
+    }
     if ctx.loaded.contains(&canonical) {
         return Ok(());
     }
@@ -575,11 +794,15 @@ fn load_module_recursive(
             path: info.path.clone(),
             lines: module_lines,
             first_line,
+            params: import.params.clone(),
         }
     };
+    let source = ModuleSource {
+        params: import.params.clone(),
+        ..source
+    };
     ctx.stack.push(module_id.to_string());
-    for mut dep in collect_use_directives_from_processing(&source.lines) {
-        dep.span.line += source.first_line - 1;
+    for dep in collect_configured_uses(&source)? {
         load_module_recursive(&dep, ctx, &source.path, &source.lines)?;
     }
 
@@ -672,6 +895,7 @@ pub fn load_module_graph_with_provider(
                 path: root_path.to_path_buf(),
                 lines: root_lines.clone(),
                 first_line: 1,
+                params: HashMap::new(),
             },
         );
     } else {
@@ -704,6 +928,7 @@ pub fn load_module_graph_with_provider(
                     path: root_path.to_path_buf(),
                     lines: root_lines[block_start..end].to_vec(),
                     first_line: block_start as u32 + 1,
+                    params: HashMap::new(),
                 },
             );
             cursor = end;
@@ -713,12 +938,14 @@ pub fn load_module_graph_with_provider(
     }
 
     let mut loaded = HashSet::new();
+    let mut configurations = HashMap::new();
     let mut order = Vec::new();
     let mut stack = Vec::new();
     let mut dependency_files = HashSet::new();
     let mut ctx = ModuleLoadContext {
         index: &index,
         loaded: &mut loaded,
+        configurations: &mut configurations,
         entry_modules: &entry_modules,
         order: &mut order,
         stack: &mut stack,
@@ -728,7 +955,23 @@ pub fn load_module_graph_with_provider(
         pp_macro_depth,
         source_provider,
     };
+    // Visit entry modules that import other entry modules first. An imported
+    // entry module receives its configuration from the importer; treating its
+    // declaration as an unconfigured root first would fix the wrong values.
+    let entry_targets: HashSet<String> = entry_modules
+        .values()
+        .flat_map(|source| scan_active_module_items(&source.lines))
+        .filter_map(|ast| match ast {
+            LineAst::Use(use_ast) => Some(canonical_module_id(&use_ast.module_id)),
+            _ => None,
+        })
+        .collect();
+    let mut entry_order = entry_order;
+    entry_order.sort_by_key(|id| entry_targets.contains(&canonical_module_id(id)));
     for id in entry_order {
+        if ctx.loaded.contains(&canonical_module_id(&id)) {
+            continue;
+        }
         let import = ModuleUseRef {
             module_id: id,
             span: Span {
@@ -736,6 +979,7 @@ pub fn load_module_graph_with_provider(
                 col_start: 1,
                 col_end: 1,
             },
+            params: HashMap::new(),
         };
         load_module_recursive(&import, &mut ctx, root_path, &root_lines)?;
     }
@@ -796,13 +1040,39 @@ pub fn load_module_graph_with_provider(
                 source.first_line,
             ));
         }
+        let mut parameter_lines: Vec<_> = source.params.iter().collect();
+        parameter_lines.sort_by_key(|(name, _)| *name);
+        if implicit {
+            for (name, value) in &parameter_lines {
+                combined.push(format!("{name} = {value}"));
+                origins.push(SourceOrigin::new(
+                    Some(file_name.clone()),
+                    source.first_line,
+                ));
+            }
+        }
         let line_count = source.lines.len() as u32;
         for (idx, line) in source.lines.into_iter().enumerate() {
+            let starts_module = !implicit
+                && matches!(
+                    Parser::process_opcore_line_request(&line, idx as u32 + 1),
+                    ProcessingOutcome::Done(LineAst::Statement(statement))
+                        if statement.mnemonic.as_deref().is_some_and(|name| name.eq_ignore_ascii_case(".module"))
+                );
             combined.push(line);
             origins.push(SourceOrigin::new(
                 Some(file_name.clone()),
                 source.first_line + idx as u32,
             ));
+            if starts_module {
+                for (name, value) in &parameter_lines {
+                    combined.push(format!("{name} = {value}"));
+                    origins.push(SourceOrigin::new(
+                        Some(file_name.clone()),
+                        source.first_line + idx as u32,
+                    ));
+                }
+            }
         }
         if implicit {
             combined.push(".endmodule".to_owned());

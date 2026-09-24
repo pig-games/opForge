@@ -129,21 +129,22 @@ cycles, private names and invalid include paths must fail explicitly. Keep the
 host-prepared package boundary for now; native package generation is separate.
 
 Work in bounded slices. Direct per-item `.use` aliases, implicit file identities,
-and direct wildcard availability now have focused Rust/native cases. Inert
-string-valued parameter syntax, conditional or generated module discovery,
+and direct wildcard availability now have focused Rust/native cases. Configured
+module parameters, conditional or generated module discovery,
 remaining include path forms, and section-map composition still need focused
 parity cases. Some depend on broader source expansion. Do not claim module
 parity while those forms are unsupported, or add a parallel text interpreter to
 close a checklist. Use the existing binary-source representation and numeric
 graph so later assembly passes do not return to source strings.
 
-For the current contract, `.use ... with (...)` parameters are accepted but
-inert: Rust retains them without changing the imported module. Native parity
-means accepting the syntax with the same result, not adding configuration
-semantics in this phase. The compact native path now accepts numeric and nested
-expression parameters, but string tokens still fail at the packed-source writer.
-Wildcard availability, block reachability, and this parameter subset are
-tracked in the [prepared-source experiment](prepared-source-experiment.md#direct-wildcard-imports-and-reference-driven-blocks).
+Rust now binds scalar `.use ... with (...)` values as private symbols in the
+imported module. It evaluates the expression in the importer from values known
+at the `.use` site; forward values fail. The compact native path rejects `with`
+until it can carry those values through preparation and assembly. Compound
+values, native binding, and block-local first-pass conditionals or loops using
+outer symbols remain separate gaps. Do not claim parameter parity yet.
+The [prepared-source experiment](prepared-source-experiment.md#module-parameter-checkpoint)
+tracks this parameter subset and its limitations.
 
 ## Selected modules and reachable output
 

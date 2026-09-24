@@ -157,14 +157,12 @@ Unowned code/data remain. The native import parser accepts unqualified selected
 names in `.use dep (entry, helper)`, optionally followed by `as alias`. It
 validates each name even when unused, but does not retain a block until reached
 code references it. Repeated names within one list share a numeric selection.
-Per-item aliases, wildcard imports, and section maps remain outside this
-bounded native path. Focused live FS-UAE cases cover selection and binding,
-not Rust's mapped-section output.
-The experimental native path currently has only a single output PC and simple
-`.use` imports; logical-to-concrete section mapping and placed-region checks
-remain a separate, necessary boundary before claiming parity with Rust's
-integrated output. Keep unsupported mapping cases explicit rather than
-silently assembling all imported blocks.
+Per-item aliases and wildcard imports remain outside this bounded native path.
+The compact CLI now has one-region section placement and one explicit imported
+section map, with focused live FS-UAE parity. Its mapped concrete section must
+be empty because section-local ordering of root and imported content remains
+unimplemented. Keep unsupported mapping cases explicit rather than silently
+assembling them in dependency order.
 
 ## Increment contract
 
@@ -573,3 +571,11 @@ placement and a literal region to this compact CLI. It is limited to one
 contiguous placed section; the focused identical-source Rust/native proof and
 the intermittent 2 MiB emulator startup timeout are recorded in the
 [runtime note](prepared-source-experiment.md#first-bounded-section-placement).
+
+The next increment accepts one explicit `.use` section map between differently
+named logical and concrete sections, provided the concrete section is empty.
+Rust/native byte parity, native rejection of a nonempty mapped concrete body,
+and image-size observations are in the
+[runtime note](prepared-source-experiment.md#first-explicit-imported-section-map).
+The next layout decision is how to honor Rust's concrete-before-import content
+order without reopening source text or losing selected-block pruning.

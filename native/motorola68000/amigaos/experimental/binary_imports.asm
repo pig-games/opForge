@@ -6,6 +6,7 @@
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_modules as modules
+	.use experimental.amigaos.binary_section_prepare as sections
 	.pub
 Item	.struct
 Target	.word ?
@@ -42,11 +43,13 @@ clear
 	rts
 	.bend  ; begin
 
-; A0=.use token,A1=scope state,A2=binder callback,A4=record end.
+; A0=.use token,A1=scope state,A2=binder callback,A3=section state,
+; A4=record end.
 ; One or more selected names and an optional module alias; references stay separate.
 ; D0/CCR=status; other registers preserved.
 line	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	move.l a3, -(sp)
 	movea.l a1, a6
 	movea.l a2, a5
 	moveq #0, d6
@@ -67,6 +70,12 @@ line	.block
 	move.l d1, d7
 	sub.w layout.State.Base(a6), d7
 	addq.l #4, a3
+	movea.l a3, a0
+	movea.l a6, a1
+	movea.l (sp), a2
+	move.l d7, d0
+	jsr sections.importMap
+	bne.w bad
 	moveq #0, d4  ; selected-name list head, zero means no selection
 	moveq #0, d3  ; direct unqualified access
 	cmpa.l a4, a3
@@ -243,6 +252,7 @@ append
 bad
 	moveq #1, d0
 done
+	addq.l #4, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts

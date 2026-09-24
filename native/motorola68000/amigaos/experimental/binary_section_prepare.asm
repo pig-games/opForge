@@ -13,8 +13,12 @@ Concrete	.word ?
 Region	.word ?
 Active	.word ?
 Seen	.word ?
+MapOwner	.word ?
+MapModule	.word ?
+MapLogical	.word ?
+MapConcrete	.word ?
 	.endstruct
-SCRATCH_BYTES = State.Seen+2
+SCRATCH_BYTES = State.MapConcrete+2
 CONTROL_SECTION = 1
 CONTROL_ENDSECTION = 2
 CONTROL_REGION = 3
@@ -29,6 +33,10 @@ begin	.block
 	clr.w State.Region(a0)
 	clr.w State.Active(a0)
 	clr.w State.Seen(a0)
+	clr.w State.MapOwner(a0)
+	clr.w State.MapModule(a0)
+	clr.w State.MapLogical(a0)
+	clr.w State.MapConcrete(a0)
 	moveq #0, d0
 	rts
 	.bend  ; begin
@@ -84,6 +92,8 @@ section
 sectionName
 	cmpa.l a3, a2
 	bne.w bad
+	tst.w State.MapModule(a4)
+	bne.w mappedName
 	moveq #0, d0
 	move.w State.First(a4), d0
 	beq.w firstName
@@ -93,6 +103,34 @@ sectionName
 	bra.w matched
 firstName
 	move.w d6, State.First(a4)
+	bra.w matched
+mappedName
+	moveq #0, d0
+	cmpi.w #1, d5
+	bne.w mappedConcrete
+	move.w State.MapLogical(a4), d0
+	bra.w mappedCompare
+mappedConcrete
+	move.w State.MapConcrete(a4), d0
+mappedCompare
+	move.w d6, d1
+	bsr.w sameLeaf
+	bne.w bad
+	move.l d6, d0
+	sub.w layout.State.Base(a6), d0
+	lsl.l #4, d0
+	lea layout.ENTRIES(a6), a1
+	adda.l d0, a1
+	move.w names.Entry.Owner(a1), d0
+	cmpi.w #1, d5
+	bne.w mappedOwner
+	cmp.w State.MapModule(a4), d0
+	bne.w bad
+	bra.w matched
+mappedOwner
+	cmp.w State.MapOwner(a4), d0
+	bne.w bad
+	moveq #6, d5  ; mapped concrete accepts no body in this slice
 matched
 	cmpi.w #1, d5
 	bne.w concrete
@@ -203,6 +241,87 @@ done
 	tst.l d0
 	rts
 	.bend  ; line
+
+; A0=first token after the imported module,A1=scope state,A2=section state,
+; A4=record end,D0=imported module index. Accept one trailing
+; `map { logical -> concrete }` and return A4 at the start of that suffix.
+; The ordinary import parser then sees the unchanged prefix. D0/CCR=status;
+; all other registers preserved.
+importMap	.block
+	movem.l d1-d7/a0-a3/a5-a6, -(sp)
+	movea.l a1, a6
+	movea.l a2, a5
+	move.l d0, d7
+	movea.l a4, a3
+	movea.l a4, a2
+	suba.w #16, a2
+	cmpa.l a0, a2
+	blo.w noMap
+	move.l a2, d4
+	cmpi.b #1, (a2)
+	bhi.w noMap
+	bsr.w name
+	bne.w noMap
+	lea MapWord(pc), a0
+	moveq #3, d0
+	bsr.w matches
+	bne.w noMap
+	cmpi.b #12, (a2)+
+	bne.w badMap
+	bsr.w name
+	bne.w badMap
+	move.w d1, d5
+	cmpi.b #19, (a2)+
+	bne.w badMap
+	cmpi.b #37, (a2)+
+	bne.w badMap
+	bsr.w name
+	bne.w badMap
+	move.w d1, d6
+	cmpi.b #13, (a2)+
+	bne.w badMap
+	cmpa.l a3, a2
+	bne.w badMap
+	tst.w State.MapModule(a5)
+	bne.w badMap
+	move.w State.Seen(a5), d0
+	andi.w #3, d0
+	bne.w badMap  ; mapping must precede section declarations
+	move.w layout.State.Current(a6), d0
+	beq.w badMap
+	move.w d0, State.MapOwner(a5)
+	move.w d7, d0
+	addq.w #1, d0
+	move.w d0, State.MapModule(a5)
+	move.w d5, State.MapLogical(a5)
+	move.w d6, State.MapConcrete(a5)
+	movea.l d4, a4
+noMap
+	moveq #0, d0
+	bra.w mapDone
+badMap
+	moveq #1, d0
+mapDone
+	movem.l (sp)+, d1-d7/a0-a3/a5-a6
+	tst.l d0
+	rts
+	.bend  ; importMap
+
+; A0=section state. A mapped case requires both named sections by completion.
+finish	.block
+	tst.w State.MapModule(a0)
+	beq.w finished
+	move.w State.Seen(a0), d0
+	andi.w #3, d0
+	cmpi.w #3, d0
+	bne.w badFinish
+finished
+	moveq #0, d0
+	rts
+badFinish
+	moveq #1, d0
+	rts
+	.bend  ; finish
 
 	.priv
 ; A2=name token,A3=end,A6=scope state. D1=source ID,A2 advances.
@@ -338,6 +457,7 @@ done
 
 LogicalWord	.byte "logical"
 InWord	.byte "in"
+MapWord	.byte "map"
 	.align 2  ; keep the next module's instructions word-aligned
 	.endsection
 	.endmodule

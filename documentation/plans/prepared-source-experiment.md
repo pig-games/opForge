@@ -1006,6 +1006,33 @@ The reruns used `OPFORGE_FS_UAE_MEMORY_PROFILE=2m` and
 `OPFORGE_FS_UAE_TIMEOUT_MS=60000` with the guide's local FS-UAE settings and
 the `compact_cli_search_roots_fs_uae` and
 `compact_cli_single_mapped_section_fs_uae` focused tests.
-These are functional and resource observations, not a speedup claim. Explicit
-`.map`, multiple sections, discontiguous placement, expressions in region
-bounds, and broader layout syntax remain outside this bounded path.
+These are functional and resource observations, not a speedup claim. At this
+checkpoint, explicit maps, multiple sections, discontiguous placement,
+expressions in region bounds, and broader layout syntax were outside the path.
+
+## First explicit imported section map
+
+The compact CLI now accepts one `.use dep (entry) as d map { code -> app_code }`
+for a differently named logical and concrete section. Numeric preparation
+records the mapped names and their module owners; the assembly passes consume
+the packed section controls and source records. This checkpoint retains the
+single region, single contiguous placement and selected-block limits. The
+mapped concrete section must be empty. Rust emits concrete-section statements
+before mapped logical content, while the native dependency-ordered pass would
+emit them afterward; native therefore rejects a nonempty mapped concrete body
+until section-local ordering is implemented. A focused Rust case confirms the
+ordering difference (`22 11`), and a fresh native rejection test confirms the
+guard instead of accepting incorrect bytes.
+
+With an empty concrete section and an outside-section constant reference to
+`d.entry`, a fresh 68020 / 2 MiB FS-UAE compact CLI run matched the live Rust
+byte `11`. The unchanged same-name section case also matched its Rust oracle,
+`11 00 10`. The release Hunk in these runs was 43,224 bytes with 54,592 bytes
+linked reservation. The prior checkpoint recorded 54,196 bytes reservation,
+so this slice adds 396 bytes (0.73%). The mapped case's guest command time was
+0.503 seconds; the unchanged control was 0.254 seconds in another fresh run.
+These single-run times are recorded for visibility but do not support a speed
+claim: no baseline can run the new mapped input, and emulator timing varied
+substantially even on the unchanged case. The previous startup timeout did not
+recur in these focused runs. Broader mapped-section ordering and multiple maps
+remain unsupported.

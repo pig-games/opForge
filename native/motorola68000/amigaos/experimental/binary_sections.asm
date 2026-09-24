@@ -111,7 +111,8 @@ beginPass	.block
 	.bend  ; beginPass
 
 ; A0=State,A1=Context,A2=packed control record. D0/CCR=status.
-; One same-name section is emitted contiguously in dependency-then-root order.
+; One section is emitted contiguously in dependency-then-root order. Explicitly
+; mapped concrete sections have empty bodies until section-local ordering exists.
 control	.block
 	movem.l d1-d2/a0-a2, -(sp)
 	moveq #0, d2
@@ -119,6 +120,8 @@ control	.block
 	cmpi.w #1, d2
 	beq.w open
 	cmpi.w #2, d2
+	beq.w open
+	cmpi.w #6, d2
 	beq.w open
 	cmpi.w #3, d2
 	beq.w close

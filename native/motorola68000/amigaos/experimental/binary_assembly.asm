@@ -166,6 +166,9 @@ statement	.block
 	movea.l pkg.Context.Package(a2), a3
 	cmpa.l a1, a0
 	beq.w ok
+	lea SectionState, a4
+	cmpi.w #6, sections.State.Active(a4)
+	beq.w bad  ; mapped concrete body ordering is not supported yet
 	move.l a1, d0
 	sub.l a0, d0
 	cmpi.l #5, d0

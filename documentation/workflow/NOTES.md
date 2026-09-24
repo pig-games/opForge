@@ -70,3 +70,11 @@ then remove notes once incorporated or obsolete. These are observations, not rul
   code section. Host assembly passed; native execution hung even on flat input.
   The generated listing exposed the issue, and explicit alignment fixed it.
   Consider a cheap emitted-instruction alignment check before emulator runs.
+
+- **Keep delegation and cost evidence visible in small slices.** Recent compact
+  runtime increments recorded functional parity but began to omit size/timing
+  deltas and missed chances to hand off bounded inventory work. At each natural
+  checkpoint, record the comparable measurements that exist (including image
+  and linked memory cost), and consider a cheaper agent only for a separable task
+  whose coordination cost is justified. Do not turn single-run emulator times
+  into speed claims.

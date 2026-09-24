@@ -319,6 +319,8 @@ importing
 	bpl.w bad
 	movea.l a6, a1
 	lea bind, a2
+	movea.l a6, a3
+	adda.l #SECTION_STATE, a3
 	jsr imports.line
 	bne.w bad
 	bra.w empty
@@ -449,6 +451,10 @@ finish	.block
 	movea.l a6, a0
 	lea bind, a1
 	jsr imports.finish
+	bne.w failSaved
+	movea.l a6, a0
+	adda.l #SECTION_STATE, a0
+	jsr sections.finish
 	bne.w failSaved
 	moveq #0, d7
 resolve

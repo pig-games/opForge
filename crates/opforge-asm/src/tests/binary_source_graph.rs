@@ -329,7 +329,7 @@ fn compact_cli(
     files: &[(&str, &str)],
     module_roots: &[&str],
     include_roots: &[&str],
-    expected: &[u8],
+    expected: Option<&[u8]>,
     bare_entry: bool,
 ) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
@@ -345,7 +345,7 @@ fn compact_cli(
         &sources,
         module_roots,
         include_roots,
-        Some(expected),
+        expected,
         bare_entry,
     )
     .expect("fresh compact CLI source-set completion");
@@ -353,8 +353,12 @@ fn compact_cli(
         panic!("native execution required");
     };
     assert_eq!(runs.len(), 1);
-    assert!(runs[0].success && runs[0].protocol_completed);
-    assert_eq!(runs[0].exit_code, Some(0));
+    assert!(runs[0].protocol_completed);
+    assert_eq!(runs[0].success, expected.is_some());
+    assert_eq!(
+        runs[0].exit_code,
+        Some(if expected.is_some() { 0 } else { 20 })
+    );
     let image = runs[0]
         .captured_artifacts
         .get(&PathBuf::from("Work/build/opforge_compact"))
@@ -362,8 +366,9 @@ fn compact_cli(
     let allocation = hunk::allocation(image).expect("valid compact CLI Hunk");
     assert!(allocation.total() < 2 * 1024 * 1024);
     eprintln!(
-        "COMPACT_CLI_SOURCE_SET seconds={:?} linked_reserved_bytes={}",
+        "COMPACT_CLI_SOURCE_SET seconds={:?} image_bytes={} linked_reserved_bytes={}",
         runs[0].start_to_done_host_seconds,
+        image.len(),
         allocation.total()
     );
 }
@@ -400,7 +405,60 @@ fn binary_graph_single_mapped_section_rust_oracle() {
 fn compact_cli_single_mapped_section_fs_uae() {
     let expected =
         oracle_with_roots(SINGLE_MAPPED_SECTION, &["library"]).expect("live Rust section oracle");
-    compact_cli(SINGLE_MAPPED_SECTION, &["library"], &[], &expected, false);
+    compact_cli(
+        SINGLE_MAPPED_SECTION,
+        &["library"],
+        &[],
+        Some(&expected),
+        false,
+    );
+}
+
+const EXPLICIT_MAPPED_SECTION: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.region rom, $1000, $10ff\n.use dep (entry) as d map { code -> app_code }\nwanted = d.entry\n.section app_code\n.endsection\n.place app_code in rom\n.endmodule\n.end\n",
+    ),
+    SINGLE_MAPPED_SECTION[1],
+];
+
+#[test]
+fn binary_graph_explicit_mapped_section_rust_oracle() {
+    assert_eq!(
+        oracle_with_roots(EXPLICIT_MAPPED_SECTION, &["library"]).unwrap(),
+        [0x11]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; one explicit imported section map"]
+fn compact_cli_explicit_mapped_section_fs_uae() {
+    let expected = oracle_with_roots(EXPLICIT_MAPPED_SECTION, &["library"])
+        .expect("live Rust explicit-map oracle");
+    compact_cli(
+        EXPLICIT_MAPPED_SECTION,
+        &["library"],
+        &[],
+        Some(&expected),
+        false,
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; mapped concrete body must fail until ordering matches Rust"]
+fn compact_cli_explicit_mapped_section_body_rejected_fs_uae() {
+    let files = &[
+        (
+            "main.asm",
+            ".module main\n.cpu m6502\n.region rom, $1000, $10ff\n.use dep (entry) as d map { code -> app_code }\nwanted = d.entry\n.section app_code\n.byte $22\n.endsection\n.place app_code in rom\n.endmodule\n.end\n",
+        ),
+        SINGLE_MAPPED_SECTION[1],
+    ];
+    assert_eq!(
+        oracle_with_roots(files, &["library"]).unwrap(),
+        [0x22, 0x11]
+    );
+    compact_cli(files, &["library"], &[], None, false);
 }
 
 #[test]
@@ -597,7 +655,7 @@ fn compact_cli_search_roots_fs_uae() {
     let roots = &["library", "library/nested"];
     let expected = oracle_with_roots(SEARCH_ROOTS, roots).unwrap();
     assert_eq!(expected, [1, 2, 3, 4]);
-    compact_cli(SEARCH_ROOTS, roots, &[], &expected, false);
+    compact_cli(SEARCH_ROOTS, roots, &[], Some(&expected), false);
 }
 
 const SELECTIVE_CANDIDATES: &[(&str, &str)] = &[
@@ -835,7 +893,7 @@ fn compact_cli_include_root_fs_uae() {
         INCLUDED_FROM_ROOT,
         &["library"],
         &["common"],
-        &expected,
+        Some(&expected),
         false,
     );
 }
@@ -850,7 +908,7 @@ fn compact_cli_bare_entry_fs_uae() {
         ("library/shared.asm", SHARED),
     ];
     let expected = oracle_with_search_roots(files, &[], &["library"]).unwrap();
-    compact_cli(files, &[], &["library"], &expected, true);
+    compact_cli(files, &[], &["library"], Some(&expected), true);
 }
 
 const INCLUDE_ASSEMBLY_FAILURE: &[(&str, &str)] = &[

@@ -1061,3 +1061,22 @@ single-run observations, not a measured speedup or proof of no regression;
 explicit mapping now scans records twice per assembly pass. Multiple maps,
 multiple placements, discontiguous output and broader layout syntax remain
 outside this bounded implementation.
+
+## Two-map placement boundary
+
+The next breadth case uses two distinct imported logical sections, each mapped
+to its own concrete section. Rust's existing `.place` pass reserves only the
+concrete sizes; reachable imported bytes are appended later. If both targets
+are placed consecutively in one region, the first mapped addition overlaps the
+second section's assigned address. The Rust reference now rejects this case
+before appending mapped bytes to sections or the output image, instead of returning a
+conflicting address-to-byte result. Two adjacent, separately bounded regions
+provide a valid contiguous case: its address-ordered Rust image is
+`a0 04 10 b0 10 a1 09 10 c0 20`, with unused imported blocks omitted.
+
+This checkpoint is a Rust correctness repair and reference case. It does not
+change the native Hunk, memory reservation or guest execution time. Native
+support for two regions, two placements and two maps requires indexed section
+state and an output schedule; merely accepting a second `.use ... map` would
+leave the current single-PC runtime with ambiguous addresses. Same-region
+placement after mapped growth needs a separate layout-convergence design.

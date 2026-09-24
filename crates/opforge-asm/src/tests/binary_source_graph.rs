@@ -182,6 +182,30 @@ fn oracle_with_search_roots(
     module_roots: &[&str],
     include_roots: &[&str],
 ) -> Result<Vec<u8>, String> {
+    oracle_entries_with_search_roots(files, module_roots, include_roots)
+        .map(|entries| entries.into_iter().map(|(_, byte)| byte).collect())
+}
+
+fn oracle_address_ordered_with_roots(
+    files: &[(&str, &str)],
+    roots: &[&str],
+) -> Result<Vec<u8>, String> {
+    let mut entries = oracle_entries_with_search_roots(files, roots, &[])?;
+    entries.sort_unstable_by_key(|(address, _)| *address);
+    if entries
+        .windows(2)
+        .any(|pair| pair[0].0.checked_add(1) != Some(pair[1].0))
+    {
+        return Err("Rust image is not one contiguous, nonoverlapping binary".into());
+    }
+    Ok(entries.into_iter().map(|(_, byte)| byte).collect())
+}
+
+fn oracle_entries_with_search_roots(
+    files: &[(&str, &str)],
+    module_roots: &[&str],
+    include_roots: &[&str],
+) -> Result<Vec<(u32, u8)>, String> {
     let dir = create_temp_dir("binary-module-graph");
     for (name, source) in files {
         let path = dir.join(name);
@@ -237,7 +261,7 @@ fn oracle_with_search_roots(
     .map_err(|error| format!("{error:?}"))
     .and_then(|(entries, diagnostics)| {
         if diagnostics.is_empty() {
-            Ok(entries.into_iter().map(|(_, byte)| byte).collect())
+            Ok(entries)
         } else {
             Err(format!("{diagnostics:?}"))
         }
@@ -474,6 +498,45 @@ fn compact_cli_explicit_mapped_section_body_fs_uae() {
         &[],
         Some(&expected),
         false,
+    );
+}
+
+const TWO_MAPPED_SECTIONS: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.region rom, $1000, $10ff\n.use dep_a (entry) as a map { code_a -> app_a }\n.use dep_b (entry) as b map { code_b -> app_b }\n.section app_a\n.byte $a0\n.word a.entry\n.endsection\n.section app_b\n.byte $a1\n.word b.entry\n.endsection\n.place app_a in rom\n.place app_b in rom\n.endmodule\n.end\n",
+    ),
+    (
+        "library/dep_a.asm",
+        ".module dep_a\n.cpu m6502\n.pub\n.section code_a, logical\n.byte $b0\nentry .block\n.byte $10\n.bend\nunused .block\n.byte $99\n.bend\n.endsection\n.endmodule\n.end\n",
+    ),
+    (
+        "library/dep_b.asm",
+        ".module dep_b\n.cpu m6502\n.pub\n.section code_b, logical\n.byte $c0\nentry .block\n.byte $20\n.bend\nunused .block\n.byte $98\n.bend\n.endsection\n.endmodule\n.end\n",
+    ),
+];
+
+#[test]
+fn binary_graph_two_mapped_sections_overlap_rejected() {
+    assert!(oracle_with_roots(TWO_MAPPED_SECTIONS, &["library"])
+        .unwrap_err()
+        .contains("Mapped section overlaps the next placed section"));
+}
+
+const TWO_MAPPED_REGIONS: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.region rom_a, $1000, $1004\n.region rom_b, $1005, $10ff\n.use dep_a (entry) as a map { code_a -> app_a }\n.use dep_b (entry) as b map { code_b -> app_b }\n.section app_a\n.byte $a0\n.word a.entry\n.endsection\n.section app_b\n.byte $a1\n.word b.entry\n.endsection\n.place app_a in rom_a\n.place app_b in rom_b\n.endmodule\n.end\n",
+    ),
+    TWO_MAPPED_SECTIONS[1],
+    TWO_MAPPED_SECTIONS[2],
+];
+
+#[test]
+fn binary_graph_two_mapped_regions_rust_oracle() {
+    assert_eq!(
+        oracle_address_ordered_with_roots(TWO_MAPPED_REGIONS, &["library"]).unwrap(),
+        [0xa0, 0x04, 0x10, 0xb0, 0x10, 0xa1, 0x09, 0x10, 0xc0, 0x20]
     );
 }
 

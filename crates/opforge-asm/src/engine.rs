@@ -1864,6 +1864,43 @@ qualified_share={:.2}%",
             return Ok(());
         };
         let started_at = Instant::now();
+        // Placement used concrete sizes before reachable logical content was
+        // appended. Check projected spans before mutating sections or the image.
+        for region in self.regions.values() {
+            for pair in region.placed.windows(2) {
+                let Some(first) = self.sections.get(&pair[0].name) else {
+                    continue;
+                };
+                let Some(next) = self.sections.get(&pair[1].name) else {
+                    continue;
+                };
+                let (Some(first_base), Some(next_base)) = (first.base_addr, next.base_addr) else {
+                    continue;
+                };
+                let mapped_growth = plan
+                    .mapped_sections
+                    .iter()
+                    .find_map(|(source, target)| {
+                        if source.eq_ignore_ascii_case(target)
+                            || !target.eq_ignore_ascii_case(&pair[0].name)
+                        {
+                            None
+                        } else {
+                            self.sections.get(source).map(|section| section.max_pc)
+                        }
+                    })
+                    .unwrap_or(0);
+                if u64::from(first_base) + u64::from(first.max_pc) + u64::from(mapped_growth)
+                    > u64::from(next_base)
+                {
+                    return Err(AsmError::new(
+                        AsmErrorKind::Directive,
+                        "Mapped section overlaps the next placed section",
+                        Some(&pair[0].name),
+                    ));
+                }
+            }
+        }
         for (source, target) in &plan.mapped_sections {
             if source.eq_ignore_ascii_case(target) {
                 continue;

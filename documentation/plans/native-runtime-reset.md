@@ -586,3 +586,12 @@ unowned logical bytes and an unreachable imported block matches Rust under
 the 68020 / 2 MiB profile; the [runtime note](prepared-source-experiment.md#concrete-content-before-mapped-import)
 records the bytes and resource cost. Multiple maps and placements remain a
 separate scope decision.
+
+The two-map reference case exposed a Rust placement hazard: when consecutive
+concrete sections share one region, late mapped growth can overlap the second
+section. Rust now rejects that conflict. Two adjacent explicit regions produce
+a valid contiguous reference image, recorded in the
+[runtime note](prepared-source-experiment.md#two-map-placement-boundary).
+Before native two-map parity, generalize its current single-section control
+state and schedule both mapped pairs against their regions. Treat same-region
+repacking after mapped growth as a separate convergence problem.

@@ -184,7 +184,9 @@ now has a compatible module/import workload and exact-output harness, but the
 current full CLI times out even on an existing tiny smoke case. Its executable
 build required a separate unowned-reference reachability correction. The
 remaining full-CLI execution failure must be diagnosed before it can serve as a
-timed reference; its timeout is not a measured slowdown on the mixed source.
+timed reference; the eight-block mixed case still had no completion after a
+five-minute guest deadline. Its timeout is not a measured slowdown on the mixed
+source.
 A minimal ignored regression also shows that Hunk output selection does not
 currently retain an imported `start .block` in the first section. Entry rooting
 must be resolved without broadening reachability or breaking branch layout.

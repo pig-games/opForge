@@ -1369,7 +1369,10 @@ FS-UAE configuration because the full CLI cannot fit the 2 MiB profile.
 This comparison is currently blocked. In the September 24 run, the eight-block
 m6502 case comprised 81 source lines, 841 source bytes and 106 expected output
 bytes. The compact CLI completed and matched the oracle. The full CLI did not
-produce a completion response within a 45-second guest deadline. A 24-block
+produce a completion response within a 45-second guest deadline. A September 24
+retry of this exact eight-block case with a 300,000 ms guest deadline also timed
+out after 309.82 seconds for the test invocation, with no guest completion,
+stdout or stderr. A 24-block
 version likewise timed out at 60 seconds. Crucially, an existing tiny full-CLI
 6502 smoke case also timed out at 45 seconds with no guest stdout or stderr,
 while the compact CLI completed under the same emulator configuration. Therefore

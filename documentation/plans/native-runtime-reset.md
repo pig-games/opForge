@@ -148,6 +148,37 @@ or parameter parity yet.
 The [prepared-source experiment](prepared-source-experiment.md#module-parameter-checkpoint)
 tracks this parameter subset and its limitations.
 
+## Performance and language re-entry
+
+The [bounded compact-CLI baseline](prepared-source-experiment.md#bounded-compact-cli-baseline-after-module-work)
+now covers an imported instruction/data routine and a two-map structured-data
+control on both m6502 and m68000 packages. All four cases matched live Rust
+output in fresh 68020 / 2 MiB native runs. These are single, small-workload
+observations, not a self-host estimate or a measured optimization gain.
+Instrumented preparation points first to tokenizer VM work in both workloads;
+the mixed m68000 case also has substantial assembly time. Count tokenizer VM
+operations and attribute instruction selection/encoding before changing either
+path, then compare release builds on identical inputs. Keep telemetry conditional
+and use the existing reusable macros.
+
+The principal language blockers for larger representative sources are:
+
+- Macro, conditional, loop and `.statement` expansion, including provenance and
+  pass-dependent values. The [opcore examples](../../examples/opcore) exercise
+  these shared-language forms; they do not belong in CPU packages.
+- General section/output layout and binary inclusion. The
+  [AmigaOS raw-image example](../../examples/manual/motorola68000/amigaos/rawimageview_320x256x4_incbin.asm)
+  needs section attributes, `.incbin` and `.output` beyond the bounded mapped
+  sections already supported.
+- String and richer data values, followed by broader expression and deferred
+  layout behavior. These remain shared-language work; their exact order should
+  follow a small complete source that can be assembled and inspected.
+
+Base instruction rows for the two measured packages have not been shown to be
+the main breadth blocker. The next implementation choice should be made from
+the measured work counts and a concrete language case, preserving the normal
+native CLI as the reference while the compact path grows.
+
 ## Selected modules and reachable output
 
 Native discovery now selects the requested `.module` from a

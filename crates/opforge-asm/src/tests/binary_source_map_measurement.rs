@@ -2,6 +2,7 @@
 use super::*;
 
 const ITEMS_PER_IMPORT: usize = 64;
+const MIXED_BLOCKS: usize = 24;
 
 fn sources(cpu: &str) -> [String; 3] {
     // Each pair emits three concrete bytes, one unowned byte, one block-entry
@@ -43,6 +44,82 @@ fn files<'a>(sources: &'a [String; 3]) -> [(&'static str, &'a str); 3] {
     ]
 }
 
+// Repeat a useful instruction-and-data kernel to exercise selection, branches,
+// expressions and imported-block reachability without constructing a huge input.
+fn mixed_sources(cpu: &str) -> ([String; 2], Vec<u8>) {
+    assert!(["m6502", "m68000"].contains(&cpu));
+    let main = format!(
+        ".module main\n.cpu {cpu}\n.use worker as work\n.word work.run\n.endmodule\n.end\n"
+    );
+    let mut worker = format!(".module worker\n.cpu {cpu}\n.org $1000\n.pub\nrun .block\n");
+    let mut expected = Vec::new();
+    for index in 0..MIXED_BLOCKS {
+        let value = (index % 64 + 1) as u8;
+        let other = ((index * 3) % 64 + 1) as u8;
+        let address = 0x1000 + expected.len();
+        if cpu == "m6502" {
+            worker.push_str(&format!(
+                "block{index}:\n lda #{value}\n ldx #{other}\n sta $2000\n bne next{index}\n .byte 0\nnext{index}: nop\n .word block{index}+1\n"
+            ));
+            expected
+                .extend_from_slice(&[0xa9, value, 0xa2, other, 0x8d, 0, 0x20, 0xd0, 1, 0, 0xea]);
+            expected.extend_from_slice(&((address + 1) as u16).to_le_bytes());
+        } else {
+            worker.push_str(&format!(
+                "block{index}:\n moveq #{value},d0\n moveq #{other},d1\n move.b d0,($2000).w\n bne.s next{index}\n .word 0\nnext{index}: nop\n .long block{index}+2\n"
+            ));
+            expected.extend_from_slice(&[
+                0x70, value, 0x72, other, 0x11, 0xc0, 0x20, 0, 0x66, 2, 0, 0, 0x4e, 0x71,
+            ]);
+            expected.extend_from_slice(&((address + 2) as u32).to_be_bytes());
+        }
+    }
+    worker.push_str(".bend\nunused .block\n.byte $99\n.bend\n.endmodule\n.end\n");
+    if cpu == "m6502" {
+        expected.extend_from_slice(&0x1000u16.to_le_bytes());
+    } else {
+        expected.extend_from_slice(&0x1000u16.to_be_bytes());
+    }
+    ([main, worker], expected)
+}
+
+fn mixed_files<'a>(sources: &'a [String; 2]) -> [(&'static str, &'a str); 2] {
+    [
+        ("main.asm", &sources[0]),
+        ("library/worker.asm", &sources[1]),
+    ]
+}
+
+#[test]
+fn compact_mixed_measurement_rust_oracle() {
+    for cpu in ["m6502", "m68000"] {
+        let (sources, independent) = mixed_sources(cpu);
+        let actual = oracle_with_roots(&mixed_files(&sources), &["library"]).unwrap();
+        assert_eq!(actual, independent);
+    }
+}
+
+#[test]
+#[ignore = "requires configured 68020 / 2 MiB FS-UAE; bounded mixed-instruction baseline"]
+fn compact_mixed_measurement_fs_uae() {
+    let cpu = std::env::var("OPFORGE_MEASURE_CPU").expect("select m6502 or m68000");
+    let (sources, independent) = mixed_sources(&cpu);
+    let files = mixed_files(&sources);
+    let rust_started = std::time::Instant::now();
+    let expected = oracle_with_roots(&files, &["library"]).expect("live Rust image");
+    let rust_seconds = rust_started.elapsed().as_secs_f64();
+    assert_eq!(expected, independent);
+    run_measurement(
+        &cpu,
+        &files,
+        &expected,
+        rust_seconds,
+        "COMPACT_MIXED_MEASUREMENT",
+        None,
+        None,
+    );
+}
+
 #[test]
 fn two_map_measurement_rust_oracle() {
     for cpu in ["m6502", "m68000"] {
@@ -65,8 +142,28 @@ fn two_map_measurement_fs_uae() {
     let expected = oracle_address_ordered_with_roots(&files, &["library"])
         .expect("contiguous live Rust image");
     let rust_seconds = rust_started.elapsed().as_secs_f64();
+    run_measurement(
+        &cpu,
+        &files,
+        &expected,
+        rust_seconds,
+        "TWO_MAP_MEASUREMENT",
+        Some(ITEMS_PER_IMPORT),
+        Some(5),
+    );
+}
+
+fn run_measurement(
+    cpu: &str,
+    files: &[(&str, &str)],
+    expected: &[u8],
+    rust_seconds: f64,
+    report_name: &str,
+    items_per_import: Option<usize>,
+    sweeps_per_pass: Option<u32>,
+) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    let resolved = core.resolve_pipeline(&cpu, None).unwrap();
+    let resolved = core.resolve_pipeline(cpu, None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
     let bytes = files
         .iter()
@@ -78,7 +175,7 @@ fn two_map_measurement_fs_uae() {
             &workspace_root(),
             &package,
             &bytes,
-            Some(&expected),
+            Some(expected),
             None,
             &["library"],
             &[],
@@ -90,7 +187,7 @@ fn two_map_measurement_fs_uae() {
             &bytes,
             &["library"],
             &[],
-            Some(&expected),
+            Some(expected),
             false,
         )
     }
@@ -112,9 +209,9 @@ fn two_map_measurement_fs_uae() {
         .get(&PathBuf::from(image_name))
         .unwrap();
     let allocation = hunk::allocation(image).unwrap();
-    let source_lines = sources
+    let source_lines = files
         .iter()
-        .map(|source| source.lines().count())
+        .map(|(_, source)| source.lines().count())
         .sum::<usize>();
     let memory = if instrumented {
         let record = run
@@ -166,7 +263,7 @@ fn two_map_measurement_fs_uae() {
             "packed_source_bytes": words[14],
             "source_bytes": words[15],
             "tokenized_lines": words[44],
-            "derived_full_record_inspections": words[44] * 5 * 2,
+            "derived_full_record_inspections": sweeps_per_pass.map(|sweeps| words[44] * sweeps * 2),
             "preparation_stages": stages,
             "preparation_seconds": (stamp(22) - stamp(19)) as f64 / 50.0,
             "assembly_seconds": (stamp(25) - stamp(22)) as f64 / 50.0,
@@ -175,14 +272,15 @@ fn two_map_measurement_fs_uae() {
         None
     };
     eprintln!(
-        "TWO_MAP_MEASUREMENT {}",
+        "{} {}",
+        report_name,
         serde_json::json!({
             "cpu": cpu,
             "mode": if instrumented { "instrumented_harness" } else { "release_compact_cli" },
-            "items_per_import": ITEMS_PER_IMPORT,
+            "items_per_import": items_per_import,
             "source_files": files.len(),
             "source_lines": source_lines,
-            "source_bytes": sources.iter().map(String::len).sum::<usize>(),
+            "source_bytes": files.iter().map(|(_, source)| source.len()).sum::<usize>(),
             "output_bytes": expected.len(),
             "package_bytes": package.len(),
             "rust_oracle_host_seconds": rust_seconds,

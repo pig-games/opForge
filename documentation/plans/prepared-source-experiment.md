@@ -1310,3 +1310,48 @@ bytes from the literal-only checkpoint. These are size observations, not a
 performance comparison; peak owned memory was not measured. `.const`, compound
 values and expression forms outside the compact VM grammar remain language gaps,
 so full parameter parity is not established.
+
+## Bounded compact-CLI baseline after module work
+
+The opt-in `compact_mixed_measurement_fs_uae` case adds a two-file imported
+routine with 24 repeated instruction/data kernels, forward branches, label
+expressions and an unreachable sibling block. It is generated test source, not
+an application benchmark. The independent byte contract matches the live Rust
+oracle for both `m6502` and `m68000`; fresh 68020 / 2 MiB release compact-CLI
+and separately instrumented native-harness runs matched those bytes. The
+existing 302-line, two-map structured-data case is the control. Both cases are
+small enough for bounded runs and exercise different runtime responsibilities.
+
+| Workload / package | Lines; text / packed / output bytes | Release compact command | Instrumented prep / tokenization / assembly | Peak / retained owned bytes |
+|---|---:|---:|---:|---:|
+| Mixed / m6502 | 209; 2,238 / 2,761 / 314 | 1.27 s | 1.72 / 0.94 / 0.28 s | 284,928 / 20,736 |
+| Mixed / m68000 | 209; 2,768 / 3,289 / 434 | 2.79 s | 2.30 / 1.23 / 1.36 s | 399,616 / 135,424 |
+| Two-map / m6502 | 302; 4,734 / 5,219 / 522 | 2.04 s | 3.40 / 2.16 / 0.30 s | 291,072 / 24,832 |
+| Two-map / m68000 | 302; 4,737 / 5,219 / 522 | 2.29 s | 3.62 / 2.14 / 0.32 s | 405,760 / 139,520 |
+
+Each timing is one guest start-to-completion observation. Instrumentation uses
+a different executable; its phase times must not be added to or compared
+numerically with release command times. Emulator boot and host package creation
+are excluded. Peak/retained figures cover harness-owned allocations, not the
+whole AmigaOS process. The m6502 BSP3 package is 10,874 bytes and m68000 is
+126,550 bytes; the mixed programs also emit different instruction bytes, so
+cross-package wall times are not a CPU-family speed comparison. The release
+compact Hunk is 48,304 bytes with 59,752 linked reserved bytes. The two-map
+instrumented record counts 300 tokenized lines and derives 3,000 full-record
+inspections from five sweeps per pass; mixed counts 208 tokenized lines and has
+no claimed record-visit count.
+
+Tokenization is the largest measured preparation stage in all four cases. In
+the two-map case it takes about 2.1 seconds while assembly takes about 0.3;
+in the mixed m68000 case assembly takes about 1.36 seconds, slightly more than
+tokenization. This points to two follow-up probes: count tokenizer VM work and
+separately attribute mixed-workload instruction selection/encoding. It does not
+yet justify a specific optimization or quantify a before/after gain.
+
+Reproduce with the [FS-UAE setup](../../agents/rules/fs-uae.md),
+`OPFORGE_FS_UAE_MEMORY_PROFILE=2m`, `OPFORGE_FS_UAE_TIMEOUT_MS=45000`,
+`OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=45000` and `OPFORGE_MEASURE_CPU` set to
+`m6502` or `m68000`. Run `cargo test -p asm compact_mixed_measurement_fs_uae
+--lib -- --ignored --nocapture --test-threads=1` or replace the filter with
+`two_map_measurement_fs_uae`. Set `OPFORGE_COMPARE_MEMORY=1` only for a
+separate instrumented run.

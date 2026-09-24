@@ -830,6 +830,7 @@ qualified_share={:.2}%",
             }
         }
         self.record_reachability_edges();
+        self.record_hunk_entry_references();
         let qualified_reachability = QualifiedReachabilityIndexes::build(
             &self.symbols,
             &mut self.qualified_reachability_profile,
@@ -1240,6 +1241,66 @@ qualified_share={:.2}%",
             self.emit_module_timing_profile();
         }
         self.finish_reachable_block_layout(lines, counts)
+    }
+
+    fn record_hunk_entry_references(&mut self) {
+        for output in &self.root_metadata.linker_outputs {
+            if output.format() != Some(LinkerOutputFormat::Hunk) {
+                continue;
+            }
+            let Some(entry_section) = output
+                .option_text_list("sections")
+                .and_then(|names| names.first())
+            else {
+                continue;
+            };
+            let Some(section) = self.sections.get(entry_section) else {
+                continue;
+            };
+            if section.kind != SectionKind::Code {
+                continue;
+            }
+            let Some(entry_address) = section.base_addr.unwrap_or(0).checked_add(section.start_pc)
+            else {
+                continue;
+            };
+            // AmigaDOS begins execution at the first byte of the first Hunk.
+            // An owned block at that address is an output root even without a
+            // source-level reference to its label.
+            let entry = self.reachable_blocks.iter().find(|block| {
+                self.section_symbol_sections
+                    .get(&block.symbol)
+                    .is_some_and(|name| name.eq_ignore_ascii_case(entry_section))
+                    && self
+                        .symbols
+                        .entry(&block.symbol)
+                        .is_some_and(|symbol| symbol.val == entry_address)
+            });
+            if let Some(entry) = entry {
+                let importing_module = self
+                    .root_metadata
+                    .root_module_id
+                    .as_deref()
+                    .or_else(|| {
+                        let entry_module = entry.module.as_deref()?;
+                        self.symbols
+                            .modules()
+                            .iter()
+                            .find(|module| {
+                                module.imports.iter().any(|import| {
+                                    import.module_id.eq_ignore_ascii_case(entry_module)
+                                })
+                            })
+                            .map(|module| module.name.as_str())
+                    })
+                    .or(entry.module.as_deref())
+                    .map(str::to_string);
+                if let Some(importing_module) = importing_module {
+                    self.symbols
+                        .record_output_root_reference(&importing_module, &entry.symbol);
+                }
+            }
+        }
     }
 
     fn record_reachability_edges(&mut self) {

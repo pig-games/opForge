@@ -1960,7 +1960,7 @@ impl<'a> AsmLine<'a> {
         }
     }
 
-    fn record_named_reference(&mut self, name: &str) {
+    pub(crate) fn record_named_reference(&mut self, name: &str) {
         let inside_owned_block = self
             .block_unit_stack
             .iter()

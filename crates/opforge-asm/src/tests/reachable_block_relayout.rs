@@ -38,8 +38,7 @@ fn reachable_imported_block_keeps_helper_referenced_by_unowned_code() {
 }
 
 #[test]
-#[ignore = "known Hunk entry reachability regression; output section alone does not retain start"]
-fn hunk_output_entry_block_reachability_pending() {
+fn hunk_output_entry_block_is_reachable() {
     let assembled = run_passes(&[
         ".module program",
         ".cpu 68000",
@@ -619,4 +618,78 @@ fn reachable_block_branches_and_addresses_match_final_layout_reference() {
         imported.sections()["app_code"].bytes,
         direct.sections()["app_code"].bytes
     );
+}
+
+#[test]
+fn rooted_imported_entry_retains_short_branch_targets() {
+    let lines = [
+        ".module program",
+        ".cpu 68000",
+        ".use entry",
+        ".output \"program\", format=hunk, sections=entry, code",
+        ".endmodule",
+        ".module entry",
+        ".cpu 68000",
+        ".use helper",
+        ".section entry, kind=code",
+        ".pub",
+        "start .block",
+        "    bsr.w helper.run",
+        "    rts",
+        "    .bend",
+        ".endsection",
+        ".endmodule",
+        ".module helper",
+        ".cpu 68000",
+        ".section code, kind=code",
+        ".pub",
+        "run .block",
+        "    tst.b d0",
+        "    bne.s skip",
+        "    nop",
+        "skip",
+        "    rts",
+        "    .bend",
+        "unused .block",
+        "    nop",
+        "    .bend",
+        ".endsection",
+        ".endmodule",
+    ];
+    let assembled = run_passes(&lines);
+    assert!(!assembled.sections()["entry"].bytes.is_empty());
+    assert!(!assembled.sections()["code"].bytes.is_empty());
+    assert!(assembled.symbols.entry("helper.unused").is_none());
+}
+
+#[test]
+fn absolute_long_reference_reaches_imported_block_and_its_helper() {
+    let assembled = run_passes(&[
+        ".module main",
+        ".cpu 68020",
+        ".use dep",
+        ".section code, kind=code",
+        "    jsr dep.entry.l",
+        ".endsection",
+        ".endmodule",
+        ".module dep",
+        ".cpu 68020",
+        ".section code, kind=code",
+        ".pub",
+        "entry .block",
+        "    bsr.w helper",
+        "    rts",
+        "    .bend",
+        "helper .block",
+        "    rts",
+        "    .bend",
+        "unused .block",
+        "    nop",
+        "    .bend",
+        ".endsection",
+        ".endmodule",
+    ]);
+    assert!(assembled.symbols.entry("dep.entry").is_some());
+    assert!(assembled.symbols.entry("dep.helper").is_some());
+    assert!(assembled.symbols.entry("dep.unused").is_none());
 }

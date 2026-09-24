@@ -735,6 +735,9 @@ Availability and executable inclusion are separate. A module made available by
 `.use` can expose public symbols for resolution, but integrated executable output
 selects named `.block` units from selected roots, qualified references to a block
 entry or an internal label, and their recursively referenced dependencies.
+For `format=hunk` with an explicit `sections=` list, when the first listed
+section is code, it supplies the AmigaOS process entry. A named block at its
+first address is an output root even when no source statement names its label.
 Ordinary labels inside a block do not divide that block. Code and data outside
 named blocks remain in the mapped section; a logical section without named
 blocks is retained as a whole once reached. Public exports that are not selected

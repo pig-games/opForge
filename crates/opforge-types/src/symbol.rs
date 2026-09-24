@@ -229,6 +229,7 @@ pub struct SymbolTable {
     module_info: Vec<ModuleInfo>,
     module_index: HashMap<String, usize>,
     module_logical_section_index: HashMap<String, HashMap<String, usize>>,
+    output_root_references: HashSet<(String, String)>,
     reachable_units_compute_count: Cell<usize>,
     reachable_units_compute_time: Cell<Duration>,
     rust_profile: SymbolTableRustProfile,
@@ -243,6 +244,7 @@ impl SymbolTable {
             module_info: Vec::new(),
             module_index: HashMap::new(),
             module_logical_section_index: HashMap::new(),
+            output_root_references: HashSet::new(),
             reachable_units_compute_count: Cell::new(0),
             reachable_units_compute_time: Cell::new(Duration::default()),
             rust_profile: SymbolTableRustProfile::default(),
@@ -442,6 +444,11 @@ impl SymbolTable {
         }
     }
 
+    pub fn record_output_root_reference(&mut self, importing_module: &str, target_full_name: &str) {
+        self.output_root_references
+            .insert((importing_module.to_string(), target_full_name.to_string()));
+    }
+
     #[must_use]
     pub fn reachable_units_from_root_references(&self) -> Vec<ReachableUnit> {
         let reachability_started_at = Instant::now();
@@ -458,6 +465,16 @@ impl SymbolTable {
             .flat_map(|module| module.imports.iter())
             .map(|import| normalized_ascii_upper_lookup_key(&import.module_id).into_owned())
             .collect();
+        for (importing_module, reference) in &self.output_root_references {
+            if let Some((module_id, symbol_name)) = self.module_symbol_for_full_name(reference) {
+                queue.push(ReachableUnit {
+                    importing_module: importing_module.clone(),
+                    module_id,
+                    symbol_name,
+                    full_name: reference.clone(),
+                });
+            }
+        }
         for module in &self.module_info {
             let imported =
                 imported_modules.contains(normalized_ascii_upper_lookup_key(&module.name).as_ref());

@@ -45,6 +45,8 @@ impl<'a> AsmLine<'a> {
             &PreparedLine,
         >,
     ) -> LineStatus {
+        #[cfg(not(feature = "vm-runtime-only"))]
+        self.record_m68k_absolute_size_references(operands);
         #[cfg(feature = "vm-runtime-only")]
         {
             self.try_encode_instruction_vm_only(mnemonic, operands)
@@ -267,6 +269,26 @@ impl<'a> AsmLine<'a> {
                 mapped_mnemonic: &mapped_mnemonic,
                 mapped_operands: mapped_operands.as_ref(),
             })
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn record_m68k_absolute_size_references(&mut self, operands: &[Expr]) {
+        if self.pass != 1 || self.registry.cpu_family_id(self.cpu) != Some(M68K_FAMILY_ID) {
+            return;
+        }
+        for operand in operands {
+            let Expr::Identifier(name, _) = operand else {
+                continue;
+            };
+            let Some((symbol, suffix)) = name.rsplit_once('.') else {
+                continue;
+            };
+            if !symbol.is_empty()
+                && (suffix.eq_ignore_ascii_case("W") || suffix.eq_ignore_ascii_case("L"))
+            {
+                self.record_named_reference(symbol);
+            }
         }
     }
 

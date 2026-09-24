@@ -1400,3 +1400,13 @@ block solely because its section appears in `.output` is not yet an accepted
 fix: a trial exposed many branch-layout errors as more code became reachable.
 The entry-root semantics and resulting layout need a coherent correction before
 another timing attempt.
+
+A September 24 source-only trial removed the process entry's `.block` wrapper.
+An isolated Rust case retained the resulting ordinary entry code and pruned an
+unused sibling block, but the full CLI failed during host assembly, before
+FS-UAE: helper labels were unresolved and many short branches were reported
+out of range. A second trial kept the wrapper and added an explicit reference
+to `start` from root data; it exposed the same assembly failures. Both trials
+were reverted. Rooting the entry alone is therefore insufficient for this
+executable; reduce the reachable-block relayout/symbol failure before another
+native timing run.

@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_source as writer
 	.use experimental.amigaos.binary_prepare as prepare
 	.use experimental.amigaos.binary_scopes as scopes
+	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_block_index as blocks
@@ -46,7 +47,8 @@ PACKAGE_BUCKETS = LEXEMES+1024
 	.pub
 PREPARED_LINE = PACKAGE_BUCKETS+256*4
 SCOPE_STATE = PREPARED_LINE+256
-SCRATCH_BYTES = SCOPE_STATE+scopes.SCRATCH_BYTES
+CONDITION_STATE = SCOPE_STATE+scopes.SCRATCH_BYTES
+SCRATCH_BYTES = CONDITION_STATE+conditionals.SCRATCH_BYTES
 	.priv
 ; Package nodes hold capsule-relative entries and scratch-relative chain links.
 Node	.struct
@@ -109,6 +111,10 @@ clearBuckets
 	moveq #0, d1
 	move.w package.Header.EndDirective(a1), d1
 	jsr scopes.begin
+	bne.w failed
+	lea SCOPE_STATE(a6), a0
+	adda.l #scopes.SCRATCH_BYTES, a0
+	jsr conditionals.begin
 	bne.w failed
 	move.l #1, LINE_NUMBER(a6)
 	jsr scopes.count
@@ -288,6 +294,19 @@ graphBeforeDone
 	bne.w failed
 	movea.l Frame.Output(a5), a0
 	lea SCOPE_STATE(a6), a1
+	lea SCOPE_STATE(a6), a2
+	adda.l #scopes.SCRATCH_BYTES, a2
+	jsr conditionals.line
+	bne.w failed
+	tst.l d1
+	bne.w activeLine
+	movea.l Frame.Output(a5), a0
+	move.b #3, (a0)
+	clr.b 1(a0)
+	bra.w conditionReady
+activeLine
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a1
 	move.l Frame.Capacity(a5), d0
 	jsr scopes.line
 	bne.w failed
@@ -302,6 +321,7 @@ graphBeforeDone
 	jsr imports.captureConstant
 	bne.w failed
 constantCaptured
+conditionReady
 	.MEMORY_STAGE #4
 	movea.l Frame.Output(a5), a0
 	lea PREPARED_LINE(a6), a1
@@ -349,6 +369,14 @@ endFile	.block
 	movem.l a0-a2, -(sp)
 	movea.l a0, a2
 	movea.l Frame.Scratch(a0), a1
+	lea SCOPE_STATE(a1), a0
+	adda.l #scopes.SCRATCH_BYTES, a0
+	jsr conditionals.endFile
+	bne.w done
+	lea SCOPE_STATE(a1), a0
+	adda.l #scopes.SCRATCH_BYTES, a0
+	jsr conditionals.begin
+	bne.w done
 	lea SCOPE_STATE(a1), a0
 	jsr scopes.endFile
 	bne.w done

@@ -475,8 +475,26 @@ fn compact_cli(
     expected: Option<&[u8]>,
     bare_entry: bool,
 ) {
+    compact_cli_cpu(
+        files,
+        module_roots,
+        include_roots,
+        expected,
+        bare_entry,
+        "m6502",
+    );
+}
+
+fn compact_cli_cpu(
+    files: &[(&str, &str)],
+    module_roots: &[&str],
+    include_roots: &[&str],
+    expected: Option<&[u8]>,
+    bare_entry: bool,
+    cpu: &str,
+) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let resolved = core.resolve_pipeline(cpu, None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
     let sources = files
         .iter()

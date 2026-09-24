@@ -1311,6 +1311,28 @@ performance comparison; peak owned memory was not measured. `.const`, compound
 values and expression forms outside the compact VM grammar remain language gaps,
 so full parameter parity is not established.
 
+## First-pass conditionals inside imported blocks
+
+The compact frontend now evaluates a bounded `.if` / `.else` / `.endif` stack
+while it prepares numeric records. Known scalar import parameters and earlier
+module-scope `=` values are visible from a nested block; inactive lines become
+empty records before scope binding and expression compilation. The assembly
+passes still receive no original source text. This enables a reached imported
+block to select its instruction/data body without retaining both alternatives.
+
+Fresh 68020 / 2 MiB compact-CLI runs matched the live Rust image and independent
+expected bytes for both `FEATURE=0` and `FEATURE=1` on m6502 and m68000. A nested
+conditional matched Rust, and an unresolved condition exited nonzero. The
+release Hunk is 49,260 bytes with 60,688 linked reserved bytes. The existing
+24-block mixed workload still matched Rust: m6502 took 1.27 s and m68000 2.80 s
+in single guest command observations, essentially unchanged from the preceding
+1.27 s / 2.79 s checkpoint. These timings include startup and are not precise
+microbenchmarks. Peak owned memory was not remeasured.
+
+This is first-pass numeric conditional selection, not general preprocessor
+parity. `.const`, block-local constants, pass-dependent expressions, loops,
+macros and generated declarations remain outside this checkpoint.
+
 ## Bounded compact-CLI baseline after module work
 
 The opt-in `compact_mixed_measurement_fs_uae` case adds a two-file imported

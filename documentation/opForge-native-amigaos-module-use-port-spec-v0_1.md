@@ -110,9 +110,9 @@ Native `.module` processing must:
   native CLI option explicitly chooses another root;
 - maintain module depth so nested `.module` / `.endmodule` blocks can be
   represented;
-- ignore directives in inactive conditionals only after native conditional
-  state exists; until then, the native subset must document that conditional
-  filtering is not implemented.
+- filter inactive first-pass `.if` / `.else` / `.endif` branches in compact
+  preparation. Conditional module discovery and generated declarations still
+  need separate parity cases before they can be claimed.
 
 Native `.endmodule` processing must:
 
@@ -168,9 +168,8 @@ Module resolution on AmigaOS must start as a small explicit subset:
 - repeated `--module-path` values preserve CLI order.
 - module/import table overflow returns a deterministic native diagnostic and
   does not continue into parser/emitter stages.
-- conditional filtering is explicitly unsupported until native conditional
-  state exists; native tests must not claim parity for inactive conditional
-  `.use` handling before that slice lands.
+- inactive conditional `.use` handling needs a focused Rust/native graph test;
+  conditional filtering inside a reached block alone does not prove it.
 
 ## Acceptance Criteria
 

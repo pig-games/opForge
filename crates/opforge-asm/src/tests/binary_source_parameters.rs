@@ -23,6 +23,145 @@ const PARAMETERIZED_BYTE: &[(&str, &str)] = &[
     ),
 ];
 
+const CONDITIONAL_BLOCK: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep (entry) with (FEATURE=1)\n.word entry\n.endmodule\n.end\n",
+    ),
+    (
+        "library/dep.asm",
+        ".module dep\n.cpu m6502\n.org $1000\n.pub\nentry .block\n.if FEATURE\n.byte $11\n.else\n.byte $22\n.endif\n.byte $33\n.bend\nunused .block\n.byte $99\n.bend\n.endmodule\n.end\n",
+    ),
+];
+
+#[test]
+fn import_parameter_controls_reached_block_body() {
+    assert_eq!(
+        oracle_with_roots(CONDITIONAL_BLOCK, &["library"]).unwrap(),
+        [0x11, 0x33, 0x00, 0x10]
+    );
+    let off = CONDITIONAL_BLOCK[0].1.replace("FEATURE=1", "FEATURE=0");
+    assert_eq!(
+        oracle_with_roots(&[("main.asm", &off), CONDITIONAL_BLOCK[1]], &["library"]).unwrap(),
+        [0x22, 0x33, 0x00, 0x10]
+    );
+}
+
+fn conditional_block_native(cpu: &str, feature: u8, selected: u8) {
+    let main = CONDITIONAL_BLOCK[0]
+        .1
+        .replace("m6502", cpu)
+        .replace("FEATURE=1", &format!("FEATURE={feature}"));
+    let dep = CONDITIONAL_BLOCK[1].1.replace("m6502", cpu);
+    let files = &[
+        ("main.asm", main.as_str()),
+        ("library/dep.asm", dep.as_str()),
+    ];
+    let address = if cpu == "m68000" {
+        [0x10, 0x00]
+    } else {
+        [0x00, 0x10]
+    };
+    let expected = [selected, 0x33, address[0], address[1]];
+    assert_eq!(oracle_with_roots(files, &["library"]).unwrap(), expected);
+    compact_cli_cpu(files, &["library"], &[], Some(&expected), false, cpu);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; reached block conditional, m6502 true"]
+fn compact_cli_conditional_block_m6502_true_fs_uae() {
+    conditional_block_native("m6502", 1, 0x11);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; isolate packed conditional control"]
+fn compact_cli_conditional_block_literal_fs_uae() {
+    let dep = CONDITIONAL_BLOCK[1].1.replace(".if FEATURE", ".if 1");
+    let files = &[
+        ("main.asm", CONDITIONAL_BLOCK[0].1),
+        ("library/dep.asm", dep.as_str()),
+    ];
+    let expected = [0x11, 0x33, 0x00, 0x10];
+    assert_eq!(oracle_with_roots(files, &["library"]).unwrap(), expected);
+    compact_cli(files, &["library"], &[], Some(&expected), false);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; reached block conditional, m6502 false"]
+fn compact_cli_conditional_block_m6502_false_fs_uae() {
+    conditional_block_native("m6502", 0, 0x22);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; reached block conditional, m68000 true"]
+fn compact_cli_conditional_block_m68000_true_fs_uae() {
+    conditional_block_native("m68000", 1, 0x11);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; reached block conditional, m68000 false"]
+fn compact_cli_conditional_block_m68000_false_fs_uae() {
+    conditional_block_native("m68000", 0, 0x22);
+}
+
+fn nested_conditional_block() -> String {
+    CONDITIONAL_BLOCK[1]
+        .1
+        .replace(".pub\nentry .block", ".pub\nBASE = FEATURE\nentry .block")
+        .replace(
+            ".if FEATURE\n.byte $11",
+            ".if BASE\n.if 0\n.byte $99\n.else\n.byte $11\n.endif",
+        )
+}
+
+#[test]
+fn nested_block_condition_and_unknown_value_oracles() {
+    let nested = nested_conditional_block();
+    assert_eq!(
+        oracle_with_roots(
+            &[
+                ("main.asm", CONDITIONAL_BLOCK[0].1),
+                ("library/dep.asm", &nested)
+            ],
+            &["library"]
+        )
+        .unwrap(),
+        [0x11, 0x33, 0x00, 0x10]
+    );
+    let unknown = CONDITIONAL_BLOCK[1].1.replace(".if FEATURE", ".if MISSING");
+    assert!(oracle_with_roots(
+        &[
+            ("main.asm", CONDITIONAL_BLOCK[0].1),
+            ("library/dep.asm", &unknown)
+        ],
+        &["library"]
+    )
+    .is_err());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; nested block condition"]
+fn compact_cli_nested_block_condition_fs_uae() {
+    let nested = nested_conditional_block();
+    let files = &[
+        ("main.asm", CONDITIONAL_BLOCK[0].1),
+        ("library/dep.asm", nested.as_str()),
+    ];
+    let expected = [0x11, 0x33, 0x00, 0x10];
+    compact_cli(files, &["library"], &[], Some(&expected), false);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; unknown first-pass value must fail"]
+fn compact_cli_unknown_block_condition_fs_uae() {
+    let unknown = CONDITIONAL_BLOCK[1].1.replace(".if FEATURE", ".if MISSING");
+    let files = &[
+        ("main.asm", CONDITIONAL_BLOCK[0].1),
+        ("library/dep.asm", unknown.as_str()),
+    ];
+    compact_cli(files, &["library"], &[], None, false);
+}
+
 const TWO_LITERAL_PARAMETERS: &[(&str, &str)] = &[
     (
         "main.asm",

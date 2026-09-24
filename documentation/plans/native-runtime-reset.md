@@ -141,10 +141,11 @@ imported module. It evaluates the expression in the importer from values known
 at the `.use` site; forward values fail. The compact native path now evaluates
 supported signed-32-bit scalar expressions from earlier module-scope `=`
 constants and incoming parameters. It carries their values by numeric symbol ID
-through preparation into assembly. `.const`, compound values, and expressions
-outside the compact VM grammar remain broader language gaps, as do block-local
-first-pass conditionals or loops using outer symbols. Do not claim full module
-or parameter parity yet.
+through preparation into assembly. Preparation now also filters nested `.if` /
+`.else` / `.endif` records using known module-scope scalar values inside a
+reached imported block. `.const`, compound values, loops, conditionals needing
+assembly-time values, and expressions outside the compact VM grammar remain
+broader language gaps. Do not claim full module or parameter parity yet.
 The [prepared-source experiment](prepared-source-experiment.md#module-parameter-checkpoint)
 tracks this parameter subset and its limitations.
 

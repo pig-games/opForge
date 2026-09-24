@@ -1126,6 +1126,132 @@ parametersDone
 	rts
 	.bend  ; parameters
 
+	.pub
+; A0..A1=complete numeric token range,A2=scope state. Resolve a known
+; module-scope value from inside a block before evaluating a first-pass
+; conditional. Only numeric
+; IDs are changed, and the control record is discarded after this call.
+; D1=known i32 on success, D0/CCR=status; other registers preserved.
+evaluateScoped	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l a1, a4
+	movea.l a2, a6
+	move.l a0, -(sp)
+scanScoped
+	cmpa.l a4, a5
+	beq.w scopedReady
+	bhi.w scopedBad
+	cmpi.b #1, (a5)
+	bhi.w scopedNext
+	tst.b 3(a5)
+	bne.w scopedNext
+	moveq #0, d0
+	move.w 1(a5), d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w scopedNext
+	cmp.w layout.State.Count(a6), d0
+	bhs.w scopedNext
+	lea layout.IMPORT_STATE(a6), a0
+	lea KNOWN_DEFINED(a0), a0
+	tst.b 0(a0, d0.l)
+	bne.w scopedNext
+	move.l d0, d1
+	lsl.l #4, d1
+	lea layout.ENTRIES(a6), a3
+	adda.l d1, a3
+	btst #0, records.Entry.Flags+1(a3)
+	bne.w scopedNext  ; a local declaration shadows the module value
+	bsr.w entryLeafBytes
+	move.l d0, d6
+	movea.l a0, a2
+	moveq #0, d7
+	move.w layout.MODULE_STATE+modules.State.Active(a6), d7
+	tst.w d7
+	beq.w scopedNext
+	moveq #0, d4
+candidate
+	cmp.w layout.State.Count(a6), d4
+	bhs.w scopedNext
+	lea layout.IMPORT_STATE(a6), a0
+	lea KNOWN_DEFINED(a0), a0
+	tst.b 0(a0, d4.w)
+	beq.w candidateNext
+	move.l d4, d0
+	lsl.l #4, d0
+	lea layout.ENTRIES(a6), a3
+	adda.l d0, a3
+	cmp.w records.Entry.Owner(a3), d7
+	bne.w candidateNext
+	bsr.w entryLeafBytes
+	cmp.w d6, d0
+	bne.w candidateNext
+	movea.l a0, a1
+	movea.l a2, a0
+	move.l d6, d3
+compareLeaf
+	moveq #0, d1
+	move.b (a0)+, d1
+	bsr.w fold
+	move.b d1, d2
+	move.b (a1)+, d1
+	bsr.w fold
+	cmp.b d2, d1
+	bne.w candidateNext
+	subq.w #1, d3
+	bne.w compareLeaf
+	move.w records.Entry.Target(a3), 1(a5)
+	bra.w scopedNext
+candidateNext
+	addq.w #1, d4
+	bra.w candidate
+scopedNext
+	movea.l a5, a0
+	bsr.w nextParameterToken
+	bne.w scopedBad
+	movea.l a0, a5
+	bra.w scanScoped
+scopedReady
+	movea.l (sp)+, a0
+	movea.l a4, a1
+	bsr.w evaluateRange
+	bra.w scopedDone
+scopedBad
+	addq.l #4, sp
+	moveq #1, d0
+scopedDone
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; evaluateScoped
+	.priv
+
+; A3=entry,A6=scope state. Return A0=last dotted component, D0=its bytes.
+; Explicit qualified bindings have Leaf=0, so scan the stored name itself.
+entryLeafBytes	.block
+	move.l a2, -(sp)
+	lea layout.ARENA(a6), a0
+	moveq #0, d0
+	move.w records.Entry.Name(a3), d0
+	adda.l d0, a0
+	moveq #0, d0
+	move.w records.Entry.Length(a3), d0
+	movea.l a0, a1
+	adda.w d0, a1
+	movea.l a1, a2
+leafBack
+	cmpa.l a0, a1
+	beq.w leafReady
+	cmpi.b #'.', -(a1)
+	bne.w leafBack
+	lea 1(a1), a0
+leafReady
+	move.l a2, d0
+	sub.l a0, d0
+	movea.l (sp)+, a2
+	rts
+	.bend  ; entryLeafBytes
+
 ; A0..A1=complete numeric token range,A6=scope state. D1=known i32 on
 ; success, D0/CCR=status. The biased VM pointers are used only after every
 ; symbol ID has been checked against the bounded local-name arrays.

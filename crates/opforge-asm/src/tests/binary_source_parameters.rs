@@ -23,12 +23,69 @@ const PARAMETERIZED_BYTE: &[(&str, &str)] = &[
     ),
 ];
 
+const TWO_LITERAL_PARAMETERS: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.use dep (entry) with (FIRST=1, SECOND=2)\n.word entry\n.endmodule\n.end\n",
+    ),
+    (
+        "library/dep.asm",
+        ".module dep\n.cpu m6502\n.org $1000\n.pub\nentry .block\n.byte FIRST, SECOND\n.bend\n.endmodule\n.end\n",
+    ),
+];
+
+#[test]
+fn two_import_parameters_are_visible_in_module_data() {
+    assert_eq!(
+        oracle_with_roots(TWO_LITERAL_PARAMETERS, &["library"]).unwrap(),
+        [1, 2, 0, 0x10]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; two native scalar literal parameters"]
+fn compact_cli_two_literal_parameters_fs_uae() {
+    let expected = oracle_with_roots(TWO_LITERAL_PARAMETERS, &["library"]).unwrap();
+    compact_cli(
+        TWO_LITERAL_PARAMETERS,
+        &["library"],
+        &[],
+        Some(&expected),
+        false,
+    );
+}
+
 #[test]
 fn import_parameter_is_visible_to_module_data() {
     assert_eq!(
         oracle_with_roots(PARAMETERIZED_BYTE, &["library"]).unwrap(),
         [7, 0x00, 0x10]
     );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; native scalar parameter binding"]
+fn compact_cli_scalar_parameter_literal_fs_uae() {
+    let expected = oracle_with_roots(PARAMETERIZED_BYTE, &["library"]).unwrap();
+    compact_cli(
+        PARAMETERIZED_BYTE,
+        &["library"],
+        &[],
+        Some(&expected),
+        false,
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; caller constants await native evaluation"]
+fn compact_cli_rejects_caller_constant_parameter_fs_uae() {
+    let main = PARAMETERIZED_BYTE[0].1.replace(
+        ".use dep (entry) with (FEATURE=7)",
+        "BASE = 7\n.use dep (entry) with (FEATURE=BASE)",
+    );
+    let files = &[("main.asm", main.as_str()), PARAMETERIZED_BYTE[1]];
+    assert!(oracle_with_roots(files, &["library"]).is_ok());
+    compact_cli(files, &["library"], &[], None, false);
 }
 
 #[test]
@@ -125,6 +182,84 @@ fn import_parameter_remains_private_to_its_module() {
     assert!(
         oracle_with_roots(&[("main.asm", &main), PARAMETERIZED_BYTE[1]], &["library"]).is_err()
     );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; native parameter privacy"]
+fn compact_cli_rejects_private_parameter_reference_fs_uae() {
+    let main = PARAMETERIZED_BYTE[0]
+        .1
+        .replace(".word entry", ".word dep.FEATURE");
+    let files = &[("main.asm", main.as_str()), PARAMETERIZED_BYTE[1]];
+    compact_cli(files, &["library"], &[], None, false);
+}
+
+#[test]
+fn conflicting_values_for_one_module_are_rejected() {
+    let main = PARAMETERIZED_BYTE[0].1.replace(
+        ".use dep (entry) with (FEATURE=7)\n.word entry",
+        ".use dep as first with (FEATURE=7)\n.use dep as second with (FEATURE=8)\n.word first.entry",
+    );
+    assert!(
+        oracle_with_roots(&[("main.asm", &main), PARAMETERIZED_BYTE[1]], &["library"]).is_err()
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; conflicting native module parameters"]
+fn compact_cli_rejects_conflicting_parameter_values_fs_uae() {
+    let main = PARAMETERIZED_BYTE[0].1.replace(
+        ".use dep (entry) with (FEATURE=7)\n.word entry",
+        ".use dep as first with (FEATURE=7)\n.use dep as second with (FEATURE=8)\n.word first.entry",
+    );
+    let files = &[("main.asm", main.as_str()), PARAMETERIZED_BYTE[1]];
+    compact_cli(files, &["library"], &[], None, false);
+}
+
+#[test]
+fn repeated_import_alias_is_rejected_even_with_identical_parameters() {
+    let main = PARAMETERIZED_BYTE[0].1.replace(
+        ".use dep (entry) with (FEATURE=7)\n.word entry",
+        ".use dep with (FEATURE=7)\n.use dep with (FEATURE=7)\n.word dep.entry",
+    );
+    assert!(
+        oracle_with_roots(&[("main.asm", &main), PARAMETERIZED_BYTE[1]], &["library"]).is_err()
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; repeated native import alias rejection"]
+fn compact_cli_rejects_repeated_import_alias_fs_uae() {
+    let main = PARAMETERIZED_BYTE[0].1.replace(
+        ".use dep (entry) with (FEATURE=7)\n.word entry",
+        ".use dep with (FEATURE=7)\n.use dep with (FEATURE=7)\n.word dep.entry",
+    );
+    let files = &[("main.asm", main.as_str()), PARAMETERIZED_BYTE[1]];
+    compact_cli(files, &["library"], &[], None, false);
+}
+
+#[test]
+fn identical_parameters_allow_distinct_aliases_for_one_module() {
+    let main = PARAMETERIZED_BYTE[0].1.replace(
+        ".use dep (entry) with (FEATURE=7)\n.word entry",
+        ".use dep as first with (FEATURE=7)\n.use dep as second with (FEATURE=7)\n.word first.entry",
+    );
+    assert_eq!(
+        oracle_with_roots(&[("main.asm", &main), PARAMETERIZED_BYTE[1]], &["library"]).unwrap(),
+        [7, 0, 0x10]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; two aliases share one configured module"]
+fn compact_cli_scalar_parameter_two_aliases_fs_uae() {
+    let main = PARAMETERIZED_BYTE[0].1.replace(
+        ".use dep (entry) with (FEATURE=7)\n.word entry",
+        ".use dep as first with (FEATURE=7)\n.use dep as second with (FEATURE=7)\n.word first.entry",
+    );
+    let files = &[("main.asm", main.as_str()), PARAMETERIZED_BYTE[1]];
+    let expected = oracle_with_roots(files, &["library"]).unwrap();
+    compact_cli(files, &["library"], &[], Some(&expected), false);
 }
 
 #[test]

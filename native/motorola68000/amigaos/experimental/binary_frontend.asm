@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_source as writer
 	.use experimental.amigaos.binary_prepare as prepare
 	.use experimental.amigaos.binary_scopes as scopes
+	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_modules as modules
@@ -389,6 +390,45 @@ complete	.block
 	tst.l d0
 	rts
 	.bend  ; complete
+; A0=Frame. Return D0=parameter record bytes. Preparation scratch remains live.
+parameterBytes	.block
+	movea.l Frame.Scratch(a0), a0
+	lea SCOPE_STATE(a0), a0
+	lea scopes.IMPORT_STATE(a0), a0
+	moveq #0, d0
+	move.w imports.PARAM_COUNT(a0), d0
+	lsl.l #3, d0
+	rts
+	.bend  ; parameterBytes
+; A0=Frame,A1=destination,D0=exact parameter record bytes. Copy only numeric
+; identities and values before preparation scratch is released. D0/CCR=status.
+copyParameters	.block
+	movem.l d1/a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a0
+	lea SCOPE_STATE(a0), a0
+	lea scopes.IMPORT_STATE(a0), a0
+	moveq #0, d1
+	move.w imports.PARAM_COUNT(a0), d1
+	lsl.l #3, d1
+	cmp.l d0, d1
+	bne.w parametersBad
+	tst.l d1
+	beq.w parametersDone
+	lea imports.PARAMS(a0), a0
+parametersCopy
+	move.b (a0)+, (a1)+
+	subq.l #1, d1
+	bne.w parametersCopy
+parametersDone
+	moveq #0, d0
+	bra.w parametersExit
+parametersBad
+	moveq #1, d0
+parametersExit
+	movem.l (sp)+, d1/a0-a2
+	tst.l d0
+	rts
+	.bend  ; copyParameters
 ; A0=Frame,A1=ordered prepared records,D0=bytes. Index numeric block spans
 ; in the no-longer-needed name arena, before lexical scratch is released.
 ; D0/CCR=status,D1=span count; all other registers preserved.

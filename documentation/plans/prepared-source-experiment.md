@@ -1290,12 +1290,17 @@ fail because the graph maintains one module instance. Composite symbol values
 still need typed evaluation and injection; source-text round-tripping is not a
 sound general solution for structs.
 
-The compact native path rejects any `with` clause instead of silently
-discarding it. Three fresh 68020 / 2 MiB FS-UAE cases exited nonzero for
-parameterized imports. Its current Hunk is 47,004 bytes with 58,488 linked
-reserved bytes, down 188 bytes in both measures from the provisional syntax
-skipper. These are size observations, not a performance comparison; peak owned
-memory was not measured. Native importer-site evaluation and module-local
-binding require a preparation-to-assembly value bridge, so parameter parity is
-still open. The earlier accepted-but-inert native checkpoint remains in Git
-history, not as a supported behavior.
+The compact native path now binds scalar numeric literals in a `with` clause as
+private module symbols. Preparation stores numeric symbol IDs and values, then
+assembly seeds those values before dependency resolution. Fresh 68020 / 2 MiB
+FS-UAE runs matched live Rust output for one or two parameters, distinct aliases
+of one configured module, and an import with section mapping. Unsupported
+importer expressions, empty parameter lists and duplicate aliases exited
+nonzero. Separate fresh runs also rejected conflicting parameter values and
+private access.
+The current Hunk is 47,720 bytes with 59,180 linked reserved bytes, up 716 and
+692 bytes from the preceding fail-closed checkpoint. These are size observations,
+not a performance comparison; peak owned memory was not measured. Native
+importer-site expression evaluation and compound values remain open, so full
+parameter parity is not yet established. The earlier accepted-but-inert native
+checkpoint remains in Git history, not as supported behavior.

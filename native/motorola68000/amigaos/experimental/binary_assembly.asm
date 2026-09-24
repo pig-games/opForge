@@ -60,6 +60,32 @@ clearSymbols
 	clr.b (a1)+
 	subq.l #1, d0
 	bne.w clearSymbols
+	move.l pkg.Context.ParameterCount(a6), d6
+	beq.w parametersReady
+	cmpi.l #512, d6
+	bhi.w fail
+	movea.l pkg.Context.Parameters(a6), a3
+	move.l a3, d0
+	beq.w fail
+	movea.l pkg.Context.Values(a6), a0
+	movea.l pkg.Context.Defined(a6), a1
+parameter
+	moveq #0, d0
+	move.w (a3), d0
+	movea.l pkg.Context.Package(a6), a2
+	cmp.w pkg.Header.NameCount(a2), d0
+	blo.w fail
+	cmp.l pkg.Context.Count(a6), d0
+	bhs.w fail
+	tst.b 0(a1, d0.l)
+	bne.w fail
+	move.b #dependencies.ABSOLUTE, 0(a1, d0.l)
+	lsl.l #2, d0
+	move.l 4(a3), 0(a0, d0.l)
+	addq.l #8, a3
+	subq.l #1, d6
+	bne.w parameter
+parametersReady
 	movea.l Frame.Records(a5), a0
 	move.l Frame.RecordBytes(a5), d0
 	movea.l a6, a2

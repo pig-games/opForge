@@ -142,6 +142,8 @@ freeBlocks
 	jsr memory.release
 	lea Symbols, a0
 	jsr memory.release
+	lea Parameters, a0
+	jsr memory.release
 	lea Output, a0
 	jsr memory.release
 	lea FileSpans, a0
@@ -684,6 +686,19 @@ selected
 	jsr frontend.selectBlocks
 	bne.w completionBad
 blocksSelected
+	lea Front, a0
+	jsr frontend.parameterBytes
+	move.l d0, ParameterBytes
+	beq.w parametersSaved
+	lea Parameters, a0
+	jsr memory.reserve
+	bne.w completionBad
+	movea.l memory.Block.Pointer(a0), a1
+	lea Front, a0
+	move.l ParameterBytes, d0
+	jsr frontend.copyParameters
+	bne.w completionBad
+parametersSaved
 	bsr.w clearIncludeText
 	lea Front, a0
 	jsr frontend.finish
@@ -1080,6 +1095,11 @@ run	.block
 	lea Context, a0
 	move.l a2, package.Context.Defined(a0)
 	move.l NameCount, package.Context.Count(a0)
+	lea Parameters, a1
+	move.l memory.Block.Pointer(a1), package.Context.Parameters(a0)
+	move.l ParameterBytes, d0
+	lsr.l #3, d0
+	move.l d0, package.Context.ParameterCount(a0)
 	lea RuntimeBlock, a1
 	move.l memory.Block.Pointer(a1), package.Context.Package(a0)
 	lea Work, a0
@@ -1243,12 +1263,14 @@ NameCount	.res long, 1
 Header	.res byte, HEADER_BYTES
 Front	.res byte, frontend.Frame.GraphBefore+4
 Work	.res byte, assembly.Frame.RecordOffset+4
-Context	.res byte, package.Context.Reserved+2
+Context	.res byte, package.Context.ParameterCount+4
 PackageBlock	.res byte, memory.Block.Used+4
 RuntimeBlock	.res byte, memory.Block.Used+4
 PrepBlock	.res byte, memory.Block.Used+4
 Records	.res byte, memory.Block.Used+4
 Symbols	.res byte, memory.Block.Used+4
+Parameters	.res byte, memory.Block.Used+4
+ParameterBytes	.res long, 1
 Output	.res byte, memory.Block.Used+4
 	.endsection
 	.endmodule

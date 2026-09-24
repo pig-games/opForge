@@ -74,14 +74,9 @@ fn binary_graph_unused_import_parameters_preserve_output() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; native rejects unbound import parameters"]
-fn compact_cli_rejects_import_parameters_fs_uae() {
+#[ignore = "requires configured FS-UAE; native rejects unsupported parameter expressions"]
+fn compact_cli_rejects_unsupported_import_parameters_fs_uae() {
     compact_cli(UNUSED_PARAMETERS, &["library"], &[], None, false);
-    let mapped = EXPLICIT_MAPPED_SECTION[0]
-        .1
-        .replace(" as d map", " as d with (FEATURE=1) map");
-    let files = &[("main.asm", mapped.as_str()), EXPLICIT_MAPPED_SECTION[1]];
-    compact_cli(files, &["library"], &[], None, false);
     let empty = UNUSED_PARAMETERS[0]
         .1
         .replace("with (FEATURE=1, OFFSET=(2+3), MODE=3)", "with ()");
@@ -92,6 +87,17 @@ fn compact_cli_rejects_import_parameters_fs_uae() {
         None,
         false,
     );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; literal parameter with mapped alias"]
+fn compact_cli_literal_parameter_with_map_fs_uae() {
+    let mapped = EXPLICIT_MAPPED_SECTION[0]
+        .1
+        .replace(" as d map", " as d with (FEATURE=1) map");
+    let files = &[("main.asm", mapped.as_str()), EXPLICIT_MAPPED_SECTION[1]];
+    let expected = oracle_with_roots(files, &["library"]).unwrap();
+    compact_cli(files, &["library"], &[], Some(&expected), false);
 }
 
 #[test]

@@ -28,7 +28,10 @@ ITEMS = HEADS+layout.LIMIT*2
 SELECTED_COUNT = ITEMS+layout.LIMIT*ITEM_BYTES
 SELECTIONS = SELECTED_COUNT+2
 PROXIES = SELECTIONS+layout.LIMIT*SELECTION_BYTES
-SCRATCH_BYTES = PROXIES+256*2
+PARAM_COUNT = PROXIES+256*2
+PARAMS = PARAM_COUNT+2
+PARAM_BYTES = 8
+SCRATCH_BYTES = PARAMS+layout.LIMIT*PARAM_BYTES
 PROXY = 8
 	.section code, kind=code
 
@@ -832,11 +835,12 @@ done
 	rts
 	.bend  ; resolve
 
-; A0=first import suffix token,A4=end,A6=scope. Reject a `with` clause until
-; its values can be evaluated in the importer and bound in the target module.
-; D0/CCR=status; A4 is unchanged.
+; A0=first suffix token,A4=end,A5=binder,A6=scope,D7=target module index.
+; Capture literal scalar parameters by numeric ID. On success A4 ends before
+; the with clause, so the existing selection/alias parser sees its own suffix.
+; Other registers preserved; D0/CCR=status.
 parameters	.block
-	movem.l d1-d4/a0/a3, -(sp)
+	movem.l d1-d7/a0-a3/a5, -(sp)
 	movea.l a0, a3
 	moveq #0, d4
 scanParameterSuffix
@@ -868,7 +872,140 @@ scanWith
 	ori.l #$20202020, d0
 	cmpi.l #$77697468, d0  ; with
 	bne.w scanAdvance
-	bra.w parametersBad
+	move.l a3, d4  ; retain the suffix end before consuming the clause
+	addq.l #4, a3
+	cmpa.l a4, a3
+	bhs.w parametersBad
+	cmpi.b #14, (a3)+
+	bne.w parametersBad
+parameterItem
+	cmpa.l a4, a3
+	bhs.w parametersBad
+	move.l a3, d6  ; name token address survives the binder
+	cmpi.b #1, (a3)
+	bhi.w parametersBad
+	tst.b 3(a3)
+	bne.w parametersBad
+	movea.l a3, a0
+	bsr.w tokenName
+	bne.w parametersBad
+	movea.l a0, a2
+	move.l d0, d3
+	move.l d7, d0
+	bsr.w entryName
+	add.l d0, d3
+	addq.l #1, d3
+	cmpi.l #63, d3
+	bhi.w parametersBad
+	lea layout.BUFFER(a6), a3
+	move.l d0, d1
+copyParameterModule
+	move.b (a0)+, (a3)+
+	subq.l #1, d1
+	bne.w copyParameterModule
+	move.b #'.', (a3)+
+	move.l d3, d1
+	sub.l d0, d1
+	subq.l #1, d1
+copyParameterLeaf
+	move.b (a2)+, (a3)+
+	subq.l #1, d1
+	bne.w copyParameterLeaf
+	lea layout.BUFFER(a6), a0
+	move.l d3, d0
+	bsr.w globalBind
+	bne.w parametersBad
+	move.l d1, d5  ; canonical ID
+	sub.w layout.State.Base(a6), d1
+	bcs.w parametersBad
+	cmp.w layout.State.Count(a6), d1
+	bhs.w parametersBad
+	lsl.l #4, d1
+	lea layout.ENTRIES(a6), a0
+	adda.l d1, a0
+	moveq #0, d3
+	btst #0, records.Entry.Flags+1(a0)
+	beq.w newParameter
+	moveq #1, d3
+	bra.w parameterValue
+newParameter
+	ori.w #1, records.Entry.Flags(a0)
+	move.w d7, d0
+	addq.w #1, d0
+	move.w d0, records.Entry.Owner(a0)
+	move.l d1, d0
+	lsr.l #3, d0
+	lea layout.MODULE_STATE+modules.OWNERS(a6), a0
+	move.w d7, 0(a0, d0.w)
+	addq.w #1, 0(a0, d0.w)
+	; The module-private flag is zero, independent of importer visibility.
+	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
+	andi.w #$fffe, 0(a0, d0.w)
+parameterValue
+	movea.l d6, a3
+	addq.l #4, a3  ; parameter name
+	cmpa.l a4, a3
+	bhs.w parametersBad
+	cmpi.b #34, (a3)+
+	bne.w parametersBad
+	move.l a4, d0
+	sub.l a3, d0
+	cmpi.l #5, d0
+	blo.w parametersBad
+	cmpi.b #2, (a3)
+	bne.w parametersBad
+	moveq #0, d6
+	move.b 1(a3), d6
+	lsl.l #8, d6
+	move.b 2(a3), d6
+	lsl.l #8, d6
+	move.b 3(a3), d6
+	lsl.l #8, d6
+	move.b 4(a3), d6
+	lea layout.IMPORT_STATE(a6), a0
+	moveq #0, d0
+	move.w PARAM_COUNT(a0), d0
+	tst.w d3
+	beq.w appendParameter
+	lea PARAMS(a0), a1
+	move.l d0, d1
+existingParameter
+	tst.l d1
+	beq.w parametersBad
+	cmp.w (a1), d5
+	bne.w nextParameter
+	cmp.l 4(a1), d6
+	bne.w parametersBad
+	bra.w parameterStored
+nextParameter
+	addq.l #8, a1
+	subq.l #1, d1
+	bra.w existingParameter
+appendParameter
+	cmpi.w #layout.LIMIT, d0
+	bhs.w parametersBad
+	lsl.l #3, d0
+	lea PARAMS(a0), a1
+	adda.l d0, a1
+	move.w d5, (a1)
+	clr.w 2(a1)
+	move.l d6, 4(a1)
+	addq.w #1, PARAM_COUNT(a0)
+parameterStored
+	addq.l #5, a3
+	cmpa.l a4, a3
+	bhs.w parametersBad
+	cmpi.b #4, (a3)
+	bne.w parameterClose
+	addq.l #1, a3
+	bra.w parameterItem
+parameterClose
+	cmpi.b #15, (a3)+
+	bne.w parametersBad
+	cmpa.l a4, a3
+	bne.w parametersBad
+	movea.l d4, a4
+	bra.w parametersOk
 scanAdvance
 	movea.l a3, a0
 	bsr.w nextParameterToken
@@ -884,7 +1021,7 @@ parametersOk
 parametersBad
 	moveq #1, d0
 parametersDone
-	movem.l (sp)+, d1-d4/a0/a3
+	movem.l (sp)+, d1-d7/a0-a3/a5
 	tst.l d0
 	rts
 	.bend  ; parameters

@@ -40,7 +40,9 @@ Pc	.long ?
 Package	.long ?
 Pass	.word ?
 Reserved	.word ?
-.endstruct
+Parameters	.long ?
+ParameterCount	.long ?
+	.endstruct
 
 Row	.struct
 Name	.word ?

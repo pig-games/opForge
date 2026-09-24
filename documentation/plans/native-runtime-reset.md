@@ -139,10 +139,11 @@ graph so later assembly passes do not return to source strings.
 
 Rust now binds scalar `.use ... with (...)` values as private symbols in the
 imported module. It evaluates the expression in the importer from values known
-at the `.use` site; forward values fail. The compact native path rejects `with`
-until it can carry those values through preparation and assembly. Compound
-values, native binding, and block-local first-pass conditionals or loops using
-outer symbols remain separate gaps. Do not claim parameter parity yet.
+at the `.use` site; forward values fail. The compact native path carries literal
+scalar parameters through preparation into assembly and binds them by numeric
+symbol ID. Native importer expressions and compound values remain gaps, as do
+block-local first-pass conditionals or loops using outer symbols. Do not claim
+parameter parity yet.
 The [prepared-source experiment](prepared-source-experiment.md#module-parameter-checkpoint)
 tracks this parameter subset and its limitations.
 

@@ -691,8 +691,10 @@ Notes:
   The current graph requires repeated imports of one module to agree on its
   parameter values. Strings are not symbol values. Compound values remain
   unsupported at this graph boundary.
-  The experimental compact native CLI currently rejects `with` rather than
-  ignoring its values; native parameter binding is still pending.
+  The experimental compact native CLI binds scalar numeric literals in `with`
+  as private module symbols. It rejects importer expressions, including earlier
+  constants and incoming parameters, and compound values. This native subset
+  does not yet provide full parameter parity with Rust.
 - A `map { logical -> concrete }` clause maps logical sections declared by the
   imported module into concrete sections in the importing/root module. Map
   clauses require a namespace binding, so `.use util.math (add16) map { ... }`

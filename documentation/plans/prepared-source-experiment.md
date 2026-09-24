@@ -996,10 +996,16 @@ can be discovered after the root file's `.place` in preparation order; ordered
 execution still emits the dependency before the importer.
 
 A focused two-file 6502 case selects one imported `.block`, omits its unused
-sibling, and emits a root `.word` reference. A fresh native FS-UAE run produced
-the live Rust bytes `11 00 10`; the compact Hunk linked reservation was 54,196
-bytes. This run used the existing expanded-memory FS-UAE profile. A separate
-2 MiB attempt and its unchanged CLI control timed out before guest start, so
-this checkpoint does not claim fresh 2 MiB execution or a speedup. Explicit
+sibling, and emits a root `.word` reference. Fresh native FS-UAE runs under
+the 68020 / 2 MiB profile produced the live Rust bytes `11 00 10`, and an
+unchanged search-root control also passed. The compact Hunk linked reservation
+was 54,196 bytes; guest command time was about 0.51 seconds in each case.
+Earlier 2 MiB runs timed out before a guest start marker. The failure did not
+recur in these bounded reruns, and its host/emulator cause remains unknown.
+The reruns used `OPFORGE_FS_UAE_MEMORY_PROFILE=2m` and
+`OPFORGE_FS_UAE_TIMEOUT_MS=60000` with the guide's local FS-UAE settings and
+the `compact_cli_search_roots_fs_uae` and
+`compact_cli_single_mapped_section_fs_uae` focused tests.
+These are functional and resource observations, not a speedup claim. Explicit
 `.map`, multiple sections, discontiguous placement, expressions in region
 bounds, and broader layout syntax remain outside this bounded path.

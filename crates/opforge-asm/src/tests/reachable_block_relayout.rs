@@ -1,6 +1,43 @@
 use super::*;
 
 #[test]
+fn reachable_imported_block_keeps_helper_referenced_by_unowned_code() {
+    let assembled = run_passes(&[
+        ".module dep",
+        ".cpu 68000",
+        ".pub",
+        ".section code, kind=code",
+        "entry .block",
+        "    bsr compileExpression",
+        "    rts",
+        "    .bend",
+        "compileExpression .block",
+        "    bsr compileHighLow",
+        "    rts",
+        "    .bend",
+        "compileHighLow",
+        "    bsr skipWhitespace",
+        "    rts",
+        "skipWhitespace .block",
+        "    rts",
+        "    .bend",
+        "unused .block",
+        "    nop",
+        "    .bend",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".cpu 68000",
+        ".use dep",
+        ".byte $42",
+        ".endmodule",
+    ]);
+    assert!(!assembled.sections()["code"].bytes.is_empty());
+    assert!(assembled.symbols.entry("dep.skipWhitespace").is_some());
+    assert!(assembled.symbols.entry("dep.unused").is_none());
+}
+
+#[test]
 fn selective_import_without_code_reference_emits_no_blocks() {
     let assembler = run_passes(&[
         ".module dep",

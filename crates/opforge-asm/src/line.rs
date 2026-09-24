@@ -1965,13 +1965,10 @@ impl<'a> AsmLine<'a> {
             .block_unit_stack
             .iter()
             .any(|(index, _)| index.is_some());
-        let unowned_logical = self
-            .layout
-            .current_section
-            .as_ref()
-            .and_then(|name| self.layout.sections.get(name))
-            .is_some_and(|section| section.logical && !inside_owned_block);
-        let source = if unowned_logical {
+        // Ordinary code outside a named block survives block pruning. Its
+        // references must survive too, even after an ordinary label changes
+        // current_unit_symbol.
+        let source = if !inside_owned_block {
             None
         } else {
             self.current_unit_symbol.clone()

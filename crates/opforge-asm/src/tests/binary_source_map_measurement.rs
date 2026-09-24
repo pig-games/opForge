@@ -47,13 +47,17 @@ fn files<'a>(sources: &'a [String; 3]) -> [(&'static str, &'a str); 3] {
 // Repeat a useful instruction-and-data kernel to exercise selection, branches,
 // expressions and imported-block reachability without constructing a huge input.
 fn mixed_sources(cpu: &str) -> ([String; 2], Vec<u8>) {
+    mixed_sources_with_blocks(cpu, MIXED_BLOCKS)
+}
+
+fn mixed_sources_with_blocks(cpu: &str, blocks: usize) -> ([String; 2], Vec<u8>) {
     assert!(["m6502", "m68000"].contains(&cpu));
     let main = format!(
         ".module main\n.cpu {cpu}\n.use worker as work\n.word work.run\n.endmodule\n.end\n"
     );
     let mut worker = format!(".module worker\n.cpu {cpu}\n.org $1000\n.pub\nrun .block\n");
     let mut expected = Vec::new();
-    for index in 0..MIXED_BLOCKS {
+    for index in 0..blocks {
         let value = (index % 64 + 1) as u8;
         let other = ((index * 3) % 64 + 1) as u8;
         let address = 0x1000 + expected.len();
@@ -103,7 +107,12 @@ fn compact_mixed_measurement_rust_oracle() {
 #[ignore = "requires configured 68020 / 2 MiB FS-UAE; bounded mixed-instruction baseline"]
 fn compact_mixed_measurement_fs_uae() {
     let cpu = std::env::var("OPFORGE_MEASURE_CPU").expect("select m6502 or m68000");
-    let (sources, independent) = mixed_sources(&cpu);
+    let blocks = std::env::var("OPFORGE_COMPARE_BLOCKS")
+        .ok()
+        .map(|value| value.parse::<usize>().expect("numeric block count"))
+        .unwrap_or(MIXED_BLOCKS);
+    assert!((1..=MIXED_BLOCKS).contains(&blocks));
+    let (sources, independent) = mixed_sources_with_blocks(&cpu, blocks);
     let files = mixed_files(&sources);
     let rust_started = std::time::Instant::now();
     let expected = oracle_with_roots(&files, &["library"]).expect("live Rust image");
@@ -117,6 +126,101 @@ fn compact_mixed_measurement_fs_uae() {
         "COMPACT_MIXED_MEASUREMENT",
         None,
         None,
+    );
+}
+
+#[test]
+#[ignore = "requires configured expanded-memory FS-UAE; full and compact CLI comparison"]
+fn full_compact_mixed_comparison_fs_uae() {
+    use crate::fs_uae_smoke::{
+        OpforgeNativeCliGuestFile, OpforgeNativeCliPackageMode, OpforgeNativeCliParityCase,
+        OpforgeNativeCliProof,
+    };
+
+    assert_ne!(
+        std::env::var("OPFORGE_FS_UAE_MEMORY_PROFILE").as_deref(),
+        Ok("2m"),
+        "the full CLI cannot fit the constrained 2 MiB profile"
+    );
+    let cpu = std::env::var("OPFORGE_MEASURE_CPU").expect("select m6502 or m68000");
+    let blocks = std::env::var("OPFORGE_COMPARE_BLOCKS")
+        .ok()
+        .map(|value| value.parse::<usize>().expect("numeric block count"))
+        .unwrap_or(8);
+    assert!((1..=MIXED_BLOCKS).contains(&blocks));
+    let (sources, independent) = mixed_sources_with_blocks(&cpu, blocks);
+    let files = mixed_files(&sources);
+    let expected = oracle_with_roots(&files, &["library"]).expect("live Rust image");
+    assert_eq!(expected, independent);
+    let full_package = build_hierarchy_package_from_registry(&default_registry()).unwrap();
+    let compact_core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let compact_pipeline = compact_core.resolve_pipeline(&cpu, None).unwrap();
+    let compact_package = prepare_package(&compact_core, &compact_pipeline).unwrap();
+    let full_files = [OpforgeNativeCliGuestFile {
+        relative_path: "worker.asm",
+        bytes: sources[1].as_bytes(),
+    }];
+    let full_case = [OpforgeNativeCliParityCase {
+        name: "full-compact-mixed-comparison",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(sources[0].as_bytes()),
+        command_template: Some(
+            "{input} --bin {bin} --cpu m6502 --opasm-package {package} -M {guest_work_dir}",
+        ),
+        package_mode: OpforgeNativeCliPackageMode::Explicit(&full_package),
+        extra_guest_files: &full_files,
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/opforge_native_out.bin",
+            rust_oracle: &expected,
+        },
+    }];
+    let full = crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(
+        &workspace_root(),
+        &full_case,
+    )
+    .expect("fresh full CLI run");
+    let FsUaeSmokeOutcome::Completed { runs } = full else {
+        panic!("real FS-UAE full CLI run required");
+    };
+    let full = &runs[0];
+    assert!(full.success && full.protocol_completed);
+    assert_eq!(full.exit_code, Some(0));
+    let compact_bytes = files
+        .iter()
+        .map(|(name, source)| (*name, source.as_bytes()))
+        .collect::<Vec<_>>();
+    let compact = crate::fs_uae_smoke::run_compact_cli_files_from_env(
+        &workspace_root(),
+        &compact_package,
+        &compact_bytes,
+        &["library"],
+        &[],
+        Some(&expected),
+        false,
+    )
+    .expect("fresh compact CLI run");
+    let FsUaeSmokeOutcome::Completed { runs } = compact else {
+        panic!("real FS-UAE compact CLI run required");
+    };
+    let compact = &runs[0];
+    assert!(compact.success && compact.protocol_completed);
+    assert_eq!(compact.exit_code, Some(0));
+    eprintln!(
+        "FULL_COMPACT_MIXED_COMPARISON {}",
+        serde_json::json!({
+            "cpu": cpu,
+            "blocks": blocks,
+            "source_lines": sources.iter().map(|source| source.lines().count()).sum::<usize>(),
+            "source_bytes": sources.iter().map(String::len).sum::<usize>(),
+            "output_bytes": expected.len(),
+            "full_package_bytes": full_package.len(),
+            "compact_package_bytes": compact_package.len(),
+            "full_seconds": full.start_to_done_host_seconds,
+            "compact_seconds": compact.start_to_done_host_seconds,
+            "full_image_bytes": full.captured_artifacts[&std::path::PathBuf::from("Work/build/opforge_cli")].len(),
+            "compact_image_bytes": compact.captured_artifacts[&std::path::PathBuf::from("Work/build/opforge_compact")].len(),
+        })
     );
 }
 

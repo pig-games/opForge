@@ -1355,3 +1355,33 @@ Reproduce with the [FS-UAE setup](../../agents/rules/fs-uae.md),
 --lib -- --ignored --nocapture --test-threads=1` or replace the filter with
 `two_map_measurement_fs_uae`. Set `OPFORGE_COMPARE_MEMORY=1` only for a
 separate instrumented run.
+
+## Full-CLI comparison attempt
+
+The opt-in `full_compact_mixed_comparison_fs_uae` case uses the same generated
+entry and imported worker source with `.module`, `.use`, real instruction
+selection, forward branches, expressions and data. It requires a fresh explicit
+zero exit and exact live-Rust bytes from **both** executables before reporting a
+comparison. The full CLI uses the current hierarchy package; the compact CLI
+uses its derived BSP3 package. The comparison runs under the same expanded
+FS-UAE configuration because the full CLI cannot fit the 2 MiB profile.
+
+This comparison is currently blocked. In the September 24 run, the eight-block
+m6502 case comprised 81 source lines, 841 source bytes and 106 expected output
+bytes. The compact CLI completed and matched the oracle. The full CLI did not
+produce a completion response within a 45-second guest deadline. A 24-block
+version likewise timed out at 60 seconds. Crucially, an existing tiny full-CLI
+6502 smoke case also timed out at 45 seconds with no guest stdout or stderr,
+while the compact CLI completed under the same emulator configuration. Therefore
+the timeout cannot be attributed to the representative program's work, and no
+full/compact speed ratio is valid. The expanded configuration uses the A4000 /
+68040 template with 8 MiB fast RAM and a 64 MiB Zorro III override; this is
+not the 68020 / 2 MiB product target.
+
+The full executable initially failed to build because reachability discarded
+helpers called by ordinary code outside named blocks in imported, nonlogical
+sections. A focused fix retains those referenced helpers while leaving unused
+blocks prunable. The full executable then built but still failed to finish the
+existing tiny smoke case. Diagnose that remaining full-CLI startup/execution
+regression before treating the comparison as performance evidence. The ignored
+test preserves the exact source and proof conditions for that retry.

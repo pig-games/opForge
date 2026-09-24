@@ -459,20 +459,30 @@ impl SymbolTable {
             .map(|import| normalized_ascii_upper_lookup_key(&import.module_id).into_owned())
             .collect();
         for module in &self.module_info {
-            if imported_modules.contains(normalized_ascii_upper_lookup_key(&module.name).as_ref()) {
-                continue;
-            }
-            for reference in module
+            let imported =
+                imported_modules.contains(normalized_ascii_upper_lookup_key(&module.name).as_ref());
+            // Imported logical sections need an actual reached unit before their
+            // unowned content contributes edges. Nonlogical content is emitted
+            // directly, so its references are roots even in an imported module.
+            let root_references = module
                 .symbol_references
                 .values()
                 .flat_map(|references| references.iter())
+                .filter(|_| !imported)
                 .chain(
                     module
                         .unowned_references
-                        .values()
-                        .flat_map(|references| references.iter()),
-                )
-            {
+                        .iter()
+                        .filter(|(section, _)| {
+                            !imported
+                                || !module
+                                    .logical_sections
+                                    .iter()
+                                    .any(|logical| logical.name.eq_ignore_ascii_case(section))
+                        })
+                        .flat_map(|(_, references)| references.iter()),
+                );
+            for reference in root_references {
                 if let Some((module_id, symbol_name)) = self.module_symbol_for_full_name(reference)
                 {
                     queue.push(ReachableUnit {

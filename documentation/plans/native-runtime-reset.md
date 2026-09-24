@@ -179,6 +179,13 @@ the main breadth blocker. The next implementation choice should be made from
 the measured work counts and a concrete language case, preserving the normal
 native CLI as the reference while the compact path grows.
 
+A direct [full/compact CLI comparison attempt](prepared-source-experiment.md#full-cli-comparison-attempt)
+now has a compatible module/import workload and exact-output harness, but the
+current full CLI times out even on an existing tiny smoke case. Its executable
+build required a separate unowned-reference reachability correction. The
+remaining full-CLI execution failure must be diagnosed before it can serve as a
+timed reference; its timeout is not a measured slowdown on the mixed source.
+
 ## Selected modules and reachable output
 
 Native discovery now selects the requested `.module` from a

@@ -1142,3 +1142,46 @@ adjacent literal regions, one mapped logical section per target, source names
 outside package-reserved spellings, and flat contiguous output. General section
 ordering, multiple targets per logical section, sparse output, and same-region
 repacking after mapped growth remain separate work.
+
+## Bounded two-map scaling baseline
+
+`two_map_measurement_rust_oracle` and the opt-in
+`two_map_measurement_fs_uae` test generate the same three-file workload for
+`m6502` and `m68000`: two adjacent imported section maps, 64 data/expression
+items in each selected block, unowned prefix bytes, forward references, and an
+unreachable sibling block. This is a generic directive workload; it does not
+measure CPU instruction encoding. Each live Rust image is 522 contiguous bytes,
+and each fresh native run matched it exactly under the 68020 / 2 MiB FS-UAE
+profile. Each source set has 302 lines and about 4.7 KiB of text. Native
+telemetry reports 300 tokenized lines and 5,219 packed-source bytes. The
+five-sweep schedule over two passes therefore implies about 3,000 packed-record
+inspections for this case; that work count is derived from the schedule and
+tokenized-line count, not a direct record-visit counter.
+
+| Package | Release compact CLI command time | Instrumented preparation | Instrumented assembly | Tokenization within preparation | Peak owned memory |
+|---|---:|---:|---:|---:|---:|
+| m6502 | 2.03 s | 3.40 s | 0.30 s | 2.20 s | 291,072 B |
+| m68000 | 2.29 s | 3.62 s | 0.32 s | 2.18 s | 405,760 B |
+
+The release CLI Hunk was 44,660 bytes with 56,048 bytes linked reservation for
+both packages. Instrumentation uses a different harness and executable; its
+phase times must not be added to or compared numerically with release command
+times. The source/package file preparation on the host and emulator startup are
+outside guest command time. These are individual runs, not distributional
+latency estimates or an identical-input before/after speed comparison: the
+previous two-map runtime could not assemble this input. The packed records are
+slightly larger than the input text in this case, which matters for the future
+compact-format goal but does not establish a memory regression against a
+functionally equivalent text path.
+
+The entire instrumented assembly phase is much smaller than tokenization, so
+even eliminating all record-sweep cost would save less than the measured
+assembly phase in this workload. Defer a prepared span index until a larger
+bounded input or broader feature mix shows assembly scans becoming material.
+Keep this exact-output case as a baseline and inspect tokenization before
+investing in scan scheduling. Reproduce the native runs with the configured
+FS-UAE environment from the [FS-UAE guide](../../agents/rules/fs-uae.md),
+`OPFORGE_FS_UAE_MEMORY_PROFILE=2m`, `OPFORGE_MEASURE_CPU=m6502` or `m68000`,
+and `cargo test -p asm two_map_measurement_fs_uae -- --ignored --nocapture --test-threads=1`.
+Set `OPFORGE_COMPARE_MEMORY=1` for a separate instrumented run; leave it unset
+for release timing.

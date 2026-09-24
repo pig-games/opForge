@@ -603,4 +603,7 @@ a valid contiguous reference image, recorded in the
 Native two-map parity now uses indexed maps and section slots and schedules
 both mapped pairs against their adjacent regions. Treat same-region repacking
 after mapped growth as a separate convergence problem. Before broadening this
-mode, measure whether its five record sweeps warrant a prepared span index.
+mode, use the [bounded two-map scaling baseline](prepared-source-experiment.md#bounded-two-map-scaling-baseline)
+to track cost. On a 300-record case, instrumented assembly took 0.30–0.32 s
+while tokenization took 2.18–2.20 s. Defer a span index until assembly scans
+become material on a larger bounded case; investigate tokenization first.

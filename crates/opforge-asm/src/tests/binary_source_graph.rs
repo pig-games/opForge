@@ -1,6 +1,9 @@
 //! Numeric native dependency ordering; real files supply a live Rust graph oracle.
 use super::*;
 
+#[path = "binary_source_map_measurement.rs"]
+mod measurement;
+
 const ROOT: &str =
     ".module main\n.cpu m6502\n.use alpha\n.use beta\n.pub\nentry\n.byte 4\n.endmodule\n.end\n";
 const A: &str = ".module alpha\n.cpu m6502\n.use shared\n.pub\nentry\n.byte 2\n.endmodule\n.end\n";

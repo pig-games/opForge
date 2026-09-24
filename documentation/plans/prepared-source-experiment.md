@@ -1366,47 +1366,45 @@ comparison. The full CLI uses the current hierarchy package; the compact CLI
 uses its derived BSP3 package. The comparison runs under the same expanded
 FS-UAE configuration because the full CLI cannot fit the 2 MiB profile.
 
-This comparison is currently blocked. In the September 24 run, the eight-block
-m6502 case comprised 81 source lines, 841 source bytes and 106 expected output
-bytes. A separate fresh compact-CLI run on the 68020 / 2 MiB profile completed
-in 0.760 seconds of guest start-to-done host time and matched the oracle.
-Expanded-profile compact runs also completed and matched, but the runner did
-not capture their optional elapsed time. The full CLI did not
-produce a completion response within a 45-second guest deadline. A September 24
-retry of this exact eight-block case with a 300,000 ms guest deadline also timed
-out after 309.82 seconds for the test invocation, with no guest completion,
-stdout or stderr. A 24-block
-version likewise timed out at 60 seconds. Crucially, an existing tiny full-CLI
-6502 smoke case also timed out at 45 seconds with no guest stdout or stderr,
-while the compact CLI completed under the same emulator configuration. Therefore
-the timeout cannot be attributed to the representative program's work, and no
-full/compact speed ratio is valid. The expanded configuration uses the A4000 /
-68040 template with 8 MiB fast RAM and a 64 MiB Zorro III override; this is
-not the 68020 / 2 MiB product target.
+The Rust assembler now retains the first Hunk entry block and follows M68K
+absolute-size symbol references into its helpers. The original full CLI source
+builds and the guest completes. Its first run on the richer eight-block source
+still failed exact-output proof: the native output was 107 bytes versus 106
+from Rust, resolving `block+1` as `block` and emitting a byte from an
+unreferenced sibling `.block`. This remains a full-CLI correctness gap.
 
-The full executable initially failed to build because reachability discarded
-helpers called by ordinary code outside named blocks in imported, nonlogical
-sections. A focused fix retains those referenced helpers while leaving unused
-blocks prunable. The full executable then built but still failed to finish the
-existing tiny smoke case. Diagnose that remaining full-CLI startup/execution
-regression before treating the comparison as performance evidence. The ignored
-test preserves the exact source and proof conditions for that retry.
+The comparison therefore uses a separately identified common-subset source:
+the same two modules, `.use`, instruction selection, forward branches, labels
+and data, with direct label values and no unreferenced sibling block. The
+richer compact-only oracle remains unchanged. Each result below has a fresh
+guest completion, zero exit and exact bytes against the live Rust oracle from
+**both** CLIs. These runs used the same expanded A4000 / 68040 FS-UAE setup,
+with 8 MiB fast RAM and a 64 MiB Zorro III override, not the 68020 / 2 MiB
+product target.
 
-A smaller ignored Rust regression, `hunk_output_entry_block_reachability_pending`,
-shows a concrete startup risk: `.use entry` plus a Hunk `.output` selecting the
-`entry` section currently discards that section's only `start .block` when no
-expression names it. The real full CLI has this root shape. Retaining the first
-block solely because its section appears in `.output` is not yet an accepted
-fix: a trial exposed many branch-layout errors as more code became reachable.
-The entry-root semantics and resulting layout need a coherent correction before
-another timing attempt.
+| CPU | Blocks | Source lines / bytes | Output bytes | Full CLI | Compact CLI |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| M6502 | 8 | 78 / 795 | 106 | 5.03 s | 0.027 s |
+| M6502 | 24 | 206 / 2,160 | 314 | 13.11 s | 0.022 s |
+| M68000 | 24 | 206 / 2,690 | 434 | 19.54 s | 0.058 s |
 
-A September 24 source-only trial removed the process entry's `.block` wrapper.
-An isolated Rust case retained the resulting ordinary entry code and pruned an
-unused sibling block, but the full CLI failed during host assembly, before
-FS-UAE: helper labels were unresolved and many short branches were reported
-out of range. A second trial kept the wrapper and added an explicit reference
-to `start` from root data; it exposed the same assembly failures. Both trials
-were reverted. Rooting the entry alone is therefore insufficient for this
-executable; reduce the reachable-block relayout/symbol failure before another
-native timing run.
+The eight-block full-CLI time was 4.87–5.09 s over three successful
+common-subset runs. The timer is host-observed START-to-DONE polling time, not
+guest CPU time. At the runner's default 250 ms poll interval, one compact time
+was 0.252 s and another was unavailable; the table uses 20 ms polling. Compact
+times are still close to that resolution, so a precise speed ratio would be
+misleading. The full CLI clearly takes seconds where the compact CLI completes
+within a few polls. The full image is 562,376 bytes versus 48,304 bytes for
+the compact image; the full package is 370,156 bytes versus 10,874 bytes for
+M6502 and 126,550 bytes for M68000. This comparison does not establish
+68020 / 2 MiB feasibility or isolate assembly work from CLI/package startup.
+
+Reproduce with the [FS-UAE setup](../../agents/rules/fs-uae.md),
+`OPFORGE_FS_UAE_POLL_MS=20`, `OPFORGE_FS_UAE_TIMEOUT_MS=300000`,
+`OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=300000`, `OPFORGE_MEASURE_CPU=m6502`
+or `m68000`, and `OPFORGE_COMPARE_BLOCKS=8` or `24`:
+
+```sh
+cargo test -p asm full_compact_mixed_comparison_fs_uae --lib -- \
+  --ignored --nocapture --test-threads=1
+```

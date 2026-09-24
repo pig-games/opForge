@@ -179,17 +179,18 @@ the main breadth blocker. The next implementation choice should be made from
 the measured work counts and a concrete language case, preserving the normal
 native CLI as the reference while the compact path grows.
 
-A direct [full/compact CLI comparison attempt](prepared-source-experiment.md#full-cli-comparison-attempt)
-now has a compatible module/import workload and exact-output harness, but the
-current full CLI times out even on an existing tiny smoke case. Its executable
-build required a separate unowned-reference reachability correction. The
-remaining full-CLI execution failure must be diagnosed before it can serve as a
-timed reference; the eight-block mixed case still had no completion after a
-five-minute guest deadline. Its timeout is not a measured slowdown on the mixed
-source.
-A minimal ignored regression also shows that Hunk output selection does not
-currently retain an imported `start .block` in the first section. Entry rooting
-must be resolved without broadening reachability or breaking branch layout.
+The [full/compact CLI comparison](prepared-source-experiment.md#full-cli-comparison-attempt)
+now completes with exact output for an M6502/M68000 common-subset module/import
+workload. After the Rust Hunk-entry and M68K reference fixes, the full CLI took
+about 5 seconds for eight M6502 blocks, 13 seconds for 24 M6502 blocks and
+20 seconds for 24 M68000 blocks. The compact CLI completed near the 20 ms
+host-polling resolution on the same expanded emulator setup; this is a clear
+large relative gain, but not a precise ratio or 68020 / 2 MiB proof. The old
+full CLI still misassembles `block+1` and emits an unreferenced sibling block
+on the richer test source, so that case remains a correctness probe rather
+than performance evidence. The next measurements should separate startup and
+package cost from per-statement execution and improve timing resolution for
+short compact runs.
 
 ## Selected modules and reachable output
 

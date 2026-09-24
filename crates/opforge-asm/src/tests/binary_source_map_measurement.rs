@@ -51,6 +51,14 @@ fn mixed_sources(cpu: &str) -> ([String; 2], Vec<u8>) {
 }
 
 fn mixed_sources_with_blocks(cpu: &str, blocks: usize) -> ([String; 2], Vec<u8>) {
+    mixed_sources_variant(cpu, blocks, true)
+}
+
+fn mixed_sources_variant(
+    cpu: &str,
+    blocks: usize,
+    exercise_pruning_and_offset: bool,
+) -> ([String; 2], Vec<u8>) {
     assert!(["m6502", "m68000"].contains(&cpu));
     let main = format!(
         ".module main\n.cpu {cpu}\n.use worker as work\n.word work.run\n.endmodule\n.end\n"
@@ -61,24 +69,31 @@ fn mixed_sources_with_blocks(cpu: &str, blocks: usize) -> ([String; 2], Vec<u8>)
         let value = (index % 64 + 1) as u8;
         let other = ((index * 3) % 64 + 1) as u8;
         let address = 0x1000 + expected.len();
+        let offset = usize::from(exercise_pruning_and_offset);
         if cpu == "m6502" {
             worker.push_str(&format!(
-                "block{index}:\n lda #{value}\n ldx #{other}\n sta $2000\n bne next{index}\n .byte 0\nnext{index}: nop\n .word block{index}+1\n"
+                "block{index}:\n lda #{value}\n ldx #{other}\n sta $2000\n bne next{index}\n .byte 0\nnext{index}: nop\n .word block{index}{offset_expr}\n",
+                offset_expr = if exercise_pruning_and_offset { "+1" } else { "" },
             ));
             expected
                 .extend_from_slice(&[0xa9, value, 0xa2, other, 0x8d, 0, 0x20, 0xd0, 1, 0, 0xea]);
-            expected.extend_from_slice(&((address + 1) as u16).to_le_bytes());
+            expected.extend_from_slice(&((address + offset) as u16).to_le_bytes());
         } else {
             worker.push_str(&format!(
-                "block{index}:\n moveq #{value},d0\n moveq #{other},d1\n move.b d0,($2000).w\n bne.s next{index}\n .word 0\nnext{index}: nop\n .long block{index}+2\n"
+                "block{index}:\n moveq #{value},d0\n moveq #{other},d1\n move.b d0,($2000).w\n bne.s next{index}\n .word 0\nnext{index}: nop\n .long block{index}{offset_expr}\n",
+                offset_expr = if exercise_pruning_and_offset { "+2" } else { "" },
             ));
             expected.extend_from_slice(&[
                 0x70, value, 0x72, other, 0x11, 0xc0, 0x20, 0, 0x66, 2, 0, 0, 0x4e, 0x71,
             ]);
-            expected.extend_from_slice(&((address + 2) as u32).to_be_bytes());
+            expected.extend_from_slice(&((address + 2 * offset) as u32).to_be_bytes());
         }
     }
-    worker.push_str(".bend\nunused .block\n.byte $99\n.bend\n.endmodule\n.end\n");
+    worker.push_str(".bend\n");
+    if exercise_pruning_and_offset {
+        worker.push_str("unused .block\n.byte $99\n.bend\n");
+    }
+    worker.push_str(".endmodule\n.end\n");
     if cpu == "m6502" {
         expected.extend_from_slice(&0x1000u16.to_le_bytes());
     } else {
@@ -98,6 +113,15 @@ fn mixed_files<'a>(sources: &'a [String; 2]) -> [(&'static str, &'a str); 2] {
 fn compact_mixed_measurement_rust_oracle() {
     for cpu in ["m6502", "m68000"] {
         let (sources, independent) = mixed_sources(cpu);
+        let actual = oracle_with_roots(&mixed_files(&sources), &["library"]).unwrap();
+        assert_eq!(actual, independent);
+    }
+}
+
+#[test]
+fn full_cli_comparable_mixed_rust_oracle() {
+    for cpu in ["m6502", "m68000"] {
+        let (sources, independent) = mixed_sources_variant(cpu, 8, false);
         let actual = oracle_with_roots(&mixed_files(&sources), &["library"]).unwrap();
         assert_eq!(actual, independent);
     }
@@ -148,7 +172,9 @@ fn full_compact_mixed_comparison_fs_uae() {
         .map(|value| value.parse::<usize>().expect("numeric block count"))
         .unwrap_or(8);
     assert!((1..=MIXED_BLOCKS).contains(&blocks));
-    let (sources, independent) = mixed_sources_with_blocks(&cpu, blocks);
+    // Keep the richer compact-only case as a separate correctness probe.
+    // Compare the CLIs on their common expression and block-inclusion subset.
+    let (sources, independent) = mixed_sources_variant(&cpu, blocks, false);
     let files = mixed_files(&sources);
     let expected = oracle_with_roots(&files, &["library"]).expect("live Rust image");
     assert_eq!(expected, independent);
@@ -160,14 +186,15 @@ fn full_compact_mixed_comparison_fs_uae() {
         relative_path: "worker.asm",
         bytes: sources[1].as_bytes(),
     }];
+    let command = format!(
+        "{{input}} --bin {{bin}} --cpu {cpu} --opasm-package {{package}} -M {{guest_work_dir}}"
+    );
     let full_case = [OpforgeNativeCliParityCase {
         name: "full-compact-mixed-comparison",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(sources[0].as_bytes()),
-        command_template: Some(
-            "{input} --bin {bin} --cpu m6502 --opasm-package {package} -M {guest_work_dir}",
-        ),
+        command_template: Some(&command),
         package_mode: OpforgeNativeCliPackageMode::Explicit(&full_package),
         extra_guest_files: &full_files,
         proof: OpforgeNativeCliProof::ExactArtifact {

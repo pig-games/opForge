@@ -7,23 +7,27 @@
 	.use experimental.amigaos.binary_binding_records as names
 	.use experimental.amigaos.binary_source as source
 	.pub
+Map	.struct
+Owner	.word ?
+Module	.word ?
+Logical	.word ?
+Concrete	.word ?
+	.endstruct
+MAP_BYTES = Map.Concrete+2
 State	.struct
 First	.word ?
 Concrete	.word ?
 Region	.word ?
 Active	.word ?
 Seen	.word ?
-MapOwner	.word ?
-MapModule	.word ?
-MapLogical	.word ?
-MapConcrete	.word ?
 Second	.word ?
 SecondRegion	.word ?
+MapCount	.word ?
 	.endstruct
-SCRATCH_BYTES = State.SecondRegion+2
-; Seen bits: logical, first concrete/region/place, second concrete/region/place.
-; Packed control opcodes 7/8/9 extend the original six with the second
-; concrete section, region and placement.
+MAPS = State.MapCount+2
+SCRATCH_BYTES = MAPS+2*MAP_BYTES
+; Seen bits: first logical/concrete/region/place, second concrete/region/place,
+; second logical. Packed control opcodes 10/11 are second logical/concrete.
 CONTROL_SECTION = 1
 CONTROL_ENDSECTION = 2
 CONTROL_REGION = 3
@@ -33,23 +37,27 @@ CONTROL_PLACE = 4
 
 ; A0=State. Clear preparation-only section identities.
 begin	.block
+	move.l a0, -(sp)
 	clr.w State.First(a0)
 	clr.w State.Concrete(a0)
 	clr.w State.Region(a0)
 	clr.w State.Active(a0)
 	clr.w State.Seen(a0)
-	clr.w State.MapOwner(a0)
-	clr.w State.MapModule(a0)
-	clr.w State.MapLogical(a0)
-	clr.w State.MapConcrete(a0)
 	clr.w State.Second(a0)
 	clr.w State.SecondRegion(a0)
+	clr.w State.MapCount(a0)
+	lea MAPS(a0), a0
+	moveq #2*MAP_BYTES/2-1, d0
+clearMaps
+	clr.w (a0)+
+	dbra d0, clearMaps
+	movea.l (sp)+, a0
 	moveq #0, d0
 	rts
 	.bend  ; begin
 
 ; A0=writer record,A1=scope state,A2=section state,D0=1..4.
-; Supports one mapped pair, or two concrete sections in adjacent regions.
+; Supports up to two mapped pairs or two concrete sections in adjacent regions.
 ; Rewrites controls to [header,opcode,optional u32 start,u32 end].
 ; D0/CCR=status; other registers preserved.
 line	.block
@@ -99,7 +107,7 @@ section
 sectionName
 	cmpa.l a3, a2
 	bne.w bad
-	tst.w State.MapModule(a4)
+	tst.w State.MapCount(a4)
 	bne.w mappedName
 	moveq #0, d0
 	move.w State.First(a4), d0
@@ -117,7 +125,7 @@ sectionName
 	bne.w bad
 	bra.w secondMatched
 secondName
-	tst.w State.MapModule(a4)
+	tst.w State.MapCount(a4)
 	bne.w bad
 	move.w d6, State.Second(a4)
 secondMatched
@@ -127,17 +135,25 @@ firstName
 	move.w d6, State.First(a4)
 	bra.w matched
 mappedName
+	moveq #0, d3
+mapNameLoop
+	cmp.w State.MapCount(a4), d3
+	bhs.w bad
+	move.l d3, d0
+	lsl.l #3, d0
+	lea MAPS(a4), a0
+	adda.l d0, a0
 	moveq #0, d0
 	cmpi.w #1, d5
-	bne.w mappedConcrete
-	move.w State.MapLogical(a4), d0
-	bra.w mappedCompare
-mappedConcrete
-	move.w State.MapConcrete(a4), d0
-mappedCompare
+	bne.w mapConcreteName
+	move.w Map.Logical(a0), d0
+	bra.w mapCompare
+mapConcreteName
+	move.w Map.Concrete(a0), d0
+mapCompare
 	move.w d6, d1
 	bsr.w sameLeaf
-	bne.w bad
+	bne.w nextMapName
 	move.l d6, d0
 	sub.w layout.State.Base(a6), d0
 	lsl.l #4, d0
@@ -145,18 +161,34 @@ mappedCompare
 	adda.l d0, a1
 	move.w names.Entry.Owner(a1), d0
 	cmpi.w #1, d5
-	bne.w mappedOwner
-	cmp.w State.MapModule(a4), d0
-	bne.w bad
+	bne.w mapConcreteOwner
+	cmp.w Map.Module(a0), d0
+	bne.w nextMapName
+	tst.w d3
+	beq.w matched
+	moveq #10, d5
 	bra.w matched
-mappedOwner
-	cmp.w State.MapOwner(a4), d0
-	bne.w bad
-	moveq #6, d5  ; runtime schedules this concrete body before mapped content
+mapConcreteOwner
+	cmp.w Map.Owner(a0), d0
+	bne.w nextMapName
+	tst.w d3
+	beq.w firstMappedConcrete
+	moveq #11, d5
+	bra.w matched
+firstMappedConcrete
+	moveq #6, d5
+	bra.w matched
+nextMapName
+	addq.w #1, d3
+	bra.w mapNameLoop
 matched
 	cmpi.w #1, d5
 	beq.w logical
+	cmpi.w #10, d5
+	beq.w secondLogical
 	cmpi.w #7, d5
+	beq.w secondConcrete
+	cmpi.w #11, d5
 	beq.w secondConcrete
 	bra.w concrete
 logical
@@ -165,6 +197,13 @@ logical
 	bne.w bad
 	ori.w #1, State.Seen(a4)
 	move.w #1, State.Active(a4)
+	bra.w control
+secondLogical
+	move.w State.Seen(a4), d0
+	btst #7, d0
+	bne.w bad
+	ori.w #128, State.Seen(a4)
+	move.w #10, State.Active(a4)
 	bra.w control
 concrete
 	move.w State.Seen(a4), d0
@@ -179,7 +218,8 @@ secondConcrete
 	btst #4, d0
 	bne.w bad
 	ori.w #16, State.Seen(a4)
-	move.w #7, State.Active(a4)
+	move.w d6, State.Second(a4)
+	move.w d5, State.Active(a4)
 	bra.w control
 endsection
 	cmpa.l a3, a2
@@ -199,8 +239,6 @@ region
 	bra.w regionName
 nextRegion
 	btst #5, d0
-	bne.w bad
-	tst.w State.MapModule(a4)
 	bne.w bad
 	moveq #8, d5
 regionName
@@ -317,7 +355,7 @@ done
 	.bend  ; line
 
 ; A0=first token after the imported module,A1=scope state,A2=section state,
-; A4=record end,D0=imported module index. Accept one trailing
+; A4=record end,D0=imported module index. Accept a trailing
 ; `map { logical -> concrete }` and return A4 at the start of that suffix.
 ; The ordinary import parser then sees the unchanged prefix. D0/CCR=status;
 ; all other registers preserved.
@@ -356,23 +394,27 @@ importMap	.block
 	bne.w badMap
 	cmpa.l a3, a2
 	bne.w badMap
-	tst.w State.MapModule(a5)
-	bne.w badMap
 	tst.w State.Second(a5)
 	bne.w badMap
-	tst.w State.SecondRegion(a5)
-	bne.w badMap
 	move.w State.Seen(a5), d0
-	andi.w #3, d0
+	andi.w #$0093, d0
 	bne.w badMap  ; mapping must precede section declarations
+	moveq #0, d0
+	move.w State.MapCount(a5), d0
+	cmpi.w #2, d0
+	bhs.w badMap
+	lsl.l #3, d0
+	lea MAPS(a5), a0
+	adda.l d0, a0
 	move.w layout.State.Current(a6), d0
 	beq.w badMap
-	move.w d0, State.MapOwner(a5)
+	move.w d0, Map.Owner(a0)
 	move.w d7, d0
 	addq.w #1, d0
-	move.w d0, State.MapModule(a5)
-	move.w d5, State.MapLogical(a5)
-	move.w d6, State.MapConcrete(a5)
+	move.w d0, Map.Module(a0)
+	move.w d5, Map.Logical(a0)
+	move.w d6, Map.Concrete(a0)
+	addq.w #1, State.MapCount(a5)
 	movea.l d4, a4
 noMap
 	moveq #0, d0
@@ -387,6 +429,13 @@ mapDone
 
 ; A0=section state. A mapped case requires both named sections by completion.
 finish	.block
+	movem.l d1, -(sp)
+	move.w State.MapCount(a0), d1
+	cmpi.w #2, d1
+	bne.w secondCheck
+	tst.w State.Second(a0)
+	beq.w badFinish
+secondCheck
 	tst.w State.Second(a0)
 	beq.w noSecond
 	move.w State.Seen(a0), d0
@@ -399,17 +448,32 @@ noSecond
 	tst.w State.Second(a0)
 	beq.w badFinish
 mapFinish
-	tst.w State.MapModule(a0)
+	tst.w d1
 	beq.w finished
 	move.w State.Seen(a0), d0
 	andi.w #3, d0
 	cmpi.w #3, d0
 	bne.w badFinish
+	cmpi.w #1, d1
+	beq.w oneMap
+	cmpi.w #2, d1
+	bne.w badFinish
+	move.w State.Seen(a0), d0
+	btst #7, d0
+	beq.w badFinish
+	bra.w finished
+oneMap
+	tst.w State.Second(a0)
+	bne.w badFinish
 finished
 	moveq #0, d0
-	rts
+	bra.w finishDone
 badFinish
 	moveq #1, d0
+
+finishDone
+	movem.l (sp)+, d1
+	tst.l d0
 	rts
 	.bend  ; finish
 

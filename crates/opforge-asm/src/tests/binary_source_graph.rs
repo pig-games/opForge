@@ -504,7 +504,7 @@ fn compact_cli_explicit_mapped_section_body_fs_uae() {
 const TWO_MAPPED_SECTIONS: &[(&str, &str)] = &[
     (
         "main.asm",
-        ".module main\n.cpu m6502\n.region rom, $1000, $10ff\n.use dep_a (entry) as a map { code_a -> app_a }\n.use dep_b (entry) as b map { code_b -> app_b }\n.section app_a\n.byte $a0\n.word a.entry\n.endsection\n.section app_b\n.byte $a1\n.word b.entry\n.endsection\n.place app_a in rom\n.place app_b in rom\n.endmodule\n.end\n",
+        ".module main\n.cpu m6502\n.region rom, $1000, $10ff\n.use dep_a (entry) as left map { code_a -> app_a }\n.use dep_b (entry) as right map { code_b -> app_b }\n.section app_a\n.byte $a0\n.word left.entry\n.endsection\n.section app_b\n.byte $a1\n.word right.entry\n.endsection\n.place app_a in rom\n.place app_b in rom\n.endmodule\n.end\n",
     ),
     (
         "library/dep_a.asm",
@@ -523,10 +523,17 @@ fn binary_graph_two_mapped_sections_overlap_rejected() {
         .contains("Mapped section overlaps the next placed section"));
 }
 
+#[test]
+#[ignore = "requires configured FS-UAE; two maps cannot share one region"]
+fn compact_cli_two_mapped_sections_overlap_fs_uae() {
+    assert!(oracle_with_roots(TWO_MAPPED_SECTIONS, &["library"]).is_err());
+    compact_cli(TWO_MAPPED_SECTIONS, &["library"], &[], None, false);
+}
+
 const TWO_MAPPED_REGIONS: &[(&str, &str)] = &[
     (
         "main.asm",
-        ".module main\n.cpu m6502\n.region rom_a, $1000, $1004\n.region rom_b, $1005, $10ff\n.use dep_a (entry) as a map { code_a -> app_a }\n.use dep_b (entry) as b map { code_b -> app_b }\n.section app_a\n.byte $a0\n.word a.entry\n.endsection\n.section app_b\n.byte $a1\n.word b.entry\n.endsection\n.place app_a in rom_a\n.place app_b in rom_b\n.endmodule\n.end\n",
+        ".module main\n.cpu m6502\n.region rom_a, $1000, $1004\n.region rom_b, $1005, $10ff\n.use dep_a (entry) as left map { code_a -> app_a }\n.use dep_b (entry) as right map { code_b -> app_b }\n.section app_a\n.byte $a0\n.word left.entry\n.endsection\n.section app_b\n.byte $a1\n.word right.entry\n.endsection\n.place app_a in rom_a\n.place app_b in rom_b\n.endmodule\n.end\n",
     ),
     TWO_MAPPED_SECTIONS[1],
     TWO_MAPPED_SECTIONS[2],
@@ -537,6 +544,20 @@ fn binary_graph_two_mapped_regions_rust_oracle() {
     assert_eq!(
         oracle_address_ordered_with_roots(TWO_MAPPED_REGIONS, &["library"]).unwrap(),
         [0xa0, 0x04, 0x10, 0xb0, 0x10, 0xa1, 0x09, 0x10, 0xc0, 0x20]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; two imported maps in adjacent regions"]
+fn compact_cli_two_mapped_regions_fs_uae() {
+    let expected = oracle_address_ordered_with_roots(TWO_MAPPED_REGIONS, &["library"])
+        .expect("live Rust two-map oracle");
+    compact_cli(
+        TWO_MAPPED_REGIONS,
+        &["library"],
+        &[],
+        Some(&expected),
+        false,
     );
 }
 

@@ -1,7 +1,8 @@
 # Binary-source native runtime
 
 Status: native discovery selects module bodies within multi-module candidate files;
-the experimental graph can also omit unreachable imported named blocks.
+the experimental graph can omit unreachable imported named blocks and place two
+mapped section pairs in adjacent literal regions.
 Bounded native functional checks and release comparisons pass. The last broad host run
 (F4) still had 160 baseline failures; this slice does not claim repository-wide
 qualification. See the [migration plan](native-runtime-reset.md) for the remaining
@@ -1103,8 +1104,41 @@ were 0.254–0.513 seconds. They are single-run observations, not a speed claim;
 the prior native path cannot assemble the new input. No peak owned-memory
 measurement was taken for this slice.
 
-The current scalar two-section state is a bounded bridge. Extending beyond two
-sections or adding two imported maps should use indexed section identities and
-an explicit output schedule, rather than adding a third set of special-case
-fields and passes. Noncontiguous placement and same-region placement after
-mapped growth still need separate layout and output decisions.
+The two-section state is a bounded bridge. Extending beyond two sections should
+grow the indexed slot and map tables rather than adding a third scalar case.
+Noncontiguous placement and same-region placement after mapped growth still
+need separate layout and output decisions.
+
+## Two imported maps in adjacent regions
+
+Preparation now retains two imported map identities in an indexed table and
+lowers each logical and concrete section to a distinct numeric control. The
+native assembly passes schedule concrete A, logical A, concrete B, logical B,
+then outside-section controls. Section bounds and completed PCs use two indexed
+runtime slots. This keeps concrete content before its own mapped import without
+moving the first imported section behind the second concrete section. The
+selected-block graph still omits unreachable imported blocks.
+
+An entry source and two imported files form a 6502 case with two forward words,
+unowned logical prefix bytes and unreachable siblings. A fresh 68020 / 2 MiB
+FS-UAE run matched the live Rust address-ordered bytes
+`a0 04 10 b0 10 a1 09 10 c0 20`. The previous one-map mapped-body and
+two-concrete-section cases also passed. A second map targeting the same region
+was rejected with fresh guest completion and the expected diagnostic; Rust
+rejects that overlap before emitting an image.
+
+The compact Hunk is 44,660 bytes with 56,048 bytes linked reservation, an
+increase of 576 and 580 bytes respectively over the preceding native checkpoint.
+The two-map guest command took 0.516 and 0.780 seconds in two fresh runs.
+The unchanged one-map and two-concrete controls took 0.507 and 0.260 seconds
+in their own single runs. These are functional observations, not a speed
+comparison for the new input. The two-map mode makes five full packed-record
+sweeps per pass; the one-map mode makes two. A prepared span schedule would avoid
+that cost on larger graphs; this case does not establish its value. Peak
+owned memory was not measured for this slice.
+
+The accepted subset still requires exactly two distinct concrete targets in
+adjacent literal regions, one mapped logical section per target, source names
+outside package-reserved spellings, and flat contiguous output. General section
+ordering, multiple targets per logical section, sparse output, and same-region
+repacking after mapped growth remain separate work.

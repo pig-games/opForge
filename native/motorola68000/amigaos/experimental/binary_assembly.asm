@@ -83,10 +83,15 @@ pass
 	moveq #0, d5  ; ordinary single sweep
 	lea SectionState, a0
 	cmpi.w #2, sections.State.Mode(a0)
+	beq.w oneMap
+	cmpi.w #4, sections.State.Mode(a0)
 	bne.w sweep
+	moveq #3, d5  ; two maps: four section sweeps, then outside controls
+	bra.w sweep
+oneMap
 	moveq #1, d5  ; explicit map: concrete sweep, then remaining records
 sweep
-	moveq #0, d4  ; inside the mapped concrete section
+	moveq #0, d4  ; section selection state for this sweep
 	movea.l Frame.Records(a5), a4
 	move.l a4, d0
 	add.l Frame.RecordBytes(a5), d0
@@ -108,6 +113,8 @@ line
 	sub.l a4, d0
 	cmp.l d0, d6
 	bhi.w fail
+	cmpi.w #3, d5
+	bhs.w pairedSelect
 	; An explicit map needs concrete bytes and labels before the imported
 	; logical section. Filter the same packed records into two ordered sweeps.
 	tst.w d5
@@ -147,6 +154,78 @@ selectStatement
 selectRemaining
 	tst.w d4
 	bne.w omitted
+	bra.w selected
+pairedSelect
+	btst #4, 1(a4)
+	beq.w pairedStatement
+	cmpi.w #5, d6
+	blo.w fail
+	moveq #0, d0
+	move.b 4(a4), d0
+	cmpi.w #3, d0
+	beq.w pairedClose
+	cmpi.w #1, d0
+	beq.w pairedOpen
+	cmpi.w #2, d0
+	beq.w pairedOpen
+	cmpi.w #6, d0
+	beq.w pairedOpen
+	cmpi.w #7, d0
+	beq.w pairedOpen
+	cmpi.w #10, d0
+	beq.w pairedOpen
+	cmpi.w #11, d0
+	beq.w pairedOpen
+	cmpi.w #7, d5
+	beq.w selected  ; region and place controls run after all section bodies
+	bra.w omitted
+pairedOpen
+	tst.w d4
+	bne.w fail
+	moveq #2, d4
+	cmpi.w #3, d5
+	bne.w pairedFirstLogical
+	cmpi.w #6, d0
+	bne.w pairedOpenDone
+	bra.w pairedChosen
+pairedFirstLogical
+	cmpi.w #4, d5
+	bne.w pairedSecondConcrete
+	cmpi.w #1, d0
+	bne.w pairedOpenDone
+	bra.w pairedChosen
+pairedSecondConcrete
+	cmpi.w #5, d5
+	bne.w pairedSecondLogical
+	cmpi.w #11, d0
+	bne.w pairedOpenDone
+	bra.w pairedChosen
+pairedSecondLogical
+	cmpi.w #6, d5
+	bne.w pairedOpenDone
+	cmpi.w #10, d0
+	bne.w pairedOpenDone
+pairedChosen
+	moveq #1, d4
+pairedOpenDone
+	cmpi.w #1, d4
+	beq.w selected
+	bra.w omitted
+pairedClose
+	tst.w d4
+	beq.w fail
+	move.w d4, d0
+	moveq #0, d4
+	cmpi.w #1, d0
+	beq.w selected
+	bra.w omitted
+pairedStatement
+	cmpi.w #1, d4
+	beq.w selected
+	cmpi.w #7, d5
+	bne.w omitted
+	tst.w d4
+	bne.w omitted
 selected
 	move.w 2(a4), Frame.Line(a5)
 	moveq #0, d0
@@ -179,11 +258,20 @@ omitted
 	bra.w line
 passDone
 	; Continue the same assembly pass at the current PC/output offset.
+	cmpi.w #3, d5
+	bhs.w pairedPassDone
 	cmpi.w #1, d5
 	bne.w sweepDone
 	tst.w d4
 	bne.w fail
 	moveq #2, d5
+	bra.w sweep
+pairedPassDone
+	tst.w d4
+	bne.w fail
+	cmpi.w #7, d5
+	beq.w sweepDone
+	addq.w #1, d5
 	bra.w sweep
 sweepDone
 	tst.w d4

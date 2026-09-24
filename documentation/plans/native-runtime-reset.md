@@ -165,9 +165,12 @@ section while retaining selected-block pruning. Keep other unsupported mapping
 cases explicit rather than silently assembling them in dependency order.
 It also accepts two concrete sections placed in adjacent literal regions when
 their emitted bytes form one contiguous image. A forward label reference across
-those sections matches Rust in a fresh 68020 / 2 MiB run. Two imported maps,
-general placement ordering and sparse output remain unsupported; the next layout
-extension should replace scalar section slots with indexed state.
+those sections matches Rust in a fresh 68020 / 2 MiB run. The next checkpoint
+adds two imported maps with distinct targets in adjacent regions and an indexed
+two-slot section state. Native execution follows pairwise concrete-then-logical
+ordering and matches Rust; same-region overlap rejects. General placement
+ordering and sparse output remain unsupported. Five packed-record sweeps per
+pass make larger-graph cost an explicit question for the next measurement.
 
 ## Increment contract
 
@@ -589,14 +592,15 @@ That ordering is now implemented for the single-map subset by two numeric
 record sweeps per assembly pass. A concrete body with an imported reference,
 unowned logical bytes and an unreachable imported block matches Rust under
 the 68020 / 2 MiB profile; the [runtime note](prepared-source-experiment.md#concrete-content-before-mapped-import)
-records the bytes and resource cost. Multiple maps and placements remain a
-separate scope decision.
+records the bytes and resource cost. Multiple maps and placements were a
+separate scope decision at that checkpoint.
 
 The two-map reference case exposed a Rust placement hazard: when consecutive
 concrete sections share one region, late mapped growth can overlap the second
 section. Rust now rejects that conflict. Two adjacent explicit regions produce
 a valid contiguous reference image, recorded in the
 [runtime note](prepared-source-experiment.md#two-map-placement-boundary).
-Before native two-map parity, generalize its current single-section control
-state and schedule both mapped pairs against their regions. Treat same-region
-repacking after mapped growth as a separate convergence problem.
+Native two-map parity now uses indexed maps and section slots and schedules
+both mapped pairs against their adjacent regions. Treat same-region repacking
+after mapped growth as a separate convergence problem. Before broadening this
+mode, measure whether its five record sweeps warrant a prepared span index.

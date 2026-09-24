@@ -51,7 +51,14 @@ record
 	beq.w next
 	cmpi.w #5, d0
 	blo.w bad
+	tst.w State.Mode(a6)
+	bne.w modeSet
 	move.w #1, State.Mode(a6)
+modeSet
+	cmpi.b #6, 4(a0)
+	bne.w regionCheck
+	move.w #2, State.Mode(a6)  ; concrete source precedes mapped logical content
+regionCheck
 	cmpi.b #4, 4(a0)
 	bne.w next
 	cmpi.w #13, d0
@@ -111,8 +118,8 @@ beginPass	.block
 	.bend  ; beginPass
 
 ; A0=State,A1=Context,A2=packed control record. D0/CCR=status.
-; One section is emitted contiguously in dependency-then-root order. Explicitly
-; mapped concrete sections have empty bodies until section-local ordering exists.
+; One section is emitted contiguously. The caller schedules concrete records
+; before imported logical records for an explicit map.
 control	.block
 	movem.l d1-d2/a0-a2, -(sp)
 	moveq #0, d2

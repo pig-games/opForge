@@ -42,7 +42,7 @@ begin	.block
 	.bend  ; begin
 
 ; A0=writer record,A1=scope state,A2=section state,D0=1..4.
-; Supports one same-name logical/concrete section and one literal region.
+; Supports one logical/concrete section pair and one literal region.
 ; Rewrites controls to [header,opcode,optional u32 start,u32 end].
 ; D0/CCR=status; other registers preserved.
 line	.block
@@ -130,7 +130,7 @@ mappedCompare
 mappedOwner
 	cmp.w State.MapOwner(a4), d0
 	bne.w bad
-	moveq #6, d5  ; mapped concrete accepts no body in this slice
+	moveq #6, d5  ; runtime schedules this concrete body before mapped content
 matched
 	cmpi.w #1, d5
 	bne.w concrete

@@ -80,6 +80,13 @@ pass
 	clr.l Frame.Used(a5)
 	lea SectionState, a0
 	jsr sections.beginPass
+	moveq #0, d5  ; ordinary single sweep
+	lea SectionState, a0
+	cmpi.w #2, sections.State.Mode(a0)
+	bne.w sweep
+	moveq #1, d5  ; explicit map: concrete sweep, then remaining records
+sweep
+	moveq #0, d4  ; inside the mapped concrete section
 	movea.l Frame.Records(a5), a4
 	move.l a4, d0
 	add.l Frame.RecordBytes(a5), d0
@@ -101,6 +108,46 @@ line
 	sub.l a4, d0
 	cmp.l d0, d6
 	bhi.w fail
+	; An explicit map needs concrete bytes and labels before the imported
+	; logical section. Filter the same packed records into two ordered sweeps.
+	tst.w d5
+	beq.w selected
+	btst #4, 1(a4)
+	beq.w selectStatement
+	cmpi.w #5, d6
+	blo.w fail
+	cmpi.b #6, 4(a4)
+	beq.w concreteOpen
+	cmpi.b #3, 4(a4)
+	bne.w selectOther
+	tst.w d4
+	beq.w selectOther
+	moveq #0, d4
+	bra.w selectConcrete
+concreteOpen
+	tst.w d4
+	bne.w fail
+	moveq #1, d4
+selectConcrete
+	cmpi.w #1, d5
+	beq.w selected
+	bra.w omitted
+selectOther
+	cmpi.w #1, d5
+	beq.w omitted
+	tst.w d4
+	bne.w omitted
+	bra.w selected
+selectStatement
+	cmpi.w #1, d5
+	bne.w selectRemaining
+	tst.w d4
+	beq.w omitted
+	bra.w selected
+selectRemaining
+	tst.w d4
+	bne.w omitted
+selected
 	move.w 2(a4), Frame.Line(a5)
 	moveq #0, d0
 	move.b 1(a4), d0
@@ -131,6 +178,16 @@ omitted
 	adda.l d6, a4
 	bra.w line
 passDone
+	; Continue the same assembly pass at the current PC/output offset.
+	cmpi.w #1, d5
+	bne.w sweepDone
+	tst.w d4
+	bne.w fail
+	moveq #2, d5
+	bra.w sweep
+sweepDone
+	tst.w d4
+	bne.w fail
 	lea SectionState, a0
 	jsr sections.finishPass
 	bne.w fail
@@ -166,9 +223,6 @@ statement	.block
 	movea.l pkg.Context.Package(a2), a3
 	cmpa.l a1, a0
 	beq.w ok
-	lea SectionState, a4
-	cmpi.w #6, sections.State.Active(a4)
-	beq.w bad  ; mapped concrete body ordering is not supported yet
 	move.l a1, d0
 	sub.l a0, d0
 	cmpi.l #5, d0

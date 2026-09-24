@@ -1036,3 +1036,28 @@ claim: no baseline can run the new mapped input, and emulator timing varied
 substantially even on the unchanged case. The previous startup timeout did not
 recur in these focused runs. Broader mapped-section ordering and multiple maps
 remain unsupported.
+
+## Concrete content before mapped import
+
+For the same one-map, one-region subset, the native assembler now makes two
+sweeps over the already packed records in each assembly pass: it assembles the
+mapped concrete section first, then the remaining records including the mapped
+logical section. This gives both sections their Rust-relative addresses and
+lets the existing output writer emit one contiguous placed section. The packed
+source is neither copied nor reparsed as text. Same-name sections retain their
+single sweep. Imported named-block reachability is still determined before
+assembly, so this ordering change does not make selected but unreferenced
+blocks output roots.
+
+The focused 6502 case has root bytes and a `.word d.entry`, imported unowned
+bytes before and after `entry`, and an unused imported block. Fresh Rust and
+68020 / 2 MiB FS-UAE runs agree on `22 05 10 33 b0 11 b1`; the `99` from the
+unused block is absent. The earlier empty-map and same-name cases passed again.
+No startup timeout recurred. The release Hunk is 43,396 bytes with 54,764 bytes
+linked reservation, each **172 bytes** above the previous checkpoint (0.32%
+reservation growth). Guest command times were 0.519 seconds for the expanded
+case, 0.516 for the empty map, and 0.505 for the same-name control. These are
+single-run observations, not a measured speedup or proof of no regression;
+explicit mapping now scans records twice per assembly pass. Multiple maps,
+multiple placements, discontiguous output and broader layout syntax remain
+outside this bounded implementation.

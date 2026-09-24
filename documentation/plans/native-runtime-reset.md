@@ -159,10 +159,10 @@ validates each name even when unused, but does not retain a block until reached
 code references it. Repeated names within one list share a numeric selection.
 Per-item aliases and wildcard imports remain outside this bounded native path.
 The compact CLI now has one-region section placement and one explicit imported
-section map, with focused live FS-UAE parity. Its mapped concrete section must
-be empty because section-local ordering of root and imported content remains
-unimplemented. Keep unsupported mapping cases explicit rather than silently
-assembling them in dependency order.
+section map, with focused live FS-UAE parity. For that map, native assembly
+sweeps the packed records for concrete content before the imported logical
+section while retaining selected-block pruning. Keep other unsupported mapping
+cases explicit rather than silently assembling them in dependency order.
 
 ## Increment contract
 
@@ -577,5 +577,12 @@ named logical and concrete sections, provided the concrete section is empty.
 Rust/native byte parity, native rejection of a nonempty mapped concrete body,
 and image-size observations are in the
 [runtime note](prepared-source-experiment.md#first-explicit-imported-section-map).
-The next layout decision is how to honor Rust's concrete-before-import content
-order without reopening source text or losing selected-block pruning.
+The remaining layout issue at that checkpoint was Rust's
+concrete-before-import content order.
+
+That ordering is now implemented for the single-map subset by two numeric
+record sweeps per assembly pass. A concrete body with an imported reference,
+unowned logical bytes and an unreachable imported block matches Rust under
+the 68020 / 2 MiB profile; the [runtime note](prepared-source-experiment.md#concrete-content-before-mapped-import)
+records the bytes and resource cost. Multiple maps and placements remain a
+separate scope decision.

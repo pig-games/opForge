@@ -444,21 +444,37 @@ fn compact_cli_explicit_mapped_section_fs_uae() {
     );
 }
 
+const EXPLICIT_MAPPED_BODY: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.region rom, $1000, $10ff\n.use dep (entry) as d map { code -> app_code }\n.section app_code\n.byte $22\n.word d.entry\n.byte $33\n.endsection\n.place app_code in rom\n.endmodule\n.end\n",
+    ),
+    (
+        "library/dep.asm",
+        ".module dep\n.cpu m6502\n.pub\n.section code, logical\n.byte $b0\nentry .block\n.byte $11\n.bend\nunused .block\n.byte $99\n.bend\n.byte $b1\n.endsection\n.endmodule\n.end\n",
+    ),
+];
+
 #[test]
-#[ignore = "requires configured FS-UAE; mapped concrete body must fail until ordering matches Rust"]
-fn compact_cli_explicit_mapped_section_body_rejected_fs_uae() {
-    let files = &[
-        (
-            "main.asm",
-            ".module main\n.cpu m6502\n.region rom, $1000, $10ff\n.use dep (entry) as d map { code -> app_code }\nwanted = d.entry\n.section app_code\n.byte $22\n.endsection\n.place app_code in rom\n.endmodule\n.end\n",
-        ),
-        SINGLE_MAPPED_SECTION[1],
-    ];
+fn binary_graph_explicit_mapped_section_body_rust_oracle() {
     assert_eq!(
-        oracle_with_roots(files, &["library"]).unwrap(),
-        [0x22, 0x11]
+        oracle_with_roots(EXPLICIT_MAPPED_BODY, &["library"]).unwrap(),
+        [0x22, 0x05, 0x10, 0x33, 0xb0, 0x11, 0xb1]
     );
-    compact_cli(files, &["library"], &[], None, false);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; concrete body precedes imported mapped content"]
+fn compact_cli_explicit_mapped_section_body_fs_uae() {
+    let expected = oracle_with_roots(EXPLICIT_MAPPED_BODY, &["library"])
+        .expect("live Rust mapped-body oracle");
+    compact_cli(
+        EXPLICIT_MAPPED_BODY,
+        &["library"],
+        &[],
+        Some(&expected),
+        false,
+    );
 }
 
 #[test]

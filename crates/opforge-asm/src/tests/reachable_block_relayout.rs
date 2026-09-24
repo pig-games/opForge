@@ -38,6 +38,32 @@ fn reachable_imported_block_keeps_helper_referenced_by_unowned_code() {
 }
 
 #[test]
+#[ignore = "known Hunk entry reachability regression; output section alone does not retain start"]
+fn hunk_output_entry_block_reachability_pending() {
+    let assembled = run_passes(&[
+        ".module program",
+        ".cpu 68000",
+        ".use entry",
+        ".output \"program\", format=hunk, sections=entry",
+        ".endmodule",
+        ".module entry",
+        ".cpu 68000",
+        ".section entry, kind=code",
+        "start .block",
+        "    rts",
+        "    .bend",
+        "unused .block",
+        "    nop",
+        "    .bend",
+        ".endsection",
+        ".endmodule",
+    ]);
+    assert_eq!(assembled.sections()["entry"].bytes, [0x4e, 0x75]);
+    assert!(assembled.symbols.entry("entry.start").is_some());
+    assert!(assembled.symbols.entry("entry.unused").is_none());
+}
+
+#[test]
 fn selective_import_without_code_reference_emits_no_blocks() {
     let assembler = run_passes(&[
         ".module dep",

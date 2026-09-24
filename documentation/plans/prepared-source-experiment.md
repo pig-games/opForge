@@ -1385,3 +1385,12 @@ blocks prunable. The full executable then built but still failed to finish the
 existing tiny smoke case. Diagnose that remaining full-CLI startup/execution
 regression before treating the comparison as performance evidence. The ignored
 test preserves the exact source and proof conditions for that retry.
+
+A smaller ignored Rust regression, `hunk_output_entry_block_reachability_pending`,
+shows a concrete startup risk: `.use entry` plus a Hunk `.output` selecting the
+`entry` section currently discards that section's only `start .block` when no
+expression names it. The real full CLI has this root shape. Retaining the first
+block solely because its section appears in `.output` is not yet an accepted
+fix: a trial exposed many branch-layout errors as more code became reachable.
+The entry-root semantics and resulting layout need a coherent correction before
+another timing attempt.

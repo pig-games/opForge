@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_prepare as prepare
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_conditionals as conditionals
+	.use experimental.amigaos.binary_segments as segments
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_block_index as blocks
@@ -48,7 +49,8 @@ PACKAGE_BUCKETS = LEXEMES+1024
 PREPARED_LINE = PACKAGE_BUCKETS+256*4
 SCOPE_STATE = PREPARED_LINE+256
 CONDITION_STATE = SCOPE_STATE+scopes.SCRATCH_BYTES
-SCRATCH_BYTES = CONDITION_STATE+conditionals.SCRATCH_BYTES
+SEGMENT_STATE = CONDITION_STATE+conditionals.SCRATCH_BYTES
+SCRATCH_BYTES = SEGMENT_STATE+segments.SCRATCH_BYTES
 	.priv
 ; Package nodes hold capsule-relative entries and scratch-relative chain links.
 Node	.struct
@@ -115,6 +117,10 @@ clearBuckets
 	lea SCOPE_STATE(a6), a0
 	adda.l #scopes.SCRATCH_BYTES, a0
 	jsr conditionals.begin
+	bne.w failed
+	movea.l a6, a0
+	adda.l #SEGMENT_STATE, a0
+	jsr segments.begin
 	bne.w failed
 	move.l #1, LINE_NUMBER(a6)
 	jsr scopes.count
@@ -237,15 +243,6 @@ lineSet
 line	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
-	clr.l Frame.GraphBefore(a5)
-	movea.l Frame.Graph(a5), a0
-	move.l a0, d0
-	beq.w graphBeforeDone
-	movea.l Frame.Scratch(a5), a1
-	moveq #0, d0
-	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a1), d0
-	move.l d0, Frame.GraphBefore(a5)
-graphBeforeDone
 	clr.l Frame.Used(a5)
 	movea.l Frame.Scratch(a5), a6
 	move.l a6, d0
@@ -292,6 +289,88 @@ graphBeforeDone
 	move.w d0, writer.Frame.SourceLine(a0)
 	jsr writer.writeLine
 	bne.w failed
+	movea.l Frame.Output(a5), a0
+	movea.l a6, a1
+	adda.l #SEGMENT_STATE, a1
+	lea SCOPE_STATE(a6), a2
+	moveq #0, d0
+	movea.l a6, a0
+	adda.l #CONDITION_STATE, a0
+	move.w conditionals.State.Active(a0), d0
+	movea.l Frame.Output(a5), a0
+	jsr segments.line
+	bne.w failed
+	cmpi.w #1, d1
+	beq.w segmentConsumed
+	cmpi.w #2, d1
+	bne.w process
+	movea.l a6, a0
+	adda.l #SEGMENT_STATE, a0
+	movea.l Frame.Output(a5), a1
+	jsr segments.next
+	bne.w failed
+	tst.l d1
+	beq.w failed
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.startLine
+process
+	bsr.w processRecord
+	bne.w failed
+	addq.l #1, LINE_NUMBER(a6)
+	moveq #0, d0
+	bra.w done
+segmentConsumed
+	movea.l Frame.Output(a5), a0
+	move.b #3, (a0)
+	clr.b 1(a0)
+	bra.w process
+failed
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	rts
+	.bend  ; line
+
+; Emit the next already-tokenized line of a pending segment invocation.
+; A0=Frame. Used=0 when the invocation is exhausted; the physical source
+; line counter remains at the following line. D0/CCR=status.
+nextExpansion	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	clr.l Frame.Used(a5)
+	movea.l Frame.Scratch(a5), a6
+	movea.l a6, a0
+	adda.l #SEGMENT_STATE, a0
+	movea.l Frame.Output(a5), a1
+	jsr segments.next
+	bne.w nextFailed
+	tst.l d1
+	beq.w nextDone
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.startLine
+	bsr.w processRecord
+	bra.w nextDone
+nextFailed
+	moveq #1, d0
+nextDone
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; nextExpansion
+
+	.priv
+; A5=Frame,A6=Scratch, Frame.Output contains one writer record. Apply the
+; normal numeric selection, binding and expression path to original or expanded
+; records. This routine does not tokenize source or advance the physical line.
+processRecord	.block
+	clr.l Frame.GraphBefore(a5)
+	movea.l Frame.Graph(a5), a0
+	move.l a0, d0
+	beq.w graphBeforeDone
+	moveq #0, d0
+	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a6), d0
+	move.l d0, Frame.GraphBefore(a5)
+graphBeforeDone
 	movea.l Frame.Output(a5), a0
 	lea SCOPE_STATE(a6), a1
 	lea SCOPE_STATE(a6), a2
@@ -353,15 +432,15 @@ graphLineDone
 	lea SCOPE_STATE(a6), a0
 	jsr scopes.count
 	move.l d0, Frame.NameCount(a5)
-	addq.l #1, LINE_NUMBER(a6)
 	moveq #0, d0
 	bra.w done
 failed
 	moveq #1, d0
 done
-	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
 	rts
-	.bend  ; line
+	.bend  ; processRecord
+	.pub
 ; Finish one source file without discarding identities shared by the session.
 ; A0=Frame,D0=nonzero to require explicit modules for file content.
 ; D0/CCR=status, others preserved. Successful EOF resets local lines.
@@ -369,6 +448,10 @@ endFile	.block
 	movem.l a0-a2, -(sp)
 	movea.l a0, a2
 	movea.l Frame.Scratch(a0), a1
+	movea.l a1, a0
+	adda.l #SEGMENT_STATE, a0
+	jsr segments.endFile
+	bne.w done
 	lea SCOPE_STATE(a1), a0
 	adda.l #scopes.SCRATCH_BYTES, a0
 	jsr conditionals.endFile

@@ -1035,25 +1035,18 @@ trimmed
 	lea Front, a0
 	jsr frontend.line
 	bne.w bad
-	lea Records, a0
-	move.l memory.Block.Used(a0), d0
-	move.l d0, LineOffset
-	lea Front, a1
-	add.l frontend.Frame.Used(a1), d0
-	bcs.w bad
-	jsr memory.reserve
+	bsr.w appendPrepared
 	bne.w bad
-	lea Records, a1
-	movea.l memory.Block.Pointer(a1), a2
-	adda.l memory.Block.Used(a1), a2
+expanded
 	lea Front, a0
-	move.l frontend.Frame.Used(a0), d0
-	add.l d0, memory.Block.Used(a1)
-	movea.l frontend.Frame.Output(a0), a0
-	movea.l a2, a1
-	bsr.w copy
-	bsr.w appendOrigin
+	jsr frontend.nextExpansion
 	bne.w bad
+	move.l frontend.Frame.Used(a0), d0
+	beq.w lowered
+	bsr.w appendPrepared
+	bne.w bad
+	bra.w expanded
+lowered
 	clr.l LineUsed
 	addq.l #1, SourceLine
 	moveq #0, d0
@@ -1072,6 +1065,33 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; lowerLine
+
+; Append one prepared numeric record. A segment invocation can call this more
+; than once for one physical source line; every record keeps that line's origin.
+appendPrepared	.block
+	lea Records, a0
+	move.l memory.Block.Used(a0), d0
+	move.l d0, LineOffset
+	lea Front, a1
+	add.l frontend.Frame.Used(a1), d0
+	bcs.w bad
+	jsr memory.reserve
+	bne.w bad
+	lea Records, a1
+	movea.l memory.Block.Pointer(a1), a2
+	adda.l memory.Block.Used(a1), a2
+	lea Front, a0
+	move.l frontend.Frame.Used(a0), d0
+	add.l d0, memory.Block.Used(a1)
+	movea.l frontend.Frame.Output(a0), a0
+	movea.l a2, a1
+	bsr.w copy
+	bsr.w appendOrigin
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; appendPrepared
 
 run	.block
 	move.l #1, InAssembly

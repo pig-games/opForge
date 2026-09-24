@@ -38,6 +38,8 @@ KEY_SECTION = 11
 KEY_ENDSECTION = 12
 KEY_REGION = 13
 KEY_PLACE = 14
+KEY_SEGMENT = 15
+KEY_ENDSEGMENT = 16
 SECTION_STATE = IMPORT_STATE+imports.SCRATCH_BYTES
 SCRATCH_BYTES = SECTION_STATE+sections.SCRATCH_BYTES
 	.section code, kind=code
@@ -1115,6 +1117,19 @@ done
 	movem.l (sp)+, d1-d4/a0-a3
 	rts
 	.bend  ; keyword
+
+	.pub
+; A0=scope state,D0=numeric directive ID. D0=KEY_* or zero; other
+; registers preserved. Classification reads only the bound numeric name.
+classifyDirective	.block
+	move.l a6, -(sp)
+	movea.l a0, a6
+	bsr.w keyword
+	movea.l (sp)+, a6
+	tst.l d0
+	rts
+	.bend  ; classifyDirective
+	.priv
 Words
 	.byte KEY_BLOCK, 5, "block"
 	.byte KEY_ENDBLOCK, 8, "endblock"
@@ -1131,6 +1146,9 @@ Words
 	.byte KEY_ENDSECTION, 10, "endsection"
 	.byte KEY_REGION, 6, "region"
 	.byte KEY_PLACE, 5, "place"
+	.byte KEY_SEGMENT, 7, "segment"
+	.byte KEY_ENDSEGMENT, 10, "endsegment"
+	.byte KEY_ENDSEGMENT, 4, "ends"
 	.byte 0
 	.align 2  ; the next module shares this instruction section
 	.endsection

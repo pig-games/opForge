@@ -176,6 +176,83 @@ fn compact_cli_fs_uae() {
 }
 
 #[test]
+#[ignore = "requires configured FS-UAE; binary segment expansion in compact CLI"]
+fn compact_cli_segment_fs_uae() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    for cpu in ["m6502", "m68000"] {
+        let instruction = if cpu == "m6502" {
+            "lda #.v"
+        } else {
+            "moveq #.v,d0"
+        };
+        let source = format!(
+            ".cpu {cpu}\nINLINE .segment v\n {instruction}\n .byte .v\n .byte .v+1\n.endsegment\n .INLINE 3\n .INLINE 9\n.end\n"
+        );
+        let oracle_dir = create_temp_dir(&format!("compact-binary-segment-oracle-{cpu}"));
+        let oracle_input = oracle_dir.join("input.asm");
+        let oracle_output = oracle_dir.join("oracle.bin");
+        fs::write(&oracle_input, &source).expect("write Rust oracle source");
+        let cli = Cli::parse_from([
+            "opForge".to_string(),
+            oracle_input.to_string_lossy().into_owned(),
+            "--bin".to_string(),
+            oracle_output.to_string_lossy().into_owned(),
+            "--cpu".to_string(),
+            cpu.to_string(),
+        ]);
+        run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+        let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+        fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+        let expected = if cpu == "m6502" {
+            &[0xa9, 3, 3, 4, 0xa9, 9, 9, 10][..]
+        } else {
+            &[0x70, 3, 3, 4, 0x70, 9, 9, 10][..]
+        };
+        assert_eq!(oracle, expected);
+        let resolved = core.resolve_pipeline(cpu, None).unwrap();
+        let package = prepare_package(&core, &resolved).unwrap();
+        let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+            &workspace_root(),
+            &package,
+            source.as_bytes(),
+            Some(&oracle),
+        )
+        .expect("compact CLI must expand binary segment templates into Rust-identical output");
+        let FsUaeSmokeOutcome::Completed { runs } = result else {
+            panic!("real FS-UAE execution required");
+        };
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].success && runs[0].protocol_completed);
+        assert_eq!(runs[0].exit_code, Some(0));
+        let image = runs[0]
+            .captured_artifacts
+            .get(&PathBuf::from("Work/build/opforge_compact"))
+            .expect("fresh compact CLI image");
+        let allocation = hunk::allocation(image).expect("valid compact CLI Hunk");
+        assert!(allocation.total() < 2 * 1024 * 1024);
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; unclosed binary segment must reject"]
+fn compact_cli_unclosed_segment_fs_uae() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let source = b".cpu m6502\nINLINE .segment v\n .byte .v\n.end\n";
+    let result =
+        crate::fs_uae_smoke::run_compact_cli_from_env(&workspace_root(), &package, source, None)
+            .expect("compact CLI must reject an unclosed binary segment");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(20));
+    assert!(runs[0].stdout.contains("unsupported or invalid input"));
+}
+
+#[test]
 #[ignore = "requires configured FS-UAE; compact CLI rejects unsupported input"]
 fn compact_cli_rejection_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();

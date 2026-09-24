@@ -77,6 +77,9 @@ line	.block
 	move.l d7, d0
 	jsr sections.importMap
 	bne.w bad
+	movea.l a3, a0
+	bsr.w parameters
+	bne.w bad
 	moveq #0, d4  ; selected-name list head, zero means no selection
 	moveq #0, d3  ; direct unqualified access
 	cmpa.l a4, a3
@@ -828,6 +831,159 @@ done
 	tst.l d0
 	rts
 	.bend  ; resolve
+
+; A0=first import suffix token,A4=end,A6=scope. Strip an optional trailing
+; `with (name=expression[, ...])` clause. Parameters are syntax only for now.
+; D0/CCR=status; A4 is shortened to the `with` token on success.
+parameters	.block
+	movem.l d1-d5/a0-a3, -(sp)
+	movea.l a0, a3
+	moveq #0, d4
+scanParameterSuffix
+	cmpa.l a4, a3
+	beq.w scanFinished
+	bhi.w parametersBad
+	cmpi.b #14, (a3)
+	bne.w scanClose
+	addq.w #1, d4
+	bra.w scanAdvance
+scanClose
+	cmpi.b #15, (a3)
+	bne.w scanWith
+	tst.w d4
+	beq.w parametersBad
+	subq.w #1, d4
+	bra.w scanAdvance
+scanWith
+	tst.w d4
+	bne.w scanAdvance
+	cmpi.b #1, (a3)
+	bhi.w scanAdvance
+	movea.l a3, a0
+	bsr.w tokenName
+	bne.w parametersBad
+	cmpi.l #4, d0
+	bne.w scanAdvance
+	move.l (a0), d0
+	ori.l #$20202020, d0
+	cmpi.l #$77697468, d0  ; with
+	bne.w scanAdvance
+	movea.l a3, a2
+	movea.l a3, a0
+	bsr.w nextParameterToken
+	bne.w parametersBad
+	cmpa.l a4, a0
+	bhs.w parametersBad
+	cmpi.b #14, (a0)+
+	bne.w scanAdvance
+parameterName
+	cmpa.l a4, a0
+	bhs.w parametersBad
+	cmpi.b #1, (a0)
+	bhi.w parametersBad
+	tst.b 3(a0)
+	bne.w parametersBad
+	bsr.w nextParameterToken
+	bne.w parametersBad
+	cmpa.l a4, a0
+	bhs.w parametersBad
+	cmpi.b #34, (a0)+
+	bne.w parametersBad
+	moveq #0, d5  ; nested expression parentheses
+	moveq #0, d3  ; expression token count
+parameterValue
+	cmpa.l a4, a0
+	bhs.w parametersBad
+	cmpi.b #14, (a0)
+	bne.w valueClose
+	addq.w #1, d5
+	bra.w valueAdvance
+valueClose
+	cmpi.b #15, (a0)
+	bne.w valueComma
+	tst.w d5
+	beq.w parameterEnd
+	subq.w #1, d5
+	bra.w valueAdvance
+valueComma
+	cmpi.b #4, (a0)
+	bne.w valueAdvance
+	tst.w d5
+	beq.w parameterNext
+valueAdvance
+	cmpi.b #14, (a0)
+	beq.w skipValueCount
+	cmpi.b #15, (a0)
+	beq.w skipValueCount
+	addq.w #1, d3
+skipValueCount
+	bsr.w nextParameterToken
+	bne.w parametersBad
+	bra.w parameterValue
+parameterNext
+	tst.w d3
+	beq.w parametersBad
+	addq.l #1, a0
+	bra.w parameterName
+parameterEnd
+	tst.w d3
+	beq.w parametersBad
+	addq.l #1, a0
+	cmpa.l a4, a0
+	bne.w parametersBad
+	movea.l a2, a4
+	bra.w parametersOk
+scanAdvance
+	movea.l a3, a0
+	bsr.w nextParameterToken
+	bne.w parametersBad
+	movea.l a0, a3
+	bra.w scanParameterSuffix
+scanFinished
+	tst.w d4
+	bne.w parametersBad
+parametersOk
+	moveq #0, d0
+	bra.w parametersDone
+parametersBad
+	moveq #1, d0
+parametersDone
+	movem.l (sp)+, d1-d5/a0-a3
+	tst.l d0
+	rts
+	.bend  ; parameters
+
+; A0=token,A4=end. Advance one packed source token without inspecting its
+; expression meaning. D0/CCR=status; D1 scratch.
+nextParameterToken	.block
+	cmpa.l a4, a0
+	bhs.w badToken
+	moveq #0, d1
+	move.b (a0), d1
+	cmpi.w #1, d1
+	bls.w nameToken
+	cmpi.w #2, d1
+	beq.w numberToken
+	cmpi.w #4, d1
+	blo.w badToken
+	cmpi.w #39, d1
+	bhi.w badToken
+	addq.l #1, a0
+	bra.w tokenBounds
+nameToken
+	addq.l #4, a0
+	bra.w tokenBounds
+numberToken
+	addq.l #5, a0
+tokenBounds
+	cmpa.l a4, a0
+	bhi.w badToken
+	moveq #0, d0
+	rts
+badToken
+	moveq #1, d0
+	rts
+	.bend  ; nextParameterToken
 
 ; A3=wildcard proxy,A4=import state,A5=binder,A6=scope state.
 ; Find one public declaration among wildcard imports of this module.

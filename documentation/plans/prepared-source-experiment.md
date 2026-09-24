@@ -1276,6 +1276,23 @@ command is one functional observation, not a comparative
 performance measurement. Peak owned memory was not measured.
 
 Rust currently accepts and stores `.use ... with (...)` parameters without
-applying them to the imported module. Native acceptance of this intentionally
-inert syntax and the remaining module/include forms still need parity cases;
-these wildcard results do not establish full module parity.
+applying them to the imported module. The wildcard cases alone do not establish
+parameter or full module parity.
+
+## Inert import parameter syntax
+
+The compact native importer now accepts nonempty `with (name=expression, ...)`
+suffixes with numeric values and nested parentheses. It checks the list shape,
+then discards the suffix before import binding; parameter values have no effect,
+matching current Rust behavior. Fresh 68020 / 2 MiB compact CLI runs matched
+live Rust bytes for a wildcard import and an aliased import with a section map.
+An empty `with ()` list received a fresh nonzero guest exit. The compact Hunk
+is 47,192 bytes with 58,676 linked reserved bytes, up 412 bytes in both
+measures from the wildcard checkpoint. The positive guest commands took 0.51
+seconds each in these runs; those samples are not a comparative performance
+measurement. Peak owned memory was not measured.
+
+Rust also accepts string-valued parameters, but the compact native packed-source
+writer currently rejects string tokens before import parsing. Expression meaning
+is not fully validated by the native syntax skipper. These are remaining parity
+gaps; the inert parameters are not a module configuration mechanism.

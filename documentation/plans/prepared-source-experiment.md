@@ -1185,3 +1185,24 @@ FS-UAE environment from the [FS-UAE guide](../../agents/rules/fs-uae.md),
 and `cargo test -p asm two_map_measurement_fs_uae -- --ignored --nocapture --test-threads=1`.
 Set `OPFORGE_COMPARE_MEMORY=1` for a separate instrumented run; leave it unset
 for release timing.
+
+## Direct selective item aliases
+
+The experimental binary-source import binder now accepts a direct selected
+item alias, such as `.use dep (entry as chosen)`. It keeps the original selected
+target ID for visibility, reachability and final resolution, while matching
+references by the exposed alias ID. The mapped-section case proves that
+`.word chosen` reaches `dep.entry`, emits the exact live Rust bytes
+`11 00 10`, and leaves an unreferenced sibling block out of the output. Rust
+and native both reject a per-item alias combined with a module qualifier.
+Two item aliases in one list also match Rust, yielding `11 99 00 10 01 10`.
+The earlier repeated-name selected import and two-map compact CLI cases still
+pass after the selection-record layout change.
+
+Fresh 68020 / 2 MiB FS-UAE runs completed for the graph harness, compact CLI
+and qualified-alias rejection. The release compact Hunk is 44,852 bytes with
+56,240 bytes linked reservation, each 192 bytes above the previous two-map
+checkpoint. The positive compact CLI command took 0.510 seconds in one run;
+that sample is not a controlled speed comparison. Peak owned memory was not
+measured for this syntax slice. Other `.use` forms, including wildcard and
+parameterized imports, remain to be compared with Rust.

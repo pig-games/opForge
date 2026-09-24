@@ -17,6 +17,7 @@ Next	.word ?
 .endstruct
 Selection	.struct
 Name	.word ?
+Alias	.word ?
 Next	.word ?
 .endstruct
 ITEM_BYTES = Item.Next+2
@@ -122,6 +123,40 @@ copySelected
 	bne.w bad
 	sub.w layout.State.Base(a6), d1
 	addq.w #1, d1
+	move.w d1, d3  ; original selected target
+	moveq #0, d5  ; exposed alias, zero keeps the original leaf
+	addq.l #4, a3
+	cmpa.l a4, a3
+	bhs.w bad
+	cmpi.b #1, (a3)
+	bhi.w findSelection
+	tst.b 3(a3)
+	bne.w bad
+	movea.l a3, a0
+	bsr.w tokenName
+	bne.w bad
+	cmpi.l #2, d0
+	bne.w bad
+	move.w (a0), d0
+	ori.w #$2020, d0
+	cmpi.w #$6173, d0  ; as
+	bne.w bad
+	addq.l #4, a3
+	move.l a4, d0
+	sub.l a3, d0
+	cmpi.l #4, d0
+	blo.w bad
+	tst.b 3(a3)
+	bne.w bad
+	movea.l a3, a0
+	bsr.w tokenName
+	bne.w bad
+	moveq #0, d5
+	move.w 1(a3), d5
+	sub.w layout.State.Base(a6), d5
+	addq.w #1, d5
+	addq.l #4, a3
+findSelection
 	lea layout.IMPORT_STATE(a6), a2
 	move.l d4, d2
 seenName
@@ -129,11 +164,14 @@ seenName
 	beq.w appendName
 	move.l d2, d0
 	subq.w #1, d0
-	lsl.l #2, d0
+	mulu.w #SELECTION_BYTES, d0
 	lea SELECTIONS(a2), a0
 	adda.l d0, a0
-	cmp.w Selection.Name(a0), d1
+	cmp.w Selection.Name(a0), d3
+	bne.w nextSeenName
+	cmp.w Selection.Alias(a0), d5
 	beq.w nextNameToken
+nextSeenName
 	moveq #0, d2
 	move.w Selection.Next(a0), d2
 	bra.w seenName
@@ -143,16 +181,16 @@ appendName
 	cmpi.w #layout.LIMIT, d2
 	bhs.w bad
 	move.l d2, d0
-	lsl.l #2, d0
+	mulu.w #SELECTION_BYTES, d0
 	lea SELECTIONS(a2), a0
 	adda.l d0, a0
-	move.w d1, Selection.Name(a0)
+	move.w d3, Selection.Name(a0)
+	move.w d5, Selection.Alias(a0)
 	move.w d4, Selection.Next(a0)
 	move.l d2, d4
 	addq.w #1, d4
 	move.w d4, SELECTED_COUNT(a2)
 nextNameToken
-	addq.l #4, a3
 	cmpa.l a4, a3
 	bhs.w bad
 	cmpi.b #4, (a3)
@@ -168,6 +206,22 @@ anotherName
 afterSelection
 	cmpa.l a4, a3
 	beq.w defaultQualifier
+	move.l d4, d2
+	lea layout.IMPORT_STATE(a6), a2
+qualifiedSelection
+	tst.w d2
+	beq.w parseQualifier
+	move.l d2, d0
+	subq.w #1, d0
+	mulu.w #SELECTION_BYTES, d0
+	lea SELECTIONS(a2), a0
+	adda.l d0, a0
+	tst.w Selection.Alias(a0)
+	bne.w bad  ; per-item aliases expose direct names only
+	moveq #0, d2
+	move.w Selection.Next(a0), d2
+	bra.w qualifiedSelection
+parseQualifier
 	move.l a4, d0
 	sub.l a3, d0
 	cmpi.l #8, d0
@@ -389,14 +443,22 @@ selected
 	beq.w next
 	move.l d6, d0
 	subq.w #1, d0
-	lsl.l #2, d0
+	mulu.w #SELECTION_BYTES, d0
 	lea SELECTIONS(a4), a1
 	adda.l d0, a1
 	moveq #0, d2
 	move.w Selection.Next(a1), d2
 	moveq #0, d3
 	move.w Selection.Name(a1), d3
-	move.l d3, d0
+	moveq #0, d0
+	move.w Selection.Alias(a1), d0
+	beq.w originalLeaf
+	move.l d0, d1
+	bra.w compareLeaf
+originalLeaf
+	move.l d3, d1
+compareLeaf
+	move.l d1, d0
 	subq.w #1, d0
 	bsr.w entryLeaf
 	cmp.w d5, d0
@@ -548,7 +610,7 @@ selected
 	subq.w #1, d0
 	cmp.w SELECTED_COUNT(a2), d0
 	bhs.w bad
-	lsl.l #2, d0
+	mulu.w #SELECTION_BYTES, d0
 	lea SELECTIONS(a2), a1
 	adda.l d0, a1
 	move.w Selection.Next(a1), d2

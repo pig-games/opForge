@@ -106,6 +106,112 @@ const SELECTED_ALIASED: &[(&str, &str)] = &[
     SELECTED_UNUSED[1],
 ];
 
+const SELECTED_ITEM_ALIAS: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\n.region rom, $1000, $10ff\n.use dep (entry as chosen)\n.section code\n.word chosen\n.endsection\n.place code in rom\n.endmodule\n.end\n",
+    ),
+    (
+        "library/dep.asm",
+        ".module dep\n.cpu m6502\n.pub\n.section code, logical\nentry .block\n.byte $11\n.bend\nunused .block\n.byte $99\n.bend\n.endsection\n.endmodule\n.end\n",
+    ),
+];
+
+#[test]
+fn binary_graph_selected_item_alias_rust_oracle() {
+    assert_eq!(
+        oracle_address_ordered_with_roots(SELECTED_ITEM_ALIAS, &["library"]).unwrap(),
+        [0x11, 0x00, 0x10]
+    );
+    let qualified = SELECTED_ITEM_ALIAS[0]
+        .1
+        .replace(
+            ".use dep (entry as chosen)",
+            ".use dep (entry as chosen) as d",
+        )
+        .replace(".word chosen", ".word d.chosen");
+    assert!(oracle_address_ordered_with_roots(
+        &[("main.asm", &qualified), SELECTED_ITEM_ALIAS[1]],
+        &["library"],
+    )
+    .unwrap_err()
+    .contains("Qualified selective imports cannot use per-item aliases"));
+
+    let multiple = SELECTED_ITEM_ALIAS[0]
+        .1
+        .replace(
+            ".use dep (entry as chosen)",
+            ".use dep (entry as chosen, unused as sibling)",
+        )
+        .replace(".word chosen", ".word chosen, sibling");
+    assert_eq!(
+        oracle_address_ordered_with_roots(
+            &[("main.asm", &multiple), SELECTED_ITEM_ALIAS[1]],
+            &["library"],
+        )
+        .unwrap(),
+        [0x11, 0x99, 0x00, 0x10, 0x01, 0x10]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; direct selective item alias"]
+fn binary_graph_selected_item_alias_fs_uae() {
+    let expected = oracle_address_ordered_with_roots(SELECTED_ITEM_ALIAS, &["library"]).unwrap();
+    native(
+        SELECTED_ITEM_ALIAS,
+        "m6502",
+        Some(&expected),
+        Some(&["library"]),
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; direct selective item alias through compact CLI"]
+fn compact_cli_selected_item_alias_fs_uae() {
+    let expected = oracle_address_ordered_with_roots(SELECTED_ITEM_ALIAS, &["library"]).unwrap();
+    compact_cli(
+        SELECTED_ITEM_ALIAS,
+        &["library"],
+        &[],
+        Some(&expected),
+        false,
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; multiple direct item aliases"]
+fn compact_cli_multiple_item_aliases_fs_uae() {
+    let multiple = SELECTED_ITEM_ALIAS[0]
+        .1
+        .replace(
+            ".use dep (entry as chosen)",
+            ".use dep (entry as chosen, unused as sibling)",
+        )
+        .replace(".word chosen", ".word chosen, sibling");
+    let files = &[("main.asm", multiple.as_str()), SELECTED_ITEM_ALIAS[1]];
+    let expected = oracle_address_ordered_with_roots(files, &["library"]).unwrap();
+    compact_cli(files, &["library"], &[], Some(&expected), false);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; qualified item alias rejects like Rust"]
+fn binary_graph_qualified_item_alias_rejection_fs_uae() {
+    let qualified = SELECTED_ITEM_ALIAS[0]
+        .1
+        .replace(
+            ".use dep (entry as chosen)",
+            ".use dep (entry as chosen) as d",
+        )
+        .replace(".word chosen", ".word d.chosen");
+    native(
+        &[("main.asm", &qualified), SELECTED_ITEM_ALIAS[1]],
+        "m6502",
+        None,
+        Some(&["library"]),
+    );
+}
+
 const SELECTED_MISSING: &[(&str, &str)] = &[
     (
         "main.asm",

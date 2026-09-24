@@ -116,6 +116,27 @@ fit the implementation. Use more than one source-target family where the boundar
 is intended to be generic. A complete small case is preferable to a wide set of
 helpers that cannot produce an artifact Erik can inspect.
 
+## Current module completion target
+
+Finish the compact CLI's module and include behavior against the maintained Rust
+implementation before returning to performance optimization. This covers explicit
+and implicit file modules, selected-file discovery and dependency order, documented
+`.use` forms and visibility, selected includes, and reachable mapped-section
+content. A harness-only success is insufficient: representative cases must run
+through the compact CLI with fresh exact Rust/native output, including generic
+cases from more than one source-target family. Relevant missing/ambiguous imports,
+cycles, private names and invalid include paths must fail explicitly. Keep the
+host-prepared package boundary for now; native package generation is separate.
+
+Work in bounded slices. Direct per-item `.use` aliases are the first confirmed
+syntax/binding gap. Implicit file identities, wildcard and parameterized imports,
+conditional or generated module discovery, include path forms, and section-map
+composition need focused Rust/native cases before implementation choices. Some
+depend on the broader source-expansion work; do not claim module parity while
+those forms are still unsupported, or add a parallel text interpreter merely to
+close a checklist. Use the existing binary-source representation and numeric
+graph so later assembly passes do not return to source strings.
+
 ## Selected modules and reachable output
 
 Native discovery now selects the requested `.module` from a
@@ -139,14 +160,14 @@ source, cover 68000 and 68020 layout, unowned bytes and references, and reject
 a mapped section that exceeds its region. A selective `.use dep (entry)` makes
 the named import available and validates it; it does not retain `entry` without
 a reference from reached code. References inside discarded blocks do not retain
-their targets. Native block pruning exists in the experimental single-PC path,
-but fresh parity with Rust's mapped-section behavior is still pending.
+their targets. Native block pruning and mapped-section behavior have focused
+fresh Rust/native parity for one and two imported maps in adjacent regions.
 Rust replay reuses prepared lines when cached, but the native implementation
 must operate on binary source records rather than reopening source strings.
 Multiple concrete targets for one logical section, and multiple logical
 sections targeting one concrete section, currently fail explicitly; ordered
-multi-source mapping needs its own bounded increment. Performance measurement
-is also pending before treating this as a fast path.
+multi-source mapping needs its own bounded increment. The current two-map cost
+is recorded in the [bounded scaling case](prepared-source-experiment.md#bounded-two-map-scaling-baseline).
 
 Native preparation preserves named `.block` open and close markers as bits in
 each packed line's flag byte, then indexes offset-based spans after numeric
@@ -157,20 +178,23 @@ Unowned code/data remain. The native import parser accepts unqualified selected
 names in `.use dep (entry, helper)`, optionally followed by `as alias`. It
 validates each name even when unused, but does not retain a block until reached
 code references it. Repeated names within one list share a numeric selection.
-Per-item aliases and wildcard imports remain outside this bounded native path.
-The compact CLI now has one-region section placement and one explicit imported
-section map, with focused live FS-UAE parity. For that map, native assembly
+Direct per-item aliases such as `.use dep (entry as chosen)` now bind the exposed
+name to the selected original target; Rust and native reject combining a
+per-item alias with a module qualifier. Wildcard imports remain outside this
+bounded native path.
+The compact CLI has one- and two-region section placement with focused live
+FS-UAE parity. For the first imported map, native assembly
 sweeps the packed records for concrete content before the imported logical
 section while retaining selected-block pruning. Keep other unsupported mapping
 cases explicit rather than silently assembling them in dependency order.
 It also accepts two concrete sections placed in adjacent literal regions when
 their emitted bytes form one contiguous image. A forward label reference across
-those sections matches Rust in a fresh 68020 / 2 MiB run. The next checkpoint
-adds two imported maps with distinct targets in adjacent regions and an indexed
-two-slot section state. Native execution follows pairwise concrete-then-logical
-ordering and matches Rust; same-region overlap rejects. General placement
-ordering and sparse output remain unsupported. Five packed-record sweeps per
-pass make larger-graph cost an explicit question for the next measurement.
+those sections matches Rust in a fresh 68020 / 2 MiB run. Two imported maps
+with distinct targets now use indexed two-slot section state. Native execution
+follows pairwise concrete-then-logical ordering and matches Rust; same-region
+overlap rejects. General placement ordering and sparse output remain
+unsupported. The [bounded scaling case](prepared-source-experiment.md#bounded-two-map-scaling-baseline)
+records the cost of its five packed-record sweeps per pass.
 
 ## Increment contract
 

@@ -1368,7 +1368,10 @@ FS-UAE configuration because the full CLI cannot fit the 2 MiB profile.
 
 This comparison is currently blocked. In the September 24 run, the eight-block
 m6502 case comprised 81 source lines, 841 source bytes and 106 expected output
-bytes. The compact CLI completed and matched the oracle. The full CLI did not
+bytes. A separate fresh compact-CLI run on the 68020 / 2 MiB profile completed
+in 0.760 seconds of guest start-to-done host time and matched the oracle.
+Expanded-profile compact runs also completed and matched, but the runner did
+not capture their optional elapsed time. The full CLI did not
 produce a completion response within a 45-second guest deadline. A September 24
 retry of this exact eight-block case with a 300,000 ms guest deadline also timed
 out after 309.82 seconds for the test invocation, with no guest completion,

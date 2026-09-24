@@ -1215,6 +1215,7 @@ IncludeDepthNow	.res long, 1
 IncludeStack	.res byte, INCLUDE_FRAME_BYTES*INCLUDE_DEPTH
 IncludePath	.res byte, PATH_BYTES
 IncludeName	.res byte, PATH_BYTES
+AllowedPath	.res byte, PATH_BYTES
 IncludeHandle	.res long, 1
 SourceOrdinal	.res long, 1
 SourceLine	.res long, 1

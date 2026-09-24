@@ -1233,3 +1233,23 @@ up 928 and 820 bytes respectively from the direct-alias checkpoint. Guest
 command times observed for positive cases were 0.26–0.52 seconds; these are
 individual functional runs on new inputs, not a comparative performance claim.
 Peak owned memory was not measured.
+
+## Parent-relative selected-file includes
+
+Selected-file `.include` resolution now normalizes `.` and `..` components
+before opening a file or comparing active include paths for cycles. The
+normalized candidate must remain inside the including file's directory or a
+configured include root, matching the Rust include guard; traversal above the
+Amiga volume is rejected. Paths remain preparation-only and bounded. This
+extends the compact CLI's include path behavior without retaining original
+source text after tokenization.
+
+The Rust oracle and fresh 68020 / 2 MiB FS-UAE compact CLI run matched `07 07`
+for a dependency that includes `./../common/part.inc` with the project directory
+passed as `-I`. Fresh guest runs rejected the same include without that allowed
+root and a cycle spelled through `../parts/loop.inc`. The previous include-root
+compact CLI case still passed. The release compact Hunk is 46,496 bytes with
+57,976 bytes linked reservation, up 716 and 916 bytes from the file-derived
+module checkpoint. The positive guest command took 0.52 seconds in one run;
+this is a functional observation, not a controlled speed comparison. Peak
+owned memory was not measured.

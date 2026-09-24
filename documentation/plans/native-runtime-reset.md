@@ -578,8 +578,9 @@ The current bounded checkpoint is described in the
 [runtime note](prepared-source-experiment.md#f9-selected-file-includes).
 
 This does not complete Rust's include language. Relative path components `.`
-and `..`, labels on an include line, preprocessor-generated includes and larger
-depths are outside this experiment. Broader language coverage should follow
+and `..` are now normalized for selected-file includes within allowed roots;
+labels on an include line, preprocessor-generated includes and larger depths
+remain outside this experiment. Broader language coverage should follow
 focused parity cases instead of growing a parallel text preprocessor blindly.
 
 ## First CLI integration checkpoint

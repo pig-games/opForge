@@ -237,21 +237,40 @@ baseDone
 	rts
 	.bend ; copyIncludeBase
 
-; IncludePath currently holds a directory prefix. Reject dot components and
-; paths escaping Work:sources; open only a fully bounded guest path.
+; IncludePath holds a directory prefix. Normalize the relative name in place,
+; stopping parent traversal at the volume boundary before authorization.
 openIncludedPath .block
 	movem.l d1-d7/a0-a6, -(sp)
 	lea IncludePath, a0
+	bsr.w normalizeIncludePath
+	bne.w invalidPath
+	lea IncludePath, a0
 	moveq #0, d7
+	moveq #0, d4
 prefixLength
 	cmpi.l #PATH_BYTES-1, d7
 	bhs.w invalidPath
-	tst.b (a0)+
+	move.b (a0)+, d0
 	beq.w appendName
+	cmpi.b #':', d0
+	bne.w prefixNext
+	move.l d7, d4
+	addq.l #1, d4
+prefixNext
 	addq.l #1, d7
 	bra.w prefixLength
 appendName
 	suba.l #1, a0
+	tst.l d7
+	beq.w invalidPath
+	cmpi.b #':', -1(a0)
+	beq.w baseReady
+	cmpi.l #PATH_BYTES-2, d7
+	bhs.w invalidPath
+	move.b #'/', (a0)+
+	addq.l #1, d7
+baseReady
+	clr.b (a0)
 	lea IncludeName, a1
 	moveq #0, d6
 checkComponent
@@ -268,14 +287,38 @@ componentEnd
 	cmpi.l #1, d6
 	bne.w checkDouble
 	cmpi.b #'.', -1(a1)
-	beq.w invalidPath
+	bne.w copyName
+	bra.w skipComponent
 checkDouble
 	cmpi.l #2, d6
 	bne.w copyName
 	cmpi.b #'.', -2(a1)
 	bne.w copyName
 	cmpi.b #'.', -1(a1)
+	bne.w copyName
+	cmp.l d4, d7
+	bls.w invalidPath
+	; A0/D7 point past the last slash. Back up to the preceding slash.
+	subq.l #1, a0
+	subq.l #1, d7
+parentComponent
+	subq.l #1, a0
+	subq.l #1, d7
+	cmp.l d4, d7
+	blo.w invalidPath
+	beq.w parentAtFloor
+	cmpi.b #'/', (a0)
+	bne.w parentComponent
+	addq.l #1, a0
+	addq.l #1, d7
+parentAtFloor
+	clr.b (a0)
+skipComponent
+	tst.b (a1)
 	beq.w invalidPath
+	addq.l #1, a1
+	moveq #0, d6
+	bra.w checkComponent
 copyName
 	suba.l d6, a1
 	move.l d7, d2
@@ -294,10 +337,15 @@ copyComponent
 	bra.w checkComponent
 nameDone
 	clr.b (a0)
+	lea IncludePath, a0
+	bsr.w normalizeIncludePath
+	bne.w invalidPath
+	bsr.w authorizeIncludePath
+	bne.w openFailed
 	; A repeated active path is a cycle, even if AmigaDOS would open it.
 	lea IncludePath, a0
 	lea SourcePath, a1
-	bsr.w samePath
+	bsr.w sameNormalizedPath
 	beq.w invalidPath
 	moveq #0, d5
 cycle
@@ -309,7 +357,7 @@ cycle
 	adda.l d0, a1
 	lea IncludeFrame.Path(a1), a1
 	lea IncludePath, a0
-	bsr.w samePath
+	bsr.w sameNormalizedPath
 	beq.w invalidPath
 	addq.l #1, d5
 	bra.w cycle
@@ -335,6 +383,204 @@ openDone
 	tst.l d0
 	rts
 	.bend ; openIncludedPath
+
+; A0=NUL path. Collapse separator and dot components in place. D0=0/1.
+; A parent component cannot move above an Amiga volume or relative-path start.
+normalizeIncludePath .block
+	movem.l d1-d6/a0-a2, -(sp)
+	movea.l a0, a1
+	moveq #0, d3
+	moveq #0, d4
+volumeByte
+	cmpi.l #PATH_BYTES-1, d3
+	bhs.w pathBad
+	move.b 0(a0,d3.l), d0
+	beq.w noVolume
+	cmpi.b #'/', d0
+	beq.w noVolume
+	cmpi.b #':', d0
+	beq.w volumeEnd
+	addq.l #1, d3
+	bra.w volumeByte
+volumeEnd
+	addq.l #1, d3
+	move.l d3, d4
+	adda.l d3, a0
+	adda.l d3, a1
+	bra.w component
+noVolume
+	moveq #0, d3
+component
+	move.b (a0), d0
+	beq.w pathEnd
+	cmpi.b #'/', d0
+	bne.w componentStart
+	addq.l #1, a0
+	bra.w component
+componentStart
+	movea.l a0, a2
+	moveq #0, d6
+componentByte
+	move.b (a0), d0
+	beq.w componentEnd
+	cmpi.b #'/', d0
+	beq.w componentEnd
+	addq.l #1, a0
+	addq.l #1, d6
+	bra.w componentByte
+componentEnd
+	cmpi.l #1, d6
+	bne.w doubleDot
+	cmpi.b #'.', (a2)
+	beq.w component
+doubleDot
+	cmpi.l #2, d6
+	bne.w keepComponent
+	cmpi.b #'.', (a2)
+	bne.w keepComponent
+	cmpi.b #'.', 1(a2)
+	bne.w keepComponent
+	cmp.l d4, d3
+	bls.w pathBad
+popComponent
+	subq.l #1, a1
+	subq.l #1, d3
+	cmp.l d4, d3
+	bls.w component
+	cmpi.b #'/', (a1)
+	bne.w popComponent
+	bra.w component
+keepComponent
+	cmp.l d4, d3
+	beq.w copyComponent
+	move.b #'/', (a1)+
+	addq.l #1, d3
+copyComponent
+	move.b (a2)+, (a1)+
+	addq.l #1, d3
+	subq.l #1, d6
+	bne.w copyComponent
+	bra.w component
+pathEnd
+	clr.b (a1)
+	moveq #0, d0
+	bra.w pathDone
+pathBad
+	moveq #1, d0
+pathDone
+	movem.l (sp)+, d1-d6/a0-a2
+	tst.l d0
+	rts
+	.bend ; normalizeIncludePath
+
+; The Rust include guard accepts a path only below the including directory or
+; a configured include root. Normalize each root before comparing components.
+authorizeIncludePath .block
+	movem.l d1-d5/a0-a2, -(sp)
+	lea SourcePath, a0
+	lea AllowedPath, a1
+	bsr.w parentPath
+	bne.w denied
+	bsr.w allowedCandidate
+	beq.w permitted
+	moveq #0, d5
+root
+	cmp.l RootCount, d5
+	bhs.w denied
+	move.l d5, d0
+	lsl.l #8, d0
+	lea RootPaths, a0
+	movea.l memory.Block.Pointer(a0), a0
+	adda.l d0, a0
+	lea AllowedPath, a1
+	move.w #PATH_BYTES-1, d2
+copyRootByte
+	move.b (a0)+, (a1)+
+	beq.w compareRoot
+	dbra d2, copyRootByte
+	bra.w denied
+compareRoot
+	bsr.w allowedCandidate
+	beq.w permitted
+	addq.l #1, d5
+	bra.w root
+permitted
+	moveq #0, d0
+	bra.w authorizationDone
+denied
+	moveq #1, d0
+authorizationDone
+	movem.l (sp)+, d1-d5/a0-a2
+	tst.l d0
+	rts
+	.bend ; authorizeIncludePath
+
+; AllowedPath is a bounded scratch copy; D0=0 if IncludePath is its child.
+allowedCandidate .block
+	lea AllowedPath, a0
+	bsr.w normalizeIncludePath
+	bne.w notAllowed
+	lea IncludePath, a0
+	lea AllowedPath, a1
+compareByte
+	move.b (a1)+, d1
+	beq.w rootEnd
+	move.b (a0)+, d0
+	beq.w notAllowed
+	bsr.w foldInclude
+	move.b d0, d2
+	move.b d1, d0
+	bsr.w foldInclude
+	cmp.b d0, d2
+	bne.w notAllowed
+	bra.w compareByte
+rootEnd
+	lea AllowedPath+1, a2
+	cmpa.l a2, a1
+	beq.w allowed
+	move.b (a0), d0
+	beq.w allowed
+	cmpi.b #'/', d0
+	beq.w allowed
+	cmpi.b #':', -2(a1)
+	beq.w allowed
+notAllowed
+	moveq #1, d0
+	rts
+allowed
+	moveq #0, d0
+	rts
+	.bend ; allowedCandidate
+
+; Compare the normalized new path with an active source path that may retain
+; spelling from the CLI or discovery roots.
+sameNormalizedPath .block
+	movem.l d1/a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l a1, a0
+	lea AllowedPath, a1
+	move.w #PATH_BYTES-1, d1
+copyByte
+	move.b (a0)+, (a1)+
+	beq.w copied
+	dbra d1, copyByte
+	moveq #1, d0
+	bra.w compared
+copied
+	lea AllowedPath, a0
+	bsr.w normalizeIncludePath
+	bne.w distinct
+	movea.l a2, a0
+	lea AllowedPath, a1
+	bsr.w samePath
+	bra.w compared
+distinct
+	moveq #1, d0
+compared
+	movem.l (sp)+, d1/a0-a2
+	tst.l d0
+	rts
+	.bend ; sameNormalizedPath
 
 ; A0/A1=NUL paths, ASCII case-insensitive. D0=0 equal, 1 distinct.
 samePath .block
@@ -475,7 +721,7 @@ closed
 ; No preparation-only include path may remain when packed execution begins.
 clearIncludeText .block
 	lea IncludeStack, a0
-	move.w #INCLUDE_FRAME_BYTES*INCLUDE_DEPTH+PATH_BYTES*2-1, d0
+	move.w #INCLUDE_FRAME_BYTES*INCLUDE_DEPTH+PATH_BYTES*3-1, d0
 clearByte
 	clr.b (a0)+
 	dbra d0, clearByte

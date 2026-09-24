@@ -1,4 +1,4 @@
-; Lower the bounded single-section syntax to numeric packed control records.
+; Lower bounded section syntax to numeric packed control records.
 ; Names are compared only during preparation; execution sees no source strings.
 ; @opforge-owner: experimental.amigaos.binary_section_prepare
 	.module experimental.amigaos.binary_section_prepare
@@ -17,8 +17,13 @@ MapOwner	.word ?
 MapModule	.word ?
 MapLogical	.word ?
 MapConcrete	.word ?
+Second	.word ?
+SecondRegion	.word ?
 	.endstruct
-SCRATCH_BYTES = State.MapConcrete+2
+SCRATCH_BYTES = State.SecondRegion+2
+; Seen bits: logical, first concrete/region/place, second concrete/region/place.
+; Packed control opcodes 7/8/9 extend the original six with the second
+; concrete section, region and placement.
 CONTROL_SECTION = 1
 CONTROL_ENDSECTION = 2
 CONTROL_REGION = 3
@@ -37,12 +42,14 @@ begin	.block
 	clr.w State.MapModule(a0)
 	clr.w State.MapLogical(a0)
 	clr.w State.MapConcrete(a0)
+	clr.w State.Second(a0)
+	clr.w State.SecondRegion(a0)
 	moveq #0, d0
 	rts
 	.bend  ; begin
 
 ; A0=writer record,A1=scope state,A2=section state,D0=1..4.
-; Supports one logical/concrete section pair and one literal region.
+; Supports one mapped pair, or two concrete sections in adjacent regions.
 ; Rewrites controls to [header,opcode,optional u32 start,u32 end].
 ; D0/CCR=status; other registers preserved.
 line	.block
@@ -99,7 +106,22 @@ sectionName
 	beq.w firstName
 	move.w d6, d1
 	bsr.w sameLeaf
+	beq.w matched
+	cmpi.w #2, d5
 	bne.w bad
+	moveq #0, d0
+	move.w State.Second(a4), d0
+	beq.w secondName
+	move.w d6, d1
+	bsr.w sameLeaf
+	bne.w bad
+	bra.w secondMatched
+secondName
+	tst.w State.MapModule(a4)
+	bne.w bad
+	move.w d6, State.Second(a4)
+secondMatched
+	moveq #7, d5
 	bra.w matched
 firstName
 	move.w d6, State.First(a4)
@@ -133,7 +155,11 @@ mappedOwner
 	moveq #6, d5  ; runtime schedules this concrete body before mapped content
 matched
 	cmpi.w #1, d5
-	bne.w concrete
+	beq.w logical
+	cmpi.w #7, d5
+	beq.w secondConcrete
+	bra.w concrete
+logical
 	move.w State.Seen(a4), d0
 	btst #0, d0
 	bne.w bad
@@ -148,6 +174,13 @@ concrete
 	move.w d6, State.Concrete(a4)
 	move.w #2, State.Active(a4)
 	bra.w control
+secondConcrete
+	move.w State.Seen(a4), d0
+	btst #4, d0
+	bne.w bad
+	ori.w #16, State.Seen(a4)
+	move.w #7, State.Active(a4)
+	bra.w control
 endsection
 	cmpa.l a3, a2
 	bne.w bad
@@ -161,10 +194,25 @@ region
 	bne.w bad
 	move.w State.Seen(a4), d0
 	btst #2, d0
+	bne.w nextRegion
+	moveq #4, d5
+	bra.w regionName
+nextRegion
+	btst #5, d0
 	bne.w bad
+	tst.w State.MapModule(a4)
+	bne.w bad
+	moveq #8, d5
+regionName
 	bsr.w name
 	bne.w bad
+	cmpi.w #4, d5
+	bne.w storeSecondRegion
 	move.w d1, State.Region(a4)
+	bra.w regionBounds
+storeSecondRegion
+	move.w d1, State.SecondRegion(a4)
+regionBounds
 	move.l a3, d0
 	sub.l a2, d0
 	cmpi.l #12, d0
@@ -192,18 +240,19 @@ endBytes
 	adda.w #5, a2
 	cmpa.l a3, a2
 	bne.w bad
+	cmpi.w #4, d5
+	bne.w seenSecondRegion
 	ori.w #4, State.Seen(a4)
+	bra.w regionControl
+seenSecondRegion
+	ori.w #32, State.Seen(a4)
+regionControl
 	move.b #12, (a5)
 	move.b #source.FLAG_LAYOUT, 1(a5)
-	move.b #4, 4(a5)
+	move.b d5, 4(a5)
 	bra.w ok
 place
 	tst.w State.Active(a4)
-	bne.w bad
-	move.w State.Seen(a4), d0
-	btst #2, d0
-	beq.w bad
-	btst #3, d0
 	bne.w bad
 	moveq #0, d0
 	move.w State.Concrete(a4), d0
@@ -212,7 +261,28 @@ place
 	bsr.w name
 	bne.w bad
 	cmp.w d6, d1
+	bne.w secondPlace
+	move.w State.Seen(a4), d0
+	btst #2, d0
+	beq.w bad
+	btst #3, d0
 	bne.w bad
+	move.w State.Region(a4), d6
+	moveq #5, d5
+	bra.w placeRegion
+secondPlace
+	cmp.w State.Second(a4), d1
+	bne.w bad
+	move.w State.Seen(a4), d0
+	btst #3, d0  ; the first placement fixes contiguous output order
+	beq.w bad
+	btst #5, d0
+	beq.w bad
+	btst #6, d0
+	bne.w bad
+	move.w State.SecondRegion(a4), d6
+	moveq #9, d5
+placeRegion
 	bsr.w name
 	bne.w bad
 	lea InWord(pc), a0
@@ -221,12 +291,16 @@ place
 	bne.w bad
 	bsr.w name
 	bne.w bad
-	cmp.w State.Region(a4), d1
+	cmp.w d6, d1
 	bne.w bad
 	cmpa.l a3, a2
 	bne.w bad
+	cmpi.w #5, d5
+	bne.w secondPlaced
 	ori.w #8, State.Seen(a4)
-	moveq #5, d5
+	bra.w control
+secondPlaced
+	ori.w #64, State.Seen(a4)
 control
 	move.b #4, (a5)
 	move.b #source.FLAG_LAYOUT, 1(a5)
@@ -284,6 +358,10 @@ importMap	.block
 	bne.w badMap
 	tst.w State.MapModule(a5)
 	bne.w badMap
+	tst.w State.Second(a5)
+	bne.w badMap
+	tst.w State.SecondRegion(a5)
+	bne.w badMap
 	move.w State.Seen(a5), d0
 	andi.w #3, d0
 	bne.w badMap  ; mapping must precede section declarations
@@ -309,6 +387,18 @@ mapDone
 
 ; A0=section state. A mapped case requires both named sections by completion.
 finish	.block
+	tst.w State.Second(a0)
+	beq.w noSecond
+	move.w State.Seen(a0), d0
+	andi.w #$007a, d0  ; both concrete sections, second region and both places
+	cmpi.w #$007a, d0
+	bne.w badFinish
+noSecond
+	tst.w State.SecondRegion(a0)
+	beq.w mapFinish
+	tst.w State.Second(a0)
+	beq.w badFinish
+mapFinish
 	tst.w State.MapModule(a0)
 	beq.w finished
 	move.w State.Seen(a0), d0

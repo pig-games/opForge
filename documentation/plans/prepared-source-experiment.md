@@ -1076,7 +1076,35 @@ provide a valid contiguous case: its address-ordered Rust image is
 
 This checkpoint is a Rust correctness repair and reference case. It does not
 change the native Hunk, memory reservation or guest execution time. Native
-support for two regions, two placements and two maps requires indexed section
-state and an output schedule; merely accepting a second `.use ... map` would
-leave the current single-PC runtime with ambiguous addresses. Same-region
+support for two imported maps still requires indexed section state and an
+output schedule; merely accepting a second `.use ... map` would leave the
+current scalar runtime with ambiguous addresses. Same-region
 placement after mapped growth needs a separate layout-convergence design.
+
+## Two concrete placements in the compact CLI
+
+The native preparation path now lowers two distinct concrete sections, two
+literal regions and their placements to numeric controls. The execution path
+tracks each section's bounds and completed PC separately. It accepts the second
+section only when its region begins exactly where the first section's output
+ends, so the existing flat writer can emit one contiguous image. This is a
+layout foundation for multiple maps, not support for a second imported map.
+
+A single-file 6502 case places `app_a` at `$1000` and `app_b` at `$1003`, with
+the first section referring forward to `b_entry` in the second. Fresh 68020 /
+2 MiB FS-UAE execution matched the live Rust bytes `a0 03 10 b0 b1`.
+The earlier same-name section and explicit mapped-body cases also passed in
+fresh runs. Moving the second region one byte ahead produced a fresh native
+failure with the required diagnostic, confirming the flat-output boundary.
+The compact Hunk is 44,084 bytes with 55,468 bytes linked
+reservation, up 688 and 704 bytes respectively from the preceding native
+checkpoint. The three guest command times observed across these focused runs
+were 0.254–0.513 seconds. They are single-run observations, not a speed claim;
+the prior native path cannot assemble the new input. No peak owned-memory
+measurement was taken for this slice.
+
+The current scalar two-section state is a bounded bridge. Extending beyond two
+sections or adding two imported maps should use indexed section identities and
+an explicit output schedule, rather than adding a third set of special-case
+fields and passes. Noncontiguous placement and same-region placement after
+mapped growth still need separate layout and output decisions.

@@ -163,6 +163,11 @@ section map, with focused live FS-UAE parity. For that map, native assembly
 sweeps the packed records for concrete content before the imported logical
 section while retaining selected-block pruning. Keep other unsupported mapping
 cases explicit rather than silently assembling them in dependency order.
+It also accepts two concrete sections placed in adjacent literal regions when
+their emitted bytes form one contiguous image. A forward label reference across
+those sections matches Rust in a fresh 68020 / 2 MiB run. Two imported maps,
+general placement ordering and sparse output remain unsupported; the next layout
+extension should replace scalar section slots with indexed state.
 
 ## Increment contract
 

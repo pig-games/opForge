@@ -540,6 +540,35 @@ fn binary_graph_two_mapped_regions_rust_oracle() {
     );
 }
 
+const TWO_CONCRETE_SECTIONS: &[(&str, &str)] = &[(
+    "main.asm",
+    ".module main\n.cpu m6502\n.region rom_a, $1000, $1002\n.region rom_b, $1003, $10ff\n.section app_a\n.byte $a0\n.word b_entry\n.endsection\n.section app_b\nb_entry:\n.byte $b0, $b1\n.endsection\n.place app_a in rom_a\n.place app_b in rom_b\n.endmodule\n.end\n",
+)];
+
+#[test]
+fn binary_graph_two_concrete_sections_rust_oracle() {
+    assert_eq!(
+        oracle(TWO_CONCRETE_SECTIONS).unwrap(),
+        [0xa0, 0x03, 0x10, 0xb0, 0xb1]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; two adjacent concrete placements"]
+fn compact_cli_two_concrete_sections_fs_uae() {
+    let expected = oracle(TWO_CONCRETE_SECTIONS).expect("live Rust two-section oracle");
+    compact_cli(TWO_CONCRETE_SECTIONS, &[], &[], Some(&expected), false);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; flat writer rejects a gap between sections"]
+fn compact_cli_two_concrete_sections_gap_fs_uae() {
+    let source = TWO_CONCRETE_SECTIONS[0]
+        .1
+        .replace(".region rom_b, $1003", ".region rom_b, $1004");
+    compact_cli(&[("main.asm", &source)], &[], &[], None, false);
+}
+
 #[test]
 #[ignore = "requires configured FS-UAE; numeric block markers through graph ordering"]
 fn binary_graph_block_boundaries_fs_uae() {

@@ -304,12 +304,20 @@ impl<'a> AsmLine<'a> {
         }
         let unit_index = if self.pass == 1 && !outer_block {
             block_symbol.as_ref().and_then(|symbol| {
-                let section = self.layout.current_section.as_ref()?;
-                self.layout.sections.get(section)?.logical.then(|| {
+                let section = self.layout.current_section.as_ref().and_then(|section| {
+                    self.layout
+                        .sections
+                        .get(section)?
+                        .logical
+                        .then(|| section.clone())
+                });
+                let module = self.symbol_scope.module_active.clone();
+                (section.is_some() || module.is_some()).then(|| {
                     let index = self.reachable_blocks.len();
                     self.reachable_blocks.push(crate::state::ReachableBlock {
                         symbol: symbol.clone(),
-                        section: section.clone(),
+                        module,
+                        section,
                         first_line: self.current_line_num,
                         last_line: self.current_line_num,
                     });

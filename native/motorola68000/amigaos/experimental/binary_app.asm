@@ -360,7 +360,7 @@ prepare	.block
 	tst.w CliMode
 	beq.w readManifest
 	moveq #1, d0
-	clr.l GraphMode
+	move.l #1, GraphMode
 	clr.l DiscoverMode
 	bra.w sourceCountReady
 cliDiscovery
@@ -623,6 +623,14 @@ prepared
 pathsCleared
 	lea RootPaths, a0
 	jsr memory.release
+	cmpi.w #1, CliMode
+	bne.w graphReady
+	lea GraphBlock, a0
+	movea.l memory.Block.Pointer(a0), a0
+	tst.w graph.GraphState.Count(a0)
+	bne.w graphReady
+	clr.l GraphMode  ; preserve the ordinary single-source path
+graphReady
 	tst.l GraphMode
 	beq.w orderReady
 	tst.l OrderedCount

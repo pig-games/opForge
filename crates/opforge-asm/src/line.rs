@@ -1978,18 +1978,18 @@ impl<'a> AsmLine<'a> {
         };
         let module = self.symbol_scope.module_active.clone();
         let section = self.layout.current_section.clone();
-        if !self.in_section() && source.is_none() {
-            return;
-        }
         if source.is_none() && module.is_none() {
             return;
         }
         if let Ok(Some(target)) = self.resolve_scoped_name(name) {
             if let Some(source) = source {
                 self.symbols.record_symbol_reference(&source, &target);
-            } else if let (Some(module), Some(section)) = (module, section) {
-                self.symbols
-                    .record_unowned_reference(&module, &section, &target);
+            } else if let Some(module) = module {
+                self.symbols.record_unowned_reference(
+                    &module,
+                    section.as_deref().unwrap_or(""),
+                    &target,
+                );
             }
             return;
         }

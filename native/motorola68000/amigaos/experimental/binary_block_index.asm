@@ -5,6 +5,7 @@
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_graph as graph
+	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_source as source
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
@@ -201,12 +202,27 @@ root
 	move.w 0(a0, d0.w), d1
 	beq.w liveRoot
 	subq.w #1, d1
+	move.w d1, d3
 	mulu.w #graph.NODE_BYTES, d1
 	movea.l Graph, a0
 	lea graph.NODES(a0), a0
 	adda.l d1, a0
 	cmpi.w #1, graph.Node.File(a0)
 	bne.w nextRoot
+	; An entry-file sibling may also be imported. Import availability alone
+	; must not make its blocks roots; only references make them live.
+	lea layout.IMPORT_STATE(a5), a0
+	moveq #0, d2
+	move.w imports.COUNT(a0), d2
+	lea imports.ITEMS(a0), a1
+importedRoot
+	tst.w d2
+	beq.w liveRoot
+	cmp.w imports.Item.Target(a1), d3
+	beq.w nextRoot
+	adda.w #imports.ITEM_BYTES, a1
+	subq.w #1, d2
+	bra.w importedRoot
 liveRoot
 	move.w #1, Span.Live(a4)
 nextRoot

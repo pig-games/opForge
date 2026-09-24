@@ -661,6 +661,7 @@ block (or `.meta.output.*` inline), `.name` sets the output base name.
 .use util.math
 .use util.math as M
 .use util.math (add16, sub16 as sub)
+.use util.math (*)
 .use util.math (add16) as M
 .use util.math map { code -> app_code }
 .use util.math (add16) as M map { code -> app_code }
@@ -677,9 +678,14 @@ Notes:
 - Direct selective imports without a module qualifier import names into the
   current module scope, and may use per-item aliases: `.use util.math (add16 as
   add)`.
-- Selective imports with a module qualifier select root symbols for inclusion
-  but keep them qualified. In `.use util.math (add16) as M`, `M.add16` is
-  available and `add16` is not directly imported.
+- `(*)` makes all public names directly available. Importing or selecting a
+  name does not by itself include its `.block`; a reference from retained code
+  or data to the block (or a label within it) makes that imported block live.
+- Selective imports with a module qualifier keep the names qualified. In
+  `.use util.math (add16) as M`, `M.add16` is available and `add16` is not
+  directly imported. The same reference-driven block rule applies.
+- `with (...)` parameters are currently parsed and retained but have no effect
+  on the imported module or its output.
 - A `map { logical -> concrete }` clause maps logical sections declared by the
   imported module into concrete sections in the importing/root module. Map
   clauses require a namespace binding, so `.use util.math (add16) map { ... }`

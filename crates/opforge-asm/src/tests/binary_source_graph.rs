@@ -8,6 +8,8 @@ mod measurement;
 mod implicit_modules;
 #[path = "binary_source_include_parent.rs"]
 mod include_parent;
+#[path = "binary_source_wildcard.rs"]
+mod wildcard;
 
 const ROOT: &str =
     ".module main\n.cpu m6502\n.use alpha\n.use beta\n.pub\nentry\n.byte 4\n.endmodule\n.end\n";

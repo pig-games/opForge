@@ -1253,3 +1253,29 @@ compact CLI case still passed. The release compact Hunk is 46,496 bytes with
 module checkpoint. The positive guest command took 0.52 seconds in one run;
 this is a functional observation, not a controlled speed comparison. Peak
 owned memory was not measured.
+
+## Direct wildcard imports and reference-driven blocks
+
+The compact native binder now accepts `.use dep (*)` as direct availability of
+public names. Availability does not make an imported `.block` live. Rust now
+captures named blocks in unsectioned modules for its reachability replay as well
+as blocks in logical sections, so an unused block is omitted for both selective
+and wildcard imports. References to an entry or internal label retain the whole
+block, including fallthrough content.
+
+An explicit module in the entry file now uses the numeric graph even without
+search roots; ordinary plain source continues through the direct path. An
+imported entry-file sibling is no longer treated as an output root merely
+because it shares the entry file. Fresh 68020 / 2 MiB compact CLI runs matched
+the live Rust bytes `11 00 10` for wildcard dependencies in a separate file
+and in the entry file in both declaration orders. A plain-source compact CLI
+regression and the earlier entry-root block case also passed. The same-file
+run reported a 46,780-byte Hunk with 58,264 linked reserved bytes, up 284 and
+288 bytes from the previous compact CLI checkpoint. Its 0.26-second guest
+command is one functional observation, not a comparative
+performance measurement. Peak owned memory was not measured.
+
+Rust currently accepts and stores `.use ... with (...)` parameters without
+applying them to the imported module. Native acceptance of this intentionally
+inert syntax and the remaining module/include forms still need parity cases;
+these wildcard results do not establish full module parity.

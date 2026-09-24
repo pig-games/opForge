@@ -820,9 +820,12 @@ qualified_share={:.2}%",
             if let Some(target) = target {
                 if let Some(source) = source {
                     self.symbols.record_symbol_reference(&source, &target);
-                } else if let (Some(module), Some(section)) = (module, section) {
-                    self.symbols
-                        .record_unowned_reference(&module, &section, &target);
+                } else if let Some(module) = module {
+                    self.symbols.record_unowned_reference(
+                        &module,
+                        section.as_deref().unwrap_or(""),
+                        &target,
+                    );
                 }
             }
         }
@@ -938,15 +941,20 @@ qualified_share={:.2}%",
         self.qualified_reachability_profile.validation_time += validation_started_at.elapsed();
         self.qualified_reachability_profile.validation_count += 1;
 
-        for issue in self.symbols.validate_imports(&self.module_macro_names) {
-            let kind = match issue.kind {
-                types::symbol::ImportIssueKind::Directive => AsmErrorKind::Directive,
-                types::symbol::ImportIssueKind::Symbol => AsmErrorKind::Symbol,
-            };
-            let err = AsmError::new(kind, &issue.message, issue.param.as_deref());
-            self.diagnostics
-                .push(Diagnostic::new(issue.line, Severity::Error, err).with_column(issue.column));
-            counts.errors += 1;
+        // The first pass validates every imported declaration before reachability
+        // removes unreferenced block bodies. Replay retains only emitted symbols.
+        if self.block_relayout.is_none() {
+            for issue in self.symbols.validate_imports(&self.module_macro_names) {
+                let kind = match issue.kind {
+                    types::symbol::ImportIssueKind::Directive => AsmErrorKind::Directive,
+                    types::symbol::ImportIssueKind::Symbol => AsmErrorKind::Symbol,
+                };
+                let err = AsmError::new(kind, &issue.message, issue.param.as_deref());
+                self.diagnostics.push(
+                    Diagnostic::new(issue.line, Severity::Error, err).with_column(issue.column),
+                );
+                counts.errors += 1;
+            }
         }
 
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
@@ -1345,16 +1353,27 @@ qualified_share={:.2}%",
                 }
             }
         }
-        if plan.mapped_sections.is_empty() {
-            return counts;
-        }
-
         let reachable: HashSet<_> = reachable_units
             .into_iter()
             .map(|unit| unit.full_name.to_ascii_uppercase())
             .collect();
+        let imported_modules: HashSet<_> = self
+            .symbols
+            .modules()
+            .iter()
+            .flat_map(|module| module.imports.iter())
+            .map(|import| import.module_id.to_ascii_uppercase())
+            .collect();
         for block in &self.reachable_blocks {
-            if !plan.mapped_sections.contains_key(&block.section) {
+            let imported = block
+                .module
+                .as_ref()
+                .is_some_and(|module| imported_modules.contains(&module.to_ascii_uppercase()));
+            let mapped = block
+                .section
+                .as_ref()
+                .is_some_and(|section| plan.mapped_sections.contains_key(section));
+            if !imported && !mapped {
                 continue;
             }
             let symbol = block.symbol.to_ascii_uppercase();
@@ -1365,6 +1384,9 @@ qualified_share={:.2}%",
             }
             plan.skipped_lines
                 .extend(block.first_line..=block.last_line);
+        }
+        if plan.mapped_sections.is_empty() && plan.skipped_lines.is_empty() {
+            return counts;
         }
         let mut source_by_target = HashMap::new();
         for (source, target) in &plan.mapped_sections {

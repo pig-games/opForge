@@ -128,14 +128,20 @@ cases from more than one source-target family. Relevant missing/ambiguous import
 cycles, private names and invalid include paths must fail explicitly. Keep the
 host-prepared package boundary for now; native package generation is separate.
 
-Work in bounded slices. Direct per-item `.use` aliases are the first confirmed
-syntax/binding gap. Implicit file identities, wildcard and parameterized imports,
-conditional or generated module discovery, include path forms, and section-map
-composition need focused Rust/native cases before implementation choices. Some
+Work in bounded slices. Direct per-item `.use` aliases, implicit file identities,
+and direct wildcard availability now have focused Rust/native cases. Inert
+parameter syntax, conditional or generated module discovery, remaining include
+path forms, and section-map composition still need focused parity cases. Some
 depend on the broader source-expansion work; do not claim module parity while
 those forms are still unsupported, or add a parallel text interpreter merely to
 close a checklist. Use the existing binary-source representation and numeric
 graph so later assembly passes do not return to source strings.
+
+For the current contract, `.use ... with (...)` parameters are accepted but
+inert: Rust retains them without changing the imported module. Native parity
+means accepting the syntax with the same result, not adding configuration
+semantics in this phase. Wildcard availability and block reachability are
+tracked in the [prepared-source experiment](prepared-source-experiment.md#direct-wildcard-imports-and-reference-driven-blocks).
 
 ## Selected modules and reachable output
 

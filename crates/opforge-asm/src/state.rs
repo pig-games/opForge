@@ -57,7 +57,8 @@ pub struct AsmLayoutState {
 #[derive(Debug, Clone)]
 pub(crate) struct ReachableBlock {
     pub symbol: String,
-    pub section: String,
+    pub module: Option<String>,
+    pub section: Option<String>,
     pub first_line: u32,
     pub last_line: u32,
 }

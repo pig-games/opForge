@@ -84,6 +84,18 @@ line	.block
 	cmpi.b #14, (a3)
 	bne.w afterSelection
 	addq.l #1, a3
+	cmpa.l a4, a3
+	bhs.w bad
+	cmpi.b #20, (a3)
+	bne.w selectedName
+	addq.l #1, a3
+	cmpa.l a4, a3
+	bhs.w bad
+	cmpi.b #15, (a3)
+	bne.w bad
+	addq.l #1, a3
+	moveq #2, d3  ; wildcard direct availability
+	bra.w afterSelection
 selectedName
 	move.l a4, d0
 	sub.l a3, d0
@@ -206,6 +218,8 @@ anotherName
 afterSelection
 	cmpa.l a4, a3
 	beq.w defaultQualifier
+	cmpi.w #2, d3
+	beq.w bad  ; wildcard aliases are not supported
 	move.l d4, d2
 	lea layout.IMPORT_STATE(a6), a2
 qualifiedSelection
@@ -245,6 +259,8 @@ parseQualifier
 	moveq #0, d3
 	bra.w qualifier
 defaultQualifier
+	cmpi.w #2, d3
+	beq.w noQualifier
 	tst.w d4
 	bne.w noQualifier
 	move.l d7, d0
@@ -436,6 +452,15 @@ scan
 	adda.l d0, a3
 	tst.w Item.Unqualified(a3)
 	beq.w next
+	cmpi.w #2, Item.Unqualified(a3)
+	bne.w namedSelection
+	cmpi.w #$ffff, d4
+	beq.w next
+	tst.w d4
+	bne.w next
+	move.w #$ffff, d4
+	bra.w next
+namedSelection
 	moveq #0, d6
 	move.w Item.Selected(a3), d6
 selected
@@ -466,7 +491,10 @@ compareLeaf
 	bsr.w prefixEqual
 	bne.w nextSelected
 	tst.w d4
+	beq.w takeSelected
+	cmpi.w #$ffff, d4
 	bne.w bad  ; two direct imports claim the same name
+takeSelected
 	move.w d3, d4
 nextSelected
 	move.l d2, d6
@@ -646,7 +674,11 @@ done
 resolve	.block
 	movem.l d2-d7/a0-a4, -(sp)
 	tst.w records.Entry.Leaf(a3)
-	bne.w resolveSelected
+	beq.w resolveQualified
+	cmpi.w #$ffff, records.Entry.Leaf(a3)
+	beq.w resolveWildcard
+	bra.w resolveSelected
+resolveQualified
 	moveq #0, d0
 	move.w records.Entry.Name(a3), d0
 	lea layout.ARENA(a6), a2
@@ -761,6 +793,9 @@ bind
 	beq.w bad
 	moveq #0, d0
 	bra.w done
+resolveWildcard
+	bsr.w wildcardTarget
+	bra.w done
 resolveSelected
 	moveq #0, d0
 	move.w records.Entry.ScopeKind(a3), d0
@@ -793,6 +828,99 @@ done
 	tst.l d0
 	rts
 	.bend  ; resolve
+
+; A3=wildcard proxy,A4=import state,A5=binder,A6=scope state.
+; Find one public declaration among wildcard imports of this module.
+; The import itself never makes a named block live; remapped references do.
+wildcardTarget	.block
+	movem.l d2-d7/a0-a3, -(sp)
+	moveq #0, d0
+	move.w records.Entry.ScopeKind(a3), d0
+	subq.w #1, d0
+	bsr.w entryLeaf
+	movea.l a0, a2
+	move.l d0, d6
+	moveq #0, d0
+	move.w records.Entry.Owner(a3), d0
+	subq.w #1, d0
+	add.w d0, d0
+	lea HEADS(a4), a0
+	moveq #0, d7
+	move.w 0(a0, d0.w), d7
+	moveq #0, d5
+wildcardItem
+	tst.w d7
+	beq.w wildcardDone
+	move.l d7, d0
+	subq.w #1, d0
+	mulu.w #ITEM_BYTES, d0
+	lea ITEMS(a4), a3
+	adda.l d0, a3
+	moveq #0, d7
+	move.w Item.Next(a3), d7
+	cmpi.w #2, Item.Unqualified(a3)
+	bne.w wildcardItem
+	moveq #0, d0
+	move.w Item.Target(a3), d0
+	bsr.w entryName
+	move.l d0, d4
+	add.w d6, d4
+	addq.w #1, d4
+	cmpi.w #63, d4
+	bhi.w wildcardBad
+	lea layout.BUFFER(a6), a1
+copyWildcardModule
+	move.b (a0)+, (a1)+
+	subq.w #1, d0
+	bne.w copyWildcardModule
+	move.b #'.', (a1)+
+	movea.l a2, a0
+	move.l d6, d0
+copyWildcardLeaf
+	move.b (a0)+, (a1)+
+	subq.w #1, d0
+	bne.w copyWildcardLeaf
+	lea layout.BUFFER(a6), a0
+	move.l d4, d0
+	bsr.w globalBind
+	bne.w wildcardBad
+	move.l d1, d2
+	sub.w layout.State.Base(a6), d2
+	bcs.w wildcardItem
+	cmp.w layout.State.Count(a6), d2
+	bhs.w wildcardBad
+	move.l d2, d0
+	lsl.l #4, d0
+	lea layout.ENTRIES(a6), a0
+	adda.l d0, a0
+	btst #0, records.Entry.Flags+1(a0)
+	beq.w wildcardItem
+	move.l d2, d0
+	add.w d0, d0
+	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
+	btst #0, 1(a0, d0.w)
+	beq.w wildcardItem
+	tst.w d5
+	beq.w wildcardMatch
+	cmp.w d1, d5
+	beq.w wildcardItem
+	bra.w wildcardBad
+wildcardMatch
+	move.w d1, d5
+	bra.w wildcardItem
+wildcardDone
+	tst.w d5
+	beq.w wildcardBad
+	move.w d5, d1
+	moveq #0, d0
+	bra.w wildcardExit
+wildcardBad
+	moveq #1, d0
+wildcardExit
+	movem.l (sp)+, d2-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; wildcardTarget
 
 ; A0/D0=bytes to compare with A2 prefix. D0/CCR=status, others preserved.
 prefixEqual	.block

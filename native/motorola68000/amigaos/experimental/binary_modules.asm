@@ -13,8 +13,9 @@ Outside	.word ?
 Visibility	.word ?
 Base	.word ?
 Selection	.word ?
+FileDerived	.word ?
 .endstruct
-OWNERS = State.Selection+2
+OWNERS = State.FileDerived+2
 ORIGINS = OWNERS+LIMIT*2
 FLAGS = ORIGINS+LIMIT*2
 SCRATCH_BYTES = FLAGS+LIMIT*2
@@ -27,7 +28,7 @@ KIND_MODULE = 3
 	.section code, kind=code
 
 ; A0=state,D0=first source ID. Clear bounded metadata. D0/CCR=status;
-; other registers preserved. Zero module ID denotes the implicit global unit.
+; other registers preserved. Zero module ID denotes the unscoped global unit.
 begin	.block
 	movem.l d1/a0, -(sp)
 	move.w #SCRATCH_BYTES/2-1, d1
@@ -40,7 +41,7 @@ clear
 	rts
 	.bend  ; begin
 
-; A0=state. Ordinary content is allowed in implicit mode or an active module.
+; A0=state. Ordinary content is allowed in global mode or an active module.
 ; Remember pre-module content so a later explicit module cannot legalize it.
 ; D0/CCR=status; other registers preserved.
 content	.block

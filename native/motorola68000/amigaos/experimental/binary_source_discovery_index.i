@@ -4,13 +4,20 @@
 ; D0/CCR=status; other registers preserved. Paths remain owned by DiscoveryBlock.
 indexCandidates .block
 	movem.l d1-d7/a0-a6, -(sp)
-	move.l #2, SourceOrdinal
+	move.l #1, SourceOrdinal
 nextCandidate
 	move.l SourceOrdinal, d0
 	cmp.l CandidateCount, d0
 	bhi.w success
 	bsr.w openSource
 	bne.w bad
+	bsr.w pathStem
+	beq.w closeBad
+	lea DeclarationBlock, a0
+	movea.l memory.Block.Pointer(a0), a0
+	move.l SourceOrdinal, d1
+	jsr declarations.fileDerived
+	bne.w closeBad
 	clr.l LineUsed
 	clr.l IndexOverflow
 read
@@ -56,6 +63,50 @@ done
 	tst.l d0
 	rts
 	.bend ; indexCandidates
+
+; Return A1/D0 as the basename without its final extension. SourcePath is
+; bounded and remains preparation-only. Zero length means an invalid path.
+pathStem .block
+	movem.l d1-d2/a0/a2-a3, -(sp)
+	lea SourcePath, a0
+	movea.l a0, a2
+	suba.l a3, a3
+	moveq #0, d1
+scanStem
+	cmpi.w #PATH_BYTES, d1
+	bhs.w stemBad
+	moveq #0, d2
+	move.b (a0)+, d2
+	beq.w stemEnd
+	cmpi.b #'/', d2
+	beq.w separator
+	cmpi.b #':', d2
+	beq.w separator
+	cmpi.b #'.', d2
+	bne.w stemNext
+	movea.l a0, a3
+	subq.l #1, a3
+	bra.w stemNext
+separator
+	movea.l a0, a2
+	suba.l a3, a3
+stemNext
+	addq.w #1, d1
+	bra.w scanStem
+stemEnd
+	move.l a3, d0
+	beq.w stemBad
+	move.l a2, d2
+	sub.l d2, d0
+	ble.w stemBad
+	movea.l a2, a1
+	bra.w stemDone
+stemBad
+	moveq #0, d0
+stemDone
+	movem.l (sp)+, d1-d2/a0/a2-a3
+	rts
+	.bend ; pathStem
 
 ; Inspect one bounded line. Long irrelevant lines are ignored by the indexer;
 ; the full frontend retains its ordinary size/error checks for selected files.
@@ -137,6 +188,7 @@ selectCandidate .block
 	movea.l memory.Block.Pointer(a0), a0
 	jsr declarations.find
 	bne.w bad
+	move.l d2, SelectedFileDerived
 	move.l d1, d7
 	beq.w bad
 	cmp.l CandidateCount, d7

@@ -741,7 +741,7 @@ pub fn load_module_graph_with_provider(
     }
 
     let mut module_exports: HashMap<String, AsmMacroExports> = HashMap::new();
-    let mut expanded_deps: Vec<ModuleSource> = Vec::new();
+    let mut expanded_deps: Vec<(String, ModuleSource)> = Vec::new();
 
     for (module_id, source) in &order {
         let module_lines = &source.lines;
@@ -768,10 +768,13 @@ pub fn load_module_graph_with_provider(
 
         let expanded = expand_with_processor(&mut mp, module_lines)?;
         module_exports.insert(canonical, mp.take_native_exports());
-        expanded_deps.push(ModuleSource {
-            lines: expanded,
-            ..source.clone()
-        });
+        expanded_deps.push((
+            module_id.clone(),
+            ModuleSource {
+                lines: expanded,
+                ..source.clone()
+            },
+        ));
     }
 
     let mut combined = Vec::new();
@@ -781,13 +784,31 @@ pub fn load_module_graph_with_provider(
         combined.push(line);
         origins.push(SourceOrigin::new(Some(root_file.clone()), idx as u32 + 1));
     }
-    for source in expanded_deps {
+    for (module_id, source) in expanded_deps {
         let file_name = stable_path_string(&source.path);
+        // Give file-derived modules ordinary scope in the combined stream;
+        // actual source lines keep their original physical origins.
+        let implicit = scan_module_ids_from_processing(&source.lines).is_empty();
+        if implicit {
+            combined.push(format!(".module {module_id}"));
+            origins.push(SourceOrigin::new(
+                Some(file_name.clone()),
+                source.first_line,
+            ));
+        }
+        let line_count = source.lines.len() as u32;
         for (idx, line) in source.lines.into_iter().enumerate() {
             combined.push(line);
             origins.push(SourceOrigin::new(
                 Some(file_name.clone()),
                 source.first_line + idx as u32,
+            ));
+        }
+        if implicit {
+            combined.push(".endmodule".to_owned());
+            origins.push(SourceOrigin::new(
+                Some(file_name),
+                source.first_line + line_count.saturating_sub(1),
             ));
         }
     }

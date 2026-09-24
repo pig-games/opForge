@@ -453,6 +453,7 @@ rootsDone
 sourceCountReady
 	move.l d0, SourceCount
 	clr.l SpanCount
+	clr.l SelectedFileDerived
 	tst.l DiscoverMode
 	beq.w spanCapacityReady
 	move.l #graph.MAX_SPANS, d0
@@ -499,6 +500,26 @@ ordinalReady
 	clr.l SourceLine
 	bsr.w openSource
 	bne.w closeBad
+	tst.l DiscoverMode
+	beq.w fileDerivedReady
+	cmpi.l #1, SourceOrdinal
+	bne.w fileDerivedSelection
+	lea DeclarationBlock, a0
+	movea.l memory.Block.Pointer(a0), a0
+	moveq #1, d0
+	jsr declarations.explicitFile
+	tst.l d0
+	bne.w fileDerivedReady
+	move.l #1, SelectedFileDerived
+fileDerivedSelection
+	tst.l SelectedFileDerived
+	beq.w fileDerivedReady
+	bsr.w pathStem
+	beq.w closeBad
+	lea Front, a0
+	jsr frontend.beginFileDerived
+	bne.w closeBad
+fileDerivedReady
 	tst.l DiscoverMode
 	beq.w spanAllowed
 	move.l SpanCount, d0
@@ -547,11 +568,16 @@ sourceReady
 sourceEnd
 	tst.l RequestedModule
 	beq.w selectionComplete
+	tst.l SelectedFileDerived
+	bne.w selectionComplete
 	cmpi.l #2, SelectionState
 	bne.w closeBad
 selectionComplete
 fileDone
 	bsr.w closeSource
+	bne.w closeBad
+	lea Front, a0
+	jsr frontend.endFileDerived
 	bne.w closeBad
 	move.l SourceCount, d0
 	subq.l #1, d0
@@ -1170,6 +1196,7 @@ RequestedModule	.res long, 1
 RequestedName	.res long, 1
 RequestedNameBytes	.res long, 1
 SelectionState	.res long, 1
+SelectedFileDerived	.res long, 1
 OrderedCount	.res long, 1
 GraphBlock	.res byte, memory.Block.Used+4
 GraphSpans	.res byte, memory.Block.Used+4

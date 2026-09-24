@@ -144,6 +144,34 @@ mod tests {
     }
 
     #[test]
+    fn load_module_graph_preserves_implicit_dependency_line_origins() {
+        let project = temp_dir();
+        let root = project.join("main.asm");
+        let dependency = project.join("dep.asm");
+        fs::write(
+            &root,
+            ".module main\n.use dep as d\n.byte d.value\n.endmodule\n",
+        )
+        .unwrap();
+        fs::write(&dependency, ".cpu m6502\n.pub\nvalue = 7\n").unwrap();
+
+        let root_lines = crate::expand_source_file(&root, &[], &[], 64).unwrap();
+        let graph = load_module_graph(&root, root_lines, &[], &[], &[], 64).unwrap();
+        let declaration = graph
+            .lines
+            .iter()
+            .position(|line| line == "value = 7")
+            .unwrap();
+        assert_eq!(graph.lines[declaration - 3], ".module dep");
+        assert_eq!(graph.lines[declaration + 1], ".endmodule");
+        assert_eq!(graph.source_map.origins().len(), graph.lines.len());
+        let origin = &graph.source_map.origins()[declaration];
+        assert_eq!(origin.file.as_deref(), Some(dependency.to_str().unwrap()));
+        assert_eq!(origin.line, 3);
+        fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
     fn load_module_graph_ignores_use_directives_in_inactive_conditionals() {
         let project = temp_dir();
         let src = project.join("src");

@@ -4,6 +4,9 @@ use super::*;
 #[path = "binary_source_map_measurement.rs"]
 mod measurement;
 
+#[path = "binary_source_implicit_modules.rs"]
+mod implicit_modules;
+
 const ROOT: &str =
     ".module main\n.cpu m6502\n.use alpha\n.use beta\n.pub\nentry\n.byte 4\n.endmodule\n.end\n";
 const A: &str = ".module alpha\n.cpu m6502\n.use shared\n.pub\nentry\n.byte 2\n.endmodule\n.end\n";
@@ -21,6 +24,7 @@ const UNUSED: &[(&str, &str)] = &[
     ("main.asm", ".module main\n.cpu m6502\n.use chosen\n.byte 2\n.endmodule\n.end\n"),
     ("library.asm", ".module unused\n.use absent\n.byte missing\n.endmodule\n.module chosen\n.cpu m6502\n.org $1000\n.byte 1\n.endmodule\n.end\n"),
 ];
+
 const BLOCK_BOUNDARIES: &[(&str, &str)] = &[
     (
         "main.asm",

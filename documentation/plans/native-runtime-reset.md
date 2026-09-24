@@ -536,10 +536,11 @@ does not choose the first match across roots. `.include` remains separate.
 The initial discovery checkpoint eagerly prepared every candidate. The selective
 follow-up now builds a declaration index and prepares only files in the requested
 dependency closure. It skips unrelated invalid source, `.include` fragments and
-duplicate unused declarations. The index remains syntactic: implicit module
-identity, conditional or macro-generated declarations, and unused modules within
-a selected file are outside this experimental path. Rust's loader covers those
-cases. The scanner bounds paths to 255 bytes, directory nesting to eight levels,
+duplicate unused declarations. The index remains syntactic. File-derived module
+identity now works for files without explicit declarations; conditional or
+macro-generated declarations and unused modules within a selected file remain
+outside this experimental path. Rust's loader covers those cases. The scanner
+bounds paths to 255 bytes, directory nesting to eight levels,
 discovered files to 128, declarations to 512 and declaration names to 16 KiB;
 an exceeded bound is an explicit failure.
 

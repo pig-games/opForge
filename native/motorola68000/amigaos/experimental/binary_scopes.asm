@@ -107,12 +107,71 @@ scopes
 	clr.w MODULE_STATE+modules.State.Explicit(a0)
 	clr.w MODULE_STATE+modules.State.Outside(a0)
 	clr.w MODULE_STATE+modules.State.Visibility(a0)
+	clr.w MODULE_STATE+modules.State.FileDerived(a0)
 	moveq #0, d0
 	rts
 bad
 	moveq #1, d0
 	rts
 	.bend  ; endFile
+
+; A0=scope state,A1=basename,D0=name bytes. Open its file-derived module
+; through the normal numeric module binder. D1=module index+1 on success;
+; D0/CCR=status; other registers preserved.
+beginFileDerived	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	movea.l a1, a5
+	tst.w layout.State.Current(a6)
+	bne.w fileDerivedBad
+	movea.l a5, a0
+	movea.l a6, a1
+	jsr bind
+	bne.w fileDerivedBad
+	move.l d1, d0
+	sub.w layout.State.Base(a6), d0
+	lea ENTRIES(a6), a1
+	lea ARENA(a6), a2
+	movea.l a6, a3
+	lea bind, a4
+	lea MODULE_STATE(a6), a0
+	jsr modules.open
+	bne.w fileDerivedBad
+	move.w modules.State.Active(a0), layout.State.Current(a6)
+	move.w #1, modules.State.FileDerived(a0)
+	moveq #0, d1
+	move.w modules.State.Active(a0), d1
+	moveq #0, d0
+	bra.w fileDerivedDone
+fileDerivedBad
+	moveq #1, d0
+fileDerivedDone
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; beginFileDerived
+
+; A0=scope state. Close a file-derived module still active at physical EOF.
+; D0/CCR=status; other registers preserved.
+endFileDerived	.block
+	movem.l d1/a0-a1, -(sp)
+	movea.l a0, a1
+	tst.w MODULE_STATE+modules.State.FileDerived(a1)
+	beq.w fileDerivedClosed
+	moveq #0, d0
+	move.w layout.State.Current(a1), d0
+	lea MODULE_STATE(a1), a0
+	jsr modules.close
+	bne.w fileDerivedEnd
+	clr.w layout.State.Current(a1)
+	clr.w MODULE_STATE+modules.State.FileDerived(a1)
+fileDerivedClosed
+	moveq #0, d0
+fileDerivedEnd
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	rts
+	.bend  ; endFileDerived
 
 ; A0=state. Returns D0=next unused source ID, other registers preserved.
 count	.block
@@ -379,11 +438,21 @@ closing
 	bne.w bad
 	bra.w empty
 end
-	tst.w layout.State.Current(a6)
-	bne.w bad
 	addq.l #5, a0
 	cmpa.l a4, a0
 	bne.w bad
+	tst.w layout.State.Current(a6)
+	beq.w endSyntax
+	lea MODULE_STATE(a6), a0
+	tst.w modules.State.FileDerived(a0)
+	beq.w bad
+	moveq #0, d0
+	move.w layout.State.Current(a6), d0
+	jsr modules.close
+	bne.w bad
+	clr.w layout.State.Current(a6)
+	clr.w modules.State.FileDerived(a0)
+endSyntax
 	move.w #1, layout.State.Ended(a6)
 	bra.w retainedLabel  ; EOF continues with the next explicit source
 references

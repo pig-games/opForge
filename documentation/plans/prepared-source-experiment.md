@@ -1206,3 +1206,30 @@ checkpoint. The positive compact CLI command took 0.510 seconds in one run;
 that sample is not a controlled speed comparison. Peak owned memory was not
 measured for this syntax slice. Other `.use` forms, including wildcard and
 parameterized imports, remain to be compared with Rust.
+
+## File-derived modules in native discovery
+
+A source file without an explicit `.module` now contributes its filename stem as
+a module ID during native candidate indexing. An explicit declaration in that
+file suppresses the filename fallback; duplicate IDs across files remain an
+error. Selected file-derived modules and a file-derived entry lower the whole
+file under numeric module ownership. The frontend records zero-byte open/close
+boundaries for graph ordering, so packed source records keep their physical
+file/line provenance. `.end` can close a file-derived module.
+
+Rust graph combination also needed a repair: it discovered a file-derived
+dependency by name but previously appended its lines outside a module scope
+when the entry declared an explicit module. The combined stream now supplies
+scope boundaries while retaining each real line's physical origin. Rust
+oracles cover explicit and file-derived entries, a dependency ending in `.end`,
+ambiguous stems and explicit-declaration precedence.
+
+Fresh 68020 / 2 MiB FS-UAE compact CLI runs matched the live Rust bytes `07 07`
+for an explicit entry importing a file-derived dependency, for a file-derived
+entry, and for a dependency ending in `.end`. Separate fresh runs rejected two
+matching file stems and a filename whose file instead declares another module.
+The release compact Hunk is 45,780 bytes with 57,060 bytes linked reservation,
+up 928 and 820 bytes respectively from the direct-alias checkpoint. Guest
+command times observed for positive cases were 0.26–0.52 seconds; these are
+individual functional runs on new inputs, not a comparative performance claim.
+Peak owned memory was not measured.

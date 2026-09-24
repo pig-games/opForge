@@ -139,6 +139,69 @@ graphDone
 	tst.l d0
 	rts
 	.bend  ; beginGraph
+
+; A0=Frame,A1=file basename,D0=name bytes. Enter file-derived module ownership
+; before lowering physical lines. D0/CCR=status; other registers preserved.
+beginFileDerived	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l Frame.Scratch(a2), a0
+	lea SCOPE_STATE(a0), a0
+	jsr scopes.beginFileDerived
+	bne.w fileDerivedDone
+	move.l d1, d3
+	movea.l Frame.Graph(a2), a0
+	move.l a0, d0
+	beq.w fileDerivedCount
+	moveq #0, d0
+	moveq #0, d1
+	move.l d3, d2
+	jsr graph.line
+	bne.w fileDerivedDone
+fileDerivedCount
+	movea.l Frame.Scratch(a2), a0
+	lea SCOPE_STATE(a0), a0
+	jsr scopes.count
+	move.l d0, Frame.NameCount(a2)
+	moveq #0, d0
+fileDerivedDone
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; beginFileDerived
+
+; A0=Frame. Close any file-derived module not already closed by .end; graph
+; receives a zero-byte boundary, leaving physical record provenance intact.
+; D0/CCR=status; other registers preserved.
+endFileDerived	.block
+	movem.l d1-d2/a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l Frame.Scratch(a2), a1
+	moveq #0, d2
+	tst.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.FileDerived(a1)
+	beq.w noFileDerivedActive
+	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a1), d2
+noFileDerivedActive
+	lea SCOPE_STATE(a1), a0
+	jsr scopes.endFileDerived
+	bne.w endFileDerivedDone
+	tst.l d2
+	beq.w endFileDerivedOk
+	movea.l Frame.Graph(a2), a0
+	move.l a0, d0
+	beq.w endFileDerivedOk
+	moveq #0, d0
+	move.l d2, d1
+	moveq #0, d2
+	jsr graph.line
+	bra.w endFileDerivedDone
+endFileDerivedOk
+	moveq #0, d0
+endFileDerivedDone
+	movem.l (sp)+, d1-d2/a0-a2
+	tst.l d0
+	rts
+	.bend  ; endFileDerived
 ; Set the physical source line before lowering a line from an included file.
 ; A0=active Frame, D0=1..65535. D0/CCR=status; other registers preserved.
 setLine	.block

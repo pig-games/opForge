@@ -5,6 +5,8 @@
 ; D0=1 lower this line, 0 skip it, -1 invalid duplicate selection. Other
 ; registers preserved. RequestedModule=0 leaves entry/explicit-order files alone.
 selectLine .block
+	tst.l SelectedFileDerived
+	bne.w lower
 	tst.l RequestedModule
 	beq.w lower
 	movem.l d1-d5/a0-a3, -(sp)

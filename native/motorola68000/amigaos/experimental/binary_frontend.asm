@@ -291,6 +291,17 @@ graphBeforeDone
 	move.l Frame.Capacity(a5), d0
 	jsr scopes.line
 	bne.w failed
+	movea.l Frame.Output(a5), a0
+	moveq #0, d0
+	move.b (a0), d0
+	cmpi.w #9, d0
+	blo.w constantCaptured
+	cmpi.b #34, 8(a0)
+	bne.w constantCaptured
+	lea SCOPE_STATE(a6), a1
+	jsr imports.captureConstant
+	bne.w failed
+constantCaptured
 	.MEMORY_STAGE #4
 	movea.l Frame.Output(a5), a0
 	lea PREPARED_LINE(a6), a1

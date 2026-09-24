@@ -74,9 +74,15 @@ fn binary_graph_unused_import_parameters_preserve_output() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; native rejects unsupported parameter expressions"]
-fn compact_cli_rejects_unsupported_import_parameters_fs_uae() {
-    compact_cli(UNUSED_PARAMETERS, &["library"], &[], None, false);
+#[ignore = "requires configured FS-UAE; unused configured values preserve output"]
+fn compact_cli_unused_import_parameters_fs_uae() {
+    let expected = oracle_with_roots(UNUSED_PARAMETERS, &["library"]).unwrap();
+    compact_cli(UNUSED_PARAMETERS, &["library"], &[], Some(&expected), false);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; empty parameter list is invalid"]
+fn compact_cli_rejects_empty_import_parameters_fs_uae() {
     let empty = UNUSED_PARAMETERS[0]
         .1
         .replace("with (FEATURE=1, OFFSET=(2+3), MODE=3)", "with ()");

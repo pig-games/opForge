@@ -116,34 +116,35 @@ fit the implementation. Use more than one source-target family where the boundar
 is intended to be generic. A complete small case is preferable to a wide set of
 helpers that cannot produce an artifact Erik can inspect.
 
-## Current module completion target
+## Module boundary before the next phase
 
-Finish the compact CLI's module and include behavior against the maintained Rust
-implementation before returning to performance optimization. This covers explicit
-and implicit file modules, selected-file discovery and dependency order, documented
-`.use` forms and visibility, selected includes, and reachable mapped-section
-content. A harness-only success is insufficient: representative cases must run
-through the compact CLI with fresh exact Rust/native output, including generic
-cases from more than one source-target family. Relevant missing/ambiguous imports,
-cycles, private names and invalid include paths must fail explicitly. Keep the
-host-prepared package boundary for now; native package generation is separate.
+The module-focused phase has established compact CLI execution for explicit and
+file-derived modules, selected-file discovery and dependency order, common
+`.use` forms and visibility, selected includes, reference-driven named blocks,
+bounded mapped-section content, and scalar import-site parameters. Fresh exact
+Rust/native cases include successful output and rejection of missing/ambiguous
+imports, cycles, private names and invalid include paths. The host-prepared
+package boundary remains; native package generation is separate.
 
-Work in bounded slices. Direct per-item `.use` aliases, implicit file identities,
-and direct wildcard availability now have focused Rust/native cases. Configured
-module parameters, conditional or generated module discovery,
-remaining include path forms, and section-map composition still need focused
-parity cases. Some depend on broader source expansion. Do not claim module
-parity while those forms are unsupported, or add a parallel text interpreter to
-close a checklist. Use the existing binary-source representation and numeric
-graph so later assembly passes do not return to source strings.
+Direct per-item `.use` aliases, implicit file identities, direct wildcard
+availability, and scalar configured parameters now have focused Rust/native
+cases. Conditional or generated module discovery, remaining include path forms,
+and general section-map composition depend on broader language and layout work.
+Do not claim full module parity while those forms are unsupported. The next
+phase returns to measured performance and broader assembler language support;
+revisit remaining module forms when those capabilities make them practical.
+Keep the binary-source representation and numeric graph so later assembly passes
+do not return to source strings.
 
 Rust now binds scalar `.use ... with (...)` values as private symbols in the
 imported module. It evaluates the expression in the importer from values known
-at the `.use` site; forward values fail. The compact native path carries literal
-scalar parameters through preparation into assembly and binds them by numeric
-symbol ID. Native importer expressions and compound values remain gaps, as do
-block-local first-pass conditionals or loops using outer symbols. Do not claim
-parameter parity yet.
+at the `.use` site; forward values fail. The compact native path now evaluates
+supported signed-32-bit scalar expressions from earlier module-scope `=`
+constants and incoming parameters. It carries their values by numeric symbol ID
+through preparation into assembly. `.const`, compound values, and expressions
+outside the compact VM grammar remain broader language gaps, as do block-local
+first-pass conditionals or loops using outer symbols. Do not claim full module
+or parameter parity yet.
 The [prepared-source experiment](prepared-source-experiment.md#module-parameter-checkpoint)
 tracks this parameter subset and its limitations.
 

@@ -101,7 +101,7 @@ physical file/line locations through graph reordering.
 
 Other limits remain explicit:
 
-- no implicit file-derived modules, module metadata, dotted import aliases,
+- no module metadata, dotted import aliases,
   preprocessor-generated includes, anonymous blocks or dotted
   block/namespace declarations,
   macros, conditionals, loops, structs or lists;
@@ -1290,17 +1290,23 @@ fail because the graph maintains one module instance. Composite symbol values
 still need typed evaluation and injection; source-text round-tripping is not a
 sound general solution for structs.
 
-The compact native path now binds scalar numeric literals in a `with` clause as
-private module symbols. Preparation stores numeric symbol IDs and values, then
-assembly seeds those values before dependency resolution. Fresh 68020 / 2 MiB
-FS-UAE runs matched live Rust output for one or two parameters, distinct aliases
-of one configured module, and an import with section mapping. Unsupported
-importer expressions, empty parameter lists and duplicate aliases exited
-nonzero. Separate fresh runs also rejected conflicting parameter values and
-private access.
-The current Hunk is 47,720 bytes with 59,180 linked reserved bytes, up 716 and
-692 bytes from the preceding fail-closed checkpoint. These are size observations,
-not a performance comparison; peak owned memory was not measured. Native
-importer-site expression evaluation and compound values remain open, so full
-parameter parity is not yet established. The earlier accepted-but-inert native
-checkpoint remains in Git history, not as supported behavior.
+The compact native path first bound scalar numeric literals in a `with` clause
+as private module symbols. Its next checkpoint evaluates supported signed-32-bit
+expressions at the import site using a bounded source-order environment. Earlier
+module-scope `=` constants and incoming scalar parameters are available; forward
+constants, labels and the current address are not. Unresolved ordinary constants
+remain valid for later assembly resolution but are not available to an earlier
+import. Preparation stores numeric symbol IDs and values, then assembly seeds
+those values before dependency resolution; no source text enters assembly.
+
+Fresh 68020 / 2 MiB FS-UAE runs matched live Rust bytes for an earlier caller
+constant, parenthesized arithmetic, a nested import using an incoming parameter,
+multiple configured values, and an unrelated forward constant. Fresh negative
+runs rejected forward and label values and an empty parameter list. One initial
+forward-constant-plus-import emulator run stalled and was stopped without a
+result; its bounded repeat and the isolated no-import case both passed. The
+current Hunk is 48,304 bytes with 59,752 linked reserved bytes, up 584 and 572
+bytes from the literal-only checkpoint. These are size observations, not a
+performance comparison; peak owned memory was not measured. `.const`, compound
+values and expression forms outside the compact VM grammar remain language gaps,
+so full parameter parity is not established.

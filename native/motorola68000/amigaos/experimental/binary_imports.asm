@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_section_prepare as sections
+	.use opasm.amigaos.binary_expression as expression
 	.pub
 Item	.struct
 Target	.word ?
@@ -31,7 +32,10 @@ PROXIES = SELECTIONS+layout.LIMIT*SELECTION_BYTES
 PARAM_COUNT = PROXIES+256*2
 PARAMS = PARAM_COUNT+2
 PARAM_BYTES = 8
-SCRATCH_BYTES = PARAMS+layout.LIMIT*PARAM_BYTES
+KNOWN_VALUES = PARAMS+layout.LIMIT*PARAM_BYTES
+KNOWN_DEFINED = KNOWN_VALUES+layout.LIMIT*4
+EXPRESSION_SCRATCH = KNOWN_DEFINED+layout.LIMIT
+SCRATCH_BYTES = EXPRESSION_SCRATCH+256
 PROXY = 8
 	.section code, kind=code
 
@@ -46,6 +50,68 @@ clear
 	moveq #0, d0
 	rts
 	.bend  ; begin
+
+; A0=normalized writer record,A1=scope state. Retain only module-scope
+; assignments whose values are known at this source position. The existing
+; expression VM handles arithmetic; labels and forward values remain unknown.
+; D0/CCR=status; other registers preserved.
+captureConstant	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a1, a6
+	moveq #0, d0
+	move.w layout.MODULE_STATE+modules.State.Active(a6), d0
+	beq.w constantOk
+	cmp.w layout.State.Current(a6), d0
+	bne.w constantOk
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	cmpi.w #10, d0
+	blo.w constantOk
+	cmpi.b #1, 4(a0)
+	bhi.w constantOk
+	cmpi.b #34, 8(a0)
+	bne.w constantOk
+	movea.l a0, a1
+	adda.w d0, a1
+	moveq #0, d7
+	move.w 5(a0), d7
+	lea 9(a0), a0
+	bsr.w evaluateRange
+	bne.w constantUnknown
+	move.l d7, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w constantOk
+	cmp.w layout.State.Count(a6), d0
+	bhs.w constantOk
+	lea layout.IMPORT_STATE(a6), a0
+	move.l d0, d2
+	lsl.l #2, d2
+	lea KNOWN_VALUES(a0), a1
+	move.l d1, 0(a1, d2.l)
+	lea KNOWN_DEFINED(a0), a1
+	move.b #1, 0(a1, d0.l)
+	bra.w constantOk
+constantUnknown
+	move.l d7, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w constantOk
+	cmp.w layout.State.Count(a6), d0
+	bhs.w constantOk
+	lea layout.IMPORT_STATE(a6), a0
+	move.l d0, d2
+	lsl.l #2, d2
+	lea KNOWN_VALUES(a0), a1
+	clr.l 0(a1, d2.l)
+	lea KNOWN_DEFINED(a0), a1
+	clr.b 0(a1, d0.l)
+constantOk
+	moveq #0, d0
+constantDone
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; captureConstant
 
 ; A0=.use token,A1=scope state,A2=binder callback,A3=section state,
 ; A4=record end.
@@ -836,7 +902,7 @@ done
 	.bend  ; resolve
 
 ; A0=first suffix token,A4=end,A5=binder,A6=scope,D7=target module index.
-; Capture literal scalar parameters by numeric ID. On success A4 ends before
+; Capture scalar parameters by numeric ID. On success A4 ends before
 ; the with clause, so the existing selection/alias parser sees its own suffix.
 ; Other registers preserved; D0/CCR=status.
 parameters	.block
@@ -948,20 +1014,44 @@ parameterValue
 	bhs.w parametersBad
 	cmpi.b #34, (a3)+
 	bne.w parametersBad
-	move.l a4, d0
-	sub.l a3, d0
-	cmpi.l #5, d0
-	blo.w parametersBad
-	cmpi.b #2, (a3)
+	move.l a3, -(sp)
+	moveq #0, d2
+parameterExpression
+	cmpa.l a4, a3
+	bhs.w expressionBad
+	cmpi.b #14, (a3)
+	bne.w expressionClose
+	addq.w #1, d2
+	bra.w expressionAdvance
+expressionClose
+	cmpi.b #15, (a3)
+	bne.w expressionComma
+	tst.w d2
+	beq.w expressionReady
+	subq.w #1, d2
+	bra.w expressionAdvance
+expressionComma
+	cmpi.b #4, (a3)
+	bne.w expressionAdvance
+	tst.w d2
+	beq.w expressionReady
+expressionAdvance
+	movea.l a3, a0
+	bsr.w nextParameterToken
+	bne.w expressionBad
+	movea.l a0, a3
+	bra.w parameterExpression
+expressionReady
+	movea.l (sp)+, a0
+	movea.l a3, a1
+	bsr.w evaluateRange
 	bne.w parametersBad
-	moveq #0, d6
-	move.b 1(a3), d6
-	lsl.l #8, d6
-	move.b 2(a3), d6
-	lsl.l #8, d6
-	move.b 3(a3), d6
-	lsl.l #8, d6
-	move.b 4(a3), d6
+	move.l d1, d6
+	bra.w expressionStored
+expressionBad
+	addq.l #4, sp
+	bra.w parametersBad
+expressionStored
 	lea layout.IMPORT_STATE(a6), a0
 	moveq #0, d0
 	move.w PARAM_COUNT(a0), d0
@@ -992,7 +1082,17 @@ appendParameter
 	move.l d6, 4(a1)
 	addq.w #1, PARAM_COUNT(a0)
 parameterStored
-	addq.l #5, a3
+	move.l d5, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w parametersBad
+	cmp.w layout.State.Count(a6), d0
+	bhs.w parametersBad
+	move.l d0, d1
+	lsl.l #2, d1
+	lea KNOWN_VALUES(a0), a1
+	move.l d6, 0(a1, d1.l)
+	lea KNOWN_DEFINED(a0), a1
+	move.b #1, 0(a1, d0.l)
 	cmpa.l a4, a3
 	bhs.w parametersBad
 	cmpi.b #4, (a3)
@@ -1025,6 +1125,98 @@ parametersDone
 	tst.l d0
 	rts
 	.bend  ; parameters
+
+; A0..A1=complete numeric token range,A6=scope state. D1=known i32 on
+; success, D0/CCR=status. The biased VM pointers are used only after every
+; symbol ID has been checked against the bounded local-name arrays.
+evaluateRange	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a2
+	movea.l a0, a5
+	movea.l a1, a4
+	cmpa.l a4, a5
+	bhs.w rangeBad
+	lea layout.IMPORT_STATE(a6), a3
+validateExpressionToken
+	cmpa.l a4, a5
+	beq.w compileExpression
+	bhi.w rangeBad
+	moveq #0, d0
+	move.b (a5), d0
+	cmpi.b #6, d0
+	beq.w rangeBad  ; current address is unavailable at an import site
+	cmpi.b #1, d0
+	bhi.w nextExpressionToken
+	move.l a4, d0
+	sub.l a5, d0
+	cmpi.l #4, d0
+	blo.w rangeBad
+	tst.b 3(a5)
+	bne.w rangeBad
+	moveq #0, d0
+	move.w 1(a5), d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w rangeBad
+	cmp.w layout.State.Count(a6), d0
+	bhs.w rangeBad
+	lea KNOWN_DEFINED(a3), a0
+	tst.b 0(a0, d0.l)
+	beq.w rangeBad
+nextExpressionToken
+	movea.l a5, a0
+	bsr.w nextParameterToken
+	bne.w rangeBad
+	movea.l a0, a5
+	bra.w validateExpressionToken
+compileExpression
+	movea.l a4, a1
+	movea.l a2, a0
+	lea EXPRESSION_SCRATCH(a3), a5
+	movea.l a5, a3
+	lea 256(a5), a4
+	jsr expression.compile
+	bne.w rangeBad
+	cmpa.l a1, a0
+	bne.w rangeBad
+	suba.w #16, sp
+	movea.l sp, a2
+	lea layout.IMPORT_STATE(a6), a4
+	lea KNOWN_VALUES(a4), a0
+	moveq #0, d0
+	move.w layout.State.Base(a6), d0
+	move.l d0, d3
+	lsl.l #2, d3
+	suba.l d3, a0
+	move.l a0, expression.Frame.Values(a2)
+	lea KNOWN_DEFINED(a4), a0
+	suba.l d0, a0
+	move.l a0, expression.Frame.Defined(a2)
+	moveq #0, d1
+	move.w layout.State.Count(a6), d1
+	add.l d1, d0
+	move.l d0, expression.Frame.Count(a2)
+	clr.l expression.Frame.Pc(a2)
+	movea.l a5, a0
+	movea.l a3, a1
+	jsr expression.evaluate
+	tst.l d0
+	bne.w evaluatedBad
+	tst.l d2
+	bne.w evaluatedBad
+	cmpa.l a1, a0
+	bne.w evaluatedBad
+	adda.w #16, sp
+	moveq #0, d0
+	bra.w rangeDone
+evaluatedBad
+	adda.w #16, sp
+rangeBad
+	moveq #1, d0
+rangeDone
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; evaluateRange
 
 ; A0=token,A4=end. Advance one packed source token without inspecting its
 ; expression meaning. D0/CCR=status; D1 scratch.

@@ -32,8 +32,9 @@ Parameter	.word ?
 First	.word ?
 Last	.word ?
 Kind	.word ?
+HasParameter	.word ?
 	.endstruct
-DEF_BYTES = Def.Kind+2
+DEF_BYTES = Def.HasParameter+2
 KIND_SEGMENT = 0
 KIND_MACRO = 1
 DEFS = State.Serial+2
@@ -95,8 +96,8 @@ line	.block
 	lea 0(a5, d6.w), a3
 	lea 4(a5), a2
 	clr.w State.CallLabelPresent(a6)
-	; A name-first header has a four-byte name followed by .segment.
-	cmpi.w #17, d6
+	; A name-first header has a four-byte name followed by .segment/.macro.
+	cmpi.w #13, d6
 	blo.w directive
 	cmpi.b #1, (a2)
 	bhi.w directive
@@ -153,7 +154,7 @@ directiveName
 	cmpi.l #scopes.KEY_SEGMENT, d0
 	beq.w directiveHeader
 	cmpi.l #scopes.KEY_MACRO, d0
-	beq.w bad  ; only the name-first macro header is supported
+	beq.w directiveMacroHeader
 	tst.w State.Open(a6)
 	bne.w capture
 	tst.w State.Skipping(a6)
@@ -175,7 +176,13 @@ findCall
 	bra.w findCall
 directiveHeader
 	moveq #KIND_SEGMENT, d2
-	; .segment NAME(parameter) has one exact numeric-token shape.
+	bra.w directiveParameters
+directiveMacroHeader
+	moveq #KIND_MACRO, d2
+	cmpi.w #15, d6
+	beq.w directiveNoParameter
+directiveParameters
+	; .segment/.macro NAME(parameter) has one exact numeric-token shape.
 	cmpi.w #19, d6
 	bne.w bad
 	cmpi.b #1, 5(a2)
@@ -192,6 +199,20 @@ directiveHeader
 	bne.w bad
 	move.w 6(a2), d5
 	move.w 11(a2), d3
+	moveq #1, d1
+	bra.w checkedHeader
+directiveNoParameter
+	cmpi.b #1, 5(a2)
+	bhi.w bad
+	tst.b 8(a2)
+	bne.w bad
+	cmpi.b #TOKEN_OPEN_PAREN, 9(a2)
+	bne.w bad
+	cmpi.b #TOKEN_CLOSE_PAREN, 10(a2)
+	bne.w bad
+	move.w 6(a2), d5
+	moveq #0, d3
+	moveq #0, d1
 	bra.w checkedHeader
 segmentHeader
 	moveq #KIND_SEGMENT, d2
@@ -199,14 +220,23 @@ segmentHeader
 macroHeader
 	moveq #KIND_MACRO, d2
 header
+	move.w 1(a2), d5
+	cmpi.w #13, d6
+	beq.w noParameter
 	cmpi.b #1, 9(a2)
 	bhi.w bad
 	cmpi.w #17, d6
 	bne.w bad  ; one bare parameter, no trailing tokens
 	tst.b 12(a2)
 	bne.w bad
-	move.w 1(a2), d5
 	move.w 10(a2), d3
+	moveq #1, d1
+	bra.w checkedHeader
+noParameter
+	cmpi.w #KIND_MACRO, d2
+	bne.w bad
+	moveq #0, d3
+	moveq #0, d1
 checkedHeader
 	tst.w State.Open(a6)
 	bne.w bad
@@ -238,6 +268,7 @@ newDefinition
 	move.w State.Used(a6), Def.First(a0)
 	move.w State.Used(a6), Def.Last(a0)
 	move.w d2, Def.Kind(a0)
+	move.w d1, Def.HasParameter(a0)
 	addq.w #1, State.Count(a6)
 	addq.w #1, d4
 	move.w d4, State.Open(a6)
@@ -301,22 +332,31 @@ call
 	btst #0, 1(a5)
 	bne.w bad
 callSyntax
+	move.w d4, d0
+	mulu.w #DEF_BYTES, d0
+	lea DEFS(a6), a0
+	adda.w d0, a0
+	move.w Def.HasParameter(a0), d5
 	move.l a3, d0
 	sub.l a2, d0
 	cmpi.l #5, d0
-	bls.w bad
+	blo.w bad
 	lea 5(a2), a1
 	moveq #0, d3
+	cmpa.l a3, a1
+	beq.w emptyArgument
 	cmpi.b #TOKEN_OPEN_PAREN, (a1)
 	bne.w bareArgument
 	cmpi.b #TOKEN_CLOSE_PAREN, -1(a3)
 	bne.w bad
 	addq.l #1, a1
 	subq.l #1, a3
-	cmpa.l a3, a1
-	bhs.w bad
 	moveq #1, d3
 bareArgument
+	cmpa.l a3, a1
+	bhs.w emptyArgument
+	tst.w d5
+	beq.w bad
 	move.l a3, d0
 	sub.l a1, d0
 	cmpi.l #ARG_LIMIT, d0
@@ -368,6 +408,14 @@ copyArgument
 	move.b (a1)+, (a0)+
 	subq.w #1, d2
 	bne.w copyArgument
+	bra.w queueCall
+emptyArgument
+	cmpa.l a3, a1
+	bhi.w bad
+	tst.w d5
+	bne.w bad
+	clr.w State.ArgBytes(a6)
+queueCall
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a0
@@ -404,7 +452,7 @@ done
 	rts
 	.bend  ; line
 
-; A0=segment state,A1=distinct 256-byte output,A2=scope state.
+; A0=template state,A1=distinct 256-byte output,A2=scope state.
 ; D0/CCR=status;
 ; D1=expanded raw record length, zero when the queued call is exhausted.
 ; The source line is the invocation line. Other registers preserved.
@@ -508,6 +556,8 @@ tokens
 	tst.b 4(a3)
 	bne.w copyToken
 	move.w 2(a3), d0
+	tst.w Def.HasParameter(a4)
+	beq.w copyToken
 	cmp.w Def.Parameter(a4), d0
 	bne.w copyToken
 	moveq #0, d4

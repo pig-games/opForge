@@ -761,3 +761,11 @@ and a 64-byte argument expression. Defaults, multiple or zero arguments,
 directive-first definitions, nested expansion, and imported macro visibility
 remain outside this parity checkpoint. There is no source-text expansion
 fallback for them.
+
+The next macro syntax checkpoint adds zero-parameter name-first definitions,
+directive-first `.macro NAME()` and `.macro NAME(parameter)` definitions, and
+empty `.NAME` / `.NAME()` calls. The 68020 / 2 MiB native output matched the
+live Rust CLI for these forms on m6502 and m68000. The earlier repeated
+local-label macro case still passed. Argument lists, defaults, textual
+substitution forms, nested calls, and imported definitions remain follow-on
+work; this checkpoint is not general macro parity.

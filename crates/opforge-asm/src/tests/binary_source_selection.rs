@@ -4,6 +4,7 @@ use super::*;
 const INDEXED: &str = include_str!("../../fixtures/binary-source/indexed-boundaries.asm");
 const DEFERRED_INDEX: &str = ".cpu m6502\n.org $1000\n lda target,x\ntarget:\n .byte 0\n.end\n";
 const REGISTERS: &str = include_str!("../../fixtures/binary-source/register-predicates.asm");
+const SELF_HOST_MOVEM: &str = ".cpu m68020\n.org 0\n movem.l d2-d7/a2-a6, -(sp)\n.end\n";
 
 fn oracle_bytes(source: &str) -> Vec<u8> {
     let (entries, diagnostics) =
@@ -26,6 +27,22 @@ fn binary_selection_positive_oracles() {
     assert_eq!(
         oracle_bytes(REGISTERS),
         [0x22, 0, 0x30, 7, 0x2e, 0, 0x7e, 0x7f, 0x70, 0x80]
+    );
+}
+
+#[test]
+fn binary_selection_self_host_movem_rust_oracle() {
+    assert_eq!(oracle_bytes(SELF_HOST_MOVEM), [0x48, 0xe7, 0x3f, 0x3e]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; localize current self-host MOVEM boundary"]
+fn binary_selection_self_host_movem_native_rejection_fs_uae() {
+    assert_eq!(oracle_bytes(SELF_HOST_MOVEM), [0x48, 0xe7, 0x3f, 0x3e]);
+    assert_native_files_rejection(
+        &[("input.asm", SELF_HOST_MOVEM)],
+        "m68020",
+        Some("[file 00000001, line 00000003]"),
     );
 }
 

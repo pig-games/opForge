@@ -963,3 +963,27 @@ so there remains no valid native self-host duration. Next isolate that first
 instruction failure with a small exact Rust/native case, then continue to
 subsequent real-source blockers; Hunk emission remains a separate required
 output slice.
+
+The first instruction rejection has a reduced, real-native reproducer:
+`movem.l d2-d7/a2-a6, -(sp)` under `m68020` at address zero. Rust emits
+`48 e7 3f 3e`; the 68020 / 2 MiB native binary-source harness completes
+with exit 20 and reports that statement's line. Instrumented self-host
+preparation stopped before completing the failing line. Two boundaries matter:
+the generic packed preparer currently accepts a bare register or scalar
+expression, but consumes `d2` as a complete register operand and rejects the
+following range separator; it also has no structured path for `-(sp)`. BSP3
+marks the corresponding `semv.sequence.v1` selector plan unsupported.
+Passing the tokens through without adding package-driven selection and
+execution would not make the instruction assemble.
+
+Treat this as the next feature family, split into reviewable checkpoints.
+First define a bounded, offset-only packed representation for structured
+operands, preserving the existing scalar path and rejecting unsupported
+forms. Then carry the smallest reusable package-owned sequence operations
+needed for register-list mask and indirect destination matching through BSP3
+and the native executor. The package must supply the register classes, mask
+mapping, reversal and opcode choices; the generic frontend/VM must not know
+68020 instruction semantics. Each checkpoint needs a focused Rust/native
+case and the unchanged self-host probe. A one-off `movem` encoding branch in
+the generic assembler would advance one line while creating the wrong
+boundary for the many structured operands still ahead.

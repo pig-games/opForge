@@ -901,12 +901,14 @@ reasons to replace the target with a simplified self-host fixture.
 
 First establish a reproducible source manifest, runtime package, Rust Hunk
 oracle and bounded guest invocation that reports the first native rejection.
-Then add the smallest coherent language/output slice that advances the unchanged
-entry and its dependencies. Keep exact small Rust/native cases for each new
-boundary, and rerun the real entry to choose the next one. Output and section
-work must ultimately produce the Hunk itself; flat bytes cannot qualify as
-self-host parity. Review memory cost and responsibility boundaries as features
-accumulate, especially before broadening the template or app modules.
+Then group missing capabilities by their responsibility and by the complete
+source module they must support. A first rejection locates a boundary but does
+not by itself define a slice. Keep exact small Rust/native cases for new
+boundaries, and rerun the unchanged entry at each useful checkpoint. Output and
+section work must ultimately produce the Hunk itself; flat bytes cannot
+qualify as self-host parity. Review memory cost and responsibility boundaries
+as features accumulate, especially before broadening the template or app
+modules.
 
 After roughly two or three self-host slices, review the direction together before
 selecting more. Check that shared directives and source preparation stay in the
@@ -1094,8 +1096,57 @@ bytes and 64,452 linked reserved bytes. The gated readiness run still observed
 
 Crucially, the unchanged self-host entry **still** rejects at line 69. Five
 repeated forward calls and a late-line control also passed, so neither the
-fifth call nor line ordinal alone explains it. The next step is to localize
-the actual packed name/qualifier, scoped target binding and candidate state at
-that line against an earlier `bsr.w nextPath` in the same entry. Keep the
-real-native readiness probe bounded; a console capture without a safe breakpoint
-at the relevant path would not establish the cause.
+fifth call nor line ordinal alone explains it. Keep the real-native readiness
+probe bounded; a console capture without a safe breakpoint at the relevant
+path would not establish the cause.
+
+### Whole-module capability slices
+
+The earlier first-rejection rhythm made progress visible but produced narrow
+changes that are hard to review together. Audit the complete source module
+before choosing a slice, group related missing behavior, and finish one
+responsibility before returning to the readiness probe. Do not infer a fix for
+line 69 from its spelling alone: earlier calls to `nextPath` pass, and reduced
+word-branch cases pass. Localize the failure inside the full entry context,
+then repair the general binding, selection or pass-state boundary it exposes.
+
+The live Rust dependency manifest currently contains 44 source/include files
+and about 22,500 source lines. The 195-line entry has four `.block`s and 136
+instruction statements across its code section: fixed-width branches and
+calls, direct and indirect memory operations, immediate arithmetic, register
+lists, and qualified `app.Frame` operands. It also has code, data and BSS
+sections, `.align`, `.res` and a four-section Hunk output. Its dependency graph
+uses structs, macros, conditional assembly and a compile-time loop. This is a
+syntax inventory, not proof that each construct fails natively. Completing
+the entry alone does not establish parity for the transitive graph.
+
+1. **Entry control flow and operand execution.** Audit every statement in the
+   entry code section, including all four blocks and their forward/backward
+   references. Resolve the line-69 failure as part of the whole section, then
+   carry any missing operand, scoped-symbol and fixed-width control-flow forms
+   through the packed source and package-owned semantic path. The checkpoint is
+   exact Rust/native code bytes for representative full-block cases and a
+   bounded unchanged-entry run that passes the complete entry code section.
+   Do not add mnemonic-specific decisions to shared code. Keep the selected
+   forms and package-size cost visible for review.
+2. **Section storage and Hunk output.** Support the entry's code/data/BSS
+   layout as a unit: `.align`, `.res`, section-relative symbols, any required
+   cross-section fixups, selected output order and Hunk serialization. Verify
+   one complete small multi-section module against fresh Rust Hunk bytes,
+   including BSS allocation and relocation; the unchanged entry remains the
+   broader probe. A flat stream or host-built Hunk is not acceptance.
+3. **Dependency-module cohorts.** Audit one full transitive module and its
+   immediate imports at a time, starting with `binary_app.asm`, recording which
+   declarations, compile-time constructs and package-driven 68020 forms are
+   actually missing. Implement a shared feature family across the affected
+   modules instead of handling isolated source lines. Accept each cohort with
+   complete module-level Rust/native comparisons and a bounded unchanged-entry
+   probe. The telemetry include files and existing `.macro` work need a
+   compatibility check, not an assumption of general macro parity.
+
+These are review units, not a promise that each fits in one commit. Use
+recovery-point commits inside a larger slice when useful, but present one
+combined diff and result for review. At every useful checkpoint record fresh
+parity, native completion status, package/image size and 2 MiB owned-memory
+peak. Record release timing only after a run actually completes. Revisit the
+architecture and code structure together after two or three such slices.

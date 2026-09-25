@@ -1166,6 +1166,30 @@ mod tests {
     }
 
     #[test]
+    fn namespace_macro_shadows_global_macro() {
+        let mut mp = MacroProcessor::new();
+        let lines = vec![
+            "BEGIN .macro".to_string(),
+            "    .byte 1".to_string(),
+            ".endmacro".to_string(),
+            ".namespace outer".to_string(),
+            "BEGIN .macro".to_string(),
+            "    .byte 2".to_string(),
+            ".endmacro".to_string(),
+            "    .BEGIN".to_string(),
+            ".endn".to_string(),
+            "    .BEGIN".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        let bytes = out
+            .iter()
+            .filter(|line| line.trim().starts_with(".byte"))
+            .map(|line| line.trim().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(bytes, [".byte 2", ".byte 1"]);
+    }
+
+    #[test]
     fn falls_back_to_global_macro_when_namespace_local_not_found() {
         let mut mp = MacroProcessor::new();
         let lines = vec![

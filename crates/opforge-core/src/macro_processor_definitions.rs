@@ -158,19 +158,13 @@ fn resolve_macro_lookup_key(
     macros: &HashMap<String, MacroDef>,
 ) -> Option<String> {
     let exact = to_upper(name);
-    if macros.contains_key(&exact) {
-        return Some(exact);
-    }
     if name.contains('.') {
-        return None;
+        return macros.contains_key(&exact).then_some(exact);
     }
     let namespace_parts: Vec<&str> = namespace_stack
         .iter()
         .filter_map(|part| part.as_deref())
         .collect();
-    if namespace_parts.is_empty() {
-        return None;
-    }
     for depth in (1..=namespace_parts.len()).rev() {
         let mut qualified = namespace_parts[..depth].join(".");
         qualified.push('.');
@@ -179,7 +173,7 @@ fn resolve_macro_lookup_key(
             return Some(qualified);
         }
     }
-    None
+    macros.contains_key(&exact).then_some(exact)
 }
 
 pub(super) fn build_macro_args(def: &MacroDef, inv: &MacroInvocation) -> MacroArgs {

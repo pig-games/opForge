@@ -694,6 +694,147 @@ done
 	tst.l d0
 	rts
 	.bend  ; finish
+
+; A0=mutable four-byte call-name token,A1=scope state,A2=scope binder.
+; Resolve one template call through the same selected, wildcard and qualified
+; import proxies as ordinary references. Only declared template targets are
+; returned; cross-module targets require a matching .use and public visibility.
+; D0/CCR=status,D1=canonical target ID; other registers preserved.
+resolveTemplate	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a3
+	movea.l a1, a6
+	movea.l a2, a5
+	jsr reference
+	bne.w templateBad
+	moveq #0, d1
+	move.w 1(a3), d1
+	move.l d1, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w templateBad
+	cmp.w layout.State.Count(a6), d0
+	bhs.w templateBad
+	lsl.l #4, d0
+	lea layout.ENTRIES(a6), a3
+	adda.l d0, a3
+	btst #3, records.Entry.Flags+1(a3)
+	beq.w templateTarget
+	lea layout.IMPORT_STATE(a6), a4
+	jsr resolve
+	bne.w templateBad
+templateTarget
+	move.l d1, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w templateBad
+	cmp.w layout.State.Count(a6), d0
+	bhs.w templateBad
+	move.l d0, d6
+	lsl.l #4, d0
+	lea layout.ENTRIES(a6), a3
+	adda.l d0, a3
+	btst #4, records.Entry.Flags+1(a3)
+	beq.w templateBad
+	move.l d6, d0
+	add.w d0, d0
+	lea layout.MODULE_STATE+modules.OWNERS(a6), a0
+	moveq #0, d7
+	move.w 0(a0, d0.w), d7
+	beq.w templateOk  ; unscoped global definitions remain visible
+	cmp.w layout.MODULE_STATE+modules.State.Active(a6), d7
+	beq.w templateOk
+	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
+	btst #0, 1(a0, d0.w)
+	beq.w templateBad
+	moveq #0, d0
+	move.w layout.MODULE_STATE+modules.State.Active(a6), d0
+	beq.w templateBad
+	subq.w #1, d0
+	add.w d0, d0
+	lea layout.IMPORT_STATE(a6), a4
+	lea HEADS(a4), a0
+	moveq #0, d6
+	move.w 0(a0, d0.w), d6
+templateImport
+	tst.w d6
+	beq.w templateBad
+	move.l d6, d0
+	subq.w #1, d0
+	mulu.w #ITEM_BYTES, d0
+	lea ITEMS(a4), a0
+	adda.l d0, a0
+	moveq #0, d6
+	move.w Item.Next(a0), d6
+	moveq #0, d0
+	move.w Item.Target(a0), d0
+	addq.w #1, d0
+	cmp.w d7, d0
+	bne.w templateImport
+	moveq #0, d5
+	move.w Item.Selected(a0), d5
+	tst.w d5
+	beq.w templateOk  ; unselected or wildcard import
+	move.l d1, d2
+	sub.w layout.State.Base(a6), d2
+	addq.w #1, d2
+templateSelection
+	tst.w d5
+	beq.w templateImport
+	move.l d5, d0
+	subq.w #1, d0
+	mulu.w #SELECTION_BYTES, d0
+	lea SELECTIONS(a4), a1
+	adda.l d0, a1
+	cmp.w Selection.Name(a1), d2
+	beq.w templateOk
+	moveq #0, d5
+	move.w Selection.Next(a1), d5
+	bra.w templateSelection
+templateOk
+	moveq #0, d0
+	bra.w templateDone
+templateBad
+	moveq #1, d0
+templateDone
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; resolveTemplate
+
+; A0=scope state,D0=call ID,D1=definition ID. Reuse selectedTarget's
+; read-only alias lookup before template call resolution may allocate a proxy.
+; D0/CCR=zero when a selected rename exposes this definition.
+templateAliasCandidate	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	move.w d1, d6
+	sub.w layout.State.Base(a6), d6
+	bcs.w aliasMissing
+	cmp.w layout.State.Count(a6), d6
+	bhs.w aliasMissing
+	addq.w #1, d6
+	moveq #0, d7
+	move.w layout.MODULE_STATE+modules.State.Active(a6), d7
+	beq.w aliasMissing
+	subq.l #4, sp
+	clr.b (sp)
+	move.w d0, 1(sp)
+	clr.b 3(sp)
+	movea.l sp, a5
+	moveq #0, d4
+	bsr.w selectedTarget
+	addq.l #4, sp
+	bne.w aliasMissing
+	cmp.w d6, d4
+	bne.w aliasMissing
+	moveq #0, d0
+	bra.w aliasDone
+aliasMissing
+	moveq #1, d0
+aliasDone
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; templateAliasCandidate
 	.priv
 
 ; A3=import item,A6=scope state. Selected names must be declared and public

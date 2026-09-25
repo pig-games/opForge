@@ -499,6 +499,33 @@ end
 	moveq #2, d0
 	bra.w done
 data
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #3, (a0)
+	bne.w dataExpression
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #3, d0
+	blo.w bad
+	moveq #0, d5
+	move.b 1(a0), d5
+	cmpi.w #2, d5
+	blo.w bad  ; one-byte strings were lowered to scalar expressions
+	move.l d5, d1
+	addq.l #2, d1
+	cmp.l d1, d0
+	blo.w bad
+	movea.l a0, a5
+	lea 2(a0), a0
+	move.l d5, d0
+	bsr.w emit
+	tst.l d0
+	bne.w bad
+	movea.l a5, a0
+	adda.l d5, a0
+	addq.l #2, a0
+	bra.w dataNext
+dataExpression
 	movea.l a2, a6
 	jsr expr.evaluate
 	movea.l a6, a2
@@ -551,6 +578,7 @@ dataReady
 	tst.l d0
 	bne.w bad
 	movea.l a5, a0
+dataNext
 	cmpa.l a1, a0
 	beq.w ok
 	cmpi.b #4, (a0)+

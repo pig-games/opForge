@@ -12,6 +12,7 @@ import runtime_comparison as runtime
 import vm_efficiency as base
 
 BINARY_TEST = "tests::binary_source_experiment::binary_source_fs_uae"
+COMPACT_MACRO_TEST = "tests::binary_source_experiment::compact_cli_macro_repeat_comparison_fs_uae"
 MEMORY_PROFILE_ENV = "OPFORGE_FS_UAE_MEMORY_PROFILE"
 CONSTRAINED_2M_SETTINGS = {
     "cpu": "68020",
@@ -166,6 +167,23 @@ def expression_workload(cpu, blocks, layout=False):
     return "\n".join(lines) + "\n", bytes(expected)
 
 
+def macro_repeat_workload(cpu, blocks):
+    """Exercise repeated expansion of a small captured template."""
+    if cpu not in ("m6502", "m68000") or blocks not in (8, 32):
+        raise ValueError("macro-repeat supports 8 or 32 m6502/m68000 blocks")
+    lines = [f".cpu {cpu}", ".org $1000", "EMIT .macro value", " .byte .value", " nop", ".endmacro"]
+    expected = bytearray()
+    nop = b"\xea" if cpu == "m6502" else b"\x4e\x71"
+    for block in range(blocks):
+        for item in range(8):
+            value = (block * 8 + item) & 0xff
+            lines.append(f" .EMIT({value})")
+            expected.append(value)
+            expected.extend(nop)
+    lines.append(".end")
+    return "\n".join(lines) + "\n", bytes(expected)
+
+
 def workload(cpu, blocks, kind):
     if kind == "mixed":
         return base.workload(cpu, blocks)
@@ -175,6 +193,8 @@ def workload(cpu, blocks, kind):
         return expression_workload(cpu, blocks)
     if kind == "expression-layout":
         return expression_workload(cpu, blocks, layout=True)
+    if kind == "macro-repeat":
+        return macro_repeat_workload(cpu, blocks)
     return replay_smoke(cpu, blocks)
 
 
@@ -185,7 +205,7 @@ def main():
                         help="native source snapshot used by both live runners (default: repository root)")
     parser.add_argument("--package", type=Path, default=base.ROOT / "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm")
     parser.add_argument("--workload", choices=("mixed", "replay-smoke", "binding-switch",
-                                                "expression-replay", "expression-layout"), default="mixed",
+                                                "expression-replay", "expression-layout", "macro-repeat"), default="mixed",
                         help="mixed measures selection; expression workloads exercise bounded label/current-PC arithmetic")
     parser.add_argument("--blocks", type=int, choices=(8, 32),
                         help="defaults to 8; 32 is an explicit larger probe subject to the same timeout")
@@ -194,6 +214,10 @@ def main():
                         help="also run the opt-in binary-source native harness")
     parser.add_argument("--binary-only", action="store_true",
                         help="run only the binary-source harness; requires --binary-source")
+    parser.add_argument("--compact-cli", action="store_true",
+                        help="also measure the separate compact native CLI on macro-repeat")
+    parser.add_argument("--compact-only", action="store_true",
+                        help="run only the compact native CLI; requires --compact-cli")
     parser.add_argument("--memory-profile", choices=("existing", "2m"),
                         default=os.environ.get(MEMORY_PROFILE_ENV, "existing"),
                         help="FS-UAE guest RAM profile; 2m selects 68020 with 2 MiB total RAM")
@@ -213,6 +237,14 @@ def main():
         parser.error("--compare-memory requires --binary-source")
     if args.binary_only and not args.binary_source:
         parser.error("--binary-only requires --binary-source")
+    if args.compact_only and not args.compact_cli:
+        parser.error("--compact-only requires --compact-cli")
+    if args.compact_cli and args.workload != "macro-repeat":
+        parser.error("--compact-cli currently supports macro-repeat only")
+    if args.compact_only and (args.binary_only or args.binary_source):
+        parser.error("--compact-only cannot be combined with --binary-only or --binary-source")
+    if args.binary_only and args.compact_cli:
+        parser.error("--binary-only cannot be combined with --compact-cli")
 
     native_test = args.native_test.resolve(strict=True)
     native_source_root = args.native_source_root.resolve(strict=True)
@@ -232,6 +264,8 @@ def main():
         "profile": args.profile,
         "binary_source": args.binary_source,
         "binary_only": args.binary_only,
+        "compact_cli": args.compact_cli,
+        "compact_only": args.compact_only,
         "compare_memory": args.compare_memory,
         "workload": args.workload,
         "package": {"path": str(package), "bytes": package.stat().st_size, "sha256": base.digest(package.read_bytes())},
@@ -265,6 +299,7 @@ def main():
             "Full invocation time includes harness setup/build and emulator startup/teardown.",
             "The native field runs source-text processing, including any current numeric package bindings.",
             "The opt-in binary_source field combines native source packing with a Rust-derived single-pipeline runtime capsule; it does not isolate tokenization speedup or package preparation cost.",
+            "The compact_cli field uses a live Rust CLI oracle and independent bytes; its guest interval includes source loading, expansion, assembly, and output, but excludes emulator boot and host package preparation.",
         ],
     }
     budget = base.Budget(150)
@@ -286,7 +321,7 @@ def main():
                 "output_sha256": base.digest(expected),
             }
             report["cases"].append(row)
-            if not args.binary_only:
+            if not (args.binary_only or args.compact_only):
                 try:
                     receipt = runtime.native(native_test, source_path, package, budget, case_dir / "native.log", args.profile,
                                              native_source_root)
@@ -321,10 +356,33 @@ def main():
                     row["binary_source"] = receipt
                 except Exception as error:
                     row["binary_source_error"] = str(error)
+            if args.compact_cli:
+                try:
+                    receipt = runtime.native(
+                        native_test, source_path, package, budget,
+                        case_dir / "compact-cli.log", "off", native_source_root,
+                        test=COMPACT_MACRO_TEST,
+                        result_prefix="COMPACT_MACRO_COMPARISON ",
+                        extra_env={
+                            "OPFORGE_COMPARE_CPU": cpu,
+                            "OPFORGE_COMPARE_BLOCKS": str(blocks),
+                        },
+                        guest_timeout_ms=60000,
+                        post_start_timeout_ms=10000,
+                    )
+                    if bytes(receipt["exact_output"]) != expected:
+                        raise ValueError(f"{cpu} compact CLI output differs from independent workload bytes")
+                    if receipt["cpu"] != cpu or receipt["blocks"] != blocks:
+                        raise ValueError("compact CLI receipt identifies a different workload")
+                    receipt.pop("exact_output")
+                    row["compact_cli"] = receipt
+                except Exception as error:
+                    row["compact_cli_error"] = str(error)
             (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
         report["complete"] = all(
-            (args.binary_only or "native" in row)
+            (args.binary_only or args.compact_only or "native" in row)
             and (not args.binary_source or "binary_source" in row)
+            and (not args.compact_cli or "compact_cli" in row)
             for row in report["cases"]
         )
     except Exception as error:

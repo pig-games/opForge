@@ -824,3 +824,54 @@ rose from 52,508 to 52,780 bytes and linked reservation from 57,028 to
 57,296 bytes. Dynamic peak was not measured. This does not yet cover Rust's
 textual concatenation around placeholders or strings; imported template
 visibility remains a separate gap.
+
+Macro substitution still needs exact argument spelling where a placeholder is
+embedded in an identifier or string. A live Rust example with `symbol@1:` and
+`"x@1"`, called with `A`, produces `symbolA` and bytes `78 41 00 20` at
+`$2000`. Numeric package identity alone loses this distinction: the package
+dictionary spells the same m6502 name `a`, and reverse lookup incorrectly
+produced `"xa"`. That trial was rejected. A name-only spelling annotation is
+also insufficient: Rust substitutes each trimmed argument's original text,
+including numeric notation, punctuation and internal spacing.
+
+The bounded exact-text slice now appends a flagged, offset-only argument
+sidecar to call-shaped packed records during tokenization. Normal binding and
+execution still use numeric tokens; no later phase rereads the source line.
+The sidecar is stripped from ordinary directives. Macro calls split its exact
+trimmed arguments, including omitted default spellings, and carry substituted
+text through nested calls. Identifier recipes bind generated names to numeric
+IDs; quoted template bytes expand in the packed body. The 256-byte record and
+192-byte per-frame text limits reject overflow. Ordinary quoted data remains
+literal, including `"x@1"` outside a macro.
+
+Fresh 68020 / 2 MiB runs matched the live Rust CLI for package-name casing,
+leading and infix identifier fragments, multiple placeholders, quoted strings,
+numeric spelling (`$0A`), omitted defaults, empty calls, directive-first
+headers, nested positional/named/full-list forms, and selected imported
+macros. The eight-block repeated-macro workload independently checks 64 calls
+and exact output. After the final quoted-template correction, one
+START-to-DONE observation was 1.036 s for m6502 and 1.886 s for m68000;
+linked compact reservation was 70,152 bytes. The unchanged eight-block mixed
+binary-source workload retained exact output and measured 0.614/1.216 s; the
+prior checkpoint's one-observation 0.550/1.189 s does not establish a stable
+regression. Its linked reservation grew from 57,296 to 62,644 bytes. Dynamic
+peak was not measured.
+
+The same bounded exact-text rewriter now expands `.name`, `.1`, `.{name}` and
+`.@` inside quoted template strings. Fresh Rust-oracle/68020 comparison covers
+all four forms in one call, irregular spacing in `.@`, and an ordinary quoted
+string outside a macro that must remain literal. Quoted supplied arguments,
+quoted defaults, and a directive-first definition followed by a name-first
+definition also matched the Rust CLI. A fresh nested `.@` case retained its
+original comma spacing. These checks close the immediate quoted-template gap.
+
+Macro work pauses here. Remaining parity issues include dotted embedded
+substitutions in identifiers: a Rust-accepted macro with `a.suffix:`, `b.1:`,
+and `c.{suffix}:` failed closed in the compact CLI at invocation; composite
+identifier recipes currently cover `@1`–`@9` fragments only. The sidecar also
+does not retain trailing whitespace after the last invocation token, and
+quoted-string substitution after TKVM escape decoding may differ from Rust's
+text-first substitution for escape-sensitive arguments. The 256-byte record,
+192-byte per-frame text, four-argument and 64-frame depth limits remain
+experimental bounds, not full macro-language parity. Review the growing
+template module's responsibilities before widening support further.

@@ -75,6 +75,7 @@ directive
 	bne.w bad
 	bsr.w name
 	bne.w bad
+	move.w d7, d4
 	cmp.w package.Header.CpuDirective(a2), d7
 	beq.w copyRest
 	cmp.w package.Header.EndDirective(a2), d7
@@ -82,15 +83,24 @@ directive
 	cmp.w package.Header.OrgDirective(a2), d7
 	beq.w scalar
 	cmp.w package.Header.ByteDirective(a2), d7
-	beq.w scalar
+	beq.w dataScalar
 	cmp.w package.Header.WordDirective(a2), d7
-	beq.w scalar
+	beq.w dataScalar
 	cmp.w package.Header.LongDirective(a2), d7
 	bne.w bad
+dataScalar
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #3, (a0)
+	bne.w scalar
+	bsr.w string
+	bne.w bad
+	bra.w scalarTail
 scalar
 	; Shared directive arguments are always expressions, never register names.
 	bsr.w compile
 	bne.w bad
+scalarTail
 	cmpa.l a1, a0
 	beq.w complete
 	cmpi.b #4, (a0)
@@ -98,7 +108,9 @@ scalar
 	moveq #1, d6
 	bsr.w copy
 	bne.w bad
-	bra.w scalar
+	cmp.w package.Header.OrgDirective(a2), d4
+	beq.w scalar
+	bra.w dataScalar
 operands
 	cmpa.l a1, a0
 	beq.w complete
@@ -207,6 +219,51 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; name
+
+; Keep a decoded string of two or more bytes as a data operand. A one-byte
+; string is a scalar, so compile its byte as a numeric literal. No source text
+; is consulted. A0 advances over the complete bounded string token.
+string	.block
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #3, d0
+	blo.w bad
+	moveq #0, d6
+	move.b 1(a0), d6
+	move.l d6, d1
+	addq.l #2, d1
+	cmp.l d1, d0
+	blo.w bad
+	tst.w d6
+	beq.w bad
+	cmpi.w #1, d6
+	beq.w scalarByte
+	move.l d1, d6
+	bra.w copy
+scalarByte
+	; expression.compile accepts numeric kind 2, never raw string kind 3.
+	; This temporary literal is independent of input and output record storage.
+	movem.l a0-a1, -(sp)
+	suba.w #8, sp
+	move.b #2, (sp)
+	clr.b 1(sp)
+	clr.b 2(sp)
+	clr.b 3(sp)
+	move.b 2(a0), 4(sp)
+	movea.l sp, a0
+	lea 5(sp), a1
+	bsr.w compile
+	adda.w #8, sp
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	bne.w bad
+	addq.l #3, a0
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; string
 
 ; Compile through bounded scratch, then preserve a parenthesized member wrapper
 ; if the scalar is followed by .<package name>. No target spelling is inspected.

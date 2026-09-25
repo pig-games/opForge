@@ -377,7 +377,7 @@ fn compact_cli_macro_definition_forms_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     for cpu in ["m6502", "m68000"] {
         let source = format!(
-            ".cpu {cpu}\n.org $2000\nEMPTY .macro\n .byte $11\n.endm\n.macro FILL(value)\n .byte .value\n.endmacro\n .EMPTY\n .FILL(2)\n .FILL 3\n.end\n"
+            ".cpu {cpu}\n.org $2000\nEMPTY .macro\n .byte $11\n.endm\n.macro FILL(value)\n .byte .value\n.endmacro\n .EMPTY\n .EMPTY()\n .FILL(2)\n .FILL 3\n.end\n"
         );
         let oracle_dir = create_temp_dir(&format!("compact-binary-macro-forms-{cpu}"));
         let oracle_input = oracle_dir.join("input.asm");
@@ -394,7 +394,7 @@ fn compact_cli_macro_definition_forms_fs_uae() {
         run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
         let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
         fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
-        assert_eq!(oracle, [0x11, 2, 3]);
+        assert_eq!(oracle, [0x11, 0x11, 2, 3]);
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let package = prepare_package(&core, &resolved).unwrap();
         let result = crate::fs_uae_smoke::run_compact_cli_from_env(
@@ -582,6 +582,120 @@ fn compact_cli_macro_nested_calls_fs_uae() {
 }
 
 #[test]
+#[ignore = "requires configured FS-UAE; imported packed macro visibility"]
+fn compact_cli_imported_macro_fs_uae() {
+    let source = ".module lib\n.pub\nEMIT .macro value\n .byte .value\n.endmacro\n.endmodule\n.module app\n.cpu m6502\n.use lib (*)\n.org $2000\n .EMIT 3\n.endmodule\n.end\n";
+    let oracle_dir = create_temp_dir("compact-binary-imported-macro");
+    let oracle_input = oracle_dir.join("input.asm");
+    let oracle_output = oracle_dir.join("oracle.bin");
+    fs::write(&oracle_input, source).expect("write Rust oracle source");
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        oracle_input.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        oracle_output.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "m6502".to_string(),
+    ]);
+    run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+    let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+    fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+    assert_eq!(oracle, [3]);
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+        &workspace_root(),
+        &package,
+        source.as_bytes(),
+        Some(&oracle),
+    )
+    .expect("compact CLI must resolve an imported packed macro");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; selected packed macro import"]
+fn compact_cli_imported_macro_selected_fs_uae() {
+    let source = ".module lib\n.pub\nEMIT .macro value\n .byte .value\n.endmacro\n.endmodule\n.module app\n.cpu m6502\n.use lib (EMIT)\n.org $2000\n .EMIT 3\n.endmodule\n.end\n";
+    let oracle_dir = create_temp_dir("compact-binary-imported-macro-selected");
+    let oracle_input = oracle_dir.join("input.asm");
+    let oracle_output = oracle_dir.join("oracle.bin");
+    fs::write(&oracle_input, source).expect("write Rust oracle source");
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        oracle_input.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        oracle_output.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "m6502".to_string(),
+    ]);
+    run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+    let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+    fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+    assert_eq!(oracle, [3]);
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+        &workspace_root(),
+        &package,
+        source.as_bytes(),
+        Some(&oracle),
+    )
+    .expect("compact CLI must resolve a selected packed macro");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; qualified module alias packed macro import"]
+fn compact_cli_imported_macro_qualified_alias_fs_uae() {
+    let source = ".module lib\n.pub\nEMIT .macro value\n .byte .value\n.endmacro\n.endmodule\n.module app\n.cpu m6502\n.use lib as L\n.org $2000\n .L.EMIT 3\n.endmodule\n.end\n";
+    let oracle_dir = create_temp_dir("compact-binary-imported-macro-qualified-alias");
+    let oracle_input = oracle_dir.join("input.asm");
+    let oracle_output = oracle_dir.join("oracle.bin");
+    fs::write(&oracle_input, source).expect("write Rust oracle source");
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        oracle_input.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        oracle_output.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "m6502".to_string(),
+    ]);
+    run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+    let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+    fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+    assert_eq!(oracle, [3]);
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+        &workspace_root(),
+        &package,
+        source.as_bytes(),
+        Some(&oracle),
+    )
+    .expect("compact CLI must resolve a qualified module alias packed macro");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+}
+
+#[test]
 #[ignore = "requires configured FS-UAE; packed macro @ placeholders"]
 fn compact_cli_macro_at_placeholders_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
@@ -621,6 +735,505 @@ fn compact_cli_macro_at_placeholders_fs_uae() {
         assert!(runs[0].success && runs[0].protocol_completed);
         assert_eq!(runs[0].exit_code, Some(0));
     }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; embedded packed macro substitutions"]
+fn compact_cli_macro_embedded_substitutions_fs_uae() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let source = b".cpu m6502\n.org $2000\nEMIT .macro suffix\nsymbol@1:\n .word \"x@1\"\n .word symbol@1\n.endmacro\n .EMIT A\n.end\n";
+    let oracle_dir = create_temp_dir("compact-binary-macro-embedded");
+    let oracle_input = oracle_dir.join("input.asm");
+    let oracle_output = oracle_dir.join("oracle.bin");
+    fs::write(&oracle_input, source).expect("write Rust oracle source");
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        oracle_input.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        oracle_output.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "m6502".to_string(),
+    ]);
+    run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+    let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+    fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+    assert_eq!(oracle, [0x78, 0x41, 0x00, 0x20]);
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+        &workspace_root(),
+        &package,
+        source,
+        Some(&oracle),
+    )
+    .expect("compact CLI must expand embedded packed placeholders");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; multiple embedded packed substitutions"]
+fn compact_cli_macro_multiple_embedded_substitutions_fs_uae() {
+    let source = b".cpu m6502\n.org $2000\nEMIT .macro left,right\nsymbol@1@2suffix:\n .byte \"x@1-@2\"\n .word symbol@1@2suffix\n.endmacro\n .EMIT A,B\n.end\n";
+    let oracle_dir = create_temp_dir("compact-binary-macro-multiple-embedded");
+    let oracle_input = oracle_dir.join("input.asm");
+    let oracle_output = oracle_dir.join("oracle.bin");
+    fs::write(&oracle_input, source).expect("write Rust oracle source");
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        oracle_input.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        oracle_output.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "m6502".to_string(),
+    ]);
+    run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+    let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+    fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+    assert_eq!(oracle, [0x78, 0x41, 0x2d, 0x42, 0x00, 0x20]);
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+        &workspace_root(),
+        &package,
+        source,
+        Some(&oracle),
+    )
+    .expect("compact CLI must expand multiple embedded placeholders");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; embedded defaults and leading placeholders"]
+fn compact_cli_macro_embedded_default_spelling_fs_uae() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    for (source, expected) in [
+        (
+            ".cpu m6502\n.org $2000\nEMIT .macro value=A\n@1suffix:\n .byte \"n@1\"\n .word @1suffix\n.endmacro\n .EMIT\n.end\n",
+            &[0x6e, 0x41, 0x00, 0x20][..],
+        ),
+        (
+            ".cpu m6502\nEMIT .macro value=$0A\n .byte \"n@1\"\n.endmacro\n .EMIT\n.end\n",
+            &[0x6e, 0x24, 0x30, 0x41][..],
+        ),
+        (
+            ".cpu m6502\nEMIT .macro value=$0A\n .byte \"n@1\"\n.endmacro\n .EMIT()\n.end\n",
+            &[0x6e, 0x24, 0x30, 0x41][..],
+        ),
+    ] {
+        let oracle_dir = create_temp_dir("compact-binary-macro-embedded-default");
+        let oracle_input = oracle_dir.join("input.asm");
+        let oracle_output = oracle_dir.join("oracle.bin");
+        fs::write(&oracle_input, source).expect("write Rust oracle source");
+        let cli = Cli::parse_from([
+            "opForge".to_string(),
+            oracle_input.to_string_lossy().into_owned(),
+            "--bin".to_string(),
+            oracle_output.to_string_lossy().into_owned(),
+            "--cpu".to_string(),
+            "m6502".to_string(),
+        ]);
+        run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+        let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+        fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+        assert_eq!(oracle, expected);
+        let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+            &workspace_root(),
+            &package,
+            source.as_bytes(),
+            Some(&oracle),
+        )
+        .expect("compact CLI must preserve default text inside placeholders");
+        let FsUaeSmokeOutcome::Completed { runs } = result else {
+            panic!("real FS-UAE execution required");
+        };
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].success && runs[0].protocol_completed);
+        assert_eq!(runs[0].exit_code, Some(0));
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; nested exact macro argument spelling"]
+fn compact_cli_macro_nested_embedded_spelling_fs_uae() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    for argument in ["@1", ".value", ".1", ".{value}", ".@"] {
+        let source = format!(
+            ".cpu m6502\nINNER .macro value\n .byte \"n@1\"\n.endmacro\nOUTER .macro value\n .INNER {argument}\n.endmacro\n .OUTER $0A\n.end\n"
+        );
+        let oracle_dir = create_temp_dir("compact-binary-macro-nested-spelling");
+        let oracle_input = oracle_dir.join("input.asm");
+        let oracle_output = oracle_dir.join("oracle.bin");
+        fs::write(&oracle_input, &source).expect("write Rust oracle source");
+        let cli = Cli::parse_from([
+            "opForge".to_string(),
+            oracle_input.to_string_lossy().into_owned(),
+            "--bin".to_string(),
+            oracle_output.to_string_lossy().into_owned(),
+            "--cpu".to_string(),
+            "m6502".to_string(),
+        ]);
+        run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+        let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+        fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+        assert_eq!(oracle, [0x6e, 0x24, 0x30, 0x41]);
+        let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+            &workspace_root(),
+            &package,
+            source.as_bytes(),
+            Some(&oracle),
+        )
+        .expect("nested compact macro must preserve exact argument spelling");
+        let FsUaeSmokeOutcome::Completed { runs } = result else {
+            panic!("real FS-UAE execution required");
+        };
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].success && runs[0].protocol_completed);
+        assert_eq!(runs[0].exit_code, Some(0));
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; quoted macro arguments and header state"]
+fn compact_cli_macro_quoted_arguments_and_header_state_fs_uae() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    for (source, expected) in [
+        (
+            ".cpu m6502\nM .macro value\n .byte .value\n.endmacro\n .M \"A\"\n.end\n",
+            &[0x41][..],
+        ),
+        (
+            ".cpu m6502\nM .macro value\n .byte .value\n.endmacro\n .M(\"A\")\n.end\n",
+            &[0x41][..],
+        ),
+        (
+            ".cpu m6502\nM .macro value=\"B\"\n .byte .value\n.endmacro\n .M\n.end\n",
+            &[0x42][..],
+        ),
+        (
+            ".cpu m6502\n.macro FIRST(v)\n .byte .v\n.endmacro\nSECOND .macro v=2\n .byte .v\n.endmacro\n .FIRST(1)\n .SECOND\n.end\n",
+            &[1, 2][..],
+        ),
+    ] {
+        let oracle_dir = create_temp_dir("compact-binary-macro-quoted-header");
+        let oracle_input = oracle_dir.join("input.asm");
+        let oracle_output = oracle_dir.join("oracle.bin");
+        fs::write(&oracle_input, source).expect("write Rust oracle source");
+        let cli = Cli::parse_from([
+            "opForge".to_string(),
+            oracle_input.to_string_lossy().into_owned(),
+            "--bin".to_string(),
+            oracle_output.to_string_lossy().into_owned(),
+            "--cpu".to_string(),
+            "m6502".to_string(),
+        ]);
+        run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+        let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+        fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+        assert_eq!(oracle, expected);
+        let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+            &workspace_root(),
+            &package,
+            source.as_bytes(),
+            Some(&oracle),
+        )
+        .expect("compact CLI must preserve quoted arguments and header state");
+        let FsUaeSmokeOutcome::Completed { runs } = result else {
+            panic!("real FS-UAE execution required");
+        };
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].success && runs[0].protocol_completed);
+        assert_eq!(runs[0].exit_code, Some(0));
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; nested full-list spacing"]
+fn compact_cli_macro_nested_full_list_spacing_fs_uae() {
+    let source = ".cpu m6502\nINNER .macro value\n .byte \"n@1\"\n.endmacro\nOUTER .macro x,y\n .INNER ((.@))\n.endmacro\n .OUTER($01 ,  $02)\n.end\n";
+    let oracle_dir = create_temp_dir("compact-binary-macro-full-list-spacing");
+    let oracle_input = oracle_dir.join("input.asm");
+    let oracle_output = oracle_dir.join("oracle.bin");
+    fs::write(&oracle_input, source).expect("write Rust oracle source");
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        oracle_input.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        oracle_output.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "m6502".to_string(),
+    ]);
+    run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+    let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+    fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+    assert_eq!(oracle, b"n($01 ,  $02)");
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+        &workspace_root(),
+        &package,
+        source.as_bytes(),
+        Some(&oracle),
+    )
+    .expect("nested full-list substitution must preserve exact spacing");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; named and full-list substitutions in strings"]
+fn compact_cli_macro_embedded_dotted_strings_fs_uae() {
+    let source = ".cpu m6502\nM .macro left,right\n .byte \"n.left\"\n .byte \"n.1\"\n .byte \"n.{right}\"\n .byte \"n.@\"\n.endmacro\n .M A ,  B\n .byte \"n.left\"\n.end\n";
+    let oracle_dir = create_temp_dir("compact-binary-macro-dotted-strings");
+    let oracle_input = oracle_dir.join("input.asm");
+    let oracle_output = oracle_dir.join("oracle.bin");
+    fs::write(&oracle_input, source).expect("write Rust oracle source");
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        oracle_input.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        oracle_output.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "m6502".to_string(),
+    ]);
+    run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+    let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+    fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+    assert_eq!(oracle, b"nAnAnBnA ,  Bn.left");
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+        &workspace_root(),
+        &package,
+        source.as_bytes(),
+        Some(&oracle),
+    )
+    .expect("embedded dotted substitutions must preserve exact spelling");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; embedded packed identifier substitution"]
+fn compact_cli_macro_embedded_identifier_fs_uae() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let source = b".cpu m6502\n.org $2000\nEMIT .macro suffix\nsymbol@1:\n .word symbol@1\n.endmacro\n .EMIT A\n.end\n";
+    let oracle_dir = create_temp_dir("compact-binary-macro-embedded-id");
+    let oracle_input = oracle_dir.join("input.asm");
+    let oracle_output = oracle_dir.join("oracle.bin");
+    fs::write(&oracle_input, source).expect("write Rust oracle source");
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        oracle_input.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        oracle_output.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "m6502".to_string(),
+    ]);
+    run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+    let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+    fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+    assert_eq!(oracle, [0, 0x20]);
+    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+        &workspace_root(),
+        &package,
+        source,
+        Some(&oracle),
+    )
+    .expect("compact CLI must expand embedded identifiers");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; packed string data operands"]
+fn compact_cli_string_data_fs_uae() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    for cpu in ["m6502", "m68000"] {
+        let source = format!(
+            ".cpu {cpu}\n.org $2000\n.byte \"A\", \"BC\"\n.word \"D\", \"EF\"\n.long \"G\", \"HI\"\n.byte \"\\0\"\n.byte \"x@1\"\n.end\n"
+        );
+        let oracle_dir = create_temp_dir(&format!("compact-binary-string-{cpu}"));
+        let oracle_input = oracle_dir.join("input.asm");
+        let oracle_output = oracle_dir.join("oracle.bin");
+        fs::write(&oracle_input, &source).expect("write Rust oracle source");
+        let cli = Cli::parse_from([
+            "opForge".to_string(),
+            oracle_input.to_string_lossy().into_owned(),
+            "--bin".to_string(),
+            oracle_output.to_string_lossy().into_owned(),
+            "--cpu".to_string(),
+            cpu.to_string(),
+        ]);
+        run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+        let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+        fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+        let expected = if cpu == "m6502" {
+            &[
+                0x41, 0x42, 0x43, 0x44, 0, 0x45, 0x46, 0x47, 0, 0, 0, 0x48, 0x49, 0, 0x78, 0x40,
+                0x31,
+            ][..]
+        } else {
+            &[
+                0x41, 0x42, 0x43, 0, 0x44, 0x45, 0x46, 0, 0, 0, 0x47, 0x48, 0x49, 0, 0x78, 0x40,
+                0x31,
+            ][..]
+        };
+        assert_eq!(oracle, expected);
+        let resolved = core.resolve_pipeline(cpu, None).unwrap();
+        let package = prepare_package(&core, &resolved).unwrap();
+        let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+            &workspace_root(),
+            &package,
+            source.as_bytes(),
+            Some(&oracle),
+        )
+        .expect("compact CLI must emit packed string operands");
+        let FsUaeSmokeOutcome::Completed { runs } = result else {
+            panic!("real FS-UAE execution required");
+        };
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].success && runs[0].protocol_completed);
+        assert_eq!(runs[0].exit_code, Some(0));
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; bounded compact CLI macro comparison"]
+fn compact_cli_macro_repeat_comparison_fs_uae() {
+    let cpu = std::env::var("OPFORGE_COMPARE_CPU").expect("comparison CPU");
+    assert!(matches!(cpu.as_str(), "m6502" | "m68000"));
+    let blocks: usize = std::env::var("OPFORGE_COMPARE_BLOCKS")
+        .expect("comparison block count")
+        .parse()
+        .expect("numeric comparison block count");
+    assert!(matches!(blocks, 8 | 32));
+    let source_path = std::env::var("OPFORGE_COMPARE_SOURCE").expect("comparison source path");
+    let source = fs::read(&source_path).expect("read comparison source");
+    let mut lines = vec![
+        format!(".cpu {cpu}"),
+        ".org $1000".to_string(),
+        "EMIT .macro value".to_string(),
+        " .byte .value".to_string(),
+        " nop".to_string(),
+        ".endmacro".to_string(),
+    ];
+    let nop: &[u8] = if cpu == "m6502" {
+        &[0xea]
+    } else {
+        &[0x4e, 0x71]
+    };
+    let mut expected = Vec::with_capacity(blocks * 8 * (nop.len() + 1));
+    for block in 0..blocks {
+        for item in 0..8 {
+            let value = (block * 8 + item) as u8;
+            lines.push(format!(" .EMIT({value})"));
+            expected.push(value);
+            expected.extend_from_slice(nop);
+        }
+    }
+    lines.push(".end".to_string());
+    assert_eq!(source, (lines.join("\n") + "\n").as_bytes());
+
+    let oracle_dir = create_temp_dir("compact-macro-repeat-comparison");
+    let oracle_input = oracle_dir.join("input.asm");
+    let oracle_output = oracle_dir.join("oracle.bin");
+    fs::write(&oracle_input, &source).expect("write Rust oracle source");
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        oracle_input.to_string_lossy().into_owned(),
+        "--bin".to_string(),
+        oracle_output.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        cpu.clone(),
+    ]);
+    let rust_started = std::time::Instant::now();
+    run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+    let rust_cli_seconds = rust_started.elapsed().as_secs_f64();
+    let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+    fs::remove_dir_all(&oracle_dir).expect("remove Rust CLI oracle scratch");
+    assert_eq!(
+        oracle, expected,
+        "Rust CLI must match independent macro bytes"
+    );
+
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline(&cpu, None).unwrap();
+    let package_started = std::time::Instant::now();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let package_preparation_seconds = package_started.elapsed().as_secs_f64();
+    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+        &workspace_root(),
+        &package,
+        &source,
+        Some(&oracle),
+    )
+    .expect("compact native CLI must match live Rust and independent macro bytes");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    let run = &runs[0];
+    assert!(run.success && run.protocol_completed);
+    assert_eq!(run.exit_code, Some(0));
+    let image = run
+        .captured_artifacts
+        .get(&PathBuf::from("Work/build/opforge_compact"))
+        .expect("fresh compact CLI image");
+    let allocation = hunk::allocation(image).expect("valid compact CLI Hunk");
+    assert!(allocation.total() < 2 * 1024 * 1024);
+    eprintln!(
+        "COMPACT_MACRO_COMPARISON {}",
+        serde_json::json!({
+            "cpu": cpu,
+            "blocks": blocks,
+            "source_bytes": source.len(),
+            "output_bytes": expected.len(),
+            "runtime_package_bytes": package.len(),
+            "native_linked_reserved_bytes": allocation.total(),
+            "native_linked_code_bytes": allocation.code,
+            "native_linked_data_reserved_bytes": allocation.data,
+            "native_linked_bss_reserved_bytes": allocation.bss,
+            "host_package_preparation_seconds": package_preparation_seconds,
+            "rust_cli_seconds": rust_cli_seconds,
+            "guest_start_to_done_host_seconds": run.start_to_done_host_seconds,
+            "native_image_digest": run.native_image_digest,
+            "exact_output": oracle,
+            "guest_exit": run.exit_code,
+        })
+    );
 }
 
 #[test]

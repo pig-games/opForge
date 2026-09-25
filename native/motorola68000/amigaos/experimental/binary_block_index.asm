@@ -335,11 +335,26 @@ token
 	bls.w name
 	cmpi.b #2, d1
 	beq.w literal
+	cmpi.b #3, d1
+	beq.w string
 	cmpi.b #expr.COMPILED_TAG, d1
 	beq.w expression
+	cmpi.b #41, d1
+	beq.w bad  ; expansion must replace composite recipes before indexing
 	bra.w token
 literal
 	addq.l #4, a0
+	bra.w token
+string
+	cmpa.l a1, a0
+	bhs.w bad
+	moveq #0, d0
+	move.b (a0)+, d0
+	move.l a1, d1
+	sub.l a0, d1
+	cmp.l d0, d1
+	blo.w bad
+	adda.l d0, a0
 	bra.w token
 name
 	move.l a1, d0

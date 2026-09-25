@@ -60,7 +60,24 @@ token
 	cmpi.b #expr.COMPILED_TAG, d0
 	beq.w expression
 	cmpi.b #2, d0
-	bne.w token
+	beq.w literal
+	cmpi.b #3, d0
+	beq.w string
+	cmpi.b #41, d0
+	beq.w bad  ; composite recipes must be expanded before remapping
+	bra.w token
+string
+	cmpa.l a4, a0
+	bhs.w bad
+	moveq #0, d0
+	move.b (a0)+, d0
+	move.l a4, d1
+	sub.l a0, d1
+	cmp.l d0, d1
+	blo.w bad
+	adda.l d0, a0
+	bra.w token
+literal
 	addq.l #4, a0
 	bra.w token
 name

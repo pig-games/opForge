@@ -3,12 +3,16 @@
 	.module experimental.amigaos.binary_templates
 	.cpu 68020
 	.use experimental.amigaos.binary_scopes as scopes
+	.use experimental.amigaos.binary_scope_layout as layout
+	.use experimental.amigaos.binary_binding_records as records
 	.pub
 LIMIT = 8
 ARG_LIMIT = 192
+TEXT_LIMIT = 192
 PARAM_LIMIT = 9
 DEPTH_LIMIT = 64
 DEFAULT_LIMIT = 512
+DEFAULT_TEXT_LIMIT = 512
 BODY_BYTES = 4096
 TOKEN_COMMA = 4
 TOKEN_EQ = 34
@@ -19,6 +23,8 @@ TOKEN_CLOSE_BRACE = 13
 TOKEN_OPEN_PAREN = 14
 TOKEN_CLOSE_PAREN = 15
 TOKEN_AT = 40
+TOKEN_COMPOSITE = 41
+TOKEN_CALL_TEXT = 42
 ACTION_REGULAR = 0
 ACTION_CONSUMED = 1
 ACTION_INVOKE = 2
@@ -31,6 +37,9 @@ Depth	.word ?
 CallLabel	.long ?
 CallLabelPresent	.word ?
 Serial	.word ?
+RawBytes	.word ?
+TextOffset	.word ?
+HeaderParen	.word ?
 	.endstruct
 CallFrame	.struct
 Definition	.word ?
@@ -54,7 +63,14 @@ CallPhase	.word ?
 CallName	.word ?  ; source ID records the invocation scope origin
 Argument	.byte ?
 	.endstruct
-FRAME_BYTES = CallFrame.Argument+ARG_LIMIT
+TEXT_PAREN = CallFrame.Argument+ARG_LIMIT
+TEXT_BYTES = TEXT_PAREN+2
+TEXT_END0 = TEXT_BYTES+2
+TEXT = TEXT_END0+PARAM_LIMIT*2
+SIDE_BYTES = TEXT+TEXT_LIMIT
+FULL_BYTES = SIDE_BYTES+2
+FULL_TEXT = FULL_BYTES+2
+FRAME_BYTES = FULL_TEXT+252
 Def	.struct
 Name	.word ?
 Parameter	.word ?
@@ -84,6 +100,24 @@ DefaultEnd5	.word ?
 DefaultEnd6	.word ?
 DefaultEnd7	.word ?
 DefaultEnd8	.word ?
+TextStart0	.word ?
+TextStart1	.word ?
+TextStart2	.word ?
+TextStart3	.word ?
+TextStart4	.word ?
+TextStart5	.word ?
+TextStart6	.word ?
+TextStart7	.word ?
+TextStart8	.word ?
+TextEnd0	.word ?
+TextEnd1	.word ?
+TextEnd2	.word ?
+TextEnd3	.word ?
+TextEnd4	.word ?
+TextEnd5	.word ?
+TextEnd6	.word ?
+TextEnd7	.word ?
+TextEnd8	.word ?
 First	.word ?
 Last	.word ?
 Kind	.word ?
@@ -92,12 +126,16 @@ ParamCount	.word ?
 DEF_BYTES = Def.ParamCount+2
 KIND_SEGMENT = 0
 KIND_MACRO = 1
-DEFAULT_USED = State.Serial+2
-DEFS = DEFAULT_USED+2
+DEFAULT_USED = State.HeaderParen+2
+DEFAULT_TEXT_USED = DEFAULT_USED+2
+DEFS = DEFAULT_TEXT_USED+2
 DEFAULTS = DEFS+LIMIT*DEF_BYTES
-BODY = DEFAULTS+DEFAULT_LIMIT
+DEFAULT_TEXT = DEFAULTS+DEFAULT_LIMIT
+BODY = DEFAULT_TEXT+DEFAULT_TEXT_LIMIT
 FRAMES = BODY+BODY_BYTES
-SCRATCH_BYTES = FRAMES+DEPTH_LIMIT*FRAME_BYTES
+COMPOSITE_TEXT = FRAMES+DEPTH_LIMIT*FRAME_BYTES
+HEADER_FRAME = COMPOSITE_TEXT+256
+SCRATCH_BYTES = HEADER_FRAME+FRAME_BYTES
 	.section code, kind=code
 
 ; A0=caller-owned state. Clears definitions for a new assembly session.
@@ -109,6 +147,7 @@ begin	.block
 	clr.w State.Used(a0)
 	clr.w State.Depth(a0)
 	clr.w DEFAULT_USED(a0)
+	clr.w DEFAULT_TEXT_USED(a0)
 	clr.l State.CallLabel(a0)
 	clr.w State.CallLabelPresent(a0)
 	clr.w State.Serial(a0)
@@ -139,6 +178,7 @@ done
 ; another line; expanded records go directly to normal scope/prepare handling.
 line	.block
 	movem.l d2-d7/a0-a6, -(sp)
+	move.l a2, -(sp)  ; scope survives parameter/default parsing
 	movea.l a0, a5
 	movea.l a1, a6
 	movea.l a2, a4
@@ -149,6 +189,30 @@ line	.block
 	addq.w #1, d6
 	cmpi.w #4, d6
 	blo.w bad
+	move.w d6, State.RawBytes(a6)
+	clr.w State.TextOffset(a6)
+	clr.w State.HeaderParen(a6)
+	btst #5, 1(a5)
+	beq.w noCallText
+	moveq #0, d0
+	move.b -1(a5, d6.w), d0
+	cmpi.w #3, d0
+	blo.w bad
+	move.w d6, d2
+	sub.w d0, d2
+	cmpi.w #4, d2
+	blo.w bad
+	lea 0(a5, d2.w), a0
+	cmpi.b #TOKEN_CALL_TEXT, (a0)
+	bne.w bad
+	moveq #0, d1
+	move.b 1(a0), d1
+	addq.w #3, d1
+	cmp.w d0, d1
+	bne.w bad
+	move.w d2, State.TextOffset(a6)
+	move.w d2, d6
+noCallText
 	lea 0(a5, d6.w), a3
 	lea 4(a5), a2
 	clr.w State.CallLabelPresent(a6)
@@ -198,7 +262,7 @@ directiveName
 	cmpi.b #1, 1(a2)
 	bhi.w ordinary
 	tst.b 4(a2)
-	bne.w ordinary
+	bne.w qualifiedCall
 	moveq #0, d0
 	move.w 2(a2), d0
 	movea.l a4, a0
@@ -211,6 +275,7 @@ directiveName
 	beq.w directiveHeader
 	cmpi.l #scopes.KEY_MACRO, d0
 	beq.w directiveMacroHeader
+qualifiedCall
 	tst.w State.Open(a6)
 	bne.w capture
 	tst.w State.Skipping(a6)
@@ -220,6 +285,7 @@ directiveName
 	move.w 2(a2), d5
 	moveq #0, d4
 	moveq #-1, d3
+	moveq #0, d2  ; read-only candidate before mutable import lookup
 	move.w #$ffff, d6
 findCall
 	cmp.w State.Count(a6), d4
@@ -228,6 +294,14 @@ findCall
 	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a1
 	adda.w d0, a1
+	moveq #0, d0
+	move.w d5, d0
+	moveq #0, d1
+	move.w Def.Name(a1), d1
+	movea.l a4, a0
+	jsr scopes.templateCandidate
+	bne.w nextCall
+	moveq #1, d2
 	moveq #0, d0
 	move.w d5, d0
 	moveq #0, d1
@@ -246,7 +320,27 @@ nextCall
 	bra.w findCall
 selectedCall
 	tst.w d3
-	bmi.w ordinary
+	bpl.w chosenCall
+	tst.w d2
+	beq.w ordinary
+	lea 1(a2), a0
+	movea.l (sp), a1
+	jsr scopes.resolveTemplate
+	bne.w ordinary
+	move.w d1, d7  ; keep D5 as the caller-scope invocation ID
+	moveq #0, d4
+findImportedCall
+	cmp.w State.Count(a6), d4
+	bhs.w ordinary
+	move.w d4, d0
+	mulu.w #DEF_BYTES, d0
+	lea DEFS(a6), a1
+	adda.w d0, a1
+	cmp.w Def.Name(a1), d7
+	beq.w call
+	addq.w #1, d4
+	bra.w findImportedCall
+chosenCall
 	move.w d3, d4
 	bra.w call
 directiveHeader
@@ -255,6 +349,7 @@ directiveHeader
 directiveMacroHeader
 	moveq #KIND_MACRO, d2
 directiveParameters
+	move.w #2, State.HeaderParen(a6)
 	; The parenthesized header contains only bare parameter names and commas.
 	cmpi.w #15, d6
 	blo.w bad
@@ -276,6 +371,7 @@ segmentHeader
 macroHeader
 	moveq #KIND_MACRO, d2
 header
+	clr.w State.HeaderParen(a6)
 	move.w 1(a2), d5
 	lea 9(a2), a1
 	movea.l a3, a2
@@ -307,7 +403,7 @@ newDefinition
 	adda.w d0, a0
 	clr.w Def.ParamCount(a0)
 	lea Def.DefaultStart0(a0), a4
-	moveq #18-1, d0
+	moveq #36-1, d0
 clearDefaults
 	clr.w (a4)+
 	dbra d0, clearDefaults
@@ -408,6 +504,8 @@ defaultToken
 	bls.w defaultName
 	cmpi.b #2, d0
 	beq.w defaultNumber
+	cmpi.b #3, d0
+	beq.w defaultString
 	cmpi.b #39, d0
 	bhi.w bad
 	bra.w defaultAdvance
@@ -416,6 +514,15 @@ defaultName
 	bra.w defaultAdvance
 defaultNumber
 	moveq #5, d1
+	bra.w defaultAdvance
+defaultString
+	move.l a2, d0
+	sub.l a4, d0
+	cmpi.l #2, d0
+	blo.w bad
+	moveq #0, d1
+	move.b 1(a4), d1
+	addq.w #2, d1
 defaultAdvance
 	adda.w d1, a4
 	cmpa.l a2, a4
@@ -438,6 +545,7 @@ defaultEnd
 	add.w d7, d7
 	move.w d0, Def.DefaultStart0(a0, d7.w)
 	move.w d6, Def.DefaultEnd0(a0, d7.w)
+	move.l a5, -(sp)
 	lea DEFAULTS(a6), a5
 	adda.l d0, a5
 copyDefaultDefinition
@@ -445,6 +553,7 @@ copyDefaultDefinition
 	subq.l #1, d1
 	bne.w copyDefaultDefinition
 	move.w d6, DEFAULT_USED(a6)
+	movea.l (sp)+, a5
 	movea.l a4, a1
 nextParameter
 	cmpa.l a2, a1
@@ -455,11 +564,28 @@ nextParameter
 	bhs.w bad
 	bra.w parameters
 parametersDone
+	bsr.w captureHeaderDefaults
+	bne.w bad
 	tst.w d2
 	bne.w parametersValid
 	tst.w Def.ParamCount(a0)
 	beq.w bad  ; zero-parameter segments are outside this bounded slice
 parametersValid
+	; Definitions are ordinary numeric declarations for import visibility,
+	; but scopes marks them template-only so expressions cannot use their IDs.
+	subq.l #4, sp
+	clr.b (sp)
+	move.w d5, 1(sp)
+	clr.b 3(sp)
+	movea.l sp, a0
+	movea.l 4(sp), a1
+	jsr scopes.declareTemplate
+	addq.l #4, sp
+	bne.w bad
+	move.w d4, d0
+	mulu.w #DEF_BYTES, d0
+	lea DEFS(a6), a0
+	adda.w d0, a0
 	move.w d5, Def.Name(a0)
 	move.w State.Used(a6), Def.First(a0)
 	move.w State.Used(a6), Def.Last(a0)
@@ -502,6 +628,7 @@ capture
 	; Store the complete raw record; offsets in Def survive relocation.
 	tst.l d7
 	beq.w consumed
+	move.w State.RawBytes(a6), d6
 	moveq #0, d0
 	move.w State.Used(a6), d0
 	add.l d6, d0
@@ -542,6 +669,9 @@ callSyntax
 	adda.w d0, a0
 	move.w Def.ParamCount(a0), d5
 	clr.w CallFrame.DefaultMask(a4)
+	clr.w TEXT_PAREN(a4)
+	clr.w TEXT_BYTES(a4)
+	clr.w FULL_BYTES(a4)
 	lea CallFrame.ArgEnd0(a4), a0
 	moveq #PARAM_LIMIT-1, d0
 clearArgumentEnds
@@ -558,6 +688,7 @@ clearArgumentEnds
 	bne.w arguments
 	cmpi.b #TOKEN_CLOSE_PAREN, -1(a3)
 	bne.w bad
+	move.w #1, TEXT_PAREN(a4)
 	addq.l #1, a1
 	subq.l #1, a3
 arguments
@@ -641,6 +772,8 @@ argumentToken
 	bls.w argName
 	cmpi.b #2, d0
 	beq.w argNumber
+	cmpi.b #3, d0
+	beq.w argString
 	cmpi.b #7, d0
 	beq.w argDot
 	cmpi.b #39, d0
@@ -654,6 +787,15 @@ argName
 	bra.w argAdvance
 argNumber
 	moveq #5, d6
+	bra.w argAdvance
+argString
+	move.l a3, d0
+	sub.l a0, d0
+	cmpi.l #2, d0
+	blo.w bad
+	moveq #0, d6
+	move.b 1(a0), d6
+	addq.w #2, d6
 argAdvance
 	adda.w d6, a0
 	cmpa.l a3, a0
@@ -670,6 +812,8 @@ emptyArguments
 	moveq #0, d1
 argumentsReady
 	move.w d1, CallFrame.ArgCount(a4)
+	bsr.w captureCallText
+	bne.w bad
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a0
@@ -702,6 +846,26 @@ copyDefault
 	subq.l #1, d6
 	bne.w copyDefault
 	move.w d2, CallFrame.ArgBytes(a4)
+	moveq #0, d3
+	move.w Def.TextStart0(a0, d0.w), d3
+	moveq #0, d6
+	move.w Def.TextEnd0(a0, d0.w), d6
+	sub.l d3, d6
+	beq.w bad
+	moveq #0, d2
+	move.w TEXT_BYTES(a4), d2
+	add.l d6, d2
+	cmpi.l #TEXT_LIMIT, d2
+	bhi.w bad
+	lea DEFAULT_TEXT(a6), a1
+	adda.l d3, a1
+	lea TEXT(a4), a2
+	adda.w TEXT_BYTES(a4), a2
+copyDefaultText
+	move.b (a1)+, (a2)+
+	subq.l #1, d6
+	bne.w copyDefaultText
+	move.w d2, TEXT_BYTES(a4)
 	moveq #1, d0
 	lsl.w d7, d0
 	or.w d0, CallFrame.DefaultMask(a4)
@@ -709,6 +873,8 @@ omittedEnd
 	move.w d7, d0
 	add.w d0, d0
 	move.w CallFrame.ArgBytes(a4), CallFrame.ArgEnd0(a4, d0.w)
+	lea TEXT_END0(a4), a1
+	move.w TEXT_BYTES(a4), 0(a1, d0.w)
 	addq.w #1, d7
 	bra.w fillOmitted
 argumentsBound
@@ -727,6 +893,13 @@ ordinary
 	bne.w capture
 	tst.w State.Skipping(a6)
 	bne.w consumed
+	tst.w State.TextOffset(a6)
+	beq.w ordinaryReady
+	move.w State.TextOffset(a6), d0
+	subq.w #1, d0
+	move.b d0, (a5)
+	andi.b #$df, 1(a5)
+ordinaryReady
 	moveq #ACTION_REGULAR, d1
 	bra.w ok
 consumed
@@ -738,6 +911,7 @@ bad
 	moveq #1, d0
 	moveq #ACTION_REGULAR, d1
 done
+	addq.l #4, sp
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
@@ -769,6 +943,337 @@ argumentCopy
 	rts
 argumentBad
 	moveq #1, d0
+	rts
+
+; Keep the definition's trimmed default spelling separately from executable
+; default tokens. Only offsets enter Def; the source record is not retained.
+captureHeaderDefaults
+	movem.l d1-d7/a0-a4, -(sp)
+	movea.l a0, a3  ; definition
+	movea.l a6, a4
+	adda.l #HEADER_FRAME, a4
+	move.w Def.ParamCount(a3), CallFrame.ArgCount(a4)
+	move.w State.HeaderParen(a6), TEXT_PAREN(a4)
+	clr.w TEXT_BYTES(a4)
+	clr.w FULL_BYTES(a4)
+	bsr.w captureCallText
+	bne.w headerTextDone
+	moveq #0, d7
+headerTextNext
+	cmp.w Def.ParamCount(a3), d7
+	bhs.w headerTextGood
+	move.w d7, d0
+	add.w d0, d0
+	move.w Def.DefaultEnd0(a3, d0.w), d1
+	cmp.w Def.DefaultStart0(a3, d0.w), d1
+	beq.w headerTextAdvance
+	moveq #0, d3
+	tst.w d7
+	beq.w headerTextStart
+	lea TEXT_END0(a4), a1
+	move.w -2(a1, d0.w), d3
+headerTextStart
+	moveq #0, d6
+	lea TEXT_END0(a4), a1
+	move.w 0(a1, d0.w), d6
+	cmp.l d3, d6
+	bls.w headerTextBad
+	lea TEXT(a4), a1
+	adda.l d3, a1
+	lea TEXT(a4), a2
+	adda.l d6, a2
+headerTextEqual
+	cmpa.l a2, a1
+	bhs.w headerTextBad
+	cmpi.b #'=', (a1)+
+	bne.w headerTextEqual
+headerTextTrimStart
+	cmpa.l a2, a1
+	bhs.w headerTextBad
+	cmpi.b #' ', (a1)
+	beq.w headerTextSkipStart
+	cmpi.b #9, (a1)
+	bne.w headerTextTrimEnd
+headerTextSkipStart
+	addq.l #1, a1
+	bra.w headerTextTrimStart
+headerTextTrimEnd
+	cmpa.l a1, a2
+	bls.w headerTextBad
+	cmpi.b #' ', -1(a2)
+	beq.w headerTextSkipEnd
+	cmpi.b #9, -1(a2)
+	bne.w headerTextCopyReady
+headerTextSkipEnd
+	subq.l #1, a2
+	bra.w headerTextTrimEnd
+headerTextCopyReady
+	move.l a2, d2
+	sub.l a1, d2
+	moveq #0, d4
+	move.w DEFAULT_TEXT_USED(a6), d4
+	move.l d4, d5
+	add.l d2, d5
+	cmpi.l #DEFAULT_TEXT_LIMIT, d5
+	bhi.w headerTextBad
+	move.w d4, Def.TextStart0(a3, d0.w)
+	move.w d5, Def.TextEnd0(a3, d0.w)
+	lea DEFAULT_TEXT(a6), a2
+	adda.l d4, a2
+headerTextCopy
+	move.b (a1)+, (a2)+
+	subq.l #1, d2
+	bne.w headerTextCopy
+	move.w d5, DEFAULT_TEXT_USED(a6)
+headerTextAdvance
+	addq.w #1, d7
+	bra.w headerTextNext
+headerTextBad
+	moveq #1, d0
+	bra.w headerTextDone
+headerTextGood
+	moveq #0, d0
+headerTextDone
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+
+; Split original argument spelling at top-level commas. Quoted punctuation and
+; nested delimiters remain part of one trimmed argument. Numeric tokens remain
+; the execution representation; this payload serves embedded placeholders.
+captureCallText
+	movem.l d1-d7/a0-a3, -(sp)
+	moveq #0, d0
+	tst.w State.TextOffset(a6)
+	beq.w textDone
+	moveq #0, d2
+	move.w State.TextOffset(a6), d2
+	lea 0(a5, d2.w), a0
+	cmpi.b #TOKEN_CALL_TEXT, (a0)
+	bne.w textBad
+	moveq #0, d2
+	move.b 1(a0), d2
+	lea 2(a0), a0
+	lea 0(a0, d2.w), a1
+textLeading
+	cmpa.l a1, a0
+	blo.w textLeadingByte
+	tst.w CallFrame.ArgCount(a4)
+	bne.w textBad
+	clr.w TEXT_BYTES(a4)
+	bra.w textDone
+textLeadingByte
+	cmpi.b #' ', (a0)
+	beq.w skipLeading
+	cmpi.b #9, (a0)
+	bne.w textTrailing
+skipLeading
+	addq.l #1, a0
+	bra.w textLeading
+textTrailing
+	cmpa.l a0, a1
+	bls.w textBad
+	cmpi.b #' ', -1(a1)
+	beq.w skipTrailing
+	cmpi.b #9, -1(a1)
+	bne.w textParens
+skipTrailing
+	subq.l #1, a1
+	bra.w textTrailing
+textParens
+	cmpi.w #2, TEXT_PAREN(a4)
+	bne.w textOrdinaryParens
+textHeaderName
+	cmpa.l a1, a0
+	bhs.w textBad
+	cmpi.b #'(', (a0)
+	beq.w textHeaderParen
+	addq.l #1, a0
+	bra.w textHeaderName
+textHeaderParen
+	move.w #1, TEXT_PAREN(a4)
+textOrdinaryParens
+	cmpi.w #1, TEXT_PAREN(a4)
+	bne.w textReady
+	cmpi.b #'(', (a0)
+	bne.w textBad
+	cmpi.b #')', -1(a1)
+	bne.w textBad
+	addq.l #1, a0
+	subq.l #1, a1
+	bsr.w captureFullText
+	bne.w textBad
+	move.w #-1, TEXT_PAREN(a4)
+	bra.w textLeading
+textReady
+	tst.w TEXT_PAREN(a4)
+	bmi.w textSplit
+	bsr.w captureFullText
+	bne.w textBad
+textSplit
+	clr.w TEXT_BYTES(a4)
+	movea.l a0, a2  ; current argument start
+	movea.l a0, a3  ; scan cursor
+	moveq #0, d3  ; delimiter depth
+	moveq #0, d4  ; active quote
+	moveq #0, d5  ; escaped quoted byte
+	moveq #0, d7  ; argument index
+textScan
+	cmpa.l a1, a3
+	beq.w textLast
+	moveq #0, d6
+	move.b (a3), d6
+	tst.w d4
+	beq.w textUnquoted
+	tst.w d5
+	beq.w textEscapeCheck
+	moveq #0, d5
+	bra.w textAdvance
+textEscapeCheck
+	cmpi.b #92, d6
+	bne.w textQuoteEnd
+	moveq #1, d5
+	bra.w textAdvance
+textQuoteEnd
+	cmp.b d4, d6
+	bne.w textAdvance
+	moveq #0, d4
+	bra.w textAdvance
+textUnquoted
+	cmpi.b #'"', d6
+	beq.w textQuoteOpen
+	cmpi.b #39, d6
+	bne.w textDelimiter
+textQuoteOpen
+	move.w d6, d4
+	bra.w textAdvance
+textDelimiter
+	cmpi.b #'(', d6
+	beq.w textOpen
+	cmpi.b #'[', d6
+	beq.w textOpen
+	cmpi.b #'{', d6
+	beq.w textOpen
+	cmpi.b #')', d6
+	beq.w textClose
+	cmpi.b #']', d6
+	beq.w textClose
+	cmpi.b #'}', d6
+	beq.w textClose
+	cmpi.b #',', d6
+	bne.w textAdvance
+	tst.w d3
+	bne.w textAdvance
+	bsr.w appendTextArgument
+	bne.w textBad
+	addq.w #1, d7
+	addq.l #1, a3
+	movea.l a3, a2
+	bra.w textScan
+textOpen
+	addq.w #1, d3
+	cmpi.w #16, d3
+	bhi.w textBad
+	bra.w textAdvance
+textClose
+	tst.w d3
+	beq.w textBad
+	subq.w #1, d3
+textAdvance
+	addq.l #1, a3
+	bra.w textScan
+textLast
+	tst.w d3
+	bne.w textBad
+	tst.w d4
+	bne.w textBad
+	bsr.w appendTextArgument
+	bne.w textBad
+	addq.w #1, d7
+	cmp.w CallFrame.ArgCount(a4), d7
+	bne.w textBad
+	bra.w textDone
+textBad
+	moveq #1, d0
+textDone
+	movem.l (sp)+, d1-d7/a0-a3
+	tst.l d0
+	rts
+
+; A0..A1 is the complete supplied argument region, preserving spaces around
+; commas for nested .@. Both pointers stay within the bounded writer sidecar.
+captureFullText
+	move.l a1, d2
+	sub.l a0, d2
+	cmpi.l #251, d2
+	bhi.w fullTextBad
+	move.w d2, FULL_BYTES(a4)
+	beq.w fullTextGood
+	movea.l a0, a2
+	lea FULL_TEXT(a4), a3
+fullTextCopy
+	move.b (a2)+, (a3)+
+	subq.l #1, d2
+	bne.w fullTextCopy
+fullTextGood
+	moveq #0, d0
+	rts
+fullTextBad
+	moveq #1, d0
+	rts
+
+; A2..A3 is an argument, D7 its index. Append trimmed bytes to frame text.
+appendTextArgument
+	move.l a1, -(sp)
+	movea.l a2, a0
+	movea.l a3, a1
+trimArgumentStart
+	cmpa.l a1, a0
+	bhs.w textArgumentBad
+	cmpi.b #' ', (a0)
+	beq.w skipArgumentStart
+	cmpi.b #9, (a0)
+	bne.w trimArgumentEnd
+skipArgumentStart
+	addq.l #1, a0
+	bra.w trimArgumentStart
+trimArgumentEnd
+	cmpa.l a0, a1
+	bls.w textArgumentBad
+	cmpi.b #' ', -1(a1)
+	beq.w skipArgumentEnd
+	cmpi.b #9, -1(a1)
+	bne.w argumentTextReady
+skipArgumentEnd
+	subq.l #1, a1
+	bra.w trimArgumentEnd
+argumentTextReady
+	cmpi.w #PARAM_LIMIT, d7
+	bhs.w textArgumentBad
+	move.l a1, d2
+	sub.l a0, d2
+	moveq #0, d1
+	move.w TEXT_BYTES(a4), d1
+	add.l d2, d1
+	cmpi.l #TEXT_LIMIT, d1
+	bhi.w textArgumentBad
+	lea TEXT(a4), a1
+	adda.w TEXT_BYTES(a4), a1
+copyArgumentText
+	move.b (a0)+, (a1)+
+	subq.l #1, d2
+	bne.w copyArgumentText
+	move.w d1, TEXT_BYTES(a4)
+	move.w d7, d2
+	add.w d2, d2
+	lea TEXT_END0(a4), a0
+	move.w d1, 0(a0, d2.w)
+	moveq #0, d0
+	movea.l (sp)+, a1
+	rts
+textArgumentBad
+	moveq #1, d0
+	movea.l (sp)+, a1
 	rts
 	.bend  ; line
 
@@ -826,6 +1331,27 @@ bodyAvailable
 	bhi.w bad
 	move.w d2, CallFrame.Cursor(a6)
 	lea 0(a3, d5.w), a2
+	clr.w SIDE_BYTES(a6)
+	btst #5, 1(a3)
+	beq.w bodyTextReady
+	moveq #0, d0
+	move.b -1(a2), d0
+	cmpi.w #3, d0
+	blo.w bad
+	movea.l a2, a0
+	suba.w d0, a0
+	cmpa.l a3, a0
+	bls.w bad
+	cmpi.b #TOKEN_CALL_TEXT, (a0)
+	bne.w bad
+	moveq #0, d2
+	move.b 1(a0), d2
+	addq.w #3, d2
+	cmp.w d0, d2
+	bne.w bad
+	move.w d0, SIDE_BYTES(a6)
+	movea.l a0, a2
+bodyTextReady
 	lea 256(a5), a1
 	move.b (a3)+, (a5)+
 	move.b (a3)+, (a5)+
@@ -873,6 +1399,10 @@ tokens
 	bls.w name
 	cmpi.b #2, d0
 	beq.w number
+	cmpi.b #3, d0
+	beq.w stringToken
+	cmpi.b #TOKEN_COMPOSITE, d0
+	beq.w compositeToken
 	cmpi.b #TOKEN_AT, d0
 	beq.w atParameter
 	cmpi.b #7, d0
@@ -1010,7 +1540,16 @@ substituteDefault
 defaultValue
 	moveq #1, d6
 	cmpi.b #2, d0
+	beq.w defaultNumberToken
+	cmpi.b #3, d0
 	bne.w defaultTokenReady
+	cmpi.w #2, d4
+	blo.w bad
+	moveq #0, d6
+	move.b 1(a0), d6
+	addq.w #2, d6
+	bra.w defaultTokenReady
+defaultNumberToken
 	moveq #5, d6
 defaultTokenReady
 	cmp.w d6, d4
@@ -1068,6 +1607,20 @@ name
 	bra.w copyToken
 number
 	moveq #5, d4
+	bra.w copyToken
+stringToken
+	move.l a1, -(sp)  ; output limit
+	move.l a1, d7
+	movea.l 8(sp), a0  ; session state
+	movea.l 4(sp), a1  ; scope state
+	exg a2, a3  ; string token and bounded body-record end
+	jsr expandStringToken
+	exg a2, a3
+	movea.l (sp)+, a1
+	tst.l d0
+	bne.w bad
+	adda.l d1, a3
+	bra.w tokens
 copyToken
 	movea.l a3, a0
 	adda.w d4, a0
@@ -1127,6 +1680,23 @@ copyBytes
 	move.b (a3)+, (a5)+
 	subq.w #1, d4
 	bne.w copyBytes
+	bra.w tokens
+compositeToken
+	move.l a1, -(sp)  ; preserve output limit across the helper call
+	move.l a4, -(sp)  ; preserve definition cursor
+	movea.l 12(sp), a0  ; template session state
+	movea.l 8(sp), a1  ; scope state
+	exg a2, a3  ; recipe start and bounded body-record end
+	movea.l a6, a4  ; invocation frame
+	movea.l 4(sp), a6  ; output limit
+	jsr expandComposite
+	movea.l a4, a6
+	exg a2, a3
+	movea.l (sp)+, a4
+	movea.l (sp)+, a1
+	tst.l d0
+	bne.w bad
+	adda.l d1, a3
 	bra.w tokens
 macroOpen
 	tst.w CallFrame.CallLabelPresent(a6)
@@ -1195,6 +1765,13 @@ macroClose
 	moveq #0, d0
 	bra.w done
 complete
+	moveq #0, d2
+	move.w SIDE_BYTES(a6), d2
+	beq.w completeLength
+	movea.l (sp), a0
+	bsr.w rewriteCallText
+	bne.w bad
+completeLength
 	movea.l a1, a0
 	suba.w #256, a0
 	move.l a5, d1
@@ -1223,6 +1800,483 @@ done
 	tst.l d0
 	rts
 	.bend  ; next
+
+	.priv
+; Rewrite only a captured invocation's exact argument spelling. Positional
+; placeholders are replaced from the current frame before nested lookup.
+; A0=scope,A1=output end,A2=sidecar,A4=definition,A5=output,A6=frame,
+; D2=sidecar bytes. D0/CCR=status,A5 advances; other registers preserved.
+rewriteCallText	.block
+	movem.l d1-d7/a0-a4/a6, -(sp)
+	move.l a4, -(sp)
+	move.l a5, -(sp)
+	movea.l a2, a3
+	adda.w d2, a3
+	subq.l #1, a3  ; trailing sidecar size byte
+	lea 2(a2), a2
+	movea.l a5, a4
+	addq.l #2, a4
+	cmpa.l a1, a4
+	bhi.w rewriteBad
+	move.b #TOKEN_CALL_TEXT, (a5)+
+	clr.b (a5)+
+rewriteByte
+	cmpa.l a3, a2
+	beq.w rewriteComplete
+	bhi.w rewriteBad
+	moveq #0, d0
+	move.b (a2), d0
+	cmpi.b #'@', d0
+	beq.w rewritePositional
+	cmpi.b #'.', d0
+	beq.w rewritePositional
+	bra.w rewriteLiteral
+rewritePositional
+	movea.l a2, a4
+	addq.l #1, a4
+	cmpa.l a3, a4
+	bhs.w rewriteLiteral
+	moveq #0, d7
+	move.b 1(a2), d7
+	cmpi.b #'1', d7
+	blo.w rewriteMaybeNamed
+	cmpi.b #'9', d7
+	bhi.w rewriteMaybeNamed
+	subi.w #'1', d7
+	add.w d7, d7
+	moveq #2, d6
+	bra.w rewriteArgument
+rewriteMaybeNamed
+	cmpi.b #'.', (a2)
+	bne.w rewriteLiteral
+	cmpi.b #'@', 1(a2)
+	beq.w rewriteAllArguments
+	movea.l a2, a4
+	addq.l #1, a4
+	moveq #1, d3  ; identifier byte offset
+	cmpi.b #'{', 1(a2)
+	bne.w rewriteNameBegin
+	addq.l #1, a4
+	moveq #2, d3
+rewriteNameBegin
+	moveq #0, d6
+rewriteNameLength
+	cmpa.l a3, a4
+	bhs.w rewriteNameReady
+	moveq #0, d1
+	move.b (a4), d1
+	cmpi.b #'A', d1
+	blo.w rewriteNameLower
+	cmpi.b #'Z', d1
+	bls.w rewriteNameByte
+rewriteNameLower
+	cmpi.b #'a', d1
+	blo.w rewriteNameDigit
+	cmpi.b #'z', d1
+	bls.w rewriteNameByte
+rewriteNameDigit
+	cmpi.b #'0', d1
+	blo.w rewriteNameUnderscore
+	cmpi.b #'9', d1
+	bls.w rewriteNameByte
+rewriteNameUnderscore
+	cmpi.b #'_', d1
+	bne.w rewriteNameReady
+rewriteNameByte
+	addq.w #1, d6
+	addq.l #1, a4
+	bra.w rewriteNameLength
+rewriteNameReady
+	tst.w d6
+	beq.w rewriteLiteral
+	cmpi.w #2, d3
+	bne.w rewriteFormalBegin
+	cmpa.l a3, a4
+	bhs.w rewriteLiteral
+	cmpi.b #'}', (a4)
+	bne.w rewriteLiteral
+rewriteFormalBegin
+	moveq #0, d7
+rewriteFormal
+	movea.l 4(sp), a4
+	cmp.w Def.ParamCount(a4), d7
+	bhs.w rewriteLiteral
+	move.w d7, d1
+	add.w d1, d1
+	moveq #0, d4
+	move.w Def.Parameter(a4, d1.w), d4
+	sub.w layout.State.Base(a0), d4
+	bcs.w rewriteBad
+	cmp.w layout.State.Count(a0), d4
+	bhs.w rewriteBad
+	lsl.l #4, d4
+	lea layout.ENTRIES(a0), a4
+	adda.l d4, a4
+	moveq #0, d5
+	move.w records.Entry.Length(a4), d5
+	sub.w records.Entry.Leaf(a4), d5
+	cmp.w d6, d5
+	bne.w rewriteNextFormal
+	moveq #0, d4
+	move.w records.Entry.Name(a4), d4
+	add.w records.Entry.Leaf(a4), d4
+	lea layout.ARENA(a0), a4
+	adda.l d4, a4
+	moveq #0, d4
+rewriteCompare
+	cmp.w d6, d4
+	bhs.w rewriteMatched
+	move.w d4, d1
+	add.w d3, d1
+	moveq #0, d2
+	move.b 0(a2, d1.w), d2
+	move.w d2, d1
+	cmpi.b #'A', d1
+	blo.w rewriteLeftFolded
+	cmpi.b #'Z', d1
+	bhi.w rewriteLeftFolded
+	addi.b #32, d1
+rewriteLeftFolded
+	moveq #0, d2
+	move.b 0(a4, d4.w), d2
+	cmpi.b #'A', d2
+	blo.w rewriteRightFolded
+	cmpi.b #'Z', d2
+	bhi.w rewriteRightFolded
+	addi.b #32, d2
+rewriteRightFolded
+	cmp.b d1, d2
+	bne.w rewriteNextFormal
+	addq.w #1, d4
+	bra.w rewriteCompare
+rewriteMatched
+	add.w d7, d7
+	add.w d3, d6
+	cmpi.w #2, d3
+	bne.w rewriteArgument
+	addq.w #1, d6
+	bra.w rewriteArgument
+rewriteNextFormal
+	addq.w #1, d7
+	bra.w rewriteFormal
+rewriteArgument
+	lea TEXT_END0(a6), a4
+	moveq #0, d4
+	move.w 0(a4, d7.w), d4
+	tst.w d7
+	beq.w rewriteFirst
+	moveq #0, d5
+	move.w -2(a4, d7.w), d5
+	bra.w rewriteTextReady
+rewriteFirst
+	moveq #0, d5
+rewriteTextReady
+	sub.w d5, d4
+	beq.w rewriteBad
+	movea.l a5, a4
+	adda.w d4, a4
+	cmpa.l a1, a4
+	bhs.w rewriteBad
+	lea TEXT(a6), a4
+	adda.w d5, a4
+rewriteTextCopy
+	move.b (a4)+, (a5)+
+	subq.w #1, d4
+	bne.w rewriteTextCopy
+	adda.w d6, a2
+	bra.w rewriteByte
+rewriteAllArguments
+	moveq #0, d4
+	move.w FULL_BYTES(a6), d4
+	tst.w d4
+	beq.w rewriteAllDone
+	movea.l a5, a4
+	adda.w d4, a4
+	cmpa.l a1, a4
+	bhs.w rewriteBad
+	lea FULL_TEXT(a6), a4
+rewriteAllCopy
+	move.b (a4)+, (a5)+
+	subq.w #1, d4
+	bne.w rewriteAllCopy
+rewriteAllDone
+	addq.l #2, a2
+	bra.w rewriteByte
+rewriteLiteral
+	movea.l a5, a4
+	addq.l #1, a4
+	cmpa.l a1, a4
+	bhs.w rewriteBad
+	move.b (a2)+, (a5)+
+	bra.w rewriteByte
+rewriteComplete
+	movea.l (sp), a4
+	move.l a5, d0
+	sub.l a4, d0
+	subq.l #2, d0
+	cmpi.l #252, d0
+	bhi.w rewriteBad
+	move.b d0, 1(a4)
+	addq.w #3, d0
+	cmpa.l a1, a5
+	bhs.w rewriteBad
+	move.b d0, (a5)+
+	moveq #0, d0
+	bra.w rewriteDone
+rewriteBad
+	moveq #1, d0
+rewriteDone
+	addq.l #8, sp
+	movem.l (sp)+, d1-d7/a0-a4/a6
+	tst.l d0
+	rts
+	.bend  ; rewriteCallText
+
+; Reuse the exact-text placeholder expander for decoded string bytes. The
+; temporary sidecar and result occupy separate bounded session scratch areas;
+; the emitted record remains a packed kind-3 string with no source pointer.
+; A0=session,A1=scope,A2=string token,A3=body end,A4=definition,A5=output,
+; A6=frame,D7=output end. D0=status,D1=source bytes consumed,A5 advances.
+expandStringToken	.block
+	movem.l d2-d7/a0-a4/a6, -(sp)
+	move.l a0, -(sp)
+	move.l a1, -(sp)
+	move.l a2, -(sp)
+	move.l a5, -(sp)
+	move.l a3, d0
+	sub.l a2, d0
+	cmpi.l #2, d0
+	blo.w stringBad
+	moveq #0, d4
+	move.b 1(a2), d4
+	move.l d4, d5
+	addq.l #2, d5
+	cmp.l d5, d0
+	blo.w stringBad
+	cmpi.l #250, d4
+	bhi.w stringBad
+	movea.l 12(sp), a3
+	adda.l #COMPOSITE_TEXT, a3
+	move.b #TOKEN_CALL_TEXT, (a3)+
+	move.b d4, (a3)+
+	lea 2(a2), a1
+	move.w d4, d6
+stringInputCopy
+	tst.w d6
+	beq.w stringInputDone
+	move.b (a1)+, (a3)+
+	subq.w #1, d6
+	bra.w stringInputCopy
+stringInputDone
+	move.l d5, d2
+	addq.w #1, d2
+	move.b d2, (a3)+
+	movea.l 12(sp), a2
+	adda.l #COMPOSITE_TEXT, a2
+	movea.l 12(sp), a5
+	adda.l #HEADER_FRAME, a5
+	movea.l a5, a1
+	adda.w #256, a1
+	movea.l 8(sp), a0
+	jsr rewriteCallText
+	bne.w stringBad
+	movea.l 12(sp), a2
+	adda.l #HEADER_FRAME, a2
+	cmpi.b #TOKEN_CALL_TEXT, (a2)
+	bne.w stringBad
+	moveq #0, d4
+	move.b 1(a2), d4
+	cmpi.w #250, d4
+	bhi.w stringBad
+	movea.l (sp), a5
+	movea.l a5, a3
+	adda.w #2, a3
+	adda.w d4, a3
+	movea.l d7, a0
+	cmpa.l a0, a3
+	bhi.w stringBad
+	move.b #3, (a5)+
+	move.b d4, (a5)+
+	addq.l #2, a2
+	move.w d4, d6
+stringOutputCopy
+	tst.w d6
+	beq.w stringOutputDone
+	move.b (a2)+, (a5)+
+	subq.w #1, d6
+	bra.w stringOutputCopy
+stringOutputDone
+	move.l d5, d1
+	moveq #0, d0
+	bra.w stringExit
+stringBad
+	movea.l (sp), a5
+	moveq #0, d1
+	moveq #1, d0
+stringExit
+	lea 16(sp), sp
+	movem.l (sp)+, d2-d7/a0-a4/a6
+	tst.l d0
+	rts
+	.bend  ; expandStringToken
+
+; Expand a composite recipe from an invocation frame. A0=session,A1=scope,
+; A2=recipe,A3=record end,A4=call frame,A5=output,A6=output end.
+; D0/CCR=status,D1=consumed bytes,A5 advances; other registers preserved.
+expandComposite	.block
+	movem.l d2-d7/a0-a4/a6, -(sp)
+	move.l a3, d0
+	sub.l a2, d0
+	cmpi.l #4, d0
+	blo.w bad
+	moveq #0, d1
+	move.b 1(a2), d1
+	addq.l #2, d1
+	cmp.l d1, d0
+	blo.w bad
+	move.l d1, -(sp)
+	move.l a2, d7
+	add.l d1, d7
+	bcs.w badLocal
+	moveq #0, d5
+	move.b 2(a2), d5
+	moveq #0, d6
+	move.b 3(a2), d6
+	lea 4(a2), a2
+	adda.l #COMPOSITE_TEXT, a0
+	movea.l a0, a3
+	moveq #0, d4
+fragment
+	tst.w d6
+	beq.w fragmentsDone
+	move.l a2, d0
+	cmp.l d7, d0
+	bhs.w badLocal
+	moveq #0, d2
+	move.b (a2)+, d2
+	tst.w d2
+	beq.w literalFragment
+	cmpi.w #9, d2
+	bhi.w badLocal
+	bra.w positionalFragment
+literalFragment
+	move.l a2, d0
+	cmp.l d7, d0
+	bhs.w badLocal
+	moveq #0, d3
+	move.b (a2)+, d3
+	move.l a2, d0
+	add.l d3, d0
+	bcs.w badLocal
+	cmp.l d7, d0
+	bhi.w badLocal
+	move.l d4, d0
+	add.l d3, d0
+	cmpi.l #255, d0
+	bhi.w badLocal
+	move.l d0, d4
+	tst.w d3
+	beq.w nextFragment
+copyLiteralFragment
+	move.b (a2)+, (a0)+
+	subq.w #1, d3
+	bne.w copyLiteralFragment
+	bra.w nextFragment
+positionalFragment
+	subq.w #1, d2
+	move.w d2, d3
+	add.w d3, d3
+	moveq #0, d0
+	move.l a0, -(sp)
+	lea TEXT_END0(a4), a0
+	move.w 0(a0, d3.w), d0
+	tst.w d3
+	beq.w firstArgument
+	subq.w #2, d3
+	moveq #0, d1
+	move.w 0(a0, d3.w), d1
+	sub.l d1, d0
+	bra.w argumentLength
+firstArgument
+	moveq #0, d1
+argumentLength
+	movea.l (sp)+, a0
+	tst.l d0
+	beq.w badLocal
+	move.l d0, d3
+	move.l d4, d0
+	add.l d3, d0
+	cmpi.l #255, d0
+	bhi.w badLocal
+	move.l d0, d4
+	move.l a2, -(sp)
+	lea TEXT(a4), a2
+	adda.l d1, a2
+copyArgumentText
+	move.b (a2)+, (a0)+
+	subq.w #1, d3
+	bne.w copyArgumentText
+	movea.l (sp)+, a2
+nextFragment
+	subq.w #1, d6
+	bra.w fragment
+fragmentsDone
+	move.l a2, d0
+	cmp.l d7, d0
+	bne.w badLocal
+	tst.w d4
+	beq.w badLocal
+	cmpi.w #3, d5
+	beq.w stringResult
+	cmpi.w #1, d5
+	bhi.w badLocal
+	move.l a6, d0
+	sub.l a5, d0
+	cmpi.l #4, d0
+	blo.w badLocal
+	movea.l a3, a0
+	move.l d4, d0
+	jsr scopes.bind
+	bne.w badLocal
+	move.b #0, (a5)+
+	move.w d1, d0
+	lsr.w #8, d0
+	move.b d0, (a5)+
+	move.b d1, (a5)+
+	move.b d2, (a5)+
+	bra.w success
+stringResult
+	cmpi.w #250, d4
+	bhi.w badLocal
+	move.l a6, d0
+	sub.l a5, d0
+	move.l d4, d1
+	addq.l #2, d1
+	cmp.l d1, d0
+	blo.w badLocal
+	move.b #3, (a5)+
+	move.b d4, (a5)+
+	movea.l a3, a0
+stringResultCopy
+	move.b (a0)+, (a5)+
+	subq.w #1, d4
+	bne.w stringResultCopy
+success
+	moveq #0, d0
+	bra.w doneLocal
+badLocal
+	moveq #1, d0
+doneLocal
+	move.l (sp)+, d1
+done
+	movem.l (sp)+, d2-d7/a0-a4/a6
+	tst.l d0
+	rts
+bad
+	moveq #1, d0
+	moveq #0, d1
+	bra.w done
+	.bend  ; expandComposite
 BlockWord
 	.byte "block"
 EndblockWord

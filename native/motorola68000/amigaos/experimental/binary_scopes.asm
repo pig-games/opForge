@@ -22,6 +22,7 @@ IMPORT_STATE = layout.IMPORT_STATE
 DECLARED = 1
 REFERENCED = 2
 EXPLICIT = 4
+TEMPLATE = 16
 KIND_BLOCK = 1
 KIND_NAMESPACE = 2
 KEY_BLOCK = 1
@@ -468,8 +469,25 @@ references
 	cmpi.b #1, d0
 	bls.w reference
 	cmpi.b #2, d0
-	bne.w punctuation
+	beq.w literal
+	cmpi.b #3, d0
+	beq.w string
+	bra.w punctuation
+literal
 	addq.l #5, a0
+	bra.w references
+string
+	move.l a4, d1
+	sub.l a0, d1
+	cmpi.l #2, d1
+	blo.w bad
+	moveq #0, d0
+	move.b 1(a0), d0
+	addq.l #2, a0
+	subq.l #2, d1
+	cmp.l d0, d1
+	blo.w bad
+	adda.l d0, a0
 	bra.w references
 punctuation
 	addq.l #1, a0
@@ -487,6 +505,8 @@ reference
 	lsl.l #4, d0
 	lea ENTRIES(a6), a3
 	adda.l d0, a3
+	btst #4, records.Entry.Flags+1(a3)
+	bne.w bad  ; template names are callable, not numeric values
 	ori.w #REFERENCED, records.Entry.Flags(a3)
 	clr.b 3(a0)
 	lsr.l #4, d0
@@ -596,6 +616,20 @@ lookupFailed
 	move.w records.Entry.Target(a3), records.Entry.Target(a4)
 	move.w #1, layout.State.Changed(a6)
 access
+	btst #1, records.Entry.Flags+1(a4)
+	beq.w checkAccess
+	moveq #0, d0
+	move.w records.Entry.Target(a4), d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w checkAccess
+	cmp.w layout.State.Count(a6), d0
+	bhs.w failSaved
+	lsl.l #4, d0
+	lea ENTRIES(a6), a3
+	adda.l d0, a3
+	btst #4, records.Entry.Flags+1(a3)
+	bne.w failSaved
+checkAccess
 	move.l d7, d0
 	moveq #0, d1
 	move.w records.Entry.Target(a4), d1
@@ -1176,6 +1210,125 @@ rebindDone
 	rts
 	.bend  ; rebindLocal
 
+; A0=scope state,D0=call ID,D1=definition ID. A read-only candidate check
+; prevents ordinary dot directives from allocating import proxies. Selected
+; per-item aliases may have a different leaf than their definition.
+; D0/CCR=zero on a matching leaf or selected alias; other registers preserved.
+templateCandidate	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	move.w d0, d4
+	move.w d1, d5
+	bsr.w templateLeafEqual
+	beq.w candidateFound
+	moveq #0, d0
+	move.w d4, d0
+	moveq #0, d1
+	move.w d5, d1
+	movea.l a6, a0
+	jsr imports.templateAliasCandidate
+	beq.w candidateFound
+	bra.w candidateMissing
+candidateFound
+	moveq #0, d0
+	bra.w candidateDone
+candidateMissing
+	moveq #1, d0
+candidateDone
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; templateCandidate
+
+; A0=scope state,D0/D1=numeric name IDs. Compare folded leaf bytes.
+; D0/CCR=zero on equal leaves; other registers preserved.
+templateLeafEqual	.block
+	movem.l d1-d5/a0-a3/a6, -(sp)
+	movea.l a0, a6
+	sub.w layout.State.Base(a6), d0
+	bcs.w leafMissing
+	cmp.w layout.State.Count(a6), d0
+	bhs.w leafMissing
+	sub.w layout.State.Base(a6), d1
+	bcs.w leafMissing
+	cmp.w layout.State.Count(a6), d1
+	bhs.w leafMissing
+	lsl.l #4, d0
+	lsl.l #4, d1
+	lea ENTRIES(a6), a2
+	adda.l d0, a2
+	lea ENTRIES(a6), a3
+	adda.l d1, a3
+	moveq #0, d2
+	move.w records.Entry.Length(a2), d2
+	moveq #0, d3
+	move.w records.Entry.Length(a3), d3
+	lea ARENA(a6), a0
+	moveq #0, d0
+	move.w records.Entry.Name(a2), d0
+	adda.l d0, a0
+	lea ARENA(a6), a1
+	moveq #0, d0
+	move.w records.Entry.Name(a3), d0
+	adda.l d0, a1
+	; Entry.Leaf is the first binding context, not necessarily the final
+	; component of an explicitly qualified import alias.
+	moveq #0, d4
+	moveq #0, d5
+scanCallLeaf
+	cmp.l d2, d4
+	bhs.w callLeafReady
+	cmpi.b #'.', 0(a0, d4.w)
+	bne.w nextCallLeaf
+	move.l d4, d5
+	addq.l #1, d5
+nextCallLeaf
+	addq.l #1, d4
+	bra.w scanCallLeaf
+callLeafReady
+	adda.l d5, a0
+	sub.l d5, d2
+	moveq #0, d4
+	moveq #0, d5
+scanDefinitionLeaf
+	cmp.l d3, d4
+	bhs.w definitionLeafReady
+	cmpi.b #'.', 0(a1, d4.w)
+	bne.w nextDefinitionLeaf
+	move.l d4, d5
+	addq.l #1, d5
+nextDefinitionLeaf
+	addq.l #1, d4
+	bra.w scanDefinitionLeaf
+definitionLeafReady
+	adda.l d5, a1
+	sub.l d5, d3
+	cmp.l d3, d2
+	bne.w leafMissing
+	tst.l d2
+	beq.w leafMissing
+leafCompare
+	moveq #0, d1
+	move.b (a0)+, d1
+	bsr.w fold
+	move.w d1, d4
+	moveq #0, d1
+	move.b (a1)+, d1
+	bsr.w fold
+	cmp.b d1, d4
+	bne.w leafMissing
+	subq.w #1, d2
+	bne.w leafCompare
+	moveq #0, d0
+	bra.w leafDone
+leafMissing
+	moveq #1, d0
+leafDone
+	movem.l (sp)+, d1-d5/a0-a3/a6
+	tst.l d0
+	rts
+	.bend  ; templateLeafEqual
+
 ; A0=scope state,D0=call name ID,D1=definition name ID.
 ; D0/CCR=zero when visible, D1=ancestor distance (nearest is zero).
 ; Only an unqualified call may search lexical ancestors; exact IDs also match.
@@ -1252,7 +1405,18 @@ templateAncestor
 	addq.w #1, d1
 	bra.w templateAncestor
 exact
+	move.w d1, d0
 	moveq #0, d1
+	sub.w layout.State.Base(a6), d0
+	bcs.w missing
+	cmp.w layout.State.Count(a6), d0
+	bhs.w missing
+	add.w d0, d0
+	lea MODULE_STATE+modules.OWNERS(a6), a0
+	move.w 0(a0, d0.w), d0
+	beq.w foundTemplate  ; global template
+	cmp.w MODULE_STATE+modules.State.Active(a6), d0
+	bne.w missing
 foundTemplate
 	moveq #0, d0
 	bra.w templateDone
@@ -1264,6 +1428,43 @@ templateDone
 	tst.l d0
 	rts
 	.bend  ; templateDistance
+
+; A0=template name token,A1=scope state. Make a captured .macro/.segment
+; visible to the ordinary numeric declaration and module import machinery.
+; The definition record itself remains in binary_templates.
+; D0/CCR=status; other registers preserved.
+declareTemplate	.block
+	movem.l d1/a0-a1/a3/a6, -(sp)
+	movea.l a1, a6
+	bsr.w declare
+	bne.w templateDeclared
+	btst #1, records.Entry.Flags+1(a3)
+	bne.w templateReferenced
+	ori.w #TEMPLATE, records.Entry.Flags(a3)
+	bra.w templateDeclared
+templateReferenced
+	moveq #1, d0
+templateDeclared
+	movem.l (sp)+, d1/a0-a1/a3/a6
+	tst.l d0
+	rts
+	.bend  ; declareTemplate
+
+; A0=four-byte call-name token,A1=scope state. Resolve an imported template
+; without changing the caller's record. D0/CCR=status,D1=definition ID.
+; Other registers preserved.
+resolveTemplate	.block
+	movem.l d2/a0-a2, -(sp)
+	subq.l #4, sp
+	move.l (a0), (sp)
+	movea.l sp, a0
+	lea bind, a2
+	jsr imports.resolveTemplate
+	addq.l #4, sp
+	movem.l (sp)+, d2/a0-a2
+	tst.l d0
+	rts
+	.bend  ; resolveTemplate
 	.priv
 Words
 	.byte KEY_BLOCK, 5, "block"

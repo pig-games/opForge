@@ -41,7 +41,7 @@ PACKAGE_END = 16
 LINE_NUMBER = 20
 NEXT_ID = 24
 LINE_FRAME = 28
-TOKENS = 68
+TOKENS = LINE_FRAME+writer.Frame.SourceBytes+4
 LEXEMES = TOKENS+64*20
 ; Keep directly addressed regions below signed d16 displacement limits.
 PACKAGE_BUCKETS = LEXEMES+1024
@@ -287,6 +287,8 @@ line	.block
 	move.l a6, writer.Frame.Context(a0)
 	move.l LINE_NUMBER(a6), d0
 	move.w d0, writer.Frame.SourceLine(a0)
+	move.l Frame.Source(a5), writer.Frame.Source(a0)
+	move.l Frame.SourceBytes(a5), writer.Frame.SourceBytes(a0)
 	jsr writer.writeLine
 	bne.w failed
 	movea.l Frame.Output(a5), a0

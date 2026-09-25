@@ -329,6 +329,8 @@ loop
 	beq return
 	cmpi.b #'t', d0
 	beq tab
+	cmpi.b #'0', d0
+	beq zero
 	cmpi.b #'x', d0  ; \xHH is decoded into one payload byte, just like the Rust helper
 	beq hex
 	bra emitDecoded
@@ -345,6 +347,10 @@ return
 
 tab
 	moveq #9, d0
+	bra emitDecoded
+
+zero
+	moveq #0, d0
 	bra emitDecoded
 
 hex

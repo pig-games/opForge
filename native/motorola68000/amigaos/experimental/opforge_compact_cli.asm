@@ -5,6 +5,10 @@
 PATH_BYTES = 256
 MODULE_ROOT_LIMIT = 8
 INCLUDE_ROOT_LIMIT = 16
+OPEN_LIBRARY = -552
+CLOSE_LIBRARY = -414
+GET_ARG_STR = -534
+PUT_STR = -948
 	.section entry, kind=code
 	.pub
 start	.block
@@ -12,12 +16,12 @@ start	.block
 	lea DosName, a1
 	moveq #36, d0
 	movea.l 4.w, a6
-	jsr -552(a6)
+	jsr OPEN_LIBRARY(a6)
 	tst.l d0
 	beq.w unavailable
 	move.l d0, DosBase
 	movea.l d0, a6
-	jsr -534(a6)  ; GetArgStr
+	jsr GET_ARG_STR(a6)
 	tst.l d0
 	beq.w usage
 	movea.l d0, a3
@@ -69,7 +73,7 @@ moduleRoot
 ready
 	movea.l DosBase, a1
 	movea.l 4.w, a6
-	jsr -414(a6)
+	jsr CLOSE_LIBRARY(a6)
 	lea Config, a0
 	move.l #PackagePath, app.Frame.PackagePath(a0)
 	move.l #SourcePath, app.Frame.SourcePath(a0)
@@ -91,10 +95,10 @@ modeReady
 usage
 	movea.l DosBase, a6
 	move.l #UsageText, d1
-	jsr -948(a6)  ; PutStr
+	jsr PUT_STR(a6)
 	movea.l DosBase, a1
 	movea.l 4.w, a6
-	jsr -414(a6)
+	jsr CLOSE_LIBRARY(a6)
 unavailable
 	moveq #20, d0
 done

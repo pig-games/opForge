@@ -729,6 +729,12 @@ recordReady
 	beq.w constantValue
 	cmpi.b #4, d0
 	beq.w namedValue
+	cmpi.b #5, d0
+	beq.w tupleRegister
+	cmpi.b #6, d0
+	beq.w tupleValue
+	cmpi.b #8, d0
+	beq.w wrappedRegister
 	bra.w bad
 expressionValue
 	bsr.w projectionExpression
@@ -741,6 +747,15 @@ namedValue
 	bra.w valueReady
 memberValue
 	bsr.w projectionMember
+	bra.w valueReady
+tupleRegister
+	bsr.w projectionTupleRegister
+	bra.w valueReady
+tupleValue
+	bsr.w projectionTupleValue
+	bra.w valueReady
+wrappedRegister
+	bsr.w projectionWrappedRegister
 	bra.w valueReady
 constantValue
 	move.l package.Projection.Literal(a4), d3
@@ -875,6 +890,99 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; projectionMember
+
+projectionWrappedRegister	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #6, d0
+	bne.w bad
+	cmpi.b #TOKEN_OPEN_PAREN, (a0)+
+	bne.w bad
+	cmpi.b #TOKEN_CLOSE_PAREN, -1(a1)
+	bne.w bad
+	subq.l #1, a1
+	bsr.w register
+return
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectionWrappedRegister
+
+; The two-item packed tuple is [compiled displacement] '(' [numeric name] ')'.
+; A0/A1 bound the operand; returns A6 at '(' or D0=1. No source text is read.
+tupleBounds	.block
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #9, d0
+	blo.w bad
+	movea.l a1, a6
+	suba.w #6, a6
+	cmpi.b #TOKEN_OPEN_PAREN, (a6)
+	bne.w bad
+	cmpi.b #TOKEN_CLOSE_PAREN, 5(a6)
+	bne.w bad
+	cmpi.b #TOKEN_SYMBOL_1, 1(a6)
+	bhi.w bad
+	tst.b 4(a6)
+	bne.w bad
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w bad
+	moveq #0, d0
+	move.b 1(a0), d0
+	beq.w bad
+	addq.l #2, d0
+	move.l a0, d1
+	add.l d1, d0
+	cmpa.l d0, a6
+	bne.w bad
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; tupleBounds
+
+projectionTupleRegister	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	bsr.w tupleBounds
+	tst.l d0
+	bne.w return
+	lea 1(a6), a0
+	subq.l #1, a1
+	bsr.w register
+return
+	rts
+	.bend  ; projectionTupleRegister
+
+projectionTupleValue	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	bsr.w tupleBounds
+	tst.l d0
+	bne.w return
+	movea.l a6, a1
+	jsr expression.evaluate
+	tst.l d0
+	bne.w return
+	cmpa.l a1, a0
+	bne.w bad
+	move.l d1, d3
+	tst.l d2
+	beq.w return
+	move.w #1, Unresolved
+return
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectionTupleValue
 
 operandSpan	.block
 	moveq #0, d0

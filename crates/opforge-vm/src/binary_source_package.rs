@@ -112,6 +112,10 @@ pub enum Projection {
         operand: u8,
         class: u16,
     },
+    IndirectRegister {
+        operand: u8,
+        class: u16,
+    },
     NamedRegister {
         operand: u8,
         name: u16,
@@ -119,6 +123,20 @@ pub enum Projection {
     Member {
         operand: u8,
         qualifier: u16,
+    },
+    TupleRegister {
+        operand: u8,
+        class: u16,
+    },
+    TupleValue {
+        operand: u8,
+    },
+    TupleArity {
+        operand: u8,
+    },
+    ValueProgram {
+        program: u16,
+        source: Box<Projection>,
     },
     RequiredValueProgram {
         program: u16,
@@ -605,6 +623,13 @@ fn parse_semantic(
 }
 
 fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
+    if let Some(rest) = value.strip_prefix("value_program:") {
+        let (program, source) = rest.split_once(':')?;
+        return Some(Projection::ValueProgram {
+            program: names.id(program),
+            source: Box::new(parse_projection(source, names)?),
+        });
+    }
     if let Some(rest) = value.strip_prefix("required_value_program:") {
         let (program, source) = rest.split_once(':')?;
         return Some(Projection::RequiredValueProgram {
@@ -638,10 +663,42 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
             class: class.parse().ok()?,
         });
     }
+    if let Some(rest) = value.strip_prefix("indirect_reg") {
+        let (operand, class) = rest.split_once(".class")?;
+        return Some(Projection::IndirectRegister {
+            operand: operand.parse().ok()?,
+            class: class.parse().ok()?,
+        });
+    }
     if let Some((operand, qualifier)) = parse_member_projection(value) {
         return Some(Projection::Member {
             operand,
             qualifier: names.id(qualifier),
+        });
+    }
+    if let Some(rest) = value.strip_prefix("indirect_tuple_reg") {
+        let (operand, tail) = rest.split_once(".item1.class")?;
+        return Some(Projection::TupleRegister {
+            operand: operand.parse().ok()?,
+            class: tail.parse().ok()?,
+        });
+    }
+    if let Some(rest) = value.strip_prefix("indirect_tuple_value") {
+        let (operand, item) = rest.split_once(".item")?;
+        if item != "0" {
+            return None;
+        }
+        return Some(Projection::TupleValue {
+            operand: operand.parse().ok()?,
+        });
+    }
+    if let Some(rest) = value.strip_prefix("indirect_tuple_arity") {
+        let (operand, arity) = rest.split_once(".value")?;
+        if arity != "2" {
+            return None;
+        }
+        return Some(Projection::TupleArity {
+            operand: operand.parse().ok()?,
         });
     }
     None

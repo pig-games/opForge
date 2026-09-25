@@ -122,6 +122,8 @@ operands
 	; Immediate operands are scalar even when a reserved name follows.
 	bra.w expressionOperand
 operand
+	cmpi.b #14, (a0)
+	beq.w parenthesizedRegister
 	cmpi.b #19, (a0)  ; preserve unary/indirect token structure
 	beq.w prefixedName
 	move.l a1, d0
@@ -145,6 +147,27 @@ bareName
 	bhs.w expressionOperand
 	; Keep package-defined register IDs intact; the package validates the class.
 	bsr.w name
+	bne.w bad
+	bra.w operandDone
+parenthesizedRegister
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #6, d0
+	blo.w expressionOperand
+	cmpi.b #1, 1(a0)
+	bhi.w expressionOperand
+	cmpi.b #15, 5(a0)
+	bne.w expressionOperand
+	move.l a0, -(sp)
+	lea 1(a0), a0
+	bsr.w packageRegister
+	movea.l (sp)+, a0
+	cmpi.l #2, d0
+	beq.w bad
+	tst.l d0
+	bne.w expressionOperand
+	moveq #6, d6
+	bsr.w copy
 	bne.w bad
 	bra.w operandDone
 nameSequence
@@ -185,6 +208,28 @@ expressionOperand
 operandDone
 	cmpa.l a1, a0
 	beq.w complete
+	cmpi.b #14, (a0)
+	bne.w operandDelimiter
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #6, d0
+	blo.w bad
+	cmpi.b #1, 1(a0)
+	bhi.w bad
+	cmpi.b #15, 5(a0)
+	bne.w bad
+	move.l a0, -(sp)
+	lea 1(a0), a0
+	bsr.w packageRegister
+	movea.l (sp)+, a0
+	tst.l d0
+	bne.w bad
+	moveq #6, d6
+	bsr.w copy
+	bne.w bad
+	cmpa.l a1, a0
+	beq.w complete
+operandDelimiter
 	cmpi.b #4, (a0)
 	bne.w bad
 	moveq #1, d6

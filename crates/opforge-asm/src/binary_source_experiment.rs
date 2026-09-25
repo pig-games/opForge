@@ -358,6 +358,28 @@ fn write_candidate(
     if (program == MISSING && recipe != 8) || shape == 255 {
         recipe = 6;
     }
+    // Tuple arity is a match predicate, not a scalar input to the SEMV
+    // encoder. The two projected tuple fields each validate the exact packed
+    // two-item shape before execution.
+    let execution_inputs = inputs
+        .iter()
+        .filter(|input| !matches!(input, Projection::TupleArity { .. }))
+        .collect::<Vec<_>>();
+    for input in inputs {
+        if let Projection::TupleArity { operand } = input {
+            let has_register = inputs.iter().any(|projection| {
+                matches!(projection, Projection::TupleRegister { operand: other, .. } if other == operand)
+            });
+            let has_value = inputs.iter().any(|projection| {
+                matches!(projection, Projection::TupleValue { operand: other } if other == operand)
+                    || matches!(projection, Projection::ValueProgram { source, .. } | Projection::RequiredValueProgram { source, .. }
+                        if matches!(source.as_ref(), Projection::TupleValue { operand: other } if other == operand))
+            });
+            if !has_register || !has_value {
+                recipe = 6;
+            }
+        }
+    }
     let structured_offset = if let CandidateRecipe::PackedMaskUnary {
         opcode,
         mask_operand,
@@ -389,7 +411,7 @@ fn write_candidate(
     };
     let projection_start = out.len();
     if recipe != 6 {
-        for projection in inputs {
+        for projection in &execution_inputs {
             if !write_projection(out, projection, programs)? {
                 out.truncate(projection_start);
                 recipe = 6;
@@ -407,12 +429,16 @@ fn write_candidate(
     set_word(
         out,
         row + 10,
-        if recipe == 6 { 0 } else { word(inputs.len())? },
+        if recipe == 6 {
+            0
+        } else {
+            word(execution_inputs.len())?
+        },
     );
     set_long(
         out,
         row + 12,
-        structured_offset.unwrap_or(if recipe == 6 || inputs.is_empty() {
+        structured_offset.unwrap_or(if recipe == 6 || execution_inputs.is_empty() {
             0
         } else {
             long(projection_start)?
@@ -432,7 +458,8 @@ fn write_projection(
     programs: &Programs<'_>,
 ) -> Result<bool, String> {
     let (projection, value_program) = match projection {
-        Projection::RequiredValueProgram { program, source } => {
+        Projection::ValueProgram { program, source }
+        | Projection::RequiredValueProgram { program, source } => {
             let Some(index) = programs.values.get(program) else {
                 return Ok(false);
             };
@@ -443,7 +470,11 @@ fn write_projection(
     let (kind, operand, field, literal) = match projection {
         Projection::Expression(operand) => (0, *operand, 0, 0),
         Projection::Register { operand, class } => (1, *operand, *class, 0),
+        Projection::IndirectRegister { operand, class } => (8, *operand, *class, 0),
         Projection::Member { operand, qualifier } => (2, *operand, *qualifier, 0),
+        Projection::TupleRegister { operand, class } => (5, *operand, *class, 0),
+        Projection::TupleValue { operand } => (6, *operand, 0, 0),
+        Projection::TupleArity { .. } => return Ok(false),
         Projection::NamedRegister { operand, name } => (4, *operand, *name, 0),
         Projection::Constant(value) => {
             let Ok(value) = i32::try_from(*value) else {
@@ -451,7 +482,9 @@ fn write_projection(
             };
             (3, 0, 0, value)
         }
-        Projection::RequiredValueProgram { .. } => return Ok(false),
+        Projection::ValueProgram { .. } | Projection::RequiredValueProgram { .. } => {
+            return Ok(false)
+        }
     };
     out.extend_from_slice(&[kind, operand]);
     push_word(out, field);
@@ -473,7 +506,8 @@ fn bind_member(
         | Projection::Member { qualifier, .. } => {
             bind(dictionary, name(names, *qualifier)?.into(), *qualifier, 0)
         }
-        Projection::RequiredValueProgram { source, .. } => bind_member(source, names, dictionary),
+        Projection::ValueProgram { source, .. }
+        | Projection::RequiredValueProgram { source, .. } => bind_member(source, names, dictionary),
         _ => Ok(()),
     }
 }

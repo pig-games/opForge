@@ -1025,3 +1025,27 @@ early-rejection run again recorded 656,128 peak owned bytes. Native
 preparation still does not complete, so there is no valid self-host duration.
 The next slice should isolate that displacement/indirect form and derive its
 execution from the package rather than special-casing the instruction.
+
+The compact path now preserves a bounded packed `value(register)` operand and
+projects its value and package-classified register into the package's existing
+semantic program. A plain `(register)` candidate was also made executable so
+it can fail structurally on a displacement tuple rather than block the later
+candidate. Tuple arity remains a checked match condition; it is not an extra
+SEMV input. Fresh 68020 / 2 MiB runs matched Rust for `jsr (a6)`,
+`jsr 0(a6)`, `jsr -552(a6)` (`4e ae fd d8`) and a module-level named offset
+inside a block. Wrong-class and out-of-range displacement cases rejected on
+both paths. This is a two-item tuple subset, not general indirect/indexed
+addressing support.
+
+The compact entry now names its four AmigaOS library-call offsets, including
+`OPEN_LIBRARY = -552`, at module scope. Importing the old CLI's constants
+module solely for those values would bring unrelated dependencies into the
+compact path; these local names preserve the current source's meaning. The
+current self-host entry advances to line 41, `cmpi.b #'-', (a3)`, after the
+four added declarations. Its live Rust oracle is a 60,668-byte four-segment
+Hunk reserving 71,908 linked bytes; the package is 161,466 bytes and the
+gated early-rejection owned-memory peak is 657,408 bytes. Preparation still
+does not complete, so no native self-host duration is valid. The package grew
+12,336 bytes relative to the prior checkpoint as more tuple candidates became
+executable; monitor this cost as the general selector expands. The next
+rejection concerns an immediate operand paired with an indirect register.

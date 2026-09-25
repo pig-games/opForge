@@ -1175,6 +1175,95 @@ rebindDone
 	tst.l d0
 	rts
 	.bend  ; rebindLocal
+
+; A0=scope state,D0=call name ID,D1=definition name ID.
+; D0/CCR=zero when visible, D1=ancestor distance (nearest is zero).
+; Only an unqualified call may search lexical ancestors; exact IDs also match.
+; Other registers preserved.
+templateDistance	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	cmp.w d1, d0
+	beq.w exact
+	move.w d0, d6
+	sub.w layout.State.Base(a6), d6
+	bcs.w missing
+	cmp.w layout.State.Count(a6), d6
+	bhs.w missing
+	move.w d1, d7
+	sub.w layout.State.Base(a6), d7
+	bcs.w missing
+	cmp.w layout.State.Count(a6), d7
+	bhs.w missing
+	lsl.l #4, d6
+	lsl.l #4, d7
+	lea ENTRIES(a6), a4
+	adda.l d6, a4
+	lea ENTRIES(a6), a5
+	adda.l d7, a5
+	tst.w records.Entry.Leaf(a4)
+	beq.w missing  ; an explicitly qualified call needs an exact ID
+	moveq #0, d2
+	move.w records.Entry.Length(a4), d2
+	sub.w records.Entry.Leaf(a4), d2
+	moveq #0, d3
+	move.w records.Entry.Length(a5), d3
+	sub.w records.Entry.Leaf(a5), d3
+	cmp.w d3, d2
+	bne.w missing
+	lea ARENA(a6), a2
+	moveq #0, d0
+	move.w records.Entry.Name(a4), d0
+	add.w records.Entry.Leaf(a4), d0
+	adda.l d0, a2
+	lea ARENA(a6), a3
+	moveq #0, d0
+	move.w records.Entry.Name(a5), d0
+	add.w records.Entry.Leaf(a5), d0
+	adda.l d0, a3
+compareTemplateLeaf
+	moveq #0, d1
+	move.b (a2)+, d1
+	bsr.w fold
+	move.w d1, d6
+	moveq #0, d1
+	move.b (a3)+, d1
+	bsr.w fold
+	cmp.b d1, d6
+	bne.w missing
+	subq.w #1, d2
+	bne.w compareTemplateLeaf
+	moveq #0, d4
+	move.w records.Entry.Owner(a4), d4
+	moveq #0, d5
+	move.w records.Entry.Owner(a5), d5
+	moveq #0, d1
+templateAncestor
+	cmp.w d5, d4
+	beq.w foundTemplate
+	tst.w d4
+	beq.w missing
+	move.w d4, d0
+	subq.w #1, d0
+	lsl.l #4, d0
+	lea ENTRIES(a6), a0
+	adda.l d0, a0
+	move.w records.Entry.Owner(a0), d4
+	addq.w #1, d1
+	bra.w templateAncestor
+exact
+	moveq #0, d1
+foundTemplate
+	moveq #0, d0
+	bra.w templateDone
+missing
+	moveq #1, d0
+	moveq #-1, d1
+templateDone
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; templateDistance
 	.priv
 Words
 	.byte KEY_BLOCK, 5, "block"

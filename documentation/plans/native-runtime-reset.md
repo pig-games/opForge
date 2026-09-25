@@ -779,3 +779,21 @@ output matched live Rust for both macro forms, nested argument expressions,
 and named/positional body references. The earlier scoped macro and segment
 cases also passed. This bounded slice requires exact argument count; Rust's
 default and missing/extra-argument rules are not implemented yet.
+
+The defaults checkpoint retains packed default expression tokens with their
+definition, fills omitted parameters at each call, and permits extra
+positional arguments through `.9`, matching Rust's substitution model. Supplied
+arguments keep their call-site identities; default identifiers are rebound as
+the expanded records enter the call scope. Macro lookup now checks numeric
+scope ancestry so a definition in an outer block remains callable inside a
+nested block. Real 68020 / 2 MiB runs matched Rust on both packages for
+defaults, omitted/extra arguments, caller-block default resolution, and the
+earlier repeated-local-label case. Current bounds are nine parameter/argument
+slots, 192 packed argument bytes per call, and 512 default bytes per session.
+
+An identical eight-block mixed workload without macros produced the same
+output as the first macro checkpoint. One START-to-DONE observation per package
+was 0.576/0.585 s (m6502) and 1.191/1.188 s (m68000), earlier/current;
+there is no reliable timing conclusion. Hunk size rose from 51,028 to 52,332
+bytes and linked reservation from 55,560 to 56,856 bytes. Dynamic peak was
+not measured.

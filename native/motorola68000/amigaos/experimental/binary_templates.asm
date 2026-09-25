@@ -5,10 +5,12 @@
 	.use experimental.amigaos.binary_scopes as scopes
 	.pub
 LIMIT = 8
-ARG_LIMIT = 64
-PARAM_LIMIT = 4
+ARG_LIMIT = 192
+PARAM_LIMIT = 9
+DEFAULT_LIMIT = 512
 BODY_BYTES = 4096
 TOKEN_COMMA = 4
+TOKEN_EQ = 34
 TOKEN_OPEN_BRACKET = 10
 TOKEN_CLOSE_BRACKET = 11
 TOKEN_OPEN_BRACE = 12
@@ -30,6 +32,12 @@ ArgEnd0	.word ?
 ArgEnd1	.word ?
 ArgEnd2	.word ?
 ArgEnd3	.word ?
+ArgEnd4	.word ?
+ArgEnd5	.word ?
+ArgEnd6	.word ?
+ArgEnd7	.word ?
+ArgEnd8	.word ?
+DefaultMask	.word ?
 CallLine	.word ?
 CallLabel	.long ?
 CallLabelPresent	.word ?
@@ -42,6 +50,29 @@ Parameter	.word ?
 Parameter1	.word ?
 Parameter2	.word ?
 Parameter3	.word ?
+Parameter4	.word ?
+Parameter5	.word ?
+Parameter6	.word ?
+Parameter7	.word ?
+Parameter8	.word ?
+DefaultStart0	.word ?
+DefaultStart1	.word ?
+DefaultStart2	.word ?
+DefaultStart3	.word ?
+DefaultStart4	.word ?
+DefaultStart5	.word ?
+DefaultStart6	.word ?
+DefaultStart7	.word ?
+DefaultStart8	.word ?
+DefaultEnd0	.word ?
+DefaultEnd1	.word ?
+DefaultEnd2	.word ?
+DefaultEnd3	.word ?
+DefaultEnd4	.word ?
+DefaultEnd5	.word ?
+DefaultEnd6	.word ?
+DefaultEnd7	.word ?
+DefaultEnd8	.word ?
 First	.word ?
 Last	.word ?
 Kind	.word ?
@@ -50,9 +81,11 @@ ParamCount	.word ?
 DEF_BYTES = Def.ParamCount+2
 KIND_SEGMENT = 0
 KIND_MACRO = 1
-DEFS = State.Serial+2
+DEFAULT_USED = State.Serial+2
+DEFS = DEFAULT_USED+2
 ARGUMENT = DEFS+LIMIT*DEF_BYTES
-BODY = ARGUMENT+ARG_LIMIT
+DEFAULTS = ARGUMENT+ARG_LIMIT
+BODY = DEFAULTS+DEFAULT_LIMIT
 SCRATCH_BYTES = BODY+BODY_BYTES
 	.section code, kind=code
 
@@ -66,6 +99,8 @@ begin	.block
 	clr.w State.Call(a0)
 	clr.w State.Cursor(a0)
 	clr.w State.ArgBytes(a0)
+	clr.w State.DefaultMask(a0)
+	clr.w DEFAULT_USED(a0)
 	clr.w State.CallLine(a0)
 	clr.l State.CallLabel(a0)
 	clr.w State.CallLabelPresent(a0)
@@ -176,17 +211,36 @@ directiveName
 	beq.w ordinary
 	move.w 2(a2), d5
 	moveq #0, d4
+	moveq #-1, d3
+	move.w #$ffff, d6
 findCall
 	cmp.w State.Count(a6), d4
-	bhs.w ordinary
+	bhs.w selectedCall
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
-	lea DEFS(a6), a0
-	adda.w d0, a0
-	cmp.w Def.Name(a0), d5
-	beq.w call
+	lea DEFS(a6), a1
+	adda.w d0, a1
+	moveq #0, d0
+	move.w d5, d0
+	moveq #0, d1
+	move.w Def.Name(a1), d1
+	movea.l a4, a0
+	jsr scopes.templateDistance
+	bne.w nextCall
+	cmp.w d6, d1
+	bhs.w nextCall
+	move.w d1, d6
+	move.w d4, d3
+	tst.w d6
+	beq.w selectedCall
+nextCall
 	addq.w #1, d4
 	bra.w findCall
+selectedCall
+	tst.w d3
+	bmi.w ordinary
+	move.w d3, d4
+	bra.w call
 directiveHeader
 	moveq #KIND_SEGMENT, d2
 	bra.w directiveParameters
@@ -244,6 +298,11 @@ newDefinition
 	lea DEFS(a6), a0
 	adda.w d0, a0
 	clr.w Def.ParamCount(a0)
+	lea Def.DefaultStart0(a0), a4
+	moveq #18-1, d0
+clearDefaults
+	clr.w (a4)+
+	dbra d0, clearDefaults
 	cmpa.l a2, a1
 	beq.w parametersDone
 parameters
@@ -262,6 +321,124 @@ parameters
 	move.w 1(a1), Def.Parameter(a0, d0.w)
 	addq.w #1, Def.ParamCount(a0)
 	adda.w #4, a1
+	cmpa.l a2, a1
+	beq.w parametersDone
+	cmpi.b #TOKEN_EQ, (a1)
+	bne.w nextParameter
+	addq.l #1, a1
+	cmpa.l a2, a1
+	bhs.w bad
+	movea.l a1, a3
+	movea.l a1, a4
+	moveq #0, d6  ; two-bit delimiter stack
+	moveq #0, d7  ; delimiter depth
+scanDefault
+	cmpa.l a2, a4
+	beq.w defaultEnd
+	moveq #0, d0
+	move.b (a4), d0
+	cmpi.b #TOKEN_COMMA, d0
+	bne.w defaultOpenParen
+	tst.w d7
+	beq.w defaultEnd
+	bra.w defaultToken
+defaultOpenParen
+	cmpi.b #TOKEN_OPEN_PAREN, d0
+	bne.w defaultOpenBracket
+	cmpi.w #16, d7
+	bhs.w bad
+	lsl.l #2, d6
+	ori.b #1, d6
+	addq.w #1, d7
+	bra.w defaultToken
+defaultOpenBracket
+	cmpi.b #TOKEN_OPEN_BRACKET, d0
+	bne.w defaultOpenBrace
+	cmpi.w #16, d7
+	bhs.w bad
+	lsl.l #2, d6
+	ori.b #2, d6
+	addq.w #1, d7
+	bra.w defaultToken
+defaultOpenBrace
+	cmpi.b #TOKEN_OPEN_BRACE, d0
+	bne.w defaultCloseParen
+	cmpi.w #16, d7
+	bhs.w bad
+	lsl.l #2, d6
+	ori.b #3, d6
+	addq.w #1, d7
+	bra.w defaultToken
+defaultCloseParen
+	cmpi.b #TOKEN_CLOSE_PAREN, d0
+	bne.w defaultCloseBracket
+	moveq #1, d1
+	bra.w defaultClose
+defaultCloseBracket
+	cmpi.b #TOKEN_CLOSE_BRACKET, d0
+	bne.w defaultCloseBrace
+	moveq #2, d1
+	bra.w defaultClose
+defaultCloseBrace
+	cmpi.b #TOKEN_CLOSE_BRACE, d0
+	bne.w defaultToken
+	moveq #3, d1
+defaultClose
+	tst.w d7
+	beq.w bad
+	move.l d6, d0
+	andi.l #3, d0
+	cmp.l d1, d0
+	bne.w bad
+	lsr.l #2, d6
+	subq.w #1, d7
+defaultToken
+	moveq #0, d0
+	move.b (a4), d0
+	moveq #1, d1
+	cmpi.b #1, d0
+	bls.w defaultName
+	cmpi.b #2, d0
+	beq.w defaultNumber
+	cmpi.b #39, d0
+	bhi.w bad
+	bra.w defaultAdvance
+defaultName
+	moveq #4, d1
+	bra.w defaultAdvance
+defaultNumber
+	moveq #5, d1
+defaultAdvance
+	adda.w d1, a4
+	cmpa.l a2, a4
+	bhi.w bad
+	bra.w scanDefault
+defaultEnd
+	tst.w d7
+	bne.w bad
+	move.l a4, d1
+	sub.l a3, d1
+	beq.w bad
+	moveq #0, d0
+	move.w DEFAULT_USED(a6), d0
+	move.l d0, d6
+	add.l d1, d6
+	cmpi.l #DEFAULT_LIMIT, d6
+	bhi.w bad
+	move.w Def.ParamCount(a0), d7
+	subq.w #1, d7
+	add.w d7, d7
+	move.w d0, Def.DefaultStart0(a0, d7.w)
+	move.w d6, Def.DefaultEnd0(a0, d7.w)
+	lea DEFAULTS(a6), a5
+	adda.l d0, a5
+copyDefaultDefinition
+	move.b (a3)+, (a5)+
+	subq.l #1, d1
+	bne.w copyDefaultDefinition
+	move.w d6, DEFAULT_USED(a6)
+	movea.l a4, a1
+nextParameter
 	cmpa.l a2, a1
 	beq.w parametersDone
 	cmpi.b #TOKEN_COMMA, (a1)+
@@ -347,6 +524,12 @@ callSyntax
 	lea DEFS(a6), a0
 	adda.w d0, a0
 	move.w Def.ParamCount(a0), d5
+	clr.w State.DefaultMask(a6)
+	lea State.ArgEnd0(a6), a0
+	moveq #PARAM_LIMIT-1, d0
+clearArgumentEnds
+	clr.w (a0)+
+	dbra d0, clearArgumentEnds
 	move.l a3, d0
 	sub.l a2, d0
 	cmpi.l #5, d0
@@ -466,17 +649,51 @@ lastArgument
 	bne.w bad
 	bra.w argumentsReady
 emptyArguments
-	tst.w d5
-	bne.w bad
 	clr.w State.ArgBytes(a6)
 	moveq #0, d1
 argumentsReady
-	cmp.w d1, d5
-	bne.w bad
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a0
 	adda.w d0, a0
+	move.w d1, d7
+fillOmitted
+	cmpi.w #PARAM_LIMIT, d7
+	bhs.w argumentsBound
+	cmp.w Def.ParamCount(a0), d7
+	bhs.w omittedEnd
+	move.w d7, d0
+	add.w d0, d0
+	moveq #0, d3
+	move.w Def.DefaultStart0(a0, d0.w), d3
+	moveq #0, d6
+	move.w Def.DefaultEnd0(a0, d0.w), d6
+	sub.l d3, d6
+	beq.w omittedEnd
+	moveq #0, d2
+	move.w State.ArgBytes(a6), d2
+	add.l d6, d2
+	cmpi.l #ARG_LIMIT, d2
+	bhi.w bad
+	lea DEFAULTS(a6), a1
+	adda.l d3, a1
+	lea ARGUMENT(a6), a2
+	adda.w State.ArgBytes(a6), a2
+copyDefault
+	move.b (a1)+, (a2)+
+	subq.l #1, d6
+	bne.w copyDefault
+	move.w d2, State.ArgBytes(a6)
+	moveq #1, d0
+	lsl.w d7, d0
+	or.w d0, State.DefaultMask(a6)
+omittedEnd
+	move.w d7, d0
+	add.w d0, d0
+	move.w State.ArgBytes(a6), State.ArgEnd0(a6, d0.w)
+	addq.w #1, d7
+	bra.w fillOmitted
+argumentsBound
 	move.w Def.First(a0), State.Cursor(a6)
 	clr.w State.CallPhase(a6)
 	tst.w Def.Kind(a0)
@@ -514,8 +731,6 @@ appendArgument
 	sub.l a1, d0
 	beq.w argumentBad
 	cmpi.w #PARAM_LIMIT, d1
-	bhs.w argumentBad
-	cmp.w d5, d1
 	bhs.w argumentBad
 	moveq #0, d6
 	move.w State.ArgBytes(a6), d6
@@ -665,8 +880,6 @@ positionalParameter
 	subq.l #1, d7
 	cmpi.l #PARAM_LIMIT, d7
 	bhs.w copyToken
-	cmp.w Def.ParamCount(a4), d7
-	bhs.w copyToken
 substituteParameter
 	move.w d7, d0
 	add.w d0, d0
@@ -680,17 +893,63 @@ argumentStart
 	moveq #0, d4
 	move.w State.ArgEnd0(a6, d0.w), d4
 	sub.w d6, d4
-	beq.w bad
+	beq.w advanceArgument
 	movea.l a5, a0
 	adda.w d4, a0
 	cmpa.l a1, a0
 	bhi.w bad
 	lea ARGUMENT(a6), a0
 	adda.w d6, a0
+	moveq #0, d0
+	move.w State.DefaultMask(a6), d0
+	btst d7, d0
+	bne.w substituteDefault
 substitute
 	move.b (a0)+, (a5)+
 	subq.w #1, d4
 	bne.w substitute
+	bra.w advanceArgument
+substituteDefault
+	; Defaults were captured in the definition scope. Rebind their source IDs
+	; as the expanded line is emitted in the invocation scope.
+	tst.w d4
+	beq.w advanceArgument
+	moveq #0, d0
+	move.b (a0), d0
+	cmpi.b #1, d0
+	bhi.w defaultValue
+	cmpi.w #4, d4
+	blo.w bad
+	moveq #0, d0
+	move.w 1(a0), d0
+	moveq #0, d1
+	move.b 3(a0), d1
+	move.l a0, -(sp)
+	movea.l 4(sp), a0
+	jsr scopes.rebindLocal
+	movea.l (sp)+, a0
+	bne.w bad
+	move.b (a0)+, (a5)+
+	move.w d1, (a5)+
+	addq.l #2, a0
+	move.b (a0)+, (a5)+
+	subq.w #4, d4
+	bra.w substituteDefault
+defaultValue
+	moveq #1, d6
+	cmpi.b #2, d0
+	bne.w defaultTokenReady
+	moveq #5, d6
+defaultTokenReady
+	cmp.w d6, d4
+	blo.w bad
+	sub.w d6, d4
+defaultCopy
+	move.b (a0)+, (a5)+
+	subq.w #1, d6
+	bne.w defaultCopy
+	bra.w substituteDefault
+advanceArgument
 	cmpi.b #2, 1(a3)
 	beq.w advancePositional
 	addq.l #5, a3

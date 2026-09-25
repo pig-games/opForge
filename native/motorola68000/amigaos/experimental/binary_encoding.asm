@@ -6,6 +6,7 @@
 	.include "telemetry_macros.i"
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_shapes as shapes
+	.use experimental.amigaos.binary_mask_unary as mask_unary
 	.use opasm.amigaos.binary_expression as expression
 	.use tkpkg.amigaos.encoding_execution as encoding
 	.use tkpkg.amigaos.value_execution as value
@@ -17,6 +18,8 @@ TOKEN_DOT = 7
 TOKEN_HASH = 8
 TOKEN_OPEN_PAREN = 14
 TOKEN_CLOSE_PAREN = 15
+TOKEN_MINUS = 19
+TOKEN_DIVIDE = 22
 
 SHAPE_EMPTY = 0
 SHAPE_SINGLE = 1
@@ -25,6 +28,7 @@ SHAPE_PREFIXED_PAIR = 3
 SHAPE_PAIR = 4
 SHAPE_REGISTER_PAIR = 5
 SHAPE_VALUE_REGISTER = 6
+SHAPE_STRUCTURED_PAIR = 7
 
 RECIPE_NONE = 0
 RECIPE_U8 = 1
@@ -34,6 +38,7 @@ RECIPE_SEMANTIC_INPUTS = 4
 RECIPE_SEMANTIC_BRANCH = 5
 RECIPE_UNSUPPORTED = 6
 RECIPE_SEMANTIC_TABLE = 7
+RECIPE_PACKED_MASK_UNARY = 8
 
 PROGRAM_TABLE = 1
 PROGRAM_SEMANTIC = 2
@@ -212,6 +217,38 @@ comma
 	bne.w pairReady
 	move.w #SHAPE_REGISTER_PAIR, OperandShape
 pairReady
+	; The package-owned fragment accepts a name/list and unary-indirect pair.
+	movea.l OperandStart+4, a3
+	movea.l OperandEnd+4, a4
+	move.l a4, d0
+	sub.l a3, d0
+	cmpi.l #7, d0
+	bne.w pairComplete
+	cmpi.b #TOKEN_MINUS, (a3)
+	bne.w pairComplete
+	cmpi.b #TOKEN_OPEN_PAREN, 1(a3)
+	bne.w pairComplete
+	cmpi.b #TOKEN_CLOSE_PAREN, 6(a3)
+	bne.w pairComplete
+	movea.l OperandStart, a0
+	movea.l OperandEnd, a1
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	blo.w pairComplete
+	cmpi.b #1, (a0)
+	bhi.w pairComplete
+	cmpi.l #4, d0
+	beq.w structuredPair
+	cmpi.l #9, d0
+	blo.w pairComplete
+	cmpi.b #TOKEN_MINUS, 4(a0)
+	beq.w structuredPair
+	cmpi.b #TOKEN_DIVIDE, 4(a0)
+	bne.w pairComplete
+structuredPair
+	move.w #SHAPE_STRUCTURED_PAIR, OperandShape
+pairComplete
 	moveq #0, d0
 	rts
 step
@@ -410,7 +447,32 @@ tryRow	.block
 	beq.w semantic
 	cmpi.b #RECIPE_SEMANTIC_TABLE, d0
 	beq.w semantic
+	cmpi.b #RECIPE_PACKED_MASK_UNARY, d0
+	beq.w packedMaskUnary
 	bra.w bad
+packedMaskUnary
+	movea.l package.Context.Package(a2), a4
+	move.l package.Row.Inputs(a5), d0
+	move.l d0, d2
+	addi.l #16, d2
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d2
+	bhi.w bad
+	adda.l d0, a4
+	tst.b 2(a4)
+	bne.w bad
+	cmpi.b #1, 3(a4)
+	bne.w bad
+	movem.l a2/a5-a6, -(sp)
+	movea.l package.Context.Package(a2), a6
+	movea.l OperandStart, a0
+	movea.l OperandEnd, a1
+	movea.l OperandStart+4, a2
+	movea.l OperandEnd+4, a3
+	movea.l a6, a5
+	jsr mask_unary.encode
+	movem.l (sp)+, a2/a5-a6
+	rts
 tableU8
 	bsr.w evaluateOperandZero
 	tst.l d0

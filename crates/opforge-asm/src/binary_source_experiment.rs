@@ -329,6 +329,7 @@ fn write_candidate(
             programs.semantics.get(program).copied().unwrap_or(MISSING),
             inputs.as_slice(),
         ),
+        CandidateRecipe::PackedMaskUnary { .. } => (8, MISSING, &[][..]),
         CandidateRecipe::Unsupported { .. } => (6, MISSING, &[][..]),
     };
     // Only an exact identity TABL may be elided. SEMV normally supplies the
@@ -353,9 +354,39 @@ fn write_candidate(
         "direct_register" => 6,
         _ => 255,
     };
-    if program == MISSING || shape == 255 {
+    let shape = if recipe == 8 { 7 } else { shape };
+    if (program == MISSING && recipe != 8) || shape == 255 {
         recipe = 6;
     }
+    let structured_offset = if let CandidateRecipe::PackedMaskUnary {
+        opcode,
+        mask_operand,
+        indirect_operand,
+        indirect_class,
+        first_class,
+        first_shift,
+        second_class,
+        second_shift,
+    } = &candidate.recipe
+    {
+        if recipe == 8 {
+            align(out);
+            let offset = long(out.len())?;
+            push_word(out, *opcode);
+            out.extend_from_slice(&[*mask_operand, *indirect_operand]);
+            push_word(out, *indirect_class);
+            push_word(out, *first_class);
+            out.extend_from_slice(&[*first_shift, *second_shift]);
+            push_word(out, *second_class);
+            push_word(out, 1); // reverse 16 bits
+            push_word(out, 0);
+            Some(offset)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     let projection_start = out.len();
     if recipe != 6 {
         for projection in inputs {
@@ -381,11 +412,11 @@ fn write_candidate(
     set_long(
         out,
         row + 12,
-        if recipe == 6 || inputs.is_empty() {
+        structured_offset.unwrap_or(if recipe == 6 || inputs.is_empty() {
             0
         } else {
             long(projection_start)?
-        },
+        }),
     );
     out[row + 16] = candidate.width_rank;
     out[row + 17] = u8::from(candidate.unstable_widen);

@@ -987,3 +987,24 @@ mapping, reversal and opcode choices; the generic frontend/VM must not know
 case and the unchanged self-host probe. A one-off `movem` encoding branch in
 the generic assembler would advance one line while creating the wrong
 boundary for the many structured operands still ahead.
+
+The first bounded fragment is now implemented. The preparer retains numeric
+register-list/range and unary-parenthesized-name tokens when the names resolve
+to package registers; ordinary name subtraction still takes the scalar path.
+BSP3 derives a 16-byte offset-addressed recipe from the package's exact
+literal-plus-register-field and reversed-mask sequence. The native executor
+uses package register classes, indices, mask shifts and opcode data; it does
+not match an instruction spelling. It remains one supported sequence shape,
+not a general sequence interpreter. Fresh 68020 / 2 MiB runs matched Rust for
+the original `movem.l d2-d7/a2-a6, -(sp)` (`48 e7 3f 3e`), a word-size mixed
+list, a single register, a duplicate list entry and scalar `VALUE-1` on
+m6502; a cross-class range was rejected on both paths.
+
+The unchanged compact self-host entry now rejects at line 14,
+`movea.l 4.w,a6`, instead of line 11. Its current Rust oracle is a
+60,204-byte four-segment Hunk reserving 71,452 linked bytes from 44 staged
+files and a 149,130-byte runtime package. An instrumented early-rejection run
+again observed 656,128 peak owned bytes. Preparation did not finish, so neither
+the release nor instrumented probe provides a valid native self-host duration
+or a performance-gain claim. The next slice should isolate line 14 and its
+package/operand boundary before changing the larger runtime.

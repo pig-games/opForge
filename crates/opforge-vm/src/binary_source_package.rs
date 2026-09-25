@@ -83,6 +83,16 @@ pub enum CandidateRecipe {
         program: u16,
         inputs: Vec<Projection>,
     },
+    PackedMaskUnary {
+        opcode: u16,
+        mask_operand: u8,
+        indirect_operand: u8,
+        indirect_class: u16,
+        first_class: u16,
+        first_shift: u8,
+        second_class: u16,
+        second_shift: u8,
+    },
     Unsupported {
         plan: u16,
     },
@@ -500,6 +510,9 @@ fn non_member_operand(value: &str) -> Option<u8> {
 }
 
 fn parse_recipe(plan: &str, names: &mut NameTable) -> CandidateRecipe {
+    if let Some(recipe) = parse_packed_mask_unary(plan) {
+        return recipe;
+    }
     match plan {
         "none" => CandidateRecipe::None,
         "u8" => CandidateRecipe::Scalar(ScalarPlan::U8),
@@ -515,6 +528,48 @@ fn parse_recipe(plan: &str, names: &mut NameTable) -> CandidateRecipe {
             plan: names.id(plan),
         },
     }
+}
+
+// A bounded native fragment for a package sequence that emits a literal-plus-
+// register field followed by a reversed register-list mask. Every opcode,
+// operand position, class and mask shift comes from the selector plan.
+fn parse_packed_mask_unary(plan: &str) -> Option<CandidateRecipe> {
+    let body = plan.strip_prefix("semv.sequence.v1:encode:enc.template.field-0@literal:")?;
+    let (opcode, rest) = body.split_once(",unary_minus_indirect_reg")?;
+    let opcode = opcode.parse::<u16>().ok()?;
+    let (indirect, rest) = rest.split_once(";encode:enc.template.scalar-word@register_mask")?;
+    let (indirect_operand, indirect_class) = indirect.split_once(".class")?;
+    let indirect_operand = indirect_operand.parse::<u8>().ok()?;
+    let indirect_class = indirect_class.parse::<u16>().ok()?;
+    let (mask_operand, mapping) = rest.split_once(".map")?;
+    let mask_operand = mask_operand.parse::<u8>().ok()?;
+    let mapping = mapping.strip_suffix(".reverse16")?;
+    let (first, second) = mapping.split_once('+')?;
+    let (first_class, first_shift) = first.split_once('=')?;
+    let (second_class, second_shift) = second.split_once('=')?;
+    let first_class = first_class.parse::<u16>().ok()?;
+    let first_shift = first_shift.parse::<u8>().ok()?;
+    let second_class = second_class.parse::<u16>().ok()?;
+    let second_shift = second_shift.parse::<u8>().ok()?;
+    if mask_operand != 0
+        || indirect_operand != 1
+        || first_class == second_class
+        || first_shift > 15
+        || second_shift > 15
+        || opcode & 7 != 0
+    {
+        return None;
+    }
+    Some(CandidateRecipe::PackedMaskUnary {
+        opcode,
+        mask_operand,
+        indirect_operand,
+        indirect_class,
+        first_class,
+        first_shift,
+        second_class,
+        second_shift,
+    })
 }
 
 fn parse_semantic(
@@ -692,9 +747,35 @@ impl QualifierTable {
 #[cfg(test)]
 mod tests {
     use super::{
-        known_name_exclusions, member_excluded, parse_member_projection, parse_projection,
-        BTreeMap, NameTable, NumericRegister, Projection,
+        known_name_exclusions, member_excluded, parse_member_projection, parse_packed_mask_unary,
+        parse_projection, BTreeMap, CandidateRecipe, NameTable, NumericRegister, Projection,
     };
+
+    #[test]
+    fn packed_mask_fragment_requires_exact_package_sequence() {
+        let plan = "semv.sequence.v1:encode:enc.template.field-0@literal:18656,unary_minus_indirect_reg1.class1;encode:enc.template.scalar-word@register_mask0.map0=0+1=8.reverse16";
+        assert_eq!(
+            parse_packed_mask_unary(plan),
+            Some(CandidateRecipe::PackedMaskUnary {
+                opcode: 18656,
+                mask_operand: 0,
+                indirect_operand: 1,
+                indirect_class: 1,
+                first_class: 0,
+                first_shift: 0,
+                second_class: 1,
+                second_shift: 8,
+            })
+        );
+        for unsupported in [
+            plan.replace("reverse16", "reverse8"),
+            plan.replace("register_mask0", "register_mask1"),
+            plan.replace("18656", "18657"),
+            format!("{plan};encode:extra"),
+        ] {
+            assert_eq!(parse_packed_mask_unary(&unsupported), None);
+        }
+    }
 
     #[test]
     fn named_register_projection_normalizes_the_name() {

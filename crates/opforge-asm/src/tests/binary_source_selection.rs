@@ -5,6 +5,11 @@ const INDEXED: &str = include_str!("../../fixtures/binary-source/indexed-boundar
 const DEFERRED_INDEX: &str = ".cpu m6502\n.org $1000\n lda target,x\ntarget:\n .byte 0\n.end\n";
 const REGISTERS: &str = include_str!("../../fixtures/binary-source/register-predicates.asm");
 const SELF_HOST_MOVEM: &str = ".cpu m68020\n.org 0\n movem.l d2-d7/a2-a6, -(sp)\n.end\n";
+const MOVEM_WORD_LIST: &str = ".cpu m68020\n.org 0\n movem.w d0/a7, -(a7)\n.end\n";
+const MOVEM_SINGLE: &str = ".cpu m68020\n.org 0\n movem.l d2, -(sp)\n.end\n";
+const MOVEM_DUPLICATE: &str = ".cpu m68020\n.org 0\n movem.l d2/d2, -(sp)\n.end\n";
+const MOVEM_CROSS_CLASS: &str = ".cpu m68020\n.org 0\n movem.l d2-a2, -(sp)\n.end\n";
+const SCALAR_SUBTRACTION: &str = ".cpu m6502\n.org $1000\nVALUE=5\n lda VALUE-1\n.end\n";
 
 fn oracle_bytes(source: &str) -> Vec<u8> {
     let (entries, diagnostics) =
@@ -33,17 +38,44 @@ fn binary_selection_positive_oracles() {
 #[test]
 fn binary_selection_self_host_movem_rust_oracle() {
     assert_eq!(oracle_bytes(SELF_HOST_MOVEM), [0x48, 0xe7, 0x3f, 0x3e]);
+    assert_eq!(oracle_bytes(MOVEM_SINGLE).len(), 4);
+    assert_eq!(oracle_bytes(MOVEM_WORD_LIST).len(), 4);
+    assert_eq!(oracle_bytes(MOVEM_DUPLICATE), oracle_bytes(MOVEM_SINGLE));
+    assert_rust_rejection(MOVEM_CROSS_CLASS);
+    assert_eq!(oracle_bytes(SCALAR_SUBTRACTION), [0xa5, 4]);
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; localize current self-host MOVEM boundary"]
-fn binary_selection_self_host_movem_native_rejection_fs_uae() {
+#[ignore = "requires configured FS-UAE; package-owned packed register-list fragment"]
+fn binary_selection_self_host_movem_native_parity_fs_uae() {
     assert_eq!(oracle_bytes(SELF_HOST_MOVEM), [0x48, 0xe7, 0x3f, 0x3e]);
+    assert_binary_source(SELF_HOST_MOVEM.into(), "m68020".into());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; package mask classes and register lists"]
+fn binary_selection_movem_variants_native_parity_fs_uae() {
+    for source in [MOVEM_WORD_LIST, MOVEM_SINGLE, MOVEM_DUPLICATE] {
+        assert_binary_source(source.into(), "m68020".into());
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; mixed-class range rejected"]
+fn binary_selection_movem_cross_class_native_rejection_fs_uae() {
+    assert_rust_rejection(MOVEM_CROSS_CLASS);
     assert_native_files_rejection(
-        &[("input.asm", SELF_HOST_MOVEM)],
+        &[("input.asm", MOVEM_CROSS_CLASS)],
         "m68020",
         Some("[file 00000001, line 00000003]"),
     );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; name subtraction remains scalar"]
+fn binary_selection_scalar_subtraction_fs_uae() {
+    assert_eq!(oracle_bytes(SCALAR_SUBTRACTION), [0xa5, 4]);
+    assert_binary_source(SCALAR_SUBTRACTION.into(), "m6502".into());
 }
 
 #[test]

@@ -122,12 +122,21 @@ operands
 	; Immediate operands are scalar even when a reserved name follows.
 	bra.w expressionOperand
 operand
+	cmpi.b #19, (a0)  ; preserve unary/indirect token structure
+	beq.w prefixedName
 	move.l a1, d0
 	sub.l a0, d0
 	cmpi.l #4, d0
 	blo.w expressionOperand
 	cmpi.b #1, (a0)
 	bhi.w expressionOperand
+	cmpi.l #5, d0
+	blo.w bareName
+	cmpi.b #19, 4(a0)
+	beq.w nameSequence
+	cmpi.b #22, 4(a0)
+	beq.w nameSequence
+bareName
 	moveq #0, d7
 	move.b 1(a0), d7
 	lsl.w #8, d7
@@ -136,6 +145,38 @@ operand
 	bhs.w expressionOperand
 	; Keep package-defined register IDs intact; the package validates the class.
 	bsr.w name
+	bne.w bad
+	bra.w operandDone
+nameSequence
+	bsr.w validateNameSequence
+	cmpi.l #2, d0
+	beq.w bad
+	tst.l d0
+	bne.w expressionOperand
+	bsr.w copy
+	bne.w bad
+	bra.w operandDone
+prefixedName
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #7, d0
+	blo.w expressionOperand
+	cmpi.b #14, 1(a0)
+	bne.w expressionOperand
+	cmpi.b #1, 2(a0)
+	bhi.w expressionOperand
+	cmpi.b #15, 6(a0)
+	bne.w expressionOperand
+	move.l a0, -(sp)
+	lea 2(a0), a0
+	bsr.w packageRegister
+	movea.l (sp)+, a0
+	cmpi.l #2, d0
+	beq.w bad
+	tst.l d0
+	bne.w expressionOperand
+	moveq #7, d6
+	bsr.w copy
 	bne.w bad
 	bra.w operandDone
 expressionOperand
@@ -219,6 +260,90 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; name
+
+; Recognize a package-register name/range/list without modifying the source
+; or output. Non-register subtraction stays on the scalar expression path.
+; D0=0 and D6=byte count for a list, 1 for another expression, 2 bad package.
+validateNameSequence	.block
+	movem.l d1-d5/a0/a3, -(sp)
+	move.l a0, d5
+	movea.l a0, a3
+nextName
+	movea.l a3, a0
+	bsr.w packageRegister
+	tst.l d0
+	bne.w done
+	adda.w #4, a3
+	cmpa.l a1, a3
+	beq.w valid
+	cmpi.b #4, (a3)
+	beq.w valid
+	cmpi.b #19, (a3)
+	beq.w separator
+	cmpi.b #22, (a3)
+	bne.w other
+separator
+	addq.l #1, a3
+	bra.w nextName
+valid
+	move.l a3, d6
+	sub.l d5, d6
+	moveq #0, d0
+	bra.w done
+other
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d5/a0/a3
+	rts
+	.bend  ; validateNameSequence
+
+; A0=name token,A1=end,A2=BSP3 package. D0=0 known register, 1 other,
+; 2 malformed package; all other registers preserved.
+packageRegister	.block
+	movem.l d1-d4/a3, -(sp)
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	blo.w other
+	cmpi.b #1, (a0)
+	bhi.w other
+	tst.b 3(a0)
+	bne.w other
+	moveq #0, d1
+	move.w 1(a0), d1
+	move.l package.Header.RegisterRows(a2), d0
+	move.l package.Header.RegisterCount(a2), d3
+	cmpi.l #$ffff, d3
+	bhi.w malformed
+	move.l d3, d4
+	mulu.w #6, d4
+	add.l d0, d4
+	bcs.w malformed
+	cmp.l package.Header.Bytes(a2), d4
+	bhi.w malformed
+	movea.l a2, a3
+	adda.l d0, a3
+scan
+	tst.l d3
+	beq.w other
+	cmp.w (a3), d1
+	beq.w known
+	addq.l #6, a3
+	subq.l #1, d3
+	bra.w scan
+known
+	moveq #0, d0
+	bra.w done
+other
+	moveq #1, d0
+	bra.w done
+malformed
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d4/a3
+	tst.l d0
+	rts
+	.bend  ; packageRegister
 
 ; Keep a decoded string of two or more bytes as a data operand. A one-byte
 ; string is a scalar, so compile its byte as a numeric literal. No source text

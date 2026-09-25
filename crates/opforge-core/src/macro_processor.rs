@@ -924,6 +924,21 @@ mod tests {
     }
 
     #[test]
+    fn embedded_text_placeholder_joins_identifiers_and_quoted_strings() {
+        let mut mp = MacroProcessor::new();
+        let lines = vec![
+            "EMIT .macro suffix".to_string(),
+            "symbol@1: .word \"x@1\"".to_string(),
+            "    .word symbol@1".to_string(),
+            ".endmacro".to_string(),
+            "    .EMIT A".to_string(),
+        ];
+        let expanded = mp.expand(&lines).expect("expand");
+        assert!(expanded.iter().any(|line| line == "symbolA: .word \"xA\""));
+        assert!(expanded.iter().any(|line| line.trim() == ".word symbolA"));
+    }
+
+    #[test]
     fn macro_args_preserve_list_and_range_literals() {
         let mut mp = MacroProcessor::new().with_statement_support();
         let lines = vec![

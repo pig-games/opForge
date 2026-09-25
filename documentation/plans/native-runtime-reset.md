@@ -735,3 +735,29 @@ the preceding unlabeled parity case still passed. An identical eight-block
 mixed comparison showed 0.548/0.567 s (m6502) and 1.201/1.193 s (m68000)
 before/after. One observation per package is insufficient to claim a speed
 change. The Hunk and linked reservation each grew by 184 bytes.
+
+## First binary `.macro` scope checkpoint
+
+The compact native frontend now captures a name-first, one-parameter
+`NAME .macro parameter` definition as numeric records in the same bounded
+template engine as `.segment`. Calls accept `.NAME expression` and
+`.NAME(expression)`, with an optional call-site label. Expansion injects
+numeric `.block`/`.endblock` records to give every call its own scope and
+rebinds definition-body source identifiers to that scope. Arguments retain
+their call-site bindings; the captured body is never changed or read back as
+source text. This supports repeated calls containing the same internal label.
+
+Fresh 68020 / 2 MiB FS-UAE runs matched live Rust CLI bytes for three macro
+calls, including a local label and a labeled call, on both m6502 and m68000
+packages. The existing `.segment` parity case also passed after the shared
+engine refactor. On an identical eight-block mixed workload without macros,
+pre-change/current START-to-DONE times were 0.557/0.576 s (m6502) and
+1.176/1.191 s (m68000). These are single observations and establish no
+reliable timing change. Hunk bytes rose from 50,340 to 51,028; linked
+reservation rose from 54,896 to 55,560 bytes. Dynamic peak was not measured.
+
+This is still a bounded subset: eight definitions, 4 KiB captured records,
+and a 64-byte argument expression. Defaults, multiple or zero arguments,
+directive-first definitions, nested expansion, and imported macro visibility
+remain outside this parity checkpoint. There is no source-text expansion
+fallback for them.

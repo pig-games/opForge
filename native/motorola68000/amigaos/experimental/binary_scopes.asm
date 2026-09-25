@@ -40,6 +40,8 @@ KEY_REGION = 13
 KEY_PLACE = 14
 KEY_SEGMENT = 15
 KEY_ENDSEGMENT = 16
+KEY_MACRO = 17
+KEY_ENDMACRO = 18
 SECTION_STATE = IMPORT_STATE+imports.SCRATCH_BYTES
 SCRATCH_BYTES = SECTION_STATE+sections.SCRATCH_BYTES
 	.section code, kind=code
@@ -1129,6 +1131,50 @@ classifyDirective	.block
 	tst.l d0
 	rts
 	.bend  ; classifyDirective
+; A0=scope state,D0=definition-time source ID,D1=original qualifier.
+; D0/CCR=status,D1=call-scope ID. Qualified names retain their identity;
+; unqualified source names bind from their lexical leaf in the active scope.
+; Other registers preserved. Package IDs are returned unchanged.
+rebindLocal	.block
+	movem.l d2-d5/a0-a3/a6, -(sp)
+	move.l a1, -(sp)
+	movea.l a0, a6
+	tst.w d1
+	bne.w unchanged
+	move.l d0, d5
+	sub.w layout.State.Base(a6), d5
+	bcs.w unchanged
+	cmp.w layout.State.Count(a6), d5
+	bhs.w badRebind
+	lsl.l #4, d5
+	lea ENTRIES(a6), a3
+	adda.l d5, a3
+	moveq #0, d2
+	move.w records.Entry.Leaf(a3), d2
+	moveq #0, d0
+	move.w records.Entry.Length(a3), d0
+	sub.w d2, d0
+	beq.w badRebind
+	lea ARENA(a6), a0
+	moveq #0, d3
+	move.w records.Entry.Name(a3), d3
+	add.l d2, d3
+	adda.l d3, a0
+	movea.l a6, a1
+	bsr.w bind
+	bra.w rebindDone
+unchanged
+	move.l d0, d1
+	moveq #0, d0
+	bra.w rebindDone
+badRebind
+	moveq #1, d0
+rebindDone
+	movea.l (sp)+, a1
+	movem.l (sp)+, d2-d5/a0-a3/a6
+	tst.l d0
+	rts
+	.bend  ; rebindLocal
 	.priv
 Words
 	.byte KEY_BLOCK, 5, "block"
@@ -1149,6 +1195,9 @@ Words
 	.byte KEY_SEGMENT, 7, "segment"
 	.byte KEY_ENDSEGMENT, 10, "endsegment"
 	.byte KEY_ENDSEGMENT, 4, "ends"
+	.byte KEY_MACRO, 5, "macro"
+	.byte KEY_ENDMACRO, 8, "endmacro"
+	.byte KEY_ENDMACRO, 4, "endm"
 	.byte 0
 	.align 2  ; the next module shares this instruction section
 	.endsection

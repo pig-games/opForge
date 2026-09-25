@@ -1,6 +1,6 @@
-; Bounded preparation-only inline segment templates over numeric writer records.
+; Bounded preparation-only macro and segment templates over numeric writer records.
 ; Definition storage contains record bytes and numeric identifiers, never text.
-	.module experimental.amigaos.binary_segments
+	.module experimental.amigaos.binary_templates
 	.cpu 68020
 	.use experimental.amigaos.binary_scopes as scopes
 	.pub
@@ -23,15 +23,21 @@ ArgBytes	.word ?
 CallLine	.word ?
 CallLabel	.long ?
 CallLabelPresent	.word ?
+CallPhase	.word ?
+Serial	.word ?
 	.endstruct
 Def	.struct
 Name	.word ?
 Parameter	.word ?
 First	.word ?
 Last	.word ?
+Kind	.word ?
 	.endstruct
-DEFS = State.CallLabelPresent+2
-ARGUMENT = DEFS+LIMIT*8
+DEF_BYTES = Def.Kind+2
+KIND_SEGMENT = 0
+KIND_MACRO = 1
+DEFS = State.Serial+2
+ARGUMENT = DEFS+LIMIT*DEF_BYTES
 BODY = ARGUMENT+ARG_LIMIT
 SCRATCH_BYTES = BODY+BODY_BYTES
 	.section code, kind=code
@@ -49,6 +55,8 @@ begin	.block
 	clr.w State.CallLine(a0)
 	clr.l State.CallLabel(a0)
 	clr.w State.CallLabelPresent(a0)
+	clr.w State.CallPhase(a0)
+	clr.w State.Serial(a0)
 	moveq #0, d0
 	rts
 	.bend  ; begin
@@ -68,7 +76,7 @@ done
 	rts
 	.bend  ; endFile
 
-; A0=raw writer record,A1=segment state,A2=scope state,D0=conditional
+; A0=raw writer record,A1=template state,A2=scope state,D0=conditional
 ; active flag. D0/CCR=status,D1=ACTION_*; other registers preserved.
 ; Invoke action queues body records for next. The caller must drain them before
 ; another line; expanded records go directly to normal scope/prepare handling.
@@ -103,7 +111,9 @@ line	.block
 	movea.l a4, a0
 	jsr scopes.classifyDirective
 	cmpi.l #scopes.KEY_SEGMENT, d0
-	beq.w header
+	beq.w segmentHeader
+	cmpi.l #scopes.KEY_MACRO, d0
+	beq.w macroHeader
 directive
 	; A call may carry one numeric entry-label token, with an optional colon.
 	cmpi.w #13, d6
@@ -137,9 +147,13 @@ directiveName
 	movea.l a4, a0
 	jsr scopes.classifyDirective
 	cmpi.l #scopes.KEY_ENDSEGMENT, d0
-	beq.w close
+	beq.w closeSegment
+	cmpi.l #scopes.KEY_ENDMACRO, d0
+	beq.w closeMacro
 	cmpi.l #scopes.KEY_SEGMENT, d0
 	beq.w directiveHeader
+	cmpi.l #scopes.KEY_MACRO, d0
+	beq.w bad  ; only the name-first macro header is supported
 	tst.w State.Open(a6)
 	bne.w capture
 	tst.w State.Skipping(a6)
@@ -152,7 +166,7 @@ findCall
 	cmp.w State.Count(a6), d4
 	bhs.w ordinary
 	move.w d4, d0
-	lsl.w #3, d0
+	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a0
 	adda.w d0, a0
 	cmp.w Def.Name(a0), d5
@@ -160,6 +174,7 @@ findCall
 	addq.w #1, d4
 	bra.w findCall
 directiveHeader
+	moveq #KIND_SEGMENT, d2
 	; .segment NAME(parameter) has one exact numeric-token shape.
 	cmpi.w #19, d6
 	bne.w bad
@@ -178,6 +193,11 @@ directiveHeader
 	move.w 6(a2), d5
 	move.w 11(a2), d3
 	bra.w checkedHeader
+segmentHeader
+	moveq #KIND_SEGMENT, d2
+	bra.w header
+macroHeader
+	moveq #KIND_MACRO, d2
 header
 	cmpi.b #1, 9(a2)
 	bhi.w bad
@@ -201,7 +221,7 @@ duplicate
 	cmp.w State.Count(a6), d4
 	bhs.w newDefinition
 	move.w d4, d0
-	lsl.w #3, d0
+	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a0
 	adda.w d0, a0
 	cmp.w Def.Name(a0), d5
@@ -210,13 +230,14 @@ duplicate
 	bra.w duplicate
 newDefinition
 	move.w d4, d0
-	lsl.w #3, d0
+	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a0
 	adda.w d0, a0
 	move.w d5, Def.Name(a0)
 	move.w d3, Def.Parameter(a0)
 	move.w State.Used(a6), Def.First(a0)
 	move.w State.Used(a6), Def.Last(a0)
+	move.w d2, Def.Kind(a0)
 	addq.w #1, State.Count(a6)
 	addq.w #1, d4
 	move.w d4, State.Open(a6)
@@ -224,6 +245,11 @@ newDefinition
 skipDefinition
 	move.w #1, State.Skipping(a6)
 	bra.w consumed
+closeSegment
+	moveq #KIND_SEGMENT, d2
+	bra.w close
+closeMacro
+	moveq #KIND_MACRO, d2
 close
 	cmpi.w #9, d6
 	bne.w bad
@@ -235,9 +261,11 @@ closeOpen
 	move.w State.Open(a6), d4
 	beq.w bad
 	subq.w #1, d4
-	lsl.w #3, d4
+	mulu.w #DEF_BYTES, d4
 	lea DEFS(a6), a0
 	adda.w d4, a0
+	cmp.w Def.Kind(a0), d2
+	bne.w bad
 	move.w State.Used(a6), d0
 	cmp.w Def.First(a0), d0
 	beq.w bad  ; an invocation must yield at least one record
@@ -341,10 +369,15 @@ copyArgument
 	subq.w #1, d2
 	bne.w copyArgument
 	move.w d4, d0
-	lsl.w #3, d0
+	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a0
 	adda.w d0, a0
 	move.w Def.First(a0), State.Cursor(a6)
+	clr.w State.CallPhase(a6)
+	tst.w Def.Kind(a0)
+	beq.w callQueued
+	move.w #1, State.CallPhase(a6)
+callQueued
 	addq.w #1, d4
 	move.w d4, State.Call(a6)
 	move.w 2(a5), State.CallLine(a6)
@@ -371,24 +404,41 @@ done
 	rts
 	.bend  ; line
 
-; A0=segment state,A1=distinct 256-byte output. D0/CCR=status;
+; A0=segment state,A1=distinct 256-byte output,A2=scope state.
+; D0/CCR=status;
 ; D1=expanded raw record length, zero when the queued call is exhausted.
 ; The source line is the invocation line. Other registers preserved.
 next	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a6
 	movea.l a1, a5
+	movea.l a2, a0
+	move.l a0, -(sp)
 	moveq #0, d1
 	move.w State.Call(a6), d0
 	beq.w exhausted
 	subq.w #1, d0
-	lsl.w #3, d0
+	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a4
 	adda.w d0, a4
+	tst.w Def.Kind(a4)
+	beq.w bodyRecord
+	cmpi.w #1, State.CallPhase(a6)
+	beq.w macroOpen
+	cmpi.w #3, State.CallPhase(a6)
+	beq.w macroClose
+	cmpi.w #4, State.CallPhase(a6)
+	beq.w exhausted
+bodyRecord
 	moveq #0, d0
 	move.w State.Cursor(a6), d0
 	cmp.w Def.Last(a4), d0
-	bhs.w exhausted
+	blo.w bodyAvailable
+	tst.w Def.Kind(a4)
+	beq.w exhausted
+	move.w #3, State.CallPhase(a6)
+	bra.w macroClose
+bodyAvailable
 	lea BODY(a6), a3
 	adda.l d0, a3
 	moveq #0, d5
@@ -406,6 +456,8 @@ next	.block
 	move.w State.CallLine(a6), (a5)+
 	addq.l #2, a3  ; source line is replaced by the invocation line
 	cmp.w Def.First(a4), d0
+	bne.w tokens
+	tst.w Def.Kind(a4)
 	bne.w tokens
 	tst.w State.CallLabelPresent(a6)
 	beq.w tokens
@@ -485,11 +537,118 @@ copyToken
 	adda.w d4, a0
 	cmpa.l a1, a0
 	bhi.w bad
+	cmpi.b #1, (a3)
+	bls.w rebindToken
+	cmpi.b #7, (a3)
+	beq.w rebindToken
+	bra.w copyBytes
+rebindToken
+	tst.w Def.Kind(a4)
+	beq.w copyBytes
+	cmpi.b #7, (a3)
+	beq.w rebindDot
+	moveq #0, d0
+	move.w 1(a3), d0
+	moveq #0, d1
+	move.b 3(a3), d1
+	bra.w bindBodyName
+rebindDot
+	moveq #0, d0
+	move.w 2(a3), d0
+	moveq #0, d1
+	move.b 4(a3), d1
+bindBodyName
+	movea.l (sp), a0
+	jsr scopes.rebindLocal
+	bne.w bad
+	move.l a5, d0
+	add.l d4, d0
+	cmp.l a1, d0
+	bhi.w bad
+	cmpi.b #7, (a3)
+	beq.w writeDot
+	move.b (a3)+, (a5)+
+	move.w d1, (a5)+
+	addq.l #2, a3
+	move.b (a3)+, (a5)+
+	bra.w tokens
+writeDot
+	move.b (a3)+, (a5)+
+	move.b (a3)+, (a5)+
+	move.w d1, (a5)+
+	addq.l #2, a3
+	move.b (a3)+, (a5)+
+	bra.w tokens
 copyBytes
 	move.b (a3)+, (a5)+
 	subq.w #1, d4
 	bne.w copyBytes
 	bra.w tokens
+macroOpen
+	tst.w State.CallLabelPresent(a6)
+	beq.w syntheticLabel
+	move.l State.CallLabel(a6), d5
+	bra.w openerDirective
+syntheticLabel
+	addq.w #1, State.Serial(a6)
+	beq.w bad
+	move.w State.Serial(a6), d0
+	lea 240(a5), a0
+	move.b #1, (a0)+
+	moveq #3, d2
+syntheticNibble
+	move.w d0, d3
+	lsr.w #8, d3
+	lsr.w #4, d3
+	andi.w #15, d3
+	addi.b #16, d3
+	move.b d3, (a0)+
+	lsl.w #4, d0
+	dbra d2, syntheticNibble
+	lea 240(a5), a0
+	moveq #5, d0
+	movea.l (sp), a1
+	jsr scopes.bind
+	bne.w bad
+	moveq #0, d5
+	move.w d1, d5
+	lsl.l #8, d5
+openerDirective
+	lea BlockWord, a0
+	moveq #5, d0
+	movea.l (sp), a1
+	jsr scopes.bind
+	bne.w bad
+	move.b #13, (a5)
+	clr.b 1(a5)
+	move.w State.CallLine(a6), 2(a5)
+	move.l d5, 4(a5)
+	move.b #5, 8(a5)
+	move.b #7, 9(a5)
+	clr.b 10(a5)
+	move.w d1, 11(a5)
+	clr.b 13(a5)
+	move.w #2, State.CallPhase(a6)
+	moveq #14, d1
+	moveq #0, d0
+	bra.w done
+macroClose
+	lea EndblockWord, a0
+	moveq #8, d0
+	movea.l (sp), a1
+	jsr scopes.bind
+	bne.w bad
+	move.b #8, (a5)
+	clr.b 1(a5)
+	move.w State.CallLine(a6), 2(a5)
+	move.b #7, 4(a5)
+	clr.b 5(a5)
+	move.w d1, 6(a5)
+	clr.b 8(a5)
+	move.w #4, State.CallPhase(a6)
+	moveq #9, d1
+	moveq #0, d0
+	bra.w done
 complete
 	movea.l a1, a0
 	suba.w #256, a0
@@ -502,6 +661,7 @@ complete
 	bra.w done
 exhausted
 	clr.w State.Call(a6)
+	clr.w State.CallPhase(a6)
 	moveq #0, d1
 	moveq #0, d0
 	bra.w done
@@ -510,9 +670,15 @@ bad
 	clr.w State.Call(a6)
 	moveq #0, d1
 done
+	addq.l #4, sp
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
 	.bend  ; next
+BlockWord
+	.byte "block"
+EndblockWord
+	.byte "endblock"
+	.align 2  ; the next module shares this instruction section
 	.endsection
 	.endmodule

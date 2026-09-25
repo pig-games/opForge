@@ -9,7 +9,7 @@
 	.use experimental.amigaos.binary_prepare as prepare
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_conditionals as conditionals
-	.use experimental.amigaos.binary_segments as segments
+	.use experimental.amigaos.binary_templates as templates
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_block_index as blocks
@@ -49,8 +49,8 @@ PACKAGE_BUCKETS = LEXEMES+1024
 PREPARED_LINE = PACKAGE_BUCKETS+256*4
 SCOPE_STATE = PREPARED_LINE+256
 CONDITION_STATE = SCOPE_STATE+scopes.SCRATCH_BYTES
-SEGMENT_STATE = CONDITION_STATE+conditionals.SCRATCH_BYTES
-SCRATCH_BYTES = SEGMENT_STATE+segments.SCRATCH_BYTES
+TEMPLATE_STATE = CONDITION_STATE+conditionals.SCRATCH_BYTES
+SCRATCH_BYTES = TEMPLATE_STATE+templates.SCRATCH_BYTES
 	.priv
 ; Package nodes hold capsule-relative entries and scratch-relative chain links.
 Node	.struct
@@ -119,8 +119,8 @@ clearBuckets
 	jsr conditionals.begin
 	bne.w failed
 	movea.l a6, a0
-	adda.l #SEGMENT_STATE, a0
-	jsr segments.begin
+	adda.l #TEMPLATE_STATE, a0
+	jsr templates.begin
 	bne.w failed
 	move.l #1, LINE_NUMBER(a6)
 	jsr scopes.count
@@ -291,23 +291,24 @@ line	.block
 	bne.w failed
 	movea.l Frame.Output(a5), a0
 	movea.l a6, a1
-	adda.l #SEGMENT_STATE, a1
+	adda.l #TEMPLATE_STATE, a1
 	lea SCOPE_STATE(a6), a2
 	moveq #0, d0
 	movea.l a6, a0
 	adda.l #CONDITION_STATE, a0
 	move.w conditionals.State.Active(a0), d0
 	movea.l Frame.Output(a5), a0
-	jsr segments.line
+	jsr templates.line
 	bne.w failed
 	cmpi.w #1, d1
 	beq.w segmentConsumed
 	cmpi.w #2, d1
 	bne.w process
 	movea.l a6, a0
-	adda.l #SEGMENT_STATE, a0
+	adda.l #TEMPLATE_STATE, a0
 	movea.l Frame.Output(a5), a1
-	jsr segments.next
+	lea SCOPE_STATE(a6), a2
+	jsr templates.next
 	bne.w failed
 	tst.l d1
 	beq.w failed
@@ -340,9 +341,10 @@ nextExpansion	.block
 	clr.l Frame.Used(a5)
 	movea.l Frame.Scratch(a5), a6
 	movea.l a6, a0
-	adda.l #SEGMENT_STATE, a0
+	adda.l #TEMPLATE_STATE, a0
 	movea.l Frame.Output(a5), a1
-	jsr segments.next
+	lea SCOPE_STATE(a6), a2
+	jsr templates.next
 	bne.w nextFailed
 	tst.l d1
 	beq.w nextDone
@@ -449,8 +451,8 @@ endFile	.block
 	movea.l a0, a2
 	movea.l Frame.Scratch(a0), a1
 	movea.l a1, a0
-	adda.l #SEGMENT_STATE, a0
-	jsr segments.endFile
+	adda.l #TEMPLATE_STATE, a0
+	jsr templates.endFile
 	bne.w done
 	lea SCOPE_STATE(a1), a0
 	adda.l #scopes.SCRATCH_BYTES, a0

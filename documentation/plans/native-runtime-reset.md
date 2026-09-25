@@ -769,3 +769,13 @@ live Rust CLI for these forms on m6502 and m68000. The earlier repeated
 local-label macro case still passed. Argument lists, defaults, textual
 substitution forms, nested calls, and imported definitions remain follow-on
 work; this checkpoint is not general macro parity.
+
+The next argument checkpoint accepts up to four named parameters and four
+packed positional arguments in either definition/call spelling. It splits
+commas only at the outer level of nested parentheses, brackets, and braces,
+then substitutes both `.name` and `.1`–`.4` without reparsing source. The
+same parser extends `.segment` argument lists. Fresh native m6502/m68000
+output matched live Rust for both macro forms, nested argument expressions,
+and named/positional body references. The earlier scoped macro and segment
+cases also passed. This bounded slice requires exact argument count; Rust's
+default and missing/extra-argument rules are not implemented yet.

@@ -6,7 +6,13 @@
 	.pub
 LIMIT = 8
 ARG_LIMIT = 64
+PARAM_LIMIT = 4
 BODY_BYTES = 4096
+TOKEN_COMMA = 4
+TOKEN_OPEN_BRACKET = 10
+TOKEN_CLOSE_BRACKET = 11
+TOKEN_OPEN_BRACE = 12
+TOKEN_CLOSE_BRACE = 13
 TOKEN_OPEN_PAREN = 14
 TOKEN_CLOSE_PAREN = 15
 ACTION_REGULAR = 0
@@ -20,6 +26,10 @@ Used	.word ?
 Call	.word ?
 Cursor	.word ?
 ArgBytes	.word ?
+ArgEnd0	.word ?
+ArgEnd1	.word ?
+ArgEnd2	.word ?
+ArgEnd3	.word ?
 CallLine	.word ?
 CallLabel	.long ?
 CallLabelPresent	.word ?
@@ -29,12 +39,15 @@ Serial	.word ?
 Def	.struct
 Name	.word ?
 Parameter	.word ?
+Parameter1	.word ?
+Parameter2	.word ?
+Parameter3	.word ?
 First	.word ?
 Last	.word ?
 Kind	.word ?
-HasParameter	.word ?
+ParamCount	.word ?
 	.endstruct
-DEF_BYTES = Def.HasParameter+2
+DEF_BYTES = Def.ParamCount+2
 KIND_SEGMENT = 0
 KIND_MACRO = 1
 DEFS = State.Serial+2
@@ -179,40 +192,21 @@ directiveHeader
 	bra.w directiveParameters
 directiveMacroHeader
 	moveq #KIND_MACRO, d2
-	cmpi.w #15, d6
-	beq.w directiveNoParameter
 directiveParameters
-	; .segment/.macro NAME(parameter) has one exact numeric-token shape.
-	cmpi.w #19, d6
-	bne.w bad
+	; The parenthesized header contains only bare parameter names and commas.
+	cmpi.w #15, d6
+	blo.w bad
 	cmpi.b #1, 5(a2)
 	bhi.w bad
 	tst.b 8(a2)
 	bne.w bad
 	cmpi.b #TOKEN_OPEN_PAREN, 9(a2)
 	bne.w bad
-	cmpi.b #1, 10(a2)
-	bhi.w bad
-	tst.b 13(a2)
-	bne.w bad
-	cmpi.b #TOKEN_CLOSE_PAREN, 14(a2)
+	cmpi.b #TOKEN_CLOSE_PAREN, -1(a3)
 	bne.w bad
 	move.w 6(a2), d5
-	move.w 11(a2), d3
-	moveq #1, d1
-	bra.w checkedHeader
-directiveNoParameter
-	cmpi.b #1, 5(a2)
-	bhi.w bad
-	tst.b 8(a2)
-	bne.w bad
-	cmpi.b #TOKEN_OPEN_PAREN, 9(a2)
-	bne.w bad
-	cmpi.b #TOKEN_CLOSE_PAREN, 10(a2)
-	bne.w bad
-	move.w 6(a2), d5
-	moveq #0, d3
-	moveq #0, d1
+	lea 10(a2), a1
+	lea -1(a3), a2
 	bra.w checkedHeader
 segmentHeader
 	moveq #KIND_SEGMENT, d2
@@ -221,22 +215,8 @@ macroHeader
 	moveq #KIND_MACRO, d2
 header
 	move.w 1(a2), d5
-	cmpi.w #13, d6
-	beq.w noParameter
-	cmpi.b #1, 9(a2)
-	bhi.w bad
-	cmpi.w #17, d6
-	bne.w bad  ; one bare parameter, no trailing tokens
-	tst.b 12(a2)
-	bne.w bad
-	move.w 10(a2), d3
-	moveq #1, d1
-	bra.w checkedHeader
-noParameter
-	cmpi.w #KIND_MACRO, d2
-	bne.w bad
-	moveq #0, d3
-	moveq #0, d1
+	lea 9(a2), a1
+	movea.l a3, a2
 checkedHeader
 	tst.w State.Open(a6)
 	bne.w bad
@@ -263,12 +243,42 @@ newDefinition
 	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a0
 	adda.w d0, a0
+	clr.w Def.ParamCount(a0)
+	cmpa.l a2, a1
+	beq.w parametersDone
+parameters
+	move.l a2, d0
+	sub.l a1, d0
+	cmpi.l #4, d0
+	blo.w bad
+	cmpi.b #1, (a1)
+	bhi.w bad
+	tst.b 3(a1)
+	bne.w bad
+	move.w Def.ParamCount(a0), d0
+	cmpi.w #PARAM_LIMIT, d0
+	bhs.w bad
+	add.w d0, d0
+	move.w 1(a1), Def.Parameter(a0, d0.w)
+	addq.w #1, Def.ParamCount(a0)
+	adda.w #4, a1
+	cmpa.l a2, a1
+	beq.w parametersDone
+	cmpi.b #TOKEN_COMMA, (a1)+
+	bne.w bad
+	cmpa.l a2, a1
+	bhs.w bad
+	bra.w parameters
+parametersDone
+	tst.w d2
+	bne.w parametersValid
+	tst.w Def.ParamCount(a0)
+	beq.w bad  ; zero-parameter segments are outside this bounded slice
+parametersValid
 	move.w d5, Def.Name(a0)
-	move.w d3, Def.Parameter(a0)
 	move.w State.Used(a6), Def.First(a0)
 	move.w State.Used(a6), Def.Last(a0)
 	move.w d2, Def.Kind(a0)
-	move.w d1, Def.HasParameter(a0)
 	addq.w #1, State.Count(a6)
 	addq.w #1, d4
 	move.w d4, State.Open(a6)
@@ -336,49 +346,97 @@ callSyntax
 	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a0
 	adda.w d0, a0
-	move.w Def.HasParameter(a0), d5
+	move.w Def.ParamCount(a0), d5
 	move.l a3, d0
 	sub.l a2, d0
 	cmpi.l #5, d0
 	blo.w bad
 	lea 5(a2), a1
-	moveq #0, d3
 	cmpa.l a3, a1
-	beq.w emptyArgument
+	beq.w emptyArguments
 	cmpi.b #TOKEN_OPEN_PAREN, (a1)
-	bne.w bareArgument
+	bne.w arguments
 	cmpi.b #TOKEN_CLOSE_PAREN, -1(a3)
 	bne.w bad
 	addq.l #1, a1
 	subq.l #1, a3
-	moveq #1, d3
-bareArgument
+arguments
 	cmpa.l a3, a1
-	bhs.w emptyArgument
-	tst.w d5
-	beq.w bad
-	move.l a3, d0
-	sub.l a1, d0
-	cmpi.l #ARG_LIMIT, d0
 	bhi.w bad
-	move.w d0, State.ArgBytes(a6)
-	; A single nonempty expression: comma starts a second argument.
+	beq.w emptyArguments
+	clr.w State.ArgBytes(a6)
+	moveq #0, d1
+	moveq #0, d2  ; two-bit delimiter stack
+	moveq #0, d3  ; delimiter depth
 	movea.l a1, a0
 checkArgument
 	cmpa.l a3, a0
-	beq.w argumentReady
+	beq.w lastArgument
 	moveq #0, d0
 	move.b (a0), d0
-	cmpi.b #4, d0
-	beq.w bad
+	cmpi.b #TOKEN_COMMA, d0
+	bne.w openParen
 	tst.w d3
-	beq.w argumentToken
+	bne.w argumentToken
+	bsr.w appendArgument
+	bne.w bad
+	addq.l #1, a0
+	movea.l a0, a1
+	bra.w checkArgument
+openParen
 	cmpi.b #TOKEN_OPEN_PAREN, d0
-	beq.w bad
+	bne.w openBracket
+	cmpi.w #16, d3
+	bhs.w bad
+	lsl.l #2, d2
+	ori.b #1, d2
+	addq.w #1, d3
+	bra.w argumentToken
+openBracket
+	cmpi.b #TOKEN_OPEN_BRACKET, d0
+	bne.w openBrace
+	cmpi.w #16, d3
+	bhs.w bad
+	lsl.l #2, d2
+	ori.b #2, d2
+	addq.w #1, d3
+	bra.w argumentToken
+openBrace
+	cmpi.b #TOKEN_OPEN_BRACE, d0
+	bne.w closeParen
+	cmpi.w #16, d3
+	bhs.w bad
+	lsl.l #2, d2
+	ori.b #3, d2
+	addq.w #1, d3
+	bra.w argumentToken
+closeParen
 	cmpi.b #TOKEN_CLOSE_PAREN, d0
+	bne.w closeBracket
+	moveq #1, d6
+	bra.w closeDelimiter
+closeBracket
+	cmpi.b #TOKEN_CLOSE_BRACKET, d0
+	bne.w closeBrace
+	moveq #2, d6
+	bra.w closeDelimiter
+closeBrace
+	cmpi.b #TOKEN_CLOSE_BRACE, d0
+	bne.w argumentToken
+	moveq #3, d6
+closeDelimiter
+	tst.w d3
 	beq.w bad
+	move.l d2, d0
+	andi.l #3, d0
+	cmp.l d6, d0
+	bne.w bad
+	lsr.l #2, d2
+	subq.w #1, d3
 argumentToken
-	moveq #1, d2
+	moveq #0, d0
+	move.b (a0), d0
+	moveq #1, d6
 	cmpi.b #1, d0
 	bls.w argName
 	cmpi.b #2, d0
@@ -389,33 +447,32 @@ argumentToken
 	bhi.w bad
 	bra.w argAdvance
 argDot
-	moveq #5, d2
+	moveq #1, d6
 	bra.w argAdvance
 argName
-	moveq #4, d2
+	moveq #4, d6
 	bra.w argAdvance
 argNumber
-	moveq #5, d2
+	moveq #5, d6
 argAdvance
-	adda.w d2, a0
+	adda.w d6, a0
 	cmpa.l a3, a0
 	bhi.w bad
 	bra.w checkArgument
-argumentReady
-	lea ARGUMENT(a6), a0
-	move.w State.ArgBytes(a6), d2
-copyArgument
-	move.b (a1)+, (a0)+
-	subq.w #1, d2
-	bne.w copyArgument
-	bra.w queueCall
-emptyArgument
-	cmpa.l a3, a1
-	bhi.w bad
+lastArgument
+	tst.w d3
+	bne.w bad
+	bsr.w appendArgument
+	bne.w bad
+	bra.w argumentsReady
+emptyArguments
 	tst.w d5
 	bne.w bad
 	clr.w State.ArgBytes(a6)
-queueCall
+	moveq #0, d1
+argumentsReady
+	cmp.w d1, d5
+	bne.w bad
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a0
@@ -449,6 +506,37 @@ bad
 done
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
+	rts
+; A1..A0 is one nonempty argument in the source record. Append its packed
+; tokens and record its cumulative end offset. D1 is the current argument count.
+appendArgument
+	move.l a0, d0
+	sub.l a1, d0
+	beq.w argumentBad
+	cmpi.w #PARAM_LIMIT, d1
+	bhs.w argumentBad
+	cmp.w d5, d1
+	bhs.w argumentBad
+	moveq #0, d6
+	move.w State.ArgBytes(a6), d6
+	add.l d0, d6
+	cmpi.l #ARG_LIMIT, d6
+	bhi.w argumentBad
+	lea ARGUMENT(a6), a2
+	adda.w State.ArgBytes(a6), a2
+argumentCopy
+	move.b (a1)+, (a2)+
+	subq.l #1, d0
+	bne.w argumentCopy
+	move.w d6, State.ArgBytes(a6)
+	move.w d1, d0
+	add.w d0, d0
+	move.w d6, State.ArgEnd0(a6, d0.w)
+	addq.w #1, d1
+	moveq #0, d0
+	rts
+argumentBad
+	moveq #1, d0
 	rts
 	.bend  ; line
 
@@ -552,26 +640,63 @@ tokens
 	cmpa.l a2, a0
 	bhi.w bad
 	cmpi.b #1, 1(a3)
-	bhi.w bad
+	bhi.w positionalParameter
 	tst.b 4(a3)
 	bne.w copyToken
 	move.w 2(a3), d0
-	tst.w Def.HasParameter(a4)
-	beq.w copyToken
-	cmp.w Def.Parameter(a4), d0
-	bne.w copyToken
+	moveq #0, d7
+findParameter
+	cmp.w Def.ParamCount(a4), d7
+	bhs.w copyToken
+	move.w d7, d6
+	add.w d6, d6
+	cmp.w Def.Parameter(a4, d6.w), d0
+	beq.w substituteParameter
+	addq.w #1, d7
+	bra.w findParameter
+positionalParameter
+	cmpi.b #2, 1(a3)
+	bne.w bad
+	lea 6(a3), a0
+	cmpa.l a2, a0
+	bhi.w bad
+	moveq #6, d4
+	move.l 2(a3), d7
+	subq.l #1, d7
+	cmpi.l #PARAM_LIMIT, d7
+	bhs.w copyToken
+	cmp.w Def.ParamCount(a4), d7
+	bhs.w copyToken
+substituteParameter
+	move.w d7, d0
+	add.w d0, d0
+	moveq #0, d6
+	tst.w d0
+	beq.w argumentStart
+	subq.w #2, d0
+	move.w State.ArgEnd0(a6, d0.w), d6
+	addq.w #2, d0
+argumentStart
 	moveq #0, d4
-	move.w State.ArgBytes(a6), d4
+	move.w State.ArgEnd0(a6, d0.w), d4
+	sub.w d6, d4
+	beq.w bad
 	movea.l a5, a0
 	adda.w d4, a0
 	cmpa.l a1, a0
 	bhi.w bad
 	lea ARGUMENT(a6), a0
+	adda.w d6, a0
 substitute
 	move.b (a0)+, (a5)+
 	subq.w #1, d4
 	bne.w substitute
+	cmpi.b #2, 1(a3)
+	beq.w advancePositional
 	addq.l #5, a3
+	bra.w tokens
+advancePositional
+	addq.l #6, a3
 	bra.w tokens
 name
 	moveq #4, d4
@@ -596,7 +721,11 @@ rebindToken
 	tst.w Def.Kind(a4)
 	beq.w copyBytes
 	cmpi.b #7, (a3)
-	beq.w rebindDot
+	bne.w rebindName
+	cmpi.b #2, 1(a3)
+	beq.w copyBytes
+	bra.w rebindDot
+rebindName
 	moveq #0, d0
 	move.w 1(a3), d0
 	moveq #0, d1

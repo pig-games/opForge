@@ -105,6 +105,10 @@ fn project_token(kind: &PortableTokenKind) -> TokenProjection<'_> {
             kind: OpforgeTokenKind::Question,
             text: TokenText::Static("?"),
         },
+        PortableTokenKind::At => TokenProjection {
+            kind: OpforgeTokenKind::At,
+            text: TokenText::Static("@"),
+        },
         PortableTokenKind::OpenBracket => TokenProjection {
             kind: OpforgeTokenKind::OpenBracket,
             text: TokenText::Static("["),

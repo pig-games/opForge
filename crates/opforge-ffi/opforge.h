@@ -72,6 +72,7 @@ typedef enum opforge_token_kind {
     OPFORGE_TOKEN_CLOSE_PAREN = 15,
     OPFORGE_TOKEN_OPERATOR = 16,
     OPFORGE_TOKEN_END = 17,
+    OPFORGE_TOKEN_AT = 40,
     OPFORGE_TOKEN_INVALID = 255,
 } opforge_token_kind;
 

@@ -135,6 +135,8 @@ LexHash
 	.byte "#"
 LexQuestion
 	.byte "?"
+LexAt
+	.byte "@"
 LexOpenBracket
 	.byte "["
 LexCloseBracket

@@ -55,6 +55,7 @@ TK_KIND_OP_GE                   = 36
 TK_KIND_OP_GT                   = 37
 TK_KIND_OP_LE                   = 38
 TK_KIND_OP_LT                   = 39
+TK_KIND_AT                      = 40
 
 LOCAL_CURRENT_BYTE              = 0
 LOCAL_PENDING_KIND              = 4
@@ -450,6 +451,8 @@ scanSymbolToken	.block
 	beq stageHash
 	cmpi.b #'?', d0
 	beq stageQuestion
+	cmpi.b #'@', d0
+	beq stageAt
 	cmpi.b #'[', d0
 	beq stageOpenBracket
 	cmpi.b #']', d0
@@ -597,6 +600,13 @@ stageQuestion
 	addq.l #1, d2
 	move.w #TK_KIND_QUESTION, LOCAL_PENDING_KIND(a2)
 	lea demo_program.LexQuestion, a0
+	moveq #1, d0
+	bra stageAndCommitSymbol
+
+stageAt
+	addq.l #1, d2
+	move.w #TK_KIND_AT, LOCAL_PENDING_KIND(a2)
+	lea demo_program.LexAt, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 

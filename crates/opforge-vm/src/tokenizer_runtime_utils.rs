@@ -175,6 +175,7 @@ pub fn vm_token_lexeme_len(token: &PortableToken) -> usize {
         | PortableTokenKind::Dot
         | PortableTokenKind::Hash
         | PortableTokenKind::Question
+        | PortableTokenKind::At
         | PortableTokenKind::OpenBracket
         | PortableTokenKind::CloseBracket
         | PortableTokenKind::OpenBrace
@@ -412,6 +413,7 @@ pub fn vm_build_token(
         7 => PortableTokenKind::Dot,
         8 => PortableTokenKind::Hash,
         9 => PortableTokenKind::Question,
+        40 => PortableTokenKind::At,
         10 => PortableTokenKind::OpenBracket,
         11 => PortableTokenKind::CloseBracket,
         12 => PortableTokenKind::OpenBrace,
@@ -691,6 +693,10 @@ pub fn vm_scan_symbol_token(
         b'?' => {
             stream.advance();
             PortableTokenKind::Question
+        }
+        b'@' => {
+            stream.advance();
+            PortableTokenKind::At
         }
         b'[' => {
             stream.advance();

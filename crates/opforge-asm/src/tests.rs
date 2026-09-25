@@ -22703,6 +22703,7 @@ fn render_tkpkg_smoke_debug_row(token: &PortableToken) -> String {
         PortableTokenKind::Dot => "Dot".to_string(),
         PortableTokenKind::Hash => "Hash".to_string(),
         PortableTokenKind::Question => "Question".to_string(),
+        PortableTokenKind::At => "At".to_string(),
         PortableTokenKind::OpenBracket => "OpenBracket".to_string(),
         PortableTokenKind::CloseBracket => "CloseBracket".to_string(),
         PortableTokenKind::OpenBrace => "OpenBrace".to_string(),

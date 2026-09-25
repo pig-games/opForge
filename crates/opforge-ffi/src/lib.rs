@@ -243,6 +243,7 @@ pub enum OpforgeTokenKind {
     CloseParen = 15,
     Operator = 16,
     End = 17,
+    At = 40,
     Invalid = 255,
 }
 

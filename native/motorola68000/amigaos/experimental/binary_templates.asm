@@ -18,6 +18,7 @@ TOKEN_OPEN_BRACE = 12
 TOKEN_CLOSE_BRACE = 13
 TOKEN_OPEN_PAREN = 14
 TOKEN_CLOSE_PAREN = 15
+TOKEN_AT = 40
 ACTION_REGULAR = 0
 ACTION_CONSUMED = 1
 ACTION_INVOKE = 2
@@ -35,6 +36,7 @@ CallFrame	.struct
 Definition	.word ?
 Cursor	.word ?
 ArgBytes	.word ?
+ArgCount	.word ?  ; supplied arguments, excluding omitted defaults
 ArgEnd0	.word ?
 ArgEnd1	.word ?
 ArgEnd2	.word ?
@@ -667,6 +669,7 @@ emptyArguments
 	clr.w CallFrame.ArgBytes(a4)
 	moveq #0, d1
 argumentsReady
+	move.w d1, CallFrame.ArgCount(a4)
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a0
@@ -870,9 +873,19 @@ tokens
 	bls.w name
 	cmpi.b #2, d0
 	beq.w number
+	cmpi.b #TOKEN_AT, d0
+	beq.w atParameter
 	cmpi.b #7, d0
 	bne.w copyToken
+	lea 2(a3), a0
+	cmpa.l a2, a0
+	bhi.w bad
+	cmpi.b #TOKEN_AT, 1(a3)
+	beq.w allArguments
+	cmpi.b #TOKEN_OPEN_BRACE, 1(a3)
+	beq.w bracedParameter
 	moveq #5, d4
+	moveq #5, d5
 	lea 5(a3), a0
 	cmpa.l a2, a0
 	bhi.w bad
@@ -898,6 +911,43 @@ positionalParameter
 	cmpa.l a2, a0
 	bhi.w bad
 	moveq #6, d4
+	moveq #6, d5
+	move.l 2(a3), d7
+	subq.l #1, d7
+	cmpi.l #PARAM_LIMIT, d7
+	bhs.w copyToken
+	bra.w substituteParameter
+bracedParameter
+	lea 7(a3), a0
+	cmpa.l a2, a0
+	bhi.w bad
+	cmpi.b #1, 2(a3)
+	bhi.w bad
+	tst.b 5(a3)
+	bne.w copyToken
+	cmpi.b #TOKEN_CLOSE_BRACE, 6(a3)
+	bne.w bad
+	moveq #7, d4
+	moveq #7, d5
+	move.w 3(a3), d0
+	moveq #0, d7
+findBracedParameter
+	cmp.w Def.ParamCount(a4), d7
+	bhs.w copyToken
+	move.w d7, d6
+	add.w d6, d6
+	cmp.w Def.Parameter(a4, d6.w), d0
+	beq.w substituteParameter
+	addq.w #1, d7
+	bra.w findBracedParameter
+atParameter
+	moveq #6, d4
+	moveq #6, d5
+	lea 6(a3), a0
+	cmpa.l a2, a0
+	bhi.w bad
+	cmpi.b #2, 1(a3)
+	bne.w copyToken
 	move.l 2(a3), d7
 	subq.l #1, d7
 	cmpi.l #PARAM_LIMIT, d7
@@ -972,12 +1022,46 @@ defaultCopy
 	bne.w defaultCopy
 	bra.w substituteDefault
 advanceArgument
-	cmpi.b #2, 1(a3)
-	beq.w advancePositional
-	addq.l #5, a3
+	adda.w d5, a3
 	bra.w tokens
-advancePositional
-	addq.l #6, a3
+allArguments
+	; Recreate only the supplied list. Defaults are absent from Rust's .@.
+	moveq #0, d7
+	moveq #0, d6
+allArgumentNext
+	cmp.w CallFrame.ArgCount(a6), d7
+	bhs.w allArgumentDone
+	tst.w d7
+	beq.w allArgumentFirst
+	cmpa.l a1, a5
+	bhs.w bad
+	move.b #TOKEN_COMMA, (a5)+
+allArgumentFirst
+	move.w d7, d0
+	add.w d0, d0
+	moveq #0, d4
+	move.w CallFrame.ArgEnd0(a6, d0.w), d4
+	sub.w d6, d4
+	movea.l a5, a0
+	adda.w d4, a0
+	cmpa.l a1, a0
+	bhi.w bad
+	lea CallFrame.Argument(a6), a0
+	adda.w d6, a0
+	tst.w d4
+	beq.w allArgumentAdvance
+allArgumentCopy
+	move.b (a0)+, (a5)+
+	subq.w #1, d4
+	bne.w allArgumentCopy
+allArgumentAdvance
+	move.w d7, d0
+	add.w d0, d0
+	move.w CallFrame.ArgEnd0(a6, d0.w), d6
+	addq.w #1, d7
+	bra.w allArgumentNext
+allArgumentDone
+	addq.l #2, a3
 	bra.w tokens
 name
 	moveq #4, d4

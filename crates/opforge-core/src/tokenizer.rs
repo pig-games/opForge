@@ -60,6 +60,7 @@ pub enum TokenKind {
     Dot,
     Hash,
     Question,
+    At,
     OpenBracket,
     CloseBracket,
     OpenBrace,
@@ -147,6 +148,7 @@ impl Token {
             TokenKind::Dot => ".".to_string(),
             TokenKind::Hash => "#".to_string(),
             TokenKind::Question => "?".to_string(),
+            TokenKind::At => "@".to_string(),
             TokenKind::OpenBracket => "[".to_string(),
             TokenKind::CloseBracket => "]".to_string(),
             TokenKind::OpenBrace => "{".to_string(),
@@ -284,6 +286,13 @@ impl<'a> Tokenizer<'a> {
                 self.cursor += 1;
                 Ok(Token {
                     kind: TokenKind::Question,
+                    span: Span::new(self.line_num, start, self.cursor),
+                })
+            }
+            b'@' => {
+                self.cursor += 1;
+                Ok(Token {
+                    kind: TokenKind::At,
                     span: Span::new(self.line_num, start, self.cursor),
                 })
             }

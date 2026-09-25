@@ -811,3 +811,16 @@ Hunk size changed from 52,332 to 52,508 bytes and linked reservation from
 56,856 to 57,028 bytes. Dynamic peak, including the invocation stack, was
 not measured. The next parity gaps include textual placeholder forms,
 imported template visibility, and string-bearing template records.
+
+The next packed placeholder checkpoint adds a one-byte `@` token to the
+shared tokenizer contract and expands `@1`–`@9`, `.@`, and `.{name}` from
+captured binary argument records. `.@` contains the supplied argument list,
+not defaults. Live Rust and fresh 68020 / 2 MiB native runs agreed for two
+calls using all three forms on both packages; the nested-call regression also
+passed. The identical eight-block mixed workload retained identical output.
+One START-to-DONE observation was 0.547/0.550 s (m6502) and 1.173/1.189 s
+(m68000), earlier/current; this is not evidence of a speed change. Hunk size
+rose from 52,508 to 52,780 bytes and linked reservation from 57,028 to
+57,296 bytes. Dynamic peak was not measured. This does not yet cover Rust's
+textual concatenation around placeholders or strings; imported template
+visibility remains a separate gap.

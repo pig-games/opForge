@@ -50,7 +50,7 @@ Length	.long ?
 ; Binder owns namespace/alias resolution; this writer contains no CPU semantics.
 ; Result: [u8(total length-1), u8(flags), u16 source line], followed by
 ; TKVM kind bytes: kinds 0/1 have u16 ID,u8 qualifier; kind2 has u32 value;
-; kinds 4..39 have no payload. All multibyte output fields are big-endian,
+; kinds 4..40 have no payload. All multibyte output fields are big-endian,
 ; with no alignment padding. Strings and unknown kinds are unsupported.
 ; Bit zero is indentation; scope lowering adds numeric block-open/close bits.
 ; Returns D0=status, D1=length; Frame.Used equals D1. Preserves other registers.
@@ -115,7 +115,7 @@ loop
 	adda.l d0, a0
 	moveq #0, d3
 	move.w Token.Kind(a2), d3
-	cmpi.w #39, d3
+	cmpi.w #40, d3
 	bhi.w unsupported
 	cmpi.w #3, d3
 	beq.w unsupported

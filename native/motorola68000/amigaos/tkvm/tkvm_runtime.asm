@@ -89,6 +89,7 @@ TK_KIND_OP_GE                   = 36
 TK_KIND_OP_GT                   = 37
 TK_KIND_OP_LE                   = 38
 TK_KIND_OP_LT                   = 39
+TK_KIND_AT                      = 40
 
 ; The default demo program currently uses only the same first five character
 ; classes consumed by vm_char_class_matches in tokenizer_runtime_utils.rs.

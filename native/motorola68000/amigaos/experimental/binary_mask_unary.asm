@@ -18,12 +18,14 @@ encode	.block
 	movea.l a5, a6
 	movea.l a4, a5
 	cmpi.w #1, 12(a5)
-	bne.w bad
-	tst.w 14(a5)
-	bne.w bad
+	bhi.w bad
 	move.l a3, d0
 	sub.l a2, d0
 	cmpi.l #7, d0
+	bne.w bad
+	cmpi.w #18, 14(a5)
+	beq.w postfix
+	cmpi.w #19, 14(a5)
 	bne.w bad
 	cmpi.b #19, (a2)
 	bne.w bad
@@ -31,9 +33,22 @@ encode	.block
 	bne.w bad
 	cmpi.b #15, 6(a2)
 	bne.w bad
+	bra.w indirectReady
+postfix
+	cmpi.b #14, (a2)
+	bne.w bad
+	cmpi.b #15, 5(a2)
+	bne.w bad
+	cmpi.b #18, 6(a2)
+	bne.w bad
+indirectReady
 	movem.l a0-a1, -(sp)
+	lea 1(a2), a0
+	cmpi.w #19, 14(a5)
+	bne.w registerBounds
 	lea 2(a2), a0
-	lea 6(a2), a1
+registerBounds
+	lea 4(a0), a1
 	bsr.w register
 	movem.l (sp)+, a0-a1
 	bne.w bad
@@ -79,6 +94,9 @@ itemEnd
 	bne.w bad
 	bra.w nextItem
 reverse
+	move.w d6, d4
+	tst.w 12(a5)
+	beq.w output
 	moveq #0, d4
 	moveq #15, d3
 reverseBit
@@ -88,6 +106,7 @@ reverseBit
 	addq.w #1, d4
 zeroBit
 	dbra d3, reverseBit
+output
 	move.w d5, Bytes
 	move.w d4, Bytes+2
 	lea Bytes, a1

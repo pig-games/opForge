@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use package::{decode_encoding_program, EncodingStep};
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
     BinarySourcePackage, CandidateRecipe, NumericCandidate, Projection, ScalarPlan,
@@ -352,17 +353,23 @@ fn write_candidate(
             programs.semantics.get(program).copied().unwrap_or(MISSING),
             inputs.as_slice(),
         ),
-        CandidateRecipe::PackedMaskUnary { .. } => (8, MISSING, &[][..]),
+        CandidateRecipe::PackedMaskIndirect { .. } => (8, MISSING, &[][..]),
         CandidateRecipe::Unsupported { .. } => (6, MISSING, &[][..]),
     };
-    // Only an exact identity TABL may be elided. SEMV normally supplies the
-    // operand payload; TABL still owns the surrounding instruction bytes.
+    // Only an exact identity TABL may be elided. A semantic program without
+    // TABL must itself start by emitting an opcode, not just operand payload.
     let identity_table = programs
         .rows
         .get(usize::from(table))
         .is_some_and(|row| row.bytes == [vm::bytecode::OP_EMIT_OPERAND, 0, vm::bytecode::OP_END]);
     if recipe == 4 && !identity_table {
-        recipe = if table == MISSING { 6 } else { 7 };
+        recipe = if table != MISSING {
+            7
+        } else if !semantic_emits_opcode(programs, program) {
+            6
+        } else {
+            4
+        };
     }
     if recipe == 5 && !identity_table {
         recipe = 6;
@@ -371,7 +378,9 @@ fn write_candidate(
         "implied" => 0,
         "direct" => 1,
         "immediate" => 2,
-        "immediate_register" | "immediate_direct" => 3,
+        "immediate_register" => 3,
+        "immediate_direct" => 8,
+        "register" => 9,
         "register_direct" => 4,
         "register_register" => 5,
         "direct_register" => 6,
@@ -403,10 +412,12 @@ fn write_candidate(
             }
         }
     }
-    let structured_offset = if let CandidateRecipe::PackedMaskUnary {
+    let structured_offset = if let CandidateRecipe::PackedMaskIndirect {
         opcode,
         mask_operand,
         indirect_operand,
+        indirect_token,
+        reverse_mask,
         indirect_class,
         first_class,
         first_shift,
@@ -423,8 +434,8 @@ fn write_candidate(
             push_word(out, *first_class);
             out.extend_from_slice(&[*first_shift, *second_shift]);
             push_word(out, *second_class);
-            push_word(out, 1); // reverse 16 bits
-            push_word(out, 0);
+            push_word(out, u16::from(*reverse_mask));
+            push_word(out, u16::from(*indirect_token));
             Some(offset)
         } else {
             None
@@ -473,6 +484,26 @@ fn write_candidate(
     set_word(out, row + 20, candidate.mode);
     set_word(out, row + 28, if recipe == 7 { table } else { MISSING });
     Ok(())
+}
+
+fn semantic_emits_opcode(programs: &Programs<'_>, index: u16) -> bool {
+    programs
+        .rows
+        .get(usize::from(index))
+        .is_some_and(|program| {
+            program.kind == 2
+                && decode_encoding_program(program.version, program.bytes)
+                    .ok()
+                    .and_then(|steps| steps.into_iter().next())
+                    .is_some_and(|step| {
+                        matches!(
+                            step,
+                            EncodingStep::Literal { .. }
+                                | EncodingStep::Fields { .. }
+                                | EncodingStep::InputFields { .. }
+                        )
+                    })
+        })
 }
 
 fn write_projection(

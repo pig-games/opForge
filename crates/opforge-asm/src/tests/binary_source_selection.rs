@@ -6,6 +6,7 @@ const INDEXED: &str = include_str!("../../fixtures/binary-source/indexed-boundar
 const DEFERRED_INDEX: &str = ".cpu m6502\n.org $1000\n lda target,x\ntarget:\n .byte 0\n.end\n";
 const REGISTERS: &str = include_str!("../../fixtures/binary-source/register-predicates.asm");
 const SELF_HOST_MOVEM: &str = ".cpu m68020\n.org 0\n movem.l d2-d7/a2-a6, -(sp)\n.end\n";
+const SELF_HOST_MOVEM_RESTORE: &str = ".cpu m68020\n.org 0\n movem.l (sp)+, d2-d7/a2-a6\n.end\n";
 const SELF_HOST_MOVEA_SHORT: &str = ".cpu m68020\n.org 0\n movea.l 4.w,a6\n.end\n";
 const SELF_HOST_DISPLACEMENT: &str = ".cpu m68020\n.org 0\n jsr -552(a6)\n.end\n";
 const SELF_HOST_IMMEDIATE_INDIRECT: &str = ".cpu m68020\n.org 0\n cmpi.b #'-', (a3)\n.end\n";
@@ -55,6 +56,10 @@ fn binary_selection_positive_oracles() {
 #[test]
 fn binary_selection_self_host_movem_rust_oracle() {
     assert_eq!(oracle_bytes(SELF_HOST_MOVEM), [0x48, 0xe7, 0x3f, 0x3e]);
+    assert_eq!(
+        oracle_bytes(SELF_HOST_MOVEM_RESTORE),
+        [0x4c, 0xdf, 0x7c, 0xfc]
+    );
     assert_eq!(oracle_bytes(MOVEM_SINGLE).len(), 4);
     assert_eq!(oracle_bytes(MOVEM_WORD_LIST).len(), 4);
     assert_eq!(oracle_bytes(MOVEM_DUPLICATE), oracle_bytes(MOVEM_SINGLE));
@@ -244,6 +249,89 @@ fn binary_selection_self_host_movea_short_native_parity_fs_uae() {
 fn binary_selection_self_host_movem_native_parity_fs_uae() {
     assert_eq!(oracle_bytes(SELF_HOST_MOVEM), [0x48, 0xe7, 0x3f, 0x3e]);
     assert_binary_source(SELF_HOST_MOVEM.into(), "m68020".into());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; package-owned postincrement register-mask fragment"]
+fn binary_selection_self_host_movem_restore_native_parity_fs_uae() {
+    assert_binary_source(SELF_HOST_MOVEM_RESTORE.into(), "m68020".into());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; full compact entry helper blocks"]
+fn binary_selection_compact_entry_helpers_native_parity_fs_uae() {
+    let entry = fs::read_to_string(
+        workspace_root().join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+    )
+    .unwrap();
+    let helpers = entry
+        .split_once("; A3=argument tail cursor, A1=256-byte destination.")
+        .unwrap()
+        .1
+        .split_once("\t.endsection")
+        .unwrap()
+        .0;
+    let source = format!(
+        ".cpu m68020\nPATH_BYTES = 256\n.org 0\n; A3=argument tail cursor, A1=256-byte destination.{helpers}\n.end\n"
+    );
+    assert_binary_source(source, "m68020".into());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; immediate register selection"]
+fn binary_selection_entry_immediate_register_native_parity_fs_uae() {
+    for source in [
+        ".cpu m68020\n.org 0\n move.w #255,d1\n.end\n",
+        ".cpu m68020\nPATH_BYTES=256\n.org 0\n move.w #PATH_BYTES-1,d1\n.end\n",
+    ] {
+        assert_binary_source(source.into(), "m68020".into());
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; unary register selection"]
+fn binary_selection_entry_unary_register_native_parity_fs_uae() {
+    assert_binary_source(
+        ".cpu m68020\n.org 0\n tst.w d1\n.end\n".into(),
+        "m68020".into(),
+    );
+}
+
+#[test]
+fn binary_selection_distinguishes_register_and_direct_shapes() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = BinarySourcePackage::prepare(&core, &resolved).unwrap();
+    let bytes = prepare_package(&core, &resolved).unwrap();
+    let rows = u32::from_be_bytes(bytes[16..20].try_into().unwrap()) as usize;
+    let count = u32::from_be_bytes(bytes[20..24].try_into().unwrap()) as usize;
+    let serialized = (0..count)
+        .map(|index| &bytes[rows + index * 32..rows + index * 32 + 32])
+        .collect::<Vec<_>>();
+    for (mnemonic, qualifier, shape, priority, expected_shape) in [
+        ("move", 2, "immediate_register", 81, 3),
+        ("move", 2, "immediate_direct", 122, 8),
+        ("tst", 2, "register", 205, 9),
+    ] {
+        let candidate = package
+            .candidates
+            .iter()
+            .find(|candidate| {
+                package.names[usize::from(candidate.mnemonic)] == mnemonic
+                    && package.names[usize::from(candidate.shape)] == shape
+                    && candidate.qualifier == Some(qualifier)
+                    && candidate.priority == priority
+            })
+            .unwrap();
+        assert!(serialized.iter().any(|row| {
+            u16::from_be_bytes(row[0..2].try_into().unwrap()) == candidate.mnemonic
+                && row[2] == qualifier + 1
+                && row[4] == candidate.owner_rank
+                && u16::from_be_bytes(row[6..8].try_into().unwrap()) == priority
+                && u16::from_be_bytes(row[20..22].try_into().unwrap()) == candidate.mode
+                && row[3] == expected_shape
+        }));
+    }
 }
 
 #[test]

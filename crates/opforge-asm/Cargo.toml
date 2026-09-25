@@ -14,6 +14,7 @@ vm-runtime-opasm-artifact = []
 [dependencies]
 opcore = { path = "../opforge-core" }
 families = { path = "../opforge-families" }
+package = { path = "../opforge-package" }
 registry = { path = "../opforge-registry" }
 types = { path = "../opforge-types" }
 vm = { path = "../opforge-vm" }
@@ -24,4 +25,3 @@ clap = { version = "4", features = ["derive"] }
 cli-core = { path = "../opforge-cli-core" }
 engine = { path = "../opforge-engine" }
 formatter = { path = "../opforge-formatter" }
-package = { path = "../opforge-package" }

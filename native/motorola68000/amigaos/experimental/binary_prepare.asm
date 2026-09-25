@@ -167,6 +167,14 @@ parenthesizedRegister
 	tst.l d0
 	bne.w expressionOperand
 	moveq #6, d6
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #7, d0
+	blo.w parenthesizedReady
+	cmpi.b #18, 6(a0)  ; retain the package-matched postfix wrapper
+	bne.w parenthesizedReady
+	moveq #7, d6
+parenthesizedReady
 	bsr.w copy
 	bne.w bad
 	bra.w operandDone

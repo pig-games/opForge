@@ -83,10 +83,12 @@ pub enum CandidateRecipe {
         program: u16,
         inputs: Vec<Projection>,
     },
-    PackedMaskUnary {
+    PackedMaskIndirect {
         opcode: u16,
         mask_operand: u8,
         indirect_operand: u8,
+        indirect_token: u8,
+        reverse_mask: bool,
         indirect_class: u16,
         first_class: u16,
         first_shift: u8,
@@ -528,7 +530,7 @@ fn non_member_operand(value: &str) -> Option<u8> {
 }
 
 fn parse_recipe(plan: &str, names: &mut NameTable) -> CandidateRecipe {
-    if let Some(recipe) = parse_packed_mask_unary(plan) {
+    if let Some(recipe) = parse_packed_mask_indirect(plan) {
         return recipe;
     }
     match plan {
@@ -549,11 +551,17 @@ fn parse_recipe(plan: &str, names: &mut NameTable) -> CandidateRecipe {
 }
 
 // A bounded native fragment for a package sequence that emits a literal-plus-
-// register field followed by a reversed register-list mask. Every opcode,
-// operand position, class and mask shift comes from the selector plan.
-fn parse_packed_mask_unary(plan: &str) -> Option<CandidateRecipe> {
+// register field followed by a register-list mask. Operand order, wrapper,
+// mask order, opcode and register classes come from the selector plan.
+fn parse_packed_mask_indirect(plan: &str) -> Option<CandidateRecipe> {
     let body = plan.strip_prefix("semv.sequence.v1:encode:enc.template.field-0@literal:")?;
-    let (opcode, rest) = body.split_once(",unary_minus_indirect_reg")?;
+    let (opcode, rest, indirect_token) =
+        if let Some((opcode, rest)) = body.split_once(",unary_minus_indirect_reg") {
+            (opcode, rest, 19)
+        } else {
+            let (opcode, rest) = body.split_once(",unary_plus_indirect_reg")?;
+            (opcode, rest, 18)
+        };
     let opcode = opcode.parse::<u16>().ok()?;
     let (indirect, rest) = rest.split_once(";encode:enc.template.scalar-word@register_mask")?;
     let (indirect_operand, indirect_class) = indirect.split_once(".class")?;
@@ -561,7 +569,11 @@ fn parse_packed_mask_unary(plan: &str) -> Option<CandidateRecipe> {
     let indirect_class = indirect_class.parse::<u16>().ok()?;
     let (mask_operand, mapping) = rest.split_once(".map")?;
     let mask_operand = mask_operand.parse::<u8>().ok()?;
-    let mapping = mapping.strip_suffix(".reverse16")?;
+    let (mapping, reverse_mask) = if let Some(mapping) = mapping.strip_suffix(".reverse16") {
+        (mapping, true)
+    } else {
+        (mapping, false)
+    };
     let (first, second) = mapping.split_once('+')?;
     let (first_class, first_shift) = first.split_once('=')?;
     let (second_class, second_shift) = second.split_once('=')?;
@@ -569,8 +581,8 @@ fn parse_packed_mask_unary(plan: &str) -> Option<CandidateRecipe> {
     let first_shift = first_shift.parse::<u8>().ok()?;
     let second_class = second_class.parse::<u16>().ok()?;
     let second_shift = second_shift.parse::<u8>().ok()?;
-    if mask_operand != 0
-        || indirect_operand != 1
+    if mask_operand > 1
+        || indirect_operand != 1 - mask_operand
         || first_class == second_class
         || first_shift > 15
         || second_shift > 15
@@ -578,10 +590,12 @@ fn parse_packed_mask_unary(plan: &str) -> Option<CandidateRecipe> {
     {
         return None;
     }
-    Some(CandidateRecipe::PackedMaskUnary {
+    Some(CandidateRecipe::PackedMaskIndirect {
         opcode,
         mask_operand,
         indirect_operand,
+        indirect_token,
+        reverse_mask,
         indirect_class,
         first_class,
         first_shift,
@@ -804,19 +818,38 @@ impl QualifierTable {
 #[cfg(test)]
 mod tests {
     use super::{
-        known_name_exclusions, member_excluded, parse_member_projection, parse_packed_mask_unary,
-        parse_projection, BTreeMap, CandidateRecipe, NameTable, NumericRegister, Projection,
+        known_name_exclusions, member_excluded, parse_member_projection,
+        parse_packed_mask_indirect, parse_projection, BTreeMap, CandidateRecipe, NameTable,
+        NumericRegister, Projection,
     };
 
     #[test]
     fn packed_mask_fragment_requires_exact_package_sequence() {
         let plan = "semv.sequence.v1:encode:enc.template.field-0@literal:18656,unary_minus_indirect_reg1.class1;encode:enc.template.scalar-word@register_mask0.map0=0+1=8.reverse16";
         assert_eq!(
-            parse_packed_mask_unary(plan),
-            Some(CandidateRecipe::PackedMaskUnary {
+            parse_packed_mask_indirect(plan),
+            Some(CandidateRecipe::PackedMaskIndirect {
                 opcode: 18656,
                 mask_operand: 0,
                 indirect_operand: 1,
+                indirect_token: 19,
+                reverse_mask: true,
+                indirect_class: 1,
+                first_class: 0,
+                first_shift: 0,
+                second_class: 1,
+                second_shift: 8,
+            })
+        );
+        let restore = "semv.sequence.v1:encode:enc.template.field-0@literal:19672,unary_plus_indirect_reg0.class1;encode:enc.template.scalar-word@register_mask1.map0=0+1=8";
+        assert_eq!(
+            parse_packed_mask_indirect(restore),
+            Some(CandidateRecipe::PackedMaskIndirect {
+                opcode: 19672,
+                mask_operand: 1,
+                indirect_operand: 0,
+                indirect_token: 18,
+                reverse_mask: false,
                 indirect_class: 1,
                 first_class: 0,
                 first_shift: 0,
@@ -830,7 +863,7 @@ mod tests {
             plan.replace("18656", "18657"),
             format!("{plan};encode:extra"),
         ] {
-            assert_eq!(parse_packed_mask_unary(&unsupported), None);
+            assert_eq!(parse_packed_mask_indirect(&unsupported), None);
         }
     }
 

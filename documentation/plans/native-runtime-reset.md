@@ -1150,3 +1150,30 @@ combined diff and result for review. At every useful checkpoint record fresh
 parity, native completion status, package/image size and 2 MiB owned-memory
 peak. Record release timing only after a run actually completes. Revisit the
 architecture and code structure together after two or three such slices.
+
+The first entry-code checkpoint corrected an earlier trace interpretation:
+native diagnostic line numbers are hexadecimal. The reported `line 00000069`
+was physical line 105 (`movem.l (sp)+, d2-d7/a2-a6`), not a `bsr` at physical
+line 69. The package now supports the corresponding postincrement MOVEM mask
+form; a fresh 68020 / 2 MiB native run matched Rust exactly. Numeric operand
+shapes now distinguish immediate/register from immediate/direct and unary
+register from direct forms, allowing the existing semantic programs to execute
+the entry's `move.w #PATH_BYTES-1,d1` and `tst.w d1` patterns. Both literal and
+constant-expression immediate/register controls matched Rust exactly.
+
+The unchanged entry now reaches hexadecimal line `B6`, physical line 182,
+`.section bss, kind=bss`. That is still a preparation rejection, not native
+self-host completion. This checkpoint's BSP3 package is 166,412 bytes, native
+image 60,380 bytes with 64,744 linked reserved bytes. The bounded readiness
+probe staged 44 files / 470,860 source bytes, assembled a fresh 61,060-byte
+Rust Hunk, and observed 662,016 peak owned bytes on the native early-rejection
+path. It provides no valid full-assembly time.
+
+The complete three-helper entry comparison now advances to `move.b
+(a3)+,(a1)+`. Its package candidate is `direct_direct`, a shape BSP3 cannot
+yet execute. Treat this as the next coherent operand-family slice: inventory
+the full entry's direct/direct, postincrement and predecrement forms, preserve
+package-owned encoding and fixup choices, then verify complete helper blocks
+against exact Rust bytes. Do not accumulate one-off mnemonic branches in the
+generic selector. The section/BSS and dependency cohorts above follow after
+this entry-code boundary is proven.

@@ -18,6 +18,7 @@ TOKEN_DOT = 7
 TOKEN_HASH = 8
 TOKEN_OPEN_PAREN = 14
 TOKEN_CLOSE_PAREN = 15
+TOKEN_PLUS = 18
 TOKEN_MINUS = 19
 TOKEN_DIVIDE = 22
 
@@ -29,6 +30,8 @@ SHAPE_PAIR = 4
 SHAPE_REGISTER_PAIR = 5
 SHAPE_VALUE_REGISTER = 6
 SHAPE_STRUCTURED_PAIR = 7
+SHAPE_PREFIXED_DIRECT = 8
+SHAPE_REGISTER = 9
 
 RECIPE_NONE = 0
 RECIPE_U8 = 1
@@ -217,21 +220,38 @@ comma
 	bne.w pairReady
 	move.w #SHAPE_REGISTER_PAIR, OperandShape
 pairReady
-	; The package-owned fragment accepts a name/list and unary-indirect pair.
+	; Recognize either operand order for the package-owned mask/indirect fragment.
 	movea.l OperandStart+4, a3
 	movea.l OperandEnd+4, a4
 	move.l a4, d0
 	sub.l a3, d0
 	cmpi.l #7, d0
-	bne.w pairComplete
+	bne.w firstIndirect
 	cmpi.b #TOKEN_MINUS, (a3)
-	bne.w pairComplete
+	bne.w firstIndirect
 	cmpi.b #TOKEN_OPEN_PAREN, 1(a3)
-	bne.w pairComplete
+	bne.w firstIndirect
 	cmpi.b #TOKEN_CLOSE_PAREN, 6(a3)
-	bne.w pairComplete
+	bne.w firstIndirect
 	movea.l OperandStart, a0
 	movea.l OperandEnd, a1
+	bra.w maskList
+firstIndirect
+	movea.l OperandStart, a3
+	movea.l OperandEnd, a4
+	move.l a4, d0
+	sub.l a3, d0
+	cmpi.l #7, d0
+	bne.w pairComplete
+	cmpi.b #TOKEN_OPEN_PAREN, (a3)
+	bne.w pairComplete
+	cmpi.b #TOKEN_CLOSE_PAREN, 5(a3)
+	bne.w pairComplete
+	cmpi.b #TOKEN_PLUS, 6(a3)
+	bne.w pairComplete
+	movea.l OperandStart+4, a0
+	movea.l OperandEnd+4, a1
+maskList
 	move.l a1, d0
 	sub.l a0, d0
 	cmpi.l #4, d0
@@ -266,10 +286,30 @@ one
 	moveq #0, d0
 	rts
 singleOperand
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w directOperand
+	move.w #SHAPE_REGISTER, OperandShape
+	moveq #0, d0
+	rts
+directOperand
 	move.w #SHAPE_SINGLE, OperandShape
 	moveq #0, d0
 	rts
 prefixedPair
+	movea.l OperandStart+4, a0
+	movea.l OperandEnd+4, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	beq.w prefixedRegister
+	move.w #SHAPE_PREFIXED_DIRECT, OperandShape
+	moveq #0, d0
+	rts
+prefixedRegister
 	move.w #SHAPE_PREFIXED_PAIR, OperandShape
 	moveq #0, d0
 	rts
@@ -459,20 +499,34 @@ packedMaskUnary
 	cmp.l package.Header.Bytes(a4), d2
 	bhi.w bad
 	adda.l d0, a4
-	tst.b 2(a4)
-	bne.w bad
-	cmpi.b #1, 3(a4)
-	bne.w bad
 	movem.l a2/a5-a6, -(sp)
 	movea.l package.Context.Package(a2), a6
+	tst.b 2(a4)
+	beq.w maskFirst
+	cmpi.b #1, 2(a4)
+	bne.w packedBad
+	tst.b 3(a4)
+	bne.w packedBad
+	movea.l OperandStart+4, a0
+	movea.l OperandEnd+4, a1
+	movea.l OperandStart, a2
+	movea.l OperandEnd, a3
+	bra.w packedEncode
+maskFirst
+	cmpi.b #1, 3(a4)
+	bne.w packedBad
 	movea.l OperandStart, a0
 	movea.l OperandEnd, a1
 	movea.l OperandStart+4, a2
 	movea.l OperandEnd+4, a3
+packedEncode
 	movea.l a6, a5
 	jsr mask_unary.encode
 	movem.l (sp)+, a2/a5-a6
 	rts
+packedBad
+	movem.l (sp)+, a2/a5-a6
+	bra.w bad
 tableU8
 	bsr.w evaluateOperandZero
 	tst.l d0

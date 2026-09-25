@@ -97,7 +97,7 @@ fn binary_source_packages_prepare() {
                 assert_eq!(table, u16::MAX);
             }
             if bytes[row + 5] == 8 {
-                // Packed-mask unary stores its 16-byte descriptor in the
+                // Packed-mask indirect stores its 16-byte descriptor in the
                 // input-offset slot even though it has no scalar projections.
                 assert_eq!(input_count, 0);
                 assert!(inputs >= programs + program_count * 12);

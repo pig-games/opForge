@@ -941,3 +941,25 @@ numeric records and verify the layout with a focused Rust/native case; a
 following output slice must build exact Hunk bytes from the resulting sections.
 Simply accepting `kind=code` and continuing flat output would conceal this
 self-host target's four-segment, 70,152-byte linked Hunk requirement.
+
+The first section-kind checkpoint now lowers `kind=code/data/bss` into a
+six-byte numeric section-open record; `logical` and `kind` options can appear
+in either order. Native section execution retains the kind and rejects
+initialized emission in BSS. A focused two-section code/data source and a
+typed logical/concrete mapping both matched fresh Rust bytes in 68020 / 2 MiB
+FS-UAE. The existing untyped two-section case still matches, and a BSS
+initialized-byte case is rejected. These are flat placed-section checks, not
+proof of Hunk section output or BSS reservation support. Other section options
+such as `align`, `memory` and `region` remain outside this native subset.
+
+On the unchanged self-host entry, the fresh native rejection moved from line 8
+to line 11, the first `movem.l d2-d7/a2-a6, -(sp)` statement. This locates the
+next investigation; it does not yet identify which instruction-lowering
+boundary rejected the line. The current Rust oracle is a 59,104-byte,
+four-segment Hunk reserving 70,400 linked bytes, from 43 staged dependencies
+and a 149,066-byte m68020 runtime package. The instrumented rejection had
+656,128 peak owned bytes with balanced cleanup. Preparation was incomplete,
+so there remains no valid native self-host duration. Next isolate that first
+instruction failure with a small exact Rust/native case, then continue to
+subsequent real-source blockers; Hunk emission remains a separate required
+output slice.

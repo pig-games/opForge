@@ -575,6 +575,25 @@ fn compact_cli_single_mapped_section_fs_uae() {
     );
 }
 
+#[test]
+#[ignore = "requires configured FS-UAE; typed logical and concrete mapped sections"]
+fn compact_cli_typed_mapped_section_fs_uae() {
+    let root = SINGLE_MAPPED_SECTION[0]
+        .1
+        .replace(".section code\n", ".section code, kind=code\n");
+    let imported = SINGLE_MAPPED_SECTION[1].1.replace(
+        ".section code, logical",
+        ".section code, logical, kind=code",
+    );
+    let files = [
+        ("main.asm", root.as_str()),
+        ("library/dep.asm", imported.as_str()),
+    ];
+    let expected =
+        oracle_with_roots(&files, &["library"]).expect("live Rust mapped-section oracle");
+    compact_cli(&files, &["library"], &[], Some(&expected), false);
+}
+
 const EXPLICIT_MAPPED_SECTION: &[(&str, &str)] = &[
     (
         "main.asm",
@@ -703,12 +722,44 @@ const TWO_CONCRETE_SECTIONS: &[(&str, &str)] = &[(
     ".module main\n.cpu m6502\n.region rom_a, $1000, $1002\n.region rom_b, $1003, $10ff\n.section app_a\n.byte $a0\n.word b_entry\n.endsection\n.section app_b\nb_entry:\n.byte $b0, $b1\n.endsection\n.place app_a in rom_a\n.place app_b in rom_b\n.endmodule\n.end\n",
 )];
 
+fn typed_concrete_sections() -> String {
+    TWO_CONCRETE_SECTIONS[0]
+        .1
+        .replace(".section app_a", ".section app_a, kind=code")
+        .replace(".section app_b", ".section app_b, kind=data")
+}
+
 #[test]
 fn binary_graph_two_concrete_sections_rust_oracle() {
     assert_eq!(
         oracle(TWO_CONCRETE_SECTIONS).unwrap(),
         [0xa0, 0x03, 0x10, 0xb0, 0xb1]
     );
+}
+
+#[test]
+fn binary_graph_typed_concrete_sections_rust_oracle() {
+    let source = typed_concrete_sections();
+    assert_eq!(
+        oracle(&[("main.asm", &source)]).unwrap(),
+        [0xa0, 0x03, 0x10, 0xb0, 0xb1]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; numeric code/data section kinds"]
+fn compact_cli_typed_concrete_sections_fs_uae() {
+    let source = typed_concrete_sections();
+    let expected = oracle(&[("main.asm", &source)]).expect("live Rust typed-section oracle");
+    compact_cli(&[("main.asm", &source)], &[], &[], Some(&expected), false);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; BSS must reject initialized bytes"]
+fn compact_cli_bss_section_rejects_initialized_bytes_fs_uae() {
+    let source = typed_concrete_sections().replace("kind=data", "kind=bss");
+    assert!(oracle(&[("main.asm", &source)]).is_err());
+    compact_cli(&[("main.asm", &source)], &[], &[], None, false);
 }
 
 #[test]

@@ -14,6 +14,7 @@ SLOT_BYTES = Slot.After+4
 State	.struct
 Mode	.word ?
 Active	.word ?
+ActiveKind	.word ?
 Started	.word ?
 Placed	.word ?
 ActiveSlot	.word ?
@@ -42,6 +43,7 @@ scan	.block
 	move.l d0, d5
 	clr.w State.Mode(a6)
 	clr.w State.Active(a6)
+	clr.w State.ActiveKind(a6)
 	clr.w State.Started(a6)
 	clr.w State.Placed(a6)
 	clr.w State.ActiveSlot(a6)
@@ -174,6 +176,7 @@ done
 ; A0=State. Reset the active control for the next assembly pass.
 beginPass	.block
 	clr.w State.Active(a0)
+	clr.w State.ActiveKind(a0)
 	clr.w State.Started(a0)
 	clr.w State.Placed(a0)
 	clr.w State.ActiveSlot(a0)
@@ -218,6 +221,8 @@ open
 	bne.w bad
 	tst.w State.Placed(a0)
 	bne.w bad
+	bsr.w sectionKind
+	bne.w bad
 	move.w State.Started(a0), d1
 	btst #0, d1
 	bne.w started
@@ -236,6 +241,8 @@ secondMode
 	tst.w State.Active(a0)
 	bne.w bad
 	tst.w State.Placed(a0)
+	bne.w bad
+	bsr.w sectionKind
 	bne.w bad
 	move.w State.Started(a0), d1
 	btst #0, d1
@@ -267,6 +274,7 @@ closeFirst
 	move.l pkg.Context.Pc(a1), FIRST_AFTER(a0)
 closed
 	clr.w State.Active(a0)
+	clr.w State.ActiveKind(a0)
 	bra.w ok
 region
 	cmpi.b #12, (a2)
@@ -336,6 +344,11 @@ checkEmit	.block
 	beq.w ok
 	tst.w State.Active(a0)
 	beq.w bad
+	cmpi.w #3, State.ActiveKind(a0)
+	bne.w permittedKind
+	tst.l d0
+	bne.w bad  ; BSS reservations need a section-aware output path
+permittedKind
 	move.l pkg.Context.Pc(a1), d1
 	tst.w State.ActiveSlot(a0)
 	bne.w secondEmit
@@ -396,5 +409,24 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; finishPass
+
+	.priv
+; A0=state,A2=numeric section control. Retain kind across active emission.
+; D0/CCR=status; other registers preserved.
+sectionKind	.block
+	cmpi.b #5, (a2)
+	bne.w invalidKind
+	moveq #0, d0
+	move.b 5(a2), d0
+	beq.w invalidKind
+	cmpi.w #3, d0
+	bhi.w invalidKind
+	move.w d0, State.ActiveKind(a0)
+	moveq #0, d0
+	rts
+invalidKind
+	moveq #1, d0
+	rts
+	.bend  ; sectionKind
 	.endsection
 	.endmodule

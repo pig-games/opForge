@@ -58,7 +58,8 @@ clearMaps
 
 ; A0=writer record,A1=scope state,A2=section state,D0=1..4.
 ; Supports up to two mapped pairs or two concrete sections in adjacent regions.
-; Rewrites controls to [header,opcode,optional u32 start,u32 end].
+; Rewrites section opens to [header,opcode,kind] (1=code,2=data,3=bss).
+; Region controls carry optional u32 start,u32 end after the opcode.
 ; D0/CCR=status; other registers preserved.
 line	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -93,6 +94,9 @@ section
 	bne.w bad
 	move.w d1, d6
 	moveq #2, d5  ; concrete control opcode
+	moveq #1, d4  ; default section kind is code
+	moveq #0, d2  ; seen logical/kind options
+sectionOption
 	cmpa.l a3, a2
 	beq.w sectionName
 	cmpi.b #4, (a2)+
@@ -102,8 +106,43 @@ section
 	lea LogicalWord(pc), a0
 	moveq #7, d0
 	bsr.w matches
+	bne.w kindOption
+	btst #0, d2
 	bne.w bad
+	bset #0, d2
 	moveq #1, d5  ; logical control opcode
+	bra.w sectionOption
+kindOption
+	lea KindWord(pc), a0
+	moveq #4, d0
+	bsr.w matches
+	bne.w bad
+	btst #1, d2
+	bne.w bad
+	bset #1, d2
+	cmpa.l a3, a2
+	beq.w bad
+	cmpi.b #34, (a2)+  ; =
+	bne.w bad
+	bsr.w name
+	bne.w bad
+	lea CodeWord(pc), a0
+	moveq #4, d0
+	bsr.w matches
+	beq.w sectionOption
+	lea DataWord(pc), a0
+	moveq #4, d0
+	bsr.w matches
+	bne.w bssKind
+	moveq #2, d4
+	bra.w sectionOption
+bssKind
+	lea BssWord(pc), a0
+	moveq #3, d0
+	bsr.w matches
+	bne.w bad
+	moveq #3, d4
+	bra.w sectionOption
 sectionName
 	cmpa.l a3, a2
 	bne.w bad
@@ -197,14 +236,14 @@ logical
 	bne.w bad
 	ori.w #1, State.Seen(a4)
 	move.w #1, State.Active(a4)
-	bra.w control
+	bra.w sectionControl
 secondLogical
 	move.w State.Seen(a4), d0
 	btst #7, d0
 	bne.w bad
 	ori.w #128, State.Seen(a4)
 	move.w #10, State.Active(a4)
-	bra.w control
+	bra.w sectionControl
 concrete
 	move.w State.Seen(a4), d0
 	btst #1, d0
@@ -212,7 +251,7 @@ concrete
 	ori.w #2, State.Seen(a4)
 	move.w d6, State.Concrete(a4)
 	move.w #2, State.Active(a4)
-	bra.w control
+	bra.w sectionControl
 secondConcrete
 	move.w State.Seen(a4), d0
 	btst #4, d0
@@ -220,7 +259,7 @@ secondConcrete
 	ori.w #16, State.Seen(a4)
 	move.w d6, State.Second(a4)
 	move.w d5, State.Active(a4)
-	bra.w control
+	bra.w sectionControl
 endsection
 	cmpa.l a3, a2
 	bne.w bad
@@ -339,6 +378,13 @@ placeRegion
 	bra.w control
 secondPlaced
 	ori.w #64, State.Seen(a4)
+	bra.w control
+sectionControl
+	move.b #5, (a5)
+	move.b #source.FLAG_LAYOUT, 1(a5)
+	move.b d5, 4(a5)
+	move.b d4, 5(a5)
+	bra.w ok
 control
 	move.b #4, (a5)
 	move.b #source.FLAG_LAYOUT, 1(a5)
@@ -610,6 +656,10 @@ done
 	.bend  ; fold
 
 LogicalWord	.byte "logical"
+KindWord	.byte "kind"
+CodeWord	.byte "code"
+DataWord	.byte "data"
+BssWord	.byte "bss"
 InWord	.byte "in"
 MapWord	.byte "map"
 	.align 2  ; keep the next module's instructions word-aligned

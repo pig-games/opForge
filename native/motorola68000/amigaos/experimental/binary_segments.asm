@@ -21,6 +21,8 @@ Call	.word ?
 Cursor	.word ?
 ArgBytes	.word ?
 CallLine	.word ?
+CallLabel	.long ?
+CallLabelPresent	.word ?
 	.endstruct
 Def	.struct
 Name	.word ?
@@ -28,7 +30,7 @@ Parameter	.word ?
 First	.word ?
 Last	.word ?
 	.endstruct
-DEFS = State.CallLine+2
+DEFS = State.CallLabelPresent+2
 ARGUMENT = DEFS+LIMIT*8
 BODY = ARGUMENT+ARG_LIMIT
 SCRATCH_BYTES = BODY+BODY_BYTES
@@ -45,6 +47,8 @@ begin	.block
 	clr.w State.Cursor(a0)
 	clr.w State.ArgBytes(a0)
 	clr.w State.CallLine(a0)
+	clr.l State.CallLabel(a0)
+	clr.w State.CallLabelPresent(a0)
 	moveq #0, d0
 	rts
 	.bend  ; begin
@@ -82,6 +86,7 @@ line	.block
 	blo.w bad
 	lea 0(a5, d6.w), a3
 	lea 4(a5), a2
+	clr.w State.CallLabelPresent(a6)
 	; A name-first header has a four-byte name followed by .segment.
 	cmpi.w #17, d6
 	blo.w directive
@@ -100,7 +105,26 @@ line	.block
 	cmpi.l #scopes.KEY_SEGMENT, d0
 	beq.w header
 directive
-	cmpi.w #9, d6
+	; A call may carry one numeric entry-label token, with an optional colon.
+	cmpi.w #13, d6
+	blo.w directiveName
+	cmpi.b #1, (a2)
+	bhi.w directiveName
+	movea.l a2, a1
+	addq.l #4, a1
+	cmpi.b #5, (a1)
+	bne.w labelDirective
+	addq.l #1, a1
+labelDirective
+	cmpi.b #7, (a1)
+	bne.w directiveName
+	move.l (a2), State.CallLabel(a6)
+	move.w #1, State.CallLabelPresent(a6)
+	movea.l a1, a2
+directiveName
+	move.l a3, d0
+	sub.l a2, d0
+	cmpi.l #5, d0
 	blo.w ordinary
 	cmpi.b #7, (a2)
 	bne.w ordinary
@@ -244,6 +268,11 @@ copyBody
 call
 	tst.w State.Call(a6)
 	bne.w bad
+	tst.w State.CallLabelPresent(a6)
+	beq.w callSyntax
+	btst #0, 1(a5)
+	bne.w bad
+callSyntax
 	move.l a3, d0
 	sub.l a2, d0
 	cmpi.l #5, d0
@@ -376,6 +405,36 @@ next	.block
 	move.b (a3)+, (a5)+
 	move.w State.CallLine(a6), (a5)+
 	addq.l #2, a3  ; source line is replaced by the invocation line
+	cmp.w Def.First(a4), d0
+	bne.w tokens
+	tst.w State.CallLabelPresent(a6)
+	beq.w tokens
+	; The first body record cannot already declare an entry label.
+	cmpa.l a2, a3
+	beq.w bad
+	cmpi.b #1, (a3)
+	bhi.w attachLabel
+	lea 4(a3), a0
+	cmpa.l a2, a0
+	bhs.w bodyEntryCheck
+	cmpi.b #5, (a0)
+	beq.w bad
+bodyEntryCheck
+	btst #0, -3(a3)
+	bne.w attachLabel
+	cmpa.l a2, a0
+	bhs.w bad
+	cmpi.b #34, (a0)
+	bne.w bad
+attachLabel
+	movea.l a5, a0
+	addq.l #5, a0
+	cmpa.l a1, a0
+	bhi.w bad
+	; The generated entry label starts in column one even when the body is indented.
+	andi.b #$fe, -3(a5)
+	move.l State.CallLabel(a6), (a5)+
+	move.b #5, (a5)+
 tokens
 	cmpa.l a2, a3
 	beq.w complete

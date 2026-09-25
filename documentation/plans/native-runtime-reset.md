@@ -700,10 +700,10 @@ text. The current bound is eight definitions, 4 KiB of captured records, and
 64 bytes for one argument expression. An expanded record uses the invocation
 line as its diagnostic origin.
 
-This is deliberately a first subset: defaults, argument lists, invocation
-labels, nested expansion, and imported segment visibility are not yet
-supported. The compact CLI rejects unsupported forms; they need separate
-parity work before claiming general `.segment` support.
+This is deliberately a first subset: defaults, argument lists, nested
+expansion, and imported segment visibility are not yet supported. The compact
+CLI rejects unsupported forms; they need separate parity work before claiming
+general `.segment` support.
 
 A fresh 68020 / 2 MiB FS-UAE run matched live Rust CLI output exactly for
 repeated instruction and data expansions on both m6502 and m68000 packages.
@@ -724,3 +724,14 @@ identical eight-block mixed comparison against the preceding commit, native
 START-to-DONE time was 0.567/0.561 s (m6502) and 1.189/1.183 s (m68000).
 The single observations do not establish a speed gain. The Hunk and linked
 reservation each grew by 132 bytes.
+
+Call-site labels now attach to the first expanded numeric record for both
+`placed .NAME value` and `placed: .NAME(value)`. The label is emitted at the
+invocation line's origin, and the generated record is marked as column-one
+source so ordinary symbol handling accepts it. A first body record that already
+declares a label is rejected in this subset. Fresh native runs on both packages
+matched the live Rust CLI for subsequent references to both call labels;
+the preceding unlabeled parity case still passed. An identical eight-block
+mixed comparison showed 0.548/0.567 s (m6502) and 1.201/1.193 s (m68000)
+before/after. One observation per package is insufficient to claim a speed
+change. The Hunk and linked reservation each grew by 184 bytes.

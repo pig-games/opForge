@@ -32,6 +32,7 @@ SHAPE_VALUE_REGISTER = 6
 SHAPE_STRUCTURED_PAIR = 7
 SHAPE_PREFIXED_DIRECT = 8
 SHAPE_REGISTER = 9
+SHAPE_DIRECT_PAIR = 10
 
 RECIPE_NONE = 0
 RECIPE_U8 = 1
@@ -132,6 +133,11 @@ rowLoop
 	beq.w fail
 	tst.l d0
 	bne.w nextRow
+	bsr.w requiredForms
+	cmpi.l #2, d0
+	beq.w fail
+	tst.l d0
+	bne.w nextRow
 	cmpi.b #RECIPE_UNSUPPORTED, package.Row.Recipe(a5)
 	beq.w fail
 	movem.l d3/d6-d7/a2/a5, -(sp)
@@ -209,7 +215,7 @@ comma
 	cmpi.l #2, d0
 	beq.w malformed
 	tst.l d0
-	bne.w pairReady
+	bne.w secondDirect
 	move.w #SHAPE_VALUE_REGISTER, OperandShape
 	movea.l OperandStart, a0
 	movea.l OperandEnd, a1
@@ -219,6 +225,16 @@ comma
 	tst.l d0
 	bne.w pairReady
 	move.w #SHAPE_REGISTER_PAIR, OperandShape
+	bra.w pairReady
+secondDirect
+	movea.l OperandStart, a0
+	movea.l OperandEnd, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	beq.w pairReady
+	move.w #SHAPE_DIRECT_PAIR, OperandShape
 pairReady
 	; Recognize either operand order for the package-owned mask/indirect fragment.
 	movea.l OperandStart+4, a3
@@ -424,6 +440,88 @@ done
 	tst.l d0
 	rts
 	.bend  ; excludedName
+
+; Prove that an unsupported sequence cannot match its required packed wrapper.
+; Zero permits normal handling, one skips the row, two rejects bad metadata.
+requiredForms	.block
+	movem.l d1-d4/a0-a1/a6, -(sp)
+	moveq #0, d2
+	move.b package.Row.RequiredForms(a5), d2
+	moveq #0, d3
+next
+	move.l d2, d4
+	andi.l #15, d4
+	cmpi.l #4, d4
+	bhi.w malformed
+	tst.l d4
+	beq.w advance
+	cmp.w OperandCount, d3
+	bhs.w mismatch
+	move.l d3, d1
+	lsl.l #2, d1
+	lea OperandStart, a0
+	movea.l 0(a0, d1.l), a0
+	lea OperandEnd, a1
+	movea.l 0(a1, d1.l), a1
+	cmpi.l #4, d4
+	beq.w tuple
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #1, d4
+	beq.w plain
+	cmpi.l #7, d0
+	bne.w mismatch
+	cmpi.l #2, d4
+	beq.w postincrement
+	cmpi.b #TOKEN_MINUS, (a0)
+	bne.w mismatch
+	cmpi.b #TOKEN_OPEN_PAREN, 1(a0)
+	bne.w mismatch
+	cmpi.b #TOKEN_CLOSE_PAREN, -1(a1)
+	bne.w mismatch
+	bra.w advance
+postincrement
+	cmpi.b #TOKEN_OPEN_PAREN, (a0)
+	bne.w mismatch
+	cmpi.b #TOKEN_CLOSE_PAREN, -2(a1)
+	bne.w mismatch
+	cmpi.b #TOKEN_PLUS, -1(a1)
+	bne.w mismatch
+	bra.w advance
+plain
+	cmpi.l #6, d0
+	bne.w mismatch
+	cmpi.b #TOKEN_OPEN_PAREN, (a0)
+	bne.w mismatch
+	cmpi.b #TOKEN_CLOSE_PAREN, -1(a1)
+	bne.w mismatch
+	bra.w advance
+tuple
+	; Tuple arity belongs to the full candidate match. A compiled prefix
+	; is only a necessary condition and also admits indexed 3-item tuples.
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #9, d0
+	blo.w mismatch
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w mismatch
+advance
+	lsr.l #4, d2
+	addq.l #1, d3
+	cmpi.l #2, d3
+	blo.w next
+	moveq #0, d0
+	bra.w done
+mismatch
+	moveq #1, d0
+	bra.w done
+malformed
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d4/a0-a1/a6
+	tst.l d0
+	rts
+	.bend  ; requiredForms
 
 ; Advance A3 over one bounded binary token.
 skipToken	.block
@@ -789,6 +887,10 @@ recordReady
 	beq.w tupleValue
 	cmpi.b #8, d0
 	beq.w wrappedRegister
+	cmpi.b #9, d0
+	beq.w wrappedRegister
+	cmpi.b #10, d0
+	beq.w wrappedRegister
 	bra.w bad
 expressionValue
 	bsr.w projectionExpression
@@ -951,6 +1053,10 @@ projectionWrappedRegister	.block
 	bne.w return
 	move.l a1, d0
 	sub.l a0, d0
+	cmpi.b #9, package.Projection.Kind(a4)
+	beq.w postincrement
+	cmpi.b #10, package.Projection.Kind(a4)
+	beq.w predecrement
 	cmpi.l #6, d0
 	bne.w bad
 	cmpi.b #TOKEN_OPEN_PAREN, (a0)+
@@ -958,6 +1064,29 @@ projectionWrappedRegister	.block
 	cmpi.b #TOKEN_CLOSE_PAREN, -1(a1)
 	bne.w bad
 	subq.l #1, a1
+	bra.w projectRegister
+postincrement
+	cmpi.l #7, d0
+	bne.w bad
+	cmpi.b #TOKEN_OPEN_PAREN, (a0)+
+	bne.w bad
+	cmpi.b #TOKEN_CLOSE_PAREN, -2(a1)
+	bne.w bad
+	cmpi.b #TOKEN_PLUS, -1(a1)
+	bne.w bad
+	subq.l #2, a1
+	bra.w projectRegister
+predecrement
+	cmpi.l #7, d0
+	bne.w bad
+	cmpi.b #TOKEN_MINUS, (a0)+
+	bne.w bad
+	cmpi.b #TOKEN_OPEN_PAREN, (a0)+
+	bne.w bad
+	cmpi.b #TOKEN_CLOSE_PAREN, -1(a1)
+	bne.w bad
+	subq.l #1, a1
+projectRegister
 	bsr.w register
 return
 	rts

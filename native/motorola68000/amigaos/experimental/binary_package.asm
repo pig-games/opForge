@@ -57,7 +57,7 @@ Inputs	.long ?
 WidthRank	.byte ?
 Unstable	.byte ?
 MemberExcluded	.byte ?
-Reserved	.byte ?
+RequiredForms	.byte ?
 Mode	.word ?
 Padding	.word ?
 Exclusions	.long ?

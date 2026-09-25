@@ -118,6 +118,11 @@ pub enum Projection {
         operand: u8,
         class: u16,
     },
+    UpdatedIndirectRegister {
+        operand: u8,
+        class: u16,
+        token: u8,
+    },
     NamedRegister {
         operand: u8,
         name: u16,
@@ -683,6 +688,19 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
             operand: operand.parse().ok()?,
             class: class.parse().ok()?,
         });
+    }
+    for (prefix, token) in [
+        ("unary_plus_indirect_reg", 18),
+        ("unary_minus_indirect_reg", 19),
+    ] {
+        if let Some(rest) = value.strip_prefix(prefix) {
+            let (operand, class) = rest.split_once(".class")?;
+            return Some(Projection::UpdatedIndirectRegister {
+                operand: operand.parse().ok()?,
+                class: class.parse().ok()?,
+                token,
+            });
+        }
     }
     if let Some((operand, qualifier)) = parse_member_projection(value) {
         return Some(Projection::Member {

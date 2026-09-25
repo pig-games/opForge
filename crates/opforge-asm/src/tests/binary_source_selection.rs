@@ -298,6 +298,16 @@ fn binary_selection_entry_unary_register_native_parity_fs_uae() {
 }
 
 #[test]
+#[ignore = "requires configured FS-UAE; direct/direct register-update projection"]
+fn binary_selection_entry_updated_indirect_pair_native_parity_fs_uae() {
+    assert_binary_source(
+        ".cpu m68020\n.org 0\n move.b (a3)+,(a1)+\n move.w (a3),(a1)+\n move.l -(a3),-(a1)\n.end\n"
+            .into(),
+        "m68020".into(),
+    );
+}
+
+#[test]
 fn binary_selection_distinguishes_register_and_direct_shapes() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();

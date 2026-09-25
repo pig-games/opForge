@@ -1169,11 +1169,25 @@ probe staged 44 files / 470,860 source bytes, assembled a fresh 61,060-byte
 Rust Hunk, and observed 662,016 peak owned bytes on the native early-rejection
 path. It provides no valid full-assembly time.
 
-The complete three-helper entry comparison now advances to `move.b
-(a3)+,(a1)+`. Its package candidate is `direct_direct`, a shape BSP3 cannot
-yet execute. Treat this as the next coherent operand-family slice: inventory
-the full entry's direct/direct, postincrement and predecrement forms, preserve
-package-owned encoding and fixup choices, then verify complete helper blocks
-against exact Rust bytes. Do not accumulate one-off mnemonic branches in the
-generic selector. The section/BSS and dependency cohorts above follow after
-this entry-code boundary is proven.
+The next operand-family slice made `direct_direct` distinct from other pairs
+and carried plain indirect, postincrement and predecrement register projections
+through the package and native selector. For unsupported package sequences, a
+necessary packed-wrapper predicate may now prove that a row cannot match;
+possible matches still fail closed. The predicate is deliberately conservative
+for indexed tuples. One fresh native case matched Rust for three different
+plain/update combinations. More significantly, the complete `nextPath`,
+`optionValue` and `skipSpace` helper blocks from the unchanged entry matched
+Rust **byte-for-byte** in a 1,134-byte source case (about 1.81 seconds from
+guest start to done, including harness overhead). This is proof of those
+blocks, not a self-host time or a speedup claim.
+
+The unchanged-entry probe still first rejects at hex `B6`, physical line 182,
+the BSS section declaration. It now stages 44 files / 473,446 source bytes;
+the fresh Rust Hunk is 61,540 bytes with 72,708 linked reserved bytes. BSP3 is
+175,736 bytes (+9,324 from the prior checkpoint), the native image 60,860
+bytes with 65,200 linked reserved bytes, and the bounded early-rejection path
+again observed 662,016 peak owned bytes. The larger package reflects newly
+executable package candidates and wrapper metadata; inspect this growth before
+expanding all direct/direct forms. The entry-code acceptance above is met for
+representative full blocks and the unchanged entry reaches the next section
+boundary. Proceed with the section/BSS and Hunk slice as a coherent unit.

@@ -381,6 +381,7 @@ fn write_candidate(
         "immediate_register" => 3,
         "immediate_direct" => 8,
         "register" => 9,
+        "direct_direct" => 10,
         "register_direct" => 4,
         "register_register" => 5,
         "direct_register" => 6,
@@ -481,6 +482,10 @@ fn write_candidate(
     out[row + 16] = candidate.width_rank;
     out[row + 17] = u8::from(candidate.unstable_widen);
     out[row + 18] = candidate.member_excluded;
+    out[row + 19] = match &candidate.recipe {
+        CandidateRecipe::Unsupported { plan } => required_operand_forms(name(names, *plan)?),
+        _ => 0,
+    };
     set_word(out, row + 20, candidate.mode);
     set_word(out, row + 28, if recipe == 7 { table } else { MISSING });
     Ok(())
@@ -506,6 +511,41 @@ fn semantic_emits_opcode(programs: &Programs<'_>, index: u16) -> bool {
         })
 }
 
+// Each nibble is a necessary packed-operand wrapper for an unsupported
+// sequence candidate. Native selection may skip a disproven candidate, but
+// still fails closed when its wrapper can match.
+fn required_operand_forms(plan: &str) -> u8 {
+    let Some(body) = plan.strip_prefix("semv.sequence.v1:match:_@") else {
+        return 0;
+    };
+    let Some((predicates, _)) = body.split_once(';') else {
+        return 0;
+    };
+    let mut forms = [0u8; 2];
+    for predicate in predicates.split(',') {
+        for (prefix, form) in [
+            ("indirect_tuple_reg", 4),
+            ("unary_plus_indirect_reg", 2),
+            ("unary_minus_indirect_reg", 3),
+            ("indirect_reg", 1),
+        ] {
+            if let Some(rest) = predicate.strip_prefix(prefix) {
+                let Some((operand, _)) = rest.split_once('.') else {
+                    continue;
+                };
+                if let Ok(operand @ 0..=1) = operand.parse::<usize>() {
+                    if forms[operand] == 0 || forms[operand] == form {
+                        forms[operand] = form;
+                    } else {
+                        forms[operand] = 0;
+                    }
+                }
+            }
+        }
+    }
+    forms[0] | forms[1] << 4
+}
+
 fn write_projection(
     out: &mut Vec<u8>,
     projection: &Projection,
@@ -525,6 +565,20 @@ fn write_projection(
         Projection::Expression(operand) => (0, *operand, 0, 0),
         Projection::Register { operand, class } => (1, *operand, *class, 0),
         Projection::IndirectRegister { operand, class } => (8, *operand, *class, 0),
+        Projection::UpdatedIndirectRegister {
+            operand,
+            class,
+            token,
+        } => (
+            match *token {
+                18 => 9,
+                19 => 10,
+                _ => return Ok(false),
+            },
+            *operand,
+            *class,
+            0,
+        ),
         Projection::Member { operand, qualifier } => (2, *operand, *qualifier, 0),
         Projection::TupleRegister { operand, class } => (5, *operand, *class, 0),
         Projection::TupleValue { operand } => (6, *operand, 0, 0),

@@ -348,7 +348,7 @@ fn write_candidate(
         "implied" => 0,
         "direct" => 1,
         "immediate" => 2,
-        "immediate_register" => 3,
+        "immediate_register" | "immediate_direct" => 3,
         "register_direct" => 4,
         "register_register" => 5,
         "direct_register" => 6,

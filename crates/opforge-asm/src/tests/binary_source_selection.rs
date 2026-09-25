@@ -8,6 +8,9 @@ const REGISTERS: &str = include_str!("../../fixtures/binary-source/register-pred
 const SELF_HOST_MOVEM: &str = ".cpu m68020\n.org 0\n movem.l d2-d7/a2-a6, -(sp)\n.end\n";
 const SELF_HOST_MOVEA_SHORT: &str = ".cpu m68020\n.org 0\n movea.l 4.w,a6\n.end\n";
 const SELF_HOST_DISPLACEMENT: &str = ".cpu m68020\n.org 0\n jsr -552(a6)\n.end\n";
+const SELF_HOST_IMMEDIATE_INDIRECT: &str = ".cpu m68020\n.org 0\n cmpi.b #'-', (a3)\n.end\n";
+const NUMERIC_IMMEDIATE_INDIRECT: &str = ".cpu m68020\n.org 0\n cmpi.b #45, (a3)\n.end\n";
+const WORD_IMMEDIATE_INDIRECT: &str = ".cpu m68020\n.org 0\n cmpi.w #$1234, (a3)\n.end\n";
 const ZERO_DISPLACEMENT: &str = ".cpu m68020\n.org 0\n jsr 0(a6)\n.end\n";
 const INDIRECT_CALL: &str = ".cpu m68020\n.org 0\n jsr (a6)\n.end\n";
 const SYMBOL_DISPLACEMENT: &str =
@@ -72,6 +75,53 @@ fn binary_selection_self_host_displacement_rust_oracle() {
     assert_eq!(oracle_bytes(SYMBOL_DISPLACEMENT), [0x4e, 0xae, 0xfd, 0xd8]);
     assert_rust_rejection(BAD_DISPLACEMENT_REGISTER);
     assert_rust_rejection(BAD_DISPLACEMENT_RANGE);
+}
+
+#[test]
+fn binary_selection_self_host_immediate_indirect_oracle_and_package() {
+    assert_eq!(
+        oracle_bytes(SELF_HOST_IMMEDIATE_INDIRECT),
+        [0x0c, 0x13, 0, 45]
+    );
+    assert_eq!(
+        oracle_bytes(WORD_IMMEDIATE_INDIRECT),
+        [0x0c, 0x53, 0x12, 0x34]
+    );
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = BinarySourcePackage::prepare(&core, &resolved).unwrap();
+    assert!(package.candidates.iter().any(|candidate| {
+        package.names[usize::from(candidate.mnemonic)] == "cmpi"
+            && package.names[usize::from(candidate.shape)] == "immediate_direct"
+            && matches!(&candidate.recipe, CandidateRecipe::SemanticInputs { inputs, .. }
+                if matches!(inputs.as_slice(),
+                    [Projection::Constant(_), Projection::Expression(0),
+                     Projection::IndirectRegister { operand: 1, class: 1 }]))
+    }));
+    let bytes = prepare_package(&core, &resolved).unwrap();
+    let rows = u32::from_be_bytes(bytes[16..20].try_into().unwrap()) as usize;
+    let count = u32::from_be_bytes(bytes[20..24].try_into().unwrap()) as usize;
+    let cmpi = package
+        .names
+        .iter()
+        .position(|name| name == "cmpi")
+        .unwrap() as u16;
+    assert!((0..count).any(|index| {
+        let row = rows + index * 32;
+        u16::from_be_bytes(bytes[row..row + 2].try_into().unwrap()) == cmpi
+            && bytes[row + 2] == 1
+            && bytes[row + 3] == 3
+            && bytes[row + 5] == 4
+            && u16::from_be_bytes(bytes[row + 10..row + 12].try_into().unwrap()) == 3
+    }));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; immediate/indirect package projection parity"]
+fn binary_selection_self_host_immediate_indirect_native_parity_fs_uae() {
+    assert_binary_source(NUMERIC_IMMEDIATE_INDIRECT.into(), "m68020".into());
+    assert_binary_source(SELF_HOST_IMMEDIATE_INDIRECT.into(), "m68020".into());
+    assert_binary_source(WORD_IMMEDIATE_INDIRECT.into(), "m68020".into());
 }
 
 #[test]

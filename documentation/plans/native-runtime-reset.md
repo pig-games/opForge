@@ -1059,3 +1059,24 @@ does not complete, so no native self-host duration is valid. The package grew
 12,336 bytes relative to the prior checkpoint as more tuple candidates became
 executable; monitor this cost as the general selector expands. The next
 rejection concerns an immediate operand paired with an indirect register.
+
+That next boundary had two independent shared-path gaps. The canonical 68020
+package already defines the immediate/direct selector with package-owned opcode
+and register-class projections, but BSP3 did not route its structural
+`immediate_direct` shape through the existing two-operand selector. The packed
+preparer also left a one-byte decoded string after `#` as a string token, while
+the expression compiler accepts the equivalent numeric token. It now reuses the
+shared one-byte scalar conversion for instruction operands; longer strings still
+reject there. No instruction spelling or encoding choice was added to the native
+core. Fresh 68020 / 2 MiB runs matched Rust for `cmpi.b #45, (a3)`, the exact
+`cmpi.b #'-', (a3)` and `cmpi.w #$1234, (a3)`.
+
+The unchanged compact self-host entry now first rejects at line 69,
+`bsr.w nextPath`; an earlier call to the same target passed, so this is only a
+location, not yet a diagnosis. The current live Rust oracle is a 60,720-byte
+four-segment Hunk reserving 71,960 linked bytes. The BSP3 package is 163,614
+bytes, up 2,148 from the preceding checkpoint. The separate gated early-rejection
+run observed 658,944 peak owned bytes, up 1,536. Preparation remains incomplete,
+so no self-host duration is valid. The next slice should reduce line 69 before
+editing: test whether this is branch displacement, later-pass state, or another
+selector boundary, and keep the fix in the appropriate layer.

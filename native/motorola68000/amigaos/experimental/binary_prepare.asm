@@ -203,6 +203,22 @@ prefixedName
 	bne.w bad
 	bra.w operandDone
 expressionOperand
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #3, (a0)
+	bne.w compiledOperand
+	; Decoded single-byte strings are shared scalar values in instruction
+	; operands too. Longer strings remain data-only and fail closed here.
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #3, d0
+	blo.w bad
+	cmpi.b #1, 1(a0)
+	bne.w bad
+	bsr.w string
+	bne.w bad
+	bra.w operandDone
+compiledOperand
 	bsr.w compile
 	bne.w bad
 operandDone

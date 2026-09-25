@@ -30,6 +30,8 @@ LittleEndian	.word ?
 Reserved	.word ?
 MaxAddress	.long ?
 RuntimeBytes	.long ?
+AlignDirective	.word ?
+ResDirective	.word ?
 .endstruct
 
 Context	.struct
@@ -42,6 +44,7 @@ Pass	.word ?
 Reserved	.word ?
 Parameters	.long ?
 ParameterCount	.long ?
+SectionIds	.long ?
 	.endstruct
 
 Row	.struct

@@ -5,10 +5,12 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_package as pkg
 	.use opasm.amigaos.binary_expression as expr
+	.use exprvm.amigaos.runtime as exprvm
 	.use experimental.amigaos.binary_encoding as encoding
 	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_sections as sections
+	.use experimental.amigaos.binary_hunk_references as hunkrefs
 	.pub
 
 Frame	.struct
@@ -22,7 +24,16 @@ Line	.word ?
 Reserved	.word ?
 Allocate	.long ?
 RecordOffset	.long ?
-.endstruct
+Sections	.long ?
+AddReloc	.long ?
+	.endstruct
+
+OutputReloc	.struct
+Source	.long ?
+Target	.long ?
+Offset	.long ?
+	.endstruct
+OUTPUT_RELOC_BYTES = OutputReloc.Offset+4
 
 	.section bss, kind=bss
 	.priv
@@ -55,9 +66,11 @@ assemble	.block
 	bhi.w fail
 	movea.l pkg.Context.Values(a6), a0
 	movea.l pkg.Context.Defined(a6), a1
+	movea.l pkg.Context.SectionIds(a6), a2
 clearSymbols
 	clr.l (a0)+
 	clr.b (a1)+
+	clr.b (a2)+
 	subq.l #1, d0
 	bne.w clearSymbols
 	move.l pkg.Context.ParameterCount(a6), d6
@@ -99,6 +112,7 @@ parametersReady
 	move.l pkg.Header.MaxAddress(a2), d1
 	jsr sections.scan
 	bne.w fail
+	move.l #SectionState, Frame.Sections(a5)
 	moveq #1, d7
 pass
 	move.w d7, pkg.Context.Pass(a6)
@@ -108,6 +122,8 @@ pass
 	jsr sections.beginPass
 	moveq #0, d5  ; ordinary single sweep
 	lea SectionState, a0
+	cmpi.w #5, sections.State.Mode(a0)
+	beq.w hunkPass
 	cmpi.w #2, sections.State.Mode(a0)
 	beq.w oneMap
 	cmpi.w #4, sections.State.Mode(a0)
@@ -116,8 +132,25 @@ pass
 	bra.w sweep
 oneMap
 	moveq #1, d5  ; explicit map: concrete sweep, then remaining records
+	bra.w sweep
+hunkPass
+	moveq #8, d5  ; one source sweep for each selected Hunk section
 sweep
 	moveq #0, d4  ; section selection state for this sweep
+	cmpi.w #8, d5
+	blo.w sweepRecords
+	move.l d5, d0
+	subq.w #8, d0
+	lea SectionState, a0
+	lea sections.ORDER(a0), a1
+	moveq #0, d1
+	move.b 0(a1, d0.w), d1
+	move.l d1, d0
+	move.l Frame.Used(a5), d1
+	movea.l a6, a1
+	jsr sections.beginHunkSlot
+	bne.w fail
+sweepRecords
 	movea.l Frame.Records(a5), a4
 	move.l a4, d0
 	add.l Frame.RecordBytes(a5), d0
@@ -139,6 +172,8 @@ line
 	sub.l a4, d0
 	cmp.l d0, d6
 	bhi.w fail
+	cmpi.w #8, d5
+	bhs.w hunkSelect
 	cmpi.w #3, d5
 	bhs.w pairedSelect
 	; An explicit map needs concrete bytes and labels before the imported
@@ -252,6 +287,52 @@ pairedStatement
 	bne.w omitted
 	tst.w d4
 	bne.w omitted
+	bra.w selected
+hunkSelect
+	btst #4, 1(a4)
+	beq.w hunkStatement
+	moveq #0, d0
+	move.b 4(a4), d0
+	cmpi.w #3, d0
+	beq.w hunkClose
+	moveq #0, d1
+	cmpi.w #2, d0
+	beq.w hunkOpen
+	moveq #1, d1
+	cmpi.w #7, d0
+	beq.w hunkOpen
+	cmpi.w #12, d0
+	bne.w omitted
+	move.b 6(a4), d1
+hunkOpen
+	tst.w d4
+	bne.w fail
+	moveq #2, d4
+	move.l d5, d0
+	subq.w #8, d0
+	lea SectionState, a0
+	lea sections.ORDER(a0), a1
+	moveq #0, d2
+	move.b 0(a1, d0.w), d2
+	cmp.w d2, d1
+	bne.w omitted
+	moveq #1, d4
+	bra.w selected
+hunkClose
+	tst.w d4
+	beq.w fail
+	move.w d4, d0
+	moveq #0, d4
+	cmpi.w #1, d0
+	beq.w selected
+	bra.w omitted
+hunkStatement
+	cmpi.w #1, d4
+	beq.w selected
+	tst.w d4
+	bne.w omitted
+	cmpi.w #8, d5
+	bne.w omitted
 selected
 	move.w 2(a4), Frame.Line(a5)
 	moveq #0, d0
@@ -284,6 +365,8 @@ omitted
 	bra.w line
 passDone
 	; Continue the same assembly pass at the current PC/output offset.
+	cmpi.w #8, d5
+	bhs.w hunkPassDone
 	cmpi.w #3, d5
 	bhs.w pairedPassDone
 	cmpi.w #1, d5
@@ -299,6 +382,26 @@ pairedPassDone
 	beq.w sweepDone
 	addq.w #1, d5
 	bra.w sweep
+hunkPassDone
+	tst.w d4
+	bne.w fail
+	move.l d5, d0
+	subq.w #8, d0
+	lea SectionState, a0
+	lea sections.ORDER(a0), a1
+	moveq #0, d1
+	move.b 0(a1, d0.w), d1
+	move.l d1, d0
+	move.l Frame.Used(a5), d1
+	movea.l a6, a1
+	jsr sections.endHunkSlot
+	bne.w fail
+	addq.w #1, d5
+	move.l d5, d0
+	subq.w #8, d0
+	lea SectionState, a0
+	cmp.w sections.State.OrderCount(a0), d0
+	blo.w sweep
 sweepDone
 	tst.w d4
 	bne.w fail
@@ -371,6 +474,14 @@ labelSectionReady
 	bne.w bad
 	move.b #1, 0(a4, d0.l)
 	move.l pkg.Context.Pc(a2), 0(a5, d1.l)
+	lea SectionState, a4
+	cmpi.w #5, sections.State.Mode(a4)
+	bne.w labelReady
+	movea.l pkg.Context.SectionIds(a2), a5
+	moveq #0, d1
+	move.w sections.State.HunkCurrent(a4), d1
+	addq.b #1, d1
+	move.b d1, 0(a5, d0.l)
 	bra.w labelReady
 existingLabel
 	move.l pkg.Context.Pc(a2), d2
@@ -389,6 +500,19 @@ dispatch
 	bsr.w name
 	bne.w bad
 	; Name returns the numeric identity and qualifier without source reconstruction.
+	lea SectionState, a4
+	cmpi.w #5, sections.State.Mode(a4)
+	bne.w instructionReady
+	cmpi.w #2, pkg.Context.Pass(a2)
+	bne.w instructionReady
+	move.l d0, d5
+	movea.l a0, a5
+	jsr hunkrefs.tokens
+	tst.l d0
+	bne.w bad  ; instruction fixups are not represented in this Hunk subset
+	movea.l a5, a0
+	move.l d5, d0
+instructionReady
 	jsr encoding.encode
 	tst.l d0
 	bne.w bad
@@ -448,6 +572,10 @@ directive
 	beq.w origin
 	cmp.w pkg.Header.EndDirective(a3), d0
 	beq.w end
+	cmp.w pkg.Header.AlignDirective(a3), d0
+	beq.w align
+	cmp.w pkg.Header.ResDirective(a3), d0
+	beq.w reserve
 	moveq #1, d6
 	cmp.w pkg.Header.ByteDirective(a3), d0
 	beq.w data
@@ -498,6 +626,95 @@ end
 	bne.w bad
 	moveq #2, d0
 	bra.w done
+align
+	movea.l a2, a6
+	jsr expr.evaluate
+	movea.l a6, a2
+	tst.l d0
+	bne.w bad
+	tst.l d2
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	tst.l d1
+	ble.w bad
+	move.l d1, d6
+	subq.l #1, d6
+	move.l d6, d0
+	and.l d1, d0
+	bne.w bad
+	move.l pkg.Context.Pc(a2), d3
+	move.l d3, d0
+	add.l d6, d0
+	bcs.w bad
+	not.l d6
+	and.l d0, d6
+	sub.l d3, d6
+	move.l d6, d0
+	lea SectionState, a4
+	cmpi.w #3, sections.State.ActiveKind(a4)
+	bne.w alignBytes
+	movea.l a4, a0
+	movea.l a2, a1
+	jsr sections.reserve
+	bra.w done
+alignBytes
+	clr.l DataBytes
+alignLoop
+	tst.l d6
+	beq.w ok
+	moveq #4, d0
+	cmp.l d0, d6
+	bhs.w alignChunk
+	move.l d6, d0
+alignChunk
+	sub.l d0, d6
+	lea DataBytes, a0
+	bsr.w emit
+	tst.l d0
+	bne.w bad
+	bra.w alignLoop
+reserve
+	bsr.w name
+	bne.w bad
+	tst.l d1
+	bne.w bad
+	moveq #1, d6
+	cmp.w pkg.Header.ByteDirective(a3), d0
+	beq.w reserveCount
+	moveq #2, d6
+	cmp.w pkg.Header.WordDirective(a3), d0
+	beq.w reserveCount
+	moveq #4, d6
+	cmp.w pkg.Header.LongDirective(a3), d0
+	bne.w bad
+reserveCount
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #4, (a0)+
+	bne.w bad
+	movea.l a2, a6
+	jsr expr.evaluate
+	movea.l a6, a2
+	tst.l d0
+	bne.w bad
+	tst.l d2
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	tst.l d1
+	bmi.w bad
+	move.l d1, d0
+	mulu.w d6, d0
+	; MULU.W would truncate a large count; reject instead of reserving less.
+	move.l d1, d3
+	swap d3
+	tst.w d3
+	bne.w bad
+	lea SectionState, a0
+	movea.l a2, a1
+	jsr sections.reserve
+	bra.w done
 data
 	cmpa.l a1, a0
 	bhs.w bad
@@ -526,6 +743,7 @@ data
 	addq.l #2, a0
 	bra.w dataNext
 dataExpression
+	movea.l a0, a5
 	movea.l a2, a6
 	jsr expr.evaluate
 	movea.l a6, a2
@@ -549,6 +767,8 @@ wordRange
 	cmpi.l #65535, d1
 	bhi.w bad
 dataRangeOk
+	bsr.w markDataReloc
+	bne.w bad
 	movea.l a0, a5
 	lea DataBytes, a4
 	move.l d6, d5
@@ -594,6 +814,65 @@ done
 	tst.l d0
 	rts
 	.bend  ; statement
+
+; Record a section-relative absolute-long data reference. Other data values
+; retain the existing scalar path. The packed expression has no source text.
+; A5=expression start,A2=Context,D6=unit bytes. D0/CCR=status.
+markDataReloc	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	lea SectionState, a4
+	cmpi.w #5, sections.State.Mode(a4)
+	bne.w good
+	movea.l a5, a0
+	jsr hunkrefs.expression
+	cmpi.l #hunkrefs.STATUS_BAD, d0
+	beq.w bad
+	tst.l d0
+	beq.w good
+	cmpi.b #expr.COMPILED_TAG, (a5)
+	bne.w bad
+	cmpi.b #4, 1(a5)
+	bne.w bad
+	cmpi.b #exprvm.EXPRVM_V2_OPCODE_PUSH_SYMBOL, 2(a5)
+	bne.w bad
+	tst.b 5(a5)      ; END
+	bne.w bad
+	moveq #0, d1
+	move.b 4(a5), d1
+	lsl.w #8, d1
+	move.b 3(a5), d1
+	cmp.l pkg.Context.Count(a2), d1
+	bhs.w bad
+	movea.l pkg.Context.SectionIds(a2), a0
+	moveq #0, d2
+	move.b 0(a0, d1.l), d2
+	beq.w good
+	cmpi.w #4, d6
+	bne.w bad
+	cmpi.w #2, pkg.Context.Pass(a2)
+	bne.w good
+	subq.l #1, d2
+	move.l d2, d1
+	moveq #0, d0
+	move.w sections.State.HunkCurrent(a4), d0
+	move.l pkg.Context.Pc(a2), d2
+	movea.l Active, a0
+	movea.l Frame.AddReloc(a0), a1
+	move.l a1, d3
+	beq.w bad
+	jsr (a1)
+	tst.l d0
+	bne.w bad
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; markDataReloc
 
 ; Consume one bounded identifier token. D0=u16 ID, D1=u8 qualifier, A0 advances.
 ; CCR signals failure; on failure D0=-1. Other registers preserved.

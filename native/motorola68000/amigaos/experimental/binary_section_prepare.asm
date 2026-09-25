@@ -23,9 +23,16 @@ Seen	.word ?
 Second	.word ?
 SecondRegion	.word ?
 MapCount	.word ?
+SlotCount	.word ?
+Declared	.word ?
+OutputCount	.word ?
+OutputSeen	.word ?
+Selected	.word ?
 	.endstruct
 MAPS = State.MapCount+2
-SCRATCH_BYTES = MAPS+2*MAP_BYTES
+SLOT_NAMES = MAPS+2*MAP_BYTES
+OUTPUT_SLOTS = SLOT_NAMES+8*2
+SCRATCH_BYTES = OUTPUT_SLOTS+8
 ; Seen bits: first logical/concrete/region/place, second concrete/region/place,
 ; second logical. Packed control opcodes 10/11 are second logical/concrete.
 CONTROL_SECTION = 1
@@ -46,8 +53,13 @@ begin	.block
 	clr.w State.Second(a0)
 	clr.w State.SecondRegion(a0)
 	clr.w State.MapCount(a0)
+	clr.w State.SlotCount(a0)
+	clr.w State.Declared(a0)
+	clr.w State.OutputCount(a0)
+	clr.w State.OutputSeen(a0)
+	clr.w State.Selected(a0)
 	lea MAPS(a0), a0
-	moveq #2*MAP_BYTES/2-1, d0
+	moveq #(SCRATCH_BYTES-MAPS)/2-1, d0
 clearMaps
 	clr.w (a0)+
 	dbra d0, clearMaps
@@ -148,6 +160,17 @@ sectionName
 	bne.w bad
 	tst.w State.MapCount(a4)
 	bne.w mappedName
+	tst.w State.OutputSeen(a4)
+	beq.w flatSectionName
+	cmpi.w #2, d5
+	bne.w bad
+	move.w d6, d1
+	bsr.w declareSlot
+	bmi.w bad
+	move.w d0, d7
+	moveq #12, d5
+	bra.w matched
+flatSectionName
 	moveq #0, d0
 	move.w State.First(a4), d0
 	beq.w firstName
@@ -161,17 +184,46 @@ sectionName
 	beq.w secondName
 	move.w d6, d1
 	bsr.w sameLeaf
-	bne.w bad
+	bne.w extraName
 	bra.w secondMatched
+extraName
+	move.w d6, d1
+	bsr.w declareSlot
+	bmi.w bad
+	move.w d0, d7
+	moveq #12, d5
+	bra.w matched
 secondName
 	tst.w State.MapCount(a4)
 	bne.w bad
+	move.w d6, d1
+	bsr.w declareSlot
+	bmi.w bad
+	move.w d0, d7
 	move.w d6, State.Second(a4)
 secondMatched
 	moveq #7, d5
+	cmpi.w #1, d7
+	beq.w matched
+	moveq #12, d5
 	bra.w matched
 firstName
+	move.w d6, d1
+	cmpi.w #1, d5
+	bne.w firstConcreteSlot
+	bsr.w slot
+	bra.w firstSlotReady
+firstConcreteSlot
+	bsr.w declareSlot
+firstSlotReady
+	bmi.w bad
+	move.w d0, d7
 	move.w d6, State.First(a4)
+	cmpi.w #1, d5
+	beq.w matched
+	tst.w d7
+	beq.w matched
+	moveq #12, d5
 	bra.w matched
 mappedName
 	moveq #0, d3
@@ -225,6 +277,8 @@ matched
 	beq.w logical
 	cmpi.w #10, d5
 	beq.w secondLogical
+	cmpi.w #12, d5
+	beq.w extraConcrete
 	cmpi.w #7, d5
 	beq.w secondConcrete
 	cmpi.w #11, d5
@@ -248,6 +302,15 @@ concrete
 	move.w State.Seen(a4), d0
 	btst #1, d0
 	bne.w bad
+	tst.w State.MapCount(a4)
+	bne.w firstConcreteReady
+	btst #0, d0
+	beq.w firstConcreteReady
+	move.w d6, d1
+	bsr.w declareSlot
+	bmi.w bad
+	move.w d0, d7
+firstConcreteReady
 	ori.w #2, State.Seen(a4)
 	move.w d6, State.Concrete(a4)
 	move.w #2, State.Active(a4)
@@ -259,6 +322,9 @@ secondConcrete
 	ori.w #16, State.Seen(a4)
 	move.w d6, State.Second(a4)
 	move.w d5, State.Active(a4)
+	bra.w sectionControl
+extraConcrete
+	move.w #12, State.Active(a4)
 	bra.w sectionControl
 endsection
 	cmpa.l a3, a2
@@ -384,6 +450,10 @@ sectionControl
 	move.b #source.FLAG_LAYOUT, 1(a5)
 	move.b d5, 4(a5)
 	move.b d4, 5(a5)
+	cmpi.w #12, d5
+	bne.w ok
+	move.b #6, (a5)
+	move.b d7, 6(a5)
 	bra.w ok
 control
 	move.b #4, (a5)
@@ -399,6 +469,104 @@ done
 	tst.l d0
 	rts
 	.bend  ; line
+
+; A0=writer record,A1=scope state,A2=section state. Lower an explicit
+; Hunk output selection to numeric section slots. Names may be registered
+; before their declarations; finish verifies that every selected slot opens.
+; The output path belongs to the CLI caller and is not retained here.
+output	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l a1, a6
+	movea.l a2, a4
+	tst.w State.OutputSeen(a4)
+	bne.w outputBad
+	moveq #0, d0
+	move.b (a5), d0
+	addq.w #1, d0
+	movea.l a5, a3
+	adda.w d0, a3
+	lea 9(a5), a2  ; directive identifier is a five-byte token
+	cmpa.l a3, a2
+	bhs.w outputBad
+	cmpi.b #3, (a2)+
+	bne.w outputBad
+	moveq #0, d0
+	move.b (a2)+, d0
+	adda.w d0, a2
+	cmpa.l a3, a2
+	bhi.w outputBad
+	cmpi.b #4, (a2)+
+	bne.w outputBad
+	bsr.w name
+	bne.w outputBad
+	lea FormatWord(pc), a0
+	moveq #6, d0
+	bsr.w matches
+	bne.w outputBad
+	cmpi.b #34, (a2)+
+	bne.w outputBad
+	bsr.w name
+	bne.w outputBad
+	lea HunkWord(pc), a0
+	moveq #4, d0
+	bsr.w matches
+	bne.w outputBad
+	cmpi.b #4, (a2)+
+	bne.w outputBad
+	bsr.w name
+	bne.w outputBad
+	lea SectionsWord(pc), a0
+	moveq #8, d0
+	bsr.w matches
+	bne.w outputBad
+	cmpi.b #34, (a2)+
+	bne.w outputBad
+	moveq #0, d6  ; selected-slot bitset
+	moveq #0, d7  ; selection count
+outputSection
+	cmpi.w #8, d7
+	bhs.w outputBad
+	bsr.w name
+	bne.w outputBad
+	bsr.w slot
+	bmi.w outputBad
+	btst d0, d6
+	bne.w outputBad
+	bset d0, d6
+	move.b d0, OUTPUT_SLOTS(a4, d7.w)
+	addq.w #1, d7
+	cmpa.l a3, a2
+	beq.w outputReady
+	cmpi.b #4, (a2)+
+	bne.w outputBad
+	bra.w outputSection
+outputReady
+	move.w d7, State.OutputCount(a4)
+	move.w #1, State.OutputSeen(a4)
+	move.w d6, State.Selected(a4)
+	move.w d7, d0
+	addq.w #5, d0
+	move.b d0, (a5)  ; record length minus one
+	move.b #source.FLAG_LAYOUT, 1(a5)
+	move.b #20, 4(a5)
+	move.b d7, 5(a5)
+	moveq #0, d6
+outputCopy
+	move.b OUTPUT_SLOTS(a4, d6.w), d0
+	move.b d0, 6(a5, d6.w)
+	addq.w #1, d6
+	cmp.w d7, d6
+	blo.w outputCopy
+	moveq #0, d0
+	bra.w outputDone
+outputBad
+	moveq #1, d0
+outputDone
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; output
 
 ; A0=first token after the imported module,A1=scope state,A2=section state,
 ; A4=record end,D0=imported module index. Accept a trailing
@@ -476,6 +644,16 @@ mapDone
 ; A0=section state. A mapped case requires both named sections by completion.
 finish	.block
 	movem.l d1, -(sp)
+	tst.w State.OutputSeen(a0)
+	beq.w flatFinish
+	tst.w State.MapCount(a0)
+	bne.w badFinish
+	move.w State.Selected(a0), d1
+	and.w State.Declared(a0), d1
+	cmp.w State.Selected(a0), d1
+	bne.w badFinish
+	bra.w finished
+flatFinish
 	move.w State.MapCount(a0), d1
 	cmpi.w #2, d1
 	bne.w secondCheck
@@ -524,6 +702,58 @@ finishDone
 	.bend  ; finish
 
 	.priv
+; D1=source ID,A4=section state,A6=scope state. Return slot 0..7 in D0,
+; or -1 when the bounded table is full. Preserve all other registers.
+slot	.block
+	movem.l d1-d4/a0, -(sp)
+	move.w d1, d4
+	moveq #0, d3
+slotSearch
+	cmp.w State.SlotCount(a4), d3
+	bhs.w slotNew
+	move.w d3, d2
+	add.w d2, d2
+	moveq #0, d0
+	move.w SLOT_NAMES(a4, d2.w), d0
+	move.w d4, d1
+	bsr.w sameLeaf
+	beq.w slotFound
+	addq.w #1, d3
+	bra.w slotSearch
+slotNew
+	cmpi.w #8, d3
+	bhs.w slotFull
+	move.w d3, d2
+	add.w d2, d2
+	move.w d4, SLOT_NAMES(a4, d2.w)
+	addq.w #1, State.SlotCount(a4)
+slotFound
+	moveq #0, d0
+	move.w d3, d0
+	bra.w slotDone
+slotFull
+	moveq #-1, d0
+slotDone
+	movem.l (sp)+, d1-d4/a0
+	tst.l d0
+	rts
+	.bend  ; slot
+
+; D1=source ID,A4=section state,A6=scope state. Mark one opened section.
+; Reopening a section is valid; return its slot or -1 for a full table.
+declareSlot	.block
+	movem.l d1-d2, -(sp)
+	bsr.w slot
+	bmi.w declareDone
+	move.w State.Declared(a4), d2
+	bset d0, d2
+	move.w d2, State.Declared(a4)
+declareDone
+	movem.l (sp)+, d1-d2
+	tst.l d0
+	rts
+	.bend  ; declareSlot
+
 ; A2=name token,A3=end,A6=scope state. D1=source ID,A2 advances.
 name	.block
 	move.l a3, d0
@@ -662,6 +892,9 @@ DataWord	.byte "data"
 BssWord	.byte "bss"
 InWord	.byte "in"
 MapWord	.byte "map"
+FormatWord	.byte "format"
+HunkWord	.byte "hunk"
+SectionsWord	.byte "sections"
 	.align 2  ; keep the next module's instructions word-aligned
 	.endsection
 	.endmodule

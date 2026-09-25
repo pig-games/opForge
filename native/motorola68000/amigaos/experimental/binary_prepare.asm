@@ -82,6 +82,10 @@ directive
 	beq.w copyRest
 	cmp.w package.Header.OrgDirective(a2), d7
 	beq.w scalar
+	cmp.w package.Header.AlignDirective(a2), d7
+	beq.w oneScalar
+	cmp.w package.Header.ResDirective(a2), d7
+	beq.w reserve
 	cmp.w package.Header.ByteDirective(a2), d7
 	beq.w dataScalar
 	cmp.w package.Header.WordDirective(a2), d7
@@ -100,6 +104,35 @@ scalar
 	; Shared directive arguments are always expressions, never register names.
 	bsr.w compile
 	bne.w bad
+	bra.w scalarTail
+oneScalar
+	bsr.w compile
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	bra.w complete
+reserve
+	bsr.w name
+	bne.w bad
+	cmp.w package.Header.ByteDirective(a2), d7
+	beq.w reserveComma
+	cmp.w package.Header.WordDirective(a2), d7
+	beq.w reserveComma
+	cmp.w package.Header.LongDirective(a2), d7
+	bne.w bad
+reserveComma
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #4, (a0)
+	bne.w bad
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+	bsr.w compile
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	bra.w complete
 scalarTail
 	cmpa.l a1, a0
 	beq.w complete

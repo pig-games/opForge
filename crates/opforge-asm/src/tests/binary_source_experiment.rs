@@ -7,6 +7,9 @@ use vm::runtime_model_core::RuntimeModelCore;
 #[path = "binary_source_hunk.rs"]
 mod hunk;
 
+#[path = "binary_source_hunk_sections.rs"]
+mod hunk_sections;
+
 #[path = "binary_source_constants.rs"]
 mod constants;
 
@@ -45,7 +48,7 @@ fn binary_source_packages_prepare() {
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
-        assert!((76..=bytes.len()).contains(&runtime_bytes));
+        assert!((80..=bytes.len()).contains(&runtime_bytes));
         assert_eq!(runtime_bytes % 2, 0);
 
         let rows = long(&bytes, 16);
@@ -59,7 +62,7 @@ fn binary_source_packages_prepare() {
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
-            assert!(offset >= 76);
+            assert!(offset >= 80);
             assert!(offset + count * width <= runtime_bytes);
         }
 
@@ -241,8 +244,8 @@ fn compact_cli_fs_uae() {
 #[ignore = "bounded native readiness probe; update as self-host parity advances"]
 fn compact_cli_self_host_entry_readiness_fs_uae() {
     // The live Rust assembly determines the exact source manifest and Hunk
-    // oracle. This is a diagnostic probe, not self-host parity: the compact
-    // native writer cannot emit the required Hunk yet.
+    // oracle. This is a bounded diagnostic probe, not self-host parity: the
+    // full imported source graph still contains unsupported packed constructs.
     let root = workspace_root().join("native/motorola68000/amigaos");
     let entry = "experimental/opforge_compact_cli.asm";
     let module_roots = [

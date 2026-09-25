@@ -239,7 +239,8 @@ consumes the same canonical rows, including in a package-mutation test. Existing
 Rust label-address evaluation, unresolved wide reservation and width convergence. Other MOS
 CPU variants keep their specialized selection routes; this is not their migration.
 
-BSP3 retains the 76-byte header and uses 32-byte candidate rows. New fields hold a
+BSP3 now has an 80-byte header (extended for shared `.align`/`.res` IDs) and
+uses 32-byte candidate rows. New row fields hold a
 base-relative exclusion-list offset and an optional table-program ID. Equal
 exclusion lists share storage. Each list contains an unsigned word count followed
 by operand/name-ID word pairs. Scoped register lookup is first-name-wins.
@@ -1430,3 +1431,23 @@ or `m68000`, and `OPFORGE_COMPARE_BLOCKS=8` or `24`:
 cargo test -p asm full_compact_mixed_comparison_fs_uae --lib -- \
   --ignored --nocapture --test-threads=1
 ```
+
+## Experimental selected-section Hunk output
+
+The compact native CLI now accepts a bounded `.output format=hunk,
+sections=...` path with up to eight selected sections. Preparation lowers
+section names and shared `.align`/`.res` directives to numeric controls.
+Assembly tracks section-local offsets and emitted bytes separately, reserves
+BSS without emitting data, and records direct `.long symbol` cross-section
+relocations. The Hunk writer orders segments as selected and serializes the
+relocation groups. The binary source remains offset-based; no source spelling
+is consulted during the assembly passes.
+
+The live `compact_hunk_sections_live_rust_oracle` and opt-in
+`compact_hunk_sections_fs_uae` tests compare a code/BSS/data output order,
+alignment, BSS reservation and CODE-to-DATA relocation against fresh Rust
+bytes. On a 68020 / 2 MiB run, the 100-byte Hunk matched exactly. A separate
+negative native test requires explicit failure for compound section-relative
+data expressions and section-bearing instruction operands. These forms need
+fixup provenance or addend support before they can be emitted correctly; the
+current bounded implementation must not output silently incorrect Hunks.

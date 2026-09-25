@@ -11,7 +11,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 76;
+const HEADER: usize = 80;
 const ROW: usize = 32;
 
 struct Program<'a> {
@@ -133,7 +133,7 @@ pub fn prepare_package(
         }
     }
     let mut directive_ids = Vec::new();
-    for directive in ["cpu", "org", "byte", "word", "long", "end"] {
+    for directive in ["cpu", "org", "byte", "word", "long", "end", "align", "res"] {
         let id = intern(&mut names, directive)?;
         bind(&mut dictionary, directive.into(), id, 0)?;
         directive_ids.push(id);
@@ -312,7 +312,12 @@ pub fn prepare_package(
         set_long(&mut out, offset, value);
     }
     for (index, id) in directive_ids.iter().enumerate() {
-        set_word(&mut out, 48 + index * 2, *id);
+        let offset = if index < 6 {
+            48 + index * 2
+        } else {
+            76 + (index - 6) * 2
+        };
+        set_word(&mut out, offset, *id);
     }
     set_word(&mut out, 60, cpu_id);
     set_word(&mut out, 62, total_names);

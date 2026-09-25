@@ -1191,3 +1191,27 @@ executable package candidates and wrapper metadata; inspect this growth before
 expanding all direct/direct forms. The entry-code acceptance above is met for
 representative full blocks and the unchanged entry reaches the next section
 boundary. Proceed with the section/BSS and Hunk slice as a coherent unit.
+
+The section/BSS/Hunk checkpoint now lowers selected code, data and BSS sections
+into bounded section-local storage, handles `.align` and `.res`, and writes a
+native Hunk with selected output order and grouped absolute-long relocations.
+The small module deliberately declares code/data/BSS but selects code/BSS/data;
+its code contains an aligned `.long` reference into data, while BSS reserves
+and aligns bytes without emitting them. Fresh Rust and 68020 / 2 MiB native
+Hunk files matched byte-for-byte (100 output bytes, three segments and 12 BSS
+bytes). One observed guest START-to-DONE time was 0.77 seconds; it is a single
+functional run, not an optimization comparison. The compact native executable
+was 66,364 bytes with 77,728 linked reserved bytes. The older flat mapped-
+section case still matched Rust. Section-bearing instruction operands and
+compound section-relative data expressions currently reject explicitly:
+instruction fixup provenance and expression addends are not yet represented.
+
+The unchanged self-host readiness probe now passes the entry's BSS declaration
+but rejects during preparation in an imported file (diagnostic file `29`, line
+`02`, hexadecimal). It staged 45 files / 500,955 source bytes and a fresh
+65,772-byte Rust Hunk; BSP3 was 175,762 bytes. The instrumented early-
+rejection run observed 662,016 peak owned bytes. Preparation did not finish,
+so there is still no native self-host time. The next breadth slice should
+identify the full imported module at that diagnostic, inventory its unsupported
+constructs and immediate dependencies, and complete one structural feature
+family before repeating the unchanged probe.

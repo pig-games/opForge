@@ -18,8 +18,12 @@ ActiveKind	.word ?
 Started	.word ?
 Placed	.word ?
 ActiveSlot	.word ?
+OrderCount	.word ?
+OutputSeen	.word ?
+HunkInvalid	.word ?
+HunkCurrent	.word ?
 	.endstruct
-SLOTS = State.ActiveSlot+2
+SLOTS = State.HunkCurrent+2
 FIRST = SLOTS
 SECOND = SLOTS+SLOT_BYTES
 FIRST_BASE = FIRST+Slot.Base
@@ -28,7 +32,17 @@ FIRST_AFTER = FIRST+Slot.After
 SECOND_BASE = SECOND+Slot.Base
 SECOND_END = SECOND+Slot.End
 SECOND_AFTER = SECOND+Slot.After
-SCRATCH_BYTES = SLOTS+2*SLOT_BYTES
+HunkSlot	.struct
+Kind	.word ?
+Seen	.word ?
+Start	.long ?
+Used	.long ?
+Size	.long ?
+	.endstruct
+HUNK_SLOT_BYTES = HunkSlot.Size+4
+HUNK_SLOTS = SLOTS+2*SLOT_BYTES
+ORDER = HUNK_SLOTS+8*HUNK_SLOT_BYTES
+SCRATCH_BYTES = ORDER+8
 ; Modes 3/4 use two placed slots, without/with two imported maps.
 ; Started/Placed use one bit per slot; After retains its last completed PC.
 	.section code, kind=code
@@ -47,8 +61,12 @@ scan	.block
 	clr.w State.Started(a6)
 	clr.w State.Placed(a6)
 	clr.w State.ActiveSlot(a6)
+	clr.w State.OrderCount(a6)
+	clr.w State.OutputSeen(a6)
+	clr.w State.HunkInvalid(a6)
+	clr.w State.HunkCurrent(a6)
 	lea SLOTS(a6), a5
-	moveq #2*SLOT_BYTES/2-1, d0
+	move.w #(SCRATCH_BYTES-SLOTS)/2-1, d0
 clearSlots
 	clr.w (a5)+
 	dbra d0, clearSlots
@@ -74,6 +92,10 @@ record
 	beq.w next
 	cmpi.w #5, d0
 	blo.w bad
+	move.w d0, -(sp)
+	bsr.w scanHunkControl
+	bne.w hunkScanBad
+	move.w (sp)+, d0
 	tst.w State.Mode(a6)
 	bne.w modeSet
 	move.w #1, State.Mode(a6)
@@ -91,9 +113,13 @@ secondMode
 	cmpi.b #11, 4(a0)
 	bne.w regionCheck
 twoMaps
+	tst.w State.OutputSeen(a6)
+	bne.w regionCheck
 	move.w #4, State.Mode(a6)  ; paired concrete and logical sweeps
 	bra.w regionCheck
 twoSlots
+	tst.w State.OutputSeen(a6)
+	bne.w regionCheck
 	cmpi.w #4, State.Mode(a6)
 	beq.w regionCheck
 	move.w #3, State.Mode(a6)  ; two concrete sections and regions
@@ -145,7 +171,30 @@ scanned
 next
 	adda.l d0, a0
 	bra.w record
+hunkScanBad
+	addq.l #2, sp
+	bra.w bad
 complete
+	tst.w State.OutputSeen(a6)
+	beq.w flatComplete
+	tst.w State.HunkInvalid(a6)
+	bne.w bad
+	tst.w State.Started(a6)
+	bne.w bad
+	move.w State.OrderCount(a6), d3
+	beq.w bad
+	lea ORDER(a6), a4
+hunkCheck
+	moveq #0, d0
+	move.b (a4)+, d0
+	bsr.w slotAddress
+	tst.w HunkSlot.Seen(a5)
+	beq.w bad
+	subq.w #1, d3
+	bne.w hunkCheck
+	move.w #5, State.Mode(a6)
+	bra.w ok
+flatComplete
 	tst.w State.Mode(a6)
 	beq.w ok
 	move.w State.Started(a6), d0
@@ -173,8 +222,122 @@ done
 	rts
 	.bend  ; scan
 
+; Inspect numeric section/output controls without changing flat scan behavior.
+; A0=record,D0=record bytes,A6=State. All but D0/CCR preserved.
+scanHunkControl	.block
+	movem.l d1-d4/a0-a5, -(sp)
+	moveq #0, d1
+	move.b 4(a0), d1
+	cmpi.w #20, d1
+	beq.w output
+	cmpi.w #2, d1
+	beq.w first
+	cmpi.w #7, d1
+	beq.w second
+	cmpi.w #12, d1
+	beq.w extra
+	cmpi.w #1, d1
+	beq.w incompatible
+	cmpi.w #6, d1
+	beq.w incompatible
+	cmpi.w #10, d1
+	beq.w incompatible
+	cmpi.w #11, d1
+	beq.w incompatible
+	cmpi.w #5, d1
+	beq.w incompatible
+	cmpi.w #9, d1
+	beq.w incompatible
+	bra.w ok
+first
+	moveq #0, d2
+	bra.w section
+second
+	moveq #1, d2
+	bra.w section
+extra
+	cmpi.w #7, d0
+	bne.w bad
+	moveq #0, d2
+	move.b 6(a0), d2
+	bra.w section
+section
+	cmpi.w #6, d0
+	blo.w bad
+	cmpi.w #8, d2
+	bhs.w bad
+	moveq #0, d3
+	move.b 5(a0), d3
+	cmpi.w #1, d3
+	blo.w bad
+	cmpi.w #3, d3
+	bhi.w bad
+	move.l d2, d0
+	bsr.w slotAddress
+	tst.w HunkSlot.Seen(a5)
+	beq.w firstKind
+	cmp.w HunkSlot.Kind(a5), d3
+	bne.w bad
+	bra.w ok
+firstKind
+	move.w d3, HunkSlot.Kind(a5)
+	move.w #1, HunkSlot.Seen(a5)
+	bra.w ok
+output
+	tst.w State.OutputSeen(a6)
+	bne.w bad
+	cmpi.w #6, d0
+	blo.w bad
+	moveq #0, d2
+	move.b 5(a0), d2
+	beq.w bad
+	cmpi.w #8, d2
+	bhi.w bad
+	move.l d2, d3
+	addq.l #6, d3
+	cmp.l d0, d3
+	bne.w bad
+	move.w d2, State.OrderCount(a6)
+	move.w #1, State.OutputSeen(a6)
+	lea ORDER(a6), a4
+	lea 6(a0), a1
+	moveq #0, d4
+copyOrder
+	moveq #0, d3
+	move.b (a1)+, d3
+	cmpi.w #8, d3
+	bhs.w bad
+	btst d3, d4
+	bne.w bad
+	bset d3, d4
+	move.b d3, (a4)+
+	subq.w #1, d2
+	bne.w copyOrder
+	bra.w ok
+incompatible
+	move.w #1, State.HunkInvalid(a6)
+ok
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d4/a0-a5
+	tst.l d0
+	rts
+	.bend  ; scanHunkControl
+
+; D0=slot 0..7,A6=State. A5=slot; caller validates index.
+slotAddress	.block
+	mulu.w #HUNK_SLOT_BYTES, d0
+	lea HUNK_SLOTS(a6), a5
+	adda.l d0, a5
+	rts
+	.bend  ; slotAddress
+
 ; A0=State. Reset the active control for the next assembly pass.
 beginPass	.block
+	movem.l d1/a1, -(sp)
 	clr.w State.Active(a0)
 	clr.w State.ActiveKind(a0)
 	clr.w State.Started(a0)
@@ -183,6 +346,17 @@ beginPass	.block
 	clr.l FIRST_AFTER(a0)
 	clr.l SECOND_AFTER(a0)
 	moveq #0, d0
+	lea HUNK_SLOTS(a0), a1
+	moveq #7, d1
+clearHunkPass
+	; Keep the section kind and declaration bit discovered by scan.
+	clr.l HunkSlot.Start(a1)
+	clr.l HunkSlot.Used(a1)
+	clr.l HunkSlot.Size(a1)
+	adda.w #HUNK_SLOT_BYTES, a1
+	dbra d1, clearHunkPass
+	moveq #0, d0
+	movem.l (sp)+, d1/a1
 	rts
 	.bend  ; beginPass
 
@@ -190,7 +364,9 @@ beginPass	.block
 ; One section is emitted contiguously. The caller schedules concrete records
 ; before imported logical records for an explicit map.
 control	.block
-	movem.l d1-d2/a0-a2, -(sp)
+	movem.l d1-d3/a0-a2/a5-a6, -(sp)
+	cmpi.w #5, State.Mode(a0)
+	beq.w hunkControl
 	moveq #0, d2
 	move.b 4(a2), d2
 	cmpi.w #1, d2
@@ -325,7 +501,123 @@ twoPlace
 	bhi.w bad
 	ori.w #2, State.Placed(a0)
 	bra.w ok
+hunkControl
+	moveq #0, d2
+	move.b 4(a2), d2
+	cmpi.w #20, d2
+	beq.w ok
+	cmpi.w #3, d2
+	beq.w hunkClose
+	moveq #0, d3
+	cmpi.w #2, d2
+	beq.w hunkOpen
+	moveq #1, d3
+	cmpi.w #7, d2
+	beq.w hunkOpen
+	cmpi.w #12, d2
+	bne.w bad
+	move.b 6(a2), d3
+hunkOpen
+	tst.w State.Active(a0)
+	bne.w bad
+	cmp.w State.HunkCurrent(a0), d3
+	bne.w bad
+	movea.l a0, a6
+	move.l d3, d0
+	bsr.w slotAddress
+	moveq #0, d1
+	move.b 5(a2), d1
+	cmp.w HunkSlot.Kind(a5), d1
+	bne.w bad
+	move.w d1, State.ActiveKind(a0)
+	move.w #1, State.Active(a0)
+	bra.w ok
+hunkClose
+	tst.w State.Active(a0)
+	beq.w bad
+	clr.w State.Active(a0)
+	clr.w State.ActiveKind(a0)
+	bra.w ok
 ok
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2/a5-a6
+	tst.l d0
+	rts
+	.bend  ; control
+
+; The Hunk path has section-local PCs and no placement/region directives.
+; beginHunkSlot and endHunkSlot bracket one ordered sweep of the packed records.
+beginHunkSlot	.block
+	movem.l d1/a0-a1/a5-a6, -(sp)
+	movea.l a0, a6
+	cmpi.w #5, State.Mode(a6)
+	bne.w hunkBad
+	cmpi.l #8, d0
+	bhs.w hunkBad
+	move.w d0, State.HunkCurrent(a6)
+	bsr.w slotAddress
+	tst.w HunkSlot.Seen(a5)
+	beq.w hunkBad
+	move.l d1, HunkSlot.Start(a5)
+	move.l HunkSlot.Size(a5), pkg.Context.Pc(a1)
+	moveq #0, d0
+	bra.w hunkDone
+hunkBad
+	moveq #1, d0
+hunkDone
+	movem.l (sp)+, d1/a0-a1/a5-a6
+	tst.l d0
+	rts
+	.bend  ; beginHunkSlot
+
+endHunkSlot	.block
+	movem.l d1/a0-a1/a5-a6, -(sp)
+	movea.l a0, a6
+	tst.w State.Active(a6)
+	bne.w hunkBad
+	cmp.w State.HunkCurrent(a6), d0
+	bne.w hunkBad
+	bsr.w slotAddress
+	move.l pkg.Context.Pc(a1), HunkSlot.Size(a5)
+	move.l d1, d0
+	sub.l HunkSlot.Start(a5), d0
+	bcs.w hunkBad
+	move.l d0, HunkSlot.Used(a5)
+	moveq #0, d0
+	bra.w hunkDone
+hunkBad
+	moveq #1, d0
+hunkDone
+	movem.l (sp)+, d1/a0-a1/a5-a6
+	tst.l d0
+	rts
+	.bend  ; endHunkSlot
+
+; A0=State,A1=Context,D0=reservation bytes. BSS has no initialized payload.
+reserve	.block
+	movem.l d1-d2/a0-a2, -(sp)
+	cmpi.w #5, State.Mode(a0)
+	bne.w bad
+	tst.w State.Active(a0)
+	beq.w bad
+	cmpi.w #3, State.ActiveKind(a0)
+	bne.w bad
+	move.l pkg.Context.Pc(a1), d1
+	add.l d0, d1
+	bcs.w bad
+	movea.l pkg.Context.Package(a1), a2
+	tst.l d0
+	beq.w checked
+	move.l d1, d2
+	subq.l #1, d2
+	cmp.l pkg.Header.MaxAddress(a2), d2
+	bhi.w bad
+checked
+	move.l d1, pkg.Context.Pc(a1)
 	moveq #0, d0
 	bra.w done
 bad
@@ -334,12 +626,14 @@ done
 	movem.l (sp)+, d1-d2/a0-a2
 	tst.l d0
 	rts
-	.bend  ; control
+	.bend  ; reserve
 
 ; A0=State,A1=Context,D0=emitted byte count. Reject output outside the
 ; active section or beyond its placed region. D0/CCR=status; others preserved.
 checkEmit	.block
-	movem.l d1/a0-a1, -(sp)
+	movem.l d1/a0-a2, -(sp)
+	cmpi.w #5, State.Mode(a0)
+	beq.w hunkEmit
 	tst.w State.Mode(a0)
 	beq.w ok
 	tst.w State.Active(a0)
@@ -369,6 +663,21 @@ emitEnd
 	cmp.l FIRST_END(a0), d1
 	bhi.w bad
 	bra.w ok
+hunkEmit
+	tst.w State.Active(a0)
+	beq.w bad
+	cmpi.w #3, State.ActiveKind(a0)
+	beq.w bad
+	move.l pkg.Context.Pc(a1), d1
+	add.l d0, d1
+	bcs.w bad
+	tst.l d0
+	beq.w ok
+	subq.l #1, d1
+	movea.l pkg.Context.Package(a1), a2
+	cmp.l pkg.Header.MaxAddress(a2), d1
+	bhi.w bad
+	bra.w ok
 secondEnd
 	cmp.l SECOND_END(a0), d1
 	bhi.w bad
@@ -378,7 +687,7 @@ ok
 bad
 	moveq #1, d0
 done
-	movem.l (sp)+, d1/a0-a1
+	movem.l (sp)+, d1/a0-a2
 	tst.l d0
 	rts
 	.bend  ; checkEmit
@@ -389,6 +698,8 @@ finishPass	.block
 	beq.w ok
 	tst.w State.Active(a0)
 	bne.w bad
+	cmpi.w #5, State.Mode(a0)
+	beq.w ok
 	move.w State.Placed(a0), d0
 	cmpi.w #3, State.Mode(a0)
 	beq.w twoPlaces

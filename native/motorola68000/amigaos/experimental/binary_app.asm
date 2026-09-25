@@ -1,9 +1,12 @@
 ; Streaming native binary-source contract; input identity belongs to the caller.
+; @opforge-owner: experimental.amigaos.binary_app
 ; @opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent
 	.module experimental.amigaos.binary_app
 	.cpu 68020
 	.use experimental.amigaos.binary_frontend as frontend
 	.use experimental.amigaos.binary_assembly as assembly
+	.use experimental.amigaos.binary_sections as sections
+	.use experimental.amigaos.binary_hunk_output as hunk
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_discovery as discovery
@@ -14,7 +17,7 @@
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
 	.include "memory_telemetry.i"
-HEADER_BYTES = 76
+HEADER_BYTES = 80
 IO_BYTES = 4096
 INCLUDE_DEPTH = 8
 LINE_BYTES = 4096
@@ -145,6 +148,12 @@ freeBlocks
 	lea Parameters, a0
 	jsr memory.release
 	lea Output, a0
+	jsr memory.release
+	lea HunkBlock, a0
+	jsr memory.release
+	lea RelocBlock, a0
+	jsr memory.release
+	lea HunkRelocs, a0
 	jsr memory.release
 	lea FileSpans, a0
 	jsr memory.release
@@ -1102,6 +1111,7 @@ run	.block
 	move.l d0, d1
 	lsl.l #2, d0
 	add.l d1, d0
+	add.l d1, d0  ; one section identity byte per numeric symbol
 	lea Symbols, a0
 	jsr memory.reserve
 	bne.w bad
@@ -1114,6 +1124,8 @@ run	.block
 	adda.l d0, a2
 	lea Context, a0
 	move.l a2, package.Context.Defined(a0)
+	adda.l NameCount, a2
+	move.l a2, package.Context.SectionIds(a0)
 	move.l NameCount, package.Context.Count(a0)
 	lea Parameters, a1
 	move.l memory.Block.Pointer(a1), package.Context.Parameters(a0)
@@ -1128,6 +1140,7 @@ run	.block
 	move.l memory.Block.Used(a1), assembly.Frame.RecordBytes(a0)
 	move.l #Context, assembly.Frame.Context(a0)
 	move.l #allocateOutput, assembly.Frame.Allocate(a0)
+	move.l #appendReloc, assembly.Frame.AddReloc(a0)
 	jsr assembly.assemble
 	rts
 bad
@@ -1150,7 +1163,39 @@ done
 	rts
 	.bend  ; allocateOutput
 
+; A0=assembly.Frame,D0=source slot,D1=target slot,D2=section offset.
+; Append an offset-based relocation while pass two emits in section order.
+appendReloc	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	move.l d0, d5
+	move.l d1, d6
+	move.l d2, d7
+	lea RelocBlock, a0
+	move.l memory.Block.Used(a0), d0
+	add.l #assembly.OUTPUT_RELOC_BYTES, d0
+	bcs.w bad
+	jsr memory.reserve
+	bne.w bad
+	lea RelocBlock, a0
+	movea.l memory.Block.Pointer(a0), a1
+	adda.l memory.Block.Used(a0), a1
+	move.l d5, assembly.OutputReloc.Source(a1)
+	move.l d6, assembly.OutputReloc.Target(a1)
+	move.l d7, assembly.OutputReloc.Offset(a1)
+	addi.l #assembly.OUTPUT_RELOC_BYTES, memory.Block.Used(a0)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; appendReloc
+
 writeOutput	.block
+	bsr.w selectOutput
+	bne.w bad
 	movea.l DosBase, a6
 	move.l OutputName, d1
 	move.l #1006, d2
@@ -1161,18 +1206,17 @@ writeOutput	.block
 	moveq #0, d5
 	lea Work, a5
 loop
-	move.l assembly.Frame.Used(a5), d3
+	move.l WriteBytes, d3
 	sub.l d5, d3
 	beq.w complete
-	lea Output, a0
-	move.l memory.Block.Pointer(a0), d2
+	move.l WritePointer, d2
 	add.l d5, d2
 	move.l d4, d1
 	jsr -48(a6)
 	tst.l d0
 	ble.w closeBad
 	add.l d0, d5
-	cmp.l assembly.Frame.Used(a5), d5
+	cmp.l WriteBytes, d5
 	bhi.w closeBad
 	bra.w loop
 complete
@@ -1189,6 +1233,186 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; writeOutput
+
+; Build selected native Hunk sections from numeric assembly metadata.
+; The flat path keeps its existing write buffer. D0/CCR=status.
+selectOutput	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	lea Work, a5
+	move.l assembly.Frame.Used(a5), WriteBytes
+	lea Output, a0
+	move.l memory.Block.Pointer(a0), WritePointer
+	movea.l assembly.Frame.Sections(a5), a6
+	cmpi.w #5, sections.State.Mode(a6)
+	bne.w selected
+	lea HunkParts, a4
+	lea HunkFrame, a1
+	clr.l hunk.Frame.Count(a1)
+	lea SlotToPart, a1
+	moveq #7, d0
+clearPartMap
+	move.b #$ff, (a1)+
+	dbra d0, clearPartMap
+	moveq #0, d7
+	move.w sections.State.OrderCount(a6), d6
+	lea sections.ORDER(a6), a3
+part
+	tst.w d6
+	beq.w serialize
+	moveq #0, d0
+	move.b (a3)+, d0
+	move.l d0, d4
+	mulu.w #sections.HUNK_SLOT_BYTES, d0
+	lea sections.HUNK_SLOTS(a6), a2
+	adda.l d0, a2
+	moveq #0, d1
+	move.w sections.HunkSlot.Kind(a2), d1
+	move.l sections.HunkSlot.Used(a2), d2
+	cmpi.w #3, d1
+	beq.w keepPart
+	tst.l d2
+	beq.w nextPart
+keepPart
+	lea SlotToPart, a1
+	move.b d7, 0(a1, d4.w)
+	lea PartSlots, a1
+	move.b d4, 0(a1, d7.w)
+	move.w d1, hunk.Part.Kind(a4)
+	clr.w hunk.Part.Reserved(a4)
+	clr.l hunk.Part.Data(a4)
+	move.l d2, hunk.Part.Used(a4)
+	move.l sections.HunkSlot.Size(a2), hunk.Part.Size(a4)
+	clr.l hunk.Part.Fixups(a4)
+	clr.l hunk.Part.FixupCount(a4)
+	cmpi.w #3, d1
+	beq.w partReady
+	move.l sections.HunkSlot.Start(a2), d0
+	add.l d2, d0
+	bcs.w badSelect
+	cmp.l assembly.Frame.Used(a5), d0
+	bhi.w badSelect
+	move.l memory.Block.Pointer(a0), d0
+	add.l sections.HunkSlot.Start(a2), d0
+	bcs.w badSelect
+	move.l d0, hunk.Part.Data(a4)
+partReady
+	adda.w #hunk.SEGMENT_BYTES, a4
+	addq.l #1, d7
+nextPart
+	subq.w #1, d6
+	bra.w part
+serialize
+	bsr.w collectRelocs
+	bne.w badSelect
+	lea HunkFrame, a0
+	move.l #HunkParts, hunk.Frame.Segments(a0)
+	move.l d7, hunk.Frame.Count(a0)
+	clr.l hunk.Frame.Output(a0)
+	clr.l hunk.Frame.Capacity(a0)
+	jsr hunk.build
+	bne.w badSelect
+	move.l hunk.Frame.Used(a0), d0
+	lea HunkBlock, a0
+	jsr memory.reserve
+	bne.w badSelect
+	movea.l a0, a1
+	lea HunkFrame, a0
+	move.l memory.Block.Pointer(a1), hunk.Frame.Output(a0)
+	move.l memory.Block.Capacity(a1), hunk.Frame.Capacity(a0)
+	jsr hunk.build
+	bne.w badSelect
+	move.l hunk.Frame.Output(a0), WritePointer
+	move.l hunk.Frame.Used(a0), WriteBytes
+selected
+	moveq #0, d0
+	bra.w selectDone
+badSelect
+	moveq #1, d0
+selectDone
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; selectOutput
+
+; Convert slot-number relocation records to emitted Hunk indices. Output parts
+; stay in selected order; each part's fixups are contiguous and source-ordered.
+collectRelocs	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	lea RelocBlock, a0
+	move.l memory.Block.Used(a0), d0
+	cmpi.l #786420, d0
+	bhi.w bad
+	divu.w #assembly.OUTPUT_RELOC_BYTES, d0
+	move.l d0, d1
+	swap d1
+	tst.w d1
+	bne.w bad
+	moveq #0, d1
+	move.w d0, d1
+	mulu.w #hunk.FIXUP_BYTES, d1
+	move.l d1, d0
+	lea HunkRelocs, a0
+	jsr memory.reserve
+	bne.w bad
+	clr.l memory.Block.Used(a0)
+	movea.l memory.Block.Pointer(a0), a5
+	move.l d7, d6
+	moveq #0, d4
+part
+	cmp.l d6, d4
+	bhs.w doneParts
+	move.l d4, d0
+	mulu.w #hunk.SEGMENT_BYTES, d0
+	lea HunkParts, a4
+	adda.l d0, a4
+	clr.l hunk.Part.FixupCount(a4)
+	move.l a5, hunk.Part.Fixups(a4)
+	lea PartSlots, a0
+	moveq #0, d3
+	move.b 0(a0, d4.w), d3
+	lea RelocBlock, a0
+	movea.l memory.Block.Pointer(a0), a6
+	move.l memory.Block.Used(a0), d5
+record
+	tst.l d5
+	beq.w nextPart
+	cmpi.l #assembly.OUTPUT_RELOC_BYTES, d5
+	blo.w bad
+	cmp.l assembly.OutputReloc.Source(a6), d3
+	bne.w skipRecord
+	move.l assembly.OutputReloc.Target(a6), d0
+	cmpi.l #8, d0
+	bhs.w bad
+	lea SlotToPart, a0
+	moveq #0, d1
+	move.b 0(a0, d0.w), d1
+	cmpi.w #$ff, d1
+	beq.w bad
+	move.l d1, hunk.Reloc.Target(a5)
+	move.l assembly.OutputReloc.Offset(a6), hunk.Reloc.Offset(a5)
+	addq.l #1, hunk.Part.FixupCount(a4)
+	adda.w #hunk.FIXUP_BYTES, a5
+skipRecord
+	adda.w #assembly.OUTPUT_RELOC_BYTES, a6
+	subi.l #assembly.OUTPUT_RELOC_BYTES, d5
+	bra.w record
+nextPart
+	addq.l #1, d4
+	bra.w part
+doneParts
+	lea HunkRelocs, a0
+	move.l a5, d0
+	sub.l memory.Block.Pointer(a0), d0
+	move.l d0, memory.Block.Used(a0)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; collectRelocs
 ; D0 bytes A0->A1, distinct allocations. Clobbers D0/A0/A1/CCR.
 copy	.block
 	tst.l d0
@@ -1282,8 +1506,8 @@ SourceBytes	.res long, 1
 NameCount	.res long, 1
 Header	.res byte, HEADER_BYTES
 Front	.res byte, frontend.Frame.GraphBefore+4
-Work	.res byte, assembly.Frame.RecordOffset+4
-Context	.res byte, package.Context.ParameterCount+4
+Work	.res byte, assembly.Frame.AddReloc+4
+Context	.res byte, package.Context.SectionIds+4
 PackageBlock	.res byte, memory.Block.Used+4
 RuntimeBlock	.res byte, memory.Block.Used+4
 PrepBlock	.res byte, memory.Block.Used+4
@@ -1292,5 +1516,14 @@ Symbols	.res byte, memory.Block.Used+4
 Parameters	.res byte, memory.Block.Used+4
 ParameterBytes	.res long, 1
 Output	.res byte, memory.Block.Used+4
+HunkBlock	.res byte, memory.Block.Used+4
+RelocBlock	.res byte, memory.Block.Used+4
+HunkRelocs	.res byte, memory.Block.Used+4
+HunkFrame	.res byte, hunk.Frame.Used+4
+HunkParts	.res byte, hunk.MAX_SEGMENTS*hunk.SEGMENT_BYTES
+SlotToPart	.res byte, 8
+PartSlots	.res byte, 8
+WritePointer	.res long, 1
+WriteBytes	.res long, 1
 	.endsection
 	.endmodule

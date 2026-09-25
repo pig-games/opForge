@@ -43,6 +43,7 @@ KEY_SEGMENT = 15
 KEY_ENDSEGMENT = 16
 KEY_MACRO = 17
 KEY_ENDMACRO = 18
+KEY_OUTPUT = 19
 SECTION_STATE = IMPORT_STATE+imports.SCRATCH_BYTES
 SCRATCH_BYTES = SECTION_STATE+sections.SCRATCH_BYTES
 	.section code, kind=code
@@ -366,6 +367,8 @@ directive
 	beq.w sectionControl
 	cmpi.l #KEY_PLACE, d0
 	beq.w sectionControl
+	cmpi.l #KEY_OUTPUT, d0
+	beq.w outputControl
 	; Other directives retain their existing generic preparation/assembly route.
 	addq.l #5, a0
 	bra.w references
@@ -376,6 +379,14 @@ sectionControl
 	adda.l #SECTION_STATE, a2
 	subi.l #KEY_SECTION-1, d0
 	jsr sections.line
+	bne.w bad
+	bra.w ok
+outputControl
+	movea.l a5, a0
+	movea.l a6, a1
+	movea.l a6, a2
+	adda.l #SECTION_STATE, a2
+	jsr sections.output
 	bne.w bad
 	bra.w ok
 importing
@@ -1482,6 +1493,7 @@ Words
 	.byte KEY_ENDSECTION, 10, "endsection"
 	.byte KEY_REGION, 6, "region"
 	.byte KEY_PLACE, 5, "place"
+	.byte KEY_OUTPUT, 6, "output"
 	.byte KEY_SEGMENT, 7, "segment"
 	.byte KEY_ENDSEGMENT, 10, "endsegment"
 	.byte KEY_ENDSEGMENT, 4, "ends"

@@ -173,6 +173,206 @@ fn compact_cli_fs_uae() {
         .expect("fresh compact CLI image");
     let allocation = hunk::allocation(image).expect("valid compact CLI Hunk");
     assert!(allocation.total() < 2 * 1024 * 1024);
+    let memory = if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
+        let record = runs[0]
+            .captured_artifacts
+            .get(&PathBuf::from("Work/memory.bin"))
+            .expect("fresh compact CLI memory telemetry");
+        assert_eq!(record.len(), 1756);
+        let words = record
+            .chunks_exact(4)
+            .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
+            .collect::<Vec<_>>();
+        assert_eq!(words[0], 0x4d454d35);
+        assert_eq!(words[1], 0, "all tracked allocations released");
+        assert_eq!(words[3], words[4], "allocation capacities balance");
+        assert_eq!(words[11], 0, "cleanup has no live allocation");
+        assert!(words[2] > 0 && words[14] > 0 && words[15] > 0);
+        assert!(words[28] > 0, "E-clock frequency available");
+        assert_eq!(words[29], 0, "profiling completed cleanly");
+        let stamp = |index: usize| -> u64 {
+            u64::from(words[index]) * 24 * 60 * 60 * 50
+                + u64::from(words[index + 1]) * 60 * 50
+                + u64::from(words[index + 2])
+        };
+        let preparation_ticks = stamp(22).checked_sub(stamp(19)).expect("ordered clocks");
+        let assembly_ticks = stamp(25).checked_sub(stamp(22)).expect("ordered clocks");
+        serde_json::json!({
+            "peak_owned_bytes": words[2],
+            "prepared_live_bytes": words[5],
+            "assembly_live_bytes": words[10],
+            "runtime_bytes": words[13],
+            "packed_source_bytes": words[14],
+            "source_bytes": words[15],
+            "preparation_clock_seconds": preparation_ticks as f64 / 50.0,
+            "assembly_clock_seconds": assembly_ticks as f64 / 50.0,
+            "preparation_stage_seconds": (0..6).map(|index| {
+                let ticks = (u64::from(words[30 + 2 * index]) << 32)
+                    | u64::from(words[31 + 2 * index]);
+                ticks as f64 / f64::from(words[28])
+            }).collect::<Vec<_>>(),
+        })
+    } else {
+        assert!(!runs[0]
+            .captured_artifacts
+            .contains_key(&PathBuf::from("Work/memory.bin")));
+        serde_json::Value::Null
+    };
+    eprintln!(
+        "COMPACT_CLI_MEASUREMENT {}",
+        serde_json::json!({
+            "guest_start_to_done_host_seconds": runs[0].start_to_done_host_seconds,
+            "linked_reserved_bytes": allocation.total(),
+            "input_bytes": source.len(),
+            "output_bytes": oracle.len(),
+            "instrumented_memory": memory,
+        })
+    );
+}
+
+#[test]
+#[ignore = "bounded native readiness probe; update as self-host parity advances"]
+fn compact_cli_self_host_entry_readiness_fs_uae() {
+    // The live Rust assembly determines the exact source manifest and Hunk
+    // oracle. This is a diagnostic probe, not self-host parity: the compact
+    // native writer cannot emit the required Hunk yet.
+    let root = workspace_root().join("native/motorola68000/amigaos");
+    let entry = "experimental/opforge_compact_cli.asm";
+    let module_roots = [
+        "experimental",
+        "opforge-cli",
+        "tkpkg",
+        "tkvm",
+        "prvm",
+        "exprvm",
+        "opcore",
+        "opasm",
+    ];
+    let oracle_dir = create_temp_dir("compact-self-host-rust-oracle");
+    let dependency_path = oracle_dir.join("dependencies.d");
+    let mut command = vec![
+        "opForge".to_string(),
+        root.join(entry).to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "68020".to_string(),
+        "--dependencies".to_string(),
+        dependency_path.to_string_lossy().into_owned(),
+    ];
+    for directory in module_roots.into_iter().chain(["debug"]) {
+        command.extend([
+            "-M".to_string(),
+            root.join(directory).to_string_lossy().into_owned(),
+        ]);
+    }
+    command.extend([
+        "-I".to_string(),
+        root.join("debug").to_string_lossy().into_owned(),
+    ]);
+    let cli = Cli::parse_from(command);
+    let mut config = validate_cli(&cli).expect("validate Rust compact self-build");
+    config.out_dir = Some(oracle_dir.clone());
+    run_with_validated_cli_with_context(&cli, &config)
+        .expect("live Rust compact self-build succeeds");
+    let hunk_oracle =
+        fs::read(oracle_dir.join("build/opforge_compact")).expect("read fresh Rust compact Hunk");
+    assert!(!hunk_oracle.is_empty());
+    let hunk_allocation = hunk::allocation(&hunk_oracle).expect("valid Rust compact Hunk");
+    let dependencies = fs::read_to_string(&dependency_path).expect("read live dependency manifest");
+    let (_, prerequisite_text) = dependencies
+        .split_once(": ")
+        .expect("Makefile dependency rule with prerequisites");
+    let mut sources = prerequisite_text
+        .split_whitespace()
+        .map(|path| {
+            let path = PathBuf::from(path);
+            let relative = path
+                .strip_prefix(&root)
+                .expect("self-host dependency remains in native AmigaOS tree");
+            (
+                relative.to_string_lossy().into_owned(),
+                fs::read(&path).expect("read source from Rust dependency manifest"),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(sources.iter().any(|(path, _)| path == entry));
+    sources.sort_by(|left, right| left.0.cmp(&right.0));
+    let entry_index = sources.iter().position(|(path, _)| path == entry).unwrap();
+    sources.swap(0, entry_index);
+    // The guest CLI validates each -M directory before reading the entry.
+    // A root with no Rust dependency has no staged directory to validate.
+    let native_roots = module_roots
+        .iter()
+        .copied()
+        .filter(|directory| {
+            sources
+                .iter()
+                .any(|(path, _)| path.starts_with(&format!("{directory}/")))
+        })
+        .collect::<Vec<_>>();
+    fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+    let source_refs = sources
+        .iter()
+        .map(|(path, bytes)| (path.as_str(), bytes.as_slice()))
+        .collect::<Vec<_>>();
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_files_from_env(
+        &workspace_root(),
+        &package,
+        &source_refs,
+        &native_roots,
+        &["debug"],
+        None,
+        false,
+    )
+    .expect("fresh bounded native self-host entry probe");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(20));
+    assert!(runs[0].stdout.contains("[file "));
+    assert!(!runs[0].stdout.contains("[file 00000000, line 00000000]"));
+    let memory = if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
+        let record = runs[0]
+            .captured_artifacts
+            .get(&PathBuf::from("Work/memory.bin"))
+            .expect("fresh self-host readiness telemetry");
+        assert_eq!(record.len(), 1756);
+        let words = record
+            .chunks_exact(4)
+            .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
+            .collect::<Vec<_>>();
+        assert_eq!(words[0], 0x4d454d35);
+        assert_eq!(words[1], 0, "rejected input releases tracked memory");
+        assert_eq!(words[3], words[4]);
+        assert_eq!(words[11], 0);
+        serde_json::json!({
+            "peak_owned_bytes": words[2],
+            "source_bytes_read": words[15],
+            "packed_source_bytes": words[14],
+            "profiling_errors": words[29],
+            "preparation_stage_calls": &words[42..48],
+        })
+    } else {
+        serde_json::Value::Null
+    };
+    eprintln!(
+        "COMPACT_SELF_HOST_READINESS {}",
+        serde_json::json!({
+            "staged_files": source_refs.len(),
+            "source_bytes": sources.iter().map(|(_, bytes)| bytes.len()).sum::<usize>(),
+            "rust_hunk_bytes": hunk_oracle.len(),
+            "rust_hunk_segments": hunk_allocation.segments,
+            "rust_hunk_linked_reserved_bytes": hunk_allocation.total(),
+            "runtime_package_bytes": package.len(),
+            "guest_start_to_done_host_seconds": runs[0].start_to_done_host_seconds,
+            "diagnostic": runs[0].stdout,
+            "instrumented_memory": memory,
+        })
+    );
 }
 
 #[test]

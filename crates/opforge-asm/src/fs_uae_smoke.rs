@@ -1410,10 +1410,13 @@ pub(crate) fn run_compact_cli_files_from_env(
             rust_oracle,
         }]
     });
+    let memory_telemetry = std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1");
+    let extra_assembly_defines =
+        exact_harness_assembly_defines(NativeCliParityExecutable::CompactCli, memory_telemetry);
     let case = OpforgeNativeCliParityCase {
         name: "compact-cli-source-set",
         cpu_override: "68020",
-        extra_assembly_defines: &[],
+        extra_assembly_defines: &extra_assembly_defines,
         source_override: Some(package),
         command_template: Some(&command),
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
@@ -1740,7 +1743,12 @@ fn exact_harness_assembly_defines(
     executable: NativeCliParityExecutable,
     memory_telemetry: bool,
 ) -> Vec<&'static str> {
-    if memory_telemetry && matches!(executable, NativeCliParityExecutable::BinarySourceHarness) {
+    if memory_telemetry
+        && matches!(
+            executable,
+            NativeCliParityExecutable::BinarySourceHarness | NativeCliParityExecutable::CompactCli
+        )
+    {
         vec!["OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY"]
     } else {
         Vec::new()
@@ -3128,10 +3136,12 @@ fn run_native_cli_parity_batch_cases(
                 )
             }
         };
-        if matches!(executable, NativeCliParityExecutable::BinarySourceHarness)
-            && case
-                .extra_assembly_defines
-                .contains(&"OPFORGE_MEMORY_TELEMETRY")
+        if matches!(
+            executable,
+            NativeCliParityExecutable::BinarySourceHarness | NativeCliParityExecutable::CompactCli
+        ) && case
+            .extra_assembly_defines
+            .contains(&"OPFORGE_MEMORY_TELEMETRY")
         {
             batch_script.push_str("C:Version >Work:guest-memory.txt\n");
             batch_script.push_str("C:CPU >>Work:guest-memory.txt\n");

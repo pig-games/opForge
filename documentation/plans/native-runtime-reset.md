@@ -875,3 +875,69 @@ text-first substitution for escape-sensitive arguments. The 256-byte record,
 192-byte per-frame text, four-argument and 64-frame depth limits remain
 experimental bounds, not full macro-language parity. Review the growing
 template module's responsibilities before widening support further.
+
+## Compact CLI self-host convergence
+
+Use the experimental compact CLI's own entry
+`native/motorola68000/amigaos/experimental/opforge_compact_cli.asm` and its
+transitive source files as the guiding workload. The authority is a fresh Rust
+assembly of those same source bytes into the entry's declared Amiga Hunk. A
+native result qualifies only after a fresh 68020 guest completion with zero
+exit and a byte-for-byte identical Hunk. Do not count the host-built bootstrap
+Hunk as a native assembly result. Keep the old full-CLI non-completing self-host
+test out of routine measurement.
+
+The initial Rust baseline builds a deterministic 58,856-byte Hunk at
+`build/opforge_compact` from this entry (two separate temporary output roots
+produced SHA-256 `fcf86df103ba8b41b79c31a391acee127beb395dd43a8fd019ae0f01e39d3223`
+at checkpoint `c97d9735`). The compact native CLI currently writes a flat
+contiguous byte stream. Focused section placement works, but its restricted
+section/layout and directive handling does not yet cover the entry's full use
+of `.section`, `.res`, and `.output`. Broader compile-time and 68020 instruction
+coverage must be established from actual failures. Some source filenames also
+exceed classic AmigaOS component limits, notably
+`binary_source_discovery_index.i`. These are concrete work items, not
+reasons to replace the target with a simplified self-host fixture.
+
+First establish a reproducible source manifest, runtime package, Rust Hunk
+oracle and bounded guest invocation that reports the first native rejection.
+Then add the smallest coherent language/output slice that advances the unchanged
+entry and its dependencies. Keep exact small Rust/native cases for each new
+boundary, and rerun the real entry to choose the next one. Output and section
+work must ultimately produce the Hunk itself; flat bytes cannot qualify as
+self-host parity. Review memory cost and responsibility boundaries as features
+accumulate, especially before broadening the template or app modules.
+
+Measure release builds with guest START-to-DONE elapsed time and exact-output
+proof. In separate instrumented builds, use the existing gated telemetry
+macros for preparation stages, assembly clock, work counters, packed-source
+size, owned-memory peak and cleanup; never combine an instrumented duration
+with release timing to claim a speedup. The compact CLI runner now enables this
+record with `OPFORGE_COMPARE_MEMORY=1`. On the focused 51-byte smoke source,
+one release observation took 0.508 s and reserved 70,152 linked bytes; the
+instrumented run recorded 303,872 peak owned bytes, 0.14 s preparation and
+0.02 s assembly clocks, and 75,404 linked reserved bytes. These values prove
+the measurement path, not self-host feasibility or stable performance.
+
+Keep early entry attempts short and fail closed; extend the guest time budget
+only when a previous bounded run shows meaningful progress. Record the exact
+last completed stage and first failure, not just the timeout. Recheck the 2 MiB
+profile at each useful checkpoint. The eventual target remains a complete
+self-assembly within 15 minutes on a 68020/AmigaOS 3.1+ machine with 2 MiB;
+prefer much faster. If a new feature exceeds that budget, revisit its memory
+layout and reuse before continuing parity breadth.
+
+The first bounded entry probe now uses Rust's live dependency manifest rather
+than staging every file in each search directory: 43 source/include files,
+457,729 source bytes, a 149,066-byte m68020 BSP3 package and the 58,856-byte
+Rust Hunk. A fresh 68020 / 2 MiB native run completed with exit 20 and
+reported `file 1, line 8`: `.section entry, kind=code`. This is an expected
+readiness failure, not self-host parity. The separately instrumented run reached
+the same line, recorded 656,128 peak owned bytes, balanced all tracked
+allocations on cleanup and marked preparation incomplete. A valid full-command
+native duration is unavailable at this failure point; the phase clock has no
+completion stamp. The next bounded slice should carry section kind through
+numeric records and verify the layout with a focused Rust/native case; a
+following output slice must build exact Hunk bytes from the resulting sections.
+Simply accepting `kind=code` and continuing flat output would conceal this
+self-host target's four-segment, 70,152-byte linked Hunk requirement.

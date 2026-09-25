@@ -11,6 +11,10 @@ const SELF_HOST_DISPLACEMENT: &str = ".cpu m68020\n.org 0\n jsr -552(a6)\n.end\n
 const SELF_HOST_IMMEDIATE_INDIRECT: &str = ".cpu m68020\n.org 0\n cmpi.b #'-', (a3)\n.end\n";
 const NUMERIC_IMMEDIATE_INDIRECT: &str = ".cpu m68020\n.org 0\n cmpi.b #45, (a3)\n.end\n";
 const WORD_IMMEDIATE_INDIRECT: &str = ".cpu m68020\n.org 0\n cmpi.w #$1234, (a3)\n.end\n";
+const REPEATED_FORWARD_CALL: &str = ".cpu m68020\n.org 0\nstart .block\n bsr.w nextPath\n bsr.w nextPath\n bsr.w nextPath\n rts\n .bend\nnextPath .block\n rts\n .bend\n.end\n";
+const INTERNAL_LABEL_CALL: &str = ".cpu m68020\n.org 0\nstart .block\n bsr.w nextPath\nmid\n bsr.w nextPath\n rts\n .bend\nnextPath .block\n rts\n .bend\n.end\n";
+const BACKWARD_CALL: &str = ".cpu m68020\n.org 0\nnextPath .block\n rts\n .bend\nstart .block\n bsr.w nextPath\n rts\n .bend\n.end\n";
+const NUMERIC_CALL: &str = ".cpu m68020\n.org 0\n bsr.w 0\n.end\n";
 const ZERO_DISPLACEMENT: &str = ".cpu m68020\n.org 0\n jsr 0(a6)\n.end\n";
 const INDIRECT_CALL: &str = ".cpu m68020\n.org 0\n jsr (a6)\n.end\n";
 const SYMBOL_DISPLACEMENT: &str =
@@ -122,6 +126,62 @@ fn binary_selection_self_host_immediate_indirect_native_parity_fs_uae() {
     assert_binary_source(NUMERIC_IMMEDIATE_INDIRECT.into(), "m68020".into());
     assert_binary_source(SELF_HOST_IMMEDIATE_INDIRECT.into(), "m68020".into());
     assert_binary_source(WORD_IMMEDIATE_INDIRECT.into(), "m68020".into());
+}
+
+#[test]
+fn binary_selection_repeated_forward_call_rust_oracle() {
+    assert_eq!(
+        oracle_bytes(REPEATED_FORWARD_CALL),
+        [0x61, 0, 0, 12, 0x61, 0, 0, 8, 0x61, 0, 0, 4, 0x4e, 0x75, 0x4e, 0x75]
+    );
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = BinarySourcePackage::prepare(&core, &resolved).unwrap();
+    assert!(package.candidates.iter().any(|candidate| {
+        package.names[usize::from(candidate.mnemonic)] == "bsr"
+            && candidate
+                .qualifier
+                .is_some_and(|index| package.qualifiers[usize::from(index)] == "w")
+            && matches!(&candidate.recipe, CandidateRecipe::SemanticBranch { inputs, .. }
+                if matches!(inputs.as_slice(),
+                    [Projection::Constant(_), Projection::Expression(0),
+                     Projection::Constant(1), Projection::Constant(0)]))
+    }));
+    let bytes = prepare_package(&core, &resolved).unwrap();
+    let rows = u32::from_be_bytes(bytes[16..20].try_into().unwrap()) as usize;
+    let count = u32::from_be_bytes(bytes[20..24].try_into().unwrap()) as usize;
+    let bsr = package.names.iter().position(|name| name == "bsr").unwrap() as u16;
+    let dictionary = u32::from_be_bytes(bytes[8..12].try_into().unwrap()) as usize;
+    let dictionary_count = u32::from_be_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    let mut cursor = dictionary;
+    let mut binding = None;
+    for _ in 0..dictionary_count {
+        let len = u16::from_be_bytes(bytes[cursor..cursor + 2].try_into().unwrap()) as usize;
+        let id = u16::from_be_bytes(bytes[cursor + 2..cursor + 4].try_into().unwrap());
+        let qualifier = bytes[cursor + 4];
+        if &bytes[cursor + 6..cursor + 6 + len] == b"bsr.w" {
+            binding = Some((id, qualifier));
+        }
+        cursor = (cursor + 6 + len + 1) & !1;
+    }
+    assert_eq!(binding, Some((bsr, 3)));
+    assert!((0..count).any(|index| {
+        let row = rows + index * 32;
+        u16::from_be_bytes(bytes[row..row + 2].try_into().unwrap()) == bsr
+            && bytes[row + 2] == 3
+            && bytes[row + 3] == 1
+            && bytes[row + 5] == 5
+            && u16::from_be_bytes(bytes[row + 10..row + 12].try_into().unwrap()) == 4
+    }));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; repeated forward calls"]
+fn binary_selection_repeated_forward_call_native_parity_fs_uae() {
+    assert_binary_source(NUMERIC_CALL.into(), "m68020".into());
+    assert_binary_source(BACKWARD_CALL.into(), "m68020".into());
+    assert_binary_source(REPEATED_FORWARD_CALL.into(), "m68020".into());
+    assert_binary_source(INTERNAL_LABEL_CALL.into(), "m68020".into());
 }
 
 #[test]

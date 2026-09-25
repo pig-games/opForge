@@ -1080,3 +1080,22 @@ run observed 658,944 peak owned bytes, up 1,536. Preparation remains incomplete,
 so no self-host duration is valid. The next slice should reduce line 69 before
 editing: test whether this is branch displacement, later-pass state, or another
 selector boundary, and keep the fix in the appropriate layer.
+
+The reduced `bsr.w` investigation found a separate BSP3 dictionary omission:
+the package had an executable `bsr.w` candidate but bound only the unqualified
+`bsr` and the `s` alias. BSP3 now binds missing canonical qualified candidate
+spellings while retaining explicit alias precedence. Fresh 68020 / 2 MiB native
+comparisons exactly matched Rust for numeric, backward, repeated forward and
+internal-label word branches. A direct native branch-VM control also encoded the
+resolved and first-pass placeholder cases; its disposable probe was removed.
+The package is now 164,560 bytes (+946); the native image is unchanged at 60,040
+bytes and 64,452 linked reserved bytes. The gated readiness run still observed
+658,944 peak owned bytes. No useful native self-host time can be reported.
+
+Crucially, the unchanged self-host entry **still** rejects at line 69. Five
+repeated forward calls and a late-line control also passed, so neither the
+fifth call nor line ordinal alone explains it. The next step is to localize
+the actual packed name/qualifier, scoped target binding and candidate state at
+that line against an earlier `bsr.w nextPath` in the same entry. Keep the
+real-native readiness probe bounded; a console capture without a safe breakpoint
+at the relevant path would not establish the cause.

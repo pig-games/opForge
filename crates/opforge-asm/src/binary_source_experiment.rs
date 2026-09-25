@@ -94,6 +94,29 @@ pub fn prepare_package(
             qualifier(alias.qualifier)?,
         )?;
     }
+    // The alias table does not enumerate every canonical qualified spelling
+    // (for example, bsr.w). Explicit aliases retain precedence where present.
+    for candidate in &package.candidates {
+        let Some(q) = candidate.qualifier else {
+            continue;
+        };
+        let mut spelling = name(&names, candidate.mnemonic)?.to_string();
+        spelling.push('.');
+        spelling.push_str(
+            package
+                .qualifiers
+                .get(usize::from(q))
+                .ok_or("invalid candidate qualifier")?,
+        );
+        if !dictionary.contains_key(&spelling.to_ascii_lowercase()) {
+            bind(
+                &mut dictionary,
+                spelling,
+                candidate.mnemonic,
+                qualifier(Some(q))?,
+            )?;
+        }
+    }
     let mut registers = BTreeMap::new();
     for row in &package.registers {
         registers.entry(row.name).or_insert((row.class, row.index));

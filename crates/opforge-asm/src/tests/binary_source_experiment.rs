@@ -540,6 +540,48 @@ fn compact_cli_macro_default_caller_scope_fs_uae() {
 }
 
 #[test]
+#[ignore = "requires configured FS-UAE; nested packed macro and segment calls"]
+fn compact_cli_macro_nested_calls_fs_uae() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    for cpu in ["m6502", "m68000"] {
+        let source = format!(
+            ".cpu {cpu}\n.org $2000\nINNER .macro v\n .byte .v\n.endmacro\nTAIL .segment v\n .byte .v+1\n.endsegment\nOUTER .macro v\n .INNER .v\n .TAIL .v\n.endmacro\n .OUTER 3\n .OUTER 5\n.end\n"
+        );
+        let oracle_dir = create_temp_dir(&format!("compact-binary-macro-nested-{cpu}"));
+        let oracle_input = oracle_dir.join("input.asm");
+        let oracle_output = oracle_dir.join("oracle.bin");
+        fs::write(&oracle_input, &source).expect("write Rust oracle source");
+        let cli = Cli::parse_from([
+            "opForge".to_string(),
+            oracle_input.to_string_lossy().into_owned(),
+            "--bin".to_string(),
+            oracle_output.to_string_lossy().into_owned(),
+            "--cpu".to_string(),
+            cpu.to_string(),
+        ]);
+        run_with_cli_with_context(&cli).expect("assemble live Rust CLI oracle");
+        let oracle = fs::read(&oracle_output).expect("read Rust CLI oracle");
+        fs::remove_dir_all(&oracle_dir).expect("remove Rust oracle scratch");
+        assert_eq!(oracle, [3, 4, 5, 6]);
+        let resolved = core.resolve_pipeline(cpu, None).unwrap();
+        let package = prepare_package(&core, &resolved).unwrap();
+        let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+            &workspace_root(),
+            &package,
+            source.as_bytes(),
+            Some(&oracle),
+        )
+        .expect("compact CLI must expand nested macro and segment calls from packed records");
+        let FsUaeSmokeOutcome::Completed { runs } = result else {
+            panic!("real FS-UAE execution required");
+        };
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].success && runs[0].protocol_completed);
+        assert_eq!(runs[0].exit_code, Some(0));
+    }
+}
+
+#[test]
 #[ignore = "requires configured FS-UAE; unclosed binary segment must reject"]
 fn compact_cli_unclosed_segment_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();

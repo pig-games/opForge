@@ -7,6 +7,7 @@
 LIMIT = 8
 ARG_LIMIT = 192
 PARAM_LIMIT = 9
+DEPTH_LIMIT = 64
 DEFAULT_LIMIT = 512
 BODY_BYTES = 4096
 TOKEN_COMMA = 4
@@ -25,7 +26,13 @@ Count	.word ?
 Open	.word ?
 Skipping	.word ?
 Used	.word ?
-Call	.word ?
+Depth	.word ?
+CallLabel	.long ?
+CallLabelPresent	.word ?
+Serial	.word ?
+	.endstruct
+CallFrame	.struct
+Definition	.word ?
 Cursor	.word ?
 ArgBytes	.word ?
 ArgEnd0	.word ?
@@ -42,8 +49,10 @@ CallLine	.word ?
 CallLabel	.long ?
 CallLabelPresent	.word ?
 CallPhase	.word ?
-Serial	.word ?
+CallName	.word ?  ; source ID records the invocation scope origin
+Argument	.byte ?
 	.endstruct
+FRAME_BYTES = CallFrame.Argument+ARG_LIMIT
 Def	.struct
 Name	.word ?
 Parameter	.word ?
@@ -83,10 +92,10 @@ KIND_SEGMENT = 0
 KIND_MACRO = 1
 DEFAULT_USED = State.Serial+2
 DEFS = DEFAULT_USED+2
-ARGUMENT = DEFS+LIMIT*DEF_BYTES
-DEFAULTS = ARGUMENT+ARG_LIMIT
+DEFAULTS = DEFS+LIMIT*DEF_BYTES
 BODY = DEFAULTS+DEFAULT_LIMIT
-SCRATCH_BYTES = BODY+BODY_BYTES
+FRAMES = BODY+BODY_BYTES
+SCRATCH_BYTES = FRAMES+DEPTH_LIMIT*FRAME_BYTES
 	.section code, kind=code
 
 ; A0=caller-owned state. Clears definitions for a new assembly session.
@@ -96,15 +105,10 @@ begin	.block
 	clr.w State.Open(a0)
 	clr.w State.Skipping(a0)
 	clr.w State.Used(a0)
-	clr.w State.Call(a0)
-	clr.w State.Cursor(a0)
-	clr.w State.ArgBytes(a0)
-	clr.w State.DefaultMask(a0)
+	clr.w State.Depth(a0)
 	clr.w DEFAULT_USED(a0)
-	clr.w State.CallLine(a0)
 	clr.l State.CallLabel(a0)
 	clr.w State.CallLabelPresent(a0)
-	clr.w State.CallPhase(a0)
 	clr.w State.Serial(a0)
 	moveq #0, d0
 	rts
@@ -114,6 +118,8 @@ begin	.block
 ; D0/CCR=status; other registers preserved. Definitions remain reusable.
 endFile	.block
 	moveq #0, d0
+	tst.w State.Depth(a0)
+	bne.w bad
 	tst.w State.Open(a0)
 	bne.w bad
 	tst.w State.Skipping(a0)
@@ -512,20 +518,29 @@ copyBody
 	move.w d0, State.Used(a6)
 	bra.w consumed
 call
-	tst.w State.Call(a6)
-	bne.w bad
+	cmpi.w #DEPTH_LIMIT, State.Depth(a6)
+	bhs.w bad
 	tst.w State.CallLabelPresent(a6)
 	beq.w callSyntax
 	btst #0, 1(a5)
 	bne.w bad
 callSyntax
+	moveq #0, d0
+	move.w State.Depth(a6), d0
+	mulu.w #FRAME_BYTES, d0
+	lea FRAMES(a6), a4
+	adda.l d0, a4
+	move.w d4, CallFrame.Definition(a4)
+	move.w d5, CallFrame.CallName(a4)
+	move.l State.CallLabel(a6), CallFrame.CallLabel(a4)
+	move.w State.CallLabelPresent(a6), CallFrame.CallLabelPresent(a4)
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
 	lea DEFS(a6), a0
 	adda.w d0, a0
 	move.w Def.ParamCount(a0), d5
-	clr.w State.DefaultMask(a6)
-	lea State.ArgEnd0(a6), a0
+	clr.w CallFrame.DefaultMask(a4)
+	lea CallFrame.ArgEnd0(a4), a0
 	moveq #PARAM_LIMIT-1, d0
 clearArgumentEnds
 	clr.w (a0)+
@@ -547,7 +562,7 @@ arguments
 	cmpa.l a3, a1
 	bhi.w bad
 	beq.w emptyArguments
-	clr.w State.ArgBytes(a6)
+	clr.w CallFrame.ArgBytes(a4)
 	moveq #0, d1
 	moveq #0, d2  ; two-bit delimiter stack
 	moveq #0, d3  ; delimiter depth
@@ -649,7 +664,7 @@ lastArgument
 	bne.w bad
 	bra.w argumentsReady
 emptyArguments
-	clr.w State.ArgBytes(a6)
+	clr.w CallFrame.ArgBytes(a4)
 	moveq #0, d1
 argumentsReady
 	move.w d4, d0
@@ -671,38 +686,37 @@ fillOmitted
 	sub.l d3, d6
 	beq.w omittedEnd
 	moveq #0, d2
-	move.w State.ArgBytes(a6), d2
+	move.w CallFrame.ArgBytes(a4), d2
 	add.l d6, d2
 	cmpi.l #ARG_LIMIT, d2
 	bhi.w bad
 	lea DEFAULTS(a6), a1
 	adda.l d3, a1
-	lea ARGUMENT(a6), a2
-	adda.w State.ArgBytes(a6), a2
+	lea CallFrame.Argument(a4), a2
+	adda.w CallFrame.ArgBytes(a4), a2
 copyDefault
 	move.b (a1)+, (a2)+
 	subq.l #1, d6
 	bne.w copyDefault
-	move.w d2, State.ArgBytes(a6)
+	move.w d2, CallFrame.ArgBytes(a4)
 	moveq #1, d0
 	lsl.w d7, d0
-	or.w d0, State.DefaultMask(a6)
+	or.w d0, CallFrame.DefaultMask(a4)
 omittedEnd
 	move.w d7, d0
 	add.w d0, d0
-	move.w State.ArgBytes(a6), State.ArgEnd0(a6, d0.w)
+	move.w CallFrame.ArgBytes(a4), CallFrame.ArgEnd0(a4, d0.w)
 	addq.w #1, d7
 	bra.w fillOmitted
 argumentsBound
-	move.w Def.First(a0), State.Cursor(a6)
-	clr.w State.CallPhase(a6)
+	move.w Def.First(a0), CallFrame.Cursor(a4)
+	clr.w CallFrame.CallPhase(a4)
 	tst.w Def.Kind(a0)
 	beq.w callQueued
-	move.w #1, State.CallPhase(a6)
+	move.w #1, CallFrame.CallPhase(a4)
 callQueued
-	addq.w #1, d4
-	move.w d4, State.Call(a6)
-	move.w 2(a5), State.CallLine(a6)
+	addq.w #1, State.Depth(a6)
+	move.w 2(a5), CallFrame.CallLine(a4)
 	moveq #ACTION_INVOKE, d1
 	bra.w ok
 ordinary
@@ -733,20 +747,20 @@ appendArgument
 	cmpi.w #PARAM_LIMIT, d1
 	bhs.w argumentBad
 	moveq #0, d6
-	move.w State.ArgBytes(a6), d6
+	move.w CallFrame.ArgBytes(a4), d6
 	add.l d0, d6
 	cmpi.l #ARG_LIMIT, d6
 	bhi.w argumentBad
-	lea ARGUMENT(a6), a2
-	adda.w State.ArgBytes(a6), a2
+	lea CallFrame.Argument(a4), a2
+	adda.w CallFrame.ArgBytes(a4), a2
 argumentCopy
 	move.b (a1)+, (a2)+
 	subq.l #1, d0
 	bne.w argumentCopy
-	move.w d6, State.ArgBytes(a6)
+	move.w d6, CallFrame.ArgBytes(a4)
 	move.w d1, d0
 	add.w d0, d0
-	move.w d6, State.ArgEnd0(a6, d0.w)
+	move.w d6, CallFrame.ArgEnd0(a4, d0.w)
 	addq.w #1, d1
 	moveq #0, d0
 	rts
@@ -763,34 +777,42 @@ next	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a6
 	movea.l a1, a5
-	movea.l a2, a0
-	move.l a0, -(sp)
+	move.l a6, -(sp)  ; session state
+	move.l a2, -(sp)  ; scope state
+nextFrame
 	moveq #0, d1
-	move.w State.Call(a6), d0
-	beq.w exhausted
+	movea.l 4(sp), a0
+	move.w State.Depth(a0), d0
+	beq.w noFrames
 	subq.w #1, d0
+	mulu.w #FRAME_BYTES, d0
+	lea FRAMES(a0), a6
+	adda.l d0, a6
+	moveq #0, d0
+	move.w CallFrame.Definition(a6), d0
 	mulu.w #DEF_BYTES, d0
-	lea DEFS(a6), a4
+	lea DEFS(a0), a4
 	adda.w d0, a4
 	tst.w Def.Kind(a4)
 	beq.w bodyRecord
-	cmpi.w #1, State.CallPhase(a6)
+	cmpi.w #1, CallFrame.CallPhase(a6)
 	beq.w macroOpen
-	cmpi.w #3, State.CallPhase(a6)
+	cmpi.w #3, CallFrame.CallPhase(a6)
 	beq.w macroClose
-	cmpi.w #4, State.CallPhase(a6)
+	cmpi.w #4, CallFrame.CallPhase(a6)
 	beq.w exhausted
 bodyRecord
 	moveq #0, d0
-	move.w State.Cursor(a6), d0
+	move.w CallFrame.Cursor(a6), d0
 	cmp.w Def.Last(a4), d0
 	blo.w bodyAvailable
 	tst.w Def.Kind(a4)
 	beq.w exhausted
-	move.w #3, State.CallPhase(a6)
+	move.w #3, CallFrame.CallPhase(a6)
 	bra.w macroClose
 bodyAvailable
-	lea BODY(a6), a3
+	movea.l 4(sp), a3
+	adda.l #BODY, a3
 	adda.l d0, a3
 	moveq #0, d5
 	move.b (a3), d5
@@ -799,18 +821,18 @@ bodyAvailable
 	add.w d5, d2
 	cmp.w Def.Last(a4), d2
 	bhi.w bad
-	move.w d2, State.Cursor(a6)
+	move.w d2, CallFrame.Cursor(a6)
 	lea 0(a3, d5.w), a2
 	lea 256(a5), a1
 	move.b (a3)+, (a5)+
 	move.b (a3)+, (a5)+
-	move.w State.CallLine(a6), (a5)+
+	move.w CallFrame.CallLine(a6), (a5)+
 	addq.l #2, a3  ; source line is replaced by the invocation line
 	cmp.w Def.First(a4), d0
 	bne.w tokens
 	tst.w Def.Kind(a4)
 	bne.w tokens
-	tst.w State.CallLabelPresent(a6)
+	tst.w CallFrame.CallLabelPresent(a6)
 	beq.w tokens
 	; The first body record cannot already declare an entry label.
 	cmpa.l a2, a3
@@ -836,7 +858,7 @@ attachLabel
 	bhi.w bad
 	; The generated entry label starts in column one even when the body is indented.
 	andi.b #$fe, -3(a5)
-	move.l State.CallLabel(a6), (a5)+
+	move.l CallFrame.CallLabel(a6), (a5)+
 	move.b #5, (a5)+
 tokens
 	cmpa.l a2, a3
@@ -887,21 +909,21 @@ substituteParameter
 	tst.w d0
 	beq.w argumentStart
 	subq.w #2, d0
-	move.w State.ArgEnd0(a6, d0.w), d6
+	move.w CallFrame.ArgEnd0(a6, d0.w), d6
 	addq.w #2, d0
 argumentStart
 	moveq #0, d4
-	move.w State.ArgEnd0(a6, d0.w), d4
+	move.w CallFrame.ArgEnd0(a6, d0.w), d4
 	sub.w d6, d4
 	beq.w advanceArgument
 	movea.l a5, a0
 	adda.w d4, a0
 	cmpa.l a1, a0
 	bhi.w bad
-	lea ARGUMENT(a6), a0
+	lea CallFrame.Argument(a6), a0
 	adda.w d6, a0
 	moveq #0, d0
-	move.w State.DefaultMask(a6), d0
+	move.w CallFrame.DefaultMask(a6), d0
 	btst d7, d0
 	bne.w substituteDefault
 substitute
@@ -1023,14 +1045,15 @@ copyBytes
 	bne.w copyBytes
 	bra.w tokens
 macroOpen
-	tst.w State.CallLabelPresent(a6)
+	tst.w CallFrame.CallLabelPresent(a6)
 	beq.w syntheticLabel
-	move.l State.CallLabel(a6), d5
+	move.l CallFrame.CallLabel(a6), d5
 	bra.w openerDirective
 syntheticLabel
-	addq.w #1, State.Serial(a6)
+	movea.l 4(sp), a0
+	addq.w #1, State.Serial(a0)
 	beq.w bad
-	move.w State.Serial(a6), d0
+	move.w State.Serial(a0), d0
 	lea 240(a5), a0
 	move.b #1, (a0)+
 	moveq #3, d2
@@ -1059,14 +1082,14 @@ openerDirective
 	bne.w bad
 	move.b #13, (a5)
 	clr.b 1(a5)
-	move.w State.CallLine(a6), 2(a5)
+	move.w CallFrame.CallLine(a6), 2(a5)
 	move.l d5, 4(a5)
 	move.b #5, 8(a5)
 	move.b #7, 9(a5)
 	clr.b 10(a5)
 	move.w d1, 11(a5)
 	clr.b 13(a5)
-	move.w #2, State.CallPhase(a6)
+	move.w #2, CallFrame.CallPhase(a6)
 	moveq #14, d1
 	moveq #0, d0
 	bra.w done
@@ -1078,12 +1101,12 @@ macroClose
 	bne.w bad
 	move.b #8, (a5)
 	clr.b 1(a5)
-	move.w State.CallLine(a6), 2(a5)
+	move.w CallFrame.CallLine(a6), 2(a5)
 	move.b #7, 4(a5)
 	clr.b 5(a5)
 	move.w d1, 6(a5)
 	clr.b 8(a5)
-	move.w #4, State.CallPhase(a6)
+	move.w #4, CallFrame.CallPhase(a6)
 	moveq #9, d1
 	moveq #0, d0
 	bra.w done
@@ -1098,17 +1121,20 @@ complete
 	moveq #0, d0
 	bra.w done
 exhausted
-	clr.w State.Call(a6)
-	clr.w State.CallPhase(a6)
+	movea.l 4(sp), a0
+	subq.w #1, State.Depth(a0)
+	bne.w nextFrame
+noFrames
 	moveq #0, d1
 	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
-	clr.w State.Call(a6)
+	movea.l 4(sp), a0
+	clr.w State.Depth(a0)
 	moveq #0, d1
 done
-	addq.l #4, sp
+	addq.l #8, sp
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts

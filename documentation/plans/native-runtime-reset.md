@@ -797,3 +797,17 @@ was 0.576/0.585 s (m6502) and 1.191/1.188 s (m68000), earlier/current;
 there is no reliable timing conclusion. Hunk size rose from 51,028 to 52,332
 bytes and linked reservation from 55,560 to 56,856 bytes. Dynamic peak was
 not measured.
+
+Nested `.macro` and `.segment` calls now use a bounded 64-frame stack of
+packed invocation state. Generated records reenter numeric template lookup,
+then resume their parent after a nested call drains. The live Rust CLI and
+fresh 68020 / 2 MiB FS-UAE runs agreed for nested macro-to-macro and
+macro-to-segment calls on both CPU packages; the earlier default-argument
+and segment cases also passed. Recursion beyond the bound is an error.
+The identical eight-block mixed workload still produced identical bytes.
+One START-to-DONE observation changed from 0.585 to 0.547 s (m6502) and
+1.188 to 1.173 s (m68000); these samples do not establish a speed gain.
+Hunk size changed from 52,332 to 52,508 bytes and linked reservation from
+56,856 to 57,028 bytes. Dynamic peak, including the invocation stack, was
+not measured. The next parity gaps include textual placeholder forms,
+imported template visibility, and string-bearing template records.

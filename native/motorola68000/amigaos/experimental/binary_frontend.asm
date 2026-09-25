@@ -312,8 +312,13 @@ line	.block
 	bne.w failed
 	tst.l d1
 	beq.w failed
-	lea SCOPE_STATE(a6), a0
-	jsr scopes.startLine
+	bsr.w expandRecord
+	bne.w failed
+	tst.l Frame.Used(a5)
+	beq.w segmentConsumed
+	addq.l #1, LINE_NUMBER(a6)
+	moveq #0, d0
+	bra.w done
 process
 	bsr.w processRecord
 	bne.w failed
@@ -348,9 +353,7 @@ nextExpansion	.block
 	bne.w nextFailed
 	tst.l d1
 	beq.w nextDone
-	lea SCOPE_STATE(a6), a0
-	jsr scopes.startLine
-	bsr.w processRecord
+	bsr.w expandRecord
 	bra.w nextDone
 nextFailed
 	moveq #1, d0
@@ -361,6 +364,45 @@ nextDone
 	.bend  ; nextExpansion
 
 	.priv
+; A5=Frame,A6=Scratch. The output holds one generated packed record.
+; Reenter template lookup before ordinary preparation; nested calls push a
+; child frame and resume the parent when that child drains.
+expandRecord	.block
+generatedLoop
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.startLine
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a2
+	moveq #0, d0
+	movea.l a6, a1
+	adda.l #CONDITION_STATE, a1
+	move.w conditionals.State.Active(a1), d0
+	movea.l a6, a1
+	adda.l #TEMPLATE_STATE, a1
+	jsr templates.line
+	bne.w failed
+	tst.w d1
+	beq.w prepareGenerated
+nextGenerated
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	movea.l Frame.Output(a5), a1
+	lea SCOPE_STATE(a6), a2
+	jsr templates.next
+	bne.w failed
+	tst.l d1
+	bne.w generatedLoop
+	clr.l Frame.Used(a5)
+	moveq #0, d0
+	rts
+prepareGenerated
+	bsr.w processRecord
+	rts
+failed
+	moveq #1, d0
+	rts
+	.bend  ; expandRecord
+
 ; A5=Frame,A6=Scratch, Frame.Output contains one writer record. Apply the
 ; normal numeric selection, binding and expression path to original or expanded
 ; records. This routine does not tokenize source or advance the physical line.

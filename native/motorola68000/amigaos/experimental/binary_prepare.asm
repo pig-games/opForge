@@ -390,8 +390,9 @@ bad
 	rts
 	.bend  ; string
 
-; Compile through bounded scratch, then preserve a parenthesized member wrapper
-; if the scalar is followed by .<package name>. No target spelling is inspected.
+; Compile through bounded scratch, then preserve a member wrapper when a
+; parenthesized scalar or numeric literal is followed by .<package name>.
+; Normalize both spellings to the same packed wrapper without consulting text.
 ; A0 advances; A3 receives compiled bytes. D0/status, D5-D7 scratch.
 compile	.block
 	cmpa.l a1, a0
@@ -413,7 +414,10 @@ compile	.block
 	cmpi.b #7, (a0)
 	bne.w ready
 	cmpi.b #14, d5
+	beq.w memberRoot
+	cmpi.b #2, d5
 	bne.w bad
+memberRoot
 	moveq #1, d7
 ready
 	move.l a4, d0

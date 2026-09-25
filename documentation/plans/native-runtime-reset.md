@@ -1008,3 +1008,20 @@ again observed 656,128 peak owned bytes. Preparation did not finish, so neither
 the release nor instrumented probe provides a valid native self-host duration
 or a performance-gain claim. The next slice should isolate line 14 and its
 package/operand boundary before changing the larger runtime.
+
+That line-14 boundary was a packed-source normalization gap. A numeric literal
+with a member suffix, such as `4.w`, now enters the existing compiled-scalar
+member wrapper used by `(4).w`; the package still decides whether the member
+qualifies a candidate. Fresh 68020 / 2 MiB native runs matched Rust for
+`movea.l 4.w,a6` (`2c 78 00 04`) and `lea 8.w,a0` (`41 f8 00 08`). This
+does not implement every member-qualified recipe: `movea.l 4.l,a6` still
+requires an unsupported sequence/fixup plan, and a separate `jmp 12.w` probe
+also rejected. Keep those as distinct later execution gaps.
+
+The unchanged self-host entry now first rejects at line 15, `jsr -552(a6)`.
+Its current Rust oracle is a 60,212-byte four-segment Hunk reserving 71,460
+linked bytes from 44 staged files and the 149,130-byte package. The gated
+early-rejection run again recorded 656,128 peak owned bytes. Native
+preparation still does not complete, so there is no valid self-host duration.
+The next slice should isolate that displacement/indirect form and derive its
+execution from the package rather than special-casing the instruction.

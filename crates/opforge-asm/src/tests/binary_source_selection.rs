@@ -5,6 +5,8 @@ const INDEXED: &str = include_str!("../../fixtures/binary-source/indexed-boundar
 const DEFERRED_INDEX: &str = ".cpu m6502\n.org $1000\n lda target,x\ntarget:\n .byte 0\n.end\n";
 const REGISTERS: &str = include_str!("../../fixtures/binary-source/register-predicates.asm");
 const SELF_HOST_MOVEM: &str = ".cpu m68020\n.org 0\n movem.l d2-d7/a2-a6, -(sp)\n.end\n";
+const SELF_HOST_MOVEA_SHORT: &str = ".cpu m68020\n.org 0\n movea.l 4.w,a6\n.end\n";
+const NUMERIC_MEMBER_VARIANTS: &str = ".cpu m68020\n.org 0\n lea 8.w,a0\n.end\n";
 const MOVEM_WORD_LIST: &str = ".cpu m68020\n.org 0\n movem.w d0/a7, -(a7)\n.end\n";
 const MOVEM_SINGLE: &str = ".cpu m68020\n.org 0\n movem.l d2, -(sp)\n.end\n";
 const MOVEM_DUPLICATE: &str = ".cpu m68020\n.org 0\n movem.l d2/d2, -(sp)\n.end\n";
@@ -43,6 +45,19 @@ fn binary_selection_self_host_movem_rust_oracle() {
     assert_eq!(oracle_bytes(MOVEM_DUPLICATE), oracle_bytes(MOVEM_SINGLE));
     assert_rust_rejection(MOVEM_CROSS_CLASS);
     assert_eq!(oracle_bytes(SCALAR_SUBTRACTION), [0xa5, 4]);
+}
+
+#[test]
+fn binary_selection_self_host_movea_short_rust_oracle() {
+    assert_eq!(oracle_bytes(SELF_HOST_MOVEA_SHORT), [0x2c, 0x78, 0, 4]);
+    assert_eq!(oracle_bytes(NUMERIC_MEMBER_VARIANTS), [0x41, 0xf8, 0, 8]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; numeric member wrapper parity"]
+fn binary_selection_self_host_movea_short_native_parity_fs_uae() {
+    assert_binary_source(SELF_HOST_MOVEA_SHORT.into(), "m68020".into());
+    assert_binary_source(NUMERIC_MEMBER_VARIANTS.into(), "m68020".into());
 }
 
 #[test]

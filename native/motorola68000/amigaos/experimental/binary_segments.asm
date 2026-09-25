@@ -7,6 +7,8 @@
 LIMIT = 8
 ARG_LIMIT = 64
 BODY_BYTES = 4096
+TOKEN_OPEN_PAREN = 14
+TOKEN_CLOSE_PAREN = 15
 ACTION_REGULAR = 0
 ACTION_CONSUMED = 1
 ACTION_INVOKE = 2
@@ -113,7 +115,7 @@ directive
 	cmpi.l #scopes.KEY_ENDSEGMENT, d0
 	beq.w close
 	cmpi.l #scopes.KEY_SEGMENT, d0
-	beq.w bad  ; unsupported directive-first definition
+	beq.w directiveHeader
 	tst.w State.Open(a6)
 	bne.w capture
 	tst.w State.Skipping(a6)
@@ -133,7 +135,35 @@ findCall
 	beq.w call
 	addq.w #1, d4
 	bra.w findCall
+directiveHeader
+	; .segment NAME(parameter) has one exact numeric-token shape.
+	cmpi.w #19, d6
+	bne.w bad
+	cmpi.b #1, 5(a2)
+	bhi.w bad
+	tst.b 8(a2)
+	bne.w bad
+	cmpi.b #TOKEN_OPEN_PAREN, 9(a2)
+	bne.w bad
+	cmpi.b #1, 10(a2)
+	bhi.w bad
+	tst.b 13(a2)
+	bne.w bad
+	cmpi.b #TOKEN_CLOSE_PAREN, 14(a2)
+	bne.w bad
+	move.w 6(a2), d5
+	move.w 11(a2), d3
+	bra.w checkedHeader
 header
+	cmpi.b #1, 9(a2)
+	bhi.w bad
+	cmpi.w #17, d6
+	bne.w bad  ; one bare parameter, no trailing tokens
+	tst.b 12(a2)
+	bne.w bad
+	move.w 1(a2), d5
+	move.w 10(a2), d3
+checkedHeader
 	tst.w State.Open(a6)
 	bne.w bad
 	tst.w State.Skipping(a6)
@@ -142,13 +172,6 @@ header
 	beq.w skipDefinition
 	cmpi.w #LIMIT, State.Count(a6)
 	bhs.w bad
-	cmpi.b #1, 9(a2)
-	bhi.w bad
-	cmpi.w #17, d6
-	bne.w bad  ; one bare parameter, no trailing tokens
-	tst.b 12(a2)
-	bne.w bad
-	move.w 1(a2), d5
 	moveq #0, d4
 duplicate
 	cmp.w State.Count(a6), d4
@@ -167,7 +190,7 @@ newDefinition
 	lea DEFS(a6), a0
 	adda.w d0, a0
 	move.w d5, Def.Name(a0)
-	move.w 10(a2), Def.Parameter(a0)
+	move.w d3, Def.Parameter(a0)
 	move.w State.Used(a6), Def.First(a0)
 	move.w State.Used(a6), Def.Last(a0)
 	addq.w #1, State.Count(a6)
@@ -226,6 +249,17 @@ call
 	cmpi.l #5, d0
 	bls.w bad
 	lea 5(a2), a1
+	moveq #0, d3
+	cmpi.b #TOKEN_OPEN_PAREN, (a1)
+	bne.w bareArgument
+	cmpi.b #TOKEN_CLOSE_PAREN, -1(a3)
+	bne.w bad
+	addq.l #1, a1
+	subq.l #1, a3
+	cmpa.l a3, a1
+	bhs.w bad
+	moveq #1, d3
+bareArgument
 	move.l a3, d0
 	sub.l a1, d0
 	cmpi.l #ARG_LIMIT, d0
@@ -240,6 +274,13 @@ checkArgument
 	move.b (a0), d0
 	cmpi.b #4, d0
 	beq.w bad
+	tst.w d3
+	beq.w argumentToken
+	cmpi.b #TOKEN_OPEN_PAREN, d0
+	beq.w bad
+	cmpi.b #TOKEN_CLOSE_PAREN, d0
+	beq.w bad
+argumentToken
 	moveq #1, d2
 	cmpi.b #1, d0
 	bls.w argName

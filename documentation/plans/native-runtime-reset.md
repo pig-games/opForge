@@ -700,10 +700,10 @@ text. The current bound is eight definitions, 4 KiB of captured records, and
 64 bytes for one argument expression. An expanded record uses the invocation
 line as its diagnostic origin.
 
-This is deliberately a first subset: directive-first definitions, defaults,
-argument lists, invocation labels, nested expansion, and imported segment
-visibility are not yet supported. The compact CLI rejects unsupported forms;
-they need separate parity work before claiming general `.segment` support.
+This is deliberately a first subset: defaults, argument lists, invocation
+labels, nested expansion, and imported segment visibility are not yet
+supported. The compact CLI rejects unsupported forms; they need separate
+parity work before claiming general `.segment` support.
 
 A fresh 68020 / 2 MiB FS-UAE run matched live Rust CLI output exactly for
 repeated instruction and data expansions on both m6502 and m68000 packages.
@@ -713,3 +713,14 @@ for m6502 and 1.150/1.186 s for m68000; these single observations show no
 reliable speed difference. Hunk bytes rose from 48,580 to 50,024, and linked
 reservation rose from 53,180 to 54,580 bytes. Dynamic peak owned memory was
 not measured.
+
+The next syntax slice also accepts `.segment NAME(parameter)` and
+parenthesized `.NAME(expression)` calls. It still binds exactly one parameter,
+and a parenthesized call must contain a simple, nonempty expression without a
+nested parenthesis; multi-argument calls fail explicitly. Fresh native runs
+matched the live Rust CLI for both spellings mixed with the existing bare form
+on m6502 and m68000, and rejected a two-argument call with exit 20. In one
+identical eight-block mixed comparison against the preceding commit, native
+START-to-DONE time was 0.567/0.561 s (m6502) and 1.189/1.183 s (m68000).
+The single observations do not establish a speed gain. The Hunk and linked
+reservation each grew by 132 bytes.

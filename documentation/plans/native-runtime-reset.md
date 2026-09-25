@@ -908,6 +908,16 @@ work must ultimately produce the Hunk itself; flat bytes cannot qualify as
 self-host parity. Review memory cost and responsibility boundaries as features
 accumulate, especially before broadening the template or app modules.
 
+After roughly two or three self-host slices, review the direction together before
+selecting more. Check that shared directives and source preparation stay in the
+generic layer, while instruction forms, register classes and encoding decisions
+come from the canonical package and its derived runtime data. Compare the new
+capability with package growth, peak native memory, measurable runtime and code
+responsibilities; identify any narrow special cases to consolidate. A first
+rejection moving forward is useful progress, but does not alone justify carrying
+an increasingly expensive or target-specific mechanism. Keep these reviews brief
+and use their findings to choose the next slice.
+
 Measure release builds with guest START-to-DONE elapsed time and exact-output
 proof. In separate instrumented builds, use the existing gated telemetry
 macros for preparation stages, assembly clock, work counters, packed-source

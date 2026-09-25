@@ -40,6 +40,15 @@ and unresolved compromises. Verify the integrated behavior and, for performance
 work, measure the integrated result. A successful prototype alone is not the final
 maintained implementation.
 
+During a sustained sequence of related changes, pause after a few inspectable
+steps for a brief direction review with Erik. Check whether the work still serves
+the agreed architecture and product goal, whether responsibilities remain in the
+right layer, and whether code, package size, memory or runtime costs are growing
+out of proportion to the capability gained. Choose the next slice from that
+evidence, including whether to consolidate or change direction. Record only the
+decision where it helps ongoing work; this is a discussion point, not a new gate
+or required document for each change.
+
 At a meaningful completion boundary, identify affected user and technical docs,
 update descriptions whose truth changed, and validate relevant commands, examples,
 diagrams, cross-links and paths. Maintain stable interfaces as they become ready;

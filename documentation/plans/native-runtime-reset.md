@@ -1899,3 +1899,76 @@ Rust and native formatting, native proof, benchmark-selector and workflow-link
 checks pass. The CPU architecture guard retains nine existing enforced findings,
 25 enforced-scope warnings and 565 outside-scope warnings; repository-wide
 qualification is not claimed.
+
+## Dense module graph identities
+
+Hypothesis: the remaining EOF rejection comes from graph arrays keyed by shared
+source-symbol IDs while reserving only 512 slots. A semantically complete diamond
+with 600 preceding constants should reproduce the rejection with just four modules.
+Compare against live Rust, then index graph nodes densely by module count and map
+their source identities explicitly. Keep the 512-module capacity, independent
+import capacity, discovery retries, dependency/source order, cycle detection and
+module-selection semantics. Do not allocate full graph records for every symbol.
+
+Acceptance: the sparse-ID diamond matches exact Rust/native output; existing
+ordinary discovery/order and cycle/missing cases retain their behavior. Repeat a
+bounded instrumented self-host probe and the unchanged release template control.
+Record any new stopping point separately from completion; reconsider if lookup
+cost or memory grows disproportionately to the module responsibility.
+
+The four-module diamond reproduces the original bug with fresh guest completion,
+exit 20 and an entry-file EOF diagnostic; Rust produces `[1,2,3,4]`. The same case
+now matches all four bytes after migration, including repeated discovery retries.
+Fresh 68020 / 2 MiB checks accept 512 actual modules and reject the 513th with
+explicit completion/exit. The deliberate module-capacity bound is retained.
+
+Nodes are dense and retain their source binding identity. A 1,024-word map links
+source IDs to module slots; DFS frames and edge heads use dense slots while
+module flags and import ownership still use source IDs. Source-array addresses
+use long offsets. Missing discovery requests retain the original source identity.
+The compact declaration-order node array replaces the separate roots array;
+graph scratch grows by 2,048 bytes to 13,328. Layout sizes and offsets derive from
+struct fields and owning capacities. The existing telemetry boundary remains.
+
+A new layout alias initially collided with the case-insensitive `heads` branch
+label. Naming the region `EDGE_HEADS` fixes the collision; the fresh full Hunk
+build accepts derived struct sizes and imported capacity constants. No literal
+layout duplication, additional runtime address setup or Rust repair remains.
+
+The Rust graph/module suite passes 46 tests. The former late-wildcard-import
+rejection test now requires successful exact output and balanced cleanup instead
+of preserving the superseded source-identity restriction.
+
+The late wildcard import matches all three Rust bytes with 853,248 bytes peak
+tracked ownership, zero profiling errors and balanced cleanup. Existing entry-file
+dependency ordering passes, as do fresh cycle, self-import and missing-module
+rejections. The native proof, instrumentation safety, formatting, benchmark-selector,
+supply-chain and workflow-link checks pass. The architecture guard reports ten
+existing enforced findings (including the preceding slice's generic bare-label
+helper name), with 25 enforced-scope and 565 outside-scope warnings. This graph
+change adds none; repository-wide qualification is not claimed.
+
+The bounded self-host probe advances past the original package EOF to
+`binary_source.asm`, line 12, `STATUS_BIND_FAILED = 4`. This is the declaration's
+spelling, not evidence that the writer returned its binding-error status: frontend
+preparation collapses several failure paths into the same diagnostic. Peak tracked
+ownership remains 1,165,824 bytes. Preparation-stage calls are
+`4462/1/4279/4279/4460/0`; profiling flag 16 denotes an unfinished interval, not an
+allocation-error report. There is no completed self-host output or total duration.
+The live Rust self-build succeeds.
+
+Next localization should distinguish declaration content from accumulated state:
+swap the complete `STATUS_OK=0` and `STATUS_BIND_FAILED=4` declarations in a staged
+diagnostic workload, or inspect the failing preparation boundary with the approved
+debugger. A failure following the declaration and one staying at the physical
+line require different investigations. Do not assume a 4,096-entry or memory cap
+without observing the failing boundary.
+
+The unchanged release control matches all 1,701 bytes from 84,687 source bytes
+and 121 templates. It takes 8.492 s versus 8.622 s at the preceding checkpoint,
+an observed 1.5% reduction in single runs, not a statistical speed claim. The
+release Hunk grows from 71,580 to 71,636 bytes (+56) and linked reservation from
+82,804 to 82,860 (+56). The m68020 capsule remains 269,162 bytes; instrumentation
+is disabled for this timing comparison. A rebuilt host test binary also incurred
+a roughly three-minute startup wait while `codesign` checked notarization; process
+snapshots separated this delay from FS-UAE execution and guest timing.

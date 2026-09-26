@@ -99,11 +99,10 @@ fn compact_identity_storage_imported_fs_uae() {
     native(true);
 }
 
-// The graph still keys its bounded nodes by binding ID. A late module must
-// reject explicitly rather than treating newly growable identities as nodes.
+// A late module uses a dense graph slot despite its higher source identity.
 #[test]
-#[ignore = "requires configured FS-UAE; independent graph bound after identity growth"]
-fn compact_identity_storage_graph_bound_fs_uae() {
+#[ignore = "requires configured FS-UAE; late wildcard import after identity growth"]
+fn compact_identity_storage_late_module_fs_uae() {
     let main = format!(
         ".module main\n.cpu m68020\n{}.use dep (*)\n.word entry\n.endmodule\n.end\n",
         constants()
@@ -111,7 +110,8 @@ fn compact_identity_storage_graph_bound_fs_uae() {
     let dep = ".module dep\n.cpu m68020\n.pub\nentry .block\n.byte 7\n.bend\n.endmodule\n.end\n"
         .to_owned();
     let files = [("main.asm", main), ("library/dep.asm", dep)];
-    assert_eq!(oracle(&files, true), [7, 0, 0]);
+    let expected = oracle(&files, true);
+    assert_eq!(expected, [7, 0, 0]);
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
@@ -125,16 +125,16 @@ fn compact_identity_storage_graph_bound_fs_uae() {
         &inputs,
         &["library"],
         &[],
-        None,
+        Some(&expected),
         false,
     )
-    .expect("fresh explicit graph-bound rejection");
+    .expect("fresh late-module exact comparison");
     let FsUaeSmokeOutcome::Completed { runs } = outcome else {
         panic!("real native execution required");
     };
     assert_eq!(runs.len(), 1);
-    assert!(runs[0].protocol_completed);
-    assert_eq!(runs[0].exit_code, Some(20));
+    assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
     if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
         let words = runs[0].captured_artifacts[&PathBuf::from("Work/memory.bin")]
             .chunks_exact(4)
@@ -144,7 +144,7 @@ fn compact_identity_storage_graph_bound_fs_uae() {
         assert_eq!(words[1], 0);
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);
-        assert_eq!(words[29], 16);
-        eprintln!("COMPACT_IDENTITY_GRAPH_BOUND peak_owned_bytes={}", words[2]);
+        assert_eq!(words[29], 0);
+        eprintln!("COMPACT_IDENTITY_LATE_MODULE peak_owned_bytes={}", words[2]);
     }
 }

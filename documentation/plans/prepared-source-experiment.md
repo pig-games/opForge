@@ -1651,18 +1651,18 @@ At that checkpoint the preparation bound was `min(52,428, 65,536 - Base)`;
 current struct-member metadata reduces the entry-allocation bound to 47,662: `$ffff` remains the
 selected-import wildcard marker. Spelling extent cannot exceed the shared 1 MiB
 allocation bound, and composed names cannot exceed 255 bytes. Import lists/selections/parameters and
-block spans retain independent 512-entry bounds. Graph nodes remain bounded and
-keyed by binding index, so modules above that bound reject explicitly even when
-ordinary symbol storage can grow. Removing that graph/identity coupling is separate
-work; no general unlimited-source claim is made.
+block spans retain independent 512-entry bounds. Graph nodes now use dense module
+indices with a numeric source-identity map; the 512-module capacity no longer
+limits a module's source binding identity. No general unlimited-source claim is made.
 
 Fresh 68020 / 2 MiB proof: 600-constant local and wildcard-import workloads match
 all 5 / 8 Rust bytes, including conditional arithmetic and excluded unused blocks.
 The local case opens a 21-component module, forcing entry relocation while binding
 prefixes.
 Tracked peak ownership is 803,072 / 849,152 bytes, zero profiling errors, balanced
-cleanup. A separate late-module case verifies explicit graph-bound rejection and
-balanced cleanup. Reproduce with `cargo test -p asm compact_identity_storage_
+cleanup. The separate late-module case originally verified graph-bound rejection;
+it now requires exact successful output after the dense-graph migration. Reproduce
+with `cargo test -p asm compact_identity_storage_
 -- --ignored --nocapture --test-threads=1` and the configured FS-UAE environment;
 set `OPFORGE_COMPARE_MEMORY=1` for gated accounting. See the
 [reset slice](native-runtime-reset.md#growable-preparation-identity-tables-slice)
@@ -1769,3 +1769,18 @@ capsule. No CPU alias or target semantics are hardcoded in the writer.
 Input close preserves the current preparation path so EOF failures identify their
 file. See the [active slice](native-runtime-reset.md#qualified-struct-fields-and-eof-diagnostics)
 for focused native proof, costs and the remaining self-host boundary.
+
+## Dense module graph indexing
+
+Graph nodes, DFS frames and import heads are indexed by dense module ordinal,
+with declaration order retained in the node array. A 1,024-word open-address map
+links source identities to at most 512 nodes. Each node retains its source binding
+identity for module selection and import ownership; discovery still requests the
+original source identity. Import links retain their own capacity. Source-indexed
+accesses use long offsets rather than signed word displacements.
+
+Graph scratch grows from 11,280 to 13,328 bytes. Record sizes and region offsets
+derive from structs and their owning capacities. No source-text execution,
+serialized pointers or CPU semantics are introduced. See the
+[active graph slice](native-runtime-reset.md#dense-module-graph-identities)
+for comparative evidence and remaining self-host limits.

@@ -12,7 +12,7 @@ Start	.long ?
 End	.long ?
 File	.long ?
 .endstruct
-SPAN_BYTES = 12
+SPAN_BYTES = Span.File+4
 LIMIT = 512; independent module graph capacity
 MAX_SPANS = LIMIT
 Node	.struct
@@ -20,13 +20,14 @@ Start	.long ?
 End	.long ?
 File	.word ?
 Color	.word ?
+Binding	.word ?
 .endstruct
-NODE_BYTES = 12
+NODE_BYTES = Node.Binding+2
 FrameEntry	.struct
 Module	.word ?
 Edge	.word ?
 .endstruct
-VISIT_BYTES = 4
+VISIT_BYTES = FrameEntry.Edge+2
 GraphState	.struct
 Cursor	.long ?
 SourceIndex	.long ?
@@ -35,12 +36,14 @@ Invalid	.word ?
 Ordered	.word ?
 Reserved	.word ?
 .endstruct
-NODES = 16; Hunk treats struct-derived size expressions as relocatable
-ROOTS = NODES+LIMIT*NODE_BYTES
-STACK = ROOTS+LIMIT*2
+NODES = GraphState.Reserved+2
+STACK = NODES+LIMIT*NODE_BYTES
 NEXT = STACK+LIMIT*VISIT_BYTES
-HEADS = NEXT+LIMIT*2
-SCRATCH_BYTES = HEADS+LIMIT*2
+EDGE_HEADS = NEXT+imports.LIST_LIMIT*2
+HASH = EDGE_HEADS+LIMIT*2
+HASH_SLOTS = LIMIT*2; at most half full; entries hold dense index+1
+HASH_MASK = HASH_SLOTS-1
+SCRATCH_BYTES = HASH+HASH_SLOTS*2
 	.section code, kind=code
 
 ; A0=caller-owned aligned graph scratch. D0/CCR=status; other registers kept.
@@ -60,14 +63,14 @@ clear
 ; Capture original record offsets; retain no process pointers. D0/CCR=status;
 ; other registers kept. Unsupported outside-module values invalidate graph mode.
 line	.block
-	movem.l d1-d5/a0-a2, -(sp)
-	; Graph arrays are keyed by binding index, not by module count alone.
-	; Identity tables may grow beyond this independent bounded graph.
-	cmpi.l #LIMIT, d1
+	movem.l d1-d5/a0-a2/a6, -(sp)
+	movea.l a0, a6
+	; Source binding identities are independent of the compact graph capacity.
+	cmpi.l #65535, d1
 	bhi.w bad
-	cmpi.l #LIMIT, d2
+	cmpi.l #65535, d2
 	bhi.w bad
-	move.l GraphState.Cursor(a0), d4
+	move.l GraphState.Cursor(a6), d4
 	move.l d4, d5
 	add.l d0, d5
 	bcs.w bad
@@ -75,24 +78,25 @@ line	.block
 	bne.w inside
 	tst.w d2
 	beq.w outside
+	move.l d2, d1
+	bsr.w findBinding
+	tst.w d2
+	bne.w bad
 	moveq #0, d3
-	move.w GraphState.Count(a0), d3
+	move.w GraphState.Count(a6), d3
 	cmpi.w #LIMIT, d3
 	bhs.w bad
-	add.w d3, d3
-	lea 6160(a0), a1
-	move.w d2, 0(a1, d3.w)
-	addq.w #1, GraphState.Count(a0)
-	move.l d2, d3
-	subq.w #1, d3
-	mulu.w #NODE_BYTES, d3
-	lea 16(a0), a1
-	adda.l d3, a1
-	tst.w Node.File(a1)
-	bne.w bad
-	move.l d4, Node.Start(a1)
-	move.w 6(a0), d0
-	move.w d0, Node.File(a1)
+	move.l d3, d0
+	mulu.w #NODE_BYTES, d0
+	lea NODES(a6), a0
+	adda.l d0, a0
+	addq.w #1, d3
+	move.w d3, (a1)
+	move.w d3, GraphState.Count(a6)
+	move.w d1, Node.Binding(a0)
+	move.l d4, Node.Start(a0)
+	move.w GraphState.SourceIndex+2(a6), d0
+	move.w d0, Node.File(a0)
 	bra.w advance
 inside
 	tst.w d2
@@ -101,25 +105,23 @@ inside
 	bne.w bad
 	bra.w advance
 close
-	move.l d1, d3
-	subq.w #1, d3
-	mulu.w #NODE_BYTES, d3
-	lea 16(a0), a1
-	adda.l d3, a1
-	move.l d5, Node.End(a1)
+	bsr.w findBinding
+	tst.w d2
+	beq.w bad
+	move.l d5, Node.End(a0)
 	bra.w advance
 outside
 	cmpi.l #4, d0
 	beq.w advance
-	move.w #1, GraphState.Invalid(a0)
+	move.w #1, GraphState.Invalid(a6)
 advance
-	move.l d5, GraphState.Cursor(a0)
+	move.l d5, GraphState.Cursor(a6)
 	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
 done
-	movem.l (sp)+, d1-d5/a0-a2
+	movem.l (sp)+, d1-d5/a0-a2/a6
 	tst.l d0
 	rts
 	.bend  ; line
@@ -158,19 +160,17 @@ order	.block
 reset
 	cmp.w GraphState.Count(a6), d7
 	bhs.w headsStart
-	move.l d7, d0
-	add.w d0, d0
-	lea 6160(a6), a0
-	moveq #0, d1
-	move.w 0(a0, d0.w), d1
+	move.l d7, d1
+	addq.w #1, d1
 	bsr.w getNode
 	clr.w Node.Color(a0)
-	move.l d1, d0
-	subq.w #1, d0
+	moveq #0, d0
+	move.w Node.Binding(a0), d0
+	subq.l #1, d0
 	add.l d0, d0
 	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a5), a0
 	adda.l d0, a0
-	andi.w #$ffef, 0(a0)
+	andi.w #$ffff-modules.SELECTED, 0(a0)
 	suba.l d0, a0
 	addq.w #1, d7
 	bra.w reset
@@ -180,17 +180,20 @@ headsStart
 heads
 	cmp.w GraphState.Count(a6), d7
 	bhs.w roots
-	move.l d7, d0
-	add.w d0, d0
-	lea 6160(a6), a0
+	move.l d7, d1
+	addq.w #1, d1
+	bsr.w getNode
 	moveq #0, d1
-	move.w 0(a0, d0.w), d1
-	subq.w #1, d1
-	add.w d1, d1
+	move.w Node.Binding(a0), d1
+	subq.l #1, d1
+	add.l d1, d1
 	movea.l layout.IMPORT_STATE+imports.HEADS_POINTER(a5), a0
+	adda.l d1, a0
 	moveq #0, d2
-	move.w 0(a0, d1.w), d2
-	lea 10256(a6), a1
+	move.w (a0), d2
+	move.l d7, d1
+	add.w d1, d1
+	lea EDGE_HEADS(a6), a1
 	adda.w d1, a1
 	clr.w (a1)  ; rebuild this head on every discovery retry
 reverse
@@ -200,7 +203,7 @@ reverse
 	subq.w #1, d0
 	move.l d0, d1
 	add.w d1, d1
-	lea 9232(a6), a0
+	lea NEXT(a6), a0
 	move.w (a1), d0
 	move.w d0, 0(a0, d1.w)
 	move.w d2, (a1)
@@ -220,11 +223,8 @@ roots
 root
 	cmp.w GraphState.Count(a6), d7
 	bhs.w ok
-	move.l d7, d0
-	add.w d0, d0
-	lea 6160(a6), a0
-	moveq #0, d1
-	move.w 0(a0, d0.w), d1
+	move.l d7, d1
+	addq.w #1, d1
 	bsr.w getNode
 	cmpi.w #1, Node.File(a0)
 	bne.w rootNext
@@ -239,7 +239,7 @@ walk
 	move.l d6, d0
 	subq.w #1, d0
 	lsl.l #2, d0
-	lea 7184(a6), a3
+	lea STACK(a6), a3
 	adda.l d0, a3
 	moveq #0, d2
 	move.w FrameEntry.Edge(a3), d2
@@ -247,7 +247,7 @@ walk
 	subq.w #1, d2
 	move.l d2, d0
 	add.w d0, d0
-	lea 9232(a6), a0
+	lea NEXT(a6), a0
 	move.w 0(a0, d0.w), d0
 	move.w d0, FrameEntry.Edge(a3)
 	mulu.w #imports.ITEM_BYTES, d2
@@ -255,12 +255,13 @@ walk
 	adda.l d2, a0
 	moveq #0, d1
 	move.w imports.Item.Target(a0), d1
-	cmpi.l #LIMIT, d1
-	bhs.w bad
-	addq.w #1, d1
-	bsr.w getNode
-	tst.w Node.File(a0)
+	addq.l #1, d1
+	cmpi.l #65535, d1
+	bhi.w bad
+	bsr.w findBinding
+	tst.w d2
 	beq.w missing
+	move.l d2, d1
 	cmpi.w #1, Node.Color(a0)
 	beq.w bad
 	cmpi.w #2, Node.Color(a0)
@@ -310,25 +311,55 @@ done
 	.bend  ; order
 	.priv
 
-; D1=module index+1,A6=graph. A0=node; D0 scratch, others preserved.
+; D1=source binding index+1,A6=graph. D2=dense index+1 (zero if absent).
+; A0=node when present; A1=matching/empty hash cell; D0 scratch, others kept.
+; No deletions and at most LIMIT entries in HASH_SLOTS guarantee an empty cell.
+findBinding	.block
+	move.l d3, -(sp)
+	move.l d1, d3
+probe
+	andi.l #HASH_MASK, d3
+	move.l d3, d0
+	add.w d0, d0
+	lea HASH(a6), a1
+	adda.w d0, a1
+	moveq #0, d2
+	move.w (a1), d2
+	beq.w done
+	move.l d2, d0
+	subq.w #1, d0
+	mulu.w #NODE_BYTES, d0
+	lea NODES(a6), a0
+	adda.l d0, a0
+	cmp.w Node.Binding(a0), d1
+	beq.w done
+	addq.l #1, d3
+	bra.w probe
+done
+	move.l (sp)+, d3
+	rts
+	.bend  ; findBinding
+
+; D1=dense module index+1,A6=graph. A0=node; D0 scratch, others preserved.
 getNode	.block
 	move.l d1, d0
 	subq.w #1, d0
 	mulu.w #NODE_BYTES, d0
-	lea 16(a6), a0
+	lea NODES(a6), a0
 	adda.l d0, a0
 	rts
 	.bend  ; getNode
 
-; D1=unvisited module index+1,A0=node,A5=scope,A6=graph,D6=depth.
+; D1=unvisited dense module index+1,A0=node,A5=scope,A6=graph,D6=depth.
 ; Push one explicit DFS frame and mark exact module ownership as selected.
 ; D0/CCR=status; A1/D2 scratch, D6 incremented.
 push	.block
 	cmpi.w #LIMIT, d6
 	bhs.w bad
 	move.w #1, Node.Color(a0)
-	move.l d1, d2
-	subq.w #1, d2
+	moveq #0, d2
+	move.w Node.Binding(a0), d2
+	subq.l #1, d2
 	add.l d2, d2
 	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a5), a1
 	adda.l d2, a1
@@ -336,10 +367,13 @@ push	.block
 	suba.l d2, a1
 	move.l d6, d0
 	lsl.l #2, d0
-	lea 7184(a6), a1
+	lea STACK(a6), a1
 	adda.l d0, a1
 	move.w d1, FrameEntry.Module(a1)
-	lea 10256(a6), a0
+	move.l d1, d2
+	subq.w #1, d2
+	add.w d2, d2
+	lea EDGE_HEADS(a6), a0
 	move.w 0(a0, d2.w), d0
 	move.w d0, FrameEntry.Edge(a1)
 	addq.w #1, d6

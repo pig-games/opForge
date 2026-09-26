@@ -8,6 +8,8 @@
 	.use experimental.amigaos.binary_source as writer
 	.use experimental.amigaos.binary_prepare as prepare
 	.use experimental.amigaos.binary_scopes as scopes
+	.use experimental.amigaos.binary_scope_layout as layout
+	.use experimental.amigaos.binary_structs as structs
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_templates as templates
 	.use experimental.amigaos.binary_imports as imports
@@ -116,6 +118,10 @@ clearBuckets
 	move.w package.Header.EndDirective(a1), d1
 	jsr scopes.begin
 	bne.w failed
+	lea SCOPE_STATE(a6), a0
+	adda.l #scopes.STRUCT_STATE, a0
+	movea.l Frame.Package(a5), a1
+	jsr structs.configure
 	lea SCOPE_STATE(a6), a0
 	adda.l #scopes.SCRATCH_BYTES, a0
 	jsr conditionals.begin
@@ -805,13 +811,29 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; configure
-; Writer callback ABI: lexical bytes A0/D0; D1=id,D2=qualifier,D0=status.
+; Writer callback ABI: lexical bytes A0/D0, D2=leading-name role;
+; outputs D1=id,D2=qualifier,D0/status.
 ; A1=Scratch context. Preserves D3-D7/A2-A6.
 bind	.block
 	movem.l d3-d7/a2-a6, -(sp)
 	movea.l a1, a6
 	movea.l a0, a2
 	move.l d0, d6
+	move.l d2, d5
+	tst.l d2
+	beq.w packageName
+	movea.l a6, a4
+	adda.l #SCOPE_STATE+scopes.STRUCT_STATE, a4
+	tst.w structs.State.Active(a4)
+	bne.w findSymbol
+	movea.l a6, a4
+	adda.l #TEMPLATE_STATE, a4
+	tst.w templates.State.Open(a4)
+	beq.w packageName
+	movea.l LINE_FRAME+writer.Frame.Output(a6), a4
+	btst #0, 1(a4)
+	beq.w findSymbol
+packageName
 	bsr.w hash
 	move.l d0, d4
 	lsl.l #2, d0
@@ -843,7 +865,22 @@ findSymbol
 	movea.l a2, a0
 	move.l d6, d0
 	lea SCOPE_STATE(a6), a1
+	moveq #0, d3
+	move.w layout.State.Current(a1), d3
+	tst.l d5
+	bne.w bindScopedName
+	movea.l a1, a4
+	adda.l #scopes.STRUCT_STATE, a4
+	tst.w structs.State.Active(a4)
+	beq.w bindScopedName
+	; Field extents use the surrounding lexical environment. Field names
+	; themselves bind within the layout; its total size is assigned at close.
+	move.w structs.State.Parent(a4), layout.State.Current(a1)
+bindScopedName
 	jsr scopes.bind
+	lea SCOPE_STATE(a6), a1
+	move.w d3, layout.State.Current(a1)
+	tst.l d0
 	bra.w done
 good
 	moveq #0, d0

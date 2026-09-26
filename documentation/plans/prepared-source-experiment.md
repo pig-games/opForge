@@ -1490,3 +1490,42 @@ bytes as the full Rust CLI. A release run took 8.62 seconds under 68020 / 2 MiB
 FS-UAE; this is a functional observation, not a comparative speedup. A separate
 instrumented run peaked at 736,256 owned bytes and verified zero live owned
 bytes and balanced allocation/free counts after cleanup.
+
+
+## Shared structure layout checkpoint
+
+The compact preparation path recognizes both structure declaration spellings
+and lowers labeled `.byte/.db ?`, `.word/.dw ?`, `.long ?`, and `.res` byte
+extents into ordinary numeric assignments. Fields have consecutive offsets,
+without implicit alignment; the closing record assigns the total type size.
+The layout module owns active type identity, parent scope and extent; scope
+binding owns declarations and module visibility. Layout state stores IDs and
+values, and assembly consumes the resulting binary records without source text.
+Typed instances and struct literal values remain outside this capability.
+
+The writer callback now identifies a leading name during preparation. Field
+names bind lexically even if their spelling also names a package directive,
+and extent expressions bind in the enclosing scope. Template capture preserves
+column-one names for numeric rebinding during expansion. This role is callback
+metadata, not a pointer or new token in persisted binary source. Global as well
+as module-level known assignments can supply reservation extents.
+
+Fields become assignment records as they are encountered, before the closing
+size record. Nested, malformed, duplicate and unclosed definitions reject;
+failed preparation produces no successful output. Reservation extents must be
+known nonnegative signed 32-bit values, and total size must fit that range.
+Typed `.res width,count` is not a Rust structure-field form. Existing source-ID
+and record bounds still apply; this is layout support, not complete struct-value
+or assembler language parity.
+
+The Rust oracle also covers a macro expanded twice with invocation-local
+`Local.End` references. The native readiness probe currently requires rejection:
+qualified paths retain definition-time identity while generated layouts belong
+to the invocation scope. Correcting this needs template declaration ownership,
+not a scan or heuristic in the layout engine. Keep this separate from proven
+physical/imported layout parity; do not claim complete macro composition.
+
+A separate instrumented imported-layout run also matched Rust, peaked at
+550,656 owned bytes, returned live allocation accounting to zero and balanced
+all tracked allocation/free counts. Its profiling error flags were zero. Its
+time includes instrumentation overhead and is not the release timing above.

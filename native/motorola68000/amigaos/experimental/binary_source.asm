@@ -57,6 +57,8 @@ Length	.long ?
 ; identifier ID, D2=u8 qualifier. It preserves D3-D7/A2-A6; CCR unspecified.
 ; Binder owns namespace/alias resolution; this writer contains no CPU semantics.
 ; Result: [u8(total length-1), u8(flags), u16 source line], followed by
+; Binder input D2 is 1 for the leading name token, otherwise 0.
+; The callback returns the existing D2 qualifier.
 ; TKVM kind bytes: kinds 0/1 have u16 ID,u8 qualifier; kind2 has u32 value;
 ; kind 3 has [u8 decoded byte count, decoded bytes]. Kinds 4..40 have no
 ; payload. Kind 41 is a bounded composite recipe:
@@ -184,6 +186,12 @@ sizeReady
 	beq.w bindFailed
 	movea.l d1, a6
 	movea.l Frame.Context(a5), a1
+	; Input D2 identifies a leading name, independently of package spelling.
+	move.l a3, d2
+	sub.l Frame.Output(a5), d2
+	cmpi.l #4, d2
+	seq d2
+	andi.l #1, d2
 	jsr (a6)
 	tst.l d0
 	bne.w bindFailed

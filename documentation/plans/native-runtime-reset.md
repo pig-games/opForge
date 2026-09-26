@@ -1274,7 +1274,7 @@ The bounded instrumented rejection peaks at 670,208 owned bytes. Sixteen
 profiling errors remain, so no trustworthy phase or native self-host duration
 is available.
 
-**Next structural candidate: structure declarations and layouts.** Inventory
+**Structure-layout slice (implemented below).** Inventory
 `.struct` declarations and field uses across `binary_app.asm` and its immediate
 dependencies, then implement the coherent shared declaration/layout feature
 family over binary preparation records. Preserve generic ownership: structure
@@ -1282,3 +1282,79 @@ layout belongs to shared language processing, not CPU instruction selection.
 Use complete representative layouts and their field references for Rust/native
 proof before repeating the unchanged self-host probe. Avoid repairing individual
 field spellings or instruction sites in isolation.
+
+
+The approved layout slice targets the flat definitions used by the compact
+CLI: both `.struct` declaration spellings, labeled byte/word/long placeholders,
+nonnegative `.res` byte extents, type-size constants and qualified field offsets.
+Rust places fields consecutively without implicit alignment. Typed instances,
+initializers and aggregate member values are separate expression capabilities
+and are outside this slice. Preparation should lower layouts to numeric
+constants consumed by the existing assembly path. Acceptance uses complete
+imported layouts, mixed-width fields, reservation sizes and explicit malformed
+or unclosed rejection, followed by a fresh bounded unchanged self-host probe.
+Record image growth, release completion time and separate instrumented memory;
+do not turn an early rejection into a self-host timing claim.
+
+
+The layout checkpoint now lowers consecutive field offsets and total sizes to
+ordinary numeric assignments in a focused shared preparation module. It uses
+20 bytes of session state, independent of layout count. A leading-name callback
+role prevents fields such as `End` from binding to package directives; extent
+expressions resolve in the surrounding scope. Global known constants are now
+captured as well as module constants. Module visibility remains owned by the
+existing binder. No struct spelling is consulted by assembly passes.
+
+Fresh 68020 / 2 MiB native output matched Rust for imported Span/IncludeFrame
+and odd-width layouts, both declaration spellings, `.db`/`.dw` aliases, ignored
+conditional definitions, qualified offsets and total sizes (14 output bytes).
+One release START-to-DONE observation was 0.76 seconds. A global-constant-sized
+reservation layout also matched all four Rust bytes in 0.52 seconds. The final
+release image is 67,868 bytes / 79,148 linked reserved bytes, up 848 / 828 bytes
+from the template-storage checkpoint. These are capability costs and individual
+functional timings, not comparative performance improvements.
+
+The macro-layout Rust oracle exposes a separate qualified-path boundary:
+`Local.End` retains definition-time qualification in native template expansion,
+while generated declarations belong to the invocation scope. Native must reject
+rather than emit incorrect bytes. A readiness probe retains this case for a
+future template declaration-ownership slice; this checkpoint does not claim
+complete struct-value or macro-composition parity.
+
+The unchanged self-host probe now passes all three `binary_app.asm` layouts and
+rejects at physical line 103 (hex file `20`, line `67`), `.MEMORY_PHASE #0`.
+It stages 47 files / 516,909 source bytes; BSP3 remains 175,762 bytes. The fresh
+Rust Hunk is 67,868 bytes / 79,148 linked reserved bytes. Bounded instrumented
+rejection peaks at 676,352 owned bytes. The profiler's incomplete-preparation
+flag remains 16, so there is still no complete native self-host duration.
+
+**Next candidate: macro invocation across lexical scopes.** The follow-up
+inventory found immediate numbers, bare registers/symbols, dotted constants,
+register-indirect field operands and zero-argument calls across the module and
+its immediate dependencies. The argument parser already admits these packed
+token forms, including `#`: line 103 identifies the call boundary, not a proven
+argument-parser defect. First compare representative generic calls inside and
+outside blocks and localize binding, call validation or expansion failure.
+Then implement the coherent missing responsibility. Preserve binary arguments;
+do not add a telemetry-specific exception. Keep qualified macro-local declaration
+ownership as an explicitly distinct gap.
+
+A separate instrumented imported-layout run also matched Rust, peaked at
+550,656 owned bytes, returned live allocation accounting to zero and balanced
+all tracked allocation/free counts. Its profiling error flags were zero. Its
+time includes instrumentation overhead and is not the release timing above.
+
+The unchanged 84,687-byte / 121-template workload still matched all 1,701 Rust
+bytes after this slice. Its release START-to-DONE observation was 8.76 seconds
+versus 8.62 seconds at the previous checkpoint. One run per state cannot
+establish a meaningful performance change; retain the exact-output regression
+and reproducible timings without claiming a gain or regression.
+
+Focused Rust qualification: 85 passed, 179 native/explicit-environment tests
+ignored. Assembly formatting (42 imported files), Rust formatting, fresh-native
+proof-contract structure and benchmark-selector guards pass. The CPU boundary
+guard retains nine findings in unchanged `binary_encoding.asm` and
+`binary_mask_unary.asm`; none occurs in this diff. Broad repository qualification
+is not claimed. Use the documented FS-UAE environment with the 2 MiB profile:
+`cargo test -p asm compact_struct --lib -- --ignored --nocapture --test-threads=1`
+covers the positive layout cases and explicit readiness/rejection boundaries.

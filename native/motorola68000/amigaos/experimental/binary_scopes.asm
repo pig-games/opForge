@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_section_prepare as sections
+	.use experimental.amigaos.binary_structs as structs
 	.pub
 LIMIT = layout.LIMIT
 ARENA_BYTES = layout.ARENA_BYTES
@@ -44,8 +45,13 @@ KEY_ENDSEGMENT = 16
 KEY_MACRO = 17
 KEY_ENDMACRO = 18
 KEY_OUTPUT = 19
+KEY_STRUCT = structs.KEY_STRUCT
+KEY_ENDSTRUCT = structs.KEY_ENDSTRUCT
+KEY_DB = structs.KEY_DB
+KEY_DW = structs.KEY_DW
 SECTION_STATE = IMPORT_STATE+imports.SCRATCH_BYTES
-SCRATCH_BYTES = SECTION_STATE+sections.SCRATCH_BYTES
+STRUCT_STATE = SECTION_STATE+sections.SCRATCH_BYTES
+SCRATCH_BYTES = STRUCT_STATE+structs.SCRATCH_BYTES
 	.section code, kind=code
 
 ; A0=caller-owned SCRATCH_BYTES, D0=first source ID, D1=.end ID. D0/CCR=status;
@@ -79,6 +85,9 @@ clear
 	movea.l a1, a0
 	adda.l #SECTION_STATE, a0
 	jsr sections.begin
+	movea.l a1, a0
+	adda.l #STRUCT_STATE, a0
+	jsr structs.begin
 	moveq #0, d0
 	bra.w done
 bad
@@ -100,6 +109,12 @@ endFile	.block
 	tst.w MODULE_STATE+modules.State.Explicit(a0)
 	beq.w bad
 scopes
+	move.l a1, -(sp)
+	movea.l a0, a1
+	adda.l #STRUCT_STATE, a1
+	tst.w structs.State.Active(a1)
+	movea.l (sp)+, a1
+	bne.w bad
 	tst.w layout.State.Current(a0)
 	bne.w bad
 	move.l a1, -(sp)
@@ -281,11 +296,20 @@ line	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a1, a6
 	movea.l a0, a5
+	move.l d0, d4
 	tst.w layout.State.Ended(a6)
 	bne.w empty
 	bsr.w normalizeLabel
 	bne.w bad
 	bsr.w authorizeLine
+	bne.w bad
+	movea.l a5, a0
+	movea.l a6, a1
+	movea.l a6, a2
+	adda.l #STRUCT_STATE, a2
+	lea keyword, a3
+	move.l d4, d0
+	jsr structs.line
 	bne.w bad
 	moveq #0, d6
 	move.b (a5), d6
@@ -1500,6 +1524,10 @@ Words
 	.byte KEY_MACRO, 5, "macro"
 	.byte KEY_ENDMACRO, 8, "endmacro"
 	.byte KEY_ENDMACRO, 4, "endm"
+	.byte KEY_STRUCT, 6, "struct"
+	.byte KEY_ENDSTRUCT, 9, "endstruct"
+	.byte KEY_DB, 2, "db"
+	.byte KEY_DW, 2, "dw"
 	.byte 0
 	.align 2  ; the next module shares this instruction section
 	.endsection

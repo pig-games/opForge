@@ -51,8 +51,10 @@ clear
 	rts
 	.bend  ; begin
 
-; A0=normalized writer record,A1=scope state. Retain only module-scope
-; assignments whose values are known at this source position. The existing
+; A0=normalized writer record,A1=scope state. Retain module/global-scope
+; assignments whose values are known at this source position. Global scope
+; is the zero module/current identity; nested lexical scopes remain excluded.
+; The existing
 ; expression VM handles arithmetic; labels and forward values remain unknown.
 ; D0/CCR=status; other registers preserved.
 captureConstant	.block
@@ -60,7 +62,6 @@ captureConstant	.block
 	movea.l a1, a6
 	moveq #0, d0
 	move.w layout.MODULE_STATE+modules.State.Active(a6), d0
-	beq.w constantOk
 	cmp.w layout.State.Current(a6), d0
 	bne.w constantOk
 	moveq #0, d0
@@ -1396,6 +1397,7 @@ leafReady
 ; A0..A1=complete numeric token range,A6=scope state. D1=known i32 on
 ; success, D0/CCR=status. The biased VM pointers are used only after every
 ; symbol ID has been checked against the bounded local-name arrays.
+	.pub
 evaluateRange	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a2
@@ -1484,6 +1486,7 @@ rangeDone
 	tst.l d0
 	rts
 	.bend  ; evaluateRange
+	.priv
 
 ; A0=token,A4=end. Advance one packed source token without inspecting its
 ; expression meaning. D0/CCR=status; D1 scratch.

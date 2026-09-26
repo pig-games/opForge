@@ -337,6 +337,7 @@ stableName
 	clr.w records.Entry.Flags(a3)
 	clr.w records.Entry.ScopeKind(a3)
 	clr.w records.Entry.Padding(a3)
+	clr.w records.Entry.MemberBase(a3)
 	move.w layout.State.Base(a6), d2
 	add.w d1, d2
 	move.w d2, records.Entry.Target(a3)

@@ -1647,7 +1647,8 @@ than retaining array/arena pointers across callbacks. Candidate names retain an
 arena offset. Constant dependency scratch already grows from its actual entry
 count; its obsolete coupled 512-source-identity check is removed.
 
-The logical preparation bound is `min(52,428, 65,536 - Base)`: `$ffff` remains the
+At that checkpoint the preparation bound was `min(52,428, 65,536 - Base)`;
+current struct-member metadata reduces the entry-allocation bound to 47,662: `$ffff` remains the
 selected-import wildcard marker. Spelling extent cannot exceed the shared 1 MiB
 allocation bound, and composed names cannot exceed 255 bytes. Import lists/selections/parameters and
 block spans retain independent 512-entry bounds. Graph nodes remain bounded and
@@ -1722,7 +1723,8 @@ negative-symbol parity is not newly claimed here.
 
 ## Wider preparation spelling offsets
 
-Current preparation uses long spelling offsets and a 20-byte binding entry,
+This checkpoint introduced long spelling offsets and a 20-byte binding entry
+(now 22 bytes for the struct-member metadata below),
 with a shared 1 MiB per-allocation bound. Packed source and runtime-package formats
 are unchanged. The former 64 KiB rejection case now requires exact Rust/native
 output: `compact_macro_arena_wide_fs_uae` matches 15 bytes with balanced cleanup.
@@ -1748,3 +1750,22 @@ byte/word bounds remain explicit. Wider expression grammar such as comparison
 operators in source is a separate parity slice; shared ExprVM comparisons are
 covered directly. See the [active scalar slice](native-runtime-reset.md#full-width-scalar-expression-slice)
 for fresh proof, cost measurements and the next self-host frontier.
+## Lexical struct members and numeric CPU names
+
+Qualified struct fields now retain their use-site lexical origin and the struct
+owner available at that point. Preparation resolves an ancestor or already
+introduced local struct through the existing folded hash chains, and rejects a
+later shadowing struct or missing member. Ordinary dotted symbol names and import
+alias precedence retain their existing rules. Binding records add one word of
+temporary metadata (22 bytes per entry); package and packed-source contracts do
+not change. These tables are released before binary execution.
+
+The shared `.cpu` operand now uses the package dictionary even when its spelling
+is tokenized as a number, such as `68020` or `6502`. Unlabeled, canonical bare-label
+and explicit-colon forms follow the same normalization. Numeric values in other
+statements keep their normal representation; aliases must belong to the selected
+capsule. No CPU alias or target semantics are hardcoded in the writer.
+
+Input close preserves the current preparation path so EOF failures identify their
+file. See the [active slice](native-runtime-reset.md#qualified-struct-fields-and-eof-diagnostics)
+for focused native proof, costs and the remaining self-host boundary.

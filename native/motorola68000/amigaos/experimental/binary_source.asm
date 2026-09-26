@@ -38,6 +38,8 @@ SourceLine	.word ?
 Used	.word ?
 Source	.long ?
 SourceBytes	.long ?
+NameDirective	.word ?  ; package ID whose first operand uses the binder; 0 disables
+Reserved	.word ?
 	.endstruct
 
 Token	.struct
@@ -56,6 +58,8 @@ Length	.long ?
 ; Binder: A0=lexeme, D0=length, A1=Context; returns D0=0, D1=u16 canonical
 ; identifier ID, D2=u8 qualifier. It preserves D3-D7/A2-A6; CCR unspecified.
 ; Binder owns namespace/alias resolution; this writer contains no CPU semantics.
+; NameDirective is a package-owned directive ID, or zero to disable numeric-name
+; operands. Its first operand uses the same binder as identifier spellings.
 ; Result: [u8(total length-1), u8(flags), u16 source line], followed by
 ; Binder input D2 is 1 for the leading name token, otherwise 0.
 ; The callback returns the existing D2 qualifier.
@@ -163,6 +167,13 @@ compositeString
 	beq.w next
 	bra.w overflow
 regularToken
+	cmpi.w #2, d3
+	bne.w tokenKindReady
+	bsr.w nameOperand
+	tst.l d0
+	beq.w tokenKindReady
+	moveq #0, d3  ; numeric-looking spellings can be package-owned names
+tokenKindReady
 	moveq #1, d4
 	cmpi.w #2, d3
 	bhi.w sizeReady
@@ -251,6 +262,59 @@ done
 	movem.l (sp)+, d2-d7/a0-a6
 	rts
 	.bend  ; writeLine
+
+; A3=current output,A5=Frame. D0=1 for the first operand of NameDirective,
+; otherwise zero. Preserve other registers and the numeric token's lexeme A0.
+; Recognize the emitted statement prefix, including an optional leading label.
+nameOperand	.block
+	movem.l d1/a1, -(sp)
+	tst.w Frame.NameDirective(a5)
+	beq.w no
+	movea.l Frame.Output(a5), a1
+	move.l a3, d0
+	sub.l a1, d0
+	cmpi.l #9, d0
+	beq.w directive
+	cmpi.l #13, d0
+	beq.w implicitLabel
+	cmpi.l #14, d0
+	bne.w no
+	cmpi.b #1, 4(a1)
+	bhi.w no
+	cmpi.b #5, 8(a1)
+	bne.w no
+	addq.l #5, a1
+	bra.w directive
+implicitLabel
+	; Column-one labels acquire their colon in shared scope normalization,
+	; after the writer has already bound this directive's numeric operand.
+	tst.b 1(a1)
+	bne.w no
+	cmpi.b #1, 4(a1)
+	bhi.w no
+	addq.l #4, a1
+directive
+	cmpi.b #7, 4(a1)
+	bne.w no
+	cmpi.b #1, 5(a1)
+	bhi.w no
+	tst.b 8(a1)
+	bne.w no
+	moveq #0, d1
+	move.b 6(a1), d1
+	lsl.w #8, d1
+	move.b 7(a1), d1
+	cmp.w Frame.NameDirective(a5), d1
+	bne.w no
+	moveq #1, d0
+	bra.w done
+no
+	moveq #0, d0
+done
+	movem.l (sp)+, d1/a1
+	tst.l d0
+	rts
+	.bend  ; nameOperand
 
 	.priv
 

@@ -973,11 +973,8 @@ closeSource	.block
 	jsr -36(a6)
 	tst.l d0
 	beq.w bad
-	lea SourcePath, a0
-	moveq #63, d0
-clearPath
-	clr.l (a0)+
-	dbra d0, clearPath
+	; Retain the preparation path for errors from file finalization. The next
+	; open replaces it; binary execution uses numeric provenance only.
 good
 	moveq #0, d0
 	rts

@@ -169,6 +169,7 @@ enter
 	bne.w bad
 	move.w layout.State.Current(a6), State.Parent(a4)
 	move.w layout.State.Current(a6), records.Entry.Owner(a0)
+	ori.w #records.STRUCT_TYPE, records.Entry.Flags(a0)  ; retained at close
 	move.w d7, State.Name(a4)
 	addq.w #1, d0
 	move.w d0, layout.State.Current(a6)

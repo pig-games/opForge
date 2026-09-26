@@ -6,7 +6,7 @@
 	.use experimental.amigaos.binary_memory as memory
 	.pub
 ; Source IDs remain words; each owned allocation is bounded by memory.LIMIT.
-; The 20-byte entry allocation caps identities at 52428, below wildcard $ffff.
+; Entry allocation caps identities below wildcard $ffff.
 LIMIT = memory.LIMIT/records.ENTRY_BYTES
 ARENA_BYTES = memory.LIMIT
 ; Composed lexical paths include invocation scopes as well as source names.

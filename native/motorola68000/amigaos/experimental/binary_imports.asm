@@ -533,6 +533,9 @@ find
 	adda.l d0, a3
 	cmp.w records.Entry.Owner(a3), d7
 	bne.w next
+	move.w layout.State.Current(a6), d0
+	cmp.w records.Entry.Padding(a3), d0
+	bne.w next  ; the same spelling in distinct lexical scopes may shadow
 	move.w records.Entry.ScopeKind(a3), d0
 	subq.w #1, d0
 	cmp.w d6, d0
@@ -569,7 +572,8 @@ allocate
 	move.w #PROXY, records.Entry.Flags(a3)
 	move.w d6, records.Entry.ScopeKind(a3)
 	addq.w #1, records.Entry.ScopeKind(a3)
-	clr.w records.Entry.Padding(a3)
+	move.w layout.State.Current(a6), records.Entry.Padding(a3)
+	clr.w records.Entry.MemberBase(a3)
 	move.w (a4), records.Entry.Next(a3)
 	move.w d2, d0
 	addq.w #1, d0
@@ -580,6 +584,25 @@ allocate
 	move.w layout.State.Base(a6), d0
 	add.w d2, d0
 	move.w d0, records.Entry.Target(a3)
+	; Struct definitions must exist at the reference site. Import and absolute
+	; targets may still be forward references, so only gate the member fallback.
+	movea.l layout.ARENA_POINTER(a6), a2
+	adda.l records.Entry.Name(a3), a2
+	moveq #0, d6
+	move.w records.Entry.Length(a3), d6
+	moveq #0, d5
+memberDot
+	cmp.w d6, d5
+	bhs.w found
+	cmpi.b #'.', 0(a2, d5.l)
+	beq.w memberAvailable
+	addq.w #1, d5
+	bra.w memberDot
+memberAvailable
+	moveq #1, d0
+	bsr.w resolveStructMember
+	bne.w found
+	move.w d2, records.Entry.MemberBase(a3)
 found
 	move.w records.Entry.Target(a3), 1(a5)
 ok
@@ -1120,8 +1143,9 @@ fullNext
 	move.w Item.Next(a1), d7
 	bra.w fullLoop
 exact
-	movea.l a2, a0
-	move.l d6, d0
+	moveq #0, d0
+	bsr.w resolveStructMember
+	bra.w done
 bind
 	bsr.w globalBind
 	bne.w bad
@@ -1870,6 +1894,190 @@ next
 	bne.w scan
 	rts
 	.bend  ; entryLeaf
+
+; A2/D6=raw dotted spelling,D5=first dot,A3=origin proxy,A6=scope.
+; Exact names retain priority. Otherwise a bare struct base is looked up from
+; the captured lexical scope, checking its definition-time struct identity.
+; Dotted bases remain absolute/imported, matching Rust member-base resolution.
+; D0=1 when recording availability, 0 at completion. D0=status,D1=target,
+; D2=struct identity+1 (zero for exact symbols); other registers preserved.
+; No identities are allocated.
+resolveStructMember	.block
+	movem.l d3-d7/a0-a5, -(sp)
+	move.l d0, d2
+	movea.l a2, a4
+	moveq #0, d7
+	move.w records.Entry.Padding(a3), d7
+	movea.l a4, a0
+	move.l d6, d0
+	bsr.w findDeclared
+	beq.w exactFound
+	tst.l d2
+	bne.w available
+	tst.w records.Entry.MemberBase(a3)
+	beq.w bad
+available
+	move.l d5, d0
+	addq.l #1, d0
+singleField
+	cmp.l d6, d0
+	bhs.w ancestor
+	cmpi.b #'.', 0(a4, d0.l)
+	beq.w bad
+	addq.l #1, d0
+	bra.w singleField
+ancestor
+	tst.w d7
+	beq.w globalBase
+	move.l d7, d0
+	subq.w #1, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l layout.ENTRIES_POINTER(a6), a0
+	adda.l d0, a0
+	moveq #0, d7
+	move.w records.Entry.Owner(a0), d7
+	moveq #0, d4
+	move.w records.Entry.Length(a0), d4
+	move.l records.Entry.Name(a0), d0
+	movea.l layout.ARENA_POINTER(a6), a0
+	adda.l d0, a0
+	lea layout.BUFFER(a6), a1
+	move.l d4, d0
+copyPrefix
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w copyPrefix
+	move.b #'.', (a1)+
+	addq.l #1, d4
+	bra.w base
+globalBase
+	moveq #0, d4
+	lea layout.BUFFER(a6), a1
+base
+	move.l d4, d0
+	add.l d6, d0
+	cmpi.l #layout.NAME_BYTES-1, d0
+	bhi.w bad
+	movea.l a4, a0
+	move.l d5, d0
+copyBase
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w copyBase
+	add.l d5, d4
+	lea layout.BUFFER(a6), a0
+	move.l d4, d0
+	bsr.w findDeclared
+	beq.w member
+	cmp.l d5, d4
+	beq.w bad  ; the global bare base was the final candidate
+	bra.w ancestor
+member
+	btst #5, records.Entry.Flags+1(a0)
+	beq.w bad  ; a nearer nonstruct declaration shadows outer struct types
+	moveq #0, d0
+	move.w records.Entry.Target(a0), d0
+	sub.w layout.State.Base(a6), d0
+	addq.w #1, d0
+	tst.l d2
+	bne.w captured
+	cmp.w records.Entry.MemberBase(a3), d0
+	bne.w bad  ; a struct declared after the reference cannot replace its base
+captured
+	move.l d0, d2
+	lea layout.BUFFER(a6), a1
+	adda.l d4, a1
+	movea.l a4, a0
+	adda.l d5, a0
+	move.l d6, d0
+	sub.l d5, d0
+copyField
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w copyField
+	add.l d6, d4
+	sub.l d5, d4
+	lea layout.BUFFER(a6), a0
+	move.l d4, d0
+	bsr.w findDeclared
+	bra.w done  ; a missing member must not fall back to an outer struct
+exactFound
+	moveq #0, d2
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d3-d7/a0-a5
+	tst.l d0
+	rts
+	.bend  ; resolveStructMember
+
+; A0/D0=name bytes,A6=scope. D0=status,D1=target,A0=declared entry.
+; Preserve remaining registers; use the scope binder's folded hash chains.
+; Proxies have separate import chains and are never inserted in these buckets.
+findDeclared	.block
+	movem.l d2-d5/a1-a3, -(sp)
+	movea.l a0, a2
+	move.l d0, d5
+	moveq #0, d4
+hash
+	moveq #0, d1
+	move.b (a0)+, d1
+	bsr.w fold
+	move.l d4, d2
+	lsl.l #5, d4
+	add.l d2, d4
+	add.l d1, d4
+	subq.l #1, d0
+	bne.w hash
+	andi.l #255, d4
+	add.w d4, d4
+	move.l d4, d0
+	lea layout.BUCKETS(a6), a0
+	moveq #0, d4
+	move.w 0(a0, d0.w), d4
+candidate
+	tst.w d4
+	beq.w bad
+	subq.w #1, d4
+	mulu.w #records.ENTRY_BYTES, d4
+	movea.l layout.ENTRIES_POINTER(a6), a3
+	adda.l d4, a3
+	btst #0, records.Entry.Flags+1(a3)
+	beq.w next
+	cmp.w records.Entry.Length(a3), d5
+	bne.w next
+	movea.l layout.ARENA_POINTER(a6), a0
+	adda.l records.Entry.Name(a3), a0
+	movea.l a2, a1
+	move.l d5, d3
+compare
+	moveq #0, d1
+	move.b (a0)+, d1
+	bsr.w fold
+	move.l d1, d2
+	move.b (a1)+, d1
+	bsr.w fold
+	cmp.b d2, d1
+	bne.w next
+	subq.l #1, d3
+	bne.w compare
+	movea.l a3, a0
+	moveq #0, d1
+	move.w records.Entry.Target(a3), d1
+	moveq #0, d0
+	bra.w done
+next
+	moveq #0, d4
+	move.w records.Entry.Next(a3), d4
+	bra.w candidate
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d5/a1-a3
+	tst.l d0
+	rts
+	.bend  ; findDeclared
 
 ; A0/D0=qualified name,A5=binder,A6=scope state. D0/status,D1/ID,D2scratch;
 ; A0/A1 scratch. No process pointer is stored in preparation metadata.

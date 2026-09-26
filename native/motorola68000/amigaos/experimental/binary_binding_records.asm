@@ -15,9 +15,11 @@ Flags	.word ?
 Target	.word ?
 Next	.word ?
 ScopeKind	.word ?
-Padding	.word ?
+Padding	.word ?  ; proxy origin lexical scope; zero for ordinary entries
+MemberBase	.word ?  ; qualified proxy's definition-time struct identity+1
 .endstruct
-ENTRY_BYTES = Entry.Padding+2
+ENTRY_BYTES = Entry.MemberBase+2
+STRUCT_TYPE = 32
 ; Includes room for the terminator in preparation-only composition/copy buffers.
 NAME_BYTES = 256
 	.section code, kind=code

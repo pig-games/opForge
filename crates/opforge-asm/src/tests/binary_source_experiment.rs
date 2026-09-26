@@ -25,6 +25,8 @@ mod struct_layout;
 #[path = "binary_source_macro_calls.rs"]
 mod macro_calls;
 
+#[path = "binary_source_cpu_names.rs"]
+mod cpu_names;
 #[path = "binary_source_full_width.rs"]
 mod full_width;
 #[path = "binary_source_identity_storage.rs"]

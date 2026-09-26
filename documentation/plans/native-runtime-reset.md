@@ -1830,3 +1830,72 @@ findings; this checkpoint does not claim repository-wide qualification.
 
 All three fresh decimal/hex/binary source-literal overflow probes reject cleanly;
 the u32 scanner bound has not been relaxed.
+
+## Qualified struct fields and EOF diagnostics
+
+The full-width checkpoint's next rejection is in `binary_package.asm` at EOF.
+Input close cleared the preparation path before finalization could report it;
+retain that bounded diagnostic path until the next open replaces it. This does
+not restore textual execution or add source retention to the binary passes.
+
+A fresh whole-package layout comparison independently fails native final binding
+while its live Rust oracle succeeds. The native binder treats every dotted name
+as absolute/imported; Rust additionally resolves a struct member through its
+lexical owner. `PARAMETER_BYTES = Parameter.High+4` exposes that gap. Preserve
+struct identity and reference origin through numeric preparation, resolving
+lexical struct owners at completion while retaining definition-time availability.
+Rust rejects a nearer struct declared after a field use; retain that rejection. Keep
+ordinary qualified symbols, import aliases and visibility consistent with Rust;
+do not add a general relative dotted-name language extension.
+
+Acceptance: the actual package layouts and stride produce identical Rust/native
+bytes, with ancestor/local-shadowing cases, rejected forward struct owners and a
+genuine unclosed-struct EOF retaining its path. Repeat affected qualified/import
+checks, the bounded self-host
+probe and an unchanged release control. A later rejection is progress, not full
+self-host parity. Stop to discuss if preserving Rust lookup requires a broader
+representation redesign.
+
+Implementation preserves lexical origin and definition-time struct identity in
+qualified proxies. Lookup uses existing folded hash buckets, and does not add a
+general relative dotted-symbol rule. Binding records grow from 20 to 22 bytes;
+the existing 1 MiB allocation now holds at most 47,662 entries. These tables are
+preparation-only and released before assembly. Serialized contracts are unchanged.
+
+The whole-package test also exposed numeric `.cpu` aliases being emitted as
+number tokens. The writer now binds that directive's first numeric-looking operand
+through the package dictionary. Unlabeled, bare-label and explicit-colon forms
+work; ordinary numeric data remains numeric and mismatched CPU aliases reject.
+The directive ID and supported aliases come from the selected package, with no
+CPU-specific semantics in the native writer.
+
+Fresh native 68020 / 2 MiB runs match the actual package's 20 layout bytes,
+local stride/field constants, ancestor lookup and earlier local shadowing. Forward
+struct shadowing rejects as Rust does. A genuine unclosed struct reports its EOF
+line and source path. Existing qualified macro imports and nested/forward-label
+checks pass. Numeric CPU alias probes match on both m68020 and m6502; the wrong
+selected-pipeline alias rejects. Successful instrumented probes have balanced
+cleanup and zero profiling errors. The Rust prepared-source suite passes 101 tests;
+the final extended numeric-alias oracle also passes.
+
+The bounded self-host probe still rejects at `binary_package.asm` EOF106 after
+4,271 expression-preparation calls. This is not proof of a struct-close failure:
+graph resolution runs after EOF checks and shares those diagnostic coordinates.
+The graph currently indexes 512 slots by source-symbol identity; structs, fields
+and proxies also consume that identity space. An import beyond index 511 is a
+concrete next hypothesis, requiring capture of the failing graph operation before
+changing representation. No completed self-host output or duration is claimed.
+Peak tracked ownership remains 1,165,824 bytes; preparation is incomplete
+(telemetry flag 16). The live Rust self-build succeeds.
+
+The unchanged release template control (84,687 source bytes, 121 templates,
+1,701 output bytes) matches exactly and takes 8.622 s versus 8.575 s at the
+previous checkpoint: approximately 0.5% slower in single runs, with no statistical
+performance conclusion. The release Hunk grows from 70,872 to 71,580 bytes
+(+708); linked reservation grows from 82,092 to 82,804 (+712). The runtime capsule
+remains 269,162 bytes. Instrumentation is disabled for this timing comparison.
+
+Rust and native formatting, native proof, benchmark-selector and workflow-link
+checks pass. The CPU architecture guard retains nine existing enforced findings,
+25 enforced-scope warnings and 565 outside-scope warnings; repository-wide
+qualification is not claimed.

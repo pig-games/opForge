@@ -63,6 +63,70 @@ Tag .byte ?
 .end
 "#;
 
+fn package_layout_source() -> String {
+    let package =
+        include_str!("../../../../native/motorola68000/amigaos/experimental/binary_package.asm");
+    format!("{package}\n.module app\n.cpu m68020\n.use experimental.amigaos.binary_package as pkg\n.long pkg.PARAMETER_BYTES,pkg.Context.High,pkg.Context.Package,pkg.Parameter.Low,pkg.Parameter.High\n.endmodule\n")
+}
+
+#[test]
+fn compact_package_layout_rust_oracle() {
+    assert_eq!(
+        oracle(&package_layout_source(), "68020").unwrap(),
+        [0, 0, 0, 12, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 4, 0, 0, 0, 8]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; real self-host package layouts and derived stride"]
+fn compact_package_layout_fs_uae() {
+    native(&package_layout_source(), "m68020");
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; local qualified fields in module constants"]
+fn compact_struct_local_field_constant_fs_uae() {
+    native(".module layouts\n.cpu m68020\nParameter .struct\nId .word ?\nReserved .word ?\nLow .long ?\nHigh .long ?\n.endstruct\nstride=Parameter.High+4\n.long stride,Parameter.High\n.endmodule\n", "m68020");
+}
+
+fn scoped_field_source(shadow: bool) -> String {
+    let local = if shadow {
+        "Cell .struct\nPad .long ?\nHigh .word ?\n.endstruct\n"
+    } else {
+        ""
+    };
+    format!(".module app\n.cpu m68020\nCell .struct\nPad .byte ?\nHigh .word ?\n.endstruct\nroutine .block\n{local}.namespace inner\n.long Cell.High\n.endnamespace\n.bend\n.long routine,Cell.High\n.endmodule\n")
+}
+
+#[test]
+fn compact_struct_scoped_field_rust_oracles() {
+    for shadow in [false, true] {
+        assert_eq!(
+            oracle(&scoped_field_source(shadow), "68020").unwrap(),
+            [0, 0, 0, if shadow { 4 } else { 1 }, 0, 0, 0, 0, 0, 0, 0, 1]
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; ancestor field lookup and local struct shadowing"]
+fn compact_struct_scoped_field_fs_uae() {
+    for shadow in [false, true] {
+        native(&scoped_field_source(shadow), "m68020");
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; field owner must be available at use"]
+fn compact_struct_forward_field_rejection_fs_uae() {
+    let source = scoped_field_source(true).replace(
+        "routine .block\nCell .struct\nPad .long ?\nHigh .word ?\n.endstruct\n.namespace inner\n.long Cell.High\n.endnamespace\n",
+        "routine .block\n.namespace inner\n.long Cell.High\n.endnamespace\nCell .struct\nPad .long ?\nHigh .word ?\n.endstruct\n",
+    );
+    assert!(oracle(&source, "68020").is_err());
+    native_rejection_for_cpu(&source, "m68020");
+}
+
 fn oracle(source: &str, cpu: &str) -> Result<Vec<u8>, String> {
     let dir = create_temp_dir("compact-struct-layout-oracle");
     let input = dir.join("input.asm");
@@ -163,14 +227,23 @@ fn compact_struct_macro_layout_readiness_fs_uae() {
 #[test]
 #[ignore = "requires configured FS-UAE; explicit invalid structure rejection"]
 fn compact_struct_unclosed_fs_uae() {
-    let source = ".cpu m6502\nA .struct\nf .byte ?\n";
+    let source = ".cpu m6502\nUnfinished .struct\nf .byte ?\n";
     assert!(oracle(source, "6502").is_err());
-    native_rejection(source);
+    let diagnostic = native_rejection(source);
+    assert!(diagnostic.contains("[file 00000001, line 00000004]"));
+    let path = diagnostic
+        .lines()
+        .find_map(|line| line.strip_prefix("source: "));
+    assert!(path.is_some_and(|path| path.ends_with("/input.asm")));
 }
 
-fn native_rejection(source: &str) {
+fn native_rejection(source: &str) -> String {
+    native_rejection_for_cpu(source, "m6502")
+}
+
+fn native_rejection_for_cpu(source: &str, cpu: &str) -> String {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let resolved = core.resolve_pipeline(cpu, None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
     let result = crate::fs_uae_smoke::run_compact_cli_from_env(
         &workspace_root(),
@@ -186,4 +259,5 @@ fn native_rejection(source: &str) {
     assert!(runs[0].protocol_completed);
     assert_eq!(runs[0].exit_code, Some(20));
     assert!(runs[0].stdout.contains("unsupported or invalid input"));
+    runs[0].stdout.clone()
 }

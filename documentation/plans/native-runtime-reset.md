@@ -1597,3 +1597,76 @@ linked reserved bytes, up 1,056 / 976 bytes. m68020 BSP3 remains 269,162 bytes.
 The existing over-65,535-byte spelling case also completes freshly with explicit
 exit 20, 798,464 peak owned bytes, balanced cleanup and only flag 16. No new
 legacy executor, CPU semantics or serialized pointer is introduced.
+
+## Packed arithmetic grammar slice
+
+The first self-host division expression is `move.w #PATH_BYTES/4-1,d0` at app
+line 856. Other source modules use division in scratch sizes and copy-loop bounds.
+Before this slice, the packed compiler's product tier recognized only multiplication;
+canonical Rust/package grammar also admits division and remainder at that tier,
+with a tighter right-associative power tier. Shared native ExprVM math and folding
+already implement those operations.
+
+Connect `/`, `%` and `**` to those existing operator pairs. Preserve canonical
+precedence (including unary tighter than power), left-associative products and
+right-associative power. Keep recursion bounded by the shared syntax-depth limit,
+the existing checked signed32 domain and the current packed format. Do not add
+CPU-specific arithmetic, a second evaluator, source fallback or legacy programs.
+
+Acceptance: exact fresh Rust/native output on both endian target packages for
+signed quotient/remainder, nested precedence, forward constants, label-derived
+expressions and the self-host immediate form; explicit rejection of zero divisors,
+invalid exponents, malformed input and excess power depth; existing compilation/
+evaluation telemetry with balanced cleanup; unchanged release timing control and
+a bounded instrumented self-host probe. Full signed64 parity is outside this slice.
+Baseline control: 8.750 seconds, release image 70,224 bytes / 81,432 linked reserved,
+m68020 package 269,162 bytes; incomplete self-host peak 906,752 bytes at app line856.
+
+The compiler now emits existing DIVIDE/MOD/POWER operator pairs; the product tier
+preserves its selected operator across recursive parsing. Power uses the existing
+shared syntax-depth budget and unwinds it on both successful and failing recursion.
+No math evaluator, compact opcode or serialized-format variant is introduced.
+
+The first remainder case exposed a native scanner gap: `17%7` was consumed as a
+single numeric spelling because the body predicate also admits `%`. Number scanning
+now stops at a nonleading `%`; leading binary prefixes remain accepted. Cases cover
+both `%101%10` (5 modulo decimal10) and `%101 % %10` (5 modulo binary2).
+
+A separate Rust oracle defect is deferred at Erik's explicit request: ordinary
+assignment truncates scalar values into unsigned symbol shadows, so `n=-17; n/7`
+produces an unsigned quotient. The grammar proof uses unary negation of a positive
+symbol, plus signed literals and checked32 boundary values. It does not claim
+parity for assignment-produced negative scalar symbols.
+
+Fresh instrumented 68020 / 2 MiB runs match all 116 / 114 Rust bytes for m68020 /
+m6502 packages. Both compile 39 expressions into 187 program bytes; evaluations
+are 73 / 69, peak tracked ownership 787,712 / 183,808 bytes, with balanced cleanup
+and zero profiling errors. Excess syntax depth rejects explicitly. All five invalid
+arithmetic cases complete with expected rejection on a focused rerun. The initial
+group run timed out during rejection testing and is not counted as proof; the
+timeout's cause remains unconfirmed.
+
+The unchanged 84,687-byte, 121-template release control matches all 1,701 Rust bytes
+in 8.648 seconds versus 8.750 before this slice (1.2% lower in this sample, not a
+statistical speedup claim). Release image / linked reservation are 70,324 / 81,532
+bytes, both up 100 bytes. The arithmetic extension's main gain is language coverage.
+
+The bounded instrumented self-host probe completes with explicit exit 20 at
+`experimental/binary_frontend.asm:375` (`.bend ; nextExpansion`), beyond the former
+app division failure. Its cause remains unclassified. The live manifest contains
+47 files / 535,421 source bytes; m68020 BSP3 remains 269,162 bytes. Tracked peak
+ownership is 1,018,368 bytes with balanced cleanup. Flag 16 and the absent completed
+duration indicate preparation timing closed early on rejection, not an allocation
+bound or a completed assembly measurement. Full self-host parity/time remain unproven.
+
+Focused Rust qualification passes 102 binary-source tests (197 native/environment
+tests ignored), plus Rust modulo and fresh native percent-prefix regressions. Rust formatting, native
+formatting (42 files), proof-contract and benchmark-selector checks pass. The
+architecture guard retains the same nine existing enforced findings. Broad
+repository qualification is not claimed.
+
+Next agreed slice: preserve evaluated numeric scalar values alongside Rust's
+existing unsigned address/ABI shadows. Cover immutable/mutable/chained and forward
+constants, `.const`/`.var`, compound updates, unsigned constants and high-address
+labels. Keep labels unsigned; do not sign-extend every symbol. Inspect existing typed
+value classification before choosing whether to reuse it or add scalar storage.

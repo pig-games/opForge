@@ -120,7 +120,8 @@ done
 
 ; Compiler helpers share bounded cursors A0/A1 and A3/A4. D6=syntax nesting,
 ; D7=postfix stack depth; D0-D3 scratch. An operator is saved across recursion.
-; Canonical precedence, lowest first: OR, XOR, AND, shifts, sum, product.
+; Canonical precedence, lowest first: OR, XOR, AND, shifts, sum, product,
+; power, unary. Power associates right; product and the lower levels left.
 ; The three single-operator levels share one left-associative parser template.
 BIT_LEVEL	.macro tighter, token, operator
 	bsr.w .tighter
@@ -222,19 +223,28 @@ done
 	.bend  ; sum
 
 product	.block
-	bsr.w unary
+	bsr.w power
 	tst.l d0
 	bne.w done
 loop
 	cmpa.l a1, a0
 	bhs.w ok
+	moveq #runtime.EXPRVM_BINARY_MULTIPLY, d3
 	cmpi.b #20, (a0)
+	beq.w operator
+	moveq #runtime.EXPRVM_BINARY_DIVIDE, d3
+	cmpi.b #22, (a0)
+	beq.w operator
+	moveq #runtime.EXPRVM_BINARY_MOD, d3
+	cmpi.b #23, (a0)
 	bne.w ok
+operator
 	addq.l #1, a0
-	bsr.w unary
+	move.l d3, -(sp)
+	bsr.w power
+	move.l (sp)+, d1
 	tst.l d0
 	bne.w done
-	moveq #runtime.EXPRVM_BINARY_MULTIPLY, d1
 	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
 	bsr.w pair
 	bne.w done
@@ -245,6 +255,37 @@ ok
 done
 	rts
 	.bend  ; product
+
+power	.block
+	bsr.w unary
+	tst.l d0
+	bne.w done
+	cmpa.l a1, a0
+	bhs.w ok
+	cmpi.b #21, (a0)
+	bne.w ok
+	addq.l #1, a0
+	addq.w #1, d6
+	cmpi.w #MAX_DEPTH, d6
+	bhi.w depth
+	bsr.w power
+	subq.w #1, d6
+	tst.l d0
+	bne.w done
+	moveq #runtime.EXPRVM_BINARY_POWER, d1
+	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
+	bsr.w pair
+	bne.w done
+	subq.w #1, d7
+ok
+	moveq #STATUS_OK, d0
+done
+	rts
+depth
+	subq.w #1, d6
+	moveq #STATUS_DEPTH, d0
+	rts
+	.bend  ; power
 
 unary	.block
 	cmpa.l a1, a0

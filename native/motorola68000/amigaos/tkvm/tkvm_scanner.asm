@@ -236,7 +236,7 @@ pendingLexemeOverflow
 ; Clobbers: A0/CCR.
 ; CCR: reflects D0 on return.
 scanNumberToken	.block
-	; Number scan accepts the same permissive body bytes as the Rust helper,
+	; Number scan retains raw spelling and explicit operator boundaries,
 	; leaving base interpretation to downstream token consumers/report logic.
 	move.l d2, LOCAL_PENDING_START(a2)
 	clr.l LOCAL_PENDING_LEX_LEN(a2)
@@ -254,10 +254,13 @@ loop
 	move.b 0(a4, d2.l), d0
 	cmpi.b #'%', d0
 	bne checkBody
+	; A leading '%' prefixes binary digits; later '%' starts modulo.
+	; Keep the canonical number/operator boundary even with permissive bodies.
 	cmp.l LOCAL_PENDING_START(a2), d2
 	beq acceptByte
+	bra done
 checkBody
-	jsr char_predicates.tkvmIsNumberBody  ; same permissive number-body walk as vm_scan_number_token()
+	jsr char_predicates.tkvmIsNumberBody
 	beq done
 acceptByte
 	move.l d3, d0

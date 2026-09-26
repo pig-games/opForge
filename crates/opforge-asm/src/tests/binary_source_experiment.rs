@@ -28,6 +28,9 @@ mod macro_calls;
 #[path = "binary_source_identity_storage.rs"]
 mod identity_storage;
 
+#[path = "binary_source_arithmetic.rs"]
+mod arithmetic;
+
 #[path = "binary_source_indexed.rs"]
 mod indexed;
 

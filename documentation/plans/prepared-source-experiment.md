@@ -1669,3 +1669,46 @@ all 1,701 bytes in 8.750 seconds versus 8.502 previously; record the 2.9% observ
 cost without claiming statistical significance. The incomplete self-host probe now
 reaches app line 856, a division expression, with 906,752 peak tracked owned bytes
 and balanced cleanup. Full native self-host parity/time remain unproven.
+
+### Packed multiplicative arithmetic
+
+The compiler now accepts division and remainder alongside left-associative
+multiplication, with a tighter right-associative integer-power tier. Unary operators
+bind tighter than power, following canonical Rust/package grammar. The existing
+shared ExprVM performs all math and constant folding; no new packed opcode or
+runtime-package version is needed. Existing checked signed32, postfix-stack and
+syntax-depth limits remain in force.
+
+Native numeric scanning stops at a nonleading `%`, allowing `17%7` to tokenize as
+number/operator/number. A leading `%` still denotes a binary literal when the
+existing prefix-context rules permit it. `%101%10` means binary5 modulo decimal10;
+`%101 % %10` means binary5 modulo binary2.
+
+Focused proof uses the compact CLI and live Rust outputs for both endian target
+packages, covering the actual self-host immediate `PATH_BYTES/4-1`, signed quotient/
+remainder, precedence, forward constants and label differences. Zero divisors,
+invalid exponents, missing operands and excess shared syntax depth reject explicitly.
+Reproduce with `cargo test -p asm compact_arithmetic_ -- --ignored --nocapture
+--test-threads=1` and the configured FS-UAE environment. `OPFORGE_COMPARE_MEMORY=1`
+enables the existing compile/evaluate/program-byte accounting and owned-memory
+cleanup checks; instrumented durations are not release performance measurements.
+
+Release control: 8.648 seconds versus 8.750 previously on the unchanged 121-template
+workload; all 1,701 output bytes match. This single sample does not establish a
+speedup. Release image / linked reservation are 70,324 / 81,532 bytes (+100 each).
+The two instrumented arithmetic cases peak at 787,712 / 183,808 tracked bytes for
+m68020 / m6502, with balanced cleanup and zero profiling errors. An initial rejection
+run timed out; a focused rerun completes all five negative cases. See the
+[reset slice](native-runtime-reset.md#packed-arithmetic-grammar-slice) for scope and
+qualification details.
+
+The bounded self-host probe now rejects at `binary_frontend.asm:375` (`.bend`),
+beyond the former division boundary. Root cause is not yet established. Peak tracked
+ownership is 1,018,368 bytes with balanced cleanup; flag 16 records incomplete
+preparation timing, so there is no full native self-host duration or parity claim.
+
+Known oracle limitation, deferred to the next slice by agreement: Rust currently
+stores assignment-produced scalar symbols as unsigned shadows. Thus `n=-17`
+followed by `n/7` loses the signed meaning, while `(-magnitude)/7` with `magnitude=17`
+and literal `-17/7` behave correctly. This slice proves signed arithmetic through
+the latter forms; it does not claim parity for negative assignment-produced symbols.

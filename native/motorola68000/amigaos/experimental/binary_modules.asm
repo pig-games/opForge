@@ -136,6 +136,7 @@ done
 ; writer ABI and preserves D3-D7/A2-A6. D0/CCR=status, other registers preserved.
 open	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	suba.l #records.NAME_BYTES, sp  ; stable spelling while prefix binding grows
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
 	movea.l a0, a6
 	movea.l a1, a5
@@ -158,6 +159,17 @@ open	.block
 	adda.l d0, a2
 	moveq #0, d6
 	move.w records.Entry.Length(a0), d6
+	cmpi.l #records.NAME_BYTES-1, d6
+	bhi.w bad
+	movea.l a2, a0
+	movea.l sp, a1
+	move.l d6, d0
+	beq.w bad
+copyName
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w copyName
+	movea.l sp, a2
 	moveq #0, d5
 	moveq #0, d4
 scan
@@ -211,6 +223,7 @@ bad
 	moveq #1, d0
 done
 	.TELEMETRY_SERVICE_LEAVE
+	adda.l #records.NAME_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts

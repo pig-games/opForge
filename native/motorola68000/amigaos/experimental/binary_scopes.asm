@@ -6,6 +6,7 @@
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_scope_layout as layout
+	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_section_prepare as sections
@@ -17,6 +18,7 @@ ENTRY_BYTES = records.ENTRY_BYTES
 ENTRIES = layout.ENTRIES
 BUCKETS = layout.BUCKETS
 ARENA = layout.ARENA
+ARENA_POINTER = layout.ARENA_POINTER
 BUFFER = layout.BUFFER
 MODULE_STATE = layout.MODULE_STATE
 IMPORT_STATE = layout.IMPORT_STATE
@@ -54,8 +56,9 @@ STRUCT_STATE = SECTION_STATE+sections.SCRATCH_BYTES
 SCRATCH_BYTES = STRUCT_STATE+structs.SCRATCH_BYTES
 	.section code, kind=code
 
-; A0=caller-owned SCRATCH_BYTES, D0=first source ID, D1=.end ID. D0/CCR=status;
-; other registers preserved. All stored names and links are offsets or indices.
+; A0=zero-initialized caller-owned SCRATCH_BYTES (or released prior session),
+; D0=first source ID, D1=.end ID. D0/CCR=status; other registers preserved.
+; Owned arena pointers are preparation-only; stored names/links are offsets/IDs.
 begin	.block
 	movem.l d1/a0-a1, -(sp)
 	movea.l a0, a1
@@ -69,6 +72,9 @@ begin	.block
 	clr.w layout.State.Current(a0)
 	clr.w layout.State.Ended(a0)
 	clr.w layout.State.ArenaUsed(a0)
+	clr.l ARENA+memory.Block.Pointer(a0)
+	clr.l ARENA+memory.Block.Capacity(a0)
+	clr.l ARENA+memory.Block.Used(a0)
 	clr.w layout.State.FirstBound(a0)
 	clr.w layout.State.FirstExplicit(a0)
 	lea BUCKETS(a0), a0
@@ -97,6 +103,17 @@ done
 	tst.l d0
 	rts
 	.bend  ; begin
+
+; A0=preparation scope state. Release the owned name/index arena.
+; All registers preserved; CCR unspecified. Safe for empty/released storage.
+release	.block
+	movem.l a0, -(sp)
+	lea ARENA(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp)+, a0
+	rts
+	.bend  ; release
 
 ; A0=state. End one source without discarding shared definitions/imports.
 ; D0=nonzero requires explicit modules for nonempty files. D0/CCR=status;
@@ -152,7 +169,7 @@ beginFileDerived	.block
 	move.l d1, d0
 	sub.w layout.State.Base(a6), d0
 	lea ENTRIES(a6), a1
-	lea ARENA(a6), a2
+	movea.l ARENA_POINTER(a6), a2
 	movea.l a6, a3
 	lea bind, a4
 	lea MODULE_STATE(a6), a0
@@ -238,6 +255,21 @@ find
 	add.l d6, d0
 	cmpi.l #ARENA_BYTES, d0
 	bhi.w bad
+	; Lookup bytes may originate in the arena being grown. Keep a stable copy.
+	movem.l d0/a0-a1, -(sp)
+	movea.l a2, a0
+	lea BUFFER(a6), a1
+	move.l d6, d1
+stableName
+	move.b (a0)+, (a1)+
+	subq.l #1, d1
+	bne.w stableName
+	lea BUFFER(a6), a2
+	move.l 0(sp), d0
+	lea ARENA(a6), a0
+	jsr memory.reserve
+	movem.l (sp)+, d0/a0-a1
+	bne.w bad
 	moveq #0, d1
 	move.w layout.State.Count(a6), d1
 	move.l d1, d2
@@ -259,11 +291,12 @@ find
 	addq.w #1, d1
 	move.w d1, 0(a4, d4.w)
 	addq.w #1, layout.State.Count(a6)
-	lea ARENA(a6), a1
+	movea.l ARENA_POINTER(a6), a1
 	moveq #0, d1
 	move.w layout.State.ArenaUsed(a6), d1
 	adda.l d1, a1
 	move.w d0, layout.State.ArenaUsed(a6)
+	move.l d0, ARENA+memory.Block.Used(a6)
 	movea.l a2, a0
 	move.l d6, d0
 copy
@@ -630,7 +663,7 @@ parent
 	adda.l d0, a3
 	moveq #0, d3
 	move.w records.Entry.Owner(a3), d3
-	lea ARENA(a6), a0
+	movea.l ARENA_POINTER(a6), a0
 	moveq #0, d0
 	move.w records.Entry.Name(a4), d0
 	add.w records.Entry.Leaf(a4), d0
@@ -774,7 +807,7 @@ openModule	.block
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	lea ENTRIES(a6), a1
-	lea ARENA(a6), a2
+	movea.l ARENA_POINTER(a6), a2
 	movea.l a6, a3
 	lea bind, a4
 	lea MODULE_STATE(a6), a0
@@ -1019,7 +1052,7 @@ scan
 	add.l d7, d0
 	cmpi.l #layout.NAME_BYTES-1, d0
 	bhi.w bad
-	lea ARENA(a6), a0
+	movea.l ARENA_POINTER(a6), a0
 	moveq #0, d1
 	move.w records.Entry.Name(a3), d1
 	adda.l d1, a0
@@ -1081,7 +1114,7 @@ chain
 	adda.l d2, a3
 	cmp.w records.Entry.Length(a3), d6
 	bne.w next
-	lea ARENA(a6), a1
+	movea.l ARENA_POINTER(a6), a1
 	moveq #0, d0
 	move.w records.Entry.Name(a3), d0
 	adda.l d0, a1
@@ -1133,7 +1166,7 @@ keyword	.block
 	lsl.l #4, d0
 	lea ENTRIES(a6), a3
 	adda.l d0, a3
-	lea ARENA(a6), a0
+	movea.l ARENA_POINTER(a6), a0
 	moveq #0, d0
 	move.w records.Entry.Name(a3), d0
 	adda.l d0, a0
@@ -1224,7 +1257,7 @@ rebindLocal	.block
 	move.w records.Entry.Length(a3), d0
 	sub.w d2, d0
 	beq.w badRebind
-	lea ARENA(a6), a0
+	movea.l ARENA_POINTER(a6), a0
 	moveq #0, d3
 	move.w records.Entry.Name(a3), d3
 	add.l d2, d3
@@ -1298,11 +1331,11 @@ templateLeafEqual	.block
 	move.w records.Entry.Length(a2), d2
 	moveq #0, d3
 	move.w records.Entry.Length(a3), d3
-	lea ARENA(a6), a0
+	movea.l ARENA_POINTER(a6), a0
 	moveq #0, d0
 	move.w records.Entry.Name(a2), d0
 	adda.l d0, a0
-	lea ARENA(a6), a1
+	movea.l ARENA_POINTER(a6), a1
 	moveq #0, d0
 	move.w records.Entry.Name(a3), d0
 	adda.l d0, a1
@@ -1399,12 +1432,12 @@ templateDistance	.block
 	sub.w records.Entry.Leaf(a5), d3
 	cmp.w d3, d2
 	bne.w missing
-	lea ARENA(a6), a2
+	movea.l ARENA_POINTER(a6), a2
 	moveq #0, d0
 	move.w records.Entry.Name(a4), d0
 	add.w records.Entry.Leaf(a4), d0
 	adda.l d0, a2
-	lea ARENA(a6), a3
+	movea.l ARENA_POINTER(a6), a3
 	moveq #0, d0
 	move.w records.Entry.Name(a5), d0
 	add.w records.Entry.Leaf(a5), d0

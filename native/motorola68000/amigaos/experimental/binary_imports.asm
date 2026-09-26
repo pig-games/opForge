@@ -895,7 +895,7 @@ resolve	.block
 resolveQualified
 	moveq #0, d0
 	move.w records.Entry.Name(a3), d0
-	lea layout.ARENA(a6), a2
+	movea.l layout.ARENA_POINTER(a6), a2
 	adda.l d0, a2
 	moveq #0, d6
 	move.w records.Entry.Length(a3), d6
@@ -1372,7 +1372,7 @@ scopedDone
 ; Explicit qualified bindings have Leaf=0, so scan the stored name itself.
 entryLeafBytes	.block
 	move.l a2, -(sp)
-	lea layout.ARENA(a6), a0
+	movea.l layout.ARENA_POINTER(a6), a0
 	moveq #0, d0
 	move.w records.Entry.Name(a3), d0
 	adda.l d0, a0
@@ -1525,12 +1525,22 @@ badToken
 ; The import itself never makes a named block live; remapped references do.
 wildcardTarget	.block
 	movem.l d2-d7/a0-a3, -(sp)
+	suba.l #layout.NAME_BYTES, sp  ; retain leaf across bindings that relocate names
 	moveq #0, d0
 	move.w records.Entry.ScopeKind(a3), d0
 	subq.w #1, d0
 	bsr.w entryLeaf
-	movea.l a0, a2
 	move.l d0, d6
+	cmpi.l #layout.NAME_BYTES-1, d6
+	bhi.w wildcardBad
+	movea.l sp, a1
+	tst.l d0
+	beq.w wildcardBad
+copyStableLeaf
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w copyStableLeaf
+	movea.l sp, a2
 	moveq #0, d0
 	move.w records.Entry.Owner(a3), d0
 	subq.w #1, d0
@@ -1608,6 +1618,7 @@ wildcardDone
 wildcardBad
 	moveq #1, d0
 wildcardExit
+	adda.l #layout.NAME_BYTES, sp
 	movem.l (sp)+, d2-d7/a0-a3
 	tst.l d0
 	rts
@@ -1677,7 +1688,7 @@ entryName	.block
 	lsl.l #4, d0
 	lea layout.ENTRIES(a6), a1
 	adda.l d0, a1
-	lea layout.ARENA(a6), a0
+	movea.l layout.ARENA_POINTER(a6), a0
 	moveq #0, d0
 	move.w records.Entry.Name(a1), d0
 	adda.l d0, a0

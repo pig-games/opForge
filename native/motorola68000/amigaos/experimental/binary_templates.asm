@@ -1966,7 +1966,7 @@ rewriteFormal
 	moveq #0, d4
 	move.w records.Entry.Name(a4), d4
 	add.w records.Entry.Leaf(a4), d4
-	lea layout.ARENA(a0), a4
+	movea.l layout.ARENA_POINTER(a0), a4
 	adda.l d4, a4
 	moveq #0, d4
 rewriteCompare

@@ -16,6 +16,7 @@
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_modules as modules
+	.use experimental.amigaos.binary_memory as memory
 	.use tkvm.amigaos.runtime as tokenizer
 	.use tkvm.amigaos.control as control
 	.pub
@@ -613,11 +614,19 @@ indexBlocks	.block
 	movea.l Frame.Scratch(a0), a2
 	move.l a2, d1
 	beq.w indexBad
-	lea SCOPE_STATE+scopes.ARENA(a2), a2
+	move.l d0, -(sp)
+	lea SCOPE_STATE+scopes.ARENA(a2), a0
+	move.l #blocks.SCRATCH_BYTES, d0
+	jsr memory.reserve
+	bne.w indexReserveBad
+	move.l (sp)+, d0
+	movea.l SCOPE_STATE+scopes.ARENA_POINTER(a2), a2
 	movea.l a1, a0
 	movea.l a2, a1
 	jsr blocks.index
 	bra.w indexDone
+indexReserveBad
+	addq.l #4, sp
 indexBad
 	moveq #0, d1
 	moveq #1, d0
@@ -637,7 +646,7 @@ selectBlocks	.block
 	beq.w selectBad
 	movea.l a1, a0
 	lea SCOPE_STATE(a2), a2
-	lea scopes.ARENA(a2), a1
+	movea.l scopes.ARENA_POINTER(a2), a1
 	jsr blocks.select
 	bra.w selectDone
 selectBad
@@ -658,6 +667,8 @@ finish	.block
 	movea.l a6, a0
 	adda.l #TEMPLATE_STATE, a0
 	jsr templates.finish
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.release
 	clr.l PROGRAM(a6)
 	clr.l PROGRAM_BYTES(a6)
 	clr.l PACKAGE_BASE(a6)

@@ -1466,3 +1466,67 @@ tests (187 explicit native/environment tests ignored). Rust/assembly formatting,
 proof-contract and benchmark-selector checks pass. The architecture guard still
 reports the same nine existing findings in encoding/mask modules; this slice adds
 none. Broad repository qualification is not claimed.
+
+## Growable preparation-name arena checkpoint
+
+The entire disabled telemetry macro family matches Rust in a reduced native case.
+The self-host rejection at app line 399 is instead localized to shared name
+storage: temporarily changing the entry limit from 512 to 544 leaves the same
+rejection; increasing only the 16,384-byte arena by 512 bytes moves it to line
+413. These probes are diagnostics, not a maintained capacity increase. A larger
+inline layout also overflows signed instruction displacements during host build.
+
+Hypothesis: an owned growable name arena removes the accidental 16 KiB storage
+limit without changing binary source or package semantics. Reuse the existing
+allocator and gated accounting. Keep the 16-byte binding entry, 16-bit name
+offsets and 512-identity limit; reject a required extent above 65,535 explicitly.
+Separate arena storage from fixed preparation state and release it before
+assembly and on errors. Preserve block-index scratch reuse with an explicit
+capacity reservation. Source/package records continue to contain IDs/offsets.
+
+Acceptance: complete disabled macro-family parity, a spelling workload exceeding
+16 KiB with identical output, explicit offset-bound rejection, balanced native
+allocation/free accounting on success and rejection, unchanged timing control,
+and another bounded instrumented self-host probe. Do not expand this into a
+simultaneous module/import metadata or binary offset-width redesign.
+
+The arena now grows through `binary_memory` and is freed by frontend shutdown on
+success and rejection. Fixed preparation state contains only its owned block
+metadata; binding entries continue to contain word offsets. Binding, module-prefix
+opening and wildcard resolution preserve spelling bytes across callbacks that may
+relocate storage. Block indexing explicitly reserves its scratch capacity before
+reusing the arena. The shared composition/copy bound remains 255 bytes per name.
+
+Fresh native growth comparison matches all 15 Rust bytes for a 20,127-byte source:
+180 long sibling constants inside a deeply qualified module, followed by all 14
+disabled telemetry macro calls. It crosses allocation boundaries during module
+prefix binding and exceeds the former 16 KiB spelling limit. Instrumented peak is
+794,880 owned bytes, with zero error flags and balanced cleanup. The separate
+over-65,535-byte spelling case completes with explicit exit 20, peak 791,040 bytes,
+balanced cleanup and only incomplete-preparation flag 16. Instrumented times are
+not release performance measurements.
+
+The release image is 69,168 bytes / 80,456 linked reserved bytes, up 216 / 200
+bytes; runtime package remains 269,162 bytes. The unchanged 121-template control
+matches all 1,701 Rust bytes in 8.502 seconds versus 8.639 previously. One run per
+state supports no material performance-change claim.
+
+Self-hosting advances to app line 524 (hex file `20`, line `20C`),
+`move.l #declarations.SCRATCH_BYTES, d0`. The same 47-file graph now contains
+526,644 source bytes. Instrumented peak is 860,672 owned bytes versus the previous
+950,784 observation; the input and rejection point have advanced, so this is
+resource evidence from incomplete probes rather than a matched full-assembly
+comparison. Cleanup balances, flag 16 remains, and preparation calls are
+[1007, 1, 893, 893, 1005, 0]. No native self-host time or artifact parity is claimed.
+
+The referenced constant is public and fits the existing immediate path. The
+independent 512-identity bound is the next plausible resource constraint; confirm
+it before changing instruction semantics or storage. Scope/module/import metadata
+capacities are coupled, and simply enlarging their inline layout risks signed
+displacement overflow. Keep this as the next investigation, not a confirmed cause.
+
+Qualification: 98 focused Rust binary-source tests pass, with 190 explicit native
+or environment tests ignored. Native arena growth/rejection, wildcard import and
+bounded self-host checks complete freshly. Rust and assembly formatting (42 files), proof-contract
+and benchmark-selector checks pass. The architecture guard still reports the same
+nine existing findings; this slice adds none. Broad qualification is not claimed.

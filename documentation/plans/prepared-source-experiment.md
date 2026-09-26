@@ -1598,3 +1598,32 @@ Preparation remains incomplete (flag 16). This diagnostic is neither completed
 self-host parity nor a full assembly-time measurement. See the active
 [runtime reset plan](native-runtime-reset.md#indexed-addressing-checkpoint) for
 qualification scope and the next family-level investigation.
+
+## Growable preparation spelling storage
+
+The full disabled telemetry macro family already worked; self-hosting exposed the
+shared 16 KiB spelling arena instead. Name storage now uses an owned growable raw
+block. The arena's pointer/capacity are preparation-only state, never serialized
+source or package fields. Entries retain 16-bit offsets; required extents above
+65,535 reject. The 512-identity limit remains independent and unchanged.
+
+Binding retains stable lookup bytes before allocation. Module-prefix opening and
+wildcard resolution also copy names they need across binder callbacks; consumers
+otherwise fetch the current base and add stored offsets. Frontend shutdown releases
+the arena on success and errors. Block indexing still reuses this storage after
+name resolution, with an explicit reservation for the indexer's scratch bound.
+
+Reproduce fresh growth parity and the explicit offset-bound rejection using the
+documented 68020 / 2 MiB FS-UAE setup with `OPFORGE_COMPARE_MEMORY=1`:
+`cargo test -p asm compact_macro_arena_ -- --ignored --nocapture --test-threads=1`.
+The growth case also exercises every disabled telemetry macro and allocation
+during qualified module-prefix binding. It matches 15 Rust bytes, peaks at 794,880
+tracked owned bytes, reports zero profiling errors and balances cleanup. The
+offset-bound rejection also balances cleanup, with only flag 16.
+
+Release image: 69,168 bytes / 80,456 linked reserved bytes; m68020 capsule remains
+269,162 bytes. The unchanged template control matches 1,701 bytes in 8.502 seconds
+(previous observation 8.639). Self-hosting advances to app line 524 with 860,672
+peak tracked bytes and balanced cleanup, still incomplete. See the
+[reset checkpoint](native-runtime-reset.md#growable-preparation-name-arena-checkpoint)
+for evidence limits and the next storage investigation.

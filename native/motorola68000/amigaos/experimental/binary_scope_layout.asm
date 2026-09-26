@@ -1,13 +1,14 @@
-; Shared preparation-only scope storage. Offsets and IDs, never stored pointers.
+; Shared preparation-only scope storage. Persisted names retain offsets and IDs.
 ; @opforge-owner: experimental.amigaos.binary_scope_layout
 	.module experimental.amigaos.binary_scope_layout
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_modules as modules
+	.use experimental.amigaos.binary_memory as memory
 	.pub
 LIMIT = 512
-ARENA_BYTES = 16384
+ARENA_BYTES = 65535
 ; Composed lexical paths include invocation scopes as well as source names.
-NAME_BYTES = 256
+NAME_BYTES = records.NAME_BYTES
 ENTRY_BYTES = records.ENTRY_BYTES
 State	.struct
 Base	.word ?
@@ -24,7 +25,8 @@ FileContent	.word ?
 ENTRIES = State.FileContent+2
 BUCKETS = ENTRIES+LIMIT*ENTRY_BYTES
 ARENA = BUCKETS+256*2
-BUFFER = ARENA+ARENA_BYTES
+ARENA_POINTER = ARENA+memory.Block.Pointer
+BUFFER = ARENA+memory.Block.Used+4
 MODULE_STATE = BUFFER+NAME_BYTES
 IMPORT_STATE = MODULE_STATE+modules.SCRATCH_BYTES
 	.endmodule

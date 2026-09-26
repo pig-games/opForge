@@ -79,7 +79,7 @@ line	.block
 	moveq #0, d2
 	move.w records.Entry.Length(a0), d2
 	sub.w records.Entry.Leaf(a0), d2
-	lea layout.ARENA(a6), a1
+	movea.l layout.ARENA_POINTER(a6), a1
 	moveq #0, d0
 	move.w records.Entry.Name(a0), d0
 	add.w records.Entry.Leaf(a0), d0

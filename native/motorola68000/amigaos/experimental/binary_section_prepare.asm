@@ -865,7 +865,7 @@ leaf	.block
 	moveq #0, d1
 	move.w names.Entry.Name(a1), d1
 	add.l d3, d1
-	lea layout.ARENA(a6), a1
+	movea.l layout.ARENA_POINTER(a6), a1
 	adda.l d1, a1
 	moveq #0, d0
 	rts

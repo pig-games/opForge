@@ -17,6 +17,8 @@ Next	.word ?
 ScopeKind	.word ?
 .endstruct
 ENTRY_BYTES = Entry.ScopeKind+2
+; Includes room for the terminator in preparation-only composition/copy buffers.
+NAME_BYTES = 256
 	.section code, kind=code
 
 ; A0=packed records,D0=bytes,A1=Entry array,

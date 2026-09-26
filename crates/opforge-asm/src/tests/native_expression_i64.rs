@@ -113,8 +113,7 @@ fn scalar_cases() -> Vec<ScalarCase> {
                 symbol_refs: 0,
             });
         }
-        // Rust has no successful scalar authority for MIN / -1 or MIN % -1:
-        // both operations panic. Prove native fail-closed behavior explicitly.
+        // Both Rust and native reject unrepresentable signed quotient/remainder.
         for id in [11, 12] {
             let mut code = Vec::new();
             literal(&mut code, version, i64::MIN);
@@ -128,9 +127,7 @@ fn scalar_cases() -> Vec<ScalarCase> {
                 symbol_refs: 0,
             });
         }
-        // Native deliberately fails closed for MIN negation. Rust's ordinary
-        // negation is profile-dependent; the separate host test records that
-        // boundary rather than claiming a successful cross-profile value.
+        // Both Rust and native fail closed for unrepresentable MIN negation.
         let mut code = Vec::new();
         literal(&mut code, version, i64::MIN);
         code.extend([if version == 1 { 4 } else { 0x20 }, 1, 0]);
@@ -270,10 +267,10 @@ fn native_expression_i64_live_rust_oracle() {
 
 #[test]
 fn native_expression_i64_rust_division_overflow_domain() {
-    // Level A: distinguish Rust's panic domain from successful arithmetic.
+    // Level A: overflow is an explicit error, never a panic or successful value.
     for op in [BinaryOp::Divide, BinaryOp::Mod] {
         assert!(
-            std::panic::catch_unwind(|| apply_binary(op, i64::MIN, -1, Span::default())).is_err(),
+            apply_binary(op, i64::MIN, -1, Span::default()).is_err(),
             "Rust overflow authority changed for {op:?}"
         );
     }
@@ -281,17 +278,7 @@ fn native_expression_i64_rust_division_overflow_domain() {
 
 #[test]
 fn native_expression_i64_rust_unary_minimum_domain() {
-    // Level A: ordinary Rust negation panics with overflow checks and otherwise
-    // wraps. Native rejection is an explicit fail-closed boundary contract;
-    // this is not evidence of release-profile successful-value parity.
-    match std::panic::catch_unwind(|| apply_unary(UnaryOp::Minus, i64::MIN, Span::default())) {
-        Err(_) => eprintln!("Rust MIN negation domain: overflow panic in this profile"),
-        Ok(Ok(value)) => {
-            assert_eq!(value, i64::MIN);
-            eprintln!("Rust MIN negation domain: wrapping in this profile; native fails closed");
-        }
-        Ok(Err(error)) => panic!("Rust unary failure authority changed: {error}"),
-    }
+    assert!(apply_unary(UnaryOp::Minus, i64::MIN, Span::default()).is_err());
 }
 
 #[test]

@@ -10,6 +10,9 @@ mod generic_statement_boundary;
 #[path = "tests/constant_dependencies.rs"]
 mod constant_dependencies;
 
+#[path = "tests/signed_scalar_values.rs"]
+mod signed_scalar_values;
+
 #[path = "tests/reachable_block_relayout.rs"]
 mod reachable_block_relayout;
 

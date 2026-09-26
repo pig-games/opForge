@@ -195,10 +195,12 @@ fn eval_expr_with_depth(
 }
 
 /// Apply a unary operator to a value.
-pub fn apply_unary(op: UnaryOp, val: i64, _span: Span) -> Result<i64, EvalError> {
+pub fn apply_unary(op: UnaryOp, val: i64, span: Span) -> Result<i64, EvalError> {
     Ok(match op {
         UnaryOp::Plus => val,
-        UnaryOp::Minus => -val,
+        UnaryOp::Minus => val
+            .checked_neg()
+            .ok_or_else(|| EvalError::with_span("Integer negation overflow", span))?,
         UnaryOp::BitNot => !val,
         UnaryOp::LogicNot => {
             if val == 0 {
@@ -222,13 +224,15 @@ pub fn apply_binary(op: BinaryOp, l: i64, r: i64, span: Span) -> Result<i64, Eva
             if r == 0 {
                 return Err(EvalError::with_span("Division by zero", span));
             }
-            l / r
+            l.checked_div(r)
+                .ok_or_else(|| EvalError::with_span("Integer division overflow", span))?
         }
         BinaryOp::Mod => {
             if r == 0 {
                 return Err(EvalError::with_span("Modulo by zero", span));
             }
-            l % r
+            l.checked_rem(r)
+                .ok_or_else(|| EvalError::with_span("Integer remainder overflow", span))?
         }
         BinaryOp::Power => {
             if r < 0 {

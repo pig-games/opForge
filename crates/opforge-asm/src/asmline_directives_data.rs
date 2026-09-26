@@ -177,7 +177,7 @@ impl<'a> AsmLine<'a> {
             }
         };
         let is_rw = directive == "SET" || directive == "VAR";
-        let value = match self.eval_expr_for_data_directive(expr) {
+        let value = match self.eval_expr_for_signed_scalar_context(expr) {
             Ok(scalar) => match self.eval_value_ast(expr) {
                 Ok(
                     value @ (types::asm_value::AsmValue::List(_)
@@ -186,7 +186,7 @@ impl<'a> AsmLine<'a> {
                     | types::asm_value::AsmValue::StructInstance(_)),
                 ) => value,
                 Ok(types::asm_value::AsmValue::Scalar(_)) | Err(_) => {
-                    types::asm_value::AsmValue::Scalar(i64::from(scalar))
+                    types::asm_value::AsmValue::Scalar(scalar)
                 }
             },
             Err(scalar_err) => match self.eval_value_ast(expr) {

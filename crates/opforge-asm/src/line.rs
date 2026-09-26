@@ -43,8 +43,7 @@ use families::mos6502::module::FAMILY_ID as MOS6502_FAMILY_ID;
 use opcore::conditional::{ConditionalBlockKind, ConditionalSubType};
 use opcore::conditional::{ConditionalContext, ConditionalStack};
 use opcore::expression::{
-    apply_assignment_op, eval_binary_op, eval_unary_op, expr_span, parse_number_text, AstEvalError,
-    AstEvalErrorKind,
+    apply_assignment_op, expr_span, parse_number_text, AstEvalError, AstEvalErrorKind,
 };
 use opcore::imports::module_import_from_parser;
 use opcore::parser as asm_parser;
@@ -61,7 +60,7 @@ use registry::registry::{FamilyOperandSet, OperandSet, ResolvedPipeline};
 use registry::registry::{ModuleRegistry, RegistryError};
 use registry::syntax::RegisterChecker;
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -232,7 +231,7 @@ pub struct AsmLine<'a> {
     struct_table: StructTable,
     value_symbols: HashMap<String, AsmValue>,
     constant_definitions: Vec<asmline_constants::Definition>,
-    scalar_value_symbols: HashSet<String>,
+    pub(crate) scalar_value_symbols: HashMap<String, i64>,
     repeat_iteration_scopes: HashMap<String, Vec<String>>,
     active_struct: Option<ActiveStructDefinition>,
     diagnostics: AsmDiagnosticsState,
@@ -437,7 +436,7 @@ impl<'a> AsmLine<'a> {
             struct_table: StructTable::new(),
             value_symbols: HashMap::new(),
             constant_definitions: Vec::new(),
-            scalar_value_symbols: HashSet::new(),
+            scalar_value_symbols: HashMap::new(),
             repeat_iteration_scopes: HashMap::new(),
             active_struct: None,
             diagnostics: AsmDiagnosticsState::new(),
@@ -999,6 +998,10 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn set_value_symbol(&mut self, name: &str, value: AsmValue) {
+        if let AsmValue::Scalar(value) = value {
+            self.set_scalar_value_symbol(name, value);
+            return;
+        }
         self.clear_repeat_iteration_scopes(name);
         self.scalar_value_symbols
             .remove(&Self::value_symbol_key(name));
@@ -1010,16 +1013,16 @@ impl<'a> AsmLine<'a> {
         self.value_symbols.get(&Self::value_symbol_key(name))
     }
 
-    fn set_scalar_value_symbol(&mut self, name: &str) {
+    fn set_scalar_value_symbol(&mut self, name: &str, value: i64) {
         self.value_symbols.remove(&Self::value_symbol_key(name));
         self.scalar_value_symbols
-            .insert(Self::value_symbol_key(name));
+            .insert(Self::value_symbol_key(name), value);
         self.clear_repeat_iteration_scopes(name);
     }
 
     fn has_scalar_value_symbol(&self, name: &str) -> bool {
         self.scalar_value_symbols
-            .contains(&Self::value_symbol_key(name))
+            .contains_key(&Self::value_symbol_key(name))
     }
 
     pub fn set_repeat_iteration_scopes(&mut self, name: &str, scopes: Vec<String>) {
@@ -1052,7 +1055,7 @@ impl<'a> AsmLine<'a> {
 
     fn sync_value_symbol(&mut self, name: &str, value: &AsmValue) {
         match value {
-            AsmValue::Scalar(_) => self.set_scalar_value_symbol(name),
+            AsmValue::Scalar(value) => self.set_scalar_value_symbol(name, *value),
             _ => self.set_value_symbol(name, value.clone()),
         }
     }
@@ -1119,9 +1122,8 @@ impl<'a> AsmLine<'a> {
     }
 
     fn resolve_scoped_scalar_value_name(&self, name: &str) -> Option<String> {
-        // Scalar markers are rebuilt in source order each pass. Resolve the
-        // actual binding first so a forward local symbol from the previous
-        // pass cannot be bypassed for an already-visited parent marker.
+        // Resolve the actual binding before consulting semantic values, so
+        // a forward local symbol cannot be bypassed for a parent scalar.
         let candidate = self.resolve_scoped_name(name).ok()??;
         self.has_scalar_value_symbol(&candidate)
             .then_some(candidate)
@@ -2614,7 +2616,7 @@ impl<'a> AsmLine<'a> {
                         return LineStatus::DirEqu;
                     }
                 }
-                let value = match self.eval_expr_for_scalar_context(expr) {
+                let value = match self.eval_expr_for_signed_scalar_context(expr) {
                     Ok(scalar) => match self.eval_value_ast(expr) {
                         Ok(
                             value @ (AsmValue::List(_)
@@ -2622,7 +2624,7 @@ impl<'a> AsmLine<'a> {
                             | AsmValue::Struct(_)
                             | AsmValue::StructInstance(_)),
                         ) => value,
-                        Ok(AsmValue::Scalar(_)) | Err(_) => AsmValue::Scalar(i64::from(scalar)),
+                        Ok(AsmValue::Scalar(_)) | Err(_) => AsmValue::Scalar(scalar),
                     },
                     Err(scalar_err) => match self.eval_value_ast(expr) {
                         Ok(value) => value,
@@ -2775,7 +2777,7 @@ impl<'a> AsmLine<'a> {
             );
         }
 
-        let rhs = match self.eval_expr_for_scalar_context(expr) {
+        let rhs = match self.eval_expr_for_signed_scalar_context(expr) {
             Ok(value) => value,
             Err(err) => {
                 return self.failure_at_span(
@@ -2787,7 +2789,15 @@ impl<'a> AsmLine<'a> {
                 )
             }
         };
-        let new_val = match apply_assignment_op(op, left_val, rhs, span) {
+        let new_val = match self.apply_scalar_assignment_op(
+            op,
+            self.scalar_value_symbols
+                .get(&Self::value_symbol_key(&target))
+                .copied()
+                .unwrap_or(i64::from(left_val)),
+            rhs,
+            span,
+        ) {
             Ok(val) => val,
             Err(err) => {
                 return self.failure_at_span(
@@ -2801,10 +2811,11 @@ impl<'a> AsmLine<'a> {
         };
 
         if let Some(entry) = self.symbols.entry_mut(&target) {
-            entry.val = new_val;
+            entry.val = new_val as u32;
             entry.updated = true;
         }
-        self.aux_value = new_val;
+        self.set_scalar_value_symbol(&target, new_val);
+        self.aux_value = new_val as u32;
         LineStatus::DirEqu
     }
 
@@ -3126,6 +3137,14 @@ impl<'a> AsmLine<'a> {
     }
 
     pub(crate) fn eval_expr_for_scalar_context(&self, expr: &Expr) -> Result<u32, AstEvalError> {
+        self.eval_expr_for_signed_scalar_context(expr)
+            .map(|value| value as u32)
+    }
+
+    pub(crate) fn eval_expr_for_signed_scalar_context(
+        &self,
+        expr: &Expr,
+    ) -> Result<i64, AstEvalError> {
         let _expr_eval_scope = self.pass_expr_eval_scope();
         if let Some((name, span)) = self.find_private_symbol_in_expr(expr) {
             return Err(ast_eval_from_asm_error(self.visibility_error(&name), span));
@@ -3133,12 +3152,12 @@ impl<'a> AsmLine<'a> {
 
         if let Expr::Identifier(name, _) | Expr::Register(name, _) = expr {
             if let Some(AsmValue::Scalar(value)) = AssemblerContext::value_symbol(self, name) {
-                return Ok(value as u32);
+                return Ok(value);
             }
         }
 
         match AssemblerContext::eval_expr(self, expr) {
-            Ok(value) => Ok(value as u32),
+            Ok(value) => Ok(value),
             Err(message) => Err(AstEvalError::expression(message, expr_span(expr))),
         }
     }

@@ -1707,8 +1707,10 @@ beyond the former division boundary. Root cause is not yet established. Peak tra
 ownership is 1,018,368 bytes with balanced cleanup; flag 16 records incomplete
 preparation timing, so there is no full native self-host duration or parity claim.
 
-Known oracle limitation, deferred to the next slice by agreement: Rust currently
-stores assignment-produced scalar symbols as unsigned shadows. Thus `n=-17`
-followed by `n/7` loses the signed meaning, while `(-magnitude)/7` with `magnitude=17`
-and literal `-17/7` behave correctly. This slice proves signed arithmetic through
-the latter forms; it does not claim parity for negative assignment-produced symbols.
+The arithmetic slice exposed and deferred a Rust oracle defect: assignment-produced
+negative scalar symbols lost their sign through unsigned shadows. The subsequent
+Rust repair preserves semantic scalar values separately from the 32-bit symbol
+shadow. Thus `n=-17; n/7` now has the same signed meaning as literal `-17/7`.
+Address labels remain unsigned. This repairs the reference; the native arithmetic
+slice's proof still covers its original literal/unary-negation cases, and native
+negative-symbol parity is not newly claimed here.

@@ -1632,11 +1632,12 @@ single numeric spelling because the body predicate also admits `%`. Number scann
 now stops at a nonleading `%`; leading binary prefixes remain accepted. Cases cover
 both `%101%10` (5 modulo decimal10) and `%101 % %10` (5 modulo binary2).
 
-A separate Rust oracle defect is deferred at Erik's explicit request: ordinary
-assignment truncates scalar values into unsigned symbol shadows, so `n=-17; n/7`
-produces an unsigned quotient. The grammar proof uses unary negation of a positive
-symbol, plus signed literals and checked32 boundary values. It does not claim
-parity for assignment-produced negative scalar symbols.
+The arithmetic slice deferred a separate Rust oracle defect at Erik's explicit
+request: ordinary assignment truncated scalar values into unsigned symbol shadows,
+so `n=-17; n/7` produced an unsigned quotient. That grammar proof used unary
+negation of a positive symbol, plus signed literals and checked32 boundary values.
+It did not claim parity for assignment-produced negative scalar symbols; the
+subsequent reference repair is described below.
 
 Fresh instrumented 68020 / 2 MiB runs match all 116 / 114 Rust bytes for m68020 /
 m6502 packages. Both compile 39 expressions into 187 program bytes; evaluations
@@ -1665,8 +1666,41 @@ formatting (42 files), proof-contract and benchmark-selector checks pass. The
 architecture guard retains the same nine existing enforced findings. Broad
 repository qualification is not claimed.
 
-Next agreed slice: preserve evaluated numeric scalar values alongside Rust's
-existing unsigned address/ABI shadows. Cover immutable/mutable/chained and forward
-constants, `.const`/`.var`, compound updates, unsigned constants and high-address
-labels. Keep labels unsigned; do not sign-extend every symbol. Inspect existing typed
-value classification before choosing whether to reuse it or add scalar storage.
+## Rust signed scalar reference repair
+
+Replace scalar classification-only storage with semantic `i64` values alongside
+the unchanged unsigned address/ABI shadows. Assignment, `.const`/`.var`/`.set`,
+mutable arithmetic updates and forward-constant resolution synchronize both.
+Scoped host and VM expression leaves read the semantic value; address labels keep
+their unsigned meaning. Bitwise/shift and packed concatenation/repetition compound
+operators retain their established 32-bit domain. Output width rules are unchanged.
+
+Use one signed host expression walk with a 32-bit adapter for consumers requiring
+that result width; do not retain parallel signed/unsigned AST interpreters.
+The correctness comparison covers negative quotient/remainder, mutable snapshots,
+forward chains, structured/scalar reassignment, qualified imports, both target byte
+orders, positive wide constants and unsigned high-address labels. Host-forced and
+VM instruction operands must agree. Native code/package formats are unaffected;
+this slice repairs the reference rather than advancing the self-host frontier.
+
+Semantic values also participate in layout-stability comparisons and survive
+recreated line processors between passes; comparing only their 32-bit shadows can
+miss changes in sign or upper bits. The shared core now rejects unrepresentable
+signed-minimum negation/division/remainder rather than panicking, matching the
+native fail-closed boundary. Zero divisors remain errors. No separate host-only
+overflow rule remains.
+
+Qualification: all eight signed-scalar regressions pass, including signed struct
+fields and exact dotted-binding precedence. The broad `asm`, `opcore` and `vm`
+run passes 202 core and 434 VM unit tests, plus their integration checks. The
+assembler run has 187 remaining failures reproduced in an isolated pre-slice
+baseline; these include stale package/reference expectations and existing module
+output failures. Its one additional failure was an incorrect new test expectation
+about forward dotted-binding precedence, corrected and rechecked in the focused
+suite. No broad green qualification or fresh native execution is claimed.
+
+Formatting and benchmark-selector checks pass. The architecture guard retains
+its nine existing enforced findings. All-target Clippy also encounters existing
+warnings in the unchanged engine dependency; Clippy with `--lib --no-deps` passes
+for all three affected crates.
+This is a correctness repair, with no comparative performance claim.

@@ -368,6 +368,12 @@ Compound assignment operators:
 
 `.const` and `.var` mirror `=` and `:=` semantics; `.set` is an alias for `.var`.
 
+Numeric scalar assignments retain their signed expression value. For example,
+`n = -17` followed by `n / 7` evaluates to `-2`, and `n % 7` evaluates to `-3`.
+Mutable assignments and arithmetic compound updates use the same scalar meaning.
+Address labels remain unsigned; `$ffffffff` as a positive constant is distinct
+from `-1`. Data and address outputs still apply their existing width rules.
+
 Immutable scalar constants may form forward dependency chains using numeric
 literals, symbol references, unary/binary operators and ternary expressions.
 The assembler resolves these chains after the initial layout, then refreshes

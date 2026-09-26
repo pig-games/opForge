@@ -128,7 +128,7 @@ impl AsmLine<'_> {
                     self.symbol_scope = definition.scope.clone();
                     self.cpu = definition.cpu;
                     let value = self
-                        .eval_expr_for_scalar_context(&definition.expr)
+                        .eval_expr_for_signed_scalar_context(&definition.expr)
                         .map_err(|error| {
                             (
                                 definition.line,
@@ -143,13 +143,15 @@ impl AsmLine<'_> {
                         .symbols
                         .entry_mut(&definition.name)
                         .expect("captured constant has a symbol entry");
-                    repaired[node] = entry.val != value;
-                    entry.val = value;
+                    repaired[node] = self
+                        .scalar_value_symbols
+                        .get(&Self::value_symbol_key(&definition.name))
+                        .copied()
+                        != Some(value);
+                    entry.val = value as u32;
                     entry.updated = true;
-                    // Scalar value symbols use the symbol-table shadow, exactly
-                    // as the ordinary assignment path does; clear stale typed
-                    // storage through the shared synchronization helper.
-                    self.sync_value_symbol(&definition.name, &AsmValue::Scalar(i64::from(value)));
+                    // Keep the signed semantic value and ABI shadow synchronized.
+                    self.sync_value_symbol(&definition.name, &AsmValue::Scalar(value));
                     repaired[node] |= self
                         .layout
                         .absolute_constant_symbols

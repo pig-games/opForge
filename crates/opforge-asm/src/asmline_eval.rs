@@ -11,6 +11,54 @@ use std::collections::HashMap;
 use types::asm_value::{AsmValue, AsmValueError, StructDef, StructInstance};
 
 impl<'a> AsmLine<'a> {
+    fn apply_signed_binary_op(
+        &self,
+        op: BinaryOp,
+        left: i64,
+        right: i64,
+        span: Span,
+    ) -> Result<i64, AstEvalError> {
+        if matches!(op, BinaryOp::Divide | BinaryOp::Mod) && right == 0 {
+            return Err(AstEvalError::expression("Divide by zero", span));
+        }
+        if op == BinaryOp::Power && !(0..=63).contains(&right) {
+            return Err(AstEvalError::expression(
+                "Exponent out of range for integer power",
+                span,
+            ));
+        }
+        opcore::expr::apply_binary(op, left, right, span)
+            .map_err(|error| AstEvalError::expression(error.message, error.span.unwrap_or(span)))
+    }
+
+    pub(super) fn apply_scalar_assignment_op(
+        &self,
+        op: AssignOp,
+        left: i64,
+        right: i64,
+        span: Span,
+    ) -> Result<i64, AstEvalError> {
+        // Bit operations and packed concat/repeat retain their established u32 domain.
+        let binary = match op {
+            AssignOp::Add => Some(BinaryOp::Add),
+            AssignOp::Sub => Some(BinaryOp::Subtract),
+            AssignOp::Mul => Some(BinaryOp::Multiply),
+            AssignOp::Div => Some(BinaryOp::Divide),
+            AssignOp::Mod => Some(BinaryOp::Mod),
+            AssignOp::Pow => Some(BinaryOp::Power),
+            AssignOp::Min => return Ok(left.min(right)),
+            AssignOp::Max => return Ok(left.max(right)),
+            AssignOp::Member | AssignOp::Const | AssignOp::Var | AssignOp::VarIfUndef => {
+                return Ok(right)
+            }
+            _ => None,
+        };
+        if let Some(binary) = binary {
+            return self.apply_signed_binary_op(binary, left, right, span);
+        }
+        apply_assignment_op(op, left as u32, right as u32, span).map(i64::from)
+    }
+
     fn eval_repeat_member_index(
         &self,
         repeat_name: &str,
@@ -25,7 +73,7 @@ impl<'a> AsmLine<'a> {
             return Ok(None);
         };
 
-        let index_value = i64::from(self.eval_expr_ast(index)?);
+        let index_value = self.eval_expr_for_signed_scalar_context(index)?;
         if index_value < 0 {
             return Err(AstEvalError::expression("Index cannot be negative", span));
         }
@@ -43,7 +91,12 @@ impl<'a> AsmLine<'a> {
             ));
         };
 
-        Ok(Some(AsmValue::Scalar(i64::from(entry.val))))
+        Ok(Some(AsmValue::Scalar(
+            self.scalar_value_symbols
+                .get(&Self::value_symbol_key(&field_name))
+                .copied()
+                .unwrap_or(i64::from(entry.val)),
+        )))
     }
 
     pub fn eval_value_ast(&self, expr: &Expr) -> Result<AsmValue, AstEvalError> {
@@ -63,14 +116,14 @@ impl<'a> AsmLine<'a> {
                     Ok(None) => {}
                     Err(err) => return Err(ast_eval_from_asm_error(err, *span)),
                 }
-                self.eval_expr_ast(expr)
-                    .map(|value| AsmValue::Scalar(i64::from(value)))
+                self.eval_expr_for_signed_scalar_context(expr)
+                    .map(AsmValue::Scalar)
             }
             Expr::List(items, _span) => {
                 let mut values = Vec::with_capacity(items.len());
                 for item in items {
-                    let value = self.eval_expr_ast(item)?;
-                    values.push(i64::from(value));
+                    let value = self.eval_expr_for_signed_scalar_context(item)?;
+                    values.push(value);
                 }
                 Ok(AsmValue::List(values))
             }
@@ -81,10 +134,10 @@ impl<'a> AsmLine<'a> {
                 inclusive,
                 span,
             } => {
-                let start = i64::from(self.eval_expr_ast(start)?);
-                let end = i64::from(self.eval_expr_ast(end)?);
+                let start = self.eval_expr_for_signed_scalar_context(start)?;
+                let end = self.eval_expr_for_signed_scalar_context(end)?;
                 let step = match step {
-                    Some(step_expr) => Some(i64::from(self.eval_expr_ast(step_expr)?)),
+                    Some(step_expr) => Some(self.eval_expr_for_signed_scalar_context(step_expr)?),
                     None => None,
                 };
                 AsmValue::try_range(start, end, *inclusive, step).map_err(|err| {
@@ -102,7 +155,7 @@ impl<'a> AsmLine<'a> {
             }
             Expr::Index { base, index, span } => {
                 let value = self.eval_value_ast(base)?;
-                let index_value = i64::from(self.eval_expr_ast(index)?);
+                let index_value = self.eval_expr_for_signed_scalar_context(index)?;
                 if index_value < 0 {
                     return Err(AstEvalError::expression("Index cannot be negative", *span));
                 }
@@ -148,7 +201,7 @@ impl<'a> AsmLine<'a> {
                             *span,
                         ));
                     }
-                    let field_value = i64::from(self.eval_expr_ast(field_expr)?);
+                    let field_value = self.eval_expr_for_signed_scalar_context(field_expr)?;
                     values.insert(field_key, field_value);
                 }
 
@@ -307,7 +360,7 @@ impl<'a> AsmLine<'a> {
                 else_expr,
                 ..
             } => {
-                let cond_val = self.eval_expr_ast(cond)?;
+                let cond_val = self.eval_expr_for_signed_scalar_context(cond)?;
                 if cond_val != 0 {
                     self.eval_value_ast(then_expr)
                 } else {
@@ -319,8 +372,8 @@ impl<'a> AsmLine<'a> {
             | Expr::Unary { .. }
             | Expr::Dollar(_)
             | Expr::String(_, _) => self
-                .eval_expr_ast(expr)
-                .map(|value| AsmValue::Scalar(i64::from(value))),
+                .eval_expr_for_signed_scalar_context(expr)
+                .map(AsmValue::Scalar),
         }
     }
 
@@ -381,7 +434,7 @@ impl<'a> AsmLine<'a> {
         &self,
         name: &str,
         span: Span,
-    ) -> Option<Result<u32, AstEvalError>> {
+    ) -> Option<Result<i64, AstEvalError>> {
         let parts: Vec<&str> = name.split('.').collect();
         if parts.len() < 2 || parts.iter().any(|segment| segment.is_empty()) {
             return None;
@@ -434,7 +487,7 @@ impl<'a> AsmLine<'a> {
             }
 
             return match current {
-                AsmValue::Scalar(value) => Some(Ok(value as u32)),
+                AsmValue::Scalar(value) => Some(Ok(value)),
                 _ => Some(Err(AstEvalError::expression(
                     "Member expression requires struct base value",
                     span,
@@ -446,6 +499,11 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn eval_expr_ast(&self, expr: &Expr) -> Result<u32, AstEvalError> {
+        self.eval_signed_host_expr(expr).map(|value| value as u32)
+    }
+
+    // One semantic walk; address/data callers narrow through eval_expr_ast.
+    fn eval_signed_host_expr(&self, expr: &Expr) -> Result<i64, AstEvalError> {
         if HOST_EXPR_EVAL_FAILPOINT.with(|flag| flag.get()) {
             return Err(AstEvalError::expression(
                 "host expression evaluator failpoint",
@@ -455,50 +513,13 @@ impl<'a> AsmLine<'a> {
 
         match expr {
             Expr::Error(message, span) => Err(AstEvalError::expression(message, *span)),
-            Expr::Number(text, span) => parse_number_text(text, *span),
-            Expr::Identifier(name, span) | Expr::Register(name, span) => {
-                if let Some(value) = self.lookup_loop_var(name) {
-                    return Ok(value);
-                }
-                if let Some(full_name) = self.resolve_scoped_value_name(name) {
-                    let message = match self.lookup_value_symbol(&full_name) {
-                        Some(AsmValue::List(_)) => "List cannot be evaluated as scalar expression",
-                        Some(AsmValue::Range { .. }) => {
-                            "Range cannot be evaluated as scalar expression"
-                        }
-                        Some(AsmValue::Struct(_)) => {
-                            "Struct cannot be evaluated as scalar expression"
-                        }
-                        Some(AsmValue::StructInstance(_)) => {
-                            "Struct instance cannot be evaluated as scalar expression"
-                        }
-                        _ => "List cannot be evaluated as scalar expression",
-                    };
-                    return Err(AstEvalError::expression(message, *span));
-                }
-                match self.resolve_scoped_name(name) {
-                    Ok(Some(full_name)) => {
-                        let Some(entry) = self.symbols.entry(&full_name) else {
-                            return Ok(0);
-                        };
-                        Ok(entry.val)
-                    }
-                    Ok(None) => {
-                        if let Some(result) = self.eval_dotted_identifier_scalar(name, *span) {
-                            return result;
-                        }
-                        if self.pass > 1 {
-                            Err(AstEvalError::expression(
-                                format!("Label not found: {name}"),
-                                *span,
-                            ))
-                        } else {
-                            Ok(0)
-                        }
-                    }
-                    Err(err) => Err(ast_eval_from_asm_error(err, *span)),
-                }
-            }
+            Expr::Number(text, span) => match parse_number_text(text, *span) {
+                Ok(value) => Ok(i64::from(value)),
+                Err(error) => opcore::expr::parse_number(text).ok_or(error),
+            },
+            Expr::Identifier(name, span) | Expr::Register(name, span) => self
+                .eval_symbol_leaf_for_vm_bridge(name, *span)
+                .map_err(|message| AstEvalError::expression(message, *span)),
             Expr::List(_, span) => Err(AstEvalError::expression(
                 "List cannot be evaluated as scalar expression",
                 *span,
@@ -509,7 +530,7 @@ impl<'a> AsmLine<'a> {
             | Expr::Call { .. } => {
                 let value = self.eval_value_ast(expr)?;
                 match value {
-                    AsmValue::Scalar(value) => Ok(value as u32),
+                    AsmValue::Scalar(value) => Ok(value),
                     AsmValue::List(_) => Err(AstEvalError::expression(
                         "List cannot be evaluated as scalar expression",
                         expr_span(expr),
@@ -534,15 +555,15 @@ impl<'a> AsmLine<'a> {
             )),
             Expr::Indirect(inner, _span) => {
                 // For 6502-style indirect like ($20), evaluate the inner address expression
-                self.eval_expr_ast(inner)
+                self.eval_signed_host_expr(inner)
             }
             Expr::IndirectLong(inner, _span) => {
                 // For 65816-style bracketed indirect like [$20], evaluate inner expression.
-                self.eval_expr_ast(inner)
+                self.eval_signed_host_expr(inner)
             }
             Expr::Immediate(inner, _span) => {
                 // Immediate expressions like #$FF - evaluate the inner expression
-                self.eval_expr_ast(inner)
+                self.eval_signed_host_expr(inner)
             }
             Expr::Tuple(_, span) => Err(AstEvalError::expression(
                 "Tuple cannot be evaluated as expression",
@@ -552,7 +573,7 @@ impl<'a> AsmLine<'a> {
                 "Range cannot be evaluated as scalar expression",
                 *span,
             )),
-            Expr::Dollar(_span) => Ok(self.start_addr),
+            Expr::Dollar(_span) => Ok(i64::from(self.start_addr)),
             Expr::String(bytes, span) => {
                 let encoded_bytes = self.encode_text_bytes(
                     bytes,
@@ -561,9 +582,9 @@ impl<'a> AsmLine<'a> {
                     AsmErrorKind::Expression,
                 )?;
                 if encoded_bytes.len() == 1 {
-                    Ok(encoded_bytes[0] as u32)
+                    Ok(i64::from(encoded_bytes[0]))
                 } else if encoded_bytes.len() == 2 {
-                    Ok(((encoded_bytes[0] as u32) << 8) | (encoded_bytes[1] as u32))
+                    Ok(((i64::from(encoded_bytes[0])) << 8) | (i64::from(encoded_bytes[1])))
                 } else {
                     Err(AstEvalError::expression(
                         "Multi-character string not allowed in expression.",
@@ -577,16 +598,17 @@ impl<'a> AsmLine<'a> {
                 else_expr,
                 ..
             } => {
-                let cond_val = self.eval_expr_ast(cond)?;
+                let cond_val = self.eval_signed_host_expr(cond)?;
                 if cond_val != 0 {
-                    self.eval_expr_ast(then_expr)
+                    self.eval_signed_host_expr(then_expr)
                 } else {
-                    self.eval_expr_ast(else_expr)
+                    self.eval_signed_host_expr(else_expr)
                 }
             }
             Expr::Unary { op, expr, span: _ } => {
-                let inner = self.eval_expr_ast(expr)?;
-                Ok(eval_unary_op(*op, inner))
+                let inner = self.eval_signed_host_expr(expr)?;
+                opcore::expr::apply_unary(*op, inner, expr_span(expr))
+                    .map_err(|error| AstEvalError::expression(error.message, expr_span(expr)))
             }
             Expr::Binary {
                 op,
@@ -594,9 +616,14 @@ impl<'a> AsmLine<'a> {
                 right,
                 span,
             } => {
-                let left_val = self.eval_expr_ast(left)?;
-                let right_val = self.eval_expr_ast(right)?;
-                eval_binary_op(*op, left_val, right_val, *span, self.line_end_span)
+                let left_val = self.eval_signed_host_expr(left)?;
+                let right_val = self.eval_signed_host_expr(right)?;
+                self.apply_signed_binary_op(
+                    *op,
+                    left_val,
+                    right_val,
+                    self.line_end_span.unwrap_or(*span),
+                )
             }
         }
     }
@@ -657,8 +684,7 @@ impl<'a> AssemblerContext for AsmLine<'a> {
     fn eval_expr(&self, expr: &Expr) -> Result<i64, String> {
         if self.expr_requires_host_eval(expr) {
             return self
-                .eval_expr_ast(expr)
-                .map(|v| v as i64)
+                .eval_signed_host_expr(expr)
                 .map_err(|e| e.error.message().to_string());
         }
 
@@ -685,8 +711,7 @@ impl<'a> AssemblerContext for AsmLine<'a> {
                             let message = err.to_string();
                             if self.pass <= 1 && Self::is_vm_unknown_symbol_error(&message) {
                                 return self
-                                    .eval_expr_ast(expr)
-                                    .map(|v| v as i64)
+                                    .eval_signed_host_expr(expr)
                                     .map_err(|e| e.error.message().to_string());
                             }
 
@@ -697,8 +722,7 @@ impl<'a> AssemblerContext for AsmLine<'a> {
             }
         }
 
-        self.eval_expr_ast(expr)
-            .map(|v| v as i64)
+        self.eval_signed_host_expr(expr)
             .map_err(|e| e.error.message().to_string())
     }
 
@@ -790,8 +814,9 @@ impl<'a> AssemblerContext for AsmLine<'a> {
 
     fn scalar_value_symbol(&self, name: &str) -> Option<i64> {
         let full_name = self.resolve_scoped_scalar_value_name(name)?;
-        self.lookup_scoped_entry(&full_name)
-            .map(|entry| i64::from(entry.val))
+        self.scalar_value_symbols
+            .get(&Self::value_symbol_key(&full_name))
+            .copied()
     }
 
     fn value_symbol(&self, name: &str) -> Option<AsmValue> {
@@ -817,7 +842,17 @@ impl<'a> AssemblerContext for AsmLine<'a> {
             return Some(AsmValue::Struct(def.clone()));
         }
 
-        self.scalar_value_symbol(name).map(AsmValue::Scalar)
+        if let Some(value) = self.scalar_value_symbol(name) {
+            return Some(AsmValue::Scalar(value));
+        }
+        // Actual bindings retain precedence, including address labels. Dotted
+        // struct fields are semantic scalar leaves even without a symbol entry.
+        if self.has_symbol(name) {
+            return None;
+        }
+        self.eval_dotted_identifier_scalar(name, Span::default())
+            .and_then(Result::ok)
+            .map(AsmValue::Scalar)
     }
 
     fn cpu_state_flag(&self, key: &str) -> Option<u32> {
@@ -846,6 +881,9 @@ impl<'a> AsmLine<'a> {
         if let Some(value) = self.lookup_loop_var(name) {
             return Ok(i64::from(value));
         }
+        if let Some(value) = self.scalar_value_symbol(name) {
+            return Ok(value);
+        }
 
         if let Some(full_name) = self.resolve_scoped_value_name(name) {
             let message = match self.lookup_value_symbol(&full_name) {
@@ -869,9 +907,7 @@ impl<'a> AsmLine<'a> {
             }
             Ok(None) => {
                 if let Some(result) = self.eval_dotted_identifier_scalar(name, span) {
-                    return result
-                        .map(i64::from)
-                        .map_err(|err| err.error.message().to_string());
+                    return result.map_err(|err| err.error.message().to_string());
                 }
 
                 if self.pass > 1 {

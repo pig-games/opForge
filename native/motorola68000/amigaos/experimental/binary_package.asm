@@ -77,6 +77,15 @@ ValueProgram	.word ?
 Reserved	.word ?
 .endstruct
 
+SequenceStage	.struct
+Kind	.byte ?
+Reserved	.byte ?
+Program	.word ?
+InputCount	.word ?
+Reserved2	.word ?
+Inputs	.long ?
+.endstruct
+
 Program	.struct
 Kind	.word ?
 Version	.word ?

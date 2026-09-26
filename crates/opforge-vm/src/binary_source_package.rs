@@ -83,6 +83,9 @@ pub enum CandidateRecipe {
         program: u16,
         inputs: Vec<Projection>,
     },
+    SemanticSequence {
+        stages: Vec<SemanticStage>,
+    },
     PackedMaskIndirect {
         opcode: u16,
         mask_operand: u8,
@@ -98,6 +101,12 @@ pub enum CandidateRecipe {
     Unsupported {
         plan: u16,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SemanticStage {
+    pub program: Option<u16>,
+    pub inputs: Vec<Projection>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,6 +148,14 @@ pub enum Projection {
         operand: u8,
     },
     TupleArity {
+        operand: u8,
+    },
+    TupleQualifiedRegister {
+        operand: u8,
+        class: u16,
+        qualifier: u16,
+    },
+    TupleArityThree {
         operand: u8,
     },
     ValueProgram {
@@ -543,6 +560,7 @@ fn parse_recipe(plan: &str, names: &mut NameTable) -> CandidateRecipe {
         "u8" => CandidateRecipe::Scalar(ScalarPlan::U8),
         "u16" => CandidateRecipe::Scalar(ScalarPlan::U16),
         "rel8" => CandidateRecipe::Scalar(ScalarPlan::Rel8),
+        _ if plan.starts_with("semv.sequence.v1:") => parse_sequence(plan, names),
         _ if plan.starts_with("semv.inputs.v1:") => {
             parse_semantic(plan, "semv.inputs.v1:", false, names)
         }
@@ -606,6 +624,39 @@ fn parse_packed_mask_indirect(plan: &str) -> Option<CandidateRecipe> {
         first_shift,
         second_class,
         second_shift,
+    })
+}
+
+// Only bounded match/encode sequences are executable. Unknown stages remain
+// explicit unsupported candidates; match stages have no executable program.
+fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
+    let parsed = (|| {
+        let mut stages = Vec::new();
+        let mut encoded = false;
+        for stage in plan.strip_prefix("semv.sequence.v1:")?.split(';') {
+            let (kind, body) = stage.split_once(':')?;
+            let (program, inputs) = body.split_once('@')?;
+            let program = match kind {
+                "match" if program == "_" && !encoded => None,
+                "encode" if !program.is_empty() && program != "_" => {
+                    encoded = true;
+                    Some(names.id(program))
+                }
+                _ => return None,
+            };
+            let inputs = inputs
+                .split(',')
+                .map(|value| parse_projection(value, names))
+                .collect::<Option<Vec<_>>>()?;
+            if inputs.is_empty() || inputs.len() > 16 || stages.len() == 8 {
+                return None;
+            }
+            stages.push(SemanticStage { program, inputs });
+        }
+        encoded.then_some(CandidateRecipe::SemanticSequence { stages })
+    })();
+    parsed.unwrap_or_else(|| CandidateRecipe::Unsupported {
+        plan: names.id(plan),
     })
 }
 
@@ -708,6 +759,18 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
             qualifier: names.id(qualifier),
         });
     }
+    if let Some(rest) = value.strip_prefix("indirect_tuple_qualified_reg") {
+        let (operand, rest) = rest.split_once(".item2.qualifier")?;
+        let (qualifier, class) = rest.split_once(".class")?;
+        if qualifier.is_empty() {
+            return None;
+        }
+        return Some(Projection::TupleQualifiedRegister {
+            operand: operand.parse().ok()?,
+            class: class.parse().ok()?,
+            qualifier: names.id(qualifier),
+        });
+    }
     if let Some(rest) = value.strip_prefix("indirect_tuple_reg") {
         let (operand, tail) = rest.split_once(".item1.class")?;
         return Some(Projection::TupleRegister {
@@ -726,6 +789,11 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
     }
     if let Some(rest) = value.strip_prefix("indirect_tuple_arity") {
         let (operand, arity) = rest.split_once(".value")?;
+        if arity == "3" {
+            return Some(Projection::TupleArityThree {
+                operand: operand.parse().ok()?,
+            });
+        }
         if arity != "2" {
             return None;
         }
@@ -1036,5 +1104,83 @@ mod tests {
             member_excluded("semv.sequence.v1:match:_@expr0;encode:x@reg1.class0"),
             0
         );
+    }
+    #[test]
+    fn indexed_sequence_keeps_match_and_encoder_inputs_separate() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        let plan = "semv.sequence.v1:match:_@indirect_tuple_reg0.item1.class1,indirect_tuple_qualified_reg0.item2.qualifierw.class0,indirect_tuple_value0.item0,indirect_tuple_arity0.value3;encode:fields@literal:48,indirect_tuple_reg0.item1.class1;encode:index@indirect_tuple_qualified_reg0.item2.qualifierw.class0,literal:0,literal:0,indirect_tuple_value0.item0";
+        let super::CandidateRecipe::SemanticSequence { stages } =
+            super::parse_recipe(plan, &mut names)
+        else {
+            panic!("indexed sequence must lower");
+        };
+        assert_eq!(stages.len(), 3);
+        assert_eq!(stages[0].program, None);
+        assert_eq!(stages[0].inputs.len(), 4);
+        assert_eq!(stages[1].inputs.len(), 2);
+        assert_eq!(stages[2].inputs.len(), 4);
+        assert!(stages[1].program.is_some());
+        assert!(matches!(
+            stages[0].inputs[1],
+            Projection::TupleQualifiedRegister {
+                operand: 0,
+                class: 0,
+                ..
+            }
+        ));
+        assert_eq!(
+            stages[0].inputs[3],
+            Projection::TupleArityThree { operand: 0 }
+        );
+    }
+
+    #[test]
+    fn bounded_sequences_reject_unimplemented_or_unsafe_stages() {
+        let over_stages = format!("semv.sequence.v1:{}", ["encode:x@expr0"; 9].join(";"));
+        let over_inputs = format!("semv.sequence.v1:encode:x@{}", ["expr0"; 17].join(","));
+        for plan in [
+            "semv.sequence.v1:match:named@expr0;encode:x@expr0",
+            "semv.sequence.v1:encode:x@expr0;match:_@expr0",
+            "semv.sequence.v1:match:_@expr0",
+            "semv.sequence.v1:encode:x@expr0;fixup:y@expr0",
+            "semv.sequence.v1:encode:x@expr0;unknown:y@expr0",
+            "semv.sequence.v1:encode:x@",
+            &over_stages,
+            &over_inputs,
+        ] {
+            assert!(
+                matches!(
+                    super::parse_recipe(
+                        plan,
+                        &mut NameTable {
+                            names: Vec::new(),
+                            ids: BTreeMap::new(),
+                            reverse: BTreeMap::new(),
+                            overflow: false
+                        }
+                    ),
+                    CandidateRecipe::Unsupported { .. }
+                ),
+                "unexpected lowering: {plan}"
+            );
+        }
+        let within_bounds = format!("semv.sequence.v1:{}", ["encode:x@expr0"; 8].join(";"));
+        assert!(matches!(
+            super::parse_recipe(
+                &within_bounds,
+                &mut NameTable {
+                    names: Vec::new(),
+                    ids: BTreeMap::new(),
+                    reverse: BTreeMap::new(),
+                    overflow: false
+                }
+            ),
+            CandidateRecipe::SemanticSequence { .. }
+        ));
     }
 }

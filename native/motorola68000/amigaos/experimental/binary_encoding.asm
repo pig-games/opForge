@@ -43,6 +43,7 @@ RECIPE_SEMANTIC_BRANCH = 5
 RECIPE_UNSUPPORTED = 6
 RECIPE_SEMANTIC_TABLE = 7
 RECIPE_PACKED_MASK_UNARY = 8
+RECIPE_SEMANTIC_SEQUENCE = 9
 
 PROGRAM_TABLE = 1
 PROGRAM_SEMANTIC = 2
@@ -61,7 +62,7 @@ OperandCount	.res word, 1
 OperandShape	.res word, 1
 MemberMask	.res word, 1
 Unresolved	.res word, 1
-Records	.res byte, 24
+Records	.res byte, 80
 Execution	.res byte, encoding.Context.FixupTargets+4
 Output	.res byte, 4096
 	.endsection
@@ -451,7 +452,7 @@ requiredForms	.block
 next
 	move.l d2, d4
 	andi.l #15, d4
-	cmpi.l #4, d4
+	cmpi.l #9, d4
 	bhi.w malformed
 	tst.l d4
 	beq.w advance
@@ -463,6 +464,8 @@ next
 	movea.l 0(a0, d1.l), a0
 	lea OperandEnd, a1
 	movea.l 0(a1, d1.l), a1
+	cmpi.l #5, d4
+	bhs.w wrappedFirstItem
 	cmpi.l #4, d4
 	beq.w tuple
 	move.l a1, d0
@@ -494,6 +497,13 @@ plain
 	cmpi.b #TOKEN_OPEN_PAREN, (a0)
 	bne.w mismatch
 	cmpi.b #TOKEN_CLOSE_PAREN, -1(a1)
+	bne.w mismatch
+	bra.w advance
+wrappedFirstItem
+	; A complete scalar-first tuple cannot satisfy member/scalar/named roots
+	; or member/bracket first-item paths. Unknown structures retain the stop.
+	bsr.w scalarTupleArity
+	tst.l d0
 	bne.w mismatch
 	bra.w advance
 tuple
@@ -585,6 +595,8 @@ tryRow	.block
 	beq.w semantic
 	cmpi.b #RECIPE_SEMANTIC_TABLE, d0
 	beq.w semantic
+	cmpi.b #RECIPE_SEMANTIC_SEQUENCE, d0
+	beq.w sequence
 	cmpi.b #RECIPE_PACKED_MASK_UNARY, d0
 	beq.w packedMaskUnary
 	bra.w bad
@@ -764,6 +776,114 @@ bad
 	rts
 	.bend  ; tryRow
 
+; Execute a bounded package-owned sequence using the ordinary projection and
+; SEMV interfaces. Match stages validate projections; encode stages append bytes.
+sequence	.block
+	movem.l d2-d7/a2-a5, -(sp)
+	suba.w #32, sp
+	movea.l sp, a0
+	movea.l a5, a1
+	moveq #7, d0
+copyRow
+	move.l (a1)+, (a0)+
+	dbf d0, copyRow
+	moveq #0, d7
+	move.w package.Row.InputCount(a5), d7
+	beq.w bad
+	cmpi.w #8, d7
+	bhi.w bad
+	movea.l package.Context.Package(a2), a4
+	move.l package.Row.Inputs(a5), d0
+	move.l d7, d1
+	mulu.w #12, d1
+	add.l d0, d1
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d1
+	bhi.w bad
+	adda.l d0, a4
+	movea.l sp, a5
+	; The private row copy uses its reserved word to track the encoding phase.
+	clr.w package.Row.Reserved2(a5)
+	moveq #0, d6
+loop
+	movem.l d6-d7/a4, -(sp)
+	moveq #0, d0
+	move.b package.SequenceStage.Kind(a4), d0
+	cmpi.b #1, d0
+	bhi.w stageBad
+	tst.b package.SequenceStage.Reserved(a4)
+	bne.w stageBad
+	tst.w package.SequenceStage.Reserved2(a4)
+	bne.w stageBad
+	tst.w package.SequenceStage.InputCount(a4)
+	beq.w stageBad
+	move.w package.SequenceStage.Program(a4), package.Row.Program(a5)
+	move.w package.SequenceStage.InputCount(a4), package.Row.InputCount(a5)
+	move.l package.SequenceStage.Inputs(a4), package.Row.Inputs(a5)
+	move.w d0, -(sp)
+	bsr.w project
+	tst.l d0
+	bne.w projectionBad
+	tst.w Unresolved
+	bne.w projectionBad
+	move.w (sp)+, d0
+	tst.w d0
+	beq.w match
+	bsr.w program
+	tst.l d0
+	bne.w stageBad
+	cmpi.w #PROGRAM_SEMANTIC, d2
+	bne.w stageBad
+	cmpi.w #2, d4
+	beq.w encodingVersion
+	cmpi.w #6, d4
+	bne.w stageBad
+encodingVersion
+	move.w #1, package.Row.Reserved2(a5)
+	bsr.w prepareExecution
+	; Saved sequence output length is at the top of the stage frame.
+	move.w 2(sp), encoding.Context.WriteOffset(a6)
+	move.l package.Context.Pc(a2), encoding.Context.Pc(a6)
+	move.w package.Context.Pass(a2), encoding.Context.Pass(a6)
+	clr.b encoding.Context.Unstable(a6)
+	clr.b encoding.Context.Defer(a6)
+	clr.b encoding.Context.HasSymbol(a6)
+	move.l #Records, encoding.Context.Input(a6)
+	move.w package.Row.InputCount(a5), encoding.Context.InputCount(a6)
+	move.w #4, encoding.Context.FirstInputLen(a6)
+	jsr encoding.semantic
+	tst.l d0
+	bne.w stageBad
+	move.l d1, (sp)
+	bra.w next
+match
+	tst.w package.Row.Reserved2(a5)
+	bne.w stageBad
+	cmpi.w #MISSING_PROGRAM, package.Row.Program(a5)
+	bne.w stageBad
+next
+	movem.l (sp)+, d6-d7/a4
+	adda.w #12, a4
+	subq.w #1, d7
+	bne.w loop
+	tst.w package.Row.Reserved2(a5)
+	beq.w bad
+	move.l d6, d1
+	lea Output, a1
+	moveq #0, d0
+	bra.w done
+projectionBad
+	addq.l #2, sp
+stageBad
+	movem.l (sp)+, d6-d7/a4
+bad
+	moveq #1, d0
+done
+	adda.w #32, sp
+	movem.l (sp)+, d2-d7/a2-a5
+	rts
+	.bend  ; sequence
+
 evaluateOperandZero	.block
 	movea.l OperandStart, a0
 	cmpi.b #TOKEN_HASH, (a0)
@@ -849,7 +969,7 @@ bad
 project	.block
 	moveq #0, d7
 	move.w package.Row.InputCount(a5), d7
-	cmpi.w #4, d7
+	cmpi.w #16, d7
 	bhi.w bad
 	move.l d7, d0
 	mulu.w #PROJECTION_BYTES, d0
@@ -891,6 +1011,14 @@ recordReady
 	beq.w wrappedRegister
 	cmpi.b #10, d0
 	beq.w wrappedRegister
+	cmpi.b #11, d0
+	beq.w tupleItem
+	cmpi.b #12, d0
+	beq.w tupleItem
+	cmpi.b #13, d0
+	beq.w tupleItem
+	cmpi.b #14, d0
+	beq.w tupleItem
 	bra.w bad
 expressionValue
 	bsr.w projectionExpression
@@ -912,6 +1040,9 @@ tupleValue
 	bra.w valueReady
 wrappedRegister
 	bsr.w projectionWrappedRegister
+	bra.w valueReady
+tupleItem
+	bsr.w projectionTupleItem
 	bra.w valueReady
 constantValue
 	move.l package.Projection.Literal(a4), d3
@@ -1095,6 +1226,165 @@ bad
 	rts
 	.bend  ; projectionWrappedRegister
 
+; Generic three-item tuple projections. The first item is compiled scalar data;
+; the remaining items retain numeric names and an optional numeric qualifier.
+; A4 selects class/qualifier; no target register bits or spelling are consulted.
+projectionTupleItem	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	cmpi.b #14, package.Projection.Kind(a4)
+	bne.w triple
+	cmpi.w #2, package.Projection.Class(a4)
+	bne.w triple
+	bsr.w tupleBounds
+	moveq #0, d3
+	rts
+triple
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #3, d0
+	blo.w bad
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w bad
+	moveq #0, d0
+	move.b 1(a0), d0
+	beq.w bad
+	addq.l #2, d0
+	lea 0(a0, d0.l), a6
+	move.l a1, d0
+	sub.l a6, d0
+	cmpi.l #11, d0
+	bne.w bad
+	cmpi.b #TOKEN_CLOSE_PAREN, 10(a6)
+	bne.w bad
+
+bounds
+	cmpi.b #TOKEN_OPEN_PAREN, (a6)
+	bne.w bad
+	cmpi.b #TOKEN_SYMBOL_1, 1(a6)
+	bhi.w bad
+	tst.b 4(a6)
+	bne.w bad
+	cmpi.b #TOKEN_COMMA, 5(a6)
+	bne.w bad
+	cmpi.b #TOKEN_SYMBOL_1, 6(a6)
+	bhi.w bad
+	; Numeric names occupy four bytes: symbol, id word, qualifier byte.
+	cmpi.b #14, package.Projection.Kind(a4)
+	beq.w arity
+	cmpi.b #3, package.Projection.Reserved(a4)
+	bne.w bad
+	cmpi.b #12, package.Projection.Kind(a4)
+	beq.w scalar
+	cmpi.b #11, package.Projection.Kind(a4)
+	beq.w base
+	cmpi.b #13, package.Projection.Kind(a4)
+	bne.w bad
+	cmpi.b #2, package.Projection.Reserved+1(a4)
+	bne.w bad
+	moveq #0, d0
+	move.b 9(a6), d0
+	cmp.l package.Projection.Literal(a4), d0
+	bne.w bad
+	moveq #0, d1
+	move.b 7(a6), d1
+	lsl.w #8, d1
+	move.b 8(a6), d1
+	bra.w lookupRegister
+
+base
+	cmpi.b #1, package.Projection.Reserved+1(a4)
+	bne.w bad
+	lea 1(a6), a0
+	lea 4(a0), a1
+	bra.w register
+scalar
+	tst.b package.Projection.Reserved+1(a4)
+	bne.w bad
+	movea.l a6, a1
+	jsr expression.evaluate
+	tst.l d0
+	bne.w return
+	cmpa.l a1, a0
+	bne.w bad
+	move.l d1, d3
+	tst.l d2
+	beq.w return
+	move.w #1, Unresolved
+	bra.w return
+arity
+	cmpi.w #3, package.Projection.Class(a4)
+	bne.w bad
+	moveq #0, d3
+	moveq #0, d0
+return
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectionTupleItem
+
+; Recognize a complete tuple whose first item is a valid compiled scalar and
+; whose remaining items are numeric names. Returns D0=2/3, or zero unknown.
+; Malformed structures/programs return unknown and never disprove a match;
+; unresolved values can still prove scalar structure after successful validation.
+; Preserves D1-D4/A0-A1. A6 is scratch; no package semantics are consulted.
+scalarTupleArity	.block
+	movem.l d1-d4/a0-a1, -(sp)
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #9, d0
+	blo.w unknown
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w unknown
+	moveq #0, d0
+	move.b 1(a0), d0
+	beq.w unknown
+	addq.l #2, d0
+	lea 0(a0, d0.l), a6
+	move.l a1, d0
+	sub.l a6, d0
+	moveq #2, d4
+	cmpi.l #6, d0
+	beq.w tail
+	cmpi.l #11, d0
+	bne.w unknown
+	moveq #3, d4
+	cmpi.b #TOKEN_COMMA, 5(a6)
+	bne.w unknown
+	cmpi.b #TOKEN_SYMBOL_1, 6(a6)
+	bhi.w unknown
+	cmpi.b #TOKEN_CLOSE_PAREN, 10(a6)
+	bne.w unknown
+	bra.w tail
+tail
+	cmpi.b #TOKEN_OPEN_PAREN, (a6)
+	bne.w unknown
+	cmpi.b #TOKEN_SYMBOL_1, 1(a6)
+	bhi.w unknown
+	tst.b 4(a6)
+	bne.w unknown
+	cmpi.w #2, d4
+	bne.w scalar
+	cmpi.b #TOKEN_CLOSE_PAREN, 5(a6)
+	bne.w unknown
+scalar
+	movea.l a6, a1
+	jsr expression.evaluate
+	tst.l d0
+	bne.w unknown
+	cmpa.l a1, a0
+	bne.w unknown
+	move.l d4, d0
+	bra.w done
+unknown
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d4/a0-a1
+	rts
+	.bend  ; scalarTupleArity
+
 ; The two-item packed tuple is [compiled displacement] '(' [numeric name] ')'.
 ; A0/A1 bound the operand; returns A6 at '(' or D0=1. No source text is read.
 tupleBounds	.block
@@ -1215,7 +1505,13 @@ bad
 register	.block
 	bsr.w exactName
 	tst.l d0
-	bne.w bad
+	beq.w lookup
+	rts
+lookup
+	bra.w lookupRegister
+	.bend  ; register
+
+lookupRegister	.block
 	movea.l package.Context.Package(a2), a6
 	move.l package.Header.RegisterRows(a6), d0
 	move.l package.Header.RegisterCount(a6), d2
@@ -1247,7 +1543,7 @@ next
 bad
 	moveq #1, d0
 	rts
-	.bend  ; register
+	.bend  ; lookupRegister
 
 valueProgram	.block
 	move.w d0, -(sp)

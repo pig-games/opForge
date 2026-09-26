@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use package::{decode_encoding_program, EncodingStep};
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
-    BinarySourcePackage, CandidateRecipe, NumericCandidate, Projection, ScalarPlan,
+    BinarySourcePackage, CandidateRecipe, NumericCandidate, Projection, ScalarPlan, SemanticStage,
 };
 use vm::runtime_model_core::RuntimeModelCore;
 
@@ -26,6 +26,7 @@ struct Programs<'a> {
     tables: BTreeMap<(u16, Option<u8>, u16), u16>,
     semantics: BTreeMap<u16, u16>,
     values: BTreeMap<u16, u16>,
+    qualifiers: BTreeMap<u16, u8>,
 }
 
 impl<'a> Programs<'a> {
@@ -44,6 +45,16 @@ impl<'a> Programs<'a> {
 
     fn prepare(package: &'a BinarySourcePackage) -> Result<Self, String> {
         let mut result = Self::default();
+        for (index, spelling) in package.qualifiers.iter().enumerate() {
+            for (id, name) in package.names.iter().enumerate() {
+                if name.eq_ignore_ascii_case(spelling) {
+                    result.qualifiers.insert(
+                        word(id)?,
+                        qualifier(Some(u8::try_from(index).map_err(|_| "qualifier overflow")?))?,
+                    );
+                }
+            }
+        }
         for row in &package.table_programs {
             let key = (row.mnemonic, row.qualifier, row.mode);
             if !result.tables.contains_key(&key) {
@@ -118,12 +129,57 @@ pub fn prepare_package(
             )?;
         }
     }
+    let mut qualified_classes = BTreeSet::new();
+    for candidate in &package.candidates {
+        match &candidate.recipe {
+            CandidateRecipe::SemanticInputs { inputs, .. }
+            | CandidateRecipe::SemanticBranch { inputs, .. } => {
+                for input in inputs {
+                    collect_qualified_classes(input, &mut qualified_classes);
+                }
+            }
+            CandidateRecipe::SemanticSequence { stages } => {
+                for stage in stages {
+                    for input in &stage.inputs {
+                        collect_qualified_classes(input, &mut qualified_classes);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
     let mut registers = BTreeMap::new();
     for row in &package.registers {
         registers.entry(row.name).or_insert((row.class, row.index));
         bind(&mut dictionary, name(&names, row.name)?.into(), row.name, 0)?;
+        for (class, qualifier_name) in &qualified_classes {
+            if row.class != *class {
+                continue;
+            }
+            let suffix = name(&names, *qualifier_name)?;
+            let Some(index) = package
+                .qualifiers
+                .iter()
+                .position(|value| value.eq_ignore_ascii_case(suffix))
+            else {
+                continue;
+            };
+            bind(
+                &mut dictionary,
+                format!("{}.{suffix}", name(&names, row.name)?),
+                row.name,
+                qualifier(Some(u8::try_from(index).map_err(|_| "qualifier overflow")?))?,
+            )?;
+        }
     }
     for row in &package.candidates {
+        if let CandidateRecipe::SemanticSequence { stages } = &row.recipe {
+            for stage in stages {
+                for input in &stage.inputs {
+                    bind_member(input, &names, &mut dictionary)?;
+                }
+            }
+        }
         if let CandidateRecipe::SemanticInputs { inputs, .. }
         | CandidateRecipe::SemanticBranch { inputs, .. } = &row.recipe
         {
@@ -358,6 +414,7 @@ fn write_candidate(
             programs.semantics.get(program).copied().unwrap_or(MISSING),
             inputs.as_slice(),
         ),
+        CandidateRecipe::SemanticSequence { .. } => (9, MISSING, &[][..]),
         CandidateRecipe::PackedMaskIndirect { .. } => (8, MISSING, &[][..]),
         CandidateRecipe::Unsupported { .. } => (6, MISSING, &[][..]),
     };
@@ -393,7 +450,7 @@ fn write_candidate(
         _ => 255,
     };
     let shape = if recipe == 8 { 7 } else { shape };
-    if (program == MISSING && recipe != 8) || shape == 255 {
+    if (program == MISSING && recipe != 8 && recipe != 9) || shape == 255 {
         recipe = 6;
     }
     // Tuple arity is a match predicate, not a scalar input to the SEMV
@@ -401,10 +458,16 @@ fn write_candidate(
     // two-item shape before execution.
     let execution_inputs = inputs
         .iter()
-        .filter(|input| !matches!(input, Projection::TupleArity { .. }))
+        .filter(|input| {
+            !matches!(
+                input,
+                Projection::TupleArity { .. } | Projection::TupleArityThree { .. }
+            )
+        })
         .collect::<Vec<_>>();
     for input in inputs {
-        if let Projection::TupleArity { operand } = input {
+        if let Projection::TupleArity { operand } | Projection::TupleArityThree { operand } = input
+        {
             let has_register = inputs.iter().any(|projection| {
                 matches!(projection, Projection::TupleRegister { operand: other, .. } if other == operand)
             });
@@ -413,7 +476,10 @@ fn write_candidate(
                     || matches!(projection, Projection::ValueProgram { source, .. } | Projection::RequiredValueProgram { source, .. }
                         if matches!(source.as_ref(), Projection::TupleValue { operand: other } if other == operand))
             });
-            if !has_register || !has_value {
+            let has_index = !matches!(input, Projection::TupleArityThree { .. }) || inputs.iter().any(|projection| {
+                matches!(projection, Projection::TupleQualifiedRegister { operand: other, .. } if other == operand)
+            });
+            if !has_register || !has_value || !has_index {
                 recipe = 6;
             }
         }
@@ -449,10 +515,20 @@ fn write_candidate(
     } else {
         None
     };
+    let sequence_offset = if let CandidateRecipe::SemanticSequence { stages } = &candidate.recipe {
+        let offset = write_sequence(out, stages, programs)?;
+        if offset.is_none() {
+            recipe = 6;
+        }
+        offset
+    } else {
+        None
+    };
+    let arity_three = tuple_arity_three(inputs.iter());
     let projection_start = out.len();
     if recipe != 6 {
         for projection in &execution_inputs {
-            if !write_projection(out, projection, programs)? {
+            if !write_bound_projection(out, projection, programs, &arity_three)? {
                 out.truncate(projection_start);
                 recipe = 6;
                 break;
@@ -472,17 +548,23 @@ fn write_candidate(
         if recipe == 6 {
             0
         } else {
-            word(execution_inputs.len())?
+            if let CandidateRecipe::SemanticSequence { stages } = &candidate.recipe {
+                word(stages.len())?
+            } else {
+                word(execution_inputs.len())?
+            }
         },
     );
     set_long(
         out,
         row + 12,
-        structured_offset.unwrap_or(if recipe == 6 || execution_inputs.is_empty() {
-            0
-        } else {
-            long(projection_start)?
-        }),
+        sequence_offset.or(structured_offset).unwrap_or(
+            if recipe == 6 || execution_inputs.is_empty() {
+                0
+            } else {
+                long(projection_start)?
+            },
+        ),
     );
     out[row + 16] = candidate.width_rank;
     out[row + 17] = u8::from(candidate.unstable_widen);
@@ -520,14 +602,52 @@ fn semantic_emits_opcode(programs: &Programs<'_>, index: u16) -> bool {
 // sequence candidate. Native selection may skip a disproven candidate, but
 // still fails closed when its wrapper can match.
 fn required_operand_forms(plan: &str) -> u8 {
-    let Some(body) = plan.strip_prefix("semv.sequence.v1:match:_@") else {
-        return 0;
-    };
-    let Some((predicates, _)) = body.split_once(';') else {
+    let predicates = if let Some(body) = plan.strip_prefix("semv.sequence.v1:match:_@") {
+        let Some((predicates, _)) = body.split_once(';') else {
+            return 0;
+        };
+        predicates
+    } else if let Some(body) = plan
+        .strip_prefix("semv.reject.v1:")
+        .or_else(|| plan.strip_prefix("semv.inputs.v1:"))
+    {
+        let Some((_, predicates)) = body.split_once('@') else {
+            return 0;
+        };
+        predicates.split('|').next().unwrap_or(predicates)
+    } else {
         return 0;
     };
     let mut forms = [0u8; 2];
     for predicate in predicates.split(',') {
+        if let Some(operand) = necessary_scalar_root(predicate) {
+            forms[operand] = 6;
+        }
+        if let Some(operand) = necessary_named_root(predicate) {
+            forms[operand] = 7;
+        }
+        if let Some((operand, form)) = necessary_path_form(predicate) {
+            forms[operand] = form;
+        }
+        if let Some(rest) = predicate.strip_prefix("member_shape") {
+            if let Some((operand, field)) = rest.split_once('.') {
+                if !operand.is_empty()
+                    && operand.bytes().all(|byte| byte.is_ascii_digit())
+                    && !field.is_empty()
+                    && field
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+                {
+                    if let Ok(operand @ 0..=1) = operand.parse::<usize>() {
+                        forms[operand] = if forms[operand] == 0 || forms[operand] == 5 {
+                            5
+                        } else {
+                            0
+                        };
+                    }
+                }
+            }
+        }
         for (prefix, form) in [
             ("indirect_tuple_reg", 4),
             ("unary_plus_indirect_reg", 2),
@@ -549,6 +669,177 @@ fn required_operand_forms(plan: &str) -> u8 {
         }
     }
     forms[0] | forms[1] << 4
+}
+
+fn necessary_scalar_root(predicate: &str) -> Option<usize> {
+    let operand = predicate
+        .strip_prefix("target:expr")
+        .or_else(|| predicate.strip_prefix("expr"))?;
+    if operand.is_empty() || !operand.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    operand.parse::<usize>().ok().filter(|operand| *operand < 2)
+}
+
+fn necessary_named_root(predicate: &str) -> Option<usize> {
+    let rest = predicate.strip_prefix("register_or_named_range")?;
+    let (operand, rest) = rest.split_once(".classes")?;
+    let (classes, rest) = rest.split_once(".prefix")?;
+    let (prefix, rest) = rest.split_once(".min")?;
+    let (minimum, maximum) = rest.split_once(".max")?;
+    if operand.is_empty()
+        || !operand.bytes().all(|byte| byte.is_ascii_digit())
+        || !classes.split('+').all(|class| class.parse::<u16>().is_ok())
+        || prefix.is_empty()
+        || !prefix
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        || minimum.parse::<u32>().ok()? > maximum.parse::<u32>().ok()?
+    {
+        return None;
+    }
+    operand.parse::<usize>().ok().filter(|operand| *operand < 2)
+}
+
+// A partial structural proof for two exact expression-path roots. The full
+// path stays unsupported; these facts only let native selection disprove it.
+fn necessary_path_form(predicate: &str) -> Option<(usize, u8)> {
+    let spec = predicate.strip_prefix("xp1:")?;
+    let parts = spec.split('/').collect::<Vec<_>>();
+    if !(4..=8).contains(&parts.len()) || parts[1..3] != ["i", "t0"] {
+        return None;
+    }
+    let operand = parts[0].parse::<usize>().ok()?;
+    if operand > 1 || !parts[0].bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let (terminal, containers) = parts[3..].split_last()?;
+    let identifier = |value: &str| {
+        !value.is_empty()
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    };
+    let valid_terminal = terminal
+        .strip_prefix('r')
+        .is_some_and(|value| value.parse::<u16>().is_ok())
+        || terminal.strip_prefix('m').is_some_and(identifier)
+        || terminal.strip_prefix('n').is_some_and(identifier)
+        || *terminal == "s"
+        || terminal
+            .strip_prefix('q')
+            .and_then(|value| value.split_once(".c"))
+            .is_some_and(|(qualifier, class)| {
+                identifier(qualifier) && class.parse::<u16>().is_ok()
+            });
+    if !valid_terminal
+        || !containers.iter().all(|step| {
+            matches!(*step, "i" | "b" | "l" | "r")
+                || step
+                    .strip_prefix('t')
+                    .is_some_and(|value| value.parse::<u8>().is_ok())
+        })
+    {
+        return None;
+    }
+    if parts.len() == 4 && terminal.strip_prefix('m').is_some_and(identifier) {
+        Some((operand, 8))
+    } else if containers.first() == Some(&"b") {
+        Some((operand, 9))
+    } else {
+        None
+    }
+}
+
+fn tuple_arity_three<'a>(inputs: impl Iterator<Item = &'a Projection>) -> BTreeSet<u8> {
+    inputs
+        .filter_map(|input| match input {
+            Projection::TupleArityThree { operand } => Some(*operand),
+            _ => None,
+        })
+        .collect()
+}
+
+fn write_bound_projection(
+    out: &mut Vec<u8>,
+    projection: &Projection,
+    programs: &Programs<'_>,
+    arity_three: &BTreeSet<u8>,
+) -> Result<bool, String> {
+    let start = out.len();
+    if !write_projection(out, projection, programs)? {
+        return Ok(false);
+    }
+    if arity_three.contains(&out[start + 1]) {
+        let item = match out[start] {
+            5 => {
+                out[start] = 11;
+                Some(1)
+            }
+            6 => {
+                out[start] = 12;
+                Some(0)
+            }
+            _ => None,
+        };
+        if let Some(item) = item {
+            set_word(out, start + 10, (3 << 8) | item);
+        }
+    }
+    Ok(true)
+}
+
+// Each descriptor carries only stage kind, program and bounded projection slice.
+// Projection-only match stages never invoke an emitting program.
+fn write_sequence(
+    out: &mut Vec<u8>,
+    stages: &[SemanticStage],
+    programs: &Programs<'_>,
+) -> Result<Option<u32>, String> {
+    if stages.is_empty() || stages.len() > 8 {
+        return Ok(None);
+    }
+    let start = out.len();
+    let offset = long(start)?;
+    out.resize(start + stages.len() * 12, 0);
+    let arity_three = tuple_arity_three(stages.iter().flat_map(|stage| &stage.inputs));
+    let mut encoded = false;
+    for (index, stage) in stages.iter().enumerate() {
+        let descriptor = start + index * 12;
+        let program = stage
+            .program
+            .and_then(|id| programs.semantics.get(&id).copied())
+            .unwrap_or(MISSING);
+        let supported = if stage.program.is_some() {
+            encoded = true;
+            programs
+                .rows
+                .get(usize::from(program))
+                .is_some_and(|row| row.kind == 2 && matches!(row.version, 2 | 6))
+        } else {
+            !encoded
+        };
+        if !supported || stage.inputs.is_empty() || stage.inputs.len() > 16 {
+            out.truncate(start);
+            return Ok(None);
+        }
+        out[descriptor] = u8::from(stage.program.is_some());
+        set_word(out, descriptor + 2, program);
+        set_word(out, descriptor + 4, word(stage.inputs.len())?);
+        let inputs_offset = long(out.len())?;
+        set_long(out, descriptor + 8, inputs_offset);
+        for input in &stage.inputs {
+            if !write_bound_projection(out, input, programs, &arity_three)? {
+                out.truncate(start);
+                return Ok(None);
+            }
+        }
+    }
+    if !encoded {
+        out.truncate(start);
+        return Ok(None);
+    }
+    Ok(Some(offset))
 }
 
 fn write_projection(
@@ -587,7 +878,18 @@ fn write_projection(
         Projection::Member { operand, qualifier } => (2, *operand, *qualifier, 0),
         Projection::TupleRegister { operand, class } => (5, *operand, *class, 0),
         Projection::TupleValue { operand } => (6, *operand, 0, 0),
-        Projection::TupleArity { .. } => return Ok(false),
+        Projection::TupleArity { operand } => (14, *operand, 2, 0),
+        Projection::TupleArityThree { operand } => (14, *operand, 3, 0),
+        Projection::TupleQualifiedRegister {
+            operand,
+            class,
+            qualifier,
+        } => {
+            let Some(qualifier) = programs.qualifiers.get(qualifier) else {
+                return Ok(false);
+            };
+            (13, *operand, *class, i32::from(*qualifier))
+        }
         Projection::NamedRegister { operand, name } => (4, *operand, *name, 0),
         Projection::Constant(value) => {
             let Ok(value) = i32::try_from(*value) else {
@@ -603,8 +905,23 @@ fn write_projection(
     push_word(out, field);
     out.extend_from_slice(&literal.to_be_bytes());
     push_word(out, value_program);
-    push_word(out, 0);
+    push_word(out, if kind == 13 { 0x0302 } else { 0 });
     Ok(true)
+}
+
+fn collect_qualified_classes(projection: &Projection, classes: &mut BTreeSet<(u16, u16)>) {
+    match projection {
+        Projection::TupleQualifiedRegister {
+            class, qualifier, ..
+        } => {
+            classes.insert((*class, *qualifier));
+        }
+        Projection::ValueProgram { source, .. }
+        | Projection::RequiredValueProgram { source, .. } => {
+            collect_qualified_classes(source, classes)
+        }
+        _ => {}
+    }
 }
 
 fn bind_member(
@@ -616,7 +933,8 @@ fn bind_member(
         Projection::NamedRegister {
             name: qualifier, ..
         }
-        | Projection::Member { qualifier, .. } => {
+        | Projection::Member { qualifier, .. }
+        | Projection::TupleQualifiedRegister { qualifier, .. } => {
             bind(dictionary, name(names, *qualifier)?.into(), *qualifier, 0)
         }
         Projection::ValueProgram { source, .. }
@@ -693,4 +1011,172 @@ fn reserve(out: &mut Vec<u8>, count: usize, width: usize) -> Result<(), String> 
     long(end)?;
     out.resize(end, 0);
     Ok(())
+}
+
+#[cfg(test)]
+mod sequence_wire_tests {
+    use super::*;
+
+    #[test]
+    fn scalar_and_named_roots_preserve_unknown_or_malformed_metadata() {
+        assert_eq!(
+            required_operand_forms(
+                "semv.sequence.v1:match:_@target:expr0;encode:x@expr0;fixup:y@expr0"
+            ),
+            6
+        );
+        assert_eq!(required_operand_forms("semv.reject.v1:bad@register_or_named_range0.classes5.prefixb.min0.max7,reg1.class0"), 7);
+        assert_eq!(required_operand_forms("semv.inputs.v1:future@expr1"), 0x60);
+        for predicate in [
+            "target:expr",
+            "target:expr2",
+            "target:expr0.more",
+            "expr0future",
+            "register_or_named_range0.classes.prefixb.min0.max7",
+            "register_or_named_range0.classes5.prefix.min0.max7",
+            "register_or_named_range0.classes5.prefixb.min8.max7",
+            "register_or_named_range0.classes5.prefixb.min0.max7.future",
+        ] {
+            assert_eq!(
+                required_operand_forms(&format!("semv.reject.v1:bad@{predicate}")),
+                0,
+                "{predicate}"
+            );
+        }
+    }
+
+    #[test]
+    fn necessary_path_forms_remain_partial_and_bounded() {
+        for (path, expected) in [
+            ("xp1:0/i/t0/mW", Some((0, 8))),
+            ("xp1:1/i/t0/b/t2/qL.c0", Some((1, 9))),
+            ("xp1:0/i/t0/b/r1", Some((0, 9))),
+        ] {
+            assert_eq!(necessary_path_form(path), expected);
+        }
+        for path in [
+            "xp1:0/i/t0/m",
+            "xp1:0/i/t0/b",
+            "xp1:0/i/t0/b/future",
+            "xp1:0/i/t0/b/t2/qL.c",
+            "xp1:2/i/t0/mW",
+            "xp1:0/i/t1/mW",
+            "xp1:0/i/t0/r1",
+            "xp1:0/i/t0/b/x/r1",
+            "xp1:0/i/t0/b/b/b/b/b/b/r1",
+        ] {
+            assert_eq!(necessary_path_form(path), None, "{path}");
+        }
+        assert_eq!(
+            required_operand_forms(
+                "semv.sequence.v1:match:_@xp1:0/i/t1/r1,xp1:0/i/t0/mW,reg1.class0;encode:x@expr0"
+            ),
+            8
+        );
+    }
+
+    #[test]
+    fn unsupported_member_sequence_preserves_only_exact_necessary_wrapper() {
+        assert_eq!(
+            required_operand_forms(
+                "semv.sequence.v1:match:_@expr0,member_shape1.W;encode:x@expr0;fixup:y@expr1"
+            ),
+            0x56
+        );
+        assert_eq!(
+            required_operand_forms("semv.sequence.v1:match:_@member_shape0.L;encode:x@expr0"),
+            5
+        );
+        for predicate in [
+            "member_shape1.",
+            "member_shape1.W.extra",
+            "member_shape.W",
+            "member_shape2.W",
+            "member_shape1W",
+            "member_shape_1.W",
+            "member1.W",
+        ] {
+            assert_eq!(
+                required_operand_forms(&format!(
+                    "semv.sequence.v1:match:_@{predicate};encode:x@expr0"
+                )),
+                0,
+                "{predicate}"
+            );
+        }
+    }
+
+    #[test]
+    fn bounded_sequence_wire_preserves_predicates_and_exact_tuple_projections() {
+        let mut programs = Programs::default();
+        programs.add(2, 6, &[]).unwrap();
+        programs.semantics.insert(7, 0);
+        programs.qualifiers.insert(9, 2);
+        let stages = [
+            SemanticStage {
+                program: None,
+                inputs: vec![
+                    Projection::TupleArityThree { operand: 0 },
+                    Projection::TupleQualifiedRegister {
+                        operand: 0,
+                        class: 4,
+                        qualifier: 9,
+                    },
+                ],
+            },
+            SemanticStage {
+                program: Some(7),
+                inputs: vec![
+                    Projection::TupleRegister {
+                        operand: 0,
+                        class: 1,
+                    },
+                    Projection::TupleValue { operand: 0 },
+                ],
+            },
+        ];
+        let mut wire = vec![0; 80];
+        assert_eq!(
+            write_sequence(&mut wire, &stages, &programs).unwrap(),
+            Some(80)
+        );
+        assert_eq!(&wire[80..84], &[0, 0, 255, 255]);
+        assert_eq!(&wire[92..96], &[1, 0, 0, 0]);
+        assert_eq!(&wire[88..92], &104u32.to_be_bytes());
+        assert_eq!(&wire[100..104], &128u32.to_be_bytes());
+        assert_eq!(&wire[104..108], &[14, 0, 0, 3]);
+        assert_eq!(&wire[116..120], &[13, 0, 0, 4]);
+        assert_eq!(&wire[120..124], &2i32.to_be_bytes());
+        assert_eq!(&wire[126..128], &[3, 2]);
+        assert_eq!(wire[128], 11);
+        assert_eq!(&wire[138..140], &[3, 1]);
+        assert_eq!(wire[140], 12);
+        assert_eq!(&wire[150..152], &[3, 0]);
+        let original = wire.clone();
+        programs.rows[0].version = 4;
+        assert_eq!(write_sequence(&mut wire, &stages, &programs).unwrap(), None);
+        assert_eq!(wire, original, "non-encoding stages must not serialize");
+        programs.rows[0].version = 6;
+        for unsupported in [
+            vec![stages[0].clone()],
+            vec![stages[1].clone(), stages[0].clone()],
+            vec![SemanticStage {
+                program: Some(7),
+                inputs: Vec::new(),
+            }],
+        ] {
+            assert_eq!(
+                write_sequence(&mut wire, &unsupported, &programs).unwrap(),
+                None
+            );
+            assert_eq!(wire, original, "unsupported sequence must roll back");
+        }
+        programs.semantics.clear();
+        let original = wire.clone();
+        assert_eq!(write_sequence(&mut wire, &stages, &programs).unwrap(), None);
+        assert_eq!(
+            wire, original,
+            "unsupported stage must leave no partial wire body"
+        );
+    }
 }

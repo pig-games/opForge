@@ -189,6 +189,8 @@ parenthesizedRegister
 	blo.w expressionOperand
 	cmpi.b #1, 1(a0)
 	bhi.w expressionOperand
+	cmpi.b #4, 5(a0)
+	beq.w zeroFirstValue
 	cmpi.b #15, 5(a0)
 	bne.w expressionOperand
 	move.l a0, -(sp)
@@ -211,6 +213,25 @@ parenthesizedReady
 	bsr.w copy
 	bne.w bad
 	bra.w operandDone
+zeroFirstValue
+	bsr.w tupleTail
+	tst.l d0
+	bne.w bad
+	; Compile an implicit zero through the same scalar compiler as explicit
+	; displacement syntax; the packed representation remains canonical.
+	movem.l a0-a1, -(sp)
+	subq.l #6, sp
+	move.b #2, (sp)
+	clr.l 1(sp)
+	movea.l sp, a0
+	lea 5(sp), a1
+	jsr expression.compile
+	addq.l #6, sp
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	bne.w bad
+	bra.w operandDone
+
 nameSequence
 	bsr.w validateNameSequence
 	cmpi.l #2, d0
@@ -267,21 +288,9 @@ operandDone
 	beq.w complete
 	cmpi.b #14, (a0)
 	bne.w operandDelimiter
-	move.l a1, d0
-	sub.l a0, d0
-	cmpi.l #6, d0
-	blo.w bad
-	cmpi.b #1, 1(a0)
-	bhi.w bad
-	cmpi.b #15, 5(a0)
-	bne.w bad
-	move.l a0, -(sp)
-	lea 1(a0), a0
-	bsr.w packageRegister
-	movea.l (sp)+, a0
+	bsr.w tupleTail
 	tst.l d0
 	bne.w bad
-	moveq #6, d6
 	bsr.w copy
 	bne.w bad
 	cmpa.l a1, a0
@@ -343,6 +352,40 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; copy
+
+; Preserve bounded tuple structure after its compiled first scalar. Package
+; projections validate register classes and qualifiers later. D6=tail bytes.
+tupleTail	.block
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #6, d0
+	blo.w bad
+	cmpi.b #1, 1(a0)
+	bhi.w bad
+	tst.b 4(a0)
+	bne.w bad
+	cmpi.b #15, 5(a0)
+	beq.w pair
+	cmpi.l #11, d0
+	blo.w bad
+	cmpi.b #4, 5(a0)
+	bne.w bad
+	cmpi.b #1, 6(a0)
+	bhi.w bad
+	cmpi.b #15, 10(a0)
+	bne.w bad
+	moveq #11, d6
+	bra.w ok
+
+pair
+	moveq #6, d6
+ok
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; tupleTail
 
 ; Copy one numeric name, return its ID in D7. Other clobbers as copy.
 name	.block

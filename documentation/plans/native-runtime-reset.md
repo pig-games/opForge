@@ -1402,3 +1402,67 @@ The unchanged 121-template / 84,687-byte release control still matches all
 preceding layout checkpoint. One observation per state supports no material
 performance-change claim; the name-bound correction carries no measured
 regression on this control.
+
+## Indexed addressing checkpoint
+
+Hypothesis: the next self-host rejection is a missing compact implementation of
+existing package-defined projections and semantic sequences, not absent family
+encoding semantics. The app and immediate compact imports contain 41 indexed
+operands (21 word / 20 long indexes, mostly displacement zero and one -1).
+Preparation currently preserves only a displacement/base pair; indexed operands
+need displacement/base/qualified-index triples. Package recipes already define
+register classes, qualifiers, displacement constraints and extension encoding.
+
+Implement bounded numeric tuple projections and projection-only `match:_`
+followed by semantic encoding stages. Named match programs and unsupported stage
+or projection forms remain explicit rejections. Keep preparation, recipe storage
+and execution separated; use offsets and IDs in package/source blocks. Do not
+introduce mnemonic tests or CPU encoding logic in compact infrastructure.
+
+Acceptance: live Rust/native comparison for a complete mixed indexed workload
+covering unary, register/memory and immediate/memory forms, both index widths,
+address-register indexes and signed displacement. Preserve explicit invalid-base
+rejection and existing displacement, macro and template behavior. Record release
+image/package costs, repeat the unchanged 121-template timing control, and run a
+bounded instrumented unchanged self-host probe. The current baseline rejects at
+app line 219; baseline release image is 67,868 bytes / 79,148 linked reserved bytes,
+BSP3 is 175,762 bytes, and template control is 8.64 seconds. Stop and discuss if the
+slice requires CPU-specific generic logic or an unbounded executor rewrite.
+
+Implemented numeric two/three-item tuples, package-qualified register identities,
+and bounded projection-only match/semantic-encoding sequences (eight stages,
+sixteen inputs per stage). Selection can disprove certain unsupported candidates
+from necessary structural facts; unknown structures still stop explicitly.
+Named match programs, fixup stages, unresolved sequence values and full-format
+addressing remain unsupported. No source-text assembly path or mnemonic-specific
+native behavior was added.
+
+Fresh native comparisons match all 68 bytes for the 15-form mixed source and
+all 1,632 bytes for its 24-fold repetition (7,489 source bytes). The repeated
+release observation is 11.83 seconds; no prior successful compact baseline
+exists for this workload, so this is capability/timing evidence, not a speedup.
+Signed sequence comparison also matches, and invalid base/range inputs finish
+with explicit exit 20. The release image is 68,952 bytes / 80,256 linked reserved
+bytes, up 1,084 / 1,108 bytes from the preceding checkpoint. The m68020 capsule
+grows from 175,762 to 269,162 bytes as sequence bodies become executable.
+
+The unchanged m6502 / 121-template control matches all 1,701 Rust bytes in
+8.639 seconds versus 8.64 previously (one observation per state). This supports
+no material timing-change claim. Package growth deserves a direction review:
+each candidate currently owns its descriptors/projections; sharing equivalent
+projection slices is a plausible follow-up, not an optimization implemented here.
+
+The self-host probe still stages the same 47-file dependency graph, now 524,572
+source bytes including this implementation. It advances to `binary_app.asm`
+line 399 (hex file `20`, line `18F`), `.MEMORY_STAGE #0`. Instrumented peak owned
+memory is 950,784 bytes, cleanup returns owned accounting to zero, allocations
+and frees balance, and incomplete-preparation flag 16 remains. Preparation calls
+are [880, 1, 768, 768, 878, 0]. No full native self-host artifact parity or time
+is claimed. Next, inventory the telemetry macro family and its binding/expansion
+requirements together before choosing a repair; do not special-case telemetry.
+
+Focused qualification passes 96 binary-source Rust tests and eight VM package
+tests (187 explicit native/environment tests ignored). Rust/assembly formatting,
+proof-contract and benchmark-selector checks pass. The architecture guard still
+reports the same nine existing findings in encoding/mask modules; this slice adds
+none. Broad repository qualification is not claimed.

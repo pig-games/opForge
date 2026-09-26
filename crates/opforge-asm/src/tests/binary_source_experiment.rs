@@ -25,6 +25,9 @@ mod struct_layout;
 #[path = "binary_source_macro_calls.rs"]
 mod macro_calls;
 
+#[path = "binary_source_indexed.rs"]
+mod indexed;
+
 #[path = "binary_source_selection.rs"]
 mod selection;
 

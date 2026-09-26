@@ -1558,3 +1558,43 @@ in 8.64 seconds (preceding checkpoint: 8.76 seconds, one run each). The unchange
 self-host diagnostic now reaches `binary_app.asm` line 219, indexed `tst.b`,
 with 676,352 peak owned bytes and balanced cleanup. This remains incomplete
 preparation with profiler flag 16, not self-host artifact parity or timing.
+
+## Package-owned tuple projections and encoding sequences
+
+Preparation now retains numeric three-item tuples as well as displacement/base
+pairs. Qualified register spellings bind to the same register ID plus a package
+qualifier ID. An omitted first scalar is compiled as zero through the ordinary
+expression compiler. Assembly consumes these packed records without source text.
+
+BSP3 recipe 9 contains at most eight 12-byte stage descriptors, each with at
+most sixteen 12-byte projections. Offsets are relative to the package block.
+Projection-only `match:_` stages validate inputs; encoding stages append through
+the existing SEMV encoding executor. Match stages must precede encoding, and
+each sequence must encode. Empty inputs, unknown stages, named match programs,
+fixup stages and non-encoding programs remain unsupported. Scalar values must
+already resolve; deferred sequence fixups and full-format addressing are separate
+capabilities, not silently approximated by this path.
+
+Unsupported candidates retain conservative necessary-structure metadata. A fully
+validated scalar-first tuple can disprove scalar/named roots or member/bracket
+first-item paths. Unknown or malformed structures cannot justify skipping such
+a candidate. Package definitions retain register classes, qualifiers, constraints
+and encoded fields; generic preparation/selection/execution supplies no CPU rules.
+
+Reproduce the mixed indexed comparison and explicit base/range rejections with
+the documented 68020 / 2 MiB FS-UAE environment:
+`cargo test -p asm binary_indexed_ -- --ignored --nocapture --test-threads=1`.
+
+The mixed case matches 68 live Rust bytes; its 24-fold repetition matches 1,632
+bytes in 11.83 release seconds. Signed sequences and invalid base/range boundaries
+also complete freshly. The release image is 68,952 bytes / 80,256 linked reserved
+bytes; the m68020 capsule is 269,162 bytes (previously 175,762). Per-candidate
+stage/projection storage is a future sharing opportunity. The unchanged template
+control matches 1,701 bytes in 8.639 seconds versus the prior 8.64 observation.
+
+The 47-file self-host probe advances to `binary_app.asm` line 399,
+`.MEMORY_STAGE #0`, with 950,784 peak tracked owned bytes and balanced cleanup.
+Preparation remains incomplete (flag 16). This diagnostic is neither completed
+self-host parity nor a full assembly-time measurement. See the active
+[runtime reset plan](native-runtime-reset.md#indexed-addressing-checkpoint) for
+qualification scope and the next family-level investigation.

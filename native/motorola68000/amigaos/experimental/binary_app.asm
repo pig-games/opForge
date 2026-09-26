@@ -24,6 +24,8 @@ LINE_BYTES = 4096
 RECORD_BYTES = 256
 DISCOVERY_LIMIT = 128
 PATH_BYTES = 256
+DOS_OUTPUT = -60
+DOS_WRITE = -48
 Span	.struct
 Start	.long ?
 End	.long ?
@@ -198,13 +200,42 @@ located
 	lea FailureLine, a0
 	bsr.w hexField
 	movea.l DosBase, a6
-	jsr -60(a6)
+	jsr DOS_OUTPUT(a6)
 	move.l d0, d1
 	beq.w done
+	move.l d1, d4
 	move.l #FailureMessage, d2
 	move.l #FailureMessageEnd, d3
 	sub.l d2, d3
-	jsr -48(a6)
+	jsr DOS_WRITE(a6)
+	tst.l InAssembly
+	bne.w done
+	tst.l SourceOrdinal
+	beq.w done
+	; Preparation still owns the current path for diagnostics, not execution.
+	lea SourcePath, a0
+	moveq #0, d3
+pathLength
+	tst.b 0(a0, d3.w)
+	beq.w pathReady
+	addq.w #1, d3
+	cmpi.w #PATH_BYTES, d3
+	blo.w pathLength
+	bra.w done
+pathReady
+	move.l d3, d5
+	move.l d4, d1
+	move.l #FailurePath, d2
+	moveq #8, d3
+	jsr DOS_WRITE(a6)
+	move.l d4, d1
+	move.l #SourcePath, d2
+	move.l d5, d3
+	jsr DOS_WRITE(a6)
+	move.l d4, d1
+	move.l #FailureNewline, d2
+	moveq #1, d3
+	jsr DOS_WRITE(a6)
 done
 	rts
 	.bend  ; reportFailure
@@ -763,9 +794,7 @@ completionBad
 	clr.l SourceLine
 	bra.w bad
 closeBad
-	bsr.w closeIncludes
-	bsr.w closeSource
-	bsr.w closeInput
+	; execute reports the still-live source path, then performs all cleanup.
 bad
 	moveq #1, d0
 	rts
@@ -1437,6 +1466,8 @@ FailureFile	.byte "00000000"
 	.byte ", line "
 FailureLine	.byte "00000000", "]", 10
 FailureMessageEnd
+FailurePath	.byte "source: "
+FailureNewline	.byte 10
 	.endsection
 	.section bss, kind=bss
 	.align 4

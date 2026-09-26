@@ -1215,3 +1215,42 @@ so there is still no native self-host time. The next breadth slice should
 identify the full imported module at that diagnostic, inventory its unsupported
 constructs and immediate dependencies, and complete one structural feature
 family before repeating the unchanged probe.
+
+The next investigation identified `debug/memory_telemetry.i`, rather than an
+instruction in an imported module. Preparation cleanup had erased the current
+path before reporting it; failures now report that path before the common
+cleanup releases it. The shared conditional selector now distinguishes numeric
+`.if`/`.elseif` from preprocessing `.ifdef`/`.ifndef` and named branches. Rust
+definedness checks preprocessing definitions, not assembler assignments. The
+compact CLI has no `-D` ingress, so its preprocessing definition namespace is
+explicitly empty; true defined branches are not supported yet. Arithmetic and
+bitwise conditional expressions remain supported; comparisons such as `==`
+remain outside the current preparation expression compiler.
+
+A complete small conditional module, including nested absent gates, an
+assembler assignment that must not count as a preprocessing definition,
+`.elseif`, and a gated macro invocation, matched the full Rust CLI's six-byte
+output under fresh 68020 / 2 MiB execution. One observed START-to-DONE time was
+0.52 seconds. The compact image was 66,820 bytes with 78,156 linked reserved
+bytes (+456 / +428 from the preceding section checkpoint); this is a capability
+cost, not a speedup measurement. The unchanged telemetry include and self-host
+probe now reject at physical line 114 (`TOKEN_BEGIN .macro amount`), the ninth
+macro definition. The gated early-rejection owned-memory peak remains 662,016
+bytes, and no self-host duration exists.
+
+The early-rejection telemetry still reports sixteen profiling errors as at
+the preceding checkpoint; do not derive phase times from that record. The
+allocator accounting returns to zero after rejection.
+
+**Proposed next structural slice: template storage.** Definitions persist
+across files in one eight-entry table, with shared 4 KiB body and 512-byte
+default pools. Four experimental modules plus two tokenizer modules include
+the fourteen telemetry macros. Raising one limit would not address their
+session-wide lifetime or 16-bit pool offsets. Separate growable, offset-based
+definition/body/default storage from the bounded active call stack, retaining
+module visibility and imported-template identity. Keep packed bodies and
+source-independent expansion. Acceptance should cover the unchanged telemetry
+include, repeated includes in distinct modules, and an exported macro invoked
+from a later imported module, then repeat the bounded self-host probe with
+fresh size and owned-memory observations. Resolve offset widths and allocator
+ownership before implementing; do not add fixture-specific capacity or dispatch.

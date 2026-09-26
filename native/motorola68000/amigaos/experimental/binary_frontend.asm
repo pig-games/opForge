@@ -33,6 +33,7 @@ GraphBefore	.long ?
 GRAPH_BYTES = graph.SCRATCH_BYTES
 GRAPH_SPAN_BYTES = graph.MAX_SPANS*graph.SPAN_BYTES
 	.priv
+HEADER_BYTES = package.Header.ResDirective+2
 PROGRAM = 0
 PROGRAM_BYTES = 4
 PACKAGE_BASE = 8
@@ -67,9 +68,9 @@ scratchSize	.block
 	cmpi.l #$42535033, package.Header.Magic(a0)
 	bne.w bad
 	move.l package.Header.Bytes(a0), d2
-	cmpi.l #76, d2
+	cmpi.l #HEADER_BYTES, d2
 	blo.w bad
-	subi.l #76, d2
+	subi.l #HEADER_BYTES, d2
 	lsr.l #3, d2
 	move.l package.Header.DictionaryCount(a0), d1
 	cmp.l d2, d1
@@ -679,7 +680,7 @@ configure	.block
 	cmpi.l #$42535033, package.Header.Magic(a4)
 	bne.w bad
 	move.l package.Header.Bytes(a4), d7
-	cmpi.l #76, d7
+	cmpi.l #HEADER_BYTES, d7
 	blo.w bad
 	move.l a4, d0
 	add.l d7, d0
@@ -689,7 +690,7 @@ configure	.block
 	move.w package.Header.NameCount(a4), d0
 	move.l d0, NEXT_ID(a6)
 	move.l package.Header.Dictionary(a4), d0
-	cmpi.l #76, d0
+	cmpi.l #HEADER_BYTES, d0
 	blo.w bad
 	cmp.l d7, d0
 	bhi.w bad
@@ -750,7 +751,7 @@ indexLoop
 	bra.w indexLoop
 configureTokenizer
 	move.l package.Header.Tokenizer(a4), d0
-	cmpi.l #76, d0
+	cmpi.l #HEADER_BYTES, d0
 	blo.w bad
 	cmp.l d7, d0
 	bhi.w bad

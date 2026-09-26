@@ -835,7 +835,7 @@ markDataReloc	.block
 	bne.w bad
 	cmpi.b #exprvm.EXPRVM_V2_OPCODE_PUSH_SYMBOL, 2(a5)
 	bne.w bad
-	tst.b 5(a5)      ; END
+	tst.b 5(a5)  ; END
 	bne.w bad
 	moveq #0, d1
 	move.b 4(a5), d1

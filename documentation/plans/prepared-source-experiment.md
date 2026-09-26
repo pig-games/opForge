@@ -1451,3 +1451,22 @@ negative native test requires explicit failure for compound section-relative
 data expressions and section-bearing instruction operands. These forms need
 fixup provenance or addend support before they can be emitted correctly; the
 current bounded implementation must not output silently incorrect Hunks.
+
+## Conditional preprocessing checkpoint
+
+The compact preparation path accepts `.ifdef`, `.ifndef`, numeric `.elseif`,
+and named preprocessor branches in addition to `.if`/`.else`/`.endif`. The
+compact CLI currently accepts no preprocessing definitions (`-D`): its define
+namespace is empty, so assembler symbols and template names must not make
+`.ifdef` true. This preserves the full Rust CLI's distinction between
+preprocessing defines and assembler declarations. Preparation expression
+comparisons remain unsupported; arithmetic and bitwise tests are available.
+
+`compact_conditional_family_rust_oracles` uses the full Rust CLI, including
+preprocessing, rather than a line-assembly helper that bypasses it. The native
+`compact_conditional_family_fs_uae` compares nested gates, numeric branch
+selection and a gated macro against those live bytes. The unchanged
+`memory_telemetry.i` include remains a separate failure probe:
+`compact_telemetry_include_readiness_fs_uae` verifies its current ninth-macro
+registry rejection with fresh completion, a nonzero exit and the source path.
+It does not claim complete telemetry-template support.

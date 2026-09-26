@@ -13,6 +13,9 @@ mod hunk_sections;
 #[path = "binary_source_constants.rs"]
 mod constants;
 
+#[path = "binary_source_conditionals.rs"]
+mod conditionals;
+
 #[path = "binary_source_selection.rs"]
 mod selection;
 

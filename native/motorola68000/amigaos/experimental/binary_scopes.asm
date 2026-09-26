@@ -16,6 +16,7 @@ LIMIT = layout.LIMIT
 ARENA_BYTES = layout.ARENA_BYTES
 ENTRY_BYTES = records.ENTRY_BYTES
 ENTRIES = layout.ENTRIES
+ENTRIES_POINTER = layout.ENTRIES_POINTER
 BUCKETS = layout.BUCKETS
 ARENA = layout.ARENA
 ARENA_POINTER = layout.ARENA_POINTER
@@ -62,12 +63,18 @@ SCRATCH_BYTES = STRUCT_STATE+structs.SCRATCH_BYTES
 begin	.block
 	movem.l d1/a0-a1, -(sp)
 	movea.l a0, a1
-	cmpi.l #65536-LIMIT, d0
+	cmpi.l #65535, d0
 	bhi.w bad
 	move.w d0, layout.State.Base(a0)
 	move.w d1, layout.State.EndDirective(a0)
 	clr.w layout.State.Changed(a0)
 	clr.w layout.State.FileContent(a0)
+	clr.l ENTRIES+memory.Block.Pointer(a0)
+	clr.l ENTRIES+memory.Block.Capacity(a0)
+	clr.l ENTRIES+memory.Block.Used(a0)
+	lea reserveIdentities, a1
+	move.l a1, layout.State.ReserveRoutine(a0)
+	movea.l a0, a1
 	clr.w layout.State.Count(a0)
 	clr.w layout.State.Current(a0)
 	clr.w layout.State.Ended(a0)
@@ -104,16 +111,59 @@ done
 	rts
 	.bend  ; begin
 
-; A0=preparation scope state. Release the owned name/index arena.
+; A0=preparation scope state. Release all owned preparation tables.
 ; All registers preserved; CCR unspecified. Safe for empty/released storage.
 release	.block
-	movem.l a0, -(sp)
-	lea ARENA(a0), a0
+	movem.l a0-a1, -(sp)
+	movea.l a0, a1
+	lea ENTRIES(a1), a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
-	movea.l (sp)+, a0
+	lea MODULE_STATE(a1), a0
+	jsr modules.release
+	lea IMPORT_STATE(a1), a0
+	jsr imports.release
+	lea ARENA(a1), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movem.l (sp)+, a0-a1
 	rts
 	.bend  ; release
+
+; A0=scope state,D0=minimum identity slots. Grow all owned per-ID tables.
+; D0/CCR=status; other registers preserved. Existing logical entries survive failure.
+reserveIdentities	.block
+	movem.l d1-d2/a0-a1, -(sp)
+	movea.l a0, a1
+	move.l d0, d2
+	cmpi.l #LIMIT, d0
+	bhi.w bad
+	moveq #0, d1
+	move.w layout.State.Base(a1), d1
+	add.l d0, d1
+	cmpi.l #65536, d1
+	bhi.w bad
+	lsl.l #4, d0
+	lea ENTRIES(a1), a0
+	jsr memory.reserve
+	bne.w bad
+	move.l d2, d0
+	lea MODULE_STATE(a1), a0
+	jsr modules.reserve
+	bne.w bad
+	move.l d2, d0
+	lea IMPORT_STATE(a1), a0
+	jsr imports.reserve
+	bne.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	rts
+	.bend  ; reserveIdentities
 
 ; A0=state. End one source without discarding shared definitions/imports.
 ; D0=nonzero requires explicit modules for nonempty files. D0/CCR=status;
@@ -248,8 +298,12 @@ bind	.block
 find
 	bsr.w lookup
 	beq.w found
-	cmpi.w #LIMIT, layout.State.Count(a6)
-	bhs.w bad
+	moveq #0, d0
+	move.w layout.State.Count(a6), d0
+	addq.l #1, d0
+	movea.l a6, a0
+	bsr.w reserveIdentities
+	bne.w bad
 	moveq #0, d0
 	move.w layout.State.ArenaUsed(a6), d0
 	add.l d6, d0
@@ -274,7 +328,7 @@ stableName
 	move.w layout.State.Count(a6), d1
 	move.l d1, d2
 	lsl.l #4, d2
-	lea ENTRIES(a6), a3
+	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d2, a3
 	move.w layout.State.ArenaUsed(a6), records.Entry.Name(a3)
 	move.w d6, records.Entry.Length(a3)
@@ -291,6 +345,10 @@ stableName
 	addq.w #1, d1
 	move.w d1, 0(a4, d4.w)
 	addq.w #1, layout.State.Count(a6)
+	moveq #0, d1
+	move.w layout.State.Count(a6), d1
+	lsl.l #4, d1
+	move.l d1, ENTRIES+memory.Block.Used(a6)
 	movea.l ARENA_POINTER(a6), a1
 	moveq #0, d1
 	move.w layout.State.ArenaUsed(a6), d1
@@ -571,7 +629,7 @@ reference
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	lsl.l #4, d0
-	lea ENTRIES(a6), a3
+	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #4, records.Entry.Flags+1(a3)
 	bne.w bad  ; template names are callable, not numeric values
@@ -623,7 +681,7 @@ resolve
 	bhs.w rewrite
 	move.l d7, d0
 	lsl.l #4, d0
-	lea ENTRIES(a6), a4
+	movea.l ENTRIES_POINTER(a6), a4
 	adda.l d0, a4
 	move.w records.Entry.Flags(a4), d0
 	andi.w #DECLARED+REFERENCED, d0
@@ -631,20 +689,26 @@ resolve
 	tst.w MODULE_STATE+modules.State.Selection(a6)
 	beq.w selectedReference
 	move.l d7, d1
-	add.w d1, d1
-	lea MODULE_STATE+modules.FLAGS(a6), a0
-	btst #1, 1(a0, d1.w)
+	add.l d1, d1
+	movea.l MODULE_STATE+modules.FLAGS_POINTER(a6), a0
+	adda.l d1, a0
+	btst #1, 1(a0)
+	suba.l d1, a0
 	beq.w selectedReference  ; a declaration may serve a selected module
-	btst #2, 1(a0, d1.w)
+	adda.l d1, a0
+	btst #2, 1(a0)
+	suba.l d1, a0
 	bne.w selectedReference  ; mixed origins need normal validation
-	lea MODULE_STATE+modules.ORIGINS(a6), a0
+	movea.l MODULE_STATE+modules.ORIGINS_POINTER(a6), a0
 	moveq #0, d0
-	move.w 0(a0, d1.w), d0
+	move.w 0(a0, d1.l), d0
 	beq.w selectedReference
 	subq.w #1, d0
-	add.w d0, d0
-	lea MODULE_STATE+modules.FLAGS(a6), a0
-	btst #4, 1(a0, d0.w)
+	add.l d0, d0
+	movea.l MODULE_STATE+modules.FLAGS_POINTER(a6), a0
+	adda.l d0, a0
+	btst #4, 1(a0)
+	suba.l d0, a0
 	beq.w next
 selectedReference
 	btst #0, records.Entry.Flags+1(a4)
@@ -659,7 +723,7 @@ parent
 	move.l d3, d0
 	subq.w #1, d0
 	lsl.l #4, d0
-	lea ENTRIES(a6), a3
+	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	moveq #0, d3
 	move.w records.Entry.Owner(a3), d3
@@ -693,7 +757,7 @@ access
 	cmp.w layout.State.Count(a6), d0
 	bhs.w failSaved
 	lsl.l #4, d0
-	lea ENTRIES(a6), a3
+	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #4, records.Entry.Flags+1(a3)
 	bne.w failSaved
@@ -713,7 +777,7 @@ rewrite
 	tst.w layout.State.Changed(a6)
 	beq.w unchanged
 	movea.l a5, a0
-	lea ENTRIES(a6), a1
+	movea.l ENTRIES_POINTER(a6), a1
 	moveq #0, d1
 	move.w layout.State.Base(a6), d1
 	moveq #0, d2
@@ -941,7 +1005,7 @@ enter
 	bhs.w bad
 	move.l d0, d1
 	lsl.l #4, d1
-	lea ENTRIES(a6), a3
+	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d1, a3
 	; Only opening a path owns its parent metadata. A later qualified value
 	; declaration must not change an existing namespace's lexical parent.
@@ -973,7 +1037,7 @@ closeScope	.block
 	beq.w bad
 	subq.w #1, d0
 	lsl.l #4, d0
-	lea ENTRIES(a6), a3
+	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	move.w records.Entry.ScopeKind(a3), d0
 	andi.w #$ff, d0
@@ -1004,7 +1068,7 @@ declare	.block
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	lsl.l #4, d0
-	lea ENTRIES(a6), a3
+	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #0, records.Entry.Flags+1(a3)
 	bne.w bad
@@ -1043,7 +1107,7 @@ scan
 	move.l d3, d0
 	subq.w #1, d0
 	lsl.l #4, d0
-	lea ENTRIES(a6), a3
+	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	moveq #0, d7
 	move.w records.Entry.Length(a3), d7
@@ -1110,7 +1174,7 @@ chain
 	beq.w missing
 	subq.w #1, d2
 	lsl.l #4, d2
-	lea ENTRIES(a6), a3
+	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d2, a3
 	cmp.w records.Entry.Length(a3), d6
 	bne.w next
@@ -1164,7 +1228,7 @@ keyword	.block
 	cmp.w layout.State.Count(a6), d0
 	bhs.w none
 	lsl.l #4, d0
-	lea ENTRIES(a6), a3
+	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	movea.l ARENA_POINTER(a6), a0
 	moveq #0, d0
@@ -1249,7 +1313,7 @@ rebindLocal	.block
 	cmp.w layout.State.Count(a6), d5
 	bhs.w badRebind
 	lsl.l #4, d5
-	lea ENTRIES(a6), a3
+	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d5, a3
 	moveq #0, d2
 	move.w records.Entry.Leaf(a3), d2
@@ -1323,9 +1387,9 @@ templateLeafEqual	.block
 	bhs.w leafMissing
 	lsl.l #4, d0
 	lsl.l #4, d1
-	lea ENTRIES(a6), a2
+	movea.l ENTRIES_POINTER(a6), a2
 	adda.l d0, a2
-	lea ENTRIES(a6), a3
+	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d1, a3
 	moveq #0, d2
 	move.w records.Entry.Length(a2), d2
@@ -1406,11 +1470,13 @@ templateDistance	.block
 	movea.l a0, a6
 	cmp.w d1, d0
 	beq.w exact
+	moveq #0, d6
 	move.w d0, d6
 	sub.w layout.State.Base(a6), d6
 	bcs.w missing
 	cmp.w layout.State.Count(a6), d6
 	bhs.w missing
+	moveq #0, d7
 	move.w d1, d7
 	sub.w layout.State.Base(a6), d7
 	bcs.w missing
@@ -1418,9 +1484,9 @@ templateDistance	.block
 	bhs.w missing
 	lsl.l #4, d6
 	lsl.l #4, d7
-	lea ENTRIES(a6), a4
+	movea.l ENTRIES_POINTER(a6), a4
 	adda.l d6, a4
-	lea ENTRIES(a6), a5
+	movea.l ENTRIES_POINTER(a6), a5
 	adda.l d7, a5
 	tst.w records.Entry.Leaf(a4)
 	beq.w missing  ; an explicitly qualified call needs an exact ID
@@ -1464,10 +1530,11 @@ templateAncestor
 	beq.w foundTemplate
 	tst.w d4
 	beq.w missing
+	moveq #0, d0
 	move.w d4, d0
 	subq.w #1, d0
 	lsl.l #4, d0
-	lea ENTRIES(a6), a0
+	movea.l ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	move.w records.Entry.Owner(a0), d4
 	addq.w #1, d1
@@ -1479,9 +1546,9 @@ exact
 	bcs.w missing
 	cmp.w layout.State.Count(a6), d0
 	bhs.w missing
-	add.w d0, d0
-	lea MODULE_STATE+modules.OWNERS(a6), a0
-	move.w 0(a0, d0.w), d0
+	add.l d0, d0
+	movea.l MODULE_STATE+modules.OWNERS_POINTER(a6), a0
+	move.w 0(a0, d0.l), d0
 	beq.w foundTemplate  ; global template
 	cmp.w MODULE_STATE+modules.State.Active(a6), d0
 	bne.w missing

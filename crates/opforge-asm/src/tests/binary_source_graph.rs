@@ -292,7 +292,7 @@ fn oracle(files: &[(&str, &str)]) -> Result<Vec<u8>, String> {
     oracle_with_roots(files, &[])
 }
 
-fn oracle_with_roots(files: &[(&str, &str)], roots: &[&str]) -> Result<Vec<u8>, String> {
+pub(super) fn oracle_with_roots(files: &[(&str, &str)], roots: &[&str]) -> Result<Vec<u8>, String> {
     oracle_with_search_roots(files, roots, &[])
 }
 

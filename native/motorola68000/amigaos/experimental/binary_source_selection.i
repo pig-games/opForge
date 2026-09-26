@@ -74,7 +74,11 @@ nameEnd
 compareName
 	cmp.l RequestedNameBytes, d5
 	bne.w skip
-	movea.l RequestedName, a2
+	; Preparation may relocate the spelling arena between selected lines.
+	lea Front, a2
+	movea.l frontend.Frame.Scratch(a2), a2
+	movea.l frontend.SCOPE_STATE+layout.ARENA_POINTER(a2), a2
+	adda.l RequestedNameOffset, a2
 compare
 	moveq #0, d1
 	move.b (a3)+, d1

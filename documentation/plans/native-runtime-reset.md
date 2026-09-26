@@ -1530,3 +1530,70 @@ or environment tests ignored. Native arena growth/rejection, wildcard import and
 bounded self-host checks complete freshly. Rust and assembly formatting (42 files), proof-contract
 and benchmark-selector checks pass. The architecture guard still reports the same
 nine existing findings; this slice adds none. Broad qualification is not claimed.
+
+## Growable preparation-identity tables slice
+
+A synchronized diagnostic change from 512 to 544 identity slots advances the
+bounded self-host rejection from app line 524 to line 600, with balanced cleanup.
+This confirms a storage constraint; the temporary capacity change was reverted.
+
+Replace inline binding entries and per-identity module/import metadata with owned,
+growable blocks. Preserve the 16-byte binding entry, word IDs/name offsets and
+serialized source/package contracts. Reserve every coupled table before publishing
+an identity, refresh pointers across relocating callbacks, and release all tables
+at preparation shutdown. Retain separate graph/import-list limits for this slice;
+a higher symbol limit must not implicitly allocate larger graphs or import lists.
+
+Acceptance: fresh exact Rust/native output for more than 512 short constants,
+conditional use of those constants, wildcard imports and referenced block selection;
+balanced owned-memory accounting on success and existing offset-bound rejection;
+unchanged release timing control; and another bounded instrumented self-host probe.
+No full self-host parity or performance claim is made by an incomplete probe.
+
+Implementation outcome: binding entries, module owner/origin/flags and import
+heads/known-value/known-defined tables use owned growable blocks. All tables are
+reserved before Count publication. Existing 16-byte entries and packed records
+are unchanged. Borrowed pointers refresh across callbacks, and discovery retains
+candidate spelling offsets. `$ffff` remains reserved for selected-import wildcard
+state, so the logical Count bound is 65,534, additionally limited by source-ID
+space and spelling extent. An obsolete 512-identity dependency-resolution guard
+is removed; its scratch already grows from the actual constant count.
+
+Fresh 68020 / 2 MiB native comparisons match Rust for 600 short constants with
+conditional evaluation and references both before/after growth: 5 output bytes
+from 6,652 source bytes locally, and 8 bytes from a 6,738-byte wildcard-import case
+including a reached block and an excluded unused block. Instrumented peak owned
+memory is 803,072 / 849,152 bytes respectively. The local module has 21 dotted components, exercising entry relocation during
+prefix binding. Error flags are zero and cleanup balances. A late-module graph-bound case also completes freshly with explicit
+exit 20, peak 849,152 bytes, balanced cleanup and incomplete-preparation flag 16.
+The retained 512-node graph is keyed by binding index; new guards reject high
+module identities before touching graph storage. Instrumented times are not
+release performance evidence.
+
+The bounded self-host probe advances from app line 524 to line 856 (hex file `20`,
+line `358`), `move.w #PATH_BYTES/4-1, d0`. It reads the current 47-file graph of
+534,619 source bytes. Instrumented peak owned memory is 906,752 bytes; allocations
+and frees balance, cleanup reaches zero, and only incomplete-preparation flag 16
+remains. Preparation stage calls are [1361, 1, 1223, 1223, 1360, 0]. No full native
+self-host artifact parity or time is claimed. The packed expression product parser
+currently admits multiplication but not division; inventory division/remainder and
+other outstanding arithmetic forms together before the next slice. This is the
+next investigation, not authorization for another implementation slice.
+
+Focused qualification passes 99 binary-source Rust tests (193 explicit native or
+environment tests ignored). Three new native identity-growth/bounds checks and the
+bounded self-host probe complete freshly. Rust/assembly formatting (42 files),
+proof-contract and benchmark-selector checks pass. The architecture guard still
+reports the same nine existing enforced findings; this slice adds none. Broad
+repository qualification is not claimed.
+
+Final release control matches all 1,701 Rust bytes from the unchanged 84,687-byte,
+121-template workload in 8.750 seconds versus 8.502 before this slice (2.9% slower).
+An earlier integrated sample was 8.739 seconds. This is a small observed cost, not
+a statistical performance conclusion; the change removes a demonstrated resource
+constraint rather than claiming a speedup. Release image is 70,224 bytes / 81,432
+linked reserved bytes, up 1,056 / 976 bytes. m68020 BSP3 remains 269,162 bytes.
+
+The existing over-65,535-byte spelling case also completes freshly with explicit
+exit 20, 798,464 peak owned bytes, balanced cleanup and only flag 16. No new
+legacy executor, CPU semantics or serialized pointer is introduced.

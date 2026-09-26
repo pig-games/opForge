@@ -196,10 +196,10 @@ root
 	bcs.w invalid
 	cmp.w layout.State.Count(a5), d0
 	bhs.w invalid
-	add.w d0, d0
-	lea layout.MODULE_STATE+modules.OWNERS(a5), a0
+	add.l d0, d0
+	movea.l layout.MODULE_STATE+modules.OWNERS_POINTER(a5), a0
 	moveq #0, d1
-	move.w 0(a0, d0.w), d1
+	move.w 0(a0, d0.l), d1
 	beq.w liveRoot
 	subq.w #1, d1
 	move.w d1, d3

@@ -153,7 +153,7 @@ enter
 	bhs.w bad
 	move.l d0, d1
 	lsl.l #4, d1
-	lea layout.ENTRIES(a6), a0
+	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d1, a0
 	btst #0, records.Entry.Flags+1(a0)
 	bne.w bad

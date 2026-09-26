@@ -1627,3 +1627,45 @@ Release image: 69,168 bytes / 80,456 linked reserved bytes; m68020 capsule remai
 peak tracked bytes and balanced cleanup, still incomplete. See the
 [reset checkpoint](native-runtime-reset.md#growable-preparation-name-arena-checkpoint)
 for evidence limits and the next storage investigation.
+
+### Owned preparation identity tables
+
+Binding entries and per-identity module/import metadata now use growable owned
+blocks, following the name arena's allocation and cleanup contract. The binding
+entry remains 16 bytes; names, owners, targets and chains remain word offsets or
+IDs. These pointers and the reservation callback exist only in preparation state;
+they do not enter packed source, runtime packages or output artifacts.
+
+Binding reserves all coupled arrays before publishing Count. Partial allocation
+failure leaves existing entries and owned blocks valid for cleanup. Module prefix
+binding, proxy resolution and candidate selection refresh relocated storage rather
+than retaining array/arena pointers across callbacks. Candidate names retain an
+arena offset. Constant dependency scratch already grows from its actual entry
+count; its obsolete coupled 512-source-identity check is removed.
+
+The logical preparation bound is `min(65,534, 65,536 - Base)`: `$ffff` remains the
+selected-import wildcard marker. Spelling extent still cannot exceed 65,535 bytes,
+and composed names cannot exceed 255 bytes. Import lists/selections/parameters and
+block spans retain independent 512-entry bounds. Graph nodes remain bounded and
+keyed by binding index, so modules above that bound reject explicitly even when
+ordinary symbol storage can grow. Removing that graph/identity coupling is separate
+work; no general unlimited-source claim is made.
+
+Fresh 68020 / 2 MiB proof: 600-constant local and wildcard-import workloads match
+all 5 / 8 Rust bytes, including conditional arithmetic and excluded unused blocks.
+The local case opens a 21-component module, forcing entry relocation while binding
+prefixes.
+Tracked peak ownership is 803,072 / 849,152 bytes, zero profiling errors, balanced
+cleanup. A separate late-module case verifies explicit graph-bound rejection and
+balanced cleanup. Reproduce with `cargo test -p asm compact_identity_storage_
+-- --ignored --nocapture --test-threads=1` and the configured FS-UAE environment;
+set `OPFORGE_COMPARE_MEMORY=1` for gated accounting. See the
+[reset slice](native-runtime-reset.md#growable-preparation-identity-tables-slice)
+for release control and bounded self-host evidence.
+
+Final release image is 70,224 bytes / 81,432 linked reserved bytes (+1,056 / +976).
+The m68020 capsule remains 269,162 bytes. The unchanged 121-template control matches
+all 1,701 bytes in 8.750 seconds versus 8.502 previously; record the 2.9% observed
+cost without claiming statistical significance. The incomplete self-host probe now
+reaches app line 856, a division expression, with 906,752 peak tracked owned bytes
+and balanced cleanup. Full native self-host parity/time remain unproven.

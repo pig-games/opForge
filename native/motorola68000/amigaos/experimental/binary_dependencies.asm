@@ -55,8 +55,8 @@ resolve	.block
 	move.w pkg.Header.NameCount(a0), d1
 	sub.l d1, d0
 	bcs.w bad
-	cmpi.l #512, d0
-	bhi.w bad
+	; Source IDs are bounded by Context.Count; dependency scratch is owned and
+	; grows from the actual number of constants, independently of preparation.
 	bsr.w index
 	tst.l d0
 	bne.w clearFailure

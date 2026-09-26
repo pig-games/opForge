@@ -74,7 +74,7 @@ line	.block
 	cmp.w layout.State.Count(a6), d0
 	bhs.w ordinary
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a0
+	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	moveq #0, d2
 	move.w records.Entry.Length(a0), d2

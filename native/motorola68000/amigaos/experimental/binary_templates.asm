@@ -1956,7 +1956,7 @@ rewriteFormal
 	cmp.w layout.State.Count(a0), d4
 	bhs.w rewriteBad
 	lsl.l #4, d4
-	lea layout.ENTRIES(a0), a4
+	movea.l layout.ENTRIES_POINTER(a0), a4
 	adda.l d4, a4
 	moveq #0, d5
 	move.w records.Entry.Length(a4), d5

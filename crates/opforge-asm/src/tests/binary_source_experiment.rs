@@ -25,6 +25,9 @@ mod struct_layout;
 #[path = "binary_source_macro_calls.rs"]
 mod macro_calls;
 
+#[path = "binary_source_identity_storage.rs"]
+mod identity_storage;
+
 #[path = "binary_source_indexed.rs"]
 mod indexed;
 

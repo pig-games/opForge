@@ -5,7 +5,8 @@
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_memory as memory
 	.pub
-LIMIT = 512
+; $ffff is the selected-import wildcard marker, not a binding index+1.
+LIMIT = 65534
 ARENA_BYTES = 65535
 ; Composed lexical paths include invocation scopes as well as source names.
 NAME_BYTES = records.NAME_BYTES
@@ -21,9 +22,11 @@ FirstExplicit	.word ?
 EndDirective	.word ?
 Changed	.word ?
 FileContent	.word ?
+ReserveRoutine	.long ?
 .endstruct
-ENTRIES = State.FileContent+2
-BUCKETS = ENTRIES+LIMIT*ENTRY_BYTES
+ENTRIES = State.ReserveRoutine+4
+ENTRIES_POINTER = ENTRIES+memory.Block.Pointer
+BUCKETS = ENTRIES+memory.Block.Used+4
 ARENA = BUCKETS+256*2
 ARENA_POINTER = ARENA+memory.Block.Pointer
 BUFFER = ARENA+memory.Block.Used+4

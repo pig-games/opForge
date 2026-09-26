@@ -4,8 +4,8 @@
 	.cpu 68020
 	.include "telemetry_macros.i"
 	.use experimental.amigaos.binary_binding_records as records
+	.use experimental.amigaos.binary_memory as memory
 	.pub
-LIMIT = 512
 State	.struct
 Active	.word ?
 Explicit	.word ?
@@ -16,9 +16,12 @@ Selection	.word ?
 FileDerived	.word ?
 .endstruct
 OWNERS = State.FileDerived+2
-ORIGINS = OWNERS+LIMIT*2
-FLAGS = ORIGINS+LIMIT*2
-SCRATCH_BYTES = FLAGS+LIMIT*2
+OWNERS_POINTER = OWNERS+memory.Block.Pointer
+ORIGINS = OWNERS+memory.Block.Used+4
+ORIGINS_POINTER = ORIGINS+memory.Block.Pointer
+FLAGS = ORIGINS+memory.Block.Used+4
+FLAGS_POINTER = FLAGS+memory.Block.Pointer
+SCRATCH_BYTES = FLAGS+memory.Block.Used+4
 PUBLIC = 1
 USED = 2
 MIXED = 4
@@ -40,6 +43,66 @@ clear
 	moveq #0, d0
 	rts
 	.bend  ; begin
+
+; A0=module state,D0=minimum identity slots. D0/CCR=status; others kept.
+; Partial allocation growth remains owned on failure; Count is caller-owned.
+reserve	.block
+	cmpi.l #65535, d0
+	bhi.w bad
+	movem.l d1/a0-a1, -(sp)
+	movea.l a0, a1
+	move.l d0, d1
+	add.l d1, d1
+	lea OWNERS(a1), a0
+	move.l d1, d0
+	jsr memory.reserve
+	bne.w done
+	cmp.l memory.Block.Used(a0), d1
+	bls.w extent1
+	move.l d1, memory.Block.Used(a0)
+extent1
+	lea ORIGINS(a1), a0
+	move.l d1, d0
+	jsr memory.reserve
+	bne.w done
+	cmp.l memory.Block.Used(a0), d1
+	bls.w extent2
+	move.l d1, memory.Block.Used(a0)
+extent2
+	lea FLAGS(a1), a0
+	move.l d1, d0
+	jsr memory.reserve
+	bne.w done
+	cmp.l memory.Block.Used(a0), d1
+	bls.w extent3
+	move.l d1, memory.Block.Used(a0)
+extent3
+done
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; reserve
+
+; A0=module state. Release every owned identity block; registers kept.
+release	.block
+	move.l a0, -(sp)
+	lea OWNERS(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp), a0
+	lea ORIGINS(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp), a0
+	lea FLAGS(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp)+, a0
+	rts
+	.bend  ; release
 
 ; A0=state. Ordinary content is allowed in global mode or an active module.
 ; Remember pre-module content so a later explicit module cannot legalize it.
@@ -63,13 +126,18 @@ bad
 ; Preserves all registers; CCR unspecified.
 claim	.block
 	movem.l d0-d1/a0-a1, -(sp)
-	add.w d0, d0
-	lea OWNERS(a0), a1
-	move.w State.Active(a0), 0(a1, d0.w)
-	lea FLAGS(a0), a1
-	andi.w #$fffe, 0(a1, d0.w)
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l OWNERS_POINTER(a0), a1
+	move.w State.Active(a0), 0(a1, d0.l)
+	movea.l FLAGS_POINTER(a0), a1
+	adda.l d0, a1
+	andi.w #$fffe, 0(a1)
+	suba.l d0, a1
 	move.w State.Visibility(a0), d1
-	or.w d1, 0(a1, d0.w)
+	adda.l d0, a1
+	or.w d1, 0(a1)
+	suba.l d0, a1
 	movem.l (sp)+, d0-d1/a0-a1
 	rts
 	.bend  ; claim
@@ -78,19 +146,28 @@ claim	.block
 ; before declaration. Preserves all registers; CCR unspecified.
 reference	.block
 	movem.l d0-d1/a0-a2, -(sp)
-	add.w d0, d0
-	lea FLAGS(a0), a1
-	lea ORIGINS(a0), a2
-	btst #1, 1(a1, d0.w)
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l FLAGS_POINTER(a0), a1
+	movea.l ORIGINS_POINTER(a0), a2
+	adda.l d0, a1
+	btst #1, 1(a1)
+	suba.l d0, a1
 	bne.w previous
-	ori.w #USED, 0(a1, d0.w)
-	move.w State.Active(a0), 0(a2, d0.w)
+	adda.l d0, a1
+	ori.w #USED, 0(a1)
+	suba.l d0, a1
+	move.w State.Active(a0), 0(a2, d0.l)
 	bra.w done
 previous
 	move.w State.Active(a0), d1
-	cmp.w 0(a2, d0.w), d1
+	adda.l d0, a2
+	cmp.w 0(a2), d1
+	suba.l d0, a2
 	beq.w done
-	ori.w #MIXED, 0(a1, d0.w)
+	adda.l d0, a1
+	ori.w #MIXED, 0(a1)
+	suba.l d0, a1
 done
 	movem.l (sp)+, d0-d1/a0-a2
 	rts
@@ -101,23 +178,31 @@ done
 ; D0/CCR=status; other registers preserved.
 check	.block
 	movem.l d1-d3/a0-a2, -(sp)
-	add.w d0, d0
-	add.w d1, d1
-	lea FLAGS(a0), a1
-	move.w 0(a1, d0.w), d2
+	andi.l #$ffff, d0
+	add.l d0, d0
+	andi.l #$ffff, d1
+	add.l d1, d1
+	movea.l FLAGS_POINTER(a0), a1
+	move.w 0(a1, d0.l), d2
 	btst #1, d2
 	beq.w ok
-	btst #0, 1(a1, d1.w)
+	adda.l d1, a1
+	btst #0, 1(a1)
+	suba.l d1, a1
 	bne.w ok
-	lea OWNERS(a0), a2
-	tst.w 0(a2, d1.w)
+	movea.l OWNERS_POINTER(a0), a2
+	adda.l d1, a2
+	tst.w 0(a2)
+	suba.l d1, a2
 	beq.w ok  ; private global symbols remain visible across modules
 	btst #2, d2
 	bne.w bad
-	lea ORIGINS(a0), a1
-	move.w 0(a1, d0.w), d3
-	lea OWNERS(a0), a1
-	cmp.w 0(a1, d1.w), d3
+	movea.l ORIGINS_POINTER(a0), a1
+	move.w 0(a1, d0.l), d3
+	movea.l OWNERS_POINTER(a0), a1
+	adda.l d1, a1
+	cmp.w 0(a1), d3
+	suba.l d1, a1
 	bne.w bad
 ok
 	moveq #0, d0
@@ -130,7 +215,7 @@ done
 	rts
 	.bend  ; check
 
-; D0=module source index,A0=metadata,A1=Entry array,A2=name arena,
+; D0=module source index,A0=metadata,A1=Entry block descriptor,A2=name arena,
 ; A3=scope state,A4=source binder callback. Caller proves root scope and ID bounds.
 ; Build dotted lexical prefixes separately from module identity. Binder follows
 ; writer ABI and preserves D3-D7/A2-A6. D0/CCR=status, other registers preserved.
@@ -141,18 +226,22 @@ open	.block
 	movea.l a0, a6
 	movea.l a1, a5
 	move.l d0, d7
+	andi.l #$ffff, d7
 	tst.w State.Active(a6)
 	bne.w bad
 	tst.w State.Outside(a6)
 	bne.w bad
 	move.l d0, d1
-	add.w d1, d1
-	lea FLAGS(a6), a0
-	btst #3, 1(a0, d1.w)
+	andi.l #$ffff, d1
+	add.l d1, d1
+	movea.l FLAGS_POINTER(a6), a0
+	adda.l d1, a0
+	btst #3, 1(a0)
+	suba.l d1, a0
 	bne.w bad  ; explicit module identities cannot reopen
 	move.l d7, d0
 	lsl.l #4, d0
-	movea.l a5, a0
+	movea.l memory.Block.Pointer(a5), a0
 	adda.l d0, a0
 	moveq #0, d0
 	move.w records.Entry.Name(a0), d0
@@ -192,9 +281,10 @@ scan
 	tst.l d0
 	bne.w bad
 	sub.w State.Base(a6), d1
+	andi.l #$ffff, d1
 	move.l d1, d0
 	lsl.l #4, d0
-	movea.l a5, a0
+	movea.l memory.Block.Pointer(a5), a0
 	adda.l d0, a0
 	move.w d4, records.Entry.Owner(a0)
 	addq.w #1, d1
@@ -205,14 +295,17 @@ next
 ready
 	move.l d7, d0
 	lsl.l #4, d0
-	movea.l a5, a0
+	movea.l memory.Block.Pointer(a5), a0
 	adda.l d0, a0
 	move.w d4, records.Entry.Owner(a0)
 	move.w #KIND_MODULE, records.Entry.ScopeKind(a0)
 	move.l d7, d0
-	add.w d0, d0
-	lea FLAGS(a6), a0
-	ori.w #MODULE_ID, 0(a0, d0.w)
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l FLAGS_POINTER(a6), a0
+	adda.l d0, a0
+	ori.w #MODULE_ID, 0(a0)
+	suba.l d0, a0
 	addq.w #1, d7
 	move.w d7, State.Active(a6)
 	move.w #1, State.Explicit(a6)

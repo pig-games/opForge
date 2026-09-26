@@ -1496,7 +1496,7 @@ DiscoveryPaths	.res long, 1
 DeclarationBlock	.res byte, memory.Block.Used+4
 IndexOverflow	.res long, 1
 RequestedModule	.res long, 1
-RequestedName	.res long, 1
+RequestedNameOffset	.res long, 1
 RequestedNameBytes	.res long, 1
 SelectionState	.res long, 1
 SelectedFileDerived	.res long, 1

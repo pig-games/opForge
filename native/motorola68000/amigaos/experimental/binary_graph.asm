@@ -13,7 +13,7 @@ End	.long ?
 File	.long ?
 .endstruct
 SPAN_BYTES = 12
-LIMIT = 512; kept equal to binary_scope_layout.LIMIT
+LIMIT = 512; independent module graph capacity
 MAX_SPANS = LIMIT
 Node	.struct
 Start	.long ?
@@ -61,6 +61,12 @@ clear
 ; other registers kept. Unsupported outside-module values invalidate graph mode.
 line	.block
 	movem.l d1-d5/a0-a2, -(sp)
+	; Graph arrays are keyed by binding index, not by module count alone.
+	; Identity tables may grow beyond this independent bounded graph.
+	cmpi.l #LIMIT, d1
+	bhi.w bad
+	cmpi.l #LIMIT, d2
+	bhi.w bad
 	move.l GraphState.Cursor(a0), d4
 	move.l d4, d5
 	add.l d0, d5
@@ -161,9 +167,11 @@ reset
 	clr.w Node.Color(a0)
 	move.l d1, d0
 	subq.w #1, d0
-	add.w d0, d0
-	lea layout.MODULE_STATE+modules.FLAGS(a5), a0
-	andi.w #$ffef, 0(a0, d0.w)
+	add.l d0, d0
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a5), a0
+	adda.l d0, a0
+	andi.w #$ffef, 0(a0)
+	suba.l d0, a0
 	addq.w #1, d7
 	bra.w reset
 headsStart
@@ -179,7 +187,7 @@ heads
 	move.w 0(a0, d0.w), d1
 	subq.w #1, d1
 	add.w d1, d1
-	lea layout.IMPORT_STATE+imports.HEADS(a5), a0
+	movea.l layout.IMPORT_STATE+imports.HEADS_POINTER(a5), a0
 	moveq #0, d2
 	move.w 0(a0, d1.w), d2
 	lea 10256(a6), a1
@@ -247,6 +255,8 @@ walk
 	adda.l d2, a0
 	moveq #0, d1
 	move.w imports.Item.Target(a0), d1
+	cmpi.l #LIMIT, d1
+	bhs.w bad
 	addq.w #1, d1
 	bsr.w getNode
 	tst.w Node.File(a0)
@@ -319,9 +329,11 @@ push	.block
 	move.w #1, Node.Color(a0)
 	move.l d1, d2
 	subq.w #1, d2
-	add.w d2, d2
-	lea layout.MODULE_STATE+modules.FLAGS(a5), a1
-	ori.w #modules.SELECTED, 0(a1, d2.w)
+	add.l d2, d2
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a5), a1
+	adda.l d2, a1
+	ori.w #modules.SELECTED, 0(a1)
+	suba.l d2, a1
 	move.l d6, d0
 	lsl.l #2, d0
 	lea 7184(a6), a1

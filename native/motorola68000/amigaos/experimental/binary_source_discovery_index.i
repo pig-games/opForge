@@ -173,7 +173,7 @@ selectCandidate .block
 	bhs.w bad
 	move.l d7, d0
 	lsl.l #4, d0
-	lea layout.ENTRIES(a5), a4
+	movea.l layout.ENTRIES_POINTER(a5), a4
 	adda.l d0, a4
 	moveq #0, d0
 	move.w records.Entry.Length(a4), d0
@@ -183,7 +183,7 @@ selectCandidate .block
 	moveq #0, d1
 	move.w records.Entry.Name(a4), d1
 	adda.l d1, a1
-	move.l a1, RequestedName
+	move.l d1, RequestedNameOffset
 	lea DeclarationBlock, a0
 	movea.l memory.Block.Pointer(a0), a0
 	jsr declarations.find

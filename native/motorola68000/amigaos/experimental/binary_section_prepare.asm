@@ -248,7 +248,7 @@ mapCompare
 	move.l d6, d0
 	sub.w layout.State.Base(a6), d0
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a1
+	movea.l layout.ENTRIES_POINTER(a6), a1
 	adda.l d0, a1
 	move.w names.Entry.Owner(a1), d0
 	cmpi.w #1, d5
@@ -854,7 +854,7 @@ leaf	.block
 	cmp.w layout.State.Count(a6), d1
 	bhs.w bad
 	lsl.l #4, d1
-	lea layout.ENTRIES(a6), a1
+	movea.l layout.ENTRIES_POINTER(a6), a1
 	adda.l d1, a1
 	moveq #0, d2
 	move.w names.Entry.Length(a1), d2

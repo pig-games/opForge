@@ -4,6 +4,7 @@
 	.cpu 68020
 	.include "telemetry_macros.i"
 	.use experimental.amigaos.binary_binding_records as records
+	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_section_prepare as sections
@@ -24,17 +25,21 @@ Next	.word ?
 ITEM_BYTES = Item.Next+2
 SELECTION_BYTES = Selection.Next+2
 COUNT = 0
+LIST_LIMIT = 512
 HEADS = 2
-ITEMS = HEADS+layout.LIMIT*2
-SELECTED_COUNT = ITEMS+layout.LIMIT*ITEM_BYTES
+HEADS_POINTER = HEADS+memory.Block.Pointer
+ITEMS = HEADS+memory.Block.Used+4
+SELECTED_COUNT = ITEMS+LIST_LIMIT*ITEM_BYTES
 SELECTIONS = SELECTED_COUNT+2
-PROXIES = SELECTIONS+layout.LIMIT*SELECTION_BYTES
+PROXIES = SELECTIONS+LIST_LIMIT*SELECTION_BYTES
 PARAM_COUNT = PROXIES+256*2
 PARAMS = PARAM_COUNT+2
 PARAM_BYTES = 8
-KNOWN_VALUES = PARAMS+layout.LIMIT*PARAM_BYTES
-KNOWN_DEFINED = KNOWN_VALUES+layout.LIMIT*4
-EXPRESSION_SCRATCH = KNOWN_DEFINED+layout.LIMIT
+KNOWN_VALUES = PARAMS+LIST_LIMIT*PARAM_BYTES
+KNOWN_VALUES_POINTER = KNOWN_VALUES+memory.Block.Pointer
+KNOWN_DEFINED = KNOWN_VALUES+memory.Block.Used+4
+KNOWN_DEFINED_POINTER = KNOWN_DEFINED+memory.Block.Pointer
+EXPRESSION_SCRATCH = KNOWN_DEFINED+memory.Block.Used+4
 SCRATCH_BYTES = EXPRESSION_SCRATCH+256
 PROXY = 8
 	.section code, kind=code
@@ -50,6 +55,67 @@ clear
 	moveq #0, d0
 	rts
 	.bend  ; begin
+
+; A0=import state,D0=minimum identity slots. D0/CCR=status; others kept.
+reserve	.block
+	cmpi.l #65535, d0
+	bhi.w bad
+	movem.l d1-d2/a0-a1, -(sp)
+	movea.l a0, a1
+	move.l d0, d2
+	move.l d0, d1
+	add.l d1, d1
+	lea HEADS(a1), a0
+	move.l d1, d0
+	jsr memory.reserve
+	bne.w done
+	cmp.l memory.Block.Used(a0), d1
+	bls.w extent1
+	move.l d1, memory.Block.Used(a0)
+extent1
+	add.l d1, d1
+	lea KNOWN_VALUES(a1), a0
+	move.l d1, d0
+	jsr memory.reserve
+	bne.w done
+	cmp.l memory.Block.Used(a0), d1
+	bls.w extent2
+	move.l d1, memory.Block.Used(a0)
+extent2
+	lea KNOWN_DEFINED(a1), a0
+	move.l d2, d0
+	jsr memory.reserve
+	bne.w done
+	cmp.l memory.Block.Used(a0), d2
+	bls.w extent3
+	move.l d2, memory.Block.Used(a0)
+extent3
+done
+	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; reserve
+
+; A0=import state. Release every owned per-identity block; registers kept.
+release	.block
+	move.l a0, -(sp)
+	lea HEADS(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp), a0
+	lea KNOWN_VALUES(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp), a0
+	lea KNOWN_DEFINED(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp)+, a0
+	rts
+	.bend  ; release
 
 ; A0=normalized writer record,A1=scope state. Retain module/global-scope
 ; assignments whose values are known at this source position. Global scope
@@ -74,7 +140,7 @@ captureConstant	.block
 	cmpi.b #34, 8(a0)
 	bne.w constantOk
 	movea.l a0, a1
-	adda.w d0, a1
+	adda.l d0, a1
 	moveq #0, d7
 	move.w 5(a0), d7
 	lea 9(a0), a0
@@ -83,29 +149,35 @@ captureConstant	.block
 	move.l d7, d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w constantOk
+	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w constantOk
 	lea layout.IMPORT_STATE(a6), a0
 	move.l d0, d2
 	lsl.l #2, d2
-	lea KNOWN_VALUES(a0), a1
+	movea.l KNOWN_VALUES_POINTER(a0), a1
 	move.l d1, 0(a1, d2.l)
-	lea KNOWN_DEFINED(a0), a1
+	movea.l KNOWN_DEFINED_POINTER(a0), a1
 	move.b #1, 0(a1, d0.l)
 	bra.w constantOk
 constantUnknown
 	move.l d7, d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w constantOk
+	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w constantOk
 	lea layout.IMPORT_STATE(a6), a0
 	move.l d0, d2
 	lsl.l #2, d2
-	lea KNOWN_VALUES(a0), a1
-	clr.l 0(a1, d2.l)
-	lea KNOWN_DEFINED(a0), a1
-	clr.b 0(a1, d0.l)
+	movea.l KNOWN_VALUES_POINTER(a0), a1
+	adda.l d2, a1
+	clr.l 0(a1)
+	suba.l d2, a1
+	movea.l KNOWN_DEFINED_POINTER(a0), a1
+	adda.l d0, a1
+	clr.b 0(a1)
+	suba.l d0, a1
 constantOk
 	moveq #0, d0
 constantDone
@@ -140,6 +212,7 @@ line	.block
 	bne.w bad
 	move.l d1, d7
 	sub.w layout.State.Base(a6), d7
+	andi.l #$ffff, d7
 	addq.l #4, a3
 	movea.l a3, a0
 	movea.l a6, a1
@@ -207,6 +280,7 @@ copySelected
 	bsr.w globalBind
 	bne.w bad
 	sub.w layout.State.Base(a6), d1
+	andi.l #$ffff, d1
 	addq.w #1, d1
 	move.w d1, d3  ; original selected target
 	moveq #0, d5  ; exposed alias, zero keeps the original leaf
@@ -239,6 +313,7 @@ copySelected
 	moveq #0, d5
 	move.w 1(a3), d5
 	sub.w layout.State.Base(a6), d5
+	andi.l #$ffff, d5
 	addq.w #1, d5
 	addq.l #4, a3
 findSelection
@@ -263,7 +338,7 @@ nextSeenName
 appendName
 	moveq #0, d2
 	move.w SELECTED_COUNT(a2), d2
-	cmpi.w #layout.LIMIT, d2
+	cmpi.w #LIST_LIMIT, d2
 	bhs.w bad
 	move.l d2, d0
 	mulu.w #SELECTION_BYTES, d0
@@ -348,14 +423,16 @@ qualifier
 	tst.l d0
 	bne.w bad
 	sub.w layout.State.Base(a6), d1
+	andi.l #$ffff, d1
 	move.l d1, d5
 collisionStart
 	lea layout.IMPORT_STATE(a6), a4
 	move.l d6, d0
 	subq.w #1, d0
-	add.w d0, d0
-	lea HEADS(a4), a3
-	adda.w d0, a3
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l HEADS_POINTER(a4), a3
+	adda.l d0, a3
 	moveq #0, d2
 	move.w (a3), d2
 collision
@@ -376,7 +453,7 @@ nextCollision
 append
 	moveq #0, d0
 	move.w COUNT(a4), d0
-	cmpi.w #layout.LIMIT, d0
+	cmpi.w #LIST_LIMIT, d0
 	bhs.w bad
 	move.l d0, d1
 	mulu.w #ITEM_BYTES, d1
@@ -417,6 +494,7 @@ reference	.block
 	move.w 1(a0), d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w ok  ; package-owned names have no import selection
+	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	bsr.w selectedTarget
@@ -428,15 +506,17 @@ referenceProxy
 	move.w 1(a0), d6
 	sub.w layout.State.Base(a6), d6
 	bcs.w ok
+	andi.l #$ffff, d6
 	cmp.w layout.State.Count(a6), d6
 	bhs.w bad
 	move.l d6, d0
 	eor.w d7, d0
 	andi.w #255, d0
-	add.w d0, d0
+	andi.l #$ffff, d0
+	add.l d0, d0
 	lea layout.IMPORT_STATE(a6), a4
 	lea PROXIES(a4), a4
-	adda.w d0, a4
+	adda.l d0, a4
 	moveq #0, d2
 	move.w (a4), d2
 find
@@ -445,7 +525,7 @@ find
 	subq.w #1, d2
 	move.l d2, d0
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a3
+	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	cmp.w records.Entry.Owner(a3), d7
 	bne.w next
@@ -460,15 +540,23 @@ next
 allocate
 	moveq #0, d2
 	move.w layout.State.Count(a6), d2
-	cmpi.w #layout.LIMIT, d2
-	bhs.w bad
+	move.l d2, d0
+	addq.l #1, d0
+	movea.l layout.State.ReserveRoutine(a6), a0
+	move.l a0, d1
+	beq.w bad
+	movea.l a0, a1
+	movea.l a6, a0
+	jsr (a1)
+	tst.l d0
+	bne.w bad
 	move.l d2, d0
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a3
+	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	move.l d6, d0
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a0
+	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	move.w records.Entry.Name(a0), records.Entry.Name(a3)
 	move.w records.Entry.Length(a0), records.Entry.Length(a3)
@@ -482,6 +570,8 @@ allocate
 	addq.w #1, d0
 	move.w d0, (a4)
 	move.w d0, layout.State.Count(a6)
+	lsl.l #4, d0
+	move.l d0, layout.ENTRIES+memory.Block.Used(a6)
 	move.w layout.State.Base(a6), d0
 	add.w d2, d0
 	move.w d0, records.Entry.Target(a3)
@@ -505,10 +595,11 @@ selectedTarget	.block
 	lea layout.IMPORT_STATE(a6), a4
 	move.l d7, d0
 	subq.w #1, d0
-	add.w d0, d0
-	lea HEADS(a4), a0
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l HEADS_POINTER(a4), a0
 	moveq #0, d7
-	move.w 0(a0, d0.w), d7
+	move.w 0(a0, d0.l), d7
 	beq.w ok
 	movea.l a5, a0
 	bsr.w tokenName
@@ -607,9 +698,12 @@ modulesLoop
 	adda.l d0, a0
 	moveq #0, d0
 	move.w Item.Target(a0), d0
-	add.w d0, d0
-	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
-	btst #3, 1(a0, d0.w)
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a0
+	adda.l d0, a0
+	btst #3, 1(a0)
+	suba.l d0, a0
 	beq.w bad
 	move.l d7, d0
 	mulu.w #ITEM_BYTES, d0
@@ -625,13 +719,16 @@ selectedModule
 	cmp.w layout.State.Count(a6), d6
 	bhs.w proxies
 	move.l d6, d0
-	add.w d0, d0
-	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
-	btst #4, 1(a0, d0.w)
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a0
+	adda.l d0, a0
+	btst #4, 1(a0)
+	suba.l d0, a0
 	beq.w nextSelectedModule
-	lea HEADS(a4), a0
+	movea.l HEADS_POINTER(a4), a0
 	moveq #0, d7
-	move.w 0(a0, d0.w), d7
+	move.w 0(a0, d0.l), d7
 selectedItem
 	tst.w d7
 	beq.w nextSelectedModule
@@ -642,9 +739,12 @@ selectedItem
 	adda.l d0, a3
 	moveq #0, d0
 	move.w Item.Target(a3), d0
-	add.w d0, d0
-	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
-	btst #3, 1(a0, d0.w)
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a0
+	adda.l d0, a0
+	btst #3, 1(a0)
+	suba.l d0, a0
 	beq.w bad
 	bsr.w validateSelected
 	bne.w bad
@@ -661,7 +761,7 @@ loop
 	bhs.w ok
 	move.l d7, d0
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a3
+	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #3, records.Entry.Flags+1(a3)
 	beq.w next
@@ -671,13 +771,20 @@ loop
 	move.w records.Entry.Owner(a3), d0
 	beq.w next
 	subq.w #1, d0
-	add.w d0, d0
-	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
-	btst #4, 1(a0, d0.w)
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a0
+	adda.l d0, a0
+	btst #4, 1(a0)
+	suba.l d0, a0
 	beq.w next
 resolveProxy
 	bsr.w resolve
 	bne.w bad
+	move.l d7, d0
+	lsl.l #4, d0
+	movea.l layout.ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
 	move.w d1, records.Entry.Target(a3)
 	ori.w #1, records.Entry.Flags(a3)  ; validated declaration target, not a new value
 	move.w #1, layout.State.Changed(a6)
@@ -713,10 +820,11 @@ resolveTemplate	.block
 	move.l d1, d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w templateBad
+	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w templateBad
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a3
+	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #3, records.Entry.Flags+1(a3)
 	beq.w templateTarget
@@ -727,34 +835,39 @@ templateTarget
 	move.l d1, d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w templateBad
+	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w templateBad
 	move.l d0, d6
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a3
+	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #4, records.Entry.Flags+1(a3)
 	beq.w templateBad
 	move.l d6, d0
-	add.w d0, d0
-	lea layout.MODULE_STATE+modules.OWNERS(a6), a0
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l layout.MODULE_STATE+modules.OWNERS_POINTER(a6), a0
 	moveq #0, d7
-	move.w 0(a0, d0.w), d7
+	move.w 0(a0, d0.l), d7
 	beq.w templateOk  ; unscoped global definitions remain visible
 	cmp.w layout.MODULE_STATE+modules.State.Active(a6), d7
 	beq.w templateOk
-	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
-	btst #0, 1(a0, d0.w)
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a0
+	adda.l d0, a0
+	btst #0, 1(a0)
+	suba.l d0, a0
 	beq.w templateBad
 	moveq #0, d0
 	move.w layout.MODULE_STATE+modules.State.Active(a6), d0
 	beq.w templateBad
 	subq.w #1, d0
-	add.w d0, d0
+	andi.l #$ffff, d0
+	add.l d0, d0
 	lea layout.IMPORT_STATE(a6), a4
-	lea HEADS(a4), a0
+	movea.l HEADS_POINTER(a4), a0
 	moveq #0, d6
-	move.w 0(a0, d0.w), d6
+	move.w 0(a0, d0.l), d6
 templateImport
 	tst.w d6
 	beq.w templateBad
@@ -776,6 +889,7 @@ templateImport
 	beq.w templateOk  ; unselected or wildcard import
 	move.l d1, d2
 	sub.w layout.State.Base(a6), d2
+	andi.l #$ffff, d2
 	addq.w #1, d2
 templateSelection
 	tst.w d5
@@ -810,6 +924,7 @@ templateAliasCandidate	.block
 	move.w d1, d6
 	sub.w layout.State.Base(a6), d6
 	bcs.w aliasMissing
+	andi.l #$ffff, d6
 	cmp.w layout.State.Count(a6), d6
 	bhs.w aliasMissing
 	addq.w #1, d6
@@ -863,13 +978,16 @@ selected
 	bhs.w bad
 	move.l d0, d1
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a0
+	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	btst #0, records.Entry.Flags+1(a0)
 	beq.w bad
-	add.w d1, d1
-	lea layout.MODULE_STATE+modules.FLAGS(a6), a1
-	btst #0, 1(a1, d1.w)
+	andi.l #$ffff, d1
+	add.l d1, d1
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a1
+	adda.l d1, a1
+	btst #0, 1(a1)
+	suba.l d1, a1
 	beq.w bad
 	bra.w selected
 ok
@@ -903,7 +1021,9 @@ resolveQualified
 prefix
 	cmp.w d6, d5
 	bhs.w bad
-	cmpi.b #'.', 0(a2, d5.w)
+	adda.l d5, a2
+	cmpi.b #'.', 0(a2)
+	suba.l d5, a2
 	beq.w imports
 	addq.w #1, d5
 	bra.w prefix
@@ -911,10 +1031,11 @@ imports
 	moveq #0, d0
 	move.w records.Entry.Owner(a3), d0
 	subq.w #1, d0
-	add.w d0, d0
-	lea HEADS(a4), a0
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l HEADS_POINTER(a4), a0
 	moveq #0, d7
-	move.w 0(a0, d0.w), d7
+	move.w 0(a0, d0.l), d7
 	move.l d7, d4
 aliasLoop
 	tst.w d7
@@ -948,7 +1069,7 @@ copyModule
 	subq.w #1, d2
 	bne.w copyModule
 	movea.l a2, a0
-	adda.w d5, a0
+	adda.l d5, a0
 	move.l d6, d2
 	sub.w d5, d2
 copySuffix
@@ -980,7 +1101,9 @@ fullLoop
 	movea.l (sp)+, a1
 	cmp.w d6, d0
 	bhs.w fullNext
-	cmpi.b #'.', 0(a2, d0.w)
+	adda.l d0, a2
+	cmpi.b #'.', 0(a2)
+	suba.l d0, a2
 	bne.w fullNext
 	bsr.w prefixEqual
 	bne.w fullNext
@@ -1000,8 +1123,9 @@ bind
 	moveq #0, d0
 	move.w d1, d0
 	sub.w layout.State.Base(a6), d0
+	andi.l #$ffff, d0
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a0
+	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	btst #0, records.Entry.Flags+1(a0)
 	beq.w bad
@@ -1017,7 +1141,7 @@ resolveSelected
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a0
+	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	btst #0, records.Entry.Flags+1(a0)
 	bne.w selectedBound
@@ -1027,7 +1151,7 @@ resolveSelected
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a0
+	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	btst #0, records.Entry.Flags+1(a0)
 	beq.w bad
@@ -1126,10 +1250,11 @@ copyParameterLeaf
 	move.l d1, d5  ; canonical ID
 	sub.w layout.State.Base(a6), d1
 	bcs.w parametersBad
+	andi.l #$ffff, d1
 	cmp.w layout.State.Count(a6), d1
 	bhs.w parametersBad
 	lsl.l #4, d1
-	lea layout.ENTRIES(a6), a0
+	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d1, a0
 	moveq #0, d3
 	btst #0, records.Entry.Flags+1(a0)
@@ -1143,12 +1268,16 @@ newParameter
 	move.w d0, records.Entry.Owner(a0)
 	move.l d1, d0
 	lsr.l #3, d0
-	lea layout.MODULE_STATE+modules.OWNERS(a6), a0
-	move.w d7, 0(a0, d0.w)
-	addq.w #1, 0(a0, d0.w)
+	movea.l layout.MODULE_STATE+modules.OWNERS_POINTER(a6), a0
+	move.w d7, 0(a0, d0.l)
+	adda.l d0, a0
+	addq.w #1, 0(a0)
+	suba.l d0, a0
 	; The module-private flag is zero, independent of importer visibility.
-	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
-	andi.w #$fffe, 0(a0, d0.w)
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a0
+	adda.l d0, a0
+	andi.w #$fffe, 0(a0)
+	suba.l d0, a0
 parameterValue
 	movea.l d6, a3
 	addq.l #4, a3  ; parameter name
@@ -1214,7 +1343,7 @@ nextParameter
 	subq.l #1, d1
 	bra.w existingParameter
 appendParameter
-	cmpi.w #layout.LIMIT, d0
+	cmpi.w #LIST_LIMIT, d0
 	bhs.w parametersBad
 	lsl.l #3, d0
 	lea PARAMS(a0), a1
@@ -1227,13 +1356,14 @@ parameterStored
 	move.l d5, d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w parametersBad
+	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w parametersBad
 	move.l d0, d1
 	lsl.l #2, d1
-	lea KNOWN_VALUES(a0), a1
+	movea.l KNOWN_VALUES_POINTER(a0), a1
 	move.l d6, 0(a1, d1.l)
-	lea KNOWN_DEFINED(a0), a1
+	movea.l KNOWN_DEFINED_POINTER(a0), a1
 	move.b #1, 0(a1, d0.l)
 	cmpa.l a4, a3
 	bhs.w parametersBad
@@ -1292,15 +1422,18 @@ scanScoped
 	move.w 1(a5), d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w scopedNext
+	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w scopedNext
 	lea layout.IMPORT_STATE(a6), a0
-	lea KNOWN_DEFINED(a0), a0
-	tst.b 0(a0, d0.l)
+	movea.l KNOWN_DEFINED_POINTER(a0), a0
+	adda.l d0, a0
+	tst.b 0(a0)
+	suba.l d0, a0
 	bne.w scopedNext
 	move.l d0, d1
 	lsl.l #4, d1
-	lea layout.ENTRIES(a6), a3
+	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d1, a3
 	btst #0, records.Entry.Flags+1(a3)
 	bne.w scopedNext  ; a local declaration shadows the module value
@@ -1316,12 +1449,14 @@ candidate
 	cmp.w layout.State.Count(a6), d4
 	bhs.w scopedNext
 	lea layout.IMPORT_STATE(a6), a0
-	lea KNOWN_DEFINED(a0), a0
-	tst.b 0(a0, d4.w)
+	movea.l KNOWN_DEFINED_POINTER(a0), a0
+	adda.l d4, a0
+	tst.b 0(a0)
+	suba.l d4, a0
 	beq.w candidateNext
 	move.l d4, d0
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a3
+	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	cmp.w records.Entry.Owner(a3), d7
 	bne.w candidateNext
@@ -1379,7 +1514,7 @@ entryLeafBytes	.block
 	moveq #0, d0
 	move.w records.Entry.Length(a3), d0
 	movea.l a0, a1
-	adda.w d0, a1
+	adda.l d0, a1
 	movea.l a1, a2
 leafBack
 	cmpa.l a0, a1
@@ -1426,10 +1561,13 @@ validateExpressionToken
 	move.w 1(a5), d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w rangeBad
+	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w rangeBad
-	lea KNOWN_DEFINED(a3), a0
-	tst.b 0(a0, d0.l)
+	movea.l KNOWN_DEFINED_POINTER(a3), a0
+	adda.l d0, a0
+	tst.b 0(a0)
+	suba.l d0, a0
 	beq.w rangeBad
 nextExpressionToken
 	movea.l a5, a0
@@ -1450,14 +1588,14 @@ compileExpression
 	suba.w #16, sp
 	movea.l sp, a2
 	lea layout.IMPORT_STATE(a6), a4
-	lea KNOWN_VALUES(a4), a0
+	movea.l KNOWN_VALUES_POINTER(a4), a0
 	moveq #0, d0
 	move.w layout.State.Base(a6), d0
 	move.l d0, d3
 	lsl.l #2, d3
 	suba.l d3, a0
 	move.l a0, expression.Frame.Values(a2)
-	lea KNOWN_DEFINED(a4), a0
+	movea.l KNOWN_DEFINED_POINTER(a4), a0
 	suba.l d0, a0
 	move.l a0, expression.Frame.Defined(a2)
 	moveq #0, d1
@@ -1544,10 +1682,11 @@ copyStableLeaf
 	moveq #0, d0
 	move.w records.Entry.Owner(a3), d0
 	subq.w #1, d0
-	add.w d0, d0
-	lea HEADS(a4), a0
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l HEADS_POINTER(a4), a0
 	moveq #0, d7
-	move.w 0(a0, d0.w), d7
+	move.w 0(a0, d0.l), d7
 	moveq #0, d5
 wildcardItem
 	tst.w d7
@@ -1588,18 +1727,22 @@ copyWildcardLeaf
 	move.l d1, d2
 	sub.w layout.State.Base(a6), d2
 	bcs.w wildcardItem
+	andi.l #$ffff, d2
 	cmp.w layout.State.Count(a6), d2
 	bhs.w wildcardBad
 	move.l d2, d0
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a0
+	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	btst #0, records.Entry.Flags+1(a0)
 	beq.w wildcardItem
 	move.l d2, d0
-	add.w d0, d0
-	lea layout.MODULE_STATE+modules.FLAGS(a6), a0
-	btst #0, 1(a0, d0.w)
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a0
+	adda.l d0, a0
+	btst #0, 1(a0)
+	suba.l d0, a0
 	beq.w wildcardItem
 	tst.w d5
 	beq.w wildcardMatch
@@ -1665,6 +1808,7 @@ tokenName	.block
 	move.w 1(a0), d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w popBad
+	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w popBad
 	tst.l (sp)+
@@ -1685,8 +1829,9 @@ bad
 
 ; D0=entry index, A6=scope state. A0/D0=full bytes; D1/A1 scratch.
 entryName	.block
+	andi.l #$ffff, d0
 	lsl.l #4, d0
-	lea layout.ENTRIES(a6), a1
+	movea.l layout.ENTRIES_POINTER(a6), a1
 	adda.l d0, a1
 	movea.l layout.ARENA_POINTER(a6), a0
 	moveq #0, d0

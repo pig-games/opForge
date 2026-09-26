@@ -1358,3 +1358,47 @@ guard retains nine findings in unchanged `binary_encoding.asm` and
 is not claimed. Use the documented FS-UAE environment with the 2 MiB profile:
 `cargo test -p asm compact_struct --lib -- --ignored --nocapture --test-threads=1`
 covers the positive layout cases and explicit readiness/rejection boundaries.
+
+## Qualified macro invocation checkpoint
+
+The representative root and block/namespace macro comparisons already passed.
+The actual disabled telemetry body reproduced the self-host rejection: binding
+its gate names inside the synthetic invocation scope exceeded the shared
+63-byte composed-name bound. The binder now uses one 256-byte preparation
+buffer and a 255-byte name limit for both spelling and composition checks.
+This is a shared storage correction, with no telemetry exception, argument-parser
+change or CPU-specific behavior. It adds 192 dynamically allocated scratch bytes;
+the release image remains 67,868 bytes / 79,148 linked reserved bytes.
+
+All three fresh 68020 / 2 MiB cases match their live Rust outputs. Root and
+nested calls include immediate, register, field-address and zero-argument forms;
+the actual disabled telemetry case emits only the expected two data bytes.
+Release observations were 0.77, 0.76 and 1.52 seconds; no speedup is claimed.
+
+The unchanged self-host probe advances from physical line 103 to line 219 in
+`binary_app.asm` (hex file `20`, line `DB`), `tst.b 0(a0, d3.w)`. It stages
+47 files / 517,067 source bytes; the runtime package remains 175,762 bytes.
+Instrumented peak owned memory remains 676,352 bytes, and cleanup returns owned
+accounting to zero with balanced allocations/frees. Preparation-stage calls
+are [695, 1, 592, 592, 694, 0]. Incomplete-preparation flag 16 remains; no
+complete native self-host time or artifact parity is claimed.
+
+**Next candidate: indexed operand forms.** Inventory the complete addressing
+family across the app and immediate dependencies before choosing the next slice.
+Establish whether rejection belongs to packed operand lowering or package-owned
+selection/encoding. Keep CPU semantics within package boundaries; no repair
+should special-case this source or instruction spelling. Qualified macro-local
+declaration ownership remains a separate recorded gap.
+
+Focused binary-source Rust qualification passes 90 tests, with 182 explicit
+native/environment tests ignored. The three new native comparisons and bounded
+self-host diagnostic complete freshly. Rust and assembly formatting (42 files),
+proof-contract and benchmark-selector guards pass. CPU-boundary qualification
+still reports nine findings in unchanged encoding/mask modules; this change
+adds none. Broad repository qualification is not claimed.
+
+The unchanged 121-template / 84,687-byte release control still matches all
+1,701 Rust bytes. START-to-DONE was 8.64 seconds versus 8.76 seconds at the
+preceding layout checkpoint. One observation per state supports no material
+performance-change claim; the name-bound correction carries no measured
+regression on this control.

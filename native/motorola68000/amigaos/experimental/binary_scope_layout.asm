@@ -6,6 +6,8 @@
 	.pub
 LIMIT = 512
 ARENA_BYTES = 16384
+; Composed lexical paths include invocation scopes as well as source names.
+NAME_BYTES = 256
 ENTRY_BYTES = records.ENTRY_BYTES
 State	.struct
 Base	.word ?
@@ -23,6 +25,6 @@ ENTRIES = State.FileContent+2
 BUCKETS = ENTRIES+LIMIT*ENTRY_BYTES
 ARENA = BUCKETS+256*2
 BUFFER = ARENA+ARENA_BYTES
-MODULE_STATE = BUFFER+64
+MODULE_STATE = BUFFER+NAME_BYTES
 IMPORT_STATE = MODULE_STATE+modules.SCRATCH_BYTES
 	.endmodule

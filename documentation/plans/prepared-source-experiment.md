@@ -1529,3 +1529,32 @@ A separate instrumented imported-layout run also matched Rust, peaked at
 550,656 owned bytes, returned live allocation accounting to zero and balanced
 all tracked allocation/free counts. Its profiling error flags were zero. Its
 time includes instrumentation overhead and is not the release timing above.
+
+## Qualified macro invocation checkpoint
+
+Generic immediate, register, field-address and zero-argument macro calls already
+worked at module scope and inside a block/namespace. The unchanged disabled
+memory-telemetry definition exposed a shared binding limit instead: expansion
+adds an invocation scope, making a gate identifier's qualified path longer than
+63 bytes. A complete reduced Rust/native case rejected before this change and
+now emits exactly the two Rust bytes, without emitting disabled telemetry code.
+
+Preparation reserves a shared 256-byte composition buffer and permits names up
+to 255 bytes. Both source-name and composed-path checks use that bound. This
+adds 192 bytes to dynamically allocated preparation scratch; persisted records,
+numeric identities and assembly processing are unchanged. The release Hunk
+remains 67,868 bytes / 79,148 linked reserved bytes. Binding count and arena
+limits remain separate bounds; this does not make storage unbounded or resolve
+qualified macro-local declaration ownership.
+
+Fresh 68020 / 2 MiB native root, nested and actual-telemetry cases match their
+live Rust oracles. Individual release observations were 0.77, 0.76 and 1.52
+seconds respectively; these establish completion, not a performance gain.
+Reproduce with the documented FS-UAE environment and
+`cargo test -p asm compact_macro_ -- --ignored --nocapture --test-threads=1`.
+
+The unchanged 121-template / 84,687-byte control matches all 1,701 Rust bytes
+in 8.64 seconds (preceding checkpoint: 8.76 seconds, one run each). The unchanged
+self-host diagnostic now reaches `binary_app.asm` line 219, indexed `tst.b`,
+with 676,352 peak owned bytes and balanced cleanup. This remains incomplete
+preparation with profiler flag 16, not self-host artifact parity or timing.

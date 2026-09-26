@@ -998,7 +998,7 @@ compose	.block
 	moveq #0, d5
 	tst.l d0
 	beq.w bad
-	cmpi.l #63, d0
+	cmpi.l #layout.NAME_BYTES-1, d0
 	bhi.w bad
 scan
 	cmpi.b #'.', (a0)+
@@ -1017,7 +1017,7 @@ scan
 	addq.w #1, d7
 	move.l d6, d0
 	add.l d7, d0
-	cmpi.l #63, d0
+	cmpi.l #layout.NAME_BYTES-1, d0
 	bhi.w bad
 	lea ARENA(a6), a0
 	moveq #0, d1

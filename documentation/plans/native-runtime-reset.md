@@ -1765,3 +1765,68 @@ this comparison; guest execution is 68020 / 2 MiB with an m6502 target package.
 Release image is 70,452 bytes / 81,660 linked reserved bytes, +128 each; the
 m68020 runtime capsule remains 269,162 bytes. Capacity and self-host progress are
 the benefit of this slice, with the tracked memory increase stated above.
+
+## Full-width scalar expression slice
+
+The scanner already preserves unsigned 32-bit magnitudes. The self-host mask
+`$fffffffe` is rejected in expression compilation; removing that gate alone
+would silently narrow it to signed -2 during folding. Preserve positive literal
+meaning through the shared ExprVM instead of adding instruction-specific handling.
+
+Carry signed i64 high/low words through compact literals, constant folding,
+evaluation results, dependency/label tables and compile-time module parameters.
+Keep narrow literal encodings for ordinary values and add explicit wider forms.
+Reuse shared ExprVM arithmetic; validate address/count/projection widths at their
+consumers. Packed source number tokens remain u32; expressions can compute wider
+values. Replace the experimental signed32 evaluator contract rather than retaining
+an old executor or compatibility mode. Package CPU semantics remain unchanged.
+
+Qualify literal and symbol division/shifts/comparisons, high-bit emission,
+intermediates crossing u32, full-width conditional truth, parameters and the
+original instruction mask against fresh Rust/native outputs. Preserve scanner
+u32 overflow rejection and independent syntax/stack/program bounds. Repeat the
+release template control and a bounded timed/instrumented self-host probe. Stop
+and reconsider if correct meaning cannot be carried through downstream storage;
+matching the ANDI bytes alone is insufficient proof. Full self-host completion
+remains a target rather than the expected outcome of this slice.
+
+Implementation retains the shared Rust operator rules (including shifts masked to
+31 and logical right shift). Compact literals add explicit U32/I64 forms rather
+than reinterpreting high-bit magnitudes. Eight-byte scalar slots and twelve-byte
+parameter records retain both words; the old experimental signed32 wrappers are
+removed. Binding, dependency, block-retention and Hunk-reference walkers recognize
+the new literal widths. Source tokens remain u32; package bytes/contracts stay
+unchanged.
+
+The tests exposed a Rust conditional defect: `.if`/`.elseif` discarded high bits
+before checking truth. Those two checks now use the existing signed scalar
+evaluator; match/case and other bounded scalar consumers are unchanged. The manual
+states full-width truth and its example is exercised by live Rust/native probes.
+Fresh native 68020 / 2 MiB proof matches 60 literal bytes, 50 symbol/macro/instruction
+bytes and 16 incoming-parameter bytes, with zero profiling errors and balanced
+cleanup. Their peak tracked ownership is 786,944 / 787,200 / 789,504 bytes.
+All 118 direct compact/canonical ExprVM records match, including wide symbol
+comparisons, malformed programs, stack limits and alternating evaluator modes.
+The Rust prepared-source suite passes 98 tests, plus seven conditional regressions.
+
+The unchanged release template control (84,687 source bytes, 121 templates,
+1,701 output bytes) takes 8.575 s versus 8.629 s at the previous checkpoint.
+These single runs indicate no material regression; they do not establish a
+statistical speed improvement. The release Hunk grows from 70,452 to 70,872 bytes
+and its linked reservation from 81,660 to 82,092 bytes. The runtime capsule remains
+269,162 bytes.
+
+Fresh bounded self-host preparation passes the original high-bit mask and stops
+at a new diagnostic: file `0000000B`, line `0000006A`. Its path field is empty;
+discovery ordinals depend on guest enumeration and cannot safely be mapped using
+the sorted Rust manifest. Locating this new stopping point remains next-slice
+work. Peak tracked ownership is 1,165,824 bytes, up 8,192 bytes, with balanced
+cleanup. Preparation is incomplete (telemetry flag 16); there is no completed
+self-host Hunk or total assembly time. The live Rust self-build still succeeds.
+
+Native formatting, fresh-run proof, benchmark-selector and workflow-link guards
+pass. The CPU architecture guard still reports its existing nine enforced
+findings; this checkpoint does not claim repository-wide qualification.
+
+All three fresh decimal/hex/binary source-literal overflow probes reject cleanly;
+the u32 scanner bound has not been relaxed.

@@ -9,6 +9,8 @@
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_section_prepare as sections
 	.use opasm.amigaos.binary_expression as expression
+	.use experimental.amigaos.binary_package as pkg
+	.use exprvm.amigaos.runtime as runtime
 	.pub
 Item	.struct
 Target	.word ?
@@ -34,7 +36,7 @@ SELECTIONS = SELECTED_COUNT+2
 PROXIES = SELECTIONS+LIST_LIMIT*SELECTION_BYTES
 PARAM_COUNT = PROXIES+256*2
 PARAMS = PARAM_COUNT+2
-PARAM_BYTES = 8
+PARAM_BYTES = pkg.PARAMETER_BYTES
 KNOWN_VALUES = PARAMS+LIST_LIMIT*PARAM_BYTES
 KNOWN_VALUES_POINTER = KNOWN_VALUES+memory.Block.Pointer
 KNOWN_DEFINED = KNOWN_VALUES+memory.Block.Used+4
@@ -73,7 +75,7 @@ reserve	.block
 	bls.w extent1
 	move.l d1, memory.Block.Used(a0)
 extent1
-	add.l d1, d1
+	lsl.l #2, d1
 	lea KNOWN_VALUES(a1), a0
 	move.l d1, d0
 	jsr memory.reserve
@@ -153,10 +155,11 @@ captureConstant	.block
 	cmp.w layout.State.Count(a6), d0
 	bhs.w constantOk
 	lea layout.IMPORT_STATE(a6), a0
-	move.l d0, d2
-	lsl.l #2, d2
+	move.l d0, d4
+	lsl.l #3, d4
 	movea.l KNOWN_VALUES_POINTER(a0), a1
-	move.l d1, 0(a1, d2.l)
+	move.l d1, runtime.Value.Low(a1, d4.l)
+	move.l d2, runtime.Value.High(a1, d4.l)
 	movea.l KNOWN_DEFINED_POINTER(a0), a1
 	move.b #1, 0(a1, d0.l)
 	bra.w constantOk
@@ -169,10 +172,11 @@ constantUnknown
 	bhs.w constantOk
 	lea layout.IMPORT_STATE(a6), a0
 	move.l d0, d2
-	lsl.l #2, d2
+	lsl.l #3, d2
 	movea.l KNOWN_VALUES_POINTER(a0), a1
 	adda.l d2, a1
 	clr.l 0(a1)
+	clr.l 4(a1)
 	suba.l d2, a1
 	movea.l KNOWN_DEFINED_POINTER(a0), a1
 	adda.l d0, a1
@@ -1334,24 +1338,27 @@ expressionStored
 existingParameter
 	tst.l d1
 	beq.w parametersBad
-	cmp.w (a1), d5
+	cmp.w pkg.Parameter.Id(a1), d5
 	bne.w nextParameter
-	cmp.l 4(a1), d6
+	cmp.l pkg.Parameter.Low(a1), d6
+	bne.w parametersBad
+	cmp.l pkg.Parameter.High(a1), d2
 	bne.w parametersBad
 	bra.w parameterStored
 nextParameter
-	addq.l #8, a1
+	adda.w #PARAM_BYTES, a1
 	subq.l #1, d1
 	bra.w existingParameter
 appendParameter
 	cmpi.w #LIST_LIMIT, d0
 	bhs.w parametersBad
-	lsl.l #3, d0
+	mulu.w #PARAM_BYTES, d0
 	lea PARAMS(a0), a1
 	adda.l d0, a1
-	move.w d5, (a1)
-	clr.w 2(a1)
-	move.l d6, 4(a1)
+	move.w d5, pkg.Parameter.Id(a1)
+	clr.w pkg.Parameter.Reserved(a1)
+	move.l d6, pkg.Parameter.Low(a1)
+	move.l d2, pkg.Parameter.High(a1)
 	addq.w #1, PARAM_COUNT(a0)
 parameterStored
 	move.l d5, d0
@@ -1361,9 +1368,10 @@ parameterStored
 	cmp.w layout.State.Count(a6), d0
 	bhs.w parametersBad
 	move.l d0, d1
-	lsl.l #2, d1
+	lsl.l #3, d1
 	movea.l KNOWN_VALUES_POINTER(a0), a1
-	move.l d6, 0(a1, d1.l)
+	move.l d6, runtime.Value.Low(a1, d1.l)
+	move.l d2, runtime.Value.High(a1, d1.l)
 	movea.l KNOWN_DEFINED_POINTER(a0), a1
 	move.b #1, 0(a1, d0.l)
 	cmpa.l a4, a3
@@ -1404,9 +1412,9 @@ parametersDone
 ; module-scope value from inside a block before evaluating a first-pass
 ; conditional. Only numeric
 ; IDs are changed, and the control record is discarded after this call.
-; D1=known i32 on success, D0/CCR=status; other registers preserved.
+; D1=known i64 low/D2=high on success, D0/CCR=status; other registers preserved.
 evaluateScoped	.block
-	movem.l d2-d7/a0-a6, -(sp)
+	movem.l d3-d7/a0-a6, -(sp)
 	movea.l a0, a5
 	movea.l a1, a4
 	movea.l a2, a6
@@ -1498,7 +1506,7 @@ scopedBad
 	addq.l #4, sp
 	moveq #1, d0
 scopedDone
-	movem.l (sp)+, d2-d7/a0-a6
+	movem.l (sp)+, d3-d7/a0-a6
 	tst.l d0
 	rts
 	.bend  ; evaluateScoped
@@ -1530,12 +1538,12 @@ leafReady
 	rts
 	.bend  ; entryLeafBytes
 
-; A0..A1=complete numeric token range,A6=scope state. D1=known i32 on
+; A0..A1=complete numeric token range,A6=scope state. D1=known i64 low/D2=high on
 ; success, D0/CCR=status. The biased VM pointers are used only after every
 ; symbol ID has been checked against the bounded local-name arrays.
 	.pub
 evaluateRange	.block
-	movem.l d2-d7/a0-a6, -(sp)
+	movem.l d3-d7/a0-a6, -(sp)
 	movea.l a0, a2
 	movea.l a0, a5
 	movea.l a1, a4
@@ -1586,14 +1594,14 @@ compileExpression
 	bne.w rangeBad
 	cmpa.l a1, a0
 	bne.w rangeBad
-	suba.w #16, sp
+	suba.w #expression.FRAME_BYTES, sp
 	movea.l sp, a2
 	lea layout.IMPORT_STATE(a6), a4
 	movea.l KNOWN_VALUES_POINTER(a4), a0
 	moveq #0, d0
 	move.w layout.State.Base(a6), d0
 	move.l d0, d3
-	lsl.l #2, d3
+	lsl.l #3, d3
 	suba.l d3, a0
 	move.l a0, expression.Frame.Values(a2)
 	movea.l KNOWN_DEFINED_POINTER(a4), a0
@@ -1613,15 +1621,16 @@ compileExpression
 	bne.w evaluatedBad
 	cmpa.l a1, a0
 	bne.w evaluatedBad
-	adda.w #16, sp
+	move.l expression.Frame.High(a2), d2
+	adda.w #expression.FRAME_BYTES, sp
 	moveq #0, d0
 	bra.w rangeDone
 evaluatedBad
-	adda.w #16, sp
+	adda.w #expression.FRAME_BYTES, sp
 rangeBad
 	moveq #1, d0
 rangeDone
-	movem.l (sp)+, d2-d7/a0-a6
+	movem.l (sp)+, d3-d7/a0-a6
 	tst.l d0
 	rts
 	.bend  ; evaluateRange

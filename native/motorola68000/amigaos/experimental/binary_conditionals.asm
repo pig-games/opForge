@@ -184,6 +184,7 @@ evaluateIf
 	movea.l a6, a2
 	jsr imports.evaluateScoped
 	bne.w bad
+	or.l d2, d1
 ifValue
 	tst.l d1
 	beq.w ifStored
@@ -262,6 +263,7 @@ expressionBranch
 	jsr imports.evaluateScoped
 	movea.l (sp)+, a2
 	bne.w bad
+	or.l d2, d1
 	tst.l d1
 	beq.w consumed
 	move.b #1, Slot.Taken(a2)

@@ -44,6 +44,10 @@ next
 	beq.w word
 	cmpi.b #runtime.COMPACT_I32, d1
 	beq.w long
+	cmpi.b #runtime.COMPACT_U32, d1
+	beq.w long
+	cmpi.b #runtime.COMPACT_I64, d1
+	beq.w pair
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d1
 	beq.w current
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d1
@@ -85,6 +89,9 @@ word
 	bra.w skip
 long
 	moveq #4, d1
+	bra.w skip
+pair
+	moveq #8, d1
 skip
 	bsr.w available
 	bne.w bad

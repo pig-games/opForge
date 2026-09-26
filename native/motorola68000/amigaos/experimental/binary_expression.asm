@@ -18,7 +18,9 @@ Values	.long ?
 Defined	.long ?
 Count	.long ?
 Pc	.long ?
+High	.long ?
 	.endstruct
+FRAME_BYTES = Frame.High+4
 	.section code, kind=code
 ; A0=input tokens, A1=bounded end, A3=output, A4=bounded output end.
 ; Returns D0/CCR=status, A0=first delimiter/end, A3=after compiled wrapper.
@@ -76,7 +78,8 @@ done
 	.bend  ; compile
 
 ; A0=compiled wrapper, A1=bounded end, A2=Frame.
-; Returns D0/CCR=status, D1=i32 result, D2=unresolved, A0=after wrapper.
+; Returns D0/CCR=status, D1=low scalar word, D2=unresolved, A0=after wrapper.
+; On success, writes the signed scalar high word to Frame.High.
 ; Preserves D3-D7/A1-A6. No parser, lexical storage or source fallback.
 evaluate	.block
 	movem.l d3-d7/a1-a6, -(sp)
@@ -104,7 +107,12 @@ evaluate	.block
 	move.l Frame.Pc(a5), d2
 	movea.l Frame.Values(a5), a2
 	movea.l Frame.Defined(a5), a6
-	jsr runtime.evalCompact32
+	jsr runtime.evalCompact64
+	tst.l d0
+	bne.w evaluated
+	jsr runtime.exprvmGetLastResultHighV1
+	move.l d1, Frame.High(a5)
+evaluated
 	movea.l a4, a0
 	move.l d3, d1
 	move.l d5, d2
@@ -368,8 +376,6 @@ literal
 	sub.l a0, d0
 	cmpi.l #4, d0
 	blo.w malformed
-	tst.b (a0)
-	bmi.w malformed
 	move.l a4, d0
 	sub.l a3, d0
 	cmpi.l #9, d0

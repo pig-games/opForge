@@ -123,6 +123,10 @@ opcode
 	beq.w two
 	cmpi.b #runtime.COMPACT_I32, d0
 	beq.w four
+	cmpi.b #runtime.COMPACT_U32, d0
+	beq.w four
+	cmpi.b #runtime.COMPACT_I64, d0
+	beq.w eight
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d0
 	beq.w opcode
 	cmpi.b #runtime.COMPACT_NEGATE, d0
@@ -142,6 +146,9 @@ two
 	bra.w opcode
 four
 	addq.l #4, a0
+	bra.w opcode
+eight
+	addq.l #8, a0
 	bra.w opcode
 symbol
 	move.l a3, d0

@@ -25,6 +25,8 @@ mod struct_layout;
 #[path = "binary_source_macro_calls.rs"]
 mod macro_calls;
 
+#[path = "binary_source_full_width.rs"]
+mod full_width;
 #[path = "binary_source_identity_storage.rs"]
 mod identity_storage;
 #[path = "binary_source_scope_growth.rs"]
@@ -1796,11 +1798,6 @@ macro_rules! expression_limit_case {
     };
 }
 expression_limit_case!(
-    binary_expression_limit_overflow_fs_uae,
-    "($7fffffff+1)-$7fffffff",
-    true
-);
-expression_limit_case!(
     binary_expression_limit_program_fs_uae,
     ["1"; 24].join("+"),
     true
@@ -1816,19 +1813,6 @@ expression_limit_case!(
     true
 );
 expression_limit_case!(binary_expression_limit_incomplete_fs_uae, "1+", false);
-// Shared Rust data emission accepts this wrapped result; the native experiment
-// deliberately rejects its high-bit literal under the existing signed32 limit.
-expression_limit_case!(binary_expression_limit_literal_fs_uae, "-$ffffffff", true);
-expression_limit_case!(
-    binary_expression_limit_multiply_overflow_fs_uae,
-    "(50000*50000)*0",
-    true
-);
-expression_limit_case!(
-    binary_expression_limit_negate_overflow_fs_uae,
-    "-(-$7fffffff-1)+(-$7fffffff-1)",
-    true
-);
 
 #[test]
 #[ignore = "requires configured FS-UAE; constant and dynamic subtree folding"]

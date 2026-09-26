@@ -115,11 +115,21 @@ scalar
 	bra.w field
 reserve
 	addq.l #5, a0
+	move.l d2, -(sp)
 	jsr imports.evaluateRange
-	bne.w bad
+	tst.l d0
+	bne.w reserveBad
+	tst.l d2
+	bne.w reserveBad
+	move.l (sp)+, d2
 	tst.l d1
 	bmi.w bad
 	move.l d1, d4
+	bra.w field
+reserveBad
+	move.l (sp)+, d2
+	bra.w bad
+
 field
 	move.l State.Size(a4), d1
 	add.l d4, State.Size(a4)
@@ -181,7 +191,7 @@ close
 assignment
 	cmpi.l #14, d2
 	blo.w bad
-	; 14-byte writer assignment: name, equals, numeric i32.
+	; 14-byte writer assignment: name, equals, numeric u32 magnitude.
 	move.b #13, (a5)
 	move.b #1, 4(a5)
 	move.l d7, d0

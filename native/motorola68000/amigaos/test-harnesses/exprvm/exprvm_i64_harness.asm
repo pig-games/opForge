@@ -106,7 +106,7 @@ caseLoop
 	cmpi.w #2, d6
 	beq.s versionOk
 	; 0x8000 is a harness-only selector for the experimental compact
-	; signed-32 evaluator. It is not an ExprVM bytecode version.
+	; signed-i64 evaluator. It is not an ExprVM bytecode version.
 	cmpi.w #$8000, d6
 	beq.s compactSelector
 	bra.w fail
@@ -116,6 +116,9 @@ versionOk
 compactSelector
 	moveq #1, d5
 selectorReady
+	; Canonical records retain their 12-byte header and zero-extend the symbol
+	; low word. Compact records add the symbol's high word before program bytes.
+	clr.l SymbolHigh
 	moveq #0, d0
 	move.w (a3)+, d0
 	cmpi.l #PROGRAM_CAPACITY, d0
@@ -125,6 +128,15 @@ selectorReady
 	move.l d2, CurrentPc
 	move.l (a3)+, d2
 	move.l d2, SymbolValue
+	tst.l d5
+	beq.s symbolHeaderReady
+	movea.l a4, a0
+	suba.l a3, a0
+	cmpa.l #4, a0
+	blo.w fail
+	move.l (a3)+, d2
+	move.l d2, SymbolHigh
+symbolHeaderReady
 	move.l d0, d1
 	addq.l #1, d1
 	andi.l #$fffffffe, d1
@@ -145,7 +157,7 @@ selectorReady
 	jsr runtime.exprvmEvalProgramV1
 	bra.s evalComplete
 compactEval
-	jsr runtime.evalCompact32
+	jsr runtime.evalCompact64
 evalComplete
 	move.l d0, (a5)
 	move.l d3, 12(a5)
@@ -236,6 +248,8 @@ ProgramLength
 CurrentPc
 	.res long, 1
 SymbolValue
+	.res long, 1
+SymbolHigh
 	.res long, 1
 InputBuffer
 	.res byte, INPUT_BUFFER_BYTES

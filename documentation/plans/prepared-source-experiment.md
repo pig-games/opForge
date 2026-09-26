@@ -62,9 +62,10 @@ expression offsets never become published symbol values, and dependency scratch
 is released before layout. Earlier-label and definition-site-PC expressions keep
 the source-order two-pass check; forward layout dependencies remain unsupported.
 The native route remains narrower than Rust and does not yet accept `.const`.
-The compact evaluator preserves signed symbol values within its checked signed32
-range. Shift counts follow the canonical `count & 31` rule; right shifts are
-logical over the canonical 64-bit value and out-of-range signed32 results reject.
+The compact evaluator preserves signed i64 symbol values, with explicit signed
+narrow widths, unsigned u32 magnitudes and full i64 literals. Shift counts follow
+the canonical `count & 31` rule; right shifts are logical over the 64-bit value.
+Address/count and package projection bounds remain explicit at their consumers.
 
 Named `.block` scopes and `.endblock`/`.bend` now support nesting, parent lookup,
 absolute qualified references and forward local shadowing. Preparation assigns
@@ -108,8 +109,8 @@ Other limits remain explicit:
 - no strings, general sections, relocations, relaxation or complete expression
   operator set;
 - no discontiguous `.org` after output has started;
-- literals are limited to the currently checked signed 32-bit subset, and source names
-  cannot reuse reserved package spellings;
+- source numeric tokens remain unsigned 32-bit magnitudes; computed expressions
+  retain signed i64 values. Source names cannot reuse reserved package spellings;
 - maximums include 64 tokenizer tokens per line, 512 provisional source IDs,
   63-byte qualified source names, a 16 KiB preparation name arena, 4 KiB textual
   line, 256-byte packed line and 1 MiB per growing allocation;
@@ -1679,7 +1680,8 @@ The compiler now accepts division and remainder alongside left-associative
 multiplication, with a tighter right-associative integer-power tier. Unary operators
 bind tighter than power, following canonical Rust/package grammar. The existing
 shared ExprVM performs all math and constant folding; no new packed opcode or
-runtime-package version is needed. Existing checked signed32, postfix-stack and
+runtime-package version is needed. The signed32 restriction at this checkpoint
+has since been replaced by full-width scalar evaluation below; postfix-stack and
 syntax-depth limits remain in force.
 
 Native numeric scanning stops at a nonleading `%`, allowing `17%7` to tokenize as
@@ -1728,3 +1730,21 @@ The native self-host probe advances past the original frontend `.bend` to line
 741, a high-bit immediate literal, but remains incomplete. See the
 [active reset checkpoint](native-runtime-reset.md#wider-preparation-spelling-offsets-experiment)
 for costs, qualification and the separate module-composition readiness gap.
+
+## Full-width compact scalar evaluation
+
+Compact expressions now retain signed i64 scalar meaning through folding,
+symbols, forward constants and module parameters. U32 `$16` and I64 `$17` literal
+forms supplement the narrow signed encodings. Value slots hold declared low/high
+longwords; parameter records hold both words and use a declared 12-byte stride.
+These are preparation/runtime data, without serialized memory pointers. The
+source number token remains a bounded u32 magnitude.
+
+Rust `.if`/`.elseif` now check the full scalar instead of truncating to u32.
+Native preparation also tests both words. Package scalar projection remains a
+bounded signed-i32/u32 bridge; wide values are rejected there rather than silently
+truncated. Long data deliberately emits the low word, while address/count and
+byte/word bounds remain explicit. Wider expression grammar such as comparison
+operators in source is a separate parity slice; shared ExprVM comparisons are
+covered directly. See the [active scalar slice](native-runtime-reset.md#full-width-scalar-expression-slice)
+for fresh proof, cost measurements and the next self-host frontier.

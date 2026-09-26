@@ -17,7 +17,7 @@ impl<'a> AsmLine<'a> {
         match kind {
             ConditionalKind::If => {
                 let val = match exprs.first() {
-                    Some(expr) => match self.eval_expr_for_scalar_context(expr) {
+                    Some(expr) => match self.eval_expr_for_signed_scalar_context(expr) {
                         Ok(v) => v,
                         Err(err) => {
                             return self.failure_at_span(
@@ -127,7 +127,7 @@ impl<'a> AsmLine<'a> {
                     1
                 } else {
                     match exprs.first() {
-                        Some(expr) => match self.eval_expr_for_scalar_context(expr) {
+                        Some(expr) => match self.eval_expr_for_signed_scalar_context(expr) {
                             Ok(v) => v,
                             Err(err) => {
                                 return self.failure_at_span(

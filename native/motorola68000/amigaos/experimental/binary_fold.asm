@@ -186,12 +186,16 @@ evaluate
 	addq.l #1, d0
 	moveq #0, d1
 	moveq #0, d2
-	jsr runtime.evalNumeric32
+	jsr runtime.evalNumeric64
 	move.l (sp)+, d2
 	move.l (sp)+, d1
 	move.b d1, (a5)
 	tst.l d0
 	bne.w done
+	move.l d2, -(sp)
+	jsr runtime.exprvmGetLastResultHighV1
+	move.l d1, d4
+	move.l (sp)+, d2
 	adda.l d2, a3
 	add.w d2, d6
 	bsr.w writeLiteral
@@ -205,8 +209,8 @@ restore
 	.bend  ; prepare
 	.priv
 
-; Read the low signed32 value of a validated canonical literal at A3.
-; Advances A3 by eight payload bytes. Clobbers D3/CCR.
+; Read signed i64 D4:D3 from a validated canonical literal at A3.
+; Advances A3 by eight payload bytes. Clobbers D3-D4/CCR.
 readLiteral	.block
 	moveq #0, d3
 	move.b 3(a3), d3
@@ -216,13 +220,28 @@ readLiteral	.block
 	move.b 1(a3), d3
 	lsl.l #8, d3
 	move.b (a3), d3
+	moveq #0, d4
+	move.b 7(a3), d4
+	lsl.l #8, d4
+	move.b 6(a3), d4
+	lsl.l #8, d4
+	move.b 5(a3), d4
+	lsl.l #8, d4
+	move.b 4(a3), d4
 	addq.l #8, a3
 	rts
 	.bend  ; readLiteral
 
-; Write signed D3 at A6 with the narrowest explicit width. Output is always
-; smaller than its canonical source span. Clobbers D0-D3/A6/CCR.
+; Write signed D4:D3 at A6 with the narrowest exact width.
+; Clobbers D0-D3/A6/CCR. Never grows beyond its canonical source span.
 writeLiteral	.block
+	moveq #0, d1
+	tst.l d3
+	bpl.w signedHigh
+	moveq #-1, d1
+signedHigh
+	cmp.l d4, d1
+	bne.w wide
 	move.l d3, d1
 	ext.w d1
 	ext.l d1
@@ -238,12 +257,28 @@ writeLiteral	.block
 	beq.w bytes
 	moveq #runtime.COMPACT_I32, d0
 	moveq #3, d2
+	bra.w bytes
+wide
+	moveq #runtime.COMPACT_U32, d0
+	moveq #3, d2
+	tst.l d4
+	beq.w bytes
+	moveq #runtime.COMPACT_I64, d0
 bytes
 	move.b d0, (a6)+
 loop
 	move.b d3, (a6)+
 	lsr.l #8, d3
 	dbra d2, loop
+	cmpi.b #runtime.COMPACT_I64, d0
+	bne.w done
+	move.l d4, d3
+	moveq #3, d2
+highLoop
+	move.b d3, (a6)+
+	lsr.l #8, d3
+	dbra d2, highLoop
+done
 	rts
 	.bend  ; writeLiteral
 

@@ -574,7 +574,7 @@ parameterBytes	.block
 	lea scopes.IMPORT_STATE(a0), a0
 	moveq #0, d0
 	move.w imports.PARAM_COUNT(a0), d0
-	lsl.l #3, d0
+	mulu.w #imports.PARAM_BYTES, d0
 	rts
 	.bend  ; parameterBytes
 ; A0=Frame,A1=destination,D0=exact parameter record bytes. Copy only numeric
@@ -586,7 +586,7 @@ copyParameters	.block
 	lea scopes.IMPORT_STATE(a0), a0
 	moveq #0, d1
 	move.w imports.PARAM_COUNT(a0), d1
-	lsl.l #3, d1
+	mulu.w #imports.PARAM_BYTES, d1
 	cmp.l d0, d1
 	bne.w parametersBad
 	tst.l d1

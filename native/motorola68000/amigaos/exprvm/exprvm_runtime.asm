@@ -51,11 +51,18 @@ EXPRVM_BINARY_LOGIC_AND         = 24
 EXPRVM_BINARY_LOGIC_XOR         = 25
 EXPRVM_STACK_CAPACITY           = 8
 ; Latest experimental prepared-expression format. Payloads are little-endian;
-; signed literal widths are explicit. Common arithmetic uses one-byte operators;
+; literal widths and unsigned u32 magnitudes are explicit. Arithmetic uses one-byte operators;
 ; other operators retain canonical APPLY plus the one-byte operator ID.
 COMPACT_I8 = $13
 COMPACT_I16 = $14
 COMPACT_I32 = $15
+COMPACT_U32 = $16
+COMPACT_I64 = $17
+Value	.struct
+Low	.long ?
+High	.long ?
+	.endstruct
+VALUE_BYTES = Value.High+4
 COMPACT_NEGATE = $30
 COMPACT_ADD = $31
 COMPACT_SUBTRACT = $32
@@ -64,48 +71,48 @@ COMPACT_MULTIPLY = $33
 	.section code, kind=code
 	.pub
 
-; Evaluate an ExprVM v2 program with checked signed-32 values. The bytecode
+; Evaluate an ExprVM v2 program with signed i64 values. The bytecode
 ; and tables use the same ABI as exprvmEvalProgramV1; the wrapper selects v2
 ; and restores the caller's selected version before returning. A1 is unused;
 ; symbols are numeric IDs. Outputs/clobbers match the shared evaluator below;
 ; CCR reflects D0. No symbol dictionary or preparation storage is accessed.
-evalNumeric32	.block
+evalNumeric64	.block
 	.priv
 	move.l d6, -(sp)
 	move.w ExprvmSelectedOpcodeVersion, d6
 	move.w d6, -(sp)
-	move.w #1, Checked32
+	move.w #1, PreparedMode
 	move.w #2, ExprvmSelectedOpcodeVersion
 	jsr exprvmEvalProgramV1
 	move.w (sp)+, d6
 	move.w d6, ExprvmSelectedOpcodeVersion
 	move.l (sp)+, d6
-	clr.w Checked32
+	clr.w PreparedMode
 	tst.l d0
 	rts
-	.bend  ; evalNumeric32
+	.bend  ; evalNumeric64
 
-; Evaluate the compact prepared-expression form directly with checked i32
-; semantics, including signed i32 symbol-table entries. Same inputs, outputs and
-; preservation as evalNumeric32. Canonical
-; literals are rejected here; APPLY operator pairs and arithmetic/stack logic
+; Evaluate the compact prepared-expression form directly with signed i64
+; semantics, including full-width Value symbol-table entries. Same scalar outputs
+; and preservation as evalNumeric64; A2 indexes VALUE_BYTES-sized entries.
+; Canonical literals are rejected; APPLY operator pairs and arithmetic/stack logic
 ; are shared with canonical evaluation.
 	.pub
-evalCompact32	.block
+evalCompact64	.block
 	.priv
 	move.l d6, -(sp)
 	move.w ExprvmSelectedOpcodeVersion, d6
 	move.w d6, -(sp)
-	move.w #2, Checked32
+	move.w #2, PreparedMode
 	move.w #2, ExprvmSelectedOpcodeVersion
 	jsr exprvmEvalProgramV1
 	move.w (sp)+, d6
 	move.w d6, ExprvmSelectedOpcodeVersion
 	move.l (sp)+, d6
-	clr.w Checked32
+	clr.w PreparedMode
 	tst.l d0
 	rts
-	.bend  ; evalCompact32
+	.bend  ; evalCompact64
 	.pub
 
 ; ---------------------------------------------------------------------------
@@ -150,7 +157,7 @@ exprvmEvalProgramV1	.block
 	; A1 is unused by the scalar ABI and preserved by arithmetic helpers.
 	; Select this call's decoder once instead of checking format per opcode.
 	lea evalLoopV1, a1
-	cmpi.w #2, Checked32
+	cmpi.w #2, PreparedMode
 	beq.s selectCompact
 	cmpi.w #2, ExprvmSelectedOpcodeVersion
 	bne.s evalLoop
@@ -209,6 +216,10 @@ evalCompact
 	beq.w compactWord
 	cmpi.b #COMPACT_I32, d6
 	beq.w compactLong
+	cmpi.b #COMPACT_U32, d6
+	beq.w compactUnsigned
+	cmpi.b #COMPACT_I64, d6
+	beq.w opcodePushLiteral
 	cmpi.b #EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d6
 	beq.w opcodePushCurrent
 	cmpi.b #EXPRVM_V2_OPCODE_PUSH_SYMBOL, d6
@@ -253,6 +264,13 @@ compactLong
 	cmpi.l #4, d0
 	blo.w literalReadFail
 	bsr.w readLiteralLong
+	bra.w compactSigned
+compactUnsigned
+	cmpi.l #4, d0
+	blo.w literalReadFail
+	bsr.w readLiteralLong
+	moveq #0, d2
+	bra.w literalReady
 compactSigned
 	moveq #0, d2
 	tst.l d3
@@ -297,16 +315,18 @@ pushSymbolStable
 	move.l d0, ExprvmEvalRemaining
 	moveq #0, d6
 	move.w d3, d6
-	lsl.l #2, d6
 	movea.l a4, a2
+	cmpi.w #2, PreparedMode
+	beq.s preparedSymbol
+	lsl.l #2, d6
 	move.l 0(a2, d6.l), d3
 	moveq #0, d2
-	; Prepared constants are signed; canonical symbol tables remain unsigned.
-	cmpi.w #2, Checked32
-	bne.s symbolHighReady
-	tst.l d3
-	bpl.s symbolHighReady
-	moveq #-1, d2
+	bra.s symbolHighReady
+preparedSymbol
+	lsl.l #3, d6
+	adda.l d6, a2
+	move.l Value.Low(a2), d3
+	move.l Value.High(a2), d2
 symbolHighReady
 	bsr.w pushD3
 	bmi.w fail
@@ -575,7 +595,7 @@ opcodeRequireScalar
 	bra.w evalLoop
 
 opcodeEnd
-	tst.w Checked32
+	tst.w PreparedMode
 	beq.s endLengthChecked
 	tst.l d0
 	bne.w endStackFail
@@ -668,16 +688,6 @@ greater
 ; Inputs: D2:D3=value, D7=depth. Outputs: D0=0/-1, D7 increments on success.
 ; Clobbers: D0/A2/CCR. CCR: reflects D0. Pair and operator register D6 survive.
 pushD3	.block
-	tst.w Checked32
-	beq.s checkedCapacity
-	moveq #0, d0
-	tst.l d3
-	bpl.s checkedHighReady
-	moveq #-1, d0
-checkedHighReady
-	cmp.l d2, d0
-	bne.s checkedFail
-checkedCapacity
 	cmpi.l #EXPRVM_STACK_CAPACITY, d7
 	bhs.s fail
 	move.l d7, d0
@@ -689,9 +699,6 @@ checkedCapacity
 	moveq #0, d0
 	rts
 fail
-	moveq #-1, d0
-	rts
-checkedFail
 	moveq #-1, d0
 	rts
 	.bend  ; pushD3
@@ -809,7 +816,7 @@ ExprvmCurrentPass
 ExprvmEvalRemaining
 	.res long, 1
 	.priv
-Checked32
+PreparedMode
 	.res word, 1
 ExprvmLastResultHigh
 	.res long, 1

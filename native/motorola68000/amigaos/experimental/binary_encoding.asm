@@ -884,6 +884,31 @@ done
 	rts
 	.bend  ; sequence
 
+; Project a known scalar through the package's bounded 32-bit bridge.
+; A0/A1=expression, A2=package.Context. Expression ABI and registers retained.
+; D0/CCR=status; reject values outside signed-i32/unsigned-u32 representation.
+evaluateScalar	.block
+	jsr expression.evaluate
+	tst.l d0
+	bne.w done
+	tst.l d2
+	bne.w done
+	tst.l package.Context.High(a2)
+	beq.w done
+	cmpi.l #-1, package.Context.High(a2)
+	bne.w bad
+	tst.l d1
+	bmi.w ready
+bad
+	moveq #1, d0
+	bra.w done
+ready
+	moveq #0, d0
+done
+	tst.l d0
+	rts
+	.bend  ; evaluateScalar
+
 evaluateOperandZero	.block
 	movea.l OperandStart, a0
 	cmpi.b #TOKEN_HASH, (a0)
@@ -891,7 +916,7 @@ evaluateOperandZero	.block
 	addq.l #1, a0
 cursorReady
 	movea.l OperandEnd, a1
-	jsr expression.evaluate
+	bsr.w evaluateScalar
 	tst.l d0
 	bne.w return
 	cmpa.l a1, a0
@@ -1089,7 +1114,7 @@ projectionExpression	.block
 	bne.w ready
 	addq.l #1, a0
 ready
-	jsr expression.evaluate
+	bsr.w evaluateScalar
 	tst.l d0
 	bne.w return
 	cmpa.l a1, a0
@@ -1162,7 +1187,7 @@ word
 	tst.b 5(a6)
 	bne.w bad
 	movea.l a6, a1
-	jsr expression.evaluate
+	bsr.w evaluateScalar
 	tst.l d0
 	bne.w return
 	cmpa.l a6, a0
@@ -1303,7 +1328,7 @@ scalar
 	tst.b package.Projection.Reserved+1(a4)
 	bne.w bad
 	movea.l a6, a1
-	jsr expression.evaluate
+	bsr.w evaluateScalar
 	tst.l d0
 	bne.w return
 	cmpa.l a1, a0
@@ -1371,7 +1396,7 @@ tail
 	bne.w unknown
 scalar
 	movea.l a6, a1
-	jsr expression.evaluate
+	bsr.w evaluateScalar
 	tst.l d0
 	bne.w unknown
 	cmpa.l a1, a0
@@ -1441,7 +1466,7 @@ projectionTupleValue	.block
 	tst.l d0
 	bne.w return
 	movea.l a6, a1
-	jsr expression.evaluate
+	bsr.w evaluateScalar
 	tst.l d0
 	bne.w return
 	cmpa.l a1, a0

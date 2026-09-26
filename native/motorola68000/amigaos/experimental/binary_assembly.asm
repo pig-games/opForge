@@ -69,6 +69,7 @@ assemble	.block
 	movea.l pkg.Context.SectionIds(a6), a2
 clearSymbols
 	clr.l (a0)+
+	clr.l (a0)+
 	clr.b (a1)+
 	clr.b (a2)+
 	subq.l #1, d0
@@ -93,9 +94,10 @@ parameter
 	tst.b 0(a1, d0.l)
 	bne.w fail
 	move.b #dependencies.ABSOLUTE, 0(a1, d0.l)
-	lsl.l #2, d0
-	move.l 4(a3), 0(a0, d0.l)
-	addq.l #8, a3
+	lsl.l #3, d0
+	move.l pkg.Parameter.Low(a3), exprvm.Value.Low(a0, d0.l)
+	move.l pkg.Parameter.High(a3), exprvm.Value.High(a0, d0.l)
+	adda.w #pkg.PARAMETER_BYTES, a3
 	subq.l #1, d6
 	bne.w parameter
 parametersReady
@@ -467,13 +469,14 @@ labelSectionReady
 	movea.l pkg.Context.Defined(a2), a4
 	movea.l pkg.Context.Values(a2), a5
 	move.l d0, d1
-	lsl.l #2, d1
+	lsl.l #3, d1
 	cmpi.w #1, pkg.Context.Pass(a2)
 	bne.w existingLabel
 	tst.b 0(a4, d0.l)
 	bne.w bad
 	move.b #1, 0(a4, d0.l)
-	move.l pkg.Context.Pc(a2), 0(a5, d1.l)
+	move.l pkg.Context.Pc(a2), exprvm.Value.Low(a5, d1.l)
+	clr.l exprvm.Value.High(a5, d1.l)
 	lea SectionState, a4
 	cmpi.w #5, sections.State.Mode(a4)
 	bne.w labelReady
@@ -484,8 +487,10 @@ labelSectionReady
 	move.b d1, 0(a5, d0.l)
 	bra.w labelReady
 existingLabel
+	tst.l exprvm.Value.High(a5, d1.l)
+	bne.w bad
 	move.l pkg.Context.Pc(a2), d2
-	cmp.l 0(a5, d1.l), d2
+	cmp.l exprvm.Value.Low(a5, d1.l), d2
 	bne.w bad  ; fail closed if this subset needs another layout iteration
 labelReady
 	addq.l #5, a0
@@ -533,7 +538,7 @@ constant
 	bhs.w bad
 	move.l d0, d4
 	move.l d0, d5
-	lsl.l #2, d5
+	lsl.l #3, d5
 	addq.l #1, a0
 	movea.l pkg.Context.Defined(a2), a4
 	cmpi.b #dependencies.ABSOLUTE, 0(a4, d4.l)
@@ -553,11 +558,15 @@ constant
 	bne.w existingConstant
 	tst.b 0(a4, d4.l)
 	bne.w bad
-	move.l d1, 0(a5, d5.l)
+	move.l d1, exprvm.Value.Low(a5, d5.l)
+	move.l pkg.Context.High(a2), exprvm.Value.High(a5, d5.l)
 	move.b #1, 0(a4, d4.l)
 	bra.w ok
 existingConstant
-	cmp.l 0(a5, d5.l), d1
+	move.l pkg.Context.High(a2), d0
+	cmp.l exprvm.Value.High(a5, d5.l), d0
+	bne.w bad
+	cmp.l exprvm.Value.Low(a5, d5.l), d1
 	bne.w bad
 	bra.w ok
 directive
@@ -607,6 +616,8 @@ origin
 	bne.w bad
 	tst.l d2
 	bne.w bad
+	tst.l pkg.Context.High(a2)
+	bne.w bad
 	tst.l d1
 	bmi.w bad
 	cmpa.l a1, a0
@@ -633,6 +644,8 @@ align
 	tst.l d0
 	bne.w bad
 	tst.l d2
+	bne.w bad
+	tst.l pkg.Context.High(a2)
 	bne.w bad
 	cmpa.l a1, a0
 	bne.w bad
@@ -700,6 +713,8 @@ reserveCount
 	bne.w bad
 	tst.l d2
 	bne.w bad
+	tst.l pkg.Context.High(a2)
+	bne.w bad
 	cmpa.l a1, a0
 	bne.w bad
 	tst.l d1
@@ -756,6 +771,8 @@ dataExpression
 dataValue
 	cmpi.w #4, d6
 	beq.w dataRangeOk
+	tst.l pkg.Context.High(a2)
+	bne.w bad
 	tst.l d1
 	bmi.w bad
 	cmpi.w #1, d6

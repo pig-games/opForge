@@ -91,9 +91,9 @@ visit
 	moveq #0, d4
 	move.w Entry.Id(a3), d4
 	move.l d4, d5
-	lsl.l #2, d5
+	lsl.l #3, d5
 	movea.l Base, a0
-	adda.l 0(a4, d5.l), a0
+	adda.l runtime.Value.Low(a4, d5.l), a0
 	moveq #0, d6
 	move.b 1(a0), d6
 	addq.w #2, d6
@@ -129,6 +129,11 @@ visit
 	beq.w advance
 	moveq #5, d1
 	cmpi.b #runtime.COMPACT_I32, d0
+	beq.w advance
+	cmpi.b #runtime.COMPACT_U32, d0
+	beq.w advance
+	moveq #9, d1
+	cmpi.b #runtime.COMPACT_I64, d0
 	bne.w clearFailure
 advance
 	add.w d1, d3
@@ -186,7 +191,8 @@ completed
 	bne.w clearFailure
 	cmpa.l a1, a0
 	bne.w clearFailure
-	move.l d1, 0(a4, d5.l)
+	move.l d1, runtime.Value.Low(a4, d5.l)
+	move.l pkg.Context.High(a6), runtime.Value.High(a4, d5.l)
 	move.b #ABSOLUTE, 0(a5, d4.l)
 	bra.w pop
 deferred
@@ -212,7 +218,7 @@ normalize
 	movea.l pkg.Context.Values(a6), a0
 	movea.l pkg.Context.Defined(a6), a1
 	adda.l d2, a1
-	lsl.l #2, d2
+	lsl.l #3, d2
 	adda.l d2, a0
 clearLoop
 	tst.l d7
@@ -221,9 +227,10 @@ clearLoop
 	beq.w keep
 erase
 	clr.l (a0)
+	clr.l 4(a0)
 	clr.b (a1)
 keep
-	addq.l #4, a0
+	addq.l #8, a0
 	addq.l #1, a1
 	subq.l #1, d1
 	bne.w clearLoop
@@ -338,8 +345,8 @@ declaration
 	bne.w bad
 	move.l a3, d0
 	sub.l Base, d0
-	lsl.l #2, d4
-	move.l d0, 0(a4, d4.l)
+	lsl.l #3, d4
+	move.l d0, runtime.Value.Low(a4, d4.l)
 	addq.l #1, Constants
 	bra.w next
 labelTail

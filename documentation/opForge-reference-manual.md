@@ -407,6 +407,10 @@ Compound assignment operators (`+=`, `-=`, etc.) are scalar-only and reject non-
 .endif
 ```
 
+`.if` and `.elseif` test the full scalar value: zero is false and any nonzero
+value is true, including values whose low 32 bits are zero. For example,
+`.if $ffffffff+1` selects its branch.
+
 #### 3.7.1 Match expressions
 
 ```

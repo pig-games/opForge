@@ -1138,7 +1138,7 @@ run	.block
 	cmpi.l #65536, d0
 	bhi.w bad
 	move.l d0, d1
-	lsl.l #2, d0
+	lsl.l #3, d0
 	add.l d1, d0
 	add.l d1, d0  ; one section identity byte per numeric symbol
 	lea Symbols, a0
@@ -1149,7 +1149,7 @@ run	.block
 	movea.l memory.Block.Pointer(a1), a2
 	move.l a2, package.Context.Values(a0)
 	move.l NameCount, d0
-	lsl.l #2, d0
+	lsl.l #3, d0
 	adda.l d0, a2
 	lea Context, a0
 	move.l a2, package.Context.Defined(a0)
@@ -1159,7 +1159,8 @@ run	.block
 	lea Parameters, a1
 	move.l memory.Block.Pointer(a1), package.Context.Parameters(a0)
 	move.l ParameterBytes, d0
-	lsr.l #3, d0
+	divu.w #package.PARAMETER_BYTES, d0
+	andi.l #$ffff, d0
 	move.l d0, package.Context.ParameterCount(a0)
 	lea RuntimeBlock, a1
 	move.l memory.Block.Pointer(a1), package.Context.Package(a0)

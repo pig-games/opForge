@@ -39,6 +39,7 @@ Values	.long ?
 Defined	.long ?
 Count	.long ?
 Pc	.long ?
+High	.long ?
 Package	.long ?
 Pass	.word ?
 Reserved	.word ?
@@ -46,6 +47,14 @@ Parameters	.long ?
 ParameterCount	.long ?
 SectionIds	.long ?
 	.endstruct
+
+Parameter	.struct
+Id	.word ?
+Reserved	.word ?
+Low	.long ?
+High	.long ?
+	.endstruct
+PARAMETER_BYTES = Parameter.High+4
 
 Row	.struct
 Name	.word ?

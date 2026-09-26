@@ -1242,15 +1242,43 @@ The early-rejection telemetry still reports sixteen profiling errors as at
 the preceding checkpoint; do not derive phase times from that record. The
 allocator accounting returns to zero after rejection.
 
-**Proposed next structural slice: template storage.** Definitions persist
-across files in one eight-entry table, with shared 4 KiB body and 512-byte
-default pools. Four experimental modules plus two tokenizer modules include
-the fourteen telemetry macros. Raising one limit would not address their
-session-wide lifetime or 16-bit pool offsets. Separate growable, offset-based
-definition/body/default storage from the bounded active call stack, retaining
-module visibility and imported-template identity. Keep packed bodies and
-source-independent expansion. Acceptance should cover the unchanged telemetry
-include, repeated includes in distinct modules, and an exported macro invoked
-from a later imported module, then repeat the bounded self-host probe with
-fresh size and owned-memory observations. Resolve offset widths and allocator
-ownership before implementing; do not add fixture-specific capacity or dispatch.
+The template-storage investigation found that definitions persist across files
+in one assembly session. Four experimental modules plus two tokenizer modules
+include the fourteen telemetry macros. Raising one limit would not address
+their session-wide lifetime or 16-bit pool offsets. The implemented slice
+therefore separates growable definition/body/default storage from the bounded
+active call stack, retaining module visibility and imported-template identity.
+
+The template-storage checkpoint replaces the eight-definition table and fixed
+body/default pools with four growable session-owned blocks. Definition IDs stay
+16-bit; body cursors and default/text ranges are 32-bit offsets. Each block uses
+the existing 1 MiB allocator cap, and the active expansion stack remains bounded
+at 64 frames. Pool ownership belongs to the template engine; frontend cleanup
+releases it before caller scratch is freed. Expansion remains over packed records.
+
+The unchanged telemetry include and repeated includes in separate modules now
+match Rust, including an exported macro called from the importing module. A
+121-template case over 84,687 source bytes crosses 64 KiB of packed body storage
+and matches all 1,701 Rust output bytes, including early/late defaults and a
+nested call. Its release START-to-DONE observation was 8.62 seconds on 68020 /
+2 MiB. The separate instrumented run peaked at 736,256 owned bytes and returned
+owned allocation accounting to zero. These are capability measurements, not an
+optimization comparison. The release image is 67,020 bytes with 78,320 linked
+reserved bytes (+200 / +164 versus the preceding conditional checkpoint).
+
+The unchanged self-host probe stages 46 files / 510,312 source bytes with BSP3
+at 175,762 bytes. It now passes the telemetry include and first rejects at
+`binary_app.asm`, physical line 29 (hex file `1F`, line `1D`), the `Span .struct`
+declaration. The fresh Rust Hunk is 67,020 bytes / 78,320 linked reserved bytes.
+The bounded instrumented rejection peaks at 670,208 owned bytes. Sixteen
+profiling errors remain, so no trustworthy phase or native self-host duration
+is available.
+
+**Next structural candidate: structure declarations and layouts.** Inventory
+`.struct` declarations and field uses across `binary_app.asm` and its immediate
+dependencies, then implement the coherent shared declaration/layout feature
+family over binary preparation records. Preserve generic ownership: structure
+layout belongs to shared language processing, not CPU instruction selection.
+Use complete representative layouts and their field references for Rust/native
+proof before repeating the unchanged self-host probe. Avoid repairing individual
+field spellings or instruction sites in isolation.

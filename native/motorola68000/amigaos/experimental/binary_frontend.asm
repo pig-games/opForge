@@ -87,7 +87,8 @@ done
 	rts
 	.bend  ; scratchSize
 ; Begin a streaming frontend session. A0=Frame with a readable package capsule
-; and scratchSize bytes of caller-owned aligned scratch. D0=0 success, 1 invalid.
+; and scratchSize bytes of caller-owned aligned, zero-initialized scratch (or a
+; prior session ended with finish). D0=0 success, 1 invalid.
 ; Resets symbols and source-line numbering. Preserves other registers; CCR=D0.
 begin	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -648,6 +649,9 @@ finish	.block
 	movea.l Frame.Scratch(a0), a6
 	move.l a6, d0
 	beq.w resetControl
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	jsr templates.finish
 	clr.l PROGRAM(a6)
 	clr.l PROGRAM_BYTES(a6)
 	clr.l PACKAGE_BASE(a6)

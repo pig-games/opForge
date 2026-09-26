@@ -112,9 +112,9 @@ fn compact_conditional_family_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; unchanged include still exceeds template registry"]
-fn compact_telemetry_include_readiness_fs_uae() {
-    telemetry_oracle();
+#[ignore = "requires configured FS-UAE; unchanged release telemetry include"]
+fn compact_telemetry_include_fs_uae() {
+    let oracle = telemetry_oracle();
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
@@ -127,22 +127,15 @@ fn compact_telemetry_include_readiness_fs_uae() {
         ],
         &[],
         &["debug"],
-        None,
+        Some(&oracle),
         false,
     )
-    .expect("fresh native unchanged telemetry include rejection");
+    .expect("fresh native unchanged telemetry include comparison");
     let FsUaeSmokeOutcome::Completed { runs } = result else {
         panic!("real FS-UAE execution required");
     };
     assert_eq!(runs.len(), 1);
     assert!(runs[0].protocol_completed);
-    assert_eq!(runs[0].exit_code, Some(20));
-    assert!(runs[0]
-        .stdout
-        .contains("source: Work:sources/debug/memory_telemetry.i"));
-    assert!(
-        runs[0].stdout.contains("line 00000072"),
-        "{:#?}",
-        runs[0].stdout
-    );
+    assert!(runs[0].success);
+    assert_eq!(runs[0].exit_code, Some(0));
 }

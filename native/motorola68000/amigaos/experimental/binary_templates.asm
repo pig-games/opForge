@@ -1,19 +1,18 @@
-; Bounded preparation-only macro and segment templates over numeric writer records.
-; Definition storage contains record bytes and numeric identifiers, never text.
+; Preparation-only macro and segment templates over numeric writer records.
+; Bodies/default expressions use records and IDs; explicit textual substitution
+; retains its bounded spelling bytes in a separate preparation-only pool.
+; @opforge-owner: experimental.amigaos.binary_templates
 	.module experimental.amigaos.binary_templates
 	.cpu 68020
+	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
 	.pub
-LIMIT = 8
 ARG_LIMIT = 192
 TEXT_LIMIT = 192
 PARAM_LIMIT = 9
 DEPTH_LIMIT = 64
-DEFAULT_LIMIT = 512
-DEFAULT_TEXT_LIMIT = 512
-BODY_BYTES = 4096
 TOKEN_COMMA = 4
 TOKEN_EQ = 34
 TOKEN_OPEN_BRACKET = 10
@@ -32,7 +31,7 @@ State	.struct
 Count	.word ?
 Open	.word ?
 Skipping	.word ?
-Used	.word ?
+Used	.long ?
 Depth	.word ?
 CallLabel	.long ?
 CallLabelPresent	.word ?
@@ -43,7 +42,7 @@ HeaderParen	.word ?
 	.endstruct
 CallFrame	.struct
 Definition	.word ?
-Cursor	.word ?
+Cursor	.long ?
 ArgBytes	.word ?
 ArgCount	.word ?  ; supplied arguments, excluding omitted defaults
 ArgEnd0	.word ?
@@ -82,78 +81,100 @@ Parameter5	.word ?
 Parameter6	.word ?
 Parameter7	.word ?
 Parameter8	.word ?
-DefaultStart0	.word ?
-DefaultStart1	.word ?
-DefaultStart2	.word ?
-DefaultStart3	.word ?
-DefaultStart4	.word ?
-DefaultStart5	.word ?
-DefaultStart6	.word ?
-DefaultStart7	.word ?
-DefaultStart8	.word ?
-DefaultEnd0	.word ?
-DefaultEnd1	.word ?
-DefaultEnd2	.word ?
-DefaultEnd3	.word ?
-DefaultEnd4	.word ?
-DefaultEnd5	.word ?
-DefaultEnd6	.word ?
-DefaultEnd7	.word ?
-DefaultEnd8	.word ?
-TextStart0	.word ?
-TextStart1	.word ?
-TextStart2	.word ?
-TextStart3	.word ?
-TextStart4	.word ?
-TextStart5	.word ?
-TextStart6	.word ?
-TextStart7	.word ?
-TextStart8	.word ?
-TextEnd0	.word ?
-TextEnd1	.word ?
-TextEnd2	.word ?
-TextEnd3	.word ?
-TextEnd4	.word ?
-TextEnd5	.word ?
-TextEnd6	.word ?
-TextEnd7	.word ?
-TextEnd8	.word ?
-First	.word ?
-Last	.word ?
+DefaultStart0	.long ?
+DefaultStart1	.long ?
+DefaultStart2	.long ?
+DefaultStart3	.long ?
+DefaultStart4	.long ?
+DefaultStart5	.long ?
+DefaultStart6	.long ?
+DefaultStart7	.long ?
+DefaultStart8	.long ?
+DefaultEnd0	.long ?
+DefaultEnd1	.long ?
+DefaultEnd2	.long ?
+DefaultEnd3	.long ?
+DefaultEnd4	.long ?
+DefaultEnd5	.long ?
+DefaultEnd6	.long ?
+DefaultEnd7	.long ?
+DefaultEnd8	.long ?
+TextStart0	.long ?
+TextStart1	.long ?
+TextStart2	.long ?
+TextStart3	.long ?
+TextStart4	.long ?
+TextStart5	.long ?
+TextStart6	.long ?
+TextStart7	.long ?
+TextStart8	.long ?
+TextEnd0	.long ?
+TextEnd1	.long ?
+TextEnd2	.long ?
+TextEnd3	.long ?
+TextEnd4	.long ?
+TextEnd5	.long ?
+TextEnd6	.long ?
+TextEnd7	.long ?
+TextEnd8	.long ?
+First	.long ?
+Last	.long ?
 Kind	.word ?
 ParamCount	.word ?
 	.endstruct
 DEF_BYTES = Def.ParamCount+2
 KIND_SEGMENT = 0
 KIND_MACRO = 1
-DEFAULT_USED = State.HeaderParen+2
-DEFAULT_TEXT_USED = DEFAULT_USED+2
-DEFS = DEFAULT_TEXT_USED+2
-DEFAULTS = DEFS+LIMIT*DEF_BYTES
-DEFAULT_TEXT = DEFAULTS+DEFAULT_LIMIT
-BODY = DEFAULT_TEXT+DEFAULT_TEXT_LIMIT
-FRAMES = BODY+BODY_BYTES
+BLOCK_BYTES = memory.Block.Used+4
+DEFS = State.HeaderParen+2
+DEFAULTS = DEFS+BLOCK_BYTES
+DEFAULT_TEXT = DEFAULTS+BLOCK_BYTES
+BODY = DEFAULT_TEXT+BLOCK_BYTES
+DEFAULT_USED = DEFAULTS+memory.Block.Used
+DEFAULT_TEXT_USED = DEFAULT_TEXT+memory.Block.Used
+FRAMES = BODY+BLOCK_BYTES
 COMPOSITE_TEXT = FRAMES+DEPTH_LIMIT*FRAME_BYTES
 HEADER_FRAME = COMPOSITE_TEXT+256
 SCRATCH_BYTES = HEADER_FRAME+FRAME_BYTES
 	.section code, kind=code
 
-; A0=caller-owned state. Clears definitions for a new assembly session.
+; A0=caller-owned zero-initialized state, or a previously begun session.
+; Frees prior pools and clears definitions for a new assembly session.
 ; D0/CCR=zero; other registers preserved.
 begin	.block
+	bsr.w finish
 	clr.w State.Count(a0)
 	clr.w State.Open(a0)
 	clr.w State.Skipping(a0)
-	clr.w State.Used(a0)
+	clr.l State.Used(a0)
 	clr.w State.Depth(a0)
-	clr.w DEFAULT_USED(a0)
-	clr.w DEFAULT_TEXT_USED(a0)
+	clr.l DEFAULT_USED(a0)
+	clr.l DEFAULT_TEXT_USED(a0)
+	clr.l DEFS+memory.Block.Used(a0)
+	clr.l BODY+memory.Block.Used(a0)
 	clr.l State.CallLabel(a0)
 	clr.w State.CallLabelPresent(a0)
 	clr.w State.Serial(a0)
 	moveq #0, d0
 	rts
 	.bend  ; begin
+
+; A0=state. Release all session-owned pools before caller scratch is freed.
+; D0/CCR=zero; other registers preserved. Safe on zero-initialized state.
+finish	.block
+	movem.l a0, -(sp)
+	lea DEFS(a0), a0
+	jsr memory.release
+	adda.l #BLOCK_BYTES, a0
+	jsr memory.release
+	adda.l #BLOCK_BYTES, a0
+	jsr memory.release
+	adda.l #BLOCK_BYTES, a0
+	jsr memory.release
+	movea.l (sp)+, a0
+	moveq #0, d0
+	rts
+	.bend  ; finish
 
 ; A0=state. A definition cannot cross a physical source boundary.
 ; D0/CCR=status; other registers preserved. Definitions remain reusable.
@@ -292,8 +313,8 @@ findCall
 	bhs.w selectedCall
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
-	lea DEFS(a6), a1
-	adda.w d0, a1
+	movea.l DEFS+memory.Block.Pointer(a6), a1
+	adda.l d0, a1
 	moveq #0, d0
 	move.w d5, d0
 	moveq #0, d1
@@ -334,8 +355,8 @@ findImportedCall
 	bhs.w ordinary
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
-	lea DEFS(a6), a1
-	adda.w d0, a1
+	movea.l DEFS+memory.Block.Pointer(a6), a1
+	adda.l d0, a1
 	cmp.w Def.Name(a1), d7
 	beq.w call
 	addq.w #1, d4
@@ -382,30 +403,38 @@ checkedHeader
 	bne.w bad
 	tst.l d7
 	beq.w skipDefinition
-	cmpi.w #LIMIT, State.Count(a6)
-	bhs.w bad
 	moveq #0, d4
 duplicate
 	cmp.w State.Count(a6), d4
 	bhs.w newDefinition
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
-	lea DEFS(a6), a0
-	adda.w d0, a0
+	movea.l DEFS+memory.Block.Pointer(a6), a0
+	adda.l d0, a0
 	cmp.w Def.Name(a0), d5
 	beq.w bad
 	addq.w #1, d4
 	bra.w duplicate
 newDefinition
+	moveq #0, d0
+	move.w d4, d0
+	addq.l #1, d0
+	mulu.w #DEF_BYTES, d0
+	movem.l d0/a0, -(sp)
+	lea DEFS(a6), a0
+	jsr memory.reserve
+	movem.l (sp)+, d0/a0
+	bne.w bad
+	move.l d0, DEFS+memory.Block.Used(a6)
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
-	lea DEFS(a6), a0
-	adda.w d0, a0
+	movea.l DEFS+memory.Block.Pointer(a6), a0
+	adda.l d0, a0
 	clr.w Def.ParamCount(a0)
 	lea Def.DefaultStart0(a0), a4
 	moveq #36-1, d0
 clearDefaults
-	clr.w (a4)+
+	clr.l (a4)+
 	dbra d0, clearDefaults
 	cmpa.l a2, a1
 	beq.w parametersDone
@@ -535,24 +564,28 @@ defaultEnd
 	sub.l a3, d1
 	beq.w bad
 	moveq #0, d0
-	move.w DEFAULT_USED(a6), d0
+	move.l DEFAULT_USED(a6), d0
 	move.l d0, d6
 	add.l d1, d6
-	cmpi.l #DEFAULT_LIMIT, d6
-	bhi.w bad
+	movem.l d0/a0, -(sp)
+	move.l d6, d0
+	lea DEFAULTS(a6), a0
+	jsr memory.reserve
+	movem.l (sp)+, d0/a0
+	bne.w bad
 	move.w Def.ParamCount(a0), d7
 	subq.w #1, d7
-	add.w d7, d7
-	move.w d0, Def.DefaultStart0(a0, d7.w)
-	move.w d6, Def.DefaultEnd0(a0, d7.w)
+	lsl.w #2, d7
+	move.l d0, Def.DefaultStart0(a0, d7.w)
+	move.l d6, Def.DefaultEnd0(a0, d7.w)
 	move.l a5, -(sp)
-	lea DEFAULTS(a6), a5
+	movea.l DEFAULTS+memory.Block.Pointer(a6), a5
 	adda.l d0, a5
 copyDefaultDefinition
 	move.b (a3)+, (a5)+
 	subq.l #1, d1
 	bne.w copyDefaultDefinition
-	move.w d6, DEFAULT_USED(a6)
+	move.l d6, DEFAULT_USED(a6)
 	movea.l (sp)+, a5
 	movea.l a4, a1
 nextParameter
@@ -584,11 +617,11 @@ parametersValid
 	bne.w bad
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
-	lea DEFS(a6), a0
-	adda.w d0, a0
+	movea.l DEFS+memory.Block.Pointer(a6), a0
+	adda.l d0, a0
 	move.w d5, Def.Name(a0)
-	move.w State.Used(a6), Def.First(a0)
-	move.w State.Used(a6), Def.Last(a0)
+	move.l State.Used(a6), Def.First(a0)
+	move.l State.Used(a6), Def.Last(a0)
 	move.w d2, Def.Kind(a0)
 	addq.w #1, State.Count(a6)
 	addq.w #1, d4
@@ -614,29 +647,33 @@ closeOpen
 	beq.w bad
 	subq.w #1, d4
 	mulu.w #DEF_BYTES, d4
-	lea DEFS(a6), a0
-	adda.w d4, a0
+	movea.l DEFS+memory.Block.Pointer(a6), a0
+	adda.l d4, a0
 	cmp.w Def.Kind(a0), d2
 	bne.w bad
-	move.w State.Used(a6), d0
-	cmp.w Def.First(a0), d0
+	move.l State.Used(a6), d0
+	cmp.l Def.First(a0), d0
 	beq.w bad  ; an invocation must yield at least one record
-	move.w State.Used(a6), Def.Last(a0)
+	move.l State.Used(a6), Def.Last(a0)
 	clr.w State.Open(a6)
 	bra.w consumed
 capture
 	; Store the complete raw record; offsets in Def survive relocation.
 	tst.l d7
 	beq.w consumed
+	moveq #0, d6
 	move.w State.RawBytes(a6), d6
 	moveq #0, d0
-	move.w State.Used(a6), d0
+	move.l State.Used(a6), d0
 	add.l d6, d0
-	cmpi.l #BODY_BYTES, d0
-	bhi.w bad
+	movem.l d0/a0, -(sp)
 	lea BODY(a6), a0
+	jsr memory.reserve
+	movem.l (sp)+, d0/a0
+	bne.w bad
+	movea.l BODY+memory.Block.Pointer(a6), a0
 	moveq #0, d4
-	move.w State.Used(a6), d4
+	move.l State.Used(a6), d4
 	adda.l d4, a0
 	movea.l a5, a1
 	move.w d6, d4
@@ -644,7 +681,8 @@ copyBody
 	move.b (a1)+, (a0)+
 	subq.w #1, d4
 	bne.w copyBody
-	move.w d0, State.Used(a6)
+	move.l d0, State.Used(a6)
+	move.l d0, BODY+memory.Block.Used(a6)
 	bra.w consumed
 call
 	cmpi.w #DEPTH_LIMIT, State.Depth(a6)
@@ -665,8 +703,8 @@ callSyntax
 	move.w State.CallLabelPresent(a6), CallFrame.CallLabelPresent(a4)
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
-	lea DEFS(a6), a0
-	adda.w d0, a0
+	movea.l DEFS+memory.Block.Pointer(a6), a0
+	adda.l d0, a0
 	move.w Def.ParamCount(a0), d5
 	clr.w CallFrame.DefaultMask(a4)
 	clr.w TEXT_PAREN(a4)
@@ -816,8 +854,8 @@ argumentsReady
 	bne.w bad
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
-	lea DEFS(a6), a0
-	adda.w d0, a0
+	movea.l DEFS+memory.Block.Pointer(a6), a0
+	adda.l d0, a0
 	move.w d1, d7
 fillOmitted
 	cmpi.w #PARAM_LIMIT, d7
@@ -825,11 +863,11 @@ fillOmitted
 	cmp.w Def.ParamCount(a0), d7
 	bhs.w omittedEnd
 	move.w d7, d0
-	add.w d0, d0
+	lsl.w #2, d0
 	moveq #0, d3
-	move.w Def.DefaultStart0(a0, d0.w), d3
+	move.l Def.DefaultStart0(a0, d0.w), d3
 	moveq #0, d6
-	move.w Def.DefaultEnd0(a0, d0.w), d6
+	move.l Def.DefaultEnd0(a0, d0.w), d6
 	sub.l d3, d6
 	beq.w omittedEnd
 	moveq #0, d2
@@ -837,7 +875,7 @@ fillOmitted
 	add.l d6, d2
 	cmpi.l #ARG_LIMIT, d2
 	bhi.w bad
-	lea DEFAULTS(a6), a1
+	movea.l DEFAULTS+memory.Block.Pointer(a6), a1
 	adda.l d3, a1
 	lea CallFrame.Argument(a4), a2
 	adda.w CallFrame.ArgBytes(a4), a2
@@ -847,9 +885,10 @@ copyDefault
 	bne.w copyDefault
 	move.w d2, CallFrame.ArgBytes(a4)
 	moveq #0, d3
-	move.w Def.TextStart0(a0, d0.w), d3
+	move.l Def.TextStart0(a0, d0.w), d3
 	moveq #0, d6
-	move.w Def.TextEnd0(a0, d0.w), d6
+	lea Def.TextEnd0(a0), a1
+	move.l 0(a1, d0.w), d6
 	sub.l d3, d6
 	beq.w bad
 	moveq #0, d2
@@ -857,7 +896,7 @@ copyDefault
 	add.l d6, d2
 	cmpi.l #TEXT_LIMIT, d2
 	bhi.w bad
-	lea DEFAULT_TEXT(a6), a1
+	movea.l DEFAULT_TEXT+memory.Block.Pointer(a6), a1
 	adda.l d3, a1
 	lea TEXT(a4), a2
 	adda.w TEXT_BYTES(a4), a2
@@ -878,7 +917,7 @@ omittedEnd
 	addq.w #1, d7
 	bra.w fillOmitted
 argumentsBound
-	move.w Def.First(a0), CallFrame.Cursor(a4)
+	move.l Def.First(a0), CallFrame.Cursor(a4)
 	clr.w CallFrame.CallPhase(a4)
 	tst.w Def.Kind(a0)
 	beq.w callQueued
@@ -963,10 +1002,11 @@ headerTextNext
 	cmp.w Def.ParamCount(a3), d7
 	bhs.w headerTextGood
 	move.w d7, d0
-	add.w d0, d0
-	move.w Def.DefaultEnd0(a3, d0.w), d1
-	cmp.w Def.DefaultStart0(a3, d0.w), d1
+	lsl.w #2, d0
+	move.l Def.DefaultEnd0(a3, d0.w), d1
+	cmp.l Def.DefaultStart0(a3, d0.w), d1
 	beq.w headerTextAdvance
+	lsr.w #1, d0
 	moveq #0, d3
 	tst.w d7
 	beq.w headerTextStart
@@ -1011,20 +1051,26 @@ headerTextCopyReady
 	move.l a2, d2
 	sub.l a1, d2
 	moveq #0, d4
-	move.w DEFAULT_TEXT_USED(a6), d4
+	move.l DEFAULT_TEXT_USED(a6), d4
 	move.l d4, d5
 	add.l d2, d5
-	cmpi.l #DEFAULT_TEXT_LIMIT, d5
-	bhi.w headerTextBad
-	move.w d4, Def.TextStart0(a3, d0.w)
-	move.w d5, Def.TextEnd0(a3, d0.w)
-	lea DEFAULT_TEXT(a6), a2
+	movem.l d0/a0, -(sp)
+	move.l d5, d0
+	lea DEFAULT_TEXT(a6), a0
+	jsr memory.reserve
+	movem.l (sp)+, d0/a0
+	bne.w headerTextBad
+	lsl.w #1, d0
+	move.l d4, Def.TextStart0(a3, d0.w)
+	lea Def.TextEnd0(a3), a2
+	move.l d5, 0(a2, d0.w)
+	movea.l DEFAULT_TEXT+memory.Block.Pointer(a6), a2
 	adda.l d4, a2
 headerTextCopy
 	move.b (a1)+, (a2)+
 	subq.l #1, d2
 	bne.w headerTextCopy
-	move.w d5, DEFAULT_TEXT_USED(a6)
+	move.l d5, DEFAULT_TEXT_USED(a6)
 headerTextAdvance
 	addq.w #1, d7
 	bra.w headerTextNext
@@ -1299,8 +1345,8 @@ nextFrame
 	moveq #0, d0
 	move.w CallFrame.Definition(a6), d0
 	mulu.w #DEF_BYTES, d0
-	lea DEFS(a0), a4
-	adda.w d0, a4
+	movea.l DEFS+memory.Block.Pointer(a0), a4
+	adda.l d0, a4
 	tst.w Def.Kind(a4)
 	beq.w bodyRecord
 	cmpi.w #1, CallFrame.CallPhase(a6)
@@ -1311,8 +1357,8 @@ nextFrame
 	beq.w exhausted
 bodyRecord
 	moveq #0, d0
-	move.w CallFrame.Cursor(a6), d0
-	cmp.w Def.Last(a4), d0
+	move.l CallFrame.Cursor(a6), d0
+	cmp.l Def.Last(a4), d0
 	blo.w bodyAvailable
 	tst.w Def.Kind(a4)
 	beq.w exhausted
@@ -1320,16 +1366,16 @@ bodyRecord
 	bra.w macroClose
 bodyAvailable
 	movea.l 4(sp), a3
-	adda.l #BODY, a3
+	movea.l BODY+memory.Block.Pointer(a3), a3
 	adda.l d0, a3
 	moveq #0, d5
 	move.b (a3), d5
 	addq.w #1, d5
 	move.l d0, d2
-	add.w d5, d2
-	cmp.w Def.Last(a4), d2
+	add.l d5, d2
+	cmp.l Def.Last(a4), d2
 	bhi.w bad
-	move.w d2, CallFrame.Cursor(a6)
+	move.l d2, CallFrame.Cursor(a6)
 	lea 0(a3, d5.w), a2
 	clr.w SIDE_BYTES(a6)
 	btst #5, 1(a3)
@@ -1357,7 +1403,7 @@ bodyTextReady
 	move.b (a3)+, (a5)+
 	move.w CallFrame.CallLine(a6), (a5)+
 	addq.l #2, a3  ; source line is replaced by the invocation line
-	cmp.w Def.First(a4), d0
+	cmp.l Def.First(a4), d0
 	bne.w tokens
 	tst.w Def.Kind(a4)
 	bne.w tokens

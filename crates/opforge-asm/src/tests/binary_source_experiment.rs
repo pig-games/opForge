@@ -16,6 +16,9 @@ mod constants;
 #[path = "binary_source_conditionals.rs"]
 mod conditionals;
 
+#[path = "binary_source_template_storage.rs"]
+mod template_storage;
+
 #[path = "binary_source_selection.rs"]
 mod selection;
 

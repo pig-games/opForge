@@ -1466,7 +1466,27 @@ comparisons remain unsupported; arithmetic and bitwise tests are available.
 preprocessing, rather than a line-assembly helper that bypasses it. The native
 `compact_conditional_family_fs_uae` compares nested gates, numeric branch
 selection and a gated macro against those live bytes. The unchanged
-`memory_telemetry.i` include remains a separate failure probe:
-`compact_telemetry_include_readiness_fs_uae` verifies its current ninth-macro
-registry rejection with fresh completion, a nonzero exit and the source path.
-It does not claim complete telemetry-template support.
+`memory_telemetry.i` include now matches live Rust output in
+`compact_telemetry_include_fs_uae`, following the template-storage checkpoint.
+This proves the include with disabled telemetry gates, not enabled telemetry
+behavior or complete macro parity.
+
+## Growable template storage checkpoint
+
+Template definitions, packed bodies, default expressions and explicit textual
+substitution spellings now occupy four session-owned growable raw blocks.
+Definition indices remain stable across allocation; body and default ranges
+are 32-bit offsets. Expansion re-fetches pool bases and consumes packed records,
+without rereading source text. Textual substitution spellings exist only in the
+preparation pool. The existing allocator caps each block at 1 MiB; allocation
+failure rejects explicitly. The active expansion stack remains bounded at 64
+frames, with the existing per-record and per-call argument limits.
+
+Fresh native tests cover repeated telemetry includes in distinct modules, an
+exported macro invoked after import, early and late defaulted definitions, nested
+calls, embedded default spellings, and aggregate packed bodies beyond 64 KiB.
+The latter uses 121 templates over 84,687 source bytes and emits the same 1,701
+bytes as the full Rust CLI. A release run took 8.62 seconds under 68020 / 2 MiB
+FS-UAE; this is a functional observation, not a comparative speedup. A separate
+instrumented run peaked at 736,256 owned bytes and verified zero live owned
+bytes and balanced allocation/free counts after cleanup.

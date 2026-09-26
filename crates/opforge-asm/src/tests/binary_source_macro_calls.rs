@@ -8,11 +8,7 @@ Value .long ?
 .endstruct
 SourceBytes = 10
 emit .macro value
-.if 0
-.byte 99
-.else
 .byte 1
-.endif
 .endmacro
 args .macro first,second,third
 .byte 2

@@ -1704,3 +1704,64 @@ its nine existing enforced findings. All-target Clippy also encounters existing
 warnings in the unchanged engine dependency; Clippy with `--lib --no-deps` passes
 for all three affected crates.
 This is a correctness repair, with no comparative performance claim.
+
+## Wider preparation spelling offsets experiment
+
+Hypothesis: self-host rejection at `binary_frontend.asm:375` is caused by the
+session-wide 64 KiB spelling extent, rather than unsupported `.bend` syntax.
+Complete live-block cases with 520, 1,032 and 2,056 short constants already match
+Rust on native 68020 / 2 MiB, establishing the existing scope/identity growth path.
+A bounded debugger sample near the end of `binary_app.asm` observes 1,383
+identities and 55,241 spelling bytes; it does not capture the failing instruction.
+
+Widen the preparation-only name offset and arena extent to 32 bits. A 20-byte
+binding entry retains word IDs/owners/selection fields and explicit padding;
+all consumers use its declared stride. The shared 1 MiB allocation limit implies
+an explicit 52,428-entry bound, still constrained by available numeric source IDs.
+Serialized source and runtime-package formats do not change. This keeps a simple
+contiguous preparation arena; prefix-sharing is a separate optimization rather
+than a requirement for this capacity experiment.
+
+Accept only with exact fresh Rust/native output beyond 64 KiB of spellings,
+including wildcard imports, macro arguments, directive lookup and block
+closure; balanced allocation cleanup; and self-host progress beyond the original
+close. Repeat the unchanged release template control to report runtime/image
+costs. If the original self-host failure remains, reconsider the diagnosis rather
+than claiming this experiment fixes it. Full self-host parity remains the target,
+not an outcome established by successful reduced cases.
+
+The widened telemetry case matches all 15 Rust bytes with 908,288 peak tracked
+owned bytes, zero profiling errors and balanced cleanup. A fresh 47-file self-host
+probe passes the original close and reaches `binary_frontend.asm:741`,
+`andi.l #$fffffffe, d1`. Peak tracked ownership rises from 1,018,368 to 1,157,632
+bytes (+139,264); cleanup balances. This supports the original spelling-limit
+hypothesis but leaves preparation incomplete (flag 16), without full assembly
+parity or completed timing. The next structural investigation is full-width
+32-bit literal handling rather than another local `.bend` workaround.
+
+A composite probe with a provider struct, exported scalar, imported macro and
+routine reference fails with file/line zero. Its reduced single-file,
+provider-before-caller form also fails against pre-change native sources; preserve
+`compact_scope_provider_first_readiness_fs_uae` as a known readiness gap. The
+included-provider plus discovery variant also fails, but has not been compared
+against pre-change sources. Neither is claimed as wide-offset parity. Qualify the
+storage change with independent established import/block and telemetry/macro paths;
+do not erase or reinterpret these valid Rust cases as native success.
+
+Fresh post-change native proof on 68020 / 2 MiB: all three live-block cases
+(520, 1,032 and 2,056 constants) match Rust. A 320-long-name provider exceeds
+64 KiB of spellings, then exports a retained routine through wildcard import;
+all three output bytes match, its unused block stays excluded, and cleanup
+balances with zero profiling errors. Peak tracked ownership is 1,006,336 bytes.
+The focused Rust prepared-source suite passes all 97 tests; the final fixture
+oracles pass separately. Formatting, workflow links, benchmark selectors, debugger
+helper tests and the native proof-contract guard pass. The architecture guard
+retains its nine existing enforced findings; no broad green gate is claimed.
+
+The unchanged release control (84,687 source bytes / 121 templates) matches all
+1,701 output bytes in 8.629 seconds versus 8.648 before widening, a single-sample
+observation with no meaningful runtime gain/loss claim. Telemetry is disabled for
+this comparison; guest execution is 68020 / 2 MiB with an m6502 target package.
+Release image is 70,452 bytes / 81,660 linked reserved bytes, +128 each; the
+m68020 runtime capsule remains 269,162 bytes. Capacity and self-host progress are
+the benefit of this slice, with the tracked memory increase stated above.

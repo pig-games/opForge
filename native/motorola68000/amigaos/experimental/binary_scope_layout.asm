@@ -5,9 +5,10 @@
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_memory as memory
 	.pub
-; $ffff is the selected-import wildcard marker, not a binding index+1.
-LIMIT = 65534
-ARENA_BYTES = 65535
+; Source IDs remain words; each owned allocation is bounded by memory.LIMIT.
+; The 20-byte entry allocation caps identities at 52428, below wildcard $ffff.
+LIMIT = memory.LIMIT/records.ENTRY_BYTES
+ARENA_BYTES = memory.LIMIT
 ; Composed lexical paths include invocation scopes as well as source names.
 NAME_BYTES = records.NAME_BYTES
 ENTRY_BYTES = records.ENTRY_BYTES
@@ -16,7 +17,7 @@ Base	.word ?
 Count	.word ?
 Current	.word ?
 Ended	.word ?
-ArenaUsed	.word ?
+ArenaUsed	.long ?
 FirstBound	.word ?
 FirstExplicit	.word ?
 EndDirective	.word ?

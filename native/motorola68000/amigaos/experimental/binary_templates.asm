@@ -1955,7 +1955,7 @@ rewriteFormal
 	bcs.w rewriteBad
 	cmp.w layout.State.Count(a0), d4
 	bhs.w rewriteBad
-	lsl.l #4, d4
+	mulu.w #records.ENTRY_BYTES, d4
 	movea.l layout.ENTRIES_POINTER(a0), a4
 	adda.l d4, a4
 	moveq #0, d5
@@ -1964,8 +1964,10 @@ rewriteFormal
 	cmp.w d6, d5
 	bne.w rewriteNextFormal
 	moveq #0, d4
-	move.w records.Entry.Name(a4), d4
-	add.w records.Entry.Leaf(a4), d4
+	move.l records.Entry.Name(a4), d4
+	moveq #0, d5
+	move.w records.Entry.Leaf(a4), d5
+	add.l d5, d4
 	movea.l layout.ARENA_POINTER(a0), a4
 	adda.l d4, a4
 	moveq #0, d4

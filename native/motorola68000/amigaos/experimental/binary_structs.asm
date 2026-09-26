@@ -152,7 +152,7 @@ enter
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	move.l d0, d1
-	lsl.l #4, d1
+	mulu.w #records.ENTRY_BYTES, d1
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d1, a0
 	btst #0, records.Entry.Flags+1(a0)

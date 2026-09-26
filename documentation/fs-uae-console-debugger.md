@@ -14,9 +14,11 @@ debugger captures are Level E localization evidence: they identify a native
 guest control-flow position but do not, by themselves, prove Rust/native
 parity.
 
-The controller must never enable this mode unless explicitly requested. It
-must use a terminal-backed PTY, keep the normal smoke configuration unchanged,
-and collect artifacts in the run-specific `target/fs-uae-*` directory.
+The controller must never enable this mode without explicit user authorization.
+Standing authorization is sufficient; do not request it again for each bounded
+investigation while it remains in effect. Erik has authorized debugger use for
+ongoing opForge development. The controller must use a terminal-backed PTY,
+keep the normal smoke configuration unchanged and collect artifacts in the run-specific `target/fs-uae-*` directory.
 
 ## Installed baseline
 
@@ -190,6 +192,11 @@ ran for eight seconds and wrote a complete-cleanup report with
 pressing `Cmd+D`.
 
 ## Focused stop inspection
+
+Command files may use `{pc}` and lowercase register placeholders `{a0}`–`{a7}`
+and `{d0}`–`{d7}`. They resolve only from values printed in the captured debugger
+frame; a missing value rejects the command rather than inventing an address. For
+example, `m {a6} 4` inspects memory through the captured A6 value.
 
 For a controlled stop, a useful bounded collection is:
 

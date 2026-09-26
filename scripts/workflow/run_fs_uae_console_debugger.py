@@ -73,6 +73,9 @@ def rendered_commands(lines: list[str], transcript: str) -> list[str]:
         values["pc"] = pc_match.group(1)
     if a7_match:
         values["a7"] = a7_match.group(1)
+    # Accept additional addresses only from a parsed complete register frame.
+    _, _, registers = frame_values(transcript)
+    values.update({register: value[2:] for register, value in registers.items()})
     rendered = []
     for line in lines:
         for placeholder in re.findall(r"\{([^}]+)\}", line):
@@ -121,6 +124,12 @@ def frame_values(transcript: str) -> tuple[str | None, str | None, dict[str, str
 
 
 def self_test() -> None:
+    try:
+        rendered_commands(["m {a6} 4"], "Next PC: 00F8134C")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted missing register address")
     assert command_lines("# frame\nr\nd 1000 4\nfl\n") == ["r", "d 1000 4", "fl"]
     for unsafe in ("W 100 1", "r d0 1", "f 1000", "ré", "r\t", ""):
         try:
@@ -138,6 +147,7 @@ def self_test() -> None:
                "A0 00000009   A1 0000000A   A2 0000000B   A3 0000000C\n"
                "A4 0000000D   A5 0000000E   A6 0000000F   A7 00112233\n"
                "T=00 S=1 M=0 X=0 N=0 Z=1 V=0 C=0 IMASK=3\nNext PC: 00F8134C")
+    assert rendered_commands(["m {a6} 4"], fixture) == ["m 0000000F 4"]
     assert frame_values(fixture) == (
         "0x00F8134C", "0x2304", {"d0": "0x00000001", "d1": "0x00000002", "d2": "0x00000003",
         "d3": "0x00000004", "d4": "0x00000005", "d5": "0x00000006", "d6": "0x00000007",

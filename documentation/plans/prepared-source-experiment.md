@@ -1604,8 +1604,9 @@ qualification scope and the next family-level investigation.
 The full disabled telemetry macro family already worked; self-hosting exposed the
 shared 16 KiB spelling arena instead. Name storage now uses an owned growable raw
 block. The arena's pointer/capacity are preparation-only state, never serialized
-source or package fields. Entries retain 16-bit offsets; required extents above
-65,535 reject. The 512-identity limit remains independent and unchanged.
+source or package fields. The initial growth checkpoint retained word spelling
+offsets and an independent 512-identity limit. Both have since been widened by
+the storage checkpoints below.
 
 Binding retains stable lookup bytes before allocation. Module-prefix opening and
 wildcard resolution also copy names they need across binder callbacks; consumers
@@ -1613,13 +1614,14 @@ otherwise fetch the current base and add stored offsets. Frontend shutdown relea
 the arena on success and errors. Block indexing still reuses this storage after
 name resolution, with an explicit reservation for the indexer's scratch bound.
 
-Reproduce fresh growth parity and the explicit offset-bound rejection using the
+Reproduce fresh growth parity and the superseding wide-offset case using the
 documented 68020 / 2 MiB FS-UAE setup with `OPFORGE_COMPARE_MEMORY=1`:
 `cargo test -p asm compact_macro_arena_ -- --ignored --nocapture --test-threads=1`.
 The growth case also exercises every disabled telemetry macro and allocation
 during qualified module-prefix binding. It matches 15 Rust bytes, peaks at 794,880
 tracked owned bytes, reports zero profiling errors and balances cleanup. The
-offset-bound rejection also balances cleanup, with only flag 16.
+former offset-bound rejection balanced cleanup, with only flag 16; it has been
+replaced by an exact parity case after widening the spelling offsets.
 
 Release image: 69,168 bytes / 80,456 linked reserved bytes; m68020 capsule remains
 269,162 bytes. The unchanged template control matches 1,701 bytes in 8.502 seconds
@@ -1632,8 +1634,9 @@ for evidence limits and the next storage investigation.
 
 Binding entries and per-identity module/import metadata now use growable owned
 blocks, following the name arena's allocation and cleanup contract. The binding
-entry remains 16 bytes; names, owners, targets and chains remain word offsets or
-IDs. These pointers and the reservation callback exist only in preparation state;
+entry is now 20 bytes with an explicit alignment word; spelling offsets are
+longwords, while owners, targets and chains remain word IDs. These pointers and
+the reservation callback exist only in preparation state;
 they do not enter packed source, runtime packages or output artifacts.
 
 Binding reserves all coupled arrays before publishing Count. Partial allocation
@@ -1643,9 +1646,9 @@ than retaining array/arena pointers across callbacks. Candidate names retain an
 arena offset. Constant dependency scratch already grows from its actual entry
 count; its obsolete coupled 512-source-identity check is removed.
 
-The logical preparation bound is `min(65,534, 65,536 - Base)`: `$ffff` remains the
-selected-import wildcard marker. Spelling extent still cannot exceed 65,535 bytes,
-and composed names cannot exceed 255 bytes. Import lists/selections/parameters and
+The logical preparation bound is `min(52,428, 65,536 - Base)`: `$ffff` remains the
+selected-import wildcard marker. Spelling extent cannot exceed the shared 1 MiB
+allocation bound, and composed names cannot exceed 255 bytes. Import lists/selections/parameters and
 block spans retain independent 512-entry bounds. Graph nodes remain bounded and
 keyed by binding index, so modules above that bound reject explicitly even when
 ordinary symbol storage can grow. Removing that graph/identity coupling is separate
@@ -1714,3 +1717,14 @@ shadow. Thus `n=-17; n/7` now has the same signed meaning as literal `-17/7`.
 Address labels remain unsigned. This repairs the reference; the native arithmetic
 slice's proof still covers its original literal/unary-negation cases, and native
 negative-symbol parity is not newly claimed here.
+
+## Wider preparation spelling offsets
+
+Current preparation uses long spelling offsets and a 20-byte binding entry,
+with a shared 1 MiB per-allocation bound. Packed source and runtime-package formats
+are unchanged. The former 64 KiB rejection case now requires exact Rust/native
+output: `compact_macro_arena_wide_fs_uae` matches 15 bytes with balanced cleanup.
+The native self-host probe advances past the original frontend `.bend` to line
+741, a high-bit immediate literal, but remains incomplete. See the
+[active reset checkpoint](native-runtime-reset.md#wider-preparation-spelling-offsets-experiment)
+for costs, qualification and the separate module-composition readiness gap.

@@ -240,11 +240,11 @@ open	.block
 	suba.l d1, a0
 	bne.w bad  ; explicit module identities cannot reopen
 	move.l d7, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l memory.Block.Pointer(a5), a0
 	adda.l d0, a0
 	moveq #0, d0
-	move.w records.Entry.Name(a0), d0
+	move.l records.Entry.Name(a0), d0
 	adda.l d0, a2
 	moveq #0, d6
 	move.w records.Entry.Length(a0), d6
@@ -283,7 +283,7 @@ scan
 	sub.w State.Base(a6), d1
 	andi.l #$ffff, d1
 	move.l d1, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l memory.Block.Pointer(a5), a0
 	adda.l d0, a0
 	move.w d4, records.Entry.Owner(a0)
@@ -294,7 +294,7 @@ next
 	bra.w scan
 ready
 	move.l d7, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l memory.Block.Pointer(a5), a0
 	adda.l d0, a0
 	move.w d4, records.Entry.Owner(a0)

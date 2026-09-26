@@ -78,7 +78,7 @@ begin	.block
 	clr.w layout.State.Count(a0)
 	clr.w layout.State.Current(a0)
 	clr.w layout.State.Ended(a0)
-	clr.w layout.State.ArenaUsed(a0)
+	clr.l layout.State.ArenaUsed(a0)
 	clr.l ARENA+memory.Block.Pointer(a0)
 	clr.l ARENA+memory.Block.Capacity(a0)
 	clr.l ARENA+memory.Block.Used(a0)
@@ -143,7 +143,7 @@ reserveIdentities	.block
 	add.l d0, d1
 	cmpi.l #65536, d1
 	bhi.w bad
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	lea ENTRIES(a1), a0
 	jsr memory.reserve
 	bne.w bad
@@ -305,7 +305,7 @@ find
 	bsr.w reserveIdentities
 	bne.w bad
 	moveq #0, d0
-	move.w layout.State.ArenaUsed(a6), d0
+	move.l layout.State.ArenaUsed(a6), d0
 	add.l d6, d0
 	cmpi.l #ARENA_BYTES, d0
 	bhi.w bad
@@ -327,15 +327,16 @@ stableName
 	moveq #0, d1
 	move.w layout.State.Count(a6), d1
 	move.l d1, d2
-	lsl.l #4, d2
+	mulu.w #records.ENTRY_BYTES, d2
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d2, a3
-	move.w layout.State.ArenaUsed(a6), records.Entry.Name(a3)
+	move.l layout.State.ArenaUsed(a6), records.Entry.Name(a3)
 	move.w d6, records.Entry.Length(a3)
 	move.w d3, records.Entry.Owner(a3)
 	move.w d7, records.Entry.Leaf(a3)
 	clr.w records.Entry.Flags(a3)
 	clr.w records.Entry.ScopeKind(a3)
+	clr.w records.Entry.Padding(a3)
 	move.w layout.State.Base(a6), d2
 	add.w d1, d2
 	move.w d2, records.Entry.Target(a3)
@@ -347,13 +348,13 @@ stableName
 	addq.w #1, layout.State.Count(a6)
 	moveq #0, d1
 	move.w layout.State.Count(a6), d1
-	lsl.l #4, d1
+	mulu.w #records.ENTRY_BYTES, d1
 	move.l d1, ENTRIES+memory.Block.Used(a6)
 	movea.l ARENA_POINTER(a6), a1
 	moveq #0, d1
-	move.w layout.State.ArenaUsed(a6), d1
+	move.l layout.State.ArenaUsed(a6), d1
 	adda.l d1, a1
-	move.w d0, layout.State.ArenaUsed(a6)
+	move.l d0, layout.State.ArenaUsed(a6)
 	move.l d0, ARENA+memory.Block.Used(a6)
 	movea.l a2, a0
 	move.l d6, d0
@@ -628,14 +629,15 @@ reference
 	bcs.w packageName
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	lsl.l #4, d0
+	move.l d0, d1
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #4, records.Entry.Flags+1(a3)
 	bne.w bad  ; template names are callable, not numeric values
 	ori.w #REFERENCED, records.Entry.Flags(a3)
 	clr.b 3(a0)
-	lsr.l #4, d0
+	move.l d1, d0
 	move.l a0, -(sp)
 	lea MODULE_STATE(a6), a0
 	jsr modules.reference
@@ -680,7 +682,7 @@ resolve
 	cmp.w layout.State.Count(a6), d7
 	bhs.w rewrite
 	move.l d7, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a4
 	adda.l d0, a4
 	move.w records.Entry.Flags(a4), d0
@@ -722,15 +724,17 @@ parent
 	beq.w failSaved
 	move.l d3, d0
 	subq.w #1, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	moveq #0, d3
 	move.w records.Entry.Owner(a3), d3
 	movea.l ARENA_POINTER(a6), a0
 	moveq #0, d0
-	move.w records.Entry.Name(a4), d0
-	add.w records.Entry.Leaf(a4), d0
+	move.l records.Entry.Name(a4), d0
+	moveq #0, d1
+	move.w records.Entry.Leaf(a4), d1
+	add.l d1, d0
 	adda.l d0, a0
 	moveq #0, d0
 	move.w records.Entry.Length(a4), d0
@@ -756,7 +760,7 @@ access
 	bcs.w checkAccess
 	cmp.w layout.State.Count(a6), d0
 	bhs.w failSaved
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #4, records.Entry.Flags+1(a3)
@@ -1004,7 +1008,7 @@ enter
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	move.l d0, d1
-	lsl.l #4, d1
+	mulu.w #records.ENTRY_BYTES, d1
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d1, a3
 	; Only opening a path owns its parent metadata. A later qualified value
@@ -1036,7 +1040,7 @@ closeScope	.block
 	move.w layout.State.Current(a6), d0
 	beq.w bad
 	subq.w #1, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	move.w records.Entry.ScopeKind(a3), d0
@@ -1067,14 +1071,15 @@ declare	.block
 	bcs.w bad
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	lsl.l #4, d0
+	move.l d0, d1
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #0, records.Entry.Flags+1(a3)
 	bne.w bad
 	clr.b 3(a0)
 	ori.w #DECLARED, records.Entry.Flags(a3)
-	lsr.l #4, d0
+	move.l d1, d0
 	move.l a0, -(sp)
 	lea MODULE_STATE(a6), a0
 	jsr modules.claim
@@ -1106,7 +1111,7 @@ scan
 	beq.w ready
 	move.l d3, d0
 	subq.w #1, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	moveq #0, d7
@@ -1118,7 +1123,7 @@ scan
 	bhi.w bad
 	movea.l ARENA_POINTER(a6), a0
 	moveq #0, d1
-	move.w records.Entry.Name(a3), d1
+	move.l records.Entry.Name(a3), d1
 	adda.l d1, a0
 	lea BUFFER(a6), a1
 	move.l d7, d1
@@ -1173,14 +1178,14 @@ chain
 	tst.w d2
 	beq.w missing
 	subq.w #1, d2
-	lsl.l #4, d2
+	mulu.w #records.ENTRY_BYTES, d2
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d2, a3
 	cmp.w records.Entry.Length(a3), d6
 	bne.w next
 	movea.l ARENA_POINTER(a6), a1
 	moveq #0, d0
-	move.w records.Entry.Name(a3), d0
+	move.l records.Entry.Name(a3), d0
 	adda.l d0, a1
 	movea.l a2, a0
 	move.l d6, d0
@@ -1227,12 +1232,12 @@ keyword	.block
 	bcs.w none
 	cmp.w layout.State.Count(a6), d0
 	bhs.w none
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	movea.l ARENA_POINTER(a6), a0
 	moveq #0, d0
-	move.w records.Entry.Name(a3), d0
+	move.l records.Entry.Name(a3), d0
 	adda.l d0, a0
 	moveq #0, d4
 	move.w records.Entry.Length(a3), d4
@@ -1312,7 +1317,7 @@ rebindLocal	.block
 	bcs.w unchanged
 	cmp.w layout.State.Count(a6), d5
 	bhs.w badRebind
-	lsl.l #4, d5
+	mulu.w #records.ENTRY_BYTES, d5
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d5, a3
 	moveq #0, d2
@@ -1323,7 +1328,7 @@ rebindLocal	.block
 	beq.w badRebind
 	movea.l ARENA_POINTER(a6), a0
 	moveq #0, d3
-	move.w records.Entry.Name(a3), d3
+	move.l records.Entry.Name(a3), d3
 	add.l d2, d3
 	adda.l d3, a0
 	movea.l a6, a1
@@ -1385,8 +1390,8 @@ templateLeafEqual	.block
 	bcs.w leafMissing
 	cmp.w layout.State.Count(a6), d1
 	bhs.w leafMissing
-	lsl.l #4, d0
-	lsl.l #4, d1
+	mulu.w #records.ENTRY_BYTES, d0
+	mulu.w #records.ENTRY_BYTES, d1
 	movea.l ENTRIES_POINTER(a6), a2
 	adda.l d0, a2
 	movea.l ENTRIES_POINTER(a6), a3
@@ -1397,11 +1402,11 @@ templateLeafEqual	.block
 	move.w records.Entry.Length(a3), d3
 	movea.l ARENA_POINTER(a6), a0
 	moveq #0, d0
-	move.w records.Entry.Name(a2), d0
+	move.l records.Entry.Name(a2), d0
 	adda.l d0, a0
 	movea.l ARENA_POINTER(a6), a1
 	moveq #0, d0
-	move.w records.Entry.Name(a3), d0
+	move.l records.Entry.Name(a3), d0
 	adda.l d0, a1
 	; Entry.Leaf is the first binding context, not necessarily the final
 	; component of an explicitly qualified import alias.
@@ -1482,8 +1487,8 @@ templateDistance	.block
 	bcs.w missing
 	cmp.w layout.State.Count(a6), d7
 	bhs.w missing
-	lsl.l #4, d6
-	lsl.l #4, d7
+	mulu.w #records.ENTRY_BYTES, d6
+	mulu.w #records.ENTRY_BYTES, d7
 	movea.l ENTRIES_POINTER(a6), a4
 	adda.l d6, a4
 	movea.l ENTRIES_POINTER(a6), a5
@@ -1500,13 +1505,17 @@ templateDistance	.block
 	bne.w missing
 	movea.l ARENA_POINTER(a6), a2
 	moveq #0, d0
-	move.w records.Entry.Name(a4), d0
-	add.w records.Entry.Leaf(a4), d0
+	move.l records.Entry.Name(a4), d0
+	moveq #0, d1
+	move.w records.Entry.Leaf(a4), d1
+	add.l d1, d0
 	adda.l d0, a2
 	movea.l ARENA_POINTER(a6), a3
 	moveq #0, d0
-	move.w records.Entry.Name(a5), d0
-	add.w records.Entry.Leaf(a5), d0
+	move.l records.Entry.Name(a5), d0
+	moveq #0, d1
+	move.w records.Entry.Leaf(a5), d1
+	add.l d1, d0
 	adda.l d0, a3
 compareTemplateLeaf
 	moveq #0, d1
@@ -1533,7 +1542,7 @@ templateAncestor
 	moveq #0, d0
 	move.w d4, d0
 	subq.w #1, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	move.w records.Entry.Owner(a0), d4

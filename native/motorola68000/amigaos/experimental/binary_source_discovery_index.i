@@ -172,7 +172,7 @@ selectCandidate .block
 	cmp.w layout.State.Count(a5), d7
 	bhs.w bad
 	move.l d7, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a5), a4
 	adda.l d0, a4
 	moveq #0, d0
@@ -181,7 +181,7 @@ selectCandidate .block
 	move.l d0, RequestedNameBytes
 	movea.l layout.ARENA_POINTER(a5), a1
 	moveq #0, d1
-	move.w records.Entry.Name(a4), d1
+	move.l records.Entry.Name(a4), d1
 	adda.l d1, a1
 	move.l d1, RequestedNameOffset
 	lea DeclarationBlock, a0

@@ -7,7 +7,7 @@
 	.use experimental.amigaos.binary_source as source
 	.pub
 Entry	.struct
-Name	.word ?
+Name	.long ?
 Length	.word ?
 Owner	.word ?
 Leaf	.word ?
@@ -15,8 +15,9 @@ Flags	.word ?
 Target	.word ?
 Next	.word ?
 ScopeKind	.word ?
+Padding	.word ?
 .endstruct
-ENTRY_BYTES = Entry.ScopeKind+2
+ENTRY_BYTES = Entry.Padding+2
 ; Includes room for the terminator in preparation-only composition/copy buffers.
 NAME_BYTES = 256
 	.section code, kind=code
@@ -180,7 +181,7 @@ identity	.block
 	bcs.w ok
 	cmp.l d7, d0
 	bhs.w bad
-	lsl.l #4, d0
+	mulu.w #ENTRY_BYTES, d0
 	movea.l a6, a1
 	adda.l d0, a1
 	moveq #0, d1

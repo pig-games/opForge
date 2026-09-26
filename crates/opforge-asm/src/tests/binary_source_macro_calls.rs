@@ -191,32 +191,9 @@ fn compact_macro_arena_growth_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; explicit 16-bit spelling-offset bound"]
-fn compact_macro_arena_bound_fs_uae() {
-    let source = telemetry_arena_source(280, 200);
-    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    let resolved = core.resolve_pipeline("m68020", None).unwrap();
-    let package = prepare_package(&core, &resolved).unwrap();
-    let outcome = crate::fs_uae_smoke::run_compact_cli_from_env(
-        &workspace_root(),
-        &package,
-        source.as_bytes(),
-        None,
-    )
-    .expect("fresh bounded spelling rejection");
-    let FsUaeSmokeOutcome::Completed { runs } = outcome else {
-        panic!("real native execution required");
-    };
-    assert_eq!(runs.len(), 1);
-    assert!(runs[0].protocol_completed);
-    assert_eq!(runs[0].exit_code, Some(20));
-    assert!(runs[0]
-        .stdout
-        .contains("binary source: unsupported or invalid input"));
-    if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
-        let record = &runs[0].captured_artifacts[&PathBuf::from("Work/memory.bin")];
-        check_memory(record, 16);
-    }
+#[ignore = "requires configured FS-UAE; disabled telemetry beyond 64 KiB of spellings"]
+fn compact_macro_arena_wide_fs_uae() {
+    native_source(telemetry_arena_source(280, 200));
 }
 
 fn check_memory(record: &[u8], expected_errors: u32) {

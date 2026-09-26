@@ -27,6 +27,8 @@ mod macro_calls;
 
 #[path = "binary_source_identity_storage.rs"]
 mod identity_storage;
+#[path = "binary_source_scope_growth.rs"]
+mod scope_growth;
 
 #[path = "binary_source_arithmetic.rs"]
 mod arithmetic;

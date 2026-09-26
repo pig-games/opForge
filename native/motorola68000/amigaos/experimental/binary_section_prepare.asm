@@ -247,7 +247,7 @@ mapCompare
 	bne.w nextMapName
 	move.l d6, d0
 	sub.w layout.State.Base(a6), d0
-	lsl.l #4, d0
+	mulu.w #names.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a1
 	adda.l d0, a1
 	move.w names.Entry.Owner(a1), d0
@@ -853,7 +853,7 @@ leaf	.block
 	bcs.w bad
 	cmp.w layout.State.Count(a6), d1
 	bhs.w bad
-	lsl.l #4, d1
+	mulu.w #names.ENTRY_BYTES, d1
 	movea.l layout.ENTRIES_POINTER(a6), a1
 	adda.l d1, a1
 	moveq #0, d2
@@ -863,7 +863,7 @@ leaf	.block
 	sub.l d3, d2
 	beq.w bad
 	moveq #0, d1
-	move.w names.Entry.Name(a1), d1
+	move.l names.Entry.Name(a1), d1
 	add.l d3, d1
 	movea.l layout.ARENA_POINTER(a6), a1
 	adda.l d1, a1

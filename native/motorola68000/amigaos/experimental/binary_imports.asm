@@ -524,7 +524,7 @@ find
 	beq.w allocate
 	subq.w #1, d2
 	move.l d2, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	cmp.w records.Entry.Owner(a3), d7
@@ -551,26 +551,27 @@ allocate
 	tst.l d0
 	bne.w bad
 	move.l d2, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	move.l d6, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
-	move.w records.Entry.Name(a0), records.Entry.Name(a3)
+	move.l records.Entry.Name(a0), records.Entry.Name(a3)
 	move.w records.Entry.Length(a0), records.Entry.Length(a3)
 	move.w d7, records.Entry.Owner(a3)
 	move.w d4, records.Entry.Leaf(a3)  ; selected target index+1, or zero
 	move.w #PROXY, records.Entry.Flags(a3)
 	move.w d6, records.Entry.ScopeKind(a3)
 	addq.w #1, records.Entry.ScopeKind(a3)
+	clr.w records.Entry.Padding(a3)
 	move.w (a4), records.Entry.Next(a3)
 	move.w d2, d0
 	addq.w #1, d0
 	move.w d0, (a4)
 	move.w d0, layout.State.Count(a6)
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	move.l d0, layout.ENTRIES+memory.Block.Used(a6)
 	move.w layout.State.Base(a6), d0
 	add.w d2, d0
@@ -760,7 +761,7 @@ loop
 	cmp.w layout.State.Count(a6), d7
 	bhs.w ok
 	move.l d7, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #3, records.Entry.Flags+1(a3)
@@ -782,7 +783,7 @@ resolveProxy
 	bsr.w resolve
 	bne.w bad
 	move.l d7, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	move.w d1, records.Entry.Target(a3)
@@ -823,7 +824,7 @@ resolveTemplate	.block
 	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w templateBad
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #3, records.Entry.Flags+1(a3)
@@ -839,7 +840,7 @@ templateTarget
 	cmp.w layout.State.Count(a6), d0
 	bhs.w templateBad
 	move.l d0, d6
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #4, records.Entry.Flags+1(a3)
@@ -977,7 +978,7 @@ selected
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	move.l d0, d1
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	btst #0, records.Entry.Flags+1(a0)
@@ -1012,7 +1013,7 @@ resolve	.block
 	bra.w resolveSelected
 resolveQualified
 	moveq #0, d0
-	move.w records.Entry.Name(a3), d0
+	move.l records.Entry.Name(a3), d0
 	movea.l layout.ARENA_POINTER(a6), a2
 	adda.l d0, a2
 	moveq #0, d6
@@ -1124,7 +1125,7 @@ bind
 	move.w d1, d0
 	sub.w layout.State.Base(a6), d0
 	andi.l #$ffff, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	btst #0, records.Entry.Flags+1(a0)
@@ -1140,7 +1141,7 @@ resolveSelected
 	subq.w #1, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	btst #0, records.Entry.Flags+1(a0)
@@ -1150,7 +1151,7 @@ resolveSelected
 	subq.w #1, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	btst #0, records.Entry.Flags+1(a0)
@@ -1253,7 +1254,7 @@ copyParameterLeaf
 	andi.l #$ffff, d1
 	cmp.w layout.State.Count(a6), d1
 	bhs.w parametersBad
-	lsl.l #4, d1
+	mulu.w #records.ENTRY_BYTES, d1
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d1, a0
 	moveq #0, d3
@@ -1432,7 +1433,7 @@ scanScoped
 	suba.l d0, a0
 	bne.w scopedNext
 	move.l d0, d1
-	lsl.l #4, d1
+	mulu.w #records.ENTRY_BYTES, d1
 	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d1, a3
 	btst #0, records.Entry.Flags+1(a3)
@@ -1455,7 +1456,7 @@ candidate
 	suba.l d4, a0
 	beq.w candidateNext
 	move.l d4, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	cmp.w records.Entry.Owner(a3), d7
@@ -1509,7 +1510,7 @@ entryLeafBytes	.block
 	move.l a2, -(sp)
 	movea.l layout.ARENA_POINTER(a6), a0
 	moveq #0, d0
-	move.w records.Entry.Name(a3), d0
+	move.l records.Entry.Name(a3), d0
 	adda.l d0, a0
 	moveq #0, d0
 	move.w records.Entry.Length(a3), d0
@@ -1731,7 +1732,7 @@ copyWildcardLeaf
 	cmp.w layout.State.Count(a6), d2
 	bhs.w wildcardBad
 	move.l d2, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	btst #0, records.Entry.Flags+1(a0)
@@ -1830,12 +1831,12 @@ bad
 ; D0=entry index, A6=scope state. A0/D0=full bytes; D1/A1 scratch.
 entryName	.block
 	andi.l #$ffff, d0
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a1
 	adda.l d0, a1
 	movea.l layout.ARENA_POINTER(a6), a0
 	moveq #0, d0
-	move.w records.Entry.Name(a1), d0
+	move.l records.Entry.Name(a1), d0
 	adda.l d0, a0
 	moveq #0, d0
 	move.w records.Entry.Length(a1), d0

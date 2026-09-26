@@ -73,7 +73,7 @@ line	.block
 	bcs.w ordinary
 	cmp.w layout.State.Count(a6), d0
 	bhs.w ordinary
-	lsl.l #4, d0
+	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	moveq #0, d2
@@ -81,8 +81,12 @@ line	.block
 	sub.w records.Entry.Leaf(a0), d2
 	movea.l layout.ARENA_POINTER(a6), a1
 	moveq #0, d0
-	move.w records.Entry.Name(a0), d0
-	add.w records.Entry.Leaf(a0), d0
+	move.l records.Entry.Name(a0), d0
+	move.l d1, -(sp)
+	moveq #0, d1
+	move.w records.Entry.Leaf(a0), d1
+	add.l d1, d0
+	move.l (sp)+, d1
 	adda.l d0, a1
 	cmpi.w #2, d2
 	bne.w checkElse

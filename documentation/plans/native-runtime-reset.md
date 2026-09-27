@@ -2003,8 +2003,10 @@ saving. Stage calls are `4669/1/4487/4487/4668/0`, identical to the expanded-mem
 diagnostic frontier. Cleanup remains balanced, but profiling flag 16 still marks
 an unfinished interval. This supports memory pressure as the former blocker;
 no failed AllocMem call was directly observed. Self-hosting remains incomplete,
-with no completed artifact or duration. The next structural slice should analyze
-packed loop expansion across the linked sources, beginning with this `.for` use.
+with no completed artifact or duration. The next self-host language frontier is
+packed loop expansion, beginning with this `.for` use. Following the frontend audit,
+[VM boundary correction](compact-frontend-vm-boundary.md) takes precedence over
+adding more parity through the current handwritten grammar.
 
 Fresh numeric-alias cases match live Rust output for both m68020 and m6502, with
 zero live ownership after cleanup and zero profiling errors. The identical

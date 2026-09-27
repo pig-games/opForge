@@ -108,7 +108,7 @@ fn native(sources: &[(&str, &[u8])], cpu: &str) {
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d35);
+        assert_eq!(words[0], 0x4d454d36);
         assert_eq!(
             words[1], 0,
             "template pools and other owned blocks must be released"

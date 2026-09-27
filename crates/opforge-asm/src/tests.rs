@@ -1442,6 +1442,7 @@ fn runtime_token_bridge_maps_portable_tokens_to_core_tokens() {
             kind: PortableTokenKind::Number {
                 text: "$42".to_string(),
                 base: 16,
+                normalized: None,
             },
             span: PortableSpan {
                 line: 1,
@@ -15619,7 +15620,7 @@ fn motorola68020_embedded_native_cli_package_matches_rust_default_runtime_packag
 #[test]
 fn native_current_cpex_package_uses_exact_package_digest() {
     // Pin the reviewed current package, while also checking live builder equality.
-    const CPEX_PACKAGE_FNV1A64: u64 = 0xbfc1ddc7dc19f677;
+    const CPEX_PACKAGE_FNV1A64: u64 = 0xe97d530d9360a8bd;
     let package_path =
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
     let embedded_package = fs::read(&package_path).expect("read current embedded package");
@@ -22685,7 +22686,7 @@ struct TkpkgNativeParitySource {
 fn render_tkpkg_smoke_debug_row(token: &PortableToken) -> String {
     let prefix = match &token.kind {
         PortableTokenKind::Identifier(name) => format!("Identifier(\"{name}\")"),
-        PortableTokenKind::Number { text, base } => {
+        PortableTokenKind::Number { text, base, .. } => {
             format!(
                 "Number {{ text: {:?}, base: {base} }}",
                 text.to_ascii_uppercase()

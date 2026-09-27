@@ -212,6 +212,19 @@ fn tokenize_host_line(line: &str, line_num: u32) -> Result<Vec<PortableToken>, S
     Ok(tokens)
 }
 
+// Core tokens expose lexical kind, spelling, radix and span, but have no
+// normalization metadata. Host parity covers this complete lexical projection;
+// numeric opcode and fast/generic tests compare normalization independently.
+fn lexical_token_projection(tokens: &[PortableToken]) -> Vec<Token> {
+    tokens.iter().map(PortableToken::to_core_token).collect()
+}
+
+fn lexical_token_result_projection(
+    tokens: Result<Vec<PortableToken>, String>,
+) -> Result<Vec<Token>, String> {
+    tokens.map(|tokens| lexical_token_projection(&tokens))
+}
+
 fn tokenize_core_expr_tokens(expr: &str, line_num: u32) -> (Vec<Token>, Span) {
     let mut tokenizer = Tokenizer::new(expr, line_num);
     let mut tokens = Vec::new();
@@ -1710,7 +1723,10 @@ fn execution_model_tokenizer_vm_policy_parity_matches_host_tokens_mos6502() {
     let vm_tokens = model
         .tokenize_portable_statement("m6502", None, line, 12)
         .expect("portable tokenization should succeed");
-    assert_eq!(vm_tokens, host_tokens);
+    assert_eq!(
+        lexical_token_projection(&vm_tokens),
+        lexical_token_projection(&host_tokens)
+    );
 }
 
 #[test]
@@ -1740,7 +1756,10 @@ fn execution_model_tokenizer_vm_policy_parity_matches_host_tokens_with_cpu_overr
     let vm_tokens = model
         .tokenize_portable_statement("m6502", None, line, 14)
         .expect("portable tokenization should succeed");
-    assert_eq!(vm_tokens, host_tokens);
+    assert_eq!(
+        lexical_token_projection(&vm_tokens),
+        lexical_token_projection(&host_tokens)
+    );
 }
 
 #[test]
@@ -6189,9 +6208,12 @@ fn execution_model_tokenizer_parity_corpus_examples_and_edge_cases_core_vs_vm() 
             let vm =
                 tokenize_with_mode(&mut model, RuntimeTokenizerMode::Vm, cpu_id, line, line_num);
             assert_eq!(
-                vm, host,
+                lexical_token_result_projection(vm),
+                lexical_token_result_projection(host),
                 "tokenizer parity mismatch for cpu {} at corpus index {} line {:?}",
-                cpu_id, index, line
+                cpu_id,
+                index,
+                line
             );
         }
     }
@@ -6214,9 +6236,11 @@ fn execution_model_tokenizer_parity_deterministic_fuzz_core_vs_vm() {
             line_num,
         );
         assert_eq!(
-            vm, host,
+            lexical_token_result_projection(vm),
+            lexical_token_result_projection(host),
             "deterministic fuzz parity mismatch at index {} line {:?}",
-            index, line
+            index,
+            line
         );
     }
 }
@@ -6300,9 +6324,13 @@ fn motorola68000_tokenizer_vm_staged_corpus_matches_host_for_example_lines() {
         });
 
         assert_eq!(
-            vm, host,
+            lexical_token_projection(&vm),
+            lexical_token_projection(&host),
             "motorola68000 tokenizer parity mismatch for {}:{} on {} line {:?}",
-            path, line_num, cpu_id, line
+            path,
+            line_num,
+            cpu_id,
+            line
         );
     }
 }
@@ -6334,7 +6362,12 @@ fn execution_model_tokenizer_vm_explicit_dispatch_matches_host_for_core_shapes()
             line,
             line_num,
         );
-        assert_eq!(vm, host, "explicit VM mismatch for line {:?}", line);
+        assert_eq!(
+            lexical_token_result_projection(vm),
+            lexical_token_result_projection(host),
+            "explicit VM mismatch for line {:?}",
+            line
+        );
     }
 }
 

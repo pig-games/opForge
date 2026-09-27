@@ -47,6 +47,13 @@ TK_OPCODE_SCAN_IDENTIFIER       = 15
 TK_OPCODE_SCAN_NUMBER           = 16
 TK_OPCODE_SCAN_STRING           = 17
 TK_OPCODE_SCAN_SYMBOL           = 18
+TK_OPCODE_NORMALIZE_NUMBERS     = 19
+
+NUMBER_FLAG_UNDERSCORES          = 1
+NUMBER_FLAG_CASE_INSENSITIVE    = 2
+NUMBER_VALID                    = 1
+NUMBER_MALFORMED                = 2
+NUMBER_OVERFLOW                 = 3
 
 ; Token kind values are the compact on-wire/native record encoding used by the
 ; report writer and matched back to PortableTokenKind on the Rust side.
@@ -288,10 +295,10 @@ dispatchOpcode
 .endif
 
 	.TOKEN_OPCODE d0
-	; The native slice only implements opcode values 0..18.
+	; The native slice implements opcode values 0..19.
 	; Unsupported shared VM slots still get explicit table entries so the
 	; opcode-to-handler mapping stays visible and future additions stay local.
-	cmpi.b #TK_OPCODE_SCAN_SYMBOL, d0
+	cmpi.b #TK_OPCODE_NORMALIZE_NUMBERS, d0
 	bhi invalidProgramAtCursor
 	add.w d0, d0
 	add.w d0, d0
@@ -319,6 +326,12 @@ TkvmOpcodeDispatchTable
 	.long opcodeScanNumber
 	.long opcodeScanString
 	.long opcodeScanSymbol
+	.long opcodeNormalizeNumbers
+
+opcodeNormalizeNumbers
+	jsr normalizeNumbers
+	bne return
+	bra programLoop
 
 opcodeEnd
 	cmp.l d4, d2  ; Rust runtime also only accepts END when the source cursor is at EOL
@@ -653,6 +666,7 @@ return
 	.bend  ; tkvmRun68000
 
 	.priv
+	.include "tkvm_numeric_normalization.i"
 
 	.endsection
 	.endmodule

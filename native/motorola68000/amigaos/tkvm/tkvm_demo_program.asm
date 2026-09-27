@@ -17,6 +17,7 @@ TK_OPCODE_SCAN_IDENTIFIER       = 15
 TK_OPCODE_SCAN_NUMBER           = 16
 TK_OPCODE_SCAN_STRING           = 17
 TK_OPCODE_SCAN_SYMBOL           = 18
+TK_OPCODE_NORMALIZE_NUMBERS     = 19
 
 TK_CLASS_WHITESPACE             = 1
 TK_CLASS_IDENTIFIER_START       = 2
@@ -120,6 +121,19 @@ DemoScanString
 	.emitJumpTarget TK_OPCODE_JUMP, DEMO_PC_READ_CHAR
 
 DemoFinish
+	.byte TK_OPCODE_NORMALIZE_NUMBERS, 3, 12
+	.byte 2, 0, 16, 1, "0x"
+	.byte 2, 0, 8, 1, "0o"
+	.byte 1, 0, 2, 1, "%"
+	.byte 1, 0, 16, 1, "$"
+	.byte 0, 1, 16, 1, "h"
+	.byte 2, 0, 2, 1, "0b"
+	.byte 0, 1, 2, 0, "b"
+	.byte 0, 1, 16, 1, "b"
+	.byte 0, 1, 8, 1, "o"
+	.byte 0, 1, 8, 1, "q"
+	.byte 0, 1, 10, 1, "d"
+	.byte 0, 0, 10, 1
 	.byte TK_OPCODE_END
 
 ; Canonical lexeme spellings used by tkvmStageFixedLexeme.
@@ -202,10 +216,10 @@ LexRange
 LexRangeInclusive
 	.byte "..="
 
-; 67 bytes is the assembled size of DemoProgram and must stay aligned with the
+; 132 bytes is the assembled size of DemoProgram and must stay aligned with the
 ; symbolic DEMO_PC_* offsets above as well as the Rust builder's default loop.
 DemoProgramLen
-	.long 67
+	.long 132
 
 	.endsection
 	.endmodule

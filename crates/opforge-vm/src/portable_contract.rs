@@ -112,12 +112,26 @@ impl_enum_mirror_froms!(OperatorKind, PortableOperatorKind, {
     Lt,
 });
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PortableNormalizedNumber {
+    Value(u64),
+    Invalid,
+    Overflow,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PortableTokenKind {
     Identifier(String),
     Register(String),
-    Number { text: String, base: u32 },
-    String { raw: String, bytes: Vec<u8> },
+    Number {
+        text: String,
+        base: u32,
+        normalized: Option<PortableNormalizedNumber>,
+    },
+    String {
+        raw: String,
+        bytes: Vec<u8>,
+    },
     Comma,
     Colon,
     Dollar,
@@ -145,9 +159,11 @@ impl PortableToken {
         let kind = match value.kind {
             TokenKind::Identifier(name) => PortableTokenKind::Identifier(name),
             TokenKind::Register(name) => PortableTokenKind::Register(name),
-            TokenKind::Number(NumberLiteral { text, base }) => {
-                PortableTokenKind::Number { text, base }
-            }
+            TokenKind::Number(NumberLiteral { text, base }) => PortableTokenKind::Number {
+                text,
+                base,
+                normalized: None,
+            },
             TokenKind::String(StringLiteral { raw, bytes }) => {
                 PortableTokenKind::String { raw, bytes }
             }
@@ -177,7 +193,7 @@ impl PortableToken {
         let kind = match &self.kind {
             PortableTokenKind::Identifier(name) => TokenKind::Identifier(name.clone()),
             PortableTokenKind::Register(name) => TokenKind::Register(name.clone()),
-            PortableTokenKind::Number { text, base } => TokenKind::Number(NumberLiteral {
+            PortableTokenKind::Number { text, base, .. } => TokenKind::Number(NumberLiteral {
                 text: text.clone(),
                 base: *base,
             }),

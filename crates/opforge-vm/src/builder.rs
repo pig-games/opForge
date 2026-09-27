@@ -1016,7 +1016,7 @@ fn default_family_parser_vm_program_bytes() -> Vec<u8> {
     ]
 }
 
-fn default_family_tokenizer_vm_program_bytes() -> Vec<u8> {
+pub(crate) fn default_family_tokenizer_vm_program_bytes() -> Vec<u8> {
     let loop_offset = 0u32;
     let mut program = Vec::new();
 
@@ -1088,9 +1088,38 @@ fn default_family_tokenizer_vm_program_bytes() -> Vec<u8> {
         .copy_from_slice(&number_offset.to_le_bytes());
     program[string_target_patch..string_target_patch + 4]
         .copy_from_slice(&string_offset.to_le_bytes());
+    program.push(TokenizerVmOpcode::NormalizeNumbers as u8);
+    program.extend(default_numeric_normalization_payload());
     program.push(TokenizerVmOpcode::End as u8);
 
     program
+}
+
+/// Ordered alternatives preserve the shared literal grammar, including binary
+/// suffixes that fall back to hexadecimal. Rule flags select whether malformed
+/// bodies are terminal; values and overflow are final. Markers ignore ASCII case.
+pub(crate) fn default_numeric_normalization_payload() -> Vec<u8> {
+    let rules: &[(&[u8], &[u8], u8, u8)] = &[
+        (b"0x", b"", 16, 1),
+        (b"0o", b"", 8, 1),
+        (b"%", b"", 2, 1),
+        (b"$", b"", 16, 1),
+        (b"", b"h", 16, 1),
+        (b"0b", b"", 2, 1),
+        (b"", b"b", 2, 0),
+        (b"", b"b", 16, 1),
+        (b"", b"o", 8, 1),
+        (b"", b"q", 8, 1),
+        (b"", b"d", 10, 1),
+        (b"", b"", 10, 1),
+    ];
+    let mut payload = vec![3, rules.len() as u8];
+    for &(prefix, suffix, radix, rule_flags) in rules {
+        payload.extend([prefix.len() as u8, suffix.len() as u8, radix, rule_flags]);
+        payload.extend_from_slice(prefix);
+        payload.extend_from_slice(suffix);
+    }
+    payload
 }
 
 fn compile_opcode_program(opcode: u8, operand_count: usize) -> Vec<u8> {

@@ -12,7 +12,9 @@ PACKAGE_STORAGE_CAPACITY             = 393216
 PIPELINE_ID_BUFFER_CAPACITY          = 32
 TOKEN_RECORD_SIZE                    = 20
 TOKEN_BUFFER_CAPACITY                = 64
-TOKEN_SCRATCH_CAPACITY               = 256
+TOKEN_LEXICAL_CAPACITY               = 256
+; Reserve original lexical bytes, copied number spellings and one u64 per token.
+TOKEN_SCRATCH_CAPACITY               = 2*TOKEN_LEXICAL_CAPACITY+TOKEN_BUFFER_CAPACITY*8
 TOKENIZER_VM_STATE_TABLE_CAPACITY    = 32
 TOKENIZER_VM_DIAG_CODE_CAPACITY      = 32
 STATE_VM_KEY_CAPACITY                = 32

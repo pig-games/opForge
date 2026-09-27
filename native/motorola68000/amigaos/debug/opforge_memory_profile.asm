@@ -2,6 +2,9 @@
 ; @opforge-owner: debug.amigaos.memory_profile
 	.module debug.amigaos.memory_profile
 	.cpu 68020
+TOKEN_OPCODE_COUNT = 20
+TOKEN_OPCODE_MAX = TOKEN_OPCODE_COUNT-1
+
 Fields	.struct
 Magic	.long ?
 Live	.long ?
@@ -27,11 +30,13 @@ Frequency	.long ?
 Error	.long ?
 Elapsed	.res 6*8
 Entries	.res 6*4
-Opcodes	.res 19*4
-Pairs	.res 19*19*4
+Opcodes	.res TOKEN_OPCODE_COUNT*4
+Pairs	.res TOKEN_OPCODE_COUNT*TOKEN_OPCODE_COUNT*4
 TokenWork	.res 7*4
 TokenElapsed	.res 2*8
 	.endstruct
+RECORD_BYTES = Fields.TokenElapsed+16
+RECORD_MAGIC = $4d454d36
 	.section data, kind=data
 	.priv
 Path	.byte "Work:memory.bin", 0
@@ -39,7 +44,7 @@ TimerName	.byte "timer.device", 0
 	.endsection
 	.section bss, kind=bss
 	.align 4
-Record	.res byte, 1756
+Record	.res byte, RECORD_BYTES
 Port	.res long, 1
 Request	.res long, 1
 Timer	.res long, 1
@@ -87,7 +92,7 @@ phase	.block
 	lea Record, a2
 	tst.l d0
 	bne.w later
-	move.l #$4d454d35, Fields.Magic(a2)
+	move.l #RECORD_MAGIC, Fields.Magic(a2)
 	movea.l 4.w, a6
 	moveq #0, d0
 	move.w 20(a6), d0
@@ -137,7 +142,7 @@ save	.block
 	move.l d0, d4
 	move.l d4, d1
 	move.l #Record, d2
-	move.l #1756, d3
+	move.l #RECORD_BYTES, d3
 	jsr -48(a6)
 	move.l d4, d1
 	jsr -36(a6)
@@ -276,12 +281,12 @@ tokenBegin	.block
 	move.w (sp)+, ccr
 	rts
 	.bend  ; tokenBegin
-; D0=dense opcode 0..18. Count ordered pairs within an invocation only.
+; D0=dense opcode 0..19. Count ordered pairs within an invocation only.
 tokenOpcode	.block
 	move.w ccr, -(sp)
 	movem.l d0-d1/a0-a1, -(sp)
 	lea Record, a0
-	cmpi.l #18, d0
+	cmpi.l #TOKEN_OPCODE_MAX, d0
 	bhi.w invalid
 	move.l d0, d1
 	lsl.l #2, d1
@@ -293,7 +298,7 @@ tokenOpcode	.block
 	move.l d0, PreviousOpcode
 	tst.l d1
 	bmi.w done
-	mulu.w #19, d1
+	mulu.w #TOKEN_OPCODE_COUNT, d1
 	add.l d0, d1
 	lsl.l #2, d1
 	lea Fields.Pairs(a0), a1

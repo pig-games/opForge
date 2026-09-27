@@ -401,7 +401,11 @@ pub fn vm_build_token(
             } else {
                 10
             };
-            PortableTokenKind::Number { text: upper, base }
+            PortableTokenKind::Number {
+                text: upper,
+                base,
+                normalized: None,
+            }
         }
         3 => PortableTokenKind::String {
             raw: String::from_utf8_lossy(lexeme).to_string(),
@@ -522,7 +526,11 @@ where
     let end = stream.cursor;
     let text = String::from_utf8_lossy(&stream.bytes[start..end]).to_string();
     Ok(vm_portable_token(
-        PortableTokenKind::Number { text, base },
+        PortableTokenKind::Number {
+            text,
+            base,
+            normalized: None,
+        },
         line_num,
         start,
         end,
@@ -589,7 +597,11 @@ pub fn vm_scan_number_token(
         return Err("Illegal character in constant".to_string());
     }
     Ok(vm_portable_token(
-        PortableTokenKind::Number { text, base },
+        PortableTokenKind::Number {
+            text,
+            base,
+            normalized: None,
+        },
         line_num,
         start,
         end,
@@ -1124,5 +1136,199 @@ mod tests {
         assert_eq!(vm_diag_code_for_slot(&diags, 0), "d0");
         assert_eq!(vm_diag_code_for_slot(&diags, 4), "d4");
         assert_eq!(vm_diag_code_for_slot(&diags, 99), "d0");
+    }
+}
+
+/// A package-supplied numeric spelling rule; order determines precedence.
+#[derive(Clone, Debug)]
+pub(crate) struct NumericRule {
+    prefix: Vec<u8>,
+    suffix: Vec<u8>,
+    radix: u8,
+    terminal_on_invalid: bool,
+}
+
+pub(crate) fn read_numeric_rules(
+    program: &[u8],
+    pc: &mut usize,
+    diag: &str,
+) -> Result<(u8, Vec<NumericRule>), String> {
+    let flags = vm_read_u8(program, pc, diag, "numeric flags")?;
+    let count = vm_read_u8(program, pc, diag, "numeric rule count")?;
+    let invalid = || format!("{diag}: invalid tokenizer VM numeric rules");
+    if flags & !3 != 0 || count == 0 {
+        return Err(invalid());
+    }
+    let mut rules = Vec::with_capacity(usize::from(count));
+    for _ in 0..count {
+        let prefix_len = usize::from(vm_read_u8(program, pc, diag, "numeric prefix length")?);
+        let suffix_len = usize::from(vm_read_u8(program, pc, diag, "numeric suffix length")?);
+        let radix = vm_read_u8(program, pc, diag, "numeric radix")?;
+        let rule_flags = vm_read_u8(program, pc, diag, "numeric rule flags")?;
+        if !(2..=36).contains(&radix) || rule_flags & !1 != 0 {
+            return Err(invalid());
+        }
+        let end = pc
+            .checked_add(prefix_len + suffix_len)
+            .ok_or_else(invalid)?;
+        let markers = program.get(*pc..end).ok_or_else(invalid)?;
+        rules.push(NumericRule {
+            prefix: markers[..prefix_len].to_vec(),
+            suffix: markers[prefix_len..].to_vec(),
+            radix,
+            terminal_on_invalid: rule_flags & 1 != 0,
+        });
+        *pc = end;
+    }
+    let last = rules.last().ok_or_else(invalid)?;
+    if !last.prefix.is_empty() || !last.suffix.is_empty() || last.radix != 10 {
+        return Err(invalid());
+    }
+    Ok((flags, rules))
+}
+
+pub(crate) fn normalize_token_numbers(
+    tokens: &mut [PortableToken],
+    flags: u8,
+    rules: &[NumericRule],
+) {
+    for token in tokens {
+        if let PortableTokenKind::Number {
+            text, normalized, ..
+        } = &mut token.kind
+        {
+            *normalized = Some(normalize_number(text.as_bytes(), flags, rules));
+        }
+    }
+}
+
+fn normalize_number(
+    text: &[u8],
+    flags: u8,
+    rules: &[NumericRule],
+) -> crate::portable_contract::PortableNormalizedNumber {
+    use crate::portable_contract::PortableNormalizedNumber::{Invalid, Overflow, Value};
+    let separator_free;
+    let text = if flags & 1 != 0 && text.contains(&b'_') {
+        separator_free = text
+            .iter()
+            .copied()
+            .filter(|byte| *byte != b'_')
+            .collect::<Vec<_>>();
+        separator_free.as_slice()
+    } else {
+        text
+    };
+    let matches = |a: &[u8], b: &[u8]| {
+        if flags & 2 != 0 {
+            a.eq_ignore_ascii_case(b)
+        } else {
+            a == b
+        }
+    };
+    'rules: for rule in rules {
+        if text.len() < rule.prefix.len() + rule.suffix.len() {
+            continue;
+        }
+        let end = text.len() - rule.suffix.len();
+        if !matches(&text[..rule.prefix.len()], &rule.prefix)
+            || !matches(&text[end..], &rule.suffix)
+        {
+            continue;
+        }
+        let mut value = 0u64;
+        let mut digits = 0usize;
+        for &byte in &text[rule.prefix.len()..end] {
+            let digit = match byte {
+                b'0'..=b'9' => byte - b'0',
+                b'a'..=b'z' => byte - b'a' + 10,
+                b'A'..=b'Z' => byte - b'A' + 10,
+                _ => {
+                    if rule.terminal_on_invalid {
+                        return Invalid;
+                    }
+                    continue 'rules;
+                }
+            };
+            if digit >= rule.radix {
+                if rule.terminal_on_invalid {
+                    return Invalid;
+                }
+                continue 'rules;
+            }
+            digits += 1;
+            match value
+                .checked_mul(u64::from(rule.radix))
+                .and_then(|v| v.checked_add(u64::from(digit)))
+            {
+                Some(next) => value = next,
+                None => return Overflow,
+            }
+        }
+        if digits == 0 {
+            if rule.terminal_on_invalid {
+                return Invalid;
+            }
+            continue;
+        }
+        return Value(value);
+    }
+    Invalid
+}
+
+#[cfg(test)]
+mod numeric_normalization_tests {
+    use super::*;
+    use crate::portable_contract::PortableNormalizedNumber::{Invalid, Overflow, Value};
+
+    #[test]
+    fn normalization_rules_preserve_numeric_boundaries_and_fallbacks() {
+        let payload = crate::builder::default_numeric_normalization_payload();
+        let (flags, rules) = read_numeric_rules(&payload, &mut 0, "test").unwrap();
+        for (text, expected) in [
+            ("18446744073709551615", Value(u64::MAX)),
+            ("18446744073709551616", Overflow),
+            ("184467440737095516160z", Overflow),
+            ("$FFFFFFFFFFFFFFFF", Value(u64::MAX)),
+            ("$10000000000000000", Overflow),
+            ("0B8H", Value(0xb8)),
+            ("0b1b", Invalid),
+            ("0b9b", Invalid),
+            ("9B", Value(0x9)),
+            ("101B", Value(5)),
+            ("0Xff", Value(255)),
+            ("1_000", Value(1000)),
+            ("0_x_FF", Value(255)),
+            ("12_h_", Value(18)),
+            ("_0_x_1", Value(1)),
+            ("0x", Invalid),
+            ("12z", Invalid),
+            ("_", Invalid),
+        ] {
+            assert_eq!(
+                normalize_number(text.as_bytes(), flags, &rules),
+                expected,
+                "{text}"
+            );
+        }
+        assert_eq!(normalize_number(b"1_0", flags & !1, &rules), Invalid);
+    }
+
+    #[test]
+    fn normalization_rejects_malformed_rule_payloads() {
+        for payload in [
+            &[4, 1, 0, 0, 10, 1][..],
+            &[0, 0],
+            &[0, 1, 0, 0, 10, 2],
+            &[0, 1, 0, 0, 1, 1],
+            &[0, 1, 0, 0, 37, 1],
+            &[0, 1, 1, 0, 10, 1],
+            &[0, 1, 0, 0, 16, 1],
+        ] {
+            assert!(
+                read_numeric_rules(payload, &mut 0, "test").is_err(),
+                "{payload:?}"
+            );
+        }
     }
 }

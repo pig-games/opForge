@@ -2026,3 +2026,14 @@ preservation and unchanged logical extent on copying/release. Native tests cover
 fresh exact allocation and geometric growth; populated exact-buffer growth and
 forced allocation failure were not directly exercised. No broad repository
 qualification or full self-host completion is claimed.
+
+
+## VM-owned numeric normalization
+
+The first [frontend correction](compact-frontend-vm-boundary.md#numeric-normalization-checkpoint)
+is implemented: TKVM selects normalization rules and the writer consumes values.
+The unchanged release control matches 1,701 bytes in 9.116 s versus 8.862 s at
+the allocation checkpoint (single runs, about 2.9% slower). The 72,344-byte release
+image and 83,560-byte linked reservation include the correction; no speed gain
+is claimed. Explicit binary substitution recipes are the next architectural
+slice, followed by VM-controlled expression compilation before loop parity.

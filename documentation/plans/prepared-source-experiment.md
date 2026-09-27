@@ -193,7 +193,7 @@ tree; the commits preserve them.
 
 Reusable macros gate allocation, phase, layout, work, clock, tokenizer opcode/pair
 and nested-scope telemetry. Release builds contain no telemetry code, storage or
-observer imports. MEM5 records tokenizer work in a bounded 1,756-byte schema.
+observer imports. MEM6 records tokenizer work in a bounded 1,916-byte schema.
 Per-opcode and per-read probes perturb timing substantially; use them to compare
 work counts and release builds for elapsed-time claims.
 
@@ -222,7 +222,7 @@ Add `--compare-memory` for a separate instrumented accounting run. Use a fresh
 output directory. To compare an older release baseline, extract that commit's
 `native` tree into a temporary directory and pass `--native-source-root <root>`;
 producer and consumer formats must still match. Do not interpret an old MEM4 record
-with the current MEM5 reader.
+with the current MEM6 reader.
 
 Keep the existing bounds: 10 seconds after guest `START`, 60 seconds per invocation
 and 150 seconds per batch. Never use the non-completing self-host case for routine
@@ -1794,3 +1794,13 @@ and cleanup; no binary format changes. For the 269,162-byte m68020 package this
 removes 255,120 bytes of capacity slack. See the
 [allocation slice](native-runtime-reset.md#fixed-input-allocation-slice) for fresh
 native output, memory, release-control evidence and the remaining self-host limit.
+
+
+### VM-owned numeric normalization
+
+The first [frontend boundary correction](compact-frontend-vm-boundary.md#numeric-normalization-checkpoint)
+removes the compact writer's literal parser. Package-selected TKVM rules now
+produce checked u64 metadata in both implementations. Binary substitution recipes
+and VM-controlled expression compilation remain separate unfinished steps.
+See that checkpoint for current proofs, provisional scratch costs, release timing
+and baseline qualification limitations; do not infer full frontend VM ownership.

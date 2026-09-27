@@ -1458,6 +1458,8 @@ pub enum TokenizerVmOpcode {
     ScanNumber = 0x10,
     ScanString = 0x11,
     ScanSymbol = 0x12,
+    /// Normalize emitted number spellings using the inline radix rules.
+    NormalizeNumbers = 0x13,
 }
 
 impl TokenizerVmOpcode {
@@ -1482,6 +1484,7 @@ impl TokenizerVmOpcode {
             0x10 => Some(Self::ScanNumber),
             0x11 => Some(Self::ScanString),
             0x12 => Some(Self::ScanSymbol),
+            0x13 => Some(Self::NormalizeNumbers),
             _ => None,
         }
     }

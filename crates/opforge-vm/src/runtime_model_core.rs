@@ -1039,7 +1039,9 @@ impl RuntimeModelCore {
             vm_program.opcode_version,
             vm_program.program.as_slice(),
         );
-        let mut push_token = |token: PortableToken| -> Result<(), RuntimeBridgeError> {
+        let push_token = |tokens: &mut Vec<PortableToken>,
+                          token: PortableToken|
+         -> Result<(), RuntimeBridgeError> {
             if tokens.len() >= max_tokens_per_line_usize {
                 return Err(RuntimeBridgeError::Resolve(format!(
                     "{}: tokenizer VM token budget exceeded ({}/{})",
@@ -1085,6 +1087,15 @@ impl RuntimeModelCore {
 
             match opcode {
                 TokenizerVmOpcode::End => break,
+                TokenizerVmOpcode::NormalizeNumbers => {
+                    let (flags, rules) = tokenizer_runtime_utils::read_numeric_rules(
+                        &vm_program.program,
+                        &mut pc,
+                        &vm_program.diagnostics.invalid_char,
+                    )
+                    .map_err(RuntimeBridgeError::Resolve)?;
+                    tokenizer_runtime_utils::normalize_token_numbers(&mut tokens, flags, &rules);
+                }
                 TokenizerVmOpcode::ReadChar => {
                     current_byte = stream.current_byte();
                 }
@@ -1129,7 +1140,7 @@ impl RuntimeModelCore {
                         lexeme_end,
                         stream.cursor(),
                     )?;
-                    push_token(token)?;
+                    push_token(&mut tokens, token)?;
                 }
                 TokenizerVmOpcode::SetState => {
                     let state = usize::from(vm_read_u16(
@@ -1268,7 +1279,7 @@ impl RuntimeModelCore {
                 TokenizerVmOpcode::ScanCoreToken => {
                     match vm_scan_next_core_token(request, stream.cursor(), &mut core_tokenizer)? {
                         Some((portable, next_cursor)) => {
-                            push_token(portable)?;
+                            push_token(&mut tokens, portable)?;
                             stream.set_cursor(next_cursor);
                             current_byte = stream.current_byte();
                         }
@@ -1285,7 +1296,7 @@ impl RuntimeModelCore {
                         request.token_policy.identifier_continue_class,
                     )?;
                     current_byte = stream.current_byte();
-                    push_token(token)?;
+                    push_token(&mut tokens, token)?;
                 }
                 TokenizerVmOpcode::ScanNumber => {
                     let token = vm_scan_number_token(
@@ -1297,7 +1308,7 @@ impl RuntimeModelCore {
                         request.token_policy.number_suffix_hex.as_str(),
                     )?;
                     current_byte = stream.current_byte();
-                    push_token(token)?;
+                    push_token(&mut tokens, token)?;
                 }
                 TokenizerVmOpcode::ScanString => {
                     let token = vm_scan_string_token(
@@ -1306,7 +1317,7 @@ impl RuntimeModelCore {
                         request.token_policy.escape_char,
                     )?;
                     current_byte = stream.current_byte();
-                    push_token(token)?;
+                    push_token(&mut tokens, token)?;
                 }
                 TokenizerVmOpcode::ScanSymbol => {
                     let token = vm_scan_symbol_token(
@@ -1317,7 +1328,7 @@ impl RuntimeModelCore {
                     )?;
                     current_byte = stream.current_byte();
                     if let Some(token) = token {
-                        push_token(token)?;
+                        push_token(&mut tokens, token)?;
                     }
                 }
             }
@@ -1382,7 +1393,9 @@ impl RuntimeModelCore {
             }
             Ok(())
         };
-        let mut push_token = |token: PortableToken| -> Result<(), RuntimeBridgeError> {
+        let push_token = |tokens: &mut Vec<PortableToken>,
+                          token: PortableToken|
+         -> Result<(), RuntimeBridgeError> {
             if tokens.len() >= max_tokens_per_line_usize {
                 return Err(RuntimeBridgeError::Resolve(format!(
                     "{}: tokenizer VM token budget exceeded ({}/{})",
@@ -1407,6 +1420,15 @@ impl RuntimeModelCore {
             let current_byte = stream.current_byte();
             consume_steps(1)?; // JumpIfEol
             if stream.is_eol() {
+                consume_steps(1)?; // NormalizeNumbers
+                let payload = crate::builder::default_numeric_normalization_payload();
+                let (flags, rules) = tokenizer_runtime_utils::read_numeric_rules(
+                    &payload,
+                    &mut 0,
+                    &vm_program.diagnostics.invalid_char,
+                )
+                .map_err(RuntimeBridgeError::Resolve)?;
+                tokenizer_runtime_utils::normalize_token_numbers(&mut tokens, flags, &rules);
                 consume_steps(1)?; // End
                 break;
             }
@@ -1428,7 +1450,7 @@ impl RuntimeModelCore {
                     token_policy.comment_prefix.as_str(),
                     token_policy.identifier_continue_class,
                 )? {
-                    push_token(token)?;
+                    push_token(&mut tokens, token)?;
                 }
                 consume_steps(1)?; // Jump loop
                 continue;
@@ -1442,7 +1464,7 @@ impl RuntimeModelCore {
                     line_num,
                     token_policy.identifier_continue_class,
                 )?;
-                push_token(token)?;
+                push_token(&mut tokens, token)?;
                 consume_steps(1)?; // Jump loop
                 continue;
             }
@@ -1458,7 +1480,7 @@ impl RuntimeModelCore {
                     token_policy.number_suffix_decimal.as_str(),
                     token_policy.number_suffix_hex.as_str(),
                 )?;
-                push_token(token)?;
+                push_token(&mut tokens, token)?;
                 consume_steps(1)?; // Jump loop
                 continue;
             }
@@ -1467,7 +1489,7 @@ impl RuntimeModelCore {
             if vm_char_class_matches(current_byte, 5, token_policy) {
                 consume_steps(1)?; // ScanString
                 let token = vm_scan_string_token(&mut stream, line_num, token_policy.escape_char)?;
-                push_token(token)?;
+                push_token(&mut tokens, token)?;
                 consume_steps(1)?; // Jump loop
                 continue;
             }
@@ -1479,7 +1501,7 @@ impl RuntimeModelCore {
                 token_policy.comment_prefix.as_str(),
                 token_policy.identifier_continue_class,
             )? {
-                push_token(token)?;
+                push_token(&mut tokens, token)?;
             }
             consume_steps(1)?; // Jump loop
         }
@@ -2606,77 +2628,162 @@ fn apply_token_policy_to_token(token: PortableToken, policy: &RuntimeTokenPolicy
 }
 
 fn default_dispatch_tokenizer_vm_program_bytes() -> Vec<u8> {
-    let loop_offset = 0u32;
-    let mut program = Vec::new();
+    crate::builder::default_family_tokenizer_vm_program_bytes()
+}
 
-    program.push(TokenizerVmOpcode::ReadChar as u8);
-    program.push(TokenizerVmOpcode::JumpIfEol as u8);
-    let eol_target_patch = program.len();
-    program.extend_from_slice(&0u32.to_le_bytes());
+#[cfg(test)]
+mod numeric_vm_tests {
+    use super::*;
+    use crate::portable_contract::{PortableNormalizedNumber, PortableTokenKind};
+    use crate::runtime_portable_types::PortableTokenizerByteStream;
 
-    program.push(TokenizerVmOpcode::JumpIfClass as u8);
-    program.push(1);
-    let whitespace_target_patch = program.len();
-    program.extend_from_slice(&0u32.to_le_bytes());
+    #[test]
+    fn numeric_package_rules_select_radix_markers_and_case_policy() {
+        let model = RuntimeModelCore::from_registry(&ModuleRegistry::new()).unwrap();
+        for (source, marker, flags, expected) in [
+            ("12!", b'!', 0, PortableNormalizedNumber::Value(5)),
+            ("12Z", b'z', 0, PortableNormalizedNumber::Invalid),
+            ("12Z", b'z', 2, PortableNormalizedNumber::Value(5)),
+        ] {
+            let mut bytes = vec![TokenizerVmOpcode::StartLexeme as u8];
+            for _ in source.bytes() {
+                bytes.extend_from_slice(&[
+                    TokenizerVmOpcode::ReadChar as u8,
+                    TokenizerVmOpcode::PushChar as u8,
+                    TokenizerVmOpcode::Advance as u8,
+                ]);
+            }
+            bytes.extend_from_slice(&[
+                TokenizerVmOpcode::EmitToken as u8,
+                2,
+                TokenizerVmOpcode::NormalizeNumbers as u8,
+                flags,
+                2,
+                0,
+                1,
+                3,
+                1,
+                marker,
+                0,
+                0,
+                10,
+                1,
+                TokenizerVmOpcode::End as u8,
+            ]);
+            let program = RuntimeTokenizerVmProgram {
+                opcode_version: TOKENIZER_VM_OPCODE_VERSION_V1,
+                start_state: 0,
+                state_entry_offsets: vec![0],
+                stream: Default::default(),
+                limits: Default::default(),
+                diagnostics: Default::default(),
+                program: bytes,
+            };
+            let request = PortableTokenizeRequest {
+                family_id: "",
+                cpu_id: "",
+                dialect_id: "",
+                source_line: source,
+                source_stream: PortableTokenizerByteStream::from_source_line(source),
+                line_num: 1,
+                token_policy: RuntimeTokenPolicy::default(),
+            };
+            let tokens = model
+                .tokenize_with_prevalidated_vm_core(&request, &program)
+                .unwrap();
+            assert!(
+                matches!(&tokens[0].kind, PortableTokenKind::Number { normalized: Some(value), text, base: 10 } if *value == expected && text == source)
+            );
+        }
+    }
 
-    program.push(TokenizerVmOpcode::JumpIfByteEq as u8);
-    program.push(b'.');
-    let symbol_target_patch = program.len();
-    program.extend_from_slice(&0u32.to_le_bytes());
-
-    program.push(TokenizerVmOpcode::JumpIfClass as u8);
-    program.push(2);
-    let identifier_target_patch = program.len();
-    program.extend_from_slice(&0u32.to_le_bytes());
-
-    program.push(TokenizerVmOpcode::JumpIfClass as u8);
-    program.push(4);
-    let number_target_patch = program.len();
-    program.extend_from_slice(&0u32.to_le_bytes());
-
-    program.push(TokenizerVmOpcode::JumpIfClass as u8);
-    program.push(5);
-    let string_target_patch = program.len();
-    program.extend_from_slice(&0u32.to_le_bytes());
-
-    let symbol_offset = program.len() as u32;
-    program.push(TokenizerVmOpcode::ScanSymbol as u8);
-    program.push(TokenizerVmOpcode::Jump as u8);
-    program.extend_from_slice(&loop_offset.to_le_bytes());
-
-    let whitespace_offset = program.len() as u32;
-    program.push(TokenizerVmOpcode::Advance as u8);
-    program.push(TokenizerVmOpcode::Jump as u8);
-    program.extend_from_slice(&loop_offset.to_le_bytes());
-
-    let identifier_offset = program.len() as u32;
-    program.push(TokenizerVmOpcode::ScanIdentifier as u8);
-    program.push(TokenizerVmOpcode::Jump as u8);
-    program.extend_from_slice(&loop_offset.to_le_bytes());
-
-    let number_offset = program.len() as u32;
-    program.push(TokenizerVmOpcode::ScanNumber as u8);
-    program.push(TokenizerVmOpcode::Jump as u8);
-    program.extend_from_slice(&loop_offset.to_le_bytes());
-
-    let string_offset = program.len() as u32;
-    program.push(TokenizerVmOpcode::ScanString as u8);
-    program.push(TokenizerVmOpcode::Jump as u8);
-    program.extend_from_slice(&loop_offset.to_le_bytes());
-
-    let end_offset = program.len() as u32;
-    program[eol_target_patch..eol_target_patch + 4].copy_from_slice(&end_offset.to_le_bytes());
-    program[whitespace_target_patch..whitespace_target_patch + 4]
-        .copy_from_slice(&whitespace_offset.to_le_bytes());
-    program[symbol_target_patch..symbol_target_patch + 4]
-        .copy_from_slice(&symbol_offset.to_le_bytes());
-    program[identifier_target_patch..identifier_target_patch + 4]
-        .copy_from_slice(&identifier_offset.to_le_bytes());
-    program[number_target_patch..number_target_patch + 4]
-        .copy_from_slice(&number_offset.to_le_bytes());
-    program[string_target_patch..string_target_patch + 4]
-        .copy_from_slice(&string_offset.to_le_bytes());
-    program.push(TokenizerVmOpcode::End as u8);
-
-    program
+    #[test]
+    fn numeric_opcode_is_explicit_and_fast_dispatch_matches_generic() {
+        let model = RuntimeModelCore::from_registry(&ModuleRegistry::new()).unwrap();
+        let policy = RuntimeTokenPolicy::default();
+        let mut program = RuntimeTokenizerVmProgram {
+            opcode_version: TOKENIZER_VM_OPCODE_VERSION_V1,
+            start_state: 0,
+            state_entry_offsets: vec![0],
+            stream: Default::default(),
+            limits: Default::default(),
+            diagnostics: Default::default(),
+            program: default_dispatch_tokenizer_vm_program_bytes(),
+        };
+        for source in [
+            "",
+            "18446744073709551615 18446744073709551616 $FF 9B 0B8H",
+            "@1suffix 12z",
+            "0_x_FF 12_h_",
+            "0b1b 0b9b 0B8H",
+        ] {
+            let request = PortableTokenizeRequest {
+                family_id: "",
+                cpu_id: "",
+                dialect_id: "",
+                source_line: source,
+                source_stream: PortableTokenizerByteStream::from_source_line(source),
+                line_num: 1,
+                token_policy: policy.clone(),
+            };
+            let generic = model
+                .tokenize_with_prevalidated_vm_core(&request, &program)
+                .unwrap();
+            let fast = model
+                .tokenize_with_default_dispatch_core(source, 1, &policy, &program)
+                .unwrap();
+            assert_eq!(generic, fast, "{source}");
+        }
+        let tail = program.program.len()
+            - crate::builder::default_numeric_normalization_payload().len()
+            - 2;
+        program.program.truncate(tail);
+        program.program.push(TokenizerVmOpcode::End as u8);
+        let request = PortableTokenizeRequest {
+            family_id: "",
+            cpu_id: "",
+            dialect_id: "",
+            source_line: "42",
+            source_stream: PortableTokenizerByteStream::from_source_line("42"),
+            line_num: 1,
+            token_policy: policy,
+        };
+        let raw = model
+            .tokenize_with_prevalidated_vm_core(&request, &program)
+            .unwrap();
+        assert!(matches!(
+            raw[0].kind,
+            PortableTokenKind::Number {
+                normalized: None,
+                ..
+            }
+        ));
+        program.program = default_dispatch_tokenizer_vm_program_bytes();
+        let normalized = model
+            .tokenize_with_prevalidated_vm_core(&request, &program)
+            .unwrap();
+        assert!(matches!(
+            normalized[0].kind,
+            PortableTokenKind::Number {
+                normalized: Some(PortableNormalizedNumber::Value(42)),
+                ..
+            }
+        ));
+        for steps in 1..=4 {
+            program.limits.max_steps_per_line = steps;
+            let empty = PortableTokenizeRequest {
+                source_line: "",
+                source_stream: PortableTokenizerByteStream::from_source_line(""),
+                ..request.clone()
+            };
+            assert_eq!(
+                model
+                    .tokenize_with_prevalidated_vm_core(&empty, &program)
+                    .is_ok(),
+                model
+                    .tokenize_with_default_dispatch_core("", 1, &empty.token_policy, &program)
+                    .is_ok()
+            );
+        }
+    }
 }

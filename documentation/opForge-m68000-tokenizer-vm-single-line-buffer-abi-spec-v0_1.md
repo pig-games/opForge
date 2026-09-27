@@ -148,13 +148,15 @@ Each token record occupies 20 bytes in the `A1` buffer.
 | Offset | Size | Field | Meaning |
 |---|---:|---|---|
 | `0` | 2 | `kind_code` | Token kind code from the table below. |
-| `2` | 2 | `reserved` | Must be written as `0` in v0.1 and ignored by readers. |
+| `2` | 2 | `numeric_status` | Zero unless normalized by the package program; number status `1` valid, `2` malformed, `3` overflow. |
 | `4` | 4 | `col_start` | One-based start column. |
 | `8` | 4 | `col_end` | One-based exclusive end column. |
 | `12` | 4 | `lexeme_offset` | Zero-based byte offset into the `A2` lexeme scratch buffer. |
 | `16` | 4 | `lexeme_len` | Lexeme byte length in `A2`. |
 
-The `A2` scratch buffer stores token lexeme payloads densely in token order.
+The `A2` scratch buffer stores token lexeme payloads. Numeric normalization may
+relocate a spelling and append its value; offsets are authoritative, not token
+order or adjacency between different records.
 `D3` returns the total committed byte count. Readers must treat the valid
 scratch region as `A2[0..D3)`.
 
@@ -313,3 +315,52 @@ Expected implementation validation derived from this spec:
 No open questions remain for the v0.1 single-line native buffer ABI. Multi-line
 iteration, final executable buffer sizes, and harness CLI policy remain defined
 by separate specs or later work.
+
+## Package-selected numeric normalization
+
+The latest TKVM opcode contract includes `NORMALIZE_NUMBERS` (`0x13`). Canonical
+programs execute it after scanning and before `END`. Its inline operands are:
+
+```text
+u8 flags, u8 rule_count
+rule_count * (u8 prefix_length, u8 suffix_length, u8 radix, u8 rule_flags, prefix, suffix)
+```
+
+Flag bit 0 permits underscore separators throughout a spelling; bit 1 makes
+marker matching ASCII case-insensitive. Other bits are invalid. There must be at
+least one rule, radices are 2 through 36, and the final rule has empty markers and
+radix 10. Rule flag bit 0 makes a matched rule with malformed digits terminal;
+with that bit clear, malformed digits try the next rule. Other rule flag bits
+are invalid. Marker mismatch always tries the next rule. A value or arithmetic
+overflow is final. The canonical table uses terminal prefix and suffix rules,
+except the binary `b` suffix may fall through to the hexadecimal `b` rule.
+This preserves rejection of `0b1b` while accepting `2b` as hex. The first arithmetic
+overflow takes precedence over an invalid later character. No successful rule
+produces malformed metadata. Conversion is checked unsigned 64-bit accumulation;
+expression sign and caller-specific scalar bounds remain later responsibilities.
+
+Only number records are annotated. Malformed/overflow spellings do not fail the
+lexical call: parser context may instead use a numeric-looking package name or a
+placeholder fragment. Ordinary numeric consumers must reject those statuses.
+The writer consumes metadata and must not retry a local spelling parser.
+
+For status 1, `lexeme_offset` points to the unchanged spelling and eight big-endian
+value bytes follow its `lexeme_len` bytes. These value bytes must fit in committed
+scratch. Number spellings may be copied to make that region contiguous; original
+source spans remain unchanged. Statuses 2/3 retain spelling but have no value
+payload. All other records retain status zero. Capacity failure is tokenizer
+status 3, with prior fully committed scratch retained; lexical output is not a
+completed normalized result on failure. No pointers are serialized.
+
+Rust portable numbers retain text/base plus optional `Value(u64)`, `Invalid` or
+`Overflow` metadata. Core-token conversion retains lexical content and drops this
+new metadata; the existing full Rust expression path has not yet migrated to
+consume it. Fast and generic tokenizer execution must produce identical metadata
+and logical VM step counts. The native text report remains a lexical projection;
+the bounded VM contract harness compares numeric metadata and values separately.
+
+The bytecode version remains the latest v1 with an added opcode; there is no
+retained legacy executor. Programs that intentionally omit normalization emit raw
+records, not a fallback parser path. Compact package consumers require normalized
+numeric metadata. See the [active correction](plans/compact-frontend-vm-boundary.md)
+for remaining composite and expression grammar work.

@@ -18,10 +18,17 @@ MODE_OLDFILE = 1005
 MODE_NEWFILE = 1006
 RETURN_FAIL = 20
 CASE_CAPACITY = 64
-PROGRAM_CAPACITY = 64
+PROGRAM_CAPACITY = 256
+SOURCE_CAPACITY = 256
+SOURCE_CAPTURE_NUMERIC = $8000
+SOURCE_CAPACITY_PROBE = $4000
+SOURCE_LENGTH_MASK = $3fff
+PROBE_SCRATCH_CAPACITY = 14
+SCRATCH_CAPACITY = 1024
+SECOND_TOKEN_STATUS = runtime.TOKEN_RECORD_SIZE+2
 INPUT_CAPACITY = 8192
 INPUT_BUFFER_BYTES = INPUT_CAPACITY + 1
-OUTPUT_CAPACITY = CASE_CAPACITY * 4
+OUTPUT_CAPACITY = CASE_CAPACITY * 40
 
 	.section entry, kind=code
 	.pub
@@ -113,27 +120,98 @@ caseLoop
 	bhi.w fail
 	moveq #0, d0
 	move.w (a3)+, d0
-	cmpi.l #1, d0
+	move.w d0, CaptureFlags
+	andi.l #SOURCE_LENGTH_MASK, d0
+	cmpi.l #SOURCE_CAPACITY, d0
 	bhi.w fail
+	move.l d0, SourceLength
+	; Preserve the original stream's minimum two source padding bytes.
+	addq.l #1, d0
+	andi.l #$fffffffe, d0
+	cmpi.l #2, d0
+	bhs.w paddingReady
+	moveq #2, d0
+paddingReady
 	movea.l a3, a0
 	adda.l d3, a0
-	adda.l #2, a0
+	adda.l d0, a0
 	cmpa.l a4, a0
 	bhi.w fail
 	move.l a0, NextCase
-	moveq #0, d0
-	; Source length is the BE word immediately before the program.
-	move.w -2(a3), d0
+	move.l SourceLength, d0
 	movea.l a3, a0
 	adda.l d3, a0
 	lea Tokens, a1
 	lea Scratch, a2
 	moveq #8, d1
-	moveq #64, d2
+	move.l #SCRATCH_CAPACITY, d2
+	btst #6, CaptureFlags
+	beq.w scratchReady
+	moveq #PROBE_SCRATCH_CAPACITY, d2
+scratchReady
 	movem.l d7/a4-a5, -(sp)
 	jsr runtime.tkvmRun68000
 	movem.l (sp)+, d7/a4-a5
 	move.l d0, (a5)+
+	tst.w CaptureFlags
+	bpl.w captured
+	clr.l (a5)+
+	clr.l (a5)+
+	clr.l (a5)+
+	tst.l d0
+	bne.w captured
+	tst.l d1
+	beq.w captured
+	lea Tokens, a0
+	cmpi.w #runtime.TK_KIND_NUMBER, (a0)
+	bne.w captured
+	moveq #0, d0
+	move.w 2(a0), d0
+	move.l d0, -12(a5)
+	cmpi.w #runtime.NUMBER_VALID, d0
+	bne.w captured
+	move.l 12(a0), d0
+	add.l 16(a0), d0
+	bcs.w fail
+	move.l d0, d1
+	addq.l #8, d1
+	bcs.w fail
+	cmp.l d3, d1
+	bhi.w fail
+	lea Scratch, a0
+	adda.l d0, a0
+	move.l (a0)+, -8(a5)
+	move.l (a0), -4(a5)
+captured
+	btst #6, CaptureFlags
+	beq.w probeCaptured
+	; Capacity probes append cursor, committed bytes, two record statuses, u64.
+	move.l d2, (a5)+
+	move.l d3, (a5)+
+	lea Tokens, a0
+	moveq #0, d0
+	move.w 2(a0), d0
+	move.l d0, (a5)+
+	moveq #0, d0
+	move.w SECOND_TOKEN_STATUS(a0), d0
+	move.l d0, (a5)+
+	clr.l (a5)+
+	clr.l (a5)+
+	cmpi.w #runtime.NUMBER_VALID, 2(a0)
+	bne.w probeCaptured
+	move.l 12(a0), d0
+	add.l 16(a0), d0
+	bcs.w fail
+	move.l d0, d1
+	addq.l #8, d1
+	bcs.w fail
+	cmp.l d3, d1
+	bhi.w fail
+	lea Scratch, a0
+	adda.l d0, a0
+	move.l (a0)+, -8(a5)
+	move.l (a0), -4(a5)
+probeCaptured
 	movea.l NextCase, a3
 	subq.l #1, d7
 	bra.w caseLoop
@@ -148,7 +226,7 @@ done
 fail
 	moveq #1, d0
 	rts
-	.bend
+	.bend  ; evaluateCases
 
 ; Write the exact result stream to the fixed Work: output path.
 ; Outputs: D0=0 success/1 failure.
@@ -199,10 +277,14 @@ OutputLength
 	.res long, 1
 NextCase
 	.res long, 1
+SourceLength
+	.res long, 1
+CaptureFlags
+	.res word, 1
 Tokens
 	.res byte, 160
 Scratch
-	.res byte, 64
+	.res byte, SCRATCH_CAPACITY
 InputBuffer
 	.res byte, INPUT_BUFFER_BYTES
 ResultBuffer

@@ -3,6 +3,7 @@
 
 	.module experimental.amigaos.binary_source
 	.cpu 68020
+	.use tkvm.amigaos.runtime as runtime
 	.pub
 
 STATUS_OK = 0
@@ -218,8 +219,17 @@ sizeReady
 	move.b d2, (a3)+
 	bra.w next
 numeric
-	bsr.w parseNumber
+	cmpi.w #runtime.NUMBER_VALID, Token.Reserved(a2)
 	bne.w invalid
+	move.l Frame.LexemeBytes(a5), d0
+	sub.l Token.Offset(a2), d0
+	sub.l d6, d0
+	cmpi.l #8, d0
+	blo.w invalid
+	adda.l d6, a0
+	move.l (a0)+, d1
+	bne.w invalid
+	move.l (a0), d1
 	move.b d3, (a3)+
 	.for 4
 	rol.l #8, d1
@@ -744,103 +754,6 @@ done
 	movem.l (sp)+, d1/a0
 	rts
 	.bend  ; literalString
-
-	.priv
-; A0=nonempty number lexeme, D0=byte count. D0=status, D1=u32 value;
-; clobbers D2/A0; preserves D3-D6. CCR reflects D0. Underscores are separators.
-; Accept decimal, $hex, %binary and 0x/0X hex. Overflow is never truncated.
-parseNumber	.block
-	movem.l d3-d6, -(sp)
-	moveq #10, d3
-	move.l #429496729, d4
-	moveq #5, d5
-	cmpi.b #'$', (a0)
-	beq.w hexPrefix
-	cmpi.b #'%', (a0)
-	beq.w binaryPrefix
-	cmpi.l #2, d0
-	blo.w body
-	cmpi.b #'0', (a0)
-	bne.w body
-	move.b 1(a0), d2
-	ori.b #$20, d2
-	cmpi.b #'x', d2
-	bne.w body
-	addq.l #1, a0
-	subq.l #1, d0
-hexPrefix
-	moveq #16, d3
-	move.l #$0fffffff, d4
-	moveq #15, d5
-	bra.w skipPrefix
-binaryPrefix
-	moveq #2, d3
-	move.l #$7fffffff, d4
-	moveq #1, d5
-skipPrefix
-	addq.l #1, a0
-	subq.l #1, d0
-body
-	moveq #0, d1
-	moveq #0, d6
-digitLoop
-	tst.l d0
-	beq.w endDigits
-	subq.l #1, d0
-	moveq #0, d2
-	move.b (a0)+, d2
-	cmpi.b #'_', d2
-	beq.w digitLoop
-	cmpi.b #'0', d2
-	blo.w bad
-	cmpi.b #'9', d2
-	bls.w decimalDigit
-	ori.b #$20, d2
-	subi.b #'a', d2
-	cmpi.b #5, d2
-	bhi.w bad
-	addi.l #10, d2
-	bra.w checkDigit
-decimalDigit
-	subi.b #'0', d2
-checkDigit
-	cmp.l d3, d2
-	bhs.w bad
-	cmp.l d4, d1
-	bhi.w bad
-	blo.w accumulate
-	cmp.l d5, d2
-	bhi.w bad
-accumulate
-	cmpi.w #10, d3
-	beq.w decimalValue
-	cmpi.w #16, d3
-	beq.w hexValue
-	add.l d1, d1
-	bra.w addDigit
-hexValue
-	lsl.l #4, d1
-	bra.w addDigit
-decimalValue
-	add.l d1, d1
-	move.l d1, d6
-	lsl.l #2, d1
-	add.l d6, d1
-addDigit
-	add.l d2, d1
-	moveq #1, d6
-	bra.w digitLoop
-endDigits
-	tst.l d6
-	beq.w bad
-	moveq #STATUS_OK, d0
-	bra.w done
-bad
-	moveq #STATUS_INVALID, d0
-done
-	movem.l (sp)+, d3-d6
-	rts
-	.bend  ; parseNumber
 
 	.endsection
 	.endmodule

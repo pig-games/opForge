@@ -46,9 +46,13 @@ LINE_NUMBER = 20
 NEXT_ID = 24
 LINE_FRAME = 28
 TOKENS = LINE_FRAME+writer.Frame.Reserved+2
-LEXEMES = TOKENS+64*20
+TOKEN_CAPACITY = 64
+LEXICAL_BYTES = 1024
+; Preserve the lexical budget plus copied number spellings and u64 metadata.
+LEXEME_BYTES = 2*LEXICAL_BYTES+TOKEN_CAPACITY*8
+LEXEMES = TOKENS+TOKEN_CAPACITY*20
 ; Keep directly addressed regions below signed d16 displacement limits.
-PACKAGE_BUCKETS = LEXEMES+1024
+PACKAGE_BUCKETS = LEXEMES+LEXEME_BYTES
 	.pub
 PREPARED_LINE = PACKAGE_BUCKETS+256*4
 SCOPE_STATE = PREPARED_LINE+256
@@ -273,8 +277,8 @@ line	.block
 	lea TOKENS(a6), a1
 	lea LEXEMES(a6), a2
 	movea.l PROGRAM(a6), a3
-	moveq #64, d1
-	move.l #1024, d2
+	moveq #TOKEN_CAPACITY, d1
+	move.l #LEXEME_BYTES, d2
 	move.l PROGRAM_BYTES(a6), d3
 	.MEMORY_STAGE #2
 	jsr tokenizer.tkvmRun68000

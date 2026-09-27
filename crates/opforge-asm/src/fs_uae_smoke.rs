@@ -564,6 +564,24 @@ struct OpforgeNativeCliStagedInputs<'a> {
 }
 
 pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmokeOutcome, String> {
+    run_hunk_smoke_cases_from_env(workspace_root, FS_UAE_EXAMPLES)
+}
+
+pub(crate) fn run_prvm_hunk_smoke_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let examples = FS_UAE_EXAMPLES
+        .iter()
+        .copied()
+        .filter(|(name, _, _)| matches!(*name, "prvm_smoke" | "prvm_line_iterator_smoke"))
+        .collect::<Vec<_>>();
+    run_hunk_smoke_cases_from_env(workspace_root, &examples)
+}
+
+fn run_hunk_smoke_cases_from_env(
+    workspace_root: &Path,
+    examples: &[(&'static str, &'static str, &'static str)],
+) -> Result<FsUaeSmokeOutcome, String> {
     let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
@@ -574,8 +592,8 @@ pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmok
     };
 
     let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
-    let mut runs = Vec::with_capacity(FS_UAE_EXAMPLES.len());
-    for &(example_name, relative_source_path, cpu_override) in FS_UAE_EXAMPLES {
+    let mut runs = Vec::with_capacity(examples.len());
+    for &(example_name, relative_source_path, cpu_override) in examples {
         match run_example_smoke(
             workspace_root,
             &fs_uae_bin,

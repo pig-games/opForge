@@ -13,6 +13,9 @@ CLOSE_LIBRARY                   = -414
 PUT_STR                         = -948
 
 PRVM_REQUEST_FRAME_SIZE         = 112
+PRVM_RESUME_STATE_SIZE          = runtime.PRVM_RESUME_STATE_SIZE
+PRVM_RESUME_CHECKPOINT_DEPTH    = runtime.PRVM_RESUME_LOCAL_STATE + runtime.LOCAL_CHECKPOINT_DEPTH
+PRVM_RESUME_CHECKPOINT_COUNT    = runtime.PRVM_RESUME_LOCAL_STATE + runtime.LOCAL_CHECKPOINT_STACK + 4
 PRVM_MAGIC_OPRP                 = $4F505250
 PRVM_ABI_VERSION_V1             = 1
 PRVM_CALL_MODE_START            = 0
@@ -123,6 +126,8 @@ haveDos
 	bsr.w validateResult
 	bne.s reportFailure
 
+	bsr.w runBoundaryCases
+	bne.w reportFailure
 	lea SuccessText(PC), a1
 	move.l a1, d1
 	bsr.w putStr
@@ -177,7 +182,7 @@ buildRequestFrame
 	move.l #32, 64(a0)
 	lea ResumeBuffer(PC), a1
 	move.l a1, 68(a0)
-	move.l #40, 72(a0)
+	move.l #PRVM_RESUME_STATE_SIZE, 72(a0)
 	lea ExprRequestBuffer(PC), a1
 	move.l a1, 76(a0)
 	move.l #32, 80(a0)
@@ -297,11 +302,11 @@ validateExprRequest
 	bne.w invalidExprSlot
 	cmpi.l #3, 8(a1)
 	bne.w invalidExprCursor
-	cmpi.l #40, 12(a1)
+	cmpi.l #PRVM_RESUME_STATE_SIZE, 12(a1)
 	bne.w invalidExprResumeBytes
-	cmpi.w #1, 0(a0)
+	cmpi.w #runtime.PRVM_EXPR_REQUEST_VERSION_V2, 0(a0)
 	bne.w invalidExprRequest
-	tst.w 2(a0)
+	cmpi.w #runtime.PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a0)
 	bne.w invalidExprRequest
 	tst.l 4(a0)
 	bne.w invalidExprOperand
@@ -330,7 +335,7 @@ validateResult
 	bne.w invalidStatus
 	cmpi.l #6, 4(a1)
 	bne.w invalidCount
-	cmpi.l #4, 8(a1)
+	cmpi.l #3, 8(a1)
 	bne.w invalidCursor
 	cmpi.l #192, 12(a1)
 	bne.w invalidBytes
@@ -607,6 +612,233 @@ formatStatusDigit
 	dbra d2, formatStatusLoop
 	rts
 
+; Exercise the boundary/resume contract with exact guest assertions. The table
+; contains immutable token kinds and expected request ranges, never an oracle
+; selected by a fixture name. Error slots must stop further expression requests.
+; Outputs: D0 = 0 iff every case passes; A1 = failure text otherwise.
+; Clobbers: D0-D6/A0-A4/CCR; preserves A5 (DOS library).
+; CCR: reflects D0.
+runBoundaryCases	.block
+	lea BoundaryCases(PC), a4
+nextCase
+	tst.l 4(a4)
+	beq success
+	bsr.w buildRequestFrame
+	lea RequestFrame(PC), a0
+	lea BoundarySource(PC), a1
+	move.l a1, 16(a0)
+	move.l #64, 20(a0)
+	lea BoundaryTokens(PC), a1
+	move.l a1, 24(a0)
+	move.l 12(a4), 28(a0)
+	movea.l 0(a4), a1
+	move.l a1, 44(a0)
+	move.l 4(a4), 48(a0)
+	lea BoundaryResults(PC), a1
+	move.l a1, 52(a0)
+	move.l #1024, 56(a0)
+	lea BoundaryExprResults(PC), a1
+	move.l a1, 84(a0)
+	move.l #16, 88(a0)
+	move.l #256, 96(a0)
+	movea.l 8(a4), a1
+	lea BoundaryTokens(PC), a0
+	move.l 12(a4), d6
+	moveq #1, d5
+buildTokens
+	tst.l d6
+	beq tokensReady
+	move.w (a1)+, (a0)+
+	clr.w (a0)+
+	move.l d5, (a0)+
+	addq.l #1, d5
+	move.l d5, (a0)+
+	clr.l (a0)+
+	move.l #1, (a0)+
+	subq.l #1, d6
+	bra buildTokens
+tokensReady
+	movea.l 16(a4), a2
+	move.l a2, BoundaryExpected
+	clr.l BoundaryRequestCount
+run
+	lea RequestFrame(PC), a0
+	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	jsr runtime.prvmRun68000.l
+	cmpi.l #PRVM_STATUS_EXPR_REQUEST, d0
+	beq expressionRequest
+	cmpi.l #PRVM_STATUS_OK, d0
+	bne fail
+	cmp.l 24(a4), d2
+	bne fail
+	cmp.l 28(a4), d1
+	bne fail
+	move.l BoundaryRequestCount, d0
+	cmp.l 20(a4), d0
+	bne fail
+	adda.l #36, a4
+	bra nextCase
+expressionRequest
+	move.l BoundaryRequestCount, d0
+	cmp.l 20(a4), d0
+	bcc fail
+	movea.l BoundaryExpected, a2
+	lea ExprRequestBuffer(PC), a0
+	cmpi.w #runtime.PRVM_EXPR_REQUEST_VERSION_V2, 0(a0)
+	bne fail
+	cmpi.w #runtime.PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a0)
+	bne fail
+	move.l (a2)+, d0
+	cmp.l 12(a0), d0
+	bne fail
+	move.l (a2)+, d0
+	cmp.l 16(a0), d0
+	bne fail
+	move.l (a2)+, d0
+	cmp.l 4(a0), d0
+	bne fail
+	move.l (a2)+, d0
+	cmp.l 8(a0), d0
+	bne fail
+	move.l a2, BoundaryExpected
+	addq.l #1, BoundaryRequestCount
+	move.l 8(a0), d0
+	cmpi.l #16, d0
+	bcc fail
+	lsl.l #5, d0
+	lea BoundaryExprResults(PC), a1
+	adda.l d0, a1
+	move.w #1, 0(a1)
+	move.l 12(a0), d0
+	cmp.l 16(a0), d0
+	bne ready
+	tst.l 4(a0)
+	beq emptyZero
+	move.w #2, 0(a1)
+	bra ready
+emptyZero
+	; The explicit dynamic request mode makes an initial empty range numeric
+	; zero. Keep a concrete zero in the harness-owned semantic slot as proof.
+	clr.l BoundaryZeroValue
+	addq.l #1, BoundaryZeroCount
+ready
+	tst.l 32(a4)
+	beq service
+	move.w #2, 0(a1)
+service
+	clr.w 2(a1)
+	move.l 8(a0), 4(a1)
+	move.l 20(a0), 8(a1)
+	move.l 24(a0), 12(a1)
+	move.l 28(a0), 16(a1)
+	move.l 8(a0), 20(a1)
+	move.l #$FFFFFFFF, 24(a1)
+	clr.l 28(a1)
+	lea RequestFrame(PC), a0
+	move.w #PRVM_CALL_MODE_RESUME, 8(a0)
+	bra run
+success
+	cmpi.l #5, BoundaryZeroCount
+	bne fail
+	tst.l BoundaryZeroValue
+	bne fail
+	bsr.w validateMalformedResumes
+	rts
+fail
+	lea FailureBoundaryText(PC), a1
+	moveq #1, d0
+	rts
+	.bend  ; runBoundaryCases
+
+; Mutate independent fields of a fresh pending resume and require rejection.
+; Outputs D0 = zero iff every malformed resume is rejected; A1 failure text.
+; Clobbers D0-D6/A0-A4/CCR. Preserves A5 (DOS library).
+validateMalformedResumes	.block
+	bsr.w buildRequestFrame
+	lea RequestFrame(PC), a0
+	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	jsr runtime.prvmRun68000.l
+	cmpi.l #PRVM_STATUS_EXPR_REQUEST, d0
+	bne fail
+	bsr.w serviceExprRequest
+	bne fail
+	lea RequestFrame(PC), a0
+	move.w #PRVM_CALL_MODE_RESUME, 8(a0)
+	lea ResumeBuffer(PC), a4
+	move.w 6(a4), d4
+	addq.w #4, 6(a4)
+	bsr.w reject
+	bne fail
+	move.w d4, 6(a4)
+	move.l 16(a4), d4
+	subq.l #1, 16(a4)
+	bsr.w reject
+	bne fail
+	move.l d4, 16(a4)
+	move.l 12(a4), d4
+	addq.l #1, 12(a4)
+	bsr.w reject
+	bne fail
+	move.l d4, 12(a4)
+	move.l #5, PRVM_RESUME_CHECKPOINT_DEPTH(a4)
+	bsr.w reject
+	bne fail
+	clr.l PRVM_RESUME_CHECKPOINT_DEPTH(a4)
+	move.l 24(a4), d4
+	move.l #$FFFFFFFF, 24(a4)
+	bsr.w reject
+	bne fail
+	move.l d4, 24(a4)
+	lea ExprResultBuffer(PC), a0
+	move.w #1, 2(a0)
+	bsr.w rejectExpression
+	bne fail
+	lea ExprResultBuffer(PC), a0
+	clr.w 2(a0)
+	move.l #1, 4(a0)
+	bsr.w rejectExpression
+	bne fail
+	; A live two-level checkpoint snapshot must reject a saved result count
+	; that would overflow result-record address arithmetic after rollback.
+	bsr.w buildRequestFrame
+	lea RequestFrame(PC), a0
+	lea BoundaryProgramNestedCheckpoint(PC), a1
+	move.l a1, 44(a0)
+	move.l #23, 48(a0)
+	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	jsr runtime.prvmRun68000.l
+	cmpi.l #PRVM_STATUS_EXPR_REQUEST, d0
+	bne fail
+	lea RequestFrame(PC), a0
+	move.w #PRVM_CALL_MODE_RESUME, 8(a0)
+	lea ResumeBuffer(PC), a4
+	move.l #$FFFFFFFF, PRVM_RESUME_CHECKPOINT_COUNT(a4)
+	bsr.w reject
+	bne fail
+	clr.l d0
+	rts
+rejectExpression
+	lea RequestFrame(PC), a0
+	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	jsr runtime.prvmRun68000.l
+	cmpi.l #PRVM_STATUS_EXPR_RESULT_INVALID, d0
+	bne fail
+	clr.l d0
+	rts
+reject
+	lea RequestFrame(PC), a0
+	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	jsr runtime.prvmRun68000.l
+	cmpi.l #PRVM_STATUS_INVALID_RESUME, d0
+	bne fail
+	clr.l d0
+	rts
+fail
+	lea FailureResumeBoundsText(PC), a1
+	moveq #1, d0
+	rts
+	.bend  ; validateMalformedResumes
+
 DosName
 	.byte "dos.library", 0
 StartedText
@@ -689,6 +921,10 @@ FailureExprBoundaryText
 	.byte "OPFORGE-PRVM smoke FAIL expr-boundary", 10, 0
 FailureResumeText
 	.byte "OPFORGE-PRVM smoke FAIL resume", 10, 0
+FailureBoundaryText
+	.byte "OPFORGE-PRVM smoke FAIL boundary", 10, 0
+FailureResumeBoundsText
+	.byte "OPFORGE-PRVM smoke FAIL resume bounds", 10, 0
 FailureFinishText
 	.byte "OPFORGE-PRVM smoke FAIL finish", 10, 0
 
@@ -734,6 +970,183 @@ TokenRecord
 	.long 8
 	.long 3
 
+BoundaryCases
+	.long BoundaryProgramBasic, 9
+	.long BoundaryKindsNested, 19
+	.long BoundaryRanges0, 4
+	.long 0, 10, 0
+	.long BoundaryProgramBasic, 9
+	.long BoundaryKindsClose, 4
+	.long BoundaryRanges1, 1
+	.long 0, 4, 0
+	.long BoundaryProgramBasic, 9
+	.long BoundaryKindsMixed, 4
+	.long BoundaryRanges2, 1
+	.long 0, 4, 0
+	.long BoundaryProgramBasic, 9
+	.long BoundaryKindsLeading, 2
+	.long BoundaryRanges3, 2
+	.long 0, 6, 0
+	.long BoundaryProgramBasic, 9
+	.long BoundaryKindsConsecutive, 4
+	.long BoundaryRanges4, 2
+	.long 0, 6, 0
+	.long BoundaryProgramBasic, 9
+	.long BoundaryKindsTrailing, 2
+	.long BoundaryRanges5, 2
+	.long 0, 6, 0
+	.long BoundaryProgramBasic, 9
+	.long BoundaryKindsComma, 1
+	.long BoundaryRanges6, 2
+	.long 0, 6, 0
+	.long BoundaryProgramBasic, 9
+	.long BoundaryKindsEmpty, 0
+	.long BoundaryRanges7, 0
+	.long 0, 2, 0
+	.long BoundaryProgramNoScan, 8
+	.long BoundaryKindsTwo, 3
+	.long BoundaryRanges8, 0
+	.long 0, 2, 0
+	.long BoundaryProgramCursor, 10
+	.long BoundaryKindsTwo, 3
+	.long BoundaryRanges9, 2
+	.long 1, 6, 0
+	.long BoundaryProgramRescan, 11
+	.long BoundaryKindsTwo, 3
+	.long BoundaryRanges10, 2
+	.long 1, 6, 0
+	.long BoundaryProgramRollback, 13
+	.long BoundaryKindsTwo, 3
+	.long BoundaryRanges11, 2
+	.long 0, 6, 0
+	.long BoundaryProgramBegin, 9
+	.long BoundaryKindsTwo, 3
+	.long BoundaryRanges12, 2
+	.long 0, 6, 0
+	.long BoundaryProgramRepeat, 14
+	.long BoundaryKindsLeading, 2
+	.long BoundaryRanges13, 4
+	.long 0, 10, 0
+	.long BoundaryProgramNestedCheckpoint, 23
+	.long BoundaryKindsTwo, 3
+	.long BoundaryRanges14, 6
+	.long 0, 6, 0
+	.long BoundaryProgramLoadedCheckpoint, 16
+	.long BoundaryKindsIdentifier, 1
+	.long BoundaryRanges15, 1
+	.long 0, 3, 0
+	.long BoundaryProgramBasic, 9
+	.long BoundaryKindsTwo, 3
+	.long BoundaryRanges16, 1
+	.long 0, 4, 1
+	.long 0, 0
+BoundaryProgramBasic
+	.byte $60, $41, $50, $FF, $FF, $FF, $FF, $64, $00
+BoundaryProgramNoScan
+	.byte $60, $50, $FF, $FF, $FF, $FF, $64, $00
+BoundaryProgramCursor
+	.byte $60, $41, $20, $50, $FF, $FF, $FF, $FF, $64, $00
+BoundaryProgramRescan
+	.byte $60, $41, $20, $41, $50, $FF, $FF, $FF, $FF, $64, $00
+BoundaryProgramRollback
+	.byte $60, $41, $04, $20, $41, $05, $50, $FF, $FF, $FF, $FF, $64, $00
+BoundaryProgramBegin
+	.byte $41, $60, $50, $FF, $FF, $FF, $FF, $64, $00
+BoundaryProgramRepeat
+	.byte $60, $41, $50, $FF, $FF, $FF, $FF, $50, $FF, $FF, $FF, $FF, $64, $00
+BoundaryProgramNestedCheckpoint
+	.byte $60, $41, $04, $04, $50, $FF, $FF, $FF, $FF, $05, $50, $FF, $FF, $FF, $FF, $05, $50, $FF, $FF, $FF, $FF, $64, $00
+BoundaryProgramLoadedCheckpoint
+	.byte $60, $30, $04, $04, $41, $50, $FF, $FF, $FF, $FF, $05, $62, $05, $62, $64, $00
+	.align 2
+BoundaryKindsNested
+	.word 14, 2, 4, 2, 15, 4, 10, 2, 4, 2, 11, 4, 12, 2, 4, 2, 13, 4, 2
+BoundaryKindsClose
+	.word 15, 2, 4, 2
+BoundaryKindsMixed
+	.word 14, 11, 4, 2
+BoundaryKindsLeading
+	.word 4, 2
+BoundaryKindsConsecutive
+	.word 2, 4, 4, 2
+BoundaryKindsTrailing
+	.word 2, 4
+BoundaryKindsComma
+	.word 4
+BoundaryKindsEmpty
+BoundaryKindsTwo
+	.word 2, 4, 2
+BoundaryKindsIdentifier
+	.word 0
+BoundaryRanges0
+	.long 0, 5, 0, 0
+	.long 6, 11, 1, 1
+	.long 12, 17, 2, 2
+	.long 18, 19, 3, 3
+BoundaryRanges1
+	.long 0, 4, 0, 0
+BoundaryRanges2
+	.long 0, 4, 0, 0
+BoundaryRanges3
+	.long 0, 0, 0, 0
+	.long 1, 2, 1, 1
+BoundaryRanges4
+	.long 0, 1, 0, 0
+	.long 2, 2, 1, 1
+BoundaryRanges5
+	.long 0, 1, 0, 0
+	.long 2, 2, 1, 1
+BoundaryRanges6
+	.long 0, 0, 0, 0
+	.long 1, 1, 1, 1
+BoundaryRanges7
+BoundaryRanges8
+BoundaryRanges9
+	.long 0, 1, 0, 0
+	.long 2, 3, 1, 1
+BoundaryRanges10
+	.long 1, 1, 0, 0
+	.long 2, 3, 1, 1
+BoundaryRanges11
+	.long 0, 1, 0, 0
+	.long 2, 3, 1, 1
+BoundaryRanges12
+	.long 0, 1, 0, 0
+	.long 2, 3, 1, 1
+BoundaryRanges13
+	.long 0, 0, 0, 0
+	.long 1, 2, 1, 1
+	.long 0, 0, 0, 2
+	.long 1, 2, 1, 3
+BoundaryRanges14
+	.long 0, 1, 0, 0
+	.long 2, 3, 1, 1
+	.long 0, 1, 0, 0
+	.long 2, 3, 1, 1
+	.long 0, 1, 0, 0
+	.long 2, 3, 1, 1
+BoundaryRanges15
+	.long 0, 1, 0, 0
+BoundaryRanges16
+	.long 0, 1, 0, 0
+BoundarySource
+	.fill byte, 64, 32
+	.align 4
+BoundaryTokens
+	.fill byte, 400, 0
+BoundaryResults
+	.fill byte, 1024, 0
+BoundaryExprResults
+	.fill byte, 512, 0
+BoundaryExpected
+	.long 0
+BoundaryRequestCount
+	.long 0
+BoundaryZeroCount
+	.long 0
+BoundaryZeroValue
+	.long 0
+
 SmokeStatus
 	.long 0
 SmokeResultCount
@@ -750,7 +1163,7 @@ ResultBuffer
 DiagnosticBuffer
 	.fill byte, 32, 0
 ResumeBuffer
-	.fill byte, 40, 0
+	.fill byte, PRVM_RESUME_STATE_SIZE, 0
 ExprRequestBuffer
 	.fill byte, 32, 0
 ExprResultBuffer

@@ -765,6 +765,7 @@ impl Native6502Harness {
         )
         .map_err(|err| err.message)?;
         let request = NativePrvmExprRequest {
+            mode: crate::native_prvm::NativePrvmExprRequestMode::StaticRange,
             operand_index: 0,
             expr_slot_index: 0,
             start_token: start_token as u32,

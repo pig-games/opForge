@@ -266,9 +266,9 @@ opforgeNativeCliServicePrvmExpressionRequest	.block
 	lea state.OpforgeNativeCliPrvmExprRequest, a0
 	lea state.OpforgeNativeCliPrvmExprResultSlot, a1
 	move.w 0(a0), d0
-	cmpi.w #1, d0
+	cmpi.w #constants.PRVM_EXPR_REQUEST_VERSION_V2, d0
 	bne.s fail
-	tst.w 2(a0)
+	cmpi.w #constants.PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a0)
 	bne.s fail
 	clr.l d0
 	move.l 8(a0), d0
@@ -279,6 +279,19 @@ opforgeNativeCliServicePrvmExpressionRequest	.block
 	lea state.OpforgeNativeCliPrvmExprResultSlot, a1
 	adda.l d3, a1
 	move.w #constants.PRVM_EXPR_SLOT_READY, 0(a1)
+	move.l 12(a0), d2
+	cmp.l 16(a0), d2
+	bhi.s fail
+	move.l 16(a0), d4
+	lea state.OpforgeNativeCliPrvmRouteFrame, a2
+	cmp.l 40(a2), d4
+	bhi.s fail
+	cmp.l 16(a0), d2
+	bne.s expressionReady
+	tst.l 4(a0)
+	beq.s expressionReady
+	move.w #constants.PRVM_EXPR_SLOT_READY_ERROR, 0(a1)
+expressionReady
 	clr.w 2(a1)
 	move.l d0, 4(a1)
 	move.l 20(a0), 8(a1)

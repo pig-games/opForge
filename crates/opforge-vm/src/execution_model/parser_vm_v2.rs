@@ -1411,6 +1411,90 @@ mod tests {
     }
 
     #[test]
+    fn parser_vm_v2_dynamic_operands_preserve_scan_and_live_cursor() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let moved_cursor_program = vec![
+            ParserVmOpcodeV2::BeginStatement as u8,
+            ParserVmOpcodeV2::ScanTopLevelCommaBoundaries as u8,
+            ParserVmOpcodeV2::Advance as u8,
+            ParserVmOpcodeV2::ParseOperandExprRange as u8,
+            0xff,
+            0xff,
+            0xff,
+            0xff,
+            ParserVmOpcodeV2::FinishLine as u8,
+            ParserVmOpcodeV2::End as u8,
+        ];
+        let labeled_program = default_statement_program_for_tests().program;
+        for (program, tokens, expected_cursor, expected_ranges) in [
+            (
+                labeled_program,
+                vec![
+                    ident("label", 1, 6),
+                    colon(6),
+                    ident("lda", 8, 11),
+                    number("42", 10, 12, 14),
+                ],
+                3,
+                vec![(3, 4)],
+            ),
+            (
+                moved_cursor_program,
+                vec![number("1", 10, 1, 2), comma(2), number("2", 10, 3, 4)],
+                1,
+                vec![(0, 1), (2, 3)],
+            ),
+        ] {
+            let mut state = ParserVmV2State {
+                tokens,
+                end_span: span(14, 14),
+                end_token_text: None,
+                parser_contract: &contract,
+                program: &program,
+                exec_ctx: exec_context(&model, None),
+                pc: 0,
+                cursor: 0,
+                steps: 0,
+                value_stack: Vec::new(),
+                checkpoints: Vec::new(),
+                operand_boundaries: Vec::new(),
+                builder: ParserVmV2AstBuilder::default(),
+                parsed_line: None,
+                advance_mnemonic_suffix_plus: false,
+            };
+            let line = state.run().expect("live dynamic parser program");
+            assert_eq!(
+                state.cursor, expected_cursor,
+                "dynamic expression parsing must not consume the statement cursor"
+            );
+            assert_eq!(
+                state.operand_boundaries, expected_ranges,
+                "expression ranges retain the scan origin after cursor movement"
+            );
+            let LineAst::Statement(statement) = line else {
+                panic!("expected statement")
+            };
+            let values = statement
+                .operands
+                .iter()
+                .map(|expr| match expr {
+                    Expr::Number(value, _) => value.as_str(),
+                    other => panic!("expected numeric operand, got {other:?}"),
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                values,
+                if expected_cursor == 3 {
+                    vec!["42"]
+                } else {
+                    vec!["1", "2"]
+                }
+            );
+        }
+    }
+
+    #[test]
     fn parser_vm_v2_rolls_back_cursor_builder_and_stack() {
         let model = model_for_tests();
         let contract = parser_contract_for_tests();

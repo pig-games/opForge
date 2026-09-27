@@ -1,7 +1,8 @@
 # Compact frontend: VM boundary correction
 
-Status: numeric normalization and composed-name recipes implemented; the remaining
-call/string and expression correction is active. This takes
+Status: numeric normalization, composed-name recipes and the PRVM boundary/resume
+foundation are implemented; macro descriptors, fragment expansion and expression
+correction remain active. This takes
 precedence over the next packed-loop parity slice in the
 [native reset](native-runtime-reset.md#fixed-input-allocation-slice).
 
@@ -421,3 +422,63 @@ matches all 1,701 Rust output bytes in 9.780 s, compared with 9.887 s before thi
 repair. That is a 1.1% lower single-run observation, not a statistical speedup
 claim. The compact Hunk is 72,676 bytes (+56), with linked reservation 83,880
 bytes (+52). Allocation telemetry was not rerun for this lookup-only repair.
+
+
+## PRVM boundary and resume foundation
+
+The prerequisite now implements native `0x41` scan activation and nested dynamic
+`0x50` range selection. It preserves Rust's three signed delimiter depths,
+including unmatched-close behavior. Dynamic parsing uses the saved scan rather
+than the current token cursor; repeated parsing restarts the scan. Checkpoints
+and expression resumes preserve loaded/label metadata, predicates, scan state and
+the cumulative step budget. A ready expression error stops that parsing invocation.
+
+Expression requests advance to version 2 with an explicit static/dynamic range
+mode. Only the first empty dynamic range becomes numeric zero; other empty ranges
+remain expression errors. The scan ordinal is independent of accumulated result
+slots. Native resume version 2 stores offsets and values only, with a 468-byte
+record (+428) and a 428-byte runtime local frame (+244). All current callers use
+the shared runtime size symbol; there is no legacy resume executor.
+
+The host bridge tests compare ASTs against live Rust parsing. The native smoke
+checks exact request ranges, ordinals, cursor and result counts, pause/resume,
+rollback and malformed state rejection. These are primitive/service-contract
+proofs. The existing full native CLI service still supplies opaque expression
+slots for downstream parsing; this slice does not establish full AST parity or
+remove its text parser. The compact macro frontend does not yet consume PRVM,
+so no integrated assembler speedup is claimed and its unchanged release benchmark
+was not rerun.
+
+A blocking Rust Hunk proof bug is repaired: `.fill` counts control allocation,
+while the repeated value supplies emitted bytes. Exported computed counts now
+retain literal-data proof; symbolic address values still fail proof, and invalid
+counts still fail without emitting bytes.
+
+One language gap remains explicit: a harness operand such as
+`move.l #5, runtime.PRVM_RESUME_LOCAL_STATE + runtime.LOCAL_CHECKPOINT_DEPTH(a4)`
+causes lockstep AST span divergence (reference tuple starts at column 13; VM
+starts at column 45). A named constant for that displacement keeps the harness
+usable. This does not repair the general displacement-expression mismatch.
+
+The next coherent slice remains package-selected macro descriptors and argument
+ranges, followed by VM fragment streams that preserve the three recorded macro
+substitution-order cases. This foundation does not change those cases.
+
+
+Validation: the VM library passed 440 tests, and the added live cursor test passes.
+All 13 request ABI tests and five bridge tests pass, as do the three `.fill`
+regressions. The PRVM host selection has 23 passes and one ignored guest test;
+its one failure is an unchanged ExprVM telemetry-include resolution issue.
+Fresh 68020 / 2 MiB execution completes both PRVM guests with zero exits and
+required markers, checking 17 boundary/state cases and eight malformed resume
+probes. The 30.78-second two-guest test duration includes harness/launcher work
+and is not an assembly benchmark.
+
+Isolated runtime code grows from 3,156 to 4,240 bytes (+1,084). The expanded smoke
+Hunk grows from 7,140 to 13,248 bytes, mostly its new test matrix; that is not the
+compact executable size. The linked native formatter checks 259 files cleanly.
+Fresh-run proof, canonical debug contracts, emulator invocation policy, evidence
+classification, workflow links and benchmark-selector checks pass. Instrumentation
+safety retains three existing `DiagnosticBuffer` label findings in the PRVM
+harnesses, confirmed against the preceding commit. This is a focused checkpoint,
+not a full qualification claim.

@@ -1,3 +1,6 @@
+#[path = "tests/hunk_fill_counts.rs"]
+mod hunk_fill_counts;
+
 #[path = "tests/binary_source_composed_names.rs"]
 mod binary_source_composed_names;
 
@@ -11642,8 +11645,8 @@ fn prvm_report_expr_request_record(
     col_end: u32,
 ) -> Vec<u8> {
     let mut bytes = Vec::new();
-    push_prvm_report_u16(&mut bytes, 1);
-    push_prvm_report_u16(&mut bytes, 0);
+    push_prvm_report_u16(&mut bytes, 2);
+    push_prvm_report_u16(&mut bytes, 1); // scanned operand boundary
     push_prvm_report_u32(&mut bytes, operand_index);
     push_prvm_report_u32(&mut bytes, expr_slot_index);
     push_prvm_report_u32(&mut bytes, start_token);

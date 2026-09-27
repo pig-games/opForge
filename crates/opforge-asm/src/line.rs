@@ -3510,7 +3510,9 @@ impl<'a> AsmLine<'a> {
     fn fill_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {
         let relocation_free = operands.len() == 3
             && self.emit_unit_is_relocation_free_literal(&operands[0])
-            && Self::operands_are_relocation_free_literals(&operands[1..]);
+            // The validated count controls allocation, not emitted address bytes.
+            // Only the repeated value needs the emitted-data relocation proof.
+            && Self::expr_is_relocation_free_literal(&operands[2]);
         if !relocation_free {
             self.mark_current_section_not_relocation_free();
         }

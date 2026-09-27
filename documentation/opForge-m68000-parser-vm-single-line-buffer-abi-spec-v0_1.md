@@ -1,11 +1,16 @@
 # opForge Native AmigaOS 68020-Baseline Parser VM Single-Line Buffer ABI Spec v0.1
 
+Current implementation note: boundary selection and resume state follow the
+latest contract below. The Rust expression bridge builds ASTs; the existing full
+native CLI service still supplies opaque slots for downstream parsing. Native
+boundary smoke checks prove request/state behavior, not full expression AST parity.
+
 ## Summary
 
 This specification defines the first native buffer ABI for the AmigaOS-native
 `68020` baseline implementation of the opasm statement parser VM v2.
 
-The native entry symbol is `prvm_run_68000`. The symbol name follows the
+The native entry symbol is `prvmRun68000`. The symbol name follows the
 existing tokenizer-native naming family while the first implementation target
 remains `.cpu 68020`.
 
@@ -20,7 +25,7 @@ The Rust PRVM v2 implementation is now the behavioral authority for delegated
 opasm statement parsing, but the native AmigaOS path cannot begin safely until
 the memory and host-bridge contract is explicit.
 
-Without this ABI, the first `prvm_run_68000` assembly slice could choose ad hoc
+Without this ABI, the first `prvmRun68000` assembly slice could choose ad hoc
 record layouts for tokens, parser results, diagnostics, or expression sub-call
 state. That would make host-side parity tests fragile and would blur the
 required boundary between native opasm statement parsing and Rust/opcore-owned
@@ -31,9 +36,9 @@ native parser assembly or native parser fixtures land.
 
 ## Goals
 
-- [ ] Define the first single-line native `prvm_run_68000` ABI for delegated
+- [ ] Define the first single-line native `prvmRun68000` ABI for delegated
   opasm statement parsing.
-- [ ] Reserve `prvm_run_68000` as the only native PRVM entry symbol for this
+- [ ] Reserve `prvmRun68000` as the only native PRVM entry symbol for this
   contract.
 - [ ] Define `.cpu 68020` as the first native implementation baseline while
   keeping the `68000` symbol-name convention.
@@ -68,7 +73,7 @@ This ABI is for the first AmigaOS-native `68020` baseline only. Spec-derived
 native PRVM interpreter code must target `.cpu 68020` unless a later
 specification revises that baseline explicitly.
 
-`prvm_run_68000` is the only reserved native parser VM entry symbol for this
+`prvmRun68000` is the only reserved native parser VM entry symbol for this
 v0.1 contract. Additional native PRVM entry symbols require a later spec
 revision.
 
@@ -122,7 +127,7 @@ Return-register contract:
   on expression request, or diagnostic buffer bytes committed on diagnostic
   failure
 
-Register preservation contract for `prvm_run_68000` v0.1:
+Register preservation contract for `prvmRun68000` v0.1:
 
 - caller-saved: `D0-D3`, `A0-A3`
 - callee-preserved: `D4-D7`, `A4-A6`
@@ -273,7 +278,8 @@ Result `record_kind` values:
 | `3` | `MNEMONIC_TEXT` | Statement mnemonic text. |
 | `4` | `OPERAND_EXPR_SLOT` | Operand expression reference by expression slot. |
 | `5` | `FINISH_LINE` | Finalize the decoded statement result. |
-| `6` | `EMPTY_LINE` | Decode as `LineAst::Empty` for an empty delegated token stream. |
+| `6` | `DIRECTIVE_TEXT` | Shared directive name; `arg0/arg1` select its lexeme. |
+| `7` | `OPERAND_TEXT` | Bounded source span and token range for a requested operand, including empty ranges. |
 
 For `LABEL_TEXT` and `MNEMONIC_TEXT`, `arg0` is `lexeme_offset` and `arg1` is
 `lexeme_len` into the request lexeme buffer.
@@ -333,14 +339,14 @@ must preserve span fields and any message text it emits.
 ### Expression Pause/Resume Protocol
 
 Native PRVM requests Rust/opcore expression parsing by writing exactly one
-32-byte `PRVM_EXPR_REQUEST_V1` record and returning
+32-byte `PRVM_EXPR_REQUEST_V2` record and returning
 `PRVM_STATUS_EXPR_REQUEST`.
 
 | Offset | Size | Field | Meaning |
 |---|---:|---|---|
-| `0` | 2 | `request_version` | Must be `1`. |
-| `2` | 2 | `flags` | Must be `0` in v0.1. |
-| `4` | 4 | `operand_index` | Zero-based operand index in the statement. |
+| `0` | 2 | `request_version` | Must be `2`; older requests are rejected. |
+| `2` | 2 | `range_mode` | `0` explicit static range; `1` scanned dynamic boundary. Other values are invalid. |
+| `4` | 4 | `operand_index` | Zero-based range ordinal within the active scan. |
 | `8` | 4 | `expr_slot_index` | Expression-result slot the host must fill. |
 | `12` | 4 | `start_token` | Inclusive token index for Rust/opcore expression parsing. |
 | `16` | 4 | `end_token` | Exclusive token index for Rust/opcore expression parsing. |
@@ -350,7 +356,10 @@ Native PRVM requests Rust/opcore expression parsing by writing exactly one
 
 The host bridge must parse exactly `tokens[start_token..end_token]` through the
 existing Rust/opcore expression parser. It must not widen the range to the rest
-of the line or reclassify the line.
+of the line or reclassify the line. A dynamic first empty boundary supplies numeric
+zero; static or later dynamic empty ranges supply an expression error. The
+`operand_index` is the ordinal within this scan, independent of the result-slot
+index and any operands already accumulated by the builder.
 
 Expression-result slots are 32-byte `PRVM_EXPR_RESULT_SLOT_V1` records in the
 buffer referenced by `expr_result_ptr`.
@@ -380,16 +389,33 @@ the native ABI does not serialize expression-error message text in v0.1.
 
 `PRVM_STATUS_EXPR_REQUEST` requires native PRVM to commit enough resume state to
 continue deterministically after the host fills the expression-result slot.
-Resume state is native-owned opaque bytes, but v0.1 requires the first 16 bytes
-to be a stable header:
+Resume state is native-owned opaque bytes. Its latest version is 2 and its
+current record size is 468 bytes; no version-1 resume executor is retained. The
+first 16 bytes remain a stable header:
 
 | Offset | Size | Field | Meaning |
 |---|---:|---|---|
 | `0` | 4 | `magic` | ASCII `PRRS` (`0x50525253`). |
-| `4` | 2 | `resume_version` | Must be `1`. |
-| `6` | 2 | `header_size` | Must be at least `16`. |
+| `4` | 2 | `resume_version` | Must be `2`. |
+| `6` | 2 | `record_size` | Must be `468`; the caller capacity must be at least this size. |
 | `8` | 4 | `continuation_id` | Native continuation identifier. |
 | `12` | 4 | `requested_expr_slot` | Slot index requested before pause. |
+
+The remaining prefix stores the program continuation as an offset, cursor,
+result count, operand count and pending token range. A 428-byte native state
+snapshot follows at offset 40. It retains loaded-token/label metadata, completion
+and predicate state, cumulative step count, scan origin/end/next/ordinal and all
+four bounded parser checkpoints. It contains offsets and values, not pointers.
+Callers allocate using the runtime
+`PRVM_RESUME_STATE_SIZE` symbol rather than duplicating its numeric value.
+
+`0x41` selects comma boundaries with independent signed parentheses/bracket/brace
+depths. Dynamic `0x50` consumes that scan without advancing the token cursor;
+without a scan it emits no operands. Scan state survives cursor changes,
+`BeginStatement`, checkpoint rollback and expression suspension. Repeated dynamic
+parsing starts at the scan origin again. A ready expression error is emitted and
+stops further operands for that invocation. The expression host owns parsing;
+these routines only select binary token ranges.
 
 The host must pass the same request frame back with `call_mode = 1`, the same
 source/token/lexeme/program buffers, the same resume buffer contents, and the
@@ -399,13 +425,13 @@ requested expression-result slot set to ready.
 
 Unsupported newline input:
 
-- If any source byte is `0x0A` or `0x0D`, `prvm_run_68000` must return
+- If any source byte is `0x0A` or `0x0D`, `prvmRun68000` must return
   `PRVM_STATUS_NEWLINE_UNSUPPORTED` before committing result or diagnostic
   records.
 
 Non-delegated entry request:
 
-- If `entry_kind != 1`, `prvm_run_68000` must return
+- If `entry_kind != 1`, `prvmRun68000` must return
   `PRVM_STATUS_ENTRY_BOUNDARY` and must not execute parser bytecode.
 
 Invalid request frame:
@@ -428,9 +454,10 @@ Output overflow:
 
 Expression request with empty range:
 
-- Empty operand ranges are allowed only when Rust PRVM v2 would preserve an
-  expression error for that operand. The expression request must still carry a
-  bounded half-open token range and boundary span.
+- Empty operand ranges follow the explicit request mode and operand ordinal:
+  dynamic ordinal zero yields numeric zero; static or later dynamic ranges yield
+  an expression error. Each request carries a bounded half-open token range and
+  boundary span. An empty scan produces no requests.
 
 Expression result missing on resume:
 
@@ -452,7 +479,7 @@ Unsupported native opcode during early implementation slices:
 
 ## Acceptance Criteria
 
-- [ ] The ABI reserves only `prvm_run_68000` for native PRVM v0.1.
+- [ ] The ABI reserves only `prvmRun68000` for native PRVM v0.1.
 - [ ] The ABI states `.cpu 68020` as the first native implementation baseline.
 - [ ] The call contract uses a caller-owned request frame and deterministic
   return registers.

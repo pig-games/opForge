@@ -145,7 +145,7 @@ buildRequestFrame	.block
 	move.l #32, 64(a0)
 	lea ResumeBuffer(PC), a1
 	move.l a1, 68(a0)
-	move.l #40, 72(a0)
+	move.l #runtime.PRVM_RESUME_STATE_SIZE, 72(a0)
 	lea ExprRequestBuffer(PC), a1
 	move.l a1, 76(a0)
 	move.l #32, 80(a0)
@@ -298,7 +298,7 @@ ResultBuffer
 DiagnosticBuffer
 	.fill byte, 32, 0
 ResumeBuffer
-	.fill byte, 40, 0
+	.fill byte, runtime.PRVM_RESUME_STATE_SIZE, 0
 ExprRequestBuffer
 	.fill byte, 32, 0
 ExprResultBuffer

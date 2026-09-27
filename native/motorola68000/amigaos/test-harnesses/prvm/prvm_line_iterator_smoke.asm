@@ -2,6 +2,7 @@
 
 	.module main
 	.cpu 68020
+	.use prvm.amigaos.runtime
 
 SYS_BASE                        = 4
 RETURN_OK                       = 0
@@ -140,7 +141,7 @@ buildFrame	.block
 	move.l #32, 76(a0)
 	lea ResumeBuffer(PC), a1
 	move.l a1, 80(a0)
-	move.l #40, 84(a0)
+	move.l #runtime.PRVM_RESUME_STATE_SIZE, 84(a0)
 	lea ExprRequestBuffer(PC), a1
 	move.l a1, 88(a0)
 	move.l #32, 92(a0)
@@ -311,7 +312,7 @@ ResultBuffer
 DiagnosticBuffer
 	.fill byte, 32, 0
 ResumeBuffer
-	.fill byte, 40, 0
+	.fill byte, runtime.PRVM_RESUME_STATE_SIZE, 0
 ExprRequestBuffer
 	.fill byte, 32, 0
 ExprResultBuffer

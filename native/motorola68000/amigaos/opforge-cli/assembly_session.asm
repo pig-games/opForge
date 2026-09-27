@@ -279,7 +279,7 @@ return
 
 opforgeNativeCliRecordPrvmExpressionRequest	.block
 	lea state.OpforgeNativeCliPrvmExprRequest, a2
-	cmpi.w #1, 0(a2)
+	cmpi.w #constants.PRVM_EXPR_REQUEST_VERSION_V2, 0(a2)
 	bne.s done
 	move.l 4(a2), state.NativeCliStmtExprOperandIndex
 	move.l 8(a2), state.NativeCliStmtExprSlotIndex

@@ -274,6 +274,7 @@ fn evaluate_native_prvm_expression_for_test(
     )
     .expect("native PRVM expression bridge should tokenize source");
     let request = NativePrvmExprRequest {
+        mode: crate::native_prvm::NativePrvmExprRequestMode::StaticRange,
         operand_index: 0,
         expr_slot_index: 0,
         start_token: start_token as u32,

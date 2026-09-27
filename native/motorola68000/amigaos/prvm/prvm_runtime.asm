@@ -64,6 +64,12 @@ PRVM_PARSER_CONTRACT_VERSION_V2     = 2
 PRVM_TOKEN_KIND_IDENTIFIER          = 0
 PRVM_TOKEN_KIND_DOT                 = 7
 PRVM_TOKEN_KIND_COMMA               = 4
+PRVM_TOKEN_KIND_OPEN_BRACKET        = 10
+PRVM_TOKEN_KIND_CLOSE_BRACKET       = 11
+PRVM_TOKEN_KIND_OPEN_BRACE          = 12
+PRVM_TOKEN_KIND_CLOSE_BRACE         = 13
+PRVM_TOKEN_KIND_OPEN_PAREN          = 14
+PRVM_TOKEN_KIND_CLOSE_PAREN         = 15
 PRVM_TOKEN_KIND_COLON               = 5
 PRVM_TOKEN_KIND_OP_PLUS             = 18
 PRVM_TOKEN_KIND_OP_MULTIPLY         = 20
@@ -89,12 +95,14 @@ PRVM_RESULT_DIRECTIVE_TEXT          = 6
 PRVM_RESULT_OPERAND_TEXT            = 7
 
 PRVM_EXPR_REQUEST_RECORD_SIZE       = 32
+PRVM_EXPR_REQUEST_VERSION_V2        = 2
+PRVM_EXPR_REQUEST_MODE_DYNAMIC      = 1
 PRVM_EXPR_RESULT_SLOT_SIZE          = 32
 PRVM_EXPR_SLOT_READY                = 1
 PRVM_EXPR_SLOT_READY_ERROR          = 2
 PRVM_RESUME_MAGIC                   = $50525253
-PRVM_RESUME_VERSION                 = 1
-PRVM_RESUME_STATE_SIZE              = 40
+PRVM_RESUME_VERSION                 = 2
+PRVM_RESUME_LOCAL_STATE             = 40
 PRVM_CONTINUATION_PARSE_OPERAND     = 1
 
 PRVM_OPCODE_END                     = $00
@@ -120,6 +128,31 @@ PRVM_OPCODE_FINISH_LINE             = $64
 PRVM_OPCODE_SET_DOT_MNEMONIC        = $65
 PRVM_OPCODE_FINISH_ASSIGNMENT       = $66
 
+; A checkpoint preserves the native builder and immutable scan identity.
+CheckpointRecord	.struct
+Cursor	.long ?
+ResultCount	.long ?
+ResultBytes	.long ?
+OperandCount	.long ?
+Finished	.long ?
+Label	.long ?
+Bool	.long ?
+Loaded	.long ?
+LoadedColStart	.long ?
+LoadedColEnd	.long ?
+LoadedOffset	.long ?
+LoadedLen	.long ?
+LabelColStart	.long ?
+LabelColEnd	.long ?
+LabelOffset	.long ?
+LabelLen	.long ?
+ScanValid	.long ?
+ScanOrigin	.long ?
+ScanEnd	.long ?
+ScanNext	.long ?
+ScanIndex	.long ?
+	.endstruct
+
 LOCAL_LOADED_FLAG                   = 0
 LOCAL_LOADED_COL_START              = 4
 LOCAL_LOADED_COL_END                = 8
@@ -138,10 +171,17 @@ LOCAL_LABEL_LEXEME_OFFSET           = 56
 LOCAL_LABEL_LEXEME_LEN              = 60
 LOCAL_BOOL_VALUE                    = 64
 LOCAL_CHECKPOINT_DEPTH              = 68
-LOCAL_CHECKPOINT_STACK              = 72
-LOCAL_CHECKPOINT_RECORD_SIZE        = 28
+LOCAL_SCAN_VALID                    = 72
+LOCAL_SCAN_ORIGIN                   = 76
+LOCAL_SCAN_END                      = 80
+LOCAL_SCAN_NEXT                     = 84
+LOCAL_SCAN_INDEX                    = 88
+LOCAL_CHECKPOINT_STACK              = 92
+LOCAL_CHECKPOINT_RECORD_SIZE        = CheckpointRecord.ScanIndex + 4
 LOCAL_CHECKPOINT_MAX_DEPTH          = 4
-LOCAL_SIZE                          = 184
+LOCAL_SIZE                          = LOCAL_CHECKPOINT_STACK + LOCAL_CHECKPOINT_RECORD_SIZE * LOCAL_CHECKPOINT_MAX_DEPTH
+
+PRVM_RESUME_STATE_SIZE              = PRVM_RESUME_LOCAL_STATE + LOCAL_SIZE
 
 	.section data, kind=data
 
@@ -184,13 +224,12 @@ prvmRun68000	.block
 	movea.l a0, a4  ; A4 is the stable request-frame base for the runtime run
 	suba.l #LOCAL_SIZE, sp  ; fixed native frame mirrors Rust parser VM execution state
 	lea 0(sp), a3  ; A3 addresses LOCAL_* slots while opcodes consume A0-A2/D0-D3
-	clr.l LOCAL_LOADED_FLAG(a3)
-	clr.l LOCAL_FINISHED_FLAG(a3)
-	clr.l LOCAL_STEP_COUNT(a3)
-	clr.l LOCAL_OPERAND_COUNT(a3)
-	clr.l LOCAL_LABEL_FLAG(a3)
-	clr.l LOCAL_BOOL_VALUE(a3)
-	clr.l LOCAL_CHECKPOINT_DEPTH(a3)
+	movea.l a3, a0
+	move.w #LOCAL_SIZE / 4 - 1, d0
+clearLocals
+	clr.l (a0)+
+	dbra d0, clearLocals
+	clr.l d2
 
 	cmpi.l #PRVM_MAGIC_OPRP, PRVM_FRAME_MAGIC(a4)  ; reject frames from another native ABI surface
 	bne invalidArgumentWithLocals
@@ -346,7 +385,7 @@ programLoop
 	cmpi.b #PRVM_OPCODE_PARSE_OPTIONAL_LABEL, d7
 	beq opcodeParseOptionalLabel
 	cmpi.b #PRVM_OPCODE_SCAN_COMMA_BOUNDARIES, d7
-	beq programLoop
+	beq opcodeScanCommaBoundaries
 	cmpi.b #PRVM_OPCODE_PARSE_OPERAND_EXPR, d7
 	beq opcodeParseOperandExpr
 	cmpi.b #PRVM_OPCODE_BEGIN_STATEMENT, d7
@@ -396,6 +435,20 @@ opcodeRollback
 	move.l (a0)+, LOCAL_FINISHED_FLAG(a3)
 	move.l (a0)+, LOCAL_LABEL_FLAG(a3)
 	move.l (a0)+, LOCAL_BOOL_VALUE(a3)
+	move.l (a0)+, LOCAL_LOADED_FLAG(a3)
+	move.l (a0)+, LOCAL_LOADED_COL_START(a3)
+	move.l (a0)+, LOCAL_LOADED_COL_END(a3)
+	move.l (a0)+, LOCAL_LOADED_LEXEME_OFFSET(a3)
+	move.l (a0)+, LOCAL_LOADED_LEXEME_LEN(a3)
+	move.l (a0)+, LOCAL_LABEL_COL_START(a3)
+	move.l (a0)+, LOCAL_LABEL_COL_END(a3)
+	move.l (a0)+, LOCAL_LABEL_LEXEME_OFFSET(a3)
+	move.l (a0)+, LOCAL_LABEL_LEXEME_LEN(a3)
+	move.l (a0)+, LOCAL_SCAN_VALID(a3)
+	move.l (a0)+, LOCAL_SCAN_ORIGIN(a3)
+	move.l (a0)+, LOCAL_SCAN_END(a3)
+	move.l (a0)+, LOCAL_SCAN_NEXT(a3)
+	move.l (a0)+, LOCAL_SCAN_INDEX(a3)
 	bra programLoop
 
 opcodeCommit
@@ -635,6 +688,13 @@ opcodeFinishAssignment
 	move.l #1, LOCAL_FINISHED_FLAG(a3)
 	bra programLoop
 
+opcodeScanCommaBoundaries
+	move.l #1, LOCAL_SCAN_VALID(a3)
+	move.l d2, LOCAL_SCAN_ORIGIN(a3)
+	move.l d4, LOCAL_SCAN_END(a3)
+	move.l d2, LOCAL_SCAN_NEXT(a3)
+	bra programLoop
+
 opcodeParseOperandExpr
 	movea.l a5, a0
 	adda.l #4, a0
@@ -652,26 +712,18 @@ opcodeParseOperandExpr
 	move.b (a5)+, d0
 	cmpi.b #$FF, d0
 	bne unsupportedOpcode
-	cmp.l d4, d2
+	tst.l LOCAL_SCAN_VALID(a3)
+	beq programLoop
+	move.l LOCAL_SCAN_ORIGIN(a3), d0
+	cmp.l LOCAL_SCAN_END(a3), d0
 	bcc programLoop
+	move.l d0, LOCAL_SCAN_NEXT(a3)
+	clr.l LOCAL_SCAN_INDEX(a3)
 	bra requestOperandAtCursor
 
 requestOperandAtCursor
-	move.l d2, LOCAL_EXPR_START_TOKEN(a3)
-	move.l d2, d5
-findOperandEndLoop
-	cmp.l d4, d5
-	bcc operandEndFound
-	move.l d5, d0
-	bsr.w tokenPtrByIndex
+	bsr.w nextBoundary
 	bne returnWithLocals
-	cmpi.w #PRVM_TOKEN_KIND_COMMA, 0(a1)
-	beq operandEndFound
-	addq.l #1, d5
-	bra findOperandEndLoop
-
-operandEndFound
-	move.l d5, LOCAL_EXPR_END_TOKEN(a3)
 	move.l LOCAL_OPERAND_COUNT(a3), d0
 	move.l d0, LOCAL_EXPR_SLOT_INDEX(a3)
 	bsr.w emitOperandTextSpan
@@ -693,8 +745,26 @@ resumeFromExpression
 	cmpi.w #PRVM_RESUME_VERSION, 4(a2)
 	bne invalidResume
 	cmpi.w #PRVM_RESUME_STATE_SIZE, 6(a2)
-	blt invalidResume
+	bne invalidResume
 	cmpi.l #PRVM_CONTINUATION_PARSE_OPERAND, 8(a2)
+	bne invalidResume
+	lea PRVM_RESUME_LOCAL_STATE(a2), a0
+	movea.l a3, a1
+	move.w #LOCAL_SIZE / 4 - 1, d7
+restoreLocals
+	move.l (a0)+, (a1)+
+	dbra d7, restoreLocals
+	move.l 12(a2), d0
+	cmp.l LOCAL_EXPR_SLOT_INDEX(a3), d0
+	bne invalidResume
+	move.l 28(a2), d0
+	cmp.l LOCAL_OPERAND_COUNT(a3), d0
+	bne invalidResume
+	move.l 32(a2), d0
+	cmp.l LOCAL_EXPR_START_TOKEN(a3), d0
+	bne invalidResume
+	move.l 36(a2), d0
+	cmp.l LOCAL_EXPR_END_TOKEN(a3), d0
 	bne invalidResume
 	move.l 12(a2), LOCAL_EXPR_SLOT_INDEX(a3)
 	move.l 20(a2), d2
@@ -702,21 +772,40 @@ resumeFromExpression
 	move.l 28(a2), LOCAL_OPERAND_COUNT(a3)
 	move.l 32(a2), LOCAL_EXPR_START_TOKEN(a3)
 	move.l 36(a2), LOCAL_EXPR_END_TOKEN(a3)
+	bsr.w validateResumeLocals
+	bne invalidResume
+	move.l 16(a2), d0
+	bsr.w validateContinuationPc
+	bne invalidResume
 	move.l PRVM_FRAME_PROGRAM_PTR(a4), d0
 	add.l 16(a2), d0
+	bcs invalidResume
 	movea.l d0, a5
 	cmpa.l a6, a5
-	bhi invalidResume
+	bcc invalidResume
+	move.l d1, d3
+	lsl.l #5, d3
 	bsr.w validateExpressionResultSlot
 	bne returnWithLocals
+	move.w 0(a1), -(sp)
 	bsr.w emitOperandExprSlot
-	bne returnWithLocals
+	tst.l d0
+	bne resumeEmitFailed
+	move.w (sp)+, d7
 	move.l LOCAL_OPERAND_COUNT(a3), d0
 	addq.l #1, d0
 	move.l d0, LOCAL_OPERAND_COUNT(a3)
-	cmp.l d4, d2
-	bcs requestOperandAtCursor
+	cmpi.w #PRVM_EXPR_SLOT_READY_ERROR, d7
+	beq programLoop
+	addq.l #1, LOCAL_SCAN_INDEX(a3)
+	move.l LOCAL_SCAN_NEXT(a3), d0
+	cmp.l LOCAL_SCAN_END(a3), d0
+	bls requestOperandAtCursor
 	bra programLoop
+
+resumeEmitFailed
+	addq.l #2, sp
+	bra returnWithLocals
 
 entryBoundary
 	clr.l d1
@@ -794,6 +883,304 @@ invalidArgument
 	
 	.priv
 
+; Walk one retained operand range without changing the token cursor.
+; Inputs: local scan next/end, D4 = token count, A3/A4 = state/request.
+; Outputs: D0 = status; local expression start/end and scan-next updated.
+; Clobbers: D5/D7/A1; D1/D3 cleared only on invalid token.
+; CCR: reflects D0; stack depth unchanged.
+nextBoundary	.block
+	move.l LOCAL_SCAN_NEXT(a3), d5
+	move.l d5, LOCAL_EXPR_START_TOKEN(a3)
+	; Independent signed depths match the shared Rust boundary walker. Unmatched
+	; closes remain negative, so their following commas are not top-level.
+	clr.l -(sp)
+	clr.l -(sp)
+	clr.l -(sp)
+findOperandEndLoop
+	cmp.l LOCAL_SCAN_END(a3), d5
+	bcc operandEndFoundWithDepths
+	move.l d5, d0
+	bsr.w tokenPtrByIndex
+	bne operandTokenInvalid
+	move.w 0(a1), d7
+	cmpi.w #PRVM_TOKEN_KIND_OPEN_PAREN, d7
+	beq operandOpenParen
+	cmpi.w #PRVM_TOKEN_KIND_CLOSE_PAREN, d7
+	beq operandCloseParen
+	cmpi.w #PRVM_TOKEN_KIND_OPEN_BRACKET, d7
+	beq operandOpenBracket
+	cmpi.w #PRVM_TOKEN_KIND_CLOSE_BRACKET, d7
+	beq operandCloseBracket
+	cmpi.w #PRVM_TOKEN_KIND_OPEN_BRACE, d7
+	beq operandOpenBrace
+	cmpi.w #PRVM_TOKEN_KIND_CLOSE_BRACE, d7
+	beq operandCloseBrace
+	cmpi.w #PRVM_TOKEN_KIND_COMMA, d7
+	bne operandNextToken
+	tst.l 0(sp)
+	bne operandNextToken
+	tst.l 4(sp)
+	bne operandNextToken
+	tst.l 8(sp)
+	beq operandEndFoundWithDepths
+	bra operandNextToken
+operandOpenParen
+	addq.l #1, 0(sp)
+	bra operandNextToken
+operandCloseParen
+	subq.l #1, 0(sp)
+	bra operandNextToken
+operandOpenBracket
+	addq.l #1, 4(sp)
+	bra operandNextToken
+operandCloseBracket
+	subq.l #1, 4(sp)
+	bra operandNextToken
+operandOpenBrace
+	addq.l #1, 8(sp)
+	bra operandNextToken
+operandCloseBrace
+	subq.l #1, 8(sp)
+operandNextToken
+	addq.l #1, d5
+	bra findOperandEndLoop
+operandTokenInvalid
+	adda.l #12, sp
+	rts
+operandEndFoundWithDepths
+	adda.l #12, sp
+
+operandEndFound
+	move.l d5, LOCAL_EXPR_END_TOKEN(a3)
+	addq.l #1, d5
+	move.l d5, LOCAL_SCAN_NEXT(a3)
+	clr.l d0
+	rts
+	.bend  ; nextBoundary
+
+; Derive spans for ordinary and empty operand ranges.
+; Outputs: D0 = status, D5/D7 = columns; clobbers A1.
+; CCR: reflects D0.
+operandSpan	.block
+	move.l LOCAL_EXPR_START_TOKEN(a3), d0
+	cmp.l d4, d0
+	bcc atEnd
+	bsr.w tokenPtrByIndex
+	bne return
+	move.l 4(a1), d5
+	move.l 8(a1), d7
+	move.l LOCAL_EXPR_END_TOKEN(a3), d0
+	cmp.l LOCAL_EXPR_START_TOKEN(a3), d0
+	beq ready
+	subq.l #1, d0
+	bsr.w tokenPtrByIndex
+	bne return
+	move.l 8(a1), d7
+ready
+	clr.l d0
+return
+	rts
+atEnd
+	move.l PRVM_FRAME_SOURCE_LEN(a4), d5
+	addq.l #1, d5
+	move.l d5, d7
+	clr.l d0
+	rts
+	.bend  ; operandSpan
+
+; Validate the resumed scan, result counts and checkpoint depth before use.
+; Inputs: restored local snapshot/header; outputs D0 = zero iff valid.
+; Clobbers: D0/D5/D7/A0. CCR reflects D0.
+validateResumeLocals	.block
+	cmp.l d4, d2
+	bhi invalid
+	move.l d1, d0
+	lsl.l #5, d0
+	move.l d0, d7
+	lsr.l #5, d7
+	cmp.l d1, d7
+	bne invalid
+	cmp.l PRVM_FRAME_RESULT_CAPACITY(a4), d0
+	bhi invalid
+	cmp.l LOCAL_STEP_COUNT(a3), d6
+	bcs invalid
+	cmpi.l #LOCAL_CHECKPOINT_MAX_DEPTH, LOCAL_CHECKPOINT_DEPTH(a3)
+	bhi invalid
+	cmpi.l #1, LOCAL_SCAN_VALID(a3)
+	bne invalid
+	move.l LOCAL_SCAN_ORIGIN(a3), d0
+	cmp.l LOCAL_SCAN_END(a3), d0
+	bhi invalid
+	move.l LOCAL_SCAN_END(a3), d7
+	cmp.l d4, d7
+	bhi invalid
+	move.l LOCAL_EXPR_START_TOKEN(a3), d0
+	cmp.l LOCAL_SCAN_ORIGIN(a3), d0
+	bcs invalid
+	cmp.l LOCAL_EXPR_END_TOKEN(a3), d0
+	bhi invalid
+	move.l LOCAL_EXPR_END_TOKEN(a3), d0
+	cmp.l d7, d0
+	bhi invalid
+	addq.l #1, d0
+	cmp.l LOCAL_SCAN_NEXT(a3), d0
+	bne invalid
+	move.l LOCAL_EXPR_SLOT_INDEX(a3), d0
+	cmp.l LOCAL_OPERAND_COUNT(a3), d0
+	bne invalid
+	move.l LOCAL_SCAN_INDEX(a3), d0
+	cmp.l d4, d0
+	bhi invalid
+	cmpi.l #1, LOCAL_LOADED_FLAG(a3)
+	bhi invalid
+	cmpi.l #1, LOCAL_LABEL_FLAG(a3)
+	bhi invalid
+	cmpi.l #1, LOCAL_FINISHED_FLAG(a3)
+	bhi invalid
+	cmpi.l #1, LOCAL_BOOL_VALUE(a3)
+	bhi invalid
+	tst.l LOCAL_LOADED_FLAG(a3)
+	beq checkLabelSpan
+	move.l LOCAL_LOADED_LEXEME_OFFSET(a3), d0
+	add.l LOCAL_LOADED_LEXEME_LEN(a3), d0
+	bcs invalid
+	cmp.l PRVM_FRAME_LEXEME_LEN(a4), d0
+	bhi invalid
+checkLabelSpan
+	tst.l LOCAL_LABEL_FLAG(a3)
+	beq checkSavedStates
+	move.l LOCAL_LABEL_LEXEME_OFFSET(a3), d0
+	add.l LOCAL_LABEL_LEXEME_LEN(a3), d0
+	bcs invalid
+	cmp.l PRVM_FRAME_LEXEME_LEN(a4), d0
+	bhi invalid
+checkSavedStates
+	move.l LOCAL_CHECKPOINT_DEPTH(a3), d5
+	lea LOCAL_CHECKPOINT_STACK(a3), a0
+checkCheckpoint
+	tst.l d5
+	beq valid
+	move.l CheckpointRecord.Cursor(a0), d0
+	cmp.l d4, d0
+	bhi invalid
+	move.l CheckpointRecord.ResultCount(a0), d0
+	lsl.l #5, d0
+	move.l d0, d7
+	lsr.l #5, d7
+	cmp.l CheckpointRecord.ResultCount(a0), d7
+	bne invalid
+	cmp.l CheckpointRecord.ResultBytes(a0), d0
+	bne invalid
+	cmp.l PRVM_FRAME_RESULT_CAPACITY(a4), d0
+	bhi invalid
+	cmpi.l #1, CheckpointRecord.Finished(a0)
+	bhi invalid
+	cmpi.l #1, CheckpointRecord.Label(a0)
+	bhi invalid
+	cmpi.l #1, CheckpointRecord.Bool(a0)
+	bhi invalid
+	cmpi.l #1, CheckpointRecord.Loaded(a0)
+	bhi invalid
+	tst.l CheckpointRecord.Loaded(a0)
+	beq checkpointLabelSpan
+	move.l CheckpointRecord.LoadedOffset(a0), d0
+	add.l CheckpointRecord.LoadedLen(a0), d0
+	bcs invalid
+	cmp.l PRVM_FRAME_LEXEME_LEN(a4), d0
+	bhi invalid
+checkpointLabelSpan
+	tst.l CheckpointRecord.Label(a0)
+	beq checkpointScan
+	move.l CheckpointRecord.LabelOffset(a0), d0
+	add.l CheckpointRecord.LabelLen(a0), d0
+	bcs invalid
+	cmp.l PRVM_FRAME_LEXEME_LEN(a4), d0
+	bhi invalid
+checkpointScan
+	cmpi.l #1, CheckpointRecord.ScanValid(a0)
+	bhi invalid
+	move.l CheckpointRecord.ScanOrigin(a0), d0
+	cmp.l CheckpointRecord.ScanEnd(a0), d0
+	bhi invalid
+	move.l CheckpointRecord.ScanEnd(a0), d7
+	cmp.l d4, d7
+	bhi invalid
+	addq.l #1, d7
+	move.l CheckpointRecord.ScanNext(a0), d0
+	cmp.l CheckpointRecord.ScanOrigin(a0), d0
+	bcs invalid
+	cmp.l d7, d0
+	bhi invalid
+	cmp.l CheckpointRecord.ScanIndex(a0), d4
+	bcs invalid
+	adda.l #LOCAL_CHECKPOINT_RECORD_SIZE, a0
+	subq.l #1, d5
+	bra checkCheckpoint
+valid
+	clr.l d0
+	rts
+invalid
+	moveq #1, d0
+	rts
+	.bend  ; validateResumeLocals
+
+; Resume only at a decoded opcode boundary, following dynamic 0x50.
+; Inputs: D0 = offset, A2 = resume; outputs D0 = zero iff valid.
+; Clobbers: D0/D5/D7/A0-A1. CCR reflects D0.
+validateContinuationPc	.block
+	cmp.l PRVM_FRAME_PROGRAM_LEN(a4), d0
+	bcc invalid
+	movea.l PRVM_FRAME_PROGRAM_PTR(a4), a0
+	movea.l a0, a1
+	adda.l d0, a1
+	moveq #0, d5
+walk
+	cmpa.l a1, a0
+	beq found
+	bhi invalid
+	moveq #0, d7
+	move.b (a0)+, d7
+	moveq #0, d5
+	cmpi.b #PRVM_OPCODE_JUMP, d7
+	beq twoBytes
+	cmpi.b #PRVM_OPCODE_JUMP_IF_FALSE, d7
+	beq twoBytes
+	cmpi.b #PRVM_OPCODE_PEEK_KIND, d7
+	beq oneByte
+	cmpi.b #PRVM_OPCODE_CONSUME_OPERATOR, d7
+	beq oneByte
+	cmpi.b #PRVM_OPCODE_LOAD_INLINE_TEXT, d7
+	beq inlineText
+	cmpi.b #PRVM_OPCODE_PARSE_OPERAND_EXPR, d7
+	bne walk
+	lea 4(a0), a0
+	moveq #1, d5
+	bra walk
+oneByte
+	addq.l #1, a0
+	bra walk
+twoBytes
+	addq.l #2, a0
+	bra walk
+inlineText
+	cmpa.l a1, a0
+	bcc invalid
+	moveq #0, d7
+	move.b (a0)+, d7
+	adda.l d7, a0
+	bra walk
+found
+	tst.l d5
+	beq invalid
+	cmpi.l #$FFFFFFFF, -4(a0)
+	bne invalid
+	clr.l d0
+	rts
+invalid
+	moveq #1, d0
+	rts
+	.bend  ; validateContinuationPc
+
 currentTokenPtr	.block
 	move.l d2, d0
 	bra tokenPtrByIndex
@@ -858,6 +1245,20 @@ pushCheckpoint	.block
 	move.l LOCAL_FINISHED_FLAG(a3), (a0)+
 	move.l LOCAL_LABEL_FLAG(a3), (a0)+
 	move.l LOCAL_BOOL_VALUE(a3), (a0)+
+	move.l LOCAL_LOADED_FLAG(a3), (a0)+
+	move.l LOCAL_LOADED_COL_START(a3), (a0)+
+	move.l LOCAL_LOADED_COL_END(a3), (a0)+
+	move.l LOCAL_LOADED_LEXEME_OFFSET(a3), (a0)+
+	move.l LOCAL_LOADED_LEXEME_LEN(a3), (a0)+
+	move.l LOCAL_LABEL_COL_START(a3), (a0)+
+	move.l LOCAL_LABEL_COL_END(a3), (a0)+
+	move.l LOCAL_LABEL_LEXEME_OFFSET(a3), (a0)+
+	move.l LOCAL_LABEL_LEXEME_LEN(a3), (a0)+
+	move.l LOCAL_SCAN_VALID(a3), (a0)+
+	move.l LOCAL_SCAN_ORIGIN(a3), (a0)+
+	move.l LOCAL_SCAN_END(a3), (a0)+
+	move.l LOCAL_SCAN_NEXT(a3), (a0)+
+	move.l LOCAL_SCAN_INDEX(a3), (a0)+
 	addq.l #1, LOCAL_CHECKPOINT_DEPTH(a3)
 	clr.l d0
 	rts
@@ -887,10 +1288,7 @@ invalidProgram
 
 checkpointAddressForDepth	.block
 	move.l d0, d5
-	lsl.l #5, d5
-	move.l d0, d7
-	lsl.l #2, d7
-	sub.l d7, d5
+	mulu.w #LOCAL_CHECKPOINT_RECORD_SIZE, d5
 	lea LOCAL_CHECKPOINT_STACK(a3), a0
 	adda.l d5, a0
 	rts
@@ -1061,17 +1459,8 @@ return
 	.bend  ; emitDirectiveText
 
 emitOperandTextSpan	.block
-	move.l LOCAL_EXPR_START_TOKEN(a3), d0
-	cmp.l LOCAL_EXPR_END_TOKEN(a3), d0
-	bcc none
-	bsr.w tokenPtrByIndex
+	bsr.w operandSpan
 	bne return
-	move.l 4(a1), d5
-	move.l LOCAL_EXPR_END_TOKEN(a3), d0
-	subq.l #1, d0
-	bsr.w tokenPtrByIndex
-	bne return
-	move.l 8(a1), d7
 	move.l d5, -(sp)
 	move.l d7, -(sp)
 	bsr.w resultRecordPtr
@@ -1090,24 +1479,13 @@ emitOperandTextSpan	.block
 	clr.l 28(a2)
 	bra commitResultRecord
 
-none
-	clr.l d0
 return
 	rts
 	.bend  ; emitOperandTextSpan
 
 emitOperandExprSlot	.block
-	move.l LOCAL_EXPR_START_TOKEN(a3), d0
-	cmp.l LOCAL_EXPR_END_TOKEN(a3), d0
-	bcc return
-	bsr.w tokenPtrByIndex
+	bsr.w operandSpan
 	bne return
-	move.l 4(a1), d5
-	move.l LOCAL_EXPR_END_TOKEN(a3), d0
-	subq.l #1, d0
-	bsr.w tokenPtrByIndex
-	bne return
-	move.l 8(a1), d7
 	move.l d5, -(sp)
 	move.l d7, -(sp)
 	bsr.w resultRecordPtr
@@ -1151,9 +1529,9 @@ return
 writeExpressionRequest	.block
 	movem.l d1-d2/a1-a2, -(sp)
 	movea.l PRVM_FRAME_EXPR_REQUEST_PTR(a4), a2
-	move.w #1, 0(a2)
-	clr.w 2(a2)
-	move.l LOCAL_OPERAND_COUNT(a3), 4(a2)
+	move.w #PRVM_EXPR_REQUEST_VERSION_V2, 0(a2)
+	move.w #PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a2)
+	move.l LOCAL_SCAN_INDEX(a3), 4(a2)
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), 8(a2)
 	move.l LOCAL_EXPR_START_TOKEN(a3), 12(a2)
 	move.l LOCAL_EXPR_END_TOKEN(a3), 16(a2)
@@ -1163,8 +1541,10 @@ writeExpressionRequest	.block
 	bsr.w tokenPtrByIndex
 	bne return
 	move.l 4(a1), d1
+	move.l 8(a1), d2
 	move.l LOCAL_EXPR_END_TOKEN(a3), d0
-	beq.s writeSingleTokenSpan
+	cmp.l LOCAL_EXPR_START_TOKEN(a3), d0
+	beq.s writeSpan
 	subq.l #1, d0
 	cmp.l d4, d0
 	bcc.s writeSingleTokenSpan
@@ -1185,8 +1565,10 @@ writeSpan
 
 endSpan
 	move.l PRVM_FRAME_LINE_NUM(a4), 20(a2)
-	clr.l 24(a2)
-	clr.l 28(a2)
+	move.l PRVM_FRAME_SOURCE_LEN(a4), d0
+	addq.l #1, d0
+	move.l d0, 24(a2)
+	move.l d0, 28(a2)
 	clr.l d0
 	bra.s returnOk
 
@@ -1209,16 +1591,17 @@ writeResumeState	.block
 	move.l a5, d0
 	sub.l PRVM_FRAME_PROGRAM_PTR(a4), d0
 	move.l d0, 16(a2)
-	move.l LOCAL_EXPR_END_TOKEN(a3), d0
-	cmp.l d4, d0
-	bcc writeResumeCursor
-	addq.l #1, d0
-writeResumeCursor
-	move.l d0, 20(a2)
+	move.l d2, 20(a2)
 	move.l d1, 24(a2)
 	move.l LOCAL_OPERAND_COUNT(a3), 28(a2)
 	move.l LOCAL_EXPR_START_TOKEN(a3), 32(a2)
 	move.l LOCAL_EXPR_END_TOKEN(a3), 36(a2)
+	lea PRVM_RESUME_LOCAL_STATE(a2), a0
+	movea.l a3, a1
+	move.w #LOCAL_SIZE / 4 - 1, d7
+copyLocals
+	move.l (a1)+, (a0)+
+	dbra d7, copyLocals
 	clr.l d0
 	rts
 	.bend  ; writeResumeState

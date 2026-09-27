@@ -42,6 +42,42 @@ mod native_cpex;
 mod branch_failures;
 
 #[test]
+#[ignore = "requires configured FS-UAE; PRVM boundary and resume proof"]
+fn external_fs_uae_prvm_boundary_smoke() {
+    let outcome = crate::fs_uae_smoke::run_prvm_hunk_smoke_from_env(&workspace_root())
+        .expect("fresh native PRVM boundary checks");
+    let crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } = outcome else {
+        panic!("real native proof required");
+    };
+    assert_eq!(runs.len(), 2);
+    for run in runs {
+        assert!(
+            run.success && run.protocol_completed,
+            "{}: {} {}",
+            run.example_name,
+            run.stdout,
+            run.stderr
+        );
+        assert_eq!(run.exit_code, Some(0));
+        let marker = if run.example_name == "prvm_smoke" {
+            "OPFORGE-PRVM smoke OK"
+        } else {
+            "OPFORGE-PRVM-ITER smoke OK"
+        };
+        assert!(
+            run.stdout.contains(marker),
+            "{}: {}",
+            run.example_name,
+            run.stdout
+        );
+        eprintln!(
+            "PRVM_BOUNDARY_SMOKE example={} seconds={:?} image={:?}",
+            run.example_name, run.start_to_done_host_seconds, run.native_image_digest
+        );
+    }
+}
+
+#[test]
 fn external_fs_uae_hunk_smoke() {
     match crate::fs_uae_smoke::run_hunk_smoke_from_env(&workspace_root())
         .expect("FS-UAE smoke helper should complete or skip cleanly")

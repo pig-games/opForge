@@ -18,7 +18,15 @@ use crate::vm_opcore::{
 pub const NATIVE_PRVM_EXPR_REQUEST_RECORD_SIZE: usize = 32;
 pub const NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE: usize = 32;
 
-pub const NATIVE_PRVM_EXPR_REQUEST_VERSION_V1: u16 = 1;
+pub const NATIVE_PRVM_EXPR_REQUEST_VERSION_V2: u16 = 2;
+
+/// The request's range semantics, encoded in the header word at byte offset 2.
+/// This is independent of the native runtime's opaque resume record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativePrvmExprRequestMode {
+    StaticRange,
+    DynamicBoundary,
+}
 
 pub const NATIVE_PRVM_EXPR_SLOT_EMPTY: u16 = 0;
 pub const NATIVE_PRVM_EXPR_SLOT_READY: u16 = 1;
@@ -26,6 +34,7 @@ pub const NATIVE_PRVM_EXPR_SLOT_READY_ERROR: u16 = 2;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NativePrvmExprRequest {
+    pub mode: NativePrvmExprRequestMode,
     pub operand_index: u32,
     pub expr_slot_index: u32,
     pub start_token: u32,
@@ -201,41 +210,55 @@ impl<'a> NativePrvmHostExpressionBridge<'a> {
             })?;
 
         let mut operands = Vec::new();
-        parse_operand_expr_range(
-            self.tokens.as_slice(),
-            start,
-            end,
-            OperandExprBoundary {
-                end_span: request.boundary_span,
-                end_token_text: self.boundary_token_text(end),
-            },
-            OperandExprParseHints {
-                syntax: if self
-                    .mnemonic
-                    .as_deref()
-                    .is_some_and(|name| !name.starts_with('.'))
-                {
-                    crate::vm_opasm::OperandExprSyntax::Instruction
-                } else {
-                    crate::vm_opasm::OperandExprSyntax::Core
+        // Dynamic parsing supplies zero for its first empty boundary. Static
+        // ranges and subsequent dynamic boundaries use the shared error rule.
+        if request.mode == NativePrvmExprRequestMode::DynamicBoundary
+            && request.operand_index == 0
+            && start == end
+        {
+            let span = self
+                .tokens
+                .get(start)
+                .map(|token| token.span)
+                .unwrap_or(request.boundary_span);
+            operands.push(Expr::Number("0".to_string(), span));
+        } else {
+            parse_operand_expr_range(
+                self.tokens.as_slice(),
+                start,
+                end,
+                OperandExprBoundary {
+                    end_span: request.boundary_span,
+                    end_token_text: self.boundary_token_text(end),
                 },
-                mnemonic: self.mnemonic.as_deref(),
-                operand_index: request.operand_index as usize,
-            },
-            &VmExprParseContext {
-                model: self.model,
-                cpu_id: self.cpu_id,
-                dialect_override: self.dialect_override,
-                expr_parser_opt_in_families: &[],
-                expr_parser_force_host_families: &[],
-                expr_handler: None,
-            },
-            &mut operands,
-        )
-        .map_err(|err| NativePrvmBridgeError::ExpressionParser {
-            message: err.message,
-            span: err.span,
-        })?;
+                OperandExprParseHints {
+                    syntax: if self
+                        .mnemonic
+                        .as_deref()
+                        .is_some_and(|name| !name.starts_with('.'))
+                    {
+                        crate::vm_opasm::OperandExprSyntax::Instruction
+                    } else {
+                        crate::vm_opasm::OperandExprSyntax::Core
+                    },
+                    mnemonic: self.mnemonic.as_deref(),
+                    operand_index: request.operand_index as usize,
+                },
+                &VmExprParseContext {
+                    model: self.model,
+                    cpu_id: self.cpu_id,
+                    dialect_override: self.dialect_override,
+                    expr_parser_opt_in_families: &[],
+                    expr_parser_force_host_families: &[],
+                    expr_handler: None,
+                },
+                &mut operands,
+            )
+            .map_err(|err| NativePrvmBridgeError::ExpressionParser {
+                message: err.message,
+                span: err.span,
+            })?;
+        }
 
         let expr = operands
             .pop()
@@ -363,10 +386,16 @@ pub fn decode_expr_request_record(
             actual: bytes.len(),
         });
     }
-    if read_u16(bytes, 0) != NATIVE_PRVM_EXPR_REQUEST_VERSION_V1 || read_u16(bytes, 2) != 0 {
+    if read_u16(bytes, 0) != NATIVE_PRVM_EXPR_REQUEST_VERSION_V2 {
         return Err(NativePrvmBridgeError::InvalidExpressionRequestHeader);
     }
+    let mode = match read_u16(bytes, 2) {
+        0 => NativePrvmExprRequestMode::StaticRange,
+        1 => NativePrvmExprRequestMode::DynamicBoundary,
+        _ => return Err(NativePrvmBridgeError::InvalidExpressionRequestHeader),
+    };
     Ok(NativePrvmExprRequest {
+        mode,
         operand_index: read_u32(bytes, 4),
         expr_slot_index: read_u32(bytes, 8),
         start_token: read_u32(bytes, 12),

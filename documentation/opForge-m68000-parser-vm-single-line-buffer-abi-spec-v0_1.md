@@ -145,7 +145,7 @@ ABI can grow without consuming more call registers.
 | `4` | 2 | `abi_version` | Must be `1`. |
 | `6` | 2 | `frame_size` | Must be at least `112`. |
 | `8` | 2 | `call_mode` | `0` start, `1` resume after expression result. |
-| `10` | 2 | `entry_kind` | Must be `1` for delegated opasm statement. |
+| `10` | 2 | `entry_kind` | `1` delegated opasm statement; `2` initial macro descriptors. |
 | `12` | 4 | `line_num` | Source line number for spans and diagnostics. |
 | `16` | 4 | `source_ptr` | Pointer to newline-free source bytes. |
 | `20` | 4 | `source_len` | Source byte length. |
@@ -182,8 +182,12 @@ pointers for `call_mode = 0` are `source_ptr`, `token_ptr` when `token_count >
 `entry_kind` values:
 
 - `1`: delegated opasm statement request
+- `2`: experimental initial macro descriptor request, described below
 
-All other values are entry-boundary violations in v0.1.
+All other values are entry-boundary violations. Statement entry 1 continues to
+reject macro descriptor programs; entry 2 does not accept expression resumes.
+Shared frame/status/result definitions are owned by `prvm.amigaos.abi`;
+statement resume internals remain owned by `prvm.amigaos.runtime`.
 
 `call_mode` values:
 
@@ -202,7 +206,7 @@ The v0.1 PRVM status codes and return-register meanings are:
 | `0` | `PRVM_STATUS_OK` | A final parser result was emitted. | Result record count. | Final token cursor. | Result bytes committed. |
 | `1` | `PRVM_STATUS_EXPR_REQUEST` | Native paused and requests Rust/opcore expression parsing. | Requested expression slot index. | Current token cursor. | Resume-state bytes committed. |
 | `2` | `PRVM_STATUS_NEWLINE_UNSUPPORTED` | Source contains `0x0A` or `0x0D`. | `0`. | Source-byte offset of first newline. | `0`. |
-| `3` | `PRVM_STATUS_ENTRY_BOUNDARY` | `entry_kind` is not delegated opasm statement. | `0`. | `0`. | `0`. |
+| `3` | `PRVM_STATUS_ENTRY_BOUNDARY` | `entry_kind` is neither supported entry. | `0`. | `0`. | `0`. |
 | `4` | `PRVM_STATUS_INVALID_ARGUMENT` | Request frame, pointer, capacity, or mode is invalid. | `0`. | `0`. | `0`. |
 | `5` | `PRVM_STATUS_INVALID_TOKEN` | Token record or lexeme reference is malformed. | `0`. | Offending token index, or `0` if unavailable. | `0`. |
 | `6` | `PRVM_STATUS_INVALID_PROGRAM` | Parser contract or bytecode is invalid for v0.1. | `0`. | Current token cursor, or `0` before execution. | `0`. |
@@ -431,7 +435,7 @@ Unsupported newline input:
 
 Non-delegated entry request:
 
-- If `entry_kind != 1`, `prvmRun68000` must return
+- If `entry_kind` is neither `1` nor `2`, `prvmRun68000` must return
   `PRVM_STATUS_ENTRY_BOUNDARY` and must not execute parser bytecode.
 
 Invalid request frame:
@@ -520,3 +524,60 @@ The first host-side ABI tests derived from this spec should decode:
 No open questions block v0.1. Later work items may revise this specification if
 host-side decode tests prove that additional result record kinds or expression
 slot metadata are required for Rust PRVM v2 parity.
+
+## Experimental macro descriptor entry
+
+Entry 2 uses frame ABI 1 and parser contract version 2, with `call_mode = 0`.
+The required inputs are immutable original source bytes, ordered initial lexical
+records and a package-selected descriptor program. Token columns remain one-based
+byte offsets; the service consumes their spans, not decoded string lexemes.
+Resume, expression and diagnostic buffers are unused. The output capacity is in
+bytes; at most 64 complete records are produced. The entry has bounded call-stack
+staging, validates the complete program and publishes atomically. Failure leaves
+the caller's result bytes unchanged and returns zero count/committed bytes.
+
+On success D1 is the descriptor count, D2 is zero and D3 is count times 32.
+On failure D0 identifies invalid input/grammar (4), lexical span (5), program (6),
+capacity (7) or work budget (12). D2 identifies the failing source or program byte
+offset where available, and is zero for a work-budget failure. These are the macro
+entry's status-specific meanings; statement entry return meanings above persist.
+
+| Opcode | Operands | Effect |
+|---|---|---|
+| `0x80` | mode, flags | Select call (1) or header (2) envelope. Flags enable labels (1), outer parentheses (2), leading comma (4, call only), unquoted semicolon comments (8). |
+| `0x81` | depth policy, separator | Split arguments using saturating delimiter depths (policy 1) and comma (44). |
+| `0x82` | default policy | Select typed/name formals and first raw equals defaults (policy 1). Header only. |
+| `0x83` | none | Mark the complete descriptor set for publication. |
+| `0x00` | none | End and publish; no trailing bytes allowed. |
+
+The normal call/header programs select flags 15/11. Unknown policies and invalid
+operation ordering fail. Work budget counts opcodes, traversed source regions and
+record construction; it is an abstract bound, not elapsed time.
+
+The macro event layout is distinct from statement events despite the same size:
+
+| Offset | Size | Field |
+|---|---:|---|
+| 0 | 2 | Kind: line 8, argument 9, formal 10, default 11. |
+| 2 | 2 | Line role: call 1, macro 2, segment 3; zero for children. |
+| 4 | 4 | Inclusive token index. |
+| 8 | 4 | Exclusive token index. |
+| 12 | 4 | Inclusive original source-byte offset. |
+| 16 | 4 | Exclusive original source-byte offset. |
+| 20 | 4 | Auxiliary 0. |
+| 24 | 4 | Auxiliary 1. |
+| 28 | 4 | Auxiliary 2. |
+
+Absent indices use `0xffffffff`. A line's token range selects its name, source
+range preserves the supplied full list, and auxiliaries select first child,
+supplied child count and optional label token. Argument/default records select
+both executable tokens and spelling. A formal selects its name; auxiliary 0
+selects an optional type token, auxiliary 1 an optional default descriptor, and
+auxiliary 2 is reserved. Defaults follow the contiguous formal region. An empty
+default has an explicit empty span; it differs from an absent default.
+
+Hosts bind identities and copy VM-selected spelling fragments; they must not
+resplit commas, scan equals, trim whitespace or decode original spelling again.
+This service is not yet connected to compact capsule/template storage. Its
+[active migration plan](plans/compact-frontend-vm-boundary.md#macro-descriptor-service-checkpoint)
+tracks the retained consumers and native proof limits.

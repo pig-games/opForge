@@ -2,6 +2,7 @@
 
 	.module main
 	.cpu 68020
+	.use prvm.amigaos.abi as prvm_abi
 	.use prvm.amigaos.runtime
 
 SYS_BASE                        = 4
@@ -12,37 +13,10 @@ OPEN_LIBRARY                    = -552
 CLOSE_LIBRARY                   = -414
 PUT_STR                         = -948
 
-PRVM_REQUEST_FRAME_SIZE         = 112
 PRVM_RESUME_STATE_SIZE          = runtime.PRVM_RESUME_STATE_SIZE
 PRVM_RESUME_CHECKPOINT_DEPTH    = runtime.PRVM_RESUME_LOCAL_STATE + runtime.LOCAL_CHECKPOINT_DEPTH
 PRVM_RESUME_CHECKPOINT_COUNT    = runtime.PRVM_RESUME_LOCAL_STATE + runtime.LOCAL_CHECKPOINT_STACK + 4
-PRVM_MAGIC_OPRP                 = $4F505250
-PRVM_ABI_VERSION_V1             = 1
-PRVM_CALL_MODE_START            = 0
-PRVM_CALL_MODE_RESUME           = 1
-PRVM_ENTRY_KIND_OPASM_STATEMENT = 1
-PRVM_TOKEN_RECORD_SIZE          = 20
-PRVM_PARSER_CONTRACT_VERSION_V2 = 2
 
-PRVM_STATUS_OK                  = 0
-PRVM_STATUS_EXPR_REQUEST        = 1
-PRVM_STATUS_NEWLINE_UNSUPPORTED = 2
-PRVM_STATUS_ENTRY_BOUNDARY      = 3
-PRVM_STATUS_INVALID_ARGUMENT    = 4
-PRVM_STATUS_INVALID_TOKEN       = 5
-PRVM_STATUS_INVALID_PROGRAM     = 6
-PRVM_STATUS_OUTPUT_OVERFLOW     = 7
-PRVM_STATUS_UNSUPPORTED_OPCODE  = 9
-PRVM_STATUS_INVALID_RESUME      = 10
-PRVM_STATUS_EXPR_RESULT_INVALID = 11
-PRVM_STATUS_BUDGET_EXCEEDED     = 12
-
-PRVM_RESULT_BEGIN_STATEMENT     = 1
-PRVM_RESULT_LABEL_TEXT          = 2
-PRVM_RESULT_MNEMONIC_TEXT       = 3
-PRVM_RESULT_OPERAND_EXPR_SLOT   = 4
-PRVM_RESULT_FINISH_LINE         = 5
-PRVM_RESULT_OPERAND_TEXT        = 7
 PRVM_RESUME_MAGIC               = $50525253
 PRVM_NATIVE_EXPR_STATE_READY    = 1
 PRVM_NATIVE_EXPR_KIND_IMM_DEC   = 1
@@ -97,7 +71,7 @@ haveDos
 
 	bsr.w buildRequestFrame
 	lea RequestFrame(PC), a0
-	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	move.l #prvm_abi.PRVM_REQUEST_FRAME_SIZE, d0
 	jsr runtime.prvmRun68000.l
 
 	lea SmokeStatus(PC), a0
@@ -113,8 +87,8 @@ haveDos
 	bne.s reportFailure
 
 	lea RequestFrame(PC), a0
-	move.w #PRVM_CALL_MODE_RESUME, 8(a0)
-	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	move.w #prvm_abi.PRVM_CALL_MODE_RESUME, 8(a0)
+	move.l #prvm_abi.PRVM_REQUEST_FRAME_SIZE, d0
 	jsr runtime.prvmRun68000.l
 
 	lea SmokeStatus(PC), a0
@@ -154,11 +128,11 @@ putStr
 
 buildRequestFrame
 	lea RequestFrame(PC), a0
-	move.l #PRVM_MAGIC_OPRP, 0(a0)
-	move.w #PRVM_ABI_VERSION_V1, 4(a0)
-	move.w #PRVM_REQUEST_FRAME_SIZE, 6(a0)
-	move.w #PRVM_CALL_MODE_START, 8(a0)
-	move.w #PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(a0)
+	move.l #prvm_abi.PRVM_MAGIC_OPRP, 0(a0)
+	move.w #prvm_abi.PRVM_ABI_VERSION_V1, 4(a0)
+	move.w #prvm_abi.PRVM_REQUEST_FRAME_SIZE, 6(a0)
+	move.w #prvm_abi.PRVM_CALL_MODE_START, 8(a0)
+	move.w #prvm_abi.PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(a0)
 	move.l #1, 12(a0)
 	lea SourceLine(PC), a1
 	move.l a1, 16(a0)
@@ -166,7 +140,7 @@ buildRequestFrame
 	lea TokenRecord(PC), a1
 	move.l a1, 24(a0)
 	move.l #4, 28(a0)
-	move.w #PRVM_TOKEN_RECORD_SIZE, 32(a0)
+	move.w #prvm_abi.PRVM_TOKEN_RECORD_SIZE, 32(a0)
 	clr.w 34(a0)
 	lea LexemeBytes(PC), a1
 	move.l a1, 36(a0)
@@ -189,7 +163,7 @@ buildRequestFrame
 	lea ExprResultBuffer(PC), a1
 	move.l a1, 84(a0)
 	move.l #1, 88(a0)
-	move.l #PRVM_PARSER_CONTRACT_VERSION_V2, 92(a0)
+	move.l #prvm_abi.PRVM_PARSER_CONTRACT_VERSION_V2, 92(a0)
 	move.l #64, 96(a0)
 	clr.l 100(a0)
 	clr.l 104(a0)
@@ -296,7 +270,7 @@ invalidExprService
 validateExprRequest
 	lea SmokeStatus(PC), a1
 	lea ExprRequestBuffer(PC), a0
-	cmpi.l #PRVM_STATUS_EXPR_REQUEST, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_EXPR_REQUEST, 0(a1)
 	bne.w invalidStatus
 	tst.l 4(a1)
 	bne.w invalidExprSlot
@@ -304,9 +278,9 @@ validateExprRequest
 	bne.w invalidExprCursor
 	cmpi.l #PRVM_RESUME_STATE_SIZE, 12(a1)
 	bne.w invalidExprResumeBytes
-	cmpi.w #runtime.PRVM_EXPR_REQUEST_VERSION_V2, 0(a0)
+	cmpi.w #prvm_abi.PRVM_EXPR_REQUEST_VERSION_V2, 0(a0)
 	bne.w invalidExprRequest
-	cmpi.w #runtime.PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a0)
+	cmpi.w #prvm_abi.PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a0)
 	bne.w invalidExprRequest
 	tst.l 4(a0)
 	bne.w invalidExprOperand
@@ -331,7 +305,7 @@ validateExprRequest
 validateResult
 	lea SmokeStatus(PC), a1
 	lea ResultBuffer(PC), a0
-	cmpi.l #PRVM_STATUS_OK, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_OK, 0(a1)
 	bne.w invalidStatus
 	cmpi.l #6, 4(a1)
 	bne.w invalidCount
@@ -339,9 +313,9 @@ validateResult
 	bne.w invalidCursor
 	cmpi.l #192, 12(a1)
 	bne.w invalidBytes
-	cmpi.w #PRVM_RESULT_BEGIN_STATEMENT, 0(a0)
+	cmpi.w #prvm_abi.PRVM_RESULT_BEGIN_STATEMENT, 0(a0)
 	bne.w invalidBegin
-	cmpi.w #PRVM_RESULT_LABEL_TEXT, 32(a0)
+	cmpi.w #prvm_abi.PRVM_RESULT_LABEL_TEXT, 32(a0)
 	bne.w invalidLabel
 	cmpi.l #1, 40(a0)
 	bne.w invalidLabel
@@ -351,7 +325,7 @@ validateResult
 	bne.w invalidLabel
 	cmpi.l #5, 52(a0)
 	bne.w invalidLabel
-	cmpi.w #PRVM_RESULT_MNEMONIC_TEXT, 64(a0)
+	cmpi.w #prvm_abi.PRVM_RESULT_MNEMONIC_TEXT, 64(a0)
 	bne.w invalidMnemonic
 	cmpi.l #8, 72(a0)
 	bne.w invalidColStart
@@ -361,7 +335,7 @@ validateResult
 	bne.w invalidLexemeOffset
 	cmpi.l #3, 84(a0)
 	bne.w invalidLexemeLen
-	cmpi.w #PRVM_RESULT_OPERAND_TEXT, 96(a0)
+	cmpi.w #prvm_abi.PRVM_RESULT_OPERAND_TEXT, 96(a0)
 	bne.w invalidOperand
 	cmpi.l #12, 104(a0)
 	bne.w invalidOperand
@@ -371,7 +345,7 @@ validateResult
 	bne.w invalidExprOperand
 	cmpi.l #4, 116(a0)
 	bne.w invalidExprEnd
-	cmpi.w #PRVM_RESULT_OPERAND_EXPR_SLOT, 128(a0)
+	cmpi.w #prvm_abi.PRVM_RESULT_OPERAND_EXPR_SLOT, 128(a0)
 	bne.w invalidOperand
 	cmpi.l #12, 136(a0)
 	bne.w invalidOperand
@@ -385,7 +359,7 @@ validateResult
 	bne.w invalidExprStart
 	cmpi.l #4, 156(a0)
 	bne.w invalidExprEnd
-	cmpi.w #PRVM_RESULT_FINISH_LINE, 160(a0)
+	cmpi.w #prvm_abi.PRVM_RESULT_FINISH_LINE, 160(a0)
 	bne.w invalidFinish
 	bsr.w validateNativeExprSlot
 	bne.s validateResultReturn
@@ -425,27 +399,27 @@ validateNativeExprSlot
 
 invalidStatus
 	bsr.w formatStatus
-	cmpi.l #PRVM_STATUS_EXPR_REQUEST, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_EXPR_REQUEST, 0(a1)
 	beq.s invalidStatusExpr
-	cmpi.l #PRVM_STATUS_NEWLINE_UNSUPPORTED, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_NEWLINE_UNSUPPORTED, 0(a1)
 	beq.s invalidStatusNewline
-	cmpi.l #PRVM_STATUS_ENTRY_BOUNDARY, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_ENTRY_BOUNDARY, 0(a1)
 	beq.s invalidStatusEntry
-	cmpi.l #PRVM_STATUS_INVALID_ARGUMENT, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_INVALID_ARGUMENT, 0(a1)
 	beq.s invalidStatusArgument
-	cmpi.l #PRVM_STATUS_INVALID_TOKEN, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_INVALID_TOKEN, 0(a1)
 	beq.s invalidStatusToken
-	cmpi.l #PRVM_STATUS_INVALID_PROGRAM, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_INVALID_PROGRAM, 0(a1)
 	beq.s invalidStatusProgram
-	cmpi.l #PRVM_STATUS_OUTPUT_OVERFLOW, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_OUTPUT_OVERFLOW, 0(a1)
 	beq.s invalidStatusOverflow
-	cmpi.l #PRVM_STATUS_UNSUPPORTED_OPCODE, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_UNSUPPORTED_OPCODE, 0(a1)
 	beq.s invalidStatusOpcode
-	cmpi.l #PRVM_STATUS_INVALID_RESUME, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_INVALID_RESUME, 0(a1)
 	beq.s invalidStatusResume
-	cmpi.l #PRVM_STATUS_EXPR_RESULT_INVALID, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_EXPR_RESULT_INVALID, 0(a1)
 	beq.s invalidStatusExprResult
-	cmpi.l #PRVM_STATUS_BUDGET_EXCEEDED, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_BUDGET_EXCEEDED, 0(a1)
 	beq.s invalidStatusBudget
 	lea FailureStatusText(PC), a1
 	bra.w invalid
@@ -663,11 +637,11 @@ tokensReady
 	clr.l BoundaryRequestCount
 run
 	lea RequestFrame(PC), a0
-	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	move.l #prvm_abi.PRVM_REQUEST_FRAME_SIZE, d0
 	jsr runtime.prvmRun68000.l
-	cmpi.l #PRVM_STATUS_EXPR_REQUEST, d0
+	cmpi.l #prvm_abi.PRVM_STATUS_EXPR_REQUEST, d0
 	beq expressionRequest
-	cmpi.l #PRVM_STATUS_OK, d0
+	cmpi.l #prvm_abi.PRVM_STATUS_OK, d0
 	bne fail
 	cmp.l 24(a4), d2
 	bne fail
@@ -684,9 +658,9 @@ expressionRequest
 	bcc fail
 	movea.l BoundaryExpected, a2
 	lea ExprRequestBuffer(PC), a0
-	cmpi.w #runtime.PRVM_EXPR_REQUEST_VERSION_V2, 0(a0)
+	cmpi.w #prvm_abi.PRVM_EXPR_REQUEST_VERSION_V2, 0(a0)
 	bne fail
-	cmpi.w #runtime.PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a0)
+	cmpi.w #prvm_abi.PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a0)
 	bne fail
 	move.l (a2)+, d0
 	cmp.l 12(a0), d0
@@ -735,7 +709,7 @@ service
 	move.l #$FFFFFFFF, 24(a1)
 	clr.l 28(a1)
 	lea RequestFrame(PC), a0
-	move.w #PRVM_CALL_MODE_RESUME, 8(a0)
+	move.w #prvm_abi.PRVM_CALL_MODE_RESUME, 8(a0)
 	bra run
 success
 	cmpi.l #5, BoundaryZeroCount
@@ -756,14 +730,14 @@ fail
 validateMalformedResumes	.block
 	bsr.w buildRequestFrame
 	lea RequestFrame(PC), a0
-	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	move.l #prvm_abi.PRVM_REQUEST_FRAME_SIZE, d0
 	jsr runtime.prvmRun68000.l
-	cmpi.l #PRVM_STATUS_EXPR_REQUEST, d0
+	cmpi.l #prvm_abi.PRVM_STATUS_EXPR_REQUEST, d0
 	bne fail
 	bsr.w serviceExprRequest
 	bne fail
 	lea RequestFrame(PC), a0
-	move.w #PRVM_CALL_MODE_RESUME, 8(a0)
+	move.w #prvm_abi.PRVM_CALL_MODE_RESUME, 8(a0)
 	lea ResumeBuffer(PC), a4
 	move.w 6(a4), d4
 	addq.w #4, 6(a4)
@@ -805,12 +779,12 @@ validateMalformedResumes	.block
 	lea BoundaryProgramNestedCheckpoint(PC), a1
 	move.l a1, 44(a0)
 	move.l #23, 48(a0)
-	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	move.l #prvm_abi.PRVM_REQUEST_FRAME_SIZE, d0
 	jsr runtime.prvmRun68000.l
-	cmpi.l #PRVM_STATUS_EXPR_REQUEST, d0
+	cmpi.l #prvm_abi.PRVM_STATUS_EXPR_REQUEST, d0
 	bne fail
 	lea RequestFrame(PC), a0
-	move.w #PRVM_CALL_MODE_RESUME, 8(a0)
+	move.w #prvm_abi.PRVM_CALL_MODE_RESUME, 8(a0)
 	lea ResumeBuffer(PC), a4
 	move.l #$FFFFFFFF, PRVM_RESUME_CHECKPOINT_COUNT(a4)
 	bsr.w reject
@@ -819,17 +793,17 @@ validateMalformedResumes	.block
 	rts
 rejectExpression
 	lea RequestFrame(PC), a0
-	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	move.l #prvm_abi.PRVM_REQUEST_FRAME_SIZE, d0
 	jsr runtime.prvmRun68000.l
-	cmpi.l #PRVM_STATUS_EXPR_RESULT_INVALID, d0
+	cmpi.l #prvm_abi.PRVM_STATUS_EXPR_RESULT_INVALID, d0
 	bne fail
 	clr.l d0
 	rts
 reject
 	lea RequestFrame(PC), a0
-	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	move.l #prvm_abi.PRVM_REQUEST_FRAME_SIZE, d0
 	jsr runtime.prvmRun68000.l
-	cmpi.l #PRVM_STATUS_INVALID_RESUME, d0
+	cmpi.l #prvm_abi.PRVM_STATUS_INVALID_RESUME, d0
 	bne fail
 	clr.l d0
 	rts

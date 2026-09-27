@@ -6,6 +6,7 @@
 
 	.module opforge.cli.assembly_session
 	.cpu 68020
+	.use prvm.amigaos.abi as prvm_abi
 
 	.use opasm.amigaos.engine
 	.use opasm.amigaos.compile_values as compile_values
@@ -41,7 +42,7 @@ opforgeNativeCliRecordPrvmStatementLine	.block
 	movem.l d1-d7/a0-a2, -(sp)
 	move.l state.NativeCliPrvmRouteStatus, d1
 	beq.s routeOk
-	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, d1
+	cmpi.l #prvm_abi.PRVM_STATUS_EXPR_REQUEST, d1
 	bne.w sourceOnly
 
 routeOk
@@ -73,7 +74,7 @@ directiveKindReady
 	move.w d0, state.NativeCliStmtDirectiveKindAuthoritative
 	move.w state.NativeCliPrvmResultCount, d7
 	move.l state.NativeCliPrvmRouteStatus, d1
-	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, d1
+	cmpi.l #prvm_abi.PRVM_STATUS_EXPR_REQUEST, d1
 	bne.s haveCount
 	move.w #constants.PRVM_RESULT_RECORD_COUNT, d7
 
@@ -85,24 +86,24 @@ haveCount
 scan
 	tst.w 0(a2)
 	beq.w finalize
-	cmpi.w #constants.PRVM_RESULT_LABEL_TEXT, 0(a2)
+	cmpi.w #prvm_abi.PRVM_RESULT_LABEL_TEXT, 0(a2)
 	beq.w haveLabel
-	cmpi.w #constants.PRVM_RESULT_MNEMONIC_TEXT, 0(a2)
+	cmpi.w #prvm_abi.PRVM_RESULT_MNEMONIC_TEXT, 0(a2)
 	beq.w haveMnemonic
-	cmpi.w #constants.PRVM_RESULT_DIRECTIVE_TEXT, 0(a2)
+	cmpi.w #prvm_abi.PRVM_RESULT_DIRECTIVE_TEXT, 0(a2)
 	beq.w haveDirective
-	cmpi.w #constants.PRVM_RESULT_OPERAND_TEXT, 0(a2)
+	cmpi.w #prvm_abi.PRVM_RESULT_OPERAND_TEXT, 0(a2)
 	beq.w haveOperandText
-	cmpi.w #constants.PRVM_RESULT_OPERAND_EXPR_SLOT, 0(a2)
+	cmpi.w #prvm_abi.PRVM_RESULT_OPERAND_EXPR_SLOT, 0(a2)
 	beq.w haveOperandExpr
 
 next
-	adda.l #constants.PRVM_RESULT_RECORD_SIZE, a2
+	adda.l #prvm_abi.PRVM_RESULT_RECORD_SIZE, a2
 	dbra d7, scan
 
 finalize
 	move.l state.NativeCliPrvmRouteStatus, d1
-	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, d1
+	cmpi.l #prvm_abi.PRVM_STATUS_EXPR_REQUEST, d1
 	bne.s checkMnemonic
 	bsr.w opforgeNativeCliRecordPrvmExpressionRequest
 
@@ -279,7 +280,7 @@ return
 
 opforgeNativeCliRecordPrvmExpressionRequest	.block
 	lea state.OpforgeNativeCliPrvmExprRequest, a2
-	cmpi.w #constants.PRVM_EXPR_REQUEST_VERSION_V2, 0(a2)
+	cmpi.w #prvm_abi.PRVM_EXPR_REQUEST_VERSION_V2, 0(a2)
 	bne.s done
 	move.l 4(a2), state.NativeCliStmtExprOperandIndex
 	move.l 8(a2), state.NativeCliStmtExprSlotIndex

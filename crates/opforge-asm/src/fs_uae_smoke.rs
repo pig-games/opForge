@@ -551,6 +551,7 @@ enum NativeCliParityExecutable {
     TkpkgCpexHarness,
     ExprvmI64Harness,
     TkvmBranchHarness,
+    PrvmMacroHarness,
     ExpressionI64Harness,
     CompactMemoHarness,
     BinarySourceHarness,
@@ -1290,6 +1291,30 @@ pub(crate) fn run_tkvm_branch_harness_from_env(
     )
 }
 
+pub(crate) fn run_prvm_macro_harness_from_env(
+    workspace_root: &Path,
+    case_bytes: &[u8],
+    rust_oracle: &[u8],
+    profiled: bool,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let defines = if profiled {
+        &[
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_PROGRESS_RUNTIME_COUNTERS",
+        ][..]
+    } else {
+        &[][..]
+    };
+    run_exact_harness_with_defines_from_env(
+        workspace_root,
+        case_bytes,
+        rust_oracle,
+        "Work/build/prvm-macro-results.bin",
+        NativeCliParityExecutable::PrvmMacroHarness,
+        defines,
+    )
+}
+
 pub(crate) fn run_expression_i64_harness_from_env(
     workspace_root: &Path,
     case_bytes: &[u8],
@@ -1722,6 +1747,24 @@ fn run_exact_harness_from_env(
     artifact_path: &'static str,
     executable: NativeCliParityExecutable,
 ) -> Result<FsUaeSmokeOutcome, String> {
+    run_exact_harness_with_defines_from_env(
+        workspace_root,
+        case_bytes,
+        rust_oracle,
+        artifact_path,
+        executable,
+        &[],
+    )
+}
+
+fn run_exact_harness_with_defines_from_env(
+    workspace_root: &Path,
+    case_bytes: &[u8],
+    rust_oracle: &[u8],
+    artifact_path: &'static str,
+    executable: NativeCliParityExecutable,
+    extra_defines: &[&'static str],
+) -> Result<FsUaeSmokeOutcome, String> {
     let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
@@ -1736,7 +1779,8 @@ fn run_exact_harness_from_env(
         rust_oracle,
     }];
     let memory_telemetry = std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1");
-    let extra_assembly_defines = exact_harness_assembly_defines(executable, memory_telemetry);
+    let mut extra_assembly_defines = exact_harness_assembly_defines(executable, memory_telemetry);
+    extra_assembly_defines.extend_from_slice(extra_defines);
     let case = OpforgeNativeCliParityCase {
         name: "native-harness-live-oracle",
         cpu_override: "68020",
@@ -2079,10 +2123,9 @@ fn verify_exact_native_cli_artifacts(
         };
         if actual != artifact.rust_oracle {
             errors.push(format!(
-                "{}: native output ({} bytes, {:02x?}) differs from the in-memory Rust oracle ({} bytes); {}",
+                "{}: native output ({} bytes) differs from the in-memory Rust oracle ({} bytes); {}",
                 relative_output_path.display(),
                 actual.len(),
-                actual,
                 artifact.rust_oracle.len(),
                 describe_first_byte_mismatch(&actual, artifact.rust_oracle)
             ));
@@ -2539,6 +2582,7 @@ fn opforge_native_cli_case_identity(
             NativeCliParityExecutable::TkpkgCpexHarness => b"tkpkg-cpex-harness",
             NativeCliParityExecutable::ExprvmI64Harness => b"exprvm-i64-harness",
             NativeCliParityExecutable::TkvmBranchHarness => b"tkvm-branch-harness",
+            NativeCliParityExecutable::PrvmMacroHarness => b"prvm-macro-harness",
             NativeCliParityExecutable::ExpressionI64Harness => b"expression-i64-harness",
             NativeCliParityExecutable::CompactMemoHarness => b"compact-memo-harness",
             NativeCliParityExecutable::BinarySourceHarness => b"binary-source-harness",
@@ -2959,6 +3003,7 @@ fn run_native_cli_parity_batch_cases(
         NativeCliParityExecutable::TkpkgCpexHarness => "tkpkg_cpex_harness",
         NativeCliParityExecutable::ExprvmI64Harness => "exprvm_i64_harness",
         NativeCliParityExecutable::TkvmBranchHarness => "tkvm_branch_harness",
+        NativeCliParityExecutable::PrvmMacroHarness => "prvm_macro_harness",
         NativeCliParityExecutable::ExpressionI64Harness => "tkpkg_expression_i64_harness",
         NativeCliParityExecutable::CompactMemoHarness => "tkpkg_compact_memo_harness",
         NativeCliParityExecutable::BinarySourceHarness => "binary_source_harness",
@@ -2973,6 +3018,9 @@ fn run_native_cli_parity_batch_cases(
         NativeCliParityExecutable::TkpkgCpexHarness => FS_UAE_TKPKG_CPEX_HARNESS_SOURCE_PATH,
         NativeCliParityExecutable::TkvmBranchHarness => {
             "native/motorola68000/amigaos/test-harnesses/tkvm/tkvm_branch_harness.asm"
+        }
+        NativeCliParityExecutable::PrvmMacroHarness => {
+            "native/motorola68000/amigaos/test-harnesses/prvm/prvm_macro_harness.asm"
         }
         NativeCliParityExecutable::ExprvmI64Harness => {
             "native/motorola68000/amigaos/test-harnesses/exprvm/exprvm_i64_harness.asm"
@@ -3076,6 +3124,17 @@ fn run_native_cli_parity_batch_cases(
                         .ok_or("ExprVM scalar harness requires case bytes")?,
                 )?;
             }
+            NativeCliParityExecutable::PrvmMacroHarness => {
+                if cases.len() != 1 {
+                    return Err("macro descriptor harness requires one live batch".into());
+                }
+                stage_guest_input_bytes(
+                    &mounted_work_dir,
+                    "prvm-macro-cases.bin",
+                    case.source_override
+                        .ok_or("macro descriptor harness requires case bytes")?,
+                )?;
+            }
             NativeCliParityExecutable::TkvmBranchHarness => {
                 if cases.len() != 1 {
                     return Err("tokenizer branch harness requires one batch".into());
@@ -3133,6 +3192,9 @@ fn run_native_cli_parity_batch_cases(
             }
             NativeCliParityExecutable::TkvmBranchHarness => {
                 "Work:build/tkvm_branch_harness".to_string()
+            }
+            NativeCliParityExecutable::PrvmMacroHarness => {
+                "Work:build/prvm_macro_harness".to_string()
             }
             NativeCliParityExecutable::ExprvmI64Harness => {
                 "Work:build/exprvm_i64_harness".to_string()
@@ -3229,6 +3291,7 @@ fn run_native_cli_parity_batch_cases(
         NativeCliParityExecutable::TkpkgCpexHarness
         | NativeCliParityExecutable::ExprvmI64Harness
         | NativeCliParityExecutable::TkvmBranchHarness
+        | NativeCliParityExecutable::PrvmMacroHarness
         | NativeCliParityExecutable::ExpressionI64Harness
         | NativeCliParityExecutable::CompactMemoHarness
         | NativeCliParityExecutable::BinarySourceHarness
@@ -3243,6 +3306,7 @@ fn run_native_cli_parity_batch_cases(
         | NativeCliParityExecutable::OpforgeSelfHostGenerationOne
         | NativeCliParityExecutable::ExprvmI64Harness
         | NativeCliParityExecutable::TkvmBranchHarness
+        | NativeCliParityExecutable::PrvmMacroHarness
         | NativeCliParityExecutable::ExpressionI64Harness
         | NativeCliParityExecutable::CompactMemoHarness
         | NativeCliParityExecutable::BinarySourceHarness
@@ -3336,6 +3400,9 @@ fn run_native_cli_parity_batch_cases(
         }
         NativeCliParityExecutable::TkvmBranchHarness => {
             mounted_work_dir.join("build/tkvm_branch_harness")
+        }
+        NativeCliParityExecutable::PrvmMacroHarness => {
+            mounted_work_dir.join("build/prvm_macro_harness")
         }
         NativeCliParityExecutable::ExprvmI64Harness => {
             mounted_work_dir.join("build/exprvm_i64_harness")
@@ -3959,6 +4026,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             | "tkpkg_cpex_harness"
             | "exprvm_i64_harness"
             | "tkvm_branch_harness"
+            | "prvm_macro_harness"
             | "tkpkg_expression_i64_harness"
             | "tkpkg_compact_memo_harness"
             | "binary_source_harness"
@@ -4010,6 +4078,9 @@ fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathB
                 | "tokvm_interpreter"
                 | "exprvm_i64_harness"
                 | "tkvm_branch_harness"
+                | "prvm_macro_harness"
+                | "prvm_smoke"
+                | "prvm_line_iterator_smoke"
                 | "tkpkg_expression_i64_harness"
                 | "tkpkg_compact_memo_harness"
                 | "binary_source_harness"

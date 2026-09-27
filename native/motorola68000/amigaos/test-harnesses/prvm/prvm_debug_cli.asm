@@ -2,6 +2,7 @@
 
 	.module main
 	.cpu 68020
+	.use prvm.amigaos.abi as prvm_abi
 	.use prvm.amigaos.runtime
 
 SYS_BASE                        = 4
@@ -11,21 +12,6 @@ RETURN_FAIL                     = 20
 OPEN_LIBRARY                    = -552
 CLOSE_LIBRARY                   = -414
 PUT_STR                         = -948
-
-PRVM_REQUEST_FRAME_SIZE         = 112
-PRVM_MAGIC_OPRP                 = $4F505250
-PRVM_ABI_VERSION_V1             = 1
-PRVM_CALL_MODE_START            = 0
-PRVM_ENTRY_KIND_OPASM_STATEMENT = 1
-PRVM_TOKEN_RECORD_SIZE          = 20
-PRVM_PARSER_CONTRACT_VERSION_V2 = 2
-
-PRVM_STATUS_OK                  = 0
-
-PRVM_RESULT_BEGIN_STATEMENT     = 1
-PRVM_RESULT_LABEL_TEXT          = 2
-PRVM_RESULT_MNEMONIC_TEXT       = 3
-PRVM_RESULT_FINISH_LINE         = 5
 
 PRVM_OPCODE_END                 = $00
 PRVM_OPCODE_JUMP                = $01
@@ -74,7 +60,7 @@ haveDos
 	movea.l d0, a5
 	bsr.w buildRequestFrame
 	lea RequestFrame(PC), a0
-	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	move.l #prvm_abi.PRVM_REQUEST_FRAME_SIZE, d0
 	jsr runtime.prvmRun68000
 
 	lea PrvmStatus(PC), a0
@@ -117,11 +103,11 @@ putStr	.block
 
 buildRequestFrame	.block
 	lea RequestFrame(PC), a0
-	move.l #PRVM_MAGIC_OPRP, 0(a0)
-	move.w #PRVM_ABI_VERSION_V1, 4(a0)
-	move.w #PRVM_REQUEST_FRAME_SIZE, 6(a0)
-	move.w #PRVM_CALL_MODE_START, 8(a0)
-	move.w #PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(a0)
+	move.l #prvm_abi.PRVM_MAGIC_OPRP, 0(a0)
+	move.w #prvm_abi.PRVM_ABI_VERSION_V1, 4(a0)
+	move.w #prvm_abi.PRVM_REQUEST_FRAME_SIZE, 6(a0)
+	move.w #prvm_abi.PRVM_CALL_MODE_START, 8(a0)
+	move.w #prvm_abi.PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(a0)
 	move.l #1, 12(a0)
 	lea SourceLine(PC), a1
 	move.l a1, 16(a0)
@@ -129,7 +115,7 @@ buildRequestFrame	.block
 	lea TokenRecord(PC), a1
 	move.l a1, 24(a0)
 	move.l #3, 28(a0)
-	move.w #PRVM_TOKEN_RECORD_SIZE, 32(a0)
+	move.w #prvm_abi.PRVM_TOKEN_RECORD_SIZE, 32(a0)
 	clr.w 34(a0)
 	lea LexemeBytes(PC), a1
 	move.l a1, 36(a0)
@@ -152,7 +138,7 @@ buildRequestFrame	.block
 	lea ExprResultBuffer(PC), a1
 	move.l a1, 84(a0)
 	move.l #0, 88(a0)
-	move.l #PRVM_PARSER_CONTRACT_VERSION_V2, 92(a0)
+	move.l #prvm_abi.PRVM_PARSER_CONTRACT_VERSION_V2, 92(a0)
 	move.l #64, 96(a0)
 	clr.l 100(a0)
 	clr.l 104(a0)
@@ -163,7 +149,7 @@ buildRequestFrame	.block
 validateResult	.block
 	lea PrvmStatus(PC), a1
 	lea ResultBuffer(PC), a0
-	cmpi.l #PRVM_STATUS_OK, 0(a1)
+	cmpi.l #prvm_abi.PRVM_STATUS_OK, 0(a1)
 	bne.w invalid
 	cmpi.l #4, 4(a1)
 	bne.w invalid
@@ -171,9 +157,9 @@ validateResult	.block
 	bne.w invalid
 	cmpi.l #128, 12(a1)
 	bne.w invalid
-	cmpi.w #PRVM_RESULT_BEGIN_STATEMENT, 0(a0)
+	cmpi.w #prvm_abi.PRVM_RESULT_BEGIN_STATEMENT, 0(a0)
 	bne.w invalid
-	cmpi.w #PRVM_RESULT_LABEL_TEXT, 32(a0)
+	cmpi.w #prvm_abi.PRVM_RESULT_LABEL_TEXT, 32(a0)
 	bne.w invalid
 	cmpi.l #1, 40(a0)
 	bne.w invalid
@@ -183,7 +169,7 @@ validateResult	.block
 	bne.w invalid
 	cmpi.l #5, 52(a0)
 	bne.w invalid
-	cmpi.w #PRVM_RESULT_MNEMONIC_TEXT, 64(a0)
+	cmpi.w #prvm_abi.PRVM_RESULT_MNEMONIC_TEXT, 64(a0)
 	bne.w invalid
 	cmpi.l #8, 72(a0)
 	bne.w invalid
@@ -193,7 +179,7 @@ validateResult	.block
 	bne.w invalid
 	cmpi.l #3, 84(a0)
 	bne.w invalid
-	cmpi.w #PRVM_RESULT_FINISH_LINE, 96(a0)
+	cmpi.w #prvm_abi.PRVM_RESULT_FINISH_LINE, 96(a0)
 	bne.w invalid
 	clr.l d0
 	rts

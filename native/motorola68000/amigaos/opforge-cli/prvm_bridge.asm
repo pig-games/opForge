@@ -6,6 +6,7 @@
 
 	.module opforge.cli.prvm_bridge
 	.cpu 68020
+	.use prvm.amigaos.abi as prvm_abi
 
 	.use tkpkg.amigaos.abi
 	.use tkpkg.amigaos.buffers
@@ -40,7 +41,7 @@ loop
 	bsr.w opforgeNativeCliDispatchPreparedParseLineEnvelope
 	bne.s restore
 	move.l state.NativeCliPrvmRouteStatus, d1
-	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, d1
+	cmpi.l #prvm_abi.PRVM_STATUS_EXPR_REQUEST, d1
 	bne.s finalize
 	subq.l #1, d5
 	bmi.s resumeLimit
@@ -62,9 +63,9 @@ resumeLimit
 
 opforgeNativeCliParserDirectiveKind	.block
 	lea state.OpforgeNativeCliPrvmResultBuffer, a2
-	cmpi.w #constants.PRVM_RESULT_MNEMONIC_TEXT, 32(a2)
+	cmpi.w #prvm_abi.PRVM_RESULT_MNEMONIC_TEXT, 32(a2)
 	beq.s haveText
-	cmpi.w #constants.PRVM_RESULT_DIRECTIVE_TEXT, 32(a2)
+	cmpi.w #prvm_abi.PRVM_RESULT_DIRECTIVE_TEXT, 32(a2)
 	bne.w fallback
 
 haveText
@@ -266,9 +267,9 @@ opforgeNativeCliServicePrvmExpressionRequest	.block
 	lea state.OpforgeNativeCliPrvmExprRequest, a0
 	lea state.OpforgeNativeCliPrvmExprResultSlot, a1
 	move.w 0(a0), d0
-	cmpi.w #constants.PRVM_EXPR_REQUEST_VERSION_V2, d0
+	cmpi.w #prvm_abi.PRVM_EXPR_REQUEST_VERSION_V2, d0
 	bne.s fail
-	cmpi.w #constants.PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a0)
+	cmpi.w #prvm_abi.PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a0)
 	bne.s fail
 	clr.l d0
 	move.l 8(a0), d0
@@ -278,7 +279,7 @@ opforgeNativeCliServicePrvmExpressionRequest	.block
 	lsl.l #5, d3
 	lea state.OpforgeNativeCliPrvmExprResultSlot, a1
 	adda.l d3, a1
-	move.w #constants.PRVM_EXPR_SLOT_READY, 0(a1)
+	move.w #prvm_abi.PRVM_EXPR_SLOT_READY, 0(a1)
 	move.l 12(a0), d2
 	cmp.l 16(a0), d2
 	bhi.s fail
@@ -290,7 +291,7 @@ opforgeNativeCliServicePrvmExpressionRequest	.block
 	bne.s expressionReady
 	tst.l 4(a0)
 	beq.s expressionReady
-	move.w #constants.PRVM_EXPR_SLOT_READY_ERROR, 0(a1)
+	move.w #prvm_abi.PRVM_EXPR_SLOT_READY_ERROR, 0(a1)
 expressionReady
 	clr.w 2(a1)
 	move.l d0, 4(a1)
@@ -365,7 +366,7 @@ opforgeNativeCliBuildPrvmRouteFrame	.block
 	move.l #constants.PRVM_ROUTE_EXPR_REQUEST_SIZE, 92(a0)
 	clr.l 96(a0)
 	move.l #constants.PRVM_ROUTE_EXPR_RESULT_COUNT, 100(a0)
-	move.l #constants.PRVM_PARSER_CONTRACT_VERSION_V2, 104(a0)
+	move.l #prvm_abi.PRVM_PARSER_CONTRACT_VERSION_V2, 104(a0)
 	move.l #constants.PRVM_ROUTE_STEP_BUDGET, 108(a0)
 	clr.l 112(a0)
 	moveq #0, d0
@@ -456,7 +457,7 @@ opforgeNativeCliLoadActivePrvmProgram	.block
 	move.b (a2)+, d1
 	lsl.w #8, d1
 	or.w d1, d0
-	cmpi.w #constants.PRVM_PARSER_CONTRACT_VERSION_V2, d0
+	cmpi.w #prvm_abi.PRVM_PARSER_CONTRACT_VERSION_V2, d0
 	bne.w fail
 	move.l #$FFFFFFE6, d4
 	bsr.w opforgeNativeCliActivePrvmReadU32
@@ -549,7 +550,7 @@ opforgeNativeCliAccumulatePrvmResultRows	.block
 	move.w state.NativeCliPrvmResultCount, d3
 
 recordLoop
-	move.l #constants.PRVM_RESULT_RECORD_SIZE, d0
+	move.l #prvm_abi.PRVM_RESULT_RECORD_SIZE, d0
 	jsr copy.copyFixedString
 	subq.w #1, d3
 	beq.s countDone
@@ -596,7 +597,7 @@ opforgeNativeCliFinalizePrvmResultRows	.block
 	beq.s copyBack
 
 appendLoop
-	move.l #constants.PRVM_RESULT_RECORD_SIZE, d0
+	move.l #prvm_abi.PRVM_RESULT_RECORD_SIZE, d0
 	jsr copy.copyFixedString
 	subq.w #1, d3
 	beq.s copyBack
@@ -611,7 +612,7 @@ copyBack
 	beq.s mergedDone
 
 copyBackLoop
-	move.l #constants.PRVM_RESULT_RECORD_SIZE, d0
+	move.l #prvm_abi.PRVM_RESULT_RECORD_SIZE, d0
 	jsr copy.copyFixedString
 	subq.w #1, d3
 	beq.s mergedDone

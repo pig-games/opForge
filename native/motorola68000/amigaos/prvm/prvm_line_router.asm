@@ -2,19 +2,10 @@
 
 	.module prvm.amigaos.line_router
 	.cpu 68020
+	.use prvm.amigaos.abi as prvm_abi
 	.pub
 	.use prvm.amigaos.runtime
 
-PRVM_REQUEST_FRAME_SIZE             = 112
-PRVM_MAGIC_OPRP                     = $4F505250
-PRVM_ABI_VERSION_V1                 = 1
-PRVM_CALL_MODE_START                = 0
-PRVM_CALL_MODE_RESUME               = 1
-PRVM_ENTRY_KIND_OPASM_STATEMENT     = 1
-
-PRVM_STATUS_OK                      = 0
-PRVM_STATUS_NEWLINE_UNSUPPORTED     = 2
-PRVM_STATUS_INVALID_ARGUMENT        = 4
 PRVM_STATUS_UNSUPPORTED_ROUTE       = 100
 
 PRVM_ROUTE_MAGIC_OPLR               = $4F504C52
@@ -107,13 +98,13 @@ prvmRouteLine68000	.block
 
 	bsr.w buildRequestFrame
 	lea PrvmRouteRequestFrame(PC), a0
-	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	move.l #prvm_abi.PRVM_REQUEST_FRAME_SIZE, d0
 	movea.l PrvmRouteInterpreterEntryPtr(PC), a1
 	jsr (a1)
 	bra.s done
 
 invalidArgument
-	move.l #PRVM_STATUS_INVALID_ARGUMENT, d0
+	move.l #prvm_abi.PRVM_STATUS_INVALID_ARGUMENT, d0
 	bra.s clearTail
 
 unsupported
@@ -121,7 +112,7 @@ unsupported
 	bra.s clearTail
 
 newlineUnsupported
-	move.l #PRVM_STATUS_NEWLINE_UNSUPPORTED, d0
+	move.l #prvm_abi.PRVM_STATUS_NEWLINE_UNSUPPORTED, d0
 
 clearTail
 	clr.l d1
@@ -197,16 +188,16 @@ found
 ; CCR: unspecified on return.
 buildRequestFrame	.block
 	lea PrvmRouteRequestFrame(PC), a0
-	move.l #PRVM_MAGIC_OPRP, 0(a0)
-	move.w #PRVM_ABI_VERSION_V1, 4(a0)
-	move.w #PRVM_REQUEST_FRAME_SIZE, 6(a0)
-	move.w #PRVM_CALL_MODE_START, 8(a0)
+	move.l #prvm_abi.PRVM_MAGIC_OPRP, 0(a0)
+	move.w #prvm_abi.PRVM_ABI_VERSION_V1, 4(a0)
+	move.w #prvm_abi.PRVM_REQUEST_FRAME_SIZE, 6(a0)
+	move.w #prvm_abi.PRVM_CALL_MODE_START, 8(a0)
 	tst.l ROUTE_FRAME_EXPR_RESULT_COUNT(a4)
 	beq.s haveCallMode
-	move.w #PRVM_CALL_MODE_RESUME, 8(a0)
+	move.w #prvm_abi.PRVM_CALL_MODE_RESUME, 8(a0)
 
 haveCallMode
-	move.w #PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(a0)
+	move.w #prvm_abi.PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(a0)
 	move.l ROUTE_FRAME_LINE_NUM(a4), 12(a0)
 	move.l ROUTE_FRAME_SOURCE_PTR(a4), 16(a0)
 	move.l ROUTE_FRAME_SOURCE_LEN(a4), 20(a0)

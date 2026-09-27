@@ -1,3 +1,6 @@
+#[path = "tests/macro_descriptor_native.rs"]
+mod macro_descriptor_native;
+
 #[path = "tests/hunk_fill_counts.rs"]
 mod hunk_fill_counts;
 
@@ -2883,6 +2886,10 @@ fn example_include_paths(asm_path: &Path) -> Vec<PathBuf> {
         ];
     }
 
+    let native_root = workspace_root().join("native/motorola68000/amigaos");
+    if asm_path.starts_with(&native_root) {
+        return vec![native_root.join("debug")];
+    }
     Vec::new()
 }
 
@@ -3137,11 +3144,19 @@ fn assemble_example_entries_with_runtime_mode(
     asm_path: &Path,
     enable_opthread_runtime: bool,
 ) -> AssembleEntriesResult {
-    let root_lines = expand_source_file(asm_path, &[], &[], 64)
+    let include_paths = example_include_paths(asm_path);
+    let root_lines = expand_source_file(asm_path, &[], &include_paths, 64)
         .map_err(|err| format!("Preprocess failed: {err}"))?;
     let module_paths = example_module_paths(asm_path);
-    let graph = load_module_graph(asm_path, root_lines.clone(), &[], &[], &module_paths, 64)
-        .map_err(|err| format!("Preprocess failed: {err}"))?;
+    let graph = load_module_graph(
+        asm_path,
+        root_lines.clone(),
+        &[],
+        &include_paths,
+        &module_paths,
+        64,
+    )
+    .map_err(|err| format!("Preprocess failed: {err}"))?;
     let expanded_lines = graph.lines;
     let source_map = graph.source_map;
 
@@ -12619,15 +12634,22 @@ fn motorola68020_prvm_line_router_example_exposes_one_line_delegation_surface() 
     assert!(source.contains("buildRequestFrame\t.block"));
     assert!(!source.contains("prvmRouteRejectNewline"));
     assert!(!source.contains("prvmRouteBuildRequestFrame"));
-    assert!(source.contains("PRVM_CALL_MODE_RESUME               = 1"));
+    assert!(source.contains(".use prvm.amigaos.abi as prvm_abi"));
+    let abi = fs::read_to_string(repo_root.join("native/motorola68000/amigaos/prvm/prvm_abi.asm"))
+        .expect("read shared PRVM ABI owner");
+    assert!(abi.lines().any(|line| line.split_whitespace().eq([
+        "PRVM_CALL_MODE_RESUME",
+        "=",
+        "1"
+    ])));
     assert!(source_contains_in_order(
         &source,
         &[
             "buildRequestFrame",
-            "move.w #PRVM_CALL_MODE_START, 8(a0)",
+            "move.w #prvm_abi.PRVM_CALL_MODE_START, 8(a0)",
             "tst.l ROUTE_FRAME_EXPR_RESULT_COUNT(a4)",
-            "move.w #PRVM_CALL_MODE_RESUME, 8(a0)",
-            "move.w #PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(a0)",
+            "move.w #prvm_abi.PRVM_CALL_MODE_RESUME, 8(a0)",
+            "move.w #prvm_abi.PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(a0)",
         ]
     ));
     assert!(source.contains("PrvmRouteInterpreterEntryPtr"));

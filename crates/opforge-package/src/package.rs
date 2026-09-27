@@ -1604,6 +1604,40 @@ impl ParserVmOpcode {
     }
 }
 
+/// Initial macro descriptor service shares PRVM version 2, with explicit entry 2.
+pub const PARSER_VM_MACRO_ENTRY: u16 = 2;
+pub const PARSER_VM_MACRO_VERSION: u16 = 2;
+
+/// Operands select envelope grammar and delimiter/default policy; never ignored.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum MacroDescriptorOpcode {
+    End = 0x00,
+    Envelope = 0x80, // mode:u8 (1 call, 2 header), flags:u8
+    Split = 0x81,    // policy:u8 (1 saturating), separator:u8
+    Formals = 0x82,  // policy:u8 (1 first raw equals)
+    Publish = 0x83,
+}
+
+pub fn macro_descriptor_program(header: bool) -> Vec<u8> {
+    let mut bytes = vec![
+        MacroDescriptorOpcode::Envelope as u8,
+        if header { 2 } else { 1 },
+        if header { 11 } else { 15 },
+        MacroDescriptorOpcode::Split as u8,
+        1,
+        b',',
+    ];
+    if header {
+        bytes.extend([MacroDescriptorOpcode::Formals as u8, 1]);
+    }
+    bytes.extend([
+        MacroDescriptorOpcode::Publish as u8,
+        MacroDescriptorOpcode::End as u8,
+    ]);
+    bytes
+}
+
 pub type ParserVmOpcodeV2 = ParserVmOpcode;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

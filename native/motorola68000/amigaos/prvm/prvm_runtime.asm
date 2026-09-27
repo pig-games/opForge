@@ -2,78 +2,13 @@
 
 	.module prvm.amigaos.runtime
 	.cpu 68020
+	.use prvm.amigaos.abi as abi
+	.use prvm.amigaos.macro_descriptors as macro_descriptors
 	.pub
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
-	.use debug.amigaos.runtime_profile as runtime_profile
-.endif
+	.include "telemetry_macros.i"
 
-PRVM_MAGIC_OPRP                     = $4F505250
-PRVM_REQUEST_FRAME_SIZE             = 112
-PRVM_TOKEN_RECORD_SIZE              = 20
-PRVM_RESULT_RECORD_SIZE             = 32
 PRVM_DEFAULT_STEP_BUDGET            = 256
 PRVM_LEXEME_SCRATCH_CAPACITY        = 256
-
-PRVM_FRAME_MAGIC                    = 0
-PRVM_FRAME_ABI_VERSION              = 4
-PRVM_FRAME_FRAME_SIZE               = 6
-PRVM_FRAME_CALL_MODE                = 8
-PRVM_FRAME_ENTRY_KIND               = 10
-PRVM_FRAME_LINE_NUM                 = 12
-PRVM_FRAME_SOURCE_PTR               = 16
-PRVM_FRAME_SOURCE_LEN               = 20
-PRVM_FRAME_TOKEN_PTR                = 24
-PRVM_FRAME_TOKEN_COUNT              = 28
-PRVM_FRAME_TOKEN_RECORD_SIZE        = 32
-PRVM_FRAME_LEXEME_PTR               = 36
-PRVM_FRAME_LEXEME_LEN               = 40
-PRVM_FRAME_PROGRAM_PTR              = 44
-PRVM_FRAME_PROGRAM_LEN              = 48
-PRVM_FRAME_RESULT_PTR               = 52
-PRVM_FRAME_RESULT_CAPACITY          = 56
-PRVM_FRAME_DIAGNOSTIC_PTR           = 60
-PRVM_FRAME_RESUME_PTR               = 68
-PRVM_FRAME_RESUME_CAPACITY          = 72
-PRVM_FRAME_EXPR_REQUEST_PTR         = 76
-PRVM_FRAME_EXPR_REQUEST_SIZE        = 80
-PRVM_FRAME_EXPR_RESULT_PTR          = 84
-PRVM_FRAME_EXPR_RESULT_COUNT        = 88
-PRVM_FRAME_PARSER_CONTRACT_VERSION  = 92
-PRVM_FRAME_STEP_BUDGET              = 96
-PRVM_FRAME_FLAGS                    = 100
-
-PRVM_STATUS_OK                      = 0
-PRVM_STATUS_EXPR_REQUEST            = 1
-PRVM_STATUS_NEWLINE_UNSUPPORTED     = 2
-PRVM_STATUS_ENTRY_BOUNDARY          = 3
-PRVM_STATUS_INVALID_ARGUMENT        = 4
-PRVM_STATUS_INVALID_TOKEN           = 5
-PRVM_STATUS_INVALID_PROGRAM         = 6
-PRVM_STATUS_OUTPUT_OVERFLOW         = 7
-PRVM_STATUS_UNSUPPORTED_OPCODE      = 9
-PRVM_STATUS_INVALID_RESUME          = 10
-PRVM_STATUS_EXPR_RESULT_INVALID     = 11
-PRVM_STATUS_BUDGET_EXCEEDED         = 12
-
-PRVM_ENTRY_KIND_OPASM_STATEMENT     = 1
-PRVM_CALL_MODE_START                = 0
-PRVM_CALL_MODE_RESUME               = 1
-PRVM_ABI_VERSION_V1                 = 1
-PRVM_PARSER_CONTRACT_VERSION_V2     = 2
-
-PRVM_TOKEN_KIND_IDENTIFIER          = 0
-PRVM_TOKEN_KIND_DOT                 = 7
-PRVM_TOKEN_KIND_COMMA               = 4
-PRVM_TOKEN_KIND_OPEN_BRACKET        = 10
-PRVM_TOKEN_KIND_CLOSE_BRACKET       = 11
-PRVM_TOKEN_KIND_OPEN_BRACE          = 12
-PRVM_TOKEN_KIND_CLOSE_BRACE         = 13
-PRVM_TOKEN_KIND_OPEN_PAREN          = 14
-PRVM_TOKEN_KIND_CLOSE_PAREN         = 15
-PRVM_TOKEN_KIND_COLON               = 5
-PRVM_TOKEN_KIND_OP_PLUS             = 18
-PRVM_TOKEN_KIND_OP_MULTIPLY         = 20
-PRVM_TOKEN_KIND_OP_EQ               = 34
 
 PRVM_PARSER_KIND_IDENTIFIER         = 1
 PRVM_PARSER_KIND_DOT                = 3
@@ -86,20 +21,6 @@ PRVM_OPERATOR_PLUS                  = 1
 PRVM_OPERATOR_EQ                    = 2
 PRVM_OPERATOR_MULTIPLY              = 3
 
-PRVM_RESULT_BEGIN_STATEMENT         = 1
-PRVM_RESULT_LABEL_TEXT              = 2
-PRVM_RESULT_MNEMONIC_TEXT           = 3
-PRVM_RESULT_OPERAND_EXPR_SLOT       = 4
-PRVM_RESULT_FINISH_LINE             = 5
-PRVM_RESULT_DIRECTIVE_TEXT          = 6
-PRVM_RESULT_OPERAND_TEXT            = 7
-
-PRVM_EXPR_REQUEST_RECORD_SIZE       = 32
-PRVM_EXPR_REQUEST_VERSION_V2        = 2
-PRVM_EXPR_REQUEST_MODE_DYNAMIC      = 1
-PRVM_EXPR_RESULT_SLOT_SIZE          = 32
-PRVM_EXPR_SLOT_READY                = 1
-PRVM_EXPR_SLOT_READY_ERROR          = 2
 PRVM_RESUME_MAGIC                   = $50525253
 PRVM_RESUME_VERSION                 = 2
 PRVM_RESUME_LOCAL_STATE             = 40
@@ -209,17 +130,14 @@ AbiMarker
 ; ---------------------------------------------------------------------------
 prvmRun68000	.block
 	movem.l d4-d7/a4-a6, -(sp)
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
-	movem.l d0-d1, -(sp)
-	moveq #runtime_profile.OPFORGE_RUNTIME_VM_PRVM, d0
-	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER, d1
-	jsr runtime_profile.opforgeRuntimeProfileEnterVmV1
-	movem.l (sp)+, d0-d1
-.endif
+	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	move.l a0, d1  ; null-check the frame before touching any offset fields
 	beq.w invalidArgument
-	cmpi.l #PRVM_REQUEST_FRAME_SIZE, d0
+	cmpi.l #abi.PRVM_REQUEST_FRAME_SIZE, d0
 	blt invalidArgument
+
+	cmpi.w #abi.PRVM_ENTRY_KIND_MACRO_DESCRIPTORS, abi.PRVM_FRAME_ENTRY_KIND(a0)
+	beq macroEntry
 
 	movea.l a0, a4  ; A4 is the stable request-frame base for the runtime run
 	suba.l #LOCAL_SIZE, sp  ; fixed native frame mirrors Rust parser VM execution state
@@ -231,78 +149,78 @@ clearLocals
 	dbra d0, clearLocals
 	clr.l d2
 
-	cmpi.l #PRVM_MAGIC_OPRP, PRVM_FRAME_MAGIC(a4)  ; reject frames from another native ABI surface
+	cmpi.l #abi.PRVM_MAGIC_OPRP, abi.PRVM_FRAME_MAGIC(a4)  ; reject frames from another native ABI surface
 	bne invalidArgumentWithLocals
-	cmpi.w #PRVM_ABI_VERSION_V1, PRVM_FRAME_ABI_VERSION(a4)
+	cmpi.w #abi.PRVM_ABI_VERSION_V1, abi.PRVM_FRAME_ABI_VERSION(a4)
 	bne invalidArgumentWithLocals
 	moveq #0, d0
-	move.w PRVM_FRAME_FRAME_SIZE(a4), d0
-	cmpi.l #PRVM_REQUEST_FRAME_SIZE, d0
+	move.w abi.PRVM_FRAME_FRAME_SIZE(a4), d0
+	cmpi.l #abi.PRVM_REQUEST_FRAME_SIZE, d0
 	blt invalidArgumentWithLocals
-	cmpi.w #PRVM_CALL_MODE_START, PRVM_FRAME_CALL_MODE(a4)
+	cmpi.w #abi.PRVM_CALL_MODE_START, abi.PRVM_FRAME_CALL_MODE(a4)
 	beq validateEntryKind
-	cmpi.w #PRVM_CALL_MODE_RESUME, PRVM_FRAME_CALL_MODE(a4)
+	cmpi.w #abi.PRVM_CALL_MODE_RESUME, abi.PRVM_FRAME_CALL_MODE(a4)
 	bne invalidArgumentWithLocals
 validateEntryKind
-	cmpi.w #PRVM_ENTRY_KIND_OPASM_STATEMENT, PRVM_FRAME_ENTRY_KIND(a4)  ; current PRVM slice routes opasm statements only
+	cmpi.w #abi.PRVM_ENTRY_KIND_OPASM_STATEMENT, abi.PRVM_FRAME_ENTRY_KIND(a4)  ; current PRVM slice routes opasm statements only
 	bne entryBoundary
-	cmpi.w #PRVM_TOKEN_RECORD_SIZE, PRVM_FRAME_TOKEN_RECORD_SIZE(a4)
+	cmpi.w #abi.PRVM_TOKEN_RECORD_SIZE, abi.PRVM_FRAME_TOKEN_RECORD_SIZE(a4)
 	bne invalidArgumentWithLocals
-	cmpi.l #PRVM_PARSER_CONTRACT_VERSION_V2, PRVM_FRAME_PARSER_CONTRACT_VERSION(a4)  ; keep parser bytecode/result contract explicit
+	cmpi.l #abi.PRVM_PARSER_CONTRACT_VERSION_V2, abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a4)  ; keep parser bytecode/result contract explicit
 	bne invalidProgramAtCursor
-	tst.l PRVM_FRAME_FLAGS(a4)
+	tst.l abi.PRVM_FRAME_FLAGS(a4)
 	bne invalidArgumentWithLocals
 
-	move.l PRVM_FRAME_SOURCE_LEN(a4), d6
+	move.l abi.PRVM_FRAME_SOURCE_LEN(a4), d6
 	bmi invalidArgumentWithLocals
 	beq validateTokenBuffer
-	move.l PRVM_FRAME_SOURCE_PTR(a4), d0
+	move.l abi.PRVM_FRAME_SOURCE_PTR(a4), d0
 	beq invalidArgumentWithLocals
 
 validateTokenBuffer
-	move.l PRVM_FRAME_TOKEN_COUNT(a4), d4
+	move.l abi.PRVM_FRAME_TOKEN_COUNT(a4), d4
 	bmi invalidArgumentWithLocals
 	beq validateLexemeBuffer
-	move.l PRVM_FRAME_TOKEN_PTR(a4), d0
+	move.l abi.PRVM_FRAME_TOKEN_PTR(a4), d0
 	beq invalidArgumentWithLocals
 
 validateLexemeBuffer
-	move.l PRVM_FRAME_LEXEME_LEN(a4), d0
+	move.l abi.PRVM_FRAME_LEXEME_LEN(a4), d0
 	bmi invalidArgumentWithLocals
 	beq validateProgramBuffer
-	move.l PRVM_FRAME_LEXEME_PTR(a4), d7
+	move.l abi.PRVM_FRAME_LEXEME_PTR(a4), d7
 	beq invalidArgumentWithLocals
 
 validateProgramBuffer
-	move.l PRVM_FRAME_PROGRAM_LEN(a4), d6
+	move.l abi.PRVM_FRAME_PROGRAM_LEN(a4), d6
 	ble invalidProgramAtCursor
-	move.l PRVM_FRAME_PROGRAM_PTR(a4), d0
+	move.l abi.PRVM_FRAME_PROGRAM_PTR(a4), d0
 	beq invalidArgumentWithLocals
-	move.l PRVM_FRAME_RESULT_PTR(a4), d0
+	move.l abi.PRVM_FRAME_RESULT_PTR(a4), d0
 	beq invalidArgumentWithLocals
-	move.l PRVM_FRAME_RESULT_CAPACITY(a4), d0
+	move.l abi.PRVM_FRAME_RESULT_CAPACITY(a4), d0
 	bmi invalidArgumentWithLocals
-	move.l PRVM_FRAME_DIAGNOSTIC_PTR(a4), d0
+	move.l abi.PRVM_FRAME_DIAGNOSTIC_PTR(a4), d0
 	beq invalidArgumentWithLocals
-	move.l PRVM_FRAME_RESUME_PTR(a4), d0
+	move.l abi.PRVM_FRAME_RESUME_PTR(a4), d0
 	beq invalidArgumentWithLocals
-	move.l PRVM_FRAME_RESUME_CAPACITY(a4), d0
+	move.l abi.PRVM_FRAME_RESUME_CAPACITY(a4), d0
 	cmpi.l #PRVM_RESUME_STATE_SIZE, d0
 	blt invalidArgumentWithLocals
-	move.l PRVM_FRAME_EXPR_REQUEST_PTR(a4), d0
+	move.l abi.PRVM_FRAME_EXPR_REQUEST_PTR(a4), d0
 	beq invalidArgumentWithLocals
-	move.l PRVM_FRAME_EXPR_REQUEST_SIZE(a4), d0
-	cmpi.l #PRVM_EXPR_REQUEST_RECORD_SIZE, d0
+	move.l abi.PRVM_FRAME_EXPR_REQUEST_SIZE(a4), d0
+	cmpi.l #abi.PRVM_EXPR_REQUEST_RECORD_SIZE, d0
 	blt invalidArgumentWithLocals
-	move.l PRVM_FRAME_EXPR_RESULT_COUNT(a4), d0
+	move.l abi.PRVM_FRAME_EXPR_RESULT_COUNT(a4), d0
 	bmi invalidArgumentWithLocals
 	beq validateExpressionResultBufferDone
-	move.l PRVM_FRAME_EXPR_RESULT_PTR(a4), d7
+	move.l abi.PRVM_FRAME_EXPR_RESULT_PTR(a4), d7
 	beq invalidArgumentWithLocals
 validateExpressionResultBufferDone
 
-	movea.l PRVM_FRAME_SOURCE_PTR(a4), a0  ; PRVM consumes one logical line; iterator/router split newlines first
-	move.l PRVM_FRAME_SOURCE_LEN(a4), d6
+	movea.l abi.PRVM_FRAME_SOURCE_PTR(a4), a0  ; PRVM consumes one logical line; iterator/router split newlines first
+	move.l abi.PRVM_FRAME_SOURCE_LEN(a4), d6
 	clr.l d0
 newlineScanLoop
 	cmp.l d6, d0
@@ -318,19 +236,19 @@ newlineUnsupported
 	clr.l d1
 	move.l d0, d2
 	clr.l d3
-	moveq #PRVM_STATUS_NEWLINE_UNSUPPORTED, d0
+	moveq #abi.PRVM_STATUS_NEWLINE_UNSUPPORTED, d0
 	bra returnWithLocals
 
 newlineScanDone
-	movea.l PRVM_FRAME_PROGRAM_PTR(a4), a5
-	move.l PRVM_FRAME_PROGRAM_LEN(a4), d6
+	movea.l abi.PRVM_FRAME_PROGRAM_PTR(a4), a5
+	move.l abi.PRVM_FRAME_PROGRAM_LEN(a4), d6
 	lea 0(a5, d6.l), a6
-	move.l PRVM_FRAME_STEP_BUDGET(a4), d6
+	move.l abi.PRVM_FRAME_STEP_BUDGET(a4), d6
 	bgt startProgram
 	move.l #PRVM_DEFAULT_STEP_BUDGET, d6
 
 startProgram
-	cmpi.w #PRVM_CALL_MODE_RESUME, PRVM_FRAME_CALL_MODE(a4)
+	cmpi.w #abi.PRVM_CALL_MODE_RESUME, abi.PRVM_FRAME_CALL_MODE(a4)
 	beq resumeFromExpression
 	clr.l d1
 	clr.l d2
@@ -347,13 +265,7 @@ programLoop
 
 	moveq #0, d7
 	move.b (a5)+, d7
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
-	movem.l d0-d1, -(sp)
-	moveq #runtime_profile.OPFORGE_RUNTIME_VM_PRVM, d0
-	moveq #runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER, d1
-	jsr runtime_profile.opforgeRuntimeProfileRecordOpcodeV1
-	movem.l (sp)+, d0-d1
-.endif
+	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	cmpi.b #PRVM_OPCODE_END, d7
 	beq opcodeEnd
 	cmpi.b #PRVM_OPCODE_JUMP, d7
@@ -403,7 +315,7 @@ programLoop
 opcodeEnd
 	tst.l LOCAL_FINISHED_FLAG(a3)
 	beq invalidProgramAtCursor
-	moveq #PRVM_STATUS_OK, d0
+	moveq #abi.PRVM_STATUS_OK, d0
 	bra returnWithLocals
 
 opcodeJump
@@ -480,7 +392,7 @@ opcodePeekAssignment
 	bcc programLoop
 	bsr.w currentTokenPtr
 	bne returnWithLocals
-	cmpi.w #PRVM_TOKEN_KIND_OP_EQ, 0(a1)
+	cmpi.w #abi.PRVM_TOKEN_KIND_OP_EQ, 0(a1)
 	bne programLoop
 	move.l #1, LOCAL_BOOL_VALUE(a3)
 	bra programLoop
@@ -492,7 +404,7 @@ opcodePeekStarOrg
 	move.l d2, d0
 	bsr.w tokenPtrByIndex
 	bne returnWithLocals
-	cmpi.w #PRVM_TOKEN_KIND_OP_MULTIPLY, 0(a1)
+	cmpi.w #abi.PRVM_TOKEN_KIND_OP_MULTIPLY, 0(a1)
 	bne programLoop
 	move.l d2, d0
 	addq.l #1, d0
@@ -500,7 +412,7 @@ opcodePeekStarOrg
 	bcc programLoop
 	bsr.w tokenPtrByIndex
 	bne returnWithLocals
-	cmpi.w #PRVM_TOKEN_KIND_OP_EQ, 0(a1)
+	cmpi.w #abi.PRVM_TOKEN_KIND_OP_EQ, 0(a1)
 	bne programLoop
 	move.l #1, LOCAL_BOOL_VALUE(a3)
 	bra programLoop
@@ -528,19 +440,19 @@ opcodeConsumeOperator
 	bra invalidTokenAtCursor
 
 consumePlus
-	cmpi.w #PRVM_TOKEN_KIND_OP_PLUS, d7
+	cmpi.w #abi.PRVM_TOKEN_KIND_OP_PLUS, d7
 	bne invalidTokenAtCursor
 	addq.l #1, d2
 	bra programLoop
 
 consumeEq
-	cmpi.w #PRVM_TOKEN_KIND_OP_EQ, d7
+	cmpi.w #abi.PRVM_TOKEN_KIND_OP_EQ, d7
 	bne invalidTokenAtCursor
 	addq.l #1, d2
 	bra programLoop
 
 consumeMultiply
-	cmpi.w #PRVM_TOKEN_KIND_OP_MULTIPLY, d7
+	cmpi.w #abi.PRVM_TOKEN_KIND_OP_MULTIPLY, d7
 	bne invalidTokenAtCursor
 	addq.l #1, d2
 	bra programLoop
@@ -548,7 +460,7 @@ consumeMultiply
 opcodeLoadIdentifier
 	bsr.w currentTokenPtr
 	bne returnWithLocals
-	cmpi.w #PRVM_TOKEN_KIND_IDENTIFIER, 0(a1)
+	cmpi.w #abi.PRVM_TOKEN_KIND_IDENTIFIER, 0(a1)
 	bne invalidTokenAtCursor
 	move.l 4(a1), d0
 	beq invalidTokenAtCursor
@@ -561,7 +473,7 @@ opcodeLoadIdentifier
 	move.l d0, d5
 	add.l d7, d5
 	bcs invalidTokenAtCursor
-	cmp.l PRVM_FRAME_LEXEME_LEN(a4), d5
+	cmp.l abi.PRVM_FRAME_LEXEME_LEN(a4), d5
 	bhi invalidTokenAtCursor
 	move.l 4(a1), LOCAL_LOADED_COL_START(a3)
 	move.l 8(a1), LOCAL_LOADED_COL_END(a3)
@@ -580,7 +492,7 @@ opcodeLoadInlineText
 	adda.l d7, a0
 	cmpa.l a6, a0
 	bhi invalidProgramAtCursor
-	move.l PRVM_FRAME_LEXEME_LEN(a4), d5
+	move.l abi.PRVM_FRAME_LEXEME_LEN(a4), d5
 	move.l d5, d0
 	add.l d7, d0
 	bcs invalidProgramAtCursor
@@ -590,8 +502,8 @@ opcodeLoadInlineText
 	move.l d7, LOCAL_LOADED_LEXEME_LEN(a3)
 	clr.l LOCAL_LOADED_COL_START(a3)
 	move.l d7, LOCAL_LOADED_COL_END(a3)
-	move.l d0, PRVM_FRAME_LEXEME_LEN(a4)
-	movea.l PRVM_FRAME_LEXEME_PTR(a4), a0
+	move.l d0, abi.PRVM_FRAME_LEXEME_LEN(a4)
+	movea.l abi.PRVM_FRAME_LEXEME_PTR(a4), a0
 	adda.l d5, a0
 	tst.l d7
 	beq loadInlineDone
@@ -613,7 +525,7 @@ opcodeParseOptionalLabel
 	clr.l d0
 	bsr.w tokenPtrByIndex
 	bne returnWithLocals
-	cmpi.w #PRVM_TOKEN_KIND_IDENTIFIER, 0(a1)
+	cmpi.w #abi.PRVM_TOKEN_KIND_IDENTIFIER, 0(a1)
 	bne programLoop
 	cmpi.l #1, 4(a1)
 	bne programLoop
@@ -623,7 +535,7 @@ opcodeParseOptionalLabel
 	move.l d0, d5
 	add.l d7, d5
 	bcs invalidTokenAtCursor
-	cmp.l PRVM_FRAME_LEXEME_LEN(a4), d5
+	cmp.l abi.PRVM_FRAME_LEXEME_LEN(a4), d5
 	bhi invalidTokenAtCursor
 	move.l 4(a1), LOCAL_LABEL_COL_START(a3)
 	move.l 8(a1), LOCAL_LABEL_COL_END(a3)
@@ -636,7 +548,7 @@ opcodeParseOptionalLabel
 	moveq #1, d0
 	bsr.w tokenPtrByIndex
 	bne returnWithLocals
-	cmpi.w #PRVM_TOKEN_KIND_COLON, 0(a1)
+	cmpi.w #abi.PRVM_TOKEN_KIND_COLON, 0(a1)
 	bne emitOptionalLabel
 	move.l 4(a1), d0
 	cmp.l LOCAL_LABEL_COL_END(a3), d0
@@ -735,11 +647,11 @@ requestOperandAtCursor
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), d1
 	move.l LOCAL_EXPR_START_TOKEN(a3), d2
 	move.l #PRVM_RESUME_STATE_SIZE, d3
-	moveq #PRVM_STATUS_EXPR_REQUEST, d0
+	moveq #abi.PRVM_STATUS_EXPR_REQUEST, d0
 	bra returnWithLocals
 
 resumeFromExpression
-	movea.l PRVM_FRAME_RESUME_PTR(a4), a2
+	movea.l abi.PRVM_FRAME_RESUME_PTR(a4), a2
 	cmpi.l #PRVM_RESUME_MAGIC, 0(a2)
 	bne invalidResume
 	cmpi.w #PRVM_RESUME_VERSION, 4(a2)
@@ -777,7 +689,7 @@ restoreLocals
 	move.l 16(a2), d0
 	bsr.w validateContinuationPc
 	bne invalidResume
-	move.l PRVM_FRAME_PROGRAM_PTR(a4), d0
+	move.l abi.PRVM_FRAME_PROGRAM_PTR(a4), d0
 	add.l 16(a2), d0
 	bcs invalidResume
 	movea.l d0, a5
@@ -795,7 +707,7 @@ restoreLocals
 	move.l LOCAL_OPERAND_COUNT(a3), d0
 	addq.l #1, d0
 	move.l d0, LOCAL_OPERAND_COUNT(a3)
-	cmpi.w #PRVM_EXPR_SLOT_READY_ERROR, d7
+	cmpi.w #abi.PRVM_EXPR_SLOT_READY_ERROR, d7
 	beq programLoop
 	addq.l #1, LOCAL_SCAN_INDEX(a3)
 	move.l LOCAL_SCAN_NEXT(a3), d0
@@ -811,72 +723,75 @@ entryBoundary
 	clr.l d1
 	clr.l d2
 	clr.l d3
-	moveq #PRVM_STATUS_ENTRY_BOUNDARY, d0
+	moveq #abi.PRVM_STATUS_ENTRY_BOUNDARY, d0
 	bra returnWithLocals
 
 invalidTokenAtCursor
 	clr.l d1
 	clr.l d3
-	moveq #PRVM_STATUS_INVALID_TOKEN, d0
+	moveq #abi.PRVM_STATUS_INVALID_TOKEN, d0
 	bra returnWithLocals
 
 invalidProgramAtCursor
 	clr.l d1
 	clr.l d3
-	moveq #PRVM_STATUS_INVALID_PROGRAM, d0
+	moveq #abi.PRVM_STATUS_INVALID_PROGRAM, d0
 	bra returnWithLocals
 
 outputOverflow
-	moveq #PRVM_STATUS_OUTPUT_OVERFLOW, d0
+	moveq #abi.PRVM_STATUS_OUTPUT_OVERFLOW, d0
 	rts
 
 unsupportedOpcode
 	clr.l d1
 	clr.l d3
-	moveq #PRVM_STATUS_UNSUPPORTED_OPCODE, d0
+	moveq #abi.PRVM_STATUS_UNSUPPORTED_OPCODE, d0
 	bra returnWithLocals
 
 invalidResume
 	clr.l d1
 	clr.l d3
-	moveq #PRVM_STATUS_INVALID_RESUME, d0
+	moveq #abi.PRVM_STATUS_INVALID_RESUME, d0
 	bra returnWithLocals
 
 expressionResultInvalid
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), d1
 	clr.l d3
-	moveq #PRVM_STATUS_EXPR_RESULT_INVALID, d0
+	moveq #abi.PRVM_STATUS_EXPR_RESULT_INVALID, d0
 	bra returnWithLocals
 
 budgetExceeded
 	clr.l d1
 	clr.l d3
-	moveq #PRVM_STATUS_BUDGET_EXCEEDED, d0
+	moveq #abi.PRVM_STATUS_BUDGET_EXCEEDED, d0
 	bra returnWithLocals
 
 invalidArgumentWithLocals
 	clr.l d1
 	clr.l d2
 	clr.l d3
-	moveq #PRVM_STATUS_INVALID_ARGUMENT, d0
+	moveq #abi.PRVM_STATUS_INVALID_ARGUMENT, d0
 	bra returnWithLocals
 
 returnWithLocals
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
-	jsr runtime_profile.opforgeRuntimeProfileLeaveVmV1
-.endif
+	.TELEMETRY_VM_LEAVE
 	adda.l #LOCAL_SIZE, sp
 	movem.l (sp)+, d4-d7/a4-a6
+	rts
+
+macroEntry
+	jsr macro_descriptors.run
+	.TELEMETRY_VM_LEAVE
+	movem.l (sp)+, d4-d7/a4-a6
+	tst.l d0
 	rts
 
 invalidArgument
 	clr.l d1
 	clr.l d2
 	clr.l d3
-	moveq #PRVM_STATUS_INVALID_ARGUMENT, d0
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
-	jsr runtime_profile.opforgeRuntimeProfileLeaveVmV1
-.endif
+	moveq #abi.PRVM_STATUS_INVALID_ARGUMENT, d0
+	.TELEMETRY_VM_LEAVE
 	movem.l (sp)+, d4-d7/a4-a6
 	rts
 	.bend  ; prvmRun68000
@@ -903,19 +818,19 @@ findOperandEndLoop
 	bsr.w tokenPtrByIndex
 	bne operandTokenInvalid
 	move.w 0(a1), d7
-	cmpi.w #PRVM_TOKEN_KIND_OPEN_PAREN, d7
+	cmpi.w #abi.PRVM_TOKEN_KIND_OPEN_PAREN, d7
 	beq operandOpenParen
-	cmpi.w #PRVM_TOKEN_KIND_CLOSE_PAREN, d7
+	cmpi.w #abi.PRVM_TOKEN_KIND_CLOSE_PAREN, d7
 	beq operandCloseParen
-	cmpi.w #PRVM_TOKEN_KIND_OPEN_BRACKET, d7
+	cmpi.w #abi.PRVM_TOKEN_KIND_OPEN_BRACKET, d7
 	beq operandOpenBracket
-	cmpi.w #PRVM_TOKEN_KIND_CLOSE_BRACKET, d7
+	cmpi.w #abi.PRVM_TOKEN_KIND_CLOSE_BRACKET, d7
 	beq operandCloseBracket
-	cmpi.w #PRVM_TOKEN_KIND_OPEN_BRACE, d7
+	cmpi.w #abi.PRVM_TOKEN_KIND_OPEN_BRACE, d7
 	beq operandOpenBrace
-	cmpi.w #PRVM_TOKEN_KIND_CLOSE_BRACE, d7
+	cmpi.w #abi.PRVM_TOKEN_KIND_CLOSE_BRACE, d7
 	beq operandCloseBrace
-	cmpi.w #PRVM_TOKEN_KIND_COMMA, d7
+	cmpi.w #abi.PRVM_TOKEN_KIND_COMMA, d7
 	bne operandNextToken
 	tst.l 0(sp)
 	bne operandNextToken
@@ -981,7 +896,7 @@ ready
 return
 	rts
 atEnd
-	move.l PRVM_FRAME_SOURCE_LEN(a4), d5
+	move.l abi.PRVM_FRAME_SOURCE_LEN(a4), d5
 	addq.l #1, d5
 	move.l d5, d7
 	clr.l d0
@@ -1000,7 +915,7 @@ validateResumeLocals	.block
 	lsr.l #5, d7
 	cmp.l d1, d7
 	bne invalid
-	cmp.l PRVM_FRAME_RESULT_CAPACITY(a4), d0
+	cmp.l abi.PRVM_FRAME_RESULT_CAPACITY(a4), d0
 	bhi invalid
 	cmp.l LOCAL_STEP_COUNT(a3), d6
 	bcs invalid
@@ -1044,7 +959,7 @@ validateResumeLocals	.block
 	move.l LOCAL_LOADED_LEXEME_OFFSET(a3), d0
 	add.l LOCAL_LOADED_LEXEME_LEN(a3), d0
 	bcs invalid
-	cmp.l PRVM_FRAME_LEXEME_LEN(a4), d0
+	cmp.l abi.PRVM_FRAME_LEXEME_LEN(a4), d0
 	bhi invalid
 checkLabelSpan
 	tst.l LOCAL_LABEL_FLAG(a3)
@@ -1052,7 +967,7 @@ checkLabelSpan
 	move.l LOCAL_LABEL_LEXEME_OFFSET(a3), d0
 	add.l LOCAL_LABEL_LEXEME_LEN(a3), d0
 	bcs invalid
-	cmp.l PRVM_FRAME_LEXEME_LEN(a4), d0
+	cmp.l abi.PRVM_FRAME_LEXEME_LEN(a4), d0
 	bhi invalid
 checkSavedStates
 	move.l LOCAL_CHECKPOINT_DEPTH(a3), d5
@@ -1071,7 +986,7 @@ checkCheckpoint
 	bne invalid
 	cmp.l CheckpointRecord.ResultBytes(a0), d0
 	bne invalid
-	cmp.l PRVM_FRAME_RESULT_CAPACITY(a4), d0
+	cmp.l abi.PRVM_FRAME_RESULT_CAPACITY(a4), d0
 	bhi invalid
 	cmpi.l #1, CheckpointRecord.Finished(a0)
 	bhi invalid
@@ -1086,7 +1001,7 @@ checkCheckpoint
 	move.l CheckpointRecord.LoadedOffset(a0), d0
 	add.l CheckpointRecord.LoadedLen(a0), d0
 	bcs invalid
-	cmp.l PRVM_FRAME_LEXEME_LEN(a4), d0
+	cmp.l abi.PRVM_FRAME_LEXEME_LEN(a4), d0
 	bhi invalid
 checkpointLabelSpan
 	tst.l CheckpointRecord.Label(a0)
@@ -1094,7 +1009,7 @@ checkpointLabelSpan
 	move.l CheckpointRecord.LabelOffset(a0), d0
 	add.l CheckpointRecord.LabelLen(a0), d0
 	bcs invalid
-	cmp.l PRVM_FRAME_LEXEME_LEN(a4), d0
+	cmp.l abi.PRVM_FRAME_LEXEME_LEN(a4), d0
 	bhi invalid
 checkpointScan
 	cmpi.l #1, CheckpointRecord.ScanValid(a0)
@@ -1128,9 +1043,9 @@ invalid
 ; Inputs: D0 = offset, A2 = resume; outputs D0 = zero iff valid.
 ; Clobbers: D0/D5/D7/A0-A1. CCR reflects D0.
 validateContinuationPc	.block
-	cmp.l PRVM_FRAME_PROGRAM_LEN(a4), d0
+	cmp.l abi.PRVM_FRAME_PROGRAM_LEN(a4), d0
 	bcc invalid
-	movea.l PRVM_FRAME_PROGRAM_PTR(a4), a0
+	movea.l abi.PRVM_FRAME_PROGRAM_PTR(a4), a0
 	movea.l a0, a1
 	adda.l d0, a1
 	moveq #0, d5
@@ -1194,7 +1109,7 @@ tokenPtrByIndex	.block
 	lsr.l #4, d7
 	lsl.l #2, d7
 	add.l d7, d0
-	movea.l PRVM_FRAME_TOKEN_PTR(a4), a1
+	movea.l abi.PRVM_FRAME_TOKEN_PTR(a4), a1
 	adda.l d0, a1
 	clr.l d0
 	rts
@@ -1202,7 +1117,7 @@ tokenPtrByIndex	.block
 invalidToken
 	clr.l d1
 	clr.l d3
-	moveq #PRVM_STATUS_INVALID_TOKEN, d0
+	moveq #abi.PRVM_STATUS_INVALID_TOKEN, d0
 	rts
 	.bend  ; tokenPtrByIndex
 
@@ -1217,7 +1132,7 @@ readProgramTarget	.block
 	move.b (a5)+, d7
 	lsl.l #8, d7
 	or.l d7, d5
-	move.l PRVM_FRAME_PROGRAM_PTR(a4), d0
+	move.l abi.PRVM_FRAME_PROGRAM_PTR(a4), d0
 	add.l d5, d0
 	movea.l d0, a0
 	cmpa.l a6, a0
@@ -1229,7 +1144,7 @@ readProgramTarget	.block
 invalidProgram
 	clr.l d1
 	clr.l d3
-	moveq #PRVM_STATUS_INVALID_PROGRAM, d0
+	moveq #abi.PRVM_STATUS_INVALID_PROGRAM, d0
 	rts
 	.bend  ; readProgramTarget
 
@@ -1266,7 +1181,7 @@ pushCheckpoint	.block
 invalidProgram
 	clr.l d1
 	clr.l d3
-	moveq #PRVM_STATUS_INVALID_PROGRAM, d0
+	moveq #abi.PRVM_STATUS_INVALID_PROGRAM, d0
 	rts
 	.bend  ; pushCheckpoint
 
@@ -1282,7 +1197,7 @@ popCheckpointAddress	.block
 invalidProgram
 	clr.l d1
 	clr.l d3
-	moveq #PRVM_STATUS_INVALID_PROGRAM, d0
+	moveq #abi.PRVM_STATUS_INVALID_PROGRAM, d0
 	rts
 	.bend  ; popCheckpointAddress
 
@@ -1302,7 +1217,7 @@ peekKind	.block
 	move.l d2, d7
 	lsl.l #2, d7
 	add.l d7, d5
-	movea.l PRVM_FRAME_TOKEN_PTR(a4), a1
+	movea.l abi.PRVM_FRAME_TOKEN_PTR(a4), a1
 	adda.l d5, a1
 	cmpi.b #PRVM_PARSER_KIND_IDENTIFIER, d0
 	beq identifier
@@ -1319,27 +1234,27 @@ peekKind	.block
 	bra false
 
 identifier
-	cmpi.w #PRVM_TOKEN_KIND_IDENTIFIER, 0(a1)
+	cmpi.w #abi.PRVM_TOKEN_KIND_IDENTIFIER, 0(a1)
 	bne false
 	moveq #1, d0
 	rts
 
 dot
-	cmpi.w #PRVM_TOKEN_KIND_DOT, 0(a1)
+	cmpi.w #abi.PRVM_TOKEN_KIND_DOT, 0(a1)
 	bne false
 	moveq #1, d0
 	rts
 
 colon
-	cmpi.w #PRVM_TOKEN_KIND_COLON, 0(a1)
+	cmpi.w #abi.PRVM_TOKEN_KIND_COLON, 0(a1)
 	bne false
 	moveq #1, d0
 	rts
 
 operator
-	cmpi.w #PRVM_TOKEN_KIND_OP_PLUS, 0(a1)
+	cmpi.w #abi.PRVM_TOKEN_KIND_OP_PLUS, 0(a1)
 	blt false
-	cmpi.w #PRVM_TOKEN_KIND_OP_EQ, 0(a1)
+	cmpi.w #abi.PRVM_TOKEN_KIND_OP_EQ, 0(a1)
 	bgt false
 	moveq #1, d0
 	rts
@@ -1349,7 +1264,7 @@ question
 	rts
 
 comma
-	cmpi.w #PRVM_TOKEN_KIND_COMMA, 0(a1)
+	cmpi.w #abi.PRVM_TOKEN_KIND_COMMA, 0(a1)
 	bne false
 	moveq #1, d0
 	rts
@@ -1363,16 +1278,16 @@ resultRecordPtr	.block
 	move.l d1, d0
 	lsl.l #5, d0
 	move.l d0, d7
-	addi.l #PRVM_RESULT_RECORD_SIZE, d7
-	cmp.l PRVM_FRAME_RESULT_CAPACITY(a4), d7
+	addi.l #abi.PRVM_RESULT_RECORD_SIZE, d7
+	cmp.l abi.PRVM_FRAME_RESULT_CAPACITY(a4), d7
 	bhi overflow
-	movea.l PRVM_FRAME_RESULT_PTR(a4), a2
+	movea.l abi.PRVM_FRAME_RESULT_PTR(a4), a2
 	adda.l d0, a2
 	clr.l d0
 	rts
 
 overflow
-	moveq #PRVM_STATUS_OUTPUT_OVERFLOW, d0
+	moveq #abi.PRVM_STATUS_OUTPUT_OVERFLOW, d0
 	rts
 	.bend  ; resultRecordPtr
 
@@ -1387,9 +1302,9 @@ commitResultRecord	.block
 emitBeginStatement	.block
 	bsr.w resultRecordPtr
 	bne return
-	move.w #PRVM_RESULT_BEGIN_STATEMENT, 0(a2)
+	move.w #abi.PRVM_RESULT_BEGIN_STATEMENT, 0(a2)
 	clr.w 2(a2)
-	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
+	move.l abi.PRVM_FRAME_LINE_NUM(a4), 4(a2)
 	clr.l 8(a2)
 	clr.l 12(a2)
 	clr.l 16(a2)
@@ -1407,9 +1322,9 @@ emitLabelText	.block
 	beq return
 	bsr.w resultRecordPtr
 	bne return
-	move.w #PRVM_RESULT_LABEL_TEXT, 0(a2)
+	move.w #abi.PRVM_RESULT_LABEL_TEXT, 0(a2)
 	clr.w 2(a2)
-	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
+	move.l abi.PRVM_FRAME_LINE_NUM(a4), 4(a2)
 	move.l LOCAL_LABEL_COL_START(a3), 8(a2)
 	move.l LOCAL_LABEL_COL_END(a3), 12(a2)
 	move.l LOCAL_LABEL_LEXEME_OFFSET(a3), 16(a2)
@@ -1425,9 +1340,9 @@ return
 emitMnemonicText	.block
 	bsr.w resultRecordPtr
 	bne return
-	move.w #PRVM_RESULT_MNEMONIC_TEXT, 0(a2)
+	move.w #abi.PRVM_RESULT_MNEMONIC_TEXT, 0(a2)
 	clr.w 2(a2)
-	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
+	move.l abi.PRVM_FRAME_LINE_NUM(a4), 4(a2)
 	move.l LOCAL_LOADED_COL_START(a3), 8(a2)
 	move.l LOCAL_LOADED_COL_END(a3), 12(a2)
 	move.l LOCAL_LOADED_LEXEME_OFFSET(a3), 16(a2)
@@ -1443,9 +1358,9 @@ return
 emitDirectiveText	.block
 	bsr.w resultRecordPtr
 	bne return
-	move.w #PRVM_RESULT_DIRECTIVE_TEXT, 0(a2)
+	move.w #abi.PRVM_RESULT_DIRECTIVE_TEXT, 0(a2)
 	clr.w 2(a2)
-	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
+	move.l abi.PRVM_FRAME_LINE_NUM(a4), 4(a2)
 	move.l LOCAL_LOADED_COL_START(a3), 8(a2)
 	move.l LOCAL_LOADED_COL_END(a3), 12(a2)
 	move.l LOCAL_LOADED_LEXEME_OFFSET(a3), 16(a2)
@@ -1468,9 +1383,9 @@ emitOperandTextSpan	.block
 	move.l (sp)+, d5
 	tst.l d0
 	bne return
-	move.w #PRVM_RESULT_OPERAND_TEXT, 0(a2)
+	move.w #abi.PRVM_RESULT_OPERAND_TEXT, 0(a2)
 	clr.w 2(a2)
-	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
+	move.l abi.PRVM_FRAME_LINE_NUM(a4), 4(a2)
 	move.l d5, 8(a2)
 	move.l d7, 12(a2)
 	move.l LOCAL_EXPR_START_TOKEN(a3), 16(a2)
@@ -1493,9 +1408,9 @@ emitOperandExprSlot	.block
 	move.l (sp)+, d5
 	tst.l d0
 	bne return
-	move.w #PRVM_RESULT_OPERAND_EXPR_SLOT, 0(a2)
+	move.w #abi.PRVM_RESULT_OPERAND_EXPR_SLOT, 0(a2)
 	clr.w 2(a2)
-	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
+	move.l abi.PRVM_FRAME_LINE_NUM(a4), 4(a2)
 	move.l d5, 8(a2)
 	move.l d7, 12(a2)
 	move.l LOCAL_OPERAND_COUNT(a3), 16(a2)
@@ -1511,9 +1426,9 @@ return
 emitFinishLine	.block
 	bsr.w resultRecordPtr
 	bne return
-	move.w #PRVM_RESULT_FINISH_LINE, 0(a2)
+	move.w #abi.PRVM_RESULT_FINISH_LINE, 0(a2)
 	clr.w 2(a2)
-	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
+	move.l abi.PRVM_FRAME_LINE_NUM(a4), 4(a2)
 	clr.l 8(a2)
 	clr.l 12(a2)
 	clr.l 16(a2)
@@ -1528,9 +1443,9 @@ return
 
 writeExpressionRequest	.block
 	movem.l d1-d2/a1-a2, -(sp)
-	movea.l PRVM_FRAME_EXPR_REQUEST_PTR(a4), a2
-	move.w #PRVM_EXPR_REQUEST_VERSION_V2, 0(a2)
-	move.w #PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a2)
+	movea.l abi.PRVM_FRAME_EXPR_REQUEST_PTR(a4), a2
+	move.w #abi.PRVM_EXPR_REQUEST_VERSION_V2, 0(a2)
+	move.w #abi.PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a2)
 	move.l LOCAL_SCAN_INDEX(a3), 4(a2)
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), 8(a2)
 	move.l LOCAL_EXPR_START_TOKEN(a3), 12(a2)
@@ -1557,15 +1472,15 @@ writeSingleTokenSpan
 	move.l 8(a1), d2
 
 writeSpan
-	move.l PRVM_FRAME_LINE_NUM(a4), 20(a2)
+	move.l abi.PRVM_FRAME_LINE_NUM(a4), 20(a2)
 	move.l d1, 24(a2)
 	move.l d2, 28(a2)
 	clr.l d0
 	bra.s returnOk
 
 endSpan
-	move.l PRVM_FRAME_LINE_NUM(a4), 20(a2)
-	move.l PRVM_FRAME_SOURCE_LEN(a4), d0
+	move.l abi.PRVM_FRAME_LINE_NUM(a4), 20(a2)
+	move.l abi.PRVM_FRAME_SOURCE_LEN(a4), d0
 	addq.l #1, d0
 	move.l d0, 24(a2)
 	move.l d0, 28(a2)
@@ -1582,14 +1497,14 @@ returnOk
 	.bend  ; writeExpressionRequest
 
 writeResumeState	.block
-	movea.l PRVM_FRAME_RESUME_PTR(a4), a2
+	movea.l abi.PRVM_FRAME_RESUME_PTR(a4), a2
 	move.l #PRVM_RESUME_MAGIC, 0(a2)
 	move.w #PRVM_RESUME_VERSION, 4(a2)
 	move.w #PRVM_RESUME_STATE_SIZE, 6(a2)
 	move.l #PRVM_CONTINUATION_PARSE_OPERAND, 8(a2)
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), 12(a2)
 	move.l a5, d0
-	sub.l PRVM_FRAME_PROGRAM_PTR(a4), d0
+	sub.l abi.PRVM_FRAME_PROGRAM_PTR(a4), d0
 	move.l d0, 16(a2)
 	move.l d2, 20(a2)
 	move.l d1, 24(a2)
@@ -1608,15 +1523,15 @@ copyLocals
 
 validateExpressionResultSlot	.block
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), d0
-	cmp.l PRVM_FRAME_EXPR_RESULT_COUNT(a4), d0
+	cmp.l abi.PRVM_FRAME_EXPR_RESULT_COUNT(a4), d0
 	bcc invalid
 	lsl.l #5, d0
-	movea.l PRVM_FRAME_EXPR_RESULT_PTR(a4), a1
+	movea.l abi.PRVM_FRAME_EXPR_RESULT_PTR(a4), a1
 	adda.l d0, a1
 	move.w 0(a1), d0
-	cmpi.w #PRVM_EXPR_SLOT_READY, d0
+	cmpi.w #abi.PRVM_EXPR_SLOT_READY, d0
 	beq ready
-	cmpi.w #PRVM_EXPR_SLOT_READY_ERROR, d0
+	cmpi.w #abi.PRVM_EXPR_SLOT_READY_ERROR, d0
 	bne invalid
 ready
 	tst.w 2(a1)
@@ -1634,7 +1549,7 @@ ready
 invalid
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), d1
 	clr.l d3
-	moveq #PRVM_STATUS_EXPR_RESULT_INVALID, d0
+	moveq #abi.PRVM_STATUS_EXPR_RESULT_INVALID, d0
 	rts
 	.bend  ; validateExpressionResultSlot
 

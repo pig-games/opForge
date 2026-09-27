@@ -1,8 +1,8 @@
 # Compact frontend: VM boundary correction
 
 Status: numeric normalization, composed-name recipes and the PRVM boundary/resume
-foundation are implemented; macro descriptors, fragment expansion and expression
-correction remain active. This takes
+foundation and the standalone macro descriptor service are implemented; descriptor
+storage integration, fragment expansion and expression correction remain active. This takes
 precedence over the next packed-loop parity slice in the
 [native reset](native-runtime-reset.md#fixed-input-allocation-slice).
 
@@ -482,3 +482,81 @@ classification, workflow links and benchmark-selector checks pass. Instrumentati
 safety retains three existing `DiagnosticBuffer` label findings in the PRVM
 harnesses, confirmed against the preceding commit. This is a focused checkpoint,
 not a full qualification claim.
+
+
+## Macro descriptor service checkpoint
+
+This first implementation checkpoint introduces an explicit macro PRVM entry
+(kind 2, version 2), independently of compact capsule/storage integration. The
+statement entry remains kind 1 and cannot execute macro descriptor programs.
+Package programs select call/header envelopes, optional labels/parentheses/leading
+commas, quote-aware comments, saturated comma depths and first-raw-`=` defaults.
+These are macro semantics, distinct from the statement parser's signed depths.
+
+The source is traversed only by the VM during initial preparation. Hosts receive
+selected original spelling spans and token identities; they copy literal fragments
+and bind identities. This is necessary to preserve substitutions before string
+escape decoding. It does not authorize the host to parse rendered source later.
+
+The program operations are `0x80` envelope (mode, flags), `0x81` argument split
+(depth policy, separator), `0x82` formals (default policy), `0x83` publication and
+`0x00` end. Call mode is 1 and header mode is 2. Envelope flag bits select labels
+(1), outer parentheses (2), optional leading comma (4, call only), and unquoted
+semicolon comments (8). Default call/header policies are 15/11. Unknown policies,
+invalid order, truncated programs and trailing operations fail explicitly.
+
+Each descriptor occupies 32 big-endian bytes: kind/flags (two words), then token
+start/end, source start/end and three auxiliary longs. Token/source spans are
+half-open indices/offsets, never pointers. Kinds are line (8), argument (9), formal
+(10) and default (11). Line flags distinguish call/macro/segment (1/2/3); its token
+range selects the head name, source range preserves the supplied full list and
+auxiliaries select first child, supplied child count and optional label token.
+Formals select their name and carry optional type-token and default-descriptor
+indices. Defaults are appended after the contiguous formal region. Empty defaults
+remain distinct from absent defaults; empty arguments are errors.
+
+Publication is atomic: at most 64 records, caller capacity checked independently,
+no records returned or caller output bytes changed on failure. Native staging is
+2,048 bytes plus local state on the call stack; the statement interpreter's
+428-byte frame must not be allocated for this independent entry. Common native
+request/status/result definitions move to one `prvm.amigaos.abi` owner, rather than
+being duplicated in the two executors.
+
+This checkpoint deliberately does not change BSP3 or compact template storage.
+`appendCallText`, `captureCallText`, the header-default scanner and substitution
+consumer remain until descriptors are integrated together. The three recorded
+substitution-order discrepancies also remain. Initial descriptors diagnose forms
+that cannot be represented precisely by the supplied lexical token spans; this is
+not a claim of complete macro frontend parity.
+
+The live generic TKVM/Rust oracle and fresh native release run cover 38 cases:
+14 valid calls/headers (including the 64-record limit), plus 24 grammar, token,
+capacity, budget and opcode-sequence failures. Every status, error offset, event
+field and caller-buffer byte is compared. Failure records remain unpublished;
+the native harness writes the actual caller buffer rather than a conditional
+copy that could conceal writes. Six Rust service tests also compare spelling,
+types and defaults with the existing core macro processor.
+
+The release service contributes 3,438 code bytes. Combined PRVM code is 7,700
+bytes, compared with the preceding statement-only 4,240 bytes (+3,460, including
+22 dispatch bytes). The native macro entry uses 2,236 bytes of local state and
+staging, plus 60 bytes of saved registers and call return addresses. It avoids
+the statement entry's 428-byte local frame. The release harness Hunk is 9,444
+bytes with 25,836 bytes of linked allocation; these are fixture costs, not the
+compact CLI footprint. Enabled reusable telemetry adds 548 code bytes and 228
+BSS bytes; the disabled release build emits neither.
+
+Both the release and telemetry-enabled 38-case batches match the same live Rust
+oracle, with fresh completion and zero guest exits. They complete in 0.758/0.775
+host START-to-DONE seconds with the configured FS-UAE 68020/2 MiB profile.
+This includes harness file I/O and protocol
+overhead, and is not a speedup measurement or a hardware clock claim. Compact
+assembly performance remains unchanged until storage/binding integration.
+
+The existing fresh-native statement/resume and line-iterator smoke checks pass
+after ABI extraction, as do 24 focused PRVM host checks. Canonical native
+formatting checks 271 files without changes or warnings. Fresh-run proof,
+instrumentation safety on the new modules/harness, debug evidence classification,
+benchmark-selector and workflow-link checks pass. This is a focused checkpoint;
+the existing three instrumentation-label findings in older PRVM harnesses and
+the retained compact macro consumers have not been resolved here.

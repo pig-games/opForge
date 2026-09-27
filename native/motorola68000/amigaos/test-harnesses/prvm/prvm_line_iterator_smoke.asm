@@ -2,6 +2,7 @@
 
 	.module main
 	.cpu 68020
+	.use prvm.amigaos.abi as prvm_abi
 	.use prvm.amigaos.runtime
 
 SYS_BASE                        = 4
@@ -15,8 +16,6 @@ PUT_STR                         = -948
 PRVM_ITER_FRAME_SIZE            = 116
 PRVM_ITER_MAGIC_OPLI            = $4F504C49
 PRVM_ITER_ABI_VERSION_V1        = 1
-PRVM_TOKEN_RECORD_SIZE          = 20
-PRVM_PARSER_CONTRACT_VERSION_V2 = 2
 PRVM_ITER_STATUS_OK             = 0
 PRVM_STATUS_UNSUPPORTED_ROUTE   = 100
 PRVM_DEBUG_PROGRAM_LEN          = 59
@@ -125,7 +124,7 @@ buildFrame	.block
 	lea TokenRecord(PC), a1
 	move.l a1, 36(a0)
 	move.l #3, 40(a0)
-	move.w #PRVM_TOKEN_RECORD_SIZE, 44(a0)
+	move.w #prvm_abi.PRVM_TOKEN_RECORD_SIZE, 44(a0)
 	clr.w 46(a0)
 	lea LexemeBytes(PC), a1
 	move.l a1, 48(a0)
@@ -148,7 +147,7 @@ buildFrame	.block
 	lea ExprResultBuffer(PC), a1
 	move.l a1, 96(a0)
 	move.l #0, 100(a0)
-	move.l #PRVM_PARSER_CONTRACT_VERSION_V2, 104(a0)
+	move.l #prvm_abi.PRVM_PARSER_CONTRACT_VERSION_V2, 104(a0)
 	move.l #64, 108(a0)
 	clr.l 112(a0)
 	rts

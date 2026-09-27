@@ -1,4 +1,4 @@
-; Copy VM-selected captured call fragments without rescanning marker grammar.
+; Bind VM-selected captured call fragments without rescanning marker grammar.
 	.module experimental.amigaos.binary_macro_fragments
 	.cpu 68020
 	.use prvm.amigaos.abi as abi
@@ -21,11 +21,39 @@ Capacity	.long ?
 Used	.long ?
 	.endstruct
 FRAME_BYTES = Frame.Used+4
+Fragment	.struct
+Pointer	.long ?
+Bytes	.long ?
+	.endstruct
+FRAGMENT_BYTES = Fragment.Bytes+4
 	.section code, kind=code
 ; A0=Frame. D0/CCR=status, Frame.Used=payload bytes on success.
 ; Preserves other registers. All arena spans must belong to their selected plan.
 run	.block
+	moveq #0, d0
+	bra.w bind
+	.bend  ; run
+; A0=Frame. Output/Capacity select an array of pointer,long-byte-length pairs.
+; D0/CCR=status; D1=logical bytes, D2=nonempty fragment count on success.
+; Frame.Used=descriptor bytes; preserves other registers. On failure D1/D2=0.
+; Pointers borrow arena/call buffers and are valid only while those stay alive.
+runFragments	.block
+	moveq #1, d0
+	bra.w bind
+	.bend  ; runFragments
+	.priv
+Locals	.struct
+Mode	.long ?
+Bytes	.long ?
+Count	.long ?
+	.endstruct
+LOCAL_BYTES = Locals.Count+4
+bind	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	suba.w #LOCAL_BYTES, sp
+	move.l d0, Locals.Mode(sp)
+	clr.l Locals.Bytes(sp)
+	clr.l Locals.Count(sp)
 	movea.l a0, a6
 	clr.l Frame.Used(a6)
 	movea.l Frame.Arena(a6), a0
@@ -121,7 +149,6 @@ first
 	cmp.l Frame.TextBytes(a6), d3
 	bhi.w bad
 	sub.l d0, d3
-	beq.w bad
 	movea.l Frame.Text(a6), a3
 	adda.l d0, a3
 	bra.w copy
@@ -207,6 +234,27 @@ unresolved
 	move.l plans.Row.SpellingEnd(a2), d1
 	bra.w literal
 copy
+	tst.l Locals.Mode(sp)
+	beq.w copyText
+	tst.l d3
+	beq.w advance
+	move.l Locals.Bytes(sp), d0
+	add.l d3, d0
+	bcs.w bad
+	cmpi.l #1024, d0
+	bhi.w bad
+	move.l d0, Locals.Bytes(sp)
+	move.l Frame.Used(a6), d0
+	addi.l #FRAGMENT_BYTES, d0
+	bcs.w bad
+	cmp.l Frame.Capacity(a6), d0
+	bhi.w bad
+	move.l d0, Frame.Used(a6)
+	move.l a3, (a5)+
+	move.l d3, (a5)+
+	addq.l #1, Locals.Count(sp)
+	bra.w advance
+copyText
 	move.l Frame.Used(a6), d0
 	add.l d3, d0
 	bcs.w bad
@@ -232,9 +280,22 @@ success
 bad
 	moveq #1, d0
 done
+	tst.l Locals.Mode(sp)
+	beq.w restore
+	moveq #0, d1
+	moveq #0, d2
+	tst.l d0
+	bne.w outputs
+	move.l Locals.Bytes(sp), d1
+	move.l Locals.Count(sp), d2
+outputs
+	move.l d1, LOCAL_BYTES(sp)
+	move.l d2, LOCAL_BYTES+4(sp)
+restore
+	adda.w #LOCAL_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; run
+	.bend  ; bind
 	.endsection
 	.endmodule

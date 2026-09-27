@@ -215,7 +215,7 @@ fn compact_macro_arena_wide_fs_uae() {
     native_source(telemetry_arena_source(280, 200));
 }
 
-fn check_memory(record: &[u8], expected_errors: u32) {
+pub(super) fn check_memory(record: &[u8], expected_errors: u32) {
     assert_eq!(record.len(), 2084);
     let words = record
         .chunks_exact(4)

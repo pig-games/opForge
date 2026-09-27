@@ -27,6 +27,9 @@ TOKEN_CLOSE_PAREN = 15
 TOKEN_AT = 40
 TOKEN_COMPOSITE = 41
 TOKEN_PLAN = 42
+TOKEN_LINE_PLAN = 43
+LINE_PLAN_BIT = 6
+LINE_PLAN_FLAG = 1<<LINE_PLAN_BIT
 TEXT_SCRATCH = 42; private placeholder-consumer scratch, never a writer record
 ACTION_REGULAR = 0
 ACTION_CONSUMED = 1
@@ -48,6 +51,7 @@ ParserContext	.long ?
 GeneratedPlan	.long ?
 ActivePlan	.long ?
 Package	.long ?  ; session capsule supplies shared core directive identities
+FragmentLine	.long ?  ; VM-owned whole-line expansion callback
 	.endstruct
 CallFrame	.struct
 Definition	.word ?
@@ -136,7 +140,7 @@ DEF_BYTES = Def.HeaderPlan+4
 KIND_SEGMENT = 0
 KIND_MACRO = 1
 BLOCK_BYTES = memory.Block.Used+4
-DEFS = State.Package+4
+DEFS = State.FragmentLine+4
 DEFAULTS = DEFS+BLOCK_BYTES
 DEFAULT_TEXT = DEFAULTS+BLOCK_BYTES
 BODY = DEFAULT_TEXT+BLOCK_BYTES
@@ -318,7 +322,8 @@ line	.block
 	clr.w State.TextOffset(a6)
 	clr.l State.ActivePlan(a6)
 	clr.w State.HeaderParen(a6)
-	btst #5, 1(a5)
+	move.b 1(a5), d0
+	andi.b #$60, d0
 	beq.w noCallText
 	moveq #0, d0
 	move.b -1(a5, d6.w), d0
@@ -329,15 +334,18 @@ line	.block
 	cmpi.w #4, d2
 	blo.w bad
 	lea 0(a5, d2.w), a0
-	cmpi.b #TOKEN_PLAN, (a0)
-	bne.w bad
 	cmpi.w #6, d0
+	bne.w bad
+	cmpi.b #TOKEN_LINE_PLAN, (a0)
+	beq.w lineRecipe
+	cmpi.b #TOKEN_PLAN, (a0)
 	bne.w bad
 	move.l 1(a0), d1
 	movea.l State.Plans(a6), a0
 	jsr plans.resolve
 	bne.w bad
 	move.l a1, State.ActivePlan(a6)
+lineRecipe
 	move.w d2, State.TextOffset(a6)
 	move.w d2, d6
 noCallText
@@ -1054,6 +1062,28 @@ bodyAvailable
 	move.l d2, CallFrame.Cursor(a6)
 	lea 0(a3, d5.w), a2
 	clr.w SIDE_BYTES(a6)
+	btst #LINE_PLAN_BIT, 1(a3)
+	beq.w tokenBody
+	cmpi.w #10, d5
+	blo.w bad
+	cmpi.b #TOKEN_LINE_PLAN, -6(a2)
+	bne.w bad
+	cmpi.b #6, -1(a2)
+	bne.w bad
+	move.l -5(a2), d1
+	movea.l 4(sp), a0
+	move.l State.FragmentLine(a0), d0
+	beq.w bad
+	movea.l d0, a3
+	movea.l State.ParserContext(a0), a0
+	movea.l a5, a1
+	movea.l a4, a2
+	movea.l a6, a4
+	jsr (a3)
+	tst.l d0
+	bne.w bad
+	bra.w done
+tokenBody
 	btst #5, 1(a3)
 	beq.w bodyTextReady
 	moveq #0, d0

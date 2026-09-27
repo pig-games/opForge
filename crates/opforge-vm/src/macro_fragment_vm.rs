@@ -33,7 +33,7 @@ pub fn execute(
 ) -> Result<Vec<Descriptor>, DescriptorError> {
     if entry != PARSER_VM_MACRO_FRAGMENT_ENTRY
         || version != PARSER_VM_MACRO_VERSION
-        || source.len() > 253
+        || source.len() > 1024
     {
         return Err(error(4, 0, "Invalid fragment request"));
     }
@@ -213,6 +213,13 @@ mod tests {
         assert_eq!(execute(4, 2, &bad, "abc", 64, 65536).unwrap_err().offset, 0);
     }
     #[test]
+    fn complete_line_spelling_bound() {
+        let p = macro_fragment_program();
+        let records = execute(4, 2, &p, &"x".repeat(1024), 64, 65536).unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].source_end, 1024);
+    }
+    #[test]
     fn rejected_requests_and_programs() {
         let p = macro_fragment_program();
         for n in 0..p.len() {
@@ -244,7 +251,7 @@ mod tests {
         assert_eq!(execute(3, 2, &p, "", 64, 65536).unwrap_err().status, 4);
         assert_eq!(execute(4, 1, &p, "", 64, 65536).unwrap_err().status, 4);
         assert_eq!(
-            execute(4, 2, &p, &"x".repeat(254), 64, 65536)
+            execute(4, 2, &p, &"x".repeat(1025), 64, 65536)
                 .unwrap_err()
                 .status,
             4

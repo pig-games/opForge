@@ -814,3 +814,95 @@ the 6502 package and 532,296 bytes for the 68020 package, with zero profiling
 errors and balanced cleanup. These are different package footprints, not a
 before/after comparison. They verify the adapted copier's enabled instrumentation
 rather than inferring preservation from a control that does not execute it.
+
+### Checkpoint: whole-line string substitution ordering
+
+Hypothesis: owned pre-decoding spelling recipes plus a TKVM fragment entry can
+preserve canonical substitution order without introducing a host text parser.
+The baseline is `c5a43659`, including the three recorded discrepancies above.
+
+The first integrated checkpoint routes ordinary macro-body lines containing VM
+string tokens through complete-line recipes. PRVM entry 4 selects literal and
+parameter ranges while original spelling exists; the host binds borrowed fragment
+views. TKVM privately materializes at most 1,024 logical bytes and executes the
+package-selected tokenizer. Only lexical records and normalized lexemes return;
+the packed writer receives no expanded source pointer. Persisted recipes remain
+offsets into owned storage. Preparation-only line trailer 43 selects this route.
+This is internal bounded materialization, not a direct streaming interpreter.
+
+Success requires fresh native equality with the live full Rust CLI for escaped
+markers, injected quote/comma structure, comments consuming later tokens and
+escapes crossing fragment boundaries. Existing nested-call/default/segment checks
+must stay passing. Repeat the unchanged macro control and tracked-memory run;
+report size/runtime costs without claiming a speedup from individual observations.
+Stop and revise if lexical state still depends on host decisions or native proof
+fails. Known nested call spelling and segment-body consumers retain their prior
+paths at this checkpoint; no eligibility shortcut or complete macro parity is
+claimed. Removing the old decoded-string scanner depends on migrating those
+consumers too.
+
+
+The recipe source bound is now 1,024 bytes in Rust and native, matching TKVM's
+logical input limit. It does not change the 256-byte packed-line limit. Escaped
+spelling can therefore exceed the former 253-byte limit while its decoded packed
+output stays small. Private materialization source reads use the existing gated
+`TOKEN_WORK` macro; release builds emit no probes. The service uses about 1,080
+bytes of stack, plus its caller and ordinary TKVM frames; tracked owned-memory
+measurements do not include that stack usage.
+
+The independent harness exposed a separate Rust Hunk relocation defect:
+computed absolute destinations such as `FragmentFrame+fragments.Frame.Count`
+were emitted without the required section relocation. One failed instruction
+contained absolute destination `$22` and consequently wrote into low OS memory.
+The harness now loads the owned frame/view base once and addresses symbolic
+struct offsets through registers. This is not a tokenizer VM failure. Repairing
+computed absolute expression relocation remains a separate follow-up; this
+checkpoint does not claim to fix that host assembler defect. The debugger
+captures were localization evidence only, followed by fresh normal proof runs.
+
+Fresh normal proof passes the complete-line Rust/native batch: escaped positional
+and named markers, quote/comma injection, an injected comment consuming a later
+expression, an escape crossing fragments, full-list/braced/unknown references,
+normalized arithmetic, long escaped spelling, twenty substitutions in one string,
+and default/repeated invocation values. Enabled telemetry reports peak owned
+memory of 194,672 bytes, balanced releases and zero profiling errors. Independent
+native batches pass 19 tokenizer cases (including invalid length and untouched
+failure buffers) and 31 recipe cases (including the 1,024/1,025 boundary). Existing
+nested/default fragment consumers pass with telemetry on both target packages;
+nested macro/segment expansion also passes on both targets.
+
+The unchanged 3,036-byte / 263-line macro-repeat control produces the same 512
+bytes under the configured 68020 / 2 MiB profile:
+
+| Metric | `c5a43659` | This checkpoint |
+|---|---:|---:|
+| Release START-to-DONE seconds | 4.2688 | 4.3076 |
+| Linked allocation bytes | 92,720 | 94,132 |
+| Linked code bytes | 76,384 | 77,796 |
+| Linked data bytes | 568 | 568 |
+| Linked BSS bytes | 15,768 | 15,768 |
+| Preparation capsule bytes | 11,120 | 11,120 |
+| Instrumented peak owned bytes | 262,512 | 262,512 |
+
+These individual observations show no demonstrated material timing change.
+The control has no template strings, so it measures carrying the new path, not
+its string-expansion throughput. Instrumented preparation/assembly takes
+5.14/0.68 seconds; all owned allocations are released with zero profiling errors.
+Tokenizer work remains 263 invocations, 12,742 instructions and 12,396 source
+reads. The new string route's materialization reads are measured by gated probes
+in its own functional comparison. Private stack usage remains separate from
+owned-memory accounting. Input/output hashes match the preceding control.
+Release image digest is `fnv1a64:b5453170b63ee590`; native source SHA-256 is
+`d5f138103c8cc4bf2782d34c0553e8a9bce71d094ab42d4c304146f76d356924`.
+Use the preceding bounded performance command and a separate `--compare-memory`
+run to reproduce these controls.
+
+Qualification passes 457 VM and 101 package library tests, focused live Rust
+oracles, the fresh native comparisons above and the proof/boundary/23 canonical
+contracts/instrumentation/debug-classification/selector/workflow-link guards.
+Native formatting checks 51 files without changes or warnings. The architecture
+checker retains its 10 baseline enforced findings; the inventory retains only
+the existing `value_execution` source mismatch. No clean broad qualification,
+complete macro parity or removal of the remaining decoded-string scanner is
+claimed. The next migration consumers are nested call spelling and segment
+strings; the newly localized Rust relocation defect warrants a separate repair.

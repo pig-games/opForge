@@ -19,6 +19,8 @@
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_memory as memory
 	.use tkvm.amigaos.runtime as tokenizer
+	.use tkvm.amigaos.fragments as fragment_tokenizer
+	.use experimental.amigaos.binary_macro_fragments as fragment_binding
 	.use tkvm.amigaos.control as control
 	.use prvm.amigaos.macro_runtime as macro_runtime
 	.use prvm.amigaos.abi as parser_abi
@@ -74,6 +76,10 @@ SCOPE_STATE = PREPARED_LINE+256
 CONDITION_STATE = SCOPE_STATE+scopes.SCRATCH_BYTES
 TEMPLATE_STATE = CONDITION_STATE+conditionals.SCRATCH_BYTES
 SCRATCH_BYTES = TEMPLATE_STATE+templates.SCRATCH_BYTES
+	.priv
+FRAGMENT_REQUEST = fragment_binding.FRAME_BYTES
+FRAGMENT_VIEWS = FRAGMENT_REQUEST+fragment_tokenizer.FRAME_BYTES
+FRAGMENT_SCRATCH = FRAGMENT_VIEWS+64*fragment_binding.FRAGMENT_BYTES
 	.priv
 ; Package nodes hold capsule-relative entries and scratch-relative chain links.
 Node	.struct
@@ -157,6 +163,7 @@ clearBuckets
 	lea MACRO_PLANS(a6), a1
 	move.l a1, templates.State.Plans(a0)
 	move.l #generatedPlan, templates.State.GeneratedPlan(a0)
+	move.l #fragmentLine, templates.State.FragmentLine(a0)
 	move.l a5, templates.State.ParserContext(a0)
 	move.l Frame.Package(a5), templates.State.Package(a0)
 	move.l #1, LINE_NUMBER(a6)
@@ -335,6 +342,8 @@ line	.block
 	bne.w failed
 	bsr.w initialPlan
 	bne.w failed
+	bsr.w stringLinePlan
+	bne.w failed
 	movea.l Frame.Output(a5), a0
 	movea.l a6, a1
 	adda.l #TEMPLATE_STATE, a1
@@ -382,6 +391,164 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	rts
 	.bend  ; line
+
+; Capture pre-decoding spelling only for ordinary macro-body string lines.
+; Known nested calls keep their existing call recipes until that consumer moves.
+; Token kind is a VM result; no placeholder or quote grammar is inspected here.
+stringLinePlan	.block
+	movem.l d1-d7/a0-a4, -(sp)
+	movea.l a6, a2
+	adda.l #TEMPLATE_STATE, a2
+	moveq #0, d0
+	move.w templates.State.Open(a2), d0
+	beq.w ready
+	subq.w #1, d0
+	mulu.w #templates.DEF_BYTES, d0
+	movea.l templates.DEFS+memory.Block.Pointer(a2), a1
+	adda.l d0, a1
+	cmpi.w #templates.KIND_MACRO, templates.Def.Kind(a1)
+	bne.w ready
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a1
+	jsr templates.role
+	tst.l d0
+	bne.w ready
+	lea TOKENS(a6), a1
+	move.l LINE_FRAME+writer.Frame.Count(a6), d2
+findString
+	tst.l d2
+	beq.w ready
+	cmpi.w #tokenizer.TK_KIND_STRING, (a1)
+	beq.w capture
+	adda.w #20, a1
+	subq.l #1, d2
+	bra.w findString
+capture
+	lea MACRO_EVENTS(a6), a1
+	movea.l a1, a0
+	moveq #macro_plans.ROW_BYTES/4-1, d0
+clearRow
+	clr.l (a0)+
+	dbra d0, clearRow
+	move.w #parser_abi.PRVM_RESULT_MACRO_LINE, macro_plans.Row.Kind(a1)
+	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Row.PackedEnd(a1)
+	move.l Frame.SourceBytes(a5), macro_plans.Row.SpellingEnd(a1)
+	lea MACRO_FRAME(a6), a0
+	lea MACRO_PLANS(a6), a2
+	move.l a2, macro_plans.Frame.Arena(a0)
+	move.l a1, macro_plans.Frame.Events(a0)
+	move.l #1, macro_plans.Frame.Count(a0)
+	move.l Frame.Source(a5), macro_plans.Frame.Source(a0)
+	move.l Frame.SourceBytes(a5), macro_plans.Frame.SourceBytes(a0)
+	lea PACKED_MAP(a6), a1
+	move.l a1, macro_plans.Frame.PackedMap(a0)
+	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Frame.TokenCount(a0)
+	bsr.w captureFragments
+	bne.w bad
+	jsr macro_plans.create
+	bne.w bad
+	lea LINE_FRAME(a6), a0
+	jsr writer.appendPlan
+	bne.w bad
+	movea.l Frame.Output(a5), a0
+	andi.b #$ff-writer.FLAG_PLAN, 1(a0)
+	ori.b #templates.LINE_PLAN_FLAG, 1(a0)
+	move.b #templates.TOKEN_LINE_PLAN, -6(a0, d1.l)
+ready
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; stringLinePlan
+
+; A0=session,A1=output,A2=definition,A4=invocation,D1=owned recipe handle.
+; Bind fragments, then let TKVM alone materialize and lex their logical stream.
+; Returns only a packed line. No original/expanded text enters writer interfaces.
+fragmentLine	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l Frame.Scratch(a5), a6
+	move.l a1, -(sp)
+	suba.w #FRAGMENT_SCRATCH, sp
+	movea.l sp, a0
+	lea MACRO_PLANS(a6), a3
+	move.l a3, fragment_binding.Frame.Arena(a0)
+	move.l d1, fragment_binding.Frame.Plan(a0)
+	move.l templates.Def.HeaderPlan(a2), fragment_binding.Frame.Header(a0)
+	moveq #0, d0
+	move.w templates.Def.ParamCount(a2), d0
+	move.l d0, fragment_binding.Frame.FormalCount(a0)
+	lea templates.TEXT(a4), a3
+	move.l a3, fragment_binding.Frame.Text(a0)
+	lea templates.TEXT_END0(a4), a3
+	move.l a3, fragment_binding.Frame.TextEnds(a0)
+	moveq #0, d0
+	move.w templates.TEXT_BYTES(a4), d0
+	move.l d0, fragment_binding.Frame.TextBytes(a0)
+	lea templates.FULL_TEXT(a4), a3
+	move.l a3, fragment_binding.Frame.Full(a0)
+	moveq #0, d0
+	move.w templates.FULL_BYTES(a4), d0
+	move.l d0, fragment_binding.Frame.FullBytes(a0)
+	lea FRAGMENT_VIEWS(sp), a3
+	move.l a3, fragment_binding.Frame.Output(a0)
+	move.l #64*fragment_binding.FRAGMENT_BYTES, fragment_binding.Frame.Capacity(a0)
+	jsr fragment_binding.runFragments
+	bne.w bad
+	lea FRAGMENT_REQUEST(sp), a0
+	move.l a3, fragment_tokenizer.Frame.Fragments(a0)
+	move.l d2, fragment_tokenizer.Frame.Count(a0)
+	move.l d1, fragment_tokenizer.Frame.InputBytes(a0)
+	lea TOKENS(a6), a3
+	move.l a3, fragment_tokenizer.Frame.Tokens(a0)
+	move.l #TOKEN_CAPACITY, fragment_tokenizer.Frame.TokenCapacity(a0)
+	lea LEXEMES(a6), a3
+	move.l a3, fragment_tokenizer.Frame.Lexemes(a0)
+	move.l #LEXEME_BYTES, fragment_tokenizer.Frame.LexemeCapacity(a0)
+	move.l PROGRAM(a6), fragment_tokenizer.Frame.Program(a0)
+	move.l PROGRAM_BYTES(a6), fragment_tokenizer.Frame.ProgramBytes(a0)
+	jsr fragment_tokenizer.run
+	bne.w bad
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.startLine
+	lea LINE_FRAME(a6), a0
+	lea TOKENS(a6), a3
+	move.l a3, writer.Frame.Tokens(a0)
+	move.l #TOKEN_CAPACITY*20, writer.Frame.TokenBytes(a0)
+	move.l d1, writer.Frame.Count(a0)
+	lea LEXEMES(a6), a3
+	move.l a3, writer.Frame.Lexemes(a0)
+	move.l d3, writer.Frame.LexemeBytes(a0)
+	move.l FRAGMENT_SCRATCH(sp), writer.Frame.Output(a0)
+	move.l #256, writer.Frame.Capacity(a0)
+	move.l #bind, writer.Frame.Binder(a0)
+	move.l a6, writer.Frame.Context(a0)
+	moveq #0, d0
+	move.w templates.CallFrame.CallLine(a4), d0
+	move.w d0, LINE_FRAME+writer.Frame.SourceLine(a6)
+	lea LINE_FRAME(a6), a0
+	clr.l writer.Frame.Source(a0)
+	clr.l writer.Frame.SourceBytes(a0)
+	movea.l Frame.Package(a5), a3
+	move.w package.Header.CpuDirective(a3), writer.Frame.NameDirective(a0)
+	clr.w writer.Frame.Reserved(a0)
+	lea PACKED_MAP(a6), a3
+	move.l a3, writer.Frame.PackedMap(a0)
+	jsr writer.writeLine
+	bra.w done
+bad
+	moveq #1, d0
+	moveq #0, d1
+done
+	adda.w #FRAGMENT_SCRATCH+4, sp
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; fragmentLine
 
 ; Bind a VM-owned call/header plan while initial lexical spans are still live.
 ; A5=session frame,A6=scratch. D0/CCR=status; other registers preserved.

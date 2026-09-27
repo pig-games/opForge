@@ -62,6 +62,13 @@ fn native_cpu(input: String, cpu: &str) {
     };
     assert_eq!(runs.len(), 1);
     assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+    if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
+        super::macro_calls::check_memory(
+            &runs[0].captured_artifacts[&PathBuf::from("Work/memory.bin")],
+            0,
+        );
+    }
 }
 
 #[test]
@@ -102,4 +109,55 @@ fn text_recipe_escaped_named_fs_uae() {
 #[ignore = "requires configured FS-UAE; binary expansion must preserve Rust quote structure"]
 fn text_recipe_quote_structure_fs_uae() {
     native(source(r#""@1""#, r#"A",7,"B"#));
+}
+
+// Keep several lexical state changes in one bounded native assembly.
+fn ordering_batch() -> String {
+    let mut text = String::from(".module app\n.cpu m6502\n");
+    for (index, body, argument) in [
+        (0, r#""\x401""#, "A"),
+        (1, r#""\x2ename""#, "A"),
+        (2, r#""@1""#, r#"A",7,"B"#),
+        (3, r#""@1",9"#, r#"A";ignored"B"#),
+        (4, r#""\@1""#, "x41"),
+        (5, r#"".@""#, "A"),
+        (6, r#"".{name}""#, "B"),
+        (7, r#"".unknown""#, "C"),
+        (8, r#""@1",2+3*4"#, "D"),
+    ] {
+        text.push_str(&format!(
+            "emit{index} .macro name\n.byte {body}\n.endmacro\n.emit{index} {argument}\n"
+        ));
+    }
+    text.push_str(&format!(
+        "longline .macro name\n.byte \"{}@1\"\n.endmacro\n.longline Q\n",
+        "\\x41".repeat(70)
+    ));
+    text.push_str(&format!(
+        "repeated .macro name\n.byte \"{}\"\n.endmacro\n.repeated R\n",
+        "@1".repeat(20)
+    ));
+    text.push_str(
+        "defaulted .macro name=Z\n.byte \"@1\"\n.endmacro\n.defaulted\n.defaulted Y\n.endmodule\n",
+    );
+    text
+}
+
+#[test]
+fn text_recipe_complete_line_rust_oracle() {
+    let mut expected = b"@1.nameA\x07BAAAB.unknownD\x0e".to_vec();
+    expected.extend(std::iter::repeat_n(b'A', 70));
+    expected.push(b'Q');
+    expected.extend(std::iter::repeat_n(b'R', 20));
+    expected.extend(b"ZY");
+    assert_eq!(
+        graph::oracle_with_roots(&[("input.asm", &ordering_batch())], &[]).unwrap(),
+        expected
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; substitution before whole-line tokenization"]
+fn text_recipe_complete_line_fs_uae() {
+    native(ordering_batch());
 }

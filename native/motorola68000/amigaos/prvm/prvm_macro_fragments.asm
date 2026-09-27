@@ -50,7 +50,7 @@ run	.block
 	tst.l abi.PRVM_FRAME_TOKEN_COUNT(a4)
 	bne.w invalidFrame
 	move.l abi.PRVM_FRAME_SOURCE_LEN(a4), d7
-	cmpi.l #253, d7
+	cmpi.l #1024, d7
 	bhi.w invalidFrame
 	movea.l abi.PRVM_FRAME_SOURCE_PTR(a4), a6
 	tst.l d7

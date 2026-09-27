@@ -6,6 +6,7 @@
 	.use tkvm.amigaos.runtime
 	.use tkvm.amigaos.state
 	.use tkvm.amigaos.control
+	.use tkvm.amigaos.fragments
 
 SYS_BASE = 4
 OPEN_LIBRARY = -552
@@ -24,7 +25,9 @@ SOURCE_CAPTURE_NUMERIC = $8000
 SOURCE_CAPACITY_PROBE = $4000
 SOURCE_RECIPE_CAPTURE = $2000
 SOURCE_LEXICAL_CAPTURE = $1000
-SOURCE_LENGTH_MASK = $0fff
+SOURCE_FRAGMENT_INPUT = $0800
+SOURCE_FRAGMENT_INVALID = $0400
+SOURCE_LENGTH_MASK = $03ff
 LEXICAL_KIND_CAPACITY = 8
 RECIPE_CAPTURE_BYTES = 268
 RECIPE_PAYLOAD_BYTES = 256
@@ -155,7 +158,60 @@ paddingReady
 	moveq #PROBE_SCRATCH_CAPACITY, d2
 scratchReady
 	movem.l d7/a4-a5, -(sp)
+	btst #3, CaptureFlags
+	beq.w contiguousInput
+	lea FragmentViews, a4
+	move.l a0, fragments.Fragment.Bytes(a4)
+	move.l d0, d4
+	lsr.l #1, d4
+	move.l d4, fragments.Fragment.Length(a4)
+	adda.l d4, a0
+	move.l a0, fragments.FRAGMENT_BYTES+fragments.Fragment.Bytes(a4)
+	move.l d0, d5
+	sub.l d4, d5
+	move.l d5, fragments.FRAGMENT_BYTES+fragments.Fragment.Length(a4)
+	lea FragmentFrame, a0
+	move.l a4, fragments.Frame.Fragments(a0)
+	move.l #2, fragments.Frame.Count(a0)
+	move.l d0, fragments.Frame.InputBytes(a0)
+	btst #2, CaptureFlags
+	beq.w fragmentRequestReady
+	addq.l #1, fragments.Frame.InputBytes(a0)
+fragmentRequestReady
+	move.l a1, fragments.Frame.Tokens(a0)
+	move.l d1, fragments.Frame.TokenCapacity(a0)
+	move.l a2, fragments.Frame.Lexemes(a0)
+	move.l d2, fragments.Frame.LexemeCapacity(a0)
+	move.l a3, fragments.Frame.Program(a0)
+	move.l d3, fragments.Frame.ProgramBytes(a0)
+	btst #2, CaptureFlags
+	beq.w fragmentBuffersReady
+	lea Tokens, a0
+	move.l #160+SCRATCH_CAPACITY-1, d4
+fillFragmentSentinel
+	move.b #$a5, (a0)+
+	dbra d4, fillFragmentSentinel
+fragmentBuffersReady
+	lea FragmentFrame, a0
+	jsr fragments.run
+	btst #2, CaptureFlags
+	beq.w tokenized
+	movem.l d0-d3, -(sp)
+	lea Tokens, a0
+	move.l #160+SCRATCH_CAPACITY-1, d4
+checkFragmentSentinel
+	cmpi.b #$a5, (a0)+
+	bne.w fragmentSentinelChanged
+	dbra d4, checkFragmentSentinel
+	movem.l (sp)+, d0-d3
+	bra.w tokenized
+fragmentSentinelChanged
+	movem.l (sp)+, d0-d3
+	movem.l (sp)+, d7/a4-a5
+	bra.w fail
+contiguousInput
 	jsr runtime.tkvmRun68000
+tokenized
 	movem.l (sp)+, d7/a4-a5
 	move.l d1, ReturnedCount
 	move.l d0, (a5)+
@@ -347,6 +403,10 @@ ReturnedCount
 	.res long, 1
 CaptureFlags
 	.res word, 1
+FragmentFrame
+	.res byte, fragments.FRAME_BYTES
+FragmentViews
+	.res byte, 2*fragments.FRAGMENT_BYTES
 Tokens
 	.res byte, 160
 Scratch

@@ -2,7 +2,7 @@
 ; @opforge-owner: debug.amigaos.memory_profile
 	.module debug.amigaos.memory_profile
 	.cpu 68020
-TOKEN_OPCODE_COUNT = 20
+TOKEN_OPCODE_COUNT = 21
 TOKEN_OPCODE_MAX = TOKEN_OPCODE_COUNT-1
 
 Fields	.struct
@@ -36,7 +36,7 @@ TokenWork	.res 7*4
 TokenElapsed	.res 2*8
 	.endstruct
 RECORD_BYTES = Fields.TokenElapsed+16
-RECORD_MAGIC = $4d454d36
+RECORD_MAGIC = $4d454d37
 	.section data, kind=data
 	.priv
 Path	.byte "Work:memory.bin", 0
@@ -281,7 +281,7 @@ tokenBegin	.block
 	move.w (sp)+, ccr
 	rts
 	.bend  ; tokenBegin
-; D0=dense opcode 0..19. Count ordered pairs within an invocation only.
+; D0=dense opcode 0..20. Count ordered pairs within an invocation only.
 tokenOpcode	.block
 	move.w ccr, -(sp)
 	movem.l d0-d1/a0-a1, -(sp)

@@ -149,9 +149,19 @@ pub enum PortableTokenKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PortableComposedName {
+    Recipe {
+        consumed_tokens: u8,
+        packed_payload: Vec<u8>,
+    },
+    Invalid,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PortableToken {
     pub kind: PortableTokenKind,
     pub span: PortableSpan,
+    pub composed_name: Option<PortableComposedName>,
 }
 
 impl PortableToken {
@@ -184,6 +194,7 @@ impl PortableToken {
             TokenKind::End => return None,
         };
         Some(Self {
+            composed_name: None,
             kind,
             span: value.span.into(),
         })

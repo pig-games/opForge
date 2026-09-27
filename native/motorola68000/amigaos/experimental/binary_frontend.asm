@@ -49,7 +49,10 @@ TOKENS = LINE_FRAME+writer.Frame.Reserved+2
 TOKEN_CAPACITY = 64
 LEXICAL_BYTES = 1024
 ; Preserve the lexical budget plus copied number spellings and u64 metadata.
-LEXEME_BYTES = 2*LEXICAL_BYTES+TOKEN_CAPACITY*8
+NUMBER_BYTES = 2*LEXICAL_BYTES+TOKEN_CAPACITY*8
+; Recipe copies and literal-fragment framing are bounded by lexical work.
+COMPOSED_BYTES = 3*LEXICAL_BYTES+TOKEN_CAPACITY*4
+LEXEME_BYTES = NUMBER_BYTES+COMPOSED_BYTES
 LEXEMES = TOKENS+TOKEN_CAPACITY*20
 ; Keep directly addressed regions below signed d16 displacement limits.
 PACKAGE_BUCKETS = LEXEMES+LEXEME_BYTES

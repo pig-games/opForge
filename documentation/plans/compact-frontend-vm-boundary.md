@@ -1,6 +1,7 @@
 # Compact frontend: VM boundary correction
 
-Status: numeric normalization implemented; the remaining correction is active. This takes
+Status: numeric normalization and composed-name recipes implemented; the remaining
+call/string and expression correction is active. This takes
 precedence over the next packed-loop parity slice in the
 [native reset](native-runtime-reset.md#fixed-input-allocation-slice).
 
@@ -24,7 +25,7 @@ whether a native routine contains branches.
 | Component | Current behavior | Assessment |
 |---|---|---|
 | `binary_frontend.line` | Runs TKVM, then calls the writer and preparation machinery. | Real VM tokenization, followed by additional native grammar. |
-| `binary_source.leadingComposite` / `identifierComposite` | Recognize adjacent placeholder/name fragments, interpret positional digits and validate suffix characters. | Lexical recognition in a writer; not just serialization. |
+| TKVM `ComposeNames` / writer recipe branch | Package-selected placeholder policy produces bounded composed-name recipes. The writer validates extents and copies them. | VM-controlled lexical recognition; the three superseded writer parsers are removed. |
 | TKVM `NormalizeNumbers` / writer numeric branch | Package-selected spelling rules produce an unsigned 64-bit value or deferred invalid/overflow metadata. The writer copies values that fit its existing u32 representation. | Literal normalization is VM-controlled; the superseded `binary_source.parseNumber` is removed. |
 | `binary_source.literalString` | Copies bytes already decoded by TKVM. | Appropriate packing; no duplicated escape parser. |
 | `binary_source.nameOperand` and binder | Classify the package-owned numeric-looking `.cpu` name and resolve identifiers to IDs. | Context and binding are necessary, but normalized-token changes must preserve this name/value distinction. |
@@ -50,7 +51,7 @@ numeric status and offsets into scratch for spelling followed by an eight-byte
 value. Package opcode `0x13` selects normalization and its ordered radix rules.
 The scanners remain deliberately permissive. Invalid and overflow metadata are
 deferred until a value is required, preserving numeric-looking names and macro
-fragments. Strings already carry decoded bytes. Composite-recipe emission is
+fragments. Strings already carry decoded bytes. Composed-name recipes are now VM metadata; call/string recipe emission is
 still missing. The ordinary Rust expression path still uses core token spelling;
 it does not yet consume the portable numeric metadata.
 
@@ -191,3 +192,86 @@ That focused assignment proof passes freshly on native: the binary literal has
 `FF` bytes matching Rust. Its numeric spelling fits the original 1,024-byte
 budget while its copied spelling and metadata require the expanded capacity.
 Cleanup and telemetry reconciliation pass with zero profiling errors.
+
+## Composed-name recipe checkpoint
+
+This bounded part of the binary-substitution slice moves composed identifier
+recognition into package-selected TKVM opcode `0x14`. It preserves lexical tokens
+and adds explicit fragment recipes; the writer copies them and binds generated
+names. Initial qualified name prefixes remain lexical content, while the package
+selects positional markers/range and allowed suffix bytes. Bare positional tokens
+and decoded strings retain their existing forms.
+
+Hypothesis: this removes the writer's lexical grammar without losing observable
+macro behavior or materially increasing native preparation cost. The comparison
+baseline is `b36a3a7c`: unchanged unprofiled release control 9.116 s, Hunk 72,344
+bytes, linked reservation 83,560 bytes, capsule 269,226 bytes. Correctness requires
+live generic Rust/native recipe comparison, existing embedded/default/nested macro
+output comparisons, and fast/generic Rust equivalence. Malformed policy, adjacency,
+qualified prefixes and capacity publication need explicit checks.
+
+Success means the writer's `leadingComposite`, `identifierComposite` and suffix
+validator are gone and fresh native proofs pass. Stop for a consequential grammar
+or storage redesign, or an unexplained output/performance regression. This
+checkpoint deliberately retains `appendCallText`, `captureCallText` and
+`rewriteCallText`; argument ranges and call/string recipes must replace those
+together in the next checkpoint. Native expression compilation remains later work.
+
+
+The package supplies opcode `0x14` marker/range/suffix operands; native and Rust
+attach explicit recipes while preserving lexical records. The writer's three
+composed-name recognition routines are removed. Initial qualified prefixes stay
+verbatim. An independent Sol review found and resolved invalid-run traversal:
+both executors now annotate only the attempted run's head and skip its extent.
+The native number scanner also had a pre-existing continuation mismatch: `$`,
+`%` and `@` were accepted inside number bodies. Bodies now match Rust's ASCII
+alphanumeric/underscore rule; leading numeric-prefix handling remains separate.
+
+Fresh native proof matches 24 live generic Rust recipe records, including custom
+marker/range/suffix policy, qualified prefixes, multiple placeholders, whitespace
+and malformed composition. Four additional token-count/kind comparisons cover
+numeric boundaries. A 14-byte scratch probe rejects `name@1` with status 3,
+cursor zero, committed extent six and no published recipe. The first capacity
+comparison had its expected reporting blocks in the wrong order; the corrected
+fresh comparison passes without changing runtime behavior.
+
+Native policy validation and membership use a local 32-byte bitmap instead of
+quadratic uniqueness scans. Caller scratch grows from 2,560 to 5,888 bytes in the
+compact frontend, reserving copied spelling, literal-fragment headers and sidecar
+headers conservatively. Each shared TKPKG scratch buffer grows from 1,024 to
+2,048 bytes. These bounds are provisional; they do not claim optimal storage.
+Reusable telemetry advances to MEM7: 21 opcode counters and 441 adjacent pairs
+in 2,084 bytes, a 168-byte instrumented-only increase. Release telemetry remains
+absent. The four default package programs grow by 272 bytes total; the smoke
+fixture grows by 68 bytes. No example output goldens changed.
+
+Host checks pass 440 VM tests, 101 package tests, 111 affected binary-source checks
+and both live generated-package fixture comparisons. The final invalid-run fix
+also passes its all-original-token regression. Native proof/instrumentation
+checks and their nine tests pass. A broader 36-test native-guard selection has
+34 passes and two failures on unchanged files: the existing value-execution
+inventory hash and missing compact-CLI owner annotation. This is a checkpoint,
+not full repository qualification.
+
+
+The unchanged unprofiled release control (m6502, 84,687 source bytes, 121 templates)
+passes all 1,701 output bytes in 9.887 s, versus 9.116 s at `b36a3a7c`: an observed
+8.5% increase in single runs, not a statistical estimate. This checkpoint corrects
+grammar ownership and adds a lexical pass; it is not a speedup claim. The release
+Hunk is 72,620 bytes (+276), with linked reservation 83,828 bytes (+268).
+Fresh native embedded/default/multiple-placeholder macro comparisons pass four
+inputs, and all 24 numeric normalization records still match live generic Rust.
+
+Fresh 68020 / 2 MiB telemetry comparisons on the unchanged CPU-alias inputs
+report peak tracked ownership 531,952 bytes (m68020) and 153,112 bytes (m6502),
+both +64 bytes. Cleanup is balanced, live ownership returns to zero and profiling
+errors are zero. Opcode/pair counts reconcile, including seven ComposeNames
+executions per input. Capsule sizes are 269,294 and 11,032 bytes respectively.
+The expanded scratch fits the existing arena allocation on these inputs; this
+is not a worst-case whole-program memory proof. Full self-host remains at the
+previous `.for 4` frontier and was not rerun for this lexical checkpoint.
+
+The linked native formatter checks 259 files with no changes or warnings.
+Independent final review reports no remaining actionable finding. Remaining work
+is explicit argument ranges and call/string substitution recipes, followed by
+VM-controlled expression compilation and the preparation-boundary audit.

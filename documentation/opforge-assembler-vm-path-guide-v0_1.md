@@ -462,11 +462,21 @@ Executor: [`crates/opforge-vm/src/runtime_model_core.rs#L593-L900`](../crates/op
 | `0x0B` | `Fail` | Abort tokenization with a runtime error. |
 | `0x0C` | `EmitDiag` | Emit a tokenizer diagnostic slot and fail deterministically. |
 | `0x0D` | `DelegateCore` | Reserved escape hatch; forbidden in authoritative VM tokenizer mode. |
-| `0x0E` | `ScanCoreToken` | Ask the core tokenizer bridge to scan one token from the current cursor. |
+| `0x0E` | `ScanCoreToken` | Reserved core bridge; not used by canonical package tokenization. |
+| `0x0F` | `ScanIdentifier` | Scan an identifier using package token policy. |
+| `0x10` | `ScanNumber` | Scan a permissive number spelling. |
+| `0x11` | `ScanString` | Scan and decode a quoted string. |
+| `0x12` | `ScanSymbol` | Scan operators and punctuation. |
+| `0x13` | `NormalizeNumbers` | Annotate checked u64 values using inline radix rules. |
+| `0x14` | `ComposeNames` | Annotate binary composed-name recipes using inline placeholder policy. |
 
-The default family tokenizer program is intentionally tiny. It repeatedly scans one core token, checks for end-of-line, loops, and then ends: [`crates/opforge-vm/src/builder.rs#L870-L888`](../crates/opforge-vm/src/builder.rs#L870-L888)
-
-That means today's tokenizer VM is "VM-authoritative control flow around core token semantics" rather than a totally separate lexer implementation.
+Canonical programs choose the scanner operations, then normalize numeric tokens
+and compile composed-name recipes before ending. Shared primitives execute the
+selected grammar; the binary writer consumes metadata rather than recognizing
+literal or composed-name spelling. See the [single-line ABI](opForge-m68000-tokenizer-vm-single-line-buffer-abi-spec-v0_1.md)
+for operands, deferred errors and native metadata layout. Raw call/string
+substitution and native expression compilation remain part of the
+[active boundary correction](plans/compact-frontend-vm-boundary.md).
 
 ### 6.2 Parser VM (`PRVM`)
 

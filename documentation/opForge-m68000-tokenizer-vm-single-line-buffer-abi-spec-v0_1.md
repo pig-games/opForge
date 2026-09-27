@@ -148,7 +148,7 @@ Each token record occupies 20 bytes in the `A1` buffer.
 | Offset | Size | Field | Meaning |
 |---|---:|---|---|
 | `0` | 2 | `kind_code` | Token kind code from the table below. |
-| `2` | 2 | `numeric_status` | Zero unless normalized by the package program; number status `1` valid, `2` malformed, `3` overflow. |
+| `2` | 2 | `metadata` | Low bits: numeric status `1` valid, `2` malformed, `3` overflow; high bits: composed recipe `0x8000` valid or `0x4000` invalid. Zero when unannotated. |
 | `4` | 4 | `col_start` | One-based start column. |
 | `8` | 4 | `col_end` | One-based exclusive end column. |
 | `12` | 4 | `lexeme_offset` | Zero-based byte offset into the `A2` lexeme scratch buffer. |
@@ -348,7 +348,7 @@ For status 1, `lexeme_offset` points to the unchanged spelling and eight big-end
 value bytes follow its `lexeme_len` bytes. These value bytes must fit in committed
 scratch. Number spellings may be copied to make that region contiguous; original
 source spans remain unchanged. Statuses 2/3 retain spelling but have no value
-payload. All other records retain status zero. Capacity failure is tokenizer
+payload. All other records retain numeric status zero; recipe flags are separate. Capacity failure is tokenizer
 status 3, with prior fully committed scratch retained; lexical output is not a
 completed normalized result on failure. No pointers are serialized.
 
@@ -364,3 +364,39 @@ retained legacy executor. Programs that intentionally omit normalization emit ra
 records, not a fallback parser path. Compact package consumers require normalized
 numeric metadata. See the [active correction](plans/compact-frontend-vm-boundary.md)
 for remaining composite and expression grammar work.
+
+## Package-selected composed names
+
+`COMPOSE_NAMES` (`0x14`) follows numeric normalization in canonical programs.
+Inline operands are `u8 marker, u8 positional_min, u8 positional_max,
+u8 suffix_count, suffix_count bytes`. The positional range is within 1–9;
+the explicit literal-byte set controls accepted name suffixes after a placeholder.
+The initial identifier/register prefix stays verbatim lexical content. The default
+policy selects `@`, positions 1–9, and ASCII letters, digits and underscore.
+A policy does not change the scanner's token boundaries. Standalone composition
+uses the `At` token only when the marker is `@`; other markers may occur inside
+identifier/register spelling. Marker bytes must be graphic ASCII punctuation;
+suffix sets must be nonempty, unique graphic ASCII bytes excluding the marker.
+
+The operation recognizes embedded and source-adjacent placeholder/name fragments
+using original spans. Whitespace ends composition. Bare `@1` keeps its ordinary
+positional-token form. Recipes retain original token kinds, spelling and spans;
+Rust core-token conversion drops the optional recipe metadata.
+
+Native 20-byte records use the former reserved word's high bits: `0x8000` means
+a complete recipe, `0x4000` means a deferred invalid or unrepresentable recipe.
+Numeric status in low bits is unchanged. A valid identifier/register/At head's
+scratch region contains its original spelling followed by `u8 consumed_tokens,
+u8 payload_length, payload`. Payload is the existing packed-composite body:
+`u8 logical_kind, u8 fragment_count`, followed by positional tags 1–9 or literal
+fragments `0, u8 length, bytes`. Length and consumed count are bounded to 255;
+invalid recipes have no sidecar. Other tokens remain unchanged. All locations are
+offsets into bounded scratch, never serialized pointers.
+
+The writer validates extents, copies the recipe into packed kind 41, and skips
+the specified token count. It does not interpret placeholder digits or suffix
+characters. Generated-name interning and template invocation remain host-owned.
+Repeated execution clears prior recipe annotations before applying the new policy;
+scratch remains append-only. Capacity failure retains prior committed records and reports the failing head's
+source start. Raw call/string substitution recipes remain active follow-up work;
+this contract does not claim that those paths are already binary-only.

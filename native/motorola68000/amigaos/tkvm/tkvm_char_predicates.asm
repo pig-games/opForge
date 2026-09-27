@@ -130,12 +130,6 @@ tkvmCheckNumberLower
 tkvmCheckNumberExtra
 	cmpi.b #'_', d0
 	beq tkvmPredicateTrue
-	cmpi.b #'$', d0
-	beq tkvmPredicateTrue
-	cmpi.b #'%', d0
-	beq tkvmPredicateTrue
-	cmpi.b #'@', d0
-	beq tkvmPredicateTrue
 	moveq #0, d0
 	rts
 	.bend  ; tkvmIsNumberBody

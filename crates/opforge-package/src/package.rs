@@ -1460,6 +1460,8 @@ pub enum TokenizerVmOpcode {
     ScanSymbol = 0x12,
     /// Normalize emitted number spellings using the inline radix rules.
     NormalizeNumbers = 0x13,
+    /// Compile composed identifier recipes using the inline placeholder policy.
+    ComposeNames = 0x14,
 }
 
 impl TokenizerVmOpcode {
@@ -1485,6 +1487,7 @@ impl TokenizerVmOpcode {
             0x11 => Some(Self::ScanString),
             0x12 => Some(Self::ScanSymbol),
             0x13 => Some(Self::NormalizeNumbers),
+            0x14 => Some(Self::ComposeNames),
             _ => None,
         }
     }

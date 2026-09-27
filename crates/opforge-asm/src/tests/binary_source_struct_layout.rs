@@ -193,7 +193,7 @@ fn native(source: &str, cpu: &str) {
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d36);
+        assert_eq!(words[0], 0x4d454d37);
         assert_eq!(words[1], 0, "all owned storage must be released");
         assert_eq!(words[3], words[4], "allocation accounting must balance");
         eprintln!(

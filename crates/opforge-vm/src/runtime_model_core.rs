@@ -1087,6 +1087,15 @@ impl RuntimeModelCore {
 
             match opcode {
                 TokenizerVmOpcode::End => break,
+                TokenizerVmOpcode::ComposeNames => {
+                    let policy = crate::tokenizer_composite::read_policy(
+                        &vm_program.program,
+                        &mut pc,
+                        &vm_program.diagnostics.invalid_char,
+                    )
+                    .map_err(RuntimeBridgeError::Resolve)?;
+                    crate::tokenizer_composite::compose_names(&mut tokens, &policy);
+                }
                 TokenizerVmOpcode::NormalizeNumbers => {
                     let (flags, rules) = tokenizer_runtime_utils::read_numeric_rules(
                         &vm_program.program,
@@ -1429,6 +1438,15 @@ impl RuntimeModelCore {
                 )
                 .map_err(RuntimeBridgeError::Resolve)?;
                 tokenizer_runtime_utils::normalize_token_numbers(&mut tokens, flags, &rules);
+                consume_steps(1)?; // ComposeNames
+                let payload = crate::builder::default_composed_name_payload();
+                let policy = crate::tokenizer_composite::read_policy(
+                    &payload,
+                    &mut 0,
+                    &vm_program.diagnostics.invalid_char,
+                )
+                .map_err(RuntimeBridgeError::Resolve)?;
+                crate::tokenizer_composite::compose_names(&mut tokens, &policy);
                 consume_steps(1)?; // End
                 break;
             }
@@ -2638,6 +2656,148 @@ mod numeric_vm_tests {
     use crate::runtime_portable_types::PortableTokenizerByteStream;
 
     #[test]
+    fn composed_names_are_explicit_recipes_and_policy_selected() {
+        use crate::portable_contract::PortableComposedName;
+        let model = RuntimeModelCore::from_registry(&ModuleRegistry::new()).unwrap();
+        let mut policy = RuntimeTokenPolicy::default();
+        policy.identifier_start_class = (1 << 0) | (1 << 2);
+        policy.identifier_continue_class = (1 << 6) - 1;
+        let mut program = RuntimeTokenizerVmProgram {
+            opcode_version: TOKENIZER_VM_OPCODE_VERSION_V1,
+            start_state: 0,
+            state_entry_offsets: vec![0],
+            stream: Default::default(),
+            limits: Default::default(),
+            diagnostics: Default::default(),
+            program: default_dispatch_tokenizer_vm_program_bytes(),
+        };
+        for (source, expected) in [
+            (
+                "@1tail",
+                Some(PortableComposedName::Recipe {
+                    consumed_tokens: 2,
+                    packed_payload: vec![0, 2, 1, 0, 4, b't', b'a', b'i', b'l'],
+                }),
+            ),
+            (
+                "name@1",
+                Some(PortableComposedName::Recipe {
+                    consumed_tokens: 1,
+                    packed_payload: vec![0, 2, 0, 4, b'n', b'a', b'm', b'e', 1],
+                }),
+            ),
+            (
+                "name@1tail@2",
+                Some(PortableComposedName::Recipe {
+                    consumed_tokens: 1,
+                    packed_payload: vec![
+                        0, 4, 0, 4, b'n', b'a', b'm', b'e', 1, 0, 4, b't', b'a', b'i', b'l', 2,
+                    ],
+                }),
+            ),
+            ("@1", None),
+            ("@0tail", Some(PortableComposedName::Invalid)),
+            ("name@1@", Some(PortableComposedName::Invalid)),
+            ("name@", None),
+            ("name@word", None),
+            ("@1 tail", None),
+        ] {
+            let request = PortableTokenizeRequest {
+                family_id: "",
+                cpu_id: "",
+                dialect_id: "",
+                source_line: source,
+                source_stream: PortableTokenizerByteStream::from_source_line(source),
+                line_num: 1,
+                token_policy: policy.clone(),
+            };
+            let tokens = model
+                .tokenize_with_prevalidated_vm_core(&request, &program)
+                .unwrap();
+            assert_eq!(tokens[0].composed_name, expected, "{source}");
+            assert_eq!(
+                tokens,
+                model
+                    .tokenize_with_default_dispatch_core(source, 1, &policy, &program)
+                    .unwrap(),
+                "{source}"
+            );
+        }
+        let tail =
+            program.program.len() - crate::builder::default_composed_name_payload().len() - 2;
+        program.program.truncate(tail);
+        program.program.extend([
+            TokenizerVmOpcode::ComposeNames as u8,
+            b'@',
+            2,
+            3,
+            1,
+            b'a',
+            TokenizerVmOpcode::End as u8,
+        ]);
+        for (source, valid) in [("@2a", true), ("@1a", false), ("@2b", false)] {
+            let request = PortableTokenizeRequest {
+                family_id: "",
+                cpu_id: "",
+                dialect_id: "",
+                source_line: source,
+                source_stream: PortableTokenizerByteStream::from_source_line(source),
+                line_num: 1,
+                token_policy: policy.clone(),
+            };
+            let tokens = model
+                .tokenize_with_prevalidated_vm_core(&request, &program)
+                .unwrap();
+            assert_eq!(
+                matches!(
+                    tokens[0].composed_name,
+                    Some(PortableComposedName::Recipe { .. })
+                ),
+                valid,
+                "{source}"
+            );
+        }
+        let tail = program.program.len() - 7;
+        program.program.truncate(tail);
+        program.program.extend([
+            TokenizerVmOpcode::ComposeNames as u8,
+            b'$',
+            1,
+            9,
+            1,
+            b'a',
+            TokenizerVmOpcode::End as u8,
+        ]);
+        for (source, expected) in [
+            (
+                "foo.bar$2a",
+                Some(PortableComposedName::Recipe {
+                    consumed_tokens: 1,
+                    packed_payload: vec![
+                        0, 3, 0, 7, b'f', b'o', b'o', b'.', b'b', b'a', b'r', 2, 0, 1, b'a',
+                    ],
+                }),
+            ),
+            ("@2a", None),
+            ("foo$2b", Some(PortableComposedName::Invalid)),
+        ] {
+            let request = PortableTokenizeRequest {
+                family_id: "",
+                cpu_id: "",
+                dialect_id: "",
+                source_line: source,
+                source_stream: PortableTokenizerByteStream::from_source_line(source),
+                line_num: 1,
+                token_policy: policy.clone(),
+            };
+            let tokens = model
+                .tokenize_with_prevalidated_vm_core(&request, &program)
+                .unwrap();
+            assert_eq!(tokens[0].composed_name, expected, "{source}");
+        }
+    }
+
+    #[test]
     fn numeric_package_rules_select_radix_markers_and_case_policy() {
         let model = RuntimeModelCore::from_registry(&ModuleRegistry::new()).unwrap();
         for (source, marker, flags, expected) in [
@@ -2736,7 +2896,8 @@ mod numeric_vm_tests {
         }
         let tail = program.program.len()
             - crate::builder::default_numeric_normalization_payload().len()
-            - 2;
+            - crate::builder::default_composed_name_payload().len()
+            - 3;
         program.program.truncate(tail);
         program.program.push(TokenizerVmOpcode::End as u8);
         let request = PortableTokenizeRequest {
@@ -2769,7 +2930,7 @@ mod numeric_vm_tests {
                 ..
             }
         ));
-        for steps in 1..=4 {
+        for steps in 1..=5 {
             program.limits.max_steps_per_line = steps;
             let empty = PortableTokenizeRequest {
                 source_line: "",

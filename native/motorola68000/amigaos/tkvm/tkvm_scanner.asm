@@ -252,9 +252,12 @@ loop
 	moveq #0, d0
 	.TOKEN_WORK #3, #1
 	move.b 0(a4, d2.l), d0
+	cmpi.b #'$', d0
+	beq checkPrefix
 	cmpi.b #'%', d0
 	bne checkBody
-	; A leading '%' prefixes binary digits; later '%' starts modulo.
+checkPrefix
+	; Symbol dispatch selected a leading prefix; later markers start tokens.
 	; Keep the canonical number/operator boundary even with permissive bodies.
 	cmp.l LOCAL_PENDING_START(a2), d2
 	beq acceptByte

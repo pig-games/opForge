@@ -22,13 +22,18 @@ PROGRAM_CAPACITY = 256
 SOURCE_CAPACITY = 256
 SOURCE_CAPTURE_NUMERIC = $8000
 SOURCE_CAPACITY_PROBE = $4000
-SOURCE_LENGTH_MASK = $3fff
+SOURCE_RECIPE_CAPTURE = $2000
+SOURCE_LEXICAL_CAPTURE = $1000
+SOURCE_LENGTH_MASK = $0fff
+LEXICAL_KIND_CAPACITY = 8
+RECIPE_CAPTURE_BYTES = 268
+RECIPE_PAYLOAD_BYTES = 256
 PROBE_SCRATCH_CAPACITY = 14
 SCRATCH_CAPACITY = 1024
 SECOND_TOKEN_STATUS = runtime.TOKEN_RECORD_SIZE+2
 INPUT_CAPACITY = 8192
 INPUT_BUFFER_BYTES = INPUT_CAPACITY + 1
-OUTPUT_CAPACITY = CASE_CAPACITY * 40
+OUTPUT_CAPACITY = CASE_CAPACITY * 344
 
 	.section entry, kind=code
 	.pub
@@ -152,6 +157,7 @@ scratchReady
 	movem.l d7/a4-a5, -(sp)
 	jsr runtime.tkvmRun68000
 	movem.l (sp)+, d7/a4-a5
+	move.l d1, ReturnedCount
 	move.l d0, (a5)+
 	tst.w CaptureFlags
 	bpl.w captured
@@ -212,6 +218,64 @@ captured
 	move.l (a0)+, -8(a5)
 	move.l (a0), -4(a5)
 probeCaptured
+	btst #5, CaptureFlags
+	beq.w recipeCaptured
+	movea.l a5, a1
+	move.l #RECIPE_CAPTURE_BYTES/4-1, d0
+clearRecipe
+	clr.l (a5)+
+	dbra d0, clearRecipe
+	lea Tokens, a0
+	moveq #0, d0
+	move.w 2(a0), d0
+	move.l d0, (a1)
+	btst #15, d0
+	beq.w recipeCaptured
+	move.l 12(a0), d0
+	add.l 16(a0), d0
+	bcs.w fail
+	move.l d0, d1
+	addq.l #2, d1
+	bcs.w fail
+	cmp.l d3, d1
+	bhi.w fail
+	lea Scratch, a0
+	adda.l d0, a0
+	moveq #0, d0
+	move.b (a0)+, d0
+	move.l d0, 4(a1)
+	moveq #0, d0
+	move.b (a0)+, d0
+	move.l d0, 8(a1)
+	add.l d0, d1
+	cmp.l d3, d1
+	bhi.w fail
+	lea 12(a1), a1
+copyRecipe
+	tst.l d0
+	beq.w recipeCaptured
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bra.w copyRecipe
+recipeCaptured
+	btst #4, CaptureFlags
+	beq.w lexicalCaptured
+	move.l ReturnedCount, (a5)+
+	lea Tokens, a0
+	moveq #0, d1
+captureKind
+	moveq #-1, d0
+	cmp.l ReturnedCount, d1
+	bcc.w storeKind
+	moveq #0, d0
+	move.w (a0), d0
+storeKind
+	move.l d0, (a5)+
+	adda.w #runtime.TOKEN_RECORD_SIZE, a0
+	addq.l #1, d1
+	cmpi.l #LEXICAL_KIND_CAPACITY, d1
+	blo.w captureKind
+lexicalCaptured
 	movea.l NextCase, a3
 	subq.l #1, d7
 	bra.w caseLoop
@@ -278,6 +342,8 @@ OutputLength
 NextCase
 	.res long, 1
 SourceLength
+	.res long, 1
+ReturnedCount
 	.res long, 1
 CaptureFlags
 	.res word, 1

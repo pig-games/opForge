@@ -18,6 +18,7 @@ TK_OPCODE_SCAN_NUMBER           = 16
 TK_OPCODE_SCAN_STRING           = 17
 TK_OPCODE_SCAN_SYMBOL           = 18
 TK_OPCODE_NORMALIZE_NUMBERS     = 19
+TK_OPCODE_COMPOSE_NAMES         = 20
 
 TK_CLASS_WHITESPACE             = 1
 TK_CLASS_IDENTIFIER_START       = 2
@@ -134,6 +135,8 @@ DemoFinish
 	.byte 0, 1, 8, 1, "q"
 	.byte 0, 1, 10, 1, "d"
 	.byte 0, 0, 10, 1
+	.byte TK_OPCODE_COMPOSE_NAMES, "@", 1, 9, 63
+	.byte "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"
 	.byte TK_OPCODE_END
 
 ; Canonical lexeme spellings used by tkvmStageFixedLexeme.
@@ -216,10 +219,10 @@ LexRange
 LexRangeInclusive
 	.byte "..="
 
-; 132 bytes is the assembled size of DemoProgram and must stay aligned with the
+; 200 bytes is the assembled size of DemoProgram and must stay aligned with the
 ; symbolic DEMO_PC_* offsets above as well as the Rust builder's default loop.
 DemoProgramLen
-	.long 132
+	.long 200
 
 	.endsection
 	.endmodule

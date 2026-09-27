@@ -217,12 +217,12 @@ fn compact_cli_fs_uae() {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh compact CLI memory telemetry");
-        assert_eq!(record.len(), 1916);
+        assert_eq!(record.len(), 2084);
         let words = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d36);
+        assert_eq!(words[0], 0x4d454d37);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocation capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -379,12 +379,12 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh self-host readiness telemetry");
-        assert_eq!(record.len(), 1916);
+        assert_eq!(record.len(), 2084);
         let words = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d36);
+        assert_eq!(words[0], 0x4d454d37);
         assert_eq!(words[1], 0, "rejected input releases tracked memory");
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);
@@ -1581,12 +1581,12 @@ fn assert_binary_files(files: &[(&str, &str)], cpu: &str, oracle: Vec<u8>) -> se
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh memory telemetry capture");
-        assert_eq!(record.len(), 1916);
+        assert_eq!(record.len(), 2084);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d36);
+        assert_eq!(words[0], 0x4d454d37);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocated and freed capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -1647,9 +1647,9 @@ fn assert_binary_files(files: &[(&str, &str)], cpu: &str, oracle: Vec<u8>) -> se
             "E-clock stages reconcile with coarse preparation: {stage_seconds}"
         );
 
-        let opcodes = &words[48..68];
-        let pairs = &words[68..468];
-        let work = &words[468..475];
+        let opcodes = &words[48..69];
+        let pairs = &words[69..510];
+        let work = &words[510..517];
         let opcode_total: u64 = opcodes.iter().map(|n| u64::from(*n)).sum();
         let pair_total: u64 = pairs.iter().map(|n| u64::from(*n)).sum();
         assert_eq!(opcodes[0], words[44], "each successful line ends once");
@@ -1665,7 +1665,7 @@ fn assert_binary_files(files: &[(&str, &str)], cpu: &str, oracle: Vec<u8>) -> se
             assert!(work[taken] <= opcodes[opcode]);
         }
         let scope = |index: usize| {
-            let offset = 475 + index * 2;
+            let offset = 517 + index * 2;
             let ticks = (u64::from(words[offset]) << 32) | u64::from(words[offset + 1]);
             ticks as f64 / f64::from(words[28])
         };
@@ -1767,12 +1767,12 @@ fn assert_native_files_rejection(files: &[(&str, &str)], cpu: &str, diagnostic: 
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh negative-path memory telemetry");
-        assert_eq!(record.len(), 1916);
+        assert_eq!(record.len(), 2084);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d36);
+        assert_eq!(words[0], 0x4d454d37);
         assert!(words[28] > 0, "E-clock initialized on rejection path");
         assert_eq!(words[29] & !16, 0, "only incomplete preparation is allowed");
         assert_eq!(words[1], 0, "failure releases all owned blocks");

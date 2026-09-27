@@ -355,6 +355,7 @@ pub fn apply_token_case_rule(token: PortableToken, rule: AsciiCaseRule) -> Porta
         other => other,
     };
     PortableToken {
+        composed_name: token.composed_name,
         kind,
         span: token.span,
     }
@@ -426,7 +427,11 @@ pub fn vm_build_token(
         15 => PortableTokenKind::CloseParen,
         _ => return Err(format!("unknown tokenizer VM token kind {}", kind_code)),
     };
-    Ok(PortableToken { kind, span })
+    Ok(PortableToken {
+        kind,
+        span,
+        composed_name: None,
+    })
 }
 
 fn vm_portable_token(
@@ -436,6 +441,7 @@ fn vm_portable_token(
     end: usize,
 ) -> PortableToken {
     PortableToken {
+        composed_name: None,
         kind,
         span: PortableSpan {
             line: line_num,
@@ -1040,6 +1046,7 @@ mod tests {
     #[test]
     fn apply_token_case_rule_updates_identifier_and_register() {
         let ident = PortableToken {
+            composed_name: None,
             kind: PortableTokenKind::Identifier("AbC".to_string()),
             span: PortableSpan {
                 line: 1,
@@ -1048,6 +1055,7 @@ mod tests {
             },
         };
         let reg = PortableToken {
+            composed_name: None,
             kind: PortableTokenKind::Register("xY".to_string()),
             span: PortableSpan {
                 line: 1,

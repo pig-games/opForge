@@ -193,7 +193,7 @@ tree; the commits preserve them.
 
 Reusable macros gate allocation, phase, layout, work, clock, tokenizer opcode/pair
 and nested-scope telemetry. Release builds contain no telemetry code, storage or
-observer imports. MEM6 records tokenizer work in a bounded 1,916-byte schema.
+observer imports. MEM7 records tokenizer work in a bounded 2,084-byte schema.
 Per-opcode and per-read probes perturb timing substantially; use them to compare
 work counts and release builds for elapsed-time claims.
 
@@ -222,7 +222,7 @@ Add `--compare-memory` for a separate instrumented accounting run. Use a fresh
 output directory. To compare an older release baseline, extract that commit's
 `native` tree into a temporary directory and pass `--native-source-root <root>`;
 producer and consumer formats must still match. Do not interpret an old MEM4 record
-with the current MEM6 reader.
+with the current MEM7 reader.
 
 Keep the existing bounds: 10 seconds after guest `START`, 60 seconds per invocation
 and 150 seconds per batch. Never use the non-completing self-host case for routine

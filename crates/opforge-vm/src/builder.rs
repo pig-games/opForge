@@ -1090,9 +1090,18 @@ pub(crate) fn default_family_tokenizer_vm_program_bytes() -> Vec<u8> {
         .copy_from_slice(&string_offset.to_le_bytes());
     program.push(TokenizerVmOpcode::NormalizeNumbers as u8);
     program.extend(default_numeric_normalization_payload());
+    program.push(TokenizerVmOpcode::ComposeNames as u8);
+    program.extend(default_composed_name_payload());
     program.push(TokenizerVmOpcode::End as u8);
 
     program
+}
+
+pub(crate) fn default_composed_name_payload() -> Vec<u8> {
+    let suffix = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_";
+    let mut payload = vec![b'@', 1, 9, suffix.len() as u8];
+    payload.extend_from_slice(suffix);
+    payload
 }
 
 /// Ordered alternatives preserve the shared literal grammar, including binary

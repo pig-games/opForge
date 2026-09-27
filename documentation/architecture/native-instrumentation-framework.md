@@ -62,11 +62,11 @@ the current framework, not a mandate for a repository-wide instrumentation rewri
 `OPFORGE_MEMORY_TELEMETRY` are required; missing either gate emits no calls, imports
 or storage. These macros and the dedicated `debug.amigaos.memory_profile` owner
 preserve registers/CCR, never use request/output/error buffers, and keep a bounded
-1916-byte record. The terminal export writes that record separately as `Work:memory.bin`;
+2084-byte record. The terminal export writes that record separately as `Work:memory.bin`;
 a missing/partial record fails the host accounting check. Ordinary release builds
 perform no accounting I/O.
 
-The current MEM6 record starts with sixteen big-endian u32 fields: magic, live capacity, peak live
+The current MEM7 record starts with sixteen big-endian u32 fields: magic, live capacity, peak live
 capacity, cumulative allocated, cumulative freed, live after preparation, cumulative
 freed before assembly, entry free memory, entry largest free block, Exec version,
 live after assembly, live after cleanup, DOS version, retained runtime-prefix bytes,
@@ -91,10 +91,10 @@ at terminal save. Positive runs require zero flags; rejection checks permit only
 16. Stage totals include probe overhead, with no calibration subtraction; compare
 coarse phases against the preceding accounting baseline before interpreting rank.
 
-MEM6 adds 20 opcode counters at byte 192, 400 ordered adjacent-opcode pairs at
-272, and seven work counters at 1872: line bytes, committed tokens, committed
+MEM7 adds 21 opcode counters at byte 192, 441 ordered adjacent-opcode pairs at
+276, and seven work counters at 2040: line bytes, committed tokens, committed
 lexeme bytes, source-byte reads, and taken EOL/byte/class branches. Two u64
-E-clock totals at 1900 measure scanner/emission and numeric normalization helpers and nested token commits.
+E-clock totals at 2068 measure scanner/emission, numeric normalization and composed-name helpers and nested token commits.
 `TOKEN_BEGIN` resets adjacency per invocation; `TOKEN_OPCODE` and `TOKEN_WORK`
 count work; `TOKEN_SCOPE_BEGIN/END` bracket the two nested scopes, while
 `TOKEN_SCOPE_CLOSE` closes an active scope on a shared success/failure return.

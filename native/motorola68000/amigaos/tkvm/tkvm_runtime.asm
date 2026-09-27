@@ -48,6 +48,11 @@ TK_OPCODE_SCAN_NUMBER           = 16
 TK_OPCODE_SCAN_STRING           = 17
 TK_OPCODE_SCAN_SYMBOL           = 18
 TK_OPCODE_NORMALIZE_NUMBERS     = 19
+TK_OPCODE_COMPOSE_NAMES         = 20
+TOKEN_RECIPE_VALID              = $8000
+TOKEN_RECIPE_INVALID            = $4000
+TOKEN_RECIPE_FLAGS              = TOKEN_RECIPE_VALID+TOKEN_RECIPE_INVALID
+TOKEN_RECIPE_LOW_MASK           = $ffff-TOKEN_RECIPE_FLAGS
 
 NUMBER_FLAG_UNDERSCORES          = 1
 NUMBER_FLAG_CASE_INSENSITIVE    = 2
@@ -295,10 +300,10 @@ dispatchOpcode
 .endif
 
 	.TOKEN_OPCODE d0
-	; The native slice implements opcode values 0..19.
+	; The native slice implements opcode values 0..20.
 	; Unsupported shared VM slots still get explicit table entries so the
 	; opcode-to-handler mapping stays visible and future additions stay local.
-	cmpi.b #TK_OPCODE_NORMALIZE_NUMBERS, d0
+	cmpi.b #TK_OPCODE_COMPOSE_NAMES, d0
 	bhi invalidProgramAtCursor
 	add.w d0, d0
 	add.w d0, d0
@@ -327,6 +332,12 @@ TkvmOpcodeDispatchTable
 	.long opcodeScanString
 	.long opcodeScanSymbol
 	.long opcodeNormalizeNumbers
+	.long opcodeComposeNames
+
+opcodeComposeNames
+	jsr composeNames
+	bne return
+	bra programLoop
 
 opcodeNormalizeNumbers
 	jsr normalizeNumbers
@@ -667,6 +678,7 @@ return
 
 	.priv
 	.include "tkvm_numeric_normalization.i"
+	.include "tkvm_composed_names.i"
 
 	.endsection
 	.endmodule

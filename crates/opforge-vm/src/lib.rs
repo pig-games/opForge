@@ -53,6 +53,7 @@ pub mod selector_vm;
 pub mod state_vm;
 pub mod structured_encoding_vm;
 pub mod tokenizer_runtime_utils;
+mod tokenizer_composite;
 pub mod value_vm;
 pub mod vm_core;
 pub mod vm_opasm;

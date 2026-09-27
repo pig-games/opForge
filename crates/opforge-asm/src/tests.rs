@@ -1,3 +1,6 @@
+#[path = "tests/binary_source_composed_names.rs"]
+mod binary_source_composed_names;
+
 #[path = "tests/native_tokenizer_branches.rs"]
 mod native_tokenizer_branches;
 
@@ -1423,6 +1426,7 @@ fn duplicate_instruction_registration_keys(
 fn runtime_token_bridge_maps_portable_tokens_to_core_tokens() {
     let runtime_tokens = vec![
         PortableToken {
+            composed_name: None,
             kind: PortableTokenKind::Identifier("lda".to_string()),
             span: PortableSpan {
                 line: 1,
@@ -1431,6 +1435,7 @@ fn runtime_token_bridge_maps_portable_tokens_to_core_tokens() {
             },
         },
         PortableToken {
+            composed_name: None,
             kind: PortableTokenKind::Hash,
             span: PortableSpan {
                 line: 1,
@@ -1439,6 +1444,7 @@ fn runtime_token_bridge_maps_portable_tokens_to_core_tokens() {
             },
         },
         PortableToken {
+            composed_name: None,
             kind: PortableTokenKind::Number {
                 text: "$42".to_string(),
                 base: 16,
@@ -1469,6 +1475,7 @@ fn runtime_token_bridge_maps_portable_tokens_to_core_tokens() {
 #[test]
 fn runtime_token_bridge_rejects_invalid_spans() {
     let runtime_tokens = vec![PortableToken {
+        composed_name: None,
         kind: PortableTokenKind::Identifier("lda".to_string()),
         span: PortableSpan {
             line: 1,
@@ -15620,7 +15627,7 @@ fn motorola68020_embedded_native_cli_package_matches_rust_default_runtime_packag
 #[test]
 fn native_current_cpex_package_uses_exact_package_digest() {
     // Pin the reviewed current package, while also checking live builder equality.
-    const CPEX_PACKAGE_FNV1A64: u64 = 0xe97d530d9360a8bd;
+    const CPEX_PACKAGE_FNV1A64: u64 = 0x110396ddf79794c2;
     let package_path =
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
     let embedded_package = fs::read(&package_path).expect("read current embedded package");

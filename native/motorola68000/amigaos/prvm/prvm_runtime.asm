@@ -4,6 +4,7 @@
 	.cpu 68020
 	.use prvm.amigaos.abi as abi
 	.use prvm.amigaos.macro_descriptors as macro_descriptors
+	.use prvm.amigaos.packed_macro as packed_macro
 	.pub
 	.include "telemetry_macros.i"
 
@@ -138,6 +139,8 @@ prvmRun68000	.block
 
 	cmpi.w #abi.PRVM_ENTRY_KIND_MACRO_DESCRIPTORS, abi.PRVM_FRAME_ENTRY_KIND(a0)
 	beq macroEntry
+	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_MACRO, abi.PRVM_FRAME_ENTRY_KIND(a0)
+	beq packedMacroEntry
 
 	movea.l a0, a4  ; A4 is the stable request-frame base for the runtime run
 	suba.l #LOCAL_SIZE, sp  ; fixed native frame mirrors Rust parser VM execution state
@@ -781,6 +784,10 @@ returnWithLocals
 
 macroEntry
 	jsr macro_descriptors.run
+	bra macroReturn
+packedMacroEntry
+	jsr packed_macro.run
+macroReturn
 	.TELEMETRY_VM_LEAVE
 	movem.l (sp)+, d4-d7/a4-a6
 	tst.l d0

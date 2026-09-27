@@ -18,6 +18,8 @@ The scope is deliberately narrow: one newline-free source line, caller-owned
 source/token/lexeme input buffers, caller-owned result/diagnostic/resume
 buffers, and deterministic status returns that let host-side tests compare the
 decoded native result against the Rust `parse_statement_line_with_model` path.
+Experimental entry 3 instead accepts one packed record. Its payload bytes may
+contain `0x0A` or `0x0D`; they are binary data, not source-line separators.
 
 ## Problem
 
@@ -145,13 +147,13 @@ ABI can grow without consuming more call registers.
 | `4` | 2 | `abi_version` | Must be `1`. |
 | `6` | 2 | `frame_size` | Must be at least `112`. |
 | `8` | 2 | `call_mode` | `0` start, `1` resume after expression result. |
-| `10` | 2 | `entry_kind` | `1` delegated opasm statement; `2` initial macro descriptors. |
+| `10` | 2 | `entry_kind` | `1` delegated opasm statement; `2` initial macro descriptors; `3` packed macro boundaries. |
 | `12` | 4 | `line_num` | Source line number for spans and diagnostics. |
-| `16` | 4 | `source_ptr` | Pointer to newline-free source bytes. |
+| `16` | 4 | `source_ptr` | Pointer to newline-free source bytes, or a complete packed record for entry 3. |
 | `20` | 4 | `source_len` | Source byte length. |
 | `24` | 4 | `token_ptr` | Pointer to input token records. |
 | `28` | 4 | `token_count` | Number of complete input token records. |
-| `32` | 2 | `token_record_size` | Must be `20` for v0.1. |
+| `32` | 2 | `token_record_size` | Must be `20` for lexical input; unused by entry 3. |
 | `34` | 2 | `reserved0` | Must be `0`; ignored by readers. |
 | `36` | 4 | `lexeme_ptr` | Pointer to token lexeme bytes. |
 | `40` | 4 | `lexeme_len` | Valid lexeme byte length. |
@@ -173,7 +175,7 @@ ABI can grow without consuming more call registers.
 | `104` | 4 | `reserved1` | Must be `0`; ignored by readers. |
 | `108` | 4 | `reserved2` | Must be `0`; ignored by readers. |
 
-Pointer fields may be `0` only when their matching length or capacity is `0`
+For statement entry 1, pointer fields may be `0` only when their matching length or capacity is `0`
 and the field is not required for the requested operation. Required nonzero
 pointers for `call_mode = 0` are `source_ptr`, `token_ptr` when `token_count >
 0`, `program_ptr`, `result_ptr`, `diagnostic_ptr`, `resume_ptr`,
@@ -183,11 +185,14 @@ pointers for `call_mode = 0` are `source_ptr`, `token_ptr` when `token_count >
 
 - `1`: delegated opasm statement request
 - `2`: experimental initial macro descriptor request, described below
+- `3`: experimental packed macro boundary request, described below
 
 All other values are entry-boundary violations. Statement entry 1 continues to
-reject macro descriptor programs; entry 2 does not accept expression resumes.
+reject macro descriptor programs; entries 2 and 3 do not accept expression resumes.
 Shared frame/status/result definitions are owned by `prvm.amigaos.abi`;
-statement resume internals remain owned by `prvm.amigaos.runtime`.
+statement resume internals remain owned by `prvm.amigaos.runtime`. Macro entries
+require source/program/result pointers and do not require statement diagnostics,
+resume or expression slots. Entry 3 additionally requires zero token pointer/count.
 
 `call_mode` values:
 
@@ -205,8 +210,8 @@ The v0.1 PRVM status codes and return-register meanings are:
 |---:|---|---|---|---|---|
 | `0` | `PRVM_STATUS_OK` | A final parser result was emitted. | Result record count. | Final token cursor. | Result bytes committed. |
 | `1` | `PRVM_STATUS_EXPR_REQUEST` | Native paused and requests Rust/opcore expression parsing. | Requested expression slot index. | Current token cursor. | Resume-state bytes committed. |
-| `2` | `PRVM_STATUS_NEWLINE_UNSUPPORTED` | Source contains `0x0A` or `0x0D`. | `0`. | Source-byte offset of first newline. | `0`. |
-| `3` | `PRVM_STATUS_ENTRY_BOUNDARY` | `entry_kind` is neither supported entry. | `0`. | `0`. | `0`. |
+| `2` | `PRVM_STATUS_NEWLINE_UNSUPPORTED` | Text input contains `0x0A` or `0x0D` (entries 1 and 2). | `0`. | Source-byte offset of first newline. | `0`. |
+| `3` | `PRVM_STATUS_ENTRY_BOUNDARY` | `entry_kind` is not a supported entry. | `0`. | `0`. | `0`. |
 | `4` | `PRVM_STATUS_INVALID_ARGUMENT` | Request frame, pointer, capacity, or mode is invalid. | `0`. | `0`. | `0`. |
 | `5` | `PRVM_STATUS_INVALID_TOKEN` | Token record or lexeme reference is malformed. | `0`. | Offending token index, or `0` if unavailable. | `0`. |
 | `6` | `PRVM_STATUS_INVALID_PROGRAM` | Parser contract or bytecode is invalid for v0.1. | `0`. | Current token cursor, or `0` before execution. | `0`. |
@@ -435,7 +440,7 @@ Unsupported newline input:
 
 Non-delegated entry request:
 
-- If `entry_kind` is neither `1` nor `2`, `prvmRun68000` must return
+- If `entry_kind` is not `1`, `2` or `3`, `prvmRun68000` must return
   `PRVM_STATUS_ENTRY_BOUNDARY` and must not execute parser bytecode.
 
 Invalid request frame:
@@ -581,3 +586,33 @@ resplit commas, scan equals, trim whitespace or decode original spelling again.
 This service is not yet connected to compact capsule/template storage. Its
 [active migration plan](plans/compact-frontend-vm-boundary.md#macro-descriptor-service-checkpoint)
 tracks the retained consumers and native proof limits.
+
+
+## Experimental packed macro boundary entry
+
+Entry 3 uses contract version 2 and the same 112-byte request frame. `source_ptr`
+selects one complete compact record of 4–256 bytes, with an exact byte-length
+header; `token_ptr` and `token_count` must be zero. String and composite payloads
+are opaque. A flag-32 plan trailer is validated and excluded from grammar input.
+
+Package operations `0x84` (envelope flags), `0x85` (delimiter policy, separator),
+`0x83` (publication) and `0x00` (end) select the grammar. Envelope flags 1/2/4
+allow an optional label, outer parentheses and leading comma. Packed policy 2
+uses a matched delimiter stack, bounded to 16, and rejects unbalanced completion;
+separator 4 is comma. This preserves the compact invocation acceptance policy.
+The initial spelling descriptor entry retains its separately selected saturated
+depth policy. Invalid policies and opcode sequences fail explicitly.
+
+Line/argument records retain kinds 8/9 and the 32-byte descriptor layout. Their
+token start/end fields are half-open **packed byte offsets**, rather than lexical
+token ordinals. Source start/end initially select the same packed regions. The
+line label auxiliary is a packed byte offset or the absent sentinel. Publication
+is atomic, bounded to 64 records, and leaves the caller buffer untouched on error.
+
+For generated calls, a separate spelling service invokes the configured TKVM and
+entry 2 on a private transient list fragment, with comments-only envelope flags 8.
+The host merges spelling spans with entry-3 packed spans only when record counts
+and kinds agree. Those temporary lexical records never replace executable packed
+tokens. The host copies selected spelling and converts initial lexical ordinals
+(including optional label/type fields) to packed offsets. Stored plans contain
+only offsets and arena handles; native request-frame pointers are transient.

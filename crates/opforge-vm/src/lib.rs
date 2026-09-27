@@ -25,6 +25,8 @@ pub mod hierarchy;
 pub mod intel8080_vm;
 pub mod listing;
 pub mod macro_descriptor_vm;
+pub mod macro_spelling_vm;
+pub mod packed_macro_vm;
 pub mod native6502;
 pub mod native6502_abi;
 pub mod native_prvm;

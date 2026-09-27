@@ -3,7 +3,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use package::{decode_encoding_program, EncodingStep};
+use package::{
+    decode_encoding_program, macro_descriptor_program, macro_spelling_program,
+    packed_macro_call_program, EncodingStep,
+};
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
     BinarySourcePackage, CandidateRecipe, NumericCandidate, Projection, ScalarPlan, SemanticStage,
@@ -11,7 +14,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 80;
+const HEADER: usize = 116;
 const ROW: usize = 32;
 
 struct Program<'a> {
@@ -78,7 +81,7 @@ impl<'a> Programs<'a> {
     }
 }
 
-/// Prepare a self-contained BSP3 block for one resolved package hierarchy.
+/// Prepare a self-contained BSP4 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -263,7 +266,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BSP3");
+    out[..4].copy_from_slice(b"BSP4");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -349,6 +352,26 @@ pub fn prepare_package(
     out.extend_from_slice(&tokenizer.program);
     let tokenizer_length = out.len() - tokenizer_offset;
     align(&mut out);
+    let macro_call_offset = out.len();
+    let macro_call = macro_descriptor_program(false);
+    out.extend_from_slice(&macro_call);
+    let macro_call_length = macro_call.len();
+    align(&mut out);
+    let macro_header_offset = out.len();
+    let macro_header = macro_descriptor_program(true);
+    out.extend_from_slice(&macro_header);
+    let macro_header_length = macro_header.len();
+    align(&mut out);
+    let macro_packed_offset = out.len();
+    let macro_packed = packed_macro_call_program();
+    out.extend_from_slice(&macro_packed);
+    let macro_packed_length = macro_packed.len();
+    align(&mut out);
+    let macro_spelling_offset = out.len();
+    let macro_spelling = macro_spelling_program();
+    out.extend_from_slice(&macro_spelling);
+    let macro_spelling_length = macro_spelling.len();
+    align(&mut out);
     let total = long(out.len())?;
     for (offset, value) in [
         (4, total),
@@ -364,6 +387,14 @@ pub fn prepare_package(
         (44, long(tokenizer_length)?),
         (68, properties.max_program_address),
         (72, runtime_bytes),
+        (80, long(macro_call_offset)?),
+        (84, long(macro_call_length)?),
+        (88, long(macro_header_offset)?),
+        (92, long(macro_header_length)?),
+        (100, long(macro_packed_offset)?),
+        (104, long(macro_packed_length)?),
+        (108, long(macro_spelling_offset)?),
+        (112, long(macro_spelling_length)?),
     ] {
         set_long(&mut out, offset, value);
     }
@@ -378,6 +409,8 @@ pub fn prepare_package(
     set_word(&mut out, 60, cpu_id);
     set_word(&mut out, 62, total_names);
     set_word(&mut out, 64, u16::from(properties.data_little_endian));
+    set_word(&mut out, 96, 2);
+    set_word(&mut out, 98, 0);
     Ok(out)
 }
 

@@ -35,7 +35,7 @@ for diagnostics.
 - Lexical dictionaries, source buffers and preparation scratch are released before
   replay. Compact source locations remain for diagnostics. Growth/copy overlap is
   included in owned-memory accounting.
-- The current BSP3 capsule is an experimental host-to-native vehicle. It is not a
+- The current BSP4 capsule is an experimental host-to-native vehicle. It is not a
   persistent source-file or runtime-package format. Producer and consumer move
   together; earlier capsules are rejected and no compatibility executor is retained.
 
@@ -117,7 +117,7 @@ Other limits remain explicit:
 - diagnostics are provisional and the normal native CLI is not qualified through
   this route.
 
-The host builds the current BSP3 package capsule, stages explicit source files
+The host builds the current BSP4 package capsule, stages explicit source files
 and supplies an ordered-file or discovery/search-root manifest to
 the native harness. Native tokenization creates the packed records; preparation
 compiles expressions and binds names; assembly consumes those records without
@@ -635,7 +635,7 @@ instrumentation disabled.
 
 ## F7: explicit source files and imports
 
-The experimental harness accepts the current BSP3 package followed by a
+The experimental harness accepts the current BSP4 package followed by a
 big-endian file count and length-prefixed guest paths. It opens each supplied
 file separately and streams lines through one frontend session. The runner binds
 all file paths and contents into the fresh case challenge. The former appended

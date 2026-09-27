@@ -5,6 +5,7 @@
 	.module experimental.amigaos.binary_templates
 	.cpu 68020
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_macro_plans as plans
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
@@ -23,7 +24,8 @@ TOKEN_OPEN_PAREN = 14
 TOKEN_CLOSE_PAREN = 15
 TOKEN_AT = 40
 TOKEN_COMPOSITE = 41
-TOKEN_CALL_TEXT = 42
+TOKEN_PLAN = 42
+TEXT_SCRATCH = 42; private placeholder-consumer scratch, never a writer record
 ACTION_REGULAR = 0
 ACTION_CONSUMED = 1
 ACTION_INVOKE = 2
@@ -39,6 +41,10 @@ Serial	.word ?
 RawBytes	.word ?
 TextOffset	.word ?
 HeaderParen	.word ?
+Plans	.long ?
+ParserContext	.long ?
+GeneratedPlan	.long ?
+ActivePlan	.long ?
 	.endstruct
 CallFrame	.struct
 Definition	.word ?
@@ -121,12 +127,13 @@ First	.long ?
 Last	.long ?
 Kind	.word ?
 ParamCount	.word ?
+HeaderPlan	.long ?
 	.endstruct
-DEF_BYTES = Def.ParamCount+2
+DEF_BYTES = Def.HeaderPlan+4
 KIND_SEGMENT = 0
 KIND_MACRO = 1
 BLOCK_BYTES = memory.Block.Used+4
-DEFS = State.HeaderParen+2
+DEFS = State.ActivePlan+4
 DEFAULTS = DEFS+BLOCK_BYTES
 DEFAULT_TEXT = DEFAULTS+BLOCK_BYTES
 BODY = DEFAULT_TEXT+BLOCK_BYTES
@@ -193,6 +200,82 @@ done
 	rts
 	.bend  ; endFile
 
+; Classify bound statement identity before selecting a macro VM program.
+; A0=packed record,A1=scope state,A2=template state. D0/CCR=0 ordinary,
+; 1 known/body call,2 macro header,3 segment header. Preserves others.
+role	.block
+	movem.l d1-d4/a0-a4, -(sp)
+	movea.l a0, a3
+	movea.l a1, a4
+	moveq #0, d3
+	move.b (a3), d3
+	addq.l #1, d3
+	cmpi.l #9, d3
+	blo.w none
+	lea 4(a3), a1
+	cmpi.b #1, (a1)
+	bhi.w dot
+	cmpi.l #13, d3
+	blo.w none
+	addq.l #4, a1
+	cmpi.b #5, (a1)
+	bne.w dot
+	cmpi.l #14, d3
+	blo.w none
+	addq.l #1, a1
+dot
+	cmpi.b #7, (a1)
+	bne.w none
+	cmpi.b #1, 1(a1)
+	bhi.w none
+	moveq #0, d4
+	move.w 2(a1), d4
+	tst.b 4(a1)
+	bne.w lookup
+	move.l d4, d0
+	movea.l a4, a0
+	jsr scopes.classifyDirective
+	cmpi.l #scopes.KEY_MACRO, d0
+	beq.w macro
+	cmpi.l #scopes.KEY_SEGMENT, d0
+	beq.w segment
+	tst.l d0
+	bne.w none
+lookup
+	moveq #0, d2
+	movea.l DEFS+memory.Block.Pointer(a2), a3
+next
+	cmp.w State.Count(a2), d2
+	bhs.w body
+	move.l d4, d0
+	moveq #0, d1
+	move.w Def.Name(a3), d1
+	movea.l a4, a0
+	jsr scopes.templateCandidate
+	beq.w call
+	adda.l #DEF_BYTES, a3
+	addq.w #1, d2
+	bra.w next
+body
+	tst.w State.Open(a2)
+	beq.w none
+call
+	moveq #1, d0
+	bra.w done
+macro
+	moveq #2, d0
+	bra.w done
+segment
+	moveq #3, d0
+	bra.w done
+none
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d4/a0-a4
+	tst.l d0
+	rts
+	.bend  ; role
+
 ; A0=raw writer record,A1=template state,A2=scope state,D0=conditional
 ; active flag. D0/CCR=status,D1=ACTION_*; other registers preserved.
 ; Invoke action queues body records for next. The caller must drain them before
@@ -212,6 +295,7 @@ line	.block
 	blo.w bad
 	move.w d6, State.RawBytes(a6)
 	clr.w State.TextOffset(a6)
+	clr.l State.ActivePlan(a6)
 	clr.w State.HeaderParen(a6)
 	btst #5, 1(a5)
 	beq.w noCallText
@@ -224,13 +308,15 @@ line	.block
 	cmpi.w #4, d2
 	blo.w bad
 	lea 0(a5, d2.w), a0
-	cmpi.b #TOKEN_CALL_TEXT, (a0)
+	cmpi.b #TOKEN_PLAN, (a0)
 	bne.w bad
-	moveq #0, d1
-	move.b 1(a0), d1
-	addq.w #3, d1
-	cmp.w d0, d1
+	cmpi.w #6, d0
 	bne.w bad
+	move.l 1(a0), d1
+	movea.l State.Plans(a6), a0
+	jsr plans.resolve
+	bne.w bad
+	move.l a1, State.ActivePlan(a6)
 	move.w d2, State.TextOffset(a6)
 	move.w d2, d6
 noCallText
@@ -436,169 +522,9 @@ newDefinition
 clearDefaults
 	clr.l (a4)+
 	dbra d0, clearDefaults
-	cmpa.l a2, a1
-	beq.w parametersDone
-parameters
-	move.l a2, d0
-	sub.l a1, d0
-	cmpi.l #4, d0
-	blo.w bad
-	cmpi.b #1, (a1)
-	bhi.w bad
-	tst.b 3(a1)
+	bsr.w bindHeaderPlan
 	bne.w bad
-	move.w Def.ParamCount(a0), d0
-	cmpi.w #PARAM_LIMIT, d0
-	bhs.w bad
-	add.w d0, d0
-	move.w 1(a1), Def.Parameter(a0, d0.w)
-	addq.w #1, Def.ParamCount(a0)
-	adda.w #4, a1
-	cmpa.l a2, a1
-	beq.w parametersDone
-	cmpi.b #TOKEN_EQ, (a1)
-	bne.w nextParameter
-	addq.l #1, a1
-	cmpa.l a2, a1
-	bhs.w bad
-	movea.l a1, a3
-	movea.l a1, a4
-	moveq #0, d6  ; two-bit delimiter stack
-	moveq #0, d7  ; delimiter depth
-scanDefault
-	cmpa.l a2, a4
-	beq.w defaultEnd
-	moveq #0, d0
-	move.b (a4), d0
-	cmpi.b #TOKEN_COMMA, d0
-	bne.w defaultOpenParen
-	tst.w d7
-	beq.w defaultEnd
-	bra.w defaultToken
-defaultOpenParen
-	cmpi.b #TOKEN_OPEN_PAREN, d0
-	bne.w defaultOpenBracket
-	cmpi.w #16, d7
-	bhs.w bad
-	lsl.l #2, d6
-	ori.b #1, d6
-	addq.w #1, d7
-	bra.w defaultToken
-defaultOpenBracket
-	cmpi.b #TOKEN_OPEN_BRACKET, d0
-	bne.w defaultOpenBrace
-	cmpi.w #16, d7
-	bhs.w bad
-	lsl.l #2, d6
-	ori.b #2, d6
-	addq.w #1, d7
-	bra.w defaultToken
-defaultOpenBrace
-	cmpi.b #TOKEN_OPEN_BRACE, d0
-	bne.w defaultCloseParen
-	cmpi.w #16, d7
-	bhs.w bad
-	lsl.l #2, d6
-	ori.b #3, d6
-	addq.w #1, d7
-	bra.w defaultToken
-defaultCloseParen
-	cmpi.b #TOKEN_CLOSE_PAREN, d0
-	bne.w defaultCloseBracket
-	moveq #1, d1
-	bra.w defaultClose
-defaultCloseBracket
-	cmpi.b #TOKEN_CLOSE_BRACKET, d0
-	bne.w defaultCloseBrace
-	moveq #2, d1
-	bra.w defaultClose
-defaultCloseBrace
-	cmpi.b #TOKEN_CLOSE_BRACE, d0
-	bne.w defaultToken
-	moveq #3, d1
-defaultClose
-	tst.w d7
-	beq.w bad
-	move.l d6, d0
-	andi.l #3, d0
-	cmp.l d1, d0
-	bne.w bad
-	lsr.l #2, d6
-	subq.w #1, d7
-defaultToken
-	moveq #0, d0
-	move.b (a4), d0
-	moveq #1, d1
-	cmpi.b #1, d0
-	bls.w defaultName
-	cmpi.b #2, d0
-	beq.w defaultNumber
-	cmpi.b #3, d0
-	beq.w defaultString
-	cmpi.b #39, d0
-	bhi.w bad
-	bra.w defaultAdvance
-defaultName
-	moveq #4, d1
-	bra.w defaultAdvance
-defaultNumber
-	moveq #5, d1
-	bra.w defaultAdvance
-defaultString
-	move.l a2, d0
-	sub.l a4, d0
-	cmpi.l #2, d0
-	blo.w bad
-	moveq #0, d1
-	move.b 1(a4), d1
-	addq.w #2, d1
-defaultAdvance
-	adda.w d1, a4
-	cmpa.l a2, a4
-	bhi.w bad
-	bra.w scanDefault
-defaultEnd
-	tst.w d7
-	bne.w bad
-	move.l a4, d1
-	sub.l a3, d1
-	beq.w bad
-	moveq #0, d0
-	move.l DEFAULT_USED(a6), d0
-	move.l d0, d6
-	add.l d1, d6
-	movem.l d0/a0, -(sp)
-	move.l d6, d0
-	lea DEFAULTS(a6), a0
-	jsr memory.reserve
-	movem.l (sp)+, d0/a0
-	bne.w bad
-	move.w Def.ParamCount(a0), d7
-	subq.w #1, d7
-	lsl.w #2, d7
-	move.l d0, Def.DefaultStart0(a0, d7.w)
-	move.l d6, Def.DefaultEnd0(a0, d7.w)
-	move.l a5, -(sp)
-	movea.l DEFAULTS+memory.Block.Pointer(a6), a5
-	adda.l d0, a5
-copyDefaultDefinition
-	move.b (a3)+, (a5)+
-	subq.l #1, d1
-	bne.w copyDefaultDefinition
-	move.l d6, DEFAULT_USED(a6)
-	movea.l (sp)+, a5
-	movea.l a4, a1
-nextParameter
-	cmpa.l a2, a1
-	beq.w parametersDone
-	cmpi.b #TOKEN_COMMA, (a1)+
-	bne.w bad
-	cmpa.l a2, a1
-	bhs.w bad
-	bra.w parameters
 parametersDone
-	bsr.w captureHeaderDefaults
-	bne.w bad
 	tst.w d2
 	bne.w parametersValid
 	tst.w Def.ParamCount(a0)
@@ -715,143 +641,10 @@ callSyntax
 clearArgumentEnds
 	clr.w (a0)+
 	dbra d0, clearArgumentEnds
-	move.l a3, d0
-	sub.l a2, d0
-	cmpi.l #5, d0
-	blo.w bad
-	lea 5(a2), a1
-	cmpa.l a3, a1
-	beq.w emptyArguments
-	cmpi.b #TOKEN_OPEN_PAREN, (a1)
-	bne.w arguments
-	cmpi.b #TOKEN_CLOSE_PAREN, -1(a3)
+	bsr.w bindCallPlan
 	bne.w bad
-	move.w #1, TEXT_PAREN(a4)
-	addq.l #1, a1
-	subq.l #1, a3
-arguments
-	cmpa.l a3, a1
-	bhi.w bad
-	beq.w emptyArguments
-	clr.w CallFrame.ArgBytes(a4)
 	moveq #0, d1
-	moveq #0, d2  ; two-bit delimiter stack
-	moveq #0, d3  ; delimiter depth
-	movea.l a1, a0
-checkArgument
-	cmpa.l a3, a0
-	beq.w lastArgument
-	moveq #0, d0
-	move.b (a0), d0
-	cmpi.b #TOKEN_COMMA, d0
-	bne.w openParen
-	tst.w d3
-	bne.w argumentToken
-	bsr.w appendArgument
-	bne.w bad
-	addq.l #1, a0
-	movea.l a0, a1
-	bra.w checkArgument
-openParen
-	cmpi.b #TOKEN_OPEN_PAREN, d0
-	bne.w openBracket
-	cmpi.w #16, d3
-	bhs.w bad
-	lsl.l #2, d2
-	ori.b #1, d2
-	addq.w #1, d3
-	bra.w argumentToken
-openBracket
-	cmpi.b #TOKEN_OPEN_BRACKET, d0
-	bne.w openBrace
-	cmpi.w #16, d3
-	bhs.w bad
-	lsl.l #2, d2
-	ori.b #2, d2
-	addq.w #1, d3
-	bra.w argumentToken
-openBrace
-	cmpi.b #TOKEN_OPEN_BRACE, d0
-	bne.w closeParen
-	cmpi.w #16, d3
-	bhs.w bad
-	lsl.l #2, d2
-	ori.b #3, d2
-	addq.w #1, d3
-	bra.w argumentToken
-closeParen
-	cmpi.b #TOKEN_CLOSE_PAREN, d0
-	bne.w closeBracket
-	moveq #1, d6
-	bra.w closeDelimiter
-closeBracket
-	cmpi.b #TOKEN_CLOSE_BRACKET, d0
-	bne.w closeBrace
-	moveq #2, d6
-	bra.w closeDelimiter
-closeBrace
-	cmpi.b #TOKEN_CLOSE_BRACE, d0
-	bne.w argumentToken
-	moveq #3, d6
-closeDelimiter
-	tst.w d3
-	beq.w bad
-	move.l d2, d0
-	andi.l #3, d0
-	cmp.l d6, d0
-	bne.w bad
-	lsr.l #2, d2
-	subq.w #1, d3
-argumentToken
-	moveq #0, d0
-	move.b (a0), d0
-	moveq #1, d6
-	cmpi.b #1, d0
-	bls.w argName
-	cmpi.b #2, d0
-	beq.w argNumber
-	cmpi.b #3, d0
-	beq.w argString
-	cmpi.b #7, d0
-	beq.w argDot
-	cmpi.b #39, d0
-	bhi.w bad
-	bra.w argAdvance
-argDot
-	moveq #1, d6
-	bra.w argAdvance
-argName
-	moveq #4, d6
-	bra.w argAdvance
-argNumber
-	moveq #5, d6
-	bra.w argAdvance
-argString
-	move.l a3, d0
-	sub.l a0, d0
-	cmpi.l #2, d0
-	blo.w bad
-	moveq #0, d6
-	move.b 1(a0), d6
-	addq.w #2, d6
-argAdvance
-	adda.w d6, a0
-	cmpa.l a3, a0
-	bhi.w bad
-	bra.w checkArgument
-lastArgument
-	tst.w d3
-	bne.w bad
-	bsr.w appendArgument
-	bne.w bad
-	bra.w argumentsReady
-emptyArguments
-	clr.w CallFrame.ArgBytes(a4)
-	moveq #0, d1
-argumentsReady
-	move.w d1, CallFrame.ArgCount(a4)
-	bsr.w captureCallText
-	bne.w bad
+	move.w CallFrame.ArgCount(a4), d1
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
 	movea.l DEFS+memory.Block.Pointer(a6), a0
@@ -984,343 +777,205 @@ argumentBad
 	moveq #1, d0
 	rts
 
-; Keep the definition's trimmed default spelling separately from executable
-; default tokens. Only offsets enter Def; the source record is not retained.
-captureHeaderDefaults
+	; VM rows select packed and spelling spans. These helpers only bind/copy.
+; A0=definition,A5=record,A6=state. Preserve caller registers except status.
+bindHeaderPlan	.block
 	movem.l d1-d7/a0-a4, -(sp)
-	movea.l a0, a3  ; definition
-	movea.l a6, a4
-	adda.l #HEADER_FRAME, a4
-	move.w Def.ParamCount(a3), CallFrame.ArgCount(a4)
-	move.w State.HeaderParen(a6), TEXT_PAREN(a4)
-	clr.w TEXT_BYTES(a4)
-	clr.w FULL_BYTES(a4)
-	bsr.w captureCallText
-	bne.w headerTextDone
-	moveq #0, d7
-headerTextNext
-	cmp.w Def.ParamCount(a3), d7
-	bhs.w headerTextGood
-	move.w d7, d0
-	lsl.w #2, d0
-	move.l Def.DefaultEnd0(a3, d0.w), d1
-	cmp.l Def.DefaultStart0(a3, d0.w), d1
-	beq.w headerTextAdvance
-	lsr.w #1, d0
-	moveq #0, d3
-	tst.w d7
-	beq.w headerTextStart
-	lea TEXT_END0(a4), a1
-	move.w -2(a1, d0.w), d3
-headerTextStart
+	movea.l a0, a3
+	move.l State.ActivePlan(a6), d0
+	beq.w bad
+	movea.l d0, a4
+	movea.l State.Plans(a6), a1
+	sub.l memory.Block.Pointer(a1), d0
+	addq.l #1, d0
+	move.l d0, Def.HeaderPlan(a3)
+	lea plans.HEADER_BYTES(a4), a1
+	move.l plans.Row.Aux1(a1), d7
+	cmpi.l #PARAM_LIMIT, d7
+	bhi.w bad
+	move.w d7, Def.ParamCount(a3)
+	lea plans.ROW_BYTES(a1), a4
 	moveq #0, d6
-	lea TEXT_END0(a4), a1
-	move.w 0(a1, d0.w), d6
-	cmp.l d3, d6
-	bls.w headerTextBad
-	lea TEXT(a4), a1
-	adda.l d3, a1
-	lea TEXT(a4), a2
-	adda.l d6, a2
-headerTextEqual
-	cmpa.l a2, a1
-	bhs.w headerTextBad
-	cmpi.b #'=', (a1)+
-	bne.w headerTextEqual
-headerTextTrimStart
-	cmpa.l a2, a1
-	bhs.w headerTextBad
-	cmpi.b #' ', (a1)
-	beq.w headerTextSkipStart
-	cmpi.b #9, (a1)
-	bne.w headerTextTrimEnd
-headerTextSkipStart
-	addq.l #1, a1
-	bra.w headerTextTrimStart
-headerTextTrimEnd
-	cmpa.l a1, a2
-	bls.w headerTextBad
-	cmpi.b #' ', -1(a2)
-	beq.w headerTextSkipEnd
-	cmpi.b #9, -1(a2)
-	bne.w headerTextCopyReady
-headerTextSkipEnd
-	subq.l #1, a2
-	bra.w headerTextTrimEnd
-headerTextCopyReady
-	move.l a2, d2
-	sub.l a1, d2
-	moveq #0, d4
-	move.l DEFAULT_TEXT_USED(a6), d4
-	move.l d4, d5
-	add.l d2, d5
-	movem.l d0/a0, -(sp)
-	move.l d5, d0
-	lea DEFAULT_TEXT(a6), a0
-	jsr memory.reserve
-	movem.l (sp)+, d0/a0
-	bne.w headerTextBad
-	lsl.w #1, d0
-	move.l d4, Def.TextStart0(a3, d0.w)
+next
+	cmp.l d7, d6
+	bhs.w good
+	cmpi.w #10, plans.Row.Kind(a4)
+	bne.w bad
+	move.l plans.Row.PackedStart(a4), d0
+	move.l plans.Row.PackedEnd(a4), d1
+	sub.l d0, d1
+	cmpi.l #4, d1
+	bne.w bad
+	lea 0(a5, d0.l), a1
+	cmpi.b #1, (a1)
+	bhi.w bad
+	move.l d6, d0
+	add.w d0, d0
+	move.w 1(a1), Def.Parameter(a3, d0.w)
+	move.l plans.Row.Aux1(a4), d0
+	cmpi.l #-1, d0
+	beq.w advance
+	movea.l State.ActivePlan(a6), a1
+	cmp.l plans.Plan.Count(a1), d0
+	bhs.w bad
+	lsl.l #5, d0
+	lea plans.HEADER_BYTES(a1, d0.l), a2
+	cmpi.w #11, plans.Row.Kind(a2)
+	bne.w bad
+	move.l plans.Row.PackedStart(a2), d0
+	move.l plans.Row.PackedEnd(a2), d1
+	sub.l d0, d1
+	lea 0(a5, d0.l), a1
+	movea.l a2, a0
+	lea DEFAULTS(a6), a2
+	bsr.w storeDefault
+	bne.w bad
+	move.l d6, d0
+	lsl.w #2, d0
+	move.l d2, Def.DefaultStart0(a3, d0.w)
+	move.l d3, Def.DefaultEnd0(a3, d0.w)
+	movea.l a0, a2
+	move.l plans.Row.SpellingStart(a2), d0
+	move.l plans.Row.SpellingEnd(a2), d1
+	sub.l d0, d1
+	movea.l State.Plans(a6), a1
+	movea.l memory.Block.Pointer(a1), a1
+	adda.l d0, a1
+	lea DEFAULT_TEXT(a6), a2
+	bsr.w storeDefault
+	bne.w bad
+	move.l d6, d0
+	lsl.w #2, d0
+	move.l d2, Def.TextStart0(a3, d0.w)
 	lea Def.TextEnd0(a3), a2
-	move.l d5, 0(a2, d0.w)
-	movea.l DEFAULT_TEXT+memory.Block.Pointer(a6), a2
-	adda.l d4, a2
-headerTextCopy
-	move.b (a1)+, (a2)+
-	subq.l #1, d2
-	bne.w headerTextCopy
-	move.l d5, DEFAULT_TEXT_USED(a6)
-headerTextAdvance
-	addq.w #1, d7
-	bra.w headerTextNext
-headerTextBad
-	moveq #1, d0
-	bra.w headerTextDone
-headerTextGood
+	move.l d3, 0(a2, d0.w)
+advance
+	addq.l #1, d6
+	adda.l #plans.ROW_BYTES, a4
+	bra.w next
+good
 	moveq #0, d0
-headerTextDone
+	bra.w done
+bad
+	moveq #1, d0
+done
 	movem.l (sp)+, d1-d7/a0-a4
 	tst.l d0
 	rts
+	.bend  ; bindHeaderPlan
 
-; Split original argument spelling at top-level commas. Quoted punctuation and
-; nested delimiters remain part of one trimmed argument. Numeric tokens remain
-; the execution representation; this payload serves embedded placeholders.
-captureCallText
-	movem.l d1-d7/a0-a3, -(sp)
+; A1=selected bytes,D1=length,A2=pool,D6=formal index; D2/D3=pool offsets.
+; Preserve A0 (selected row),A3/A4/D6/D7. Empty defaults remain empty spans.
+storeDefault	.block
+	move.l memory.Block.Used(a2), d2
+	move.l d2, d3
+	add.l d1, d3
+	bcs.w bad
+	movem.l a0, -(sp)
+	movea.l a2, a0
+	move.l d3, d0
+	jsr memory.reserve
+	movea.l (sp)+, a0
+	bne.w bad
+	move.l d3, memory.Block.Used(a2)
+	movea.l memory.Block.Pointer(a2), a2
+	adda.l d2, a2
+copy
+	tst.l d1
+	beq.w good
+	move.b (a1)+, (a2)+
+	subq.l #1, d1
+	bra.w copy
+good
 	moveq #0, d0
-	tst.w State.TextOffset(a6)
-	beq.w textDone
-	moveq #0, d2
-	move.w State.TextOffset(a6), d2
-	lea 0(a5, d2.w), a0
-	cmpi.b #TOKEN_CALL_TEXT, (a0)
-	bne.w textBad
-	moveq #0, d2
-	move.b 1(a0), d2
-	lea 2(a0), a0
-	lea 0(a0, d2.w), a1
-textLeading
-	cmpa.l a1, a0
-	blo.w textLeadingByte
-	tst.w CallFrame.ArgCount(a4)
-	bne.w textBad
-	clr.w TEXT_BYTES(a4)
-	bra.w textDone
-textLeadingByte
-	cmpi.b #' ', (a0)
-	beq.w skipLeading
-	cmpi.b #9, (a0)
-	bne.w textTrailing
-skipLeading
-	addq.l #1, a0
-	bra.w textLeading
-textTrailing
-	cmpa.l a0, a1
-	bls.w textBad
-	cmpi.b #' ', -1(a1)
-	beq.w skipTrailing
-	cmpi.b #9, -1(a1)
-	bne.w textParens
-skipTrailing
-	subq.l #1, a1
-	bra.w textTrailing
-textParens
-	cmpi.w #2, TEXT_PAREN(a4)
-	bne.w textOrdinaryParens
-textHeaderName
-	cmpa.l a1, a0
-	bhs.w textBad
-	cmpi.b #'(', (a0)
-	beq.w textHeaderParen
-	addq.l #1, a0
-	bra.w textHeaderName
-textHeaderParen
-	move.w #1, TEXT_PAREN(a4)
-textOrdinaryParens
-	cmpi.w #1, TEXT_PAREN(a4)
-	bne.w textReady
-	cmpi.b #'(', (a0)
-	bne.w textBad
-	cmpi.b #')', -1(a1)
-	bne.w textBad
-	addq.l #1, a0
-	subq.l #1, a1
-	bsr.w captureFullText
-	bne.w textBad
-	move.w #-1, TEXT_PAREN(a4)
-	bra.w textLeading
-textReady
-	tst.w TEXT_PAREN(a4)
-	bmi.w textSplit
-	bsr.w captureFullText
-	bne.w textBad
-textSplit
-	clr.w TEXT_BYTES(a4)
-	movea.l a0, a2  ; current argument start
-	movea.l a0, a3  ; scan cursor
-	moveq #0, d3  ; delimiter depth
-	moveq #0, d4  ; active quote
-	moveq #0, d5  ; escaped quoted byte
-	moveq #0, d7  ; argument index
-textScan
-	cmpa.l a1, a3
-	beq.w textLast
-	moveq #0, d6
-	move.b (a3), d6
-	tst.w d4
-	beq.w textUnquoted
-	tst.w d5
-	beq.w textEscapeCheck
-	moveq #0, d5
-	bra.w textAdvance
-textEscapeCheck
-	cmpi.b #92, d6
-	bne.w textQuoteEnd
-	moveq #1, d5
-	bra.w textAdvance
-textQuoteEnd
-	cmp.b d4, d6
-	bne.w textAdvance
-	moveq #0, d4
-	bra.w textAdvance
-textUnquoted
-	cmpi.b #'"', d6
-	beq.w textQuoteOpen
-	cmpi.b #39, d6
-	bne.w textDelimiter
-textQuoteOpen
-	move.w d6, d4
-	bra.w textAdvance
-textDelimiter
-	cmpi.b #'(', d6
-	beq.w textOpen
-	cmpi.b #'[', d6
-	beq.w textOpen
-	cmpi.b #'{', d6
-	beq.w textOpen
-	cmpi.b #')', d6
-	beq.w textClose
-	cmpi.b #']', d6
-	beq.w textClose
-	cmpi.b #'}', d6
-	beq.w textClose
-	cmpi.b #',', d6
-	bne.w textAdvance
-	tst.w d3
-	bne.w textAdvance
-	bsr.w appendTextArgument
-	bne.w textBad
-	addq.w #1, d7
-	addq.l #1, a3
-	movea.l a3, a2
-	bra.w textScan
-textOpen
-	addq.w #1, d3
-	cmpi.w #16, d3
-	bhi.w textBad
-	bra.w textAdvance
-textClose
-	tst.w d3
-	beq.w textBad
-	subq.w #1, d3
-textAdvance
-	addq.l #1, a3
-	bra.w textScan
-textLast
-	tst.w d3
-	bne.w textBad
-	tst.w d4
-	bne.w textBad
-	bsr.w appendTextArgument
-	bne.w textBad
-	addq.w #1, d7
-	cmp.w CallFrame.ArgCount(a4), d7
-	bne.w textBad
-	bra.w textDone
-textBad
+	rts
+bad
 	moveq #1, d0
+	rts
+	.bend  ; storeDefault
+
+; A4=invocation frame,A5=record,A6=state. D0=status; others preserved.
+bindCallPlan	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	move.l State.ActivePlan(a6), d0
+	beq.w bad
+	movea.l d0, a3
+	lea plans.HEADER_BYTES(a3), a3
+	move.l plans.Row.Aux1(a3), d7
+	cmpi.l #PARAM_LIMIT, d7
+	bhi.w bad
+	move.w d7, CallFrame.ArgCount(a4)
+	clr.w CallFrame.ArgBytes(a4)
+	clr.w TEXT_BYTES(a4)
+	movea.l State.Plans(a6), a0
+	movea.l memory.Block.Pointer(a0), a0
+	move.l plans.Row.SpellingStart(a3), d0
+	move.l plans.Row.SpellingEnd(a3), d2
+	sub.l d0, d2
+	cmpi.l #251, d2
+	bhi.w bad
+	move.w d2, FULL_BYTES(a4)
+	lea 0(a0, d0.l), a1
+	lea FULL_TEXT(a4), a2
+full
+	tst.l d2
+	beq.w arguments
+	move.b (a1)+, (a2)+
+	subq.l #1, d2
+	bra.w full
+arguments
+	adda.l #plans.ROW_BYTES, a3
+	moveq #0, d1
+next
+	cmp.l d7, d1
+	bhs.w good
+	cmpi.w #9, plans.Row.Kind(a3)
+	bne.w bad
+	move.l plans.Row.PackedStart(a3), d0
+	lea 0(a5, d0.l), a1
+	move.l plans.Row.PackedEnd(a3), d0
+	lea 0(a5, d0.l), a0
+	bsr.w appendArgument
+	bne.w bad
+	move.l plans.Row.SpellingStart(a3), d0
+	move.l plans.Row.SpellingEnd(a3), d2
+	sub.l d0, d2
+	moveq #0, d3
+	move.w TEXT_BYTES(a4), d3
+	add.l d2, d3
+	cmpi.l #TEXT_LIMIT, d3
+	bhi.w bad
+	movea.l State.Plans(a6), a0
+	movea.l memory.Block.Pointer(a0), a0
+	lea 0(a0, d0.l), a0
+	lea TEXT(a4), a1
+	adda.w TEXT_BYTES(a4), a1
+copyArgumentSpelling
+	tst.l d2
+	beq.w textDone
+	move.b (a0)+, (a1)+
+	subq.l #1, d2
+	bra.w copyArgumentSpelling
 textDone
+	move.w d3, TEXT_BYTES(a4)
+	move.w d1, d0
+	subq.w #1, d0
+	add.w d0, d0
+	lea TEXT_END0(a4), a0
+	move.w d3, 0(a0, d0.w)
+	adda.l #plans.ROW_BYTES, a3
+	bra.w next
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
 	movem.l (sp)+, d1-d7/a0-a3
 	tst.l d0
 	rts
+	.bend  ; bindCallPlan
 
-; A0..A1 is the complete supplied argument region, preserving spaces around
-; commas for nested .@. Both pointers stay within the bounded writer sidecar.
-captureFullText
-	move.l a1, d2
-	sub.l a0, d2
-	cmpi.l #251, d2
-	bhi.w fullTextBad
-	move.w d2, FULL_BYTES(a4)
-	beq.w fullTextGood
-	movea.l a0, a2
-	lea FULL_TEXT(a4), a3
-fullTextCopy
-	move.b (a2)+, (a3)+
-	subq.l #1, d2
-	bne.w fullTextCopy
-fullTextGood
-	moveq #0, d0
-	rts
-fullTextBad
-	moveq #1, d0
-	rts
-
-; A2..A3 is an argument, D7 its index. Append trimmed bytes to frame text.
-appendTextArgument
-	move.l a1, -(sp)
-	movea.l a2, a0
-	movea.l a3, a1
-trimArgumentStart
-	cmpa.l a1, a0
-	bhs.w textArgumentBad
-	cmpi.b #' ', (a0)
-	beq.w skipArgumentStart
-	cmpi.b #9, (a0)
-	bne.w trimArgumentEnd
-skipArgumentStart
-	addq.l #1, a0
-	bra.w trimArgumentStart
-trimArgumentEnd
-	cmpa.l a0, a1
-	bls.w textArgumentBad
-	cmpi.b #' ', -1(a1)
-	beq.w skipArgumentEnd
-	cmpi.b #9, -1(a1)
-	bne.w argumentTextReady
-skipArgumentEnd
-	subq.l #1, a1
-	bra.w trimArgumentEnd
-argumentTextReady
-	cmpi.w #PARAM_LIMIT, d7
-	bhs.w textArgumentBad
-	move.l a1, d2
-	sub.l a0, d2
-	moveq #0, d1
-	move.w TEXT_BYTES(a4), d1
-	add.l d2, d1
-	cmpi.l #TEXT_LIMIT, d1
-	bhi.w textArgumentBad
-	lea TEXT(a4), a1
-	adda.w TEXT_BYTES(a4), a1
-copyArgumentText
-	move.b (a0)+, (a1)+
-	subq.l #1, d2
-	bne.w copyArgumentText
-	move.w d1, TEXT_BYTES(a4)
-	move.w d7, d2
-	add.w d2, d2
-	lea TEXT_END0(a4), a0
-	move.w d1, 0(a0, d2.w)
-	moveq #0, d0
-	movea.l (sp)+, a1
-	rts
-textArgumentBad
-	moveq #1, d0
-	movea.l (sp)+, a1
-	rts
 	.bend  ; line
 
 ; A0=template state,A1=distinct 256-byte output,A2=scope state.
@@ -1382,18 +1037,13 @@ bodyAvailable
 	beq.w bodyTextReady
 	moveq #0, d0
 	move.b -1(a2), d0
-	cmpi.w #3, d0
-	blo.w bad
+	cmpi.w #6, d0
+	bne.w bad
 	movea.l a2, a0
 	suba.w d0, a0
 	cmpa.l a3, a0
 	bls.w bad
-	cmpi.b #TOKEN_CALL_TEXT, (a0)
-	bne.w bad
-	moveq #0, d2
-	move.b 1(a0), d2
-	addq.w #3, d2
-	cmp.w d0, d2
+	cmpi.b #TOKEN_PLAN, (a0)
 	bne.w bad
 	move.w d0, SIDE_BYTES(a6)
 	movea.l a0, a2
@@ -1814,9 +1464,72 @@ complete
 	moveq #0, d2
 	move.w SIDE_BYTES(a6), d2
 	beq.w completeLength
-	movea.l (sp), a0
-	bsr.w rewriteCallText
+	movea.l a2, a3
+	move.l 1(a3), d1
+	movea.l 4(sp), a0
+	movea.l State.Plans(a0), a0
+	jsr plans.resolve
 	bne.w bad
+	lea plans.HEADER_BYTES(a1), a2
+	move.l plans.Row.SpellingStart(a2), d3
+	move.l plans.Row.SpellingEnd(a2), d2
+	sub.l d3, d2
+	cmpi.l #251, d2
+	bhi.w bad
+	movea.l 4(sp), a0
+	movea.l a0, a3
+	adda.l #COMPOSITE_TEXT, a3
+	move.b #TEXT_SCRATCH, (a3)+
+	move.b d2, (a3)+
+	movea.l State.Plans(a0), a2
+	movea.l memory.Block.Pointer(a2), a2
+	adda.l d3, a2
+	move.l d2, d3
+copyCallSpelling
+	tst.l d3
+	beq.w callSpellingCopied
+	move.b (a2)+, (a3)+
+	subq.l #1, d3
+	bra.w copyCallSpelling
+callSpellingCopied
+	addq.l #3, d2
+	move.b d2, (a3)
+	move.l a5, -(sp)
+	movea.l a0, a2
+	adda.l #COMPOSITE_TEXT, a2
+	movea.l a0, a5
+	adda.l #HEADER_FRAME, a5
+	lea 256(a5), a1
+	movea.l 4(sp), a0
+	movea.l 8(sp), a3
+	movea.l State.Plans(a3), a3
+	move.l memory.Block.Pointer(a3), d0
+	bsr.w rewriteCallText
+	movea.l (sp)+, a5
+	bne.w bad
+	movea.l 4(sp), a0
+	move.l State.GeneratedPlan(a0), d0
+	beq.w bad
+	movea.l d0, a3
+	movea.l a0, a2
+	adda.l #HEADER_FRAME, a2
+	moveq #0, d2
+	move.b 1(a2), d2
+	addq.l #2, a2
+	movea.l 4(sp), a0
+	movea.l 36(sp), a1
+	move.l a5, d1
+	sub.l a1, d1
+	move.l d1, d0
+	subq.w #1, d0
+	move.b d0, (a1)
+	andi.b #$df, 1(a1)
+	move.l d2, d1
+	movea.l State.ParserContext(a0), a0
+	jsr (a3)
+	bne.w bad
+	moveq #0, d0
+	bra.w done
 completeLength
 	movea.l a1, a0
 	suba.w #256, a0
@@ -1851,9 +1564,11 @@ done
 ; Rewrite only a captured invocation's exact argument spelling. Positional
 ; placeholders are replaced from the current frame before nested lookup.
 ; A0=scope,A1=output end,A2=sidecar,A4=definition,A5=output,A6=frame,
-; D2=sidecar bytes. D0/CCR=status,A5 advances; other registers preserved.
+; D0=plan arena base,D2=sidecar bytes. D0/CCR=status,A5 advances.
+; Other registers are preserved. Formal spelling comes from the header plan.
 rewriteCallText	.block
 	movem.l d1-d7/a0-a4/a6, -(sp)
+	move.l d0, -(sp)
 	move.l a4, -(sp)
 	move.l a5, -(sp)
 	movea.l a2, a3
@@ -1864,7 +1579,7 @@ rewriteCallText	.block
 	addq.l #2, a4
 	cmpa.l a1, a4
 	bhi.w rewriteBad
-	move.b #TOKEN_CALL_TEXT, (a5)+
+	move.b #TEXT_SCRATCH, (a5)+
 	clr.b (a5)+
 rewriteByte
 	cmpa.l a3, a2
@@ -1947,28 +1662,24 @@ rewriteFormal
 	movea.l 4(sp), a4
 	cmp.w Def.ParamCount(a4), d7
 	bhs.w rewriteLiteral
-	move.w d7, d1
-	add.w d1, d1
-	moveq #0, d4
-	move.w Def.Parameter(a4, d1.w), d4
-	sub.w layout.State.Base(a0), d4
-	bcs.w rewriteBad
-	cmp.w layout.State.Count(a0), d4
-	bhs.w rewriteBad
-	mulu.w #records.ENTRY_BYTES, d4
-	movea.l layout.ENTRIES_POINTER(a0), a4
+	move.l Def.HeaderPlan(a4), d4
+	beq.w rewriteBad
+	subq.l #1, d4
+	move.l d7, d1
+	addq.l #1, d1
+	lsl.l #5, d1
+	add.l d1, d4
+	addi.l #plans.HEADER_BYTES, d4
+	movea.l 8(sp), a4
 	adda.l d4, a4
-	moveq #0, d5
-	move.w records.Entry.Length(a4), d5
-	sub.w records.Entry.Leaf(a4), d5
-	cmp.w d6, d5
+	cmpi.w #10, plans.Row.Kind(a4)
+	bne.w rewriteBad
+	move.l plans.Row.SpellingStart(a4), d4
+	move.l plans.Row.SpellingEnd(a4), d5
+	sub.l d4, d5
+	cmp.l d6, d5
 	bne.w rewriteNextFormal
-	moveq #0, d4
-	move.l records.Entry.Name(a4), d4
-	moveq #0, d5
-	move.w records.Entry.Leaf(a4), d5
-	add.l d5, d4
-	movea.l layout.ARENA_POINTER(a0), a4
+	movea.l 8(sp), a4
 	adda.l d4, a4
 	moveq #0, d4
 rewriteCompare
@@ -2074,7 +1785,7 @@ rewriteComplete
 rewriteBad
 	moveq #1, d0
 rewriteDone
-	addq.l #8, sp
+	adda.w #12, sp
 	movem.l (sp)+, d1-d7/a0-a4/a6
 	tst.l d0
 	rts
@@ -2105,7 +1816,7 @@ expandStringToken	.block
 	bhi.w stringBad
 	movea.l 12(sp), a3
 	adda.l #COMPOSITE_TEXT, a3
-	move.b #TOKEN_CALL_TEXT, (a3)+
+	move.b #TEXT_SCRATCH, (a3)+
 	move.b d4, (a3)+
 	lea 2(a2), a1
 	move.w d4, d6
@@ -2126,11 +1837,14 @@ stringInputDone
 	movea.l a5, a1
 	adda.w #256, a1
 	movea.l 8(sp), a0
+	movea.l 12(sp), a3
+	movea.l State.Plans(a3), a3
+	move.l memory.Block.Pointer(a3), d0
 	jsr rewriteCallText
 	bne.w stringBad
 	movea.l 12(sp), a2
 	adda.l #HEADER_FRAME, a2
-	cmpi.b #TOKEN_CALL_TEXT, (a2)
+	cmpi.b #TEXT_SCRATCH, (a2)
 	bne.w stringBad
 	moveq #0, d4
 	move.b 1(a2), d4

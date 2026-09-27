@@ -1,8 +1,8 @@
 # Compact frontend: VM boundary correction
 
 Status: numeric normalization, composed-name recipes and the PRVM boundary/resume
-foundation and the standalone macro descriptor service are implemented; descriptor
-storage integration, fragment expansion and expression correction remain active. This takes
+foundation, macro descriptor services and compact descriptor storage integration
+are implemented; fragment recipes and expression correction remain active. This takes
 precedence over the next packed-loop parity slice in the
 [native reset](native-runtime-reset.md#fixed-input-allocation-slice).
 
@@ -30,8 +30,8 @@ whether a native routine contains branches.
 | TKVM `NormalizeNumbers` / writer numeric branch | Package-selected spelling rules produce an unsigned 64-bit value or deferred invalid/overflow metadata. The writer copies values that fit its existing u32 representation. | Literal normalization is VM-controlled; the superseded `binary_source.parseNumber` is removed. |
 | `binary_source.literalString` | Copies bytes already decoded by TKVM. | Appropriate packing; no duplicated escape parser. |
 | `binary_source.nameOperand` and binder | Classify the package-owned numeric-looking `.cpu` name and resolve identifiers to IDs. | Context and binding are necessary, but normalized-token changes must preserve this name/value distinction. |
-| `binary_source.appendCallText` | Copies a leading dot statement's raw argument region into token-42 sidecar bytes, including ordinary directives. | Retains spelling beyond diagnostics and imposes a 251-byte raw-argument limit even on generic directives. |
-| `binary_templates.rewriteCallText` | Scans those bytes for positional/named substitutions, including identifier-character rules. | Macro expansion is host-owned, but this is additional raw-text syntax recognition, not exclusively binary-token expansion. |
+| `binary_source.appendPlan` / `binary_macro_plans` | Copies VM-selected descriptor/spelling regions and appends an offset handle. | The raw call-region sidecar is removed; captured body plans also support the retained spelling consumers. |
+| `binary_templates.rewriteCallText` | Still consumes selected literal spelling for positional/named substitutions in private scratch. | Explicitly unfinished until VM-selected fragment recipes replace this consumer; scratch is not persisted as executable source. |
 | `binary_templates.expandComposite` | Joins literal/argument spelling fragments and binds the generated name, or emits string bytes. | Generated names need spelling during preparation; this need not be source reparsing if recipes are explicit and already recognized. |
 | `binary_expression.compile` | Implements precedence and associativity via `bitOr`, `product`, `power`, `unary`, `primary`; emits and folds expression bytecode. | A native mathematical parser outside the EXVM parser contract. |
 | `binary_expression.evaluate` | Executes the compact expression through shared ExprVM. | VM evaluation; it does not establish VM-owned compilation. |
@@ -67,7 +67,7 @@ References: [portable tokens](../../crates/opforge-vm/src/portable_contract.rs),
 [native scanners](../../native/motorola68000/amigaos/tkvm/tkvm_scanner.asm),
 [program generation](../../crates/opforge-vm/src/builder.rs),
 [opcode contract](../../crates/opforge-package/src/package.rs).
-The compact BSP3 preparation capsule currently embeds TKVM; it does not embed an
+The compact BSP4 preparation capsule embeds TKVM and macro descriptor programs; it does not embed an
 EXVM expression-parser program. Existing canonical expression bytecode produced
 by its native compiler must not be confused with that missing parser program.
 
@@ -560,3 +560,79 @@ instrumentation safety on the new modules/harness, debug evidence classification
 benchmark-selector and workflow-link checks pass. This is a focused checkpoint;
 the existing three instrumentation-label findings in older PRVM harnesses and
 the retained compact macro consumers have not been resolved here.
+
+
+## Compact macro descriptor storage checkpoint
+
+BSP4 replaces BSP3 for this experimental producer/consumer pair. Its 116-byte
+header retains the earlier fields and appends offsets/lengths for initial call,
+header, generated packed-call and generated spelling programs, plus macro contract
+version 2. Preparation programs follow the runtime region. No old capsule executor
+is retained. This is a host-to-native preparation capsule, not a persistent source
+format or final runtime package design.
+
+Initial TKVM spans remain live long enough for package-selected PRVM entry 2 to
+produce plans. The writer supplies a lexical-to-packed offset map; the session
+arena copies each selected supplied-list spelling once and stores the 32-byte
+rows. Token ranges and optional label/type fields become packed offsets; spelling
+ranges become arena offsets. A six-byte trailer carries an offset-plus-one handle.
+The arena is released with its preparation session. Outside template capture,
+ordinary generic directives do not receive call plans. Captured dot statements
+can retain plans for placeholder spelling consumers. Inactive definitions
+preserve their previous skip behavior.
+
+Templates consume descriptor-selected formal/default/argument ranges. The writer's
+`appendCallText`, template `captureCallText`, host comma-boundary walker and raw
+header-default `=` scanner are removed. Generated calls retain their existing
+executable packed tokens: entry 3 selects packed boundaries, while configured TKVM
+and entry 2 select boundaries over transient generated spelling. Their counts and
+kinds must agree before publication. Packed policy 2 preserves matched delimiters
+and the 16-level bound; spelling policy remains separately selected. The VM owns
+these boundaries, and the host owns copying, identity binding and expansion.
+Each definition retains a four-byte header-plan handle. The remaining spelling
+consumer reads formal names from the VM-selected spans rather than assuming
+their executable IDs belong to the symbol table. This also covers formal names
+that coincide with package names, such as `a` on 6502.
+
+The existing placeholder/string consumers remain for the next recipe checkpoint.
+This does not resolve the three recorded quote/substitution-order discrepancies,
+and is not a claim of binary-only expansion or complete macro parity.
+
+A first fresh native boundary comparison exposed stack exhaustion: the original
+4,412-byte packed-service frame exceeded the default Amiga stack. Compact u16
+offsets and contiguous token ranges remove the redundant end table; the frame is
+now 2,884 bytes including a matched-delimiter stack. The separately supplied
+spelling scratch does not live on the call stack. Atomic buffer checks compare
+all caller bytes, so this corruption could not be hidden by copying only valid
+records.
+
+The unchanged release macro-repeat comparison uses 256 calls, 3,036 source bytes
+and 512 output bytes. Both runs produce the same live Rust output under the same
+configured 68020 / 2 MiB profile. START-to-DONE rises from 3.7871 to 5.5516 seconds
+(+46.6%); linked allocation rises from 83,880 to 94,276 bytes (+10,396), including
+code 67,588→77,928, data 568→588 and BSS 15,724→15,760. The preparation capsule
+rises from 11,032 to 11,102 bytes (+70). These are single comparative observations,
+not statistical estimates or physical Amiga clock claims. This slice corrects
+ownership of grammar boundaries; it does not demonstrate a performance gain.
+Reproduce with `scripts/performance/prepared_source_native.py --workload macro-repeat
+--blocks 32 --compact-cli --compact-only --memory-profile 2m --cpus m6502`, supplying
+the current native test executable and output directory. The preceding baseline
+uses native sources from `f707b271`. Further work must account for this regression
+before expanding the same mechanism broadly.
+
+Focused qualification passes all 451 Rust VM library tests, capsule preparation,
+the fresh 38-case initial and 19-case packed descriptor comparisons, scoped and
+imported calls, exact full-list spacing, inactive headers, both conditional
+branches, two-target omitted defaults, package-name formals with embedded string
+substitution, and four quoted-argument/default/header cases. Existing native
+statement/resume and line-iterator proofs also pass. A telemetry-enabled compact
+run under the 2 MiB profile reports 532,024 peak owned bytes, balanced allocation
+and free accounting, zero remaining owned bytes and zero profiling errors.
+
+The compact formatter checks 48 files without changes or warnings. Fresh-run
+proof, boundary contract, canonical native contracts, instrumentation checks on
+the adapted production modules, debug classification and workflow links pass.
+This is focused qualification, not a clean broad gate: the architecture checker
+retains 10 baseline enforced findings, the runtime inventory retains its existing
+`tkpkg.amigaos.value_execution` source mismatch, and three instrumentation-label
+findings remain in older PRVM harnesses. These checks were not weakened.

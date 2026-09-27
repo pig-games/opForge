@@ -17,7 +17,7 @@
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
 	.include "memory_telemetry.i"
-HEADER_BYTES = 80
+HEADER_BYTES = package.Header.MacroSpellingBytes+4
 IO_BYTES = 4096
 INCLUDE_DEPTH = 8
 LINE_BYTES = 4096
@@ -338,7 +338,7 @@ prepare	.block
 	bsr.w readExact
 	bne.w closeBad
 	lea Header, a4
-	cmpi.l #$42535033, package.Header.Magic(a4)
+	cmpi.l #$42535034, package.Header.Magic(a4)
 	bne.w closeBad
 	move.l package.Header.Bytes(a4), d0
 	cmpi.l #HEADER_BYTES, d0

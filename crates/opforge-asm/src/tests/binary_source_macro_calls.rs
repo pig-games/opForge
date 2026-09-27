@@ -53,10 +53,29 @@ fn compact_macro_call_rust_oracles() {
     assert_eq!(oracle(&source(true)), [1, 2, 3, 0]);
 }
 
+fn inactive_header_source() -> String {
+    ".cpu m68020\n.if 0\nignored .macro value=\n.byte 99\n.endmacro\n.endif\nemit .macro value\n.if .value\n.byte 1\n.else\n.byte 2\n.endif\n.endmacro\n.emit 1\n.emit 0\n.end\n".into()
+}
+
+#[test]
+fn compact_macro_inactive_header_rust_oracle() {
+    assert_eq!(oracle(&inactive_header_source()), [1, 2]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; inactive headers and both conditional branches"]
+fn compact_macro_inactive_header_fs_uae() {
+    native_source(inactive_header_source());
+}
+
 fn native_source(source: String) {
+    native_source_for_cpu(source, "m68020");
+}
+
+fn native_source_for_cpu(source: String, cpu: &str) {
     let expected = oracle(&source);
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let resolved = core.resolve_pipeline(cpu, None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
     let result = crate::fs_uae_smoke::run_compact_cli_from_env(
         &workspace_root(),
@@ -211,4 +230,12 @@ fn check_memory(record: &[u8], expected_errors: u32) {
         "COMPACT_MACRO_MEMORY peak_owned_bytes={} profiling_errors={}",
         words[2], words[29]
     );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; package-owned formal names retain selected spelling"]
+fn compact_macro_package_formal_spelling_fs_uae() {
+    for cpu in ["m6502", "m68020"] {
+        native_source_for_cpu(format!(".cpu {cpu}\n.org $2000\nPAIR .macro a, b=2\n .byte .a, .b\n .byte \".a,.b\"\n.endmacro\n .PAIR 1\n .PAIR(3, 4)\n.end\n"), cpu);
+    }
 }

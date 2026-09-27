@@ -32,6 +32,16 @@ MaxAddress	.long ?
 RuntimeBytes	.long ?
 AlignDirective	.word ?
 ResDirective	.word ?
+MacroCall	.long ?
+MacroCallBytes	.long ?
+MacroHeader	.long ?
+MacroHeaderBytes	.long ?
+MacroVersion	.word ?
+Reserved2	.word ?
+MacroPacked	.long ?
+MacroPackedBytes	.long ?
+MacroSpelling	.long ?
+MacroSpellingBytes	.long ?
 .endstruct
 
 Context	.struct

@@ -189,8 +189,13 @@ loadCase	.block
 	cmpi.l #TOKEN_CAPACITY, d2
 	bhi.w fail
 	move.l d2, TokenCount
-	tst.w 14(a0)
+	move.w 14(a0), d0
+	cmpi.w #prvm_abi.PRVM_ENTRY_KIND_MACRO_DESCRIPTORS, d0
+	beq.w entryReady
+	cmpi.w #prvm_abi.PRVM_ENTRY_KIND_PACKED_MACRO, d0
 	bne.w fail
+entryReady
+	move.w d0, EntryKind
 	cmpi.l #RESULT_CAPACITY, ResultLimit
 	bhi.w fail
 	move.l ProgramLength, d0
@@ -243,7 +248,7 @@ fillResult
 	move.w #prvm_abi.PRVM_ABI_VERSION_V1, prvm_abi.PRVM_FRAME_ABI_VERSION(a0)
 	move.w #prvm_abi.PRVM_REQUEST_FRAME_SIZE, prvm_abi.PRVM_FRAME_FRAME_SIZE(a0)
 	move.w #prvm_abi.PRVM_CALL_MODE_START, prvm_abi.PRVM_FRAME_CALL_MODE(a0)
-	move.w #prvm_abi.PRVM_ENTRY_KIND_MACRO_DESCRIPTORS, prvm_abi.PRVM_FRAME_ENTRY_KIND(a0)
+	move.w EntryKind, prvm_abi.PRVM_FRAME_ENTRY_KIND(a0)
 	move.l #1, prvm_abi.PRVM_FRAME_LINE_NUM(a0)
 	lea SourceBuffer, a1
 	move.l a1, prvm_abi.PRVM_FRAME_SOURCE_PTR(a0)
@@ -252,6 +257,11 @@ fillResult
 	move.l a1, prvm_abi.PRVM_FRAME_TOKEN_PTR(a0)
 	move.l TokenCount, prvm_abi.PRVM_FRAME_TOKEN_COUNT(a0)
 	move.w #prvm_abi.PRVM_TOKEN_RECORD_SIZE, prvm_abi.PRVM_FRAME_TOKEN_RECORD_SIZE(a0)
+	cmpi.w #prvm_abi.PRVM_ENTRY_KIND_PACKED_MACRO, EntryKind
+	bne.w lexicalReady
+	clr.l prvm_abi.PRVM_FRAME_TOKEN_PTR(a0)
+	clr.l prvm_abi.PRVM_FRAME_TOKEN_COUNT(a0)
+lexicalReady
 	clr.w 34(a0)
 	lea SourceBuffer, a1
 	move.l a1, prvm_abi.PRVM_FRAME_LEXEME_PTR(a0)
@@ -383,6 +393,9 @@ ProgramLength
 	.res long, 1
 TokenCount
 	.res long, 1
+EntryKind
+	.res word, 1
+	.align 4
 ProgramPaddedLength
 	.res long, 1
 SourcePaddedLength

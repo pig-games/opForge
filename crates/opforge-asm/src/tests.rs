@@ -1,6 +1,9 @@
 #[path = "tests/macro_descriptor_native.rs"]
 mod macro_descriptor_native;
 
+#[path = "tests/packed_macro_native.rs"]
+mod packed_macro_native;
+
 #[path = "tests/hunk_fill_counts.rs"]
 mod hunk_fill_counts;
 

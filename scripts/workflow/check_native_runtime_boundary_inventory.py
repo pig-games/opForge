@@ -177,7 +177,12 @@ TARGETS = {
     "prvm.amigaos.runtime": (
         "native/motorola68000/amigaos/prvm/prvm_runtime.asm",
         "prvmRun68000",
-        ("debug.amigaos.runtime_profile",),
+        (
+            "debug.amigaos.runtime_profile",
+            "prvm.amigaos.abi",
+            "prvm.amigaos.macro_descriptors",
+            "prvm.amigaos.packed_macro",
+        ),
     ),
     "tkpkg.amigaos.pipeline": (
         "native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm",
@@ -221,7 +226,7 @@ SNAPSHOTS = {
     "tkpkg.amigaos.tokenizer_vm": ("7bbafa635dcded0236c9a65368db47e0e10aded6b328d4389e580654125e5b65", 31, 5, ("data", "code"), 124),
     "opcore.amigaos.expr_bridge": ('37c664c2db68e549fbcedde2b8d595cc42d1333b6282774064a7f0dd78b19917', 35, 3, ('code', 'bss'), 16),
     "exprvm.amigaos.i64_math": ("a2aab311913ced26dd94eedac949ab019d7eac91f7b6723014e2ce667179ef8c", 4, 0, ("code",), 0),
-    "prvm.amigaos.runtime": ("ab6aee2ef4ba63d13ad6f98bb16102c57b2e7ef17779dd6fdd59343dbcd6eec6", 20, 1, ("data", "code"), 38),
+    "prvm.amigaos.runtime": ('ce0cb255c59c6fa8f4c7300060fe5f95b233a5b9fcb79ee6e9016ae08e2312d7', 24, 4, ('data', 'code'), 26),
     "tkpkg.amigaos.pipeline": ('7478d94f4b1ef54e623d2a2a70118174a84d258b77d82faf2adbc88119b0fa40', 40, 6, ('data', 'code'), 20),
     "tkpkg.amigaos.state_service": ("85ba591d2904a184a3ae8f1985321e1de969662d8c585ce3b6a2b4063e31ab40", 21, 2, ("data", "code", "bss"), 15),
     "opasm.amigaos.flow_text_encoding": ("17fd0bac93c8e91ce9355ac37b9b1bfcb7afc428320e164884e49a19dc892bc0", 16, 0, ("code", "bss", "data"), 0),

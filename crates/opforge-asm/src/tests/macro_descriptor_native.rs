@@ -174,7 +174,7 @@ fn batch() -> (Vec<u8>, Vec<u8>, usize) {
         input.extend((source.len() as u16).to_be_bytes());
         input.extend((program.len() as u16).to_be_bytes());
         input.extend((spans.len() as u16).to_be_bytes());
-        input.extend(0u16.to_be_bytes());
+        input.extend(PARSER_VM_MACRO_ENTRY.to_be_bytes());
         input.extend(&program);
         if program.len() % 2 != 0 {
             input.push(0);
@@ -269,4 +269,46 @@ fn native(profiled: bool) {
         image.len(),
         hunk::allocation(image).unwrap().total()
     );
+}
+
+#[test]
+fn generated_spelling_boundaries_use_configured_vm() {
+    let model = load_opasm_model_from_package_bytes(&tkpkg_smoke_package_bytes());
+    let tokenizer = model
+        .resolve_tokenizer_vm_program("m68020", None)
+        .unwrap()
+        .unwrap();
+    let policy = model.resolve_token_policy("m68020", None).unwrap();
+    for (source, expected) in [
+        ("(a,b), c", vec!["(a,b)", "c"]),
+        ("  a , [1,2]  ", vec!["a", "[1,2]"]),
+        ("\"x,y\", 'z'", vec!["\"x,y\"", "'z'"]),
+        ("), b", vec![")", "b"]),
+        ("a ; trailing,comment", vec!["a"]),
+    ] {
+        let request = PortableTokenizeRequest {
+            family_id: "motorola68000",
+            cpu_id: "m68020",
+            dialect_id: "motorola68k",
+            source_line: source,
+            source_stream: PortableTokenizerByteStream::from_source_line(source),
+            line_num: 1,
+            token_policy: policy.clone(),
+        };
+        let records = vm::macro_spelling_vm::execute(
+            &model,
+            &tokenizer,
+            &request,
+            &package::package::macro_spelling_program(),
+            64,
+            4096,
+        )
+        .unwrap();
+        let actual = records
+            .iter()
+            .skip(1)
+            .map(|r| &source[r.source_start as usize..r.source_end as usize])
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected, "{source}");
+    }
 }

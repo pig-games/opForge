@@ -12,6 +12,7 @@
 	.use experimental.amigaos.binary_structs as structs
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_templates as templates
+	.use experimental.amigaos.binary_macro_plans as macro_plans
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_block_index as blocks
@@ -19,6 +20,9 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use tkvm.amigaos.runtime as tokenizer
 	.use tkvm.amigaos.control as control
+	.use prvm.amigaos.runtime as parser
+	.use prvm.amigaos.abi as parser_abi
+	.use prvm.amigaos.macro_spelling as spelling
 	.pub
 Frame	.struct
 Package	.long ?
@@ -36,7 +40,7 @@ GraphBefore	.long ?
 GRAPH_BYTES = graph.SCRATCH_BYTES
 GRAPH_SPAN_BYTES = graph.MAX_SPANS*graph.SPAN_BYTES
 	.priv
-HEADER_BYTES = package.Header.ResDirective+2
+HEADER_BYTES = package.Header.MacroSpellingBytes+4
 PROGRAM = 0
 PROGRAM_BYTES = 4
 PACKAGE_BASE = 8
@@ -45,7 +49,7 @@ PACKAGE_END = 16
 LINE_NUMBER = 20
 NEXT_ID = 24
 LINE_FRAME = 28
-TOKENS = LINE_FRAME+writer.Frame.Reserved+2
+TOKENS = LINE_FRAME+writer.FRAME_BYTES
 TOKEN_CAPACITY = 64
 LEXICAL_BYTES = 1024
 ; Preserve the lexical budget plus copied number spellings and u64 metadata.
@@ -53,11 +57,19 @@ NUMBER_BYTES = 2*LEXICAL_BYTES+TOKEN_CAPACITY*8
 ; Recipe copies and literal-fragment framing are bounded by lexical work.
 COMPOSED_BYTES = 3*LEXICAL_BYTES+TOKEN_CAPACITY*4
 LEXEME_BYTES = NUMBER_BYTES+COMPOSED_BYTES
-LEXEMES = TOKENS+TOKEN_CAPACITY*20
+PACKED_MAP = TOKENS+TOKEN_CAPACITY*20
+LEXEMES = (PACKED_MAP+(TOKEN_CAPACITY+1)*2+3)&$fffffffc
 ; Keep directly addressed regions below signed d16 displacement limits.
 PACKAGE_BUCKETS = LEXEMES+LEXEME_BYTES
 	.pub
-PREPARED_LINE = PACKAGE_BUCKETS+256*4
+MACRO_REQUEST = PACKAGE_BUCKETS+256*4
+MACRO_EVENTS = MACRO_REQUEST+parser_abi.PRVM_REQUEST_FRAME_SIZE
+MACRO_PLANS = MACRO_EVENTS+64*parser_abi.PRVM_RESULT_RECORD_SIZE
+MACRO_FRAME = MACRO_PLANS+macro_plans.STATE_BYTES
+MACRO_SPELL_EVENTS = MACRO_FRAME+macro_plans.GENERATED_FRAME_BYTES
+MACRO_SPELL_FRAME = MACRO_SPELL_EVENTS+64*parser_abi.PRVM_RESULT_RECORD_SIZE
+MACRO_SPELL_SCRATCH = MACRO_SPELL_FRAME+spelling.FRAME_BYTES
+PREPARED_LINE = MACRO_SPELL_SCRATCH+spelling.SCRATCH_BYTES
 SCOPE_STATE = PREPARED_LINE+256
 CONDITION_STATE = SCOPE_STATE+scopes.SCRATCH_BYTES
 TEMPLATE_STATE = CONDITION_STATE+conditionals.SCRATCH_BYTES
@@ -75,7 +87,7 @@ Next	.long ?
 ; Other registers preserved. The capsule byte bound limits count, not a new cap.
 scratchSize	.block
 	movem.l d2, -(sp)
-	cmpi.l #$42535033, package.Header.Magic(a0)
+	cmpi.l #$42535034, package.Header.Magic(a0)
 	bne.w bad
 	move.l package.Header.Bytes(a0), d2
 	cmpi.l #HEADER_BYTES, d2
@@ -138,6 +150,14 @@ clearBuckets
 	adda.l #TEMPLATE_STATE, a0
 	jsr templates.begin
 	bne.w failed
+	lea MACRO_PLANS(a6), a0
+	jsr macro_plans.begin
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	lea MACRO_PLANS(a6), a1
+	move.l a1, templates.State.Plans(a0)
+	move.l #generatedPlan, templates.State.GeneratedPlan(a0)
+	move.l a5, templates.State.ParserContext(a0)
 	move.l #1, LINE_NUMBER(a6)
 	jsr scopes.count
 	move.l d0, Frame.NameCount(a5)
@@ -308,7 +328,11 @@ line	.block
 	movea.l Frame.Package(a5), a1
 	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
 	clr.w writer.Frame.Reserved(a0)
+	lea PACKED_MAP(a6), a1
+	move.l a1, writer.Frame.PackedMap(a0)
 	jsr writer.writeLine
+	bne.w failed
+	bsr.w initialPlan
 	bne.w failed
 	movea.l Frame.Output(a5), a0
 	movea.l a6, a1
@@ -357,6 +381,170 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	rts
 	.bend  ; line
+
+; Bind a VM-owned call/header plan while initial lexical spans are still live.
+; A5=session frame,A6=scratch. D0/CCR=status; other registers preserved.
+initialPlan	.block
+	movem.l d1-d7/a0-a4, -(sp)
+	movea.l a6, a0
+	adda.l #CONDITION_STATE, a0
+	tst.w conditionals.State.Active(a0)
+	beq.w ready
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a1
+	movea.l a6, a2
+	adda.l #TEMPLATE_STATE, a2
+	jsr templates.role
+	tst.l d0
+	beq.w ready
+	move.l d0, d4
+	lea MACRO_REQUEST(a6), a0
+	movea.l a0, a1
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
+clearRequest
+	clr.l (a1)+
+	dbra d0, clearRequest
+	move.l #parser_abi.PRVM_MAGIC_OPRP, parser_abi.PRVM_FRAME_MAGIC(a0)
+	move.w #parser_abi.PRVM_ABI_VERSION_V1, parser_abi.PRVM_FRAME_ABI_VERSION(a0)
+	move.w #parser_abi.PRVM_REQUEST_FRAME_SIZE, parser_abi.PRVM_FRAME_FRAME_SIZE(a0)
+	move.w #parser_abi.PRVM_ENTRY_KIND_MACRO_DESCRIPTORS, parser_abi.PRVM_FRAME_ENTRY_KIND(a0)
+	move.l LINE_NUMBER(a6), parser_abi.PRVM_FRAME_LINE_NUM(a0)
+	move.l Frame.Source(a5), parser_abi.PRVM_FRAME_SOURCE_PTR(a0)
+	move.l Frame.SourceBytes(a5), parser_abi.PRVM_FRAME_SOURCE_LEN(a0)
+	lea TOKENS(a6), a1
+	move.l a1, parser_abi.PRVM_FRAME_TOKEN_PTR(a0)
+	move.l LINE_FRAME+writer.Frame.Count(a6), parser_abi.PRVM_FRAME_TOKEN_COUNT(a0)
+	move.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, parser_abi.PRVM_FRAME_TOKEN_RECORD_SIZE(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.MacroCall(a1), d1
+	move.l package.Header.MacroCallBytes(a1), d2
+	cmpi.l #1, d4
+	beq.w selectedProgram
+	move.l package.Header.MacroHeader(a1), d1
+	move.l package.Header.MacroHeaderBytes(a1), d2
+selectedProgram
+	adda.l d1, a1
+	move.l a1, parser_abi.PRVM_FRAME_PROGRAM_PTR(a0)
+	move.l d2, parser_abi.PRVM_FRAME_PROGRAM_LEN(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, parser_abi.PRVM_FRAME_RESULT_PTR(a0)
+	move.l #64*parser_abi.PRVM_RESULT_RECORD_SIZE, parser_abi.PRVM_FRAME_RESULT_CAPACITY(a0)
+	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
+	move.l #65536, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
+	jsr parser.prvmRun68000
+	bne.w bad
+	lea MACRO_FRAME(a6), a0
+	move.l d1, macro_plans.Frame.Count(a0)
+	lea MACRO_PLANS(a6), a1
+	move.l a1, macro_plans.Frame.Arena(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, macro_plans.Frame.Events(a0)
+	move.l Frame.Source(a5), macro_plans.Frame.Source(a0)
+	move.l Frame.SourceBytes(a5), macro_plans.Frame.SourceBytes(a0)
+	lea PACKED_MAP(a6), a1
+	move.l a1, macro_plans.Frame.PackedMap(a0)
+	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Frame.TokenCount(a0)
+	jsr macro_plans.create
+	bne.w bad
+	lea LINE_FRAME(a6), a0
+	jsr writer.appendPlan
+	bne.w bad
+ready
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; initialPlan
+
+; Generated packed tokens and spelling have distinct VM boundaries until the
+; fragment-recipe migration. This adapter selects programs and owns storage only.
+; A0=session,A1=complete packed line,A2=literal list,D1=list bytes.
+; D0/CCR=status,D1=record bytes including its new plan handle; others preserved.
+generatedPlan	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l a1, a4
+	movea.l a2, a3
+	move.l d1, d6
+	movea.l Frame.Scratch(a5), a6
+	moveq #0, d7
+	move.b (a4), d7
+	addq.w #1, d7
+	lea MACRO_REQUEST(a6), a0
+	movea.l a0, a1
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
+clearRequest
+	clr.l (a1)+
+	dbra d0, clearRequest
+	move.l #parser_abi.PRVM_MAGIC_OPRP, parser_abi.PRVM_FRAME_MAGIC(a0)
+	move.w #parser_abi.PRVM_ABI_VERSION_V1, parser_abi.PRVM_FRAME_ABI_VERSION(a0)
+	move.w #parser_abi.PRVM_REQUEST_FRAME_SIZE, parser_abi.PRVM_FRAME_FRAME_SIZE(a0)
+	move.w #parser_abi.PRVM_ENTRY_KIND_PACKED_MACRO, parser_abi.PRVM_FRAME_ENTRY_KIND(a0)
+	move.l a4, parser_abi.PRVM_FRAME_SOURCE_PTR(a0)
+	move.l d7, parser_abi.PRVM_FRAME_SOURCE_LEN(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.MacroPackedBytes(a1), parser_abi.PRVM_FRAME_PROGRAM_LEN(a0)
+	adda.l package.Header.MacroPacked(a1), a1
+	move.l a1, parser_abi.PRVM_FRAME_PROGRAM_PTR(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, parser_abi.PRVM_FRAME_RESULT_PTR(a0)
+	move.l #64*parser_abi.PRVM_RESULT_RECORD_SIZE, parser_abi.PRVM_FRAME_RESULT_CAPACITY(a0)
+	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
+	move.l #65536, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
+	jsr parser.prvmRun68000
+	bne.w bad
+	move.l d1, d5
+	lea MACRO_SPELL_FRAME(a6), a0
+	move.l PROGRAM(a6), spelling.Frame.TokenProgram(a0)
+	move.l PROGRAM_BYTES(a6), spelling.Frame.TokenBytes(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.MacroSpellingBytes(a1), spelling.Frame.MacroBytes(a0)
+	adda.l package.Header.MacroSpelling(a1), a1
+	move.l a1, spelling.Frame.MacroProgram(a0)
+	move.l a3, spelling.Frame.Source(a0)
+	move.l d6, spelling.Frame.SourceBytes(a0)
+	lea MACRO_SPELL_SCRATCH(a6), a1
+	move.l a1, spelling.Frame.Scratch(a0)
+	move.l #spelling.SCRATCH_BYTES, spelling.Frame.ScratchBytes(a0)
+	lea MACRO_SPELL_EVENTS(a6), a1
+	move.l a1, spelling.Frame.Result(a0)
+	move.l #64*parser_abi.PRVM_RESULT_RECORD_SIZE, spelling.Frame.ResultBytes(a0)
+	jsr spelling.run
+	bne.w bad
+	lea MACRO_FRAME(a6), a0
+	move.l d1, macro_plans.GeneratedFrame.SpellingCount(a0)
+	move.l d5, macro_plans.GeneratedFrame.PackedCount(a0)
+	lea MACRO_PLANS(a6), a1
+	move.l a1, macro_plans.GeneratedFrame.Arena(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, macro_plans.GeneratedFrame.PackedEvents(a0)
+	lea MACRO_SPELL_EVENTS(a6), a1
+	move.l a1, macro_plans.GeneratedFrame.SpellingEvents(a0)
+	move.l a3, macro_plans.GeneratedFrame.Source(a0)
+	move.l d6, macro_plans.GeneratedFrame.SourceBytes(a0)
+	move.l d7, macro_plans.GeneratedFrame.PackedBytes(a0)
+	jsr macro_plans.createGenerated
+	bne.w bad
+	lea LINE_FRAME(a6), a0
+	move.l a4, writer.Frame.Output(a0)
+	move.l #256, writer.Frame.Capacity(a0)
+	move.w d7, writer.Frame.Used(a0)
+	jsr writer.appendPlan
+	bra.w done
+bad
+	moveq #1, d0
+	moveq #0, d1
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; generatedPlan
 
 ; Emit the next already-tokenized line of a pending segment invocation.
 ; A0=Frame. Used=0 when the invocation is exhausted; the physical source
@@ -677,6 +865,8 @@ finish	.block
 	movea.l a6, a0
 	adda.l #TEMPLATE_STATE, a0
 	jsr templates.finish
+	lea MACRO_PLANS(a6), a0
+	jsr macro_plans.finish
 	lea SCOPE_STATE(a6), a0
 	jsr scopes.release
 	clr.l PROGRAM(a6)
@@ -708,7 +898,7 @@ configure	.block
 	bsr.w scratchSize
 	bne.w bad
 	movea.l Frame.Package(a5), a4
-	cmpi.l #$42535033, package.Header.Magic(a4)
+	cmpi.l #$42535034, package.Header.Magic(a4)
 	bne.w bad
 	move.l package.Header.Bytes(a4), d7
 	cmpi.l #HEADER_BYTES, d7
@@ -717,6 +907,8 @@ configure	.block
 	add.l d7, d0
 	bcs.w bad
 	move.l d0, PACKAGE_END(a6)
+	bsr.w validateMacroPrograms
+	bne.w bad
 	moveq #0, d0
 	move.w package.Header.NameCount(a4), d0
 	move.l d0, NEXT_ID(a6)
@@ -832,6 +1024,56 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; configure
+
+; The four package-selected macro programs live in the preparation region.
+; A4=capsule, D7=complete capsule size; D0/CCR=status, other registers preserved.
+validateMacroPrograms	.block
+	movem.l d1-d3/a0, -(sp)
+	cmpi.w #2, package.Header.MacroVersion(a4)
+	bne.w bad
+	tst.w package.Header.Reserved2(a4)
+	bne.w bad
+	move.l package.Header.RuntimeBytes(a4), d3
+	cmpi.l #HEADER_BYTES, d3
+	blo.w bad
+	cmp.l d7, d3
+	bhi.w bad
+	lea package.Header.MacroCall(a4), a0
+	bsr.w region
+	bne.w bad
+	lea package.Header.MacroHeader(a4), a0
+	bsr.w region
+	bne.w bad
+	lea package.Header.MacroPacked(a4), a0
+	bsr.w region
+	bne.w bad
+	lea package.Header.MacroSpelling(a4), a0
+	bsr.w region
+	bra.w done
+region
+	move.l (a0), d0
+	cmp.l d3, d0
+	blo.w badRegion
+	cmp.l d7, d0
+	bhi.w badRegion
+	move.l 4(a0), d1
+	ble.w badRegion
+	move.l d7, d2
+	sub.l d0, d2
+	cmp.l d2, d1
+	bhi.w badRegion
+	moveq #0, d0
+	rts
+badRegion
+	moveq #1, d0
+	rts
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0
+	tst.l d0
+	rts
+	.bend  ; validateMacroPrograms
 ; Writer callback ABI: lexical bytes A0/D0, D2=leading-name role;
 ; outputs D1=id,D2=qualifier,D0/status.
 ; A1=Scratch context. Preserves D3-D7/A2-A6.

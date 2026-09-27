@@ -17,13 +17,13 @@ FLAG_BLOCK_OPEN = 2
 FLAG_BLOCK_CLOSE = 4
 FLAG_OMIT = 8
 FLAG_LAYOUT = 16
-FLAG_CALL_TEXT = 32
-FLAG_ALLOWED = FLAG_INDENT+FLAG_BLOCK_OPEN+FLAG_BLOCK_CLOSE+FLAG_OMIT+FLAG_LAYOUT+FLAG_CALL_TEXT
+FLAG_PLAN = 32
+FLAG_ALLOWED = FLAG_INDENT+FLAG_BLOCK_OPEN+FLAG_BLOCK_CLOSE+FLAG_OMIT+FLAG_LAYOUT+FLAG_PLAN
 COMPOSITE = 41
 FRAGMENT_LITERAL = 0
 FRAGMENT_FULL_LIST = 10
 FRAGMENT_NAMED = 11
-CALL_TEXT = 42
+MACRO_PLAN = 42
 
 Frame	.struct
 Tokens	.long ?
@@ -41,7 +41,9 @@ Source	.long ?
 SourceBytes	.long ?
 NameDirective	.word ?  ; package ID whose first operand uses the binder; 0 disables
 Reserved	.word ?
+PackedMap	.long ?  ; optional Count+1 u16 packed offsets
 	.endstruct
+FRAME_BYTES = Frame.PackedMap+4
 
 Token	.struct
 Kind	.word ?
@@ -123,6 +125,7 @@ flagsReady
 	move.w Frame.SourceLine(a5), d0
 	move.b d0, (a3)+
 loop
+	bsr.w mapCursor
 	tst.l d7
 	beq.w complete
 	move.l Token.Offset(a2), d0
@@ -180,6 +183,28 @@ copyComposedName
 	subq.l #1, d1
 	bne.w copyComposedName
 	subq.l #1, d4
+	move.l d4, d0
+	move.l Frame.PackedMap(a5), d1
+	beq.w recipeMapped
+	movem.l d4/a0, -(sp)
+	movea.l d1, a0
+	move.l a2, d1
+	sub.l Frame.Tokens(a5), d1
+	divu.w #20, d1
+	andi.l #$ffff, d1
+	add.l d1, d1
+	adda.l d1, a0
+	move.w (a0), d1
+recipeMap
+	tst.l d4
+	beq.w recipeMapDone
+	addq.l #2, a0
+	move.w d1, (a0)
+	subq.l #1, d4
+	bra.w recipeMap
+recipeMapDone
+	movem.l (sp)+, d4/a0
+recipeMapped
 	sub.l d4, d7
 	mulu.w #20, d4
 	adda.l d4, a2
@@ -265,8 +290,7 @@ next
 	subq.l #1, d7
 	bra.w loop
 complete
-	bsr.w appendCallText
-	bne.w overflow
+	bsr.w mapCursor
 	move.l a3, d1
 	movea.l Frame.Output(a5), a0
 	sub.l a0, d1
@@ -350,79 +374,64 @@ done
 
 	.priv
 
-; Retain only the exact argument region of a dotted call-shaped line. The
-; trailing size locates this offset-only sidecar without changing token IDs.
-; A5=writer frame,A2=first TKVM token,A3/A4=output cursor/end,D7=zero.
-; D0/CCR=status; other registers preserved except D1/D2/D4/D6/A0/A1.
-appendCallText	.block
-	movea.l Frame.Tokens(a5), a2
-	move.l Frame.Count(a5), d6
-	cmpi.l #2, d6
-	blo.w noText
-	cmpi.w #7, Token.Kind(a2)
-	beq.w dotFirst
-	cmpi.w #1, Token.Kind(a2)
-	bhi.w noText
-	lea 20(a2), a1
-	cmpi.w #7, Token.Kind(a1)
-	beq.w nameFirst
-	cmpi.w #5, Token.Kind(a1)
-	bne.w noText
-	cmpi.l #4, d6
-	blo.w noText
-	lea 40(a2), a1
-	cmpi.w #7, Token.Kind(a1)
-	bne.w noText
-	lea 60(a2), a1
-	bra.w callName
-dotFirst
-	lea 20(a2), a1
-	bra.w callName
-nameFirst
-	lea 40(a2), a1
-callName
-	cmpi.w #1, Token.Kind(a1)
-	bhi.w noText
-	move.l Token.End(a1), d2
-	subq.l #1, d2
-	move.l d6, d0
-	subq.l #1, d0
-	mulu.w #20, d0
-	adda.l d0, a2
-	move.l Token.End(a2), d4
-	subq.l #1, d4
-	cmp.l d2, d4
-	blo.w invalidText
-	cmp.l Frame.SourceBytes(a5), d4
-	bhi.w invalidText
-	sub.l d2, d4
-	beq.w noText
-	cmpi.l #251, d4
-	bhi.w invalidText
-	move.l a4, d0
-	sub.l a3, d0
-	move.l d4, d1
-	addq.l #3, d1
-	cmp.l d1, d0
-	blo.w invalidText
-	movea.l Frame.Source(a5), a0
-	adda.l d2, a0
-	move.b #CALL_TEXT, (a3)+
-	move.b d4, (a3)+
-copyCallText
-	move.b (a0)+, (a3)+
-	subq.l #1, d4
-	bne.w copyCallText
-	move.b d1, (a3)+
-	movea.l Frame.Output(a5), a0
-	ori.b #FLAG_CALL_TEXT, 1(a0)
-noText
+	; Record the packed cursor for the current lexical index. Recipe members
+; share their recipe start; the following lexical boundary records its end.
+mapCursor	.block
+	movem.l d0-d2/a0, -(sp)
+	move.l Frame.PackedMap(a5), d0
+	beq.w done
+	movea.l d0, a0
+	move.l a2, d1
+	sub.l Frame.Tokens(a5), d1
+	divu.w #20, d1
+	andi.l #$ffff, d1
+	add.l d1, d1
+	move.l a3, d2
+	sub.l Frame.Output(a5), d2
+	move.w d2, 0(a0, d1.l)
+done
+	movem.l (sp)+, d0-d2/a0
+	rts
+	.bend  ; mapCursor
+
+	.pub
+; A0=completed writer Frame,D1=nonzero arena handle. Append the six-byte
+; typed trailer. D0/CCR=status,D1=record bytes on success. Preserves others.
+appendPlan	.block
+	movem.l d2/a1, -(sp)
+	tst.l d1
+	beq.w bad
+	moveq #0, d2
+	move.w Frame.Used(a0), d2
+	addq.l #6, d2
+	cmpi.l #MAX_LINE, d2
+	bhi.w bad
+	cmp.l Frame.Capacity(a0), d2
+	bhi.w bad
+	movea.l Frame.Output(a0), a1
+	adda.w Frame.Used(a0), a1
+	move.b #MACRO_PLAN, (a1)+
+	.for 4
+	rol.l #8, d1
+	move.b d1, (a1)+
+	.endfor
+	move.b #6, (a1)
+	move.w d2, Frame.Used(a0)
+	movea.l Frame.Output(a0), a1
+	ori.b #FLAG_PLAN, 1(a1)
+	move.l d2, d1
+	subq.w #1, d2
+	move.b d2, (a1)
 	moveq #0, d0
+	bra.w done
+bad
+	moveq #STATUS_OVERFLOW, d0
+	moveq #0, d1
+done
+	movem.l (sp)+, d2/a1
+	tst.l d0
 	rts
-invalidText
-	moveq #1, d0
-	rts
-	.bend  ; appendCallText
+	.bend  ; appendPlan
 
 	.pub
 ; TKVM already decodes string escapes into its lexeme buffer. Encode those

@@ -77,11 +77,11 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BSP3");
+        assert_eq!(&bytes[..4], b"BSP4");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
-        assert!((80..=bytes.len()).contains(&runtime_bytes));
+        assert!((116..=bytes.len()).contains(&runtime_bytes));
         assert_eq!(runtime_bytes % 2, 0);
 
         let rows = long(&bytes, 16);
@@ -95,7 +95,7 @@ fn binary_source_packages_prepare() {
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
-            assert!(offset >= 80);
+            assert!(offset >= 116);
             assert!(offset + count * width <= runtime_bytes);
         }
 
@@ -159,6 +159,45 @@ fn binary_source_packages_prepare() {
         let dictionary = long(&bytes, 8);
         let tokenizer = long(&bytes, 40);
         let tokenizer_bytes = long(&bytes, 44);
+        let macro_call = long(&bytes, 80);
+        let macro_call_bytes = long(&bytes, 84);
+        let macro_header = long(&bytes, 88);
+        let macro_header_bytes = long(&bytes, 92);
+        let macro_packed = long(&bytes, 100);
+        let macro_packed_bytes = long(&bytes, 104);
+        let macro_spelling = long(&bytes, 108);
+        let macro_spelling_bytes = long(&bytes, 112);
+        assert_eq!(u16::from_be_bytes(bytes[96..98].try_into().unwrap()), 2);
+        assert_eq!(u16::from_be_bytes(bytes[98..100].try_into().unwrap()), 0);
+        let expected_call = package::macro_descriptor_program(false);
+        let expected_header = package::macro_descriptor_program(true);
+        let expected_packed = package::packed_macro_call_program();
+        let expected_spelling = package::macro_spelling_program();
+        assert_eq!(macro_call_bytes, expected_call.len());
+        assert_eq!(macro_header_bytes, expected_header.len());
+        assert_eq!(macro_packed_bytes, expected_packed.len());
+        assert_eq!(macro_spelling_bytes, expected_spelling.len());
+        assert_eq!(
+            &bytes[macro_call..macro_call + macro_call_bytes],
+            expected_call
+        );
+        assert_eq!(
+            &bytes[macro_header..macro_header + macro_header_bytes],
+            expected_header
+        );
+        assert_eq!(
+            &bytes[macro_packed..macro_packed + macro_packed_bytes],
+            expected_packed
+        );
+        assert_eq!(
+            &bytes[macro_spelling..macro_spelling + macro_spelling_bytes],
+            expected_spelling
+        );
+        assert!(macro_call >= tokenizer + tokenizer_bytes);
+        assert!(macro_call + macro_call_bytes <= macro_header);
+        assert!(macro_header + macro_header_bytes <= macro_packed);
+        assert!(macro_packed + macro_packed_bytes <= macro_spelling);
+        assert!(macro_spelling + macro_spelling_bytes <= bytes.len());
         assert!(dictionary >= runtime_bytes);
         assert!(tokenizer >= dictionary);
         assert!(tokenizer + tokenizer_bytes <= bytes.len());

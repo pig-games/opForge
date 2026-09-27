@@ -407,14 +407,17 @@ scope, validation and completion. No future feature or migration is scheduled he
 
 - Source: `native/motorola68000/amigaos/prvm/prvm_runtime.asm`.
 - Public entry: `prvmRun68000`.
-- Imports/outbound dependencies: PRVM ABI/state/bytecode support and the
-  package line-router boundary; plus the default-off runtime observer.
+- Imports/outbound dependencies: shared PRVM ABI, independent initial macro
+  descriptor and packed macro boundary services, plus the default-off runtime
+  observer. Entry dispatch selects statement (1), initial descriptors (2) or
+  packed boundaries (3); macro services do not allocate statement resume state.
 - Mutable state: VM token cursor, checkpoint stack, result records, emitted
   statement fields, and expression resume state.
 - Routine responsibility groups: bytecode execution, token access,
   checkpointing, statement-result construction, and expression suspension/
-  resume.
-- Inbound users: tkpkg service through the line router.
+  resume. Macro descriptor execution is delegated to its own bounded service.
+- Inbound users: tkpkg service through the line router, compact preparation and
+  generated-spelling preparation through the same public dispatch.
 
 ### `tkpkg.amigaos.pipeline`
 

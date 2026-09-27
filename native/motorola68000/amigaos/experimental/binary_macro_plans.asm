@@ -78,29 +78,8 @@ create	.block
 	cmp.l Frame.SourceBytes(a6), d5
 	bhi.w bad
 	sub.l d4, d5
-	move.l d7, d6
-	lsl.l #5, d6
-	add.l #HEADER_BYTES, d6
-	add.l d5, d6
-	addq.l #1, d6
-	andi.l #$fffffffe, d6
-	move.l memory.Block.Used(a4), d3
-	add.l d3, d6
-	bcs.w bad
-	move.l d6, d0
-	movea.l a4, a0
-	jsr memory.reserve
+	bsr.w reservePlan
 	bne.w bad
-	movea.l memory.Block.Pointer(a4), a3
-	adda.l d3, a3
-	move.l d7, (a3)+
-	move.l d6, (a3)+
-	move.l d7, d2
-	lsl.l #5, d2
-	add.l d3, d2
-	add.l #HEADER_BYTES, d2
-	movea.l memory.Block.Pointer(a4), a5
-	adda.l d2, a5
 	movea.l Frame.Source(a6), a0
 	adda.l d4, a0
 	move.l d5, d0
@@ -220,47 +199,87 @@ createGenerated	.block
 	bhi.w bad
 	cmpi.l #256, GeneratedFrame.PackedBytes(a6)
 	bhi.w bad
-	suba.l #FRAME_BYTES+MAX_ROWS*ROW_BYTES+514, sp
-	movea.l sp, a5
-	move.l GeneratedFrame.Arena(a6), Frame.Arena(a5)
-	lea FRAME_BYTES(a5), a3
-	move.l a3, Frame.Events(a5)
-	move.l d7, Frame.Count(a5)
-	move.l GeneratedFrame.Source(a6), Frame.Source(a5)
-	move.l GeneratedFrame.SourceBytes(a6), Frame.SourceBytes(a5)
-	move.l GeneratedFrame.PackedBytes(a6), Frame.TokenCount(a5)
-	lea FRAME_BYTES+MAX_ROWS*ROW_BYTES(a5), a4
-	move.l a4, Frame.PackedMap(a5)
-	moveq #0, d0
-map
-	move.w d0, (a4)+
-	addq.w #1, d0
-	cmpi.w #257, d0
-	blo.w map
-	movea.l GeneratedFrame.PackedEvents(a6), a1
+	movea.l GeneratedFrame.Arena(a6), a4
 	movea.l GeneratedFrame.SpellingEvents(a6), a2
+	move.l Row.SpellingStart(a2), d4
+	move.l Row.SpellingEnd(a2), d5
+	cmp.l d4, d5
+	blo.w bad
+	cmp.l GeneratedFrame.SourceBytes(a6), d5
+	bhi.w bad
+	sub.l d4, d5
+	bsr.w reservePlan
+	bne.w bad
+	movea.l GeneratedFrame.Source(a6), a0
+	adda.l d4, a0
+	move.l d5, d0
+copySpelling
+	tst.l d0
+	beq.w rowsStart
+	move.b (a0)+, (a5)+
+	subq.l #1, d0
+	bra.w copySpelling
+rowsStart
+	movea.l GeneratedFrame.PackedEvents(a6), a5
 rows
-	move.w Row.Kind(a1), d0
+	move.w Row.Kind(a5), d0
 	cmp.w Row.Kind(a2), d0
-	bne.w stagedBad
-	movea.l a3, a4
+	bne.w bad
 	moveq #7, d0
-copy
-	move.l (a1)+, (a3)+
-	dbra d0, copy
-	move.l Row.SpellingStart(a2), Row.SpellingStart(a4)
-	move.l Row.SpellingEnd(a2), Row.SpellingEnd(a4)
+copyRow
+	move.l (a5)+, (a3)+
+	dbra d0, copyRow
+	lea -ROW_BYTES(a3), a1
+	move.l Row.PackedStart(a1), d0
+	cmp.l GeneratedFrame.PackedBytes(a6), d0
+	bhi.w bad
+	move.l Row.PackedEnd(a1), d1
+	cmp.l d0, d1
+	blo.w bad
+	cmp.l GeneratedFrame.PackedBytes(a6), d1
+	bhi.w bad
+	move.l Row.SpellingStart(a2), d0
+	move.l Row.SpellingEnd(a2), d1
+	cmp.l d0, d1
+	blo.w bad
+	cmp.l d4, d0
+	blo.w bad
+	cmp.l GeneratedFrame.SourceBytes(a6), d1
+	bhi.w bad
+	movea.l GeneratedFrame.SpellingEvents(a6), a0
+	cmp.l Row.SpellingEnd(a0), d1
+	bhi.w bad
+	sub.l d4, d0
+	sub.l d4, d1
+	add.l d2, d0
+	add.l d2, d1
+	move.l d0, Row.SpellingStart(a1)
+	move.l d1, Row.SpellingEnd(a1)
+	cmpi.w #10, Row.Kind(a1)
+	beq.w formalType
+	cmpi.w #8, Row.Kind(a1)
+	bne.w rowReady
+	move.l Row.Aux2(a1), d0
+	bra.w auxOffset
+formalType
+	move.l Row.Aux0(a1), d0
+auxOffset
+	cmpi.l #-1, d0
+	beq.w rowReady
+	cmp.l GeneratedFrame.PackedBytes(a6), d0
+	bhs.w bad
+rowReady
 	adda.l #ROW_BYTES, a2
 	subq.l #1, d7
 	bne.w rows
-	movea.l a5, a0
-	bsr.w create
-	bra.w stagedDone
-stagedBad
-	moveq #1, d0
-	moveq #0, d1
-stagedDone
-	adda.l #FRAME_BYTES+MAX_ROWS*ROW_BYTES+514, sp
+	move.l d6, memory.Block.Used(a4)
+	.TELEMETRY_COMPACT runtime_profile.compactProgramRows, GeneratedFrame.PackedCount(a6)
+	move.l d6, d0
+	sub.l d3, d0
+	.TELEMETRY_COMPACT runtime_profile.compactMetadataBytes, d0
+	move.l d3, d1
+	addq.l #1, d1
+	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
@@ -309,5 +328,40 @@ done
 	tst.l d0
 	rts
 	.bend  ; resolve
+	.priv
+; A4=arena,D7=count,D4=source start,D5=spelling bytes (validated by caller).
+; D0/CCR=status. D2=spelling offset,D3=prior Used,D6=reserved end;
+; A3=rows,A5=spelling destination. Clobbers A0; Used remains unpublished.
+reservePlan	.block
+	move.l d7, d6
+	lsl.l #5, d6
+	add.l #HEADER_BYTES, d6
+	add.l d5, d6
+	addq.l #1, d6
+	andi.l #$fffffffe, d6
+	move.l memory.Block.Used(a4), d3
+	add.l d3, d6
+	bcs.w bad
+	move.l d6, d0
+	movea.l a4, a0
+	jsr memory.reserve
+	bne.w bad
+	movea.l memory.Block.Pointer(a4), a3
+	adda.l d3, a3
+	move.l d7, (a3)+
+	move.l d6, (a3)+
+	move.l d7, d2
+	lsl.l #5, d2
+	add.l d3, d2
+	add.l #HEADER_BYTES, d2
+	movea.l memory.Block.Pointer(a4), a5
+	adda.l d2, a5
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; reservePlan
+
 	.endsection
 	.endmodule

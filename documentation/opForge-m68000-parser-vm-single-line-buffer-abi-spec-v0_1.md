@@ -40,8 +40,8 @@ native parser assembly or native parser fixtures land.
 
 - [ ] Define the first single-line native `prvmRun68000` ABI for delegated
   opasm statement parsing.
-- [ ] Reserve `prvmRun68000` as the only native PRVM entry symbol for this
-  contract.
+- [ ] Reserve `prvmRun68000` for statement execution; document the experimental
+  macro-only entry separately.
 - [ ] Define `.cpu 68020` as the first native implementation baseline while
   keeping the `68000` symbol-name convention.
 - [ ] Define a caller-owned request frame that references source, token, lexeme,
@@ -76,8 +76,8 @@ native PRVM interpreter code must target `.cpu 68020` unless a later
 specification revises that baseline explicitly.
 
 `prvmRun68000` is the only reserved native parser VM entry symbol for this
-v0.1 contract. Additional native PRVM entry symbols require a later spec
-revision.
+v0.1 statement contract. The experimental macro-only entry described below
+uses the same request frame and register contract for entries 2 and 3.
 
 This ABI starts after opcore has classified the line and delegated it as
 `ProcessingRequestKind::Processor { processor: "asm", kind: "statement" }`.
@@ -488,7 +488,8 @@ Unsupported native opcode during early implementation slices:
 
 ## Acceptance Criteria
 
-- [ ] The ABI reserves only `prvmRun68000` for native PRVM v0.1.
+- [ ] The statement ABI reserves `prvmRun68000`; macro-only clients can use the
+  experimental thin entry under the same frame/register contract.
 - [ ] The ABI states `.cpu 68020` as the first native implementation baseline.
 - [ ] The call contract uses a caller-owned request frame and deterministic
   return registers.
@@ -531,6 +532,14 @@ host-side decode tests prove that additional result record kinds or expression
 slot metadata are required for Rust PRVM v2 parity.
 
 ## Experimental macro descriptor entry
+
+Compact clients can call `prvm.amigaos.macro_runtime.run` directly with A0/D0
+and the register contract above. It accepts only entries 2 and 3, validates the
+request pointer and available frame size, then delegates all program/request
+validation to the selected executor. The general `prvmRun68000` entry delegates
+these entries to the same wrapper. One optional VM profiling invocation surrounds
+each macro service call. The thin entry has no statement interpreter or resume
+storage; it changes linkage, not the frame ABI or macro bytecode contract.
 
 Entry 2 uses frame ABI 1 and parser contract version 2, with `call_mode = 0`.
 The required inputs are immutable original source bytes, ordered initial lexical

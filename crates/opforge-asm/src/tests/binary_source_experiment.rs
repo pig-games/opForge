@@ -29,6 +29,9 @@ mod struct_layout;
 #[path = "binary_source_macro_calls.rs"]
 mod macro_calls;
 
+#[path = "binary_source_macro_profile.rs"]
+mod macro_profile;
+
 #[path = "binary_source_cpu_names.rs"]
 mod cpu_names;
 #[path = "binary_source_full_width.rs"]
@@ -1514,6 +1517,7 @@ fn compact_cli_macro_repeat_comparison_fs_uae() {
             "native_image_digest": run.native_image_digest,
             "exact_output": oracle,
             "guest_exit": run.exit_code,
+            "memory": macro_profile::report(run),
         })
     );
 }

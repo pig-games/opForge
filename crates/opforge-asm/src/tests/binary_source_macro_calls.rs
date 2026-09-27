@@ -239,3 +239,23 @@ fn compact_macro_package_formal_spelling_fs_uae() {
         native_source_for_cpu(format!(".cpu {cpu}\n.org $2000\nPAIR .macro a, b=2\n .byte .a, .b\n .byte \".a,.b\"\n.endmacro\n .PAIR 1\n .PAIR(3, 4)\n.end\n"), cpu);
     }
 }
+
+fn core_body_source(cpu: &str) -> String {
+    format!(".cpu {cpu}\n.org $2000\nINNER .macro n\n .byte .n\n.endmacro\nPAD .macro a=4\n .byte \".a\"\n .align .1\n .INNER(.a)\n.endmacro\nentry .PAD 4\n .PAD\n.word entry\n.end\n")
+}
+
+#[test]
+fn compact_macro_core_body_rust_oracle() {
+    let expected = oracle(&core_body_source("m6502"));
+    assert!(!expected.is_empty());
+    assert_eq!(expected[0], b'4');
+    assert_eq!(&expected[expected.len() - 2..], [0, 0x20]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; core body substitutions followed by a nested invocation"]
+fn compact_macro_core_body_fs_uae() {
+    for cpu in ["m6502", "m68020"] {
+        native_source_for_cpu(core_body_source(cpu), cpu);
+    }
+}

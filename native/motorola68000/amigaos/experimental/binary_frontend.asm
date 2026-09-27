@@ -20,7 +20,7 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use tkvm.amigaos.runtime as tokenizer
 	.use tkvm.amigaos.control as control
-	.use prvm.amigaos.runtime as parser
+	.use prvm.amigaos.macro_runtime as macro_runtime
 	.use prvm.amigaos.abi as parser_abi
 	.use prvm.amigaos.macro_spelling as spelling
 	.pub
@@ -158,6 +158,7 @@ clearBuckets
 	move.l a1, templates.State.Plans(a0)
 	move.l #generatedPlan, templates.State.GeneratedPlan(a0)
 	move.l a5, templates.State.ParserContext(a0)
+	move.l Frame.Package(a5), templates.State.Package(a0)
 	move.l #1, LINE_NUMBER(a6)
 	jsr scopes.count
 	move.l d0, Frame.NameCount(a5)
@@ -432,7 +433,7 @@ selectedProgram
 	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
 	move.l #65536, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
 	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
-	jsr parser.prvmRun68000
+	jsr macro_runtime.run
 	bne.w bad
 	lea MACRO_FRAME(a6), a0
 	move.l d1, macro_plans.Frame.Count(a0)
@@ -497,7 +498,7 @@ clearRequest
 	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
 	move.l #65536, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
 	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
-	jsr parser.prvmRun68000
+	jsr macro_runtime.run
 	bne.w bad
 	move.l d1, d5
 	lea MACRO_SPELL_FRAME(a6), a0

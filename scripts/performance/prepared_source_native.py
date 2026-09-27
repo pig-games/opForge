@@ -222,7 +222,7 @@ def main():
                         default=os.environ.get(MEMORY_PROFILE_ENV, "existing"),
                         help="FS-UAE guest RAM profile; 2m selects 68020 with 2 MiB total RAM")
     parser.add_argument("--compare-memory", action="store_true",
-                        help="enable binary-harness memory telemetry (requires --binary-source)")
+                        help="run gated memory/work telemetry for binary-source or compact-cli; timings include probes")
     parser.add_argument("--cpus", nargs="+", choices=("m6502", "m68000"), default=["m6502", "m68000"])
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -233,8 +233,8 @@ def main():
         parser.error("binary-source currently supports one CPU pipeline per input")
     if args.binary_source and args.profile != "off":
         parser.error("binary-source timing comparison requires --profile off")
-    if args.compare_memory and not args.binary_source:
-        parser.error("--compare-memory requires --binary-source")
+    if args.compare_memory and not (args.binary_source or args.compact_cli):
+        parser.error("--compare-memory requires --binary-source or --compact-cli")
     if args.binary_only and not args.binary_source:
         parser.error("--binary-only requires --binary-source")
     if args.compact_only and not args.compact_cli:
@@ -366,6 +366,7 @@ def main():
                         extra_env={
                             "OPFORGE_COMPARE_CPU": cpu,
                             "OPFORGE_COMPARE_BLOCKS": str(blocks),
+                            "OPFORGE_COMPARE_MEMORY": "1" if args.compare_memory else "0",
                         },
                         guest_timeout_ms=60000,
                         post_start_timeout_ms=10000,

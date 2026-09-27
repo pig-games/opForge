@@ -6,6 +6,7 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_macro_plans as plans
+	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
@@ -45,6 +46,7 @@ Plans	.long ?
 ParserContext	.long ?
 GeneratedPlan	.long ?
 ActivePlan	.long ?
+Package	.long ?  ; session capsule supplies shared core directive identities
 	.endstruct
 CallFrame	.struct
 Definition	.word ?
@@ -133,7 +135,7 @@ DEF_BYTES = Def.HeaderPlan+4
 KIND_SEGMENT = 0
 KIND_MACRO = 1
 BLOCK_BYTES = memory.Block.Used+4
-DEFS = State.ActivePlan+4
+DEFS = State.Package+4
 DEFAULTS = DEFS+BLOCK_BYTES
 DEFAULT_TEXT = DEFAULTS+BLOCK_BYTES
 BODY = DEFAULT_TEXT+BLOCK_BYTES
@@ -232,6 +234,24 @@ dot
 	move.w 2(a1), d4
 	tst.b 4(a1)
 	bne.w lookup
+	; Scoped names cannot be package core identities.
+	cmp.w layout.State.Base(a4), d4
+	bhs.w scopeDirective
+	movea.l State.Package(a2), a3
+	; Core directives never acquire invocation spelling or argument plans.
+	; Their numeric identities are shared package metadata, not target grammar.
+	lea package.Header.CpuDirective(a3), a3
+	moveq #5, d1
+coreDirective
+	cmp.w (a3)+, d4
+	beq.w none
+	dbra d1, coreDirective
+	movea.l State.Package(a2), a3
+	cmp.w package.Header.AlignDirective(a3), d4
+	beq.w none
+	cmp.w package.Header.ResDirective(a3), d4
+	beq.w none
+scopeDirective
 	move.l d4, d0
 	movea.l a4, a0
 	jsr scopes.classifyDirective

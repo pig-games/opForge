@@ -3,8 +3,7 @@
 	.module prvm.amigaos.runtime
 	.cpu 68020
 	.use prvm.amigaos.abi as abi
-	.use prvm.amigaos.macro_descriptors as macro_descriptors
-	.use prvm.amigaos.packed_macro as packed_macro
+	.use prvm.amigaos.macro_runtime as macro_runtime
 	.pub
 	.include "telemetry_macros.i"
 
@@ -131,7 +130,6 @@ AbiMarker
 ; ---------------------------------------------------------------------------
 prvmRun68000	.block
 	movem.l d4-d7/a4-a6, -(sp)
-	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	move.l a0, d1  ; null-check the frame before touching any offset fields
 	beq.w invalidArgument
 	cmpi.l #abi.PRVM_REQUEST_FRAME_SIZE, d0
@@ -140,8 +138,9 @@ prvmRun68000	.block
 	cmpi.w #abi.PRVM_ENTRY_KIND_MACRO_DESCRIPTORS, abi.PRVM_FRAME_ENTRY_KIND(a0)
 	beq macroEntry
 	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_MACRO, abi.PRVM_FRAME_ENTRY_KIND(a0)
-	beq packedMacroEntry
+	beq macroEntry
 
+	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	movea.l a0, a4  ; A4 is the stable request-frame base for the runtime run
 	suba.l #LOCAL_SIZE, sp  ; fixed native frame mirrors Rust parser VM execution state
 	lea 0(sp), a3  ; A3 addresses LOCAL_* slots while opcodes consume A0-A2/D0-D3
@@ -783,17 +782,11 @@ returnWithLocals
 	rts
 
 macroEntry
-	jsr macro_descriptors.run
-	bra macroReturn
-packedMacroEntry
-	jsr packed_macro.run
-macroReturn
-	.TELEMETRY_VM_LEAVE
 	movem.l (sp)+, d4-d7/a4-a6
-	tst.l d0
-	rts
+	jmp macro_runtime.run
 
 invalidArgument
+	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	clr.l d1
 	clr.l d2
 	clr.l d3

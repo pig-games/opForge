@@ -407,8 +407,8 @@ scope, validation and completion. No future feature or migration is scheduled he
 
 - Source: `native/motorola68000/amigaos/prvm/prvm_runtime.asm`.
 - Public entry: `prvmRun68000`.
-- Imports/outbound dependencies: shared PRVM ABI, independent initial macro
-  descriptor and packed macro boundary services, plus the default-off runtime
+- Imports/outbound dependencies: shared PRVM ABI, thin macro service dispatcher,
+  plus the default-off runtime
   observer. Entry dispatch selects statement (1), initial descriptors (2) or
   packed boundaries (3); macro services do not allocate statement resume state.
 - Mutable state: VM token cursor, checkpoint stack, result records, emitted
@@ -416,8 +416,19 @@ scope, validation and completion. No future feature or migration is scheduled he
 - Routine responsibility groups: bytecode execution, token access,
   checkpointing, statement-result construction, and expression suspension/
   resume. Macro descriptor execution is delegated to its own bounded service.
-- Inbound users: tkpkg service through the line router, compact preparation and
-  generated-spelling preparation through the same public dispatch.
+- Inbound users: tkpkg service through the line router. Compact preparation and
+  generated-spelling preparation use `prvm.amigaos.macro_runtime.run` directly,
+  preserving frame validation and telemetry without linking statement execution.
+
+### `prvm.amigaos.macro_runtime`
+
+- Source: `native/motorola68000/amigaos/prvm/prvm_macro_runtime.asm`.
+- Public entry: `run`; supports initial descriptor (2) and packed boundary (3)
+  entries. Each executor validates its own frame and selected program; the wrapper
+  validates pointer/available frame bytes and owns one optional VM enter/leave.
+- Imports: shared ABI, initial descriptor and packed boundary executors, and the
+  default-off runtime observer. No statement interpreter or resume-state storage.
+- Mutable state: none; caller buffers and executor-local staging remain bounded.
 
 ### `tkpkg.amigaos.pipeline`
 

@@ -3,7 +3,7 @@
 	.module prvm.amigaos.macro_spelling
 	.cpu 68020
 	.use prvm.amigaos.abi as abi
-	.use prvm.amigaos.runtime as parser
+	.use prvm.amigaos.macro_runtime as macro_runtime
 	.use tkvm.amigaos.runtime as tokenizer
 	.pub
 Frame	.struct
@@ -105,7 +105,7 @@ clear
 	move.l Frame.ResultBytes(a4), abi.PRVM_FRAME_RESULT_CAPACITY(a3)
 	movea.l a3, a0
 	move.l #abi.PRVM_REQUEST_FRAME_SIZE, d0
-	jsr parser.prvmRun68000
+	jsr macro_runtime.run
 	adda.l #abi.PRVM_REQUEST_FRAME_SIZE, sp
 	tst.l d0
 	bne.w failed

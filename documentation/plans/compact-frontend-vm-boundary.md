@@ -2,7 +2,8 @@
 
 Status: numeric normalization, composed-name recipes and the PRVM boundary/resume
 foundation, macro descriptor services and compact descriptor storage integration
-are implemented; fragment recipes and expression correction remain active. This takes
+are implemented, including the bounded descriptor-cost reduction below; fragment
+recipes and expression correction remain active. This takes
 precedence over the next packed-loop parity slice in the
 [native reset](native-runtime-reset.md#fixed-input-allocation-slice).
 
@@ -30,7 +31,7 @@ whether a native routine contains branches.
 | TKVM `NormalizeNumbers` / writer numeric branch | Package-selected spelling rules produce an unsigned 64-bit value or deferred invalid/overflow metadata. The writer copies values that fit its existing u32 representation. | Literal normalization is VM-controlled; the superseded `binary_source.parseNumber` is removed. |
 | `binary_source.literalString` | Copies bytes already decoded by TKVM. | Appropriate packing; no duplicated escape parser. |
 | `binary_source.nameOperand` and binder | Classify the package-owned numeric-looking `.cpu` name and resolve identifiers to IDs. | Context and binding are necessary, but normalized-token changes must preserve this name/value distinction. |
-| `binary_source.appendPlan` / `binary_macro_plans` | Copies VM-selected descriptor/spelling regions and appends an offset handle. | The raw call-region sidecar is removed; captured body plans also support the retained spelling consumers. |
+| `binary_source.appendPlan` / `binary_macro_plans` | Copies VM-selected descriptor/spelling regions and appends an offset handle. | The raw call-region sidecar is removed; captured invocation plans support the retained spelling consumers; bound core directives do not receive invocation plans. |
 | `binary_templates.rewriteCallText` | Still consumes selected literal spelling for positional/named substitutions in private scratch. | Explicitly unfinished until VM-selected fragment recipes replace this consumer; scratch is not persisted as executable source. |
 | `binary_templates.expandComposite` | Joins literal/argument spelling fragments and binds the generated name, or emits string bytes. | Generated names need spelling during preparation; this need not be source reparsing if recipes are explicit and already recognized. |
 | `binary_expression.compile` | Implements precedence and associativity via `bitOr`, `product`, `power`, `unary`, `primary`; emits and folds expression bytecode. | A native mathematical parser outside the EXVM parser contract. |
@@ -636,3 +637,88 @@ This is focused qualification, not a clean broad gate: the architecture checker
 retains 10 baseline enforced findings, the runtime inventory retains its existing
 `tkpkg.amigaos.value_execution` source mismatch, and three instrumentation-label
 findings remain in older PRVM harnesses. These checks were not weakened.
+
+
+## Macro descriptor cost reduction
+
+The experiment uses `992fd712` as the working reference: remove unnecessary
+publication and preparation work without moving grammar out of the package/VM,
+changing output, or bypassing the retained spelling consumers. Stop on a fresh
+native mismatch, invalid descriptor publication, or an unexplained regression.
+The workload remains 256 macro calls, 3,036 source bytes and 512 output bytes.
+
+Generated descriptors now publish directly into their session arena. This removes
+an identity map of 257 offsets, a 2,590-byte staging frame and the second mapped
+row pass. Count/kind/range validation remains; the arena's used extent is published
+only after all rows validate. Spelling is copied once, and persistent plan fields
+remain offsets. A shared private reservation helper serves initial and generated
+publication.
+
+Compact clients use the thin `prvm.amigaos.macro_runtime` entry, with the same
+package-selected executors, request guards and optional telemetry. The general
+PRVM entry delegates macro calls to it; compact linkage no longer brings in the
+statement interpreter and its resume-state storage. Macro calls receive one VM
+profiling enter/leave, rather than nested wrapper observations.
+
+Bound core directive identities, including captured `.byte`, `.align` and `.res`,
+no longer acquire macro invocation plans. Their packed substitutions still run;
+embedded string substitution obtains formal spelling from the definition's
+header plan. Actual and unresolved nested dot calls retain the generated packed
+and spelling services. This changes the captured-core-plan policy recorded in the
+preceding storage checkpoint; it does not remove the remaining spelling consumer
+or complete the deferred fragment recipes.
+
+The existing gated MEM7 record is now decoded by the compact macro comparison.
+Use the same performance command above with `--compare-memory` to collect owned
+memory, preparation stages and tokenizer work. These instrumented timings include
+probe overhead and must be kept separate from release timings. No telemetry record
+or bytecode contract changed.
+
+On identical inputs, the instrumented comparison reduces tokenizer invocations
+from 519 to 263: the 256 generated core-body scans disappear. Tokenizer instructions
+fall from 20,678 to 12,742 and source reads from 19,124 to 12,396. Peak owned memory
+falls from 307,552 to 262,496 bytes; prepared live memory remains 33,024 bytes.
+Both runs balance allocation/free accounting, release all owned blocks and report
+zero profiling errors. Instrumented preparation falls from 7.12 to 5.12 seconds;
+assembly stays at 0.66 seconds. These stage observations precede the final cheap
+scope-ID filter and describe the same eliminated work, not release speed.
+
+The final release comparison under the configured 68020 / 2 MiB profile is:
+
+| Metric | Reference `992fd712` | This checkpoint |
+|---|---:|---:|
+| START-to-DONE host seconds | 5.5516 | 4.3105 |
+| Linked allocation bytes | 94,276 | 90,232 |
+| Linked code bytes | 77,928 | 73,904 |
+| Linked data bytes | 588 | 568 |
+| Linked BSS bytes | 15,760 | 15,760 |
+| Preparation capsule bytes | 11,102 | 11,102 |
+
+This is a 22.4% elapsed-time reduction and 4,044 fewer linked bytes. It remains
+13.8% slower than the preceding pre-descriptor observation of 3.7871 seconds;
+the architectural migration's regression is reduced, not eliminated. Each run is
+one observation, includes guest input/preparation/assembly/output and protocol
+work, and is not a physical Amiga clock claim. Output matches the live Rust oracle
+and independent workload bytes with fresh completion and zero guest exit.
+Release runs contain no memory telemetry record.
+
+Reproduction uses the unchanged command above. Input SHA-256 is
+`053168a2f23a43bea9b22977381f4ce63e6629f751a834cf8dd1712ced6c5100`;
+output SHA-256 is
+`1b1fa0c425b18a5f3a3122ef7397480da69e69db9451689884a00aa2c284b6a5`.
+Final native source SHA-256 is
+`8ca9ff5dff15bb7b854cf01832e37c4e27175b2be02874f368341c17526e8188`;
+release image digest is `fnv1a64:c10748bb7100628e`.
+
+Focused qualification passes fresh two-target core-body string/default/positional
+substitutions followed by nested calls, labeled segments, nested invocations,
+exact full-list spacing, BSS `.res`/`.align` segment expansion with whole-Hunk
+comparison, the telemetry-enabled 38-case descriptor batch, and shared statement/
+resume and line-iterator smoke checks. Thirteen affected Rust oracle/descriptor
+checks and three performance-tool tests pass. Native formatting checks 48 files
+without changes or warnings. Proof, boundary, canonical contract, instrumentation
+safety on adapted modules, debug classification, benchmark-selector and workflow
+link checks pass. The runtime inventory still reports only the previously recorded
+`tkpkg.amigaos.value_execution` mismatch; existing broad-gate limitations above
+remain. This is a bounded checkpoint, not complete macro parity or broad
+integration qualification.

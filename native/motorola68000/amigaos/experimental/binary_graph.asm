@@ -309,6 +309,32 @@ done
 	tst.l d0
 	rts
 	.bend  ; order
+
+; A0=ordered graph,D1=source binding index+1. Resolve independent dense storage.
+; D0/CCR=zero and A0=node when present; nonzero and A0 unchanged when absent.
+; Other registers preserved. The graph owns the returned node until reset.
+nodeForBinding	.block
+	movem.l d2/a1/a6, -(sp)
+	move.l a0, -(sp)
+	movea.l a0, a6
+	tst.l d1
+	beq.w missing
+	cmpi.l #65535, d1
+	bhi.w missing
+	bsr.w findBinding
+	tst.w d2
+	beq.w missing
+	moveq #0, d0
+	bra.w done
+missing
+	movea.l (sp), a0
+	moveq #1, d0
+done
+	addq.l #4, sp
+	movem.l (sp)+, d2/a1/a6
+	tst.l d0
+	rts
+	.bend  ; nodeForBinding
 	.priv
 
 ; D1=source binding index+1,A6=graph. D2=dense index+1 (zero if absent).

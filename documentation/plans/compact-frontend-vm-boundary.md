@@ -302,6 +302,21 @@ of the input: add a VM-owned active range, defaulting to the full token array,
 which macro-envelope recognition narrows to the argument region. Preserve the
 current Rust delimiter acceptance rather than accidentally tightening it.
 
+Treat that prerequisite as a coherent PRVM state/consumer checkpoint, not an
+isolated opcode patch. Scan activation, origin and end must survive cursor changes,
+checkpoint/rollback and expression resumes. The existing 40-byte native resume
+record has no spare fields: migrate the latest resume contract with its consumers
+rather than hiding state in unrelated fields. Use one boundary walker with Rust's
+three signed delimiter depths, including its current unmatched-close behavior.
+Dynamic operand parsing without a scan produces no operands. The first empty
+range supplies numeric zero; later empty ranges supply an expression error and
+stop. Repair the Rust/native request bridges coherently where necessary.
+
+Focused acceptance includes nested delimiters, leading/consecutive/trailing commas,
+scan plus cursor movement, repeated scan, rollback, multiple resumes and error
+stopping. Extend the existing real PRVM smoke harness for native proof. This
+prerequisite does not yet introduce the macro entry or descriptor arena.
+
 Emit descriptor events through the existing 32-byte result records. Define the
 new event kinds coherently in Rust, native and documentation; existing record-kind
 documentation already disagrees with native codes 6/7. Hosts validate events and
@@ -336,24 +351,25 @@ The authoritative Rust processor recognizes substitutions on original spelling
 before tokenization/string decoding. Native currently feeds already decoded
 string bytes into `rewriteCallText`. These orders are observably different:
 
-| Template / argument | Rust result | Current native mechanism |
+| Template / argument | Rust result | Fresh native result after module fix |
 |---|---|---|
-| `.byte "\x401"` / `A` | Literal bytes `@1` | Decoding introduces `@1`, which is then treated as a placeholder. |
-| `.byte "\x2ename"` / `A` | Literal bytes `.name` | Decoding introduces a potential named placeholder. |
-| `.byte "@1"` / `A",7,"B` | Bytes `41 07 42` from three expressions | Copies inserted quote/comma spelling into one already decoded string. |
+| `.byte "\x401"` / `A` | Literal bytes `@1` | `41` (`A`): decoding introduces a marker that is then substituted. |
+| `.byte "\x2ename"` / `A` | Literal bytes `.name` | `41` (`A`): decoding introduces a named marker that is then substituted. |
+| `.byte "@1"` / `A",7,"B` | Bytes `41 07 42` from three expressions | Bytes `41 22 2c 37 2c 22 42`: inserted spelling remains inside one string. |
 
 Live full Rust CLI probes with an explicit `.module app` verify all three Rust
 results. Probe filenames must not supply an invalid implicit module name; initial
 hyphenated filenames caused unrelated module errors and were corrected rather
 than interpreted as macro behavior. The committed test inputs use `input.asm`
 and an explicit module. Initial fresh native runs completed with empty output on
-all three inputs, failing exact comparison. These runs do not isolate ordering:
-ordinary literal, substitution and numeric macro controls also completed with
-empty output and failed comparison. Localize this baseline failure before
-attributing any of the six failures to the mechanisms in the table. The source
-review found no evidence that `emit` is a forbidden macro name or that `.org` /
-`.end` is required: previously passing m68020 probes use the same module and
-macro names without either directive. No cause or production fix is claimed.
+all three inputs and on ordinary literal, substitution and numeric controls.
+An implicit-module control passed, isolating an explicit-module selection defect:
+block selection treated a source module binding as a dense graph-node index.
+It now resolves the binding through the graph's existing hash lookup, preserving
+the distinct binding used by import selection. This restores the ordinary controls
+and exposes the actual substitution-order mismatches; it does not repair those
+semantics. No missing `.org` / `.end` or forbidden macro-name explanation was
+supported by the source or comparisons.
 
 Escaped markers must stay literal whichever interpolation policy is chosen.
 Preserving all current Rust behavior requires a package VM lexer/decoder over
@@ -362,10 +378,9 @@ There must be no rendered-source buffer handed back to host parsers. Ordinary
 shape-stable substitutions should keep the token-splicing path; any bypass of
 fragment lexing needs VM-owned eligibility and equivalence tests against forced
 fragment execution on identical inputs. This avoids recreating an unproven fast
-path. A deliberately
-bounded binary interpolation language would instead need explicit rejections and
-an approved Rust/native language change. That consequential choice is being
-reviewed with Erik before implementing the expansion contract.
+path. Erik chose to preserve the existing substitution semantics for now,
+including substitutions that change token/quote structure. Implement the fragment
+stream contract; do not reject those substitutions or narrow the Rust language.
 
 ### Subsequent implementation checkpoint
 
@@ -382,16 +397,27 @@ Compare identical inputs against the live Rust CLI, including escaped markers,
 quoted arguments, delimiter combinations, defaults, full-list spacing and nested
 substitutions. Include exact native recipe/descriptor bounds and failed-publication
 probes, fresh 68020 / 2 MiB output, the unchanged release control and peak ownership.
-Current baseline is `bfb4bc91`: release control 9.887 s, Hunk 72,620 bytes,
+Baseline before the module-owner repair is `bfb4bc91`: release control 9.887 s, Hunk 72,620 bytes,
 linked reservation 83,828 bytes; alias peaks 531,952 / 153,112 bytes.
 
 ### Design-checkpoint validation
 
 The Rust regression test passes all six cases (three ordering cases and three
-ordinary controls). The six opt-in native probes remain failing tests, with fresh
-completed captures and empty output; this is not native qualification. No production
-code changed, so performance was not remeasured. Focused Rust formatting and diff
-whitespace checks pass. Workflow links, benchmark selectors and the supply-chain
-check pass; the architecture boundary check reports ten findings in unchanged
-native encoding/mask files. Whole-workspace formatting also reports an existing
+ordinary controls); the affected graph selection passes 12 host tests. Fresh
+68020 / 2 MiB ordinary native controls pass after the module-owner fix. The final
+graph lookup wrapper passes entry-root, reachability and transitive native cases,
+the previous root-macro fixture and the minimal m68020 explicit-module regression.
+The three ordering cases fail with the exact bytes shown above; their correction
+belongs to the fragment-stream migration. Native formatting checks all 259 files
+without changes/warnings, and the fresh-run proof-contract check passes. Focused
+Rust formatting and diff whitespace checks pass. Workflow links, benchmark
+selectors and the supply-chain check pass;
+the architecture boundary check reports ten findings in unchanged native
+encoding/mask files. Whole-workspace formatting also reports an existing
 module-order difference in unchanged `crates/opforge-vm/src/lib.rs`.
+
+The unchanged unprofiled m6502 release control (84,687 source bytes / 121 templates)
+matches all 1,701 Rust output bytes in 9.780 s, compared with 9.887 s before this
+repair. That is a 1.1% lower single-run observation, not a statistical speedup
+claim. The compact Hunk is 72,676 bytes (+56), with linked reservation 83,880
+bytes (+52). Allocation telemetry was not rerun for this lookup-only repair.

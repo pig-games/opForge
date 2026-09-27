@@ -201,12 +201,12 @@ root
 	moveq #0, d1
 	move.w 0(a0, d0.l), d1
 	beq.w liveRoot
-	subq.w #1, d1
 	move.w d1, d3
-	mulu.w #graph.NODE_BYTES, d1
+	subq.w #1, d3  ; imports retain the zero-based module binding index
 	movea.l Graph, a0
-	lea graph.NODES(a0), a0
-	adda.l d1, a0
+	; Ownership uses source binding IDs; graph nodes are independently dense.
+	jsr graph.nodeForBinding
+	bne.w invalid
 	cmpi.w #1, graph.Node.File(a0)
 	bne.w nextRoot
 	; An entry-file sibling may also be imported. Import availability alone

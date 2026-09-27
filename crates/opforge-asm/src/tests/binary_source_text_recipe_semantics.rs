@@ -42,9 +42,13 @@ fn text_recipe_control_numeric_fs_uae() {
 }
 
 fn native(input: String) {
+    native_cpu(input, "m6502");
+}
+
+fn native_cpu(input: String, cpu: &str) {
     let expected = graph::oracle_with_roots(&[("input.asm", &input)], &[]).unwrap();
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    let resolved = core.resolve_pipeline("m6502", None).unwrap();
+    let resolved = core.resolve_pipeline(cpu, None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
     let result = crate::fs_uae_smoke::run_compact_cli_from_env(
         &workspace_root(),
@@ -58,6 +62,28 @@ fn native(input: String) {
     };
     assert_eq!(runs.len(), 1);
     assert!(runs[0].success && runs[0].protocol_completed);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; isolate CPU package from macro baseline"]
+fn text_recipe_numeric_m68020_fs_uae() {
+    native_cpu(source("7", "A").replace("m6502", "m68020"), "m68020");
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; isolate argument spelling from macro baseline"]
+fn text_recipe_numeric_immediate_fs_uae() {
+    native(source("7", "#0"));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; isolate explicit module from macro baseline"]
+fn text_recipe_numeric_implicit_module_fs_uae() {
+    native(
+        source("7", "A")
+            .replace(".module app\n", "")
+            .replace(".endmodule\n", ""),
+    );
 }
 
 #[test]

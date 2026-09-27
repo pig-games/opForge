@@ -1608,6 +1608,7 @@ impl ParserVmOpcode {
 pub const PARSER_VM_MACRO_ENTRY: u16 = 2;
 pub const PARSER_VM_MACRO_VERSION: u16 = 2;
 pub const PARSER_VM_PACKED_MACRO_ENTRY: u16 = 3;
+pub const PARSER_VM_MACRO_FRAGMENT_ENTRY: u16 = 4;
 
 /// Operands select envelope grammar and delimiter/default policy; never ignored.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1618,12 +1619,18 @@ pub enum MacroDescriptorOpcode {
     Split = 0x81,    // policy:u8 (1 saturating), separator:u8
     Formals = 0x82,  // policy:u8 (1 first raw equals)
     Publish = 0x83,
+    FragmentScan = 0x86, // policy1, positional/dot markers, digit bounds, braces
     PackedEnvelope = 0x84, // flags:u8 (labels, outer parentheses, leading comma)
-    PackedSplit = 0x85, // matched-stack policy:u8 (2, max depth 16), separator kind:u8
+    PackedSplit = 0x85,  // matched-stack policy:u8 (2, max depth 16), separator kind:u8
 }
 
 pub fn packed_macro_call_program() -> Vec<u8> {
     vec![0x84, 7, 0x85, 2, 4, 0x83, 0]
+}
+
+/// Raw generated-call substitution grammar: ASCII alphanumeric/underscore names.
+pub fn macro_fragment_program() -> Vec<u8> {
+    vec![0x86, 1, b'@', b'.', b'1', b'9', b'{', b'}', 0x83, 0]
 }
 
 pub fn macro_spelling_program() -> Vec<u8> {

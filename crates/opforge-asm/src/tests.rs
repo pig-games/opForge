@@ -1,6 +1,9 @@
 #[path = "tests/macro_descriptor_native.rs"]
 mod macro_descriptor_native;
 
+#[path = "tests/macro_fragment_native.rs"]
+mod macro_fragment_native;
+
 #[path = "tests/packed_macro_native.rs"]
 mod packed_macro_native;
 

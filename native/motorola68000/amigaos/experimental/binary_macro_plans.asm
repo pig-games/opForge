@@ -2,11 +2,12 @@
 ; Stored rows contain arena and packed-record offsets, never source pointers.
 	.module experimental.amigaos.binary_macro_plans
 	.cpu 68020
+	.use prvm.amigaos.abi as abi
 	.use experimental.amigaos.binary_memory as memory
 	.include "telemetry_macros.i"
 	.pub
 ROW_BYTES = 32
-HEADER_BYTES = 8
+HEADER_BYTES = 12
 MAX_ROWS = 64
 STATE_BYTES = memory.Block.Used+4
 Frame	.struct
@@ -17,10 +18,13 @@ Source	.long ?
 SourceBytes	.long ?
 PackedMap	.long ?
 TokenCount	.long ?
+RecipeEvents	.long ?
+RecipeCount	.long ?
 	.endstruct
 Plan	.struct
 Count	.long ?
 Bytes	.long ?
+Recipes	.long ?  ; optional arena offset to count + VM fragment rows
 	.endstruct
 Row	.struct
 Kind	.word ?
@@ -42,9 +46,11 @@ SpellingCount	.long ?
 Source	.long ?
 SourceBytes	.long ?
 PackedBytes	.long ?
+RecipeEvents	.long ?
+RecipeCount	.long ?
 	.endstruct
-GENERATED_FRAME_BYTES = GeneratedFrame.PackedBytes+4
-FRAME_BYTES = Frame.TokenCount+4
+GENERATED_FRAME_BYTES = GeneratedFrame.RecipeCount+4
+FRAME_BYTES = Frame.RecipeCount+4
 	.section code, kind=code
 	; A0=zero-initialized arena or prior session. Release storage and reset usage.
 ; D0/CCR=zero; preserves other registers.
@@ -78,6 +84,15 @@ create	.block
 	cmp.l Frame.SourceBytes(a6), d5
 	bhi.w bad
 	sub.l d4, d5
+	moveq #0, d1
+	tst.l Frame.RecipeEvents(a6)
+	beq.w reserve
+	move.l Frame.RecipeCount(a6), d1
+	cmpi.l #MAX_ROWS, d1
+	bhi.w bad
+	lsl.l #5, d1
+	addq.l #4, d1
+reserve
 	bsr.w reservePlan
 	bne.w bad
 	movea.l Frame.Source(a6), a0
@@ -166,8 +181,11 @@ formalType
 rowReady
 	subq.l #1, d7
 	bne.w rows
+	bsr.w storeRecipes
+	bne.w bad
 	move.l d6, memory.Block.Used(a4)
 	.TELEMETRY_COMPACT runtime_profile.compactProgramRows, Frame.Count(a6)
+	.TELEMETRY_COMPACT runtime_profile.compactProgramRows, Frame.RecipeCount(a6)
 	move.l d6, d0
 	sub.l d3, d0
 	.TELEMETRY_COMPACT runtime_profile.compactMetadataBytes, d0
@@ -208,6 +226,15 @@ createGenerated	.block
 	cmp.l GeneratedFrame.SourceBytes(a6), d5
 	bhi.w bad
 	sub.l d4, d5
+	moveq #0, d1
+	tst.l GeneratedFrame.RecipeEvents(a6)
+	beq.w reserve
+	move.l GeneratedFrame.RecipeCount(a6), d1
+	cmpi.l #MAX_ROWS, d1
+	bhi.w bad
+	lsl.l #5, d1
+	addq.l #4, d1
+reserve
 	bsr.w reservePlan
 	bne.w bad
 	movea.l GeneratedFrame.Source(a6), a0
@@ -272,8 +299,22 @@ rowReady
 	adda.l #ROW_BYTES, a2
 	subq.l #1, d7
 	bne.w rows
+	; The shared normalizer needs only initial-frame event/recipe fields.
+	suba.l #FRAME_BYTES, sp
+	movea.l sp, a0
+	move.l GeneratedFrame.SpellingEvents(a6), Frame.Events(a0)
+	move.l GeneratedFrame.RecipeEvents(a6), Frame.RecipeEvents(a0)
+	move.l GeneratedFrame.RecipeCount(a6), Frame.RecipeCount(a0)
+	move.l a6, -(sp)
+	movea.l a0, a6
+	bsr.w storeRecipes
+	movea.l (sp)+, a6
+	adda.l #FRAME_BYTES, sp
+	tst.l d0
+	bne.w bad
 	move.l d6, memory.Block.Used(a4)
 	.TELEMETRY_COMPACT runtime_profile.compactProgramRows, GeneratedFrame.PackedCount(a6)
+	.TELEMETRY_COMPACT runtime_profile.compactProgramRows, GeneratedFrame.RecipeCount(a6)
 	move.l d6, d0
 	sub.l d3, d0
 	.TELEMETRY_COMPACT runtime_profile.compactMetadataBytes, d0
@@ -329,7 +370,77 @@ done
 	rts
 	.bend  ; resolve
 	.priv
-; A4=arena,D7=count,D4=source start,D5=spelling bytes (validated by caller).
+; Normalize VM-selected fragment spans into the same owned spelling region.
+; A4=arena,A6=initial frame,D2=spelling offset,D3=plan offset. D0=status;
+; preserves others. The caller publishes Used only after this succeeds.
+storeRecipes	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	tst.l Frame.RecipeEvents(a6)
+	beq.w good
+	movea.l memory.Block.Pointer(a4), a0
+	adda.l d3, a0
+	move.l Plan.Recipes(a0), d0
+	beq.w bad
+	movea.l memory.Block.Pointer(a4), a1
+	adda.l d0, a1
+	move.l Frame.RecipeCount(a6), d7
+	move.l d7, (a1)+
+	movea.l Frame.Events(a6), a0
+	move.l Row.SpellingEnd(a0), d4
+	sub.l Row.SpellingStart(a0), d4
+	movea.l Frame.RecipeEvents(a6), a2
+	moveq #0, d5
+next
+	tst.l d7
+	beq.w complete
+	cmp.l Row.SpellingStart(a2), d5
+	bne.w bad
+	move.l Row.SpellingEnd(a2), d5
+	cmp.l Row.SpellingStart(a2), d5
+	bls.w bad
+	cmp.l d4, d5
+	bhi.w bad
+	cmpi.w #abi.PRVM_RESULT_MACRO_LITERAL, Row.Kind(a2)
+	blo.w bad
+	cmpi.w #abi.PRVM_RESULT_MACRO_SUPPLIED_LIST, Row.Kind(a2)
+	bhi.w bad
+	movea.l a1, a3
+	moveq #7, d0
+copy
+	move.l (a2)+, (a1)+
+	dbra d0, copy
+	add.l d2, Row.SpellingStart(a3)
+	add.l d2, Row.SpellingEnd(a3)
+	cmpi.w #abi.PRVM_RESULT_MACRO_NAMED, Row.Kind(a3)
+	bne.w advance
+	move.l Row.Aux0(a3), d0
+	cmp.l -ROW_BYTES+Row.SpellingStart(a2), d0
+	blo.w bad
+	move.l Row.Aux1(a3), d1
+	cmp.l d0, d1
+	bls.w bad
+	cmp.l d5, d1
+	bhi.w bad
+	add.l d2, Row.Aux0(a3)
+	add.l d2, Row.Aux1(a3)
+advance
+	subq.l #1, d7
+	bra.w next
+complete
+	cmp.l d4, d5
+	bne.w bad
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; storeRecipes
+
+; A4=arena,D7=count,D4=source start,D5=spelling bytes,D1=recipe region bytes.
 ; D0/CCR=status. D2=spelling offset,D3=prior Used,D6=reserved end;
 ; A3=rows,A5=spelling destination. Clobbers A0; Used remains unpublished.
 reservePlan	.block
@@ -337,6 +448,7 @@ reservePlan	.block
 	lsl.l #5, d6
 	add.l #HEADER_BYTES, d6
 	add.l d5, d6
+	add.l d1, d6
 	addq.l #1, d6
 	andi.l #$fffffffe, d6
 	move.l memory.Block.Used(a4), d3
@@ -354,6 +466,13 @@ reservePlan	.block
 	lsl.l #5, d2
 	add.l d3, d2
 	add.l #HEADER_BYTES, d2
+	clr.l (a3)
+	tst.l d1
+	beq.w noRecipes
+	move.l d2, (a3)
+	add.l d1, d2
+noRecipes
+	addq.l #4, a3
 	movea.l memory.Block.Pointer(a4), a5
 	adda.l d2, a5
 	moveq #0, d0

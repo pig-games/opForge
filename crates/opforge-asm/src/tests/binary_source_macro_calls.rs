@@ -259,3 +259,51 @@ fn compact_macro_core_body_fs_uae() {
         native_source_for_cpu(core_body_source(cpu), cpu);
     }
 }
+
+fn fragment_call_source(cpu: &str) -> String {
+    format!(
+        r#".cpu {cpu}
+INNER .macro left,right
+ .byte .left,.right
+.endmacro
+TEXT .macro n
+ .byte ".n"
+.endmacro
+OUTER .macro a,b=2
+ .INNER .a,.{{b}}
+ .INNER @1,.2
+ .TEXT .unknown
+.endmacro
+FORWARD .macro x,y
+ .INNER .@
+.endmacro
+ .OUTER 3,4
+ .OUTER 5
+ .FORWARD($06 ,  $07)
+.end
+"#
+    )
+}
+
+#[test]
+fn compact_macro_fragment_call_rust_oracle() {
+    assert_eq!(
+        oracle(&fragment_call_source("m6502")),
+        [
+            vec![3, 4, 3, 4],
+            b".unknown".to_vec(),
+            vec![5, 2, 5, 2],
+            b".unknown".to_vec(),
+            vec![6, 7]
+        ]
+        .concat()
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; cached call fragments, defaults and unresolved markers"]
+fn compact_macro_fragment_call_fs_uae() {
+    for cpu in ["m6502", "m68020"] {
+        native_source_for_cpu(fragment_call_source(cpu), cpu);
+    }
+}

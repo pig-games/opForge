@@ -139,6 +139,8 @@ prvmRun68000	.block
 	beq macroEntry
 	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_MACRO, abi.PRVM_FRAME_ENTRY_KIND(a0)
 	beq macroEntry
+	cmpi.w #abi.PRVM_ENTRY_KIND_MACRO_FRAGMENTS, abi.PRVM_FRAME_ENTRY_KIND(a0)
+	beq macroEntry
 
 	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	movea.l a0, a4  ; A4 is the stable request-frame base for the runtime run

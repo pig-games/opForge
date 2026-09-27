@@ -42,6 +42,8 @@ MacroPacked	.long ?
 MacroPackedBytes	.long ?
 MacroSpelling	.long ?
 MacroSpellingBytes	.long ?
+MacroFragments	.long ?
+MacroFragmentsBytes	.long ?
 .endstruct
 
 Context	.struct

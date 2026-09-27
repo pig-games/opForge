@@ -722,3 +722,95 @@ link checks pass. The runtime inventory still reports only the previously record
 `tkpkg.amigaos.value_execution` mismatch; existing broad-gate limitations above
 remain. This is a bounded checkpoint, not complete macro parity or broad
 integration qualification.
+
+
+## Generated-call fragment recipes checkpoint
+
+Agreed scope: cache package-selected literal, positional, named and supplied-list
+fragment descriptors for captured nested calls, then expand by copying those
+records. Remove generated-call use of the native `rewriteCallText` scanner;
+retain its decoded-string consumer for the following ordering correction. The
+working reference is `c4449e11` (release macro-repeat 4.3105 seconds, linked
+90,232 bytes). Keep the current native spelling policy in this bounded migration;
+this does not claim every Rust named-marker form or complete macro parity.
+
+PRVM entry 4 emits bounded offset-only fragment records from the original selected
+call-list spelling. Host code binds named fragments against VM-selected formal
+spans and copies invocation values; it does not recognize placeholder grammar.
+The latest preparation capsule replaces BSP4 with BSP5 to carry this program.
+Recipes are created during definition capture and reused across invocations.
+
+Success requires Rust/native recipe-record agreement, live full Rust CLI output
+for nested/default/named/positional/full-list cases, fresh zero guest exits and
+unchanged release/memory control inputs. Include malformed program, capacity,
+work-budget and unresolved-marker cases. Stop for an unexplained output mismatch,
+unsafe publication, broader syntax/storage redesign or disproportionate cost.
+
+
+PRVM entry 4 and its package-selected grammar are implemented in Rust and native.
+During definition capture the frontend emits fragments once; the plan arena
+stores a validated recipe region and copied spelling, referenced by offsets.
+The shared plan header grows from eight to twelve bytes for an optional recipe
+region offset. Normal and generated publication preserve atomic used-extent
+updates. Generated definitions can also cache their captured call fragments.
+
+A separate compact copier owns bounds checks, named-formal binding and copying.
+It never scans placeholder grammar or scans inserted values again. Generated calls
+now use this copier, so `rewriteCallText` is called only by the retained decoded
+string path. Named-formal comparisons still occur during invocation; this slice
+caches grammar recognition, not every binding result. The source spelling arena
+and generated TKVM/PRVM boundary services remain; binary-only expansion and the
+three recorded string-order discrepancies are not resolved here.
+
+BSP5 has a 124-byte header and appends the fragment-program offset/length. All
+native consumers use this latest capsule; no BSP4 reader remains. PRVM retains
+frame ABI 1 and contract 2 with explicit entry 4. The cached records use no
+persisted memory pointers. Recipe and copied-byte work use existing reusable
+telemetry macros; release emission stays conditional at assembly time.
+
+Fresh release and telemetry-enabled 29-case batches match Rust records, status,
+error offsets and untouched failure buffers. Alternate marker/digit/brace programs
+prove that operands select recognition. Integrated two-target nested macro/segment
+calls, default/positional/named/braced/full-list substitutions, unresolved markers,
+exact supplied-list spacing and four quoted-argument/header-state cases match the
+live full Rust CLI. The mixed new fixture is 265/266 source bytes and produces
+26 output bytes. These are functional proofs, not comparative timing claims.
+
+The unchanged macro-repeat control gives:
+
+| Metric | `c4449e11` | This checkpoint |
+|---|---:|---:|
+| Release START-to-DONE seconds | 4.3105 | 4.2688 |
+| Linked allocation bytes | 90,232 | 92,720 |
+| Linked code bytes | 73,904 | 76,384 |
+| Linked data bytes | 568 | 568 |
+| Linked BSS bytes | 15,760 | 15,768 |
+| Preparation capsule bytes | 11,102 | 11,120 |
+| Instrumented peak owned bytes | 262,496 | 262,512 |
+
+The single observations show no material control timing change, not a demonstrated
+speedup. This control has no nested captured calls; it measures carrying the new
+service and plan layout, not the benefit of cached fragment execution. Instrumented
+preparation/assembly remains 5.12/0.66 seconds, with 263 tokenizer invocations and
+12,742 tokenizer instructions. All tracked allocations are released, capacities
+balance and profiling errors are zero. Input/output hashes remain the preceding
+control's hashes; release image digest is `fnv1a64:65900adfb2b94cee` and native
+source SHA-256 is
+`d32528e10bb9b8bd37904992ad46e9260f0437004e5a39ef6b61f5f55175e6dc`.
+The same bounded performance command and separate `--compare-memory` run reproduce
+these controls; instrumented times include probes.
+
+Qualification includes 456 VM and 101 package library tests, the capsule bounds/
+program test, the new mixed Rust CLI oracle and the 29-case host oracle. Native
+formatting checks 50 files without changes or warnings. Focused proof, boundary,
+canonical contracts, instrumentation safety, debug classification, benchmark
+selectors and workflow links pass. The CPU architecture guard retains 10 baseline
+findings, and the inventory retains only the existing `value_execution` mismatch.
+This checkpoint does not claim clean broad qualification or complete macro parity.
+
+The actual cached-copy fixture also passes with telemetry enabled on both target
+packages under the 68020 / 2 MiB profile. Peak owned memory is 185,200 bytes for
+the 6502 package and 532,296 bytes for the 68020 package, with zero profiling
+errors and balanced cleanup. These are different package footprints, not a
+before/after comparison. They verify the adapted copier's enabled instrumentation
+rather than inferring preservation from a control that does not execute it.

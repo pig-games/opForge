@@ -193,6 +193,8 @@ loadCase	.block
 	cmpi.w #prvm_abi.PRVM_ENTRY_KIND_MACRO_DESCRIPTORS, d0
 	beq.w entryReady
 	cmpi.w #prvm_abi.PRVM_ENTRY_KIND_PACKED_MACRO, d0
+	beq.w entryReady
+	cmpi.w #prvm_abi.PRVM_ENTRY_KIND_MACRO_FRAGMENTS, d0
 	bne.w fail
 entryReady
 	move.w d0, EntryKind

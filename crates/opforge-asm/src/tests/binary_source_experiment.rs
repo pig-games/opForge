@@ -80,12 +80,17 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BSP4");
+        assert_eq!(&bytes[..4], b"BSP5");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
-        assert!((116..=bytes.len()).contains(&runtime_bytes));
+        assert!((124..=bytes.len()).contains(&runtime_bytes));
         assert_eq!(runtime_bytes % 2, 0);
+        let fragments = long(&bytes, 116);
+        let fragment_bytes = long(&bytes, 120);
+        assert!(fragments >= runtime_bytes);
+        assert_eq!(&bytes[fragments..fragments + fragment_bytes],
+            package::package::macro_fragment_program());
 
         let rows = long(&bytes, 16);
         let row_count = long(&bytes, 20);
@@ -98,7 +103,7 @@ fn binary_source_packages_prepare() {
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
-            assert!(offset >= 116);
+            assert!(offset >= 124);
             assert!(offset + count * width <= runtime_bytes);
         }
 

@@ -77,7 +77,7 @@ specification revises that baseline explicitly.
 
 `prvmRun68000` is the only reserved native parser VM entry symbol for this
 v0.1 statement contract. The experimental macro-only entry described below
-uses the same request frame and register contract for entries 2 and 3.
+uses the same request frame and register contract for entries 2, 3 and 4.
 
 This ABI starts after opcore has classified the line and delegated it as
 `ProcessingRequestKind::Processor { processor: "asm", kind: "statement" }`.
@@ -147,7 +147,7 @@ ABI can grow without consuming more call registers.
 | `4` | 2 | `abi_version` | Must be `1`. |
 | `6` | 2 | `frame_size` | Must be at least `112`. |
 | `8` | 2 | `call_mode` | `0` start, `1` resume after expression result. |
-| `10` | 2 | `entry_kind` | `1` delegated opasm statement; `2` initial macro descriptors; `3` packed macro boundaries. |
+| `10` | 2 | `entry_kind` | `1` delegated opasm statement; `2` initial macro descriptors; `3` packed macro boundaries; `4` raw call fragments. |
 | `12` | 4 | `line_num` | Source line number for spans and diagnostics. |
 | `16` | 4 | `source_ptr` | Pointer to newline-free source bytes, or a complete packed record for entry 3. |
 | `20` | 4 | `source_len` | Source byte length. |
@@ -186,9 +186,10 @@ pointers for `call_mode = 0` are `source_ptr`, `token_ptr` when `token_count >
 - `1`: delegated opasm statement request
 - `2`: experimental initial macro descriptor request, described below
 - `3`: experimental packed macro boundary request, described below
+- `4`: experimental raw call-fragment request, described below
 
 All other values are entry-boundary violations. Statement entry 1 continues to
-reject macro descriptor programs; entries 2 and 3 do not accept expression resumes.
+reject macro descriptor programs; entries 2, 3 and 4 do not accept expression resumes.
 Shared frame/status/result definitions are owned by `prvm.amigaos.abi`;
 statement resume internals remain owned by `prvm.amigaos.runtime`. Macro entries
 require source/program/result pointers and do not require statement diagnostics,
@@ -440,7 +441,7 @@ Unsupported newline input:
 
 Non-delegated entry request:
 
-- If `entry_kind` is not `1`, `2` or `3`, `prvmRun68000` must return
+- If `entry_kind` is not `1`, `2`, `3` or `4`, `prvmRun68000` must return
   `PRVM_STATUS_ENTRY_BOUNDARY` and must not execute parser bytecode.
 
 Invalid request frame:
@@ -534,7 +535,7 @@ slot metadata are required for Rust PRVM v2 parity.
 ## Experimental macro descriptor entry
 
 Compact clients can call `prvm.amigaos.macro_runtime.run` directly with A0/D0
-and the register contract above. It accepts only entries 2 and 3, validates the
+and the register contract above. It accepts only entries 2, 3 and 4, validates the
 request pointer and available frame size, then delegates all program/request
 validation to the selected executor. The general `prvmRun68000` entry delegates
 these entries to the same wrapper. One optional VM profiling invocation surrounds
@@ -625,3 +626,37 @@ and kinds agree. Those temporary lexical records never replace executable packed
 tokens. The host copies selected spelling and converts initial lexical ordinals
 (including optional label/type fields) to packed offsets. Stored plans contain
 only offsets and arena handles; native request-frame pointers are transient.
+
+
+## Experimental generated-call fragment entry
+
+Entry 4 uses the same 112-byte frame, ABI 1 and parser contract 2, with start
+mode, zero flags and no lexical tokens. Source is the selected raw call-list
+spelling, at most 253 bytes. This service recognizes fragments; it does not bind
+formal names, expand values, decode strings or scan inserted text.
+
+The package program is `86 policy positional-marker named-marker first-digit
+last-digit open-brace close-brace 83 00`. Policy 1 selects ASCII alphanumeric and
+underscore names, preserving the compact path's current bounded spelling policy.
+Four distinct ASCII punctuation operands select markers/braces; digit bounds lie
+within `1`–`9`. Operands affect recognition, including alternate-marker programs.
+Unknown policy, invalid operands, order, extent or trailing bytes return status 6.
+This is not a claim of complete Rust named-marker or string-substitution parity.
+
+The 32-byte records have zero flags and token fields, contiguous source spans,
+and these kinds:
+
+| Kind | Meaning | Auxiliary fields |
+|---|---|---|
+| 13 | Literal bytes | Zero |
+| 14 | Positional value | Aux0: zero-based selected index |
+| 15 | Named value | Aux0/Aux1: selected name start/end |
+| 16 | Supplied list | Zero |
+
+The host binds names against header formal spans. An unresolved name retains its
+original marker spelling. Records use byte offsets, including UTF-8 literal spans.
+The service stages at most 64 records and publishes atomically after validation;
+empty source succeeds with zero records. Return meanings follow the other macro
+entries. Capacity/work-budget errors use the failing fragment/inspection offset;
+invalid frame or program returns offset zero. The budget charges ten program
+bytes, each outer source inspection, each name byte and each emitted record.

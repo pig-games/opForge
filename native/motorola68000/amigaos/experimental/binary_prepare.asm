@@ -442,7 +442,7 @@ done
 	rts
 	.bend  ; validateNameSequence
 
-; A0=name token,A1=end,A2=BSP4 package. D0=0 known register, 1 other,
+; A0=name token,A1=end,A2=BSP5 package. D0=0 known register, 1 other,
 ; 2 malformed package; all other registers preserved.
 packageRegister	.block
 	movem.l d1-d4/a3, -(sp)

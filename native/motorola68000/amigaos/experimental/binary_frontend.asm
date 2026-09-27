@@ -40,7 +40,7 @@ GraphBefore	.long ?
 GRAPH_BYTES = graph.SCRATCH_BYTES
 GRAPH_SPAN_BYTES = graph.MAX_SPANS*graph.SPAN_BYTES
 	.priv
-HEADER_BYTES = package.Header.MacroSpellingBytes+4
+HEADER_BYTES = package.Header.MacroFragmentsBytes+4
 PROGRAM = 0
 PROGRAM_BYTES = 4
 PACKAGE_BASE = 8
@@ -87,7 +87,7 @@ Next	.long ?
 ; Other registers preserved. The capsule byte bound limits count, not a new cap.
 scratchSize	.block
 	movem.l d2, -(sp)
-	cmpi.l #$42535034, package.Header.Magic(a0)
+	cmpi.l #$42535035, package.Header.Magic(a0)
 	bne.w bad
 	move.l package.Header.Bytes(a0), d2
 	cmpi.l #HEADER_BYTES, d2
@@ -446,6 +446,17 @@ selectedProgram
 	lea PACKED_MAP(a6), a1
 	move.l a1, macro_plans.Frame.PackedMap(a0)
 	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Frame.TokenCount(a0)
+	clr.l macro_plans.Frame.RecipeEvents(a0)
+	clr.l macro_plans.Frame.RecipeCount(a0)
+	movea.l a6, a1
+	adda.l #TEMPLATE_STATE, a1
+	tst.w templates.State.Open(a1)
+	beq.w planReady
+	cmpi.l #1, d4
+	bne.w planReady
+	bsr.w captureFragments
+	bne.w bad
+planReady
 	jsr macro_plans.create
 	bne.w bad
 	lea LINE_FRAME(a6), a0
@@ -461,6 +472,52 @@ done
 	tst.l d0
 	rts
 	.bend  ; initialPlan
+
+; Cache package-selected fragments only for nested calls captured in a template.
+; A0=initial plan frame,A5=session,A6=scratch. D0/CCR=status; preserves others.
+captureFragments	.block
+	movem.l d1-d7/a0-a4, -(sp)
+	movea.l a0, a4
+	movea.l macro_plans.Frame.Events(a4), a1
+	move.l macro_plans.Row.SpellingStart(a1), d1
+	move.l macro_plans.Row.SpellingEnd(a1), d2
+	sub.l d1, d2
+	movea.l macro_plans.Frame.Source(a4), a2
+	adda.l d1, a2
+	lea MACRO_REQUEST(a6), a0
+	movea.l a0, a1
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
+clear
+	clr.l (a1)+
+	dbra d0, clear
+	move.l #parser_abi.PRVM_MAGIC_OPRP, parser_abi.PRVM_FRAME_MAGIC(a0)
+	move.w #parser_abi.PRVM_ABI_VERSION_V1, parser_abi.PRVM_FRAME_ABI_VERSION(a0)
+	move.w #parser_abi.PRVM_REQUEST_FRAME_SIZE, parser_abi.PRVM_FRAME_FRAME_SIZE(a0)
+	move.w #parser_abi.PRVM_ENTRY_KIND_MACRO_FRAGMENTS, parser_abi.PRVM_FRAME_ENTRY_KIND(a0)
+	move.l a2, parser_abi.PRVM_FRAME_SOURCE_PTR(a0)
+	move.l d2, parser_abi.PRVM_FRAME_SOURCE_LEN(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.MacroFragmentsBytes(a1), parser_abi.PRVM_FRAME_PROGRAM_LEN(a0)
+	adda.l package.Header.MacroFragments(a1), a1
+	move.l a1, parser_abi.PRVM_FRAME_PROGRAM_PTR(a0)
+	movea.l a6, a1
+	adda.l #MACRO_SPELL_SCRATCH, a1
+	move.l a1, parser_abi.PRVM_FRAME_RESULT_PTR(a0)
+	move.l #64*parser_abi.PRVM_RESULT_RECORD_SIZE, parser_abi.PRVM_FRAME_RESULT_CAPACITY(a0)
+	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
+	move.l #65536, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
+	jsr macro_runtime.run
+	bne.w done
+	move.l d1, macro_plans.Frame.RecipeCount(a4)
+	movea.l a6, a1
+	adda.l #MACRO_SPELL_SCRATCH, a1
+	move.l a1, macro_plans.Frame.RecipeEvents(a4)
+done
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; captureFragments
 
 ; Generated packed tokens and spelling have distinct VM boundaries until the
 ; fragment-recipe migration. This adapter selects programs and owns storage only.
@@ -530,6 +587,30 @@ clearRequest
 	move.l a3, macro_plans.GeneratedFrame.Source(a0)
 	move.l d6, macro_plans.GeneratedFrame.SourceBytes(a0)
 	move.l d7, macro_plans.GeneratedFrame.PackedBytes(a0)
+	clr.l macro_plans.GeneratedFrame.RecipeEvents(a0)
+	clr.l macro_plans.GeneratedFrame.RecipeCount(a0)
+	movea.l a6, a1
+	adda.l #TEMPLATE_STATE, a1
+	tst.w templates.State.Open(a1)
+	beq.w generatedReady
+	; A generated call may itself become part of a captured definition.
+	suba.l #macro_plans.FRAME_BYTES, sp
+	movea.l sp, a0
+	lea MACRO_SPELL_EVENTS(a6), a1
+	move.l a1, macro_plans.Frame.Events(a0)
+	move.l a3, macro_plans.Frame.Source(a0)
+	bsr.w captureFragments
+	tst.l d0
+	bne.w generatedCaptureFailed
+	lea MACRO_FRAME(a6), a1
+	move.l macro_plans.Frame.RecipeEvents(a0), macro_plans.GeneratedFrame.RecipeEvents(a1)
+	move.l macro_plans.Frame.RecipeCount(a0), macro_plans.GeneratedFrame.RecipeCount(a1)
+generatedCaptureFailed
+	adda.l #macro_plans.FRAME_BYTES, sp
+	tst.l d0
+	bne.w bad
+	lea MACRO_FRAME(a6), a0
+generatedReady
 	jsr macro_plans.createGenerated
 	bne.w bad
 	lea LINE_FRAME(a6), a0
@@ -899,7 +980,7 @@ configure	.block
 	bsr.w scratchSize
 	bne.w bad
 	movea.l Frame.Package(a5), a4
-	cmpi.l #$42535034, package.Header.Magic(a4)
+	cmpi.l #$42535035, package.Header.Magic(a4)
 	bne.w bad
 	move.l package.Header.Bytes(a4), d7
 	cmpi.l #HEADER_BYTES, d7
@@ -1026,7 +1107,7 @@ bad
 	rts
 	.bend  ; configure
 
-; The four package-selected macro programs live in the preparation region.
+; The five package-selected macro programs live in the preparation region.
 ; A4=capsule, D7=complete capsule size; D0/CCR=status, other registers preserved.
 validateMacroPrograms	.block
 	movem.l d1-d3/a0, -(sp)
@@ -1049,6 +1130,9 @@ validateMacroPrograms	.block
 	bsr.w region
 	bne.w bad
 	lea package.Header.MacroSpelling(a4), a0
+	bsr.w region
+	bne.w bad
+	lea package.Header.MacroFragments(a4), a0
 	bsr.w region
 	bra.w done
 region

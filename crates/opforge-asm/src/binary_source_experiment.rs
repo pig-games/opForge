@@ -4,8 +4,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use package::{
-    decode_encoding_program, macro_descriptor_program, macro_spelling_program,
-    packed_macro_call_program, EncodingStep,
+    decode_encoding_program, macro_descriptor_program, macro_fragment_program,
+    macro_spelling_program, packed_macro_call_program, EncodingStep,
 };
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
@@ -14,7 +14,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 116;
+const HEADER: usize = 124;
 const ROW: usize = 32;
 
 struct Program<'a> {
@@ -81,7 +81,7 @@ impl<'a> Programs<'a> {
     }
 }
 
-/// Prepare a self-contained BSP4 block for one resolved package hierarchy.
+/// Prepare a self-contained BSP5 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -266,7 +266,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BSP4");
+    out[..4].copy_from_slice(b"BSP5");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -372,6 +372,11 @@ pub fn prepare_package(
     out.extend_from_slice(&macro_spelling);
     let macro_spelling_length = macro_spelling.len();
     align(&mut out);
+    let macro_fragment_offset = out.len();
+    let macro_fragment = macro_fragment_program();
+    out.extend_from_slice(&macro_fragment);
+    let macro_fragment_length = macro_fragment.len();
+    align(&mut out);
     let total = long(out.len())?;
     for (offset, value) in [
         (4, total),
@@ -395,6 +400,8 @@ pub fn prepare_package(
         (104, long(macro_packed_length)?),
         (108, long(macro_spelling_offset)?),
         (112, long(macro_spelling_length)?),
+        (116, long(macro_fragment_offset)?),
+        (120, long(macro_fragment_length)?),
     ] {
         set_long(&mut out, offset, value);
     }

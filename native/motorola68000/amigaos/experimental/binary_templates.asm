@@ -6,6 +6,7 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_macro_plans as plans
+	.use experimental.amigaos.binary_macro_fragments as fragments
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_scope_layout as layout
@@ -1487,45 +1488,7 @@ complete
 	movea.l a2, a3
 	move.l 1(a3), d1
 	movea.l 4(sp), a0
-	movea.l State.Plans(a0), a0
-	jsr plans.resolve
-	bne.w bad
-	lea plans.HEADER_BYTES(a1), a2
-	move.l plans.Row.SpellingStart(a2), d3
-	move.l plans.Row.SpellingEnd(a2), d2
-	sub.l d3, d2
-	cmpi.l #251, d2
-	bhi.w bad
-	movea.l 4(sp), a0
-	movea.l a0, a3
-	adda.l #COMPOSITE_TEXT, a3
-	move.b #TEXT_SCRATCH, (a3)+
-	move.b d2, (a3)+
-	movea.l State.Plans(a0), a2
-	movea.l memory.Block.Pointer(a2), a2
-	adda.l d3, a2
-	move.l d2, d3
-copyCallSpelling
-	tst.l d3
-	beq.w callSpellingCopied
-	move.b (a2)+, (a3)+
-	subq.l #1, d3
-	bra.w copyCallSpelling
-callSpellingCopied
-	addq.l #3, d2
-	move.b d2, (a3)
-	move.l a5, -(sp)
-	movea.l a0, a2
-	adda.l #COMPOSITE_TEXT, a2
-	movea.l a0, a5
-	adda.l #HEADER_FRAME, a5
-	lea 256(a5), a1
-	movea.l 4(sp), a0
-	movea.l 8(sp), a3
-	movea.l State.Plans(a3), a3
-	move.l memory.Block.Pointer(a3), d0
-	bsr.w rewriteCallText
-	movea.l (sp)+, a5
+	bsr.w copyCapturedCall
 	bne.w bad
 	movea.l 4(sp), a0
 	move.l State.GeneratedPlan(a0), d0
@@ -1581,8 +1544,54 @@ done
 	.bend  ; next
 
 	.priv
-; Rewrite only a captured invocation's exact argument spelling. Positional
-; placeholders are replaced from the current frame before nested lookup.
+; A0=session,A4=definition,A6=invocation,D1=captured handle.
+; D0/CCR=status; preserves other registers. Scratch frame lives on the stack.
+copyCapturedCall	.block
+	movem.l d1-d3/a0-a3, -(sp)
+	suba.w #fragments.FRAME_BYTES, sp
+	movea.l sp, a3
+	move.l State.Plans(a0), fragments.Frame.Arena(a3)
+	move.l d1, fragments.Frame.Plan(a3)
+	move.l Def.HeaderPlan(a4), fragments.Frame.Header(a3)
+	moveq #0, d2
+	move.w Def.ParamCount(a4), d2
+	move.l d2, fragments.Frame.FormalCount(a3)
+	lea TEXT(a6), a1
+	move.l a1, fragments.Frame.Text(a3)
+	lea TEXT_END0(a6), a1
+	move.l a1, fragments.Frame.TextEnds(a3)
+	moveq #0, d2
+	move.w TEXT_BYTES(a6), d2
+	move.l d2, fragments.Frame.TextBytes(a3)
+	lea FULL_TEXT(a6), a1
+	move.l a1, fragments.Frame.Full(a3)
+	moveq #0, d2
+	move.w FULL_BYTES(a6), d2
+	move.l d2, fragments.Frame.FullBytes(a3)
+	movea.l a0, a2
+	adda.l #HEADER_FRAME, a2
+	move.b #TEXT_SCRATCH, (a2)
+	lea 2(a2), a1
+	move.l a1, fragments.Frame.Output(a3)
+	move.l #252, fragments.Frame.Capacity(a3)
+	movea.l a3, a0
+	jsr fragments.run
+	bne.w done
+	move.l fragments.Frame.Used(a3), d2
+	move.b d2, 1(a2)
+	move.l d2, d3
+	addq.w #3, d3
+	move.b d3, 2(a2, d2.l)
+	moveq #0, d0
+done
+	adda.w #fragments.FRAME_BYTES, sp
+	movem.l (sp)+, d1-d3/a0-a3
+	tst.l d0
+	rts
+	.bend  ; copyCapturedCall
+
+; Rewrite decoded string bytes using the current invocation placeholders.
+; Captured generated calls consume cached fragments through copyCapturedCall.
 ; A0=scope,A1=output end,A2=sidecar,A4=definition,A5=output,A6=frame,
 ; D0=plan arena base,D2=sidecar bytes. D0/CCR=status,A5 advances.
 ; Other registers are preserved. Formal spelling comes from the header plan.

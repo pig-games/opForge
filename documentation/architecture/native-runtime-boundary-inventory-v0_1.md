@@ -410,7 +410,7 @@ scope, validation and completion. No future feature or migration is scheduled he
 - Imports/outbound dependencies: shared PRVM ABI, thin macro service dispatcher,
   plus the default-off runtime
   observer. Entry dispatch selects statement (1), initial descriptors (2) or
-  packed boundaries (3); macro services do not allocate statement resume state.
+  packed boundaries (3) or raw fragments (4); macro services do not allocate statement resume state.
 - Mutable state: VM token cursor, checkpoint stack, result records, emitted
   statement fields, and expression resume state.
 - Routine responsibility groups: bytecode execution, token access,
@@ -424,9 +424,9 @@ scope, validation and completion. No future feature or migration is scheduled he
 
 - Source: `native/motorola68000/amigaos/prvm/prvm_macro_runtime.asm`.
 - Public entry: `run`; supports initial descriptor (2) and packed boundary (3)
-  entries. Each executor validates its own frame and selected program; the wrapper
+  entries, plus raw fragments (4). Each executor validates its own frame and selected program; the wrapper
   validates pointer/available frame bytes and owns one optional VM enter/leave.
-- Imports: shared ABI, initial descriptor and packed boundary executors, and the
+- Imports: shared ABI, initial descriptor, packed boundary and raw fragment executors, and the
   default-off runtime observer. No statement interpreter or resume-state storage.
 - Mutable state: none; caller buffers and executor-local staging remain bounded.
 

@@ -1784,3 +1784,13 @@ derive from structs and their owning capacities. No source-text execution,
 serialized pointers or CPU semantics are introduced. See the
 [active graph slice](native-runtime-reset.md#dense-module-graph-identities)
 for comparative evidence and remaining self-host limits.
+
+## Fixed package allocation
+
+The compact CLI reserves the immutable loaded package at its declared size,
+rounded to eight bytes by `memory.reserveExact`. Mutable packed-source arenas and
+template pools retain geometric growth. Both policies share allocation, copying
+and cleanup; no binary format changes. For the 269,162-byte m68020 package this
+removes 255,120 bytes of capacity slack. See the
+[allocation slice](native-runtime-reset.md#fixed-input-allocation-slice) for fresh
+native output, memory, release-control evidence and the remaining self-host limit.

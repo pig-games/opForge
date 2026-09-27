@@ -28,6 +28,69 @@ sizeLoop
 	add.l d4, d4
 	bra.w sizeLoop
 allocate
+	bsr.w grow
+	bra.w done
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; reserve
+
+; A0=Block,D0=minimum capacity <=LIMIT. Preserve other registers; D0/CCR=status.
+; Growth rounds up to eight bytes, retains Used and copies its existing bytes.
+; Existing capacity is never shrunk; failed allocation leaves the block intact.
+reserveExact	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a4
+	cmpi.l #LIMIT, d0
+	bhi.w bad
+	cmp.l Block.Capacity(a4), d0
+	bls.w good
+	move.l d0, d4
+	addq.l #7, d4
+	andi.l #$fffffff8, d4
+	bsr.w grow
+	bra.w done
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; reserveExact
+
+; A0=Block. Free owned allocation and clear pointer/capacity; Used retained.
+; Preserves all registers; CCR unspecified. Safe for an empty block.
+release	.block
+	movem.l d0-d1/a0-a2/a6, -(sp)
+	movea.l a0, a2
+	move.l Block.Pointer(a0), d0
+	beq.w done
+	movea.l d0, a1
+	move.l Block.Capacity(a0), d0
+	.MEMORY_FREE d0
+	movea.l 4.w, a6
+	jsr -210(a6)
+	clr.l Block.Pointer(a2)
+	clr.l Block.Capacity(a2)
+done
+	movem.l (sp)+, d0-d1/a0-a2/a6
+	rts
+	.bend  ; release
+	.priv
+
+; A4=Block,D4=new capacity greater than its current capacity and <=LIMIT.
+; D0/CCR=status; clobbers D1-D2/A0-A1/A5-A6. Used remains unchanged.
+; Allocate before releasing old storage so failure preserves all block state.
+grow	.block
 	move.l d4, d0
 	move.l #$10001, d1
 	movea.l 4.w, a6
@@ -49,34 +112,11 @@ copied
 	bsr.w release
 	move.l a5, Block.Pointer(a4)
 	move.l d4, Block.Capacity(a4)
-; release deliberately retains Used so growth preserves the logical extent.
-good
 	moveq #0, d0
-	bra.w done
+	rts
 bad
 	moveq #1, d0
-done
-	movem.l (sp)+, d1-d7/a0-a6
-	tst.l d0
 	rts
-	.bend  ; reserve
-; A0=Block. Free owned allocation and clear pointer/capacity; Used retained.
-; Preserves all registers; CCR unspecified. Safe for an empty block.
-release	.block
-	movem.l d0-d1/a0-a2/a6, -(sp)
-	movea.l a0, a2
-	move.l Block.Pointer(a0), d0
-	beq.w done
-	movea.l d0, a1
-	move.l Block.Capacity(a0), d0
-	.MEMORY_FREE d0
-	movea.l 4.w, a6
-	jsr -210(a6)
-	clr.l Block.Pointer(a2)
-	clr.l Block.Capacity(a2)
-done
-	movem.l (sp)+, d0-d1/a0-a2/a6
-	rts
-	.bend  ; release
+	.bend  ; grow
 	.endsection
 	.endmodule

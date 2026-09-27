@@ -344,7 +344,7 @@ prepare	.block
 	cmpi.l #HEADER_BYTES, d0
 	blo.w closeBad
 	lea PackageBlock, a0
-	jsr memory.reserve
+	jsr memory.reserveExact
 	bne.w closeBad
 	lea PackageBlock, a0
 	movea.l memory.Block.Pointer(a0), a1

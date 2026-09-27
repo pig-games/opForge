@@ -1957,12 +1957,9 @@ ownership remains 1,165,824 bytes. Preparation-stage calls are
 allocation-error report. There is no completed self-host output or total duration.
 The live Rust self-build succeeds.
 
-Next localization should distinguish declaration content from accumulated state:
-swap the complete `STATUS_OK=0` and `STATUS_BIND_FAILED=4` declarations in a staged
-diagnostic workload, or inspect the failing preparation boundary with the approved
-debugger. A failure following the declaration and one staying at the physical
-line require different investigations. Do not assume a 4,096-entry or memory cap
-without observing the failing boundary.
+The following fixed-input slice localized this rejection by swapping complete
+declarations in a staged diagnostic workload, then comparing allocation policy
+under the original configuration. The temporary swap probe was removed afterward.
 
 The unchanged release control matches all 1,701 bytes from 84,687 source bytes
 and 121 templates. It takes 8.492 s versus 8.622 s at the preceding checkpoint,
@@ -1972,3 +1969,58 @@ release Hunk grows from 71,580 to 71,636 bytes (+56) and linked reservation from
 is disabled for this timing comparison. A rebuilt host test binary also incurred
 a roughly three-minute startup wait while `codesign` checked notarization; process
 snapshots separated this delay from FS-UAE execution and guest timing.
+
+## Fixed input allocation slice
+
+The declaration-swap probe still rejects at `binary_source.asm` line 12, with
+identical preparation counts and peak ownership. A diagnostic using the existing
+expanded-memory template advances to line 224; that template uses 68040 rather
+than the constrained profile's 68020, so it does not by itself isolate memory.
+The package's declared 269,162 bytes nevertheless receive 524,288 bytes through
+generic geometric growth. That is measurable avoidable slack for a fixed input.
+
+Reserve the immutable loaded package at its declared extent, rounded only to Exec
+allocation alignment. Retain geometric growth for mutable arenas and records;
+share allocation/copy/free logic and preserve failure cleanup. Compare actual
+outputs, allocation accounting and the bounded self-host frontier under the
+original 68020 / 2 MiB profile. Keep release timing separate from telemetry.
+Do not claim memory exhaustion until the original configuration advances or the
+failing allocation is observed; a later rejection remains incomplete self-hosting.
+
+The implementation adds `memory.reserveExact`: requests remain bounded to 1 MiB
+and round up to eight-byte Exec alignment. Only initial package loading uses it.
+Both policies share allocation/copy/release logic; mutable buffers still grow
+geometrically, existing capacity is retained, and failure preserves owned storage.
+For the m68020 capsule this reserves 269,168 rather than 524,288 bytes, saving
+255,120 bytes. The release Hunk grows by 76 bytes to 71,712, with 82,936 bytes
+linked reservation. No wire contract or CPU semantics change.
+
+Fresh self-host preparation under the original 68020 / 2 MiB profile now reaches
+`binary_source.asm` line 224, `.for 4`, instead of line 12. Its peak tracked
+ownership is 1,011,056 bytes versus 1,165,824 before the change. These peaks cover
+different preparation frontiers; their difference is not the isolated buffer
+saving. Stage calls are `4669/1/4487/4487/4668/0`, identical to the expanded-memory
+diagnostic frontier. Cleanup remains balanced, but profiling flag 16 still marks
+an unfinished interval. This supports memory pressure as the former blocker;
+no failed AllocMem call was directly observed. Self-hosting remains incomplete,
+with no completed artifact or duration. The next structural slice should analyze
+packed loop expansion across the linked sources, beginning with this `.for` use.
+
+Fresh numeric-alias cases match live Rust output for both m68020 and m6502, with
+zero live ownership after cleanup and zero profiling errors. The identical
+m68020 case peaks at 531,824 rather than 786,944 bytes: exactly 255,120 bytes saved
+(32.4%). The m6502 case peaks at 152,984 bytes. The unchanged release control
+matches all 1,701 bytes from 84,687 source bytes and 121 templates, including
+mutable-pool growth and relocation. It takes 8.862 s versus 8.492 s previously:
+an observed 4.4% increase in single runs, not a statistically established regression
+or speed claim. Instrumentation is disabled for that timing comparison.
+
+The two affected Rust oracle tests, compact CLI host assembly, linked-source
+formatter, native proof and instrumentation guards, benchmark-selector,
+supply-chain and workflow-link checks pass. The architecture gate remains blocked
+by the same ten existing findings (25 enforced warnings, 565 outside warnings);
+this allocation change adds none. Focused code review confirms public register/CCR
+preservation and unchanged logical extent on copying/release. Native tests cover
+fresh exact allocation and geometric growth; populated exact-buffer growth and
+forced allocation failure were not directly exercised. No broad repository
+qualification or full self-host completion is claimed.

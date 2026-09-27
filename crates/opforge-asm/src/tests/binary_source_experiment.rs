@@ -1,4 +1,8 @@
 //! Level B package checks and opt-in Level D native binary-source proof.
+
+#[path = "binary_source_text_recipe_semantics.rs"]
+mod text_recipe_semantics;
+
 use super::*;
 use crate::binary_source_experiment::prepare_package;
 use crate::fs_uae_smoke::FsUaeSmokeOutcome;

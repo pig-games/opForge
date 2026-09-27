@@ -275,3 +275,123 @@ The linked native formatter checks 259 files with no changes or warnings.
 Independent final review reports no remaining actionable finding. Remaining work
 is explicit argument ranges and call/string substitution recipes, followed by
 VM-controlled expression compilation and the preparation-boundary audit.
+
+## Call and string recipe migration: design checkpoint
+
+The next correction needs an explicit parser contract and a new latest compact
+capsule/record layout. It cannot be an enlarged token-42 trailer: packed lines
+must remain at most 256 bytes, and current trailers already duplicate spelling
+and impose a 251-byte limit even on ordinary directives. Do not put argument or
+header parsing into TKVM merely because BSP3 currently carries only that program.
+
+### Proposed first implementation checkpoint
+
+Embed a package-selected macro frontend PRVM program in the compact capsule.
+Its input is the initial lexical records and source spans, plus binding identities
+for core keywords and known templates. The VM recognizes the call/header shape,
+optional outer parentheses, balanced argument boundaries, optional parameter
+types and default boundaries. Host code resolves names, owns storage and manages
+invocations; it does not choose delimiter or placeholder grammar.
+
+Reuse the existing PRVM request/result contract with an explicit macro entry;
+keep the OPASM statement-entry guard intact. The native opcode `0x41`
+(`ScanTopLevelCommaBoundaries`) currently does no work, while `0x50` stops at
+the first comma without nesting checks. Implement the shared boundary primitive
+before using it for descriptors. Rust's boundary scan currently reaches the end
+of the input: add a VM-owned active range, defaulting to the full token array,
+which macro-envelope recognition narrows to the argument region. Preserve the
+current Rust delimiter acceptance rather than accidentally tightening it.
+
+Emit descriptor events through the existing 32-byte result records. Define the
+new event kinds coherently in Rust, native and documentation; existing record-kind
+documentation already disagrees with native codes 6/7. Hosts validate events and
+copy VM-selected spans; they do not rescan delimiters, whitespace or `=`.
+
+Produce offset-only descriptors in an owned companion arena:
+
+- Line plan: role, head token range, argument descriptor range and supplied-list
+  spelling/formatting recipe handle.
+- Argument: binary token range and spelling recipe handle.
+- Formal: name/type identity, optional default token range and default spelling
+  recipe handle.
+- Spelling recipe: literal spans and explicit separator/whitespace spans. Individual
+  arguments trim as Rust does; the full supplied list keeps spacing and excludes
+  defaults.
+
+Packed lines contain typed handles into that arena rather than copied call text.
+All spans/handles are offsets within validated regions, never memory pointers.
+The latest capsule replaces BSP3 when this descriptor contract is implemented;
+there is no legacy executor. One spelling arena should replace duplicated trimmed
+argument/full-list buffers. Template/default pools and nested frames refer to it
+through validated offsets with explicit ownership and cleanup.
+
+This checkpoint removes writer `appendCallText`, template `captureCallText` and
+the header-default `=` scanner. The remaining substitution consumer is explicitly
+unfinished until the next checkpoint; retaining it temporarily must not be described
+as binary-only expansion or a complete boundary correction.
+
+### Substitution ordering needs an explicit contract
+
+The authoritative Rust processor recognizes substitutions on original spelling
+before tokenization/string decoding. Native currently feeds already decoded
+string bytes into `rewriteCallText`. These orders are observably different:
+
+| Template / argument | Rust result | Current native mechanism |
+|---|---|---|
+| `.byte "\x401"` / `A` | Literal bytes `@1` | Decoding introduces `@1`, which is then treated as a placeholder. |
+| `.byte "\x2ename"` / `A` | Literal bytes `.name` | Decoding introduces a potential named placeholder. |
+| `.byte "@1"` / `A",7,"B` | Bytes `41 07 42` from three expressions | Copies inserted quote/comma spelling into one already decoded string. |
+
+Live full Rust CLI probes with an explicit `.module app` verify all three Rust
+results. Probe filenames must not supply an invalid implicit module name; initial
+hyphenated filenames caused unrelated module errors and were corrected rather
+than interpreted as macro behavior. The committed test inputs use `input.asm`
+and an explicit module. Initial fresh native runs completed with empty output on
+all three inputs, failing exact comparison. These runs do not isolate ordering:
+ordinary literal, substitution and numeric macro controls also completed with
+empty output and failed comparison. Localize this baseline failure before
+attributing any of the six failures to the mechanisms in the table. The source
+review found no evidence that `emit` is a forbidden macro name or that `.org` /
+`.end` is required: previously passing m68020 probes use the same module and
+macro names without either directive. No cause or production fix is claimed.
+
+Escaped markers must stay literal whichever interpolation policy is chosen.
+Preserving all current Rust behavior requires a package VM lexer/decoder over
+binary fragment streams when substitution changes quote/escape/token structure.
+There must be no rendered-source buffer handed back to host parsers. Ordinary
+shape-stable substitutions should keep the token-splicing path; any bypass of
+fragment lexing needs VM-owned eligibility and equivalence tests against forced
+fragment execution on identical inputs. This avoids recreating an unproven fast
+path. A deliberately
+bounded binary interpolation language would instead need explicit rejections and
+an approved Rust/native language change. That consequential choice is being
+reviewed with Erik before implementing the expansion contract.
+
+### Subsequent implementation checkpoint
+
+Compile positional, named and full-list references into explicit recipes while
+original spans are available. Resolve named references to formal identities once;
+unknown named references retain exact literal fallback. Host expansion copies or
+splices binary ranges. It does not recognize sigils, resplit commas, scan `=` or
+revisit original source. Strings and nested calls carry domain-tagged recipes;
+introduced escape/quote boundaries follow the agreed package VM contract.
+Remove `rewriteCallText` and the fake-sidecar path in `expandStringToken` only
+when the complete nested/default/string comparisons pass.
+
+Compare identical inputs against the live Rust CLI, including escaped markers,
+quoted arguments, delimiter combinations, defaults, full-list spacing and nested
+substitutions. Include exact native recipe/descriptor bounds and failed-publication
+probes, fresh 68020 / 2 MiB output, the unchanged release control and peak ownership.
+Current baseline is `bfb4bc91`: release control 9.887 s, Hunk 72,620 bytes,
+linked reservation 83,828 bytes; alias peaks 531,952 / 153,112 bytes.
+
+### Design-checkpoint validation
+
+The Rust regression test passes all six cases (three ordering cases and three
+ordinary controls). The six opt-in native probes remain failing tests, with fresh
+completed captures and empty output; this is not native qualification. No production
+code changed, so performance was not remeasured. Focused Rust formatting and diff
+whitespace checks pass. Workflow links, benchmark selectors and the supply-chain
+check pass; the architecture boundary check reports ten findings in unchanged
+native encoding/mask files. Whole-workspace formatting also reports an existing
+module-order difference in unchanged `crates/opforge-vm/src/lib.rs`.

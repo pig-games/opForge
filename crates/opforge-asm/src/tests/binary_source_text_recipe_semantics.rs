@@ -63,6 +63,12 @@ fn native_cpu(input: String, cpu: &str) {
     assert_eq!(runs.len(), 1);
     assert!(runs[0].success && runs[0].protocol_completed);
     assert_eq!(runs[0].exit_code, Some(0));
+    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
+    eprintln!(
+        "TEXT_RECIPE_NATIVE cpu={cpu} image_bytes={} linked_reserved_bytes={}",
+        image.len(),
+        super::hunk::allocation(image).unwrap().total()
+    );
     if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
         super::macro_calls::check_memory(
             &runs[0].captured_artifacts[&PathBuf::from("Work/memory.bin")],
@@ -160,4 +166,80 @@ fn text_recipe_complete_line_rust_oracle() {
 #[ignore = "requires configured FS-UAE; substitution before whole-line tokenization"]
 fn text_recipe_complete_line_fs_uae() {
     native(ordering_batch());
+}
+
+fn segment_source(body: &str, argument: &str) -> String {
+    format!(
+        ".module app\n.cpu m6502\nemit .segment name\n.byte {body}\n.endsegment\n.emit {argument}\n.endmodule\n"
+    )
+}
+
+#[test]
+fn segment_text_recipe_rust_oracles() {
+    for (body, argument, expected) in [
+        (r#""\x401""#, "A", &b"@1"[..]),
+        (r#""@1""#, r#"A",7,"B"#, &[b'A', 7, b'B'][..]),
+        (r#"".{name}""#, "Q", &b"Q"[..]),
+    ] {
+        assert_eq!(
+            graph::oracle_with_roots(&[("input.asm", &segment_source(body, argument))], &[])
+                .unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; decoded escapes must not create placeholders"]
+fn segment_text_recipe_escaped_fs_uae() {
+    native(segment_source(r#""\x401""#, "A"));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; substitution can introduce token structure"]
+fn segment_text_recipe_quote_structure_fs_uae() {
+    native(segment_source(r#""@1""#, r#"A",7,"B"#));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; named substitution in segment strings"]
+fn segment_text_recipe_named_fs_uae() {
+    native(segment_source(r#"".{name}""#, "Q"));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; shared segment fragment path on 68020"]
+fn segment_text_recipe_m68020_fs_uae() {
+    native_cpu(
+        segment_source(r#""\x401""#, "A").replace("m6502", "m68020"),
+        "m68020",
+    );
+}
+
+fn labeled_segment_source() -> String {
+    r#".module app
+.cpu m6502
+.org $2000
+emit .segment name
+.byte ".{name}"
+.endsegment
+first .emit Q
+.word first
+.endmodule
+"#
+    .into()
+}
+
+#[test]
+fn segment_text_recipe_label_rust_oracle() {
+    assert_eq!(
+        graph::oracle_with_roots(&[("input.asm", &labeled_segment_source())], &[]).unwrap(),
+        [b'Q', 0, 0x20]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; segment call label survives fragment expansion"]
+fn segment_text_recipe_label_fs_uae() {
+    native(labeled_segment_source());
 }

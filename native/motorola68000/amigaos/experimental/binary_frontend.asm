@@ -392,7 +392,7 @@ done
 	rts
 	.bend  ; line
 
-; Capture pre-decoding spelling only for ordinary macro-body string lines.
+; Capture pre-decoding spelling for ordinary macro/segment body string lines.
 ; Known nested calls keep their existing call recipes until that consumer moves.
 ; Token kind is a VM result; no placeholder or quote grammar is inspected here.
 stringLinePlan	.block
@@ -406,8 +406,6 @@ stringLinePlan	.block
 	mulu.w #templates.DEF_BYTES, d0
 	movea.l templates.DEFS+memory.Block.Pointer(a2), a1
 	adda.l d0, a1
-	cmpi.w #templates.KIND_MACRO, templates.Def.Kind(a1)
-	bne.w ready
 	movea.l Frame.Output(a5), a0
 	lea SCOPE_STATE(a6), a1
 	jsr templates.role

@@ -211,9 +211,10 @@ done
 ; A0=packed record,A1=scope state,A2=template state. D0/CCR=0 ordinary,
 ; 1 known/body call,2 macro header,3 segment header. Preserves others.
 role	.block
-	movem.l d1-d4/a0-a4, -(sp)
+	movem.l d1-d5/a0-a4, -(sp)
 	movea.l a0, a3
 	movea.l a1, a4
+	moveq #0, d5  ; unresolved calls need a leading dot or a source label
 	moveq #0, d3
 	move.b (a3), d3
 	addq.l #1, d3
@@ -221,15 +222,24 @@ role	.block
 	blo.w none
 	lea 4(a3), a1
 	cmpi.b #1, (a1)
-	bhi.w dot
+	bhi.w leadingDot
 	cmpi.l #13, d3
 	blo.w none
+	moveq #0, d0
+	move.w 1(a1), d0
+	cmp.w layout.State.Base(a4), d0
+	blo.w packageHead
+	moveq #1, d5
+packageHead
 	addq.l #4, a1
 	cmpi.b #5, (a1)
 	bne.w dot
 	cmpi.l #14, d3
 	blo.w none
 	addq.l #1, a1
+	bra.w dot
+leadingDot
+	moveq #1, d5
 dot
 	cmpi.b #7, (a1)
 	bne.w none
@@ -284,6 +294,8 @@ next
 body
 	tst.w State.Open(a2)
 	beq.w none
+	tst.w d5
+	beq.w none
 call
 	moveq #1, d0
 	bra.w done
@@ -296,7 +308,7 @@ segment
 none
 	moveq #0, d0
 done
-	movem.l (sp)+, d1-d4/a0-a4
+	movem.l (sp)+, d1-d5/a0-a4
 	tst.l d0
 	rts
 	.bend  ; role
@@ -1071,6 +1083,15 @@ bodyAvailable
 	cmpi.b #6, -1(a2)
 	bne.w bad
 	move.l -5(a2), d1
+	moveq #0, d2
+	cmp.l Def.First(a4), d0
+	bne.w fragmentLabelReady
+	tst.w Def.Kind(a4)
+	bne.w fragmentLabelReady
+	tst.w CallFrame.CallLabelPresent(a6)
+	beq.w fragmentLabelReady
+	moveq #1, d2
+fragmentLabelReady
 	movea.l 4(sp), a0
 	move.l State.FragmentLine(a0), d0
 	beq.w bad
@@ -1082,6 +1103,52 @@ bodyAvailable
 	jsr (a3)
 	tst.l d0
 	bne.w bad
+	tst.w d2
+	beq.w done
+	moveq #0, d3
+	move.b (a5), d3
+	addq.l #1, d3
+	cmpi.l #5, d3
+	blo.w bad
+	movea.l a5, a3
+	adda.l d3, a3
+	lea 4(a5), a0
+	cmpa.l a3, a0
+	bhs.w bad
+	cmpi.b #1, (a0)
+	bhi.w fragmentAttachLabel
+	lea 4(a0), a1
+	cmpa.l a3, a1
+	bhs.w fragmentEntryCheck
+	cmpi.b #5, (a1)
+	beq.w bad
+fragmentEntryCheck
+	btst #0, 1(a5)
+	bne.w fragmentAttachLabel
+	cmpa.l a3, a1
+	bhs.w bad
+	cmpi.b #34, (a1)
+	bne.w bad
+fragmentAttachLabel
+	move.l d3, d4
+	addq.l #5, d4
+	cmpi.l #256, d4
+	bhi.w bad
+	movea.l a3, a0
+	lea 5(a3), a1
+	move.l d3, d6
+	subq.l #4, d6
+fragmentShift
+	move.b -(a0), -(a1)
+	subq.l #1, d6
+	bne.w fragmentShift
+	move.l CallFrame.CallLabel(a6), 4(a5)
+	move.b #5, 8(a5)
+	andi.b #$fe, 1(a5)
+	subq.l #1, d4
+	move.b d4, (a5)
+	addq.l #1, d4
+	move.l d4, d1
 	bra.w done
 tokenBody
 	btst #5, 1(a3)

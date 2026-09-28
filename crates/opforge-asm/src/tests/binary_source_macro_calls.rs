@@ -128,6 +128,63 @@ fn compact_macro_telemetry_fs_uae() {
     native_source(telemetry_source());
 }
 
+fn inactive_dotted_operand_source() -> String {
+    r#".module experimental.amigaos.binary_app
+.cpu m68020
+MEMORY_PHASE .macro value
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.l .value, d0
+.endif
+.endif
+.endmacro
+execute .block
+.MEMORY_PHASE #0
+.byte 1
+.bend
+.byte execute
+.endmodule
+"#
+    .into()
+}
+
+#[test]
+fn compact_macro_inactive_operand_rust_oracle() {
+    assert_eq!(oracle(&inactive_dotted_operand_source()), [1, 0]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; inactive macro expression operand"]
+fn compact_macro_inactive_operand_fs_uae() {
+    native_source(inactive_dotted_operand_source());
+}
+
+fn forward_labeled_call_source() -> String {
+    r#".module app
+.cpu m68020
+OUTER .macro value
+inside .INNER .value
+.endmacro
+INNER .macro value
+.byte .value
+.endmacro
+.OUTER 7
+.endmodule
+"#
+    .into()
+}
+
+#[test]
+fn compact_macro_forward_labeled_call_rust_oracle() {
+    assert_eq!(oracle(&forward_labeled_call_source()), [7]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; forward nested call with canonical label"]
+fn compact_macro_forward_labeled_call_fs_uae() {
+    native_source(forward_labeled_call_source());
+}
+
 fn telemetry_family_source() -> String {
     let telemetry =
         include_str!("../../../../native/motorola68000/amigaos/debug/memory_telemetry.i");

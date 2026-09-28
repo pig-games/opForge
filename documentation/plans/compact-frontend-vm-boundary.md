@@ -1,9 +1,9 @@
 # Compact frontend: VM boundary correction
 
 Status: numeric normalization, composed-name recipes and the PRVM boundary/resume
-foundation, macro descriptor services and compact descriptor storage integration
-are implemented, including the bounded descriptor-cost reduction below; fragment
-recipes and expression correction remain active. This takes
+foundation, macro descriptor services, compact descriptor storage integration,
+and ordinary macro/segment string fragment recipes are implemented. Nested-call
+spelling and expression correction remain active. This takes
 precedence over the next packed-loop parity slice in the
 [native reset](native-runtime-reset.md#fixed-input-allocation-slice).
 
@@ -32,7 +32,7 @@ whether a native routine contains branches.
 | `binary_source.literalString` | Copies bytes already decoded by TKVM. | Appropriate packing; no duplicated escape parser. |
 | `binary_source.nameOperand` and binder | Classify the package-owned numeric-looking `.cpu` name and resolve identifiers to IDs. | Context and binding are necessary, but normalized-token changes must preserve this name/value distinction. |
 | `binary_source.appendPlan` / `binary_macro_plans` | Copies VM-selected descriptor/spelling regions and appends an offset handle. | The raw call-region sidecar is removed; captured invocation plans support the retained spelling consumers; bound core directives do not receive invocation plans. |
-| `binary_templates.rewriteCallText` | Still consumes selected literal spelling for positional/named substitutions in private scratch. | Explicitly unfinished until VM-selected fragment recipes replace this consumer; scratch is not persisted as executable source. |
+| `binary_templates.rewriteCallText` | Still consumes selected literal spelling for retained nested-call and decoded-string cases in private scratch. | Explicitly unfinished until VM-selected fragment recipes replace these consumers; scratch is not persisted as executable source. |
 | `binary_templates.expandComposite` | Joins literal/argument spelling fragments and binds the generated name, or emits string bytes. | Generated names need spelling during preparation; this need not be source reparsing if recipes are explicit and already recognized. |
 | `binary_expression.compile` | Implements precedence and associativity via `bitOr`, `product`, `power`, `unary`, `primary`; emits and folds expression bytecode. | A native mathematical parser outside the EXVM parser contract. |
 | `binary_expression.evaluate` | Executes the compact expression through shared ExprVM. | VM evaluation; it does not establish VM-owned compilation. |
@@ -53,9 +53,10 @@ numeric status and offsets into scratch for spelling followed by an eight-byte
 value. Package opcode `0x13` selects normalization and its ordered radix rules.
 The scanners remain deliberately permissive. Invalid and overflow metadata are
 deferred until a value is required, preserving numeric-looking names and macro
-fragments. Strings already carry decoded bytes. Composed-name recipes are now VM metadata; call/string recipe emission is
-still missing. The ordinary Rust expression path still uses core token spelling;
-it does not yet consume the portable numeric metadata.
+fragments. Strings already carry decoded bytes. Composed-name and ordinary
+macro/segment body string recipes are now VM metadata; retained nested-call
+spelling still needs migration. The ordinary Rust expression path still uses core
+token spelling; it does not yet consume the portable numeric metadata.
 
 Default identifier continuation includes `@`, so `label@1` can be one identifier;
 `@1suffix` can be `At` plus the permissive number spelling `1suffix`. Neither
@@ -904,5 +905,44 @@ Native formatting checks 51 files without changes or warnings. The architecture
 checker retains its 10 baseline enforced findings; the inventory retains only
 the existing `value_execution` source mismatch. No clean broad qualification,
 complete macro parity or removal of the remaining decoded-string scanner is
-claimed. The next migration consumers are nested call spelling and segment
-strings; the newly localized Rust relocation defect warrants a separate repair.
+claimed. At that checkpoint, the next migration consumers were nested call
+spelling and segment strings; the newly localized Rust relocation defect warrants
+a separate repair.
+
+### Checkpoint: segment strings and macro-call classification
+
+Ordinary segment-body string lines now use the same pre-decoding, VM-selected
+fragment route as macro-body strings. The prior native path substituted after
+escape decoding, so `"\x401"` with argument `A` incorrectly emitted `A` instead
+of the literal `@1`. Fresh native comparisons with live Rust pass that case,
+quote/comma injection, named substitution and a labeled segment call. The
+labeled call needed the invocation label copied onto the fragment-produced
+packed line; its `.word first` now resolves to the correct address. The shared
+route was checked with m6502 and m68020 packages.
+
+An independent bounded self-host probe exposed a regression introduced by the
+macro descriptor integration at `992fd712`: an instruction operand such as
+`move.l .value,d0` inside a macro body was mistaken for a nested macro call.
+The call classifier now distinguishes package-bound instruction heads from
+source labels before applying its unresolved-call fallback. Fresh native tests
+pass the reduced inactive-conditional operand, the full telemetry macro, and
+a forward nested call with a canonical source label. The source-form distinction
+is still incomplete: an *unindented* instruction head inside a template can be
+bound as a source name and rejected. That binder decision needs a separate fix;
+the real native source here uses an indented instruction.
+
+The unchanged 3,036-byte / 263-line macro-repeat control still emits 512 bytes
+under the 68020 / 2 MiB profile. One release START-to-DONE observation was
+4.2346 seconds versus 4.3076 seconds at the preceding checkpoint; this does
+not establish a speed difference. Linked reservation is 94,324 versus 94,132
+bytes (+192), while the preparation capsule remains 11,120 bytes. Enabled
+telemetry still peaks at 262,512 owned bytes with balanced cleanup and zero
+profiling errors. The control does not exercise segment strings.
+
+The fresh bounded self-host entry probe now advances past the telemetry macro
+and rejects at `experimental/binary_source.asm` line 281, `.for 4`. Its staged
+graph has 58 files and 646,248 source bytes; peak tracked ownership is
+1,044,040 bytes with balanced cleanup. The unfinished interval flag remains
+set, so there is no completed native output or timing. The next planned language
+frontier remains packed loop expansion after the remaining frontend VM-boundary
+work. This is a diagnostic checkpoint, not self-host parity.

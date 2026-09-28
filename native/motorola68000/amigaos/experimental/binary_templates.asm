@@ -1423,6 +1423,15 @@ number
 	moveq #5, d4
 	bra.w copyToken
 stringToken
+	tst.w SIDE_BYTES(a6)
+	beq.w expandBodyString
+	; Generated calls use their captured original-spelling recipe, not a
+	; second substitution pass over an already decoded string token.
+	moveq #0, d4
+	move.b 1(a3), d4
+	addq.w #2, d4
+	bra.w copyToken
+expandBodyString
 	move.l a1, -(sp)  ; output limit
 	move.l a1, d7
 	movea.l 8(sp), a0  ; session state
@@ -1584,6 +1593,7 @@ complete
 	beq.w completeLength
 	movea.l a2, a3
 	move.l 1(a3), d1
+	move.l d1, d3
 	movea.l 4(sp), a0
 	bsr.w copyCapturedCall
 	bne.w bad
@@ -1605,6 +1615,7 @@ complete
 	move.b d0, (a1)
 	andi.b #$df, 1(a1)
 	move.l d2, d1
+	move.l d3, d2  ; captured call plan identifies the packed head
 	movea.l State.ParserContext(a0), a0
 	jsr (a3)
 	bne.w bad

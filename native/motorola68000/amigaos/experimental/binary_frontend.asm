@@ -80,6 +80,11 @@ SCRATCH_BYTES = TEMPLATE_STATE+templates.SCRATCH_BYTES
 FRAGMENT_REQUEST = fragment_binding.FRAME_BYTES
 FRAGMENT_VIEWS = FRAGMENT_REQUEST+fragment_tokenizer.FRAME_BYTES
 FRAGMENT_SCRATCH = FRAGMENT_VIEWS+64*fragment_binding.FRAGMENT_BYTES
+GENERATED_FRAGMENTS = 0
+GENERATED_REQUEST = GENERATED_FRAGMENTS+2*fragment_tokenizer.FRAGMENT_BYTES
+GENERATED_RECORD = GENERATED_REQUEST+fragment_tokenizer.FRAME_BYTES
+GENERATED_SPACE = GENERATED_RECORD+256
+GENERATED_BYTES = GENERATED_SPACE+2
 	.priv
 ; Package nodes hold capsule-relative entries and scratch-relative chain links.
 Node	.struct
@@ -684,9 +689,9 @@ done
 	rts
 	.bend  ; captureFragments
 
-; Generated packed tokens and spelling have distinct VM boundaries until the
-; fragment-recipe migration. This adapter selects programs and owns storage only.
-; A0=session,A1=complete packed line,A2=literal list,D1=list bytes.
+; A0=session,A1=complete packed line,A2=expanded call list,D1=list bytes,
+; D2=captured call-plan handle. Lex the list through TKVM before selecting the
+; generated packed/spelling descriptors; substitutions may change token shape.
 ; D0/CCR=status,D1=record bytes including its new plan handle; others preserved.
 generatedPlan	.block
 	movem.l d2-d7/a0-a6, -(sp)
@@ -695,9 +700,9 @@ generatedPlan	.block
 	movea.l a2, a3
 	move.l d1, d6
 	movea.l Frame.Scratch(a5), a6
-	moveq #0, d7
-	move.b (a4), d7
-	addq.w #1, d7
+	bsr.w relexGeneratedCall
+	bne.w bad
+	move.l d1, d7
 	lea MACRO_REQUEST(a6), a0
 	movea.l a0, a1
 	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
@@ -792,6 +797,111 @@ done
 	tst.l d0
 	rts
 	.bend  ; generatedPlan
+
+; Relex the original-spelling recipe's expanded argument list, then retain
+; the already bound call head. The VM selects all argument token boundaries.
+; A0=session,A1=packed call,A2=list,D1=list bytes,D2=plan handle.
+; D0/CCR=status,D1=combined packed bytes; preserves other registers.
+relexGeneratedCall	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	suba.l #GENERATED_BYTES, sp
+	movea.l a0, a5
+	movea.l a1, a4
+	movea.l a2, a3
+	move.l d1, d6
+	move.l d2, d4
+	movea.l Frame.Scratch(a5), a6
+	moveq #0, d7
+	move.b (a4), d7
+	addq.l #1, d7
+	lea MACRO_PLANS(a6), a0
+	move.l d4, d1
+	jsr macro_plans.resolve
+	bne.w generatedRelexBad
+	lea macro_plans.HEADER_BYTES(a1), a1
+	cmpi.w #parser_abi.PRVM_RESULT_MACRO_LINE, macro_plans.Row.Kind(a1)
+	bne.w generatedRelexBad
+	move.l macro_plans.Row.PackedEnd(a1), d5
+	cmpi.l #4, d5
+	blo.w generatedRelexBad
+	cmp.l d7, d5
+	bhi.w generatedRelexBad
+	move.b #32, GENERATED_SPACE(sp)
+	lea GENERATED_FRAGMENTS(sp), a0
+	lea GENERATED_SPACE(sp), a1
+	move.l a1, fragment_tokenizer.Fragment.Bytes(a0)
+	move.l #1, fragment_tokenizer.Fragment.Length(a0)
+	lea fragment_tokenizer.FRAGMENT_BYTES(a0), a1
+	move.l a3, fragment_tokenizer.Fragment.Bytes(a1)
+	move.l d6, fragment_tokenizer.Fragment.Length(a1)
+	lea GENERATED_REQUEST(sp), a0
+	lea GENERATED_FRAGMENTS(sp), a1
+	move.l a1, fragment_tokenizer.Frame.Fragments(a0)
+	move.l #2, fragment_tokenizer.Frame.Count(a0)
+	move.l d6, d0
+	addq.l #1, d0
+	move.l d0, fragment_tokenizer.Frame.InputBytes(a0)
+	lea TOKENS(a6), a1
+	move.l a1, fragment_tokenizer.Frame.Tokens(a0)
+	move.l #TOKEN_CAPACITY, fragment_tokenizer.Frame.TokenCapacity(a0)
+	lea LEXEMES(a6), a1
+	move.l a1, fragment_tokenizer.Frame.Lexemes(a0)
+	move.l #LEXEME_BYTES, fragment_tokenizer.Frame.LexemeCapacity(a0)
+	move.l PROGRAM(a6), fragment_tokenizer.Frame.Program(a0)
+	move.l PROGRAM_BYTES(a6), fragment_tokenizer.Frame.ProgramBytes(a0)
+	jsr fragment_tokenizer.run
+	bne.w generatedRelexBad
+	lea LINE_FRAME(a6), a0
+	lea TOKENS(a6), a1
+	move.l a1, writer.Frame.Tokens(a0)
+	move.l #TOKEN_CAPACITY*20, writer.Frame.TokenBytes(a0)
+	move.l d1, writer.Frame.Count(a0)
+	lea LEXEMES(a6), a1
+	move.l a1, writer.Frame.Lexemes(a0)
+	move.l d3, writer.Frame.LexemeBytes(a0)
+	lea GENERATED_RECORD(sp), a1
+	move.l a1, writer.Frame.Output(a0)
+	move.l #256, writer.Frame.Capacity(a0)
+	move.l #bind, writer.Frame.Binder(a0)
+	move.l a6, writer.Frame.Context(a0)
+	move.w 2(a4), writer.Frame.SourceLine(a0)
+	clr.l writer.Frame.Source(a0)
+	clr.l writer.Frame.SourceBytes(a0)
+	movea.l Frame.Package(a5), a1
+	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
+	clr.w writer.Frame.Reserved(a0)
+	clr.l writer.Frame.PackedMap(a0)
+	jsr writer.writeLine
+	bne.w generatedRelexBad
+	move.l d1, d2
+	subq.l #4, d2
+	move.l d5, d3
+	add.l d2, d3
+	cmpi.l #256, d3
+	bhi.w generatedRelexBad
+	lea GENERATED_RECORD+4(sp), a0
+	lea 0(a4, d5.l), a1
+generatedRelexCopy
+	tst.l d2
+	beq.w generatedRelexDone
+	move.b (a0)+, (a1)+
+	subq.l #1, d2
+	bra.w generatedRelexCopy
+generatedRelexDone
+	move.l d3, d1
+	subq.l #1, d3
+	move.b d3, (a4)
+	moveq #0, d0
+	bra.w generatedRelexExit
+generatedRelexBad
+	moveq #1, d0
+	moveq #0, d1
+generatedRelexExit
+	adda.l #GENERATED_BYTES, sp
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; relexGeneratedCall
 
 ; Emit the next already-tokenized line of a pending segment invocation.
 ; A0=Frame. Used=0 when the invocation is exhausted; the physical source

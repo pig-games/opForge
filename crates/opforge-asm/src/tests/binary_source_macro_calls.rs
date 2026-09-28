@@ -364,3 +364,79 @@ fn compact_macro_fragment_call_fs_uae() {
         native_source_for_cpu(fragment_call_source(cpu), cpu);
     }
 }
+
+fn nested_string_source(body: &str, argument: &str) -> String {
+    format!(
+        ".module app\n.cpu m6502\nINNER .macro a,b,c\n.byte .a,.b,.c\n.endmacro\nOUTER .macro value\n.INNER {body}\n.endmacro\n.OUTER {argument}\n.endmodule\n"
+    )
+}
+
+#[test]
+fn compact_macro_nested_string_rust_oracles() {
+    for (body, argument, expected) in [
+        (r#""\x401",7,"B""#, "A", &b"@1\x07B"[..]),
+        (r#""@1""#, r#"A",7,"B"#, &b"A\x07B"[..]),
+    ] {
+        assert_eq!(oracle(&nested_string_source(body, argument)), expected);
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; nested string substitution and token boundaries"]
+fn compact_macro_nested_string_fs_uae() {
+    for (body, argument) in [(r#""\x401",7,"B""#, "A"), (r#""@1""#, r#"A",7,"B"#)] {
+        native_source_for_cpu(nested_string_source(body, argument), "m6502");
+    }
+}
+
+fn segment_nested_string_source() -> String {
+    r#".module app
+.cpu m6502
+INNER .macro a,b,c
+.byte .a,.b,.c
+.endmacro
+OUTER .segment value
+.INNER "\x401",7,"B"
+.endsegment
+.OUTER A
+.endmodule
+"#
+    .into()
+}
+
+#[test]
+fn compact_macro_segment_nested_string_rust_oracle() {
+    assert_eq!(oracle(&segment_nested_string_source()), b"@1\x07B");
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; segment forwards nested string call"]
+fn compact_macro_segment_nested_string_fs_uae() {
+    native_source_for_cpu(segment_nested_string_source(), "m6502");
+}
+
+fn empty_nested_call_source() -> String {
+    r#".module app
+.cpu m6502
+INNER .macro
+.byte 7
+.endmacro
+OUTER .macro
+.INNER
+.endmacro
+.OUTER
+.endmodule
+"#
+    .into()
+}
+
+#[test]
+fn compact_macro_empty_nested_call_rust_oracle() {
+    assert_eq!(oracle(&empty_nested_call_source()), [7]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; zero-argument generated call"]
+fn compact_macro_empty_nested_call_fs_uae() {
+    native_source_for_cpu(empty_nested_call_source(), "m6502");
+}

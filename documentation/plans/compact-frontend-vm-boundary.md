@@ -2,8 +2,9 @@
 
 Status: numeric normalization, composed-name recipes and the PRVM boundary/resume
 foundation, macro descriptor services, compact descriptor storage integration,
-and ordinary macro/segment string fragment recipes are implemented. Nested-call
-spelling and expression correction remain active. This takes
+ordinary macro/segment string fragment recipes, and generated-call argument
+re-tokenization are implemented. The residual decoded-string fallback and
+expression correction remain active. This takes
 precedence over the next packed-loop parity slice in the
 [native reset](native-runtime-reset.md#fixed-input-allocation-slice).
 
@@ -32,7 +33,7 @@ whether a native routine contains branches.
 | `binary_source.literalString` | Copies bytes already decoded by TKVM. | Appropriate packing; no duplicated escape parser. |
 | `binary_source.nameOperand` and binder | Classify the package-owned numeric-looking `.cpu` name and resolve identifiers to IDs. | Context and binding are necessary, but normalized-token changes must preserve this name/value distinction. |
 | `binary_source.appendPlan` / `binary_macro_plans` | Copies VM-selected descriptor/spelling regions and appends an offset handle. | The raw call-region sidecar is removed; captured invocation plans support the retained spelling consumers; bound core directives do not receive invocation plans. |
-| `binary_templates.rewriteCallText` | Still consumes selected literal spelling for retained nested-call and decoded-string cases in private scratch. | Explicitly unfinished until VM-selected fragment recipes replace these consumers; scratch is not persisted as executable source. |
+| `binary_templates.rewriteCallText` | Still consumes decoded-string bytes in the residual body-token fallback. Captured generated calls now bypass it. | Explicitly unfinished until the remaining caller is replaced; scratch is not persisted as executable source. |
 | `binary_templates.expandComposite` | Joins literal/argument spelling fragments and binds the generated name, or emits string bytes. | Generated names need spelling during preparation; this need not be source reparsing if recipes are explicit and already recognized. |
 | `binary_expression.compile` | Implements precedence and associativity via `bitOr`, `product`, `power`, `unary`, `primary`; emits and folds expression bytecode. | A native mathematical parser outside the EXVM parser contract. |
 | `binary_expression.evaluate` | Executes the compact expression through shared ExprVM. | VM evaluation; it does not establish VM-owned compilation. |
@@ -54,9 +55,10 @@ value. Package opcode `0x13` selects normalization and its ordered radix rules.
 The scanners remain deliberately permissive. Invalid and overflow metadata are
 deferred until a value is required, preserving numeric-looking names and macro
 fragments. Strings already carry decoded bytes. Composed-name and ordinary
-macro/segment body string recipes are now VM metadata; retained nested-call
-spelling still needs migration. The ordinary Rust expression path still uses core
-token spelling; it does not yet consume the portable numeric metadata.
+macro/segment body string recipes are now VM metadata. Captured generated calls
+also re-tokenize VM-bound fragments; the residual decoded-string path still
+needs migration. The ordinary Rust expression path still uses core token
+spelling; it does not yet consume the portable numeric metadata.
 
 Default identifier continuation includes `@`, so `label@1` can be one identifier;
 `@1suffix` can be `At` plus the permissive number spelling `1suffix`. Neither
@@ -946,3 +948,55 @@ graph has 58 files and 646,248 source bytes; peak tracked ownership is
 set, so there is no completed native output or timing. The next planned language
 frontier remains packed loop expansion after the remaining frontend VM-boundary
 work. This is a diagnostic checkpoint, not self-host parity.
+
+### Checkpoint: generated-call argument tokenization
+
+The captured-call copier already substituted from VM-selected original-spelling
+fragments, but expansion then reprocessed decoded packed string tokens through
+`rewriteCallText`. With an outer call passing `A`, a nested call containing
+`"\x401"` emitted `A` instead of Rust's literal `@1`. After bypassing that
+second substitution, a nested `"@1"` whose argument introduces quotes and
+commas still rejected: the packed argument boundaries described the old line.
+
+Generated calls now bind the captured fragments, tokenize the resulting
+argument list through TKVM, and combine those packed arguments with the already
+bound call head before PRVM describes the generated call. A transient leading
+space marks the argument-only token stream as indented; no expanded source
+pointer enters the packed record. The retained decoded-string scanner is no
+longer used for captured generated calls, but remains in the fallback for body
+tokens without a whole-line recipe.
+
+Fresh native output matches the live Rust CLI for the escaped marker, a
+substitution that introduces three arguments, a segment forwarding that string,
+a zero-argument nested call, and the existing default/positional/named/braced/
+full-list fixture on both m6502 and m68020 packages. A labeled segment whose
+first body line invokes another macro still rejects with no source position.
+The same reduced labeled case rejects at the preceding `e565f21e` checkpoint
+even without strings, so that is a separate existing parity gap.
+
+The unchanged 68020 / 2 MiB macro-repeat control emits the same 512 bytes from
+3,036 source bytes. One release START-to-DONE observation is 4.2854 seconds
+versus 4.2346 seconds before this change; the control contains no generated
+calls and cannot measure their execution cost. Linked reservation grows from
+94,324 to 94,728 bytes (+404), with the 11,120-byte package unchanged. Enabled
+telemetry still peaks at 262,512 owned bytes, with balanced cleanup and zero
+profiling errors. On the same 26-byte-output generated-call fixture, observed
+m6502-package times were 0.5133 seconds before and 0.7743/0.7667 seconds after;
+m68020-package times were 1.0287 before and 1.0109/1.0322 after. These few
+host-clock observations suggest that unconditional re-tokenization can matter
+for short nested calls, but do not establish a stable throughput ratio. Any
+shape-stable shortcut needs VM-owned eligibility and explicit equivalence checks
+against forced re-tokenization on identical inputs.
+
+The bounded self-host entry probe still rejects at `experimental/binary_source.asm`
+line 281, `.for 4`, after staging 58 files and 650,076 source bytes. The Rust
+oracle Hunk is 83,668 bytes with 94,728 bytes linked reservation; the runtime
+package is 269,382 bytes. This negative probe supplies no native output or
+completed self-host timing. Expression compilation and the residual decoded-
+string consumer remain frontend boundary work before packed loop parity.
+
+The 12 focused Rust macro oracles pass; fresh native cases above complete with
+exact output under 68020 / 2 MiB. Native formatting, proof-contract, workflow
+links, benchmark-selector and supply-chain checks pass. The CPU architecture
+guard still reports its 10 enforced findings in unchanged files and none in
+the changed modules; broad integration qualification is not claimed.

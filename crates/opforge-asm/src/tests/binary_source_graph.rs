@@ -576,6 +576,11 @@ fn compact_cli_discovery_failure_path_fs_uae() {
         "{}",
         runs[0].stdout
     );
+    assert!(
+        runs[0].stdout.contains("line: .unsupported"),
+        "{}",
+        runs[0].stdout
+    );
 }
 
 #[test]

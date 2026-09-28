@@ -10,6 +10,12 @@ The remaining frontend boundary work and next self-host frontier are tracked
 alongside the [native reset](native-runtime-reset.md#fixed-input-allocation-slice).
 Further performance shortcuts are deferred until completed native self-host proof.
 
+Current self-host frontier: the compact native CLI now accepts concrete code and
+data sections reopened by another module. A focused 68020 / 2 MiB run matches
+the Rust Hunk exactly. The isolated TKVM dependency graph moves past its former
+`.section data` rejection and next stops at preparation binding (step 2). This
+is an incomplete self-host probe; no final artifact or full-run timing is claimed.
+
 ## Finding
 
 The experimental compact CLI uses TKVM for initial tokenization and ExprVM for

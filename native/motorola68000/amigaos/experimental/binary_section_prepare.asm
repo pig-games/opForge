@@ -299,9 +299,9 @@ secondLogical
 	move.w #10, State.Active(a4)
 	bra.w sectionControl
 concrete
+	; A later module may reopen the same concrete section after .endsection.
+	; Seen records layout history, not a one-open-only constraint.
 	move.w State.Seen(a4), d0
-	btst #1, d0
-	bne.w bad
 	tst.w State.MapCount(a4)
 	bne.w firstConcreteReady
 	btst #0, d0
@@ -316,9 +316,7 @@ firstConcreteReady
 	move.w #2, State.Active(a4)
 	bra.w sectionControl
 secondConcrete
-	move.w State.Seen(a4), d0
-	btst #4, d0
-	bne.w bad
+	; Keep the slot and accumulated layout history when reopening it.
 	ori.w #16, State.Seen(a4)
 	move.w d6, State.Second(a4)
 	move.w d5, State.Active(a4)

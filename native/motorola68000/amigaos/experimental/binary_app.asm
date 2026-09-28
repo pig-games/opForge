@@ -270,6 +270,24 @@ pathReady
 	move.l #FailureNewline, d2
 	moveq #1, d3
 	jsr DOS_WRITE(a6)
+	move.l LineUsed, d5
+	beq.w done
+	cmpi.l #LINE_BYTES, d5
+	bhi.w done
+	move.l LineBuffer, d6
+	beq.w done
+	move.l d4, d1
+	move.l #FailureSourceLine, d2
+	moveq #6, d3
+	jsr DOS_WRITE(a6)
+	move.l d4, d1
+	move.l d6, d2
+	move.l d5, d3
+	jsr DOS_WRITE(a6)
+	move.l d4, d1
+	move.l #FailureNewline, d2
+	moveq #1, d3
+	jsr DOS_WRITE(a6)
 done
 	rts
 	.bend  ; reportFailure
@@ -1510,6 +1528,7 @@ FailurePrepStep	.byte "preparation step: "
 FailurePrepStepValue	.byte "00000000", 10
 FailurePrepStepEnd
 FailurePath	.byte "source: "
+FailureSourceLine	.byte "line: "
 FailureNewline	.byte 10
 	.endsection
 	.section bss, kind=bss

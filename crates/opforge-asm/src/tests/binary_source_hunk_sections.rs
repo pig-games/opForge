@@ -57,6 +57,27 @@ fn compact_hunk_sections_fs_uae() {
     native_hunk_source(SOURCE);
 }
 
+fn reopened_concrete_sections_source() -> String {
+    let caller = SOURCE
+        .replace(".module hunk_probe\n", ".module hunk_probe\n.use dep\n")
+        .replace("entry: .long payload", "entry: .long dep.tail");
+    format!(
+        "{caller}.module dep\n.cpu m68020\n.pub\n.section code, kind=code\ntail: .byte $dd\n.endsection\n.section data, kind=data\nextra: .byte $ee\n.endsection\n.endmodule\n"
+    )
+}
+
+#[test]
+fn compact_hunk_reopened_concrete_sections_rust_oracle() {
+    let hunk = rust_hunk_source(&reopened_concrete_sections_source());
+    assert!(hunk.contains(&0xdd) && hunk.contains(&0xee));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; code and data sections reopened by imported module"]
+fn compact_hunk_reopened_concrete_sections_fs_uae() {
+    native_hunk_source(&reopened_concrete_sections_source());
+}
+
 fn instruction_reference_source() -> String {
     SOURCE.replace("entry: .long payload\n RTS", "entry: LEA payload,a1\n RTS")
 }

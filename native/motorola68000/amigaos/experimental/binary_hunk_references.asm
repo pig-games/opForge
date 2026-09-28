@@ -150,9 +150,9 @@ name
 	bne.w bad
 	moveq #0, d1
 	move.b (a0)+, d1
+	lsl.w #8, d1  ; packed source IDs are big-endian; expression IDs are little-endian
 	moveq #0, d2
 	move.b (a0)+, d2
-	lsl.w #8, d2
 	or.w d2, d1
 	tst.b (a0)+  ; qualifier is not part of the numeric ID
 	bsr.w sectionId

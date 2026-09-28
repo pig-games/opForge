@@ -109,9 +109,16 @@ fn compact_hunk_bss_instruction_relocation_rust_oracle() {
 }
 
 #[test]
-#[ignore = "known compact-native Hunk MOVE.L failure; requires FS-UAE"]
+#[ignore = "requires configured FS-UAE; package MOVE.L relocation to BSS"]
 fn compact_hunk_bss_instruction_relocation_fs_uae() {
     native_hunk_source(&bss_instruction_reference_source());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; Hunk numeric MOVE.L must not require relocation"]
+fn compact_hunk_numeric_move_fs_uae() {
+    let source = SOURCE.replace("entry: .long payload\n RTS", " MOVE.L 8,d0\n RTS");
+    native_hunk_source(&source);
 }
 
 fn self_host_constants_source() -> String {

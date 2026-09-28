@@ -549,8 +549,14 @@ plain
 	bne.w mismatch
 	bra.w advance
 wrappedFirstItem
-	; A complete scalar-first tuple cannot satisfy member/scalar/named roots
-	; or member/bracket first-item paths. Unknown structures retain the stop.
+	; A named register/range cannot match a compiled scalar expression.
+	; Preserve the unsupported barrier for names and other unknown forms.
+	cmpi.l #7, d4
+	bne.w otherStructuredRoot
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	beq.w mismatch
+	bra.w advance
+otherStructuredRoot
 	cmpi.l #5, d4
 	bne.w structuredRoot
 	move.l a1, d0

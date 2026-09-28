@@ -116,13 +116,13 @@ fn binary_selection_forward_absolute_move_rust_oracle() {
 }
 
 #[test]
-#[ignore = "known compact-native MOVE.L absolute-operand rejection; requires FS-UAE"]
+#[ignore = "requires configured FS-UAE; absolute MOVE.L fixup"]
 fn binary_selection_forward_absolute_move_native_parity_fs_uae() {
     assert_binary_source(FORWARD_ABSOLUTE_MOVE.into(), "m68020".into());
 }
 
 #[test]
-#[ignore = "known compact-native MOVE.L absolute-operand rejection; requires FS-UAE"]
+#[ignore = "requires configured FS-UAE; absolute MOVE.L scalar"]
 fn binary_selection_numeric_absolute_move_native_parity_fs_uae() {
     assert_binary_source(NUMERIC_ABSOLUTE_MOVE.into(), "m68020".into());
 }

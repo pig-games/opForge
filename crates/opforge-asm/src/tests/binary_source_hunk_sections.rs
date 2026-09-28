@@ -109,7 +109,7 @@ fn compact_hunk_bss_instruction_relocation_rust_oracle() {
 }
 
 #[test]
-#[ignore = "known compact-native MOVE.L absolute-operand rejection; requires FS-UAE"]
+#[ignore = "known compact-native Hunk MOVE.L failure; requires FS-UAE"]
 fn compact_hunk_bss_instruction_relocation_fs_uae() {
     native_hunk_source(&bss_instruction_reference_source());
 }

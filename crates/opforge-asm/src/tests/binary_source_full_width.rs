@@ -3,6 +3,7 @@ use super::*;
 
 const LITERALS: &str = ".cpu m68020\n.long $7fffffff,$80000000,$fffffffe,$ffffffff\n.long 2147483648,4_294_967_294,0x80000000,0XFF_FF_FF_FF\n.long %11111111111111111111111111111110\n.long +$ffffffff,-$ffffffff,~$fffffffe\n.long ($7fffffff+1)-$7fffffff,(50000*50000)*0\n.long -(-$7fffffff-1)+(-$7fffffff-1)\n.end\n";
 const SYMBOLS: &str = ".module app\n.cpu m68020\nmask=$fffffffe\nwide=$ffffffff+1\nnegative=-$ffffffff\nforward=late/2\n.if wide\n.long mask/2,mask>>1\n.else\n.long 99\n.endif\nlate=$fffffffe\n.long mask,wide,negative,forward\n.long (wide+5)/wide,negative/3,~mask\n.if 0\n.long 99\n.elseif negative-1\n.long 7\n.else\n.long 88\n.endif\nemit .macro value\n.long .value/2\n.endmacro\n.emit mask\n\tandi.l #mask,d1\n.endmodule\n.end\n";
+const NARROW_SIGNED: &str = ".cpu m68020\nNEG = -534\n.word NEG\n.word -32768\n.word 65535\n.end\n";
 const MAIN: &str = ".module app\n.cpu m68020\n.use dep with (Mask=$fffffffe,Wide=$ffffffff+1,Negative=-$ffffffff)\n.long dep.item\n.endmodule\n.end\n";
 const DEP: &str = ".module dep\n.cpu m68020\n.pub\nitem .block\n.if Wide\n.long Mask/2,Negative/3,Wide+5\n.else\n.long 99\n.endif\n.bend\n.endmodule\n.end\n";
 
@@ -38,6 +39,20 @@ fn compact_full_width_rust_oracles() {
         ),
         longs(&[0x7fffffff, 0xaaaaaaab, 5, 0])
     );
+}
+
+#[test]
+fn compact_narrow_signed_rust_oracle() {
+    assert_eq!(
+        oracle(&[("input.asm", NARROW_SIGNED)], &[]),
+        [0xfd, 0xea, 0x80, 0, 0xff, 0xff]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; signed word scalar packing"]
+fn compact_narrow_signed_fs_uae() {
+    native(&[("input.asm", NARROW_SIGNED)], &[]);
 }
 
 fn native(files: &[(&str, &str)], roots: &[&str]) {

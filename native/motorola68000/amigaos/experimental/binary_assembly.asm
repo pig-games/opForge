@@ -794,8 +794,19 @@ dataExpression
 dataValue
 	cmpi.w #4, d6
 	beq.w dataRangeOk
-	tst.l pkg.Context.High(a2)
+	; Word data accepts a signed 16-bit value or an unsigned 16-bit value.
+	move.l pkg.Context.High(a2), d0
+	beq.w unsignedData
+	cmpi.l #-1, d0
 	bne.w bad
+	cmpi.w #2, d6
+	bne.w bad
+	tst.l d1
+	bpl.w bad
+	cmpi.l #-32768, d1
+	blt.w bad
+	bra.w dataRangeOk
+unsignedData
 	tst.l d1
 	bmi.w bad
 	cmpi.w #1, d6

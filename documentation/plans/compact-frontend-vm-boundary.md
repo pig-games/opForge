@@ -1063,3 +1063,26 @@ probe timed out at its five-minute bound. No performance gain or completed
 self-host parity is claimed. The next focused step is to identify the first
 failing scoped identity in `frontend.complete`, then revisit the 2 MiB memory
 ceiling with a measured allocation breakdown.
+
+## Signed word data and full-input completion probe
+
+On the expanded-memory FS-UAE profile, the current 59-file compact self-host
+input (656,451 source bytes before this checkpoint) completes preparation but
+exits 20 during native assembly. Its diagnostic identifies physical file 1,
+line 10; a fresh Rust build succeeds, but no native self-host output exists.
+The guest rejection is explicit, rather than a timeout. The run takes roughly
+five and a half minutes of host test wall time with memory telemetry enabled;
+the harness does not provide a reliable guest START-to-DONE duration for this
+negative case.
+
+A separate focused comparison found that native `.word` rejected a negative
+scalar even where Rust emitted the fitting signed 16-bit value. Shared data
+emission now accepts signed -32768 through -1 and unsigned 0 through 65535 for
+word units. Fresh 68020 / 2 MiB native cases exactly match Rust for a direct
+negative symbol and for a referenced imported module followed by the self-host
+constant pattern. This correction did not move the full self-host rejection:
+the next full exact-output attempt again exited 20 at file 1, line 10 after
+preparation. The diagnostic is a record location, not yet a proven cause.
+Assembly startup now sets its record offset to an invalid sentinel so a failure
+before any record cannot masquerade as the first source line. No speed claim or
+full self-host parity follows from this checkpoint.

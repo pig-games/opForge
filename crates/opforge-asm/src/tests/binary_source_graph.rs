@@ -44,6 +44,14 @@ const BLOCK_BOUNDARIES: &[(&str, &str)] = &[
     ),
 ];
 
+const SELF_HOST_CONSTANT_IMPORT: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m68020\n.use dep\nPATH_BYTES = 256\nMODULE_ROOT_LIMIT = 8\nINCLUDE_ROOT_LIMIT = 16\nOPEN_LIBRARY = -552\nCLOSE_LIBRARY = -414\nGET_ARG_STR = -534\nPUT_STR = -948\n.word dep.entry\n.word GET_ARG_STR\n.endmodule\n.end\n",
+    ),
+    ("library/dep.asm", ".module dep\n.cpu m68020\n.org $1000\n.pub\nentry\n.byte 7\n.endmodule\n.end\n"),
+];
+
 // Native's current single-PC experiment selects whole blocks before its two
 // passes. Rust's mapped-section linker is the semantic reference, but this
 // unsectioned source cannot be compared as an identical Rust output yet.
@@ -542,6 +550,28 @@ fn binary_graph_rust_ordering() {
     assert_eq!(oracle(ENTRY_SIBLINGS).unwrap(), [1, 2]);
     assert_eq!(oracle(UNUSED).unwrap(), [1, 2]);
     assert_eq!(oracle(BLOCK_BOUNDARIES).unwrap(), [0x11, 0x22, 1, 0x10]);
+}
+
+#[test]
+fn binary_graph_self_host_constant_import_rust_oracle() {
+    assert_eq!(
+        oracle_with_roots(SELF_HOST_CONSTANT_IMPORT, &["library"]).unwrap(),
+        [7, 0x10, 0, 0xfd, 0xea]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; imported module and entry constants"]
+fn binary_graph_self_host_constant_import_fs_uae() {
+    let expected = oracle_with_roots(SELF_HOST_CONSTANT_IMPORT, &["library"]).unwrap();
+    compact_cli_cpu(
+        SELF_HOST_CONSTANT_IMPORT,
+        &["library"],
+        &[],
+        Some(&expected),
+        false,
+        "m68020",
+    );
 }
 
 const SINGLE_MAPPED_SECTION: &[(&str, &str)] = &[

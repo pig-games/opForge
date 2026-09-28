@@ -53,6 +53,27 @@ fn compact_hunk_sections_fs_uae() {
     native_hunk_source(SOURCE);
 }
 
+fn self_host_constants_source() -> String {
+    SOURCE.replace(
+        ".cpu m68020\n",
+        ".cpu m68020\nPATH_BYTES = 256\nMODULE_ROOT_LIMIT = 8\nINCLUDE_ROOT_LIMIT = 16\nOPEN_LIBRARY = -552\nCLOSE_LIBRARY = -414\nGET_ARG_STR = -534\nPUT_STR = -948\n",
+    )
+}
+
+#[test]
+fn compact_hunk_self_host_constants_rust_oracle() {
+    assert_eq!(
+        rust_hunk_source(&self_host_constants_source()),
+        rust_hunk_oracle()
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; negative constants preceding Hunk sections"]
+fn compact_hunk_self_host_constants_fs_uae() {
+    native_hunk_source(&self_host_constants_source());
+}
+
 fn native_hunk_source(source: &str) {
     let oracle = rust_hunk_source(source);
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();

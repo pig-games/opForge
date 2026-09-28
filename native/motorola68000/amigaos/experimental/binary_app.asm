@@ -1156,6 +1156,8 @@ bad
 
 run	.block
 	move.l #1, InAssembly
+	lea Work, a0
+	move.l #-1, assembly.Frame.RecordOffset(a0)
 	move.l NameCount, d0
 	beq.w bad
 	cmpi.l #65536, d0

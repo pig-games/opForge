@@ -231,6 +231,7 @@ nextRoot
 sweep
 	clr.w Changed
 	movea.l Base, a4
+	moveq #0, d7  ; outer spans and record offsets both advance in source order
 line
 	cmpa.l EndRecords, a4
 	beq.w sweepDone
@@ -246,7 +247,6 @@ line
 	bhi.w invalid
 	move.l a4, d4
 	sub.l Base, d4
-	moveq #0, d7
 owner
 	cmp.w Count, d7
 	bhs.w scan
@@ -257,7 +257,7 @@ owner
 	tst.w Span.Parent(a5)
 	bne.w nextOwner
 	cmp.l Span.Start(a5), d4
-	blo.w nextOwner
+	blo.w scan  ; later outer spans start after this record too
 	cmp.l Span.End(a5), d4
 	bhs.w nextOwner
 	tst.w Span.Live(a5)

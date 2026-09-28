@@ -46,25 +46,36 @@ fn compact_block_index_capacity_fs_uae() {
     assert_eq!(runs[0].exit_code, Some(0));
 }
 
-fn many_imported_blocks() -> Vec<(&'static str, String)> {
-    let caller = ".module app\n.cpu m68020\n.use dep (b512)\n.word b512\n.endmodule\n.end\n";
+fn many_imported_blocks(count: usize) -> Vec<(&'static str, String)> {
+    let last = count - 1;
+    let caller =
+        format!(".module app\n.cpu m68020\n.use dep (b{last})\n.word b{last}\n.endmodule\n.end\n");
     let mut provider = String::from(".module dep\n.cpu m68020\n.pub\n");
-    for index in 0..513 {
+    for index in 0..count {
         provider.push_str(&format!("b{index} .block\n.byte 1\n.bend\n"));
     }
     provider.push_str(".endmodule\n.end\n");
-    vec![("main.asm", caller.into()), ("library/dep.asm", provider)]
+    vec![("main.asm", caller), ("library/dep.asm", provider)]
 }
 
 #[test]
 fn compact_imported_block_index_capacity_rust_oracle() {
-    assert_eq!(wide_import_oracle(&many_imported_blocks()), [1, 0, 0]);
+    assert_eq!(wide_import_oracle(&many_imported_blocks(513)), [1, 0, 0]);
 }
 
 #[test]
 #[ignore = "requires configured FS-UAE; selection from 513 imported blocks"]
 fn compact_imported_block_index_capacity_fs_uae() {
-    native_import(many_imported_blocks());
+    native_import(many_imported_blocks(513));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; instrumented 128/513 imported-block scaling"]
+fn compact_imported_block_index_scaling_fs_uae() {
+    for count in [128, 513] {
+        eprintln!("COMPACT_BLOCK_SCALE count={count}");
+        native_import(many_imported_blocks(count));
+    }
 }
 
 fn source(count: usize) -> String {
@@ -220,6 +231,11 @@ fn native_import(files: Vec<(&str, String)>) {
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);
         assert_eq!(words[29], 0);
-        eprintln!("COMPACT_WIDE_NAMES peak_owned_bytes={}", words[2]);
+        let finalization_ticks = (u64::from(words[40]) << 32) | u64::from(words[41]);
+        eprintln!(
+            "COMPACT_IMPORT_MEMORY peak_owned_bytes={} finalization_seconds={:.3}",
+            words[2],
+            finalization_ticks as f64 / f64::from(words[28])
+        );
     }
 }

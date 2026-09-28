@@ -111,6 +111,16 @@ The hot probes add substantial overhead: use counts to identify repeated work an
 separate release runs to judge performance. Previous telemetry schemas have no
 compatibility decoder.
 
+The compact CLI can additionally enable `OPFORGE_PREPARATION_PROGRESS` together
+with both memory-telemetry gates. `MEMORY_PROGRESS` then writes a fixed-length
+line to captured guest stdout at source-file boundaries and preparation/assembly
+transitions. Each line contains a phase code, source ordinal, source line,
+packed-record bytes, and tracked live allocation bytes, all in hexadecimal.
+The phase codes are 1/2 for source begin/end, 10–15 for order through completed
+preparation, and 20–22 for assembly begin/end and output. Progress output is
+diagnostic localization only; it adds bounded console I/O and is excluded from
+release timing and parity proof. The extra gate emits no code or data by itself.
+
 The compiler/evaluator counters describe actual calls, not a semantic redundancy
 proof. The previous telemetry record is superseded, with no compatibility decoder.
 Allocation amounts are actual reserved block

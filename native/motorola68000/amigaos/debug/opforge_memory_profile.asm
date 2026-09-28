@@ -41,10 +41,25 @@ LastFailUsed	.long ?
 	.endstruct
 RECORD_BYTES = Fields.LastFailUsed+4
 RECORD_MAGIC = $4d454d38
+.ifdef OPFORGE_PREPARATION_PROGRESS
+PROGRESS_BYTES = 64  ; five fixed eight-digit fields and a newline
+.endif
 	.section data, kind=data
 	.priv
 Path	.byte "Work:memory.bin", 0
 TimerName	.byte "timer.device", 0
+.ifdef OPFORGE_PREPARATION_PROGRESS
+ProgressLine	.byte "progress p="
+ProgressPhase	.byte "00000000"
+	.byte " f="
+ProgressSource	.byte "00000000"
+	.byte " l="
+ProgressSourceLine	.byte "00000000"
+	.byte " r="
+ProgressRecords	.byte "00000000"
+	.byte " m="
+ProgressLive	.byte "00000000", 10
+.endif
 	.endsection
 	.section bss, kind=bss
 	.align 4
@@ -104,6 +119,45 @@ failure	.block
 	move.w (sp)+, ccr
 	rts
 	.bend  ; failure
+.ifdef OPFORGE_PREPARATION_PROGRESS
+; A0=dos.library, D0=phase, D1=source ordinal, D2=line, D3=packed bytes.
+; Gated progress is diagnostic only; all registers and CCR are preserved.
+progress	.block
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	move.l d1, d4
+	move.l d2, d5
+	move.l d3, d6
+	lea ProgressPhase, a0
+	bsr.w progressHex
+	move.l d4, d0
+	lea ProgressSource, a0
+	bsr.w progressHex
+	move.l d5, d0
+	lea ProgressSourceLine, a0
+	bsr.w progressHex
+	move.l d6, d0
+	lea ProgressRecords, a0
+	bsr.w progressHex
+	lea Record, a0
+	move.l Fields.Live(a0), d0
+	lea ProgressLive, a0
+	bsr.w progressHex
+	jsr -60(a6)
+	tst.l d0
+	beq.w done
+	move.l d0, d1
+	move.l #ProgressLine, d2
+	moveq #PROGRESS_BYTES, d3
+	jsr -48(a6)
+done
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; progress
+.endif
+
 ; D0=0 start,1 prepared/reclaimed,2 assembled,3 cleaned. Passive ABI.
 phase	.block
 	move.w ccr, -(sp)
@@ -474,6 +528,27 @@ done
 	rts
 	.bend  ; tokenScopeClose
 	.priv
+.ifdef OPFORGE_PREPARATION_PROGRESS
+; A0=eight-byte destination, D0=value; clobbers D0-D2/A0.
+progressHex	.block
+	moveq #7, d2
+digit
+	move.l d0, d1
+	rol.l #4, d1
+	andi.b #15, d1
+	cmpi.b #10, d1
+	blo.w decimal
+	addi.b #'A'-10, d1
+	bra.w store
+decimal
+	addi.b #'0', d1
+store
+	move.b d1, (a0)+
+	lsl.l #4, d0
+	dbra d2, digit
+	rts
+	.bend  ; progressHex
+.endif
 ; No I/O requests are submitted. Private helpers clobber D0-D1/A0-A2/A6/CCR.
 ; Exec V36 port/request vectors; timer ReadEClock is the V36 -60 vector.
 openTimer	.block

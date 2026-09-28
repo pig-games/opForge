@@ -75,6 +75,27 @@ MEMORY_FAILURE	.macro kind, request, capacity, used
 .endif
 .endif
 .endmacro
+
+; Opt-in bounded source/preparation progress. The observer preserves the entire
+; caller frame and writes a short structured line to the guest's captured stdout.
+MEMORY_PROGRESS	.macro dosbase, phase, source, line, records
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d0-d3/a0, -(sp)
+	move.l .phase, d0
+	move.l .source, d1
+	move.l .line, d2
+	move.l .records, d3
+	movea.l .dosbase, a0
+	jsr memory_profile.progress
+	movem.l (sp)+, d0-d3/a0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
 MEMORY_PHASE	.macro value
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY

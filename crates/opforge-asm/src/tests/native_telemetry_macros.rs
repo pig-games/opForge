@@ -94,6 +94,9 @@ release .block
 failure .block
     rts
 .bend
+progress .block
+    rts
+.bend
 phase .block
     rts
 .bend
@@ -141,6 +144,7 @@ tokenScopeClose .block
     .MEMORY_ALLOC d1
     .MEMORY_FREE d2
     .MEMORY_FAILURE #128, d3, d4, d5
+    .MEMORY_PROGRESS a1, #1, d1, d2, d3
     .MEMORY_PHASE #2
     .MEMORY_SAVE a1
     .MEMORY_LAYOUT d3, d4, #4096
@@ -270,6 +274,7 @@ fn native_memory_telemetry_macros_assemble_against_passive_profile_api() {
         &[
             "OPFORGE_DEBUG_CONTRACTS".to_string(),
             "OPFORGE_MEMORY_TELEMETRY".to_string(),
+            "OPFORGE_PREPARATION_PROGRESS".to_string(),
         ],
     );
     let enabled = assemble_memory_telemetry_case(
@@ -278,10 +283,25 @@ fn native_memory_telemetry_macros_assemble_against_passive_profile_api() {
         &[
             "OPFORGE_DEBUG_CONTRACTS".to_string(),
             "OPFORGE_MEMORY_TELEMETRY".to_string(),
+            "OPFORGE_PREPARATION_PROGRESS".to_string(),
         ],
     );
     assert!(
         enabled.len() > baseline.len(),
         "enabled memory telemetry macros must emit preservation and profile-call code"
+    );
+}
+
+#[test]
+fn native_memory_progress_requires_its_extra_gate() {
+    let with_progress = memory_telemetry_source(true, true);
+    let without_progress = with_progress.replace("    .MEMORY_PROGRESS a1, #1, d1, d2, d3\n", "");
+    let defines = [
+        "OPFORGE_DEBUG_CONTRACTS".to_string(),
+        "OPFORGE_MEMORY_TELEMETRY".to_string(),
+    ];
+    assert_eq!(
+        assemble_memory_telemetry_case("memory-progress-disabled", &with_progress, &defines),
+        assemble_memory_telemetry_case("memory-progress-absent", &without_progress, &defines),
     );
 }

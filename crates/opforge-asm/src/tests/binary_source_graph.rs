@@ -464,6 +464,28 @@ fn native_with_roots(
         runs[0].exit_code,
         Some(if expected.is_some() { 0 } else { 20 })
     );
+    if std::env::var("OPFORGE_PREPARATION_PROGRESS").as_deref() == Ok("1") {
+        let progress = runs[0]
+            .stdout
+            .lines()
+            .filter(|line| line.starts_with("progress p="))
+            .collect::<Vec<_>>();
+        assert!(
+            progress
+                .iter()
+                .any(|line| line.starts_with("progress p=00000001")),
+            "opt-in trace must capture a source start: {}",
+            runs[0].stdout
+        );
+        assert!(
+            progress
+                .iter()
+                .any(|line| line.starts_with("progress p=0000000F")),
+            "opt-in trace must capture completed preparation: {}",
+            runs[0].stdout
+        );
+        assert!(progress.iter().all(|line| line.len() == 63));
+    }
     let image = runs[0]
         .captured_artifacts
         .get(&PathBuf::from("Work/build/binary_source_harness"))

@@ -17,12 +17,19 @@ not a valid frontier: that subset lacked a root `.output` declaration and Rust
 also rejected it. In the valid 59-file self-host graph, a 2 MiB instrumented
 run reached `tkvm_runtime.asm` and showed an AmigaOS allocation refusal while
 growing a 64 KiB preparation block to 128 KiB. After exact sizing for fixed
-preparation and CLI discovery buffers, that rejection was not observed before
-the same full graph exceeded a bounded four-minute run. The
-small compact CLI search-roots case still matches Rust under 2 MiB. The next
-step is bounded progress localization and reducing the specific growing
-buffer's peak allocation. There is no completed native self-host artifact or
-full-run timing claim.
+preparation and CLI discovery buffers, a ten-minute-limit run with gated
+progress capture exited at about 154 seconds. It read 168,728 of 667,179 staged
+source bytes before AmigaOS refused a 262,144-byte growth request for a
+131,072-byte preparation block with 131,067 bytes used. The last completed
+source boundary was source ordinal 4; the active source had ordinal 40, and
+the rejection was reported at include origin 60, line 328
+(`.TOKEN_SCOPE_END #0`). The diagnostic source-path field was malformed, so the
+line identifies the failure site but not a trustworthy path. Memory telemetry
+recorded one allocation failure and a peak of 1,083,256 tracked bytes against
+1,121,200 bytes free at entry. The small compact CLI search-roots case still
+matches Rust under 2 MiB. The next step is to identify the owner and lifetime
+of that growing block, then reduce its peak without narrowing supported source.
+There is no completed native self-host artifact or full-run timing claim.
 
 ## Finding
 

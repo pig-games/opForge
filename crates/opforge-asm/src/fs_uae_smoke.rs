@@ -1454,8 +1454,12 @@ pub(crate) fn run_compact_cli_files_from_env(
         }]
     });
     let memory_telemetry = std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1");
-    let extra_assembly_defines =
-        exact_harness_assembly_defines(NativeCliParityExecutable::CompactCli, memory_telemetry);
+    let progress = std::env::var("OPFORGE_PREPARATION_PROGRESS").as_deref() == Ok("1");
+    let extra_assembly_defines = exact_harness_assembly_defines(
+        NativeCliParityExecutable::CompactCli,
+        memory_telemetry,
+        progress,
+    );
     let case = OpforgeNativeCliParityCase {
         name: "compact-cli-source-set",
         cpu_override: "68020",
@@ -1675,6 +1679,7 @@ fn run_binary_source_files_from_env(
     let extra_assembly_defines = exact_harness_assembly_defines(
         NativeCliParityExecutable::BinarySourceHarness,
         memory_telemetry,
+        false,
     );
     let case = OpforgeNativeCliParityCase {
         name: "binary-source-files",
@@ -1779,7 +1784,8 @@ fn run_exact_harness_with_defines_from_env(
         rust_oracle,
     }];
     let memory_telemetry = std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1");
-    let mut extra_assembly_defines = exact_harness_assembly_defines(executable, memory_telemetry);
+    let mut extra_assembly_defines =
+        exact_harness_assembly_defines(executable, memory_telemetry, false);
     extra_assembly_defines.extend_from_slice(extra_defines);
     let case = OpforgeNativeCliParityCase {
         name: "native-harness-live-oracle",
@@ -1804,6 +1810,7 @@ fn run_exact_harness_with_defines_from_env(
 fn exact_harness_assembly_defines(
     executable: NativeCliParityExecutable,
     memory_telemetry: bool,
+    preparation_progress: bool,
 ) -> Vec<&'static str> {
     if memory_telemetry
         && matches!(
@@ -1811,7 +1818,11 @@ fn exact_harness_assembly_defines(
             NativeCliParityExecutable::BinarySourceHarness | NativeCliParityExecutable::CompactCli
         )
     {
-        vec!["OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY"]
+        let mut defines = vec!["OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY"];
+        if preparation_progress && matches!(executable, NativeCliParityExecutable::CompactCli) {
+            defines.push("OPFORGE_PREPARATION_PROGRESS");
+        }
+        defines
     } else {
         Vec::new()
     }
@@ -7069,19 +7080,33 @@ mod tests {
     #[test]
     fn binary_source_memory_comparison_enables_only_gated_telemetry_defines() {
         assert_eq!(
-            exact_harness_assembly_defines(NativeCliParityExecutable::BinarySourceHarness, true),
+            exact_harness_assembly_defines(
+                NativeCliParityExecutable::BinarySourceHarness,
+                true,
+                false
+            ),
             vec!["OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY"]
         );
         assert!(exact_harness_assembly_defines(
             NativeCliParityExecutable::CompactMemoHarness,
-            true
+            true,
+            true,
         )
         .is_empty());
         assert!(exact_harness_assembly_defines(
             NativeCliParityExecutable::BinarySourceHarness,
-            false
+            false,
+            true,
         )
         .is_empty());
+        assert_eq!(
+            exact_harness_assembly_defines(NativeCliParityExecutable::CompactCli, true, true),
+            vec![
+                "OPFORGE_DEBUG_CONTRACTS",
+                "OPFORGE_MEMORY_TELEMETRY",
+                "OPFORGE_PREPARATION_PROGRESS",
+            ]
+        );
     }
 
     #[test]

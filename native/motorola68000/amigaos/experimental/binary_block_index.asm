@@ -10,7 +10,7 @@
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
 	.pub
-LIMIT = 512
+LIMIT = 1024
 Span	.struct
 Start	.long ?
 End	.long ?

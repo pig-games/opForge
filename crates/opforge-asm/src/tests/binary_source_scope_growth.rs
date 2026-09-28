@@ -3,6 +3,70 @@ use super::*;
 
 const COUNTS: [usize; 3] = [520, 1032, 2056];
 
+fn many_blocks_source(count: usize) -> String {
+    let mut source = String::from(".module app\n.cpu m68020\n");
+    for index in 0..count {
+        source.push_str(&format!("b{index} .block\n.byte 1\n.bend\n"));
+    }
+    source.push_str(".byte 7\n.endmodule\n.end\n");
+    source
+}
+
+#[test]
+fn compact_block_index_capacity_rust_oracle() {
+    let output = oracle(&many_blocks_source(513));
+    assert_eq!(output.len(), 514);
+    assert!(output[..513].iter().all(|byte| *byte == 1));
+    assert_eq!(output[513], 7);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; 513 live blocks exceed the former index cap"]
+fn compact_block_index_capacity_fs_uae() {
+    let source = many_blocks_source(513);
+    let expected = oracle(&source);
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let outcome = crate::fs_uae_smoke::run_compact_cli_files_from_env(
+        &workspace_root(),
+        &package,
+        &[("main.asm", source.as_bytes())],
+        &[],
+        &[],
+        Some(&expected),
+        false,
+    )
+    .expect("fresh 513-block comparison");
+    let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+        panic!("real native execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].success && runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+}
+
+fn many_imported_blocks() -> Vec<(&'static str, String)> {
+    let caller = ".module app\n.cpu m68020\n.use dep (b512)\n.word b512\n.endmodule\n.end\n";
+    let mut provider = String::from(".module dep\n.cpu m68020\n.pub\n");
+    for index in 0..513 {
+        provider.push_str(&format!("b{index} .block\n.byte 1\n.bend\n"));
+    }
+    provider.push_str(".endmodule\n.end\n");
+    vec![("main.asm", caller.into()), ("library/dep.asm", provider)]
+}
+
+#[test]
+fn compact_imported_block_index_capacity_rust_oracle() {
+    assert_eq!(wide_import_oracle(&many_imported_blocks()), [1, 0, 0]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; selection from 513 imported blocks"]
+fn compact_imported_block_index_capacity_fs_uae() {
+    native_import(many_imported_blocks());
+}
+
 fn source(count: usize) -> String {
     let mut source = String::from(".module app\n.cpu m68020\nentry .block\n");
     for index in 0..count {

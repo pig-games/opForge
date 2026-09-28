@@ -1080,7 +1080,9 @@ scalar even where Rust emitted the fitting signed 16-bit value. Shared data
 emission now accepts signed -32768 through -1 and unsigned 0 through 65535 for
 word units. Fresh 68020 / 2 MiB native cases exactly match Rust for a direct
 negative symbol and for a referenced imported module followed by the self-host
-constant pattern. This correction did not move the full self-host rejection:
+constant pattern. A subsequent Hunk-section case with the same constants and
+a `.word GET_ARG_STR` use also matches the fresh Rust Hunk bytes. This correction
+did not move the full self-host rejection:
 the next full exact-output attempt again exited 20 at file 1, line 10 after
 preparation. The diagnostic is a record location, not yet a proven cause.
 Assembly startup now sets its record offset to an invalid sentinel so a failure

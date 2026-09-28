@@ -6,7 +6,8 @@ ordinary macro/segment string fragment recipes, and generated-call argument
 re-tokenization are implemented. The residual decoded-string fallback and
 expression correction remain active. This takes
 precedence over the next packed-loop parity slice in the
-[native reset](native-runtime-reset.md#fixed-input-allocation-slice).
+[native reset](native-runtime-reset.md#fixed-input-allocation-slice). Further
+performance shortcuts are deferred until completed native self-host proof.
 
 ## Finding
 
@@ -984,9 +985,14 @@ profiling errors. On the same 26-byte-output generated-call fixture, observed
 m6502-package times were 0.5133 seconds before and 0.7743/0.7667 seconds after;
 m68020-package times were 1.0287 before and 1.0109/1.0322 after. These few
 host-clock observations suggest that unconditional re-tokenization can matter
-for short nested calls, but do not establish a stable throughput ratio. Any
-shape-stable shortcut needs VM-owned eligibility and explicit equivalence checks
-against forced re-tokenization on identical inputs.
+for short nested calls, but do not establish a stable throughput ratio. Defer
+shape-stable shortcuts and other performance tuning until the compact native
+CLI completes a fresh self-host assembly with Rust-identical output and native
+timing. Then use that workload's profile to decide whether generated-call
+re-tokenization warrants optimization. Any shortcut pursued must have VM-owned
+eligibility and explicit equivalence checks against forced re-tokenization on
+identical inputs. Correctness and language parity needed for self-host remain
+the immediate work.
 
 The bounded self-host entry probe still rejects at `experimental/binary_source.asm`
 line 281, `.for 4`, after staging 58 files and 650,076 source bytes. The Rust

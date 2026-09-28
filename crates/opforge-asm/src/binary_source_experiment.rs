@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use package::{
     decode_encoding_program, macro_descriptor_program, macro_fragment_program,
-    macro_spelling_program, packed_macro_call_program, EncodingStep,
+    macro_spelling_program, packed_macro_call_program, validate_fixup_program, EncodingStep,
 };
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
@@ -854,19 +854,41 @@ fn write_sequence(
             .and_then(|id| programs.semantics.get(&id).copied())
             .unwrap_or(MISSING);
         let supported = if stage.program.is_some() {
-            encoded = true;
-            programs
-                .rows
-                .get(usize::from(program))
-                .is_some_and(|row| row.kind == 2 && matches!(row.version, 2 | 6))
+            let valid = programs.rows.get(usize::from(program)).is_some_and(|row| {
+                row.kind == 2
+                    && if stage.fixup {
+                        matches!(row.version, 4 | 7)
+                            && validate_fixup_program(row.version, row.bytes).is_ok()
+                    } else {
+                        matches!(row.version, 2 | 6)
+                    }
+            });
+            if !stage.fixup {
+                encoded = true;
+            }
+            valid && (!stage.fixup || encoded)
         } else {
-            !encoded
+            !encoded && !stage.fixup
         };
-        if !supported || stage.inputs.is_empty() || stage.inputs.len() > 16 {
+        // Native fixup input binding currently transports exact scalar targets.
+        // Keep member targets unsupported until their numeric identity is bound.
+        if !supported
+            || stage.inputs.is_empty()
+            || stage.inputs.len() > 16
+            || (stage.fixup
+                && stage
+                    .inputs
+                    .iter()
+                    .any(|input| matches!(input, Projection::TargetMember { .. })))
+        {
             out.truncate(start);
             return Ok(None);
         }
-        out[descriptor] = u8::from(stage.program.is_some());
+        out[descriptor] = if stage.fixup {
+            2
+        } else {
+            u8::from(stage.program.is_some())
+        };
         set_word(out, descriptor + 2, program);
         set_word(out, descriptor + 4, word(stage.inputs.len())?);
         let inputs_offset = long(out.len())?;
@@ -902,6 +924,8 @@ fn write_projection(
     };
     let (kind, operand, field, literal) = match projection {
         Projection::Expression(operand) => (0, *operand, 0, 0),
+        Projection::TargetExpression(operand) => (15, *operand, 0, 0),
+        Projection::TargetMember { operand, qualifier } => (16, *operand, *qualifier, 0),
         Projection::Register { operand, class } => (1, *operand, *class, 0),
         Projection::IndirectRegister { operand, class } => (8, *operand, *class, 0),
         Projection::UpdatedIndirectRegister {
@@ -977,6 +1001,7 @@ fn bind_member(
             name: qualifier, ..
         }
         | Projection::Member { qualifier, .. }
+        | Projection::TargetMember { qualifier, .. }
         | Projection::TupleQualifiedRegister { qualifier, .. } => {
             bind(dictionary, name(names, *qualifier)?.into(), *qualifier, 0)
         }
@@ -1059,6 +1084,74 @@ fn reserve(out: &mut Vec<u8>, count: usize, width: usize) -> Result<(), String> 
 #[cfg(test)]
 mod sequence_wire_tests {
     use super::*;
+
+    #[test]
+    fn fixup_stage_writes_target_projection_and_rejects_invalid_program() {
+        use package::{
+            compile_fixup_program, EncodingEndian, FixupBase, FixupEncodingStep, FixupRange,
+            FixupTransform, PortableRelocationKind, UnresolvedValuePolicy,
+        };
+
+        let bytes = compile_fixup_program(&[FixupEncodingStep {
+            input: 0,
+            width: 4,
+            endian: EncodingEndian::Big,
+            base: FixupBase::Value,
+            range: FixupRange::BitPattern,
+            unresolved: UnresolvedValuePolicy::Placeholder(0),
+            relocation: PortableRelocationKind::Absolute,
+            transform: FixupTransform::Identity,
+        }])
+        .unwrap();
+        let mut programs = Programs::default();
+        programs.add(2, 6, &[]).unwrap();
+        programs.add(2, 4, &bytes).unwrap();
+        programs.semantics.insert(1, 0);
+        programs.semantics.insert(2, 1);
+        let stages = [
+            SemanticStage {
+                program: Some(1),
+                fixup: false,
+                inputs: vec![Projection::Constant(0x41f9)],
+            },
+            SemanticStage {
+                program: Some(2),
+                fixup: true,
+                inputs: vec![Projection::TargetExpression(0)],
+            },
+        ];
+        let mut wire = vec![0; 32];
+        assert_eq!(
+            write_sequence(&mut wire, &stages, &programs).unwrap(),
+            Some(32)
+        );
+        assert_eq!(wire[44], 2);
+        assert_eq!(&wire[68..80], &[15, 0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0]);
+        let original = wire.clone();
+        let member_stages = [
+            stages[0].clone(),
+            SemanticStage {
+                program: Some(2),
+                fixup: true,
+                inputs: vec![Projection::TargetMember {
+                    operand: 0,
+                    qualifier: 3,
+                }],
+            },
+        ];
+        assert_eq!(
+            write_sequence(&mut wire, &member_stages, &programs).unwrap(),
+            None
+        );
+        assert_eq!(wire, original);
+        programs.rows[1].version = 6;
+        assert_eq!(write_sequence(&mut wire, &stages, &programs).unwrap(), None);
+        assert_eq!(wire, original);
+        programs.rows[1].version = 4;
+        programs.rows[1].bytes = &[];
+        assert_eq!(write_sequence(&mut wire, &stages, &programs).unwrap(), None);
+        assert_eq!(wire, original);
+    }
 
     #[test]
     fn scalar_and_named_roots_preserve_unknown_or_malformed_metadata() {
@@ -1158,6 +1251,7 @@ mod sequence_wire_tests {
         let stages = [
             SemanticStage {
                 program: None,
+                fixup: false,
                 inputs: vec![
                     Projection::TupleArityThree { operand: 0 },
                     Projection::TupleQualifiedRegister {
@@ -1169,6 +1263,7 @@ mod sequence_wire_tests {
             },
             SemanticStage {
                 program: Some(7),
+                fixup: false,
                 inputs: vec![
                     Projection::TupleRegister {
                         operand: 0,
@@ -1205,6 +1300,7 @@ mod sequence_wire_tests {
             vec![stages[1].clone(), stages[0].clone()],
             vec![SemanticStage {
                 program: Some(7),
+                fixup: false,
                 inputs: Vec::new(),
             }],
         ] {

@@ -1068,8 +1068,9 @@ ceiling with a measured allocation breakdown.
 
 On the expanded-memory FS-UAE profile, the current 59-file compact self-host
 input (656,451 source bytes before this checkpoint) completes preparation but
-exits 20 during native assembly. Its diagnostic identifies physical file 1,
-line 10; a fresh Rust build succeeds, but no native self-host output exists.
+exits 20 during native assembly. Its hexadecimal diagnostic identifies physical
+file 1, line 0x10 (decimal 16, `lea DosName, a1`); a fresh Rust build succeeds,
+but no native self-host output exists.
 The guest rejection is explicit, rather than a timeout. The run takes roughly
 five and a half minutes of host test wall time with memory telemetry enabled;
 the harness does not provide a reliable guest START-to-DONE duration for this
@@ -1083,8 +1084,36 @@ negative symbol and for a referenced imported module followed by the self-host
 constant pattern. A subsequent Hunk-section case with the same constants and
 a `.word GET_ARG_STR` use also matches the fresh Rust Hunk bytes. This correction
 did not move the full self-host rejection:
-the next full exact-output attempt again exited 20 at file 1, line 10 after
-preparation. The diagnostic is a record location, not yet a proven cause.
+the next full exact-output attempt again exited 20 at file 1, line 0x10 after
+preparation. That instruction crosses from the entry/code section to `DosName`
+in data; the compact Hunk path currently rejects section-bearing instruction
+operands before encoding, so an instruction-relocation probe is the next step.
 Assembly startup now sets its record offset to an invalid sentinel so a failure
 before any record cannot masquerade as the first source line. No speed claim or
 full self-host parity follows from this checkpoint.
+
+## Package instruction relocations and next self-host frontier
+
+The first instruction rejection at source line 16 was the entry section's
+`lea DosName,a1` referencing DATA. The diagnostic printed `00000010` in
+hexadecimal; earlier notes treated it as decimal line 10. A focused Hunk
+comparison established that Rust emits an absolute-long instruction extension
+and a relocation at offset 2. The compact package now carries validated
+`fixup` sequence stages and numeric target projections; native execution
+passes the selected package fixup through a bounded numeric side channel to
+the existing Hunk relocation collector. A higher-priority unsupported member
+candidate also needed a precise packed-shape exclusion so a bare symbol can
+reach the applicable package recipe. Fresh 68020/2 MiB native comparisons
+exactly match Rust for a forward-symbol LEA in flat output, a literal LEA,
+and a CODE-to-DATA LEA Hunk relocation. Member-form fixup targets remain
+explicitly unsupported in the compact package until their numeric identity
+can be bound; no spelling-specific relocation shortcut was added.
+
+The next full 59-file attempt on the expanded FS-UAE profile still exited 20
+after 338.7 seconds of host test time. It advanced to file 1, hexadecimal
+line `00000034` (decimal 52), `move.l IncludeCount,d0`. This is another
+instruction with a section-backed symbol operand; no native completion or
+whole-file timing is claimed. The next focused case should establish the
+Rust relocation form and whether package preparation or native execution
+blocks this operand shape. The ordinary 68020/2 MiB full-input memory ceiling
+remains unproven after this expanded-profile attempt.

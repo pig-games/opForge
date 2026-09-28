@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_shapes as shapes
 	.use experimental.amigaos.binary_mask_unary as mask_unary
 	.use opasm.amigaos.binary_expression as expression
+	.use exprvm.amigaos.runtime as exprvm
 	.use tkpkg.amigaos.encoding_execution as encoding
 	.use tkpkg.amigaos.value_execution as value
 
@@ -62,9 +63,15 @@ OperandCount	.res word, 1
 OperandShape	.res word, 1
 MemberMask	.res word, 1
 Unresolved	.res word, 1
-Records	.res byte, 80
+Records	.res byte, 128
 Execution	.res byte, encoding.Context.FixupTargets+4
 Output	.res byte, 4096
+FixupCount	.res word, 1
+FixupOffsets	.res long, 16
+FixupAddends	.res long, 16
+FixupWidths	.res word, 16
+FixupTargets	.res word, 16
+ProjectedTarget	.res word, 1
 	.endsection
 
 	.section code, kind=code
@@ -77,6 +84,7 @@ Output	.res byte, 4096
 encode	.block
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_SELECTION
 	movem.l d2-d7/a2-a6, -(sp)
+	clr.w FixupCount
 	move.w d0, d6
 	moveq #0, d7
 	move.b d1, d7
@@ -142,6 +150,7 @@ rowLoop
 	cmpi.b #RECIPE_UNSUPPORTED, package.Row.Recipe(a5)
 	beq.w fail
 	movem.l d3/d6-d7/a2/a5, -(sp)
+	clr.w FixupCount
 	bsr.w tryRow
 	movem.l (sp)+, d3/d6-d7/a2/a5
 	tst.l d0
@@ -164,6 +173,46 @@ fail
 	tst.l d0
 	rts
 	.bend  ; encode
+
+; Numeric side channel from the most recent successful encode. No source text
+; or section ownership enters this package encoder.
+outputFixupCount	.block
+	moveq #0, d0
+	move.w FixupCount, d0
+	rts
+	.bend  ; outputFixupCount
+
+; D0.W=index. Returns D0=status,D1=byte offset,D2=width,D3=target
+; symbol ID,D4=encoded addend. Preserves D5-D7/A0-A6.
+outputFixup	.block
+	movem.l d5/a0, -(sp)
+	moveq #0, d5
+	move.w d0, d5
+	cmp.w FixupCount, d5
+	bhs.w badFixup
+	move.l d5, d0
+	lsl.l #2, d0
+	lea FixupOffsets, a0
+	move.l 0(a0, d0.l), d1
+	lea FixupAddends, a0
+	move.l 0(a0, d0.l), d4
+	move.l d5, d0
+	add.w d0, d0
+	lea FixupWidths, a0
+	moveq #0, d2
+	move.w 0(a0, d0.w), d2
+	lea FixupTargets, a0
+	moveq #0, d3
+	move.w 0(a0, d0.w), d3
+	moveq #0, d0
+	bra.w fixupReturn
+badFixup
+	moveq #1, d0
+fixupReturn
+	movem.l (sp)+, d5/a0
+	tst.l d0
+	rts
+	.bend  ; outputFixup
 
 	.priv
 
@@ -502,6 +551,20 @@ plain
 wrappedFirstItem
 	; A complete scalar-first tuple cannot satisfy member/scalar/named roots
 	; or member/bracket first-item paths. Unknown structures retain the stop.
+	cmpi.l #5, d4
+	bne.w structuredRoot
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #3, d0
+	blo.w structuredRoot
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w structuredRoot
+	moveq #0, d1
+	move.b 1(a0), d1
+	addq.l #2, d1
+	cmp.l d0, d1
+	beq.w mismatch  ; a bare scalar cannot have a member field
+structuredRoot
 	bsr.w scalarTupleArity
 	tst.l d0
 	bne.w mismatch
@@ -809,7 +872,7 @@ loop
 	movem.l d6-d7/a4, -(sp)
 	moveq #0, d0
 	move.b package.SequenceStage.Kind(a4), d0
-	cmpi.b #1, d0
+	cmpi.b #2, d0
 	bhi.w stageBad
 	tst.b package.SequenceStage.Reserved(a4)
 	bne.w stageBad
@@ -821,14 +884,27 @@ loop
 	move.w package.SequenceStage.InputCount(a4), package.Row.InputCount(a5)
 	move.l package.SequenceStage.Inputs(a4), package.Row.Inputs(a5)
 	move.w d0, -(sp)
+	cmpi.w #2, d0
+	beq.w fixupProjection
 	bsr.w project
 	tst.l d0
 	bne.w projectionBad
 	tst.w Unresolved
+	beq.w projected
+	cmpi.w #1, package.Context.Pass(a2)
 	bne.w projectionBad
+projected
 	move.w (sp)+, d0
 	tst.w d0
 	beq.w match
+	bra.w encodeStage
+fixupProjection
+	bsr.w projectFixup
+	tst.l d0
+	bne.w projectionBad
+	addq.w #2, sp
+	bra.w fixupStage
+encodeStage
 	bsr.w program
 	tst.l d0
 	bne.w stageBad
@@ -854,6 +930,32 @@ encodingVersion
 	jsr encoding.semantic
 	tst.l d0
 	bne.w stageBad
+	move.l d1, (sp)
+	bra.w next
+fixupStage
+	tst.w package.Row.Reserved2(a5)
+	beq.w stageBad
+	bsr.w program
+	tst.l d0
+	bne.w stageBad
+	cmpi.w #PROGRAM_SEMANTIC, d2
+	bne.w stageBad
+	cmpi.w #4, d4
+	beq.w fixupVersion
+	cmpi.w #7, d4
+	bne.w stageBad
+fixupVersion
+	bsr.w prepareExecution
+	move.w 2(sp), encoding.Context.WriteOffset(a6)
+	move.l package.Context.Pc(a2), encoding.Context.Pc(a6)
+	move.w package.Context.Pass(a2), encoding.Context.Pass(a6)
+	move.l #Records, encoding.Context.Input(a6)
+	move.w package.Row.InputCount(a5), encoding.Context.InputCount(a6)
+	move.w #7, encoding.Context.FirstInputLen(a6)
+	jsr encoding.semantic
+	tst.l d0
+	bne.w stageBad
+	move.w encoding.Context.FixupCount(a6), FixupCount
 	move.l d1, (sp)
 	bra.w next
 match
@@ -1044,6 +1146,10 @@ recordReady
 	beq.w tupleItem
 	cmpi.b #14, d0
 	beq.w tupleItem
+	cmpi.b #15, d0
+	beq.w expressionValue
+	cmpi.b #16, d0
+	beq.w memberValue
 	bra.w bad
 expressionValue
 	bsr.w projectionExpression
@@ -1105,6 +1211,88 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; project
+
+; Build the package fixup VM's seven-byte numeric input records. An exact
+; packed identifier supplies the optional relocation identity. Other scalar
+; expressions have no identity; the Hunk caller rejects section-bearing
+; operands without a package fixup.
+projectFixup	.block
+	moveq #0, d7
+	move.w package.Row.InputCount(a5), d7
+	beq.w bad
+	cmpi.w #16, d7
+	bhi.w bad
+	move.l d7, d0
+	mulu.w #PROJECTION_BYTES, d0
+	move.l package.Row.Inputs(a5), d1
+	add.l d1, d0
+	bcs.w bad
+	movea.l package.Context.Package(a2), a4
+	cmp.l package.Header.Bytes(a4), d0
+	bhi.w bad
+	adda.l d1, a4
+	lea Records, a3
+	moveq #0, d6
+nextFixupInput
+	cmp.w d7, d6
+	bhs.w good
+	tst.w d6
+	beq.w inputReady
+	move.b #7, (a3)+
+inputReady
+	cmpi.b #15, package.Projection.Kind(a4)
+	bne.w bad  ; target:member and compound target paths need exact identity transport
+	move.w #$ffff, ProjectedTarget
+	bsr.w operandSpan
+	tst.l d0
+	bne.w bad
+	bsr.w exactTarget
+	tst.l d0
+	bne.w targetReady  ; a scalar literal has no relocation target
+	cmp.l package.Context.Count(a2), d1
+	bhs.w bad
+	movea.l package.Context.SectionIds(a2), a0
+	tst.b 0(a0, d1.l)
+	beq.w targetReady
+	move.w d1, ProjectedTarget
+targetReady
+	bsr.w projectionExpression
+	tst.l d0
+	bne.w bad
+	moveq #0, d0
+	cmpi.w #$ffff, ProjectedTarget
+	beq.w targetFlagReady
+	moveq #1, d0
+targetFlagReady
+	tst.w Unresolved
+	beq.w valueReady
+	cmpi.w #1, package.Context.Pass(a2)
+	bne.w bad
+	ori.b #2, d0
+	move.w #$ffff, ProjectedTarget
+valueReady
+	move.b d0, (a3)+
+	move.b d3, (a3)+
+	lsr.l #8, d3
+	move.b d3, (a3)+
+	lsr.l #8, d3
+	move.b d3, (a3)+
+	lsr.l #8, d3
+	move.b d3, (a3)+
+	move.w ProjectedTarget, d0
+	lsr.w #8, d0
+	move.b d0, (a3)+
+	move.b ProjectedTarget+1, (a3)+
+	adda.w #PROJECTION_BYTES, a4
+	addq.w #1, d6
+	bra.w nextFixupInput
+good
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectFixup
 
 projectionExpression	.block
 	bsr.w operandSpan
@@ -1499,6 +1687,36 @@ bad
 	rts
 	.bend  ; operandSpan
 
+; A0/A1=operand; D0=status,D1=numeric symbol ID. The prepared frontend
+; commonly wraps scalar names as an EXPRVM PUSH_SYMBOL program.
+exactTarget	.block
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #6, d0
+	bne.w plain
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w plain
+	cmpi.b #4, 1(a0)
+	bne.w bad
+	cmpi.b #exprvm.EXPRVM_V2_OPCODE_PUSH_SYMBOL, 2(a0)
+	bne.w bad
+	tst.b 5(a0)
+	bne.w bad
+	moveq #0, d1
+	move.b 4(a0), d1
+	lsl.w #8, d1
+	move.b 3(a0), d1
+	movea.l a1, a0
+	moveq #0, d0
+	rts
+plain
+	bsr.w exactName
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; exactTarget
+
 ; A0/A1=operand; D0=status, D1=name ID on success. Advances A0; CCR=D0.
 ; Only an exact unqualified numeric name can prove a package predicate.
 exactName	.block
@@ -1613,14 +1831,19 @@ badPop
 	.bend  ; valueProgram
 
 ; Own the minimal execution state; no service or assembler globals are imported.
-; A6=context, all other registers preserved. This subset emits no output fixups.
+; A6=context, all other registers preserved. Fixups are a bounded numeric
+; side channel owned by this encoder and consumed by the assembly layer.
 prepareExecution	.block
 	lea Execution, a6
 	move.l #Output, encoding.Context.Output(a6)
 	move.l #4096, encoding.Context.Capacity(a6)
 	clr.w encoding.Context.WriteOffset(a6)
-	clr.w encoding.Context.FixupCount(a6)
-	clr.w encoding.Context.FixupCapacity(a6)
+	move.w FixupCount, encoding.Context.FixupCount(a6)
+	move.w #16, encoding.Context.FixupCapacity(a6)
+	move.l #FixupOffsets, encoding.Context.FixupOffsets(a6)
+	move.l #FixupAddends, encoding.Context.FixupAddends(a6)
+	move.l #FixupWidths, encoding.Context.FixupWidths(a6)
+	move.l #FixupTargets, encoding.Context.FixupTargets(a6)
 	clr.w encoding.Context.MnemonicLength(a6)
 	rts
 	.bend  ; prepareExecution

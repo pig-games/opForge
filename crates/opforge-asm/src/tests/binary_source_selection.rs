@@ -23,6 +23,11 @@ const SYMBOL_DISPLACEMENT: &str =
 const BAD_DISPLACEMENT_REGISTER: &str = ".cpu m68020\n.org 0\n jsr 0(d0)\n.end\n";
 const BAD_DISPLACEMENT_RANGE: &str = ".cpu m68020\n.org 0\n jsr 32768(a6)\n.end\n";
 const NUMERIC_MEMBER_VARIANTS: &str = ".cpu m68020\n.org 0\n lea 8.w,a0\n.end\n";
+const FORWARD_ABSOLUTE_LEA: &str =
+    ".cpu m68020\n.org 0\n lea target,a1\n rts\ntarget:\n .byte 1\n.end\n";
+const BACKWARD_ABSOLUTE_LEA: &str =
+    ".cpu m68020\n.org 0\ntarget:\n .byte 1\n lea target,a1\n.end\n";
+const NUMERIC_ABSOLUTE_LEA: &str = ".cpu m68020\n.org 0\n lea 8,a1\n.end\n";
 const MOVEM_WORD_LIST: &str = ".cpu m68020\n.org 0\n movem.w d0/a7, -(a7)\n.end\n";
 const MOVEM_SINGLE: &str = ".cpu m68020\n.org 0\n movem.l d2, -(sp)\n.end\n";
 const MOVEM_DUPLICATE: &str = ".cpu m68020\n.org 0\n movem.l d2/d2, -(sp)\n.end\n";
@@ -71,6 +76,32 @@ fn binary_selection_self_host_movem_rust_oracle() {
 fn binary_selection_self_host_movea_short_rust_oracle() {
     assert_eq!(oracle_bytes(SELF_HOST_MOVEA_SHORT), [0x2c, 0x78, 0, 4]);
     assert_eq!(oracle_bytes(NUMERIC_MEMBER_VARIANTS), [0x41, 0xf8, 0, 8]);
+}
+
+#[test]
+fn binary_selection_forward_absolute_lea_rust_oracle() {
+    assert_eq!(
+        oracle_bytes(FORWARD_ABSOLUTE_LEA),
+        [0x43, 0xf9, 0, 0, 0, 8, 0x4e, 0x75, 1]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; package fixup stage for a forward label"]
+fn binary_selection_forward_absolute_lea_native_parity_fs_uae() {
+    assert_binary_source(FORWARD_ABSOLUTE_LEA.into(), "m68020".into());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; package fixup stage for a backward label"]
+fn binary_selection_backward_absolute_lea_native_parity_fs_uae() {
+    assert_binary_source(BACKWARD_ABSOLUTE_LEA.into(), "m68020".into());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; package fixup stage without relocation"]
+fn binary_selection_numeric_absolute_lea_native_parity_fs_uae() {
+    assert_binary_source(NUMERIC_ABSOLUTE_LEA.into(), "m68020".into());
 }
 
 #[test]

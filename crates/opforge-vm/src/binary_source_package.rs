@@ -106,6 +106,7 @@ pub enum CandidateRecipe {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SemanticStage {
     pub program: Option<u16>,
+    pub fixup: bool,
     pub inputs: Vec<Projection>,
 }
 
@@ -119,6 +120,11 @@ pub enum ScalarPlan {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Projection {
     Expression(u8),
+    TargetExpression(u8),
+    TargetMember {
+        operand: u8,
+        qualifier: u16,
+    },
     Register {
         operand: u8,
         class: u16,
@@ -627,7 +633,7 @@ fn parse_packed_mask_indirect(plan: &str) -> Option<CandidateRecipe> {
     })
 }
 
-// Only bounded match/encode sequences are executable. Unknown stages remain
+// Only bounded match/encode/fixup sequences are executable. Unknown stages remain
 // explicit unsupported candidates; match stages have no executable program.
 fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
     let parsed = (|| {
@@ -642,6 +648,9 @@ fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
                     encoded = true;
                     Some(names.id(program))
                 }
+                "fixup" if encoded && !program.is_empty() && program != "_" => {
+                    Some(names.id(program))
+                }
                 _ => return None,
             };
             let inputs = inputs
@@ -651,7 +660,31 @@ fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
             if inputs.is_empty() || inputs.len() > 16 || stages.len() == 8 {
                 return None;
             }
-            stages.push(SemanticStage { program, inputs });
+            if kind == "fixup"
+                && !inputs.iter().all(|input| {
+                    matches!(
+                        input,
+                        Projection::TargetExpression(_) | Projection::TargetMember { .. }
+                    )
+                })
+            {
+                return None;
+            }
+            if kind == "encode"
+                && inputs.iter().any(|input| {
+                    matches!(
+                        input,
+                        Projection::TargetExpression(_) | Projection::TargetMember { .. }
+                    )
+                })
+            {
+                return None;
+            }
+            stages.push(SemanticStage {
+                program,
+                fixup: kind == "fixup",
+                inputs,
+            });
         }
         encoded.then_some(CandidateRecipe::SemanticSequence { stages })
     })();
@@ -684,6 +717,16 @@ fn parse_semantic(
             plan: names.id(plan),
         };
     };
+    if inputs.iter().any(|input| {
+        matches!(
+            input,
+            Projection::TargetExpression(_) | Projection::TargetMember { .. }
+        )
+    }) {
+        return CandidateRecipe::Unsupported {
+            plan: names.id(plan),
+        };
+    }
     let program = names.id(program);
     if branch {
         CandidateRecipe::SemanticBranch { program, inputs }
@@ -693,6 +736,16 @@ fn parse_semantic(
 }
 
 fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
+    if let Some(rest) = value.strip_prefix("target:expr") {
+        return rest.parse().ok().map(Projection::TargetExpression);
+    }
+    if let Some(rest) = value.strip_prefix("target:") {
+        let (operand, qualifier) = parse_member_projection(rest)?;
+        return Some(Projection::TargetMember {
+            operand,
+            qualifier: names.id(qualifier),
+        });
+    }
     if let Some(rest) = value.strip_prefix("value_program:") {
         let (program, source) = rest.split_once(':')?;
         return Some(Projection::ValueProgram {
@@ -1148,6 +1201,9 @@ mod tests {
             "semv.sequence.v1:encode:x@expr0;match:_@expr0",
             "semv.sequence.v1:match:_@expr0",
             "semv.sequence.v1:encode:x@expr0;fixup:y@expr0",
+            "semv.sequence.v1:fixup:y@target:expr0",
+            "semv.sequence.v1:encode:x@target:expr0;fixup:y@target:expr0",
+            "semv.sequence.v1:encode:x@expr0;fixup:y@target:expr2.more",
             "semv.sequence.v1:encode:x@expr0;unknown:y@expr0",
             "semv.sequence.v1:encode:x@",
             &over_stages,
@@ -1182,5 +1238,46 @@ mod tests {
             ),
             CandidateRecipe::SemanticSequence { .. }
         ));
+    }
+
+    #[test]
+    fn target_fixup_sequence_preserves_stage_and_projection_kinds() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        let plan = "semv.sequence.v1:match:_@target:expr0;encode:word@literal:20081;fixup:fix.abs32@target:expr0";
+        let CandidateRecipe::SemanticSequence { stages } = super::parse_recipe(plan, &mut names)
+        else {
+            panic!("target fixup sequence must lower");
+        };
+        assert_eq!(stages.len(), 3);
+        assert!(!stages[0].fixup);
+        assert!(!stages[1].fixup);
+        assert!(stages[2].fixup);
+        assert_eq!(stages[0].inputs, vec![Projection::TargetExpression(0)]);
+        assert_eq!(stages[2].inputs, vec![Projection::TargetExpression(0)]);
+        assert!(matches!(
+            super::parse_projection("target:member1.fieldL", &mut names),
+            Some(Projection::TargetMember { operand: 1, .. })
+        ));
+    }
+
+    #[test]
+    fn bare_lea_symbol_candidate_is_an_executable_sequence() {
+        let mut registry = registry::ModuleRegistry::new();
+        families::register_motorola68000_family_stack(&mut registry);
+        let core = super::RuntimeModelCore::from_registry(&registry).unwrap();
+        let resolved = core.resolve_pipeline("m68020", None).unwrap();
+        let package = super::BinarySourcePackage::prepare(&core, &resolved).unwrap();
+        assert!(package.candidates.iter().any(|candidate| {
+            candidate.priority == 78
+                && package.names[usize::from(candidate.mnemonic)] == "lea"
+                && matches!(&candidate.recipe, CandidateRecipe::SemanticSequence { stages }
+                    if stages.iter().any(|stage| stage.fixup
+                        && stage.inputs == [Projection::TargetExpression(0)]))
+        }));
     }
 }

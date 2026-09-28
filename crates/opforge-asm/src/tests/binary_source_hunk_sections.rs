@@ -29,28 +29,66 @@ fn rust_hunk_source(source: &str) -> Vec<u8> {
         allocation.bss, 12,
         "BSS reservation and alignment round to Hunk words"
     );
-    assert!(
-        oracle
-            .chunks_exact(4)
-            .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
-            .collect::<Vec<_>>()
-            .windows(4)
-            .any(|words| words == [0x3ec, 1, 2, 0]),
-        "CODE must relocate its .long to the reordered DATA segment"
-    );
     oracle
+}
+
+fn contains_hunk_reloc(oracle: &[u8], target: u32, offset: u32) -> bool {
+    oracle
+        .chunks_exact(4)
+        .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
+        .collect::<Vec<_>>()
+        .windows(4)
+        .any(|words| words == [0x3ec, 1, target, offset])
 }
 
 #[test]
 fn compact_hunk_sections_live_rust_oracle() {
     let oracle = rust_hunk_oracle();
     assert!(oracle.starts_with(&[0, 0, 3, 0xf3]));
+    assert!(
+        contains_hunk_reloc(&oracle, 2, 0),
+        "CODE must relocate its .long to the reordered DATA segment"
+    );
 }
 
 #[test]
 #[ignore = "requires configured FS-UAE; compact native Hunk section output"]
 fn compact_hunk_sections_fs_uae() {
     native_hunk_source(SOURCE);
+}
+
+fn instruction_reference_source() -> String {
+    SOURCE.replace("entry: .long payload\n RTS", "entry: LEA payload,a1\n RTS")
+}
+
+#[test]
+fn compact_hunk_instruction_relocation_rust_oracle() {
+    let oracle = rust_hunk_source(&instruction_reference_source());
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let numeric =
+        vm::binary_source_package::BinarySourcePackage::prepare(&core, &resolved).unwrap();
+    let lea = numeric.names.iter().position(|name| name == "lea").unwrap() as u16;
+    let wire = prepare_package(&core, &resolved).unwrap();
+    let rows = u32::from_be_bytes(wire[16..20].try_into().unwrap()) as usize;
+    let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;
+    assert!((0..count).any(|index| {
+        let row = rows + index * 32;
+        u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == lea
+            && u16::from_be_bytes(wire[row + 6..row + 8].try_into().unwrap()) == 78
+            && wire[row + 5] == 9
+    }));
+    assert!(oracle.windows(2).any(|bytes| bytes == [0x43, 0xf9]));
+    assert!(
+        contains_hunk_reloc(&oracle, 2, 2),
+        "LEA's absolute-long extension must relocate to DATA"
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; package instruction output relocation"]
+fn compact_hunk_instruction_relocation_fs_uae() {
+    native_hunk_source(&instruction_reference_source());
 }
 
 fn self_host_constants_source() -> String {

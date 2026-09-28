@@ -46,6 +46,8 @@ SectionState
 	.res byte, sections.SCRATCH_BYTES
 RepeatState
 	.res byte, repetition.STATE_BYTES
+HunkInstructionRefs
+	.res word, 1
 	.endsection
 	.section code, kind=code
 	.pub
@@ -528,6 +530,7 @@ dispatch
 	bsr.w name
 	bne.w bad
 	; Name returns the numeric identity and qualifier without source reconstruction.
+	clr.w HunkInstructionRefs
 	lea SectionState, a4
 	cmpi.w #5, sections.State.Mode(a4)
 	bne.w instructionReady
@@ -536,13 +539,18 @@ dispatch
 	move.l d0, d5
 	movea.l a0, a5
 	jsr hunkrefs.tokens
-	tst.l d0
-	bne.w bad  ; instruction fixups are not represented in this Hunk subset
+	cmpi.l #hunkrefs.STATUS_BAD, d0
+	beq.w bad
+	move.w d0, HunkInstructionRefs
 	movea.l a5, a0
 	move.l d5, d0
 instructionReady
 	jsr encoding.encode
 	tst.l d0
+	bne.w bad
+	movea.l a1, a5
+	move.l d1, d5
+	bsr.w markInstructionRelocs
 	bne.w bad
 	movea.l a1, a0
 	move.l d1, d0
@@ -865,6 +873,72 @@ done
 	tst.l d0
 	rts
 	.bend  ; statement
+
+; Translate package-VM absolute-long output fixups to section-offset Hunk
+; records. Instruction bytes and their fixup offsets came from the selected
+; package program; no opcode or operand spelling is interpreted here.
+; A2=Context,D5=instruction bytes,A5=output. Preserves caller registers.
+markInstructionRelocs	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	lea SectionState, a4
+	cmpi.w #5, sections.State.Mode(a4)
+	bne.w good
+	cmpi.w #2, pkg.Context.Pass(a2)
+	bne.w good
+	jsr encoding.outputFixupCount
+	move.l d0, d6
+	cmpi.w #hunkrefs.STATUS_SECTION, HunkInstructionRefs
+	bne.w countReady
+	tst.l d6
+	beq.w bad  ; fail closed without a package-proven instruction fixup
+countReady
+	moveq #0, d7
+nextFixup
+	cmp.l d6, d7
+	bhs.w good
+	move.l d7, d0
+	jsr encoding.outputFixup
+	tst.l d0
+	bne.w bad
+	cmpi.l #4, d2
+	bne.w bad
+	move.l d1, d2
+	addq.l #4, d2
+	bcs.w bad
+	cmp.l d5, d2
+	bhi.w bad
+	cmp.l pkg.Context.Count(a2), d3
+	bhs.w bad
+	movea.l pkg.Context.SectionIds(a2), a0
+	moveq #0, d4
+	move.b 0(a0, d3.l), d4
+	beq.w bad
+	subq.l #1, d4
+	move.l d1, d2
+	add.l pkg.Context.Pc(a2), d2
+	bcs.w bad
+	move.l d4, d1
+	moveq #0, d0
+	move.w sections.State.HunkCurrent(a4), d0
+	movea.l Active, a0
+	movea.l Frame.AddReloc(a0), a1
+	move.l a1, d3
+	beq.w bad
+	jsr (a1)
+	tst.l d0
+	bne.w bad
+	addq.l #1, d7
+	bra.w nextFixup
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; markInstructionRelocs
 
 ; Record a section-relative absolute-long data reference. Other data values
 ; retain the existing scalar path. The packed expression has no source text.

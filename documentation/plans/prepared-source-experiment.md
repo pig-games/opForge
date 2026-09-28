@@ -222,7 +222,7 @@ Add `--compare-memory` for a separate instrumented accounting run. Use a fresh
 output directory. To compare an older release baseline, extract that commit's
 `native` tree into a temporary directory and pass `--native-source-root <root>`;
 producer and consumer formats must still match. Do not interpret an old MEM4 record
-with the current MEM7 reader.
+with a reader for a different telemetry schema; MEM8 is current.
 
 Keep the existing bounds: 10 seconds after guest `START`, 60 seconds per invocation
 and 150 seconds per batch. Never use the non-completing self-host case for routine

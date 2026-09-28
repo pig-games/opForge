@@ -10,11 +10,19 @@ The remaining frontend boundary work and next self-host frontier are tracked
 alongside the [native reset](native-runtime-reset.md#fixed-input-allocation-slice).
 Further performance shortcuts are deferred until completed native self-host proof.
 
-Current self-host frontier: the compact native CLI now accepts concrete code and
-data sections reopened by another module. A focused 68020 / 2 MiB run matches
-the Rust Hunk exactly. The isolated TKVM dependency graph moves past its former
-`.section data` rejection and next stops at preparation binding (step 2). This
-is an incomplete self-host probe; no final artifact or full-run timing is claimed.
+Current self-host frontier: the compact native CLI accepts concrete code and
+data sections reopened by another module, with a focused 68020 / 2 MiB Hunk
+matching Rust exactly. The earlier isolated TKVM graph's binding rejection was
+not a valid frontier: that subset lacked a root `.output` declaration and Rust
+also rejected it. In the valid 59-file self-host graph, a 2 MiB instrumented
+run reached `tkvm_runtime.asm` and showed an AmigaOS allocation refusal while
+growing a 64 KiB preparation block to 128 KiB. After exact sizing for fixed
+preparation and CLI discovery buffers, that rejection was not observed before
+the same full graph exceeded a bounded four-minute run. The
+small compact CLI search-roots case still matches Rust under 2 MiB. The next
+step is bounded progress localization and reducing the specific growing
+buffer's peak allocation. There is no completed native self-host artifact or
+full-run timing claim.
 
 ## Finding
 

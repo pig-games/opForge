@@ -284,12 +284,12 @@ fn compact_cli_fs_uae() {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh compact CLI memory telemetry");
-        assert_eq!(record.len(), 2084);
+        assert_eq!(record.len(), 2100);
         let words = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d37);
+        assert_eq!(words[0], 0x4d454d38);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocation capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -444,20 +444,27 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh self-host readiness telemetry");
-        assert_eq!(record.len(), 2084);
+        assert_eq!(record.len(), 2100);
         let words = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d37);
+        assert_eq!(words[0], 0x4d454d38);
         assert_eq!(words[1], 0, "rejected input releases tracked memory");
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);
         serde_json::json!({
             "peak_owned_bytes": words[2],
+            "free_at_entry_bytes": words[7],
+            "largest_at_entry_bytes": words[8],
             "source_bytes_read": words[15],
             "packed_source_bytes": words[14],
             "profiling_errors": words[29],
+            "allocation_failure_flags": words[29] & (64 | 128),
+            "allocation_failure_count": words[521],
+            "last_failed_request_bytes": words[522],
+            "last_failed_block_capacity_bytes": words[523],
+            "last_failed_block_used_bytes": words[524],
             "preparation_stage_calls": &words[42..48],
         })
     } else {
@@ -1653,12 +1660,12 @@ fn assert_binary_files(files: &[(&str, &str)], cpu: &str, oracle: Vec<u8>) -> se
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh memory telemetry capture");
-        assert_eq!(record.len(), 2084);
+        assert_eq!(record.len(), 2100);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d37);
+        assert_eq!(words[0], 0x4d454d38);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocated and freed capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -1839,12 +1846,12 @@ fn assert_native_files_rejection(files: &[(&str, &str)], cpu: &str, diagnostic: 
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh negative-path memory telemetry");
-        assert_eq!(record.len(), 2084);
+        assert_eq!(record.len(), 2100);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d37);
+        assert_eq!(words[0], 0x4d454d38);
         assert!(words[28] > 0, "E-clock initialized on rejection path");
         assert_eq!(words[29] & !16, 0, "only incomplete preparation is allowed");
         assert_eq!(words[1], 0, "failure releases all owned blocks");

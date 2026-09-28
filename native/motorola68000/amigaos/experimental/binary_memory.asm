@@ -10,6 +10,8 @@ Capacity	.long ?
 Used	.long ?
 .endstruct
 LIMIT = 1048576
+LIMIT_FAILURE = 64
+ALLOC_FAILURE = 128
 	.section code, kind=code
 ; A0=zero-initialized Block, D0=minimum capacity. Preserves other registers.
 ; D0/CCR=status. Growth doubles from 256 bytes, capped at LIMIT. Old storage
@@ -34,6 +36,7 @@ good
 	moveq #0, d0
 	bra.w done
 bad
+	.MEMORY_FAILURE #LIMIT_FAILURE, d0, Block.Capacity(a4), Block.Used(a4)
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d7/a0-a6
@@ -60,6 +63,7 @@ good
 	moveq #0, d0
 	bra.w done
 bad
+	.MEMORY_FAILURE #LIMIT_FAILURE, d0, Block.Capacity(a4), Block.Used(a4)
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d7/a0-a6
@@ -115,6 +119,7 @@ copied
 	moveq #0, d0
 	rts
 bad
+	.MEMORY_FAILURE #ALLOC_FAILURE, d4, Block.Capacity(a4), Block.Used(a4)
 	moveq #1, d0
 	rts
 	.bend  ; grow

@@ -91,6 +91,9 @@ allocate .block
 release .block
     rts
 .bend
+failure .block
+    rts
+.bend
 phase .block
     rts
 .bend
@@ -137,6 +140,7 @@ tokenScopeClose .block
         r#"
     .MEMORY_ALLOC d1
     .MEMORY_FREE d2
+    .MEMORY_FAILURE #128, d3, d4, d5
     .MEMORY_PHASE #2
     .MEMORY_SAVE a1
     .MEMORY_LAYOUT d3, d4, #4096

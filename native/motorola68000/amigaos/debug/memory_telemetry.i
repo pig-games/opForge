@@ -57,6 +57,24 @@ MEMORY_FREE	.macro amount
 .endif
 .endif
 .endmacro
+
+; Mark a bounded reserve failure (64) or Exec allocation failure (128).
+; The call is compiled out of ordinary builds and preserves the failed status.
+MEMORY_FAILURE	.macro kind, request, capacity, used
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	movem.l d0-d3, -(sp)
+	move.l .request, d1
+	move.l .capacity, d2
+	move.l .used, d3
+	move.l .kind, d0
+	jsr memory_profile.failure
+	movem.l (sp)+, d0-d3
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
 MEMORY_PHASE	.macro value
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY

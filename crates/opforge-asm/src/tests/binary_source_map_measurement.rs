@@ -348,13 +348,13 @@ fn run_measurement(
         let record = run
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
-            .expect("fresh MEM7 record");
-        assert_eq!(record.len(), 2084);
+            .expect("fresh MEM8 record");
+        assert_eq!(record.len(), 2100);
         let words = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d37);
+        assert_eq!(words[0], 0x4d454d38);
         assert_eq!(words[1], 0);
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);

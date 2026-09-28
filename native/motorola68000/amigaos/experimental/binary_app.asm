@@ -429,7 +429,7 @@ prepare	.block
 	addi.l #IO_SCRATCH_BYTES, d0
 	bcs.w closeBad
 	lea PrepBlock, a0
-	jsr memory.reserve
+	jsr memory.reserveExact
 	bne.w closeBad
 	lea PrepBlock, a0
 	movea.l memory.Block.Pointer(a0), a1
@@ -485,7 +485,7 @@ readManifest
 	move.l d0, SearchPathCount
 	move.l #discovery.SCRATCH_BYTES+DISCOVERY_LIMIT*PATH_BYTES, d0
 	lea DiscoveryBlock, a0
-	jsr memory.reserve
+	jsr memory.reserveExact
 	bne.w closeBad
 	movea.l memory.Block.Pointer(a0), a1
 	move.l a1, DiscoveryScratch
@@ -521,7 +521,7 @@ searchRoot
 	move.l d0, IncludeRootsRemaining
 	lsl.l #8, d0
 	lea RootPaths, a0
-	jsr memory.reserve
+	jsr memory.reserveExact
 	bne.w closeBad
 	move.l RootCount, d0
 	lsl.l #8, d0
@@ -554,13 +554,13 @@ sourceCountReady
 spanCapacityReady
 	mulu.w #SPAN_BYTES, d0
 	lea FileSpans, a0
-	jsr memory.reserve
+	jsr memory.reserveExact
 	bne.w closeBad
 	tst.l GraphMode
 	beq.w manifestReady
 	move.l #frontend.GRAPH_BYTES, d0
 	lea GraphBlock, a0
-	jsr memory.reserve
+	jsr memory.reserveExact
 	bne.w closeBad
 	movea.l memory.Block.Pointer(a0), a1
 	lea Front, a0
@@ -568,14 +568,14 @@ spanCapacityReady
 	bne.w closeBad
 	move.l #frontend.GRAPH_SPAN_BYTES, d0
 	lea GraphSpans, a0
-	jsr memory.reserve
+	jsr memory.reserveExact
 	bne.w closeBad
 manifestReady
 	tst.l DiscoverMode
 	beq.w filesReady
 	move.l #declarations.SCRATCH_BYTES, d0
 	lea DeclarationBlock, a0
-	jsr memory.reserve
+	jsr memory.reserveExact
 	bne.w closeBad
 	movea.l memory.Block.Pointer(a0), a0
 	jsr declarations.begin
@@ -854,6 +854,9 @@ completionBad
 closeBad
 	; execute reports the still-live source path, then performs all cleanup.
 bad
+	; Retain partial packed-record and source counts in debug telemetry on a
+	; preparation failure, before execute releases the owned buffers.
+	.MEMORY_LAYOUT #0, Records+memory.Block.Used, SourceBytes
 	moveq #1, d0
 	rts
 	.bend  ; prepare
@@ -865,7 +868,7 @@ prepareCliInputs	.block
 	move.l #1, DiscoverMode
 	move.l #discovery.SCRATCH_BYTES+DISCOVERY_LIMIT*PATH_BYTES, d0
 	lea DiscoveryBlock, a0
-	jsr memory.reserve
+	jsr memory.reserveExact
 	bne.w bad
 	movea.l memory.Block.Pointer(a0), a1
 	move.l a1, DiscoveryScratch
@@ -885,7 +888,7 @@ prepareCliInputs	.block
 	move.l RootCount, d0
 	lsl.l #8, d0
 	lea RootPaths, a0
-	jsr memory.reserve
+	jsr memory.reserveExact
 	bne.w bad
 	move.l RootCount, d0
 	lsl.l #8, d0

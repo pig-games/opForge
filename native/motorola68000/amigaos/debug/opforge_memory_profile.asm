@@ -34,9 +34,13 @@ Opcodes	.res TOKEN_OPCODE_COUNT*4
 Pairs	.res TOKEN_OPCODE_COUNT*TOKEN_OPCODE_COUNT*4
 TokenWork	.res 7*4
 TokenElapsed	.res 2*8
+Failures	.long ?
+LastFailRequest	.long ?
+LastFailCapacity	.long ?
+LastFailUsed	.long ?
 	.endstruct
-RECORD_BYTES = Fields.TokenElapsed+16
-RECORD_MAGIC = $4d454d37
+RECORD_BYTES = Fields.LastFailUsed+4
+RECORD_MAGIC = $4d454d38
 	.section data, kind=data
 	.priv
 Path	.byte "Work:memory.bin", 0
@@ -85,6 +89,21 @@ release	.block
 	move.w (sp)+, ccr
 	rts
 	.bend  ; release
+; D0=64 for block limit, 128 for Exec allocation; D1=requested bytes,
+; D2=existing block capacity, D3=used bytes. Passive ABI.
+failure	.block
+	move.w ccr, -(sp)
+	move.l a0, -(sp)
+	lea Record, a0
+	or.l d0, Fields.Error(a0)
+	addq.l #1, Fields.Failures(a0)
+	move.l d1, Fields.LastFailRequest(a0)
+	move.l d2, Fields.LastFailCapacity(a0)
+	move.l d3, Fields.LastFailUsed(a0)
+	movea.l (sp)+, a0
+	move.w (sp)+, ccr
+	rts
+	.bend  ; failure
 ; D0=0 start,1 prepared/reclaimed,2 assembled,3 cleaned. Passive ABI.
 phase	.block
 	move.w ccr, -(sp)

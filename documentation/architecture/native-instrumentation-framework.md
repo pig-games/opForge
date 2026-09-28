@@ -58,15 +58,15 @@ the current framework, not a mandate for a repository-wide instrumentation rewri
 ## Bounded memory accounting
 
 `debug/memory_telemetry.i` supplies `MEMORY_ALLOC`, `MEMORY_FREE`, `MEMORY_PHASE`,
-`MEMORY_LAYOUT`, `MEMORY_WORK`, `MEMORY_CLOCK`, `MEMORY_STAGE` and terminal `MEMORY_SAVE`. Both `OPFORGE_DEBUG_CONTRACTS` and
+`MEMORY_LAYOUT`, `MEMORY_WORK`, `MEMORY_CLOCK`, `MEMORY_STAGE`, `MEMORY_FAILURE` and terminal `MEMORY_SAVE`. Both `OPFORGE_DEBUG_CONTRACTS` and
 `OPFORGE_MEMORY_TELEMETRY` are required; missing either gate emits no calls, imports
 or storage. These macros and the dedicated `debug.amigaos.memory_profile` owner
 preserve registers/CCR, never use request/output/error buffers, and keep a bounded
-2084-byte record. The terminal export writes that record separately as `Work:memory.bin`;
+2100-byte record. The terminal export writes that record separately as `Work:memory.bin`;
 a missing/partial record fails the host accounting check. Ordinary release builds
 perform no accounting I/O.
 
-The current MEM7 record starts with sixteen big-endian u32 fields: magic, live capacity, peak live
+The current MEM8 record (magic `0x4D454D38`) starts with sixteen big-endian u32 fields: magic, live capacity, peak live
 capacity, cumulative allocated, cumulative freed, live after preparation, cumulative
 freed before assembly, entry free memory, entry largest free block, Exec version,
 live after assembly, live after cleanup, DOS version, retained runtime-prefix bytes,
@@ -81,17 +81,22 @@ are other preparation, package setup, tokenization, binding/raw records, express
 preparation, and runtime finalization. `MEMORY_STAGE` changes the active stage;
 clock 0 initializes it and clock 1 flushes and stops it. The stage sum must agree
 with the coarse preparation clock within 40 ms. All values are big-endian.
+Error bits 64 and 128 distinguish a bounded block-reserve rejection from an
+Exec allocation failure. Four trailing u32 fields record the failure count,
+last requested allocation size and that block's previous capacity and used bytes. They are
+recorded only in instrumented builds.
 
 The profiler uses [timer.device ReadEClock](https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node04FB.html)
 for short intervals. Terminal save closes the device and deletes its request and
 message port, including on source rejection. These OS allocations are outside
 assembler-owned allocation counters. Error bits are 1 setup failure, 2 invalid
 stage, 4 changed frequency, 8 arithmetic overflow, and 16 incomplete preparation
-at terminal save. Positive runs require zero flags; rejection checks permit only
-16. Stage totals include probe overhead, with no calibration subtraction; compare
+at terminal save. Positive runs require zero flags; ordinary syntax-rejection
+checks permit 16. Allocation failures additionally set 64 or 128. Stage totals
+include probe overhead, with no calibration subtraction; compare
 coarse phases against the preceding accounting baseline before interpreting rank.
 
-MEM7 adds 21 opcode counters at byte 192, 441 ordered adjacent-opcode pairs at
+MEM8 retains 21 opcode counters at byte 192, 441 ordered adjacent-opcode pairs at
 276, and seven work counters at 2040: line bytes, committed tokens, committed
 lexeme bytes, source-byte reads, and taken EOL/byte/class branches. Two u64
 E-clock totals at 2068 measure scanner/emission, numeric normalization and composed-name helpers and nested token commits.

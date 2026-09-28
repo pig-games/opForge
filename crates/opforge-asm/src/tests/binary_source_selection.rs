@@ -28,6 +28,9 @@ const FORWARD_ABSOLUTE_LEA: &str =
 const BACKWARD_ABSOLUTE_LEA: &str =
     ".cpu m68020\n.org 0\ntarget:\n .byte 1\n lea target,a1\n.end\n";
 const NUMERIC_ABSOLUTE_LEA: &str = ".cpu m68020\n.org 0\n lea 8,a1\n.end\n";
+const FORWARD_ABSOLUTE_MOVE: &str =
+    ".cpu m68020\n.org 0\n move.l target,d0\n rts\ntarget:\n .long 1\n.end\n";
+const NUMERIC_ABSOLUTE_MOVE: &str = ".cpu m68020\n.org 0\n move.l 8,d0\n.end\n";
 const MOVEM_WORD_LIST: &str = ".cpu m68020\n.org 0\n movem.w d0/a7, -(a7)\n.end\n";
 const MOVEM_SINGLE: &str = ".cpu m68020\n.org 0\n movem.l d2, -(sp)\n.end\n";
 const MOVEM_DUPLICATE: &str = ".cpu m68020\n.org 0\n movem.l d2/d2, -(sp)\n.end\n";
@@ -102,6 +105,26 @@ fn binary_selection_backward_absolute_lea_native_parity_fs_uae() {
 #[ignore = "requires configured FS-UAE; package fixup stage without relocation"]
 fn binary_selection_numeric_absolute_lea_native_parity_fs_uae() {
     assert_binary_source(NUMERIC_ABSOLUTE_LEA.into(), "m68020".into());
+}
+
+#[test]
+fn binary_selection_forward_absolute_move_rust_oracle() {
+    assert_eq!(
+        oracle_bytes(FORWARD_ABSOLUTE_MOVE),
+        [0x20, 0x39, 0, 0, 0, 8, 0x4e, 0x75, 0, 0, 0, 1]
+    );
+}
+
+#[test]
+#[ignore = "known compact-native MOVE.L absolute-operand rejection; requires FS-UAE"]
+fn binary_selection_forward_absolute_move_native_parity_fs_uae() {
+    assert_binary_source(FORWARD_ABSOLUTE_MOVE.into(), "m68020".into());
+}
+
+#[test]
+#[ignore = "known compact-native MOVE.L absolute-operand rejection; requires FS-UAE"]
+fn binary_selection_numeric_absolute_move_native_parity_fs_uae() {
+    assert_binary_source(NUMERIC_ABSOLUTE_MOVE.into(), "m68020".into());
 }
 
 #[test]

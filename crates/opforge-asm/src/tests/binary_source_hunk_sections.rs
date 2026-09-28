@@ -91,6 +91,29 @@ fn compact_hunk_instruction_relocation_fs_uae() {
     native_hunk_source(&instruction_reference_source());
 }
 
+fn bss_instruction_reference_source() -> String {
+    SOURCE.replace(
+        "entry: .long payload\n RTS",
+        "entry: MOVE.L reserved,d0\n RTS",
+    )
+}
+
+#[test]
+fn compact_hunk_bss_instruction_relocation_rust_oracle() {
+    let oracle = rust_hunk_source(&bss_instruction_reference_source());
+    assert!(oracle.windows(2).any(|bytes| bytes == [0x20, 0x39]));
+    assert!(
+        contains_hunk_reloc(&oracle, 1, 2),
+        "MOVE.L's absolute-long source must relocate to BSS"
+    );
+}
+
+#[test]
+#[ignore = "known compact-native MOVE.L absolute-operand rejection; requires FS-UAE"]
+fn compact_hunk_bss_instruction_relocation_fs_uae() {
+    native_hunk_source(&bss_instruction_reference_source());
+}
+
 fn self_host_constants_source() -> String {
     SOURCE.replace(
         ".cpu m68020\n",

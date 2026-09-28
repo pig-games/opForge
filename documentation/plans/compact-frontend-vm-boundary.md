@@ -1117,3 +1117,15 @@ whole-file timing is claimed. The next focused case should establish the
 Rust relocation form and whether package preparation or native execution
 blocks this operand shape. The ordinary 68020/2 MiB full-input memory ceiling
 remains unproven after this expanded-profile attempt.
+
+A focused live Rust Hunk oracle for `move.l reserved,d0` confirms a
+CODE-to-BSS relocation at the instruction extension's offset 2. The same
+source explicitly exits 20 in compact native at that instruction. Flat
+`move.l target,d0` and even `move.l 8,d0` also explicitly exit 20, so this
+frontier precedes Hunk relocation and symbol resolution. Diagnostic-only
+package variants that exclude unsupported candidates, the fixup stage, and
+the match stage did not produce native output; those variants were removed.
+The precise native selector/projection/encoding rejection point is not yet
+established. The next investigation should observe the failing boundary in
+the real guest before changing its semantics. The focused native parity tests
+are retained as ignored known-failure cases, not as passing evidence.

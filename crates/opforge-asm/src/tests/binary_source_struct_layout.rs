@@ -69,6 +69,34 @@ fn package_layout_source() -> String {
     format!("{package}\n.module app\n.cpu m68020\n.use experimental.amigaos.binary_package as pkg\n.long pkg.PARAMETER_BYTES,pkg.Context.High,pkg.Context.Package,pkg.Parameter.Low,pkg.Parameter.High\n.endmodule\n")
 }
 
+const LONG_IMPORTED_FIELD: &str = r#".module experimental.amigaos.binary_ordered_records
+.cpu m68020
+.pub
+Frame .struct
+OrderCount .long ?
+SourceCount .long ?
+SourceSpans .long ?
+SourceSpanCount .long ?
+.endstruct
+.endmodule
+.module app
+.cpu m68020
+.use experimental.amigaos.binary_ordered_records as ordered
+.byte ordered.Frame.SourceSpanCount
+.endmodule
+"#;
+
+#[test]
+fn compact_struct_long_imported_field_rust_oracle() {
+    assert_eq!(oracle(LONG_IMPORTED_FIELD, "68020").unwrap(), [12]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; import binding beyond old 63-byte path cap"]
+fn compact_struct_long_imported_field_fs_uae() {
+    native(LONG_IMPORTED_FIELD, "m68020");
+}
+
 #[test]
 fn compact_package_layout_rust_oracle() {
     assert_eq!(

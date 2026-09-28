@@ -262,7 +262,7 @@ selectedName
 	bsr.w entryName
 	add.l d0, d3
 	addq.l #1, d3
-	cmpi.l #63, d3
+	cmpi.l #layout.NAME_BYTES-1, d3
 	bhi.w bad
 	lea layout.BUFFER(a6), a1
 	move.l d0, d1
@@ -1088,7 +1088,7 @@ aliasLoop
 	move.l d6, d1
 	sub.w d5, d1
 	add.w d0, d1
-	cmpi.w #63, d1
+	cmpi.w #layout.NAME_BYTES-1, d1
 	bhi.w bad
 	lea layout.BUFFER(a6), a1
 	move.l d0, d2
@@ -1256,7 +1256,7 @@ parameterItem
 	bsr.w entryName
 	add.l d0, d3
 	addq.l #1, d3
-	cmpi.l #63, d3
+	cmpi.l #layout.NAME_BYTES-1, d3
 	bhi.w parametersBad
 	lea layout.BUFFER(a6), a3
 	move.l d0, d1
@@ -1740,7 +1740,7 @@ wildcardItem
 	move.l d0, d4
 	add.w d6, d4
 	addq.w #1, d4
-	cmpi.w #63, d4
+	cmpi.w #layout.NAME_BYTES-1, d4
 	bhi.w wildcardBad
 	lea layout.BUFFER(a6), a1
 copyWildcardModule

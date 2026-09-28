@@ -26,6 +26,12 @@ DISCOVERY_LIMIT = 128
 PATH_BYTES = 256
 DOS_OUTPUT = -60
 DOS_WRITE = -48
+STEP_ORDER = 1
+STEP_BIND = 2
+STEP_MATERIALIZE = 3
+STEP_INDEX = 4
+STEP_SELECT = 5
+STEP_PARAMETERS = 6
 Span	.struct
 Start	.long ?
 End	.long ?
@@ -111,6 +117,7 @@ configured
 	move.l d0, DosBase
 	.MEMORY_CLOCK DosBase, #0
 	.MEMORY_STAGE #1
+	clr.w PrepStep
 	bsr.w prepare
 	bne.w failed
 	.MEMORY_CLOCK DosBase, #1
@@ -211,7 +218,20 @@ located
 	tst.l InAssembly
 	bne.w done
 	tst.l SourceOrdinal
+	bne.w sourcePath
+	tst.w PrepStep
 	beq.w done
+	moveq #0, d0
+	move.w PrepStep, d0
+	lea FailurePrepStepValue, a0
+	bsr.w hexField
+	move.l d4, d1
+	move.l #FailurePrepStep, d2
+	move.l #FailurePrepStepEnd, d3
+	sub.l d2, d3
+	jsr DOS_WRITE(a6)
+	bra.w done
+sourcePath
 	; Preparation still owns the current path for diagnostics, not execution.
 	lea SourcePath, a0
 	moveq #0, d3
@@ -677,6 +697,7 @@ graphReady
 	beq.w orderReady
 	tst.l OrderedCount
 	bne.w orderReady
+	move.w #STEP_ORDER, PrepStep
 	lea GraphSpans, a0
 	movea.l memory.Block.Pointer(a0), a1
 	move.l memory.Block.Capacity(a0), d0
@@ -685,6 +706,7 @@ graphReady
 	bne.w completionBad
 	move.l d1, OrderedCount
 orderReady
+	move.w #STEP_BIND, PrepStep
 	lea Records, a0
 	movea.l memory.Block.Pointer(a0), a1
 	move.l memory.Block.Used(a0), d0
@@ -694,6 +716,7 @@ orderReady
 	move.l frontend.Frame.NameCount(a0), NameCount
 	tst.l GraphMode
 	beq.w selected
+	move.w #STEP_MATERIALIZE, PrepStep
 	lea OrderFrame, a0
 	move.l OrderedCount, ordered.Frame.OrderCount(a0)
 	move.l SourceCount, ordered.Frame.SourceCount(a0)
@@ -709,6 +732,7 @@ orderReady
 	bne.w completionBad
 	move.l ordered.Frame.OriginCount(a0), OriginCount
 selected
+	move.w #STEP_INDEX, PrepStep
 	lea Records, a0
 	movea.l memory.Block.Pointer(a0), a1
 	move.l memory.Block.Used(a0), d0
@@ -719,6 +743,7 @@ selected
 	beq.w blocksSelected
 	tst.l GraphMode
 	beq.w blocksSelected
+	move.w #STEP_SELECT, PrepStep
 	lea Records, a0
 	movea.l memory.Block.Pointer(a0), a1
 	move.l memory.Block.Used(a0), d0
@@ -726,6 +751,7 @@ selected
 	jsr frontend.selectBlocks
 	bne.w completionBad
 blocksSelected
+	move.w #STEP_PARAMETERS, PrepStep
 	lea Front, a0
 	jsr frontend.parameterBytes
 	move.l d0, ParameterBytes
@@ -1464,6 +1490,9 @@ FailureFile	.byte "00000000"
 	.byte ", line "
 FailureLine	.byte "00000000", "]", 10
 FailureMessageEnd
+FailurePrepStep	.byte "preparation step: "
+FailurePrepStepValue	.byte "00000000", 10
+FailurePrepStepEnd
 FailurePath	.byte "source: "
 FailureNewline	.byte 10
 	.endsection
@@ -1521,6 +1550,7 @@ IncludeHandle	.res long, 1
 SourceOrdinal	.res long, 1
 SourceLine	.res long, 1
 InAssembly	.res long, 1
+PrepStep	.res word, 1
 FileSpans	.res byte, memory.Block.Used+4
 ManifestWord	.res word, 1
 SourcePath	.res byte, 256

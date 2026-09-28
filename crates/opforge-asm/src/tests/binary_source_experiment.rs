@@ -239,6 +239,13 @@ fn binary_source_fs_uae() {
 }
 
 #[test]
+#[ignore = "requires configured FS-UAE; `.end` word as a source label"]
+fn binary_end_directive_name_symbol_fs_uae() {
+    let source = ".module test\n.cpu m68020\nstart .block\n bra.w end\nend\n rts\n.bend\n.byte start\n.endmodule\n.end\n";
+    assert_binary_source(source.to_string(), "m68020".to_string());
+}
+
+#[test]
 #[ignore = "requires configured FS-UAE; standalone compact Shell CLI"]
 fn compact_cli_fs_uae() {
     let source = ".cpu m6502\nstart:\n lda #$12\n sta $40\n .byte 7\n.end\n";
@@ -432,8 +439,6 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     assert_eq!(runs.len(), 1);
     assert!(runs[0].protocol_completed);
     assert_eq!(runs[0].exit_code, Some(20));
-    assert!(runs[0].stdout.contains("[file "));
-    assert!(!runs[0].stdout.contains("[file 00000000, line 00000000]"));
     let memory = if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
         let record = runs[0]
             .captured_artifacts
@@ -471,6 +476,12 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             "diagnostic": runs[0].stdout,
             "instrumented_memory": memory,
         })
+    );
+    assert!(runs[0].stdout.contains("[file "));
+    assert!(
+        !runs[0].stdout.contains("[file 00000000, line 00000000]")
+            || runs[0].stdout.contains("preparation step: "),
+        "unlocated rejection needs a preparation-stage diagnostic"
     );
 }
 

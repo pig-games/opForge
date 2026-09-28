@@ -1032,3 +1032,34 @@ The unchanged five-byte compact CLI control also matches Rust on native, with
 one 0.505-second START-to-DONE observation and 95,436 linked reserved bytes.
 There is no matched pre-change timing for this control, so no speed ratio is
 claimed.
+
+## Package-word label checkpoint
+
+The next self-host rejection was a package-word collision: the source declares
+an unindented `end` label in `binary_scopes.asm`, while the BSP6 dictionary also
+owns `end` for `.end`. The packed writer now distinguishes a dotted statement
+head from an ordinary name. A column-one name binds as a source declaration;
+an operand using the `.end` spelling binds as a source reference, including a
+forward reference. A focused m68020 / 2 MiB FS-UAE run emitted exactly the
+live Rust bytes for `bra.w end` followed by an `end` label and retained working
+`.cpu`, `.byte` and `.end` directives. Other package-word collisions are not
+claimed as supported: `.res long` shows why operand roles cannot all be
+redirected to source symbols.
+
+The expanded-memory bounded self-host probe passes the previous line-573
+frontier and reads the whole 59-file source graph, but still rejects during
+late preparation, before output or native self-host timing. The new provisional
+failure diagnostic reports preparation step 2, the `frontend.complete` call
+that resolves scoped identities and imports. Its tracked peak is 3,040,608
+bytes with instrumentation enabled; that is not a 2 MiB feasibility result.
+The ordinary 68020 / 2 MiB profile remains blocked by a separate memory
+ceiling. The current bounded run rejects at file ordinal 40, line 67 with a
+damaged source-path diagnostic after a 1,044,064-byte tracked owned peak;
+it does not reach `frontend.complete`. The earlier checkpoint rejected at
+`tkvm_runtime.asm` line 109. An
+exact-size fixed preparation allocation was tried and reverted: it saved only
+1,576 peak tracked bytes in the expanded-memory run and the 2 MiB self-host
+probe timed out at its five-minute bound. No performance gain or completed
+self-host parity is claimed. The next focused step is to identify the first
+failing scoped identity in `frontend.complete`, then revisit the 2 MiB memory
+ceiling with a measured allocation breakdown.

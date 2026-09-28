@@ -64,7 +64,8 @@ Length	.long ?
 ; NameDirective is a package-owned directive ID, or zero to disable numeric-name
 ; operands. Its first operand uses the same binder as identifier spellings.
 ; Result: [u8(total length-1), u8(flags), u16 source line], followed by
-; Binder input D2 is 1 for the leading name token, otherwise 0.
+; Binder input D2 is 1 for the leading name token, 2 for a dotted
+; statement head, otherwise 0.
 ; The callback returns the existing D2 qualifier.
 ; TKVM kind bytes: kinds 0/1 have u16 ID,u8 qualifier; kind2 has u32 value;
 ; kind 3 has [u8 decoded byte count, decoded bytes]. Kinds 4..40 have no
@@ -251,6 +252,26 @@ sizeReady
 	cmpi.l #4, d2
 	seq d2
 	andi.l #1, d2
+	tst.l d2
+	bne.w bindName
+	cmpa.l Frame.Tokens(a5), a2
+	beq.w bindName
+	cmpi.w #7, Token.Kind-20(a2)
+	bne.w bindName
+	move.l a3, d2
+	sub.l Frame.Output(a5), d2
+	cmpi.l #5, d2
+	beq.w directiveName
+	cmpi.l #9, d2
+	beq.w directiveName
+	cmpi.l #10, d2
+	bne.w operandName
+directiveName
+	moveq #2, d2
+	bra.w bindName
+operandName
+	moveq #0, d2
+bindName
 	jsr (a6)
 	tst.l d0
 	bne.w bindFailed

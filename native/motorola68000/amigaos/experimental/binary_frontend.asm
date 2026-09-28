@@ -1451,6 +1451,13 @@ bind	.block
 	move.l d2, d5
 	tst.l d2
 	beq.w packageName
+	cmpi.l #2, d2
+	beq.w packageName
+	; Column-one names are declarations even when their spelling also occurs
+	; in the package dictionary (for example, an `end` branch label).
+	movea.l LINE_FRAME+writer.Frame.Output(a6), a4
+	btst #0, 1(a4)
+	beq.w findSymbol
 	movea.l a6, a4
 	adda.l #SCOPE_STATE+scopes.STRUCT_STATE, a4
 	tst.w structs.State.Active(a4)
@@ -1484,6 +1491,14 @@ findPackage
 	bne.w advance
 	moveq #0, d1
 	move.w 2(a3), d1
+	; The shared `.end` ID is a directive only in statement-head position.
+	; A bare `end` operand can be a forward source-symbol reference.
+	tst.l d5
+	bne.w packageBound
+	movea.l PACKAGE_BASE(a6), a4
+	cmp.w package.Header.EndDirective(a4), d1
+	beq.w findSymbol
+packageBound
 	moveq #0, d2
 	move.b 4(a3), d2
 	bra.w good

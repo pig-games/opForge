@@ -545,6 +545,40 @@ fn compact_cli_cpu(
 }
 
 #[test]
+#[ignore = "requires configured FS-UAE; discovery rejection names its source path"]
+fn compact_cli_discovery_failure_path_fs_uae() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_files_from_env(
+        &workspace_root(),
+        &package,
+        &[
+            (
+                "entry.asm",
+                b".module main\n.cpu m68020\n.unsupported\n.endmodule\n",
+            ),
+            ("debug/marker.i", b"; include root exists\n"),
+        ],
+        &[],
+        &["debug"],
+        None,
+        false,
+    )
+    .expect("fresh discovery rejection");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert!(runs[0].protocol_completed && !runs[0].success);
+    assert_eq!(runs[0].exit_code, Some(20));
+    assert!(
+        runs[0].stdout.contains("source: Work:sources/entry.asm"),
+        "{}",
+        runs[0].stdout
+    );
+}
+
+#[test]
 fn binary_graph_rust_ordering() {
     assert_eq!(oracle(DIAMOND).unwrap(), [1, 2, 3, 4]);
     assert_eq!(oracle(ENTRY_SIBLINGS).unwrap(), [1, 2]);

@@ -232,9 +232,22 @@ located
 	jsr DOS_WRITE(a6)
 	bra.w done
 sourcePath
-	; Preparation still owns the current path for diagnostics, not execution.
+	; Discovery ordinals name immutable candidate paths. The working path can
+	; change while nested includes and selected files are being prepared.
 	lea SourcePath, a0
 	moveq #0, d3
+	tst.l DiscoverMode
+	beq.w pathLength
+	tst.l DiscoveryPaths
+	beq.w pathLength
+	move.l SourceOrdinal, d0
+	beq.w pathLength
+	cmp.l CandidateCount, d0
+	bhi.w pathLength
+	subq.l #1, d0
+	lsl.l #8, d0
+	movea.l DiscoveryPaths, a0
+	adda.l d0, a0
 pathLength
 	tst.b 0(a0, d3.w)
 	beq.w pathReady
@@ -244,12 +257,13 @@ pathLength
 	bra.w done
 pathReady
 	move.l d3, d5
+	move.l a0, d6
 	move.l d4, d1
 	move.l #FailurePath, d2
 	moveq #8, d3
 	jsr DOS_WRITE(a6)
 	move.l d4, d1
-	move.l #SourcePath, d2
+	move.l d6, d2
 	move.l d5, d3
 	jsr DOS_WRITE(a6)
 	move.l d4, d1

@@ -20,6 +20,9 @@ mod constants;
 #[path = "binary_source_conditionals.rs"]
 mod conditionals;
 
+#[path = "binary_source_loops.rs"]
+mod loops;
+
 #[path = "binary_source_template_storage.rs"]
 mod template_storage;
 
@@ -80,7 +83,7 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BSP5");
+        assert_eq!(&bytes[..4], b"BSP6");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
@@ -89,8 +92,10 @@ fn binary_source_packages_prepare() {
         let fragments = long(&bytes, 116);
         let fragment_bytes = long(&bytes, 120);
         assert!(fragments >= runtime_bytes);
-        assert_eq!(&bytes[fragments..fragments + fragment_bytes],
-            package::package::macro_fragment_program());
+        assert_eq!(
+            &bytes[fragments..fragments + fragment_bytes],
+            package::package::macro_fragment_program()
+        );
 
         let rows = long(&bytes, 16);
         let row_count = long(&bytes, 20);
@@ -176,7 +181,11 @@ fn binary_source_packages_prepare() {
         let macro_spelling = long(&bytes, 108);
         let macro_spelling_bytes = long(&bytes, 112);
         assert_eq!(u16::from_be_bytes(bytes[96..98].try_into().unwrap()), 2);
-        assert_eq!(u16::from_be_bytes(bytes[98..100].try_into().unwrap()), 0);
+        let for_id = u16::from_be_bytes(bytes[66..68].try_into().unwrap());
+        let endfor_id = u16::from_be_bytes(bytes[98..100].try_into().unwrap());
+        let name_count = u16::from_be_bytes(bytes[62..64].try_into().unwrap());
+        assert!(for_id < name_count && endfor_id < name_count);
+        assert_ne!(for_id, endfor_id);
         let expected_call = package::macro_descriptor_program(false);
         let expected_header = package::macro_descriptor_program(true);
         let expected_packed = package::packed_macro_call_program();

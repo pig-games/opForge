@@ -80,6 +80,10 @@ directive
 	beq.w copyRest
 	cmp.w package.Header.EndDirective(a2), d7
 	beq.w copyRest
+	cmp.w package.Header.ForDirective(a2), d7
+	beq.w oneScalar
+	cmp.w package.Header.EndforDirective(a2), d7
+	beq.w noOperands
 	cmp.w package.Header.OrgDirective(a2), d7
 	beq.w scalar
 	cmp.w package.Header.AlignDirective(a2), d7
@@ -108,6 +112,10 @@ scalar
 oneScalar
 	bsr.w compile
 	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	bra.w complete
+noOperands
 	cmpa.l a1, a0
 	bne.w bad
 	bra.w complete
@@ -442,7 +450,7 @@ done
 	rts
 	.bend  ; validateNameSequence
 
-; A0=name token,A1=end,A2=BSP5 package. D0=0 known register, 1 other,
+; A0=name token,A1=end,A2=BSP6 package. D0=0 known register, 1 other,
 ; 2 malformed package; all other registers preserved.
 packageRegister	.block
 	movem.l d1-d4/a3, -(sp)

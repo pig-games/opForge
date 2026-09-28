@@ -27,7 +27,7 @@ EndDirective	.word ?
 CpuName	.word ?
 NameCount	.word ?
 LittleEndian	.word ?
-Reserved	.word ?
+ForDirective	.word ?
 MaxAddress	.long ?
 RuntimeBytes	.long ?
 AlignDirective	.word ?
@@ -37,7 +37,7 @@ MacroCallBytes	.long ?
 MacroHeader	.long ?
 MacroHeaderBytes	.long ?
 MacroVersion	.word ?
-Reserved2	.word ?
+EndforDirective	.word ?
 MacroPacked	.long ?
 MacroPackedBytes	.long ?
 MacroSpelling	.long ?

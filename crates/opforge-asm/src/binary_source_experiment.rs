@@ -81,7 +81,7 @@ impl<'a> Programs<'a> {
     }
 }
 
-/// Prepare a self-contained BSP5 block for one resolved package hierarchy.
+/// Prepare a self-contained BSP6 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -192,7 +192,9 @@ pub fn prepare_package(
         }
     }
     let mut directive_ids = Vec::new();
-    for directive in ["cpu", "org", "byte", "word", "long", "end", "align", "res"] {
+    for directive in [
+        "cpu", "org", "byte", "word", "long", "end", "align", "res", "for", "endfor",
+    ] {
         let id = intern(&mut names, directive)?;
         bind(&mut dictionary, directive.into(), id, 0)?;
         directive_ids.push(id);
@@ -266,7 +268,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BSP5");
+    out[..4].copy_from_slice(b"BSP6");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -406,10 +408,12 @@ pub fn prepare_package(
         set_long(&mut out, offset, value);
     }
     for (index, id) in directive_ids.iter().enumerate() {
-        let offset = if index < 6 {
-            48 + index * 2
-        } else {
-            76 + (index - 6) * 2
+        let offset = match index {
+            0..=5 => 48 + index * 2,
+            6..=7 => 76 + (index - 6) * 2,
+            8 => 66,
+            9 => 98,
+            _ => unreachable!(),
         };
         set_word(&mut out, offset, *id);
     }
@@ -417,7 +421,6 @@ pub fn prepare_package(
     set_word(&mut out, 62, total_names);
     set_word(&mut out, 64, u16::from(properties.data_little_endian));
     set_word(&mut out, 96, 2);
-    set_word(&mut out, 98, 0);
     Ok(out)
 }
 

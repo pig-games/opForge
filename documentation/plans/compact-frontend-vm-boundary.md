@@ -4,10 +4,11 @@ Status: numeric normalization, composed-name recipes and the PRVM boundary/resum
 foundation, macro descriptor services, compact descriptor storage integration,
 ordinary macro/segment string fragment recipes, and generated-call argument
 re-tokenization are implemented. The residual decoded-string fallback and
-expression correction remain active. This takes
-precedence over the next packed-loop parity slice in the
-[native reset](native-runtime-reset.md#fixed-input-allocation-slice). Further
-performance shortcuts are deferred until completed native self-host proof.
+expression correction remain active. Counted packed `.for` replay now passes
+focused real-native comparison; iterable `.for` and `.bfor` remain unsupported.
+The remaining frontend boundary work and next self-host frontier are tracked
+alongside the [native reset](native-runtime-reset.md#fixed-input-allocation-slice).
+Further performance shortcuts are deferred until completed native self-host proof.
 
 ## Finding
 
@@ -1006,3 +1007,28 @@ exact output under 68020 / 2 MiB. Native formatting, proof-contract, workflow
 links, benchmark-selector and supply-chain checks pass. The CPU architecture
 guard still reports its 10 enforced findings in unchanged files and none in
 the changed modules; broad integration qualification is not claimed.
+
+## Counted packed-loop checkpoint
+
+BSP6 binds shared `.for` and `.endfor` identities in the package, replacing two
+unused header words without growing the 124-byte header. Preparation compiles
+the count expression; the compact native assembler replays the same packed body
+records in both passes, with bounded nesting and the Rust 65,536-iteration limit.
+No source text or package spelling lookup enters replay. The loop state holds
+transient pointers, while binary records retain only numeric IDs and expression
+bytes. Labels inside an active unscoped loop reject. Iterable `.for`, `.bfor`,
+and general loop-body parity are still future work.
+
+Fresh FS-UAE runs under 68020 / 2 MiB exactly match live Rust output for zero,
+one, nested, and named-constant counted loops on the m6502 package and for a
+four-iteration 68020 instruction/data loop. A labeled-body negative case has a
+fresh nonzero guest completion. The bounded self-host probe now passes the
+original `.for 4` frontier and rejects at `tkvm/tkvm_runtime.asm` line 109,
+`TK_CLASS_IDENTIFIER_START = 2`. That remains a negative probe: no completed
+self-host output or native timing exists. The m68020 runtime package is 269,404
+bytes and the Rust oracle Hunk is 84,208 bytes with 95,372 linked reserved
+bytes; these differ from the prior source graph and are not a performance gain.
+The unchanged five-byte compact CLI control also matches Rust on native, with
+one 0.505-second START-to-DONE observation and 95,436 linked reserved bytes.
+There is no matched pre-change timing for this control, so no speed ratio is
+claimed.

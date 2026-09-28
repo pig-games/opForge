@@ -11,6 +11,7 @@
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_references as hunkrefs
+	.use experimental.amigaos.binary_repetition as repetition
 	.pub
 
 Frame	.struct
@@ -43,6 +44,8 @@ DataBytes
 	.res byte, 4
 SectionState
 	.res byte, sections.SCRATCH_BYTES
+RepeatState
+	.res byte, repetition.STATE_BYTES
 	.endsection
 	.section code, kind=code
 	.pub
@@ -153,6 +156,8 @@ sweep
 	jsr sections.beginHunkSlot
 	bne.w fail
 sweepRecords
+	lea RepeatState, a0
+	jsr repetition.begin
 	movea.l Frame.Records(a5), a4
 	move.l a4, d0
 	add.l Frame.RecordBytes(a5), d0
@@ -345,6 +350,21 @@ selected
 	bne.w layoutControl
 	btst #3, d0
 	bne.w omitted
+	movea.l a4, a0
+	movea.l a3, a1
+	movea.l a6, a2
+	lea RepeatState, a3
+	jsr repetition.step
+	movea.l a1, a3
+	cmpi.l #2, d0
+	beq.w fail
+	tst.l d0
+	beq.w ordinaryStatement
+	movea.l a0, a4
+	bra.w line
+ordinaryStatement
+	moveq #0, d0
+	move.b 1(a4), d0
 	andi.w #source.FLAG_INDENT, d0
 	lea 4(a4), a0
 	movea.l a4, a1
@@ -366,6 +386,9 @@ omitted
 	adda.l d6, a4
 	bra.w line
 passDone
+	lea RepeatState, a0
+	jsr repetition.end
+	bne.w fail
 	; Continue the same assembly pass at the current PC/output offset.
 	cmpi.w #8, d5
 	bhs.w hunkPassDone

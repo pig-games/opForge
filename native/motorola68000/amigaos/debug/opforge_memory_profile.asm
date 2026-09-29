@@ -4,6 +4,7 @@
 	.cpu 68020
 TOKEN_OPCODE_COUNT = 21
 TOKEN_OPCODE_MAX = TOKEN_OPCODE_COUNT-1
+STAGE_COUNT = 7
 
 Fields	.struct
 Magic	.long ?
@@ -28,8 +29,8 @@ ProgramBytes	.long ?
 Clocks	.res 9*4
 Frequency	.long ?
 Error	.long ?
-Elapsed	.res 6*8
-Entries	.res 6*4
+Elapsed	.res STAGE_COUNT*8
+Entries	.res STAGE_COUNT*4
 Opcodes	.res TOKEN_OPCODE_COUNT*4
 Pairs	.res TOKEN_OPCODE_COUNT*TOKEN_OPCODE_COUNT*4
 TokenWork	.res 7*4
@@ -40,7 +41,7 @@ LastFailCapacity	.long ?
 LastFailUsed	.long ?
 	.endstruct
 RECORD_BYTES = Fields.LastFailUsed+4
-RECORD_MAGIC = $4d454d38
+RECORD_MAGIC = $4d454d39
 .ifdef OPFORGE_PREPARATION_PROGRESS
 PROGRESS_BYTES = 64  ; five fixed eight-digit fields and a newline
 .endif
@@ -285,7 +286,7 @@ done
 	move.w (sp)+, ccr
 	rts
 	.bend  ; clock
-; D0=new stage 0..5. Exclusive, non-nesting; passive ABI.
+; D0=new stage 0..6. Exclusive, non-nesting; passive ABI.
 ; Disabled after preparation clock 1, so assembly cannot enter these totals.
 stage	.block
 	move.w ccr, -(sp)
@@ -293,7 +294,7 @@ stage	.block
 	tst.l Active
 	beq.w done
 	lea Record, a2
-	cmpi.l #5, d0
+	cmpi.l #STAGE_COUNT-1, d0
 	bhi.w invalid
 	move.l d0, d7
 	movea.l Timer, a6

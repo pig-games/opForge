@@ -47,6 +47,8 @@ PROGRESS_ASSEMBLE = 20
 PROGRESS_ASSEMBLED = 21
 PROGRESS_OUTPUT = 22
 PROGRESS_BLOCK_WORK = 23
+PROGRESS_ASSEMBLY_FAILURE = 24
+PROGRESS_ASSEMBLY_NAME = 25
 STEP_MATERIALIZE = 3
 STEP_INDEX = 4
 STEP_SELECT = 5
@@ -220,6 +222,8 @@ reportFailure	.block
 	tst.l InAssembly
 	beq.w located
 	bsr.w locateFailure
+	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_FAILURE, assembly.FailureStage, SourceOrdinal, SourceLine
+	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_NAME, assembly.FailureName, #0, #0
 located
 	move.l SourceOrdinal, d0
 	lea FailureFile, a0
@@ -479,7 +483,9 @@ prepare	.block
 	clr.l DiscoverMode
 	bra.w sourceCountReady
 cliDiscovery
+	.MEMORY_STAGE #6
 	bsr.w prepareCliInputs
+	.MEMORY_STAGE #0
 	bne.w closeBad
 	bra.w rootsDone
 readManifest
@@ -526,7 +532,9 @@ searchRoot
 	lea appendCandidate, a2
 	suba.l a3, a3
 	movea.l DosBase, a4
+	.MEMORY_STAGE #6
 	jsr discovery.scan
+	.MEMORY_STAGE #0
 	bne.w closeBad
 	subq.l #1, SearchPathCount
 	bne.w searchRoot
@@ -600,7 +608,9 @@ manifestReady
 	bne.w closeBad
 	movea.l memory.Block.Pointer(a0), a0
 	jsr declarations.begin
+	.MEMORY_STAGE #6
 	bsr.w indexCandidates
+	.MEMORY_STAGE #0
 	bne.w closeBad
 filesReady
 	move.l #1, SourceOrdinal
@@ -709,7 +719,9 @@ fileDone
 	addi.l #SPAN_BYTES, memory.Block.Used(a0)
 	tst.l DiscoverMode
 	beq.w sequential
+	.MEMORY_STAGE #6
 	bsr.w resolveGraph
+	.MEMORY_STAGE #0
 	beq.w prepared
 	cmpi.l #2, d0
 	beq.w nextFile

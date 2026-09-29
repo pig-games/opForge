@@ -62,11 +62,11 @@ the current framework, not a mandate for a repository-wide instrumentation rewri
 `OPFORGE_MEMORY_TELEMETRY` are required; missing either gate emits no calls, imports
 or storage. These macros and the dedicated `debug.amigaos.memory_profile` owner
 preserve registers/CCR, never use request/output/error buffers, and keep a bounded
-2100-byte record. The terminal export writes that record separately as `Work:memory.bin`;
+2112-byte record. The terminal export writes that record separately as `Work:memory.bin`;
 a missing/partial record fails the host accounting check. Ordinary release builds
 perform no accounting I/O.
 
-The current MEM8 record (magic `0x4D454D38`) starts with sixteen big-endian u32 fields: magic, live capacity, peak live
+The current MEM9 record (magic `0x4D454D39`) starts with sixteen big-endian u32 fields: magic, live capacity, peak live
 capacity, cumulative allocated, cumulative freed, live after preparation, cumulative
 freed before assembly, entry free memory, entry largest free block, Exec version,
 live after assembly, live after cleanup, DOS version, retained runtime-prefix bytes,
@@ -75,10 +75,13 @@ compiled expressions, evaluation calls and compiled program bytes; nine fields
 store three DOS DateStamps (days/minutes/50-Hz ticks), taken before preparation,
 after preparation and after assembly. These clocks include instrumentation cost
 and have 20 ms resolution; use separate release runs for performance claims.
-The stage portion appends the E-clock frequency and error flags (u32 each), six exclusive
-elapsed totals (u64, high word first), then six stage-entry counts (u32). Stages
-are other preparation, package setup, tokenization, binding/raw records, expression
-preparation, and runtime finalization. `MEMORY_STAGE` changes the active stage;
+The stage portion appends the E-clock frequency and error flags (u32 each), seven exclusive
+elapsed totals (u64, high word first), then seven stage-entry counts (u32). Stages
+are source I/O and other preparation, package setup, tokenization, binding/raw
+records, expression preparation, runtime finalization, and module discovery.
+Discovery includes path seeding/scanning, candidate declaration indexing, and
+graph resolution. Selection within a chosen source file stays in the first stage.
+`MEMORY_STAGE` changes the active stage;
 clock 0 initializes it and clock 1 flushes and stops it. The stage sum must agree
 with the coarse preparation clock within 40 ms. All values are big-endian.
 Error bits 64 and 128 distinguish a bounded block-reserve rejection from an
@@ -96,14 +99,17 @@ checks permit 16. Allocation failures additionally set 64 or 128. Stage totals
 include probe overhead, with no calibration subtraction; compare
 coarse phases against the preceding accounting baseline before interpreting rank.
 
-MEM8 retains 21 opcode counters at byte 192, 441 ordered adjacent-opcode pairs at
-276, and seven work counters at 2040: line bytes, committed tokens, committed
+MEM9 retains 21 opcode counters at byte 204, 441 ordered adjacent-opcode pairs at
+288, and seven work counters at 2052: line bytes, committed tokens, committed
 lexeme bytes, source-byte reads, and taken EOL/byte/class branches. Two u64
-E-clock totals at 2068 measure scanner/emission, numeric normalization and composed-name helpers and nested token commits.
+E-clock totals at 2080 measure scanner/emission, numeric normalization and composed-name helpers and nested token commits.
 `TOKEN_BEGIN` resets adjacency per invocation; `TOKEN_OPCODE` and `TOKEN_WORK`
 count work; `TOKEN_SCOPE_BEGIN/END` bracket the two nested scopes, while
 `TOKEN_SCOPE_CLOSE` closes an active scope on a shared success/failure return.
-All share the existing two gates and passive ABI. Error bit 32 reports scope
+The detailed token probes require `OPFORGE_TOKEN_DETAIL_TELEMETRY` in addition to
+the two general gates; the harness enables it by default when memory telemetry
+is requested. `OPFORGE_PHASE_ONLY=1` leaves those hot probes out while retaining
+phase clocks and allocation accounting. The probes share the passive ABI. Error bit 32 reports scope
 imbalance. Invalid opcodes break adjacency without indexing outside the record.
 Nested scope times must not be added to stage totals. Source reads include the
 newline prescan and rereads; committed payload excludes failed staging attempts.
@@ -126,7 +132,7 @@ counters without touching registers or CCR. The compact block selector uses
 them for queue insertions, scanned packed records and numeric mark attempts;
 their storage and updates are absent from ordinary builds. With preparation
 progress enabled, phase 23 reports these three values in the source, line and
-records fields after successful block selection. They do not change the MEM8
+records fields after successful block selection. They do not change the MEM9
 binary record or its version.
 
 The compiler/evaluator counters describe actual calls, not a semantic redundancy

@@ -348,30 +348,31 @@ fn run_measurement(
         let record = run
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
-            .expect("fresh MEM8 record");
-        assert_eq!(record.len(), 2100);
+            .expect("fresh MEM9 record");
+        assert_eq!(record.len(), 2112);
         let words = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d38);
+        assert_eq!(words[0], 0x4d454d39);
         assert_eq!(words[1], 0);
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);
         assert!(words[28] > 0);
-        assert!(words[44] > 0 && words[44] as usize <= source_lines);
+        assert!(words[46] > 0 && words[46] as usize <= source_lines);
         let stamp = |offset: usize| -> u64 {
             u64::from(words[offset]) * 24 * 60 * 60 * 50
                 + u64::from(words[offset + 1]) * 60 * 50
                 + u64::from(words[offset + 2])
         };
         let stage_names = [
-            "other",
+            "source_io_and_other",
             "package_setup",
             "tokenization",
             "binding_and_raw_records",
             "expression_preparation",
             "runtime_finalization",
+            "module_discovery",
         ];
         let stages = stage_names
             .iter()
@@ -383,7 +384,7 @@ fn run_measurement(
                     (*name).to_owned(),
                     serde_json::json!({
                         "seconds": ticks as f64 / f64::from(words[28]),
-                        "calls": words[42 + index],
+                        "calls": words[44 + index],
                     }),
                 )
             })
@@ -393,8 +394,8 @@ fn run_measurement(
             "retained_after_preparation_bytes": words[5],
             "packed_source_bytes": words[14],
             "source_bytes": words[15],
-            "tokenized_lines": words[44],
-            "derived_full_record_inspections": sweeps_per_pass.map(|sweeps| words[44] * sweeps * 2),
+            "tokenized_lines": words[46],
+            "derived_full_record_inspections": sweeps_per_pass.map(|sweeps| words[46] * sweeps * 2),
             "preparation_stages": stages,
             "preparation_seconds": (stamp(22) - stamp(19)) as f64 / 50.0,
             "assembly_seconds": (stamp(25) - stamp(22)) as f64 / 50.0,

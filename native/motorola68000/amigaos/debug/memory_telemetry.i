@@ -118,6 +118,20 @@ MEMORY_PROGRESS	.macro dosbase, phase, source, line, records
 .endif
 .endif
 .endmacro
+
+; Identify the last assembly operation when optional progress diagnostics report
+; a failure. This preserves registers and CCR and emits nothing in release builds.
+ASSEMBLY_FAILURE_STAGE	.macro slot, stage
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	move.l .stage, .slot
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
 MEMORY_PHASE	.macro value
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
@@ -175,6 +189,7 @@ MEMORY_STAGE	.macro index
 TOKEN_BEGIN	.macro amount
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_TOKEN_DETAIL_TELEMETRY
 	move.w ccr, -(sp)
 	move.l d0, -(sp)
 	move.l .amount, d0
@@ -183,11 +198,13 @@ TOKEN_BEGIN	.macro amount
 	move.w (sp)+, ccr
 .endif
 .endif
+.endif
 .endmacro
 
 TOKEN_OPCODE	.macro opcode
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_TOKEN_DETAIL_TELEMETRY
 	move.w ccr, -(sp)
 	move.l d0, -(sp)
 	move.l .opcode, d0
@@ -196,11 +213,13 @@ TOKEN_OPCODE	.macro opcode
 	move.w (sp)+, ccr
 .endif
 .endif
+.endif
 .endmacro
 
 TOKEN_SCOPE_BEGIN	.macro index
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_TOKEN_DETAIL_TELEMETRY
 	move.w ccr, -(sp)
 	move.l d0, -(sp)
 	move.l .index, d0
@@ -209,11 +228,13 @@ TOKEN_SCOPE_BEGIN	.macro index
 	move.w (sp)+, ccr
 .endif
 .endif
+.endif
 .endmacro
 
 TOKEN_SCOPE_END	.macro index
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_TOKEN_DETAIL_TELEMETRY
 	move.w ccr, -(sp)
 	move.l d0, -(sp)
 	move.l .index, d0
@@ -222,11 +243,13 @@ TOKEN_SCOPE_END	.macro index
 	move.w (sp)+, ccr
 .endif
 .endif
+.endif
 .endmacro
 
 TOKEN_WORK	.macro index, amount
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_TOKEN_DETAIL_TELEMETRY
 	move.w ccr, -(sp)
 	movem.l d0-d1, -(sp)
 	move.l .amount, d1
@@ -236,18 +259,21 @@ TOKEN_WORK	.macro index, amount
 	move.w (sp)+, ccr
 .endif
 .endif
+.endif
 .endmacro
 
 ; Close a scope if active, for shared success/failure return boundaries.
 TOKEN_SCOPE_CLOSE	.macro index
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_TOKEN_DETAIL_TELEMETRY
 	move.w ccr, -(sp)
 	move.l d0, -(sp)
 	move.l .index, d0
 	jsr memory_profile.tokenScopeClose
 	move.l (sp)+, d0
 	move.w (sp)+, ccr
+.endif
 .endif
 .endif
 .endmacro

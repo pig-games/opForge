@@ -1,4 +1,4 @@
-//! Decode the gated MEM8 accounting for compact macro comparisons.
+//! Decode the gated MEM9 accounting for compact macro comparisons.
 use super::*;
 
 pub(super) fn report(run: &crate::fs_uae_smoke::FsUaeSmokeRun) -> serde_json::Value {
@@ -9,12 +9,12 @@ pub(super) fn report(run: &crate::fs_uae_smoke::FsUaeSmokeRun) -> serde_json::Va
         return serde_json::Value::Null;
     }
     let record = &run.captured_artifacts[&PathBuf::from("Work/memory.bin")];
-    assert_eq!(record.len(), 2100);
+    assert_eq!(record.len(), 2112);
     let words = record
         .chunks_exact(4)
         .map(|bytes| u32::from_be_bytes(bytes.try_into().unwrap()))
         .collect::<Vec<_>>();
-    assert_eq!(words[0], 0x4d454d38);
+    assert_eq!(words[0], 0x4d454d39);
     assert_eq!(words[1], 0, "all owned blocks released");
     assert_eq!(words[3], words[4], "allocation/free capacities balance");
     assert_eq!(words[11], 0);
@@ -28,12 +28,13 @@ pub(super) fn report(run: &crate::fs_uae_smoke::FsUaeSmokeRun) -> serde_json::Va
     let preparation = stamp(22).checked_sub(stamp(19)).unwrap() as f64 / 50.0;
     let assembly = stamp(25).checked_sub(stamp(22)).unwrap() as f64 / 50.0;
     let names = [
-        "other",
+        "source_io_and_other",
         "package_setup",
         "tokenization",
         "binding_and_raw_records",
         "expression_preparation",
         "runtime_finalization",
+        "module_discovery",
     ];
     let ticks = |offset: usize| (u64::from(words[offset]) << 32) | u64::from(words[offset + 1]);
     let stages = names
@@ -44,19 +45,19 @@ pub(super) fn report(run: &crate::fs_uae_smoke::FsUaeSmokeRun) -> serde_json::Va
                 (*name).to_owned(),
                 serde_json::json!({
                     "seconds": ticks(30 + index * 2) as f64 / f64::from(words[28]),
-                    "entries": words[42 + index],
+                    "entries": words[44 + index],
                 }),
             )
         })
         .collect::<serde_json::Map<_, _>>();
-    let total = (0..6).map(|i| ticks(30 + i * 2)).sum::<u64>() as f64 / f64::from(words[28]);
+    let total = (0..7).map(|i| ticks(30 + i * 2)).sum::<u64>() as f64 / f64::from(words[28]);
     assert!(
         (total - preparation).abs() <= 0.04,
         "stages reconcile with preparation clock"
     );
-    let opcode_total = words[48..69].iter().map(|v| u64::from(*v)).sum::<u64>();
-    let pair_total = words[69..510].iter().map(|v| u64::from(*v)).sum::<u64>();
-    assert_eq!(pair_total + u64::from(words[48]), opcode_total);
+    let opcode_total = words[51..72].iter().map(|v| u64::from(*v)).sum::<u64>();
+    let pair_total = words[72..513].iter().map(|v| u64::from(*v)).sum::<u64>();
+    assert_eq!(pair_total + u64::from(words[51]), opcode_total);
     serde_json::json!({
         "peak_owned_bytes": words[2], "total_allocated_bytes": words[3],
         "prepared_live_bytes": words[5], "assembly_live_bytes": words[10],
@@ -64,11 +65,11 @@ pub(super) fn report(run: &crate::fs_uae_smoke::FsUaeSmokeRun) -> serde_json::Va
         "instrumented_assembly_seconds": assembly,
         "preparation_stages": stages,
         "tokenizer": {
-            "completed_invocations": words[48], "opcode_total": opcode_total,
-            "line_bytes": words[510], "committed_tokens": words[511],
-            "committed_lexeme_bytes": words[512], "source_reads": words[513],
-            "helpers_seconds": ticks(517) as f64 / f64::from(words[28]),
-            "commit_seconds": ticks(519) as f64 / f64::from(words[28]),
+            "completed_invocations": words[51], "opcode_total": opcode_total,
+            "line_bytes": words[513], "committed_tokens": words[514],
+            "committed_lexeme_bytes": words[515], "source_reads": words[516],
+            "helpers_seconds": ticks(520) as f64 / f64::from(words[28]),
+            "commit_seconds": ticks(522) as f64 / f64::from(words[28]),
         },
         "profiling_errors": words[29],
     })

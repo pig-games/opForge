@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_imports as imports
+	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_source as source
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
@@ -33,6 +34,7 @@ Graph	.res long, 1
 Count	.res word, 1
 Head	.res word, 1
 Tail	.res word, 1
+Owners	.res byte, memory.Block.Used+4
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 	.pub
@@ -196,6 +198,8 @@ select	.block
 	.MEMORY_COUNTER_CLEAR QueueAdds
 	.MEMORY_COUNTER_CLEAR Scanned
 	.MEMORY_COUNTER_CLEAR Marks
+	bsr.w indexOwners
+	bne.w invalid
 	moveq #0, d7
 root
 	cmp.w Count, d7
@@ -343,10 +347,123 @@ selected
 invalid
 	moveq #1, d0
 doneSelect
+	lea Owners, a0
+	jsr memory.release
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
 	.bend  ; select
+
+; Resolve each defining numeric identity to its first outer block once. The
+; table is temporary and stores span indices+1, never process pointers. It
+; includes the block name, internal declarations, and a preceding label.
+indexOwners	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l Scope, a2
+	moveq #0, d0
+	move.w layout.State.Count(a2), d0
+	add.l d0, d0
+	lea Owners, a0
+	jsr memory.reserveExact
+	bne.w ownerBad
+	lea Owners, a0
+	movea.l memory.Block.Pointer(a0), a0
+	moveq #0, d1
+	move.w layout.State.Count(a2), d1
+clearOwner
+	tst.l d1
+	beq.w ownerSpans
+	clr.w (a0)+
+	subq.l #1, d1
+	bra.w clearOwner
+ownerSpans
+	moveq #0, d7
+ownerSpan
+	cmp.w Count, d7
+	bhs.w ownerGood
+	move.l d7, d1
+	mulu.w #SPAN_BYTES, d1
+	movea.l Spans, a3
+	adda.l d1, a3
+	tst.w Span.Parent(a3)
+	bne.w ownerNext
+	moveq #0, d0
+	move.w Span.Entry(a3), d0
+	bsr.w saveOwner
+	bne.w ownerBad
+	movea.l Base, a4
+	adda.l Span.Start(a3), a4
+	movea.l Base, a6
+	adda.l Span.End(a3), a6
+ownerLine
+	cmpa.l a6, a4
+	beq.w ownerNext
+	bhi.w ownerBad
+	moveq #0, d6
+	move.b (a4), d6
+	addq.w #1, d6
+	cmpi.w #4, d6
+	blo.w ownerBad
+	move.l a6, d0
+	sub.l a4, d0
+	cmp.l d0, d6
+	bhi.w ownerBad
+	cmpi.w #9, d6
+	blo.w ownerAdvance
+	cmpi.b #1, 4(a4)
+	bhi.w ownerAdvance
+	cmpi.b #5, 8(a4)
+	beq.w ownerDeclaration
+	cmpi.b #34, 8(a4)
+	bne.w ownerAdvance
+ownerDeclaration
+	moveq #0, d0
+	move.w 5(a4), d0
+	bsr.w saveOwner
+	bne.w ownerBad
+ownerAdvance
+	adda.w d6, a4
+	bra.w ownerLine
+ownerNext
+	addq.w #1, d7
+	bra.w ownerSpan
+ownerGood
+	moveq #0, d0
+	bra.w ownerDone
+ownerBad
+	moveq #1, d0
+ownerDone
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; indexOwners
+
+; D0=bound numeric identity, D7=outer span index. Keep the first owner, as
+; the former source-order search did. D0/CCR=status; other registers preserved.
+saveOwner	.block
+	movem.l d1-d2/a0-a1, -(sp)
+	movea.l Scope, a1
+	moveq #0, d1
+	move.w layout.State.Base(a1), d1
+	sub.l d1, d0
+	bcs.w ownerSkip
+	moveq #0, d1
+	move.w layout.State.Count(a1), d1
+	cmp.l d1, d0
+	bhs.w ownerSkip
+	add.l d0, d0
+	lea Owners, a0
+	movea.l memory.Block.Pointer(a0), a0
+	tst.w 0(a0, d0.l)
+	bne.w ownerSkip
+	move.w d7, d2
+	addq.w #1, d2
+	move.w d2, 0(a0, d0.l)
+ownerSkip
+	moveq #0, d0
+	movem.l (sp)+, d1-d2/a0-a1
+	rts
+	.bend  ; saveOwner
 
 	.priv
 ; A4=current packed record, A6=end of its scan range. Advance A4 once.
@@ -528,55 +645,33 @@ doneRefs
 	rts
 	.bend  ; references
 
-; D0=numeric ID. Find its defining packed label inside an outer block. This
-; avoids import proxy identities, which can share a target but own no code.
+; D0=numeric ID. The owner table names the first defining outer block, avoiding
+; repeated packed-record scans and import proxy identities with no owned code.
 ; An internal label retains its enclosing block and all fallthrough bytes.
 ; Enqueue on first inclusion. Return D0/CCR=status; preserve all other registers.
 mark	.block
 	movem.l d1-d3/a0-a4, -(sp)
 	.MEMORY_COUNTER_INC Marks
 	movea.l Scope, a2
-	cmp.w layout.State.Base(a2), d0
-	blo.w doneMark  ; package tokens cannot name a source block
-	moveq #0, d2
-spanLookup
-	cmp.w Count, d2
+	moveq #0, d1
+	move.w layout.State.Base(a2), d1
+	sub.l d1, d0
+	bcs.w doneMark  ; package tokens cannot name a source block
+	moveq #0, d1
+	move.w layout.State.Count(a2), d1
+	cmp.l d1, d0
 	bhs.w doneMark
+	add.l d0, d0
+	lea Owners, a2
+	movea.l memory.Block.Pointer(a2), a2
+	moveq #0, d2
+	move.w 0(a2, d0.l), d2
+	beq.w doneMark
+	subq.w #1, d2
 	move.l d2, d1
 	mulu.w #SPAN_BYTES, d1
 	movea.l Spans, a3
 	adda.l d1, a3
-	tst.w Span.Parent(a3)
-	bne.w nextSpan
-	cmp.w Span.Entry(a3), d0
-	beq.w markRoot
-	movea.l Base, a4
-	adda.l Span.Start(a3), a4
-	movea.l Base, a2
-	adda.l Span.End(a3), a2
-lineScan
-	cmpa.l a2, a4
-	bhs.w nextSpan
-	moveq #0, d1
-	move.b (a4), d1
-	addq.w #1, d1
-	cmpi.w #9, d1
-	blo.w nextLine
-	cmpi.b #1, 4(a4)
-	bhi.w nextLine
-	cmpi.b #5, 8(a4)
-	beq.w declaration
-	cmpi.b #34, 8(a4)
-	bne.w nextLine
-declaration
-	cmp.w 5(a4), d0
-	beq.w markRoot
-nextLine
-	adda.w d1, a4
-	bra.w lineScan
-nextSpan
-	addq.w #1, d2
-	bra.w spanLookup
 markRoot
 	tst.w Span.Live(a3)
 	bne.w doneMark

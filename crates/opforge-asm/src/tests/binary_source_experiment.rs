@@ -284,12 +284,12 @@ fn compact_cli_fs_uae() {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh compact CLI memory telemetry");
-        assert_eq!(record.len(), 2100);
+        assert_eq!(record.len(), 2112);
         let words = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d38);
+        assert_eq!(words[0], 0x4d454d39);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocation capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -312,7 +312,7 @@ fn compact_cli_fs_uae() {
             "source_bytes": words[15],
             "preparation_clock_seconds": preparation_ticks as f64 / 50.0,
             "assembly_clock_seconds": assembly_ticks as f64 / 50.0,
-            "preparation_stage_seconds": (0..6).map(|index| {
+            "preparation_stage_seconds": (0..7).map(|index| {
                 let ticks = (u64::from(words[30 + 2 * index]) << 32)
                     | u64::from(words[31 + 2 * index]);
                 ticks as f64 / f64::from(words[28])
@@ -342,7 +342,12 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     // The live Rust assembly determines the exact source manifest and Hunk
     // oracle. The opt-in parity mode requires the fresh native Hunk to match.
     let require_parity = std::env::var("OPFORGE_SELF_HOST_REQUIRE_PARITY").as_deref() == Ok("1");
-    let root = workspace_root().join("native/motorola68000/amigaos");
+    // A fixed source tree lets before/after runs measure the CLI implementation
+    // against identical self-host input even when the implementation changes.
+    let root = std::env::var_os("OPFORGE_SELF_HOST_SOURCE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| workspace_root().join("native/motorola68000/amigaos"));
+    let root = fs::canonicalize(root).expect("canonical self-host source root");
     let entry = "experimental/opforge_compact_cli.asm";
     let module_roots = [
         "experimental",
@@ -444,15 +449,40 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh self-host readiness telemetry");
-        assert_eq!(record.len(), 2100);
+        assert_eq!(record.len(), 2112);
         let words = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d38);
+        assert_eq!(words[0], 0x4d454d39);
         assert_eq!(words[1], 0, "terminal path releases tracked memory");
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);
+        let preparation_stages = (words[28] != 0).then(|| {
+            [
+                "source_io_and_other",
+                "package_setup",
+                "tokenization",
+                "binding_and_raw_records",
+                "expression_preparation",
+                "runtime_finalization",
+                "module_discovery",
+            ]
+            .iter()
+            .enumerate()
+            .map(|(index, name)| {
+                let ticks =
+                    (u64::from(words[30 + 2 * index]) << 32) | u64::from(words[31 + 2 * index]);
+                (
+                    (*name).to_owned(),
+                    serde_json::json!({
+                        "seconds": ticks as f64 / f64::from(words[28]),
+                        "calls": words[44 + index],
+                    }),
+                )
+            })
+            .collect::<serde_json::Map<_, _>>()
+        });
         serde_json::json!({
             "peak_owned_bytes": words[2],
             "free_at_entry_bytes": words[7],
@@ -461,11 +491,11 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             "packed_source_bytes": words[14],
             "profiling_errors": words[29],
             "allocation_failure_flags": words[29] & (64 | 128),
-            "allocation_failure_count": words[521],
-            "last_failed_request_bytes": words[522],
-            "last_failed_block_capacity_bytes": words[523],
-            "last_failed_block_used_bytes": words[524],
-            "preparation_stage_calls": &words[42..48],
+            "allocation_failure_count": words[524],
+            "last_failed_request_bytes": words[525],
+            "last_failed_block_capacity_bytes": words[526],
+            "last_failed_block_used_bytes": words[527],
+            "preparation_stages": preparation_stages,
         })
     } else {
         serde_json::Value::Null
@@ -497,6 +527,76 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             "unlocated rejection needs a preparation-stage diagnostic"
         );
     }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; isolate the next full self-host source module"]
+fn compact_cli_self_host_descriptor_module_fs_uae() {
+    let root = workspace_root().join("native/motorola68000/amigaos");
+    let descriptor = fs::read(root.join("prvm/prvm_macro_descriptors.asm")).unwrap();
+    let packed_macro = fs::read(root.join("prvm/prvm_packed_macro.asm")).unwrap();
+    let entry = b".module descriptor_probe\n.cpu m68020\n.use prvm.amigaos.macro_descriptors as desc\n.use prvm.amigaos.packed_macro as packed\n.section entry, kind=code\n.long desc.State.ListEnd,packed.State.ListEnd\n.endsection\n.output \"build/descriptors.hunk\", format=hunk, sections=entry,code\n.endmodule\n";
+    let abi = fs::read(root.join("prvm/prvm_abi.asm")).unwrap();
+    let telemetry = fs::read(root.join("debug/telemetry_macros.i")).unwrap();
+    let oracle_dir = create_temp_dir("compact-self-host-descriptor-oracle");
+    fs::create_dir_all(oracle_dir.join("experimental")).unwrap();
+    fs::create_dir_all(oracle_dir.join("prvm")).unwrap();
+    fs::create_dir_all(oracle_dir.join("debug")).unwrap();
+    let input = oracle_dir.join("experimental/probe.asm");
+    fs::write(&input, entry).unwrap();
+    fs::write(
+        oracle_dir.join("prvm/prvm_macro_descriptors.asm"),
+        &descriptor,
+    )
+    .unwrap();
+    fs::write(oracle_dir.join("prvm/prvm_packed_macro.asm"), &packed_macro).unwrap();
+    fs::write(oracle_dir.join("prvm/prvm_abi.asm"), &abi).unwrap();
+    fs::write(oracle_dir.join("debug/telemetry_macros.i"), &telemetry).unwrap();
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        input.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "68020".to_string(),
+        "-M".to_string(),
+        oracle_dir.join("prvm").to_string_lossy().into_owned(),
+        "-I".to_string(),
+        oracle_dir.join("debug").to_string_lossy().into_owned(),
+    ]);
+    let mut config = validate_cli(&cli).unwrap();
+    config.out_dir = Some(oracle_dir.clone());
+    run_with_validated_cli_with_context(&cli, &config).expect("fresh Rust descriptor module");
+    let expected = fs::read(oracle_dir.join("build/descriptors.hunk")).unwrap();
+    fs::remove_dir_all(&oracle_dir).unwrap();
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let files = [
+        ("experimental/probe.asm", entry.as_slice()),
+        ("prvm/prvm_macro_descriptors.asm", descriptor.as_slice()),
+        ("prvm/prvm_packed_macro.asm", packed_macro.as_slice()),
+        ("prvm/prvm_abi.asm", abi.as_slice()),
+        ("debug/telemetry_macros.i", telemetry.as_slice()),
+    ];
+    let outcome = crate::fs_uae_smoke::run_compact_cli_files_from_env(
+        &workspace_root(),
+        &package,
+        &files,
+        &["prvm"],
+        &["debug"],
+        Some(&expected),
+        false,
+    )
+    .expect("fresh exact descriptor module comparison");
+    let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].success && runs[0].protocol_completed);
+    eprintln!(
+        "COMPACT_SELF_HOST_DESCRIPTOR bytes={} seconds={:?}",
+        expected.len(),
+        runs[0].start_to_done_host_seconds
+    );
 }
 
 #[test]
@@ -1667,12 +1767,12 @@ fn assert_binary_files(files: &[(&str, &str)], cpu: &str, oracle: Vec<u8>) -> se
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh memory telemetry capture");
-        assert_eq!(record.len(), 2100);
+        assert_eq!(record.len(), 2112);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d38);
+        assert_eq!(words[0], 0x4d454d39);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocated and freed capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -1696,12 +1796,13 @@ fn assert_binary_files(files: &[(&str, &str)], cpu: &str, oracle: Vec<u8>) -> se
         assert!(words[28] > 0, "E-clock frequency is available");
         assert_eq!(words[29], 0, "preparation profiling completed cleanly");
         let names = [
-            "other",
+            "source_io_and_other",
             "package_setup",
             "tokenization",
             "binding_and_raw_records",
             "expression_preparation",
             "runtime_finalization",
+            "module_discovery",
         ];
         let mut stages = serde_json::Map::new();
         let mut total_ticks = 0_u64;
@@ -1712,16 +1813,16 @@ fn assert_binary_files(files: &[(&str, &str)], cpu: &str, oracle: Vec<u8>) -> se
                 (*name).to_owned(),
                 serde_json::json!({
                     "ticks": ticks, "seconds": ticks as f64 / f64::from(words[28]),
-                    "calls": words[42 + index],
+                    "calls": words[44 + index],
                 }),
             );
         }
-        assert_eq!(words[43], 1, "one package setup");
-        assert_eq!(words[47], 1, "one finalization");
-        assert_eq!(words[44], words[45], "each tokenized line binds once");
-        assert_eq!(words[45], words[46], "each bound line prepares once");
+        assert_eq!(words[45], 1, "one package setup");
+        assert_eq!(words[49], 1, "one finalization");
+        assert_eq!(words[46], words[47], "each tokenized line binds once");
+        assert_eq!(words[47], words[48], "each bound line prepares once");
         assert_eq!(
-            words[44] as usize,
+            words[46] as usize,
             files
                 .iter()
                 .map(|(_, text)| text.lines().count())
@@ -1733,13 +1834,13 @@ fn assert_binary_files(files: &[(&str, &str)], cpu: &str, oracle: Vec<u8>) -> se
             "E-clock stages reconcile with coarse preparation: {stage_seconds}"
         );
 
-        let opcodes = &words[48..69];
-        let pairs = &words[69..510];
-        let work = &words[510..517];
+        let opcodes = &words[51..72];
+        let pairs = &words[72..513];
+        let work = &words[513..520];
         let opcode_total: u64 = opcodes.iter().map(|n| u64::from(*n)).sum();
         let pair_total: u64 = pairs.iter().map(|n| u64::from(*n)).sum();
-        assert_eq!(opcodes[0], words[44], "each successful line ends once");
-        assert_eq!(pair_total + u64::from(words[44]), opcode_total);
+        assert_eq!(opcodes[0], words[46], "each successful line ends once");
+        assert_eq!(pair_total + u64::from(words[46]), opcode_total);
         assert_eq!(
             work[0] as usize,
             files
@@ -1751,7 +1852,7 @@ fn assert_binary_files(files: &[(&str, &str)], cpu: &str, oracle: Vec<u8>) -> se
             assert!(work[taken] <= opcodes[opcode]);
         }
         let scope = |index: usize| {
-            let offset = 517 + index * 2;
+            let offset = 520 + index * 2;
             let ticks = (u64::from(words[offset]) << 32) | u64::from(words[offset + 1]);
             ticks as f64 / f64::from(words[28])
         };
@@ -1853,12 +1954,12 @@ fn assert_native_files_rejection(files: &[(&str, &str)], cpu: &str, diagnostic: 
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh negative-path memory telemetry");
-        assert_eq!(record.len(), 2100);
+        assert_eq!(record.len(), 2112);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d38);
+        assert_eq!(words[0], 0x4d454d39);
         assert!(words[28] > 0, "E-clock initialized on rejection path");
         assert_eq!(words[29] & !16, 0, "only incomplete preparation is allowed");
         assert_eq!(words[1], 0, "failure releases all owned blocks");

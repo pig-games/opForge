@@ -12,6 +12,7 @@
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_references as hunkrefs
 	.use experimental.amigaos.binary_repetition as repetition
+	.include "memory_telemetry.i"
 	.pub
 
 Frame	.struct
@@ -48,6 +49,18 @@ RepeatState
 	.res byte, repetition.STATE_BYTES
 HunkInstructionRefs
 	.res word, 1
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	.pub
+FailureStage
+	.res long, 1
+FailureName
+	.res long, 1
+	.priv
+.endif
+.endif
+.endif
 	.endsection
 	.section code, kind=code
 	.pub
@@ -62,6 +75,7 @@ assemble	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
 	move.l a0, Active
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #0
 	clr.l Frame.Used(a5)
 	move.l #-1, Frame.RecordOffset(a5)
 	movea.l Frame.Context(a5), a6
@@ -166,6 +180,7 @@ sweepRecords
 	bcs.w fail
 	movea.l d0, a3
 line
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #1
 	move.l a4, d0
 	sub.l Frame.Records(a5), d0
 	move.l d0, Frame.RecordOffset(a5)
@@ -298,6 +313,7 @@ pairedStatement
 	bne.w omitted
 	bra.w selected
 hunkSelect
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #2
 	btst #4, 1(a4)
 	beq.w hunkStatement
 	moveq #0, d0
@@ -343,6 +359,7 @@ hunkStatement
 	cmpi.w #8, d5
 	bne.w omitted
 selected
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #3
 	move.w 2(a4), Frame.Line(a5)
 	moveq #0, d0
 	move.b 1(a4), d0
@@ -356,6 +373,7 @@ selected
 	movea.l a3, a1
 	movea.l a6, a2
 	lea RepeatState, a3
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #4
 	jsr repetition.step
 	movea.l a1, a3
 	cmpi.l #2, d0
@@ -372,6 +390,7 @@ ordinaryStatement
 	movea.l a4, a1
 	adda.l d6, a1
 	movea.l a6, a2
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #5
 	bsr.w statement
 	cmpi.l #2, d0
 	beq.w passDone
@@ -379,6 +398,7 @@ ordinaryStatement
 	bne.w fail
 	bra.w omitted
 layoutControl
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #6
 	lea SectionState, a0
 	movea.l a6, a1
 	movea.l a4, a2
@@ -388,6 +408,7 @@ omitted
 	adda.l d6, a4
 	bra.w line
 passDone
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #7
 	lea RepeatState, a0
 	jsr repetition.end
 	bne.w fail
@@ -410,6 +431,7 @@ pairedPassDone
 	addq.w #1, d5
 	bra.w sweep
 hunkPassDone
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #8
 	tst.w d4
 	bne.w fail
 	move.l d5, d0
@@ -430,6 +452,7 @@ hunkPassDone
 	cmp.w sections.State.OrderCount(a0), d0
 	blo.w sweep
 sweepDone
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #9
 	tst.w d4
 	bne.w fail
 	lea SectionState, a0
@@ -437,6 +460,7 @@ sweepDone
 	bne.w fail
 	cmpi.w #1, d7
 	bne.w nextPass
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #18
 	movea.l Frame.Allocate(a5), a1
 	movea.l a5, a0
 	move.l Frame.Used(a5), d0
@@ -462,6 +486,7 @@ done
 
 ; A0/A1=bounded token range, A2=Context, D0=indent flag. D0 status, 2=.end.
 statement	.block
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #10
 	movem.l d1-d7/a0-a6, -(sp)
 	move.l d0, d7
 	movea.l pkg.Context.Package(a2), a3
@@ -483,6 +508,7 @@ statement	.block
 	tst.w sections.State.Active(a4)
 	beq.w bad
 labelSectionReady
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #11
 	tst.b 3(a0)
 	bne.w bad
 	moveq #0, d0
@@ -545,18 +571,23 @@ dispatch
 	movea.l a5, a0
 	move.l d5, d0
 instructionReady
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #12
+	.ASSEMBLY_FAILURE_STAGE FailureName, d0
 	jsr encoding.encode
 	tst.l d0
 	bne.w bad
 	movea.l a1, a5
 	move.l d1, d5
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #14
 	bsr.w markInstructionRelocs
 	bne.w bad
 	movea.l a1, a0
 	move.l d1, d0
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #17
 	bsr.w emit
 	bra.w done
 constant
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #15
 	; Absolute constants were resolved once before layout. Remaining constants
 	; retain definition-site PC/label semantics and must resolve in source order.
 	bsr.w name
@@ -601,6 +632,7 @@ existingConstant
 	bne.w bad
 	bra.w ok
 directive
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #16
 	addq.l #1, a0
 	bsr.w name
 	bne.w bad

@@ -1459,6 +1459,7 @@ pub(crate) fn run_compact_cli_files_from_env(
         NativeCliParityExecutable::CompactCli,
         memory_telemetry,
         progress,
+        std::env::var("OPFORGE_PHASE_ONLY").as_deref() != Ok("1"),
     );
     let case = OpforgeNativeCliParityCase {
         name: "compact-cli-source-set",
@@ -1680,6 +1681,7 @@ fn run_binary_source_files_from_env(
         NativeCliParityExecutable::BinarySourceHarness,
         memory_telemetry,
         false,
+        std::env::var("OPFORGE_PHASE_ONLY").as_deref() != Ok("1"),
     );
     let case = OpforgeNativeCliParityCase {
         name: "binary-source-files",
@@ -1784,8 +1786,12 @@ fn run_exact_harness_with_defines_from_env(
         rust_oracle,
     }];
     let memory_telemetry = std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1");
-    let mut extra_assembly_defines =
-        exact_harness_assembly_defines(executable, memory_telemetry, false);
+    let mut extra_assembly_defines = exact_harness_assembly_defines(
+        executable,
+        memory_telemetry,
+        false,
+        std::env::var("OPFORGE_PHASE_ONLY").as_deref() != Ok("1"),
+    );
     extra_assembly_defines.extend_from_slice(extra_defines);
     let case = OpforgeNativeCliParityCase {
         name: "native-harness-live-oracle",
@@ -1811,6 +1817,7 @@ fn exact_harness_assembly_defines(
     executable: NativeCliParityExecutable,
     memory_telemetry: bool,
     preparation_progress: bool,
+    token_detail: bool,
 ) -> Vec<&'static str> {
     if memory_telemetry
         && matches!(
@@ -1819,6 +1826,11 @@ fn exact_harness_assembly_defines(
         )
     {
         let mut defines = vec!["OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY"];
+        // Phase-only profiling keeps the coarse clocks without per-token probes.
+        // Detailed accounting remains the default for existing memory tests.
+        if token_detail {
+            defines.push("OPFORGE_TOKEN_DETAIL_TELEMETRY");
+        }
         if preparation_progress && matches!(executable, NativeCliParityExecutable::CompactCli) {
             defines.push("OPFORGE_PREPARATION_PROGRESS");
         }
@@ -7124,12 +7136,31 @@ mod tests {
             exact_harness_assembly_defines(
                 NativeCliParityExecutable::BinarySourceHarness,
                 true,
-                false
+                false,
+                true,
             ),
-            vec!["OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY"]
+            vec![
+                "OPFORGE_DEBUG_CONTRACTS",
+                "OPFORGE_MEMORY_TELEMETRY",
+                "OPFORGE_TOKEN_DETAIL_TELEMETRY",
+            ]
+        );
+        assert_eq!(
+            exact_harness_assembly_defines(
+                NativeCliParityExecutable::CompactCli,
+                true,
+                true,
+                false,
+            ),
+            vec![
+                "OPFORGE_DEBUG_CONTRACTS",
+                "OPFORGE_MEMORY_TELEMETRY",
+                "OPFORGE_PREPARATION_PROGRESS",
+            ]
         );
         assert!(exact_harness_assembly_defines(
             NativeCliParityExecutable::CompactMemoHarness,
+            true,
             true,
             true,
         )
@@ -7138,13 +7169,15 @@ mod tests {
             NativeCliParityExecutable::BinarySourceHarness,
             false,
             true,
+            true,
         )
         .is_empty());
         assert_eq!(
-            exact_harness_assembly_defines(NativeCliParityExecutable::CompactCli, true, true),
+            exact_harness_assembly_defines(NativeCliParityExecutable::CompactCli, true, true, true),
             vec![
                 "OPFORGE_DEBUG_CONTRACTS",
                 "OPFORGE_MEMORY_TELEMETRY",
+                "OPFORGE_TOKEN_DETAIL_TELEMETRY",
                 "OPFORGE_PREPARATION_PROGRESS",
             ]
         );

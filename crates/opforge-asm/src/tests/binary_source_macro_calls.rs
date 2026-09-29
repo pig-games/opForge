@@ -117,6 +117,23 @@ fn telemetry_source() -> String {
     format!(".module experimental.amigaos.binary_app\n.cpu m68020\n{telemetry}\nexecute .block\n.MEMORY_PHASE #0\n.byte 1\n.bend\n.byte execute\n.endmodule\n")
 }
 
+fn assembly_telemetry_source() -> String {
+    let telemetry =
+        include_str!("../../../../native/motorola68000/amigaos/debug/memory_telemetry.i");
+    format!(".module app\n.cpu m68020\n{telemetry}\nMissing=0\n.ASSEMBLY_FAILURE_STAGE Missing,#1\n.byte 1\n.endmodule\n")
+}
+
+#[test]
+fn compact_assembly_telemetry_definitions_rust_oracle() {
+    assert_eq!(oracle(&assembly_telemetry_source()), [1]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; compact frontend reads disabled trace macros"]
+fn compact_assembly_telemetry_definitions_fs_uae() {
+    native_source(assembly_telemetry_source());
+}
+
 #[test]
 fn compact_macro_telemetry_rust_oracle() {
     assert_eq!(oracle(&telemetry_source()), [1, 0]);
@@ -273,12 +290,12 @@ fn compact_macro_arena_wide_fs_uae() {
 }
 
 pub(super) fn check_memory(record: &[u8], expected_errors: u32) {
-    assert_eq!(record.len(), 2100);
+    assert_eq!(record.len(), 2112);
     let words = record
         .chunks_exact(4)
         .map(|bytes| u32::from_be_bytes(bytes.try_into().unwrap()))
         .collect::<Vec<_>>();
-    assert_eq!(words[0], 0x4d454d38);
+    assert_eq!(words[0], 0x4d454d39);
     assert_eq!(words[1], 0, "all owned blocks released");
     assert_eq!(words[3], words[4], "allocation/free accounting balances");
     assert_eq!(words[11], 0);

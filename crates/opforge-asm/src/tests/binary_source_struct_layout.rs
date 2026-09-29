@@ -63,6 +63,50 @@ Tag .byte ?
 .end
 "#;
 
+const SELF_HOST_DESCRIPTOR_FIELDS: &str = r#".module prvm.amigaos.macro_descriptors
+.cpu m68020
+.pub
+State .struct
+Source .long ?
+SourceLen .long ?
+CodeEnd .long ?
+Tokens .long ?
+TokenCount .long ?
+Budget .long ?
+Capacity .long ?
+Count .long ?
+ListStart .long ?
+ListEnd .long ?
+Header .long ?
+.endstruct
+.long State.ListEnd
+.endmodule
+"#;
+
+#[test]
+fn compact_self_host_descriptor_fields_rust_oracle() {
+    assert_eq!(
+        oracle(SELF_HOST_DESCRIPTOR_FIELDS, "68020").unwrap(),
+        [0, 0, 0, 36]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; isolated self-host descriptor structure"]
+fn compact_self_host_descriptor_fields_fs_uae() {
+    native(SELF_HOST_DESCRIPTOR_FIELDS, "m68020");
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; gated assembly rejection trace"]
+fn compact_assembly_instruction_failure_trace_fs_uae() {
+    let diagnostic = native_rejection_for_cpu(".cpu m68020\n\tINVALIDOP #0\n", "m68020");
+    if std::env::var("OPFORGE_PREPARATION_PROGRESS").as_deref() == Ok("1") {
+        assert!(diagnostic.contains("progress p=00000018 f=0000000C"));
+        assert!(diagnostic.contains("progress p=00000019 f="));
+    }
+}
+
 fn package_layout_source() -> String {
     let package =
         include_str!("../../../../native/motorola68000/amigaos/experimental/binary_package.asm");
@@ -221,7 +265,7 @@ fn native(source: &str, cpu: &str) {
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d38);
+        assert_eq!(words[0], 0x4d454d39);
         assert_eq!(words[1], 0, "all owned storage must be released");
         assert_eq!(words[3], words[4], "allocation accounting must balance");
         eprintln!(

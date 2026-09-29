@@ -715,12 +715,31 @@ fn parse_semantic(
             plan: names.id(plan),
         };
     };
-    let inputs = inputs
-        .split('|')
-        .next()
-        .unwrap_or(inputs)
-        .split(',')
-        .map(|value| parse_projection(value, names))
+    let inputs = inputs.split('|').next().unwrap_or(inputs);
+    let parts = inputs.split(',').collect::<Vec<_>>();
+    // The branch plan's third field is a requested candidate. Its `auto`
+    // spelling becomes the existing numeric SEMV request sentinel.
+    if branch
+        && (parts.len() != 4
+            || parts[0].parse::<u8>().is_err()
+            || parts[1] != "expr0"
+            || (parts[2] != "auto" && parts[2].parse::<u8>().is_err())
+            || parts[3].parse::<u8>().is_err())
+    {
+        return CandidateRecipe::Unsupported {
+            plan: names.id(plan),
+        };
+    }
+    let inputs = parts
+        .into_iter()
+        .enumerate()
+        .map(|(index, value)| {
+            if branch && index == 2 && value == "auto" {
+                Some(Projection::Constant(-1))
+            } else {
+                parse_projection(value, names)
+            }
+        })
         .collect::<Option<Vec<_>>>();
     let Some(inputs) = inputs else {
         return CandidateRecipe::Unsupported {
@@ -1312,6 +1331,70 @@ mod tests {
         };
         assert_eq!(stages[0].inputs[0], Projection::AtomicTargetExpression(0));
         assert_eq!(stages[2].inputs, [Projection::TargetExpression(0)]);
+    }
+
+    #[test]
+    fn m68020_branch_candidates_preserve_auto_and_explicit_requests() {
+        let mut registry = registry::ModuleRegistry::new();
+        families::register_motorola68000_family_stack(&mut registry);
+        let core = super::RuntimeModelCore::from_registry(&registry).unwrap();
+        let resolved = core.resolve_pipeline("m68020", None).unwrap();
+        let package = super::BinarySourcePackage::prepare(&core, &resolved).unwrap();
+        let branch = |qualifier: Option<&str>| {
+            package
+                .candidates
+                .iter()
+                .find(|candidate| {
+                    package.names[usize::from(candidate.mnemonic)] == "beq"
+                        && candidate
+                            .qualifier
+                            .map(|index| &package.qualifiers[usize::from(index)][..])
+                            == qualifier
+                        && matches!(candidate.recipe, CandidateRecipe::SemanticBranch { .. })
+                })
+                .expect("BEQ candidate")
+        };
+        assert!(branch(None).unstable_widen);
+        assert!(
+            matches!(&branch(None).recipe, CandidateRecipe::SemanticBranch { inputs, .. }
+            if inputs == &[Projection::Constant(103), Projection::Expression(0),
+                Projection::Constant(-1), Projection::Constant(1)])
+        );
+        assert!(
+            matches!(&branch(Some("w")).recipe, CandidateRecipe::SemanticBranch { inputs, .. }
+            if inputs == &[Projection::Constant(103), Projection::Expression(0),
+                Projection::Constant(1), Projection::Constant(0)])
+        );
+        assert!(
+            matches!(&branch(Some("s")).recipe, CandidateRecipe::SemanticBranch { inputs, .. }
+            if inputs == &[Projection::Constant(103), Projection::Expression(0),
+                Projection::Constant(0), Projection::Constant(0)])
+        );
+    }
+
+    #[test]
+    fn auto_request_is_only_valid_in_the_branch_candidate_field() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        for plan in [
+            "semv.branch.v1:branch.sized@auto,expr0,1,0",
+            "semv.branch.v1:branch.sized@103,auto,1,0",
+            "semv.branch.v1:branch.sized@103,expr0,1,auto",
+            "semv.branch.v1:branch.sized@103,expr0,auto",
+            "semv.inputs.v1:other@auto",
+        ] {
+            assert!(
+                matches!(
+                    super::parse_recipe(plan, &mut names),
+                    CandidateRecipe::Unsupported { .. }
+                ),
+                "{plan}"
+            );
+        }
     }
 
     #[test]

@@ -11,8 +11,9 @@ alongside the [native reset](native-runtime-reset.md#fixed-input-allocation-slic
 Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
-Current measured frontier: the frozen 59-file input completes preparation and
-rejects at file `0x2c`, line `0x18` (`beq`) on the expanded 68020 profile. No
+Current measured frontier: after automatic branch package translation, the
+frozen 59-file input completes preparation and rejects at file `0x27`, line
+`0x70` on the expanded 68020 profile. Its physical path is not yet established. No
 native self-host Hunk exists. The preparation measurements below isolate each
 change from earlier gains.
 
@@ -78,6 +79,51 @@ a successful self-host performance measurement. The remaining repeated
 label-to-block search in `mark` is a deferred performance hypothesis, not a
 claim that it explains this runtime.
 The expanded profile is a parity aid, not a revision of the 2 MiB product goal.
+
+## Automatic branch package translation
+
+The unsuffixed `beq` frontier was a compact package-producer gap. Canonical
+semantic branch plans carry `auto` in their requested-candidate field, but the
+compact lowerer treated it as an unsupported projection. Preparation now maps
+that field to the existing numeric SEMV automatic-request sentinel, `-1`, while
+preserving the package program, opcode and automatic class. The four-field
+branch contract is validated before lowering; `auto` in other fields or a
+non-branch input plan remains unsupported. Native execution and BSP7 are
+unchanged, with no mnemonic-specific shortcut or legacy package path.
+
+The package's automatic policy chooses word width for a nearby target too;
+short width requires an explicit suffix. Fresh 68020 / 2 MiB native cases
+match live Rust bytes for near and far automatic forward branches, including
+the `bhs` alias, and an explicit short control. The far automatic output also
+matches the explicit-word Rust output. Before the producer fix, a focused bare
+`beq` case completed with exit 20 at that instruction. Afterward, the focused
+cases complete with exit zero and exact output. This is capability repair,
+not a measured speed improvement. The m68020 runtime package grows from
+292,504 to 294,232 bytes (+1,728) because the automatic recipes are now retained.
+
+Run `cargo test -p vm --lib binary_source_package` and
+`cargo test -p asm --lib compact_branch_width_rust_oracles` for the producer and
+Rust checks. With configured FS-UAE, run
+`cargo test -p asm --lib compact_branch_ -- --ignored --nocapture --test-threads=1`
+for the three native comparisons.
+
+The renewed uninstrumented 59-file probe on the expanded 68020 profile passes
+the original `beq` frontier and explicitly exits 20 at file `0x27`, line `0x70`
+(decimal 39 and 112). The physical path still needs localization: discovery
+ordinals must not be inferred from the sorted Rust dependency list. Native-runner
+wall time is 197.438 seconds, against 196.699 seconds before this repair
+(+0.739 seconds), with a different stopping point. No speed ratio or completed
+self-host output is claimed. Source size remains 674,295 bytes, the Rust Hunk
+oracle 86,396 bytes, native image 87,516 bytes and linked reservation 98,580
+bytes. This run uses 2 MiB chip plus 8 MiB fast RAM, rather than the product's
+2 MiB target.
+
+Qualification: 14 package-producer tests and 149 affected assembler tests pass,
+along with the three fresh focused native comparisons. Formatting, native proof,
+runtime boundary, test ownership, benchmark-selector, supply-chain and workflow
+link checks pass. The architecture guard retains ten findings in unchanged
+native files; broad qualification is not claimed. Localize the new full-input
+rejection before selecting the next structural parity slice.
 
 ## Buffered physical-line collection
 

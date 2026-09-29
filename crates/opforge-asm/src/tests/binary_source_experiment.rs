@@ -54,6 +54,9 @@ mod arithmetic;
 #[path = "binary_source_indexed.rs"]
 mod indexed;
 
+#[path = "binary_source_branches.rs"]
+mod branches;
+
 #[path = "binary_source_selection.rs"]
 mod selection;
 

@@ -1455,12 +1455,15 @@ pub(crate) fn run_compact_cli_files_from_env(
     });
     let memory_telemetry = std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1");
     let progress = std::env::var("OPFORGE_PREPARATION_PROGRESS").as_deref() == Ok("1");
-    let extra_assembly_defines = exact_harness_assembly_defines(
+    let mut extra_assembly_defines = exact_harness_assembly_defines(
         NativeCliParityExecutable::CompactCli,
         memory_telemetry,
         progress,
         std::env::var("OPFORGE_PHASE_ONLY").as_deref() != Ok("1"),
     );
+    if memory_telemetry && std::env::var("OPFORGE_BINDING_DETAIL").as_deref() == Ok("1") {
+        extra_assembly_defines.push("OPFORGE_BINDING_DETAIL_TELEMETRY");
+    }
     let case = OpforgeNativeCliParityCase {
         name: "compact-cli-source-set",
         cpu_override: "68020",

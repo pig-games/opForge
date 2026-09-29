@@ -186,6 +186,54 @@ MEMORY_STAGE	.macro index
 .endif
 .endmacro
 
+; Bounded packed-source scopes. Ordinary and phase-only builds emit no calls.
+MEMORY_DETAIL_BEGIN	.macro index
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_BINDING_DETAIL_TELEMETRY
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .index, d0
+	jsr memory_profile.detailBegin
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+MEMORY_DETAIL_END	.macro index
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_BINDING_DETAIL_TELEMETRY
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .index, d0
+	jsr memory_profile.detailEnd
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+MEMORY_BIND_SAMPLE_BEGIN	.macro
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_BINDING_DETAIL_TELEMETRY
+	jsr memory_profile.bindSampleBegin
+.endif
+.endif
+.endif
+.endmacro
+MEMORY_BIND_SAMPLE_END	.macro
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_BINDING_DETAIL_TELEMETRY
+	jsr memory_profile.bindSampleEnd
+.endif
+.endif
+.endif
+.endmacro
+
 TOKEN_BEGIN	.macro amount
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY

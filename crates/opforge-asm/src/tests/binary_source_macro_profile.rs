@@ -1,4 +1,4 @@
-//! Decode the gated MEM9 accounting for compact macro comparisons.
+//! Decode the gated MEMB accounting for compact macro comparisons.
 use super::*;
 
 pub(super) fn report(run: &crate::fs_uae_smoke::FsUaeSmokeRun) -> serde_json::Value {
@@ -9,12 +9,12 @@ pub(super) fn report(run: &crate::fs_uae_smoke::FsUaeSmokeRun) -> serde_json::Va
         return serde_json::Value::Null;
     }
     let record = &run.captured_artifacts[&PathBuf::from("Work/memory.bin")];
-    assert_eq!(record.len(), 2112);
+    assert_eq!(record.len(), 2212);
     let words = record
         .chunks_exact(4)
         .map(|bytes| u32::from_be_bytes(bytes.try_into().unwrap()))
         .collect::<Vec<_>>();
-    assert_eq!(words[0], 0x4d454d39);
+    assert_eq!(words[0], 0x4d454d42);
     assert_eq!(words[1], 0, "all owned blocks released");
     assert_eq!(words[3], words[4], "allocation/free capacities balance");
     assert_eq!(words[11], 0);

@@ -343,11 +343,17 @@ line	.block
 	clr.w writer.Frame.Reserved(a0)
 	lea PACKED_MAP(a6), a1
 	move.l a1, writer.Frame.PackedMap(a0)
+	.MEMORY_DETAIL_BEGIN #0
 	jsr writer.writeLine
+	.MEMORY_DETAIL_END #0
 	bne.w failed
+	.MEMORY_DETAIL_BEGIN #1
 	bsr.w initialPlan
+	.MEMORY_DETAIL_END #1
 	bne.w failed
+	.MEMORY_DETAIL_BEGIN #4
 	bsr.w stringLinePlan
+	.MEMORY_DETAIL_END #4
 	bne.w failed
 	movea.l Frame.Output(a5), a0
 	movea.l a6, a1
@@ -358,7 +364,9 @@ line	.block
 	adda.l #CONDITION_STATE, a0
 	move.w conditionals.State.Active(a0), d0
 	movea.l Frame.Output(a5), a0
+	.MEMORY_DETAIL_BEGIN #5
 	jsr templates.line
+	.MEMORY_DETAIL_END #5
 	bne.w failed
 	cmpi.w #1, d1
 	beq.w segmentConsumed
@@ -368,7 +376,9 @@ line	.block
 	adda.l #TEMPLATE_STATE, a0
 	movea.l Frame.Output(a5), a1
 	lea SCOPE_STATE(a6), a2
+	.MEMORY_DETAIL_BEGIN #6
 	jsr templates.next
+	.MEMORY_DETAIL_END #6
 	bne.w failed
 	tst.l d1
 	beq.w failed
@@ -985,7 +995,9 @@ graphBeforeDone
 	lea SCOPE_STATE(a6), a1
 	lea SCOPE_STATE(a6), a2
 	adda.l #scopes.SCRATCH_BYTES, a2
+	.MEMORY_DETAIL_BEGIN #2
 	jsr conditionals.line
+	.MEMORY_DETAIL_END #2
 	bne.w failed
 	tst.l d1
 	bne.w activeLine
@@ -997,7 +1009,9 @@ activeLine
 	movea.l Frame.Output(a5), a0
 	lea SCOPE_STATE(a6), a1
 	move.l Frame.Capacity(a5), d0
+	.MEMORY_DETAIL_BEGIN #2
 	jsr scopes.line
+	.MEMORY_DETAIL_END #2
 	bne.w failed
 	movea.l Frame.Output(a5), a0
 	moveq #0, d0
@@ -1007,7 +1021,9 @@ activeLine
 	cmpi.b #34, 8(a0)
 	bne.w constantCaptured
 	lea SCOPE_STATE(a6), a1
+	.MEMORY_DETAIL_BEGIN #2
 	jsr imports.captureConstant
+	.MEMORY_DETAIL_END #2
 	bne.w failed
 constantCaptured
 conditionReady
@@ -1018,6 +1034,7 @@ conditionReady
 	jsr prepare.line
 	bne.w failed
 	.MEMORY_STAGE #0
+	.MEMORY_DETAIL_BEGIN #3
 	cmp.l Frame.Capacity(a5), d1
 	bhi.w failed
 	lea PREPARED_LINE(a6), a0
@@ -1047,6 +1064,7 @@ graphLineDone
 failed
 	moveq #1, d0
 done
+	.MEMORY_DETAIL_END #3
 	tst.l d0
 	rts
 	.bend  ; processRecord
@@ -1445,6 +1463,7 @@ done
 ; A1=Scratch context. Preserves D3-D7/A2-A6.
 bind	.block
 	movem.l d3-d7/a2-a6, -(sp)
+	.MEMORY_BIND_SAMPLE_BEGIN
 	movea.l a1, a6
 	movea.l a0, a2
 	move.l d0, d6
@@ -1532,6 +1551,7 @@ good
 bad
 	moveq #1, d0
 done
+	.MEMORY_BIND_SAMPLE_END
 	movem.l (sp)+, d3-d7/a2-a6
 	rts
 	.bend  ; bind

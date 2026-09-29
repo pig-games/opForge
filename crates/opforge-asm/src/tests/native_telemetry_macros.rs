@@ -115,6 +115,18 @@ clock .block
 stage .block
     rts
 .bend
+detailBegin .block
+    rts
+.bend
+detailEnd .block
+    rts
+.bend
+bindSampleBegin .block
+    rts
+.bend
+bindSampleEnd .block
+    rts
+.bend
 tokenBegin .block
     rts
 .bend
@@ -151,6 +163,10 @@ tokenScopeClose .block
     .MEMORY_WORK #1, d0
     .MEMORY_CLOCK a1, #2
     .MEMORY_STAGE #2
+    .MEMORY_DETAIL_BEGIN #0
+    .MEMORY_BIND_SAMPLE_BEGIN
+    .MEMORY_BIND_SAMPLE_END
+    .MEMORY_DETAIL_END #0
     .TOKEN_BEGIN d0
     .TOKEN_OPCODE d1
     .TOKEN_WORK #3, d2
@@ -253,6 +269,7 @@ fn native_memory_telemetry_macros_are_byte_transparent_without_both_gates() {
         vec![],
         vec!["OPFORGE_DEBUG_CONTRACTS".to_string()],
         vec!["OPFORGE_MEMORY_TELEMETRY".to_string()],
+        vec!["OPFORGE_BINDING_DETAIL_TELEMETRY".to_string()],
     ] {
         let disabled = assemble_memory_telemetry_case(
             "native-memory-telemetry-disabled",
@@ -290,6 +307,45 @@ fn native_memory_telemetry_macros_assemble_against_passive_profile_api() {
         enabled.len() > baseline.len(),
         "enabled memory telemetry macros must emit preservation and profile-call code"
     );
+}
+
+#[test]
+fn native_binding_detail_macros_are_independently_gated() {
+    let source = memory_telemetry_source(true, true);
+    let without_detail = source
+        .lines()
+        .filter(|line| {
+            !line.contains(".MEMORY_DETAIL_") && !line.contains(".MEMORY_BIND_SAMPLE_")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let coarse = assemble_memory_telemetry_case(
+        "native-binding-detail-coarse",
+        &source,
+        &[
+            "OPFORGE_DEBUG_CONTRACTS".to_string(),
+            "OPFORGE_MEMORY_TELEMETRY".to_string(),
+        ],
+    );
+    let omitted = assemble_memory_telemetry_case(
+        "native-binding-detail-omitted",
+        &without_detail,
+        &[
+            "OPFORGE_DEBUG_CONTRACTS".to_string(),
+            "OPFORGE_MEMORY_TELEMETRY".to_string(),
+        ],
+    );
+    assert_eq!(coarse, omitted, "disabled detail probes emit no bytes");
+    let detailed = assemble_memory_telemetry_case(
+        "native-binding-detail-enabled",
+        &source,
+        &[
+            "OPFORGE_DEBUG_CONTRACTS".to_string(),
+            "OPFORGE_MEMORY_TELEMETRY".to_string(),
+            "OPFORGE_BINDING_DETAIL_TELEMETRY".to_string(),
+        ],
+    );
+    assert!(detailed.len() > coarse.len());
 }
 
 #[test]

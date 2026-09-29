@@ -300,7 +300,7 @@ fn native_import_work(files: Vec<(&str, String)>, expected_queue_adds: Option<us
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d39);
+        assert_eq!(words[0], 0x4d454d42);
         assert_eq!(words[1], 0);
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);

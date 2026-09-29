@@ -284,12 +284,12 @@ fn compact_cli_fs_uae() {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh compact CLI memory telemetry");
-        assert_eq!(record.len(), 2112);
+        assert_eq!(record.len(), 2212);
         let words = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d39);
+        assert_eq!(words[0], 0x4d454d42);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocation capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -451,12 +451,12 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh self-host readiness telemetry");
-        assert_eq!(record.len(), 2112);
+        assert_eq!(record.len(), 2212);
         let words = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d39);
+        assert_eq!(words[0], 0x4d454d42);
         assert_eq!(words[1], 0, "terminal path releases tracked memory");
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);
@@ -485,6 +485,44 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             })
             .collect::<serde_json::Map<_, _>>()
         });
+        let binding_detail =
+            (std::env::var("OPFORGE_BINDING_DETAIL").as_deref() == Ok("1")).then(|| {
+                assert_eq!(words[29], 0, "binding detail clocks completed cleanly");
+                let names = [
+                    "source_line_packed_write_and_bind",
+                    "initial_line_plan",
+                    "conditionals_scopes_imports",
+                    "record_finalization_and_append",
+                    "string_line_plan",
+                    "template_dispatch",
+                    "template_next",
+                ];
+                let scopes = names
+                    .iter()
+                    .enumerate()
+                    .map(|(index, name)| {
+                        let ticks = (u64::from(words[528 + 2 * index]) << 32)
+                            | u64::from(words[529 + 2 * index]);
+                        (
+                            (*name).to_owned(),
+                            serde_json::json!({
+                                "seconds": ticks as f64 / f64::from(words[28]),
+                                "calls": words[542 + index],
+                            }),
+                        )
+                    })
+                    .collect::<serde_json::Map<_, _>>();
+                let sample_ticks = (u64::from(words[549]) << 32) | u64::from(words[550]);
+                let sample_seconds = sample_ticks as f64 / f64::from(words[28]);
+                serde_json::json!({
+                    "scopes": scopes,
+                    "binding_calls": words[551],
+                    "binding_samples": words[552],
+                    "binding_sample_seconds": sample_seconds,
+                    "binding_estimated_seconds": sample_seconds * f64::from(words[551])
+                        / f64::from(words[552].max(1)),
+                })
+            });
         serde_json::json!({
             "peak_owned_bytes": words[2],
             "free_at_entry_bytes": words[7],
@@ -498,6 +536,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             "last_failed_block_capacity_bytes": words[526],
             "last_failed_block_used_bytes": words[527],
             "preparation_stages": preparation_stages,
+            "binding_detail": binding_detail,
         })
     } else {
         serde_json::Value::Null
@@ -1770,12 +1809,12 @@ fn assert_binary_files(files: &[(&str, &str)], cpu: &str, oracle: Vec<u8>) -> se
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh memory telemetry capture");
-        assert_eq!(record.len(), 2112);
+        assert_eq!(record.len(), 2212);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d39);
+        assert_eq!(words[0], 0x4d454d42);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocated and freed capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -1957,12 +1996,12 @@ fn assert_native_files_rejection(files: &[(&str, &str)], cpu: &str, diagnostic: 
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh negative-path memory telemetry");
-        assert_eq!(record.len(), 2112);
+        assert_eq!(record.len(), 2212);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d39);
+        assert_eq!(words[0], 0x4d454d42);
         assert!(words[28] > 0, "E-clock initialized on rejection path");
         assert_eq!(words[29] & !16, 0, "only incomplete preparation is allowed");
         assert_eq!(words[1], 0, "failure releases all owned blocks");

@@ -5,6 +5,7 @@
 TOKEN_OPCODE_COUNT = 21
 TOKEN_OPCODE_MAX = TOKEN_OPCODE_COUNT-1
 STAGE_COUNT = 7
+DETAIL_COUNT = 7
 
 Fields	.struct
 Magic	.long ?
@@ -39,9 +40,14 @@ Failures	.long ?
 LastFailRequest	.long ?
 LastFailCapacity	.long ?
 LastFailUsed	.long ?
+DetailElapsed	.res DETAIL_COUNT*8
+DetailEntries	.res DETAIL_COUNT*4
+BindingElapsed	.res 8
+BindingCalls	.long ?
+BindingSamples	.long ?
 	.endstruct
-RECORD_BYTES = Fields.LastFailUsed+4
-RECORD_MAGIC = $4d454d39
+RECORD_BYTES = Fields.BindingSamples+4
+RECORD_MAGIC = $4d454d42
 .ifdef OPFORGE_PREPARATION_PROGRESS
 PROGRESS_BYTES = 64  ; five fixed eight-digit fields and a newline
 .endif
@@ -75,6 +81,11 @@ Stamp	.res long, 2
 PreviousOpcode	.res long, 1
 ScopeActive	.res long, 2
 ScopeStamp	.res long, 4
+DetailActive	.res long, 1
+DetailIndex	.res long, 1
+DetailStamp	.res long, 2
+BindingSampleActive	.res long, 1
+BindingSampleStamp	.res long, 2
 	.endsection
 	.section code, kind=code
 	.pub
@@ -343,6 +354,163 @@ done
 	move.w (sp)+, ccr
 	rts
 	.bend  ; stage
+; Seven bounded, non-nesting preparation scopes. They complement the exclusive
+; stages without changing the stage clock or running on release builds.
+; D0=scope 0..6 on entry/exit. All registers and CCR preserved.
+	.pub
+detailBegin	.block
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	tst.l Active
+	beq.w done
+	lea Record, a2
+	cmpi.l #DETAIL_COUNT-1, d0
+	bhi.w invalid
+	tst.l DetailActive
+	bne.w mismatch
+	move.l d0, DetailIndex
+	movea.l Timer, a6
+	lea DetailStamp, a0
+	jsr -60(a6)
+	cmp.l Fields.Frequency(a2), d0
+	bne.w frequency
+	move.l #1, DetailActive
+	move.l DetailIndex, d0
+	lsl.l #2, d0
+	lea Fields.DetailEntries(a2), a0
+	addq.l #1, 0(a0,d0.l)
+	bcs.w overflow
+	bra.w done
+invalid
+	ori.l #2, Fields.Error(a2)
+	bra.w done
+mismatch
+	ori.l #256, Fields.Error(a2)
+	bra.w done
+frequency
+	ori.l #4, Fields.Error(a2)
+	bra.w done
+overflow
+	ori.l #8, Fields.Error(a2)
+done
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; detailBegin
+detailEnd	.block
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	tst.l DetailActive
+	beq.w done
+	clr.l DetailActive
+	lea Record, a2
+	cmp.l DetailIndex, d0
+	bne.w mismatch
+	movea.l Timer, a6
+	lea Stamp, a0
+	jsr -60(a6)
+	cmp.l Fields.Frequency(a2), d0
+	bne.w frequency
+	lea Stamp, a0
+	lea DetailStamp, a1
+	move.l (a0), d2
+	move.l 4(a0), d3
+	sub.l 4(a1), d3
+	move.l (a1), d4
+	subx.l d4, d2
+	bcs.w overflow
+	move.l DetailIndex, d0
+	lsl.l #3, d0
+	lea Fields.DetailElapsed(a2), a0
+	adda.l d0, a0
+	add.l d3, 4(a0)
+	move.l (a0), d4
+	addx.l d2, d4
+	bcs.w overflow
+	move.l d4, (a0)
+	bra.w done
+mismatch
+	ori.l #256, Fields.Error(a2)
+	bra.w done
+frequency
+	ori.l #4, Fields.Error(a2)
+	bra.w done
+overflow
+	ori.l #8, Fields.Error(a2)
+done
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; detailEnd
+; Every binding callback is counted; one in 64 is timed from after entry to
+; before exit. The sample is nested within detail scope 0 (packed writer).
+bindSampleBegin	.block
+	move.w ccr, -(sp)
+	movem.l d0-d2/a0-a2/a6, -(sp)
+	tst.l Active
+	beq.w done
+	lea Record, a2
+	addq.l #1, Fields.BindingCalls(a2)
+	bcs.w overflow
+	move.l Fields.BindingCalls(a2), d1
+	andi.l #63, d1
+	cmpi.l #1, d1
+	bne.w done
+	movea.l Timer, a6
+	lea BindingSampleStamp, a0
+	jsr -60(a6)
+	cmp.l Fields.Frequency(a2), d0
+	bne.w frequency
+	move.l #1, BindingSampleActive
+	addq.l #1, Fields.BindingSamples(a2)
+	bcs.w overflow
+	bra.w done
+frequency
+	ori.l #4, Fields.Error(a2)
+	bra.w done
+overflow
+	ori.l #8, Fields.Error(a2)
+done
+	movem.l (sp)+, d0-d2/a0-a2/a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; bindSampleBegin
+bindSampleEnd	.block
+	move.w ccr, -(sp)
+	movem.l d0-d4/a0-a2/a6, -(sp)
+	tst.l BindingSampleActive
+	beq.w done
+	clr.l BindingSampleActive
+	lea Record, a2
+	movea.l Timer, a6
+	lea Stamp, a0
+	jsr -60(a6)
+	cmp.l Fields.Frequency(a2), d0
+	bne.w frequency
+	lea Stamp, a0
+	lea BindingSampleStamp, a1
+	move.l (a0), d2
+	move.l 4(a0), d3
+	sub.l 4(a1), d3
+	move.l (a1), d4
+	subx.l d4, d2
+	bcs.w overflow
+	add.l d3, Fields.BindingElapsed+4(a2)
+	move.l Fields.BindingElapsed(a2), d4
+	addx.l d2, d4
+	bcs.w overflow
+	move.l d4, Fields.BindingElapsed(a2)
+	bra.w done
+frequency
+	ori.l #4, Fields.Error(a2)
+	bra.w done
+overflow
+	ori.l #8, Fields.Error(a2)
+done
+	movem.l (sp)+, d0-d4/a0-a2/a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; bindSampleEnd
 ; D0=source-line bytes. Reset adjacency at each VM invocation. Passive ABI.
 tokenBegin	.block
 	move.w ccr, -(sp)
@@ -599,6 +767,11 @@ device
 	beq.w scopesClosed
 	ori.l #32, Fields.Error(a2)
 scopesClosed
+	move.l DetailActive, d0
+	or.l BindingSampleActive, d0
+	beq.w detailClosed
+	ori.l #256, Fields.Error(a2)
+detailClosed
 	movea.l 4.w, a6
 	tst.l Timer
 	beq.w freeRequest

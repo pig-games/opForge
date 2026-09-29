@@ -1173,7 +1173,9 @@ trimmed
 	lea Front, a0
 	jsr frontend.line
 	bne.w bad
+	.MEMORY_DETAIL_BEGIN #3
 	bsr.w appendPrepared
+	.MEMORY_DETAIL_END #3
 	bne.w bad
 expanded
 	lea Front, a0
@@ -1181,7 +1183,9 @@ expanded
 	bne.w bad
 	move.l frontend.Frame.Used(a0), d0
 	beq.w lowered
+	.MEMORY_DETAIL_BEGIN #3
 	bsr.w appendPrepared
+	.MEMORY_DETAIL_END #3
 	bne.w bad
 	bra.w expanded
 lowered

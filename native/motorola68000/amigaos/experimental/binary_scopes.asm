@@ -1348,6 +1348,59 @@ rebindDone
 	rts
 	.bend  ; rebindLocal
 
+; A0=scope state,D0=bound name ID. D0/CCR=status,D1=folded final-component
+; bucket (0..255). This is a candidate key, never a visibility decision.
+; Entry.Leaf denotes binding context, so explicit qualification is scanned here.
+templateKey	.block
+	movem.l d2-d4/a0-a2, -(sp)
+	sub.w layout.State.Base(a0), d0
+	bcs.w bad
+	cmp.w layout.State.Count(a0), d0
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a0), a1
+	adda.l d0, a1
+	moveq #0, d2
+	move.w records.Entry.Length(a1), d2
+	beq.w bad
+	movea.l ARENA_POINTER(a0), a2
+	adda.l records.Entry.Name(a1), a2
+	moveq #0, d3
+scan
+	moveq #0, d1
+	move.b (a2)+, d1
+	cmpi.b #'.', d1
+	beq.w component
+	bsr.w fold
+	move.l d3, d4
+	lsl.l #5, d3
+	add.l d4, d3
+	eor.l d1, d3
+	bra.w next
+component
+	moveq #0, d3
+next
+	subq.w #1, d2
+	bne.w scan
+	move.l d3, d1
+	andi.l #255, d1
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d4/a0-a2
+	tst.l d0
+	rts
+	.bend  ; templateKey
+
+; Read-only selected-name hint. The import resolver remains authoritative.
+; A0=scope state,D0=call ID. D0/CCR=status,D1=selected definition ID.
+templateAliasTarget	.block
+	jsr imports.templateAliasTarget
+	rts
+	.bend  ; templateAliasTarget
+
 ; A0=scope state,D0=call ID,D1=definition ID. A read-only candidate check
 ; prevents ordinary dot directives from allocating import proxies. Selected
 ; per-item aliases may have a different leaf than their definition.

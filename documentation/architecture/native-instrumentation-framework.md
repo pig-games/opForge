@@ -150,8 +150,10 @@ observations that include probe cost. This option can be combined with
 phase-only mode to omit token probes. `OPFORGE_TEMPLATE_WORK=1` adds twelve
 aggregate counters at byte 2212 for role calls/searches/candidates,
 template-line candidate search and outcomes, and the actual macro-plan and
-string-plan work. Its candidate counts cover the first local definition scan;
-an imported-name fallback scan is not counted. These modes emit no probes in
+string-plan work. Candidate counts cover leaf-bucket visits, including hash
+collisions; resolved imported targets use a separate exact numeric index and are
+not counted as bucket visits. At the pre-index checkpoint these same fields
+counted visits through the complete local definition array. These modes emit no probes in
 ordinary builds. The record is 2260 bytes; earlier field offsets remain
 unchanged.
 Allocation amounts are actual reserved block

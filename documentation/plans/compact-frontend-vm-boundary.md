@@ -8,9 +8,15 @@ expression correction remain active. Counted packed `.for` replay now passes
 focused real-native comparison; iterable `.for` and `.bfor` remain unsupported.
 The remaining frontend boundary work and next self-host frontier are tracked
 alongside the [native reset](native-runtime-reset.md#fixed-input-allocation-slice).
-Further performance shortcuts are deferred until completed native self-host proof.
+Speculative shortcuts are deferred until completed native self-host proof.
+Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
-Current self-host frontier: the compact native CLI accepts concrete code and
+Current measured frontier: the frozen 59-file input completes preparation and
+rejects at file `0x2c`, line `0x18` (`beq`) on the expanded 68020 profile. No
+native self-host Hunk exists. The [template index measurement](#template-candidate-index)
+below isolates the latest preparation gain from earlier changes.
+
+Earlier convergence and memory observations: the compact native CLI accepts concrete code and
 data sections reopened by another module, with a focused 68020 / 2 MiB Hunk
 matching Rust exactly. The earlier isolated TKVM graph's binding rejection was
 not a valid frontier: that subset lacked a root `.output` declaration and Rust
@@ -72,6 +78,94 @@ a successful self-host performance measurement. The remaining repeated
 label-to-block search in `mark` is a deferred performance hypothesis, not a
 claim that it explains this runtime.
 The expanded profile is a parity aid, not a revision of the 2 MiB product goal.
+
+## Template candidate index
+
+The full-input preparation profile exposed repeated scans over every retained
+template, including ordinary dot statements that are not template calls. On the
+frozen 59-file, 674,295-byte input, the reference performs 443,406 failed role
+candidate checks and examines 468,115 candidates in template-line selection.
+The hypothesis is that preparation-owned indexing can remove this repeated work
+without changing parsing, visibility, lexical selection or import semantics.
+
+`binary_template_index` owns insertion-ordered leaf buckets and a separate exact
+numeric-name index. Scopes supplies a folded final-component bucket; collisions
+still undergo the existing candidate and lexical-distance checks. Definition
+order preserves the first equal-distance match. A read-only named-import hint
+covers aliases with a different leaf; `resolveTemplate` remains authoritative
+for visibility, public declarations and selection. Only successful definitions
+are published. The index contains numeric IDs and index-plus-one links, and is
+released with the other preparation pools. No package or executable binary-source
+contract changes. Fixed scratch is 1,552 bytes, with six bytes per definition
+before geometric pool rounding.
+
+The same Rust oracle, package and frozen source graph are used before and after.
+The test-only `OPFORGE_COMPARE_NATIVE_ROOT` override builds a preserved native
+revision without changing the guest input. Compare ordinary builds separately
+from detailed telemetry. Acceptance requires exact focused outputs, retained
+negative cases and the same full-input stopping point; a changed or incomplete
+frontier cannot establish a comparative gain.
+
+On the same 68020 / 2 MiB chip + 8 MiB fast FS-UAE profile, uninstrumented
+native-runner wall time falls from 490.734 to 204.977 seconds: 285.757 seconds
+saved, a 58.2% reduction or 2.39× observed gain for this index change alone.
+These are single matched observations, include native executable construction
+and emulator startup, and exclude the preceding Rust oracle build. They are
+time to the same explicit rejection at file `0x2c`, line `0x18` (`beq`), not
+completed self-host assembly or physical-machine timing. Both runs use a
+292,504-byte runtime package and the same 86,396-byte Rust Hunk oracle.
+The release executable grows from 86,408 to 87,288 bytes (+880), with linked
+reservation from 97,544 to 98,356 (+812).
+
+Fresh focused native proof covers nearest lexical templates and ASCII case
+folding, exact qualified identity rejection, duplicate declarations, exported
+macros, pool growth, nested expansion and colliding leaf names `M008`/`M080`.
+The growth case emits all 2,835 Rust bytes. A renamed-import regression emits
+the independently expected byte on both native revisions; Rust currently
+rejects that selected renamed-macro invocation, so this is not Rust parity.
+Reproduce focused checks with `cargo test -p asm compact_template_ -- --ignored
+--nocapture --test-threads=1` and the configured FS-UAE environment. For the
+full comparison, set `OPFORGE_SELF_HOST_SOURCE_ROOT` to the same frozen source
+root and run `compact_cli_self_host_entry_readiness_fs_uae`; the default negative
+probe does not claim successful self-hosting. Add `OPFORGE_COMPARE_MEMORY=1`,
+`OPFORGE_PHASE_ONLY=1`, `OPFORGE_BINDING_DETAIL=1` and `OPFORGE_TEMPLATE_WORK=1`
+only for the separate attribution run.
+
+The matched detailed run reaches the same rejection in 258.138 seconds versus
+543.689 before indexing. Instrumentation perturbs both runs; the ordinary
+204.977-second observation above is the performance result. The principal
+preparation boundaries are:
+
+| Instrumented boundary | Before (s) | Indexed (s) |
+|---|---:|---:|
+| Binding and raw records (whole stage) | 355.175 | 87.916 |
+| Initial line plan | 82.487 | 8.484 |
+| String line plan | 73.910 | 3.789 |
+| Template dispatch | 120.983 | 6.547 |
+| Source-line writer including binding | 34.481 | 34.488 |
+| Conditional/scope/import processing | 16.366 | 16.450 |
+| Tokenization (whole stage) | 64.475 | 64.425 |
+| Module discovery (whole stage) | 12.480 | 12.493 |
+
+Failed role candidates fall from 443,406 to 791 (99.82% fewer); line candidates
+from 468,115 to 1,816 (99.61% fewer). Outcomes remain 184 invocations, 2,994
+body captures, 296 definitions, 1,672 plan VM runs and zero string-plan captures.
+Binding calls remain 76,780, with 1,200 timed samples estimating 26.624 seconds
+versus 26.566 before. Both retain 509,604 packed-source bytes and read 760,743
+source bytes including discovery/reloads. The sample estimate overlaps writer
+time; boundary rows overlap whole stages and must not be added together.
+Peak tracked ownership grows from 3,244,168 to 3,247,768 bytes (+3,600), with
+balanced allocation/free totals, zero live ownership and zero profiling errors.
+This remains expanded-memory convergence evidence, not 2 MiB self-host proof.
+
+Qualification: 143 affected Rust tests and six telemetry gating/transparency tests
+pass. Fresh wildcard, selected and qualified-alias template imports match Rust
+under 68020 / 2 MiB. Changed native source formatting, instrumentation safety,
+proof-contract, evidence classification, test-module ownership, benchmark-selector,
+supply-chain and workflow-link checks pass. Broader gates remain blocked by ten
+unchanged enforced architecture findings and nine missing ownership annotations
+in unchanged files; the linked CLI formatter also reports one unchanged file
+would change. This slice does not claim repository-wide qualification.
 
 ## Finding
 

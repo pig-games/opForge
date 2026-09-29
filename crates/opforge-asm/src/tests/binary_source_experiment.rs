@@ -429,8 +429,12 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
     let native_started = std::time::Instant::now();
+    // Compare native revisions against the same frozen input and Rust oracle.
+    let native_root = std::env::var_os("OPFORGE_COMPARE_NATIVE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(workspace_root);
     let result = crate::fs_uae_smoke::run_compact_cli_files_from_env(
-        &workspace_root(),
+        &native_root,
         &package,
         &source_refs,
         &native_roots,

@@ -12,6 +12,7 @@
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
+	.use experimental.amigaos.binary_template_index as index
 	.pub
 ARG_LIMIT = 192
 TEXT_LIMIT = 192
@@ -150,7 +151,8 @@ DEFAULT_TEXT_USED = DEFAULT_TEXT+memory.Block.Used
 FRAMES = BODY+BLOCK_BYTES
 COMPOSITE_TEXT = FRAMES+DEPTH_LIMIT*FRAME_BYTES
 HEADER_FRAME = COMPOSITE_TEXT+256
-SCRATCH_BYTES = HEADER_FRAME+FRAME_BYTES
+CANDIDATES = HEADER_FRAME+FRAME_BYTES
+SCRATCH_BYTES = CANDIDATES+index.SCRATCH_BYTES
 	.section code, kind=code
 
 ; A0=caller-owned zero-initialized state, or a previously begun session.
@@ -158,6 +160,10 @@ SCRATCH_BYTES = HEADER_FRAME+FRAME_BYTES
 ; D0/CCR=zero; other registers preserved.
 begin	.block
 	bsr.w finish
+	move.l a0, -(sp)
+	adda.l #CANDIDATES, a0
+	jsr index.begin
+	movea.l (sp)+, a0
 	clr.w State.Count(a0)
 	clr.w State.Open(a0)
 	clr.w State.Skipping(a0)
@@ -186,6 +192,10 @@ finish	.block
 	jsr memory.release
 	adda.l #BLOCK_BYTES, a0
 	jsr memory.release
+	movea.l (sp)+, a0
+	move.l a0, -(sp)
+	adda.l #CANDIDATES, a0
+	jsr index.finish
 	movea.l (sp)+, a0
 	moveq #0, d0
 	rts
@@ -282,10 +292,24 @@ scopeDirective
 lookup
 	.MEMORY_TEMPLATE_WORK #1, #1
 	moveq #0, d2
-	movea.l DEFS+memory.Block.Pointer(a2), a3
+	move.l d4, d0
+	movea.l a4, a0
+	jsr scopes.templateKey
+	bne.w body
+	move.l d1, d0
+	movea.l a2, a0
+	adda.l #CANDIDATES, a0
+	jsr index.first
+	move.w d1, d3
 next
-	cmp.w State.Count(a2), d2
-	bhs.w body
+	tst.w d3
+	beq.w alias
+	moveq #0, d0
+	move.w d3, d0
+	subq.w #1, d0
+	mulu.w #DEF_BYTES, d0
+	movea.l DEFS+memory.Block.Pointer(a2), a3
+	adda.l d0, a3
 	move.l d4, d0
 	moveq #0, d1
 	move.w Def.Name(a3), d1
@@ -295,9 +319,21 @@ next
 	.MEMORY_TEMPLATE_WORK #3, #1
 	bra.w call
 candidateMiss
-	adda.l #DEF_BYTES, a3
 	addq.w #1, d2
+	move.w d3, d1
+	movea.l a2, a0
+	adda.l #CANDIDATES, a0
+	jsr index.next
+	move.w d1, d3
 	bra.w next
+alias
+	move.l d4, d0
+	movea.l a4, a0
+	movea.l a2, a1
+	bsr.w aliasDefinition
+	bne.w body
+	.MEMORY_TEMPLATE_WORK #3, #1
+	bra.w call
 body
 	tst.w State.Open(a2)
 	beq.w none
@@ -320,6 +356,29 @@ done
 	tst.l d0
 	rts
 	.bend  ; role
+
+; A0=scope,A1=templates,D0=call ID. Read-only exact-definition hint for
+; a selected rename whose leaf differs. D0/CCR=status,D1=index cursor.
+; This does not confer visibility; line still calls scopes.resolveTemplate.
+aliasDefinition	.block
+	movem.l a0-a1, -(sp)
+	jsr scopes.templateAliasTarget
+	bne.w done
+	move.l d1, d0
+	movea.l a1, a0
+	adda.l #CANDIDATES, a0
+	jsr index.find
+	tst.w d1
+	beq.w missing
+	moveq #0, d0
+	bra.w done
+missing
+	moveq #1, d0
+done
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; aliasDefinition
 
 ; A0=raw writer record,A1=template state,A2=scope state,D0=conditional
 ; active flag. D0/CCR=status,D1=ACTION_*; other registers preserved.
@@ -444,9 +503,23 @@ qualifiedCall
 	moveq #-1, d3
 	moveq #0, d2  ; read-only candidate before mutable import lookup
 	move.w #$ffff, d6
+	moveq #0, d0
+	move.w d5, d0
+	movea.l a4, a0
+	jsr scopes.templateKey
+	bne.w ordinary
+	move.l d1, d0
+	movea.l a6, a0
+	adda.l #CANDIDATES, a0
+	jsr index.first
+	move.w d1, d7
 findCall
-	cmp.w State.Count(a6), d4
-	bhs.w selectedCall
+	tst.w d7
+	beq.w selectedCall
+	.MEMORY_TEMPLATE_WORK #5, #1
+	move.w d7, d4
+	subq.w #1, d4
+	moveq #0, d0
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
 	movea.l DEFS+memory.Block.Pointer(a6), a1
@@ -473,35 +546,37 @@ findCall
 	tst.w d6
 	beq.w selectedCall
 nextCall
-	addq.w #1, d4
+	move.w d7, d1
+	movea.l a6, a0
+	adda.l #CANDIDATES, a0
+	jsr index.next
+	move.w d1, d7
 	bra.w findCall
 selectedCall
-	.MEMORY_TEMPLATE_WORK #5, d4
-	cmp.w State.Count(a6), d4
-	bhs.w candidatesCounted
-	.MEMORY_TEMPLATE_WORK #5, #1
-candidatesCounted
 	tst.w d3
 	bpl.w chosenCall
 	tst.w d2
-	beq.w ordinary
+	bne.w resolveImportedCall
+	moveq #0, d0
+	move.w d5, d0
+	movea.l a4, a0
+	movea.l a6, a1
+	bsr.w aliasDefinition
+	bne.w ordinary
+resolveImportedCall
 	lea 1(a2), a0
 	movea.l (sp), a1
 	jsr scopes.resolveTemplate
 	bne.w ordinary
-	move.w d1, d7  ; keep D5 as the caller-scope invocation ID
-	moveq #0, d4
-findImportedCall
-	cmp.w State.Count(a6), d4
-	bhs.w ordinary
-	move.w d4, d0
-	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a6), a1
-	adda.l d0, a1
-	cmp.w Def.Name(a1), d7
-	beq.w call
-	addq.w #1, d4
-	bra.w findImportedCall
+	move.l d1, d0
+	movea.l a6, a0
+	adda.l #CANDIDATES, a0
+	jsr index.find
+	tst.w d1
+	beq.w ordinary
+	move.w d1, d4
+	subq.w #1, d4
+	bra.w call
 chosenCall
 	move.w d3, d4
 	bra.w call
@@ -545,18 +620,15 @@ checkedHeader
 	bne.w bad
 	tst.l d7
 	beq.w skipDefinition
+	moveq #0, d0
+	move.w d5, d0
+	movea.l a6, a0
+	adda.l #CANDIDATES, a0
+	jsr index.find
+	tst.w d1
+	bne.w bad
 	moveq #0, d4
-duplicate
-	cmp.w State.Count(a6), d4
-	bhs.w newDefinition
-	move.w d4, d0
-	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a6), a0
-	adda.l d0, a0
-	cmp.w Def.Name(a0), d5
-	beq.w bad
-	addq.w #1, d4
-	bra.w duplicate
+	move.w State.Count(a6), d4
 newDefinition
 	moveq #0, d0
 	move.w d4, d0
@@ -605,6 +677,17 @@ parametersValid
 	move.l State.Used(a6), Def.First(a0)
 	move.l State.Used(a6), Def.Last(a0)
 	move.w d2, Def.Kind(a0)
+	moveq #0, d0
+	move.w d5, d0
+	movea.l (sp), a0
+	jsr scopes.templateKey
+	bne.w bad
+	moveq #0, d0
+	move.w d5, d0
+	movea.l a6, a0
+	adda.l #CANDIDATES, a0
+	jsr index.add
+	bne.w bad
 	addq.w #1, State.Count(a6)
 	addq.w #1, d4
 	move.w d4, State.Open(a6)

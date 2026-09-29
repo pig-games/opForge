@@ -46,8 +46,46 @@ fn growth_source() -> String {
         }
         source.push_str(".endmacro\n");
     }
-    source.push_str("WRAP .macro value=4\n.M119 .value\n.endmacro\n.M000\n.M119\n.WRAP\n.end\n");
+    // M008 and M080 collide in the folded leaf bucket. Both must survive
+    // insertion and later pool relocation without selecting the other body.
+    source.push_str(
+        "WRAP .macro value=4\n.M119 .value\n.endmacro\n.M000\n.M008\n.M080\n.M119\n.WRAP\n.end\n",
+    );
     source
+}
+
+const LOOKUP: &str = r#".module app
+.cpu m68020
+emit .macro
+.byte 1
+.endmacro
+.emit
+.namespace inner
+emit .macro
+.byte 2
+.endmacro
+.EMIT
+.namespace deeper
+.emit
+.endnamespace
+.endnamespace
+.emit
+.endmodule
+.end
+"#;
+
+#[test]
+fn compact_template_index_rust_oracle() {
+    assert_eq!(
+        oracle(&[("input.asm", LOOKUP.as_bytes())], "m68020"),
+        [1, 2, 2, 1]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; nearest lexical template and case folding"]
+fn compact_template_index_lookup_fs_uae() {
+    native(&[("input.asm", LOOKUP.as_bytes())], "m68020");
 }
 
 #[test]
@@ -63,7 +101,7 @@ fn compact_template_storage_rust_oracles() {
     // this exercises widened body cursors rather than just larger old caps.
     assert!(120 * 7 * (PAYLOAD.len() + 2) > usize::from(u16::MAX));
     let mut expected = Vec::new();
-    for value in [1, 120, 4] {
+    for value in [1, 9, 81, 120, 4] {
         for _ in 0..7 {
             expected.extend(PAYLOAD.as_bytes());
             expected.push(value);
@@ -77,6 +115,10 @@ fn compact_template_storage_rust_oracles() {
 
 fn native(sources: &[(&str, &[u8])], cpu: &str) {
     let expected = oracle(sources, cpu);
+    native_expected(sources, cpu, &expected);
+}
+
+fn native_expected(sources: &[(&str, &[u8])], cpu: &str, expected: &[u8]) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline(cpu, None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
@@ -85,13 +127,16 @@ fn native(sources: &[(&str, &[u8])], cpu: &str) {
     } else {
         &[]
     };
+    let native_root = std::env::var_os("OPFORGE_COMPARE_NATIVE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(workspace_root);
     let result = crate::fs_uae_smoke::run_compact_cli_files_from_env(
-        &workspace_root(),
+        &native_root,
         &package,
         sources,
         &[],
         include_roots,
-        Some(&expected),
+        Some(expected),
         false,
     )
     .expect("fresh template-storage exact native comparison");
@@ -118,6 +163,53 @@ fn native(sources: &[(&str, &[u8])], cpu: &str) {
             "COMPACT_TEMPLATE_STORAGE_INSTRUMENTED peak_owned_bytes={}",
             words[2]
         );
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; native rename regression, Rust does not expand selected rename"]
+fn compact_template_index_rename_regression_fs_uae() {
+    let source = ".module provider\n.pub\nforeign .macro value\n.byte .value\n.endmacro\n.endmodule\n.module app\n.cpu m68020\n.use provider (foreign as renamed)\n.renamed 3\n.endmodule\n.end\n";
+    // An independent one-byte expectation preserves the previous native behavior;
+    // this is not a claim of Rust parity for its missing renamed-macro expansion.
+    native_expected(&[("input.asm", source.as_bytes())], "m68020", &[3]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; qualified leaf is not identity and duplicate declarations reject"]
+fn compact_template_index_rejection_fs_uae() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    for tail in [".other.emit\n", "emit .macro\n.byte 2\n.endmacro\n.emit\n"] {
+        let source = format!(
+            ".module app\n.cpu m68020\nemit .macro\n.byte 1\n.endmacro\n{tail}.endmodule\n.end\n"
+        );
+        let dir = create_temp_dir("compact-template-index-rejection");
+        let input = dir.join("input.asm");
+        fs::write(&input, &source).unwrap();
+        let cli = Cli::parse_from([
+            "opForge".to_string(),
+            input.to_string_lossy().into_owned(),
+            "--cpu".to_string(),
+            "m68020".to_string(),
+        ]);
+        let config = validate_cli(&cli).unwrap();
+        assert!(run_with_validated_cli_with_context(&cli, &config).is_err());
+        fs::remove_dir_all(dir).unwrap();
+        let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+            &workspace_root(),
+            &package,
+            source.as_bytes(),
+            None,
+        )
+        .expect("fresh template-index rejection");
+        let FsUaeSmokeOutcome::Completed { runs } = result else {
+            panic!("real FS-UAE execution required");
+        };
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].protocol_completed && !runs[0].success);
+        assert_eq!(runs[0].exit_code, Some(20));
     }
 }
 

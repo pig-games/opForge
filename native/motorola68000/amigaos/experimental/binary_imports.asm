@@ -943,6 +943,44 @@ templateDone
 	rts
 	.bend  ; resolveTemplate
 
+; A0=scope state,D0=call ID. Read-only named-selection hint, with no proxy
+; allocation. D0/CCR=status,D1=definition ID; other registers preserved.
+; Wildcard imports have no unique target and must use ordinary leaf candidates.
+templateAliasTarget	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	moveq #0, d7
+	move.w layout.MODULE_STATE+modules.State.Active(a6), d7
+	beq.w missing
+	subq.l #4, sp
+	clr.b (sp)
+	move.w d0, 1(sp)
+	clr.b 3(sp)
+	movea.l sp, a5
+	moveq #0, d4
+	bsr.w selectedTarget
+	addq.l #4, sp
+	bne.w missing
+	tst.w d4
+	beq.w missing
+	cmpi.w #$ffff, d4
+	beq.w missing
+	moveq #0, d1
+	move.w d4, d1
+	subq.w #1, d1
+	cmp.w layout.State.Count(a6), d1
+	bhs.w missing
+	add.w layout.State.Base(a6), d1
+	moveq #0, d0
+	bra.w done
+missing
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; templateAliasTarget
+
 ; A0=scope state,D0=call ID,D1=definition ID. Reuse selectedTarget's
 ; read-only alias lookup before template call resolution may allocate a proxy.
 ; D0/CCR=zero when a selected rename exposes this definition.

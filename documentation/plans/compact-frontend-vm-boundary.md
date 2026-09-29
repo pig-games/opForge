@@ -36,9 +36,14 @@ For functional convergence, the runner now also supports a 68020 profile with
 passed source selection, binding and packed-record materialization, but timed
 out at ten minutes between the post-materialization and post-block-selection
 progress markers. The ordinary build also timed out at ten minutes without a
-guest completion marker or output. Block reachability currently rescans outer
-block contents for each referenced numeric label, a plausible scaling cause;
-that path needs a focused indexed-lookup comparison before another full run.
+guest completion marker or output. A focused 128/513-block import chain, with
+only the first block selected and an unreachable final block, matches Rust's
+output exactly on native. With gated memory telemetry, native finalization took
+1.331/13.737 seconds respectively, while tracked peak ownership was
+820,056/832,344 bytes. About four times as many blocks took about ten times
+as long. These are instrumented relative timings, not release self-host timing.
+An experimental numeric-ID lookup did not improve this case and was discarded;
+the repeated reachability sweeps are a more likely scaling cause to inspect next.
 The expanded profile is a parity aid, not a revision of the 2 MiB product goal.
 
 ## Finding

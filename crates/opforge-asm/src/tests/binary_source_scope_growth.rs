@@ -58,6 +58,39 @@ fn many_imported_blocks(count: usize) -> Vec<(&'static str, String)> {
     vec![("main.asm", caller), ("library/dep.asm", provider)]
 }
 
+fn transitive_imported_blocks(count: usize) -> Vec<(&'static str, String)> {
+    let caller = ".module app\n.cpu m68020\n.use dep (b0)\n.word dep.b0\n.endmodule\n.end\n".into();
+    let mut provider = String::from(".module dep\n.cpu m68020\n.pub\n");
+    for index in 0..count {
+        provider.push_str(&format!("b{index} .block\n"));
+        if index + 1 == count {
+            provider.push_str(".byte 1\n");
+        } else {
+            provider.push_str(&format!(".word dep.b{}\n", index + 1));
+        }
+        provider.push_str(".bend\n");
+    }
+    provider.push_str("unused .block\n.byte 99\n.bend\n.endmodule\n.end\n");
+    vec![("main.asm", caller), ("library/dep.asm", provider)]
+}
+
+#[test]
+fn compact_transitive_imported_blocks_rust_oracle() {
+    for count in [8, 128] {
+        let output = wide_import_oracle(&transitive_imported_blocks(count));
+        assert_eq!(output.len(), count * 2 + 1);
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; transitive packed block references"]
+fn compact_transitive_imported_block_scaling_fs_uae() {
+    for count in [128, 513] {
+        eprintln!("COMPACT_TRANSITIVE_BLOCK_SCALE count={count}");
+        native_import(transitive_imported_blocks(count));
+    }
+}
+
 #[test]
 fn compact_imported_block_index_capacity_rust_oracle() {
     assert_eq!(wide_import_oracle(&many_imported_blocks(513)), [1, 0, 0]);

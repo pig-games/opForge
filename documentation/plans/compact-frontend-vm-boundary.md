@@ -13,9 +13,11 @@ Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
 Current measured frontier: after automatic branch package translation, the
 frozen 59-file input completes preparation and rejects at file `0x27`, line
-`0x70` on the expanded 68020 profile. Its physical path is not yet established. No
-native self-host Hunk exists. The preparation measurements below isolate each
-change from earlier gains.
+`0x70` on the expanded 68020 profile. Gated capture places that rejection in
+pass 1, section sweep 2 of 4, at packed-record byte 9,765 of 509,604 (1.92% of
+that sweep's scan). Its physical path has supporting localization below but no
+direct path capture. No native self-host Hunk exists. The preparation
+measurements below isolate each change from earlier gains.
 
 Earlier convergence and memory observations: the compact native CLI accepts concrete code and
 data sections reopened by another module, with a focused 68020 / 2 MiB Hunk
@@ -79,6 +81,61 @@ a successful self-host performance measurement. The remaining repeated
 label-to-block search in `mark` is a deferred performance hypothesis, not a
 claim that it explains this runtime.
 The expanded profile is a parity aid, not a revision of the 2 MiB product goal.
+
+## Assembly position capture
+
+Optional preparation progress now captures the assembly pass and section sweep
+at their owned boundary, then reports the final packed-record byte offset and
+total on failure. The decoder distinguishes a Hunk section sweep from the later
+outside-section scan and rejects impossible or uninitialized active-pass counts.
+This is scan position, not a percentage of completed assembler work: section
+filtering, two passes and loop replay change the work represented by each byte.
+The binary MEMD schema is unchanged. The snapshot is 20 bytes and requires all
+three instrumentation gates; ordinary builds emit no snapshot code or storage.
+
+The first capture exposed a Rust host Hunk-relocation defect: an absolute
+`Base+Struct.Field` operand can be emitted without its base relocation. The
+probe's apparent pass/sweep and zero remaining fields are discarded. Capture
+and reporting now load bare base labels with `lea` and use relative fields.
+The existing record-count progress sites use the same reusable mechanism.
+The Rust relocation repair and an audit of other absolute diagnostic field
+operands remain follow-up work; this slice changes telemetry addressing only.
+
+A fresh 68020 / 2 MiB negative Hunk probe, accepted by the live Rust assembler,
+rejects a memory-to-memory `move.w` on native. Its corrected capture reports
+pass 1, section sweep 2 of 4, section ID 1, and record byte 42 of 144 (29.17%).
+An expected negative completion is not successful artifact parity. The source-
+end count for the full probe's file `0x27` uniquely matches the frozen
+`tkvm/tkvm_scanner.asm` among the staged files; its line 112 also contains a
+memory-to-memory `move.w`. This is supporting localization, not a direct path
+capture.
+
+The fresh full frozen-source run completes preparation and explicitly exits 20
+at the same file `0x27`, line `0x70`. Its snapshot reports pass 1, Hunk mode 5,
+raw sweep 9, section ID 3, and section sweep 2 of 4 (`code` in the root output
+order `entry,code,data,bss`). The record offset is 9,765 of 509,604 bytes,
+or 1.916% through that scan. The entry-section sweep is complete; the rest of
+the code sweep, data/BSS sweeps, outside-section controls and pass 2 remain.
+This cannot be converted to an overall completion percentage.
+
+Native-runner wall time with memory and preparation progress enabled is
+208.090 seconds. The preceding ordinary run was 197.438 seconds; their
+10.652-second difference includes all instrumentation and run variation, not
+an isolated cost for this capture. No release speed change is claimed: the
+ordinary executable remains byte-for-byte identical at 87,516 bytes. The
+instrumented image is 91,544 bytes with 104,276 bytes linked reservation.
+This full probe uses 2 MiB chip plus 8 MiB fast RAM and has no successful guest
+completion time or native self-host output.
+
+Qualification: the three decoder tests and all eight telemetry macro tests
+pass. The fresh negative native capture and positive compact CLI control run
+under 2 MiB; the positive control completes with exact Rust output (5 bytes).
+Formatting, native instrumentation safety, fresh-proof contract, test ownership,
+runtime-boundary contract and workflow links pass. This is capture qualification,
+not full native parity or broad project qualification. Repair the Rust Hunk
+relocation defect and audit its affected addressing sites before relying on
+additional absolute-field instrumentation; the memory-to-memory MOVE rejection
+is the next localized native instruction capability to investigate.
 
 ## Automatic branch package translation
 

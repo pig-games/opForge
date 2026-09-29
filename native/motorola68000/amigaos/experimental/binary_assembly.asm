@@ -57,6 +57,8 @@ FailureStage
 	.res long, 1
 FailureName
 	.res long, 1
+Position
+	.res byte, AssemblyPosition.Count+4
 	.priv
 .endif
 .endif
@@ -76,6 +78,7 @@ assemble	.block
 	movea.l a0, a5
 	move.l a0, Active
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #0
+	.ASSEMBLY_POSITION_CLEAR Position
 	clr.l Frame.Used(a5)
 	move.l #-1, Frame.RecordOffset(a5)
 	movea.l Frame.Context(a5), a6
@@ -172,6 +175,7 @@ sweep
 	jsr sections.beginHunkSlot
 	bne.w fail
 sweepRecords
+	.ASSEMBLY_POSITION Position, d7, d5, SectionState, sections.State.Mode, sections.State.HunkCurrent, sections.State.OrderCount
 	lea RepeatState, a0
 	jsr repetition.begin
 	movea.l Frame.Records(a5), a4

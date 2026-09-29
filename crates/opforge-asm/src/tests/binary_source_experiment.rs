@@ -57,6 +57,9 @@ mod indexed;
 #[path = "binary_source_branches.rs"]
 mod branches;
 
+#[path = "binary_source_progress.rs"]
+mod progress;
+
 #[path = "binary_source_selection.rs"]
 mod selection;
 
@@ -457,6 +460,15 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     assert_eq!(runs[0].exit_code, Some(if require_parity { 0 } else { 20 }));
     let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
     let native_allocation = hunk::allocation(image).expect("native executable allocation");
+    let assembly_position = progress::failure_position(&runs[0].stdout);
+    if std::env::var("OPFORGE_PREPARATION_PROGRESS").as_deref() == Ok("1")
+        && runs[0].stdout.contains("progress p=00000018")
+    {
+        assert!(
+            assembly_position.is_some(),
+            "self-host assembly position capture"
+        );
+    }
     let memory = if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
         let record = runs[0]
             .captured_artifacts
@@ -604,6 +616,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             "native_image_bytes": image.len(),
             "native_linked_reserved_bytes": native_allocation.total(),
             "native_run_host_seconds": native_run_host_seconds,
+            "assembly_position": assembly_position,
             "guest_start_to_done_host_seconds": runs[0].start_to_done_host_seconds,
             "diagnostic": runs[0].stdout,
             "instrumented_memory": memory,

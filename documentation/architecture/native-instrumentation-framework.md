@@ -135,6 +135,31 @@ progress enabled, phase 23 reports these three values in the source, line and
 records fields after successful block selection. They do not change the MEMD
 binary record or its version.
 
+At an assembly failure, phases 24/25 report the failing operation and numeric
+name. Phases 26–28 add a bounded sweep snapshot: phase 26 carries assembly pass,
+raw sweep selector and section ID; phase 27 carries zero-based packed-record
+byte offset and total record bytes (the third field is cleared output size);
+phase 28 carries section mode, Hunk section count and the pass again.
+In Hunk mode 5, raw sweep 8 is the first section,
+9 the second, and so on; raw sweep 0 is the later outside-section control scan.
+The section ID is meaningful only during a section sweep. Pass 0 and record
+offset `ffffffff` identify failure before record execution starts.
+
+`ASSEMBLY_POSITION` stores this snapshot at sweep boundaries, preserving D0 and
+CCR and zero-extending word-valued section fields. A0/A1 are also preserved.
+Its `AssemblyPosition` type,
+20-byte owner storage and calls require all three progress gates. Bases are
+loaded with `lea`, then fields are read/written through relative offsets;
+`MEMORY_PROGRESS_BLOCK` and `MEMORY_PROGRESS_RECORDS` apply the same rule to
+reporting. This avoids the unresolved host Hunk-relocation bug for absolute
+`Base+Struct.Field` operands. No per-record
+logging or MEMD schema change is introduced. The self-host test decodes the
+terminal snapshot from that run's captured stdout. Its percentage describes
+position within the current record-buffer scan, not overall assembly work:
+section filtering, repeated passes and loop replay prevent that inference.
+An explicit failed guest completion remains a failed assembly; progress capture
+does not turn it into artifact parity or release timing.
+
 The compiler/evaluator counters describe actual calls, not a semantic redundancy
 proof. The previous telemetry record is superseded, with no compatibility decoder.
 

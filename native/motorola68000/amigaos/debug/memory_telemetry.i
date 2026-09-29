@@ -119,6 +119,106 @@ MEMORY_PROGRESS	.macro dosbase, phase, source, line, records
 .endif
 .endmacro
 
+; Snapshot a bounded assembly sweep, not each record. Word-valued section state
+; is zero-extended. Capture storage and this type require the same three gates.
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+AssemblyPosition	.struct
+Pass	.long ?
+Sweep	.long ?
+Mode	.long ?
+Section	.long ?
+Count	.long ?
+.endstruct
+.endif
+.endif
+.endif
+ASSEMBLY_POSITION_CLEAR	.macro capture
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	move.l a0, -(sp)
+	lea .capture, a0
+.for 5
+	clr.l (a0)+
+.endfor
+	movea.l (sp)+, a0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
+; Bare base labels retain Hunk relocations. Field offsets are displacements;
+; do not form absolute label+field operands in diagnostic loads or stores.
+ASSEMBLY_POSITION	.macro capture, passValue, sweepValue, state, modeOffset, sectionOffset, countOffset
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d0/a0-a1, -(sp)
+	lea .capture, a0
+	move.l .passValue, AssemblyPosition.Pass(a0)
+	move.l .sweepValue, AssemblyPosition.Sweep(a0)
+	lea .state, a1
+	moveq #0, d0
+	move.w .modeOffset(a1), d0
+	move.l d0, AssemblyPosition.Mode(a0)
+	move.w .sectionOffset(a1), d0
+	move.l d0, AssemblyPosition.Section(a0)
+	move.w .countOffset(a1), d0
+	move.l d0, AssemblyPosition.Count(a0)
+	movem.l (sp)+, d0/a0-a1
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
+; Report three long fields from one relocated base. Same passive progress ABI.
+MEMORY_PROGRESS_BLOCK	.macro dosbase, phase, base, firstOffset, secondOffset, thirdOffset
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d0-d3/a0, -(sp)
+	lea .base, a0
+	move.l .firstOffset(a0), d1
+	move.l .secondOffset(a0), d2
+	move.l .thirdOffset(a0), d3
+	move.l .phase, d0
+	movea.l .dosbase, a0
+	jsr memory_profile.progress
+	movem.l (sp)+, d0-d3/a0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
+; Source/line scalars plus a block's long byte-count field, read from its base.
+MEMORY_PROGRESS_RECORDS	.macro dosbase, phase, sourceValue, lineValue, base, usedOffset
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d0-d3/a0, -(sp)
+	lea .base, a0
+	move.l .usedOffset(a0), d3
+	move.l .sourceValue, d1
+	move.l .lineValue, d2
+	move.l .phase, d0
+	movea.l .dosbase, a0
+	jsr memory_profile.progress
+	movem.l (sp)+, d0-d3/a0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
 ; Identify the last assembly operation when optional progress diagnostics report
 ; a failure. This preserves registers and CCR and emits nothing in release builds.
 ASSEMBLY_FAILURE_STAGE	.macro slot, stage

@@ -396,6 +396,117 @@ fn native_memory_progress_requires_its_extra_gate() {
     );
 }
 
+fn assembly_position_source(with_site: bool) -> String {
+    let site = if with_site {
+        r#"
+    .ASSEMBLY_POSITION_CLEAR Position
+    .ASSEMBLY_POSITION Position, d7, d5, SectionWords, 0, 2, 4
+    .MEMORY_PROGRESS_BLOCK a1, #26, Position, AssemblyPosition.Pass, AssemblyPosition.Sweep, AssemblyPosition.Section
+    .MEMORY_PROGRESS_RECORDS a1, #27, d1, d2, Position, AssemblyPosition.Count
+"#
+    } else {
+        ""
+    };
+    format!(
+        r#".module memory.assembly.position.test
+.cpu 68020
+.region ram, 0, $ffff
+.include "memory_telemetry.i"
+.section code, kind=code
+start .block
+    moveq #7, d0
+{site}
+    rts
+.bend
+.endsection
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+.section bss, kind=bss
+Position .res byte, AssemblyPosition.Count+4
+.endsection
+.section data, kind=data
+SectionWords .word 5, 2, 4
+.endsection
+.endif
+.endif
+.endif
+.place code in ram
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+.place bss in ram
+.place data in ram
+.endif
+.endif
+.endif
+.output "build/memory-telemetry-test", format=bin, sections=code
+.endmodule
+.module debug.amigaos.memory_profile
+.cpu 68020
+.pub
+.section code, kind=code
+progress .block
+    rts
+.bend
+.endsection
+.endmodule
+.end
+"#
+    )
+}
+
+#[test]
+fn native_assembly_position_capture_is_triple_gated_and_byte_transparent() {
+    let with_site = assembly_position_source(true);
+    for defines in [
+        vec![],
+        vec!["OPFORGE_DEBUG_CONTRACTS".to_string()],
+        vec!["OPFORGE_MEMORY_TELEMETRY".to_string()],
+        vec!["OPFORGE_PREPARATION_PROGRESS".to_string()],
+        vec![
+            "OPFORGE_DEBUG_CONTRACTS".to_string(),
+            "OPFORGE_MEMORY_TELEMETRY".to_string(),
+        ],
+        vec![
+            "OPFORGE_DEBUG_CONTRACTS".to_string(),
+            "OPFORGE_PREPARATION_PROGRESS".to_string(),
+        ],
+        vec![
+            "OPFORGE_MEMORY_TELEMETRY".to_string(),
+            "OPFORGE_PREPARATION_PROGRESS".to_string(),
+        ],
+    ] {
+        let baseline = assemble_memory_telemetry_case(
+            "assembly-position-baseline",
+            &assembly_position_source(false),
+            &defines,
+        );
+        assert_eq!(
+            assemble_memory_telemetry_case("assembly-position-disabled", &with_site, &defines,),
+            baseline,
+            "capture and storage must emit no bytes unless all three gates are present"
+        );
+    }
+
+    let enabled_defines = [
+        "OPFORGE_DEBUG_CONTRACTS".to_string(),
+        "OPFORGE_MEMORY_TELEMETRY".to_string(),
+        "OPFORGE_PREPARATION_PROGRESS".to_string(),
+    ];
+    let baseline = assemble_memory_telemetry_case(
+        "assembly-position-enabled-baseline",
+        &assembly_position_source(false),
+        &enabled_defines,
+    );
+    let enabled =
+        assemble_memory_telemetry_case("assembly-position-enabled", &with_site, &enabled_defines);
+    assert!(
+        enabled.len() > baseline.len(),
+        "enabled capture must assemble its preservation and field-store instructions"
+    );
+}
+
 #[test]
 fn native_input_macros_are_independently_gated() {
     let source = memory_telemetry_source(true, true);

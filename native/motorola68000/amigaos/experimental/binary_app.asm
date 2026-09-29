@@ -50,6 +50,9 @@ PROGRESS_OUTPUT = 22
 PROGRESS_BLOCK_WORK = 23
 PROGRESS_ASSEMBLY_FAILURE = 24
 PROGRESS_ASSEMBLY_NAME = 25
+PROGRESS_ASSEMBLY_POSITION = 26
+PROGRESS_ASSEMBLY_RECORDS = 27
+PROGRESS_ASSEMBLY_SECTIONS = 28
 STEP_MATERIALIZE = 3
 STEP_INDEX = 4
 STEP_SELECT = 5
@@ -146,10 +149,10 @@ configured
 	.MEMORY_PHASE #1
 	bsr.w run
 	bne.w failed
-	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLED, #0, #0, Records+memory.Block.Used
+	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_ASSEMBLED, #0, #0, Records, memory.Block.Used
 	.MEMORY_CLOCK DosBase, #2
 	.MEMORY_PHASE #2
-	.MEMORY_PROGRESS DosBase, #PROGRESS_OUTPUT, #0, #0, Records+memory.Block.Used
+	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_OUTPUT, #0, #0, Records, memory.Block.Used
 	bsr.w writeOutput
 	bne.w failed
 	clr.l ReturnCode
@@ -225,6 +228,9 @@ reportFailure	.block
 	bsr.w locateFailure
 	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_FAILURE, assembly.FailureStage, SourceOrdinal, SourceLine
 	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_NAME, assembly.FailureName, #0, #0
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_POSITION, assembly.Position, AssemblyPosition.Pass, AssemblyPosition.Sweep, AssemblyPosition.Section
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_RECORDS, Work, assembly.Frame.RecordOffset, assembly.Frame.RecordBytes, assembly.Frame.Used
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_SECTIONS, assembly.Position, AssemblyPosition.Mode, AssemblyPosition.Count, AssemblyPosition.Pass
 located
 	move.l SourceOrdinal, d0
 	lea FailureFile, a0
@@ -660,7 +666,7 @@ spanAllowed
 	move.l SourceOrdinal, Span.File(a0)
 	clr.l LineUsed
 	move.l #1, SourceLine
-	.MEMORY_PROGRESS DosBase, #PROGRESS_SOURCE_BEGIN, SourceOrdinal, SourceLine, Records+memory.Block.Used
+	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_SOURCE_BEGIN, SourceOrdinal, SourceLine, Records, memory.Block.Used
 sourceLoop
 	.MEMORY_INPUT_BEGIN SourceBytes
 	lea Stream, a0
@@ -690,7 +696,7 @@ sourceReady
 	bne.w closeBad
 	bra.w sourceLoop
 sourceEnd
-	.MEMORY_PROGRESS DosBase, #PROGRESS_SOURCE_END, SourceOrdinal, SourceLine, Records+memory.Block.Used
+	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_SOURCE_END, SourceOrdinal, SourceLine, Records, memory.Block.Used
 	tst.l RequestedModule
 	beq.w selectionComplete
 	tst.l SelectedFileDerived
@@ -772,14 +778,14 @@ graphReady
 	move.l d1, OrderedCount
 orderReady
 	move.w #STEP_BIND, PrepStep
-	.MEMORY_PROGRESS DosBase, #PROGRESS_ORDER, SourceOrdinal, SourceLine, Records+memory.Block.Used
+	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_ORDER, SourceOrdinal, SourceLine, Records, memory.Block.Used
 	lea Records, a0
 	movea.l memory.Block.Pointer(a0), a1
 	move.l memory.Block.Used(a0), d0
 	lea Front, a0
 	jsr frontend.complete
 	bne.w completionBad
-	.MEMORY_PROGRESS DosBase, #PROGRESS_BIND, SourceOrdinal, SourceLine, Records+memory.Block.Used
+	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_BIND, SourceOrdinal, SourceLine, Records, memory.Block.Used
 	move.l frontend.Frame.NameCount(a0), NameCount
 	tst.l GraphMode
 	beq.w selected
@@ -800,7 +806,7 @@ orderReady
 	move.l ordered.Frame.OriginCount(a0), OriginCount
 selected
 	move.w #STEP_INDEX, PrepStep
-	.MEMORY_PROGRESS DosBase, #PROGRESS_MATERIALIZE, SourceOrdinal, SourceLine, Records+memory.Block.Used
+	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_MATERIALIZE, SourceOrdinal, SourceLine, Records, memory.Block.Used
 	lea Records, a0
 	movea.l memory.Block.Pointer(a0), a1
 	move.l memory.Block.Used(a0), d0
@@ -821,7 +827,7 @@ selected
 	.MEMORY_PROGRESS DosBase, #PROGRESS_BLOCK_WORK, blocks.QueueAdds, blocks.Scanned, blocks.Marks
 blocksSelected
 	move.w #STEP_PARAMETERS, PrepStep
-	.MEMORY_PROGRESS DosBase, #PROGRESS_INDEX, SourceOrdinal, SourceLine, Records+memory.Block.Used
+	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_INDEX, SourceOrdinal, SourceLine, Records, memory.Block.Used
 	lea Front, a0
 	jsr frontend.parameterBytes
 	move.l d0, ParameterBytes
@@ -835,7 +841,7 @@ blocksSelected
 	jsr frontend.copyParameters
 	bne.w completionBad
 parametersSaved
-	.MEMORY_PROGRESS DosBase, #PROGRESS_PARAMETERS, SourceOrdinal, SourceLine, Records+memory.Block.Used
+	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_PARAMETERS, SourceOrdinal, SourceLine, Records, memory.Block.Used
 	bsr.w clearIncludeText
 	lea Front, a0
 	jsr frontend.finish
@@ -878,7 +884,7 @@ parametersSaved
 	jsr memory.release
 	lea Records, a0
 	.MEMORY_LAYOUT package.Header.RuntimeBytes(a4), memory.Block.Used(a0), SourceBytes
-	.MEMORY_PROGRESS DosBase, #PROGRESS_PREPARED, #0, #0, Records+memory.Block.Used
+	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_PREPARED, #0, #0, Records, memory.Block.Used
 	lea Front, a0
 	clr.l frontend.Frame.Package(a0)
 	clr.l frontend.Frame.Source(a0)
@@ -1236,7 +1242,7 @@ bad
 
 run	.block
 	move.l #1, InAssembly
-	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLE, #0, #0, Records+memory.Block.Used
+	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_ASSEMBLE, #0, #0, Records, memory.Block.Used
 	lea Work, a0
 	move.l #-1, assembly.Frame.RecordOffset(a0)
 	move.l NameCount, d0

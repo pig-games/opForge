@@ -81,7 +81,7 @@ impl<'a> Programs<'a> {
     }
 }
 
-/// Prepare a self-contained BSP6 block for one resolved package hierarchy.
+/// Prepare a self-contained BSP7 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -268,7 +268,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BSP6");
+    out[..4].copy_from_slice(b"BSP7");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -925,6 +925,7 @@ fn write_projection(
     let (kind, operand, field, literal) = match projection {
         Projection::Expression(operand) => (0, *operand, 0, 0),
         Projection::TargetExpression(operand) => (15, *operand, 0, 0),
+        Projection::AtomicTargetExpression(operand) => (17, *operand, 0, 0),
         Projection::TargetMember { operand, qualifier } => (16, *operand, *qualifier, 0),
         Projection::Register { operand, class } => (1, *operand, *class, 0),
         Projection::IndirectRegister { operand, class } => (8, *operand, *class, 0),

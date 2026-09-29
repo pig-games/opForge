@@ -165,6 +165,60 @@ fn compact_hunk_data_addq_fs_uae() {
     native_hunk_source(&source);
 }
 
+fn immediate_data_reference_source() -> String {
+    SOURCE.replace(
+        "entry: .long payload\n RTS",
+        "entry: MOVE.L #payload,d1\n RTS",
+    )
+}
+
+#[test]
+fn compact_hunk_immediate_data_rust_oracle() {
+    let oracle = rust_hunk_source(&immediate_data_reference_source());
+    assert!(oracle.windows(2).any(|bytes| bytes == [0x22, 0x3c]));
+    assert!(contains_hunk_reloc(&oracle, 2, 2));
+}
+
+#[test]
+fn compact_hunk_immediate_data_package_projection() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let numeric =
+        vm::binary_source_package::BinarySourcePackage::prepare(&core, &resolved).unwrap();
+    let index = numeric
+        .candidates
+        .iter()
+        .position(|candidate| {
+            numeric.names[usize::from(candidate.mnemonic)] == "move"
+                && candidate
+                    .qualifier
+                    .is_some_and(|id| numeric.qualifiers[usize::from(id)] == "l")
+                && candidate.priority == 76
+        })
+        .unwrap();
+    let wire = prepare_package(&core, &resolved).unwrap();
+    let long =
+        |offset: usize| u32::from_be_bytes(wire[offset..offset + 4].try_into().unwrap()) as usize;
+    let row = long(16) + index * 32;
+    assert_eq!(wire[row + 5], 9);
+    let match_stage = long(row + 12);
+    let match_inputs = long(match_stage + 8);
+    assert_eq!(wire[match_inputs], 17);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; immediate DATA address in MOVE.L"]
+fn compact_hunk_immediate_data_fs_uae() {
+    native_hunk_source(&immediate_data_reference_source());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; numeric immediate remains relocation-free"]
+fn compact_hunk_immediate_numeric_fs_uae() {
+    let source = SOURCE.replace("entry: .long payload\n RTS", "entry: MOVE.L #8,d1\n RTS");
+    native_hunk_source(&source);
+}
+
 #[test]
 #[ignore = "requires configured FS-UAE; Hunk numeric MOVE.L must not require relocation"]
 fn compact_hunk_numeric_move_fs_uae() {
@@ -248,20 +302,18 @@ fn compact_hunk_expression_relocation_rejects_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
-    for unsupported in [".long payload+1", "move.l #payload,d0"] {
-        let source = SOURCE.replace(".long payload", unsupported);
-        let result = crate::fs_uae_smoke::run_compact_cli_from_env(
-            &workspace_root(),
-            &package,
-            source.as_bytes(),
-            None,
-        )
-        .unwrap_or_else(|error| panic!("fresh native rejection for {unsupported}: {error}"));
-        let FsUaeSmokeOutcome::Completed { runs } = result else {
-            panic!("real FS-UAE execution required");
-        };
-        assert_eq!(runs.len(), 1);
-        assert!(runs[0].protocol_completed);
-        assert_ne!(runs[0].exit_code, Some(0));
-    }
+    let source = SOURCE.replace(".long payload", ".long payload+1");
+    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
+        &workspace_root(),
+        &package,
+        source.as_bytes(),
+        None,
+    )
+    .expect("fresh native rejection for unsupported expression relocation");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].protocol_completed);
+    assert_ne!(runs[0].exit_code, Some(0));
 }

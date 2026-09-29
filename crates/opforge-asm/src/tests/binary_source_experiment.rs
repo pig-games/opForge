@@ -83,7 +83,7 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BSP6");
+        assert_eq!(&bytes[..4], b"BSP7");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);

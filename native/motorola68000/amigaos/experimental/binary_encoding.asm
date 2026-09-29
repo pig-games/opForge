@@ -1156,9 +1156,14 @@ recordReady
 	beq.w expressionValue
 	cmpi.b #16, d0
 	beq.w memberValue
+	cmpi.b #17, d0
+	beq.w atomicTarget
 	bra.w bad
 expressionValue
 	bsr.w projectionExpression
+	bra.w valueReady
+atomicTarget
+	bsr.w projectionAtomicTarget
 	bra.w valueReady
 registerValue
 	bsr.w projectionRegister
@@ -1218,6 +1223,30 @@ bad
 	rts
 	.bend  ; project
 
+; Match an immediate or direct operand that names exactly one relocation
+; target. This is a package predicate, so it projects zero rather than the
+; current target address; the later fixup stage resolves and records the ID.
+projectionAtomicTarget	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	cmpa.l a1, a0
+	bhs.w invalid
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w target
+	addq.l #1, a0
+target
+	bsr.w exactTarget
+	tst.l d0
+	bne.w return
+	moveq #0, d3
+return
+	rts
+invalid
+	moveq #1, d0
+	rts
+	.bend  ; projectionAtomicTarget
+
 ; Build the package fixup VM's seven-byte numeric input records. An exact
 ; packed identifier supplies the optional relocation identity. Other scalar
 ; expressions have no identity; the Hunk caller rejects section-bearing
@@ -1252,6 +1281,13 @@ inputReady
 	bsr.w operandSpan
 	tst.l d0
 	bne.w bad
+	cmpa.l a1, a0
+	bhs.w bad
+	; The immediate marker is syntax, not part of the target identity.
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w targetName
+	addq.l #1, a0
+targetName
 	bsr.w exactTarget
 	tst.l d0
 	bne.w targetReady  ; a scalar literal has no relocation target

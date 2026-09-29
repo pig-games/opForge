@@ -98,7 +98,7 @@ Next	.long ?
 ; Other registers preserved. The capsule byte bound limits count, not a new cap.
 scratchSize	.block
 	movem.l d2, -(sp)
-	cmpi.l #$42535036, package.Header.Magic(a0)
+	cmpi.l #$42535037, package.Header.Magic(a0)
 	bne.w bad
 	move.l package.Header.Bytes(a0), d2
 	cmpi.l #HEADER_BYTES, d2
@@ -1255,7 +1255,7 @@ configure	.block
 	bsr.w scratchSize
 	bne.w bad
 	movea.l Frame.Package(a5), a4
-	cmpi.l #$42535036, package.Header.Magic(a4)
+	cmpi.l #$42535037, package.Header.Magic(a4)
 	bne.w bad
 	move.l package.Header.Bytes(a4), d7
 	cmpi.l #HEADER_BYTES, d7

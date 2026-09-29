@@ -56,12 +56,21 @@ host test wall time. It rejected physical file 1, hexadecimal line `0000003A`
 (decimal 58, `addq.l #1, IncludeCount` in the entry file), without producing a
 Hunk. A focused fresh Rust Hunk oracle accepts `ADDQ.L #1,reserved` with a
 CODE-to-BSS relocation, while compact native exits 20 at that instruction;
-`ADDQ.L #1,payload` targeting DATA fails on native as well. This is an
-instruction-operand parity blocker, not a successful self-host performance
-measurement. The run proves that preparation and assembly progressed past the
-earlier line-52 frontier. Resolve this native package instruction form before
-another full run. The remaining repeated label-to-block search in `mark` is a
-deferred performance hypothesis, not a claim that it explains this runtime.
+`ADDQ.L #1,payload` targeting DATA failed on native as well. The package
+lowerer had treated a diagnostic suffix as part of the fixup operand. It now
+separates that suffix as the Rust executor does; focused native BSS and DATA
+cases match Rust exactly. The next full run reached a fresh guest exit after
+2,816.79 seconds of host test wall time, at file 1, hexadecimal line
+`00000061` (decimal 97, `move.l #UsageText,d1`). Rust emits a CODE-to-DATA
+relocation for that immediate address. The compact package now has a distinct
+atomic-target match projection, and native fixup identity binding strips the
+immediate marker before reading the symbol. BSP7 is the sole current package
+format; no BSP6 executor remains. Focused native exact-output cases pass for
+the immediate DATA address and a relocation-free numeric immediate. A renewed
+full self-host comparison is still required. Neither completed guest exit was
+a successful self-host performance measurement. The remaining repeated
+label-to-block search in `mark` is a deferred performance hypothesis, not a
+claim that it explains this runtime.
 The expanded profile is a parity aid, not a revision of the 2 MiB product goal.
 
 ## Finding

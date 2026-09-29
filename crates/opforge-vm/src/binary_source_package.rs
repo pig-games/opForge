@@ -124,6 +124,7 @@ pub enum ScalarPlan {
 pub enum Projection {
     Expression(u8),
     TargetExpression(u8),
+    AtomicTargetExpression(u8),
     TargetMember {
         operand: u8,
         qualifier: u16,
@@ -681,7 +682,9 @@ fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
                 && inputs.iter().any(|input| {
                     matches!(
                         input,
-                        Projection::TargetExpression(_) | Projection::TargetMember { .. }
+                        Projection::TargetExpression(_)
+                            | Projection::AtomicTargetExpression(_)
+                            | Projection::TargetMember { .. }
                     )
                 })
             {
@@ -727,7 +730,9 @@ fn parse_semantic(
     if inputs.iter().any(|input| {
         matches!(
             input,
-            Projection::TargetExpression(_) | Projection::TargetMember { .. }
+            Projection::TargetExpression(_)
+                | Projection::AtomicTargetExpression(_)
+                | Projection::TargetMember { .. }
         )
     }) {
         return CandidateRecipe::Unsupported {
@@ -743,6 +748,9 @@ fn parse_semantic(
 }
 
 fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
+    if let Some(rest) = value.strip_prefix("target_atom:expr") {
+        return rest.parse().ok().map(Projection::AtomicTargetExpression);
+    }
     if let Some(rest) = value.strip_prefix("target:expr") {
         return rest.parse().ok().map(Projection::TargetExpression);
     }
@@ -1287,6 +1295,23 @@ mod tests {
         };
         assert_eq!(stages.len(), 3);
         assert_eq!(stages[2].inputs, [Projection::TargetExpression(1)]);
+    }
+
+    #[test]
+    fn atomic_target_match_keeps_its_distinct_projection() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        let plan = "semv.sequence.v1:match:_@target_atom:expr0,reg1.class0;encode:enc.template.field-9@literal:8252,reg1.class0;fixup:fix.abs32@target:expr0";
+        let CandidateRecipe::SemanticSequence { stages } = super::parse_recipe(plan, &mut names)
+        else {
+            panic!("atomic symbolic target must lower as a bounded sequence");
+        };
+        assert_eq!(stages[0].inputs[0], Projection::AtomicTargetExpression(0));
+        assert_eq!(stages[2].inputs, [Projection::TargetExpression(0)]);
     }
 
     #[test]

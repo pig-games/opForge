@@ -234,6 +234,23 @@ MEMORY_BIND_SAMPLE_END	.macro
 .endif
 .endmacro
 
+; Aggregate template work without clock reads at candidate boundaries.
+MEMORY_TEMPLATE_WORK	.macro index, amount
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_TEMPLATE_WORK_TELEMETRY
+	move.w ccr, -(sp)
+	movem.l d0-d1, -(sp)
+	move.l .amount, d1
+	move.l .index, d0
+	jsr memory_profile.templateWork
+	movem.l (sp)+, d0-d1
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
 TOKEN_BEGIN	.macro amount
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY

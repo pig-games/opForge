@@ -81,12 +81,12 @@ fn compact_arithmetic_rust_oracles() {
 
 fn memory(run: &crate::fs_uae_smoke::FsUaeSmokeRun) {
     let record = &run.captured_artifacts[&PathBuf::from("Work/memory.bin")];
-    assert_eq!(record.len(), 2212);
+    assert_eq!(record.len(), 2260);
     let words = record
         .chunks_exact(4)
         .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
         .collect::<Vec<_>>();
-    assert_eq!(words[0], 0x4d454d42);
+    assert_eq!(words[0], 0x4d454d43);
     assert_eq!(words[1], 0);
     assert_eq!(words[3], words[4]);
     assert_eq!(words[11], 0);

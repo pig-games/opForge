@@ -127,6 +127,9 @@ bindSampleBegin .block
 bindSampleEnd .block
     rts
 .bend
+templateWork .block
+    rts
+.bend
 tokenBegin .block
     rts
 .bend
@@ -167,6 +170,7 @@ tokenScopeClose .block
     .MEMORY_BIND_SAMPLE_BEGIN
     .MEMORY_BIND_SAMPLE_END
     .MEMORY_DETAIL_END #0
+    .MEMORY_TEMPLATE_WORK #2, d1
     .TOKEN_BEGIN d0
     .TOKEN_OPCODE d1
     .TOKEN_WORK #3, d2
@@ -270,6 +274,7 @@ fn native_memory_telemetry_macros_are_byte_transparent_without_both_gates() {
         vec!["OPFORGE_DEBUG_CONTRACTS".to_string()],
         vec!["OPFORGE_MEMORY_TELEMETRY".to_string()],
         vec!["OPFORGE_BINDING_DETAIL_TELEMETRY".to_string()],
+        vec!["OPFORGE_TEMPLATE_WORK_TELEMETRY".to_string()],
     ] {
         let disabled = assemble_memory_telemetry_case(
             "native-memory-telemetry-disabled",
@@ -314,9 +319,7 @@ fn native_binding_detail_macros_are_independently_gated() {
     let source = memory_telemetry_source(true, true);
     let without_detail = source
         .lines()
-        .filter(|line| {
-            !line.contains(".MEMORY_DETAIL_") && !line.contains(".MEMORY_BIND_SAMPLE_")
-        })
+        .filter(|line| !line.contains(".MEMORY_DETAIL_") && !line.contains(".MEMORY_BIND_SAMPLE_"))
         .collect::<Vec<_>>()
         .join("\n");
     let coarse = assemble_memory_telemetry_case(
@@ -346,6 +349,25 @@ fn native_binding_detail_macros_are_independently_gated() {
         ],
     );
     assert!(detailed.len() > coarse.len());
+}
+
+#[test]
+fn native_template_work_macro_is_independently_gated() {
+    let source = memory_telemetry_source(true, true);
+    let without_counter = source.replace("    .MEMORY_TEMPLATE_WORK #2, d1\n", "");
+    let common = [
+        "OPFORGE_DEBUG_CONTRACTS".to_string(),
+        "OPFORGE_MEMORY_TELEMETRY".to_string(),
+    ];
+    let disabled = assemble_memory_telemetry_case("template-work-disabled", &source, &common);
+    let omitted =
+        assemble_memory_telemetry_case("template-work-omitted", &without_counter, &common);
+    assert_eq!(disabled, omitted);
+    let mut enabled_defines = common.to_vec();
+    enabled_defines.push("OPFORGE_TEMPLATE_WORK_TELEMETRY".to_string());
+    let enabled =
+        assemble_memory_telemetry_case("template-work-enabled", &source, &enabled_defines);
+    assert!(enabled.len() > disabled.len());
 }
 
 #[test]

@@ -22,7 +22,7 @@ const SYMBOL_DISPLACEMENT: &str =
     ".cpu m68020\nOPEN_LIBRARY=-552\n.org 0\nentry .block\n jsr OPEN_LIBRARY(a6)\n .bend\n.end\n";
 const BAD_DISPLACEMENT_REGISTER: &str = ".cpu m68020\n.org 0\n jsr 0(d0)\n.end\n";
 const BAD_DISPLACEMENT_RANGE: &str = ".cpu m68020\n.org 0\n jsr 32768(a6)\n.end\n";
-const NUMERIC_MEMBER_VARIANTS: &str = ".cpu m68020\n.org 0\n lea 8.w,a0\n.end\n";
+const NUMERIC_MEMCER_VARIANTS: &str = ".cpu m68020\n.org 0\n lea 8.w,a0\n.end\n";
 const FORWARD_ABSOLUTE_LEA: &str =
     ".cpu m68020\n.org 0\n lea target,a1\n rts\ntarget:\n .byte 1\n.end\n";
 const BACKWARD_ABSOLUTE_LEA: &str =
@@ -78,7 +78,7 @@ fn binary_selection_self_host_movem_rust_oracle() {
 #[test]
 fn binary_selection_self_host_movea_short_rust_oracle() {
     assert_eq!(oracle_bytes(SELF_HOST_MOVEA_SHORT), [0x2c, 0x78, 0, 4]);
-    assert_eq!(oracle_bytes(NUMERIC_MEMBER_VARIANTS), [0x41, 0xf8, 0, 8]);
+    assert_eq!(oracle_bytes(NUMERIC_MEMCER_VARIANTS), [0x41, 0xf8, 0, 8]);
 }
 
 #[test]
@@ -295,7 +295,7 @@ fn binary_selection_displacement_rejections_fs_uae() {
 #[ignore = "requires configured FS-UAE; numeric member wrapper parity"]
 fn binary_selection_self_host_movea_short_native_parity_fs_uae() {
     assert_binary_source(SELF_HOST_MOVEA_SHORT.into(), "m68020".into());
-    assert_binary_source(NUMERIC_MEMBER_VARIANTS.into(), "m68020".into());
+    assert_binary_source(NUMERIC_MEMCER_VARIANTS.into(), "m68020".into());
 }
 
 #[test]

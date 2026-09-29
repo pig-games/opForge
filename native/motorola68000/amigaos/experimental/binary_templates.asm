@@ -4,6 +4,7 @@
 ; @opforge-owner: experimental.amigaos.binary_templates
 	.module experimental.amigaos.binary_templates
 	.cpu 68020
+	.include "memory_telemetry.i"
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_macro_plans as plans
 	.use experimental.amigaos.binary_macro_fragments as fragments
@@ -212,6 +213,8 @@ done
 ; 1 known/body call,2 macro header,3 segment header. Preserves others.
 role	.block
 	movem.l d1-d5/a0-a4, -(sp)
+	moveq #0, d2  ; failed candidate attempts, including an exhausted lookup
+	.MEMORY_TEMPLATE_WORK #0, #1
 	movea.l a0, a3
 	movea.l a1, a4
 	moveq #0, d5  ; unresolved calls need a leading dot or a source label
@@ -277,6 +280,7 @@ scopeDirective
 	tst.l d0
 	bne.w none
 lookup
+	.MEMORY_TEMPLATE_WORK #1, #1
 	moveq #0, d2
 	movea.l DEFS+memory.Block.Pointer(a2), a3
 next
@@ -287,7 +291,10 @@ next
 	move.w Def.Name(a3), d1
 	movea.l a4, a0
 	jsr scopes.templateCandidate
-	beq.w call
+	bne.w candidateMiss
+	.MEMORY_TEMPLATE_WORK #3, #1
+	bra.w call
+candidateMiss
 	adda.l #DEF_BYTES, a3
 	addq.w #1, d2
 	bra.w next
@@ -308,6 +315,7 @@ segment
 none
 	moveq #0, d0
 done
+	.MEMORY_TEMPLATE_WORK #2, d2
 	movem.l (sp)+, d1-d5/a0-a4
 	tst.l d0
 	rts
@@ -430,6 +438,7 @@ qualifiedCall
 	bne.w consumed
 	tst.l d7
 	beq.w ordinary
+	.MEMORY_TEMPLATE_WORK #4, #1
 	move.w 2(a2), d5
 	moveq #0, d4
 	moveq #-1, d3
@@ -467,6 +476,11 @@ nextCall
 	addq.w #1, d4
 	bra.w findCall
 selectedCall
+	.MEMORY_TEMPLATE_WORK #5, d4
+	cmp.w State.Count(a6), d4
+	bhs.w candidatesCounted
+	.MEMORY_TEMPLATE_WORK #5, #1
+candidatesCounted
 	tst.w d3
 	bpl.w chosenCall
 	tst.w d2
@@ -524,6 +538,7 @@ header
 	lea 9(a2), a1
 	movea.l a3, a2
 checkedHeader
+	.MEMORY_TEMPLATE_WORK #9, #1
 	tst.w State.Open(a6)
 	bne.w bad
 	tst.w State.Skipping(a6)
@@ -628,6 +643,7 @@ capture
 	; Store the complete raw record; offsets in Def survive relocation.
 	tst.l d7
 	beq.w consumed
+	.MEMORY_TEMPLATE_WORK #8, #1
 	moveq #0, d6
 	move.w State.RawBytes(a6), d6
 	moveq #0, d0
@@ -652,6 +668,7 @@ copyBody
 	move.l d0, BODY+memory.Block.Used(a6)
 	bra.w consumed
 call
+	.MEMORY_TEMPLATE_WORK #6, #1
 	cmpi.w #DEPTH_LIMIT, State.Depth(a6)
 	bhs.w bad
 	tst.w State.CallLabelPresent(a6)
@@ -773,6 +790,7 @@ ordinary
 	move.b d0, (a5)
 	andi.b #$df, 1(a5)
 ordinaryReady
+	.MEMORY_TEMPLATE_WORK #7, #1
 	moveq #ACTION_REGULAR, d1
 	bra.w ok
 consumed

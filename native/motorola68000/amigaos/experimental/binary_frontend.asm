@@ -437,6 +437,7 @@ findString
 	subq.l #1, d2
 	bra.w findString
 capture
+	.MEMORY_TEMPLATE_WORK #11, #1
 	lea MACRO_EVENTS(a6), a1
 	movea.l a1, a0
 	moveq #macro_plans.ROW_BYTES/4-1, d0
@@ -613,6 +614,7 @@ selectedProgram
 	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
 	move.l #65536, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
 	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
+	.MEMORY_TEMPLATE_WORK #10, #1
 	jsr macro_runtime.run
 	bne.w bad
 	lea MACRO_FRAME(a6), a0

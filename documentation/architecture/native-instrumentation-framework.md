@@ -62,11 +62,11 @@ the current framework, not a mandate for a repository-wide instrumentation rewri
 `OPFORGE_MEMORY_TELEMETRY` are required; missing either gate emits no calls, imports
 or storage. These macros and the dedicated `debug.amigaos.memory_profile` owner
 preserve registers/CCR, never use request/output/error buffers, and keep a bounded
-2212-byte record. The terminal export writes that record separately as `Work:memory.bin`;
+2260-byte record. The terminal export writes that record separately as `Work:memory.bin`;
 a missing/partial record fails the host accounting check. Ordinary release builds
 perform no accounting I/O.
 
-The current MEMB record (magic `0x4D454D42`) starts with sixteen big-endian u32 fields: magic, live capacity, peak live
+The current MEMC record (magic `0x4D454D43`) starts with sixteen big-endian u32 fields: magic, live capacity, peak live
 capacity, cumulative allocated, cumulative freed, live after preparation, cumulative
 freed before assembly, entry free memory, entry largest free block, Exec version,
 live after assembly, live after cleanup, DOS version, retained runtime-prefix bytes,
@@ -99,7 +99,7 @@ checks permit 16. Allocation failures additionally set 64 or 128. Stage totals
 include probe overhead, with no calibration subtraction; compare
 coarse phases against the preceding accounting baseline before interpreting rank.
 
-MEMB retains 21 opcode counters at byte 204, 441 ordered adjacent-opcode pairs at
+MEMC retains 21 opcode counters at byte 204, 441 ordered adjacent-opcode pairs at
 288, and seven work counters at 2052: line bytes, committed tokens, committed
 lexeme bytes, source-byte reads, and taken EOL/byte/class branches. Two u64
 E-clock totals at 2080 measure scanner/emission, numeric normalization and composed-name helpers and nested token commits.
@@ -132,7 +132,7 @@ counters without touching registers or CCR. The compact block selector uses
 them for queue insertions, scanned packed records and numeric mark attempts;
 their storage and updates are absent from ordinary builds. With preparation
 progress enabled, phase 23 reports these three values in the source, line and
-records fields after successful block selection. They do not change the MEMB
+records fields after successful block selection. They do not change the MEMC
 binary record or its version.
 
 The compiler/evaluator counters describe actual calls, not a semantic redundancy
@@ -147,9 +147,13 @@ Two words at byte 2196 hold sampled binding-callback ticks; the following words
 count all binding calls and samples. One in 64 callbacks is timed, so scaled
 binding time is an estimate, while the seven boundary times are direct
 observations that include probe cost. This option can be combined with
-phase-only mode to omit token
-probes. Neither option emits probes in ordinary builds. The expanded record is
-2212 bytes; the earlier field offsets remain unchanged.
+phase-only mode to omit token probes. `OPFORGE_TEMPLATE_WORK=1` adds twelve
+aggregate counters at byte 2212 for role calls/searches/candidates,
+template-line candidate search and outcomes, and the actual macro-plan and
+string-plan work. Its candidate counts cover the first local definition scan;
+an imported-name fallback scan is not counted. These modes emit no probes in
+ordinary builds. The record is 2260 bytes; earlier field offsets remain
+unchanged.
 Allocation amounts are actual reserved block
 capacities; allocation precedes old-block release so copy/growth overlap is counted.
 These counters do not claim to trace OS-wide allocations. Configuration and pre-entry

@@ -45,9 +45,10 @@ DetailEntries	.res DETAIL_COUNT*4
 BindingElapsed	.res 8
 BindingCalls	.long ?
 BindingSamples	.long ?
+TemplateWork	.res 12*4
 	.endstruct
-RECORD_BYTES = Fields.BindingSamples+4
-RECORD_MAGIC = $4d454d42
+RECORD_BYTES = Fields.TemplateWork+12*4
+RECORD_MAGIC = $4d454d43
 .ifdef OPFORGE_PREPARATION_PROGRESS
 PROGRESS_BYTES = 64  ; five fixed eight-digit fields and a newline
 .endif
@@ -264,6 +265,29 @@ done
 	move.w (sp)+, ccr
 	rts
 	.bend  ; work
+; D0=template-work counter 0..11,D1=amount. Passive, bounded aggregate.
+templateWork	.block
+	move.w ccr, -(sp)
+	movem.l d0/a0-a1, -(sp)
+	lea Record, a0
+	cmpi.l #11, d0
+	bhi.w invalid
+	lsl.l #2, d0
+	lea Fields.TemplateWork(a0), a1
+	adda.l d0, a1
+	add.l d1, (a1)
+	bcs.w overflow
+	bra.w done
+invalid
+	ori.l #2, Fields.Error(a0)
+	bra.w done
+overflow
+	ori.l #8, Fields.Error(a0)
+done
+	movem.l (sp)+, d0/a0-a1
+	move.w (sp)+, ccr
+	rts
+	.bend  ; templateWork
 ; A0=dos.library, D0=phase 0..2. Save DOS DateStamp (50 ticks/s), separately
 ; from uninstrumented START-to-DONE timing. All registers/CCR preserved.
 clock	.block

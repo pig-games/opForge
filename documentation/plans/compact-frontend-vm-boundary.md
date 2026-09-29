@@ -50,9 +50,18 @@ stack as the queue. Fresh exact native parity covers the import chain, a cycle,
 preceding labels, entry roots and selected imports. The same gated finalization
 measurement fell to 0.915/7.223 seconds for 128/513 blocks; queued counts were
 128/513 and scanned packed records 393/1,548. A renewed uninstrumented
-59-file self-host run still timed out at ten minutes without completion.
-The remaining repeated label-to-block search in `mark` is the next focused
-performance hypothesis, not a claim that it alone explains the full timeout.
+59-file self-host run timed out at ten minutes. With a two-hour safety bound,
+the same exact-output run reached a real native exit after 2,816.57 seconds of
+host test wall time. It rejected physical file 1, hexadecimal line `0000003A`
+(decimal 58, `addq.l #1, IncludeCount` in the entry file), without producing a
+Hunk. A focused fresh Rust Hunk oracle accepts `ADDQ.L #1,reserved` with a
+CODE-to-BSS relocation, while compact native exits 20 at that instruction;
+`ADDQ.L #1,payload` targeting DATA fails on native as well. This is an
+instruction-operand parity blocker, not a successful self-host performance
+measurement. The run proves that preparation and assembly progressed past the
+earlier line-52 frontier. Resolve this native package instruction form before
+another full run. The remaining repeated label-to-block search in `mark` is a
+deferred performance hypothesis, not a claim that it explains this runtime.
 The expanded profile is a parity aid, not a revision of the 2 MiB product goal.
 
 ## Finding

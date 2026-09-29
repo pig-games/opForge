@@ -135,6 +135,36 @@ fn compact_hunk_bss_instruction_relocation_fs_uae() {
     native_hunk_source(&bss_instruction_reference_source());
 }
 
+fn bss_addq_reference_source() -> String {
+    SOURCE.replace(
+        "entry: .long payload\n RTS",
+        "entry: ADDQ.L #1,reserved\n RTS",
+    )
+}
+
+#[test]
+fn compact_hunk_bss_addq_rust_oracle() {
+    let oracle = rust_hunk_source(&bss_addq_reference_source());
+    assert!(oracle.windows(2).any(|bytes| bytes == [0x52, 0xb9]));
+    assert!(contains_hunk_reloc(&oracle, 1, 2));
+}
+
+#[test]
+#[ignore = "known compact-native ADDQ.L absolute BSS rejection; requires FS-UAE"]
+fn compact_hunk_bss_addq_fs_uae() {
+    native_hunk_source(&bss_addq_reference_source());
+}
+
+#[test]
+#[ignore = "known compact-native ADDQ.L absolute DATA rejection; requires FS-UAE"]
+fn compact_hunk_data_addq_fs_uae() {
+    let source = SOURCE.replace(
+        "entry: .long payload\n RTS",
+        "entry: ADDQ.L #1,payload\n RTS",
+    );
+    native_hunk_source(&source);
+}
+
 #[test]
 #[ignore = "requires configured FS-UAE; Hunk numeric MOVE.L must not require relocation"]
 fn compact_hunk_numeric_move_fs_uae() {

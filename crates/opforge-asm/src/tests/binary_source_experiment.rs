@@ -41,6 +41,8 @@ mod cpu_names;
 mod full_width;
 #[path = "binary_source_identity_storage.rs"]
 mod identity_storage;
+#[path = "binary_source_input_lines.rs"]
+mod input_lines;
 #[path = "binary_source_numeric_normalization.rs"]
 mod numeric_normalization;
 #[path = "binary_source_scope_growth.rs"]
@@ -284,12 +286,12 @@ fn compact_cli_fs_uae() {
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh compact CLI memory telemetry");
-        assert_eq!(record.len(), 2260);
+        assert_eq!(record.len(), 2280);
         let words = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d43);
+        assert_eq!(words[0], 0x4d454d44);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocation capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -450,17 +452,19 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     assert_eq!(runs.len(), 1);
     assert!(runs[0].protocol_completed);
     assert_eq!(runs[0].exit_code, Some(if require_parity { 0 } else { 20 }));
+    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
+    let native_allocation = hunk::allocation(image).expect("native executable allocation");
     let memory = if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
         let record = runs[0]
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh self-host readiness telemetry");
-        assert_eq!(record.len(), 2260);
+        assert_eq!(record.len(), 2280);
         let words = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
-        assert_eq!(words[0], 0x4d454d43);
+        assert_eq!(words[0], 0x4d454d44);
         assert_eq!(words[1], 0, "terminal path releases tracked memory");
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);
@@ -549,6 +553,22 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
                 .map(|(index, name)| ((*name).to_owned(), serde_json::json!(words[553 + index])))
                 .collect::<serde_json::Map<_, _>>()
             });
+        let input_collection =
+            (std::env::var("OPFORGE_INPUT_DETAIL").as_deref() == Ok("1")).then(|| {
+                assert_eq!(
+                    words[29], 0,
+                    "input collection clock completed cleanly: {}",
+                    runs[0].stdout
+                );
+                assert!(words[28] > 0);
+                let ticks = (u64::from(words[565]) << 32) | u64::from(words[566]);
+                serde_json::json!({
+                    "seconds": ticks as f64 / f64::from(words[28]),
+                    "calls": words[567],
+                    "bytes": words[568],
+                    "reads": words[569],
+                })
+            });
         serde_json::json!({
             "peak_owned_bytes": words[2],
             "free_at_entry_bytes": words[7],
@@ -563,6 +583,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             "last_failed_block_used_bytes": words[527],
             "preparation_stages": preparation_stages,
             "binding_detail": binding_detail,
+            "input_collection": input_collection,
             "template_work": template_work,
         })
     } else {
@@ -577,6 +598,8 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             "rust_hunk_segments": hunk_allocation.segments,
             "rust_hunk_linked_reserved_bytes": hunk_allocation.total(),
             "runtime_package_bytes": package.len(),
+            "native_image_bytes": image.len(),
+            "native_linked_reserved_bytes": native_allocation.total(),
             "native_run_host_seconds": native_run_host_seconds,
             "guest_start_to_done_host_seconds": runs[0].start_to_done_host_seconds,
             "diagnostic": runs[0].stdout,
@@ -1836,12 +1859,12 @@ fn assert_binary_files(files: &[(&str, &str)], cpu: &str, oracle: Vec<u8>) -> se
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh memory telemetry capture");
-        assert_eq!(record.len(), 2260);
+        assert_eq!(record.len(), 2280);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d43);
+        assert_eq!(words[0], 0x4d454d44);
         assert_eq!(words[1], 0, "all tracked allocations released");
         assert_eq!(words[3], words[4], "allocated and freed capacities balance");
         assert_eq!(words[11], 0, "cleanup has no live allocation");
@@ -2023,12 +2046,12 @@ fn assert_native_files_rejection(files: &[(&str, &str)], cpu: &str, diagnostic: 
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh negative-path memory telemetry");
-        assert_eq!(record.len(), 2260);
+        assert_eq!(record.len(), 2280);
         let words: Vec<u32> = record
             .chunks_exact(4)
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect();
-        assert_eq!(words[0], 0x4d454d43);
+        assert_eq!(words[0], 0x4d454d44);
         assert!(words[28] > 0, "E-clock initialized on rejection path");
         assert_eq!(words[29] & !16, 0, "only incomplete preparation is allowed");
         assert_eq!(words[1], 0, "failure releases all owned blocks");

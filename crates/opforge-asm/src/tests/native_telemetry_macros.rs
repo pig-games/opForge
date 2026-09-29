@@ -130,6 +130,15 @@ bindSampleEnd .block
 templateWork .block
     rts
 .bend
+inputBegin .block
+    rts
+.bend
+inputEnd .block
+    rts
+.bend
+inputRead .block
+    rts
+.bend
 tokenBegin .block
     rts
 .bend
@@ -171,6 +180,9 @@ tokenScopeClose .block
     .MEMORY_BIND_SAMPLE_END
     .MEMORY_DETAIL_END #0
     .MEMORY_TEMPLATE_WORK #2, d1
+    .MEMORY_INPUT_BEGIN d2
+    .MEMORY_INPUT_READ
+    .MEMORY_INPUT_END d2
     .TOKEN_BEGIN d0
     .TOKEN_OPCODE d1
     .TOKEN_WORK #3, d2
@@ -381,5 +393,27 @@ fn native_memory_progress_requires_its_extra_gate() {
     assert_eq!(
         assemble_memory_telemetry_case("memory-progress-disabled", &with_progress, &defines),
         assemble_memory_telemetry_case("memory-progress-absent", &without_progress, &defines),
+    );
+}
+
+#[test]
+fn native_input_macros_are_independently_gated() {
+    let source = memory_telemetry_source(true, true);
+    let without_input = source
+        .lines()
+        .filter(|line| !line.contains(".MEMORY_INPUT_"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let common = [
+        "OPFORGE_DEBUG_CONTRACTS".to_string(),
+        "OPFORGE_MEMORY_TELEMETRY".to_string(),
+    ];
+    let disabled = assemble_memory_telemetry_case("input-disabled", &source, &common);
+    let omitted = assemble_memory_telemetry_case("input-omitted", &without_input, &common);
+    assert_eq!(disabled, omitted);
+    let mut enabled = common.to_vec();
+    enabled.push("OPFORGE_INPUT_TELEMETRY".to_string());
+    assert!(
+        assemble_memory_telemetry_case("input-enabled", &source, &enabled).len() > disabled.len()
     );
 }

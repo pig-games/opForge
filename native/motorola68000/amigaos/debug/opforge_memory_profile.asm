@@ -46,11 +46,15 @@ BindingElapsed	.res 8
 BindingCalls	.long ?
 BindingSamples	.long ?
 TemplateWork	.res 12*4
+InputElapsed	.res 8
+InputCalls	.long ?
+InputBytes	.long ?
+InputReads	.long ?
 	.endstruct
-RECORD_BYTES = Fields.TemplateWork+12*4
-RECORD_MAGIC = $4d454d43
+RECORD_BYTES = Fields.InputReads+4
+RECORD_MAGIC = $4d454d44
 .ifdef OPFORGE_PREPARATION_PROGRESS
-PROGRESS_BYTES = 64  ; five fixed eight-digit fields and a newline
+PROGRESS_BYTES = 64; five fixed eight-digit fields and a newline
 .endif
 	.section data, kind=data
 	.priv
@@ -87,6 +91,9 @@ DetailIndex	.res long, 1
 DetailStamp	.res long, 2
 BindingSampleActive	.res long, 1
 BindingSampleStamp	.res long, 2
+InputActive	.res long, 1
+InputStamp	.res long, 2
+InputStart	.res long, 1
 	.endsection
 	.section code, kind=code
 	.pub
@@ -402,7 +409,7 @@ detailBegin	.block
 	move.l DetailIndex, d0
 	lsl.l #2, d0
 	lea Fields.DetailEntries(a2), a0
-	addq.l #1, 0(a0,d0.l)
+	addq.l #1, 0(a0, d0.l)
 	bcs.w overflow
 	bra.w done
 invalid
@@ -535,6 +542,97 @@ done
 	move.w (sp)+, ccr
 	rts
 	.bend  ; bindSampleEnd
+; D0=cumulative source bytes at entry. Passive, non-nesting collection clock.
+inputBegin	.block
+	move.w ccr, -(sp)
+	movem.l d0-d2/a0-a2/a6, -(sp)
+	tst.l Active
+	beq.w done
+	lea Record, a2
+	tst.l InputActive
+	bne.w mismatch
+	move.l d0, InputStart
+	movea.l Timer, a6
+	lea InputStamp, a0
+	jsr -60(a6)
+	cmp.l Fields.Frequency(a2), d0
+	bne.w frequency
+	move.l #1, InputActive
+	addq.l #1, Fields.InputCalls(a2)
+	bcs.w overflow
+	bra.w done
+mismatch
+	ori.l #512, Fields.Error(a2)
+	bra.w done
+frequency
+	ori.l #4, Fields.Error(a2)
+	bra.w done
+overflow
+	ori.l #8, Fields.Error(a2)
+done
+	movem.l (sp)+, d0-d2/a0-a2/a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; inputBegin
+; D0=cumulative bytes after collection, including LF or an overflow byte.
+; Timer ticks include scoped probe cost. All registers and CCR preserved.
+inputEnd	.block
+	move.w ccr, -(sp)
+	movem.l d0-d4/a0-a2/a6, -(sp)
+	tst.l InputActive
+	beq.w done
+	clr.l InputActive
+	lea Record, a2
+	sub.l InputStart, d0
+	bcs.w overflow
+	add.l d0, Fields.InputBytes(a2)
+	bcs.w overflow
+	movea.l Timer, a6
+	lea Stamp, a0
+	jsr -60(a6)
+	cmp.l Fields.Frequency(a2), d0
+	bne.w frequency
+	lea Stamp, a0
+	lea InputStamp, a1
+	move.l (a0), d2
+	move.l 4(a0), d3
+	sub.l 4(a1), d3
+	move.l (a1), d4
+	subx.l d4, d2
+	bcs.w overflow
+	add.l d3, Fields.InputElapsed+4(a2)
+	move.l Fields.InputElapsed(a2), d4
+	addx.l d2, d4
+	bcs.w overflow
+	move.l d4, Fields.InputElapsed(a2)
+	bra.w done
+frequency
+	ori.l #4, Fields.Error(a2)
+	bra.w done
+overflow
+	ori.l #8, Fields.Error(a2)
+done
+	movem.l (sp)+, d0-d4/a0-a2/a6
+	move.w (sp)+, ccr
+	rts
+	.bend  ; inputEnd
+; Count physical DOS reads within collection, including the final EOF read.
+; Discovery and other reads outside the collection clock are not included.
+inputRead	.block
+	move.w ccr, -(sp)
+	move.l a0, -(sp)
+	tst.l InputActive
+	beq.w done
+	lea Record, a0
+	addq.l #1, Fields.InputReads(a0)
+	bcc.w done
+	ori.l #8, Fields.Error(a0)
+done
+	movea.l (sp)+, a0
+	move.w (sp)+, ccr
+	rts
+	.bend  ; inputRead
+
 ; D0=source-line bytes. Reset adjacency at each VM invocation. Passive ABI.
 tokenBegin	.block
 	move.w ccr, -(sp)
@@ -793,6 +891,7 @@ device
 scopesClosed
 	move.l DetailActive, d0
 	or.l BindingSampleActive, d0
+	or.l InputActive, d0
 	beq.w detailClosed
 	ori.l #256, Fields.Error(a2)
 detailClosed

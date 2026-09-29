@@ -251,6 +251,46 @@ MEMORY_TEMPLATE_WORK	.macro index, amount
 .endif
 .endmacro
 
+; Physical line collection only: begin/end receive the cumulative source bytes.
+; Clock reads occur once per collection attempt, never once per input byte.
+MEMORY_INPUT_BEGIN	.macro bytes
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_INPUT_TELEMETRY
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .bytes, d0
+	jsr memory_profile.inputBegin
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+MEMORY_INPUT_END	.macro bytes
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_INPUT_TELEMETRY
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .bytes, d0
+	jsr memory_profile.inputEnd
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+MEMORY_INPUT_READ	.macro
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_INPUT_TELEMETRY
+	jsr memory_profile.inputRead
+.endif
+.endif
+.endif
+.endmacro
+
 TOKEN_BEGIN	.macro amount
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY

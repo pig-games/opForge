@@ -1467,6 +1467,9 @@ pub(crate) fn run_compact_cli_files_from_env(
     if memory_telemetry && std::env::var("OPFORGE_TEMPLATE_WORK").as_deref() == Ok("1") {
         extra_assembly_defines.push("OPFORGE_TEMPLATE_WORK_TELEMETRY");
     }
+    if memory_telemetry && std::env::var("OPFORGE_INPUT_DETAIL").as_deref() == Ok("1") {
+        extra_assembly_defines.push("OPFORGE_INPUT_TELEMETRY");
+    }
     let case = OpforgeNativeCliParityCase {
         name: "compact-cli-source-set",
         cpu_override: "68020",

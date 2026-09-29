@@ -290,12 +290,12 @@ fn compact_macro_arena_wide_fs_uae() {
 }
 
 pub(super) fn check_memory(record: &[u8], expected_errors: u32) {
-    assert_eq!(record.len(), 2260);
+    assert_eq!(record.len(), 2280);
     let words = record
         .chunks_exact(4)
         .map(|bytes| u32::from_be_bytes(bytes.try_into().unwrap()))
         .collect::<Vec<_>>();
-    assert_eq!(words[0], 0x4d454d43);
+    assert_eq!(words[0], 0x4d454d44);
     assert_eq!(words[1], 0, "all owned blocks released");
     assert_eq!(words[3], words[4], "allocation/free accounting balances");
     assert_eq!(words[11], 0);

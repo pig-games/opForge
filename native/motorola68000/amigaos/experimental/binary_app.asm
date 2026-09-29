@@ -11,6 +11,7 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_discovery as discovery
 	.use experimental.amigaos.binary_input_plan as inputs
+	.use experimental.amigaos.binary_line_input as line_input
 	.use experimental.amigaos.binary_declarations as declarations
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_ordered_records as ordered
@@ -465,6 +466,7 @@ prepare	.block
 	move.l a1, IoBuffer
 	move.l a1, IoCursor
 	move.l a1, IoEnd
+	move.l #IO_BYTES, IoCapacity
 	adda.l #IO_BYTES*(INCLUDE_DEPTH+1), a1
 	move.l a1, LineBuffer
 	adda.l #LINE_BYTES, a1
@@ -660,22 +662,18 @@ spanAllowed
 	move.l #1, SourceLine
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SOURCE_BEGIN, SourceOrdinal, SourceLine, Records+memory.Block.Used
 sourceLoop
-	bsr.w readByte
-	cmpi.l #-1, d0
+	.MEMORY_INPUT_BEGIN SourceBytes
+	lea Stream, a0
+	movea.l LineBuffer, a1
+	move.l #LINE_BYTES, d0
+	jsr line_input.next
+	add.l d2, SourceBytes
+	move.l d1, LineUsed
+	.MEMORY_INPUT_END SourceBytes
+	cmpi.l #line_input.EOF, d0
 	beq.w sourceDone
 	tst.l d0
-	bmi.w closeBad
-	addq.l #1, SourceBytes
-	cmpi.b #10, d0
-	beq.w lineReady
-	move.l LineUsed, d1
-	cmpi.l #LINE_BYTES, d1
-	bhs.w closeBad
-	movea.l LineBuffer, a0
-	move.b d0, 0(a0, d1.l)
-	addq.l #1, LineUsed
-	bra.w sourceLoop
-lineReady
+	bne.w closeBad
 	bsr.w lowerLine
 	bne.w closeBad
 	bra.w sourceLoop
@@ -1123,6 +1121,7 @@ readByte	.block
 	move.l SourceHandle, d1
 	move.l IoBuffer, d2
 	move.l #IO_BYTES, d3
+	.MEMORY_INPUT_READ
 	jsr -42(a6)
 	tst.l d0
 	bmi.w bad
@@ -1583,6 +1582,14 @@ FailureNewline	.byte 10
 	.endsection
 	.section bss, kind=bss
 	.align 4
+; Match line_input.State; real labels retain Hunk relocation information.
+; The include stack saves Handle/Buffer/Cursor/End by their existing names.
+Stream
+IoCursor	.res long, 1
+IoEnd	.res long, 1
+IoBuffer	.res long, 1
+IoCapacity	.res long, 1
+SourceHandle	.res long, 1
 DosBase	.res long, 1
 InputName	.res long, 1
 OutputName	.res long, 1
@@ -1595,7 +1602,6 @@ CliIncludeCount	.res long, 1
 InputPlan	.res byte, inputs.Frame.Directory+4
 ReturnCode	.res long, 1
 InputHandle	.res long, 1
-SourceHandle	.res long, 1
 SourceCount	.res long, 1
 SpanCount	.res long, 1
 GraphMode	.res long, 1
@@ -1641,9 +1647,6 @@ ManifestWord	.res word, 1
 SourcePath	.res byte, 256
 	.align 4
 FrontStarted	.res long, 1
-IoBuffer	.res long, 1
-IoCursor	.res long, 1
-IoEnd	.res long, 1
 LineBuffer	.res long, 1
 LineUsed	.res long, 1
 SourceBytes	.res long, 1

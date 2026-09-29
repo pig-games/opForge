@@ -13,8 +13,8 @@ Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
 Current measured frontier: the frozen 59-file input completes preparation and
 rejects at file `0x2c`, line `0x18` (`beq`) on the expanded 68020 profile. No
-native self-host Hunk exists. The [template index measurement](#template-candidate-index)
-below isolates the latest preparation gain from earlier changes.
+native self-host Hunk exists. The preparation measurements below isolate each
+change from earlier gains.
 
 Earlier convergence and memory observations: the compact native CLI accepts concrete code and
 data sections reopened by another module, with a focused 68020 / 2 MiB Hunk
@@ -78,6 +78,77 @@ a successful self-host performance measurement. The remaining repeated
 label-to-block search in `mark` is a deferred performance hypothesis, not a
 claim that it explains this runtime.
 The expanded profile is a parity aid, not a revision of the 2 MiB product goal.
+
+## Buffered physical-line collection
+
+Disk reads were already buffered in 4,096-byte blocks, but collection called the
+preserving `readByte` helper for every character and updated global cursor,
+line-length and source-byte counters each time. The hypothesis is that retaining
+those values in registers throughout a physical line removes repeated call and
+memory traffic without changing lowering or language semantics. The new
+`binary_line_input` owner consumes the existing buffer, refills it only when
+exhausted, and returns the copied length and consumed-byte count. LF is consumed;
+CR remains for the existing lowering owner. The buffer size and 4,096-byte
+physical-line bound are unchanged. The byte reader remains for discovery scans.
+
+The app and include stack share the reader state. Include push/pop still saves
+and restores the parent handle and unread buffer span; path search, source
+selection, tokenization and packed lowering remain in their existing owners.
+The runtime state uses real storage labels: numerical aliases to labels did not
+retain the Hunk relocation information needed by the loaded Amiga executable.
+These are transient I/O pointers, with no change to persisted binary-source or
+package formats.
+
+Use the same frozen 59-file input, package, Rust oracle and expanded 68020
+profile as the template-index experiment. Compare the indexed byte-reader
+checkpoint against the integrated line reader, separately from telemetry.
+Acceptance requires focused exact Rust/native output, capacity rejection and the
+same full-input stopping point. Stop if correctness changes or the measured
+result does not justify the new responsibility. `OPFORGE_INPUT_DETAIL=1` with
+memory telemetry isolates collection before lowering; its counters exclude
+module-discovery reads. The sole current record is MEMD, 2,280 bytes; earlier
+decoders are removed.
+
+Fresh 68020 / 2 MiB native proof covers a full-capacity physical line, LF at the
+last and first byte of refills, CRLF split between refills, an instruction split
+between refills, blank lines, an include without final LF followed by buffered
+parent input, and a main file whose final unterminated directive emits bytes.
+A separate completed negative case rejects a 4,097-byte physical line at file 1,
+line 1. Run `cargo test -p asm compact_physical_line_ -- --ignored --nocapture
+--test-threads=1` with the configured FS-UAE environment;
+`compact_physical_line_boundaries_rust_cli_oracle` checks the live Rust oracle.
+
+The matched collection-only profile records 35,257 attempts, 760,743 consumed
+bytes and 304 DOS reads on each revision. Collection falls from 15.068 to 6.341
+seconds: 8.727 seconds saved, or 57.9%. These are instrumented E-clock scopes,
+including probe cost, not release timing. The source-I/O-and-other stage falls
+from 35.200 to 26.543 seconds; it contains collection and must not be added to it.
+Tokenization remains 64.454/64.422 seconds and module discovery 12.764/12.775.
+Both profiles reach the same `beq` rejection, retain 509,604 packed bytes and
+peak at 3,247,768 tracked bytes, with balanced cleanup and zero profiling errors.
+The matched ordinary builds take 205.223 and 196.699 seconds of native-runner
+wall time: 8.523 seconds saved, a 4.15% reduction for this change alone. These
+single observations include native executable construction and emulator startup,
+exclude the Rust oracle build, and time the same explicit rejection rather than
+completed self-host assembly. Both use the same 292,504-byte package and
+86,396-byte Rust Hunk oracle. The comparison images are 87,292/87,516 bytes,
+with linked reservations of 98,360/98,580. The instrumented reference snapshot
+has a four-byte error-exit clock-cleanup stub even with probes disabled; that
+stub is not executed by this workload. Relative to the unmodified index
+checkpoint, the integrated release image grows by 228 bytes and linked
+reservation by 224. There is no release input-probe code or storage.
+
+Qualification: 144 affected Rust tests and seven telemetry gating/transparency
+tests pass. Both focused native boundary cases pass with and without input
+telemetry under 68020 / 2 MiB, as do
+the expanded-profile before/after full-input probes. Instrumentation safety,
+evidence classification, native proof contract, runtime boundary contract,
+test-module ownership, benchmark-selector, supply-chain and workflow-link
+checks pass. All changed native assembly formats cleanly. Broader qualification
+remains limited by ten unchanged enforced architecture findings and a stale
+inventory entry for unchanged `tkpkg_value_execution.asm`; the linked CLI
+formatter still reports one unchanged file would change. This is a preparation
+optimization with the existing self-host rejection unresolved.
 
 ## Template candidate index
 
@@ -152,7 +223,7 @@ from 468,115 to 1,816 (99.61% fewer). Outcomes remain 184 invocations, 2,994
 body captures, 296 definitions, 1,672 plan VM runs and zero string-plan captures.
 Binding calls remain 76,780, with 1,200 timed samples estimating 26.624 seconds
 versus 26.566 before. Both retain 509,604 packed-source bytes and read 760,743
-source bytes including discovery/reloads. The sample estimate overlaps writer
+source bytes including includes/reloads. The sample estimate overlaps writer
 time; boundary rows overlap whole stages and must not be added together.
 Peak tracked ownership grows from 3,244,168 to 3,247,768 bytes (+3,600), with
 balanced allocation/free totals, zero live ownership and zero profiling errors.

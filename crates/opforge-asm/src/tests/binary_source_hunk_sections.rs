@@ -150,13 +150,13 @@ fn compact_hunk_bss_addq_rust_oracle() {
 }
 
 #[test]
-#[ignore = "known compact-native ADDQ.L absolute BSS rejection; requires FS-UAE"]
+#[ignore = "requires configured FS-UAE; ADDQ.L absolute BSS target"]
 fn compact_hunk_bss_addq_fs_uae() {
     native_hunk_source(&bss_addq_reference_source());
 }
 
 #[test]
-#[ignore = "known compact-native ADDQ.L absolute DATA rejection; requires FS-UAE"]
+#[ignore = "requires configured FS-UAE; ADDQ.L absolute DATA target"]
 fn compact_hunk_data_addq_fs_uae() {
     let source = SOURCE.replace(
         "entry: .long payload\n RTS",

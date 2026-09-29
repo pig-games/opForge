@@ -2,7 +2,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use package::{ModeSelectorDescriptor, MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR};
+use package::{
+    ModeSelectorDescriptor, MODE_SELECTOR_PLAN_DIAGNOSTIC_SEPARATOR,
+    MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR,
+};
 use types::hierarchy::ResolvedHierarchy;
 
 use crate::runtime_model_core::RuntimeModelCore;
@@ -639,7 +642,11 @@ fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
     let parsed = (|| {
         let mut stages = Vec::new();
         let mut encoded = false;
-        for stage in plan.strip_prefix("semv.sequence.v1:")?.split(';') {
+        let body = plan.strip_prefix("semv.sequence.v1:")?;
+        let sequence = body
+            .split_once(MODE_SELECTOR_PLAN_DIAGNOSTIC_SEPARATOR)
+            .map_or(body, |(sequence, _)| sequence);
+        for stage in sequence.split(';') {
             let (kind, body) = stage.split_once(':')?;
             let (program, inputs) = body.split_once('@')?;
             let program = match kind {
@@ -1263,6 +1270,23 @@ mod tests {
             super::parse_projection("target:member1.fieldL", &mut names),
             Some(Projection::TargetMember { operand: 1, .. })
         ));
+    }
+
+    #[test]
+    fn target_fixup_sequence_ignores_diagnostic_suffix() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        let plan = "semv.sequence.v1:match:_@expr0,target:expr1;encode:enc.template.field-9@literal:20665,required_value_program:scalar.packed-three-bit-count:expr0;fixup:fix.abs32@target:expr1|encoding.count.range";
+        let CandidateRecipe::SemanticSequence { stages } = super::parse_recipe(plan, &mut names)
+        else {
+            panic!("diagnostic suffix must not obscure an executable fixup sequence");
+        };
+        assert_eq!(stages.len(), 3);
+        assert_eq!(stages[2].inputs, [Projection::TargetExpression(1)]);
     }
 
     #[test]

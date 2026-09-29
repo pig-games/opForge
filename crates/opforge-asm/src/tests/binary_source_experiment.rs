@@ -428,6 +428,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
+    let native_started = std::time::Instant::now();
     let result = crate::fs_uae_smoke::run_compact_cli_files_from_env(
         &workspace_root(),
         &package,
@@ -438,6 +439,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
         false,
     )
     .expect("fresh bounded native self-host entry probe");
+    let native_run_host_seconds = native_started.elapsed().as_secs_f64();
     let FsUaeSmokeOutcome::Completed { runs } = result else {
         panic!("real FS-UAE execution required");
     };
@@ -509,6 +511,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             "rust_hunk_segments": hunk_allocation.segments,
             "rust_hunk_linked_reserved_bytes": hunk_allocation.total(),
             "runtime_package_bytes": package.len(),
+            "native_run_host_seconds": native_run_host_seconds,
             "guest_start_to_done_host_seconds": runs[0].start_to_done_host_seconds,
             "diagnostic": runs[0].stdout,
             "instrumented_memory": memory,

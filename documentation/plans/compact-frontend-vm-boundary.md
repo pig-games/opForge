@@ -27,9 +27,19 @@ the rejection was reported at include origin 60, line 328
 line identifies the failure site but not a trustworthy path. Memory telemetry
 recorded one allocation failure and a peak of 1,083,256 tracked bytes against
 1,121,200 bytes free at entry. The small compact CLI search-roots case still
-matches Rust under 2 MiB. The next step is to identify the owner and lifetime
-of that growing block, then reduce its peak without narrowing supported source.
+matches Rust under 2 MiB. After functional self-host parity, identify the owner
+and lifetime of that growing block and reduce its peak without narrowing source.
 There is no completed native self-host artifact or full-run timing claim.
+
+For functional convergence, the runner now also supports a 68020 profile with
+2 MiB chip and 8 MiB fast RAM. On that profile the instrumented 59-file case
+passed source selection, binding and packed-record materialization, but timed
+out at ten minutes between the post-materialization and post-block-selection
+progress markers. The ordinary build also timed out at ten minutes without a
+guest completion marker or output. Block reachability currently rescans outer
+block contents for each referenced numeric label, a plausible scaling cause;
+that path needs a focused indexed-lookup comparison before another full run.
+The expanded profile is a parity aid, not a revision of the 2 MiB product goal.
 
 ## Finding
 

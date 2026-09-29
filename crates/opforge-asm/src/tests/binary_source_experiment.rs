@@ -340,8 +340,8 @@ fn compact_cli_fs_uae() {
 #[ignore = "bounded native readiness probe; update as self-host parity advances"]
 fn compact_cli_self_host_entry_readiness_fs_uae() {
     // The live Rust assembly determines the exact source manifest and Hunk
-    // oracle. This is a bounded diagnostic probe, not self-host parity: the
-    // full imported source graph still contains unsupported packed constructs.
+    // oracle. The opt-in parity mode requires the fresh native Hunk to match.
+    let require_parity = std::env::var("OPFORGE_SELF_HOST_REQUIRE_PARITY").as_deref() == Ok("1");
     let root = workspace_root().join("native/motorola68000/amigaos");
     let entry = "experimental/opforge_compact_cli.asm";
     let module_roots = [
@@ -429,7 +429,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
         &source_refs,
         &native_roots,
         &["debug"],
-        None,
+        require_parity.then_some(hunk_oracle.as_slice()),
         false,
     )
     .expect("fresh bounded native self-host entry probe");
@@ -438,7 +438,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     };
     assert_eq!(runs.len(), 1);
     assert!(runs[0].protocol_completed);
-    assert_eq!(runs[0].exit_code, Some(20));
+    assert_eq!(runs[0].exit_code, Some(if require_parity { 0 } else { 20 }));
     let memory = if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
         let record = runs[0]
             .captured_artifacts
@@ -450,7 +450,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
             .collect::<Vec<_>>();
         assert_eq!(words[0], 0x4d454d38);
-        assert_eq!(words[1], 0, "rejected input releases tracked memory");
+        assert_eq!(words[1], 0, "terminal path releases tracked memory");
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);
         serde_json::json!({
@@ -484,12 +484,19 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             "instrumented_memory": memory,
         })
     );
-    assert!(runs[0].stdout.contains("[file "));
-    assert!(
-        !runs[0].stdout.contains("[file 00000000, line 00000000]")
-            || runs[0].stdout.contains("preparation step: "),
-        "unlocated rejection needs a preparation-stage diagnostic"
-    );
+    if require_parity {
+        assert_eq!(
+            runs[0].captured_artifacts[&PathBuf::from("Work/output.bin")],
+            hunk_oracle
+        );
+    } else {
+        assert!(runs[0].stdout.contains("[file "));
+        assert!(
+            !runs[0].stdout.contains("[file 00000000, line 00000000]")
+                || runs[0].stdout.contains("preparation step: "),
+            "unlocated rejection needs a preparation-stage diagnostic"
+        );
+    }
 }
 
 #[test]

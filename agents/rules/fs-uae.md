@@ -47,6 +47,11 @@ memory. The template's machine model, ROM and system disk remain selected; use a
 compatible local template. Unset or `existing` retains the normal expanded-memory
 profile. The saved template is never modified.
 
+`OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m` keeps the same 68020 and 2 MiB chip
+RAM but adds 8 MiB fast RAM. Use it to investigate functional self-host parity
+without the current 2 MiB allocation frontier. It is an investigation profile,
+not evidence that the 2 MiB product target has been met.
+
 `scripts/performance/prepared_source_native.py --binary-source --binary-only
 --memory-profile 2m --blocks 32 --native-test <test-binary>` explicitly selects
 binary-only qualification; the existing text runtime is not claimed to fit.

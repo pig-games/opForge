@@ -4752,6 +4752,7 @@ fn maybe_materialize_fs_uae_config(
 enum FsUaeMemoryProfile {
     Existing,
     Constrained2MiB,
+    Expanded68020,
 }
 
 fn fs_uae_memory_profile_from_env() -> Result<FsUaeMemoryProfile, String> {
@@ -4761,14 +4762,15 @@ fn fs_uae_memory_profile_from_env() -> Result<FsUaeMemoryProfile, String> {
             Ok(FsUaeMemoryProfile::Existing)
         }
         Ok(value) if value == "2m" => Ok(FsUaeMemoryProfile::Constrained2MiB),
+        Ok(value) if value == "68020-10m" => Ok(FsUaeMemoryProfile::Expanded68020),
         Ok(value) => Err(format!(
-            "unsupported {FS_UAE_MEMORY_PROFILE_ENV} value '{value}'; expected 'existing' or '2m'"
+            "unsupported {FS_UAE_MEMORY_PROFILE_ENV} value '{value}'; expected 'existing', '2m' or '68020-10m'"
         )),
         Err(error) => Err(format!("read {FS_UAE_MEMORY_PROFILE_ENV}: {error}")),
     }
 }
 
-const CONSTRAINED_2M_FS_UAE_SETTINGS: &[(&str, &str)] = &[
+const CPU_68020_FS_UAE_SETTINGS: &[(&str, &str)] = &[
     ("cpu", "68020"),
     ("chip_memory", "2048"),
     ("slow_memory", "0"),
@@ -4780,12 +4782,22 @@ const CONSTRAINED_2M_FS_UAE_SETTINGS: &[(&str, &str)] = &[
     ("graphics_card_memory", "0"),
 ];
 
-fn constrained_fs_uae_setting(key: Option<&str>) -> Option<(&'static str, &'static str)> {
+fn cpu_68020_fs_uae_setting(
+    key: Option<&str>,
+    memory_profile: FsUaeMemoryProfile,
+) -> Option<(&'static str, &'static str)> {
     let key = key?;
-    CONSTRAINED_2M_FS_UAE_SETTINGS
+    CPU_68020_FS_UAE_SETTINGS
         .iter()
         .copied()
         .find(|(candidate, _)| *candidate == key)
+        .map(|(key, value)| {
+            if key == "fast_memory" && memory_profile == FsUaeMemoryProfile::Expanded68020 {
+                (key, "8192")
+            } else {
+                (key, value)
+            }
+        })
 }
 
 fn rewrite_fs_uae_config_work_mount(
@@ -4796,7 +4808,7 @@ fn rewrite_fs_uae_config_work_mount(
     let mut lines = Vec::new();
     let mut replaced_work_mount = false;
     let mut replaced_zorro_memory = false;
-    let mut constrained_keys = BTreeSet::new();
+    let mut profile_keys = BTreeSet::new();
     for line in template_text.lines() {
         let trimmed = line.trim_start();
         if trimmed.starts_with("hard_drive_1") {
@@ -4809,11 +4821,11 @@ fn rewrite_fs_uae_config_work_mount(
                 "zorro_iii_memory = {FS_UAE_NATIVE_ZORRO_III_MEMORY_KIB}"
             ));
             replaced_zorro_memory = true;
-        } else if memory_profile == FsUaeMemoryProfile::Constrained2MiB {
+        } else if memory_profile != FsUaeMemoryProfile::Existing {
             let key = trimmed.split_once('=').map(|(key, _)| key.trim());
-            if let Some((key, value)) = constrained_fs_uae_setting(key) {
+            if let Some((key, value)) = cpu_68020_fs_uae_setting(key, memory_profile) {
                 lines.push(format!("{key} = {value}"));
-                constrained_keys.insert(key);
+                profile_keys.insert(key);
             } else {
                 lines.push(line.to_string());
             }
@@ -4829,9 +4841,10 @@ fn rewrite_fs_uae_config_work_mount(
             "zorro_iii_memory = {FS_UAE_NATIVE_ZORRO_III_MEMORY_KIB}"
         ));
     }
-    if memory_profile == FsUaeMemoryProfile::Constrained2MiB {
-        for (key, value) in CONSTRAINED_2M_FS_UAE_SETTINGS {
-            if !constrained_keys.contains(key) {
+    if memory_profile != FsUaeMemoryProfile::Existing {
+        for (key, _) in CPU_68020_FS_UAE_SETTINGS {
+            if !profile_keys.contains(key) {
+                let (_, value) = cpu_68020_fs_uae_setting(Some(*key), memory_profile).unwrap();
                 lines.push(format!("{key} = {value}"));
             }
         }
@@ -6513,6 +6526,34 @@ mod tests {
             assert!(
                 !rewritten.contains(removed),
                 "retained {removed}:\n{rewritten}"
+            );
+        }
+    }
+
+    #[test]
+    fn rewrite_fs_uae_config_work_mount_expands_ram_but_keeps_68020() {
+        let template = "[fs-uae]\namiga_model = A4000\ncpu = 68040\nchip_memory = 1024\nfast_memory = 4096\nhard_drive_1 = /old/work\ngraphics_card = uaegfx-z3\ngraphics_memory = 16384\nzorro_iii_memory = 65536\n";
+        let rewritten = rewrite_fs_uae_config_work_mount(
+            template,
+            "/new/work",
+            FsUaeMemoryProfile::Expanded68020,
+        );
+
+        for required in [
+            "cpu = 68020",
+            "chip_memory = 2048",
+            "fast_memory = 8192",
+            "slow_memory = 0",
+            "motherboard_ram = 0",
+            "zorro_iii_memory = 0",
+            "graphics_card = none",
+            "graphics_memory = 0",
+            "graphics_card_memory = 0",
+            "hard_drive_1 = /new/work",
+        ] {
+            assert!(
+                rewritten.contains(required),
+                "missing {required}:\n{rewritten}"
             );
         }
     }

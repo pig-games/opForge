@@ -121,6 +121,14 @@ preparation, and 20–22 for assembly begin/end and output. Progress output is
 diagnostic localization only; it adds bounded console I/O and is excluded from
 release timing and parity proof. The extra gate emits no code or data by itself.
 
+`MEMORY_COUNTER_CLEAR` and `MEMORY_COUNTER_INC` provide local, gated work
+counters without touching registers or CCR. The compact block selector uses
+them for queue insertions, scanned packed records and numeric mark attempts;
+their storage and updates are absent from ordinary builds. With preparation
+progress enabled, phase 23 reports these three values in the source, line and
+records fields after successful block selection. They do not change the MEM8
+binary record or its version.
+
 The compiler/evaluator counters describe actual calls, not a semantic redundancy
 proof. The previous telemetry record is superseded, with no compatibility decoder.
 Allocation amounts are actual reserved block

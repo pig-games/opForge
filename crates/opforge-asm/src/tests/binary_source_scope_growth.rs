@@ -82,12 +82,30 @@ fn compact_transitive_imported_blocks_rust_oracle() {
     }
 }
 
+fn cyclic_imported_blocks() -> Vec<(&'static str, String)> {
+    vec![
+        ("main.asm", ".module app\n.cpu m68020\n.use dep (first)\n.word dep.first\n.endmodule\n.end\n".into()),
+        ("library/dep.asm", ".module dep\n.cpu m68020\n.pub\nfirst .block\n.word dep.second\n.bend\nsecond .block\n.word dep.first\n.bend\nunused .block\n.byte 99\n.bend\n.endmodule\n.end\n".into()),
+    ]
+}
+
+#[test]
+fn compact_cyclic_imported_blocks_rust_oracle() {
+    assert_eq!(wide_import_oracle(&cyclic_imported_blocks()).len(), 6);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; cyclic block reachability terminates"]
+fn compact_cyclic_imported_blocks_fs_uae() {
+    native_import(cyclic_imported_blocks());
+}
+
 #[test]
 #[ignore = "requires configured FS-UAE; transitive packed block references"]
 fn compact_transitive_imported_block_scaling_fs_uae() {
     for count in [128, 513] {
         eprintln!("COMPACT_TRANSITIVE_BLOCK_SCALE count={count}");
-        native_import(transitive_imported_blocks(count));
+        native_import_work(transitive_imported_blocks(count), Some(count));
     }
 }
 
@@ -225,6 +243,10 @@ fn compact_scope_provider_first_readiness_fs_uae() {
 }
 
 fn native_import(files: Vec<(&str, String)>) {
+    native_import_work(files, None);
+}
+
+fn native_import_work(files: Vec<(&str, String)>, expected_queue_adds: Option<usize>) {
     let expected = wide_import_oracle(&files);
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
@@ -254,6 +276,25 @@ fn native_import(files: Vec<(&str, String)>) {
     let run = &runs[0];
     assert!(run.success && run.protocol_completed);
     assert_eq!(run.exit_code, Some(0));
+    if std::env::var("OPFORGE_PREPARATION_PROGRESS").as_deref() == Ok("1") {
+        let stdout = String::from_utf8_lossy(
+            &run.captured_artifacts
+                [&PathBuf::from("Work/case_artifacts/case_0000/opforge_fsuae_smoke.stdout")],
+        );
+        if let Some(expected) = expected_queue_adds {
+            let work = stdout
+                .lines()
+                .find(|line| line.starts_with("progress p=00000017 "))
+                .expect("fresh block-selector work counters");
+            let queued = work
+                .split_whitespace()
+                .find_map(|field| field.strip_prefix("f="))
+                .and_then(|value| u32::from_str_radix(value, 16).ok())
+                .expect("hex queue count");
+            assert_eq!(queued as usize, expected);
+            eprintln!("COMPACT_BLOCK_WORK {work}");
+        }
+    }
     if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
         let words: Vec<_> = run.captured_artifacts[&PathBuf::from("Work/memory.bin")]
             .chunks_exact(4)

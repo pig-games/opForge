@@ -17,6 +17,28 @@ MEMORY_ALLOC	.macro amount
 .endif
 .endmacro
 
+; Local bounded work counters for owners that report through gated progress.
+; No register or CCR effect, and no emitted bytes in ordinary builds.
+MEMORY_COUNTER_CLEAR	.macro counter
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	clr.l .counter
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+
+MEMORY_COUNTER_INC	.macro counter
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	addq.l #1, .counter
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+
 ; Bounded work and phase-clock accounting uses the same optional record.
 MEMORY_WORK	.macro index, amount
 .ifdef OPFORGE_DEBUG_CONTRACTS

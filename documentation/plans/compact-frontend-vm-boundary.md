@@ -43,7 +43,16 @@ output exactly on native. With gated memory telemetry, native finalization took
 820,056/832,344 bytes. About four times as many blocks took about ten times
 as long. These are instrumented relative timings, not release self-host timing.
 An experimental numeric-ID lookup did not improve this case and was discarded;
-the repeated reachability sweeps are a more likely scaling cause to inspect next.
+the repeated reachability sweeps were the next scaling cause to address. The
+native selector now queues each newly reachable outer block, scans records
+outside blocks once and scans each queued block once, reusing its old nesting
+stack as the queue. Fresh exact native parity covers the import chain, a cycle,
+preceding labels, entry roots and selected imports. The same gated finalization
+measurement fell to 0.915/7.223 seconds for 128/513 blocks; queued counts were
+128/513 and scanned packed records 393/1,548. A renewed uninstrumented
+59-file self-host run still timed out at ten minutes without completion.
+The remaining repeated label-to-block search in `mark` is the next focused
+performance hypothesis, not a claim that it alone explains the full timeout.
 The expanded profile is a parity aid, not a revision of the 2 MiB product goal.
 
 ## Finding

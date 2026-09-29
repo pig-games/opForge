@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_block_index
 	.module experimental.amigaos.binary_block_index
 	.cpu 68020
+	.include "memory_telemetry.i"
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_graph as graph
@@ -21,6 +22,7 @@ Live	.word ?
 SPAN_BYTES = Span.Live+2
 STACK = LIMIT*SPAN_BYTES
 SCRATCH_BYTES = STACK+LIMIT*2
+QUEUE = STACK  ; the indexer's nesting stack is dead after index returns
 	.section bss, kind=bss
 	.priv
 Base	.res long, 1
@@ -29,7 +31,17 @@ Spans	.res long, 1
 Scope	.res long, 1
 Graph	.res long, 1
 Count	.res word, 1
-Changed	.res word, 1
+Head	.res word, 1
+Tail	.res word, 1
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	.pub
+QueueAdds	.res long, 1
+Scanned	.res long, 1
+Marks	.res long, 1
+	.priv
+.endif
+.endif
 	.endsection
 	.section code, kind=code
 	.pub
@@ -179,10 +191,15 @@ select	.block
 	cmpi.w #LIMIT, d1
 	bhi.w invalid
 	move.w d1, Count
+	clr.w Head
+	clr.w Tail
+	.MEMORY_COUNTER_CLEAR QueueAdds
+	.MEMORY_COUNTER_CLEAR Scanned
+	.MEMORY_COUNTER_CLEAR Marks
 	moveq #0, d7
 root
 	cmp.w Count, d7
-	bhs.w sweep
+	bhs.w outside
 	move.l d7, d0
 	mulu.w #SPAN_BYTES, d0
 	movea.l Spans, a4
@@ -224,32 +241,28 @@ importedRoot
 	subq.w #1, d2
 	bra.w importedRoot
 liveRoot
+	tst.w Span.Live(a4)
+	bne.w nextRoot
 	move.w #1, Span.Live(a4)
+	move.l d7, d0
+	bsr.w enqueue
+	bne.w invalid
 nextRoot
 	addq.w #1, d7
 	bra.w root
-sweep
-	clr.w Changed
+outside
 	movea.l Base, a4
+	movea.l EndRecords, a6
 	moveq #0, d7  ; outer spans and record offsets both advance in source order
-line
-	cmpa.l EndRecords, a4
-	beq.w sweepDone
-	bhi.w invalid
-	moveq #0, d6
-	move.b (a4), d6
-	addq.w #1, d6
-	cmpi.w #4, d6
-	blo.w invalid
-	move.l EndRecords, d0
-	sub.l a4, d0
-	cmp.l d0, d6
+outsideLine
+	cmpa.l a6, a4
+	beq.w queued
 	bhi.w invalid
 	move.l a4, d4
 	sub.l Base, d4
 owner
 	cmp.w Count, d7
-	bhs.w scan
+	bhs.w outsideScan
 	move.l d7, d0
 	mulu.w #SPAN_BYTES, d0
 	movea.l Spans, a5
@@ -257,29 +270,44 @@ owner
 	tst.w Span.Parent(a5)
 	bne.w nextOwner
 	cmp.l Span.Start(a5), d4
-	blo.w scan  ; later outer spans start after this record too
+	blo.w outsideScan  ; later outer spans start after this record too
 	cmp.l Span.End(a5), d4
 	bhs.w nextOwner
-	tst.w Span.Live(a5)
-	beq.w nextLine
-	bra.w scan
+	movea.l Base, a4
+	adda.l Span.End(a5), a4
+	bra.w outsideLine
 nextOwner
 	addq.w #1, d7
 	bra.w owner
-scan
-	btst #4, 1(a4)
-	bne.w nextLine
-	lea 4(a4), a0
-	movea.l a4, a1
-	adda.w d6, a1
-	bsr.w references
+outsideScan
+	bsr.w scanLine
 	bne.w invalid
-nextLine
-	adda.w d6, a4
-	bra.w line
-sweepDone
-	tst.w Changed
-	bne.w sweep
+	bra.w outsideLine
+queued
+	move.w Head, d7
+	cmp.w Tail, d7
+	bhs.w queueDone
+	addq.w #1, Head
+	add.w d7, d7
+	movea.l Spans, a5
+	lea QUEUE(a5), a5
+	moveq #0, d0
+	move.w 0(a5, d7.w), d0
+	movea.l Spans, a5
+	mulu.w #SPAN_BYTES, d0
+	adda.l d0, a5
+	movea.l Base, a4
+	adda.l Span.Start(a5), a4
+	movea.l Base, a6
+	adda.l Span.End(a5), a6
+blockLine
+	cmpa.l a6, a4
+	beq.w queued
+	bhi.w invalid
+	bsr.w scanLine
+	bne.w invalid
+	bra.w blockLine
+queueDone
 	moveq #0, d7
 omit
 	cmp.w Count, d7
@@ -321,6 +349,56 @@ doneSelect
 	.bend  ; select
 
 	.priv
+; A4=current packed record, A6=end of its scan range. Advance A4 once.
+; D0/CCR=status; clobbers D6/A0-A1. References may enqueue newly live blocks.
+scanLine	.block
+	moveq #0, d6
+	move.b (a4), d6
+	addq.w #1, d6
+	cmpi.w #4, d6
+	blo.w scanBad
+	move.l a6, d0
+	sub.l a4, d0
+	cmp.l d0, d6
+	bhi.w scanBad
+	.MEMORY_COUNTER_INC Scanned
+	btst #4, 1(a4)
+	bne.w scanNext
+	lea 4(a4), a0
+	movea.l a4, a1
+	adda.w d6, a1
+	bsr.w references
+	bne.w scanBad
+scanNext
+	adda.w d6, a4
+	moveq #0, d0
+	rts
+scanBad
+	moveq #1, d0
+	rts
+	.bend  ; scanLine
+
+; D0=outer span index. Queue capacity equals the indexed span limit, and each
+; outer span is enqueued only on its dead-to-live transition. D0/CCR=status;
+; clobbers D1/A0.
+enqueue	.block
+	moveq #0, d1
+	move.w Tail, d1
+	cmp.w Count, d1
+	bhs.w queueFull
+	add.w d1, d1
+	movea.l Spans, a0
+	lea QUEUE(a0), a0
+	move.w d0, 0(a0, d1.w)
+	addq.w #1, Tail
+	.MEMORY_COUNTER_INC QueueAdds
+	moveq #0, d0
+	rts
+queueFull
+	moveq #1, d0
+	rts
+	.bend  ; enqueue
+
 ; A0..A1=packed token range. Follow only numeric symbol operands; other
 ; bytecode operands are skipped by their encoded width. D0/CCR=status.
 references	.block
@@ -364,6 +442,7 @@ name
 	moveq #0, d0
 	move.w (a0), d0
 	bsr.w mark
+	bne.w bad
 	addq.l #3, a0
 	bra.w token
 expression
@@ -431,6 +510,7 @@ symbol
 	lsl.w #8, d0
 	move.b (a0), d0
 	bsr.w mark
+	bne.w bad
 	addq.l #2, a0
 	bra.w opcode
 endExpression
@@ -451,8 +531,10 @@ doneRefs
 ; D0=numeric ID. Find its defining packed label inside an outer block. This
 ; avoids import proxy identities, which can share a target but own no code.
 ; An internal label retains its enclosing block and all fallthrough bytes.
+; Enqueue on first inclusion. Return D0/CCR=status; preserve all other registers.
 mark	.block
-	movem.l d0-d3/a0-a4, -(sp)
+	movem.l d1-d3/a0-a4, -(sp)
+	.MEMORY_COUNTER_INC Marks
 	movea.l Scope, a2
 	cmp.w layout.State.Base(a2), d0
 	blo.w doneMark  ; package tokens cannot name a source block
@@ -499,9 +581,14 @@ markRoot
 	tst.w Span.Live(a3)
 	bne.w doneMark
 	move.w #1, Span.Live(a3)
-	move.w #1, Changed
+	move.l d2, d0
+	bsr.w enqueue
+	bra.w markExit
 doneMark
-	movem.l (sp)+, d0-d3/a0-a4
+	moveq #0, d0
+markExit
+	movem.l (sp)+, d1-d3/a0-a4
+	tst.l d0
 	rts
 	.bend  ; mark
 	.endsection

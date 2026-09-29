@@ -15,6 +15,13 @@
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_ordered_records as ordered
 	.use experimental.amigaos.binary_scope_layout as layout
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	.use experimental.amigaos.binary_block_index as blocks
+.endif
+.endif
+.endif
 	.use experimental.amigaos.binary_binding_records as records
 	.include "memory_telemetry.i"
 HEADER_BYTES = package.Header.MacroFragmentsBytes+4
@@ -39,6 +46,7 @@ PROGRESS_PREPARED = 15
 PROGRESS_ASSEMBLE = 20
 PROGRESS_ASSEMBLED = 21
 PROGRESS_OUTPUT = 22
+PROGRESS_BLOCK_WORK = 23
 STEP_MATERIALIZE = 3
 STEP_INDEX = 4
 STEP_SELECT = 5
@@ -800,6 +808,7 @@ selected
 	lea Front, a0
 	jsr frontend.selectBlocks
 	bne.w completionBad
+	.MEMORY_PROGRESS DosBase, #PROGRESS_BLOCK_WORK, blocks.QueueAdds, blocks.Scanned, blocks.Marks
 blocksSelected
 	move.w #STEP_PARAMETERS, PrepStep
 	.MEMORY_PROGRESS DosBase, #PROGRESS_INDEX, SourceOrdinal, SourceLine, Records+memory.Block.Used

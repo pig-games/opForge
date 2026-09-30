@@ -581,6 +581,10 @@ wrappedFirstItem
 	bne.w otherStructuredRoot
 	cmpi.b #expression.COMPILED_TAG, (a0)
 	beq.w mismatch
+	; A complete indirect/update wrapper is not a bare named root either.
+	jsr shapes.isWrappedName
+	tst.l d0
+	bne.w mismatch
 	bra.w advance
 otherStructuredRoot
 	cmpi.l #5, d4

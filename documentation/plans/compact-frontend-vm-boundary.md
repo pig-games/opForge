@@ -11,13 +11,14 @@ alongside the [native reset](native-runtime-reset.md#fixed-input-allocation-slic
 Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
-Current measured frontier: after package-derived tuple-class selection proof,
-the frozen 59-file input completes preparation and rejects at file `0x27`,
-line `0x17e` (scanner line 382, `move.l d1,-(sp)`) on the expanded 68020
-profile. The uninstrumented runner takes 196.857 seconds. No native self-host
-Hunk exists. The earlier position capture below describes the superseded
-line-112 frontier; it does not measure the current scan position. The next
-slice should investigate package-controlled register-to-stack transfers.
+Current measured frontier: the frozen 59-file input completes preparation,
+packs and binds the source, then rejects during instruction processing at file
+`0x28`, line `0x103` (259) on the expanded 68020 / 10 MiB profile. The
+uninstrumented runner takes 200.804 seconds. No native self-host Hunk exists.
+The earlier position capture below describes the superseded line-112 frontier;
+it does not measure the current pass or section position. The next slice should
+identify the physical source behind this diagnostic and inventory the affected
+module's missing package-controlled capabilities.
 
 Earlier convergence and memory observations: the compact native CLI accepts concrete code and
 data sections reopened by another module, with a focused 68020 / 2 MiB Hunk
@@ -1639,22 +1640,47 @@ is 196.857 s to scanner line 382 under the expanded 68020 / 10 MiB profile.
 Stop at the next unrelated structural capability failure.
 
 The shape correction alone proves the original push, but the transfer matrix
-then rejects `move.l (sp)+,d1`. Wire inspection identifies higher-priority CPU
-rows with canonical `xp1` paths requiring a different root; their necessary
-root metadata previously remained unknown for complete `(name)`, `-(name)` and
-`(name)+` wrappers. Forms 8/9 now use a bounded structural fact to disprove
-that mismatch. Other root forms, incomplete wrappers and matching unsupported
-candidates retain the barrier. The pure packed-shape helper owns this check; the selector uses
-it only where the package's necessary root demands it.
+then rejects `move.l (sp)+,d1`. Complete `(name)`, `-(name)` and `(name)+`
+wrappers cannot satisfy a necessary bare named root (form 7), or a nested tuple
+first-item root (forms 8/9). The earlier wire inventory used the wrong qualifier;
+the actual long restore is blocked by a higher-priority unsupported row requiring
+a bare named root. All three proofs now use the same bounded, pure packed-shape
+helper. Other root forms, incomplete wrappers and matching unsupported candidates
+retain the barrier. The selector uses this structural fact only where the
+package's necessary root demands it; register classes remain package-owned.
 
-Checkpoint qualification: intermediate builds passed the minimal native push
-and both invalid-input controls under 2 MiB; 153 Rust binary-source checks passed
-before the final plain-wrapper proof was added. The expanded wrapper proof has
-passed static review and targeted native formatting, but its final native matrix
-and Hunk comparison remain unverified. The fresh rerun stalled before guest START
-with a black emulator display; unrelated host Rust and staged-guard processes
-also stopped returning output, and a bounded Rust recovery probe timed out.
-Those attempts are environment failures, not assembly evidence. The latest full
-self-host frontier and timing above remain the last valid measurement. Resume
-with the focused register-transfer tests and guards, then the same frozen full
-input; do not claim a new performance result or integration readiness yet.
+Focused final qualification passes 157 Rust binary-source checks, the final
+invalid-transfer Rust oracle, and seven fresh native executions under
+68020 / 10 MiB: the minimal push, the 19-instruction transfer matrix, exact
+124-byte compact CLI Hunk output, three invalid class/shape-reset controls, and
+the matching unsupported PC-tuple barrier. Targeted formatting, changed-scope
+CPU boundaries, instrumentation safety, fresh-run proof, test ownership, canonical
+contracts, runtime boundaries, benchmark selectors and workflow links pass.
+The broad architecture scan retains one existing enforced finding; broad Rust
+qualification was not repeated for this slice.
+
+A fresh 2 MiB rerun stalls in the OS Startup-sequence before guest START and
+before opForge executes. A bounded host sample shows an active emulation thread;
+boot markers localize the stall between the CPU gate and User-Startup. This is
+not assembly evidence or proof that opForge exceeds 2 MiB. Product qualification
+under 2 MiB remains open. The final comparisons use the agreed expanded profile
+without changing the saved emulator template or weakening completion checks.
+
+Separate release-build measurements use the same frozen 674,295-byte, 59-file
+input, unchanged 294,360-byte runtime package and 68020 / 10 MiB profile, with
+telemetry disabled:
+
+| Revision | Runner time | Fresh rejection frontier |
+| --- | ---: | --- |
+| `c8257c41`, tuple-class proof | 196.857 s | Scanner line 382: `move.l d1,-(sp)` |
+| `e826a380`, alternative shape and forms 8/9 | 196.700 s | Scanner line 386: `move.l (sp)+,d1` |
+| Final form-7 wrapper proof | 200.804 s | File `0x28`, line 259 |
+
+The final change adds 4.104 seconds of runner time while reaching further into
+assembly; different failure frontiers prevent a speed-regression or speed-gain
+claim. Runner time includes native CLI construction, launch and capture; an
+isolated guest assembly duration was not captured. The final native image is
+88,096 bytes with 99,128 linked reserved bytes, respectively 16 and 12 bytes
+above `e826a380`. Rust produces an 86,396-byte Hunk with four segments and
+97,532 linked reserved bytes from this input. Native still exits with a fresh
+expected rejection, so no completed native self-host output comparison exists.

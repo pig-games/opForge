@@ -154,6 +154,10 @@ fn compact_register_transfer_hunk_fs_uae() {
 
 const INVALID_REGISTER_TRANSFERS: &[(&str, &str)] = &[
     (
+        ".cpu m68020\n move.l (d0)+,d1\n.end\n",
+        "[file 00000001, line 00000002]",
+    ),
+    (
         ".cpu m68020\n move.l d1,-(d0)\n.end\n",
         "[file 00000001, line 00000002]",
     ),

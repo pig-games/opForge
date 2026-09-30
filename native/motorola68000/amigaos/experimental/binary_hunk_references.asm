@@ -36,6 +36,192 @@ targets	.block
 	tst.l d0
 	rts
 	.bend  ; targets
+; A0=compiled wrapper,A1=end,A2=Context. Classify a bounded postfix
+; expression's relocation identity without evaluating its scalar value.
+; D0=STATUS_CLEAR (absolute), STATUS_SECTION (one base), STATUS_BAD;
+; D1=base ID, or $ffff. Other registers preserved; A0 advances.
+; Numeric evaluation remains ExprVM-owned. Only base+absolute,
+; absolute+base, base-absolute and unary plus preserve a base.
+affineTarget	.block
+	movem.l d2-d7/a1-a6, -(sp)
+	suba.w #runtime.EXPRVM_STACK_CAPACITY*2, sp
+	movea.l sp, a5
+	moveq #0, d6
+	move.l a1, d0
+	sub.l a0, d0
+	bcs.w bad
+	cmpi.l #3, d0
+	blo.w bad
+	cmpi.b #WRAPPER, (a0)+
+	bne.w bad
+	moveq #0, d1
+	move.b (a0)+, d1
+	beq.w bad
+	movea.l a0, a4
+	adda.l d1, a4
+	cmpa.l a1, a4
+	bhi.w bad
+next
+	cmpa.l a4, a0
+	bhs.w bad
+	moveq #0, d3
+	move.b (a0)+, d3
+	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, d3
+	beq.w end
+	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d3
+	beq.w symbol
+	cmpi.b #runtime.COMPACT_I8, d3
+	beq.w byte
+	cmpi.b #runtime.COMPACT_I16, d3
+	beq.w word
+	cmpi.b #runtime.COMPACT_I32, d3
+	beq.w long
+	cmpi.b #runtime.COMPACT_U32, d3
+	beq.w long
+	cmpi.b #runtime.COMPACT_I64, d3
+	beq.w pair
+	cmpi.b #runtime.COMPACT_NEGATE, d3
+	beq.w unaryConstant
+	cmpi.b #runtime.COMPACT_ADD, d3
+	beq.w add
+	cmpi.b #runtime.COMPACT_SUBTRACT, d3
+	beq.w subtract
+	cmpi.b #runtime.COMPACT_MULTIPLY, d3
+	beq.w binaryConstant
+	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d3
+	beq.w unary
+	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d3
+	bne.w bad
+	moveq #1, d1
+	bsr.w available
+	bne.w bad
+	moveq #0, d3
+	move.b (a0)+, d3
+	cmpi.b #runtime.EXPRVM_BINARY_ADD, d3
+	beq.w add
+	cmpi.b #runtime.EXPRVM_BINARY_SUBTRACT, d3
+	beq.w subtract
+	bra.w binaryConstant
+byte
+	moveq #1, d1
+	bra.w literal
+word
+	moveq #2, d1
+	bra.w literal
+long
+	moveq #4, d1
+	bra.w literal
+pair
+	moveq #8, d1
+literal
+	bsr.w available
+	bne.w bad
+	adda.l d1, a0
+	moveq #-1, d1
+	bra.w push
+symbol
+	moveq #2, d1
+	bsr.w available
+	bne.w bad
+	moveq #0, d1
+	move.b (a0)+, d1
+	moveq #0, d2
+	move.b (a0)+, d2
+	lsl.w #8, d2
+	or.w d2, d1
+	cmpi.w #$ffff, d1
+	beq.w bad  ; the absolute proof sentinel cannot name a target
+	cmp.l pkg.Context.Count(a2), d1
+	bhs.w bad
+	movea.l pkg.Context.Defined(a2), a3
+	move.l a3, d0
+	beq.w bad
+	cmpi.b #dependencies.ABSOLUTE, 0(a3, d1.l)
+	bne.w push
+	moveq #-1, d1
+push
+	cmpi.l #runtime.EXPRVM_STACK_CAPACITY, d6
+	bhs.w bad
+	move.l d6, d0
+	add.l d0, d0
+	move.w d1, 0(a5, d0.l)
+	addq.l #1, d6
+	bra.w next
+unary
+	moveq #1, d1
+	bsr.w available
+	bne.w bad
+	moveq #0, d3
+	move.b (a0)+, d3
+	cmpi.b #runtime.EXPRVM_UNARY_PLUS, d3
+	beq.w unaryPlus
+unaryConstant
+	tst.l d6
+	beq.w bad
+	move.l d6, d0
+	subq.l #1, d0
+	add.l d0, d0
+	cmpi.w #$ffff, 0(a5, d0.l)
+	bne.w bad
+	bra.w next
+unaryPlus
+	tst.l d6
+	beq.w bad
+	bra.w next
+add
+	moveq #0, d3
+	bra.w binary
+subtract
+	moveq #1, d3
+	bra.w binary
+binaryConstant
+	moveq #2, d3
+binary
+	cmpi.l #2, d6
+	blo.w bad
+	subq.l #1, d6
+	moveq #0, d7
+	move.l d6, d0
+	add.l d0, d0
+	move.w 0(a5, d0.l), d7
+	subq.l #2, d0
+	moveq #0, d5
+	move.w 0(a5, d0.l), d5
+	cmpi.w #$ffff, d7
+	beq.w rightConstant
+	tst.l d3
+	bne.w bad
+	cmpi.w #$ffff, d5
+	bne.w bad
+	move.w d7, 0(a5, d0.l)
+	bra.w next
+rightConstant
+	cmpi.l #2, d3
+	bne.w next
+	cmpi.w #$ffff, d5
+	bne.w bad
+	bra.w next
+end
+	cmpa.l a4, a0
+	bne.w bad
+	cmpi.l #1, d6
+	bne.w bad
+	moveq #0, d1
+	move.w (a5), d1
+	moveq #STATUS_CLEAR, d0
+	cmpi.w #$ffff, d1
+	beq.w done
+	moveq #STATUS_SECTION, d0
+	bra.w done
+bad
+	moveq #STATUS_BAD, d0
+	moveq #-1, d1
+done
+	adda.w #runtime.EXPRVM_STACK_CAPACITY*2, sp
+	movem.l (sp)+, d2-d7/a1-a6
+	tst.l d0
+	rts
+	.bend  ; affineTarget
 	.priv
 scanExpression	.block
 	movem.l d2-d7/a1-a6, -(sp)

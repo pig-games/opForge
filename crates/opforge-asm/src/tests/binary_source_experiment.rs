@@ -81,6 +81,8 @@ mod callback_scope;
 mod keyword_labels;
 #[path = "binary_source_mnemonic_labels.rs"]
 mod mnemonic_labels;
+#[path = "binary_source_address_addends.rs"]
+mod address_addends;
 
 #[path = "binary_source_dependencies.rs"]
 mod dependencies;

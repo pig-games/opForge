@@ -7,7 +7,7 @@ fn rust_hunk_oracle() -> Vec<u8> {
     rust_hunk_source(SOURCE)
 }
 
-pub(super) fn rust_hunk_source(source: &str) -> Vec<u8> {
+fn rust_hunk_bytes(source: &str) -> Vec<u8> {
     let dir = create_temp_dir("compact-hunk-sections-rust-oracle");
     fs::create_dir_all(dir.join("build")).expect("create output directory");
     let input = dir.join("input.asm");
@@ -23,10 +23,19 @@ pub(super) fn rust_hunk_source(source: &str) -> Vec<u8> {
     run_with_validated_cli_with_context(&cli, &config).expect("assemble Hunk source with Rust");
     let oracle = fs::read(dir.join("build/sections.hunk")).expect("read Rust Hunk oracle");
     fs::remove_dir_all(&dir).expect("remove Rust oracle directory");
+    oracle
+}
+
+pub(super) fn rust_hunk_source(source: &str) -> Vec<u8> {
+    rust_hunk_source_with_allocation(source, 12)
+}
+
+pub(super) fn rust_hunk_source_with_allocation(source: &str, expected_bss: u64) -> Vec<u8> {
+    let oracle = rust_hunk_bytes(source);
     let allocation = hunk::allocation(&oracle).expect("valid Rust Hunk");
     assert_eq!(allocation.segments, 3);
     assert_eq!(
-        allocation.bss, 12,
+        allocation.bss, expected_bss,
         "BSS reservation and alignment round to Hunk words"
     );
     oracle
@@ -354,7 +363,15 @@ fn compact_hunk_self_host_constants_fs_uae() {
 }
 
 pub(super) fn native_hunk_source(source: &str) {
-    let oracle = rust_hunk_source(source);
+    native_hunk_source_with_allocation(source, 12);
+}
+
+pub(super) fn native_hunk_source_with_allocation(source: &str, expected_bss: u64) {
+    let oracle = rust_hunk_source_with_allocation(source, expected_bss);
+    native_hunk_bytes(source, &oracle);
+}
+
+fn native_hunk_bytes(source: &str, oracle: &[u8]) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
@@ -362,7 +379,7 @@ pub(super) fn native_hunk_source(source: &str) {
         &workspace_root(),
         &package,
         source.as_bytes(),
-        Some(&oracle),
+        Some(oracle),
     )
     .expect("fresh compact CLI exact Hunk comparison");
     let FsUaeSmokeOutcome::Completed { runs } = result else {

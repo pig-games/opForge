@@ -1402,8 +1402,8 @@ invalid
 
 ; Build the package fixup VM's seven-byte numeric input records. An exact
 ; packed identifier supplies the optional relocation identity. Other scalar
-; expressions have no identity; the Hunk caller rejects section-bearing
-; operands without a package fixup.
+; expressions transport identity only when the generic affine proof succeeds.
+; The Hunk caller rejects section-bearing operands without a package fixup.
 projectFixup	.block
 	moveq #0, d7
 	move.w package.Row.InputCount(a5), d7
@@ -1457,14 +1457,16 @@ targetName
 	bsr.w exactTarget
 	tst.l d0
 	beq.w exactIdentity
-	; A compound scalar may contain a layout target even when it has no
-	; transportable exact identity. Reject it before a target-aware position
-	; fixup can mistake its absolute address for a literal displacement.
+	; The generic postfix proof transports one base through absolute addends.
+	; Numeric evaluation still belongs to ExprVM; unsafe address algebra fails.
 	cmpi.b #expression.COMPILED_TAG, (a0)
 	bne.w targetReady
-	jsr references.targets
-	tst.l d0
-	bne.w bad
+	jsr references.affineTarget
+	cmpi.l #references.STATUS_BAD, d0
+	beq.w bad
+	cmpi.l #references.STATUS_SECTION, d0
+	bne.w targetReady
+	move.w d1, ProjectedTarget
 	bra.w targetReady
 exactIdentity
 	cmp.l package.Context.Count(a2), d1

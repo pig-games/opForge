@@ -12,12 +12,13 @@ Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
 Current measured frontier: the frozen 61-file input rejects at native origin
-`0x11`, line 111, on 68020 / 10 MiB, after the package-role repair. Its scan
-position and source mapping still need diagnostic capture. Origin IDs are
-discovery/include IDs, not indices into the sorted Rust manifest. The preceding
-instrumented run reached pass 1, section sweep 2 of 4, at 47.963% of that scan;
-this is not overall completion. That run matched `binary_graph.asm` and its
-`bra.w reset`, which now passes a focused exact branch comparison.
+`0x11`, line 111, on 68020 / 10 MiB, after the package-role repair. The unique
+EOF count matches `binary_mask_unary.asm`, whose line 111 is
+`move.w d4, Bytes+2`. The instrumented run reaches pass 1, section sweep 2 of 4,
+at 65.948% of that scan. Origin IDs are discovery/include IDs, not indices into
+the sorted Rust manifest, and this is not overall completion. The preceding
+frontier was `binary_graph.asm` and its `bra.w reset` at 47.963% of the scan;
+that branch now passes a focused exact comparison.
 The entry-file BSS-to-struct transfers and immediate CODE/DATA/BSS callback
 addresses now pass focused exact Hunk comparison.
 The register-mask slice below advances beyond the previous restore rejection;
@@ -2146,7 +2147,10 @@ convergence. The canonical MOVE.W member input exists, but its current native
 export is a closed recipe-6 row without executable inputs; dictionary roles
 do not change that exporter decision. This is a missing compact capability,
 not invalid source. The same 3-byte `Frame.w` probe inside a block fails during
-frontend completion and remains under investigation. Register-like names in
+frontend completion. Static inspection identifies an existing module-less
+qualified-name gap: import reference proxies are skipped without an active
+module, while dotted names do not acquire the surrounding block prefix. The
+self-host sources use explicit modules. Register-like names in
 shared value expressions also need separate contextual handling; this slice
 does not establish every package/source-name collision as resolved.
 
@@ -2156,7 +2160,17 @@ in 325.717233125 native-runner seconds, compared with 297.910580375 previously
 The ordinary CLI is 88,892 bytes with 99,920 linked reserved bytes (+48 each),
 and the runtime package stays 298,408 bytes. Source and Rust oracle identities
 are unchanged. No self-host Hunk is produced; this is completed negative
-protocol evidence. A separate diagnostic run must map the new encoding frontier.
+protocol evidence.
+
+The separate instrumented run completes its expected negative protocol in
+339.036807584 runner seconds. It confirms encoding/pass 1, section sweep 2 of
+4, record 352,736 of 534,872 (65.948%). The unique EOF count of 201 matches
+the 200-line frozen `binary_mask_unary.asm`; line 111 is `move.w d4, Bytes+2`.
+Selection telemetry records the last attempted priority 131, recipe 4 and
+register projection 1, not proof that this candidate was selected. No allocation
+failure occurs; peak owned memory remains 5,221,800 bytes. The instrumented
+CLI is 93,164 bytes with 105,836 linked reserved bytes. This diagnostic time
+is excluded from release comparisons. No self-host Hunk is produced.
 
 Qualification: 194 packed-source Rust tests and 14 VM package tests pass;
 fresh native keyword-label (42-byte), shared-data (9-byte), explicit BSS-width
@@ -2168,3 +2182,60 @@ workflow-link checks pass. Independent GPT-6.1 Sol review found no concrete
 role/binder ABI or bounds issue. The scoped-field and member-export positive
 probes remain failing convergence cases; broad repository and self-host parity
 are not claimed.
+
+## Relocated address with an absolute addend
+
+The frozen unary-mask module has one additive address operand:
+`move.w d4, Bytes+2`, immediately after the accepted atomic `move.w d5, Bytes`
+and before `lea Bytes,a1`. Its canonical register-to-absolute sequence exists,
+but the shared fixup projection rejects compact compound expressions containing
+a relocatable target. This is identity transport, not a missing CPU opcode.
+
+Hypothesis: prove one target with coefficient +1 and an absolute addend using
+the existing bounded Hunk-reference scanner over validated compact expression
+bytecode. Keep numeric evaluation in ExprVM and absolute-long encoding in the
+package. Transport the proven target identity through the existing fixup path;
+do not reparse source strings or add mnemonic-specific logic. Preserve rejection
+of nonlinear address arithmetic, multiple address bases and current-PC forms.
+One CODE/DATA/BSS target plus an absolute offset is valid across sections.
+
+Focused live Rust/native Hunk comparisons must cover stores and loads, positive
+and negative offsets, commuted addition, named absolute constants and atomic
+controls. Keep unsafe address arithmetic fail-closed. Compare the identical
+frozen release workload against 325.717233125 runner seconds, reporting the
+individual delta and any moved frontier without calling that a speed gain.
+Stop if the proof would require a new general numeric evaluator or CPU semantics
+outside packages. Full output parity remains the completion criterion.
+
+The focused fresh baseline passes its atomic store and rejects the next
+`move.w d4,Bytes+2` at line 13, with guest exit 20 and fresh completion markers.
+The repair adds a bounded eight-item abstract identity stack to the generic
+Hunk-reference service; it computes no numeric values. The existing fixup
+projection uses its single-base proof, then obtains the value from ExprVM.
+No prepared-package or runtime ABI changes are needed.
+
+Fresh telemetry-off native comparisons now match the live Rust Hunk exactly:
+the unchanged store fixture is 180 bytes (1.012630875 start-to-done host
+seconds), loads/immediate addresses/absolute algebra are 180 bytes
+(1.011761250 s), and forward BSS/DATA references are 124 bytes (0.760134333 s).
+Five actual CLI Hunk probes reject multiple bases, nonlinear and negated
+addresses at their offending instruction with fresh protocol/exit evidence.
+Adjacent compound-branch rejections remain intact, while numeric and constant
+branches still match the 164-byte Rust Hunk. These small runs supply correctness
+proof, not a speed claim.
+
+The ordinary CLI is 89,432 bytes with 100,456 linked reserved bytes, separately
++540/+536 from the package-role checkpoint. The runtime package remains
+298,408 bytes. The full frozen release run is being measured against the prior
+325.717233125 seconds; its moved frontier must not be confused with successful
+self-host parity or a speed improvement.
+
+Qualification so far: 197 packed-source Rust tests, the three exact native
+Hunk controls and the seven address/branch rejection controls, 54-file native
+formatting, runtime boundary, instrumentation safety, fresh-proof, ownership
+and workflow-link guards pass. Independent GPT-6.1 Sol review covers bounds,
+operator arity, conservative unresolved symbols, stack/register preservation
+and separate identity/value transport. The existing VM-only shared `.long`
+relocation limitation still makes three broader Hunk assertions fail in that
+feature configuration; it does not affect the passing default-feature oracle.
+No broad repository or completed native self-host qualification is claimed.

@@ -49,6 +49,8 @@ RepeatState
 	.res byte, repetition.STATE_BYTES
 HunkInstructionRefs
 	.res word, 1
+HunkInstructionRefCount
+	.res word, 1
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
@@ -561,6 +563,7 @@ dispatch
 	bne.w bad
 	; Name returns the numeric identity and qualifier without source reconstruction.
 	clr.w HunkInstructionRefs
+	clr.w HunkInstructionRefCount
 	lea SectionState, a4
 	cmpi.w #5, sections.State.Mode(a4)
 	bne.w instructionReady
@@ -568,7 +571,10 @@ dispatch
 	bne.w instructionReady
 	move.l d0, d5
 	movea.l a0, a5
+	move.w d1, -(sp)  ; retain the mnemonic qualifier across reference counting
 	jsr hunkrefs.tokens
+	move.w d1, HunkInstructionRefCount
+	move.w (sp)+, d1
 	cmpi.l #hunkrefs.STATUS_BAD, d0
 	beq.w bad
 	move.w d0, HunkInstructionRefs
@@ -925,6 +931,30 @@ markInstructionRelocs	.block
 	move.l d0, d6
 	cmpi.w #hunkrefs.STATUS_SECTION, HunkInstructionRefs
 	bne.w countReady
+	jsr encoding.outputPositionProof
+	tst.l d0
+	beq.w absoluteOnly
+	; Mixed positional and absolute fixups need per-reference accounting.
+	; This bounded Hunk slice accepts one PC cancellation only when it is the
+	; instruction's sole section reference and emits no Hunk relocation.
+	cmpi.l #1, d0
+	bne.w bad
+	tst.l d6
+	bne.w bad
+	cmpi.w #1, HunkInstructionRefCount
+	bne.w bad
+	cmp.l pkg.Context.Count(a2), d1
+	bhs.w bad
+	movea.l pkg.Context.SectionIds(a2), a0
+	moveq #0, d2
+	move.b 0(a0, d1.l), d2
+	moveq #0, d3
+	move.w sections.State.HunkCurrent(a4), d3
+	addq.w #1, d3
+	cmp.w d3, d2
+	bne.w bad
+	bra.w countReady
+absoluteOnly
 	tst.l d6
 	beq.w bad  ; fail closed without a package-proven instruction fixup
 countReady

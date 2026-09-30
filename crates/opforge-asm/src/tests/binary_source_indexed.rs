@@ -117,6 +117,82 @@ fn binary_indexed_signed_sequence_fs_uae() {
     );
 }
 
+#[test]
+fn binary_indexed_movea_rust_oracle() {
+    let source = ".cpu m68020\n.org 0\n movea.l 0(a1,d0.w),a1\n.end\n";
+    assert_eq!(oracle(source), [0x22, 0x71, 0x00, 0x00]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; indexed MOVEA source"]
+fn binary_indexed_movea_native_parity_fs_uae() {
+    native_source(".cpu m68020\n.org 0\n movea.l 0(a1,d0.w),a1\n.end\n".into());
+}
+
+fn pc_dispatch_source() -> String {
+    ".cpu m68020\n.org 0\nentry: lea dispatchTable(pc),a1\n rts\ndispatchTable: .long entry\n.end\n"
+        .into()
+}
+
+#[test]
+fn binary_pc_dispatch_lea_rust_oracle() {
+    assert_eq!(
+        oracle(&pc_dispatch_source()),
+        [0x43, 0xfa, 0, 4, 0x4e, 0x75, 0, 0, 0, 0]
+    );
+}
+
+#[test]
+fn binary_pc_offset_rust_oracles() {
+    for source in [
+        ".cpu m68020\n.org 0\n lea 4(pc),a1\n.end\n",
+        ".cpu m68020\n.org 0\nOFFSET = 4\n lea OFFSET(pc),a1\n.end\n",
+    ] {
+        assert_eq!(oracle(source), [0x43, 0xfa, 0, 4]);
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; compound PC target lacks exact identity transport"]
+fn binary_pc_compound_target_barrier_fs_uae() {
+    compact_rejection(".cpu m68020\n.org 0\nentry: lea dispatchTable+2(pc),a1\n rts\ndispatchTable: .long entry\n.end\n");
+}
+
+#[test]
+fn binary_pc_dispatch_lea_has_executable_package_row() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let numeric =
+        vm::binary_source_package::BinarySourcePackage::prepare(&core, &resolved).unwrap();
+    let wire = prepare_package(&core, &resolved).unwrap();
+    let offset = u32::from_be_bytes(wire[16..20].try_into().unwrap()) as usize;
+    let rows = numeric.candidates.iter().enumerate().filter(|(_, candidate)| {
+        numeric.names[usize::from(candidate.mnemonic)] == "lea"
+            && numeric.names[usize::from(candidate.shape)] == "direct_register"
+            && matches!(&candidate.recipe, vm::binary_source_package::CandidateRecipe::SemanticSequence { stages }
+                if stages.iter().any(|stage| stage.fixup && stage.inputs.contains(&vm::binary_source_package::Projection::TupleValue { operand: 0 })))
+    }).collect::<Vec<_>>();
+    assert_eq!(rows.len(), 1);
+    let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;
+    assert!(
+        (0..count).any(|index| {
+            let row = offset + index * 32;
+            u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == rows[0].1.mnemonic
+                && u16::from_be_bytes(wire[row + 6..row + 8].try_into().unwrap())
+                    == rows[0].1.priority
+                && wire[row + 3] == 6
+                && wire[row + 5] == 9
+        }),
+        "PC LEA must have an executable sequence row"
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; forward PC-relative LEA and dispatch table"]
+fn binary_pc_dispatch_lea_native_parity_fs_uae() {
+    native_source(pc_dispatch_source());
+}
+
 fn compact_rejection(source: &str) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();

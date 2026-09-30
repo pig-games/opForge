@@ -11,15 +11,13 @@ alongside the [native reset](native-runtime-reset.md#fixed-input-allocation-slic
 Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
-Current measured frontier: the replacement frozen 61-file input rejects during
-instruction processing at file `0x2a`, line `0x136` (310) on the expanded
-68020 / 10 MiB profile. The scalar-root correction passes the earlier
-qualified-state access failure at line 259. Focused native Hunk comparison now
-covers those loads, comparisons and stores, numeric addresses, and compound
-absolute constants. No native self-host Hunk exists. See the
-[absolute-memory slice](#complete-scalar-roots-and-target-predicates) for separate
-change timings and the input replacement; the older 59-file timings below are
-historical measurements on a different input.
+Current measured frontier: the frozen 61-file input rejects at entry file 1,
+line `0x5a` (90), `move.l ModuleCount,app.Frame.ModuleCount(a0)`, on the expanded
+68020 / 10 MiB profile. PC-relative LEA now passes focused flat and exact Hunk
+comparison; the next transfer needs localization. No native self-host Hunk exists.
+See [PC-relative tuple fixups](#pc-relative-tuple-fixups) for separate change timing
+and [the scalar-root slice](#complete-scalar-roots-and-target-predicates) for input
+identity. Older 59-file measurements below use a different input.
 
 Earlier convergence and memory observations: the compact native CLI accepts concrete code and
 data sections reopened by another module, with a focused 68020 / 2 MiB Hunk
@@ -1746,8 +1744,10 @@ change adds 1.572 seconds while reaching further; the target correction's observ
 delta is -2.017 seconds; the final shared proof and tuple correction's delta is
 -0.190 seconds. These are separately recorded observations, not proven performance
 gains or regressions. The staged runtime's line 310 is
-`movea.l 0(a1,d0.W),a1`; a fresh minimal indexed MOVEA probe is the next useful
-localization step rather than another broad full-input run.
+`lea TkvmOpcodeDispatchTable(PC),a1`; the indexed MOVEA follows on line 311.
+Fresh minimal comparisons confirm that indexed MOVEA already passes and the
+PC-relative LEA rejects. The earlier indexed-MOVEA location hint was incorrect;
+the captured line number and measurements are unchanged.
 
 Focused Rust qualification passes 161 binary-source checks. Affected native
 formatting (19 files), instrumentation safety, fresh-native proof contract,
@@ -1763,3 +1763,46 @@ This corrects its false label classification of `movem.l .saved, -(sp)` without
 adding instruction allowlists.
 The existing broad architecture finding in unchanged `binary_source.asm`
 and earlier broad Rust qualification gaps remain outside this slice.
+
+
+## PC-relative tuple fixups
+
+The canonical package already defines PC-relative displacement semantics. Bounded
+sequence lowering now accepts tuple-value fixup inputs only when an earlier match
+proves the same operand has two items and a register base. Native transports the
+bounded scalar value and exact numeric target identity; package VM execution owns
+position subtraction, range checks and emission. Labels remain targets in flat
+output too; absolute constants and literal offsets retain displacement semantics.
+No CPU opcode rule, contract version or compatibility executor is added.
+
+Hunk output accepts a sole same-section reference only after a successful resolved,
+target-aware positional VM step proves cancellation and emits no absolute fixup.
+The VM supplies that proof; the caller does not decode its program again. Reference
+counting now returns D1, so the instruction caller preserves its qualifier across
+that scan. Fresh exact comparison covers the forward LEA and its dispatch table,
+PC literal/absolute-constant offsets, existing absolute LEA/MOVE.L Hunk relocations,
+and a PC-relative MOVE. Compound address targets and mixed positional/absolute Hunk
+fixups remain fail-closed limits. The compound flat probe also exposes an existing
+Rust parser AST span-lockstep discrepancy; it is not a positive Rust byte oracle.
+
+Focused qualification passes 167 Rust binary-source tests plus the new mixed-fixup
+Rust oracle, fourteen VM package tests including unsafe tuple-lowering controls, formatter checks and the relevant
+engineering guards. A fresh OS boot stalled before guest START; resetting the
+disposable guest recovered it. That startup delay supplies no product timing claim.
+The corrected CLI image is 88,868 bytes with 99,836 linked reserved bytes, adding
+480/440 bytes over the previous coherent slice. The runtime package is 295,656
+bytes, an increase of 1,296 bytes.
+
+The release comparison uses the identical 61-file, 696,570-byte input and hash
+recorded above, telemetry disabled and the same 68020 / 10 MiB profile:
+
+| Coherent change | Runner time | Fresh rejection |
+| --- | ---: | --- |
+| Scalar-root and canonical target correction | 224.881 s | File `0x2a`, line 310 |
+| PC-relative tuple fixups and Hunk proof | 219.819 s | Entry file 1, line 90 |
+
+This slice's separately observed delta is -5.062 seconds. Runner time includes
+native construction, emulator launch and capture; isolated full guest timing is
+unavailable. Different rejection frontiers and single-run variation prevent a
+speed claim. The Rust oracle remains 88,096 bytes/four Hunk segments, and the
+new native result is a fresh exit 20 with no self-host Hunk output.

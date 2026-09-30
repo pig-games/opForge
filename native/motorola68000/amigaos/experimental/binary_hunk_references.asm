@@ -1,9 +1,11 @@
-; Find section-relative values before an instruction or data value is emitted.
+; Inspect bounded expression and operand records for section or address-target
+; references before an instruction or data value is emitted.
 ; @opforge-owner: experimental.amigaos.binary_hunk_references
 	.module experimental.amigaos.binary_hunk_references
 	.cpu 68020
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_package as pkg
+	.use experimental.amigaos.binary_dependencies as dependencies
 	.pub
 STATUS_CLEAR = 0
 STATUS_SECTION = 1
@@ -13,9 +15,31 @@ WRAPPER = $81
 
 ; A0=bounded compiled expression wrapper, A1=end, A2=Context.
 ; D0/CCR=0 if absolute, 1 if it references a section symbol or current PC,
-; 2 if malformed. A0 advances past the wrapper. Other registers are preserved.
+; 2 if malformed. D1.W is section-reference count, capped at two. A0 advances
+; past the wrapper. Other registers are preserved.
 expression	.block
-	movem.l d1-d7/a1-a6, -(sp)
+	move.l d7, -(sp)
+	moveq #0, d7
+	bsr.w scanExpression
+	move.l (sp)+, d7
+	tst.l d0
+	rts
+	.bend  ; expression
+
+; The same bounded scan, classifying any nonabsolute symbol as a target.
+; D0/CCR=0 clear, 1 target, 2 malformed; D1.W=count capped at two.
+targets	.block
+	move.l d7, -(sp)
+	moveq #1, d7
+	bsr.w scanExpression
+	move.l (sp)+, d7
+	tst.l d0
+	rts
+	.bend  ; targets
+	.priv
+scanExpression	.block
+	movem.l d2-d7/a1-a6, -(sp)
+	moveq #0, d6
 	move.l a1, d1
 	sub.l a0, d1
 	bcs.w bad
@@ -67,6 +91,7 @@ next
 	bra.w bad
 current
 	moveq #STATUS_SECTION, d5
+	bsr.w countReference
 	bra.w next
 symbol
 	moveq #2, d1
@@ -105,17 +130,22 @@ end
 bad
 	moveq #STATUS_BAD, d0
 done
-	movem.l (sp)+, d1-d7/a1-a6
+	move.w d6, d1
+	movem.l (sp)+, d2-d7/a1-a6
 	tst.l d0
 	rts
-	.bend  ; expression
+	.bend  ; scanExpression
+	.pub
 
 ; A0=prepared operand tokens, A1=end, A2=Context. The same statuses as
-; expression are returned; A0 advances to the end. Other regs are preserved.
+; expression are returned; D1.W is section-reference count, capped at two.
+; A0 advances to the end. Other registers are preserved.
 tokens	.block
-	movem.l d1-d7/a1-a6, -(sp)
+	movem.l d2-d7/a1-a6, -(sp)
+	moveq #0, d7
 	movea.l a1, a4
 	moveq #STATUS_CLEAR, d5
+	moveq #0, d6
 next
 	cmpa.l a1, a0
 	beq.w clear
@@ -143,6 +173,10 @@ wrapped
 	tst.l d0
 	beq.w next
 	moveq #STATUS_SECTION, d5
+	add.w d1, d6
+	cmpi.w #2, d6
+	bls.w next
+	moveq #2, d6
 	bra.w next
 name
 	moveq #3, d1
@@ -178,7 +212,8 @@ clear
 bad
 	moveq #STATUS_BAD, d0
 done
-	movem.l (sp)+, d1-d7/a1-a6
+	move.w d6, d1
+	movem.l (sp)+, d2-d7/a1-a6
 	tst.l d0
 	rts
 	.bend  ; tokens
@@ -203,12 +238,26 @@ bad
 sectionId	.block
 	cmp.l pkg.Context.Count(a2), d1
 	bhs.w bad
+	tst.w d7
+	beq.w section
+	movea.l pkg.Context.Defined(a2), a3
+	move.l a3, d0
+	beq.w bad
+	moveq #0, d0
+	move.b 0(a3, d1.l), d0
+	beq.w found  ; an unresolved symbol may become a layout label
+	cmpi.b #dependencies.ABSOLUTE, d0
+	beq.w clear
+	bra.w found
+section
 	movea.l pkg.Context.SectionIds(a2), a3
 	move.l a3, d0
 	beq.w bad
 	tst.b 0(a3, d1.l)
 	beq.w clear
+found
 	moveq #STATUS_SECTION, d5
+	bsr.w countReference
 clear
 	moveq #STATUS_CLEAR, d0
 	rts
@@ -216,5 +265,14 @@ bad
 	moveq #STATUS_BAD, d0
 	rts
 	.bend  ; sectionId
+
+; Saturate the reference count: callers only need zero, one, or many.
+countReference	.block
+	cmpi.w #2, d6
+	bhs.w done
+	addq.w #1, d6
+done
+	rts
+	.bend  ; countReference
 	.endsection
 	.endmodule

@@ -30,8 +30,8 @@ fn compact_memory_move_package_rows() {
         {
             continue;
         }
-        // Unsupported PC-tuple recipes retain their barrier and the necessary
-        // package class (8 + 1); the usable semantic recipes need no such proof.
+        // Supported PC-tuple recipes now carry their bounded match and
+        // positional fixup in executable sequence rows.
         if row[5] == 6 && row[22] == 9 {
             assert_eq!(row[23], 0);
             barriers += 1;
@@ -41,7 +41,7 @@ fn compact_memory_move_package_rows() {
             sequences += 1;
         }
     }
-    assert_eq!(barriers, 2);
+    assert_eq!(barriers, 0);
     assert!(sequences > 0);
 }
 
@@ -83,30 +83,10 @@ fn compact_memory_move_matrix_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; matching unsupported tuple class retains barrier"]
-fn compact_memory_move_pc_barrier_fs_uae() {
+#[ignore = "requires configured FS-UAE; PC-relative memory move uses package fixup"]
+fn compact_memory_move_pc_tuple_fs_uae() {
     let source = ".cpu m68020\n move.w 8(pc),target\ntarget .word 0\n.end\n";
-    let (_, diagnostics) =
-        assemble_source_entries_with_runtime_mode(&source.lines().collect::<Vec<_>>(), true)
-            .unwrap();
-    assert!(diagnostics.is_empty(), "{diagnostics:?}");
-    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    let resolved = core.resolve_pipeline("m68020", None).unwrap();
-    let package = prepare_package(&core, &resolved).unwrap();
-    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
-        &workspace_root(),
-        &package,
-        source.as_bytes(),
-        None,
-    )
-    .expect("fresh unsupported PC-tuple rejection");
-    let FsUaeSmokeOutcome::Completed { runs } = result else {
-        panic!("real FS-UAE execution required");
-    };
-    assert_eq!(runs.len(), 1);
-    assert!(runs[0].protocol_completed);
-    assert_eq!(runs[0].exit_code, Some(20));
-    assert!(runs[0].stdout.contains("unsupported or invalid input"));
+    assert_binary_source(source.into(), "m68020".into());
 }
 
 #[test]

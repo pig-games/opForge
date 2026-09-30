@@ -112,6 +112,102 @@ fn compact_hunk_instruction_relocation_fs_uae() {
     native_hunk_source(&instruction_reference_source());
 }
 
+fn pc_dispatch_reference_source() -> String {
+    SOURCE.replace(
+        "entry: .long payload\n RTS",
+        "entry: LEA dispatchTable(PC),A1\n RTS\ndispatchTable: .long payload",
+    )
+}
+
+#[test]
+fn compact_hunk_pc_dispatch_reference_rust_oracle() {
+    let oracle = rust_hunk_source(&pc_dispatch_reference_source());
+    assert!(oracle
+        .windows(6)
+        .any(|bytes| bytes == [0x43, 0xfa, 0, 4, 0x4e, 0x75]));
+    assert!(contains_hunk_reloc(&oracle, 2, 6));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; PC-relative code target and absolute DATA table entry"]
+fn compact_hunk_pc_dispatch_reference_fs_uae() {
+    native_hunk_source(&pc_dispatch_reference_source());
+}
+
+fn pc_literal_reference_source() -> String {
+    SOURCE.replace(
+        "entry: .long payload\n RTS",
+        "entry: LEA 4(PC),A1\n RTS\n .long payload",
+    )
+}
+
+fn pc_absolute_constant_source() -> String {
+    SOURCE.replace(
+        "entry: .long payload\n RTS",
+        "OFFSET = 4\nentry: LEA OFFSET(PC),A1\n RTS\n .long payload",
+    )
+}
+
+#[test]
+fn compact_hunk_pc_offset_controls_rust_oracle() {
+    for source in [pc_literal_reference_source(), pc_absolute_constant_source()] {
+        let oracle = rust_hunk_source(&source);
+        assert!(oracle
+            .windows(6)
+            .any(|bytes| bytes == [0x43, 0xfa, 0, 4, 0x4e, 0x75]));
+        assert!(contains_hunk_reloc(&oracle, 2, 6));
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; PC numeric and absolute constant offsets"]
+fn compact_hunk_pc_offset_controls_fs_uae() {
+    native_hunk_source(&pc_literal_reference_source());
+    native_hunk_source(&pc_absolute_constant_source());
+}
+
+fn pc_and_absolute_destination_source() -> String {
+    SOURCE.replace(
+        "entry: .long payload\n RTS",
+        "entry: MOVE.W dispatchTable(PC),payload\n RTS\ndispatchTable: .word 1",
+    )
+}
+
+#[test]
+fn compact_hunk_mixed_pc_absolute_rust_oracle() {
+    let oracle = rust_hunk_source(&pc_and_absolute_destination_source());
+    assert!(oracle.windows(2).any(|bytes| bytes == [0x33, 0xfa]));
+    assert!(contains_hunk_reloc(&oracle, 2, 4));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; mixed PC and absolute Hunk fixups fail closed"]
+fn compact_hunk_mixed_pc_absolute_barrier_fs_uae() {
+    let source = pc_and_absolute_destination_source();
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_files_from_env(
+        &workspace_root(),
+        &package,
+        &[("input.asm", source.as_bytes())],
+        &[],
+        &[],
+        None,
+        false,
+    )
+    .expect("fresh mixed-fixup rejection");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real FS-UAE execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(20));
+    assert!(runs[0]
+        .stdout
+        .contains("binary source: unsupported or invalid input"));
+}
+
 fn bss_instruction_reference_source() -> String {
     SOURCE.replace(
         "entry: .long payload\n RTS",

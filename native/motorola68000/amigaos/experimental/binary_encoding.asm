@@ -6,6 +6,8 @@
 	.include "telemetry_macros.i"
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_shapes as shapes
+	.use experimental.amigaos.binary_dependencies as dependencies
+	.use experimental.amigaos.binary_hunk_references as references
 	.use experimental.amigaos.binary_mask_unary as mask_unary
 	.use opasm.amigaos.binary_expression as expression
 	.use exprvm.amigaos.runtime as exprvm
@@ -66,13 +68,15 @@ AlternativeShape	.res word, 1
 MemberMask	.res word, 1
 Unresolved	.res word, 1
 Records	.res byte, 128
-Execution	.res byte, encoding.Context.FixupTargets+4
+Execution	.res byte, encoding.Context.PositionProofTarget+2
 Output	.res byte, 4096
 FixupCount	.res word, 1
 FixupOffsets	.res long, 16
 FixupAddends	.res long, 16
 FixupWidths	.res word, 16
 FixupTargets	.res word, 16
+PositionProofCount	.res word, 1
+PositionProofTarget	.res word, 1
 ProjectedTarget	.res word, 1
 	.endsection
 
@@ -87,6 +91,7 @@ encode	.block
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_SELECTION
 	movem.l d2-d7/a2-a6, -(sp)
 	clr.w FixupCount
+	clr.w PositionProofCount
 	move.w d0, d6
 	moveq #0, d7
 	move.b d1, d7
@@ -162,6 +167,7 @@ shapeReady
 	beq.w fail
 	movem.l d3/d6-d7/a2/a5, -(sp)
 	clr.w FixupCount
+	clr.w PositionProofCount
 	bsr.w tryRow
 	movem.l (sp)+, d3/d6-d7/a2/a5
 	tst.l d0
@@ -192,6 +198,18 @@ outputFixupCount	.block
 	move.w FixupCount, d0
 	rts
 	.bend  ; outputFixupCount
+
+; Return the successful package VM's positional cancellation proof.
+; D0.W=count (saturated at two), D1.W=numeric target ID. Other registers
+; preserved; CCR reflects D0.
+outputPositionProof	.block
+	moveq #0, d0
+	move.w PositionProofCount, d0
+	moveq #0, d1
+	move.w PositionProofTarget, d1
+	tst.l d0
+	rts
+	.bend  ; outputPositionProof
 
 ; D0.W=index. Returns D0=status,D1=byte offset,D2=width,D3=target
 ; symbol ID,D4=encoded addend. Preserves D5-D7/A0-A6.
@@ -1107,6 +1125,8 @@ fixupVersion
 	tst.l d0
 	bne.w stageBad
 	move.w encoding.Context.FixupCount(a6), FixupCount
+	move.w encoding.Context.PositionProofCount(a6), PositionProofCount
+	move.w encoding.Context.PositionProofTarget(a6), PositionProofTarget
 	move.l d1, (sp)
 	bra.w next
 match
@@ -1460,11 +1480,23 @@ nextFixupInput
 	move.b #7, (a3)+
 inputReady
 	cmpi.b #15, package.Projection.Kind(a4)
-	bne.w bad  ; target:member and compound target paths need exact identity transport
-	move.w #$ffff, ProjectedTarget
+	beq.w scalarTarget
+	cmpi.b #6, package.Projection.Kind(a4)
+	bne.w bad  ; target:member and other paths need exact identity transport
 	bsr.w operandSpan
 	tst.l d0
 	bne.w bad
+	bsr.w tupleBounds
+	tst.l d0
+	bne.w bad
+	movea.l a6, a1  ; first tuple item is the bounded scalar target
+	bra.w targetSpanReady
+scalarTarget
+	bsr.w operandSpan
+	tst.l d0
+	bne.w bad
+targetSpanReady
+	move.w #$ffff, ProjectedTarget
 	cmpa.l a1, a0
 	bhs.w bad
 	; The immediate marker is syntax, not part of the target identity.
@@ -1474,15 +1506,33 @@ inputReady
 targetName
 	bsr.w exactTarget
 	tst.l d0
-	bne.w targetReady  ; a scalar literal has no relocation target
+	beq.w exactIdentity
+	; A compound scalar may contain a layout target even when it has no
+	; transportable exact identity. Reject it before a target-aware position
+	; fixup can mistake its absolute address for a literal displacement.
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w targetReady
+	jsr references.targets
+	tst.l d0
+	bne.w bad
+	bra.w targetReady
+exactIdentity
 	cmp.l package.Context.Count(a2), d1
 	bhs.w bad
-	movea.l package.Context.SectionIds(a2), a0
+	movea.l package.Context.Defined(a2), a0
 	tst.b 0(a0, d1.l)
+	beq.w targetReady
+	cmpi.b #dependencies.ABSOLUTE, 0(a0, d1.l)
 	beq.w targetReady
 	move.w d1, ProjectedTarget
 targetReady
+	cmpi.b #6, package.Projection.Kind(a4)
+	bne.w scalarValue
+	bsr.w projectionTupleValue
+	bra.w valueProjected
+scalarValue
 	bsr.w projectionExpression
+valueProjected
 	tst.l d0
 	bne.w bad
 	moveq #0, d0
@@ -2070,6 +2120,8 @@ prepareExecution	.block
 	move.l #FixupAddends, encoding.Context.FixupAddends(a6)
 	move.l #FixupWidths, encoding.Context.FixupWidths(a6)
 	move.l #FixupTargets, encoding.Context.FixupTargets(a6)
+	move.w PositionProofCount, encoding.Context.PositionProofCount(a6)
+	move.w PositionProofTarget, encoding.Context.PositionProofTarget(a6)
 	clr.w encoding.Context.MnemonicLength(a6)
 	rts
 	.bend  ; prepareExecution

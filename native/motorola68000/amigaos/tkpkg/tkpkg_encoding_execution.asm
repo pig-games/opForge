@@ -30,6 +30,8 @@ FixupOffsets	.long ?
 FixupAddends	.long ?
 FixupWidths	.long ?
 FixupTargets	.long ?
+PositionProofCount	.word ?
+PositionProofTarget	.word ?
 .endstruct
 
 MALFORMED_TEXT_LEN = 30
@@ -581,9 +583,33 @@ fixupTransformReady
 fixupRecordReady
 	move.l d3, d0
 	move.w 4(sp), d4
+	move.w d5, -(sp)  ; little-endian emitUnit uses D5 as its width counter
 	bsr.w emitUnit
+	move.w (sp)+, d5
 	tst.l d3
 	bne.w fixupFrameFail
+	; A positional, target-aware, relocation-free package step consumes one
+	; symbolic address when its emitted value cancels the instruction PC.
+	; Callers may use this generic proof only after a successful VM result.
+	cmpi.w #4, d7
+	bne.w fixupProofReady
+	cmpi.w #2, 6(sp)
+	bne.w fixupProofReady
+	tst.w 20(sp)
+	bne.w fixupProofReady
+	btst #0, d6
+	beq.w fixupProofReady
+	btst #1, d6
+	bne.w fixupProofReady
+	cmpi.w #$ffff, d5
+	beq.w fixupProofReady
+	move.w Context.PositionProofCount(a6), d0
+	cmpi.w #2, d0
+	bhs.w fixupProofReady
+	addq.w #1, d0
+	move.w d0, Context.PositionProofCount(a6)
+	move.w d5, Context.PositionProofTarget(a6)
+fixupProofReady
 	lea 22(sp), sp
 	bra.w fixupLoop
 

@@ -641,7 +641,7 @@ fn parse_packed_mask_indirect(plan: &str) -> Option<CandidateRecipe> {
 // explicit unsupported candidates; match stages have no executable program.
 fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
     let parsed = (|| {
-        let mut stages = Vec::new();
+        let mut stages: Vec<SemanticStage> = Vec::new();
         let mut encoded = false;
         let body = plan.strip_prefix("semv.sequence.v1:")?;
         let sequence = body
@@ -673,7 +673,7 @@ fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
                     matches!(
                         input,
                         Projection::TargetExpression(_) | Projection::TargetMember { .. }
-                    )
+                    ) || matches!(input, Projection::TupleValue { operand } if has_bounded_tuple_match(&stages, *operand))
                 })
             {
                 return None;
@@ -700,6 +700,17 @@ fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
     })();
     parsed.unwrap_or_else(|| CandidateRecipe::Unsupported {
         plan: names.id(plan),
+    })
+}
+
+fn has_bounded_tuple_match(stages: &[SemanticStage], operand: u8) -> bool {
+    stages.iter().any(|stage| {
+        !stage.fixup
+            && stage.program.is_none()
+            && stage.inputs.contains(&Projection::TupleArity { operand })
+            && stage.inputs.iter().any(|input| {
+                matches!(input, Projection::TupleRegister { operand: other, .. } if *other == operand)
+            })
     })
 }
 
@@ -1235,6 +1246,9 @@ mod tests {
             "semv.sequence.v1:encode:x@expr0;match:_@expr0",
             "semv.sequence.v1:match:_@expr0",
             "semv.sequence.v1:encode:x@expr0;fixup:y@expr0",
+            "semv.sequence.v1:encode:x@literal:0;fixup:y@indirect_tuple_value0.item0",
+            "semv.sequence.v1:match:_@indirect_tuple_reg0.item1.class1,indirect_tuple_arity0.value3;encode:x@literal:0;fixup:y@indirect_tuple_value0.item0",
+            "semv.sequence.v1:match:_@indirect_tuple_reg1.item1.class1,indirect_tuple_arity0.value2;encode:x@literal:0;fixup:y@indirect_tuple_value0.item0",
             "semv.sequence.v1:fixup:y@target:expr0",
             "semv.sequence.v1:encode:x@target:expr0;fixup:y@target:expr0",
             "semv.sequence.v1:encode:x@expr0;fixup:y@target:expr2.more",
